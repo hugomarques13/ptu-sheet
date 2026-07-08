@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#c0392b">
+<title>PTU Sheet</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='46' fill='%23e74c3c' stroke='%23111' stroke-width='6'/><rect x='4' y='47' width='92' height='6' fill='%23111'/><circle cx='50' cy='50' r='14' fill='%23fff' stroke='%23111' stroke-width='6'/></svg>">
+<link rel="stylesheet" href="styles.css?v=4">
+</head>
+<body>
+<header id="topbar">
+  <div class="brand">
+    <span class="pokeball"></span>
+    <span class="brand-txt">PTU&nbsp;Sheet</span>
+  </div>
+  <div class="char-picker">
+    <select id="charSelect" title="Active character"></select>
+  </div>
+  <div class="top-actions">
+    <button id="btnNew"    class="btn" title="New character">＋ New</button>
+    <button id="btnRename" class="btn ghost" title="Rename">✎</button>
+    <button id="btnDelete" class="btn ghost danger" title="Delete character">🗑</button>
+    <button id="btnExport" class="btn ghost" title="Export all data to a file">⭳ Export</button>
+    <button id="btnImport" class="btn ghost" title="Import from a file">⭱ Import</button>
+    <button id="btnTheme"  class="btn ghost" title="Toggle light/dark">🌓</button>
+    <input type="file" id="fileImport" accept="application/json" hidden>
+  </div>
+</header>
+
+<nav id="tabs">
+  <button class="tab active" data-tab="trainer">Trainer</button>
+  <button class="tab" data-tab="pokemon">Pokémon <span id="partyCount" class="pill"></span></button>
+  <button class="tab" data-tab="reference">Reference</button>
+</nav>
+
+<main>
+  <section id="view-trainer" class="view active"></section>
+  <section id="view-pokemon" class="view"></section>
+  <section id="view-reference" class="view"></section>
+</main>
+
+<div id="modalRoot"></div>
+<div id="toast"></div>
+
+<script src="data/data.js"></script>
+<!-- Cloud sync (optional): Supabase SDK + your config. Safe to leave config blank for local-only use. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="app.js?v=5"></script>
+</body>
+</html>
