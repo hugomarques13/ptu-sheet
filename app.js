@@ -994,57 +994,83 @@ function openMoveRoll(p, m, sp){
   const isSpec = /spec/i.test(m.class||"");
   const atkStat = isPhys ? d.total.atk : isSpec ? d.total.spatk : 0;
   const atkLbl = isPhys ? "Attack" : isSpec ? "Sp. Attack" : null;
+  const evaNote = isPhys ? "target's Physical Evasion" : isSpec ? "target's Special Evasion" : "target's Evasion";
+  const finalDB = m.damageBase != null ? m.damageBase + (stab?2:0) : null;
+  const diceStr = finalDB!=null ? (DB_TABLE[finalDB]||"").split("/")[0].trim() : "";
+  const defNote = isPhys ? "Defense" : isSpec ? "Special Defense" : "Defense/Sp.Def";
 
   const body = el("div",{});
-  // static info
-  const evaNote = isPhys ? "target's Physical Evasion" : isSpec ? "target's Special Evasion" : "target's Evasion";
   body.append(el("div",{style:"margin-bottom:6px"}, el("span",{html:typeBadge(m.type||"Normal")}),
     el("span",{class:"kv"}, m.class||"Status")));
-  body.append(el("div",{class:"chips",style:"margin-bottom:10px"},
+  body.append(el("div",{class:"chips",style:"margin-bottom:12px"},
     el("span",{class:"kv"}, `Freq: ${m.frequency||"—"}`),
     el("span",{class:"kv"}, `AC ${m.ac??"—"}`),
-    m.damageBase?el("span",{class:"kv"}, `DB ${m.damageBase}${stab?" +2 STAB = "+(m.damageBase+2):""}`):"",
+    finalDB!=null?el("span",{class:"kv"}, `DB ${m.damageBase}${stab?" +2 STAB → "+finalDB:""}`):"",
     el("span",{class:"kv"}, m.range||"—")));
 
-  const out = el("div",{id:"rollOut",class:"card",style:"background:var(--panel-2);margin:0"});
+  /* --- explanation: compact formula line, with the "why" small underneath --- */
+  const dm = diceStr.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
+  const dn = dm[1] ? +dm[1] : 0, dfaces = dm[2] ? +dm[2] : 0, dflat = dm[3] ? parseInt(dm[3].replace(/\s/g,"")) : 0;
+
+  const explain = el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"});
+  // accuracy
+  explain.append(el("div",{style:"margin-bottom:10px"},
+    el("div",{style:"font-size:16px;font-weight:700"}, `Accuracy: ${m.ac!=null ? "1d20" : "—"}`),
+    el("div",{class:"small muted",style:"margin-top:2px"},
+      m.ac!=null ? `Roll 1d20 — hits if it's ≥ AC ${m.ac} + ${evaNote}. Nat 20 auto-hits/crits, nat 1 auto-misses.`
+                 : "This move has no Accuracy Check.")));
+  // damage
+  if(finalDB!=null && dn){
+    const terms = [`${dn}d${dfaces}`];
+    if(dflat) terms.push(String(dflat));
+    if(atkStat) terms.push(String(atkStat));
+    const why = [];
+    why.push(`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${finalDB}${stab?` (DB ${m.damageBase} +2 STAB)`:""}`);
+    if(atkStat) why.push(`${atkStat} = your ${atkLbl}`);
+    explain.append(el("div",{},
+      el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${terms.join(" + ")}`),
+      el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ") + `. Target then subtracts their ${defNote}.`)));
+  } else {
+    explain.append(el("div",{},
+      el("div",{style:"font-size:16px;font-weight:700"}, "Damage: —"),
+      el("div",{class:"small muted",style:"margin-top:2px"}, "Status move — deals no damage; see its effect.")));
+  }
+  body.append(explain);
+
+  /* --- results (filled when you press Roll dice) --- */
+  const out = el("div",{id:"rollOut",class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:0"});
+  out.append(el("div",{class:"muted small"}, "Press 🎲 Roll dice to simulate."));
   const doRoll = () => {
+    out.style.borderStyle="solid";
     out.innerHTML="";
-    // accuracy
     const acc = 1+Math.floor(Math.random()*20);
-    const accCheck = (m.ac!=null? m.ac : 0);
-    const accLine = el("div",{style:"margin-bottom:10px"});
-    accLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY"));
-    accLine.append(el("div",{style:"font-size:24px;font-weight:800"},
-      `🎯 ${acc}`, el("span",{class:"muted",style:"font-size:14px;font-weight:600"}, `  (1d20)`)));
-    if(m.ac!=null) accLine.append(el("div",{class:"small muted"}, `Hits if ${acc} ≥ AC ${m.ac} + ${evaNote}. ${acc===20?"Natural 20 — auto-hit/crit!":acc===1?"Natural 1 — auto-miss.":""}`));
+    const accLine = el("div",{style:finalDB!=null?"margin-bottom:10px":""});
+    accLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLL"));
+    accLine.append(el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${acc}`,
+      el("span",{class:"muted",style:"font-size:14px;font-weight:600"}, "  (1d20)")));
+    if(m.ac!=null) accLine.append(el("div",{class:"small muted"},
+      `Hits if ${acc} ≥ AC ${m.ac} + ${evaNote}.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`));
     out.append(accLine);
-    // damage
-    if(m.damageBase){
-      const finalDB = m.damageBase + (stab?2:0);
-      const diceStr = (DB_TABLE[finalDB]||"").split("/")[0].trim();
+    if(finalDB!=null){
       const r = rollDiceString(diceStr);
       const dmgLine = el("div",{});
-      dmgLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE"));
+      dmgLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"));
       if(r){
         const total = r.total + (atkStat||0);
         dmgLine.append(el("div",{style:"font-size:26px;font-weight:800;color:var(--accent)"}, `💥 ${total}`));
         const parts=[`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`];
-        if(atkStat) parts.push(`+ ${atkStat} ${atkLbl}`);
-        if(stab) parts.push(`(DB ${m.damageBase}+2 STAB)`);
+        if(atkStat) parts.push(`+ ${atkStat} ${atkLbl} = ${total}`);
         dmgLine.append(el("div",{class:"small muted",style:"margin-top:4px"}, parts.join("  ")));
-        dmgLine.append(el("div",{class:"small muted"}, "Then subtract the target's Defense / Sp.Def & damage reduction."));
-      } else dmgLine.append(el("div",{class:"muted"},"No damage dice."));
+        dmgLine.append(el("div",{class:"small muted"}, `Target subtracts ${defNote} & damage reduction.`));
+      }
       out.append(dmgLine);
-    } else {
-      out.append(el("div",{class:"muted"}, "Status move — no damage roll."));
     }
   };
   body.append(out);
-  doRoll();
 
   modal({title:`${m.name}`, bodyNode:body, footNodes:[
     m.effect? el("button",{class:"btn-secondary",onclick:()=>openRefDetail("move",m.name)},"Full text") : "",
-    el("button",{class:"btn-primary",onclick:doRoll},"🎲 Roll again"),
+    el("button",{class:"btn-primary",onclick:doRoll},"🎲 Roll dice"),
   ]});
 }
 function moveLineShort(m){
@@ -1485,8 +1511,15 @@ function myUserId(){
 function canEdit(row){ return !!row && (cloud.isGM || row.owner_id===cloud.userId); }
 function canEditActive(){ return canEdit(cloud.byId[cloud.activeId]); }
 
-function initCloud(){
-  if(!cloudConfigured()) return;
+function initCloud(_tries){
+  // No cloud config at all → nothing to do (stays local-only).
+  if(!(CLOUD_CFG.url && CLOUD_CFG.anonKey)) return;
+  // The Supabase SDK loads async and may not be here yet — wait for it, but never block the app.
+  if(!window.supabase){
+    const t = _tries||0;
+    if(t > 100) return;            // ~10s; give up (offline / CDN blocked) and stay local
+    return void setTimeout(()=>initCloud(t+1), 100);
+  }
   injectCloudButton();
   try { cloud.client = supabase.createClient(CLOUD_CFG.url, CLOUD_CFG.anonKey); }
   catch(e){ console.error("Supabase init failed", e); return; }

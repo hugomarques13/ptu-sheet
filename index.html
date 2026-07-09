@@ -46,10 +46,12 @@
 <div id="modalRoot"></div>
 <div id="toast"></div>
 
+<!-- App core (must not depend on the network): data, config, then the app itself. -->
 <script src="data/data.js"></script>
-<!-- Cloud sync (optional): Supabase SDK + your config. Safe to leave config blank for local-only use. -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
-<script src="app.js?v=10"></script>
+<script src="app.js?v=13"></script>
+<!-- Cloud sync SDK (optional) loads async & LAST so it can never block the app from starting.
+     app.js waits for it and enables ☁ cloud sync once it arrives. -->
+<script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </body>
 </html>
