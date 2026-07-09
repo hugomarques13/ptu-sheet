@@ -92,18 +92,33 @@ function newPokemon(speciesName) {
   const stats = {}; STATS.forEach(([k]) => stats[k] = { added: 0 });
   return {
     id: uid(), species: sp ? sp.name : (speciesName||""), nickname:"",
-    gender:"", shiny:false, level:5, xp:0, loyalty:0,
-    nature: "Hardy", ability:"", heldItem:"",
+    gender:"", shiny:false, onTeam:true, level:5, xp:0, loyalty:0,
+    nature: "Hardy", abilities:[], heldItem:"",
     stats, injuries:0, currentHP:null, tempHP:0,
-    moves:[], tutorPoints:0, notes:"",
+    moves:[], tutorPoints:0, unlocked:false, notes:"",
   };
+}
+/* normalise older Pokémon objects (single ability -> abilities[], add onTeam) */
+function normPokemon(p){
+  if(!p) return p;
+  if(!Array.isArray(p.abilities)){
+    p.abilities = p.ability ? [p.ability] : [];
+  }
+  delete p.ability;
+  if(typeof p.onTeam !== "boolean") p.onTeam = true;
+  if(typeof p.unlocked !== "boolean") p.unlocked = false;
+  if(!p.stats) { p.stats={}; STATS.forEach(([k])=>p.stats[k]={added:0}); }
+  return p;
 }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) { const s = JSON.parse(raw); if (s.characters?.length) return s; }
+    if (raw) { const s = JSON.parse(raw); if (s.characters?.length){
+      s.characters.forEach(c => (c.pokemon||[]).forEach(normPokemon));
+      return s;
+    } }
   } catch(e){}
   const c = newCharacter("My Trainer");
   return { version:1, activeId:c.id, characters:[c], theme:null };
@@ -290,13 +305,14 @@ function render(){
   renderCloudBanner();
   if (currentTab==="trainer")   renderTrainer();
   if (currentTab==="pokemon")   renderPokemon();
+  if (currentTab==="battle")    renderBattle();
   if (currentTab==="reference") renderReference();
   applyReadonlyLock();
 }
 /* lock the sheet views when viewing a cloud character you can't edit */
 function applyReadonlyLock(){
   const lock = mode==="cloud" && cloud.activeId && !canEditActive();
-  $$(".view").forEach(v => v.classList.toggle("ro", !!lock && v.id!=="view-reference"));
+  $$(".view").forEach(v => v.classList.toggle("ro", !!lock && v.id!=="view-reference" && v.id!=="view-battle"));
 }
 
 /* ===================================================================
@@ -425,7 +441,7 @@ function rankButtons(skillKey, cur){
   return wrap;
 }
 
-/* generic chip list backed by a reference name-list, with a searchable picker */
+/* generic list backed by a reference name-list; each entry expands to its rules text */
 function listCard(title, path, allNames, refKind){
   const arr = getByPath(path) || [];
   const card = el("div",{class:"card"}, el("h3",{},title,
@@ -433,15 +449,16 @@ function listCard(title, path, allNames, refKind){
       const a = getByPath(path);
       if(!a.includes(name)){ a.push(name); save(); render(); }
     }, refKind)}, "+ add")));
-  const chips = el("div",{class:"chips"});
-  if(!arr.length) chips.append(el("span",{class:"muted small"},"none yet"));
+  if(!arr.length){ card.append(el("span",{class:"muted small"},"none yet — tap “+ add”")); return card; }
   arr.forEach((name,idx) => {
-    chips.append(el("span",{class:"chip"},
-      el("span",{class:"linkbtn",style:"color:inherit;text-decoration:none",
-        onclick:()=>openRefDetail(refKind, name)}, name),
-      el("span",{class:"x", title:"remove", onclick:()=>{ arr.splice(idx,1); save(); render(); }}, "×")));
+    const row = el("details",{class:"spoiler"});
+    row.append(el("summary",{},
+      el("span",{style:"color:var(--ink)"}, name),
+      el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove",
+        onclick:e=>{ e.preventDefault(); arr.splice(idx,1); save(); render(); }},"×")));
+    row.append(el("div",{class:"small",style:"margin-top:6px", html: refDetailHTML(refKind, name)}));
+    card.append(row);
   });
-  card.append(chips);
   return card;
 }
 
@@ -483,10 +500,32 @@ function renderPokemon(){
   bar.append(el("button",{class:"btn-primary",onclick:()=>addPokemon()},"＋ Add Pokémon"));
   bar.append(el("button",{class:"btn-secondary",onclick:()=>importPokemon()},"⭱ Import Pokémon"));
   root.append(bar);
-  const party = el("div",{class:"party"});
-  c.pokemon.forEach(p => party.append(monCard(p)));
-  if(!c.pokemon.length) party.append(el("div",{class:"addcard", onclick:()=>addPokemon()}, "＋ Add your first Pokémon"));
-  root.append(party);
+
+  if(!c.pokemon.length){
+    root.append(el("div",{class:"addcard", onclick:()=>addPokemon()}, "＋ Add your first Pokémon"));
+    return;
+  }
+  const team = c.pokemon.filter(p=>p.onTeam);
+  const box  = c.pokemon.filter(p=>!p.onTeam);
+  // Team section (up to 6, shown at the top)
+  root.append(el("div",{class:"section-head"}, `Team (${team.length}/6)`,
+    el("span",{class:"muted small"}, "tap ☆ to move a Pokémon in/out")));
+  const teamGrid = el("div",{class:"party"});
+  team.forEach(p => teamGrid.append(monCard(p)));
+  if(!team.length) teamGrid.append(el("div",{class:"muted small",style:"padding:8px"},"No Pokémon on the team yet."));
+  root.append(teamGrid);
+  // Box section (the rest)
+  if(box.length){
+    root.append(el("div",{class:"section-head",style:"margin-top:16px"}, `Box (${box.length})`));
+    const boxGrid = el("div",{class:"party"});
+    box.forEach(p => boxGrid.append(monCard(p)));
+    root.append(boxGrid);
+  }
+}
+function setTeam(p, on){
+  const c = activeChar();
+  if(on && c.pokemon.filter(x=>x.onTeam).length>=6){ toast("Team is full (6). Remove one first."); return; }
+  p.onTeam = on; save(); renderPokemon();
 }
 function exportPokemon(p){
   const sp = getSpecies(p.species);
@@ -508,8 +547,7 @@ function importPokemon(){
         const data = JSON.parse(r.result);
         const mon = data.pokemon || (data._ptu==="pokemon" ? data : data);
         if(!mon || (!mon.species && !mon.nickname)) throw 0;
-        const clone = {...newPokemon(mon.species), ...mon, id: uid()}; // fresh id, keep fields
-        // ensure stats structure
+        const clone = normPokemon({...newPokemon(mon.species), ...mon, id: uid()}); // fresh id, keep fields
         STATS.forEach(([k])=>{ if(!clone.stats?.[k]) { clone.stats = clone.stats||{}; clone.stats[k]={added:0}; } });
         activeChar().pokemon.push(clone); save(); openMon=clone.id; renderPokemon(); render();
         toast("Imported "+(clone.nickname||clone.species||"Pokémon")+" ✓");
@@ -540,6 +578,8 @@ function monCard(p){
   main.append(el("div",{class:"hpbar"}, el("i",{style:`width:${pct}%;background:${hpColor}`})));
   body.append(main);
   card.append(body);
+  card.append(el("button",{class:"pc-star"+(p.onTeam?" on":""), title:p.onTeam?"On team — tap to send to box":"In box — tap to add to team",
+    onclick:e=>{e.stopPropagation(); setTeam(p, !p.onTeam);}}, p.onTeam?"★":"☆"));
   card.append(el("button",{class:"pc-del",title:"export this Pokémon",style:"right:40px",
     onclick:e=>{e.stopPropagation(); exportPokemon(p);}},"⭳"));
   card.append(el("button",{class:"pc-del",title:"remove",onclick:e=>{e.stopPropagation();
@@ -550,7 +590,9 @@ function addPokemon(){
   openPicker("Choose a species", D.species.map(s=>s.name), name=>{
     const p = newPokemon(name);
     const sp = getSpecies(name);
-    if(sp){ p.ability = sp.abilities.basic[0] || ""; }
+    if(sp && sp.abilities.basic[0]){ p.abilities = [sp.abilities.basic[0]]; }
+    // limit active team to 6; extra Pokémon go to the box
+    if(activeChar().pokemon.filter(x=>x.onTeam).length >= 6) p.onTeam = false;
     activeChar().pokemon.push(p); save(); openMon=p.id; renderPokemon(); render();
   }, "species");
 }
@@ -587,7 +629,7 @@ function heroCard(p, sp){
   hero.append(monSprite(sp?.name || p.species, p.shiny, "s-lg"));
   const main = el("div",{class:"mh-main"});
   main.append(el("div",{class:"inline",style:"justify-content:space-between"},
-    el("div",{class:"mh-name"}, p.nickname || sp?.name || "Unknown"),
+    el("div",{class:"mh-name",id:"heroName"}, p.nickname || sp?.name || "Unknown"),
     el("div",{class:"pc-lvl"}, "Lv "+p.level)));
   main.append(el("div",{class:"mh-sub", html:(p.nickname && sp?`${sp.name} · `:"")+(sp?.types||[]).map(typeBadge).join(" ")+(p.shiny?" ✨":"")}));
   /* compact HP control */
@@ -609,25 +651,24 @@ function heroCard(p, sp){
     el("i",{id:"heroHpBar",style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`})));
   hero.append(main);
   card.append(hero);
+  /* damage / heal box: type a number (e.g. -10 = take 10 damage, +8 = heal 8) */
+  const dmg = el("div",{class:"hpctl",style:"margin-top:10px"});
+  const box = el("input",{type:"number",placeholder:"±HP",title:"e.g. -10 to take damage, 8 to heal",style:"width:90px"});
+  const apply = dir => { const n=Math.abs(parseInt(box.value)||0); if(!n) return;
+    setHP(p.currentHP + dir*n); box.value=""; box.focus(); };
+  box.addEventListener("keydown",e=>{ if(e.key==="Enter"){ const n=parseInt(box.value)||0; setHP(p.currentHP+n); box.value=""; } });
+  dmg.append(
+    el("span",{class:"small muted",style:"font-weight:700"},"Damage / Heal:"),
+    box,
+    el("button",{class:"",title:"take damage",onclick:()=>apply(-1)},"− Damage"),
+    el("button",{class:"",title:"heal",onclick:()=>apply(1)},"+ Heal"));
+  card.append(dmg);
   return card;
 }
 
 function renderMonPlay(root, p, sp){
-  /* ability */
-  const abc = el("div",{class:"card"}, el("h3",{},"Ability"));
-  if(sp){
-    const opts = [["","— choose —"]]
-      .concat(sp.abilities.basic.map(a=>[a,`${a} (Basic)`]))
-      .concat(sp.abilities.advanced.map(a=>[a,`${a} (Advanced)`]))
-      .concat(sp.abilities.high.map(a=>[a,`${a} (High)`]));
-    const sel = el("select");
-    opts.forEach(([v,txt])=>sel.append(el("option",{value:v,selected:p.ability===v},txt)));
-    const abd = el("div",{id:"abDetail",class:"small",style:"margin-top:8px"});
-    const showAb = () => { const ab=abilityByName.get((p.ability||"").toLowerCase()); abd.innerHTML = ab?abilityText(ab):""; };
-    sel.addEventListener("change",()=>{p.ability=sel.value;save();showAb();});
-    abc.append(sel, abd); showAb();
-  } else abc.append(field("Ability","",{value:p.ability,onchange:v=>{p.ability=v;save();}}));
-  root.append(abc);
+  /* abilities (a Pokémon can have several) */
+  root.append(abilitiesCard(p, sp));
 
   /* moves */
   root.append(movesCard(p, sp));
@@ -656,7 +697,8 @@ function renderMonBuild(root, p, sp){
   const spWrap = el("label",{class:"field"}, el("span",{},"Species"),
     el("button",{class:"btn-secondary",style:"text-align:left",onclick:()=>openPicker("Change species",D.species.map(s=>s.name),v=>changeSpecies(p,v),"species")}, sp?sp.name:"choose…"));
   r1.append(
-    field("Nickname","",{value:p.nickname,onchange:v=>{p.nickname=v;save();refreshMon(p);}}),
+    field("Nickname","",{value:p.nickname,onchange:v=>{p.nickname=v;save();
+      const hn=$("#heroName"); if(hn) hn.textContent = v || sp?.name || "Unknown"; }}),
     spWrap,
     field("Level","",{type:"number",min:1,value:p.level,onchange:v=>{p.level=parseInt(v)||1;save();refreshMon(p);}}),
     field("Nature","",{opts:D.natures.map(n=>n.name), value:p.nature, onchange:v=>{p.nature=v;save();refreshMon(p);}}),
@@ -719,10 +761,48 @@ const statLbl = k => (STATS.find(s=>s[0]===k)||[,k])[1];
 function changeSpecies(p, name){
   const sp = getSpecies(name); if(!sp) return;
   p.species = sp.name;
-  if(!p.ability || !allAbilityNames(sp).includes(p.ability)) p.ability = sp.abilities.basic[0]||"";
+  if(!p.abilities || !p.abilities.length){ p.abilities = sp.abilities.basic[0] ? [sp.abilities.basic[0]] : []; }
   save(); refreshMon(p);
 }
 function allAbilityNames(sp){ return [...sp.abilities.basic,...sp.abilities.advanced,...sp.abilities.high]; }
+
+/* abilities card — a Pokémon can hold several; each expandable with its effect */
+function abilitiesCard(p, sp){
+  if(!Array.isArray(p.abilities)) p.abilities = [];
+  const card = el("div",{class:"card"}, el("h3",{},`Abilities (${p.abilities.length})`,
+    el("div",{class:"inline"}, unlockToggle(p),
+      el("button",{class:"linkbtn h-act",onclick:()=>addAbility(p, sp)},"+ add"))));
+  if(!p.abilities.length) card.append(el("span",{class:"muted small"},"none yet — tap “+ add”"));
+  p.abilities.forEach((an,i)=>{
+    const ab = abilityByName.get((an||"").toLowerCase());
+    const row = el("details",{class:"spoiler"});
+    row.append(el("summary",{},
+      el("span",{style:"color:var(--ink)"}, an || "—"),
+      el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove",
+        onclick:e=>{e.preventDefault(); p.abilities.splice(i,1); save(); refreshMon(p);}},"×")));
+    row.append(el("div",{class:"small",style:"margin-top:6px", html: ab? abilityText(ab):"<span class='muted'>Not in database</span>"}));
+    card.append(row);
+  });
+  return card;
+}
+function addAbility(p, sp){
+  const speciesAbil = sp ? allAbilityNames(sp) : [];
+  const speciesSet = new Set(speciesAbil.map(x=>x.toLowerCase()));
+  let names, title;
+  if(p.unlocked){
+    names = [...new Set([...speciesAbil, ...D.abilities.map(a=>a.name)])];
+    title = "Add ability (🔓 any)"+(sp?` — ${sp.name}'s options on top`:"");
+  } else {
+    if(!sp){ toast("Unknown species — tick 🔓 to add any ability"); return; }
+    names = speciesAbil;
+    title = `Add ability — ${sp.name}'s options`;
+  }
+  names = names.filter(n=>!p.abilities.includes(n));
+  if(!names.length){ toast(p.unlocked?"No more abilities to add":"No more of this species' abilities to add"); return; }
+  openPicker(title, names, name=>{
+    if(!p.abilities.includes(name)){ p.abilities.push(name); save(); refreshMon(p); }
+  }, "ability", n=>speciesSet.has(n.toLowerCase()));
+}
 function refreshMon(p){ const root=$("#view-pokemon"); root.innerHTML=""; renderMonEditor(root,p);
   $("#partyCount").textContent=activeChar().pokemon.length||""; }
 
@@ -812,24 +892,160 @@ function capsSkillsCard(sp){
   }
   return card;
 }
+const MOVE_LIMIT = 6;
+/* the species plus its pre-evolutions (evolved Pokémon inherit earlier stages' moves) */
+function speciesLineBackTo(sp){
+  const line = [sp];
+  if(sp.evolution?.length){
+    const mine = sp.evolution.find(e=>e.name.toLowerCase()===sp.name.toLowerCase())?.stage;
+    if(mine){
+      sp.evolution.forEach(e=>{ if(e.stage < mine){ const s=getSpecies(e.name); if(s) line.push(s); } });
+    }
+  }
+  return line;
+}
+/* moves learned from levelling up to the Pokémon's current level (default legal list), incl. pre-evos */
+function speciesLevelupNames(sp, level){
+  if(!sp) return [];
+  const set = new Set();
+  speciesLineBackTo(sp).forEach(s => s.moves.levelup.forEach(m=>{ if(m.level<=level) set.add(m.name); }));
+  return [...set];
+}
+/* full learnset (level-up any level + egg + tutor + TM/HM, incl. pre-evos) — prioritised under GM unlock */
+function speciesFullLearnset(sp){
+  if(!sp) return [];
+  const set = new Set();
+  speciesLineBackTo(sp).forEach(s => {
+    s.moves.levelup.forEach(m=>set.add(m.name));
+    s.moves.egg.forEach(m=>set.add(m));
+    s.moves.tutor.forEach(m=>set.add(m.replace(/\s*\(N\)\s*$/i,"").trim()));
+    s.moves.tmhm.forEach(m=>set.add(m.replace(/^[A-Z]*\d+\s+/,"").trim()));
+  });
+  return [...set].filter(Boolean);
+}
+/* Struggle (auto-upgrades to Struggle+ for Combat Expert+ species) */
+function struggleMove(p){
+  const sp = getSpecies(p.species);
+  const combatDice = sp?.skills?.combat?.dice || 0;
+  return moveByName.get(combatDice >= 5 ? "struggle+" : "struggle") || moveByName.get("struggle");
+}
+function unlockToggle(p){
+  const wrap = el("label",{class:"small",title:"GM: allow moves/abilities outside this Pokémon's normal learnset",
+    style:"display:inline-flex;gap:5px;align-items:center;cursor:pointer;font-weight:700;color:var(--muted)"});
+  const cb = el("input",{type:"checkbox"}); cb.checked = !!p.unlocked;
+  cb.addEventListener("change",()=>{ p.unlocked=cb.checked; save(); refreshMon(p); });
+  wrap.append(cb, "🔓 GM: allow any");
+  return wrap;
+}
+function moveSlot(p, sp, m, mn, opts={}){
+  const slot = el("div",{class:"moveslot"});
+  const info = el("div",{style: m?"cursor:pointer;flex:1":"flex:1", onclick: m? ()=>openMoveRoll(p,m,sp) : null},
+    el("div",{style:"font-weight:700"}, m?`${m.name} `:mn,
+      m?el("span",{html:typeBadge(m.type||"Normal")}):"",
+      opts.tag?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600"},opts.tag):""),
+    el("div",{class:"ms-info"}, m? moveLineShort(m) : "custom / not in database"));
+  slot.append(info);
+  const acts = el("div",{class:"inline"});
+  if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",title:"roll this move",onclick:()=>openMoveRoll(p,m,sp)},"🎲 Roll"));
+  if(m) acts.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("move",m.name)},"info"));
+  if(opts.onRemove) acts.append(el("button",{class:"linkbtn",title:"remove",onclick:opts.onRemove},"×"));
+  slot.append(acts);
+  return slot;
+}
 function movesCard(p, sp){
-  const card = el("div",{class:"card"}, el("h3",{},`Moves (${p.moves.length})`,
-    el("button",{class:"linkbtn h-act",onclick:()=>openMovePicker(p,sp)},"+ add move")));
-  if(!p.moves.length) card.append(el("span",{class:"muted small"},"no moves selected"));
+  const n = p.moves.length, over = n > MOVE_LIMIT;
+  const atLimit = !p.unlocked && n >= MOVE_LIMIT;
+  const addBtn = el("button",{class:"linkbtn h-act", disabled:atLimit,
+    style: atLimit?"opacity:.4;cursor:not-allowed":"",
+    onclick: atLimit? null : ()=>openMovePicker(p,sp)}, "+ add move");
+  const card = el("div",{class:"card"}, el("h3",{},
+    el("span",{class:over?"":"", style:over?"color:var(--bad)":""}, `Moves (${n}/${MOVE_LIMIT})`),
+    el("div",{class:"inline"}, unlockToggle(p), addBtn)));
+  // Struggle is always available and does not count toward the limit
+  const st = struggleMove(p);
+  if(st) card.append(moveSlot(p, sp, st, st.name, {tag:"default"}));
+  if(!p.moves.length) card.append(el("span",{class:"muted small"},"no moves selected yet"));
   p.moves.forEach((mn,i)=>{
     const m = moveByName.get(mn.toLowerCase());
-    const slot = el("div",{class:"moveslot"});
-    const info = el("div",{},
-      el("div",{style:"font-weight:700"}, m?`${m.name} `:mn, m?el("span",{html:typeBadge(m.type||"Normal")}):""),
-      el("div",{class:"ms-info"}, m? moveLineShort(m) : "custom / not in database"));
-    slot.append(info);
-    const acts = el("div",{class:"inline"});
-    if(m) acts.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("move",m.name)},"info"));
-    acts.append(el("button",{class:"linkbtn",title:"remove",onclick:()=>{p.moves.splice(i,1);save();refreshMon(p);}},"×"));
-    slot.append(acts);
-    card.append(slot);
+    card.append(moveSlot(p, sp, m, mn, {onRemove:()=>{p.moves.splice(i,1);save();refreshMon(p);}}));
   });
+  if(atLimit) card.append(el("div",{class:"small muted",style:"margin-top:6px"},
+    `Move limit reached (${MOVE_LIMIT}). Tick “🔓 GM: allow any” to add more.`));
+  else if(over) card.append(el("div",{class:"warnbox",style:"margin-top:6px"},
+    `Over the normal ${MOVE_LIMIT}-move limit (GM override).`));
   return card;
+}
+
+/* ---------- dice ---------- */
+function rollDiceString(str){
+  // parse "2d10+10" (ignores the "/ avg" part). returns {rolls, flat, total, expr}
+  const m = String(str||"").match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/i);
+  if(!m) return null;
+  const n=+m[1], faces=+m[2], flat=m[3]?parseInt(m[3].replace(/\s/g,"")):0;
+  const rolls=[]; for(let i=0;i<n;i++) rolls.push(1+Math.floor(Math.random()*faces));
+  const sum=rolls.reduce((a,b)=>a+b,0);
+  return {rolls, faces, flat, dice:sum, total:sum+flat, expr:`${n}d${faces}${flat?(flat>0?"+"+flat:flat):""}`};
+}
+function openMoveRoll(p, m, sp){
+  const d = pokeDerived(p);
+  const types = sp?.types || [];
+  const stab = m.type && types.includes(m.type);
+  const isPhys = /phys/i.test(m.class||"");
+  const isSpec = /spec/i.test(m.class||"");
+  const atkStat = isPhys ? d.total.atk : isSpec ? d.total.spatk : 0;
+  const atkLbl = isPhys ? "Attack" : isSpec ? "Sp. Attack" : null;
+
+  const body = el("div",{});
+  // static info
+  const evaNote = isPhys ? "target's Physical Evasion" : isSpec ? "target's Special Evasion" : "target's Evasion";
+  body.append(el("div",{style:"margin-bottom:6px"}, el("span",{html:typeBadge(m.type||"Normal")}),
+    el("span",{class:"kv"}, m.class||"Status")));
+  body.append(el("div",{class:"chips",style:"margin-bottom:10px"},
+    el("span",{class:"kv"}, `Freq: ${m.frequency||"—"}`),
+    el("span",{class:"kv"}, `AC ${m.ac??"—"}`),
+    m.damageBase?el("span",{class:"kv"}, `DB ${m.damageBase}${stab?" +2 STAB = "+(m.damageBase+2):""}`):"",
+    el("span",{class:"kv"}, m.range||"—")));
+
+  const out = el("div",{id:"rollOut",class:"card",style:"background:var(--panel-2);margin:0"});
+  const doRoll = () => {
+    out.innerHTML="";
+    // accuracy
+    const acc = 1+Math.floor(Math.random()*20);
+    const accCheck = (m.ac!=null? m.ac : 0);
+    const accLine = el("div",{style:"margin-bottom:10px"});
+    accLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY"));
+    accLine.append(el("div",{style:"font-size:24px;font-weight:800"},
+      `🎯 ${acc}`, el("span",{class:"muted",style:"font-size:14px;font-weight:600"}, `  (1d20)`)));
+    if(m.ac!=null) accLine.append(el("div",{class:"small muted"}, `Hits if ${acc} ≥ AC ${m.ac} + ${evaNote}. ${acc===20?"Natural 20 — auto-hit/crit!":acc===1?"Natural 1 — auto-miss.":""}`));
+    out.append(accLine);
+    // damage
+    if(m.damageBase){
+      const finalDB = m.damageBase + (stab?2:0);
+      const diceStr = (DB_TABLE[finalDB]||"").split("/")[0].trim();
+      const r = rollDiceString(diceStr);
+      const dmgLine = el("div",{});
+      dmgLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE"));
+      if(r){
+        const total = r.total + (atkStat||0);
+        dmgLine.append(el("div",{style:"font-size:26px;font-weight:800;color:var(--accent)"}, `💥 ${total}`));
+        const parts=[`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`];
+        if(atkStat) parts.push(`+ ${atkStat} ${atkLbl}`);
+        if(stab) parts.push(`(DB ${m.damageBase}+2 STAB)`);
+        dmgLine.append(el("div",{class:"small muted",style:"margin-top:4px"}, parts.join("  ")));
+        dmgLine.append(el("div",{class:"small muted"}, "Then subtract the target's Defense / Sp.Def & damage reduction."));
+      } else dmgLine.append(el("div",{class:"muted"},"No damage dice."));
+      out.append(dmgLine);
+    } else {
+      out.append(el("div",{class:"muted"}, "Status move — no damage roll."));
+    }
+  };
+  body.append(out);
+  doRoll();
+
+  modal({title:`${m.name}`, bodyNode:body, footNodes:[
+    m.effect? el("button",{class:"btn-secondary",onclick:()=>openRefDetail("move",m.name)},"Full text") : "",
+    el("button",{class:"btn-primary",onclick:doRoll},"🎲 Roll again"),
+  ]});
 }
 function moveLineShort(m){
   const bits=[];
@@ -841,23 +1057,150 @@ function moveLineShort(m){
   return bits.join(" · ");
 }
 function openMovePicker(p, sp){
-  // gather move name pool: species natural moves first, then all
-  let pool = [];
-  if(sp){
-    const nm = new Set();
-    sp.moves.levelup.forEach(m=>nm.add(m.name));
-    sp.moves.egg.forEach(m=>nm.add(m));
-    sp.moves.tutor.forEach(m=>nm.add(m.replace(/\s*\(N\)/,"")));
-    sp.moves.tmhm.forEach(m=>nm.add(m.replace(/^\w+\s*/,"").replace(/^\d+\s*/,"")));
-    pool = [...nm];
+  if(!p.unlocked && !sp){ toast("Unknown species — tick 🔓 to add any move"); return; }
+  let names, title, markSet;
+  if(p.unlocked){
+    // GM override: any move; species' full learnset prioritised on top
+    const learn = speciesFullLearnset(sp);
+    markSet = new Set(learn.map(x=>x.toLowerCase()));
+    names = [...new Set([...learn, ...D.moves.map(m=>m.name)])];
+    title = `Add move (🔓 any) — ${sp?sp.name+"'s learnset on top":"all moves"}`;
+  } else {
+    names = speciesLevelupNames(sp, p.level);   // only moves learned by levelling to here
+    markSet = new Set(names.map(x=>x.toLowerCase()));
+    title = `Add move — ${sp.name}, learned by Lv ${p.level}`;
   }
-  const allMoveNames = D.moves.map(m=>m.name);
-  // build combined, species pool marked
-  const speciesSet = new Set(pool.map(x=>x.toLowerCase()));
-  const names = [...new Set([...pool, ...allMoveNames])];
-  openPicker(`Add move${sp?" — "+sp.name+"'s list on top":""}`, names, name=>{
+  names = names.filter(nm => !p.moves.includes(nm));
+  if(!names.length){ toast(p.unlocked?"No more moves to add":"No new level-up moves yet — tick 🔓 for egg/TM/tutor or higher-level moves"); return; }
+  openPicker(title, names, name=>{
     if(!p.moves.includes(name)){ p.moves.push(name); save(); refreshMon(p); }
-  }, "move", n=>speciesSet.has(n.toLowerCase()));
+  }, "move", n=>markSet.has(n.toLowerCase()));
+}
+
+/* ===================================================================
+   BATTLE VIEW  — what you can do on your turn (actions & maneuvers)
+=================================================================== */
+const BATTLE_ACTIONS = [
+  // ----- Standard -----
+  {id:"use-move", name:"Use a Move", type:"Standard", common:true,
+   effect:"Attack with one of your moves. Roll 1d20 for accuracy — you hit if it meets or exceeds the move's AC + the target's Evasion. Then roll the move's damage and add your Attack (Physical) or Sp. Attack (Special); +2 Damage Base for STAB. Use the ⚔ Moves tab to roll yours."},
+  {id:"struggle", name:"Struggle Attack", type:"Standard", cls:"Physical", ac:4, common:true,
+   effect:"Every Pokémon can always attack with Struggle, even with no moves left. Normal-type, Physical, AC 4, Damage Base 4. Becomes Struggle+ (DB 5, AC 3) if your Combat skill is Expert or higher."},
+  {id:"dirty-trick", name:"Dirty Trick", type:"Standard", cls:"Status", ac:2, range:"Melee, 1 target", common:true,
+   effect:"Pick one cheap trick (each usable once per Scene per target):\n• Hinder — opposed Athletics; target is Slowed and takes −2 to all Skill Checks for one round.\n• Blind — opposed Stealth; target is Blinded for one round.\n• Low Blow — opposed Acrobatics; target is Vulnerable and its Initiative is set to 0 until the end of your next turn."},
+  {id:"manipulate", name:"Manipulate", type:"Standard", cls:"Status", ac:2, range:"6, 1 target", who:"Trainers only",
+   effect:"Trainers only. Pick one (once per Scene per target):\n• Bon Mot — Guile vs Guile/Focus; target is Enraged and can't spend AP for one round.\n• Flirt — Charm vs Charm/Focus; target is Infatuated with you for one round.\n• Terrorize — Intimidate vs Intimidate/Focus; target loses all Temp HP and can only use At-Will moves for one round."},
+  {id:"disarm", name:"Disarm", type:"Standard", cls:"Status", ac:6, range:"Melee, 1 target",
+   effect:"Opposed Combat or Stealth check. If you win, the target's held item (Main or Off-Hand for humans) falls to the ground."},
+  {id:"push", name:"Push", type:"Standard", cls:"Status", ac:4, range:"Melee, 1 target",
+   effect:"Opposed Combat or Athletics. If you win, push the target 1m directly away. If you have movement left you may follow and push again, repeatedly. Only works on targets no heavier than your Heavy Lifting rating."},
+  {id:"trip", name:"Trip", type:"Standard", cls:"Status", ac:6, range:"Melee, 1 target",
+   effect:"Opposed Combat or Acrobatics. If you win, the target is knocked over and Tripped."},
+  {id:"grapple", name:"Grapple", type:"Standard", cls:"Status", ac:4, range:"Melee, 1 target",
+   effect:"Opposed Combat or Athletics. If you win, both of you become Grappled and you gain Dominance. While Grappled a target is Vulnerable, cannot Shift, and takes −6 to hit anyone outside the grapple. Contesting/using the grapple is a Full Action."},
+  {id:"sprint", name:"Sprint", type:"Standard", cls:"Status", range:"Self",
+   effect:"Increase your Movement Speeds by 50% for the rest of your turn."},
+  {id:"use-item", name:"Use an Item", type:"Standard",
+   effect:"Retrieve and use an item (Potion, X-Item, etc.) on a target."},
+  {id:"throw-ball", name:"Throw a Poké Ball", type:"Standard",
+   effect:"Throw a Poké Ball to try to capture a wild Pokémon."},
+  {id:"recall-self", name:"Recall for Switch", type:"Standard",
+   effect:"A Pokémon may recall itself into its Poké Ball so its Trainer can switch in another."},
+  {id:"pokedex", name:"Identify (Pokédex)", type:"Standard",
+   effect:"Use the Pokédex to identify a Pokémon and read its data."},
+  {id:"draw-weapon", name:"Draw / Switch Weapon", type:"Standard",
+   effect:"Draw a weapon, or switch from one weapon to another."},
+  {id:"improvised", name:"Improvised Attack", type:"Standard",
+   effect:"Attack using the environment or an object (throw a rock, topple a tree…). The GM adjudicates — usually a reduced AC and Damage Base, and Normal-type unless there's a strong reason otherwise."},
+  // ----- Shift -----
+  {id:"move", name:"Move / Shift", type:"Shift", common:true,
+   effect:"Move up to your Speed using a Movement Capability (Overland, Swim, Sky, Burrow, Levitate). This is the usual use of your Shift Action."},
+  {id:"disengage", name:"Disengage", type:"Shift", common:true,
+   effect:"Shift 1 meter without provoking an Attack of Opportunity."},
+  {id:"switch-pokemon", name:"Send Out / Return Pokémon", type:"Shift",
+   effect:"Trainer: return a Pokémon and/or send one out — including returning a Fainted Pokémon and sending a replacement."},
+  {id:"stand-up", name:"Stand Up", type:"Shift",
+   effect:"Get up after being Tripped or knocked over. Note: standing up can provoke an Attack of Opportunity from adjacent foes."},
+  {id:"drop-item", name:"Drop / Hand Item", type:"Shift",
+   effect:"Drop most held items, or hand a small item to an adjacent ally as part of your Shift."},
+  // ----- Swift -----
+  {id:"swift-feature", name:"Swift Feature / Order", type:"Swift", common:true,
+   effect:"You get exactly one Swift Action per round, on your turn. Many Features and Trainer Orders are Swift Actions."},
+  {id:"give-standard-swift", name:"Trade Standard → Swift", type:"Swift",
+   effect:"You may give up your Standard Action to take an additional Swift Action."},
+  {id:"sustain", name:"Sustain a Move", type:"Swift",
+   effect:"Some moves must be Sustained each round (usually a Swift Action) to keep their effect going."},
+  // ----- Free -----
+  {id:"attack-opportunity", name:"Attack of Opportunity", type:"Free", common:true, cls:"Interrupt",
+   effect:"Once per round, make a Struggle Attack against an adjacent foe that provokes you. Triggers include: they Shift out of a square adjacent to you; stand up; make a ranged attack not aimed at someone adjacent to them; use a Standard Action to pick up/retrieve an item; or use Push/Grapple/Disarm/Trip/Dirty Trick on someone other than you. Can't be made while Sleeping, Flinched, or Paralyzed."},
+  {id:"free-feature", name:"Free Features & Triggers", type:"Free", common:true,
+   effect:"Activate Free-Action features and triggered effects — as many as you like, though each Trigger only fires once per trigger."},
+  {id:"speak", name:"Speak", type:"Free",
+   effect:"Talk, shout a warning or command, taunt — brief speech is a Free Action."},
+  {id:"hold-action", name:"Hold / Delay Action", type:"Free",
+   effect:"Once per round you may hold your action until a chosen lower Initiative count."},
+  {id:"priority-keyword", name:"Priority & Interrupt (keywords)", type:"Free",
+   effect:"Priority: declared between turns to act immediately, taking your whole turn (counts as your turn). Priority (Limited): only the priority action now, rest of turn on your Initiative. Interrupt: used mid-someone-else's turn for just that one action."},
+  // ----- Full -----
+  {id:"take-breather", name:"Take a Breather", type:"Full", common:true,
+   effect:"Move as far from enemies as possible using your best Movement, then: cure all Volatile Status plus Slow and Stuck, reset Combat Stages to default, and lose all Temp HP. You become Tripped and Vulnerable until the end of your next turn. (Still must pass Save Checks to choose to do this.)"},
+  {id:"coup-de-grace", name:"Coup de Grâce", type:"Full",
+   effect:"Against a Fainted or completely helpless target, make any attack you could as a Standard Action (only targeting them). If it hits it's automatically a Critical Hit dealing +5 bonus damage — multiplied by the crit, so usually +10 (Snipers +15) — ignoring crit immunity."},
+  {id:"intercept-melee", name:"Intercept (Melee)", type:"Full", cls:"Interrupt",
+   effect:"When an ally within your movement range is hit by an adjacent foe, make an Acrobatics or Athletics check (DC = 3× the meters to reach them). On success, push the ally 1m, take their space and take the hit instead. Pokémon need Loyalty 3+ (own Trainer only; Loyalty 6 for any ally)."},
+  {id:"intercept-ranged", name:"Intercept (Ranged)", type:"Full", cls:"Interrupt",
+   effect:"When a ranged attack passes within your movement range, pick a square between attacker and target, make an Acrobatics/Athletics check and Shift toward it. On success you take the attack instead. Same Loyalty rules as Intercept (Melee)."},
+];
+function getFavActions(){ try{ return new Set(JSON.parse(localStorage.getItem("ptu_fav_actions")||"[]")); }catch(e){ return new Set(); } }
+function toggleFavAction(id){ const s=getFavActions(); s.has(id)?s.delete(id):s.add(id); localStorage.setItem("ptu_fav_actions", JSON.stringify([...s])); }
+
+let battleMonId=null, battleFilter="moves";
+function renderBattle(){
+  const root=$("#view-battle"); root.innerHTML="";
+  const c=activeChar();
+  const team=(c?.pokemon||[]);
+  if(!battleMonId || !team.find(p=>p.id===battleMonId)) battleMonId=(team.find(p=>p.onTeam)||team[0])?.id||null;
+  // acting-as selector
+  const sc=el("div",{class:"card"},el("h3",{},"Battle — acting as"));
+  if(team.length){
+    const sel=el("select");
+    team.forEach(p=>{ const sp=getSpecies(p.species); sel.append(el("option",{value:p.id,selected:p.id===battleMonId}, `${p.nickname||sp?.name||"?"} · Lv ${p.level}`)); });
+    sel.addEventListener("change",()=>{ battleMonId=sel.value; renderBattle(); });
+    sc.append(sel);
+  } else sc.append(el("div",{class:"muted small"},"No Pokémon yet — generic actions are shown below. Add one in the Pokémon tab to roll its moves here."));
+  root.append(sc);
+
+  root.append(subTabBar([["moves","⚔ Moves"],["fav","★ Fav"],["standard","Standard"],["shift","Shift"],["swift","Swift"],["free","Free"],["full","Full"]],
+    battleFilter, k=>{ battleFilter=k; renderBattle(); }));
+
+  const p=team.find(x=>x.id===battleMonId), sp=p&&getSpecies(p.species);
+  if(battleFilter==="moves"){
+    const card=el("div",{class:"card"},el("h3",{},"Your Moves — tap to roll"));
+    if(!p){ card.append(el("span",{class:"muted small"},"No Pokémon selected.")); root.append(card); return; }
+    const st=struggleMove(p); if(st) card.append(moveSlot(p,sp,st,st.name,{tag:"default"}));
+    if(!p.moves.length) card.append(el("span",{class:"muted small"},"No moves yet — add some in the Pokémon → Play tab."));
+    p.moves.forEach(mn=>{ const m=moveByName.get(mn.toLowerCase()); card.append(moveSlot(p,sp,m,mn,{})); });
+    root.append(card);
+    root.append(el("div",{class:"small muted",style:"padding:0 4px"},"Other action types are in the tabs above — Standard, Shift, Swift, Free, Full."));
+    return;
+  }
+  const favs=getFavActions();
+  let list=BATTLE_ACTIONS.filter(a => battleFilter==="fav" ? favs.has(a.id) : a.type.toLowerCase()===battleFilter);
+  list.sort((a,b)=> (favs.has(b.id)-favs.has(a.id)) || ((b.common?1:0)-(a.common?1:0)) || a.name.localeCompare(b.name));
+  if(!list.length){ root.append(el("div",{class:"muted",style:"padding:10px"}, battleFilter==="fav"?"No favourites yet — tap ☆ on any action to pin it here.":"Nothing here.")); return; }
+  const wrap=el("div",{}); list.forEach(a=>wrap.append(battleActionRow(a,favs))); root.append(wrap);
+}
+function battleActionRow(a, favs){
+  const fav=favs.has(a.id);
+  const d=el("details",{class:"spoiler"});
+  const meta=[a.type]; if(a.ac!=null)meta.push("AC "+a.ac); if(a.cls)meta.push(a.cls); if(a.range)meta.push(a.range); if(a.who)meta.push(a.who);
+  d.append(el("summary",{},
+    el("button",{class:"actstar"+(fav?" on":""),title:fav?"unfavourite":"favourite",
+      onclick:e=>{ e.preventDefault(); toggleFavAction(a.id); renderBattle(); }}, fav?"★":"☆"),
+    el("span",{style:"font-weight:700;color:var(--ink)"}, a.name),
+    el("span",{class:"muted small",style:"margin-left:8px"}, meta.join(" · "))));
+  d.append(el("div",{class:"small",style:"margin-top:6px;white-space:pre-line"}, a.effect));
+  return d;
 }
 
 /* ===================================================================
@@ -934,14 +1277,20 @@ const esc = s => String(s??"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":
 /* ===================================================================
    Detail popups
 =================================================================== */
+function refDetailHTML(kind, name){
+  if(kind==="move"){ return moveDetailHTML(moveByName.get(name.toLowerCase()), name); }
+  if(kind==="ability"){ const a=abilityByName.get(name.toLowerCase()); return a?abilityText(a):"<span class='muted'>Not in database.</span>"; }
+  if(kind==="class"){ const c=D.classes.find(x=>x.name===name);
+    return c?`${c.mechanic?`<div class="r-meta"><b>${esc(c.mechanic)}</b></div>`:""}<div class="r-body">${esc(c.effect||"")}</div>`:"<span class='muted'>—</span>"; }
+  if(kind==="edge"){ const e=D.edges.find(x=>x.name===name);
+    return e?`${e.prerequisites?`<div class="r-meta">Prereq: ${esc(e.prerequisites)}</div>`:""}<div class="r-body">${esc(e.effect||"")}</div>`:"<span class='muted'>—</span>"; }
+  if(kind==="feature"){ const f=D.features.find(x=>x.name===name);
+    return f?`<div class="r-meta">${esc(f.category||"")}${f.frequency?" · "+esc(f.frequency):""}</div>${f.prerequisites?`<div class="r-meta">Prereq: ${esc(f.prerequisites)}</div>`:""}<div class="r-body">${esc(f.effect||"")}</div>`:"<span class='muted'>—</span>"; }
+  return "<span class='muted'>—</span>";
+}
 function openRefDetail(kind, name){
   if(kind==="species") return speciesModal(getSpecies(name));
-  if(kind==="move")    return infoModal(name, moveDetailHTML(moveByName.get(name.toLowerCase()), name));
-  if(kind==="ability") { const a=abilityByName.get(name.toLowerCase()); return infoModal(name, a?abilityText(a):"Not in database."); }
-  if(kind==="class")   { const c=D.classes.find(x=>x.name===name); return infoModal(name, c?`<b>${esc(c.mechanic||"")}</b><div class="r-body">${esc(c.effect||"")}</div>`:"—"); }
-  if(kind==="edge")    { const e=D.edges.find(x=>x.name===name); return infoModal(name, e?`${e.prerequisites?`<div class="r-meta">Prereq: ${esc(e.prerequisites)}</div>`:""}<div class="r-body">${esc(e.effect||"")}</div>`:"—"); }
-  if(kind==="feature") { const f=D.features.find(x=>x.name===name); return infoModal(name, f?`<div class="r-meta">${esc(f.category||"")} · ${esc(f.frequency||"")}</div>${f.prerequisites?`<div class="r-meta">Prereq: ${esc(f.prerequisites)}</div>`:""}<div class="r-body">${esc(f.effect||"")}</div>`:"—"); }
-  infoModal(name, "—");
+  infoModal(name, refDetailHTML(kind, name));
 }
 function abilityText(a){
   return `<div class="r-meta">${esc(a.frequency||"")}${a.keywords?" · "+esc(a.keywords):""}</div>
@@ -1160,6 +1509,7 @@ function migrateChar(data, id){
   if(!data || typeof data!=="object") data = newCharacter("Recovered");
   data.trainer = data.trainer || newTrainer();
   data.pokemon = Array.isArray(data.pokemon) ? data.pokemon : [];
+  data.pokemon.forEach(normPokemon);
   data.id = data.id || id;
   return data;
 }

@@ -158,6 +158,15 @@ textarea{resize:vertical; min-height:64px}
 .pcard:hover .pc-del{opacity:1}
 .addcard{display:flex; align-items:center; justify-content:center; min-height:96px; border:2px dashed var(--line); border-radius:var(--radius); color:var(--muted); font-weight:700; cursor:pointer; background:var(--panel)}
 .addcard:hover{border-color:var(--accent); color:var(--accent)}
+.section-head{display:flex; align-items:center; gap:10px; justify-content:space-between; font-size:13px; font-weight:800;
+  text-transform:uppercase; letter-spacing:.6px; color:var(--muted); margin:4px 2px 10px}
+.pc-star{position:absolute; top:8px; left:8px; background:none; border:none; font-size:18px; line-height:1;
+  color:var(--muted); cursor:pointer; opacity:.6}
+.pc-star.on{color:var(--warn); opacity:1}
+.actstar{background:none; border:none; cursor:pointer; font-size:16px; color:var(--muted); margin-right:6px; opacity:.7}
+.actstar.on{color:var(--warn); opacity:1}
+.pcard{padding-top:12px}
+.pcard .pc-body{padding-left:22px}
 
 /* ---------- Reference / search ---------- */
 .searchbar{position:sticky; top:96px; z-index:10; background:var(--bg); padding-bottom:8px}
