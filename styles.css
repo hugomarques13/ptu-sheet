@@ -1,5 +1,6 @@
 /* ---------- Theme tokens ---------- */
 :root{
+  color-scheme:light;
   --bg:#f4f5f7; --panel:#ffffff; --panel-2:#f0f1f4; --ink:#1c2126; --muted:#6a7480;
   --line:#dce0e6; --accent:#c0392b; --accent-ink:#fff; --good:#2e9e5b; --warn:#d98c00; --bad:#d0392b;
   --shadow:0 1px 3px rgba(0,0,0,.08),0 6px 18px rgba(0,0,0,.06);
@@ -7,6 +8,7 @@
   --field:#fff; --field-line:#c7cdd6;
 }
 :root[data-theme="dark"]{
+  color-scheme:dark;
   --bg:#12151a; --panel:#1b2027; --panel-2:#222933; --ink:#e7ecf2; --muted:#93a0ae;
   --line:#2b323c; --accent:#e74c3c; --accent-ink:#fff; --good:#3ec27a; --warn:#f0a83a; --bad:#f0574a;
   --shadow:0 1px 3px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
@@ -14,6 +16,7 @@
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
+    color-scheme:dark;
     --bg:#12151a; --panel:#1b2027; --panel-2:#222933; --ink:#e7ecf2; --muted:#93a0ae;
     --line:#2b323c; --accent:#e74c3c; --field:#141922; --field-line:#333c48;
     --shadow:0 1px 3px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
@@ -244,8 +247,40 @@ textarea{resize:vertical; min-height:64px}
 .moveslot{display:flex; justify-content:space-between; align-items:center; gap:8px; background:var(--panel-2); border:1px solid var(--line); border-radius:var(--radius-sm); padding:8px 10px; margin-bottom:6px}
 .moveslot .ms-info{font-size:12px; color:var(--muted)}
 .linkbtn{background:none; border:none; color:var(--accent); font-weight:700; padding:0; text-decoration:underline}
-.hpctl{display:flex; gap:6px; align-items:center}
-.hpctl button{width:34px;height:34px;border-radius:8px;border:1px solid var(--field-line);background:var(--field);font-weight:800;font-size:18px}
-.hpctl input{width:70px; text-align:center; font-weight:800; font-size:18px}
+.hpctl{display:flex; gap:6px; align-items:center; flex-wrap:wrap}
+.hpctl button{width:34px;height:34px;border-radius:8px;border:1px solid var(--field-line);background:var(--field);font-weight:800;font-size:18px; flex:0 0 auto}
+.hpctl input{width:64px; text-align:center; font-weight:800; font-size:18px; flex:0 0 auto}
+.dhrow{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px}
+.dhrow .dh-input{width:96px; text-align:center; font-weight:700; padding:7px 8px;
+  border:1px solid var(--field-line); background:var(--field); border-radius:var(--radius-sm)}
 details.spoiler{border:1px solid var(--line); border-radius:var(--radius-sm); padding:6px 10px; margin-top:6px}
 details.spoiler summary{cursor:pointer; font-weight:700; color:var(--muted)}
+
+/* ---------- use / frequency tracker (pip boxes) ---------- */
+.uses{display:inline-flex; align-items:center; gap:4px; vertical-align:middle}
+.uses .pip{width:16px; height:16px; padding:0; border:1.5px solid var(--field-line);
+  background:var(--field); border-radius:4px; cursor:pointer; flex:0 0 auto; line-height:0}
+.uses .pip.on{background:var(--accent); border-color:var(--accent)}
+.uses .pip:hover{border-color:var(--accent)}
+.uses .uses-tag{font-size:10px; text-transform:uppercase; letter-spacing:.3px; margin-left:2px}
+.restbtns{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
+
+/* ---------- images / avatars ---------- */
+.idrow{display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap}
+.avatar-wrap{display:flex; flex-direction:column; align-items:center; gap:4px}
+.avatar{width:96px; height:96px; border-radius:14px; object-fit:cover; background:var(--panel-2);
+  border:1px solid var(--line)}
+.avatar-acts{display:flex; gap:8px}
+.sprite-box{position:relative; flex:0 0 auto}
+.photo-btn{position:absolute; bottom:4px; right:4px; width:28px; height:28px; border-radius:8px;
+  border:1px solid var(--line); background:var(--panel); color:var(--ink); font-size:14px; line-height:1;
+  box-shadow:var(--shadow); cursor:pointer}
+.photo-rm{position:absolute; top:4px; right:4px; width:22px; height:22px; border-radius:50%;
+  border:1px solid var(--line); background:var(--panel); color:var(--bad); font-weight:800; line-height:1; cursor:pointer}
+
+/* ---------- stat stepper ---------- */
+.stepper{display:flex; align-items:center; gap:4px; justify-content:center; margin-top:2px}
+.stepper button{width:26px; height:26px; border:1px solid var(--field-line); background:var(--field);
+  border-radius:6px; font-weight:800; line-height:1; color:var(--ink)}
+.stepper button:disabled{opacity:.35; cursor:default}
+.stepper .stepper-val{min-width:26px; text-align:center; font-weight:800}

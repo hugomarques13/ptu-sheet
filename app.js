@@ -59,12 +59,128 @@ const DB_TABLE = {
   25:"13d10+30 / 101", 26:"14d10+30 / 107", 27:"15d10+35 / 117", 28:"16d10+40 / 128",
 };
 
+/* Pokémon Experience Chart (PTU 1.05 Core p.203) — total Exp Needed to BE each level.
+   Index = level (1..100); index 0 is a placeholder. */
+const LEVEL_XP = [0,
+  0,10,20,30,40,50,60,70,80,90,
+  110,135,160,190,220,250,285,320,360,400,
+  460,530,600,670,745,820,900,990,1075,1165,
+  1260,1355,1455,1555,1660,1770,1880,1995,2110,2230,
+  2355,2480,2610,2740,2875,3015,3155,3300,3445,3645,
+  3850,4060,4270,4485,4705,4930,5160,5390,5625,5865,
+  6110,6360,6610,6865,7125,7390,7660,7925,8205,8485,
+  8770,9060,9350,9645,9945,10250,10560,10870,11185,11505,
+  11910,12320,12735,13155,13580,14010,14445,14885,15330,15780,
+  16235,16695,17160,17630,18105,18585,19070,19560,20055,20555];
+const MAX_LEVEL = 100;
+function levelForXP(xp){ xp = Math.max(0, xp||0); let lvl = 1;
+  for(let L=2; L<=MAX_LEVEL; L++){ if(xp >= LEVEL_XP[L]) lvl = L; else break; } return lvl; }
+function xpForLevel(level){ return LEVEL_XP[Math.max(1, Math.min(MAX_LEVEL, level||1))]; }
+function xpToNext(xp){ const lvl = levelForXP(xp); return lvl>=MAX_LEVEL ? 0 : LEVEL_XP[lvl+1] - Math.max(0,xp||0); }
+
 /* fast lookups */
 const speciesByName  = new Map(D.species.map(s => [s.name.toLowerCase(), s]));
 const moveByName     = new Map(D.moves.map(m => [m.name.toLowerCase(), m]));
 const abilityByName  = new Map(D.abilities.map(a => [a.name.toLowerCase(), a]));
 const natureByName   = new Map(D.natures.map(n => [n.name.toLowerCase(), n]));
 const getSpecies = n => n && speciesByName.get(String(n).toLowerCase());
+/* every item that can be held/consumed, for lookups + the Held Item picker */
+const itemByName = new Map([...(D.items?.held||[]), ...(D.items?.food||[]), ...(D.items?.capabilities||[]),
+  ...(D.items?.weather||[]), ...(D.items?.equipment||[]), ...(D.items?.gear||[])].map(i => [i.name.toLowerCase(), i]));
+
+/* Capabilities that let a Pokémon change its Struggle Attack's type (PTU 1.05).
+   Each also lets the attack use Sp.Atk / deal Special damage at the user's option. */
+const STRUGGLE_TYPE_CAPS = { Firestarter:"Fire", Fountain:"Water", Freezer:"Ice",
+  Guster:"Flying", Materializer:"Rock", Zapper:"Electric" };
+const classNameSet = new Set(D.classes.map(c => c.name));
+
+/* ===================================================================
+   Frequency & use-tracking (Scene / Daily limited uses)
+   Moves, Abilities and Features carry a `frequency`; Scene/Daily ones
+   have finite uses that refresh on End Scene / End Day.
+=================================================================== */
+// Parse a frequency string → {kind, max}. Features store "<usage> - <action>".
+function freqInfo(freqRaw){
+  const usage = String(freqRaw||"").split(" - ")[0].trim();
+  const u = usage.toLowerCase();
+  if(!u) return {kind:"other", max:0};
+  if(u.startsWith("static")) return {kind:"static", max:0};
+  if(u.startsWith("at-will")||u.startsWith("at will")) return {kind:"atwill", max:0};
+  if(u.startsWith("eot")) return {kind:"eot", max:0};
+  let m = usage.match(/^scene(?:\s*x\s*(\d+))?/i);
+  if(m) return {kind:"scene", max: m[1] ? +m[1] : 1};
+  m = usage.match(/^daily(?:\s*x\s*(\d+))?/i);
+  if(m) return {kind:"daily", max: m[1] ? +m[1] : 1};
+  if(/\bap\b|bind|drain/.test(u)) return {kind:"ap", max:0};
+  return {kind:"other", max:0};
+}
+const freqTrackable = info => info.kind==="scene" || info.kind==="daily";
+function useKey(kind, name){ return kind + ":" + String(name).toLowerCase(); }
+function splitKey(key){ const i=key.indexOf(":"); return [key.slice(0,i), key.slice(i+1)]; }
+function usesLeft(owner, key, max){ return Math.max(0, max - ((owner.uses && owner.uses[key]) || 0)); }
+/* use tracker as filled/empty pip boxes (one per use); returns null if unlimited frequency.
+   Tap a filled box to spend that use; tap an empty box to restore up to it. */
+function usesControl(owner, kind, name, freqRaw, rerender){
+  const info = freqInfo(freqRaw);
+  if(!freqTrackable(info)) return null;
+  const key = useKey(kind, name), max = info.max, left = usesLeft(owner, key, max);
+  const setLeft = (nl,e) => { e.preventDefault(); e.stopPropagation();
+    owner.uses = owner.uses || {};
+    owner.uses[key] = Math.min(max, Math.max(0, max - nl));   // store consumed = max − remaining
+    save(); (rerender||(()=>{}))(); };
+  const wrap = el("span",{class:"uses"+(left<=0?" spent":""),
+    title:`${info.kind==="scene"?"Per Scene":"Per Day"} — ${left}/${max} uses left (tap the boxes)`});
+  for(let i=0;i<max;i++){
+    const filled = i < left;                                  // leftmost boxes = remaining uses
+    wrap.append(el("button",{class:"pip"+(filled?" on":""),
+      title:filled?"spend this use":"restore this use",
+      onclick:e=>setLeft(filled ? i : i+1, e)}));            // tap-to-set level
+  }
+  wrap.append(el("span",{class:"uses-tag muted"}, info.kind==="scene"?"scene":"day"));
+  return wrap;
+}
+/* look up the frequency of a stored use-key's item */
+function itemFreqForKey(key){
+  const [kind, name] = splitKey(key);
+  if(kind==="move")    return moveByName.get(name)?.frequency;
+  if(kind==="ability") return abilityByName.get(name)?.frequency;
+  if(kind==="feature"){ const f=D.features.find(x=>x.name.toLowerCase()===name); return f?.frequency; }
+  return null;
+}
+/* reset an owner's uses: mode "scene" clears only Scene-freq keys; "all" clears everything */
+function resetUses(owner, mode){
+  if(!owner || !owner.uses) return;
+  if(mode==="all"){ owner.uses = {}; return; }
+  Object.keys(owner.uses).forEach(key => {
+    if(freqInfo(itemFreqForKey(key)).kind === mode) delete owner.uses[key];
+  });
+}
+/* HP a combatant can be healed up to, capped by Injuries (each Injury = −10% of Max) */
+function injuryHealCap(maxHP, injuries){
+  return Math.floor(maxHP * (10 - Math.min(10, injuries||0)) / 10);
+}
+/* End of Scene: AP fully restored, Temp HP lost, Scene-frequency uses refreshed (Core p.220) */
+function endScene(){
+  const c = activeChar(); if(!c) return;
+  normTrainer(c.trainer);
+  c.trainer.usedAP = 0; c.trainer.tempHP = 0; resetUses(c.trainer, "scene");
+  (c.pokemon||[]).forEach(p => { normPokemon(p); p.tempHP = 0; resetUses(p, "scene"); });
+  save(); render(); toast("Scene ended — AP restored, Scene uses refreshed");
+}
+/* Extended Rest / End of Day: heal HP to the Injury cap, heal 1 Injury, restore AP & all uses */
+function endDay(){
+  const c = activeChar(); if(!c) return;
+  if(!confirm("End the day (Extended Rest)?\nRestores HP & AP, heals 1 Injury, and refreshes all Scene & Daily uses for the whole party.")) return;
+  const t = c.trainer; normTrainer(t);
+  t.usedAP = 0; t.tempHP = 0; resetUses(t, "all");
+  t.currentHP = trainerDerived(t).hp;   // Trainers heal fully (no Injuries in this game)
+  (c.pokemon||[]).forEach(p => { normPokemon(p);
+    p.tempHP = 0; resetUses(p, "all");
+    p.injuries = Math.max(0, (p.injuries||0) - 1);
+    p.currentHP = pokeDerived(p).maxHP;   // heal to full (already capped by remaining Injuries)
+  });
+  save(); render(); toast("Extended Rest — HP & AP restored, 1 Injury healed, all uses refreshed");
+}
 
 /* ===================================================================
    State
@@ -82,6 +198,7 @@ function newTrainer() {
     level:1, xp:0, money:0,
     classes:[], skills, combat, edges:[], features:[],
     inventory:[], background:"", notes:"", appearance:"",
+    currentHP:null, tempHP:0, injuries:0, usedAP:0, unlocked:false, uses:{}, avatar:"", weapons:[],
   };
 }
 function newCharacter(name) {
@@ -96,6 +213,7 @@ function newPokemon(speciesName) {
     nature: "Hardy", abilities:[], heldItem:"",
     stats, injuries:0, currentHP:null, tempHP:0,
     moves:[], tutorPoints:0, unlocked:false, notes:"",
+    struggleType:null, struggleSpecial:false, uses:{}, image:"",
   };
 }
 /* normalise older Pokémon objects (single ability -> abilities[], add onTeam) */
@@ -107,8 +225,29 @@ function normPokemon(p){
   delete p.ability;
   if(typeof p.onTeam !== "boolean") p.onTeam = true;
   if(typeof p.unlocked !== "boolean") p.unlocked = false;
+  if(!("struggleType" in p)) p.struggleType = null;
+  if(typeof p.struggleSpecial !== "boolean") p.struggleSpecial = false;
+  if(!p.uses || typeof p.uses!=="object") p.uses = {};
+  if(typeof p.image!=="string") p.image = "";
   if(!p.stats) { p.stats={}; STATS.forEach(([k])=>p.stats[k]={added:0}); }
+  // keep XP consistent with a stored level so "add XP" works (only ever raises XP, never changes level)
+  if(typeof p.xp!=="number") p.xp = 0;
+  if(typeof p.level!=="number") p.level = 1;
+  if(p.xp < xpForLevel(p.level)) p.xp = xpForLevel(p.level);
   return p;
+}
+/* migrate older Trainer objects to include HP/AP/uses tracking */
+function normTrainer(t){
+  if(!t) return t;
+  if(typeof t.currentHP==="undefined") t.currentHP = null;
+  if(typeof t.tempHP!=="number") t.tempHP = 0;
+  if(typeof t.injuries!=="number") t.injuries = 0;
+  if(typeof t.usedAP!=="number") t.usedAP = 0;
+  if(typeof t.unlocked!=="boolean") t.unlocked = false;
+  if(!t.uses || typeof t.uses!=="object") t.uses = {};
+  if(typeof t.avatar!=="string") t.avatar = "";
+  if(!Array.isArray(t.weapons)) t.weapons = [];
+  return t;
 }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
@@ -116,7 +255,7 @@ function load() {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) { const s = JSON.parse(raw); if (s.characters?.length){
-      s.characters.forEach(c => (c.pokemon||[]).forEach(normPokemon));
+      s.characters.forEach(c => { normTrainer(c.trainer); (c.pokemon||[]).forEach(normPokemon); });
       return s;
     } }
   } catch(e){}
@@ -188,11 +327,13 @@ function pokeDerived(p) {
   const base = pokeBaseStats(p);
   const total = {}; STATS.forEach(([k]) => total[k] = base[k] + (p.stats[k]?.added||0));
   const cap6 = v => Math.min(6, Math.floor(v/5));
-  const maxHP = p.level + total.hp*3 + 10;
+  const fullMaxHP = p.level + total.hp*3 + 10;          // undamaged maximum
+  const injuries = Math.max(0, p.injuries||0);
+  const maxHP = injuryHealCap(fullMaxHP, injuries);      // Injuries cap max HP at −10% each (Core p.249)
   const budget = p.level + 10;
   const spent = STATS.reduce((s,[k]) => s + (p.stats[k]?.added||0), 0);
   return {
-    base, total, maxHP, budget, spent, remaining: budget - spent,
+    base, total, maxHP, fullMaxHP, injuries, budget, spent, remaining: budget - spent,
     physEva: cap6(total.def), specEva: cap6(total.spdef), spdEva: cap6(total.spd),
   };
 }
@@ -237,11 +378,37 @@ function spriteUrl(name, shiny){
   return shiny ? `https://img.pokemondb.net/sprites/black-white/shiny/${slug}.png`
                : `https://img.pokemondb.net/artwork/${slug}.jpg`;
 }
-function monSprite(speciesName, shiny, sizeCls="s-sm"){
+function monSprite(speciesName, shiny, sizeCls="s-sm", override){
   const img = el("img",{class:`sprite ${sizeCls}`, alt:speciesName||"", loading:"lazy",
-    src: speciesName ? spriteUrl(speciesName, shiny) : POKEBALL_SVG});
+    src: override || (speciesName ? spriteUrl(speciesName, shiny) : POKEBALL_SVG)});
   img.addEventListener("error", function(){ this.onerror=null; this.src=POKEBALL_SVG; this.classList.add("fallback"); });
   return img;
+}
+const TRAINER_PLACEHOLDER = "data:image/svg+xml,"+encodeURIComponent(
+  "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='none'/><circle cx='50' cy='38' r='20' fill='%23888'/><path d='M16 92c0-19 15-30 34-30s34 11 34 30z' fill='%23888'/></svg>");
+/* Pick a local image file, downscale it to maxDim px, and hand back a compact JPEG data URL. */
+function pickImage(maxDim, onData){
+  const inp = el("input",{type:"file",accept:"image/*",style:"display:none"});
+  inp.addEventListener("change",()=>{
+    const f = inp.files && inp.files[0];
+    if(!f){ inp.remove(); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width*scale)), h = Math.max(1, Math.round(img.height*scale));
+        const cv = el("canvas"); cv.width = w; cv.height = h;
+        cv.getContext("2d").drawImage(img, 0, 0, w, h);
+        let out; try{ out = cv.toDataURL("image/jpeg", 0.82); }catch(e){ out = reader.result; }
+        onData(out); inp.remove();
+      };
+      img.onerror = () => { toast("⚠ Could not read that image"); inp.remove(); };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(f);
+  });
+  document.body.append(inp); inp.click();
 }
 
 /* ---------- reusable sub-tab bar ---------- */
@@ -273,7 +440,10 @@ function field(label, path, {type="text", opts=null, step, min, onchange, value,
     if (step!=null) input.step = step; if (min!=null) input.min = min;
     input.value = cur ?? "";
   }
-  input.addEventListener(opts||type==="select" ? "change" : "input", e => {
+  // Fire on "change" (blur / commit) — never on each keystroke — so a handler that
+  // re-renders can't recreate the input mid-typing and steal focus. Checkboxes/selects
+  // already emit "change" on toggle/select, so this is correct for every input type.
+  input.addEventListener("change", e => {
     let v = input.value;
     if (type === "number") v = v === "" ? 0 : parseFloat(v);
     if (type === "checkbox") v = input.checked;
@@ -327,7 +497,7 @@ function renderTrainer(){
     trainerTab, k=>{ trainerTab=k; renderTrainer(); }));
 
   if(trainerTab==="features"){
-    root.append(listCard("Classes","trainer.classes", D.classes.map(x=>x.name), "class"));
+    root.append(classesCard());
     root.append(listCard("Edges","trainer.edges", D.edges.map(x=>x.name), "edge"));
     root.append(listCard("Features","trainer.features", D.features.map(x=>x.name), "feature"));
     return;
@@ -363,17 +533,23 @@ function renderTrainer(){
     field("Size","trainer.size",{opts:["Small","Medium","Large","Huge","Gigantic"]}),
     field("Weight Class","trainer.weightClass",{type:"number",min:1}),
   );
-  idc.append(row1,row2);
+  idc.append(el("div",{class:"idrow"}, trainerAvatar(t), el("div",{style:"flex:1;min-width:220px"}, row1, row2)));
   root.append(idc);
 
+  /* HP / AP tracker + rest buttons */
+  root.append(trainerVitalsCard(t));
+
   /* combat stats + derived */
-  const sc = el("div",{class:"card"}, el("h3",{},"Combat Stats"));
+  const tb = trainerStatBudget(t);
+  const sc = el("div",{class:"card"}, el("h3",{},"Combat Stats",
+    el("div",{class:"inline"}, trainerBudgetText(tb), trainerUnlockToggle(t))));
   const sg = el("div",{class:"statgrid"});
   STATS.forEach(([k,lbl]) => {
+    const canInc = t.unlocked || tb.remaining > 0;
     const box = el("div",{class:"stat"},
       el("div",{class:"lbl"},lbl),
       inputMini(`trainer.combat.${k}.base`,  t.combat[k].base,  "base"),
-      inputMini(`trainer.combat.${k}.added`, t.combat[k].added, "+add"),
+      statStepper(t.combat[k].added, canInc, v=>{ t.combat[k].added = v; save(); renderTrainer(); }),
       el("div",{class:"big","data-tot":k}, t.combat[k].base + t.combat[k].added),
     );
     sg.append(box);
@@ -382,6 +558,9 @@ function renderTrainer(){
   sc.append(el("h3",{style:"margin-top:14px"},"Derived Stats"));
   sc.append(trainerDerivedGrid(t));
   root.append(sc);
+
+  /* weapons (modify Struggle) */
+  root.append(weaponsCard(t));
 
   /* skills */
   const skc = el("div",{class:"card"}, el("h3",{},"Skills",
@@ -397,6 +576,205 @@ function renderTrainer(){
   });
   skc.append(tbl);
   root.append(skc);
+}
+
+/* Damage / Heal control: one signed input — type 20 to heal 20, −20 to take 20 damage. */
+function damageHealRow(getHP, setHP){
+  const wrap = el("div",{class:"dhrow"});
+  const box = el("input",{type:"number",placeholder:"±HP",title:"20 heals, −20 damages",class:"dh-input"});
+  const apply = () => { const n = parseInt(box.value); box.value=""; if(n) setHP(getHP() + n); };
+  box.addEventListener("keydown", e=>{ if(e.key==="Enter") apply(); });
+  wrap.append(
+    el("span",{class:"small muted",style:"font-weight:700"},"Damage / Heal"),
+    box,
+    el("button",{class:"btn-secondary",style:"padding:6px 14px",onclick:apply},"Apply"),
+    el("span",{class:"small muted"},"+ heals · − damages"));
+  return wrap;
+}
+/* ---------- Trainer weapons (modify the Struggle Attack — Core p.286) ---------- */
+const WEAPON_PRESETS = {
+  "Small Melee":{dbMod:1, acMod:0, range:"Melee",        twoHanded:false},
+  "Large Melee":{dbMod:2, acMod:1, range:"Melee",        twoHanded:true},
+  "Short Range":{dbMod:1, acMod:0, range:"4m",           twoHanded:false},
+  "Long Range": {dbMod:2, acMod:1, range:"12m (min 4m)", twoHanded:true},
+  "Custom":     {dbMod:0, acMod:0, range:"Melee",        twoHanded:false},
+};
+/* Weapon Moves a Fine Weapon can grant (Core pp.287-291) — all already in the moves DB.
+   The weapon's own +DB/+AC apply to these too. Optional: a GM/player may also type a custom move. */
+const WEAPON_MOVES = ["Backswing","Bullseye","Cheap Shot","Wear Down","Wounding Strike","Deadly Strike",
+  "Furious Strikes","Gouge","Maul","Riposte","Slice","Titanic Slam","Double Swipe","Triple Threat"];
+function newWeapon(){ return { id:uid(), name:"", category:"Small Melee", type:"Normal", notes:"", weaponMove:"", equipped:false, ...WEAPON_PRESETS["Small Melee"] }; }
+/* the trainer's Struggle Attack after Combat rank + the equipped weapon */
+/* the trainer's Struggle Attack — unarmed by default, or modified by a given weapon */
+function trainerStruggle(t, w){
+  const expert = rankNum(t.skills.combat) >= 5;          // Combat Expert+ → AC 3 / DB 5
+  let ac = expert ? 3 : 4, db = expert ? 5 : 4, type = "Normal", range = "Melee", name = "Struggle Attack";
+  if(w){ ac += (w.acMod||0); db += (w.dbMod||0); type = w.type || type; range = w.range || range; name = w.name || "Weapon Strike"; }
+  return { name, ac, damageBase:db, type, range, cls:"Physical", weapon:w };
+}
+function weaponsCard(t){
+  if(!Array.isArray(t.weapons)) t.weapons = [];
+  const card = el("div",{class:"card"}, el("h3",{},"Weapons",
+    el("span",{class:"muted small"},"each becomes its own attack in Battle"),
+    el("button",{class:"linkbtn h-act", onclick:()=>{ t.weapons.push(newWeapon()); save(); renderTrainer(); }},"+ add")));
+  if(!t.weapons.length){
+    card.append(el("span",{class:"muted small"},"none — unarmed Struggle is Normal, Physical, AC 4, DB 4 (AC 3 / DB 5 at Combat Expert+)."));
+    return card;
+  }
+  t.weapons.forEach((w,i)=>{
+    const box = el("div",{style:"border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;margin-top:8px"});
+    box.append(el("div",{class:"inline",style:"gap:10px;justify-content:space-between"},
+      el("span",{style:"font-weight:700"}, w.name || `Weapon ${i+1}`),
+      el("button",{class:"linkbtn danger",title:"remove",onclick:()=>{ t.weapons.splice(i,1); save(); renderTrainer(); }},"× remove")));
+    const r1 = el("div",{class:"fieldrow"});
+    r1.append(
+      field("Name","",{value:w.name,onchange:v=>{ w.name=v; save(); renderTrainer(); }}),
+      field("Category","",{opts:Object.keys(WEAPON_PRESETS),value:w.category,onchange:v=>{ w.category=v; Object.assign(w, WEAPON_PRESETS[v]); save(); renderTrainer(); }}),
+      field("Type","",{opts:TYPES,value:w.type,onchange:v=>{ w.type=v; save(); renderTrainer(); }}),
+    );
+    const r2 = el("div",{class:"fieldrow"});
+    r2.append(
+      field("+ Damage Base","",{type:"number",value:w.dbMod,onchange:v=>{ w.dbMod=parseInt(v)||0; save(); renderTrainer(); }}),
+      field("+ AC (harder)","",{type:"number",value:w.acMod,onchange:v=>{ w.acMod=parseInt(v)||0; save(); renderTrainer(); }}),
+      field("Range","",{value:w.range,onchange:v=>{ w.range=v; save(); renderTrainer(); }}),
+      field("Weapon Move","",{opts:["", ...WEAPON_MOVES], value:w.weaponMove||"", onchange:v=>{ w.weaponMove=v; save(); renderTrainer(); }}),
+    );
+    box.append(r1, r2, field("Notes","",{value:w.notes,onchange:v=>{ w.notes=v; save(); }}));
+    const ws = trainerStruggle(t, w);
+    box.append(el("div",{class:"small",style:"margin-top:6px"}, el("b",{},"Attack: "),
+      el("span",{html:typeBadge(ws.type)}), ` Physical · AC ${ws.ac} · DB ${ws.damageBase} (${(DB_TABLE[ws.damageBase]||"?").split("/")[0].trim()}) · ${ws.range}`));
+    if(w.weaponMove){ const wm=moveByName.get(w.weaponMove.toLowerCase());
+      if(wm) box.append(el("div",{class:"small muted",style:"margin-top:2px"},
+        `+ Weapon Move ${w.weaponMove}: ${wm.frequency||""} · ${wm.class||""} · DB ${wm.damageBase}${w.dbMod?`+${w.dbMod}`:""} · AC ${wm.ac}${w.acMod?`+${w.acMod}`:""} · ${wm.range||""}`)); }
+    card.append(box);
+  });
+  return card;
+}
+/* the trainer's attack profile: base Struggle for a weapon, or that weapon's granted Weapon Move */
+function trainerAttackProfile(t, weaponMoveName, w){
+  if(weaponMoveName){
+    const m = moveByName.get(weaponMoveName.toLowerCase());
+    if(m) return { name:m.name, type:(w&&w.type&&w.type!=="Normal")?w.type:(m.type||"Normal"),
+      damageBase:(m.damageBase||0)+(w?w.dbMod:0), ac:(m.ac!=null?m.ac:4)+(w?w.acMod:0),
+      range:m.range||"Melee", cls:m.class||"Physical", frequency:m.frequency, effect:m.effect, weapon:w, move:m };
+  }
+  return trainerStruggle(t, w);
+}
+/* Roll the trainer's Struggle or Weapon Move (adds Attack; STAB never applies to Struggle) */
+function openTrainerAttack(t, weaponMoveName, w){
+  const st = trainerAttackProfile(t, weaponMoveName, w);
+  const atk = t.combat.atk.base + t.combat.atk.added;
+  const diceStr = (DB_TABLE[st.damageBase]||"").split("/")[0].trim();
+  const dm = diceStr.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
+  const dn = dm[1]?+dm[1]:0, dfaces = dm[2]?+dm[2]:0, dflat = dm[3]?parseInt(dm[3].replace(/\s/g,"")):0;
+  const body = el("div",{});
+  body.append(el("div",{class:"chips",style:"margin-bottom:10px"},
+    el("span",{html:typeBadge(st.type)}), el("span",{class:"kv"},st.cls||"Physical"),
+    el("span",{class:"kv"},`AC ${st.ac}`), el("span",{class:"kv"},`DB ${st.damageBase}`), el("span",{class:"kv"},st.range),
+    st.frequency?el("span",{class:"kv"},st.frequency):""));
+  if(st.weapon) body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    `Weapon: ${st.weapon.name||"(unnamed)"} — ${st.weapon.category}${st.weapon.notes?` · ${st.weapon.notes}`:""}`));
+  if(st.effect) body.append(el("div",{class:"small",style:"margin-bottom:8px"}, st.effect));
+
+  /* --- rolling guide: how accuracy & damage are worked out (shown before you roll) --- */
+  const explain = el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"});
+  explain.append(el("div",{style:"margin-bottom:10px"},
+    el("div",{style:"font-size:16px;font-weight:700"}, "Accuracy: 1d20"),
+    el("div",{class:"small muted",style:"margin-top:2px"},
+      `Roll 1d20 — hits if it's ≥ AC ${st.ac} + the target's Physical Evasion. Nat 20 auto-hits/crits, nat 1 auto-misses.`)));
+  if(dn){
+    const terms = [`${dn}d${dfaces}`]; if(dflat) terms.push(String(dflat)); if(atk) terms.push(String(atk));
+    const why = [`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${st.damageBase}`];
+    if(atk) why.push(`${atk} = your Attack`);
+    explain.append(el("div",{},
+      el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${terms.join(" + ")}`),
+      el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ") + ". STAB never applies to Struggle. Target then subtracts Defense.")));
+  }
+  body.append(explain);
+
+  /* --- results (filled on Roll) --- */
+  const out = el("div",{class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:0"});
+  out.append(el("div",{class:"muted small"},"Press 🎲 Roll dice to simulate."));
+  const doRoll = () => {
+    out.innerHTML=""; out.style.borderStyle="solid";
+    const acc = 1+Math.floor(Math.random()*20);
+    out.append(el("div",{style:"margin-bottom:10px"}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLL"),
+      el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${acc}`, el("span",{class:"muted",style:"font-size:13px;font-weight:600"}," (1d20)")),
+      el("div",{class:"small muted"}, `Hits if ${acc} ≥ AC ${st.ac} + target's Physical Evasion.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`)));
+    const r = rollDiceString(diceStr);
+    if(r){ const total = r.total + atk;
+      out.append(el("div",{}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"),
+        el("div",{style:"font-size:26px;font-weight:800;color:var(--accent)"}, `💥 ${total}`),
+        el("div",{class:"small muted",style:"margin-top:2px"}, `${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}  + ${atk} Attack. Target subtracts Defense.`))); }
+  };
+  body.append(out);
+  modal({title:st.name, bodyNode:body, footNodes:[
+    st.move? el("button",{class:"btn-secondary",onclick:()=>openRefDetail("move",st.name)},"Full text") : "",
+    el("button",{class:"btn-primary",onclick:doRoll},"🎲 Roll dice"),
+  ]});
+}
+/* Trainer portrait — upload / replace / remove a photo (stored as a compact data URL) */
+function trainerAvatar(t){
+  const wrap = el("div",{class:"avatar-wrap"});
+  wrap.append(el("img",{class:"avatar", alt:"Trainer portrait", src: t.avatar || TRAINER_PLACEHOLDER}));
+  const acts = el("div",{class:"avatar-acts"});
+  acts.append(el("button",{class:"linkbtn",onclick:()=>pickImage(256, d=>{ t.avatar=d; save(); renderTrainer(); })},
+    t.avatar ? "📷 Change" : "📷 Photo"));
+  if(t.avatar) acts.append(el("button",{class:"linkbtn",onclick:()=>{ t.avatar=""; save(); renderTrainer(); }},"remove"));
+  wrap.append(acts);
+  return wrap;
+}
+/* Trainer HP + AP tracker with Damage/Heal box and End Scene / End Day (rest) buttons */
+function trainerVitalsCard(t){
+  normTrainer(t);
+  const d = trainerDerived(t);
+  const maxHP = d.hp, maxAP = d.ap;
+  if(t.currentHP==null) t.currentHP = maxHP;
+  const card = el("div",{class:"card"}, el("h3",{},"Hit Points, AP & Rest"));
+
+  /* HP row */
+  const setHP = v => { t.currentHP = Math.max(-99, Math.min(maxHP, v)); save(); renderTrainer(); };
+  const hp = el("div",{class:"hpctl"});
+  const cur = el("input",{type:"number",title:"current HP"}); cur.value = t.currentHP;
+  cur.addEventListener("change",()=>setHP(parseInt(cur.value)||0));
+  hp.append(el("button",{onclick:()=>setHP(t.currentHP-5)},"−5"),
+            el("button",{onclick:()=>setHP(t.currentHP-1)},"−"), cur,
+            el("span",{class:"muted",style:"font-weight:800"},`/ ${maxHP}`),
+            el("button",{onclick:()=>setHP(t.currentHP+1)},"+"),
+            el("button",{onclick:()=>setHP(t.currentHP+5)},"+5"),
+            el("button",{title:"full heal",onclick:()=>setHP(maxHP)},"MAX"));
+  card.append(hp);
+  const pct = Math.max(0,Math.min(100,Math.round(t.currentHP/maxHP*100)));
+  card.append(el("div",{class:"hpbar",style:"margin-top:6px"},
+    el("i",{style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`})));
+
+  /* damage / heal: type a signed number — positive heals, negative damages */
+  card.append(damageHealRow(()=>t.currentHP, setHP));
+
+  /* temp HP · AP (Trainers don't take Injuries in this game) */
+  const row = el("div",{class:"fieldrow",style:"margin-top:12px"});
+  row.append(field("Temp HP","",{type:"number",min:0,value:t.tempHP,onchange:v=>{t.tempHP=parseInt(v)||0;save();}}));
+  card.append(row);
+  const setAP = u => { t.usedAP = Math.max(0, Math.min(maxAP, u)); save(); renderTrainer(); };
+  const apRow = el("div",{class:"hpctl",style:"margin-top:10px;align-items:center"});
+  const apIn = el("input",{type:"number",min:0,max:maxAP,title:"AP spent"}); apIn.value = t.usedAP;
+  apIn.addEventListener("change",()=>setAP(parseInt(apIn.value)||0));
+  apRow.append(el("span",{class:"small muted",style:"font-weight:700"},"Action Points — spent:"),
+    el("button",{onclick:()=>setAP(t.usedAP-1)},"−"), apIn,
+    el("button",{onclick:()=>setAP(t.usedAP+1)},"+"),
+    el("span",{class:"muted",style:"font-weight:800"},`/ ${maxAP}`),
+    el("span",{class:"small muted"},`· ${maxAP-t.usedAP} AP left`));
+  card.append(apRow);
+
+  /* rest buttons */
+  const rest = el("div",{class:"restbtns"});
+  rest.append(
+    el("button",{class:"btn-secondary",title:"AP + Scene uses refresh, Temp HP lost",onclick:endScene},"🌙 End Scene"),
+    el("button",{class:"btn-primary",title:"Extended Rest: full heal, AP + all uses refresh",onclick:endDay},"☀ End Day (Rest)"));
+  card.append(rest);
+  card.append(el("div",{class:"small muted",style:"margin-top:6px"},
+    "End Scene: AP restored, Scene-uses refreshed. End Day: full HP & AP, refreshes Daily uses, and heals 1 Injury on your Pokémon — for you and your whole party."));
+  return card;
 }
 
 function inputMini(path, val, cls){
@@ -441,6 +819,90 @@ function rankButtons(skillKey, cur){
   return wrap;
 }
 
+/* ---------- classes → learnable features (prerequisite-aware) ---------- */
+function prereqTokens(str){ return String(str||"").split(/,|;|\band\b/i).map(s=>s.trim()).filter(Boolean); }
+/* does a feature belong to a class? (its prerequisites name that class, incl. "N ClassName Features") */
+function featureBelongsToClass(featureName, className){
+  const f = D.features.find(x=>x.name===featureName); if(!f) return false;
+  return prereqTokens(f.prerequisites).some(tok =>
+    tok===className || ((tok.match(/^\d+\s+(.+?)\s+Features?$/i)||[])[1]===className));
+}
+function featuresForClass(className){
+  return D.features.filter(f => prereqTokens(f.prerequisites).some(tok =>
+    tok===className || ((tok.match(/^\d+\s+(.+?)\s+Features?$/i)||[])[1]===className)));
+}
+/* check a feature's prerequisites against a trainer; returns {met, unmet:[reasons]} */
+function prereqStatus(t, feature){
+  const unmet = [];
+  prereqTokens(feature.prerequisites).forEach(tok => {
+    let m = tok.match(/^(\d+)\s+(.+?)\s+Features?$/i);          // "5 Taskmaster Features"
+    if(m){ const need=+m[1], cls=m[2];
+      const have = t.features.filter(fn=>featureBelongsToClass(fn,cls)).length;
+      if(have<need) unmet.push(`${need} ${cls} Features (have ${have})`);
+      return; }
+    m = tok.match(/^(Pathetic|Untrained|Novice|Adept|Expert|Master)\s+(.+)$/i);  // "Adept Intimidate"
+    if(m){ const sk = SKILLS.find(s=>s[1].toLowerCase()===m[2].trim().toLowerCase() || s[0].toLowerCase()===m[2].trim().toLowerCase());
+      if(sk){ if(rankNum(t.skills[sk[0]]) < rankNum(m[1])) unmet.push(tok); return; } }
+    if(classNameSet.has(tok)){ if(!t.classes.includes(tok)) unmet.push(tok); return; }   // a class
+    if(D.features.some(f=>f.name===tok)){ if(!t.features.includes(tok)) unmet.push(tok); return; } // another feature
+    /* anything else (narrative / stat prereqs) is left for the player to judge */
+  });
+  return { met: unmet.length===0, unmet };
+}
+function trainerUnlockToggle(t){
+  const wrap = el("label",{class:"small",title:"GM: ignore feature prerequisites",
+    style:"display:inline-flex;gap:5px;align-items:center;cursor:pointer;font-weight:700;color:var(--muted)"});
+  const cb = el("input",{type:"checkbox"}); cb.checked = !!t.unlocked;
+  cb.addEventListener("change",()=>{ t.unlocked=cb.checked; save(); render(); });
+  wrap.append(cb, "🔓 GM: ignore prereqs");
+  return wrap;
+}
+function openClassFeaturePicker(t, className){
+  const learnable = featuresForClass(className).filter(f=>!t.features.includes(f.name)).map(f=>f.name);
+  if(!learnable.length){ toast("No more features from this class"); return; }
+  const lockFn = t.unlocked ? null : name => {
+    const f = D.features.find(x=>x.name===name); if(!f) return null;
+    const st = prereqStatus(t, f); return st.met ? null : ("Needs "+st.unmet.join(", "));
+  };
+  openPicker(`Learn a ${className} Feature${t.unlocked?" (🔓)":""}`, learnable, name=>{
+    if(!t.features.includes(name)){ t.features.push(name); save(); render(); toast(`Learned ${name} ✓`); }
+  }, "feature", null, lockFn);
+}
+/* Classes card — each class expands to its rules and a “Learn a Feature” button */
+function classesCard(){
+  const t = activeChar().trainer;
+  const arr = t.classes;
+  const card = el("div",{class:"card"}, el("h3",{},"Classes",
+    el("div",{class:"inline"}, trainerUnlockToggle(t),
+      el("button",{class:"linkbtn h-act", onclick:()=>openPicker("Add Class", D.classes.map(c=>c.name), name=>{
+        if(!arr.includes(name)){ arr.push(name); save(); render(); }
+      }, "class")}, "+ add"))));
+  if(!arr.length){ card.append(el("span",{class:"muted small"},"none yet — tap “+ add” to take a Class, then learn its Features here")); return card; }
+  arr.forEach((name,idx) => {
+    const feats = featuresForClass(name);
+    const learned = t.features.filter(fn=>featureBelongsToClass(fn,name)).length;
+    // block per class: a header row (name + Learn button + remove) over an expandable rules spoiler
+    const block = el("div",{style:"border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;margin-top:8px"});
+    const head = el("div",{class:"inline",style:"justify-content:space-between;gap:8px"});
+    head.append(el("span",{style:"font-weight:700"}, name,
+      feats.length? el("span",{class:"muted small",style:"margin-left:8px"}, `· ${learned}/${feats.length} features`):""));
+    const acts = el("div",{class:"inline"});
+    if(feats.length) acts.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
+      onclick:()=>openClassFeaturePicker(t,name)}, "＋ Learn Feature"));
+    acts.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove class",
+      onclick:()=>{ arr.splice(idx,1); save(); render(); }},"×"));
+    head.append(acts);
+    block.append(head);
+    if(!feats.length) block.append(el("div",{class:"small muted",style:"margin-top:4px"},"No class-specific Features for this one in the database."));
+    const sp = el("details",{style:"margin-top:6px"});
+    sp.append(el("summary",{style:"cursor:pointer;color:var(--muted);font-weight:700;font-size:12px"},"rules"));
+    sp.append(el("div",{class:"small",style:"margin-top:6px",html: refDetailHTML("class",name)}));
+    block.append(sp);
+    card.append(block);
+  });
+  return card;
+}
+
 /* generic list backed by a reference name-list; each entry expands to its rules text */
 function listCard(title, path, allNames, refKind){
   const arr = getByPath(path) || [];
@@ -462,29 +924,50 @@ function listCard(title, path, allNames, refKind){
   return card;
 }
 
+/* every catalog item a Trainer can carry (gear/equipment/key items/med kit/balls + held + berries) */
+function catalogItems(){
+  return [
+    ...(D.items.gear||[]),
+    ...D.items.held.map(x=>({...x,cat:"Held Item"})),
+    ...D.items.food.map(x=>({...x,cat:"Food"})),
+  ];
+}
 function inventoryCard(t){
-  const card = el("div",{class:"card"}, el("h3",{},"Inventory",
-    el("button",{class:"linkbtn h-act", onclick:()=>{ t.inventory.push({name:"",qty:1,notes:""}); save(); renderTrainer(); }}, "+ item")));
-  if(!t.inventory.length) card.append(el("span",{class:"muted small"},"empty"));
+  const card = el("div",{class:"card"}, el("h3",{},"Inventory & Equipment",
+    el("div",{class:"inline"},
+      el("button",{class:"linkbtn h-act", onclick:()=>openInventoryPicker(t)}, "+ from catalog"),
+      el("button",{class:"linkbtn h-act", onclick:()=>{ t.inventory.push({name:"",qty:1,notes:""}); save(); renderTrainer(); }}, "+ custom"))));
+  if(!t.inventory.length) card.append(el("span",{class:"muted small"},"empty — add gear, equipment, Poké Balls, potions… from the catalog"));
   t.inventory.forEach((it,i) => {
     const row = el("div",{class:"moveslot"});
-    const name = el("input",{type:"text",placeholder:"Item",style:"flex:1"}); name.value=it.name;
-    name.addEventListener("input",()=>{it.name=name.value;save();});
-    const allItems = [...D.items.held, ...D.items.food].map(x=>x.name);
-    name.setAttribute("list","itemlist");
-    const qty = el("input",{type:"number",min:0,style:"width:64px",title:"qty"}); qty.value=it.qty;
-    qty.addEventListener("input",()=>{it.qty=parseInt(qty.value)||0;save();});
-    const del = el("button",{class:"linkbtn",title:"remove",onclick:()=>{t.inventory.splice(i,1);save();renderTrainer();}},"×");
-    row.append(name, qty, del);
+    const info = el("div",{style:"flex:1;min-width:0"});
+    const name = el("input",{type:"text",placeholder:"Item",style:"width:100%",list:"itemlist"}); name.value=it.name;
+    name.addEventListener("input",()=>{ it.name=name.value; save(); });
+    info.append(name);
+    const cat = itemByName.get((it.name||"").toLowerCase());
+    if(cat) info.append(el("div",{class:"small muted",style:"margin-top:2px"},
+      [cat.cat, cat.slot, cat.cost, cat.effect].filter(Boolean).join(" · ").slice(0,140)));
+    const qty = el("input",{type:"number",min:0,style:"width:56px",title:"qty"}); qty.value=it.qty;
+    qty.addEventListener("input",()=>{ it.qty=parseInt(qty.value)||0; save(); });
+    const del = el("button",{class:"linkbtn",title:"remove",onclick:()=>{ t.inventory.splice(i,1); save(); renderTrainer(); }},"×");
+    row.append(info, qty, del);
     card.append(row);
   });
-  // datalist for item suggestions
   if(!$("#itemlist")){
     const dl = el("datalist",{id:"itemlist"});
-    [...D.items.held, ...D.items.food].forEach(x=>dl.append(el("option",{value:x.name})));
+    catalogItems().forEach(x=>dl.append(el("option",{value:x.name})));
     document.body.append(dl);
   }
   return card;
+}
+function openInventoryPicker(t){
+  const list = catalogItems();
+  const names = list.map(x=>x.name);
+  openPicker("Add from catalog", names, name=>{
+    const ex = t.inventory.find(it=>it.name.toLowerCase()===name.toLowerCase());
+    if(ex){ ex.qty=(parseInt(ex.qty)||0)+1; } else { t.inventory.push({name, qty:1, notes:""}); }
+    save(); renderTrainer();
+  }, "held");
 }
 
 /* ===================================================================
@@ -566,7 +1049,7 @@ function monCard(p){
   const hpColor = pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)";
   const card = el("div",{class:"pcard", onclick:()=>{ openMon=p.id; renderPokemon(); }});
   const body = el("div",{class:"pc-body"});
-  body.append(monSprite(sp?.name || p.species, p.shiny, "s-sm"));
+  body.append(monSprite(sp?.name || p.species, p.shiny, "s-sm", p.image));
   const main = el("div",{class:"pc-main"});
   main.append(el("div",{class:"pc-top"},
     el("div",{},
@@ -624,9 +1107,16 @@ function renderMonEditor(root, p){
 function heroCard(p, sp){
   const d = pokeDerived(p);
   if(p.currentHP==null) p.currentHP = d.maxHP;
+  else if(p.currentHP > d.maxHP) p.currentHP = d.maxHP;   // Injuries lowered the max — clamp down
   const card = el("div",{class:"card"});
   const hero = el("div",{class:"monhero"});
-  hero.append(monSprite(sp?.name || p.species, p.shiny, "s-lg"));
+  const spriteBox = el("div",{class:"sprite-box"});
+  spriteBox.append(monSprite(sp?.name || p.species, p.shiny, "s-lg", p.image));
+  spriteBox.append(el("button",{class:"photo-btn",title:"upload a photo",
+    onclick:()=>pickImage(240, d=>{ p.image=d; save(); refreshMon(p); })},"📷"));
+  if(p.image) spriteBox.append(el("button",{class:"photo-rm",title:"remove photo — use the default sprite",
+    onclick:()=>{ p.image=""; save(); refreshMon(p); }},"×"));
+  hero.append(spriteBox);
   const main = el("div",{class:"mh-main"});
   main.append(el("div",{class:"inline",style:"justify-content:space-between"},
     el("div",{class:"mh-name",id:"heroName"}, p.nickname || sp?.name || "Unknown"),
@@ -649,34 +1139,17 @@ function heroCard(p, sp){
   const pct = Math.max(0,Math.min(100,Math.round(p.currentHP/d.maxHP*100)));
   main.append(el("div",{class:"hpbar",style:"margin-top:6px"},
     el("i",{id:"heroHpBar",style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`})));
+  if(d.injuries>0) main.append(el("div",{class:"small",style:"margin-top:4px;color:var(--bad);font-weight:700"},
+    `${d.injuries} ${d.injuries===1?"injury":"injuries"} — max HP ${d.maxHP} (−${d.fullMaxHP-d.maxHP} of ${d.fullMaxHP})`));
   hero.append(main);
   card.append(hero);
-  /* damage / heal box: type a number (e.g. -10 = take 10 damage, +8 = heal 8) */
-  const dmg = el("div",{class:"hpctl",style:"margin-top:10px"});
-  const box = el("input",{type:"number",placeholder:"±HP",title:"e.g. -10 to take damage, 8 to heal",style:"width:90px"});
-  const apply = dir => { const n=Math.abs(parseInt(box.value)||0); if(!n) return;
-    setHP(p.currentHP + dir*n); box.value=""; box.focus(); };
-  box.addEventListener("keydown",e=>{ if(e.key==="Enter"){ const n=parseInt(box.value)||0; setHP(p.currentHP+n); box.value=""; } });
-  dmg.append(
-    el("span",{class:"small muted",style:"font-weight:700"},"Damage / Heal:"),
-    box,
-    el("button",{class:"",title:"take damage",onclick:()=>apply(-1)},"− Damage"),
-    el("button",{class:"",title:"heal",onclick:()=>apply(1)},"+ Heal"));
-  card.append(dmg);
+  /* damage / heal: one signed input — type 8 to heal, −10 to take damage */
+  card.append(damageHealRow(()=>p.currentHP, setHP));
   return card;
 }
 
 function renderMonPlay(root, p, sp){
-  /* abilities (a Pokémon can have several) */
-  root.append(abilitiesCard(p, sp));
-
-  /* moves */
-  root.append(movesCard(p, sp));
-
-  /* type matchups */
-  if(sp && sp.types?.length) root.append(matchupCard(sp.types));
-
-  /* quick stat readout */
+  /* quick stat readout — first on the page */
   const d = pokeDerived(p);
   const qc = el("div",{class:"card"}, el("h3",{},"Stats at a glance"));
   const g = el("div",{class:"statgrid"});
@@ -688,6 +1161,15 @@ function renderMonPlay(root, p, sp){
     .forEach(([l,v])=>dv.append(el("div",{class:"dv"}, el("div",{class:"lbl"},l), el("div",{class:"val"},String(v)))));
   qc.append(dv);
   root.append(qc);
+
+  /* abilities (a Pokémon can have several) */
+  root.append(abilitiesCard(p, sp));
+
+  /* moves */
+  root.append(movesCard(p, sp));
+
+  /* type matchups */
+  if(sp && sp.types?.length) root.append(matchupCard(sp.types));
 }
 
 function renderMonBuild(root, p, sp){
@@ -700,21 +1182,24 @@ function renderMonBuild(root, p, sp){
     field("Nickname","",{value:p.nickname,onchange:v=>{p.nickname=v;save();
       const hn=$("#heroName"); if(hn) hn.textContent = v || sp?.name || "Unknown"; }}),
     spWrap,
-    field("Level","",{type:"number",min:1,value:p.level,onchange:v=>{p.level=parseInt(v)||1;save();refreshMon(p);}}),
+    field("Level","",{type:"number",min:1,max:MAX_LEVEL,value:p.level,onchange:v=>setMonLevel(p, parseInt(v)||1)}),
     field("Nature","",{opts:D.natures.map(n=>n.name), value:p.nature, onchange:v=>{p.nature=v;save();refreshMon(p);}}),
   );
   idc.append(r1);
+  idc.append(xpRow(p));
   if(nat) idc.append(el("div",{class:"small muted",style:"margin:6px 0"},
     `Nature ${nat.name}: ${natSummary(nat)} · likes ${nat.likedFlavor}, dislikes ${nat.dislikedFlavor}`));
   const r2 = el("div",{class:"fieldrow"});
   r2.append(
     field("Gender","",{opts:["","Male","Female","Genderless"],value:p.gender,onchange:v=>{p.gender=v;save();}}),
     field("Shiny","",{type:"checkbox",value:p.shiny,onchange:v=>{p.shiny=v;save();refreshMon(p);}}),
-    field("Experience","",{type:"number",min:0,value:p.xp,onchange:v=>{p.xp=parseInt(v)||0;save();}}),
+    field("Total XP","",{type:"number",min:0,value:p.xp,onchange:v=>setMonXP(p, parseInt(v)||0)}),
     field("Loyalty","",{type:"number",min:0,value:p.loyalty,onchange:v=>{p.loyalty=parseInt(v)||0;save();}}),
-    field("Held Item","",{value:p.heldItem,onchange:v=>{p.heldItem=v;save();}}),
+    heldItemControl(p),
   );
   idc.append(r2);
+  const heldEff = itemByName.get((p.heldItem||"").toLowerCase());
+  if(heldEff) idc.append(el("div",{class:"small muted",style:"margin:6px 0"}, el("b",{},heldEff.name+": "), heldEff.effect||""));
   root.append(idc);
 
   /* stat allocation */
@@ -730,7 +1215,8 @@ function renderMonBuild(root, p, sp){
   const ec = el("div",{class:"card"}, el("h3",{},"Condition"));
   const r3 = el("div",{class:"fieldrow"});
   r3.append(
-    field("Injuries","",{type:"number",min:0,value:p.injuries,onchange:v=>{p.injuries=parseInt(v)||0;save();}}),
+    field("Injuries","",{type:"number",min:0,value:p.injuries,onchange:v=>{ p.injuries=Math.max(0,parseInt(v)||0);
+      const m=pokeDerived(p).maxHP; if(p.currentHP!=null && p.currentHP>m) p.currentHP=m; save(); refreshMon(p); }}),
     field("Temp HP","",{type:"number",min:0,value:p.tempHP,onchange:v=>{p.tempHP=parseInt(v)||0;save();}}),
     field("Tutor Points","",{type:"number",min:0,value:p.tutorPoints,onchange:v=>{p.tutorPoints=parseInt(v)||0;save();}}),
   );
@@ -765,6 +1251,26 @@ function changeSpecies(p, name){
   save(); refreshMon(p);
 }
 function allAbilityNames(sp){ return [...sp.abilities.basic,...sp.abilities.advanced,...sp.abilities.high]; }
+/* Held Item picker — choose from the item database (held items + berries), or clear it */
+function heldItemControl(p){
+  const wrap = el("label",{class:"field"}, el("span",{},"Held Item"));
+  const btn = el("button",{class:"btn-secondary",style:"text-align:left",onclick:()=>{
+    const names = ["(none)", ...D.items.held.map(i=>i.name), ...D.items.food.map(i=>i.name)];
+    openPicker("Held Item", names, v=>{ p.heldItem = v==="(none)" ? "" : v; save(); refreshMon(p); }, "held");
+  }}, p.heldItem || "choose…");
+  wrap.append(btn);
+  return wrap;
+}
+function pickHeldSub(name){ const it = itemByName.get((name||"").toLowerCase());
+  return it && it.effect ? el("div",{class:"pi-sub"}, String(it.effect).slice(0,90)) : ""; }
+/* abilities a Pokémon may actually obtain at a given level (PTU 1.05 Core p.199):
+   born with Basic; Advanced unlock at Lv 20; High at Lv 40. */
+function abilitiesAtLevel(sp, level){
+  const out = [...sp.abilities.basic];
+  if(level>=20) out.push(...sp.abilities.advanced);
+  if(level>=40) out.push(...sp.abilities.high);
+  return out;
+}
 
 /* abilities card — a Pokémon can hold several; each expandable with its effect */
 function abilitiesCard(p, sp){
@@ -776,8 +1282,10 @@ function abilitiesCard(p, sp){
   p.abilities.forEach((an,i)=>{
     const ab = abilityByName.get((an||"").toLowerCase());
     const row = el("details",{class:"spoiler"});
+    const uc = ab && usesControl(p, "ability", an, ab.frequency, ()=>refreshMon(p));
     row.append(el("summary",{},
       el("span",{style:"color:var(--ink)"}, an || "—"),
+      uc ? el("span",{style:"margin-left:8px"}, uc) : "",
       el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove",
         onclick:e=>{e.preventDefault(); p.abilities.splice(i,1); save(); refreshMon(p);}},"×")));
     row.append(el("div",{class:"small",style:"margin-top:6px", html: ab? abilityText(ab):"<span class='muted'>Not in database</span>"}));
@@ -786,7 +1294,7 @@ function abilitiesCard(p, sp){
   return card;
 }
 function addAbility(p, sp){
-  const speciesAbil = sp ? allAbilityNames(sp) : [];
+  const speciesAbil = sp ? allAbilityNames(sp) : [];       // every species ability (any tier)
   const speciesSet = new Set(speciesAbil.map(x=>x.toLowerCase()));
   let names, title;
   if(p.unlocked){
@@ -794,28 +1302,66 @@ function addAbility(p, sp){
     title = "Add ability (🔓 any)"+(sp?` — ${sp.name}'s options on top`:"");
   } else {
     if(!sp){ toast("Unknown species — tick 🔓 to add any ability"); return; }
-    names = speciesAbil;
-    title = `Add ability — ${sp.name}'s options`;
+    names = abilitiesAtLevel(sp, p.level);                 // only tiers obtainable at this level
+    title = `Add ability — ${sp.name} (Lv ${p.level})`;
   }
   names = names.filter(n=>!p.abilities.includes(n));
-  if(!names.length){ toast(p.unlocked?"No more abilities to add":"No more of this species' abilities to add"); return; }
+  if(!names.length){
+    // distinguish "none left" from "higher tiers are still locked by level"
+    const lockedHigher = !p.unlocked && sp && allAbilityNames(sp).some(n=>!p.abilities.includes(n));
+    toast(lockedHigher ? "No more at this level — Advanced unlock at Lv 20, High at Lv 40 (or tick 🔓)"
+                       : p.unlocked ? "No more abilities to add" : "No more of this species' abilities to add");
+    return;
+  }
   openPicker(title, names, name=>{
     if(!p.abilities.includes(name)){ p.abilities.push(name); save(); refreshMon(p); }
   }, "ability", n=>speciesSet.has(n.toLowerCase()));
 }
 function refreshMon(p){ const root=$("#view-pokemon"); root.innerHTML=""; renderMonEditor(root,p);
   $("#partyCount").textContent=activeChar().pokemon.length||""; }
+/* set total XP → auto-level to the matching threshold (announces level-ups) */
+function setMonXP(p, xp){
+  p.xp = Math.max(0, Math.floor(xp)||0);
+  const nl = levelForXP(p.xp), was = p.level;
+  p.level = nl; save(); refreshMon(p);
+  if(nl > was) toast(`${p.nickname||getSpecies(p.species)?.name||"Pokémon"} leveled up to ${nl}! 🎉`);
+}
+/* set level directly → snap XP to that level's threshold so future XP still works */
+function setMonLevel(p, lvl){
+  p.level = Math.max(1, Math.min(MAX_LEVEL, Math.floor(lvl)||1));
+  p.xp = xpForLevel(p.level); save(); refreshMon(p);
+}
+/* XP progress + quick "+ Add XP" (adding XP auto-levels the Pokémon) */
+function xpRow(p){
+  const wrap = el("div",{style:"margin:8px 0"});
+  const atMax = p.level >= MAX_LEVEL;
+  const curMin = xpForLevel(p.level), nextMin = atMax ? curMin : xpForLevel(p.level+1);
+  const toNext = xpToNext(p.xp);
+  const span = nextMin - curMin, into = p.xp - curMin;
+  const pct = atMax ? 100 : Math.max(0, Math.min(100, Math.round(into/Math.max(1,span)*100)));
+  const addBox = el("input",{type:"number",placeholder:"+ XP",style:"width:84px"});
+  const addXP = () => { const n=parseInt(addBox.value)||0; addBox.value=""; if(n) setMonXP(p, p.xp + n); };
+  addBox.addEventListener("keydown",e=>{ if(e.key==="Enter") addXP(); });
+  wrap.append(el("div",{class:"inline small",style:"gap:8px;flex-wrap:wrap;align-items:center"},
+    el("span",{class:"muted",style:"font-weight:700"},
+      atMax ? `Lv 100 (max) · ${p.xp} XP` : `Lv ${p.level} · ${toNext} XP to Lv ${p.level+1} (at ${nextMin})`),
+    el("div",{class:"spacer"}),
+    addBox,
+    el("button",{class:"btn-secondary",style:"padding:5px 12px",onclick:addXP},"+ Add XP")));
+  wrap.append(el("div",{class:"hpbar",style:"margin-top:6px"},
+    el("i",{style:`width:${pct}%;background:var(--accent)`})));
+  return wrap;
+}
 
 function monStatGrid(p){
   const d = pokeDerived(p);
+  const canInc = p.unlocked || d.remaining > 0;
   const g = el("div",{class:"statgrid"});
   STATS.forEach(([k,lbl]) => {
     const box = el("div",{class:"stat"});
     box.append(el("div",{class:"lbl"},lbl));
     box.append(el("div",{class:"sub","data-pbase":k}, `base ${d.base[k]}`));
-    const add = el("input",{type:"number",min:0,title:"added points"}); add.value = p.stats[k].added;
-    add.addEventListener("input",()=>{ p.stats[k].added = parseInt(add.value)||0; save(); updateMonComputed(p); });
-    box.append(add);
+    box.append(statStepper(p.stats[k].added, canInc, v=>{ p.stats[k].added = v; save(); refreshMon(p); }));
     box.append(el("div",{class:"big","data-ptot":k}, d.total[k]));
     g.append(box);
   });
@@ -825,6 +1371,26 @@ function ptBudgetText(d){
   const over = d.remaining < 0;
   return el("span",{id:"ptBudget", class: over?"warnbox":"muted"},
     `${d.spent}/${d.budget} points used${over?` (${-d.remaining} over!)`:d.remaining>0?` · ${d.remaining} left`:""}`);
+}
+/* − value + stepper for a stat's "added" points; + is disabled when no budget left (unless GM-unlocked) */
+function statStepper(cur, canInc, onSet){
+  const wrap = el("div",{class:"stepper"});
+  wrap.append(
+    el("button",{title:"remove a point",disabled:cur<=0,onclick:()=>onSet(cur-1)},"−"),
+    el("span",{class:"stepper-val"}, String(cur)),
+    el("button",{title:canInc?"add a point":"no points left (tick 🔓 to override)",disabled:!canInc,onclick:()=>onSet(cur+1)},"+"));
+  return wrap;
+}
+/* Trainer distributable Stat Points (Core p.20 progression): baseline = Level + 9. */
+function trainerStatBudget(t){
+  const budget = (t.level||1) + 9;
+  const spent = STATS.reduce((s,[k]) => s + (t.combat[k].added||0), 0);
+  return { budget, spent, remaining: budget - spent };
+}
+function trainerBudgetText(tb){
+  const over = tb.remaining < 0;
+  return el("span",{class: over?"warnbox":"muted", style:"font-size:12px"},
+    `${tb.spent}/${tb.budget} pts${over?` (${-tb.remaining} over!)`:tb.remaining>0?` · ${tb.remaining} left`:""}`);
 }
 function fillMonDerived(p){
   const d = pokeDerived(p);
@@ -929,6 +1495,57 @@ function struggleMove(p){
   const combatDice = sp?.skills?.combat?.dice || 0;
   return moveByName.get(combatDice >= 5 ? "struggle+" : "struggle") || moveByName.get("struggle");
 }
+/* ---------- ability / capability type effects ---------- */
+function hasAbility(p, name){ return (p.abilities||[]).some(a => String(a).toLowerCase() === name.toLowerCase()); }
+function monCaps(sp){ return (sp?.capabilities?.other || []).map(o => String(o).split("(")[0].trim()); }
+/* which types this Pokémon's Struggle may be: Normal + any granted by capabilities (all 18 if 🔓) */
+function struggleTypeOptions(p, sp){
+  if(p?.unlocked) return TYPES.slice();
+  const set = new Set(["Normal"]);
+  monCaps(sp).forEach(c => { if(STRUGGLE_TYPE_CAPS[c]) set.add(STRUGGLE_TYPE_CAPS[c]); });
+  return [...set];
+}
+/* a capability lets the elemental Struggle also be Special (Sp.Atk) at the user's option */
+function struggleCanBeSpecial(p, sp){
+  return !!(p?.unlocked) || monCaps(sp).some(c => STRUGGLE_TYPE_CAPS[c]);
+}
+/* effective type of a move after ability overrides (e.g. Normalize → Normal) */
+function effectiveMoveType(p, m){
+  if(hasAbility(p, "Normalize")) return "Normal";
+  return (m && m.type) || "Normal";
+}
+/* Struggle as it should actually resolve: base move + chosen type/class (Normalize forces Normal) */
+function struggleFor(p, sp){
+  const base = struggleMove(p); if(!base) return null;
+  sp = sp || getSpecies(p.species);
+  const m = Object.assign({}, base);
+  let t = p.struggleType || "Normal";
+  if(!struggleTypeOptions(p, sp).includes(t)) t = "Normal";
+  if(hasAbility(p, "Normalize")) t = "Normal";
+  m.type = t;
+  if(t !== "Normal" && p.struggleSpecial && struggleCanBeSpecial(p, sp)) m.class = "Special";
+  return m;
+}
+/* the Struggle type / Physical-Special picker (shown when the Pokémon has options) */
+function struggleControl(p, sp, rerender){
+  rerender = rerender || (()=>refreshMon(p));
+  const opts = struggleTypeOptions(p, sp);
+  const canSpec = struggleCanBeSpecial(p, sp);
+  if(opts.length <= 1 && !canSpec) return el("span",{style:"display:none"});
+  const wrap = el("div",{class:"inline small",style:"margin:2px 0 8px;flex-wrap:wrap;gap:8px;align-items:center"});
+  wrap.append(el("span",{class:"muted",style:"font-weight:700"},"Struggle:"));
+  const sel = el("select",{style:"padding:4px 6px"});
+  opts.forEach(t => sel.append(el("option",{value:t,selected:(p.struggleType||"Normal")===t}, t)));
+  sel.addEventListener("change",()=>{ p.struggleType = sel.value==="Normal"?null:sel.value; save(); rerender(); });
+  wrap.append(sel);
+  if(canSpec){
+    const lbl = el("label",{class:"muted",title:"Use Sp.Atk / deal Special damage",style:"display:inline-flex;gap:4px;align-items:center;cursor:pointer"});
+    const cb = el("input",{type:"checkbox"}); cb.checked = !!p.struggleSpecial;
+    cb.addEventListener("change",()=>{ p.struggleSpecial = cb.checked; save(); rerender(); });
+    lbl.append(cb, "Special"); wrap.append(lbl);
+  }
+  return wrap;
+}
 function unlockToggle(p){
   const wrap = el("label",{class:"small",title:"GM: allow moves/abilities outside this Pokémon's normal learnset",
     style:"display:inline-flex;gap:5px;align-items:center;cursor:pointer;font-weight:700;color:var(--muted)"});
@@ -941,11 +1558,13 @@ function moveSlot(p, sp, m, mn, opts={}){
   const slot = el("div",{class:"moveslot"});
   const info = el("div",{style: m?"cursor:pointer;flex:1":"flex:1", onclick: m? ()=>openMoveRoll(p,m,sp) : null},
     el("div",{style:"font-weight:700"}, m?`${m.name} `:mn,
-      m?el("span",{html:typeBadge(m.type||"Normal")}):"",
+      m?el("span",{html:typeBadge(effectiveMoveType(p,m))}):"",
       opts.tag?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600"},opts.tag):""),
     el("div",{class:"ms-info"}, m? moveLineShort(m) : "custom / not in database"));
   slot.append(info);
   const acts = el("div",{class:"inline"});
+  // Scene/Daily use tracker (Struggle & At-Will moves show nothing)
+  if(m && !opts.tag){ const uc = usesControl(p, "move", m.name, m.frequency, opts.rerender||(()=>refreshMon(p))); if(uc) acts.append(uc); }
   if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",title:"roll this move",onclick:()=>openMoveRoll(p,m,sp)},"🎲 Roll"));
   if(m) acts.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("move",m.name)},"info"));
   if(opts.onRemove) acts.append(el("button",{class:"linkbtn",title:"remove",onclick:opts.onRemove},"×"));
@@ -962,8 +1581,8 @@ function movesCard(p, sp){
     el("span",{class:over?"":"", style:over?"color:var(--bad)":""}, `Moves (${n}/${MOVE_LIMIT})`),
     el("div",{class:"inline"}, unlockToggle(p), addBtn)));
   // Struggle is always available and does not count toward the limit
-  const st = struggleMove(p);
-  if(st) card.append(moveSlot(p, sp, st, st.name, {tag:"default"}));
+  const st = struggleFor(p, sp);
+  if(st){ card.append(struggleControl(p, sp)); card.append(moveSlot(p, sp, st, st.name, {tag:"default"})); }
   if(!p.moves.length) card.append(el("span",{class:"muted small"},"no moves selected yet"));
   p.moves.forEach((mn,i)=>{
     const m = moveByName.get(mn.toLowerCase());
@@ -989,7 +1608,8 @@ function rollDiceString(str){
 function openMoveRoll(p, m, sp){
   const d = pokeDerived(p);
   const types = sp?.types || [];
-  const stab = m.type && types.includes(m.type);
+  const mtype = effectiveMoveType(p, m);
+  const stab = mtype && types.includes(mtype);
   const isPhys = /phys/i.test(m.class||"");
   const isSpec = /spec/i.test(m.class||"");
   const atkStat = isPhys ? d.total.atk : isSpec ? d.total.spatk : 0;
@@ -1000,7 +1620,7 @@ function openMoveRoll(p, m, sp){
   const defNote = isPhys ? "Defense" : isSpec ? "Special Defense" : "Defense/Sp.Def";
 
   const body = el("div",{});
-  body.append(el("div",{style:"margin-bottom:6px"}, el("span",{html:typeBadge(m.type||"Normal")}),
+  body.append(el("div",{style:"margin-bottom:6px"}, el("span",{html:typeBadge(mtype)}),
     el("span",{class:"kv"}, m.class||"Status")));
   body.append(el("div",{class:"chips",style:"margin-bottom:12px"},
     el("span",{class:"kv"}, `Freq: ${m.frequency||"—"}`),
@@ -1114,7 +1734,7 @@ const BATTLE_ACTIONS = [
    effect:"Every Pokémon can always attack with Struggle, even with no moves left. Normal-type, Physical, AC 4, Damage Base 4. Becomes Struggle+ (DB 5, AC 3) if your Combat skill is Expert or higher."},
   {id:"dirty-trick", name:"Dirty Trick", type:"Standard", cls:"Status", ac:2, range:"Melee, 1 target", common:true,
    effect:"Pick one cheap trick (each usable once per Scene per target):\n• Hinder — opposed Athletics; target is Slowed and takes −2 to all Skill Checks for one round.\n• Blind — opposed Stealth; target is Blinded for one round.\n• Low Blow — opposed Acrobatics; target is Vulnerable and its Initiative is set to 0 until the end of your next turn."},
-  {id:"manipulate", name:"Manipulate", type:"Standard", cls:"Status", ac:2, range:"6, 1 target", who:"Trainers only",
+  {id:"manipulate", name:"Manipulate", type:"Standard", cls:"Status", ac:2, range:"6, 1 target", who:"Trainers only", actor:"trainer",
    effect:"Trainers only. Pick one (once per Scene per target):\n• Bon Mot — Guile vs Guile/Focus; target is Enraged and can't spend AP for one round.\n• Flirt — Charm vs Charm/Focus; target is Infatuated with you for one round.\n• Terrorize — Intimidate vs Intimidate/Focus; target loses all Temp HP and can only use At-Will moves for one round."},
   {id:"disarm", name:"Disarm", type:"Standard", cls:"Status", ac:6, range:"Melee, 1 target",
    effect:"Opposed Combat or Stealth check. If you win, the target's held item (Main or Off-Hand for humans) falls to the ground."},
@@ -1126,15 +1746,15 @@ const BATTLE_ACTIONS = [
    effect:"Opposed Combat or Athletics. If you win, both of you become Grappled and you gain Dominance. While Grappled a target is Vulnerable, cannot Shift, and takes −6 to hit anyone outside the grapple. Contesting/using the grapple is a Full Action."},
   {id:"sprint", name:"Sprint", type:"Standard", cls:"Status", range:"Self",
    effect:"Increase your Movement Speeds by 50% for the rest of your turn."},
-  {id:"use-item", name:"Use an Item", type:"Standard",
+  {id:"use-item", name:"Use an Item", type:"Standard", actor:"trainer",
    effect:"Retrieve and use an item (Potion, X-Item, etc.) on a target."},
-  {id:"throw-ball", name:"Throw a Poké Ball", type:"Standard",
+  {id:"throw-ball", name:"Throw a Poké Ball", type:"Standard", actor:"trainer",
    effect:"Throw a Poké Ball to try to capture a wild Pokémon."},
-  {id:"recall-self", name:"Recall for Switch", type:"Standard",
+  {id:"recall-self", name:"Recall for Switch", type:"Standard", actor:"pokemon",
    effect:"A Pokémon may recall itself into its Poké Ball so its Trainer can switch in another."},
-  {id:"pokedex", name:"Identify (Pokédex)", type:"Standard",
+  {id:"pokedex", name:"Identify (Pokédex)", type:"Standard", actor:"trainer",
    effect:"Use the Pokédex to identify a Pokémon and read its data."},
-  {id:"draw-weapon", name:"Draw / Switch Weapon", type:"Standard",
+  {id:"draw-weapon", name:"Draw / Switch Weapon", type:"Standard", actor:"trainer",
    effect:"Draw a weapon, or switch from one weapon to another."},
   {id:"improvised", name:"Improvised Attack", type:"Standard",
    effect:"Attack using the environment or an object (throw a rock, topple a tree…). The GM adjudicates — usually a reduced AC and Damage Base, and Normal-type unless there's a strong reason otherwise."},
@@ -1143,7 +1763,7 @@ const BATTLE_ACTIONS = [
    effect:"Move up to your Speed using a Movement Capability (Overland, Swim, Sky, Burrow, Levitate). This is the usual use of your Shift Action."},
   {id:"disengage", name:"Disengage", type:"Shift", common:true,
    effect:"Shift 1 meter without provoking an Attack of Opportunity."},
-  {id:"switch-pokemon", name:"Send Out / Return Pokémon", type:"Shift",
+  {id:"switch-pokemon", name:"Send Out / Return Pokémon", type:"Shift", actor:"trainer",
    effect:"Trainer: return a Pokémon and/or send one out — including returning a Fainted Pokémon and sending a replacement."},
   {id:"stand-up", name:"Stand Up", type:"Shift",
    effect:"Get up after being Tripped or knocked over. Note: standing up can provoke an Attack of Opportunity from adjacent foes."},
@@ -1180,41 +1800,147 @@ const BATTLE_ACTIONS = [
 function getFavActions(){ try{ return new Set(JSON.parse(localStorage.getItem("ptu_fav_actions")||"[]")); }catch(e){ return new Set(); } }
 function toggleFavAction(id){ const s=getFavActions(); s.has(id)?s.delete(id):s.add(id); localStorage.setItem("ptu_fav_actions", JSON.stringify([...s])); }
 
-let battleMonId=null, battleFilter="moves";
+let battleActor="trainer", battleFilter="moves";
 function renderBattle(){
   const root=$("#view-battle"); root.innerHTML="";
   const c=activeChar();
   const team=(c?.pokemon||[]);
-  if(!battleMonId || !team.find(p=>p.id===battleMonId)) battleMonId=(team.find(p=>p.onTeam)||team[0])?.id||null;
-  // acting-as selector
-  const sc=el("div",{class:"card"},el("h3",{},"Battle — acting as"));
-  if(team.length){
-    const sel=el("select");
-    team.forEach(p=>{ const sp=getSpecies(p.species); sel.append(el("option",{value:p.id,selected:p.id===battleMonId}, `${p.nickname||sp?.name||"?"} · Lv ${p.level}`)); });
-    sel.addEventListener("change",()=>{ battleMonId=sel.value; renderBattle(); });
-    sc.append(sel);
-  } else sc.append(el("div",{class:"muted small"},"No Pokémon yet — generic actions are shown below. Add one in the Pokémon tab to roll its moves here."));
+  // resolve actor: "trainer" or a Pokémon id
+  if(battleActor!=="trainer" && !team.find(p=>p.id===battleActor)) battleActor="trainer";
+  const isTrainer = battleActor==="trainer";
+
+  // whose-turn selector (Trainer + each Pokémon act on separate turns)
+  const sc=el("div",{class:"card"},el("h3",{},"Battle — whose turn?"));
+  const sel=el("select");
+  sel.append(el("option",{value:"trainer",selected:isTrainer}, `🧑 ${c?.trainer?.name||c?.name||"Trainer"} — Trainer`));
+  team.forEach(p=>{ const sp=getSpecies(p.species); sel.append(el("option",{value:p.id,selected:p.id===battleActor}, `🔴 ${p.nickname||sp?.name||"?"} · Lv ${p.level}`)); });
+  sel.addEventListener("change",()=>{ battleActor=sel.value; if(battleFilter!=="fav"&&!isTypeFilter(battleFilter)) battleFilter="moves"; renderBattle(); });
+  sc.append(sel);
+  sc.append(el("div",{class:"muted small",style:"margin-top:6px"},
+    isTrainer ? "Trainers and Pokémon take separate turns. These are the Trainer's actions."
+              : "This Pokémon's turn — it can't use Trainer-only maneuvers (Poké Balls, Manipulate, items…)."));
   root.append(sc);
 
-  root.append(subTabBar([["moves","⚔ Moves"],["fav","★ Fav"],["standard","Standard"],["shift","Shift"],["swift","Swift"],["free","Free"],["full","Full"]],
+  const firstLabel = isTrainer ? "⚔ Combat" : "⚔ Moves";
+  root.append(subTabBar([["moves",firstLabel],["fav","★ Fav"],["standard","Standard"],["shift","Shift"],["swift","Swift"],["free","Free"],["full","Full"]],
     battleFilter, k=>{ battleFilter=k; renderBattle(); }));
 
-  const p=team.find(x=>x.id===battleMonId), sp=p&&getSpecies(p.species);
   if(battleFilter==="moves"){
-    const card=el("div",{class:"card"},el("h3",{},"Your Moves — tap to roll"));
-    if(!p){ card.append(el("span",{class:"muted small"},"No Pokémon selected.")); root.append(card); return; }
-    const st=struggleMove(p); if(st) card.append(moveSlot(p,sp,st,st.name,{tag:"default"}));
-    if(!p.moves.length) card.append(el("span",{class:"muted small"},"No moves yet — add some in the Pokémon → Play tab."));
-    p.moves.forEach(mn=>{ const m=moveByName.get(mn.toLowerCase()); card.append(moveSlot(p,sp,m,mn,{})); });
-    root.append(card);
-    root.append(el("div",{class:"small muted",style:"padding:0 4px"},"Other action types are in the tabs above — Standard, Shift, Swift, Free, Full."));
-    return;
+    return isTrainer ? renderTrainerCombat(root, c.trainer) : renderPokemonMoves(root, team);
   }
+
+  // maneuver lists, filtered to what this actor may do
   const favs=getFavActions();
-  let list=BATTLE_ACTIONS.filter(a => battleFilter==="fav" ? favs.has(a.id) : a.type.toLowerCase()===battleFilter);
+  const okActor = a => { const act=a.actor||"both"; return act==="both" || act===(isTrainer?"trainer":"pokemon"); };
+  let list=BATTLE_ACTIONS.filter(a => (battleFilter==="fav" ? favs.has(a.id) : a.type.toLowerCase()===battleFilter) && okActor(a));
   list.sort((a,b)=> (favs.has(b.id)-favs.has(a.id)) || ((b.common?1:0)-(a.common?1:0)) || a.name.localeCompare(b.name));
-  if(!list.length){ root.append(el("div",{class:"muted",style:"padding:10px"}, battleFilter==="fav"?"No favourites yet — tap ☆ on any action to pin it here.":"Nothing here.")); return; }
-  const wrap=el("div",{}); list.forEach(a=>wrap.append(battleActionRow(a,favs))); root.append(wrap);
+  // the trainer's own action Features that fire on this action type (Cheer, Orders, class Features…)
+  const featRows = (isTrainer && isTypeFilter(battleFilter))
+    ? trainerFeatureObjs(c.trainer).filter(f=>featureActionTypes(f).includes(battleFilter))
+                                   .sort((a,b)=>a.name.localeCompare(b.name))
+    : [];
+  if(!list.length && !featRows.length){ root.append(el("div",{class:"muted",style:"padding:10px"}, battleFilter==="fav"?"No favourites yet — tap ☆ on any action to pin it here.":"Nothing here for this actor.")); return; }
+  const wrap=el("div",{});
+  list.forEach(a=>wrap.append(battleActionRow(a,favs)));
+  if(featRows.length){
+    wrap.append(el("div",{class:"section-head",style:"margin-top:14px"}, "From your Features"));
+    featRows.forEach(f=>wrap.append(featureActionRow(f, c.trainer, renderBattle)));
+  }
+  root.append(wrap);
+}
+function isTypeFilter(k){ return ["standard","shift","swift","free","full"].includes(k); }
+/* Pokémon turn: moves (tap to roll) + Struggle + its abilities as reference */
+function renderPokemonMoves(root, team){
+  const p=team.find(x=>x.id===battleActor), sp=p&&getSpecies(p.species);
+  const card=el("div",{class:"card"},el("h3",{},"Moves — tap to roll"));
+  if(!p){ card.append(el("span",{class:"muted small"},"No Pokémon selected.")); root.append(card); return; }
+  card.append(struggleControl(p, sp, renderBattle));
+  const st=struggleFor(p,sp); if(st) card.append(moveSlot(p,sp,st,st.name,{tag:"default"}));
+  if(!p.moves.length) card.append(el("span",{class:"muted small"},"No moves yet — add some in the Pokémon → Play tab."));
+  p.moves.forEach(mn=>{ const m=moveByName.get(mn.toLowerCase()); card.append(moveSlot(p,sp,m,mn,{rerender:renderBattle})); });
+  root.append(card);
+  if(p.abilities?.length){
+    const ac=el("div",{class:"card"},el("h3",{},`Abilities (${p.abilities.length})`,
+      el("span",{class:"muted small"},"passive / triggered")));
+    p.abilities.forEach(an=>{ const ab=abilityByName.get((an||"").toLowerCase());
+      const uc = ab && usesControl(p, "ability", an, ab.frequency, renderBattle);
+      const d=el("details",{class:"spoiler"});
+      d.append(el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, an||"—"),
+        uc ? el("span",{style:"margin-left:8px"}, uc) : ""));
+      d.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database</span>"}));
+      ac.append(d); });
+    root.append(ac);
+  }
+  root.append(el("div",{class:"small muted",style:"padding:0 4px"},"Other action types are in the tabs above — Standard, Shift, Swift, Free, Full."));
+}
+/* A Feature's frequency encodes its action type after the "-" (e.g. "1 AP - Free Action",
+   "Bind 2 AP - Standard Action"). Returns the battle-tab keys it belongs to ([] = passive). */
+function featureActionTypes(f){
+  const after = String(f?.frequency||"").split(" - ").slice(1).join(" - ");
+  const t=[];
+  if(/Standard Action/i.test(after)) t.push("standard");
+  if(/Shift Action/i.test(after))    t.push("shift");
+  if(/Swift Action/i.test(after))    t.push("swift");
+  if(/Free Action/i.test(after))     t.push("free");
+  if(/Full Action/i.test(after))     t.push("full");
+  return t;
+}
+/* the trainer's Features that grant actions: learned Features + the class-defining Features of
+   any Class they've taken (e.g. taking "Cheerleader" grants its Free-Action Cheer). */
+function trainerFeatureObjs(t){
+  const names=[...new Set([...(t.classes||[]), ...(t.features||[])])];
+  return names.map(n=>D.features.find(f=>f.name===n)).filter(Boolean);
+}
+function featureActionRow(f, owner, rerender){
+  const d=el("details",{class:"spoiler"});
+  const meta=[f.frequency,f.category].filter(Boolean).join(" · ");
+  const uc = owner && usesControl(owner, "feature", f.name, f.frequency, rerender||(()=>{}));
+  d.append(el("summary",{},
+    el("span",{class:"actstar",style:"visibility:hidden"},"☆"),
+    el("span",{style:"font-weight:700;color:var(--ink)"}, f.name),
+    meta?el("span",{class:"muted small",style:"margin-left:8px"}, meta):"",
+    uc ? el("span",{style:"margin-left:8px"}, uc) : ""));
+  d.append(el("div",{class:"small",style:"margin-top:6px",html: refDetailHTML("feature",f.name)}));
+  return d;
+}
+/* Trainer turn: how they attack + their passive/always-on Features (action Features live in the tabs) */
+/* one rollable attack row in the trainer's Combat tab */
+function trainerAttackSlot(t, profile, rollFn, opts={}){
+  const slot = el("div",{class:"moveslot"});
+  slot.append(el("div",{style:"flex:1"},
+    el("div",{style:"font-weight:700"}, profile.name+" ", el("span",{html:typeBadge(profile.type)}),
+      opts.tag?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600"}, opts.tag):""),
+    el("div",{class:"ms-info"}, `${profile.frequency?profile.frequency+" · ":""}${profile.cls||"Physical"} · AC ${profile.ac} · DB ${profile.damageBase} · ${profile.range} · +Attack`)));
+  const acts = el("div",{class:"inline"});
+  if(opts.uc) acts.append(opts.uc);
+  acts.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",onclick:rollFn},"🎲 Roll"));
+  if(opts.move) acts.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("move",profile.name)},"info"));
+  slot.append(acts);
+  return slot;
+}
+function renderTrainerCombat(root, t){
+  const card=el("div",{class:"card"},el("h3",{},"Struggle & Weapon Attacks"));
+  // unarmed Struggle (always available)
+  card.append(trainerAttackSlot(t, trainerStruggle(t), ()=>openTrainerAttack(t), {tag:"unarmed"}));
+  // one attack per weapon (+ its Weapon Move, if any)
+  (t.weapons||[]).forEach(w=>{
+    card.append(trainerAttackSlot(t, trainerStruggle(t, w), ()=>openTrainerAttack(t, null, w), {tag:w.category}));
+    if(w.weaponMove){
+      const wm = trainerAttackProfile(t, w.weaponMove, w);
+      const uc = usesControl(t, "move", wm.name, wm.frequency, renderBattle);
+      card.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t, w.weaponMove, w), {tag:"weapon move", uc, move:true}));
+    }
+  });
+  card.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    (t.weapons||[]).length ? "Each weapon (and its Weapon Move) is listed above. Add/edit weapons in Trainer → Sheet → Weapons."
+                           : "Unarmed Struggle only — add weapons in Trainer → Sheet → Weapons. Action Features (Cheer, Orders…) appear under the tabs above."));
+  root.append(card);
+  const passive=trainerFeatureObjs(t).filter(f=>!featureActionTypes(f).length);
+  const pc=el("div",{class:"card"},el("h3",{},`Passive & Always-On (${passive.length})`,
+    el("span",{class:"muted small"},"Static / out-of-combat")));
+  if(!passive.length) pc.append(el("span",{class:"muted small"},"none — your action Features are in the tabs above, or learn Features in Trainer → Features & Edges."));
+  passive.forEach(f=>pc.append(featureActionRow(f, t, renderBattle)));
+  root.append(pc);
 }
 function battleActionRow(a, favs){
   const fav=favs.has(a.id);
@@ -1329,7 +2055,24 @@ function moveDetailHTML(m, name){
   return `<div style="margin-bottom:6px">${typeBadge(m.type||"Normal")} <span class="kv">${esc(m.class||"")}</span></div>
     ${kv("Frequency",m.frequency)}${kv("AC",m.ac)}${m.damageBase?`<span class="kv">DB ${m.damageBase} (${DB_TABLE[m.damageBase]||"?"})</span>`:""}${kv("Range",m.range)}
     <div class="r-body" style="margin-top:8px">${esc(m.effect||"")}</div>
-    ${m.contest?`<div class="r-meta" style="margin-top:6px">Contest: ${esc(m.contest)}</div>`:""}`;
+    ${(m.contest && showContest())?`<div class="r-meta" style="margin-top:6px">Contest: ${esc(m.contest)}</div>`:""}`;
+}
+/* device-level display prefs */
+function showContest(){ return localStorage.getItem("ptu_show_contest")==="1"; }
+function openSettings(){
+  const wrap = el("div",{});
+  const mk = (label, key, hint) => {
+    const row = el("label",{class:"inline",style:"gap:10px;align-items:flex-start;padding:8px 0;cursor:pointer"});
+    const cb = el("input",{type:"checkbox"}); cb.checked = localStorage.getItem(key)==="1";
+    cb.addEventListener("change",()=>{ localStorage.setItem(key, cb.checked?"1":"0");
+      if($("#view-reference")?.classList.contains("active")) renderReference(); });
+    row.append(cb, el("div",{}, el("div",{style:"font-weight:700"},label),
+      hint?el("div",{class:"small muted"},hint):""));
+    return row;
+  };
+  wrap.append(mk("Show Contest stats", "ptu_show_contest",
+    "Display each move's Contest type/effect in its details (Cool, Tough, etc.). Off by default."));
+  modal({title:"⚙ Settings", bodyNode:wrap, footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Done")]});
 }
 function speciesModal(s){
   if(!s) return;
@@ -1390,8 +2133,9 @@ function escClose(e){ if(e.key==="Escape") closeModal(); }
 function closeModal(){ $("#modalRoot").innerHTML=""; document.removeEventListener("keydown",escClose); }
 function infoModal(title, html){ modal({title, bodyHTML:html, footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Close")]}); }
 
-/* searchable single-select picker. onPick(name). markFn optional to flag priority items */
-function openPicker(title, names, onPick, refKind, markFn){
+/* searchable single-select picker. onPick(name). markFn flags priority items with ★.
+   lockFn(name) may return a reason string to show the item as locked & unpickable. */
+function openPicker(title, names, onPick, refKind, markFn, lockFn){
   const wrap = el("div",{});
   const search = el("input",{type:"search",placeholder:"Type to filter…",style:"margin-bottom:10px"});
   const list = el("div",{class:"picklist"});
@@ -1402,13 +2146,18 @@ function openPicker(title, names, onPick, refKind, markFn){
     const filtered = arr.filter(n=>!q||n.toLowerCase().includes(q)).slice(0,200);
     filtered.forEach(n=>{
       const marked = markFn && markFn(n);
+      const lock = lockFn && lockFn(n);
       const textCol = el("div",{style:"flex:1;min-width:0"},
-        el("div",{class:"pi-title"}, n + (marked?"  ★":"")),
-        refKind==="move"? pickMoveSub(n) : refKind==="species"? pickSpeciesSub(n) : "");
+        el("div",{class:"pi-title"}, n + (marked?"  ★":"") + (lock?"  🔒":"")),
+        refKind==="move"? pickMoveSub(n) : refKind==="species"? pickSpeciesSub(n)
+          : refKind==="feature"? pickFeatureSub(n) : refKind==="held"? pickHeldSub(n) : "",
+        lock? el("div",{class:"pi-sub",style:"color:var(--bad)"}, lock) : "");
       const item = refKind==="species"
         ? el("div",{class:"pickitem",style:"display:flex;gap:10px;align-items:center"}, monSprite(n,false,"s-xs"), textCol)
         : el("div",{class:"pickitem"}, textCol);
-      item.addEventListener("click",()=>{ onPick(n); closeModal(); });
+      if(lock){ item.style.opacity=".55"; item.style.cursor="not-allowed";
+        item.addEventListener("click",()=>toast(lock)); }
+      else item.addEventListener("click",()=>{ onPick(n); closeModal(); });
       list.append(item);
     });
     if(!filtered.length) list.append(el("div",{class:"pickitem muted"},"no matches"));
@@ -1420,6 +2169,9 @@ function openPicker(title, names, onPick, refKind, markFn){
 }
 function pickMoveSub(name){ const m=moveByName.get(name.toLowerCase()); return m?el("div",{class:"pi-sub"}, `${m.type||""} · ${moveLineShort(m)}`):el("div",{class:"pi-sub muted"},"not in DB"); }
 function pickSpeciesSub(name){ const s=getSpecies(name); return s?el("div",{class:"pi-sub",html:(s.types||[]).map(typeBadge).join(" ")}):""; }
+function pickFeatureSub(name){ const f=D.features.find(x=>x.name===name); if(!f) return "";
+  const meta=[f.frequency, f.prerequisites?("Prereq: "+f.prerequisites):""].filter(Boolean).join(" · ");
+  return meta?el("div",{class:"pi-sub"}, meta):""; }
 
 /* ===================================================================
    Character management + top bar
@@ -1497,6 +2249,7 @@ $("#btnTheme").addEventListener("click", ()=>{
   const next = dark ? "light" : "dark";
   localStorage.setItem("ptu_theme", next); state.theme = next; applyTheme();
 });
+$("#btnSettings").addEventListener("click", openSettings);
 
 /* ===================================================================
    Cloud sync (Supabase) — progressive enhancement.
