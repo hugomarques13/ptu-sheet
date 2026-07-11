@@ -78,6 +78,106 @@ function levelForXP(xp){ xp = Math.max(0, xp||0); let lvl = 1;
 function xpForLevel(level){ return LEVEL_XP[Math.max(1, Math.min(MAX_LEVEL, level||1))]; }
 function xpToNext(xp){ const lvl = levelForXP(xp); return lvl>=MAX_LEVEL ? 0 : LEVEL_XP[lvl+1] - Math.max(0,xp||0); }
 
+/* Status Afflictions (PTU 1.05 Core pp.245-248). kind drives the Capture-Rate bonus:
+   persistent +10 each, volatile +5 each; "other" uses its own `cap`. */
+const STATUS_DEFS = [
+  {key:"burned", name:"Burned", kind:"persistent", immune:["Fire"],
+   effect:"−2 Combat Stages to Defense. If it takes (or is prevented from taking, e.g. by Sleep/Flinch/Paralysis) a Standard Action, it loses a Tick of HP at the end of that turn. Fire-types are immune."},
+  {key:"frozen", name:"Frozen", kind:"persistent", immune:["Ice"],
+   effect:"Cannot act and gains no Evasion bonuses. DC 16 Save Check at end of each turn to cure (DC 11 for Fire-types; +4 in Sun, −2 in Hail). Cured if hit by a damaging Fire/Fighting/Rock/Steel attack. Ice-types immune."},
+  {key:"paralysis", name:"Paralyzed", kind:"persistent", immune:["Electric"],
+   effect:"−4 Combat Stages to Speed. At the start of each turn make a DC 5 Save; on a failure it cannot take Standard, Shift, or Swift Actions. Electric-types immune."},
+  {key:"poisoned", name:"Poisoned", kind:"persistent", immune:["Poison","Steel"],
+   effect:"−2 Combat Stages to Special Defense. If it takes (or is prevented from taking) a Standard Action, it loses a Tick of HP at end of turn. Poison & Steel-types immune."},
+  {key:"badlyPoisoned", name:"Badly Poisoned", kind:"persistent", immune:["Poison","Steel"],
+   effect:"As Poisoned, but instead loses 5 HP, doubling each consecutive round (10, 20, 40…)."},
+  {key:"sleep", name:"Asleep", kind:"persistent",
+   effect:"No Evasion bonuses; may only take Free/Swift Actions that cure Sleep. DC 16 Save at end of its turn to wake; also wakes on any active HP-loss attack (not passive Poison/Burn). Can't Save vs Rage/Infatuation/Confusion while asleep (but also can't hurt itself from Confusion)."},
+  {key:"confused", name:"Confused", kind:"volatile",
+   effect:"Save at start of turn — 1–8: hit self with a Typeless Physical Struggle (auto-hits, resisted one step) and do nothing else; 9–15: act normally; 16+: cured."},
+  {key:"cursed", name:"Cursed", kind:"volatile",
+   effect:"If it takes a Standard Action, it loses two Ticks of HP at the end of that turn."},
+  {key:"disabled", name:"Disabled", kind:"volatile",
+   effect:"A specific Move (chosen when applied) can't be used while Disabled. May stack for different Moves."},
+  {key:"enraged", name:"Enraged (Rage)", kind:"volatile",
+   effect:"Must use a damaging Physical/Special Move or Struggle Attack. DC 15 Save at end of each turn to cure. Cannot choose to Take a Breather."},
+  {key:"flinch", name:"Flinched", kind:"volatile",
+   effect:"Cannot take actions during its next turn this round. Does not carry to the next round."},
+  {key:"infatuation", name:"Infatuated", kind:"volatile",
+   effect:"Save at start of turn — 1–10: can't target the source with Moves/Attacks (else act normally); 11–18: act freely; 19+: cured."},
+  {key:"badSleep", name:"Bad Sleep", kind:"volatile",
+   effect:"Whenever it Saves against Sleep, it loses two Ticks of HP. Only affects Sleeping targets; cured when Sleep is cured."},
+  {key:"suppressed", name:"Suppressed", kind:"volatile",
+   effect:"Can't benefit from PP Ups; Move frequencies drop a step — At-Will→EOT, and EOT & Scene x2→Scene."},
+  {key:"stuck", name:"Stuck", kind:"other", cap:10, immune:["Ghost"],
+   effect:"Cannot Shift to move and can't apply Speed Evasion. Removed by switching or as an Extended Action at end of Scene. Ghost-types immune. (+10 to Capture Rate.)"},
+  {key:"slowed", name:"Slowed", kind:"other", cap:5,
+   effect:"Movement halved (min 1). Removed by switching or at end of Scene. (+5 to Capture Rate.)"},
+  {key:"trapped", name:"Trapped", kind:"other", cap:0, immune:["Ghost"],
+   effect:"Cannot be recalled into a Poké Ball. Ghost-types immune."},
+  {key:"tripped", name:"Tripped", kind:"other", cap:0,
+   effect:"Must spend a Shift Action to get up before taking other actions."},
+  {key:"vulnerable", name:"Vulnerable", kind:"other", cap:0,
+   effect:"Cannot apply Evasion of any sort against attacks."},
+  {key:"blinded", name:"Blinded", kind:"other", cap:0,
+   effect:"−6 to Accuracy Rolls; must pass a DC 10 Acrobatics Check over Rough/Slow Terrain or become Tripped."},
+];
+const statusByKey = new Map(STATUS_DEFS.map(s=>[s.key, s]));
+/* Combat Stages (Core p.234): only these 5 stats; +CS ×0.2 each, −CS ×0.1 each (−6…+6). */
+const CS_STATS = [["atk","Attack"],["def","Defense"],["spatk","Sp.Atk"],["spdef","Sp.Def"],["spd","Speed"]];
+function csMult(cs){ cs = Math.max(-6, Math.min(6, cs||0)); return cs>=0 ? 1+0.2*cs : 1+0.1*cs; }
+/* Status Afflictions that impose Combat Stages (Core p.245-246) */
+const CONDITION_CS = { burned:{def:-2}, paralysis:{spd:-4}, poisoned:{spdef:-2}, badlyPoisoned:{spdef:-2} };
+function conditionCSMods(p){
+  const m = {atk:0,def:0,spatk:0,spdef:0,spd:0};
+  (p.statuses||[]).forEach(k=>{ const c=CONDITION_CS[k]; if(c) for(const s in c) m[s]+=c[s]; });
+  return m;
+}
+/* effective Combat Stages = manual (p.cs) + condition mods, clamped −6…+6 */
+function effectiveCS(p){
+  const cond = conditionCSMods(p), out = {};
+  CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k])));
+  return out;
+}
+function hasStatus(p, key){ return Array.isArray(p.statuses) && p.statuses.includes(key); }
+function toggleStatus(p, key){ p.statuses = p.statuses||[];
+  const i=p.statuses.indexOf(key); if(i>=0) p.statuses.splice(i,1); else p.statuses.push(key); save(); }
+/* how many evolution stages a species still has ahead of it (depth, so branches don't double-count) */
+function evolutionsRemaining(p){
+  const sp=getSpecies(p.species); if(!sp?.evolution?.length) return 0;
+  const mine=sp.evolution.find(e=>e.name.toLowerCase()===sp.name.toLowerCase());
+  if(!mine) return 0;
+  const maxStage=Math.max(...sp.evolution.map(e=>e.stage));
+  return Math.max(0, maxStage - mine.stage);
+}
+/* PTU 1.05 Capture Rate (Core p.214). Returns {capturable, rate, breakdown:[[label,delta]]}. */
+function captureRate(p, opts={}){
+  const d = pokeDerived(p);
+  const hp = p.currentHP==null ? d.maxHP : p.currentHP;
+  if(hp<=0) return { capturable:false };
+  const bd=[["Base",100]]; let rate=100;
+  const lvlMod = -(p.level*2); rate+=lvlMod; bd.push([`Level ${p.level} × 2`, lvlMod]);
+  const pct = d.maxHP>0 ? hp/d.maxHP*100 : 0;
+  let hpMod, band;
+  if(hp===1){ hpMod=30; band="1 HP"; }
+  else if(pct<=25){ hpMod=15; band="≤25%"; }
+  else if(pct<=50){ hpMod=0; band="≤50%"; }
+  else if(pct<=75){ hpMod=-15; band="≤75%"; }
+  else { hpMod=-30; band=">75%"; }
+  rate+=hpMod; bd.push([`HP ${Math.round(pct)}% (${band})`, hpMod]);
+  const evo = evolutionsRemaining(p), evoMod = evo>=2?10:evo===1?0:-10;
+  rate+=evoMod; bd.push([`${evo} evolution${evo===1?"":"s"} remaining`, evoMod]);
+  if(p.shiny){ rate-=10; bd.push(["Shiny",-10]); }
+  if(opts.legendary){ rate-=30; bd.push(["Legendary",-30]); }
+  const active = STATUS_DEFS.filter(s=>hasStatus(p,s.key));
+  const persist = active.filter(s=>s.kind==="persistent"), volat = active.filter(s=>s.kind==="volatile");
+  if(persist.length){ const v=persist.length*10; rate+=v; bd.push([`Persistent: ${persist.map(s=>s.name).join(", ")}`, v]); }
+  if(volat.length){ const v=volat.length*5; rate+=v; bd.push([`Volatile: ${volat.map(s=>s.name).join(", ")}`, v]); }
+  active.filter(s=>s.kind==="other"&&s.cap).forEach(s=>{ rate+=s.cap; bd.push([s.name, s.cap]); });
+  if(p.injuries>0){ const v=p.injuries*5; rate+=v; bd.push([`${p.injuries} Injur${p.injuries===1?"y":"ies"}`, v]); }
+  return { capturable:true, rate, breakdown:bd };
+}
+
 /* fast lookups */
 const speciesByName  = new Map(D.species.map(s => [s.name.toLowerCase(), s]));
 const moveByName     = new Map(D.moves.map(m => [m.name.toLowerCase(), m]));
@@ -199,6 +299,7 @@ function newTrainer() {
     classes:[], skills, combat, edges:[], features:[],
     inventory:[], background:"", notes:"", appearance:"",
     currentHP:null, tempHP:0, injuries:0, usedAP:0, unlocked:false, uses:{}, avatar:"", weapons:[],
+    levelUp:{},
   };
 }
 function newCharacter(name) {
@@ -213,7 +314,8 @@ function newPokemon(speciesName) {
     nature: "Hardy", abilities:[], heldItem:"",
     stats, injuries:0, currentHP:null, tempHP:0,
     moves:[], tutorPoints:0, unlocked:false, notes:"",
-    struggleType:null, struggleSpecial:false, uses:{}, image:"",
+    struggleType:null, struggleSpecial:false, uses:{}, image:"", statuses:[],
+    cs:{atk:0,def:0,spatk:0,spdef:0,spd:0},
   };
 }
 /* normalise older Pokémon objects (single ability -> abilities[], add onTeam) */
@@ -228,6 +330,8 @@ function normPokemon(p){
   if(!("struggleType" in p)) p.struggleType = null;
   if(typeof p.struggleSpecial !== "boolean") p.struggleSpecial = false;
   if(!p.uses || typeof p.uses!=="object") p.uses = {};
+  if(!Array.isArray(p.statuses)) p.statuses = [];
+  if(!p.cs || typeof p.cs!=="object") p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0};
   if(typeof p.image!=="string") p.image = "";
   if(!p.stats) { p.stats={}; STATS.forEach(([k])=>p.stats[k]={added:0}); }
   // keep XP consistent with a stored level so "add XP" works (only ever raises XP, never changes level)
@@ -247,6 +351,7 @@ function normTrainer(t){
   if(!t.uses || typeof t.uses!=="object") t.uses = {};
   if(typeof t.avatar!=="string") t.avatar = "";
   if(!Array.isArray(t.weapons)) t.weapons = [];
+  if(!t.levelUp || typeof t.levelUp!=="object") t.levelUp = {};   // per-level choice tracker
   return t;
 }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -325,16 +430,18 @@ function pokeBaseStats(p) {
 }
 function pokeDerived(p) {
   const base = pokeBaseStats(p);
-  const total = {}; STATS.forEach(([k]) => total[k] = base[k] + (p.stats[k]?.added||0));
+  const total = {}; STATS.forEach(([k]) => total[k] = base[k] + (p.stats[k]?.added||0));   // pre-CS ("real") stats
   const cap6 = v => Math.min(6, Math.floor(v/5));
+  const cs = effectiveCS(p);                              // Combat Stages (manual + conditions)
+  const eff = {}; STATS.forEach(([k]) => eff[k] = k==="hp" ? total.hp : Math.floor(total[k] * csMult(cs[k])));
   const fullMaxHP = p.level + total.hp*3 + 10;          // undamaged maximum
   const injuries = Math.max(0, p.injuries||0);
   const maxHP = injuryHealCap(fullMaxHP, injuries);      // Injuries cap max HP at −10% each (Core p.249)
   const budget = p.level + 10;
   const spent = STATS.reduce((s,[k]) => s + (p.stats[k]?.added||0), 0);
   return {
-    base, total, maxHP, fullMaxHP, injuries, budget, spent, remaining: budget - spent,
-    physEva: cap6(total.def), specEva: cap6(total.spdef), spdEva: cap6(total.spd),
+    base, total, cs, eff, maxHP, fullMaxHP, injuries, budget, spent, remaining: budget - spent,
+    physEva: cap6(eff.def), specEva: cap6(eff.spdef), spdEva: cap6(eff.spd),   // evasion uses CS-adjusted stats
   };
 }
 function typeEffectiveness(defTypes) {
@@ -493,13 +600,17 @@ function renderTrainer(){
   const c = activeChar(), t = c.trainer, root = $("#view-trainer");
   root.innerHTML = "";
   root.append(subTabBar(
-    [["sheet","Sheet"],["features","Features & Edges"],["gear","Inventory & Bio"]],
+    [["sheet","Sheet"],["features","Features & Edges"],["levelup","Level Up"],["gear","Inventory & Bio"]],
     trainerTab, k=>{ trainerTab=k; renderTrainer(); }));
 
   if(trainerTab==="features"){
     root.append(classesCard());
     root.append(listCard("Edges","trainer.edges", D.edges.map(x=>x.name), "edge"));
     root.append(listCard("Features","trainer.features", D.features.map(x=>x.name), "feature"));
+    return;
+  }
+  if(trainerTab==="levelup"){
+    root.append(levelUpCard(t));
     return;
   }
   if(trainerTab==="gear"){
@@ -520,8 +631,7 @@ function renderTrainer(){
   const row1 = el("div",{class:"fieldrow"});
   row1.append(
     field("Name","trainer.name"),
-    field("Level","trainer.level",{type:"number",min:1,onchange:recalcTrainer}),
-    field("Experience","trainer.xp",{type:"number",min:0}),
+    field("Level","trainer.level",{type:"number",min:1,max:50,onchange:recalcTrainer}),
     field("Money ($)","trainer.money",{type:"number",min:0}),
   );
   const row2 = el("div",{class:"fieldrow"});
@@ -924,6 +1034,157 @@ function listCard(title, path, allNames, refKind){
   return card;
 }
 
+/* ===================================================================
+   Level-Up tracker (PTU 1.05 Trainer advancement, Core pp.18-19)
+   A per-level ledger of what a Trainer gains and what they picked.
+=================================================================== */
+const LU_MAX_LEVEL = 50;
+/* milestone "extra benefits" at certain levels */
+const LU_MILESTONES = {
+  2:  { title:"Adept Skills", note:"You may now Rank Up Skills to Adept.",
+        grants:[{kind:"edge", label:"Skill Edge", hint:"not for an Adept rank-up"}] },
+  5:  { title:"Amateur Trainer", note:"Choose one bonus below.",
+        choice:{ key:"m5", options:[
+          "Bonus Stats — +1 Atk/SpAtk on each even Level 6-10 (+2 retroactive)",
+          "One General Feature"],
+        grants:{ "One General Feature":[{kind:"feature", label:"General Feature"}] } } },
+  6:  { title:"Expert Skills", note:"You may now Rank Up Skills to Expert.",
+        grants:[{kind:"edge", label:"Skill Edge", hint:"not for an Expert rank-up"}] },
+  10: { title:"Capable Trainer", note:"Choose one bonus below.",
+        choice:{ key:"m10", options:[
+          "Bonus Stats — +1 Atk/SpAtk on each even Level 12-20",
+          "Two Edges"],
+        grants:{ "Two Edges":[{kind:"edge", label:"Edge"},{kind:"edge", label:"Edge"}] } } },
+  12: { title:"Master Skills", note:"You may now Rank Up Skills to Master.",
+        grants:[{kind:"edge", label:"Skill Edge", hint:"not for a Master rank-up"}] },
+  20: { title:"Veteran Trainer", note:"Choose one bonus below.",
+        choice:{ key:"m20", options:[
+          "Bonus Stats — +1 Atk/SpAtk on each even Level 22-30",
+          "Two Edges"],
+        grants:{ "Two Edges":[{kind:"edge", label:"Edge"},{kind:"edge", label:"Edge"}] } } },
+  30: { title:"Elite Trainer", note:"Choose one bonus below.",
+        choice:{ key:"m30", options:[
+          "Bonus Stats — +1 Atk/SpAtk on each even Level 32-40",
+          "Two Edges", "One General Feature"],
+        grants:{ "Two Edges":[{kind:"edge", label:"Edge"},{kind:"edge", label:"Edge"}],
+                 "One General Feature":[{kind:"feature", label:"General Feature"}] } } },
+  40: { title:"Champion", note:"Choose one bonus below.",
+        choice:{ key:"m40", options:[
+          "Bonus Stats — +1 Atk/SpAtk on each even Level 42-50",
+          "Two Edges", "One General Feature"],
+        grants:{ "Two Edges":[{kind:"edge", label:"Edge"},{kind:"edge", label:"Edge"}],
+                 "One General Feature":[{kind:"feature", label:"General Feature"}] } } },
+};
+
+/* one editable choice slot: a picker button that stores its value in t.levelUp[key] */
+function luSlot(t, key, kind, label, hint){
+  const names = kind==="edge" ? D.edges.map(x=>x.name) : D.features.map(x=>x.name);
+  const cur = t.levelUp[key] || "";
+  const btn = el("button",{class:"btn-secondary lu-pick", title:"Choose from the "+(kind==="edge"?"Edges":"Features")+" list",
+    onclick:()=>openPicker(kind==="edge"?"Choose an Edge":"Choose a Feature", names, v=>{
+      t.levelUp[key]=v; save(); renderTrainer();
+    }, kind)}, cur || "choose…");
+  if(cur) btn.classList.add("filled");
+  const row = el("div",{class:"lu-slot"},
+    el("span",{class:"lu-label"}, label + (hint?" ":""), hint?el("span",{class:"muted"},`(${hint})`):""),
+    btn);
+  if(cur) row.append(el("button",{class:"lu-clear",title:"clear",
+    onclick:()=>{ delete t.levelUp[key]; save(); renderTrainer(); }},"×"));
+  return row;
+}
+
+function luMilestoneNode(t, level, ms){
+  const box = el("div",{class:"lu-ms"},
+    el("div",{class:"lu-ms-head"}, el("span",{class:"lu-ms-star"},"★"),
+      el("b",{}, `Level ${level} — ${ms.title}`)),
+    el("div",{class:"small muted", style:"margin:2px 0 6px"}, ms.note));
+  (ms.grants||[]).forEach((g,i)=> box.append(luSlot(t, `L${level}:ms:${i}`, g.kind, g.label, g.hint)));
+  if(ms.choice){
+    const ck = `L${level}:${ms.choice.key}`;
+    const cur = t.levelUp[ck] || "";
+    const sel = el("select",{class:"lu-select"});
+    sel.append(el("option",{value:""},"— choose —"));
+    ms.choice.options.forEach(o=>{ const op=el("option",{value:o}, o); sel.append(op); });
+    sel.value = cur;
+    sel.addEventListener("change",()=>{ t.levelUp[ck]=sel.value; save(); renderTrainer(); });
+    box.append(sel);
+    const extra = ms.choice.grants && ms.choice.grants[cur];
+    if(extra) extra.forEach((g,i)=> box.append(luSlot(t, `L${level}:${ms.choice.key}:${i}`, g.kind, g.label, g.hint)));
+  }
+  return box;
+}
+
+/* running tally of Features / Edges / Stat Points earned by a given level (uses recorded milestone choices) */
+function luTotals(t, level){
+  let feat = 4 + 1;   // creation: 4 Features + 1 free Training Feature
+  let edge = 4;       // creation: 4 Edges
+  let stat = 10;      // creation: assign 10 Stat Points
+  for(let L=2; L<=level; L++){
+    stat += 1;                       // +1 Stat Point every level
+    if(L % 2) feat++; else edge++;   // odd → Feature, even → Edge
+    if(L===2 || L===6 || L===12) edge++;                 // skill-edge milestones
+    const ms = LU_MILESTONES[L];
+    if(ms && ms.choice){
+      const pick = t.levelUp[`L${L}:${ms.choice.key}`] || "";
+      if(pick.startsWith("Two Edges")) edge += 2;
+      else if(pick.startsWith("One General Feature")) feat += 1;
+    }
+  }
+  return { feat, edge, stat };
+}
+
+function levelUpCard(t){
+  if(!t.levelUp || typeof t.levelUp!=="object") t.levelUp = {};   // cloud/import data may skip normTrainer
+  const level = Math.max(1, Math.min(LU_MAX_LEVEL, t.level||1));
+  const card = el("div",{class:"card lu-card"});
+  card.append(el("h3",{}, "Level Up",
+    el("span",{class:"pill", style:"margin-left:8px"}, `Level ${level}`)));
+  card.append(el("div",{class:"small muted", style:"margin:-4px 0 10px"},
+    "PTU 1.05 Trainer advancement. Every level grants a Stat Point; odd levels a Feature, even levels an Edge. ",
+    "Record what you picked at each level — this is a personal tracker and doesn’t change your Features & Edges tab."));
+
+  /* summary tallies */
+  const tot = luTotals(t, level);
+  const addedSum = STATS.reduce((s,[k])=>s+(t.combat[k].added||0),0);
+  card.append(el("div",{class:"lu-summary"},
+    el("div",{class:"lu-sum"}, el("b",{}, tot.feat), el("span",{class:"muted"}," Features earned"),
+      el("div",{class:"small muted"}, `you list ${t.features.length} + ${t.classes.length} classes`)),
+    el("div",{class:"lu-sum"}, el("b",{}, tot.edge), el("span",{class:"muted"}," Edges earned"),
+      el("div",{class:"small muted"}, `you list ${t.edges.length}`)),
+    el("div",{class:"lu-sum"}, el("b",{}, tot.stat), el("span",{class:"muted"}," Stat Points"),
+      el("div",{class:"small muted"}, `${addedSum} spent · milestone Atk/SpAtk extra`)),
+  ));
+
+  /* per-level ledger */
+  const list = el("div",{class:"lu-levels"});
+  for(let L=1; L<=level; L++){
+    const block = el("div",{class:"lu-level"});
+    const head = el("div",{class:"lu-lvl-head"}, el("span",{class:"lu-lvl-num"}, L));
+    if(L===1) head.append(el("span",{}, "Character Creation"));
+    else head.append(el("span",{class:"muted small"}, "+1 Stat Point"));
+    block.append(head);
+
+    if(L===1){
+      block.append(el("div",{class:"small muted", style:"margin:2px 0 6px"},
+        "Skill Background (3 Pathetic / 1 Novice / 1 Adept) and 10 assigned Stat Points — see the Sheet tab."));
+      block.append(el("div",{class:"lu-grp-label"},"Features (4) + free Training Feature"));
+      for(let i=0;i<4;i++) block.append(luSlot(t, `L1:feat:${i}`, "feature", `Feature ${i+1}`));
+      block.append(luSlot(t, `L1:training`, "feature", "Training Feature", "no prerequisites"));
+      block.append(el("div",{class:"lu-grp-label"},"Edges (4)"));
+      for(let i=0;i<4;i++) block.append(luSlot(t, `L1:edge:${i}`, "edge", `Edge ${i+1}`));
+    } else if(L % 2){
+      block.append(luSlot(t, `L${L}:feat`, "feature", "Feature"));
+    } else {
+      block.append(luSlot(t, `L${L}:edge`, "edge", "Edge"));
+    }
+    const ms = LU_MILESTONES[L];
+    if(ms) block.append(luMilestoneNode(t, L, ms));
+    list.append(block);
+  }
+  card.append(list);
+  return card;
+}
+
 /* every catalog item a Trainer can carry (gear/equipment/key items/med kit/balls + held + berries) */
 function catalogItems(){
   return [
@@ -1088,6 +1349,8 @@ function renderMonEditor(root, p){
   const head = el("div",{class:"inline",style:"margin-bottom:10px"});
   head.append(el("button",{class:"btn-secondary",onclick:()=>{openMon=null;renderPokemon();}},"← Party"));
   head.append(el("div",{class:"spacer"}));
+  if(mode==="cloud" && cloud.isGM)
+    head.append(el("button",{class:"btn-secondary",title:"GM: send a copy of this Pokémon to a player",onclick:()=>openSendThisPokemon(p)},"🎁 Send"));
   head.append(el("button",{class:"linkbtn",onclick:()=>exportPokemon(p)},"⭳ Export"));
   if(sp) head.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("species",sp.name)},"Dex entry"));
   root.append(head);
@@ -1141,6 +1404,11 @@ function heroCard(p, sp){
     el("i",{id:"heroHpBar",style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`})));
   if(d.injuries>0) main.append(el("div",{class:"small",style:"margin-top:4px;color:var(--bad);font-weight:700"},
     `${d.injuries} ${d.injuries===1?"injury":"injuries"} — max HP ${d.maxHP} (−${d.fullMaxHP-d.maxHP} of ${d.fullMaxHP})`));
+  if(p.statuses?.length){
+    const sc = el("div",{class:"chips",style:"margin-top:6px"});
+    p.statuses.forEach(k=>{ const s=statusByKey.get(k); if(s) sc.append(el("span",{class:"statuschip on",style:"cursor:default;padding:2px 8px;font-size:11px"}, s.name)); });
+    main.append(sc);
+  }
   hero.append(main);
   card.append(hero);
   /* damage / heal: one signed input — type 8 to heal, −10 to take damage */
@@ -1148,19 +1416,128 @@ function heroCard(p, sp){
   return card;
 }
 
+/* toggle-chips for status conditions + a Catch DC (GM) button */
+function statusCard(p){
+  if(!Array.isArray(p.statuses)) p.statuses=[];
+  const gm = isGM();
+  const card = el("div",{class:"card"}, el("h3",{},"Status Conditions",
+    el("div",{class:"inline"},
+      p.statuses.length?el("button",{class:"linkbtn",onclick:()=>{ p.statuses=[]; save(); refreshMon(p); }},"clear"):"",
+      gm?el("button",{class:"linkbtn h-act",onclick:()=>catchDCModal(p)},"🎯 Catch DC"):"")));
+  const sp = getSpecies(p.species);
+  const groups = gm
+    ? [["persistent","Persistent · +10 catch each"],["volatile","Volatile · +5 each"],["other","Other"]]
+    : [["persistent","Persistent"],["volatile","Volatile"],["other","Other"]];
+  groups.forEach(([kind,label])=>{
+    card.append(el("div",{class:"small muted",style:"margin:8px 0 4px;font-weight:700"}, label));
+    const chips = el("div",{class:"chips"});
+    STATUS_DEFS.filter(s=>s.kind===kind).forEach(s=>{
+      const on = hasStatus(p,s.key);
+      const immune = s.immune && sp?.types?.some(t=>s.immune.includes(t));
+      const chip = el("button",{class:"statuschip"+(on?" on":""), title: (immune?`${sp.name} is immune. `:"")+s.effect,
+        onclick:()=>{ toggleStatus(p,s.key); refreshMon(p); }}, s.name + (immune?" ⃠":""));
+      chips.append(chip);
+    });
+    card.append(chips);
+  });
+  const active = STATUS_DEFS.filter(s=>hasStatus(p,s.key));
+  if(active.length){
+    card.append(el("div",{class:"small muted",style:"margin-top:12px;font-weight:700"}, `Active effects (${active.length})`));
+    active.forEach(s=>{ const d=el("details",{class:"spoiler"});
+      d.append(el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, s.name),
+        el("span",{class:"muted small",style:"margin-left:8px"}, s.kind)));
+      d.append(el("div",{class:"small",style:"margin-top:6px"}, s.effect));
+      card.append(d); });
+  }
+  return card;
+}
+/* Capture-Rate calculator popup (GM tool) */
+function catchDCModal(p){
+  const wrap = el("div",{});
+  let legendary = false;
+  const out = el("div",{});
+  const redraw = () => {
+    out.innerHTML="";
+    const r = captureRate(p, {legendary});
+    if(!r.capturable){ out.append(el("div",{class:"warnbox"},"At 0 HP or lower — can't be captured (Poké Balls won't energize it).")); return; }
+    out.append(el("div",{style:"font-size:13px;font-weight:800;letter-spacing:.5px;color:var(--muted)"},"CAPTURE RATE"));
+    out.append(el("div",{style:"font-size:44px;font-weight:800;color:var(--accent);line-height:1;margin:2px 0 8px"}, String(r.rate)));
+    out.append(el("div",{class:"small muted",style:"margin-bottom:12px"},
+      `The catcher throws a Poké Ball (AC 6), then rolls 1d100 and subtracts their Trainer Level (and any Ball / Feature bonuses). If the result is ≤ ${r.rate}, it's caught. A natural 100 always catches; rolling a Nat 20 to hit with the ball subtracts 10 from the capture roll.`));
+    const tbl = el("div",{style:"display:flex;flex-direction:column;gap:3px"});
+    r.breakdown.forEach(([lbl,val])=> tbl.append(el("div",{class:"inline",style:"justify-content:space-between;border-bottom:1px solid var(--line);padding:3px 0"},
+      el("span",{class:"small"}, lbl),
+      el("span",{class:"small",style:`font-weight:800;color:${val<0?"var(--bad)":val>0?"var(--good)":"var(--muted)"}`}, (val>0?"+":"")+val))));
+    out.append(tbl);
+  };
+  const legLabel = el("label",{class:"inline",style:"gap:8px;cursor:pointer;margin-bottom:12px;font-weight:700"});
+  const cb = el("input",{type:"checkbox"}); cb.addEventListener("change",()=>{ legendary=cb.checked; redraw(); });
+  legLabel.append(cb, el("span",{},"Legendary Pokémon (−30)"));
+  wrap.append(legLabel, out); redraw();
+  modal({title:`🎯 Catch DC — ${p.nickname||getSpecies(p.species)?.name||"Pokémon"}`, bodyNode:wrap,
+    footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Close")]});
+}
+/* − value + stepper for a Combat Stage (−6…+6, both directions) */
+function csStepper(cur, onSet){
+  const wrap = el("div",{class:"stepper"});
+  wrap.append(
+    el("button",{title:"lower",disabled:cur<=-6,onclick:()=>onSet(cur-1)},"−"),
+    el("span",{class:"stepper-val"}, (cur>0?"+":"")+cur),
+    el("button",{title:"raise",disabled:cur>=6,onclick:()=>onSet(cur+1)},"+"));
+  return wrap;
+}
+/* Combat Stages card — manual steppers per stat; conditions apply automatically on top */
+function combatStagesCard(p){
+  if(!p.cs) p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0};
+  const d = pokeDerived(p), cond = conditionCSMods(p);
+  const anyManual = CS_STATS.some(([k])=>p.cs[k]);
+  const card = el("div",{class:"card"}, el("h3",{},"Combat Stages",
+    el("div",{class:"inline"},
+      el("span",{class:"muted small"},"tap ± ; conditions auto-apply"),
+      anyManual?el("button",{class:"linkbtn",onclick:()=>{ CS_STATS.forEach(([k])=>p.cs[k]=0); save(); refreshMon(p); }},"reset"):"")));
+  const grid = el("div",{class:"statgrid"});
+  CS_STATS.forEach(([k,lbl])=>{
+    const manual = p.cs[k]||0, cm = cond[k]||0, effCS = d.cs[k];
+    const box = el("div",{class:"stat"});
+    box.append(el("div",{class:"lbl"},lbl));
+    box.append(el("div",{class:"big",style: effCS>0?"color:var(--good)":effCS<0?"color:var(--bad)":""}, d.eff[k]));
+    box.append(csStepper(manual, v=>{ p.cs[k]=Math.max(-6,Math.min(6,v)); save(); refreshMon(p); }));
+    box.append(el("div",{class:"sub"}, `${effCS>0?"+":""}${effCS} CS` + (cm?` (${manual>=0?"+":""}${manual}${cm>=0?"+":""}${cm})`:"")));
+    grid.append(box);
+  });
+  card.append(grid);
+  const src = STATUS_DEFS.filter(s=>hasStatus(p,s.key) && CONDITION_CS[s.key]);
+  if(src.length) card.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    "From conditions: " + src.map(s=>`${s.name} (${Object.entries(CONDITION_CS[s.key]).map(([st,v])=>`${v} ${st}`).join(", ")})`).join(" · ")));
+  card.append(el("div",{class:"small muted",style:"margin-top:4px"},
+    "Combat Stages clear on switch-out / end of encounter. Speed CS also shifts Movement by ½ (rounded down)."));
+  return card;
+}
 function renderMonPlay(root, p, sp){
-  /* quick stat readout — first on the page */
+  /* quick stat readout — first on the page (shows Combat-Stage-adjusted values) */
   const d = pokeDerived(p);
-  const qc = el("div",{class:"card"}, el("h3",{},"Stats at a glance"));
+  const qc = el("div",{class:"card"}, el("h3",{},"Stats at a glance",
+    el("span",{class:"muted small"}, Object.values(d.cs).some(v=>v)?"Combat Stages applied":"")));
   const g = el("div",{class:"statgrid"});
-  STATS.forEach(([k,l])=>g.append(el("div",{class:"stat"},
-    el("div",{class:"lbl"},l), el("div",{class:"big"}, d.total[k]))));
+  STATS.forEach(([k,l])=>{
+    const csv = d.cs[k]||0, changed = k!=="hp" && d.eff[k]!==d.total[k];
+    g.append(el("div",{class:"stat"},
+      el("div",{class:"lbl"},l),
+      el("div",{class:"big",style:changed?(d.eff[k]>d.total[k]?"color:var(--good)":"color:var(--bad)"):""}, d.eff[k]),
+      csv?el("div",{class:"sub"}, `${csv>0?"+":""}${csv} CS · was ${d.total[k]}`):""));
+  });
   qc.append(g);
   const dv = el("div",{class:"derived",style:"margin-top:10px"});
   [["Max HP",d.maxHP],["Phys. Eva","+"+d.physEva],["Spec. Eva","+"+d.specEva],["Speed Eva","+"+d.spdEva]]
     .forEach(([l,v])=>dv.append(el("div",{class:"dv"}, el("div",{class:"lbl"},l), el("div",{class:"val"},String(v)))));
   qc.append(dv);
   root.append(qc);
+
+  /* status conditions + Catch DC */
+  root.append(statusCard(p));
+
+  /* combat stages */
+  root.append(combatStagesCard(p));
 
   /* abilities (a Pokémon can have several) */
   root.append(abilitiesCard(p, sp));
@@ -1382,15 +1759,26 @@ function statStepper(cur, canInc, onSet){
   return wrap;
 }
 /* Trainer distributable Stat Points (Core p.20 progression): baseline = Level + 9. */
+/* bonus Stat Points a Trainer's Features/Classes grant via [+Stat] tags (Core: each tag = +1 point,
+   spent on that Stat — [+Any] / [+Attack or Special Attack] are player's choice). */
+function trainerStatTagBonus(t){
+  let n = 0;
+  trainerFeatureObjs(t).forEach(f => {
+    n += ((f && f.tags || "").match(/\[\+[^\]]*\]/g) || []).length;
+  });
+  return n;
+}
 function trainerStatBudget(t){
-  const budget = (t.level||1) + 9;
+  const bonus = trainerStatTagBonus(t);           // Features with [+Stat] tags add to the pool
+  const budget = (t.level||1) + 9 + bonus;
   const spent = STATS.reduce((s,[k]) => s + (t.combat[k].added||0), 0);
-  return { budget, spent, remaining: budget - spent };
+  return { budget, spent, remaining: budget - spent, bonus };
 }
 function trainerBudgetText(tb){
   const over = tb.remaining < 0;
+  const bonusNote = tb.bonus ? ` (${(tb.budget - tb.bonus)}+${tb.bonus} feature tags)` : "";
   return el("span",{class: over?"warnbox":"muted", style:"font-size:12px"},
-    `${tb.spent}/${tb.budget} pts${over?` (${-tb.remaining} over!)`:tb.remaining>0?` · ${tb.remaining} left`:""}`);
+    `${tb.spent}/${tb.budget} pts${bonusNote}${over?` (${-tb.remaining} over!)`:tb.remaining>0?` · ${tb.remaining} left`:""}`);
 }
 function fillMonDerived(p){
   const d = pokeDerived(p);
@@ -1612,7 +2000,7 @@ function openMoveRoll(p, m, sp){
   const stab = mtype && types.includes(mtype);
   const isPhys = /phys/i.test(m.class||"");
   const isSpec = /spec/i.test(m.class||"");
-  const atkStat = isPhys ? d.total.atk : isSpec ? d.total.spatk : 0;
+  const atkStat = isPhys ? d.eff.atk : isSpec ? d.eff.spatk : 0;   // CS-adjusted Attack / Sp.Attack
   const atkLbl = isPhys ? "Attack" : isSpec ? "Sp. Attack" : null;
   const evaNote = isPhys ? "target's Physical Evasion" : isSpec ? "target's Special Evasion" : "target's Evasion";
   const finalDB = m.damageBase != null ? m.damageBase + (stab?2:0) : null;
@@ -2059,17 +2447,21 @@ function moveDetailHTML(m, name){
 }
 /* device-level display prefs */
 function showContest(){ return localStorage.getItem("ptu_show_contest")==="1"; }
+/* GM-only tools show when connected as a cloud GM, or when local "GM mode" is enabled */
+function isGM(){ return mode==="cloud" ? !!cloud.isGM : localStorage.getItem("ptu_gm_mode")==="1"; }
 function openSettings(){
   const wrap = el("div",{});
   const mk = (label, key, hint) => {
     const row = el("label",{class:"inline",style:"gap:10px;align-items:flex-start;padding:8px 0;cursor:pointer"});
     const cb = el("input",{type:"checkbox"}); cb.checked = localStorage.getItem(key)==="1";
-    cb.addEventListener("change",()=>{ localStorage.setItem(key, cb.checked?"1":"0");
+    cb.addEventListener("change",()=>{ localStorage.setItem(key, cb.checked?"1":"0"); render();
       if($("#view-reference")?.classList.contains("active")) renderReference(); });
     row.append(cb, el("div",{}, el("div",{style:"font-weight:700"},label),
       hint?el("div",{class:"small muted"},hint):""));
     return row;
   };
+  wrap.append(mk("GM mode", "ptu_gm_mode",
+    "Show GM-only tools on this device (Catch DC, catch-rate notes). In a cloud campaign this follows your GM code automatically."));
   wrap.append(mk("Show Contest stats", "ptu_show_contest",
     "Display each move's Contest type/effect in its details (Cool, Tough, etc.). Off by default."));
   modal({title:"⚙ Settings", bodyNode:wrap, footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Done")]});
@@ -2388,6 +2780,119 @@ async function cloudDeleteCharacter(id){
   if(error){ console.error(error); toast("⚠ Delete failed"); }
   render();
 }
+/* the GM's own character row */
+function myRow(){ return Object.values(cloud.byId).find(r=>r.owner_id===cloud.userId); }
+/* immediate upsert of a specific row (used for one-off GM writes to any sheet) */
+async function cloudUpsert(row){
+  row.updated_at = new Date().toISOString();
+  row.name = row.data?.name || "";
+  cacheCloud(); cloud.lastSaveTs = Date.now();
+  const { error } = await cloud.client.from("sheets").upsert({
+    id:row.id, campaign:cloud.campaign, owner_id:row.owner_id, owner_name:row.owner_name,
+    name:row.name, data:row.data, updated_at:row.updated_at });
+  if(error){ console.error(error); toast("⚠ Cloud save failed"); return false; }
+  return true;
+}
+/* GM: drop a Pokémon into another player's party and push it to the cloud */
+async function sendPokemonToRow(targetId, mon){
+  if(mode!=="cloud" || !cloud.isGM){ toast("GM cloud only"); return false; }
+  const row = cloud.byId[targetId]; if(!row){ toast("Player not found"); return false; }
+  const m = normPokemon({ ...mon, id: uid() });
+  m.currentHP = null;                                   // arrives at full HP
+  row.data.pokemon = row.data.pokemon || [];
+  if(row.data.pokemon.filter(p=>p.onTeam).length >= 6) m.onTeam = false;  // party full → box
+  row.data.pokemon.push(m);
+  const ok = await cloudUpsert(row);
+  if(ok) toast(`Sent ${m.nickname||getSpecies(m.species)?.name||"Pokémon"} to ${row.owner_name||row.data?.name||"player"} ✓`);
+  if(targetId===cloud.activeId) render();
+  return ok;
+}
+/* GM: move a Pokémon — send a copy to the target and remove it from the source sheet */
+async function transferPokemon(sourceRow, targetId, mon){
+  if(sourceRow && sourceRow.id===targetId){ toast("It's already on that sheet"); return false; }
+  const ok = await sendPokemonToRow(targetId, JSON.parse(JSON.stringify(mon)));
+  if(ok && sourceRow){
+    const arr = sourceRow.data.pokemon || [];
+    const idx = arr.findIndex(x=>x.id===mon.id);
+    if(idx>=0){ arr.splice(idx,1); await cloudUpsert(sourceRow); }
+  }
+  return ok;
+}
+/* GM: send THIS Pokémon to a player — it moves off the current sheet */
+function openSendThisPokemon(p){
+  if(mode!=="cloud" || !cloud.isGM){ toast("Join a campaign as GM to send Pokémon"); return; }
+  const rows = Object.values(cloud.byId);
+  if(!rows.length){ toast("No characters in the campaign yet"); return; }
+  const sp = getSpecies(p.species);
+  const sourceRow = cloud.byId[cloud.activeId];
+  const wrap = el("div",{});
+  wrap.append(el("div",{class:"r-body",style:"margin-bottom:10px"},
+    `Move ${p.nickname||sp?.name||"this Pokémon"} (Lv ${p.level}) to which player? It will be removed from this sheet.`));
+  const list = el("div",{class:"reflist"});
+  rows.sort((a,b)=>(a.owner_name||"").localeCompare(b.owner_name||"")).forEach(r=>{
+    if(r.id===cloud.activeId) return;   // no point sending to the sheet it's already on
+    list.append(el("div",{class:"refitem",style:"cursor:pointer",onclick:async()=>{
+      const ok = await transferPokemon(sourceRow, r.id, p);
+      closeModal();
+      if(ok){ openMon=null; render(); }
+    }},
+      el("div",{class:"r-title"}, r.data?.name||"(unnamed)"),
+      el("div",{class:"r-meta"}, `${r.owner_name||"?"}${r.owner_id===cloud.userId?" (you)":""} · ${(r.data?.pokemon?.length)||0} Pokémon`)));
+  });
+  if(!list.children.length) list.append(el("div",{class:"muted"},"No other players to send to yet."));
+  wrap.append(list);
+  modal({title:`🎁 Send ${p.nickname||sp?.name||"Pokémon"}`, bodyNode:wrap,
+    footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Cancel")]});
+}
+/* GM tool: pick a target player + a species (or copy one of your own), then send */
+function openSendPokemon(presetId){
+  if(mode!=="cloud" || !cloud.isGM){ toast("Join a campaign as GM to send Pokémon"); return; }
+  const rows = Object.values(cloud.byId);
+  if(!rows.length){ toast("No players in the campaign yet"); return; }
+  let targetId = presetId || cloud.activeId || rows[0].id;
+  if(!cloud.byId[targetId]) targetId = rows[0].id;
+  let speciesName = "";
+  const wrap = el("div",{});
+  const sel = el("select");
+  rows.forEach(r => sel.append(el("option",{value:r.id,selected:r.id===targetId},
+    `${r.data?.name||"(unnamed)"} — ${r.owner_name||"?"}${r.owner_id===cloud.userId?" (you)":""}`)));
+  sel.addEventListener("change",()=>targetId=sel.value);
+  wrap.append(el("label",{class:"field"}, el("span",{},"Send to player"), sel));
+
+  const spBtn = el("button",{class:"btn-secondary",style:"text-align:left;width:100%",
+    onclick:()=>openPicker("Choose species", D.species.map(s=>s.name), v=>{ speciesName=v; spBtn.textContent=v; }, "species")}, "choose…");
+  wrap.append(el("label",{class:"field",style:"margin-top:8px"}, el("span",{},"New Pokémon — species"), spBtn));
+  const lvl = el("input",{type:"number",min:1,max:100}); lvl.value=5;
+  const nick = el("input",{type:"text",placeholder:"(optional)"});
+  wrap.append(el("div",{class:"fieldrow",style:"margin-top:8px"},
+    el("label",{class:"field"}, el("span",{},"Level"), lvl),
+    el("label",{class:"field"}, el("span",{},"Nickname"), nick)));
+
+  const mineRow = myRow();
+  const mine = (mineRow?.data?.pokemon) || [];
+  if(mine.length){
+    wrap.append(el("div",{class:"r-meta",style:"margin-top:14px"}, "…or send one of your Pokémon (moves it off your sheet):"));
+    const list = el("div",{class:"reflist",style:"margin-top:6px"});
+    mine.forEach(p=>{ const sp=getSpecies(p.species);
+      list.append(el("div",{class:"refitem",style:"cursor:pointer",
+        onclick:async()=>{ const ok=await transferPokemon(mineRow, targetId, p); closeModal(); if(ok) render(); }},
+        el("div",{class:"r-title"}, `Send ${p.nickname||sp?.name||"?"} · Lv ${p.level}`)));
+    });
+    wrap.append(list);
+  }
+  modal({title:"🎁 Send a Pokémon", bodyNode:wrap, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async()=>{
+      if(!speciesName){ toast("Pick a species (or tap one of your Pokémon to copy)"); return; }
+      const mon = newPokemon(speciesName);
+      mon.level = Math.max(1, Math.min(MAX_LEVEL, parseInt(lvl.value)||5));
+      mon.xp = xpForLevel(mon.level);
+      if(nick.value.trim()) mon.nickname = nick.value.trim();
+      await sendPokemonToRow(targetId, mon);
+      closeModal();
+    }},"Send Pokémon"),
+  ]});
+}
 function renderCloudBanner(){
   const ex=$("#cloudBanner"); if(ex) ex.remove();
   if(mode!=="cloud") return;
@@ -2407,11 +2912,18 @@ function openCloudPanel(){
   const wrap = el("div",{});
   if(mode==="cloud"){
     wrap.append(el("div",{class:"r-body"}, `Connected to “${cloud.campaign}” as ${cloud.name}${cloud.isGM?" — GM, can edit all sheets":" — you can edit your own sheets"}.`));
+    if(cloud.isGM) wrap.append(el("div",{style:"margin-top:10px"},
+      el("button",{class:"btn-primary",onclick:()=>openSendPokemon()},"🎁 Send a Pokémon to a player…")));
     const roster = el("div",{class:"reflist",style:"margin-top:10px"});
     Object.values(cloud.byId).sort((a,b)=>(a.owner_name||"").localeCompare(b.owner_name||"")).forEach(r=>{
-      roster.append(el("div",{class:"refitem",style:"cursor:pointer",onclick:()=>{ cloud.activeId=r.id; openMon=null; closeModal(); switchTab("trainer"); }},
-        el("div",{class:"r-title"}, r.data?.name||"(unnamed)"),
-        el("div",{class:"r-meta"}, `${r.owner_name||"?"}${r.owner_id===cloud.userId?" (you)":""} · ${(r.data?.pokemon?.length)||0} Pokémon`)));
+      const item = el("div",{class:"refitem",style:"cursor:pointer;display:flex;gap:8px;align-items:center",
+        onclick:()=>{ cloud.activeId=r.id; openMon=null; closeModal(); switchTab("trainer"); }},
+        el("div",{style:"flex:1;min-width:0"},
+          el("div",{class:"r-title"}, r.data?.name||"(unnamed)"),
+          el("div",{class:"r-meta"}, `${r.owner_name||"?"}${r.owner_id===cloud.userId?" (you)":""} · ${(r.data?.pokemon?.length)||0} Pokémon`)));
+      if(cloud.isGM) item.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",title:"send a Pokémon to this player",
+        onclick:e=>{ e.stopPropagation(); openSendPokemon(r.id); }},"🎁 Send"));
+      roster.append(item);
     });
     if(!Object.keys(cloud.byId).length) roster.append(el("div",{class:"muted"},"No characters yet."));
     wrap.append(el("div",{class:"r-meta",style:"margin-top:10px"},"Campaign roster (tap to open):"), roster);

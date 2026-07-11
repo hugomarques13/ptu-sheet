@@ -265,6 +265,12 @@ details.spoiler summary{cursor:pointer; font-weight:700; color:var(--muted)}
 .uses .uses-tag{font-size:10px; text-transform:uppercase; letter-spacing:.3px; margin-left:2px}
 .restbtns{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
 
+/* ---------- status condition chips ---------- */
+.statuschip{border:1px solid var(--line); background:var(--panel-2); color:var(--muted);
+  border-radius:20px; padding:4px 11px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap}
+.statuschip:hover{border-color:var(--accent)}
+.statuschip.on{background:var(--bad); color:#fff; border-color:var(--bad)}
+
 /* ---------- images / avatars ---------- */
 .idrow{display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap}
 .avatar-wrap{display:flex; flex-direction:column; align-items:center; gap:4px}
@@ -277,6 +283,30 @@ details.spoiler summary{cursor:pointer; font-weight:700; color:var(--muted)}
   box-shadow:var(--shadow); cursor:pointer}
 .photo-rm{position:absolute; top:4px; right:4px; width:22px; height:22px; border-radius:50%;
   border:1px solid var(--line); background:var(--panel); color:var(--bad); font-weight:800; line-height:1; cursor:pointer}
+
+/* ---------- Level-Up tracker ---------- */
+.lu-summary{display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px}
+.lu-sum{flex:1; min-width:120px; background:var(--panel-2); border:1px solid var(--line);
+  border-radius:var(--radius-sm); padding:10px 12px}
+.lu-sum > b{font-size:22px; color:var(--accent)}
+.lu-levels{display:flex; flex-direction:column; gap:10px}
+.lu-level{border:1px solid var(--line); border-radius:var(--radius-sm); padding:10px 12px; background:var(--panel)}
+.lu-lvl-head{display:flex; align-items:center; gap:10px; margin-bottom:6px; font-weight:700}
+.lu-lvl-num{display:inline-flex; align-items:center; justify-content:center; min-width:30px; height:30px;
+  padding:0 6px; border-radius:8px; background:var(--accent); color:#fff; font-weight:800; font-size:15px}
+.lu-grp-label{font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.4px;
+  color:var(--muted); margin:8px 0 4px}
+.lu-slot{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:4px 0}
+.lu-label{font-size:13px; min-width:130px; color:var(--ink)}
+.lu-pick{padding:6px 12px; font-weight:600; cursor:pointer; min-width:150px; text-align:left; color:var(--muted)}
+.lu-pick.filled{color:var(--ink); border-color:var(--accent)}
+.lu-clear{width:26px; height:26px; border-radius:6px; border:1px solid var(--line);
+  background:var(--panel); color:var(--bad); font-weight:800; line-height:1; cursor:pointer}
+.lu-select{padding:8px 10px; margin:4px 0; max-width:100%}
+.lu-ms{margin-top:8px; padding:8px 10px; border:1px dashed var(--accent);
+  border-radius:var(--radius-sm); background:var(--panel-2)}
+.lu-ms-head{display:flex; align-items:center; gap:6px}
+.lu-ms-star{color:var(--warn)}
 
 /* ---------- stat stepper ---------- */
 .stepper{display:flex; align-items:center; gap:4px; justify-content:center; margin-top:2px}
