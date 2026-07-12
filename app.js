@@ -2692,7 +2692,9 @@ function migrateChar(data, id){
   return data;
 }
 async function fetchRoster(){
-  const { data, error } = await cloud.client.from("sheets").select("*").eq("campaign", cloud.campaign);
+  let q = cloud.client.from("sheets").select("*").eq("campaign", cloud.campaign);
+  if(!cloud.isGM) q = q.eq("owner_id", cloud.userId);   // players load only their own sheets; the GM loads all
+  const { data, error } = await q;
   if(error) throw error;
   cloud.byId = {};
   (data||[]).forEach(r => { r.data = migrateChar(r.data, r.id); cloud.byId[r.id] = r; });
@@ -2730,6 +2732,9 @@ function subscribeRealtime(){
 }
 function onRealtime(payload){
   const type = payload.eventType || payload.type;
+  // players only track their own sheets; ignore realtime events for anyone else's (GM tracks all)
+  const evtOwner = payload.new?.owner_id ?? payload.old?.owner_id;
+  if(!cloud.isGM && evtOwner && evtOwner!==cloud.userId) return;
   if(type==="DELETE"){
     const id = payload.old?.id; if(!id) return;
     delete cloud.byId[id];
