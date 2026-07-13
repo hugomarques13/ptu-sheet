@@ -294,18 +294,16 @@ function resetUses(owner, mode){
 function injuryHealCap(maxHP, injuries){
   return Math.floor(maxHP * (10 - Math.min(10, injuries||0)) / 10);
 }
-/* End of Scene: AP fully restored, Temp HP lost, Scene-frequency uses refreshed (Core p.220) */
-function endScene(){
-  const c = activeChar(); if(!c) return;
+/* apply End of Scene to one character object (AP restored, Temp HP lost, Scene/EOT uses refreshed) */
+function applyEndScene(c){
+  if(!c) return;
   normTrainer(c.trainer);
   c.trainer.usedAP = 0; c.trainer.tempHP = 0; resetUses(c.trainer, "scene");
   (c.pokemon||[]).forEach(p => { normPokemon(p); p.tempHP = 0; resetUses(p, "scene"); });
-  save(); render(); toast("Scene ended — AP restored, Scene uses refreshed");
 }
-/* Extended Rest / End of Day: heal HP to the Injury cap, heal 1 Injury, restore AP & all uses */
-function endDay(){
-  const c = activeChar(); if(!c) return;
-  if(!confirm("End the day (Extended Rest)?\nRestores HP & AP, heals 1 Injury, and refreshes all Scene & Daily uses for the whole party.")) return;
+/* apply Extended Rest to one character object (heal HP & 1 Injury, restore AP & all uses) */
+function applyEndDay(c){
+  if(!c) return;
   const t = c.trainer; normTrainer(t);
   t.usedAP = 0; t.tempHP = 0; resetUses(t, "all");
   t.currentHP = trainerDerived(t).hp;   // Trainers heal fully (no Injuries in this game)
@@ -314,7 +312,36 @@ function endDay(){
     p.injuries = Math.max(0, (p.injuries||0) - 1);
     p.currentHP = pokeDerived(p).maxHP;   // heal to full (already capped by remaining Injuries)
   });
-  save(); render(); toast("Extended Rest — HP & AP restored, 1 Injury healed, all uses refreshed");
+}
+/* the cloud rows a GM's rest affects: every PLAYER's sheet (not the GM's own characters, not the PC) */
+function playerRestRows(){
+  return Object.values(cloud.byId).filter(r =>
+    r && r.data && r.data.trainer && r.owner_id !== cloud.userId && r.owner_id !== PC_OWNER);
+}
+/* End of Scene (Core p.220). GM in cloud → applies to all players; otherwise the active character. */
+function endScene(){
+  if(mode==="cloud" && cloud.isGM){
+    const rows = playerRestRows();
+    rows.forEach(r => applyEndScene(r.data));
+    rows.forEach(r => cloudUpsert(r));
+    render(); toast(`Scene ended for ${rows.length} player sheet${rows.length===1?"":"s"}`); return;
+  }
+  const c = activeChar(); if(!c) return;
+  applyEndScene(c); save(); render(); toast("Scene ended — AP restored, Scene uses refreshed");
+}
+/* Extended Rest / End of Day. GM in cloud → applies to all players; otherwise the active character. */
+function endDay(){
+  const gmAll = mode==="cloud" && cloud.isGM;
+  const scope = gmAll ? "all players" : "this character & its party";
+  if(!confirm(`End the day (Extended Rest) for ${scope}?\nRestores HP & AP, heals 1 Injury, and refreshes all Scene & Daily uses.`)) return;
+  if(gmAll){
+    const rows = playerRestRows();
+    rows.forEach(r => applyEndDay(r.data));
+    rows.forEach(r => cloudUpsert(r));
+    render(); toast(`Extended Rest for ${rows.length} player sheet${rows.length===1?"":"s"}`); return;
+  }
+  const c = activeChar(); if(!c) return;
+  applyEndDay(c); save(); render(); toast("Extended Rest — HP & AP restored, 1 Injury healed, all uses refreshed");
 }
 
 /* ===================================================================
@@ -331,7 +358,7 @@ function newTrainer() {
   return {
     name:"", age:"", gender:"", heightTxt:"", weightTxt:"", size:"Medium", weightClass:3,
     level:1, xp:0, money:0,
-    classes:[], skills, combat, edges:[], features:[],
+    classes:[], skills, combat, edges:[], features:[], techniques:[],
     inventory:[], background:"", notes:"", appearance:"",
     currentHP:null, tempHP:0, injuries:0, usedAP:0, unlocked:false, uses:{}, avatar:"", weapons:[],
     levelUp:{},
@@ -387,6 +414,7 @@ function normTrainer(t){
   if(typeof t.avatar!=="string") t.avatar = "";
   if(!Array.isArray(t.weapons)) t.weapons = [];
   if(!t.levelUp || typeof t.levelUp!=="object") t.levelUp = {};   // per-level choice tracker
+  if(!Array.isArray(t.techniques)) t.techniques = [];             // learned class Techniques
   return t;
 }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -396,11 +424,13 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) { const s = JSON.parse(raw); if (s.characters?.length){
       s.characters.forEach(c => { normTrainer(c.trainer); (c.pokemon||[]).forEach(normPokemon); });
+      if(!Array.isArray(s.encounters)) s.encounters = [];   // GM-only encounter builder (device-local)
+      (s.encounters||[]).forEach(normEncounter);
       return s;
     } }
   } catch(e){}
   const c = newCharacter("My Trainer");
-  return { version:1, activeId:c.id, characters:[c], theme:null };
+  return { version:1, activeId:c.id, characters:[c], theme:null, encounters:[] };
 }
 let saveTimer;
 function save() {
@@ -617,15 +647,19 @@ function render(){
   // the PC tab exists only during cloud play; bounce off it if we drop to local
   const pcBtn = $("#tabPC"); if(pcBtn) pcBtn.hidden = (mode!=="cloud");
   if(currentTab==="pc" && mode!=="cloud"){ switchTab("pokemon"); return; }
+  // the Encounters tab is GM-only
+  const encBtn = $("#tabEncounters"); if(encBtn) encBtn.hidden = !isGM();
+  if(currentTab==="encounters" && !isGM()){ switchTab("trainer"); return; }
   refreshCharSelect();
   const ac = activeChar();
   $("#partyCount").textContent = (ac?.pokemon?.length) || "";
   renderCloudBanner();
-  if (currentTab==="trainer")   renderTrainer();
-  if (currentTab==="pokemon")   renderPokemon();
-  if (currentTab==="pc")        renderPC();
-  if (currentTab==="battle")    renderBattle();
-  if (currentTab==="reference") renderReference();
+  if (currentTab==="trainer")    renderTrainer();
+  if (currentTab==="pokemon")    renderPokemon();
+  if (currentTab==="pc")         renderPC();
+  if (currentTab==="battle")     renderBattle();
+  if (currentTab==="encounters") renderEncounters();
+  if (currentTab==="reference")  renderReference();
   applyReadonlyLock();
 }
 /* lock the sheet views when viewing a cloud character you can't edit */
@@ -918,14 +952,9 @@ function trainerVitalsCard(t){
     el("span",{class:"small muted"},`· ${maxAP-t.usedAP} AP left`));
   card.append(apRow);
 
-  /* rest buttons */
-  const rest = el("div",{class:"restbtns"});
-  rest.append(
-    el("button",{class:"btn-secondary",title:"AP + Scene uses refresh, Temp HP lost",onclick:endScene},"🌙 End Scene"),
-    el("button",{class:"btn-primary",title:"Extended Rest: full heal, AP + all uses refresh",onclick:endDay},"☀ End Day (Rest)"));
-  card.append(rest);
+  /* End Scene / End Day now live in the persistent top bar (🌙 / ☀), not here */
   card.append(el("div",{class:"small muted",style:"margin-top:6px"},
-    "End Scene: AP restored, Scene-uses refreshed. End Day: full HP & AP, refreshes Daily uses, and heals 1 Injury on your Pokémon — for you and your whole party."));
+    "Use 🌙 End Scene / ☀ End Day at the top of the screen. End Scene restores AP & Scene uses; End Day fully heals, refreshes Daily uses, and heals 1 Injury on your Pokémon."));
   return card;
 }
 
@@ -1025,7 +1054,9 @@ const _classFeatCache = {};
 function featuresForClass(className){
   if(_classFeatCache[className]) return _classFeatCache[className];
   const belongs = new Set();
-  _directClassesOf.forEach((set, fname) => { if(set.has(className)) belongs.add(fname); });
+  // direct membership via token match (works even for canonical class names with no class row of their own,
+  // e.g. "Capture Specialist" whose only class row is the alias "Capture Skills")
+  D.features.forEach(f => { if(_featTokens.get(f.name).some(tok => tokenMatchesClass(tok, className))) belongs.add(f.name); });
   let changed = true;
   while(changed){
     changed = false;
@@ -1058,6 +1089,19 @@ function classFeatureCount(t, ref){
   n += taken.size;                       // each matching class the user took grants its class Feature
   return n;
 }
+/* ---------- class Techniques (Capture Techniques, Signature Techniques, terrain talents, …) ----------
+   Parsed from the sheet's "Techniques" section; each {name, prereq (parent class/feature), frequency, effect}. */
+const TECHS = Array.isArray(D.techniques) ? D.techniques : [];
+const techByName = new Map(TECHS.map(x => [x.name, x]));
+/* Techniques belonging to a class: their prereq names the class (alias) or a Feature of the class. */
+function techniquesForClass(className){
+  const featSet = classFeatNameSet(className);
+  return TECHS.filter(tq => membershipTokens(tq.prereq).some(tok => tokenMatchesClass(tok, className) || featSet.has(tok)));
+}
+function techniqueDetailHTML(name){
+  const tq = techByName.get(name); if(!tq) return "<span class='muted'>—</span>";
+  return `<div class="r-meta">${esc(tq.frequency||"")}${tq.prereq?" · Prereq: "+esc(tq.prereq):""}</div><div class="r-body">${esc(tq.effect||"")}</div>`;
+}
 /* check a feature's prerequisites against a trainer; returns {met, unmet:[reasons]} */
 function prereqStatus(t, feature){
   const unmet = [];
@@ -1070,6 +1114,9 @@ function prereqStatus(t, feature){
     m = tok.match(/^(Pathetic|Untrained|Novice|Adept|Expert|Master)\s+(.+)$/i);  // "Adept Intimidate"
     if(m){ const sk = SKILLS.find(s=>s[1].toLowerCase()===m[2].trim().toLowerCase() || s[0].toLowerCase()===m[2].trim().toLowerCase());
       if(sk){ if(rankNum(t.skills[sk[0]]) < rankNum(m[1])) unmet.push(tok); return; } }
+    // satisfied if the trainer took this as a Class — directly, or under an aliased class-row name
+    if((t.classes||[]).includes(tok)) return;
+    if(classNamesForRef(tok).some(cn => (t.classes||[]).includes(cn))) return;
     if(classNameSet.has(tok)){ if(!t.classes.includes(tok)) unmet.push(tok); return; }   // a class
     if(D.features.some(f=>f.name===tok)){ if(!t.features.includes(tok)) unmet.push(tok); return; } // another feature
     /* anything else (narrative / stat prereqs) is left for the player to judge */
@@ -1094,6 +1141,27 @@ function openClassFeaturePicker(t, className){
   openPicker(`Learn a ${className} Feature${t.unlocked?" (🔓)":""}`, learnable, name=>{
     if(!t.features.includes(name)){ t.features.push(name); save(); render(); toast(`Learned ${name} ✓`); }
   }, "feature", null, lockFn);
+}
+function openTechniquePicker(t, className){
+  const all = techniquesForClass(className);
+  const learnable = all.filter(tq => !t.techniques.includes(tq.name)).map(tq => tq.name);
+  if(!learnable.length){ toast(all.length ? "All techniques learned" : "No techniques for this class"); return; }
+  openPicker(`Learn a ${className} Technique`, learnable, name=>{
+    if(!t.techniques.includes(name)){ t.techniques.push(name); save(); render(); toast(`Learned ${name} ✓`); }
+  }, "technique");
+}
+/* one learned Technique listed under its class — expandable description + remove */
+function classTechniqueRow(t, techName){
+  const row = el("details",{class:"spoiler",style:"margin-top:6px"});
+  const tq = techByName.get(techName);
+  const meta = tq ? tq.frequency : "";
+  row.append(el("summary",{},
+    el("span",{style:"color:var(--ink);font-weight:700"}, techName),
+    meta ? el("span",{class:"muted small",style:"margin-left:8px"}, meta) : "",
+    el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"forget this technique",
+      onclick:e=>{ e.preventDefault(); const i=t.techniques.indexOf(techName); if(i>=0){ t.techniques.splice(i,1); save(); render(); toast(`Forgot ${techName}`); } }},"×")));
+  row.append(el("div",{class:"small",style:"margin-top:6px",html: techniqueDetailHTML(techName)}));
+  return row;
 }
 /* one learned Feature listed under its class — expandable description + remove */
 function classFeatureRow(t, featName){
@@ -1123,6 +1191,8 @@ function classesCard(){
     const feats = featuresForClass(name);
     const total = feats.length;
     const picked = feats.filter(f => t.features.includes(f.name)).map(f=>f.name);
+    const techs = techniquesForClass(name);
+    const pickedTechs = techs.filter(tq => t.techniques.includes(tq.name)).map(tq=>tq.name);
     const sig = featureByName.get(name);   // the class-defining Feature (same name), if any
     // block per class: a header row (name + Learn button + remove) over its features and rules
     const block = el("div",{style:"border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;margin-top:8px"});
@@ -1130,6 +1200,7 @@ function classesCard(){
     head.append(el("span",{style:"font-weight:700"}, name,
       total? el("span",{class:"muted small",style:"margin-left:8px"}, `· ${picked.length}/${total} features`):""));
     const acts = el("div",{class:"inline"});
+    // always offer the Learn menu when the class has any Features — locked ones show what they need
     if(total) acts.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
       onclick:()=>openClassFeaturePicker(t,name)}, "＋ Learn Feature"));
     acts.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove class",
@@ -1151,6 +1222,15 @@ function classesCard(){
       block.append(el("div",{class:"small muted",style:"margin-top:6px"},"No Features picked from this class yet — tap “＋ Learn Feature”."));
     } else {
       block.append(el("div",{class:"small muted",style:"margin-top:4px"},"No class-specific Features for this one in the database."));
+    }
+    // Techniques (Capture Techniques, terrain talents, …) — special sub-abilities with their own menu
+    if(techs.length){
+      const th = el("div",{class:"inline",style:"justify-content:space-between;gap:8px;margin-top:10px"});
+      th.append(el("span",{class:"small muted",style:"font-weight:700"}, `${name} Techniques (${pickedTechs.length}/${techs.length})`));
+      th.append(el("button",{class:"btn-secondary",style:"padding:4px 9px",
+        onclick:()=>openTechniquePicker(t,name)}, "＋ Learn Technique"));
+      block.append(th);
+      pickedTechs.forEach(tn => block.append(classTechniqueRow(t, tn)));
     }
     // class rules blurb
     const sp = el("details",{style:"margin-top:6px"});
@@ -2569,6 +2649,219 @@ function battleActionRow(a, favs){
 }
 
 /* ===================================================================
+   ENCOUNTERS  (GM-only) — build combat encounters of NPC Trainers & wild
+   Pokémon, roll their actions at a glance, and award XP by the book (Core p.460).
+   Stored device-locally in state.encounters (never synced — GM prep).
+=================================================================== */
+function newEncounter(name){ return { id:uid(), name:name||"New Encounter", sig:2, players:1, mons:[], trainers:[] }; }
+function normEncounter(e){
+  if(!e) return e;
+  if(!Array.isArray(e.mons)) e.mons=[];
+  if(!Array.isArray(e.trainers)) e.trainers=[];
+  if(typeof e.sig!=="number") e.sig=2;
+  if(typeof e.players!=="number") e.players=1;
+  e.mons.forEach(normPokemon);
+  e.trainers.forEach(tr=>{ if(tr.trainer) normTrainer(tr.trainer); if(!Array.isArray(tr.pokemon)) tr.pokemon=[]; tr.pokemon.forEach(normPokemon); });
+  return e;
+}
+function encList(){ return state.encounters || (state.encounters=[]); }
+function activeEncounter(){ const a=encList(); return a.find(e=>e.id===state.activeEncounterId) || a[0]; }
+/* encounters are device-local → always persist to localStorage, even in cloud mode (where save() upserts a cloud sheet) */
+function saveEnc(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){ toast("⚠ Could not save encounter"); } }
+function toggleSet(set, v){ set.has(v)?set.delete(v):set.add(v); return [...set]; }
+/* Base Experience Value: sum of enemy levels; Trainers count double (Core p.460) */
+function encounterBaseXP(enc){
+  let base=0;
+  (enc.mons||[]).forEach(p=> base += (p.level||0));
+  (enc.trainers||[]).forEach(tr=>{ base += (tr.trainer?.level||0)*2; (tr.pokemon||[]).forEach(p=> base += (p.level||0)); });
+  return base;
+}
+const encMonName = p => p.nickname || getSpecies(p.species)?.name || p.species || "Pokémon";
+
+function addEncounterMon(enc, into){
+  openPicker("Add a Pokémon", D.species.map(s=>s.name), name=>{
+    const p=newPokemon(name); const sp=getSpecies(name);
+    p.level=5; p.xp=xpForLevel(5);
+    if(sp){ p.moves = speciesLevelupNames(sp, p.level).slice(-6);           // pre-load level-up moves
+            if(sp.abilities?.basic?.length) p.abilities=[sp.abilities.basic[0]]; }
+    (into||enc.mons).push(p); saveEnc(); renderEncounters();
+  }, "species");
+}
+function addEncounterTrainer(enc){
+  const n=prompt("Trainer name:","Trainer"); if(n===null) return;
+  const t=newTrainer(); t.name=n||"Trainer"; t.level=1;
+  enc.trainers.push({ id:uid(), trainer:t, pokemon:[] }); saveEnc(); renderEncounters();
+}
+function addEncMove(p, sp){
+  const names = (sp ? speciesFullLearnset(sp) : D.moves.map(m=>m.name)).filter(n=>!p.moves.includes(n));
+  openPicker("Add a move", [...new Set(names)], name=>{ p.moves.push(name); saveEnc(); renderEncounters(); }, "move");
+}
+
+function encounterMoveRow(p, sp, m, mn, favSet, onFav, isStruggle){
+  const row=el("div",{class:"inline",style:"gap:6px;align-items:center;margin-top:5px;justify-content:space-between"});
+  const left=el("div",{class:"inline",style:"gap:6px;align-items:center;min-width:0;flex:1"});
+  if(isStruggle) left.append(el("span",{class:"muted small",title:"always available"},"⚔"));
+  else { const isF=favSet.has(mn); left.append(el("button",{class:"actstar"+(isF?" on":""),
+    title:isF?"unpin favourite":"pin favourite",onclick:onFav}, isF?"★":"☆")); }
+  left.append(el("span",{style:"font-weight:700;white-space:nowrap"}, m?m.name:mn), m?el("span",{html:typeBadge(effectiveMoveType(p,m))}):"");
+  if(m) left.append(el("span",{class:"small muted",style:"min-width:0;overflow:hidden;text-overflow:ellipsis"}, moveLineShort(m)));
+  row.append(left);
+  const acts=el("div",{class:"inline",style:"gap:6px"});
+  if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"roll this move",onclick:()=>openMoveRoll(p,m,sp)},"🎲"));
+  if(!isStruggle) acts.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted)",title:"remove move",
+    onclick:()=>{ const i=p.moves.indexOf(mn); if(i>=0){ p.moves.splice(i,1); saveEnc(); renderEncounters(); } }},"×"));
+  row.append(acts);
+  return row;
+}
+function encounterMonCard(enc, p, list){
+  normPokemon(p);
+  const sp=getSpecies(p.species), d=pokeDerived(p), maxHP=d.maxHP;
+  if(p.currentHP==null) p.currentHP=maxHP;
+  const card=el("div",{style:"border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px;margin-top:8px;background:var(--panel-2)"});
+  const head=el("div",{class:"inline",style:"gap:10px;align-items:flex-start"});
+  head.append(monSprite(p.species,p.shiny,"s-sm",p.image||undefined));
+  const nw=el("div",{style:"flex:1;min-width:0"});
+  nw.append(el("div",{style:"font-weight:800"}, encMonName(p), " ", el("span",{html:(sp?.types||[]).map(typeBadge).join(" ")})));
+  const lvIn=el("input",{type:"number",min:1,max:100,value:p.level,style:"width:60px",title:"level"});
+  lvIn.addEventListener("change",()=>{ const l=Math.max(1,Math.min(100,parseInt(lvIn.value)||1)); p.level=l; p.xp=xpForLevel(l); p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); });
+  nw.append(el("div",{class:"small muted",style:"margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"},
+    "Lv", lvIn, `· Atk ${d.eff.atk} · SpA ${d.eff.spatk} · Def ${d.eff.def} · SpD ${d.eff.spdef} · Spd ${d.eff.spd}`));
+  head.append(nw);
+  head.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove",
+    onclick:()=>{ const i=list.indexOf(p); if(i>=0){ list.splice(i,1); saveEnc(); renderEncounters(); } }},"×"));
+  card.append(head);
+  // HP tracker
+  const setHP=v=>{ p.currentHP=Math.max(-99,Math.min(maxHP,v)); saveEnc(); renderEncounters(); };
+  const pct=Math.max(0,Math.min(100,Math.round(p.currentHP/maxHP*100)));
+  card.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"},
+    el("span",{class:"small muted",style:"font-weight:700;white-space:nowrap"}, `HP ${p.currentHP}/${maxHP}`),
+    el("div",{class:"hpbar",style:"flex:1;min-width:120px"}, el("i",{style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`})),
+    el("button",{class:"linkbtn",style:"padding:2px 6px",title:"full heal",onclick:()=>setHP(maxHP)},"MAX")));
+  card.append(damageHealRow(()=>p.currentHP, setHP));
+  // moves — favourites first, each rollable
+  const favSet=new Set(p.encFav||[]);
+  const mw=el("div",{style:"margin-top:8px"});
+  mw.append(el("div",{class:"inline",style:"justify-content:space-between"},
+    el("span",{class:"small muted",style:"font-weight:700"},"Actions — tap 🎲 to roll"),
+    el("button",{class:"linkbtn",onclick:()=>addEncMove(p,sp)},"+ move")));
+  const st=struggleFor(p,sp); if(st) mw.append(encounterMoveRow(p,sp,st,st.name,favSet,null,true));
+  const ordered=[...p.moves].sort((a,b)=>(favSet.has(b)?1:0)-(favSet.has(a)?1:0));
+  ordered.forEach(mn=>{ const m=moveByName.get(mn.toLowerCase());
+    mw.append(encounterMoveRow(p,sp,m,mn,favSet,()=>{ p.encFav=toggleSet(favSet,mn); saveEnc(); renderEncounters(); })); });
+  card.append(mw);
+  if(p.abilities?.length) card.append(el("div",{class:"small muted",style:"margin-top:6px"}, "Abilities: "+p.abilities.join(", ")));
+  return card;
+}
+function encounterTrainerCard(enc, tr){
+  const t=tr.trainer; normTrainer(t);
+  const card=el("div",{style:"border:1px solid var(--accent);border-radius:var(--radius-sm);padding:10px;margin-top:8px"});
+  const head=el("div",{class:"inline",style:"gap:8px;justify-content:space-between;flex-wrap:wrap"});
+  const info=el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap"});
+  const nameIn=el("input",{value:t.name||"",placeholder:"Trainer name",style:"font-weight:800;width:150px"});
+  nameIn.addEventListener("change",()=>{ t.name=nameIn.value; saveEnc(); renderEncounters(); });
+  const lvIn=el("input",{type:"number",min:1,max:100,value:t.level,style:"width:58px",title:"trainer level"});
+  lvIn.addEventListener("change",()=>{ t.level=Math.max(1,parseInt(lvIn.value)||1); saveEnc(); });
+  info.append(el("span",{style:"font-weight:800"},"👤"), nameIn, el("span",{class:"small muted"},"Lv"), lvIn);
+  head.append(info);
+  head.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove trainer",
+    onclick:()=>{ enc.trainers=enc.trainers.filter(x=>x.id!==tr.id); saveEnc(); renderEncounters(); }},"×"));
+  card.append(head);
+  // trainer HP + Struggle roll
+  const maxHP=trainerDerived(t).hp; if(t.currentHP==null) t.currentHP=maxHP;
+  const setHP=v=>{ t.currentHP=Math.max(-99,Math.min(maxHP,v)); saveEnc(); renderEncounters(); };
+  const pct=Math.max(0,Math.min(100,Math.round(t.currentHP/maxHP*100)));
+  card.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"},
+    el("span",{class:"small muted",style:"font-weight:700;white-space:nowrap"}, `HP ${t.currentHP}/${maxHP}`),
+    el("div",{class:"hpbar",style:"flex:1;min-width:120px"}, el("i",{style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`}))));
+  card.append(damageHealRow(()=>t.currentHP, setHP));
+  const stg=trainerStruggle(t);
+  card.append(el("div",{class:"inline",style:"gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap"},
+    el("span",{class:"small",style:"font-weight:700"}, `⚔ ${stg.name}: ${stg.cls} · AC ${stg.ac} · DB ${stg.damageBase} · ${stg.range}`),
+    el("button",{class:"btn-secondary",style:"padding:5px 10px",onclick:()=>openTrainerAttack(t)},"🎲 Roll")));
+  // trainer's Pokémon
+  card.append(el("div",{class:"inline",style:"justify-content:space-between;margin-top:10px"},
+    el("span",{class:"small muted",style:"font-weight:700"},`${t.name||"Trainer"}'s Pokémon (${tr.pokemon.length})`),
+    el("button",{class:"linkbtn",onclick:()=>addEncounterMon(enc, tr.pokemon)},"+ add Pokémon")));
+  tr.pokemon.forEach(p=> card.append(encounterMonCard(enc, p, tr.pokemon)));
+  return card;
+}
+function openExpCalc(enc){
+  const body=el("div",{});
+  const rows=[];
+  (enc.mons||[]).forEach(p=> rows.push([encMonName(p)+" · wild", `Lv ${p.level}`, p.level]));
+  (enc.trainers||[]).forEach(tr=>{
+    rows.push([(tr.trainer?.name||"Trainer")+" · Trainer", `Lv ${tr.trainer?.level} × 2`, (tr.trainer?.level||0)*2]);
+    (tr.pokemon||[]).forEach(p=> rows.push(["↳ "+encMonName(p), `Lv ${p.level}`, p.level]));
+  });
+  const base=encounterBaseXP(enc);
+  const tbl=el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"});
+  if(!rows.length) tbl.append(el("span",{class:"muted"},"No combatants yet — add some enemies first."));
+  rows.forEach(r=> tbl.append(el("div",{class:"inline",style:"justify-content:space-between;gap:8px"},
+    el("span",{}, r[0]), el("span",{class:"muted small"}, `${r[1]} = ${r[2]}`))));
+  tbl.append(el("div",{class:"inline",style:"justify-content:space-between;gap:8px;border-top:1px solid var(--line);margin-top:6px;padding-top:6px;font-weight:800"},
+    el("span",{},"Base Experience Value"), el("span",{}, String(base))));
+  body.append(tbl);
+  const sigIn=el("input",{type:"number",min:1,step:0.5,value:enc.sig});
+  const plIn =el("input",{type:"number",min:1,value:enc.players});
+  const lbl=(txt,node,hint)=>el("label",{class:"field"}, el("span",{}, txt), node, hint?el("span",{class:"small muted",style:"font-weight:400"},hint):"");
+  const inRow=el("div",{class:"fieldrow"});
+  inRow.append(lbl("Significance ×",sigIn,"1–1.5 minor · 2–3 average · 4–5 major"), lbl("Players sharing XP",plIn,"count Players, not Pokémon"));
+  const out=el("div",{class:"card",style:"margin:0"});
+  const recalc=()=>{
+    const sig=Math.max(0,parseFloat(sigIn.value)||0), pl=Math.max(1,parseInt(plIn.value)||1);
+    enc.sig=sig; enc.players=pl; saveEnc();
+    const total=Math.round(base*sig), per=Math.round(total/pl);
+    out.innerHTML="";
+    out.append(
+      el("div",{style:"font-size:15px"}, `${base} Base × ${sig} significance = `, el("b",{}, String(total)), " total XP"),
+      el("div",{style:"font-size:22px;font-weight:800;margin-top:6px;color:var(--accent)"}, `${per} XP per player`),
+      el("div",{class:"small muted",style:"margin-top:4px"}, `${total} ÷ ${pl} player${pl===1?"":"s"}. Each player then splits their share among the Pokémon they used (Core p.460).`));
+  };
+  sigIn.addEventListener("input",recalc); plIn.addEventListener("input",recalc);
+  body.append(inRow, out); recalc();
+  modal({title:`🧮 EXP — ${enc.name}`, bodyNode:body});
+}
+function renderEncounters(){
+  const root=$("#view-encounters"); root.innerHTML="";
+  const arr=encList();
+  const bar=el("div",{class:"card"});
+  const top=el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;justify-content:space-between"});
+  const leftc=el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap"});
+  const sel=el("select",{title:"Active encounter"});
+  if(!arr.length) sel.append(el("option",{value:""},"— no encounters —"));
+  const cur=activeEncounter();
+  arr.forEach(e=> sel.append(el("option",{value:e.id, selected:e.id===cur?.id}, e.name||"(unnamed)")));
+  sel.addEventListener("change",()=>{ state.activeEncounterId=sel.value; saveEnc(); renderEncounters(); });
+  leftc.append(sel);
+  leftc.append(el("button",{class:"btn ghost",onclick:()=>{ const n=prompt("Encounter name:","New Encounter"); if(n===null)return; const e=newEncounter(n||"New Encounter"); arr.push(e); state.activeEncounterId=e.id; saveEnc(); renderEncounters(); }},"＋ New"));
+  if(cur){
+    leftc.append(el("button",{class:"btn ghost",title:"rename",onclick:()=>{ const n=prompt("Rename encounter:",cur.name); if(n===null)return; cur.name=n; saveEnc(); renderEncounters(); }},"✎"));
+    leftc.append(el("button",{class:"btn ghost danger",title:"delete",onclick:()=>{ if(!confirm(`Delete encounter "${cur.name}"?`))return; state.encounters=arr.filter(x=>x.id!==cur.id); state.activeEncounterId=state.encounters[0]?.id||null; saveEnc(); renderEncounters(); }},"🗑"));
+  }
+  top.append(leftc, el("span",{class:"small muted"},"GM only · saved on this device"));
+  bar.append(top); root.append(bar);
+  if(!cur){ root.append(el("div",{class:"card"}, el("span",{class:"muted"},"No encounter yet — tap ＋ New to build one, then add Trainers and wild Pokémon."))); return; }
+  // settings + EXP
+  const setc=el("div",{class:"card"});
+  setc.append(el("h3",{}, cur.name,
+    el("button",{class:"btn-primary",style:"padding:6px 12px",onclick:()=>openExpCalc(cur)},"🧮 Calculate EXP")));
+  setc.append(el("div",{class:"small muted",style:"margin-top:4px"}, `Base XP so far: `, el("b",{}, String(encounterBaseXP(cur))), ` (sum of enemy levels; Trainers count double). Significance ×${cur.sig}, ${cur.players} player${cur.players===1?"":"s"} — edit in Calculate EXP.`));
+  root.append(setc);
+  // wild Pokémon
+  const mc=el("div",{class:"card"}, el("h3",{},`Wild Pokémon (${cur.mons.length})`,
+    el("button",{class:"linkbtn h-act",onclick:()=>addEncounterMon(cur)},"+ add Pokémon")));
+  if(!cur.mons.length) mc.append(el("span",{class:"muted small"},"none — add a wild Pokémon; it comes pre-loaded with level-up moves."));
+  cur.mons.forEach(p=> mc.append(encounterMonCard(cur, p, cur.mons)));
+  root.append(mc);
+  // trainers
+  const tc=el("div",{class:"card"}, el("h3",{},`Trainers (${cur.trainers.length})`,
+    el("button",{class:"linkbtn h-act",onclick:()=>addEncounterTrainer(cur)},"+ add Trainer")));
+  if(!cur.trainers.length) tc.append(el("span",{class:"muted small"},"none — add a Trainer NPC and give them Pokémon."));
+  cur.trainers.forEach(tr=> tc.append(encounterTrainerCard(cur, tr)));
+  root.append(tc);
+}
+
+/* ===================================================================
    REFERENCE VIEW  (Dex / Moves / Abilities / Items browsers)
 =================================================================== */
 let refSub = "species", refQuery = "";
@@ -2767,7 +3060,8 @@ function openPicker(title, names, onPick, refKind, markFn, lockFn){
       const textCol = el("div",{style:"flex:1;min-width:0"},
         el("div",{class:"pi-title"}, n + (marked?"  ★":"") + (lock?"  🔒":"")),
         refKind==="move"? pickMoveSub(n) : refKind==="species"? pickSpeciesSub(n)
-          : refKind==="feature"? pickFeatureSub(n) : refKind==="held"? pickHeldSub(n) : "",
+          : refKind==="feature"? pickFeatureSub(n) : refKind==="held"? pickHeldSub(n)
+          : refKind==="technique"? pickTechniqueSub(n) : "",
         lock? el("div",{class:"pi-sub",style:"color:var(--bad)"}, lock) : "");
       const item = refKind==="species"
         ? el("div",{class:"pickitem",style:"display:flex;gap:10px;align-items:center"}, monSprite(n,false,"s-xs"), textCol)
@@ -2788,6 +3082,9 @@ function pickMoveSub(name){ const m=moveByName.get(name.toLowerCase()); return m
 function pickSpeciesSub(name){ const s=getSpecies(name); return s?el("div",{class:"pi-sub",html:(s.types||[]).map(typeBadge).join(" ")}):""; }
 function pickFeatureSub(name){ const f=D.features.find(x=>x.name===name); if(!f) return "";
   const meta=[f.frequency, f.prerequisites?("Prereq: "+f.prerequisites):""].filter(Boolean).join(" · ");
+  return meta?el("div",{class:"pi-sub"}, meta):""; }
+function pickTechniqueSub(name){ const tq=techByName.get(name); if(!tq) return "";
+  const meta=[tq.frequency, tq.prereq?("Prereq: "+tq.prereq):""].filter(Boolean).join(" · ");
   return meta?el("div",{class:"pi-sub"}, meta):""; }
 
 /* ===================================================================

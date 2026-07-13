@@ -35,6 +35,7 @@
   <button class="tab" data-tab="pokemon">Pokémon <span id="partyCount" class="pill"></span></button>
   <button class="tab" id="tabPC" data-tab="pc" hidden>🖥 PC</button>
   <button class="tab" data-tab="battle">⚔ Battle</button>
+  <button class="tab" id="tabEncounters" data-tab="encounters" hidden>👹 Encounters</button>
   <button class="tab" data-tab="reference">Reference</button>
   <div class="rest-actions">
     <button id="btnEndScene" class="btn ghost" title="AP + Scene &amp; EOT uses refresh, Temp HP lost">🌙 End Scene</button>
@@ -47,6 +48,7 @@
   <section id="view-pokemon" class="view"></section>
   <section id="view-pc" class="view"></section>
   <section id="view-battle" class="view"></section>
+  <section id="view-encounters" class="view"></section>
   <section id="view-reference" class="view"></section>
 </main>
 
@@ -54,9 +56,9 @@
 <div id="toast"></div>
 
 <!-- App core (must not depend on the network): data, config, then the app itself. -->
-<script src="data/data.js?v=3"></script>
+<script src="data/data.js?v=4"></script>
 <script src="config.js"></script>
-<script src="app.js?v=43"></script>
+<script src="app.js?v=47"></script>
 <!-- Cloud sync SDK (optional) loads async & LAST so it can never block the app from starting.
      app.js waits for it and enables ☁ cloud sync once it arrives. -->
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
