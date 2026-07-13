@@ -150,6 +150,35 @@ function evolutionsRemaining(p){
   const maxStage=Math.max(...sp.evolution.map(e=>e.stage));
   return Math.max(0, maxStage - mine.stage);
 }
+/* An evolution entry's `name` bakes in the method ("Vaporeon Water Stone", "Raichu Thunderstone").
+   Split it into the real species (matched against the Dex) and the leftover method text. */
+function parseEvoEntry(entryName){
+  const words = String(entryName||"").trim().split(/\s+/);
+  for(let take=words.length; take>=1; take--){
+    const cand = words.slice(0,take).join(" ");
+    if(getSpecies(cand)) return { species: getSpecies(cand).name, method: words.slice(take).join(" ") };
+  }
+  return { species: entryName, method: "" };
+}
+/* the immediate next-stage evolution option(s) for a Pokémon, with level/method requirements */
+function nextEvolutions(p){
+  const sp = getSpecies(p.species); if(!sp?.evolution?.length) return [];
+  const mine = sp.evolution.find(e=>e.name.toLowerCase()===sp.name.toLowerCase());
+  if(!mine) return [];
+  return sp.evolution.filter(e=>e.stage===mine.stage+1).map(e=>{
+    const parsed = parseEvoEntry(e.name);
+    return { target: parsed.species, method: parsed.method, min: e.min };
+  }).filter(e=>getSpecies(e.target));
+}
+/* Evolve a Pokémon into a target species, keeping its stats, moves, abilities, level and XP. */
+function evolveTo(p, targetName){
+  const sp = getSpecies(targetName); if(!sp) return;
+  if(!confirm(`Evolve ${p.nickname || getSpecies(p.species)?.name || "this Pokémon"} into ${sp.name}?\nStats, moves, abilities, level and XP are kept.`)) return;
+  p.species = sp.name;
+  const m = pokeDerived(p).maxHP;                         // clamp HP to the new species' max
+  if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
+  save(); refreshMon(p); toast(`Evolved into ${sp.name}! ✨`);
+}
 /* PTU 1.05 Capture Rate (Core p.214). Returns {capturable, rate, breakdown:[[label,delta]]}. */
 function captureRate(p, opts={}){
   const d = pokeDerived(p);
@@ -206,7 +235,7 @@ function freqInfo(freqRaw){
   if(!u) return {kind:"other", max:0};
   if(u.startsWith("static")) return {kind:"static", max:0};
   if(u.startsWith("at-will")||u.startsWith("at will")) return {kind:"atwill", max:0};
-  if(u.startsWith("eot")) return {kind:"eot", max:0};
+  if(u.startsWith("eot")) return {kind:"eot", max:1};   // Every Other Turn — a single cooldown pip
   let m = usage.match(/^scene(?:\s*x\s*(\d+))?/i);
   if(m) return {kind:"scene", max: m[1] ? +m[1] : 1};
   m = usage.match(/^daily(?:\s*x\s*(\d+))?/i);
@@ -214,7 +243,7 @@ function freqInfo(freqRaw){
   if(/\bap\b|bind|drain/.test(u)) return {kind:"ap", max:0};
   return {kind:"other", max:0};
 }
-const freqTrackable = info => info.kind==="scene" || info.kind==="daily";
+const freqTrackable = info => info.kind==="scene" || info.kind==="daily" || info.kind==="eot";
 function useKey(kind, name){ return kind + ":" + String(name).toLowerCase(); }
 function splitKey(key){ const i=key.indexOf(":"); return [key.slice(0,i), key.slice(i+1)]; }
 function usesLeft(owner, key, max){ return Math.max(0, max - ((owner.uses && owner.uses[key]) || 0)); }
@@ -228,15 +257,20 @@ function usesControl(owner, kind, name, freqRaw, rerender){
     owner.uses = owner.uses || {};
     owner.uses[key] = Math.min(max, Math.max(0, max - nl));   // store consumed = max − remaining
     save(); (rerender||(()=>{}))(); };
-  const wrap = el("span",{class:"uses"+(left<=0?" spent":""),
-    title:`${info.kind==="scene"?"Per Scene":"Per Day"} — ${left}/${max} uses left (tap the boxes)`});
+  const label = info.kind==="scene" ? "Per Scene" : info.kind==="daily" ? "Per Day" : "Every Other Turn";
+  const tag   = info.kind==="scene" ? "scene"     : info.kind==="daily" ? "day"     : "EOT";
+  const tip   = info.kind==="eot" ? "Every Other Turn — tap when used (refreshes each Scene)"
+                                  : `${label} — ${left}/${max} uses left (tap the boxes)`;
+  const wrap = el("span",{class:"uses"+(left<=0?" spent":""), title:tip,
+    // when this widget lives inside a <summary>, keep taps on it from toggling the spoiler
+    onclick:e=>{ e.preventDefault(); e.stopPropagation(); }});
   for(let i=0;i<max;i++){
     const filled = i < left;                                  // leftmost boxes = remaining uses
     wrap.append(el("button",{class:"pip"+(filled?" on":""),
       title:filled?"spend this use":"restore this use",
       onclick:e=>setLeft(filled ? i : i+1, e)}));            // tap-to-set level
   }
-  wrap.append(el("span",{class:"uses-tag muted"}, info.kind==="scene"?"scene":"day"));
+  wrap.append(el("span",{class:"uses-tag muted"}, tag));
   return wrap;
 }
 /* look up the frequency of a stored use-key's item */
@@ -247,12 +281,13 @@ function itemFreqForKey(key){
   if(kind==="feature"){ const f=D.features.find(x=>x.name.toLowerCase()===name); return f?.frequency; }
   return null;
 }
-/* reset an owner's uses: mode "scene" clears only Scene-freq keys; "all" clears everything */
+/* reset an owner's uses: mode "scene" clears Scene- and EOT-freq keys; "all" clears everything */
 function resetUses(owner, mode){
   if(!owner || !owner.uses) return;
   if(mode==="all"){ owner.uses = {}; return; }
+  const kinds = mode==="scene" ? ["scene","eot"] : [mode];   // EOT cooldowns also clear at end of Scene
   Object.keys(owner.uses).forEach(key => {
-    if(freqInfo(itemFreqForKey(key)).kind === mode) delete owner.uses[key];
+    if(kinds.includes(freqInfo(itemFreqForKey(key)).kind)) delete owner.uses[key];
   });
 }
 /* HP a combatant can be healed up to, capped by Injuries (each Injury = −10% of Max) */
@@ -387,7 +422,10 @@ const EMPTY_CHAR = { id:"none", name:"", trainer:newTrainer(), pokemon:[] };
 const CLOUD_CFG = window.PTU_CLOUD || {};
 let mode = "local";                 // "local" | "cloud"
 const cloud = { client:null, campaign:"", userId:"", name:"", isGM:false,
-                byId:{}, activeId:null, sub:null, lastSaveTs:0, saveTimer:null };
+                byId:{}, activeId:null, sub:null, lastSaveTs:0, saveTimer:null, pc:null };
+/* shared PC storage lives in a reserved sheets row owned by this sentinel, visible to everyone */
+const PC_OWNER = "__pc__";
+const pcId = () => "pc_" + cloud.campaign;
 
 /* nested get/set by "a.b.c" path on the active character */
 function setPath(obj, path, val) {
@@ -468,7 +506,7 @@ function el(tag, attrs = {}, ...kids) {
   kids.flat().forEach(c => n.append(c?.nodeType ? c : document.createTextNode(c ?? "")));
   return n;
 }
-function typeBadge(t){ return `<span class="type type-${t}">${t}</span>`; }
+function typeBadge(t){ return (!t||t==="None")?"":`<span class="type type-${t}">${t}</span>`; }
 
 /* ---------- Pokémon sprites (hotlinked, same source as the sheet) ---------- */
 const POKEBALL_SVG = "data:image/svg+xml,"+encodeURIComponent(
@@ -576,12 +614,16 @@ function switchTab(name){
 $$(".tab").forEach(t => t.addEventListener("click", ()=>switchTab(t.dataset.tab)));
 
 function render(){
+  // the PC tab exists only during cloud play; bounce off it if we drop to local
+  const pcBtn = $("#tabPC"); if(pcBtn) pcBtn.hidden = (mode!=="cloud");
+  if(currentTab==="pc" && mode!=="cloud"){ switchTab("pokemon"); return; }
   refreshCharSelect();
   const ac = activeChar();
   $("#partyCount").textContent = (ac?.pokemon?.length) || "";
   renderCloudBanner();
   if (currentTab==="trainer")   renderTrainer();
   if (currentTab==="pokemon")   renderPokemon();
+  if (currentTab==="pc")        renderPC();
   if (currentTab==="battle")    renderBattle();
   if (currentTab==="reference") renderReference();
   applyReadonlyLock();
@@ -930,16 +972,91 @@ function rankButtons(skillKey, cur){
 }
 
 /* ---------- classes → learnable features (prerequisite-aware) ---------- */
+/* used by prereqStatus (AND semantics) — split only on real separators, NOT "OR",
+   so alternative branches stay lenient and never cause a false "unmet". */
 function prereqTokens(str){ return String(str||"").split(/,|;|\band\b/i).map(s=>s.trim()).filter(Boolean); }
-/* does a feature belong to a class? (its prerequisites name that class, incl. "N ClassName Features") */
-function featureBelongsToClass(featureName, className){
-  const f = D.features.find(x=>x.name===featureName); if(!f) return false;
-  return prereqTokens(f.prerequisites).some(tok =>
-    tok===className || ((tok.match(/^\d+\s+(.+?)\s+Features?$/i)||[])[1]===className));
+/* used only to decide which Class a Feature belongs to — split aggressively (incl. OR / newlines)
+   so a Feature reachable through any branch is still grouped under its class. */
+function membershipTokens(str){ return String(str||"").split(/,|;|\band\b|\bor\b|\n|\//i).map(s=>s.trim()).filter(Boolean); }
+const featureByName = new Map(D.features.map(f=>[f.name, f]));
+/* The class DB (from the Fancy sheet's class tab) sometimes names a class by a fragment/label while
+   Feature prerequisites use the book's canonical name (e.g. class row "Capture Skills" whose mechanic
+   is "Capture Specialist", which is what its Features reference). Build, for every class the user can
+   take, the set of strings a Feature might use to point at it: its name, its mechanic, and the names/
+   mechanics of any sibling rows sharing that mechanic. */
+const classAliasSet = (() => {
+  const byMech = {};
+  D.classes.forEach(c => { if(c.mechanic){ (byMech[c.mechanic] = byMech[c.mechanic] || []).push(c); } });
+  const map = {};
+  D.classes.forEach(c => {
+    const s = new Set([c.name]);
+    if(c.mechanic){ s.add(c.mechanic); (byMech[c.mechanic]||[]).forEach(o=>{ s.add(o.name); if(o.mechanic) s.add(o.mechanic); }); }
+    map[c.name] = s;
+  });
+  return map;
+})();
+/* does a prereq token point at `className` (via any of its aliases)? handles "N <alias> Features" too. */
+function tokenMatchesClass(tok, className){
+  const aliases = classAliasSet[className] || new Set([className]);
+  if(aliases.has(tok)) return true;
+  const m = tok.match(/^\d+\s+(.+?)\s+Features?$/i);
+  return !!(m && aliases.has(m[1]));
 }
+/* every canonical class name a bare reference (name or mechanic) could mean — used to resolve
+   a prereq like "3 Capture Specialist Features" back to whatever class row the user actually took. */
+function classNamesForRef(ref){
+  const out = D.classes.filter(c => (classAliasSet[c.name]||new Set()).has(ref)).map(c=>c.name);
+  return out.length ? out : [ref];
+}
+/* Tokenise every Feature's prerequisites once, and record which classes each Feature belongs to
+   DIRECTLY (its prereqs name the class or one of its aliases). */
+const _featTokens = new Map(D.features.map(f => [f.name, membershipTokens(f.prerequisites)]));
+const _directClassesOf = new Map(D.features.map(f => [f.name, new Set()]));
+D.classes.forEach(c => {
+  D.features.forEach(f => {
+    if(_featTokens.get(f.name).some(tok => tokenMatchesClass(tok, c.name))) _directClassesOf.get(f.name).add(c.name);
+  });
+});
+/* every Feature that belongs to a Class — directly, OR transitively through a chain of Features
+   that themselves belong ONLY to this class line (e.g. Capture Specialist → Advanced Capture
+   Techniques → Captured Momentum). Features already anchored to another class are NOT absorbed,
+   so e.g. Trickster Features never leak into Type Ace. Memoised. */
+const _classFeatCache = {};
 function featuresForClass(className){
-  return D.features.filter(f => prereqTokens(f.prerequisites).some(tok =>
-    tok===className || ((tok.match(/^\d+\s+(.+?)\s+Features?$/i)||[])[1]===className)));
+  if(_classFeatCache[className]) return _classFeatCache[className];
+  const belongs = new Set();
+  _directClassesOf.forEach((set, fname) => { if(set.has(className)) belongs.add(fname); });
+  let changed = true;
+  while(changed){
+    changed = false;
+    D.features.forEach(f => {
+      if(belongs.has(f.name)) return;
+      if(_directClassesOf.get(f.name).size > 0) return;                 // anchored elsewhere — don't absorb
+      if(_featTokens.get(f.name).some(tok => belongs.has(tok))){ belongs.add(f.name); changed = true; }
+    });
+  }
+  const arr = D.features.filter(f => belongs.has(f.name));
+  _classFeatCache[className] = arr;
+  return arr;
+}
+const _classFeatNameCache = {};
+function classFeatNameSet(className){
+  return _classFeatNameCache[className] || (_classFeatNameCache[className] = new Set(featuresForClass(className).map(f=>f.name)));
+}
+function featureBelongsToClass(featureName, className){ return classFeatNameSet(className).has(featureName); }
+/* how many of a Class's Features a Trainer counts toward "N ClassName Features" prereqs.
+   Resolves the referenced name through class aliases (so "N Capture Specialist Features" counts the
+   "Capture Skills" class the user actually took), and counts the class-defining Feature itself (PTU 1.05). */
+function classFeatureCount(t, ref){
+  const targets = classNamesForRef(ref);
+  const featNames = new Set(), taken = new Set();
+  targets.forEach(cn => {
+    classFeatNameSet(cn).forEach(fn => featNames.add(fn));
+    if((t.classes||[]).includes(cn)) taken.add(cn);
+  });
+  let n = (t.features||[]).filter(fn => featNames.has(fn)).length;
+  n += taken.size;                       // each matching class the user took grants its class Feature
+  return n;
 }
 /* check a feature's prerequisites against a trainer; returns {met, unmet:[reasons]} */
 function prereqStatus(t, feature){
@@ -947,7 +1064,7 @@ function prereqStatus(t, feature){
   prereqTokens(feature.prerequisites).forEach(tok => {
     let m = tok.match(/^(\d+)\s+(.+?)\s+Features?$/i);          // "5 Taskmaster Features"
     if(m){ const need=+m[1], cls=m[2];
-      const have = t.features.filter(fn=>featureBelongsToClass(fn,cls)).length;
+      const have = classFeatureCount(t, cls);
       if(have<need) unmet.push(`${need} ${cls} Features (have ${have})`);
       return; }
     m = tok.match(/^(Pathetic|Untrained|Novice|Adept|Expert|Master)\s+(.+)$/i);  // "Adept Intimidate"
@@ -978,7 +1095,21 @@ function openClassFeaturePicker(t, className){
     if(!t.features.includes(name)){ t.features.push(name); save(); render(); toast(`Learned ${name} ✓`); }
   }, "feature", null, lockFn);
 }
-/* Classes card — each class expands to its rules and a “Learn a Feature” button */
+/* one learned Feature listed under its class — expandable description + remove */
+function classFeatureRow(t, featName){
+  const row = el("details",{class:"spoiler",style:"margin-top:6px"});
+  const f = featureByName.get(featName);
+  const meta = f ? [f.frequency, f.category].filter(Boolean).join(" · ") : "";
+  row.append(el("summary",{},
+    el("span",{style:"color:var(--ink);font-weight:700"}, featName),
+    meta ? el("span",{class:"muted small",style:"margin-left:8px"}, meta) : "",
+    el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"unlearn this feature",
+      onclick:e=>{ e.preventDefault(); const i=t.features.indexOf(featName); if(i>=0){ t.features.splice(i,1); save(); render(); toast(`Unlearned ${featName}`); } }},"×")));
+  row.append(el("div",{class:"small",style:"margin-top:6px",html: refDetailHTML("feature",featName)}));
+  return row;
+}
+/* Classes card — each class shows its signature Feature, the Features you've picked from it,
+   a “Learn a Feature” menu (incl. special sub-features like Capture Techniques), and its rules. */
 function classesCard(){
   const t = activeChar().trainer;
   const arr = t.classes;
@@ -990,22 +1121,40 @@ function classesCard(){
   if(!arr.length){ card.append(el("span",{class:"muted small"},"none yet — tap “+ add” to take a Class, then learn its Features here")); return card; }
   arr.forEach((name,idx) => {
     const feats = featuresForClass(name);
-    const learned = t.features.filter(fn=>featureBelongsToClass(fn,name)).length;
-    // block per class: a header row (name + Learn button + remove) over an expandable rules spoiler
+    const total = feats.length;
+    const picked = feats.filter(f => t.features.includes(f.name)).map(f=>f.name);
+    const sig = featureByName.get(name);   // the class-defining Feature (same name), if any
+    // block per class: a header row (name + Learn button + remove) over its features and rules
     const block = el("div",{style:"border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;margin-top:8px"});
     const head = el("div",{class:"inline",style:"justify-content:space-between;gap:8px"});
     head.append(el("span",{style:"font-weight:700"}, name,
-      feats.length? el("span",{class:"muted small",style:"margin-left:8px"}, `· ${learned}/${feats.length} features`):""));
+      total? el("span",{class:"muted small",style:"margin-left:8px"}, `· ${picked.length}/${total} features`):""));
     const acts = el("div",{class:"inline"});
-    if(feats.length) acts.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
+    if(total) acts.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
       onclick:()=>openClassFeaturePicker(t,name)}, "＋ Learn Feature"));
     acts.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove class",
       onclick:()=>{ arr.splice(idx,1); save(); render(); }},"×"));
     head.append(acts);
     block.append(head);
-    if(!feats.length) block.append(el("div",{class:"small muted",style:"margin-top:4px"},"No class-specific Features for this one in the database."));
+    // signature (class-defining) Feature description
+    if(sig){
+      const sd = el("details",{class:"spoiler",style:"margin-top:6px"});
+      sd.append(el("summary",{}, el("span",{style:"color:var(--accent);font-weight:700"},"★ "+name+" (class Feature)")));
+      sd.append(el("div",{class:"small",style:"margin-top:6px",html: refDetailHTML("feature",name)}));
+      block.append(sd);
+    }
+    // features you've picked from this class
+    if(picked.length){
+      block.append(el("div",{class:"small muted",style:"margin-top:8px;font-weight:700"},`Your ${name} Features`));
+      picked.forEach(fn => block.append(classFeatureRow(t, fn)));
+    } else if(total){
+      block.append(el("div",{class:"small muted",style:"margin-top:6px"},"No Features picked from this class yet — tap “＋ Learn Feature”."));
+    } else {
+      block.append(el("div",{class:"small muted",style:"margin-top:4px"},"No class-specific Features for this one in the database."));
+    }
+    // class rules blurb
     const sp = el("details",{style:"margin-top:6px"});
-    sp.append(el("summary",{style:"cursor:pointer;color:var(--muted);font-weight:700;font-size:12px"},"rules"));
+    sp.append(el("summary",{style:"cursor:pointer;color:var(--muted);font-weight:700;font-size:12px"},"class rules"));
     sp.append(el("div",{class:"small",style:"margin-top:6px",html: refDetailHTML("class",name)}));
     block.append(sp);
     card.append(block);
@@ -1243,6 +1392,7 @@ function renderPokemon(){
   const bar = el("div",{class:"inline",style:"margin-bottom:12px"});
   bar.append(el("button",{class:"btn-primary",onclick:()=>addPokemon()},"＋ Add Pokémon"));
   bar.append(el("button",{class:"btn-secondary",onclick:()=>importPokemon()},"⭱ Import Pokémon"));
+  if(mode==="cloud") bar.append(el("button",{class:"btn-secondary",onclick:()=>switchTab("pc")},"🖥 PC"));
   root.append(bar);
 
   if(!c.pokemon.length){
@@ -1351,6 +1501,9 @@ function renderMonEditor(root, p){
   head.append(el("div",{class:"spacer"}));
   if(mode==="cloud" && cloud.isGM)
     head.append(el("button",{class:"btn-secondary",title:"GM: send a copy of this Pokémon to a player",onclick:()=>openSendThisPokemon(p)},"🎁 Send"));
+  if(mode==="cloud" && canEditActive())
+    head.append(el("button",{class:"btn-secondary",title:"Send this Pokémon to the shared PC",
+      onclick:()=>depositToPC(cloud.byId[cloud.activeId], p)},"🖥 To PC"));
   head.append(el("button",{class:"linkbtn",onclick:()=>exportPokemon(p)},"⭳ Export"));
   if(sp) head.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("species",sp.name)},"Dex entry"));
   root.append(head);
@@ -1604,6 +1757,24 @@ function renderMonBuild(root, p, sp){
   if(sp && sp.evolution?.length>1){
     const evc = el("div",{class:"card"}, el("h3",{},"Evolution"));
     evc.append(el("div",{class:"r-body",html: sp.evolution.map(e=>`${e.stage}. ${esc(e.name)}${e.min?` (Lv ${e.min})`:""}`).join("  →  ")}));
+    const nexts = nextEvolutions(p);
+    if(nexts.length){
+      nexts.forEach(n => {
+        const ready = n.min==null ? true : p.level >= n.min;          // level met (stone/other evos = manual)
+        const reqTxt = n.min!=null ? `at Lv ${n.min}` : (n.method ? `via ${n.method}` : "special");
+        const rowE = el("div",{class:"inline",style:"justify-content:space-between;gap:8px;margin-top:8px;flex-wrap:wrap"});
+        rowE.append(el("span",{class:"small"}, `→ Evolves into `, el("b",{}, n.target), ` ${reqTxt}`,
+          n.min!=null && !ready ? el("span",{class:"muted"}, ` — reach Lv ${n.min}`) : ""));
+        const btn = el("button",{class:ready?"btn-primary":"btn-secondary",style:"padding:6px 12px",
+          disabled: (n.min!=null && !ready),
+          onclick: (n.min!=null && !ready) ? null : ()=>evolveTo(p, n.target)},
+          ready ? `✨ Evolve into ${n.target}` : `Lv ${n.min} to evolve`);
+        rowE.append(btn);
+        evc.append(rowE);
+      });
+    } else {
+      evc.append(el("div",{class:"small muted",style:"margin-top:6px"},"Final stage — no further evolutions."));
+    }
     root.append(evc);
   }
 }
@@ -1803,9 +1974,10 @@ function updateMonComputed(p){
     bar.style.width=pct+"%"; bar.style.background=pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"; }
 }
 function matchupCard(types){
+  types = (types||[]).filter(t=>t && t!=="None");   // drop the empty second slot
   const eff = typeEffectiveness(types);
   const card = el("div",{class:"card"}, el("h3",{},"Type Matchups",
-    el("span",{class:"muted small"}, types.map(t=>t).join(" / "))));
+    el("span",{class:"muted small"}, types.join(" / "))));
   const groups = [
     ["Weak to (x2+)", v=>v>1, "x2"],
     ["Resists (x½-)", v=>v<1&&v>0, "x50"],
@@ -1993,6 +2165,19 @@ function rollDiceString(str){
   const sum=rolls.reduce((a,b)=>a+b,0);
   return {rolls, faces, flat, dice:sum, total:sum+flat, expr:`${n}d${faces}${flat?(flat>0?"+"+flat:flat):""}`};
 }
+/* Detect moves whose Damage Base depends on Weight Class (Low Kick, Grass Knot, Heavy Slam, Heat Crash…).
+   Returns {kind, base, label} or null. */
+function weightMoveInfo(m){
+  const eff = String(m?.effect||""), rng = String(m?.range||"");
+  if(/twice the target'?s weight class/i.test(eff))
+    return { kind:"target2x", base:0, label:"Target's Weight Class", hint:"DB = 2 × the target's Weight Class" };
+  if(/each weight class the user is above the target/i.test(eff))
+    return { kind:"diffPlus2", base:m?.damageBase||0, label:"Weight Classes you exceed the target by",
+             hint:`DB ${m?.damageBase||0} +2 per Weight Class you outweigh the target` };
+  if(/weight class/i.test(rng) || /weight class/i.test(eff))
+    return { kind:"generic", base:m?.damageBase??null, label:"Weight Class", hint:"This move's damage depends on Weight Class — see its full text" };
+  return null;
+}
 function openMoveRoll(p, m, sp){
   const d = pokeDerived(p);
   const types = sp?.types || [];
@@ -2003,64 +2188,94 @@ function openMoveRoll(p, m, sp){
   const atkStat = isPhys ? d.eff.atk : isSpec ? d.eff.spatk : 0;   // CS-adjusted Attack / Sp.Attack
   const atkLbl = isPhys ? "Attack" : isSpec ? "Sp. Attack" : null;
   const evaNote = isPhys ? "target's Physical Evasion" : isSpec ? "target's Special Evasion" : "target's Evasion";
-  const finalDB = m.damageBase != null ? m.damageBase + (stab?2:0) : null;
-  const diceStr = finalDB!=null ? (DB_TABLE[finalDB]||"").split("/")[0].trim() : "";
   const defNote = isPhys ? "Defense" : isSpec ? "Special Defense" : "Defense/Sp.Def";
+
+  // weight-dependent Damage Base — the player types the needed Weight Class number here
+  const wInfo = weightMoveInfo(m);
+  let weightVal = wInfo ? (wInfo.kind==="diffPlus2" ? 1 : 3) : 0;
+  function baseDB(){                      // effective (pre-STAB) Damage Base
+    if(wInfo){
+      if(wInfo.kind==="target2x")  return 2*Math.max(1, weightVal);
+      if(wInfo.kind==="diffPlus2") return wInfo.base + 2*Math.max(0, weightVal);
+    }
+    return m.damageBase;                  // generic weight moves & normal moves use the printed DB
+  }
+  const finalDB = () => { const b=baseDB(); return b!=null ? b + (stab?2:0) : null; };
+  const diceStr = () => { const f=finalDB(); return f!=null ? (DB_TABLE[f]||"").split("/")[0].trim() : ""; };
 
   const body = el("div",{});
   body.append(el("div",{style:"margin-bottom:6px"}, el("span",{html:typeBadge(mtype)}),
     el("span",{class:"kv"}, m.class||"Status")));
+  const dbChip = el("span",{class:"kv"});
   body.append(el("div",{class:"chips",style:"margin-bottom:12px"},
     el("span",{class:"kv"}, `Freq: ${m.frequency||"—"}`),
     el("span",{class:"kv"}, `AC ${m.ac??"—"}`),
-    finalDB!=null?el("span",{class:"kv"}, `DB ${m.damageBase}${stab?" +2 STAB → "+finalDB:""}`):"",
+    dbChip,
     el("span",{class:"kv"}, m.range||"—")));
 
-  /* --- explanation: compact formula line, with the "why" small underneath --- */
-  const dm = diceStr.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
-  const dn = dm[1] ? +dm[1] : 0, dfaces = dm[2] ? +dm[2] : 0, dflat = dm[3] ? parseInt(dm[3].replace(/\s/g,"")) : 0;
-
   const explain = el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"});
-  // accuracy
+  // accuracy (static)
   explain.append(el("div",{style:"margin-bottom:10px"},
     el("div",{style:"font-size:16px;font-weight:700"}, `Accuracy: ${m.ac!=null ? "1d20" : "—"}`),
     el("div",{class:"small muted",style:"margin-top:2px"},
       m.ac!=null ? `Roll 1d20 — hits if it's ≥ AC ${m.ac} + ${evaNote}. Nat 20 auto-hits/crits, nat 1 auto-misses.`
                  : "This move has no Accuracy Check.")));
-  // damage
-  if(finalDB!=null && dn){
-    const terms = [`${dn}d${dfaces}`];
-    if(dflat) terms.push(String(dflat));
-    if(atkStat) terms.push(String(atkStat));
-    const why = [];
-    why.push(`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${finalDB}${stab?` (DB ${m.damageBase} +2 STAB)`:""}`);
-    if(atkStat) why.push(`${atkStat} = your ${atkLbl}`);
-    explain.append(el("div",{},
-      el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${terms.join(" + ")}`),
-      el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ") + `. Target then subtracts their ${defNote}.`)));
-  } else {
-    explain.append(el("div",{},
-      el("div",{style:"font-size:16px;font-weight:700"}, "Damage: —"),
-      el("div",{class:"small muted",style:"margin-top:2px"}, "Status move — deals no damage; see its effect.")));
+  const dmgBox = el("div",{});            // rebuilt whenever the Weight Class changes
+  explain.append(dmgBox);
+
+  /* --- weight-class input (only for weight-dependent moves) --- */
+  if(wInfo && wInfo.kind!=="generic"){
+    const wc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin:0 0 12px"});
+    wc.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},`⚖ ${wInfo.label}`));
+    const inp = el("input",{type:"number",min:0,value:weightVal,style:"width:90px"});
+    inp.addEventListener("input",()=>{ weightVal = Math.max(0, parseInt(inp.value)||0); renderDamage(); });
+    wc.append(inp, el("span",{class:"small muted",style:"margin-left:8px"}, wInfo.hint));
+    wc.append(el("div",{class:"small muted",style:"margin-top:4px"},"Weight Classes: 1 (≤10 kg) · 2 · 3 · 4 · 5 · 6 (≥400 kg). See a Pokémon's Info tab for its Weight Class."));
+    body.append(wc);
+  } else if(wInfo){
+    body.append(el("div",{class:"warnbox",style:"margin:0 0 12px"}, wInfo.hint));
   }
+
+  function renderDamage(){
+    const fDB = finalDB(), ds = diceStr();
+    const dm = ds.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
+    const dn = dm[1]?+dm[1]:0, dfaces = dm[2]?+dm[2]:0, dflat = dm[3]?parseInt(dm[3].replace(/\s/g,"")):0;
+    dbChip.textContent = fDB!=null ? `DB ${baseDB()}${stab?` +2 STAB → ${fDB}`:""}` : "No damage";
+    dbChip.style.display = "";
+    dmgBox.innerHTML = "";
+    if(fDB!=null && dn){
+      const terms=[`${dn}d${dfaces}`]; if(dflat) terms.push(String(dflat)); if(atkStat) terms.push(String(atkStat));
+      const why=[`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${fDB}${stab?` (DB ${baseDB()} +2 STAB)`:""}`];
+      if(atkStat) why.push(`${atkStat} = your ${atkLbl}`);
+      dmgBox.append(el("div",{},
+        el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${terms.join(" + ")}`),
+        el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ")+`. Target then subtracts their ${defNote}.`)));
+    } else {
+      dmgBox.append(el("div",{},
+        el("div",{style:"font-size:16px;font-weight:700"}, "Damage: —"),
+        el("div",{class:"small muted",style:"margin-top:2px"}, "Status move — deals no damage; see its effect.")));
+    }
+  }
+  renderDamage();
   body.append(explain);
 
   /* --- results (filled when you press Roll dice) --- */
   const out = el("div",{id:"rollOut",class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:0"});
   out.append(el("div",{class:"muted small"}, "Press 🎲 Roll dice to simulate."));
   const doRoll = () => {
+    const fDB = finalDB();
     out.style.borderStyle="solid";
     out.innerHTML="";
     const acc = 1+Math.floor(Math.random()*20);
-    const accLine = el("div",{style:finalDB!=null?"margin-bottom:10px":""});
+    const accLine = el("div",{style:fDB!=null?"margin-bottom:10px":""});
     accLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLL"));
     accLine.append(el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${acc}`,
       el("span",{class:"muted",style:"font-size:14px;font-weight:600"}, "  (1d20)")));
     if(m.ac!=null) accLine.append(el("div",{class:"small muted"},
       `Hits if ${acc} ≥ AC ${m.ac} + ${evaNote}.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`));
     out.append(accLine);
-    if(finalDB!=null){
-      const r = rollDiceString(diceStr);
+    if(fDB!=null){
+      const r = rollDiceString(diceStr());
       const dmgLine = el("div",{});
       dmgLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"));
       if(r){
@@ -2187,6 +2402,7 @@ const BATTLE_ACTIONS = [
 ];
 function getFavActions(){ try{ return new Set(JSON.parse(localStorage.getItem("ptu_fav_actions")||"[]")); }catch(e){ return new Set(); } }
 function toggleFavAction(id){ const s=getFavActions(); s.has(id)?s.delete(id):s.add(id); localStorage.setItem("ptu_fav_actions", JSON.stringify([...s])); }
+const featFavId = name => "feat:"+name;   // Features share the favourites store, keyed by name
 
 let battleActor="trainer", battleFilter="moves";
 function renderBattle(){
@@ -2222,17 +2438,24 @@ function renderBattle(){
   const okActor = a => { const act=a.actor||"both"; return act==="both" || act===(isTrainer?"trainer":"pokemon"); };
   let list=BATTLE_ACTIONS.filter(a => (battleFilter==="fav" ? favs.has(a.id) : a.type.toLowerCase()===battleFilter) && okActor(a));
   list.sort((a,b)=> (favs.has(b.id)-favs.has(a.id)) || ((b.common?1:0)-(a.common?1:0)) || a.name.localeCompare(b.name));
-  // the trainer's own action Features that fire on this action type (Cheer, Orders, class Features…)
-  const featRows = (isTrainer && isTypeFilter(battleFilter))
-    ? trainerFeatureObjs(c.trainer).filter(f=>featureActionTypes(f).includes(battleFilter))
-                                   .sort((a,b)=>a.name.localeCompare(b.name))
+  // the trainer's own action Features: on a type tab, those firing on this action type; on ★ Fav, any favourited one
+  const featRows = (isTrainer && (isTypeFilter(battleFilter) || battleFilter==="fav"))
+    ? trainerFeatureObjs(c.trainer)
+        .filter(f => battleFilter==="fav" ? favs.has(featFavId(f.name)) : featureActionTypes(f).includes(battleFilter))
+        .sort((a,b)=>a.name.localeCompare(b.name))
     : [];
-  if(!list.length && !featRows.length){ root.append(el("div",{class:"muted",style:"padding:10px"}, battleFilter==="fav"?"No favourites yet — tap ☆ on any action to pin it here.":"Nothing here for this actor.")); return; }
+  const favFeat = featRows.filter(f=>favs.has(featFavId(f.name)));   // pinned Features float above regular actions
+  const restFeat = featRows.filter(f=>!favs.has(featFavId(f.name)));
+  if(!list.length && !featRows.length){ root.append(el("div",{class:"muted",style:"padding:10px"}, battleFilter==="fav"?"No favourites yet — tap ☆ on any action or Feature to pin it here.":"Nothing here for this actor.")); return; }
   const wrap=el("div",{});
+  if(favFeat.length){
+    wrap.append(el("div",{class:"section-head"}, "★ Favourite Features"));
+    favFeat.forEach(f=>wrap.append(featureActionRow(f, c.trainer, renderBattle)));
+  }
   list.forEach(a=>wrap.append(battleActionRow(a,favs)));
-  if(featRows.length){
+  if(restFeat.length){
     wrap.append(el("div",{class:"section-head",style:"margin-top:14px"}, "From your Features"));
-    featRows.forEach(f=>wrap.append(featureActionRow(f, c.trainer, renderBattle)));
+    restFeat.forEach(f=>wrap.append(featureActionRow(f, c.trainer, renderBattle)));
   }
   root.append(wrap);
 }
@@ -2283,8 +2506,10 @@ function featureActionRow(f, owner, rerender){
   const d=el("details",{class:"spoiler"});
   const meta=[f.frequency,f.category].filter(Boolean).join(" · ");
   const uc = owner && usesControl(owner, "feature", f.name, f.frequency, rerender||(()=>{}));
+  const favs=getFavActions(), fav=favs.has(featFavId(f.name));
   d.append(el("summary",{},
-    el("span",{class:"actstar",style:"visibility:hidden"},"☆"),
+    el("button",{class:"actstar"+(fav?" on":""),title:fav?"unfavourite":"favourite",
+      onclick:e=>{ e.preventDefault(); toggleFavAction(featFavId(f.name)); (rerender||renderBattle)(); }}, fav?"★":"☆"),
     el("span",{style:"font-weight:700;color:var(--ink)"}, f.name),
     meta?el("span",{class:"muted small",style:"margin-left:8px"}, meta):"",
     uc ? el("span",{style:"margin-left:8px"}, uc) : ""));
@@ -2643,6 +2868,14 @@ $("#btnTheme").addEventListener("click", ()=>{
 });
 $("#btnSettings").addEventListener("click", openSettings);
 
+/* persistent Rest bar (always visible, any tab) */
+function canRest(){
+  if(mode==="cloud" && cloud.activeId && !canEditActive()){ toast("Read-only — GM only"); return false; }
+  return true;
+}
+$("#btnEndScene").addEventListener("click", ()=>{ if(canRest()) endScene(); });
+$("#btnEndDay").addEventListener("click",   ()=>{ if(canRest()) endDay(); });
+
 /* ===================================================================
    Cloud sync (Supabase) — progressive enhancement.
    Active only when the Supabase SDK is loaded AND config.js is filled in.
@@ -2697,7 +2930,37 @@ async function fetchRoster(){
   const { data, error } = await q;
   if(error) throw error;
   cloud.byId = {};
-  (data||[]).forEach(r => { r.data = migrateChar(r.data, r.id); cloud.byId[r.id] = r; });
+  (data||[]).forEach(r => {
+    if(r.owner_id===PC_OWNER){ cloud.pc = { ...r, data: pcData(r.data) }; return; }   // PC isn't a character
+    r.data = migrateChar(r.data, r.id); cloud.byId[r.id] = r;
+  });
+}
+/* the shared PC storage (visible to every member, so it's fetched separately from the roster) */
+function pcData(data){
+  data = (data && typeof data==="object") ? data : {};
+  data.kind = "pc";
+  data.pokemon = Array.isArray(data.pokemon) ? data.pokemon : [];
+  data.pokemon.forEach(normPokemon);
+  return data;
+}
+async function fetchPC(){
+  const { data, error } = await cloud.client.from("sheets").select("*").eq("id", pcId()).limit(1);
+  if(error){ console.error(error); return; }
+  cloud.pc = (data && data[0]) ? { ...data[0], data: pcData(data[0].data) } : null;
+}
+function ensurePCRow(){
+  if(!cloud.pc) cloud.pc = { id:pcId(), campaign:cloud.campaign, owner_id:PC_OWNER, owner_name:"PC",
+                            name:"PC Storage", data:{ kind:"pc", pokemon:[] } };
+  return cloud.pc;
+}
+async function pcUpsert(){
+  const row = ensurePCRow();
+  cloud.lastSaveTs = Date.now();
+  const { error } = await cloud.client.from("sheets").upsert({
+    id:row.id, campaign:cloud.campaign, owner_id:PC_OWNER, owner_name:"PC",
+    name:"PC Storage", data:row.data, updated_at:new Date().toISOString() });
+  if(error){ console.error(error); toast("⚠ PC save failed"); return false; }
+  return true;
 }
 async function cloudConnect(campaign, name, gmCode, silent){
   campaign = (campaign||"").trim().toLowerCase(); name = (name||"").trim();
@@ -2708,6 +2971,7 @@ async function cloudConnect(campaign, name, gmCode, silent){
   localStorage.setItem("ptu_cloud_session", JSON.stringify({campaign, name, gm: cloud.isGM?gmCode:""}));
   try{
     await fetchRoster();
+    await fetchPC();
     subscribeRealtime();
     mode = "cloud"; openMon = null;
     const mine = Object.values(cloud.byId).find(r=>r.owner_id===cloud.userId);
@@ -2732,8 +2996,17 @@ function subscribeRealtime(){
 }
 function onRealtime(payload){
   const type = payload.eventType || payload.type;
-  // players only track their own sheets; ignore realtime events for anyone else's (GM tracks all)
+  const evtId = payload.new?.id ?? payload.old?.id;
   const evtOwner = payload.new?.owner_id ?? payload.old?.owner_id;
+  // the shared PC is visible to everyone — handle it before the per-player visibility filter
+  if(evtOwner===PC_OWNER || evtId===pcId()){
+    cloud.pc = (type==="DELETE") ? null : { ...payload.new, data: pcData(payload.new.data) };
+    // live-refresh the PC tab, but don't yank focus while someone is typing in a filter
+    const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
+    if(currentTab==="pc" && !typing) renderPC();
+    return;
+  }
+  // players only track their own sheets; ignore realtime events for anyone else's (GM tracks all)
   if(!cloud.isGM && evtOwner && evtOwner!==cloud.userId) return;
   if(type==="DELETE"){
     const id = payload.old?.id; if(!id) return;
@@ -2898,6 +3171,151 @@ function openSendPokemon(presetId){
     }},"Send Pokémon"),
   ]});
 }
+/* ===================================================================
+   Shared PC — deposit/withdraw Pokémon to a campaign-wide storage box
+=================================================================== */
+/* my own sheets that can deposit — for the GM this includes their NPC trainers */
+function pcMyRows(){ return Object.values(cloud.byId).filter(r=>r.owner_id===cloud.userId); }
+/* characters a withdraw can go to — players: their own; GM: any character in the campaign */
+function pcTargetRows(){ return cloud.isGM ? Object.values(cloud.byId) : pcMyRows(); }
+function pcDefaultTargetId(){
+  const active = cloud.byId[cloud.activeId];
+  if(active && canEdit(active)) return active.id;      // whatever you're viewing (own sheet, or GM anywhere)
+  return pcTargetRows()[0]?.id || null;
+}
+
+async function depositToPC(sourceRow, mon){
+  if(mode!=="cloud" || !sourceRow || !canEdit(sourceRow)){ toast("Can't deposit that one"); return; }
+  ensurePCRow();
+  const m = normPokemon(JSON.parse(JSON.stringify(mon)));
+  m.id = uid(); m.onTeam = false; m._pcFrom = sourceRow.data?.name || sourceRow.owner_name || ""; m._pcAt = Date.now();
+  cloud.pc.data.pokemon.push(m);
+  const arr = sourceRow.data.pokemon || [];
+  const idx = arr.findIndex(x=>x.id===mon.id);
+  if(idx>=0) arr.splice(idx,1);
+  openMon = null;                 // close the open Pokémon editor
+  toast(`Deposited ${mon.nickname||getSpecies(mon.species)?.name||"Pokémon"} to the PC ✓`);
+  render();                       // instant UI update; upload in the background
+  const okPC = await pcUpsert();
+  const okSrc = await cloudUpsert(sourceRow);
+  if(!(okPC && okSrc)) toast("⚠ PC sync issue — it'll reconcile on the next change");
+}
+async function withdrawFromPC(mon, targetId){
+  const target = (targetId && cloud.byId[targetId]) || cloud.byId[pcDefaultTargetId()];
+  if(!target){ toast("Pick a character to withdraw to (top of the PC tab)"); return; }
+  if(!canEdit(target)){ toast("You can't add Pokémon to that character"); return; }
+  ensurePCRow();
+  const idx = cloud.pc.data.pokemon.findIndex(x=>x.id===mon.id);
+  if(idx<0){ toast("Someone already took that one"); render(); return; }
+  const m = normPokemon(JSON.parse(JSON.stringify(mon)));
+  m.id = uid(); m.currentHP = null; delete m._pcFrom; delete m._pcAt;
+  target.data.pokemon = target.data.pokemon || [];
+  m.onTeam = target.data.pokemon.filter(p=>p.onTeam).length < 6;   // to party if there's room, else its box
+  target.data.pokemon.push(m);
+  cloud.pc.data.pokemon.splice(idx,1);
+  toast(`Withdrew ${m.nickname||getSpecies(m.species)?.name||"Pokémon"} to ${target.data?.name||"your party"} ✓`);
+  render();                       // instant
+  const okPC = await pcUpsert();
+  const okT = await cloudUpsert(target);
+  if(!(okPC && okT)) toast("⚠ PC sync issue — it'll reconcile on the next change");
+}
+
+/* ---- PC tab (its own view, with filtering) ---- */
+let pcFilter = { q:"", type:"", sort:"new" };
+let pcTargetId = null;
+function pcMonMeta(m){
+  const sp=getSpecies(m.species);
+  const types=(sp?.types||[]).filter(t=>t&&t!=="None").map(typeBadge).join(" ");
+  return types + (m._pcFrom?` <span class="muted">· from ${esc(m._pcFrom)}</span>`:"");
+}
+function pcMonNode(m, actionBtn){
+  const sp=getSpecies(m.species);
+  return el("div",{class:"refitem",style:"display:flex;gap:8px;align-items:center"},
+    monSprite(sp?.name||m.species, m.shiny, "s-xs"),
+    el("div",{style:"flex:1;min-width:0"},
+      el("div",{class:"r-title"}, `${m.nickname||sp?.name||m.species} `, el("span",{class:"muted small"},`Lv ${m.level}`)),
+      el("div",{class:"r-meta",html: pcMonMeta(m)})),
+    actionBtn);
+}
+function renderPC(){
+  const root = $("#view-pc"); root.innerHTML="";
+  if(!cloudConfigured() || mode!=="cloud"){
+    root.append(el("div",{class:"card"}, el("h3",{},"🖥 PC — shared storage"),
+      el("div",{class:"r-body"}, "The PC is part of cloud play. Tap ", el("b",{},"☁ Cloud"),
+        " to join your campaign, then come back to this tab.")));
+    return;
+  }
+  const pc = cloud.pc?.data?.pokemon || [];
+  const targets = pcTargetRows();
+  if(!pcTargetId || !targets.find(r=>r.id===pcTargetId)) pcTargetId = pcDefaultTargetId();
+
+  // header + withdraw-to selector
+  const head = el("div",{class:"card"}, el("h3",{},"🖥 PC — shared storage",
+    el("span",{class:"pill",style:"margin-left:8px"}, pc.length)));
+  if(targets.length){
+    const tsel = el("select");
+    targets.forEach(r=>tsel.append(el("option",{value:r.id,selected:r.id===pcTargetId},
+      `${r.data?.name||"(unnamed)"}${cloud.isGM?` — ${r.owner_name||"?"}`:""}`)));
+    tsel.addEventListener("change",()=>{ pcTargetId=tsel.value; });
+    head.append(el("label",{class:"field",style:"margin-top:8px;max-width:340px"},
+      el("span",{},"Withdraw to"), tsel));
+  } else {
+    head.append(el("div",{class:"muted small",style:"margin-top:8px"},
+      "You have no character yet — tap ＋ New (top bar) to create one, then withdraw."));
+  }
+  root.append(head);
+
+  // filters
+  const fcard = el("div",{class:"card"});
+  const frow = el("div",{class:"inline",style:"flex-wrap:wrap;gap:8px"});
+  const q = el("input",{type:"search",placeholder:"Search name / species…",style:"flex:1;min-width:150px"}); q.value=pcFilter.q;
+  const tf = el("select"); tf.append(el("option",{value:""},"All types"));
+  TYPES.forEach(t=>tf.append(el("option",{value:t,selected:t===pcFilter.type}, t)));
+  const sf = el("select");
+  [["new","Newest first"],["level_desc","Level ↓"],["level_asc","Level ↑"],["name","Name A–Z"],["species","Species A–Z"]]
+    .forEach(([v,l])=>sf.append(el("option",{value:v,selected:v===pcFilter.sort}, l)));
+  const listWrap = el("div",{style:"margin-top:10px"});
+  const draw = ()=>{
+    listWrap.innerHTML="";
+    let arr = pc.slice();
+    const qq=pcFilter.q.trim().toLowerCase();
+    if(qq) arr=arr.filter(m=>{ const sp=getSpecies(m.species);
+      return (m.nickname||"").toLowerCase().includes(qq) || (sp?.name||m.species||"").toLowerCase().includes(qq); });
+    if(pcFilter.type) arr=arr.filter(m=>(getSpecies(m.species)?.types||[]).includes(pcFilter.type));
+    const cmp={ new:(a,b)=>(b._pcAt||0)-(a._pcAt||0), level_desc:(a,b)=>b.level-a.level, level_asc:(a,b)=>a.level-b.level,
+      name:(a,b)=>String(a.nickname||getSpecies(a.species)?.name||a.species).localeCompare(String(b.nickname||getSpecies(b.species)?.name||b.species)),
+      species:(a,b)=>String(getSpecies(a.species)?.name||a.species).localeCompare(String(getSpecies(b.species)?.name||b.species)) }[pcFilter.sort];
+    arr.sort(cmp||(()=>0));
+    listWrap.append(el("div",{class:"r-meta",style:"margin-bottom:6px"}, `${arr.length}${arr.length!==pc.length?` of ${pc.length}`:""} Pokémon`));
+    if(!arr.length){ listWrap.append(el("div",{class:"muted",style:"padding:8px"},
+      pc.length?"No matches — adjust the filters.":"The PC is empty. Open a Pokémon and tap 🖥 To PC to store it here.")); return; }
+    const list=el("div",{class:"reflist"});
+    arr.forEach(m=>list.append(pcMonNode(m,
+      el("button",{class:"btn-secondary",style:"padding:6px 10px",disabled:!targets.length,
+        title:"Withdraw to the selected character",onclick:()=>withdrawFromPC(m, pcTargetId)},"Withdraw ▸"))));
+    listWrap.append(list);
+  };
+  q.addEventListener("input",()=>{ pcFilter.q=q.value; draw(); });
+  tf.addEventListener("change",()=>{ pcFilter.type=tf.value; draw(); });
+  sf.addEventListener("change",()=>{ pcFilter.sort=sf.value; draw(); });
+  frow.append(q, tf, sf); fcard.append(frow, listWrap); draw();
+  root.append(fcard);
+
+  // quick deposit from my own sheets
+  const mine = pcMyRows();
+  const dcard = el("div",{class:"card"}, el("h3",{}, cloud.isGM?"Deposit from your trainers (incl. NPCs)":"Deposit your Pokémon"));
+  const dep = el("div",{class:"reflist"}); let any=false;
+  mine.forEach(r=>(r.data.pokemon||[]).forEach(m=>{ any=true;
+    const node = pcMonNode(m, el("button",{class:"btn-secondary",style:"padding:6px 10px",onclick:()=>depositToPC(r,m)},"◂ Deposit"));
+    if(cloud.isGM && mine.length>1) node.querySelector(".r-meta").append(el("span",{class:"muted"},` · ${r.data?.name||""}`));
+    dep.append(node);
+  }));
+  if(!any) dep.append(el("div",{class:"muted",style:"padding:8px"},
+    "No Pokémon on your own sheets. Tip: open any Pokémon and tap “🖥 To PC” to send it in."));
+  dcard.append(dep);
+  root.append(dcard);
+}
+
 function renderCloudBanner(){
   const ex=$("#cloudBanner"); if(ex) ex.remove();
   if(mode!=="cloud") return;

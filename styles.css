@@ -75,6 +75,12 @@ input,select,textarea{font:inherit; color:var(--ink)}
   padding:9px 14px; border-radius:10px 10px 0 0; border-bottom:3px solid transparent; white-space:nowrap;
 }
 .tab.active{color:var(--accent); border-bottom-color:var(--accent)}
+/* persistent Rest actions pinned to the right of the tab bar */
+.rest-actions{margin-left:auto; display:flex; gap:6px; align-self:center; padding-bottom:6px; flex:0 0 auto}
+.rest-actions .btn{white-space:nowrap; font-size:13px; padding:6px 10px}
+@media (max-width:560px){
+  .rest-actions .btn{padding:6px 8px}
+}
 .pill{
   display:inline-block; min-width:18px; padding:0 6px; margin-left:4px; font-size:12px; font-weight:800;
   background:var(--accent); color:#fff; border-radius:20px; text-align:center;
@@ -257,12 +263,17 @@ details.spoiler{border:1px solid var(--line); border-radius:var(--radius-sm); pa
 details.spoiler summary{cursor:pointer; font-weight:700; color:var(--muted)}
 
 /* ---------- use / frequency tracker (pip boxes) ---------- */
-.uses{display:inline-flex; align-items:center; gap:4px; vertical-align:middle}
-.uses .pip{width:16px; height:16px; padding:0; border:1.5px solid var(--field-line);
-  background:var(--field); border-radius:4px; cursor:pointer; flex:0 0 auto; line-height:0}
+.uses{display:inline-flex; align-items:center; gap:5px; vertical-align:middle; touch-action:manipulation}
+.uses .pip{width:18px; height:18px; padding:0; border:1.5px solid var(--field-line);
+  background:var(--field); border-radius:4px; cursor:pointer; flex:0 0 auto; line-height:0; touch-action:manipulation}
 .uses .pip.on{background:var(--accent); border-color:var(--accent)}
 .uses .pip:hover{border-color:var(--accent)}
 .uses .uses-tag{font-size:10px; text-transform:uppercase; letter-spacing:.3px; margin-left:2px}
+/* bigger, finger-friendly tap targets on touch devices so a tap never misses onto the spoiler */
+@media (hover:none){
+  .uses{gap:8px}
+  .uses .pip{width:26px; height:26px; border-radius:6px}
+}
 .restbtns{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
 
 /* ---------- status condition chips ---------- */
