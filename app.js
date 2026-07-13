@@ -167,17 +167,32 @@ function nextEvolutions(p){
   if(!mine) return [];
   return sp.evolution.filter(e=>e.stage===mine.stage+1).map(e=>{
     const parsed = parseEvoEntry(e.name);
-    return { target: parsed.species, method: parsed.method, min: e.min };
+    return { target: parsed.species, method: parsed.method, min: e.min, gm: !!e.gm };
   }).filter(e=>getSpecies(e.target));
 }
-/* Evolve a Pokémon into a target species, keeping its stats, moves, abilities, level and XP. */
-function evolveTo(p, targetName){
+/* normalise an item/stone name for loose matching ("Water Stone" ↔ "waterstone") */
+function normItemName(s){ return String(s||"").toLowerCase().replace(/[^a-z0-9]/g,""); }
+/* is an evolution method a stone? which inventory item (if any) satisfies it? */
+function evoStoneName(method){ return (method && /stone/i.test(method)) ? method.trim() : null; }
+function findInventoryStone(t, method){
+  const key = normItemName(method); if(!key) return null;
+  return (t?.inventory||[]).find(it => normItemName(it.name)===key) || null;
+}
+/* Evolve a Pokémon into a target species, keeping its stats, moves, abilities, level and XP.
+   If `stoneItem` is given, consume one from the trainer's inventory. */
+function evolveTo(p, targetName, stoneItem){
   const sp = getSpecies(targetName); if(!sp) return;
-  if(!confirm(`Evolve ${p.nickname || getSpecies(p.species)?.name || "this Pokémon"} into ${sp.name}?\nStats, moves, abilities, level and XP are kept.`)) return;
+  const stoneMsg = stoneItem ? `\nThis consumes one ${stoneItem.name} from your inventory.` : "";
+  if(!confirm(`Evolve ${p.nickname || getSpecies(p.species)?.name || "this Pokémon"} into ${sp.name}?\nStats, moves, abilities, level and XP are kept.${stoneMsg}`)) return;
+  if(stoneItem){
+    const t = activeChar().trainer;
+    stoneItem.qty = (parseInt(stoneItem.qty)||1) - 1;
+    if(stoneItem.qty<=0){ const i=(t.inventory||[]).indexOf(stoneItem); if(i>=0) t.inventory.splice(i,1); }
+  }
   p.species = sp.name;
   const m = pokeDerived(p).maxHP;                         // clamp HP to the new species' max
   if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
-  save(); refreshMon(p); toast(`Evolved into ${sp.name}! ✨`);
+  save(); refreshMon(p); toast(`Evolved into ${sp.name}! ✨`+(stoneItem?` (−1 ${stoneItem.name})`:""));
 }
 /* PTU 1.05 Capture Rate (Core p.214). Returns {capturable, rate, breakdown:[[label,delta]]}. */
 function captureRate(p, opts={}){
@@ -1833,29 +1848,43 @@ function renderMonBuild(root, p, sp){
   ec.append(r3);
   root.append(ec);
 
-  /* evolution */
+  /* evolution — GM-only ("hidden") stages are concealed from players */
   if(sp && sp.evolution?.length>1){
-    const evc = el("div",{class:"card"}, el("h3",{},"Evolution"));
-    evc.append(el("div",{class:"r-body",html: sp.evolution.map(e=>`${e.stage}. ${esc(e.name)}${e.min?` (Lv ${e.min})`:""}`).join("  →  ")}));
-    const nexts = nextEvolutions(p);
-    if(nexts.length){
-      nexts.forEach(n => {
-        const ready = n.min==null ? true : p.level >= n.min;          // level met (stone/other evos = manual)
-        const reqTxt = n.min!=null ? `at Lv ${n.min}` : (n.method ? `via ${n.method}` : "special");
-        const rowE = el("div",{class:"inline",style:"justify-content:space-between;gap:8px;margin-top:8px;flex-wrap:wrap"});
-        rowE.append(el("span",{class:"small"}, `→ Evolves into `, el("b",{}, n.target), ` ${reqTxt}`,
-          n.min!=null && !ready ? el("span",{class:"muted"}, ` — reach Lv ${n.min}`) : ""));
-        const btn = el("button",{class:ready?"btn-primary":"btn-secondary",style:"padding:6px 12px",
-          disabled: (n.min!=null && !ready),
-          onclick: (n.min!=null && !ready) ? null : ()=>evolveTo(p, n.target)},
-          ready ? `✨ Evolve into ${n.target}` : `Lv ${n.min} to evolve`);
-        rowE.append(btn);
-        evc.append(rowE);
-      });
-    } else {
-      evc.append(el("div",{class:"small muted",style:"margin-top:6px"},"Final stage — no further evolutions."));
+    const gm = isGM();
+    const t = activeChar().trainer;
+    const chain = sp.evolution.filter(e=> gm || !e.gm);              // hide GM-only stages from players
+    const nexts = nextEvolutions(p).filter(n=> gm || !n.gm);
+    if(chain.length>1 || nexts.length){
+      const evc = el("div",{class:"card"}, el("h3",{},"Evolution"));
+      evc.append(el("div",{class:"r-body",html: chain.map(e=>`${e.stage}. ${esc(e.name)}${e.min?` (Lv ${e.min})`:""}${e.gm?" 🔒":""}`).join("  →  ")}));
+      if(nexts.length){
+        nexts.forEach(n => {
+          const stone = evoStoneName(n.method);
+          const stoneItem = stone ? findInventoryStone(t, stone) : null;
+          let ready, reqTxt, hint="";
+          if(stone){                                                  // stone evolution — needs it in the bag
+            ready = !!stoneItem; reqTxt = `with a ${stone}`;
+            hint = stoneItem ? ` — have ${stoneItem.name} ×${stoneItem.qty||1}` : ` — need a ${stone} in your inventory`;
+          } else if(n.min!=null){                                     // level evolution
+            ready = p.level >= n.min; reqTxt = `at Lv ${n.min}`;
+            if(!ready) hint = ` — reach Lv ${n.min}`;
+          } else { ready = true; reqTxt = n.method ? `via ${n.method}` : "special"; }
+          const rowE = el("div",{class:"inline",style:"justify-content:space-between;gap:8px;margin-top:8px;flex-wrap:wrap"});
+          rowE.append(el("span",{class:"small"}, `→ Evolves into `, el("b",{}, n.target), ` ${reqTxt}`,
+            n.gm?el("span",{class:"muted",title:"GM-only hidden evolution"}," 🔒 GM"):"",
+            hint?el("span",{class:"muted"}, hint):""));
+          const btn = el("button",{class:ready?"btn-primary":"btn-secondary",style:"padding:6px 12px",
+            disabled: !ready,
+            onclick: ready ? ()=>evolveTo(p, n.target, stoneItem) : null},
+            ready ? `✨ Evolve into ${n.target}` : (stone ? `Need ${stone}` : `Lv ${n.min} to evolve`));
+          rowE.append(btn);
+          evc.append(rowE);
+        });
+      } else {
+        evc.append(el("div",{class:"small muted",style:"margin-top:6px"},"Final stage — no further evolutions."));
+      }
+      root.append(evc);
     }
-    root.append(evc);
   }
 }
 
@@ -2684,6 +2713,7 @@ function addEncounterMon(enc, into){
     p.level=5; p.xp=xpForLevel(5);
     if(sp){ p.moves = speciesLevelupNames(sp, p.level).slice(-6);           // pre-load level-up moves
             if(sp.abilities?.basic?.length) p.abilities=[sp.abilities.basic[0]]; }
+    encRandomize(p);                                                        // random nature/gender/shiny/stats
     (into||enc.mons).push(p); saveEnc(); renderEncounters();
   }, "species");
 }
@@ -2713,6 +2743,78 @@ function encounterMoveRow(p, sp, m, mn, favSet, onFav, isStruggle){
   row.append(acts);
   return row;
 }
+function encounterAbilityRow(p, an){
+  const ab=abilityByName.get((an||"").toLowerCase());
+  const row=el("details",{class:"spoiler",style:"margin-top:5px"});
+  row.append(el("summary",{},
+    el("span",{style:"font-weight:700;color:var(--ink)"}, an||"—"),
+    ab&&ab.frequency?el("span",{class:"muted small",style:"margin-left:8px"}, ab.frequency):"",
+    el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove ability",
+      onclick:e=>{ e.preventDefault(); const i=p.abilities.indexOf(an); if(i>=0){ p.abilities.splice(i,1); saveEnc(); renderEncounters(); } }},"×")));
+  row.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database</span>"}));
+  return row;
+}
+/* GM encounter context: add ANY ability (this species' options floated to the top) */
+function addEncAbility(p, sp){
+  const speciesAbil = sp ? allAbilityNames(sp) : [];
+  const speciesSet = new Set(speciesAbil.map(x=>x.toLowerCase()));
+  const names = [...new Set([...speciesAbil, ...D.abilities.map(a=>a.name)])].filter(n=>!p.abilities.includes(n));
+  if(!names.length){ toast("No more abilities to add"); return; }
+  openPicker("Add ability"+(sp?` — ${sp.name}'s on top`:""), names, name=>{
+    if(!p.abilities.includes(name)){ p.abilities.push(name); saveEnc(); renderEncounters(); }
+  }, "ability", n=>speciesSet.has(n.toLowerCase()));
+}
+/* randomly spread a Pokémon's added stat points (Level + 10) across the six stats */
+function encSpreadStats(p){
+  const budget = (p.level||1) + 10;
+  const keys = STATS.map(s=>s[0]);
+  keys.forEach(k=> p.stats[k] = {added:0});
+  for(let i=0;i<budget;i++){ p.stats[keys[Math.floor(Math.random()*keys.length)]].added++; }
+}
+const ENC_GENDERS = ["Male","Female"];
+/* roll a Pokémon's random identity: nature, gender, shiny (Core p.212: 1d100, Shiny on a 1 or 100), stats */
+function encRandomize(p){
+  p.nature = D.natures[Math.floor(Math.random()*D.natures.length)].name;
+  p.gender = ENC_GENDERS[Math.floor(Math.random()*ENC_GENDERS.length)];
+  const roll = 1 + Math.floor(Math.random()*100);
+  p.shiny = (roll===1 || roll===100);
+  encSpreadStats(p);
+}
+/* send an encounter Pokémon to the shared PC (i.e. it's been caught) and remove it from the field */
+async function sendEncMonToPC(enc, p, list){
+  if(mode!=="cloud"){ toast("Join the campaign (☁ cloud) to send Pokémon to the shared PC"); return; }
+  ensurePCRow();
+  const m = normPokemon(JSON.parse(JSON.stringify(p)));
+  m.id = uid(); m.onTeam = false; m.currentHP = null; delete m.encFav;
+  m._pcFrom = "Encounter"+(enc.name?": "+enc.name:""); m._pcAt = Date.now();
+  cloud.pc.data.pokemon.push(m);
+  const i = list.indexOf(p); if(i>=0) list.splice(i,1);   // caught → leaves the encounter
+  saveEnc(); toast(`Caught ${encMonName(p)} → sent to the PC ✓`); renderEncounters();
+  if(!await pcUpsert()) toast("⚠ PC sync issue — it'll reconcile on the next change");
+}
+/* compact, expandable status-condition toggles for an encounter Pokémon */
+function encStatusControl(p){
+  if(!Array.isArray(p.statuses)) p.statuses=[];
+  const sp=getSpecies(p.species);
+  const active=STATUS_DEFS.filter(s=>hasStatus(p,s.key));
+  const det=el("details",{class:"spoiler",style:"margin-top:8px"});
+  det.append(el("summary",{},
+    el("span",{style:"font-weight:700;color:var(--ink)"},"Status Conditions"),
+    el("span",{class:"muted small",style:"margin-left:8px"}, active.length?active.map(s=>s.name).join(", "):"none"),
+    active.length?el("button",{class:"linkbtn",style:"float:right",onclick:e=>{ e.preventDefault(); p.statuses=[]; saveEnc(); renderEncounters(); }},"clear"):""));
+  const body=el("div",{style:"margin-top:6px"});
+  [["persistent","Persistent · +10 catch"],["volatile","Volatile · +5"],["other","Other"]].forEach(([kind,label])=>{
+    const chips=el("div",{class:"chips"});
+    STATUS_DEFS.filter(s=>s.kind===kind).forEach(s=>{
+      const on=hasStatus(p,s.key), immune=s.immune && sp?.types?.some(t=>s.immune.includes(t));
+      chips.append(el("button",{class:"statuschip"+(on?" on":""), title:(immune?`${sp.name} is immune. `:"")+s.effect,
+        onclick:()=>{ p.statuses=p.statuses||[]; const i=p.statuses.indexOf(s.key); if(i>=0)p.statuses.splice(i,1); else p.statuses.push(s.key); saveEnc(); renderEncounters(); }}, s.name+(immune?" ⃠":"")));
+    });
+    body.append(el("div",{class:"small muted",style:"font-weight:700;margin:4px 0 2px"},label), chips);
+  });
+  det.append(body);
+  return det;
+}
 function encounterMonCard(enc, p, list){
   normPokemon(p);
   const sp=getSpecies(p.species), d=pokeDerived(p), maxHP=d.maxHP;
@@ -2723,9 +2825,10 @@ function encounterMonCard(enc, p, list){
   const nw=el("div",{style:"flex:1;min-width:0"});
   nw.append(el("div",{style:"font-weight:800"}, encMonName(p), " ", el("span",{html:(sp?.types||[]).map(typeBadge).join(" ")})));
   const lvIn=el("input",{type:"number",min:1,max:100,value:p.level,style:"width:60px",title:"level"});
-  lvIn.addEventListener("change",()=>{ const l=Math.max(1,Math.min(100,parseInt(lvIn.value)||1)); p.level=l; p.xp=xpForLevel(l); p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); });
+  lvIn.addEventListener("change",()=>{ const l=Math.max(1,Math.min(100,parseInt(lvIn.value)||1)); p.level=l; p.xp=xpForLevel(l); encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); });
   nw.append(el("div",{class:"small muted",style:"margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"},
-    "Lv", lvIn, `· Atk ${d.eff.atk} · SpA ${d.eff.spatk} · Def ${d.eff.def} · SpD ${d.eff.spdef} · Spd ${d.eff.spd}`));
+    "Lv", lvIn, `· ${p.nature||"—"} · ${p.gender||"—"}${p.shiny?" · ✨Shiny":""}`));
+  nw.append(el("div",{class:"small muted",style:"margin-top:2px"}, `Atk ${d.eff.atk} · SpA ${d.eff.spatk} · Def ${d.eff.def} · SpD ${d.eff.spdef} · Spd ${d.eff.spd}`));
   head.append(nw);
   head.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove",
     onclick:()=>{ const i=list.indexOf(p); if(i>=0){ list.splice(i,1); saveEnc(); renderEncounters(); } }},"×"));
@@ -2738,6 +2841,17 @@ function encounterMonCard(enc, p, list){
     el("div",{class:"hpbar",style:"flex:1;min-width:120px"}, el("i",{style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`})),
     el("button",{class:"linkbtn",style:"padding:2px 6px",title:"full heal",onclick:()=>setHP(maxHP)},"MAX")));
   card.append(damageHealRow(()=>p.currentHP, setHP));
+  // GM actions: reroll identity, toggle shiny, Catch DC, send to PC (caught)
+  const actRow=el("div",{class:"inline",style:"gap:6px;margin-top:8px;flex-wrap:wrap"});
+  actRow.append(
+    el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"re-roll nature, gender, shiny & stat spread",
+      onclick:()=>{ encRandomize(p); p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); }},"🎲 Reroll"),
+    el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"toggle shiny",
+      onclick:()=>{ p.shiny=!p.shiny; saveEnc(); renderEncounters(); }}, p.shiny?"✨ Shiny":"Shiny?"),
+    el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"capture DC",onclick:()=>catchDCModal(p)},"🎯 Catch DC"),
+    el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"send to the shared PC (caught)",onclick:()=>sendEncMonToPC(enc,p,list)},"🎣 To PC"));
+  card.append(actRow);
+  card.append(encStatusControl(p));
   // moves — favourites first, each rollable
   const favSet=new Set(p.encFav||[]);
   const mw=el("div",{style:"margin-top:8px"});
@@ -2749,7 +2863,14 @@ function encounterMonCard(enc, p, list){
   ordered.forEach(mn=>{ const m=moveByName.get(mn.toLowerCase());
     mw.append(encounterMoveRow(p,sp,m,mn,favSet,()=>{ p.encFav=toggleSet(favSet,mn); saveEnc(); renderEncounters(); })); });
   card.append(mw);
-  if(p.abilities?.length) card.append(el("div",{class:"small muted",style:"margin-top:6px"}, "Abilities: "+p.abilities.join(", ")));
+  // abilities — addable, each expandable to explain what it does
+  const aw=el("div",{style:"margin-top:8px"});
+  aw.append(el("div",{class:"inline",style:"justify-content:space-between"},
+    el("span",{class:"small muted",style:"font-weight:700"},`Abilities (${p.abilities.length})`),
+    el("button",{class:"linkbtn",onclick:()=>addEncAbility(p,sp)},"+ ability")));
+  if(!p.abilities.length) aw.append(el("span",{class:"muted small"},"none — tap + ability"));
+  p.abilities.forEach(an=> aw.append(encounterAbilityRow(p,an)));
+  card.append(aw);
   return card;
 }
 function encounterTrainerCard(enc, tr){
@@ -3061,7 +3182,7 @@ function openPicker(title, names, onPick, refKind, markFn, lockFn){
         el("div",{class:"pi-title"}, n + (marked?"  ★":"") + (lock?"  🔒":"")),
         refKind==="move"? pickMoveSub(n) : refKind==="species"? pickSpeciesSub(n)
           : refKind==="feature"? pickFeatureSub(n) : refKind==="held"? pickHeldSub(n)
-          : refKind==="technique"? pickTechniqueSub(n) : "",
+          : refKind==="technique"? pickTechniqueSub(n) : refKind==="ability"? pickAbilitySub(n) : "",
         lock? el("div",{class:"pi-sub",style:"color:var(--bad)"}, lock) : "");
       const item = refKind==="species"
         ? el("div",{class:"pickitem",style:"display:flex;gap:10px;align-items:center"}, monSprite(n,false,"s-xs"), textCol)
@@ -3086,6 +3207,9 @@ function pickFeatureSub(name){ const f=D.features.find(x=>x.name===name); if(!f)
 function pickTechniqueSub(name){ const tq=techByName.get(name); if(!tq) return "";
   const meta=[tq.frequency, tq.prereq?("Prereq: "+tq.prereq):""].filter(Boolean).join(" · ");
   return meta?el("div",{class:"pi-sub"}, meta):""; }
+function pickAbilitySub(name){ const a=abilityByName.get((name||"").toLowerCase()); if(!a) return "";
+  const meta=[a.frequency, a.effect].filter(Boolean).join(" · ");
+  return meta?el("div",{class:"pi-sub"}, String(meta).slice(0,130)):""; }
 
 /* ===================================================================
    Character management + top bar
