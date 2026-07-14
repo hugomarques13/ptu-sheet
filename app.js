@@ -2682,7 +2682,7 @@ function battleActionRow(a, favs){
    Pokémon, roll their actions at a glance, and award XP by the book (Core p.460).
    Stored device-locally in state.encounters (never synced — GM prep).
 =================================================================== */
-function newEncounter(name){ return { id:uid(), name:name||"New Encounter", sig:2, players:1, mons:[], trainers:[] }; }
+function newEncounter(name){ return { id:uid(), name:name||"New Encounter", sig:1, players:3, mons:[], trainers:[] }; }
 function normEncounter(e){
   if(!e) return e;
   if(!Array.isArray(e.mons)) e.mons=[];
