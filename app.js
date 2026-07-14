@@ -2726,6 +2726,12 @@ function addEncMove(p, sp){
   const names = (sp ? speciesFullLearnset(sp) : D.moves.map(m=>m.name)).filter(n=>!p.moves.includes(n));
   openPicker("Add a move", [...new Set(names)], name=>{ p.moves.push(name); saveEnc(); renderEncounters(); }, "move");
 }
+/* encounter Trainers can carry their own combat Moves (granted by Features/class) — rollable like Pokémon moves */
+function addEncTrainerMove(t){
+  if(!Array.isArray(t.encMoves)) t.encMoves=[];
+  const names = D.moves.map(m=>m.name).filter(n=>!t.encMoves.includes(n));
+  openPicker("Add a Trainer move", names, name=>{ t.encMoves.push(name); saveEnc(); renderEncounters(); }, "move");
+}
 
 function encounterMoveRow(p, sp, m, mn, favSet, onFav, isStruggle){
   const row=el("div",{class:"inline",style:"gap:6px;align-items:center;margin-top:5px;justify-content:space-between"});
@@ -2929,6 +2935,23 @@ function encounterTrainerCard(enc, tr){
       atkWrap.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t,w.weaponMove,w), {tag:"weapon move", move:true})); }
   });
   card.append(atkWrap);
+  // Trainer Moves — combat Moves granted by their Features/class, each rollable (adds Attack)
+  if(!Array.isArray(t.encMoves)) t.encMoves=[];
+  const tmw=el("div",{style:"margin-top:8px"});
+  tmw.append(el("div",{class:"inline",style:"justify-content:space-between"},
+    el("span",{class:"small muted",style:"font-weight:700"},`Trainer Moves (${t.encMoves.length})`),
+    el("button",{class:"linkbtn",onclick:()=>addEncTrainerMove(t)},"+ move")));
+  if(!t.encMoves.length) tmw.append(el("span",{class:"muted small"},"none — Moves from their Features/class; tap + move"));
+  t.encMoves.forEach(mn=>{
+    const m=moveByName.get(mn.toLowerCase());
+    const prof = m ? trainerAttackProfile(t, mn) : {name:mn+" (not in DB)",type:"Normal",cls:"?",ac:"—",damageBase:"—",range:"—"};
+    const slot = trainerAttackSlot(t, prof, ()=> m?openTrainerAttack(t,mn):toast("Not in the move database"), {move:!!m});
+    const acts = slot.querySelector(".inline");
+    if(acts) acts.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted)",title:"remove move",
+      onclick:()=>{ t.encMoves=t.encMoves.filter(x=>x!==mn); saveEnc(); renderEncounters(); }},"×"));
+    tmw.append(slot);
+  });
+  card.append(tmw);
   // Skills — trained ones with their dice, for quick GM checks
   const trained=SKILLS.filter(([k])=> (t.skills?.[k]||"Untrained")!=="Untrained");
   if(trained.length){
