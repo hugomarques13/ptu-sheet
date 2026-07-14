@@ -2815,30 +2815,53 @@ function encStatusControl(p){
   det.append(body);
   return det;
 }
+/* minimize/expand a single encounter Pokémon (focus the active one, tuck away fainted ones) */
+function encMonToggleMin(p){ p.encMin=!p.encMin; saveEnc(); renderEncounters(); }
+/* collapse every fainted (HP ≤ 0) Pokémon in a list at once */
+function encCollapseFainted(list){ let n=0; (list||[]).forEach(p=>{ if((p.currentHP??1)<=0 && !p.encMin){ p.encMin=true; n++; } }); if(n){ saveEnc(); renderEncounters(); } else toast("No fainted Pokémon to collapse"); }
+/* a small ▾ minimize + × remove control shared by the collapsed & expanded views */
+function encMonRemoveBtn(p,list){ return el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove",
+  onclick:()=>{ const i=list.indexOf(p); if(i>=0){ list.splice(i,1); saveEnc(); renderEncounters(); } }},"×"); }
 function encounterMonCard(enc, p, list){
   normPokemon(p);
   const sp=getSpecies(p.species), d=pokeDerived(p), maxHP=d.maxHP;
   if(p.currentHP==null) p.currentHP=maxHP;
-  const card=el("div",{style:"border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px;margin-top:8px;background:var(--panel-2)"});
+  const fainted = p.currentHP<=0;
+  const pct=Math.max(0,Math.min(100,Math.round(p.currentHP/maxHP*100)));
+  const hpColor = pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)";
+  // ---- Collapsed (minimized) view: sprite · name · level · mini HP bar, expand + remove ----
+  if(p.encMin){
+    const mini=el("div",{style:`border:1px solid var(--line);border-radius:var(--radius-sm);padding:6px 10px;margin-top:8px;background:var(--panel-2);${fainted?"opacity:.5;":""}`});
+    const row=el("div",{class:"inline",style:"gap:8px;align-items:center"});
+    row.append(monSprite(p.species,p.shiny,"s-sm",p.image||undefined));
+    row.append(el("span",{style:"font-weight:800;white-space:nowrap"}, (fainted?"💀 ":"")+encMonName(p)));
+    row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `Lv ${p.level}`));
+    row.append(el("div",{class:"hpbar",style:"flex:1;min-width:70px"}, el("i",{style:`width:${pct}%;background:${hpColor}`})));
+    row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `${p.currentHP}/${maxHP}`));
+    row.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"expand",onclick:()=>encMonToggleMin(p)},"▸"));
+    row.append(encMonRemoveBtn(p,list));
+    mini.append(row);
+    return mini;
+  }
+  const card=el("div",{style:`border:1px solid ${fainted?"var(--bad)":"var(--line)"};border-radius:var(--radius-sm);padding:10px;margin-top:8px;background:var(--panel-2);${fainted?"opacity:.7;":""}`});
   const head=el("div",{class:"inline",style:"gap:10px;align-items:flex-start"});
   head.append(monSprite(p.species,p.shiny,"s-sm",p.image||undefined));
   const nw=el("div",{style:"flex:1;min-width:0"});
-  nw.append(el("div",{style:"font-weight:800"}, encMonName(p), " ", el("span",{html:(sp?.types||[]).map(typeBadge).join(" ")})));
+  nw.append(el("div",{style:"font-weight:800"}, (fainted?"💀 ":"")+encMonName(p), " ", el("span",{html:(sp?.types||[]).map(typeBadge).join(" ")})));
   const lvIn=el("input",{type:"number",min:1,max:100,value:p.level,style:"width:60px",title:"level"});
   lvIn.addEventListener("change",()=>{ const l=Math.max(1,Math.min(100,parseInt(lvIn.value)||1)); p.level=l; p.xp=xpForLevel(l); encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); });
   nw.append(el("div",{class:"small muted",style:"margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"},
     "Lv", lvIn, `· ${p.nature||"—"} · ${p.gender||"—"}${p.shiny?" · ✨Shiny":""}`));
   nw.append(el("div",{class:"small muted",style:"margin-top:2px"}, `Atk ${d.eff.atk} · SpA ${d.eff.spatk} · Def ${d.eff.def} · SpD ${d.eff.spdef} · Spd ${d.eff.spd}`));
   head.append(nw);
-  head.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove",
-    onclick:()=>{ const i=list.indexOf(p); if(i>=0){ list.splice(i,1); saveEnc(); renderEncounters(); } }},"×"));
+  head.append(el("button",{class:"btn-secondary",style:"padding:3px 9px;align-self:flex-start",title:"minimize",onclick:()=>encMonToggleMin(p)},"▾"));
+  head.append(encMonRemoveBtn(p,list));
   card.append(head);
   // HP tracker
   const setHP=v=>{ p.currentHP=Math.max(-99,Math.min(maxHP,v)); saveEnc(); renderEncounters(); };
-  const pct=Math.max(0,Math.min(100,Math.round(p.currentHP/maxHP*100)));
   card.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"},
     el("span",{class:"small muted",style:"font-weight:700;white-space:nowrap"}, `HP ${p.currentHP}/${maxHP}`),
-    el("div",{class:"hpbar",style:"flex:1;min-width:120px"}, el("i",{style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`})),
+    el("div",{class:"hpbar",style:"flex:1;min-width:120px"}, el("i",{style:`width:${pct}%;background:${hpColor}`})),
     el("button",{class:"linkbtn",style:"padding:2px 6px",title:"full heal",onclick:()=>setHP(maxHP)},"MAX")));
   card.append(damageHealRow(()=>p.currentHP, setHP));
   // GM actions: reroll identity, toggle shiny, Catch DC, send to PC (caught)
@@ -2895,14 +2918,31 @@ function encounterTrainerCard(enc, tr){
     el("span",{class:"small muted",style:"font-weight:700;white-space:nowrap"}, `HP ${t.currentHP}/${maxHP}`),
     el("div",{class:"hpbar",style:"flex:1;min-width:120px"}, el("i",{style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`}))));
   card.append(damageHealRow(()=>t.currentHP, setHP));
-  const stg=trainerStruggle(t);
-  card.append(el("div",{class:"inline",style:"gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap"},
-    el("span",{class:"small",style:"font-weight:700"}, `⚔ ${stg.name}: ${stg.cls} · AC ${stg.ac} · DB ${stg.damageBase} · ${stg.range}`),
-    el("button",{class:"btn-secondary",style:"padding:5px 10px",onclick:()=>openTrainerAttack(t)},"🎲 Roll")));
+  // Attacks: unarmed Struggle + one slot per weapon (+ its Weapon Move) — reuses the Sheet's slots
+  const atkWrap=el("div",{style:"margin-top:8px"});
+  atkWrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:2px"},"⚔ Attacks"));
+  atkWrap.append(trainerAttackSlot(t, trainerStruggle(t), ()=>openTrainerAttack(t), {tag:"unarmed"}));
+  (t.weapons||[]).forEach(w=>{
+    atkWrap.append(trainerAttackSlot(t, trainerStruggle(t,w), ()=>openTrainerAttack(t,null,w), {tag:w.category}));
+    if(w.notes) atkWrap.append(el("div",{class:"small muted",style:"margin:-2px 0 4px 6px"}, "↳ "+w.notes));
+    if(w.weaponMove){ const wm=trainerAttackProfile(t,w.weaponMove,w);
+      atkWrap.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t,w.weaponMove,w), {tag:"weapon move", move:true})); }
+  });
+  card.append(atkWrap);
+  // Skills — trained ones with their dice, for quick GM checks
+  const trained=SKILLS.filter(([k])=> (t.skills?.[k]||"Untrained")!=="Untrained");
+  if(trained.length){
+    const chips=el("div",{class:"chips",style:"margin-top:4px"});
+    trained.forEach(([k,l])=> chips.append(el("span",{class:"kv",title:t.skills[k]}, `${l} ${rankDice(t.skills[k])}d6`)));
+    card.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:8px"},"Skills"), chips);
+  }
   // trainer's Pokémon
-  card.append(el("div",{class:"inline",style:"justify-content:space-between;margin-top:10px"},
+  const tmonFainted=tr.pokemon.some(p=>(p.currentHP??1)<=0 && !p.encMin);
+  card.append(el("div",{class:"inline",style:"justify-content:space-between;margin-top:10px;gap:8px;flex-wrap:wrap"},
     el("span",{class:"small muted",style:"font-weight:700"},`${t.name||"Trainer"}'s Pokémon (${tr.pokemon.length})`),
-    el("button",{class:"linkbtn",onclick:()=>addEncounterMon(enc, tr.pokemon)},"+ add Pokémon")));
+    el("div",{class:"inline",style:"gap:8px"},
+      tmonFainted?el("button",{class:"linkbtn",title:"minimize all fainted",onclick:()=>encCollapseFainted(tr.pokemon)},"▾ fainted"):"",
+      el("button",{class:"linkbtn",onclick:()=>addEncounterMon(enc, tr.pokemon)},"+ add Pokémon"))));
   tr.pokemon.forEach(p=> card.append(encounterMonCard(enc, p, tr.pokemon)));
   return card;
 }
@@ -2969,7 +3009,9 @@ function renderEncounters(){
   setc.append(el("div",{class:"small muted",style:"margin-top:4px"}, `Base XP so far: `, el("b",{}, String(encounterBaseXP(cur))), ` (sum of enemy levels; Trainers count double). Significance ×${cur.sig}, ${cur.players} player${cur.players===1?"":"s"} — edit in Calculate EXP.`));
   root.append(setc);
   // wild Pokémon
+  const wildFainted=cur.mons.some(p=>(p.currentHP??1)<=0 && !p.encMin);
   const mc=el("div",{class:"card"}, el("h3",{},`Wild Pokémon (${cur.mons.length})`,
+    wildFainted?el("button",{class:"linkbtn h-act",title:"minimize all fainted",onclick:()=>encCollapseFainted(cur.mons)},"▾ fainted"):"",
     el("button",{class:"linkbtn h-act",onclick:()=>addEncounterMon(cur)},"+ add Pokémon")));
   if(!cur.mons.length) mc.append(el("span",{class:"muted small"},"none — add a wild Pokémon; it comes pre-loaded with level-up moves."));
   cur.mons.forEach(p=> mc.append(encounterMonCard(cur, p, cur.mons)));
