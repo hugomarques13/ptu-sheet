@@ -3548,6 +3548,26 @@ async function fetchRoster(){
     if(r.owner_id===MAP_OWNER) return;                                                // map rows aren't characters
     r.data = migrateChar(r.data, r.id); cloud.byId[r.id] = r;
   });
+  recoverUnsavedFromCache();
+}
+/* Safety net for the "edits revert after refresh" bug: if a debounced/keepalive save still
+   never landed, the local cache holds a NEWER copy than the DB. On (re)connect, restore any
+   editable row whose cached copy is strictly newer and re-push it. Compares client-set
+   updated_at, so a genuinely-newer DB row (edited elsewhere) always wins. */
+function recoverUnsavedFromCache(){
+  let cached; try{ cached = JSON.parse(localStorage.getItem("ptu_cloud_cache_"+cloud.campaign)||"[]"); }catch(e){ return; }
+  if(!Array.isArray(cached)) return;
+  const SENTINELS = [PC_OWNER, MAP_OWNER, ENC_OWNER];
+  cached.forEach(cr=>{
+    if(!cr || !cr.id || SENTINELS.includes(cr.owner_id)) return;
+    const db = cloud.byId[cr.id];
+    if(!db || !canEdit(db)) return;
+    if(cr.updated_at && (!db.updated_at || cr.updated_at > db.updated_at)){
+      cr.data = migrateChar(cr.data, cr.id);
+      cloud.byId[cr.id] = cr;
+      cloudUpsert(cr);   // fire-and-forget: push the recovered copy back to the cloud
+    }
+  });
 }
 /* the shared PC storage (visible to every member, so it's fetched separately from the roster) */
 function pcData(data){
@@ -3720,13 +3740,44 @@ function subscribeRealtime(){
         onRealtime)
     .subscribe();
 }
+/* Supabase Realtime replaces the record with an empty object for rows over its
+   max_record_bytes limit (~1 MB) — our map/PC rows carry background images & sprites as
+   data-URLs and routinely blow past it. When that happens the event still fires but with
+   no usable `data` (and sometimes no id), so instead of trusting the truncated payload we
+   re-fetch the affected row over a normal SELECT (not size-limited) and re-render. */
+function payloadHasData(p){ return !!(p && p.data && typeof p.data==="object" && Object.keys(p.data).length); }
+const sharedRefetchTimers = {};
+function scheduleSharedRefetch(kind){
+  clearTimeout(sharedRefetchTimers[kind]);
+  sharedRefetchTimers[kind] = setTimeout(async ()=>{
+    if(kind==="pc")   await fetchPC();
+    if(kind==="map")  await fetchMap();
+    if(kind==="enc")  await fetchEnc();
+    if(kind==="roster") await fetchRoster();
+    const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
+    if(typing) return;
+    if(kind==="pc"){ if(currentTab==="pc") renderPC(); }
+    else if(kind==="map"){ if(currentTab==="map" && !mapDragging) renderMap(); }
+    else if(kind==="enc"){ if((currentTab==="encounters"||currentTab==="map") && !mapDragging) render(); }
+    else softRender();
+  }, 140);
+}
 function onRealtime(payload){
   const type = payload.eventType || payload.type;
   const evtId = payload.new?.id ?? payload.old?.id;
   const evtOwner = payload.new?.owner_id ?? payload.old?.owner_id;
+  // Fully-truncated oversized event (no id to route on) → we can't tell what changed, so
+  // reconcile everything via fresh SELECTs rather than dropping the update on the floor.
+  if(!evtId && type!=="DELETE"){
+    scheduleSharedRefetch("map"); scheduleSharedRefetch("pc");
+    scheduleSharedRefetch("enc"); scheduleSharedRefetch("roster");
+    return;
+  }
   // the shared PC is visible to everyone — handle it before the per-player visibility filter
   if(evtOwner===PC_OWNER || evtId===pcId()){
-    cloud.pc = (type==="DELETE") ? null : { ...payload.new, data: pcData(payload.new.data) };
+    if(type==="DELETE"){ cloud.pc = null; }
+    else if(!payloadHasData(payload.new)){ scheduleSharedRefetch("pc"); return; }
+    else cloud.pc = { ...payload.new, data: pcData(payload.new.data) };
     // live-refresh the PC tab, but don't yank focus while someone is typing in a filter
     const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
     if(currentTab==="pc" && !typing) renderPC();
@@ -3736,6 +3787,7 @@ function onRealtime(payload){
   if(evtOwner===MAP_OWNER || evtId===mapMetaId() || evtId===mapTokensId()){
     const isMeta = evtId===mapMetaId();
     if(type==="DELETE"){ if(isMeta) cloud.mapMeta=null; else cloud.mapTokens=null; }
+    else if(!payloadHasData(payload.new)){ scheduleSharedRefetch("map"); return; }
     else {
       const cur = isMeta ? cloud.mapMeta : cloud.mapTokens;
       // ignore stale/echoed rows: an out-of-order echo of our own earlier write must not
@@ -3751,6 +3803,7 @@ function onRealtime(payload){
   // shared encounters (GM prep) — visible to everyone so map tokens can resolve their enemy link
   if(evtOwner===ENC_OWNER || evtId===encRowId()){
     if(type==="DELETE"){ cloud.enc=null; }
+    else if(!payloadHasData(payload.new)){ scheduleSharedRefetch("enc"); return; }
     else {
       if(cloud.enc?.updated_at && payload.new.updated_at && payload.new.updated_at <= cloud.enc.updated_at) return;
       cloud.enc = { ...payload.new, data: normEnc(payload.new.data) };
@@ -3766,6 +3819,9 @@ function onRealtime(payload){
     softRender(); return;
   }
   const row = payload.new; if(!row) return;
+  // truncated oversized character row (big sheet w/ avatar/sprite data-URLs) → re-fetch, don't
+  // overwrite the good local copy with an empty "Recovered" character.
+  if(!payloadHasData(row)){ scheduleSharedRefetch("roster"); return; }
   row.data = migrateChar(row.data, row.id);
   const echo = row.id===cloud.activeId && (Date.now()-cloud.lastSaveTs < 2500);
   cloud.byId[row.id] = row;
@@ -3790,6 +3846,37 @@ function cloudSave(){
     });
     if(error){ console.error(error); toast("⚠ Cloud save failed"); }
   }, 500);
+}
+/* Upsert a row via a keepalive fetch — unlike a normal fetch, the browser lets this complete
+   even as the page is being unloaded/backgrounded, which is exactly when mobile kills the tab. */
+function restUpsertKeepalive(row){
+  if(!(CLOUD_CFG.url && CLOUD_CFG.anonKey) || !row) return;
+  try{
+    fetch(CLOUD_CFG.url.replace(/\/+$/,"") + "/rest/v1/sheets", {
+      method:"POST", keepalive:true,
+      headers:{ apikey:CLOUD_CFG.anonKey, Authorization:"Bearer "+CLOUD_CFG.anonKey,
+        "Content-Type":"application/json", Prefer:"resolution=merge-duplicates" },
+      body: JSON.stringify({ id:row.id, campaign:cloud.campaign, owner_id:row.owner_id,
+        owner_name:row.owner_name, name:row.name, data:row.data, updated_at:row.updated_at }),
+    }).catch(()=>{});
+  }catch(e){}
+}
+/* Flush pending debounced cloud writes NOW (page is hiding/closing). The 500 ms save debounce
+   otherwise loses the last edit when a mobile tab is refreshed or backgrounded mid-window —
+   the reason edits "revert to an older state" after a refresh. */
+function flushCloudSaves(){
+  if(mode!=="cloud") return;
+  if(cloud.saveTimer){
+    clearTimeout(cloud.saveTimer); cloud.saveTimer=null;
+    const row = cloud.byId[cloud.activeId];
+    if(row && canEdit(row)){ row.updated_at=new Date().toISOString(); row.name=row.data?.name||"";
+      cloud.lastSaveTs=Date.now(); cacheCloud(); restUpsertKeepalive(row); }
+  }
+  if(encSaveTimer && cloud.isGM){
+    clearTimeout(encSaveTimer); encSaveTimer=null;
+    const enc = ensureEnc(); enc.updated_at=new Date().toISOString();
+    cloud.encSaveTs=Date.now(); restUpsertKeepalive(enc);
+  }
 }
 async function cloudNewCharacter(name){
   const c = newCharacter(name);
@@ -5010,6 +5097,12 @@ function openCloudPanel(){
 applyTheme();
 render();
 initCloud();
+
+/* Persist pending cloud edits before the page goes away. visibilitychange→hidden is the one
+   event mobile browsers reliably fire before killing a backgrounded/refreshed tab; pagehide
+   covers desktop close/navigate. Both flush the debounced save via a keepalive request. */
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden") flushCloudSaves(); });
+window.addEventListener("pagehide", flushCloudSaves);
 
 /* register service worker when hosted (ignored on file://) */
 if("serviceWorker" in navigator && location.protocol.startsWith("http")){
