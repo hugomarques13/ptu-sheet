@@ -296,6 +296,14 @@ function itemFreqForKey(key){
   if(kind==="feature"){ const f=D.features.find(x=>x.name.toLowerCase()===name); return f?.frequency; }
   return null;
 }
+/* frequency of a named Move/Ability/Feature, for at-a-glance labels (classes/edges have none) */
+function refFrequency(kind, name){
+  const n=(name||"").toLowerCase();
+  if(kind==="move")    return moveByName.get(n)?.frequency;
+  if(kind==="ability") return abilityByName.get(n)?.frequency;
+  if(kind==="feature") return D.features.find(x=>x.name.toLowerCase()===n)?.frequency;
+  return null;
+}
 /* reset an owner's uses: mode "scene" clears Scene- and EOT-freq keys; "all" clears everything */
 function resetUses(owner, mode){
   if(!owner || !owner.uses) return;
@@ -424,6 +432,7 @@ function normTrainer(t){
   if(typeof t.tempHP!=="number") t.tempHP = 0;
   if(typeof t.injuries!=="number") t.injuries = 0;
   if(typeof t.usedAP!=="number") t.usedAP = 0;
+  if(typeof t.xp!=="number") t.xp = 0;                            // EXP toward next level (houserule: 10 = level up)
   if(typeof t.unlocked!=="boolean") t.unlocked = false;
   if(!t.uses || typeof t.uses!=="object") t.uses = {};
   if(typeof t.avatar!=="string") t.avatar = "";
@@ -467,10 +476,19 @@ const EMPTY_CHAR = { id:"none", name:"", trainer:newTrainer(), pokemon:[] };
 const CLOUD_CFG = window.PTU_CLOUD || {};
 let mode = "local";                 // "local" | "cloud"
 const cloud = { client:null, campaign:"", userId:"", name:"", isGM:false,
-                byId:{}, activeId:null, sub:null, lastSaveTs:0, saveTimer:null, pc:null };
+                byId:{}, activeId:null, sub:null, lastSaveTs:0, saveTimer:null, pc:null,
+                mapMeta:null, mapTokens:null, mapSaveTs:0, enc:null, encSaveTs:0, encTimer:null };
 /* shared PC storage lives in a reserved sheets row owned by this sentinel, visible to everyone */
 const PC_OWNER = "__pc__";
 const pcId = () => "pc_" + cloud.campaign;
+/* shared battle map (Owlbear-style): two reserved rows owned by this sentinel, visible to everyone.
+   meta row = maps + backgrounds + grid (changes rarely); tokens row = positions + HP (changes often) */
+const MAP_OWNER = "__map__";
+const mapMetaId   = () => "mapmeta_"   + cloud.campaign;
+const mapTokensId = () => "maptokens_" + cloud.campaign;
+/* GM encounter prep, synced so map tokens can live-link to encounter monsters */
+const ENC_OWNER = "__enc__";
+const encRowId  = () => "enc_" + cloud.campaign;
 
 /* nested get/set by "a.b.c" path on the active character */
 function setPath(obj, path, val) {
@@ -659,9 +677,13 @@ function switchTab(name){
 $$(".tab").forEach(t => t.addEventListener("click", ()=>switchTab(t.dataset.tab)));
 
 function render(){
+  document.body.classList.toggle("map-mode", currentTab==="map");   // full-screen board layout
   // the PC tab exists only during cloud play; bounce off it if we drop to local
   const pcBtn = $("#tabPC"); if(pcBtn) pcBtn.hidden = (mode!=="cloud");
   if(currentTab==="pc" && mode!=="cloud"){ switchTab("pokemon"); return; }
+  // the Map tab is shared cloud play, like the PC
+  const mapBtn = $("#tabMap"); if(mapBtn) mapBtn.hidden = (mode!=="cloud");
+  if(currentTab==="map" && mode!=="cloud"){ switchTab("pokemon"); return; }
   // the Encounters tab is GM-only
   const encBtn = $("#tabEncounters"); if(encBtn) encBtn.hidden = !isGM();
   if(currentTab==="encounters" && !isGM()){ switchTab("trainer"); return; }
@@ -672,6 +694,7 @@ function render(){
   if (currentTab==="trainer")    renderTrainer();
   if (currentTab==="pokemon")    renderPokemon();
   if (currentTab==="pc")         renderPC();
+  if (currentTab==="map")        renderMap();
   if (currentTab==="battle")     renderBattle();
   if (currentTab==="encounters") renderEncounters();
   if (currentTab==="reference")  renderReference();
@@ -736,6 +759,9 @@ function renderTrainer(){
   );
   idc.append(el("div",{class:"idrow"}, trainerAvatar(t), el("div",{style:"flex:1;min-width:220px"}, row1, row2)));
   root.append(idc);
+
+  /* EXP tracker (houserule: 10 EXP = level up) */
+  root.append(trainerXpCard(t));
 
   /* HP / AP tracker + rest buttons */
   root.append(trainerVitalsCard(t));
@@ -924,6 +950,39 @@ function trainerAvatar(t){
   if(t.avatar) acts.append(el("button",{class:"linkbtn",onclick:()=>{ t.avatar=""; save(); renderTrainer(); }},"remove"));
   wrap.append(acts);
   return wrap;
+}
+/* Trainer EXP (houserule): 10 EXP = one level. t.level stays authoritative; t.xp is 0..9 progress toward it. */
+const TRAINER_XP_PER_LEVEL = 10;
+const TRAINER_MAX_LEVEL = 50;
+function addTrainerXP(t, n){
+  if(typeof t.xp!=="number") t.xp = 0;
+  t.xp += n;
+  let leveled = 0;
+  while(t.xp >= TRAINER_XP_PER_LEVEL && t.level < TRAINER_MAX_LEVEL){ t.xp -= TRAINER_XP_PER_LEVEL; t.level++; leveled++; }
+  while(t.xp < 0 && t.level > 1){ t.xp += TRAINER_XP_PER_LEVEL; t.level--; }              // allow taking EXP back
+  if(t.xp < 0) t.xp = 0;
+  if(t.level >= TRAINER_MAX_LEVEL){ t.level = TRAINER_MAX_LEVEL; t.xp = Math.min(t.xp, TRAINER_XP_PER_LEVEL); }
+  save();
+  if(leveled > 0) toast(`⭐ Level up! ${t.name||"Trainer"} is now Lv ${t.level}`);
+  renderTrainer();
+}
+function trainerXpCard(t){
+  if(typeof t.xp!=="number") t.xp = 0;
+  const per = TRAINER_XP_PER_LEVEL, cur = Math.max(0, Math.min(per, t.xp));
+  const pct = Math.round(cur/per*100);
+  const card = el("div",{class:"card"}, el("h3",{},"Experience",
+    el("span",{class:"muted small"}, `${per} EXP = 1 level`)));
+  card.append(el("div",{class:"inline",style:"gap:10px;align-items:center;flex-wrap:wrap"},
+    el("span",{class:"small",style:"font-weight:700;white-space:nowrap"}, `Lv ${t.level} · ${cur}/${per} EXP`),
+    el("div",{class:"hpbar",style:"flex:1;min-width:140px"}, el("i",{style:`width:${pct}%;background:var(--accent)`})),
+    el("span",{class:"small muted",style:"white-space:nowrap"}, t.level>=TRAINER_MAX_LEVEL ? "max level" : `${per-cur} to Lv ${t.level+1}`)));
+  const inp = el("input",{type:"number",min:1,value:1,style:"width:70px",title:"amount of EXP"});
+  const apply = sign => { const n=Math.abs(parseInt(inp.value)||0); if(n) addTrainerXP(t, sign*n); };
+  card.append(el("div",{class:"inline",style:"gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center"},
+    el("span",{class:"small muted"},"Award:"), inp,
+    el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"grant EXP (auto levels up at 10)",onclick:()=>apply(1)},"＋ EXP"),
+    el("button",{class:"btn ghost",style:"padding:5px 10px",title:"take EXP back",onclick:()=>apply(-1)},"－ EXP")));
+  return card;
 }
 /* Trainer HP + AP tracker with Damage/Heal box and End Scene / End Day (rest) buttons */
 function trainerVitalsCard(t){
@@ -2693,10 +2752,14 @@ function normEncounter(e){
   e.trainers.forEach(tr=>{ if(tr.trainer) normTrainer(tr.trainer); if(!Array.isArray(tr.pokemon)) tr.pokemon=[]; tr.pokemon.forEach(normPokemon); });
   return e;
 }
-function encList(){ return state.encounters || (state.encounters=[]); }
+/* encounters live in the cloud when connected (so map tokens can link to them), else device-local */
+function encList(){ return mode==="cloud" ? ensureEnc().data.encounters : (state.encounters || (state.encounters=[])); }
 function activeEncounter(){ const a=encList(); return a.find(e=>e.id===state.activeEncounterId) || a[0]; }
-/* encounters are device-local → always persist to localStorage, even in cloud mode (where save() upserts a cloud sheet) */
-function saveEnc(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){ toast("⚠ Could not save encounter"); } }
+let encSaveTimer;
+function saveEnc(){
+  if(mode==="cloud"){ clearTimeout(encSaveTimer); encSaveTimer=setTimeout(()=>{ encUpsert(); }, 400); return; }
+  try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){ toast("⚠ Could not save encounter"); }
+}
 function toggleSet(set, v){ set.has(v)?set.delete(v):set.add(v); return [...set]; }
 /* Base Experience Value: sum of enemy levels; Trainers count double (Core p.460) */
 function encounterBaseXP(enc){
@@ -2758,6 +2821,18 @@ function encounterAbilityRow(p, an){
     el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove ability",
       onclick:e=>{ e.preventDefault(); const i=p.abilities.indexOf(an); if(i>=0){ p.abilities.splice(i,1); saveEnc(); renderEncounters(); } }},"×")));
   row.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database</span>"}));
+  return row;
+}
+/* one expandable Class/Feature/Edge/Ability row on an encounter trainer card */
+function encTrainerRefRow(name, kind, onRemove){
+  const row=el("details",{class:"spoiler",style:"margin-top:5px"});
+  const freq=refFrequency(kind, name);
+  row.append(el("summary",{},
+    el("span",{style:"font-weight:700;color:var(--ink)"}, name),
+    freq?el("span",{class:"muted small",style:"margin-left:8px"}, freq):"",
+    el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove",
+      onclick:e=>{ e.preventDefault(); onRemove(); }},"×")));
+  row.append(el("div",{class:"small",style:"margin-top:6px",html: refDetailHTML(kind, name)}));
   return row;
 }
 /* GM encounter context: add ANY ability (this species' options floated to the top) */
@@ -2851,7 +2926,14 @@ function encounterMonCard(enc, p, list){
   }
   const card=el("div",{style:`border:1px solid ${fainted?"var(--bad)":"var(--line)"};border-radius:var(--radius-sm);padding:10px;margin-top:8px;background:var(--panel-2);${fainted?"opacity:.7;":""}`});
   const head=el("div",{class:"inline",style:"gap:10px;align-items:flex-start"});
-  head.append(monSprite(p.species,p.shiny,"s-sm",p.image||undefined));
+  // sprite with a 📷 overlay (same affordance as the Pokémon sheet) — this is the map token's picture
+  const spriteBox=el("div",{class:"sprite-box sb-sm",style:"flex:0 0 auto"});
+  spriteBox.append(monSprite(p.species,p.shiny,"s-sm",p.image||undefined));
+  spriteBox.append(el("button",{class:"photo-btn",title:"picture used for this creature's map token",
+    onclick:()=>pickImage(256, url=>{ p.image=url; saveEnc(); renderEncounters(); })},"📷"));
+  if(p.image) spriteBox.append(el("button",{class:"photo-rm",title:"remove picture — use the default sprite",
+    onclick:()=>{ p.image=""; saveEnc(); renderEncounters(); }},"×"));
+  head.append(spriteBox);
   const nw=el("div",{style:"flex:1;min-width:0"});
   nw.append(el("div",{style:"font-weight:800"}, (fainted?"💀 ":"")+encMonName(p), " ", el("span",{html:(sp?.types||[]).map(typeBadge).join(" ")})));
   const lvIn=el("input",{type:"number",min:1,max:100,value:p.level,style:"width:60px",title:"level"});
@@ -2911,7 +2993,13 @@ function encounterTrainerCard(enc, tr){
   nameIn.addEventListener("change",()=>{ t.name=nameIn.value; saveEnc(); renderEncounters(); });
   const lvIn=el("input",{type:"number",min:1,max:100,value:t.level,style:"width:58px",title:"trainer level"});
   lvIn.addEventListener("change",()=>{ t.level=Math.max(1,parseInt(lvIn.value)||1); saveEnc(); });
-  info.append(el("span",{style:"font-weight:800"},"👤"), nameIn, el("span",{class:"small muted"},"Lv"), lvIn);
+  const av = el("img",{src:t.avatar||TRAINER_PLACEHOLDER,alt:"",
+    style:"width:32px;height:32px;border-radius:50%;object-fit:cover;border:1px solid var(--line);background:var(--panel-2)"});
+  info.append(av, nameIn, el("span",{class:"small muted"},"Lv"), lvIn,
+    el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"picture used for this trainer's map token",
+      onclick:()=>pickImage(256, d=>{ t.avatar=d; saveEnc(); renderEncounters(); })}, t.avatar?"📷 Change":"📷 Image"));
+  if(t.avatar) info.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"remove image — use the default icon",
+    onclick:()=>{ t.avatar=""; saveEnc(); renderEncounters(); }},"×"));
   head.append(info);
   head.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove trainer",
     onclick:()=>{ enc.trainers=enc.trainers.filter(x=>x.id!==tr.id); saveEnc(); renderEncounters(); }},"×"));
@@ -2952,6 +3040,30 @@ function encounterTrainerCard(enc, tr){
     tmw.append(slot);
   });
   card.append(tmw);
+  // Classes, Features, Edges & Abilities — what the trainer actually IS. Without this the
+  // card showed only stats/moves, so an imported NPC's whole build was invisible to the GM.
+  // Trainer abilities (granted by class Features — Martial Artist's Guts, Sage's Probability
+  // Control) have no home on the trainer model, so they live in t.encAbilities, lazily inited
+  // here like t.encMoves so cloud player sheets never gain the field.
+  if(!Array.isArray(t.encAbilities)) t.encAbilities=[];
+  const build=el("div",{style:"margin-top:8px"});
+  [["classes","Classes","class",   ()=>D.classes.map(c=>c.name)],
+   ["features","Features","feature",()=>D.features.map(f=>f.name)],
+   ["edges","Edges","edge",        ()=>D.edges.map(e=>e.name)],
+   ["encAbilities","Abilities","ability",()=>D.abilities.map(a=>a.name)],
+  ].forEach(([field,label,kind,opts])=>{
+    if(!Array.isArray(t[field])) t[field]=[];
+    const list=t[field];
+    build.append(el("div",{class:"inline",style:"justify-content:space-between;margin-top:6px"},
+      el("span",{class:"small muted",style:"font-weight:700"},`${label} (${list.length})`),
+      el("button",{class:"linkbtn",onclick:()=>openPicker(`Add a ${label.replace(/e?s$/,"")}`,
+        opts().filter(n=>!list.includes(n)),
+        name=>{ list.push(name); saveEnc(); renderEncounters(); }, kind)},"+ add")));
+    if(!list.length){ build.append(el("span",{class:"muted small"},"none")); return; }
+    list.forEach(n=> build.append(encTrainerRefRow(n, kind,
+      ()=>{ t[field]=list.filter(x=>x!==n); saveEnc(); renderEncounters(); })));
+  });
+  card.append(build);
   // Skills — trained ones with their dice, for quick GM checks
   const trained=SKILLS.filter(([k])=> (t.skills?.[k]||"Untrained")!=="Untrained");
   if(trained.length){
@@ -3020,9 +3132,19 @@ function renderEncounters(){
   leftc.append(el("button",{class:"btn ghost",onclick:()=>{ const n=prompt("Encounter name:","New Encounter"); if(n===null)return; const e=newEncounter(n||"New Encounter"); arr.push(e); state.activeEncounterId=e.id; saveEnc(); renderEncounters(); }},"＋ New"));
   if(cur){
     leftc.append(el("button",{class:"btn ghost",title:"rename",onclick:()=>{ const n=prompt("Rename encounter:",cur.name); if(n===null)return; cur.name=n; saveEnc(); renderEncounters(); }},"✎"));
-    leftc.append(el("button",{class:"btn ghost danger",title:"delete",onclick:()=>{ if(!confirm(`Delete encounter "${cur.name}"?`))return; state.encounters=arr.filter(x=>x.id!==cur.id); state.activeEncounterId=state.encounters[0]?.id||null; saveEnc(); renderEncounters(); }},"🗑"));
+    leftc.append(el("button",{class:"btn ghost danger",title:"delete",onclick:()=>{ if(!confirm(`Delete encounter "${cur.name}"?`))return; const i=arr.findIndex(x=>x.id===cur.id); if(i>=0)arr.splice(i,1); state.activeEncounterId=arr[0]?.id||null; saveEnc(); renderEncounters(); }},"🗑"));
   }
-  top.append(leftc, el("span",{class:"small muted"},"GM only · saved on this device"));
+  // port encounters saved on THIS device (pre-cloud) up into the campaign cloud
+  if(mode==="cloud" && cloud.isGM && (state.encounters?.length)){
+    const have = new Set(arr.map(e=>e.id));
+    const pending = state.encounters.filter(e=>e && !have.has(e.id));
+    if(pending.length) leftc.append(el("button",{class:"btn ghost",title:"copy encounters saved on this device into the campaign cloud",
+      onclick:()=>{ pending.forEach(e=>{ const c=JSON.parse(JSON.stringify(e)); normEncounter(c); arr.push(c); });
+        if(!state.activeEncounterId) state.activeEncounterId=arr[0]?.id||null; saveEnc();
+        toast(`Imported ${pending.length} device encounter${pending.length>1?"s":""} to the cloud ✓`); renderEncounters(); }},
+      `⬆ Import ${pending.length} from device`));
+  }
+  top.append(leftc, el("span",{class:"small muted"}, mode==="cloud"?"GM only · synced to the campaign":"GM only · saved on this device"));
   bar.append(top); root.append(bar);
   if(!cur){ root.append(el("div",{class:"card"}, el("span",{class:"muted"},"No encounter yet — tap ＋ New to build one, then add Trainers and wild Pokémon."))); return; }
   // settings + EXP
@@ -3410,14 +3532,18 @@ function migrateChar(data, id){
   data.id = data.id || id;
   return data;
 }
+/* explicit columns, not "*" — supabase-js can transiently return 0 rows for just-inserted
+   rows under a "*" select, which would blank the roster right after someone joins/creates. */
+const SHEET_COLS = "id,campaign,owner_id,owner_name,name,data,updated_at";
 async function fetchRoster(){
-  let q = cloud.client.from("sheets").select("*").eq("campaign", cloud.campaign);
+  let q = cloud.client.from("sheets").select(SHEET_COLS).eq("campaign", cloud.campaign);
   if(!cloud.isGM) q = q.eq("owner_id", cloud.userId);   // players load only their own sheets; the GM loads all
   const { data, error } = await q;
   if(error) throw error;
   cloud.byId = {};
   (data||[]).forEach(r => {
     if(r.owner_id===PC_OWNER){ cloud.pc = { ...r, data: pcData(r.data) }; return; }   // PC isn't a character
+    if(r.owner_id===MAP_OWNER) return;                                                // map rows aren't characters
     r.data = migrateChar(r.data, r.id); cloud.byId[r.id] = r;
   });
 }
@@ -3430,7 +3556,7 @@ function pcData(data){
   return data;
 }
 async function fetchPC(){
-  const { data, error } = await cloud.client.from("sheets").select("*").eq("id", pcId()).limit(1);
+  const { data, error } = await cloud.client.from("sheets").select(SHEET_COLS).eq("id", pcId()).limit(1);
   if(error){ console.error(error); return; }
   cloud.pc = (data && data[0]) ? { ...data[0], data: pcData(data[0].data) } : null;
 }
@@ -3448,6 +3574,110 @@ async function pcUpsert(){
   if(error){ console.error(error); toast("⚠ PC save failed"); return false; }
   return true;
 }
+
+/* ---- shared battle map: reserved rows (meta + tokens), same pattern as the PC ---- */
+function normMapMeta(data){
+  data = (data && typeof data==="object") ? data : {};
+  data.kind = "mapmeta";
+  data.maps = Array.isArray(data.maps) ? data.maps : [];
+  data.maps.forEach(m => {
+    if(typeof m.gridSize!=="number" || m.gridSize<8) m.gridSize = 48;
+    if(typeof m.gridOn!=="boolean") m.gridOn = true;
+    if(typeof m.name!=="string") m.name = "Map";
+    // migrate single bg → layered images[] (w/h 0 → resolved to natural size on first GM view)
+    if(!Array.isArray(m.images)) m.images = (typeof m.bg==="string" && m.bg) ? [{id:uid(),src:m.bg,x:0,y:0,w:0,h:0}] : [];
+    delete m.bg;
+    m.images.forEach(im=>{ ["x","y","w","h"].forEach(k=>{ if(typeof im[k]!=="number") im[k]=0; }); if(!im.id) im.id=uid(); });
+    if(typeof m.fogOn!=="boolean") m.fogOn = false;
+    if(typeof m.fogRadius!=="number" || m.fogRadius<1) m.fogRadius = 3;
+  });
+  // playerMapId = the map players see (seed from the old shared activeMapId for back-compat)
+  if(!data.playerMapId || !data.maps.find(m=>m.id===data.playerMapId))
+    data.playerMapId = data.maps.find(m=>m.id===data.activeMapId) ? data.activeMapId : (data.maps[0]?.id || null);
+  if(!data.activeMapId || !data.maps.find(m=>m.id===data.activeMapId))
+    data.activeMapId = data.maps[0]?.id || null;
+  return data;
+}
+function normMapTokens(data){
+  data = (data && typeof data==="object") ? data : {};
+  data.kind = "maptokens";
+  data.byMap = (data.byMap && typeof data.byMap==="object") ? data.byMap : {};
+  for(const k of Object.keys(data.byMap)) if(!Array.isArray(data.byMap[k])) data.byMap[k] = [];
+  data.fog = (data.fog && typeof data.fog==="object") ? data.fog : {};   // { mapId: ["x,y",…] revealed }
+  for(const k of Object.keys(data.fog)) if(!Array.isArray(data.fog[k])) data.fog[k] = [];
+  return data;
+}
+async function fetchMap(){
+  // explicit columns (not "*") — PostgREST/supabase-js can transiently drop just-inserted
+  // rows under "*", and a GM's freshly-created map is loaded by players seconds later.
+  const { data, error } = await cloud.client.from("sheets")
+    .select(SHEET_COLS)
+    .in("id", [mapMetaId(), mapTokensId()]);
+  if(error){ console.error(error); cloud.mapMeta=null; cloud.mapTokens=null; return; }
+  const meta = (data||[]).find(r=>r.id===mapMetaId());
+  const toks = (data||[]).find(r=>r.id===mapTokensId());
+  cloud.mapMeta   = meta ? { ...meta, data: normMapMeta(meta.data) } : null;
+  cloud.mapTokens = toks ? { ...toks, data: normMapTokens(toks.data) } : null;
+}
+function ensureMapMeta(){
+  if(!cloud.mapMeta) cloud.mapMeta = { id:mapMetaId(), campaign:cloud.campaign, owner_id:MAP_OWNER,
+    owner_name:"Map", name:"Battle Map", data:normMapMeta(null) };
+  return cloud.mapMeta;
+}
+function ensureMapTokens(){
+  if(!cloud.mapTokens) cloud.mapTokens = { id:mapTokensId(), campaign:cloud.campaign, owner_id:MAP_OWNER,
+    owner_name:"Map", name:"Map Tokens", data:normMapTokens(null) };
+  return cloud.mapTokens;
+}
+async function mapMetaUpsert(){
+  const row = ensureMapMeta();
+  cloud.mapSaveTs = Date.now();
+  row.updated_at = new Date().toISOString();            // stamp locally so realtime can drop stale echoes
+  const { error } = await cloud.client.from("sheets").upsert({
+    id:row.id, campaign:cloud.campaign, owner_id:MAP_OWNER, owner_name:"Map",
+    name:"Battle Map", data:row.data, updated_at:row.updated_at });
+  if(error){ console.error(error); toast("⚠ Map save failed"); return false; }
+  return true;
+}
+async function mapTokensUpsert(){
+  const row = ensureMapTokens();
+  cloud.mapSaveTs = Date.now();
+  row.updated_at = new Date().toISOString();
+  const { error } = await cloud.client.from("sheets").upsert({
+    id:row.id, campaign:cloud.campaign, owner_id:MAP_OWNER, owner_name:"Map",
+    name:"Map Tokens", data:row.data, updated_at:row.updated_at });
+  if(error){ console.error(error); toast("⚠ Map save failed"); return false; }
+  return true;
+}
+
+/* ---- cloud encounters (GM prep), same reserved-row pattern ---- */
+function normEnc(data){
+  data = (data && typeof data==="object") ? data : {};
+  data.kind = "enc";
+  data.encounters = Array.isArray(data.encounters) ? data.encounters : [];
+  data.encounters.forEach(normEncounter);
+  return data;
+}
+async function fetchEnc(){
+  const { data, error } = await cloud.client.from("sheets").select(SHEET_COLS).eq("id", encRowId()).limit(1);
+  if(error){ console.error(error); return; }
+  cloud.enc = (data && data[0]) ? { ...data[0], data: normEnc(data[0].data) } : null;
+}
+function ensureEnc(){
+  if(!cloud.enc) cloud.enc = { id:encRowId(), campaign:cloud.campaign, owner_id:ENC_OWNER,
+    owner_name:"Encounters", name:"Encounters", data:normEnc(null) };
+  return cloud.enc;
+}
+async function encUpsert(){
+  const row = ensureEnc();
+  cloud.encSaveTs = Date.now();
+  row.updated_at = new Date().toISOString();
+  const { error } = await cloud.client.from("sheets").upsert({
+    id:row.id, campaign:cloud.campaign, owner_id:ENC_OWNER, owner_name:"Encounters",
+    name:"Encounters", data:row.data, updated_at:row.updated_at });
+  if(error){ console.error(error); toast("⚠ Encounter save failed"); return false; }
+  return true;
+}
 async function cloudConnect(campaign, name, gmCode, silent){
   campaign = (campaign||"").trim().toLowerCase(); name = (name||"").trim();
   if(!campaign || !name){ toast("Enter a campaign code and your name"); return; }
@@ -3458,6 +3688,13 @@ async function cloudConnect(campaign, name, gmCode, silent){
   try{
     await fetchRoster();
     await fetchPC();
+    await fetchMap();
+    await fetchEnc();
+    // one-time seed: push the GM's existing device-local encounters into the empty cloud row
+    if(cloud.isGM && !(cloud.enc?.data?.encounters?.length) && (state.encounters?.length)){
+      ensureEnc().data.encounters = JSON.parse(JSON.stringify(state.encounters));
+      await encUpsert();
+    }
     subscribeRealtime();
     mode = "cloud"; openMon = null;
     const mine = Object.values(cloud.byId).find(r=>r.owner_id===cloud.userId);
@@ -3469,6 +3706,7 @@ async function cloudConnect(campaign, name, gmCode, silent){
 function cloudDisconnect(){
   if(cloud.sub){ try{ cloud.client.removeChannel(cloud.sub); }catch(e){} cloud.sub=null; }
   mode="local"; localStorage.removeItem("ptu_cloud_session");
+  cloud.pc=null; cloud.mapMeta=null; cloud.mapTokens=null; cloud.enc=null;
   openMon=null; updateCloudButton(); closeModal(); render();
   toast("Switched to this device");
 }
@@ -3490,6 +3728,33 @@ function onRealtime(payload){
     // live-refresh the PC tab, but don't yank focus while someone is typing in a filter
     const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
     if(currentTab==="pc" && !typing) renderPC();
+    return;
+  }
+  // the shared battle map is visible to everyone — handle it before the per-player filter
+  if(evtOwner===MAP_OWNER || evtId===mapMetaId() || evtId===mapTokensId()){
+    const isMeta = evtId===mapMetaId();
+    if(type==="DELETE"){ if(isMeta) cloud.mapMeta=null; else cloud.mapTokens=null; }
+    else {
+      const cur = isMeta ? cloud.mapMeta : cloud.mapTokens;
+      // ignore stale/echoed rows: an out-of-order echo of our own earlier write must not
+      // revert a token we just added or an HP we just changed (rapid map edits are common).
+      if(cur && cur.updated_at && payload.new.updated_at && payload.new.updated_at <= cur.updated_at) return;
+      if(isMeta) cloud.mapMeta   = { ...payload.new, data: normMapMeta(payload.new.data) };
+      else       cloud.mapTokens = { ...payload.new, data: normMapTokens(payload.new.data) };
+    }
+    const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
+    if(currentTab==="map" && !mapDragging && !typing) renderMap();
+    return;
+  }
+  // shared encounters (GM prep) — visible to everyone so map tokens can resolve their enemy link
+  if(evtOwner===ENC_OWNER || evtId===encRowId()){
+    if(type==="DELETE"){ cloud.enc=null; }
+    else {
+      if(cloud.enc?.updated_at && payload.new.updated_at && payload.new.updated_at <= cloud.enc.updated_at) return;
+      cloud.enc = { ...payload.new, data: normEnc(payload.new.data) };
+    }
+    const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
+    if((currentTab==="encounters" || currentTab==="map") && !mapDragging && !typing) render();
     return;
   }
   // players only track their own sheets; ignore realtime events for anyone else's (GM tracks all)
@@ -3800,6 +4065,776 @@ function renderPC(){
     "No Pokémon on your own sheets. Tip: open any Pokémon and tap “🖥 To PC” to send it in."));
   dcard.append(dep);
   root.append(dcard);
+}
+
+/* ===================================================================
+   Shared battle map (Owlbear-style VTT) — cloud-only.
+   Maps + backgrounds + grid live in the meta row; token positions + HP
+   in the tokens row. A token can LINK to a real sheet (party Pokémon /
+   trainer) so HP edits write straight to that sheet and sync to the owner,
+   or be STANDALONE (encounter monster / custom) with its own HP.
+=================================================================== */
+let mapView = { scale:1, panX:0, panY:0 };   // each viewer's own camera (not synced)
+let mapDragging = false;                      // suppresses realtime re-render mid-drag
+let mapGmView = null;                         // map id the GM is privately viewing (not synced)
+let mapImgEdit = false;                       // GM image-edit mode (move/resize scenery)
+
+function activeMapMeta(){ return cloud.mapMeta?.data ? cloud.mapMeta.data : normMapMeta(null); }
+function activeMap(){ const meta=activeMapMeta(); return meta.maps.find(m=>m.id===meta.activeMapId) || meta.maps[0] || null; }
+/* the map to render: GM sees whatever they're privately viewing; players see only the pushed map */
+function currentMapForView(){
+  const meta = activeMapMeta();
+  if(cloud.isGM) return meta.maps.find(m=>m.id===mapGmView) || meta.maps.find(m=>m.id===meta.playerMapId) || meta.maps[0] || null;
+  return meta.maps.find(m=>m.id===meta.playerMapId) || null;
+}
+function mapTokensFor(mapId){ return (cloud.mapTokens?.data?.byMap?.[mapId]) || []; }
+/* revealed fog cells for a map, as a live Set of "x,y" keys */
+function fogSet(mapId){ return new Set((cloud.mapTokens?.data?.fog?.[mapId]) || []); }
+
+/* find an encounter monster (in mons or a trainer's party) by id, across the cloud/local list */
+function encMonById(encId, monId){
+  const enc = encList().find(e=>e.id===encId); if(!enc) return null;
+  let mon = (enc.mons||[]).find(p=>p.id===monId);
+  if(!mon) for(const tr of (enc.trainers||[])){ mon = (tr.pokemon||[]).find(p=>p.id===monId); if(mon) break; }
+  return mon || null;
+}
+/* find an encounter's NPC trainer by id */
+function encTrainerById(encId, trainerId){
+  const enc = encList().find(e=>e.id===encId); if(!enc) return null;
+  return (enc.trainers||[]).find(tr=>tr.id===trainerId)?.trainer || null;
+}
+/* link kinds that represent enemies (they never reveal fog and only the GM edits them) */
+const ENEMY_LINKS = new Set(["enc","enctrainer"]);
+/* resolve a linked token to its live source object (sheet Pokémon/trainer, or encounter monster/trainer) */
+function tokenLinked(token){
+  if(!token.link) return null;
+  if(token.link.kind==="enc"){
+    const mon = encMonById(token.link.encId, token.link.monId);
+    return { enc:true, obj:mon, kind:"enc", missing:!mon };
+  }
+  if(token.link.kind==="enctrainer"){
+    const t = encTrainerById(token.link.encId, token.link.trainerId);
+    return { enc:true, obj:t, kind:"enctrainer", missing:!t };
+  }
+  const row = cloud.byId[token.link.sheetId];
+  if(!row) return { row:null, obj:null, kind:token.link.kind, missing:true };
+  if(token.link.kind==="trainer") return { row, obj:row.data?.trainer||null, kind:"trainer", missing:!row.data?.trainer };
+  const mon = (row.data?.pokemon||[]).find(p=>p.id===token.link.monId);
+  return { row, obj:mon||null, kind:"pokemon", missing:!mon };
+}
+const TRAINER_TOKEN = (t)=>el("img",{class:"sprite s-sm",src:(t&&t.avatar)||TRAINER_PLACEHOLDER,alt:"trainer",loading:"lazy"});
+/* a linked Pokémon's token uses the picture uploaded on its sheet, falling back to the dex artwork */
+function pokeTokenSprite(mon){
+  if(mon.image) return el("img",{class:"sprite s-sm",src:mon.image,alt:mon.nickname||"",loading:"lazy"});
+  const sp = getSpecies(mon.species);
+  return monSprite(sp?.name||mon.species, mon.shiny, "s-sm");
+}
+function standaloneSprite(token){
+  if(token.img) return el("img",{class:"sprite s-sm",src:token.img,alt:token.label||"",loading:"lazy"});
+  if(token.species) return monSprite(token.species, token.shiny, "s-sm");
+  return el("img",{class:"sprite s-sm",src:POKEBALL_SVG,alt:token.label||""});
+}
+/* everything the board needs about a token, computed live from its source */
+function tokenHp(token){
+  if(!token.link){
+    const max = Math.max(1, token.maxHp||1); let cur = token.hp; if(cur==null) cur=max;
+    return { cur, max, editable:cloud.isGM, name:token.label||"Token", sprite:standaloneSprite(token), unlinked:false };
+  }
+  const L = tokenLinked(token);
+  if(!L || !L.obj){
+    return { cur:0, max:1, editable:false, name:token.link.kind==="trainer"?"Trainer":"Pokémon",
+             sprite:el("img",{class:"sprite s-sm",src:POKEBALL_SVG}), unlinked:true };
+  }
+  if(L.kind==="enc"){ const max=Math.max(1,pokeDerived(L.obj).maxHP); let cur=L.obj.currentHP; if(cur==null)cur=max;
+    return { cur, max, editable:cloud.isGM, name:encMonName(L.obj),          // only the GM edits enemies
+             sprite:pokeTokenSprite(L.obj), unlinked:false, obj:L.obj, kind:"enc" }; }
+  if(L.kind==="enctrainer"){ const max=Math.max(1,trainerDerived(L.obj).hp); let cur=L.obj.currentHP; if(cur==null)cur=max;
+    return { cur, max, editable:cloud.isGM, name:L.obj.name||"Trainer",
+             sprite:TRAINER_TOKEN(L.obj), unlinked:false, obj:L.obj, kind:"enctrainer" }; }
+  if(L.kind==="trainer"){ const max=Math.max(1,trainerDerived(L.obj).hp); let cur=L.obj.currentHP; if(cur==null)cur=max;
+    return { cur, max, editable:canEdit(L.row), name:L.obj.name||L.row.data?.name||"Trainer",
+             sprite:TRAINER_TOKEN(L.obj), unlinked:false, row:L.row, obj:L.obj, kind:"trainer" }; }
+  const sp=getSpecies(L.obj.species); const max=Math.max(1,pokeDerived(L.obj).maxHP); let cur=L.obj.currentHP; if(cur==null)cur=max;
+  return { cur, max, editable:canEdit(L.row), name:L.obj.nickname||sp?.name||L.obj.species||"Pokémon",
+           sprite:pokeTokenSprite(L.obj), unlinked:false, row:L.row, obj:L.obj, kind:"pokemon" };
+}
+async function setTokenHP(token, val){
+  const info = tokenHp(token);
+  if(!info.editable){ toast("Read-only"); return; }
+  if(!token.link){
+    token.hp = Math.max(-99, Math.min(token.maxHp||1, val|0));
+    await mapTokensUpsert(); if(!$(".modal")) renderMap(); return;
+  }
+  const { row, obj, kind } = info; if(!obj){ toast("Can't edit that token"); return; }
+  if(kind==="enc" || kind==="enctrainer"){       // live-linked enemy → write to the encounter itself
+    const encMax = kind==="enctrainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
+    obj.currentHP = Math.max(-99, Math.min(encMax, val|0));
+    await encUpsert(); if(!$(".modal")) render();  // render() refreshes both the map and the Encounters tab
+    return;
+  }
+  if(!canEdit(row)){ toast("Can't edit that sheet"); return; }
+  const max = kind==="trainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
+  obj.currentHP = Math.max(-99, Math.min(max, val|0));
+  await cloudUpsert(row);                       // writes the real sheet; realtime syncs the owner
+  if(!$(".modal")) renderMap();
+}
+function canRemoveToken(token){
+  if(cloud.isGM) return true;
+  return !!token.link && canEdit(cloud.byId[token.link.sheetId]);
+}
+async function removeToken(token, map){
+  const arr = cloud.mapTokens?.data?.byMap?.[map.id]; if(!arr) return;
+  const i = arr.findIndex(t=>t.id===token.id); if(i>=0) arr.splice(i,1);
+  await mapTokensUpsert(); renderMap();
+}
+/* the cell at the centre of what the viewer is currently looking at (for placing new tokens there) */
+function mapViewCenterCell(map, size){
+  const vp = document.querySelector("#view-map .map-viewport");
+  const n = (cloud.mapTokens?.data?.byMap?.[map.id]||[]).length;
+  if(!vp) return { x:(n%8)+1, y:Math.floor(n/8)+1 };          // fallback before the board is drawn
+  const r = vp.getBoundingClientRect(), px = map.gridSize, sz = size||1;
+  const cbx = (r.width/2  - mapView.panX)/mapView.scale;      // viewport centre → stage base coords
+  const cby = (r.height/2 - mapView.panY)/mapView.scale;
+  return { x: Math.max(0, Math.round(cbx/px - sz/2)), y: Math.max(0, Math.round(cby/px - sz/2)) };
+}
+async function addToken(map, partial){
+  ensureMapTokens();
+  const byMap = cloud.mapTokens.data.byMap;
+  const arr = byMap[map.id] || (byMap[map.id]=[]);
+  const pos = mapViewCenterCell(map, partial.size||1);
+  const tok = Object.assign({ id:uid(), size:1 }, partial, { x:pos.x, y:pos.y });
+  arr.push(tok);
+  if(map.fogOn) revealAroundTokens(map);      // a freshly-placed player token reveals its surroundings
+  await mapTokensUpsert(); renderMap();
+}
+
+/* ---- fog of war: auto-reveal a radius around player-character tokens; revealed stays revealed ---- */
+function tokenReveals(token){
+  if(typeof token.reveal==="boolean") return token.reveal;   // GM per-token override
+  return !!token.link && !ENEMY_LINKS.has(token.link.kind);  // player characters reveal; enemies/custom don't
+}
+/* reveal a CIRCULAR disc of cells (Euclidean radius) around a cell */
+function revealDisc(set, cx, cy, r){
+  const rr = (r+0.35)*(r+0.35), ri = Math.ceil(r);   // +0.35 rounds the edge out to a fuller circle
+  for(let dx=-ri; dx<=ri; dx++) for(let dy=-ri; dy<=ri; dy++)
+    if(dx*dx+dy*dy <= rr){ const x=cx+dx, y=cy+dy; if(x>=0 && y>=0) set.add(x+","+y); }
+}
+/* reveal discs around every cell of a token's footprint */
+function revealFootprint(set, cx, cy, span, r){
+  for(let fx=cx; fx<=cx+span; fx++) for(let fy=cy; fy<=cy+span; fy++) revealDisc(set, fx, fy, r);
+}
+function mapFogData(){ ensureMapTokens(); return cloud.mapTokens.data.fog || (cloud.mapTokens.data.fog={}); }
+function revealAroundTokens(map){
+  const fogData = mapFogData();
+  const set = new Set(fogData[map.id] || []);
+  const r = Math.max(1, map.fogRadius||3);
+  mapTokensFor(map.id).forEach(t=>{ if(tokenReveals(t)) revealFootprint(set, Math.round(t.x), Math.round(t.y), (t.size||1)-1, r); });
+  fogData[map.id] = [...set];
+}
+/* live reveal around a specific cell (used while dragging a token, before it's committed) */
+function revealAtCell(map, cx, cy, span){
+  const fogData = mapFogData();
+  const set = new Set(fogData[map.id] || []);
+  revealFootprint(set, cx, cy, span, Math.max(1, map.fogRadius||3));
+  fogData[map.id] = [...set];
+}
+async function toggleFog(map){
+  map.fogOn = !map.fogOn;
+  if(map.fogOn) revealAroundTokens(map);
+  await mapMetaUpsert();
+  if(map.fogOn) await mapTokensUpsert();      // persist the initial reveal
+  renderMap();
+}
+async function setFogRadius(map, v){
+  map.fogRadius = Math.max(1, Math.min(20, parseInt(v)||3));
+  if(map.fogOn){ revealAroundTokens(map); await mapTokensUpsert(); }
+  await mapMetaUpsert(); renderMap();
+}
+async function resetFog(map){
+  if(!confirm("Re-hide the whole map? Explored areas will be covered again.")) return;
+  if(cloud.mapTokens?.data?.fog) cloud.mapTokens.data.fog[map.id] = [];
+  if(map.fogOn) revealAroundTokens(map);      // keep current token surroundings visible
+  await mapTokensUpsert(); renderMap();
+}
+/* draw fog onto a canvas sized to the stage; players see opaque cover, the GM sees a dim overlay */
+function drawFog(cv, map, stageW, stageH){
+  const px = map.gridSize; cv.width = Math.ceil(stageW); cv.height = Math.ceil(stageH);
+  const ctx = cv.getContext("2d"); ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.fillStyle = cloud.isGM ? "rgba(8,10,14,0.5)" : "#0a0c10";
+  const set = fogSet(map.id);
+  const cols = Math.ceil(stageW/px), rows = Math.ceil(stageH/px);
+  for(let x=0;x<cols;x++) for(let y=0;y<rows;y++) if(!set.has(x+","+y)) ctx.fillRect(x*px, y*px, px, px);
+}
+
+/* ---- battle mode: track how far each token has moved this round (diagonals cost 2) ---- */
+function battleOn(){ return !!activeMapMeta().battleOn; }
+/* a linked token's Overland movement (from its sheet, in metres); null for standalone/unknown */
+function tokenMoveSpeed(token){
+  if(!token.link) return null;
+  const L = tokenLinked(token); if(!L || !L.obj) return null;
+  if(L.kind==="trainer" || L.kind==="enctrainer") return trainerDerived(L.obj).overland || null;
+  return getSpecies(L.obj.species)?.capabilities?.overland || null;   // sheet or encounter Pokémon
+}
+/* Manhattan tile cost between two cells (no diagonal movement → a diagonal step costs 2) */
+function tileCost(ax, ay, bx, by){ return Math.abs(Math.round(ax)-Math.round(bx)) + Math.abs(Math.round(ay)-Math.round(by)); }
+function resetMapMovement(map){
+  ensureMapTokens();
+  mapTokensFor(map.id).forEach(t=>{ t.moved=0; delete t.path; });
+}
+async function toggleBattle(map){
+  const meta = activeMapMeta(); meta.battleOn = !meta.battleOn;
+  if(meta.battleOn) resetMapMovement(map);            // start combat with fresh movement counters
+  await mapMetaUpsert();
+  if(meta.battleOn) await mapTokensUpsert();
+  renderMap();
+  toast(meta.battleOn ? "⚔ Battle mode on — tracking movement" : "Battle mode off");
+}
+async function newRound(map){
+  resetMapMovement(map); await mapTokensUpsert(); renderMap(); toast("↺ New round — movement reset");
+}
+async function resetTokenMovement(token, map){
+  token.moved = 0; delete token.path;
+  await mapTokensUpsert(); renderMap();
+}
+
+/* ---- push-to-players: choose which map everyone sees ---- */
+async function pushMapToPlayers(map){
+  const meta = activeMapMeta();
+  meta.playerMapId = map.id;
+  await mapMetaUpsert(); renderMap();
+  toast(`Players now see “${map.name}” 👁`);
+}
+
+/* ---- multiple background images per map (movable / resizable / layered) ---- */
+function addMapImage(map){
+  const inp = el("input",{type:"file",accept:"image/*",style:"display:none"});
+  inp.addEventListener("change", async ()=>{
+    const f = inp.files && inp.files[0]; if(!f){ inp.remove(); return; }
+    try{ const dataUrl = await fileToDataURL(f);
+      prepMapBg(dataUrl, out=>{
+        const probe = new Image();
+        probe.onload = async ()=>{
+          map.images.push({ id:uid(), src:out, x:0, y:0, w:probe.naturalWidth||map.gridSize*10, h:probe.naturalHeight||map.gridSize*10 });
+          await mapMetaUpsert(); renderMap(); toast("Image added ✓");
+        };
+        probe.onerror = ()=>toast("⚠ Could not read that image");
+        probe.src = out;
+      });
+    }catch(e){ toast("⚠ Could not read that image"); }
+    inp.remove();
+  });
+  document.body.append(inp); inp.click();
+}
+async function moveMapImageLayer(map, img, dir){
+  const i = map.images.indexOf(img); if(i<0) return;
+  const j = i + dir; if(j<0 || j>=map.images.length) return;
+  map.images.splice(i,1); map.images.splice(j,0,img);
+  await mapMetaUpsert(); renderMap();
+}
+async function deleteMapImage(map, img){
+  const i = map.images.indexOf(img); if(i<0) return;
+  map.images.splice(i,1); await mapMetaUpsert(); renderMap();
+}
+
+/* one token element */
+function mapTokenNode(token, map){
+  const info = tokenHp(token);
+  const px = map.gridSize, size = token.size||1;
+  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":""),
+    style:`left:${token.x*px}px;top:${token.y*px}px;width:${size*px}px;height:${size*px}px`});
+  node.dataset.tid = token.id;
+  info.sprite.classList.add("tk-img");
+  node.append(info.sprite);
+  const pct = Math.max(0, Math.min(100, Math.round(info.cur/info.max*100)));
+  node.append(el("div",{class:"tk-hpwrap"},
+    el("div",{class:"tk-hp"+(pct<=25?" low":pct<=50?" mid":""), style:`width:${pct}%`})));
+  node.append(el("div",{class:"tk-name"}, info.name + (info.unlinked?" ⚠":"")));
+  node.append(el("div",{class:"tk-hpnum"}, info.unlinked?"⚠ unlinked":`${info.cur}/${info.max}`));
+  if(battleOn() && token.moved){                              // movement used this round vs Overland speed
+    const spd = tokenMoveSpeed(token);
+    node.append(el("div",{class:"tk-moved"+(spd && token.moved>spd?" over":"")}, `${token.moved}${spd?("/"+spd):""}m`));
+  }
+  return node;
+}
+/* drag-to-move (grid-snap + meter readout) or tap-to-open-menu */
+function attachTokenDrag(node, token, map){
+  node.addEventListener("pointerdown", ev=>{
+    if(ev.button!=null && ev.button>0) return;
+    ev.stopPropagation();                                   // don't pan the board
+    const info = tokenHp(token);
+    const px = map.gridSize, scale = mapView.scale;
+    const startX = ev.clientX, startY = ev.clientY;
+    const baseX0 = token.x*px, baseY0 = token.y*px;
+    let moved = false, badge = null;
+    // for live fog reveal while dragging
+    const liveFog = map.fogOn && tokenReveals(token);
+    const stageSize = liveFog ? mapStageSize(map) : null;
+    const fogCanvas = liveFog ? document.querySelector("#view-map .map-fog") : null;
+    let lastRevealX = null, lastRevealY = null;
+    // battle mode: accumulate the FULL path travelled this drag (every tile entered), diagonals cost 2
+    const trackMove = battleOn() && map.gridOn;
+    const moveSpeed = trackMove ? tokenMoveSpeed(token) : null;
+    const alreadyMoved = token.moved || 0;
+    let segMoved = 0, pathX = token.x, pathY = token.y;
+    try{ node.setPointerCapture(ev.pointerId); }catch(e){}
+    const move = e=>{
+      if(Math.abs(e.clientX-startX)>4 || Math.abs(e.clientY-startY)>4) moved = true;
+      if(!moved || !info.editable) return;
+      mapDragging = true;
+      let nx = Math.max(0, baseX0+(e.clientX-startX)/scale), ny = Math.max(0, baseY0+(e.clientY-startY)/scale);
+      if(map.gridOn){ nx = Math.round(nx/px)*px; ny = Math.round(ny/px)*px; }   // snap to cells live
+      node.style.left = nx+"px"; node.style.top = ny+"px";
+      const cx = Math.round(nx/px), cy = Math.round(ny/px);
+      if(map.gridOn){                                                            // accumulate every tile entered (diagonals cost 2)
+        if(cx!==pathX || cy!==pathY){ segMoved += tileCost(pathX,pathY,cx,cy); pathX=cx; pathY=cy; }
+        if(!badge){ badge = el("div",{class:"tk-move"}); node.append(badge); }
+        if(trackMove){
+          const total = alreadyMoved+segMoved;
+          badge.textContent = `${segMoved}m · round ${total}${moveSpeed?("/"+moveSpeed):""}m`;
+          badge.classList.toggle("over", !!moveSpeed && total>moveSpeed);
+        } else badge.textContent = `${segMoved}m`;
+      }
+      if(liveFog){                                                              // reveal live as it moves
+        if(cx!==lastRevealX || cy!==lastRevealY){
+          lastRevealX = cx; lastRevealY = cy;
+          revealAtCell(map, cx, cy, (token.size||1)-1);
+          if(fogCanvas) drawFog(fogCanvas, map, stageSize.w, stageSize.h);
+        }
+      }
+    };
+    const up = async e=>{
+      try{ node.releasePointerCapture(ev.pointerId); }catch(err){}
+      node.removeEventListener("pointermove", move);
+      node.removeEventListener("pointerup", up);
+      if(badge) badge.remove();
+      if(!moved){ mapDragging=false; openTokenMenu(token, map); return; }
+      if(!info.editable){ mapDragging=false; return; }
+      const nx = Math.max(0, baseX0+(e.clientX-startX)/scale), ny = Math.max(0, baseY0+(e.clientY-startY)/scale);
+      if(map.gridOn){
+        const cx = Math.round(nx/px), cy = Math.round(ny/px);
+        if(cx!==pathX || cy!==pathY){ segMoved += tileCost(pathX,pathY,cx,cy); pathX=cx; pathY=cy; }  // count the final tile(s)
+        token.x = cx; token.y = cy;
+      } else { token.x = nx/px; token.y = ny/px; }                                   // free placement
+      if(trackMove) token.moved = alreadyMoved + segMoved;                           // add this drag's path to the round total
+      if(map.fogOn) revealAroundTokens(map);                                        // moving reveals new ground
+      mapDragging = false;
+      await mapTokensUpsert(); renderMap();
+    };
+    node.addEventListener("pointermove", move);
+    node.addEventListener("pointerup", up);
+  });
+}
+/* image-edit mode: drag to move, corner handle to resize (both grid-snap when the grid is on) */
+function attachImageDrag(node, img, map){
+  const px = map.gridSize, snap = v => map.gridOn ? Math.round(v/px)*px : v;
+  const startDrag = (ev, mode)=>{
+    if(ev.button!=null && ev.button>0) return;
+    ev.stopPropagation();
+    const scale = mapView.scale, sx=ev.clientX, sy=ev.clientY;
+    const x0=img.x, y0=img.y, w0=img.w, h0=img.h;
+    let moved=false;
+    try{ node.setPointerCapture(ev.pointerId); }catch(e){}
+    const move = e=>{
+      if(Math.abs(e.clientX-sx)>3 || Math.abs(e.clientY-sy)>3) moved=true; if(!moved) return;
+      mapDragging = true;
+      const dx=(e.clientX-sx)/scale, dy=(e.clientY-sy)/scale;
+      if(mode==="resize"){ img.w=Math.max(px, snap(w0+dx)); img.h=Math.max(px, snap(h0+dy)); }
+      else { img.x=Math.max(0, snap(x0+dx)); img.y=Math.max(0, snap(y0+dy)); }
+      node.style.left=img.x+"px"; node.style.top=img.y+"px"; node.style.width=img.w+"px"; node.style.height=img.h+"px";
+    };
+    const up = async ()=>{
+      try{ node.releasePointerCapture(ev.pointerId); }catch(e){}
+      node.removeEventListener("pointermove",move); node.removeEventListener("pointerup",up);
+      mapDragging=false; if(moved){ await mapMetaUpsert(); renderMap(); }
+    };
+    node.addEventListener("pointermove",move); node.addEventListener("pointerup",up);
+  };
+  node.addEventListener("pointerdown", ev=>{ if(ev.target.closest(".map-img-handle")) return; startDrag(ev,"move"); });
+}
+function openTokenMenu(token, map){
+  const info = tokenHp(token);
+  const wrap = el("div",{});
+  if(info.unlinked){
+    wrap.append(el("div",{class:"r-body"},"⚠ The sheet or Pokémon this token pointed to no longer exists."));
+  } else {
+    const readout = el("div",{class:"tk-menu-hp"});
+    const draw = ()=>{ const i=tokenHp(token); const p=Math.max(0,Math.min(100,Math.round(i.cur/i.max*100)));
+      readout.innerHTML = `<b>${i.cur}</b> / ${i.max} HP &nbsp;<span class="muted small">${p}%</span>`; };
+    draw();
+    const mk = (d,l)=>el("button",{class:"btn-secondary",disabled:!info.editable,
+      onclick:async()=>{ await setTokenHP(token, tokenHp(token).cur+d); draw(); }}, l);
+    const setInp = el("input",{type:"number",style:"width:80px"});
+    const setBtn = el("button",{class:"btn-secondary",disabled:!info.editable,
+      onclick:async()=>{ const v=parseInt(setInp.value); if(!isNaN(v)){ await setTokenHP(token,v); draw(); setInp.value=""; } }},"Set");
+    wrap.append(readout,
+      el("div",{class:"tk-menu-row"}, mk(-5,"−5"), mk(-1,"−1"), mk(+1,"+1"), mk(+5,"+5")),
+      el("div",{class:"tk-menu-row"}, setInp, setBtn));
+    if(token.link) wrap.append(el("div",{class:"muted small",style:"margin-top:6px"},
+      token.link.kind==="enc" ? "Linked to the encounter — HP syncs with the Encounters tab."
+                              : "Linked to a sheet — HP changes sync to that character."));
+    if(!info.editable) wrap.append(el("div",{class:"muted small",style:"margin-top:6px"},"Read-only — you can't edit this token."));
+  }
+  if(battleOn()){
+    const used = token.moved||0, spd = tokenMoveSpeed(token), over = spd && used>spd;
+    const row = el("div",{class:"tk-menu-row",style:"margin-top:12px;align-items:center"},
+      el("div",{class:"small"+(over?" over":""),style:"font-weight:800"},
+        `⚔ Moved this round: ${used}${spd?(" / "+spd):""}m`+(over?" — over speed!":"")));
+    if(info.editable) row.append(el("button",{class:"btn-secondary",style:"margin-left:auto",
+      onclick:async()=>{ await resetTokenMovement(token,map); closeModal(); }},"↺ Reset"));
+    wrap.append(row);
+  }
+  const foot = [];
+  if(canRemoveToken(token)){
+    if(cloud.isGM){
+      const szSel = el("select");
+      [1,2,3,4].forEach(s=>szSel.append(el("option",{value:s,selected:s===(token.size||1)}, `${s}×${s}`)));
+      szSel.addEventListener("change", async()=>{ token.size=parseInt(szSel.value)||1; if(map.fogOn) revealAroundTokens(map); await mapTokensUpsert(); renderMap(); });
+      wrap.append(el("label",{class:"field",style:"margin-top:12px;max-width:150px"}, el("span",{},"Token size"), szSel));
+      const rv = el("input",{type:"checkbox"}); rv.checked = tokenReveals(token);
+      rv.addEventListener("change", async()=>{ token.reveal = rv.checked; if(map.fogOn) revealAroundTokens(map); await mapTokensUpsert(); renderMap(); });
+      wrap.append(el("label",{class:"inline",style:"margin-top:10px;gap:6px;display:flex;align-items:center"},
+        rv, el("span",{class:"small"},"👁 This token reveals fog of war")));
+    }
+    foot.push(el("button",{class:"btn-secondary danger",onclick:async()=>{ await removeToken(token,map); closeModal(); }},"🗑 Remove"));
+  }
+  foot.push(el("button",{class:"btn-primary",onclick:closeModal},"Done"));
+  modal({title:info.name||"Token", bodyNode:wrap, footNodes:foot});
+}
+
+/* "Players" tab grouped by trainer: each character sheet → the trainer + their PARTY Pokémon */
+function playerTokenGroups(){
+  const sheetRows = cloud.isGM ? Object.values(cloud.byId)
+                               : Object.values(cloud.byId).filter(r=>r.owner_id===cloud.userId);
+  return sheetRows.map(r=>({
+    id: r.id,
+    owner: r.owner_name || "",
+    trainerName: r.data?.trainer?.name || r.data?.name || "Trainer",
+    trainerMake: ()=>({ link:{ sheetId:r.id, kind:"trainer" } }),
+    mons: (r.data?.pokemon||[]).filter(p=>p.onTeam!==false).map(p=>({   // party only
+      label: p.nickname||getSpecies(p.species)?.name||p.species||"Pokémon",
+      sub: `Lv ${p.level}`,
+      make: ()=>({ link:{ sheetId:r.id, kind:"pokemon", monId:p.id } }),
+    })),
+  }));
+}
+/* rows for the "Enemies" tab: standalone tokens from encounters (GM only) */
+function enemyTokenRows(){
+  const rows = [];
+  encList().forEach(enc=>{                         // cloud encounters when connected, else local
+    const push = p=>rows.push({ label:encMonName(p), sub:`Encounter: ${enc.name} · Lv ${p.level}`,
+      make:()=>({ link:{ kind:"enc", encId:enc.id, monId:p.id } }) });   // live-linked to the encounter monster
+    (enc.mons||[]).forEach(push);
+    (enc.trainers||[]).forEach(tr=>{
+      rows.push({ label:(tr.trainer?.name||"Trainer"), sub:`Encounter: ${enc.name} · Trainer Lv ${tr.trainer?.level||1}`,
+        make:()=>({ link:{ kind:"enctrainer", encId:enc.id, trainerId:tr.id } }) });
+      (tr.pokemon||[]).forEach(push);
+    });
+  });
+  return rows;
+}
+/* pick something to drop on the map — split into Players / Enemies tabs */
+function openAddToken(map){
+  const wrap = el("div",{});
+  let tab = "players";
+  const tabsBar = el("div",{class:"subtabs"});
+  const bPlayers = el("button",{class:"subtab on",onclick:()=>setTab("players")},"🧑 Players");
+  const bEnemies = el("button",{class:"subtab",onclick:()=>setTab("enemies")},"👹 Enemies");
+  tabsBar.append(bPlayers);
+  if(cloud.isGM) tabsBar.append(bEnemies);
+  const search = el("input",{type:"search",placeholder:"Filter…",style:"margin-bottom:10px"});
+  const list = el("div",{class:"picklist"});
+  const collapsed = new Set();                       // trainer sheet ids whose party is hidden
+  const add = make => async ()=>{ closeModal(); await addToken(map, make()); };
+
+  const draw = ()=>{
+    const q = search.value.trim().toLowerCase(); list.innerHTML="";
+    if(tab==="players"){
+      const match = s => !q || (s||"").toLowerCase().includes(q);
+      let shown = 0;
+      playerTokenGroups().forEach(g=>{
+        const trainerHit = match(g.trainerName) || match(g.owner);
+        const mons = g.mons.filter(m=>trainerHit || match(m.label) || match(m.sub));
+        if(!trainerHit && !mons.length) return;
+        shown++;
+        const expanded = q ? true : !collapsed.has(g.id);
+        const head = el("div",{class:"pickitem pick-group",style:"cursor:pointer",
+          onclick:()=>{ collapsed.has(g.id) ? collapsed.delete(g.id) : collapsed.add(g.id); draw(); }},
+          el("span",{class:"pick-caret"}, expanded?"▾":"▸"),
+          el("div",{style:"flex:1;min-width:0"},
+            el("div",{class:"pi-title"}, g.trainerName + (cloud.isGM && g.owner ? `  ·  ${g.owner}` : "")),
+            el("div",{class:"pi-sub muted"}, `${g.mons.length} in party`)),
+          el("button",{class:"btn-secondary",style:"padding:4px 10px",title:"add the trainer as a token",
+            onclick:e=>{ e.stopPropagation(); add(g.trainerMake)(); }},"＋ Trainer"));
+        list.append(head);
+        if(expanded){
+          if(!mons.length) list.append(el("div",{class:"pickitem pick-mon muted"},"No party Pokémon."));
+          mons.forEach(m=>list.append(el("div",{class:"pickitem pick-mon",style:"cursor:pointer",onclick:add(m.make)},
+            el("div",{style:"flex:1;min-width:0"}, el("div",{class:"pi-title"},m.label), el("div",{class:"pi-sub muted"},m.sub)))));
+        }
+      });
+      if(!shown) list.append(el("div",{class:"pickitem muted"}, q?"No matches.":"No character sheets yet."));
+      return;
+    }
+    // enemies — flat list + custom-token entry
+    list.append(el("div",{class:"pickitem",style:"font-weight:700",onclick:()=>{ closeModal(); openCustomToken(map); }},
+      el("div",{class:"pi-title"},"✎ Custom token…"), el("div",{class:"pi-sub muted"},"Name it, set HP, optional image")));
+    enemyTokenRows().filter(r=>!q||r.label.toLowerCase().includes(q)||(r.sub||"").toLowerCase().includes(q)).slice(0,250)
+      .forEach(r=>list.append(el("div",{class:"pickitem",onclick:add(r.make)},
+        el("div",{style:"flex:1;min-width:0"}, el("div",{class:"pi-title"},r.label), el("div",{class:"pi-sub muted"},r.sub||"")))));
+  };
+  const setTab = t => { tab=t; bPlayers.classList.toggle("on",t==="players"); bEnemies.classList.toggle("on",t==="enemies"); draw(); };
+  search.addEventListener("input", draw); draw();
+  wrap.append(tabsBar, search, list);
+  modal({title:"Add a token", bodyNode:wrap, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Done")]});
+  setTimeout(()=>search.focus(),50);
+}
+function openCustomToken(map){
+  const nm = el("input",{type:"text",placeholder:"e.g. Boss, Trap, NPC"});
+  const hp = el("input",{type:"number",value:50});
+  let img = "";
+  const imgBtn = el("button",{class:"btn-secondary",onclick:()=>pickImage(240, d=>{ img=d; imgBtn.textContent="✓ image set"; })},"📷 Image (optional)");
+  const wrap = el("div",{},
+    el("label",{class:"field"}, el("span",{},"Name"), nm), el("div",{style:"height:8px"}),
+    el("label",{class:"field"}, el("span",{},"Max HP"), hp), el("div",{style:"height:8px"}), imgBtn);
+  modal({title:"Custom token", bodyNode:wrap, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async()=>{ const h=Math.max(1,parseInt(hp.value)||1);
+      await addToken(map,{ label:nm.value.trim()||"Token", img, hp:h, maxHp:h }); closeModal(); }},"Add"),
+  ]});
+}
+
+/* ---- map management (GM) ---- */
+async function newMap(){
+  const name = prompt("Map name:", "Map "+((cloud.mapMeta?.data?.maps?.length||0)+1)); if(name===null) return;
+  ensureMapMeta();
+  const m = { id:uid(), name:name||"Map", images:[], gridSize:48, gridOn:true, fogOn:false, fogRadius:3 };
+  cloud.mapMeta.data.maps.push(m); cloud.mapMeta.data.activeMapId = m.id; mapGmView = m.id;
+  mapView = { scale:1, panX:0, panY:0 };
+  await mapMetaUpsert(); renderMap();
+}
+async function renameMap(map){ const n=prompt("Rename map:", map.name); if(n===null) return; map.name=n||map.name; await mapMetaUpsert(); renderMap(); }
+async function deleteMap(map){
+  if(!confirm(`Delete map “${map.name}” and its tokens?`)) return;
+  const meta = cloud.mapMeta.data;
+  meta.maps = meta.maps.filter(m=>m.id!==map.id);
+  if(cloud.mapTokens?.data?.byMap) delete cloud.mapTokens.data.byMap[map.id];
+  if(cloud.mapTokens?.data?.fog)   delete cloud.mapTokens.data.fog[map.id];
+  const fallback = meta.maps[0]?.id || null;
+  meta.activeMapId = fallback;
+  if(meta.playerMapId===map.id) meta.playerMapId = fallback;
+  if(mapGmView===map.id) mapGmView = fallback;
+  await mapMetaUpsert(); await mapTokensUpsert(); renderMap();
+}
+/* Map backgrounds are often pixel-art/tile maps — keep them LOSSLESS (PNG) at full resolution
+   instead of re-encoding to JPEG (which smears sharp tile edges). Only downscale genuinely huge
+   images, and only fall back to JPEG if the data URL would be too big to sync comfortably. */
+const MAP_BG_MAXDIM   = 4096;
+const MAP_BG_MAXBYTES = 6 * 1024 * 1024;   // ~6 MB data-URL budget for the synced meta row
+function fileToDataURL(f){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); }); }
+function prepMapBg(dataUrl, cb){
+  const img = new Image();
+  img.onload = ()=>{
+    const isPng = /^data:image\/png/i.test(dataUrl);
+    const long  = Math.max(img.width, img.height);
+    let out = dataUrl;                                   // small enough → keep the original bytes (lossless)
+    if(long > MAP_BG_MAXDIM){
+      const s = MAP_BG_MAXDIM/long, w = Math.round(img.width*s), h = Math.round(img.height*s);
+      const cv = el("canvas"); cv.width=w; cv.height=h; cv.getContext("2d").drawImage(img,0,0,w,h);
+      try{ out = isPng ? cv.toDataURL("image/png") : cv.toDataURL("image/jpeg",0.92); }catch(e){ out=dataUrl; }
+    }
+    if(out.length > MAP_BG_MAXBYTES){                    // still too heavy → shrink to a JPEG so sync stays sane
+      const s = Math.min(1, MAP_BG_MAXDIM/long), w = Math.round(img.width*s), h = Math.round(img.height*s);
+      const cv = el("canvas"); cv.width=w; cv.height=h; cv.getContext("2d").drawImage(img,0,0,w,h);
+      try{ out = cv.toDataURL("image/jpeg",0.9); }catch(e){}
+      toast("Large map — stored slightly compressed to keep sync fast");
+    }
+    cb(out);
+  };
+  img.onerror = ()=>toast("⚠ Could not read that image");
+  img.src = dataUrl;
+}
+async function toggleGrid(map){ map.gridOn=!map.gridOn; await mapMetaUpsert(); renderMap(); }
+async function clearMapTokens(map){ if(!confirm("Remove ALL tokens from this map?")) return;
+  if(cloud.mapTokens?.data?.byMap) cloud.mapTokens.data.byMap[map.id]=[]; await mapTokensUpsert(); renderMap(); }
+
+function applyMapCamera(stage){ stage.style.transformOrigin="0 0";
+  stage.style.transform = `translate(${mapView.panX}px,${mapView.panY}px) scale(${mapView.scale})`; }
+function attachPanZoom(viewport, stage){
+  viewport.addEventListener("wheel", e=>{
+    e.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    const cx = e.clientX-rect.left, cy = e.clientY-rect.top;
+    const old = mapView.scale;
+    const next = Math.max(0.2, Math.min(4, old*(e.deltaY<0?1.1:0.9)));
+    // keep the point under the cursor fixed while zooming
+    mapView.panX = cx - (cx-mapView.panX)*(next/old);
+    mapView.panY = cy - (cy-mapView.panY)*(next/old);
+    mapView.scale = next; applyMapCamera(stage);
+  }, { passive:false });
+  viewport.addEventListener("pointerdown", ev=>{
+    if(ev.target.closest(".map-token")) return;            // tokens handle their own drag
+    const sx=ev.clientX, sy=ev.clientY, px0=mapView.panX, py0=mapView.panY;
+    try{ viewport.setPointerCapture(ev.pointerId); }catch(e){}
+    const move = e=>{ mapView.panX=px0+(e.clientX-sx); mapView.panY=py0+(e.clientY-sy); applyMapCamera(stage); };
+    const up = ()=>{ viewport.removeEventListener("pointermove",move); viewport.removeEventListener("pointerup",up); };
+    viewport.addEventListener("pointermove",move); viewport.addEventListener("pointerup",up);
+  });
+}
+
+/* stage dimensions = bounding box of all images, with a default floor */
+function mapStageSize(map){
+  let w = 30*map.gridSize, h = 20*map.gridSize;
+  (map.images||[]).forEach(im=>{ if(im.w) w=Math.max(w, im.x+im.w); if(im.h) h=Math.max(h, im.y+im.h); });
+  return { w, h };
+}
+/* one-time fixup: a migrated legacy background has w/h 0 — resolve to natural size (GM only) */
+function resolveImageSizes(map){
+  const pending = (map.images||[]).filter(im=>!im.w || !im.h);
+  if(!pending.length || !cloud.isGM) return;
+  let left = pending.length;
+  pending.forEach(im=>{ const p=new Image(); p.onload=async()=>{ im.w=p.naturalWidth||map.gridSize*10; im.h=p.naturalHeight||map.gridSize*10;
+    if(--left===0){ await mapMetaUpsert(); renderMap(); } }; p.onerror=()=>{ im.w=im.w||map.gridSize*10; im.h=im.h||map.gridSize*10; if(--left===0) renderMap(); }; p.src=im.src; });
+}
+
+function renderMap(){
+  const root = $("#view-map"); root.innerHTML="";
+  if(!cloudConfigured() || mode!=="cloud"){
+    root.append(el("div",{class:"card"}, el("h3",{},"🗺 Map — shared battle map"),
+      el("div",{class:"r-body"}, "The battle map is part of cloud play. Tap ", el("b",{},"☁ Cloud"),
+        " to join your campaign, then come back to this tab.")));
+    return;
+  }
+  const meta = activeMapMeta();
+  const map  = currentMapForView();
+  if(cloud.isGM && map) mapGmView = map.id;
+
+  const bar = el("div",{class:"map-toolbar card"});
+  if(cloud.isGM){
+    // — Maps group: private browsing + push to players —
+    if(meta.maps.length){
+      const sel = el("select");
+      meta.maps.forEach(m=>sel.append(el("option",{value:m.id,selected:m.id===mapGmView},
+        m.name + (m.id===meta.playerMapId ? " 👁" : ""))));
+      sel.addEventListener("change", ()=>{ mapGmView=sel.value; mapView={scale:1,panX:0,panY:0}; renderMap(); });
+      bar.append(el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Viewing (private)"), sel));
+    }
+    bar.append(el("button",{class:"btn-secondary",onclick:newMap},"＋ New map"));
+    if(map){
+      const shown = map.id===meta.playerMapId;
+      bar.append(el("button",{class:"btn-primary"+(shown?" on":""),onclick:()=>pushMapToPlayers(map),
+        title:"Make this the map players see"}, shown?"👁 Players see this":"👁 Show to players"));
+      bar.append(
+        el("button",{class:"btn-secondary",onclick:()=>renameMap(map)},"✎ Rename"),
+        el("button",{class:"btn-secondary danger",onclick:()=>deleteMap(map)},"🗑 Delete"),
+      );
+      // — Scene group: images, grid —
+      bar.append(el("span",{class:"map-sep"}),
+        el("button",{class:"btn-secondary",onclick:()=>addMapImage(map)},"＋ Add image"),
+        el("button",{class:"btn-secondary"+(mapImgEdit?" on":""),onclick:()=>{ mapImgEdit=!mapImgEdit; renderMap(); },
+          title:"Move/resize/layer the map images"}, mapImgEdit?"🖼 Editing images":"🖼 Edit images"),
+        el("button",{class:"btn-secondary"+(map.gridOn?" on":""),onclick:()=>toggleGrid(map)}, map.gridOn?"▦ Grid on":"▦ Grid off"),
+      );
+      const gs = el("input",{type:"number",min:12,max:200,value:map.gridSize,style:"width:64px",title:"grid cell size (px)"});
+      gs.addEventListener("change", async()=>{ map.gridSize=Math.max(12,Math.min(200,parseInt(gs.value)||48)); await mapMetaUpsert(); renderMap(); });
+      bar.append(el("label",{class:"field",style:"max-width:120px"}, el("span",{},"Cell px"), gs));
+      // — Play group: tokens, fog —
+      bar.append(el("span",{class:"map-sep"}),
+        el("button",{class:"btn-primary",onclick:()=>openAddToken(map)},"＋ Add token"),
+        el("button",{class:"btn-secondary",onclick:()=>clearMapTokens(map)},"Clear tokens"),
+        el("button",{class:"btn-secondary"+(map.fogOn?" on":""),onclick:()=>toggleFog(map),
+          title:"Auto-reveals around player tokens; explored areas stay revealed"}, map.fogOn?"🌫 Fog on":"🌫 Fog off"),
+      );
+      if(map.fogOn){
+        const fr = el("input",{type:"number",min:1,max:20,value:map.fogRadius,style:"width:56px",title:"reveal radius (cells)"});
+        fr.addEventListener("change", ()=>setFogRadius(map, fr.value));
+        bar.append(el("label",{class:"field",style:"max-width:110px"}, el("span",{},"Fog radius"), fr),
+          el("button",{class:"btn-secondary",onclick:()=>resetFog(map)},"Reset fog"));
+      }
+      // — Battle group: track movement per token —
+      bar.append(el("span",{class:"map-sep"}),
+        el("button",{class:"btn-secondary"+(meta.battleOn?" on":""),onclick:()=>toggleBattle(map),
+          title:"Track how far each token moves per round (diagonals cost 2)"}, meta.battleOn?"⚔ Battle on":"⚔ Battle off"));
+      if(meta.battleOn) bar.append(el("button",{class:"btn-secondary",onclick:()=>newRound(map),title:"Reset every token's movement for a new round"},"↺ New round"));
+    }
+  } else {
+    bar.append(el("div",{class:"map-mapname"}, map ? `🗺 ${map.name}` : "🗺 Battle map"));
+    if(meta.battleOn) bar.append(el("span",{class:"battle-badge"},"⚔ Battle"));
+    if(map && Object.values(cloud.byId).some(r=>r.owner_id===cloud.userId))
+      bar.append(el("button",{class:"btn-primary",onclick:()=>openAddToken(map)},"＋ Add my token"));
+  }
+  root.append(bar);
+
+  if(!map){
+    root.append(el("div",{class:"card muted"}, cloud.isGM
+      ? "No maps yet — tap “＋ New map”, then “＋ Add image” and drop some tokens."
+      : "The GM hasn't shared a map yet."));
+    return;
+  }
+  resolveImageSizes(map);   // resolve any migrated-bg natural sizes (no-op once done)
+
+  const { w:stageW, h:stageH } = mapStageSize(map);
+  const viewport = el("div",{class:"map-viewport"});
+  const stage = el("div",{class:"map-stage",style:`width:${stageW}px;height:${stageH}px`});
+
+  // layered images (back → front)
+  if(!map.images.length) stage.append(el("div",{class:"map-nobg",style:`width:${stageW}px;height:${stageH}px`}));
+  map.images.forEach(im=>{
+    const node = el("img",{class:"map-img"+(mapImgEdit?" editing":""),src:im.src,draggable:false,alt:"",
+      style:`left:${im.x}px;top:${im.y}px;`+(im.w?`width:${im.w}px;`:"")+(im.h?`height:${im.h}px;`:"")});
+    if(mapImgEdit){
+      const wrap = el("div",{class:"map-img-wrap editing",style:`left:${im.x}px;top:${im.y}px;width:${im.w||stageW}px;height:${im.h||stageH}px`});
+      node.style.left="0px"; node.style.top="0px"; node.style.width="100%"; node.style.height="100%";
+      wrap.append(node);
+      wrap.append(el("div",{class:"map-img-ctrls"},
+        el("button",{title:"bring forward",onclick:e=>{e.stopPropagation();moveMapImageLayer(map,im,1);}},"⬆"),
+        el("button",{title:"send back",onclick:e=>{e.stopPropagation();moveMapImageLayer(map,im,-1);}},"⬇"),
+        el("button",{title:"delete",class:"danger",onclick:e=>{e.stopPropagation();if(confirm("Remove this image?"))deleteMapImage(map,im);}},"🗑")));
+      wrap.append(el("div",{class:"map-img-handle",title:"drag to resize"}));
+      const handle = wrap.querySelector(".map-img-handle");
+      attachImageDrag(wrap, im, map);
+      // resize handle uses the same drag machinery in resize mode
+      handle.addEventListener("pointerdown", ev=>{ ev.stopPropagation();
+        const px=map.gridSize, snap=v=>map.gridOn?Math.round(v/px)*px:v, scale=mapView.scale;
+        const sx=ev.clientX, sy=ev.clientY, w0=im.w, h0=im.h; let moved=false;
+        try{ handle.setPointerCapture(ev.pointerId); }catch(e){}
+        const mv=e=>{ moved=true; mapDragging=true; im.w=Math.max(px,snap(w0+(e.clientX-sx)/scale)); im.h=Math.max(px,snap(h0+(e.clientY-sy)/scale));
+          wrap.style.width=im.w+"px"; wrap.style.height=im.h+"px"; };
+        const up=async()=>{ try{handle.releasePointerCapture(ev.pointerId);}catch(e){} handle.removeEventListener("pointermove",mv); handle.removeEventListener("pointerup",up);
+          mapDragging=false; if(moved){ await mapMetaUpsert(); renderMap(); } };
+        handle.addEventListener("pointermove",mv); handle.addEventListener("pointerup",up); });
+      stage.append(wrap);
+    } else {
+      stage.append(node);
+    }
+  });
+
+  if(map.gridOn) stage.append(el("div",{class:"map-grid",style:`width:${stageW}px;height:${stageH}px;background-size:${map.gridSize}px ${map.gridSize}px`}));
+
+  // tokens + fog, with role-dependent stacking. In image-edit mode tokens are inert.
+  const fog = fogSet(map.id);
+  const mkToken = t => { const node=mapTokenNode(t,map); if(!mapImgEdit) attachTokenDrag(node,t,map); else node.style.pointerEvents="none"; return node; };
+  const visibleToken = t => {
+    if(cloud.isGM || !map.fogOn) return true;
+    if(t.link && cloud.byId[t.link.sheetId]?.owner_id===cloud.userId) return true;   // always see your own
+    return fog.has(Math.round(t.x)+","+Math.round(t.y));
+  };
+  const drawFogInto = () => { if(!map.fogOn) return null; const cv=el("canvas",{class:"map-fog"}); drawFog(cv,map,stageW,stageH); return cv; };
+
+  if(cloud.isGM){
+    const f = drawFogInto(); if(f) stage.append(f);                 // GM: dim fog under tokens
+    mapTokensFor(map.id).forEach(t=>stage.append(mkToken(t)));
+  } else {
+    mapTokensFor(map.id).forEach(t=>{ if(visibleToken(t)) stage.append(mkToken(t)); });
+    const f = drawFogInto(); if(f) stage.append(f);                 // players: opaque fog over hidden tokens
+  }
+
+  applyMapCamera(stage);
+  viewport.append(stage);
+  attachPanZoom(viewport, stage);
+  root.append(viewport);
+  root.append(el("div",{class:"muted small",style:"margin-top:6px"},
+    mapImgEdit ? "Image-edit mode: drag images to move, corner handle to resize, ⬆⬇ to layer. Turn it off to move tokens."
+      : "Drag tokens to move (snaps to grid, shows metres). Tap a token to edit HP. Scroll to zoom · drag empty space to pan."));
 }
 
 function renderCloudBanner(){

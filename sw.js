@@ -4,7 +4,7 @@
      (the fresh index.html references the correct ?v= for app.js/styles.css).
    - Other GET assets → cache-first (they're version-busted via ?v=, and data.js
      rarely changes), with a background refresh. Falls back to cache when offline. */
-const CACHE = "ptu-sheet-v3";
+const CACHE = "ptu-sheet-v5";
 const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./config.js", "./data/data.js", "./manifest.webmanifest"];
 
 self.addEventListener("install", e => {

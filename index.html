@@ -7,7 +7,7 @@
 <title>PTU Sheet</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='46' fill='%23e74c3c' stroke='%23111' stroke-width='6'/><rect x='4' y='47' width='92' height='6' fill='%23111'/><circle cx='50' cy='50' r='14' fill='%23fff' stroke='%23111' stroke-width='6'/></svg>">
-<link rel="stylesheet" href="styles.css?v=14">
+<link rel="stylesheet" href="styles.css?v=20">
 </head>
 <body>
 <header id="topbar">
@@ -34,6 +34,7 @@
   <button class="tab active" data-tab="trainer">Trainer</button>
   <button class="tab" data-tab="pokemon">Pokémon <span id="partyCount" class="pill"></span></button>
   <button class="tab" id="tabPC" data-tab="pc" hidden>🖥 PC</button>
+  <button class="tab" id="tabMap" data-tab="map" hidden>🗺 Map</button>
   <button class="tab" data-tab="battle">⚔ Battle</button>
   <button class="tab" id="tabEncounters" data-tab="encounters" hidden>👹 Encounters</button>
   <button class="tab" data-tab="reference">Reference</button>
@@ -47,6 +48,7 @@
   <section id="view-trainer" class="view active"></section>
   <section id="view-pokemon" class="view"></section>
   <section id="view-pc" class="view"></section>
+  <section id="view-map" class="view"></section>
   <section id="view-battle" class="view"></section>
   <section id="view-encounters" class="view"></section>
   <section id="view-reference" class="view"></section>
@@ -56,9 +58,9 @@
 <div id="toast"></div>
 
 <!-- App core (must not depend on the network): data, config, then the app itself. -->
-<script src="data/data.js?v=6"></script>
+<script src="data/data.js?v=7"></script>
 <script src="config.js"></script>
-<script src="app.js?v=54"></script>
+<script src="app.js?v=72"></script>
 <!-- Cloud sync SDK (optional) loads async & LAST so it can never block the app from starting.
      app.js waits for it and enables ☁ cloud sync once it arrives. -->
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

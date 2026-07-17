@@ -1,0 +1,460 @@
+[
+ {
+  "name": "Baby Kangaskhan",
+  "order": 1499,
+  "baseStats": {
+   "hp": 1,
+   "atk": 1,
+   "def": 1,
+   "spatk": 1,
+   "spdef": 1,
+   "spd": 1
+  },
+  "types": [
+   "Normal",
+   "None"
+  ],
+  "capabilities": {
+   "overland": 5,
+   "sky": 0,
+   "swim": 2,
+   "levitate": 0,
+   "burrow": 0,
+   "highJump": 1,
+   "longJump": 1,
+   "power": 5,
+   "naturewalk": [],
+   "other": [
+    "Marsupial"
+   ]
+  },
+  "size": "Small",
+  "weightClass": 2,
+  "eggGroups": [
+   "Monster"
+  ],
+  "skills": {
+   "acrobatics": {
+    "dice": 3,
+    "mod": "+2"
+   },
+   "athletics": {
+    "dice": 3,
+    "mod": "+0"
+   },
+   "charm": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "combat": {
+    "dice": 2,
+    "mod": "+1"
+   },
+   "command": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "generalEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "medicineEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "occultEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "pokemonEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "technologyEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "focus": {
+    "dice": 1,
+    "mod": "+2"
+   },
+   "guile": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "intimidate": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "intuition": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "perception": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "stealth": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "survival": {
+    "dice": 1,
+    "mod": "+0"
+   }
+  },
+  "abilities": {
+   "basic": [],
+   "advanced": [],
+   "high": []
+  },
+  "evolution": [
+   {
+    "stage": 1,
+    "name": "Baby Kangaskhan",
+    "min": null,
+    "gm": true
+   },
+   {
+    "stage": 2,
+    "name": "Child Kangaskhan",
+    "min": 10,
+    "gm": true
+   },
+   {
+    "stage": 3,
+    "name": "Kangaskhan",
+    "min": 25,
+    "gm": true
+   }
+  ],
+  "gender": "0% M / 100% F",
+  "diet": "Herbivore",
+  "habitat": "Grassland, Rainforest",
+  "height": "3' 8\" / 1.1m (Small)",
+  "moves": {
+   "levelup": [],
+   "tmhm": [],
+   "egg": [],
+   "tutor": []
+  },
+  "megaEvolution": "Type: Unchanged Ability: Parental Bond Stats: +3 Atk, +2 Def, +2 Sp. Atk, +2 Sp. Def, +1 Speed"
+ },
+ {
+  "name": "Child Kangaskhan",
+  "order": 1500,
+  "baseStats": {
+   "hp": 6,
+   "atk": 5,
+   "def": 3,
+   "spatk": 1,
+   "spdef": 3,
+   "spd": 4
+  },
+  "types": [
+   "Normal",
+   "None"
+  ],
+  "capabilities": {
+   "overland": 5,
+   "sky": 0,
+   "swim": 2,
+   "levitate": 0,
+   "burrow": 0,
+   "highJump": 1,
+   "longJump": 1,
+   "power": 5,
+   "naturewalk": [],
+   "other": [
+    "Marsupial"
+   ]
+  },
+  "size": "Small",
+  "weightClass": 2,
+  "eggGroups": [
+   "Monster"
+  ],
+  "skills": {
+   "acrobatics": {
+    "dice": 3,
+    "mod": "+2"
+   },
+   "athletics": {
+    "dice": 3,
+    "mod": "+0"
+   },
+   "charm": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "combat": {
+    "dice": 2,
+    "mod": "+1"
+   },
+   "command": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "generalEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "medicineEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "occultEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "pokemonEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "technologyEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "focus": {
+    "dice": 1,
+    "mod": "+2"
+   },
+   "guile": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "intimidate": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "intuition": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "perception": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "stealth": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "survival": {
+    "dice": 1,
+    "mod": "+0"
+   }
+  },
+  "abilities": {
+   "basic": [
+    "Early Bird",
+    "Scrappy"
+   ],
+   "advanced": [
+    "Inner Focus",
+    "Defiant"
+   ],
+   "high": [
+    "Bodyguard"
+   ]
+  },
+  "evolution": [
+   {
+    "stage": 1,
+    "name": "Baby Kangaskhan",
+    "min": null,
+    "gm": true
+   },
+   {
+    "stage": 2,
+    "name": "Child Kangaskhan",
+    "min": 10,
+    "gm": true
+   },
+   {
+    "stage": 3,
+    "name": "Kangaskhan",
+    "min": 25,
+    "gm": true
+   }
+  ],
+  "gender": "0% M / 100% F",
+  "diet": "Herbivore",
+  "habitat": "Grassland, Rainforest",
+  "height": "3' 8\" / 1.1m (Small)",
+  "moves": {
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Comet Punch",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Leer",
+     "type": "Normal"
+    },
+    {
+     "level": 7,
+     "name": "Fake Out",
+     "type": "Normal"
+    },
+    {
+     "level": 10,
+     "name": "Tail Whip",
+     "type": "Normal"
+    },
+    {
+     "level": 13,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 19,
+     "name": "Double Hit",
+     "type": "Normal"
+    },
+    {
+     "level": 22,
+     "name": "Rage",
+     "type": "Normal"
+    },
+    {
+     "level": 25,
+     "name": "Mega Punch",
+     "type": "Normal"
+    },
+    {
+     "level": 31,
+     "name": "Chip Away",
+     "type": "Normal"
+    },
+    {
+     "level": 34,
+     "name": "Dizzy Punch",
+     "type": "Normal"
+    },
+    {
+     "level": 37,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 43,
+     "name": "Endure",
+     "type": "Normal"
+    },
+    {
+     "level": 46,
+     "name": "Outrage",
+     "type": "Dragon"
+    },
+    {
+     "level": 49,
+     "name": "Sucker Punch",
+     "type": "Dark"
+    },
+    {
+     "level": 55,
+     "name": "Reversal",
+     "type": "Fighting"
+    }
+   ],
+   "tmhm": [
+    "A1 Cut",
+    "A3 Surf",
+    "A4 Strength",
+    "05 Roar",
+    "06 Toxic",
+    "07 Hail",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "13 Ice Beam",
+    "14 Bliz zard",
+    "15 Hyper Beam",
+    "17 Protect",
+    "18 Rain Dance",
+    "20 Safe guard",
+    "21 Frustration",
+    "22 Solar Beam",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "26 Earthquake",
+    "27 Return",
+    "28 Dig",
+    "30 Shadow Ball",
+    "31 Brick Break",
+    "32 Double Team",
+    "35 Flamethrower",
+    "37 Sandstorm",
+    "38 Fire Blast",
+    "39 Rock Tomb",
+    "40 Aerial Ace",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "52 Focus Blast",
+    "56 Fling",
+    "59 Incinerate",
+    "65 Shadow Claw",
+    "67 Retaliate",
+    "68 Giga Impact",
+    "78 Bulldoze",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "94 Rock Smash",
+    "98 Power-Up Punch",
+    "100 Confide"
+   ],
+   "egg": [
+    "Circle Throw",
+    "Counter",
+    "Crush Claw",
+    "Disable",
+    "Double- Edge",
+    "Endeavor",
+    "Focus Energy",
+    "Focus Punch",
+    "Foresight",
+    "Hammer Arm",
+    "Safeguard",
+    "Stomp",
+    "Substitute",
+    "Trump Card",
+    "Uproar"
+   ],
+   "tutor": [
+    "Aqua Tail",
+    "Avalanche",
+    "Body Slam",
+    "Covet",
+    "Drain Punch",
+    "Dynamic Punch",
+    "Endeavor",
+    "Fire Punch",
+    "Fury Cutter",
+    "Helping Hand",
+    "Ice Punch",
+    "Icy Wind",
+    "Iron Tail",
+    "Knock Off",
+    "Low Kick",
+    "Mega Kick",
+    "Mud-Slap",
+    "Outrage",
+    "Seismic Toss",
+    "Sleep Talk",
+    "Snore",
+    "Spite",
+    "Thunder Punch",
+    "Uproar",
+    "Water Pulse",
+    "Work Up"
+   ]
+  },
+  "megaEvolution": "Type: Unchanged Ability: Parental Bond Stats: +3 Atk, +2 Def, +2 Sp. Atk, +2 Sp. Def, +1 Speed"
+ }
+]

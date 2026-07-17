@@ -205,6 +205,11 @@ textarea{resize:vertical; min-height:64px}
 .pickitem:hover,.pickitem.sel{background:var(--panel-2)}
 .pickitem .pi-title{font-weight:700}
 .pickitem .pi-sub{font-size:12px; color:var(--muted)}
+/* grouped token picker: trainer header + indented party */
+.pickitem.pick-group{display:flex; align-items:center; gap:8px; background:var(--panel-2)}
+.pickitem.pick-group .pi-title{font-weight:800}
+.pick-caret{width:14px; text-align:center; color:var(--muted); font-weight:900; flex:0 0 auto}
+.pickitem.pick-mon{padding-left:34px}
 
 /* ---------- misc ---------- */
 /* ---------- cloud sync ---------- */
@@ -294,6 +299,9 @@ details.spoiler summary{cursor:pointer; font-weight:700; color:var(--muted)}
   box-shadow:var(--shadow); cursor:pointer}
 .photo-rm{position:absolute; top:4px; right:4px; width:22px; height:22px; border-radius:50%;
   border:1px solid var(--line); background:var(--panel); color:var(--bad); font-weight:800; line-height:1; cursor:pointer}
+/* compact photo controls for the small encounter-card sprite (56px) — sit on the sprite's corners */
+.sprite-box.sb-sm .photo-btn{width:22px; height:22px; border-radius:6px; font-size:11px; bottom:-5px; right:-5px}
+.sprite-box.sb-sm .photo-rm{width:18px; height:18px; font-size:11px; top:-5px; right:-5px}
 
 /* ---------- Level-Up tracker ---------- */
 .lu-summary{display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px}
@@ -325,3 +333,83 @@ details.spoiler summary{cursor:pointer; font-weight:700; color:var(--muted)}
   border-radius:6px; font-weight:800; line-height:1; color:var(--ink)}
 .stepper button:disabled{opacity:.35; cursor:default}
 .stepper .stepper-val{min-width:26px; text-align:center; font-weight:800}
+
+/* ===== Shared battle map (VTT) ===== */
+.map-toolbar{display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end}
+.map-toolbar .field{max-width:200px}
+.map-toolbar .btn-secondary.on{background:var(--accent); color:#fff; border-color:var(--accent)}
+.map-mapname{font-weight:800; font-size:16px; color:var(--ink); padding:4px 2px}
+.map-viewport{position:relative; overflow:hidden; height:70vh; min-height:360px;
+  background:var(--panel-2); border:1px solid var(--line); border-radius:var(--radius);
+  touch-action:none; cursor:grab; user-select:none}
+
+/* full-screen board: make the page a flex column so the board fills whatever space is left
+   below the sticky bars — works no matter how tall they wrap on narrow screens. */
+body.map-mode{height:100vh; height:100dvh; overflow:hidden; display:flex; flex-direction:column}
+body.map-mode #topbar,body.map-mode #tabs{flex:0 0 auto}
+body.map-mode main{flex:1 1 auto; min-height:0; max-width:none; margin:0; padding:0; overflow:hidden}
+body.map-mode #view-map.active{display:flex; flex-direction:column; height:100%}
+body.map-mode .map-toolbar{margin:0; border-radius:0; border-left:0; border-right:0; border-top:0;
+  padding:8px 12px; align-items:center; flex:0 0 auto}
+body.map-mode .map-toolbar .btn-secondary,body.map-mode .map-toolbar .btn-primary{padding:7px 11px}
+body.map-mode .map-viewport{flex:1 1 auto; height:auto; min-height:0; border-radius:0; border-left:0; border-right:0}
+body.map-mode #view-map > .muted.small{padding:5px 12px; margin:0; text-align:center; flex:0 0 auto}
+.map-viewport:active{cursor:grabbing}
+.map-stage{position:absolute; top:0; left:0; will-change:transform}
+.map-bg{display:block; max-width:none; pointer-events:none}
+.map-nobg{background:
+  repeating-linear-gradient(45deg,var(--panel) 0 12px,var(--panel-2) 12px 24px)}
+.map-grid{position:absolute; inset:0; pointer-events:none;
+  background-image:linear-gradient(to right,rgba(128,128,128,.35) 1px,transparent 1px),
+    linear-gradient(to bottom,rgba(128,128,128,.35) 1px,transparent 1px)}
+.map-token{position:absolute; box-sizing:border-box; border-radius:50%; overflow:visible;
+  border:2.5px solid var(--accent); background:var(--panel);
+  box-shadow:0 2px 6px rgba(0,0,0,.4); touch-action:none; cursor:pointer}
+.map-token.editable{cursor:grab}
+.map-token.editable:active{cursor:grabbing}
+.map-token.unlinked{border-color:var(--muted); opacity:.7; filter:grayscale(.6)}
+.map-token .tk-img{width:100%; height:100%; border-radius:50%; object-fit:cover; display:block; pointer-events:none}
+.map-token .tk-hpwrap{position:absolute; left:6%; right:6%; bottom:-7px; height:6px;
+  background:var(--panel-2); border:1px solid var(--line); border-radius:5px; overflow:hidden}
+.map-token .tk-hp{height:100%; background:var(--good)}
+.map-token .tk-hp.mid{background:var(--warn)}
+.map-token .tk-hp.low{background:var(--bad)}
+.map-token .tk-name{position:absolute; top:calc(100% + 4px); left:50%; transform:translateX(-50%);
+  white-space:nowrap; font-size:11px; font-weight:800; color:var(--ink);
+  background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:1px 6px; pointer-events:none}
+.map-token .tk-hpnum{position:absolute; top:-9px; left:50%; transform:translateX(-50%);
+  font-size:10px; font-weight:800; color:var(--muted); background:var(--panel);
+  border-radius:6px; padding:0 4px; pointer-events:none}
+.map-token .tk-move{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  font-size:14px; font-weight:900; color:#fff; background:var(--accent); white-space:nowrap;
+  border-radius:8px; padding:2px 8px; pointer-events:none; box-shadow:0 1px 4px rgba(0,0,0,.5)}
+.map-token .tk-move.over{background:var(--bad)}
+/* battle-mode: movement used this round (badge under the token) */
+.map-token .tk-moved{position:absolute; top:calc(100% + 22px); left:50%; transform:translateX(-50%);
+  font-size:10px; font-weight:800; color:#fff; background:rgba(46,46,54,.92); white-space:nowrap;
+  border-radius:6px; padding:1px 6px; pointer-events:none}
+.map-token .tk-moved.over{background:var(--bad)}
+.map-paths{position:absolute; left:0; top:0; pointer-events:none}
+.battle-badge{font-weight:800; color:#fff; background:var(--accent); border-radius:20px; padding:4px 12px}
+.small.over{color:var(--bad)}
+.tk-menu-hp{font-size:20px; margin-bottom:10px}
+.tk-menu-row{display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap}
+.tk-menu-row .btn-secondary{padding:8px 14px; font-size:16px}
+
+/* map images (layered scenery) */
+.map-img{position:absolute; display:block; max-width:none; pointer-events:none; user-select:none}
+.map-img-wrap{position:absolute}
+.map-img-wrap.editing{outline:2px dashed var(--accent); cursor:grab; touch-action:none}
+.map-img-wrap.editing:active{cursor:grabbing}
+.map-img-wrap.editing .map-img{pointer-events:none}
+.map-img-handle{position:absolute; right:-7px; bottom:-7px; width:16px; height:16px; border-radius:4px;
+  background:var(--accent); border:2px solid #fff; cursor:nwse-resize; box-shadow:0 1px 3px rgba(0,0,0,.5); touch-action:none}
+.map-img-ctrls{position:absolute; left:0; top:-34px; display:flex; gap:4px}
+.map-img-ctrls button{width:30px; height:28px; border-radius:6px; border:1px solid var(--line);
+  background:var(--panel); color:var(--ink); font-size:14px; font-weight:800; box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.map-img-ctrls button.danger{color:var(--bad)}
+/* fog of war overlay (drawn in base coords, scales with the stage transform) */
+.map-fog{position:absolute; left:0; top:0; pointer-events:none}
+/* toolbar group separator + active primary button */
+.map-sep{width:1px; align-self:stretch; background:var(--line); margin:0 2px}
+.map-toolbar .btn-primary.on{background:var(--good); border-color:var(--good)}
