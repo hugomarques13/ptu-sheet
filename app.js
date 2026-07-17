@@ -3496,6 +3496,10 @@ function myUserId(){
 }
 function canEdit(row){ return !!row && (cloud.isGM || row.owner_id===cloud.userId); }
 function canEditActive(){ return canEdit(cloud.byId[cloud.activeId]); }
+/* a player connected as "Viewer" can edit HP for every player's trainer/Pokémon token on the
+   map (handy for a co-pilot / assistant tracking the party's health), but nothing else GM-only. */
+function isMapHpViewer(){ return !cloud.isGM && (cloud.name||"").trim().toLowerCase()==="viewer"; }
+function canEditPlayerHP(row){ return canEdit(row) || isMapHpViewer(); }
 
 function initCloud(_tries){
   // No cloud config at all → nothing to do (stays local-only).
@@ -4148,10 +4152,10 @@ function tokenHp(token){
     return { cur, max, editable:cloud.isGM, name:L.obj.name||"Trainer",
              sprite:TRAINER_TOKEN(L.obj), unlinked:false, obj:L.obj, kind:"enctrainer" }; }
   if(L.kind==="trainer"){ const max=Math.max(1,trainerDerived(L.obj).hp); let cur=L.obj.currentHP; if(cur==null)cur=max;
-    return { cur, max, editable:canEdit(L.row), name:L.obj.name||L.row.data?.name||"Trainer",
+    return { cur, max, editable:canEditPlayerHP(L.row), name:L.obj.name||L.row.data?.name||"Trainer",
              sprite:TRAINER_TOKEN(L.obj), unlinked:false, row:L.row, obj:L.obj, kind:"trainer" }; }
   const sp=getSpecies(L.obj.species); const max=Math.max(1,pokeDerived(L.obj).maxHP); let cur=L.obj.currentHP; if(cur==null)cur=max;
-  return { cur, max, editable:canEdit(L.row), name:L.obj.nickname||sp?.name||L.obj.species||"Pokémon",
+  return { cur, max, editable:canEditPlayerHP(L.row), name:L.obj.nickname||sp?.name||L.obj.species||"Pokémon",
            sprite:pokeTokenSprite(L.obj), unlinked:false, row:L.row, obj:L.obj, kind:"pokemon" };
 }
 /* players may only see HP for PC trainers/Pokémon; the GM sees everything (incl. enemies & standalone tokens) */
@@ -4172,7 +4176,7 @@ async function setTokenHP(token, val){
     await encUpsert(); if(!$(".modal")) render();  // render() refreshes both the map and the Encounters tab
     return;
   }
-  if(!canEdit(row)){ toast("Can't edit that sheet"); return; }
+  if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; }
   const max = kind==="trainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
   obj.currentHP = Math.max(-99, Math.min(max, val|0));
   await cloudUpsert(row);                       // writes the real sheet; realtime syncs the owner
