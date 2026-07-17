@@ -4363,16 +4363,21 @@ function initiativeList(map){
     .map(t=>({ token:t, info:tokenHp(t), init:tokenInitiative(t) }))
     .sort((a,b)=> b.init-a.init || tokenSpeed(b.token)-tokenSpeed(a.token) || (a.info.name||"").localeCompare(b.info.name||""));
 }
-async function advanceInitiative(map, meta, dir){
+function advanceInitiative(map, meta, dir){
   const list = initiativeList(map); if(!list.length) return;
   let idx = list.findIndex(e=>e.token.id===meta.initTurnId);
   idx = idx<0 ? 0 : idx+dir;
   let wrapped=false;
-  if(idx>=list.length){ idx=0; wrapped=true; }
-  if(idx<0) idx=list.length-1;
+  if(idx>=list.length){ idx=0; wrapped=true; }        // stepped past the last combatant → a new round begins
+  else if(idx<0){ idx=list.length-1; }                // stepping back before the first (not a round change)
   meta.initTurnId = list[idx].token.id;
-  if(wrapped){ meta.initRound=(meta.initRound||1)+1; resetMapMovement(map); await mapTokensUpsert(); }  // new round resets movement
-  await mapMetaUpsert(); renderMap();
+  if(wrapped){ meta.initRound=(meta.initRound||1)+1; resetMapMovement(map); }   // round ends → reset movement (like ↺ New round)
+  // Optimistic: repaint the board NOW so the turn advances instantly, then sync in the background
+  // (awaiting the Supabase round-trips first is what made "Next turn" feel laggy). Realtime echoes
+  // are dropped by the mapMeta/mapTokens updated_at guards, so the background writes are safe.
+  renderMap();
+  mapMetaUpsert();
+  if(wrapped){ mapTokensUpsert(); toast(`↺ Round ${meta.initRound} — movement reset`); }
 }
 /* small floating initiative widget: draggable by its header, position + collapsed state remembered
    per-device (it's a display preference, not shared game state) */
