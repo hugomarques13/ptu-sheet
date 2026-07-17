@@ -4138,7 +4138,7 @@ function standaloneSprite(token){
 function tokenHp(token){
   if(!token.link){
     const max = Math.max(1, token.maxHp||1); let cur = token.hp; if(cur==null) cur=max;
-    return { cur, max, editable:cloud.isGM, name:token.label||"Token", sprite:standaloneSprite(token), unlinked:false };
+    return { cur, max, editable:cloud.isGM, name:token.label||"Token", sprite:standaloneSprite(token), unlinked:false, kind:"standalone" };
   }
   const L = tokenLinked(token);
   if(!L || !L.obj){
@@ -4157,6 +4157,10 @@ function tokenHp(token){
   const sp=getSpecies(L.obj.species); const max=Math.max(1,pokeDerived(L.obj).maxHP); let cur=L.obj.currentHP; if(cur==null)cur=max;
   return { cur, max, editable:canEdit(L.row), name:L.obj.nickname||sp?.name||L.obj.species||"Pokémon",
            sprite:pokeTokenSprite(L.obj), unlinked:false, row:L.row, obj:L.obj, kind:"pokemon" };
+}
+/* players may only see HP for PC trainers/Pokémon; the GM sees everything (incl. enemies & standalone tokens) */
+function tokenHpVisible(info){
+  return cloud.isGM || info.kind==="trainer" || info.kind==="pokemon";
 }
 async function setTokenHP(token, val){
   const info = tokenHp(token);
@@ -4340,16 +4344,20 @@ async function deleteMapImage(map, img){
 function mapTokenNode(token, map){
   const info = tokenHp(token);
   const px = map.gridSize, size = token.size||1;
-  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":""),
-    style:`left:${token.x*px}px;top:${token.y*px}px;width:${size*px}px;height:${size*px}px`});
+  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":""),
+    style:`left:${token.x*px}px;top:${token.y*px}px;width:${size*px}px;height:${size*px}px`
+      +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")});
   node.dataset.tid = token.id;
   info.sprite.classList.add("tk-img");
   node.append(info.sprite);
-  const pct = Math.max(0, Math.min(100, Math.round(info.cur/info.max*100)));
-  node.append(el("div",{class:"tk-hpwrap"},
-    el("div",{class:"tk-hp"+(pct<=25?" low":pct<=50?" mid":""), style:`width:${pct}%`})));
-  node.append(el("div",{class:"tk-name"}, info.name + (info.unlinked?" ⚠":"")));
-  node.append(el("div",{class:"tk-hpnum"}, info.unlinked?"⚠ unlinked":`${info.cur}/${info.max}`));
+  const hpVisible = info.unlinked || tokenHpVisible(info);   // "unlinked" warning always shows; real HP is gated
+  if(hpVisible){
+    const pct = Math.max(0, Math.min(100, Math.round(info.cur/info.max*100)));
+    node.append(el("div",{class:"tk-hpwrap"},
+      el("div",{class:"tk-hp"+(pct<=25?" low":pct<=50?" mid":""), style:`width:${pct}%`})));
+  }
+  node.append(el("div",{class:"tk-name"}, (token.gmHidden?"🙈 ":"") + info.name + (info.unlinked?" ⚠":"")));
+  if(hpVisible) node.append(el("div",{class:"tk-hpnum"}, info.unlinked?"⚠ unlinked":`${info.cur}/${info.max}`));
   if(battleOn() && token.moved){                              // movement used this round vs Overland speed
     const spd = tokenMoveSpeed(token);
     node.append(el("div",{class:"tk-moved"+(spd && token.moved>spd?" over":"")}, `${token.moved}${spd?("/"+spd):""}m`));
@@ -4456,6 +4464,8 @@ function openTokenMenu(token, map){
   const wrap = el("div",{});
   if(info.unlinked){
     wrap.append(el("div",{class:"r-body"},"⚠ The sheet or Pokémon this token pointed to no longer exists."));
+  } else if(!tokenHpVisible(info)){
+    wrap.append(el("div",{class:"r-body"},"🔒 You can't see this token's HP."));
   } else {
     const readout = el("div",{class:"tk-menu-hp"});
     const draw = ()=>{ const i=tokenHp(token); const p=Math.max(0,Math.min(100,Math.round(i.cur/i.max*100)));
@@ -4494,6 +4504,10 @@ function openTokenMenu(token, map){
       rv.addEventListener("change", async()=>{ token.reveal = rv.checked; if(map.fogOn) revealAroundTokens(map); await mapTokensUpsert(); renderMap(); });
       wrap.append(el("label",{class:"inline",style:"margin-top:10px;gap:6px;display:flex;align-items:center"},
         rv, el("span",{class:"small"},"👁 This token reveals fog of war")));
+      const hd = el("input",{type:"checkbox"}); hd.checked = !!token.gmHidden;
+      hd.addEventListener("change", async()=>{ token.gmHidden = hd.checked; await mapTokensUpsert(); renderMap(); toast(token.gmHidden?"🙈 Hidden from players":"👁 Visible to players"); });
+      wrap.append(el("label",{class:"inline",style:"margin-top:10px;gap:6px;display:flex;align-items:center"},
+        hd, el("span",{class:"small"},"🙈 Hide this token from players")));
     }
     foot.push(el("button",{class:"btn-secondary danger",onclick:async()=>{ await removeToken(token,map); closeModal(); }},"🗑 Remove"));
   }
@@ -4814,6 +4828,7 @@ function renderMap(){
   const fog = fogSet(map.id);
   const mkToken = t => { const node=mapTokenNode(t,map); if(!mapImgEdit) attachTokenDrag(node,t,map); else node.style.pointerEvents="none"; return node; };
   const visibleToken = t => {
+    if(t.gmHidden) return false;                                    // GM has hidden this token from players entirely
     if(cloud.isGM || !map.fogOn) return true;
     if(t.link && cloud.byId[t.link.sheetId]?.owner_id===cloud.userId) return true;   // always see your own
     return fog.has(Math.round(t.x)+","+Math.round(t.y));
