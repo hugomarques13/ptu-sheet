@@ -4162,6 +4162,37 @@ function tokenHp(token){
 function tokenHpVisible(info){
   return cloud.isGM || info.kind==="trainer" || info.kind==="pokemon";
 }
+/* faction ring around a token: green for PCs & their Pokémon, red for enemies, none for standalone/unlinked */
+function tokenFactionColor(info){
+  if(info.unlinked) return null;
+  if(info.kind==="trainer" || info.kind==="pokemon") return "#3ecf5f";
+  if(info.kind==="enc" || info.kind==="enctrainer") return "#e0524f";
+  return null;
+}
+const STATUS_RING_COLORS = { persistent:"#e0524f", volatile:"#e0a530", other:"#3ea1e0" };
+function xmlEscape(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function polarPt(cx,cy,r,angleDeg){ const a=(angleDeg-90)*Math.PI/180; return [(cx+r*Math.cos(a)).toFixed(2), (cy+r*Math.sin(a)).toFixed(2)]; }
+/* builds an outer ring made of one colored arc per active status, with the status name curving along its arc */
+function tokenStatusRingSVG(keys, boxPx, uid){
+  const defs = keys.map(k=>statusByKey.get(k)).filter(Boolean);
+  if(!defs.length) return "";
+  const pad = Math.max(8, Math.round(boxPx*0.18));
+  const size = boxPx + pad*2, cx = size/2, cy = size/2;
+  const r = boxPx/2 + pad*0.55;
+  const n = defs.length, gap = Math.min(10, 60/n), per = 360/n;
+  const strokeW = Math.max(2, Math.round(boxPx*0.05)), fontSize = Math.max(6, Math.round(boxPx*0.11));
+  let parts = "";
+  defs.forEach((s,i)=>{
+    const startA = i*per + gap/2, endA = (i+1)*per - gap/2;
+    const color = STATUS_RING_COLORS[s.kind] || "#999";
+    const id = `tkring_${uid}_${i}`;
+    const [x1,y1] = polarPt(cx,cy,r,startA), [x2,y2] = polarPt(cx,cy,r,endA);
+    const large = (endA-startA)>180 ? 1 : 0;
+    parts += `<path id="${id}" d="M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}" fill="none" stroke="${color}" stroke-width="${strokeW}" stroke-linecap="round"/>`;
+    parts += `<text font-size="${fontSize}" fill="${color}" font-weight="700" style="paint-order:stroke;stroke:#0a0c10;stroke-width:2px"><textPath href="#${id}" startOffset="50%" text-anchor="middle">${xmlEscape(s.name)}</textPath></text>`;
+  });
+  return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" style="position:absolute;left:${-pad}px;top:${-pad}px;pointer-events:none;overflow:visible">${parts}</svg>`;
+}
 async function setTokenHP(token, val){
   const info = tokenHp(token);
   if(!info.editable){ toast("Read-only"); return; }
@@ -4180,6 +4211,29 @@ async function setTokenHP(token, val){
   const max = kind==="trainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
   obj.currentHP = Math.max(-99, Math.min(max, val|0));
   await cloudUpsert(row);                       // writes the real sheet; realtime syncs the owner
+  if(!$(".modal")) renderMap();
+}
+/* the live list of status-effect keys currently on a token's underlying trainer/Pokémon/enemy/standalone data */
+function tokenStatusKeys(token){
+  if(!token.link) return Array.isArray(token.statuses) ? token.statuses : [];
+  const L = tokenLinked(token);
+  return (L && L.obj && Array.isArray(L.obj.statuses)) ? L.obj.statuses : [];
+}
+/* write a new full set of status keys back to whichever place the token's data actually lives */
+async function setTokenStatuses(token, keys){
+  const info = tokenHp(token);
+  if(!info.editable){ toast("Read-only"); return; }
+  if(!token.link){
+    token.statuses = keys;
+    await mapTokensUpsert(); if(!$(".modal")) renderMap(); return;
+  }
+  const { row, obj, kind } = info; if(!obj){ toast("Can't edit that token"); return; }
+  obj.statuses = keys;
+  if(kind==="enc" || kind==="enctrainer"){       // live-linked enemy → write to the encounter itself
+    await encUpsert(); if(!$(".modal")) render(); return;
+  }
+  if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; }
+  await cloudUpsert(row);
   if(!$(".modal")) renderMap();
 }
 function canRemoveToken(token){
@@ -4343,10 +4397,12 @@ async function deleteMapImage(map, img){
 /* one token element */
 function mapTokenNode(token, map){
   const info = tokenHp(token);
-  const px = map.gridSize, size = token.size||1;
+  const px = map.gridSize, size = token.size||1, boxPx = size*px;
+  const factionColor = tokenFactionColor(info);
   const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":""),
-    style:`left:${token.x*px}px;top:${token.y*px}px;width:${size*px}px;height:${size*px}px`
-      +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")});
+    style:`left:${token.x*px}px;top:${token.y*px}px;width:${boxPx}px;height:${boxPx}px`
+      +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")
+      +(factionColor?`;box-shadow:0 0 0 3px ${factionColor},0 0 0 4px rgba(0,0,0,.35)`:"")});
   node.dataset.tid = token.id;
   info.sprite.classList.add("tk-img");
   node.append(info.sprite);
@@ -4358,6 +4414,11 @@ function mapTokenNode(token, map){
   }
   node.append(el("div",{class:"tk-name"}, (token.gmHidden?"🙈 ":"") + info.name + (info.unlinked?" ⚠":"")));
   if(hpVisible) node.append(el("div",{class:"tk-hpnum"}, info.unlinked?"⚠ unlinked":`${info.cur}/${info.max}`));
+  if(hpVisible && !info.unlinked){
+    const keys = tokenStatusKeys(token).filter(k=>statusByKey.has(k));
+    const ringHtml = tokenStatusRingSVG(keys, boxPx, token.id);
+    if(ringHtml) node.append(el("div",{class:"tk-status-ring", html:ringHtml}));
+  }
   if(battleOn() && token.moved){                              // movement used this round vs Overland speed
     const spd = tokenMoveSpeed(token);
     node.append(el("div",{class:"tk-moved"+(spd && token.moved>spd?" over":"")}, `${token.moved}${spd?("/"+spd):""}m`));
@@ -4483,6 +4544,30 @@ function openTokenMenu(token, map){
       token.link.kind==="enc" ? "Linked to the encounter — HP syncs with the Encounters tab."
                               : "Linked to a sheet — HP changes sync to that character."));
     if(!info.editable) wrap.append(el("div",{class:"muted small",style:"margin-top:6px"},"Read-only — you can't edit this token."));
+
+    const statusWrap = el("div",{style:"margin-top:14px"});
+    const drawStatuses = ()=>{
+      statusWrap.innerHTML = "";
+      statusWrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"Status effects"));
+      const active = tokenStatusKeys(token);
+      [["persistent","Persistent"],["volatile","Volatile"],["other","Other"]].forEach(([kind,label])=>{
+        const defs = STATUS_DEFS.filter(s=>s.kind===kind); if(!defs.length) return;
+        statusWrap.append(el("div",{class:"small muted",style:"margin:6px 0 3px"}, label));
+        const chips = el("div",{class:"chips"});
+        defs.forEach(s=>{
+          const on = active.includes(s.key);
+          chips.append(el("button",{class:"statuschip"+(on?" on":""), disabled:!info.editable, title:s.effect,
+            onclick: async()=>{
+              const cur = tokenStatusKeys(token).slice();
+              const i = cur.indexOf(s.key); if(i>=0) cur.splice(i,1); else cur.push(s.key);
+              await setTokenStatuses(token, cur); drawStatuses();
+            }}, s.name));
+        });
+        statusWrap.append(chips);
+      });
+    };
+    drawStatuses();
+    wrap.append(statusWrap);
   }
   if(battleOn()){
     const used = token.moved||0, spd = tokenMoveSpeed(token), over = spd && used>spd;
