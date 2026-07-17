@@ -4172,24 +4172,25 @@ function tokenFactionColor(info){
 const STATUS_RING_COLORS = { persistent:"#e0524f", volatile:"#e0a530", other:"#3ea1e0" };
 function xmlEscape(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function polarPt(cx,cy,r,angleDeg){ const a=(angleDeg-90)*Math.PI/180; return [(cx+r*Math.cos(a)).toFixed(2), (cy+r*Math.sin(a)).toFixed(2)]; }
-/* builds an outer ring made of one colored arc per active status, with the status name curving along its arc */
+/* builds one full concentric ring per active status (innermost = first status), each with its name curving around it */
 function tokenStatusRingSVG(keys, boxPx, uid){
   const defs = keys.map(k=>statusByKey.get(k)).filter(Boolean);
   if(!defs.length) return "";
-  const pad = Math.max(8, Math.round(boxPx*0.18));
-  const size = boxPx + pad*2, cx = size/2, cy = size/2;
-  const r = boxPx/2 + pad*0.55;
-  const n = defs.length, gap = Math.min(10, 60/n), per = 360/n;
   const strokeW = Math.max(2, Math.round(boxPx*0.05)), fontSize = Math.max(6, Math.round(boxPx*0.11));
+  const ringGap = Math.max(strokeW*2.4, Math.round(boxPx*0.16));      // spacing between concentric rings
+  const baseR = boxPx/2 + Math.max(strokeW*1.5, Math.round(boxPx*0.12)); // innermost ring, just outside the token
+  const outerR = baseR + (defs.length-1)*ringGap;
+  const pad = Math.ceil(outerR - boxPx/2 + strokeW*1.5 + fontSize*0.6);
+  const size = boxPx + pad*2, cx = size/2, cy = size/2;
   let parts = "";
   defs.forEach((s,i)=>{
-    const startA = i*per + gap/2, endA = (i+1)*per - gap/2;
+    const r = baseR + i*ringGap;
     const color = STATUS_RING_COLORS[s.kind] || "#999";
     const id = `tkring_${uid}_${i}`;
-    const [x1,y1] = polarPt(cx,cy,r,startA), [x2,y2] = polarPt(cx,cy,r,endA);
-    const large = (endA-startA)>180 ? 1 : 0;
-    parts += `<path id="${id}" d="M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}" fill="none" stroke="${color}" stroke-width="${strokeW}" stroke-linecap="round"/>`;
-    parts += `<text font-size="${fontSize}" fill="${color}" font-weight="700" style="paint-order:stroke;stroke:#0a0c10;stroke-width:2px"><textPath href="#${id}" startOffset="50%" text-anchor="middle">${xmlEscape(s.name)}</textPath></text>`;
+    // full circle drawn as two semicircle arcs, doubling as the path the label text curves along
+    const d = `M ${cx} ${(cy-r).toFixed(2)} A ${r} ${r} 0 1 1 ${cx} ${(cy+r).toFixed(2)} A ${r} ${r} 0 1 1 ${cx} ${(cy-r).toFixed(2)}`;
+    parts += `<path id="${id}" d="${d}" fill="none" stroke="${color}" stroke-width="${strokeW}"/>`;
+    parts += `<text font-size="${fontSize}" fill="${color}" font-weight="700" style="paint-order:stroke;stroke:#0a0c10;stroke-width:2px"><textPath href="#${id}" startOffset="4%" text-anchor="start">${xmlEscape(s.name)}</textPath></text>`;
   });
   return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" style="position:absolute;left:${-pad}px;top:${-pad}px;pointer-events:none;overflow:visible">${parts}</svg>`;
 }
