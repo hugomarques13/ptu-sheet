@@ -4374,37 +4374,79 @@ async function advanceInitiative(map, meta, dir){
   if(wrapped){ meta.initRound=(meta.initRound||1)+1; resetMapMovement(map); await mapTokensUpsert(); }  // new round resets movement
   await mapMetaUpsert(); renderMap();
 }
+/* small floating initiative widget: draggable by its header, position + collapsed state remembered
+   per-device (it's a display preference, not shared game state) */
+function loadInitPos(){ try{ return JSON.parse(localStorage.getItem("ptu_init_pos")||"null"); }catch(e){ return null; } }
+function saveInitPos(p){ try{ localStorage.setItem("ptu_init_pos", JSON.stringify(p)); }catch(e){} }
+let initCollapsed = localStorage.getItem("ptu_init_collapsed")==="1";
+function initMiniBtn(label, title, fn){
+  return el("button",{title, onclick:e=>{ e.stopPropagation(); fn(e); },
+    style:"background:var(--panel);border:1px solid var(--line);border-radius:5px;color:var(--ink);cursor:pointer;font-size:11px;line-height:1;padding:2px 6px;touch-action:manipulation"}, label);
+}
 function initiativePanel(map, meta){
-  const card = el("div",{class:"card"});
-  const head = el("div",{class:"inline",style:"justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"});
-  head.append(el("h3",{style:"margin:0"}, "⚔ Initiative ", el("span",{class:"muted small"}, `· Round ${meta.initRound||1}`)));
   const list = initiativeList(map).filter(e=> cloud.isGM || !e.token.gmHidden);   // players never see hidden tokens
-  if(cloud.isGM && list.length) head.append(el("button",{class:"btn-primary",onclick:()=>advanceInitiative(map,meta,1)},"▶ Next turn"));
-  card.append(head);
-  if(!list.length){ card.append(el("div",{class:"muted small",style:"margin-top:6px"},
-    cloud.isGM ? "No combatants yet — player tokens join automatically; tap an enemy token → “⚔ In initiative”."
-               : "The GM hasn't started initiative yet.")); return card; }
+  const box = el("div",{class:"init-float"});
+  box.style.cssText = "position:fixed;z-index:60;width:196px;max-height:72vh;display:flex;flex-direction:column;"+
+    "background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 22px rgba(0,0,0,.35);overflow:hidden";
+  const pos = loadInitPos();
+  if(pos){ box.style.left=pos.left+"px"; box.style.top=pos.top+"px"; }
+  else { box.style.right="14px"; box.style.top="108px"; }
+  // header = drag handle + controls
+  const header = el("div",{style:"display:flex;align-items:center;gap:5px;padding:5px 7px;cursor:move;"+
+    "background:var(--panel-2);border-bottom:1px solid var(--line);user-select:none;touch-action:none"});
+  header.append(el("span",{style:"font-weight:800;font-size:12px;white-space:nowrap"}, "⚔ Init"));
+  header.append(el("span",{class:"muted",style:"font-size:10px;white-space:nowrap"}, `R${meta.initRound||1}`));
+  header.append(el("span",{style:"flex:1"}));
+  if(cloud.isGM && list.length) header.append(initMiniBtn("▶","next turn",()=>advanceInitiative(map,meta,1)));
+  header.append(initMiniBtn(initCollapsed?"▸":"▾", initCollapsed?"expand":"collapse",
+    ()=>{ initCollapsed=!initCollapsed; localStorage.setItem("ptu_init_collapsed", initCollapsed?"1":"0"); renderMap(); }));
+  box.append(header);
+  attachInitDrag(header, box);
+  if(initCollapsed) return box;
+  const body = el("div",{style:"overflow-y:auto;padding:3px"});
+  if(!list.length){ body.append(el("div",{class:"muted",style:"font-size:11px;padding:6px;line-height:1.35"},
+    cloud.isGM ? "Players auto-join. Tap an enemy token → “⚔ In initiative”." : "No initiative yet.")); box.append(body); return box; }
   if(!meta.initTurnId || !list.find(e=>e.token.id===meta.initTurnId)) meta.initTurnId = list[0].token.id;
-  const ol = el("div",{style:"margin-top:8px;display:flex;flex-direction:column;gap:3px"});
   list.forEach((e,i)=>{
     const cur = e.token.id===meta.initTurnId;
     const enemy = e.info.kind==="enc"||e.info.kind==="enctrainer";
     const name = (!cloud.isGM && e.token.gmHidden) ? "Hidden" : e.info.name;
-    const row = el("div",{style:`display:flex;gap:8px;align-items:center;padding:4px 6px;border-radius:6px;${cur?"background:rgba(224,82,79,.16);outline:1px solid var(--accent)":""}`});
-    row.append(el("span",{style:"width:16px;text-align:right;font-weight:800;color:var(--muted)"}, String(i+1)));
-    row.append(el("span",{style:`flex:1;min-width:0;font-weight:${cur?800:600};${enemy?"color:#e0524f":""}`}, (cur?"▶ ":"")+name));
-    row.append(el("span",{class:"small muted",title:"Speed + bonus"}, "init "+e.init));
+    const row = el("div",{style:`display:flex;gap:5px;align-items:center;padding:3px 5px;border-radius:5px;font-size:11px;${cur?"background:rgba(224,82,79,.16)":""}`});
+    row.append(el("span",{style:"width:12px;text-align:right;font-weight:800;color:var(--muted)"}, String(i+1)));
+    row.append(el("span",{style:`flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:${cur?800:600};${enemy?"color:#e0524f":""}`,title:name}, (cur?"▶ ":"")+name));
+    row.append(el("span",{class:"muted",style:"font-size:10px",title:"Speed + bonus"}, String(e.init)));
     if(cloud.isGM){
-      const b=el("input",{type:"number",value:e.token.initBonus||0,title:"initiative bonus (e.g. Julie's amulet)",style:"width:52px"});
+      const b=el("input",{type:"number",value:e.token.initBonus||0,title:"initiative bonus (e.g. Julie's amulet)",style:"width:32px;font-size:10px;padding:1px 2px"});
       b.addEventListener("change",async()=>{ e.token.initBonus=parseInt(b.value)||0; await mapTokensUpsert(); renderMap(); });
       row.append(b);
-      if(enemy||!e.token.link) row.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted)",title:"remove from initiative",
+      if(enemy||!e.token.link) row.append(el("span",{style:"cursor:pointer;color:var(--muted);font-size:13px;line-height:1",title:"remove from initiative",
         onclick:async()=>{ e.token.inInit=false; await mapTokensUpsert(); renderMap(); }},"×"));
     }
-    ol.append(row);
+    body.append(row);
   });
-  card.append(ol);
-  return card;
+  box.append(body);
+  return box;
+}
+function attachInitDrag(handle, box){
+  handle.addEventListener("pointerdown", ev=>{
+    if(ev.target.closest("button,input")) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const r = box.getBoundingClientRect();
+    const offX = ev.clientX - r.left, offY = ev.clientY - r.top;
+    box.style.left = r.left+"px"; box.style.top = r.top+"px"; box.style.right = "auto";   // switch to left/top
+    try{ handle.setPointerCapture(ev.pointerId); }catch(e){}
+    const move = e=>{
+      const left = Math.max(0, Math.min(window.innerWidth  - r.width, e.clientX-offX));
+      const top  = Math.max(0, Math.min(window.innerHeight - 36,      e.clientY-offY));
+      box.style.left = left+"px"; box.style.top = top+"px";
+    };
+    const up = ()=>{
+      handle.removeEventListener("pointermove",move); handle.removeEventListener("pointerup",up);
+      try{ handle.releasePointerCapture(ev.pointerId); }catch(e){}
+      saveInitPos({ left:parseInt(box.style.left)||0, top:parseInt(box.style.top)||0 });
+    };
+    handle.addEventListener("pointermove",move); handle.addEventListener("pointerup",up);
+  });
 }
 /* faction ring around a token: green for PCs & their Pokémon, red for enemies, none for standalone/unlinked */
 function tokenFactionColor(info){
