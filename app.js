@@ -439,6 +439,7 @@ function normTrainer(t){
   if(!Array.isArray(t.weapons)) t.weapons = [];
   if(!t.levelUp || typeof t.levelUp!=="object") t.levelUp = {};   // per-level choice tracker
   if(!Array.isArray(t.techniques)) t.techniques = [];             // learned class Techniques
+  if(!Array.isArray(t.moves)) t.moves = [];                       // combat Moves granted by Features/class
   return t;
 }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -477,6 +478,7 @@ const CLOUD_CFG = window.PTU_CLOUD || {};
 let mode = "local";                 // "local" | "cloud"
 const cloud = { client:null, campaign:"", userId:"", name:"", isGM:false,
                 byId:{}, activeId:null, sub:null, lastSaveTs:0, saveTimer:null, pc:null,
+                lastWrite:{},   // rowId → updated_at of our last upsert (per-row echo suppression)
                 mapMeta:null, mapTokens:null, mapSaveTs:0, enc:null, encSaveTs:0, encTimer:null };
 /* shared PC storage lives in a reserved sheets row owned by this sentinel, visible to everyone */
 const PC_OWNER = "__pc__";
@@ -1213,7 +1215,7 @@ function openClassFeaturePicker(t, className){
     const st = prereqStatus(t, f); return st.met ? null : ("Needs "+st.unmet.join(", "));
   };
   openPicker(`Learn a ${className} Feature${t.unlocked?" (🔓)":""}`, learnable, name=>{
-    if(!t.features.includes(name)){ t.features.push(name); save(); render(); toast(`Learned ${name} ✓`); }
+    if(!t.features.includes(name)){ t.features.push(name); autoGrantFeatureMoves(t, name); save(); render(); toast(`Learned ${name} ✓`); }
   }, "feature", null, lockFn);
 }
 function openTechniquePicker(t, className){
@@ -1322,7 +1324,7 @@ function listCard(title, path, allNames, refKind){
   const card = el("div",{class:"card"}, el("h3",{},title,
     el("button",{class:"linkbtn h-act", onclick:()=>openPicker(title, allNames, name=>{
       const a = getByPath(path);
-      if(!a.includes(name)){ a.push(name); save(); render(); }
+      if(!a.includes(name)){ a.push(name); if(refKind==="feature") autoGrantFeatureMoves(activeChar().trainer, name); save(); render(); }
     }, refKind)}, "+ add")));
   if(!arr.length){ card.append(el("span",{class:"muted small"},"none yet — tap “+ add”")); return card; }
   arr.forEach((name,idx) => {
@@ -2670,6 +2672,41 @@ function trainerFeatureObjs(t){
   const names=[...new Set([...(t.classes||[]), ...(t.features||[])])];
   return names.map(n=>D.features.find(f=>f.name===n)).filter(Boolean);
 }
+/* Detect the Move(s) a Feature grants: only look when the text actually talks about gaining a
+   Move, then match any known move name appearing in it. Conservative on purpose — the manual
+   "＋ move" list on the Combat tab is the fallback when a feature's wording is too loose. */
+const GRANT_RE=/\b(gain|gains|learn|learns|know|knows|grant|grants)\b/i;
+function featureGrantsMoveNames(effect){
+  if(!effect || !GRANT_RE.test(effect)) return [];
+  // "choose 2 from the list" features grant a player CHOICE, not a fixed move — don't auto-pick
+  // one for them; only their unambiguous "X as a Move" grants (if any) should auto-add.
+  const isChoice=/\b(from the list|list below|choose|pick (one|two|three|a move))\b/i.test(effect);
+  const found=[];
+  for(const m of D.moves){
+    const nm=m.name; if(!nm || nm.length<4 || /^struggle$/i.test(nm)) continue;
+    // case-SENSITIVE whole-word match: an actual grant writes the Move name Title-Case, while
+    // prose words that happen to be move names ("this round", "charge in", "a curse") are lowercase.
+    const re=new RegExp("\\b"+nm.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\b","g");
+    let mt; while((mt=re.exec(effect))){
+      const before=effect.slice(Math.max(0,mt.index-16), mt.index);
+      const after=effect.slice(mt.index+nm.length, mt.index+nm.length+30);
+      // accept only the shapes a real grant takes: "the Move X" / "Moves: X" (not on choice
+      // features), or "X as a/an/the … Move/Attack" — excludes "gains a Curse Token", "Round", etc.
+      if((!isChoice && /\bMoves?\b[\s:]*$/.test(before)) || /^\s*as (a|an|the)\b[^.]{0,18}\b(Move|Attack)\b/i.test(after)){ found.push(nm); break; }
+    }
+  }
+  const uniq=[...new Set(found)];
+  return uniq.length<=3 ? uniq : [];   // long lists = "choose/teach a move" menus, not fixed grants
+}
+/* When a Feature that teaches a Move is learned, add that Move to the trainer's sheet. */
+function autoGrantFeatureMoves(t, featureName){
+  if(!t) return;
+  const f=D.features.find(x=>x.name===featureName); if(!f) return;
+  if(!Array.isArray(t.moves)) t.moves=[];
+  const added=[];
+  featureGrantsMoveNames(f.effect||"").forEach(nm=>{ if(!t.moves.includes(nm)){ t.moves.push(nm); added.push(nm); } });
+  if(added.length) toast(`＋ Move${added.length>1?"s":""} from ${featureName}: ${added.join(", ")}`);
+}
 function featureActionRow(f, owner, rerender){
   const d=el("details",{class:"spoiler"});
   const meta=[f.frequency,f.category].filter(Boolean).join(" · ");
@@ -2699,6 +2736,11 @@ function trainerAttackSlot(t, profile, rollFn, opts={}){
   slot.append(acts);
   return slot;
 }
+function addTrainerMove(t){
+  if(!Array.isArray(t.moves)) t.moves=[];
+  const names=D.moves.map(m=>m.name).filter(n=>!t.moves.includes(n));
+  openPicker("Add a Move", names, name=>{ t.moves.push(name); save(); renderBattle(); }, "move");
+}
 function renderTrainerCombat(root, t){
   const card=el("div",{class:"card"},el("h3",{},"Struggle & Weapon Attacks"));
   // unarmed Struggle (always available)
@@ -2716,6 +2758,24 @@ function renderTrainerCombat(root, t){
     (t.weapons||[]).length ? "Each weapon (and its Weapon Move) is listed above. Add/edit weapons in Trainer → Sheet → Weapons."
                            : "Unarmed Struggle only — add weapons in Trainer → Sheet → Weapons. Action Features (Cheer, Orders…) appear under the tabs above."));
   root.append(card);
+  // Moves granted by Features/class — rollable (adds Attack, no STAB), like weapon moves
+  if(!Array.isArray(t.moves)) t.moves=[];
+  const mvCard=el("div",{class:"card"});
+  mvCard.append(el("div",{class:"inline",style:"justify-content:space-between;align-items:center"},
+    el("h3",{style:"margin:0"}, `Moves (${t.moves.length})`),
+    el("button",{class:"linkbtn",onclick:()=>addTrainerMove(t)},"＋ move")));
+  if(!t.moves.length) mvCard.append(el("span",{class:"small muted"},
+    "none — Moves taught by your Features appear here automatically; or tap ＋ move."));
+  t.moves.forEach(mn=>{
+    const m=moveByName.get(mn.toLowerCase());
+    const prof = m ? trainerAttackProfile(t, mn) : {name:mn+" (not in DB)",type:"Normal",cls:"?",ac:"—",damageBase:"—",range:"—"};
+    const uc = m ? usesControl(t,"move",prof.name,prof.frequency,renderBattle) : null;
+    const slot = trainerAttackSlot(t, prof, ()=>openTrainerAttack(t, m?mn:null), {tag:"feature move", uc, move:!!m});
+    slot.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);align-self:center;margin-left:4px",title:"remove this move",
+      onclick:()=>{ const i=t.moves.indexOf(mn); if(i>=0){ t.moves.splice(i,1); save(); renderBattle(); } }},"×"));
+    mvCard.append(slot);
+  });
+  root.append(mvCard);
   const passive=trainerFeatureObjs(t).filter(f=>!featureActionTypes(f).length);
   const pc=el("div",{class:"card"},el("h3",{},`Passive & Always-On (${passive.length})`,
     el("span",{class:"muted small"},"Static / out-of-combat")));
@@ -2941,6 +3001,7 @@ function encounterMonCard(enc, p, list){
   nw.append(el("div",{class:"small muted",style:"margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"},
     "Lv", lvIn, `· ${p.nature||"—"} · ${p.gender||"—"}${p.shiny?" · ✨Shiny":""}`));
   nw.append(el("div",{class:"small muted",style:"margin-top:2px"}, `Atk ${d.eff.atk} · SpA ${d.eff.spatk} · Def ${d.eff.def} · SpD ${d.eff.spdef} · Spd ${d.eff.spd}`));
+  nw.append(el("div",{class:"small muted",style:"margin-top:2px"}, `Evasion — Phys +${d.physEva} · Spec +${d.specEva} · Speed +${d.spdEva}`));
   head.append(nw);
   head.append(el("button",{class:"btn-secondary",style:"padding:3px 9px;align-self:flex-start",title:"minimize",onclick:()=>encMonToggleMin(p)},"▾"));
   head.append(encMonRemoveBtn(p,list));
@@ -3005,7 +3066,9 @@ function encounterTrainerCard(enc, tr){
     onclick:()=>{ enc.trainers=enc.trainers.filter(x=>x.id!==tr.id); saveEnc(); renderEncounters(); }},"×"));
   card.append(head);
   // trainer HP + Struggle roll
-  const maxHP=trainerDerived(t).hp; if(t.currentHP==null) t.currentHP=maxHP;
+  const td=trainerDerived(t), maxHP=td.hp; if(t.currentHP==null) t.currentHP=maxHP;
+  card.append(el("div",{class:"small muted",style:"margin-top:4px"},
+    `Evasion — Phys +${td.physEva} · Spec +${td.specEva} · Speed +${td.spdEva}`));
   const setHP=v=>{ t.currentHP=Math.max(-99,Math.min(maxHP,v)); saveEnc(); renderEncounters(); };
   const pct=Math.max(0,Math.min(100,Math.round(t.currentHP/maxHP*100)));
   card.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"},
@@ -3822,12 +3885,20 @@ function onRealtime(payload){
   // truncated oversized character row (big sheet w/ avatar/sprite data-URLs) → re-fetch, don't
   // overwrite the good local copy with an empty "Recovered" character.
   if(!payloadHasData(row)){ scheduleSharedRefetch("roster"); return; }
-  row.data = migrateChar(row.data, row.id);
-  const echo = row.id===cloud.activeId && (Date.now()-cloud.lastSaveTs < 2500);
-  cloud.byId[row.id] = row;
-  if(echo){ refreshCharSelect(); return; }
+  const cur = cloud.byId[row.id], ts = row.updated_at;
+  // (1) OUR OWN ECHO: we wrote this exact version (or older). Never let a returning echo revert a
+  //     newer local edit — this is what made two editors of one sheet ping-pong.
+  if(cloud.lastWrite[row.id] && ts && ts <= cloud.lastWrite[row.id]){ refreshCharSelect(); return; }
+  // (2) STALE REMOTE: older than what we already hold → ignore, so the other editor's late-arriving
+  //     old snapshot can't clobber the current value (last-write-wins by timestamp, not by arrival).
+  if(cur && cur.updated_at && ts && ts < cur.updated_at) return;
+  // (3) WE'RE MID-EDIT on this very sheet → keep our in-progress copy on screen (don't yank the
+  //     value out from under the cursor); our pending save carries a newer timestamp and will win.
+  const isActive = row.id===cloud.activeId;
   const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
-  if(row.id===cloud.activeId && typing){ refreshCharSelect(); return; }  // don't yank focus
+  if(isActive && (cloud.saveTimer || typing)){ refreshCharSelect(); return; }
+  row.data = migrateChar(row.data, row.id);
+  cloud.byId[row.id] = row;
   softRender();
 }
 function softRender(){ updateCloudButton(); render(); }
@@ -3836,9 +3907,11 @@ function cloudSave(){
   const row = cloud.byId[cloud.activeId]; if(!row || !canEdit(row)) return;
   row.updated_at = new Date().toISOString();
   row.name = row.data?.name || "";
+  cloud.lastWrite[row.id] = row.updated_at;   // remember our own write so its echo is ignored
   cacheCloud();
   clearTimeout(cloud.saveTimer);
   cloud.saveTimer = setTimeout(async ()=>{
+    cloud.saveTimer = null;                    // clear the "pending" flag so remote edits can apply again
     cloud.lastSaveTs = Date.now();
     const { error } = await cloud.client.from("sheets").upsert({
       id:row.id, campaign:cloud.campaign, owner_id:row.owner_id, owner_name:row.owner_name,
@@ -3870,7 +3943,7 @@ function flushCloudSaves(){
     clearTimeout(cloud.saveTimer); cloud.saveTimer=null;
     const row = cloud.byId[cloud.activeId];
     if(row && canEdit(row)){ row.updated_at=new Date().toISOString(); row.name=row.data?.name||"";
-      cloud.lastSaveTs=Date.now(); cacheCloud(); restUpsertKeepalive(row); }
+      cloud.lastWrite[row.id]=row.updated_at; cloud.lastSaveTs=Date.now(); cacheCloud(); restUpsertKeepalive(row); }
   }
   if(encSaveTimer && cloud.isGM){
     clearTimeout(encSaveTimer); encSaveTimer=null;
@@ -3902,6 +3975,7 @@ function myRow(){ return Object.values(cloud.byId).find(r=>r.owner_id===cloud.us
 async function cloudUpsert(row){
   row.updated_at = new Date().toISOString();
   row.name = row.data?.name || "";
+  cloud.lastWrite[row.id] = row.updated_at;   // suppress our own realtime echo of this write
   cacheCloud(); cloud.lastSaveTs = Date.now();
   const { error } = await cloud.client.from("sheets").upsert({
     id:row.id, campaign:cloud.campaign, owner_id:row.owner_id, owner_name:row.owner_name,
@@ -4248,6 +4322,89 @@ function tokenHp(token){
 /* players may only see HP for PC trainers/Pokémon; the GM sees everything (incl. enemies & standalone tokens) */
 function tokenHpVisible(info){
   return cloud.isGM || info.kind==="trainer" || info.kind==="pokemon";
+}
+/* ---- quick-attack helper: defender = the clicked token ---- */
+function tokenDefTypes(token){
+  const L = token.link ? tokenLinked(token) : null;
+  if(L && L.obj){
+    if(L.kind==="trainer"||L.kind==="enctrainer") return [];        // trainers are typeless
+    return getSpecies(L.obj.species)?.types || [];
+  }
+  return token.species ? (getSpecies(token.species)?.types || []) : [];
+}
+function tokenDefenseStat(token, physical){
+  const L = token.link ? tokenLinked(token) : null;
+  if(L && L.obj){
+    if(L.kind==="trainer"||L.kind==="enctrainer"){ const d=trainerDerived(L.obj); return physical?d.totals.def:d.totals.spdef; }
+    const d=pokeDerived(L.obj); return physical?d.eff.def:d.eff.spdef;
+  }
+  return 0;   // standalone token has no defense data
+}
+function typeMultAgainst(atkType, defTypes){
+  let m=1; (defTypes||[]).forEach(dt=>{ m *= (TYPE_CHART[atkType]?.[dt] ?? 1); }); return m;
+}
+/* ---- initiative: Speed stat + an editable per-token bonus (amulets, effects…) ---- */
+function tokenSpeed(token){
+  const L = token.link ? tokenLinked(token) : null;
+  if(L && L.obj){
+    if(L.kind==="trainer"||L.kind==="enctrainer") return trainerDerived(L.obj).totals.spd||0;
+    return pokeDerived(L.obj).eff.spd||0;
+  }
+  return token.spd||0;
+}
+function tokenInitiative(token){ return tokenSpeed(token) + (token.initBonus||0); }
+function tokenInInit(token){
+  const info=tokenHp(token); if(info.unlinked) return false;
+  const ally = info.kind==="trainer"||info.kind==="pokemon";
+  return ally ? token.inInit!==false : !!token.inInit;   // players auto-join; enemies opt-in via the token menu
+}
+function initiativeList(map){
+  return mapTokensFor(map.id).filter(tokenInInit)
+    .map(t=>({ token:t, info:tokenHp(t), init:tokenInitiative(t) }))
+    .sort((a,b)=> b.init-a.init || tokenSpeed(b.token)-tokenSpeed(a.token) || (a.info.name||"").localeCompare(b.info.name||""));
+}
+async function advanceInitiative(map, meta, dir){
+  const list = initiativeList(map); if(!list.length) return;
+  let idx = list.findIndex(e=>e.token.id===meta.initTurnId);
+  idx = idx<0 ? 0 : idx+dir;
+  let wrapped=false;
+  if(idx>=list.length){ idx=0; wrapped=true; }
+  if(idx<0) idx=list.length-1;
+  meta.initTurnId = list[idx].token.id;
+  if(wrapped){ meta.initRound=(meta.initRound||1)+1; resetMapMovement(map); await mapTokensUpsert(); }  // new round resets movement
+  await mapMetaUpsert(); renderMap();
+}
+function initiativePanel(map, meta){
+  const card = el("div",{class:"card"});
+  const head = el("div",{class:"inline",style:"justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"});
+  head.append(el("h3",{style:"margin:0"}, "⚔ Initiative ", el("span",{class:"muted small"}, `· Round ${meta.initRound||1}`)));
+  const list = initiativeList(map).filter(e=> cloud.isGM || !e.token.gmHidden);   // players never see hidden tokens
+  if(cloud.isGM && list.length) head.append(el("button",{class:"btn-primary",onclick:()=>advanceInitiative(map,meta,1)},"▶ Next turn"));
+  card.append(head);
+  if(!list.length){ card.append(el("div",{class:"muted small",style:"margin-top:6px"},
+    cloud.isGM ? "No combatants yet — player tokens join automatically; tap an enemy token → “⚔ In initiative”."
+               : "The GM hasn't started initiative yet.")); return card; }
+  if(!meta.initTurnId || !list.find(e=>e.token.id===meta.initTurnId)) meta.initTurnId = list[0].token.id;
+  const ol = el("div",{style:"margin-top:8px;display:flex;flex-direction:column;gap:3px"});
+  list.forEach((e,i)=>{
+    const cur = e.token.id===meta.initTurnId;
+    const enemy = e.info.kind==="enc"||e.info.kind==="enctrainer";
+    const name = (!cloud.isGM && e.token.gmHidden) ? "Hidden" : e.info.name;
+    const row = el("div",{style:`display:flex;gap:8px;align-items:center;padding:4px 6px;border-radius:6px;${cur?"background:rgba(224,82,79,.16);outline:1px solid var(--accent)":""}`});
+    row.append(el("span",{style:"width:16px;text-align:right;font-weight:800;color:var(--muted)"}, String(i+1)));
+    row.append(el("span",{style:`flex:1;min-width:0;font-weight:${cur?800:600};${enemy?"color:#e0524f":""}`}, (cur?"▶ ":"")+name));
+    row.append(el("span",{class:"small muted",title:"Speed + bonus"}, "init "+e.init));
+    if(cloud.isGM){
+      const b=el("input",{type:"number",value:e.token.initBonus||0,title:"initiative bonus (e.g. Julie's amulet)",style:"width:52px"});
+      b.addEventListener("change",async()=>{ e.token.initBonus=parseInt(b.value)||0; await mapTokensUpsert(); renderMap(); });
+      row.append(b);
+      if(enemy||!e.token.link) row.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted)",title:"remove from initiative",
+        onclick:async()=>{ e.token.inInit=false; await mapTokensUpsert(); renderMap(); }},"×"));
+    }
+    ol.append(row);
+  });
+  card.append(ol);
+  return card;
 }
 /* faction ring around a token: green for PCs & their Pokémon, red for enemies, none for standalone/unlinked */
 function tokenFactionColor(info){
@@ -4667,6 +4824,34 @@ function openTokenMenu(token, map){
     };
     drawStatuses();
     wrap.append(statusWrap);
+
+    // Quick-attack: GM enters the incoming damage/type/class; we subtract this token's Defense,
+    // apply type effectiveness, and take it off its HP (Core damage steps).
+    if(info.editable){
+      const atk = el("div",{style:"margin-top:16px"});
+      atk.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"⚔ Apply an attack to this token"));
+      const dmgIn = el("input",{type:"number",placeholder:"Damage",style:"width:88px"});
+      const typeSel = el("select"); TYPES.forEach(ty=>typeSel.append(el("option",{value:ty},ty)));
+      const clsSel = el("select"); clsSel.append(el("option",{value:"phys"},"Physical"), el("option",{value:"spec"},"Special"));
+      const out = el("div",{class:"small",style:"margin-top:6px"});
+      const apply = async ()=>{
+        const dmg = parseInt(dmgIn.value);
+        if(isNaN(dmg)){ out.textContent = "Enter a damage number."; return; }
+        const physical = clsSel.value==="phys";
+        const def = tokenDefenseStat(token, physical);
+        const types = tokenDefTypes(token);
+        const mult = typeMultAgainst(typeSel.value, types);
+        const afterDef = Math.max(0, dmg - def);
+        const final = Math.floor(afterDef * mult);
+        const before = tokenHp(token).cur;
+        await setTokenHP(token, before - final); draw();
+        const eff = mult===0 ? "immune ×0" : mult>1 ? `super-effective ×${mult}` : mult<1 ? `resisted ×${mult}` : "neutral ×1";
+        out.innerHTML = `${dmg} − ${def} ${physical?"Def":"SpDef"} = ${afterDef}, ${typeSel.value} ${eff} → <b>${final}</b> damage.<br>HP ${before} → <b>${before-final}</b>.`;
+      };
+      atk.append(el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;align-items:center"},
+        dmgIn, typeSel, clsSel, el("button",{class:"btn-primary",onclick:apply},"Apply")), out);
+      wrap.append(atk);
+    }
   }
   if(battleOn()){
     const used = token.moved||0, spd = tokenMoveSpeed(token), over = spd && used>spd;
@@ -4692,6 +4877,16 @@ function openTokenMenu(token, map){
       hd.addEventListener("change", async()=>{ token.gmHidden = hd.checked; await mapTokensUpsert(); renderMap(); toast(token.gmHidden?"🙈 Hidden from players":"👁 Visible to players"); });
       wrap.append(el("label",{class:"inline",style:"margin-top:10px;gap:6px;display:flex;align-items:center"},
         hd, el("span",{class:"small"},"🙈 Hide this token from players")));
+      if(battleOn()){
+        const info2=tokenHp(token), ally=info2.kind==="trainer"||info2.kind==="pokemon";
+        const ii=el("input",{type:"checkbox"}); ii.checked = ally ? token.inInit!==false : !!token.inInit;
+        ii.addEventListener("change", async()=>{ token.inInit=ii.checked; await mapTokensUpsert(); renderMap(); });
+        wrap.append(el("label",{class:"inline",style:"margin-top:10px;gap:6px;display:flex;align-items:center"},
+          ii, el("span",{class:"small"},"⚔ In initiative order")));
+        const ib=el("input",{type:"number",value:token.initBonus||0,style:"width:64px"});
+        ib.addEventListener("change", async()=>{ token.initBonus=parseInt(ib.value)||0; await mapTokensUpsert(); renderMap(); });
+        wrap.append(el("label",{class:"field",style:"margin-top:8px;max-width:160px"}, el("span",{},"Initiative bonus"), ib));
+      }
     }
     foot.push(el("button",{class:"btn-secondary danger",onclick:async()=>{ await removeToken(token,map); closeModal(); }},"🗑 Remove"));
   }
@@ -4858,6 +5053,7 @@ async function clearMapTokens(map){ if(!confirm("Remove ALL tokens from this map
 function applyMapCamera(stage){ stage.style.transformOrigin="0 0";
   stage.style.transform = `translate(${mapView.panX}px,${mapView.panY}px) scale(${mapView.scale})`; }
 function attachPanZoom(viewport, stage){
+  let zoomTimer = null;
   viewport.addEventListener("wheel", e=>{
     e.preventDefault();
     const rect = viewport.getBoundingClientRect();
@@ -4868,6 +5064,11 @@ function attachPanZoom(viewport, stage){
     mapView.panX = cx - (cx-mapView.panX)*(next/old);
     mapView.panY = cy - (cy-mapView.panY)*(next/old);
     mapView.scale = next; applyMapCamera(stage);
+    // The scaled stage is a cached GPU layer rasterized at the zoom it was BUILT at, so
+    // wheel-zoom just stretches that stale bitmap (blurry/pixelated) until a full re-render
+    // rebuilds the layer — which is why moving a token "fixed" it. Rebuild once zoom settles.
+    clearTimeout(zoomTimer);
+    zoomTimer = setTimeout(()=>{ if(currentTab==="map" && !mapDragging) renderMap(); }, 200);
   }, { passive:false });
   viewport.addEventListener("pointerdown", ev=>{
     if(ev.target.closest(".map-token")) return;            // tokens handle their own drag
@@ -4969,6 +5170,7 @@ function renderMap(){
     return;
   }
   resolveImageSizes(map);   // resolve any migrated-bg natural sizes (no-op once done)
+  if(meta.battleOn) root.append(initiativePanel(map, meta));
 
   const { w:stageW, h:stageH } = mapStageSize(map);
   const viewport = el("div",{class:"map-viewport"});
