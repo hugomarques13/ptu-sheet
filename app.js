@@ -4169,7 +4169,15 @@ function tokenFactionColor(info){
   if(info.kind==="enc" || info.kind==="enctrainer") return "#e0524f";
   return null;
 }
-const STATUS_RING_COLORS = { persistent:"#e0524f", volatile:"#e0a530", other:"#3ea1e0" };
+const STATUS_RING_DEFAULT_COLOR = "#e0524f";
+const STATUS_RING_COLORS = {
+  burned:        "#e07a1f",  // orange
+  frozen:        "#8fd6f0",  // light blue
+  paralysis:     "#e8d92a",  // yellow
+  poisoned:      "#a259d9",  // purple
+  badlyPoisoned: "#5c1f80",  // dark purple
+  sleep:         "#f2f2f2",  // white
+};
 function xmlEscape(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function polarPt(cx,cy,r,angleDeg){ const a=(angleDeg-90)*Math.PI/180; return [(cx+r*Math.cos(a)).toFixed(2), (cy+r*Math.sin(a)).toFixed(2)]; }
 /* builds one full concentric ring per active status (innermost = first status), each with its name curving around it */
@@ -4185,14 +4193,17 @@ function tokenStatusRingSVG(keys, boxPx, uid){
   let parts = "";
   defs.forEach((s,i)=>{
     const r = baseR + i*ringGap;
-    const color = STATUS_RING_COLORS[s.kind] || "#999";
+    const color = STATUS_RING_COLORS[s.key] || STATUS_RING_DEFAULT_COLOR;
     const id = `tkring_${uid}_${i}`;
     // full circle drawn as two semicircle arcs, doubling as the path the label text curves along
     const d = `M ${cx} ${(cy-r).toFixed(2)} A ${r} ${r} 0 1 1 ${cx} ${(cy+r).toFixed(2)} A ${r} ${r} 0 1 1 ${cx} ${(cy-r).toFixed(2)}`;
     parts += `<path id="${id}" d="${d}" fill="none" stroke="${color}" stroke-width="${strokeW}"/>`;
     parts += `<text font-size="${fontSize}" fill="${color}" font-weight="700" style="paint-order:stroke;stroke:#0a0c10;stroke-width:2px"><textPath href="#${id}" startOffset="4%" text-anchor="start">${xmlEscape(s.name)}</textPath></text>`;
   });
-  return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" style="position:absolute;left:${-pad}px;top:${-pad}px;pointer-events:none;overflow:visible">${parts}</svg>`;
+  // fixed square SVG sized to its own content; centering is handled purely by CSS on the
+  // .tk-status-ring wrapper (flex centering) rather than manual left/top offsets here, so the
+  // ring can never drift off-center regardless of border-box/border-width quirks on the token.
+  return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" style="display:block;overflow:visible;pointer-events:none">${parts}</svg>`;
 }
 async function setTokenHP(token, val){
   const info = tokenHp(token);
