@@ -4402,7 +4402,7 @@ function mapTokenNode(token, map){
   const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":""),
     style:`left:${token.x*px}px;top:${token.y*px}px;width:${boxPx}px;height:${boxPx}px`
       +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")
-      +(factionColor?`;box-shadow:0 0 0 3px ${factionColor},0 0 0 4px rgba(0,0,0,.35)`:"")});
+      +(factionColor?`;border-color:${factionColor}`:"")});
   node.dataset.tid = token.id;
   info.sprite.classList.add("tk-img");
   node.append(info.sprite);
