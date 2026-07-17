@@ -3536,9 +3536,7 @@ function migrateChar(data, id){
    rows under a "*" select, which would blank the roster right after someone joins/creates. */
 const SHEET_COLS = "id,campaign,owner_id,owner_name,name,data,updated_at";
 async function fetchRoster(){
-  let q = cloud.client.from("sheets").select(SHEET_COLS).eq("campaign", cloud.campaign);
-  if(!cloud.isGM) q = q.eq("owner_id", cloud.userId);   // players load only their own sheets; the GM loads all
-  const { data, error } = await q;
+  const { data, error } = await cloud.client.from("sheets").select(SHEET_COLS).eq("campaign", cloud.campaign);
   if(error) throw error;
   cloud.byId = {};
   (data||[]).forEach(r => {
@@ -3757,8 +3755,6 @@ function onRealtime(payload){
     if((currentTab==="encounters" || currentTab==="map") && !mapDragging && !typing) render();
     return;
   }
-  // players only track their own sheets; ignore realtime events for anyone else's (GM tracks all)
-  if(!cloud.isGM && evtOwner && evtOwner!==cloud.userId) return;
   if(type==="DELETE"){
     const id = payload.old?.id; if(!id) return;
     delete cloud.byId[id];
