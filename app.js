@@ -321,17 +321,18 @@ function injuryHealCap(maxHP, injuries){
 function applyEndScene(c){
   if(!c) return;
   normTrainer(c.trainer);
-  c.trainer.usedAP = 0; c.trainer.tempHP = 0; resetUses(c.trainer, "scene");
-  (c.pokemon||[]).forEach(p => { normPokemon(p); p.tempHP = 0; resetUses(p, "scene"); });
+  c.trainer.usedAP = 0; c.trainer.tempHP = 0; c.trainer.buffs = []; resetUses(c.trainer, "scene");
+  (c.pokemon||[]).forEach(p => { normPokemon(p); p.tempHP = 0; p.buffs = []; resetUses(p, "scene"); });   // buffs are combat-duration → clear (#2)
 }
 /* apply Extended Rest to one character object (heal HP & 1 Injury, restore AP & all uses) */
 function applyEndDay(c){
   if(!c) return;
   const t = c.trainer; normTrainer(t);
-  t.usedAP = 0; t.tempHP = 0; resetUses(t, "all");
-  t.currentHP = trainerDerived(t).hp;   // Trainers heal fully (no Injuries in this game)
+  t.usedAP = 0; t.tempHP = 0; t.buffs = []; resetUses(t, "all");
+  t.injuries = Math.max(0, (t.injuries||0) - 1);   // Extended Rest heals 1 Injury (Core p.249)
+  t.currentHP = trainerDerived(t).hp;              // heal to remaining-injury-capped max
   (c.pokemon||[]).forEach(p => { normPokemon(p);
-    p.tempHP = 0; resetUses(p, "all");
+    p.tempHP = 0; p.buffs = []; resetUses(p, "all");
     p.injuries = Math.max(0, (p.injuries||0) - 1);
     p.currentHP = pokeDerived(p).maxHP;   // heal to full (already capped by remaining Injuries)
   });
@@ -339,7 +340,7 @@ function applyEndDay(c){
 /* the cloud rows a GM's rest affects: every PLAYER's sheet (not the GM's own characters, not the PC) */
 function playerRestRows(){
   return Object.values(cloud.byId).filter(r =>
-    r && r.data && r.data.trainer && r.owner_id !== cloud.userId && r.owner_id !== PC_OWNER);
+    r && r.data && r.data.trainer && !ownsRow(r) && r.owner_id !== PC_OWNER);
 }
 /* End of Scene (Core p.220). GM in cloud → applies to all players; otherwise the active character. */
 function endScene(){
@@ -384,7 +385,7 @@ function newTrainer() {
     classes:[], skills, combat, edges:[], features:[], techniques:[],
     inventory:[], background:"", notes:"", appearance:"",
     currentHP:null, tempHP:0, injuries:0, usedAP:0, unlocked:false, uses:{}, avatar:"", weapons:[],
-    levelUp:{},
+    levelUp:{}, buffs:[],
   };
 }
 function newCharacter(name) {
@@ -399,7 +400,7 @@ function newPokemon(speciesName) {
     nature: "Hardy", abilities:[], heldItem:"",
     stats, injuries:0, currentHP:null, tempHP:0,
     moves:[], tutorPoints:0, unlocked:false, notes:"",
-    struggleType:null, struggleSpecial:false, uses:{}, image:"", statuses:[],
+    struggleType:null, struggleSpecial:false, uses:{}, image:"", statuses:[], buffs:[],
     cs:{atk:0,def:0,spatk:0,spdef:0,spd:0},
   };
 }
@@ -416,6 +417,7 @@ function normPokemon(p){
   if(typeof p.struggleSpecial !== "boolean") p.struggleSpecial = false;
   if(!p.uses || typeof p.uses!=="object") p.uses = {};
   if(!Array.isArray(p.statuses)) p.statuses = [];
+  if(!Array.isArray(p.buffs)) p.buffs = [];        // active Cheers / Orders / Songs (#2)
   if(!p.cs || typeof p.cs!=="object") p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0};
   if(typeof p.image!=="string") p.image = "";
   if(!p.stats) { p.stats={}; STATS.forEach(([k])=>p.stats[k]={added:0}); }
@@ -431,15 +433,24 @@ function normTrainer(t){
   if(typeof t.currentHP==="undefined") t.currentHP = null;
   if(typeof t.tempHP!=="number") t.tempHP = 0;
   if(typeof t.injuries!=="number") t.injuries = 0;
+  if(!t.cs || typeof t.cs!=="object") t.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0};   // Combat Stages
+  if(!Array.isArray(t.statuses)) t.statuses = [];
   if(typeof t.usedAP!=="number") t.usedAP = 0;
   if(typeof t.xp!=="number") t.xp = 0;                            // EXP toward next level (houserule: 10 = level up)
   if(typeof t.unlocked!=="boolean") t.unlocked = false;
   if(!t.uses || typeof t.uses!=="object") t.uses = {};
   if(typeof t.avatar!=="string") t.avatar = "";
   if(!Array.isArray(t.weapons)) t.weapons = [];
+  // migrate ranged weapons saved with the old (wrong) melee-copied stats — only when they still
+  // match the old preset exactly, so hand-tuned weapons are left alone (Core p.286).
+  t.weapons.forEach(w=>{
+    if(w && w.category==="Long Range"  && w.dbMod===2 && w.acMod===1) w.dbMod = 1;
+    if(w && w.category==="Short Range" && w.dbMod===1 && w.acMod===0) w.dbMod = 0;
+  });
   if(!t.levelUp || typeof t.levelUp!=="object") t.levelUp = {};   // per-level choice tracker
   if(!Array.isArray(t.techniques)) t.techniques = [];             // learned class Techniques
   if(!Array.isArray(t.moves)) t.moves = [];                       // combat Moves granted by Features/class
+  if(!Array.isArray(t.buffs)) t.buffs = [];                       // active Cheers / Orders / Songs (#2)
   return t;
 }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -503,20 +514,26 @@ function setPath(obj, path, val) {
    PTU calculations
 =================================================================== */
 function trainerDerived(t) {
-  const tot = k => t.combat[k].base + t.combat[k].added;
+  const raw = k => t.combat[k].base + t.combat[k].added;   // pre-Combat-Stage ("real") stat
   const cap6 = v => Math.min(6, Math.floor(v/5));
+  const cs = effectiveCS(t);                               // Combat Stages (manual t.cs + conditions)
+  const tot = k => k==="hp" ? raw("hp") : Math.floor(raw(k) * csMult(cs[k]));   // CS-adjusted
   const acro = rankNum(t.skills.acrobatics), athl = rankNum(t.skills.athletics);
   const combat = rankNum(t.skills.combat);
   let power = 4;  if (athl >= 3) power++; if (combat >= 4) power++;
   let hj = 0;     if (acro >= 4) hj++; if (acro >= 6) hj++;
+  const fullHP = t.level*2 + raw("hp")*3 + 10;             // undamaged maximum
+  const injuries = Math.max(0, t.injuries||0);
+  const hp = injuryHealCap(fullHP, injuries);              // Injuries cap max HP −10% each (Core p.249)
   return {
-    hp: t.level*2 + tot("hp")*3 + 10,
-    physEva: cap6(tot("def")), specEva: cap6(tot("spdef")), spdEva: cap6(tot("spd")),
+    hp, fullHP, injuries, cs,
+    physEva: cap6(tot("def")), specEva: cap6(tot("spdef")), spdEva: cap6(tot("spd")),   // CS-adjusted evasion
     ap: 5 + Math.floor(t.level/5),
     power, highJump: hj, longJump: Math.floor(acro/2),
     overland: 3 + Math.floor((athl+acro)/2), swim: Math.floor((3+Math.floor((athl+acro)/2))/2),
     throwing: 4 + athl,
-    totals: Object.fromEntries(STATS.map(([k])=>[k, tot(k)])),
+    totals: Object.fromEntries(STATS.map(([k])=>[k, tot(k)])),        // CS-adjusted (used for attack/defense)
+    realTotals: Object.fromEntries(STATS.map(([k])=>[k, raw(k)])),    // pre-CS
   };
 }
 
@@ -547,10 +564,33 @@ function pokeDerived(p) {
     physEva: cap6(eff.def), specEva: cap6(eff.spdef), spdEva: cap6(eff.spd),   // evasion uses CS-adjusted stats
   };
 }
+/* PTU 1.05 effectiveness ladder (Core p.240): net weakness/resist STEPS, not raw ×2/×0.5
+   multiplication. One weakness = ×1.5 (not ×2), double = ×2, triple = ×3; one resist = ×0.5,
+   double = ×0.25 (floored); any immunity = ×0. */
+function ptuEffMult(steps){
+  if(steps<=-2) return 0.25;
+  if(steps===-1) return 0.5;
+  if(steps===0)  return 1;
+  if(steps===1)  return 1.5;
+  if(steps===2)  return 2;
+  return 3;       // 3+ steps (only reachable via ability/held type-adds)
+}
+/* net effectiveness multiplier of one attacking type vs a defender's type(s), PTU ladder */
+function typeMultAgainst(atkType, defTypes){
+  let steps = 0, immune = false;
+  (defTypes||[]).forEach(dt => {
+    const v = TYPE_CHART[atkType]?.[dt] ?? 1;   // chart only holds 2, 0.5 or 0
+    if(v === 0) immune = true;
+    else if(v > 1) steps++;
+    else if(v < 1) steps--;
+  });
+  if(immune) return 0;
+  return ptuEffMult(steps);
+}
 function typeEffectiveness(defTypes) {
   const res = {};
   TYPES.forEach(atk => {
-    let m = 1; defTypes.forEach(dt => { m *= (TYPE_CHART[atk]?.[dt] ?? 1); });
+    const m = typeMultAgainst(atk, defTypes);
     if (m !== 1) res[atk] = m;
   });
   return res;   // {atkType: multiplier}
@@ -788,19 +828,27 @@ function renderTrainer(){
   sc.append(trainerDerivedGrid(t));
   root.append(sc);
 
+  /* combat stages */
+  root.append(trainerCombatStagesCard(t));
+
+  /* buffs & orders (Cheers / Commander Orders / Musician Songs) */
+  root.append(buffsCard(t, ()=>{ save(); renderTrainer(); }));
+
   /* weapons (modify Struggle) */
   root.append(weaponsCard(t));
 
   /* skills */
   const skc = el("div",{class:"card"}, el("h3",{},"Skills",
-     el("span",{class:"muted small"},"tap a rank")));
+     el("span",{class:"muted small"},"tap a rank · 🎲 to roll")));
   const tbl = el("table",{class:"skilltable"});
   SKILLS.forEach(([k,lbl]) => {
     const tr = el("tr",{});
     tr.append(el("td",{},lbl));
     const rb = el("td",{},rankButtons(k, t.skills[k]));
     const dice = el("td",{class:"dice","data-dice":k}, `${rankDice(t.skills[k])}d6`);
-    tr.append(rb, dice);
+    const roll = el("td",{}, el("button",{class:"btn-secondary",style:"padding:2px 8px",title:`roll ${lbl}`,
+      onclick:()=>rollSkill(lbl, rankDice(t.skills[k]), 0)},"🎲"));
+    tr.append(rb, dice, roll);
     tbl.append(tr);
   });
   skc.append(tbl);
@@ -824,8 +872,8 @@ function damageHealRow(getHP, setHP){
 const WEAPON_PRESETS = {
   "Small Melee":{dbMod:1, acMod:0, range:"Melee",        twoHanded:false},
   "Large Melee":{dbMod:2, acMod:1, range:"Melee",        twoHanded:true},
-  "Short Range":{dbMod:1, acMod:0, range:"4m",           twoHanded:false},
-  "Long Range": {dbMod:2, acMod:1, range:"12m (min 4m)", twoHanded:true},
+  "Short Range":{dbMod:0, acMod:0, range:"4m",           twoHanded:false},
+  "Long Range": {dbMod:1, acMod:1, range:"12m (min 4m)", twoHanded:true},
   "Custom":     {dbMod:0, acMod:0, range:"Melee",        twoHanded:false},
 };
 /* Weapon Moves a Fine Weapon can grant (Core pp.287-291) — all already in the moves DB.
@@ -893,7 +941,8 @@ function trainerAttackProfile(t, weaponMoveName, w){
 function openTrainerAttack(t, weaponMoveName, w){
   const st = trainerAttackProfile(t, weaponMoveName, w);
   const atk = t.combat.atk.base + t.combat.atk.added;
-  const diceStr = (DB_TABLE[st.damageBase]||"").split("/")[0].trim();
+  const bm = buffMods(t);                 // active Cheers / Orders / Songs (#2)
+  const diceStr = (DB_TABLE[(st.damageBase||0)+(bm.db||0)]||"").split("/")[0].trim();
   const dm = diceStr.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
   const dn = dm[1]?+dm[1]:0, dfaces = dm[2]?+dm[2]:0, dflat = dm[3]?parseInt(dm[3].replace(/\s/g,"")):0;
   const body = el("div",{});
@@ -921,20 +970,34 @@ function openTrainerAttack(t, weaponMoveName, w){
   }
   body.append(explain);
 
+  /* --- active buffs (Cheers / Orders / Songs) applied to this roll (#2) --- */
+  const tbuffs = ownerBuffs(t);
+  if(tbuffs.length){
+    const bcard = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+    bcard.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},"✨ Buffs & Orders active"));
+    tbuffs.forEach(b=>{ const mt=buffModText(b.mods);
+      bcard.append(el("div",{class:"small"}, `• ${b.name}` + (mt?` — ${mt}`:""), b.note?el("span",{class:"muted"},"  "+b.note):"")); });
+    body.append(bcard);
+  }
+
   /* --- results (filled on Roll) --- */
   const out = el("div",{class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:0"});
   out.append(el("div",{class:"muted small"},"Press 🎲 Roll dice to simulate."));
   const doRoll = () => {
     out.innerHTML=""; out.style.borderStyle="solid";
-    const acc = 1+Math.floor(Math.random()*20);
+    const acc = 1+Math.floor(Math.random()*20), accTot = acc + (bm.acc||0);
     out.append(el("div",{style:"margin-bottom:10px"}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLL"),
-      el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${acc}`, el("span",{class:"muted",style:"font-size:13px;font-weight:600"}," (1d20)")),
-      el("div",{class:"small muted"}, `Hits if ${acc} ≥ AC ${st.ac} + target's Physical Evasion.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`)));
+      el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`, el("span",{class:"muted",style:"font-size:13px;font-weight:600"}, bm.acc?`  (${acc} ${bm.acc>0?"+":"−"} ${Math.abs(bm.acc)} buffs)`:" (1d20)")),
+      el("div",{class:"small muted"}, `Hits if ${accTot} ≥ AC ${st.ac} + target's Physical Evasion.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`)));
     const r = rollDiceString(diceStr);
-    if(r){ const total = r.total + atk;
+    if(r){ const total = r.total + atk + (bm.dmg||0);
+      const parts = [`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`, `+ ${atk} Attack`];
+      if(bm.dmg) parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs`);
       out.append(el("div",{}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"),
         el("div",{style:"font-size:26px;font-weight:800;color:var(--accent)"}, `💥 ${total}`),
-        el("div",{class:"small muted",style:"margin-top:2px"}, `${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}  + ${atk} Attack. Target subtracts Defense.`))); }
+        el("div",{class:"small muted",style:"margin-top:2px"}, parts.join("  ") + `. Target subtracts Defense.`)));
+      if(bm.crit) out.append(el("div",{class:"small muted"}, `Crit / Effect range widened by +${bm.crit} (buffs).`));
+    }
   };
   body.append(out);
   modal({title:st.name, bodyNode:body, footNodes:[
@@ -994,6 +1057,10 @@ function trainerVitalsCard(t){
   if(t.currentHP==null) t.currentHP = maxHP;
   const card = el("div",{class:"card"}, el("h3",{},"Hit Points, AP & Rest"));
 
+  /* injury note: max HP is capped −10% per Injury (Core p.249) */
+  if(d.injuries>0) card.append(el("div",{class:"small",style:"color:var(--bad);font-weight:700;margin-bottom:6px"},
+    `${d.injuries} injur${d.injuries===1?"y":"ies"} — max HP ${maxHP} (−${d.fullHP-maxHP} of full ${d.fullHP})`));
+
   /* HP row */
   const setHP = v => { t.currentHP = Math.max(-99, Math.min(maxHP, v)); save(); renderTrainer(); };
   const hp = el("div",{class:"hpctl"});
@@ -1013,9 +1080,11 @@ function trainerVitalsCard(t){
   /* damage / heal: type a signed number — positive heals, negative damages */
   card.append(damageHealRow(()=>t.currentHP, setHP));
 
-  /* temp HP · AP (Trainers don't take Injuries in this game) */
+  /* temp HP · Injuries */
   const row = el("div",{class:"fieldrow",style:"margin-top:12px"});
   row.append(field("Temp HP","",{type:"number",min:0,value:t.tempHP,onchange:v=>{t.tempHP=parseInt(v)||0;save();}}));
+  row.append(field("Injuries","",{type:"number",min:0,max:10,value:t.injuries,
+    onchange:v=>{ t.injuries=Math.max(0,Math.min(10,parseInt(v)||0)); save(); renderTrainer(); }}));
   card.append(row);
   const setAP = u => { t.usedAP = Math.max(0, Math.min(maxAP, u)); save(); renderTrainer(); };
   const apRow = el("div",{class:"hpctl",style:"margin-top:10px;align-items:center"});
@@ -1030,7 +1099,31 @@ function trainerVitalsCard(t){
 
   /* End Scene / End Day now live in the persistent top bar (🌙 / ☀), not here */
   card.append(el("div",{class:"small muted",style:"margin-top:6px"},
-    "Use 🌙 End Scene / ☀ End Day at the top of the screen. End Scene restores AP & Scene uses; End Day fully heals, refreshes Daily uses, and heals 1 Injury on your Pokémon."));
+    "Use 🌙 End Scene / ☀ End Day at the top of the screen. End Scene restores AP & Scene uses; End Day fully heals, refreshes Daily uses, and heals 1 Injury (on you and your Pokémon)."));
+  return card;
+}
+/* Combat Stages card for a Trainer — mirrors the Pokémon one (manual ± per combat stat). */
+function trainerCombatStagesCard(t){
+  normTrainer(t);
+  const d = trainerDerived(t), cond = conditionCSMods(t);
+  const anyManual = CS_STATS.some(([k])=>t.cs[k]);
+  const card = el("div",{class:"card"}, el("h3",{},"Combat Stages",
+    el("div",{class:"inline"},
+      el("span",{class:"muted small"},"tap ±"),
+      anyManual?el("button",{class:"linkbtn",onclick:()=>{ CS_STATS.forEach(([k])=>t.cs[k]=0); save(); renderTrainer(); }},"reset"):"")));
+  const grid = el("div",{class:"statgrid"});
+  CS_STATS.forEach(([k,lbl])=>{
+    const manual = t.cs[k]||0, cm = cond[k]||0, effCS = d.cs[k];
+    const box = el("div",{class:"stat"});
+    box.append(el("div",{class:"lbl"},lbl));
+    box.append(el("div",{class:"big",style: effCS>0?"color:var(--good)":effCS<0?"color:var(--bad)":""}, d.totals[k]));
+    box.append(csStepper(manual, v=>{ t.cs[k]=Math.max(-6,Math.min(6,v)); save(); renderTrainer(); }));
+    box.append(el("div",{class:"sub"}, `${effCS>0?"+":""}${effCS} CS`));
+    grid.append(box);
+  });
+  card.append(grid);
+  card.append(el("div",{class:"small muted",style:"margin-top:4px"},
+    "Combat Stages clear at end of encounter."));
   return card;
 }
 
@@ -1381,20 +1474,57 @@ const LU_MILESTONES = {
                  "One General Feature":[{kind:"feature", label:"General Feature"}] } } },
 };
 
-/* one editable choice slot: a picker button that stores its value in t.levelUp[key] */
+/* the even levels each milestone "Bonus Stats" choice grants +1 Atk & +1 SpAtk on
+   (L5 folds in its "+2 retroactive" as the two even levels 2 & 4 you passed before taking it) */
+const LU_STAT_LEVELS = {
+  m5:[2,4,6,8,10], m10:[12,14,16,18,20], m20:[22,24,26,28,30],
+  m30:[32,34,36,38,40], m40:[42,44,46,48,50],
+};
+/* milestone "Bonus Stats" picks → extra Atk/SpAtk stat points earned by a given level.
+   Only counts levels already reached (future planning picks don't leak into the real budget). */
+function luStatBonus(t, level){
+  if(!t || !t.levelUp) return { each:0, total:0 };
+  let each = 0;                                    // added to Attack AND to Sp.Attack
+  for(const L of [5,10,20,30,40]){
+    if(L > level) continue;
+    const ms = LU_MILESTONES[L]; if(!ms || !ms.choice) continue;
+    const pick = t.levelUp[`L${L}:${ms.choice.key}`] || "";
+    if(!pick.startsWith("Bonus Stats")) continue;
+    each += (LU_STAT_LEVELS[ms.choice.key]||[]).filter(x=>x<=level).length;
+  }
+  return { each, total: each*2 };                  // +each Atk + each SpAtk
+}
+/* does an Edge (by name) rank up a Skill? → reveal a "which Skill?" sub-picker */
+function edgeRanksSkill(name){
+  const e = (D.edges||[]).find(x=>x.name===name);
+  return !!(e && /rank\s*up\s*a\s*skill/i.test(e.effect||""));
+}
+
+/* one editable choice slot: a picker button that stores its value in t.levelUp[key].
+   kind "skill" picks a Skill (for tracking rank-ups); "edge"/"feature" pick from those lists. */
 function luSlot(t, key, kind, label, hint){
-  const names = kind==="edge" ? D.edges.map(x=>x.name) : D.features.map(x=>x.name);
+  const isSkill = kind==="skill";
+  const names = isSkill ? SKILLS.map(s=>s[1])
+    : kind==="edge" ? D.edges.map(x=>x.name) : D.features.map(x=>x.name);
   const cur = t.levelUp[key] || "";
-  const btn = el("button",{class:"btn-secondary lu-pick", title:"Choose from the "+(kind==="edge"?"Edges":"Features")+" list",
-    onclick:()=>openPicker(kind==="edge"?"Choose an Edge":"Choose a Feature", names, v=>{
+  let disp = cur || "choose…";
+  if(isSkill && cur){ const sk=SKILLS.find(s=>s[1]===cur); const rk=sk?(t.skills?.[sk[0]]||""):""; disp = rk?`${cur} · ${rk}`:cur; }
+  const pickTitle = isSkill ? "Which Skill did you rank up?" : kind==="edge"?"Choose an Edge":"Choose a Feature";
+  const btn = el("button",{class:"btn-secondary lu-pick", title: isSkill?"Choose a Skill":"Choose from the "+(kind==="edge"?"Edges":"Features")+" list",
+    onclick:()=>openPicker(pickTitle, names, v=>{
       t.levelUp[key]=v; save(); renderTrainer();
-    }, kind)}, cur || "choose…");
+    }, isSkill?null:kind)}, disp);
   if(cur) btn.classList.add("filled");
   const row = el("div",{class:"lu-slot"},
     el("span",{class:"lu-label"}, label + (hint?" ":""), hint?el("span",{class:"muted"},`(${hint})`):""),
     btn);
   if(cur) row.append(el("button",{class:"lu-clear",title:"clear",
-    onclick:()=>{ delete t.levelUp[key]; save(); renderTrainer(); }},"×"));
+    onclick:()=>{ delete t.levelUp[key]; delete t.levelUp[key+":skill"]; save(); renderTrainer(); }},"×"));
+  // an Edge that ranks up a Skill reveals a companion picker to record which Skill
+  if(kind==="edge" && cur && edgeRanksSkill(cur)){
+    const wrap = el("div",{}, row, luSlot(t, key+":skill", "skill", "↳ Skill ranked up"));
+    return wrap;
+  }
   return row;
 }
 
@@ -1435,6 +1565,7 @@ function luTotals(t, level){
       else if(pick.startsWith("One General Feature")) feat += 1;
     }
   }
+  stat += luStatBonus(t, level).total;   // milestone Bonus-Stats Atk/SpAtk points
   return { feat, edge, stat };
 }
 
@@ -1446,10 +1577,12 @@ function levelUpCard(t){
     el("span",{class:"pill", style:"margin-left:8px"}, `Level ${level}`)));
   card.append(el("div",{class:"small muted", style:"margin:-4px 0 10px"},
     "PTU 1.05 Trainer advancement. Every level grants a Stat Point; odd levels a Feature, even levels an Edge. ",
-    "Record what you picked at each level — this is a personal tracker and doesn’t change your Features & Edges tab."));
+    "Record what you picked at each level — this is a personal tracker and doesn’t change your Features & Edges tab. ",
+    "Milestone “Bonus Stats” choices do expand your Sheet-tab stat budget (Atk/SpAtk)."));
 
   /* summary tallies */
   const tot = luTotals(t, level);
+  const msb = luStatBonus(t, level);
   const addedSum = STATS.reduce((s,[k])=>s+(t.combat[k].added||0),0);
   card.append(el("div",{class:"lu-summary"},
     el("div",{class:"lu-sum"}, el("b",{}, tot.feat), el("span",{class:"muted"}," Features earned"),
@@ -1457,37 +1590,52 @@ function levelUpCard(t){
     el("div",{class:"lu-sum"}, el("b",{}, tot.edge), el("span",{class:"muted"}," Edges earned"),
       el("div",{class:"small muted"}, `you list ${t.edges.length}`)),
     el("div",{class:"lu-sum"}, el("b",{}, tot.stat), el("span",{class:"muted"}," Stat Points"),
-      el("div",{class:"small muted"}, `${addedSum} spent · milestone Atk/SpAtk extra`)),
+      el("div",{class:"small muted"}, `${addedSum} spent${msb.total?` · +${msb.total} milestone (Atk/SpAtk)`:""}`)),
   ));
 
   /* per-level ledger */
   const list = el("div",{class:"lu-levels"});
-  for(let L=1; L<=level; L++){
-    const block = el("div",{class:"lu-level"});
-    const head = el("div",{class:"lu-lvl-head"}, el("span",{class:"lu-lvl-num"}, L));
-    if(L===1) head.append(el("span",{}, "Character Creation"));
-    else head.append(el("span",{class:"muted small"}, "+1 Stat Point"));
-    block.append(head);
-
-    if(L===1){
-      block.append(el("div",{class:"small muted", style:"margin:2px 0 6px"},
-        "Skill Background (3 Pathetic / 1 Novice / 1 Adept) and 10 assigned Stat Points — see the Sheet tab."));
-      block.append(el("div",{class:"lu-grp-label"},"Features (4) + free Training Feature"));
-      for(let i=0;i<4;i++) block.append(luSlot(t, `L1:feat:${i}`, "feature", `Feature ${i+1}`));
-      block.append(luSlot(t, `L1:training`, "feature", "Training Feature", "no prerequisites"));
-      block.append(el("div",{class:"lu-grp-label"},"Edges (4)"));
-      for(let i=0;i<4;i++) block.append(luSlot(t, `L1:edge:${i}`, "edge", `Edge ${i+1}`));
-    } else if(L % 2){
-      block.append(luSlot(t, `L${L}:feat`, "feature", "Feature"));
-    } else {
-      block.append(luSlot(t, `L${L}:edge`, "edge", "Edge"));
-    }
-    const ms = LU_MILESTONES[L];
-    if(ms) block.append(luMilestoneNode(t, L, ms));
-    list.append(block);
-  }
+  for(let L=1; L<=level; L++) list.append(luLevelBlock(t, L));
   card.append(list);
+
+  /* future planning — visual only; picks persist but never count toward budget/tallies */
+  if(level < LU_MAX_LEVEL){
+    const det = el("details",{class:"lu-future"});
+    det.append(el("summary",{},
+      `🔮 Plan ahead — Levels ${level+1}–${LU_MAX_LEVEL}`,
+      el("span",{class:"small muted",style:"margin-left:8px;font-weight:400"},"visual only · doesn’t affect your sheet")));
+    const flist = el("div",{class:"lu-levels", style:"margin-top:10px"});
+    for(let L=level+1; L<=LU_MAX_LEVEL; L++) flist.append(luLevelBlock(t, L));
+    det.append(flist);
+    card.append(det);
+  }
   return card;
+}
+
+/* one level's ledger block (shared by the earned ledger and the future-planning list) */
+function luLevelBlock(t, L){
+  const block = el("div",{class:"lu-level"});
+  const head = el("div",{class:"lu-lvl-head"}, el("span",{class:"lu-lvl-num"}, L));
+  if(L===1) head.append(el("span",{}, "Character Creation"));
+  else head.append(el("span",{class:"muted small"}, "+1 Stat Point"));
+  block.append(head);
+
+  if(L===1){
+    block.append(el("div",{class:"small muted", style:"margin:2px 0 6px"},
+      "Skill Background (3 Pathetic / 1 Novice / 1 Adept) and 10 assigned Stat Points — see the Sheet tab."));
+    block.append(el("div",{class:"lu-grp-label"},"Features (4) + free Training Feature"));
+    for(let i=0;i<4;i++) block.append(luSlot(t, `L1:feat:${i}`, "feature", `Feature ${i+1}`));
+    block.append(luSlot(t, `L1:training`, "feature", "Training Feature", "no prerequisites"));
+    block.append(el("div",{class:"lu-grp-label"},"Edges (4)"));
+    for(let i=0;i<4;i++) block.append(luSlot(t, `L1:edge:${i}`, "edge", `Edge ${i+1}`));
+  } else if(L % 2){
+    block.append(luSlot(t, `L${L}:feat`, "feature", "Feature"));
+  } else {
+    block.append(luSlot(t, `L${L}:edge`, "edge", "Edge"));
+  }
+  const ms = LU_MILESTONES[L];
+  if(ms) block.append(luMilestoneNode(t, L, ms));
+  return block;
 }
 
 /* every catalog item a Trainer can carry (gear/equipment/key items/med kit/balls + held + berries) */
@@ -1694,6 +1842,8 @@ function heroCard(p, sp){
     el("div",{class:"mh-name",id:"heroName"}, p.nickname || sp?.name || "Unknown"),
     el("div",{class:"pc-lvl"}, "Lv "+p.level)));
   main.append(el("div",{class:"mh-sub", html:(p.nickname && sp?`${sp.name} · `:"")+(sp?.types||[]).map(typeBadge).join(" ")+(p.shiny?" ✨":"")}));
+  main.append(el("div",{class:"small muted",style:"margin-top:2px"},
+    `Evasion — Phys +${d.physEva} · Spec +${d.specEva} · Speed +${d.spdEva}`));
   /* compact HP control */
   const hp = el("div",{class:"hpctl hero-hp"});
   const cur = el("input",{type:"number",id:"hpCur"}); cur.value = p.currentHP;
@@ -1782,8 +1932,48 @@ function catchDCModal(p){
   const legLabel = el("label",{class:"inline",style:"gap:8px;cursor:pointer;margin-bottom:12px;font-weight:700"});
   const cb = el("input",{type:"checkbox"}); cb.addEventListener("change",()=>{ legendary=cb.checked; redraw(); });
   legLabel.append(cb, el("span",{},"Legendary Pokémon (−30)"));
-  wrap.append(legLabel, out); redraw();
-  modal({title:`🎯 Catch DC — ${p.nickname||getSpecies(p.species)?.name||"Pokémon"}`, bodyNode:wrap,
+  wrap.append(legLabel, out);
+
+  /* ---- actually roll the capture (accuracy vs AC 6, then 1d100 − Trainer Level − Ball bonus) ---- */
+  const roll = el("div",{style:"margin-top:16px;border-top:1px solid var(--line);padding-top:12px"});
+  const defLvl = activeChar()?.trainer?.level || 1;
+  const lvlIn  = el("input",{type:"number",min:1,value:defLvl,style:"width:66px",title:"the thrower's Trainer Level"});
+  const ballIn = el("input",{type:"number",value:0,style:"width:66px",title:"Poké Ball / Feature bonus to the capture roll (e.g. Great Ball +10)"});
+  const result = el("div",{style:"margin-top:10px"});
+  const doRoll = ()=>{
+    const r = captureRate(p, {legendary});
+    if(!r.capturable){ result.innerHTML=""; result.append(el("div",{class:"warnbox"},"Can't be captured at 0 HP.")); return; }
+    const lvl = Math.max(1, parseInt(lvlIn.value)||1), ball = parseInt(ballIn.value)||0;
+    const d = pokeDerived(p);
+    const acc = 1 + Math.floor(Math.random()*20);
+    const ac  = 6 + d.physEva;                       // throwing a Poké Ball is an AC 6 attack vs Evasion
+    const nat20 = acc===20, nat1 = acc===1;
+    const hit = nat20 || (!nat1 && acc >= ac);
+    const d100 = 1 + Math.floor(Math.random()*100);
+    const capBonus = lvl + ball + (nat20?10:0);      // subtracted from the d100 (lower = better)
+    const capRoll = d100 - capBonus;
+    const caught = d100===100 ? true : (hit && capRoll <= r.rate);
+    result.innerHTML="";
+    const lines = [
+      `🎯 Accuracy: rolled <b>${acc}</b> vs AC ${ac} (6 + ${d.physEva} Evasion) → <b>${hit?"HIT":"MISS"}</b>${nat20?" (Nat 20 — −10 to capture roll!)":nat1?" (Nat 1 — auto-miss)":""}`,
+    ];
+    if(hit){
+      lines.push(`🎲 Capture: 1d100 = <b>${d100}</b> − ${lvl} Lv${ball?` − ${ball} ball`:""}${nat20?" − 10 nat20":""} = <b>${capRoll}</b> vs rate <b>${r.rate}</b>`);
+      lines.push(caught ? `✅ <b>Caught!</b> (${d100===100?"natural 100":`${capRoll} ≤ ${r.rate}`})` : `❌ <b>Broke free.</b> (${capRoll} > ${r.rate})`);
+    } else {
+      lines.push("The ball missed — no capture roll. Try again!");
+    }
+    result.append(el("div",{class:"warnbox",style:`line-height:1.5;${caught?"background:rgba(46,160,67,.14);border-color:var(--good);color:var(--good)":""}`,html:lines.join("<br>")}));
+  };
+  roll.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:6px"},"🎲 Roll to Catch"),
+    el("div",{class:"tk-menu-row",style:"gap:8px;align-items:center;flex-wrap:wrap"},
+      el("span",{class:"small"},"Trainer Lv"), lvlIn,
+      el("span",{class:"small"},"Ball bonus"), ballIn,
+      el("button",{class:"btn-primary",onclick:doRoll},"Throw a Poké Ball")),
+    result);
+  wrap.append(roll);
+  redraw();
+  modal({title:`🎯 Catch — ${p.nickname||getSpecies(p.species)?.name||"Pokémon"}`, bodyNode:wrap,
     footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Close")]});
 }
 /* − value + stepper for a Combat Stage (−6…+6, both directions) */
@@ -1822,6 +2012,131 @@ function combatStagesCard(p){
     "Combat Stages clear on switch-out / end of encounter. Speed CS also shifts Movement by ½ (rounded down)."));
   return card;
 }
+/* ===================================================================
+   Buff engine (#2) — Cheerleader Cheers, Commander Orders, Musician Songs
+   and custom buffs. Buffs live on the recipient (owner.buffs[]).
+   openMoveRoll / openTrainerAttack apply the numeric ones (and can spend
+   one-shots); End Scene / End Day clear them. Effects transcribed from
+   PTU 1.05 Core (Cheerleader p.93, Commander Orders pp.61-62, Songs p.164).
+=================================================================== */
+// mods the roll understands: acc (±accuracy roll), dmg (±flat damage), crit (widen crit/effect range), db (±Damage Base)
+const PTU_BUFFS = [
+  // — Cheerleader Cheers (Core p.93). Each is spent for its effect → one-shot. —
+  { key:"cheered",   cat:"Cheerleader", name:"Cheered",   dur:"until spent", once:true, mods:{},
+    note:"Spend when making a Save Check to roll twice and take the better result." },
+  { key:"excited",   cat:"Cheerleader", name:"Excited",   dur:"until spent", once:true, mods:{},
+    note:"Spend when hit by a Damaging Attack to gain +5 Damage Reduction against it." },
+  { key:"motivated", cat:"Cheerleader", name:"Motivated", dur:"until spent", once:true, mods:{},
+    note:"Spend as a Free Action to raise a Combat Stage that is below its default by +1." },
+  // — Commander Orders (Core pp.61-62). [Stratagem] persist while AP-bound; others are short-duration. —
+  { key:"reckless-advance", cat:"Commander", name:"Reckless Advance", dur:"while Bound", mods:{ dmg:8 },
+    note:"Melee damaging attacks only. They Trip on Accuracy 18+; you become Vulnerable after you hit." },
+  { key:"strike-again",     cat:"Commander", name:"Strike Again!",    dur:"this turn",  once:true, mods:{},
+    note:"Immediately take an extra Standard Action to use an At-Will attack." },
+  { key:"trick-shot",       cat:"Commander", name:"Trick Shot",       dur:"while Bound", mods:{ acc:-2, crit:3 },
+    note:"Ranged damaging attacks only (Moves with an AC value)." },
+  { key:"long-shot",        cat:"Commander", name:"Long Shot",        dur:"until end of next turn", mods:{},
+    note:"Ranged attacks' range doubled; +X damage where X = metres travelled (add by hand)." },
+  { key:"capricious-whirl", cat:"Commander", name:"Capricious Whirl", dur:"while Bound", mods:{ dmg:-5 },
+    note:"+3 Evasion while active." },
+  { key:"dazzling-dervish", cat:"Commander", name:"Dazzling Dervish", dur:"until end of next turn", mods:{},
+    note:"Adds non-stat Evasion to Movement; foes you hit or pass suffer −3 to all rolls." },
+  { key:"brace-for-impact", cat:"Commander", name:"Brace for Impact", dur:"while Bound", mods:{},
+    note:"Once/round on a self-targeting Status Move, gain 5 DR until end of next turn." },
+  { key:"sentinel-stance",  cat:"Commander", name:"Sentinel Stance",  dur:"until end of next turn", mods:{},
+    note:"May Intercept as a Shift; gain 10 DR against the intercepted attack." },
+  { key:"pinpoint-strike",  cat:"Commander", name:"Pinpoint Strike",  dur:"while Bound", mods:{ acc:2, crit:2, dmg:-5 },
+    note:"Damaging attacks deal 5 less, before weakness/resistance." },
+  { key:"perfect-aim",      cat:"Commander", name:"Perfect Aim",      dur:"next attack", once:true, mods:{},
+    note:"Next damaging attack auto-hits & ignores Defensive Abilities, but is resisted one step further." },
+  // — Musician Songs (Core p.164). Ally buffs, until end of your next turn. —
+  { key:"song-of-might",   cat:"Musician", name:"Song of Might",   dur:"until end of next turn", mods:{ dmg:5 },
+    note:"+5 to Damage Rolls." },
+  { key:"song-of-courage", cat:"Musician", name:"Song of Courage", dur:"until end of next turn", mods:{},
+    note:"+2 to Skill Checks and Save Checks (not attack rolls)." },
+  { key:"song-of-life",    cat:"Musician", name:"Song of Life",    dur:"until end of next turn", mods:{},
+    note:"Gain 5 Damage Reduction." },
+];
+const buffByKey = new Map(PTU_BUFFS.map(b=>[b.key,b]));
+const BUFF_CATS = ["Cheerleader","Commander","Musician"];
+function ownerBuffs(owner){ return Array.isArray(owner?.buffs) ? owner.buffs : []; }
+/* total numeric contribution of an owner's active buffs, for a roll */
+function buffMods(owner){
+  const s = { acc:0, dmg:0, crit:0, db:0 };
+  ownerBuffs(owner).forEach(b=>{ const m=b.mods||{}; s.acc+=m.acc||0; s.dmg+=m.dmg||0; s.crit+=m.crit||0; s.db+=m.db||0; });
+  return s;
+}
+function addBuff(owner, key){
+  if(!Array.isArray(owner.buffs)) owner.buffs=[];
+  const b = buffByKey.get(key); if(!b) return;
+  owner.buffs.push({ id:uid(), key:b.key, name:b.name, cat:b.cat, dur:b.dur, note:b.note, once:!!b.once, mods:Object.assign({},b.mods) });
+}
+function addCustomBuff(owner, name, mods, note){
+  if(!Array.isArray(owner.buffs)) owner.buffs=[];
+  owner.buffs.push({ id:uid(), key:"custom", name:name||"Custom buff", cat:"Custom", dur:"—", note:note||"", once:false, mods:mods||{} });
+}
+function removeBuff(owner, id){ if(owner) owner.buffs = ownerBuffs(owner).filter(b=>b.id!==id); }
+function buffModText(m){
+  const p=[]; m=m||{};
+  if(m.acc)  p.push(`${m.acc>0?"+":""}${m.acc} Acc`);
+  if(m.dmg)  p.push(`${m.dmg>0?"+":""}${m.dmg} Dmg`);
+  if(m.db)   p.push(`${m.db>0?"+":""}${m.db} DB`);
+  if(m.crit) p.push(`+${m.crit} Crit/Effect range`);
+  return p.join(" · ");
+}
+/* buff manager card. `commit` persists + re-renders the surrounding view after any change. */
+function buffsCard(owner, commit){
+  if(!Array.isArray(owner.buffs)) owner.buffs=[];
+  const card = el("div",{class:"card"}, el("h3",{},"Buffs & Orders",
+    el("span",{class:"muted small"},"Cheers · Orders · Songs")));
+  if(!owner.buffs.length){
+    card.append(el("div",{class:"muted small"},"No active buffs. Add a Cheer, Order, Song or custom buff below."));
+  } else owner.buffs.forEach(b=>{
+    const modt = buffModText(b.mods);
+    const row = el("div",{class:"buff-row"});
+    row.append(el("div",{style:"flex:1;min-width:0"},
+      el("div",{class:"buff-name"}, b.name + (b.cat && b.cat!=="Custom" ? `  ·  ${b.cat}` : "")),
+      el("div",{class:"small muted"}, [b.dur, modt, b.once?"one-shot":""].filter(Boolean).join(" · ")),
+      b.note ? el("div",{class:"small muted"}, b.note) : ""));
+    row.append(el("button",{class:"linkbtn danger",onclick:()=>{ removeBuff(owner,b.id); commit(); }},"remove"));
+    card.append(row);
+  });
+  const addRow = el("div",{class:"inline",style:"gap:6px;margin-top:10px;flex-wrap:wrap"});
+  BUFF_CATS.forEach(cat=>{
+    const sel = el("select");
+    sel.append(el("option",{value:""},`+ ${cat}…`));
+    PTU_BUFFS.filter(b=>b.cat===cat).forEach(b=>sel.append(el("option",{value:b.key}, b.name)));
+    sel.addEventListener("change",()=>{ if(sel.value){ addBuff(owner, sel.value); commit(); } });
+    addRow.append(sel);
+  });
+  addRow.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",onclick:()=>openCustomBuff(owner, commit)},"✎ Custom…"));
+  card.append(addRow);
+  card.append(el("div",{class:"small muted",style:"margin-top:6px"},
+    "Numeric buffs apply automatically when you roll a move. Buffs clear on End Scene / End Day."));
+  return card;
+}
+function openCustomBuff(owner, done){
+  const name=el("input",{type:"text",placeholder:"Buff name"});
+  const acc=el("input",{type:"number",value:0,style:"width:70px"});
+  const dmg=el("input",{type:"number",value:0,style:"width:70px"});
+  const crit=el("input",{type:"number",value:0,style:"width:70px"});
+  const note=el("input",{type:"text",placeholder:"Note (optional)"});
+  const body=el("div",{},
+    el("label",{class:"field"},el("span",{},"Name"),name),
+    el("div",{class:"inline",style:"gap:10px;margin-top:8px;flex-wrap:wrap"},
+      el("label",{class:"field",style:"max-width:120px"},el("span",{},"± Accuracy"),acc),
+      el("label",{class:"field",style:"max-width:120px"},el("span",{},"± Damage"),dmg),
+      el("label",{class:"field",style:"max-width:140px"},el("span",{},"+ Crit range"),crit)),
+    el("label",{class:"field",style:"margin-top:8px"},el("span",{},"Note"),note));
+  modal({title:"Custom buff", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      addCustomBuff(owner, name.value.trim(), { acc:+acc.value||0, dmg:+dmg.value||0, crit:+crit.value||0 }, note.value.trim());
+      closeModal(); if(done) done();
+    }},"Add buff"),
+  ]});
+}
+
 function renderMonPlay(root, p, sp){
   /* quick stat readout — first on the page (shows Combat-Stage-adjusted values) */
   const d = pokeDerived(p);
@@ -1847,6 +2162,9 @@ function renderMonPlay(root, p, sp){
 
   /* combat stages */
   root.append(combatStagesCard(p));
+
+  /* buffs & orders (Cheers / Commander Orders / Musician Songs) */
+  root.append(buffsCard(p, ()=>{ save(); refreshMon(p); }));
 
   /* abilities (a Pokémon can have several) */
   root.append(abilitiesCard(p, sp));
@@ -2111,13 +2429,17 @@ function trainerStatTagBonus(t){
 }
 function trainerStatBudget(t){
   const bonus = trainerStatTagBonus(t);           // Features with [+Stat] tags add to the pool
-  const budget = (t.level||1) + 9 + bonus;
+  const ms = luStatBonus(t, t.level||1).total;    // Level-Up milestone Bonus-Stats (Atk/SpAtk)
+  const budget = (t.level||1) + 9 + bonus + ms;
   const spent = STATS.reduce((s,[k]) => s + (t.combat[k].added||0), 0);
-  return { budget, spent, remaining: budget - spent, bonus };
+  return { budget, spent, remaining: budget - spent, bonus, ms };
 }
 function trainerBudgetText(tb){
   const over = tb.remaining < 0;
-  const bonusNote = tb.bonus ? ` (${(tb.budget - tb.bonus)}+${tb.bonus} feature tags)` : "";
+  const parts = [];
+  if(tb.bonus) parts.push(`${tb.bonus} feature tags`);
+  if(tb.ms)    parts.push(`${tb.ms} milestone`);
+  const bonusNote = parts.length ? ` (${(tb.budget - tb.bonus - tb.ms)}+${parts.join("+")})` : "";
   return el("span",{class: over?"warnbox":"muted", style:"font-size:12px"},
     `${tb.spent}/${tb.budget} pts${bonusNote}${over?` (${-tb.remaining} over!)`:tb.remaining>0?` · ${tb.remaining} left`:""}`);
 }
@@ -2149,9 +2471,9 @@ function matchupCard(types){
   const card = el("div",{class:"card"}, el("h3",{},"Type Matchups",
     el("span",{class:"muted small"}, types.join(" / "))));
   const groups = [
-    ["Weak to (x2+)", v=>v>1, "x2"],
-    ["Resists (x½-)", v=>v<1&&v>0, "x50"],
-    ["Immune (x0)", v=>v===0, "x0"],
+    ["Weak to (×1.5+)", v=>v>1, "x2"],
+    ["Resists (×½−)", v=>v<1&&v>0, "x50"],
+    ["Immune (×0)", v=>v===0, "x0"],
   ];
   groups.forEach(([label,test,cls])=>{
     const ents = Object.entries(eff).filter(([,v])=>test(v));
@@ -2183,7 +2505,9 @@ function capsSkillsCard(sp){
   card.append(chips);
   if(sp.skills && Object.keys(sp.skills).length){
     const sk = el("div",{class:"chips",style:"margin-top:8px"});
-    SKILLS.forEach(([k,lbl])=>{ const s=sp.skills[k]; if(s) sk.append(el("span",{class:"kv"}, `${lbl} ${s.dice}d6${s.mod&&s.mod!=="+0"?s.mod:""}`)); });
+    SKILLS.forEach(([k,lbl])=>{ const s=sp.skills[k]; if(s){ const mod=parseInt((s.mod||"").replace(/\s/g,""))||0;
+      sk.append(el("button",{class:"kv",style:"cursor:pointer;border:none",title:`roll ${lbl}`,
+        onclick:()=>rollSkill(lbl, s.dice, mod)}, `🎲 ${lbl} ${s.dice}d6${s.mod&&s.mod!=="+0"?s.mod:""}`)); } });
     card.append(sk);
   }
   return card;
@@ -2335,6 +2659,19 @@ function rollDiceString(str){
   const sum=rolls.reduce((a,b)=>a+b,0);
   return {rolls, faces, flat, dice:sum, total:sum+flat, expr:`${n}d${faces}${flat?(flat>0?"+"+flat:flat):""}`};
 }
+/* Roll a Skill check: Nd6 (+ optional flat mod), shown with each die and the total (Core p.24). */
+function rollSkill(label, nDice, mod){
+  nDice = Math.max(1, nDice||1); mod = mod||0;
+  const rolls=[]; for(let i=0;i<nDice;i++) rolls.push(1+Math.floor(Math.random()*6));
+  const sum=rolls.reduce((a,b)=>a+b,0), total=sum+mod;
+  const body = el("div",{},
+    el("div",{style:"font-size:30px;font-weight:800;text-align:center;margin:4px 0"}, String(total)),
+    el("div",{class:"small muted",style:"text-align:center"}, `${nDice}d6${mod?(mod>0?"+"+mod:mod):""}`),
+    el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;justify-content:center;margin-top:10px"},
+      ...rolls.map(r=>el("span",{class:"kv",style:"font-weight:800"}, String(r)))),
+    mod?el("div",{class:"small muted",style:"text-align:center;margin-top:6px"}, `dice ${sum} + ${mod} = ${total}`):"");
+  modal({title:`🎲 ${label}`, bodyNode:body, footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"OK")]});
+}
 /* Detect moves whose Damage Base depends on Weight Class (Low Kick, Grass Knot, Heavy Slam, Heat Crash…).
    Returns {kind, base, label} or null. */
 function weightMoveInfo(m){
@@ -2347,6 +2684,29 @@ function weightMoveInfo(m){
   if(/weight class/i.test(rng) || /weight class/i.test(eff))
     return { kind:"generic", base:m?.damageBase??null, label:"Weight Class", hint:"This move's damage depends on Weight Class — see its full text" };
   return null;
+}
+/* ===================================================================
+   Move effect thresholds (#4) — many moves have extra effects that only
+   trigger on a high Accuracy roll ("on 15+", "16 or higher", an Effect
+   Range). Pull those numbers + their sentence out of the free-text effect
+   so the roll can flag when it lands. Heuristic over inconsistent text.
+=================================================================== */
+function effectThresholds(text){
+  if(!text) return [];
+  const res = [], seen = new Set();
+  const push = (n, sent)=>{ n=+n; if(n>=2 && n<=20){ sent=sent.trim().replace(/\s+/g," ");
+    const key = n+"|"+sent.slice(0,24); if(!seen.has(key)){ seen.add(key); res.push({ n, text:sent }); } } };
+  // split into sentences/clauses so each threshold keeps its own explanation
+  text.split(/(?<=[.;:])\s+|\n+/).forEach(s=>{
+    let m;
+    // "N+"  (space before, boundary after so damage like "2d6+8" or "+5" don't match)
+    const re1 = /(?:^|[\s(])(\d{1,2})\+(?=[\s.,;:)]|$)/g;
+    while(m = re1.exec(s)) push(m[1], s);
+    // "N or higher/greater/more", "roll of N or higher"
+    const re2 = /(?:^|[\s(])(?:roll(?:s|ed)?\s+(?:of\s+|a\s+)?)?(\d{1,2})\s+or\s+(?:higher|greater|more|better)/gi;
+    while(m = re2.exec(s)) push(m[1], s);
+  });
+  return res.sort((a,b)=>a.n-b.n);
 }
 function openMoveRoll(p, m, sp){
   const d = pokeDerived(p);
@@ -2370,7 +2730,8 @@ function openMoveRoll(p, m, sp){
     }
     return m.damageBase;                  // generic weight moves & normal moves use the printed DB
   }
-  const finalDB = () => { const b=baseDB(); return b!=null ? b + (stab?2:0) : null; };
+  const bm = buffMods(p);                 // active Cheers / Orders / Songs (#2)
+  const finalDB = () => { const b=baseDB(); return b!=null ? b + (stab?2:0) + (bm.db||0) : null; };
   const diceStr = () => { const f=finalDB(); return f!=null ? (DB_TABLE[f]||"").split("/")[0].trim() : ""; };
 
   const body = el("div",{});
@@ -2429,6 +2790,34 @@ function openMoveRoll(p, m, sp){
   renderDamage();
   body.append(explain);
 
+  /* --- active buffs (Cheers / Orders / Songs) applied to this roll (#2) --- */
+  const buffs = ownerBuffs(p);
+  if(buffs.length){
+    const bcard = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+    bcard.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},"✨ Buffs & Orders active"));
+    buffs.forEach(b=>{ const mt=buffModText(b.mods);
+      bcard.append(el("div",{class:"small"}, `• ${b.name}` + (mt?` — ${mt}`:"") + (b.note?`  `:""),
+        b.note?el("span",{class:"muted"}, b.note):"")); });
+    const net = [];
+    if(bm.acc)  net.push(`${bm.acc>0?"+":""}${bm.acc} to Accuracy`);
+    if(bm.dmg)  net.push(`${bm.dmg>0?"+":""}${bm.dmg} to Damage`);
+    if(bm.db)   net.push(`${bm.db>0?"+":""}${bm.db} Damage Base`);
+    if(bm.crit) net.push(`+${bm.crit} Crit/Effect range`);
+    if(net.length) bcard.append(el("div",{class:"small muted",style:"margin-top:4px;font-weight:700"},"Net: "+net.join(" · ")));
+    body.append(bcard);
+  }
+
+  /* --- move effect text, always shown; high-roll thresholds highlighted (#4) --- */
+  const thresholds = effectThresholds(m.effect);
+  if(m.effect){
+    const ec = el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"});
+    ec.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},"Effect"));
+    ec.append(el("div",{class:"small",style:"white-space:pre-wrap"}, m.effect));
+    if(thresholds.length) ec.append(el("div",{class:"small muted",style:"margin-top:6px"},
+      "⚡ Triggers on an Accuracy roll of " + thresholds.map(t=>t.n+"+").join(" / ") + " — watch the roll below."));
+    body.append(ec);
+  }
+
   /* --- results (filled when you press Roll dice) --- */
   const out = el("div",{id:"rollOut",class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:0"});
   out.append(el("div",{class:"muted small"}, "Press 🎲 Roll dice to simulate."));
@@ -2437,26 +2826,50 @@ function openMoveRoll(p, m, sp){
     out.style.borderStyle="solid";
     out.innerHTML="";
     const acc = 1+Math.floor(Math.random()*20);
+    const accTot = acc + (bm.acc||0);
     const accLine = el("div",{style:fDB!=null?"margin-bottom:10px":""});
-    accLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLL"));
-    accLine.append(el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${acc}`,
-      el("span",{class:"muted",style:"font-size:14px;font-weight:600"}, "  (1d20)")));
+    accLine.append(el("div",{class:"lbl",style:"color:var(--muted)  ;font-weight:800"},"ACCURACY ROLL"));
+    accLine.append(el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`,
+      el("span",{class:"muted",style:"font-size:14px;font-weight:600"}, bm.acc?`  (${acc} ${bm.acc>0?"+":"−"} ${Math.abs(bm.acc)} buffs)`:"  (1d20)")));
     if(m.ac!=null) accLine.append(el("div",{class:"small muted"},
-      `Hits if ${acc} ≥ AC ${m.ac} + ${evaNote}.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`));
+      `Hits if ${accTot} ≥ AC ${m.ac} + ${evaNote}.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`));
     out.append(accLine);
+    // extra move effects that trigger on this Accuracy roll (#4) — compared vs the natural 1d20
+    if(thresholds.length){
+      const hit = thresholds.filter(t=>acc>=t.n), miss = thresholds.filter(t=>acc<t.n);
+      const tl = el("div",{style:"margin:2px 0 10px"});
+      hit.forEach(t=>tl.append(el("div",{class:"small",style:"color:var(--good);font-weight:700"},
+        `⚡ ${acc} ≥ ${t.n} — extra effect triggers: `, el("span",{class:"muted",style:"font-weight:400"}, t.text))));
+      miss.forEach(t=>tl.append(el("div",{class:"small muted"},
+        `▫ ${acc} < ${t.n} — this effect doesn't trigger: ${t.text}`)));
+      out.append(tl);
+    }
     if(fDB!=null){
       const r = rollDiceString(diceStr());
       const dmgLine = el("div",{});
       dmgLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"));
       if(r){
-        const total = r.total + (atkStat||0);
+        const total = r.total + (atkStat||0) + (bm.dmg||0);
         dmgLine.append(el("div",{style:"font-size:26px;font-weight:800;color:var(--accent)"}, `💥 ${total}`));
         const parts=[`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`];
-        if(atkStat) parts.push(`+ ${atkStat} ${atkLbl} = ${total}`);
+        if(atkStat) parts.push(`+ ${atkStat} ${atkLbl}`);
+        if(bm.dmg)  parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs`);
+        parts.push(`= ${total}`);
         dmgLine.append(el("div",{class:"small muted",style:"margin-top:4px"}, parts.join("  ")));
+        if(bm.crit) dmgLine.append(el("div",{class:"small muted"}, `Crit / Effect range widened by +${bm.crit} (buffs).`));
         dmgLine.append(el("div",{class:"small muted"}, `Target subtracts ${defNote} & damage reduction.`));
       }
       out.append(dmgLine);
+    }
+    // spend one-shot buffs (Cheers / Strike Again! / Perfect Aim …)
+    const oneShots = ownerBuffs(p).filter(b=>b.once);
+    if(oneShots.length){
+      const sp = el("div",{style:"margin-top:10px"});
+      sp.append(el("div",{class:"small muted",style:"font-weight:700"},"Spend a one-shot buff:"));
+      const row = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-top:4px"});
+      oneShots.forEach(b=>row.append(el("button",{class:"btn-secondary",style:"padding:4px 9px",
+        onclick:()=>{ removeBuff(p,b.id); save(); toast(`Spent ${b.name}`); doRoll(); }}, `✓ ${b.name}`)));
+      sp.append(row); out.append(sp);
     }
   };
   body.append(out);
@@ -2741,6 +3154,52 @@ function addTrainerMove(t){
   const names=D.moves.map(m=>m.name).filter(n=>!t.moves.includes(n));
   openPicker("Add a Move", names, name=>{ t.moves.push(name); save(); renderBattle(); }, "move");
 }
+/* ===================================================================
+   Item-granted attacks (#7) — capture Equipment that provides a Status
+   Attack (Core pp.292-293). Curated from the rulebook and matched against
+   the trainer's inventory by name (like Weapon Moves). Extend ITEM_MOVES
+   with more item→action entries as they're confirmed.
+=================================================================== */
+const ITEM_MOVES = {
+  "Hand Net":     { name:"Hand Net", ac:6, cls:"Status", range:"Melee (Reach)",
+    effect:"AC6 Status Attack to net a Small Pokémon. On a hit you scoop it up and trap it; you may drag it as you move. It can still use long-range attacks or attack the net to break free. Capture Rolls against a netted Pokémon get −20." },
+  "Weighted Net": { name:"Weighted Net", ac:8, cls:"Status", range:"Thrown · Standard Action",
+    effect:"AC8 Status Attack (thrown). While netted the target is Slowed and cannot use Sky or Levitate Speeds; you may pull it 1 metre toward you as a Standard Action." },
+  "Glue Cannon":  { name:"Glue Cannon", ac:8, cls:"Status", range:"Ranged · expends a charge",
+    effect:"AC8 Status Attack; expends a charge. On a hit the target is Slowed; on a critical hit it is Stuck and Trapped instead." },
+};
+function normItemKey(s){ return String(s==null?"":s).toLowerCase().replace(/[^a-z0-9]/g,"").replace(/s$/,""); }
+/* status attacks granted by items the trainer is carrying (matched by name) */
+function inventoryItemAttacks(t){
+  const out=[], seen=new Set();
+  (t.inventory||[]).forEach(it=>{
+    const nm = normItemKey(it && (it.name!=null ? it.name : it));
+    Object.entries(ITEM_MOVES).forEach(([k,prof])=>{
+      if(nm===normItemKey(k) && !seen.has(k)){ seen.add(k); out.push(prof); }
+    });
+  });
+  return out;
+}
+/* roll a curated item Status Attack — accuracy only (no damage), shows its effect */
+function openItemAttack(t, prof){
+  const bm = buffMods(t);
+  const body = el("div",{});
+  body.append(el("div",{class:"chips",style:"margin-bottom:10px"},
+    el("span",{class:"kv"},"Status"), el("span",{class:"kv"},`AC ${prof.ac}`), el("span",{class:"kv"},prof.range)));
+  body.append(el("div",{class:"small",style:"margin-bottom:12px;white-space:pre-wrap"}, prof.effect));
+  const out = el("div",{class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:0"});
+  out.append(el("div",{class:"muted small"},"Press 🎲 Roll to test the Accuracy Check."));
+  const doRoll = ()=>{ out.innerHTML=""; out.style.borderStyle="solid";
+    const acc = 1+Math.floor(Math.random()*20), accTot = acc + (bm.acc||0);
+    out.append(el("div",{},
+      el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLL"),
+      el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`,
+        el("span",{class:"muted",style:"font-size:13px;font-weight:600"}, bm.acc?`  (${acc} + ${bm.acc} buffs)`:" (1d20)")),
+      el("div",{class:"small muted"}, `Hits if ${accTot} ≥ AC ${prof.ac} + the target's Evasion.${acc===20?" Natural 20 — auto-hit!":acc===1?" Natural 1 — auto-miss.":""}`))); };
+  body.append(out);
+  modal({title:prof.name, bodyNode:body, footNodes:[ el("button",{class:"btn-primary",onclick:doRoll},"🎲 Roll dice") ]});
+}
+
 function renderTrainerCombat(root, t){
   const card=el("div",{class:"card"},el("h3",{},"Struggle & Weapon Attacks"));
   // unarmed Struggle (always available)
@@ -2758,6 +3217,21 @@ function renderTrainerCombat(root, t){
     (t.weapons||[]).length ? "Each weapon (and its Weapon Move) is listed above. Add/edit weapons in Trainer → Sheet → Weapons."
                            : "Unarmed Struggle only — add weapons in Trainer → Sheet → Weapons. Action Features (Cheer, Orders…) appear under the tabs above."));
   root.append(card);
+  // capture tools carried in inventory grant Status Attacks (Hand Net, Weighted Net…) (#7)
+  const itemAtks = inventoryItemAttacks(t);
+  if(itemAtks.length){
+    const ic = el("div",{class:"card"}, el("h3",{},"Capture Tools",
+      el("span",{class:"muted small"},"from your inventory")));
+    itemAtks.forEach(prof=>{
+      const slot = el("div",{class:"moveslot"});
+      slot.append(el("div",{style:"flex:1"},
+        el("div",{style:"font-weight:700"}, prof.name, el("span",{class:"muted small",style:"margin-left:6px;font-weight:600"},"item")),
+        el("div",{class:"ms-info"}, `Status · AC ${prof.ac} · ${prof.range}`)));
+      slot.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",onclick:()=>openItemAttack(t,prof)},"🎲 Roll"));
+      ic.append(slot);
+    });
+    root.append(ic);
+  }
   // Moves granted by Features/class — rollable (adds Attack, no STAB), like weapon moves
   if(!Array.isArray(t.moves)) t.moves=[];
   const mvCard=el("div",{class:"card"});
@@ -2866,6 +3340,9 @@ function encounterMoveRow(p, sp, m, mn, favSet, onFav, isStruggle){
   if(m) left.append(el("span",{class:"small muted",style:"min-width:0;overflow:hidden;text-overflow:ellipsis"}, moveLineShort(m)));
   row.append(left);
   const acts=el("div",{class:"inline",style:"gap:6px"});
+  if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"move details",
+    onclick:()=>modal({title:m.name, bodyNode:el("div",{class:"small",html:moveDetailHTML(m,m.name)}),
+      footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Close")]})},"ℹ"));
   if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"roll this move",onclick:()=>openMoveRoll(p,m,sp)},"🎲"));
   if(!isStruggle) acts.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted)",title:"remove move",
     onclick:()=>{ const i=p.moves.indexOf(mn); if(i>=0){ p.moves.splice(i,1); saveEnc(); renderEncounters(); } }},"×"));
@@ -2930,8 +3407,91 @@ async function sendEncMonToPC(enc, p, list){
   m._pcFrom = "Encounter"+(enc.name?": "+enc.name:""); m._pcAt = Date.now();
   cloud.pc.data.pokemon.push(m);
   const i = list.indexOf(p); if(i>=0) list.splice(i,1);   // caught → leaves the encounter
+  removeEncMonTokens(p.id);                                // and clear its token off any battle map
   saveEnc(); toast(`Caught ${encMonName(p)} → sent to the PC ✓`); renderEncounters();
   if(!await pcUpsert()) toast("⚠ PC sync issue — it'll reconcile on the next change");
+}
+/* remove any battle-map token(s) linked to an encounter Pokémon (it left the field / was caught) */
+function removeEncMonTokens(monId){
+  const byMap = cloud.mapTokens?.data?.byMap; if(!byMap) return;
+  let changed=false;
+  for(const mid of Object.keys(byMap)){
+    const before = byMap[mid].length;
+    byMap[mid] = byMap[mid].filter(t=>!(t.link && t.link.kind==="enc" && t.link.monId===monId));
+    if(byMap[mid].length!==before) changed=true;
+  }
+  if(changed) mapTokensUpsert();   // fire-and-forget sync; realtime removes it for everyone
+}
+/* compact combat-stage steppers for an encounter Pokémon (±6 per stat; feeds pokeDerived) */
+function encCombatStages(p){
+  if(!p.cs) p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0};
+  const d = pokeDerived(p);
+  const det = el("details",{class:"spoiler",style:"margin-top:8px"});
+  const any = CS_STATS.some(([k])=>p.cs[k]);
+  det.append(el("summary",{}, el("span",{style:"font-weight:700"},"Combat Stages"),
+    any?el("span",{class:"muted small",style:"margin-left:8px"},"active"):""));
+  const grid = el("div",{style:"display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"});
+  CS_STATS.forEach(([k,lbl])=>{
+    const cell = el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:2px;min-width:66px"});
+    cell.append(el("div",{class:"small muted",style:"font-weight:700"},lbl));
+    cell.append(el("div",{style:`font-weight:800;${d.cs[k]>0?"color:var(--good)":d.cs[k]<0?"color:var(--bad)":""}`}, String(d.eff[k])));
+    cell.append(csStepper(p.cs[k]||0, v=>{ p.cs[k]=Math.max(-6,Math.min(6,v)); saveEnc(); renderEncounters(); }));
+    grid.append(cell);
+  });
+  det.append(grid);
+  if(any) det.append(el("button",{class:"linkbtn",style:"margin-top:6px",
+    onclick:()=>{ CS_STATS.forEach(([k])=>p.cs[k]=0); saveEnc(); renderEncounters(); }},"reset combat stages"));
+  return det;
+}
+/* Manual stat distribution for an encounter Pokémon — GM spreads the Level+10 added points by hand
+   instead of the random roll (#24). Feeds pokeDerived via p.stats[k].added. */
+function encStatSpread(p){
+  const budget = (p.level||1) + 10;
+  const keys = STATS;
+  keys.forEach(([k])=>{ if(!p.stats[k]) p.stats[k]={added:0}; });
+  const spent = keys.reduce((s,[k])=> s + (p.stats[k]?.added||0), 0);
+  const remaining = budget - spent;
+  const det = el("details",{class:"spoiler",style:"margin-top:8px"});
+  det.append(el("summary",{}, el("span",{style:"font-weight:700"},"Distribute stats"),
+    el("span",{class:"muted small",style:"margin-left:8px"}, `${remaining} of ${budget} left`)));
+  const grid = el("div",{style:"display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"});
+  keys.forEach(([k,lbl])=>{
+    const added = p.stats[k]?.added||0;
+    const cell = el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:2px;min-width:66px"});
+    cell.append(el("div",{class:"small muted",style:"font-weight:700"},lbl));
+    const step = el("div",{class:"stepper"});
+    step.append(
+      el("button",{title:"lower",disabled:added<=0,onclick:()=>{ p.stats[k].added=Math.max(0,added-1); p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); }},"−"),
+      el("span",{class:"stepper-val"}, String(added)),
+      el("button",{title:"raise",disabled:remaining<=0,onclick:()=>{ p.stats[k].added=added+1; p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); }},"+"));
+    cell.append(step);
+    grid.append(cell);
+  });
+  det.append(grid);
+  det.append(el("button",{class:"linkbtn",style:"margin-top:6px",
+    onclick:()=>{ encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); }},"🎲 randomise"));
+  return det;
+}
+/* Combat Stages control for an encounter Trainer (mirrors encCombatStages, uses trainerDerived) */
+function encTrainerCombatStages(t){
+  normTrainer(t);
+  const d = trainerDerived(t);
+  const det = el("details",{class:"spoiler",style:"margin-top:8px"});
+  const any = CS_STATS.some(([k])=>t.cs[k]);
+  det.append(el("summary",{}, el("span",{style:"font-weight:700"},"Combat Stages"),
+    any?el("span",{class:"muted small",style:"margin-left:8px"},"active"):""));
+  const grid = el("div",{style:"display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"});
+  CS_STATS.forEach(([k,lbl])=>{
+    const cell = el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:2px;min-width:66px"});
+    cell.append(el("div",{class:"small muted",style:"font-weight:700"},lbl));
+    cell.append(el("div",{style:`font-weight:800;${d.cs[k]>0?"color:var(--good)":d.cs[k]<0?"color:var(--bad)":""}`}, String(d.totals[k])));
+    cell.append(csStepper(t.cs[k]||0, v=>{ t.cs[k]=Math.max(-6,Math.min(6,v)); saveEnc(); renderEncounters(); }));
+    grid.append(cell);
+  });
+  det.append(grid);
+  if(any) det.append(el("button",{class:"linkbtn",style:"margin-top:6px",
+    onclick:()=>{ CS_STATS.forEach(([k])=>t.cs[k]=0); saveEnc(); renderEncounters(); }},"reset combat stages"));
+  return det;
 }
 /* compact, expandable status-condition toggles for an encounter Pokémon */
 function encStatusControl(p){
@@ -3023,6 +3583,8 @@ function encounterMonCard(enc, p, list){
     el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"capture DC",onclick:()=>catchDCModal(p)},"🎯 Catch DC"),
     el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"send to the shared PC (caught)",onclick:()=>sendEncMonToPC(enc,p,list)},"🎣 To PC"));
   card.append(actRow);
+  card.append(encStatSpread(p));
+  card.append(encCombatStages(p));
   card.append(encStatusControl(p));
   // moves — favourites first, each rollable
   const favSet=new Set(p.encFav||[]);
@@ -3069,12 +3631,22 @@ function encounterTrainerCard(enc, tr){
   const td=trainerDerived(t), maxHP=td.hp; if(t.currentHP==null) t.currentHP=maxHP;
   card.append(el("div",{class:"small muted",style:"margin-top:4px"},
     `Evasion — Phys +${td.physEva} · Spec +${td.specEva} · Speed +${td.spdEva}`));
+  if(td.injuries>0) card.append(el("div",{class:"small",style:"color:var(--bad);font-weight:700;margin-top:2px"},
+    `${td.injuries} injur${td.injuries===1?"y":"ies"} — max HP ${maxHP} (−${td.fullHP-maxHP})`));
   const setHP=v=>{ t.currentHP=Math.max(-99,Math.min(maxHP,v)); saveEnc(); renderEncounters(); };
   const pct=Math.max(0,Math.min(100,Math.round(t.currentHP/maxHP*100)));
   card.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"},
     el("span",{class:"small muted",style:"font-weight:700;white-space:nowrap"}, `HP ${t.currentHP}/${maxHP}`),
     el("div",{class:"hpbar",style:"flex:1;min-width:120px"}, el("i",{style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`}))));
   card.append(damageHealRow(()=>t.currentHP, setHP));
+  // Injuries (cap max HP) + Combat Stages
+  const injRow=el("div",{class:"inline",style:"gap:6px;margin-top:6px;align-items:center"});
+  injRow.append(el("span",{class:"small muted",style:"font-weight:700"},"Injuries"),
+    el("button",{class:"btn-secondary",style:"padding:2px 9px",onclick:()=>{ t.injuries=Math.max(0,(t.injuries||0)-1); if(t.currentHP>trainerDerived(t).hp) t.currentHP=trainerDerived(t).hp; saveEnc(); renderEncounters(); }},"−"),
+    el("span",{style:"font-weight:800;min-width:16px;text-align:center"}, String(t.injuries||0)),
+    el("button",{class:"btn-secondary",style:"padding:2px 9px",onclick:()=>{ t.injuries=Math.min(10,(t.injuries||0)+1); if(t.currentHP>trainerDerived(t).hp) t.currentHP=trainerDerived(t).hp; saveEnc(); renderEncounters(); }},"+"));
+  card.append(injRow);
+  card.append(encTrainerCombatStages(t));
   // Attacks: unarmed Struggle + one slot per weapon (+ its Weapon Move) — reuses the Sheet's slots
   const atkWrap=el("div",{style:"margin-top:8px"});
   atkWrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:2px"},"⚔ Attacks"));
@@ -3470,7 +4042,7 @@ function refreshCharSelect(){
     const rows = Object.values(cloud.byId).sort((a,b)=>(a.owner_name||"").localeCompare(b.owner_name||"")||(a.name||"").localeCompare(b.name||""));
     if(!rows.length){ sel.append(el("option",{value:""}, "— no characters yet —")); return; }
     rows.forEach(r => {
-      const mine = r.owner_id===cloud.userId;
+      const mine = ownsRow(r);
       const label = `${r.data?.name||"(unnamed)"} — ${r.owner_name||"?"}${mine?" (you)":""}`;
       sel.append(el("option",{value:r.id,selected:r.id===cloud.activeId}, label));
     });
@@ -3557,7 +4129,12 @@ function myUserId(){
   if(!id){ id = "u_"+uid(); localStorage.setItem("ptu_userid", id); }
   return id;
 }
-function canEdit(row){ return !!row && (cloud.isGM || row.owner_id===cloud.userId); }
+/* Ownership is by DISPLAY NAME (+ campaign), not the device-random owner_id — so the same person
+   on a second device (phone) with the same name can see & edit their own sheet. (Trusted group;
+   names aren't secret, which matches the campaign's threat model.) */
+function normName(s){ return (s||"").trim().toLowerCase(); }
+function ownsRow(row){ return !!row && normName(row.owner_name)===normName(cloud.name) && normName(cloud.name)!==""; }
+function canEdit(row){ return !!row && (cloud.isGM || ownsRow(row)); }
 function canEditActive(){ return canEdit(cloud.byId[cloud.activeId]); }
 /* a player connected as "Viewer" can edit HP for every player's trainer/Pokémon token on the
    map (handy for a co-pilot / assistant tracking the party's health), but nothing else GM-only. */
@@ -3734,6 +4311,32 @@ async function mapTokensUpsert(){
   if(error){ console.error(error); toast("⚠ Map save failed"); return false; }
   return true;
 }
+/* Debounced, coalescing save of the shared map-tokens row. HP ticks and drag commits arrive in
+   bursts and each awaited a full upload before the UI updated — that was the "HP updates ~10s
+   later" lag (#5). Callers now mutate the local model + re-render OPTIMISTICALLY, then call this;
+   the network write catches up in the background and realtime syncs peers. */
+let mapTokensTimer;
+function mapTokensSave(){ clearTimeout(mapTokensTimer); mapTokensTimer = setTimeout(()=>{ mapTokensTimer=null; mapTokensUpsert(); }, 350); }
+/* Debounced upsert of a specific character row, keyed per-row, so rapid map-token HP edits to a
+   real sheet coalesce into ONE write instead of one blocking upload per tick. Stamps updated_at +
+   lastWrite immediately (like cloudSave) so a stale echo of our own write can't revert us. */
+const rowSaveTimers = {};
+function cloudSaveRow(row){
+  if(!row) return;
+  row.updated_at = new Date().toISOString();
+  row.name = row.data?.name || "";
+  cloud.lastWrite[row.id] = row.updated_at;   // ignore our own returning echo
+  cacheCloud();
+  clearTimeout(rowSaveTimers[row.id]);
+  rowSaveTimers[row.id] = setTimeout(async ()=>{
+    delete rowSaveTimers[row.id];
+    cloud.lastSaveTs = Date.now();
+    const { error } = await cloud.client.from("sheets").upsert({
+      id:row.id, campaign:cloud.campaign, owner_id:row.owner_id, owner_name:row.owner_name,
+      name:row.name, data:row.data, updated_at:row.updated_at });
+    if(error){ console.error(error); toast("⚠ Cloud save failed"); }
+  }, 350);
+}
 
 /* ---- cloud encounters (GM prep), same reserved-row pattern ---- */
 function normEnc(data){
@@ -3782,7 +4385,7 @@ async function cloudConnect(campaign, name, gmCode, silent){
     }
     subscribeRealtime();
     mode = "cloud"; openMon = null;
-    const mine = Object.values(cloud.byId).find(r=>r.owner_id===cloud.userId);
+    const mine = Object.values(cloud.byId).find(r=>ownsRow(r));
     cloud.activeId = mine ? mine.id : (Object.keys(cloud.byId)[0] || null);
     updateCloudButton(); closeModal(); render();
     if(!silent) toast(`Connected to “${campaign}”${cloud.isGM?" as GM":""} ✓`);
@@ -3950,6 +4553,15 @@ function flushCloudSaves(){
     const enc = ensureEnc(); enc.updated_at=new Date().toISOString();
     cloud.encSaveTs=Date.now(); restUpsertKeepalive(enc);
   }
+  if(mapTokensTimer){
+    clearTimeout(mapTokensTimer); mapTokensTimer=null;
+    const t = ensureMapTokens(); t.updated_at=new Date().toISOString();
+    cloud.mapSaveTs=Date.now(); restUpsertKeepalive(t);
+  }
+  for(const id in rowSaveTimers){
+    clearTimeout(rowSaveTimers[id]); delete rowSaveTimers[id];
+    const r = cloud.byId[id]; if(r) restUpsertKeepalive(r);
+  }
 }
 async function cloudNewCharacter(name){
   const c = newCharacter(name);
@@ -3970,7 +4582,7 @@ async function cloudDeleteCharacter(id){
   render();
 }
 /* the GM's own character row */
-function myRow(){ return Object.values(cloud.byId).find(r=>r.owner_id===cloud.userId); }
+function myRow(){ return Object.values(cloud.byId).find(r=>ownsRow(r)); }
 /* immediate upsert of a specific row (used for one-off GM writes to any sheet) */
 async function cloudUpsert(row){
   row.updated_at = new Date().toISOString();
@@ -4027,7 +4639,7 @@ function openSendThisPokemon(p){
       if(ok){ openMon=null; render(); }
     }},
       el("div",{class:"r-title"}, r.data?.name||"(unnamed)"),
-      el("div",{class:"r-meta"}, `${r.owner_name||"?"}${r.owner_id===cloud.userId?" (you)":""} · ${(r.data?.pokemon?.length)||0} Pokémon`)));
+      el("div",{class:"r-meta"}, `${r.owner_name||"?"}${ownsRow(r)?" (you)":""} · ${(r.data?.pokemon?.length)||0} Pokémon`)));
   });
   if(!list.children.length) list.append(el("div",{class:"muted"},"No other players to send to yet."));
   wrap.append(list);
@@ -4045,7 +4657,7 @@ function openSendPokemon(presetId){
   const wrap = el("div",{});
   const sel = el("select");
   rows.forEach(r => sel.append(el("option",{value:r.id,selected:r.id===targetId},
-    `${r.data?.name||"(unnamed)"} — ${r.owner_name||"?"}${r.owner_id===cloud.userId?" (you)":""}`)));
+    `${r.data?.name||"(unnamed)"} — ${r.owner_name||"?"}${ownsRow(r)?" (you)":""}`)));
   sel.addEventListener("change",()=>targetId=sel.value);
   wrap.append(el("label",{class:"field"}, el("span",{},"Send to player"), sel));
 
@@ -4087,7 +4699,7 @@ function openSendPokemon(presetId){
    Shared PC — deposit/withdraw Pokémon to a campaign-wide storage box
 =================================================================== */
 /* my own sheets that can deposit — for the GM this includes their NPC trainers */
-function pcMyRows(){ return Object.values(cloud.byId).filter(r=>r.owner_id===cloud.userId); }
+function pcMyRows(){ return Object.values(cloud.byId).filter(r=>ownsRow(r)); }
 /* characters a withdraw can go to — players: their own; GM: any character in the campaign */
 function pcTargetRows(){ return cloud.isGM ? Object.values(cloud.byId) : pcMyRows(); }
 function pcDefaultTargetId(){
@@ -4340,9 +4952,6 @@ function tokenDefenseStat(token, physical){
   }
   return 0;   // standalone token has no defense data
 }
-function typeMultAgainst(atkType, defTypes){
-  let m=1; (defTypes||[]).forEach(dt=>{ m *= (TYPE_CHART[atkType]?.[dt] ?? 1); }); return m;
-}
 /* ---- initiative: Speed stat + an editable per-token bonus (amulets, effects…) ---- */
 function tokenSpeed(token){
   const L = token.link ? tokenLinked(token) : null;
@@ -4501,20 +5110,20 @@ async function setTokenHP(token, val){
   if(!info.editable){ toast("Read-only"); return; }
   if(!token.link){
     token.hp = Math.max(-99, Math.min(token.maxHp||1, val|0));
-    await mapTokensUpsert(); if(!$(".modal")) renderMap(); return;
+    if(!$(".modal")) renderMap(); mapTokensSave(); return;   // optimistic: paint now, write catches up
   }
   const { row, obj, kind } = info; if(!obj){ toast("Can't edit that token"); return; }
   if(kind==="enc" || kind==="enctrainer"){       // live-linked enemy → write to the encounter itself
     const encMax = kind==="enctrainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
     obj.currentHP = Math.max(-99, Math.min(encMax, val|0));
-    await encUpsert(); if(!$(".modal")) render();  // render() refreshes both the map and the Encounters tab
-    return;
+    if(!$(".modal")) render();                    // render() refreshes both the map and the Encounters tab
+    saveEnc(); return;                            // debounced cloud write
   }
   if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; }
   const max = kind==="trainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
   obj.currentHP = Math.max(-99, Math.min(max, val|0));
-  await cloudUpsert(row);                       // writes the real sheet; realtime syncs the owner
   if(!$(".modal")) renderMap();
+  cloudSaveRow(row);                              // debounced write of the real sheet; realtime syncs the owner
 }
 /* the live list of status-effect keys currently on a token's underlying trainer/Pokémon/enemy/standalone data */
 function tokenStatusKeys(token){
@@ -4528,16 +5137,39 @@ async function setTokenStatuses(token, keys){
   if(!info.editable){ toast("Read-only"); return; }
   if(!token.link){
     token.statuses = keys;
-    await mapTokensUpsert(); if(!$(".modal")) renderMap(); return;
+    if(!$(".modal")) renderMap(); mapTokensSave(); return;
   }
   const { row, obj, kind } = info; if(!obj){ toast("Can't edit that token"); return; }
   obj.statuses = keys;
   if(kind==="enc" || kind==="enctrainer"){       // live-linked enemy → write to the encounter itself
-    await encUpsert(); if(!$(".modal")) render(); return;
+    if(!$(".modal")) render(); saveEnc(); return;
   }
   if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; }
-  await cloudUpsert(row);
   if(!$(".modal")) renderMap();
+  cloudSaveRow(row);
+}
+/* Combat Stages for a token's linked creature (Pokémon or Trainer, sheet- or encounter-linked) */
+function tokenCS(token){
+  const L = token.link ? tokenLinked(token) : null;
+  return (L && L.obj && L.obj.cs) ? L.obj.cs : null;
+}
+async function setTokenCS(token, stat, val){
+  const info = tokenHp(token);
+  if(!info.editable){ toast("Read-only"); return; }
+  const { row, obj, kind } = info; if(!obj){ toast("This token has no combat stats"); return; }
+  if(!obj.cs) obj.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0};
+  obj.cs[stat] = Math.max(-6, Math.min(6, val|0));
+  if(kind==="enc" || kind==="enctrainer"){ if(!$(".modal")) render(); saveEnc(); return; }
+  if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; }
+  if(!$(".modal")) renderMap(); cloudSaveRow(row);
+}
+/* persist a linked creature's buffs after an add/remove from the map token menu (#2) */
+async function commitTokenBuffs(token){
+  const info = tokenHp(token);
+  const { row, obj, kind } = info; if(!obj) return;
+  if(kind==="enc" || kind==="enctrainer"){ saveEnc(); return; }
+  if(row){ if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; } cloudSaveRow(row); }
+  else save();
 }
 function canRemoveToken(token){
   if(cloud.isGM) return true;
@@ -4627,14 +5259,127 @@ function drawFog(cv, map, stageW, stageH){
   for(let x=0;x<cols;x++) for(let y=0;y<rows;y++) if(!set.has(x+","+y)) ctx.fillRect(x*px, y*px, px, px);
 }
 
+/* ===================================================================
+   Attack ranges / Area-of-Effect overlay (#1)
+   Paint a move's affected cells from a token — Line / Cone / Burst / Blast.
+   Local to this viewer (not synced); a GM/planning aid over the map grid.
+=================================================================== */
+let mapAoE = null;   // { tokenId, shape, size, dir } while a range is being shown
+const AOE_DIRS = { N:[0,-1], NE:[1,-1], E:[1,0], SE:[1,1], S:[0,1], SW:[-1,1], W:[-1,0], NW:[-1,-1] };
+/* parse a move's `range` text into a paintable AoE, e.g. "Cone, 2" / "Line 6" / "Burst 1" /
+   "Close Blast 2" / "Ranged Blast, 3". Returns {shape,size} or null (single-target / melee / self). */
+function parseAoE(range){
+  if(!range) return null;
+  const r = String(range).toLowerCase();
+  const grab = kw => { const m = r.match(new RegExp(kw+"[^0-9]*([0-9]+)")); return m ? +m[1] : null; };
+  for(const [kw,shape] of [["cone","cone"],["line","line"],["blast","blast"],["burst","burst"]]){
+    if(r.includes(kw)) return { shape, size: grab(kw) || 1 };
+  }
+  return null;
+}
+/* the set of "x,y" cells a shape covers, measured from `token`'s footprint & facing `dir` */
+function aoeCells(map, token, shape, size, dir){
+  const set = new Set();
+  const s = token.size||1, span = s-1;
+  const tx = Math.round(token.x), ty = Math.round(token.y);
+  const ocx = tx + s/2, ocy = ty + s/2;                 // origin centre (cell units)
+  size = Math.max(1, size||1);
+  const add = (x,y)=>{ if(x>=0 && y>=0) set.add(x+","+y); };
+  if(shape==="burst"){                                  // square radius around the user (Chebyshev)
+    for(let x=tx-size; x<=tx+span+size; x++) for(let y=ty-size; y<=ty+span+size; y++) add(x,y);
+    return set;
+  }
+  const d = AOE_DIRS[dir] || AOE_DIRS.E, len = Math.hypot(d[0],d[1]);
+  const ux = d[0]/len, uy = d[1]/len;                   // unit facing
+  if(shape==="line"){                                   // 1-wide line starting just outside the footprint
+    let px = tx + (d[0]>0 ? s : d[0]<0 ? -1 : Math.floor(span/2));
+    let py = ty + (d[1]>0 ? s : d[1]<0 ? -1 : Math.floor(span/2));
+    for(let k=0;k<size;k++){ add(px,py); px += d[0]; py += d[1]; }
+    return set;
+  }
+  if(shape==="cone"){                                   // triangle: dist ≤ size, narrowing toward the origin
+    const R = size, thr = Math.cos(40*Math.PI/180);
+    for(let x=tx-R-span; x<=tx+span+R; x++) for(let y=ty-R-span; y<=ty+span+R; y++){
+      const vx=(x+0.5)-ocx, vy=(y+0.5)-ocy, dist=Math.hypot(vx,vy);
+      if(dist<0.1 || dist>R+0.5) continue;
+      if((vx*ux + vy*uy)/dist >= thr) add(x,y);
+    }
+    return set;
+  }
+  if(shape==="blast"){                                  // size×size square placed adjacent in `dir`
+    const cx = ocx + ux*(s/2 + size/2), cy = ocy + uy*(s/2 + size/2);
+    const x0 = Math.round(cx - size/2), y0 = Math.round(cy - size/2);
+    for(let x=x0; x<x0+size; x++) for(let y=y0; y<y0+size; y++) add(x,y);
+    return set;
+  }
+  return set;
+}
+function drawAoE(cv, map, stageW, stageH){
+  const px = map.gridSize; cv.width = Math.ceil(stageW); cv.height = Math.ceil(stageH);
+  const ctx = cv.getContext("2d"); ctx.clearRect(0,0,cv.width,cv.height);
+  if(!mapAoE) return;
+  const token = mapTokensFor(map.id).find(t=>t.id===mapAoE.tokenId); if(!token) return;
+  const cells = aoeCells(map, token, mapAoE.shape, mapAoE.size, mapAoE.dir);
+  ctx.fillStyle = "rgba(245,166,35,0.32)"; ctx.strokeStyle = "rgba(245,166,35,0.9)";
+  ctx.lineWidth = Math.max(1, px*0.05);
+  cells.forEach(k=>{ const [x,y]=k.split(",").map(Number);
+    ctx.fillRect(x*px, y*px, px, px); ctx.strokeRect(x*px+0.5, y*px+0.5, px-1, px-1); });
+}
+function startAoE(token, shape, size){ mapAoE = { tokenId:token.id, shape, size:size||1, dir:"E" }; renderMap(); }
+function clearAoE(){ mapAoE = null; renderMap(); }
+/* redraw only the overlay canvas (keeps input focus while tweaking size/direction) */
+function refreshAoE(){
+  const map = currentMapForView(); if(!map) return;
+  const cv = document.querySelector("#view-map .map-aoe"); if(!cv) return;
+  const { w, h } = mapStageSize(map); drawAoE(cv, map, w, h);
+}
+/* floating on-map controls to adjust the shown range (shape / size / facing / clear) */
+function aoeControlPanel(map){
+  const token = mapTokensFor(map.id).find(t=>t.id===mapAoE.tokenId);
+  const p = el("div",{class:"aoe-panel"});
+  p.append(el("div",{class:"aoe-title"}, "🎯 Range" + (token ? ` — ${tokenHp(token).name}` : "")));
+  const shapeSel = el("select");
+  [["burst","Burst"],["cone","Cone"],["line","Line"],["blast","Blast"]].forEach(([v,l])=>
+    shapeSel.append(el("option",{value:v,selected:v===mapAoE.shape},l)));
+  shapeSel.addEventListener("change",()=>{ mapAoE.shape=shapeSel.value; renderMap(); });   // toggles the d-pad
+  const sizeIn = el("input",{type:"number",min:1,max:20,value:mapAoE.size,style:"width:52px"});
+  sizeIn.addEventListener("input",()=>{ mapAoE.size=Math.max(1,parseInt(sizeIn.value)||1); refreshAoE(); });
+  p.append(el("div",{class:"aoe-row"}, shapeSel, sizeIn, el("span",{class:"small muted"},"cells")));
+  if(mapAoE.shape!=="burst"){
+    const pad = el("div",{class:"aoe-dpad"});
+    [["NW","↖"],["N","↑"],["NE","↗"],["W","←"],["·",""],["E","→"],["SW","↙"],["S","↓"],["SE","↘"]].forEach(([dir,glyph])=>{
+      if(dir==="·"){ pad.append(el("div",{})); return; }
+      const b = el("button",{class:"aoe-dir"+(mapAoE.dir===dir?" on":""),
+        onclick:()=>{ mapAoE.dir=dir; pad.querySelectorAll(".aoe-dir").forEach(x=>x.classList.remove("on")); b.classList.add("on"); refreshAoE(); }}, glyph);
+      pad.append(b);
+    });
+    p.append(pad);
+  }
+  p.append(el("button",{class:"btn-secondary",style:"margin-top:6px;width:100%",onclick:clearAoE},"✕ Clear range"));
+  return p;
+}
+
 /* ---- battle mode: track how far each token has moved this round (diagonals cost 2) ---- */
 function battleOn(){ return !!activeMapMeta().battleOn; }
-/* a linked token's Overland movement (from its sheet, in metres); null for standalone/unknown */
+/* the movement types a token actually has, as [key,label,metres] (land/sky/swim/burrow) */
+function tokenMoveModes(token){
+  if(!token.link) return [];
+  const L = tokenLinked(token); if(!L || !L.obj) return [];
+  if(L.kind==="trainer" || L.kind==="enctrainer"){
+    const d = trainerDerived(L.obj);
+    return [["overland","Land",d.overland],["swim","Swim",d.swim]].filter(m=>m[2]);
+  }
+  const c = getSpecies(L.obj.species)?.capabilities || {};
+  return [["overland","Land",c.overland],["sky","Sky",c.sky],["swim","Swim",c.swim],["burrow","Burrow",c.burrow]]
+    .filter(m=>m[2]);
+}
+function tokenMoveMode(token){
+  const modes = tokenMoveModes(token); if(!modes.length) return null;
+  return modes.find(m=>m[0]===token.moveMode) || modes[0];   // chosen mode, else first available (usually Land)
+}
+/* a linked token's movement (metres) for the CHOSEN mode; null for standalone/unknown */
 function tokenMoveSpeed(token){
-  if(!token.link) return null;
-  const L = tokenLinked(token); if(!L || !L.obj) return null;
-  if(L.kind==="trainer" || L.kind==="enctrainer") return trainerDerived(L.obj).overland || null;
-  return getSpecies(L.obj.species)?.capabilities?.overland || null;   // sheet or encounter Pokémon
+  const m = tokenMoveMode(token); return m ? (m[2]||null) : null;
 }
 /* Manhattan tile cost between two cells (no diagonal movement → a diagonal step costs 2) */
 function tileCost(ax, ay, bx, by){ return Math.abs(Math.round(ax)-Math.round(bx)) + Math.abs(Math.round(ay)-Math.round(by)); }
@@ -4722,9 +5467,10 @@ function mapTokenNode(token, map){
     const ringHtml = tokenStatusRingSVG(keys, boxPx, token.id);
     if(ringHtml) node.append(el("div",{class:"tk-status-ring", html:ringHtml}));
   }
-  if(battleOn() && token.moved){                              // movement used this round vs Overland speed
-    const spd = tokenMoveSpeed(token);
-    node.append(el("div",{class:"tk-moved"+(spd && token.moved>spd?" over":"")}, `${token.moved}${spd?("/"+spd):""}m`));
+  if(battleOn() && token.moved){                              // movement used this round vs chosen-mode speed
+    const spd = tokenMoveSpeed(token), mode = tokenMoveMode(token);
+    const icon = mode ? ({overland:"",sky:" 🕊",swim:" 🌊",burrow:" ⛏"}[mode[0]]||"") : "";
+    node.append(el("div",{class:"tk-moved"+(spd && token.moved>spd?" over":"")}, `${token.moved}${spd?("/"+spd):""}m${icon}`));
   }
   return node;
 }
@@ -4899,6 +5645,102 @@ function openTokenMenu(token, map){
         dmgIn, typeSel, clsSel, el("button",{class:"btn-primary",onclick:apply},"Apply")), out);
       wrap.append(atk);
     }
+
+    // ---- Combat Stages: raise/lower this creature's CS right from the map (#19) ----
+    const L = token.link ? tokenLinked(token) : null;
+    if(L && L.obj && (L.kind==="pokemon"||L.kind==="enc"||L.kind==="trainer"||L.kind==="enctrainer")){
+      const isT = L.kind==="trainer"||L.kind==="enctrainer";
+      if(!L.obj.cs) L.obj.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0};
+      const der = isT ? trainerDerived(L.obj) : pokeDerived(L.obj);
+      const csw = el("div",{style:"margin-top:16px"});
+      csw.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"Combat Stages"));
+      const g = el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:8px"});
+      CS_STATS.forEach(([k,lbl])=>{
+        const effCS = der.cs[k], val = isT ? der.totals[k] : der.eff[k];
+        const c = el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:2px;min-width:60px"});
+        c.append(el("div",{class:"small muted",style:"font-weight:700"},lbl));
+        c.append(el("div",{style:`font-weight:800;${effCS>0?"color:var(--good)":effCS<0?"color:var(--bad)":""}`}, String(val)));
+        if(info.editable) c.append(csStepper(L.obj.cs[k]||0, async v=>{ await setTokenCS(token,k,v); openTokenMenu(token,map); }));
+        else c.append(el("div",{class:"small muted"}, `${effCS>0?"+":""}${effCS}`));
+        g.append(c);
+      });
+      csw.append(g);
+      wrap.append(csw);
+    }
+
+    // ---- Actions: roll this creature's moves/attacks straight from its token (#2) ----
+    if(L && L.obj){
+      const aw = el("div",{style:"margin-top:16px"});
+      aw.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"⚔ Actions — tap to roll"));
+      const row = el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px"});
+      const btn = (label,fn)=>row.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",onclick:fn}, "🎲 "+label));
+      if(L.kind==="trainer"||L.kind==="enctrainer"){
+        const t=L.obj;
+        btn("Struggle", ()=>openTrainerAttack(t));
+        (t.weapons||[]).forEach(w=> btn(w.name||w.category, ()=>openTrainerAttack(t,null,w)));
+        (t.encMoves||[]).concat(t.moves||[]).forEach(mn=>{ if(moveByName.get((mn||"").toLowerCase())) btn(mn, ()=>openTrainerAttack(t,mn)); });
+      } else {
+        const p=L.obj, sp=getSpecies(p.species);
+        const st=struggleFor(p,sp); if(st) btn(st.name, ()=>openMoveRoll(p,st,sp));
+        (p.moves||[]).forEach(mn=>{ const m=moveByName.get((mn||"").toLowerCase()); if(m) btn(mn, ()=>openMoveRoll(p,m,sp)); });
+      }
+      aw.append(row);
+      wrap.append(aw);
+    }
+
+    // ---- Buffs & Orders: add/remove Cheers/Orders/Songs on the linked creature (#2) ----
+    if(L && L.obj && info.editable){
+      if(!Array.isArray(L.obj.buffs)) L.obj.buffs = [];
+      wrap.append(buffsCard(L.obj, async()=>{ await commitTokenBuffs(token); openTokenMenu(token, map); }));
+    } else if(L && L.obj && ownerBuffs(L.obj).length){
+      const bl = el("div",{style:"margin-top:16px"});
+      bl.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"✨ Active buffs"));
+      ownerBuffs(L.obj).forEach(b=>bl.append(el("div",{class:"small"}, `• ${b.name}` + (buffModText(b.mods)?` — ${buffModText(b.mods)}`:""))));
+      wrap.append(bl);
+    }
+
+    // ---- Attack ranges: paint a move's AoE (line/cone/burst/blast) on the map (#1) ----
+    if(L && L.obj){
+      const mv = [];
+      if(L.kind==="trainer"||L.kind==="enctrainer")
+        (L.obj.encMoves||[]).concat(L.obj.moves||[]).forEach(mn=>{ const m=moveByName.get((mn||"").toLowerCase()); if(m) mv.push(m); });
+      else
+        (L.obj.moves||[]).forEach(mn=>{ const m=moveByName.get((mn||"").toLowerCase()); if(m) mv.push(m); });
+      const aoeMoves = mv.filter(m=>parseAoE(m.range));
+      const rw = el("div",{style:"margin-top:16px"});
+      rw.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"🎯 Attack ranges — paint on map"));
+      const rrow = el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px"});
+      aoeMoves.forEach(m=>{ const a=parseAoE(m.range);
+        rrow.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",title:m.range,
+          onclick:()=>{ startAoE(token, a.shape, a.size); closeModal(); }}, `${m.name} · ${a.shape} ${a.size}`)); });
+      rrow.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"pick any shape manually",
+        onclick:()=>{ startAoE(token, "burst", 1); closeModal(); }}, "✎ Manual…"));
+      rw.append(rrow);
+      if(!aoeMoves.length) rw.append(el("div",{class:"small muted"},"None of this creature's moves are area moves — use ✎ Manual to draw one."));
+      wrap.append(rw);
+    }
+
+    // ---- Catch: any player can try to catch a wild (encounter) Pokémon from its token (#9) ----
+    if(L && L.obj && L.kind==="enc"){
+      wrap.append(el("div",{class:"tk-menu-row",style:"margin-top:14px"},
+        el("button",{class:"btn-primary",style:"width:100%",onclick:()=>catchDCModal(L.obj)},"🎯 Try to Catch")));
+    }
+
+    // ---- Movement type toggle, available on any token click (not just battle mode) (#7) ----
+    if(info.editable && !battleOn()){
+      const modes = tokenMoveModes(token);
+      if(modes.length>1){
+        const cur = (tokenMoveMode(token)||modes[0])[0];
+        const chips = el("div",{class:"tk-menu-row",style:"margin-top:6px;flex-wrap:wrap;gap:6px"});
+        modes.forEach(([k,lbl,m])=>{
+          chips.append(el("button",{class:"btn-secondary"+(k===cur?" on":""),style:"padding:4px 9px",
+            title:`use ${lbl} speed (${m} m)`,
+            onclick:async()=>{ token.moveMode=k; await mapTokensUpsert(); renderMap(); openTokenMenu(token,map); }},
+            `${({overland:"🚶",sky:"🕊",swim:"🌊",burrow:"⛏"}[k]||"")} ${lbl} ${m}`));
+        });
+        wrap.append(el("div",{class:"small muted",style:"margin-top:12px;font-weight:700"},"Movement type"), chips);
+      }
+    }
   }
   if(battleOn()){
     const used = token.moved||0, spd = tokenMoveSpeed(token), over = spd && used>spd;
@@ -4908,6 +5750,20 @@ function openTokenMenu(token, map){
     if(info.editable) row.append(el("button",{class:"btn-secondary",style:"margin-left:auto",
       onclick:async()=>{ await resetTokenMovement(token,map); closeModal(); }},"↺ Reset"));
     wrap.append(row);
+    // movement type toggle (Land / Sky / Swim / Burrow) — changes which speed the round tracks against
+    const modes = tokenMoveModes(token);
+    if(info.editable && modes.length>1){
+      const cur = (tokenMoveMode(token)||modes[0])[0];
+      const chips = el("div",{class:"tk-menu-row",style:"margin-top:6px;flex-wrap:wrap;gap:6px"});
+      modes.forEach(([k,lbl,m])=>{
+        const on = k===cur;
+        chips.append(el("button",{class:"btn-secondary"+(on?" on":""),style:"padding:4px 9px",
+          title:`move using ${lbl} speed (${m} m)`,
+          onclick:async()=>{ token.moveMode=k; await mapTokensUpsert(); renderMap(); openTokenMenu(token,map); }},
+          `${({overland:"🚶",sky:"🕊",swim:"🌊",burrow:"⛏"}[k]||"")} ${lbl} ${m}`));
+      });
+      wrap.append(el("div",{class:"small muted",style:"margin-top:8px;font-weight:700"},"Movement type"), chips);
+    }
   }
   const foot = [];
   if(canRemoveToken(token)){
@@ -4944,7 +5800,7 @@ function openTokenMenu(token, map){
 /* "Players" tab grouped by trainer: each character sheet → the trainer + their PARTY Pokémon */
 function playerTokenGroups(){
   const sheetRows = cloud.isGM ? Object.values(cloud.byId)
-                               : Object.values(cloud.byId).filter(r=>r.owner_id===cloud.userId);
+                               : Object.values(cloud.byId).filter(r=>ownsRow(r));
   return sheetRows.map(r=>({
     id: r.id,
     owner: r.owner_name || "",
@@ -4971,6 +5827,22 @@ function enemyTokenRows(){
     });
   });
   return rows;
+}
+/* Enemies grouped by encounter (mirrors playerTokenGroups) so the Add-token list is separated
+   per encounter instead of one flat list. */
+function enemyTokenGroups(){
+  return encList().map(enc=>{
+    const rows = [];
+    (enc.mons||[]).forEach(p=> rows.push({ label:encMonName(p), sub:`Lv ${p.level}`,
+      make:()=>({ link:{ kind:"enc", encId:enc.id, monId:p.id } }) }));
+    (enc.trainers||[]).forEach(tr=>{
+      rows.push({ label:(tr.trainer?.name||"Trainer"), sub:`Trainer · Lv ${tr.trainer?.level||1}`,
+        make:()=>({ link:{ kind:"enctrainer", encId:enc.id, trainerId:tr.id } }) });
+      (tr.pokemon||[]).forEach(p=> rows.push({ label:encMonName(p), sub:`Lv ${p.level} · ${tr.trainer?.name||"trainer"}'s`,
+        make:()=>({ link:{ kind:"enc", encId:enc.id, monId:p.id } }) }));
+    });
+    return { id:enc.id, name:enc.name||"Encounter", rows };
+  }).filter(g=>g.rows.length);
 }
 /* pick something to drop on the map — split into Players / Enemies tabs */
 function openAddToken(map){
@@ -5015,12 +5887,30 @@ function openAddToken(map){
       if(!shown) list.append(el("div",{class:"pickitem muted"}, q?"No matches.":"No character sheets yet."));
       return;
     }
-    // enemies — flat list + custom-token entry
+    // enemies — grouped by encounter (collapsible), + custom-token entry
     list.append(el("div",{class:"pickitem",style:"font-weight:700",onclick:()=>{ closeModal(); openCustomToken(map); }},
       el("div",{class:"pi-title"},"✎ Custom token…"), el("div",{class:"pi-sub muted"},"Name it, set HP, optional image")));
-    enemyTokenRows().filter(r=>!q||r.label.toLowerCase().includes(q)||(r.sub||"").toLowerCase().includes(q)).slice(0,250)
-      .forEach(r=>list.append(el("div",{class:"pickitem",onclick:add(r.make)},
+    const match = s => !q || (s||"").toLowerCase().includes(q);
+    let shownE = 0;
+    enemyTokenGroups().forEach(g=>{
+      const encHit = match(g.name);
+      const rows = g.rows.filter(r=>encHit || match(r.label) || match(r.sub));
+      if(!encHit && !rows.length) return;
+      shownE++;
+      const expanded = q ? true : !collapsed.has("enc:"+g.id);
+      const head = el("div",{class:"pickitem pick-group",style:"cursor:pointer",
+        onclick:()=>{ const key="enc:"+g.id; collapsed.has(key)?collapsed.delete(key):collapsed.add(key); draw(); }},
+        el("span",{class:"pick-caret"}, expanded?"▾":"▸"),
+        el("div",{style:"flex:1;min-width:0"},
+          el("div",{class:"pi-title"}, "👹 "+g.name),
+          el("div",{class:"pi-sub muted"}, `${g.rows.length} token${g.rows.length===1?"":"s"}`)),
+        el("button",{class:"btn-secondary",style:"padding:4px 10px",title:"add every token in this encounter",
+          onclick:async e=>{ e.stopPropagation(); closeModal(); for(const r of g.rows) await addToken(map, r.make()); }},"＋ All"));
+      list.append(head);
+      if(expanded) rows.forEach(r=>list.append(el("div",{class:"pickitem pick-mon",onclick:add(r.make)},
         el("div",{style:"flex:1;min-width:0"}, el("div",{class:"pi-title"},r.label), el("div",{class:"pi-sub muted"},r.sub||"")))));
+    });
+    if(!shownE) list.append(el("div",{class:"pickitem muted"}, q?"No matches.":"No encounters yet — build one in the 👹 Encounters tab."));
   };
   const setTab = t => { tab=t; bPlayers.classList.toggle("on",t==="players"); bEnemies.classList.toggle("on",t==="enemies"); draw(); };
   search.addEventListener("input", draw); draw();
@@ -5133,13 +6023,23 @@ function mapStageSize(map){
   (map.images||[]).forEach(im=>{ if(im.w) w=Math.max(w, im.x+im.w); if(im.h) h=Math.max(h, im.y+im.h); });
   return { w, h };
 }
-/* one-time fixup: a migrated legacy background has w/h 0 — resolve to natural size (GM only) */
+/* backgrounds already re-rendered once post-decode this session (bug #6, keyed by image id) */
+const decodedBgIds = new Set();
+/* one-time fixup: a migrated legacy background has w/h 0 — resolve to its natural size. Runs for
+   EVERYONE now (bug #6): a player used to keep the 30×20 fallback stage size until first paint,
+   drawing the background at the wrong size/scale until a token moved. The GM also persists the
+   resolved sizes to cloud so the fixup only ever happens once; players just correct their own view. */
 function resolveImageSizes(map){
   const pending = (map.images||[]).filter(im=>!im.w || !im.h);
-  if(!pending.length || !cloud.isGM) return;
+  if(!pending.length) return;
   let left = pending.length;
-  pending.forEach(im=>{ const p=new Image(); p.onload=async()=>{ im.w=p.naturalWidth||map.gridSize*10; im.h=p.naturalHeight||map.gridSize*10;
-    if(--left===0){ await mapMetaUpsert(); renderMap(); } }; p.onerror=()=>{ im.w=im.w||map.gridSize*10; im.h=im.h||map.gridSize*10; if(--left===0) renderMap(); }; p.src=im.src; });
+  const done = async ()=>{ if(--left) return;
+    if(cloud.isGM) await mapMetaUpsert();
+    if(currentTab==="map" && !mapDragging) renderMap(); };
+  pending.forEach(im=>{ const p=new Image();
+    p.onload =()=>{ im.w=p.naturalWidth||map.gridSize*10; im.h=p.naturalHeight||map.gridSize*10; done(); };
+    p.onerror=()=>{ im.w=im.w||map.gridSize*10; im.h=im.h||map.gridSize*10; done(); };
+    p.src=im.src; });
 }
 
 function renderMap(){
@@ -5205,7 +6105,7 @@ function renderMap(){
   } else {
     bar.append(el("div",{class:"map-mapname"}, map ? `🗺 ${map.name}` : "🗺 Battle map"));
     if(meta.battleOn) bar.append(el("span",{class:"battle-badge"},"⚔ Battle"));
-    if(map && Object.values(cloud.byId).some(r=>r.owner_id===cloud.userId))
+    if(map && Object.values(cloud.byId).some(r=>ownsRow(r)))
       bar.append(el("button",{class:"btn-primary",onclick:()=>openAddToken(map)},"＋ Add my token"));
   }
   root.append(bar);
@@ -5226,8 +6126,15 @@ function renderMap(){
   // layered images (back → front)
   if(!map.images.length) stage.append(el("div",{class:"map-nobg",style:`width:${stageW}px;height:${stageH}px`}));
   map.images.forEach(im=>{
-    const node = el("img",{class:"map-img"+(mapImgEdit?" editing":""),src:im.src,draggable:false,alt:"",
+    const node = el("img",{class:"map-img"+(mapImgEdit?" editing":""),src:im.src,draggable:false,alt:"",decoding:"sync",
       style:`left:${im.x}px;top:${im.y}px;`+(im.w?`width:${im.w}px;`:"")+(im.h?`height:${im.h}px;`:"")});
+    // The scaled stage is a GPU layer rasterized at build time; if a background isn't decoded yet it
+    // composites a blurry raster until the next full re-render (moving a token "fixed" it — bug #6).
+    // Re-render ONCE per background after it decodes, keyed by id so cached data-URLs can't loop.
+    if(im.id && !decodedBgIds.has(im.id) && node.decode){
+      const mark = ()=>decodedBgIds.add(im.id);
+      node.decode().then(()=>{ mark(); if(currentTab==="map" && !mapDragging && !mapImgEdit) renderMap(); }).catch(mark);
+    }
     if(mapImgEdit){
       const wrap = el("div",{class:"map-img-wrap editing",style:`left:${im.x}px;top:${im.y}px;width:${im.w||stageW}px;height:${im.h||stageH}px`});
       node.style.left="0px"; node.style.top="0px"; node.style.width="100%"; node.style.height="100%";
@@ -5263,7 +6170,7 @@ function renderMap(){
   const visibleToken = t => {
     if(t.gmHidden) return false;                                    // GM has hidden this token from players entirely
     if(cloud.isGM || !map.fogOn) return true;
-    if(t.link && cloud.byId[t.link.sheetId]?.owner_id===cloud.userId) return true;   // always see your own
+    if(t.link && ownsRow(cloud.byId[t.link.sheetId])) return true;   // always see your own
     return fog.has(Math.round(t.x)+","+Math.round(t.y));
   };
   const drawFogInto = () => { if(!map.fogOn) return null; const cv=el("canvas",{class:"map-fog"}); drawFog(cv,map,stageW,stageH); return cv; };
@@ -5276,7 +6183,13 @@ function renderMap(){
     const f = drawFogInto(); if(f) stage.append(f);                 // players: opaque fog over hidden tokens
   }
 
+  // attack-range / AoE overlay (#1) — above tokens, with floating controls
+  if(mapAoE && mapTokensFor(map.id).some(t=>t.id===mapAoE.tokenId)){
+    const acv = el("canvas",{class:"map-aoe"}); drawAoE(acv, map, stageW, stageH); stage.append(acv);
+  } else if(mapAoE){ mapAoE = null; }                               // token gone / different map
+
   applyMapCamera(stage);
+  if(mapAoE) viewport.append(aoeControlPanel(map));
   viewport.append(stage);
   attachPanZoom(viewport, stage);
   root.append(viewport);
@@ -5312,7 +6225,7 @@ function openCloudPanel(){
         onclick:()=>{ cloud.activeId=r.id; openMon=null; closeModal(); switchTab("trainer"); }},
         el("div",{style:"flex:1;min-width:0"},
           el("div",{class:"r-title"}, r.data?.name||"(unnamed)"),
-          el("div",{class:"r-meta"}, `${r.owner_name||"?"}${r.owner_id===cloud.userId?" (you)":""} · ${(r.data?.pokemon?.length)||0} Pokémon`)));
+          el("div",{class:"r-meta"}, `${r.owner_name||"?"}${ownsRow(r)?" (you)":""} · ${(r.data?.pokemon?.length)||0} Pokémon`)));
       if(cloud.isGM) item.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",title:"send a Pokémon to this player",
         onclick:e=>{ e.stopPropagation(); openSendPokemon(r.id); }},"🎁 Send"));
       roster.append(item);
