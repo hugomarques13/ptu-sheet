@@ -4447,15 +4447,34 @@ async function mapTokensUpsert(){
 /* Debounced, coalescing save of the shared map-tokens row. HP ticks and drag commits arrive in
    bursts and each awaited a full upload before the UI updated — that was the "HP updates ~10s
    later" lag (#5). Callers now mutate the local model + re-render OPTIMISTICALLY, then call this;
-   the network write catches up in the background and realtime syncs peers. */
+   the network write catches up in the background and realtime syncs peers.
+   Stamps updated_at IMMEDIATELY (like cloudSaveRow), not just when the debounced upsert finally
+   fires. Without this, `cloud.mapTokens.updated_at` stays STALE for the whole debounce window, so
+   a realtime echo of an unrelated, already-superseded earlier write can look "newer" than that
+   stale stamp, pass onRealtime's staleness guard, and wholesale-REPLACE `cloud.mapTokens` — wiping
+   out the pending local edit (HP/status/CS/moved token) before it's ever saved. That's what showed
+   up as edits silently reverting under any burst of rapid map activity, not just literal double-clicks. */
 let mapTokensTimer;
-function mapTokensSave(){ clearTimeout(mapTokensTimer); mapTokensTimer = setTimeout(()=>{ mapTokensTimer=null; mapTokensUpsert(); }, 350); }
+function mapTokensSave(){
+  ensureMapTokens().updated_at = new Date().toISOString();
+  clearTimeout(mapTokensTimer);
+  mapTokensTimer = setTimeout(()=>{ mapTokensTimer=null; mapTokensUpsert(); }, 350);
+}
 /* Debounced, coalescing save of the map META row. The ▶ next-turn button mutates it (initTurnId/
    initSeq/round) and used to fire one un-awaited upsert PER click — rapid clicks launched several
    concurrent writes of the same row that could commit OUT OF ORDER, leaving the shared row (and peers)
-   on an earlier turn than the local screen. Coalescing to one write of the final state removes the race. */
+   on an earlier turn than the local screen. Coalescing to one write of the final state removes that race.
+   Also stamps updated_at IMMEDIATELY (see mapTokensSave above) — this is what was still letting the
+   turn silently "roll back": for the whole 300ms debounce window `cloud.mapMeta.updated_at` used to
+   stay at its last-SAVED value, so a same-row realtime echo that was merely stale relative to the new
+   (not-yet-saved) turn could still look newer than that old stamp and clobber the in-memory turn advance
+   before the debounced write ever went out. */
 let mapMetaTimer;
-function mapMetaSave(){ clearTimeout(mapMetaTimer); mapMetaTimer = setTimeout(()=>{ mapMetaTimer=null; mapMetaUpsert(); }, 300); }
+function mapMetaSave(){
+  ensureMapMeta().updated_at = new Date().toISOString();
+  clearTimeout(mapMetaTimer);
+  mapMetaTimer = setTimeout(()=>{ mapMetaTimer=null; mapMetaUpsert(); }, 300);
+}
 /* Debounced upsert of a specific character row, keyed per-row, so rapid map-token HP edits to a
    real sheet coalesce into ONE write instead of one blocking upload per tick. Stamps updated_at +
    lastWrite immediately (like cloudSave) so a stale echo of our own write can't revert us. */
