@@ -4450,6 +4450,12 @@ async function mapTokensUpsert(){
    the network write catches up in the background and realtime syncs peers. */
 let mapTokensTimer;
 function mapTokensSave(){ clearTimeout(mapTokensTimer); mapTokensTimer = setTimeout(()=>{ mapTokensTimer=null; mapTokensUpsert(); }, 350); }
+/* Debounced, coalescing save of the map META row. The ▶ next-turn button mutates it (initTurnId/
+   initSeq/round) and used to fire one un-awaited upsert PER click — rapid clicks launched several
+   concurrent writes of the same row that could commit OUT OF ORDER, leaving the shared row (and peers)
+   on an earlier turn than the local screen. Coalescing to one write of the final state removes the race. */
+let mapMetaTimer;
+function mapMetaSave(){ clearTimeout(mapMetaTimer); mapMetaTimer = setTimeout(()=>{ mapMetaTimer=null; mapMetaUpsert(); }, 300); }
 /* Debounced upsert of a specific character row, keyed per-row, so rapid map-token HP edits to a
    real sheet coalesce into ONE write instead of one blocking upload per tick. Stamps updated_at +
    lastWrite immediately (like cloudSave) so a stale echo of our own write can't revert us. */
@@ -4690,6 +4696,11 @@ function flushCloudSaves(){
     clearTimeout(mapTokensTimer); mapTokensTimer=null;
     const t = ensureMapTokens(); t.updated_at=new Date().toISOString();
     cloud.mapSaveTs=Date.now(); restUpsertKeepalive(t);
+  }
+  if(mapMetaTimer){
+    clearTimeout(mapMetaTimer); mapMetaTimer=null;
+    const m = ensureMapMeta(); m.updated_at=new Date().toISOString();
+    cloud.mapSaveTs=Date.now(); restUpsertKeepalive(m);
   }
   for(const id in rowSaveTimers){
     clearTimeout(rowSaveTimers[id]); delete rowSaveTimers[id];
@@ -5132,9 +5143,9 @@ function advanceInitiative(map, meta, dir){
   // (awaiting the Supabase round-trips first is what made "Next turn" feel laggy). Realtime echoes
   // are dropped by the mapMeta/mapTokens updated_at guards, so the background writes are safe.
   renderMap();
-  mapMetaUpsert();
+  mapMetaSave();                                    // coalesced — rapid clicks write once, in order
   if(expired.length) toast(`⌛ Buff expired: ${expired.join(", ")}`);
-  if(wrapped){ mapTokensUpsert(); toast(`↺ Round ${meta.initRound} — movement reset`); }
+  if(wrapped){ mapTokensSave(); toast(`↺ Round ${meta.initRound} — movement reset`); }
 }
 /* small floating initiative widget: draggable by its header, position + collapsed state remembered
    per-device (it's a display preference, not shared game state) */
@@ -5253,24 +5264,46 @@ function tokenStatusRingSVG(keys, boxPx, uid){
   // ring can never drift off-center regardless of border-box/border-width quirks on the token.
   return `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" style="display:block;overflow:visible;pointer-events:none">${parts}</svg>`;
 }
+/* Surgically update one token's HP bar + number on the board, WITHOUT a full renderMap. This keeps
+   HP edits instant even while the token menu (a modal) is open — the old `if(!$(".modal")) renderMap()`
+   guard meant the board never repainted until the menu closed. Returns false if the node isn't mounted. */
+function updateTokenHpDom(token){
+  const node = document.querySelector(`#view-map .map-token[data-tid="${token.id}"]`);
+  if(!node) return false;
+  const info = tokenHp(token);
+  if(!(info.unlinked || tokenHpVisible(info))) return true;
+  const pct = Math.max(0, Math.min(100, Math.round(info.cur/info.max*100)));
+  const bar = node.querySelector(".tk-hp");
+  if(bar){ bar.style.width = pct+"%"; bar.className = "tk-hp"+(pct<=25?" low":pct<=50?" mid":""); }
+  const num = node.querySelector(".tk-hpnum");
+  if(num) num.textContent = info.unlinked ? "⚠ unlinked" : `${info.cur}/${info.max}`;
+  return true;
+}
+/* repaint the token now: full renderMap when nothing's overlaid, else a fast surgical bar update
+   (so a change made in the token menu shows on the board immediately). */
+function paintTokenHP(token, encTab){
+  if($(".modal")) updateTokenHpDom(token);
+  else if(encTab) render();                       // enc path also refreshes the Encounters tab
+  else renderMap();
+}
 async function setTokenHP(token, val){
   const info = tokenHp(token);
   if(!info.editable){ toast("Read-only"); return; }
   if(!token.link){
     token.hp = Math.max(-99, Math.min(token.maxHp||1, val|0));
-    if(!$(".modal")) renderMap(); mapTokensSave(); return;   // optimistic: paint now, write catches up
+    paintTokenHP(token); mapTokensSave(); return;   // optimistic: paint now, write catches up
   }
   const { row, obj, kind } = info; if(!obj){ toast("Can't edit that token"); return; }
   if(kind==="enc" || kind==="enctrainer"){       // live-linked enemy → write to the encounter itself
     const encMax = kind==="enctrainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
     obj.currentHP = Math.max(-99, Math.min(encMax, val|0));
-    if(!$(".modal")) render();                    // render() refreshes both the map and the Encounters tab
+    paintTokenHP(token, true);
     saveEnc(); return;                            // debounced cloud write
   }
   if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; }
   const max = kind==="trainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
   obj.currentHP = Math.max(-99, Math.min(max, val|0));
-  if(!$(".modal")) renderMap();
+  paintTokenHP(token);
   cloudSaveRow(row);                              // debounced write of the real sheet; realtime syncs the owner
 }
 /* the live list of status-effect keys currently on a token's underlying trainer/Pokémon/enemy/standalone data */
