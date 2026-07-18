@@ -333,6 +333,10 @@ details.spoiler summary{cursor:pointer; font-weight:700; color:var(--muted)}
 .lu-future[open] > summary::before{content:"▾ "}
 .lu-future .lu-level{opacity:.7; border-style:dashed}
 .lu-future .lu-level:hover{opacity:1}
+.lu-seg{display:inline-flex; gap:4px}
+.lu-statbtn{padding:5px 12px; border:1px solid var(--line); border-radius:6px; background:var(--panel-2);
+  color:var(--muted); cursor:pointer; font-weight:600; font-size:12px}
+.lu-statbtn.on{background:var(--accent); border-color:var(--accent); color:#fff}
 
 /* ---------- stat stepper ---------- */
 .stepper{display:flex; align-items:center; gap:4px; justify-content:center; margin-top:2px}

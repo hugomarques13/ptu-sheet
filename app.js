@@ -451,6 +451,8 @@ function normTrainer(t){
   if(!Array.isArray(t.techniques)) t.techniques = [];             // learned class Techniques
   if(!Array.isArray(t.moves)) t.moves = [];                       // combat Moves granted by Features/class
   if(!Array.isArray(t.buffs)) t.buffs = [];                       // active Cheers / Orders / Songs (#2)
+  if(!t.msStats || typeof t.msStats!=="object") t.msStats = { atk:0, spatk:0 };  // Level-Up milestone Bonus-Stats already baked into combat.added
+  syncMilestoneStats(t);                                          // reconcile assigned milestone points → Atk/SpAtk
   return t;
 }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -1027,6 +1029,7 @@ function addTrainerXP(t, n){
   while(t.xp < 0 && t.level > 1){ t.xp += TRAINER_XP_PER_LEVEL; t.level--; }              // allow taking EXP back
   if(t.xp < 0) t.xp = 0;
   if(t.level >= TRAINER_MAX_LEVEL){ t.level = TRAINER_MAX_LEVEL; t.xp = Math.min(t.xp, TRAINER_XP_PER_LEVEL); }
+  syncMilestoneStats(t);   // level change may earn/remove milestone Bonus-Stats points
   save();
   if(leveled > 0) toast(`⭐ Level up! ${t.name||"Trainer"} is now Lv ${t.level}`);
   renderTrainer();
@@ -1151,6 +1154,9 @@ function trainerDerivedGrid(t){
 }
 function recalcTrainer(){
   const t = activeChar().trainer;
+  const before = JSON.stringify(t.msStats||{});
+  syncMilestoneStats(t);                       // a manual Level change may earn/remove milestone points
+  if(JSON.stringify(t.msStats||{})!==before) save();
   STATS.forEach(([k]) => { const n=$(`[data-tot="${k}"]`); if(n) n.textContent = t.combat[k].base + t.combat[k].added; });
   SKILLS.forEach(([k]) => { const n=$(`[data-dice="${k}"]`); if(n) n.textContent = `${rankDice(t.skills[k])}d6`; });
   const g = $("#trainerDerived"); if (g) g.replaceWith(trainerDerivedGrid(t));
@@ -1474,25 +1480,57 @@ const LU_MILESTONES = {
                  "One General Feature":[{kind:"feature", label:"General Feature"}] } } },
 };
 
-/* the even levels each milestone "Bonus Stats" choice grants +1 Atk & +1 SpAtk on
-   (L5 folds in its "+2 retroactive" as the two even levels 2 & 4 you passed before taking it) */
+/* the even levels each milestone "Bonus Stats" choice grants one bonus point on — the player
+   assigns each earned point to Attack OR Sp.Attack (L5 folds in its "+2 retroactive" as the two
+   even levels 2 & 4 passed before taking it at L5). Points are hard-restricted to Atk/SpAtk. */
 const LU_STAT_LEVELS = {
   m5:[2,4,6,8,10], m10:[12,14,16,18,20], m20:[22,24,26,28,30],
   m30:[32,34,36,38,40], m40:[42,44,46,48,50],
 };
-/* milestone "Bonus Stats" picks → extra Atk/SpAtk stat points earned by a given level.
-   Only counts levels already reached (future planning picks don't leak into the real budget). */
-function luStatBonus(t, level){
-  if(!t || !t.levelUp) return { each:0, total:0 };
-  let each = 0;                                    // added to Attack AND to Sp.Attack
+/* milestone Bonus-Stats points, tallied for a given level. Each "Bonus Stats" milestone is a SINGLE
+   choice of Attack OR Sp.Attack (t.levelUp[`L{L}:{mk}:stat`] = "atk"|"spatk"); ALL points it earns
+   (one per even level for 5 levels — L5 folds in Lv2 & Lv4 as its "+2 retroactive") go into that one
+   stat. Only counts levels already reached; future-planning picks never leak into the real sheet. */
+function luStatAlloc(t, level){
+  const lv = level==null ? (t && t.level || 1) : level;
+  const out = { atk:0, spatk:0, total:0, slots:0 };
+  if(!t || !t.levelUp) return out;
   for(const L of [5,10,20,30,40]){
-    if(L > level) continue;
+    if(L > lv) continue;
     const ms = LU_MILESTONES[L]; if(!ms || !ms.choice) continue;
-    const pick = t.levelUp[`L${L}:${ms.choice.key}`] || "";
-    if(!pick.startsWith("Bonus Stats")) continue;
-    each += (LU_STAT_LEVELS[ms.choice.key]||[]).filter(x=>x<=level).length;
+    const mk = ms.choice.key;
+    if(!String(t.levelUp[`L${L}:${mk}`]||"").startsWith("Bonus Stats")) continue;
+    const earned = (LU_STAT_LEVELS[mk]||[]).filter(x=>x<=lv).length;
+    out.slots += earned;
+    const stat = t.levelUp[`L${L}:${mk}:stat`];   // one choice for the whole milestone
+    if(stat==="atk"){ out.atk += earned; out.total += earned; }
+    else if(stat==="spatk"){ out.spatk += earned; out.total += earned; }
   }
-  return { each, total: each*2 };                  // +each Atk + each SpAtk
+  return out;
+}
+/* reconcile the assigned milestone points into the trainer's real Atk/SpAtk added-stats.
+   Idempotent: only applies the DELTA vs the persisted t.msStats mirror, so re-running (load, cloud
+   sync, level change) never double-counts, and de-leveling auto-removes now-unearned points. */
+function syncMilestoneStats(t){
+  if(!t || !t.combat) return t;
+  const want = luStatAlloc(t);
+  const have = t.msStats || { atk:0, spatk:0 };
+  ["atk","spatk"].forEach(k=>{
+    const delta = (want[k]||0) - (have[k]||0);
+    if(delta) t.combat[k].added = Math.max(0, (t.combat[k].added||0) + delta);
+  });
+  t.msStats = { atk:want.atk, spatk:want.spatk };
+  return t;
+}
+/* the single Attack / Sp.Attack choice for a Bonus-Stats milestone — every point it earns goes here */
+function luStatChoice(t, key){
+  const cur = t.levelUp[key] || "";
+  const mk = (val,txt)=>el("button",{class:"lu-statbtn"+(cur===val?" on":""),
+    title:`Put these bonus points into ${txt}`,
+    onclick:()=>{ t.levelUp[key] = (cur===val?"":val); syncMilestoneStats(t); save(); renderTrainer(); }}, txt);
+  return el("div",{class:"lu-slot"},
+    el("span",{class:"lu-label"}, "Bonus points go into"),
+    el("div",{class:"lu-seg"}, mk("atk","Attack"), mk("spatk","Sp.Atk")));
 }
 /* does an Edge (by name) rank up a Skill? → reveal a "which Skill?" sub-picker */
 function edgeRanksSkill(name){
@@ -1528,23 +1566,41 @@ function luSlot(t, key, kind, label, hint){
   return row;
 }
 
-function luMilestoneNode(t, level, ms){
+function luMilestoneNode(t, level, ms, future){
   const box = el("div",{class:"lu-ms"},
     el("div",{class:"lu-ms-head"}, el("span",{class:"lu-ms-star"},"★"),
       el("b",{}, `Level ${level} — ${ms.title}`)),
     el("div",{class:"small muted", style:"margin:2px 0 6px"}, ms.note));
   (ms.grants||[]).forEach((g,i)=> box.append(luSlot(t, `L${level}:ms:${i}`, g.kind, g.label, g.hint)));
   if(ms.choice){
-    const ck = `L${level}:${ms.choice.key}`;
+    const mk = ms.choice.key;
+    const ck = `L${level}:${mk}`;
     const cur = t.levelUp[ck] || "";
     const sel = el("select",{class:"lu-select"});
     sel.append(el("option",{value:""},"— choose —"));
     ms.choice.options.forEach(o=>{ const op=el("option",{value:o}, o); sel.append(op); });
     sel.value = cur;
-    sel.addEventListener("change",()=>{ t.levelUp[ck]=sel.value; save(); renderTrainer(); });
+    sel.addEventListener("change",()=>{ t.levelUp[ck]=sel.value; syncMilestoneStats(t); save(); renderTrainer(); });
     box.append(sel);
     const extra = ms.choice.grants && ms.choice.grants[cur];
-    if(extra) extra.forEach((g,i)=> box.append(luSlot(t, `L${level}:${ms.choice.key}:${i}`, g.kind, g.label, g.hint)));
+    if(extra) extra.forEach((g,i)=> box.append(luSlot(t, `L${level}:${mk}:${i}`, g.kind, g.label, g.hint)));
+    // Bonus Stats → one Atk/SpAtk choice; +1 to it on each even Level for 5 levels (auto-applied).
+    if(cur.startsWith("Bonus Stats")){
+      const stat = t.levelUp[`L${level}:${mk}:stat`];
+      const statTxt = stat==="atk"?"Attack" : stat==="spatk"?"Sp.Attack" : null;
+      const all = LU_STAT_LEVELS[mk]||[];
+      box.append(luStatChoice(t, `L${level}:${mk}:stat`));
+      if(future){
+        box.append(el("div",{class:"small muted", style:"margin-top:4px"},
+          `+1 ${statTxt||"Atk/Sp.Atk"} on each even Level ${all[0]}–${all[all.length-1]} (${all.length} total) once you reach them.`));
+      } else {
+        const earned = all.filter(x=>x<=(t.level||1)).length;
+        box.append(el("div",{class:"small muted", style:"margin-top:4px"},
+          statTxt
+            ? `+${earned} ${statTxt} so far (of ${all.length}) — added to your stats automatically. Even Levels: ${all.join(", ")}.`
+            : `Pick Attack or Sp.Attack above — you’ll gain +1 to it on each even Level ${all[0]}–${all[all.length-1]} (${earned} earned so far).`));
+      }
+    }
   }
   return box;
 }
@@ -1565,7 +1621,7 @@ function luTotals(t, level){
       else if(pick.startsWith("One General Feature")) feat += 1;
     }
   }
-  stat += luStatBonus(t, level).total;   // milestone Bonus-Stats Atk/SpAtk points
+  stat += luStatAlloc(t, level).slots;   // milestone Bonus-Stats points earned (Atk/SpAtk)
   return { feat, edge, stat };
 }
 
@@ -1578,11 +1634,11 @@ function levelUpCard(t){
   card.append(el("div",{class:"small muted", style:"margin:-4px 0 10px"},
     "PTU 1.05 Trainer advancement. Every level grants a Stat Point; odd levels a Feature, even levels an Edge. ",
     "Record what you picked at each level — this is a personal tracker and doesn’t change your Features & Edges tab. ",
-    "Milestone “Bonus Stats” choices do expand your Sheet-tab stat budget (Atk/SpAtk)."));
+    "Milestone “Bonus Stats” points are the exception: assign each to Attack or Sp.Attack and they’re added to your Sheet-tab stats automatically."));
 
   /* summary tallies */
   const tot = luTotals(t, level);
-  const msb = luStatBonus(t, level);
+  const msb = luStatAlloc(t, level);
   const addedSum = STATS.reduce((s,[k])=>s+(t.combat[k].added||0),0);
   card.append(el("div",{class:"lu-summary"},
     el("div",{class:"lu-sum"}, el("b",{}, tot.feat), el("span",{class:"muted"}," Features earned"),
@@ -1590,7 +1646,7 @@ function levelUpCard(t){
     el("div",{class:"lu-sum"}, el("b",{}, tot.edge), el("span",{class:"muted"}," Edges earned"),
       el("div",{class:"small muted"}, `you list ${t.edges.length}`)),
     el("div",{class:"lu-sum"}, el("b",{}, tot.stat), el("span",{class:"muted"}," Stat Points"),
-      el("div",{class:"small muted"}, `${addedSum} spent${msb.total?` · +${msb.total} milestone (Atk/SpAtk)`:""}`)),
+      el("div",{class:"small muted"}, `${addedSum} spent${msb.slots?` · ${msb.total}/${msb.slots} milestone assigned`:""}`)),
   ));
 
   /* per-level ledger */
@@ -1605,7 +1661,7 @@ function levelUpCard(t){
       `🔮 Plan ahead — Levels ${level+1}–${LU_MAX_LEVEL}`,
       el("span",{class:"small muted",style:"margin-left:8px;font-weight:400"},"visual only · doesn’t affect your sheet")));
     const flist = el("div",{class:"lu-levels", style:"margin-top:10px"});
-    for(let L=level+1; L<=LU_MAX_LEVEL; L++) flist.append(luLevelBlock(t, L));
+    for(let L=level+1; L<=LU_MAX_LEVEL; L++) flist.append(luLevelBlock(t, L, true));
     det.append(flist);
     card.append(det);
   }
@@ -1613,7 +1669,7 @@ function levelUpCard(t){
 }
 
 /* one level's ledger block (shared by the earned ledger and the future-planning list) */
-function luLevelBlock(t, L){
+function luLevelBlock(t, L, future){
   const block = el("div",{class:"lu-level"});
   const head = el("div",{class:"lu-lvl-head"}, el("span",{class:"lu-lvl-num"}, L));
   if(L===1) head.append(el("span",{}, "Character Creation"));
@@ -1634,7 +1690,7 @@ function luLevelBlock(t, L){
     block.append(luSlot(t, `L${L}:edge`, "edge", "Edge"));
   }
   const ms = LU_MILESTONES[L];
-  if(ms) block.append(luMilestoneNode(t, L, ms));
+  if(ms) block.append(luMilestoneNode(t, L, ms, future));
   return block;
 }
 
@@ -2429,7 +2485,7 @@ function trainerStatTagBonus(t){
 }
 function trainerStatBudget(t){
   const bonus = trainerStatTagBonus(t);           // Features with [+Stat] tags add to the pool
-  const ms = luStatBonus(t, t.level||1).total;    // Level-Up milestone Bonus-Stats (Atk/SpAtk)
+  const ms = luStatAlloc(t).total;                // assigned Level-Up milestone Bonus-Stats (Atk/SpAtk)
   const budget = (t.level||1) + 9 + bonus + ms;
   const spent = STATS.reduce((s,[k]) => s + (t.combat[k].added||0), 0);
   return { budget, spent, remaining: budget - spent, bonus, ms };
