@@ -5179,7 +5179,16 @@ function initiativePanel(map, meta){
   const body = el("div",{style:"overflow-y:auto;padding:3px"});
   if(!list.length){ body.append(el("div",{class:"muted",style:"font-size:11px;padding:6px;line-height:1.35"},
     cloud.isGM ? "Players auto-join. Tap an enemy token → “⚔ In initiative”." : "No initiative yet.")); box.append(body); return box; }
-  if(!meta.initTurnId || !list.find(e=>e.token.id===meta.initTurnId)) meta.initTurnId = list[0].token.id;
+  // This auto-pick is a RENDER-time side effect on shared state (meta.initTurnId), and renderMap()
+  // fires often for reasons unrelated to initiative (HP ticks, realtime echoes, drags). If it ever
+  // triggers on a transient/incomplete token list, it used to silently overwrite initTurnId locally
+  // with NO save — so the next real "next turn" click computed its step from a value the server never
+  // saw, producing an apparent skip/jump that got WORSE the faster (the more often re-renders raced)
+  // you clicked. Persisting it here keeps every render's decision authoritative and shared.
+  if(!meta.initTurnId || !list.find(e=>e.token.id===meta.initTurnId)){
+    meta.initTurnId = list[0].token.id;
+    if(cloud.isGM) mapMetaSave();
+  }
   list.forEach((e,i)=>{
     const cur = e.token.id===meta.initTurnId;
     const enemy = e.info.kind==="enc"||e.info.kind==="enctrainer";
@@ -5312,21 +5321,45 @@ function tokenStatusKeys(token){
   const L = tokenLinked(token);
   return (L && L.obj && Array.isArray(L.obj.statuses)) ? L.obj.statuses : [];
 }
+/* Surgically rebuild one token's status-ring SVG on the board, WITHOUT a full renderMap — same
+   reasoning as updateTokenHpDom (#6/#HP-lag): the old `if(!$(".modal")) renderMap()` guard meant
+   clearing a status from the token menu (itself a modal) never showed on the board until some
+   unrelated re-render happened. boxPx is read straight off the node's own inline width, which
+   mapTokenNode already set to the unscaled size*gridSize px (the stage's zoom is a CSS transform
+   on an ancestor, so the node's own style width stays the logical, unscaled value). */
+function updateTokenStatusDom(token){
+  const node = document.querySelector(`#view-map .map-token[data-tid="${token.id}"]`);
+  if(!node) return false;
+  const info = tokenHp(token);
+  const old = node.querySelector(".tk-status-ring");
+  if(info.unlinked || !tokenHpVisible(info)){ if(old) old.remove(); return true; }
+  const boxPx = parseFloat(node.style.width) || 48;
+  const keys = tokenStatusKeys(token).filter(k=>statusByKey.has(k));
+  const ringHtml = tokenStatusRingSVG(keys, boxPx, token.id);
+  if(old) old.remove();
+  if(ringHtml) node.append(el("div",{class:"tk-status-ring", html:ringHtml}));
+  return true;
+}
+function paintTokenStatus(token, encTab){
+  if($(".modal")) updateTokenStatusDom(token);
+  else if(encTab) render();
+  else renderMap();
+}
 /* write a new full set of status keys back to whichever place the token's data actually lives */
 async function setTokenStatuses(token, keys){
   const info = tokenHp(token);
   if(!info.editable){ toast("Read-only"); return; }
   if(!token.link){
     token.statuses = keys;
-    if(!$(".modal")) renderMap(); mapTokensSave(); return;
+    paintTokenStatus(token); mapTokensSave(); return;
   }
   const { row, obj, kind } = info; if(!obj){ toast("Can't edit that token"); return; }
   obj.statuses = keys;
   if(kind==="enc" || kind==="enctrainer"){       // live-linked enemy → write to the encounter itself
-    if(!$(".modal")) render(); saveEnc(); return;
+    paintTokenStatus(token, true); saveEnc(); return;
   }
   if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; }
-  if(!$(".modal")) renderMap();
+  paintTokenStatus(token);
   cloudSaveRow(row);
 }
 /* Combat Stages for a token's linked creature (Pokémon or Trainer, sheet- or encounter-linked) */
@@ -5340,9 +5373,14 @@ async function setTokenCS(token, stat, val){
   const { row, obj, kind } = info; if(!obj){ toast("This token has no combat stats"); return; }
   if(!obj.cs) obj.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0};
   obj.cs[stat] = Math.max(-6, Math.min(6, val|0));
-  if(kind==="enc" || kind==="enctrainer"){ if(!$(".modal")) render(); saveEnc(); return; }
+  // CS has no per-token visual (it only affects derived speed/initiative order + rolls), so unlike
+  // HP/statuses there's nothing to surgically patch — always repaint. This is safe even with the
+  // token menu open: modal() always tears down and rebuilds #modalRoot independently of #view-map,
+  // so a renderMap() here can't disturb it. The old `if(!$(".modal"))` guard just left the board
+  // (and initiative order) stale until some unrelated re-render happened to run.
+  if(kind==="enc" || kind==="enctrainer"){ render(); saveEnc(); return; }
   if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; }
-  if(!$(".modal")) renderMap(); cloudSaveRow(row);
+  renderMap(); cloudSaveRow(row);
 }
 /* persist a linked creature's buffs after an add/remove from the map token menu (#2) */
 async function commitTokenBuffs(token){
