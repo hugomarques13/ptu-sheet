@@ -2159,23 +2159,34 @@ function consumeDamageBuffs(owner){
 }
 /* ---- turn-duration expiry (uses the Map initiative tracker) ----
    "until end of your next turn" / "this turn" buffs (Songs, most short Orders) should fall off
-   in combat, not linger until End Scene. We stamp such buffs with a monotonic turn sequence when
-   they're placed (only while battle mode is running); advanceInitiative() then expires them at the
-   END of the owner's next turn. Buffs added outside battle carry no stamp and just persist to rest. */
+   in combat, not linger until End Scene. Songs last until the end of the CASTER's next turn, so
+   each such buff records its source = whoever's turn is active when it's placed (Songs are played
+   on the Musician's own turn), plus a monotonic turn sequence. advanceInitiative() expires the buff
+   at the END of the source's next turn, on WHATEVER creature is carrying it. Buffs added outside
+   battle (or by a source not in initiative) carry no stamp and just persist until rest. */
 function isTurnDurBuff(b){ return !b.once && /(this|next)\s+turn/i.test(b.dur||""); }
 function curTurnSeq(){ return battleOn() ? (activeMapMeta().initSeq||0) : null; }
-function stampTurnBuff(nb){
-  const s = curTurnSeq();
-  if(s!=null && isTurnDurBuff(nb)){ nb.turnStamp = s; nb.life = 1; }   // survives until the end of the owner's NEXT turn
+function activeInitInfo(){
+  if(!battleOn()) return null;
+  const meta = activeMapMeta(); if(!meta.initTurnId) return null;
+  const map = activeMap(); const tok = map && mapTokensFor(map.id).find(t=>t.id===meta.initTurnId);
+  return { id: meta.initTurnId, name: tok ? tokenHp(tok).name : "", seq: meta.initSeq||0 };
 }
-/* Called when the owner's turn ENDS (endingSeq = the turn sequence that just finished).
-   A buff placed during this very turn isn't counted yet; otherwise one turn ticks off. */
-function expireTurnBuffs(owner, endingSeq){
+function stampTurnBuff(nb){
+  if(!isTurnDurBuff(nb)) return;
+  const a = activeInitInfo(); if(!a) return;               // not in a tracked turn → persists to rest
+  nb.turnStamp = a.seq; nb.life = 1;                        // survives until the end of the CASTER's NEXT turn
+  nb.src = a.id; nb.srcName = a.name;                       // caster = whoever's turn it is now (Songs are on-turn)
+}
+/* Called for every combatant when a token's turn ENDS (endingId/endingSeq). A buff expires only when
+   ITS source's turn ends; a buff placed during the source's current turn isn't counted yet. */
+function expireTurnBuffs(owner, endingId, endingSeq){
   if(!owner || !Array.isArray(owner.buffs)) return [];
   const expired = [];
   owner.buffs = owner.buffs.filter(b=>{
     if(b.turnStamp==null || b.life==null) return true;     // not turn-tracked (added outside battle)
-    if(b.turnStamp===endingSeq) return true;               // placed during this turn — the "next" turn hasn't passed
+    if(b.src && b.src!==endingId) return true;             // not this caster's turn ending
+    if(b.turnStamp===endingSeq) return true;               // placed during the source's current turn
     b.life -= 1;
     if(b.life<=0){ expired.push(b.name); return false; }
     return true;
@@ -2215,7 +2226,8 @@ function buffsCard(owner, commit){
     const row = el("div",{class:"buff-row"});
     row.append(el("div",{style:"flex:1;min-width:0"},
       el("div",{class:"buff-name"}, b.name + (b.cat && b.cat!=="Custom" ? `  ·  ${b.cat}` : "")),
-      el("div",{class:"small muted"}, [b.dur, modt, b.once?"one-shot":""].filter(Boolean).join(" · ")),
+      el("div",{class:"small muted"}, [b.dur, modt, b.once?"one-shot":"",
+        b.src ? `from ${b.srcName||"caster"} — ends after their next turn` : ""].filter(Boolean).join(" · ")),
       b.note ? el("div",{class:"small muted"}, b.note) : ""));
     row.append(el("button",{class:"linkbtn danger",onclick:()=>{ removeBuff(owner,b.id); commit(); }},"remove"));
     card.append(row);
@@ -5103,14 +5115,18 @@ function advanceInitiative(map, meta, dir){
   else if(idx<0){ idx=list.length-1; }                // stepping back before the first (not a round change)
   meta.initTurnId = list[idx].token.id;
   if(wrapped){ meta.initRound=(meta.initRound||1)+1; resetMapMovement(map); }   // round ends → reset movement (like ↺ New round)
-  // A forward step ends the previous combatant's turn → tick down its short-duration buffs
-  // (Songs, "until end of your next turn" Orders). Stepping back is a correction: no expiry.
+  // A forward step ends the previous combatant's turn → expire the buffs THEY cast (on any creature,
+  // e.g. a Musician's Songs on allies), at the end of their next turn. Stepping back = correction, no expiry.
   let expired = [];
   if(dir>0){
     meta.initSeq = endingSeq + 1;
-    const endTok = list.find(e=>e.token.id===endingId);
-    const L = endTok && endTok.token.link ? tokenLinked(endTok.token) : null;
-    if(L && L.obj){ expired = expireTurnBuffs(L.obj, endingSeq); if(expired.length) commitTokenBuffs(endTok.token); }
+    const seen = new Set();
+    mapTokensFor(map.id).forEach(tok=>{
+      const L = tok.link ? tokenLinked(tok) : null; const owner = L && L.obj;
+      if(!owner || seen.has(owner)) return; seen.add(owner);       // one creature may back several tokens
+      const gone = expireTurnBuffs(owner, endingId, endingSeq);
+      if(gone.length){ expired = expired.concat(gone); commitTokenBuffs(tok); }
+    });
   }
   // Optimistic: repaint the board NOW so the turn advances instantly, then sync in the background
   // (awaiting the Supabase round-trips first is what made "Next turn" feel laggy). Realtime echoes
