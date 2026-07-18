@@ -858,16 +858,37 @@ function renderTrainer(){
 }
 
 /* Damage / Heal control: one signed input — type 20 to heal 20, −20 to take 20 damage. */
-function damageHealRow(getHP, setHP){
+/* `owner` (optional) = the creature taking the damage; when it has active Damage-Reduction
+   buffs, a negative (damage) entry is auto-reduced by the DR and any one-shot DR buff is spent. */
+function damageHealRow(getHP, setHP, owner){
   const wrap = el("div",{class:"dhrow"});
   const box = el("input",{type:"number",placeholder:"±HP",title:"20 heals, −20 damages",class:"dh-input"});
-  const apply = () => { const n = parseInt(box.value); box.value=""; if(n) setHP(getHP() + n); };
+  const raw = el("input",{type:"checkbox"});                 // skip DR (indirect damage: poison, recoil…)
+  const apply = () => {
+    let n = parseInt(box.value); box.value=""; if(!n) return;
+    if(n < 0 && owner && !raw.checked){
+      const { dr, from } = buffDR(owner);
+      if(dr > 0){
+        const incoming = -n, absorbed = Math.min(incoming, dr), applied = incoming - absorbed;
+        const spent = consumeDamageBuffs(owner);
+        toast(`DR ${dr} absorbed ${absorbed} (${from.join(", ")}) — took ${applied}${spent?" · buff spent":""}`);
+        n = -applied;
+      }
+    }
+    setHP(getHP() + n);
+  };
   box.addEventListener("keydown", e=>{ if(e.key==="Enter") apply(); });
   wrap.append(
     el("span",{class:"small muted",style:"font-weight:700"},"Damage / Heal"),
     box,
     el("button",{class:"btn-secondary",style:"padding:6px 14px",onclick:apply},"Apply"),
     el("span",{class:"small muted"},"+ heals · − damages"));
+  if(owner){
+    const { dr } = buffDR(owner);
+    if(dr > 0) wrap.append(el("label",{class:"small muted",style:"display:inline-flex;align-items:center;gap:4px;margin-left:6px",
+      title:"Damage Reduction from active buffs auto-applies to damage. Tick to ignore it (indirect damage)."},
+      raw, `ignore DR ${dr}`));
+  }
   return wrap;
 }
 /* ---------- Trainer weapons (modify the Struggle Attack — Core p.286) ---------- */
@@ -1081,7 +1102,7 @@ function trainerVitalsCard(t){
     el("i",{style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`})));
 
   /* damage / heal: type a signed number — positive heals, negative damages */
-  card.append(damageHealRow(()=>t.currentHP, setHP));
+  card.append(damageHealRow(()=>t.currentHP, setHP, t));
 
   /* temp HP · Injuries */
   const row = el("div",{class:"fieldrow",style:"margin-top:12px"});
@@ -1927,7 +1948,7 @@ function heroCard(p, sp){
   hero.append(main);
   card.append(hero);
   /* damage / heal: one signed input — type 8 to heal, −10 to take damage */
-  card.append(damageHealRow(()=>p.currentHP, setHP));
+  card.append(damageHealRow(()=>p.currentHP, setHP, p));
   return card;
 }
 
@@ -2080,8 +2101,8 @@ const PTU_BUFFS = [
   // — Cheerleader Cheers (Core p.93). Each is spent for its effect → one-shot. —
   { key:"cheered",   cat:"Cheerleader", name:"Cheered",   dur:"until spent", once:true, mods:{},
     note:"Spend when making a Save Check to roll twice and take the better result." },
-  { key:"excited",   cat:"Cheerleader", name:"Excited",   dur:"until spent", once:true, mods:{},
-    note:"Spend when hit by a Damaging Attack to gain +5 Damage Reduction against it." },
+  { key:"excited",   cat:"Cheerleader", name:"Excited",   dur:"until spent", once:true, mods:{ dr:5 },
+    note:"Spend when hit by a Damaging Attack to gain +5 Damage Reduction against it. (Auto-applied & spent when this creature takes an attack.)" },
   { key:"motivated", cat:"Cheerleader", name:"Motivated", dur:"until spent", once:true, mods:{},
     note:"Spend as a Free Action to raise a Combat Stage that is below its default by +1." },
   // — Commander Orders (Core pp.61-62). [Stratagem] persist while AP-bound; others are short-duration. —
@@ -2097,10 +2118,10 @@ const PTU_BUFFS = [
     note:"+3 Evasion while active." },
   { key:"dazzling-dervish", cat:"Commander", name:"Dazzling Dervish", dur:"until end of next turn", mods:{},
     note:"Adds non-stat Evasion to Movement; foes you hit or pass suffer −3 to all rolls." },
-  { key:"brace-for-impact", cat:"Commander", name:"Brace for Impact", dur:"while Bound", mods:{},
-    note:"Once/round on a self-targeting Status Move, gain 5 DR until end of next turn." },
-  { key:"sentinel-stance",  cat:"Commander", name:"Sentinel Stance",  dur:"until end of next turn", mods:{},
-    note:"May Intercept as a Shift; gain 10 DR against the intercepted attack." },
+  { key:"brace-for-impact", cat:"Commander", name:"Brace for Impact", dur:"while Bound", mods:{ dr:5 },
+    note:"Once/round on a self-targeting Status Move, gain 5 DR until end of next turn. (Auto-applied to incoming damage while active.)" },
+  { key:"sentinel-stance",  cat:"Commander", name:"Sentinel Stance",  dur:"until end of next turn", mods:{ dr:10 },
+    note:"May Intercept as a Shift; gain 10 DR against the intercepted attack. (Auto-applied to incoming damage while active.)" },
   { key:"pinpoint-strike",  cat:"Commander", name:"Pinpoint Strike",  dur:"while Bound", mods:{ acc:2, crit:2, dmg:-5 },
     note:"Damaging attacks deal 5 less, before weakness/resistance." },
   { key:"perfect-aim",      cat:"Commander", name:"Perfect Aim",      dur:"next attack", once:true, mods:{},
@@ -2110,22 +2131,63 @@ const PTU_BUFFS = [
     note:"+5 to Damage Rolls." },
   { key:"song-of-courage", cat:"Musician", name:"Song of Courage", dur:"until end of next turn", mods:{},
     note:"+2 to Skill Checks and Save Checks (not attack rolls)." },
-  { key:"song-of-life",    cat:"Musician", name:"Song of Life",    dur:"until end of next turn", mods:{},
-    note:"Gain 5 Damage Reduction." },
+  { key:"song-of-life",    cat:"Musician", name:"Song of Life",    dur:"until end of next turn", mods:{ dr:5 },
+    note:"Gain 5 Damage Reduction. (Auto-applied to incoming damage while active.)" },
 ];
 const buffByKey = new Map(PTU_BUFFS.map(b=>[b.key,b]));
 const BUFF_CATS = ["Cheerleader","Commander","Musician"];
 function ownerBuffs(owner){ return Array.isArray(owner?.buffs) ? owner.buffs : []; }
 /* total numeric contribution of an owner's active buffs, for a roll */
 function buffMods(owner){
-  const s = { acc:0, dmg:0, crit:0, db:0 };
-  ownerBuffs(owner).forEach(b=>{ const m=b.mods||{}; s.acc+=m.acc||0; s.dmg+=m.dmg||0; s.crit+=m.crit||0; s.db+=m.db||0; });
+  const s = { acc:0, dmg:0, crit:0, db:0, dr:0 };
+  ownerBuffs(owner).forEach(b=>{ const m=b.mods||{}; s.acc+=m.acc||0; s.dmg+=m.dmg||0; s.crit+=m.crit||0; s.db+=m.db||0; s.dr+=m.dr||0; });
   return s;
+}
+/* Damage Reduction an owner's active buffs grant, and which buffs supply it (defender side). */
+function buffDR(owner){
+  let dr = 0; const from = [];
+  ownerBuffs(owner).forEach(b=>{ const d=(b.mods&&b.mods.dr)||0; if(d){ dr+=d; from.push(b.name); } });
+  return { dr, from };
+}
+/* Spend the one-shot DR buffs (e.g. Excited) after they've absorbed an incoming attack.
+   Returns true if anything was consumed. Caller persists via its own commit/save. */
+function consumeDamageBuffs(owner){
+  if(!owner) return false;
+  const before = ownerBuffs(owner).length;
+  owner.buffs = ownerBuffs(owner).filter(b=>!(b.once && b.mods && b.mods.dr));
+  return ownerBuffs(owner).length !== before;
+}
+/* ---- turn-duration expiry (uses the Map initiative tracker) ----
+   "until end of your next turn" / "this turn" buffs (Songs, most short Orders) should fall off
+   in combat, not linger until End Scene. We stamp such buffs with a monotonic turn sequence when
+   they're placed (only while battle mode is running); advanceInitiative() then expires them at the
+   END of the owner's next turn. Buffs added outside battle carry no stamp and just persist to rest. */
+function isTurnDurBuff(b){ return !b.once && /(this|next)\s+turn/i.test(b.dur||""); }
+function curTurnSeq(){ return battleOn() ? (activeMapMeta().initSeq||0) : null; }
+function stampTurnBuff(nb){
+  const s = curTurnSeq();
+  if(s!=null && isTurnDurBuff(nb)){ nb.turnStamp = s; nb.life = 1; }   // survives until the end of the owner's NEXT turn
+}
+/* Called when the owner's turn ENDS (endingSeq = the turn sequence that just finished).
+   A buff placed during this very turn isn't counted yet; otherwise one turn ticks off. */
+function expireTurnBuffs(owner, endingSeq){
+  if(!owner || !Array.isArray(owner.buffs)) return [];
+  const expired = [];
+  owner.buffs = owner.buffs.filter(b=>{
+    if(b.turnStamp==null || b.life==null) return true;     // not turn-tracked (added outside battle)
+    if(b.turnStamp===endingSeq) return true;               // placed during this turn — the "next" turn hasn't passed
+    b.life -= 1;
+    if(b.life<=0){ expired.push(b.name); return false; }
+    return true;
+  });
+  return expired;
 }
 function addBuff(owner, key){
   if(!Array.isArray(owner.buffs)) owner.buffs=[];
   const b = buffByKey.get(key); if(!b) return;
-  owner.buffs.push({ id:uid(), key:b.key, name:b.name, cat:b.cat, dur:b.dur, note:b.note, once:!!b.once, mods:Object.assign({},b.mods) });
+  const nb = { id:uid(), key:b.key, name:b.name, cat:b.cat, dur:b.dur, note:b.note, once:!!b.once, mods:Object.assign({},b.mods) };
+  stampTurnBuff(nb);
+  owner.buffs.push(nb);
 }
 function addCustomBuff(owner, name, mods, note){
   if(!Array.isArray(owner.buffs)) owner.buffs=[];
@@ -2138,6 +2200,7 @@ function buffModText(m){
   if(m.dmg)  p.push(`${m.dmg>0?"+":""}${m.dmg} Dmg`);
   if(m.db)   p.push(`${m.db>0?"+":""}${m.db} DB`);
   if(m.crit) p.push(`+${m.crit} Crit/Effect range`);
+  if(m.dr)   p.push(`${m.dr>0?"+":""}${m.dr} DR`);
   return p.join(" · ");
 }
 /* buff manager card. `commit` persists + re-renders the surrounding view after any change. */
@@ -2168,7 +2231,7 @@ function buffsCard(owner, commit){
   addRow.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",onclick:()=>openCustomBuff(owner, commit)},"✎ Custom…"));
   card.append(addRow);
   card.append(el("div",{class:"small muted",style:"margin-top:6px"},
-    "Numeric buffs apply automatically when you roll a move. Buffs clear on End Scene / End Day."));
+    "Attack buffs apply automatically when you roll a move; Damage Reduction auto-applies when this creature takes damage (one-shot DR like Excited is spent on the hit). In Map battle mode, “until end of next turn” buffs fall off on the ▶ next-turn advance; the rest clear on End Scene / End Day."));
   return card;
 }
 function openCustomBuff(owner, done){
@@ -2176,18 +2239,20 @@ function openCustomBuff(owner, done){
   const acc=el("input",{type:"number",value:0,style:"width:70px"});
   const dmg=el("input",{type:"number",value:0,style:"width:70px"});
   const crit=el("input",{type:"number",value:0,style:"width:70px"});
+  const dr=el("input",{type:"number",value:0,style:"width:70px"});
   const note=el("input",{type:"text",placeholder:"Note (optional)"});
   const body=el("div",{},
     el("label",{class:"field"},el("span",{},"Name"),name),
     el("div",{class:"inline",style:"gap:10px;margin-top:8px;flex-wrap:wrap"},
       el("label",{class:"field",style:"max-width:120px"},el("span",{},"± Accuracy"),acc),
       el("label",{class:"field",style:"max-width:120px"},el("span",{},"± Damage"),dmg),
-      el("label",{class:"field",style:"max-width:140px"},el("span",{},"+ Crit range"),crit)),
+      el("label",{class:"field",style:"max-width:140px"},el("span",{},"+ Crit range"),crit),
+      el("label",{class:"field",style:"max-width:150px"},el("span",{},"+ Damage Reduction"),dr)),
     el("label",{class:"field",style:"margin-top:8px"},el("span",{},"Note"),note));
   modal({title:"Custom buff", bodyNode:body, footNodes:[
     el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
     el("button",{class:"btn-primary",onclick:()=>{
-      addCustomBuff(owner, name.value.trim(), { acc:+acc.value||0, dmg:+dmg.value||0, crit:+crit.value||0 }, note.value.trim());
+      addCustomBuff(owner, name.value.trim(), { acc:+acc.value||0, dmg:+dmg.value||0, crit:+crit.value||0, dr:+dr.value||0 }, note.value.trim());
       closeModal(); if(done) done();
     }},"Add buff"),
   ]});
@@ -3628,7 +3693,7 @@ function encounterMonCard(enc, p, list){
     el("span",{class:"small muted",style:"font-weight:700;white-space:nowrap"}, `HP ${p.currentHP}/${maxHP}`),
     el("div",{class:"hpbar",style:"flex:1;min-width:120px"}, el("i",{style:`width:${pct}%;background:${hpColor}`})),
     el("button",{class:"linkbtn",style:"padding:2px 6px",title:"full heal",onclick:()=>setHP(maxHP)},"MAX")));
-  card.append(damageHealRow(()=>p.currentHP, setHP));
+  card.append(damageHealRow(()=>p.currentHP, setHP, p));
   // GM actions: reroll identity, toggle shiny, Catch DC, send to PC (caught)
   const actRow=el("div",{class:"inline",style:"gap:6px;margin-top:8px;flex-wrap:wrap"});
   actRow.append(
@@ -3694,7 +3759,7 @@ function encounterTrainerCard(enc, tr){
   card.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"},
     el("span",{class:"small muted",style:"font-weight:700;white-space:nowrap"}, `HP ${t.currentHP}/${maxHP}`),
     el("div",{class:"hpbar",style:"flex:1;min-width:120px"}, el("i",{style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`}))));
-  card.append(damageHealRow(()=>t.currentHP, setHP));
+  card.append(damageHealRow(()=>t.currentHP, setHP, t));
   // Injuries (cap max HP) + Combat Stages
   const injRow=el("div",{class:"inline",style:"gap:6px;margin-top:6px;align-items:center"});
   injRow.append(el("span",{class:"small muted",style:"font-weight:700"},"Injuries"),
@@ -5030,6 +5095,7 @@ function initiativeList(map){
 }
 function advanceInitiative(map, meta, dir){
   const list = initiativeList(map); if(!list.length) return;
+  const endingId = meta.initTurnId, endingSeq = meta.initSeq||0;
   let idx = list.findIndex(e=>e.token.id===meta.initTurnId);
   idx = idx<0 ? 0 : idx+dir;
   let wrapped=false;
@@ -5037,11 +5103,21 @@ function advanceInitiative(map, meta, dir){
   else if(idx<0){ idx=list.length-1; }                // stepping back before the first (not a round change)
   meta.initTurnId = list[idx].token.id;
   if(wrapped){ meta.initRound=(meta.initRound||1)+1; resetMapMovement(map); }   // round ends → reset movement (like ↺ New round)
+  // A forward step ends the previous combatant's turn → tick down its short-duration buffs
+  // (Songs, "until end of your next turn" Orders). Stepping back is a correction: no expiry.
+  let expired = [];
+  if(dir>0){
+    meta.initSeq = endingSeq + 1;
+    const endTok = list.find(e=>e.token.id===endingId);
+    const L = endTok && endTok.token.link ? tokenLinked(endTok.token) : null;
+    if(L && L.obj){ expired = expireTurnBuffs(L.obj, endingSeq); if(expired.length) commitTokenBuffs(endTok.token); }
+  }
   // Optimistic: repaint the board NOW so the turn advances instantly, then sync in the background
   // (awaiting the Supabase round-trips first is what made "Next turn" feel laggy). Realtime echoes
   // are dropped by the mapMeta/mapTokens updated_at guards, so the background writes are safe.
   renderMap();
   mapMetaUpsert();
+  if(expired.length) toast(`⌛ Buff expired: ${expired.join(", ")}`);
   if(wrapped){ mapTokensUpsert(); toast(`↺ Round ${meta.initRound} — movement reset`); }
 }
 /* small floating initiative widget: draggable by its header, position + collapsed state remembered
@@ -5691,11 +5767,21 @@ function openTokenMenu(token, map){
         const types = tokenDefTypes(token);
         const mult = typeMultAgainst(typeSel.value, types);
         const afterDef = Math.max(0, dmg - def);
-        const final = Math.floor(afterDef * mult);
+        const afterMult = Math.floor(afterDef * mult);
+        // Damage Reduction from the target's active buffs (Excited, Song of Life, …) — applied
+        // last, after weakness/resistance (Core damage steps). One-shot DR buffs are then spent.
+        const owner = token.link ? (tokenLinked(token)||{}).obj : null;
+        const { dr, from } = owner ? buffDR(owner) : { dr:0, from:[] };
+        const final = Math.max(0, afterMult - dr);
         const before = tokenHp(token).cur;
         await setTokenHP(token, before - final); draw();
+        let drTxt = "";
+        if(dr > 0){
+          if(consumeDamageBuffs(owner)) await commitTokenBuffs(token);
+          drTxt = ` − ${dr} DR (${from.join(", ")})`;
+        }
         const eff = mult===0 ? "immune ×0" : mult>1 ? `super-effective ×${mult}` : mult<1 ? `resisted ×${mult}` : "neutral ×1";
-        out.innerHTML = `${dmg} − ${def} ${physical?"Def":"SpDef"} = ${afterDef}, ${typeSel.value} ${eff} → <b>${final}</b> damage.<br>HP ${before} → <b>${before-final}</b>.`;
+        out.innerHTML = `${dmg} − ${def} ${physical?"Def":"SpDef"} = ${afterDef}, ${typeSel.value} ${eff} = ${afterMult}${drTxt} → <b>${final}</b> damage.<br>HP ${before} → <b>${before-final}</b>.`;
       };
       atk.append(el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;align-items:center"},
         dmgIn, typeSel, clsSel, el("button",{class:"btn-primary",onclick:apply},"Apply")), out);
