@@ -405,7 +405,15 @@ body.map-mode #view-map > .muted.small{padding:5px 12px; margin:0; text-align:ce
   font-size:10px; font-weight:800; color:#fff; background:rgba(46,46,54,.92); white-space:nowrap;
   border-radius:6px; padding:1px 6px; pointer-events:none}
 .map-token .tk-moved.over{background:var(--bad)}
+.map-token.selected{outline:3px solid var(--accent); outline-offset:3px}
+.map-token .tk-selected{position:absolute; top:-6px; right:-6px; width:18px; height:18px; border-radius:50%;
+  background:var(--accent); color:#fff; font-size:11px; font-weight:900; line-height:18px; text-align:center;
+  box-shadow:0 1px 3px rgba(0,0,0,.5); pointer-events:none}
 .map-paths{position:absolute; left:0; top:0; pointer-events:none}
+.map-select-bar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 12px; margin:-8px 0 10px;
+  background:var(--field); border:1px solid var(--field-line); border-radius:8px; font-size:13px}
+.map-select-bar .map-select-count{font-weight:800}
+body.map-mode .map-select-bar{margin:0; border-radius:0; border-left:0; border-right:0; border-top:0}
 .battle-badge{font-weight:800; color:#fff; background:var(--accent); border-radius:20px; padding:4px 12px}
 .small.over{color:var(--bad)}
 .tk-menu-hp{font-size:20px; margin-bottom:10px}

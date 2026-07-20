@@ -3616,7 +3616,8 @@ function encList(){ return mode==="cloud" ? ensureEnc().data.encounters : (state
 function activeEncounter(){ const a=encList(); return a.find(e=>e.id===state.activeEncounterId) || a[0]; }
 let encSaveTimer;
 function saveEnc(){
-  if(mode==="cloud"){ clearTimeout(encSaveTimer); encSaveTimer=setTimeout(()=>{ encUpsert(); }, 400); return; }
+  if(mode==="cloud"){ ensureEnc().updated_at = new Date().toISOString();   // stamp now so a mid-debounce refetch can't revert it
+    clearTimeout(encSaveTimer); encSaveTimer=setTimeout(()=>{ encSaveTimer=null; encUpsert(); }, 400); return; }
   try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){ toast("⚠ Could not save encounter"); }
 }
 function toggleSet(set, v){ set.has(v)?set.delete(v):set.add(v); return [...set]; }
@@ -3629,6 +3630,18 @@ function encounterBaseXP(enc){
 }
 const encMonName = p => p.nickname || getSpecies(p.species)?.name || p.species || "Pokémon";
 
+/* Keep a wild Pokémon's level-up moveset in sync with its level (mirrors the "most recent 6"
+   rule addEncounterMon uses when first adding it): moves newly eligible at the new level are
+   added, moves the new level no longer qualifies for are dropped. Moves NOT sourced from the
+   level-up list — TM/tutor/egg moves the GM added by hand via "+ move" — are left alone, so
+   nudging the level field can never silently wipe a deliberate pick. */
+function syncEncMonLevelupMoves(p, sp){
+  if(!sp) return;
+  const allLevelup = new Set(speciesLevelupNames(sp, MAX_LEVEL));
+  const kept = p.moves.filter(m=>!allLevelup.has(m));
+  const current = speciesLevelupNames(sp, p.level).slice(-6);
+  p.moves = [...current, ...kept];
+}
 function addEncounterMon(enc, into){
   openPicker("Add a Pokémon", D.species.map(s=>s.name), name=>{
     const p=newPokemon(name); const sp=getSpecies(name);
@@ -3745,7 +3758,7 @@ function removeEncMonTokens(monId){
     byMap[mid] = byMap[mid].filter(t=>!(t.link && t.link.kind==="enc" && t.link.monId===monId));
     if(byMap[mid].length!==before) changed=true;
   }
-  if(changed) mapTokensUpsert();   // fire-and-forget sync; realtime removes it for everyone
+  if(changed) mapTokensSave();   // optimistic serialized sync; realtime removes it for everyone
 }
 /* compact combat-stage steppers for an encounter Pokémon (±6 per stat; feeds pokeDerived) */
 function encCombatStages(p){
@@ -3882,7 +3895,7 @@ function encounterMonCard(enc, p, list){
   const nw=el("div",{style:"flex:1;min-width:0"});
   nw.append(el("div",{style:"font-weight:800"}, (fainted?"💀 ":"")+encMonName(p), " ", el("span",{html:(sp?.types||[]).map(typeBadge).join(" ")})));
   const lvIn=el("input",{type:"number",min:1,max:100,value:p.level,style:"width:60px",title:"level"});
-  lvIn.addEventListener("change",()=>{ const l=Math.max(1,Math.min(100,parseInt(lvIn.value)||1)); p.level=l; p.xp=xpForLevel(l); encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); });
+  lvIn.addEventListener("change",()=>{ const l=Math.max(1,Math.min(100,parseInt(lvIn.value)||1)); p.level=l; p.xp=xpForLevel(l); encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; syncEncMonLevelupMoves(p,sp); saveEnc(); renderEncounters(); });
   nw.append(el("div",{class:"small muted",style:"margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"},
     "Lv", lvIn, `· ${p.nature||"—"} · ${p.gender||"—"}${p.shiny?" · ✨Shiny":""}`));
   nw.append(el("div",{class:"small muted",style:"margin-top:2px"}, `Atk ${d.eff.atk} · SpA ${d.eff.spatk} · Def ${d.eff.def} · SpD ${d.eff.spdef} · Spd ${d.eff.spd}`));
@@ -4542,24 +4555,38 @@ function pcData(data){
   data.pokemon.forEach(normPokemon);
   return data;
 }
+/* Reconcile a shared reserved-row (map/PC/enc) refetch against what we already hold, so a full
+   SELECT (fired by scheduleSharedRefetch whenever an oversized realtime payload is truncated —
+   common, since these rows carry image data-URLs) can NEVER revert an optimistic local edit whose
+   serialized write hasn't reached the server yet. Same last-write-wins-by-timestamp rule onRealtime
+   uses: the server row is taken only if it's at least as new as ours; otherwise keep local. A row
+   missing from the fetch keeps local too (a transient partial result must not wipe the board). */
+function mergeShared(local, fetched, normFn){
+  if(!fetched) return local || null;
+  if(local && local.updated_at && fetched.updated_at && fetched.updated_at < local.updated_at) return local;
+  return { ...fetched, data: normFn(fetched.data) };
+}
 async function fetchPC(){
   const { data, error } = await cloud.client.from("sheets").select(SHEET_COLS).eq("id", pcId()).limit(1);
-  if(error){ console.error(error); return; }
-  cloud.pc = (data && data[0]) ? { ...data[0], data: pcData(data[0].data) } : null;
+  if(error){ console.error(error); return; }   // keep local on a fetch error, don't wipe it
+  cloud.pc = mergeShared(cloud.pc, data && data[0], pcData);
 }
 function ensurePCRow(){
   if(!cloud.pc) cloud.pc = { id:pcId(), campaign:cloud.campaign, owner_id:PC_OWNER, owner_name:"PC",
                             name:"PC Storage", data:{ kind:"pc", pokemon:[] } };
   return cloud.pc;
 }
-async function pcUpsert(){
+function pcUpsert(){
   const row = ensurePCRow();
   cloud.lastSaveTs = Date.now();
-  const { error } = await cloud.client.from("sheets").upsert({
-    id:row.id, campaign:cloud.campaign, owner_id:PC_OWNER, owner_name:"PC",
-    name:"PC Storage", data:row.data, updated_at:new Date().toISOString() });
-  if(error){ console.error(error); toast("⚠ PC save failed"); return false; }
-  return true;
+  row.updated_at = new Date().toISOString();   // stamp locally so a refetch can't revert a pending PC edit
+  return serialize(pcChain, async ()=>{
+    const { error } = await cloud.client.from("sheets").upsert({
+      id:row.id, campaign:cloud.campaign, owner_id:PC_OWNER, owner_name:"PC",
+      name:"PC Storage", data:row.data, updated_at:row.updated_at });
+    if(error){ console.error(error); toast("⚠ PC save failed"); return false; }
+    return true;
+  });
 }
 
 /* ---- shared battle map: reserved rows (meta + tokens), same pattern as the PC ---- */
@@ -4600,11 +4627,11 @@ async function fetchMap(){
   const { data, error } = await cloud.client.from("sheets")
     .select(SHEET_COLS)
     .in("id", [mapMetaId(), mapTokensId()]);
-  if(error){ console.error(error); cloud.mapMeta=null; cloud.mapTokens=null; return; }
+  if(error){ console.error(error); return; }   // keep local on a fetch error, don't wipe the board
   const meta = (data||[]).find(r=>r.id===mapMetaId());
   const toks = (data||[]).find(r=>r.id===mapTokensId());
-  cloud.mapMeta   = meta ? { ...meta, data: normMapMeta(meta.data) } : null;
-  cloud.mapTokens = toks ? { ...toks, data: normMapTokens(toks.data) } : null;
+  cloud.mapMeta   = mergeShared(cloud.mapMeta, meta, normMapMeta);
+  cloud.mapTokens = mergeShared(cloud.mapTokens, toks, normMapTokens);
 }
 function ensureMapMeta(){
   if(!cloud.mapMeta) cloud.mapMeta = { id:mapMetaId(), campaign:cloud.campaign, owner_id:MAP_OWNER,
@@ -4660,6 +4687,15 @@ async function mapTokensUpsert(){
    requests hit the server strictly one at a time, in true order, so out-of-order arrival is
    impossible. `serialize(state, fn)` is the shared helper for both map rows below. */
 function serialize(state, fn){ return state.chain = state.chain.then(fn, fn); }
+/* Per-row write chains for the non-map rows (character sheets, PC, encounters), so bursts of
+   debounced writes to the SAME row reach Supabase strictly one at a time, in order — the same
+   protection the map rows already have (see the serialize comment above). Without it a later,
+   newer write can overtake an earlier one on the network and the server ends up holding the OLDER
+   value ("edits revert"). Character rows keyed by id; PC/enc each get one shared chain. */
+const rowChains = {};
+function rowChain(id){ return rowChains[id] || (rowChains[id] = { chain: Promise.resolve() }); }
+const encChain = { chain: Promise.resolve() };
+const pcChain  = { chain: Promise.resolve() };
 /* Debounced, coalescing save of the shared map-tokens row. HP ticks and drag commits arrive in
    bursts and each awaited a full upload before the UI updated — that was the "HP updates ~10s
    later" lag (#5). Callers now mutate the local model + re-render OPTIMISTICALLY, then call this;
@@ -4702,13 +4738,15 @@ function cloudSaveRow(row){
   cloud.lastWrite[row.id] = row.updated_at;   // ignore our own returning echo
   cacheCloud();
   clearTimeout(rowSaveTimers[row.id]);
-  rowSaveTimers[row.id] = setTimeout(async ()=>{
+  rowSaveTimers[row.id] = setTimeout(()=>{
     delete rowSaveTimers[row.id];
     cloud.lastSaveTs = Date.now();
-    const { error } = await cloud.client.from("sheets").upsert({
-      id:row.id, campaign:cloud.campaign, owner_id:row.owner_id, owner_name:row.owner_name,
-      name:row.name, data:row.data, updated_at:row.updated_at });
-    if(error){ console.error(error); toast("⚠ Cloud save failed"); }
+    serialize(rowChain(row.id), async ()=>{    // ordered dispatch, shared per-row chain with cloudSave/cloudUpsert
+      const { error } = await cloud.client.from("sheets").upsert({
+        id:row.id, campaign:cloud.campaign, owner_id:row.owner_id, owner_name:row.owner_name,
+        name:row.name, data:row.data, updated_at:row.updated_at });
+      if(error){ console.error(error); toast("⚠ Cloud save failed"); }
+    });
   }, 350);
 }
 
@@ -4722,23 +4760,25 @@ function normEnc(data){
 }
 async function fetchEnc(){
   const { data, error } = await cloud.client.from("sheets").select(SHEET_COLS).eq("id", encRowId()).limit(1);
-  if(error){ console.error(error); return; }
-  cloud.enc = (data && data[0]) ? { ...data[0], data: normEnc(data[0].data) } : null;
+  if(error){ console.error(error); return; }   // keep local on a fetch error
+  cloud.enc = mergeShared(cloud.enc, data && data[0], normEnc);
 }
 function ensureEnc(){
   if(!cloud.enc) cloud.enc = { id:encRowId(), campaign:cloud.campaign, owner_id:ENC_OWNER,
     owner_name:"Encounters", name:"Encounters", data:normEnc(null) };
   return cloud.enc;
 }
-async function encUpsert(){
+function encUpsert(){
   const row = ensureEnc();
   cloud.encSaveTs = Date.now();
   row.updated_at = new Date().toISOString();
-  const { error } = await cloud.client.from("sheets").upsert({
-    id:row.id, campaign:cloud.campaign, owner_id:ENC_OWNER, owner_name:"Encounters",
-    name:"Encounters", data:row.data, updated_at:row.updated_at });
-  if(error){ console.error(error); toast("⚠ Encounter save failed"); return false; }
-  return true;
+  return serialize(encChain, async ()=>{
+    const { error } = await cloud.client.from("sheets").upsert({
+      id:row.id, campaign:cloud.campaign, owner_id:ENC_OWNER, owner_name:"Encounters",
+      name:"Encounters", data:row.data, updated_at:row.updated_at });
+    if(error){ console.error(error); toast("⚠ Encounter save failed"); return false; }
+    return true;
+  });
 }
 async function cloudConnect(campaign, name, gmCode, silent){
   campaign = (campaign||"").trim().toLowerCase(); name = (name||"").trim();
@@ -4887,14 +4927,16 @@ function cloudSave(){
   cloud.lastWrite[row.id] = row.updated_at;   // remember our own write so its echo is ignored
   cacheCloud();
   clearTimeout(cloud.saveTimer);
-  cloud.saveTimer = setTimeout(async ()=>{
+  cloud.saveTimer = setTimeout(()=>{
     cloud.saveTimer = null;                    // clear the "pending" flag so remote edits can apply again
     cloud.lastSaveTs = Date.now();
-    const { error } = await cloud.client.from("sheets").upsert({
-      id:row.id, campaign:cloud.campaign, owner_id:row.owner_id, owner_name:row.owner_name,
-      name:row.name, data:row.data, updated_at:row.updated_at,
+    serialize(rowChain(row.id), async ()=>{    // dispatch in order so a slow earlier save can't overtake a newer one
+      const { error } = await cloud.client.from("sheets").upsert({
+        id:row.id, campaign:cloud.campaign, owner_id:row.owner_id, owner_name:row.owner_name,
+        name:row.name, data:row.data, updated_at:row.updated_at,
+      });
+      if(error){ console.error(error); toast("⚠ Cloud save failed"); }
     });
-    if(error){ console.error(error); toast("⚠ Cloud save failed"); }
   }, 500);
 }
 /* Upsert a row via a keepalive fetch — unlike a normal fetch, the browser lets this complete
@@ -4942,40 +4984,46 @@ function flushCloudSaves(){
     const r = cloud.byId[id]; if(r) restUpsertKeepalive(r);
   }
 }
-async function cloudNewCharacter(name){
+function cloudNewCharacter(name){
   const c = newCharacter(name);
   const row = { id:c.id, campaign:cloud.campaign, owner_id:cloud.userId, owner_name:cloud.name,
                 name:c.name, data:c, updated_at:new Date().toISOString() };
   cloud.byId[c.id] = row; cloud.activeId = c.id; openMon=null;
   cloud.lastSaveTs = Date.now();
-  const { error } = await cloud.client.from("sheets").insert({
-    id:row.id, campaign:row.campaign, owner_id:row.owner_id, owner_name:row.owner_name, name:row.name, data:row.data });
-  if(error){ console.error(error); toast("⚠ Could not create character"); }
-  switchTab("trainer");
+  switchTab("trainer");                        // optimistic: the new sheet opens instantly
+  serialize(rowChain(row.id), async ()=>{      // insert in the background, ordered with later saves of this row
+    const { error } = await cloud.client.from("sheets").insert({
+      id:row.id, campaign:row.campaign, owner_id:row.owner_id, owner_name:row.owner_name, name:row.name, data:row.data });
+    if(error){ console.error(error); toast("⚠ Could not create character"); }
+  });
 }
-async function cloudDeleteCharacter(id){
+function cloudDeleteCharacter(id){
   delete cloud.byId[id];
   cloud.activeId = Object.keys(cloud.byId)[0] || null; openMon=null;
-  const { error } = await cloud.client.from("sheets").delete().eq("id", id);
-  if(error){ console.error(error); toast("⚠ Delete failed"); }
-  render();
+  render();                                    // optimistic: it disappears immediately
+  serialize(rowChain(id), async ()=>{          // ordered behind any pending save of this row
+    const { error } = await cloud.client.from("sheets").delete().eq("id", id);
+    if(error){ console.error(error); toast("⚠ Delete failed"); }
+  });
 }
 /* the GM's own character row */
 function myRow(){ return Object.values(cloud.byId).find(r=>ownsRow(r)); }
 /* immediate upsert of a specific row (used for one-off GM writes to any sheet) */
-async function cloudUpsert(row){
+function cloudUpsert(row){
   row.updated_at = new Date().toISOString();
   row.name = row.data?.name || "";
   cloud.lastWrite[row.id] = row.updated_at;   // suppress our own realtime echo of this write
   cacheCloud(); cloud.lastSaveTs = Date.now();
-  const { error } = await cloud.client.from("sheets").upsert({
-    id:row.id, campaign:cloud.campaign, owner_id:row.owner_id, owner_name:row.owner_name,
-    name:row.name, data:row.data, updated_at:row.updated_at });
-  if(error){ console.error(error); toast("⚠ Cloud save failed"); return false; }
-  return true;
+  return serialize(rowChain(row.id), async ()=>{   // ordered per-row dispatch (shared with cloudSave/cloudSaveRow)
+    const { error } = await cloud.client.from("sheets").upsert({
+      id:row.id, campaign:cloud.campaign, owner_id:row.owner_id, owner_name:row.owner_name,
+      name:row.name, data:row.data, updated_at:row.updated_at });
+    if(error){ console.error(error); toast("⚠ Cloud save failed"); return false; }
+    return true;
+  });
 }
 /* GM: drop a Pokémon into another player's party and push it to the cloud */
-async function sendPokemonToRow(targetId, mon){
+function sendPokemonToRow(targetId, mon){
   if(mode!=="cloud" || !cloud.isGM){ toast("GM cloud only"); return false; }
   const row = cloud.byId[targetId]; if(!row){ toast("Player not found"); return false; }
   const m = normPokemon({ ...mon, id: uid() });
@@ -4983,19 +5031,19 @@ async function sendPokemonToRow(targetId, mon){
   row.data.pokemon = row.data.pokemon || [];
   if(row.data.pokemon.filter(p=>p.onTeam).length >= 6) m.onTeam = false;  // party full → box
   row.data.pokemon.push(m);
-  const ok = await cloudUpsert(row);
-  if(ok) toast(`Sent ${m.nickname||getSpecies(m.species)?.name||"Pokémon"} to ${row.owner_name||row.data?.name||"player"} ✓`);
-  if(targetId===cloud.activeId) render();
-  return ok;
+  toast(`Sent ${m.nickname||getSpecies(m.species)?.name||"Pokémon"} to ${row.owner_name||row.data?.name||"player"} ✓`);
+  if(targetId===cloud.activeId) render();               // optimistic: lands instantly, uploads behind it
+  cloudUpsert(row).then(ok=>{ if(!ok) toast("⚠ Sync issue — it'll reconcile on the next change"); });
+  return true;
 }
 /* GM: move a Pokémon — send a copy to the target and remove it from the source sheet */
-async function transferPokemon(sourceRow, targetId, mon){
+function transferPokemon(sourceRow, targetId, mon){
   if(sourceRow && sourceRow.id===targetId){ toast("It's already on that sheet"); return false; }
-  const ok = await sendPokemonToRow(targetId, JSON.parse(JSON.stringify(mon)));
+  const ok = sendPokemonToRow(targetId, JSON.parse(JSON.stringify(mon)));
   if(ok && sourceRow){
     const arr = sourceRow.data.pokemon || [];
     const idx = arr.findIndex(x=>x.id===mon.id);
-    if(idx>=0){ arr.splice(idx,1); await cloudUpsert(sourceRow); }
+    if(idx>=0){ arr.splice(idx,1); cloudUpsert(sourceRow); }   // background, serialized per row
   }
   return ok;
 }
@@ -5012,9 +5060,9 @@ function openSendThisPokemon(p){
   const list = el("div",{class:"reflist"});
   rows.sort((a,b)=>(a.owner_name||"").localeCompare(b.owner_name||"")).forEach(r=>{
     if(r.id===cloud.activeId) return;   // no point sending to the sheet it's already on
-    list.append(el("div",{class:"refitem",style:"cursor:pointer",onclick:async()=>{
-      const ok = await transferPokemon(sourceRow, r.id, p);
-      closeModal();
+    list.append(el("div",{class:"refitem",style:"cursor:pointer",onclick:()=>{
+      const ok = transferPokemon(sourceRow, r.id, p);
+      closeModal();                                   // closes instantly; the upload runs behind it
       if(ok){ openMon=null; render(); }
     }},
       el("div",{class:"r-title"}, r.data?.name||"(unnamed)"),
@@ -5056,7 +5104,7 @@ function openSendPokemon(presetId){
     const list = el("div",{class:"reflist",style:"margin-top:6px"});
     mine.forEach(p=>{ const sp=getSpecies(p.species);
       list.append(el("div",{class:"refitem",style:"cursor:pointer",
-        onclick:async()=>{ const ok=await transferPokemon(mineRow, targetId, p); closeModal(); if(ok) render(); }},
+        onclick:()=>{ const ok=transferPokemon(mineRow, targetId, p); closeModal(); if(ok) render(); }},
         el("div",{class:"r-title"}, `Send ${p.nickname||sp?.name||"?"} · Lv ${p.level}`)));
     });
     wrap.append(list);
@@ -5069,7 +5117,7 @@ function openSendPokemon(presetId){
       mon.level = Math.max(1, Math.min(MAX_LEVEL, parseInt(lvl.value)||5));
       mon.xp = xpForLevel(mon.level);
       if(nick.value.trim()) mon.nickname = nick.value.trim();
-      await sendPokemonToRow(targetId, mon);
+      sendPokemonToRow(targetId, mon);
       closeModal();
     }},"Send Pokémon"),
   ]});
@@ -5229,6 +5277,34 @@ function renderPC(){
 let mapView = { scale:1, panX:0, panY:0 };   // each viewer's own camera (not synced)
 let mapDragging = false;                      // suppresses realtime re-render mid-drag
 let mapGmView = null;                         // map id the GM is privately viewing (not synced)
+/* Multi-token selection, for dragging several tokens as one group ("move all the players at
+   once"). Per-viewer, not synced to peers, scoped to one map — dragging always resolves the
+   selection against the CURRENT map.id, so switching maps can't accidentally drag stale tokens. */
+let mapSelect = { on:false, mapId:null, ids:new Set() };
+function mapSelectActive(map){ return mapSelect.on && mapSelect.mapId===map.id; }
+function toggleMapSelect(map){
+  mapSelect = mapSelectActive(map) ? { on:false, mapId:map.id, ids:new Set() }
+                                    : { on:true,  mapId:map.id, ids:new Set() };
+  renderMap();
+}
+function clearMapSelect(map){ mapSelect.ids.clear(); renderMap(); }
+/* select every token this viewer is allowed to move, restricted to a kind filter */
+function selectMapTokens(map, kinds, label){
+  const ids = mapTokensFor(map.id).filter(t=>{ const info=tokenHp(t); return info.editable && kinds.has(info.kind); }).map(t=>t.id);
+  mapSelect = { on:true, mapId:map.id, ids:new Set(ids) };
+  renderMap();
+  toast(ids.length ? `${ids.length} ${label} selected` : `No ${label} on this map`);
+}
+const PLAYER_TOKEN_KINDS = new Set(["trainer","pokemon"]);
+function mapSelectBar(map){
+  const n = mapSelect.ids.size;
+  const row = el("div",{class:"map-select-bar"});
+  row.append(el("span",{class:"map-select-count"}, n ? `☑ ${n} selected` : "Tap tokens below to select them"));
+  if(n) row.append(el("span",{class:"muted small"},"drag any highlighted token to move the group together"),
+    el("button",{class:"btn-secondary",onclick:()=>clearMapSelect(map)},"✕ Clear"));
+  row.append(el("button",{class:"btn-secondary",onclick:()=>toggleMapSelect(map)},"Done"));
+  return row;
+}
 let mapImgEdit = false;                       // GM image-edit mode (move/resize scenery)
 
 function activeMapMeta(){ return cloud.mapMeta?.data ? cloud.mapMeta.data : normMapMeta(null); }
@@ -5478,10 +5554,10 @@ function initiativePanel(map, meta){
     row.append(el("span",{class:"muted",style:"font-size:10px",title:"Speed + bonus"}, String(e.init)));
     if(cloud.isGM){
       const b=el("input",{type:"number",value:e.token.initBonus||0,title:"initiative bonus (e.g. Julie's amulet)",style:"width:32px;font-size:10px;padding:1px 2px"});
-      b.addEventListener("change",async()=>{ e.token.initBonus=parseInt(b.value)||0; await mapTokensUpsert(); renderMap(); });
+      b.addEventListener("change",async()=>{ e.token.initBonus=parseInt(b.value)||0; mapTokensSave(); renderMap(); });
       row.append(b);
       if(enemy||!e.token.link) row.append(el("span",{style:"cursor:pointer;color:var(--muted);font-size:13px;line-height:1",title:"remove from initiative",
-        onclick:async()=>{ e.token.inInit=false; await mapTokensUpsert(); renderMap(); }},"×"));
+        onclick:async()=>{ e.token.inInit=false; mapTokensSave(); renderMap(); }},"×"));
     }
     body.append(row);
   });
@@ -5676,7 +5752,7 @@ function canRemoveToken(token){
 async function removeToken(token, map){
   const arr = cloud.mapTokens?.data?.byMap?.[map.id]; if(!arr) return;
   const i = arr.findIndex(t=>t.id===token.id); if(i>=0) arr.splice(i,1);
-  await mapTokensUpsert(); renderMap();
+  mapTokensSave(); renderMap();
 }
 /* the cell at the centre of what the viewer is currently looking at (for placing new tokens there) */
 function mapViewCenterCell(map, size){
@@ -5688,15 +5764,40 @@ function mapViewCenterCell(map, size){
   const cby = (r.height/2 - mapView.panY)/mapView.scale;
   return { x: Math.max(0, Math.round(cbx/px - sz/2)), y: Math.max(0, Math.round(cby/px - sz/2)) };
 }
+/* Pokémon token footprint from species Size category (Core): Small/Medium = 1×1, Large = 2×2,
+   Huge = 3×3, Gigantic = 4×4. Trainers, enemy trainers, and custom tokens have no Size category
+   and stay 1×1. */
+const SIZE_TOKEN_SQUARES = { Small:1, Medium:1, Large:2, Huge:3, Gigantic:4 };
+function autoTokenSize(link){
+  if(!link) return 1;
+  let mon = null;
+  if(link.kind==="pokemon") mon = (cloud.byId[link.sheetId]?.data?.pokemon||[]).find(p=>p.id===link.monId);
+  else if(link.kind==="enc") mon = encMonById(link.encId, link.monId);
+  const sp = mon && getSpecies(mon.species);
+  return SIZE_TOKEN_SQUARES[sp?.size] || 1;
+}
+/* Bulk "↺ Resize to species" (map toolbar, GM-only): size is only computed automatically at the
+   moment a token is ADDED (`addToken` below) and otherwise sits static on the token — so a token
+   placed before this feature existed, or a Pokémon that's evolved into a different Size category
+   since, silently stays at its old footprint forever. This recomputes every token on the current
+   map in one pass (a no-op for trainers/custom tokens, which autoTokenSize already returns 1 for). */
+function resizeTokensToSpecies(map){
+  const toks = mapTokensFor(map.id);
+  let changed = 0;
+  toks.forEach(t=>{ const want = autoTokenSize(t.link); if(t.size!==want){ t.size=want; changed++; } });
+  if(changed){ mapTokensSave(); renderMap(); toast(`Resized ${changed} token${changed===1?"":"s"} to match species size`); }
+  else toast("Every token already matches its species size");
+}
 async function addToken(map, partial){
   ensureMapTokens();
   const byMap = cloud.mapTokens.data.byMap;
   const arr = byMap[map.id] || (byMap[map.id]=[]);
-  const pos = mapViewCenterCell(map, partial.size||1);
-  const tok = Object.assign({ id:uid(), size:1 }, partial, { x:pos.x, y:pos.y });
+  const size = partial.size!=null ? partial.size : autoTokenSize(partial.link);
+  const pos = mapViewCenterCell(map, size);
+  const tok = Object.assign({ id:uid() }, partial, { size, x:pos.x, y:pos.y });
   arr.push(tok);
   if(map.fogOn) revealAroundTokens(map);      // a freshly-placed player token reveals its surroundings
-  await mapTokensUpsert(); renderMap();
+  mapTokensSave(); renderMap();
 }
 
 /* ---- fog of war: auto-reveal a radius around player-character tokens; revealed stays revealed ---- */
@@ -5732,20 +5833,20 @@ function revealAtCell(map, cx, cy, span){
 async function toggleFog(map){
   map.fogOn = !map.fogOn;
   if(map.fogOn) revealAroundTokens(map);
-  await mapMetaUpsert();
-  if(map.fogOn) await mapTokensUpsert();      // persist the initial reveal
+  mapMetaSave();
+  if(map.fogOn) mapTokensSave();      // persist the initial reveal
   renderMap();
 }
 async function setFogRadius(map, v){
   map.fogRadius = Math.max(1, Math.min(20, parseInt(v)||3));
-  if(map.fogOn){ revealAroundTokens(map); await mapTokensUpsert(); }
-  await mapMetaUpsert(); renderMap();
+  if(map.fogOn){ revealAroundTokens(map); mapTokensSave(); }
+  mapMetaSave(); renderMap();
 }
 async function resetFog(map){
   if(!confirm("Re-hide the whole map? Explored areas will be covered again.")) return;
   if(cloud.mapTokens?.data?.fog) cloud.mapTokens.data.fog[map.id] = [];
   if(map.fogOn) revealAroundTokens(map);      // keep current token surroundings visible
-  await mapTokensUpsert(); renderMap();
+  mapTokensSave(); renderMap();
 }
 /* draw fog onto a canvas sized to the stage; players see opaque cover, the GM sees a dim overlay */
 function drawFog(cv, map, stageW, stageH){
@@ -5935,24 +6036,24 @@ async function toggleBattle(map){
     meta.initRound = 1; meta.initSeq = 0; meta.initTurnId = null;
     mapTokensFor(map.id).forEach(t=>{ const k=tokenHp(t).kind; if(k!=="trainer" && k!=="pokemon") t.inInit = false; });
   }
-  await mapMetaUpsert();
-  if(meta.battleOn) await mapTokensUpsert();
+  mapMetaSave();
+  if(meta.battleOn) mapTokensSave();
   renderMap();
   toast(meta.battleOn ? "⚔ Battle mode on — tracking movement" : "Battle mode off");
 }
 async function newRound(map){
-  resetMapMovement(map); await mapTokensUpsert(); renderMap(); toast("↺ New round — movement reset");
+  resetMapMovement(map); mapTokensSave(); renderMap(); toast("↺ New round — movement reset");
 }
 async function resetTokenMovement(token, map){
   token.moved = 0; delete token.path;
-  await mapTokensUpsert(); renderMap();
+  mapTokensSave(); renderMap();
 }
 
 /* ---- push-to-players: choose which map everyone sees ---- */
 async function pushMapToPlayers(map){
   const meta = activeMapMeta();
   meta.playerMapId = map.id;
-  await mapMetaUpsert(); renderMap();
+  mapMetaSave(); renderMap();
   toast(`Players now see “${map.name}” 👁`);
 }
 
@@ -5966,7 +6067,7 @@ function addMapImage(map){
         const probe = new Image();
         probe.onload = async ()=>{
           map.images.push({ id:uid(), src:out, x:0, y:0, w:probe.naturalWidth||map.gridSize*10, h:probe.naturalHeight||map.gridSize*10 });
-          await mapMetaUpsert(); renderMap(); toast("Image added ✓");
+          mapMetaSave(); renderMap(); toast("Image added ✓");
         };
         probe.onerror = ()=>toast("⚠ Could not read that image");
         probe.src = out;
@@ -5980,11 +6081,11 @@ async function moveMapImageLayer(map, img, dir){
   const i = map.images.indexOf(img); if(i<0) return;
   const j = i + dir; if(j<0 || j>=map.images.length) return;
   map.images.splice(i,1); map.images.splice(j,0,img);
-  await mapMetaUpsert(); renderMap();
+  mapMetaSave(); renderMap();
 }
 async function deleteMapImage(map, img){
   const i = map.images.indexOf(img); if(i<0) return;
-  map.images.splice(i,1); await mapMetaUpsert(); renderMap();
+  map.images.splice(i,1); mapMetaSave(); renderMap();
 }
 
 /* one token element */
@@ -5992,13 +6093,15 @@ function mapTokenNode(token, map){
   const info = tokenHp(token);
   const px = map.gridSize, size = token.size||1, boxPx = size*px;
   const factionColor = tokenFactionColor(info);
-  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":""),
+  const selected = mapSelectActive(map) && mapSelect.ids.has(token.id);
+  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":""),
     style:`left:${token.x*px}px;top:${token.y*px}px;width:${boxPx}px;height:${boxPx}px`
       +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")
       +(factionColor?`;border-color:${factionColor}`:"")});
   node.dataset.tid = token.id;
   info.sprite.classList.add("tk-img");
   node.append(info.sprite);
+  if(selected) node.append(el("div",{class:"tk-selected"},"✓"));
   const hpVisible = info.unlinked || tokenHpVisible(info);   // "unlinked" warning always shows; real HP is gated
   if(hpVisible){
     const pct = Math.max(0, Math.min(100, Math.round(info.cur/info.max*100)));
@@ -6019,50 +6122,66 @@ function mapTokenNode(token, map){
   }
   return node;
 }
-/* drag-to-move (grid-snap + meter readout) or tap-to-open-menu */
+/* drag-to-move (grid-snap + meter readout) or tap-to-open-menu.
+   In select mode, dragging a token that's part of the current selection moves the WHOLE selected
+   group together (each token keeps its own relative offset and its own per-token battle-movement
+   tally); dragging a token that's NOT selected still just moves that one token, same as always.
+   Tapping (no drag) toggles that token's membership in the selection instead of opening its menu. */
 function attachTokenDrag(node, token, map){
   node.addEventListener("pointerdown", ev=>{
     if(ev.button!=null && ev.button>0) return;
     ev.stopPropagation();                                   // don't pan the board
     const info = tokenHp(token);
+    const selecting = mapSelectActive(map);
+    const grouped = selecting && mapSelect.ids.has(token.id) && mapSelect.ids.size>1;
     const px = map.gridSize, scale = mapView.scale;
     const startX = ev.clientX, startY = ev.clientY;
-    const baseX0 = token.x*px, baseY0 = token.y*px;
     let moved = false, badge = null;
-    // for live fog reveal while dragging
-    const liveFog = map.fogOn && tokenReveals(token);
+    const trackMove = battleOn() && map.gridOn;               // accumulate every tile entered, diagonals cost 2
+    const liveFog = !!map.fogOn;
     const stageSize = liveFog ? mapStageSize(map) : null;
     const fogCanvas = liveFog ? document.querySelector("#view-map .map-fog") : null;
-    let lastRevealX = null, lastRevealY = null;
-    // battle mode: accumulate the FULL path travelled this drag (every tile entered), diagonals cost 2
-    const trackMove = battleOn() && map.gridOn;
-    const moveSpeed = trackMove ? tokenMoveSpeed(token) : null;
-    const alreadyMoved = token.moved || 0;
-    let segMoved = 0, pathX = token.x, pathY = token.y;
+    // one drag-context per token being moved (just `token` unless dragging a multi-selected group)
+    const group = grouped ? mapTokensFor(map.id).filter(t=>mapSelect.ids.has(t.id) && tokenHp(t).editable) : [token];
+    const ctx = group.map(t=>({
+      t, n: t===token ? node : document.querySelector(`#view-map .map-token[data-tid="${t.id}"]`),
+      baseX0:t.x*px, baseY0:t.y*px, pathX:t.x, pathY:t.y, segMoved:0,
+      alreadyMoved:t.moved||0, moveSpeed:trackMove?tokenMoveSpeed(t):null,
+      lastRevealX:null, lastRevealY:null,
+    })).filter(c=>c.n);
+    const anchor = ctx.find(c=>c.t===token) || ctx[0];
     try{ node.setPointerCapture(ev.pointerId); }catch(e){}
+    const applyDelta = (dxPx, dyPx, commit)=>{
+      let anyRevealed = false;
+      ctx.forEach(c=>{
+        let nx = Math.max(0, c.baseX0+dxPx), ny = Math.max(0, c.baseY0+dyPx);
+        if(map.gridOn){ nx = Math.round(nx/px)*px; ny = Math.round(ny/px)*px; }   // snap to cells live
+        c.n.style.left = nx+"px"; c.n.style.top = ny+"px";
+        const cx = Math.round(nx/px), cy = Math.round(ny/px);
+        if(map.gridOn && (cx!==c.pathX || cy!==c.pathY)){ c.segMoved += tileCost(c.pathX,c.pathY,cx,cy); c.pathX=cx; c.pathY=cy; }
+        if(commit){
+          if(map.gridOn){ c.t.x=c.pathX; c.t.y=c.pathY; } else { c.t.x=nx/px; c.t.y=ny/px; }
+          if(trackMove) c.t.moved = c.alreadyMoved + c.segMoved;
+        }
+        if(liveFog && tokenReveals(c.t) && (cx!==c.lastRevealX || cy!==c.lastRevealY)){
+          c.lastRevealX=cx; c.lastRevealY=cy; revealAtCell(map, cx, cy, (c.t.size||1)-1); anyRevealed=true;
+        }
+      });
+      if(anyRevealed && fogCanvas) drawFog(fogCanvas, map, stageSize.w, stageSize.h);
+    };
     const move = e=>{
       if(Math.abs(e.clientX-startX)>4 || Math.abs(e.clientY-startY)>4) moved = true;
       if(!moved || !info.editable) return;
       mapDragging = true;
-      let nx = Math.max(0, baseX0+(e.clientX-startX)/scale), ny = Math.max(0, baseY0+(e.clientY-startY)/scale);
-      if(map.gridOn){ nx = Math.round(nx/px)*px; ny = Math.round(ny/px)*px; }   // snap to cells live
-      node.style.left = nx+"px"; node.style.top = ny+"px";
-      const cx = Math.round(nx/px), cy = Math.round(ny/px);
-      if(map.gridOn){                                                            // accumulate every tile entered (diagonals cost 2)
-        if(cx!==pathX || cy!==pathY){ segMoved += tileCost(pathX,pathY,cx,cy); pathX=cx; pathY=cy; }
+      applyDelta((e.clientX-startX)/scale, (e.clientY-startY)/scale, false);
+      if(map.gridOn){
         if(!badge){ badge = el("div",{class:"tk-move"}); node.append(badge); }
+        const n = ctx.length>1 ? `${ctx.length} tokens · ` : "";
         if(trackMove){
-          const total = alreadyMoved+segMoved;
-          badge.textContent = `${segMoved}m · round ${total}${moveSpeed?("/"+moveSpeed):""}m`;
-          badge.classList.toggle("over", !!moveSpeed && total>moveSpeed);
-        } else badge.textContent = `${segMoved}m`;
-      }
-      if(liveFog){                                                              // reveal live as it moves
-        if(cx!==lastRevealX || cy!==lastRevealY){
-          lastRevealX = cx; lastRevealY = cy;
-          revealAtCell(map, cx, cy, (token.size||1)-1);
-          if(fogCanvas) drawFog(fogCanvas, map, stageSize.w, stageSize.h);
-        }
+          const total = anchor.alreadyMoved+anchor.segMoved;
+          badge.textContent = `${n}${anchor.segMoved}m · round ${total}${anchor.moveSpeed?("/"+anchor.moveSpeed):""}m`;
+          badge.classList.toggle("over", !!anchor.moveSpeed && total>anchor.moveSpeed);
+        } else badge.textContent = `${n}${anchor.segMoved}m`;
       }
     };
     const up = async e=>{
@@ -6070,18 +6189,17 @@ function attachTokenDrag(node, token, map){
       node.removeEventListener("pointermove", move);
       node.removeEventListener("pointerup", up);
       if(badge) badge.remove();
-      if(!moved){ mapDragging=false; openTokenMenu(token, map); return; }
+      if(!moved){
+        mapDragging=false;
+        if(selecting && info.editable){ mapSelect.ids.has(token.id)?mapSelect.ids.delete(token.id):mapSelect.ids.add(token.id); renderMap(); }
+        else openTokenMenu(token, map);
+        return;
+      }
       if(!info.editable){ mapDragging=false; return; }
-      const nx = Math.max(0, baseX0+(e.clientX-startX)/scale), ny = Math.max(0, baseY0+(e.clientY-startY)/scale);
-      if(map.gridOn){
-        const cx = Math.round(nx/px), cy = Math.round(ny/px);
-        if(cx!==pathX || cy!==pathY){ segMoved += tileCost(pathX,pathY,cx,cy); pathX=cx; pathY=cy; }  // count the final tile(s)
-        token.x = cx; token.y = cy;
-      } else { token.x = nx/px; token.y = ny/px; }                                   // free placement
-      if(trackMove) token.moved = alreadyMoved + segMoved;                           // add this drag's path to the round total
+      applyDelta((e.clientX-startX)/scale, (e.clientY-startY)/scale, true);
       if(map.fogOn) revealAroundTokens(map);                                        // moving reveals new ground
       mapDragging = false;
-      await mapTokensUpsert(); renderMap();
+      mapTokensSave(); renderMap();
     };
     node.addEventListener("pointermove", move);
     node.addEventListener("pointerup", up);
@@ -6108,7 +6226,7 @@ function attachImageDrag(node, img, map){
     const up = async ()=>{
       try{ node.releasePointerCapture(ev.pointerId); }catch(e){}
       node.removeEventListener("pointermove",move); node.removeEventListener("pointerup",up);
-      mapDragging=false; if(moved){ await mapMetaUpsert(); renderMap(); }
+      mapDragging=false; if(moved){ mapMetaSave(); renderMap(); }
     };
     node.addEventListener("pointermove",move); node.addEventListener("pointerup",up);
   };
@@ -6301,7 +6419,7 @@ function openTokenMenu(token, map){
         modes.forEach(([k,lbl,m])=>{
           chips.append(el("button",{class:"btn-secondary"+(k===cur?" on":""),style:"padding:4px 9px",
             title:`use ${lbl} speed (${m} m)`,
-            onclick:async()=>{ token.moveMode=k; await mapTokensUpsert(); renderMap(); reopenTokenMenu(token,map); }},
+            onclick:async()=>{ token.moveMode=k; mapTokensSave(); renderMap(); reopenTokenMenu(token,map); }},
             `${({overland:"🚶",sky:"🕊",swim:"🌊",burrow:"⛏"}[k]||"")} ${lbl} ${m}`));
         });
         wrap.append(el("div",{class:"small muted",style:"margin-top:12px;font-weight:700"},"Movement type"), chips);
@@ -6325,7 +6443,7 @@ function openTokenMenu(token, map){
         const on = k===cur;
         chips.append(el("button",{class:"btn-secondary"+(on?" on":""),style:"padding:4px 9px",
           title:`move using ${lbl} speed (${m} m)`,
-          onclick:async()=>{ token.moveMode=k; await mapTokensUpsert(); renderMap(); reopenTokenMenu(token,map); }},
+          onclick:async()=>{ token.moveMode=k; mapTokensSave(); renderMap(); reopenTokenMenu(token,map); }},
           `${({overland:"🚶",sky:"🕊",swim:"🌊",burrow:"⛏"}[k]||"")} ${lbl} ${m}`));
       });
       wrap.append(el("div",{class:"small muted",style:"margin-top:8px;font-weight:700"},"Movement type"), chips);
@@ -6336,24 +6454,29 @@ function openTokenMenu(token, map){
     if(cloud.isGM){
       const szSel = el("select");
       [1,2,3,4].forEach(s=>szSel.append(el("option",{value:s,selected:s===(token.size||1)}, `${s}×${s}`)));
-      szSel.addEventListener("change", async()=>{ token.size=parseInt(szSel.value)||1; if(map.fogOn) revealAroundTokens(map); await mapTokensUpsert(); renderMap(); });
-      wrap.append(el("label",{class:"field",style:"margin-top:12px;max-width:150px"}, el("span",{},"Token size"), szSel));
+      szSel.addEventListener("change", async()=>{ token.size=parseInt(szSel.value)||1; if(map.fogOn) revealAroundTokens(map); mapTokensSave(); renderMap(); });
+      const szRow = el("div",{class:"inline",style:"gap:6px;align-items:flex-end"},
+        el("label",{class:"field",style:"max-width:150px"}, el("span",{},"Token size"), szSel));
+      if(token.link && (token.link.kind==="pokemon" || token.link.kind==="enc"))
+        szRow.append(el("button",{class:"btn-secondary",style:"padding:8px 10px",title:"recalculate from the Pokémon's Size category (e.g. after it evolves)",
+          onclick:async()=>{ token.size=autoTokenSize(token.link); szSel.value=token.size; if(map.fogOn) revealAroundTokens(map); mapTokensSave(); renderMap(); reopenTokenMenu(token,map); }},"↺ Auto"));
+      wrap.append(el("div",{style:"margin-top:12px"},szRow));
       const rv = el("input",{type:"checkbox"}); rv.checked = tokenReveals(token);
-      rv.addEventListener("change", async()=>{ token.reveal = rv.checked; if(map.fogOn) revealAroundTokens(map); await mapTokensUpsert(); renderMap(); });
+      rv.addEventListener("change", async()=>{ token.reveal = rv.checked; if(map.fogOn) revealAroundTokens(map); mapTokensSave(); renderMap(); });
       wrap.append(el("label",{class:"inline",style:"margin-top:10px;gap:6px;display:flex;align-items:center"},
         rv, el("span",{class:"small"},"👁 This token reveals fog of war")));
       const hd = el("input",{type:"checkbox"}); hd.checked = !!token.gmHidden;
-      hd.addEventListener("change", async()=>{ token.gmHidden = hd.checked; await mapTokensUpsert(); renderMap(); toast(token.gmHidden?"🙈 Hidden from players":"👁 Visible to players"); });
+      hd.addEventListener("change", async()=>{ token.gmHidden = hd.checked; mapTokensSave(); renderMap(); toast(token.gmHidden?"🙈 Hidden from players":"👁 Visible to players"); });
       wrap.append(el("label",{class:"inline",style:"margin-top:10px;gap:6px;display:flex;align-items:center"},
         hd, el("span",{class:"small"},"🙈 Hide this token from players")));
       if(battleOn()){
         const info2=tokenHp(token), ally=info2.kind==="trainer"||info2.kind==="pokemon";
         const ii=el("input",{type:"checkbox"}); ii.checked = ally ? token.inInit!==false : !!token.inInit;
-        ii.addEventListener("change", async()=>{ token.inInit=ii.checked; await mapTokensUpsert(); renderMap(); });
+        ii.addEventListener("change", async()=>{ token.inInit=ii.checked; mapTokensSave(); renderMap(); });
         wrap.append(el("label",{class:"inline",style:"margin-top:10px;gap:6px;display:flex;align-items:center"},
           ii, el("span",{class:"small"},"⚔ In initiative order")));
         const ib=el("input",{type:"number",value:token.initBonus||0,style:"width:64px"});
-        ib.addEventListener("change", async()=>{ token.initBonus=parseInt(ib.value)||0; await mapTokensUpsert(); renderMap(); });
+        ib.addEventListener("change", async()=>{ token.initBonus=parseInt(ib.value)||0; mapTokensSave(); renderMap(); });
         wrap.append(el("label",{class:"field",style:"margin-top:8px;max-width:160px"}, el("span",{},"Initiative bonus"), ib));
       }
     }
@@ -6506,9 +6629,9 @@ async function newMap(){
   const m = { id:uid(), name:name||"Map", images:[], gridSize:32, gridOn:true, fogOn:false, fogRadius:3 };
   cloud.mapMeta.data.maps.push(m); cloud.mapMeta.data.activeMapId = m.id; mapGmView = m.id;
   mapView = { scale:1, panX:0, panY:0 };
-  await mapMetaUpsert(); renderMap();
+  mapMetaSave(); renderMap();
 }
-async function renameMap(map){ const n=prompt("Rename map:", map.name); if(n===null) return; map.name=n||map.name; await mapMetaUpsert(); renderMap(); }
+async function renameMap(map){ const n=prompt("Rename map:", map.name); if(n===null) return; map.name=n||map.name; mapMetaSave(); renderMap(); }
 async function deleteMap(map){
   if(!confirm(`Delete map “${map.name}” and its tokens?`)) return;
   const meta = cloud.mapMeta.data;
@@ -6519,7 +6642,7 @@ async function deleteMap(map){
   meta.activeMapId = fallback;
   if(meta.playerMapId===map.id) meta.playerMapId = fallback;
   if(mapGmView===map.id) mapGmView = fallback;
-  await mapMetaUpsert(); await mapTokensUpsert(); renderMap();
+  mapMetaSave(); mapTokensSave(); renderMap();
 }
 /* Map backgrounds are stored exactly as uploaded — no downscaling, no re-encoding — so pixel-art/
    tile maps stay lossless at full resolution. (User call: never compress, even at the cost of a
@@ -6531,41 +6654,98 @@ function prepMapBg(dataUrl, cb){
   img.onerror = ()=>toast("⚠ Could not read that image");
   img.src = dataUrl;
 }
-async function toggleGrid(map){ map.gridOn=!map.gridOn; await mapMetaUpsert(); renderMap(); }
+async function toggleGrid(map){ map.gridOn=!map.gridOn; mapMetaSave(); renderMap(); }
 async function clearMapTokens(map){ if(!confirm("Remove ALL tokens from this map?")) return;
-  if(cloud.mapTokens?.data?.byMap) cloud.mapTokens.data.byMap[map.id]=[]; await mapTokensUpsert(); renderMap(); }
+  if(cloud.mapTokens?.data?.byMap) cloud.mapTokens.data.byMap[map.id]=[];
+  if(mapSelectActive(map)) mapSelect.ids.clear();
+  mapTokensSave(); renderMap(); }
 
 function applyMapCamera(stage){ stage.style.transformOrigin="0 0";
   stage.style.transform = `translate(${mapView.panX}px,${mapView.panY}px) scale(${mapView.scale})`; }
+const MAP_ZOOM_MIN = 0.2, MAP_ZOOM_MAX = 4;
 function attachPanZoom(viewport, stage){
   let zoomTimer = null;
-  viewport.addEventListener("wheel", e=>{
-    e.preventDefault();
-    const rect = viewport.getBoundingClientRect();
-    const cx = e.clientX-rect.left, cy = e.clientY-rect.top;
-    const old = mapView.scale;
-    const next = Math.max(0.2, Math.min(4, old*(e.deltaY<0?1.1:0.9)));
-    // keep the point under the cursor fixed while zooming
+  // The scaled stage is a cached GPU layer rasterized at the zoom it was BUILT at, so zooming
+  // just stretches that stale bitmap (blurry/pixelated) until a full re-render rebuilds the
+  // layer — which is why moving a token "fixed" it. Rebuild once the gesture settles.
+  const settle = ()=>{
+    clearTimeout(zoomTimer);
+    zoomTimer = setTimeout(()=>{ if(currentTab==="map" && !mapDragging) renderMap(); }, 200);
+  };
+  const clampScale = s => Math.max(MAP_ZOOM_MIN, Math.min(MAP_ZOOM_MAX, s));
+  const vpXY = e=>{ const r=viewport.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; };
+  // scale about a viewport point, keeping whatever is under it pinned there
+  const zoomAt = (cx, cy, want)=>{
+    const old = mapView.scale, next = clampScale(want);
+    if(next===old) return;
     mapView.panX = cx - (cx-mapView.panX)*(next/old);
     mapView.panY = cy - (cy-mapView.panY)*(next/old);
     mapView.scale = next; applyMapCamera(stage);
-    // The scaled stage is a cached GPU layer rasterized at the zoom it was BUILT at, so
-    // wheel-zoom just stretches that stale bitmap (blurry/pixelated) until a full re-render
-    // rebuilds the layer — which is why moving a token "fixed" it. Rebuild once zoom settles.
-    clearTimeout(zoomTimer);
-    zoomTimer = setTimeout(()=>{ if(currentTab==="map" && !mapDragging) renderMap(); }, 200);
+  };
+  viewport.addEventListener("wheel", e=>{
+    e.preventDefault();
+    const p = vpXY(e);
+    zoomAt(p.x, p.y, mapView.scale*(e.deltaY<0?1.1:0.9));
+    settle();
   }, { passive:false });
+
+  /* Pointer bookkeeping shared by one-finger pan and two-finger pinch-zoom. `.map-viewport` sets
+     touch-action:none (so the browser never steals the gesture), which also means there is NO
+     native pinch — without the pinch branch below, phones/tablets can pan but cannot zoom at all. */
+  const pts = new Map();     // active pointerId → {x,y} in viewport coords
+  let pan = null;            // {sx,sy,px0,py0} while one-finger/mouse panning
+  let pinch = null;          // {dist0,scale0,ax,ay} while two-finger pinching
+  const twoPts = ()=>{ const a=[...pts.values()]; return [a[0],a[1]]; };
+  const beginPan = p => { pan = {sx:p.x, sy:p.y, px0:mapView.panX, py0:mapView.panY}; };
+  const beginPinch = ()=>{
+    const [a,b] = twoPts();
+    const cx=(a.x+b.x)/2, cy=(a.y+b.y)/2;
+    pan = null;
+    pinch = { dist0: Math.hypot(a.x-b.x, a.y-b.y) || 1, scale0: mapView.scale,
+      // stage-space point under the starting midpoint — held under the midpoint for the whole
+      // gesture, so the pinch scales AND drags together the way a native map gesture does
+      ax: (cx - mapView.panX)/mapView.scale, ay: (cy - mapView.panY)/mapView.scale };
+  };
   viewport.addEventListener("pointerdown", ev=>{
     // tokens handle their own drag; the floating AoE range panel is a child of viewport too —
     // without this it soaked up pointerdown as a map-pan (setPointerCapture on viewport), which
     // hijacked clicks on its facing d-pad / clear button so the panel looked broken/stuck.
     if(ev.target.closest(".map-token") || ev.target.closest(".aoe-panel")) return;
-    const sx=ev.clientX, sy=ev.clientY, px0=mapView.panX, py0=mapView.panY;
+    pts.set(ev.pointerId, vpXY(ev));
     try{ viewport.setPointerCapture(ev.pointerId); }catch(e){}
-    const move = e=>{ mapView.panX=px0+(e.clientX-sx); mapView.panY=py0+(e.clientY-sy); applyMapCamera(stage); };
-    const up = ()=>{ viewport.removeEventListener("pointermove",move); viewport.removeEventListener("pointerup",up); };
-    viewport.addEventListener("pointermove",move); viewport.addEventListener("pointerup",up);
+    if(pts.size===2) beginPinch();
+    else if(pts.size===1) beginPan(vpXY(ev));
   });
+  viewport.addEventListener("pointermove", ev=>{
+    if(!pts.has(ev.pointerId)) return;
+    pts.set(ev.pointerId, vpXY(ev));
+    if(pinch && pts.size>=2){
+      const [a,b] = twoPts();
+      const dist = Math.hypot(a.x-b.x, a.y-b.y) || 1;
+      const next = clampScale(pinch.scale0 * (dist/pinch.dist0));
+      const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+      mapView.scale = next;
+      mapView.panX = mx - pinch.ax*next;      // pin the anchor under the moving midpoint
+      mapView.panY = my - pinch.ay*next;
+      applyMapCamera(stage);
+    } else if(pan && pts.size===1){
+      const p = vpXY(ev);
+      mapView.panX = pan.px0 + (p.x-pan.sx);
+      mapView.panY = pan.py0 + (p.y-pan.sy);
+      applyMapCamera(stage);
+    }
+  });
+  const endPointer = ev=>{
+    if(!pts.delete(ev.pointerId)) return;
+    try{ viewport.releasePointerCapture(ev.pointerId); }catch(e){}
+    if(pinch){ pinch = null; settle(); }        // re-rasterize at the zoom it settled on
+    // lifting one finger of a pinch should keep panning smoothly from where the other one is,
+    // not jump — so re-anchor the pan to the surviving pointer instead of ending the gesture.
+    if(pts.size===1) beginPan([...pts.values()][0]);
+    else if(pts.size===0) pan = null;
+  };
+  viewport.addEventListener("pointerup", endPointer);
+  viewport.addEventListener("pointercancel", endPointer);
 }
 
 /* stage dimensions = bounding box of all images, with a default floor */
@@ -6585,7 +6765,7 @@ function resolveImageSizes(map){
   if(!pending.length) return;
   let left = pending.length;
   const done = async ()=>{ if(--left) return;
-    if(cloud.isGM) await mapMetaUpsert();
+    if(cloud.isGM) mapMetaSave();
     if(currentTab==="map" && !mapDragging) renderMap(); };
   pending.forEach(im=>{ const p=new Image();
     p.onload =()=>{ im.w=p.naturalWidth||map.gridSize*10; im.h=p.naturalHeight||map.gridSize*10; done(); };
@@ -6632,12 +6812,16 @@ function renderMap(){
         el("button",{class:"btn-secondary"+(map.gridOn?" on":""),onclick:()=>toggleGrid(map)}, map.gridOn?"▦ Grid on":"▦ Grid off"),
       );
       const gs = el("input",{type:"number",min:12,max:200,value:map.gridSize,style:"width:64px",title:"grid cell size (px)"});
-      gs.addEventListener("change", async()=>{ map.gridSize=Math.max(12,Math.min(200,parseInt(gs.value)||32)); await mapMetaUpsert(); renderMap(); });
+      gs.addEventListener("change", async()=>{ map.gridSize=Math.max(12,Math.min(200,parseInt(gs.value)||32)); mapMetaSave(); renderMap(); });
       bar.append(el("label",{class:"field",style:"max-width:120px"}, el("span",{},"Cell px"), gs));
       // — Play group: tokens, fog —
       bar.append(el("span",{class:"map-sep"}),
         el("button",{class:"btn-primary",onclick:()=>openAddToken(map)},"＋ Add token"),
         el("button",{class:"btn-secondary",onclick:()=>clearMapTokens(map)},"Clear tokens"),
+        el("button",{class:"btn-secondary",onclick:()=>resizeTokensToSpecies(map),
+          title:"Recompute every token's footprint from its species (Small/Medium=1×1, Large=2×2, Huge=3×3, "
+               +"Gigantic=4×4) — fixes tokens that were placed before this existed, or that evolved since"},
+          "↺ Resize to species"),
         el("button",{class:"btn-secondary"+(map.fogOn?" on":""),onclick:()=>toggleFog(map),
           title:"Auto-reveals around player tokens; explored areas stay revealed"}, map.fogOn?"🌫 Fog on":"🌫 Fog off"),
       );
@@ -6647,6 +6831,14 @@ function renderMap(){
         bar.append(el("label",{class:"field",style:"max-width:110px"}, el("span",{},"Fog radius"), fr),
           el("button",{class:"btn-secondary",onclick:()=>resetFog(map)},"Reset fog"));
       }
+      // — Select group: multi-token select, so several tokens can be dragged as one group —
+      bar.append(el("span",{class:"map-sep"}),
+        el("button",{class:"btn-secondary"+(mapSelectActive(map)?" on":""),onclick:()=>toggleMapSelect(map),
+          title:"Tap tokens to select several, then drag any of them to move the group together"},
+          mapSelectActive(map)?`✓ Selecting (${mapSelect.ids.size})`:"☑ Select tokens"),
+        el("button",{class:"btn-secondary",onclick:()=>selectMapTokens(map, PLAYER_TOKEN_KINDS, "player tokens"),
+          title:"Select every trainer/Pokémon token on this map, to move the whole party at once"},"☑ All players"),
+      );
       // — Battle group: track movement per token —
       bar.append(el("span",{class:"map-sep"}),
         el("button",{class:"btn-secondary"+(meta.battleOn?" on":""),onclick:()=>toggleBattle(map),
@@ -6656,10 +6848,17 @@ function renderMap(){
   } else {
     bar.append(el("div",{class:"map-mapname"}, map ? `🗺 ${map.name}` : "🗺 Battle map"));
     if(meta.battleOn) bar.append(el("span",{class:"battle-badge"},"⚔ Battle"));
-    if(map && Object.values(cloud.byId).some(r=>ownsRow(r)))
+    if(map && Object.values(cloud.byId).some(r=>ownsRow(r))){
       bar.append(el("button",{class:"btn-primary",onclick:()=>openAddToken(map)},"＋ Add my token"));
+      if(mapTokensFor(map.id).some(t=>tokenHp(t).editable)) bar.append(el("span",{class:"map-sep"}),
+        el("button",{class:"btn-secondary"+(mapSelectActive(map)?" on":""),onclick:()=>toggleMapSelect(map),
+          title:"Tap your tokens to select several, then drag any of them to move together"},
+          mapSelectActive(map)?`✓ Selecting (${mapSelect.ids.size})`:"☑ Select tokens"),
+        el("button",{class:"btn-secondary",onclick:()=>selectMapTokens(map, PLAYER_TOKEN_KINDS, "of your tokens")},"☑ My tokens"));
+    }
   }
   root.append(bar);
+  if(map && mapSelectActive(map)) root.append(mapSelectBar(map));
 
   if(!map){
     root.append(el("div",{class:"card muted"}, cloud.isGM
@@ -6705,7 +6904,7 @@ function renderMap(){
         const mv=e=>{ moved=true; mapDragging=true; im.w=Math.max(px,snap(w0+(e.clientX-sx)/scale)); im.h=Math.max(px,snap(h0+(e.clientY-sy)/scale));
           wrap.style.width=im.w+"px"; wrap.style.height=im.h+"px"; };
         const up=async()=>{ try{handle.releasePointerCapture(ev.pointerId);}catch(e){} handle.removeEventListener("pointermove",mv); handle.removeEventListener("pointerup",up);
-          mapDragging=false; if(moved){ await mapMetaUpsert(); renderMap(); } };
+          mapDragging=false; if(moved){ mapMetaSave(); renderMap(); } };
         handle.addEventListener("pointermove",mv); handle.addEventListener("pointerup",up); });
       stage.append(wrap);
     } else {
@@ -6817,7 +7016,26 @@ initCloud();
 document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden") flushCloudSaves(); });
 window.addEventListener("pagehide", flushCloudSaves);
 
-/* register service worker when hosted (ignored on file://) */
+/* Register the service worker when hosted (ignored on file://).
+   updateViaCache:"none" — GitHub Pages serves sw.js with Cache-Control: max-age=600 too, so without
+   this the browser can check for a new worker against its own HTTP cache and conclude "unchanged"
+   even after a deploy. This forces the update check to actually hit the network.
+   We also re-check on resume: a mobile PWA is usually RESUMED from the background rather than
+   reloaded, so without an explicit update() it can sit on an old worker for days. */
 if("serviceWorker" in navigator && location.protocol.startsWith("http")){
-  navigator.serviceWorker.register("sw.js").catch(()=>{});
+  const hadController = !!navigator.serviceWorker.controller;   // false on the very first install
+  let swReloading = false;
+  navigator.serviceWorker.register("sw.js", { updateViaCache:"none" }).then(reg=>{
+    const check = ()=>{ try{ reg.update(); }catch(e){} };
+    check();
+    document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") check(); });
+    window.addEventListener("pageshow", check);   // bfcache restores don't fire visibilitychange
+  }).catch(()=>{});
+  /* Safety net for anyone who still lands on a stale page: when a NEW worker takes over, reload once
+     so they end up on the current version without needing a hard refresh (which is the whole problem
+     on mobile). Skipped on first install — there was no previous version to replace. */
+  navigator.serviceWorker.addEventListener("controllerchange", ()=>{
+    if(!hadController || swReloading) return;
+    swReloading = true; location.reload();
+  });
 }
