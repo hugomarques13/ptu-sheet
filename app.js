@@ -6521,31 +6521,13 @@ async function deleteMap(map){
   if(mapGmView===map.id) mapGmView = fallback;
   await mapMetaUpsert(); await mapTokensUpsert(); renderMap();
 }
-/* Map backgrounds are often pixel-art/tile maps — keep them LOSSLESS (PNG) at full resolution
-   instead of re-encoding to JPEG (which smears sharp tile edges). Only downscale genuinely huge
-   images, and only fall back to JPEG if the data URL would be too big to sync comfortably. */
-const MAP_BG_MAXDIM   = 4096;
-const MAP_BG_MAXBYTES = 6 * 1024 * 1024;   // ~6 MB data-URL budget for the synced meta row
+/* Map backgrounds are stored exactly as uploaded — no downscaling, no re-encoding — so pixel-art/
+   tile maps stay lossless at full resolution. (User call: never compress, even at the cost of a
+   bigger synced row / slower sync for large uploads.) Still validated as a real image first. */
 function fileToDataURL(f){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); }); }
 function prepMapBg(dataUrl, cb){
   const img = new Image();
-  img.onload = ()=>{
-    const isPng = /^data:image\/png/i.test(dataUrl);
-    const long  = Math.max(img.width, img.height);
-    let out = dataUrl;                                   // small enough → keep the original bytes (lossless)
-    if(long > MAP_BG_MAXDIM){
-      const s = MAP_BG_MAXDIM/long, w = Math.round(img.width*s), h = Math.round(img.height*s);
-      const cv = el("canvas"); cv.width=w; cv.height=h; cv.getContext("2d").drawImage(img,0,0,w,h);
-      try{ out = isPng ? cv.toDataURL("image/png") : cv.toDataURL("image/jpeg",0.92); }catch(e){ out=dataUrl; }
-    }
-    if(out.length > MAP_BG_MAXBYTES){                    // still too heavy → shrink to a JPEG so sync stays sane
-      const s = Math.min(1, MAP_BG_MAXDIM/long), w = Math.round(img.width*s), h = Math.round(img.height*s);
-      const cv = el("canvas"); cv.width=w; cv.height=h; cv.getContext("2d").drawImage(img,0,0,w,h);
-      try{ out = cv.toDataURL("image/jpeg",0.9); }catch(e){}
-      toast("Large map — stored slightly compressed to keep sync fast");
-    }
-    cb(out);
-  };
+  img.onload = ()=> cb(dataUrl);
   img.onerror = ()=>toast("⚠ Could not read that image");
   img.src = dataUrl;
 }
