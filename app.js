@@ -3919,7 +3919,8 @@ function encounterMonCard(enc, p, list){
     el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"toggle shiny",
       onclick:()=>{ p.shiny=!p.shiny; saveEnc(); renderEncounters(); }}, p.shiny?"✨ Shiny":"Shiny?"),
     el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"capture DC",onclick:()=>catchRateModal(p)},"🎯 Catch DC"),
-    el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"send to the shared PC (caught)",onclick:()=>sendEncMonToPC(enc,p,list)},"🎣 To PC"));
+    el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"send to the shared PC (caught)",onclick:()=>sendEncMonToPC(enc,p,list)},"🎣 To PC"),
+    el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"EXP for defeating just this Pokémon",onclick:()=>openMonExpCalc(p)},"🧮 EXP"));
   card.append(actRow);
   card.append(encStatSpread(p));
   card.append(encCombatStages(p));
@@ -4089,6 +4090,41 @@ function openExpCalc(enc){
   sigIn.addEventListener("input",recalc); plIn.addEventListener("input",recalc);
   body.append(inRow, out); recalc();
   modal({title:`🧮 EXP — ${enc.name}`, bodyNode:body});
+}
+/* EXP for defeating ONE wild Pokémon, rather than a whole encounter (Core p.460: a Pokémon's
+   Base Experience Value is simply its level). Separate from openExpCalc — that one totals every
+   combatant and persists the encounter's own significance/player count; this is a throwaway
+   per-kill payout, so its inputs start from these defaults every time and are never saved. */
+const MON_EXP_SIG = 1, MON_EXP_PLAYERS = 3;
+function openMonExpCalc(p){
+  const base = p.level||0;
+  const body = el("div",{});
+  body.append(el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"},
+    el("div",{class:"inline",style:"justify-content:space-between;gap:8px"},
+      el("span",{}, encMonName(p)), el("span",{class:"muted small"}, `Lv ${base}`)),
+    el("div",{class:"inline",style:"justify-content:space-between;gap:8px;border-top:1px solid var(--line);margin-top:6px;padding-top:6px;font-weight:800"},
+      el("span",{},"Base Experience Value"), el("span",{}, String(base)))));
+  const sigIn = el("input",{type:"number",min:0,step:0.5,value:MON_EXP_SIG});
+  const plIn  = el("input",{type:"number",min:1,value:MON_EXP_PLAYERS});
+  const lbl = (txt,node,hint)=>el("label",{class:"field"}, el("span",{},txt), node,
+    hint?el("span",{class:"small muted",style:"font-weight:400"},hint):"");
+  const out = el("div",{class:"card",style:"margin:0"});
+  const recalc = ()=>{
+    const sig = Math.max(0, parseFloat(sigIn.value)||0), pl = Math.max(1, parseInt(plIn.value)||1);
+    const total = Math.round(base*sig), per = Math.round(total/pl);
+    out.innerHTML = "";
+    out.append(
+      el("div",{style:"font-size:15px"}, `${base} Base × ${sig} modifier = `, el("b",{},String(total)), " total XP"),
+      el("div",{style:"font-size:22px;font-weight:800;margin-top:6px;color:var(--accent)"}, `${per} XP per player`),
+      el("div",{class:"small muted",style:"margin-top:4px"},
+        `${total} ÷ ${pl} player${pl===1?"":"s"}. Each player then splits their share among the Pokémon they used (Core p.460).`));
+  };
+  sigIn.addEventListener("input",recalc); plIn.addEventListener("input",recalc);
+  body.append(el("div",{class:"fieldrow"},
+    lbl("Modifier ×",sigIn,"1–1.5 minor · 2–3 average · 4–5 major"),
+    lbl("Players sharing XP",plIn,"count Players, not Pokémon")), out);
+  recalc();
+  modal({title:`🧮 EXP — ${encMonName(p)}`, bodyNode:body});
 }
 function renderEncounters(){
   const root=$("#view-encounters"); root.innerHTML="";
@@ -5333,6 +5369,31 @@ function encTrainerById(encId, trainerId){
 }
 /* link kinds that represent enemies (they never reveal fog and only the GM edits them) */
 const ENEMY_LINKS = new Set(["enc","enctrainer"]);
+/* stable identity for whatever a token points at, so "is this creature already on the map?" is one
+   comparison instead of four link-shape special cases. Standalone/custom tokens have no link and so
+   no key — they're never deduplicated (you can drop as many generic markers as you like). */
+function tokenLinkKey(link){
+  if(!link) return "";
+  switch(link.kind){
+    case "trainer":    return `trainer:${link.sheetId}`;
+    case "pokemon":    return `pokemon:${link.sheetId}:${link.monId}`;
+    case "enc":        return `enc:${link.encId}:${link.monId}`;
+    case "enctrainer": return `enctrainer:${link.encId}:${link.trainerId}`;
+    default:           return "";
+  }
+}
+/* keys of everything already placed on a given map — used to hide those entries from "Add a token" */
+function placedLinkKeys(mapId){
+  return new Set(mapTokensFor(mapId).map(t=>tokenLinkKey(t.link)).filter(Boolean));
+}
+/* the array a wild/encounter Pokémon actually lives in — the encounter's own wild list, or one of
+   its trainers' parties — so token-side actions can remove it exactly the way the Encounters tab does */
+function encMonList(enc, mon){
+  if(!enc || !mon) return null;
+  if((enc.mons||[]).includes(mon)) return enc.mons;
+  for(const tr of (enc.trainers||[])) if((tr.pokemon||[]).includes(mon)) return tr.pokemon;
+  return null;
+}
 /* resolve a linked token to its live source object (sheet Pokémon/trainer, or encounter monster/trainer) */
 function tokenLinked(token){
   if(!token.link) return null;
@@ -6410,6 +6471,27 @@ function openTokenMenu(token, map){
       wrap.append(rw);
     }
 
+    // ---- GM tools for a wild (encounter-linked) Pokémon: capture DC, "caught" → shared PC, and
+    // the per-kill EXP payout — the same three the Encounters tab card offers, reachable straight
+    // from the board. Deliberately NOT shown on player-linked Pokémon: Catch DC is meaningless on
+    // a trainer's own mon, and "To PC" there would be a different (and destructive) action.
+    if(cloud.isGM && L && L.obj && L.kind==="enc"){
+      const enc = encList().find(e=>e.id===token.link.encId) || null;
+      const srcList = encMonList(enc, L.obj);
+      const gw = el("div",{style:"margin-top:16px"});
+      gw.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"👹 GM — wild Pokémon"));
+      gw.append(el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px"},
+        el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"capture DC",
+          onclick:()=>catchRateModal(L.obj)},"🎯 Catch DC"),
+        el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"EXP for defeating just this Pokémon",
+          onclick:()=>openMonExpCalc(L.obj)},"🧮 EXP"),
+        el("button",{class:"btn-secondary",style:"padding:5px 10px",disabled:!srcList,
+          title: srcList ? "caught — send to the shared PC and take it off the map"
+                         : "this Pokémon is no longer part of its encounter",
+          onclick:async()=>{ closeModal(); await sendEncMonToPC(enc, L.obj, srcList); renderMap(); }},"🎣 To PC")));
+      wrap.append(gw);
+    }
+
     // Throwing a Poké Ball is now a Trainer ⚔ Combat action (openThrowPokeball), not a button on
     // the wild Pokémon's own token — see renderTrainerCombat's "Capture" card.
 
@@ -6552,12 +6634,20 @@ function openAddToken(map){
 
   const draw = ()=>{
     const q = search.value.trim().toLowerCase(); list.innerHTML="";
+    // anything already standing on this map is dropped from the list — re-adding it would just
+    // stack a duplicate token on the same creature, which is never what you want.
+    const placed = placedLinkKeys(map.id);
+    const isPlaced = mk => placed.has(tokenLinkKey(mk().link));
     if(tab==="players"){
       const match = s => !q || (s||"").toLowerCase().includes(q);
-      let shown = 0;
+      let shown = 0, hidden = 0;
       playerTokenGroups().forEach(g=>{
+        const trainerPlaced = isPlaced(g.trainerMake);
+        const avail = g.mons.filter(m=>!isPlaced(m.make));
+        hidden += (g.mons.length - avail.length) + (trainerPlaced?1:0);
+        if(trainerPlaced && !avail.length) return;         // whole sheet is already on the board
         const trainerHit = match(g.trainerName) || match(g.owner);
-        const mons = g.mons.filter(m=>trainerHit || match(m.label) || match(m.sub));
+        const mons = avail.filter(m=>trainerHit || match(m.label) || match(m.sub));
         if(!trainerHit && !mons.length) return;
         shown++;
         const expanded = q ? true : expanded_.has(g.id);
@@ -6566,27 +6656,34 @@ function openAddToken(map){
           el("span",{class:"pick-caret"}, expanded?"▾":"▸"),
           el("div",{style:"flex:1;min-width:0"},
             el("div",{class:"pi-title"}, g.trainerName + (cloud.isGM && g.owner ? `  ·  ${g.owner}` : "")),
-            el("div",{class:"pi-sub muted"}, `${g.mons.length} in party`)),
-          el("button",{class:"btn-secondary",style:"padding:4px 10px",title:"add the trainer as a token",
-            onclick:e=>{ e.stopPropagation(); add(g.trainerMake)(); }},"＋ Trainer"));
+            el("div",{class:"pi-sub muted"}, `${avail.length} of ${g.mons.length} in party not on the map`)),
+          trainerPlaced
+            ? el("span",{class:"small muted",style:"padding:4px 10px;white-space:nowrap"},"on map")
+            : el("button",{class:"btn-secondary",style:"padding:4px 10px",title:"add the trainer as a token",
+                onclick:e=>{ e.stopPropagation(); add(g.trainerMake)(); }},"＋ Trainer"));
         list.append(head);
         if(expanded){
-          if(!mons.length) list.append(el("div",{class:"pickitem pick-mon muted"},"No party Pokémon."));
+          if(!mons.length) list.append(el("div",{class:"pickitem pick-mon muted"},
+            g.mons.length ? "Every party Pokémon is already on the map." : "No party Pokémon."));
           mons.forEach(m=>list.append(el("div",{class:"pickitem pick-mon",style:"cursor:pointer",onclick:add(m.make)},
             el("div",{style:"flex:1;min-width:0"}, el("div",{class:"pi-title"},m.label), el("div",{class:"pi-sub muted"},m.sub)))));
         }
       });
-      if(!shown) list.append(el("div",{class:"pickitem muted"}, q?"No matches.":"No character sheets yet."));
+      if(!shown) list.append(el("div",{class:"pickitem muted"},
+        q ? "No matches." : hidden ? "Everyone is already on the map." : "No character sheets yet."));
       return;
     }
     // enemies — grouped by encounter (collapsible), + custom-token entry
     list.append(el("div",{class:"pickitem",style:"font-weight:700",onclick:()=>{ closeModal(); openCustomToken(map); }},
       el("div",{class:"pi-title"},"✎ Custom token…"), el("div",{class:"pi-sub muted"},"Name it, set HP, optional image")));
     const match = s => !q || (s||"").toLowerCase().includes(q);
-    let shownE = 0;
+    let shownE = 0, hiddenE = 0;
     enemyTokenGroups().forEach(g=>{
+      const avail = g.rows.filter(r=>!isPlaced(r.make));      // already-placed enemies drop out too
+      hiddenE += g.rows.length - avail.length;
+      if(!avail.length) return;                                // whole encounter is on the board
       const encHit = match(g.name);
-      const rows = g.rows.filter(r=>encHit || match(r.label) || match(r.sub));
+      const rows = avail.filter(r=>encHit || match(r.label) || match(r.sub));
       if(!encHit && !rows.length) return;
       shownE++;
       const expanded = q ? true : expanded_.has("enc:"+g.id);
@@ -6595,14 +6692,15 @@ function openAddToken(map){
         el("span",{class:"pick-caret"}, expanded?"▾":"▸"),
         el("div",{style:"flex:1;min-width:0"},
           el("div",{class:"pi-title"}, "👹 "+g.name),
-          el("div",{class:"pi-sub muted"}, `${g.rows.length} token${g.rows.length===1?"":"s"}`)),
-        el("button",{class:"btn-secondary",style:"padding:4px 10px",title:"add every token in this encounter",
-          onclick:async e=>{ e.stopPropagation(); closeModal(); for(const r of g.rows) await addToken(map, r.make()); }},"＋ All"));
+          el("div",{class:"pi-sub muted"}, `${avail.length} of ${g.rows.length} token${g.rows.length===1?"":"s"} not on the map`)),
+        el("button",{class:"btn-secondary",style:"padding:4px 10px",title:"add every token in this encounter that isn't already on the map",
+          onclick:async e=>{ e.stopPropagation(); closeModal(); for(const r of avail) await addToken(map, r.make()); }},"＋ All"));
       list.append(head);
       if(expanded) rows.forEach(r=>list.append(el("div",{class:"pickitem pick-mon",onclick:add(r.make)},
         el("div",{style:"flex:1;min-width:0"}, el("div",{class:"pi-title"},r.label), el("div",{class:"pi-sub muted"},r.sub||"")))));
     });
-    if(!shownE) list.append(el("div",{class:"pickitem muted"}, q?"No matches.":"No encounters yet — build one in the 👹 Encounters tab."));
+    if(!shownE) list.append(el("div",{class:"pickitem muted"},
+      q ? "No matches." : hiddenE ? "Every enemy is already on the map." : "No encounters yet — build one in the 👹 Encounters tab."));
   };
   const setTab = t => { tab=t; bPlayers.classList.toggle("on",t==="players"); bEnemies.classList.toggle("on",t==="enemies"); draw(); };
   search.addEventListener("input", draw); draw();
