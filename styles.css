@@ -411,6 +411,7 @@ body.map-mode #view-map > .muted.small{padding:5px 12px; margin:0; text-align:ce
 .tk-menu-hp{font-size:20px; margin-bottom:10px}
 .tk-menu-row{display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap}
 .tk-menu-row .btn-secondary{padding:8px 14px; font-size:16px}
+.tk-menu-row .btn-secondary.on{background:var(--accent); color:#fff; border-color:var(--accent)}
 
 /* map images (layered scenery) */
 .map-img{position:absolute; display:block; max-width:none; pointer-events:none; user-select:none}

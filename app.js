@@ -123,6 +123,38 @@ const STATUS_DEFS = [
    effect:"−6 to Accuracy Rolls; must pass a DC 10 Acrobatics Check over Rough/Slow Terrain or become Tripped."},
 ];
 const statusByKey = new Map(STATUS_DEFS.map(s=>[s.key, s]));
+/* Move effect text almost never spells out the status ADJECTIVE ("Poisoned") — it uses a VERB
+   ("Poisons the target on 18+"). Match verb roots per status, badlyPoisoned checked before
+   poisoned so "badly poisons" doesn't get caught by the shorter pattern first. */
+const STATUS_KEYWORDS = [
+  ["badlyPoisoned", /\bbadly\s+poison(?:s|ed|ing)?\b/i],
+  ["poisoned",      /\bpoison(?:s|ed|ing)?\b/i],
+  ["burned",        /\bburn(?:s|ed|ing)?\b/i],
+  ["frozen",        /\bfreez(?:e|es|ing)\b|\bfrozen\b/i],
+  ["paralysis",     /\bparalyz(?:e|es|ed|ing)\b|\bparalysis\b/i],
+  ["sleep",         /\basleep\b|\bfalls?\s+asleep\b|\bputs?\s+.{0,25}?\bto\s+sleep\b|\bsleep(?:s|ing)?\b/i],
+  ["badSleep",      /\bbad\s+sleep\b/i],
+  ["confused",      /\bconfus(?:e|es|ed|ing)\b/i],
+  ["cursed",        /\bcurs(?:e|es|ed|ing)\b/i],
+  ["disabled",      /\bdisabl(?:e|es|ed|ing)\b/i],
+  ["enraged",       /\benrag(?:e|es|ed|ing)\b|\brage\b/i],
+  ["flinch",        /\bflinch(?:es|ed|ing)?\b/i],
+  ["infatuation",   /\binfatuat(?:e|es|ed|ing)\b/i],
+  ["suppressed",    /\bsuppress(?:es|ed|ing)?\b/i],
+  ["stuck",         /\bstuck\b/i],
+  ["slowed",        /\bslow(?:s|ed|ing)?\b/i],
+  ["trapped",       /\btrap(?:s|ped|ping)?\b/i],
+  ["tripped",       /\btrip(?:s|ped|ping)?\b/i],
+  ["vulnerable",    /\bvulnerable\b/i],
+  ["blinded",       /\bblind(?:s|ed|ing)?\b/i],
+];
+/* does a triggered move-effect sentence name a known status condition? (for a big "Poisoned!"-style
+   banner on the roll result) */
+function statusHitFromText(text){
+  const s = String(text||"");
+  for(const [key,re] of STATUS_KEYWORDS) if(re.test(s)) return statusByKey.get(key);
+  return null;
+}
 /* Combat Stages (Core p.234): only these 5 stats; +CS ×0.2 each, −CS ×0.1 each (−6…+6). */
 const CS_STATS = [["atk","Attack"],["def","Defense"],["spatk","Sp.Atk"],["spdef","Sp.Def"],["spd","Speed"]];
 function csMult(cs){ cs = Math.max(-6, Math.min(6, cs||0)); return cs>=0 ? 1+0.2*cs : 1+0.1*cs; }
@@ -418,6 +450,7 @@ function normPokemon(p){
   if(!p.uses || typeof p.uses!=="object") p.uses = {};
   if(!Array.isArray(p.statuses)) p.statuses = [];
   if(!Array.isArray(p.buffs)) p.buffs = [];        // active Cheers / Orders / Songs (#2)
+  if(!Array.isArray(p.customMoves)) p.customMoves = [];   // freeform move/action notes not in the DB
   if(!p.cs || typeof p.cs!=="object") p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0};
   if(typeof p.image!=="string") p.image = "";
   if(!p.stats) { p.stats={}; STATS.forEach(([k])=>p.stats[k]={added:0}); }
@@ -451,11 +484,20 @@ function normTrainer(t){
   if(!Array.isArray(t.techniques)) t.techniques = [];             // learned class Techniques
   if(!Array.isArray(t.moves)) t.moves = [];                       // combat Moves granted by Features/class
   if(!Array.isArray(t.buffs)) t.buffs = [];                       // active Cheers / Orders / Songs (#2)
+  if(!Array.isArray(t.customActions)) t.customActions = [];       // freeform actions/notes not in any DB/Feature
   if(!t.msStats || typeof t.msStats!=="object") t.msStats = { atk:0, spatk:0 };  // Level-Up milestone Bonus-Stats already baked into combat.added
   syncMilestoneStats(t);                                          // reconcile assigned milestone points → Atk/SpAtk
   return t;
 }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+/* run a full-section re-render (root.innerHTML="" + rebuild) without losing the page's scroll
+   position — removing a control mid-event (e.g. the <select> that just fired "change") can make
+   the browser drop focus to <body> and jump to the top of the page. */
+function preserveScroll(fn){
+  const y = window.scrollY;
+  fn();
+  requestAnimationFrame(()=>window.scrollTo(0, y));
+}
 
 function load() {
   try {
@@ -834,7 +876,7 @@ function renderTrainer(){
   root.append(trainerCombatStagesCard(t));
 
   /* buffs & orders (Cheers / Commander Orders / Musician Songs) */
-  root.append(buffsCard(t, ()=>{ save(); renderTrainer(); }));
+  root.append(buffsCard(t, ()=>preserveScroll(()=>{ save(); renderTrainer(); })));
 
   /* weapons (modify Struggle) */
   root.append(weaponsCard(t));
@@ -1959,7 +2001,7 @@ function statusCard(p){
   const card = el("div",{class:"card"}, el("h3",{},"Status Conditions",
     el("div",{class:"inline"},
       p.statuses.length?el("button",{class:"linkbtn",onclick:()=>{ p.statuses=[]; save(); refreshMon(p); }},"clear"):"",
-      gm?el("button",{class:"linkbtn h-act",onclick:()=>catchDCModal(p)},"🎯 Catch DC"):"")));
+      gm?el("button",{class:"linkbtn h-act",onclick:()=>catchRateModal(p)},"🎯 Catch DC"):"")));
   const sp = getSpecies(p.species);
   const groups = gm
     ? [["persistent","Persistent · +10 catch each"],["volatile","Volatile · +5 each"],["other","Other"]]
@@ -1988,7 +2030,12 @@ function statusCard(p){
   return card;
 }
 /* Capture-Rate calculator popup (GM tool) */
-function catchDCModal(p){
+/* info-only capture rate (no roll) — for the GM's "🎯 Catch DC" reference buttons when just
+   inspecting a Pokémon. The interactive roll lives on the trainer's own ⚔ Combat tab instead
+   (openThrowPokeball), not behind clicking a Pokémon. */
+function catchRateModal(p){ catchDCModal(p, {showRoll:false}); }
+function catchDCModal(p, opts={}){
+  const showRoll = opts.showRoll !== false;
   const wrap = el("div",{});
   let legendary = false;
   const out = el("div",{});
@@ -2010,6 +2057,12 @@ function catchDCModal(p){
   const cb = el("input",{type:"checkbox"}); cb.addEventListener("change",()=>{ legendary=cb.checked; redraw(); });
   legLabel.append(cb, el("span",{},"Legendary Pokémon (−30)"));
   wrap.append(legLabel, out);
+  redraw();
+  if(!showRoll){
+    modal({title:`🎯 Catch DC — ${p.nickname||getSpecies(p.species)?.name||"Pokémon"}`, bodyNode:wrap,
+      footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Close")]});
+    return;
+  }
 
   /* ---- actually roll the capture (accuracy vs AC 6, then 1d100 − Trainer Level − Ball bonus) ---- */
   const roll = el("div",{style:"margin-top:16px;border-top:1px solid var(--line);padding-top:12px"});
@@ -2049,9 +2102,28 @@ function catchDCModal(p){
       el("button",{class:"btn-primary",onclick:doRoll},"Throw a Poké Ball")),
     result);
   wrap.append(roll);
-  redraw();
   modal({title:`🎯 Catch — ${p.nickname||getSpecies(p.species)?.name||"Pokémon"}`, bodyNode:wrap,
     footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Close")]});
+}
+/* "Throw a Poké Ball" as a Trainer Combat action: pick a wild Pokémon the player can currently
+   see on the map, then open the real capture roll (catchDCModal) for it. Cloud-only — capture
+   needs a shared wild target, which only the Map provides. */
+function openThrowPokeball(t){
+  if(mode!=="cloud"){ infoModal("🎯 Throw a Poké Ball", "Capturing needs the shared ⚔ Map (cloud campaign) so everyone sees the same wild Pokémon."); return; }
+  const targets = visibleWildMonTokens();
+  if(!targets.length){ infoModal("🎯 Throw a Poké Ball", "No wild Pokémon are currently visible to you on the map."); return; }
+  const wrap = el("div",{});
+  wrap.append(el("div",{class:"small muted",style:"margin-bottom:10px"},"Choose a wild Pokémon to target:"));
+  const list = el("div",{class:"picklist"});
+  targets.forEach(({mon})=>{
+    const sp = getSpecies(mon.species);
+    list.append(el("div",{class:"pickitem",style:"cursor:pointer",onclick:()=>{ closeModal(); catchDCModal(mon); }},
+      monSprite(sp?.name||mon.species, mon.shiny, "s-xs"),
+      el("div",{style:"flex:1;min-width:0"}, el("div",{class:"pi-title"}, encMonName(mon)), el("div",{class:"pi-sub muted"}, `Lv ${mon.level}`))));
+  });
+  wrap.append(list);
+  modal({title:"🎯 Throw a Poké Ball — choose a target", bodyNode:wrap,
+    footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Cancel")]});
 }
 /* − value + stepper for a Combat Stage (−6…+6, both directions) */
 function csStepper(cur, onSet){
@@ -2297,13 +2369,14 @@ function renderMonPlay(root, p, sp){
   root.append(combatStagesCard(p));
 
   /* buffs & orders (Cheers / Commander Orders / Musician Songs) */
-  root.append(buffsCard(p, ()=>{ save(); refreshMon(p); }));
+  root.append(buffsCard(p, ()=>preserveScroll(()=>{ save(); refreshMon(p); })));
 
   /* abilities (a Pokémon can have several) */
   root.append(abilitiesCard(p, sp));
 
   /* moves */
   root.append(movesCard(p, sp));
+  root.append(customMovesCard(p, ()=>refreshMon(p)));
 
   /* type matchups */
   if(sp && sp.types?.length) root.append(matchupCard(sp.types));
@@ -2781,6 +2854,44 @@ function movesCard(p, sp){
     `Over the normal ${MOVE_LIMIT}-move limit (GM override).`));
   return card;
 }
+/* Freeform move/action notes for anything the data pipeline couldn't scan (homebrew moves,
+   GM rulings…). Doesn't count toward MOVE_LIMIT — it's notes, not a real DB move. */
+function openCustomMoveEditor(p, existing, rerender){
+  const nm = el("input",{type:"text",placeholder:"e.g. Homebrew Rock Throw",value:existing?.name||""});
+  const eff = el("textarea",{rows:5,placeholder:"What it does — notes, rulings, anything we couldn't auto-import."});
+  eff.value = existing?.effect||"";
+  const body = el("div",{},
+    el("label",{class:"field"}, el("span",{},"Name"), nm),
+    el("label",{class:"field",style:"margin-top:8px"}, el("span",{},"Effect / notes"), eff));
+  modal({title: existing?"Edit custom move":"Add a custom move", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      const name = nm.value.trim(); if(!name) return;
+      if(!Array.isArray(p.customMoves)) p.customMoves=[];
+      if(existing){ existing.name=name; existing.effect=eff.value.trim(); }
+      else p.customMoves.push({ id:uid(), name, effect:eff.value.trim() });
+      save(); closeModal(); rerender();
+    }},"Save"),
+  ]});
+}
+function customMovesCard(p, rerender){
+  if(!Array.isArray(p.customMoves)) p.customMoves=[];
+  const card = el("div",{class:"card"}, el("h3",{},"Custom Moves & Notes",
+    el("span",{class:"muted small"},"anything we couldn't auto-scan")));
+  if(!p.customMoves.length) card.append(el("div",{class:"muted small"},"None yet — add a homebrew move, item-granted attack, or any GM ruling worth remembering."));
+  p.customMoves.forEach(a=>{
+    const d=el("details",{class:"spoiler"});
+    d.append(el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, a.name),
+      el("span",{class:"muted small",style:"margin-left:8px"}, "custom")));
+    d.append(el("div",{class:"small",style:"margin-top:6px;white-space:pre-wrap"}, a.effect||"(no notes)"));
+    d.append(el("div",{class:"inline",style:"margin-top:6px;gap:10px"},
+      el("button",{class:"linkbtn",onclick:()=>openCustomMoveEditor(p,a,rerender)},"edit"),
+      el("button",{class:"linkbtn danger",onclick:()=>{ p.customMoves=p.customMoves.filter(x=>x.id!==a.id); save(); rerender(); }},"remove")));
+    card.append(d);
+  });
+  card.append(el("button",{class:"linkbtn h-act",style:"margin-top:6px",onclick:()=>openCustomMoveEditor(p,null,rerender)},"+ Add custom move"));
+  return card;
+}
 
 /* ---------- dice ---------- */
 function rollDiceString(str){
@@ -2971,8 +3082,13 @@ function openMoveRoll(p, m, sp){
     if(thresholds.length){
       const hit = thresholds.filter(t=>acc>=t.n), miss = thresholds.filter(t=>acc<t.n);
       const tl = el("div",{style:"margin:2px 0 10px"});
-      hit.forEach(t=>tl.append(el("div",{class:"small",style:"color:var(--good);font-weight:700"},
-        `⚡ ${acc} ≥ ${t.n} — extra effect triggers: `, el("span",{class:"muted",style:"font-weight:400"}, t.text))));
+      hit.forEach(t=>{
+        tl.append(el("div",{class:"small",style:"color:var(--good);font-weight:700"},
+          `⚡ ${acc} ≥ ${t.n} — extra effect triggers: `, el("span",{class:"muted",style:"font-weight:400"}, t.text)));
+        const st = statusHitFromText(t.text);
+        if(st) tl.append(el("div",{style:"font-size:26px;font-weight:800;color:var(--bad);text-align:center;margin:4px 0 8px;letter-spacing:.5px"},
+          st.name+"!"));
+      });
       miss.forEach(t=>tl.append(el("div",{class:"small muted"},
         `▫ ${acc} < ${t.n} — this effect doesn't trigger: ${t.text}`)));
       out.append(tl);
@@ -3162,7 +3278,13 @@ function renderBattle(){
     : [];
   const favFeat = featRows.filter(f=>favs.has(featFavId(f.name)));   // pinned Features float above regular actions
   const restFeat = featRows.filter(f=>!favs.has(featFavId(f.name)));
-  if(!list.length && !featRows.length){ root.append(el("div",{class:"muted",style:"padding:10px"}, battleFilter==="fav"?"No favourites yet — tap ☆ on any action or Feature to pin it here.":"Nothing here for this actor.")); return; }
+  // the trainer's own custom actions/notes, same type/fav filtering as Features
+  const customRows = (isTrainer && (isTypeFilter(battleFilter) || battleFilter==="fav"))
+    ? (c.trainer.customActions||[])
+        .filter(a => battleFilter==="fav" ? favs.has(customFavId(a.id)) : a.type===battleFilter)
+        .sort((a,b)=>a.name.localeCompare(b.name))
+    : [];
+  if(!list.length && !featRows.length && !customRows.length){ root.append(el("div",{class:"muted",style:"padding:10px"}, battleFilter==="fav"?"No favourites yet — tap ☆ on any action or Feature to pin it here.":"Nothing here for this actor.")); return; }
   const wrap=el("div",{});
   if(favFeat.length){
     wrap.append(el("div",{class:"section-head"}, "★ Favourite Features"));
@@ -3172,6 +3294,10 @@ function renderBattle(){
   if(restFeat.length){
     wrap.append(el("div",{class:"section-head",style:"margin-top:14px"}, "From your Features"));
     restFeat.forEach(f=>wrap.append(featureActionRow(f, c.trainer, renderBattle)));
+  }
+  if(customRows.length){
+    wrap.append(el("div",{class:"section-head",style:"margin-top:14px"}, "Custom Actions"));
+    customRows.forEach(a=>wrap.append(customActionRow(a, c.trainer, renderBattle)));
   }
   root.append(wrap);
 }
@@ -3267,6 +3393,61 @@ function featureActionRow(f, owner, rerender){
   d.append(el("div",{class:"small",style:"margin-top:6px",html: refDetailHTML("feature",f.name)}));
   return d;
 }
+/* ===================================================================
+   Custom Actions — freeform trainer actions/notes for anything the data
+   pipeline couldn't scan (homebrew Features, GM rulings, house rules).
+   Stored in t.customActions[] = {id,name,type,effect}; type is one of
+   CUSTOM_ACTION_TYPES so they surface in the matching Standard/Shift/
+   Swift/Free/Full battle tab exactly like BATTLE_ACTIONS/Features do.
+=================================================================== */
+const CUSTOM_ACTION_TYPES = [["standard","Standard"],["shift","Shift"],["swift","Swift"],["free","Free"],["full","Full"],["other","Other / passive"]];
+const customFavId = id => "custom:"+id;
+function openCustomActionEditor(t, existing, rerender){
+  const nm = el("input",{type:"text",placeholder:"e.g. Homebrew Rock Throw",value:existing?.name||""});
+  const typeSel = el("select");
+  CUSTOM_ACTION_TYPES.forEach(([v,l])=>typeSel.append(el("option",{value:v,selected:existing?.type===v},l)));
+  const eff = el("textarea",{rows:5,placeholder:"What it does — notes, rulings, anything we couldn't auto-import."});
+  eff.value = existing?.effect||"";
+  const body = el("div",{},
+    el("label",{class:"field"}, el("span",{},"Name"), nm),
+    el("label",{class:"field",style:"margin-top:8px"}, el("span",{},"Action type"), typeSel),
+    el("label",{class:"field",style:"margin-top:8px"}, el("span",{},"Effect / notes"), eff));
+  modal({title: existing?"Edit custom action":"Add a custom action", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      const name = nm.value.trim(); if(!name) return;
+      if(!Array.isArray(t.customActions)) t.customActions=[];
+      if(existing){ existing.name=name; existing.type=typeSel.value; existing.effect=eff.value.trim(); }
+      else t.customActions.push({ id:uid(), name, type:typeSel.value, effect:eff.value.trim() });
+      save(); closeModal(); rerender();
+    }},"Save"),
+  ]});
+}
+function customActionRow(a, t, rerender){
+  const d=el("details",{class:"spoiler"});
+  const typeLbl = (CUSTOM_ACTION_TYPES.find(([v])=>v===a.type)||[,"Other"])[1];
+  const favs=getFavActions(), fav=favs.has(customFavId(a.id));
+  d.append(el("summary",{},
+    el("button",{class:"actstar"+(fav?" on":""),title:fav?"unfavourite":"favourite",
+      onclick:e=>{ e.preventDefault(); toggleFavAction(customFavId(a.id)); rerender(); }}, fav?"★":"☆"),
+    el("span",{style:"font-weight:700;color:var(--ink)"}, a.name),
+    el("span",{class:"muted small",style:"margin-left:8px"}, typeLbl+" · custom")));
+  d.append(el("div",{class:"small",style:"margin-top:6px;white-space:pre-wrap"}, a.effect||"(no notes)"));
+  d.append(el("div",{class:"inline",style:"margin-top:6px;gap:10px"},
+    el("button",{class:"linkbtn",onclick:()=>openCustomActionEditor(t,a,rerender)},"edit"),
+    el("button",{class:"linkbtn danger",onclick:()=>{ t.customActions=t.customActions.filter(x=>x.id!==a.id); save(); rerender(); }},"remove")));
+  return d;
+}
+/* full manage-everything list for the Combat tab (all types, add button) */
+function customActionsCard(t, rerender){
+  if(!Array.isArray(t.customActions)) t.customActions=[];
+  const card = el("div",{class:"card"}, el("h3",{},"Custom Actions & Notes",
+    el("span",{class:"muted small"},"anything we couldn't auto-scan")));
+  if(!t.customActions.length) card.append(el("div",{class:"muted small"},"None yet — add homebrew moves, GM rulings, or anything else worth tracking."));
+  t.customActions.forEach(a=>card.append(customActionRow(a,t,rerender)));
+  card.append(el("button",{class:"linkbtn h-act",style:"margin-top:6px",onclick:()=>openCustomActionEditor(t,null,rerender)},"+ Add custom action"));
+  return card;
+}
 /* Trainer turn: how they attack + their passive/always-on Features (action Features live in the tabs) */
 /* one rollable attack row in the trainer's Combat tab */
 function trainerAttackSlot(t, profile, rollFn, opts={}){
@@ -3350,6 +3531,16 @@ function renderTrainerCombat(root, t){
     (t.weapons||[]).length ? "Each weapon (and its Weapon Move) is listed above. Add/edit weapons in Trainer → Sheet → Weapons."
                            : "Unarmed Struggle only — add weapons in Trainer → Sheet → Weapons. Action Features (Cheer, Orders…) appear under the tabs above."));
   root.append(card);
+  // Throw a Poké Ball: a real action on the trainer's own sheet, targeting a wild Pokémon
+  // currently visible on the shared Map — not something you trigger by clicking a Pokémon.
+  const pb = el("div",{class:"card"}, el("h3",{},"Poké Balls"));
+  const pbSlot = el("div",{class:"moveslot"});
+  pbSlot.append(el("div",{style:"flex:1"},
+    el("div",{style:"font-weight:700"}, "Throw a Poké Ball"),
+    el("div",{class:"ms-info"}, "Standard Action · AC 6 · try to capture a wild Pokémon")));
+  pbSlot.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",onclick:()=>openThrowPokeball(t)},"🎲 Roll"));
+  pb.append(pbSlot);
+  root.append(pb);
   // capture tools carried in inventory grant Status Attacks (Hand Net, Weighted Net…) (#7)
   const itemAtks = inventoryItemAttacks(t);
   if(itemAtks.length){
@@ -3389,6 +3580,7 @@ function renderTrainerCombat(root, t){
   if(!passive.length) pc.append(el("span",{class:"muted small"},"none — your action Features are in the tabs above, or learn Features in Trainer → Features & Edges."));
   passive.forEach(f=>pc.append(featureActionRow(f, t, renderBattle)));
   root.append(pc);
+  root.append(customActionsCard(t, renderBattle));
 }
 function battleActionRow(a, favs){
   const fav=favs.has(a.id);
@@ -3713,7 +3905,7 @@ function encounterMonCard(enc, p, list){
       onclick:()=>{ encRandomize(p); p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); }},"🎲 Reroll"),
     el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"toggle shiny",
       onclick:()=>{ p.shiny=!p.shiny; saveEnc(); renderEncounters(); }}, p.shiny?"✨ Shiny":"Shiny?"),
-    el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"capture DC",onclick:()=>catchDCModal(p)},"🎯 Catch DC"),
+    el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"capture DC",onclick:()=>catchRateModal(p)},"🎯 Catch DC"),
     el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"send to the shared PC (caught)",onclick:()=>sendEncMonToPC(enc,p,list)},"🎣 To PC"));
   card.append(actRow);
   card.append(encStatSpread(p));
@@ -4376,7 +4568,7 @@ function normMapMeta(data){
   data.kind = "mapmeta";
   data.maps = Array.isArray(data.maps) ? data.maps : [];
   data.maps.forEach(m => {
-    if(typeof m.gridSize!=="number" || m.gridSize<8) m.gridSize = 48;
+    if(typeof m.gridSize!=="number" || m.gridSize<8) m.gridSize = 32;
     if(typeof m.gridOn!=="boolean") m.gridOn = true;
     if(typeof m.name!=="string") m.name = "Map";
     // migrate single bg → layered images[] (w/h 0 → resolved to natural size on first GM view)
@@ -4454,26 +4646,50 @@ async function mapTokensUpsert(){
    stale stamp, pass onRealtime's staleness guard, and wholesale-REPLACE `cloud.mapTokens` — wiping
    out the pending local edit (HP/status/CS/moved token) before it's ever saved. That's what showed
    up as edits silently reverting under any burst of rapid map activity, not just literal double-clicks. */
+/* A debounce alone only coalesces clicks that land within ONE window. A click burst spanning
+   MORE than 300-350ms (extremely normal for "mashing the button") fires several SEPARATE debounce
+   cycles, each dispatching its OWN independent upsert() call. A plain upsert has no server-side
+   ordering guard (no WHERE updated_at < …), so if request #1 (dispatched first, older data) happens
+   to complete slower than request #2 (dispatched later, newer data) — completely ordinary network
+   jitter — the server just applies whichever one it received last, silently reverting the row to
+   the OLDER state even though every client sent things in the right order. This is what kept
+   causing the initiative "rollback" after the updated_at-stamping fix (which only protects against
+   a REALTIME ECHO being misread locally; it does nothing once two writes are actually racing over
+   the network to the same row). Fix: chain every write for a given row onto the PREVIOUS one's
+   promise, so a new upsert is never even dispatched until the last one for that row has resolved —
+   requests hit the server strictly one at a time, in true order, so out-of-order arrival is
+   impossible. `serialize(state, fn)` is the shared helper for both map rows below. */
+function serialize(state, fn){ return state.chain = state.chain.then(fn, fn); }
+/* Debounced, coalescing save of the shared map-tokens row. HP ticks and drag commits arrive in
+   bursts and each awaited a full upload before the UI updated — that was the "HP updates ~10s
+   later" lag (#5). Callers now mutate the local model + re-render OPTIMISTICALLY, then call this;
+   the network write catches up in the background and realtime syncs peers.
+   Stamps updated_at IMMEDIATELY (like cloudSaveRow), not just when the debounced upsert finally
+   fires. Without this, `cloud.mapTokens.updated_at` stays STALE for the whole debounce window, so
+   a realtime echo of an unrelated, already-superseded earlier write can look "newer" than that
+   stale stamp, pass onRealtime's staleness guard, and wholesale-REPLACE `cloud.mapTokens` — wiping
+   out the pending local edit (HP/status/CS/moved token) before it's ever saved. That's what showed
+   up as edits silently reverting under any burst of rapid map activity, not just literal double-clicks. */
 let mapTokensTimer;
+const mapTokensChain = { chain: Promise.resolve() };
 function mapTokensSave(){
   ensureMapTokens().updated_at = new Date().toISOString();
   clearTimeout(mapTokensTimer);
-  mapTokensTimer = setTimeout(()=>{ mapTokensTimer=null; mapTokensUpsert(); }, 350);
+  mapTokensTimer = setTimeout(()=>{ mapTokensTimer=null; serialize(mapTokensChain, mapTokensUpsert); }, 350);
 }
 /* Debounced, coalescing save of the map META row. The ▶ next-turn button mutates it (initTurnId/
    initSeq/round) and used to fire one un-awaited upsert PER click — rapid clicks launched several
    concurrent writes of the same row that could commit OUT OF ORDER, leaving the shared row (and peers)
-   on an earlier turn than the local screen. Coalescing to one write of the final state removes that race.
-   Also stamps updated_at IMMEDIATELY (see mapTokensSave above) — this is what was still letting the
-   turn silently "roll back": for the whole 300ms debounce window `cloud.mapMeta.updated_at` used to
-   stay at its last-SAVED value, so a same-row realtime echo that was merely stale relative to the new
-   (not-yet-saved) turn could still look newer than that old stamp and clobber the in-memory turn advance
-   before the debounced write ever went out. */
+   on an earlier turn than the local screen. Coalescing to one write of the final state removes that race
+   WITHIN one debounce window. Also stamps updated_at IMMEDIATELY (see mapTokensSave above), and — for
+   click bursts that span MULTIPLE debounce windows — serializes onto `mapMetaChain` (see the comment
+   above `serialize`) so consecutive writes can never land at the server out of order. */
 let mapMetaTimer;
+const mapMetaChain = { chain: Promise.resolve() };
 function mapMetaSave(){
   ensureMapMeta().updated_at = new Date().toISOString();
   clearTimeout(mapMetaTimer);
-  mapMetaTimer = setTimeout(()=>{ mapMetaTimer=null; mapMetaUpsert(); }, 300);
+  mapMetaTimer = setTimeout(()=>{ mapMetaTimer=null; serialize(mapMetaChain, mapMetaUpsert); }, 300);
 }
 /* Debounced upsert of a specific character row, keyed per-row, so rapid map-token HP edits to a
    real sheet coalesce into ONE write instead of one blocking upload per tick. Stamps updated_at +
@@ -5057,6 +5273,21 @@ function tokenLinked(token){
   if(token.link.kind==="trainer") return { row, obj:row.data?.trainer||null, kind:"trainer", missing:!row.data?.trainer };
   const mon = (row.data?.pokemon||[]).find(p=>p.id===token.link.monId);
   return { row, obj:mon||null, kind:"pokemon", missing:!mon };
+}
+/* wild (encounter-linked) Pokémon tokens on the map this player can currently see — same
+   visibility rule renderMap uses for tokens (fog of war, gmHidden), reused so "Throw a Poké Ball"
+   from the Trainer Combat tab can only target something the player could actually see & aim at. */
+function visibleWildMonTokens(){
+  const map = currentMapForView(); if(!map) return [];
+  const fog = fogSet(map.id);
+  return mapTokensFor(map.id)
+    .filter(t=>{
+      if(t.link?.kind!=="enc" || t.gmHidden) return false;
+      if(cloud.isGM || !map.fogOn) return true;
+      return fog.has(Math.round(t.x)+","+Math.round(t.y));
+    })
+    .map(t=>({ token:t, mon:tokenLinked(t)?.obj }))
+    .filter(x=>x.mon);
 }
 const TRAINER_TOKEN = (t)=>el("img",{class:"sprite s-sm",src:(t&&t.avatar)||TRAINER_PLACEHOLDER,alt:"trainer",loading:"lazy"});
 /* a linked Pokémon's token uses the picture uploaded on its sheet, falling back to the dex artwork */
@@ -5807,6 +6038,17 @@ function attachImageDrag(node, img, map){
   };
   node.addEventListener("pointerdown", ev=>{ if(ev.target.closest(".map-img-handle")) return; startDrag(ev,"move"); });
 }
+/* re-render the token menu after an in-place mutation (buffs, CS, movement mode…) without losing
+   the modal's scroll position — openTokenMenu's modal() call tears down & rebuilds .modal-body
+   from scratch, which reset scroll to the top on every small change ("sends me to the start of
+   the page"). Capture/restore scrollTop across the rebuild instead. */
+function reopenTokenMenu(token, map){
+  const prevBody = document.querySelector("#modalRoot .modal-body");
+  const st = prevBody ? prevBody.scrollTop : 0;
+  openTokenMenu(token, map);
+  const newBody = document.querySelector("#modalRoot .modal-body");
+  if(newBody) newBody.scrollTop = st;
+}
 function openTokenMenu(token, map){
   const info = tokenHp(token);
   const wrap = el("div",{});
@@ -5908,7 +6150,7 @@ function openTokenMenu(token, map){
         const c = el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:2px;min-width:60px"});
         c.append(el("div",{class:"small muted",style:"font-weight:700"},lbl));
         c.append(el("div",{style:`font-weight:800;${effCS>0?"color:var(--good)":effCS<0?"color:var(--bad)":""}`}, String(val)));
-        if(info.editable) c.append(csStepper(L.obj.cs[k]||0, async v=>{ await setTokenCS(token,k,v); openTokenMenu(token,map); }));
+        if(info.editable) c.append(csStepper(L.obj.cs[k]||0, async v=>{ await setTokenCS(token,k,v); reopenTokenMenu(token,map); }));
         else c.append(el("div",{class:"small muted"}, `${effCS>0?"+":""}${effCS}`));
         g.append(c);
       });
@@ -5939,7 +6181,7 @@ function openTokenMenu(token, map){
     // ---- Buffs & Orders: add/remove Cheers/Orders/Songs on the linked creature (#2) ----
     if(L && L.obj && info.editable){
       if(!Array.isArray(L.obj.buffs)) L.obj.buffs = [];
-      wrap.append(buffsCard(L.obj, async()=>{ await commitTokenBuffs(token); openTokenMenu(token, map); }));
+      wrap.append(buffsCard(L.obj, async()=>{ await commitTokenBuffs(token); reopenTokenMenu(token, map); }));
     } else if(L && L.obj && ownerBuffs(L.obj).length){
       const bl = el("div",{style:"margin-top:16px"});
       bl.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"✨ Active buffs"));
@@ -5961,18 +6203,18 @@ function openTokenMenu(token, map){
       aoeMoves.forEach(m=>{ const a=parseAoE(m.range);
         rrow.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",title:m.range,
           onclick:()=>{ startAoE(token, a.shape, a.size); closeModal(); }}, `${m.name} · ${a.shape} ${a.size}`)); });
-      rrow.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"pick any shape manually",
-        onclick:()=>{ startAoE(token, "burst", 1); closeModal(); }}, "✎ Manual…"));
+      rrow.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
+        title:"draw a shape freely, not tied to any move — pick its type, size & facing from the panel that appears on the map",
+        onclick:()=>{ startAoE(token, "burst", 1); closeModal(); }}, "✎ Manual shape…"));
       rw.append(rrow);
-      if(!aoeMoves.length) rw.append(el("div",{class:"small muted"},"None of this creature's moves are area moves — use ✎ Manual to draw one."));
+      rw.append(el("div",{class:"small muted",style:"margin-top:6px"},
+        "Opens a panel on the map — turn it with the ↖↑↗ arrows (Burst has no facing), resize with the number box, or ✕ Clear range to remove it."));
+      if(!aoeMoves.length) rw.append(el("div",{class:"small muted"},"None of this creature's moves are area moves — use ✎ Manual shape to draw one."));
       wrap.append(rw);
     }
 
-    // ---- Catch: any player can try to catch a wild (encounter) Pokémon from its token (#9) ----
-    if(L && L.obj && L.kind==="enc"){
-      wrap.append(el("div",{class:"tk-menu-row",style:"margin-top:14px"},
-        el("button",{class:"btn-primary",style:"width:100%",onclick:()=>catchDCModal(L.obj)},"🎯 Try to Catch")));
-    }
+    // Throwing a Poké Ball is now a Trainer ⚔ Combat action (openThrowPokeball), not a button on
+    // the wild Pokémon's own token — see renderTrainerCombat's "Capture" card.
 
     // ---- Movement type toggle, available on any token click (not just battle mode) (#7) ----
     if(info.editable && !battleOn()){
@@ -5983,7 +6225,7 @@ function openTokenMenu(token, map){
         modes.forEach(([k,lbl,m])=>{
           chips.append(el("button",{class:"btn-secondary"+(k===cur?" on":""),style:"padding:4px 9px",
             title:`use ${lbl} speed (${m} m)`,
-            onclick:async()=>{ token.moveMode=k; await mapTokensUpsert(); renderMap(); openTokenMenu(token,map); }},
+            onclick:async()=>{ token.moveMode=k; await mapTokensUpsert(); renderMap(); reopenTokenMenu(token,map); }},
             `${({overland:"🚶",sky:"🕊",swim:"🌊",burrow:"⛏"}[k]||"")} ${lbl} ${m}`));
         });
         wrap.append(el("div",{class:"small muted",style:"margin-top:12px;font-weight:700"},"Movement type"), chips);
@@ -6007,7 +6249,7 @@ function openTokenMenu(token, map){
         const on = k===cur;
         chips.append(el("button",{class:"btn-secondary"+(on?" on":""),style:"padding:4px 9px",
           title:`move using ${lbl} speed (${m} m)`,
-          onclick:async()=>{ token.moveMode=k; await mapTokensUpsert(); renderMap(); openTokenMenu(token,map); }},
+          onclick:async()=>{ token.moveMode=k; await mapTokensUpsert(); renderMap(); reopenTokenMenu(token,map); }},
           `${({overland:"🚶",sky:"🕊",swim:"🌊",burrow:"⛏"}[k]||"")} ${lbl} ${m}`));
       });
       wrap.append(el("div",{class:"small muted",style:"margin-top:8px;font-weight:700"},"Movement type"), chips);
@@ -6103,7 +6345,7 @@ function openAddToken(map){
   if(cloud.isGM) tabsBar.append(bEnemies);
   const search = el("input",{type:"search",placeholder:"Filter…",style:"margin-bottom:10px"});
   const list = el("div",{class:"picklist"});
-  const collapsed = new Set();                       // trainer sheet ids whose party is hidden
+  const expanded_ = new Set();                       // trainer/encounter group ids explicitly opened (all start closed)
   const add = make => async ()=>{ closeModal(); await addToken(map, make()); };
 
   const draw = ()=>{
@@ -6116,9 +6358,9 @@ function openAddToken(map){
         const mons = g.mons.filter(m=>trainerHit || match(m.label) || match(m.sub));
         if(!trainerHit && !mons.length) return;
         shown++;
-        const expanded = q ? true : !collapsed.has(g.id);
+        const expanded = q ? true : expanded_.has(g.id);
         const head = el("div",{class:"pickitem pick-group",style:"cursor:pointer",
-          onclick:()=>{ collapsed.has(g.id) ? collapsed.delete(g.id) : collapsed.add(g.id); draw(); }},
+          onclick:()=>{ expanded_.has(g.id) ? expanded_.delete(g.id) : expanded_.add(g.id); draw(); }},
           el("span",{class:"pick-caret"}, expanded?"▾":"▸"),
           el("div",{style:"flex:1;min-width:0"},
             el("div",{class:"pi-title"}, g.trainerName + (cloud.isGM && g.owner ? `  ·  ${g.owner}` : "")),
@@ -6145,9 +6387,9 @@ function openAddToken(map){
       const rows = g.rows.filter(r=>encHit || match(r.label) || match(r.sub));
       if(!encHit && !rows.length) return;
       shownE++;
-      const expanded = q ? true : !collapsed.has("enc:"+g.id);
+      const expanded = q ? true : expanded_.has("enc:"+g.id);
       const head = el("div",{class:"pickitem pick-group",style:"cursor:pointer",
-        onclick:()=>{ const key="enc:"+g.id; collapsed.has(key)?collapsed.delete(key):collapsed.add(key); draw(); }},
+        onclick:()=>{ const key="enc:"+g.id; expanded_.has(key)?expanded_.delete(key):expanded_.add(key); draw(); }},
         el("span",{class:"pick-caret"}, expanded?"▾":"▸"),
         el("div",{style:"flex:1;min-width:0"},
           el("div",{class:"pi-title"}, "👹 "+g.name),
@@ -6185,7 +6427,7 @@ function openCustomToken(map){
 async function newMap(){
   const name = prompt("Map name:", "Map "+((cloud.mapMeta?.data?.maps?.length||0)+1)); if(name===null) return;
   ensureMapMeta();
-  const m = { id:uid(), name:name||"Map", images:[], gridSize:48, gridOn:true, fogOn:false, fogRadius:3 };
+  const m = { id:uid(), name:name||"Map", images:[], gridSize:32, gridOn:true, fogOn:false, fogRadius:3 };
   cloud.mapMeta.data.maps.push(m); cloud.mapMeta.data.activeMapId = m.id; mapGmView = m.id;
   mapView = { scale:1, panX:0, panY:0 };
   await mapMetaUpsert(); renderMap();
@@ -6256,7 +6498,10 @@ function attachPanZoom(viewport, stage){
     zoomTimer = setTimeout(()=>{ if(currentTab==="map" && !mapDragging) renderMap(); }, 200);
   }, { passive:false });
   viewport.addEventListener("pointerdown", ev=>{
-    if(ev.target.closest(".map-token")) return;            // tokens handle their own drag
+    // tokens handle their own drag; the floating AoE range panel is a child of viewport too —
+    // without this it soaked up pointerdown as a map-pan (setPointerCapture on viewport), which
+    // hijacked clicks on its facing d-pad / clear button so the panel looked broken/stuck.
+    if(ev.target.closest(".map-token") || ev.target.closest(".aoe-panel")) return;
     const sx=ev.clientX, sy=ev.clientY, px0=mapView.panX, py0=mapView.panY;
     try{ viewport.setPointerCapture(ev.pointerId); }catch(e){}
     const move = e=>{ mapView.panX=px0+(e.clientX-sx); mapView.panY=py0+(e.clientY-sy); applyMapCamera(stage); };
@@ -6329,7 +6574,7 @@ function renderMap(){
         el("button",{class:"btn-secondary"+(map.gridOn?" on":""),onclick:()=>toggleGrid(map)}, map.gridOn?"▦ Grid on":"▦ Grid off"),
       );
       const gs = el("input",{type:"number",min:12,max:200,value:map.gridSize,style:"width:64px",title:"grid cell size (px)"});
-      gs.addEventListener("change", async()=>{ map.gridSize=Math.max(12,Math.min(200,parseInt(gs.value)||48)); await mapMetaUpsert(); renderMap(); });
+      gs.addEventListener("change", async()=>{ map.gridSize=Math.max(12,Math.min(200,parseInt(gs.value)||32)); await mapMetaUpsert(); renderMap(); });
       bar.append(el("label",{class:"field",style:"max-width:120px"}, el("span",{},"Cell px"), gs));
       // — Play group: tokens, fog —
       bar.append(el("span",{class:"map-sep"}),
