@@ -6230,7 +6230,10 @@ function attachImageDrag(node, img, map){
     };
     node.addEventListener("pointermove",move); node.addEventListener("pointerup",up);
   };
-  node.addEventListener("pointerdown", ev=>{ if(ev.target.closest(".map-img-handle")) return; startDrag(ev,"move"); });
+  // .map-img-handle (resize) and .map-img-ctrls (layer/delete buttons) must not start a drag —
+  // without this, pressing any of those buttons captured the pointer for the image drag first,
+  // which unreliably swallowed the click (the trash button "didn't seem to work").
+  node.addEventListener("pointerdown", ev=>{ if(ev.target.closest(".map-img-handle,.map-img-ctrls")) return; startDrag(ev,"move"); });
 }
 /* re-render the token menu after an in-place mutation (buffs, CS, movement mode…) without losing
    the modal's scroll position — openTokenMenu's modal() call tears down & rebuilds .modal-body
