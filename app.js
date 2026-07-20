@@ -6713,7 +6713,13 @@ function attachPanZoom(viewport, stage){
     // tokens handle their own drag; the floating AoE range panel is a child of viewport too —
     // without this it soaked up pointerdown as a map-pan (setPointerCapture on viewport), which
     // hijacked clicks on its facing d-pad / clear button so the panel looked broken/stuck.
-    if(ev.target.closest(".map-token") || ev.target.closest(".aoe-panel")) return;
+    // .map-img-ctrls (⬆/⬇/🗑 in image-edit mode) had the SAME bug: attachImageDrag deliberately
+    // ignores them so they don't start an image drag, but it returns without stopPropagation, so
+    // the press still bubbled here and the viewport captured the pointer — retargeting pointerup
+    // away from the button, so its click never fired ("the trash button does nothing"). The resize
+    // handle and the image body were unaffected only because both stopPropagation themselves.
+    if(ev.target.closest(".map-token") || ev.target.closest(".aoe-panel") ||
+       ev.target.closest(".map-img-ctrls")) return;
     pts.set(ev.pointerId, vpXY(ev));
     try{ viewport.setPointerCapture(ev.pointerId); }catch(e){}
     if(pts.size===2) beginPinch();
