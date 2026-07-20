@@ -429,7 +429,11 @@ body.map-mode .map-select-bar{margin:0; border-radius:0; border-left:0; border-r
 .map-img-wrap.editing .map-img{pointer-events:none}
 .map-img-handle{position:absolute; right:-7px; bottom:-7px; width:16px; height:16px; border-radius:4px;
   background:var(--accent); border:2px solid #fff; cursor:nwse-resize; box-shadow:0 1px 3px rgba(0,0,0,.5); touch-action:none}
-.map-img-ctrls{position:absolute; left:0; top:-34px; display:flex; gap:4px}
+/* Sits INSIDE the image's own top-left corner (not floating above it) on purpose: a bar positioned
+   above the image is clipped by .map-viewport's overflow:hidden — and unhittable, not just invisible
+   — whenever the image starts near the top of the stage (im.y≈0, the default for a fresh background
+   at panY=0). That silently broke every button here, not just visually but for clicks too. */
+.map-img-ctrls{position:absolute; left:6px; top:6px; display:flex; gap:4px}
 .map-img-ctrls button{width:30px; height:28px; border-radius:6px; border:1px solid var(--line);
   background:var(--panel); color:var(--ink); font-size:14px; font-weight:800; box-shadow:0 1px 3px rgba(0,0,0,.35)}
 .map-img-ctrls button.danger{color:var(--bad)}
