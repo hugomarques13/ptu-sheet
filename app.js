@@ -5397,6 +5397,27 @@ function advanceInitiative(map, meta, dir){
   if(expired.length) toast(`⌛ Buff expired: ${expired.join(", ")}`);
   if(wrapped){ mapTokensSave(); toast(`↺ Round ${meta.initRound} — movement reset`); }
 }
+/* GM taps a name in the initiative list to jump straight to their turn — a manual correction like
+   stepping backward (dir<0 in advanceInitiative): no buff-expiry side effects, no round change. */
+function setInitiativeTurn(map, meta, tokenId){
+  if(!cloud.isGM || meta.initTurnId===tokenId) return;
+  meta.initTurnId = tokenId;
+  renderMap();
+  mapMetaSave();
+}
+/* 🔁 Reset rounds: back to round 1, turn order restarts from the top, movement counters clear —
+   without kicking anyone out of initiative (unlike turning Battle mode off/on). */
+function resetRounds(map, meta){
+  meta.initRound = 1;
+  meta.initSeq = 0;
+  const list = initiativeList(map);
+  meta.initTurnId = list[0]?.token.id || null;
+  resetMapMovement(map);
+  renderMap();
+  mapMetaSave();
+  mapTokensSave();
+  toast("🔁 Rounds reset");
+}
 /* small floating initiative widget: draggable by its header, position + collapsed state remembered
    per-device (it's a display preference, not shared game state) */
 function loadInitPos(){ try{ return JSON.parse(localStorage.getItem("ptu_init_pos")||"null"); }catch(e){ return null; } }
@@ -5420,7 +5441,10 @@ function initiativePanel(map, meta){
   header.append(el("span",{style:"font-weight:800;font-size:12px;white-space:nowrap"}, "⚔ Init"));
   header.append(el("span",{class:"muted",style:"font-size:10px;white-space:nowrap"}, `R${meta.initRound||1}`));
   header.append(el("span",{style:"flex:1"}));
-  if(cloud.isGM && list.length) header.append(initMiniBtn("▶","next turn",()=>advanceInitiative(map,meta,1)));
+  if(cloud.isGM && list.length){
+    header.append(initMiniBtn("▶","next turn",()=>advanceInitiative(map,meta,1)));
+    header.append(initMiniBtn("🔁","reset rounds — back to round 1, movement cleared, order kept",()=>resetRounds(map,meta)));
+  }
   header.append(initMiniBtn(initCollapsed?"▸":"▾", initCollapsed?"expand":"collapse",
     ()=>{ initCollapsed=!initCollapsed; localStorage.setItem("ptu_init_collapsed", initCollapsed?"1":"0"); renderMap(); }));
   box.append(header);
@@ -5443,7 +5467,12 @@ function initiativePanel(map, meta){
     const cur = e.token.id===meta.initTurnId;
     const enemy = e.info.kind==="enc"||e.info.kind==="enctrainer";
     const name = (!cloud.isGM && e.token.gmHidden) ? "Hidden" : e.info.name;
-    const row = el("div",{style:`display:flex;gap:5px;align-items:center;padding:3px 5px;border-radius:5px;font-size:11px;${cur?"background:rgba(224,82,79,.16)":""}`});
+    const row = el("div",{style:`display:flex;gap:5px;align-items:center;padding:3px 5px;border-radius:5px;font-size:11px;${cur?"background:rgba(224,82,79,.16)":""}${cloud.isGM?";cursor:pointer":""}`,
+      title: cloud.isGM ? "tap to make it their turn" : ""});
+    if(cloud.isGM) row.addEventListener("click", ev=>{
+      if(ev.target.closest("input,span[title='remove from initiative']")) return;
+      setInitiativeTurn(map, meta, e.token.id);
+    });
     row.append(el("span",{style:"width:12px;text-align:right;font-weight:800;color:var(--muted)"}, String(i+1)));
     row.append(el("span",{style:`flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:${cur?800:600};${enemy?"color:#e0524f":""}`,title:name}, (cur?"▶ ":"")+name));
     row.append(el("span",{class:"muted",style:"font-size:10px",title:"Speed + bonus"}, String(e.init)));
@@ -5746,12 +5775,32 @@ function parseAoE(range){
   }
   return null;
 }
+/* PTU's diagonal movement alternates 1m/2m costs per step — so a diagonal Line/Cone of size X
+   reaches fewer tiles than X (Line 4 diagonally = 3 tiles: 1+2+1=4). Matches the rulebook's own
+   "Line 4, used diagonally" diagram exactly. */
+function diagonalTilesForRange(size){
+  let cost=0, steps=0, next=1;
+  while(cost+next<=size){ cost+=next; steps++; next = next===1?2:1; }
+  return steps;
+}
+/* top-left origin of a size×size block placed touching the user's footprint, facing (ux,uy)/(dx,dy).
+   A purely diagonal facing uses exact integer corner arithmetic — the continuous offset-then-round
+   version below has a rounding edge case on ODD sizes that lets the block overlap the user's own
+   row/column instead of touching only at the corner (caught by cross-checking Close Blast 3 against
+   the rulebook's Close Blast diagram, which never overlaps the origin square). Cardinal facings keep
+   the original continuous placement — it centers the block on the token's width, which has no clean
+   integer answer anyway when size and token width differ in parity, and isn't what was reported broken. */
+function blockOrigin(tx, ty, s, ux, uy, dx, dy, size){
+  if(dx!==0 && dy!==0) return { x0: dx>0 ? tx+s : tx-size, y0: dy>0 ? ty+s : ty-size };
+  const ocx = tx+s/2, ocy = ty+s/2;
+  const cx = ocx + ux*(s/2+size/2), cy = ocy + uy*(s/2+size/2);
+  return { x0: Math.round(cx-size/2), y0: Math.round(cy-size/2) };
+}
 /* the set of "x,y" cells a shape covers, measured from `token`'s footprint & facing `dir` */
 function aoeCells(map, token, shape, size, dir){
   const set = new Set();
   const s = token.size||1, span = s-1;
   const tx = Math.round(token.x), ty = Math.round(token.y);
-  const ocx = tx + s/2, ocy = ty + s/2;                 // origin centre (cell units)
   size = Math.max(1, size||1);
   const add = (x,y)=>{ if(x>=0 && y>=0) set.add(x+","+y); };
   if(shape==="burst"){                                  // square radius around the user (Chebyshev)
@@ -5760,24 +5809,44 @@ function aoeCells(map, token, shape, size, dir){
   }
   const d = AOE_DIRS[dir] || AOE_DIRS.E, len = Math.hypot(d[0],d[1]);
   const ux = d[0]/len, uy = d[1]/len;                   // unit facing
-  if(shape==="line"){                                   // 1-wide line starting just outside the footprint
-    let px = tx + (d[0]>0 ? s : d[0]<0 ? -1 : Math.floor(span/2));
-    let py = ty + (d[1]>0 ? s : d[1]<0 ? -1 : Math.floor(span/2));
-    for(let k=0;k<size;k++){ add(px,py); px += d[0]; py += d[1]; }
+  const diag = Math.abs(d[0])===1 && Math.abs(d[1])===1;   // facing NE/SE/SW/NW
+  // first cell just outside the token's footprint in the facing direction (shared by line/cone)
+  let px = tx + (d[0]>0 ? s : d[0]<0 ? -1 : Math.floor(span/2));
+  let py = ty + (d[1]>0 ? s : d[1]<0 ? -1 : Math.floor(span/2));
+  if(shape==="line"){
+    // Core, Move Keywords "Line X": "When used diagonally, apply the same rules as for diagonal
+    // movement" — PTU's diagonal movement alternates 1m/2m per step, so a diagonal Line reaches
+    // FEWER tiles than X (Line 4 diagonally only reaches 3 tiles: 1+2+1=4, verified against the
+    // rulebook's own diagram). Straight (cardinal) lines are unaffected: 1 tile = 1 meter.
+    const steps = diag ? diagonalTilesForRange(size) : size;
+    for(let k=0;k<steps;k++){ add(px,py); px += d[0]; py += d[1]; }
     return set;
   }
-  if(shape==="cone"){                                   // triangle: dist ≤ size, narrowing toward the origin
-    const R = size, thr = Math.cos(40*Math.PI/180);
-    for(let x=tx-R-span; x<=tx+span+R; x++) for(let y=ty-R-span; y<=ty+span+R; y++){
-      const vx=(x+0.5)-ocx, vy=(y+0.5)-ocy, dist=Math.hypot(vx,vy);
-      if(dist<0.1 || dist>R+0.5) continue;
-      if((vx*ux + vy*uy)/dist >= thr) add(x,y);
+  if(shape==="cone"){
+    if(diag){
+      // Core's own diagram for "Cone X used diagonally" draws a solid X-by-X block touching the
+      // user only at the corner — the same placement as Close Blast X — not a rotated triangle
+      // (a 3-wide corridor doesn't tile along a 45° diagonal on a square grid).
+      const {x0,y0} = blockOrigin(tx, ty, s, ux, uy, d[0], d[1], size);
+      for(let x=x0; x<x0+size; x++) for(let y=y0; y<y0+size; y++) add(x,y);
+      return set;
+    }
+    // Core, Move Keywords "Cone X": "hits all legal targets in the square immediately in front of
+    // the user and in 3m wide rows extending from that square up to X meters away" — a FIXED
+    // 3-wide corridor beyond the single lead square, not a continuously widening triangle
+    // (verified against the rulebook's own Cone diagram, which stays exactly 3 wide at range 2+).
+    const horiz = d[1]===0;
+    for(let r=1; r<=size; r++){
+      const fx = horiz ? px + d[0]*(r-1) : px;
+      const fy = horiz ? py : py + d[1]*(r-1);
+      if(r===1) add(fx,fy);
+      else if(horiz){ add(fx,fy-1); add(fx,fy); add(fx,fy+1); }
+      else { add(fx-1,fy); add(fx,fy); add(fx+1,fy); }
     }
     return set;
   }
   if(shape==="blast"){                                  // size×size square placed adjacent in `dir`
-    const cx = ocx + ux*(s/2 + size/2), cy = ocy + uy*(s/2 + size/2);
-    const x0 = Math.round(cx - size/2), y0 = Math.round(cy - size/2);
+    const {x0,y0} = blockOrigin(tx, ty, s, ux, uy, d[0], d[1], size);
     for(let x=x0; x<x0+size; x++) for(let y=y0; y<y0+size; y++) add(x,y);
     return set;
   }
@@ -5858,7 +5927,14 @@ function resetMapMovement(map){
 }
 async function toggleBattle(map){
   const meta = activeMapMeta(); meta.battleOn = !meta.battleOn;
-  if(meta.battleOn) resetMapMovement(map);            // start combat with fresh movement counters
+  if(meta.battleOn){
+    resetMapMovement(map);                            // start combat with fresh movement counters
+    // Fresh fight: round/turn order restart, and enemies (wild Pokémon/NPC trainers/standalone
+    // tokens) drop back out of initiative — they opt in per-encounter via the token menu, so a
+    // previous fight's monsters shouldn't linger into a new one. Allies auto-rejoin as usual.
+    meta.initRound = 1; meta.initSeq = 0; meta.initTurnId = null;
+    mapTokensFor(map.id).forEach(t=>{ const k=tokenHp(t).kind; if(k!=="trainer" && k!=="pokemon") t.inInit = false; });
+  }
   await mapMetaUpsert();
   if(meta.battleOn) await mapTokensUpsert();
   renderMap();
