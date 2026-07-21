@@ -456,3 +456,9 @@ body.map-mode .map-select-bar{margin:0; border-radius:0; border-left:0; border-r
 /* toolbar group separator + active primary button */
 .map-sep{width:1px; align-self:stretch; background:var(--line); margin:0 2px}
 .map-toolbar .btn-primary.on{background:var(--good); border-color:var(--good)}
+/* weather panel under the map toolbar — collapsed by default so it never eats board space */
+.map-weather{margin:0 0 8px; border:1px solid var(--accent)}
+.map-weather>summary{cursor:pointer; list-style:none; display:flex; align-items:center; flex-wrap:wrap}
+.map-weather>summary::-webkit-details-marker{display:none}
+.map-weather>summary::before{content:"▸"; margin-right:6px; color:var(--muted)}
+.map-weather[open]>summary::before{content:"▾"}

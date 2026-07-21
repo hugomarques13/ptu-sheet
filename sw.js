@@ -11,7 +11,7 @@
    ?v=, which pinned users to the old app.js. Only a hard refresh (which bypasses both the SW and
    the HTTP cache) escaped it, and that's awkward-to-impossible on mobile. `cache:"no-store"`
    makes the HTML fetch genuinely go to the network. */
-const CACHE = "ptu-sheet-v6";
+const CACHE = "ptu-sheet-v7";
 /* Precache the shell only. The versioned assets (app.js?v=NN, styles.css?v=NN, data/data.js?v=NN)
    are deliberately NOT listed: their real URLs carry a ?v= the install step can't know, so listing
    the bare paths cached copies nothing ever requests, while the real files get cached at runtime on

@@ -167,13 +167,178 @@ function conditionCSMods(p){
 }
 /* effective Combat Stages = manual (p.cs) + condition mods, clamped −6…+6 */
 function effectiveCS(p){
-  const cond = conditionCSMods(p), out = {};
-  CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k])));
+  const cond = conditionCSMods(p), wx = weatherCSMods(p), out = {};
+  CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + wx[k])));
   return out;
 }
 function hasStatus(p, key){ return Array.isArray(p.statuses) && p.statuses.includes(key); }
 function toggleStatus(p, key){ p.statuses = p.statuses||[];
   const i=p.statuses.indexOf(key); if(i>=0) p.statuses.splice(i,1); else p.statuses.push(key); save(); }
+
+/* ===================================================================
+   Weather (Core p.342)
+   One Weather Condition at a time, set by the GM on the battle map; new weather replaces old.
+   The book gives them a 5-round duration, but per this table's ruling weather simply stays until
+   the GM changes it — so nothing here counts rounds.
+
+   What auto-applies: everything that lands on a roll or a stat — the ±5 type damage, Sand Force,
+   the "cannot miss" / "AC 11" move exceptions, and the ability Combat-Stage & Evasion bonuses
+   (they go through effectiveCS/pokeDerived, so CS-adjusted stats, evasion and every roll pick
+   them up automatically). What does NOT auto-apply: the per-turn HP ticks — they're reported by
+   weatherTickReport() and shown on the map so the GM applies them deliberately, since silently
+   editing every combatant's HP each round is hard to notice and harder to undo.
+   A "Tick" of HP is 1/10th of maximum (Core p.242). Sun Blanket / Desert Weather use 1/16th.
+=================================================================== */
+const hpTick      = max => Math.max(1, Math.floor((max||0)/10));
+const hpSixteenth = max => Math.max(1, Math.floor((max||0)/16));
+const normAbilityName = s => String(s||"").toLowerCase().replace(/[^a-z]/g,"");
+function monHasAbility(p, name){
+  const want = normAbilityName(name);
+  return (p?.abilities||[]).some(a=>normAbilityName(a)===want);
+}
+const WEATHER_DEFS = [
+  { key:"clear", name:"Clear skies", icon:"🌤", blurb:"No Weather Effect in play.", rules:[] },
+
+  { key:"sunny", name:"Sunny", icon:"🌞",
+    blurb:"Fire attacks +5 damage · Water attacks −5 damage",
+    dmgByType:{ fire:+5, water:-5 },
+    acOverride:{ thunder:11, hurricane:11 },
+    abilityCS:{ "Thermosensitive":{ atk:2, spatk:2 } },
+    ticks:[
+      { ability:"Dry Skin",    when:"end",   sign:-1, kind:"tick",      label:"Dry Skin — loses a Tick" },
+      { ability:"Sun Blanket", when:"start", sign:+1, kind:"sixteenth", label:"Sun Blanket — gains 1/16 Max HP" },
+    ],
+    rules:[
+      "Fire-Type Attacks gain +5 to Damage Rolls; Water-Type Attacks suffer −5.",
+      "Thunder and Hurricane are AC 11 in Sun.",
+      "Dry Skin: loses a Tick of HP at the end of each turn.",
+      "Thermosensitive: Attack and Special Attack Combat Stages increased by +2.",
+      "Desert Weather: resists Fire-Type Moves one step further.",
+      "Sun Blanket: gains 1/16th of Max HP at the beginning of each turn.",
+    ] },
+
+  { key:"rainy", name:"Rainy", icon:"🌧",
+    blurb:"Water attacks +5 damage · Fire attacks −5 damage",
+    dmgByType:{ water:+5, fire:-5 },
+    noMiss:["thunder","hurricane"],
+    abilityCS:{ "Swift Swim":{ spd:4 } },
+    ticks:[
+      { ability:"Rain Dish",      when:"start", sign:+1, kind:"tick",      label:"Rain Dish — gains a Tick" },
+      { ability:"Dry Skin",       when:"end",   sign:+1, kind:"tick",      label:"Dry Skin — gains a Tick" },
+      { ability:"Desert Weather", when:"end",   sign:+1, kind:"sixteenth", label:"Desert Weather — gains 1/16 Max HP" },
+    ],
+    rules:[
+      "Water-Type Attacks gain +5 to Damage Rolls; Fire-Type Attacks suffer −5.",
+      "Thunder and Hurricane cannot miss in Rain.",
+      "Hydration: cured of one Status Affliction at the end of each turn.",
+      "Rain Dish: recovers a Tick of HP at the beginning of each turn.",
+      "Swift Swim: Speed Combat Stages increased by +4.",
+      "Desert Weather: gains 1/16th of Max HP at the end of each turn.",
+      "Dry Skin: gains a Tick of HP at the end of each turn.",
+    ] },
+
+  { key:"sandstorm", name:"Sandstorm", icon:"🏜",
+    blurb:"Non-Ground/Rock/Steel lose a Tick each turn",
+    abilityCS:{ "Sand Rush":{ spd:4 } },
+    abilityDmgTypes:{ "Sand Force":{ types:["ground","rock","steel"], dmg:+5 } },
+    ticks:[
+      { all:true, exceptTypes:["ground","rock","steel"], immuneAbilities:["Desert Weather"],
+        when:"start", sign:-1, kind:"tick", label:"Sandstorm — loses a Tick" },
+    ],
+    rules:[
+      "All non-Ground, Rock, or Steel Type Pokémon lose a Tick of HP at the beginning of their turn.",
+      "Sand Force: +5 Damage Bonus to Ground, Rock and Steel-Type Moves.",
+      "Sand Rush: Speed Combat Stages increased by +4.",
+      "Desert Weather: immune to Sandstorm.",
+    ] },
+
+  { key:"hail", name:"Hail", icon:"❄️",
+    blurb:"Non-Ice Pokémon lose a Tick each turn",
+    noMiss:["blizzard"],
+    abilityEvasion:{ "Snow Cloak":2 },
+    halveMovementAbilities:["Thermosensitive"],
+    ticks:[
+      { all:true, exceptTypes:["ice"], when:"start", sign:-1, kind:"tick", label:"Hail — loses a Tick" },
+      { ability:"Ice Body", when:"start", sign:+1, kind:"tick", label:"Ice Body — gains a Tick" },
+    ],
+    rules:[
+      "All non-Ice Type Pokémon lose a Tick of HP at the beginning of their turn.",
+      "Blizzard cannot miss in Hail.",
+      "Ice Body: recovers a Tick of HP at the beginning of each turn.",
+      "Snow Cloak: Evasion increased by +2, and adjacent allies are not damaged.",
+      "Thermosensitive: Movement Capabilities reduced by half.",
+    ] },
+];
+const WEATHER_BY_KEY = Object.fromEntries(WEATHER_DEFS.map(w=>[w.key,w]));
+const weatherByKey = k => WEATHER_BY_KEY[k] || WEATHER_DEFS[0];
+/* the weather in play right now — it lives on the battle map, so it only exists in a cloud
+   campaign with a map; everywhere else (local sheets, offline bundle) this is Clear skies. */
+function activeWeather(){
+  // effectiveCS → weatherCSMods → here runs on every pokeDerived call, so bail before
+  // currentMapForView/activeMapMeta (which would allocate a fresh normMapMeta on a missing row).
+  if(mode!=="cloud" || !cloud.mapMeta?.data) return WEATHER_DEFS[0];
+  const map = currentMapForView();
+  return weatherByKey(map?.weather);
+}
+const weatherIsClear = w => (w||activeWeather()).key === "clear";
+/* Combat-Stage bonuses a Pokémon's abilities get from the current weather (Swift Swim, Sand Rush,
+   Thermosensitive) — folded into effectiveCS so every derived stat and roll sees them. */
+function weatherCSMods(p){
+  const out = { atk:0, def:0, spatk:0, spdef:0, spd:0 };
+  const w = activeWeather(); if(!w.abilityCS) return out;
+  for(const ab in w.abilityCS)
+    if(monHasAbility(p, ab)) for(const k in w.abilityCS[ab]) out[k] += w.abilityCS[ab][k];
+  return out;
+}
+/* flat Evasion bonus from a weather ability (Snow Cloak in Hail) */
+function weatherEvasion(p){
+  const w = activeWeather(); if(!w.abilityEvasion) return 0;
+  let n = 0;
+  for(const ab in w.abilityEvasion) if(monHasAbility(p, ab)) n += w.abilityEvasion[ab];
+  return n;
+}
+/* Damage / accuracy changes this weather makes to ONE move by ONE Pokémon. Shaped like buffMods
+   so openMoveRoll can display and total it the same way it does Cheers/Orders/Songs. */
+function weatherRollMods(p, m, moveType){
+  const w = activeWeather();
+  const res = { weather:w, dmg:0, autoHit:false, acOverride:null, lines:[] };
+  if(weatherIsClear(w)) return res;
+  const ty = String(moveType||"").toLowerCase();
+  const mn = String(m?.name||"").toLowerCase();
+
+  const byType = w.dmgByType?.[ty];
+  if(byType){ res.dmg += byType;
+    res.lines.push(`${moveType}-Type attack ${byType>0?"+":"−"}${Math.abs(byType)} Damage in ${w.name}`); }
+
+  if(w.abilityDmgTypes) for(const ab in w.abilityDmgTypes){
+    const r = w.abilityDmgTypes[ab];
+    if(monHasAbility(p, ab) && r.types.includes(ty)){ res.dmg += r.dmg;
+      res.lines.push(`${ab} — +${r.dmg} Damage to ${r.types.map(t=>t[0].toUpperCase()+t.slice(1)).join("/")}-Type moves`); }
+  }
+  if((w.noMiss||[]).includes(mn)){ res.autoHit = true;
+    res.lines.push(`${m.name} cannot miss in ${w.name}`); }
+  if(w.acOverride && w.acOverride[mn]!=null){ res.acOverride = w.acOverride[mn];
+    res.lines.push(`${m.name} is AC ${w.acOverride[mn]} in ${w.name}`); }
+  return res;
+}
+/* Per-turn HP the current weather would move on one Pokémon — REPORTED, never auto-applied.
+   Returns [{label, delta, when}] where delta is signed HP. */
+function weatherTickReport(p){
+  const w = activeWeather(); const out = [];
+  if(weatherIsClear(w) || !w.ticks) return out;
+  const maxHP = pokeDerived(p).maxHP;
+  const types = (getSpecies(p.species)?.types || []).map(t=>String(t).toLowerCase());
+  w.ticks.forEach(t=>{
+    if(t.ability && !monHasAbility(p, t.ability)) return;
+    if(t.all){
+      if((t.exceptTypes||[]).some(ty=>types.includes(ty))) return;              // typed out of it
+      if((t.immuneAbilities||[]).some(ab=>monHasAbility(p, ab))) return;         // ability immunity
+    }
+    const amt = t.kind==="sixteenth" ? hpSixteenth(maxHP) : hpTick(maxHP);
+    out.push({ label:t.label, delta:t.sign*amt, when:t.when });
+  });
+  return out;
+}
 /* how many evolution stages a species still has ahead of it (depth, so branches don't double-count) */
 function evolutionsRemaining(p){
   const sp=getSpecies(p.species); if(!sp?.evolution?.length) return 0;
@@ -271,6 +436,85 @@ const STRUGGLE_TYPE_CAPS = { Firestarter:"Fire", Fountain:"Water", Freezer:"Ice"
 const classNameSet = new Set(D.classes.map(c => c.name));
 
 /* ===================================================================
+   Swarm Template (Core p.478)
+   Abstracts a large number of trivially-weak Pokémon into ONE entity with a Swarm Multiplier.
+   • HP: it has Multiplier-many "HP bars". Emptying a bar drops the Multiplier by 1. Per this
+     table's ruling, excess damage CARRIES into the next bar (the book doesn't say), so the whole
+     thing is modelled as a single pool of Multiplier×maxHP and the bar/Multiplier are derived.
+     It never takes Injuries.
+   • Actions: Swarm Points per round = Multiplier. The first Standard Action each round is FREE;
+     after that a Standard Action costs by Frequency — At-Will 1, EOT 2, Scene 3, Daily 4 — and the
+     swarm acts again at Initiative −5 per extra act. Failing to act from a Status costs 1 point.
+     It always gets at least one action.
+   • Being attacked: Accuracy against it gains +Multiplier; single-target damage is resisted one
+     step further; area/multi-target attacks are one step MORE effective. Those last two are step
+     adjustments on the PTU effectiveness ladder, not raw multipliers — see typeMultAgainst.
+=================================================================== */
+const SWARM_SIZES = [
+  { mult:1, label:"Less than a dozen Pokémon" },
+  { mult:2, label:"15–25 Pokémon" },
+  { mult:3, label:"25–40 Pokémon" },
+  { mult:4, label:"40–60 Pokémon" },
+  { mult:5, label:"60+ Pokémon" },
+];
+const SWARM_MAX_MULT = 5;
+/* Standard-Action cost by Frequency (Core p.478). Keyed off freqInfo().kind. */
+const SWARM_COSTS = { atwill:1, eot:2, scene:3, daily:4 };
+function swarmCost(freq){
+  const k = freqInfo(freq).kind;
+  return SWARM_COSTS[k] ?? 1;            // static/AP/other → treat as At-Will
+}
+const isSwarm = p => !!(p && p.swarm && p.swarm.on);
+/* normalise/repair a swarm block (called from normPokemon) */
+function normSwarm(p){
+  if(!p.swarm || !p.swarm.on) return p;
+  const s = p.swarm;
+  s.maxMult = Math.max(1, Math.min(SWARM_MAX_MULT, parseInt(s.maxMult)||1));
+  if(typeof s.mult!=="number") s.mult = s.maxMult;
+  s.mult = Math.max(0, Math.min(s.maxMult, s.mult));
+  if(typeof s.sp!=="number") s.sp = s.mult;
+  s.sp = Math.max(0, Math.min(s.maxMult, s.sp));
+  s.freeUsed = !!s.freeUsed;
+  return p;
+}
+/* total HP left across every remaining bar */
+function swarmTotalHP(p){
+  const max = pokeDerived(p).maxHP;
+  return Math.max(0, (Math.max(1,p.swarm.mult)-1)) * max + (p.currentHP||0);
+}
+function swarmMaxTotalHP(p){ return pokeDerived(p).maxHP * (p.swarm.maxMult||1); }
+/* write a total back as {Multiplier, HP in the current bar} — this is what makes damage cascade
+   through bars, and what makes a single huge hit able to break several at once. */
+function swarmSetTotalHP(p, total){
+  const max = pokeDerived(p).maxHP;
+  if(total<=0){ p.swarm.mult = 0; p.currentHP = 0; return; }
+  const cap  = max * (p.swarm.maxMult||1);
+  const t    = Math.min(total, cap);
+  p.swarm.mult = Math.max(1, Math.min(p.swarm.maxMult||1, Math.ceil(t/max)));
+  p.currentHP  = t - (p.swarm.mult-1)*max;
+}
+/* re-derive Multiplier from whatever currentHP now is (after any normal HP edit) */
+function swarmNormalizeHP(p){ if(isSwarm(p)) swarmSetTotalHP(p, swarmTotalHP(p)); }
+const swarmDefeated = p => isSwarm(p) && p.swarm.mult<=0;
+/* how many times the swarm may act this round: 1 free + one per Swarm Point it has THIS round
+   (cheapest action = 1 SP) — Swarm Points equal the CURRENT Multiplier, which shrinks as bars
+   break, so a weakened swarm is correctly offered fewer repeat acts, not its starting size. */
+const swarmActs = p => isSwarm(p) && p.swarm.mult>0 ? 1 + p.swarm.mult : 1;
+/* start-of-round refresh — Swarm Points back to the CURRENT Multiplier, free action available */
+function swarmNewRound(p){ if(!isSwarm(p)) return; p.swarm.sp = Math.max(0,p.swarm.mult); p.swarm.freeUsed = false; }
+/* spend for one Standard Action; returns {ok, cost, free} */
+function swarmSpend(p, freq){
+  if(!isSwarm(p)) return { ok:false, cost:0, free:false };
+  if(!p.swarm.freeUsed){ p.swarm.freeUsed = true; return { ok:true, cost:0, free:true }; }
+  const cost = swarmCost(freq);
+  if(p.swarm.sp < cost) return { ok:false, cost, free:false };
+  p.swarm.sp -= cost;
+  return { ok:true, cost, free:false };
+}
+/* step adjustment applied to damage aimed AT a swarm (Core p.478) */
+const swarmDamageStep = aoe => aoe ? +1 : -1;
+
+/* ===================================================================
    Frequency & use-tracking (Scene / Daily limited uses)
    Moves, Abilities and Features carry a `frequency`; Scene/Daily ones
    have finite uses that refresh on End Scene / End Day.
@@ -296,14 +540,14 @@ function splitKey(key){ const i=key.indexOf(":"); return [key.slice(0,i), key.sl
 function usesLeft(owner, key, max){ return Math.max(0, max - ((owner.uses && owner.uses[key]) || 0)); }
 /* use tracker as filled/empty pip boxes (one per use); returns null if unlimited frequency.
    Tap a filled box to spend that use; tap an empty box to restore up to it. */
-function usesControl(owner, kind, name, freqRaw, rerender){
+function usesControl(owner, kind, name, freqRaw, rerender, persistFn){
   const info = freqInfo(freqRaw);
   if(!freqTrackable(info)) return null;
   const key = useKey(kind, name), max = info.max, left = usesLeft(owner, key, max);
   const setLeft = (nl,e) => { e.preventDefault(); e.stopPropagation();
     owner.uses = owner.uses || {};
     owner.uses[key] = Math.min(max, Math.max(0, max - nl));   // store consumed = max − remaining
-    save(); (rerender||(()=>{}))(); };
+    (persistFn||save)(); (rerender||(()=>{}))(); };
   const label = info.kind==="scene" ? "Per Scene" : info.kind==="daily" ? "Per Day" : "Every Other Turn";
   const tag   = info.kind==="scene" ? "scene"     : info.kind==="daily" ? "day"     : "EOT";
   const tip   = info.kind==="eot" ? "Every Other Turn — tap when used (refreshes each Scene)"
@@ -374,9 +618,14 @@ function playerRestRows(){
   return Object.values(cloud.byId).filter(r =>
     r && r.data && r.data.trainer && !ownsRow(r) && r.owner_id !== PC_OWNER);
 }
-/* End of Scene (Core p.220). GM in cloud → applies to all players; otherwise the active character. */
-function endScene(){
+/* End of Scene (Core p.220). GM in cloud → applies to all players; otherwise the active character.
+   GM path re-fetches the roster FIRST (async) — playerRestRows() reads the GM's own in-memory
+   cache, and that cache can be stale (dropped realtime, backgrounded tab, long-open session). Applying
+   rest effects on top of a stale copy and upserting it back used to silently revert every player's
+   sheet to whatever the GM last saw — that's what wiped everyone's Level Up tracker + an avatar. */
+async function endScene(){
   if(mode==="cloud" && cloud.isGM){
+    await fetchRoster();
     const rows = playerRestRows();
     rows.forEach(r => applyEndScene(r.data));
     rows.forEach(r => cloudUpsert(r));
@@ -386,11 +635,12 @@ function endScene(){
   applyEndScene(c); save(); render(); toast("Scene ended — AP restored, Scene uses refreshed");
 }
 /* Extended Rest / End of Day. GM in cloud → applies to all players; otherwise the active character. */
-function endDay(){
+async function endDay(){
   const gmAll = mode==="cloud" && cloud.isGM;
   const scope = gmAll ? "all players" : "this character & its party";
   if(!confirm(`End the day (Extended Rest) for ${scope}?\nRestores HP & AP, heals 1 Injury, and refreshes all Scene & Daily uses.`)) return;
   if(gmAll){
+    await fetchRoster();   // see endScene() — must apply on top of fresh data, not a possibly-stale cache
     const rows = playerRestRows();
     rows.forEach(r => applyEndDay(r.data));
     rows.forEach(r => cloudUpsert(r));
@@ -414,7 +664,7 @@ function newTrainer() {
   return {
     name:"", age:"", gender:"", heightTxt:"", weightTxt:"", size:"Medium", weightClass:3,
     level:1, xp:0, money:0,
-    classes:[], skills, combat, edges:[], features:[], techniques:[],
+    classes:[], skills, combat, edges:[], features:[], techniques:[], abilities:[],
     inventory:[], background:"", notes:"", appearance:"",
     currentHP:null, tempHP:0, injuries:0, usedAP:0, unlocked:false, uses:{}, avatar:"", weapons:[],
     levelUp:{}, buffs:[],
@@ -458,6 +708,7 @@ function normPokemon(p){
   if(typeof p.xp!=="number") p.xp = 0;
   if(typeof p.level!=="number") p.level = 1;
   if(p.xp < xpForLevel(p.level)) p.xp = xpForLevel(p.level);
+  normSwarm(p);                                    // Swarm Template block, if this is a swarm (Core p.478)
   return p;
 }
 /* migrate older Trainer objects to include HP/AP/uses tracking */
@@ -482,6 +733,7 @@ function normTrainer(t){
   });
   if(!t.levelUp || typeof t.levelUp!=="object") t.levelUp = {};   // per-level choice tracker
   if(!Array.isArray(t.techniques)) t.techniques = [];             // learned class Techniques
+  if(!Array.isArray(t.abilities)) t.abilities = [];                // Pokémon-style Abilities some Features/classes grant (e.g. Martial Artist's Guts)
   if(!Array.isArray(t.moves)) t.moves = [];                       // combat Moves granted by Features/class
   if(!Array.isArray(t.buffs)) t.buffs = [];                       // active Cheers / Orders / Songs (#2)
   if(!Array.isArray(t.customActions)) t.customActions = [];       // freeform actions/notes not in any DB/Feature
@@ -533,7 +785,7 @@ const CLOUD_CFG = window.PTU_CLOUD || {};
 let mode = "local";                 // "local" | "cloud"
 const cloud = { client:null, campaign:"", userId:"", name:"", isGM:false,
                 byId:{}, activeId:null, sub:null, lastSaveTs:0, saveTimer:null, pc:null,
-                lastWrite:{},   // rowId → updated_at of our last upsert (per-row echo suppression)
+                inflight:{},    // rowId → count of in-flight CAS writes (defer realtime while >0)
                 mapMeta:null, mapTokens:null, mapSaveTs:0, enc:null, encSaveTs:0, encTimer:null };
 /* shared PC storage lives in a reserved sheets row owned by this sentinel, visible to everyone */
 const PC_OWNER = "__pc__";
@@ -603,9 +855,13 @@ function pokeDerived(p) {
   const maxHP = injuryHealCap(fullMaxHP, injuries);      // Injuries cap max HP at −10% each (Core p.249)
   const budget = p.level + 10;
   const spent = STATS.reduce((s,[k]) => s + (p.stats[k]?.added||0), 0);
+  // Snow Cloak in Hail adds flat Evasion on top of the normal ⌊stat/5⌋ (cap 6) — an ability bonus,
+  // so it is added AFTER the cap rather than being squeezed under it.
+  const wEva = weatherEvasion(p);
   return {
     base, total, cs, eff, maxHP, fullMaxHP, injuries, budget, spent, remaining: budget - spent,
-    physEva: cap6(eff.def), specEva: cap6(eff.spdef), spdEva: cap6(eff.spd),   // evasion uses CS-adjusted stats
+    physEva: cap6(eff.def)+wEva, specEva: cap6(eff.spdef)+wEva, spdEva: cap6(eff.spd)+wEva,   // evasion uses CS-adjusted stats
+    weatherEva: wEva,
   };
 }
 /* PTU 1.05 effectiveness ladder (Core p.240): net weakness/resist STEPS, not raw ×2/×0.5
@@ -619,8 +875,11 @@ function ptuEffMult(steps){
   if(steps===2)  return 2;
   return 3;       // 3+ steps (only reachable via ability/held type-adds)
 }
-/* net effectiveness multiplier of one attacking type vs a defender's type(s), PTU ladder */
-function typeMultAgainst(atkType, defTypes){
+/* net effectiveness multiplier of one attacking type vs a defender's type(s), PTU ladder.
+   `stepAdj` shifts the result along the ladder BEFORE it becomes a multiplier — that's how the
+   Swarm Template's "resisted one step further" (−1) and "one step more super-effective" (+1)
+   are meant to compose with normal weaknesses, rather than multiplying the final number. */
+function typeMultAgainst(atkType, defTypes, stepAdj=0){
   let steps = 0, immune = false;
   (defTypes||[]).forEach(dt => {
     const v = TYPE_CHART[atkType]?.[dt] ?? 1;   // chart only holds 2, 0.5 or 0
@@ -628,8 +887,8 @@ function typeMultAgainst(atkType, defTypes){
     else if(v > 1) steps++;
     else if(v < 1) steps--;
   });
-  if(immune) return 0;
-  return ptuEffMult(steps);
+  if(immune) return 0;                          // immunity is absolute — a swarm can't undo it
+  return ptuEffMult(steps + stepAdj);
 }
 function typeEffectiveness(defTypes) {
   const res = {};
@@ -807,6 +1066,7 @@ function renderTrainer(){
     root.append(classesCard());
     root.append(listCard("Edges","trainer.edges", D.edges.map(x=>x.name), "edge"));
     root.append(listCard("Features","trainer.features", D.features.map(x=>x.name), "feature"));
+    root.append(listCard("Abilities","trainer.abilities", D.abilities.map(x=>x.name), "ability"));
     return;
   }
   if(trainerTab==="levelup"){
@@ -2241,8 +2501,11 @@ function curTurnSeq(){ return battleOn() ? (activeMapMeta().initSeq||0) : null; 
 function activeInitInfo(){
   if(!battleOn()) return null;
   const meta = activeMapMeta(); if(!meta.initTurnId) return null;
-  const map = activeMap(); const tok = map && mapTokensFor(map.id).find(t=>t.id===meta.initTurnId);
-  return { id: meta.initTurnId, name: tok ? tokenHp(tok).name : "", seq: meta.initSeq||0 };
+  // initTurnId may be a Swarm's extra-act entry ("<tokenId>#2") — buffs are stamped against the
+  // TOKEN, so that every act of the same swarm counts as the same caster.
+  const tid = initEntryToken(meta.initTurnId);
+  const map = activeMap(); const tok = map && mapTokensFor(map.id).find(t=>t.id===tid);
+  return { id: tid, name: tok ? tokenHp(tok).name : "", seq: meta.initSeq||0 };
 }
 function stampTurnBuff(nb){
   if(!isTurnDurBuff(nb)) return;
@@ -2975,6 +3238,8 @@ function openMoveRoll(p, m, sp){
     return m.damageBase;                  // generic weight moves & normal moves use the printed DB
   }
   const bm = buffMods(p);                 // active Cheers / Orders / Songs (#2)
+  const wx = weatherRollMods(p, m, mtype);      // current Weather Condition (Core p.342)
+  const effAC = wx.acOverride!=null ? wx.acOverride : m.ac;   // e.g. Thunder is AC 11 in Sun
   const finalDB = () => { const b=baseDB(); return b!=null ? b + (stab?2:0) + (bm.db||0) : null; };
   const diceStr = () => { const f=finalDB(); return f!=null ? (DB_TABLE[f]||"").split("/")[0].trim() : ""; };
 
@@ -2984,16 +3249,19 @@ function openMoveRoll(p, m, sp){
   const dbChip = el("span",{class:"kv"});
   body.append(el("div",{class:"chips",style:"margin-bottom:12px"},
     el("span",{class:"kv"}, `Freq: ${m.frequency||"—"}`),
-    el("span",{class:"kv"}, `AC ${m.ac??"—"}`),
+    el("span",{class:"kv"}, wx.acOverride!=null ? `AC ${effAC} (${wx.weather.name})` : `AC ${m.ac??"—"}`),
     dbChip,
     el("span",{class:"kv"}, m.range||"—")));
 
   const explain = el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"});
-  // accuracy (static)
+  // accuracy (static) — weather can make a move auto-hit (Blizzard in Hail, Thunder/Hurricane in
+  // Rain) or change its AC outright (Thunder/Hurricane in Sun).
   explain.append(el("div",{style:"margin-bottom:10px"},
-    el("div",{style:"font-size:16px;font-weight:700"}, `Accuracy: ${m.ac!=null ? "1d20" : "—"}`),
+    el("div",{style:"font-size:16px;font-weight:700"},
+      `Accuracy: ${wx.autoHit ? "auto-hit" : m.ac!=null ? "1d20" : "—"}`),
     el("div",{class:"small muted",style:"margin-top:2px"},
-      m.ac!=null ? `Roll 1d20 — hits if it's ≥ AC ${m.ac} + ${evaNote}. Nat 20 auto-hits/crits, nat 1 auto-misses.`
+      wx.autoHit ? `${m.name} cannot miss in ${wx.weather.name} — no Accuracy Check needed.`
+      : m.ac!=null ? `Roll 1d20 — hits if it's ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote}. Nat 20 auto-hits/crits, nat 1 auto-misses.`
                  : "This move has no Accuracy Check.")));
   const dmgBox = el("div",{});            // rebuilt whenever the Weight Class changes
   explain.append(dmgBox);
@@ -3020,10 +3288,13 @@ function openMoveRoll(p, m, sp){
     dmgBox.innerHTML = "";
     if(fDB!=null && dn){
       const terms=[`${dn}d${dfaces}`]; if(dflat) terms.push(String(dflat)); if(atkStat) terms.push(String(atkStat));
+      // weather is appended with its own operator — pushing "−5" into terms would render "+ −5"
+      const expr = terms.join(" + ") + (wx.dmg ? ` ${wx.dmg>0?"+":"−"} ${Math.abs(wx.dmg)}` : "");
       const why=[`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${fDB}${stab?` (DB ${baseDB()} +2 STAB)`:""}`];
       if(atkStat) why.push(`${atkStat} = your ${atkLbl}`);
+      if(wx.dmg) why.push(`${wx.dmg>0?"+":"−"}${Math.abs(wx.dmg)} = ${wx.weather.name}`);
       dmgBox.append(el("div",{},
-        el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${terms.join(" + ")}`),
+        el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${expr}`),
         el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ")+`. Target then subtracts their ${defNote}.`)));
     } else {
       dmgBox.append(el("div",{},
@@ -3051,6 +3322,53 @@ function openMoveRoll(p, m, sp){
     body.append(bcard);
   }
 
+  /* --- Swarm action economy (Core p.478): the cost of THIS move comes from its Frequency, so
+         rolling a move is what drives the spending. First Standard Action each round is free. --- */
+  if(isSwarm(p)){
+    const scard = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+    const drawSwarm = ()=>{
+      scard.innerHTML = "";
+      const cost = swarmCost(m.frequency), free = !p.swarm.freeUsed, canPay = free || p.swarm.sp>=cost;
+      scard.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},
+        `🐝 Swarm ×${p.swarm.mult} — ${p.swarm.sp} Swarm Point${p.swarm.sp===1?"":"s"} left this round`));
+      scard.append(el("div",{class:"small"}, free
+        ? "• First Standard Action this round is FREE."
+        : `• ${m.name} (${m.frequency||"At-Will"}) costs ${cost} Swarm Point${cost===1?"":"s"}.`));
+      scard.append(el("button",{class:"btn-secondary",style:"margin-top:6px",disabled:!canPay,
+        onclick:()=>{ const r = swarmSpend(p, m.frequency);
+          if(!r.ok){ toast("Not enough Swarm Points"); return; }
+          saveEnc(); toast(r.free ? "Free action used" : `−${r.cost} Swarm Point${r.cost===1?"":"s"}`);
+          drawSwarm(); if(currentTab==="map") renderMap(); }},
+        free ? "✓ Use the free action" : `✓ Spend ${cost}`));
+      if(!canPay) scard.append(el("div",{class:"small muted",style:"margin-top:4px"},
+        "Not enough points for this move — but a Swarm always gets at least one action each round."));
+      scard.append(el("div",{class:"small muted",style:"margin-top:4px"},
+        "At-Will 1 · EOT 2 · Scene 3 · Daily 4 — Standard Actions only. Each extra act is at Initiative −5."));
+    };
+    drawSwarm();
+    body.append(scard);
+  }
+
+  /* --- current Weather Condition applied to this roll (Core p.342) — presented exactly like the
+         buff card above so the GM can see where every modifier came from --- */
+  if(!weatherIsClear(wx.weather)){
+    const wcard = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+    wcard.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},
+      `${wx.weather.icon} Weather — ${wx.weather.name}`));
+    if(wx.lines.length) wx.lines.forEach(l=>wcard.append(el("div",{class:"small"}, "• "+l)));
+    else wcard.append(el("div",{class:"small muted"},"No effect on this move."));
+    const wnet = [];
+    if(wx.dmg) wnet.push(`${wx.dmg>0?"+":"−"}${Math.abs(wx.dmg)} to Damage`);
+    if(wx.autoHit) wnet.push("cannot miss");
+    if(wx.acOverride!=null) wnet.push(`AC ${wx.acOverride}`);
+    if(wnet.length) wcard.append(el("div",{class:"small muted",style:"margin-top:4px;font-weight:700"},"Net: "+wnet.join(" · ")));
+    const csw = weatherCSMods(p), csTxt = CS_STATS.filter(([k])=>csw[k]).map(([k,l])=>`${csw[k]>0?"+":""}${csw[k]} ${l} CS`);
+    const evw = weatherEvasion(p);
+    if(csTxt.length || evw) wcard.append(el("div",{class:"small muted",style:"margin-top:2px"},
+      "Already included in this Pokémon's stats: " + csTxt.concat(evw?[`+${evw} Evasion`]:[]).join(" · ")));
+    body.append(wcard);
+  }
+
   /* --- move effect text, always shown; high-roll thresholds highlighted (#4) --- */
   const thresholds = effectThresholds(m.effect);
   if(m.effect){
@@ -3073,10 +3391,15 @@ function openMoveRoll(p, m, sp){
     const accTot = acc + (bm.acc||0);
     const accLine = el("div",{style:fDB!=null?"margin-bottom:10px":""});
     accLine.append(el("div",{class:"lbl",style:"color:var(--muted)  ;font-weight:800"},"ACCURACY ROLL"));
-    accLine.append(el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`,
-      el("span",{class:"muted",style:"font-size:14px;font-weight:600"}, bm.acc?`  (${acc} ${bm.acc>0?"+":"−"} ${Math.abs(bm.acc)} buffs)`:"  (1d20)")));
-    if(m.ac!=null) accLine.append(el("div",{class:"small muted"},
-      `Hits if ${accTot} ≥ AC ${m.ac} + ${evaNote}.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`));
+    if(wx.autoHit){
+      accLine.append(el("div",{style:"font-size:24px;font-weight:800;color:var(--good)"}, "🎯 Automatic hit"));
+      accLine.append(el("div",{class:"small muted"}, `${m.name} cannot miss in ${wx.weather.name} — no Accuracy Check.`));
+    } else {
+      accLine.append(el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`,
+        el("span",{class:"muted",style:"font-size:14px;font-weight:600"}, bm.acc?`  (${acc} ${bm.acc>0?"+":"−"} ${Math.abs(bm.acc)} buffs)`:"  (1d20)")));
+      if(effAC!=null) accLine.append(el("div",{class:"small muted"},
+        `Hits if ${accTot} ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote}.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`));
+    }
     out.append(accLine);
     // extra move effects that trigger on this Accuracy roll (#4) — compared vs the natural 1d20
     if(thresholds.length){
@@ -3098,11 +3421,12 @@ function openMoveRoll(p, m, sp){
       const dmgLine = el("div",{});
       dmgLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"));
       if(r){
-        const total = r.total + (atkStat||0) + (bm.dmg||0);
+        const total = Math.max(0, r.total + (atkStat||0) + (bm.dmg||0) + (wx.dmg||0));
         dmgLine.append(el("div",{style:"font-size:26px;font-weight:800;color:var(--accent)"}, `💥 ${total}`));
         const parts=[`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`];
         if(atkStat) parts.push(`+ ${atkStat} ${atkLbl}`);
         if(bm.dmg)  parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs`);
+        if(wx.dmg)  parts.push(`${wx.dmg>0?"+":""}${wx.dmg} ${wx.weather.name}`);
         parts.push(`= ${total}`);
         dmgLine.append(el("div",{class:"small muted",style:"margin-top:4px"}, parts.join("  ")));
         if(bm.crit) dmgLine.append(el("div",{class:"small muted"}, `Crit / Effect range widened by +${bm.crit} (buffs).`));
@@ -3574,6 +3898,23 @@ function renderTrainerCombat(root, t){
     mvCard.append(slot);
   });
   root.append(mvCard);
+  if(!Array.isArray(t.abilities)) t.abilities=[];
+  if(t.abilities.length){
+    const abc=el("div",{class:"card"},el("h3",{},`Abilities (${t.abilities.length})`,
+      el("span",{class:"muted small"},"passive, from Trainer → Features & Edges")));
+    t.abilities.forEach(an=>{
+      const ab=abilityByName.get(an.toLowerCase());
+      const row=el("details",{class:"spoiler"});
+      const uc=usesControl(t,"ability",an,ab?.frequency,renderBattle);
+      row.append(el("summary",{},
+        el("span",{style:"font-weight:700;color:var(--ink)"}, an),
+        ab&&ab.frequency?el("span",{class:"muted small",style:"margin-left:8px"}, ab.frequency):"",
+        uc?el("span",{style:"margin-left:8px"},uc):""));
+      row.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database.</span>"}));
+      abc.append(row);
+    });
+    root.append(abc);
+  }
   const passive=trainerFeatureObjs(t).filter(f=>!featureActionTypes(f).length);
   const pc=el("div",{class:"card"},el("h3",{},`Passive & Always-On (${passive.length})`,
     el("span",{class:"muted small"},"Static / out-of-combat")));
@@ -3616,7 +3957,7 @@ function encList(){ return mode==="cloud" ? ensureEnc().data.encounters : (state
 function activeEncounter(){ const a=encList(); return a.find(e=>e.id===state.activeEncounterId) || a[0]; }
 let encSaveTimer;
 function saveEnc(){
-  if(mode==="cloud"){ ensureEnc().updated_at = new Date().toISOString();   // stamp now so a mid-debounce refetch can't revert it
+  if(mode==="cloud"){ ensureEnc();   // conflict-safe write is debounced below (CAS by rev, not clock)
     clearTimeout(encSaveTimer); encSaveTimer=setTimeout(()=>{ encSaveTimer=null; encUpsert(); }, 400); return; }
   try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){ toast("⚠ Could not save encounter"); }
 }
@@ -3678,6 +4019,7 @@ function encounterMoveRow(p, sp, m, mn, favSet, onFav, isStruggle){
   if(m) left.append(el("span",{class:"small muted",style:"min-width:0;overflow:hidden;text-overflow:ellipsis"}, moveLineShort(m)));
   row.append(left);
   const acts=el("div",{class:"inline",style:"gap:6px"});
+  if(m && !isStruggle){ const uc = usesControl(p, "move", m.name, m.frequency, renderEncounters, saveEnc); if(uc) acts.append(uc); }
   if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"move details",
     onclick:()=>modal({title:m.name, bodyNode:el("div",{class:"small",html:moveDetailHTML(m,m.name)}),
       footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Close")]})},"ℹ"));
@@ -3690,21 +4032,28 @@ function encounterMoveRow(p, sp, m, mn, favSet, onFav, isStruggle){
 function encounterAbilityRow(p, an){
   const ab=abilityByName.get((an||"").toLowerCase());
   const row=el("details",{class:"spoiler",style:"margin-top:5px"});
+  row.dataset.key = "ability:"+p.id+":"+an;
+  const uc = usesControl(p, "ability", an, ab?.frequency, renderEncounters, saveEnc);
   row.append(el("summary",{},
     el("span",{style:"font-weight:700;color:var(--ink)"}, an||"—"),
     ab&&ab.frequency?el("span",{class:"muted small",style:"margin-left:8px"}, ab.frequency):"",
+    uc?el("span",{style:"margin-left:8px"},uc):"",
     el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove ability",
       onclick:e=>{ e.preventDefault(); const i=p.abilities.indexOf(an); if(i>=0){ p.abilities.splice(i,1); saveEnc(); renderEncounters(); } }},"×")));
   row.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database</span>"}));
   return row;
 }
-/* one expandable Class/Feature/Edge/Ability row on an encounter trainer card */
-function encTrainerRefRow(name, kind, onRemove){
+/* one expandable Class/Feature/Edge/Ability row on an encounter trainer card.
+   `t`+`ownerKey` let Feature uses (e.g. Scene-frequency Cheers/Orders) track & show a pip tracker. */
+function encTrainerRefRow(t, ownerKey, name, kind, onRemove){
   const row=el("details",{class:"spoiler",style:"margin-top:5px"});
   const freq=refFrequency(kind, name);
+  row.dataset.key = kind+":"+ownerKey+":"+name;
+  const uc = kind==="feature" ? usesControl(t, "feature", name, freq, renderEncounters, saveEnc) : null;
   row.append(el("summary",{},
     el("span",{style:"font-weight:700;color:var(--ink)"}, name),
     freq?el("span",{class:"muted small",style:"margin-left:8px"}, freq):"",
+    uc?el("span",{style:"margin-left:8px"},uc):"",
     el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove",
       onclick:e=>{ e.preventDefault(); onRemove(); }},"×")));
   row.append(el("div",{class:"small",style:"margin-top:6px",html: refDetailHTML(kind, name)}));
@@ -3742,6 +4091,7 @@ async function sendEncMonToPC(enc, p, list){
   ensurePCRow();
   const m = normPokemon(JSON.parse(JSON.stringify(p)));
   m.id = uid(); m.onTeam = false; m.currentHP = null; delete m.encFav;
+  delete m.swarm;   // "catching" a Swarm means pulling ONE individual out of it — not boxing the horde
   m._pcFrom = "Encounter"+(enc.name?": "+enc.name:""); m._pcAt = Date.now();
   cloud.pc.data.pokemon.push(m);
   const i = list.indexOf(p); if(i>=0) list.splice(i,1);   // caught → leaves the encounter
@@ -3760,12 +4110,73 @@ function removeEncMonTokens(monId){
   }
   if(changed) mapTokensSave();   // optimistic serialized sync; realtime removes it for everyone
 }
+/* turn the Swarm Template on/off for an encounter Pokémon. Turning it on refills to full bars so
+   the GM doesn't start a horde already wounded; turning it off collapses back to one normal bar. */
+function toggleSwarm(p){
+  if(isSwarm(p)){ delete p.swarm; p.currentHP = Math.min(p.currentHP, pokeDerived(p).maxHP); return; }
+  p.swarm = { on:true, maxMult:2, mult:2, sp:2, freeUsed:false };
+  normSwarm(p);
+  p.currentHP = pokeDerived(p).maxHP;
+}
+/* Swarm control block on the encounter card: size/Multiplier, the HP bars, and the Swarm Point
+   tracker with the book's per-Frequency costs. */
+function swarmCard(p){
+  const s = p.swarm, d = pokeDerived(p), barMax = d.maxHP;
+  const wrap = el("div",{class:"card",style:"background:var(--panel-2);margin:8px 0 0;border:1px solid var(--accent)"});
+  wrap.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:6px"},
+    `🐝 Swarm Template — ×${s.mult}`, el("span",{class:"muted",style:"font-weight:600"}, "  (Core p.478)")));
+
+  // size / multiplier
+  const sizeSel = el("select");
+  SWARM_SIZES.forEach(z=>sizeSel.append(el("option",{value:z.mult,selected:z.mult===s.maxMult}, `×${z.mult} — ${z.label}`)));
+  sizeSel.addEventListener("change", ()=>{
+    s.maxMult = parseInt(sizeSel.value)||1;
+    s.mult = s.maxMult; s.sp = s.maxMult; s.freeUsed = false;
+    p.currentHP = pokeDerived(p).maxHP;                    // resize = a fresh swarm
+    normSwarm(p); saveEnc(); renderEncounters();
+  });
+  wrap.append(el("label",{class:"field",style:"max-width:280px"}, el("span",{},"Swarm size"), sizeSel));
+
+  // HP bars
+  const bars = el("div",{class:"inline",style:"gap:4px;margin-top:8px;flex-wrap:wrap"});
+  for(let i=s.maxMult; i>=1; i--){
+    const full = i < s.mult, cur = i === s.mult;
+    const pct = cur ? Math.max(0, Math.min(100, Math.round(p.currentHP/barMax*100))) : (full?100:0);
+    bars.append(el("div",{style:"flex:1;min-width:52px"},
+      el("div",{class:"hpbar",style:"height:9px"}, el("i",{style:`width:${pct}%;background:${cur?"var(--accent)":full?"var(--good)":"transparent"}`}))));
+  }
+  wrap.append(el("div",{class:"small muted",style:"margin-top:6px;font-weight:700"},
+    `HP bars — ${s.mult} of ${s.maxMult} left · ${swarmTotalHP(p)} / ${swarmMaxTotalHP(p)} total`), bars);
+  if(swarmDefeated(p)) wrap.append(el("div",{class:"warnbox",style:"margin-top:8px"},"💀 The swarm is broken — every bar is gone."));
+
+  // Swarm Points
+  const spRow = el("div",{class:"inline",style:"gap:6px;margin-top:10px;align-items:center;flex-wrap:wrap"});
+  spRow.append(el("span",{class:"small",style:"font-weight:700"}, `⚡ Swarm Points: ${s.sp} / ${s.mult}`));
+  const bump = n => { s.sp = Math.max(0, Math.min(s.maxMult, s.sp+n)); saveEnc(); renderEncounters(); };
+  spRow.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"spend a point by hand",onclick:()=>bump(-1)},"−1"),
+               el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"give a point back",onclick:()=>bump(+1)},"+1"),
+               el("button",{class:"btn-secondary",style:"padding:3px 9px",
+                 title:"new round — points back to the current Multiplier and the free Standard Action re-armed",
+                 onclick:()=>{ swarmNewRound(p); saveEnc(); renderEncounters(); }},"↺ Round"));
+  spRow.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",
+    title:"it couldn't act (Sleep, etc.) — Core p.478: lose 1 Swarm Point instead",
+    onclick:()=>{ s.sp=Math.max(0,s.sp-1); saveEnc(); renderEncounters(); toast("😴 Couldn't act — −1 Swarm Point"); }},"😴 Can't act"));
+  wrap.append(spRow);
+  wrap.append(el("div",{class:"small muted",style:"margin-top:4px"},
+    (s.freeUsed ? "Free Standard Action: used this round." : "Free Standard Action: available.")
+    + " Costs — At-Will 1 · EOT 2 · Scene 3 · Daily 4. Rolling one of its moves spends automatically."));
+  wrap.append(el("div",{class:"small muted",style:"margin-top:4px"},
+    `Attacks against it: +${s.mult} Accuracy · single-target damage resisted one step further · area attacks one step more effective. It takes no Injuries.`));
+  return wrap;
+}
+
 /* compact combat-stage steppers for an encounter Pokémon (±6 per stat; feeds pokeDerived) */
 function encCombatStages(p){
   if(!p.cs) p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0};
   const d = pokeDerived(p);
   const det = el("details",{class:"spoiler",style:"margin-top:8px"});
   const any = CS_STATS.some(([k])=>p.cs[k]);
+  det.dataset.key = "cs:"+p.id;
   det.append(el("summary",{}, el("span",{style:"font-weight:700"},"Combat Stages"),
     any?el("span",{class:"muted small",style:"margin-left:8px"},"active"):""));
   const grid = el("div",{style:"display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"});
@@ -3790,6 +4201,7 @@ function encStatSpread(p){
   const spent = keys.reduce((s,[k])=> s + (p.stats[k]?.added||0), 0);
   const remaining = budget - spent;
   const det = el("details",{class:"spoiler",style:"margin-top:8px"});
+  det.dataset.key = "stats:"+p.id;
   det.append(el("summary",{}, el("span",{style:"font-weight:700"},"Distribute stats"),
     el("span",{class:"muted small",style:"margin-left:8px"}, `${remaining} of ${budget} left`)));
   const grid = el("div",{style:"display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"});
@@ -3810,11 +4222,72 @@ function encStatSpread(p){
     onclick:()=>{ encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); }},"🎲 randomise"));
   return det;
 }
+/* Manual stat-point distribution for an encounter Trainer — mirrors encStatSpread(p) but spends the
+   Trainer's Level+9(+bonuses) budget (trainerStatBudget) across t.combat[k].added. */
+function encTrainerStatSpread(t, key){
+  normTrainer(t);
+  const tb = trainerStatBudget(t);
+  const det = el("details",{class:"spoiler",style:"margin-top:8px"});
+  det.dataset.key = "stats:"+key;
+  det.append(el("summary",{}, el("span",{style:"font-weight:700"},"Distribute stats"),
+    el("span",{class:"muted small",style:"margin-left:8px"}, `${tb.remaining} of ${tb.budget} left`)));
+  const grid = el("div",{style:"display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"});
+  const canInc = t.unlocked || tb.remaining > 0;
+  STATS.forEach(([k,lbl])=>{
+    const added = t.combat[k].added||0;
+    const cell = el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:2px;min-width:66px"});
+    cell.append(el("div",{class:"small muted",style:"font-weight:700"},lbl));
+    const step = el("div",{class:"stepper"});
+    step.append(
+      el("button",{title:"lower",disabled:added<=0,onclick:()=>{ t.combat[k].added=Math.max(0,added-1); saveEnc(); renderEncounters(); }},"−"),
+      el("span",{class:"stepper-val"}, String(added)),
+      el("button",{title:canInc?"add a point":"no points left (tick 🔓 to override)",disabled:!canInc,onclick:()=>{ t.combat[k].added=added+1; saveEnc(); renderEncounters(); }},"+"));
+    cell.append(step);
+    cell.append(el("div",{class:"small muted"}, String(t.combat[k].base+added)));
+    grid.append(cell);
+  });
+  det.append(grid);
+  return det;
+}
+/* Weapons editor for an encounter Trainer — mirrors weaponsCard(t) but persists via saveEnc(). */
+function encWeaponsCard(t, key){
+  if(!Array.isArray(t.weapons)) t.weapons=[];
+  const det = el("details",{class:"spoiler",style:"margin-top:8px"});
+  det.dataset.key = "weapons:"+key;
+  det.append(el("summary",{}, el("span",{style:"font-weight:700"},`Weapons (${t.weapons.length})`),
+    el("button",{class:"linkbtn",style:"margin-left:8px",onclick:e=>{ e.preventDefault(); t.weapons.push(newWeapon()); saveEnc(); renderEncounters(); }},"+ add")));
+  const body = el("div",{style:"margin-top:8px"});
+  if(!t.weapons.length) body.append(el("span",{class:"muted small"},"none — unarmed Struggle is Normal, Physical, AC 4, DB 4 (AC 3 / DB 5 at Combat Expert+)."));
+  t.weapons.forEach((w,i)=>{
+    const box = el("div",{style:"border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;margin-top:8px"});
+    box.append(el("div",{class:"inline",style:"gap:10px;justify-content:space-between"},
+      el("span",{style:"font-weight:700"}, w.name || `Weapon ${i+1}`),
+      el("button",{class:"linkbtn danger",title:"remove",onclick:()=>{ t.weapons.splice(i,1); saveEnc(); renderEncounters(); }},"× remove")));
+    const r1 = el("div",{class:"fieldrow"});
+    r1.append(
+      field("Name","",{value:w.name,onchange:v=>{ w.name=v; saveEnc(); renderEncounters(); }}),
+      field("Category","",{opts:Object.keys(WEAPON_PRESETS),value:w.category,onchange:v=>{ w.category=v; Object.assign(w, WEAPON_PRESETS[v]); saveEnc(); renderEncounters(); }}),
+      field("Type","",{opts:TYPES,value:w.type,onchange:v=>{ w.type=v; saveEnc(); renderEncounters(); }}),
+    );
+    const r2 = el("div",{class:"fieldrow"});
+    r2.append(
+      field("+ Damage Base","",{type:"number",value:w.dbMod,onchange:v=>{ w.dbMod=parseInt(v)||0; saveEnc(); renderEncounters(); }}),
+      field("+ AC (harder)","",{type:"number",value:w.acMod,onchange:v=>{ w.acMod=parseInt(v)||0; saveEnc(); renderEncounters(); }}),
+      field("Range","",{value:w.range,onchange:v=>{ w.range=v; saveEnc(); renderEncounters(); }}),
+      field("Weapon Move","",{opts:["", ...WEAPON_MOVES], value:w.weaponMove||"", onchange:v=>{ w.weaponMove=v; saveEnc(); renderEncounters(); }}),
+    );
+    box.append(r1, r2, field("Notes","",{value:w.notes,onchange:v=>{ w.notes=v; saveEnc(); }}));
+    body.append(box);
+  });
+  det.append(body);
+  return det;
+}
 /* Combat Stages control for an encounter Trainer (mirrors encCombatStages, uses trainerDerived) */
-function encTrainerCombatStages(t){
+function encTrainerCombatStages(t, key){
   normTrainer(t);
   const d = trainerDerived(t);
   const det = el("details",{class:"spoiler",style:"margin-top:8px"});
+  det.dataset.key = "cs:"+key;
   const any = CS_STATS.some(([k])=>t.cs[k]);
   det.append(el("summary",{}, el("span",{style:"font-weight:700"},"Combat Stages"),
     any?el("span",{class:"muted small",style:"margin-left:8px"},"active"):""));
@@ -3837,6 +4310,7 @@ function encStatusControl(p){
   const sp=getSpecies(p.species);
   const active=STATUS_DEFS.filter(s=>hasStatus(p,s.key));
   const det=el("details",{class:"spoiler",style:"margin-top:8px"});
+  det.dataset.key = "status:"+p.id;
   det.append(el("summary",{},
     el("span",{style:"font-weight:700;color:var(--ink)"},"Status Conditions"),
     el("span",{class:"muted small",style:"margin-left:8px"}, active.length?active.map(s=>s.name).join(", "):"none"),
@@ -3905,12 +4379,22 @@ function encounterMonCard(enc, p, list){
   head.append(encMonRemoveBtn(p,list));
   card.append(head);
   // HP tracker
-  const setHP=v=>{ p.currentHP=Math.max(-99,Math.min(maxHP,v)); saveEnc(); renderEncounters(); };
+  // A Swarm's HP is one pool over several bars — write through the cascade so a big hit can break
+  // more than one bar and drop the Multiplier accordingly (Core p.478).
+  const setHP = v => {
+    if(isSwarm(p)) swarmSetTotalHP(p, Math.max(0,(p.swarm.mult||1)-1)*maxHP + v);
+    else p.currentHP = Math.max(-99, Math.min(maxHP, v));
+    saveEnc(); renderEncounters();
+  };
   card.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"},
-    el("span",{class:"small muted",style:"font-weight:700;white-space:nowrap"}, `HP ${p.currentHP}/${maxHP}`),
+    el("span",{class:"small muted",style:"font-weight:700;white-space:nowrap"},
+      isSwarm(p) ? `HP ${p.currentHP}/${maxHP} · bar ${p.swarm.mult}/${p.swarm.maxMult}` : `HP ${p.currentHP}/${maxHP}`),
     el("div",{class:"hpbar",style:"flex:1;min-width:120px"}, el("i",{style:`width:${pct}%;background:${hpColor}`})),
-    el("button",{class:"linkbtn",style:"padding:2px 6px",title:"full heal",onclick:()=>setHP(maxHP)},"MAX")));
+    el("button",{class:"linkbtn",style:"padding:2px 6px",title:"full heal",
+      onclick:()=>{ if(isSwarm(p)) swarmSetTotalHP(p, swarmMaxTotalHP(p)); else p.currentHP=maxHP;
+        saveEnc(); renderEncounters(); }},"MAX")));
   card.append(damageHealRow(()=>p.currentHP, setHP, p));
+  if(isSwarm(p)) card.append(swarmCard(p));
   // GM actions: reroll identity, toggle shiny, Catch DC, send to PC (caught)
   const actRow=el("div",{class:"inline",style:"gap:6px;margin-top:8px;flex-wrap:wrap"});
   actRow.append(
@@ -3920,7 +4404,10 @@ function encounterMonCard(enc, p, list){
       onclick:()=>{ p.shiny=!p.shiny; saveEnc(); renderEncounters(); }}, p.shiny?"✨ Shiny":"Shiny?"),
     el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"capture DC",onclick:()=>catchRateModal(p)},"🎯 Catch DC"),
     el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"send to the shared PC (caught)",onclick:()=>sendEncMonToPC(enc,p,list)},"🎣 To PC"),
-    el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"EXP for defeating just this Pokémon",onclick:()=>openMonExpCalc(p)},"🧮 EXP"));
+    el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"EXP for defeating just this Pokémon",onclick:()=>openMonExpCalc(p)},"🧮 EXP"),
+    el("button",{class:"btn-secondary"+(isSwarm(p)?" on":""),style:"padding:5px 10px",
+      title:"Swarm Template (Core p.478) — abstract a horde into one entity with HP bars and Swarm Points",
+      onclick:()=>{ toggleSwarm(p); saveEnc(); renderEncounters(); }}, isSwarm(p)?`🐝 Swarm ×${p.swarm.mult}`:"🐝 Swarm"));
   card.append(actRow);
   card.append(encStatSpread(p));
   card.append(encCombatStages(p));
@@ -3985,7 +4472,9 @@ function encounterTrainerCard(enc, tr){
     el("span",{style:"font-weight:800;min-width:16px;text-align:center"}, String(t.injuries||0)),
     el("button",{class:"btn-secondary",style:"padding:2px 9px",onclick:()=>{ t.injuries=Math.min(10,(t.injuries||0)+1); if(t.currentHP>trainerDerived(t).hp) t.currentHP=trainerDerived(t).hp; saveEnc(); renderEncounters(); }},"+"));
   card.append(injRow);
-  card.append(encTrainerCombatStages(t));
+  card.append(encTrainerCombatStages(t, tr.id));
+  card.append(encTrainerStatSpread(t, tr.id));
+  card.append(encWeaponsCard(t, tr.id));
   // Attacks: unarmed Struggle + one slot per weapon (+ its Weapon Move) — reuses the Sheet's slots
   const atkWrap=el("div",{style:"margin-top:8px"});
   atkWrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:2px"},"⚔ Attacks"));
@@ -3994,7 +4483,8 @@ function encounterTrainerCard(enc, tr){
     atkWrap.append(trainerAttackSlot(t, trainerStruggle(t,w), ()=>openTrainerAttack(t,null,w), {tag:w.category}));
     if(w.notes) atkWrap.append(el("div",{class:"small muted",style:"margin:-2px 0 4px 6px"}, "↳ "+w.notes));
     if(w.weaponMove){ const wm=trainerAttackProfile(t,w.weaponMove,w);
-      atkWrap.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t,w.weaponMove,w), {tag:"weapon move", move:true})); }
+      const uc = usesControl(t, "move", wm.name, wm.frequency, renderEncounters, saveEnc);
+      atkWrap.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t,w.weaponMove,w), {tag:"weapon move", move:true, uc})); }
   });
   card.append(atkWrap);
   // Trainer Moves — combat Moves granted by their Features/class, each rollable (adds Attack)
@@ -4007,7 +4497,8 @@ function encounterTrainerCard(enc, tr){
   t.encMoves.forEach(mn=>{
     const m=moveByName.get(mn.toLowerCase());
     const prof = m ? trainerAttackProfile(t, mn) : {name:mn+" (not in DB)",type:"Normal",cls:"?",ac:"—",damageBase:"—",range:"—"};
-    const slot = trainerAttackSlot(t, prof, ()=> m?openTrainerAttack(t,mn):toast("Not in the move database"), {move:!!m});
+    const uc = m ? usesControl(t, "move", prof.name, prof.frequency, renderEncounters, saveEnc) : null;
+    const slot = trainerAttackSlot(t, prof, ()=> m?openTrainerAttack(t,mn):toast("Not in the move database"), {move:!!m, uc});
     const acts = slot.querySelector(".inline");
     if(acts) acts.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted)",title:"remove move",
       onclick:()=>{ t.encMoves=t.encMoves.filter(x=>x!==mn); saveEnc(); renderEncounters(); }},"×"));
@@ -4034,7 +4525,7 @@ function encounterTrainerCard(enc, tr){
         opts().filter(n=>!list.includes(n)),
         name=>{ list.push(name); saveEnc(); renderEncounters(); }, kind)},"+ add")));
     if(!list.length){ build.append(el("span",{class:"muted small"},"none")); return; }
-    list.forEach(n=> build.append(encTrainerRefRow(n, kind,
+    list.forEach(n=> build.append(encTrainerRefRow(t, tr.id, n, kind,
       ()=>{ t[field]=list.filter(x=>x!==n); saveEnc(); renderEncounters(); })));
   });
   card.append(build);
@@ -4127,7 +4618,12 @@ function openMonExpCalc(p){
   modal({title:`🧮 EXP — ${encMonName(p)}`, bodyNode:body});
 }
 function renderEncounters(){
-  const root=$("#view-encounters"); root.innerHTML="";
+  const root=$("#view-encounters");
+  // renderEncounters() does a full teardown/rebuild on every edit (stat/CS steppers, use-pips…),
+  // so <details data-key> spoilers would otherwise snap shut after one click — remember which were
+  // open and re-open the matching ones once the fresh DOM is built.
+  const openKeys = new Set([...root.querySelectorAll("details[data-key][open]")].map(d=>d.dataset.key));
+  root.innerHTML="";
   const arr=encList();
   const bar=el("div",{class:"card"});
   const top=el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;justify-content:space-between"});
@@ -4176,6 +4672,7 @@ function renderEncounters(){
   if(!cur.trainers.length) tc.append(el("span",{class:"muted small"},"none — add a Trainer NPC and give them Pokémon."));
   cur.trainers.forEach(tr=> tc.append(encounterTrainerCard(cur, tr)));
   root.append(tc);
+  if(openKeys.size) root.querySelectorAll("details[data-key]").forEach(d=>{ if(openKeys.has(d.dataset.key)) d.open=true; });
 }
 
 /* ===================================================================
@@ -4552,15 +5049,136 @@ function migrateChar(data, id){
 }
 /* explicit columns, not "*" — supabase-js can transiently return 0 rows for just-inserted
    rows under a "*" select, which would blank the roster right after someone joins/creates. */
-const SHEET_COLS = "id,campaign,owner_id,owner_name,name,data,updated_at";
+const SHEET_COLS = "id,campaign,owner_id,owner_name,name,data,rev,updated_at";
+
+/* ───────────────────────── conflict-safe cloud writes ─────────────────────────
+   Every sheet is one JSON blob in one row, and two people (a player + the GM) can
+   hold and edit the same row at once. The old model was "last write by client clock
+   wins the WHOLE blob", which silently discarded the other editor's changes and — with
+   skewed machine clocks — reverted edits non-deterministically. The new model:
+
+   • The server owns an integer `rev` (bumped by a trigger on every write) and the
+     `updated_at` timestamp. Clients never decide ordering by their own clock.
+   • Writes are compare-and-swap: "update this row ONLY IF it's still at the rev I based
+     my edit on". If someone else wrote in between, the write is REJECTED, we re-fetch the
+     fresh copy, MERGE our change onto it field-by-field (never clobbering), and retry.
+   That makes lost updates impossible and removes all dependence on clock accuracy. */
+function isObj(v){ return v && typeof v==="object" && !Array.isArray(v); }
+function deepClone(v){ return v==null ? v : JSON.parse(JSON.stringify(v)); }
+function deepEqual(a,b){
+  if(a===b) return true;
+  if(typeof a!==typeof b) return false;
+  if(a===null||b===null) return a===b;
+  if(Array.isArray(a)||Array.isArray(b)){
+    if(!Array.isArray(a)||!Array.isArray(b)||a.length!==b.length) return false;
+    for(let i=0;i<a.length;i++) if(!deepEqual(a[i],b[i])) return false;
+    return true;
+  }
+  if(typeof a==="object"){
+    const ka=Object.keys(a), kb=Object.keys(b);
+    if(ka.length!==kb.length) return false;
+    for(const k of ka){ if(!Object.prototype.hasOwnProperty.call(b,k)) return false; if(!deepEqual(a[k],b[k])) return false; }
+    return true;
+  }
+  return false;
+}
+/* 3-way field-level merge. base = last common ancestor (what the server held when I last
+   synced), mine = my copy, theirs = the fresh server copy. `tie` = "mine"|"theirs" — who
+   wins when the SAME scalar/leaf was changed on both sides (we pass "mine" for the GM,
+   "theirs" for a player, so the GM wins ties). Objects merge key-by-key, arrays of {id}
+   objects (party, tokens, encounters…) merge by id, other arrays are leaves. Deletions the
+   other side didn't also edit are honored, so nothing gets resurrected. */
+function merge3(base, mine, theirs, tie){
+  if(deepEqual(mine, theirs)) return mine;
+  if(deepEqual(base, mine)) return theirs;     // I didn't touch it → take theirs
+  if(deepEqual(base, theirs)) return mine;     // they didn't touch it → take mine
+  if(Array.isArray(mine) && Array.isArray(theirs)) return mergeArray(base, mine, theirs, tie);
+  if(isObj(mine) && isObj(theirs)){
+    const out = {}, bObj = isObj(base) ? base : {};
+    const keys = new Set([...Object.keys(mine), ...Object.keys(theirs), ...Object.keys(bObj)]);
+    for(const k of keys){
+      const inM = Object.prototype.hasOwnProperty.call(mine, k);
+      const inT = Object.prototype.hasOwnProperty.call(theirs, k);
+      const inB = Object.prototype.hasOwnProperty.call(bObj, k);
+      const b = bObj[k];
+      if(inM && inT){ out[k] = merge3(b, mine[k], theirs[k], tie); }
+      else if(inM && !inT){ if(inB && deepEqual(b, mine[k])){ /* they deleted, I didn't change → drop */ } else out[k] = mine[k]; }
+      else if(!inM && inT){ if(inB && deepEqual(b, theirs[k])){ /* I deleted, they didn't change → drop */ } else out[k] = theirs[k]; }
+    }
+    return out;
+  }
+  return tie==="mine" ? mine : theirs;         // scalar leaf / type mismatch changed on both sides
+}
+function mergeArray(base, mine, theirs, tie){
+  const idOk = a => Array.isArray(a) && a.length>0 && a.every(x => x && typeof x==="object" && !Array.isArray(x) && "id" in x);
+  const byId = (idOk(mine)||idOk(theirs)) && (mine.length===0||idOk(mine)) && (theirs.length===0||idOk(theirs));
+  if(!byId) return tie==="mine" ? mine : theirs;   // leaf array (e.g. a list of move names)
+  const bBase = new Map((Array.isArray(base)?base:[]).filter(x=>x&&typeof x==="object"&&"id"in x).map(x=>[x.id,x]));
+  const bMine = new Map(mine.map(x=>[x.id,x])), bThe = new Map(theirs.map(x=>[x.id,x]));
+  const order = [], seen = new Set();
+  for(const x of mine){ if(!seen.has(x.id)){ order.push(x.id); seen.add(x.id); } }
+  for(const x of theirs){ if(!seen.has(x.id)){ order.push(x.id); seen.add(x.id); } }
+  const out = [];
+  for(const id of order){
+    const inM=bMine.has(id), inT=bThe.has(id), inB=bBase.has(id);
+    if(inM && inT) out.push(merge3(bBase.get(id), bMine.get(id), bThe.get(id), tie));
+    else if(inM && !inT){ if(inB && deepEqual(bBase.get(id), bMine.get(id))){ /* they removed → drop */ } else out.push(bMine.get(id)); }
+    else if(!inM && inT){ if(inB && deepEqual(bBase.get(id), bThe.get(id))){ /* I removed → drop */ } else out.push(bThe.get(id)); }
+  }
+  return out;
+}
+/* Compare-and-swap upsert of a single row. row carries `_rev` (server rev our edit is based
+   on; null/undefined = never synced → insert) and `_base` (server data at that rev, for the
+   3-way merge). Callers already wrap this in a per-row serialize() chain so writes to one row
+   never race each other; here we also mark cloud.inflight so realtime defers to our pending
+   write. Returns true on success. `mergeFn` defaults to the field-level merge3. */
+async function casUpsert(row, mergeFn){
+  mergeFn = mergeFn || merge3;
+  const id = row.id;
+  cloud.inflight[id] = (cloud.inflight[id]||0) + 1;
+  cloud.lastSaveTs = Date.now();
+  try{
+    for(let attempt=0; attempt<8; attempt++){
+      const meta = { id, campaign:cloud.campaign, owner_id:row.owner_id, owner_name:row.owner_name, name:row.name };
+      const payloadData = deepClone(row.data);                 // exactly what the server will hold on success
+      if(row._rev==null){
+        const { data:ins, error } = await cloud.client.from("sheets").insert({ ...meta, data:payloadData }).select(SHEET_COLS);
+        if(!error && ins && ins.length){ row._rev=ins[0].rev; row.updated_at=ins[0].updated_at; row._base=payloadData; return true; }
+        // error (usually a duplicate id from a race) → fall through to fetch + merge + retry
+      } else {
+        const { data:upd, error } = await cloud.client.from("sheets").update({ ...meta, data:payloadData })
+          .eq("id", id).eq("rev", row._rev).select(SHEET_COLS);
+        if(error){ console.error(error); toast("⚠ Cloud save failed"); return false; }
+        if(upd && upd.length){ row._rev=upd[0].rev; row.updated_at=upd[0].updated_at; row._base=payloadData; return true; }
+        // 0 rows → the row moved past our rev (someone else wrote) → reconcile
+      }
+      const { data:cur, error:fe } = await cloud.client.from("sheets").select(SHEET_COLS).eq("id", id).limit(1);
+      if(fe){ console.error(fe); toast("⚠ Cloud save failed"); return false; }
+      if(!cur || !cur.length){ row._rev = null; continue; }     // vanished → retry as an insert
+      const server = cur[0];
+      const base = (row._base!=null) ? row._base : server.data;
+      const tie  = cloud.isGM ? "mine" : "theirs";              // GM wins ties
+      row.data  = mergeFn(base, row.data, server.data, tie);
+      row._base = deepClone(server.data);                       // common ancestor for a possible next retry
+      row._rev  = server.rev;
+    }
+    toast("⚠ Save kept conflicting — will retry on next change");
+    return false;
+  } finally {
+    cloud.inflight[id]--; if(cloud.inflight[id]<=0) delete cloud.inflight[id];
+  }
+}
+/* mark a freshly-fetched server row as our new synced baseline */
+function adoptRev(row){ if(row){ row._rev = row.rev; row._base = deepClone(row.data); } return row; }
+
 async function fetchRoster(){
   const { data, error } = await cloud.client.from("sheets").select(SHEET_COLS).eq("campaign", cloud.campaign);
   if(error) throw error;
   cloud.byId = {};
   (data||[]).forEach(r => {
-    if(r.owner_id===PC_OWNER){ cloud.pc = { ...r, data: pcData(r.data) }; return; }   // PC isn't a character
-    if(r.owner_id===MAP_OWNER) return;                                                // map rows aren't characters
-    r.data = migrateChar(r.data, r.id); cloud.byId[r.id] = r;
+    if(r.owner_id===PC_OWNER){ cloud.pc = adoptRev({ ...r, data: pcData(r.data) }); return; }   // PC isn't a character
+    if(r.owner_id===MAP_OWNER) return;                                                          // map rows aren't characters
+    r.data = migrateChar(r.data, r.id); adoptRev(r); cloud.byId[r.id] = r;
   });
   recoverUnsavedFromCache();
 }
@@ -4576,10 +5194,12 @@ function recoverUnsavedFromCache(){
     if(!cr || !cr.id || SENTINELS.includes(cr.owner_id)) return;
     const db = cloud.byId[cr.id];
     if(!db || !canEdit(db)) return;
-    if(cr.updated_at && (!db.updated_at || cr.updated_at > db.updated_at)){
-      cr.data = migrateChar(cr.data, cr.id);
-      cloud.byId[cr.id] = cr;
-      cloudUpsert(cr);   // fire-and-forget: push the recovered copy back to the cloud
+    // Only recover a genuinely-unsynced edit: the cached copy was based on the SAME server rev
+    // we just fetched (rev matches) yet its data differs → our last write never reached the server.
+    // Push it back through CAS, which will merge (never clobber) if the server has since moved on.
+    if(cr._rev!=null && cr._rev===db._rev && !deepEqual(cr.data, db.data)){
+      db.data = migrateChar(cr.data, cr.id);
+      dispatchRowSave(db);   // fire-and-forget, conflict-safe
     }
   });
 }
@@ -4599,8 +5219,11 @@ function pcData(data){
    missing from the fetch keeps local too (a transient partial result must not wipe the board). */
 function mergeShared(local, fetched, normFn){
   if(!fetched) return local || null;
-  if(local && local.updated_at && fetched.updated_at && fetched.updated_at < local.updated_at) return local;
-  return { ...fetched, data: normFn(fetched.data) };
+  // if we're holding unsynced local edits (data diverged from the rev we last synced), keep them —
+  // our debounced CAS write will reconcile against the server; a bare refetch must not revert them.
+  if(local && local._base!=null && !deepEqual(local.data, local._base)) return local;
+  const f = { ...fetched, data: normFn(fetched.data) };
+  return adoptRev(f);
 }
 async function fetchPC(){
   const { data, error } = await cloud.client.from("sheets").select(SHEET_COLS).eq("id", pcId()).limit(1);
@@ -4614,15 +5237,8 @@ function ensurePCRow(){
 }
 function pcUpsert(){
   const row = ensurePCRow();
-  cloud.lastSaveTs = Date.now();
-  row.updated_at = new Date().toISOString();   // stamp locally so a refetch can't revert a pending PC edit
-  return serialize(pcChain, async ()=>{
-    const { error } = await cloud.client.from("sheets").upsert({
-      id:row.id, campaign:cloud.campaign, owner_id:PC_OWNER, owner_name:"PC",
-      name:"PC Storage", data:row.data, updated_at:row.updated_at });
-    if(error){ console.error(error); toast("⚠ PC save failed"); return false; }
-    return true;
-  });
+  row.owner_name = "PC"; row.name = "PC Storage";
+  return serialize(pcChain, ()=> casUpsert(row));   // conflict-safe (merges concurrent PC edits by id)
 }
 
 /* ---- shared battle map: reserved rows (meta + tokens), same pattern as the PC ---- */
@@ -4640,6 +5256,7 @@ function normMapMeta(data){
     m.images.forEach(im=>{ ["x","y","w","h"].forEach(k=>{ if(typeof im[k]!=="number") im[k]=0; }); if(!im.id) im.id=uid(); });
     if(typeof m.fogOn!=="boolean") m.fogOn = false;
     if(typeof m.fogRadius!=="number" || m.fogRadius<1) m.fogRadius = 3;
+    if(typeof m.weather!=="string" || !WEATHER_BY_KEY[m.weather]) m.weather = "clear";   // Core p.342
   });
   // playerMapId = the map players see (seed from the old shared activeMapId for back-compat)
   if(!data.playerMapId || !data.maps.find(m=>m.id===data.playerMapId))
@@ -4681,23 +5298,13 @@ function ensureMapTokens(){
 }
 async function mapMetaUpsert(){
   const row = ensureMapMeta();
-  cloud.mapSaveTs = Date.now();
-  row.updated_at = new Date().toISOString();            // stamp locally so realtime can drop stale echoes
-  const { error } = await cloud.client.from("sheets").upsert({
-    id:row.id, campaign:cloud.campaign, owner_id:MAP_OWNER, owner_name:"Map",
-    name:"Battle Map", data:row.data, updated_at:row.updated_at });
-  if(error){ console.error(error); toast("⚠ Map save failed"); return false; }
-  return true;
+  row.owner_name = "Map"; row.name = "Battle Map";
+  return casUpsert(row);                                // conflict-safe (callers wrap in mapMetaChain)
 }
 async function mapTokensUpsert(){
   const row = ensureMapTokens();
-  cloud.mapSaveTs = Date.now();
-  row.updated_at = new Date().toISOString();
-  const { error } = await cloud.client.from("sheets").upsert({
-    id:row.id, campaign:cloud.campaign, owner_id:MAP_OWNER, owner_name:"Map",
-    name:"Map Tokens", data:row.data, updated_at:row.updated_at });
-  if(error){ console.error(error); toast("⚠ Map save failed"); return false; }
-  return true;
+  row.owner_name = "Map"; row.name = "Map Tokens";
+  return casUpsert(row);                                // conflict-safe: token positions/HP merge by id
 }
 /* Debounced, coalescing save of the shared map-tokens row. HP ticks and drag commits arrive in
    bursts and each awaited a full upload before the UI updated — that was the "HP updates ~10s
@@ -4745,7 +5352,7 @@ const pcChain  = { chain: Promise.resolve() };
 let mapTokensTimer;
 const mapTokensChain = { chain: Promise.resolve() };
 function mapTokensSave(){
-  ensureMapTokens().updated_at = new Date().toISOString();
+  ensureMapTokens();   // conflict-safe write is debounced below; tokens merge by id on any conflict
   clearTimeout(mapTokensTimer);
   mapTokensTimer = setTimeout(()=>{ mapTokensTimer=null; serialize(mapTokensChain, mapTokensUpsert); }, 350);
 }
@@ -4759,31 +5366,28 @@ function mapTokensSave(){
 let mapMetaTimer;
 const mapMetaChain = { chain: Promise.resolve() };
 function mapMetaSave(){
-  ensureMapMeta().updated_at = new Date().toISOString();
+  ensureMapMeta();   // conflict-safe write is debounced below (CAS by server rev)
   clearTimeout(mapMetaTimer);
   mapMetaTimer = setTimeout(()=>{ mapMetaTimer=null; serialize(mapMetaChain, mapMetaUpsert); }, 300);
 }
 /* Debounced upsert of a specific character row, keyed per-row, so rapid map-token HP edits to a
    real sheet coalesce into ONE write instead of one blocking upload per tick. Stamps updated_at +
    lastWrite immediately (like cloudSave) so a stale echo of our own write can't revert us. */
+/* Conflict-safe dispatch of a character row: ordered per-row (so bursts can't race each other)
+   and routed through CAS (so a concurrent editor's change is merged, never clobbered). Shared by
+   cloudSave, cloudSaveRow, cloudUpsert, cloudNewCharacter and cache recovery. */
+function dispatchRowSave(row){
+  row.name = row.data?.name || row.name || "";
+  cacheCloud();
+  return serialize(rowChain(row.id), ()=> casUpsert(row).then(ok=>{ cacheCloud(); return ok; }));
+}
 const rowSaveTimers = {};
 function cloudSaveRow(row){
   if(!row) return;
-  row.updated_at = new Date().toISOString();
   row.name = row.data?.name || "";
-  cloud.lastWrite[row.id] = row.updated_at;   // ignore our own returning echo
-  cacheCloud();
+  cacheCloud();                                // optimistic local cache; the write is debounced below
   clearTimeout(rowSaveTimers[row.id]);
-  rowSaveTimers[row.id] = setTimeout(()=>{
-    delete rowSaveTimers[row.id];
-    cloud.lastSaveTs = Date.now();
-    serialize(rowChain(row.id), async ()=>{    // ordered dispatch, shared per-row chain with cloudSave/cloudUpsert
-      const { error } = await cloud.client.from("sheets").upsert({
-        id:row.id, campaign:cloud.campaign, owner_id:row.owner_id, owner_name:row.owner_name,
-        name:row.name, data:row.data, updated_at:row.updated_at });
-      if(error){ console.error(error); toast("⚠ Cloud save failed"); }
-    });
-  }, 350);
+  rowSaveTimers[row.id] = setTimeout(()=>{ delete rowSaveTimers[row.id]; dispatchRowSave(row); }, 350);
 }
 
 /* ---- cloud encounters (GM prep), same reserved-row pattern ---- */
@@ -4806,15 +5410,8 @@ function ensureEnc(){
 }
 function encUpsert(){
   const row = ensureEnc();
-  cloud.encSaveTs = Date.now();
-  row.updated_at = new Date().toISOString();
-  return serialize(encChain, async ()=>{
-    const { error } = await cloud.client.from("sheets").upsert({
-      id:row.id, campaign:cloud.campaign, owner_id:ENC_OWNER, owner_name:"Encounters",
-      name:"Encounters", data:row.data, updated_at:row.updated_at });
-    if(error){ console.error(error); toast("⚠ Encounter save failed"); return false; }
-    return true;
-  });
+  row.owner_name = "Encounters"; row.name = "Encounters";
+  return serialize(encChain, ()=> casUpsert(row));   // conflict-safe (encounters merge by id)
 }
 async function cloudConnect(campaign, name, gmCode, silent){
   campaign = (campaign||"").trim().toLowerCase(); name = (name||"").trim();
@@ -4839,7 +5436,15 @@ async function cloudConnect(campaign, name, gmCode, silent){
     cloud.activeId = mine ? mine.id : (Object.keys(cloud.byId)[0] || null);
     updateCloudButton(); closeModal(); render();
     if(!silent) toast(`Connected to “${campaign}”${cloud.isGM?" as GM":""} ✓`);
-  }catch(e){ console.error(e); mode="local"; toast("⚠ Couldn't connect — check config/network"); }
+  }catch(e){
+    console.error(e); mode="local";
+    // the `rev` column powers conflict-safe sync; if the one-time DB update wasn't applied, say so clearly
+    if(e && (e.code==="42703" || /column .*rev.* does not exist/i.test(e.message||""))){
+      toast("⚠ Database needs the one-time sync update — see SETUP-CLOUD.md (add the rev column + trigger)");
+    } else {
+      toast("⚠ Couldn't connect — check config/network");
+    }
+  }
 }
 function cloudDisconnect(){
   if(cloud.sub){ try{ cloud.client.removeChannel(cloud.sub); }catch(e){} cloud.sub=null; }
@@ -4889,11 +5494,20 @@ function onRealtime(payload){
     scheduleSharedRefetch("enc"); scheduleSharedRefetch("roster");
     return;
   }
+  // A shared reserved row (PC / map meta / map tokens / encounters) is visible to everyone, so it's
+  // handled before the per-player visibility filter. `staleShared` drops our own echo, an out-of-order
+  // older rev, and anything arriving while our own write to that row is still in flight (rev decides,
+  // never the clock). Returns true if the event should be ignored.
+  const staleShared = (cur, id) => {
+    if(cloud.inflight[id]) return true;                        // our CAS is in flight → it will reconcile
+    const inc = payload.new?.rev;
+    return !!(cur && cur._rev!=null && typeof inc==="number" && inc <= cur._rev);
+  };
   // the shared PC is visible to everyone — handle it before the per-player visibility filter
   if(evtOwner===PC_OWNER || evtId===pcId()){
     if(type==="DELETE"){ cloud.pc = null; }
     else if(!payloadHasData(payload.new)){ scheduleSharedRefetch("pc"); return; }
-    else cloud.pc = { ...payload.new, data: pcData(payload.new.data) };
+    else { if(staleShared(cloud.pc, pcId())) return; cloud.pc = adoptRev({ ...payload.new, data: pcData(payload.new.data) }); }
     // live-refresh the PC tab, but don't yank focus while someone is typing in a filter
     const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
     if(currentTab==="pc" && !typing) renderPC();
@@ -4906,11 +5520,9 @@ function onRealtime(payload){
     else if(!payloadHasData(payload.new)){ scheduleSharedRefetch("map"); return; }
     else {
       const cur = isMeta ? cloud.mapMeta : cloud.mapTokens;
-      // ignore stale/echoed rows: an out-of-order echo of our own earlier write must not
-      // revert a token we just added or an HP we just changed (rapid map edits are common).
-      if(cur && cur.updated_at && payload.new.updated_at && payload.new.updated_at <= cur.updated_at) return;
-      if(isMeta) cloud.mapMeta   = { ...payload.new, data: normMapMeta(payload.new.data) };
-      else       cloud.mapTokens = { ...payload.new, data: normMapTokens(payload.new.data) };
+      if(staleShared(cur, isMeta?mapMetaId():mapTokensId())) return;
+      if(isMeta) cloud.mapMeta   = adoptRev({ ...payload.new, data: normMapMeta(payload.new.data) });
+      else       cloud.mapTokens = adoptRev({ ...payload.new, data: normMapTokens(payload.new.data) });
     }
     const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
     if(currentTab==="map" && !mapDragging && !typing) renderMap();
@@ -4920,10 +5532,7 @@ function onRealtime(payload){
   if(evtOwner===ENC_OWNER || evtId===encRowId()){
     if(type==="DELETE"){ cloud.enc=null; }
     else if(!payloadHasData(payload.new)){ scheduleSharedRefetch("enc"); return; }
-    else {
-      if(cloud.enc?.updated_at && payload.new.updated_at && payload.new.updated_at <= cloud.enc.updated_at) return;
-      cloud.enc = { ...payload.new, data: normEnc(payload.new.data) };
-    }
+    else { if(staleShared(cloud.enc, encRowId())) return; cloud.enc = adoptRev({ ...payload.new, data: normEnc(payload.new.data) }); }
     const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
     if((currentTab==="encounters" || currentTab==="map") && !mapDragging && !typing) render();
     return;
@@ -4938,83 +5547,79 @@ function onRealtime(payload){
   // truncated oversized character row (big sheet w/ avatar/sprite data-URLs) → re-fetch, don't
   // overwrite the good local copy with an empty "Recovered" character.
   if(!payloadHasData(row)){ scheduleSharedRefetch("roster"); return; }
-  const cur = cloud.byId[row.id], ts = row.updated_at;
-  // (1) OUR OWN ECHO: we wrote this exact version (or older). Never let a returning echo revert a
-  //     newer local edit — this is what made two editors of one sheet ping-pong.
-  if(cloud.lastWrite[row.id] && ts && ts <= cloud.lastWrite[row.id]){ refreshCharSelect(); return; }
-  // (2) STALE REMOTE: older than what we already hold → ignore, so the other editor's late-arriving
-  //     old snapshot can't clobber the current value (last-write-wins by timestamp, not by arrival).
-  if(cur && cur.updated_at && ts && ts < cur.updated_at) return;
-  // (3) WE'RE MID-EDIT on this very sheet → keep our in-progress copy on screen (don't yank the
-  //     value out from under the cursor); our pending save carries a newer timestamp and will win.
-  const isActive = row.id===cloud.activeId;
-  const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
-  if(isActive && (cloud.saveTimer || typing)){ refreshCharSelect(); return; }
+  const cur = cloud.byId[row.id], incRev = row.rev;
+  if(cur){
+    // OUR OWN ECHO or an out-of-order OLDER rev → ignore (the server rev, not the clock, decides).
+    if(cur._rev!=null && typeof incRev==="number" && incRev <= cur._rev){ refreshCharSelect(); return; }
+    // A write to this row is in flight, or we're actively editing it → keep our copy; the pending
+    // CAS will fetch-and-merge this incoming change so nothing is lost and the cursor isn't yanked.
+    const isActive = row.id===cloud.activeId;
+    const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
+    if(cloud.inflight[row.id] || (isActive && (cloud.saveTimer || rowSaveTimers[row.id] || typing))){ refreshCharSelect(); return; }
+  }
+  // adopt the newer server row as our synced baseline
   row.data = migrateChar(row.data, row.id);
+  adoptRev(row);
   cloud.byId[row.id] = row;
+  cacheCloud();
   softRender();
 }
 function softRender(){ updateCloudButton(); render(); }
-function cacheCloud(){ try{ localStorage.setItem("ptu_cloud_cache_"+cloud.campaign, JSON.stringify(Object.values(cloud.byId))); }catch(e){} }
+function cacheCloud(){
+  // strip the 3-way-merge baseline (_base) from the cache — it duplicates data and can be large
+  // (avatars/sprites), risking the localStorage quota. _rev is kept so recovery can detect an
+  // unsynced edit on reconnect.
+  try{
+    const slim = Object.values(cloud.byId).map(r=>{ const { _base, ...rest } = r; return rest; });
+    localStorage.setItem("ptu_cloud_cache_"+cloud.campaign, JSON.stringify(slim));
+  }catch(e){}
+}
 function cloudSave(){
   const row = cloud.byId[cloud.activeId]; if(!row || !canEdit(row)) return;
-  row.updated_at = new Date().toISOString();
   row.name = row.data?.name || "";
-  cloud.lastWrite[row.id] = row.updated_at;   // remember our own write so its echo is ignored
-  cacheCloud();
+  cacheCloud();                                // optimistic local cache; the actual write is debounced
   clearTimeout(cloud.saveTimer);
   cloud.saveTimer = setTimeout(()=>{
     cloud.saveTimer = null;                    // clear the "pending" flag so remote edits can apply again
-    cloud.lastSaveTs = Date.now();
-    serialize(rowChain(row.id), async ()=>{    // dispatch in order so a slow earlier save can't overtake a newer one
-      const { error } = await cloud.client.from("sheets").upsert({
-        id:row.id, campaign:cloud.campaign, owner_id:row.owner_id, owner_name:row.owner_name,
-        name:row.name, data:row.data, updated_at:row.updated_at,
-      });
-      if(error){ console.error(error); toast("⚠ Cloud save failed"); }
-    });
+    dispatchRowSave(row);                      // ordered per-row + conflict-safe (CAS + merge)
   }, 500);
 }
-/* Upsert a row via a keepalive fetch — unlike a normal fetch, the browser lets this complete
-   even as the page is being unloaded/backgrounded, which is exactly when mobile kills the tab. */
+/* Upsert a row via a keepalive fetch — unlike a normal fetch, the browser lets this complete even
+   as the page is being unloaded/backgrounded (exactly when mobile kills the tab). Made conditional
+   on our known rev: a last-ditch close-flush that lost the race is dropped rather than clobbering a
+   newer edit someone else made while we were away. */
 function restUpsertKeepalive(row){
   if(!(CLOUD_CFG.url && CLOUD_CFG.anonKey) || !row) return;
+  const base = CLOUD_CFG.url.replace(/\/+$/,"") + "/rest/v1/sheets";
+  const headers = { apikey:CLOUD_CFG.anonKey, Authorization:"Bearer "+CLOUD_CFG.anonKey,
+    "Content-Type":"application/json", Prefer:"return=minimal" };
+  const body = { campaign:cloud.campaign, owner_id:row.owner_id, owner_name:row.owner_name,
+    name:row.name, data:row.data };
   try{
-    fetch(CLOUD_CFG.url.replace(/\/+$/,"") + "/rest/v1/sheets", {
-      method:"POST", keepalive:true,
-      headers:{ apikey:CLOUD_CFG.anonKey, Authorization:"Bearer "+CLOUD_CFG.anonKey,
-        "Content-Type":"application/json", Prefer:"resolution=merge-duplicates" },
-      body: JSON.stringify({ id:row.id, campaign:cloud.campaign, owner_id:row.owner_id,
-        owner_name:row.owner_name, name:row.name, data:row.data, updated_at:row.updated_at }),
-    }).catch(()=>{});
+    if(row._rev!=null){
+      // conditional update: only if the server is still at the rev our edit is based on
+      fetch(base + "?id=eq." + encodeURIComponent(row.id) + "&rev=eq." + row._rev,
+        { method:"PATCH", keepalive:true, headers, body: JSON.stringify(body) }).catch(()=>{});
+    } else {
+      // brand-new row that never synced → insert
+      fetch(base, { method:"POST", keepalive:true,
+        headers:{ ...headers, Prefer:"resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({ id:row.id, ...body }) }).catch(()=>{});
+    }
   }catch(e){}
 }
-/* Flush pending debounced cloud writes NOW (page is hiding/closing). The 500 ms save debounce
-   otherwise loses the last edit when a mobile tab is refreshed or backgrounded mid-window —
-   the reason edits "revert to an older state" after a refresh. */
+/* Flush pending debounced cloud writes NOW (page is hiding/closing). The save debounce otherwise
+   loses the last edit when a mobile tab is refreshed or backgrounded mid-window. */
 function flushCloudSaves(){
   if(mode!=="cloud") return;
   if(cloud.saveTimer){
     clearTimeout(cloud.saveTimer); cloud.saveTimer=null;
     const row = cloud.byId[cloud.activeId];
-    if(row && canEdit(row)){ row.updated_at=new Date().toISOString(); row.name=row.data?.name||"";
-      cloud.lastWrite[row.id]=row.updated_at; cloud.lastSaveTs=Date.now(); cacheCloud(); restUpsertKeepalive(row); }
+    if(row && canEdit(row)){ row.name=row.data?.name||""; cacheCloud(); restUpsertKeepalive(row); }
   }
-  if(encSaveTimer && cloud.isGM){
-    clearTimeout(encSaveTimer); encSaveTimer=null;
-    const enc = ensureEnc(); enc.updated_at=new Date().toISOString();
-    cloud.encSaveTs=Date.now(); restUpsertKeepalive(enc);
-  }
-  if(mapTokensTimer){
-    clearTimeout(mapTokensTimer); mapTokensTimer=null;
-    const t = ensureMapTokens(); t.updated_at=new Date().toISOString();
-    cloud.mapSaveTs=Date.now(); restUpsertKeepalive(t);
-  }
-  if(mapMetaTimer){
-    clearTimeout(mapMetaTimer); mapMetaTimer=null;
-    const m = ensureMapMeta(); m.updated_at=new Date().toISOString();
-    cloud.mapSaveTs=Date.now(); restUpsertKeepalive(m);
-  }
+  if(encSaveTimer && cloud.isGM){ clearTimeout(encSaveTimer); encSaveTimer=null; restUpsertKeepalive(ensureEnc()); }
+  if(mapTokensTimer){ clearTimeout(mapTokensTimer); mapTokensTimer=null; restUpsertKeepalive(ensureMapTokens()); }
+  if(mapMetaTimer){ clearTimeout(mapMetaTimer); mapMetaTimer=null; restUpsertKeepalive(ensureMapMeta()); }
   for(const id in rowSaveTimers){
     clearTimeout(rowSaveTimers[id]); delete rowSaveTimers[id];
     const r = cloud.byId[id]; if(r) restUpsertKeepalive(r);
@@ -5023,15 +5628,10 @@ function flushCloudSaves(){
 function cloudNewCharacter(name){
   const c = newCharacter(name);
   const row = { id:c.id, campaign:cloud.campaign, owner_id:cloud.userId, owner_name:cloud.name,
-                name:c.name, data:c, updated_at:new Date().toISOString() };
+                name:c.name, data:c, _rev:null };            // _rev null → casUpsert inserts it
   cloud.byId[c.id] = row; cloud.activeId = c.id; openMon=null;
-  cloud.lastSaveTs = Date.now();
   switchTab("trainer");                        // optimistic: the new sheet opens instantly
-  serialize(rowChain(row.id), async ()=>{      // insert in the background, ordered with later saves of this row
-    const { error } = await cloud.client.from("sheets").insert({
-      id:row.id, campaign:row.campaign, owner_id:row.owner_id, owner_name:row.owner_name, name:row.name, data:row.data });
-    if(error){ console.error(error); toast("⚠ Could not create character"); }
-  });
+  dispatchRowSave(row);                        // insert in the background, ordered/serialized per row
 }
 function cloudDeleteCharacter(id){
   delete cloud.byId[id];
@@ -5044,19 +5644,11 @@ function cloudDeleteCharacter(id){
 }
 /* the GM's own character row */
 function myRow(){ return Object.values(cloud.byId).find(r=>ownsRow(r)); }
-/* immediate upsert of a specific row (used for one-off GM writes to any sheet) */
+/* immediate upsert of a specific row (used for one-off GM writes to any sheet), conflict-safe */
 function cloudUpsert(row){
-  row.updated_at = new Date().toISOString();
   row.name = row.data?.name || "";
-  cloud.lastWrite[row.id] = row.updated_at;   // suppress our own realtime echo of this write
-  cacheCloud(); cloud.lastSaveTs = Date.now();
-  return serialize(rowChain(row.id), async ()=>{   // ordered per-row dispatch (shared with cloudSave/cloudSaveRow)
-    const { error } = await cloud.client.from("sheets").upsert({
-      id:row.id, campaign:cloud.campaign, owner_id:row.owner_id, owner_name:row.owner_name,
-      name:row.name, data:row.data, updated_at:row.updated_at });
-    if(error){ console.error(error); toast("⚠ Cloud save failed"); return false; }
-    return true;
-  });
+  cacheCloud();
+  return serialize(rowChain(row.id), ()=> casUpsert(row).then(ok=>{ cacheCloud(); return ok; }));
 }
 /* GM: drop a Pokémon into another player's party and push it to the cloud */
 function sendPokemonToRow(targetId, mon){
@@ -5450,7 +6042,11 @@ function tokenHp(token){
              sprite:el("img",{class:"sprite s-sm",src:POKEBALL_SVG}), unlinked:true };
   }
   if(L.kind==="enc"){ const max=Math.max(1,pokeDerived(L.obj).maxHP); let cur=L.obj.currentHP; if(cur==null)cur=max;
-    return { cur, max, editable:cloud.isGM, name:encMonName(L.obj),          // only the GM edits enemies
+    // cur/max here are the CURRENT BAR only (Core p.478 abstracts a Swarm into one entity with
+    // several HP bars) — the ×Multiplier is folded into the name so it's visible everywhere this
+    // struct feeds: the token label, the initiative list, the token-menu title.
+    const swarmTag = isSwarm(L.obj) ? ` ×${L.obj.swarm.mult}` : "";
+    return { cur, max, editable:cloud.isGM, name:encMonName(L.obj)+swarmTag,          // only the GM edits enemies
              sprite:pokeTokenSprite(L.obj), unlinked:false, obj:L.obj, kind:"enc" }; }
   if(L.kind==="enctrainer"){ const max=Math.max(1,trainerDerived(L.obj).hp); let cur=L.obj.currentHP; if(cur==null)cur=max;
     return { cur, max, editable:cloud.isGM, name:L.obj.name||"Trainer",
@@ -5498,21 +6094,40 @@ function tokenInInit(token){
   const ally = info.kind==="trainer"||info.kind==="pokemon";
   return ally ? token.inInit!==false : !!token.inInit;   // players auto-join; enemies opt-in via the token menu
 }
+/* An initiative ENTRY id is normally just the token id, but a Swarm gets several entries in one
+   round (Core p.478: it acts again at Initiative −5 each time), so its extra acts are suffixed
+   "<tokenId>#<n>". Anything that needs the real token must strip the suffix — meta.initTurnId
+   holds an ENTRY id, not a token id. */
+const initEntryToken = id => String(id||"").split("#")[0];
 function initiativeList(map){
-  return mapTokensFor(map.id).filter(tokenInInit)
-    .map(t=>({ token:t, info:tokenHp(t), init:tokenInitiative(t) }))
-    .sort((a,b)=> b.init-a.init || tokenSpeed(b.token)-tokenSpeed(a.token) || (a.info.name||"").localeCompare(b.info.name||""));
+  const rows = [];
+  mapTokensFor(map.id).filter(tokenInInit).forEach(t=>{
+    const info = tokenHp(t), base = tokenInitiative(t);
+    const L = t.link ? tokenLinked(t) : null;
+    const mon = (L && !L.missing && L.kind==="enc") ? L.obj : null;
+    // A swarm still standing gets 1 free act + one per Swarm Point it could possibly spend. The
+    // COUNT is deliberately derived from maxMult (a per-round constant) rather than the points it
+    // has left right now — a list that reshuffled every time the GM spent a point would move
+    // meta.initTurnId out from under itself, which is exactly the class of bug that produced the
+    // old turn-rollback problems.
+    const acts = (mon && isSwarm(mon) && mon.swarm.mult>0) ? swarmActs(mon) : 1;
+    for(let n=0; n<acts; n++)
+      // swarmMon = the Pokémon object (so its .swarm block is e.swarmMon.swarm, not a confusing e.swarm.swarm)
+      rows.push({ id: n===0 ? t.id : `${t.id}#${n}`, token:t, info, init: base - 5*n, act:n, acts, swarmMon: acts>1?mon:null });
+  });
+  return rows.sort((a,b)=> b.init-a.init || tokenSpeed(b.token)-tokenSpeed(a.token)
+                        || (a.info.name||"").localeCompare(b.info.name||"") || a.act-b.act);
 }
 function advanceInitiative(map, meta, dir){
   const list = initiativeList(map); if(!list.length) return;
-  const endingId = meta.initTurnId, endingSeq = meta.initSeq||0;
-  let idx = list.findIndex(e=>e.token.id===meta.initTurnId);
+  const endingId = initEntryToken(meta.initTurnId), endingSeq = meta.initSeq||0;
+  let idx = list.findIndex(e=>e.id===meta.initTurnId);
   idx = idx<0 ? 0 : idx+dir;
   let wrapped=false;
   if(idx>=list.length){ idx=0; wrapped=true; }        // stepped past the last combatant → a new round begins
   else if(idx<0){ idx=list.length-1; }                // stepping back before the first (not a round change)
-  meta.initTurnId = list[idx].token.id;
-  if(wrapped){ meta.initRound=(meta.initRound||1)+1; resetMapMovement(map); }   // round ends → reset movement (like ↺ New round)
+  meta.initTurnId = list[idx].id;
+  if(wrapped){ meta.initRound=(meta.initRound||1)+1; resetMapMovement(map); refreshSwarmRounds(map); }   // round ends → reset movement (like ↺ New round)
   // A forward step ends the previous combatant's turn → expire the buffs THEY cast (on any creature,
   // e.g. a Musician's Songs on allies), at the end of their next turn. Stepping back = correction, no expiry.
   let expired = [];
@@ -5548,8 +6163,9 @@ function resetRounds(map, meta){
   meta.initRound = 1;
   meta.initSeq = 0;
   const list = initiativeList(map);
-  meta.initTurnId = list[0]?.token.id || null;
+  meta.initTurnId = list[0]?.id || null;
   resetMapMovement(map);
+  refreshSwarmRounds(map);
   renderMap();
   mapMetaSave();
   mapTokensSave();
@@ -5596,29 +6212,39 @@ function initiativePanel(map, meta){
   // with NO save — so the next real "next turn" click computed its step from a value the server never
   // saw, producing an apparent skip/jump that got WORSE the faster (the more often re-renders raced)
   // you clicked. Persisting it here keeps every render's decision authoritative and shared.
-  if(!meta.initTurnId || !list.find(e=>e.token.id===meta.initTurnId)){
-    meta.initTurnId = list[0].token.id;
+  if(!meta.initTurnId || !list.find(e=>e.id===meta.initTurnId)){
+    meta.initTurnId = list[0].id;
     if(cloud.isGM) mapMetaSave();
   }
   list.forEach((e,i)=>{
-    const cur = e.token.id===meta.initTurnId;
+    const cur = e.id===meta.initTurnId;
     const enemy = e.info.kind==="enc"||e.info.kind==="enctrainer";
     const name = (!cloud.isGM && e.token.gmHidden) ? "Hidden" : e.info.name;
     const row = el("div",{style:`display:flex;gap:5px;align-items:center;padding:3px 5px;border-radius:5px;font-size:11px;${cur?"background:rgba(224,82,79,.16)":""}${cloud.isGM?";cursor:pointer":""}`,
       title: cloud.isGM ? "tap to make it their turn" : ""});
     if(cloud.isGM) row.addEventListener("click", ev=>{
       if(ev.target.closest("input,span[title='remove from initiative']")) return;
-      setInitiativeTurn(map, meta, e.token.id);
+      setInitiativeTurn(map, meta, e.id);
     });
     row.append(el("span",{style:"width:12px;text-align:right;font-weight:800;color:var(--muted)"}, String(i+1)));
-    row.append(el("span",{style:`flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:${cur?800:600};${enemy?"color:#e0524f":""}`,title:name}, (cur?"▶ ":"")+name));
+    // a Swarm's repeat acts are labelled "· act 2/4" and dimmed once it can't pay for any more
+    const broke = e.swarmMon && e.act>0 && e.swarmMon.swarm.sp<=0;
+    const label = name + (e.acts>1 ? ` · act ${e.act+1}/${e.acts}` : "");
+    row.append(el("span",{style:`flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:${cur?800:600};${enemy?"color:#e0524f":""}${broke?";opacity:.45":""}`,
+      title: e.acts>1 ? `${name} — Swarm act ${e.act+1} of ${e.acts}${e.act>0?" (Initiative −"+(5*e.act)+")":" (free Standard Action)"}` : name},
+      (cur?"▶ ":"")+label));
     row.append(el("span",{class:"muted",style:"font-size:10px",title:"Speed + bonus"}, String(e.init)));
     if(cloud.isGM){
-      const b=el("input",{type:"number",value:e.token.initBonus||0,title:"initiative bonus (e.g. Julie's amulet)",style:"width:32px;font-size:10px;padding:1px 2px"});
-      b.addEventListener("change",async()=>{ e.token.initBonus=parseInt(b.value)||0; mapTokensSave(); renderMap(); });
-      row.append(b);
-      if(enemy||!e.token.link) row.append(el("span",{style:"cursor:pointer;color:var(--muted);font-size:13px;line-height:1",title:"remove from initiative",
-        onclick:async()=>{ e.token.inInit=false; mapTokensSave(); renderMap(); }},"×"));
+      // the bonus/remove controls belong to the TOKEN, so only the swarm's first entry shows them
+      if(e.act===0){
+        const b=el("input",{type:"number",value:e.token.initBonus||0,title:"initiative bonus (e.g. Julie's amulet)",style:"width:32px;font-size:10px;padding:1px 2px"});
+        b.addEventListener("change",async()=>{ e.token.initBonus=parseInt(b.value)||0; mapTokensSave(); renderMap(); });
+        row.append(b);
+        if(enemy||!e.token.link) row.append(el("span",{style:"cursor:pointer;color:var(--muted);font-size:13px;line-height:1",title:"remove from initiative",
+          onclick:async()=>{ e.token.inInit=false; mapTokensSave(); renderMap(); }},"×"));
+      } else if(e.swarmMon){
+        row.append(el("span",{class:"muted",style:"font-size:10px",title:"Swarm Points left this round"}, `${e.swarmMon.swarm.sp}⚡`));
+      }
     }
     body.append(row);
   });
@@ -5720,6 +6346,14 @@ async function setTokenHP(token, val){
   }
   const { row, obj, kind } = info; if(!obj){ toast("Can't edit that token"); return; }
   if(kind==="enc" || kind==="enctrainer"){       // live-linked enemy → write to the encounter itself
+    // A Swarm's HP is ONE pool spread over Multiplier-many bars: `val` is the new value of the
+    // visible (current) bar, so fold it back into the total and let swarmSetTotalHP re-derive the
+    // Multiplier. That's what lets one big hit break several bars at once (excess carries over).
+    if(kind==="enc" && isSwarm(obj)){
+      const barMax = pokeDerived(obj).maxHP;
+      swarmSetTotalHP(obj, Math.max(0, (obj.swarm.mult||1)-1)*barMax + (val|0));
+      paintTokenHP(token, true); saveEnc(); return;
+    }
     const encMax = kind==="enctrainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
     obj.currentHP = Math.max(-99, Math.min(encMax, val|0));
     paintTokenHP(token, true);
@@ -6103,7 +6737,20 @@ async function toggleBattle(map){
   toast(meta.battleOn ? "⚔ Battle mode on — tracking movement" : "Battle mode off");
 }
 async function newRound(map){
-  resetMapMovement(map); mapTokensSave(); renderMap(); toast("↺ New round — movement reset");
+  resetMapMovement(map); refreshSwarmRounds(map); mapTokensSave(); renderMap();
+  toast("↺ New round — movement reset");
+}
+/* Swarm Points refresh once per ROUND (Core p.478 "each turn" = each time the swarm comes up in
+   the order), so every round boundary — ▶ wrapping, ↺ New round, 🔁 Reset rounds — refills them
+   and re-arms the free first Standard Action. */
+function refreshSwarmRounds(map){
+  let touched = false;
+  mapTokensFor(map.id).forEach(t=>{
+    const L = t.link ? tokenLinked(t) : null;
+    const mon = (L && !L.missing && L.kind==="enc") ? L.obj : null;
+    if(mon && isSwarm(mon)){ swarmNewRound(mon); touched = true; }
+  });
+  if(touched) saveEnc();
 }
 async function resetTokenMovement(token, map){
   token.moved = 0; delete token.path;
@@ -6365,13 +7012,25 @@ function openTokenMenu(token, map){
       const typeSel = el("select"); TYPES.forEach(ty=>typeSel.append(el("option",{value:ty},ty)));
       const clsSel = el("select"); clsSel.append(el("option",{value:"phys"},"Physical"), el("option",{value:"spec"},"Special"));
       const out = el("div",{class:"small",style:"margin-top:6px"});
+      // Swarm defence (Core p.478): single-target damage is resisted one step further, area /
+      // multi-target attacks are one step MORE effective — so the GM has to say which this was.
+      const swarmTgt = (()=>{ const LL = token.link ? tokenLinked(token) : null;
+        return (LL && !LL.missing && LL.kind==="enc" && isSwarm(LL.obj)) ? LL.obj : null; })();
+      const aoeBox = el("input",{type:"checkbox"});
+      if(swarmTgt){
+        atk.append(el("div",{class:"small muted",style:"margin-bottom:4px"},
+          `🐝 Swarm ×${swarmTgt.swarm.mult} — Accuracy rolls against it get +${swarmTgt.swarm.mult}.`));
+        atk.append(el("label",{class:"inline",style:"gap:6px;display:flex;align-items:center;margin-bottom:6px"},
+          aoeBox, el("span",{class:"small"},"Area / multi-target attack (one step more effective)")));
+      }
       const apply = async ()=>{
         const dmg = parseInt(dmgIn.value);
         if(isNaN(dmg)){ out.textContent = "Enter a damage number."; return; }
         const physical = clsSel.value==="phys";
         const def = tokenDefenseStat(token, physical);
         const types = tokenDefTypes(token);
-        const mult = typeMultAgainst(typeSel.value, types);
+        const stepAdj = swarmTgt ? swarmDamageStep(aoeBox.checked) : 0;
+        const mult = typeMultAgainst(typeSel.value, types, stepAdj);
         const afterDef = Math.max(0, dmg - def);
         const afterMult = Math.floor(afterDef * mult);
         // Damage Reduction from the target's active buffs (Excited, Song of Life, …) — applied
@@ -6387,7 +7046,8 @@ function openTokenMenu(token, map){
           drTxt = ` − ${dr} DR (${from.join(", ")})`;
         }
         const eff = mult===0 ? "immune ×0" : mult>1 ? `super-effective ×${mult}` : mult<1 ? `resisted ×${mult}` : "neutral ×1";
-        out.innerHTML = `${dmg} − ${def} ${physical?"Def":"SpDef"} = ${afterDef}, ${typeSel.value} ${eff} = ${afterMult}${drTxt} → <b>${final}</b> damage.<br>HP ${before} → <b>${before-final}</b>.`;
+        const swarmTxt = swarmTgt ? ` (${aoeBox.checked?"area, +1 step":"single-target, −1 step"} vs Swarm)` : "";
+        out.innerHTML = `${dmg} − ${def} ${physical?"Def":"SpDef"} = ${afterDef}, ${typeSel.value} ${eff}${swarmTxt} = ${afterMult}${drTxt} → <b>${final}</b> damage.<br>HP ${before} → <b>${before-final}</b>.`;
       };
       atk.append(el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;align-items:center"},
         dmgIn, typeSel, clsSel, el("button",{class:"btn-primary",onclick:apply},"Apply")), out);
@@ -6880,6 +7540,58 @@ function resolveImageSizes(map){
     p.src=im.src; });
 }
 
+/* Weather is per-map and shared with everyone through the map meta row (GM-only control, like the
+   grid and fog). There is deliberately no round timer — this table rules that weather stays until
+   the GM changes it, rather than the book's 5 rounds. */
+function setMapWeather(map, key){
+  map.weather = WEATHER_BY_KEY[key] ? key : "clear";
+  mapMetaSave(); renderMap();
+  const w = weatherByKey(map.weather);
+  toast(weatherIsClear(w) ? "🌤 Weather cleared" : `${w.icon} ${w.name} — weather set`);
+}
+/* Panel under the map toolbar: the active condition's full rules, plus the per-turn HP ticks it
+   would move on every Pokémon on the board. Ticks are LISTED rather than auto-applied, so the GM
+   applies them deliberately; each row carries a button that does the arithmetic on one tap. */
+function weatherPanel(map){
+  const w = weatherByKey(map?.weather);
+  if(!map || weatherIsClear(w)) return null;
+  const card = el("details",{class:"card map-weather"});
+  card.append(el("summary",{},
+    el("span",{style:"font-weight:800"}, `${w.icon} ${w.name}`),
+    el("span",{class:"muted small",style:"margin-left:8px"}, w.blurb)));
+  const body = el("div",{style:"margin-top:8px"});
+  w.rules.forEach(r=>body.append(el("div",{class:"small"}, "• "+r)));
+
+  const rows = [];
+  mapTokensFor(map.id).forEach(t=>{
+    const L = t.link ? tokenLinked(t) : null;
+    const mon = (L && !L.missing && (L.kind==="pokemon" || L.kind==="enc")) ? L.obj : null;
+    if(!mon) return;
+    const rep = weatherTickReport(mon);
+    if(rep.length) rows.push({ token:t, rep, name:tokenHp(t).name });
+  });
+  if(rows.length){
+    body.append(el("div",{class:"small muted",style:"font-weight:700;margin:10px 0 4px"},
+      "Per-turn HP — not applied automatically; tap a value when that creature's turn comes up"));
+    rows.forEach(r=>{
+      const net = r.rep.reduce((s,x)=>s+x.delta, 0);
+      const line = el("div",{class:"inline",style:"gap:8px;justify-content:space-between;flex-wrap:wrap;margin-top:4px"});
+      line.append(el("span",{class:"small"}, `${r.name} — `,
+        el("span",{class:"muted"}, r.rep.map(x=>`${x.label} (${x.delta>0?"+":""}${x.delta} HP, ${x.when} of turn)`).join(" · "))));
+      if(net && tokenHp(r.token).editable)
+        line.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",
+          title:`apply ${net>0?"+":""}${net} HP to ${r.name}`,
+          onclick:async()=>{ await setTokenHP(r.token, tokenHp(r.token).cur + net); renderMap(); }},
+          `${net>0?"+":""}${net} HP`));
+      body.append(line);
+    });
+  } else {
+    body.append(el("div",{class:"small muted",style:"margin-top:10px"},
+      "No Pokémon on this map take per-turn HP changes from this weather."));
+  }
+  card.append(body);
+  return card;
+}
 function renderMap(){
   const root = $("#view-map"); root.innerHTML="";
   if(!cloudConfigured() || mode!=="cloud"){
@@ -6951,10 +7663,20 @@ function renderMap(){
         el("button",{class:"btn-secondary"+(meta.battleOn?" on":""),onclick:()=>toggleBattle(map),
           title:"Track how far each token moves per round (diagonals cost 2)"}, meta.battleOn?"⚔ Battle on":"⚔ Battle off"));
       if(meta.battleOn) bar.append(el("button",{class:"btn-secondary",onclick:()=>newRound(map),title:"Reset every token's movement for a new round"},"↺ New round"));
+      // — Weather group: one Weather Condition at a time, shared with every player (Core p.342) —
+      const wsel = el("select",{title:"Weather Condition (Core p.342) — replaces any weather already in play"});
+      WEATHER_DEFS.forEach(w=>wsel.append(el("option",{value:w.key,selected:w.key===(map.weather||"clear")},
+        `${w.icon} ${w.name}`)));
+      wsel.addEventListener("change", ()=>setMapWeather(map, wsel.value));
+      bar.append(el("span",{class:"map-sep"}),
+        el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Weather"), wsel));
     }
   } else {
     bar.append(el("div",{class:"map-mapname"}, map ? `🗺 ${map.name}` : "🗺 Battle map"));
     if(meta.battleOn) bar.append(el("span",{class:"battle-badge"},"⚔ Battle"));
+    // players can't change the weather, but they must be able to see what's in play
+    const pw = weatherByKey(map?.weather);
+    if(map && !weatherIsClear(pw)) bar.append(el("span",{class:"battle-badge"}, `${pw.icon} ${pw.name}`));
     if(map && Object.values(cloud.byId).some(r=>ownsRow(r))){
       bar.append(el("button",{class:"btn-primary",onclick:()=>openAddToken(map)},"＋ Add my token"));
       if(mapTokensFor(map.id).some(t=>tokenHp(t).editable)) bar.append(el("span",{class:"map-sep"}),
@@ -6974,6 +7696,7 @@ function renderMap(){
     return;
   }
   resolveImageSizes(map);   // resolve any migrated-bg natural sizes (no-op once done)
+  const wpanel = weatherPanel(map); if(wpanel) root.append(wpanel);
   if(meta.battleOn) root.append(initiativePanel(map, meta));
 
   const { w:stageW, h:stageH } = mapStageSize(map);
@@ -7116,6 +7839,25 @@ function openCloudPanel(){
 applyTheme();
 render();
 initCloud();
+
+/* Resync from the server whenever a cloud tab is resumed. A tab left open (desktop idle overnight,
+   mobile PWA backgrounded, phone locked) can miss realtime events — Supabase's websocket doesn't
+   reliably survive a long background suspension — so its in-memory cloud.byId silently goes stale.
+   Any save fired from that tab (even an unrelated HP tick) re-uploads the WHOLE stale character with
+   a brand-new timestamp, clobbering everyone's edits made in the meantime (this is what wiped the
+   Level Up trackers). Refetching on resume shrinks that staleness window down to "since I last looked
+   at this tab" instead of "since I last touched it", for every tab — GM and players alike. Safe to
+   call anytime: fetchRoster()'s recoverUnsavedFromCache() still protects a genuinely-unsaved local edit. */
+async function resyncCloud(){
+  if(mode!=="cloud" || !cloud.client) return;
+  try{
+    await fetchRoster(); await fetchPC(); await fetchMap(); await fetchEnc();
+    const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
+    if(!typing) softRender();
+  } catch(e){ console.error(e); }
+}
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") resyncCloud(); });
+window.addEventListener("pageshow", resyncCloud);   // bfcache restores don't fire visibilitychange
 
 /* Persist pending cloud edits before the page goes away. visibilitychange→hidden is the one
    event mobile browsers reliably fire before killing a backgrounded/refreshed tab; pagehide
