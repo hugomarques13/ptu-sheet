@@ -5060,6 +5060,7 @@ $("#btnTheme").addEventListener("click", ()=>{
   localStorage.setItem("ptu_theme", next); state.theme = next; applyTheme();
 });
 $("#btnSettings").addEventListener("click", openSettings);
+$("#btnRefresh").addEventListener("click", forceRefresh);
 
 /* persistent Rest bar (always visible, any tab) */
 function canRest(){
@@ -7954,6 +7955,26 @@ window.addEventListener("pageshow", resyncCloud);   // bfcache restores don't fi
 document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden") flushCloudSaves(); });
 window.addEventListener("pagehide", flushCloudSaves);
 
+/* Manual "make sure I'm on the latest version" button (⚙-bar 🔄). Belt-and-suspenders on top of the
+   auto-update logic below: unregisters the service worker + wipes its caches (so a stale sw.js can't
+   keep answering from an old cache) then reloads with a cache-busting query param, which also forces
+   the browser's own HTTP cache to be bypassed. This is the "hard refresh" the sw.js comments describe
+   as awkward-to-impossible on mobile, made into one tap. */
+async function forceRefresh(){
+  try{
+    if("serviceWorker" in navigator){
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r=>r.unregister()));
+    }
+    if("caches" in window){
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k=>caches.delete(k)));
+    }
+  }catch(e){}
+  const url = new URL(location.href);
+  url.searchParams.set("_r", Date.now());
+  location.replace(url.toString());
+}
 /* Register the service worker when hosted (ignored on file://).
    updateViaCache:"none" — GitHub Pages serves sw.js with Cache-Control: max-age=600 too, so without
    this the browser can check for a new worker against its own HTTP cache and conclude "unchanged"
