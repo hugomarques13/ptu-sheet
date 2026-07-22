@@ -77,6 +77,8 @@ function levelForXP(xp){ xp = Math.max(0, xp||0); let lvl = 1;
   for(let L=2; L<=MAX_LEVEL; L++){ if(xp >= LEVEL_XP[L]) lvl = L; else break; } return lvl; }
 function xpForLevel(level){ return LEVEL_XP[Math.max(1, Math.min(MAX_LEVEL, level||1))]; }
 function xpToNext(xp){ const lvl = levelForXP(xp); return lvl>=MAX_LEVEL ? 0 : LEVEL_XP[lvl+1] - Math.max(0,xp||0); }
+/* Tutor Points: a Pokémon starts with 1 upon hatching, +1 more every level evenly divisible by 5 */
+function tutorPointsEarned(level){ return 1 + Math.floor(Math.max(1,level||1)/5); }
 
 /* Status Afflictions (PTU 1.05 Core pp.245-248). kind drives the Capture-Rate bonus:
    persistent +10 each, volatile +5 each; "other" uses its own `cap`. */
@@ -157,11 +159,16 @@ function statusHitFromText(text){
 }
 /* Combat Stages (Core p.234): only these 5 stats; +CS ×0.2 each, −CS ×0.1 each (−6…+6). */
 const CS_STATS = [["atk","Attack"],["def","Defense"],["spatk","Sp.Atk"],["spdef","Sp.Def"],["spd","Speed"]];
+/* Accuracy & Evasion Combat Stages (Core p.234): tracked the same way (steppers, −6…+6) but flat,
+   not %-multiplied — Accuracy adds straight to Accuracy Rolls, Evasion adds straight to Physical/
+   Special/Speed Evasion. Kept out of CS_STATS since they have no underlying base stat to multiply. */
+const ACC_EVA_STATS = [["acc","Accuracy"],["eva","Evasion"]];
+const ALL_CS_STATS = [...CS_STATS, ...ACC_EVA_STATS];
 function csMult(cs){ cs = Math.max(-6, Math.min(6, cs||0)); return cs>=0 ? 1+0.2*cs : 1+0.1*cs; }
 /* Status Afflictions that impose Combat Stages (Core p.245-246) */
-const CONDITION_CS = { burned:{def:-2}, paralysis:{spd:-4}, poisoned:{spdef:-2}, badlyPoisoned:{spdef:-2} };
+const CONDITION_CS = { burned:{def:-2}, paralysis:{spd:-4}, poisoned:{spdef:-2}, badlyPoisoned:{spdef:-2}, blinded:{acc:-6} };
 function conditionCSMods(p){
-  const m = {atk:0,def:0,spatk:0,spdef:0,spd:0};
+  const m = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
   (p.statuses||[]).forEach(k=>{ const c=CONDITION_CS[k]; if(c) for(const s in c) m[s]+=c[s]; });
   return m;
 }
@@ -169,6 +176,7 @@ function conditionCSMods(p){
 function effectiveCS(p){
   const cond = conditionCSMods(p), wx = weatherCSMods(p), out = {};
   CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + wx[k])));
+  ACC_EVA_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k])));
   return out;
 }
 function hasStatus(p, key){ return Array.isArray(p.statuses) && p.statuses.includes(key); }
@@ -676,14 +684,15 @@ function newCharacter(name) {
 function newPokemon(speciesName) {
   const sp = getSpecies(speciesName);
   const stats = {}; STATS.forEach(([k]) => stats[k] = { added: 0 });
+  const level = 5;
   return {
     id: uid(), species: sp ? sp.name : (speciesName||""), nickname:"",
-    gender:"", shiny:false, onTeam:true, level:5, xp:0, loyalty:0,
+    gender:"", shiny:false, onTeam:true, level, xp:0, loyalty:0,
     nature: "Hardy", abilities:[], heldItem:"",
     stats, injuries:0, currentHP:null, tempHP:0,
-    moves:[], tutorPoints:0, unlocked:false, notes:"",
+    moves:[], tutorPoints: tutorPointsEarned(level), unlocked:false, notes:"",
     struggleType:null, struggleSpecial:false, uses:{}, image:"", statuses:[], buffs:[],
-    cs:{atk:0,def:0,spatk:0,spdef:0,spd:0},
+    cs:{atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0},
   };
 }
 /* normalise older Pokémon objects (single ability -> abilities[], add onTeam) */
@@ -701,13 +710,14 @@ function normPokemon(p){
   if(!Array.isArray(p.statuses)) p.statuses = [];
   if(!Array.isArray(p.buffs)) p.buffs = [];        // active Cheers / Orders / Songs (#2)
   if(!Array.isArray(p.customMoves)) p.customMoves = [];   // freeform move/action notes not in the DB
-  if(!p.cs || typeof p.cs!=="object") p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0};
+  if(!p.cs || typeof p.cs!=="object") p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
   if(typeof p.image!=="string") p.image = "";
   if(!p.stats) { p.stats={}; STATS.forEach(([k])=>p.stats[k]={added:0}); }
   // keep XP consistent with a stored level so "add XP" works (only ever raises XP, never changes level)
   if(typeof p.xp!=="number") p.xp = 0;
   if(typeof p.level!=="number") p.level = 1;
   if(p.xp < xpForLevel(p.level)) p.xp = xpForLevel(p.level);
+  if(typeof p.tutorPoints!=="number") p.tutorPoints = tutorPointsEarned(p.level);  // legacy objects only — never re-floors spent points
   normSwarm(p);                                    // Swarm Template block, if this is a swarm (Core p.478)
   return p;
 }
@@ -717,7 +727,7 @@ function normTrainer(t){
   if(typeof t.currentHP==="undefined") t.currentHP = null;
   if(typeof t.tempHP!=="number") t.tempHP = 0;
   if(typeof t.injuries!=="number") t.injuries = 0;
-  if(!t.cs || typeof t.cs!=="object") t.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0};   // Combat Stages
+  if(!t.cs || typeof t.cs!=="object") t.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};   // Combat Stages
   if(!Array.isArray(t.statuses)) t.statuses = [];
   if(typeof t.usedAP!=="number") t.usedAP = 0;
   if(typeof t.xp!=="number") t.xp = 0;                            // EXP toward next level (houserule: 10 = level up)
@@ -823,7 +833,7 @@ function trainerDerived(t) {
   const hp = injuryHealCap(fullHP, injuries);              // Injuries cap max HP −10% each (Core p.249)
   return {
     hp, fullHP, injuries, cs,
-    physEva: cap6(tot("def")), specEva: cap6(tot("spdef")), spdEva: cap6(tot("spd")),   // CS-adjusted evasion
+    physEva: cap6(tot("def"))+cs.eva, specEva: cap6(tot("spdef"))+cs.eva, spdEva: cap6(tot("spd"))+cs.eva,   // CS-adjusted evasion
     ap: 5 + Math.floor(t.level/5),
     power, highJump: hj, longJump: Math.floor(acro/2),
     overland: 3 + Math.floor((athl+acro)/2), swim: Math.floor((3+Math.floor((athl+acro)/2))/2),
@@ -856,11 +866,12 @@ function pokeDerived(p) {
   const budget = p.level + 10;
   const spent = STATS.reduce((s,[k]) => s + (p.stats[k]?.added||0), 0);
   // Snow Cloak in Hail adds flat Evasion on top of the normal ⌊stat/5⌋ (cap 6) — an ability bonus,
-  // so it is added AFTER the cap rather than being squeezed under it.
+  // so it is added AFTER the cap rather than being squeezed under it. The Evasion Combat Stage
+  // (cs.eva, Core p.234) works the same way — a flat add on top, separately capped −6…+6.
   const wEva = weatherEvasion(p);
   return {
     base, total, cs, eff, maxHP, fullMaxHP, injuries, budget, spent, remaining: budget - spent,
-    physEva: cap6(eff.def)+wEva, specEva: cap6(eff.spdef)+wEva, spdEva: cap6(eff.spd)+wEva,   // evasion uses CS-adjusted stats
+    physEva: cap6(eff.def)+cs.eva+wEva, specEva: cap6(eff.spdef)+cs.eva+wEva, spdEva: cap6(eff.spd)+cs.eva+wEva,   // evasion uses CS-adjusted stats
     weatherEva: wEva,
   };
 }
@@ -1267,6 +1278,7 @@ function openTrainerAttack(t, weaponMoveName, w){
   const st = trainerAttackProfile(t, weaponMoveName, w);
   const atk = t.combat.atk.base + t.combat.atk.added;
   const bm = buffMods(t);                 // active Cheers / Orders / Songs (#2)
+  const accCS = trainerDerived(t).cs.acc||0;   // Accuracy Combat Stage: flat add to Accuracy Rolls (Core p.234)
   const diceStr = (DB_TABLE[(st.damageBase||0)+(bm.db||0)]||"").split("/")[0].trim();
   const dm = diceStr.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
   const dn = dm[1]?+dm[1]:0, dfaces = dm[2]?+dm[2]:0, dflat = dm[3]?parseInt(dm[3].replace(/\s/g,"")):0;
@@ -1310,9 +1322,10 @@ function openTrainerAttack(t, weaponMoveName, w){
   out.append(el("div",{class:"muted small"},"Press 🎲 Roll dice to simulate."));
   const doRoll = () => {
     out.innerHTML=""; out.style.borderStyle="solid";
-    const acc = 1+Math.floor(Math.random()*20), accTot = acc + (bm.acc||0);
+    const acc = 1+Math.floor(Math.random()*20), accTot = acc + (bm.acc||0) + accCS;
+    const accBits = []; if(bm.acc) accBits.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} buffs`); if(accCS) accBits.push(`${accCS>0?"+":"−"}${Math.abs(accCS)} Accuracy CS`);
     out.append(el("div",{style:"margin-bottom:10px"}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLL"),
-      el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`, el("span",{class:"muted",style:"font-size:13px;font-weight:600"}, bm.acc?`  (${acc} ${bm.acc>0?"+":"−"} ${Math.abs(bm.acc)} buffs)`:" (1d20)")),
+      el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`, el("span",{class:"muted",style:"font-size:13px;font-weight:600"}, accBits.length?`  (${acc} ${accBits.join(" ")})`:" (1d20)")),
       el("div",{class:"small muted"}, `Hits if ${accTot} ≥ AC ${st.ac} + target's Physical Evasion.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`)));
     const r = rollDiceString(diceStr);
     if(r){ const total = r.total + atk + (bm.dmg||0);
@@ -1432,11 +1445,11 @@ function trainerVitalsCard(t){
 function trainerCombatStagesCard(t){
   normTrainer(t);
   const d = trainerDerived(t), cond = conditionCSMods(t);
-  const anyManual = CS_STATS.some(([k])=>t.cs[k]);
+  const anyManual = ALL_CS_STATS.some(([k])=>t.cs[k]);
   const card = el("div",{class:"card"}, el("h3",{},"Combat Stages",
     el("div",{class:"inline"},
       el("span",{class:"muted small"},"tap ±"),
-      anyManual?el("button",{class:"linkbtn",onclick:()=>{ CS_STATS.forEach(([k])=>t.cs[k]=0); save(); renderTrainer(); }},"reset"):"")));
+      anyManual?el("button",{class:"linkbtn",onclick:()=>{ ALL_CS_STATS.forEach(([k])=>t.cs[k]=0); save(); renderTrainer(); }},"reset"):"")));
   const grid = el("div",{class:"statgrid"});
   CS_STATS.forEach(([k,lbl])=>{
     const manual = t.cs[k]||0, cm = cond[k]||0, effCS = d.cs[k];
@@ -1447,9 +1460,18 @@ function trainerCombatStagesCard(t){
     box.append(el("div",{class:"sub"}, `${effCS>0?"+":""}${effCS} CS`));
     grid.append(box);
   });
+  ACC_EVA_STATS.forEach(([k,lbl])=>{
+    const manual = t.cs[k]||0, effCS = d.cs[k];
+    const box = el("div",{class:"stat"});
+    box.append(el("div",{class:"lbl"},lbl));
+    box.append(el("div",{class:"big",style: effCS>0?"color:var(--good)":effCS<0?"color:var(--bad)":""}, `${effCS>0?"+":""}${effCS}`));
+    box.append(csStepper(manual, v=>{ t.cs[k]=Math.max(-6,Math.min(6,v)); save(); renderTrainer(); }));
+    box.append(el("div",{class:"sub"}, k==="acc"?"to Accuracy Rolls":"to Phys/Spec/Speed Evasion"));
+    grid.append(box);
+  });
   card.append(grid);
   card.append(el("div",{class:"small muted",style:"margin-top:4px"},
-    "Combat Stages clear at end of encounter."));
+    "Combat Stages clear at end of encounter. Accuracy/Evasion CS are flat (±1 per stage), not %."));
   return card;
 }
 
@@ -2394,15 +2416,24 @@ function csStepper(cur, onSet){
     el("button",{title:"raise",disabled:cur>=6,onclick:()=>onSet(cur+1)},"+"));
   return wrap;
 }
+/* one Accuracy/Evasion Combat Stage cell — same compact layout as the stat-CS cells above, but the
+   "effective" number shown is the flat CS itself (no ×0.2/×0.1 multiplier applies to these two). */
+function accEvaCell(lbl, manual, effVal, onSet){
+  const cell = el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:2px;min-width:66px"});
+  cell.append(el("div",{class:"small muted",style:"font-weight:700"},lbl));
+  cell.append(el("div",{style:`font-weight:800;${effVal>0?"color:var(--good)":effVal<0?"color:var(--bad)":""}`}, `${effVal>0?"+":""}${effVal}`));
+  cell.append(csStepper(manual, onSet));
+  return cell;
+}
 /* Combat Stages card — manual steppers per stat; conditions apply automatically on top */
 function combatStagesCard(p){
-  if(!p.cs) p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0};
+  if(!p.cs) p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
   const d = pokeDerived(p), cond = conditionCSMods(p);
-  const anyManual = CS_STATS.some(([k])=>p.cs[k]);
+  const anyManual = ALL_CS_STATS.some(([k])=>p.cs[k]);
   const card = el("div",{class:"card"}, el("h3",{},"Combat Stages",
     el("div",{class:"inline"},
       el("span",{class:"muted small"},"tap ± ; conditions auto-apply"),
-      anyManual?el("button",{class:"linkbtn",onclick:()=>{ CS_STATS.forEach(([k])=>p.cs[k]=0); save(); refreshMon(p); }},"reset"):"")));
+      anyManual?el("button",{class:"linkbtn",onclick:()=>{ ALL_CS_STATS.forEach(([k])=>p.cs[k]=0); save(); refreshMon(p); }},"reset"):"")));
   const grid = el("div",{class:"statgrid"});
   CS_STATS.forEach(([k,lbl])=>{
     const manual = p.cs[k]||0, cm = cond[k]||0, effCS = d.cs[k];
@@ -2413,12 +2444,21 @@ function combatStagesCard(p){
     box.append(el("div",{class:"sub"}, `${effCS>0?"+":""}${effCS} CS` + (cm?` (${manual>=0?"+":""}${manual}${cm>=0?"+":""}${cm})`:"")));
     grid.append(box);
   });
+  ACC_EVA_STATS.forEach(([k,lbl])=>{
+    const manual = p.cs[k]||0, cm = cond[k]||0, effCS = d.cs[k];
+    const box = el("div",{class:"stat"});
+    box.append(el("div",{class:"lbl"},lbl));
+    box.append(el("div",{class:"big",style: effCS>0?"color:var(--good)":effCS<0?"color:var(--bad)":""}, `${effCS>0?"+":""}${effCS}`));
+    box.append(csStepper(manual, v=>{ p.cs[k]=Math.max(-6,Math.min(6,v)); save(); refreshMon(p); }));
+    box.append(el("div",{class:"sub"}, (k==="acc"?"to Accuracy Rolls":"to Phys/Spec/Speed Evasion") + (cm?` (${manual>=0?"+":""}${manual}${cm>=0?"+":""}${cm})`:"")));
+    grid.append(box);
+  });
   card.append(grid);
   const src = STATUS_DEFS.filter(s=>hasStatus(p,s.key) && CONDITION_CS[s.key]);
   if(src.length) card.append(el("div",{class:"small muted",style:"margin-top:8px"},
     "From conditions: " + src.map(s=>`${s.name} (${Object.entries(CONDITION_CS[s.key]).map(([st,v])=>`${v} ${st}`).join(", ")})`).join(" · ")));
   card.append(el("div",{class:"small muted",style:"margin-top:4px"},
-    "Combat Stages clear on switch-out / end of encounter. Speed CS also shifts Movement by ½ (rounded down)."));
+    "Combat Stages clear on switch-out / end of encounter. Speed CS also shifts Movement by ½ (rounded down). Accuracy/Evasion CS are flat (±1 per stage), not %."));
   return card;
 }
 /* ===================================================================
@@ -2694,6 +2734,11 @@ function renderMonBuild(root, p, sp){
     field("Tutor Points","",{type:"number",min:0,value:p.tutorPoints,onchange:v=>{p.tutorPoints=parseInt(v)||0;save();}}),
   );
   ec.append(r3);
+  const tpEarned = tutorPointsEarned(p.level);
+  ec.append(el("div",{class:"inline small",style:"gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px"},
+    el("span",{class:"muted"}, `1 Tutor Point on hatching + 1 every 5 levels → Lv ${p.level} has earned ${tpEarned}.`),
+    el("button",{class:"linkbtn",onclick:()=>{p.tutorPoints=tpEarned;save();refreshMon(p);}},"sync to earned"),
+    el("button",{class:"linkbtn",onclick:()=>openTutorMovePicker(p,sp)},"🎓 learn a Tutor move (−1)")));
   root.append(ec);
 
   /* evolution — GM-only ("hidden") stages are concealed from players */
@@ -3238,6 +3283,7 @@ function openMoveRoll(p, m, sp){
     return m.damageBase;                  // generic weight moves & normal moves use the printed DB
   }
   const bm = buffMods(p);                 // active Cheers / Orders / Songs (#2)
+  const accCS = d.cs.acc||0;              // Accuracy Combat Stage: flat add to Accuracy Rolls (Core p.234)
   const wx = weatherRollMods(p, m, mtype);      // current Weather Condition (Core p.342)
   const effAC = wx.acOverride!=null ? wx.acOverride : m.ac;   // e.g. Thunder is AC 11 in Sun
   const finalDB = () => { const b=baseDB(); return b!=null ? b + (stab?2:0) + (bm.db||0) : null; };
@@ -3388,7 +3434,8 @@ function openMoveRoll(p, m, sp){
     out.style.borderStyle="solid";
     out.innerHTML="";
     const acc = 1+Math.floor(Math.random()*20);
-    const accTot = acc + (bm.acc||0);
+    const accTot = acc + (bm.acc||0) + accCS;
+    const accBits = []; if(bm.acc) accBits.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} buffs`); if(accCS) accBits.push(`${accCS>0?"+":"−"}${Math.abs(accCS)} Accuracy CS`);
     const accLine = el("div",{style:fDB!=null?"margin-bottom:10px":""});
     accLine.append(el("div",{class:"lbl",style:"color:var(--muted)  ;font-weight:800"},"ACCURACY ROLL"));
     if(wx.autoHit){
@@ -3396,7 +3443,7 @@ function openMoveRoll(p, m, sp){
       accLine.append(el("div",{class:"small muted"}, `${m.name} cannot miss in ${wx.weather.name} — no Accuracy Check.`));
     } else {
       accLine.append(el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`,
-        el("span",{class:"muted",style:"font-size:14px;font-weight:600"}, bm.acc?`  (${acc} ${bm.acc>0?"+":"−"} ${Math.abs(bm.acc)} buffs)`:"  (1d20)")));
+        el("span",{class:"muted",style:"font-size:14px;font-weight:600"}, accBits.length?`  (${acc} ${accBits.join(" ")})`:"  (1d20)")));
       if(effAC!=null) accLine.append(el("div",{class:"small muted"},
         `Hits if ${accTot} ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote}.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`));
     }
@@ -3480,6 +3527,32 @@ function openMovePicker(p, sp){
   openPicker(title, names, name=>{
     if(!p.moves.includes(name)){ p.moves.push(name); save(); refreshMon(p); }
   }, "move", n=>markSet.has(n.toLowerCase()));
+}
+/* spend a Tutor Point to learn a move from the species' Tutor list (Core: 1 TP per Tutor move) */
+function openTutorMovePicker(p, sp){
+  if(!p.unlocked && !sp){ toast("Unknown species — tick 🔓 to add any move"); return; }
+  if(!p.unlocked && p.moves.length>=MOVE_LIMIT){ toast(`Move limit reached (${MOVE_LIMIT}). Tick "🔓 GM: allow any" to add more.`); return; }
+  if(!p.unlocked && (p.tutorPoints||0)<1){ toast("No Tutor Points left"); return; }
+  const cleanTutor = s => (s?.moves?.tutor||[]).map(m=>m.replace(/\s*\(N\)\s*$/i,"").trim());
+  let names, title, markSet;
+  if(p.unlocked){
+    const learn = cleanTutor(sp);
+    markSet = new Set(learn.map(x=>x.toLowerCase()));
+    names = [...new Set([...learn, ...D.moves.map(m=>m.name)])];
+    title = `Learn a Tutor move (🔓 any) — ${sp?sp.name+"'s Tutor list on top":"all moves"}`;
+  } else {
+    names = cleanTutor(sp);
+    markSet = new Set();
+    title = `Learn a Tutor move — ${sp.name} (−1 Tutor Point, ${p.tutorPoints||0} left)`;
+  }
+  names = [...new Set(names)].filter(nm => !p.moves.includes(nm));
+  if(!names.length){ toast("No new Tutor moves available"); return; }
+  openPicker(title, names, name=>{
+    if(p.moves.includes(name)) return;
+    if(!p.unlocked) p.tutorPoints = Math.max(0,(p.tutorPoints||0)-1);
+    p.moves.push(name); save(); refreshMon(p);
+    toast(`Learned ${name} (Tutor)`);
+  }, "move", markSet.size ? n=>markSet.has(n.toLowerCase()) : null);
 }
 
 /* ===================================================================
@@ -3821,6 +3894,7 @@ function inventoryItemAttacks(t){
 /* roll a curated item Status Attack — accuracy only (no damage), shows its effect */
 function openItemAttack(t, prof){
   const bm = buffMods(t);
+  const accCS = trainerDerived(t).cs.acc||0;   // Accuracy Combat Stage: flat add to Accuracy Rolls (Core p.234)
   const body = el("div",{});
   body.append(el("div",{class:"chips",style:"margin-bottom:10px"},
     el("span",{class:"kv"},"Status"), el("span",{class:"kv"},`AC ${prof.ac}`), el("span",{class:"kv"},prof.range)));
@@ -3828,11 +3902,12 @@ function openItemAttack(t, prof){
   const out = el("div",{class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:0"});
   out.append(el("div",{class:"muted small"},"Press 🎲 Roll to test the Accuracy Check."));
   const doRoll = ()=>{ out.innerHTML=""; out.style.borderStyle="solid";
-    const acc = 1+Math.floor(Math.random()*20), accTot = acc + (bm.acc||0);
+    const acc = 1+Math.floor(Math.random()*20), accTot = acc + (bm.acc||0) + accCS;
+    const accBits = []; if(bm.acc) accBits.push(`+${bm.acc} buffs`); if(accCS) accBits.push(`${accCS>0?"+":"−"}${Math.abs(accCS)} Accuracy CS`);
     out.append(el("div",{},
       el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLL"),
       el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`,
-        el("span",{class:"muted",style:"font-size:13px;font-weight:600"}, bm.acc?`  (${acc} + ${bm.acc} buffs)`:" (1d20)")),
+        el("span",{class:"muted",style:"font-size:13px;font-weight:600"}, accBits.length?`  (${acc} ${accBits.join(" ")})`:" (1d20)")),
       el("div",{class:"small muted"}, `Hits if ${accTot} ≥ AC ${prof.ac} + the target's Evasion.${acc===20?" Natural 20 — auto-hit!":acc===1?" Natural 1 — auto-miss.":""}`))); };
   body.append(out);
   modal({title:prof.name, bodyNode:body, footNodes:[ el("button",{class:"btn-primary",onclick:doRoll},"🎲 Roll dice") ]});
@@ -4172,10 +4247,10 @@ function swarmCard(p){
 
 /* compact combat-stage steppers for an encounter Pokémon (±6 per stat; feeds pokeDerived) */
 function encCombatStages(p){
-  if(!p.cs) p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0};
+  if(!p.cs) p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
   const d = pokeDerived(p);
   const det = el("details",{class:"spoiler",style:"margin-top:8px"});
-  const any = CS_STATS.some(([k])=>p.cs[k]);
+  const any = ALL_CS_STATS.some(([k])=>p.cs[k]);
   det.dataset.key = "cs:"+p.id;
   det.append(el("summary",{}, el("span",{style:"font-weight:700"},"Combat Stages"),
     any?el("span",{class:"muted small",style:"margin-left:8px"},"active"):""));
@@ -4187,9 +4262,11 @@ function encCombatStages(p){
     cell.append(csStepper(p.cs[k]||0, v=>{ p.cs[k]=Math.max(-6,Math.min(6,v)); saveEnc(); renderEncounters(); }));
     grid.append(cell);
   });
+  ACC_EVA_STATS.forEach(([k,lbl])=> grid.append(accEvaCell(lbl, p.cs[k]||0, d.cs[k],
+    v=>{ p.cs[k]=Math.max(-6,Math.min(6,v)); saveEnc(); renderEncounters(); })));
   det.append(grid);
   if(any) det.append(el("button",{class:"linkbtn",style:"margin-top:6px",
-    onclick:()=>{ CS_STATS.forEach(([k])=>p.cs[k]=0); saveEnc(); renderEncounters(); }},"reset combat stages"));
+    onclick:()=>{ ALL_CS_STATS.forEach(([k])=>p.cs[k]=0); saveEnc(); renderEncounters(); }},"reset combat stages"));
   return det;
 }
 /* Manual stat distribution for an encounter Pokémon — GM spreads the Level+10 added points by hand
@@ -4288,7 +4365,7 @@ function encTrainerCombatStages(t, key){
   const d = trainerDerived(t);
   const det = el("details",{class:"spoiler",style:"margin-top:8px"});
   det.dataset.key = "cs:"+key;
-  const any = CS_STATS.some(([k])=>t.cs[k]);
+  const any = ALL_CS_STATS.some(([k])=>t.cs[k]);
   det.append(el("summary",{}, el("span",{style:"font-weight:700"},"Combat Stages"),
     any?el("span",{class:"muted small",style:"margin-left:8px"},"active"):""));
   const grid = el("div",{style:"display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"});
@@ -4299,9 +4376,11 @@ function encTrainerCombatStages(t, key){
     cell.append(csStepper(t.cs[k]||0, v=>{ t.cs[k]=Math.max(-6,Math.min(6,v)); saveEnc(); renderEncounters(); }));
     grid.append(cell);
   });
+  ACC_EVA_STATS.forEach(([k,lbl])=> grid.append(accEvaCell(lbl, t.cs[k]||0, d.cs[k],
+    v=>{ t.cs[k]=Math.max(-6,Math.min(6,v)); saveEnc(); renderEncounters(); })));
   det.append(grid);
   if(any) det.append(el("button",{class:"linkbtn",style:"margin-top:6px",
-    onclick:()=>{ CS_STATS.forEach(([k])=>t.cs[k]=0); saveEnc(); renderEncounters(); }},"reset combat stages"));
+    onclick:()=>{ ALL_CS_STATS.forEach(([k])=>t.cs[k]=0); saveEnc(); renderEncounters(); }},"reset combat stages"));
   return det;
 }
 /* compact, expandable status-condition toggles for an encounter Pokémon */
@@ -6421,7 +6500,7 @@ async function setTokenCS(token, stat, val){
   const info = tokenHp(token);
   if(!info.editable){ toast("Read-only"); return; }
   const { row, obj, kind } = info; if(!obj){ toast("This token has no combat stats"); return; }
-  if(!obj.cs) obj.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0};
+  if(!obj.cs) obj.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
   obj.cs[stat] = Math.max(-6, Math.min(6, val|0));
   // CS has no per-token visual (it only affects derived speed/initiative order + rolls), so unlike
   // HP/statuses there's nothing to surgically patch — always repaint. This is safe even with the
@@ -7058,7 +7137,7 @@ function openTokenMenu(token, map){
     const L = token.link ? tokenLinked(token) : null;
     if(L && L.obj && (L.kind==="pokemon"||L.kind==="enc"||L.kind==="trainer"||L.kind==="enctrainer")){
       const isT = L.kind==="trainer"||L.kind==="enctrainer";
-      if(!L.obj.cs) L.obj.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0};
+      if(!L.obj.cs) L.obj.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
       const der = isT ? trainerDerived(L.obj) : pokeDerived(L.obj);
       const csw = el("div",{style:"margin-top:16px"});
       csw.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"Combat Stages"));
@@ -7071,6 +7150,16 @@ function openTokenMenu(token, map){
         if(info.editable) c.append(csStepper(L.obj.cs[k]||0, async v=>{ await setTokenCS(token,k,v); reopenTokenMenu(token,map); }));
         else c.append(el("div",{class:"small muted"}, `${effCS>0?"+":""}${effCS}`));
         g.append(c);
+      });
+      ACC_EVA_STATS.forEach(([k,lbl])=>{
+        const effCS = der.cs[k];
+        if(info.editable) g.append(accEvaCell(lbl, L.obj.cs[k]||0, effCS, async v=>{ await setTokenCS(token,k,v); reopenTokenMenu(token,map); }));
+        else {
+          const c = el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:2px;min-width:60px"});
+          c.append(el("div",{class:"small muted",style:"font-weight:700"},lbl),
+            el("div",{style:`font-weight:800;${effCS>0?"color:var(--good)":effCS<0?"color:var(--bad)":""}`}, `${effCS>0?"+":""}${effCS}`));
+          g.append(c);
+        }
       });
       csw.append(g);
       wrap.append(csw);
