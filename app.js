@@ -7008,7 +7008,10 @@ function attachImageDrag(node, img, map, overlay){
       mapDragging = true;
       const dx=(e.clientX-sx)/scale, dy=(e.clientY-sy)/scale;
       if(mode==="resize"){ img.w=Math.max(px, snap(w0+dx)); img.h=Math.max(px, snap(h0+dy)); }
-      else { img.x=Math.max(0, snap(x0+dx)); img.y=Math.max(0, snap(y0+dy)); }
+      // no lower bound on x/y: images can sit up/left of the stage's nominal origin (pan the
+      // camera to reach them) — every fresh image starts at exactly (0,0), so clamping to 0 here
+      // meant the very first drag upward or leftward was silently a no-op.
+      else { img.x=snap(x0+dx); img.y=snap(y0+dy); }
       node.style.left=img.x+"px"; node.style.top=img.y+"px"; node.style.width=img.w+"px"; node.style.height=img.h+"px";
       if(overlay){ overlay.style.left=img.x+"px"; overlay.style.top=img.y+"px"; overlay.style.width=img.w+"px"; overlay.style.height=img.h+"px"; }
     };
