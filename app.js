@@ -5303,6 +5303,10 @@ function pcData(data){
    missing from the fetch keeps local too (a transient partial result must not wipe the board). */
 function mergeShared(local, fetched, normFn){
   if(!fetched) return local || null;
+  // A write to this row is mid-commit → its result (not this pre-commit fetch) is authoritative. Also
+  // covers the case where _base was lost (null), which would otherwise skip the unsynced-edit guard
+  // below and silently adopt a stale server copy over an un-flushed local edit.
+  if(local && cloud.inflight[fetched.id]) return local;
   // if we're holding unsynced local edits (data diverged from the rev we last synced), keep them —
   // our debounced CAS write will reconcile against the server; a bare refetch must not revert them.
   if(local && local._base!=null && !deepEqual(local.data, local._base)) return local;
@@ -5738,6 +5742,23 @@ function flushCloudSaves(){
     clearTimeout(rowSaveTimers[id]); delete rowSaveTimers[id];
     const r = cloud.byId[id]; if(r) restUpsertKeepalive(r);
   }
+}
+/* Flush every pending debounced cloud write NOW and AWAIT them. Used on tab-resume BEFORE we refetch,
+   so a resync can never re-read the server and revert an edit that was still sitting in a debounce
+   timer — the "added a trainer, tabbed out and back in, it vanished, reload brought it back" bug.
+   Unlike flushCloudSaves (keepalive, fire-and-forget, for page death), these go through the normal
+   awaitable CAS path so cloud.enc/mapTokens/… end up with their new _rev/_base before we fetch. */
+async function flushPendingCloudWrites(){
+  if(mode!=="cloud" || !cloud.client) return;
+  const ps = [];
+  if(cloud.saveTimer){ clearTimeout(cloud.saveTimer); cloud.saveTimer=null;
+    const row = cloud.byId[cloud.activeId]; if(row && canEdit(row)) ps.push(dispatchRowSave(row)); }
+  for(const id of Object.keys(rowSaveTimers)){ clearTimeout(rowSaveTimers[id]); delete rowSaveTimers[id];
+    const r = cloud.byId[id]; if(r && canEdit(r)) ps.push(dispatchRowSave(r)); }
+  if(encSaveTimer){ clearTimeout(encSaveTimer); encSaveTimer=null; ps.push(encUpsert()); }
+  if(mapTokensTimer){ clearTimeout(mapTokensTimer); mapTokensTimer=null; ps.push(serialize(mapTokensChain, mapTokensUpsert)); }
+  if(mapMetaTimer){ clearTimeout(mapMetaTimer); mapMetaTimer=null; ps.push(serialize(mapMetaChain, mapMetaUpsert)); }
+  try{ await Promise.all(ps); }catch(e){ console.error(e); }
 }
 function cloudNewCharacter(name){
   const c = newCharacter(name);
@@ -8016,6 +8037,7 @@ initCloud();
 async function resyncCloud(){
   if(mode!=="cloud" || !cloud.client) return;
   try{
+    await flushPendingCloudWrites();   // commit any debounced edit BEFORE refetching, so the resync can't revert it
     await fetchRoster(); await fetchPC(); await fetchMap(); await fetchEnc();
     const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
     if(!typing) softRender();
