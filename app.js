@@ -5236,7 +5236,11 @@ async function casUpsert(row, mergeFn){
       if(fe){ console.error(fe); toast("⚠ Cloud save failed"); return false; }
       if(!cur || !cur.length){ row._rev = null; continue; }     // vanished → retry as an insert
       const server = cur[0];
-      const base = (row._base!=null) ? row._base : server.data;
+      // No known common ancestor (_base lost/never set — a first-write race, a cache-recovered row) →
+      // pass a null base so merge3 UNIONS both sides instead of letting "mine" wholesale-overwrite
+      // "theirs". Union may resurrect a row the other side deleted, but that's strictly safer than
+      // silently dropping their entire concurrent edit (which is what base=server.data did here).
+      const base = (row._base!=null) ? row._base : null;
       const tie  = cloud.isGM ? "mine" : "theirs";              // GM wins ties
       row.data  = mergeFn(base, row.data, server.data, tie);
       row._base = deepClone(server.data);                       // common ancestor for a possible next retry
@@ -5480,8 +5484,23 @@ function normEnc(data){
 }
 async function fetchEnc(){
   const { data, error } = await cloud.client.from("sheets").select(SHEET_COLS).eq("id", encRowId()).limit(1);
-  if(error){ console.error(error); return; }   // keep local on a fetch error
+  if(error){ console.error(error); return "error"; }   // keep local on a fetch error
   cloud.enc = mergeShared(cloud.enc, data && data[0], normEnc);
+  return (data && data[0]) ? "ok" : "absent";           // "absent" only when the query SUCCEEDED with no row
+}
+/* First-time-only: copy this GM device's pre-cloud encounters into a BRAND-NEW cloud row.
+   INSERT-ONLY (never a CAS/merge) so it can NEVER overwrite an existing row. Reseeding a stale
+   device-local snapshot over a populated row — which the old connect-time seed did whenever a
+   transient fetch returned empty — is exactly what silently wiped hours of encounter work. If the
+   row already exists the insert fails on the primary key and we simply re-fetch the real data. */
+async function seedEncountersIfAbsent(){
+  if(!(state.encounters?.length)) return;
+  const row = ensureEnc();
+  row.data = normEnc({ encounters: JSON.parse(JSON.stringify(state.encounters)) });
+  const meta = { id:row.id, campaign:cloud.campaign, owner_id:ENC_OWNER, owner_name:"Encounters", name:"Encounters" };
+  const { data:ins, error } = await cloud.client.from("sheets").insert({ ...meta, data:row.data }).select(SHEET_COLS);
+  if(!error && ins && ins.length){ cloud.enc = adoptRev({ ...ins[0], data: normEnc(ins[0].data) }); }
+  else { await fetchEnc(); }   // row already existed (or a transient error) → keep the real cloud data
 }
 function ensureEnc(){
   if(!cloud.enc) cloud.enc = { id:encRowId(), campaign:cloud.campaign, owner_id:ENC_OWNER,
@@ -5504,12 +5523,16 @@ async function cloudConnect(campaign, name, gmCode, silent){
     await fetchRoster();
     await fetchPC();
     await fetchMap();
-    await fetchEnc();
-    // one-time seed: push the GM's existing device-local encounters into the empty cloud row
-    if(cloud.isGM && !(cloud.enc?.data?.encounters?.length) && (state.encounters?.length)){
-      ensureEnc().data.encounters = JSON.parse(JSON.stringify(state.encounters));
-      await encUpsert();
+    const encStatus = await fetchEnc();
+    // One-time seed of a GM's pre-cloud device encounters — ONLY when the cloud row genuinely does
+    // NOT exist (query succeeded with no row) AND we've never seeded this campaign before. Never on
+    // a fetch error or transient-empty result. Insert-only + this guard together stop a stale device
+    // snapshot from clobbering real cloud work on a random refresh (the "hours of work reverted" bug).
+    const encSeedKey = "ptu_enc_seeded_" + cloud.campaign;
+    if(cloud.isGM && encStatus==="absent" && !localStorage.getItem(encSeedKey)){
+      await seedEncountersIfAbsent();
     }
+    if(cloud.isGM && encStatus!=="error") localStorage.setItem(encSeedKey, "1");   // don't seed again
     subscribeRealtime();
     mode = "cloud"; openMon = null;
     const mine = Object.values(cloud.byId).find(r=>ownsRow(r));
@@ -5581,7 +5604,13 @@ function onRealtime(payload){
   const staleShared = (cur, id) => {
     if(cloud.inflight[id]) return true;                        // our CAS is in flight → it will reconcile
     const inc = payload.new?.rev;
-    return !!(cur && cur._rev!=null && typeof inc==="number" && inc <= cur._rev);
+    if(cur && cur._rev!=null && typeof inc==="number" && inc <= cur._rev) return true;   // our own echo / older rev
+    // We hold an un-flushed optimistic edit to this shared row (debounced save pending, queued behind
+    // the serialize chain, or mid-CAS). Wholesale-adopting the incoming row here would DISCARD that edit
+    // — the "token snaps back / HP reverts" rollback when two people touch the map at once. Defer: our
+    // pending CAS refetches and 3-way-merges this same change by id, so nothing is lost.
+    if(cur && cur._base!=null && !deepEqual(cur.data, cur._base)) return true;
+    return false;
   };
   // the shared PC is visible to everyone — handle it before the per-player visibility filter
   if(evtOwner===PC_OWNER || evtId===pcId()){
@@ -5631,11 +5660,16 @@ function onRealtime(payload){
   if(cur){
     // OUR OWN ECHO or an out-of-order OLDER rev → ignore (the server rev, not the clock, decides).
     if(cur._rev!=null && typeof incRev==="number" && incRev <= cur._rev){ refreshCharSelect(); return; }
-    // A write to this row is in flight, or we're actively editing it → keep our copy; the pending
-    // CAS will fetch-and-merge this incoming change so nothing is lost and the cursor isn't yanked.
+    // Defer adopting this remote row while we still hold an un-flushed local change to it — otherwise
+    // we'd wholesale-replace our copy and lose the edit (the GM editing a player's sheet, or a pending
+    // debounced save, both clobbered here before). The pending CAS fetch-and-merges the incoming change,
+    // so nothing is lost and the cursor isn't yanked. Signals: a write in flight, a debounced save
+    // queued (active OR any row), the user typing into the active sheet, or an optimistic edit not yet
+    // confirmed saved (data has diverged from the last synced baseline).
     const isActive = row.id===cloud.activeId;
-    const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
-    if(cloud.inflight[row.id] || (isActive && (cloud.saveTimer || rowSaveTimers[row.id] || typing))){ refreshCharSelect(); return; }
+    const typing = isActive && ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
+    const localEdit = cur._base!=null && !deepEqual(cur.data, cur._base);
+    if(cloud.inflight[row.id] || rowSaveTimers[row.id] || (isActive && cloud.saveTimer) || typing || localEdit){ refreshCharSelect(); return; }
   }
   // adopt the newer server row as our synced baseline
   row.data = migrateChar(row.data, row.id);
