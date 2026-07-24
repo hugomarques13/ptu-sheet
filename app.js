@@ -4152,12 +4152,12 @@ function encSpreadStats(p){
   for(let i=0;i<budget;i++){ p.stats[keys[Math.floor(Math.random()*keys.length)]].added++; }
 }
 const ENC_GENDERS = ["Male","Female"];
-/* roll a Pokémon's random identity: nature, gender, shiny (Core p.212: 1d100, Shiny on a 1 or 100), stats */
+/* roll a Pokémon's random identity: nature, gender, shiny (1d100, Shiny on a 1 — 1 in 100, houserule override of Core p.212's 1-or-100), stats */
 function encRandomize(p){
   p.nature = D.natures[Math.floor(Math.random()*D.natures.length)].name;
   p.gender = ENC_GENDERS[Math.floor(Math.random()*ENC_GENDERS.length)];
   const roll = 1 + Math.floor(Math.random()*100);
-  p.shiny = (roll===1 || roll===100);
+  p.shiny = (roll===1);
   encSpreadStats(p);
 }
 /* send an encounter Pokémon to the shared PC (i.e. it's been caught) and remove it from the field */
@@ -6994,7 +6994,7 @@ function attachTokenDrag(node, token, map){
   });
 }
 /* image-edit mode: drag to move, corner handle to resize (both grid-snap when the grid is on) */
-function attachImageDrag(node, img, map){
+function attachImageDrag(node, img, map, overlay){
   const px = map.gridSize, snap = v => map.gridOn ? Math.round(v/px)*px : v;
   const startDrag = (ev, mode)=>{
     if(ev.button!=null && ev.button>0) return;
@@ -7010,6 +7010,7 @@ function attachImageDrag(node, img, map){
       if(mode==="resize"){ img.w=Math.max(px, snap(w0+dx)); img.h=Math.max(px, snap(h0+dy)); }
       else { img.x=Math.max(0, snap(x0+dx)); img.y=Math.max(0, snap(y0+dy)); }
       node.style.left=img.x+"px"; node.style.top=img.y+"px"; node.style.width=img.w+"px"; node.style.height=img.h+"px";
+      if(overlay){ overlay.style.left=img.x+"px"; overlay.style.top=img.y+"px"; overlay.style.width=img.w+"px"; overlay.style.height=img.h+"px"; }
     };
     const up = async ()=>{
       try{ node.releasePointerCapture(ev.pointerId); }catch(e){}
@@ -7795,7 +7796,8 @@ function renderMap(){
 
   // layered images (back → front)
   if(!map.images.length) stage.append(el("div",{class:"map-nobg",style:`width:${stageW}px;height:${stageH}px`}));
-  map.images.forEach(im=>{
+  const editOverlays = [];   // controls/handle for each image, appended AFTER every image wrap (see below)
+  map.images.forEach((im,imIdx)=>{
     const node = el("img",{class:"map-img"+(mapImgEdit?" editing":""),src:im.src,draggable:false,alt:"",decoding:"sync",
       style:`left:${im.x}px;top:${im.y}px;`+(im.w?`width:${im.w}px;`:"")+(im.h?`height:${im.h}px;`:"")});
     // The scaled stage is a GPU layer rasterized at build time; if a background isn't decoded yet it
@@ -7809,28 +7811,39 @@ function renderMap(){
       const wrap = el("div",{class:"map-img-wrap editing",style:`left:${im.x}px;top:${im.y}px;width:${im.w||stageW}px;height:${im.h||stageH}px`});
       node.style.left="0px"; node.style.top="0px"; node.style.width="100%"; node.style.height="100%";
       wrap.append(node);
-      wrap.append(el("div",{class:"map-img-ctrls"},
+      stage.append(wrap);
+      // Controls/handle are a SEPARATE overlay, collected here and appended after the whole loop so
+      // every image's buttons always sit above every image's body — otherwise, once an image wasn't
+      // topmost, a front (usually full-size) image above it would visually and physically cover its
+      // "bring forward" button, making it impossible to ever bring it back up.
+      const overlay = el("div",{class:"map-img-overlay",style:`left:${im.x}px;top:${im.y}px;width:${im.w||stageW}px;height:${im.h||stageH}px`});
+      // Freshly-added images all start at the same x/y (0,0), so several images' control rows can sit
+      // on the exact same pixels — stagger by layer index so an image directly under another still has
+      // its own reachable spot (not just "in front of every wrap", but "not on top of another's buttons").
+      overlay.append(el("div",{class:"map-img-ctrls",style:`top:${6+imIdx*34}px`},
         el("button",{title:"bring forward",onclick:e=>{e.stopPropagation();moveMapImageLayer(map,im,1);}},"⬆"),
         el("button",{title:"send back",onclick:e=>{e.stopPropagation();moveMapImageLayer(map,im,-1);}},"⬇"),
         el("button",{title:"delete",class:"danger",onclick:e=>{e.stopPropagation();if(confirm("Remove this image?"))deleteMapImage(map,im);}},"🗑")));
-      wrap.append(el("div",{class:"map-img-handle",title:"drag to resize"}));
-      const handle = wrap.querySelector(".map-img-handle");
-      attachImageDrag(wrap, im, map);
+      overlay.append(el("div",{class:"map-img-handle",title:"drag to resize"}));
+      const handle = overlay.querySelector(".map-img-handle");
+      attachImageDrag(wrap, im, map, overlay);
       // resize handle uses the same drag machinery in resize mode
       handle.addEventListener("pointerdown", ev=>{ ev.stopPropagation();
         const px=map.gridSize, snap=v=>map.gridOn?Math.round(v/px)*px:v, scale=mapView.scale;
         const sx=ev.clientX, sy=ev.clientY, w0=im.w, h0=im.h; let moved=false;
         try{ handle.setPointerCapture(ev.pointerId); }catch(e){}
         const mv=e=>{ moved=true; mapDragging=true; im.w=Math.max(px,snap(w0+(e.clientX-sx)/scale)); im.h=Math.max(px,snap(h0+(e.clientY-sy)/scale));
-          wrap.style.width=im.w+"px"; wrap.style.height=im.h+"px"; };
+          wrap.style.width=im.w+"px"; wrap.style.height=im.h+"px";
+          overlay.style.width=im.w+"px"; overlay.style.height=im.h+"px"; };
         const up=async()=>{ try{handle.releasePointerCapture(ev.pointerId);}catch(e){} handle.removeEventListener("pointermove",mv); handle.removeEventListener("pointerup",up);
           mapDragging=false; if(moved){ mapMetaSave(); renderMap(); } };
         handle.addEventListener("pointermove",mv); handle.addEventListener("pointerup",up); });
-      stage.append(wrap);
+      editOverlays.push(overlay);
     } else {
       stage.append(node);
     }
   });
+  editOverlays.forEach(o=>stage.append(o));
 
   if(map.gridOn) stage.append(el("div",{class:"map-grid",style:`width:${stageW}px;height:${stageH}px;background-size:${map.gridSize}px ${map.gridSize}px`}));
 

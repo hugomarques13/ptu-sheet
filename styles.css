@@ -437,6 +437,13 @@ body.map-mode .map-select-bar{margin:0; border-radius:0; border-left:0; border-r
 .map-img-ctrls button{width:30px; height:28px; border-radius:6px; border:1px solid var(--line);
   background:var(--panel); color:var(--ink); font-size:14px; font-weight:800; box-shadow:0 1px 3px rgba(0,0,0,.35)}
 .map-img-ctrls button.danger{color:var(--bad)}
+/* Controls/handle live in their own overlay layer appended AFTER every image wrap (see renderMap), so a
+   front image can never sit on top of and swallow clicks meant for a further-back image's own buttons —
+   without this, once an image wasn't topmost its "bring forward" arrow became physically unclickable. The
+   overlay itself ignores pointer events so dragging/clicking the image body underneath still works; only
+   the buttons/handle re-enable them. */
+.map-img-overlay{position:absolute; pointer-events:none}
+.map-img-overlay .map-img-ctrls, .map-img-overlay .map-img-handle{pointer-events:auto}
 /* fog of war overlay (drawn in base coords, scales with the stage transform) */
 .map-fog{position:absolute; left:0; top:0; pointer-events:none}
 /* attack-range / AoE overlay + its floating controls (#1) */
