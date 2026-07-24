@@ -6580,11 +6580,13 @@ function tokenReveals(token){
   if(typeof token.reveal==="boolean") return token.reveal;   // GM per-token override
   return !!token.link && !ENEMY_LINKS.has(token.link.kind);  // player characters reveal; enemies/custom don't
 }
-/* reveal a CIRCULAR disc of cells (Euclidean radius) around a cell */
+/* reveal a CIRCULAR disc of cells (Euclidean radius) around a cell. No x/y>=0 guard: the board can
+   extend up/left of the canonical origin now (see mapStageSize), so a token near that edge needs its
+   reveal circle to cover negative cells too, not get silently clipped to its lower-right quadrant. */
 function revealDisc(set, cx, cy, r){
   const rr = (r+0.35)*(r+0.35), ri = Math.ceil(r);   // +0.35 rounds the edge out to a fuller circle
   for(let dx=-ri; dx<=ri; dx++) for(let dy=-ri; dy<=ri; dy++)
-    if(dx*dx+dy*dy <= rr){ const x=cx+dx, y=cy+dy; if(x>=0 && y>=0) set.add(x+","+y); }
+    if(dx*dx+dy*dy <= rr) set.add((cx+dx)+","+(cy+dy));
 }
 /* reveal discs around every cell of a token's footprint */
 function revealFootprint(set, cx, cy, span, r){
@@ -6623,14 +6625,21 @@ async function resetFog(map){
   if(map.fogOn) revealAroundTokens(map);      // keep current token surroundings visible
   mapTokensSave(); renderMap();
 }
-/* draw fog onto a canvas sized to the stage; players see opaque cover, the GM sees a dim overlay */
-function drawFog(cv, map, stageW, stageH){
+/* draw fog onto a canvas sized to the stage; players see opaque cover, the GM sees a dim overlay.
+   originX/Y (from mapStageSize) shift the logical (possibly-negative, e.g. up/left of the canonical
+   board) fog cell grid into DOM space — without this, fog only ever covered cells 0..cols/0..rows,
+   leaving any area a background image had been dragged into above/left of the old origin unfogged. */
+function drawFog(cv, map, stageW, stageH, originX=0, originY=0){
   const px = map.gridSize; cv.width = Math.ceil(stageW); cv.height = Math.ceil(stageH);
   const ctx = cv.getContext("2d"); ctx.clearRect(0,0,cv.width,cv.height);
   ctx.fillStyle = cloud.isGM ? "rgba(8,10,14,0.5)" : "#0a0c10";
   const set = fogSet(map.id);
+  const minCellX = -Math.round(originX/px), minCellY = -Math.round(originY/px);
   const cols = Math.ceil(stageW/px), rows = Math.ceil(stageH/px);
-  for(let x=0;x<cols;x++) for(let y=0;y<rows;y++) if(!set.has(x+","+y)) ctx.fillRect(x*px, y*px, px, px);
+  for(let x=0;x<cols;x++) for(let y=0;y<rows;y++){
+    const cx=minCellX+x, cy=minCellY+y;
+    if(!set.has(cx+","+cy)) ctx.fillRect(x*px, y*px, px, px);
+  }
 }
 
 /* ===================================================================
@@ -6678,7 +6687,9 @@ function aoeCells(map, token, shape, size, dir){
   const s = token.size||1, span = s-1;
   const tx = Math.round(token.x), ty = Math.round(token.y);
   size = Math.max(1, size||1);
-  const add = (x,y)=>{ if(x>=0 && y>=0) set.add(x+","+y); };
+  // no x/y>=0 guard: a token facing up/left near the board's (now possibly negative) edge should still
+  // get its full AoE shape painted, not one silently clipped to the lower-right quadrant.
+  const add = (x,y)=>set.add(x+","+y);
   if(shape==="burst"){                                  // square radius around the user (Chebyshev)
     for(let x=tx-size; x<=tx+span+size; x++) for(let y=ty-size; y<=ty+span+size; y++) add(x,y);
     return set;
@@ -6728,7 +6739,7 @@ function aoeCells(map, token, shape, size, dir){
   }
   return set;
 }
-function drawAoE(cv, map, stageW, stageH){
+function drawAoE(cv, map, stageW, stageH, originX=0, originY=0){
   const px = map.gridSize; cv.width = Math.ceil(stageW); cv.height = Math.ceil(stageH);
   const ctx = cv.getContext("2d"); ctx.clearRect(0,0,cv.width,cv.height);
   if(!mapAoE) return;
@@ -6737,7 +6748,7 @@ function drawAoE(cv, map, stageW, stageH){
   ctx.fillStyle = "rgba(245,166,35,0.32)"; ctx.strokeStyle = "rgba(245,166,35,0.9)";
   ctx.lineWidth = Math.max(1, px*0.05);
   cells.forEach(k=>{ const [x,y]=k.split(",").map(Number);
-    ctx.fillRect(x*px, y*px, px, px); ctx.strokeRect(x*px+0.5, y*px+0.5, px-1, px-1); });
+    ctx.fillRect(x*px+originX, y*px+originY, px, px); ctx.strokeRect(x*px+originX+0.5, y*px+originY+0.5, px-1, px-1); });
 }
 function startAoE(token, shape, size){ mapAoE = { tokenId:token.id, shape, size:size||1, dir:"E" }; renderMap(); }
 function clearAoE(){ mapAoE = null; renderMap(); }
@@ -6745,7 +6756,7 @@ function clearAoE(){ mapAoE = null; renderMap(); }
 function refreshAoE(){
   const map = currentMapForView(); if(!map) return;
   const cv = document.querySelector("#view-map .map-aoe"); if(!cv) return;
-  const { w, h } = mapStageSize(map); drawAoE(cv, map, w, h);
+  const { w, h, originX, originY } = mapStageSize(map); drawAoE(cv, map, w, h, originX, originY);
 }
 /* floating on-map controls to adjust the shown range (shape / size / facing / clear) */
 function aoeControlPanel(map){
@@ -6877,13 +6888,13 @@ async function deleteMapImage(map, img){
 }
 
 /* one token element */
-function mapTokenNode(token, map){
+function mapTokenNode(token, map, originX=0, originY=0){
   const info = tokenHp(token);
   const px = map.gridSize, size = token.size||1, boxPx = size*px;
   const factionColor = tokenFactionColor(info);
   const selected = mapSelectActive(map) && mapSelect.ids.has(token.id);
   const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":""),
-    style:`left:${token.x*px}px;top:${token.y*px}px;width:${boxPx}px;height:${boxPx}px`
+    style:`left:${token.x*px+originX}px;top:${token.y*px+originY}px;width:${boxPx}px;height:${boxPx}px`
       +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")
       +(factionColor?`;border-color:${factionColor}`:"")});
   node.dataset.tid = token.id;
@@ -6915,7 +6926,7 @@ function mapTokenNode(token, map){
    group together (each token keeps its own relative offset and its own per-token battle-movement
    tally); dragging a token that's NOT selected still just moves that one token, same as always.
    Tapping (no drag) toggles that token's membership in the selection instead of opening its menu. */
-function attachTokenDrag(node, token, map){
+function attachTokenDrag(node, token, map, originX=0, originY=0){
   node.addEventListener("pointerdown", ev=>{
     if(ev.button!=null && ev.button>0) return;
     ev.stopPropagation();                                   // don't pan the board
@@ -6927,13 +6938,13 @@ function attachTokenDrag(node, token, map){
     let moved = false, badge = null;
     const trackMove = battleOn() && map.gridOn;               // accumulate every tile entered, diagonals cost 2
     const liveFog = !!map.fogOn;
-    const stageSize = liveFog ? mapStageSize(map) : null;
+    const stageSize = mapStageSize(map);                      // origin needed regardless of fog, for DOM<->cell math
     const fogCanvas = liveFog ? document.querySelector("#view-map .map-fog") : null;
     // one drag-context per token being moved (just `token` unless dragging a multi-selected group)
     const group = grouped ? mapTokensFor(map.id).filter(t=>mapSelect.ids.has(t.id) && tokenHp(t).editable) : [token];
     const ctx = group.map(t=>({
       t, n: t===token ? node : document.querySelector(`#view-map .map-token[data-tid="${t.id}"]`),
-      baseX0:t.x*px, baseY0:t.y*px, pathX:t.x, pathY:t.y, segMoved:0,
+      baseX0:t.x*px+originX, baseY0:t.y*px+originY, pathX:t.x, pathY:t.y, segMoved:0,
       alreadyMoved:t.moved||0, moveSpeed:trackMove?tokenMoveSpeed(t):null,
       lastRevealX:null, lastRevealY:null,
     })).filter(c=>c.n);
@@ -6942,20 +6953,22 @@ function attachTokenDrag(node, token, map){
     const applyDelta = (dxPx, dyPx, commit)=>{
       let anyRevealed = false;
       ctx.forEach(c=>{
-        let nx = Math.max(0, c.baseX0+dxPx), ny = Math.max(0, c.baseY0+dyPx);
+        // no lower bound: a token can follow a background image up/left of the canonical origin
+        // (same reasoning as attachImageDrag) — logical cell coords (c.t.x/y) can go negative.
+        let nx = c.baseX0+dxPx, ny = c.baseY0+dyPx;
         if(map.gridOn){ nx = Math.round(nx/px)*px; ny = Math.round(ny/px)*px; }   // snap to cells live
         c.n.style.left = nx+"px"; c.n.style.top = ny+"px";
-        const cx = Math.round(nx/px), cy = Math.round(ny/px);
+        const cx = Math.round((nx-originX)/px), cy = Math.round((ny-originY)/px);
         if(map.gridOn && (cx!==c.pathX || cy!==c.pathY)){ c.segMoved += tileCost(c.pathX,c.pathY,cx,cy); c.pathX=cx; c.pathY=cy; }
         if(commit){
-          if(map.gridOn){ c.t.x=c.pathX; c.t.y=c.pathY; } else { c.t.x=nx/px; c.t.y=ny/px; }
+          if(map.gridOn){ c.t.x=c.pathX; c.t.y=c.pathY; } else { c.t.x=(nx-originX)/px; c.t.y=(ny-originY)/px; }
           if(trackMove) c.t.moved = c.alreadyMoved + c.segMoved;
         }
         if(liveFog && tokenReveals(c.t) && (cx!==c.lastRevealX || cy!==c.lastRevealY)){
           c.lastRevealX=cx; c.lastRevealY=cy; revealAtCell(map, cx, cy, (c.t.size||1)-1); anyRevealed=true;
         }
       });
-      if(anyRevealed && fogCanvas) drawFog(fogCanvas, map, stageSize.w, stageSize.h);
+      if(anyRevealed && fogCanvas) drawFog(fogCanvas, map, stageSize.w, stageSize.h, stageSize.originX, stageSize.originY);
     };
     const move = e=>{
       if(Math.abs(e.clientX-startX)>4 || Math.abs(e.clientY-startY)>4) moved = true;
@@ -6994,7 +7007,7 @@ function attachTokenDrag(node, token, map){
   });
 }
 /* image-edit mode: drag to move, corner handle to resize (both grid-snap when the grid is on) */
-function attachImageDrag(node, img, map, overlay){
+function attachImageDrag(node, img, map, overlay, originX=0, originY=0){
   const px = map.gridSize, snap = v => map.gridOn ? Math.round(v/px)*px : v;
   const startDrag = (ev, mode)=>{
     if(ev.button!=null && ev.button>0) return;
@@ -7010,10 +7023,11 @@ function attachImageDrag(node, img, map, overlay){
       if(mode==="resize"){ img.w=Math.max(px, snap(w0+dx)); img.h=Math.max(px, snap(h0+dy)); }
       // no lower bound on x/y: images can sit up/left of the stage's nominal origin (pan the
       // camera to reach them) — every fresh image starts at exactly (0,0), so clamping to 0 here
-      // meant the very first drag upward or leftward was silently a no-op.
+      // meant the very first drag upward or leftward was silently a no-op. img.x/y stay the
+      // LOGICAL (origin-less) position that's saved; originX/Y only shift the DOM style below.
       else { img.x=snap(x0+dx); img.y=snap(y0+dy); }
-      node.style.left=img.x+"px"; node.style.top=img.y+"px"; node.style.width=img.w+"px"; node.style.height=img.h+"px";
-      if(overlay){ overlay.style.left=img.x+"px"; overlay.style.top=img.y+"px"; overlay.style.width=img.w+"px"; overlay.style.height=img.h+"px"; }
+      node.style.left=(img.x+originX)+"px"; node.style.top=(img.y+originY)+"px"; node.style.width=img.w+"px"; node.style.height=img.h+"px";
+      if(overlay){ overlay.style.left=(img.x+originX)+"px"; overlay.style.top=(img.y+originY)+"px"; overlay.style.width=img.w+"px"; overlay.style.height=img.h+"px"; }
     };
     const up = async ()=>{
       try{ node.releasePointerCapture(ev.pointerId); }catch(e){}
@@ -7610,10 +7624,21 @@ function attachPanZoom(viewport, stage){
 }
 
 /* stage dimensions = bounding box of all images, with a default floor */
+/* The board's canonical grid/token space is anchored at logical (0,0); background images can now sit
+   up/left of that (negative im.x/im.y — see attachImageDrag). originX/originY is how far the DOM stage
+   must be padded on the top/left so nothing ever needs a negative CSS position, snapped to whole grid
+   cells so the grid pattern and token cell math (which stay in logical, origin-less coordinates) keep
+   lining up. Every renderer that places something in DOM space — images, tokens, grid, fog, AoE — has
+   to add this before it's a screen coordinate. */
 function mapStageSize(map){
-  let w = 30*map.gridSize, h = 20*map.gridSize;
-  (map.images||[]).forEach(im=>{ if(im.w) w=Math.max(w, im.x+im.w); if(im.h) h=Math.max(h, im.y+im.h); });
-  return { w, h };
+  const px = map.gridSize;
+  let w = 30*px, h = 20*px, minX = 0, minY = 0;
+  (map.images||[]).forEach(im=>{
+    if(im.w) w=Math.max(w, im.x+im.w); if(im.h) h=Math.max(h, im.y+im.h);
+    minX = Math.min(minX, im.x); minY = Math.min(minY, im.y);
+  });
+  const originX = Math.ceil(-minX/px)*px, originY = Math.ceil(-minY/px)*px;
+  return { w: w+originX, h: h+originY, originX, originY };
 }
 /* backgrounds already re-rendered once post-decode this session (bug #6, keyed by image id) */
 const decodedBgIds = new Set();
@@ -7793,7 +7818,7 @@ function renderMap(){
   const wpanel = weatherPanel(map); if(wpanel) root.append(wpanel);
   if(meta.battleOn) root.append(initiativePanel(map, meta));
 
-  const { w:stageW, h:stageH } = mapStageSize(map);
+  const { w:stageW, h:stageH, originX, originY } = mapStageSize(map);
   const viewport = el("div",{class:"map-viewport"});
   const stage = el("div",{class:"map-stage",style:`width:${stageW}px;height:${stageH}px`});
 
@@ -7802,7 +7827,7 @@ function renderMap(){
   const editOverlays = [];   // controls/handle for each image, appended AFTER every image wrap (see below)
   map.images.forEach((im,imIdx)=>{
     const node = el("img",{class:"map-img"+(mapImgEdit?" editing":""),src:im.src,draggable:false,alt:"",decoding:"sync",
-      style:`left:${im.x}px;top:${im.y}px;`+(im.w?`width:${im.w}px;`:"")+(im.h?`height:${im.h}px;`:"")});
+      style:`left:${im.x+originX}px;top:${im.y+originY}px;`+(im.w?`width:${im.w}px;`:"")+(im.h?`height:${im.h}px;`:"")});
     // The scaled stage is a GPU layer rasterized at build time; if a background isn't decoded yet it
     // composites a blurry raster until the next full re-render (moving a token "fixed" it — bug #6).
     // Re-render ONCE per background after it decodes, keyed by id so cached data-URLs can't loop.
@@ -7811,7 +7836,7 @@ function renderMap(){
       node.decode().then(()=>{ mark(); if(currentTab==="map" && !mapDragging && !mapImgEdit) renderMap(); }).catch(mark);
     }
     if(mapImgEdit){
-      const wrap = el("div",{class:"map-img-wrap editing",style:`left:${im.x}px;top:${im.y}px;width:${im.w||stageW}px;height:${im.h||stageH}px`});
+      const wrap = el("div",{class:"map-img-wrap editing",style:`left:${im.x+originX}px;top:${im.y+originY}px;width:${im.w||stageW}px;height:${im.h||stageH}px`});
       node.style.left="0px"; node.style.top="0px"; node.style.width="100%"; node.style.height="100%";
       wrap.append(node);
       stage.append(wrap);
@@ -7819,7 +7844,7 @@ function renderMap(){
       // every image's buttons always sit above every image's body — otherwise, once an image wasn't
       // topmost, a front (usually full-size) image above it would visually and physically cover its
       // "bring forward" button, making it impossible to ever bring it back up.
-      const overlay = el("div",{class:"map-img-overlay",style:`left:${im.x}px;top:${im.y}px;width:${im.w||stageW}px;height:${im.h||stageH}px`});
+      const overlay = el("div",{class:"map-img-overlay",style:`left:${im.x+originX}px;top:${im.y+originY}px;width:${im.w||stageW}px;height:${im.h||stageH}px`});
       // Freshly-added images all start at the same x/y (0,0), so several images' control rows can sit
       // on the exact same pixels — stagger by layer index so an image directly under another still has
       // its own reachable spot (not just "in front of every wrap", but "not on top of another's buttons").
@@ -7829,7 +7854,7 @@ function renderMap(){
         el("button",{title:"delete",class:"danger",onclick:e=>{e.stopPropagation();if(confirm("Remove this image?"))deleteMapImage(map,im);}},"🗑")));
       overlay.append(el("div",{class:"map-img-handle",title:"drag to resize"}));
       const handle = overlay.querySelector(".map-img-handle");
-      attachImageDrag(wrap, im, map, overlay);
+      attachImageDrag(wrap, im, map, overlay, originX, originY);
       // resize handle uses the same drag machinery in resize mode
       handle.addEventListener("pointerdown", ev=>{ ev.stopPropagation();
         const px=map.gridSize, snap=v=>map.gridOn?Math.round(v/px)*px:v, scale=mapView.scale;
@@ -7852,14 +7877,14 @@ function renderMap(){
 
   // tokens + fog, with role-dependent stacking. In image-edit mode tokens are inert.
   const fog = fogSet(map.id);
-  const mkToken = t => { const node=mapTokenNode(t,map); if(!mapImgEdit) attachTokenDrag(node,t,map); else node.style.pointerEvents="none"; return node; };
+  const mkToken = t => { const node=mapTokenNode(t,map,originX,originY); if(!mapImgEdit) attachTokenDrag(node,t,map,originX,originY); else node.style.pointerEvents="none"; return node; };
   const visibleToken = t => {
     if(t.gmHidden) return false;                                    // GM has hidden this token from players entirely
     if(cloud.isGM || !map.fogOn) return true;
     if(t.link && ownsRow(cloud.byId[t.link.sheetId])) return true;   // always see your own
     return fog.has(Math.round(t.x)+","+Math.round(t.y));
   };
-  const drawFogInto = () => { if(!map.fogOn) return null; const cv=el("canvas",{class:"map-fog"}); drawFog(cv,map,stageW,stageH); return cv; };
+  const drawFogInto = () => { if(!map.fogOn) return null; const cv=el("canvas",{class:"map-fog"}); drawFog(cv,map,stageW,stageH,originX,originY); return cv; };
 
   if(cloud.isGM){
     const f = drawFogInto(); if(f) stage.append(f);                 // GM: dim fog under tokens
@@ -7871,7 +7896,7 @@ function renderMap(){
 
   // attack-range / AoE overlay (#1) — above tokens, with floating controls
   if(mapAoE && mapTokensFor(map.id).some(t=>t.id===mapAoE.tokenId)){
-    const acv = el("canvas",{class:"map-aoe"}); drawAoE(acv, map, stageW, stageH); stage.append(acv);
+    const acv = el("canvas",{class:"map-aoe"}); drawAoE(acv, map, stageW, stageH, originX, originY); stage.append(acv);
   } else if(mapAoE){ mapAoE = null; }                               // token gone / different map
 
   applyMapCamera(stage);
