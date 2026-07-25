@@ -399,6 +399,42 @@ function evolveTo(p, targetName, stoneItem){
   if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
   save(); refreshMon(p); toast(`Evolved into ${sp.name}! ✨`+(stoneItem?` (−1 ${stoneItem.name})`:""));
 }
+
+/* ---- Mega Evolution ----------------------------------------------------------------
+   A TEMPORARY in-battle transform into a "Mega <name>" species (reverts at End Scene).
+   Stats, types, capabilities and size follow the Mega species automatically (everything derives
+   from p.species); the Pokémon keeps its moves, level and XP and its own Ability list — the Mega's
+   Ability is surfaced for reference. Unlike evolveTo this is reversible and never permanent. */
+function megaFormsFor(p){
+  const baseName = (p.mega ? (p.preMega||p.species) : p.species);
+  const base = getSpecies(baseName); if(!base) return [];
+  const bname = base.name.toLowerCase();
+  return D.species.filter(s=>{
+    const n = s.name.toLowerCase();
+    if(!n.startsWith("mega ")) return false;                 // "Meganium"/"MEGAS" won't match (need the space)
+    const rest = n.slice(5).replace(/\s+[xy]$/,"").trim();   // "mega charizard x" → "charizard"
+    return rest === bname;
+  }).map(s=>s.name);
+}
+function megaEvolve(p, targetName){
+  const sp = getSpecies(targetName); if(!sp || p.mega) return;
+  p.preMega = p.species;
+  p.mega = true;
+  p.species = sp.name;
+  const m = pokeDerived(p).maxHP;
+  if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
+  save(); refreshMon(p);
+  const ab = (sp.abilities?.basic||[]).join(", ");
+  toast(`Mega Evolved into ${sp.name}! ✨`+(ab?` (Mega Ability: ${ab})`:""));
+}
+function megaRevert(p, silent){
+  if(!p.mega) return;
+  p.species = p.preMega || p.species;
+  delete p.mega; delete p.preMega;
+  const m = pokeDerived(p).maxHP;
+  if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
+  if(!silent){ save(); refreshMon(p); toast("Reverted from Mega Evolution"); }
+}
 /* PTU 1.05 Capture Rate (Core p.214). Returns {capturable, rate, breakdown:[[label,delta]]}. */
 function captureRate(p, opts={}){
   const d = pokeDerived(p);
@@ -606,7 +642,7 @@ function applyEndScene(c){
   if(!c) return;
   normTrainer(c.trainer);
   c.trainer.usedAP = 0; c.trainer.tempHP = 0; c.trainer.buffs = []; resetUses(c.trainer, "scene");
-  (c.pokemon||[]).forEach(p => { normPokemon(p); p.tempHP = 0; p.buffs = []; resetUses(p, "scene"); });   // buffs are combat-duration → clear (#2)
+  (c.pokemon||[]).forEach(p => { normPokemon(p); p.tempHP = 0; p.buffs = []; resetUses(p, "scene"); if(p.mega) megaRevert(p,true); });   // buffs are combat-duration → clear (#2); Mega reverts at End Scene
 }
 /* apply Extended Rest to one character object (heal HP & 1 Injury, restore AP & all uses) */
 function applyEndDay(c){
@@ -616,6 +652,7 @@ function applyEndDay(c){
   t.injuries = Math.max(0, (t.injuries||0) - 1);   // Extended Rest heals 1 Injury (Core p.249)
   t.currentHP = trainerDerived(t).hp;              // heal to remaining-injury-capped max
   (c.pokemon||[]).forEach(p => { normPokemon(p);
+    if(p.mega) megaRevert(p,true);        // revert Mega before healing so max HP is the base form's
     p.tempHP = 0; p.buffs = []; resetUses(p, "all");
     p.injuries = Math.max(0, (p.injuries||0) - 1);
     p.currentHP = pokeDerived(p).maxHP;   // heal to full (already capped by remaining Injuries)
@@ -2268,6 +2305,20 @@ function heroCard(p, sp){
     const sc = el("div",{class:"chips",style:"margin-top:6px"});
     p.statuses.forEach(k=>{ const s=statusByKey.get(k); if(s) sc.append(el("span",{class:"statuschip on",style:"cursor:default;padding:2px 8px;font-size:11px"}, s.name)); });
     main.append(sc);
+  }
+  /* Mega Evolution — temporary transform, reverts at End Scene */
+  const megas = megaFormsFor(p);
+  if(p.mega){
+    main.append(el("div",{class:"inline",style:"margin-top:6px;gap:6px;align-items:center;flex-wrap:wrap"},
+      el("span",{class:"statuschip on",style:"padding:2px 8px;font-size:11px;cursor:default"},"✨ MEGA"),
+      el("button",{class:"btn-secondary",style:"padding:4px 10px",title:"revert to the base form (also happens automatically at End Scene)",
+        onclick:()=>megaRevert(p)},"↩ Revert")));
+  } else if(megas.length){
+    const row = el("div",{class:"inline",style:"margin-top:6px;gap:6px;flex-wrap:wrap"});
+    megas.forEach(nm=> row.append(el("button",{class:"btn-secondary",style:"padding:4px 10px",
+      title:"Mega Evolve (needs the matching Mega Stone held; lasts until End Scene). Stats, types, Ability & size follow the Mega form; moves & level are kept.",
+      onclick:()=>megaEvolve(p,nm)}, megas.length>1 ? "✨ "+nm : "✨ Mega Evolve")));
+    main.append(row);
   }
   hero.append(main);
   card.append(hero);
@@ -4023,6 +4074,7 @@ function normEncounter(e){
   if(!Array.isArray(e.trainers)) e.trainers=[];
   if(typeof e.sig!=="number") e.sig=2;
   if(typeof e.players!=="number") e.players=1;
+  if(typeof e.archived!=="boolean") e.archived=false;   // hidden from the active list without deleting
   e.mons.forEach(normPokemon);
   e.trainers.forEach(tr=>{ if(tr.trainer) normTrainer(tr.trainer); if(!Array.isArray(tr.pokemon)) tr.pokemon=[]; tr.pokemon.forEach(normPokemon); });
   return e;
@@ -4696,6 +4748,7 @@ function openMonExpCalc(p){
   recalc();
   modal({title:`🧮 EXP — ${encMonName(p)}`, bodyNode:body});
 }
+let encShowArchived=false;   // device-level toggle for the Encounters archive view
 function renderEncounters(){
   const root=$("#view-encounters");
   // renderEncounters() does a full teardown/rebuild on every edit (stat/CS steppers, use-pips…),
@@ -4708,16 +4761,24 @@ function renderEncounters(){
   const top=el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;justify-content:space-between"});
   const leftc=el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap"});
   const sel=el("select",{title:"Active encounter"});
-  if(!arr.length) sel.append(el("option",{value:""},"— no encounters —"));
-  const cur=activeEncounter();
-  arr.forEach(e=> sel.append(el("option",{value:e.id, selected:e.id===cur?.id}, e.name||"(unnamed)")));
+  const visible = arr.filter(e=> encShowArchived || !e.archived);
+  const archivedCount = arr.filter(e=> e.archived).length;
+  if(!visible.length) sel.append(el("option",{value:""},"— no encounters —"));
+  let cur=activeEncounter();
+  if(cur && cur.archived && !encShowArchived) cur = visible[0] || null;   // active one is hidden → fall to first visible
+  visible.forEach(e=> sel.append(el("option",{value:e.id, selected:e.id===cur?.id}, (e.archived?"📦 ":"")+(e.name||"(unnamed)"))));
   sel.addEventListener("change",()=>{ state.activeEncounterId=sel.value; saveEnc(); renderEncounters(); });
   leftc.append(sel);
   leftc.append(el("button",{class:"btn ghost",onclick:()=>{ const n=prompt("Encounter name:","New Encounter"); if(n===null)return; const e=newEncounter(n||"New Encounter"); arr.push(e); state.activeEncounterId=e.id; saveEnc(); renderEncounters(); }},"＋ New"));
   if(cur){
     leftc.append(el("button",{class:"btn ghost",title:"rename",onclick:()=>{ const n=prompt("Rename encounter:",cur.name); if(n===null)return; cur.name=n; saveEnc(); renderEncounters(); }},"✎"));
+    leftc.append(el("button",{class:"btn ghost",title:cur.archived?"unarchive — bring back to the active list":"archive — hide from the active list without deleting it",
+      onclick:()=>{ cur.archived=!cur.archived; if(cur.archived && !encShowArchived) state.activeEncounterId = arr.filter(e=>!e.archived)[0]?.id || null; saveEnc(); renderEncounters(); }},
+      cur.archived?"📤 Unarchive":"📦 Archive"));
     leftc.append(el("button",{class:"btn ghost danger",title:"delete",onclick:()=>{ if(!confirm(`Delete encounter "${cur.name}"?`))return; const i=arr.findIndex(x=>x.id===cur.id); if(i>=0)arr.splice(i,1); state.activeEncounterId=arr[0]?.id||null; saveEnc(); renderEncounters(); }},"🗑"));
   }
+  if(archivedCount) leftc.append(el("button",{class:"btn ghost"+(encShowArchived?" on":""),title:"show or hide archived encounters",
+    onclick:()=>{ encShowArchived=!encShowArchived; renderEncounters(); }}, encShowArchived?"Hide archived":`📦 Archived (${archivedCount})`));
   // port encounters saved on THIS device (pre-cloud) up into the campaign cloud
   if(mode==="cloud" && cloud.isGM && (state.encounters?.length)){
     const have = new Set(arr.map(e=>e.id));
@@ -7853,7 +7914,9 @@ function renderMap(){
     if(map && !weatherIsClear(pw)) bar.append(el("span",{class:"battle-badge"}, `${pw.icon} ${pw.name}`));
     if(map && Object.values(cloud.byId).some(r=>ownsRow(r))){
       bar.append(el("button",{class:"btn-primary",onclick:()=>openAddToken(map)},"＋ Add my token"));
-      if(mapTokensFor(map.id).some(t=>tokenHp(t).editable)) bar.append(el("span",{class:"map-sep"}),
+      // Select buttons always show for a player who owns a sheet — they used to be hidden until an
+      // editable token already existed on the map, which is exactly when a player wants to grab & place them.
+      bar.append(el("span",{class:"map-sep"}),
         el("button",{class:"btn-secondary"+(mapSelectActive(map)?" on":""),onclick:()=>toggleMapSelect(map),
           title:"Tap your tokens to select several, then drag any of them to move together"},
           mapSelectActive(map)?`✓ Selecting (${mapSelect.ids.size})`:"☑ Select tokens"),
