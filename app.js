@@ -4084,7 +4084,9 @@ function encList(){ return mode==="cloud" ? ensureEnc().data.encounters : (state
 function activeEncounter(){ const a=encList(); return a.find(e=>e.id===state.activeEncounterId) || a[0]; }
 let encSaveTimer;
 function saveEnc(){
-  if(mode==="cloud"){ ensureEnc();   // conflict-safe write is debounced below (CAS by rev, not clock)
+  if(mode==="cloud"){
+    const row = ensureEnc();   // conflict-safe write is debounced below (CAS by rev, not clock)
+    cacheSharedRow("enc", row);   // optimistic: survives a refresh before the debounced write lands
     clearTimeout(encSaveTimer); encSaveTimer=setTimeout(()=>{ encSaveTimer=null; encUpsert(); }, 400); return; }
   try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){ toast("⚠ Could not save encounter"); }
 }
@@ -5163,7 +5165,25 @@ function initCloud(_tries){
     return void setTimeout(()=>initCloud(t+1), 100);
   }
   injectCloudButton();
-  try { cloud.client = supabase.createClient(CLOUD_CFG.url, CLOUD_CFG.anonKey); }
+  try {
+    // no-store + Cache-Control:no-cache on every request: a plain fetch() to the REST API can be
+    // served stale by the browser's HTTP cache or an edge cache (Supabase sits behind Cloudflare) —
+    // the exact same class of bug sw.js already works around for index.html (see its big comment).
+    // For a GET this means casUpsert's "someone moved the row, refetch + merge" step, and any of the
+    // periodic fetchEnc/fetchPC/fetchMap resyncs, can read a REV THAT'S ALREADY STALE — so the CAS
+    // write keeps failing against a target that never matches, the retry loop exhausts (the "Save
+    // kept conflicting" toast) even with a single solo editor, and a reconnect/refresh re-adopts that
+    // same stale snapshot, which is what showed up as encounter edits repeatedly reverting.
+    const noCacheFetch = (input, init) => {
+      // spreading a Headers instance (what supabase-js passes) drops its entries silently —
+      // {...headers} only copies OWN ENUMERABLE PROPS, which a Headers object has none of. Use the
+      // Headers constructor to merge instead, or the apikey/Authorization headers vanish.
+      const headers = new Headers(init && init.headers);
+      headers.set("Cache-Control", "no-cache");
+      return fetch(input, { ...init, cache: "no-store", headers });
+    };
+    cloud.client = supabase.createClient(CLOUD_CFG.url, CLOUD_CFG.anonKey, { global: { fetch: noCacheFetch } });
+  }
   catch(e){ console.error("Supabase init failed", e); return; }
   cloud.userId = myUserId();
   try{
@@ -5348,6 +5368,32 @@ function recoverUnsavedFromCache(){
     }
   });
 }
+/* Same "edits revert after refresh" safety net as recoverUnsavedFromCache above, but for the four
+   SHARED reserved rows (PC / map meta / map tokens / encounters). These were never cached at all,
+   so an exhausted CAS retry (casUpsert gives up after 8 attempts and just toasts "kept conflicting
+   — will retry on next change", but nothing actually retries until the user edits again) or a
+   refresh mid-debounce silently discarded the edit with no way back — unlike character sheets,
+   which recoverUnsavedFromCache already protects. Cached one JSON blob per kind (not reused from
+   the per-character cache, whose format is a byId array). */
+function sharedCacheKey(kind){ return "ptu_cloud_cache_shared_"+kind+"_"+cloud.campaign; }
+function cacheSharedRow(kind, row){
+  if(!row) return;
+  try{ const { _base, ...rest } = row; localStorage.setItem(sharedCacheKey(kind), JSON.stringify(rest)); }catch(e){}
+}
+/* On (re)connect, compare the cached copy against the row we just fetched: if the cache was based
+   on the SAME server rev (so it was never superseded by our own later successful write) yet its
+   data differs from what's now live, our last write to it never actually reached the server —
+   restore it and push it back through CAS (which merges, never clobbers, if the server has since
+   moved on). */
+function recoverUnsyncedShared(kind, getRow, upsertFn){
+  let cached; try{ cached = JSON.parse(localStorage.getItem(sharedCacheKey(kind))||"null"); }catch(e){ return; }
+  const cur = getRow();
+  if(!cached || !cur) return;
+  if(cached._rev!=null && cached._rev===cur._rev && !deepEqual(cached.data, cur.data)){
+    cur.data = cached.data;
+    upsertFn();   // fire-and-forget, conflict-safe
+  }
+}
 /* the shared PC storage (visible to every member, so it's fetched separately from the roster) */
 function pcData(data){
   data = (data && typeof data==="object") ? data : {};
@@ -5387,7 +5433,8 @@ function ensurePCRow(){
 function pcUpsert(){
   const row = ensurePCRow();
   row.owner_name = "PC"; row.name = "PC Storage";
-  return serialize(pcChain, ()=> casUpsert(row));   // conflict-safe (merges concurrent PC edits by id)
+  cacheSharedRow("pc", row);   // optimistic: survives a refresh/crash before the write below lands
+  return serialize(pcChain, ()=> casUpsert(row).then(ok=>{ cacheSharedRow("pc", row); return ok; }));
 }
 
 /* ---- shared battle map: reserved rows (meta + tokens), same pattern as the PC ---- */
@@ -5448,12 +5495,16 @@ function ensureMapTokens(){
 async function mapMetaUpsert(){
   const row = ensureMapMeta();
   row.owner_name = "Map"; row.name = "Battle Map";
-  return casUpsert(row);                                // conflict-safe (callers wrap in mapMetaChain)
+  const ok = await casUpsert(row);                      // conflict-safe (callers wrap in mapMetaChain)
+  cacheSharedRow("mapmeta", row);
+  return ok;
 }
 async function mapTokensUpsert(){
   const row = ensureMapTokens();
   row.owner_name = "Map"; row.name = "Map Tokens";
-  return casUpsert(row);                                // conflict-safe: token positions/HP merge by id
+  const ok = await casUpsert(row);                      // conflict-safe: token positions/HP merge by id
+  cacheSharedRow("maptokens", row);
+  return ok;
 }
 /* Debounced, coalescing save of the shared map-tokens row. HP ticks and drag commits arrive in
    bursts and each awaited a full upload before the UI updated — that was the "HP updates ~10s
@@ -5501,7 +5552,8 @@ const pcChain  = { chain: Promise.resolve() };
 let mapTokensTimer;
 const mapTokensChain = { chain: Promise.resolve() };
 function mapTokensSave(){
-  ensureMapTokens();   // conflict-safe write is debounced below; tokens merge by id on any conflict
+  const row = ensureMapTokens();   // conflict-safe write is debounced below; tokens merge by id on any conflict
+  cacheSharedRow("maptokens", row);   // optimistic: survives a refresh before the debounced write lands
   clearTimeout(mapTokensTimer);
   mapTokensTimer = setTimeout(()=>{ mapTokensTimer=null; serialize(mapTokensChain, mapTokensUpsert); }, 350);
 }
@@ -5515,7 +5567,8 @@ function mapTokensSave(){
 let mapMetaTimer;
 const mapMetaChain = { chain: Promise.resolve() };
 function mapMetaSave(){
-  ensureMapMeta();   // conflict-safe write is debounced below (CAS by server rev)
+  const row = ensureMapMeta();   // conflict-safe write is debounced below (CAS by server rev)
+  cacheSharedRow("mapmeta", row);   // optimistic: survives a refresh before the debounced write lands
   clearTimeout(mapMetaTimer);
   mapMetaTimer = setTimeout(()=>{ mapMetaTimer=null; serialize(mapMetaChain, mapMetaUpsert); }, 300);
 }
@@ -5575,7 +5628,7 @@ function ensureEnc(){
 function encUpsert(){
   const row = ensureEnc();
   row.owner_name = "Encounters"; row.name = "Encounters";
-  return serialize(encChain, ()=> casUpsert(row));   // conflict-safe (encounters merge by id)
+  return serialize(encChain, ()=> casUpsert(row).then(ok=>{ cacheSharedRow("enc", row); return ok; }));   // conflict-safe (encounters merge by id)
 }
 async function cloudConnect(campaign, name, gmCode, silent){
   campaign = (campaign||"").trim().toLowerCase(); name = (name||"").trim();
@@ -5587,8 +5640,12 @@ async function cloudConnect(campaign, name, gmCode, silent){
   try{
     await fetchRoster();
     await fetchPC();
+    recoverUnsyncedShared("pc", ()=>cloud.pc, pcUpsert);
     await fetchMap();
+    recoverUnsyncedShared("mapmeta", ()=>cloud.mapMeta, ()=>serialize(mapMetaChain, mapMetaUpsert));
+    recoverUnsyncedShared("maptokens", ()=>cloud.mapTokens, ()=>serialize(mapTokensChain, mapTokensUpsert));
     const encStatus = await fetchEnc();
+    recoverUnsyncedShared("enc", ()=>cloud.enc, encUpsert);
     // One-time seed of a GM's pre-cloud device encounters — ONLY when the cloud row genuinely does
     // NOT exist (query succeeded with no row) AND we've never seeded this campaign before. Never on
     // a fetch error or transient-empty result. Insert-only + this guard together stop a stale device

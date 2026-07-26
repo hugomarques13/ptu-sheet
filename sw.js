@@ -11,7 +11,7 @@
    ?v=, which pinned users to the old app.js. Only a hard refresh (which bypasses both the SW and
    the HTTP cache) escaped it, and that's awkward-to-impossible on mobile. `cache:"no-store"`
    makes the HTML fetch genuinely go to the network. */
-const CACHE = "ptu-sheet-v7";
+const CACHE = "ptu-sheet-v8";   // bumped: v7 could have cross-origin (Supabase) responses wrongly cached
 /* Precache the shell only. The versioned assets (app.js?v=NN, styles.css?v=NN, data/data.js?v=NN)
    are deliberately NOT listed: their real URLs carry a ?v= the install step can't know, so listing
    the bare paths cached copies nothing ever requests, while the real files get cached at runtime on
@@ -53,6 +53,16 @@ self.addEventListener("fetch", e => {
     );
     return;
   }
+
+  // Cross-origin requests (Supabase's REST/Realtime API, hotlinked Pokémon art, …) must NEVER be
+  // cache-first: this branch was matching them too (only `isHTML` above checked origin), so a
+  // browser with the app installed as a PWA would permanently pin the FIRST-EVER response for a
+  // given Supabase query URL in Cache Storage and keep serving it forever, even after real writes
+  // changed the row server-side — indistinguishable from data "reverting" and, since casUpsert's
+  // conflict-retry re-fetch reuses that exact same URL, an unwinnable compare-and-swap loop (the
+  // "Save kept conflicting" toast) for a genuinely solo editor. Only same-origin (our own static,
+  // version-busted assets) get cache-first; everything else always hits the network.
+  if (!sameOrigin) { return; }
 
   // cache-first for versioned assets, with a network fallback that populates the cache
   e.respondWith(
