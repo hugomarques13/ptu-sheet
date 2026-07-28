@@ -189,6 +189,7 @@ textarea{resize:vertical; min-height:64px}
 .refitem .r-meta{font-size:12px; color:var(--muted); margin-top:2px}
 .refitem .r-body{font-size:13px; margin-top:6px; white-space:pre-wrap}
 .kv{display:inline-flex; gap:4px; font-size:12px; background:var(--panel-2); border:1px solid var(--line); border-radius:6px; padding:1px 7px; font-weight:600; margin:2px 4px 0 0}
+.kw-hint{border-bottom:1px dotted var(--muted); cursor:help}
 
 /* ---------- Modal ---------- */
 .modal-bg{position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:100; display:flex; align-items:flex-start; justify-content:center; padding:20px 12px; overflow:auto}

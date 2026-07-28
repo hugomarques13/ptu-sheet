@@ -1207,6 +1207,23 @@ function renderTrainer(){
   root.append(skc);
 }
 
+/* Auto Injuries (Core p.249-250): a Pokémon/Trainer gains an Injury from (a) Massive Damage —
+   a single hit ≥50% of undamaged max HP — and (b) crossing each 50%-of-max HP marker downward
+   (50%, 0%, −50%, −100%, …). Both can apply on the same hit. Verified against the rule via web
+   search (2026-07-28) since the app had no auto-injury logic before. */
+function ownerFullHP(owner){
+  return owner.species!==undefined ? pokeDerived(owner).fullMaxHP : trainerDerived(owner).fullHP;
+}
+function injuriesFromHit(fullHP, oldHP, newHP, dmgAmount){
+  if(!fullHP || dmgAmount<=0) return 0;
+  let n = 0;
+  for(let frac=0.5, i=0; frac*fullHP >= newHP && i<40; frac-=0.5, i++){
+    const t = frac*fullHP;
+    if(oldHP > t && newHP <= t) n++;
+  }
+  if(dmgAmount >= fullHP*0.5) n++;               // Massive Damage — independent of markers crossed
+  return n;
+}
 /* Damage / Heal control: one signed input — type 20 to heal 20, −20 to take 20 damage. */
 /* `owner` (optional) = the creature taking the damage; when it has active Damage-Reduction
    buffs, a negative (damage) entry is auto-reduced by the DR and any one-shot DR buff is spent. */
@@ -1225,7 +1242,15 @@ function damageHealRow(getHP, setHP, owner){
         n = -applied;
       }
     }
-    setHP(getHP() + n);
+    const oldHP = getHP();
+    if(n < 0 && owner){
+      const inj = injuriesFromHit(ownerFullHP(owner), oldHP, oldHP+n, -n);
+      if(inj > 0){
+        owner.injuries = (owner.injuries||0) + inj;
+        toast(`+${inj} Injur${inj===1?"y":"ies"}! (Massive Damage / HP marker crossed)`);
+      }
+    }
+    setHP(oldHP + n);
   };
   box.addEventListener("keydown", e=>{ if(e.key==="Enter") apply(); });
   wrap.append(
@@ -1653,7 +1678,14 @@ const techByName = new Map(TECHS.map(x => [x.name, x]));
 /* Techniques belonging to a class: their prereq names the class (alias) or a Feature of the class. */
 function techniquesForClass(className){
   const featSet = classFeatNameSet(className);
-  return TECHS.filter(tq => membershipTokens(tq.prereq).some(tok => tokenMatchesClass(tok, className) || featSet.has(tok)));
+  // Martial Artist's 6 named Martial Achievements (Wrestlemania, Heightened Intensity, …) are
+  // keyed to an Ability name ("Guts Ability") rather than a Feature/class name, since the book
+  // grants each one through the "Martial Achievement" Feature based on the ability chosen at
+  // Martial Artist. Recognize that "<X> Ability" pattern for any class that has earned the
+  // granting Feature — this is the only place the DB uses that prereq shape.
+  return TECHS.filter(tq => membershipTokens(tq.prereq).some(tok =>
+    tokenMatchesClass(tok, className) || featSet.has(tok) ||
+    (/\bAbility$/i.test(tok) && featSet.has("Martial Achievement"))));
 }
 function techniqueDetailHTML(name){
   const tq = techByName.get(name); if(!tq) return "<span class='muted'>—</span>";
@@ -3311,6 +3343,46 @@ function effectThresholds(text){
   });
   return res.sort((a,b)=>a.n-b.n);
 }
+/* ---- Damage-automation helpers (Core p.199 ability texts + p.235/242) ---- */
+const IRON_FIST_MOVES = new Set(["Bullet Punch","Comet Punch","Dizzy Punch","Drain Punch","Dynamic Punch",
+  "Fire Punch","Meteor Mash","Shadow Punch","Ice Punch","Mach Punch","Mega Punch","Sky Uppercut",
+  "Thunder Punch","Focus Punch","Hammer Arm","Power-Up Punch"].map(s=>s.toLowerCase()));
+function isFiveStrike(m){ return /five\s*strike/i.test(m?.range||""); }
+function isDoubleStrike(m){ return /double\s*strike/i.test(m?.range||""); }
+/* Critical Hit Range (Core p.235): natural 20 always crits; some moves/abilities lower the
+   threshold. Compared against the natural (un-modified) Accuracy die. */
+function critThreshold(p, m){
+  let t = 20;
+  const own = /critical hit (?:range )?(?:is |on )?(\d{1,2})[+-]/i.exec(m?.effect || "");
+  if(own) t = Math.min(t, +own[1]);
+  if(hasAbility(p,"Super Luck")) t = Math.min(t, 18);
+  if(hasAbility(p,"Razor Edge")) t -= /tail/i.test(m?.name||"") ? 3 : 2;
+  if(hasAbility(p,"Beam Cannon") && !/^melee/i.test(m?.range||"") && /1 target/i.test(m?.range||"")) t -= 3;
+  if(hasAbility(p,"Gore") && /^horn attack$/i.test(m?.name||"")) t = Math.min(t, 18);
+  return Math.max(2, t);
+}
+/* Damage-boosting abilities that auto-apply to a move roll — mirrors buffMods()' shape so it
+   composes the same way. thresholds = effectThresholds(m.effect), needed for Sheer Force's
+   "has a secondary effect" check. */
+function abilityDamageMods(p, m, baseDBVal, thresholds){
+  const mods = { db:0, flat:0, why:[] };
+  if(hasAbility(p,"Iron Fist") && IRON_FIST_MOVES.has((m.name||"").toLowerCase())){
+    mods.db += 2; mods.why.push("Iron Fist +2 DB"); }
+  if(hasAbility(p,"Technician") && (isFiveStrike(m) || isDoubleStrike(m) || (baseDBVal!=null && baseDBVal<=6))){
+    mods.db += 2; mods.why.push("Technician +2 DB"); }
+  if(hasAbility(p,"Sheer Force") && thresholds.length){
+    mods.db += 2; mods.why.push("Sheer Force +2 DB (secondary effect suppressed)"); }
+  if(hasAbility(p,"Sheer Force [Errata]") && thresholds.length){
+    mods.flat += 10; mods.why.push("Sheer Force +10 damage (secondary effect suppressed)"); }
+  return mods;
+}
+/* Five Strike (Core p.242): roll 1d8 for hit count, then the Move's Damage Base is multiplied
+   by that count. Verified via web search against the PTU 1.05 core text (2026-07-28). */
+function fiveStrikeRoll(){
+  const d8 = 1+Math.floor(Math.random()*8);
+  const hits = d8===1?1 : d8<=3?2 : d8<=6?3 : d8===7?4 : 5;
+  return { d8, hits };
+}
 function openMoveRoll(p, m, sp){
   const d = pokeDerived(p);
   const types = sp?.types || [];
@@ -3337,7 +3409,12 @@ function openMoveRoll(p, m, sp){
   const accCS = d.cs.acc||0;              // Accuracy Combat Stage: flat add to Accuracy Rolls (Core p.234)
   const wx = weatherRollMods(p, m, mtype);      // current Weather Condition (Core p.342)
   const effAC = wx.acOverride!=null ? wx.acOverride : m.ac;   // e.g. Thunder is AC 11 in Sun
-  const finalDB = () => { const b=baseDB(); return b!=null ? b + (stab?2:0) + (bm.db||0) : null; };
+  const thresholds = effectThresholds(m.effect);
+  const abilMods = abilityDamageMods(p, m, baseDB(), thresholds);
+  const fiveStrike = isFiveStrike(m);
+  const critT = critThreshold(p, m);
+  const finalDB = () => { const b=baseDB();
+    return b!=null ? b + (stab?2:0) + (bm.db||0) + abilMods.db : null; };
   const diceStr = () => { const f=finalDB(); return f!=null ? (DB_TABLE[f]||"").split("/")[0].trim() : ""; };
 
   const body = el("div",{});
@@ -3358,7 +3435,7 @@ function openMoveRoll(p, m, sp){
       `Accuracy: ${wx.autoHit ? "auto-hit" : m.ac!=null ? "1d20" : "—"}`),
     el("div",{class:"small muted",style:"margin-top:2px"},
       wx.autoHit ? `${m.name} cannot miss in ${wx.weather.name} — no Accuracy Check needed.`
-      : m.ac!=null ? `Roll 1d20 — hits if it's ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote}. Nat 20 auto-hits/crits, nat 1 auto-misses.`
+      : m.ac!=null ? `Roll 1d20 — hits if it's ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote}. Roll ${critT===20?"20":critT+"+"} auto-hits/crits, nat 1 auto-misses.`
                  : "This move has no Accuracy Check.")));
   const dmgBox = el("div",{});            // rebuilt whenever the Weight Class changes
   explain.append(dmgBox);
@@ -3380,7 +3457,9 @@ function openMoveRoll(p, m, sp){
     const fDB = finalDB(), ds = diceStr();
     const dm = ds.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
     const dn = dm[1]?+dm[1]:0, dfaces = dm[2]?+dm[2]:0, dflat = dm[3]?parseInt(dm[3].replace(/\s/g,"")):0;
-    dbChip.textContent = fDB!=null ? `DB ${baseDB()}${stab?` +2 STAB → ${fDB}`:""}` : "No damage";
+    dbChip.textContent = fDB!=null
+      ? `DB ${baseDB()}${stab?` +2 STAB`:""}${abilMods.db?` +${abilMods.db} ability`:""} → ${fDB}`
+      : "No damage";
     dbChip.style.display = "";
     dmgBox.innerHTML = "";
     if(fDB!=null && dn){
@@ -3390,9 +3469,14 @@ function openMoveRoll(p, m, sp){
       const why=[`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${fDB}${stab?` (DB ${baseDB()} +2 STAB)`:""}`];
       if(atkStat) why.push(`${atkStat} = your ${atkLbl}`);
       if(wx.dmg) why.push(`${wx.dmg>0?"+":"−"}${Math.abs(wx.dmg)} = ${wx.weather.name}`);
+      if(abilMods.why.length) why.push(abilMods.why.join(", "));
       dmgBox.append(el("div",{},
         el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${expr}`),
         el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ")+`. Target then subtracts their ${defNote}.`)));
+      if(fiveStrike) dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
+        "🎯 Five Strike — rolling 1d8 for hit count when you roll dice; the Damage Base above is multiplied by hits (Technician already included)."));
+      if(critT<20) dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
+        `Critical Hit Range: ${critT}–20 for this Pokémon/move.`));
     } else {
       dmgBox.append(el("div",{},
         el("div",{style:"font-size:16px;font-weight:700"}, "Damage: —"),
@@ -3467,7 +3551,6 @@ function openMoveRoll(p, m, sp){
   }
 
   /* --- move effect text, always shown; high-roll thresholds highlighted (#4) --- */
-  const thresholds = effectThresholds(m.effect);
   if(m.effect){
     const ec = el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"});
     ec.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},"Effect"));
@@ -3487,6 +3570,9 @@ function openMoveRoll(p, m, sp){
     const acc = 1+Math.floor(Math.random()*20);
     const accTot = acc + (bm.acc||0) + accCS;
     const accBits = []; if(bm.acc) accBits.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} buffs`); if(accCS) accBits.push(`${accCS>0?"+":"−"}${Math.abs(accCS)} Accuracy CS`);
+    // Critical Hit Range (Core p.235): widened by move/ability (critT) and by active buffs (bm.crit)
+    const effCritT = Math.max(2, critT - (bm.crit||0));
+    const isCrit = !wx.autoHit && acc>=effCritT;
     const accLine = el("div",{style:fDB!=null?"margin-bottom:10px":""});
     accLine.append(el("div",{class:"lbl",style:"color:var(--muted)  ;font-weight:800"},"ACCURACY ROLL"));
     if(wx.autoHit){
@@ -3496,11 +3582,16 @@ function openMoveRoll(p, m, sp){
       accLine.append(el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`,
         el("span",{class:"muted",style:"font-size:14px;font-weight:600"}, accBits.length?`  (${acc} ${accBits.join(" ")})`:"  (1d20)")));
       if(effAC!=null) accLine.append(el("div",{class:"small muted"},
-        `Hits if ${accTot} ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote}.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`));
+        `Hits if ${accTot} ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote}.${acc===1?" Natural 1 — auto-miss.":isCrit?` Roll ${acc} ≥ crit range ${effCritT} — Critical Hit!`:""}`));
+      if(isCrit) accLine.append(el("div",{style:"font-size:20px;font-weight:800;color:var(--bad);margin-top:2px"}, "💥 CRITICAL HIT!"));
     }
     out.append(accLine);
     // extra move effects that trigger on this Accuracy roll (#4) — compared vs the natural 1d20
-    if(thresholds.length){
+    const sheerForceActive = hasAbility(p,"Sheer Force") || hasAbility(p,"Sheer Force [Errata]");
+    if(sheerForceActive && thresholds.length){
+      out.append(el("div",{class:"small muted",style:"margin:2px 0 10px"},
+        "Sheer Force suppresses this move's secondary effect (traded for the damage bonus above)."));
+    } else if(thresholds.length){
       const hit = thresholds.filter(t=>acc>=t.n), miss = thresholds.filter(t=>acc<t.n);
       const tl = el("div",{style:"margin:2px 0 10px"});
       hit.forEach(t=>{
@@ -3515,17 +3606,33 @@ function openMoveRoll(p, m, sp){
       out.append(tl);
     }
     if(fDB!=null){
-      const r = rollDiceString(diceStr());
+      // Five Strike (Core p.242): roll 1d8 for hit count, DB is multiplied by hits before the dice lookup
+      const hitsInfo = fiveStrike ? fiveStrikeRoll() : null;
+      const effFDB = hitsInfo ? Math.min(28, fDB*hitsInfo.hits) : fDB;
+      const ds = (DB_TABLE[effFDB]||DB_TABLE[fDB]||"").split("/")[0].trim();
+      const r = rollDiceString(ds);
       const dmgLine = el("div",{});
       dmgLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"));
       if(r){
-        const total = Math.max(0, r.total + (atkStat||0) + (bm.dmg||0) + (wx.dmg||0));
-        dmgLine.append(el("div",{style:"font-size:26px;font-weight:800;color:var(--accent)"}, `💥 ${total}`));
+        // Critical Hit (Core p.235): the Damage Dice are doubled — the stat bonus is NOT doubled
+        let critExtra = 0; const critWhy = [];
+        if(isCrit){
+          const r2 = rollDiceString(ds); critExtra += r2.dice; critWhy.push(`+${r2.dice} crit (doubled dice)`);
+          if(hasAbility(p,"Sniper")){ const r3 = rollDiceString(ds); critExtra += r3.dice; critWhy.push(`+${r3.dice} Sniper`); }
+          if(hasAbility(p,"Sniper [Errata]")){ const r4 = rollDiceString("3d10"); critExtra += r4.total; critWhy.push(`+${r4.total} Sniper [Errata]`); }
+        }
+        const total = Math.max(0, r.total + (atkStat||0) + (bm.dmg||0) + (wx.dmg||0) + abilMods.flat + critExtra);
+        dmgLine.append(el("div",{style:`font-size:26px;font-weight:800;color:${isCrit?"var(--bad)":"var(--accent)"}`},
+          `${isCrit?"💥 CRIT! ":"💥 "}${total}`));
         const parts=[`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`];
         if(atkStat) parts.push(`+ ${atkStat} ${atkLbl}`);
         if(bm.dmg)  parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs`);
         if(wx.dmg)  parts.push(`${wx.dmg>0?"+":""}${wx.dmg} ${wx.weather.name}`);
+        if(abilMods.flat) parts.push(`${abilMods.flat>0?"+":""}${abilMods.flat} ability`);
+        if(critWhy.length) parts.push(critWhy.join(" "));
         parts.push(`= ${total}`);
+        if(hitsInfo) dmgLine.append(el("div",{class:"small muted",style:"margin-top:2px"},
+          `🎯 Five Strike: 1d8 → ${hitsInfo.d8} = ${hitsInfo.hits} hit${hitsInfo.hits===1?"":"s"} — DB ${fDB} ×${hitsInfo.hits} = ${effFDB}`));
         dmgLine.append(el("div",{class:"small muted",style:"margin-top:4px"}, parts.join("  ")));
         if(bm.crit) dmgLine.append(el("div",{class:"small muted"}, `Crit / Effect range widened by +${bm.crit} (buffs).`));
         dmgLine.append(el("div",{class:"small muted"}, `Target subtracts ${defNote} & damage reduction.`));
@@ -4887,6 +4994,77 @@ function refGeneric(name, meta, body, prereq){
   return it;
 }
 const esc = s => String(s??"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const escAttr = s => esc(s).replace(/"/g,"&quot;");
+
+/* ===================================================================
+   Keyword-hover explainer — Core p.238-241 "Move Keywords" plus a few
+   common Range-field labels (Field/Weather/Hazard/…). Vocabulary drawn
+   from the actual tokens used in data/moves.json's `range` field, not
+   guessed. Hover shows the native title tooltip; tap/click shows a toast
+   (mobile has no hover) via the delegated listener below.
+=================================================================== */
+const KEYWORD_DEFS = {
+  "push":"On a hit, the target is pushed 2 meters directly away from the user (unless it resists the push).",
+  "trip":"On a hit, the target may be knocked down (Tripped) — see its own effect text for the exact trigger.",
+  "smite":"If this move Misses, it still deals damage as if resisted one further step, with no secondary effects.",
+  "recoil":"The user loses HP equal to the given fraction of the damage they just dealt.",
+  "dash":"Cannot be used while the user is Stuck.",
+  "groundsource":"Accuracy isn't reduced by Rough Terrain, and it ignores Blocking Terrain.",
+  "interrupt":"Can be used out of turn to interrupt another action, at the cost of the user's own next action.",
+  "reaction":"Usable on someone else's turn in response to a trigger, outside the user's own normal action economy.",
+  "trigger":"Can only be used when its specific triggering condition (see its own effect text) is met.",
+  "priority":"Acts before the normal turn order regardless of Speed — a \"(Limited)\" tag means only in the specific circumstances noted in its effect text.",
+  "sonic":"A sound-based effect — blocked by Sonic-immunity abilities (e.g. Soundproof) and similar effects.",
+  "powder":"A powder-based effect — Grass-types and powder-immune abilities (e.g. Overcoat) are unaffected.",
+  "social":"Used outside of combat (social scenes / Contests), not a combat attack.",
+  "friendly":"Can be used on an ally without it counting as a hostile act (won't trigger Retaliation-style effects).",
+  "versatile":"The user chooses whether it counts as a Physical or Special move each time it's used.",
+  "slice":"A cutting attack — interacts with Slice-boosting effects (e.g. some weapons/abilities).",
+  "fling":"A thrown attack that uses a held item as ammunition.",
+  "pass":"Used to hand off an effect or the turn to an ally — see its own effect text.",
+  "pledge":"Combines with an ally's other Pledge move used that round for a combined effect.",
+  "set-up":"Must be Set Up before it can be used — see its own effect text for the setup step.",
+  "set up":"Must be Set Up before it can be used — see its own effect text for the setup step.",
+  "shield":"Grants a defensive shielding effect — see its own effect text.",
+  "reckless":"Carries an extra risk/drawback to the user — see its own effect text.",
+  "field":"Affects the whole battlefield rather than a single target.",
+  "weather":"Changes the current Weather Condition.",
+  "hazard":"Sets a persistent hazard on the field (like a trap) rather than hitting a target directly.",
+  "aura":"Creates a lingering aura/zone effect around its point of origin.",
+  "environ":"Alters the terrain/environment itself.",
+  "blessing":"Grants a team-wide Blessing effect — see its own effect text.",
+  "berry":"Interacts with (usually consumes) a held Berry.",
+  "coat":"Coats a weapon or body part with an effect that carries into follow-up attacks.",
+  "illusion":"Creates a disguise or illusory effect.",
+  "execute":"A finishing move meant for use against fainted or helpless targets.",
+  "exhaust":"Using it exhausts the user in some way — see its own effect text for the cost.",
+  "hp loss":"Costs the user HP just to use, beyond any Recoil from landing the hit.",
+  "free action":"Costs a Free Action to use (Core p.223), separate from its listed Frequency.",
+  "swift action":"Costs a Swift Action to use.",
+  "full action":"Costs a Full Action to use.",
+  "wr":"Weapon Range — its range matches whatever ranged weapon the user is currently wielding.",
+  "double strike":"Hits with two separate Accuracy Rolls; if both hit, the Damage Base is doubled.",
+  "doublestrike":"Hits with two separate Accuracy Rolls; if both hit, the Damage Base is doubled.",
+  "five strike":"Hits 1-5 times: roll 1d8 for the hit count, then multiply the Damage Base by that count.",
+  "healing":"Restores HP instead of (or as well as) dealing damage.",
+};
+const KEYWORD_TERMS = Object.keys(KEYWORD_DEFS).sort((a,b)=>b.length-a.length);   // longest first
+/* wrap recognized keywords in an already-esc()'d HTML string with a hint span. Only call on text
+   that has already been through esc() — this inserts markup, so calling it before esc() would get
+   its own tags escaped right back out. */
+function annotateKeywords(html){
+  if(!html) return html;
+  let out = html;
+  KEYWORD_TERMS.forEach(term=>{
+    const re = new RegExp(`\\b(${term.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")})\\b`, "gi");
+    out = out.replace(re, m=>`<span class="kw-hint" data-kw="${term}" title="${escAttr(KEYWORD_DEFS[term])}">${m}</span>`);
+  });
+  return out;
+}
+document.addEventListener("click", e=>{
+  const kw = e.target.closest?.(".kw-hint");
+  if(kw) toast(KEYWORD_DEFS[kw.dataset.kw] || "");
+});
 
 /* ===================================================================
    Detail popups
@@ -4895,11 +5073,11 @@ function refDetailHTML(kind, name){
   if(kind==="move"){ return moveDetailHTML(moveByName.get(name.toLowerCase()), name); }
   if(kind==="ability"){ const a=abilityByName.get(name.toLowerCase()); return a?abilityText(a):"<span class='muted'>Not in database.</span>"; }
   if(kind==="class"){ const c=D.classes.find(x=>x.name===name);
-    return c?`${c.mechanic?`<div class="r-meta"><b>${esc(c.mechanic)}</b></div>`:""}<div class="r-body">${esc(c.effect||"")}</div>`:"<span class='muted'>—</span>"; }
+    return c?`${c.mechanic?`<div class="r-meta"><b>${esc(c.mechanic)}</b></div>`:""}<div class="r-body">${annotateKeywords(esc(c.effect||""))}</div>`:"<span class='muted'>—</span>"; }
   if(kind==="edge"){ const e=D.edges.find(x=>x.name===name);
-    return e?`${e.prerequisites?`<div class="r-meta">Prereq: ${esc(e.prerequisites)}</div>`:""}<div class="r-body">${esc(e.effect||"")}</div>`:"<span class='muted'>—</span>"; }
+    return e?`${e.prerequisites?`<div class="r-meta">Prereq: ${esc(e.prerequisites)}</div>`:""}<div class="r-body">${annotateKeywords(esc(e.effect||""))}</div>`:"<span class='muted'>—</span>"; }
   if(kind==="feature"){ const f=D.features.find(x=>x.name===name);
-    return f?`<div class="r-meta">${esc(f.category||"")}${f.frequency?" · "+esc(f.frequency):""}</div>${f.prerequisites?`<div class="r-meta">Prereq: ${esc(f.prerequisites)}</div>`:""}<div class="r-body">${esc(f.effect||"")}</div>`:"<span class='muted'>—</span>"; }
+    return f?`<div class="r-meta">${esc(f.category||"")}${f.frequency?" · "+esc(f.frequency):""}</div>${f.prerequisites?`<div class="r-meta">Prereq: ${esc(f.prerequisites)}</div>`:""}<div class="r-body">${annotateKeywords(esc(f.effect||""))}</div>`:"<span class='muted'>—</span>"; }
   return "<span class='muted'>—</span>";
 }
 function openRefDetail(kind, name){
@@ -4908,15 +5086,15 @@ function openRefDetail(kind, name){
 }
 function abilityText(a){
   return `<div class="r-meta">${esc(a.frequency||"")}${a.keywords?" · "+esc(a.keywords):""}</div>
-    ${a.trigger?`<div class="r-body"><b>Trigger:</b> ${esc(a.trigger)}</div>`:""}
-    <div class="r-body">${esc(a.effect||"")}</div>`;
+    ${a.trigger?`<div class="r-body"><b>Trigger:</b> ${annotateKeywords(esc(a.trigger))}</div>`:""}
+    <div class="r-body">${annotateKeywords(esc(a.effect||""))}</div>`;
 }
 function moveDetailHTML(m, name){
   if(!m) return "Not in database.";
-  const kv = (l,v)=> v!=null&&v!==""?`<span class="kv">${l}: ${esc(v)}</span>`:"";
+  const kv = (l,v)=> v!=null&&v!==""?`<span class="kv">${l}: ${annotateKeywords(esc(v))}</span>`:"";
   return `<div style="margin-bottom:6px">${typeBadge(m.type||"Normal")} <span class="kv">${esc(m.class||"")}</span></div>
     ${kv("Frequency",m.frequency)}${kv("AC",m.ac)}${m.damageBase?`<span class="kv">DB ${m.damageBase} (${DB_TABLE[m.damageBase]||"?"})</span>`:""}${kv("Range",m.range)}
-    <div class="r-body" style="margin-top:8px">${esc(m.effect||"")}</div>
+    <div class="r-body" style="margin-top:8px">${annotateKeywords(esc(m.effect||""))}</div>
     ${(m.contest && showContest())?`<div class="r-meta" style="margin-top:6px">Contest: ${esc(m.contest)}</div>`:""}`;
 }
 /* device-level display prefs */
@@ -6315,6 +6493,10 @@ function tokenHp(token){
 function tokenHpVisible(info){
   return cloud.isGM || info.kind==="trainer" || info.kind==="pokemon";
 }
+/* Status conditions (Burned, Paralyzed, …) are visible in an actual battle even when a creature's
+   exact HP isn't — unlike tokenHpVisible, this doesn't gate on GM/kind, only on the token actually
+   pointing to something real. Fixes enemy statuses being invisible to players (HANDOFF-2026-07-25). */
+function tokenStatusVisible(info){ return !info.unlinked; }
 /* ---- quick-attack helper: defender = the clicked token ---- */
 function tokenDefTypes(token){
   const L = token.link ? tokenLinked(token) : null;
@@ -6635,7 +6817,7 @@ function updateTokenStatusDom(token){
   if(!node) return false;
   const info = tokenHp(token);
   const old = node.querySelector(".tk-status-ring");
-  if(info.unlinked || !tokenHpVisible(info)){ if(old) old.remove(); return true; }
+  if(!tokenStatusVisible(info)){ if(old) old.remove(); return true; }
   const boxPx = parseFloat(node.style.width) || 48;
   const keys = tokenStatusKeys(token).filter(k=>statusByKey.has(k));
   const ringHtml = tokenStatusRingSVG(keys, boxPx, token.id);
@@ -6925,6 +7107,25 @@ function drawAoE(cv, map, stageW, stageH, originX=0, originY=0){
 }
 function startAoE(token, shape, size){ mapAoE = { tokenId:token.id, shape, size:size||1, dir:"E" }; renderMap(); }
 function clearAoE(){ mapAoE = null; renderMap(); }
+/* Apply a buff (Cheer/Order/Song/custom) to every linked token whose cell falls inside the
+   currently-painted AoE (older handoff #1: "combine the buff engine with the map AoE shapes"). */
+function tokensInAoE(map){
+  if(!mapAoE) return [];
+  const origin = mapTokensFor(map.id).find(t=>t.id===mapAoE.tokenId); if(!origin) return [];
+  const cells = aoeCells(map, origin, mapAoE.shape, mapAoE.size, mapAoE.dir);
+  return mapTokensFor(map.id).filter(t=>cells.has(Math.round(t.x)+","+Math.round(t.y)));
+}
+async function applyAreaBuff(map, buffKey){
+  const targets = tokensInAoE(map);
+  let n = 0;
+  for(const t of targets){
+    const L = t.link ? tokenLinked(t) : null; if(!L || L.missing || !L.obj) continue;
+    addBuff(L.obj, buffKey);
+    await commitTokenBuffs(t);
+    n++;
+  }
+  toast(n ? `Applied to ${n} token${n===1?"":"s"} in the area` : "No linked tokens in the area");
+}
 /* redraw only the overlay canvas (keeps input focus while tweaking size/direction) */
 function refreshAoE(){
   const map = currentMapForView(); if(!map) return;
@@ -6953,13 +7154,18 @@ function aoeControlPanel(map){
     });
     p.append(pad);
   }
+  const buffSel = el("select",{style:"flex:1;min-width:0"});
+  PTU_BUFFS.forEach(b=>buffSel.append(el("option",{value:b.key},`${b.name} · ${b.cat}`)));
+  p.append(el("div",{class:"aoe-row",style:"margin-top:6px"}, buffSel,
+    el("button",{class:"btn-secondary",title:"Push this buff onto every linked token inside the shaded area",
+      onclick:()=>applyAreaBuff(map, buffSel.value)},"✨ Buff area")));
   p.append(el("button",{class:"btn-secondary",style:"margin-top:6px;width:100%",onclick:clearAoE},"✕ Clear range"));
   return p;
 }
 
 /* ---- battle mode: track how far each token has moved this round (diagonals cost 2) ---- */
 function battleOn(){ return !!activeMapMeta().battleOn; }
-/* the movement types a token actually has, as [key,label,metres] (land/sky/swim/burrow) */
+/* the movement types a token actually has, as [key,label,metres] (land/sky/swim/burrow/levitate) */
 function tokenMoveModes(token){
   if(!token.link) return [];
   const L = tokenLinked(token); if(!L || !L.obj) return [];
@@ -6968,8 +7174,8 @@ function tokenMoveModes(token){
     return [["overland","Land",d.overland],["swim","Swim",d.swim]].filter(m=>m[2]);
   }
   const c = getSpecies(L.obj.species)?.capabilities || {};
-  return [["overland","Land",c.overland],["sky","Sky",c.sky],["swim","Swim",c.swim],["burrow","Burrow",c.burrow]]
-    .filter(m=>m[2]);
+  return [["overland","Land",c.overland],["sky","Sky",c.sky],["swim","Swim",c.swim],["burrow","Burrow",c.burrow],
+    ["levitate","Levitate",c.levitate]].filter(m=>m[2]);
 }
 function tokenMoveMode(token){
   const modes = tokenMoveModes(token); if(!modes.length) return null;
@@ -6985,6 +7191,20 @@ function resetMapMovement(map){
   ensureMapTokens();
   mapTokensFor(map.id).forEach(t=>{ t.moved=0; delete t.path; });
 }
+/* Turn-duration buffs ("this turn" / "until end of next turn" — Songs, most short Orders) only
+   expire via advanceInitiative while a fight is running (Core p.234-ish "duration" — expireTurnBuffs
+   above). If Battle mode is turned off before their expiry turn comes around (fight ends abruptly,
+   GM forgets to run it out), they'd otherwise linger until the next End Scene. Sweep every token on
+   the map and drop any still-stamped buffs once the fight that was tracking them is over. */
+async function expireBattleBuffs(map){
+  for(const t of mapTokensFor(map.id)){
+    const L = t.link ? tokenLinked(t) : null; if(!L || L.missing || !L.obj) continue;
+    const owner = L.obj; if(!Array.isArray(owner.buffs) || !owner.buffs.length) continue;
+    const before = owner.buffs.length;
+    owner.buffs = owner.buffs.filter(b=>b.turnStamp==null);
+    if(owner.buffs.length !== before) await commitTokenBuffs(t);
+  }
+}
 async function toggleBattle(map){
   const meta = activeMapMeta(); meta.battleOn = !meta.battleOn;
   if(meta.battleOn){
@@ -6994,6 +7214,8 @@ async function toggleBattle(map){
     // previous fight's monsters shouldn't linger into a new one. Allies auto-rejoin as usual.
     meta.initRound = 1; meta.initSeq = 0; meta.initTurnId = null;
     mapTokensFor(map.id).forEach(t=>{ const k=tokenHp(t).kind; if(k!=="trainer" && k!=="pokemon") t.inInit = false; });
+  } else {
+    await expireBattleBuffs(map);
   }
   mapMetaSave();
   if(meta.battleOn) mapTokensSave();
@@ -7082,14 +7304,14 @@ function mapTokenNode(token, map, originX=0, originY=0){
   }
   node.append(el("div",{class:"tk-name"}, (token.gmHidden?"🙈 ":"") + info.name + (info.unlinked?" ⚠":"")));
   if(hpVisible) node.append(el("div",{class:"tk-hpnum"}, info.unlinked?"⚠ unlinked":`${info.cur}/${info.max}`));
-  if(hpVisible && !info.unlinked){
+  if(tokenStatusVisible(info)){
     const keys = tokenStatusKeys(token).filter(k=>statusByKey.has(k));
     const ringHtml = tokenStatusRingSVG(keys, boxPx, token.id);
     if(ringHtml) node.append(el("div",{class:"tk-status-ring", html:ringHtml}));
   }
   if(battleOn() && token.moved){                              // movement used this round vs chosen-mode speed
     const spd = tokenMoveSpeed(token), mode = tokenMoveMode(token);
-    const icon = mode ? ({overland:"",sky:" 🕊",swim:" 🌊",burrow:" ⛏"}[mode[0]]||"") : "";
+    const icon = mode ? ({overland:"",sky:" 🕊",swim:" 🌊",burrow:" ⛏",levitate:" ✨"}[mode[0]]||"") : "";
     node.append(el("div",{class:"tk-moved"+(spd && token.moved>spd?" over":"")}, `${token.moved}${spd?("/"+spd):""}m${icon}`));
   }
   return node;
@@ -7232,6 +7454,17 @@ function openTokenMenu(token, map){
     wrap.append(el("div",{class:"r-body"},"⚠ The sheet or Pokémon this token pointed to no longer exists."));
   } else if(!tokenHpVisible(info)){
     wrap.append(el("div",{class:"r-body"},"🔒 You can't see this token's HP."));
+    // Status conditions ARE visible on an enemy even when its exact HP isn't (Core play: you can
+    // see a foe is Burned/Paralyzed) — a read-only chip list of only the currently-active statuses.
+    const active = STATUS_DEFS.filter(s=>tokenStatusKeys(token).includes(s.key));
+    const sw = el("div",{style:"margin-top:10px"},
+      el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"Status effects"));
+    if(active.length){
+      const chips = el("div",{class:"chips"});
+      active.forEach(s=>chips.append(el("span",{class:"statuschip on",title:s.effect}, s.name)));
+      sw.append(chips);
+    } else sw.append(el("div",{class:"small muted"},"None active."));
+    wrap.append(sw);
   } else {
     const readout = el("div",{class:"tk-menu-hp"});
     const draw = ()=>{ const i=tokenHp(token); const p=Math.max(0,Math.min(100,Math.round(i.cur/i.max*100)));
@@ -7280,7 +7513,9 @@ function openTokenMenu(token, map){
       const atk = el("div",{style:"margin-top:16px"});
       atk.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"⚔ Apply an attack to this token"));
       const dmgIn = el("input",{type:"number",placeholder:"Damage",style:"width:88px"});
-      const typeSel = el("select"); TYPES.forEach(ty=>typeSel.append(el("option",{value:ty},ty)));
+      const typeSel = el("select");
+      typeSel.append(el("option",{value:"Typeless"},"⚡ Typeless"));
+      TYPES.forEach(ty=>typeSel.append(el("option",{value:ty},ty)));
       const clsSel = el("select"); clsSel.append(el("option",{value:"phys"},"Physical"), el("option",{value:"spec"},"Special"));
       const out = el("div",{class:"small",style:"margin-top:6px"});
       // Swarm defence (Core p.478): single-target damage is resisted one step further, area /
@@ -7301,7 +7536,8 @@ function openTokenMenu(token, map){
         const def = tokenDefenseStat(token, physical);
         const types = tokenDefTypes(token);
         const stepAdj = swarmTgt ? swarmDamageStep(aoeBox.checked) : 0;
-        const mult = typeMultAgainst(typeSel.value, types, stepAdj);
+        const typeless = typeSel.value==="Typeless";
+        const mult = typeless ? 1 : typeMultAgainst(typeSel.value, types, stepAdj);
         const afterDef = Math.max(0, dmg - def);
         const afterMult = Math.floor(afterDef * mult);
         // Damage Reduction from the target's active buffs (Excited, Song of Life, …) — applied
@@ -7316,8 +7552,8 @@ function openTokenMenu(token, map){
           if(consumeDamageBuffs(owner)) await commitTokenBuffs(token);
           drTxt = ` − ${dr} DR (${from.join(", ")})`;
         }
-        const eff = mult===0 ? "immune ×0" : mult>1 ? `super-effective ×${mult}` : mult<1 ? `resisted ×${mult}` : "neutral ×1";
-        const swarmTxt = swarmTgt ? ` (${aoeBox.checked?"area, +1 step":"single-target, −1 step"} vs Swarm)` : "";
+        const eff = typeless ? "typeless (no effectiveness)" : mult===0 ? "immune ×0" : mult>1 ? `super-effective ×${mult}` : mult<1 ? `resisted ×${mult}` : "neutral ×1";
+        const swarmTxt = (swarmTgt && !typeless) ? ` (${aoeBox.checked?"area, +1 step":"single-target, −1 step"} vs Swarm)` : "";
         out.innerHTML = `${dmg} − ${def} ${physical?"Def":"SpDef"} = ${afterDef}, ${typeSel.value} ${eff}${swarmTxt} = ${afterMult}${drTxt} → <b>${final}</b> damage.<br>HP ${before} → <b>${before-final}</b>.`;
       };
       atk.append(el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;align-items:center"},
@@ -7446,7 +7682,7 @@ function openTokenMenu(token, map){
           chips.append(el("button",{class:"btn-secondary"+(k===cur?" on":""),style:"padding:4px 9px",
             title:`use ${lbl} speed (${m} m)`,
             onclick:async()=>{ token.moveMode=k; mapTokensSave(); renderMap(); reopenTokenMenu(token,map); }},
-            `${({overland:"🚶",sky:"🕊",swim:"🌊",burrow:"⛏"}[k]||"")} ${lbl} ${m}`));
+            `${({overland:"🚶",sky:"🕊",swim:"🌊",burrow:"⛏",levitate:"✨"}[k]||"")} ${lbl} ${m}`));
         });
         wrap.append(el("div",{class:"small muted",style:"margin-top:12px;font-weight:700"},"Movement type"), chips);
       }
@@ -7470,7 +7706,7 @@ function openTokenMenu(token, map){
         chips.append(el("button",{class:"btn-secondary"+(on?" on":""),style:"padding:4px 9px",
           title:`move using ${lbl} speed (${m} m)`,
           onclick:async()=>{ token.moveMode=k; mapTokensSave(); renderMap(); reopenTokenMenu(token,map); }},
-          `${({overland:"🚶",sky:"🕊",swim:"🌊",burrow:"⛏"}[k]||"")} ${lbl} ${m}`));
+          `${({overland:"🚶",sky:"🕊",swim:"🌊",burrow:"⛏",levitate:"✨"}[k]||"")} ${lbl} ${m}`));
       });
       wrap.append(el("div",{class:"small muted",style:"margin-top:8px;font-weight:700"},"Movement type"), chips);
     }
