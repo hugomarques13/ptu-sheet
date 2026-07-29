@@ -4554,7 +4554,7 @@ function battleActionRow(a, favs){
    Pokémon, roll their actions at a glance, and award XP by the book (Core p.460).
    Stored device-locally in state.encounters (never synced — GM prep).
 =================================================================== */
-function newEncounter(name){ return { id:uid(), name:name||"New Encounter", sig:1, players:3, mons:[], trainers:[] }; }
+function newEncounter(name){ return { id:uid(), name:name||"New Encounter", sig:1, players:3, mons:[], trainers:[], notes:"" }; }
 function normEncounter(e){
   if(!e) return e;
   if(!Array.isArray(e.mons)) e.mons=[];
@@ -4562,9 +4562,35 @@ function normEncounter(e){
   if(typeof e.sig!=="number") e.sig=2;
   if(typeof e.players!=="number") e.players=1;
   if(typeof e.archived!=="boolean") e.archived=false;   // hidden from the active list without deleting
+  if(typeof e.notes!=="string") e.notes="";
   e.mons.forEach(normPokemon);
   e.trainers.forEach(tr=>{ if(tr.trainer) normTrainer(tr.trainer); if(!Array.isArray(tr.pokemon)) tr.pokemon=[]; tr.pokemon.forEach(normPokemon); });
   return e;
+}
+/* deep-clone an encounter with fresh ids throughout, so map-token links (which key on
+   encId+monId/trainerId) never accidentally point a token at the wrong copy */
+function duplicateEncounter(e, name){
+  const c = JSON.parse(JSON.stringify(e));
+  c.id = uid(); c.name = name; c.archived=false;
+  c.mons.forEach(p=>p.id=uid());
+  c.trainers.forEach(tr=>{ tr.id=uid(); if(tr.trainer) tr.trainer.id=uid(); tr.pokemon.forEach(p=>p.id=uid()); });
+  return c;
+}
+/* swap an item one slot up(-1)/down(+1) within its list — used to reorder wild Pokémon,
+   Trainers, and each Trainer's own party in the Encounters tab */
+function encMoveItem(list, item, dir){
+  const i=list.indexOf(item); if(i<0) return;
+  const j=i+dir; if(j<0||j>=list.length) return;
+  [list[i],list[j]]=[list[j],list[i]]; saveEnc(); renderEncounters();
+}
+/* ▲▼ reorder buttons shared by wild/trainer Pokémon rows and Trainer cards */
+function encOrderBtns(list, item){
+  const i=list.indexOf(item);
+  return el("span",{class:"inline",style:"gap:2px"},
+    el("button",{class:"btn-secondary",style:"padding:3px 7px",title:"move up",disabled:i<=0,
+      onclick:()=>encMoveItem(list,item,-1)},"▲"),
+    el("button",{class:"btn-secondary",style:"padding:3px 7px",title:"move down",disabled:i<0||i>=list.length-1,
+      onclick:()=>encMoveItem(list,item,1)},"▼"));
 }
 /* encounters live in the cloud when connected (so map tokens can link to them), else device-local */
 function encList(){ return mode==="cloud" ? ensureEnc().data.encounters : (state.encounters || (state.encounters=[])); }
@@ -4976,6 +5002,7 @@ function encounterMonCard(enc, p, list){
     row.append(el("div",{class:"hpbar",style:"flex:1;min-width:70px"}, el("i",{style:`width:${pct}%;background:${hpColor}`})));
     row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `${p.currentHP}/${maxHP}`));
     row.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"expand",onclick:()=>encMonToggleMin(p)},"▸"));
+    row.append(encOrderBtns(list,p));
     row.append(encMonRemoveBtn(p,list));
     mini.append(row);
     return mini;
@@ -5001,6 +5028,7 @@ function encounterMonCard(enc, p, list){
   nw.append(el("div",{class:"small muted",style:"margin-top:2px"}, `Evasion — Phys +${d.physEva} · Spec +${d.specEva} · Speed +${d.spdEva}`));
   head.append(nw);
   head.append(el("button",{class:"btn-secondary",style:"padding:3px 9px;align-self:flex-start",title:"minimize",onclick:()=>encMonToggleMin(p)},"▾"));
+  head.append(encOrderBtns(list,p));
   head.append(encMonRemoveBtn(p,list));
   card.append(head);
   // HP tracker
@@ -5090,8 +5118,29 @@ function encounterCapsRow(sp){
   wrap.append(chips);
   return wrap;
 }
+function encTrainerToggleMin(tr){ tr.min=!tr.min; saveEnc(); renderEncounters(); }
 function encounterTrainerCard(enc, tr){
   const t=tr.trainer; normTrainer(t);
+  const td0=trainerDerived(t), maxHP0=td0.hp; if(t.currentHP==null) t.currentHP=maxHP0;
+  const fainted0 = t.currentHP<=0;
+  // ---- Collapsed (minimized) view: avatar · name · level · mini HP bar, expand + reorder + remove ----
+  if(tr.min){
+    const pct0=Math.max(0,Math.min(100,Math.round(t.currentHP/maxHP0*100)));
+    const mini=el("div",{style:`border:1px solid var(--accent);border-radius:var(--radius-sm);padding:6px 10px;margin-top:8px;background:var(--panel-2);${fainted0?"opacity:.5;":""}`});
+    const row=el("div",{class:"inline",style:"gap:8px;align-items:center"});
+    row.append(el("img",{src:t.avatar||TRAINER_PLACEHOLDER,alt:"",
+      style:"width:24px;height:24px;border-radius:50%;object-fit:cover;border:1px solid var(--line);background:var(--panel)"}));
+    row.append(el("span",{style:"font-weight:800;white-space:nowrap"}, (fainted0?"💀 ":"")+(t.name||"Trainer")));
+    row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `Lv ${t.level}`));
+    row.append(el("div",{class:"hpbar",style:"flex:1;min-width:70px"}, el("i",{style:`width:${pct0}%;background:${pct0>50?"var(--good)":pct0>25?"var(--warn)":"var(--bad)"}`})));
+    row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `${t.currentHP}/${maxHP0}`));
+    row.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"expand",onclick:()=>encTrainerToggleMin(tr)},"▸"));
+    row.append(encOrderBtns(enc.trainers,tr));
+    row.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove trainer",
+      onclick:()=>{ enc.trainers=enc.trainers.filter(x=>x.id!==tr.id); saveEnc(); renderEncounters(); }},"×"));
+    mini.append(row);
+    return mini;
+  }
   const card=el("div",{style:"border:1px solid var(--accent);border-radius:var(--radius-sm);padding:10px;margin-top:8px"});
   const head=el("div",{class:"inline",style:"gap:8px;justify-content:space-between;flex-wrap:wrap"});
   const info=el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap"});
@@ -5107,8 +5156,12 @@ function encounterTrainerCard(enc, tr){
   if(t.avatar) info.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"remove image — use the default icon",
     onclick:()=>{ t.avatar=""; saveEnc(); renderEncounters(); }},"×"));
   head.append(info);
-  head.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove trainer",
+  const actions=el("div",{class:"inline",style:"gap:6px;align-items:center"});
+  actions.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"minimize",onclick:()=>encTrainerToggleMin(tr)},"▾"));
+  actions.append(encOrderBtns(enc.trainers,tr));
+  actions.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove trainer",
     onclick:()=>{ enc.trainers=enc.trainers.filter(x=>x.id!==tr.id); saveEnc(); renderEncounters(); }},"×"));
+  head.append(actions);
   card.append(head);
   // trainer HP + Struggle roll
   const td=trainerDerived(t), maxHP=td.hp; if(t.currentHP==null) t.currentHP=maxHP;
@@ -5302,6 +5355,10 @@ function renderEncounters(){
   leftc.append(el("button",{class:"btn ghost",onclick:()=>{ const n=prompt("Encounter name:","New Encounter"); if(n===null)return; const e=newEncounter(n||"New Encounter"); arr.push(e); state.activeEncounterId=e.id; saveEnc(); renderEncounters(); }},"＋ New"));
   if(cur){
     leftc.append(el("button",{class:"btn ghost",title:"rename",onclick:()=>{ const n=prompt("Rename encounter:",cur.name); if(n===null)return; cur.name=n; saveEnc(); renderEncounters(); }},"✎"));
+    leftc.append(el("button",{class:"btn ghost",title:"duplicate this encounter",onclick:()=>{
+      const n=prompt("New encounter name:", cur.name+" copy"); if(n===null)return;
+      const c=duplicateEncounter(cur, n||cur.name+" copy"); arr.push(c); state.activeEncounterId=c.id; saveEnc(); renderEncounters();
+    }},"⧉ Duplicate"));
     leftc.append(el("button",{class:"btn ghost",title:cur.archived?"unarchive — bring back to the active list":"archive — hide from the active list without deleting it",
       onclick:()=>{ cur.archived=!cur.archived; if(cur.archived && !encShowArchived) state.activeEncounterId = arr.filter(e=>!e.archived)[0]?.id || null; saveEnc(); renderEncounters(); }},
       cur.archived?"📤 Unarchive":"📦 Archive"));
@@ -5327,6 +5384,10 @@ function renderEncounters(){
   setc.append(el("h3",{}, cur.name,
     el("button",{class:"btn-primary",style:"padding:6px 12px",onclick:()=>openExpCalc(cur)},"🧮 Calculate EXP")));
   setc.append(el("div",{class:"small muted",style:"margin-top:4px"}, `Base XP so far: `, el("b",{}, String(encounterBaseXP(cur))), ` (sum of enemy levels; Trainers count double). Significance ×${cur.sig}, ${cur.players} player${cur.players===1?"":"s"} — edit in Calculate EXP.`));
+  const notesArea=el("textarea",{placeholder:"GM notes — read-outs, tactics, what happens on a wipe…",
+    style:"width:100%;margin-top:8px;min-height:60px;resize:vertical"}); notesArea.value=cur.notes||"";
+  notesArea.addEventListener("input",()=>{ cur.notes=notesArea.value; saveEnc(); });
+  setc.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:10px"},"Notes"), notesArea);
   root.append(setc);
   // wild Pokémon
   const wildFainted=cur.mons.some(p=>(p.currentHP??1)<=0 && !p.encMin);
@@ -8810,14 +8871,16 @@ function setMapWeather(map, key){
   const w = weatherByKey(map.weather);
   toast(weatherIsClear(w) ? "🌤 Weather cleared" : `${w.icon} ${w.name} — weather set`);
 }
-/* Terrains stack — toggle one on/off independently of the others (and of Weather). */
-function toggleMapTerrain(map, key){
-  const def = TERRAIN_BY_KEY[key]; if(!def) return;
-  map.terrains = Array.isArray(map.terrains) ? map.terrains : [];
-  const i = map.terrains.indexOf(key), wasOn = i>=0;
-  if(wasOn) map.terrains.splice(i,1); else map.terrains.push(key);
+/* Only one Terrain can be active at a time — same "single select, replaces whatever's active"
+   shape as Weather (Terrains that stack aren't a book rule; multiple Terrains would just fight
+   over which one applies). Weather and Terrain stay independent of each other though: setting
+   one never clears the other. map.terrains is kept as an array (0 or 1 entries) so the rest of
+   the Terrain plumbing — activeTerrains/terrainRollMods/terrainPanel — doesn't need to change. */
+function setMapTerrain(map, key){
+  const def = TERRAIN_BY_KEY[key];
+  map.terrains = def ? [key] : [];
   mapMetaSave(); renderMap();
-  toast(wasOn ? `${def.name} cleared` : `${def.icon} ${def.name} — terrain set`);
+  toast(def ? `${def.icon} ${def.name} — terrain set` : "🌱 Terrain cleared");
 }
 /* Panel under the map toolbar: the active condition's full rules, plus the per-turn HP ticks it
    would move on every Pokémon on the board. Ticks are LISTED rather than auto-applied, so the GM
@@ -8989,14 +9052,16 @@ function renderMap(){
       wsel.addEventListener("change", ()=>setMapWeather(map, wsel.value));
       bar.append(el("span",{class:"map-sep"}),
         el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Weather"), wsel));
-      // — Terrain group: Terrains stack, so these are independent toggles (Weather above is a
-      //   single select because only one can be active) —
-      bar.append(el("span",{class:"map-sep"}));
-      TERRAIN_DEFS.forEach(t=>{
-        const on = (map.terrains||[]).includes(t.key);
-        bar.append(el("button",{class:"btn-secondary"+(on?" on":""), title:t.blurb,
-          onclick:()=>toggleMapTerrain(map, t.key)}, `${t.icon} ${t.name}`));
-      });
+      // — Terrain group: like Weather, only one Terrain can be active at a time (they cancel
+      //   each other out) — Weather and Terrain are independent, so both selects sit side by side —
+      const curTerrain = (map.terrains||[])[0] || "";
+      const tsel = el("select",{title:"Terrain (Core p.343) — replaces any Terrain already in play; independent of Weather"});
+      tsel.append(el("option",{value:"",selected:!curTerrain},"— No Terrain —"));
+      TERRAIN_DEFS.forEach(t=>tsel.append(el("option",{value:t.key,selected:t.key===curTerrain,title:t.blurb},
+        `${t.icon} ${t.name}`)));
+      tsel.addEventListener("change", ()=>setMapTerrain(map, tsel.value));
+      bar.append(el("span",{class:"map-sep"}),
+        el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Terrain"), tsel));
     }
   } else {
     bar.append(el("div",{class:"map-mapname"}, map ? `🗺 ${map.name}` : "🗺 Battle map"));
