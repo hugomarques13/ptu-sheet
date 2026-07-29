@@ -797,6 +797,14 @@ function normTrainer(t){
   t.weapons.forEach(w=>{
     if(w && w.category==="Long Range"  && w.dbMod===2 && w.acMod===1) w.dbMod = 1;
     if(w && w.category==="Short Range" && w.dbMod===1 && w.acMod===0) w.dbMod = 0;
+    // migrate the old single weaponMove field into the new Adept/Master tiered slots
+    if(w && w.weaponMove && !w.weaponMoveAdept && !w.weaponMoveMaster){
+      if(WEAPON_MOVES_MASTER.includes(w.weaponMove)) w.weaponMoveMaster = w.weaponMove;
+      else w.weaponMoveAdept = w.weaponMove;
+      delete w.weaponMove;
+    }
+    if(w && typeof w.weaponMoveAdept!=="string") w.weaponMoveAdept = "";
+    if(w && typeof w.weaponMoveMaster!=="string") w.weaponMoveMaster = "";
   });
   if(!t.levelUp || typeof t.levelUp!=="object") t.levelUp = {};   // per-level choice tracker
   if(!Array.isArray(t.techniques)) t.techniques = [];             // learned class Techniques
@@ -1311,10 +1319,13 @@ const WEAPON_PRESETS = {
   "Custom":     {dbMod:0, acMod:0, range:"Melee",        twoHanded:false},
 };
 /* Weapon Moves a Fine Weapon can grant (Core pp.287-291) — all already in the moves DB.
-   The weapon's own +DB/+AC apply to these too. Optional: a GM/player may also type a custom move. */
-const WEAPON_MOVES = ["Backswing","Bullseye","Cheap Shot","Wear Down","Wounding Strike","Deadly Strike",
-  "Furious Strikes","Gouge","Maul","Riposte","Slice","Titanic Slam","Double Swipe","Triple Threat"];
-function newWeapon(){ return { id:uid(), name:"", category:"Small Melee", type:"Normal", notes:"", weaponMove:"", equipped:false, ...WEAPON_PRESETS["Small Melee"] }; }
+   Two tiers, gated by the trainer's Combat skill rank: an EOT-frequency Adept Technique (Combat
+   Adept+) and a stronger Scene x2 Master Technique (Combat Master) — a Fine Weapon can grant BOTH
+   at once. The weapon's own +DB/+AC apply to either. */
+const WEAPON_MOVES_ADEPT  = ["Backswing","Bullseye","Cheap Shot","Wear Down","Wounding Strike","Double Swipe"];
+const WEAPON_MOVES_MASTER = ["Deadly Strike","Furious Strikes","Gouge","Maul","Riposte","Slice","Titanic Slam","Triple Threat"];
+function weaponMoveRankOk(t, tier){ return !!t.unlocked || rankNum(t.skills.combat) >= (tier==="master"?6:4); }
+function newWeapon(){ return { id:uid(), name:"", category:"Small Melee", type:"Normal", notes:"", weaponMoveAdept:"", weaponMoveMaster:"", equipped:false, ...WEAPON_PRESETS["Small Melee"] }; }
 /* the trainer's Struggle Attack after Combat rank + the equipped weapon */
 /* the trainer's Struggle Attack — unarmed by default, or modified by a given weapon */
 function trainerStruggle(t, w){
@@ -1373,15 +1384,24 @@ function weaponsCard(t){
       field("+ Damage Base","",{type:"number",value:w.dbMod,onchange:v=>{ w.dbMod=parseInt(v)||0; save(); renderTrainer(); }}),
       field("+ AC (harder)","",{type:"number",value:w.acMod,onchange:v=>{ w.acMod=parseInt(v)||0; save(); renderTrainer(); }}),
       field("Range","",{value:w.range,onchange:v=>{ w.range=v; save(); renderTrainer(); }}),
-      field("Weapon Move","",{opts:["", ...WEAPON_MOVES], value:w.weaponMove||"", onchange:v=>{ w.weaponMove=v; save(); renderTrainer(); }}),
     );
-    box.append(r1, r2, field("Notes","",{value:w.notes,onchange:v=>{ w.notes=v; save(); }}));
+    const r3 = el("div",{class:"fieldrow"});
+    r3.append(
+      field("Adept Move","",{opts:["", ...WEAPON_MOVES_ADEPT], value:w.weaponMoveAdept||"", onchange:v=>{ w.weaponMoveAdept=v; save(); renderTrainer(); }}),
+      field("Master Move","",{opts:["", ...WEAPON_MOVES_MASTER], value:w.weaponMoveMaster||"", onchange:v=>{ w.weaponMoveMaster=v; save(); renderTrainer(); }}),
+    );
+    box.append(r1, r2, r3, field("Notes","",{value:w.notes,onchange:v=>{ w.notes=v; save(); }}));
     const ws = trainerStruggle(t, w);
     box.append(el("div",{class:"small",style:"margin-top:6px"}, el("b",{},"Attack: "),
       el("span",{html:typeBadge(ws.type)}), ` Physical · AC ${ws.ac} · DB ${ws.damageBase} (${(DB_TABLE[ws.damageBase]||"?").split("/")[0].trim()}) · ${ws.range}`));
-    if(w.weaponMove){ const wm=moveByName.get(w.weaponMove.toLowerCase());
-      if(wm) box.append(el("div",{class:"small muted",style:"margin-top:2px"},
-        `+ Weapon Move ${w.weaponMove}: ${wm.frequency||""} · ${wm.class||""} · DB ${wm.damageBase}${w.dbMod?`+${w.dbMod}`:""} · AC ${wm.ac}${w.acMod?`+${w.acMod}`:""} · ${wm.range||""}`)); }
+    [["weaponMoveAdept","adept"],["weaponMoveMaster","master"]].forEach(([field_,tier])=>{
+      const mn = w[field_]; if(!mn) return;
+      const wm = moveByName.get(mn.toLowerCase()); if(!wm) return;
+      const ok = weaponMoveRankOk(t, tier);
+      box.append(el("div",{class:"small",style:`margin-top:2px;${ok?"":"opacity:.55"}`},
+        el("span",{class:"muted"}, `+ ${tier==="master"?"Master":"Adept"} Technique `), mn+": ",
+        `${wm.frequency||""} · ${wm.class||""} · DB ${wm.damageBase}${w.dbMod?`+${w.dbMod}`:""} · AC ${wm.ac}${w.acMod?`+${w.acMod}`:""} · ${wm.range||""}`,
+        !ok?el("span",{style:"color:var(--bad)"}, ` — needs Combat ${tier==="master"?"Master":"Adept"}`):"")); });
     card.append(box);
   });
   return card;
@@ -2977,6 +2997,15 @@ function abilitiesCard(p, sp){
   const card = el("div",{class:"card"}, el("h3",{},`Abilities (${p.abilities.length})`,
     el("div",{class:"inline"}, unlockToggle(p),
       el("button",{class:"linkbtn h-act",onclick:()=>addAbility(p, sp)},"+ add"))));
+  const grant = poltergeistGrant(p, sp);
+  if(grant){
+    const gab = abilityByName.get(grant.ability.toLowerCase());
+    const grow = el("details",{class:"spoiler"});
+    grow.append(el("summary",{}, el("span",{style:"color:var(--ink)"}, grant.ability),
+      el("span",{class:"muted small",style:"margin-left:8px"},"from Poltergeist — this Form")));
+    grow.append(el("div",{class:"small",style:"margin-top:6px", html: gab? abilityText(gab):"<span class='muted'>Not in database</span>"}));
+    card.append(grow);
+  }
   if(!p.abilities.length) card.append(el("span",{class:"muted small"},"none yet — tap “+ add”"));
   p.abilities.forEach((an,i)=>{
     const ab = abilityByName.get((an||"").toLowerCase());
@@ -3249,6 +3278,21 @@ function rotomFormControl(p, sp, onChanged){
   wrap.append(sel, el("span",{class:"muted small"},"switch at will — same Pokémon, keeps stats/moves/level"));
   return wrap;
 }
+/* Poltergeist (Ability, Static): "Rotom gains an Ability and a Move depending on what Form it has
+   taken. This Move cannot be forgotten or replaced in any way." Both are derived live from the
+   current species (not stored on the Pokémon) so switching Appliance form updates them for free. */
+const ROTOM_POLTERGEIST = {
+  "Rotom":       { ability:"Levitate",    move:"Thunder Shock" },
+  "Rotom Heat":  { ability:"Levitate",    move:"Overheat" },
+  "Rotom Wash":  { ability:"Aqua Boost",  move:"Hydro Pump" },
+  "Rotom Frost": { ability:"Frostbite",   move:"Blizzard" },
+  "Rotom Fan":   { ability:"Keen Eye",    move:"Air Slash" },
+  "Rotom Mow":   { ability:"Grass Pelt",  move:"Leaf Storm" },
+};
+function poltergeistGrant(p, sp){
+  if(!sp || !(p.abilities||[]).some(a=>(a||"").toLowerCase()==="poltergeist")) return null;
+  return ROTOM_POLTERGEIST[sp.name] || null;
+}
 /* effective type of a move after ability overrides (e.g. Normalize → Normal) */
 function effectiveMoveType(p, m){
   if(hasAbility(p, "Normalize")) return "Normal";
@@ -3324,6 +3368,10 @@ function movesCard(p, sp){
   // Struggle is always available and does not count toward the limit
   const st = struggleFor(p, sp);
   if(st){ card.append(struggleControl(p, sp)); card.append(moveSlot(p, sp, st, st.name, {tag:"default"})); }
+  // Poltergeist's granted Move — fixed to the current Rotom Form, can't be forgotten/replaced/counted
+  const grant = poltergeistGrant(p, sp);
+  if(grant){ const gm = moveByName.get(grant.move.toLowerCase());
+    if(gm) card.append(moveSlot(p, sp, gm, gm.name, {tag:"Poltergeist"})); }
   if(!p.moves.length) card.append(el("span",{class:"muted small"},"no moves selected yet"));
   p.moves.forEach((mn,i)=>{
     const m = moveByName.get(mn.toLowerCase());
@@ -4233,14 +4281,15 @@ function renderTrainerCombat(root, t){
   card.append(trainerStruggleControl(t, renderBattle));
   // unarmed Struggle (always available)
   card.append(trainerAttackSlot(t, trainerStruggle(t), ()=>openTrainerAttack(t), {tag:"unarmed"}));
-  // one attack per weapon (+ its Weapon Move, if any)
+  // one attack per weapon (+ its Adept/Master Weapon Techniques, gated by Combat rank)
   (t.weapons||[]).forEach(w=>{
     card.append(trainerAttackSlot(t, trainerStruggle(t, w), ()=>openTrainerAttack(t, null, w), {tag:w.category}));
-    if(w.weaponMove){
-      const wm = trainerAttackProfile(t, w.weaponMove, w);
+    [["weaponMoveAdept","adept","Adept Technique"],["weaponMoveMaster","master","Master Technique"]].forEach(([field_,tier,tag])=>{
+      const mn = w[field_]; if(!mn || !weaponMoveRankOk(t, tier)) return;
+      const wm = trainerAttackProfile(t, mn, w);
       const uc = usesControl(t, "move", wm.name, wm.frequency, renderBattle);
-      card.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t, w.weaponMove, w), {tag:"weapon move", uc, move:true}));
-    }
+      card.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t, mn, w), {tag, uc, move:true}));
+    });
   });
   card.append(el("div",{class:"small muted",style:"margin-top:8px"},
     (t.weapons||[]).length ? "Each weapon (and its Weapon Move) is listed above. Add/edit weapons in Trainer → Sheet → Weapons."
@@ -4671,9 +4720,13 @@ function encWeaponsCard(t, key){
       field("+ Damage Base","",{type:"number",value:w.dbMod,onchange:v=>{ w.dbMod=parseInt(v)||0; saveEnc(); renderEncounters(); }}),
       field("+ AC (harder)","",{type:"number",value:w.acMod,onchange:v=>{ w.acMod=parseInt(v)||0; saveEnc(); renderEncounters(); }}),
       field("Range","",{value:w.range,onchange:v=>{ w.range=v; saveEnc(); renderEncounters(); }}),
-      field("Weapon Move","",{opts:["", ...WEAPON_MOVES], value:w.weaponMove||"", onchange:v=>{ w.weaponMove=v; saveEnc(); renderEncounters(); }}),
     );
-    box.append(r1, r2, field("Notes","",{value:w.notes,onchange:v=>{ w.notes=v; saveEnc(); }}));
+    const r3 = el("div",{class:"fieldrow"});
+    r3.append(
+      field("Adept Move","",{opts:["", ...WEAPON_MOVES_ADEPT], value:w.weaponMoveAdept||"", onchange:v=>{ w.weaponMoveAdept=v; saveEnc(); renderEncounters(); }}),
+      field("Master Move","",{opts:["", ...WEAPON_MOVES_MASTER], value:w.weaponMoveMaster||"", onchange:v=>{ w.weaponMoveMaster=v; saveEnc(); renderEncounters(); }}),
+    );
+    box.append(r1, r2, r3, field("Notes","",{value:w.notes,onchange:v=>{ w.notes=v; saveEnc(); }}));
     body.append(box);
   });
   det.append(body);
@@ -4820,6 +4873,9 @@ function encounterMonCard(enc, p, list){
     el("button",{class:"linkbtn",onclick:()=>addEncMove(p,sp)},"+ move")));
   mw.append(struggleControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   const st=struggleFor(p,sp); if(st) mw.append(encounterMoveRow(p,sp,st,st.name,favSet,null,true));
+  const grant = poltergeistGrant(p, sp);
+  if(grant){ const gm=moveByName.get(grant.move.toLowerCase());
+    if(gm) mw.append(encounterMoveRow(p,sp,gm,gm.name,favSet,null,true)); }
   const ordered=[...p.moves].sort((a,b)=>(favSet.has(b)?1:0)-(favSet.has(a)?1:0));
   ordered.forEach(mn=>{ const m=moveByName.get(mn.toLowerCase());
     mw.append(encounterMoveRow(p,sp,m,mn,favSet,()=>{ p.encFav=toggleSet(favSet,mn); saveEnc(); renderEncounters(); })); });
@@ -4829,6 +4885,12 @@ function encounterMonCard(enc, p, list){
   aw.append(el("div",{class:"inline",style:"justify-content:space-between"},
     el("span",{class:"small muted",style:"font-weight:700"},`Abilities (${p.abilities.length})`),
     el("button",{class:"linkbtn",onclick:()=>addEncAbility(p,sp)},"+ ability")));
+  if(grant){ const gab=abilityByName.get(grant.ability.toLowerCase());
+    const grow=el("details",{class:"spoiler",style:"margin-top:5px"});
+    grow.append(el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, grant.ability),
+      el("span",{class:"muted small",style:"margin-left:8px"},"from Poltergeist — this Form")));
+    grow.append(el("div",{class:"small",style:"margin-top:6px",html: gab?abilityText(gab):"<span class='muted'>Not in database</span>"}));
+    aw.append(grow); }
   if(!p.abilities.length) aw.append(el("span",{class:"muted small"},"none — tap + ability"));
   p.abilities.forEach(an=> aw.append(encounterAbilityRow(p,an)));
   card.append(aw);
@@ -4884,9 +4946,12 @@ function encounterTrainerCard(enc, tr){
   (t.weapons||[]).forEach(w=>{
     atkWrap.append(trainerAttackSlot(t, trainerStruggle(t,w), ()=>openTrainerAttack(t,null,w), {tag:w.category}));
     if(w.notes) atkWrap.append(el("div",{class:"small muted",style:"margin:-2px 0 4px 6px"}, "↳ "+w.notes));
-    if(w.weaponMove){ const wm=trainerAttackProfile(t,w.weaponMove,w);
+    [["weaponMoveAdept","adept","Adept Technique"],["weaponMoveMaster","master","Master Technique"]].forEach(([field_,tier,tag])=>{
+      const mn = w[field_]; if(!mn || !weaponMoveRankOk(t, tier)) return;
+      const wm = trainerAttackProfile(t,mn,w);
       const uc = usesControl(t, "move", wm.name, wm.frequency, renderEncounters, saveEnc);
-      atkWrap.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t,w.weaponMove,w), {tag:"weapon move", move:true, uc})); }
+      atkWrap.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t,mn,w), {tag, move:true, uc}));
+    });
   });
   card.append(atkWrap);
   // Trainer Moves — combat Moves granted by their Features/class, each rollable (adds Attack)
@@ -7792,7 +7857,9 @@ function openTokenMenu(token, map){
     // ---- Abilities: show what this Pokémon's abilities do, right from its token ----
     if(L && L.obj && (L.kind==="pokemon"||L.kind==="enc")){
       const p = L.obj;
-      if((p.abilities||[]).length){
+      const sp = getSpecies(p.species);
+      const grant = poltergeistGrant(p, sp);
+      if((p.abilities||[]).length || grant){
         const abw = el("div",{style:"margin-top:16px"});
         abw.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"Abilities"));
         p.abilities.forEach(an=>{
@@ -7803,6 +7870,14 @@ function openTokenMenu(token, map){
           row.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database.</span>"}));
           abw.append(row);
         });
+        if(grant){
+          const gab = abilityByName.get(grant.ability.toLowerCase());
+          const grow = el("details",{class:"spoiler"});
+          grow.append(el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, grant.ability),
+            el("span",{class:"muted small",style:"margin-left:8px"},"from Poltergeist")));
+          grow.append(el("div",{class:"small",style:"margin-top:6px",html: gab?abilityText(gab):"<span class='muted'>Not in database.</span>"}));
+          abw.append(grow);
+        }
         wrap.append(abw);
       }
     }
