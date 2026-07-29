@@ -363,6 +363,75 @@ function weatherTickReport(p){
   });
   return out;
 }
+/* ===================================================================
+   Terrain (Core "Field" Status moves — Electric/Grassy/Misty/Psychic Terrain)
+   Unlike Weather, any number of Terrains can be active on a map AT ONCE — setting one does not
+   replace another. Same ruling as Weather though: the book gives them a 5-round duration, but
+   here they simply stay active until the GM turns them off (no round timer).
+=================================================================== */
+const TERRAIN_DEFS = [
+  { key:"electric", name:"Electric Terrain", icon:"⚡",
+    blurb:"Electric attacks +10 damage · grounded Pokémon immune to Sleep",
+    dmgByType:{ electric:+10 },
+    rules:[
+      "Grounded Pokémon and Trainers touching the ground are immune to Sleep.",
+      "Grounded Electric-Type Attacks gain a +10 Bonus to Damage Rolls.",
+    ] },
+  { key:"grassy", name:"Grassy Terrain", icon:"🌿",
+    blurb:"Grass attacks +10 damage · grounded Pokémon heal 1/10 Max HP each turn",
+    dmgByType:{ grass:+10 },
+    ticks:[ { all:true, when:"start", sign:+1, kind:"tick", label:"Grassy Terrain — heals 1/10 Max HP" } ],
+    rules:[
+      "Grounded Pokémon and Trainers recover 1/10th of their Max HP at the start of every turn.",
+      "Grounded Grass-Type Attacks gain a +10 Bonus to Damage Rolls.",
+    ] },
+  { key:"misty", name:"Misty Terrain", icon:"🌫",
+    blurb:"Dragon attacks −10 damage · grounded Pokémon ignore the first turn of Status Afflictions",
+    dmgByType:{ dragon:-10 },
+    rules:[
+      "Grounded Pokémon and Trainers ignore the first turn of all Status Afflictions.",
+      "Dragon-Type Attacks targeting or originating from a grounded Pokémon/Trainer take a −10 penalty to Damage Rolls.",
+    ] },
+  { key:"psychic", name:"Psychic Terrain", icon:"🔮",
+    blurb:"Psychic attacks +10 damage · blocks Priority/Interrupt moves from grounded, non-Flying Pokémon",
+    dmgByType:{ psychic:+10 },
+    rules:[
+      "Non-Flying, non-Levitating Pokémon cannot declare Priority or Interrupt Moves outside their own Initiative.",
+      "Damaging Psychic-Type Attacks deal an additional +10 Damage.",
+    ] },
+];
+const TERRAIN_BY_KEY = Object.fromEntries(TERRAIN_DEFS.map(t=>[t.key,t]));
+/* the Terrains in play right now (0 or more) — like activeWeather(), only meaningful in a cloud
+   campaign with a map; everywhere else this is an empty list. */
+function activeTerrains(){
+  if(mode!=="cloud" || !cloud.mapMeta?.data) return [];
+  const map = currentMapForView();
+  return (map?.terrains||[]).map(k=>TERRAIN_BY_KEY[k]).filter(Boolean);
+}
+/* Damage changes ALL active Terrains make to ONE move by ONE Pokémon, combined — same shape as
+   weatherRollMods so openMoveRoll can total/display them the same way. */
+function terrainRollMods(p, m, moveType){
+  const terrains = activeTerrains();
+  const res = { terrains, dmg:0, lines:[] };
+  const ty = String(moveType||"").toLowerCase();
+  terrains.forEach(t=>{
+    const byType = t.dmgByType?.[ty];
+    if(byType){ res.dmg += byType;
+      res.lines.push(`${moveType}-Type attack ${byType>0?"+":"−"}${Math.abs(byType)} Damage in ${t.name}`); }
+  });
+  return res;
+}
+/* Per-turn HP every active Terrain would move on one Pokémon — REPORTED, never auto-applied, same
+   convention as weatherTickReport(). */
+function terrainTickReport(p){
+  const maxHP = pokeDerived(p).maxHP;
+  const out = [];
+  activeTerrains().forEach(t=>(t.ticks||[]).forEach(tk=>{
+    const amt = tk.kind==="sixteenth" ? hpSixteenth(maxHP) : hpTick(maxHP);
+    out.push({ label:tk.label, delta:tk.sign*amt, when:tk.when });
+  }));
+  return out;
+}
 /* how many evolution stages a species still has ahead of it (depth, so branches don't double-count) */
 function evolutionsRemaining(p){
   const sp=getSpecies(p.species); if(!sp?.evolution?.length) return 0;
@@ -425,28 +494,50 @@ function megaFormsFor(p){
   const baseName = (p.mega ? (p.preMega||p.species) : p.species);
   const base = getSpecies(baseName); if(!base) return [];
   const bname = base.name.toLowerCase();
+  const held = (p.heldItem||"").toLowerCase();
   return D.species.filter(s=>{
     const n = s.name.toLowerCase();
     if(!n.startsWith("mega ")) return false;                 // "Meganium"/"MEGAS" won't match (need the space)
     const rest = n.slice(5).replace(/\s+[xy]$/,"").trim();   // "mega charizard x" → "charizard"
-    return rest === bname;
+    if(rest !== bname) return false;
+    const stone = megaToStoneMap.get(s.name);                // only offer the button once its Mega Stone is Held Item
+    return !!stone && stone.toLowerCase()===held;
   }).map(s=>s.name);
+}
+/* the Mega Stone(s) that would unlock Mega Evolution for this Pokémon, for the "equip X" hint
+   shown when it isn't currently held (megaFormsFor above stays the actual stone-gated list). */
+function megaStonesFor(p){
+  const baseName = (p.mega ? (p.preMega||p.species) : p.species);
+  const base = getSpecies(baseName); if(!base) return [];
+  const bname = base.name.toLowerCase();
+  const out = [];
+  megaStoneMap.forEach((megaName, stoneName)=>{
+    const rest = megaName.slice(5).replace(/\s+[xy]$/i,"").trim().toLowerCase();
+    if(rest===bname) out.push(stoneName);
+  });
+  return out;
 }
 function megaEvolve(p, targetName){
   const sp = getSpecies(targetName); if(!sp || p.mega) return;
+  const baseSp = getSpecies(p.species);
   p.preMega = p.species;
   p.mega = true;
   p.species = sp.name;
+  const megaAbility = megaAbilityFor(baseSp, sp.name);
+  if(megaAbility && abilityByName.has(megaAbility.toLowerCase())){
+    p.preMegaAbilities = Array.isArray(p.abilities) ? [...p.abilities] : [];
+    p.abilities = [megaAbility];
+  }
   const m = pokeDerived(p).maxHP;
   if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
   save(); refreshMon(p);
-  const ab = (sp.abilities?.basic||[]).join(", ");
-  toast(`Mega Evolved into ${sp.name}! ✨`+(ab?` (Mega Ability: ${ab})`:""));
+  toast(`Mega Evolved into ${sp.name}! ✨`+(megaAbility?` (Mega Ability: ${megaAbility})`:""));
 }
 function megaRevert(p, silent){
   if(!p.mega) return;
   p.species = p.preMega || p.species;
   delete p.mega; delete p.preMega;
+  if(p.preMegaAbilities){ p.abilities = p.preMegaAbilities; delete p.preMegaAbilities; }
   const m = pokeDerived(p).maxHP;
   if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
   if(!silent){ save(); refreshMon(p); toast("Reverted from Mega Evolution"); }
@@ -488,6 +579,40 @@ const getSpecies = n => n && speciesByName.get(String(n).toLowerCase());
 /* every item that can be held/consumed, for lookups + the Held Item picker */
 const itemByName = new Map([...(D.items?.held||[]), ...(D.items?.food||[]), ...(D.items?.capabilities||[]),
   ...(D.items?.weather||[]), ...(D.items?.equipment||[]), ...(D.items?.gear||[])].map(i => [i.name.toLowerCase(), i]));
+
+/* Mega Evolution: derive stoneName <-> "Mega X"/"Mega X Y" species pairs from the loaded item
+   effect text ("Mega Evolves <target> when used...") instead of hand-listing all ~47 of them.
+   One stone's effect text has a data typo ("Pidgeotto" for the Mega Pidgeot line) — patched here. */
+const MEGA_STONE_TARGET_FIX = { Pidgeotto: "Pidgeot" };
+const megaStoneMap = new Map();     // stoneName -> megaSpeciesName
+const megaToStoneMap = new Map();   // megaSpeciesName -> stoneName
+(D.items?.held||[]).forEach(it=>{
+  const m = /^Mega Evolves (.+?) when used/i.exec(it.effect||""); if(!m) return;
+  let target = m[1].trim(); target = MEGA_STONE_TARGET_FIX[target] || target;
+  const suffix = / X$| Y$/.exec(it.name);
+  const megaName = suffix ? `Mega ${target}${suffix[0]}` : `Mega ${target}`;
+  if(getSpecies(megaName)){ megaStoneMap.set(it.name, megaName); megaToStoneMap.set(megaName, it.name); }
+});
+/* Mega Evolution ability: the Pokédex PDF carries a "Mega Evolution" blurb on each base species'
+   entry ("Type: Steel Ability: Filter Stats: +3 Atk, +5 Def, +2 Sp. Def"), preserved verbatim on
+   sp.megaEvolution by tools/build_data.py. Read the ability straight from that instead of
+   hand-listing all ~47 — Charizard/Mewtwo pack both forms in one blurb ("X ... Ability: A ...
+   Mega Evolution Y ... Ability: B ..."), split on the "Mega Evolution Y" marker for those. */
+const MEGA_ABILITY_NAME_FIX = { Refrigerate: "Refridgerate" };   // one dex blurb spells it correctly; the abilities DB has the typo
+function megaAbilityFor(baseSp, megaName){
+  const text = baseSp?.megaEvolution; if(!text) return null;
+  let seg = text;
+  if(/ Y$/.test(megaName)){
+    const m = /Mega Evolution\s*Y\b/.exec(text); if(!m) return null;
+    seg = text.slice(m.index + m[0].length);
+  } else if(/ X$/.test(megaName)){
+    const m = /Mega Evolution\s*Y\b/.exec(text);
+    seg = m ? text.slice(0, m.index) : text;
+  }
+  const m2 = /Ability:\s*([^]+?)\s*Stats:/.exec(seg); if(!m2) return null;
+  const name = m2[1].trim();
+  return MEGA_ABILITY_NAME_FIX[name] || name;
+}
 
 /* Capabilities that let a Pokémon change its Struggle Attack's type (PTU 1.05).
    Each also lets the attack use Sp.Atk / deal Special damage at the user's option. */
@@ -2436,6 +2561,10 @@ function heroCard(p, sp){
       title:"Mega Evolve (needs the matching Mega Stone held; lasts until End Scene). Stats, types, Ability & size follow the Mega form; moves & level are kept.",
       onclick:()=>megaEvolve(p,nm)}, megas.length>1 ? "✨ "+nm : "✨ Mega Evolve")));
     main.append(row);
+  } else {
+    const stones = megaStonesFor(p);
+    if(stones.length) main.append(el("div",{class:"small muted",style:"margin-top:6px"},
+      `Equip ${stones.join(" or ")} to Mega Evolve.`));
   }
   hero.append(main);
   card.append(hero);
@@ -2975,7 +3104,13 @@ function heldItemControl(p){
   const wrap = el("label",{class:"field"}, el("span",{},"Held Item"));
   const btn = el("button",{class:"btn-secondary",style:"text-align:left",onclick:()=>{
     const names = ["(none)", ...D.items.held.map(i=>i.name), ...D.items.food.map(i=>i.name)];
-    openPicker("Held Item", names, v=>{ p.heldItem = v==="(none)" ? "" : v; save(); refreshMon(p); }, "held");
+    openPicker("Held Item", names, v=>{
+      p.heldItem = v==="(none)" ? "" : v;
+      const req = megaToStoneMap.get(p.species);
+      if(p.mega && req && req.toLowerCase()!==(p.heldItem||"").toLowerCase()){
+        megaRevert(p);                                    // stone unequipped mid-Mega Evolution — snap back
+      } else { save(); refreshMon(p); }
+    }, "held");
   }}, p.heldItem || "choose…");
   wrap.append(btn);
   return wrap;
@@ -3180,20 +3315,37 @@ function matchupCard(types){
   });
   return card;
 }
+/* standard PTU movement-capability meanings — these aren't separate DB entries (they're just
+   numbers on the species), so hover text is hand-written instead of looked up */
+const CAP_MOVE_HELP = {
+  Overland: "Movement Capability — squares this Pokémon can move per Shift Action while walking or running on land.",
+  Sky: "Movement Capability — squares this Pokémon can move per Shift Action while flying.",
+  Swim: "Movement Capability — squares this Pokémon can move per Shift Action while swimming.",
+  Levitate: "Movement Capability — squares this Pokémon can move per Shift Action while hovering just above the ground or water.",
+  Burrow: "Movement Capability — squares this Pokémon can move per Shift Action while tunneling underground.",
+  Jump: "High Jump / Long Jump — squares this Pokémon can jump vertically / horizontally as part of its movement.",
+  Power: "Power Capability — how much this Pokémon can lift, carry and break through by brute force.",
+};
+/* hover/expand text for a named capability (Naturewalk, Amorphous, Levitate the ability, …) —
+   these live in D.items.capabilities alongside held items/food, keyed lowercase */
+function capabilityHelp(name){
+  const it = itemByName.get(String(name||"").split("(")[0].trim().toLowerCase());
+  return it?.effect || "";
+}
 function capsSkillsCard(sp){
   const card = el("div",{class:"card"}, el("h3",{},"Capabilities & Skills"));
   const cap = sp.capabilities;
   const caps = [];
-  if(cap.overland) caps.push(`Overland ${cap.overland}`);
-  if(cap.sky) caps.push(`Sky ${cap.sky}`);
-  if(cap.swim) caps.push(`Swim ${cap.swim}`);
-  if(cap.levitate) caps.push(`Levitate ${cap.levitate}`);
-  if(cap.burrow) caps.push(`Burrow ${cap.burrow}`);
-  caps.push(`Jump ${cap.highJump}/${cap.longJump}`, `Power ${cap.power}`);
-  if(cap.naturewalk?.length) caps.push(`Naturewalk (${cap.naturewalk.join(", ")})`);
-  (cap.other||[]).forEach(o=>caps.push(o));
+  if(cap.overland) caps.push([`Overland ${cap.overland}`, CAP_MOVE_HELP.Overland]);
+  if(cap.sky) caps.push([`Sky ${cap.sky}`, CAP_MOVE_HELP.Sky]);
+  if(cap.swim) caps.push([`Swim ${cap.swim}`, CAP_MOVE_HELP.Swim]);
+  if(cap.levitate) caps.push([`Levitate ${cap.levitate}`, CAP_MOVE_HELP.Levitate]);
+  if(cap.burrow) caps.push([`Burrow ${cap.burrow}`, CAP_MOVE_HELP.Burrow]);
+  caps.push([`Jump ${cap.highJump}/${cap.longJump}`, CAP_MOVE_HELP.Jump], [`Power ${cap.power}`, CAP_MOVE_HELP.Power]);
+  if(cap.naturewalk?.length) caps.push([`Naturewalk (${cap.naturewalk.join(", ")})`, capabilityHelp("Naturewalk")]);
+  (cap.other||[]).forEach(o=>caps.push([o, capabilityHelp(o)]));
   const chips = el("div",{class:"chips"});
-  caps.forEach(c=>chips.append(el("span",{class:"chip"},c)));
+  caps.forEach(([label,help])=>chips.append(el("span",{class:"chip",title:help||""},label)));
   card.append(chips);
   if(sp.skills && Object.keys(sp.skills).length){
     const sk = el("div",{class:"chips",style:"margin-top:8px"});
@@ -3546,6 +3698,7 @@ function openMoveRoll(p, m, sp){
   const bm = buffMods(p);                 // active Cheers / Orders / Songs (#2)
   const accCS = d.cs.acc||0;              // Accuracy Combat Stage: flat add to Accuracy Rolls (Core p.234)
   const wx = weatherRollMods(p, m, mtype);      // current Weather Condition (Core p.342)
+  const tx = terrainRollMods(p, m, mtype);      // current Terrain(s) in play — any number can stack
   const effAC = wx.acOverride!=null ? wx.acOverride : m.ac;   // e.g. Thunder is AC 11 in Sun
   const thresholds = effectThresholds(m.effect);
   const abilMods = abilityDamageMods(p, m, baseDB(), thresholds);
@@ -3602,11 +3755,14 @@ function openMoveRoll(p, m, sp){
     dmgBox.innerHTML = "";
     if(fDB!=null && dn){
       const terms=[`${dn}d${dfaces}`]; if(dflat) terms.push(String(dflat)); if(atkStat) terms.push(String(atkStat));
-      // weather is appended with its own operator — pushing "−5" into terms would render "+ −5"
-      const expr = terms.join(" + ") + (wx.dmg ? ` ${wx.dmg>0?"+":"−"} ${Math.abs(wx.dmg)}` : "");
+      // weather/terrain are appended with their own operator — pushing "−5" into terms would render "+ −5"
+      const expr = terms.join(" + ")
+        + (wx.dmg ? ` ${wx.dmg>0?"+":"−"} ${Math.abs(wx.dmg)}` : "")
+        + (tx.dmg ? ` ${tx.dmg>0?"+":"−"} ${Math.abs(tx.dmg)}` : "");
       const why=[`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${fDB}${stab?` (DB ${baseDB()} +2 STAB)`:""}`];
       if(atkStat) why.push(`${atkStat} = your ${atkLbl}`);
       if(wx.dmg) why.push(`${wx.dmg>0?"+":"−"}${Math.abs(wx.dmg)} = ${wx.weather.name}`);
+      if(tx.dmg) why.push(`${tx.dmg>0?"+":"−"}${Math.abs(tx.dmg)} = Terrain`);
       if(abilMods.why.length) why.push(abilMods.why.join(", "));
       dmgBox.append(el("div",{},
         el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${expr}`),
@@ -3688,6 +3844,18 @@ function openMoveRoll(p, m, sp){
     body.append(wcard);
   }
 
+  /* --- active Terrain(s) applied to this roll — same presentation as the Weather card above --- */
+  if(tx.terrains.length){
+    const tcard = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+    tcard.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},
+      `🌱 Terrain — ${tx.terrains.map(t=>t.name).join(", ")}`));
+    if(tx.lines.length) tx.lines.forEach(l=>tcard.append(el("div",{class:"small"}, "• "+l)));
+    else tcard.append(el("div",{class:"small muted"},"No effect on this move."));
+    const tnet = []; if(tx.dmg) tnet.push(`${tx.dmg>0?"+":"−"}${Math.abs(tx.dmg)} to Damage`);
+    if(tnet.length) tcard.append(el("div",{class:"small muted",style:"margin-top:4px;font-weight:700"},"Net: "+tnet.join(" · ")));
+    body.append(tcard);
+  }
+
   /* --- move effect text, always shown; high-roll thresholds highlighted (#4) --- */
   if(m.effect){
     const ec = el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"});
@@ -3759,13 +3927,14 @@ function openMoveRoll(p, m, sp){
           if(hasAbility(p,"Sniper")){ const r3 = rollDiceString(ds); critExtra += r3.dice; critWhy.push(`+${r3.dice} Sniper`); }
           if(hasAbility(p,"Sniper [Errata]")){ const r4 = rollDiceString("3d10"); critExtra += r4.total; critWhy.push(`+${r4.total} Sniper [Errata]`); }
         }
-        const total = Math.max(0, r.total + (atkStat||0) + (bm.dmg||0) + (wx.dmg||0) + abilMods.flat + critExtra);
+        const total = Math.max(0, r.total + (atkStat||0) + (bm.dmg||0) + (wx.dmg||0) + (tx.dmg||0) + abilMods.flat + critExtra);
         dmgLine.append(el("div",{style:`font-size:26px;font-weight:800;color:${isCrit?"var(--bad)":"var(--accent)"}`},
           `${isCrit?"💥 CRIT! ":"💥 "}${total}`));
         const parts=[`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`];
         if(atkStat) parts.push(`+ ${atkStat} ${atkLbl}`);
         if(bm.dmg)  parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs`);
         if(wx.dmg)  parts.push(`${wx.dmg>0?"+":""}${wx.dmg} ${wx.weather.name}`);
+        if(tx.dmg)  parts.push(`${tx.dmg>0?"+":""}${tx.dmg} Terrain`);
         if(abilMods.flat) parts.push(`${abilMods.flat>0?"+":""}${abilMods.flat} ability`);
         if(critWhy.length) parts.push(critWhy.join(" "));
         parts.push(`= ${total}`);
@@ -4894,7 +5063,29 @@ function encounterMonCard(enc, p, list){
   if(!p.abilities.length) aw.append(el("span",{class:"muted small"},"none — tap + ability"));
   p.abilities.forEach(an=> aw.append(encounterAbilityRow(p,an)));
   card.append(aw);
+  // capabilities — read-only (derived from species), hover a chip to see what it does
+  if(sp) card.append(encounterCapsRow(sp));
   return card;
+}
+/* movement + special Capabilities chip row for an encounter Pokémon — hover each chip for its
+   rules text (movement caps get hand-written help; named ones look up D.items.capabilities) */
+function encounterCapsRow(sp){
+  const cap = sp.capabilities||{};
+  const entries = [];
+  if(cap.overland) entries.push([`Overland ${cap.overland}`, CAP_MOVE_HELP.Overland]);
+  if(cap.sky) entries.push([`Sky ${cap.sky}`, CAP_MOVE_HELP.Sky]);
+  if(cap.swim) entries.push([`Swim ${cap.swim}`, CAP_MOVE_HELP.Swim]);
+  if(cap.levitate) entries.push([`Levitate ${cap.levitate}`, CAP_MOVE_HELP.Levitate]);
+  if(cap.burrow) entries.push([`Burrow ${cap.burrow}`, CAP_MOVE_HELP.Burrow]);
+  entries.push([`Jump ${cap.highJump ?? 0}/${cap.longJump ?? 0}`, CAP_MOVE_HELP.Jump], [`Power ${cap.power ?? 0}`, CAP_MOVE_HELP.Power]);
+  if(cap.naturewalk?.length) entries.push([`Naturewalk (${cap.naturewalk.join(", ")})`, capabilityHelp("Naturewalk")]);
+  (cap.other||[]).forEach(o=>entries.push([o, capabilityHelp(o)]));
+  const wrap=el("div",{style:"margin-top:8px"});
+  wrap.append(el("span",{class:"small muted",style:"font-weight:700"},"Capabilities"));
+  const chips=el("div",{class:"chips",style:"margin-top:4px"});
+  entries.forEach(([label,help])=>chips.append(el("span",{class:"chip",title:help||""},label)));
+  wrap.append(chips);
+  return wrap;
 }
 function encounterTrainerCard(enc, tr){
   const t=tr.trainer; normTrainer(t);
@@ -5858,6 +6049,8 @@ function normMapMeta(data){
     if(typeof m.fogOn!=="boolean") m.fogOn = false;
     if(typeof m.fogRadius!=="number" || m.fogRadius<1) m.fogRadius = 3;
     if(typeof m.weather!=="string" || !WEATHER_BY_KEY[m.weather]) m.weather = "clear";   // Core p.342
+    if(!Array.isArray(m.terrains)) m.terrains = [];
+    m.terrains = m.terrains.filter(k=>TERRAIN_BY_KEY[k]);
   });
   // playerMapId = the map players see (seed from the old shared activeMapId for back-compat)
   if(!data.playerMapId || !data.maps.find(m=>m.id===data.playerMapId))
@@ -8346,6 +8539,15 @@ function setMapWeather(map, key){
   const w = weatherByKey(map.weather);
   toast(weatherIsClear(w) ? "🌤 Weather cleared" : `${w.icon} ${w.name} — weather set`);
 }
+/* Terrains stack — toggle one on/off independently of the others (and of Weather). */
+function toggleMapTerrain(map, key){
+  const def = TERRAIN_BY_KEY[key]; if(!def) return;
+  map.terrains = Array.isArray(map.terrains) ? map.terrains : [];
+  const i = map.terrains.indexOf(key), wasOn = i>=0;
+  if(wasOn) map.terrains.splice(i,1); else map.terrains.push(key);
+  mapMetaSave(); renderMap();
+  toast(wasOn ? `${def.name} cleared` : `${def.icon} ${def.name} — terrain set`);
+}
 /* Panel under the map toolbar: the active condition's full rules, plus the per-turn HP ticks it
    would move on every Pokémon on the board. Ticks are LISTED rather than auto-applied, so the GM
    applies them deliberately; each row carries a button that does the arithmetic on one tap. */
@@ -8385,6 +8587,50 @@ function weatherPanel(map){
   } else {
     body.append(el("div",{class:"small muted",style:"margin-top:10px"},
       "No Pokémon on this map take per-turn HP changes from this weather."));
+  }
+  card.append(body);
+  return card;
+}
+/* Panel under the map toolbar for active Terrains — same idea as weatherPanel, but plural: any
+   number of Terrains can be listed at once, each with its own rules. */
+function terrainPanel(map){
+  const terrains = (map?.terrains||[]).map(k=>TERRAIN_BY_KEY[k]).filter(Boolean);
+  if(!map || !terrains.length) return null;
+  const card = el("details",{class:"card map-weather"});
+  card.append(el("summary",{},
+    el("span",{style:"font-weight:800"}, terrains.map(t=>`${t.icon} ${t.name}`).join(" · ")),
+    el("span",{class:"muted small",style:"margin-left:8px"}, terrains.map(t=>t.blurb).join(" · "))));
+  const body = el("div",{style:"margin-top:8px"});
+  terrains.forEach(t=>{
+    body.append(el("div",{class:"small",style:"font-weight:700;margin-top:6px"}, `${t.icon} ${t.name}`));
+    t.rules.forEach(r=>body.append(el("div",{class:"small"}, "• "+r)));
+  });
+  const rows = [];
+  mapTokensFor(map.id).forEach(tok=>{
+    const L = tok.link ? tokenLinked(tok) : null;
+    const mon = (L && !L.missing && (L.kind==="pokemon" || L.kind==="enc")) ? L.obj : null;
+    if(!mon) return;
+    const rep = terrainTickReport(mon);
+    if(rep.length) rows.push({ token:tok, rep, name:tokenHp(tok).name });
+  });
+  if(rows.length){
+    body.append(el("div",{class:"small muted",style:"font-weight:700;margin:10px 0 4px"},
+      "Per-turn HP — not applied automatically; tap a value when that creature's turn comes up"));
+    rows.forEach(r=>{
+      const net = r.rep.reduce((s,x)=>s+x.delta, 0);
+      const line = el("div",{class:"inline",style:"gap:8px;justify-content:space-between;flex-wrap:wrap;margin-top:4px"});
+      line.append(el("span",{class:"small"}, `${r.name} — `,
+        el("span",{class:"muted"}, r.rep.map(x=>`${x.label} (${x.delta>0?"+":""}${x.delta} HP, ${x.when} of turn)`).join(" · "))));
+      if(net && tokenHp(r.token).editable)
+        line.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",
+          title:`apply ${net>0?"+":""}${net} HP to ${r.name}`,
+          onclick:async()=>{ await setTokenHP(r.token, tokenHp(r.token).cur + net); renderMap(); }},
+          `${net>0?"+":""}${net} HP`));
+      body.append(line);
+    });
+  } else {
+    body.append(el("div",{class:"small muted",style:"margin-top:10px"},
+      "No Pokémon on this map take per-turn HP changes from these Terrains."));
   }
   card.append(body);
   return card;
@@ -8467,13 +8713,23 @@ function renderMap(){
       wsel.addEventListener("change", ()=>setMapWeather(map, wsel.value));
       bar.append(el("span",{class:"map-sep"}),
         el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Weather"), wsel));
+      // — Terrain group: Terrains stack, so these are independent toggles (Weather above is a
+      //   single select because only one can be active) —
+      bar.append(el("span",{class:"map-sep"}));
+      TERRAIN_DEFS.forEach(t=>{
+        const on = (map.terrains||[]).includes(t.key);
+        bar.append(el("button",{class:"btn-secondary"+(on?" on":""), title:t.blurb,
+          onclick:()=>toggleMapTerrain(map, t.key)}, `${t.icon} ${t.name}`));
+      });
     }
   } else {
     bar.append(el("div",{class:"map-mapname"}, map ? `🗺 ${map.name}` : "🗺 Battle map"));
     if(meta.battleOn) bar.append(el("span",{class:"battle-badge"},"⚔ Battle"));
-    // players can't change the weather, but they must be able to see what's in play
+    // players can't change the weather/terrain, but they must be able to see what's in play
     const pw = weatherByKey(map?.weather);
     if(map && !weatherIsClear(pw)) bar.append(el("span",{class:"battle-badge"}, `${pw.icon} ${pw.name}`));
+    (map?.terrains||[]).map(k=>TERRAIN_BY_KEY[k]).filter(Boolean).forEach(t=>
+      bar.append(el("span",{class:"battle-badge"}, `${t.icon} ${t.name}`)));
     const viewer = isMapHpViewer();
     if(map && viewer){
       // "Viewer" (a co-pilot/spectator device) can add ANY player's token and select the whole
@@ -8507,6 +8763,7 @@ function renderMap(){
   }
   resolveImageSizes(map);   // resolve any migrated-bg natural sizes (no-op once done)
   const wpanel = weatherPanel(map); if(wpanel) root.append(wpanel);
+  const tpanel = terrainPanel(map); if(tpanel) root.append(tpanel);
   if(meta.battleOn) root.append(initiativePanel(map, meta));
 
   const { w:stageW, h:stageH, originX, originY } = mapStageSize(map);
