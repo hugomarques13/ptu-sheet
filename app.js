@@ -23,6 +23,17 @@ const SKILLS = [
 ];
 const STATS = [["hp","HP"],["atk","Attack"],["def","Defense"],
   ["spatk","Sp.Atk"],["spdef","Sp.Def"],["spd","Speed"]];
+/* Skill Categories (Core p.62) — used by the Categoric Inclination Edge's +1 bonus */
+const SKILL_CATEGORY = {
+  acrobatics:"Body", athletics:"Body", combat:"Body", stealth:"Body",
+  perception:"Mind", generalEd:"Mind", medicineEd:"Mind", occultEd:"Mind", pokemonEd:"Mind", technologyEd:"Mind",
+  intimidate:"Spirit", survival:"Spirit", guile:"Spirit", charm:"Spirit", command:"Spirit", focus:"Spirit", intuition:"Spirit",
+};
+/* +1 to every Skill Check in the chosen Category, if the trainer has the Edge and picked one */
+function categoricBonus(t, skillKey){
+  return (t.edges||[]).includes("Categoric Inclination") && t.categoricInclination
+    && SKILL_CATEGORY[skillKey]===t.categoricInclination ? 1 : 0;
+}
 
 const TYPES = ["Normal","Fire","Water","Electric","Grass","Ice","Fighting","Poison",
   "Ground","Flying","Psychic","Bug","Rock","Ghost","Dragon","Dark","Steel","Fairy"];
@@ -80,23 +91,27 @@ function xpToNext(xp){ const lvl = levelForXP(xp); return lvl>=MAX_LEVEL ? 0 : L
 /* Tutor Points: a Pokémon starts with 1 upon hatching, +1 more every level evenly divisible by 5 */
 function tutorPointsEarned(level){ return 1 + Math.floor(Math.max(1,level||1)/5); }
 
-/* Status Afflictions (PTU 1.05 Core pp.245-248). kind drives the Capture-Rate bonus:
-   persistent +10 each, volatile +5 each; "other" uses its own `cap`. */
+/* Status Afflictions (PTU 1.05 Core pp.245-248), corrected against the Feb 2016 Playtest Packet
+   errata (p.2 "Status Conditions") where it overrides Core: Paralysis, Flinch, Infatuation, Confusion,
+   Suppression, and the Vulnerable reminder note below. Everything else is unchanged Core RAW — the
+   packet doesn't touch Burned/Frozen/Poisoned/Sleep/Cursed/Disabled/Enraged/Bad Sleep/Stuck/Slowed/
+   Trapped/Blinded. kind drives the Capture-Rate bonus: persistent +10 each, volatile +5 each; "other"
+   uses its own `cap`. */
 const STATUS_DEFS = [
   {key:"burned", name:"Burned", kind:"persistent", immune:["Fire"],
    effect:"−2 Combat Stages to Defense. If it takes (or is prevented from taking, e.g. by Sleep/Flinch/Paralysis) a Standard Action, it loses a Tick of HP at the end of that turn. Fire-types are immune."},
   {key:"frozen", name:"Frozen", kind:"persistent", immune:["Ice"],
-   effect:"Cannot act and gains no Evasion bonuses. DC 16 Save Check at end of each turn to cure (DC 11 for Fire-types; +4 in Sun, −2 in Hail). Cured if hit by a damaging Fire/Fighting/Rock/Steel attack. Ice-types immune."},
+   effect:"Cannot act and gains no Evasion bonuses (always considered Vulnerable). DC 16 Save Check at end of each turn to cure (DC 11 for Fire-types; +4 in Sun, −2 in Hail). Cured if hit by a damaging Fire/Fighting/Rock/Steel attack. Ice-types immune."},
   {key:"paralysis", name:"Paralyzed", kind:"persistent", immune:["Electric"],
-   effect:"−4 Combat Stages to Speed. At the start of each turn make a DC 5 Save; on a failure it cannot take Standard, Shift, or Swift Actions. Electric-types immune."},
+   effect:"(Feb 2016 errata) Initiative is halved. Save Check at the start of the user's turn, succeeding on 11+: on a success act normally; on a failure the user may only take a Standard OR Shift Action (not both) this round, is Vulnerable for 1 full round, and cannot take Attacks of Opportunity for 1 full round. Electric-types immune."},
   {key:"poisoned", name:"Poisoned", kind:"persistent", immune:["Poison","Steel"],
    effect:"−2 Combat Stages to Special Defense. If it takes (or is prevented from taking) a Standard Action, it loses a Tick of HP at end of turn. Poison & Steel-types immune."},
   {key:"badlyPoisoned", name:"Badly Poisoned", kind:"persistent", immune:["Poison","Steel"],
    effect:"As Poisoned, but instead loses 5 HP, doubling each consecutive round (10, 20, 40…)."},
   {key:"sleep", name:"Asleep", kind:"persistent",
-   effect:"No Evasion bonuses; may only take Free/Swift Actions that cure Sleep. DC 16 Save at end of its turn to wake; also wakes on any active HP-loss attack (not passive Poison/Burn). Can't Save vs Rage/Infatuation/Confusion while asleep (but also can't hurt itself from Confusion)."},
+   effect:"No Evasion bonuses (always considered Vulnerable); may only take Free/Swift Actions that cure Sleep. DC 16 Save at end of its turn to wake; also wakes on any active HP-loss attack (not passive Poison/Burn). Can't Save vs Rage/Infatuation/Confusion while asleep (but also can't hurt itself from Confusion)."},
   {key:"confused", name:"Confused", kind:"volatile",
-   effect:"Save at start of turn — 1–8: hit self with a Typeless Physical Struggle (auto-hits, resisted one step) and do nothing else; 9–15: act normally; 16+: cured."},
+   effect:"(Feb 2016 errata) Cannot take Attacks of Opportunity. Whenever the user makes an Attack (even one without a roll), roll 1d2 — on a 1, after the attack resolves the user loses HP equal to half its Attack Stat (Physical Move), half its Special Attack Stat (Special Move), or two Ticks of HP (Status Move). Cured with a Save of 16+ made at end of turn."},
   {key:"cursed", name:"Cursed", kind:"volatile",
    effect:"If it takes a Standard Action, it loses two Ticks of HP at the end of that turn."},
   {key:"disabled", name:"Disabled", kind:"volatile",
@@ -104,13 +119,13 @@ const STATUS_DEFS = [
   {key:"enraged", name:"Enraged (Rage)", kind:"volatile",
    effect:"Must use a damaging Physical/Special Move or Struggle Attack. DC 15 Save at end of each turn to cure. Cannot choose to Take a Breather."},
   {key:"flinch", name:"Flinched", kind:"volatile",
-   effect:"Cannot take actions during its next turn this round. Does not carry to the next round."},
+   effect:"(Feb 2016 errata) Lowers Initiative by 5 for the rest of the Scene and the user is Vulnerable for 1 full round. Multiple instances stack (this app tracks it as a single flag — apply the −5 by hand again for a 2nd+ stack). Switching out removes the Initiative penalty."},
   {key:"infatuation", name:"Infatuated", kind:"volatile",
-   effect:"Save at start of turn — 1–10: can't target the source with Moves/Attacks (else act normally); 11–18: act freely; 19+: cured."},
+   effect:"(Feb 2016 errata) −5 penalty on all Damage Rolls that don't target the user's Crush; against the Crush, Attack and Special Attack are halved for the Damage Roll instead. Cured with a Save of 16+ made at end of turn."},
   {key:"badSleep", name:"Bad Sleep", kind:"volatile",
    effect:"Whenever it Saves against Sleep, it loses two Ticks of HP. Only affects Sleeping targets; cured when Sleep is cured."},
   {key:"suppressed", name:"Suppressed", kind:"volatile",
-   effect:"Can't benefit from PP Ups; Move frequencies drop a step — At-Will→EOT, and EOT & Scene x2→Scene."},
+   effect:"(Feb 2016 errata) Cannot use Moves with any Frequency other than At-Will. Always lasts 1 full round."},
   {key:"stuck", name:"Stuck", kind:"other", cap:10, immune:["Ghost"],
    effect:"Cannot Shift to move and can't apply Speed Evasion. Removed by switching or as an Extended Action at end of Scene. Ghost-types immune. (+10 to Capture Rate.)"},
   {key:"slowed", name:"Slowed", kind:"other", cap:5,
@@ -118,11 +133,11 @@ const STATUS_DEFS = [
   {key:"trapped", name:"Trapped", kind:"other", cap:0, immune:["Ghost"],
    effect:"Cannot be recalled into a Poké Ball. Ghost-types immune."},
   {key:"tripped", name:"Tripped", kind:"other", cap:0,
-   effect:"Must spend a Shift Action to get up before taking other actions."},
+   effect:"Must spend a Shift Action to get up before taking other actions. Always considered Vulnerable."},
   {key:"vulnerable", name:"Vulnerable", kind:"other", cap:0,
-   effect:"Cannot apply Evasion of any sort against attacks."},
+   effect:"Cannot apply Evasion of any sort against attacks. (Blinded, Sleeping, Fainted, Frozen, and Tripped targets are always considered Vulnerable too.)"},
   {key:"blinded", name:"Blinded", kind:"other", cap:0,
-   effect:"−6 to Accuracy Rolls; must pass a DC 10 Acrobatics Check over Rough/Slow Terrain or become Tripped."},
+   effect:"−6 to Accuracy Rolls; must pass a DC 10 Acrobatics Check over Rough/Slow Terrain or become Tripped. Always considered Vulnerable."},
 ];
 const statusByKey = new Map(STATUS_DEFS.map(s=>[s.key, s]));
 /* Move effect text almost never spells out the status ADJECTIVE ("Poisoned") — it uses a VERB
@@ -165,8 +180,9 @@ const CS_STATS = [["atk","Attack"],["def","Defense"],["spatk","Sp.Atk"],["spdef"
 const ACC_EVA_STATS = [["acc","Accuracy"],["eva","Evasion"]];
 const ALL_CS_STATS = [...CS_STATS, ...ACC_EVA_STATS];
 function csMult(cs){ cs = Math.max(-6, Math.min(6, cs||0)); return cs>=0 ? 1+0.2*cs : 1+0.1*cs; }
-/* Status Afflictions that impose Combat Stages (Core p.245-246) */
-const CONDITION_CS = { burned:{def:-2}, paralysis:{spd:-4}, poisoned:{spdef:-2}, badlyPoisoned:{spdef:-2}, blinded:{acc:-6} };
+/* Status Afflictions that impose Combat Stages (Core p.245-246). Paralysis is NOT here — the Feb
+   2016 errata replaced its −4 Speed CS with an Initiative-halving effect instead (see tokenInitiative). */
+const CONDITION_CS = { burned:{def:-2}, poisoned:{spdef:-2}, badlyPoisoned:{spdef:-2}, blinded:{acc:-6} };
 function conditionCSMods(p){
   const m = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
   (p.statuses||[]).forEach(k=>{ const c=CONDITION_CS[k]; if(c) for(const s in c) m[s]+=c[s]; });
@@ -769,6 +785,10 @@ function normTrainer(t){
   if(typeof t.usedAP!=="number") t.usedAP = 0;
   if(typeof t.xp!=="number") t.xp = 0;                            // EXP toward next level (houserule: 10 = level up)
   if(typeof t.unlocked!=="boolean") t.unlocked = false;
+  if(typeof t.struggleType!=="string") t.struggleType = null;     // elemental unarmed Struggle (GM 🔓 only — trainers have no capabilities of their own)
+  if(typeof t.struggleSpecial!=="boolean") t.struggleSpecial = false;
+  if(typeof t.categoricInclination!=="string") t.categoricInclination = null;  // Body/Mind/Spirit choice for the Categoric Inclination Edge
+  if(!Array.isArray(t.mentorSkills)) t.mentorSkills = [];        // the two Mentor Skills chosen when taking the Mentor class
   if(!t.uses || typeof t.uses!=="object") t.uses = {};
   if(typeof t.avatar!=="string") t.avatar = "";
   if(!Array.isArray(t.weapons)) t.weapons = [];
@@ -1192,14 +1212,24 @@ function renderTrainer(){
   /* skills */
   const skc = el("div",{class:"card"}, el("h3",{},"Skills",
      el("span",{class:"muted small"},"tap a rank · 🎲 to roll")));
+  if((t.edges||[]).includes("Categoric Inclination")){
+    const ciWrap = el("div",{class:"inline small",style:"margin:-4px 0 8px;gap:8px;align-items:center"});
+    ciWrap.append(el("span",{class:"muted",style:"font-weight:700"},"Categoric Inclination — +1 to:"));
+    const sel = el("select",{style:"padding:4px 6px"});
+    ["Body","Mind","Spirit"].forEach(c=>sel.append(el("option",{value:c,selected:t.categoricInclination===c},c)));
+    sel.addEventListener("change",()=>{ t.categoricInclination=sel.value; save(); renderTrainer(); });
+    ciWrap.append(sel);
+    skc.append(ciWrap);
+  }
   const tbl = el("table",{class:"skilltable"});
   SKILLS.forEach(([k,lbl]) => {
     const tr = el("tr",{});
-    tr.append(el("td",{},lbl));
+    const bonus = categoricBonus(t, k);
+    tr.append(el("td",{},lbl+(bonus?" +1":"")));
     const rb = el("td",{},rankButtons(k, t.skills[k]));
-    const dice = el("td",{class:"dice","data-dice":k}, `${rankDice(t.skills[k])}d6`);
+    const dice = el("td",{class:"dice","data-dice":k}, `${rankDice(t.skills[k])}d6${bonus?"+1":""}`);
     const roll = el("td",{}, el("button",{class:"btn-secondary",style:"padding:2px 8px",title:`roll ${lbl}`,
-      onclick:()=>rollSkill(lbl, rankDice(t.skills[k]), 0)},"🎲"));
+      onclick:()=>rollSkill(lbl, rankDice(t.skills[k]), bonus)},"🎲"));
     tr.append(rb, dice, roll);
     tbl.append(tr);
   });
@@ -1224,6 +1254,18 @@ function injuriesFromHit(fullHP, oldHP, newHP, dmgAmount){
   if(dmgAmount >= fullHP*0.5) n++;               // Massive Damage — independent of markers crossed
   return n;
 }
+/* Shared by every HP setter (damageHealRow, setTokenHP): applies injuriesFromHit to a damaging
+   change and toasts it. Swarms never take Injuries (Core p.478), so they're excluded here rather
+   than at each call site. */
+function applyAutoInjury(owner, oldHP, newHP){
+  if(!owner || newHP>=oldHP || isSwarm(owner)) return 0;
+  const inj = injuriesFromHit(ownerFullHP(owner), oldHP, newHP, oldHP-newHP);
+  if(inj > 0){
+    owner.injuries = (owner.injuries||0) + inj;
+    toast(`+${inj} Injur${inj===1?"y":"ies"}! (Massive Damage / HP marker crossed)`);
+  }
+  return inj;
+}
 /* Damage / Heal control: one signed input — type 20 to heal 20, −20 to take 20 damage. */
 /* `owner` (optional) = the creature taking the damage; when it has active Damage-Reduction
    buffs, a negative (damage) entry is auto-reduced by the DR and any one-shot DR buff is spent. */
@@ -1243,13 +1285,7 @@ function damageHealRow(getHP, setHP, owner){
       }
     }
     const oldHP = getHP();
-    if(n < 0 && owner){
-      const inj = injuriesFromHit(ownerFullHP(owner), oldHP, oldHP+n, -n);
-      if(inj > 0){
-        owner.injuries = (owner.injuries||0) + inj;
-        toast(`+${inj} Injur${inj===1?"y":"ies"}! (Massive Damage / HP marker crossed)`);
-      }
-    }
+    if(owner) applyAutoInjury(owner, oldHP, oldHP+n);
     setHP(oldHP + n);
   };
   box.addEventListener("keydown", e=>{ if(e.key==="Enter") apply(); });
@@ -1283,9 +1319,34 @@ function newWeapon(){ return { id:uid(), name:"", category:"Small Melee", type:"
 /* the trainer's Struggle Attack — unarmed by default, or modified by a given weapon */
 function trainerStruggle(t, w){
   const expert = rankNum(t.skills.combat) >= 5;          // Combat Expert+ → AC 3 / DB 5
-  let ac = expert ? 3 : 4, db = expert ? 5 : 4, type = "Normal", range = "Melee", name = "Struggle Attack";
-  if(w){ ac += (w.acMod||0); db += (w.dbMod||0); type = w.type || type; range = w.range || range; name = w.name || "Weapon Strike"; }
-  return { name, ac, damageBase:db, type, range, cls:"Physical", weapon:w };
+  let ac = expert ? 3 : 4, db = expert ? 5 : 4, type = t.struggleType || "Normal", range = "Melee", name = "Struggle Attack";
+  let cls = (type!=="Normal" && t.struggleSpecial && trainerStruggleCanBeSpecial(t)) ? "Special" : "Physical";
+  if(w){ ac += (w.acMod||0); db += (w.dbMod||0); type = w.type || type; range = w.range || range; name = w.name || "Weapon Strike"; cls = "Physical"; }
+  return { name, ac, damageBase:db, type, range, cls, weapon:w };
+}
+/* elemental unarmed Struggle for trainers — trainers have no capabilities of their own (those are a
+   Pokémon mechanic, Core p.75-ish), so this is GM-flexible via 🔓 unlock only (same "GM adjusts the
+   number" pattern used for weapons/items elsewhere in this app), not tied to any specific Edge/Feature. */
+function trainerStruggleTypeOptions(t){ return t?.unlocked ? TYPES.slice() : ["Normal"]; }
+function trainerStruggleCanBeSpecial(t){ return !!t?.unlocked; }
+function trainerStruggleControl(t, rerender, saveFn){
+  saveFn = saveFn || save;
+  const opts = trainerStruggleTypeOptions(t);
+  const canSpec = trainerStruggleCanBeSpecial(t);
+  if(opts.length <= 1 && !canSpec) return el("span",{style:"display:none"});
+  const wrap = el("div",{class:"inline small",style:"margin:2px 0 8px;flex-wrap:wrap;gap:8px;align-items:center"});
+  wrap.append(el("span",{class:"muted",style:"font-weight:700"},"Unarmed Struggle:"));
+  const sel = el("select",{style:"padding:4px 6px"});
+  opts.forEach(ty => sel.append(el("option",{value:ty,selected:(t.struggleType||"Normal")===ty}, ty)));
+  sel.addEventListener("change",()=>{ t.struggleType = sel.value==="Normal"?null:sel.value; saveFn(); rerender(); });
+  wrap.append(sel);
+  if(canSpec){
+    const lbl = el("label",{class:"muted",title:"Use Sp.Atk / deal Special damage",style:"display:inline-flex;gap:4px;align-items:center;cursor:pointer"});
+    const cb = el("input",{type:"checkbox"}); cb.checked = !!t.struggleSpecial;
+    cb.addEventListener("change",()=>{ t.struggleSpecial = cb.checked; saveFn(); rerender(); });
+    lbl.append(cb, "Special"); wrap.append(lbl);
+  }
+  return wrap;
 }
 function weaponsCard(t){
   if(!Array.isArray(t.weapons)) t.weapons = [];
@@ -2122,8 +2183,12 @@ function inventoryCard(t){
       el("button",{class:"linkbtn h-act", onclick:()=>openInventoryPicker(t)}, "+ from catalog"),
       el("button",{class:"linkbtn h-act", onclick:()=>{ t.inventory.push({name:"",qty:1,notes:""}); save(); renderTrainer(); }}, "+ custom"))));
   if(!t.inventory.length) card.append(el("span",{class:"muted small"},"empty — add gear, equipment, Poké Balls, potions… from the catalog"));
-  t.inventory.forEach((it,i) => {
+  // favourites float to the top (stable otherwise, by original order)
+  const items = t.inventory.map((it,i)=>({it,i})).sort((a,b)=>(b.it.fav?1:0)-(a.it.fav?1:0));
+  items.forEach(({it,i}) => {
     const row = el("div",{class:"moveslot"});
+    const fav = el("button",{class:"actstar"+(it.fav?" on":""),title:it.fav?"unfavourite":"favourite",
+      onclick:()=>{ it.fav=!it.fav; save(); renderTrainer(); }}, it.fav?"★":"☆");
     const info = el("div",{style:"flex:1;min-width:0"});
     const name = el("input",{type:"text",placeholder:"Item",style:"width:100%",list:"itemlist"}); name.value=it.name;
     name.addEventListener("input",()=>{ it.name=name.value; save(); });
@@ -2134,7 +2199,7 @@ function inventoryCard(t){
     const qty = el("input",{type:"number",min:0,style:"width:56px",title:"qty"}); qty.value=it.qty;
     qty.addEventListener("input",()=>{ it.qty=parseInt(qty.value)||0; save(); });
     const del = el("button",{class:"linkbtn",title:"remove",onclick:()=>{ t.inventory.splice(i,1); save(); renderTrainer(); }},"×");
-    row.append(info, qty, del);
+    row.append(fav, info, qty, del);
     card.append(row);
   });
   if(!$("#itemlist")){
@@ -2782,6 +2847,7 @@ function renderMonBuild(root, p, sp){
     field("Nature","",{opts:D.natures.map(n=>n.name), value:p.nature, onchange:v=>{p.nature=v;save();refreshMon(p);}}),
   );
   idc.append(r1);
+  idc.append(rotomFormControl(p, sp, ()=>{ save(); refreshMon(p); }));
   idc.append(xpRow(p));
   if(nat) idc.append(el("div",{class:"small muted",style:"margin:6px 0"},
     `Nature ${nat.name}: ${natSummary(nat)} · likes ${nat.likedFlavor}, dislikes ${nat.dislikedFlavor}`));
@@ -3110,6 +3176,8 @@ function capsSkillsCard(sp){
   return card;
 }
 const MOVE_LIMIT = 6;
+/* Guidance (Feature, prereq Mentor, Static): "Your Pokémon's base Move List limit is increased by +1." */
+function effectiveMoveLimit(t){ return MOVE_LIMIT + ((t?.features||[]).includes("Guidance") ? 1 : 0); }
 /* the species plus its pre-evolutions (evolved Pokémon inherit earlier stages' moves) */
 function speciesLineBackTo(sp){
   const line = [sp];
@@ -3159,6 +3227,27 @@ function struggleTypeOptions(p, sp){
 /* a capability lets the elemental Struggle also be Special (Sp.Atk) at the user's option */
 function struggleCanBeSpecial(p, sp){
   return !!(p?.unlocked) || monCaps(sp).some(c => STRUGGLE_TYPE_CAPS[c]);
+}
+/* Rotom's 6 Appliance forms (Core/Gen canon) — the DB has these as separate species entries (plus a
+   pile of duplicate-name variants from the spreadsheet import, e.g. "Rotom-H"/"Rotom (H)"; these 6
+   plain names are the canonical ones surfaced in the switcher). Switching is at-will, not an
+   evolution — same Pokémon, keeps stats/moves/level, only species (→ typing/base stats) changes. */
+const ROTOM_FORMS = ["Rotom","Rotom Heat","Rotom Wash","Rotom Frost","Rotom Fan","Rotom Mow"];
+function isRotomForm(sp){ return !!sp && ROTOM_FORMS.includes(sp.name); }
+function rotomFormControl(p, sp, onChanged){
+  if(!isRotomForm(sp)) return el("span",{style:"display:none"});
+  const wrap = el("div",{class:"inline small",style:"margin:2px 0 8px;flex-wrap:wrap;gap:8px;align-items:center"});
+  wrap.append(el("span",{class:"muted",style:"font-weight:700"},"Rotom Form:"));
+  const sel = el("select",{style:"padding:4px 6px"});
+  ROTOM_FORMS.forEach(n=>sel.append(el("option",{value:n,selected:sp.name===n}, n)));
+  sel.addEventListener("change",()=>{
+    if(sel.value===sp.name) return;
+    p.species = sel.value;
+    if(!p.abilities || !p.abilities.length){ const nsp=getSpecies(p.species); if(nsp?.abilities?.basic?.[0]) p.abilities=[nsp.abilities.basic[0]]; }
+    onChanged();
+  });
+  wrap.append(sel, el("span",{class:"muted small"},"switch at will — same Pokémon, keeps stats/moves/level"));
+  return wrap;
 }
 /* effective type of a move after ability overrides (e.g. Normalize → Normal) */
 function effectiveMoveType(p, m){
@@ -3223,13 +3312,14 @@ function moveSlot(p, sp, m, mn, opts={}){
   return slot;
 }
 function movesCard(p, sp){
-  const n = p.moves.length, over = n > MOVE_LIMIT;
-  const atLimit = !p.unlocked && n >= MOVE_LIMIT;
+  const limit = effectiveMoveLimit(activeChar().trainer);
+  const n = p.moves.length, over = n > limit;
+  const atLimit = !p.unlocked && n >= limit;
   const addBtn = el("button",{class:"linkbtn h-act", disabled:atLimit,
     style: atLimit?"opacity:.4;cursor:not-allowed":"",
     onclick: atLimit? null : ()=>openMovePicker(p,sp)}, "+ add move");
   const card = el("div",{class:"card"}, el("h3",{},
-    el("span",{class:over?"":"", style:over?"color:var(--bad)":""}, `Moves (${n}/${MOVE_LIMIT})`),
+    el("span",{class:over?"":"", style:over?"color:var(--bad)":""}, `Moves (${n}/${limit})`),
     el("div",{class:"inline"}, unlockToggle(p), addBtn)));
   // Struggle is always available and does not count toward the limit
   const st = struggleFor(p, sp);
@@ -3240,9 +3330,9 @@ function movesCard(p, sp){
     card.append(moveSlot(p, sp, m, mn, {onRemove:()=>{p.moves.splice(i,1);save();refreshMon(p);}}));
   });
   if(atLimit) card.append(el("div",{class:"small muted",style:"margin-top:6px"},
-    `Move limit reached (${MOVE_LIMIT}). Tick “🔓 GM: allow any” to add more.`));
+    `Move limit reached (${limit}). Tick “🔓 GM: allow any” to add more.`));
   else if(over) card.append(el("div",{class:"warnbox",style:"margin-top:6px"},
-    `Over the normal ${MOVE_LIMIT}-move limit (GM override).`));
+    `Over the normal ${limit}-move limit (GM override).`));
   return card;
 }
 /* Freeform move/action notes for anything the data pipeline couldn't scan (homebrew moves,
@@ -3689,7 +3779,8 @@ function openMovePicker(p, sp){
 /* spend a Tutor Point to learn a move from the species' Tutor list (Core: 1 TP per Tutor move) */
 function openTutorMovePicker(p, sp){
   if(!p.unlocked && !sp){ toast("Unknown species — tick 🔓 to add any move"); return; }
-  if(!p.unlocked && p.moves.length>=MOVE_LIMIT){ toast(`Move limit reached (${MOVE_LIMIT}). Tick "🔓 GM: allow any" to add more.`); return; }
+  const limit = effectiveMoveLimit(activeChar().trainer);
+  if(!p.unlocked && p.moves.length>=limit){ toast(`Move limit reached (${limit}). Tick "🔓 GM: allow any" to add more.`); return; }
   if(!p.unlocked && (p.tutorPoints||0)<1){ toast("No Tutor Points left"); return; }
   const cleanTutor = s => (s?.moves?.tutor||[]).map(m=>m.replace(/\s*\(N\)\s*$/i,"").trim());
   let names, title, markSet;
@@ -3713,6 +3804,72 @@ function openTutorMovePicker(p, sp){
   }, "move", markSet.size ? n=>markSet.has(n.toLowerCase()) : null);
 }
 
+/* Mentor class Feature (Core, Trainer Classes): Daily x3 Extended Action — target a Pokémon with a
+   Tutor Point, it loses that point and learns a move from its tutor list marked (N), OR any level-up
+   move at (target's level + sum of the trainer's two chosen "Mentor Skill" ranks). */
+const MENTOR_SKILL_OPTIONS = [["charm","Charm"],["intimidate","Intimidate"],["intuition","Intuition"],["pokemonEd","Pokémon Ed."]];
+function mentorSkillSum(t){ return (t.mentorSkills||[]).reduce((s,k)=> s + (t.skills[k] ? rankNum(t.skills[k]) : 0), 0); }
+function mentorMoveOptions(sp, targetLevel){
+  if(!sp) return [];
+  const tutorN = (sp.moves?.tutor||[]).filter(m=>/\(N\)/i.test(m)).map(m=>m.replace(/\s*\(N\)\s*$/i,"").trim());
+  const lu = speciesLevelupNames(sp, targetLevel);
+  return [...new Set([...tutorN, ...lu])];
+}
+function openMentorPicker(t){
+  const mf = D.features.find(f=>f.name==="Mentor");
+  const info = freqInfo(mf?.frequency||"Daily x3 - Extended Action");
+  const uKey = useKey("feature","Mentor");
+  const left = usesLeft(t, uKey, info.max||3);
+  if(left<=0){ toast("No Mentor uses left today"); return; }
+  if((t.mentorSkills||[]).length<2){ toast("Pick your two Mentor Skills first"); return; }
+  const party = (activeChar().pokemon||[]).filter(p=>p.unlocked || (p.tutorPoints||0)>0);
+  if(!party.length){ toast("No Pokémon with a Tutor Point to mentor"); return; }
+  const labelFor = p => `${p.nickname||getSpecies(p.species)?.name||p.species} (Lv${p.level}${p.onTeam===false?" · box":""})`;
+  const byLabel = new Map(party.map(p=>[labelFor(p), p]));
+  openPicker("Mentor which Pokémon?", [...byLabel.keys()], label=>{
+    const p = byLabel.get(label); const sp = getSpecies(p.species);
+    if(!p.unlocked && p.moves.length>=effectiveMoveLimit(t)){
+      toast(`${labelFor(p)} is at its move limit (${effectiveMoveLimit(t)}). Tick "🔓 GM: allow any" to add more.`); return; }
+    const cap = p.level + mentorSkillSum(t);
+    const names = mentorMoveOptions(sp, cap).filter(nm=>!p.moves.includes(nm));
+    if(!names.length){ toast("No new moves available to teach at that level"); return; }
+    openPicker(`Teach ${labelFor(p)} a move (cap Lv ${cap})`, names, name=>{
+      p.moves.push(name);
+      if(!p.unlocked) p.tutorPoints = Math.max(0,(p.tutorPoints||0)-1);
+      t.uses = t.uses||{}; t.uses[uKey] = Math.min(info.max||3, (t.uses[uKey]||0)+1);
+      save(); renderBattle();
+      toast(`🎓 ${labelFor(p)} learned ${name} (Mentor)`);
+    }, "move");
+  });
+}
+function mentorCard(t){
+  if(!(t.classes||[]).includes("Mentor")) return "";
+  const mf = D.features.find(f=>f.name==="Mentor");
+  const info = freqInfo(mf?.frequency||"Daily x3 - Extended Action");
+  const uKey = useKey("feature","Mentor");
+  const card = el("div",{class:"card"}, el("h3",{},"🎓 Mentor",
+    el("span",{class:"muted small"},"Extended Action — Daily x3")));
+  const skWrap = el("div",{class:"inline small",style:"gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px"});
+  skWrap.append(el("span",{class:"muted",style:"font-weight:700"},"Mentor Skills:"));
+  MENTOR_SKILL_OPTIONS.forEach(([k,lbl])=>{
+    const cb = el("input",{type:"checkbox"}); cb.checked = (t.mentorSkills||[]).includes(k);
+    cb.addEventListener("change",()=>{
+      const set = new Set(t.mentorSkills||[]);
+      if(cb.checked){ if(set.size>=2){ cb.checked=false; toast("Choose only two Mentor Skills"); return; } set.add(k); }
+      else set.delete(k);
+      t.mentorSkills = [...set]; save(); renderBattle();
+    });
+    skWrap.append(el("label",{class:"chip",style:"display:inline-flex;gap:4px;align-items:center;cursor:pointer"}, cb, lbl));
+  });
+  card.append(skWrap);
+  if(t.mentorSkills.length===2) card.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    `Sum of Mentor Skill ranks: +${mentorSkillSum(t)} to the level cap for taught moves.`));
+  const uc = usesControl(t, "feature", "Mentor", mf?.frequency||"Daily x3 - Extended Action", renderBattle);
+  card.append(el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap"},
+    el("button",{class:"btn-primary",onclick:()=>openMentorPicker(t)},"🎓 Use Mentor"),
+    uc?el("span",{},uc):""));
+  return card;
+}
 /* ===================================================================
    BATTLE VIEW  — what you can do on your turn (actions & maneuvers)
 =================================================================== */
@@ -4073,6 +4230,7 @@ function openItemAttack(t, prof){
 
 function renderTrainerCombat(root, t){
   const card=el("div",{class:"card"},el("h3",{},"Struggle & Weapon Attacks"));
+  card.append(trainerStruggleControl(t, renderBattle));
   // unarmed Struggle (always available)
   card.append(trainerAttackSlot(t, trainerStruggle(t), ()=>openTrainerAttack(t), {tag:"unarmed"}));
   // one attack per weapon (+ its Weapon Move, if any)
@@ -4148,6 +4306,7 @@ function renderTrainerCombat(root, t){
     });
     root.append(abc);
   }
+  root.append(mentorCard(t));
   const passive=trainerFeatureObjs(t).filter(f=>!featureActionTypes(f).length);
   const pc=el("div",{class:"card"},el("h3",{},`Passive & Always-On (${passive.length})`,
     el("span",{class:"muted small"},"Static / out-of-combat")));
@@ -4612,6 +4771,7 @@ function encounterMonCard(enc, p, list){
   lvIn.addEventListener("change",()=>{ const l=Math.max(1,Math.min(100,parseInt(lvIn.value)||1)); p.level=l; p.xp=xpForLevel(l); encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; syncEncMonLevelupMoves(p,sp); saveEnc(); renderEncounters(); });
   nw.append(el("div",{class:"small muted",style:"margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"},
     "Lv", lvIn, `· ${p.nature||"—"} · ${p.gender||"—"}${p.shiny?" · ✨Shiny":""}`));
+  nw.append(rotomFormControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   nw.append(el("div",{class:"small muted",style:"margin-top:2px"}, `Atk ${d.eff.atk} · SpA ${d.eff.spatk} · Def ${d.eff.def} · SpD ${d.eff.spdef} · Spd ${d.eff.spd}`));
   nw.append(el("div",{class:"small muted",style:"margin-top:2px"}, `Evasion — Phys +${d.physEva} · Spec +${d.specEva} · Speed +${d.spdEva}`));
   head.append(nw);
@@ -4658,6 +4818,7 @@ function encounterMonCard(enc, p, list){
   mw.append(el("div",{class:"inline",style:"justify-content:space-between"},
     el("span",{class:"small muted",style:"font-weight:700"},"Actions — tap 🎲 to roll"),
     el("button",{class:"linkbtn",onclick:()=>addEncMove(p,sp)},"+ move")));
+  mw.append(struggleControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   const st=struggleFor(p,sp); if(st) mw.append(encounterMoveRow(p,sp,st,st.name,favSet,null,true));
   const ordered=[...p.moves].sort((a,b)=>(favSet.has(b)?1:0)-(favSet.has(a)?1:0));
   ordered.forEach(mn=>{ const m=moveByName.get(mn.toLowerCase());
@@ -4718,6 +4879,7 @@ function encounterTrainerCard(enc, tr){
   // Attacks: unarmed Struggle + one slot per weapon (+ its Weapon Move) — reuses the Sheet's slots
   const atkWrap=el("div",{style:"margin-top:8px"});
   atkWrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:2px"},"⚔ Attacks"));
+  atkWrap.append(trainerStruggleControl(t, renderEncounters, saveEnc));
   atkWrap.append(trainerAttackSlot(t, trainerStruggle(t), ()=>openTrainerAttack(t), {tag:"unarmed"}));
   (t.weapons||[]).forEach(w=>{
     atkWrap.append(trainerAttackSlot(t, trainerStruggle(t,w), ()=>openTrainerAttack(t,null,w), {tag:w.category}));
@@ -6523,7 +6685,17 @@ function tokenSpeed(token){
   }
   return token.spd||0;
 }
-function tokenInitiative(token){ return tokenSpeed(token) + (token.initBonus||0); }
+/* Feb 2016 errata: Paralysis halves Initiative (not a Speed CS — see CONDITION_CS), Flinch is a flat
+   −5 Initiative for the rest of the Scene. Both read off the linked trainer/Pokémon's statuses. */
+function tokenInitiative(token){
+  let v = tokenSpeed(token) + (token.initBonus||0);
+  const L = token.link ? tokenLinked(token) : null, obj = L && L.obj;
+  if(obj){
+    if(hasStatus(obj,"paralysis")) v = Math.floor(v/2);
+    if(hasStatus(obj,"flinch")) v -= 5;
+  }
+  return v;
+}
 function tokenInInit(token){
   const info=tokenHp(token); if(info.unlinked) return false;
   const ally = info.kind==="trainer"||info.kind==="pokemon";
@@ -6790,13 +6962,17 @@ async function setTokenHP(token, val){
       paintTokenHP(token, true); saveEnc(); return;
     }
     const encMax = kind==="enctrainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
-    obj.currentHP = Math.max(-99, Math.min(encMax, val|0));
+    const oldHP = obj.currentHP||0, newHP = Math.max(-99, Math.min(encMax, val|0));
+    applyAutoInjury(obj, oldHP, newHP);            // map-side HP edits get the same auto-injury check
+    obj.currentHP = newHP;
     paintTokenHP(token, true);
     saveEnc(); return;                            // debounced cloud write
   }
   if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; }
   const max = kind==="trainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
-  obj.currentHP = Math.max(-99, Math.min(max, val|0));
+  const oldHP = obj.currentHP||0, newHP = Math.max(-99, Math.min(max, val|0));
+  applyAutoInjury(obj, oldHP, newHP);
+  obj.currentHP = newHP;
   paintTokenHP(token);
   cloudSaveRow(row);                              // debounced write of the real sheet; realtime syncs the owner
 }
@@ -7613,6 +7789,24 @@ function openTokenMenu(token, map){
       wrap.append(aw);
     }
 
+    // ---- Abilities: show what this Pokémon's abilities do, right from its token ----
+    if(L && L.obj && (L.kind==="pokemon"||L.kind==="enc")){
+      const p = L.obj;
+      if((p.abilities||[]).length){
+        const abw = el("div",{style:"margin-top:16px"});
+        abw.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"Abilities"));
+        p.abilities.forEach(an=>{
+          const ab = abilityByName.get((an||"").toLowerCase());
+          const row = el("details",{class:"spoiler"});
+          row.append(el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, an),
+            ab&&ab.frequency?el("span",{class:"muted small",style:"margin-left:8px"}, ab.frequency):""));
+          row.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database.</span>"}));
+          abw.append(row);
+        });
+        wrap.append(abw);
+      }
+    }
+
     // ---- Buffs & Orders: add/remove Cheers/Orders/Songs on the linked creature (#2) ----
     if(L && L.obj && info.editable){
       if(!Array.isArray(L.obj.buffs)) L.obj.buffs = [];
@@ -7750,7 +7944,7 @@ function openTokenMenu(token, map){
 
 /* "Players" tab grouped by trainer: each character sheet → the trainer + their PARTY Pokémon */
 function playerTokenGroups(){
-  const sheetRows = cloud.isGM ? Object.values(cloud.byId)
+  const sheetRows = (cloud.isGM || isMapHpViewer()) ? Object.values(cloud.byId)
                                : Object.values(cloud.byId).filter(r=>ownsRow(r));
   return sheetRows.map(r=>({
     id: r.id,
@@ -7832,7 +8026,7 @@ function openAddToken(map){
           onclick:()=>{ expanded_.has(g.id) ? expanded_.delete(g.id) : expanded_.add(g.id); draw(); }},
           el("span",{class:"pick-caret"}, expanded?"▾":"▸"),
           el("div",{style:"flex:1;min-width:0"},
-            el("div",{class:"pi-title"}, g.trainerName + (cloud.isGM && g.owner ? `  ·  ${g.owner}` : "")),
+            el("div",{class:"pi-title"}, g.trainerName + ((cloud.isGM||isMapHpViewer()) && g.owner ? `  ·  ${g.owner}` : "")),
             el("div",{class:"pi-sub muted"}, `${avail.length} of ${g.mons.length} in party not on the map`)),
           trainerPlaced
             ? el("span",{class:"small muted",style:"padding:4px 10px;white-space:nowrap"},"on map")
@@ -8205,7 +8399,18 @@ function renderMap(){
     // players can't change the weather, but they must be able to see what's in play
     const pw = weatherByKey(map?.weather);
     if(map && !weatherIsClear(pw)) bar.append(el("span",{class:"battle-badge"}, `${pw.icon} ${pw.name}`));
-    if(map && Object.values(cloud.byId).some(r=>ownsRow(r))){
+    const viewer = isMapHpViewer();
+    if(map && viewer){
+      // "Viewer" (a co-pilot/spectator device) can add ANY player's token and select the whole
+      // party at once, but gets no GM-only scenery/weather/encounter tools.
+      bar.append(el("button",{class:"btn-primary",onclick:()=>openAddToken(map)},"＋ Add token"));
+      bar.append(el("span",{class:"map-sep"}),
+        el("button",{class:"btn-secondary"+(mapSelectActive(map)?" on":""),onclick:()=>toggleMapSelect(map),
+          title:"Tap tokens to select several, then drag any of them to move the group together"},
+          mapSelectActive(map)?`✓ Selecting (${mapSelect.ids.size})`:"☑ Select tokens"),
+        el("button",{class:"btn-secondary",onclick:()=>selectMapTokens(map, PLAYER_TOKEN_KINDS, "player tokens"),
+          title:"Select every trainer/Pokémon token on this map, to move the whole party at once"},"☑ All players"));
+    } else if(map && Object.values(cloud.byId).some(r=>ownsRow(r))){
       bar.append(el("button",{class:"btn-primary",onclick:()=>openAddToken(map)},"＋ Add my token"));
       // Select buttons always show for a player who owns a sheet — they used to be hidden until an
       // editable token already existed on the map, which is exactly when a player wants to grab & place them.
