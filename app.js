@@ -6042,6 +6042,7 @@ function normMapMeta(data){
     if(typeof m.gridSize!=="number" || m.gridSize<8) m.gridSize = 32;
     if(typeof m.gridOn!=="boolean") m.gridOn = true;
     if(typeof m.name!=="string") m.name = "Map";
+    if(typeof m.archived!=="boolean") m.archived = false;
     // migrate single bg → layered images[] (w/h 0 → resolved to natural size on first GM view)
     if(!Array.isArray(m.images)) m.images = (typeof m.bg==="string" && m.bg) ? [{id:uid(),src:m.bg,x:0,y:0,w:0,h:0}] : [];
     delete m.bg;
@@ -6053,10 +6054,11 @@ function normMapMeta(data){
     m.terrains = m.terrains.filter(k=>TERRAIN_BY_KEY[k]);
   });
   // playerMapId = the map players see (seed from the old shared activeMapId for back-compat)
-  if(!data.playerMapId || !data.maps.find(m=>m.id===data.playerMapId))
-    data.playerMapId = data.maps.find(m=>m.id===data.activeMapId) ? data.activeMapId : (data.maps[0]?.id || null);
-  if(!data.activeMapId || !data.maps.find(m=>m.id===data.activeMapId))
-    data.activeMapId = data.maps[0]?.id || null;
+  const firstLive = data.maps.find(m=>!m.archived) || data.maps[0] || null;
+  if(!data.playerMapId || !data.maps.find(m=>m.id===data.playerMapId) || data.maps.find(m=>m.id===data.playerMapId)?.archived)
+    data.playerMapId = data.maps.find(m=>m.id===data.activeMapId && !m.archived) ? data.activeMapId : (firstLive?.id || null);
+  if(!data.activeMapId || !data.maps.find(m=>m.id===data.activeMapId) || data.maps.find(m=>m.id===data.activeMapId)?.archived)
+    data.activeMapId = firstLive?.id || null;
   return data;
 }
 function normMapTokens(data){
@@ -6791,7 +6793,7 @@ function activeMap(){ const meta=activeMapMeta(); return meta.maps.find(m=>m.id=
 /* the map to render: GM sees whatever they're privately viewing; players see only the pushed map */
 function currentMapForView(){
   const meta = activeMapMeta();
-  if(cloud.isGM) return meta.maps.find(m=>m.id===mapGmView) || meta.maps.find(m=>m.id===meta.playerMapId) || meta.maps[0] || null;
+  if(cloud.isGM) return meta.maps.find(m=>m.id===mapGmView) || meta.maps.find(m=>m.id===meta.playerMapId) || meta.maps.find(m=>!m.archived) || null;
   return meta.maps.find(m=>m.id===meta.playerMapId) || null;
 }
 function mapTokensFor(mapId){ return (cloud.mapTokens?.data?.byMap?.[mapId]) || []; }
@@ -8366,23 +8368,55 @@ function openCustomToken(map){
 async function newMap(){
   const name = prompt("Map name:", "Map "+((cloud.mapMeta?.data?.maps?.length||0)+1)); if(name===null) return;
   ensureMapMeta();
-  const m = { id:uid(), name:name||"Map", images:[], gridSize:32, gridOn:true, fogOn:false, fogRadius:3 };
+  const m = { id:uid(), name:name||"Map", images:[], gridSize:32, gridOn:true, fogOn:false, fogRadius:3, archived:false };
   cloud.mapMeta.data.maps.push(m); cloud.mapMeta.data.activeMapId = m.id; mapGmView = m.id;
   mapView = { scale:1, panX:0, panY:0 };
   mapMetaSave(); renderMap();
 }
 async function renameMap(map){ const n=prompt("Rename map:", map.name); if(n===null) return; map.name=n||map.name; mapMetaSave(); renderMap(); }
+/* archiving hides a map from the live list/tokens+fog stay intact, unlike delete which is permanent */
+async function archiveMap(map){
+  const meta = cloud.mapMeta.data;
+  map.archived = true;
+  const fallback = meta.maps.find(m=>!m.archived)?.id || null;
+  if(meta.activeMapId===map.id) meta.activeMapId = fallback;
+  if(meta.playerMapId===map.id) meta.playerMapId = fallback;
+  if(mapGmView===map.id) mapGmView = fallback;
+  mapMetaSave(); renderMap();
+}
+async function unarchiveMap(map){
+  map.archived = false;
+  mapMetaSave(); renderMap();
+}
 async function deleteMap(map){
-  if(!confirm(`Delete map “${map.name}” and its tokens?`)) return;
+  if(!confirm(`Permanently delete map “${map.name}” and its tokens? This can't be undone.`)) return;
   const meta = cloud.mapMeta.data;
   meta.maps = meta.maps.filter(m=>m.id!==map.id);
   if(cloud.mapTokens?.data?.byMap) delete cloud.mapTokens.data.byMap[map.id];
   if(cloud.mapTokens?.data?.fog)   delete cloud.mapTokens.data.fog[map.id];
-  const fallback = meta.maps[0]?.id || null;
+  const fallback = meta.maps.find(m=>!m.archived)?.id || null;
   meta.activeMapId = fallback;
   if(meta.playerMapId===map.id) meta.playerMapId = fallback;
   if(mapGmView===map.id) mapGmView = fallback;
   mapMetaSave(); mapTokensSave(); renderMap();
+}
+function openArchivedMaps(){
+  const meta = activeMapMeta();
+  const wrap = el("div",{});
+  const draw = () => {
+    wrap.innerHTML = "";
+    const archived = meta.maps.filter(m=>m.archived);
+    if(!archived.length){ wrap.append(el("div",{class:"r-body"},"No archived maps.")); return; }
+    archived.forEach(m=>{
+      const row = el("div",{class:"inline", style:"justify-content:space-between;padding:6px 0"});
+      const restore = el("button",{class:"btn-secondary",onclick:async()=>{ await unarchiveMap(m); draw(); }},"↺ Restore");
+      const del = el("button",{class:"btn-secondary danger",onclick:async()=>{ await deleteMap(m); draw(); }},"🗑 Delete forever");
+      row.append(el("div",{},m.name), el("div",{class:"inline"}, restore, del));
+      wrap.append(row);
+    });
+  };
+  draw();
+  modal({title:"Archived maps", bodyNode:wrap, footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Close")]});
 }
 /* Map backgrounds are stored exactly as uploaded — no downscaling, no re-encoding — so pixel-art/
    tile maps stay lossless at full resolution. (User call: never compress, even at the cost of a
@@ -8650,21 +8684,26 @@ function renderMap(){
   const bar = el("div",{class:"map-toolbar card"});
   if(cloud.isGM){
     // — Maps group: private browsing + push to players —
-    if(meta.maps.length){
+    const liveMaps = meta.maps.filter(m=>!m.archived);
+    const archivedMaps = meta.maps.filter(m=>m.archived);
+    if(liveMaps.length){
       const sel = el("select");
-      meta.maps.forEach(m=>sel.append(el("option",{value:m.id,selected:m.id===mapGmView},
+      liveMaps.forEach(m=>sel.append(el("option",{value:m.id,selected:m.id===mapGmView},
         m.name + (m.id===meta.playerMapId ? " 👁" : ""))));
       sel.addEventListener("change", ()=>{ mapGmView=sel.value; mapView={scale:1,panX:0,panY:0}; renderMap(); });
       bar.append(el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Viewing (private)"), sel));
     }
     bar.append(el("button",{class:"btn-secondary",onclick:newMap},"＋ New map"));
+    if(archivedMaps.length) bar.append(el("button",{class:"btn-secondary",onclick:openArchivedMaps},
+      `🗄 Archived (${archivedMaps.length})`));
     if(map){
       const shown = map.id===meta.playerMapId;
       bar.append(el("button",{class:"btn-primary"+(shown?" on":""),onclick:()=>pushMapToPlayers(map),
         title:"Make this the map players see"}, shown?"👁 Players see this":"👁 Show to players"));
       bar.append(
         el("button",{class:"btn-secondary",onclick:()=>renameMap(map)},"✎ Rename"),
-        el("button",{class:"btn-secondary danger",onclick:()=>deleteMap(map)},"🗑 Delete"),
+        el("button",{class:"btn-secondary",onclick:()=>archiveMap(map),
+          title:"Hide this map from the live list without deleting its tokens/fog"}, "🗄 Archive"),
       );
       // — Scene group: images, grid —
       bar.append(el("span",{class:"map-sep"}),
