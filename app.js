@@ -986,6 +986,9 @@ let mode = "local";                 // "local" | "cloud"
 const cloud = { client:null, campaign:"", userId:"", name:"", isGM:false,
                 byId:{}, activeId:null, sub:null, lastSaveTs:0, saveTimer:null, pc:null,
                 inflight:{},    // rowId → count of in-flight CAS writes (defer realtime while >0)
+                opsRpc:null,    // null = untested, true = server supports field-level patches, false = fall back
+                lastEvent:0,    // when we last heard ANYTHING from realtime (watchdog input)
+                subStatus:"",   // last realtime subscribe status ("SUBSCRIBED" when healthy)
                 mapMeta:null, mapTokens:null, mapSaveTs:0, enc:null, encSaveTs:0, encTimer:null };
 /* shared PC storage lives in a reserved sheets row owned by this sentinel, visible to everyone */
 const PC_OWNER = "__pc__";
@@ -5884,6 +5887,165 @@ function mergeArray(base, mine, theirs, tie){
   }
   return out;
 }
+/* ─────────────────── compartmentalized (field-level) writes ───────────────────
+   A whole sheet is one JSON blob, but a single edit almost never touches more than a
+   handful of fields. Uploading the WHOLE blob for "I spent 200 money" means:
+     • every save races every other save of that row (a player's money vs the GM's level
+       edit vs someone dragging a token) and has to be reconciled after the fact,
+     • the payload is huge (avatars/sprites are inline data-URLs), so writes are slow and
+       realtime broadcasts blow past Supabase's ~1 MB limit and get truncated.
+   Instead we send only what CHANGED: `diffOps(base, cur)` walks our last-synced baseline
+   against the live object and emits a list of ops, each with a PATH into the JSON:
+
+     {p:["trainer","money"], v:1200}                  set a field
+     {p:["pokemon",{id:"m3"},"currentHP"], v:14}      set a field of the party member id m3
+     {p:["pokemon",{id:"m3"}], d:1}                   delete that party member
+     {p:["fog","map1"], a:["3,4","3,5"]}              append to an array
+
+   The server applies those ops onto whatever the row holds RIGHT NOW, inside one atomic
+   UPDATE (see ptu_apply_ops in db/patch-ops.sql). So two people editing different fields
+   of the same sheet — or dragging two different tokens — simply both land, with no
+   conflict, no retry and no merge needed. Only the same FIELD edited at the same instant
+   is last-writer-wins, which is the smallest possible unit of conflict.
+   `{id:…}` path segments are resolved server-side against the CURRENT array, so an op
+   never targets a stale index if someone added/removed an entry in the meantime.
+
+   If the database hasn't had the one-time function added yet (or an edit is so large that
+   sending the blob is cheaper), we transparently fall back to the whole-blob CAS path below,
+   so the app keeps working exactly as before. */
+const OPS_MAX = 80;          // beyond this many ops the whole-blob write is cheaper/safer
+function isIdArray(a){ return Array.isArray(a) && a.every(x => x && typeof x==="object" && !Array.isArray(x) && "id" in x); }
+/* is `base` an exact prefix of `cur`? (things were only appended — fog cells, log lines…) */
+function appendedOnly(base, cur){
+  if(!Array.isArray(base) || !Array.isArray(cur) || cur.length <= base.length) return false;
+  for(let i=0;i<base.length;i++) if(!deepEqual(base[i], cur[i])) return false;
+  return true;
+}
+function diffOps(base, cur, path, out){
+  path = path || []; out = out || [];
+  if(out.length > OPS_MAX) return out;                       // caller falls back to a blob write
+  if(deepEqual(base, cur)) return out;
+  if(cur === undefined){ out.push({ p:path, d:1 }); return out; }
+  if(isObj(base) && isObj(cur)){
+    for(const k of Object.keys(cur)){
+      if(cur[k] === undefined) continue;                     // JSON drops these anyway
+      if(!Object.prototype.hasOwnProperty.call(base, k)) out.push({ p:[...path,k], v:cur[k] });
+      else diffOps(base[k], cur[k], [...path,k], out);
+      if(out.length > OPS_MAX) return out;
+    }
+    for(const k of Object.keys(base)) if(!Object.prototype.hasOwnProperty.call(cur, k)) out.push({ p:[...path,k], d:1 });
+    return out;
+  }
+  if(Array.isArray(base) && Array.isArray(cur)){
+    if(isIdArray(base) && isIdArray(cur)){
+      const bIds = base.map(x=>x.id), cIds = cur.map(x=>x.id);
+      const bSet = new Set(bIds), cSet = new Set(cIds);
+      const kept = cIds.filter(id=>bSet.has(id));
+      // the surviving entries must still be in the same relative order, and everything new must
+      // sit at the end — otherwise the order itself changed and we just replace the array.
+      const orderOk = deepEqual(kept, bIds.filter(id=>cSet.has(id))) &&
+                      cIds.slice(0, kept.length).every((id,i)=>id===kept[i]);
+      if(!orderOk){ out.push({ p:path, v:cur }); return out; }
+      const bMap = new Map(base.map(x=>[x.id,x]));
+      for(const id of bIds) if(!cSet.has(id)) out.push({ p:[...path,{id}], d:1 });
+      for(const x of cur){
+        if(!bSet.has(x.id)) continue;
+        diffOps(bMap.get(x.id), x, [...path,{id:x.id}], out);
+        if(out.length > OPS_MAX) return out;
+      }
+      const added = cur.slice(kept.length);
+      if(added.length) out.push({ p:path, a:added });
+      return out;
+    }
+    if(appendedOnly(base, cur)){ out.push({ p:path, a:cur.slice(base.length) }); return out; }
+    out.push({ p:path, v:cur });                             // leaf array (move names, terrains…)
+    return out;
+  }
+  out.push({ p:path, v:cur });                               // scalar / type change
+  return out;
+}
+/* Apply ops locally the same way the server will — used to keep a row's baseline in step and
+   (in tests) to prove diff+apply round-trips. Mirrors ptu_apply_ops's semantics exactly. */
+function applyOps(target, ops){
+  (ops||[]).forEach(op=>{
+    let node = target;
+    for(let i=0;i<op.p.length-1;i++){
+      const seg = op.p[i];
+      if(seg && typeof seg==="object"){
+        if(!Array.isArray(node)) return;
+        node = node.find(x=>x && x.id===seg.id);
+        if(!node) return;
+      } else {
+        if(node[seg] == null || typeof node[seg]!=="object"){ if(op.d) return; node[seg] = {}; }
+        node = node[seg];
+      }
+    }
+    const last = op.p[op.p.length-1];
+    if(last && typeof last==="object"){
+      if(!Array.isArray(node)) return;
+      const idx = node.findIndex(x=>x && x.id===last.id);
+      if(idx<0) return;
+      if(op.d) node.splice(idx,1); else if("v" in op) node[idx] = op.v;
+      return;
+    }
+    if(op.d) delete node[last];
+    else if(op.a){ if(!Array.isArray(node[last])) node[last] = []; node[last].push(...op.a); }
+    else node[last] = op.v;
+  });
+  return target;
+}
+/* Send a row's pending changes as field-level ops. Returns true (saved), false (failed) or
+   "fallback" when the caller should use the whole-blob CAS write instead. */
+let opsRpcFails = 0;
+async function opsUpsert(row){
+  if(cloud.opsRpc === false) return "fallback";
+  if(row._rev == null || row._base == null) return "fallback";      // never synced → plain insert
+  const snap = deepClone(row.data);
+  const ops = diffOps(row._base, snap);
+  if(!ops.length){ row._base = snap; return true; }                 // nothing actually changed
+  if(ops.length > OPS_MAX) return "fallback";
+  const meta = { campaign:cloud.campaign, owner_id:row.owner_id, owner_name:row.owner_name, name:row.name };
+  cloud.inflight[row.id] = (cloud.inflight[row.id]||0) + 1;
+  cloud.lastSaveTs = Date.now();
+  try{
+    const { data, error } = await cloud.client.rpc("ptu_apply_ops", { p_id:row.id, p_meta:meta, p_ops:ops });
+    if(error){
+      // function not installed yet (PGRST202 / 404) → stop trying and use the blob path for good
+      if(error.code==="PGRST202" || /Could not find the function|does not exist/i.test(error.message||"")){
+        cloud.opsRpc = false;
+        console.warn("[ptu] field-level sync unavailable — run db/patch-ops.sql on Supabase for conflict-free edits");
+        // tell the GM once (only they can run it); players don't need to know
+        if(cloud.isGM && !sessionStorage.getItem("ptu_ops_notice")){
+          try{ sessionStorage.setItem("ptu_ops_notice","1"); }catch(e){}
+          toast("ℹ Sync is in compatibility mode — run db/patch-ops.sql on Supabase for per-field edits");
+        }
+        return "fallback";
+      }
+      console.error(error);
+      // A function that's installed but unhappy would otherwise cost every save a failed RPC on top
+      // of the real write — after a few in a row, stop asking and just use the blob path.
+      if(++opsRpcFails >= 3) cloud.opsRpc = false;
+      return "fallback";                                            // transient → let CAS have a go
+    }
+    if(!data || data.missing){ row._rev = null; return "fallback"; } // row is gone → re-insert it
+    opsRpcFails = 0;
+    cloud.opsRpc = true;
+    row._rev = data.rev; row.updated_at = data.updated_at;
+    // our ops applied to our baseline IS the state the server now holds for the fields we touched;
+    // anything someone else changed meanwhile arrives via realtime (which merges) — see adoptRemote.
+    row._base = snap;
+    return true;
+  } finally {
+    cloud.inflight[row.id]--; if(cloud.inflight[row.id]<=0) delete cloud.inflight[row.id];
+  }
+}
+/* The one write entry point: try the compartmentalized patch, fall back to whole-blob CAS. */
+async function syncUpsert(row, mergeFn){
+  const r = await opsUpsert(row);
+  if(r !== "fallback") return r;
+  return casUpsert(row, mergeFn);
+}
+
 /* Compare-and-swap upsert of a single row. row carries `_rev` (server rev our edit is based
    on; null/undefined = never synced → insert) and `_base` (server data at that rev, for the
    3-way merge). Callers already wrap this in a per-row serialize() chain so writes to one row
@@ -5932,15 +6094,50 @@ async function casUpsert(row, mergeFn){
 /* mark a freshly-fetched server row as our new synced baseline */
 function adoptRev(row){ if(row){ row._rev = row.rev; row._base = deepClone(row.data); } return row; }
 
+/* Take a server copy of a row we already hold, WITHOUT ever losing an un-flushed local edit.
+   The old code simply IGNORED the incoming row whenever `data` had diverged from `_base`
+   ("I still owe the server a write"), both here and in onRealtime. That looks safe but is the
+   single biggest cause of "I have to reload the page for it to work": if that write never lands
+   (a dropped connection, an exhausted retry, a value the server normalises differently) the row
+   stays diverged FOREVER and every later update from everyone else is silently dropped for the
+   rest of the session. Now we 3-way merge instead: their change lands, our unsaved change is kept
+   on top, and `_dirty` tells the caller to re-push what's still ours.
+
+   It also MUTATES the row object in place rather than replacing it in cloud.byId — debounced
+   saves, drag handlers and open modals all captured the old object, and swapping it out from
+   under them meant the next save wrote a stale copy (another "it didn't take, do it again"). */
+function adoptRemote(cur, incoming, normFn){
+  const theirs = normFn ? normFn(incoming.data) : incoming.data;
+  if(!cur) return adoptRev({ ...incoming, data: theirs });
+  const diverged = cur._base != null && !deepEqual(cur.data, cur._base);
+  cur.data  = diverged ? merge3(cur._base, cur.data, theirs, cloud.isGM ? "mine" : "theirs") : theirs;
+  cur._base = deepClone(theirs);
+  cur._rev  = incoming.rev;
+  cur.rev   = incoming.rev;
+  if(incoming.updated_at != null) cur.updated_at = incoming.updated_at;
+  ["campaign","owner_id","owner_name","name"].forEach(k=>{ if(incoming[k]!=null) cur[k]=incoming[k]; });
+  cur._dirty = diverged && !deepEqual(cur.data, cur._base);   // we still hold something unsaved
+  return cur;
+}
+
 async function fetchRoster(){
   const { data, error } = await cloud.client.from("sheets").select(SHEET_COLS).eq("campaign", cloud.campaign);
   if(error) throw error;
-  cloud.byId = {};
+  const seen = new Set();
   (data||[]).forEach(r => {
-    if(r.owner_id===PC_OWNER){ cloud.pc = adoptRev({ ...r, data: pcData(r.data) }); return; }   // PC isn't a character
-    if(r.owner_id===MAP_OWNER) return;                                                          // map rows aren't characters
-    r.data = migrateChar(r.data, r.id); adoptRev(r); cloud.byId[r.id] = r;
+    if(r.owner_id===PC_OWNER){ cloud.pc = mergeShared(cloud.pc, r, pcData); repushIfDirty(cloud.pc, pcUpsert); return; }
+    if(r.owner_id===MAP_OWNER || r.owner_id===ENC_OWNER) return;                        // shared rows aren't characters
+    seen.add(r.id);
+    const cur = cloud.byId[r.id];
+    if(cur && cloud.inflight[r.id]) return;              // our write is mid-commit → it's authoritative
+    const row = adoptRemote(cur, r, d => migrateChar(d, r.id));
+    cloud.byId[r.id] = row;
+    if(canEdit(row)) repushIfDirty(row, ()=>cloudSaveRow(row));   // re-push the edit the server never got
+    else row._dirty = false;
   });
+  // rows that vanished server-side (deleted elsewhere) go away here, as before — but never one
+  // we're actively writing, which would resurrect-then-drop a sheet someone just created.
+  Object.keys(cloud.byId).forEach(id=>{ if(!seen.has(id) && !cloud.inflight[id]) delete cloud.byId[id]; });
   recoverUnsavedFromCache();
 }
 /* Safety net for the "edits revert after refresh" bug: if a debounced/keepalive save still
@@ -5990,6 +6187,10 @@ function recoverUnsyncedShared(kind, getRow, upsertFn){
     upsertFn();   // fire-and-forget, conflict-safe
   }
 }
+/* A merge kept a local edit the server never received → schedule its (debounced) write again.
+   Without this, an edit that merged cleanly would sit in memory unsaved until the user happened
+   to touch the same row again. */
+function repushIfDirty(row, saveFn){ if(row && row._dirty){ row._dirty=false; try{ saveFn(); }catch(e){ console.error(e); } } }
 /* the shared PC storage (visible to every member, so it's fetched separately from the roster) */
 function pcData(data){
   data = (data && typeof data==="object") ? data : {};
@@ -6008,18 +6209,17 @@ function mergeShared(local, fetched, normFn){
   if(!fetched) return local || null;
   // A write to this row is mid-commit → its result (not this pre-commit fetch) is authoritative. Also
   // covers the case where _base was lost (null), which would otherwise skip the unsynced-edit guard
-  // below and silently adopt a stale server copy over an un-flushed local edit.
+  // in adoptRemote and silently adopt a stale server copy over an un-flushed local edit.
   if(local && cloud.inflight[fetched.id]) return local;
-  // if we're holding unsynced local edits (data diverged from the rev we last synced), keep them —
-  // our debounced CAS write will reconcile against the server; a bare refetch must not revert them.
-  if(local && local._base!=null && !deepEqual(local.data, local._base)) return local;
-  const f = { ...fetched, data: normFn(fetched.data) };
-  return adoptRev(f);
+  // Unsynced local edits are MERGED on top of the server copy (not used to ignore it) — see
+  // adoptRemote; the caller re-pushes anything still ours when `_dirty` comes back true.
+  return adoptRemote(local, fetched, normFn);
 }
 async function fetchPC(){
   const { data, error } = await cloud.client.from("sheets").select(SHEET_COLS).eq("id", pcId()).limit(1);
   if(error){ console.error(error); return; }   // keep local on a fetch error, don't wipe it
   cloud.pc = mergeShared(cloud.pc, data && data[0], pcData);
+  repushIfDirty(cloud.pc, pcUpsert);
 }
 function ensurePCRow(){
   if(!cloud.pc) cloud.pc = { id:pcId(), campaign:cloud.campaign, owner_id:PC_OWNER, owner_name:"PC",
@@ -6030,7 +6230,7 @@ function pcUpsert(){
   const row = ensurePCRow();
   row.owner_name = "PC"; row.name = "PC Storage";
   cacheSharedRow("pc", row);   // optimistic: survives a refresh/crash before the write below lands
-  return serialize(pcChain, ()=> casUpsert(row).then(ok=>{ cacheSharedRow("pc", row); return ok; }));
+  return serialize(pcChain, ()=> syncUpsert(row).then(ok=>{ cacheSharedRow("pc", row); return ok; }));
 }
 
 /* ---- shared battle map: reserved rows (meta + tokens), same pattern as the PC ---- */
@@ -6081,6 +6281,8 @@ async function fetchMap(){
   const toks = (data||[]).find(r=>r.id===mapTokensId());
   cloud.mapMeta   = mergeShared(cloud.mapMeta, meta, normMapMeta);
   cloud.mapTokens = mergeShared(cloud.mapTokens, toks, normMapTokens);
+  repushIfDirty(cloud.mapMeta,   mapMetaSave);
+  repushIfDirty(cloud.mapTokens, mapTokensSave);
 }
 function ensureMapMeta(){
   if(!cloud.mapMeta) cloud.mapMeta = { id:mapMetaId(), campaign:cloud.campaign, owner_id:MAP_OWNER,
@@ -6095,14 +6297,14 @@ function ensureMapTokens(){
 async function mapMetaUpsert(){
   const row = ensureMapMeta();
   row.owner_name = "Map"; row.name = "Battle Map";
-  const ok = await casUpsert(row);                      // conflict-safe (callers wrap in mapMetaChain)
+  const ok = await syncUpsert(row);                     // field-level patch (falls back to CAS)
   cacheSharedRow("mapmeta", row);
   return ok;
 }
 async function mapTokensUpsert(){
   const row = ensureMapTokens();
   row.owner_name = "Map"; row.name = "Map Tokens";
-  const ok = await casUpsert(row);                      // conflict-safe: token positions/HP merge by id
+  const ok = await syncUpsert(row);                     // per-token fields patch independently
   cacheSharedRow("maptokens", row);
   return ok;
 }
@@ -6181,7 +6383,7 @@ function mapMetaSave(){
 function dispatchRowSave(row){
   row.name = row.data?.name || row.name || "";
   cacheCloud();
-  return serialize(rowChain(row.id), ()=> casUpsert(row).then(ok=>{ cacheCloud(); return ok; }));
+  return serialize(rowChain(row.id), ()=> syncUpsert(row).then(ok=>{ cacheCloud(); return ok; }));
 }
 const rowSaveTimers = {};
 function cloudSaveRow(row){
@@ -6204,6 +6406,7 @@ async function fetchEnc(){
   const { data, error } = await cloud.client.from("sheets").select(SHEET_COLS).eq("id", encRowId()).limit(1);
   if(error){ console.error(error); return "error"; }   // keep local on a fetch error
   cloud.enc = mergeShared(cloud.enc, data && data[0], normEnc);
+  repushIfDirty(cloud.enc, saveEnc);
   return (data && data[0]) ? "ok" : "absent";           // "absent" only when the query SUCCEEDED with no row
 }
 /* First-time-only: copy this GM device's pre-cloud encounters into a BRAND-NEW cloud row.
@@ -6228,7 +6431,7 @@ function ensureEnc(){
 function encUpsert(){
   const row = ensureEnc();
   row.owner_name = "Encounters"; row.name = "Encounters";
-  return serialize(encChain, ()=> casUpsert(row).then(ok=>{ cacheSharedRow("enc", row); return ok; }));   // conflict-safe (encounters merge by id)
+  return serialize(encChain, ()=> syncUpsert(row).then(ok=>{ cacheSharedRow("enc", row); return ok; }));   // conflict-safe (encounters merge by id)
 }
 async function cloudConnect(campaign, name, gmCode, silent){
   campaign = (campaign||"").trim().toLowerCase(); name = (name||"").trim();
@@ -6280,11 +6483,16 @@ function cloudDisconnect(){
 }
 function subscribeRealtime(){
   if(cloud.sub){ try{ cloud.client.removeChannel(cloud.sub); }catch(e){} }
+  cloud.subStatus = "CONNECTING"; cloud.lastEvent = Date.now();
   cloud.sub = cloud.client.channel("sheets-"+cloud.campaign)
     .on("postgres_changes",
         { event:"*", schema:"public", table:"sheets", filter:`campaign=eq.${cloud.campaign}` },
         onRealtime)
-    .subscribe();
+    // Track the socket's health. A websocket that quietly died (sleeping laptop, phone switching
+    // from wifi to data, a proxy dropping an idle connection) used to leave the tab looking connected
+    // while receiving nothing — every change made by anyone else was invisible until a manual reload.
+    // syncWatchdog() below re-subscribes and re-fetches when this stops saying SUBSCRIBED.
+    .subscribe(status=>{ cloud.subStatus = status; if(status==="SUBSCRIBED") cloud.lastEvent = Date.now(); });
 }
 /* Supabase Realtime replaces the record with an empty object for rows over its
    max_record_bytes limit (~1 MB) — our map/PC rows carry background images & sprites as
@@ -6292,6 +6500,35 @@ function subscribeRealtime(){
    no usable `data` (and sometimes no id), so instead of trusting the truncated payload we
    re-fetch the affected row over a normal SELECT (not size-limited) and re-render. */
 function payloadHasData(p){ return !!(p && p.data && typeof p.data==="object" && Object.keys(p.data).length); }
+
+/* ── re-render as soon as the screen is free ────────────────────────────────────
+   Every live-update path used to check "is the user typing / dragging?" and, if so, just
+   DROP the re-render. The data was merged in but the screen kept showing the old value
+   until something else happened to trigger a render — that's the "I had to click it again
+   / reload before it showed up". Now the render is QUEUED and replayed the moment the UI
+   is idle (blur, drag released), so nothing is silently swallowed. */
+let uiRefreshTimer = null;
+const uiRefreshWanted = new Set();
+function uiBusy(){
+  if(typeof mapDragging!=="undefined" && mapDragging) return true;
+  const t = document.activeElement?.tagName;
+  return t==="INPUT" || t==="TEXTAREA" || t==="SELECT";
+}
+function flushUiRefresh(){
+  if(uiRefreshTimer){ clearInterval(uiRefreshTimer); uiRefreshTimer=null; }
+  const kinds = [...uiRefreshWanted]; uiRefreshWanted.clear();
+  if(!kinds.length) return;
+  if(kinds.includes("all")){ softRender(); return; }
+  if(kinds.includes("map") && currentTab==="map") renderMap();
+  if(kinds.includes("pc")  && currentTab==="pc")  renderPC();
+  if(kinds.includes("enc") && (currentTab==="encounters" || currentTab==="map")) render();
+}
+function refreshUI(kind){
+  uiRefreshWanted.add(kind);
+  if(!uiBusy()){ flushUiRefresh(); return; }
+  if(!uiRefreshTimer) uiRefreshTimer = setInterval(()=>{ if(!uiBusy()) flushUiRefresh(); }, 400);
+}
+
 const sharedRefetchTimers = {};
 function scheduleSharedRefetch(kind){
   clearTimeout(sharedRefetchTimers[kind]);
@@ -6300,15 +6537,14 @@ function scheduleSharedRefetch(kind){
     if(kind==="map")  await fetchMap();
     if(kind==="enc")  await fetchEnc();
     if(kind==="roster") await fetchRoster();
-    const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
-    if(typing) return;
-    if(kind==="pc"){ if(currentTab==="pc") renderPC(); }
-    else if(kind==="map"){ if(currentTab==="map" && !mapDragging) renderMap(); }
-    else if(kind==="enc"){ if((currentTab==="encounters"||currentTab==="map") && !mapDragging) render(); }
-    else softRender();
+    if(kind==="pc") refreshUI("pc");
+    else if(kind==="map") refreshUI("map");
+    else if(kind==="enc") refreshUI("enc");
+    else refreshUI("all");
   }, 140);
 }
 function onRealtime(payload){
+  cloud.lastEvent = Date.now();          // watchdog: proof the websocket is still alive
   const type = payload.eventType || payload.type;
   const evtId = payload.new?.id ?? payload.old?.id;
   const evtOwner = payload.new?.owner_id ?? payload.old?.owner_id;
@@ -6320,28 +6556,28 @@ function onRealtime(payload){
     return;
   }
   // A shared reserved row (PC / map meta / map tokens / encounters) is visible to everyone, so it's
-  // handled before the per-player visibility filter. `staleShared` drops our own echo, an out-of-order
-  // older rev, and anything arriving while our own write to that row is still in flight (rev decides,
-  // never the clock). Returns true if the event should be ignored.
+  // handled before the per-player visibility filter. `staleShared` drops our own echo and any
+  // out-of-order older rev (the server rev decides, never the clock), and defers while our own write
+  // to that row is in flight — that write reconciles against the same change anyway.
+  // NOTE: holding an unsaved local edit is NOT a reason to ignore the event any more; adoptRemote
+  // merges their change under ours and `_dirty` re-pushes what's still ours. Ignoring it was how a
+  // client could go permanently deaf to everyone else after one write that never landed.
   const staleShared = (cur, id) => {
-    if(cloud.inflight[id]) return true;                        // our CAS is in flight → it will reconcile
+    if(cloud.inflight[id]) return true;                        // our write is in flight → it will reconcile
     const inc = payload.new?.rev;
     if(cur && cur._rev!=null && typeof inc==="number" && inc <= cur._rev) return true;   // our own echo / older rev
-    // We hold an un-flushed optimistic edit to this shared row (debounced save pending, queued behind
-    // the serialize chain, or mid-CAS). Wholesale-adopting the incoming row here would DISCARD that edit
-    // — the "token snaps back / HP reverts" rollback when two people touch the map at once. Defer: our
-    // pending CAS refetches and 3-way-merges this same change by id, so nothing is lost.
-    if(cur && cur._base!=null && !deepEqual(cur.data, cur._base)) return true;
     return false;
   };
   // the shared PC is visible to everyone — handle it before the per-player visibility filter
   if(evtOwner===PC_OWNER || evtId===pcId()){
     if(type==="DELETE"){ cloud.pc = null; }
     else if(!payloadHasData(payload.new)){ scheduleSharedRefetch("pc"); return; }
-    else { if(staleShared(cloud.pc, pcId())) return; cloud.pc = adoptRev({ ...payload.new, data: pcData(payload.new.data) }); }
-    // live-refresh the PC tab, but don't yank focus while someone is typing in a filter
-    const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
-    if(currentTab==="pc" && !typing) renderPC();
+    else {
+      if(staleShared(cloud.pc, pcId())) return;
+      cloud.pc = adoptRemote(cloud.pc, payload.new, pcData);
+      repushIfDirty(cloud.pc, pcUpsert);
+    }
+    refreshUI("pc");                    // queued if someone's typing in the PC filter
     return;
   }
   // the shared battle map is visible to everyone — handle it before the per-player filter
@@ -6352,20 +6588,24 @@ function onRealtime(payload){
     else {
       const cur = isMeta ? cloud.mapMeta : cloud.mapTokens;
       if(staleShared(cur, isMeta?mapMetaId():mapTokensId())) return;
-      if(isMeta) cloud.mapMeta   = adoptRev({ ...payload.new, data: normMapMeta(payload.new.data) });
-      else       cloud.mapTokens = adoptRev({ ...payload.new, data: normMapTokens(payload.new.data) });
+      // Two people dragging at once: their token's x/y merges in, ours stays ours (merge by id),
+      // and the field-level write means the server never even saw a conflict to begin with.
+      if(isMeta){ cloud.mapMeta   = adoptRemote(cloud.mapMeta,   payload.new, normMapMeta);   repushIfDirty(cloud.mapMeta,   mapMetaSave); }
+      else      { cloud.mapTokens = adoptRemote(cloud.mapTokens, payload.new, normMapTokens); repushIfDirty(cloud.mapTokens, mapTokensSave); }
     }
-    const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
-    if(currentTab==="map" && !mapDragging && !typing) renderMap();
+    refreshUI("map");                   // queued until the drag/typing finishes
     return;
   }
   // shared encounters (GM prep) — visible to everyone so map tokens can resolve their enemy link
   if(evtOwner===ENC_OWNER || evtId===encRowId()){
     if(type==="DELETE"){ cloud.enc=null; }
     else if(!payloadHasData(payload.new)){ scheduleSharedRefetch("enc"); return; }
-    else { if(staleShared(cloud.enc, encRowId())) return; cloud.enc = adoptRev({ ...payload.new, data: normEnc(payload.new.data) }); }
-    const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
-    if((currentTab==="encounters" || currentTab==="map") && !mapDragging && !typing) render();
+    else {
+      if(staleShared(cloud.enc, encRowId())) return;
+      cloud.enc = adoptRemote(cloud.enc, payload.new, normEnc);
+      repushIfDirty(cloud.enc, saveEnc);
+    }
+    refreshUI("enc");
     return;
   }
   if(type==="DELETE"){
@@ -6382,23 +6622,20 @@ function onRealtime(payload){
   if(cur){
     // OUR OWN ECHO or an out-of-order OLDER rev → ignore (the server rev, not the clock, decides).
     if(cur._rev!=null && typeof incRev==="number" && incRev <= cur._rev){ refreshCharSelect(); return; }
-    // Defer adopting this remote row while we still hold an un-flushed local change to it — otherwise
-    // we'd wholesale-replace our copy and lose the edit (the GM editing a player's sheet, or a pending
-    // debounced save, both clobbered here before). The pending CAS fetch-and-merges the incoming change,
-    // so nothing is lost and the cursor isn't yanked. Signals: a write in flight, a debounced save
-    // queued (active OR any row), the user typing into the active sheet, or an optimistic edit not yet
-    // confirmed saved (data has diverged from the last synced baseline).
-    const isActive = row.id===cloud.activeId;
-    const typing = isActive && ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
-    const localEdit = cur._base!=null && !deepEqual(cur.data, cur._base);
-    if(cloud.inflight[row.id] || rowSaveTimers[row.id] || (isActive && cloud.saveTimer) || typing || localEdit){ refreshCharSelect(); return; }
+    // A write of ours is mid-flight → let it finish; it reconciles against this same change.
+    if(cloud.inflight[row.id]){ refreshCharSelect(); return; }
   }
-  // adopt the newer server row as our synced baseline
-  row.data = migrateChar(row.data, row.id);
-  adoptRev(row);
-  cloud.byId[row.id] = row;
+  // Adopt the remote row, MERGING it under any edit we haven't managed to save yet (see adoptRemote)
+  // — so the GM changing your level while you're editing your money keeps both, and neither side has
+  // to be ignored. The re-render is queued if you're mid-typing so it can't steal the caret, but it
+  // is no longer thrown away.
+  const merged = adoptRemote(cur, row, d => migrateChar(d, row.id));
+  cloud.byId[row.id] = merged;
+  if(canEdit(merged)) repushIfDirty(merged, ()=>cloudSaveRow(merged));
+  else merged._dirty = false;
   cacheCloud();
-  softRender();
+  refreshCharSelect();
+  refreshUI("all");
 }
 function softRender(){ updateCloudButton(); render(); }
 function cacheCloud(){
@@ -6501,7 +6738,7 @@ function myRow(){ return Object.values(cloud.byId).find(r=>ownsRow(r)); }
 function cloudUpsert(row){
   row.name = row.data?.name || "";
   cacheCloud();
-  return serialize(rowChain(row.id), ()=> casUpsert(row).then(ok=>{ cacheCloud(); return ok; }));
+  return serialize(rowChain(row.id), ()=> syncUpsert(row).then(ok=>{ cacheCloud(); return ok; }));
 }
 /* GM: drop a Pokémon into another player's party and push it to the cloud */
 function sendPokemonToRow(targetId, mon){
@@ -8977,6 +9214,57 @@ async function resyncCloud(){
 }
 document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") resyncCloud(); });
 window.addEventListener("pageshow", resyncCloud);   // bfcache restores don't fire visibilitychange
+window.addEventListener("online", resyncCloud);     // back from a tunnel / dropped wifi
+
+/* ─────────────────────────── sync watchdog ───────────────────────────
+   Everything above is event-driven, and every event source can fail quietly: a websocket dies
+   without an error, a debounced save is lost when a request fails, a write gives up after its
+   retries. Each of those leaves the tab looking fine while it is actually out of step — which is
+   what "I have to do it twice / reload the page" felt like. This is the backstop: once every 15s,
+   while the tab is actually on screen,
+     1. anything we edited but never got saved is pushed again, and
+     2. a realtime subscription that isn't SUBSCRIBED (or has heard nothing for 2 minutes) is
+        rebuilt and followed by a full re-fetch.
+   Both are no-ops in the normal case, so this costs nothing when things are working. */
+/* Something we changed that the server demonstrably doesn't have yet. Checked with the real diff,
+   not just deepEqual: a JS-only difference (a key holding `undefined`, which JSON drops) would
+   otherwise look "diverged" forever and be re-pushed on every tick. */
+function rowNeedsPush(row){
+  if(!row || row._base==null || cloud.inflight[row.id]) return false;
+  if(deepEqual(row.data, row._base)) return false;          // cheap pre-filter
+  return diffOps(row._base, row.data).length > 0;
+}
+function flushDivergedRows(){
+  for(const id of Object.keys(cloud.byId)){
+    const row = cloud.byId[id];
+    if(rowSaveTimers[id] || (id===cloud.activeId && cloud.saveTimer)) continue;   // a save is already queued
+    if(rowNeedsPush(row) && canEdit(row)) dispatchRowSave(row);
+  }
+  if(!encSaveTimer   && rowNeedsPush(cloud.enc))       encUpsert();
+  if(!mapTokensTimer && rowNeedsPush(cloud.mapTokens)) serialize(mapTokensChain, mapTokensUpsert);
+  if(!mapMetaTimer   && rowNeedsPush(cloud.mapMeta))   mapMetaSave();
+  if(rowNeedsPush(cloud.pc)) pcUpsert();
+}
+let watchdogBusy = false;
+async function syncWatchdog(){
+  if(mode!=="cloud" || !cloud.client || document.visibilityState!=="visible" || watchdogBusy) return;
+  watchdogBusy = true;
+  try{
+    flushDivergedRows();
+    if(cloud.subStatus!=="SUBSCRIBED"){
+      subscribeRealtime();          // rebuild the dead channel…
+      await resyncCloud();          // …and catch up on whatever it missed while it was down
+    } else if(Date.now() - (cloud.lastEvent||0) > 120000){
+      // Healthy-looking socket that has been silent for two minutes: usually just a quiet table,
+      // occasionally a connection that only LOOKS joined. One cheap catch-up read settles it
+      // without tearing down a working subscription.
+      cloud.lastEvent = Date.now();
+      await resyncCloud();
+    }
+  } catch(e){ console.error(e); }
+  finally { watchdogBusy = false; }
+}
+setInterval(syncWatchdog, 15000);
 
 /* Persist pending cloud edits before the page goes away. visibilitychange→hidden is the one
    event mobile browsers reliably fire before killing a backgrounded/refreshed tab; pagehide
