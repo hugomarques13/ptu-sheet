@@ -4838,12 +4838,23 @@ function encCombatStages(p){
 }
 /* Manual stat distribution for an encounter Pokémon — GM spreads the Level+10 added points by hand
    instead of the random roll (#24). Feeds pokeDerived via p.stats[k].added. */
+/* shared 🔓 unlock checkbox for encounter stat spreads — GM override to add points past the
+   normal budget (abilities/Features/homebrew sometimes demand more than the book budget allows) */
+function encUnlockToggle(obj){
+  const wrap = el("label",{class:"small",title:"GM: allow adding stat points past the normal budget",
+    style:"display:inline-flex;gap:5px;align-items:center;cursor:pointer;font-weight:700;color:var(--muted)"});
+  const cb = el("input",{type:"checkbox"}); cb.checked = !!obj.unlocked;
+  cb.addEventListener("change",()=>{ obj.unlocked=cb.checked; saveEnc(); renderEncounters(); });
+  wrap.append(cb, "🔓 unlock");
+  return wrap;
+}
 function encStatSpread(p){
   const budget = (p.level||1) + 10;
   const keys = STATS;
   keys.forEach(([k])=>{ if(!p.stats[k]) p.stats[k]={added:0}; });
   const spent = keys.reduce((s,[k])=> s + (p.stats[k]?.added||0), 0);
   const remaining = budget - spent;
+  const canInc = p.unlocked || remaining > 0;
   const det = el("details",{class:"spoiler",style:"margin-top:8px"});
   det.dataset.key = "stats:"+p.id;
   det.append(el("summary",{}, el("span",{style:"font-weight:700"},"Distribute stats"),
@@ -4857,13 +4868,15 @@ function encStatSpread(p){
     step.append(
       el("button",{title:"lower",disabled:added<=0,onclick:()=>{ p.stats[k].added=Math.max(0,added-1); p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); }},"−"),
       el("span",{class:"stepper-val"}, String(added)),
-      el("button",{title:"raise",disabled:remaining<=0,onclick:()=>{ p.stats[k].added=added+1; p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); }},"+"));
+      el("button",{title:canInc?"add a point":"no points left (tick 🔓 to override)",disabled:!canInc,onclick:()=>{ p.stats[k].added=added+1; p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); }},"+"));
     cell.append(step);
     grid.append(cell);
   });
   det.append(grid);
-  det.append(el("button",{class:"linkbtn",style:"margin-top:6px",
-    onclick:()=>{ encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); }},"🎲 randomise"));
+  det.append(el("div",{class:"inline",style:"gap:10px;margin-top:6px;align-items:center"},
+    el("button",{class:"linkbtn",
+      onclick:()=>{ encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); }},"🎲 randomise"),
+    encUnlockToggle(p)));
   return det;
 }
 /* Manual stat-point distribution for an encounter Trainer — mirrors encStatSpread(p) but spends the
@@ -4891,6 +4904,7 @@ function encTrainerStatSpread(t, key){
     grid.append(cell);
   });
   det.append(grid);
+  det.append(el("div",{style:"margin-top:6px"}, encUnlockToggle(t)));
   return det;
 }
 /* Weapons editor for an encounter Trainer — mirrors weaponsCard(t) but persists via saveEnc(). */
