@@ -1148,10 +1148,15 @@ function pokeBaseStats(p) {
 function pokeDerived(p) {
   const base = pokeBaseStats(p);
   const total = {}; STATS.forEach(([k]) => total[k] = base[k] + (p.stats[k]?.added||0));   // pre-CS ("real") stats
+  // A handful of homebrew GM-prop species (e.g. Barrier) pin one or more stats to a fixed value —
+  // irreversible, ignores level/added points/Combat Stages entirely (forced BEFORE the CS multiplier
+  // below, so e.g. a forced Defense of 0 stays exactly 0 no matter what CS is applied to it).
+  const forced = getSpecies(p.species)?.forcedStats;
+  if(forced) STATS.forEach(([k])=>{ if(k!=="hp" && typeof forced[k]==="number") total[k]=forced[k]; });
   const cap6 = v => Math.min(6, Math.floor(v/5));
   const cs = effectiveCS(p);                              // Combat Stages (manual + conditions)
   const eff = {}; STATS.forEach(([k]) => eff[k] = k==="hp" ? total.hp : Math.floor(total[k] * csMult(cs[k])));
-  const fullMaxHP = p.level + total.hp*3 + 10;          // undamaged maximum
+  const fullMaxHP = (forced && typeof forced.hp==="number") ? forced.hp : (p.level + total.hp*3 + 10);   // undamaged maximum
   const injuries = Math.max(0, p.injuries||0);
   const maxHP = injuryHealCap(fullMaxHP, injuries);      // Injuries cap max HP at −10% each (Core p.249)
   const budget = p.level + 10;
@@ -5043,6 +5048,7 @@ function encStatSpread(p){
   const spent = keys.reduce((s,[k])=> s + (p.stats[k]?.added||0), 0);
   const remaining = budget - spent;
   const canInc = p.unlocked || remaining > 0;
+  const forced = getSpecies(p.species)?.forcedStats;
   const det = el("details",{class:"spoiler",style:"margin-top:8px"});
   det.dataset.key = "stats:"+p.id;
   det.append(el("summary",{}, el("span",{style:"font-weight:700"},"Distribute stats"),
@@ -5050,14 +5056,19 @@ function encStatSpread(p){
   const grid = el("div",{style:"display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"});
   keys.forEach(([k,lbl])=>{
     const added = p.stats[k]?.added||0;
+    const isForced = forced && typeof forced[k]==="number";
     const cell = el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:2px;min-width:66px"});
     cell.append(el("div",{class:"small muted",style:"font-weight:700"},lbl));
-    const step = el("div",{class:"stepper"});
-    step.append(
-      el("button",{title:"lower",disabled:added<=0,onclick:()=>{ p.stats[k].added=Math.max(0,added-1); p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); }},"−"),
-      el("span",{class:"stepper-val"}, String(added)),
-      el("button",{title:canInc?"add a point":"no points left (tick 🔓 to override)",disabled:!canInc,onclick:()=>{ p.stats[k].added=added+1; p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); }},"+"));
-    cell.append(step);
+    if(isForced){
+      cell.append(el("div",{class:"stepper-val",title:"forced by this species — added points here have no effect"}, `${forced[k]} (forced)`));
+    } else {
+      const step = el("div",{class:"stepper"});
+      step.append(
+        el("button",{title:"lower",disabled:added<=0,onclick:()=>{ p.stats[k].added=Math.max(0,added-1); p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); }},"−"),
+        el("span",{class:"stepper-val"}, String(added)),
+        el("button",{title:canInc?"add a point":"no points left (tick 🔓 to override)",disabled:!canInc,onclick:()=>{ p.stats[k].added=added+1; p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); }},"+"));
+      cell.append(step);
+    }
     grid.append(cell);
   });
   det.append(grid);
