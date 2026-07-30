@@ -7326,6 +7326,26 @@ function toggleMapSelect(map){
   renderMap();
 }
 function clearMapSelect(map){ mapSelect.ids.clear(); renderMap(); }
+/* bulk GM actions over every currently-selected token (mapSelect.ids is already restricted to
+   editable tokens — see selectMapTokens/the tap-to-select handler in renderTokenNode). Each is one
+   toggle button rather than separate on/off buttons: if EVERY selected token is already in the
+   target state, it flips them all to the opposite; otherwise (mixed or none) it moves them all to
+   the "on" state first — same tri-state-checkbox convention as most bulk-select UIs. */
+function selectedTokens(map){ return mapTokensFor(map.id).filter(t=>mapSelect.ids.has(t.id)); }
+function bulkToggleHidden(map){
+  const sel = selectedTokens(map); if(!sel.length) return;
+  const hide = !sel.every(t=>t.gmHidden);
+  sel.forEach(t=>t.gmHidden=hide);
+  mapTokensSave(); renderMap();
+  toast(`${hide?"🙈 Hid":"👁 Unhid"} ${sel.length} token${sel.length===1?"":"s"}`);
+}
+function bulkToggleInInit(map){
+  const sel = selectedTokens(map); if(!sel.length) return;
+  const addIn = !sel.every(t=>tokenInInit(t));
+  sel.forEach(t=>t.inInit=addIn);
+  mapTokensSave(); renderMap();
+  toast(`${addIn?"⚔ Added":"Removed"} ${sel.length} token${sel.length===1?"":"s"} ${addIn?"to":"from"} initiative`);
+}
 /* select every token this viewer is allowed to move, restricted to a kind filter */
 function selectMapTokens(map, kinds, label){
   const ids = mapTokensFor(map.id).filter(t=>{ const info=tokenHp(t); return info.editable && kinds.has(info.kind); }).map(t=>t.id);
@@ -7338,8 +7358,17 @@ function mapSelectBar(map){
   const n = mapSelect.ids.size;
   const row = el("div",{class:"map-select-bar"});
   row.append(el("span",{class:"map-select-count"}, n ? `☑ ${n} selected` : "Tap tokens below to select them"));
-  if(n) row.append(el("span",{class:"muted small"},"drag any highlighted token to move the group together"),
-    el("button",{class:"btn-secondary",onclick:()=>clearMapSelect(map)},"✕ Clear"));
+  if(n){
+    row.append(el("span",{class:"muted small"},"drag any highlighted token to move the group together"));
+    const sel = selectedTokens(map);
+    const allHidden = sel.every(t=>t.gmHidden), allIn = sel.every(t=>tokenInInit(t));
+    row.append(
+      el("button",{class:"btn-secondary",title:"toggle whether the selected tokens are hidden from players",
+        onclick:()=>bulkToggleHidden(map)}, allHidden?"👁 Unhide":"🙈 Hide"),
+      el("button",{class:"btn-secondary",title:"toggle whether the selected tokens are in the initiative order",
+        onclick:()=>bulkToggleInInit(map)}, allIn?"✕ Remove from initiative":"⚔ Add to initiative"));
+    row.append(el("button",{class:"btn-secondary",onclick:()=>clearMapSelect(map)},"✕ Clear"));
+  }
   row.append(el("button",{class:"btn-secondary",onclick:()=>toggleMapSelect(map)},"Done"));
   return row;
 }
@@ -8822,7 +8851,7 @@ function enemyTokenRows(){
 /* Enemies grouped by encounter (mirrors playerTokenGroups) so the Add-token list is separated
    per encounter instead of one flat list. */
 function enemyTokenGroups(){
-  return encList().map(enc=>{
+  return encList().filter(enc=>!enc.archived).map(enc=>{
     const rows = [];
     (enc.mons||[]).forEach(p=> rows.push({ label:encMonName(p), sub:`Lv ${p.level}`,
       make:()=>({ link:{ kind:"enc", encId:enc.id, monId:p.id } }) }));
