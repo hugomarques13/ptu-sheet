@@ -102,6 +102,8 @@ const STATUS_DEFS = [
    effect:"−2 Combat Stages to Defense. If it takes (or is prevented from taking, e.g. by Sleep/Flinch/Paralysis) a Standard Action, it loses a Tick of HP at the end of that turn. Fire-types are immune."},
   {key:"frozen", name:"Frozen", kind:"persistent", immune:["Ice"],
    effect:"Cannot act and gains no Evasion bonuses (always considered Vulnerable). DC 16 Save Check at end of each turn to cure (DC 11 for Fire-types; +4 in Sun, −2 in Hail). Cured if hit by a damaging Fire/Fighting/Rock/Steel attack. Ice-types immune."},
+  {key:"chilled", name:"Chilled (Boss)", kind:"persistent", boss:true, immune:["Ice"],
+   effect:"Boss Template's version of Frozen (Running the Game p.488) — affects every one of the Boss's turns each round instead of costing it actions. Loses half its Evasion; on a failed Save (16, DC 11 for Fire-types; checked at the end of each of its turns) it takes −10 to its next Damage Roll. Cured as normal (incl. being hit by a damaging Fire/Fighting/Rock/Steel attack), but unlike Frozen it doesn't auto-cure that way — same +4 Sun/−2 Hail Save mods apply. Ice-types immune."},
   {key:"paralysis", name:"Paralyzed", kind:"persistent", immune:["Electric"],
    effect:"(Feb 2016 errata) Initiative is halved. Save Check at the start of the user's turn, succeeding on 11+: on a success act normally; on a failure the user may only take a Standard OR Shift Action (not both) this round, is Vulnerable for 1 full round, and cannot take Attacks of Opportunity for 1 full round. Electric-types immune."},
   {key:"poisoned", name:"Poisoned", kind:"persistent", immune:["Poison","Steel"],
@@ -110,6 +112,8 @@ const STATUS_DEFS = [
    effect:"As Poisoned, but instead loses 5 HP, doubling each consecutive round (10, 20, 40…)."},
   {key:"sleep", name:"Asleep", kind:"persistent",
    effect:"No Evasion bonuses (always considered Vulnerable); may only take Free/Swift Actions that cure Sleep. DC 16 Save at end of its turn to wake; also wakes on any active HP-loss attack (not passive Poison/Burn). Can't Save vs Rage/Infatuation/Confusion while asleep (but also can't hurt itself from Confusion)."},
+  {key:"drowsy", name:"Drowsy (Boss)", kind:"persistent", boss:true,
+   effect:"Boss Template's version of Asleep (Running the Game p.488) — affects every one of the Boss's turns each round instead of costing it actions. Loses half its Evasion; on a failed Save (16, checked at the end of each of its turns) it takes −10 to its next Damage Roll. Cured as normal, but unlike Sleep, taking damage does NOT auto-cure it."},
   {key:"confused", name:"Confused", kind:"volatile",
    effect:"(Feb 2016 errata) Cannot take Attacks of Opportunity. Whenever the user makes an Attack (even one without a roll), roll 1d2 — on a 1, after the attack resolves the user loses HP equal to half its Attack Stat (Physical Move), half its Special Attack Stat (Special Move), or two Ticks of HP (Status Move). Cured with a Save of 16+ made at end of turn."},
   {key:"cursed", name:"Cursed", kind:"volatile",
@@ -138,6 +142,8 @@ const STATUS_DEFS = [
    effect:"Cannot apply Evasion of any sort against attacks. (Blinded, Sleeping, Fainted, Frozen, and Tripped targets are always considered Vulnerable too.)"},
   {key:"blinded", name:"Blinded", kind:"other", cap:0,
    effect:"−6 to Accuracy Rolls; must pass a DC 10 Acrobatics Check over Rough/Slow Terrain or become Tripped. Always considered Vulnerable."},
+  {key:"petrified", name:"Petrified", kind:"other", cap:0,
+   effect:"Is stone, irreversible."},
 ];
 const statusByKey = new Map(STATUS_DEFS.map(s=>[s.key, s]));
 /* Move effect text almost never spells out the status ADJECTIVE ("Poisoned") — it uses a VERB
@@ -700,6 +706,89 @@ function swarmSpend(p, freq){
 const swarmDamageStep = aoe => aoe ? +1 : -1;
 
 /* ===================================================================
+   Boss Template (Running the Game p.487-488)
+   One powerful enemy standing in for a whole squad's worth of actions:
+   it gets one HP bar per action it has each round (a "bar" = one full
+   Max HP), and — unlike Swarm — its number of actions per round never
+   drops as bars break (Swarm's act count DOES shrink with its Multiplier;
+   a Boss's doesn't). Injuries, Status Afflictions and EOT-frequency Moves
+   all get their own boss-specific rulings, applied below/at their call sites.
+=================================================================== */
+const isBoss = p => !!(p && p.boss && p.boss.on);
+/* Boss Template applies to encounter Pokémon AND Trainers (Running the Game doesn't restrict it to
+   Pokémon) — every function below takes a generic `owner` and branches on the same `.species!==
+   undefined` discriminator ownerFullHP() already uses, so one implementation covers both. */
+const bossBarMax  = owner => owner.species!==undefined ? pokeDerived(owner).maxHP : trainerDerived(owner).hp;
+const bossOwnerName = owner => owner.species!==undefined ? encMonName(owner) : (owner.name||"Trainer");
+/* normalise/repair a boss block (called from normPokemon/normTrainer) */
+function normBoss(owner){
+  if(!owner.boss || !owner.boss.on) return owner;
+  const b = owner.boss;
+  b.actions = Math.max(1, Math.min(12, parseInt(b.actions)||1));   // = actions/round = HP bars (1:1, Core rule)
+  if(typeof b.curBar!=="number") b.curBar = b.actions;
+  b.curBar = Math.max(0, Math.min(b.actions, b.curBar));
+  if(typeof b.baseInit!=="number") b.baseInit = 10;
+  b.halfInjuryGiven = !!b.halfInjuryGiven;
+  if(b.defaultCS && typeof b.defaultCS!=="object") b.defaultCS = null;
+  return owner;
+}
+function toggleBoss(owner){
+  if(isBoss(owner)){ delete owner.boss; owner.currentHP = Math.min(owner.currentHP, bossBarMax(owner)); return; }
+  owner.boss = { on:true, actions:3, curBar:3, baseInit:10, halfInjuryGiven:false, defaultCS:null };
+}
+/* total HP left across every remaining bar — same cascade shape as swarmTotalHP */
+function bossTotalHP(owner){
+  const max = bossBarMax(owner);
+  return Math.max(0, (Math.max(1,owner.boss.curBar)-1)) * max + (owner.currentHP||0);
+}
+function bossMaxTotalHP(owner){ return bossBarMax(owner) * (owner.boss.actions||1); }
+/* write a total back as {bar, HP in the current bar} — lets one big hit break several bars at
+   once. Also auto-flags the two automatic Boss Injury triggers: losing half its total bars (once
+   per fight), and reaching its last bar (a GM heads-up, not an Injury). Massive Damage's Injury is
+   handled separately in applyAutoInjury (it needs the raw hit size, not the post-cascade total). */
+function bossSetTotalHP(owner, total){
+  const max = bossBarMax(owner);
+  const prevBar = owner.boss.curBar;
+  const cap = max * (owner.boss.actions||1);
+  const t = Math.max(0, Math.min(total, cap));
+  if(t<=0){ owner.boss.curBar = 0; owner.currentHP = 0; }
+  else { owner.boss.curBar = Math.max(1, Math.min(owner.boss.actions||1, Math.ceil(t/max))); owner.currentHP = t - (owner.boss.curBar-1)*max; }
+  if(owner.boss.curBar < prevBar){
+    const halfThresh = Math.floor((owner.boss.actions||1)/2);
+    if(!owner.boss.halfInjuryGiven && owner.boss.curBar<=halfThresh){
+      owner.boss.halfInjuryGiven = true; owner.injuries=(owner.injuries||0)+1;
+      toast(`⚡ ${bossOwnerName(owner)} lost half its HP bars — +1 Injury (Core rule) · now bar ${owner.boss.curBar}/${owner.boss.actions}`);
+    } else if(owner.boss.curBar<=0){
+      toast(`💀 ${bossOwnerName(owner)} — final HP bar down!`);
+    } else {
+      toast(`⚡ ${bossOwnerName(owner)} is Staggered — bar ${owner.boss.curBar}/${owner.boss.actions}`);
+    }
+  }
+}
+const bossDefeated  = owner => isBoss(owner) && owner.boss.curBar<=0;
+const bossOnLastBar = owner => isBoss(owner) && owner.boss.curBar===1;
+/* Initiative Counts a Boss acts on each round (Running the Game p.487): its normal turn at base
+   Initiative, then alternating turns at −5 from base until subtracting again would go below 1,
+   then any turns still left to place resume climbing +5 above base. Sorted high→low for display/
+   scheduling. (Book's worked example: base 20, 6 total actions → 30,25,20,15,10,5.) */
+function bossInitiativeCounts(base, actions){
+  base = Math.max(1, parseInt(base)||1); actions = Math.max(1, parseInt(actions)||1);
+  const counts = [base]; let remaining = actions-1, down = base, up = base;
+  while(remaining>0 && down-5>=1){ down-=5; counts.push(down); remaining--; }
+  while(remaining>0){ up+=5; counts.push(up); remaining--; }
+  return counts.sort((a,b)=>b-a);
+}
+/* menu of book-suggested effects for when a Boss gets Staggered (loses a bar) — GM picks by hand,
+   nothing here is auto-applied (some are helpful to the players, some make the fight harder). */
+const BOSS_STAGGER_EFFECTS = [
+  "Becomes Vulnerable until next hit by a damaging attack",
+  "Becomes Flinched and loses its next turn (not the whole round)",
+  "Increase one Combat Stage by 1",
+  "Regains one use of a Scene-frequency Move",
+  "Cured of one Volatile Status Affliction",
+];
+
+/* ===================================================================
    Frequency & use-tracking (Scene / Daily limited uses)
    Moves, Abilities and Features carry a `frequency`; Scene/Daily ones
    have finite uses that refresh on End Scene / End Day.
@@ -725,9 +814,16 @@ function splitKey(key){ const i=key.indexOf(":"); return [key.slice(0,i), key.sl
 function usesLeft(owner, key, max){ return Math.max(0, max - ((owner.uses && owner.uses[key]) || 0)); }
 /* use tracker as filled/empty pip boxes (one per use); returns null if unlimited frequency.
    Tap a filled box to spend that use; tap an empty box to restore up to it. */
-function usesControl(owner, kind, name, freqRaw, rerender, persistFn){
+function usesControl(owner, kind, name, freqRaw, rerender, persistFn, opts){
   const info = freqInfo(freqRaw);
   if(!freqTrackable(info)) return null;
+  // Boss Template (Running the Game p.487): EOT Moves may be used more than once a round as long
+  // as the GM spaces a turn between each use, instead of the normal single-cooldown-pip. There's no
+  // per-round turn tracker for encounter Moves, so this just drops the cap and trusts the GM.
+  if(opts?.bossEot && info.kind==="eot"){
+    return el("span",{class:"uses", title:"Boss Template — usable more than once a round if you space a turn between each use (Running the Game p.487); space them out by hand"},
+      el("span",{class:"uses-tag muted"}, "EOT · Boss: unlimited"));
+  }
   const key = useKey(kind, name), max = info.max, left = usesLeft(owner, key, max);
   const setLeft = (nl,e) => { e.preventDefault(); e.stopPropagation();
     owner.uses = owner.uses || {};
@@ -897,6 +993,7 @@ function normPokemon(p){
   if(p.xp < xpForLevel(p.level)) p.xp = xpForLevel(p.level);
   if(typeof p.tutorPoints!=="number") p.tutorPoints = tutorPointsEarned(p.level);  // legacy objects only — never re-floors spent points
   normSwarm(p);                                    // Swarm Template block, if this is a swarm (Core p.478)
+  normBoss(p);                                     // Boss Template block, if this is a boss (Running the Game p.487)
   return p;
 }
 /* migrate older Trainer objects to include HP/AP/uses tracking */
@@ -939,6 +1036,7 @@ function normTrainer(t){
   if(!Array.isArray(t.customActions)) t.customActions = [];       // freeform actions/notes not in any DB/Feature
   if(!t.msStats || typeof t.msStats!=="object") t.msStats = { atk:0, spatk:0 };  // Level-Up milestone Bonus-Stats already baked into combat.added
   syncMilestoneStats(t);                                          // reconcile assigned milestone points → Atk/SpAtk
+  normBoss(t);                                                    // Boss Template block, if this Trainer is a boss (Running the Game p.487)
   return t;
 }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -1392,10 +1490,23 @@ function injuriesFromHit(fullHP, oldHP, newHP, dmgAmount){
 }
 /* Shared by every HP setter (damageHealRow, setTokenHP): applies injuriesFromHit to a damaging
    change and toasts it. Swarms never take Injuries (Core p.478), so they're excluded here rather
-   than at each call site. */
+   than at each call site. Bosses (Running the Game p.487) follow a DIFFERENT rule than normal —
+   they only take an Injury from Massive Damage (≥half their full HP in one hit), never from
+   crossing the ordinary 25/50/75% HP markers — the "loses half its HP bars" Injury is handled
+   separately in bossSetTotalHP (it needs the post-cascade bar count, not a single hit's size). */
 function applyAutoInjury(owner, oldHP, newHP){
   if(!owner || newHP>=oldHP || isSwarm(owner)) return 0;
-  const inj = injuriesFromHit(ownerFullHP(owner), oldHP, newHP, oldHP-newHP);
+  const dmg = oldHP - newHP;
+  if(isBoss(owner)){
+    const full = ownerFullHP(owner);
+    if(full && dmg >= full*0.5){
+      owner.injuries = (owner.injuries||0) + 1;
+      toast("+1 Injury! (Massive Damage on a Boss)");
+      return 1;
+    }
+    return 0;
+  }
+  const inj = injuriesFromHit(ownerFullHP(owner), oldHP, newHP, dmg);
   if(inj > 0){
     owner.injuries = (owner.injuries||0) + inj;
     toast(`+${inj} Injur${inj===1?"y":"ies"}! (Massive Damage / HP marker crossed)`);
@@ -4661,7 +4772,7 @@ function encounterMoveRow(p, sp, m, mn, favSet, onFav, isStruggle){
   if(m) left.append(el("span",{class:"small muted",style:"min-width:0;overflow:hidden;text-overflow:ellipsis"}, moveLineShort(m)));
   row.append(left);
   const acts=el("div",{class:"inline",style:"gap:6px"});
-  if(m && !isStruggle){ const uc = usesControl(p, "move", m.name, m.frequency, renderEncounters, saveEnc); if(uc) acts.append(uc); }
+  if(m && !isStruggle){ const uc = usesControl(p, "move", m.name, m.frequency, renderEncounters, saveEnc, {bossEot:isBoss(p)}); if(uc) acts.append(uc); }
   if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"move details",
     onclick:()=>modal({title:m.name, bodyNode:el("div",{class:"small",html:moveDetailHTML(m,m.name)}),
       footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Close")]})},"ℹ"));
@@ -4675,7 +4786,7 @@ function encounterAbilityRow(p, an){
   const ab=abilityByName.get((an||"").toLowerCase());
   const row=el("details",{class:"spoiler",style:"margin-top:5px"});
   row.dataset.key = "ability:"+p.id+":"+an;
-  const uc = usesControl(p, "ability", an, ab?.frequency, renderEncounters, saveEnc);
+  const uc = usesControl(p, "ability", an, ab?.frequency, renderEncounters, saveEnc, {bossEot:isBoss(p)});
   row.append(el("summary",{},
     el("span",{style:"font-weight:700;color:var(--ink)"}, an||"—"),
     ab&&ab.frequency?el("span",{class:"muted small",style:"margin-left:8px"}, ab.frequency):"",
@@ -4812,6 +4923,77 @@ function swarmCard(p){
   return wrap;
 }
 
+/* Boss Template card (Running the Game p.487-488) — mirrors swarmCard's shape: size control up
+   top, HP bars, then the mechanics unique to this template. */
+/* Boss Template card — works for both encounter Pokémon and Trainers (owner-generic, see the
+   bossBarMax/bossOwnerName discriminators above). */
+function bossCard(owner){
+  const b = owner.boss, barMax = bossBarMax(owner), isMon = owner.species!==undefined;
+  const wrap = el("div",{class:"card",style:"background:var(--panel-2);margin:8px 0 0;border:1px solid var(--accent)"});
+  wrap.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:6px"},
+    `👑 Boss Template`, el("span",{class:"muted",style:"font-weight:600"}, "  (Running the Game p.487)")));
+
+  // actions/round (= HP bars, 1:1) + base Initiative — resizing is a fresh boss (full heal, all bars back)
+  const actIn = el("input",{type:"number",min:1,max:12,value:b.actions,style:"width:64px"});
+  actIn.addEventListener("change", ()=>{
+    b.actions = Math.max(1,Math.min(12,parseInt(actIn.value)||1));
+    b.curBar = b.actions; b.halfInjuryGiven=false;
+    owner.currentHP = bossBarMax(owner);
+    normBoss(owner); saveEnc(); renderEncounters();
+  });
+  const initIn = el("input",{type:"number",min:1,value:b.baseInit,style:"width:64px"});
+  initIn.addEventListener("change", ()=>{ b.baseInit=Math.max(1,parseInt(initIn.value)||1); saveEnc(); renderEncounters(); });
+  const row1 = el("div",{class:"fieldrow"});
+  row1.append(
+    el("label",{class:"field",style:"max-width:200px"}, el("span",{},"Actions/round (= HP bars)"), actIn),
+    el("label",{class:"field",style:"max-width:160px"}, el("span",{},"Base Initiative"), initIn));
+  wrap.append(row1);
+
+  const counts = bossInitiativeCounts(b.baseInit, b.actions);
+  wrap.append(el("div",{class:"small muted",style:"margin-top:2px"},
+    "Acts on Initiative: ", el("b",{}, counts.join(", ")),
+    " — space its turns through the round (Running the Game p.487)."));
+
+  // HP bars
+  const bars = el("div",{class:"inline",style:"gap:4px;margin-top:8px;flex-wrap:wrap"});
+  for(let i=b.actions; i>=1; i--){
+    const full = i < b.curBar, cur = i === b.curBar;
+    const pct = cur ? Math.max(0, Math.min(100, Math.round(owner.currentHP/barMax*100))) : (full?100:0);
+    bars.append(el("div",{style:"flex:1;min-width:52px"},
+      el("div",{class:"hpbar",style:"height:9px"}, el("i",{style:`width:${pct}%;background:${cur?"var(--accent)":full?"var(--good)":"transparent"}`}))));
+  }
+  wrap.append(el("div",{class:"small muted",style:"margin-top:6px;font-weight:700"},
+    `HP bars — ${b.curBar} of ${b.actions} left · ${bossTotalHP(owner)} / ${bossMaxTotalHP(owner)} total`), bars);
+  if(bossDefeated(owner)) wrap.append(el("div",{class:"warnbox",style:"margin-top:8px"},"💀 Every Hit Point bar is gone."));
+  else if(bossOnLastBar(owner)) wrap.append(el("div",{class:"warnbox",style:"margin-top:8px"},
+    "⚠ Last Hit Point bar — consider a special last-stand effect (Enrage to +6 Attack CS, unlock a signature attack, clear its negative Combat Stages/Statuses…)."));
+
+  wrap.append(el("div",{class:"small muted",style:"margin-top:8px;font-weight:700"},"When Staggered (loses a bar), consider one or more of:"));
+  const sugg = el("div",{class:"chips",style:"margin-top:2px"});
+  BOSS_STAGGER_EFFECTS.forEach(t=>sugg.append(el("span",{class:"chip"},t)));
+  wrap.append(sugg);
+
+  // Injuries — Bosses only take them from Massive Damage (auto), losing half their bars (auto,
+  // flagged once by bossSetTotalHP), or an explicit effect (manual button, for that last case)
+  const injRow = el("div",{class:"inline",style:"gap:6px;margin-top:10px;align-items:center"});
+  injRow.append(el("span",{class:"small",style:"font-weight:700"},"Injuries"),
+    el("button",{class:"btn-secondary",style:"padding:2px 9px",
+      onclick:()=>{ owner.injuries=Math.max(0,(owner.injuries||0)-1); owner.currentHP=Math.min(owner.currentHP,bossBarMax(owner)); saveEnc(); renderEncounters(); }},"−"),
+    el("span",{style:"font-weight:800;min-width:16px;text-align:center"}, String(owner.injuries||0)),
+    el("button",{class:"btn-secondary",style:"padding:2px 9px",title:"for an explicit effect (e.g. Cruelty) that mandates an Injury — Massive Damage and half-bars-lost are already automatic",
+      onclick:()=>{ owner.injuries=(owner.injuries||0)+1; owner.currentHP=Math.min(owner.currentHP,bossBarMax(owner)); saveEnc(); renderEncounters(); }},"+"));
+  wrap.append(injRow);
+  wrap.append(el("div",{class:"small muted",style:"margin-top:2px"},
+    "Bosses skip normal Injury rules — only Massive Damage (auto), losing half its HP bars (auto, once), or an explicit effect (use + above) give it one."));
+
+  wrap.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    "EOT-frequency Moves show as unlimited below (usable more than once a round if you space a turn between each use) and Scene ×2 Moves may be used back-to-back — the normal Move list already reflects both. "+
+    "Status ticks (Burn/Poison/Sandstorm…) and action-denial (Confuse/Paralyze) should only apply once per round, not per turn — assign them to one Initiative Count and leave the rest alone."
+    + (isMon ? " Sleep/Frozen are Drowsy/Chilled instead (Status Conditions below) and Disable only locks one Move; Flinch never costs more than one turn a round."
+             : " Disable only locks one Move; Flinch never costs more than one turn a round.")));
+  return wrap;
+}
+
 /* compact combat-stage steppers for an encounter Pokémon (±6 per stat; feeds pokeDerived) */
 function encCombatStages(p){
   if(!p.cs) p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
@@ -4832,8 +5014,14 @@ function encCombatStages(p){
   ACC_EVA_STATS.forEach(([k,lbl])=> grid.append(accEvaCell(lbl, p.cs[k]||0, d.cs[k],
     v=>{ p.cs[k]=Math.max(-6,Math.min(6,v)); saveEnc(); renderEncounters(); })));
   det.append(grid);
+  // Especially powerful Boss Pokémon can have some Combat Stages set above zero as their Default
+  // (Running the Game p.487) — "reset" then returns to THAT saved default instead of flat zero.
   if(any) det.append(el("button",{class:"linkbtn",style:"margin-top:6px",
-    onclick:()=>{ ALL_CS_STATS.forEach(([k])=>p.cs[k]=0); saveEnc(); renderEncounters(); }},"reset combat stages"));
+    onclick:()=>{ const def = (isBoss(p) && p.boss.defaultCS) || {};
+      ALL_CS_STATS.forEach(([k])=>p.cs[k]=def[k]||0); saveEnc(); renderEncounters(); }},"reset combat stages"));
+  if(isBoss(p)) det.append(el("button",{class:"linkbtn",style:"margin-top:6px;margin-left:8px",
+    title:"save the Combat Stages set right now as this Boss's Default (what 'reset' returns to)",
+    onclick:()=>{ p.boss.defaultCS={...p.cs}; saveEnc(); renderEncounters(); toast("📌 Saved as this Boss's default Combat Stages"); }},"📌 set as Boss default"));
   return det;
 }
 /* Manual stat distribution for an encounter Pokémon — GM spreads the Level+10 added points by hand
@@ -4965,7 +5153,11 @@ function encTrainerCombatStages(t, key){
     v=>{ t.cs[k]=Math.max(-6,Math.min(6,v)); saveEnc(); renderEncounters(); })));
   det.append(grid);
   if(any) det.append(el("button",{class:"linkbtn",style:"margin-top:6px",
-    onclick:()=>{ ALL_CS_STATS.forEach(([k])=>t.cs[k]=0); saveEnc(); renderEncounters(); }},"reset combat stages"));
+    onclick:()=>{ const def = (isBoss(t) && t.boss.defaultCS) || {};
+      ALL_CS_STATS.forEach(([k])=>t.cs[k]=def[k]||0); saveEnc(); renderEncounters(); }},"reset combat stages"));
+  if(isBoss(t)) det.append(el("button",{class:"linkbtn",style:"margin-top:6px;margin-left:8px",
+    title:"save the Combat Stages set right now as this Boss's Default (what 'reset' returns to)",
+    onclick:()=>{ t.boss.defaultCS={...t.cs}; saveEnc(); renderEncounters(); toast("📌 Saved as this Boss's default Combat Stages"); }},"📌 set as Boss default"));
   return det;
 }
 /* compact, expandable status-condition toggles for an encounter Pokémon */
@@ -4980,9 +5172,16 @@ function encStatusControl(p){
     el("span",{class:"muted small",style:"margin-left:8px"}, active.length?active.map(s=>s.name).join(", "):"none"),
     active.length?el("button",{class:"linkbtn",style:"float:right",onclick:e=>{ e.preventDefault(); p.statuses=[]; saveEnc(); renderEncounters(); }},"clear"):""));
   const body=el("div",{style:"margin-top:6px"});
+  // Boss Template (Running the Game p.488): Sleep/Frozen are replaced by Drowsy/Chilled — swap
+  // which pair of chips shows rather than offering all four (a Boss never actually gets normal Sleep).
+  const boss = isBoss(p);
   [["persistent","Persistent · +10 catch"],["volatile","Volatile · +5"],["other","Other"]].forEach(([kind,label])=>{
     const chips=el("div",{class:"chips"});
-    STATUS_DEFS.filter(s=>s.kind===kind).forEach(s=>{
+    STATUS_DEFS.filter(s=>s.kind===kind).filter(s=>{
+      if(s.key==="sleep"||s.key==="frozen") return !boss;
+      if(s.boss) return boss;
+      return true;
+    }).forEach(s=>{
       const on=hasStatus(p,s.key), immune=s.immune && sp?.types?.some(t=>s.immune.includes(t));
       chips.append(el("button",{class:"statuschip"+(on?" on":""), title:(immune?`${sp.name} is immune. `:"")+s.effect,
         onclick:()=>{ p.statuses=p.statuses||[]; const i=p.statuses.indexOf(s.key); if(i>=0)p.statuses.splice(i,1); else p.statuses.push(s.key); saveEnc(); renderEncounters(); }}, s.name+(immune?" ⃠":"")));
@@ -5046,22 +5245,29 @@ function encounterMonCard(enc, p, list){
   head.append(encMonRemoveBtn(p,list));
   card.append(head);
   // HP tracker
-  // A Swarm's HP is one pool over several bars — write through the cascade so a big hit can break
-  // more than one bar and drop the Multiplier accordingly (Core p.478).
+  // A Swarm's/Boss's HP is one pool over several bars — write through the cascade so a big hit can
+  // break more than one bar and drop the Multiplier/current-bar accordingly (Core p.478, Running
+  // the Game p.487). Swarm and Boss are mutually exclusive (guarded on their toggle buttons below).
   const setHP = v => {
     if(isSwarm(p)) swarmSetTotalHP(p, Math.max(0,(p.swarm.mult||1)-1)*maxHP + v);
+    else if(isBoss(p)) bossSetTotalHP(p, Math.max(0,(p.boss.curBar||1)-1)*maxHP + v);
     else p.currentHP = Math.max(-99, Math.min(maxHP, v));
     saveEnc(); renderEncounters();
   };
   card.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"},
     el("span",{class:"small muted",style:"font-weight:700;white-space:nowrap"},
-      isSwarm(p) ? `HP ${p.currentHP}/${maxHP} · bar ${p.swarm.mult}/${p.swarm.maxMult}` : `HP ${p.currentHP}/${maxHP}`),
+      isSwarm(p) ? `HP ${p.currentHP}/${maxHP} · bar ${p.swarm.mult}/${p.swarm.maxMult}`
+      : isBoss(p) ? `HP ${p.currentHP}/${maxHP} · bar ${p.boss.curBar}/${p.boss.actions}`
+      : `HP ${p.currentHP}/${maxHP}`),
     el("div",{class:"hpbar",style:"flex:1;min-width:120px"}, el("i",{style:`width:${pct}%;background:${hpColor}`})),
     el("button",{class:"linkbtn",style:"padding:2px 6px",title:"full heal",
-      onclick:()=>{ if(isSwarm(p)) swarmSetTotalHP(p, swarmMaxTotalHP(p)); else p.currentHP=maxHP;
+      onclick:()=>{ if(isSwarm(p)) swarmSetTotalHP(p, swarmMaxTotalHP(p));
+        else if(isBoss(p)) bossSetTotalHP(p, bossMaxTotalHP(p));
+        else p.currentHP=maxHP;
         saveEnc(); renderEncounters(); }},"MAX")));
   card.append(damageHealRow(()=>p.currentHP, setHP, p));
   if(isSwarm(p)) card.append(swarmCard(p));
+  else if(isBoss(p)) card.append(bossCard(p));
   // GM actions: reroll identity, toggle shiny, Catch DC, send to PC (caught)
   const actRow=el("div",{class:"inline",style:"gap:6px;margin-top:8px;flex-wrap:wrap"});
   actRow.append(
@@ -5073,8 +5279,13 @@ function encounterMonCard(enc, p, list){
     el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"send to the shared PC (caught)",onclick:()=>sendEncMonToPC(enc,p,list)},"🎣 To PC"),
     el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"EXP for defeating just this Pokémon",onclick:()=>openMonExpCalc(p)},"🧮 EXP"),
     el("button",{class:"btn-secondary"+(isSwarm(p)?" on":""),style:"padding:5px 10px",
-      title:"Swarm Template (Core p.478) — abstract a horde into one entity with HP bars and Swarm Points",
-      onclick:()=>{ toggleSwarm(p); saveEnc(); renderEncounters(); }}, isSwarm(p)?`🐝 Swarm ×${p.swarm.mult}`:"🐝 Swarm"));
+      title:isBoss(p)?"disable Boss Template first":"Swarm Template (Core p.478) — abstract a horde into one entity with HP bars and Swarm Points",
+      onclick:()=>{ if(isBoss(p)){ toast("Disable Boss Template first"); return; } toggleSwarm(p); saveEnc(); renderEncounters(); }},
+      isSwarm(p)?`🐝 Swarm ×${p.swarm.mult}`:"🐝 Swarm"),
+    el("button",{class:"btn-secondary"+(isBoss(p)?" on":""),style:"padding:5px 10px",
+      title:isSwarm(p)?"disable Swarm Template first":"Boss Template (Running the Game p.487) — a single powerful enemy with several HP bars and actions per round",
+      onclick:()=>{ if(isSwarm(p)){ toast("Disable Swarm Template first"); return; } toggleBoss(p); saveEnc(); renderEncounters(); }},
+      isBoss(p)?`👑 Boss ×${p.boss.actions}`:"👑 Boss"));
   card.append(actRow);
   card.append(encStatSpread(p));
   card.append(encCombatStages(p));
@@ -5110,6 +5321,10 @@ function encounterMonCard(enc, p, list){
   card.append(aw);
   // capabilities — read-only (derived from species), hover a chip to see what it does
   if(sp) card.append(encounterCapsRow(sp));
+  // Buffs & Orders — same shared card as the Sheet/Map token menu, so a GM can grant a wild
+  // Pokémon a standing effect (e.g. a custom "+15 Damage Reduction" prop/hazard) without needing
+  // to open the Map first — damageHealRow already auto-applies any active DR buff on this card.
+  card.append(buffsCard(p, ()=>{ saveEnc(); renderEncounters(); }));
   return card;
 }
 /* movement + special Capabilities chip row for an encounter Pokémon — hover each chip for its
@@ -5147,7 +5362,7 @@ function encounterTrainerCard(enc, tr){
     row.append(el("span",{style:"font-weight:800;white-space:nowrap"}, (fainted0?"💀 ":"")+(t.name||"Trainer")));
     row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `Lv ${t.level}`));
     row.append(el("div",{class:"hpbar",style:"flex:1;min-width:70px"}, el("i",{style:`width:${pct0}%;background:${pct0>50?"var(--good)":pct0>25?"var(--warn)":"var(--bad)"}`})));
-    row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `${t.currentHP}/${maxHP0}`));
+    row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `${t.currentHP}/${maxHP0}`+(isBoss(t)?` · bar ${t.boss.curBar}/${t.boss.actions}`:"")));
     row.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"expand",onclick:()=>encTrainerToggleMin(tr)},"▸"));
     row.append(encOrderBtns(enc.trainers,tr));
     row.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove trainer",
@@ -5173,6 +5388,9 @@ function encounterTrainerCard(enc, tr){
   const actions=el("div",{class:"inline",style:"gap:6px;align-items:center"});
   actions.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"minimize",onclick:()=>encTrainerToggleMin(tr)},"▾"));
   actions.append(encOrderBtns(enc.trainers,tr));
+  actions.append(el("button",{class:"btn-secondary"+(isBoss(t)?" on":""),style:"padding:3px 9px",
+    title:"Boss Template (Running the Game p.487) — several HP bars and actions per round",
+    onclick:()=>{ toggleBoss(t); saveEnc(); renderEncounters(); }}, isBoss(t)?`👑 Boss ×${t.boss.actions}`:"👑 Boss"));
   actions.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove trainer",
     onclick:()=>{ enc.trainers=enc.trainers.filter(x=>x.id!==tr.id); saveEnc(); renderEncounters(); }},"×"));
   head.append(actions);
@@ -5183,12 +5401,22 @@ function encounterTrainerCard(enc, tr){
     `Evasion — Phys +${td.physEva} · Spec +${td.specEva} · Speed +${td.spdEva}`));
   if(td.injuries>0) card.append(el("div",{class:"small",style:"color:var(--bad);font-weight:700;margin-top:2px"},
     `${td.injuries} injur${td.injuries===1?"y":"ies"} — max HP ${maxHP} (−${td.fullHP-maxHP})`));
-  const setHP=v=>{ t.currentHP=Math.max(-99,Math.min(maxHP,v)); saveEnc(); renderEncounters(); };
+  // A Boss Trainer's HP is one pool over several bars — same cascade as Boss/Swarm Pokémon, so a
+  // big hit can break more than one bar and drop the current bar accordingly (Running the Game p.487).
+  const setHP=v=>{
+    if(isBoss(t)) bossSetTotalHP(t, Math.max(0,(t.boss.curBar||1)-1)*maxHP + v);
+    else t.currentHP=Math.max(-99,Math.min(maxHP,v));
+    saveEnc(); renderEncounters();
+  };
   const pct=Math.max(0,Math.min(100,Math.round(t.currentHP/maxHP*100)));
   card.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"},
-    el("span",{class:"small muted",style:"font-weight:700;white-space:nowrap"}, `HP ${t.currentHP}/${maxHP}`),
-    el("div",{class:"hpbar",style:"flex:1;min-width:120px"}, el("i",{style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`}))));
+    el("span",{class:"small muted",style:"font-weight:700;white-space:nowrap"},
+      isBoss(t) ? `HP ${t.currentHP}/${maxHP} · bar ${t.boss.curBar}/${t.boss.actions}` : `HP ${t.currentHP}/${maxHP}`),
+    el("div",{class:"hpbar",style:"flex:1;min-width:120px"}, el("i",{style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`})),
+    el("button",{class:"linkbtn",style:"padding:2px 6px",title:"full heal",
+      onclick:()=>{ if(isBoss(t)) bossSetTotalHP(t, bossMaxTotalHP(t)); else t.currentHP=maxHP; saveEnc(); renderEncounters(); }},"MAX")));
   card.append(damageHealRow(()=>t.currentHP, setHP, t));
+  if(isBoss(t)) card.append(bossCard(t));
   // Injuries (cap max HP) + Combat Stages
   const injRow=el("div",{class:"inline",style:"gap:6px;margin-top:6px;align-items:center"});
   injRow.append(el("span",{class:"small muted",style:"font-weight:700"},"Injuries"),
@@ -5207,11 +5435,17 @@ function encounterTrainerCard(enc, tr){
   (t.weapons||[]).forEach(w=>{
     atkWrap.append(trainerAttackSlot(t, trainerStruggle(t,w), ()=>openTrainerAttack(t,null,w), {tag:w.category}));
     if(w.notes) atkWrap.append(el("div",{class:"small muted",style:"margin:-2px 0 4px 6px"}, "↳ "+w.notes));
+    // Encounter Trainers don't get an editable Combat skill rank in this tab (Skills below are
+    // read-only chips), so gating a Weapon Move behind weaponMoveRankOk here would make it
+    // impossible for the GM to ever see a move they deliberately picked — show it unconditionally;
+    // the rank check still applies on the player Sheet/Battle tab where Skills ARE editable.
     [["weaponMoveAdept","adept","Adept Technique"],["weaponMoveMaster","master","Master Technique"]].forEach(([field_,tier,tag])=>{
-      const mn = w[field_]; if(!mn || !weaponMoveRankOk(t, tier)) return;
+      const mn = w[field_]; if(!mn) return;
       const wm = trainerAttackProfile(t,mn,w);
-      const uc = usesControl(t, "move", wm.name, wm.frequency, renderEncounters, saveEnc);
+      const uc = usesControl(t, "move", wm.name, wm.frequency, renderEncounters, saveEnc, {bossEot:isBoss(t)});
       atkWrap.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t,mn,w), {tag, move:true, uc}));
+      if(!weaponMoveRankOk(t, tier)) atkWrap.append(el("div",{class:"small muted",style:"margin:-2px 0 4px 6px"},
+        `↳ book requires ${tier==="master"?"Master":"Adept"} Combat — GM call`));
     });
   });
   card.append(atkWrap);
@@ -5225,7 +5459,7 @@ function encounterTrainerCard(enc, tr){
   t.encMoves.forEach(mn=>{
     const m=moveByName.get(mn.toLowerCase());
     const prof = m ? trainerAttackProfile(t, mn) : {name:mn+" (not in DB)",type:"Normal",cls:"?",ac:"—",damageBase:"—",range:"—"};
-    const uc = m ? usesControl(t, "move", prof.name, prof.frequency, renderEncounters, saveEnc) : null;
+    const uc = m ? usesControl(t, "move", prof.name, prof.frequency, renderEncounters, saveEnc, {bossEot:isBoss(t)}) : null;
     const slot = trainerAttackSlot(t, prof, ()=> m?openTrainerAttack(t,mn):toast("Not in the move database"), {move:!!m, uc});
     const acts = slot.querySelector(".inline");
     if(acts) acts.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted)",title:"remove move",
@@ -7284,15 +7518,25 @@ function initiativeList(map){
     const info = tokenHp(t), base = tokenInitiative(t);
     const L = t.link ? tokenLinked(t) : null;
     const mon = (L && !L.missing && L.kind==="enc") ? L.obj : null;
+    // Boss Template applies to encounter Trainers too, not just wild Pokémon — enctrainer counts here too.
+    const bossOwner = (L && !L.missing && (L.kind==="enc"||L.kind==="enctrainer")) ? L.obj : null;
     // A swarm still standing gets 1 free act + one per Swarm Point it could possibly spend. The
     // COUNT is deliberately derived from maxMult (a per-round constant) rather than the points it
     // has left right now — a list that reshuffled every time the GM spent a point would move
     // meta.initTurnId out from under itself, which is exactly the class of bug that produced the
     // old turn-rollback problems.
-    const acts = (mon && isSwarm(mon) && mon.swarm.mult>0) ? swarmActs(mon) : 1;
-    for(let n=0; n<acts; n++)
-      // swarmMon = the Pokémon object (so its .swarm block is e.swarmMon.swarm, not a confusing e.swarm.swarm)
-      rows.push({ id: n===0 ? t.id : `${t.id}#${n}`, token:t, info, init: base - 5*n, act:n, acts, swarmMon: acts>1?mon:null });
+    // A living Boss gets one turn per action/HP bar too, but scheduled at bossInitiativeCounts(base,
+    // actions) — its OWN alternating ±5 schedule (Running the Game p.487) rather than swarm's flat
+    // "−5 per extra act" — and unlike Swarm, the count never shrinks as it loses bars.
+    if(bossOwner && isBoss(bossOwner) && !bossDefeated(bossOwner)){
+      const counts = bossInitiativeCounts(base, bossOwner.boss.actions);
+      counts.forEach((initVal,n)=> rows.push({ id: n===0 ? t.id : `${t.id}#${n}`, token:t, info, init:initVal, act:n, acts:counts.length, swarmMon:null }));
+    } else {
+      const acts = (mon && isSwarm(mon) && mon.swarm.mult>0) ? swarmActs(mon) : 1;
+      for(let n=0; n<acts; n++)
+        // swarmMon = the Pokémon object (so its .swarm block is e.swarmMon.swarm, not a confusing e.swarm.swarm)
+        rows.push({ id: n===0 ? t.id : `${t.id}#${n}`, token:t, info, init: base - 5*n, act:n, acts, swarmMon: acts>1?mon:null });
+    }
   });
   return rows.sort((a,b)=> b.init-a.init || tokenSpeed(b.token)-tokenSpeed(a.token)
                         || (a.info.name||"").localeCompare(b.info.name||"") || a.act-b.act);
@@ -7410,7 +7654,9 @@ function initiativePanel(map, meta){
     const broke = e.swarmMon && e.act>0 && e.swarmMon.swarm.sp<=0;
     const label = name + (e.acts>1 ? ` · act ${e.act+1}/${e.acts}` : "");
     row.append(el("span",{style:`flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:${cur?800:600};${enemy?"color:#e0524f":""}${broke?";opacity:.45":""}`,
-      title: e.acts>1 ? `${name} — Swarm act ${e.act+1} of ${e.acts}${e.act>0?" (Initiative −"+(5*e.act)+")":" (free Standard Action)"}` : name},
+      title: e.acts>1 ? (e.swarmMon
+        ? `${name} — Swarm act ${e.act+1} of ${e.acts}${e.act>0?" (Initiative −"+(5*e.act)+")":" (free Standard Action)"}`
+        : `${name} — Boss Template act ${e.act+1} of ${e.acts} (Initiative ${e.init})`) : name},
       (cur?"▶ ":"")+label));
     row.append(el("span",{class:"muted",style:"font-size:10px",title:"Speed + bonus"}, String(e.init)));
     if(cloud.isGM){
@@ -7864,7 +8110,13 @@ function tokensInAoE(map){
   return mapTokensFor(map.id).filter(t=>cells.has(Math.round(t.x)+","+Math.round(t.y)));
 }
 async function applyAreaBuff(map, buffKey){
-  const targets = tokensInAoE(map);
+  // A buff should only land on the caster's OWN side — a player's Cheer/Song shouldn't also buff
+  // an enemy caught in the blast, and an enemy buff shouldn't land on the party. Side = whether the
+  // token's link kind is in ENEMY_LINKS (same check tokenReveals uses); a standalone/unlinked
+  // origin (no link at all) is treated as the player side, same as tokenReveals' own convention.
+  const origin = mapTokensFor(map.id).find(t=>t.id===mapAoE?.tokenId);
+  const originIsEnemy = !!origin?.link && ENEMY_LINKS.has(origin.link.kind);
+  const targets = tokensInAoE(map).filter(t=> (!!t.link && ENEMY_LINKS.has(t.link.kind)) === originIsEnemy);
   let n = 0;
   for(const t of targets){
     const L = t.link ? tokenLinked(t) : null; if(!L || L.missing || !L.obj) continue;
@@ -7872,7 +8124,8 @@ async function applyAreaBuff(map, buffKey){
     await commitTokenBuffs(t);
     n++;
   }
-  toast(n ? `Applied to ${n} token${n===1?"":"s"} in the area` : "No linked tokens in the area");
+  toast(n ? `Applied to ${n} ${originIsEnemy?"enemy":"ally"} token${n===1?"":"s"} in the area`
+          : `No linked ${originIsEnemy?"enemy":"ally"} tokens in the area`);
 }
 /* redraw only the overlay canvas (keeps input focus while tweaking size/direction) */
 function refreshAoE(){
