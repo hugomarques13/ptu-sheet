@@ -3792,6 +3792,82 @@ function fiveStrikeRoll(){
   const hits = d8===1?1 : d8<=3?2 : d8<=6?3 : d8===7?4 : 5;
   return { d8, hits };
 }
+/* Special-case damage moves (PTU 1.05): these bypass the Damage-Base dice entirely and instead
+   make the target lose an exact number of Hit Points. compute(ctx) → HP loss, where
+   ctx = { level, curHP, vals:{inputKey:value}, die }. `die` (if set) is rolled with the attack. */
+const SPECIAL_FIXED_DAMAGE = {
+  "Seismic Toss":    {desc:"Target loses HP equal to the user's Level.",           compute:c=>c.level, ignores:"Ignores weakness, resistance & stats — no Defense is subtracted."},
+  "Night Shade":     {desc:"Target loses HP equal to the user's Level.",           compute:c=>c.level, ignores:"Ignores weakness, resistance & stats — no Defense is subtracted."},
+  "Dragon Rage":     {desc:"Target loses 15 HP (fixed).",                          compute:()=>15,     ignores:"Fixed loss. Special Evasion may avoid it; Mirror Coat can reflect it."},
+  "Sonic Boom":      {desc:"Target loses 15 HP (fixed).",                          compute:()=>15,     ignores:"Fixed loss. Special Evasion may avoid it; Mirror Coat can reflect it."},
+  "Super Fang":      {desc:"Target loses ½ of its current HP.",                     inputs:[{key:"hp",label:"Target's current HP",def:50,min:0}], compute:c=>Math.floor(c.vals.hp/2)},
+  "Nature's Madness":{desc:"Target loses ½ of its current HP.",                     inputs:[{key:"hp",label:"Target's current HP",def:50,min:0}], compute:c=>Math.floor(c.vals.hp/2)},
+  "Psywave":         {desc:"Roll 1d4 → ½× / 1× / 1½× / 2× the user's Level.",       die:4, compute:c=>Math.floor([0,c.level/2,c.level,c.level*1.5,c.level*2][c.die||1]), ignores:"Ignores weakness, resistance & stats (Immunity still applies)."},
+  "Endeavor":        {desc:"Target loses one Tick (1/10 of its max HP) per Injury the user has.", inputs:[{key:"inj",label:"User's Injuries",def:1,min:0,max:10},{key:"tmax",label:"Target's max HP",def:50,min:1}], compute:c=>c.vals.inj*Math.ceil(c.vals.tmax/10)},
+  "Final Gambit":    {desc:"User drops to 0 HP and Faints; target loses HP equal to the user's HP before fainting.", compute:c=>c.curHP, ignores:"1 damage per HP the user lost.", special:"The user is reduced to 0 HP and Faints."},
+  "Counter":         {desc:"Foe loses 2× the HP the user lost from the triggering Physical attack.", inputs:[{key:"lost",label:"HP the user lost",def:0,min:0}], compute:c=>c.vals.lost*2, ignores:"Reaction · cannot miss · can't hit Fighting-immune targets."},
+  "Mirror Coat":     {desc:"Foe loses 2× the HP the user lost from the triggering Special attack.",  inputs:[{key:"lost",label:"HP the user lost",def:0,min:0}], compute:c=>c.vals.lost*2, ignores:"Reaction · cannot miss · can't hit Psychic-immune targets."},
+  "Comeuppance":     {desc:"Foe loses HP equal to the HP the user lost from the triggering attack.",  inputs:[{key:"lost",label:"HP the user lost",def:0,min:0}], compute:c=>c.vals.lost,   ignores:"Reaction · cannot miss · also Trips the foe."},
+  "Metal Burst":     {desc:"Targets lose HP equal to all direct damage the user took this round.",    inputs:[{key:"lost",label:"Damage taken this round",def:0,min:0}], compute:c=>c.vals.lost, ignores:"Cannot miss."},
+  "Bide":            {desc:"Adjacent foes lose HP equal to damage taken since Bide was declared.",    inputs:[{key:"lost",label:"Damage taken while Biding",def:0,min:0}], compute:c=>c.vals.lost, ignores:"Reaction · unleashes on your next turn."},
+};
+/* Moves whose Damage Base is computed dynamically, or whose attack structure changes.
+   Weight-class moves (handled separately by weightMoveInfo) and Five Strike (handled by the
+   existing fiveStrike path) are intentionally NOT returned here. Verified vs PTU 1.05 core. */
+function specialMoveInfo(m){
+  const name = String(m?.name||"");
+
+  /* ---- multi-strike attack structure ---- */
+  if(name==="Triple Kick")          return {kind:"tripleKick"};
+  if(isDoubleStrike(m))             return {kind:"doubleStrike", base:m?.damageBase};
+
+  /* ---- roll-a-die Damage Base ---- */
+  if(name==="Magnitude") return {kind:"dieDB", die:6, toDB:x=>5+x, hint:"Roll 1d6 → DB = 5 + result"};
+  if(name==="Present")   return {kind:"dieDB", die:6, toDB:x=>2*x, hint:"Roll 1d6 → DB = 2 × result",
+                                 onOne:"On a roll of 1 the target instead gains 20 HP (no damage)."};
+
+  /* ---- conditional Damage Base (checkbox toggles the higher DB) ---- */
+  const cond = ({
+    "Hex":          [7, 13, "Target has a Status Affliction (once per Scene)"],
+    "Wake-Up Slap": [5, 10, "Target is Asleep (also cures its Sleep)"],
+    "Assurance":    [6, 12, "Target already damaged this round (1×/Scene/target)"],
+    "Payback":      [5, 10, "Target hit the user on the previous turn"],
+    "Retaliate":    [7, 14, "An ally was Fainted by the target in the last 2 rounds"],
+    "Avalanche":    [6, 12, "The target damaged the user this round"],
+    "Revenge":      [6, 12, "The target damaged the user this round"],
+  })[name];
+  if(cond) return {kind:"conditionalDB", base:cond[0], altDB:cond[1], condLabel:cond[2]};
+
+  /* ---- value-driven Damage Base (number input) ---- */
+  const vDB = ({
+    "Frustration":  {label:"Loyalty (0–6)",            def:0, min:0, max:6, toDB:v=>9-v,               hint:"DB = 9 − Loyalty"},
+    "Return":       {label:"Loyalty (0–6)",            def:0, min:0, max:6, toDB:v=>3+v,               hint:"DB = 3 + Loyalty"},
+    "Round":        {label:"Prior uses this round",    def:0, min:0,        toDB:v=>Math.min(12,6+2*v),hint:"DB = 6 +2 per prior use (max 12)"},
+    "Spit Up":      {label:"Stockpile Count (1–3)",    def:1, min:1, max:3, toDB:v=>8*v,               hint:"DB = 8 × Stockpile Count"},
+    "Trump Card":   {label:"Trump Count",             def:0, min:0,        toDB:v=>6+2*v,             hint:"DB = 6 +2 per Trump Count"},
+    "Fury Cutter":  {label:"Consecutive hits so far",  def:0, min:0, max:3, toDB:v=>Math.min(16,4+4*v),hint:"DB 4/8/12/16 as it connects consecutively"},
+    "Echoed Voice": {label:"Prior consecutive rounds", def:0, min:0, max:2, toDB:v=>4+4*v,             hint:"DB = 4 +4 per prior round (max +8)"},
+    "Rollout":      {label:"Consecutive uses so far",  def:0, min:0,        toDB:v=>Math.min(15,3+4*v),hint:"DB = 3 +4 each consecutive use (max 15)"},
+    "Ice Ball":     {label:"Consecutive uses so far",  def:0, min:0,        toDB:v=>Math.min(15,3+3*v),hint:"DB = 3 +3 each consecutive use (max 15)"},
+    "Stored Power": {label:"Positive Combat Stages",   def:0, min:0,        toDB:v=>Math.min(20,2+2*v),hint:"DB = 2 +2 per positive CS (max 20)"},
+    "Reversal":     {label:"User's Injuries",          def:0, min:0, max:10,toDB:v=>7+v,               hint:"DB = 7 +1 per Injury"},
+    "Flail":        {label:"User's Injuries",          def:0, min:0, max:10,toDB:v=>7+v,               hint:"DB = 7 +1 per Injury"},
+    "Wring Out":    {label:"Target's % of full HP",    def:100,min:0,max:100,toDB:v=>Math.max(1,12-Math.floor((100-v)/10)),hint:"DB 12, −1 per 10% of HP missing"},
+    "Crush Grip":   {label:"Target's % of full HP",    def:100,min:0,max:100,toDB:v=>Math.max(1,12-Math.floor((100-v)/10)),hint:"DB 12, −1 per 10% of HP missing"},
+    // item / berry-dependent Damage Base — the player enters the resulting DB
+    "Natural Gift": {label:"Berry's Damage Base (6–8)", def:6, min:1, max:20, toDB:v=>v, hint:"DB & element come from the stored Berry (see the Berry list). Set the DB here."},
+    "Fling":        {label:"Thrown item's Damage Base", def:0, min:0, max:20, toDB:v=>v, hint:"DB depends on the item flung (see the Fling chart). Set the DB here."},
+  })[name];
+  if(vDB) return Object.assign({kind:"valueDB"}, vDB);
+
+  /* ---- special-case damage: exact HP loss, bypassing the DB dice ---- */
+  if(SPECIAL_FIXED_DAMAGE[name])
+    return Object.assign({kind:"fixedDamage", inputs:[], die:null, special:null}, SPECIAL_FIXED_DAMAGE[name]);
+  if(name==="Beat Up")
+    return {kind:"noteOnly", note:"Resolve as up to 3 Struggle Attacks (the user + 2 adjacent allies), each dealing Dark-Type damage. Roll Struggle separately for each participant."};
+
+  return null;
+}
 function openMoveRoll(p, m, sp){
   const d = pokeDerived(p);
   const types = sp?.types || [];
@@ -3807,13 +3883,32 @@ function openMoveRoll(p, m, sp){
   // weight-dependent Damage Base — the player types the needed Weight Class number here
   const wInfo = weightMoveInfo(m);
   let weightVal = wInfo ? (wInfo.kind==="diffPlus2" ? 1 : 3) : 0;
+  // other special Damage-Base scaling / attack-structure moves (Magnitude, Hex, Double Strike, …)
+  const sp2 = specialMoveInfo(m);
+  const nAcc = sp2?.kind==="doubleStrike" ? 2 : sp2?.kind==="tripleKick" ? 3 : 1;
+  let condOn = false;                                   // conditionalDB checkbox
+  let val    = sp2?.kind==="valueDB" ? sp2.def : 0;     // valueDB number input
+  let dieVal = null;                                    // dieDB — rolled on 🎲
+  let hitsConnect = sp2?.kind==="doubleStrike" ? 2 : sp2?.kind==="tripleKick" ? 3 : 1;
+  // fixedDamage: current values of its inputs + a context for compute()
+  const fdVals = {}; if(sp2?.kind==="fixedDamage") (sp2.inputs||[]).forEach(i=>{ fdVals[i.key]=i.def; });
+  const fdCtx  = (die)=>({ level:p.level||1, curHP:p.currentHP??0, vals:fdVals, die });
+  const fdAmount = (die)=>{ try{ return Math.max(0, Math.round(sp2.compute(fdCtx(die)))); }catch(e){ return null; } };
   function baseDB(){                      // effective (pre-STAB) Damage Base
     if(wInfo){
       if(wInfo.kind==="target2x")  return 2*Math.max(1, weightVal);
       if(wInfo.kind==="diffPlus2") return wInfo.base + 2*Math.max(0, weightVal);
     }
+    if(sp2) switch(sp2.kind){
+      case "conditionalDB": return condOn ? sp2.altDB : sp2.base;
+      case "valueDB":       return sp2.toDB(Math.max(sp2.min??0, Math.min(sp2.max??1e9, val)));
+      case "dieDB":         return dieVal!=null ? sp2.toDB(dieVal) : null;
+      case "doubleStrike":  return (sp2.base??0) * (hitsConnect>=2 ? 2 : 1);
+      case "tripleKick":    return ({1:1,2:3,3:6})[hitsConnect] ?? 1;
+    }
     return m.damageBase;                  // generic weight moves & normal moves use the printed DB
   }
+  const spPending = () => !!sp2 && sp2.kind==="dieDB" && dieVal==null;   // DB unknown until 🎲
   const bm = buffMods(p);                 // active Cheers / Orders / Songs (#2)
   const accCS = d.cs.acc||0;              // Accuracy Combat Stage: flat add to Accuracy Rolls (Core p.234)
   const wx = weatherRollMods(p, m, mtype);      // current Weather Condition (Core p.342)
@@ -3842,10 +3937,10 @@ function openMoveRoll(p, m, sp){
   // Rain) or change its AC outright (Thunder/Hurricane in Sun).
   explain.append(el("div",{style:"margin-bottom:10px"},
     el("div",{style:"font-size:16px;font-weight:700"},
-      `Accuracy: ${wx.autoHit ? "auto-hit" : m.ac!=null ? "1d20" : "—"}`),
+      `Accuracy: ${wx.autoHit ? "auto-hit" : m.ac!=null ? (nAcc>1?`${nAcc} × 1d20`:"1d20") : "—"}`),
     el("div",{class:"small muted",style:"margin-top:2px"},
       wx.autoHit ? `${m.name} cannot miss in ${wx.weather.name} — no Accuracy Check needed.`
-      : m.ac!=null ? `Roll 1d20 — hits if it's ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote}. Roll ${critT===20?"20":critT+"+"} auto-hits/crits, nat 1 auto-misses.`
+      : m.ac!=null ? `${nAcc>1?`Make ${nAcc} separate Accuracy Rolls`:"Roll 1d20"} — each hits if it's ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote}. Roll ${critT===20?"20":critT+"+"} auto-hits/crits, nat 1 auto-misses.`
                  : "This move has no Accuracy Check.")));
   const dmgBox = el("div",{});            // rebuilt whenever the Weight Class changes
   explain.append(dmgBox);
@@ -3863,7 +3958,88 @@ function openMoveRoll(p, m, sp){
     body.append(el("div",{class:"warnbox",style:"margin:0 0 12px"}, wInfo.hint));
   }
 
+  /* --- interactive control for special Damage-Base / multi-strike moves --- */
+  if(sp2){
+    if(sp2.kind==="conditionalDB"){
+      const wc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin:0 0 12px"});
+      const lbl = el("label",{style:"display:flex;gap:8px;align-items:flex-start;cursor:pointer"});
+      const cb = el("input",{type:"checkbox"});
+      cb.addEventListener("change",()=>{ condOn = cb.checked; renderDamage(); });
+      lbl.append(cb, el("div",{},
+        el("div",{class:"small",style:"font-weight:700"}, sp2.condLabel),
+        el("div",{class:"small muted"}, `Tick to use DB ${sp2.altDB} instead of DB ${sp2.base}.`)));
+      wc.append(lbl); body.append(wc);
+    } else if(sp2.kind==="valueDB"){
+      const wc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin:0 0 12px"});
+      wc.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},`🔢 ${sp2.label}`));
+      const inp = el("input",{type:"number",min:sp2.min??0,value:val,style:"width:90px"});
+      if(sp2.max!=null) inp.max = sp2.max;
+      inp.addEventListener("input",()=>{
+        let v = parseInt(inp.value); if(isNaN(v)) v = sp2.min??0;
+        val = Math.max(sp2.min??0, Math.min(sp2.max??1e9, v)); renderDamage();
+      });
+      wc.append(inp, el("span",{class:"small muted",style:"margin-left:8px"}, sp2.hint));
+      body.append(wc);
+    } else if(sp2.kind==="dieDB"){
+      body.append(el("div",{class:"warnbox",style:"margin:0 0 12px"},
+        `🎲 ${sp2.hint} — rolled automatically when you press 🎲 Roll dice.${sp2.onOne?" "+sp2.onOne:""}`));
+    } else if(sp2.kind==="doubleStrike" || sp2.kind==="tripleKick"){
+      const maxH = sp2.kind==="tripleKick" ? 3 : 2;
+      const wc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin:0 0 12px"});
+      wc.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},
+        sp2.kind==="tripleKick" ? "👣 Triple Kick — how many of the 3 attacks connect?" : "⚔ Double Strike — how many of the 2 Attack Rolls connect?"));
+      const inp = el("input",{type:"number",min:1,max:maxH,value:hitsConnect,style:"width:90px"});
+      inp.addEventListener("input",()=>{ hitsConnect = Math.max(1, Math.min(maxH, parseInt(inp.value)||1)); renderDamage(); });
+      wc.append(inp, el("span",{class:"small muted",style:"margin-left:8px"},
+        sp2.kind==="tripleKick" ? "1 hit → DB 1 · 2 hits → DB 3 · 3 hits → DB 6" : `1 hit → DB ${sp2.base} · both hit → DB ${(sp2.base??0)*2} (doubled)`));
+      wc.append(el("div",{class:"small muted",style:"margin-top:4px"}, "Compare each Accuracy Roll (below) to AC + Evasion, then set this to size the damage."));
+      body.append(wc);
+    } else if(sp2.kind==="fixedDamage" && (sp2.inputs||[]).length){
+      const wc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin:0 0 12px"});
+      wc.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},"🔢 Special damage"));
+      sp2.inputs.forEach(inp=>{
+        const row = el("div",{style:"display:flex;gap:8px;align-items:center;margin-top:4px"});
+        const field = el("input",{type:"number",min:inp.min??0,value:fdVals[inp.key],style:"width:90px"});
+        if(inp.max!=null) field.max = inp.max;
+        field.addEventListener("input",()=>{
+          let v = parseInt(field.value); if(isNaN(v)) v = inp.min??0;
+          fdVals[inp.key] = Math.max(inp.min??0, Math.min(inp.max??1e9, v)); renderDamage();
+        });
+        row.append(el("span",{class:"small",style:"min-width:150px"}, inp.label), field);
+        wc.append(row);
+      });
+      body.append(wc);
+    }
+  }
+
   function renderDamage(){
+    if(sp2?.kind==="fixedDamage"){
+      dbChip.textContent = "Special damage"; dbChip.style.display = "";
+      dmgBox.innerHTML = "";
+      const pending = sp2.die!=null;
+      const amt = pending ? null : fdAmount(null);
+      dmgBox.append(el("div",{},
+        el("div",{style:"font-size:16px;font-weight:700"}, pending ? "Damage: rolled on 🎲" : `Damage: ${amt} HP`),
+        el("div",{class:"small muted",style:"margin-top:2px"}, sp2.desc + (sp2.ignores?` ${sp2.ignores}`:""))));
+      if(sp2.special) dmgBox.append(el("div",{class:"warnbox small",style:"margin-top:6px"}, `⚠ ${sp2.special}`));
+      return;
+    }
+    if(sp2?.kind==="noteOnly"){
+      dbChip.textContent = "Special"; dbChip.style.display = "";
+      dmgBox.innerHTML = "";
+      dmgBox.append(el("div",{},
+        el("div",{style:"font-size:16px;font-weight:700"}, "Damage: special"),
+        el("div",{class:"small muted",style:"margin-top:2px"}, sp2.note)));
+      return;
+    }
+    if(spPending()){                       // Magnitude/Present — DB is rolled with the dice
+      dbChip.textContent = sp2.hint; dbChip.style.display = "";
+      dmgBox.innerHTML = "";
+      dmgBox.append(el("div",{},
+        el("div",{style:"font-size:16px;font-weight:700"}, "Damage: rolled on 🎲"),
+        el("div",{class:"small muted",style:"margin-top:2px"}, sp2.hint + (sp2.onOne?" · "+sp2.onOne:""))));
+      return;
+    }
     const fDB = finalDB(), ds = diceStr();
     const dm = ds.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
     const dn = dm[1]?+dm[1]:0, dfaces = dm[2]?+dm[2]:0, dflat = dm[3]?parseInt(dm[3].replace(/\s/g,"")):0;
@@ -3888,6 +4064,10 @@ function openMoveRoll(p, m, sp){
         el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ")+`. Target then subtracts their ${defNote}.`)));
       if(fiveStrike) dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
         "🎯 Five Strike — rolling 1d8 for hit count when you roll dice; the Damage Base above is multiplied by hits (Technician already included)."));
+      if(sp2?.kind==="doubleStrike") dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
+        `⚔ Double Strike — 2 Attack Rolls; DB doubles only if both connect. Each hit may crit separately (add the pre-doubled dice per crit).`));
+      if(sp2?.kind==="tripleKick") dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
+        `👣 Triple Kick — 3 Attack Rolls; DB is 1 / 3 / 6 for 1 / 2 / 3 hits.`));
       if(critT<20) dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
         `Critical Hit Range: ${critT}–20 for this Pokémon/move.`));
     } else {
@@ -3989,10 +4169,60 @@ function openMoveRoll(p, m, sp){
   const out = el("div",{id:"rollOut",class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:0"});
   out.append(el("div",{class:"muted small"}, "Press 🎲 Roll dice to simulate."));
   const doRoll = () => {
-    const fDB = finalDB();
     out.style.borderStyle="solid";
     out.innerHTML="";
-    const acc = 1+Math.floor(Math.random()*20);
+
+    /* --- special-case damage (exact HP loss) & note-only moves --- */
+    if(sp2?.kind==="noteOnly"){
+      out.append(el("div",{},
+        el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"RESOLUTION"),
+        el("div",{style:"font-size:16px;font-weight:700"}, "Special resolution"),
+        el("div",{class:"small muted",style:"margin-top:2px"}, sp2.note)));
+      return;
+    }
+    if(sp2?.kind==="fixedDamage"){
+      const accLine = el("div",{style:"margin-bottom:10px"});
+      accLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLL"));
+      if(m.ac!=null){
+        const acc = 1+Math.floor(Math.random()*20), accTot = acc + (bm.acc||0) + accCS;
+        accLine.append(el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`,
+          el("span",{class:"muted",style:"font-size:14px;font-weight:600"}, acc!==accTot?`  (${acc})`:"  (1d20)")));
+        accLine.append(el("div",{class:"small muted"},
+          `Hits if ${accTot} ≥ AC ${m.ac} + ${evaNote}.${acc===20?" Natural 20 — auto-hit!":acc===1?" Natural 1 — auto-miss.":""}`));
+      } else {
+        accLine.append(el("div",{style:"font-size:18px;font-weight:800;color:var(--good)"}, "🎯 Cannot miss"));
+        accLine.append(el("div",{class:"small muted"}, "This move has no Accuracy Check."));
+      }
+      out.append(accLine);
+      let die=null;
+      if(sp2.die){ die = 1+Math.floor(Math.random()*sp2.die);
+        out.append(el("div",{class:"small muted",style:"margin-bottom:10px"}, `Scaling: 1d${sp2.die} → ${die}.`)); }
+      const amt = fdAmount(die);
+      const dmgLine = el("div",{});
+      dmgLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE"));
+      dmgLine.append(el("div",{style:"font-size:26px;font-weight:800;color:var(--accent)"}, `💥 ${amt} HP`));
+      dmgLine.append(el("div",{class:"small muted",style:"margin-top:4px"}, sp2.desc + (sp2.ignores?` ${sp2.ignores}`:"")));
+      if(sp2.special) dmgLine.append(el("div",{class:"small",style:"margin-top:4px;font-weight:700;color:var(--bad)"}, `⚠ ${sp2.special}`));
+      out.append(dmgLine);
+      return;
+    }
+
+    // resolve a rolled Damage Base first (Magnitude / Present) so fDB is correct
+    let dieNote = null;
+    if(sp2?.kind==="dieDB"){ dieVal = 1+Math.floor(Math.random()*sp2.die); dieNote = `1d${sp2.die} → ${dieVal} → DB ${sp2.toDB(dieVal)}`; renderDamage(); }
+    const fDB = finalDB();
+    // Present: a roll of 1 heals the target 20 HP instead of dealing damage
+    if(sp2?.kind==="dieDB" && sp2.onOne && dieVal===1){
+      out.append(el("div",{class:"small muted",style:"margin-bottom:8px"}, `Scaling: ${dieNote}.`));
+      out.append(el("div",{},
+        el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"RESULT"),
+        el("div",{style:"font-size:16px;font-weight:700;color:var(--good)"}, "The target gains 20 HP"),
+        el("div",{class:"small muted",style:"margin-top:2px"}, sp2.onOne)));
+      return;
+    }
+    // multi-strike: roll one d20 per attack; accs[0] drives the detailed crit/threshold read-out
+    const accs = []; for(let i=0;i<nAcc;i++) accs.push(1+Math.floor(Math.random()*20));
+    const acc = accs[0];
     const accTot = acc + (bm.acc||0) + accCS;
     const accBits = []; if(bm.acc) accBits.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} buffs`); if(accCS) accBits.push(`${accCS>0?"+":"−"}${Math.abs(accCS)} Accuracy CS`);
     // Critical Hit Range (Core p.235): widened by move/ability (critT) and by active buffs (bm.crit)
@@ -4009,8 +4239,14 @@ function openMoveRoll(p, m, sp){
       if(effAC!=null) accLine.append(el("div",{class:"small muted"},
         `Hits if ${accTot} ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote}.${acc===1?" Natural 1 — auto-miss.":isCrit?` Roll ${acc} ≥ crit range ${effCritT} — Critical Hit!`:""}`));
       if(isCrit) accLine.append(el("div",{style:"font-size:20px;font-weight:800;color:var(--bad);margin-top:2px"}, "💥 CRITICAL HIT!"));
+      if(nAcc>1){
+        const others = accs.slice(1).map(a=>a + (bm.acc||0) + accCS);
+        accLine.append(el("div",{class:"small muted",style:"margin-top:2px"},
+          `All ${nAcc} Attack Rolls: ${[accTot, ...others].join(" · ")}. Count how many meet AC + Evasion, then set “how many connect” above to size the damage.`));
+      }
     }
     out.append(accLine);
+    if(dieNote) out.append(el("div",{class:"small muted",style:"margin:2px 0 10px"}, `Scaling: ${dieNote}.`));
     // extra move effects that trigger on this Accuracy roll (#4) — compared vs the natural 1d20
     const sheerForceActive = hasAbility(p,"Sheer Force") || hasAbility(p,"Sheer Force [Errata]");
     if(sheerForceActive && thresholds.length){
@@ -8329,7 +8565,8 @@ function mapTokenNode(token, map, originX=0, originY=0){
   const px = map.gridSize, size = token.size||1, boxPx = size*px;
   const factionColor = tokenFactionColor(info);
   const selected = mapSelectActive(map) && mapSelect.ids.has(token.id);
-  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":""),
+  const isTurn = battleOn() && initEntryToken(activeMapMeta().initTurnId) === token.id;
+  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":""),
     style:`left:${token.x*px+originX}px;top:${token.y*px+originY}px;width:${boxPx}px;height:${boxPx}px`
       +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")
       +(factionColor?`;border-color:${factionColor}`:"")});

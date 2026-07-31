@@ -389,12 +389,17 @@ body.map-mode #view-map > .muted.small{padding:5px 12px; margin:0; text-align:ce
 .map-token .tk-hp{height:100%; background:var(--good)}
 .map-token .tk-hp.mid{background:var(--warn)}
 .map-token .tk-hp.low{background:var(--bad)}
-.map-token .tk-name{position:absolute; top:calc(100% + 4px); left:50%; transform:translateX(-50%);
-  white-space:nowrap; font-size:9px; font-weight:700; color:var(--ink); opacity:.72;
-  background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:1px 6px; pointer-events:none}
-.map-token .tk-hpnum{position:absolute; top:-9px; left:50%; transform:translateX(-50%);
-  font-size:8px; font-weight:700; color:var(--muted); background:var(--panel); opacity:.72;
-  border-radius:6px; padding:0 4px; pointer-events:none}
+.map-token .tk-name{position:absolute; top:calc(100% + 3px); left:50%; transform:translateX(-50%);
+  white-space:nowrap; font-size:7px; font-weight:700; color:var(--ink); opacity:.72;
+  background:var(--panel); border:1px solid var(--line); border-radius:7px; padding:0 4px; pointer-events:none}
+.map-token .tk-hpnum{position:absolute; top:-8px; left:50%; transform:translateX(-50%);
+  font-size:6.5px; font-weight:700; color:var(--muted); background:var(--panel); opacity:.72;
+  border-radius:5px; padding:0 3px; pointer-events:none}
+/* whose turn it is (battle-mode initiative) — yellow glowing outline */
+.map-token.current-turn{border-color:#f5c518 !important;
+  outline:3px solid #f5c518; outline-offset:2px;
+  box-shadow:0 0 0 2px rgba(245,197,24,.35), 0 0 14px 3px rgba(245,197,24,.65)}
+.map-token.current-turn.selected{outline-color:#f5c518}
 .map-token .tk-status-ring{position:absolute; left:50%; top:50%; width:0; height:0;
   display:flex; align-items:center; justify-content:center; overflow:visible; pointer-events:none}
 .map-token .tk-move{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
