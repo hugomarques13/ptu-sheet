@@ -196,9 +196,9 @@ function conditionCSMods(p){
 }
 /* effective Combat Stages = manual (p.cs) + condition mods, clamped −6…+6 */
 function effectiveCS(p){
-  const cond = conditionCSMods(p), wx = weatherCSMods(p), out = {};
-  CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + wx[k])));
-  ACC_EVA_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k])));
+  const cond = conditionCSMods(p), wx = weatherCSMods(p), ab = abilityStatusCS(p), out = {};
+  CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + wx[k] + (ab[k]||0))));
+  ACC_EVA_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + (ab[k]||0))));
   return out;
 }
 function hasStatus(p, key){ return Array.isArray(p.statuses) && p.statuses.includes(key); }
@@ -233,16 +233,19 @@ const WEATHER_DEFS = [
     blurb:"Fire attacks +5 damage · Water attacks −5 damage",
     dmgByType:{ fire:+5, water:-5 },
     acOverride:{ thunder:11, hurricane:11 },
-    abilityCS:{ "Thermosensitive":{ atk:2, spatk:2 } },
+    abilityCS:{ "Thermosensitive":{ atk:2, spatk:2 }, "Chlorophyll":{ spd:4 }, "Solar Power":{ spatk:2 } },
     ticks:[
       { ability:"Dry Skin",    when:"end",   sign:-1, kind:"tick",      label:"Dry Skin — loses a Tick" },
       { ability:"Sun Blanket", when:"start", sign:+1, kind:"sixteenth", label:"Sun Blanket — gains 1/16 Max HP" },
+      { ability:"Solar Power", when:"start", sign:-1, kind:"sixteenth", label:"Solar Power — loses 1/16 Max HP" },
     ],
     rules:[
       "Fire-Type Attacks gain +5 to Damage Rolls; Water-Type Attacks suffer −5.",
       "Thunder and Hurricane are AC 11 in Sun.",
       "Dry Skin: loses a Tick of HP at the end of each turn.",
       "Thermosensitive: Attack and Special Attack Combat Stages increased by +2.",
+      "Chlorophyll: +4 Speed Combat Stages.",
+      "Solar Power: +2 Special Attack Combat Stages, but loses 1/16th Max HP at the start of each turn.",
       "Desert Weather: resists Fire-Type Moves one step further.",
       "Sun Blanket: gains 1/16th of Max HP at the beginning of each turn.",
     ] },
@@ -1143,6 +1146,9 @@ function pokeBaseStats(p) {
     if (nat) base += (nat.statMods[k] || 0);
     out[k] = Math.max(k === "hp" ? 1 : 1, base);   // stats floor at 1
   });
+  // Huge Power / Pure Power double the user's Base Attack stat (incl. Nature, Core p.199) — applied
+  // to the base so allocated points add on top and Combat Stages still multiply the result.
+  if (hasAbility(p,"Huge Power") || hasAbility(p,"Pure Power")) out.atk *= 2;
   return out;
 }
 function pokeDerived(p) {
@@ -1197,10 +1203,49 @@ function typeMultAgainst(atkType, defTypes, stepAdj=0){
   if(immune) return 0;                          // immunity is absolute — a swarm can't undo it
   return ptuEffMult(steps + stepAdj);
 }
-function typeEffectiveness(defTypes) {
+/* Defensive type-chart adjustments from a Pokémon's abilities (Core p.199). Per the always-on rule,
+   ONLY Static abilities are auto-applied here — triggered/reactive ones (Lightning Rod, Storm Drain,
+   Thermal Exchange, Steelworker…) stay the player's to invoke and are left as reference text.
+   Returns { step:{Type:Δ}, immune:Set<Type>, wonderGuard, why:[] } — step Δ is a ladder-step shift
+   (negative = more resistant), fed straight into typeMultAgainst's stepAdj. */
+function defenseTypeMods(p){
+  const step = {}, immune = new Set(), why = [];
+  let wonderGuard = false;
+  const add = (ty,d)=>{ step[ty] = (step[ty]||0) + d; };
+  const A = n => hasAbility(p, n);
+  // resists a Type one step further
+  if(A("Thick Fat")){ add("Fire",-1); add("Ice",-1); why.push("Thick Fat: resists Fire & Ice one step further"); }
+  if(A("Heatproof")){ add("Fire",-1); why.push("Heatproof: resists Fire one step further"); }
+  if(A("Water Bubble")){ add("Fire",-1); why.push("Water Bubble: resists Fire one step further"); }
+  if(A("Purifying Salt")){ add("Ghost",-1); why.push("Purifying Salt: resists Ghost"); }
+  // resists a Type one step LESS (extra vulnerability)
+  if(A("Fluffy")){ add("Fire",+1); why.push("Fluffy: weaker to Fire (also resists Melee further — not shown on the Type chart)"); }
+  // outright Type immunities (the static immunity only; any on-hit heal/boost is triggered → not auto-applied)
+  [["Levitate","Ground"],["Sap Sipper","Grass"],["Volt Absorb","Electric"],["Water Absorb","Water"],
+   ["Flash Fire","Fire"],["Motor Drive","Electric"],["Earth Eater","Ground"],["Well-Baked Body","Fire"],
+   ["Dry Skin","Water"]].forEach(([ab,ty])=>{ if(A(ab)){ immune.add(ty); why.push(`${ab}: immune to ${ty}`); } });
+  // Wonder Guard: only Super-Effective damaging attacks affect the user
+  if(A("Wonder Guard")){ wonderGuard = true; why.push("Wonder Guard: only Super-Effective attacks can hit"); }
+  // Filter / Solid Rock: soften Super-Effective multipliers (×1.5→×1.25, ×2→×1.5). Having BOTH also
+  // grants 5 flat Damage Reduction vs Super-Effective damage (their shared errata text). Prism Armor
+  // is the same +5 flat DR on its own. All Static.
+  let seReduce = false, seFlatDR = 0;
+  const filter = A("Filter"), solidRock = A("Solid Rock");
+  if(filter || solidRock){ seReduce = true;
+    why.push(`${filter&&solidRock?"Filter + Solid Rock":filter?"Filter":"Solid Rock"}: Super-Effective softened (×1.5→×1.25, ×2→×1.5)`); }
+  if(filter && solidRock){ seFlatDR += 5; why.push("Filter + Solid Rock: +5 DR vs Super-Effective"); }
+  if(A("Prism Armor")){ seFlatDR += 5; why.push("Prism Armor: +5 DR vs Super-Effective"); }
+  return { step, immune, wonderGuard, seReduce, seFlatDR, why };
+}
+/* Filter / Solid Rock soften a Super-Effective multiplier by one "half-step" on the PTU ladder. */
+function seReducedMult(m){ return m>=2 ? 1.5 : m>1 ? 1.25 : m; }
+function typeEffectiveness(defTypes, mods) {
   const res = {};
   TYPES.forEach(atk => {
-    const m = typeMultAgainst(atk, defTypes);
+    if (mods?.immune?.has(atk)) { res[atk] = 0; return; }   // ability grants full immunity
+    let m = typeMultAgainst(atk, defTypes, mods?.step?.[atk] || 0);
+    if (mods?.wonderGuard && m > 0 && m <= 1) m = 0;         // neutral/resisted hits can't land
+    if (mods?.seReduce && m > 1) m = seReducedMult(m);        // Filter / Solid Rock soften Super-Effective
     if (m !== 1) res[atk] = m;
   });
   return res;   // {atkType: multiplier}
@@ -3098,7 +3143,7 @@ function renderMonPlay(root, p, sp){
   root.append(customMovesCard(p, ()=>refreshMon(p)));
 
   /* type matchups */
-  if(sp && sp.types?.length) root.append(matchupCard(sp.types));
+  if(sp && sp.types?.length) root.append(matchupCard(sp.types, p));
 }
 
 function renderMonBuild(root, p, sp){
@@ -3411,9 +3456,10 @@ function updateMonComputed(p){
   const bar = $("#heroHpBar"); if(bar){ const pct=Math.max(0,Math.min(100,Math.round(p.currentHP/d.maxHP*100)));
     bar.style.width=pct+"%"; bar.style.background=pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"; }
 }
-function matchupCard(types){
+function matchupCard(types, p){
   types = (types||[]).filter(t=>t && t!=="None");   // drop the empty second slot
-  const eff = typeEffectiveness(types);
+  const mods = p ? defenseTypeMods(p) : null;        // Static defensive abilities (Thick Fat, Levitate…)
+  const eff = typeEffectiveness(types, mods);
   const card = el("div",{class:"card"}, el("h3",{},"Type Matchups",
     el("span",{class:"muted small"}, types.join(" / "))));
   const groups = [
@@ -3432,6 +3478,8 @@ function matchupCard(types){
     });
     card.append(line);
   });
+  if(mods && mods.why.length) card.append(el("div",{class:"small",style:"margin-top:8px;color:var(--accent);font-weight:600"},
+    "⚙ Adjusted by "+mods.why.join(" · ")));
   return card;
 }
 /* standard PTU movement-capability meanings — these aren't separate DB entries (they're just
@@ -3565,8 +3613,25 @@ function poltergeistGrant(p, sp){
   return ROTOM_POLTERGEIST[sp.name] || null;
 }
 /* effective type of a move after ability overrides (e.g. Normalize → Normal) */
-function effectiveMoveType(p, m){
+/* "−ate" abilities: a damaging Normal-Type Move is re-typed (Core p.199). Order matters — Normalize
+   (everything becomes Normal) wins over these if a Pokémon somehow has both. */
+const ATE_ABILITIES = [
+  ["Aerilate","Flying"], ["Pixilate","Fairy"], ["Galvanize","Electric"],
+  ["Refridgerate","Ice"], ["Refrigerate","Ice"],   // DB carries the "Refridgerate" typo; accept both
+];
+/* Does an "−ate" ability apply to this move? → {ability, type} or null. A move qualifies only if it's
+   a damaging Normal-Type Move (Struggle counts) and the Pokémon isn't running Normalize. */
+function ateInfo(p, m){
+  if(hasAbility(p, "Normalize")) return null;
+  const baseType = (m && m.type) || "Normal";
+  const damaging = /phys|spec/i.test(m?.class||"") || m?.damageBase!=null;
+  if(baseType!=="Normal" || !damaging) return null;
+  for(const [ab,ty] of ATE_ABILITIES) if(hasAbility(p, ab)) return {ability:ab, type:ty};
+  return null;
+}
+function effectiveMoveType(p, m, opts={}){
   if(hasAbility(p, "Normalize")) return "Normal";
+  if(!opts.noAte){ const a = ateInfo(p, m); if(a) return a.type; }   // −ate re-types Normal moves (togglable in openMoveRoll)
   return (m && m.type) || "Normal";
 }
 /* Struggle as it should actually resolve: base move + chosen type/class (Normalize forces Normal) */
@@ -3764,18 +3829,30 @@ function critThreshold(p, m){
   let t = 20;
   const own = /critical hit (?:range )?(?:is |on )?(\d{1,2})[+-]/i.exec(m?.effect || "");
   if(own) t = Math.min(t, +own[1]);
-  if(hasAbility(p,"Super Luck")) t = Math.min(t, 18);
+  // Super Luck: crits on 18-20; if the Move already has an extended range, widen it by 2 instead.
+  if(hasAbility(p,"Super Luck")) t = own ? t - 2 : Math.min(t, 18);
   if(hasAbility(p,"Razor Edge")) t -= /tail/i.test(m?.name||"") ? 3 : 2;
   if(hasAbility(p,"Beam Cannon") && !/^melee/i.test(m?.range||"") && /1 target/i.test(m?.range||"")) t -= 3;
   if(hasAbility(p,"Gore") && /^horn attack$/i.test(m?.name||"")) t = Math.min(t, 18);
   return Math.max(2, t);
 }
+/* Move-name sets for the abilities that boost a specific printed list of Moves (Core p.199). */
+const RECKLESS_MOVES     = new Set(["Jump Kick","Hi Jump Kick","High Jump Kick"].map(s=>s.toLowerCase()));
+const STRONG_JAW_MOVES   = new Set(["Bite","Bug Bite","Crunch","Fire Fang","Ice Fang","Thunder Fang",
+  "Poison Fang","Hyper Fang","Psychic Fangs","Fishious Rend"].map(s=>s.toLowerCase()));
+const MEGA_LAUNCHER_MOVES= new Set(["Aura Sphere","Dark Pulse","Dragon Pulse","Water Pulse",
+  "Origin Pulse","Terrain Pulse","Heal Pulse"].map(s=>s.toLowerCase()));
+/* range-token (keyword) test — PTU stores a Move's keywords inside its `range` string, e.g.
+   "Melee, 1 Target, Dash, Recoil 1/3" or "Burst 1, Sonic". */
+function moveHasKeyword(m, kw){ return new RegExp("(?:^|,\\s*)"+kw+"\\b","i").test(String(m?.range||"")); }
 /* Damage-boosting abilities that auto-apply to a move roll — mirrors buffMods()' shape so it
    composes the same way. thresholds = effectThresholds(m.effect), needed for Sheer Force's
-   "has a secondary effect" check. */
-function abilityDamageMods(p, m, baseDBVal, thresholds){
+   "has a secondary effect" check. opts carries roll context the caller already computed:
+   {stab, mtype, isPhys, isSpec}. */
+function abilityDamageMods(p, m, baseDBVal, thresholds, opts={}){
   const mods = { db:0, flat:0, why:[] };
-  if(hasAbility(p,"Iron Fist") && IRON_FIST_MOVES.has((m.name||"").toLowerCase())){
+  const mname = (m.name||"").toLowerCase();
+  if(hasAbility(p,"Iron Fist") && IRON_FIST_MOVES.has(mname)){
     mods.db += 2; mods.why.push("Iron Fist +2 DB"); }
   if(hasAbility(p,"Technician") && (isFiveStrike(m) || isDoubleStrike(m) || (baseDBVal!=null && baseDBVal<=6))){
     mods.db += 2; mods.why.push("Technician +2 DB"); }
@@ -3783,7 +3860,58 @@ function abilityDamageMods(p, m, baseDBVal, thresholds){
     mods.db += 2; mods.why.push("Sheer Force +2 DB (secondary effect suppressed)"); }
   if(hasAbility(p,"Sheer Force [Errata]") && thresholds.length){
     mods.flat += 10; mods.why.push("Sheer Force +10 damage (secondary effect suppressed)"); }
+  // Adaptability: +1 DB on Moves the user shares a Type with (i.e. STAB moves)
+  if(hasAbility(p,"Adaptability") && opts.stab){
+    mods.db += 1; mods.why.push("Adaptability +1 DB (STAB)"); }
+  // Tough Claws: +2 DB on all Melee Moves
+  if(hasAbility(p,"Tough Claws") && moveHasKeyword(m,"melee")){
+    mods.db += 2; mods.why.push("Tough Claws +2 DB (Melee)"); }
+  // Reckless: +2 DB on Recoil Moves and Jump Kick / Hi Jump Kick
+  if(hasAbility(p,"Reckless") && (moveHasKeyword(m,"recoil") || RECKLESS_MOVES.has(mname))){
+    mods.db += 2; mods.why.push("Reckless +2 DB"); }
+  // Strong Jaw / Iron Fist / Mega Launcher: +2 DB on their printed Move lists
+  if(hasAbility(p,"Strong Jaw") && STRONG_JAW_MOVES.has(mname)){
+    mods.db += 2; mods.why.push("Strong Jaw +2 DB"); }
+  if(hasAbility(p,"Mega Launcher") && MEGA_LAUNCHER_MOVES.has(mname)){
+    mods.db += 2; mods.why.push("Mega Launcher +2 DB"); }
+  // Punk Rock: +2 DB on Sonic Moves
+  if(hasAbility(p,"Punk Rock") && moveHasKeyword(m,"sonic")){
+    mods.db += 2; mods.why.push("Punk Rock +2 DB (Sonic)"); }
+  // Hustle: +10 to Physical Damage Rolls (its −2 Physical Accuracy lives in abilityAccMods)
+  if(hasAbility(p,"Hustle") && opts.isPhys){
+    mods.flat += 10; mods.why.push("Hustle +10 damage (Physical)"); }
+  // Hustle [Errata]: +10 to ALL Damage Rolls (−2 to all Accuracy)
+  if(hasAbility(p,"Hustle [Errata]")){
+    mods.flat += 10; mods.why.push("Hustle +10 damage"); }
   return mods;
+}
+/* Accuracy-modifying abilities that always apply to the user's own attack rolls (Core p.199).
+   Returns {acc, why:[]} in the same shape buffMods uses, so it folds into accTot. Conditional /
+   ally-targeting accuracy abilities (Victory Star, Teamwork, Frisk's adjacency…) are deliberately
+   left out — they can't be auto-resolved without a target/positioning model. */
+function abilityAccMods(p, m, isPhys){
+  const out = { acc:0, why:[] };
+  if(hasAbility(p,"Compound Eyes") || hasAbility(p,"Compoundeyes")){
+    out.acc += 3; out.why.push("Compound Eyes +3"); }
+  if(hasAbility(p,"Hustle") && isPhys){
+    out.acc -= 2; out.why.push("Hustle −2 (Physical)"); }
+  if(hasAbility(p,"Hustle [Errata]")){
+    out.acc -= 2; out.why.push("Hustle −2"); }
+  return out;
+}
+/* Combat-Stage bonuses a Pokémon's abilities grant based on its CURRENT Status Afflictions
+   (Core p.199). These read p.statuses (which the sheet already tracks) so they auto-apply the
+   moment the condition is toggled — folded into effectiveCS alongside condition & weather CS.
+   Weather-conditional ability CS (Chlorophyll, Solar Power, Swift Swim…) live in WEATHER_DEFS. */
+function abilityStatusCS(p){
+  const out = { atk:0, def:0, spatk:0, spdef:0, spd:0, acc:0, eva:0 };
+  const has = k => hasStatus(p, k);
+  const anyStatus = ["burned","frozen","paralysis","poisoned","badlyPoisoned","sleep"].some(has);
+  if(hasAbility(p,"Guts") && anyStatus) out.atk += 2;                                   // any of burn/poison/para/freeze/sleep
+  if(hasAbility(p,"Toxic Boost") && (has("poisoned")||has("badlyPoisoned"))) out.atk += 2;
+  if(hasAbility(p,"Flare Boost") && has("burned")) out.spatk += 2;
+  if(hasAbility(p,"Marvel Scale") && (has("sleep")||has("paralysis")||has("burned")||has("frozen")||has("poisoned")||has("badlyPoisoned"))) out.def += 2;
+  return out;
 }
 /* Five Strike (Core p.242): roll 1d8 for hit count, then the Move's Damage Base is multiplied
    by that count. Verified via web search against the PTU 1.05 core text (2026-07-28). */
@@ -3868,10 +3996,12 @@ function specialMoveInfo(m){
 
   return null;
 }
-function openMoveRoll(p, m, sp){
+function openMoveRoll(p, m, sp, opts={}){
   const d = pokeDerived(p);
   const types = sp?.types || [];
-  const mtype = effectiveMoveType(p, m);
+  const ate = ateInfo(p, m);            // an "−ate" ability that could re-type this Normal move
+  const ateOn = ate ? !opts.ateOff : false;   // default ON (it's a Free Action the user always takes)
+  const mtype = effectiveMoveType(p, m, {noAte: ate && !ateOn});
   const stab = mtype && types.includes(mtype);
   const isPhys = /phys/i.test(m.class||"");
   const isSpec = /spec/i.test(m.class||"");
@@ -3910,12 +4040,13 @@ function openMoveRoll(p, m, sp){
   }
   const spPending = () => !!sp2 && sp2.kind==="dieDB" && dieVal==null;   // DB unknown until 🎲
   const bm = buffMods(p);                 // active Cheers / Orders / Songs (#2)
-  const accCS = d.cs.acc||0;              // Accuracy Combat Stage: flat add to Accuracy Rolls (Core p.234)
+  const abilAcc = abilityAccMods(p, m, isPhys);   // always-on Accuracy abilities (Compound Eyes, Hustle)
+  const accCS = (d.cs.acc||0) + abilAcc.acc;      // Accuracy CS (Core p.234) + ability Accuracy mods
   const wx = weatherRollMods(p, m, mtype);      // current Weather Condition (Core p.342)
   const tx = terrainRollMods(p, m, mtype);      // current Terrain(s) in play — any number can stack
   const effAC = wx.acOverride!=null ? wx.acOverride : m.ac;   // e.g. Thunder is AC 11 in Sun
   const thresholds = effectThresholds(m.effect);
-  const abilMods = abilityDamageMods(p, m, baseDB(), thresholds);
+  const abilMods = abilityDamageMods(p, m, baseDB(), thresholds, {stab, mtype, isPhys, isSpec});
   const fiveStrike = isFiveStrike(m);
   const critT = critThreshold(p, m);
   const finalDB = () => { const b=baseDB();
@@ -3931,6 +4062,22 @@ function openMoveRoll(p, m, sp){
     el("span",{class:"kv"}, wx.acOverride!=null ? `AC ${effAC} (${wx.weather.name})` : `AC ${m.ac??"—"}`),
     dbChip,
     el("span",{class:"kv"}, m.range||"—")));
+
+  /* --- "−ate" ability toggle (Aerilate / Pixilate / Galvanize / Refrigerate) --- it re-types this
+     Normal move, which can gain OR lose STAB, so let the player flip it per-roll and see the effect. */
+  if(ate){
+    const stabWith = types.includes(ate.type), stabAs = types.includes("Normal");
+    const card = el("div",{class:"card",style:`background:var(--panel);border:1px solid ${ateOn?"var(--accent)":"var(--line)"};margin:0 0 12px`});
+    const lbl = el("label",{style:"display:flex;gap:8px;align-items:flex-start;cursor:pointer"});
+    const cb = el("input",{type:"checkbox"}); cb.checked = ateOn;
+    cb.addEventListener("change",()=>{ closeModal(); openMoveRoll(p, m, sp, Object.assign({}, opts, {ateOff: !cb.checked})); });
+    lbl.append(cb, el("div",{},
+      el("div",{class:"small",style:"font-weight:700"}, `⚡ ${ate.ability}: retype to ${ate.type}`),
+      el("div",{class:"small muted"},
+        ateOn ? `Active — this move is ${ate.type}-Type.${stabWith?" STAB applies (+2 DB).":" No STAB from this type."}`
+              : `Off — this move stays Normal-Type.${stabAs?" STAB applies (+2 DB).":" No STAB."}`)));
+    card.append(lbl); body.append(card);
+  }
 
   const explain = el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"});
   // accuracy (static) — weather can make a move auto-hit (Blizzard in Hail, Thunder/Hurricane in
@@ -4053,7 +4200,8 @@ function openMoveRoll(p, m, sp){
       // weather/terrain are appended with their own operator — pushing "−5" into terms would render "+ −5"
       const expr = terms.join(" + ")
         + (wx.dmg ? ` ${wx.dmg>0?"+":"−"} ${Math.abs(wx.dmg)}` : "")
-        + (tx.dmg ? ` ${tx.dmg>0?"+":"−"} ${Math.abs(tx.dmg)}` : "");
+        + (tx.dmg ? ` ${tx.dmg>0?"+":"−"} ${Math.abs(tx.dmg)}` : "")
+        + (abilMods.flat ? ` ${abilMods.flat>0?"+":"−"} ${Math.abs(abilMods.flat)}` : "");
       const why=[`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${fDB}${stab?` (DB ${baseDB()} +2 STAB)`:""}`];
       if(atkStat) why.push(`${atkStat} = your ${atkLbl}`);
       if(wx.dmg) why.push(`${wx.dmg>0?"+":"−"}${Math.abs(wx.dmg)} = ${wx.weather.name}`);
@@ -4224,7 +4372,10 @@ function openMoveRoll(p, m, sp){
     const accs = []; for(let i=0;i<nAcc;i++) accs.push(1+Math.floor(Math.random()*20));
     const acc = accs[0];
     const accTot = acc + (bm.acc||0) + accCS;
-    const accBits = []; if(bm.acc) accBits.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} buffs`); if(accCS) accBits.push(`${accCS>0?"+":"−"}${Math.abs(accCS)} Accuracy CS`);
+    const pureAccCS = d.cs.acc||0;
+    const accBits = []; if(bm.acc) accBits.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} buffs`);
+    if(pureAccCS) accBits.push(`${pureAccCS>0?"+":"−"}${Math.abs(pureAccCS)} Accuracy CS`);
+    abilAcc.why.forEach(w=>accBits.push(w));
     // Critical Hit Range (Core p.235): widened by move/ability (critT) and by active buffs (bm.crit)
     const effCritT = Math.max(2, critT - (bm.crit||0));
     const isCrit = !wx.autoHit && acc>=effCritT;
@@ -6061,8 +6212,69 @@ function openRefDetail(kind, name){
   if(kind==="species") return speciesModal(getSpecies(name));
   infoModal(name, refDetailHTML(kind, name));
 }
+/* Abilities the sheet mechanically auto-applies (into stat/CS/damage/accuracy/type calculations) →
+   name (lowercased) : short note shown as a ⚙ badge so players know it's handled for them.
+   Keep this in sync with pokeBaseStats, effectiveCS/abilityStatusCS, WEATHER_DEFS.abilityCS,
+   effectiveMoveType, critThreshold, abilityDamageMods and abilityAccMods. */
+const AUTOMATED_ABILITIES = {
+  "huge power":"Base Attack doubled in this Pokémon's stats.",
+  "pure power":"Base Attack doubled in this Pokémon's stats.",
+  "adaptability":"+1 Damage Base on STAB moves in move rolls.",
+  "technician":"+2 Damage Base on DB≤6 / Double- & Five-Strike moves.",
+  "iron fist":"+2 Damage Base on its punching moves.",
+  "tough claws":"+2 Damage Base on Melee moves.",
+  "reckless":"+2 Damage Base on Recoil moves & Jump Kicks.",
+  "strong jaw":"+2 Damage Base on its biting moves.",
+  "mega launcher":"+2 Damage Base on Aura Sphere / the Pulse moves.",
+  "punk rock":"+2 Damage Base on Sonic moves.",
+  "sheer force":"+2 Damage Base when a move's secondary effect is suppressed.",
+  "sheer force [errata]":"+10 damage when a move's secondary effect is suppressed.",
+  "hustle":"+10 Physical damage, −2 Physical Accuracy in move rolls.",
+  "hustle [errata]":"+10 damage, −2 Accuracy in move rolls.",
+  "compound eyes":"+3 Accuracy in move rolls.",
+  "super luck":"Critical Hits on 18–20.",
+  "normalize":"All moves treated as Normal-Type.",
+  "aerilate":"Normal damaging moves can be retyped to Flying (toggle in the move roll — affects STAB).",
+  "pixilate":"Normal damaging moves can be retyped to Fairy (toggle in the move roll — affects STAB).",
+  "galvanize":"Normal damaging moves can be retyped to Electric (toggle in the move roll — affects STAB).",
+  "refridgerate":"Normal damaging moves can be retyped to Ice (toggle in the move roll — affects STAB).",
+  "refrigerate":"Normal damaging moves can be retyped to Ice (toggle in the move roll — affects STAB).",
+  "guts":"+2 Attack Combat Stages while suffering a Status.",
+  "toxic boost":"+2 Attack Combat Stages while Poisoned.",
+  "flare boost":"+2 Sp. Attack Combat Stages while Burned.",
+  "marvel scale":"+2 Defense Combat Stages while suffering a Status.",
+  "chlorophyll":"+4 Speed Combat Stages while Sunny.",
+  "solar power":"+2 Sp. Attack Combat Stages while Sunny (loses 1/16 HP/turn).",
+  "swift swim":"+4 Speed Combat Stages while Rainy.",
+  "sand rush":"+4 Speed Combat Stages in a Sandstorm.",
+  "sand force":"+5 damage to Ground/Rock/Steel moves in a Sandstorm.",
+  "snow cloak":"+2 Evasion while Hailing.",
+  "thermosensitive":"±2 Atk & Sp.Atk Combat Stages from the weather.",
+  // defensive Type resistances / immunities (Static) — applied to the Type Matchups chart & the map damage tool
+  "thick fat":"Resists Fire & Ice one step further in the Type chart.",
+  "heatproof":"Resists Fire one step further in the Type chart.",
+  "water bubble":"Resists Fire one step further in the Type chart.",
+  "fluffy":"Weaker to Fire in the Type chart (Melee resistance not shown).",
+  "purifying salt":"Resists Ghost in the Type chart.",
+  "levitate":"Immune to Ground in the Type chart.",
+  "sap sipper":"Immune to Grass in the Type chart.",
+  "volt absorb":"Immune to Electric in the Type chart.",
+  "water absorb":"Immune to Water in the Type chart.",
+  "flash fire":"Immune to Fire in the Type chart.",
+  "motor drive":"Immune to Electric in the Type chart.",
+  "earth eater":"Immune to Ground in the Type chart.",
+  "well-baked body":"Immune to Fire in the Type chart.",
+  "dry skin":"Immune to Water in the Type chart.",
+  "wonder guard":"Only Super-Effective attacks can hit (Type chart & map damage).",
+  "filter":"Softens Super-Effective damage (×1.5→×1.25, ×2→×1.5) in the Type chart & map damage.",
+  "solid rock":"Softens Super-Effective damage (×1.5→×1.25, ×2→×1.5); +5 DR vs Super-Effective if paired with Filter.",
+  "prism armor":"+5 Damage Reduction vs Super-Effective damage in the map damage tool.",
+};
+function abilityAutoNote(name){ return AUTOMATED_ABILITIES[String(name||"").toLowerCase()] || null; }
 function abilityText(a){
+  const auto = abilityAutoNote(a.name);
   return `<div class="r-meta">${esc(a.frequency||"")}${a.keywords?" · "+esc(a.keywords):""}</div>
+    ${auto?`<div class="r-body" style="color:var(--accent);font-weight:600">⚙ Auto-applied: ${esc(auto)}</div>`:""}
     ${a.trigger?`<div class="r-body"><b>Trigger:</b> ${annotateKeywords(esc(a.trigger))}</div>`:""}
     <div class="r-body">${annotateKeywords(esc(a.effect||""))}</div>`;
 }
@@ -8807,22 +9019,51 @@ function openTokenMenu(token, map){
         atk.append(el("label",{class:"inline",style:"gap:6px;display:flex;align-items:center;margin-bottom:6px"},
           aoeBox, el("span",{class:"small"},"Area / multi-target attack (one step more effective)")));
       }
+      // Manual effectiveness nudge — for abilities/effects too specific to auto-detect (Bulletproof
+      // "resist ranged one step further", Tinted Lens, a move that resolves "one step further", …).
+      // Shifts this attack ± steps on the PTU effectiveness ladder when the GM applies it.
+      let manualStep = 0;
+      const stepLbl = el("span",{class:"small",style:"min-width:150px;text-align:center;font-weight:700"});
+      const drawStep = ()=>{ stepLbl.textContent = manualStep===0 ? "no adjustment"
+        : manualStep>0 ? `+${manualStep} step — more effective` : `${manualStep} step — more resisted`; };
+      drawStep();
+      atk.append(el("div",{class:"tk-menu-row",style:"gap:6px;align-items:center;margin-bottom:2px"},
+        el("span",{class:"small muted"},"Effectiveness:"),
+        el("button",{class:"btn-secondary",style:"padding:2px 12px",title:"one step more resisted",
+          onclick:()=>{ manualStep=Math.max(-4,manualStep-1); drawStep(); }},"−"),
+        stepLbl,
+        el("button",{class:"btn-secondary",style:"padding:2px 12px",title:"one step more effective",
+          onclick:()=>{ manualStep=Math.min(4,manualStep+1); drawStep(); }},"+")));
+      atk.append(el("div",{class:"small muted",style:"margin-bottom:6px"},
+        "Use for abilities the sheet can't auto-apply — e.g. Bulletproof (−1 vs ranged), Tinted Lens, or “resisted one step further” move text."));
       const apply = async ()=>{
         const dmg = parseInt(dmgIn.value);
         if(isNaN(dmg)){ out.textContent = "Enter a damage number."; return; }
         const physical = clsSel.value==="phys";
         const def = tokenDefenseStat(token, physical);
         const types = tokenDefTypes(token);
-        const stepAdj = swarmTgt ? swarmDamageStep(aoeBox.checked) : 0;
+        const swarmStep = swarmTgt ? swarmDamageStep(aoeBox.checked) : 0;
+        const stepAdj = swarmStep + manualStep;   // Swarm + the GM's manual effectiveness nudge
         const typeless = typeSel.value==="Typeless";
-        const mult = typeless ? 1 : typeMultAgainst(typeSel.value, types, stepAdj);
+        const owner = token.link ? (tokenLinked(token)||{}).obj : null;
+        // the defender's Static defensive abilities (Thick Fat, Levitate, Wonder Guard, Filter…) shift the
+        // effectiveness ladder / grant immunity / soften Super-Effective before the multiplier is taken.
+        const defMods = owner ? defenseTypeMods(owner) : null;
+        let mult;
+        if(typeless) mult = 1;
+        else if(defMods && defMods.immune.has(typeSel.value)) mult = 0;
+        else {
+          mult = typeMultAgainst(typeSel.value, types, stepAdj + (defMods?.step?.[typeSel.value] || 0));
+          if(defMods?.wonderGuard && mult > 0 && mult <= 1) mult = 0;
+          if(defMods?.seReduce && mult > 1) mult = seReducedMult(mult);   // Filter / Solid Rock
+        }
         const afterDef = Math.max(0, dmg - def);
         const afterMult = Math.floor(afterDef * mult);
-        // Damage Reduction from the target's active buffs (Excited, Song of Life, …) — applied
-        // last, after weakness/resistance (Core damage steps). One-shot DR buffs are then spent.
-        const owner = token.link ? (tokenLinked(token)||{}).obj : null;
+        // Damage Reduction: the target's active buffs (Excited, Song of Life…) plus any flat DR vs
+        // Super-Effective from Filter+Solid Rock / Prism Armor — applied last (Core damage steps).
         const { dr, from } = owner ? buffDR(owner) : { dr:0, from:[] };
-        const final = Math.max(0, afterMult - dr);
+        const seDR = (defMods?.seFlatDR && mult > 1) ? defMods.seFlatDR : 0;
+        const final = Math.max(0, afterMult - dr - seDR);
         const before = tokenHp(token).cur;
         await setTokenHP(token, before - final); draw();
         let drTxt = "";
@@ -8830,9 +9071,12 @@ function openTokenMenu(token, map){
           if(consumeDamageBuffs(owner)) await commitTokenBuffs(token);
           drTxt = ` − ${dr} DR (${from.join(", ")})`;
         }
+        if(seDR > 0) drTxt += ` − ${seDR} DR (vs Super-Effective)`;
         const eff = typeless ? "typeless (no effectiveness)" : mult===0 ? "immune ×0" : mult>1 ? `super-effective ×${mult}` : mult<1 ? `resisted ×${mult}` : "neutral ×1";
         const swarmTxt = (swarmTgt && !typeless) ? ` (${aoeBox.checked?"area, +1 step":"single-target, −1 step"} vs Swarm)` : "";
-        out.innerHTML = `${dmg} − ${def} ${physical?"Def":"SpDef"} = ${afterDef}, ${typeSel.value} ${eff}${swarmTxt} = ${afterMult}${drTxt} → <b>${final}</b> damage.<br>HP ${before} → <b>${before-final}</b>.`;
+        const stepTxt = (manualStep && !typeless) ? ` (manual ${manualStep>0?"+":""}${manualStep} step)` : "";
+        const abilTxt = (defMods && defMods.why.length && !typeless) ? `<br><span style="color:var(--accent)">⚙ ${defMods.why.join(" · ")}</span>` : "";
+        out.innerHTML = `${dmg} − ${def} ${physical?"Def":"SpDef"} = ${afterDef}, ${typeSel.value} ${eff}${swarmTxt}${stepTxt} = ${afterMult}${drTxt} → <b>${final}</b> damage.<br>HP ${before} → <b>${before-final}</b>.${abilTxt}`;
       };
       atk.append(el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;align-items:center"},
         dmgIn, typeSel, clsSel, el("button",{class:"btn-primary",onclick:apply},"Apply")), out);
