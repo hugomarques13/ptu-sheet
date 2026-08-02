@@ -1316,6 +1316,38 @@ function pickImage(maxDim, onData){
   document.body.append(inp); inp.click();
 }
 
+/* ---------- Image storage (Supabase Storage + CDN) ----------
+   Images used to be embedded as base64 data-URLs inside the synced `data` JSON. That made
+   map/PC/character rows huge, so every edit's realtime event came back truncated and every
+   connected client re-downloaded the whole row (all its images) again — by far the biggest
+   egress cost. We now upload images to a PUBLIC Storage bucket (CDN-cached, so repeat loads are
+   cache hits) and keep only the short public URL in the row. Falls back to the original data-URL
+   when offline / not in a campaign / if the bucket isn't set up, so nothing breaks in those cases
+   and old data-URLs already in the DB keep rendering. See SETUP-CLOUD.md "Part A2" for bucket setup. */
+const IMG_BUCKET = "images";
+function dataURLtoBlob(dataUrl){
+  const [head, b64] = String(dataUrl).split(",");
+  const mime = (head.match(/data:([^;]+)/) || [,"application/octet-stream"])[1];
+  const bin = atob(b64); const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+async function storeImg(dataUrl, subdir){
+  // Only upload genuine base64 data-URLs while connected to a campaign; otherwise return the value
+  // untouched (already a URL, offline/local, or a placeholder) so behaviour is unchanged there.
+  if(mode!=="cloud" || !cloud.client || !cloud.campaign || !/^data:[^,]*;base64,/i.test(dataUrl||"")) return dataUrl;
+  try{
+    const blob = dataURLtoBlob(dataUrl);
+    const ext  = ((blob.type.split("/")[1]||"png").split("+")[0]).replace(/[^a-z0-9]/gi,"") || "png";
+    const path = `${cloud.campaign}/${subdir}/${uid()}.${ext}`;
+    const { error } = await cloud.client.storage.from(IMG_BUCKET)
+      .upload(path, blob, { contentType: blob.type, cacheControl: "31536000", upsert: true });
+    if(error){ console.error("image upload failed", error); return dataUrl; }
+    const { data } = cloud.client.storage.from(IMG_BUCKET).getPublicUrl(path);
+    return (data && data.publicUrl) ? data.publicUrl : dataUrl;
+  }catch(e){ console.error("image upload failed", e); return dataUrl; }
+}
+
 /* ---------- reusable sub-tab bar ---------- */
 function subTabBar(tabs, active, onPick){
   const bar = el("div",{class:"subtabs"});
@@ -1780,7 +1812,7 @@ function trainerAvatar(t){
   const wrap = el("div",{class:"avatar-wrap"});
   wrap.append(el("img",{class:"avatar", alt:"Trainer portrait", src: t.avatar || TRAINER_PLACEHOLDER}));
   const acts = el("div",{class:"avatar-acts"});
-  acts.append(el("button",{class:"linkbtn",onclick:()=>pickImage(256, d=>{ t.avatar=d; save(); renderTrainer(); })},
+  acts.append(el("button",{class:"linkbtn",onclick:()=>pickImage(256, async d=>{ t.avatar=await storeImg(d,"avatar"); save(); renderTrainer(); })},
     t.avatar ? "📷 Change" : "📷 Photo"));
   if(t.avatar) acts.append(el("button",{class:"linkbtn",onclick:()=>{ t.avatar=""; save(); renderTrainer(); }},"remove"));
   wrap.append(acts);
@@ -2539,7 +2571,6 @@ function renderPokemon(){
 
   const bar = el("div",{class:"inline",style:"margin-bottom:12px"});
   bar.append(el("button",{class:"btn-primary",onclick:()=>addPokemon()},"＋ Add Pokémon"));
-  bar.append(el("button",{class:"btn-secondary",onclick:()=>importPokemon()},"⭱ Import Pokémon"));
   if(mode==="cloud") bar.append(el("button",{class:"btn-secondary",onclick:()=>switchTab("pc")},"🖥 PC"));
   root.append(bar);
 
@@ -2553,7 +2584,7 @@ function renderPokemon(){
   root.append(el("div",{class:"section-head"}, `Team (${team.length}/6)`,
     el("span",{class:"muted small"}, "tap ☆ to move a Pokémon in/out")));
   const teamGrid = el("div",{class:"party"});
-  team.forEach(p => teamGrid.append(monCard(p)));
+  team.forEach((p,i) => teamGrid.append(monCard(p, {reorder:team.length>1, first:i===0, last:i===team.length-1})));
   if(!team.length) teamGrid.append(el("div",{class:"muted small",style:"padding:8px"},"No Pokémon on the team yet."));
   root.append(teamGrid);
   // Box section (the rest)
@@ -2568,6 +2599,18 @@ function setTeam(p, on){
   const c = activeChar();
   if(on && c.pokemon.filter(x=>x.onTeam).length>=6){ toast("Team is full (6). Remove one first."); return; }
   p.onTeam = on; save(); renderPokemon();
+}
+/* reorder a Pokémon within the party (team). dir = -1 up / +1 down. Swaps its slot
+   with the neighbouring team member in the underlying pokemon array. */
+function moveTeamMon(p, dir){
+  const c = activeChar();
+  const team = c.pokemon.filter(x=>x.onTeam);
+  const idx = team.indexOf(p), tgt = idx + dir;
+  if(tgt<0 || tgt>=team.length) return;
+  const q = team[tgt];
+  const i = c.pokemon.indexOf(p), j = c.pokemon.indexOf(q);
+  [c.pokemon[i], c.pokemon[j]] = [c.pokemon[j], c.pokemon[i]];
+  save(); renderPokemon(); render();
 }
 function exportPokemon(p){
   const sp = getSpecies(p.species);
@@ -2600,7 +2643,7 @@ function importPokemon(){
   });
   inp.click();
 }
-function monCard(p){
+function monCard(p, opts={}){
   const sp = getSpecies(p.species);
   const d = pokeDerived(p);
   const cur = p.currentHP==null ? d.maxHP : p.currentHP;
@@ -2620,10 +2663,16 @@ function monCard(p){
   main.append(el("div",{class:"hpbar"}, el("i",{style:`width:${pct}%;background:${hpColor}`})));
   body.append(main);
   card.append(body);
+  if(opts.reorder){
+    const reorder = el("div",{class:"pc-reorder"});
+    reorder.append(el("button",{class:"btn-secondary",disabled:!!opts.first,title:"move up in party",
+      onclick:e=>{e.stopPropagation(); moveTeamMon(p,-1);}},"▲"));
+    reorder.append(el("button",{class:"btn-secondary",disabled:!!opts.last,title:"move down in party",
+      onclick:e=>{e.stopPropagation(); moveTeamMon(p,1);}},"▼"));
+    card.append(reorder);
+  }
   card.append(el("button",{class:"pc-star"+(p.onTeam?" on":""), title:p.onTeam?"On team — tap to send to box":"In box — tap to add to team",
     onclick:e=>{e.stopPropagation(); setTeam(p, !p.onTeam);}}, p.onTeam?"★":"☆"));
-  card.append(el("button",{class:"pc-del",title:"export this Pokémon",style:"right:40px",
-    onclick:e=>{e.stopPropagation(); exportPokemon(p);}},"⭳"));
   card.append(el("button",{class:"pc-del",title:"remove",onclick:e=>{e.stopPropagation();
     if(confirm(`Remove ${p.nickname||sp?.name||"this Pokémon"}?`)){ const c=activeChar(); c.pokemon=c.pokemon.filter(x=>x.id!==p.id); save(); renderPokemon(); render(); }}},"🗑"));
   return card;
@@ -2652,7 +2701,6 @@ function renderMonEditor(root, p){
   if(mode==="cloud" && canEditActive())
     head.append(el("button",{class:"btn-secondary",title:"Send this Pokémon to the shared PC",
       onclick:()=>depositToPC(cloud.byId[cloud.activeId], p)},"🖥 To PC"));
-  head.append(el("button",{class:"linkbtn",onclick:()=>exportPokemon(p)},"⭳ Export"));
   if(sp) head.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("species",sp.name)},"Dex entry"));
   root.append(head);
 
@@ -2677,7 +2725,7 @@ function heroCard(p, sp){
   const spriteBox = el("div",{class:"sprite-box"});
   spriteBox.append(monSprite(sp?.name || p.species, p.shiny, "s-lg", p.image));
   spriteBox.append(el("button",{class:"photo-btn",title:"upload a photo",
-    onclick:()=>pickImage(240, d=>{ p.image=d; save(); refreshMon(p); })},"📷"));
+    onclick:()=>pickImage(240, async d=>{ p.image=await storeImg(d,"mon"); save(); refreshMon(p); })},"📷"));
   if(p.image) spriteBox.append(el("button",{class:"photo-rm",title:"remove photo — use the default sprite",
     onclick:()=>{ p.image=""; save(); refreshMon(p); }},"×"));
   hero.append(spriteBox);
@@ -3200,7 +3248,7 @@ function renderMonBuild(root, p, sp){
   ec.append(el("div",{class:"inline small",style:"gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px"},
     el("span",{class:"muted"}, `1 Tutor Point on hatching + 1 every 5 levels → Lv ${p.level} has earned ${tpEarned}.`),
     el("button",{class:"linkbtn",onclick:()=>{p.tutorPoints=tpEarned;save();refreshMon(p);}},"sync to earned"),
-    el("button",{class:"linkbtn",onclick:()=>openTutorMovePicker(p,sp)},"🎓 learn a Tutor move (−1)")));
+    el("button",{class:"linkbtn",onclick:()=>openTutorMovePicker(p,sp)},"🎓 learn a Tutor move (−2)")));
   root.append(ec);
 
   /* evolution — GM-only ("hidden") stages are concealed from players */
@@ -3556,6 +3604,56 @@ function speciesFullLearnset(sp){
   });
   return [...set].filter(Boolean);
 }
+/* ---------- TM/HM eligibility ----------
+   TM/HM entries look like "06 Toxic" / "A4 Strength" — strip the index prefix to get the move name.
+   A Pokémon is eligible for a TM if the move is in its (or a pre-evolution's) TM/HM list. */
+function tmMoveName(raw){ return String(raw||"").replace(/^[A-Z]*\d+\s+/,"").trim(); }
+function speciesLearnsTM(sp, moveName){
+  if(!sp) return false;
+  const t = String(moveName||"").trim().toLowerCase();
+  return speciesLineBackTo(sp).some(s => (s.moves?.tmhm||[]).some(x => tmMoveName(x).toLowerCase() === t));
+}
+/* the active character's Pokémon that can learn `moveName` from a TM/HM */
+function partyEligibleForTM(moveName){
+  const c = activeChar(); if(!c) return [];
+  return (c.pokemon||[]).map(p=>({p, sp:getSpecies(p.species)}))
+    .filter(x => speciesLearnsTM(x.sp, moveName));
+}
+/* teach a TM move to one Pokémon (respects the move limit unless 🔓) */
+function teachTM(p, mn){
+  if((p.moves||[]).some(x=>String(x).toLowerCase()===mn.toLowerCase())){ toast("Already knows "+mn); return; }
+  const limit = effectiveMoveLimit(activeChar().trainer);
+  if(!p.unlocked && p.moves.length>=limit){ toast(`${p.nickname||getSpecies(p.species)?.name||"It"} is at the move limit (${limit}) — free a slot or tick 🔓`); return; }
+  p.moves.push(mn); save();
+  toast(`${p.nickname||getSpecies(p.species)?.name||"Pokémon"} learned ${mn} ✓`);
+  if(openMon===p.id) renderPokemon();
+  showTMEligibility(mn);   // refresh the open modal
+}
+/* modal: which of my Pokémon can learn this TM move, with a Teach button */
+function showTMEligibility(moveName){
+  const mn = tmMoveName(moveName);
+  const m = moveByName.get(mn.toLowerCase());
+  const elig = partyEligibleForTM(mn);
+  const wrap = el("div",{});
+  wrap.append(el("div",{class:"r-meta",style:"margin-bottom:8px"},
+    `Your Pokémon that can learn ${mn} via TM/HM`));
+  if(m) wrap.append(el("div",{class:"small",style:"margin-bottom:12px",html:moveDetailHTML(m,mn)}));
+  if(!elig.length){
+    wrap.append(el("div",{class:"muted"},"None of your Pokémon can learn this TM/HM."));
+  } else elig.forEach(({p,sp})=>{
+    const knows = (p.moves||[]).some(x=>String(x).toLowerCase()===mn.toLowerCase());
+    const row = el("div",{class:"inline",style:"gap:10px;align-items:center;margin-top:8px"});
+    row.append(monSprite(sp?.name||p.species, p.shiny, "s-sm", p.image));
+    row.append(el("div",{style:"flex:1;min-width:0"},
+      el("div",{style:"font-weight:700"}, p.nickname||sp?.name||p.species),
+      el("div",{class:"small muted"}, `${sp?.name||""} · Lv ${p.level} · ${p.onTeam?"team":"box"}`)));
+    if(knows) row.append(el("span",{class:"kv",style:"color:var(--good)"},"✓ knows it"));
+    else if(mode!=="cloud" || canEditActive()) row.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",
+      onclick:()=>teachTM(p,mn)},"Teach"));
+    wrap.append(row);
+  });
+  modal({title:`TM/HM: ${mn}`, bodyNode:wrap, footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Close")]});
+}
 /* Struggle (auto-upgrades to Struggle+ for Combat Expert+ species) */
 function struggleMove(p){
   const sp = getSpecies(p.species);
@@ -3676,6 +3774,8 @@ function unlockToggle(p){
 }
 function moveSlot(p, sp, m, mn, opts={}){
   const slot = el("div",{class:"moveslot"});
+  if(opts.onFav) slot.append(el("button",{class:"actstar"+(opts.faved?" on":""),style:"align-self:center;margin-right:0",
+    title:opts.faved?"unpin favourite":"pin favourite",onclick:e=>{e.stopPropagation();opts.onFav();}}, opts.faved?"★":"☆"));
   const info = el("div",{style: m?"cursor:pointer;flex:1":"flex:1", onclick: m? ()=>openMoveRoll(p,m,sp) : null},
     el("div",{style:"font-weight:700"}, m?`${m.name} `:mn,
       m?el("span",{html:typeBadge(effectiveMoveType(p,m))}):"",
@@ -3709,10 +3809,18 @@ function movesCard(p, sp){
   if(grant){ const gm = moveByName.get(grant.move.toLowerCase());
     if(gm) card.append(moveSlot(p, sp, gm, gm.name, {tag:"Poltergeist"})); }
   if(!p.moves.length) card.append(el("span",{class:"muted small"},"no moves selected yet"));
-  p.moves.forEach((mn,i)=>{
-    const m = moveByName.get(mn.toLowerCase());
-    card.append(moveSlot(p, sp, m, mn, {onRemove:()=>{p.moves.splice(i,1);save();refreshMon(p);}}));
-  });
+  // favourites (tap ☆) sort to the top; splice by the original index so removal stays correct
+  const favSet = new Set(p.fav||[]);
+  [...p.moves].map((mn,i)=>({mn,i}))
+    .sort((a,b)=>(favSet.has(b.mn)?1:0)-(favSet.has(a.mn)?1:0))
+    .forEach(({mn,i})=>{
+      const m = moveByName.get(mn.toLowerCase());
+      card.append(moveSlot(p, sp, m, mn, {
+        faved: favSet.has(mn),
+        onFav: ()=>{ p.fav = toggleSet(favSet, mn); save(); refreshMon(p); },
+        onRemove: ()=>{ p.moves.splice(i,1); if(p.fav) p.fav=p.fav.filter(x=>x!==mn); save(); refreshMon(p); }
+      }));
+    });
   if(atLimit) card.append(el("div",{class:"small muted",style:"margin-top:6px"},
     `Move limit reached (${limit}). Tick “🔓 GM: allow any” to add more.`));
   else if(over) card.append(el("div",{class:"warnbox",style:"margin-top:6px"},
@@ -4500,11 +4608,28 @@ function openMovePicker(p, sp){
   }, "move", n=>markSet.has(n.toLowerCase()));
 }
 /* spend a Tutor Point to learn a move from the species' Tutor list (Core: 1 TP per Tutor move) */
+/* Tutor cost, in Tutor Points, per move taught through a Tutoring Feature (this campaign's rate). */
+const TUTOR_COST = 2;
+/* Tutor / Inheritance restriction (this campaign): moves taught through Tutoring Features are limited
+   by the Pokémon's level —
+     under Lv 20 : At-Will or EOT frequency only, max Damage Base 7
+     Lv 20–29    : up to Scene frequency, max Damage Base 9
+     Lv 30+      : no restriction. */
+const TUTOR_FREQ_RANK = {atwill:0, eot:1, scene:2, daily:3};
+function tutorMoveAllowed(moveName, level){
+  if((level||1) >= 30) return true;
+  const m = moveByName.get(String(moveName).toLowerCase());
+  if(!m) return true;                                   // custom / not in DB → GM discretion
+  const rank = TUTOR_FREQ_RANK[freqInfo(m.frequency).kind];
+  const db = typeof m.damageBase==="number" ? m.damageBase : 0;
+  if(level >= 20) return rank!=null && rank<=TUTOR_FREQ_RANK.scene && db<=9;   // 20–29
+  return rank!=null && rank<=TUTOR_FREQ_RANK.eot && db<=7;                     // under 20
+}
 function openTutorMovePicker(p, sp){
   if(!p.unlocked && !sp){ toast("Unknown species — tick 🔓 to add any move"); return; }
   const limit = effectiveMoveLimit(activeChar().trainer);
   if(!p.unlocked && p.moves.length>=limit){ toast(`Move limit reached (${limit}). Tick "🔓 GM: allow any" to add more.`); return; }
-  if(!p.unlocked && (p.tutorPoints||0)<1){ toast("No Tutor Points left"); return; }
+  if(!p.unlocked && (p.tutorPoints||0)<TUTOR_COST){ toast(`Not enough Tutor Points — a Tutor move costs ${TUTOR_COST} (has ${p.tutorPoints||0}).`); return; }
   const cleanTutor = s => (s?.moves?.tutor||[]).map(m=>m.replace(/\s*\(N\)\s*$/i,"").trim());
   let names, title, markSet;
   if(p.unlocked){
@@ -4513,15 +4638,15 @@ function openTutorMovePicker(p, sp){
     names = [...new Set([...learn, ...D.moves.map(m=>m.name)])];
     title = `Learn a Tutor move (🔓 any) — ${sp?sp.name+"'s Tutor list on top":"all moves"}`;
   } else {
-    names = cleanTutor(sp);
+    names = cleanTutor(sp).filter(nm => tutorMoveAllowed(nm, p.level));   // level restriction
     markSet = new Set();
-    title = `Learn a Tutor move — ${sp.name} (−1 Tutor Point, ${p.tutorPoints||0} left)`;
+    title = `Learn a Tutor move — ${sp.name} (−${TUTOR_COST} Tutor Points, ${p.tutorPoints||0} left)`;
   }
   names = [...new Set(names)].filter(nm => !p.moves.includes(nm));
-  if(!names.length){ toast("No new Tutor moves available"); return; }
+  if(!names.length){ toast(p.unlocked?"No new Tutor moves available":`No eligible Tutor moves for Lv ${p.level} (Tutor restriction) — tick 🔓 to bypass.`); return; }
   openPicker(title, names, name=>{
     if(p.moves.includes(name)) return;
-    if(!p.unlocked) p.tutorPoints = Math.max(0,(p.tutorPoints||0)-1);
+    if(!p.unlocked) p.tutorPoints = Math.max(0,(p.tutorPoints||0)-TUTOR_COST);
     p.moves.push(name); save(); refreshMon(p);
     toast(`Learned ${name} (Tutor)`);
   }, "move", markSet.size ? n=>markSet.has(n.toLowerCase()) : null);
@@ -4554,8 +4679,8 @@ function openMentorPicker(t){
     if(!p.unlocked && p.moves.length>=effectiveMoveLimit(t)){
       toast(`${labelFor(p)} is at its move limit (${effectiveMoveLimit(t)}). Tick "🔓 GM: allow any" to add more.`); return; }
     const cap = p.level + mentorSkillSum(t);
-    const names = mentorMoveOptions(sp, cap).filter(nm=>!p.moves.includes(nm));
-    if(!names.length){ toast("No new moves available to teach at that level"); return; }
+    const names = mentorMoveOptions(sp, cap).filter(nm=>!p.moves.includes(nm) && tutorMoveAllowed(nm, p.level));
+    if(!names.length){ toast("No eligible moves to teach (level / Tutor restriction)"); return; }
     openPicker(`Teach ${labelFor(p)} a move (cap Lv ${cap})`, names, name=>{
       p.moves.push(name);
       if(!p.unlocked) p.tutorPoints = Math.max(0,(p.tutorPoints||0)-1);
@@ -4745,7 +4870,12 @@ function renderPokemonMoves(root, team){
   card.append(struggleControl(p, sp, renderBattle));
   const st=struggleFor(p,sp); if(st) card.append(moveSlot(p,sp,st,st.name,{tag:"default"}));
   if(!p.moves.length) card.append(el("span",{class:"muted small"},"No moves yet — add some in the Pokémon → Play tab."));
-  p.moves.forEach(mn=>{ const m=moveByName.get(mn.toLowerCase()); card.append(moveSlot(p,sp,m,mn,{rerender:renderBattle})); });
+  const favSet = new Set(p.fav||[]);
+  [...p.moves].sort((a,b)=>(favSet.has(b)?1:0)-(favSet.has(a)?1:0)).forEach(mn=>{
+    const m=moveByName.get(mn.toLowerCase());
+    card.append(moveSlot(p,sp,m,mn,{rerender:renderBattle, faved:favSet.has(mn),
+      onFav:()=>{ p.fav=toggleSet(favSet,mn); save(); renderBattle(); }}));
+  });
   root.append(card);
   if(p.abilities?.length){
     const ac=el("div",{class:"card"},el("h3",{},`Abilities (${p.abilities.length})`,
@@ -5624,7 +5754,7 @@ function encounterMonCard(enc, p, list){
   const spriteBox=el("div",{class:"sprite-box sb-sm",style:"flex:0 0 auto"});
   spriteBox.append(monSprite(p.species,p.shiny,"s-sm",p.image||undefined));
   spriteBox.append(el("button",{class:"photo-btn",title:"picture used for this creature's map token",
-    onclick:()=>pickImage(256, url=>{ p.image=url; saveEnc(); renderEncounters(); })},"📷"));
+    onclick:()=>pickImage(256, async url=>{ p.image=await storeImg(url,"mon"); saveEnc(); renderEncounters(); })},"📷"));
   if(p.image) spriteBox.append(el("button",{class:"photo-rm",title:"remove picture — use the default sprite",
     onclick:()=>{ p.image=""; saveEnc(); renderEncounters(); }},"×"));
   head.append(spriteBox);
@@ -5779,7 +5909,7 @@ function encounterTrainerCard(enc, tr){
     style:"width:32px;height:32px;border-radius:50%;object-fit:cover;border:1px solid var(--line);background:var(--panel-2)"});
   info.append(av, nameIn, el("span",{class:"small muted"},"Lv"), lvIn,
     el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"picture used for this trainer's map token",
-      onclick:()=>pickImage(256, d=>{ t.avatar=d; saveEnc(); renderEncounters(); })}, t.avatar?"📷 Change":"📷 Image"));
+      onclick:()=>pickImage(256, async d=>{ t.avatar=await storeImg(d,"avatar"); saveEnc(); renderEncounters(); })}, t.avatar?"📷 Change":"📷 Image"));
   if(t.avatar) info.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"remove image — use the default icon",
     onclick:()=>{ t.avatar=""; saveEnc(); renderEncounters(); }},"×"));
   head.append(info);
@@ -6063,7 +6193,7 @@ function renderReference(){
   inp.addEventListener("input",()=>{ refQuery=inp.value; drawRefList(); });
   bar.append(inp);
   const sub = el("div",{class:"refsub"});
-  [["species","Pokédex"],["move","Moves"],["ability","Abilities"],["item","Items"],
+  [["species","Pokédex"],["move","Moves"],["keyword","Keywords"],["ability","Abilities"],["item","Items"],
    ["feature","Features"],["edge","Edges"],["nature","Natures"]].forEach(([k,l])=>{
     sub.append(el("button",{class:refSub===k?"on":"",onclick:()=>{refSub=k;drawRefList();$$(".refsub button").forEach(b=>b.classList.toggle("on",b.textContent===l));}},l));
   });
@@ -6084,6 +6214,13 @@ function drawRefList(){
   else if(refSub==="feature") rows = D.features.filter(f=>match(f.name)||match(f.category)).slice(0,300).map(f=>refGeneric(f.name,`${f.category||""} · ${f.frequency||""}`,f.effect,f.prerequisites));
   else if(refSub==="edge") rows = D.edges.filter(e=>match(e.name)).slice(0,300).map(e=>refGeneric(e.name,e.category,e.effect,e.prerequisites));
   else if(refSub==="nature") rows = D.natures.filter(n=>match(n.name)).map(n=>refGeneric(n.name,natSummary(n),`Likes ${n.likedFlavor}, dislikes ${n.dislikedFlavor}`));
+  else if(refSub==="keyword"){
+    const seen=new Set();   // several terms are spelling variants of one definition — show each rule once
+    rows = Object.entries(KEYWORD_DEFS)
+      .filter(([term,def])=>{ if(seen.has(def)) return false; seen.add(def); return match(term)||match(def); })
+      .sort((a,b)=>a[0].localeCompare(b[0]))
+      .map(([term,def])=>refGeneric(term.charAt(0).toUpperCase()+term.slice(1), "Move Keyword", def));
+  }
   if(!rows.length) list.append(el("div",{class:"muted"},"no matches"));
   rows.forEach(r=>list.append(r));
 }
@@ -6192,6 +6329,8 @@ function annotateKeywords(html){
 document.addEventListener("click", e=>{
   const kw = e.target.closest?.(".kw-hint");
   if(kw) toast(KEYWORD_DEFS[kw.dataset.kw] || "");
+  const tm = e.target.closest?.(".tm-chip,[data-tmmove]");
+  if(tm && tm.dataset.tmmove) showTMEligibility(tm.dataset.tmmove);
 });
 
 /* ===================================================================
@@ -6284,7 +6423,8 @@ function moveDetailHTML(m, name){
   return `<div style="margin-bottom:6px">${typeBadge(m.type||"Normal")} <span class="kv">${esc(m.class||"")}</span></div>
     ${kv("Frequency",m.frequency)}${kv("AC",m.ac)}${m.damageBase?`<span class="kv">DB ${m.damageBase} (${DB_TABLE[m.damageBase]||"?"})</span>`:""}${kv("Range",m.range)}
     <div class="r-body" style="margin-top:8px">${annotateKeywords(esc(m.effect||""))}</div>
-    ${(m.contest && showContest())?`<div class="r-meta" style="margin-top:6px">Contest: ${esc(m.contest)}</div>`:""}`;
+    ${(m.contest && showContest())?`<div class="r-meta" style="margin-top:6px">Contest: ${esc(m.contest)}</div>`:""}
+    <div style="margin-top:8px"><span class="tm-chip" data-tmmove="${escAttr(m.name)}" title="See which of your Pokémon can learn this via TM/HM">🔍 Which of my Pokémon can learn this? (TM/HM)</span></div>`;
 }
 /* device-level display prefs */
 function showContest(){ return localStorage.getItem("ptu_show_contest")==="1"; }
@@ -6338,8 +6478,13 @@ function speciesModal(s){
         <table class="movetable" style="margin-top:6px"><tr><th>Lv</th><th>Move</th><th>Type</th></tr>
         ${s.moves.levelup.map(m=>`<tr><td>${m.level}</td><td>${esc(m.name)}</td><td>${typeBadge(m.type)}</td></tr>`).join("")}</table></details>`;
     }
-    const others=[["TM/HM",s.moves.tmhm],["Egg",s.moves.egg],["Tutor",s.moves.tutor]];
-    others.forEach(([l,arr])=>{ if(arr?.length) html+=`<details class="spoiler"><summary>${l} Moves (${arr.length})</summary><div class="r-body">${arr.map(esc).join(", ")}</div></details>`; });
+    if(s.moves.tmhm?.length){
+      // each TM/HM is clickable → shows which of your Pokémon can learn it
+      html += `<details class="spoiler" open><summary>TM/HM Moves (${s.moves.tmhm.length}) <span class="small muted">— tap one to see who can learn it</span></summary><div class="r-body">${
+        s.moves.tmhm.map(raw=>`<span class="tm-chip" data-tmmove="${escAttr(tmMoveName(raw))}" title="See which of your Pokémon can learn ${escAttr(tmMoveName(raw))}">${esc(raw)}</span>`).join(" ")
+      }</div></details>`;
+    }
+    [["Egg",s.moves.egg],["Tutor",s.moves.tutor]].forEach(([l,arr])=>{ if(arr?.length) html+=`<details class="spoiler"><summary>${l} Moves (${arr.length})</summary><div class="r-body">${arr.map(esc).join(", ")}</div></details>`; });
   }
   const meta=[]; if(s.diet)meta.push("Diet: "+s.diet); if(s.habitat)meta.push("Habitat: "+s.habitat); if(s.gender)meta.push(s.gender); if(s.eggGroups?.length)meta.push("Egg: "+s.eggGroups.join("/"));
   if(meta.length) html+=`<div class="r-meta" style="margin-top:8px">${esc(meta.join(" · "))}</div>`;
@@ -7062,6 +7207,25 @@ function ensureMapTokens(){
     owner_name:"Map", name:"Map Tokens", data:normMapTokens(null) };
   return cloud.mapTokens;
 }
+/* One-time cleanup: existing maps store their backgrounds as base64 data-URLs in the meta row,
+   which is exactly what makes that row oversized and re-downloaded on every sync. On connect the
+   GM lifts any such background into Storage and rewrites it to a URL, then saves once (field-level
+   patch → only the small URL is sent). After this the meta row is small, realtime stops
+   truncating, and the re-download storm ends. GM-only; no-ops if there's nothing left to migrate. */
+async function migrateMapBgsToStorage(){
+  if(!cloud.isGM || !cloud.client || !cloud.mapMeta?.data?.maps?.length) return;
+  let changed = false;
+  for(const m of cloud.mapMeta.data.maps){
+    if(!Array.isArray(m.images)) continue;
+    for(const im of m.images){
+      if(typeof im.src==="string" && /^data:[^,]*;base64,/i.test(im.src)){
+        const url = await storeImg(im.src, "map");
+        if(url && url!==im.src){ im.src = url; changed = true; }
+      }
+    }
+  }
+  if(changed){ mapMetaSave(); toast("Map images moved to fast storage ✓"); }
+}
 async function mapMetaUpsert(){
   const row = ensureMapMeta();
   row.owner_name = "Map"; row.name = "Battle Map";
@@ -7231,6 +7395,7 @@ async function cloudConnect(campaign, name, gmCode, silent){
     const mine = Object.values(cloud.byId).find(r=>ownsRow(r));
     cloud.activeId = mine ? mine.id : (Object.keys(cloud.byId)[0] || null);
     updateCloudButton(); closeModal(); render();
+    migrateMapBgsToStorage();   // fire-and-forget: lift any legacy base64 map backgrounds into Storage
     if(!silent) toast(`Connected to “${campaign}”${cloud.isGM?" as GM":""} ✓`);
   }catch(e){
     console.error(e); mode="local";
@@ -8749,7 +8914,9 @@ function addMapImage(map){
       prepMapBg(dataUrl, out=>{
         const probe = new Image();
         probe.onload = async ()=>{
-          map.images.push({ id:uid(), src:out, x:0, y:0, w:probe.naturalWidth||map.gridSize*10, h:probe.naturalHeight||map.gridSize*10 });
+          const w = probe.naturalWidth||map.gridSize*10, h = probe.naturalHeight||map.gridSize*10;
+          const src = await storeImg(out, "map");   // upload to Storage; keeps the row tiny (URL, not 6 MB of base64)
+          map.images.push({ id:uid(), src, x:0, y:0, w, h });
           mapMetaSave(); renderMap(); toast("Image added ✓");
         };
         probe.onerror = ()=>toast("⚠ Could not read that image");
@@ -9439,7 +9606,7 @@ function openCustomToken(map){
   const nm = el("input",{type:"text",placeholder:"e.g. Boss, Trap, NPC"});
   const hp = el("input",{type:"number",value:50});
   let img = "";
-  const imgBtn = el("button",{class:"btn-secondary",onclick:()=>pickImage(240, d=>{ img=d; imgBtn.textContent="✓ image set"; })},"📷 Image (optional)");
+  const imgBtn = el("button",{class:"btn-secondary",onclick:()=>pickImage(240, async d=>{ img=await storeImg(d,"rival"); imgBtn.textContent="✓ image set"; })},"📷 Image (optional)");
   const wrap = el("div",{},
     el("label",{class:"field"}, el("span",{},"Name"), nm), el("div",{style:"height:8px"}),
     el("label",{class:"field"}, el("span",{},"Max HP"), hp), el("div",{style:"height:8px"}), imgBtn);

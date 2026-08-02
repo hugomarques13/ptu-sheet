@@ -190,6 +190,14 @@ textarea{resize:vertical; min-height:64px}
 .refitem .r-body{font-size:13px; margin-top:6px; white-space:pre-wrap}
 .kv{display:inline-flex; gap:4px; font-size:12px; background:var(--panel-2); border:1px solid var(--line); border-radius:6px; padding:1px 7px; font-weight:600; margin:2px 4px 0 0}
 .kw-hint{border-bottom:1px dotted var(--muted); cursor:help}
+/* clickable TM/HM move → "who can learn it" */
+.tm-chip{display:inline-block; font-size:12px; background:var(--panel-2); border:1px solid var(--line);
+  border-radius:6px; padding:2px 8px; margin:3px 4px 0 0; font-weight:600; cursor:pointer; transition:all .1s}
+.tm-chip:hover{background:var(--accent); color:#fff; border-color:var(--accent)}
+/* party reorder ▲▼ controls on a team card */
+.pc-reorder{display:flex; gap:6px; margin-top:8px; justify-content:flex-end}
+.pc-reorder button{padding:4px 12px; line-height:1; font-size:13px}
+.pc-reorder button:disabled{opacity:.35; cursor:not-allowed}
 
 /* ---------- Modal ---------- */
 .modal-bg{position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:100; display:flex; align-items:flex-start; justify-content:center; padding:20px 12px; overflow:auto}
