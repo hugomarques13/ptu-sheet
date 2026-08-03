@@ -396,7 +396,7 @@ body.map-mode #view-map > .muted.small{padding:5px 12px; margin:0; text-align:ce
   background:var(--panel-2); border:1px solid var(--line); border-radius:5px; overflow:hidden}
 /* player-side tokens drop the numeric HP; the bar sits low, just above the name label
    (name stays in its default spot just under the token) */
-.map-token.player-side .tk-hpwrap{bottom:-2px}
+.map-token.player-side .tk-hpwrap{bottom:-7px}
 .map-token .tk-hp{height:100%; background:var(--good)}
 .map-token .tk-hp.mid{background:var(--warn)}
 .map-token .tk-hp.low{background:var(--bad)}
