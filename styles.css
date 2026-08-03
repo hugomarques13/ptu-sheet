@@ -394,10 +394,9 @@ body.map-mode #view-map > .muted.small{padding:5px 12px; margin:0; text-align:ce
 .map-token .tk-img{width:100%; height:100%; border-radius:50%; object-fit:cover; display:block; pointer-events:none}
 .map-token .tk-hpwrap{position:absolute; left:6%; right:6%; bottom:-7px; height:6px;
   background:var(--panel-2); border:1px solid var(--line); border-radius:5px; overflow:hidden}
-/* player-side tokens drop the numeric HP; drop the bar down to sit just above the name label,
-   and push the name down to make room (only player-side, so enemy tokens keep their layout) */
-.map-token.player-side .tk-hpwrap{bottom:-15px}
-.map-token.player-side .tk-name{top:calc(100% + 16px)}
+/* player-side tokens drop the numeric HP; the bar sits low, just above the name label
+   (name stays in its default spot just under the token) */
+.map-token.player-side .tk-hpwrap{bottom:-2px}
 .map-token .tk-hp{height:100%; background:var(--good)}
 .map-token .tk-hp.mid{background:var(--warn)}
 .map-token .tk-hp.low{background:var(--bad)}
