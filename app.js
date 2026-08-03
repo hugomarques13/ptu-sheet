@@ -972,7 +972,7 @@ function newPokemon(speciesName) {
     moves:[], tutorPoints: tutorPointsEarned(level), unlocked:false, notes:"",
     struggleType:null, struggleSpecial:false, uses:{}, image:"", statuses:[], buffs:[],
     cs:{atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0},
-    auras: legendaryAurasFor(sp ? sp.name : (speciesName||"")),
+    auras: [],   // Legendary Auras are an ENCOUNTER-only concept (caught Pokémon have none); seeded in addEncounterMon
   };
 }
 /* normalise older Pokémon objects (single ability -> abilities[], add onTeam) */
@@ -988,7 +988,7 @@ function normPokemon(p){
   if(typeof p.struggleSpecial !== "boolean") p.struggleSpecial = false;
   if(!p.uses || typeof p.uses!=="object") p.uses = {};
   if(!Array.isArray(p.statuses)) p.statuses = [];
-  if(!Array.isArray(p.auras)) p.auras = legendaryAurasFor(p.species);   // legendary Domains (book default on first load)
+  if(!Array.isArray(p.auras)) p.auras = [];   // Legendary Auras (encounter-only; seeded when added to an encounter)
   if(!Array.isArray(p.buffs)) p.buffs = [];        // active Cheers / Orders / Songs (#2)
   if(!Array.isArray(p.customMoves)) p.customMoves = [];   // freeform move/action notes not in the DB
   if(!p.cs || typeof p.cs!=="object") p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
@@ -3193,9 +3193,6 @@ function renderMonPlay(root, p, sp){
   /* abilities (a Pokémon can have several) */
   root.append(abilitiesCard(p, sp));
 
-  /* legendary Auras — only for legendaries (or GM-unlocked / already-assigned) */
-  if(isLegendarySpeciesName(p.species) || (p.auras||[]).length || p.unlocked) root.append(aurasCard(p, sp));
-
   /* moves */
   root.append(movesCard(p, sp));
   root.append(customMovesCard(p, ()=>refreshMon(p)));
@@ -3532,13 +3529,16 @@ function auraRow(an, onRemove){
   return row;
 }
 /* Legendary Auras card for the Pokémon Play tab (styled like the Abilities card) */
-function aurasCard(p, sp){
+/* Legendary Auras card. `rerender` = how to persist+redraw for the context it's mounted in
+   (encounter tab passes saveEnc()+renderEncounters(); defaults to the party-Pokémon path). */
+function aurasCard(p, sp, rerender){
+  const rr = rerender || (()=>{ save(); refreshMon(p); });
   if(!Array.isArray(p.auras)) p.auras = legendaryAurasFor(p.species);
   const card = el("div",{class:"card"}, el("h3",{},`Legendary Auras (${p.auras.length})`,
-    el("div",{class:"inline"}, unlockToggle(p),
+    el("div",{class:"inline"},
       el("button",{class:"linkbtn h-act",title:"reset to this species' book Domains",
-        onclick:()=>{ p.auras = legendaryAurasFor(p.species); save(); refreshMon(p); }},"↺ default"),
-      el("button",{class:"linkbtn h-act",onclick:()=>addAura(p)},"+ add"))));
+        onclick:()=>{ p.auras = legendaryAurasFor(p.species); rr(); }},"↺ default"),
+      el("button",{class:"linkbtn h-act",onclick:()=>addAura(p, rr)},"+ add"))));
   const note = auraNoteFor(p.species);
   if(note) card.append(el("div",{class:"small muted",style:"margin-bottom:6px",html:"ℹ "+note}));
   // "how auras work" reference
@@ -3547,15 +3547,16 @@ function aurasCard(p, sp){
   rules.append(el("div",{class:"small",style:"margin-top:6px;white-space:pre-wrap"}, AURA_RULES));
   card.append(rules);
   if(!p.auras.length) card.append(el("span",{class:"muted small"},"none — tap “+ add” to give this legendary its Domains."));
-  p.auras.forEach((an,i)=>card.append(auraRow(an, ()=>{ p.auras.splice(i,1); save(); refreshMon(p); })));
+  p.auras.forEach((an,i)=>card.append(auraRow(an, ()=>{ p.auras.splice(i,1); rr(); })));
   return card;
 }
-function addAura(p){
+function addAura(p, rerender){
+  const rr = rerender || (()=>{ save(); refreshMon(p); });
   if(!Array.isArray(p.auras)) p.auras = [];
   const names = AURA_NAMES.filter(n=>!p.auras.some(a=>auraKey(a)===auraKey(n)));
   if(!names.length){ toast("This Pokémon already has every Aura"); return; }
   openPicker("Add a Legendary Aura", names, name=>{
-    if(!p.auras.some(a=>auraKey(a)===auraKey(name))){ p.auras.push(name); save(); refreshMon(p); }
+    if(!p.auras.some(a=>auraKey(a)===auraKey(name))){ p.auras.push(name); rr(); }
   });
 }
 function abilitiesCard(p, sp){
@@ -5488,6 +5489,7 @@ function addEncounterMon(enc, into){
     p.level=5; p.xp=xpForLevel(5);
     if(sp){ p.moves = speciesLevelupNames(sp, p.level).slice(-6);           // pre-load level-up moves
             if(sp.abilities?.basic?.length) p.abilities=[sp.abilities.basic[0]]; }
+    p.auras = legendaryAurasFor(name);                                      // legendaries get their book Domains
     encRandomize(p);                                                        // random nature/gender/shiny/stats
     (into||enc.mons).push(p); saveEnc(); renderEncounters();
   }, "species");
@@ -6071,6 +6073,9 @@ function encounterMonCard(enc, p, list){
   if(!p.abilities.length) aw.append(el("span",{class:"muted small"},"none — tap + ability"));
   p.abilities.forEach(an=> aw.append(encounterAbilityRow(p,an)));
   card.append(aw);
+  // legendary Auras — only for legendaries (or if this enemy already has some)
+  if(isLegendarySpeciesName(p.species) || (p.auras||[]).length)
+    card.append(aurasCard(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   // capabilities — read-only (derived from species), hover a chip to see what it does
   if(sp) card.append(encounterCapsRow(sp));
   // Buffs & Orders — same shared card as the Sheet/Map token menu, so a GM can grant a wild
@@ -9389,22 +9394,40 @@ function attackTargetWidget({ dmg, type, physical }){
   wrap.append(el("div",{class:"small muted",style:"margin-bottom:6px"},
     `Applies the rolled ${dmg} as a ${typeName} ${physical?"Physical":"Special"} hit to each checked target — subtracts their ${physical?"Defense":"Sp.Def"}, type effectiveness, defensive abilities & DR automatically.`));
 
-  // one checkbox per token; each keeps its own live HP label + a "select all" toggle
-  const checks = [];
-  const list = el("div",{style:"max-height:160px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-bottom:6px"});
+  // one persistent checkbox per token; split into Players / Enemies tabs (players first). The
+  // checkboxes survive tab switches, so an area attack can hit tokens across both factions.
   const label = t=>{ const i=tokenHp(t); return `${i.name} — ${i.cur}/${i.max} HP`; };
-  tokens.forEach((t,i)=>{
-    const cb = el("input",{type:"checkbox"}); checks.push(cb);
+  const items = tokens.map(t=>{
+    const kind = tokenHp(t).kind;
+    const faction = (kind==="trainer"||kind==="pokemon") ? "players" : "enemies";
+    const cb = el("input",{type:"checkbox"});
     const txt = el("span",{class:"small"}, label(t));
-    list.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;padding:2px 0;cursor:pointer"},
-      cb, txt));
-    cb._txt = txt; cb._token = t;
+    const row = el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;padding:2px 0;cursor:pointer"}, cb, txt);
+    return { t, cb, txt, row, faction };
   });
-  wrap.append(list);
+  let tab = items.some(i=>i.faction==="players") ? "players" : "enemies";
+  const tabsBar = el("div",{class:"subtabs",style:"margin-bottom:6px"});
+  const bP = el("button",{class:"subtab",onclick:()=>{ tab="players"; draw(); }});
+  const bE = el("button",{class:"subtab",onclick:()=>{ tab="enemies"; draw(); }});
+  tabsBar.append(bP, bE);
+  const list = el("div",{style:"max-height:160px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-bottom:6px"});
   const allCb = el("input",{type:"checkbox"});
-  allCb.addEventListener("change",()=>{ checks.forEach(c=>{ c.checked = allCb.checked; }); });
-  wrap.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;margin-bottom:8px;cursor:pointer"},
-    allCb, el("span",{class:"small muted"},"select all")));
+  allCb.addEventListener("change",()=>{ items.filter(i=>i.faction===tab).forEach(i=>{ i.cb.checked = allCb.checked; }); });
+  const allWrap = el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;margin-bottom:8px;cursor:pointer"},
+    allCb, el("span",{class:"small muted"},"select all in this tab"));
+  function draw(){
+    const nP = items.filter(i=>i.faction==="players").length, nE = items.length - nP;
+    bP.textContent = `🧑 Players (${nP})`; bE.textContent = `👹 Enemies (${nE})`;
+    bP.classList.toggle("on", tab==="players"); bE.classList.toggle("on", tab==="enemies");
+    items.forEach(i=>{ i.txt.textContent = label(i.t); });     // keep HP labels fresh
+    list.innerHTML = "";
+    const rows = items.filter(i=>i.faction===tab);
+    if(!rows.length) list.append(el("div",{class:"small muted"},
+      tab==="players" ? "No player tokens on this map." : "No enemy tokens on this map."));
+    rows.forEach(i=>list.append(i.row));
+    allCb.checked = rows.length>0 && rows.every(i=>i.cb.checked);
+  }
+  wrap.append(tabsBar, list, allWrap);
 
   // effectiveness nudge (applies to every selected target) + area flag (matters only vs a Swarm)
   let manualStep = 0;
@@ -9425,24 +9448,23 @@ function attackTargetWidget({ dmg, type, physical }){
 
   const out = el("div",{class:"small",style:"margin-top:8px"});
   const apply = async ()=>{
-    const chosen = checks.filter(c=>c.checked);
-    if(!chosen.length){ out.textContent = "Tick at least one target."; return; }
+    const chosen = items.filter(i=>i.cb.checked);
+    if(!chosen.length){ out.textContent = "Tick at least one target (in either tab)."; return; }
     out.innerHTML = "";
-    for(const cb of chosen){
-      const token = cb._token;
-      const br = tokenDamageBreakdown(token, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked });
-      const before = await applyTokenDamage(token, br);
-      cb._txt.textContent = label(token);                      // refresh that row's HP
-      cb.checked = false;                                      // clear so a second Apply doesn't double-hit
+    for(const it of chosen){
+      const br = tokenDamageBreakdown(it.t, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked });
+      const before = await applyTokenDamage(it.t, br);
+      it.cb.checked = false;                                    // clear so a second Apply doesn't double-hit
       const line = el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"});
-      line.append(el("div",{style:"font-weight:700"}, tokenHp(token).name),
+      line.append(el("div",{style:"font-weight:700"}, tokenHp(it.t).name),
         el("div",{html: damageResultHTML(dmg, typeName, br, before)}));
       out.append(line);
     }
-    allCb.checked = false;
+    draw();                                                     // refresh HP labels + select-all state
   };
   wrap.append(el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;align-items:center"},
     el("button",{class:"btn-primary",onclick:apply},"💥 Apply to selected")), out);
+  draw();
   return wrap;
 }
 /* re-render the token menu after an in-place mutation (buffs, CS, movement mode…) without losing
@@ -9650,8 +9672,8 @@ function openTokenMenu(token, map){
       }
     }
 
-    // ---- Legendary Auras: list this creature's Domains right from its token ----
-    if(L && L.obj && (L.kind==="pokemon"||L.kind==="enc")){
+    // ---- Legendary Auras: list an encounter creature's Domains right from its token ----
+    if(L && L.obj && L.kind==="enc"){
       const p = L.obj;
       if((p.auras||[]).length){
         const auw = el("div",{style:"margin-top:16px"});
