@@ -889,11 +889,13 @@ function applyEndDay(c){
   if(!c) return;
   const t = c.trainer; normTrainer(t);
   t.usedAP = 0; t.tempHP = 0; t.buffs = []; resetUses(t, "all");
+  t.statuses = [];                                 // Extended Rest cures all Status afflictions (Core p.249)
   t.injuries = Math.max(0, (t.injuries||0) - 1);   // Extended Rest heals 1 Injury (Core p.249)
   t.currentHP = trainerDerived(t).hp;              // heal to remaining-injury-capped max
   (c.pokemon||[]).forEach(p => { normPokemon(p);
     if(p.mega) megaRevert(p,true);        // revert Mega before healing so max HP is the base form's
     p.tempHP = 0; p.buffs = []; resetUses(p, "all");
+    p.statuses = [];                      // cure all Status afflictions on the whole party too
     p.injuries = Math.max(0, (p.injuries||0) - 1);
     p.currentHP = pokeDerived(p).maxHP;   // heal to full (already capped by remaining Injuries)
   });
@@ -923,7 +925,7 @@ async function endScene(){
 async function endDay(){
   const gmAll = mode==="cloud" && cloud.isGM;
   const scope = gmAll ? "all players" : "this character & its party";
-  if(!confirm(`End the day (Extended Rest) for ${scope}?\nRestores HP & AP, heals 1 Injury, and refreshes all Scene & Daily uses.`)) return;
+  if(!confirm(`End the day (Extended Rest) for ${scope}?\nRestores HP & AP, heals 1 Injury, cures all Status afflictions, and refreshes all Scene & Daily uses.`)) return;
   if(gmAll){
     await fetchRoster();   // see endScene() — must apply on top of fresh data, not a possibly-stale cache
     const rows = playerRestRows();
@@ -932,7 +934,7 @@ async function endDay(){
     render(); toast(`Extended Rest for ${rows.length} player sheet${rows.length===1?"":"s"}`); return;
   }
   const c = activeChar(); if(!c) return;
-  applyEndDay(c); save(); render(); toast("Extended Rest — HP & AP restored, 1 Injury healed, all uses refreshed");
+  applyEndDay(c); save(); render(); toast("Extended Rest — HP & AP restored, 1 Injury healed, statuses cured, all uses refreshed");
 }
 
 /* ===================================================================
@@ -970,6 +972,7 @@ function newPokemon(speciesName) {
     moves:[], tutorPoints: tutorPointsEarned(level), unlocked:false, notes:"",
     struggleType:null, struggleSpecial:false, uses:{}, image:"", statuses:[], buffs:[],
     cs:{atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0},
+    auras: legendaryAurasFor(sp ? sp.name : (speciesName||"")),
   };
 }
 /* normalise older Pokémon objects (single ability -> abilities[], add onTeam) */
@@ -985,6 +988,7 @@ function normPokemon(p){
   if(typeof p.struggleSpecial !== "boolean") p.struggleSpecial = false;
   if(!p.uses || typeof p.uses!=="object") p.uses = {};
   if(!Array.isArray(p.statuses)) p.statuses = [];
+  if(!Array.isArray(p.auras)) p.auras = legendaryAurasFor(p.species);   // legendary Domains (book default on first load)
   if(!Array.isArray(p.buffs)) p.buffs = [];        // active Cheers / Orders / Songs (#2)
   if(!Array.isArray(p.customMoves)) p.customMoves = [];   // freeform move/action notes not in the DB
   if(!p.cs || typeof p.cs!=="object") p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
@@ -1799,6 +1803,9 @@ function openTrainerAttack(t, weaponMoveName, w){
         el("div",{style:"font-size:26px;font-weight:800;color:var(--accent)"}, `💥 ${total}`),
         el("div",{class:"small muted",style:"margin-top:2px"}, parts.join("  ") + `. Target subtracts Defense.`)));
       if(bm.crit) out.append(el("div",{class:"small muted"}, `Crit / Effect range widened by +${bm.crit} (buffs).`));
+      // GM: apply this trainer hit to a battle-map token (trainer attacks are typeless-or-typed Physical).
+      const tw = attackTargetWidget({ dmg:total, type:st.type||"Typeless", physical:!/spec/i.test(st.cls||"") });
+      if(tw) out.append(tw);
     }
   };
   body.append(out);
@@ -3186,6 +3193,9 @@ function renderMonPlay(root, p, sp){
   /* abilities (a Pokémon can have several) */
   root.append(abilitiesCard(p, sp));
 
+  /* legendary Auras — only for legendaries (or GM-unlocked / already-assigned) */
+  if(isLegendarySpeciesName(p.species) || (p.auras||[]).length || p.unlocked) root.append(aurasCard(p, sp));
+
   /* moves */
   root.append(movesCard(p, sp));
   root.append(customMovesCard(p, ()=>refreshMon(p)));
@@ -3339,6 +3349,215 @@ function abilitiesAtLevel(sp, level){
 }
 
 /* abilities card — a Pokémon can hold several; each expandable with its effect */
+/* ===================================================================
+   Legendary Auras (from "The Blessed and the Damned" supplement).
+   Display-only: the auras and their full rules are surfaced for the GM;
+   none of their effects are auto-applied (they're too situational — GM
+   adjudicates). Each legendary the book covers has its Domains attributed;
+   uncovered legendaries show an empty, GM-editable Auras section.
+=================================================================== */
+const auraKey = s => String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+const AURA_DEFS = [
+  ["Chaos","Whenever an opponent rolls to hit the Possessor with a Move, Struggle Attack or Feature, they roll two d20s and take the lower result. Whenever one of its Combat Stages would be lowered, or it would be inflicted with a Status Effect, as the result of a Move, Struggle Attack or Feature that hit it, roll d20; on a result of 11 or higher, the attacker is inflicted instead."],
+  ["Creation","Once per turn the Possessor may do one of the following: (1) Place a Weather effect into play, always Type-Shifted to one of its Types to benefit the Possessor; (2) Change up to five adjacent meters of terrain in any manner they please (walls, difficult terrain, conjured water, etc.); (3) Create a servant to assist them in battle — a Pokemon of the same Level as the Possessor."],
+  ["Creativity","The Possessor may use the Features Nuanced Performance, Reliable Performance, Bardic Flair, Power Chord, Fabulous Max, and Rule of Cool. They may target themselves with these Features, possess AP equal to 3 + (Possessor level / 5), and are considered to have 4d6 in all their Contest Stats."],
+  ["Death","All who oppose the Possessor lose 1/10th their max HP per turn. If any enemy combatant reaches -100% HP, they instantly die, and may be risen by the Possessor as its own loyal servant. If an enemy strikes the Possessor, they roll d20; on a result of 5 or less they are inflicted with Heal Block."],
+  ["Destruction","If the target of a Move used by the Possessor would Resist it or is Immune to it, it instead takes Neutral damage. All passive damage the Possessor deals (weather, status, spikes, etc.) is doubled, and Magic Guard, Sturdy, and other defensive Abilities are disabled."],
+  ["Devourer","While the Devourer Aura is active, the Auras of all other Legendary Pokemon in the vicinity are disabled. If the Devourer Aura is disabled, they may invoke their Auras again."],
+  ["Dreams","If the Possessor hits an enemy with a Move, that target instantly falls asleep, even with the Insomnia Ability. Whenever the Possessor is inflicted with a Status Effect, the attacker rolls d20; on a 10 or lower they fall asleep. If the Possessor is put to sleep, all combatants fall asleep."],
+  ["Emotion","All who oppose the Possessor are immediately Confused, Enraged, and Infatuated with the Possessor. Any Status Moves the Possessor uses that target an enemy or ally instead target all enemies or all allies. Abilities that grant Immunity to Status Effects are disabled before the Possessor."],
+  ["Equilibrium","All damage inflicted to the Possessor is returned to the assailant. The Possessor may use Synchronize as a Free Action any time they are inflicted with a Status Effect that would trigger Synchronize."],
+  ["Fate","The Possessor gains +3 to all Attack, Skill, Feature, Status Recovery, and Opposed Rolls while the Aura is active. All who oppose them take a -3 penalty on all of those Rolls."],
+  ["Glitch","Hitting the Possessor has a 50% chance of increasing your Glitch by 1. Glitch 1: all your Moves become Metronome (keeping their normal frequencies). Glitch 2: when you use Metronome you roll two Moves and the Possessor chooses which you use. Glitch 3: you roll three Moves and the Possessor picks one. The Possessor always has Glitch 3."],
+  ["Heroism","The Possessor has access to all Cheerleader Features and is treated as having Master Rank Charm and Command. They may target themselves with these Features and possess AP equal to 3 + (Possessor level / 5)."],
+  ["Hivemind","The Possessor may use Hidden Power of any Type of their choice as if they had the Words of Power Feature. The Possessor also copies any Features from Mystical and Elemental Connection Classes from all combatants."],
+  ["Knowledge","While active, all who oppose the Possessor are Suppressed. Furthermore, all Moves they know of Scene or Daily frequency are Disabled (including Moves lowered to that frequency by Suppression). This persists as long as the Aura is active."],
+  ["Law","The Possessor declares 3 rules. All enemy combatants must abide by them. Breaking a rule provokes the Possessor's wrath: they receive a free priority attack against the one who broke the rule."],
+  ["Life","The Possessor may revive a knocked-out or dead ally once per turn as a Swift Action; the ally is healed as if treated at a Pokecenter and its injuries cleared. The Possessor may also use Heal Bell at EoT frequency and has access to all Medium Features based on White Magic."],
+  ["Love","The Possessor may inflict one enemy with Infatuation per round (any gender, or genderless). The Possessor is immune to Infatuation. Whenever you hit the Possessor, roll d20; on a 5 or lower your attack is treated as having the Recoil keyword at 1/4th, even if you are immune to Recoil."],
+  ["Loyalty","The Possessor judges the bond between enemies and their Pokemon. Any Pokemon under Loyalty 5 have all Combat Stages lowered to -3. Each time such a Pokemon is issued a command, roll d20; on a 7 or lower each of its Combat Stages is lowered by another -1."],
+  ["Luck","Whenever the Possessor would roll a d20, they roll 2d20 and take the higher. They are always treated as under the Super Luck Ability, and emit pure luck — treating themselves and all allies as if holding a Luck Incense."],
+  ["Matter","The Possessor may add difficult terrain and physical obstructions (walls, cliffs, pits, lava, water, etc.) to the battleground at will. They and their allies are unaffected by these obstacles. These elements persist even if the Aura is not active."],
+  ["Nature","Once per round the Possessor may beckon the assistance of the wilds: a new combatant enters the battle at the Possessor's level if a Pokemon, or half their level if a Trainer. (Nature, Oceans and Sky share this effect; a Possessor with several of these Auras may summon one ally per such Aura per round.)"],
+  ["Nightmare","Those who oppose the Possessor are affected by Frightened when they fall asleep. Frightened treats the afflicted as Paralyzed and Suppressed, even if they would be immune, and persists for the rest of combat (even if the Aura is disabled) and cannot be removed by conventional means. In the Dream World, all who oppose the Possessor are Frightened as soon as combat begins."],
+  ["Oceans","Once per round the Possessor may beckon the assistance of the wilds: a new combatant enters the battle at the Possessor's level if a Pokemon, or half their level if a Trainer. (Nature, Oceans and Sky share this effect; a Possessor with several of these Auras may summon one ally per such Aura per round.)"],
+  ["Pathogen","Whenever you hit the Possessor, roll d20; on a 5 or lower you become Infected. Infected individuals are considered Poisoned and Burned even if immune. This persists for the rest of combat (even if the Aura is disabled) and cannot be removed by conventional means."],
+  ["Peace","Whenever you hit the Possessor with a Move, that Move becomes Disabled. If all a combatant's Moves are Disabled, their Attack and Special Attack are set to -6 Combat Stages. If the Aura is disabled, these effects fade."],
+  ["Predator","The Possessor has access to all Taskmaster Features (including Press) and is treated as having Master Rank Intimidate and Command. They may target themselves with these Features, possess AP equal to 3 + (Possessor level / 5), and may Press themselves without receiving injuries, losing only 1/16th their max HP."],
+  ["Primal Weather","When active, the Possessor sets the Weather with one of: Delta Stream (Strong Winds — Electric, Ice and Rock Moves do neutral damage to Flying Types), Desolate Land (Sunny — Water Moves cannot be used), or Primordial Sea (Rainy — Fire Moves cannot be used). Attempts to override this Weather without removing the Aura fail."],
+  ["Rejuvenation","The Possessor is always considered to have the Healer and Regenerator Abilities. They may use both once per round, and may also target others with their Regenerator usage."],
+  ["Rivalry","The Possessor cannot be brought below 1 HP unless their paired Rival is one of their enemies. This Aura can only be disabled by another Legendary with the Rivalry Aura (not necessarily their paired Rival)."],
+  ["Sky","Once per round the Possessor may beckon the assistance of the wilds: a new combatant enters the battle at the Possessor's level if a Pokemon, or half their level if a Trainer. (Nature, Oceans and Sky share this effect; a Possessor with several of these Auras may summon one ally per such Aura per round.)"],
+  ["Solitude","The Possessor covers the arena in a heavy mist that divides its enemies. They become unaware of their allies' locations and cannot hear, communicate via Aura or Telepathy, or contact them through technological or occult means. The mist remains as long as the Aura is active."],
+  ["Storms","The Possessor always has Sandstorm or Hail and Sunny Day or Rain Dance active at once, always Type-Shifted to one of its Types to benefit the Possessor. These Weather conditions cannot be overwritten while the Aura is active."],
+  ["Symbiotic","The Possessor extends this Aura to their Symbiant. The two are always aware of each other's location, health and mood and can always communicate telepathically. They may access each other's Moves, Features, Skills and Edges, always using the higher of the two's Skills or Stats. The Combat Stage bonuses of the Aura apply to both. This Aura cannot be disabled by normal means — undoing it requires slaying one of the pair."],
+  ["Time","The Possessor may manipulate the Initiative Order in any manner they wish. Once per Scene for every enemy Trainer, they may use Freeze Time as a Free Action at the start of a Round, preventing anyone who does not possess the Time Aura from acting that Round."],
+  ["Trickery","The Possessor has access to all Trickster Features and may target themselves with them, possessing AP equal to 3 + (Possessor level / 5). They gain STAB on all Dark Type Moves and the Abilities Prankster, Frisk, Infiltrator, Pickpocket, and Run Away."],
+  ["War","All of the Possessor's Moves are treated as if their Frequency were increased by a PP Up. They also inflict Injuries at 25% HP Markers, and Massive Damage is treated as 25%."],
+  ["Willpower","The Possessor may Petrify a target once a Round as a Swift Action. While Petrified, you are completely removed from the initiative order. Petrify cannot be avoided and can only be removed by a Possessor of the Emotion, Knowledge, Life, Rejuvenation, or Willpower Aura. Petrify persists even if the Aura is disabled."],
+];
+const auraByKey = new Map(AURA_DEFS.map(([n,d])=>[auraKey(n),{name:n,desc:d}]));
+const AURA_NAMES = AURA_DEFS.map(([n])=>n);
+const AURA_RULES =
+  "All Legendary Pokemon possess at least three Domains (Auras). General guidelines:\n"+
+  "• For each active Aura, the Legendary gains +2 to each of their Combat Stages.\n"+
+  "• A Legendary may have at most three Auras active at any one time, even if it possesses more.\n"+
+  "• While an Aura is active, once per round per active Aura the Legendary may diminish a single Super-Effective attack to a neutral resistance.\n"+
+  "• When facing another Legendary that shares an Aura, neither is affected by that shared Aura.\n"+
+  "• If an active Aura is disabled and the Legendary possesses more than three, they may instantly activate a remaining one.\n"+
+  "• Arceus has access to every Legendary Aura.\n"+
+  "• A captured Legendary might not have access to all, if any, of its Auras.\n"+
+  "• A Legendary may extend an Aura to an ally as a permanent or temporary blessing.\n"+
+  "Disabling an Aura is hard — only one Aura can be disabled every two rounds (Massive Damage from a Super-Effective hit, another Aura-bearer nullifying it, the Lake Guardians At-Will, a paired rival, the Godslayer Gift…). Auras disabled this way take 24 hours to fully restore.";
+
+/* per-legendary Domains (auras) the book attributes. Keyed by species name; regional/alt forms are
+   resolved by stripping a trailing form word (see legendaryAurasFor). */
+const LEGENDARY_AURAS = {
+  // Legendary Birds
+  "Articuno":["Oceans","War","Storms"], "Zapdos":["Oceans","War","Storms"], "Moltres":["Oceans","War","Storms"],
+  // Legendary Beasts
+  "Raikou":["Loyalty","Peace","Storms"], "Entei":["Loyalty","Peace","Storms"], "Suicune":["Loyalty","Peace","Storms"],
+  "Celebi":["Nature","Law","Time"],
+  // The Golems / Regis
+  "Regirock":["Creation","Loyalty","Matter"], "Regice":["Creation","Loyalty","Matter"], "Registeel":["Creation","Loyalty","Matter"],
+  "Jirachi":["Creativity","Dreams","Luck"],
+  // Eon Duo
+  "Latias":["Love","Heroism","Fate"], "Latios":["Love","Heroism","Fate"],
+  // Lake Guardians (shared Law/Loyalty + one each)
+  "Uxie":["Law","Loyalty","Knowledge"], "Mesprit":["Law","Loyalty","Emotion"], "Azelf":["Law","Loyalty","Willpower"],
+  // Sea Guardians
+  "Manaphy":["Oceans","Luck","Peace"], "Phione":["Oceans","Luck","Peace"],
+  "Shaymin":["Nature","Rejuvenation","Trickery"],
+  // Swords of Justice
+  "Cobalion":["Heroism","Loyalty","Law"], "Terrakion":["Heroism","Loyalty","Law"], "Virizion":["Heroism","Loyalty","Law"], "Keldeo":["Heroism","Loyalty","Law"],
+  // Kami Trio
+  "Tornadus":["Rejuvenation","Sky","Storms"], "Thundurus":["Rejuvenation","Sky","Storms"], "Landorus":["Rejuvenation","Sky","Storms"],
+  "Meloetta":["Creativity","Love","Peace"],
+  "Diancie":["Creation","Luck","Peace"],
+  // Upper Pantheon
+  "Mew":["Love","Life","Creation"],
+  "Ho-Oh":["Rivalry","Sky","Life"], "Lugia":["Rivalry","Oceans","Storms"],
+  // Weather Trio
+  "Groudon":["Creation","Matter","Primal Weather"], "Kyogre":["Creation","Matter","Primal Weather"], "Rayquaza":["Creation","Matter","Primal Weather"],
+  // Creation Trio
+  "Palkia":["Chaos","Creation","Matter"], "Dialga":["Creation","Law","Time"], "Giratina":["Creation","Death","Law"],
+  // Lunar Duo
+  "Cresselia":["Dreams","Fate","Heroism"], "Darkrai":["Dreams","Fate","Nightmare"],
+  "Heatran":["Chaos","Destruction","War"],
+  "Regigigas":["Creation","Life","Matter"],
+  "Victini":["Fate","Heroism","War"],
+  // Tao Trio
+  "Reshiram":["Equilibrium","Heroism","Rivalry"], "Zekrom":["Equilibrium","Heroism","Rivalry"], "Kyurem":["Fate","Peace","Solitude"],
+  // Mortality Duo
+  "Xerneas":["Life","Rivalry","War"], "Yveltal":["Death","Rivalry","War"],
+  "Zygarde":["Devourer","Predator","Trickery"],
+  // Outsiders
+  "Mewtwo":["Loyalty","Symbiotic","Chaos","Destruction","War"],   // book: (Loyalty, Symbiotic) OR (Chaos, Destruction), + War
+  "Deoxys":["Life","Pathogen","Storms"],
+  "Genesect":["Nature","Predator","Trickery"],                    // book says "Land" — represented as Nature
+  "Missingno":["Chaos","Creation","Glitch"], "MissingNo":["Chaos","Creation","Glitch"],
+  "Unown":["Hivemind","Law","Trickery"],
+  "Arceus": AURA_NAMES.slice(),                                   // Arceus has access to every Aura
+};
+/* short GM notes for a few legendaries with book caveats */
+const LEGENDARY_AURA_NOTES = {
+  "Mewtwo":"The book gives an either/or: keep either (Loyalty, Symbiotic) OR (Chaos, Destruction), plus War. All are listed — trim to the three that fit this Mewtwo.",
+  "Genesect":"The book lists a 'Land' Domain with no defined rules; it is represented here as the Nature Aura.",
+  "Arceus":"Arceus has access to every Legendary Aura, but only three may be active at once.",
+  "Uxie":"Lake Guardian: shares Law & Loyalty with Mesprit/Azelf; its third Domain is Knowledge.",
+  "Mesprit":"Lake Guardian: shares Law & Loyalty with Uxie/Azelf; its third Domain is Emotion.",
+  "Azelf":"Lake Guardian: shares Law & Loyalty with Uxie/Mesprit; its third Domain is Willpower.",
+};
+const LEGENDARY_AURA_MAP = {};
+Object.entries(LEGENDARY_AURAS).forEach(([k,v])=>{ LEGENDARY_AURA_MAP[auraKey(k)] = v; });
+const LEGENDARY_AURA_NOTE_MAP = {};
+Object.entries(LEGENDARY_AURA_NOTES).forEach(([k,v])=>{ LEGENDARY_AURA_NOTE_MAP[auraKey(k)] = v; });
+/* every legendary/mythical species (book-covered + later gens) — decides whether the Auras section
+   is offered at all. Uncovered ones simply start with no auras and a GM add-picker. */
+const LEGENDARY_SPECIES = new Set([
+  "Articuno","Zapdos","Moltres","Mewtwo","Mew",
+  "Raikou","Entei","Suicune","Lugia","Ho-Oh","Celebi",
+  "Regirock","Regice","Registeel","Latias","Latios","Kyogre","Groudon","Rayquaza","Jirachi","Deoxys",
+  "Uxie","Mesprit","Azelf","Dialga","Palkia","Heatran","Regigigas","Giratina","Cresselia","Phione","Manaphy","Darkrai","Shaymin","Arceus",
+  "Victini","Cobalion","Terrakion","Virizion","Tornadus","Thundurus","Reshiram","Zekrom","Landorus","Kyurem","Keldeo","Meloetta","Genesect",
+  "Xerneas","Yveltal","Zygarde","Diancie","Hoopa","Volcanion","Missingno","MissingNo","Unown",
+  "Type: Null","Silvally","Tapu Koko","Tapu Lele","Tapu Bulu","Tapu Fini","Cosmog","Cosmoem","Solgaleo","Lunala","Necrozma",
+  "Nihilego","Buzzwole","Pheromosa","Xurkitree","Celesteela","Kartana","Guzzlord","Poipole","Naganadel","Stakataka","Blacephalon",
+  "Magearna","Marshadow","Zeraora","Meltan","Melmetal",
+  "Zacian","Zamazenta","Eternatus","Kubfu","Urshifu","Zarude","Regieleki","Regidrago","Glastrier","Spectrier","Calyrex","Enamorus",
+  "Wo-Chien","Chien-Pao","Ting-Lu","Chi-Yu","Koraidon","Miraidon","Okidogi","Munkidori","Fezandipiti","Ogerpon","Terapagos","Pecharunt",
+].map(auraKey));
+const FORM_SUFFIXES = new Set(["galarian","alolan","hisuian","paldean","origin","altered","therian","incarnate",
+  "black","white","dawn","dusk","ultra","primal","mega","crowned","hero","ice","shadow","rider","zen",
+  "sky","land","resolute","pirouette","unbound","confined","complete","10","50","therian","aria","step","blade","shield"]);
+/* auras a species starts with (book attribution), tolerant of regional/alt-form naming */
+function legendaryAurasFor(name){
+  const toks = String(name||"").trim().split(/\s+/);
+  for(let i=toks.length; i>=1; i--){
+    const cand = auraKey(toks.slice(0,i).join(""));
+    if(LEGENDARY_AURA_MAP[cand]) return LEGENDARY_AURA_MAP[cand].slice();
+    // also allow stripping a trailing form word then matching the rest
+  }
+  // fall back: drop a trailing form suffix word and retry the full remainder
+  if(toks.length>1 && FORM_SUFFIXES.has(toks[toks.length-1].toLowerCase())){
+    const base = auraKey(toks.slice(0,-1).join(""));
+    if(LEGENDARY_AURA_MAP[base]) return LEGENDARY_AURA_MAP[base].slice();
+  }
+  const whole = auraKey(name);
+  return LEGENDARY_AURA_MAP[whole] ? LEGENDARY_AURA_MAP[whole].slice() : [];
+}
+function isLegendarySpeciesName(name){
+  if(!name) return false;
+  const toks = String(name).trim().split(/\s+/);
+  if(LEGENDARY_SPECIES.has(auraKey(name))) return true;
+  if(toks.length>1 && LEGENDARY_SPECIES.has(auraKey(toks.slice(0,-1).join("")))) return true;
+  return legendaryAurasFor(name).length>0;
+}
+function auraNoteFor(name){
+  const toks = String(name||"").trim().split(/\s+/);
+  return LEGENDARY_AURA_NOTE_MAP[auraKey(name)]
+      || (toks.length>1 ? LEGENDARY_AURA_NOTE_MAP[auraKey(toks.slice(0,-1).join(""))] : null)
+      || null;
+}
+/* one aura as a collapsible row (name + full rules text); optional remove button for the editor */
+function auraRow(an, onRemove){
+  const a = auraByKey.get(auraKey(an));
+  const row = el("details",{class:"spoiler"});
+  const sum = el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, a?a.name:an));
+  if(onRemove) sum.append(el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove",
+    onclick:e=>{ e.preventDefault(); onRemove(); }},"×"));
+  row.append(sum);
+  row.append(el("div",{class:"small",style:"margin-top:6px;white-space:pre-wrap"},
+    a?a.desc:"Not a recognised Aura — GM-defined."));
+  return row;
+}
+/* Legendary Auras card for the Pokémon Play tab (styled like the Abilities card) */
+function aurasCard(p, sp){
+  if(!Array.isArray(p.auras)) p.auras = legendaryAurasFor(p.species);
+  const card = el("div",{class:"card"}, el("h3",{},`Legendary Auras (${p.auras.length})`,
+    el("div",{class:"inline"}, unlockToggle(p),
+      el("button",{class:"linkbtn h-act",title:"reset to this species' book Domains",
+        onclick:()=>{ p.auras = legendaryAurasFor(p.species); save(); refreshMon(p); }},"↺ default"),
+      el("button",{class:"linkbtn h-act",onclick:()=>addAura(p)},"+ add"))));
+  const note = auraNoteFor(p.species);
+  if(note) card.append(el("div",{class:"small muted",style:"margin-bottom:6px",html:"ℹ "+note}));
+  // "how auras work" reference
+  const rules = el("details",{class:"spoiler"});
+  rules.append(el("summary",{}, el("span",{class:"muted small",style:"font-weight:700"},"How Legendary Auras work")));
+  rules.append(el("div",{class:"small",style:"margin-top:6px;white-space:pre-wrap"}, AURA_RULES));
+  card.append(rules);
+  if(!p.auras.length) card.append(el("span",{class:"muted small"},"none — tap “+ add” to give this legendary its Domains."));
+  p.auras.forEach((an,i)=>card.append(auraRow(an, ()=>{ p.auras.splice(i,1); save(); refreshMon(p); })));
+  return card;
+}
+function addAura(p){
+  if(!Array.isArray(p.auras)) p.auras = [];
+  const names = AURA_NAMES.filter(n=>!p.auras.some(a=>auraKey(a)===auraKey(n)));
+  if(!names.length){ toast("This Pokémon already has every Aura"); return; }
+  openPicker("Add a Legendary Aura", names, name=>{
+    if(!p.auras.some(a=>auraKey(a)===auraKey(name))){ p.auras.push(name); save(); refreshMon(p); }
+  });
+}
 function abilitiesCard(p, sp){
   if(!Array.isArray(p.abilities)) p.abilities = [];
   const card = el("div",{class:"card"}, el("h3",{},`Abilities (${p.abilities.length})`,
@@ -4557,6 +4776,11 @@ function openMoveRoll(p, m, sp, opts={}){
         dmgLine.append(el("div",{class:"small muted",style:"margin-top:4px"}, parts.join("  ")));
         if(bm.crit) dmgLine.append(el("div",{class:"small muted"}, `Crit / Effect range widened by +${bm.crit} (buffs).`));
         dmgLine.append(el("div",{class:"small muted"}, `Target subtracts ${defNote} & damage reduction.`));
+        // GM: drop this rolled hit straight onto a battle-map token (auto Def / type / abilities / DR).
+        if(isPhys || isSpec){
+          const tw = attackTargetWidget({ dmg:total, type:mtype||"Typeless", physical:isPhys });
+          if(tw) dmgLine.append(tw);
+        }
       }
       out.append(dmgLine);
     }
@@ -8945,8 +9169,11 @@ function mapTokenNode(token, map, originX=0, originY=0){
   const factionColor = tokenFactionColor(info);
   const selected = mapSelectActive(map) && mapSelect.ids.has(token.id);
   const isTurn = battleOn() && initEntryToken(activeMapMeta().initTurnId) === token.id;
-  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":""),
-    style:`left:${token.x*px+originX}px;top:${token.y*px+originY}px;width:${boxPx}px;height:${boxPx}px`
+  // A trainer (the "player" figure) always stacks above Pokémon tokens — even their own party.
+  const isTrainerTok = info.kind==="trainer" || info.kind==="enctrainer";
+  const playerSide = info.kind==="trainer" || info.kind==="pokemon";
+  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":""),
+    style:`left:${token.x*px+originX}px;top:${token.y*px+originY}px;width:${boxPx}px;height:${boxPx}px;z-index:${isTrainerTok?2:1}`
       +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")
       +(factionColor?`;border-color:${factionColor}`:"")});
   node.dataset.tid = token.id;
@@ -8960,7 +9187,8 @@ function mapTokenNode(token, map, originX=0, originY=0){
       el("div",{class:"tk-hp"+(pct<=25?" low":pct<=50?" mid":""), style:`width:${pct}%`})));
   }
   node.append(el("div",{class:"tk-name"}, (token.gmHidden?"🙈 ":"") + info.name + (info.unlinked?" ⚠":"")));
-  if(hpVisible) node.append(el("div",{class:"tk-hpnum"}, info.unlinked?"⚠ unlinked":`${info.cur}/${info.max}`));
+  // Player-side tokens rely on the HP bar alone (no numeric readout); enemies/standalone still show it.
+  if(hpVisible && !playerSide) node.append(el("div",{class:"tk-hpnum"}, info.unlinked?"⚠ unlinked":`${info.cur}/${info.max}`));
   if(tokenStatusVisible(info)){
     const keys = tokenStatusKeys(token).filter(k=>statusByKey.has(k));
     const ringHtml = tokenStatusRingSVG(keys, boxPx, token.id);
@@ -9093,6 +9321,130 @@ function attachImageDrag(node, img, map, overlay, originX=0, originY=0){
   // which unreliably swallowed the click (the trash button "didn't seem to work").
   node.addEventListener("pointerdown", ev=>{ if(ev.target.closest(".map-img-handle,.map-img-ctrls")) return; startDrag(ev,"move"); });
 }
+/* ---- shared "apply an attack to a map token" damage math (Core damage steps) ----
+   Runs the full sequence a single-target hit goes through: subtract the target's Defense/Sp.Def,
+   apply type effectiveness (including the defender's Static defensive abilities — Thick Fat,
+   Levitate, Wonder Guard, Filter, …) and any Swarm/manual effectiveness nudge, then Damage
+   Reduction (active DR buffs + flat DR vs Super-Effective). Used by BOTH the token menu's manual
+   "Apply an attack" box and the roll-result "Apply to target" picker, so the two never diverge. */
+function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false }){
+  const def = tokenDefenseStat(token, !!physical);
+  const swarmTgt = (()=>{ const LL = token.link ? tokenLinked(token) : null;
+    return (LL && !LL.missing && LL.kind==="enc" && isSwarm(LL.obj)) ? LL.obj : null; })();
+  const swarmStep = swarmTgt ? swarmDamageStep(aoe) : 0;
+  const stepAdj = swarmStep + extraStep;                    // Swarm + the GM's manual effectiveness nudge
+  const typeless = !type || type==="Typeless";
+  const owner = token.link ? (tokenLinked(token)||{}).obj : null;
+  const defMods = owner ? defenseTypeMods(owner) : null;
+  let mult;
+  if(typeless) mult = 1;
+  else if(defMods && defMods.immune.has(type)) mult = 0;
+  else {
+    mult = typeMultAgainst(type, tokenDefTypes(token), stepAdj + (defMods?.step?.[type] || 0));
+    if(defMods?.wonderGuard && mult > 0 && mult <= 1) mult = 0;
+    if(defMods?.seReduce && mult > 1) mult = seReducedMult(mult);   // Filter / Solid Rock
+  }
+  const afterDef  = Math.max(0, dmg - def);
+  const afterMult = Math.floor(afterDef * mult);
+  const { dr, from } = owner ? buffDR(owner) : { dr:0, from:[] };
+  const seDR  = (defMods?.seFlatDR && mult > 1) ? defMods.seFlatDR : 0;
+  const final = Math.max(0, afterMult - dr - seDR);
+  return { def, physical:!!physical, typeless, mult, afterDef, afterMult, dr, from, seDR, final,
+           owner, defMods, swarmTgt, swarmStep, extraStep };
+}
+/* Apply a computed breakdown to the token: subtract its HP and spend any one-shot DR buff that
+   absorbed the hit (Excited, Intercept…). Returns the HP value BEFORE the hit. */
+async function applyTokenDamage(token, br){
+  const before = tokenHp(token).cur;
+  await setTokenHP(token, before - br.final);
+  if(br.dr > 0 && br.owner && consumeDamageBuffs(br.owner)) await commitTokenBuffs(token);
+  return before;
+}
+/* one-line "N − Def = …, Type eff = …, − DR → final. HP a → b" breakdown, shared by both callers */
+function damageResultHTML(dmg, typeName, br, before){
+  const eff = br.typeless ? "typeless (no effectiveness)" : br.mult===0 ? "immune ×0"
+    : br.mult>1 ? `super-effective ×${br.mult}` : br.mult<1 ? `resisted ×${br.mult}` : "neutral ×1";
+  let drTxt = "";
+  if(br.dr  > 0) drTxt  = ` − ${br.dr} DR (${br.from.join(", ")})`;
+  if(br.seDR > 0) drTxt += ` − ${br.seDR} DR (vs Super-Effective)`;
+  const swarmTxt = (br.swarmTgt && !br.typeless) ? ` (${br.swarmStep>0?"area, +1 step":"single-target, −1 step"} vs Swarm)` : "";
+  const stepTxt  = (br.extraStep && !br.typeless) ? ` (manual ${br.extraStep>0?"+":""}${br.extraStep} step)` : "";
+  const abilTxt  = (br.defMods && br.defMods.why.length && !br.typeless) ? `<br><span style="color:var(--accent)">⚙ ${br.defMods.why.join(" · ")}</span>` : "";
+  return `${dmg} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${swarmTxt}${stepTxt} = ${br.afterMult}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${before - br.final}</b>.${abilTxt}`;
+}
+/* GM tool surfaced on a rolled attack's result: pick a token on the battle map and drop the rolled
+   damage on it, running the same full damage math as the token menu (type, phys/spec, abilities, DR).
+   Returns a DOM node, or null when it doesn't apply (not the GM, not in cloud, no editable tokens on
+   the current map). `dmg` = the rolled total, `type` = the move's effective Type, `physical` picks
+   Def vs Sp.Def. */
+function attackTargetWidget({ dmg, type, physical }){
+  if(mode!=="cloud" || !cloud.isGM) return null;
+  const map = currentMapForView() || activeMap(); if(!map) return null;
+  const tokens = mapTokensFor(map.id).filter(t=>{ const i=tokenHp(t); return i.editable && !i.unlinked; });
+  if(!tokens.length) return null;
+  const typeName = type || "Typeless";
+  const wrap = el("div",{style:"margin-top:12px;border-top:1px dashed var(--line);padding-top:10px"});
+  wrap.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800;margin-bottom:6px"},
+    "🎯 APPLY THIS HIT TO TARGET(S)"));
+  wrap.append(el("div",{class:"small muted",style:"margin-bottom:6px"},
+    `Applies the rolled ${dmg} as a ${typeName} ${physical?"Physical":"Special"} hit to each checked target — subtracts their ${physical?"Defense":"Sp.Def"}, type effectiveness, defensive abilities & DR automatically.`));
+
+  // one checkbox per token; each keeps its own live HP label + a "select all" toggle
+  const checks = [];
+  const list = el("div",{style:"max-height:160px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-bottom:6px"});
+  const label = t=>{ const i=tokenHp(t); return `${i.name} — ${i.cur}/${i.max} HP`; };
+  tokens.forEach((t,i)=>{
+    const cb = el("input",{type:"checkbox"}); checks.push(cb);
+    const txt = el("span",{class:"small"}, label(t));
+    list.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;padding:2px 0;cursor:pointer"},
+      cb, txt));
+    cb._txt = txt; cb._token = t;
+  });
+  wrap.append(list);
+  const allCb = el("input",{type:"checkbox"});
+  allCb.addEventListener("change",()=>{ checks.forEach(c=>{ c.checked = allCb.checked; }); });
+  wrap.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;margin-bottom:8px;cursor:pointer"},
+    allCb, el("span",{class:"small muted"},"select all")));
+
+  // effectiveness nudge (applies to every selected target) + area flag (matters only vs a Swarm)
+  let manualStep = 0;
+  const stepLbl = el("span",{class:"small",style:"min-width:140px;text-align:center;font-weight:700"});
+  const drawStep = ()=>{ stepLbl.textContent = manualStep===0 ? "no adjustment"
+    : manualStep>0 ? `+${manualStep} step — more effective` : `${manualStep} step — more resisted`; };
+  drawStep();
+  const aoeCb = el("input",{type:"checkbox"});
+  wrap.append(el("div",{class:"tk-menu-row",style:"gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px"},
+    el("span",{class:"small muted"},"Effectiveness:"),
+    el("button",{class:"btn-secondary",style:"padding:2px 12px",title:"one step more resisted",
+      onclick:()=>{ manualStep=Math.max(-4,manualStep-1); drawStep(); }},"−"),
+    stepLbl,
+    el("button",{class:"btn-secondary",style:"padding:2px 12px",title:"one step more effective",
+      onclick:()=>{ manualStep=Math.min(4,manualStep+1); drawStep(); }},"+")));
+  wrap.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;margin-bottom:6px;cursor:pointer"},
+    aoeCb, el("span",{class:"small muted"},"Area / multi-target attack (a Swarm takes area hits one step more effective)")));
+
+  const out = el("div",{class:"small",style:"margin-top:8px"});
+  const apply = async ()=>{
+    const chosen = checks.filter(c=>c.checked);
+    if(!chosen.length){ out.textContent = "Tick at least one target."; return; }
+    out.innerHTML = "";
+    for(const cb of chosen){
+      const token = cb._token;
+      const br = tokenDamageBreakdown(token, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked });
+      const before = await applyTokenDamage(token, br);
+      cb._txt.textContent = label(token);                      // refresh that row's HP
+      cb.checked = false;                                      // clear so a second Apply doesn't double-hit
+      const line = el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"});
+      line.append(el("div",{style:"font-weight:700"}, tokenHp(token).name),
+        el("div",{html: damageResultHTML(dmg, typeName, br, before)}));
+      out.append(line);
+    }
+    allCb.checked = false;
+  };
+  wrap.append(el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;align-items:center"},
+    el("button",{class:"btn-primary",onclick:apply},"💥 Apply to selected")), out);
+  return wrap;
+}
 /* re-render the token menu after an in-place mutation (buffs, CS, movement mode…) without losing
    the modal's scroll position — openTokenMenu's modal() call tears down & rebuilds .modal-body
    from scratch, which reset scroll to the top on every small change ("sends me to the start of
@@ -9206,44 +9558,12 @@ function openTokenMenu(token, map){
       const apply = async ()=>{
         const dmg = parseInt(dmgIn.value);
         if(isNaN(dmg)){ out.textContent = "Enter a damage number."; return; }
-        const physical = clsSel.value==="phys";
-        const def = tokenDefenseStat(token, physical);
-        const types = tokenDefTypes(token);
-        const swarmStep = swarmTgt ? swarmDamageStep(aoeBox.checked) : 0;
-        const stepAdj = swarmStep + manualStep;   // Swarm + the GM's manual effectiveness nudge
-        const typeless = typeSel.value==="Typeless";
-        const owner = token.link ? (tokenLinked(token)||{}).obj : null;
-        // the defender's Static defensive abilities (Thick Fat, Levitate, Wonder Guard, Filter…) shift the
-        // effectiveness ladder / grant immunity / soften Super-Effective before the multiplier is taken.
-        const defMods = owner ? defenseTypeMods(owner) : null;
-        let mult;
-        if(typeless) mult = 1;
-        else if(defMods && defMods.immune.has(typeSel.value)) mult = 0;
-        else {
-          mult = typeMultAgainst(typeSel.value, types, stepAdj + (defMods?.step?.[typeSel.value] || 0));
-          if(defMods?.wonderGuard && mult > 0 && mult <= 1) mult = 0;
-          if(defMods?.seReduce && mult > 1) mult = seReducedMult(mult);   // Filter / Solid Rock
-        }
-        const afterDef = Math.max(0, dmg - def);
-        const afterMult = Math.floor(afterDef * mult);
-        // Damage Reduction: the target's active buffs (Excited, Song of Life…) plus any flat DR vs
-        // Super-Effective from Filter+Solid Rock / Prism Armor — applied last (Core damage steps).
-        const { dr, from } = owner ? buffDR(owner) : { dr:0, from:[] };
-        const seDR = (defMods?.seFlatDR && mult > 1) ? defMods.seFlatDR : 0;
-        const final = Math.max(0, afterMult - dr - seDR);
-        const before = tokenHp(token).cur;
-        await setTokenHP(token, before - final); draw();
-        let drTxt = "";
-        if(dr > 0){
-          if(consumeDamageBuffs(owner)) await commitTokenBuffs(token);
-          drTxt = ` − ${dr} DR (${from.join(", ")})`;
-        }
-        if(seDR > 0) drTxt += ` − ${seDR} DR (vs Super-Effective)`;
-        const eff = typeless ? "typeless (no effectiveness)" : mult===0 ? "immune ×0" : mult>1 ? `super-effective ×${mult}` : mult<1 ? `resisted ×${mult}` : "neutral ×1";
-        const swarmTxt = (swarmTgt && !typeless) ? ` (${aoeBox.checked?"area, +1 step":"single-target, −1 step"} vs Swarm)` : "";
-        const stepTxt = (manualStep && !typeless) ? ` (manual ${manualStep>0?"+":""}${manualStep} step)` : "";
-        const abilTxt = (defMods && defMods.why.length && !typeless) ? `<br><span style="color:var(--accent)">⚙ ${defMods.why.join(" · ")}</span>` : "";
-        out.innerHTML = `${dmg} − ${def} ${physical?"Def":"SpDef"} = ${afterDef}, ${typeSel.value} ${eff}${swarmTxt}${stepTxt} = ${afterMult}${drTxt} → <b>${final}</b> damage.<br>HP ${before} → <b>${before-final}</b>.${abilTxt}`;
+        // full Core damage steps (Def → type effectiveness incl. abilities → DR) — shared with the
+        // roll-result "Apply to target" picker so the two paths stay identical.
+        const br = tokenDamageBreakdown(token, { dmg, type:typeSel.value, physical:clsSel.value==="phys",
+          extraStep:manualStep, aoe:aoeBox.checked });
+        const before = await applyTokenDamage(token, br); draw();
+        out.innerHTML = damageResultHTML(dmg, typeSel.value, br, before);
       };
       atk.append(el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;align-items:center"},
         dmgIn, typeSel, clsSel, el("button",{class:"btn-primary",onclick:apply},"Apply")), out);
@@ -9327,6 +9647,19 @@ function openTokenMenu(token, map){
           abw.append(grow);
         }
         wrap.append(abw);
+      }
+    }
+
+    // ---- Legendary Auras: list this creature's Domains right from its token ----
+    if(L && L.obj && (L.kind==="pokemon"||L.kind==="enc")){
+      const p = L.obj;
+      if((p.auras||[]).length){
+        const auw = el("div",{style:"margin-top:16px"});
+        auw.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"✨ Legendary Auras"));
+        const note = auraNoteFor(p.species);
+        if(note) auw.append(el("div",{class:"small muted",style:"margin-bottom:4px",html:"ℹ "+note}));
+        p.auras.forEach(an=>auw.append(auraRow(an)));
+        wrap.append(auw);
       }
     }
 
