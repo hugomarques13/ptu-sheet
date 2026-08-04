@@ -1090,7 +1090,7 @@ const EMPTY_CHAR = { id:"none", name:"", trainer:newTrainer(), pokemon:[] };
 /* cloud-sync state (see Cloud module near the end) */
 const CLOUD_CFG = window.PTU_CLOUD || {};
 let mode = "local";                 // "local" | "cloud"
-const cloud = { client:null, campaign:"", userId:"", name:"", isGM:false,
+const cloud = { client:null, campaign:"", userId:"", name:"", isGM:false, viewer:false,
                 byId:{}, activeId:null, sub:null, lastSaveTs:0, saveTimer:null, pc:null,
                 inflight:{},    // rowId → count of in-flight CAS writes (defer realtime while >0)
                 opsRpc:null,    // null = untested, true = server supports field-level patches, false = fall back
@@ -7173,9 +7173,11 @@ function normName(s){ return (s||"").trim().toLowerCase(); }
 function ownsRow(row){ return !!row && normName(row.owner_name)===normName(cloud.name) && normName(cloud.name)!==""; }
 function canEdit(row){ return !!row && (cloud.isGM || ownsRow(row)); }
 function canEditActive(){ return canEdit(cloud.byId[cloud.activeId]); }
-/* a player connected as "Viewer" can edit HP for every player's trainer/Pokémon token on the
-   map (handy for a co-pilot / assistant tracking the party's health), but nothing else GM-only. */
-function isMapHpViewer(){ return !cloud.isGM && (cloud.name||"").trim().toLowerCase()==="viewer"; }
+/* the Viewer is a co-pilot/assistant device: it can add ANY player's token, select the whole party,
+   move them, and edit every player's HP — but gets no GM-only tools (enemies, weather, map editing).
+   Enabled by the explicit "Join as Viewer" checkbox (cloud.viewer); the legacy magic display-name
+   "viewer" still works so old sessions keep behaving. Never a Viewer while holding the GM code. */
+function isMapHpViewer(){ return !cloud.isGM && (cloud.viewer===true || (cloud.name||"").trim().toLowerCase()==="viewer"); }
 function canEditPlayerHP(row){ return canEdit(row) || isMapHpViewer(); }
 
 function initCloud(_tries){
@@ -7211,7 +7213,7 @@ function initCloud(_tries){
   cloud.userId = myUserId();
   try{
     const s = JSON.parse(localStorage.getItem("ptu_cloud_session")||"null");
-    if(s && s.campaign && s.name) cloudConnect(s.campaign, s.name, s.gm||"", true);
+    if(s && s.campaign && s.name) cloudConnect(s.campaign, s.name, s.gm||"", true, !!s.viewer);
   }catch(e){}
 }
 function injectCloudButton(){
@@ -7220,7 +7222,7 @@ function injectCloudButton(){
 }
 function updateCloudButton(){
   const b=$("#btnCloud"); if(!b) return;
-  b.textContent = mode==="cloud" ? `☁ ${cloud.name}${cloud.isGM?" (GM)":""}` : "☁ Cloud";
+  b.textContent = mode==="cloud" ? `☁ ${cloud.name}${cloud.isGM?" (GM)":isMapHpViewer()?" (Viewer)":""}` : "☁ Cloud";
   b.classList.toggle("on-cloud", mode==="cloud");
 }
 function migrateChar(data, id){
@@ -7876,13 +7878,14 @@ function encUpsert(){
   row.owner_name = "Encounters"; row.name = "Encounters";
   return serialize(encChain, ()=> syncUpsert(row).then(ok=>{ cacheSharedRow("enc", row); return ok; }));   // conflict-safe (encounters merge by id)
 }
-async function cloudConnect(campaign, name, gmCode, silent){
+async function cloudConnect(campaign, name, gmCode, silent, viewer){
   campaign = (campaign||"").trim().toLowerCase(); name = (name||"").trim();
   if(!campaign || !name){ toast("Enter a campaign code and your name"); return; }
   cloud.campaign = campaign; cloud.name = name;
   cloud.isGM = !!(CLOUD_CFG.gmCode && gmCode && gmCode===CLOUD_CFG.gmCode);
+  cloud.viewer = !cloud.isGM && !!viewer;   // co-pilot mode (can't be a Viewer AND the GM)
   if(gmCode && CLOUD_CFG.gmCode && !cloud.isGM && !silent){ toast("Wrong GM code — joining as player"); }
-  localStorage.setItem("ptu_cloud_session", JSON.stringify({campaign, name, gm: cloud.isGM?gmCode:""}));
+  localStorage.setItem("ptu_cloud_session", JSON.stringify({campaign, name, gm: cloud.isGM?gmCode:"", viewer: cloud.viewer}));
   try{
     await fetchRoster();
     await fetchPC();
@@ -7921,6 +7924,7 @@ async function cloudConnect(campaign, name, gmCode, silent){
 function cloudDisconnect(){
   if(cloud.sub){ try{ cloud.client.removeChannel(cloud.sub); }catch(e){} cloud.sub=null; }
   mode="local"; localStorage.removeItem("ptu_cloud_session");
+  cloud.isGM=false; cloud.viewer=false;
   cloud.pc=null; cloud.mapMeta=null; cloud.mapTokens=null; cloud.enc=null;
   openMon=null; updateCloudButton(); closeModal(); render();
   toast("Switched to this device");
@@ -10814,7 +10818,7 @@ function openCloudPanel(){
     return infoModal("Cloud not set up", `<div class="r-body">This copy isn't configured for online sync. The GM needs to fill in <b>config.js</b> with Supabase details and host the app (see <b>SETUP-CLOUD.md</b>). The offline version still works on this device.</div>`);
   const wrap = el("div",{});
   if(mode==="cloud"){
-    wrap.append(el("div",{class:"r-body"}, `Connected to “${cloud.campaign}” as ${cloud.name}${cloud.isGM?" — GM, can edit all sheets":" — you can edit your own sheets"}.`));
+    wrap.append(el("div",{class:"r-body"}, `Connected to “${cloud.campaign}” as ${cloud.name}${cloud.isGM?" — GM, can edit all sheets":isMapHpViewer()?" — Viewer (co-pilot): can move every player's tokens & edit their HP on the map":" — you can edit your own sheets"}.`));
     if(cloud.isGM) wrap.append(el("div",{style:"margin-top:10px"},
       el("button",{class:"btn-primary",onclick:()=>openSendPokemon()},"🎁 Send a Pokémon to a player…")));
     const roster = el("div",{class:"reflist",style:"margin-top:10px"});
@@ -10839,15 +10843,21 @@ function openCloudPanel(){
   const fCampaign = el("input",{type:"text",placeholder:"e.g. hugos-quest"}); fCampaign.value=last.campaign||"";
   const fName = el("input",{type:"text",placeholder:"Your name"}); fName.value=last.name||"";
   const fGm = el("input",{type:"password",placeholder:"Leave blank if you're a player"});
+  const fViewer = el("input",{type:"checkbox"}); fViewer.checked = !!last.viewer;
+  // toggling GM off/on shouldn't leave a stale Viewer tick that then gets ignored — keep them exclusive
+  fGm.addEventListener("input", ()=>{ if(fGm.value.trim()) fViewer.checked=false; });
+  fViewer.addEventListener("change", ()=>{ if(fViewer.checked) fGm.value=""; });
   wrap.append(
     el("label",{class:"field"},el("span",{},"Campaign code"),fCampaign), el("div",{style:"height:8px"}),
     el("label",{class:"field"},el("span",{},"Your display name"),fName), el("div",{style:"height:8px"}),
     el("label",{class:"field"},el("span",{},"GM code (optional)"),fGm),
+    el("label",{class:"inline small",style:"margin-top:10px;gap:8px;align-items:flex-start;cursor:pointer"}, fViewer,
+      el("span",{}, el("b",{},"Join as Viewer"), el("span",{class:"muted"}," — co-pilot mode: add & move every player's tokens and edit their HP on the map, but no enemy/weather/map-editing tools."))),
     el("div",{class:"r-meta",style:"margin-top:8px"},"Everyone uses the same campaign code. Players edit their own sheets; the GM code unlocks editing everyone's."),
   );
   modal({title:"Join a cloud campaign", bodyNode:wrap, footNodes:[
     el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
-    el("button",{class:"btn-primary",onclick:()=>cloudConnect(fCampaign.value,fName.value,fGm.value)},"Connect"),
+    el("button",{class:"btn-primary",onclick:()=>cloudConnect(fCampaign.value,fName.value,fGm.value,false,fViewer.checked)},"Connect"),
   ]});
 }
 
