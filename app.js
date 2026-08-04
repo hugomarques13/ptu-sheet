@@ -2693,24 +2693,45 @@ function equipSummary(t){
   if(!parts.length) return null;
   return el("span",{}, el("b",{},"Active bonuses: "), parts.join(" · "));
 }
+/* which equipment slot an item can be worn in — by its catalog slot, with Fashions (the Fashionista
+   Recipes Adorable/Elegant/Rad/Rough/Slick + the Contest Fashions) treated as Accessory-slot items,
+   as the rules state. Returns null for anything that isn't wearable. */
+function equipSlotForItem(name){
+  const n = String(name||"").trim(); if(!n) return null;
+  const cat = itemByName.get(n.toLowerCase());
+  if(cat && EQUIP_SLOTS.includes(cat.slot)) return cat.slot;
+  if(/\bfashion$/i.test(n)) return "Accessory";   // Fashionista recipes are Accessory-slot gear
+  return null;
+}
+/* distinct item names the trainer OWNS (in t.inventory) that can be worn in `slot` — you can only
+   equip what you actually carry. The item currently in the slot is kept selectable regardless. */
+function equipCandidates(t, slot){
+  const seen=new Set(), out=[];
+  (t.inventory||[]).forEach(it=>{
+    const name=((it&&it.name)||"").trim(); if(!name) return;
+    if(equipSlotForItem(name)!==slot) return;
+    const key=name.toLowerCase(); if(seen.has(key)) return; seen.add(key); out.push(name);
+  });
+  return out.sort((a,b)=>a.localeCompare(b));
+}
 function equipmentCard(t){
   if(!t.equipment || typeof t.equipment!=="object" || Array.isArray(t.equipment)) t.equipment = {};
   const card = el("div",{class:"card"}, el("h3",{},"Equipment",
-    el("span",{class:"muted small"},"worn gear — bonuses apply automatically")));
-  const bySlot = {}; EQUIP_SLOTS.forEach(s=>bySlot[s]=[]);
-  (D.items.gear||[]).forEach(it=>{ if(EQUIP_SLOTS.includes(it.slot)) bySlot[it.slot].push(it); });
+    el("span",{class:"muted small"},"equip from your inventory — bonuses apply automatically")));
+  const anyEquippable = (t.inventory||[]).some(it=>equipSlotForItem(it&&it.name));
   EQUIP_SLOTS.forEach(slot=>{
     const cur = t.equipment[slot];
     const curName = (cur && cur.name) || (typeof cur==="string" ? cur : "") || "";
+    const cands = equipCandidates(t, slot);
     const row = el("div",{class:"equip-row"});
     row.append(el("div",{class:"equip-slot"}, slot));
     const cell = el("div",{style:"flex:1;min-width:0"});
     const sel = el("select",{class:"equip-sel"});
-    sel.append(el("option",{value:""},"— empty —"));
-    bySlot[slot].slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(it=>
-      sel.append(el("option",{value:it.name, selected: it.name===curName}, it.name)));
-    if(curName && !bySlot[slot].some(it=>it.name===curName))
-      sel.append(el("option",{value:curName, selected:true}, curName+" (custom)"));
+    sel.append(el("option",{value:""}, cands.length ? "— empty —" : "— nothing owned for this slot —"));
+    cands.forEach(name => sel.append(el("option",{value:name, selected:name===curName}, name)));
+    // keep the worn item selectable even if it's no longer carried (so it isn't silently dropped)
+    if(curName && !cands.some(n=>n.toLowerCase()===curName.toLowerCase()))
+      sel.append(el("option",{value:curName, selected:true}, curName+" (not in inventory)"));
     sel.value = curName;
     sel.addEventListener("change",()=>{
       t.equipment[slot] = sel.value ? { name: sel.value } : null;
@@ -2743,6 +2764,8 @@ function equipmentCard(t){
   });
   const summary = equipSummary(t);
   if(summary) card.append(el("div",{class:"small",style:"margin-top:10px;padding-top:8px;border-top:1px solid var(--line)"}, summary));
+  if(!anyEquippable) card.append(el("div",{class:"muted small",style:"margin-top:8px"},
+    "You own no wearable gear yet — add armor, clothing, shields, Fashions… to your Inventory (the Inventory & Bio tab) to equip it here."));
   return card;
 }
 
