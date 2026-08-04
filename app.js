@@ -1438,10 +1438,15 @@ function render(){
   if (currentTab==="reference")  renderReference();
   applyReadonlyLock();
 }
-/* lock the sheet views when viewing a cloud character you can't edit */
+/* lock the SHEET views when viewing a cloud character you can't edit. Reference, Battle, Map and PC
+   are excluded: they aren't the active character's sheet and run their own permission models — the
+   Map in particular gates GM tools by isGM and each token by its own `editable` flag, so the blanket
+   read-only lock (which greys out & disables every .card button) must not reach its toolbar, or a
+   Viewer/co-pilot can't use ＋ Add token / ☑ All players even though those are theirs to use. */
 function applyReadonlyLock(){
   const lock = mode==="cloud" && cloud.activeId && !canEditActive();
-  $$(".view").forEach(v => v.classList.toggle("ro", !!lock && v.id!=="view-reference" && v.id!=="view-battle"));
+  const EXEMPT = new Set(["view-reference","view-battle","view-map"]);
+  $$(".view").forEach(v => v.classList.toggle("ro", !!lock && !EXEMPT.has(v.id)));
 }
 
 /* ===================================================================
