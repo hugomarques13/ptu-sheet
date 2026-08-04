@@ -1602,6 +1602,11 @@ function applyAutoInjury(owner, oldHP, newHP){
 /* Damage / Heal control: one signed input — type 20 to heal 20, −20 to take 20 damage. */
 /* `owner` (optional) = the creature taking the damage; when it has active Damage-Reduction
    buffs, a negative (damage) entry is auto-reduced by the DR and any one-shot DR buff is spent. */
+/* max HP for a trainer or a Pokémon owner object (hpTick — 1/10 max, min 1 — is defined up top) */
+function ownerMaxHP(owner){
+  if(!owner) return null;
+  return ("combat" in owner) ? trainerDerived(owner).hp : pokeDerived(owner).maxHP;
+}
 function damageHealRow(getHP, setHP, owner){
   const wrap = el("div",{class:"dhrow"});
   const box = el("input",{type:"number",placeholder:"±HP",title:"20 heals, −20 damages",class:"dh-input"});
@@ -1621,11 +1626,20 @@ function damageHealRow(getHP, setHP, owner){
     if(owner) applyAutoInjury(owner, oldHP, oldHP+n);
     setHP(oldHP + n);
   };
+  // ± one Tick of HP (1/10 max) — direct HP change, no DR (Ticks are fixed chunks)
+  const tickApply = sign => {
+    const t = hpTick(ownerMaxHP(owner)); const oldHP = getHP(); const n = sign*t;
+    if(owner) applyAutoInjury(owner, oldHP, oldHP+n);
+    setHP(oldHP + n);
+  };
   box.addEventListener("keydown", e=>{ if(e.key==="Enter") apply(); });
+  const tick = hpTick(ownerMaxHP(owner));
   wrap.append(
     el("span",{class:"small muted",style:"font-weight:700"},"Damage / Heal"),
     box,
     el("button",{class:"btn-secondary",style:"padding:6px 14px",onclick:apply},"Apply"),
+    el("button",{class:"btn-secondary",style:"padding:6px 10px",title:`lose a Tick of HP (${tick} = 1/10 max)`,onclick:()=>tickApply(-1)},"−Tick"),
+    el("button",{class:"btn-secondary",style:"padding:6px 10px",title:`regain a Tick of HP (${tick} = 1/10 max)`,onclick:()=>tickApply(+1)},"+Tick"),
     el("span",{class:"small muted"},"+ heals · − damages"));
   if(owner){
     const { dr } = buffDR(owner);
@@ -1750,6 +1764,15 @@ function openTrainerAttack(t, weaponMoveName, w){
   const diceStr = (DB_TABLE[(st.damageBase||0)+(bm.db||0)]||"").split("/")[0].trim();
   const dm = diceStr.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
   const dn = dm[1]?+dm[1]:0, dfaces = dm[2]?+dm[2]:0, dflat = dm[3]?parseInt(dm[3].replace(/\s/g,"")):0;
+  // Infatuation (Feb 2016 errata): −5 to Damage Rolls unless attacking your Crush, in which case Attack
+  // is halved instead. Toggle only appears if this trainer is Infatuated.
+  const infatuated = hasStatus(t, "infatuation");
+  let crushBox = null;
+  const infatMod = () => {
+    if(!infatuated) return { atk, delta:0, halved:false };
+    if(crushBox && crushBox.checked) return { atk: Math.floor(atk/2), delta:0, halved:true };
+    return { atk, delta:-5, halved:false };
+  };
   const body = el("div",{});
   body.append(el("div",{class:"chips",style:"margin-bottom:10px"},
     el("span",{html:typeBadge(st.type)}), el("span",{class:"kv"},st.cls||"Physical"),
@@ -1785,6 +1808,18 @@ function openTrainerAttack(t, weaponMoveName, w){
     body.append(bcard);
   }
 
+  /* --- Infatuation prompt (only if this trainer is Infatuated) --- */
+  if(infatuated && dn){
+    const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+    const lbl = el("label",{style:"display:flex;gap:8px;align-items:flex-start;cursor:pointer"});
+    crushBox = el("input",{type:"checkbox"});
+    lbl.append(crushBox, el("div",{},
+      el("div",{class:"small",style:"font-weight:700"}, "💕 Infatuated — attacking your Crush?"),
+      el("div",{class:"small muted"},
+        "Tick if this attack targets the source of the Infatuation: your Attack is halved for the Damage Roll. Otherwise it's a flat −5 to the Damage Roll.")));
+    card.append(lbl); body.append(card);
+  }
+
   /* --- results (filled on Roll) --- */
   const out = el("div",{class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:0"});
   out.append(el("div",{class:"muted small"},"Press 🎲 Roll dice to simulate."));
@@ -1796,9 +1831,11 @@ function openTrainerAttack(t, weaponMoveName, w){
       el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`, el("span",{class:"muted",style:"font-size:13px;font-weight:600"}, accBits.length?`  (${acc} ${accBits.join(" ")})`:" (1d20)")),
       el("div",{class:"small muted"}, `Hits if ${accTot} ≥ AC ${st.ac} + target's Physical Evasion.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`)));
     const r = rollDiceString(diceStr);
-    if(r){ const total = r.total + atk + (bm.dmg||0);
-      const parts = [`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`, `+ ${atk} Attack`];
+    if(r){ const im = infatMod();
+      const total = Math.max(0, r.total + im.atk + (bm.dmg||0) + im.delta);
+      const parts = [`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`, `+ ${im.atk} Attack${im.halved?" (halved — Infatuated)":""}`];
       if(bm.dmg) parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs`);
+      if(im.delta) parts.push(`${im.delta} Infatuated`);
       out.append(el("div",{}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"),
         el("div",{style:"font-size:26px;font-weight:800;color:var(--accent)"}, `💥 ${total}`),
         el("div",{class:"small muted",style:"margin-top:2px"}, parts.join("  ") + `. Target subtracts Defense.`)));
@@ -4337,6 +4374,16 @@ function openMoveRoll(p, m, sp, opts={}){
   const atkLbl = isPhys ? "Attack" : isSpec ? "Sp. Attack" : null;
   const evaNote = isPhys ? "target's Physical Evasion" : isSpec ? "target's Special Evasion" : "target's Evasion";
   const defNote = isPhys ? "Defense" : isSpec ? "Special Defense" : "Defense/Sp.Def";
+  // Infatuation (Feb 2016 errata): −5 to Damage Rolls vs anyone but your Crush; vs the Crush, Atk/SpAtk
+  // is HALVED for the Damage Roll instead. The GM says which via an "attacking your Crush?" toggle.
+  const infatuated = hasStatus(p, "infatuation");
+  let crushBox = null;
+  // damage-roll adjustment from Infatuation given the current "attacking your Crush?" toggle
+  const infatMod = () => {
+    if(!infatuated || !(isPhys||isSpec)) return { atk: atkStat||0, delta:0, halved:false };
+    if(crushBox && crushBox.checked) return { atk: Math.floor((atkStat||0)/2), delta:0, halved:true };
+    return { atk: atkStat||0, delta:-5, halved:false };
+  };
 
   // weight-dependent Damage Base — the player types the needed Weight Class number here
   const wInfo = weightMoveInfo(m);
@@ -4404,6 +4451,19 @@ function openMoveRoll(p, m, sp, opts={}){
       el("div",{class:"small muted"},
         ateOn ? `Active — this move is ${ate.type}-Type.${stabWith?" STAB applies (+2 DB).":" No STAB from this type."}`
               : `Off — this move stays Normal-Type.${stabAs?" STAB applies (+2 DB).":" No STAB."}`)));
+    card.append(lbl); body.append(card);
+  }
+
+  /* --- Infatuation prompt: only for damaging attacks by an Infatuated user --- */
+  if(infatuated && (isPhys || isSpec)){
+    const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+    const lbl = el("label",{style:"display:flex;gap:8px;align-items:flex-start;cursor:pointer"});
+    crushBox = el("input",{type:"checkbox"});
+    crushBox.addEventListener("change", renderDamage);
+    lbl.append(crushBox, el("div",{},
+      el("div",{class:"small",style:"font-weight:700"}, "💕 Infatuated — attacking your Crush?"),
+      el("div",{class:"small muted"},
+        `Tick if this attack targets the source of the Infatuation: your ${atkLbl} is halved for the Damage Roll. Otherwise it's a flat −5 to the Damage Roll.`)));
     card.append(lbl); body.append(card);
   }
 
@@ -4524,17 +4584,20 @@ function openMoveRoll(p, m, sp, opts={}){
     dbChip.style.display = "";
     dmgBox.innerHTML = "";
     if(fDB!=null && dn){
-      const terms=[`${dn}d${dfaces}`]; if(dflat) terms.push(String(dflat)); if(atkStat) terms.push(String(atkStat));
+      const im = infatMod();
+      const terms=[`${dn}d${dfaces}`]; if(dflat) terms.push(String(dflat)); if(im.atk) terms.push(String(im.atk));
       // weather/terrain are appended with their own operator — pushing "−5" into terms would render "+ −5"
       const expr = terms.join(" + ")
         + (wx.dmg ? ` ${wx.dmg>0?"+":"−"} ${Math.abs(wx.dmg)}` : "")
         + (tx.dmg ? ` ${tx.dmg>0?"+":"−"} ${Math.abs(tx.dmg)}` : "")
-        + (abilMods.flat ? ` ${abilMods.flat>0?"+":"−"} ${Math.abs(abilMods.flat)}` : "");
+        + (abilMods.flat ? ` ${abilMods.flat>0?"+":"−"} ${Math.abs(abilMods.flat)}` : "")
+        + (im.delta ? ` − ${Math.abs(im.delta)}` : "");
       const why=[`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${fDB}${stab?` (DB ${baseDB()} +2 STAB)`:""}`];
-      if(atkStat) why.push(`${atkStat} = your ${atkLbl}`);
+      if(im.atk) why.push(`${im.atk} = your ${atkLbl}${im.halved?" (halved — Infatuated vs Crush)":""}`);
       if(wx.dmg) why.push(`${wx.dmg>0?"+":"−"}${Math.abs(wx.dmg)} = ${wx.weather.name}`);
       if(tx.dmg) why.push(`${tx.dmg>0?"+":"−"}${Math.abs(tx.dmg)} = Terrain`);
       if(abilMods.why.length) why.push(abilMods.why.join(", "));
+      if(im.delta) why.push(`${im.delta} = Infatuated (not the Crush)`);
       dmgBox.append(el("div",{},
         el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${expr}`),
         el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ")+`. Target then subtracts their ${defNote}.`)));
@@ -4761,15 +4824,17 @@ function openMoveRoll(p, m, sp, opts={}){
           if(hasAbility(p,"Sniper")){ const r3 = rollDiceString(ds); critExtra += r3.dice; critWhy.push(`+${r3.dice} Sniper`); }
           if(hasAbility(p,"Sniper [Errata]")){ const r4 = rollDiceString("3d10"); critExtra += r4.total; critWhy.push(`+${r4.total} Sniper [Errata]`); }
         }
-        const total = Math.max(0, r.total + (atkStat||0) + (bm.dmg||0) + (wx.dmg||0) + (tx.dmg||0) + abilMods.flat + critExtra);
+        const im = infatMod();
+        const total = Math.max(0, r.total + im.atk + (bm.dmg||0) + (wx.dmg||0) + (tx.dmg||0) + abilMods.flat + critExtra + im.delta);
         dmgLine.append(el("div",{style:`font-size:26px;font-weight:800;color:${isCrit?"var(--bad)":"var(--accent)"}`},
           `${isCrit?"💥 CRIT! ":"💥 "}${total}`));
         const parts=[`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`];
-        if(atkStat) parts.push(`+ ${atkStat} ${atkLbl}`);
+        if(im.atk) parts.push(`+ ${im.atk} ${atkLbl}${im.halved?" (halved — Infatuated)":""}`);
         if(bm.dmg)  parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs`);
         if(wx.dmg)  parts.push(`${wx.dmg>0?"+":""}${wx.dmg} ${wx.weather.name}`);
         if(tx.dmg)  parts.push(`${tx.dmg>0?"+":""}${tx.dmg} Terrain`);
         if(abilMods.flat) parts.push(`${abilMods.flat>0?"+":""}${abilMods.flat} ability`);
+        if(im.delta) parts.push(`${im.delta} Infatuated`);
         if(critWhy.length) parts.push(critWhy.join(" "));
         parts.push(`= ${total}`);
         if(hitsInfo) dmgLine.append(el("div",{class:"small muted",style:"margin-top:2px"},
@@ -9506,9 +9571,15 @@ function openTokenMenu(token, map){
     const setInp = el("input",{type:"number",style:"width:80px"});
     const setBtn = el("button",{class:"btn-secondary",disabled:!info.editable,
       onclick:async()=>{ const v=parseInt(setInp.value); if(!isNaN(v)){ await setTokenHP(token,v); draw(); setInp.value=""; } }},"Set");
+    const tick = hpTick(info.max);   // 1 Tick = 1/10 max HP
     wrap.append(readout,
       el("div",{class:"tk-menu-row"}, mk(-5,"−5"), mk(-1,"−1"), mk(+1,"+1"), mk(+5,"+5")),
-      el("div",{class:"tk-menu-row"}, setInp, setBtn));
+      el("div",{class:"tk-menu-row"},
+        el("button",{class:"btn-secondary",disabled:!info.editable,title:`lose a Tick of HP (${tick} = 1/10 max)`,
+          onclick:async()=>{ await setTokenHP(token, tokenHp(token).cur-tick); draw(); }},"−Tick"),
+        el("button",{class:"btn-secondary",disabled:!info.editable,title:`regain a Tick of HP (${tick} = 1/10 max)`,
+          onclick:async()=>{ await setTokenHP(token, tokenHp(token).cur+tick); draw(); }},"+Tick"),
+        setInp, setBtn));
     if(token.link) wrap.append(el("div",{class:"muted small",style:"margin-top:6px"},
       token.link.kind==="enc" ? "Linked to the encounter — HP syncs with the Encounters tab."
                               : "Linked to a sheet — HP changes sync to that character."));
