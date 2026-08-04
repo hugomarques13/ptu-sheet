@@ -486,3 +486,12 @@ body.map-mode .map-select-bar{margin:0; border-radius:0; border-left:0; border-r
 .map-weather>summary::-webkit-details-marker{display:none}
 .map-weather>summary::before{content:"▸"; margin-right:6px; color:var(--muted)}
 .map-weather[open]>summary::before{content:"▾"}
+/* ---------- Trainer Equipment card ---------- */
+.equip-row{display:flex; align-items:flex-start; gap:10px; padding:8px 0; border-top:1px solid var(--line)}
+.equip-row:first-of-type{border-top:none}
+.equip-slot{flex:0 0 78px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.4px;
+  color:var(--muted); padding-top:8px}
+.equip-sel{width:100%}
+.equip-focus{padding:3px 6px}
+.badge-auto{display:inline-block; font-size:11px; font-weight:700; line-height:1.4;
+  padding:1px 7px; border-radius:20px; background:var(--panel-2); border:1px solid var(--line); color:var(--ink)}

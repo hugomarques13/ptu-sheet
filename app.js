@@ -197,7 +197,8 @@ function conditionCSMods(p){
 /* effective Combat Stages = manual (p.cs) + condition mods, clamped −6…+6 */
 function effectiveCS(p){
   const cond = conditionCSMods(p), wx = weatherCSMods(p), ab = abilityStatusCS(p), out = {};
-  CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + wx[k] + (ab[k]||0))));
+  const eqSpd = isTrainerOwner(p) ? equipSpeedCS(p) : 0;   // Heavy Armor & co. shift the Speed default CS
+  CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + wx[k] + (ab[k]||0) + (k==="spd"?eqSpd:0))));
   ACC_EVA_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + (ab[k]||0))));
   return out;
 }
@@ -952,7 +953,7 @@ function newTrainer() {
     name:"", age:"", gender:"", heightTxt:"", weightTxt:"", size:"Medium", weightClass:3,
     level:1, xp:0, money:0,
     classes:[], skills, combat, edges:[], features:[], techniques:[], abilities:[],
-    inventory:[], background:"", notes:"", appearance:"",
+    inventory:[], equipment:{}, background:"", notes:"", appearance:"",
     currentHP:null, tempHP:0, injuries:0, usedAP:0, unlocked:false, uses:{}, avatar:"", weapons:[],
     levelUp:{}, buffs:[],
   };
@@ -1021,6 +1022,7 @@ function normTrainer(t){
   if(!t.uses || typeof t.uses!=="object") t.uses = {};
   if(typeof t.avatar!=="string") t.avatar = "";
   if(!Array.isArray(t.weapons)) t.weapons = [];
+  if(!t.equipment || typeof t.equipment!=="object" || Array.isArray(t.equipment)) t.equipment = {};  // worn gear per slot
   // migrate ranged weapons saved with the old (wrong) melee-copied stats — only when they still
   // match the old preset exactly, so hand-tuned weapons are left alone (Core p.286).
   t.weapons.forEach(w=>{
@@ -1121,7 +1123,9 @@ function trainerDerived(t) {
   const raw = k => t.combat[k].base + t.combat[k].added;   // pre-Combat-Stage ("real") stat
   const cap6 = v => Math.min(6, Math.floor(v/5));
   const cs = effectiveCS(t);                               // Combat Stages (manual t.cs + conditions)
-  const tot = k => k==="hp" ? raw("hp") : Math.floor(raw(k) * csMult(cs[k]));   // CS-adjusted
+  const statB = equipStatBonus(t);                         // Focus item: +5 to a chosen stat, AFTER Combat Stages
+  const eqEva = equipEvasion(t);                            // shields add flat Evasion (all three types)
+  const tot = k => k==="hp" ? raw("hp") : (Math.floor(raw(k) * csMult(cs[k])) + (statB[k]||0));   // CS-adjusted (+ Focus)
   const acro = rankNum(t.skills.acrobatics), athl = rankNum(t.skills.athletics);
   const combat = rankNum(t.skills.combat);
   let power = 4;  if (athl >= 3) power++; if (combat >= 4) power++;
@@ -1131,10 +1135,11 @@ function trainerDerived(t) {
   const hp = injuryHealCap(fullHP, injuries);              // Injuries cap max HP −10% each (Core p.249)
   return {
     hp, fullHP, injuries, cs,
-    physEva: cap6(tot("def"))+cs.eva, specEva: cap6(tot("spdef"))+cs.eva, spdEva: cap6(tot("spd"))+cs.eva,   // CS-adjusted evasion
+    physEva: cap6(tot("def"))+cs.eva+eqEva, specEva: cap6(tot("spdef"))+cs.eva+eqEva, spdEva: cap6(tot("spd"))+cs.eva+eqEva,   // CS-adjusted evasion (+ shields)
     ap: 5 + Math.floor(t.level/5),
     power, highJump: hj, longJump: Math.floor(acro/2),
-    overland: 3 + Math.floor((athl+acro)/2), swim: Math.floor((3+Math.floor((athl+acro)/2))/2),
+    dr: equipDR(t).dr,                                       // worn-armor Damage Reduction (also flows through buffDR on the damage input)
+    overland: 3 + Math.floor((athl+acro)/2) + equipOverland(t), swim: Math.floor((3+Math.floor((athl+acro)/2))/2),
     throwing: 4 + athl,
     totals: Object.fromEntries(STATS.map(([k])=>[k, tot(k)])),        // CS-adjusted (used for attack/defense)
     realTotals: Object.fromEntries(STATS.map(([k])=>[k, raw(k)])),    // pre-CS
@@ -1529,6 +1534,9 @@ function renderTrainer(){
   /* weapons (modify Struggle) */
   root.append(weaponsCard(t));
 
+  /* worn equipment (armor DR, skill mods, shields, Focus… auto-applied) */
+  root.append(equipmentCard(t));
+
   /* skills */
   const skc = el("div",{class:"card"}, el("h3",{},"Skills",
      el("span",{class:"muted small"},"tap a rank · 🎲 to roll")));
@@ -1544,10 +1552,10 @@ function renderTrainer(){
   const tbl = el("table",{class:"skilltable"});
   SKILLS.forEach(([k,lbl]) => {
     const tr = el("tr",{});
-    const bonus = categoricBonus(t, k);
-    tr.append(el("td",{},lbl+(bonus?" +1":"")));
+    const bonus = categoricBonus(t, k) + equipSkillBonus(t, k);   // Categoric Inclination Edge + worn equipment (Sunglasses, Running Shoes…)
+    tr.append(el("td",{},lbl+(bonus?` +${bonus}`:"")));
     const rb = el("td",{},rankButtons(k, t.skills[k]));
-    const dice = el("td",{class:"dice","data-dice":k}, `${rankDice(t.skills[k])}d6${bonus?"+1":""}`);
+    const dice = el("td",{class:"dice","data-dice":k}, `${rankDice(t.skills[k])}d6${bonus?`+${bonus}`:""}`);
     const roll = el("td",{}, el("button",{class:"btn-secondary",style:"padding:2px 8px",title:`roll ${lbl}`,
       onclick:()=>rollSkill(lbl, rankDice(t.skills[k]), bonus)},"🎲"));
     tr.append(rb, dice, roll);
@@ -2001,6 +2009,7 @@ function trainerDerivedGrid(t){
     ["High Jump", d.highJump], ["Long Jump", d.longJump],
     ["Overland", d.overland], ["Swim", d.swim], ["Throwing Range", d.throwing],
   ];
+  if(d.dr) items.push(["Damage Reduction", "+"+d.dr]);   // from worn armor (Equipment card)
   items.forEach(([l,v]) => wrap.append(el("div",{class:"dv"},
     el("div",{class:"lbl"},l), el("div",{class:"val"},String(v)))));
   return wrap;
@@ -2011,7 +2020,7 @@ function recalcTrainer(){
   syncMilestoneStats(t);                       // a manual Level change may earn/remove milestone points
   if(JSON.stringify(t.msStats||{})!==before) save();
   STATS.forEach(([k]) => { const n=$(`[data-tot="${k}"]`); if(n) n.textContent = t.combat[k].base + t.combat[k].added; });
-  SKILLS.forEach(([k]) => { const n=$(`[data-dice="${k}"]`); if(n) n.textContent = `${rankDice(t.skills[k])}d6`; });
+  SKILLS.forEach(([k]) => { const n=$(`[data-dice="${k}"]`); if(n){ const b=categoricBonus(t,k)+equipSkillBonus(t,k); n.textContent = `${rankDice(t.skills[k])}d6${b?`+${b}`:""}`; } });
   const g = $("#trainerDerived"); if (g) g.replaceWith(trainerDerivedGrid(t));
 }
 function rankButtons(skillKey, cur){
@@ -2554,6 +2563,189 @@ function luLevelBlock(t, L, future){
   return block;
 }
 
+/* ===================================================================
+   TRAINER EQUIPMENT (Core pp.183-192 "Equipment") — gear worn in slots,
+   with the mechanical bonuses applied AUTOMATICALLY: Damage Reduction
+   (armor), Skill modifiers (Sunglasses, Running Shoes…), Evasion (shields),
+   Speed Combat Stage (Heavy Armor), the Focus stat bonus, and granted
+   Capabilities. One item per slot; effects flow through the same plumbing
+   the buffs use (buffDR / effectiveCS / trainerDerived / the skill roll).
+=================================================================== */
+const EQUIP_SLOTS = ["Head","Body","Hands","Off-Hand","Feet","Accessory"];
+/* Auto-applied effects keyed by lowercased item name. Fields:
+     dr        flat Damage Reduction vs ALL damage → feeds buffDR → damage input
+     drTyped   {Type:N} DR vs one damage type — shown as a note (the input isn't typed)
+     drCrit    DR vs Critical Hits only — shown as a note
+     evasion   flat bonus to Physical/Special/Speed Evasion
+     speedCS   Speed Combat-Stage default shift (e.g. Heavy Armor −1)
+     focus     true → +5 to a chosen stat AFTER Combat Stages (stored in item.focusStat)
+     skills    {skillKey:N} flat bonus to that Skill's Checks (skillCap = book cap, display only)
+     overland  bonus to Overland Speed
+     capabilities  Capabilities granted (display only)
+     note      extra rules text worth surfacing                                       */
+const EQUIP_EFFECTS = {
+  "light armor":            { dr:5 },
+  "heavy armor":            { dr:10, speedCS:-1 },
+  "ablative heavy armor":   { dr:20, speedCS:-1, note:"Brittle: −5 DR each damaging hit, repairs +5 DR every 5 minutes." },
+  "reinforced trenchcoat":  { dr:5, skills:{stealth:4}, note:"+4 Stealth to conceal weapons; beats metal detectors." },
+  "slipstream armor":       { dr:5, note:"Once per battle, a Swift Action to escape being Stuck." },
+  "flame retardant armor":  { drTyped:{Fire:10} },
+  "mesh shielding":         { drTyped:{Electric:5}, note:"On Augmentation Shock, roll 1d2 — on a 1, no effect." },
+  "heavy armor [9-15 playtest]":   { dr:5 },
+  "light armor [9-15 playtest]":   { drTyped:{Physical:5} },
+  "special armor [9-15 playtest]": { drTyped:{Special:5} },
+  "stealth clothes":        { skills:{stealth:4}, skillCap:4, note:"Only to remain unseen." },
+  "fancy clothes":          { note:"Contest: roll 2d6 in the Introduction Stage for the assigned Contest Stat's dice." },
+  "sunglasses":             { skills:{charm:1,guile:1,intimidate:1}, skillCap:3 },
+  "running shoes":          { skills:{athletics:2}, skillCap:3, overland:1 },
+  "helmet":                 { drCrit:15, note:"Resist Headbutt & Zen Headbutt; can't be flinched by them." },
+  "mind aegis":             { skills:{focus:6}, note:"+6 Focus vs Telepathy (with Iron Mind Edge → grants Mindlock instead)." },
+  "dark vision goggles":    { capabilities:["Darkvision"] },
+  "x-ray goggles":          { capabilities:["X-Ray Vision"] },
+  "thermal goggles":        { note:"See in the IR spectrum — spot camouflaged targets & heat sources." },
+  "re-breather":            { capabilities:["Gilled (~1 hr)"], note:"Breathe underwater ~1 hour; refills in 5 minutes of open air." },
+  "gas mask":               { note:"Breathe through toxins/smoke; immune to Rage Powder, Poison Gas, Poisonpowder, Sleep Powder, Smog, Smokescreen, Spore, Stun Spore, Sweet Scent." },
+  "universal translator":   { note:"Understand & speak any programmed language; can be used to speak with Pokémon." },
+  "snow boots":             { capabilities:["Naturewalk (Tundra)"], note:"−1 Overland on ice or deep snow." },
+  "jungle boots":           { capabilities:["Naturewalk (Forest)"] },
+  "flippers":               { note:"+2 Swim when fully submerged, −2 Overland." },
+  "handheld propellor":     { note:"+3 Swim speed." },
+  "light shield":           { evasion:2, note:"Ready (Standard): instead +4 Evasion & 10 DR until end of next turn, but Slowed. Two-handed = Small Melee Weapon." },
+  "heavy shield":           { evasion:2, note:"Ready (Standard): instead +6 Evasion & 15 DR until end of next turn, but Slowed. Two-handed = Small Melee Weapon." },
+  "shield [9-15 playtest]": { evasion:1, note:"Ready (Standard): instead +4 Evasion & 10 DR until end of next turn, but Slowed." },
+  "focus":                  { focus:true },
+  "pheromone emitter":      { note:"Swift Action: +4 to a Charm or Intimidate check vs wild Pokémon (needs a Cartridge)." },
+  "sensor disruption vest": { note:"Pokébots & Eye-Augment attackers take −2 Accuracy on single-target checks vs you." },
+  "gravity modulation suit":{ note:"Treat local gravity as 1 higher or lower." },
+  "thermal dampening suit": { note:"Invisible to thermal imaging gear." },
+};
+/* mojibake cleanup for the catalog effect strings (é/apostrophes/dashes got double-encoded on import) */
+function cleanupText(s){
+  return String(s||"")
+    .replace(/â€™/g,"'").replace(/â€˜/g,"'").replace(/â€œ/g,'"').replace(/â€/g,'"')
+    .replace(/â€"/g,"—").replace(/â€“/g,"–").replace(/â€¦/g,"…")
+    .replace(/Ã©/g,"é").replace(/Ã¨/g,"è").replace(/Ã¡/g,"á").replace(/Ã³/g,"ó")
+    .replace(/Ã­/g,"í").replace(/Ã±/g,"ñ").replace(/Ã¼/g,"ü").replace(/�/g,"");
+}
+function equipEffFor(name){
+  const n = String(name||"").trim().toLowerCase();
+  return EQUIP_EFFECTS[n] || EQUIP_EFFECTS[normItemName(name)] || null;
+}
+/* the trainer's currently-worn items, as {slot, name, item, eff} (empty slots skipped) */
+function equippedList(t){
+  const eqp = (t && t.equipment) || {};
+  return EQUIP_SLOTS.map(slot=>{
+    const cur = eqp[slot];
+    const name = (cur && cur.name) || (typeof cur==="string" ? cur : "");
+    if(!name) return null;
+    return { slot, name, item: (cur && typeof cur==="object") ? cur : { name }, eff: equipEffFor(name) };
+  }).filter(Boolean);
+}
+/* is this owner a Trainer (has combat stats, no species) — Pokémon never carry equipment */
+function isTrainerOwner(o){ return !!o && o.species===undefined && !!o.combat; }
+/* --- aggregate mechanical bonuses from worn equipment (trainers only) --- */
+function equipDR(t){
+  let dr=0; const from=[];
+  equippedList(t).forEach(({name,eff})=>{ if(eff && eff.dr){ dr+=eff.dr; from.push(name); } });
+  return { dr, from };
+}
+function equipEvasion(t){ return equippedList(t).reduce((s,{eff})=>s+((eff&&eff.evasion)||0),0); }
+function equipSpeedCS(t){ return equippedList(t).reduce((s,{eff})=>s+((eff&&eff.speedCS)||0),0); }
+function equipOverland(t){ return equippedList(t).reduce((s,{eff})=>s+((eff&&eff.overland)||0),0); }
+function equipSkillBonus(t, skillKey){
+  return equippedList(t).reduce((s,{eff})=>s+((eff&&eff.skills&&eff.skills[skillKey])||0),0);
+}
+function equipStatBonus(t){
+  const out={atk:0,def:0,spatk:0,spdef:0,spd:0};
+  equippedList(t).forEach(({eff,item})=>{
+    if(eff && eff.focus && item && item.focusStat && out[item.focusStat]!==undefined) out[item.focusStat]+=5;
+  });
+  return out;
+}
+function equipCapabilities(t){
+  const caps=[]; equippedList(t).forEach(({eff})=>{ if(eff&&eff.capabilities) eff.capabilities.forEach(c=>caps.push(c)); });
+  return caps;
+}
+/* little auto-applied badges for one equipment item's numeric effects */
+function equipEffBadges(eff){
+  if(!eff) return [];
+  const b=[], mk=txt=>el("span",{class:"badge-auto"},txt);
+  if(eff.dr) b.push(mk(`+${eff.dr} DR`));
+  if(eff.drTyped) for(const k in eff.drTyped) b.push(mk(`+${eff.drTyped[k]} DR (${k})`));
+  if(eff.drCrit) b.push(mk(`+${eff.drCrit} DR vs crit`));
+  if(eff.evasion) b.push(mk(`+${eff.evasion} Evasion`));
+  if(eff.speedCS) b.push(mk(`${eff.speedCS>0?"+":""}${eff.speedCS} Speed CS`));
+  if(eff.overland) b.push(mk(`+${eff.overland} Overland`));
+  if(eff.skills) for(const k in eff.skills){ const lbl=((SKILLS.find(s=>s[0]===k)||[])[1])||k; b.push(mk(`+${eff.skills[k]} ${lbl}`)); }
+  if(eff.capabilities) eff.capabilities.forEach(c=>b.push(mk(c)));
+  return b;
+}
+/* one-line summary of everything the current loadout grants */
+function equipSummary(t){
+  const parts=[]; const dr=equipDR(t).dr, eva=equipEvasion(t), scs=equipSpeedCS(t), ovl=equipOverland(t);
+  if(dr)  parts.push(`Damage Reduction +${dr}`);
+  if(eva) parts.push(`Evasion +${eva}`);
+  if(scs) parts.push(`Speed CS ${scs>0?"+":""}${scs}`);
+  if(ovl) parts.push(`Overland +${ovl}`);
+  const fs=equipStatBonus(t); const fk=Object.keys(fs).find(k=>fs[k]);
+  if(fk) parts.push(`+${fs[fk]} ${(STATS.find(s=>s[0]===fk)||[])[1]||fk}`);
+  const caps=equipCapabilities(t); if(caps.length) parts.push("Capabilities: "+caps.join(", "));
+  if(!parts.length) return null;
+  return el("span",{}, el("b",{},"Active bonuses: "), parts.join(" · "));
+}
+function equipmentCard(t){
+  if(!t.equipment || typeof t.equipment!=="object" || Array.isArray(t.equipment)) t.equipment = {};
+  const card = el("div",{class:"card"}, el("h3",{},"Equipment",
+    el("span",{class:"muted small"},"worn gear — bonuses apply automatically")));
+  const bySlot = {}; EQUIP_SLOTS.forEach(s=>bySlot[s]=[]);
+  (D.items.gear||[]).forEach(it=>{ if(EQUIP_SLOTS.includes(it.slot)) bySlot[it.slot].push(it); });
+  EQUIP_SLOTS.forEach(slot=>{
+    const cur = t.equipment[slot];
+    const curName = (cur && cur.name) || (typeof cur==="string" ? cur : "") || "";
+    const row = el("div",{class:"equip-row"});
+    row.append(el("div",{class:"equip-slot"}, slot));
+    const cell = el("div",{style:"flex:1;min-width:0"});
+    const sel = el("select",{class:"equip-sel"});
+    sel.append(el("option",{value:""},"— empty —"));
+    bySlot[slot].slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(it=>
+      sel.append(el("option",{value:it.name, selected: it.name===curName}, it.name)));
+    if(curName && !bySlot[slot].some(it=>it.name===curName))
+      sel.append(el("option",{value:curName, selected:true}, curName+" (custom)"));
+    sel.value = curName;
+    sel.addEventListener("change",()=>{
+      t.equipment[slot] = sel.value ? { name: sel.value } : null;
+      save(); preserveScroll(()=>renderTrainer());
+    });
+    cell.append(sel);
+    if(curName){
+      const eff = equipEffFor(curName);
+      const cat = itemByName.get(curName.toLowerCase());
+      if(eff && eff.focus){
+        const fs = el("select",{class:"equip-focus"});
+        fs.append(el("option",{value:""},"choose stat…"));
+        [["atk","Attack"],["def","Defense"],["spatk","Sp.Atk"],["spdef","Sp.Def"],["spd","Speed"]].forEach(([k,l])=>
+          fs.append(el("option",{value:k, selected:(cur&&cur.focusStat)===k}, l)));
+        fs.addEventListener("change",()=>{
+          t.equipment[slot] = { name:curName, focusStat: fs.value||undefined };
+          save(); preserveScroll(()=>renderTrainer());
+        });
+        cell.append(el("div",{class:"small",style:"margin-top:4px;display:flex;align-items:center;gap:6px"},
+          el("span",{class:"badge-auto"},"+5 to"), fs,
+          (cur&&cur.focusStat)?el("span",{class:"muted"},"(after Combat Stages)"):el("span",{class:"muted"},"— pick a stat")));
+      }
+      const badges = equipEffBadges(eff);
+      if(badges.length) cell.append(el("div",{style:"margin-top:4px;display:flex;gap:4px;flex-wrap:wrap"}, ...badges));
+      const text = (eff && eff.note) || (cat && cat.effect);
+      if(text) cell.append(el("div",{class:"muted small",style:"margin-top:3px"}, cleanupText(text).slice(0,240)));
+    }
+    row.append(cell);
+    card.append(row);
+  });
+  const summary = equipSummary(t);
+  if(summary) card.append(el("div",{class:"small",style:"margin-top:10px;padding-top:8px;border-top:1px solid var(--line)"}, summary));
+  return card;
+}
+
 /* every catalog item a Trainer can carry (gear/equipment/key items/med kit/balls + held + berries) */
 function catalogItems(){
   return [
@@ -3072,6 +3264,8 @@ function buffMods(owner){
 function buffDR(owner){
   let dr = 0; const from = [];
   ownerBuffs(owner).forEach(b=>{ const d=(b.mods&&b.mods.dr)||0; if(d){ dr+=d; from.push(b.name); } });
+  // worn armor adds flat Damage Reduction too (permanent — never consumed like one-shot buffs)
+  if(isTrainerOwner(owner)){ const e=equipDR(owner); if(e.dr){ dr+=e.dr; e.from.forEach(n=>from.push(n)); } }
   return { dr, from };
 }
 /* Spend the one-shot DR buffs (e.g. Excited) after they've absorbed an incoming attack.
