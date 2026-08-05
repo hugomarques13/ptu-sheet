@@ -1457,9 +1457,6 @@ function render(){
   // the Encounters tab is GM-only
   const encBtn = $("#tabEncounters"); if(encBtn) encBtn.hidden = !isGM();
   if(currentTab==="encounters" && !isGM()){ switchTab("trainer"); return; }
-  // the Gifts tab: the GM always sees it (to grant Gifts); a player only once they have at least one
-  const giftBtn = $("#tabGifts"); if(giftBtn) giftBtn.hidden = !giftsCanSee(activeChar()?.trainer);
-  if(currentTab==="gifts" && !giftsCanSee(activeChar()?.trainer)){ switchTab("trainer"); return; }
   refreshCharSelect();
   const ac = activeChar();
   $("#partyCount").textContent = (ac?.pokemon?.length) || "";
@@ -1469,7 +1466,6 @@ function render(){
   if (currentTab==="pc")         renderPC();
   if (currentTab==="map")        renderMap();
   if (currentTab==="battle")     renderBattle();
-  if (currentTab==="gifts")      renderGifts();
   if (currentTab==="encounters") renderEncounters();
   if (currentTab==="reference")  renderReference();
   applyReadonlyLock();
@@ -1492,10 +1488,16 @@ let trainerTab = "sheet";
 function renderTrainer(){
   const c = activeChar(), t = c.trainer, root = $("#view-trainer");
   root.innerHTML = "";
-  root.append(subTabBar(
-    [["sheet","Sheet"],["features","Features & Edges"],["levelup","Level Up"],["gear","Inventory & Bio"]],
-    trainerTab, k=>{ trainerTab=k; renderTrainer(); }));
+  // the Gifts sub-tab shows for the GM (to grant Gifts) or once the Trainer actually has one
+  const subTabs = [["sheet","Sheet"],["features","Features & Edges"],["levelup","Level Up"],["gear","Inventory & Bio"]];
+  if(giftsCanSee(t)) subTabs.push(["gifts","🎁 Gifts"]);
+  if(trainerTab==="gifts" && !giftsCanSee(t)) trainerTab="sheet";   // last Gift removed → fall back
+  root.append(subTabBar(subTabs, trainerTab, k=>{ trainerTab=k; renderTrainer(); }));
 
+  if(trainerTab==="gifts"){
+    root.append(giftsCard(t));
+    return;
+  }
   if(trainerTab==="features"){
     root.append(classesCard());
     root.append(listCard("Edges","trainer.edges", D.edges.map(x=>x.name), "edge"));
@@ -3113,9 +3115,7 @@ function giftStatText(g){
   return spec==="any" ? "+1 Any Stat (choose)" : `+1 ${spec.map(lbl).join(" or ")} (choose)`;
 }
 function giftsCanSee(t){ return isGM() || ((t && t.gifts || []).length > 0); }
-function renderGifts(){
-  const root = $("#view-gifts"); root.innerHTML="";
-  const c = activeChar(), t = c.trainer;
+function giftsCard(t){
   const gm = isGM();
   const card = el("div",{class:"card"}, el("h3",{},"Legendary Gifts",
     el("div",{class:"inline"}, gm
@@ -3127,8 +3127,7 @@ function renderGifts(){
     card.append(el("div",{class:"muted small"}, gm
       ? "No Gifts yet — tap “+ grant a Gift” to bless this Trainer."
       : "You have no Gifts yet."));
-    root.append(card);
-    return;
+    return card;
   }
   t.gifts.forEach((g,i)=>{
     const row = el("div",{class:"moveslot"});
@@ -3148,7 +3147,7 @@ function renderGifts(){
       sel.append(el("option",{value:""},"choose stat…"));
       opts.forEach(k=>sel.append(el("option",{value:k, selected:g.statChoice===k}, (STATS.find(s=>s[0]===k)||[])[1]||k)));
       sel.disabled = !gm && !canEditActive();   // only the GM / owner sets it
-      sel.addEventListener("change",()=>{ g.statChoice = sel.value||undefined; save(); renderGifts(); if(currentTab==="trainer") renderTrainer(); });
+      sel.addEventListener("change",()=>{ g.statChoice = sel.value||undefined; save(); renderTrainer(); });
       statLine.append(sel);
     }
     info.append(statLine);
@@ -3157,14 +3156,14 @@ function renderGifts(){
     if(g.notes) info.append(el("div",{class:"small",style:"margin-top:2px"}, g.notes));
     row.append(info);
     if(gm) row.append(el("button",{class:"linkbtn danger",title:"remove this Gift",style:"align-self:flex-start",
-      onclick:()=>{ if(confirm(`Remove the Gift “${g.name}”?`)){ t.gifts.splice(i,1); save(); renderGifts(); if(currentTab==="trainer") renderTrainer(); } }}, "×"));
+      onclick:()=>{ if(confirm(`Remove the Gift “${g.name}”?`)){ t.gifts.splice(i,1); save(); renderTrainer(); } }}, "×"));
     card.append(row);
   });
   // summary of the stat bonuses these Gifts grant
   const gb = giftStatBonus(t); const parts = STATS.filter(([k])=>gb[k]).map(([k,l])=>`+${gb[k]} ${l}`);
   if(parts.length) card.append(el("div",{class:"small",style:"margin-top:10px;padding-top:8px;border-top:1px solid var(--line)"},
     el("b",{},"Patron Stats applied: "), parts.join(" · "), el("span",{class:"muted"}," (added to your Combat totals)")));
-  root.append(card);
+  return card;
 }
 function openAddGift(t){
   if(!isGM()){ toast("Only the GM can grant Gifts"); return; }
@@ -3224,7 +3223,7 @@ function openAddGift(t){
       if(!Array.isArray(t.gifts)) t.gifts = [];
       t.gifts.push({ id:uid(), name, tier:(cat&&cat.tier)||"Gift", patron:patronSel.value||"",
         statChoice: sc && sc.value || undefined, effect:effIn.value.trim(), prereq:(cat&&cat.prereq)||"" });
-      save(); closeModal(); renderGifts(); if(currentTab==="trainer") renderTrainer();
+      save(); closeModal(); trainerTab="gifts"; renderTrainer();
       toast(`Granted “${name}”`);
     }},"Grant Gift"),
   ]});
