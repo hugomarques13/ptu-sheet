@@ -586,6 +586,35 @@ const moveByName     = new Map(D.moves.map(m => [m.name.toLowerCase(), m]));
 const abilityByName  = new Map(D.abilities.map(a => [a.name.toLowerCase(), a]));
 const natureByName   = new Map(D.natures.map(n => [n.name.toLowerCase(), n]));
 const getSpecies = n => n && speciesByName.get(String(n).toLowerCase());
+/* ---- "Mom?" homebrew Symbiant — a hidden entity gated to the GM and Lázaro ---- */
+function baseName(s){ return String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").trim().toLowerCase(); }
+function isLazaroName(s){ return baseName(s)==="lazaro"; }   // accent-insensitive ("Lázaro"/"Lazaro")
+function isLazaro(){
+  if(mode!=="cloud") return true;                    // local/solo play has no roles to hide behind
+  if(isLazaroName(cloud.name)) return true;          // logged in with the display name Lázaro
+  return Object.values(cloud.byId||{}).some(r => ownsRow(r) &&
+    (isLazaroName(r.data?.name) || isLazaroName(r.owner_name)));   // or owns the Lázaro sheet
+}
+function canSeeMom(){ return isGM() || isLazaro(); }
+function isMomSpecies(n){ return String(n||"").trim().toLowerCase() === "mom?"; }
+/* auto-distribute a "Mom?" mon's level+10 stat budget across its stats, weighted by base stats
+   (Attack base 0 → gets nothing). Largest-remainder method; deterministic. Mutates p.stats. */
+function autoAllocMom(p){
+  const sp = getSpecies(p.species); if(!sp || !sp.autoStats) return false;
+  const base = sp.baseStats || {};
+  const budget = Math.max(0, (p.level||1) + 10);
+  const weights = STATS.map(([k]) => Math.max(0, base[k]||0));
+  const wsum = weights.reduce((a,b)=>a+b,0) || 1;
+  const raw = weights.map(w => budget*w/wsum);
+  const floor = raw.map(Math.floor);
+  let left = budget - floor.reduce((a,b)=>a+b,0);
+  const order = raw.map((v,i)=>[v-floor[i], base[STATS[i][0]]||0, i]).sort((a,b)=> b[0]-a[0] || b[1]-a[1]);
+  for(let n=0;n<order.length && left>0;n++){ floor[order[n][2]]++; left--; }
+  let changed=false;
+  STATS.forEach(([k],i)=>{ p.stats[k]=p.stats[k]||{added:0};
+    if(p.stats[k].added!==floor[i]){ p.stats[k].added=floor[i]; changed=true; } });
+  return changed;
+}
 /* every item that can be held/consumed, for lookups + the Held Item picker */
 const itemByName = new Map([...(D.items?.held||[]), ...(D.items?.food||[]), ...(D.items?.capabilities||[]),
   ...(D.items?.weather||[]), ...(D.items?.equipment||[]), ...(D.items?.gear||[])].map(i => [i.name.toLowerCase(), i]));
@@ -953,7 +982,7 @@ function newTrainer() {
     name:"", age:"", gender:"", heightTxt:"", weightTxt:"", size:"Medium", weightClass:3,
     level:1, xp:0, money:0,
     classes:[], skills, combat, edges:[], features:[], techniques:[], abilities:[],
-    inventory:[], equipment:{}, background:"", notes:"", appearance:"",
+    inventory:[], equipment:{}, gifts:[], background:"", notes:"", appearance:"",
     currentHP:null, tempHP:0, injuries:0, usedAP:0, unlocked:false, uses:{}, avatar:"", weapons:[],
     levelUp:{}, buffs:[],
   };
@@ -1002,6 +1031,7 @@ function normPokemon(p){
   if(typeof p.tutorPoints!=="number") p.tutorPoints = tutorPointsEarned(p.level);  // legacy objects only — never re-floors spent points
   normSwarm(p);                                    // Swarm Template block, if this is a swarm (Core p.478)
   normBoss(p);                                     // Boss Template block, if this is a boss (Running the Game p.487)
+  autoAllocMom(p);                                 // "Mom?": keep auto-assigned stat points in sync with level
   return p;
 }
 /* migrate older Trainer objects to include HP/AP/uses tracking */
@@ -1023,6 +1053,7 @@ function normTrainer(t){
   if(typeof t.avatar!=="string") t.avatar = "";
   if(!Array.isArray(t.weapons)) t.weapons = [];
   if(!t.equipment || typeof t.equipment!=="object" || Array.isArray(t.equipment)) t.equipment = {};  // worn gear per slot
+  if(!Array.isArray(t.gifts)) t.gifts = [];                        // Legendary Gifts (Blessed and the Damned)
   // migrate ranged weapons saved with the old (wrong) melee-copied stats — only when they still
   // match the old preset exactly, so hand-tuned weapons are left alone (Core p.286).
   t.weapons.forEach(w=>{
@@ -1120,7 +1151,8 @@ function setPath(obj, path, val) {
    PTU calculations
 =================================================================== */
 function trainerDerived(t) {
-  const raw = k => t.combat[k].base + t.combat[k].added;   // pre-Combat-Stage ("real") stat
+  const gift = giftStatBonus(t);                            // Legendary Gift Patron-Stat points (book p.57)
+  const raw = k => t.combat[k].base + t.combat[k].added + (gift[k]||0);   // pre-Combat-Stage ("real") stat
   const cap6 = v => Math.min(6, Math.floor(v/5));
   const cs = effectiveCS(t);                               // Combat Stages (manual t.cs + conditions)
   const statB = equipStatBonus(t);                         // Focus item: +5 to a chosen stat, AFTER Combat Stages
@@ -1425,6 +1457,9 @@ function render(){
   // the Encounters tab is GM-only
   const encBtn = $("#tabEncounters"); if(encBtn) encBtn.hidden = !isGM();
   if(currentTab==="encounters" && !isGM()){ switchTab("trainer"); return; }
+  // the Gifts tab: the GM always sees it (to grant Gifts); a player only once they have at least one
+  const giftBtn = $("#tabGifts"); if(giftBtn) giftBtn.hidden = !giftsCanSee(activeChar()?.trainer);
+  if(currentTab==="gifts" && !giftsCanSee(activeChar()?.trainer)){ switchTab("trainer"); return; }
   refreshCharSelect();
   const ac = activeChar();
   $("#partyCount").textContent = (ac?.pokemon?.length) || "";
@@ -1434,6 +1469,7 @@ function render(){
   if (currentTab==="pc")         renderPC();
   if (currentTab==="map")        renderMap();
   if (currentTab==="battle")     renderBattle();
+  if (currentTab==="gifts")      renderGifts();
   if (currentTab==="encounters") renderEncounters();
   if (currentTab==="reference")  renderReference();
   applyReadonlyLock();
@@ -1515,13 +1551,14 @@ function renderTrainer(){
   const sc = el("div",{class:"card"}, el("h3",{},"Combat Stats",
     el("div",{class:"inline"}, trainerBudgetText(tb), trainerUnlockToggle(t))));
   const sg = el("div",{class:"statgrid"});
+  const giftB = giftStatBonus(t);   // Legendary Gift Patron-Stat points fold into the combat total
   STATS.forEach(([k,lbl]) => {
     const canInc = t.unlocked || tb.remaining > 0;
     const box = el("div",{class:"stat"},
-      el("div",{class:"lbl"},lbl),
+      el("div",{class:"lbl"},lbl+(giftB[k]?` +${giftB[k]}🎁`:"")),
       inputMini(`trainer.combat.${k}.base`,  t.combat[k].base,  "base"),
       statStepper(t.combat[k].added, canInc, v=>{ t.combat[k].added = v; save(); renderTrainer(); }),
-      el("div",{class:"big","data-tot":k}, t.combat[k].base + t.combat[k].added),
+      el("div",{class:"big","data-tot":k}, t.combat[k].base + t.combat[k].added + (giftB[k]||0)),
     );
     sg.append(box);
   });
@@ -2024,7 +2061,8 @@ function recalcTrainer(){
   const before = JSON.stringify(t.msStats||{});
   syncMilestoneStats(t);                       // a manual Level change may earn/remove milestone points
   if(JSON.stringify(t.msStats||{})!==before) save();
-  STATS.forEach(([k]) => { const n=$(`[data-tot="${k}"]`); if(n) n.textContent = t.combat[k].base + t.combat[k].added; });
+  const giftB = giftStatBonus(t);
+  STATS.forEach(([k]) => { const n=$(`[data-tot="${k}"]`); if(n) n.textContent = t.combat[k].base + t.combat[k].added + (giftB[k]||0); });
   SKILLS.forEach(([k]) => { const n=$(`[data-dice="${k}"]`); if(n){ const b=categoricBonus(t,k)+equipSkillBonus(t,k); n.textContent = `${rankDice(t.skills[k])}d6${b?`+${b}`:""}`; } });
   const g = $("#trainerDerived"); if (g) g.replaceWith(trainerDerivedGrid(t));
 }
@@ -2825,6 +2863,374 @@ function openInventoryPicker(t){
 }
 
 /* ===================================================================
+   LEGENDARY GIFTS (The Blessed and the Damned)
+   GM-granted blessings from a Legendary patron. Each Gift is tied to a
+   Patron, and taking it grants that Patron's Stat bonus (the [PATRON STAT]
+   tag, book p.57): a single stat, a choice of two ("or"), or Any stat.
+   The Gifts tab is GM-add-only and hidden from a player until they have one.
+=================================================================== */
+/* Patron Stat Tags — book p.57. value: a STATS key, ["a","b"] for an "or" choice,
+   or "any" (player picks any stat). Each Gift grants +1 to the resolved stat. */
+const PATRON_STATS = {
+  "Mew":"any","Mewtwo":"spatk","Heatran":"spatk","Articuno":"spdef","Zapdos":"spatk",
+  "Moltres":"spatk","Raikou":"spd","Entei":"hp","Suicune":["def","spdef"],
+  "Regirock":"def","Regice":"spdef","Registeel":["def","spdef"],"Regigigas":"atk",
+  "Cobalion":"def","Terrakion":"atk","Virizion":"spdef","Keldeo":"spatk",
+  "Uxie":["def","spdef"],"Mesprit":["def","spdef"],"Azelf":["atk","spatk"],
+  "Tornadus":"spatk","Thundurus":"spatk","Landorus":"atk",
+  "Lugia":"spdef","Ho-Oh":"spdef","Latias":"spdef","Latios":"spatk",
+  "Manaphy":"any","Celebi":"any","Jirachi":"any","Victini":"any","Shaymin":"any",
+  "Meloetta":["atk","spatk"],"Darkrai":"spatk","Cresselia":"spdef",
+  "Kyogre":"spatk","Groudon":"atk","Rayquaza":["atk","spatk"],
+  "Reshiram":"spatk","Zekrom":"atk","Kyurem":"hp","Dialga":"spatk","Palkia":"spatk",
+  "Giratina":"hp","Xerneas":["atk","spatk"],"Yveltal":["atk","spatk"],
+  "Zygarde":"hp","Diancie":["def","spdef"],
+  "Vulpoxen":"spatk",   // homebrew: the created Fire/Ghost legendary bonded to Lázaro
+};
+const PATRON_NAMES = Object.keys(PATRON_STATS);
+/* Legendary Gifts catalog (book pp.58-71), grouped. Each group lists its member Patrons (for the
+   stat) and its Gifts as [tier, name, prerequisites, effect]. Tier ∈ Minor(Edge)/Major(Feature)/Pact. */
+const GIFT_GROUPS = [
+  { group:"Legendary Birds & Beasts", patrons:["Articuno","Zapdos","Moltres","Raikou","Entei","Suicune"], gifts:[
+    ["Minor","Elemental Soul","GM Permission","Sense Pokémon of a given Type within 10m, based on your patron (Articuno→Ice, Moltres/Entei→Fire, Zapdos/Raikou→Electric, Suicune→Water)."],
+    ["Major","Elemental Manipulation","Minor Gift - Elemental Soul","Gain a Capability by patron (Articuno→Freezer, Moltres/Entei→Firestarter, Zapdos/Raikou→Zapper, Suicune→Fountain)."],
+    ["Major","Winter's Kiss (Articuno)","Minor Gift - Elemental Soul","You gain the Winter's Kiss Ability."],
+    ["Major","Sun Blanket (Moltres)","Minor Gift - Elemental Soul","You gain the Sun Blanket Ability."],
+    ["Major","Lightningrod (Zapdos)","Minor Gift - Elemental Soul","You gain the Lightningrod Ability."],
+    ["Major","Flash Fire (Entei)","Minor Gift - Elemental Soul","You gain the Flash Fire Ability."],
+    ["Major","Volt Absorb (Raikou)","Minor Gift - Elemental Soul","You gain the Volt Absorb Ability."],
+    ["Major","Water Absorb (Suicune)","Minor Gift - Elemental Soul","You gain the Water Absorb Ability."],
+  ]},
+  { group:"Celebi", patrons:["Celebi"], gifts:[
+    ["Minor","Catastrophe Sense","GM Permission","Intuitive sense of when natural disasters/catastrophes are likely to occur near you."],
+    ["Major","Probability Control","Minor Gift - Catastrophe Sense","You gain the Probability Control Ability."],
+    ["Major","Sprouter","Minor Gift - Catastrophe Sense","You gain the Sprouter Capability."],
+  ]},
+  { group:"The Golems (Regis)", patrons:["Regirock","Regice","Registeel","Regigigas"], gifts:[
+    ["Minor","Stoic Stature","GM Permission","Subtract half your Athletics or Focus Rank from meters Push effects move you."],
+    ["Major","Mark of Loyalty","Minor Gift - Stoic Stature","1 AP Free Action, target your Pokémon: treat it as one Loyalty higher for the rest of the turn."],
+    ["Major","Clear Body","Major Gift - Mark of Loyalty","You gain the Clear Body Ability."],
+  ]},
+  { group:"Jirachi", patrons:["Jirachi"], gifts:[
+    ["Minor","Watchful Sleep","GM Permission","Make Perception Checks to detect imminent dangers while sleeping."],
+    ["Major","Eye of Truth","Minor Gift - Watchful Sleep","1 AP Standard Action: determine whether a professed desire is sought for altruistic reasons."],
+    ["Major","Doom Desire","Major Gift - Eye of Truth","You learn the Move Doom Desire."],
+  ]},
+  { group:"Eon Duo (Latias/Latios)", patrons:["Latias","Latios"], gifts:[
+    ["Minor","Loyal Heart","GM Permission","You are immune to Infatuation."],
+    ["Major","Sight Sharing","Minor Gift - Loyal Heart, *Special","Taken alongside a partner (one via Latias, one via Latios) — you become Link Partners, share senses, and never hit each other with AoE unless you want to."],
+    ["Major","Mist Ball (Latias)","Major Gift - Sight Sharing","You learn the Move Mist Ball."],
+    ["Major","Luster Purge (Latios)","Major Gift - Sight Sharing","You learn the Move Luster Purge."],
+  ]},
+  { group:"Lake Guardians", patrons:["Azelf","Uxie","Mesprit"], gifts:[
+    ["Minor","Force of Will (Azelf)","GM Permission","Reroll all 1s on Focus and Command Checks."],
+    ["Major","Drain Will (Azelf)","Minor Gift - Force of Will","3 AP Standard Action: contested Focus Check; on a win the target can't take Shift/Standard Actions for 1d2 turns; either way −3 to all their rolls for the encounter."],
+    ["Minor","Fount of Knowledge (Uxie)","GM Permission","Choose two Education Skills; reroll all 1s on those Checks."],
+    ["Major","Shatter Memory (Uxie)","Minor Gift - Fount of Knowledge","3 AP Standard Action: disable one random Ability or two random Moves for the encounter; DC 10 Focus to recall complex memories for 15 min."],
+    ["Minor","Emotion's Heart (Mesprit)","GM Permission","Reroll all 1s on Charm and Intuition Checks."],
+    ["Major","Negate Emotion (Mesprit)","Minor Gift - Emotion's Heart","3 AP Standard Action: target becomes immune to Enraged/Confused/Infatuation for the encounter, but treats Intimidate/Charm/Intuition/Guile as Pathetic for 15 min."],
+  ]},
+  { group:"Sea Guardians (Manaphy)", patrons:["Manaphy"], gifts:[
+    ["Minor","Sailors' Guardian","GM Permission","Wild Pokémon up to twice your Trainer Level won't attack a water-borne vessel you travel on."],
+    ["Major","Hydration","Minor Gift - Sailors' Guardian","You gain the Hydration Ability."],
+    ["Major","Heart Swap (Manaphy)","Minor Gift - Sailors' Guardian","You learn the Move Heart Swap."],
+  ]},
+  { group:"Shaymin", patrons:["Shaymin"], gifts:[
+    ["Minor","Plant Intuition","GM Permission","Reroll all 1s on plant-related Survival Checks; auto-identify berries and apricorns on sight."],
+    ["Major","Pure Breathing","Minor Gift - Plant Intuition","Immune to Rage Powder, Poison Gas, Poisonpowder, Sleep Powder, Smog, Smokescreen, Spore, Stun Spore, Sweet Scent."],
+    ["Major","Sprouter","Minor Gift - Plant Intuition","You gain the Sprouter Capability."],
+    ["Major","Seed Flare","Major Gift - Pure Breathing, Major Gift - Sprouter","You learn the Move Seed Flare."],
+  ]},
+  { group:"Swords of Justice", patrons:["Cobalion","Terrakion","Virizion","Keldeo"], gifts:[
+    ["Minor","Spirit of Justice","GM Permission","Add your Spirit Modifier instead of Body for Combat Checks; +2 to Disarming or resisting Disarming."],
+    ["Major","Sacred Sword","Minor Gift - Spirit of Justice","You learn the Move Sacred Sword."],
+    ["Major","Courage","Minor Gift - Spirit of Justice","You gain the Courage Ability."],
+  ]},
+  { group:"Kami Trio", patrons:["Tornadus","Thundurus","Landorus"], gifts:[
+    ["Minor","Cloud Reading","GM Permission","+3 to Survival Checks to discern upcoming weather from clouds."],
+    ["Major","Levitate","Minor Gift - Cloud Reading","You gain the Levitate Ability."],
+    ["Major","Therian Form","Minor Gift - Cloud Reading","Daily Free Action: keep an extra stat block (redistribute level-up / [+Any Stat] points) and swap to it for the rest of an encounter."],
+  ]},
+  { group:"Meloetta", patrons:["Meloetta"], gifts:[
+    ["Minor","Dazzling the Stage","GM Permission","Using song/dance for Intimidate, Guile or Charm, add half your highest Rank among them to the Check."],
+    ["Major","Soundproof","Minor Gift - Dazzling the Stage","You gain the Soundproof Ability."],
+    ["Major","Relic Song","Major Gift - Soundproof","You learn the Move Relic Song."],
+  ]},
+  { group:"Diancie", patrons:["Diancie"], gifts:[
+    ["Minor","Royal Privilege","GM Permission","Wear Shards as a Trainer Accessory; +2 to the Skill linked to the shard's colour (Red→Intimidate, Orange→Command, Yellow→Charm, Green→Intuition, Blue→Guile, Violet→Focus)."],
+    ["Major","Magic Bounce","Minor Gift - Royal Privilege","You gain the Magic Bounce Ability."],
+    ["Major","Diamond Storm","Major Gift - Magic Bounce","You learn the Move Diamond Storm."],
+  ]},
+  { group:"Mew", patrons:["Mew"], gifts:[
+    ["Minor","Motherly Compassion","GM Permission","+3 to Intuition/Charm checks to discern emotions and comfort someone."],
+    ["Major","Barrier","Minor Gift - Motherly Compassion","You learn the Move Barrier."],
+    ["Major","Gentle Vibe","Minor Gift - Motherly Compassion","You gain the Gentle Vibe Ability."],
+    ["Major","Mirage","Minor Gift - Motherly Compassion","Daily/25 Standard Action: create a 2m illusion (visual + auditory); DC 15 Perception to see through; sustain 10 min."],
+    ["Pact","Origin Tutor","All Mew Major Gifts","Once/10 Extended Action: your Pokémon with ≥3 Tutor Points loses 3 to learn any single Move via TM/Tutoring (still paying Tutor costs). Once per Pokémon."],
+  ]},
+  { group:"Tower Duo (Lugia/Ho-Oh)", patrons:["Lugia","Ho-Oh"], gifts:[
+    ["Minor","Tower's Rejuvenation","GM Permission","Resting recovers 1/10 max HP per half hour instead of 1/16."],
+    ["Major","Tower's Blessing","Minor Gift - Tower's Rejuvenation","1 AP Free Action when you/your Pokémon use a Move with the Blessing keyword: it generates one extra use of the Blessing."],
+    ["Major","Life Force","Two Major Gifts from the Tower Duo","You gain the Life Force Ability."],
+    ["Major","Ashes of the Phoenix (Ho-Oh)","Minor Gift - Tower's Rejuvenation","Daily Standard Action: treat an adjacent target as if Revived (regains 25% max HP)."],
+    ["Pact","Sacred Fire (Ho-Oh)","All Ho-Oh & shared Tower Duo Major Gifts","You learn the Move Sacred Fire."],
+    ["Major","Storm of the Century (Lugia)","Minor Gift - Tower's Rejuvenation","Daily Standard Action: for 3 turns push all foes within 5m 1m away and they lose 1/10 max HP."],
+    ["Pact","Aeroblast (Lugia)","All Lugia & shared Tower Duo Major Gifts","You learn the Move Aeroblast."],
+  ]},
+  { group:"Weather Trio", patrons:["Groudon","Kyogre","Rayquaza"], gifts:[
+    ["Minor","Landmaster (Groudon)","GM Permission","Treat rocky/sandy Rough Terrain (or Groundshaper terrain) as Regular Terrain."],
+    ["Major","Drought (Groudon)","Minor Gift - Landmaster","You gain the Drought Ability."],
+    ["Major","Earthshaker (Groudon)","Minor Gift - Landmaster","You gain the Groundshaper Capability."],
+    ["Major","Magma Spirit (Groudon)","Minor Gift - Landmaster","Daily Standard Action: for 3 rounds foes within 6m lose the benefits of Sunny Day."],
+    ["Pact","Eruption (Groudon)","All Groudon Major Gifts","You learn the Move Eruption."],
+    ["Minor","Seamaster (Kyogre)","GM Permission","Treat deep water you aren't fully submerged in as Regular Terrain."],
+    ["Major","Drizzle (Kyogre)","Minor Gift - Seamaster","You gain the Drizzle Ability."],
+    ["Major","Wavecrasher (Kyogre)","Minor Gift - Seamaster","You gain the Fountain Capability."],
+    ["Major","Aqua Spirit (Kyogre)","Minor Gift - Seamaster","Daily Standard Action: for 3 rounds foes within 6m lose the benefits of Rain Dance."],
+    ["Pact","Water Spout (Kyogre)","All Kyogre Major Gifts","You learn the Move Water Spout."],
+    ["Minor","Clear Skies (Rayquaza)","GM Permission","You learn the Move Defog."],
+    ["Major","Air Lock (Rayquaza)","Minor Gift - Clear Skies","You gain the Air Lock Ability."],
+    ["Major","Air Adept (Rayquaza)","Minor Gift - Clear Skies","You gain the Guster Capability."],
+    ["Major","Sky Spirit (Rayquaza)","Minor Gift - Clear Skies","Daily Standard Action (needs Clear weather): for 5 rounds halve foes' Sky/Levitate within 10m; allies within 10m +10 Initiative."],
+    ["Pact","Hyper Beam (Rayquaza)","All Rayquaza Major Gifts","You learn the Move Hyper Beam."],
+  ]},
+  { group:"Creation Trio", patrons:["Dialga","Palkia","Giratina"], gifts:[
+    ["Major","Realm Portal","One Creation Trio Major Gift","Daily Extended Action: open a 2-minute portal to any location you've visited within 20 miles."],
+    ["Minor","Perfect Timing (Dialga)","GM Permission","You always intuitively know the time and can act as a human stopwatch."],
+    ["Major","Probability Control (Dialga)","Minor Gift - Perfect Timing","You gain the Probability Control Ability."],
+    ["Major","Time Stop (Dialga)","Major Gift - Realm Portal","Daily Swift Action, Interrupt: take an extra Shift and Standard Action."],
+    ["Pact","Roar of Time (Dialga)","All Dialga & shared Creation Trio Major Gifts","You learn the Move Roar of Time."],
+    ["Minor","Spatial Awareness (Palkia)","GM Permission","Know sizes/distances by sight to the nearest cm up to 10m."],
+    ["Major","Nomad (Palkia)","Minor Gift - Spatial Awareness","You gain the Transporter Ability (grants the Move Teleport)."],
+    ["Major","Space Distortion (Palkia)","Major Gift - Realm Portal","Daily Standard Action: swap the positions of up to three Pokémon/Trainers within 10m."],
+    ["Pact","Spacial Rend (Palkia)","All Palkia & shared Creation Trio Major Gifts","You learn the Move Spacial Rend."],
+    ["Minor","Death Sense (Giratina)","GM Permission","At a corpse, know how many hours ago it died (up to a week)."],
+    ["Major","Pressure (Giratina)","Minor Gift - Death Sense","You gain the Pressure Ability."],
+    ["Major","Banish (Giratina)","Major Gift - Realm Portal","Daily Standard Action: remove a target within 8m from the encounter for 1d2+1 rounds."],
+    ["Pact","Shadow Force (Giratina)","All Giratina & shared Creation Trio Major Gifts","You learn the Move Shadow Force."],
+  ]},
+  { group:"Lunar Duo (Cresselia/Darkrai)", patrons:["Cresselia","Darkrai"], gifts:[
+    ["Minor","Dream Mastery","GM Permission","Immune to Hypnosis, Nightmare, and Dream Eater."],
+    ["Major","Oneiromancy","Minor Gift - Dream Mastery","You gain the Dream Reader Capability."],
+    ["Major","Dream Augury","Minor Gift - Dream Mastery","2 AP Extended Action: sleep and dream of things to come (favorable via Cresselia, dangerous via Darkrai)."],
+    ["Major","Dreamspinner (Cresselia)","Major Gift - Oneiromancy, Major Gift - Dream Augury","You gain the Dreamspinner Ability."],
+    ["Pact","Lunar Dance (Cresselia)","Major Gift - Dreamspinner","You learn the Move Lunar Dance."],
+    ["Major","Bad Dreams (Darkrai)","Major Gift - Oneiromancy, Major Gift - Dream Augury","You gain the Bad Dreams Ability."],
+    ["Pact","Dark Void (Darkrai)","Major Gift - Bad Dreams","You learn the Move Dark Void."],
+  ]},
+  { group:"Heatran", patrons:["Heatran"], gifts:[
+    ["Minor","Vulcan's Intuition","GM Permission","+3 to Perception and Survival Checks in mountainous/volcanic areas."],
+    ["Major","Tremorsense","Minor Gift - Vulcan's Intuition","You gain the Tremorsense Capability."],
+    ["Major","Lava-blooded","Minor Gift - Vulcan's Intuition","Immune to ambient volcanic heat; resist Fire by one step. Scene Interrupt when hit by a Fire Move: take no effect and burst 1m (targets lose 1/16 max HP)."],
+    ["Major","Magma Armor","Minor Gift - Vulcan's Intuition","You gain the Magma Armor Ability."],
+    ["Pact","Magma Storm","All Heatran Major Gifts","You learn the Move Magma Storm."],
+  ]},
+  { group:"Regigigas", patrons:["Regigigas"], gifts:[
+    ["Minor","Hands of the Creator","GM Permission","+3 to Occult/Petrology Knowledge rolls to identify crafting materials or a crafted object's purpose."],
+    ["Major","March of the Colossus","Minor Gift - Hands of the Creator","2 AP Standard Action: for 3 rounds halve a target's Attack & Speed, then at the end raise each by two Combat Stages."],
+    ["Major","Primal Craftsmanship","Minor Gift - Hands of the Creator","You pay 20% less when crafting items."],
+    ["Major","Animate","Major Gift - Primal Craftsmanship","Daily Extended Action: create a small golem (Type by material) with Stat Points equal to your Trainer Level."],
+    ["Pact","Crush Grip","All Regigigas Major Gifts","You learn the Move Crush Grip."],
+  ]},
+  { group:"Victini", patrons:["Victini"], gifts:[
+    ["Minor","Chosen of Victory","GM Permission","Spending AP to raise an Accuracy Check gives +3 instead of +1."],
+    ["Major","Searing Blade","Minor Gift - Chosen of Victory","2 AP Free Action: your next weapon Struggle Attack deals +2 Damage Steps and Fire-Type damage."],
+    ["Major","Blaze Armor","Minor Gift - Chosen of Victory","2 AP Free Action, Interrupt: take the next hit as if Fire-Type; a melee attacker loses 1/8 max HP as a Fire effect."],
+    ["Major","Victory Star","Minor Gift - Chosen of Victory","You gain the Victory Star Ability."],
+    ["Pact","V-Create","All Victini Major Gifts","You learn the Move V-Create."],
+  ]},
+  { group:"Tao Trio", patrons:["Reshiram","Zekrom","Kyurem"], gifts:[
+    ["Major","Invert Balance","One Tao Trio Major Gift","Daily Standard Action: the area becomes Inverted for 5 rounds (weaknesses and resistances swap)."],
+    ["Minor","Hero of Truth (Reshiram)","GM Permission","+3 on Intuition Checks to discern when someone is lying."],
+    ["Major","White Yang (Reshiram)","Minor Gift - Hero of Truth","Daily Standard Action: allies within 5m may +2 all speeds, +1 Atk/SpAtk CS, −2 Accuracy for 3 rounds."],
+    ["Major","Turboblaze (Reshiram)","Major Gift - White Yang","You gain the Turboblaze Ability."],
+    ["Pact","Blue Flare (Reshiram)","All Reshiram & shared Tao Trio Major Gifts","You learn the Move Blue Flare."],
+    ["Minor","Hero of Ideals (Zekrom)","GM Permission","+3 on Intuition Checks to discern someone's beliefs and ideals."],
+    ["Major","Black Yin (Zekrom)","Minor Gift - Hero of Ideals","Daily Standard Action: allies within 5m may −1 speeds and +2 evasion for 3 rounds."],
+    ["Major","Teravolt (Zekrom)","Major Gift - Black Yin","You gain the Teravolt Ability."],
+    ["Pact","Bolt Strike (Zekrom)","All Zekrom & shared Tao Trio Major Gifts","You learn the Move Bolt Strike."],
+    ["Minor","Hero of Balance (Kyurem)","GM Permission","Others take −3 to Intuition Checks to detect your lies or discern your beliefs."],
+    ["Major","The Empty Tao (Kyurem)","Minor Gift - Hero of Balance","Daily Standard Action: for 3 rounds all within 5m have Combat Stages locked to zero."],
+    ["Major","Winter's Kiss (Kyurem)","Major Gift - The Empty Tao","You gain the Winter's Kiss Ability."],
+    ["Pact","Glaciate (Kyurem)","All Kyurem & shared Tao Trio Major Gifts","You learn the Move Glaciate."],
+    ["Pact","Freeze Shock (Kyurem)","All Kyurem & shared Tao Trio Major Gifts, Minor Gift - Hero of Ideals","You learn the Move Freeze Shock."],
+    ["Pact","Ice Burn (Kyurem)","All Kyurem & shared Tao Trio Major Gifts, Minor Gift - Hero of Truth","You learn the Move Ice Burn."],
+  ]},
+  { group:"Mortality Duo (Xerneas/Yveltal)", patrons:["Xerneas","Yveltal"], gifts:[
+    ["Major","Shared Mortality","One Mortality Duo Major Gift","Daily x3 Standard Action: pool your remaining HP with an allied target's and split it as you wish."],
+    ["Minor","Rejuvenating Aura (Xerneas)","GM Permission","On an Extended Rest, you and nearby Trainers/Pokémon are treated as if you spent the night at a Poké Center."],
+    ["Major","Bounty of Life (Xerneas)","Minor Gift - Rejuvenating Aura","Daily Standard Action: a target is cured of all Injuries and Status Effects."],
+    ["Major","Fairy Aura (Xerneas)","Major Gift - Bounty of Life","You gain the Fairy Aura Ability."],
+    ["Pact","Geomancy (Xerneas)","All Xerneas Major Gifts & shared Mortality Duo Gifts","You learn the Move Geomancy."],
+    ["Minor","Death Dealer (Yveltal)","GM Permission","Injuries you inflict heal only at a Poké Center, and only one per day."],
+    ["Major","Touch of the Flayed One (Yveltal)","Minor Gift - Death Dealer","Daily x3 Free Action when you inflict Injuries: inflict one additional Injury."],
+    ["Major","Dark Aura (Yveltal)","Major Gift - Touch of the Flayed One","You gain the Dark Aura Ability."],
+    ["Pact","Oblivion Wing (Yveltal)","All Yveltal Major Gifts & shared Mortality Duo Gifts","You learn the Move Oblivion Wing."],
+  ]},
+  { group:"Zygarde", patrons:["Zygarde"], gifts:[
+    ["Minor","World Serpent's Embrace","GM Permission","Scene Extended Action: sense whether Legendary Pokémon are in the vicinity and roughly where."],
+    ["Major","He Who Cannot Be Shackled","Minor Gift - World Serpent's Embrace","Daily x3 Free Action when Trapped/Slowed/Tripped/Grappled: evade that Status/Maneuver."],
+    ["Major","God Crusher","Minor Gift - World Serpent's Embrace","You gain the Godslayer Feature (or another Feature if you already have it); Godslayer's AC becomes 8 and no feedback."],
+    ["Major","Aura Break","Minor Gift - World Serpent's Embrace","You gain the Aura Break Ability."],
+    ["Pact","Land's Wrath","All Zygarde Major Gifts","You learn the Move Land's Wrath."],
+  ]},
+  { group:"Outsider — Mewtwo Symbiant", patrons:["Mewtwo"], gifts:[
+    ["Minor","Twin Souls","GM Permission","Telepathically communicate with your bound Mewtwo at any distance; gain the Soulbound Edge."],
+    ["Major","Expanded Horizons","Minor Gift - Twin Souls","Gain the Telepath or Telekinetic Capability (or the Godslayer Feature if you have both)."],
+    ["Major","Mental Suggestion","Major Gift - Expanded Horizons","Daily Extended Action (with your Mewtwo nearby): Focus check as Telepath to instill a thought/action into a target's mind."],
+    ["Pact","Psystrike","Twin Souls, Expanded Horizons, Mental Suggestion","You learn the Move Psystrike."],
+  ]},
+  { group:"Vulpoxen (Symbiant)", patrons:["Vulpoxen"], gifts:[
+    ["Minor","Grafted Soul","GM Permission","+3 bonus to Occult Education and Medicine Education Checks concerning souls, spirits, death, and the line between the living and the dead. You can sense whether a creature within 10m has died within the last hour. (Bond deepens at Vulpoxen Lv 5.)"],
+    ["Major","Ashen Séance","Minor Gift - Grafted Soul","Daily Extended Action, targeting the remains, ashes, or a treasured possession of a creature that has died: you and Vulpoxen kindle a cold flame and commune with the departed spirit, asking questions it answers truthfully to the best of what it knew in life. A spirit gone longer than a year is faint and manages only one answer. (Vulpoxen Lv 20.)"],
+    ["Major","Emberwake","Minor Gift - Grafted Soul","You gain the Pyre of Grief Ability (heal a Tick of HP + a stacking-capped +5 to your next Damage Roll whenever anything faints within 5m). (Vulpoxen Lv 30 — Nightmare Aura wakes.)"],
+    ["Major","Coma Light","Major Gift - Emberwake","Scene x2, Standard Action, AC 6, Range 4m 1 Target: the target falls Asleep and immediately gains Bad Sleep. (Vulpoxen Lv 50 — Death Aura opens.)"],
+    ["Pact","Rekindling","All Vulpoxen Major Gifts","You learn the Move Rekindling — a Fire attack that, on a killing blow, revives a fainted ally as a Ghost-Type revenant. (Vulpoxen Lv 75 — full god.)"],
+  ]},
+];
+/* every gift as a flat list with its group, for pickers/lookups */
+const GIFT_CATALOG = GIFT_GROUPS.flatMap(g => g.gifts.map(([tier,name,prereq,effect]) =>
+  ({ group:g.group, patrons:g.patrons, tier, name, prereq, effect })));
+function giftByName(name){ return GIFT_CATALOG.find(x=>x.name===name) || null; }
+/* the Patron stat a gift grants (a STATS key), resolving "or"/"any" via the stored choice; null if none/unchosen */
+function giftGrantsStat(g){
+  const spec = PATRON_STATS[g && g.patron]; if(spec==null) return null;
+  if(typeof spec==="string" && spec!=="any") return spec;   // fixed single stat
+  return (g.statChoice && (spec==="any" || spec.includes?.(g.statChoice))) ? g.statChoice : null;  // or/any → chosen
+}
+/* +1 per gift to its resolved Patron stat (book p.57 [PATRON STAT] tag) */
+function giftStatBonus(t){
+  const out={hp:0,atk:0,def:0,spatk:0,spdef:0,spd:0};
+  (t && t.gifts || []).forEach(g=>{ const k=giftGrantsStat(g); if(k && out[k]!==undefined) out[k]+=1; });
+  return out;
+}
+/* human label for a gift's patron-stat grant, incl. an unresolved-choice prompt */
+function giftStatText(g){
+  const spec = PATRON_STATS[g && g.patron]; if(spec==null) return "";
+  const lbl = k => (STATS.find(s=>s[0]===k)||[])[1]||k;
+  if(typeof spec==="string" && spec!=="any") return `+1 ${lbl(spec)}`;
+  if(g.statChoice) return `+1 ${lbl(g.statChoice)}`;
+  return spec==="any" ? "+1 Any Stat (choose)" : `+1 ${spec.map(lbl).join(" or ")} (choose)`;
+}
+function giftsCanSee(t){ return isGM() || ((t && t.gifts || []).length > 0); }
+function renderGifts(){
+  const root = $("#view-gifts"); root.innerHTML="";
+  const c = activeChar(), t = c.trainer;
+  const gm = isGM();
+  const card = el("div",{class:"card"}, el("h3",{},"Legendary Gifts",
+    el("div",{class:"inline"}, gm
+      ? el("button",{class:"linkbtn h-act", onclick:()=>openAddGift(t)}, "+ grant a Gift")
+      : el("span",{class:"muted small"},"granted by your GM"))));
+  card.append(el("div",{class:"muted small",style:"margin:-4px 0 8px"},
+    "Blessings from a Legendary patron (The Blessed and the Damned). Each grants its Patron Stat (p.57)."));
+  if(!(t.gifts||[]).length){
+    card.append(el("div",{class:"muted small"}, gm
+      ? "No Gifts yet — tap “+ grant a Gift” to bless this Trainer."
+      : "You have no Gifts yet."));
+    root.append(card);
+    return;
+  }
+  t.gifts.forEach((g,i)=>{
+    const row = el("div",{class:"moveslot"});
+    const info = el("div",{style:"flex:1;min-width:0"});
+    const title = el("div",{style:"font-weight:700"}, g.name || "Gift",
+      el("span",{class:"muted small",style:"font-weight:400"}, `  ·  ${g.tier||"Gift"} · ${g.patron||"?"}`));
+    info.append(title);
+    // Patron-stat badge + (for or/any) an inline chooser
+    const spec = PATRON_STATS[g.patron];
+    const statLine = el("div",{style:"margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"});
+    const resolved = giftGrantsStat(g);
+    statLine.append(el("span",{class:"badge-auto"+(resolved?"":" "),style:resolved?"":"opacity:.7"}, giftStatText(g)));
+    const needChoice = spec==="any" || Array.isArray(spec);
+    if(needChoice){
+      const opts = spec==="any" ? STATS.map(s=>s[0]) : spec;
+      const sel = el("select",{class:"equip-focus"});
+      sel.append(el("option",{value:""},"choose stat…"));
+      opts.forEach(k=>sel.append(el("option",{value:k, selected:g.statChoice===k}, (STATS.find(s=>s[0]===k)||[])[1]||k)));
+      sel.disabled = !gm && !canEditActive();   // only the GM / owner sets it
+      sel.addEventListener("change",()=>{ g.statChoice = sel.value||undefined; save(); renderGifts(); if(currentTab==="trainer") renderTrainer(); });
+      statLine.append(sel);
+    }
+    info.append(statLine);
+    if(g.effect) info.append(el("div",{class:"muted small",style:"margin-top:3px"}, g.effect));
+    if(g.prereq) info.append(el("div",{class:"muted small",style:"margin-top:1px;font-style:italic"}, "Prerequisites: "+g.prereq));
+    if(g.notes) info.append(el("div",{class:"small",style:"margin-top:2px"}, g.notes));
+    row.append(info);
+    if(gm) row.append(el("button",{class:"linkbtn danger",title:"remove this Gift",style:"align-self:flex-start",
+      onclick:()=>{ if(confirm(`Remove the Gift “${g.name}”?`)){ t.gifts.splice(i,1); save(); renderGifts(); if(currentTab==="trainer") renderTrainer(); } }}, "×"));
+    card.append(row);
+  });
+  // summary of the stat bonuses these Gifts grant
+  const gb = giftStatBonus(t); const parts = STATS.filter(([k])=>gb[k]).map(([k,l])=>`+${gb[k]} ${l}`);
+  if(parts.length) card.append(el("div",{class:"small",style:"margin-top:10px;padding-top:8px;border-top:1px solid var(--line)"},
+    el("b",{},"Patron Stats applied: "), parts.join(" · "), el("span",{class:"muted"}," (added to your Combat totals)")));
+  root.append(card);
+}
+function openAddGift(t){
+  if(!isGM()){ toast("Only the GM can grant Gifts"); return; }
+  const wrap = el("div",{});
+  // Gift picker (grouped) + Custom
+  const giftSel = el("select",{style:"width:100%"});
+  giftSel.append(el("option",{value:""},"— Custom / free-form Gift —"));
+  GIFT_GROUPS.forEach(grp=>{
+    const og = el("optgroup",{label:grp.group});
+    grp.gifts.forEach(([tier,name])=> og.append(el("option",{value:name}, `${tier} — ${name}`)));
+    giftSel.append(og);
+  });
+  const patronSel = el("select",{style:"width:100%"});
+  const fillPatrons = (preferred)=>{
+    patronSel.innerHTML="";
+    patronSel.append(el("option",{value:""},"— no Patron / no stat —"));
+    PATRON_NAMES.forEach(p=>patronSel.append(el("option",{value:p, selected:p===preferred}, `${p}  (${giftStatText({patron:p})})`)));
+  };
+  fillPatrons("");
+  const nameIn = el("input",{type:"text",placeholder:"Gift name",style:"width:100%"});
+  const effIn  = el("textarea",{placeholder:"Effect / notes",style:"width:100%;min-height:60px"});
+  const statChoiceWrap = el("div",{style:"margin-top:8px"});
+  const syncStatChoice = ()=>{
+    statChoiceWrap.innerHTML="";
+    const spec = PATRON_STATS[patronSel.value];
+    if(spec==="any" || Array.isArray(spec)){
+      const opts = spec==="any" ? STATS.map(s=>s[0]) : spec;
+      const sc = el("select",{id:"giftStatChoice",style:"max-width:180px"});
+      sc.append(el("option",{value:""},"choose stat…"));
+      opts.forEach(k=>sc.append(el("option",{value:k}, (STATS.find(s=>s[0]===k)||[])[1]||k)));
+      statChoiceWrap.append(el("label",{class:"field"}, el("span",{},`Patron Stat — this Patron grants ${giftStatText({patron:patronSel.value})}`), sc));
+    } else if(spec){
+      statChoiceWrap.append(el("div",{class:"small muted"},`Grants ${giftStatText({patron:patronSel.value})}.`));
+    }
+  };
+  // when a catalog Gift is picked, prefill name/effect/prereq + default the Patron to its group's
+  giftSel.addEventListener("change",()=>{
+    const g = giftByName(giftSel.value);
+    if(g){ nameIn.value=g.name; effIn.value=g.effect + (g.prereq?`\n\nPrerequisites: ${g.prereq}`:""); fillPatrons(g.patrons.length===1?g.patrons[0]:""); }
+    syncStatChoice();
+  });
+  patronSel.addEventListener("change", syncStatChoice);
+  wrap.append(
+    el("label",{class:"field"}, el("span",{},"Gift (from The Blessed and the Damned)"), giftSel), el("div",{style:"height:8px"}),
+    el("label",{class:"field"}, el("span",{},"Name"), nameIn), el("div",{style:"height:8px"}),
+    el("label",{class:"field"}, el("span",{},"Patron (grants the p.57 Stat)"), patronSel),
+    statChoiceWrap, el("div",{style:"height:8px"}),
+    el("label",{class:"field"}, el("span",{},"Effect"), effIn),
+  );
+  syncStatChoice();
+  modal({title:"Grant a Legendary Gift", bodyNode:wrap, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      const name = nameIn.value.trim(); if(!name){ toast("Name the Gift"); return; }
+      const cat = giftByName(giftSel.value);
+      const sc = $("#giftStatChoice");
+      if(!Array.isArray(t.gifts)) t.gifts = [];
+      t.gifts.push({ id:uid(), name, tier:(cat&&cat.tier)||"Gift", patron:patronSel.value||"",
+        statChoice: sc && sc.value || undefined, effect:effIn.value.trim(), prereq:(cat&&cat.prereq)||"" });
+      save(); closeModal(); renderGifts(); if(currentTab==="trainer") renderTrainer();
+      toast(`Granted “${name}”`);
+    }},"Grant Gift"),
+  ]});
+}
+
+/* ===================================================================
    POKÉMON VIEW
 =================================================================== */
 let openMon = null;   // id of pokemon being edited, or null = party list
@@ -2842,8 +3248,11 @@ function renderPokemon(){
     root.append(el("div",{class:"addcard", onclick:()=>addPokemon()}, "＋ Add your first Pokémon"));
     return;
   }
-  const team = c.pokemon.filter(p=>p.onTeam);
-  const box  = c.pokemon.filter(p=>!p.onTeam);
+  // "Mom?" is a hidden Symbiant: it lives in its own section between Team and Box and never
+  // counts toward the 6-slot team. Only the GM and Lázaro may see it at all.
+  const moms = c.pokemon.filter(p=>isMomSpecies(p.species));
+  const team = c.pokemon.filter(p=>p.onTeam && !isMomSpecies(p.species));
+  const box  = c.pokemon.filter(p=>!p.onTeam && !isMomSpecies(p.species));
   // Team section (up to 6, shown at the top)
   root.append(el("div",{class:"section-head"}, `Team (${team.length}/6)`,
     el("span",{class:"muted small"}, "tap ☆ to move a Pokémon in/out")));
@@ -2851,6 +3260,14 @@ function renderPokemon(){
   team.forEach((p,i) => teamGrid.append(monCard(p, {reorder:team.length>1, first:i===0, last:i===team.length-1})));
   if(!team.length) teamGrid.append(el("div",{class:"muted small",style:"padding:8px"},"No Pokémon on the team yet."));
   root.append(teamGrid);
+  // "Mom?" section (between Team and Box) — GM + Lázaro only
+  if(moms.length && canSeeMom()){
+    root.append(el("div",{class:"section-head",style:"margin-top:16px"}, "Mom?",
+      el("span",{class:"muted small"}, "🔒 visible only to you and the GM")));
+    const momGrid = el("div",{class:"party"});
+    moms.forEach(p => momGrid.append(monCard(p)));
+    root.append(momGrid);
+  }
   // Box section (the rest)
   if(box.length){
     root.append(el("div",{class:"section-head",style:"margin-top:16px"}, `Box (${box.length})`));
@@ -2935,19 +3352,23 @@ function monCard(p, opts={}){
       onclick:e=>{e.stopPropagation(); moveTeamMon(p,1);}},"▼"));
     card.append(reorder);
   }
-  card.append(el("button",{class:"pc-star"+(p.onTeam?" on":""), title:p.onTeam?"On team — tap to send to box":"In box — tap to add to team",
-    onclick:e=>{e.stopPropagation(); setTeam(p, !p.onTeam);}}, p.onTeam?"★":"☆"));
+  if(!isMomSpecies(p.species))
+    card.append(el("button",{class:"pc-star"+(p.onTeam?" on":""), title:p.onTeam?"On team — tap to send to box":"In box — tap to add to team",
+      onclick:e=>{e.stopPropagation(); setTeam(p, !p.onTeam);}}, p.onTeam?"★":"☆"));
   card.append(el("button",{class:"pc-del",title:"remove",onclick:e=>{e.stopPropagation();
     if(confirm(`Remove ${p.nickname||sp?.name||"this Pokémon"}?`)){ const c=activeChar(); c.pokemon=c.pokemon.filter(x=>x.id!==p.id); save(); renderPokemon(); render(); }}},"🗑"));
   return card;
 }
 function addPokemon(){
-  openPicker("Choose a species", D.species.map(s=>s.name), name=>{
+  // hidden species (e.g. "Mom?") only appear in the picker for the GM and Lázaro
+  const names = D.species.filter(s=>!(s.hidden && !canSeeMom())).map(s=>s.name);
+  openPicker("Choose a species", names, name=>{
     const p = newPokemon(name);
     const sp = getSpecies(name);
     if(sp && sp.abilities.basic[0]){ p.abilities = [sp.abilities.basic[0]]; }
+    if(isMomSpecies(name)){ p.onTeam = false; autoAllocMom(p); }   // never on the team; stats auto-filled
     // limit active team to 6; extra Pokémon go to the box
-    if(activeChar().pokemon.filter(x=>x.onTeam).length >= 6) p.onTeam = false;
+    else if(activeChar().pokemon.filter(x=>x.onTeam && !isMomSpecies(x.species)).length >= 6) p.onTeam = false;
     activeChar().pokemon.push(p); save(); openMon=p.id; renderPokemon(); render();
   }, "species");
 }
@@ -3714,6 +4135,9 @@ const LEGENDARY_AURAS = {
   "Missingno":["Chaos","Creation","Glitch"], "MissingNo":["Chaos","Creation","Glitch"],
   "Unown":["Hivemind","Law","Trickery"],
   "Arceus": AURA_NAMES.slice(),                                   // Arceus has access to every Aura
+  // Homebrew: the created Fire/Ghost legendary. Symbiotic is permanent (the bond to Lázaro);
+  // Nightmare & Death wake as it levels; it also owns Emotion & Willpower to swap in.
+  "Vulpoxen":["Symbiotic","Nightmare","Death","Emotion","Willpower"],
 };
 /* short GM notes for a few legendaries with book caveats */
 const LEGENDARY_AURA_NOTES = {
@@ -3723,6 +4147,7 @@ const LEGENDARY_AURA_NOTES = {
   "Uxie":"Lake Guardian: shares Law & Loyalty with Mesprit/Azelf; its third Domain is Knowledge.",
   "Mesprit":"Lake Guardian: shares Law & Loyalty with Uxie/Azelf; its third Domain is Emotion.",
   "Azelf":"Lake Guardian: shares Law & Loyalty with Uxie/Mesprit; its third Domain is Willpower.",
+  "Vulpoxen":"Homebrew. Core three: Symbiotic (permanent — the bond to Lázaro, undone only by slaying one of the pair), Nightmare (wakes ~Lv 30), and Death (opens ~Lv 50). It also owns Emotion & Willpower; only three may be active at once.",
 };
 const LEGENDARY_AURA_MAP = {};
 Object.entries(LEGENDARY_AURAS).forEach(([k,v])=>{ LEGENDARY_AURA_MAP[auraKey(k)] = v; });
@@ -3877,13 +4302,13 @@ function refreshMon(p){ const root=$("#view-pokemon"); root.innerHTML=""; render
 function setMonXP(p, xp){
   p.xp = Math.max(0, Math.floor(xp)||0);
   const nl = levelForXP(p.xp), was = p.level;
-  p.level = nl; save(); refreshMon(p);
+  p.level = nl; autoAllocMom(p); save(); refreshMon(p);
   if(nl > was) toast(`${p.nickname||getSpecies(p.species)?.name||"Pokémon"} leveled up to ${nl}! 🎉`);
 }
 /* set level directly → snap XP to that level's threshold so future XP still works */
 function setMonLevel(p, lvl){
   p.level = Math.max(1, Math.min(MAX_LEVEL, Math.floor(lvl)||1));
-  p.xp = xpForLevel(p.level); save(); refreshMon(p);
+  p.xp = xpForLevel(p.level); autoAllocMom(p); save(); refreshMon(p);
 }
 /* XP progress + quick "+ Add XP" (adding XP auto-levels the Pokémon) */
 function xpRow(p){
@@ -3908,14 +4333,18 @@ function xpRow(p){
 }
 
 function monStatGrid(p){
+  const auto = !!getSpecies(p.species)?.autoStats;   // "Mom?": points auto-assigned, not player-editable
+  if(auto) autoAllocMom(p);
   const d = pokeDerived(p);
-  const canInc = p.unlocked || d.remaining > 0;
+  const canInc = !auto && (p.unlocked || d.remaining > 0);
   const g = el("div",{class:"statgrid"});
   STATS.forEach(([k,lbl]) => {
     const box = el("div",{class:"stat"});
     box.append(el("div",{class:"lbl"},lbl));
     box.append(el("div",{class:"sub","data-pbase":k}, `base ${d.base[k]}`));
-    box.append(statStepper(p.stats[k].added, canInc, v=>{ p.stats[k].added = v; save(); refreshMon(p); }));
+    if(auto) box.append(el("div",{class:"stepper", title:"auto-assigned on level up — locked"},
+      el("span",{class:"stepper-val",style:"opacity:.7"}, "+"+(p.stats[k].added||0))));
+    else box.append(statStepper(p.stats[k].added, canInc, v=>{ p.stats[k].added = v; save(); refreshMon(p); }));
     box.append(el("div",{class:"big","data-ptot":k}, d.total[k]));
     g.append(box);
   });
@@ -4213,6 +4642,7 @@ function effectiveMoveType(p, m, opts={}){
 }
 /* Struggle as it should actually resolve: base move + chosen type/class (Normalize forces Normal) */
 function struggleFor(p, sp){
+  if(getSpecies(p.species)?.noStruggle) return null;   // "Mom?" has no Struggle Attack
   const base = struggleMove(p); if(!base) return null;
   sp = sp || getSpecies(p.species);
   const m = Object.assign({}, base);
@@ -4225,6 +4655,7 @@ function struggleFor(p, sp){
 }
 /* the Struggle type / Physical-Special picker (shown when the Pokémon has options) */
 function struggleControl(p, sp, rerender){
+  if(getSpecies(p.species)?.noStruggle) return el("span",{style:"display:none"});   // "Mom?" — no Struggle
   rerender = rerender || (()=>refreshMon(p));
   const opts = struggleTypeOptions(p, sp);
   const canSpec = struggleCanBeSpecial(p, sp);

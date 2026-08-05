@@ -1,1 +1,2484 @@
-[{"name":"Baby Kangaskhan","order":1499,"baseStats":{"hp":1,"atk":1,"def":1,"spatk":1,"spdef":1,"spd":1},"types":["Normal","None"],"capabilities":{"overland":5,"sky":0,"swim":2,"levitate":0,"burrow":0,"highJump":1,"longJump":1,"power":5,"naturewalk":[],"other":["Marsupial"]},"size":"Small","weightClass":2,"eggGroups":["Monster"],"skills":{"acrobatics":{"dice":3,"mod":"+2"},"athletics":{"dice":3,"mod":"+0"},"charm":{"dice":1,"mod":"+0"},"combat":{"dice":2,"mod":"+1"},"command":{"dice":1,"mod":"+0"},"generalEd":{"dice":1,"mod":"+0"},"medicineEd":{"dice":1,"mod":"+0"},"occultEd":{"dice":1,"mod":"+0"},"pokemonEd":{"dice":1,"mod":"+0"},"technologyEd":{"dice":1,"mod":"+0"},"focus":{"dice":1,"mod":"+2"},"guile":{"dice":1,"mod":"+0"},"intimidate":{"dice":1,"mod":"+0"},"intuition":{"dice":1,"mod":"+0"},"perception":{"dice":2,"mod":"+0"},"stealth":{"dice":1,"mod":"+0"},"survival":{"dice":1,"mod":"+0"}},"abilities":{"basic":[],"advanced":[],"high":[]},"evolution":[{"stage":1,"name":"Baby Kangaskhan","min":null,"gm":true},{"stage":2,"name":"Child Kangaskhan","min":10,"gm":true},{"stage":3,"name":"Kangaskhan","min":25,"gm":true}],"gender":"0% M / 100% F","diet":"Herbivore","habitat":"Grassland, Rainforest","height":"3' 8\" / 1.1m (Small)","moves":{"levelup":[],"tmhm":[],"egg":[],"tutor":[]},"megaEvolution":"Type: Unchanged Ability: Parental Bond Stats: +3 Atk, +2 Def, +2 Sp. Atk, +2 Sp. Def, +1 Speed"},{"name":"Child Kangaskhan","order":1500,"baseStats":{"hp":6,"atk":5,"def":3,"spatk":1,"spdef":3,"spd":4},"types":["Normal","None"],"capabilities":{"overland":5,"sky":0,"swim":2,"levitate":0,"burrow":0,"highJump":1,"longJump":1,"power":5,"naturewalk":[],"other":["Marsupial"]},"size":"Small","weightClass":2,"eggGroups":["Monster"],"skills":{"acrobatics":{"dice":3,"mod":"+2"},"athletics":{"dice":3,"mod":"+0"},"charm":{"dice":1,"mod":"+0"},"combat":{"dice":2,"mod":"+1"},"command":{"dice":1,"mod":"+0"},"generalEd":{"dice":1,"mod":"+0"},"medicineEd":{"dice":1,"mod":"+0"},"occultEd":{"dice":1,"mod":"+0"},"pokemonEd":{"dice":1,"mod":"+0"},"technologyEd":{"dice":1,"mod":"+0"},"focus":{"dice":1,"mod":"+2"},"guile":{"dice":1,"mod":"+0"},"intimidate":{"dice":1,"mod":"+0"},"intuition":{"dice":1,"mod":"+0"},"perception":{"dice":2,"mod":"+0"},"stealth":{"dice":1,"mod":"+0"},"survival":{"dice":1,"mod":"+0"}},"abilities":{"basic":["Early Bird","Scrappy"],"advanced":["Inner Focus","Defiant"],"high":["Bodyguard"]},"evolution":[{"stage":1,"name":"Baby Kangaskhan","min":null,"gm":true},{"stage":2,"name":"Child Kangaskhan","min":10,"gm":true},{"stage":3,"name":"Kangaskhan","min":25,"gm":true}],"gender":"0% M / 100% F","diet":"Herbivore","habitat":"Grassland, Rainforest","height":"3' 8\" / 1.1m (Small)","moves":{"levelup":[{"level":1,"name":"Comet Punch","type":"Normal"},{"level":1,"name":"Leer","type":"Normal"},{"level":7,"name":"Fake Out","type":"Normal"},{"level":10,"name":"Tail Whip","type":"Normal"},{"level":13,"name":"Bite","type":"Dark"},{"level":19,"name":"Double Hit","type":"Normal"},{"level":22,"name":"Rage","type":"Normal"},{"level":25,"name":"Mega Punch","type":"Normal"},{"level":31,"name":"Chip Away","type":"Normal"},{"level":34,"name":"Dizzy Punch","type":"Normal"},{"level":37,"name":"Crunch","type":"Dark"},{"level":43,"name":"Endure","type":"Normal"},{"level":46,"name":"Outrage","type":"Dragon"},{"level":49,"name":"Sucker Punch","type":"Dark"},{"level":55,"name":"Reversal","type":"Fighting"}],"tmhm":["A1 Cut","A3 Surf","A4 Strength","05 Roar","06 Toxic","07 Hail","10 Hidden Power","11 Sunny Day","13 Ice Beam","14 Bliz zard","15 Hyper Beam","17 Protect","18 Rain Dance","20 Safe guard","21 Frustration","22 Solar Beam","24 Thunderbolt","25 Thunder","26 Earthquake","27 Return","28 Dig","30 Shadow Ball","31 Brick Break","32 Double Team","35 Flamethrower","37 Sandstorm","38 Fire Blast","39 Rock Tomb","40 Aerial Ace","42 Facade","44 Rest","45 Attract","46 Thief","48 Round","52 Focus Blast","56 Fling","59 Incinerate","65 Shadow Claw","67 Retaliate","68 Giga Impact","78 Bulldoze","80 Rock Slide","87 Swagger","88 Sleep Talk","90 Substitute","94 Rock Smash","98 Power-Up Punch","100 Confide"],"egg":["Circle Throw","Counter","Crush Claw","Disable","Double- Edge","Endeavor","Focus Energy","Focus Punch","Foresight","Hammer Arm","Safeguard","Stomp","Substitute","Trump Card","Uproar"],"tutor":["Aqua Tail","Avalanche","Body Slam","Covet","Drain Punch","Dynamic Punch","Endeavor","Fire Punch","Fury Cutter","Helping Hand","Ice Punch","Icy Wind","Iron Tail","Knock Off","Low Kick","Mega Kick","Mud-Slap","Outrage","Seismic Toss","Sleep Talk","Snore","Spite","Thunder Punch","Uproar","Water Pulse","Work Up"]},"megaEvolution":"Type: Unchanged Ability: Parental Bond Stats: +3 Atk, +2 Def, +2 Sp. Atk, +2 Sp. Def, +1 Speed"},{"name":"Rotom","order":676,"baseStats":{"hp":5,"atk":5,"def":8,"spatk":10,"spdef":8,"spd":9},"types":["Electric","Ghost"],"capabilities":{"overland":2,"sky":0,"swim":0,"levitate":4,"burrow":0,"highJump":1,"longJump":2,"power":3,"naturewalk":[],"other":["Glow","Invisibility","Phasing","Wired","Zapper"]},"size":"Small","weightClass":1,"eggGroups":["Indeterminate"],"skills":{"acrobatics":{"dice":2,"mod":"+0"},"athletics":{"dice":4,"mod":"+0"},"charm":{"dice":1,"mod":"+0"},"combat":{"dice":3,"mod":"+0"},"command":{"dice":1,"mod":"+0"},"generalEd":{"dice":1,"mod":"+0"},"medicineEd":{"dice":1,"mod":"+0"},"occultEd":{"dice":1,"mod":"+0"},"pokemonEd":{"dice":1,"mod":"+0"},"technologyEd":{"dice":4,"mod":"+4"},"focus":{"dice":2,"mod":"+0"},"guile":{"dice":1,"mod":"+0"},"intimidate":{"dice":1,"mod":"+0"},"intuition":{"dice":1,"mod":"+0"},"perception":{"dice":2,"mod":"+2"},"stealth":{"dice":2,"mod":"+0"},"survival":{"dice":1,"mod":"+0"}},"abilities":{"basic":["Poltergeist"],"advanced":["Static","Motor Drive","Volt Absorb"],"high":["Sequence"]},"evolution":[],"gender":null,"diet":null,"habitat":null,"height":null,"moves":{"levelup":[{"level":1,"name":"Astonish","type":"Ghost"},{"level":1,"name":"Confuse Ray","type":"Ghost"},{"level":1,"name":"Thunder Wave","type":"Electric"},{"level":1,"name":"Thunder Shock","type":"Electric"},{"level":8,"name":"Uproar","type":"Normal"},{"level":15,"name":"Double Team","type":"Normal"},{"level":22,"name":"Shock Wave","type":"Electric"},{"level":29,"name":"Ominous Wind","type":"Ghost"},{"level":36,"name":"Substitute","type":"Normal"},{"level":43,"name":"Electro Ball","type":"Electric"},{"level":50,"name":"Hex","type":"Ghost"},{"level":57,"name":"Charge","type":"Electric"},{"level":64,"name":"Discharge","type":"Electric"}],"tmhm":["06 Toxic","10 Hidden Power","11 Sunny Day","16 Light Screen","17 Protect","18 Rain Dance","21 Frustration","24 Thunderbolt","25 Thunder","27 Return","30 Shadow Ball","32 Double Team","33 Reflect","42 Facade","44 Rest","46 Thief","48 Round","57 Charge Beam","61 Will-O-Wisp","70 Flash","72 Volt Switch","73 Thunder Wave","77 Psych Up","85 Dream Eater","87 Swagger","88 Sleep Talk","90 Substitute","97 Dark Pulse"],"egg":[],"tutor":["Charge (N)","Dark Pulse","Discharge (N)","Electroweb","Mud-Slap","Ominous Wind","Pain Split","Signal Beam","Sleep Talk","Snatch","Snore","Spite","Sucker Punch","Swift","Telekinesis","Trick (N)","Uproar"]}},{"name":"Rotom Fan","order":686,"baseStats":{"hp":5,"atk":7,"def":11,"spatk":11,"spdef":11,"spd":9},"types":["Electric","Flying"],"capabilities":{"overland":2,"sky":6,"swim":0,"levitate":4,"burrow":0,"highJump":1,"longJump":1,"power":2,"naturewalk":[],"other":["Glow","Invisibility","Phasing","Wired","Zapper","Guster"]},"size":"Small","weightClass":1,"eggGroups":["Indeterminate"],"skills":{"acrobatics":{"dice":5,"mod":"+0"},"athletics":{"dice":2,"mod":"+0"},"charm":{"dice":1,"mod":"+0"},"combat":{"dice":3,"mod":"+0"},"command":{"dice":1,"mod":"+0"},"generalEd":{"dice":1,"mod":"+0"},"medicineEd":{"dice":1,"mod":"+0"},"occultEd":{"dice":1,"mod":"+0"},"pokemonEd":{"dice":1,"mod":"+0"},"technologyEd":{"dice":4,"mod":"+4"},"focus":{"dice":2,"mod":"+0"},"guile":{"dice":1,"mod":"+0"},"intimidate":{"dice":1,"mod":"+0"},"intuition":{"dice":1,"mod":"+0"},"perception":{"dice":2,"mod":"+2"},"stealth":{"dice":3,"mod":"-1"},"survival":{"dice":1,"mod":"+0"}},"abilities":{"basic":["Poltergeist"],"advanced":["Static","Motor Drive","Volt Absorb"],"high":["Sequence"]},"evolution":[],"moves":{"levelup":[{"level":1,"name":"Astonish","type":"Ghost"},{"level":1,"name":"Confuse Ray","type":"Ghost"},{"level":1,"name":"Thunder Wave","type":"Electric"},{"level":1,"name":"Thunder Shock","type":"Electric"},{"level":8,"name":"Uproar","type":"Normal"},{"level":15,"name":"Double Team","type":"Normal"},{"level":22,"name":"Shock Wave","type":"Electric"},{"level":29,"name":"Ominous Wind","type":"Ghost"},{"level":36,"name":"Substitute","type":"Normal"},{"level":43,"name":"Electro Ball","type":"Electric"},{"level":50,"name":"Hex","type":"Ghost"},{"level":57,"name":"Charge","type":"Electric"},{"level":64,"name":"Discharge","type":"Electric"}],"tmhm":["06 Toxic","10 Hidden Power","11 Sunny Day","16 Light Screen","17 Protect","18 Rain Dance","21 Frustration","24 Thunderbolt","25 Thunder","27 Return","30 Shadow Ball","32 Double Team","33 Reflect","42 Facade","44 Rest","46 Thief","48 Round","57 Charge Beam","61 Will-O-Wisp","70 Flash","72 Volt Switch","73 Thunder Wave","77 Psych Up","85 Dream Eater","87 Swagger","88 Sleep Talk","90 Substitute","97 Dark Pulse"],"egg":[],"tutor":["Charge (N)","Dark Pulse","Discharge (N)","Electroweb","Mud-Slap","Ominous Wind","Pain Split","Signal Beam","Sleep Talk","Snatch","Snore","Spite","Sucker Punch","Swift","Telekinesis","Trick (N)","Uproar"]}},{"name":"Rotom Frost","order":692,"baseStats":{"hp":5,"atk":7,"def":11,"spatk":11,"spdef":11,"spd":9},"types":["Electric","Ice"],"capabilities":{"overland":2,"sky":0,"swim":0,"levitate":4,"burrow":0,"highJump":1,"longJump":1,"power":3,"naturewalk":["Tundra"],"other":["Glow","Invisibility","Phasing","Wired","Zapper","Freezer"]},"size":"Small","weightClass":1,"eggGroups":["Indeterminate"],"skills":{"acrobatics":{"dice":2,"mod":"+0"},"athletics":{"dice":4,"mod":"+0"},"charm":{"dice":1,"mod":"+0"},"combat":{"dice":3,"mod":"+0"},"command":{"dice":1,"mod":"+0"},"generalEd":{"dice":1,"mod":"+0"},"medicineEd":{"dice":1,"mod":"+0"},"occultEd":{"dice":1,"mod":"+0"},"pokemonEd":{"dice":1,"mod":"+0"},"technologyEd":{"dice":4,"mod":"+4"},"focus":{"dice":2,"mod":"+0"},"guile":{"dice":1,"mod":"+0"},"intimidate":{"dice":1,"mod":"+0"},"intuition":{"dice":1,"mod":"+0"},"perception":{"dice":2,"mod":"+2"},"stealth":{"dice":1,"mod":"+0"},"survival":{"dice":1,"mod":"+0"}},"abilities":{"basic":["Poltergeist"],"advanced":["Static","Motor Drive","Volt Absorb"],"high":["Sequence"]},"evolution":[],"moves":{"levelup":[{"level":1,"name":"Astonish","type":"Ghost"},{"level":1,"name":"Confuse Ray","type":"Ghost"},{"level":1,"name":"Thunder Wave","type":"Electric"},{"level":1,"name":"Thunder Shock","type":"Electric"},{"level":8,"name":"Uproar","type":"Normal"},{"level":15,"name":"Double Team","type":"Normal"},{"level":22,"name":"Shock Wave","type":"Electric"},{"level":29,"name":"Ominous Wind","type":"Ghost"},{"level":36,"name":"Substitute","type":"Normal"},{"level":43,"name":"Electro Ball","type":"Electric"},{"level":50,"name":"Hex","type":"Ghost"},{"level":57,"name":"Charge","type":"Electric"},{"level":64,"name":"Discharge","type":"Electric"}],"tmhm":["06 Toxic","10 Hidden Power","11 Sunny Day","16 Light Screen","17 Protect","18 Rain Dance","21 Frustration","24 Thunderbolt","25 Thunder","27 Return","30 Shadow Ball","32 Double Team","33 Reflect","42 Facade","44 Rest","46 Thief","48 Round","57 Charge Beam","61 Will-O-Wisp","70 Flash","72 Volt Switch","73 Thunder Wave","77 Psych Up","85 Dream Eater","87 Swagger","88 Sleep Talk","90 Substitute","97 Dark Pulse"],"egg":[],"tutor":["Charge (N)","Dark Pulse","Discharge (N)","Electroweb","Mud-Slap","Ominous Wind","Pain Split","Signal Beam","Sleep Talk","Snatch","Snore","Spite","Sucker Punch","Swift","Telekinesis","Trick (N)","Uproar"]}},{"name":"Rotom Heat","order":698,"baseStats":{"hp":5,"atk":7,"def":11,"spatk":11,"spdef":11,"spd":9},"types":["Electric","Fire"],"capabilities":{"overland":2,"sky":0,"swim":0,"levitate":4,"burrow":0,"highJump":1,"longJump":2,"power":3,"naturewalk":[],"other":["Glow","Invisibility","Phasing","Wired","Zapper","Firestarter"]},"size":"Small","weightClass":1,"eggGroups":["Indeterminate"],"skills":{"acrobatics":{"dice":2,"mod":"+0"},"athletics":{"dice":4,"mod":"+0"},"charm":{"dice":1,"mod":"+0"},"combat":{"dice":3,"mod":"+0"},"command":{"dice":1,"mod":"+0"},"generalEd":{"dice":1,"mod":"+0"},"medicineEd":{"dice":1,"mod":"+0"},"occultEd":{"dice":1,"mod":"+0"},"pokemonEd":{"dice":1,"mod":"+0"},"technologyEd":{"dice":4,"mod":"+4"},"focus":{"dice":2,"mod":"+0"},"guile":{"dice":1,"mod":"+0"},"intimidate":{"dice":1,"mod":"+0"},"intuition":{"dice":1,"mod":"+0"},"perception":{"dice":2,"mod":"+2"},"stealth":{"dice":2,"mod":"+0"},"survival":{"dice":1,"mod":"+0"}},"abilities":{"basic":["Poltergeist"],"advanced":["Static","Motor Drive","Volt Absorb"],"high":["Sequence"]},"evolution":[],"moves":{"levelup":[{"level":1,"name":"Astonish","type":"Ghost"},{"level":1,"name":"Confuse Ray","type":"Ghost"},{"level":1,"name":"Thunder Wave","type":"Electric"},{"level":1,"name":"Thunder Shock","type":"Electric"},{"level":8,"name":"Uproar","type":"Normal"},{"level":15,"name":"Double Team","type":"Normal"},{"level":22,"name":"Shock Wave","type":"Electric"},{"level":29,"name":"Ominous Wind","type":"Ghost"},{"level":36,"name":"Substitute","type":"Normal"},{"level":43,"name":"Electro Ball","type":"Electric"},{"level":50,"name":"Hex","type":"Ghost"},{"level":57,"name":"Charge","type":"Electric"},{"level":64,"name":"Discharge","type":"Electric"}],"tmhm":["06 Toxic","10 Hidden Power","11 Sunny Day","16 Light Screen","17 Protect","18 Rain Dance","21 Frustration","24 Thunderbolt","25 Thunder","27 Return","30 Shadow Ball","32 Double Team","33 Reflect","42 Facade","44 Rest","46 Thief","48 Round","57 Charge Beam","61 Will-O-Wisp","70 Flash","72 Volt Switch","73 Thunder Wave","77 Psych Up","85 Dream Eater","87 Swagger","88 Sleep Talk","90 Substitute","97 Dark Pulse"],"egg":[],"tutor":["Charge (N)","Dark Pulse","Discharge (N)","Electroweb","Mud-Slap","Ominous Wind","Pain Split","Signal Beam","Sleep Talk","Snatch","Snore","Spite","Sucker Punch","Swift","Telekinesis","Trick (N)","Uproar"]}},{"name":"Rotom Mow","order":704,"baseStats":{"hp":5,"atk":7,"def":11,"spatk":11,"spdef":11,"spd":9},"types":["Electric","Grass"],"capabilities":{"overland":7,"sky":0,"swim":0,"levitate":4,"burrow":0,"highJump":1,"longJump":1,"power":2,"naturewalk":["Grassland","Forest"],"other":["Glow","Invisibility","Phasing","Wired","Zapper"]},"size":"Small","weightClass":1,"eggGroups":["Indeterminate"],"skills":{"acrobatics":{"dice":3,"mod":"+0"},"athletics":{"dice":4,"mod":"+0"},"charm":{"dice":1,"mod":"+0"},"combat":{"dice":3,"mod":"+0"},"command":{"dice":1,"mod":"+0"},"generalEd":{"dice":1,"mod":"+0"},"medicineEd":{"dice":1,"mod":"+0"},"occultEd":{"dice":1,"mod":"+0"},"pokemonEd":{"dice":1,"mod":"+0"},"technologyEd":{"dice":4,"mod":"+4"},"focus":{"dice":2,"mod":"+0"},"guile":{"dice":1,"mod":"+0"},"intimidate":{"dice":1,"mod":"+0"},"intuition":{"dice":1,"mod":"+0"},"perception":{"dice":2,"mod":"+2"},"stealth":{"dice":1,"mod":"+2"},"survival":{"dice":1,"mod":"+0"}},"abilities":{"basic":["Poltergeist"],"advanced":["Static","Motor Drive","Volt Absorb"],"high":["Sequence"]},"evolution":[],"moves":{"levelup":[{"level":1,"name":"Astonish","type":"Ghost"},{"level":1,"name":"Confuse Ray","type":"Ghost"},{"level":1,"name":"Thunder Wave","type":"Electric"},{"level":1,"name":"Thunder Shock","type":"Electric"},{"level":8,"name":"Uproar","type":"Normal"},{"level":15,"name":"Double Team","type":"Normal"},{"level":22,"name":"Shock Wave","type":"Electric"},{"level":29,"name":"Ominous Wind","type":"Ghost"},{"level":36,"name":"Substitute","type":"Normal"},{"level":43,"name":"Electro Ball","type":"Electric"},{"level":50,"name":"Hex","type":"Ghost"},{"level":57,"name":"Charge","type":"Electric"},{"level":64,"name":"Discharge","type":"Electric"}],"tmhm":["06 Toxic","10 Hidden Power","11 Sunny Day","16 Light Screen","17 Protect","18 Rain Dance","21 Frustration","24 Thunderbolt","25 Thunder","27 Return","30 Shadow Ball","32 Double Team","33 Reflect","42 Facade","44 Rest","46 Thief","48 Round","57 Charge Beam","61 Will-O-Wisp","70 Flash","72 Volt Switch","73 Thunder Wave","77 Psych Up","85 Dream Eater","87 Swagger","88 Sleep Talk","90 Substitute","97 Dark Pulse"],"egg":[],"tutor":["Charge (N)","Dark Pulse","Discharge (N)","Electroweb","Mud-Slap","Ominous Wind","Pain Split","Signal Beam","Sleep Talk","Snatch","Snore","Spite","Sucker Punch","Swift","Telekinesis","Trick (N)","Uproar"]}},{"name":"Rotom Wash","order":710,"baseStats":{"hp":5,"atk":7,"def":11,"spatk":11,"spdef":11,"spd":9},"types":["Electric","Water"],"capabilities":{"overland":1,"sky":0,"swim":6,"levitate":4,"burrow":0,"highJump":1,"longJump":1,"power":3,"naturewalk":[],"other":["Glow","Invisibility","Phasing","Wired","Zapper","Fountain"]},"size":"Small","weightClass":1,"eggGroups":["Indeterminate"],"skills":{"acrobatics":{"dice":2,"mod":"+0"},"athletics":{"dice":4,"mod":"+0"},"charm":{"dice":1,"mod":"+0"},"combat":{"dice":3,"mod":"+0"},"command":{"dice":1,"mod":"+0"},"generalEd":{"dice":1,"mod":"+0"},"medicineEd":{"dice":1,"mod":"+0"},"occultEd":{"dice":1,"mod":"+0"},"pokemonEd":{"dice":1,"mod":"+0"},"technologyEd":{"dice":4,"mod":"+4"},"focus":{"dice":2,"mod":"+0"},"guile":{"dice":1,"mod":"+0"},"intimidate":{"dice":1,"mod":"+0"},"intuition":{"dice":1,"mod":"+0"},"perception":{"dice":2,"mod":"+2"},"stealth":{"dice":1,"mod":"+0"},"survival":{"dice":1,"mod":"+0"}},"abilities":{"basic":["Poltergeist"],"advanced":["Static","Motor Drive","Volt Absorb"],"high":["Sequence"]},"evolution":[],"moves":{"levelup":[{"level":1,"name":"Astonish","type":"Ghost"},{"level":1,"name":"Confuse Ray","type":"Ghost"},{"level":1,"name":"Thunder Wave","type":"Electric"},{"level":1,"name":"Thunder Shock","type":"Electric"},{"level":8,"name":"Uproar","type":"Normal"},{"level":15,"name":"Double Team","type":"Normal"},{"level":22,"name":"Shock Wave","type":"Electric"},{"level":29,"name":"Ominous Wind","type":"Ghost"},{"level":36,"name":"Substitute","type":"Normal"},{"level":43,"name":"Electro Ball","type":"Electric"},{"level":50,"name":"Hex","type":"Ghost"},{"level":57,"name":"Charge","type":"Electric"},{"level":64,"name":"Discharge","type":"Electric"}],"tmhm":["06 Toxic","10 Hidden Power","11 Sunny Day","16 Light Screen","17 Protect","18 Rain Dance","21 Frustration","24 Thunderbolt","25 Thunder","27 Return","30 Shadow Ball","32 Double Team","33 Reflect","42 Facade","44 Rest","46 Thief","48 Round","57 Charge Beam","61 Will-O-Wisp","70 Flash","72 Volt Switch","73 Thunder Wave","77 Psych Up","85 Dream Eater","87 Swagger","88 Sleep Talk","90 Substitute","97 Dark Pulse"],"egg":[],"tutor":["Charge (N)","Dark Pulse","Discharge (N)","Electroweb","Mud-Slap","Ominous Wind","Pain Split","Signal Beam","Sleep Talk","Snatch","Snore","Spite","Sucker Punch","Swift","Telekinesis","Trick (N)","Uproar"]}}]
+[
+  {
+    "name": "Baby Kangaskhan",
+    "order": 1499,
+    "baseStats": {
+      "hp": 1,
+      "atk": 1,
+      "def": 1,
+      "spatk": 1,
+      "spdef": 1,
+      "spd": 1
+    },
+    "types": [
+      "Normal",
+      "None"
+    ],
+    "capabilities": {
+      "overland": 5,
+      "sky": 0,
+      "swim": 2,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 1,
+      "longJump": 1,
+      "power": 5,
+      "naturewalk": [],
+      "other": [
+        "Marsupial"
+      ]
+    },
+    "size": "Small",
+    "weightClass": 2,
+    "eggGroups": [
+      "Monster"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 3,
+        "mod": "+2"
+      },
+      "athletics": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 2,
+        "mod": "+1"
+      },
+      "command": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 1,
+        "mod": "+2"
+      },
+      "guile": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "stealth": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 1,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [],
+      "advanced": [],
+      "high": []
+    },
+    "evolution": [
+      {
+        "stage": 1,
+        "name": "Baby Kangaskhan",
+        "min": null,
+        "gm": true
+      },
+      {
+        "stage": 2,
+        "name": "Child Kangaskhan",
+        "min": 10,
+        "gm": true
+      },
+      {
+        "stage": 3,
+        "name": "Kangaskhan",
+        "min": 25,
+        "gm": true
+      }
+    ],
+    "gender": "0% M / 100% F",
+    "diet": "Herbivore",
+    "habitat": "Grassland, Rainforest",
+    "height": "3' 8\" / 1.1m (Small)",
+    "moves": {
+      "levelup": [],
+      "tmhm": [],
+      "egg": [],
+      "tutor": []
+    },
+    "megaEvolution": "Type: Unchanged Ability: Parental Bond Stats: +3 Atk, +2 Def, +2 Sp. Atk, +2 Sp. Def, +1 Speed"
+  },
+  {
+    "name": "Child Kangaskhan",
+    "order": 1500,
+    "baseStats": {
+      "hp": 6,
+      "atk": 5,
+      "def": 3,
+      "spatk": 1,
+      "spdef": 3,
+      "spd": 4
+    },
+    "types": [
+      "Normal",
+      "None"
+    ],
+    "capabilities": {
+      "overland": 5,
+      "sky": 0,
+      "swim": 2,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 1,
+      "longJump": 1,
+      "power": 5,
+      "naturewalk": [],
+      "other": [
+        "Marsupial"
+      ]
+    },
+    "size": "Small",
+    "weightClass": 2,
+    "eggGroups": [
+      "Monster"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 3,
+        "mod": "+2"
+      },
+      "athletics": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 2,
+        "mod": "+1"
+      },
+      "command": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 1,
+        "mod": "+2"
+      },
+      "guile": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "stealth": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 1,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [
+        "Early Bird",
+        "Scrappy"
+      ],
+      "advanced": [
+        "Inner Focus",
+        "Defiant"
+      ],
+      "high": [
+        "Bodyguard"
+      ]
+    },
+    "evolution": [
+      {
+        "stage": 1,
+        "name": "Baby Kangaskhan",
+        "min": null,
+        "gm": true
+      },
+      {
+        "stage": 2,
+        "name": "Child Kangaskhan",
+        "min": 10,
+        "gm": true
+      },
+      {
+        "stage": 3,
+        "name": "Kangaskhan",
+        "min": 25,
+        "gm": true
+      }
+    ],
+    "gender": "0% M / 100% F",
+    "diet": "Herbivore",
+    "habitat": "Grassland, Rainforest",
+    "height": "3' 8\" / 1.1m (Small)",
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Comet Punch",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Leer",
+          "type": "Normal"
+        },
+        {
+          "level": 7,
+          "name": "Fake Out",
+          "type": "Normal"
+        },
+        {
+          "level": 10,
+          "name": "Tail Whip",
+          "type": "Normal"
+        },
+        {
+          "level": 13,
+          "name": "Bite",
+          "type": "Dark"
+        },
+        {
+          "level": 19,
+          "name": "Double Hit",
+          "type": "Normal"
+        },
+        {
+          "level": 22,
+          "name": "Rage",
+          "type": "Normal"
+        },
+        {
+          "level": 25,
+          "name": "Mega Punch",
+          "type": "Normal"
+        },
+        {
+          "level": 31,
+          "name": "Chip Away",
+          "type": "Normal"
+        },
+        {
+          "level": 34,
+          "name": "Dizzy Punch",
+          "type": "Normal"
+        },
+        {
+          "level": 37,
+          "name": "Crunch",
+          "type": "Dark"
+        },
+        {
+          "level": 43,
+          "name": "Endure",
+          "type": "Normal"
+        },
+        {
+          "level": 46,
+          "name": "Outrage",
+          "type": "Dragon"
+        },
+        {
+          "level": 49,
+          "name": "Sucker Punch",
+          "type": "Dark"
+        },
+        {
+          "level": 55,
+          "name": "Reversal",
+          "type": "Fighting"
+        }
+      ],
+      "tmhm": [
+        "A1 Cut",
+        "A3 Surf",
+        "A4 Strength",
+        "05 Roar",
+        "06 Toxic",
+        "07 Hail",
+        "10 Hidden Power",
+        "11 Sunny Day",
+        "13 Ice Beam",
+        "14 Bliz zard",
+        "15 Hyper Beam",
+        "17 Protect",
+        "18 Rain Dance",
+        "20 Safe guard",
+        "21 Frustration",
+        "22 Solar Beam",
+        "24 Thunderbolt",
+        "25 Thunder",
+        "26 Earthquake",
+        "27 Return",
+        "28 Dig",
+        "30 Shadow Ball",
+        "31 Brick Break",
+        "32 Double Team",
+        "35 Flamethrower",
+        "37 Sandstorm",
+        "38 Fire Blast",
+        "39 Rock Tomb",
+        "40 Aerial Ace",
+        "42 Facade",
+        "44 Rest",
+        "45 Attract",
+        "46 Thief",
+        "48 Round",
+        "52 Focus Blast",
+        "56 Fling",
+        "59 Incinerate",
+        "65 Shadow Claw",
+        "67 Retaliate",
+        "68 Giga Impact",
+        "78 Bulldoze",
+        "80 Rock Slide",
+        "87 Swagger",
+        "88 Sleep Talk",
+        "90 Substitute",
+        "94 Rock Smash",
+        "98 Power-Up Punch",
+        "100 Confide"
+      ],
+      "egg": [
+        "Circle Throw",
+        "Counter",
+        "Crush Claw",
+        "Disable",
+        "Double- Edge",
+        "Endeavor",
+        "Focus Energy",
+        "Focus Punch",
+        "Foresight",
+        "Hammer Arm",
+        "Safeguard",
+        "Stomp",
+        "Substitute",
+        "Trump Card",
+        "Uproar"
+      ],
+      "tutor": [
+        "Aqua Tail",
+        "Avalanche",
+        "Body Slam",
+        "Covet",
+        "Drain Punch",
+        "Dynamic Punch",
+        "Endeavor",
+        "Fire Punch",
+        "Fury Cutter",
+        "Helping Hand",
+        "Ice Punch",
+        "Icy Wind",
+        "Iron Tail",
+        "Knock Off",
+        "Low Kick",
+        "Mega Kick",
+        "Mud-Slap",
+        "Outrage",
+        "Seismic Toss",
+        "Sleep Talk",
+        "Snore",
+        "Spite",
+        "Thunder Punch",
+        "Uproar",
+        "Water Pulse",
+        "Work Up"
+      ]
+    },
+    "megaEvolution": "Type: Unchanged Ability: Parental Bond Stats: +3 Atk, +2 Def, +2 Sp. Atk, +2 Sp. Def, +1 Speed"
+  },
+  {
+    "name": "Rotom",
+    "order": 676,
+    "baseStats": {
+      "hp": 5,
+      "atk": 5,
+      "def": 8,
+      "spatk": 10,
+      "spdef": 8,
+      "spd": 9
+    },
+    "types": [
+      "Electric",
+      "Ghost"
+    ],
+    "capabilities": {
+      "overland": 2,
+      "sky": 0,
+      "swim": 0,
+      "levitate": 4,
+      "burrow": 0,
+      "highJump": 1,
+      "longJump": 2,
+      "power": 3,
+      "naturewalk": [],
+      "other": [
+        "Glow",
+        "Invisibility",
+        "Phasing",
+        "Wired",
+        "Zapper"
+      ]
+    },
+    "size": "Small",
+    "weightClass": 1,
+    "eggGroups": [
+      "Indeterminate"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 4,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 4,
+        "mod": "+4"
+      },
+      "focus": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 2,
+        "mod": "+2"
+      },
+      "stealth": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 1,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [
+        "Poltergeist"
+      ],
+      "advanced": [
+        "Static",
+        "Motor Drive",
+        "Volt Absorb"
+      ],
+      "high": [
+        "Sequence"
+      ]
+    },
+    "evolution": [],
+    "gender": null,
+    "diet": null,
+    "habitat": null,
+    "height": null,
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Astonish",
+          "type": "Ghost"
+        },
+        {
+          "level": 1,
+          "name": "Confuse Ray",
+          "type": "Ghost"
+        },
+        {
+          "level": 1,
+          "name": "Thunder Wave",
+          "type": "Electric"
+        },
+        {
+          "level": 1,
+          "name": "Thunder Shock",
+          "type": "Electric"
+        },
+        {
+          "level": 8,
+          "name": "Uproar",
+          "type": "Normal"
+        },
+        {
+          "level": 15,
+          "name": "Double Team",
+          "type": "Normal"
+        },
+        {
+          "level": 22,
+          "name": "Shock Wave",
+          "type": "Electric"
+        },
+        {
+          "level": 29,
+          "name": "Ominous Wind",
+          "type": "Ghost"
+        },
+        {
+          "level": 36,
+          "name": "Substitute",
+          "type": "Normal"
+        },
+        {
+          "level": 43,
+          "name": "Electro Ball",
+          "type": "Electric"
+        },
+        {
+          "level": 50,
+          "name": "Hex",
+          "type": "Ghost"
+        },
+        {
+          "level": 57,
+          "name": "Charge",
+          "type": "Electric"
+        },
+        {
+          "level": 64,
+          "name": "Discharge",
+          "type": "Electric"
+        }
+      ],
+      "tmhm": [
+        "06 Toxic",
+        "10 Hidden Power",
+        "11 Sunny Day",
+        "16 Light Screen",
+        "17 Protect",
+        "18 Rain Dance",
+        "21 Frustration",
+        "24 Thunderbolt",
+        "25 Thunder",
+        "27 Return",
+        "30 Shadow Ball",
+        "32 Double Team",
+        "33 Reflect",
+        "42 Facade",
+        "44 Rest",
+        "46 Thief",
+        "48 Round",
+        "57 Charge Beam",
+        "61 Will-O-Wisp",
+        "70 Flash",
+        "72 Volt Switch",
+        "73 Thunder Wave",
+        "77 Psych Up",
+        "85 Dream Eater",
+        "87 Swagger",
+        "88 Sleep Talk",
+        "90 Substitute",
+        "97 Dark Pulse"
+      ],
+      "egg": [],
+      "tutor": [
+        "Charge (N)",
+        "Dark Pulse",
+        "Discharge (N)",
+        "Electroweb",
+        "Mud-Slap",
+        "Ominous Wind",
+        "Pain Split",
+        "Signal Beam",
+        "Sleep Talk",
+        "Snatch",
+        "Snore",
+        "Spite",
+        "Sucker Punch",
+        "Swift",
+        "Telekinesis",
+        "Trick (N)",
+        "Uproar"
+      ]
+    }
+  },
+  {
+    "name": "Rotom Fan",
+    "order": 686,
+    "baseStats": {
+      "hp": 5,
+      "atk": 7,
+      "def": 11,
+      "spatk": 11,
+      "spdef": 11,
+      "spd": 9
+    },
+    "types": [
+      "Electric",
+      "Flying"
+    ],
+    "capabilities": {
+      "overland": 2,
+      "sky": 6,
+      "swim": 0,
+      "levitate": 4,
+      "burrow": 0,
+      "highJump": 1,
+      "longJump": 1,
+      "power": 2,
+      "naturewalk": [],
+      "other": [
+        "Glow",
+        "Invisibility",
+        "Phasing",
+        "Wired",
+        "Zapper",
+        "Guster"
+      ]
+    },
+    "size": "Small",
+    "weightClass": 1,
+    "eggGroups": [
+      "Indeterminate"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 5,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 4,
+        "mod": "+4"
+      },
+      "focus": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 2,
+        "mod": "+2"
+      },
+      "stealth": {
+        "dice": 3,
+        "mod": "-1"
+      },
+      "survival": {
+        "dice": 1,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [
+        "Poltergeist"
+      ],
+      "advanced": [
+        "Static",
+        "Motor Drive",
+        "Volt Absorb"
+      ],
+      "high": [
+        "Sequence"
+      ]
+    },
+    "evolution": [],
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Astonish",
+          "type": "Ghost"
+        },
+        {
+          "level": 1,
+          "name": "Confuse Ray",
+          "type": "Ghost"
+        },
+        {
+          "level": 1,
+          "name": "Thunder Wave",
+          "type": "Electric"
+        },
+        {
+          "level": 1,
+          "name": "Thunder Shock",
+          "type": "Electric"
+        },
+        {
+          "level": 8,
+          "name": "Uproar",
+          "type": "Normal"
+        },
+        {
+          "level": 15,
+          "name": "Double Team",
+          "type": "Normal"
+        },
+        {
+          "level": 22,
+          "name": "Shock Wave",
+          "type": "Electric"
+        },
+        {
+          "level": 29,
+          "name": "Ominous Wind",
+          "type": "Ghost"
+        },
+        {
+          "level": 36,
+          "name": "Substitute",
+          "type": "Normal"
+        },
+        {
+          "level": 43,
+          "name": "Electro Ball",
+          "type": "Electric"
+        },
+        {
+          "level": 50,
+          "name": "Hex",
+          "type": "Ghost"
+        },
+        {
+          "level": 57,
+          "name": "Charge",
+          "type": "Electric"
+        },
+        {
+          "level": 64,
+          "name": "Discharge",
+          "type": "Electric"
+        }
+      ],
+      "tmhm": [
+        "06 Toxic",
+        "10 Hidden Power",
+        "11 Sunny Day",
+        "16 Light Screen",
+        "17 Protect",
+        "18 Rain Dance",
+        "21 Frustration",
+        "24 Thunderbolt",
+        "25 Thunder",
+        "27 Return",
+        "30 Shadow Ball",
+        "32 Double Team",
+        "33 Reflect",
+        "42 Facade",
+        "44 Rest",
+        "46 Thief",
+        "48 Round",
+        "57 Charge Beam",
+        "61 Will-O-Wisp",
+        "70 Flash",
+        "72 Volt Switch",
+        "73 Thunder Wave",
+        "77 Psych Up",
+        "85 Dream Eater",
+        "87 Swagger",
+        "88 Sleep Talk",
+        "90 Substitute",
+        "97 Dark Pulse"
+      ],
+      "egg": [],
+      "tutor": [
+        "Charge (N)",
+        "Dark Pulse",
+        "Discharge (N)",
+        "Electroweb",
+        "Mud-Slap",
+        "Ominous Wind",
+        "Pain Split",
+        "Signal Beam",
+        "Sleep Talk",
+        "Snatch",
+        "Snore",
+        "Spite",
+        "Sucker Punch",
+        "Swift",
+        "Telekinesis",
+        "Trick (N)",
+        "Uproar"
+      ]
+    }
+  },
+  {
+    "name": "Rotom Frost",
+    "order": 692,
+    "baseStats": {
+      "hp": 5,
+      "atk": 7,
+      "def": 11,
+      "spatk": 11,
+      "spdef": 11,
+      "spd": 9
+    },
+    "types": [
+      "Electric",
+      "Ice"
+    ],
+    "capabilities": {
+      "overland": 2,
+      "sky": 0,
+      "swim": 0,
+      "levitate": 4,
+      "burrow": 0,
+      "highJump": 1,
+      "longJump": 1,
+      "power": 3,
+      "naturewalk": [
+        "Tundra"
+      ],
+      "other": [
+        "Glow",
+        "Invisibility",
+        "Phasing",
+        "Wired",
+        "Zapper",
+        "Freezer"
+      ]
+    },
+    "size": "Small",
+    "weightClass": 1,
+    "eggGroups": [
+      "Indeterminate"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 4,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 4,
+        "mod": "+4"
+      },
+      "focus": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 2,
+        "mod": "+2"
+      },
+      "stealth": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 1,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [
+        "Poltergeist"
+      ],
+      "advanced": [
+        "Static",
+        "Motor Drive",
+        "Volt Absorb"
+      ],
+      "high": [
+        "Sequence"
+      ]
+    },
+    "evolution": [],
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Astonish",
+          "type": "Ghost"
+        },
+        {
+          "level": 1,
+          "name": "Confuse Ray",
+          "type": "Ghost"
+        },
+        {
+          "level": 1,
+          "name": "Thunder Wave",
+          "type": "Electric"
+        },
+        {
+          "level": 1,
+          "name": "Thunder Shock",
+          "type": "Electric"
+        },
+        {
+          "level": 8,
+          "name": "Uproar",
+          "type": "Normal"
+        },
+        {
+          "level": 15,
+          "name": "Double Team",
+          "type": "Normal"
+        },
+        {
+          "level": 22,
+          "name": "Shock Wave",
+          "type": "Electric"
+        },
+        {
+          "level": 29,
+          "name": "Ominous Wind",
+          "type": "Ghost"
+        },
+        {
+          "level": 36,
+          "name": "Substitute",
+          "type": "Normal"
+        },
+        {
+          "level": 43,
+          "name": "Electro Ball",
+          "type": "Electric"
+        },
+        {
+          "level": 50,
+          "name": "Hex",
+          "type": "Ghost"
+        },
+        {
+          "level": 57,
+          "name": "Charge",
+          "type": "Electric"
+        },
+        {
+          "level": 64,
+          "name": "Discharge",
+          "type": "Electric"
+        }
+      ],
+      "tmhm": [
+        "06 Toxic",
+        "10 Hidden Power",
+        "11 Sunny Day",
+        "16 Light Screen",
+        "17 Protect",
+        "18 Rain Dance",
+        "21 Frustration",
+        "24 Thunderbolt",
+        "25 Thunder",
+        "27 Return",
+        "30 Shadow Ball",
+        "32 Double Team",
+        "33 Reflect",
+        "42 Facade",
+        "44 Rest",
+        "46 Thief",
+        "48 Round",
+        "57 Charge Beam",
+        "61 Will-O-Wisp",
+        "70 Flash",
+        "72 Volt Switch",
+        "73 Thunder Wave",
+        "77 Psych Up",
+        "85 Dream Eater",
+        "87 Swagger",
+        "88 Sleep Talk",
+        "90 Substitute",
+        "97 Dark Pulse"
+      ],
+      "egg": [],
+      "tutor": [
+        "Charge (N)",
+        "Dark Pulse",
+        "Discharge (N)",
+        "Electroweb",
+        "Mud-Slap",
+        "Ominous Wind",
+        "Pain Split",
+        "Signal Beam",
+        "Sleep Talk",
+        "Snatch",
+        "Snore",
+        "Spite",
+        "Sucker Punch",
+        "Swift",
+        "Telekinesis",
+        "Trick (N)",
+        "Uproar"
+      ]
+    }
+  },
+  {
+    "name": "Rotom Heat",
+    "order": 698,
+    "baseStats": {
+      "hp": 5,
+      "atk": 7,
+      "def": 11,
+      "spatk": 11,
+      "spdef": 11,
+      "spd": 9
+    },
+    "types": [
+      "Electric",
+      "Fire"
+    ],
+    "capabilities": {
+      "overland": 2,
+      "sky": 0,
+      "swim": 0,
+      "levitate": 4,
+      "burrow": 0,
+      "highJump": 1,
+      "longJump": 2,
+      "power": 3,
+      "naturewalk": [],
+      "other": [
+        "Glow",
+        "Invisibility",
+        "Phasing",
+        "Wired",
+        "Zapper",
+        "Firestarter"
+      ]
+    },
+    "size": "Small",
+    "weightClass": 1,
+    "eggGroups": [
+      "Indeterminate"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 4,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 4,
+        "mod": "+4"
+      },
+      "focus": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 2,
+        "mod": "+2"
+      },
+      "stealth": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 1,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [
+        "Poltergeist"
+      ],
+      "advanced": [
+        "Static",
+        "Motor Drive",
+        "Volt Absorb"
+      ],
+      "high": [
+        "Sequence"
+      ]
+    },
+    "evolution": [],
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Astonish",
+          "type": "Ghost"
+        },
+        {
+          "level": 1,
+          "name": "Confuse Ray",
+          "type": "Ghost"
+        },
+        {
+          "level": 1,
+          "name": "Thunder Wave",
+          "type": "Electric"
+        },
+        {
+          "level": 1,
+          "name": "Thunder Shock",
+          "type": "Electric"
+        },
+        {
+          "level": 8,
+          "name": "Uproar",
+          "type": "Normal"
+        },
+        {
+          "level": 15,
+          "name": "Double Team",
+          "type": "Normal"
+        },
+        {
+          "level": 22,
+          "name": "Shock Wave",
+          "type": "Electric"
+        },
+        {
+          "level": 29,
+          "name": "Ominous Wind",
+          "type": "Ghost"
+        },
+        {
+          "level": 36,
+          "name": "Substitute",
+          "type": "Normal"
+        },
+        {
+          "level": 43,
+          "name": "Electro Ball",
+          "type": "Electric"
+        },
+        {
+          "level": 50,
+          "name": "Hex",
+          "type": "Ghost"
+        },
+        {
+          "level": 57,
+          "name": "Charge",
+          "type": "Electric"
+        },
+        {
+          "level": 64,
+          "name": "Discharge",
+          "type": "Electric"
+        }
+      ],
+      "tmhm": [
+        "06 Toxic",
+        "10 Hidden Power",
+        "11 Sunny Day",
+        "16 Light Screen",
+        "17 Protect",
+        "18 Rain Dance",
+        "21 Frustration",
+        "24 Thunderbolt",
+        "25 Thunder",
+        "27 Return",
+        "30 Shadow Ball",
+        "32 Double Team",
+        "33 Reflect",
+        "42 Facade",
+        "44 Rest",
+        "46 Thief",
+        "48 Round",
+        "57 Charge Beam",
+        "61 Will-O-Wisp",
+        "70 Flash",
+        "72 Volt Switch",
+        "73 Thunder Wave",
+        "77 Psych Up",
+        "85 Dream Eater",
+        "87 Swagger",
+        "88 Sleep Talk",
+        "90 Substitute",
+        "97 Dark Pulse"
+      ],
+      "egg": [],
+      "tutor": [
+        "Charge (N)",
+        "Dark Pulse",
+        "Discharge (N)",
+        "Electroweb",
+        "Mud-Slap",
+        "Ominous Wind",
+        "Pain Split",
+        "Signal Beam",
+        "Sleep Talk",
+        "Snatch",
+        "Snore",
+        "Spite",
+        "Sucker Punch",
+        "Swift",
+        "Telekinesis",
+        "Trick (N)",
+        "Uproar"
+      ]
+    }
+  },
+  {
+    "name": "Rotom Mow",
+    "order": 704,
+    "baseStats": {
+      "hp": 5,
+      "atk": 7,
+      "def": 11,
+      "spatk": 11,
+      "spdef": 11,
+      "spd": 9
+    },
+    "types": [
+      "Electric",
+      "Grass"
+    ],
+    "capabilities": {
+      "overland": 7,
+      "sky": 0,
+      "swim": 0,
+      "levitate": 4,
+      "burrow": 0,
+      "highJump": 1,
+      "longJump": 1,
+      "power": 2,
+      "naturewalk": [
+        "Grassland",
+        "Forest"
+      ],
+      "other": [
+        "Glow",
+        "Invisibility",
+        "Phasing",
+        "Wired",
+        "Zapper"
+      ]
+    },
+    "size": "Small",
+    "weightClass": 1,
+    "eggGroups": [
+      "Indeterminate"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 4,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 4,
+        "mod": "+4"
+      },
+      "focus": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 2,
+        "mod": "+2"
+      },
+      "stealth": {
+        "dice": 1,
+        "mod": "+2"
+      },
+      "survival": {
+        "dice": 1,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [
+        "Poltergeist"
+      ],
+      "advanced": [
+        "Static",
+        "Motor Drive",
+        "Volt Absorb"
+      ],
+      "high": [
+        "Sequence"
+      ]
+    },
+    "evolution": [],
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Astonish",
+          "type": "Ghost"
+        },
+        {
+          "level": 1,
+          "name": "Confuse Ray",
+          "type": "Ghost"
+        },
+        {
+          "level": 1,
+          "name": "Thunder Wave",
+          "type": "Electric"
+        },
+        {
+          "level": 1,
+          "name": "Thunder Shock",
+          "type": "Electric"
+        },
+        {
+          "level": 8,
+          "name": "Uproar",
+          "type": "Normal"
+        },
+        {
+          "level": 15,
+          "name": "Double Team",
+          "type": "Normal"
+        },
+        {
+          "level": 22,
+          "name": "Shock Wave",
+          "type": "Electric"
+        },
+        {
+          "level": 29,
+          "name": "Ominous Wind",
+          "type": "Ghost"
+        },
+        {
+          "level": 36,
+          "name": "Substitute",
+          "type": "Normal"
+        },
+        {
+          "level": 43,
+          "name": "Electro Ball",
+          "type": "Electric"
+        },
+        {
+          "level": 50,
+          "name": "Hex",
+          "type": "Ghost"
+        },
+        {
+          "level": 57,
+          "name": "Charge",
+          "type": "Electric"
+        },
+        {
+          "level": 64,
+          "name": "Discharge",
+          "type": "Electric"
+        }
+      ],
+      "tmhm": [
+        "06 Toxic",
+        "10 Hidden Power",
+        "11 Sunny Day",
+        "16 Light Screen",
+        "17 Protect",
+        "18 Rain Dance",
+        "21 Frustration",
+        "24 Thunderbolt",
+        "25 Thunder",
+        "27 Return",
+        "30 Shadow Ball",
+        "32 Double Team",
+        "33 Reflect",
+        "42 Facade",
+        "44 Rest",
+        "46 Thief",
+        "48 Round",
+        "57 Charge Beam",
+        "61 Will-O-Wisp",
+        "70 Flash",
+        "72 Volt Switch",
+        "73 Thunder Wave",
+        "77 Psych Up",
+        "85 Dream Eater",
+        "87 Swagger",
+        "88 Sleep Talk",
+        "90 Substitute",
+        "97 Dark Pulse"
+      ],
+      "egg": [],
+      "tutor": [
+        "Charge (N)",
+        "Dark Pulse",
+        "Discharge (N)",
+        "Electroweb",
+        "Mud-Slap",
+        "Ominous Wind",
+        "Pain Split",
+        "Signal Beam",
+        "Sleep Talk",
+        "Snatch",
+        "Snore",
+        "Spite",
+        "Sucker Punch",
+        "Swift",
+        "Telekinesis",
+        "Trick (N)",
+        "Uproar"
+      ]
+    }
+  },
+  {
+    "name": "Rotom Wash",
+    "order": 710,
+    "baseStats": {
+      "hp": 5,
+      "atk": 7,
+      "def": 11,
+      "spatk": 11,
+      "spdef": 11,
+      "spd": 9
+    },
+    "types": [
+      "Electric",
+      "Water"
+    ],
+    "capabilities": {
+      "overland": 1,
+      "sky": 0,
+      "swim": 6,
+      "levitate": 4,
+      "burrow": 0,
+      "highJump": 1,
+      "longJump": 1,
+      "power": 3,
+      "naturewalk": [],
+      "other": [
+        "Glow",
+        "Invisibility",
+        "Phasing",
+        "Wired",
+        "Zapper",
+        "Fountain"
+      ]
+    },
+    "size": "Small",
+    "weightClass": 1,
+    "eggGroups": [
+      "Indeterminate"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 4,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 4,
+        "mod": "+4"
+      },
+      "focus": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 2,
+        "mod": "+2"
+      },
+      "stealth": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 1,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [
+        "Poltergeist"
+      ],
+      "advanced": [
+        "Static",
+        "Motor Drive",
+        "Volt Absorb"
+      ],
+      "high": [
+        "Sequence"
+      ]
+    },
+    "evolution": [],
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Astonish",
+          "type": "Ghost"
+        },
+        {
+          "level": 1,
+          "name": "Confuse Ray",
+          "type": "Ghost"
+        },
+        {
+          "level": 1,
+          "name": "Thunder Wave",
+          "type": "Electric"
+        },
+        {
+          "level": 1,
+          "name": "Thunder Shock",
+          "type": "Electric"
+        },
+        {
+          "level": 8,
+          "name": "Uproar",
+          "type": "Normal"
+        },
+        {
+          "level": 15,
+          "name": "Double Team",
+          "type": "Normal"
+        },
+        {
+          "level": 22,
+          "name": "Shock Wave",
+          "type": "Electric"
+        },
+        {
+          "level": 29,
+          "name": "Ominous Wind",
+          "type": "Ghost"
+        },
+        {
+          "level": 36,
+          "name": "Substitute",
+          "type": "Normal"
+        },
+        {
+          "level": 43,
+          "name": "Electro Ball",
+          "type": "Electric"
+        },
+        {
+          "level": 50,
+          "name": "Hex",
+          "type": "Ghost"
+        },
+        {
+          "level": 57,
+          "name": "Charge",
+          "type": "Electric"
+        },
+        {
+          "level": 64,
+          "name": "Discharge",
+          "type": "Electric"
+        }
+      ],
+      "tmhm": [
+        "06 Toxic",
+        "10 Hidden Power",
+        "11 Sunny Day",
+        "16 Light Screen",
+        "17 Protect",
+        "18 Rain Dance",
+        "21 Frustration",
+        "24 Thunderbolt",
+        "25 Thunder",
+        "27 Return",
+        "30 Shadow Ball",
+        "32 Double Team",
+        "33 Reflect",
+        "42 Facade",
+        "44 Rest",
+        "46 Thief",
+        "48 Round",
+        "57 Charge Beam",
+        "61 Will-O-Wisp",
+        "70 Flash",
+        "72 Volt Switch",
+        "73 Thunder Wave",
+        "77 Psych Up",
+        "85 Dream Eater",
+        "87 Swagger",
+        "88 Sleep Talk",
+        "90 Substitute",
+        "97 Dark Pulse"
+      ],
+      "egg": [],
+      "tutor": [
+        "Charge (N)",
+        "Dark Pulse",
+        "Discharge (N)",
+        "Electroweb",
+        "Mud-Slap",
+        "Ominous Wind",
+        "Pain Split",
+        "Signal Beam",
+        "Sleep Talk",
+        "Snatch",
+        "Snore",
+        "Spite",
+        "Sucker Punch",
+        "Swift",
+        "Telekinesis",
+        "Trick (N)",
+        "Uproar"
+      ]
+    }
+  },
+  {
+    "name": "Vulpoxen",
+    "order": 16000,
+    "baseStats": {
+      "hp": 8,
+      "atk": 5,
+      "def": 7,
+      "spatk": 14,
+      "spdef": 11,
+      "spd": 13
+    },
+    "types": [
+      "Fire",
+      "Ghost"
+    ],
+    "capabilities": {
+      "overland": 7,
+      "sky": 0,
+      "swim": 2,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 1,
+      "longJump": 2,
+      "power": 3,
+      "naturewalk": [],
+      "other": [
+        "Firestarter",
+        "Gilder",
+        "Fountain of Youth"
+      ]
+    },
+    "size": "Small",
+    "weightClass": 2,
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 4,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 4,
+        "mod": "+2"
+      },
+      "command": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 5,
+        "mod": "+2"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 3,
+        "mod": "+1"
+      },
+      "intimidate": {
+        "dice": 4,
+        "mod": "+1"
+      },
+      "intuition": {
+        "dice": 3,
+        "mod": "+2"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 4,
+        "mod": "+3"
+      },
+      "perception": {
+        "dice": 3,
+        "mod": "+1"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "stealth": {
+        "dice": 4,
+        "mod": "+1"
+      },
+      "survival": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 1,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [
+        "Flash Fire",
+        "Bad Dreams"
+      ],
+      "advanced": [
+        "Cursed Body",
+        "Pyre of Grief"
+      ],
+      "high": [
+        "Undying Effigy"
+      ]
+    },
+    "evolution": [
+      {
+        "gm": true,
+        "min": null,
+        "name": "Vulpoxen",
+        "stage": 1
+      }
+    ],
+    "gender": "No Gender",
+    "diet": "Nightmare",
+    "habitat": "Ruins, Urban",
+    "height": "2' 4\" / 0.7m (Small)",
+    "moves": {
+      "egg": [],
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Ember",
+          "type": "Fire"
+        },
+        {
+          "level": 1,
+          "name": "Astonish",
+          "type": "Ghost"
+        },
+        {
+          "level": 1,
+          "name": "Will-O-Wisp",
+          "type": "Fire"
+        },
+        {
+          "level": 2,
+          "name": "Shadow Sneak",
+          "type": "Ghost"
+        },
+        {
+          "level": 4,
+          "name": "Flame Charge",
+          "type": "Fire"
+        },
+        {
+          "level": 6,
+          "name": "Confuse Ray",
+          "type": "Ghost"
+        },
+        {
+          "level": 8,
+          "name": "Incinerate",
+          "type": "Fire"
+        },
+        {
+          "level": 10,
+          "name": "Spite",
+          "type": "Ghost"
+        },
+        {
+          "level": 12,
+          "name": "Ominous Wind",
+          "type": "Ghost"
+        },
+        {
+          "level": 14,
+          "name": "Fire Spin",
+          "type": "Fire"
+        },
+        {
+          "level": 16,
+          "name": "Flame Burst",
+          "type": "Fire"
+        },
+        {
+          "level": 18,
+          "name": "Mystical Fire",
+          "type": "Fire"
+        },
+        {
+          "level": 20,
+          "name": "Hex",
+          "type": "Ghost"
+        },
+        {
+          "level": 22,
+          "name": "Imprison",
+          "type": "Psychic"
+        },
+        {
+          "level": 26,
+          "name": "Nightmare",
+          "type": "Ghost"
+        },
+        {
+          "level": 28,
+          "name": "Flamethrower",
+          "type": "Fire"
+        },
+        {
+          "level": 32,
+          "name": "Shadow Ball",
+          "type": "Ghost"
+        },
+        {
+          "level": 36,
+          "name": "Curse",
+          "type": "Ghost"
+        },
+        {
+          "level": 38,
+          "name": "Heat Wave",
+          "type": "Fire"
+        },
+        {
+          "level": 42,
+          "name": "Grudge",
+          "type": "Ghost"
+        },
+        {
+          "level": 46,
+          "name": "Inferno",
+          "type": "Fire"
+        },
+        {
+          "level": 48,
+          "name": "Phantom Force",
+          "type": "Ghost"
+        },
+        {
+          "level": 52,
+          "name": "Pain Split",
+          "type": "Normal"
+        },
+        {
+          "level": 56,
+          "name": "Fire Blast",
+          "type": "Fire"
+        },
+        {
+          "level": 60,
+          "name": "Destiny Bond",
+          "type": "Ghost"
+        },
+        {
+          "level": 64,
+          "name": "Overheat",
+          "type": "Fire"
+        },
+        {
+          "level": 68,
+          "name": "Perish Song",
+          "type": "Normal"
+        },
+        {
+          "level": 72,
+          "name": "Memento",
+          "type": "Dark"
+        },
+        {
+          "level": 75,
+          "name": "Rekindling",
+          "type": "Fire"
+        }
+      ],
+      "tmhm": [],
+      "tutor": []
+    }
+  },
+  {
+    "name": "Mom?",
+    "order": 16001,
+    "baseStats": {
+      "hp": 3,
+      "atk": 0,
+      "def": 2,
+      "spatk": 9,
+      "spdef": 6,
+      "spd": 8
+    },
+    "types": [
+      "None",
+      "None"
+    ],
+    "capabilities": {
+      "overland": 4,
+      "sky": 0,
+      "swim": 1,
+      "levitate": 1,
+      "burrow": 0,
+      "highJump": 0,
+      "longJump": 1,
+      "power": 1,
+      "naturewalk": [],
+      "other": []
+    },
+    "size": "Small",
+    "weightClass": 1,
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 3,
+        "mod": "+1"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 2,
+        "mod": "+1"
+      },
+      "perception": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "stealth": {
+        "dice": 3,
+        "mod": "+1"
+      },
+      "survival": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 1,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [],
+      "advanced": [],
+      "high": []
+    },
+    "evolution": [
+      {
+        "gm": true,
+        "min": null,
+        "name": "Mom?",
+        "stage": 1
+      }
+    ],
+    "gender": "No Gender",
+    "diet": "Nightmare",
+    "habitat": "—",
+    "height": "—",
+    "moves": {
+      "egg": [],
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Ember",
+          "type": "Fire"
+        },
+        {
+          "level": 1,
+          "name": "Astonish",
+          "type": "Ghost"
+        },
+        {
+          "level": 1,
+          "name": "Will-O-Wisp",
+          "type": "Fire"
+        },
+        {
+          "level": 2,
+          "name": "Shadow Sneak",
+          "type": "Ghost"
+        },
+        {
+          "level": 4,
+          "name": "Flame Charge",
+          "type": "Fire"
+        },
+        {
+          "level": 6,
+          "name": "Confuse Ray",
+          "type": "Ghost"
+        },
+        {
+          "level": 8,
+          "name": "Incinerate",
+          "type": "Fire"
+        },
+        {
+          "level": 10,
+          "name": "Spite",
+          "type": "Ghost"
+        },
+        {
+          "level": 12,
+          "name": "Ominous Wind",
+          "type": "Ghost"
+        },
+        {
+          "level": 14,
+          "name": "Fire Spin",
+          "type": "Fire"
+        },
+        {
+          "level": 16,
+          "name": "Flame Burst",
+          "type": "Fire"
+        },
+        {
+          "level": 18,
+          "name": "Mystical Fire",
+          "type": "Fire"
+        },
+        {
+          "level": 20,
+          "name": "Hex",
+          "type": "Ghost"
+        },
+        {
+          "level": 22,
+          "name": "Imprison",
+          "type": "Psychic"
+        },
+        {
+          "level": 26,
+          "name": "Nightmare",
+          "type": "Ghost"
+        },
+        {
+          "level": 28,
+          "name": "Flamethrower",
+          "type": "Fire"
+        },
+        {
+          "level": 32,
+          "name": "Shadow Ball",
+          "type": "Ghost"
+        },
+        {
+          "level": 36,
+          "name": "Curse",
+          "type": "Ghost"
+        },
+        {
+          "level": 38,
+          "name": "Heat Wave",
+          "type": "Fire"
+        },
+        {
+          "level": 42,
+          "name": "Grudge",
+          "type": "Ghost"
+        },
+        {
+          "level": 46,
+          "name": "Inferno",
+          "type": "Fire"
+        },
+        {
+          "level": 48,
+          "name": "Phantom Force",
+          "type": "Ghost"
+        },
+        {
+          "level": 52,
+          "name": "Pain Split",
+          "type": "Normal"
+        },
+        {
+          "level": 56,
+          "name": "Fire Blast",
+          "type": "Fire"
+        },
+        {
+          "level": 60,
+          "name": "Destiny Bond",
+          "type": "Ghost"
+        },
+        {
+          "level": 64,
+          "name": "Overheat",
+          "type": "Fire"
+        },
+        {
+          "level": 68,
+          "name": "Perish Song",
+          "type": "Normal"
+        },
+        {
+          "level": 72,
+          "name": "Memento",
+          "type": "Dark"
+        },
+        {
+          "level": 75,
+          "name": "Rekindling",
+          "type": "Fire"
+        }
+      ],
+      "tmhm": [],
+      "tutor": []
+    },
+    "noStruggle": true,
+    "autoStats": true,
+    "hidden": true
+  }
+]
