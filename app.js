@@ -479,7 +479,11 @@ function findInventoryStone(t, method){
   return (t?.inventory||[]).find(it => normItemName(it.name)===key) || null;
 }
 /* Evolve a Pokémon into a target species, keeping its stats, moves, abilities, level and XP.
-   If `stoneItem` is given, consume one from the trainer's inventory. */
+   If `stoneItem` is given, consume one from the trainer's inventory. Remembers the species it
+   evolved FROM in `p.evoHistory` (a stack) so a GM can undo it with unevolveTo below — this is
+   the general fix for accidental evolutions, not just a Cubone/Marowak-Alolan thing: chain-based
+   "previous stage" lookup is ambiguous whenever a line branches (e.g. Wurmple's Silcoon/Cascoon
+   split share a stage number but aren't interchangeable), so we just record real history instead. */
 function evolveTo(p, targetName, stoneItem){
   const sp = getSpecies(targetName); if(!sp) return;
   const stoneMsg = stoneItem ? `\nThis consumes one ${stoneItem.name} from your inventory.` : "";
@@ -489,10 +493,25 @@ function evolveTo(p, targetName, stoneItem){
     stoneItem.qty = (parseInt(stoneItem.qty)||1) - 1;
     if(stoneItem.qty<=0){ const i=(t.inventory||[]).indexOf(stoneItem); if(i>=0) t.inventory.splice(i,1); }
   }
+  if(!Array.isArray(p.evoHistory)) p.evoHistory = [];
+  p.evoHistory.push(p.species);
   p.species = sp.name;
   const m = pokeDerived(p).maxHP;                         // clamp HP to the new species' max
   if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
   save(); refreshMon(p); toast(`Evolved into ${sp.name}! ✨`+(stoneItem?` (−1 ${stoneItem.name})`:""));
+}
+/* GM-only: undo the most recent evolveTo, e.g. to fix an accidental tap or a wrongly-chosen
+   branch (Marowak vs Marowak Alolan, Vaporeon vs Jolteon, ...). Does NOT refund a consumed stone —
+   the GM can just hand it back manually if that's the actual mistake being corrected. */
+function unevolveTo(p){
+  if(!Array.isArray(p.evoHistory) || !p.evoHistory.length) return;
+  const prev = p.evoHistory[p.evoHistory.length-1];
+  if(!confirm(`Un-evolve ${p.nickname || getSpecies(p.species)?.name || "this Pokémon"} back into ${prev}?\nStats, moves, abilities, level and XP are kept.`)) return;
+  p.evoHistory.pop();
+  p.species = prev;
+  const m = pokeDerived(p).maxHP;
+  if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
+  save(); refreshMon(p); toast(`Un-evolved back into ${prev}.`);
 }
 
 /* ---- Mega Evolution ----------------------------------------------------------------
@@ -527,7 +546,9 @@ function megaStonesFor(p){
   });
   return out;
 }
-function megaEvolve(p, targetName){
+/* `rerender` defaults to the party-Pokémon path (save()+refreshMon); the Encounters tab passes
+   saveEnc()+renderEncounters() so a GM can Mega Evolve a wild/enemy Pokémon the same way. */
+function megaEvolve(p, targetName, rerender){
   const sp = getSpecies(targetName); if(!sp || p.mega) return;
   const baseSp = getSpecies(p.species);
   p.preMega = p.species;
@@ -540,17 +561,17 @@ function megaEvolve(p, targetName){
   }
   const m = pokeDerived(p).maxHP;
   if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
-  save(); refreshMon(p);
+  if(rerender) rerender(); else { save(); refreshMon(p); }
   toast(`Mega Evolved into ${sp.name}! ✨`+(megaAbility?` (Mega Ability: ${megaAbility})`:""));
 }
-function megaRevert(p, silent){
+function megaRevert(p, silent, rerender){
   if(!p.mega) return;
   p.species = p.preMega || p.species;
   delete p.mega; delete p.preMega;
   if(p.preMegaAbilities){ p.abilities = p.preMegaAbilities; delete p.preMegaAbilities; }
   const m = pokeDerived(p).maxHP;
   if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
-  if(!silent){ save(); refreshMon(p); toast("Reverted from Mega Evolution"); }
+  if(!silent){ if(rerender) rerender(); else { save(); refreshMon(p); } toast("Reverted from Mega Evolution"); }
 }
 /* PTU 1.05 Capture Rate (Core p.214). Returns {capturable, rate, breakdown:[[label,delta]]}. */
 function captureRate(p, opts={}){
@@ -3997,6 +4018,16 @@ function renderMonBuild(root, p, sp){
       } else {
         evc.append(el("div",{class:"small muted",style:"margin-top:6px"},"Final stage — no further evolutions."));
       }
+      // GM-only: undo an accidental evolution (or a wrongly-picked branch, e.g. Marowak vs
+      // Marowak Alolan) — pulled from the actual evolve history, not the chain, so it's never
+      // ambiguous even when a line branches.
+      if(gm && Array.isArray(p.evoHistory) && p.evoHistory.length){
+        const prev = p.evoHistory[p.evoHistory.length-1];
+        evc.append(el("div",{class:"inline",style:"justify-content:space-between;gap:8px;margin-top:10px;padding-top:8px;border-top:1px solid var(--line);flex-wrap:wrap"},
+          el("span",{class:"small muted"}, `GM: fix an accidental evolution`),
+          el("button",{class:"btn-secondary",style:"padding:6px 12px",title:"Undo the most recent evolution and go back to "+prev,
+            onclick:()=>unevolveTo(p)}, `↩ Un-evolve into ${prev}`)));
+      }
       root.append(evc);
     }
   }
@@ -4022,8 +4053,10 @@ function changeSpecies(p, name){
   save(); refreshMon(p);
 }
 function allAbilityNames(sp){ return [...sp.abilities.basic,...sp.abilities.advanced,...sp.abilities.high]; }
-/* Held Item picker — choose from the item database (held items + berries), or clear it */
-function heldItemControl(p){
+/* Held Item picker — choose from the item database (held items + berries), or clear it.
+   `rerender` defaults to the party-Pokémon path (save()+refreshMon); the Encounters tab passes
+   saveEnc()+renderEncounters(). */
+function heldItemControl(p, rerender){
   const wrap = el("label",{class:"field"}, el("span",{},"Held Item"));
   const btn = el("button",{class:"btn-secondary",style:"text-align:left",onclick:()=>{
     const names = ["(none)", ...D.items.held.map(i=>i.name), ...D.items.food.map(i=>i.name)];
@@ -4031,8 +4064,8 @@ function heldItemControl(p){
       p.heldItem = v==="(none)" ? "" : v;
       const req = megaToStoneMap.get(p.species);
       if(p.mega && req && req.toLowerCase()!==(p.heldItem||"").toLowerCase()){
-        megaRevert(p);                                    // stone unequipped mid-Mega Evolution — snap back
-      } else { save(); refreshMon(p); }
+        megaRevert(p, false, rerender);                   // stone unequipped mid-Mega Evolution — snap back
+      } else if(rerender) rerender(); else { save(); refreshMon(p); }
     }, "held");
   }}, p.heldItem || "choose…");
   wrap.append(btn);
@@ -6268,7 +6301,11 @@ function syncEncMonLevelupMoves(p, sp){
   p.moves = [...current, ...kept];
 }
 function addEncounterMon(enc, into){
-  openPicker("Add a Pokémon", D.species.map(s=>s.name), name=>{
+  // "Mega X" DB entries are stat/type stubs for the temporary Mega Evolve transform (megaEvolve) —
+  // they carry no moves or abilities of their own, so adding one directly would spawn a mon that
+  // can't act. Add the base species instead, then use the ✨ Mega Evolve button on its card.
+  const names = D.species.filter(s=>!/^mega\s/i.test(s.name)).map(s=>s.name);
+  openPicker("Add a Pokémon", names, name=>{
     const p=newPokemon(name); const sp=getSpecies(name);
     p.level=5; p.xp=xpForLevel(5);
     if(sp){ p.moves = speciesLevelupNames(sp, p.level).slice(-6);           // pre-load level-up moves
@@ -6782,6 +6819,29 @@ function encounterMonCard(enc, p, list){
   head.append(encOrderBtns(list,p));
   head.append(encMonRemoveBtn(p,list));
   card.append(head);
+  // Mega Evolution — same mechanic as party Pokémon (Held Item must be the matching Mega Stone),
+  // but the GM controls it here instead of a player. Lets you add a wild/enemy Pokémon as its
+  // normal species (so it gets real moves/abilities from the DB — the "Mega X" species entries
+  // are stat-only stubs with none of their own) and then Mega Evolve it for the encounter.
+  {
+    const rr = ()=>{ saveEnc(); renderEncounters(); };
+    const megas = megaFormsFor(p);
+    const megaRow = el("div",{class:"inline",style:"margin-top:8px;gap:6px;align-items:center;flex-wrap:wrap"});
+    megaRow.append(heldItemControl(p, rr));
+    if(p.mega){
+      megaRow.append(el("span",{class:"statuschip on",style:"padding:2px 8px;font-size:11px;cursor:default"},"✨ MEGA"),
+        el("button",{class:"btn-secondary",style:"padding:4px 10px",title:"revert to the base form",
+          onclick:()=>megaRevert(p,false,rr)},"↩ Revert"));
+    } else if(megas.length){
+      megas.forEach(nm=> megaRow.append(el("button",{class:"btn-secondary",style:"padding:4px 10px",
+        title:"Mega Evolve (needs the matching Mega Stone held). Stats, types, Ability & size follow the Mega form; moves & level are kept.",
+        onclick:()=>megaEvolve(p,nm,rr)}, megas.length>1 ? "✨ "+nm : "✨ Mega Evolve")));
+    } else {
+      const stones = megaStonesFor(p);
+      if(stones.length) megaRow.append(el("span",{class:"small muted"}, `Equip ${stones.join(" or ")} to Mega Evolve.`));
+    }
+    card.append(megaRow);
+  }
   // HP tracker
   // A Swarm's/Boss's HP is one pool over several bars — write through the cascade so a big hit can
   // break more than one bar and drop the Multiplier/current-bar accordingly (Core p.478, Running
