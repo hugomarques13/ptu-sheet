@@ -556,8 +556,11 @@ function megaEvolve(p, targetName, rerender){
   p.species = sp.name;
   const megaAbility = megaAbilityFor(baseSp, sp.name);
   if(megaAbility && abilityByName.has(megaAbility.toLowerCase())){
-    p.preMegaAbilities = Array.isArray(p.abilities) ? [...p.abilities] : [];
-    p.abilities = [megaAbility];
+    p.abilities = Array.isArray(p.abilities) ? [...p.abilities] : [];
+    if(!p.abilities.some(a=>(a||"").toLowerCase()===megaAbility.toLowerCase())){
+      p.abilities.push(megaAbility);
+      p.megaAddedAbility = megaAbility;      // remember what we added, so revert removes only this one
+    }
   }
   const m = pokeDerived(p).maxHP;
   if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
@@ -568,7 +571,10 @@ function megaRevert(p, silent, rerender){
   if(!p.mega) return;
   p.species = p.preMega || p.species;
   delete p.mega; delete p.preMega;
-  if(p.preMegaAbilities){ p.abilities = p.preMegaAbilities; delete p.preMegaAbilities; }
+  if(p.megaAddedAbility){
+    p.abilities = (p.abilities||[]).filter(a=>(a||"").toLowerCase()!==p.megaAddedAbility.toLowerCase());
+    delete p.megaAddedAbility;
+  }
   const m = pokeDerived(p).maxHP;
   if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
   if(!silent){ if(rerender) rerender(); else { save(); refreshMon(p); } toast("Reverted from Mega Evolution"); }
