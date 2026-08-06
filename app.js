@@ -1047,6 +1047,7 @@ function normPokemon(p){
   if(!Array.isArray(p.customMoves)) p.customMoves = [];   // freeform move/action notes not in the DB
   if(!p.cs || typeof p.cs!=="object") p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
   if(typeof p.image!=="string") p.image = "";
+  if(typeof p.megaImage!=="string") p.megaImage = "";
   if(!p.stats) { p.stats={}; STATS.forEach(([k])=>p.stats[k]={added:0}); }
   // keep XP consistent with a stored level so "add XP" works (only ever raises XP, never changes level)
   if(typeof p.xp!=="number") p.xp = 0;
@@ -1348,6 +1349,11 @@ function spriteUrl(name, shiny){
   return shiny ? `https://img.pokemondb.net/sprites/black-white/shiny/${slug}.png`
                : `https://img.pokemondb.net/artwork/${slug}.jpg`;
 }
+/* A Mega-Evolved Pokémon keeps its own uploaded photo separate from its base form's (p.megaImage
+   vs p.image) — otherwise a photo taken while Mega'd would stick around after reverting, and vice
+   versa, since p.species (and so the sprite lookup) toggles but a single shared field wouldn't. */
+function monImage(p){ return p.mega ? (p.megaImage||"") : (p.image||""); }
+function setMonImage(p, url){ if(p.mega) p.megaImage = url; else p.image = url; }
 function monSprite(speciesName, shiny, sizeCls="s-sm", override){
   const img = el("img",{class:`sprite ${sizeCls}`, alt:speciesName||"", loading:"lazy",
     src: override || (speciesName ? spriteUrl(speciesName, shiny) : POKEBALL_SVG)});
@@ -3375,7 +3381,7 @@ function monCard(p, opts={}){
   const hpColor = pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)";
   const card = el("div",{class:"pcard", onclick:()=>{ openMon=p.id; renderPokemon(); }});
   const body = el("div",{class:"pc-body"});
-  body.append(monSprite(sp?.name || p.species, p.shiny, "s-sm", p.image));
+  body.append(monSprite(sp?.name || p.species, p.shiny, "s-sm", monImage(p)));
   const main = el("div",{class:"pc-main"});
   main.append(el("div",{class:"pc-top"},
     el("div",{},
@@ -3451,11 +3457,11 @@ function heroCard(p, sp){
   const card = el("div",{class:"card"});
   const hero = el("div",{class:"monhero"});
   const spriteBox = el("div",{class:"sprite-box"});
-  spriteBox.append(monSprite(sp?.name || p.species, p.shiny, "s-lg", p.image));
-  spriteBox.append(el("button",{class:"photo-btn",title:"upload a photo",
-    onclick:()=>pickImage(240, async d=>{ p.image=await storeImg(d,"mon"); save(); refreshMon(p); })},"📷"));
-  if(p.image) spriteBox.append(el("button",{class:"photo-rm",title:"remove photo — use the default sprite",
-    onclick:()=>{ p.image=""; save(); refreshMon(p); }},"×"));
+  spriteBox.append(monSprite(sp?.name || p.species, p.shiny, "s-lg", monImage(p)));
+  spriteBox.append(el("button",{class:"photo-btn",title:p.mega?"upload a photo for this Mega form":"upload a photo",
+    onclick:()=>pickImage(240, async d=>{ setMonImage(p, await storeImg(d,"mon")); save(); refreshMon(p); })},"📷"));
+  if(monImage(p)) spriteBox.append(el("button",{class:"photo-rm",title:"remove photo — use the default sprite",
+    onclick:()=>{ setMonImage(p, ""); save(); refreshMon(p); }},"×"));
   hero.append(spriteBox);
   const main = el("div",{class:"mh-main"});
   main.append(el("div",{class:"inline",style:"justify-content:space-between"},
@@ -4650,7 +4656,7 @@ function showTMEligibility(moveName){
   } else elig.forEach(({p,sp})=>{
     const knows = (p.moves||[]).some(x=>String(x).toLowerCase()===mn.toLowerCase());
     const row = el("div",{class:"inline",style:"gap:10px;align-items:center;margin-top:8px"});
-    row.append(monSprite(sp?.name||p.species, p.shiny, "s-sm", p.image));
+    row.append(monSprite(sp?.name||p.species, p.shiny, "s-sm", monImage(p)));
     row.append(el("div",{style:"flex:1;min-width:0"},
       el("div",{style:"font-weight:700"}, p.nickname||sp?.name||p.species),
       el("div",{class:"small muted"}, `${sp?.name||""} · Lv ${p.level} · ${p.onTeam?"team":"box"}`)));
@@ -6784,7 +6790,7 @@ function encounterMonCard(enc, p, list){
   if(p.encMin){
     const mini=el("div",{style:`border:1px solid var(--line);border-radius:var(--radius-sm);padding:6px 10px;margin-top:8px;background:var(--panel-2);${fainted?"opacity:.5;":""}`});
     const row=el("div",{class:"inline",style:"gap:8px;align-items:center"});
-    row.append(monSprite(p.species,p.shiny,"s-sm",p.image||undefined));
+    row.append(monSprite(p.species,p.shiny,"s-sm",monImage(p)||undefined));
     row.append(el("span",{style:"font-weight:800;white-space:nowrap"}, (fainted?"💀 ":"")+encMonName(p)));
     row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `Lv ${p.level}`));
     row.append(el("div",{class:"hpbar",style:"flex:1;min-width:70px"}, el("i",{style:`width:${pct}%;background:${hpColor}`})));
@@ -6799,11 +6805,11 @@ function encounterMonCard(enc, p, list){
   const head=el("div",{class:"inline",style:"gap:10px;align-items:flex-start"});
   // sprite with a 📷 overlay (same affordance as the Pokémon sheet) — this is the map token's picture
   const spriteBox=el("div",{class:"sprite-box sb-sm",style:"flex:0 0 auto"});
-  spriteBox.append(monSprite(p.species,p.shiny,"s-sm",p.image||undefined));
+  spriteBox.append(monSprite(p.species,p.shiny,"s-sm",monImage(p)||undefined));
   spriteBox.append(el("button",{class:"photo-btn",title:"picture used for this creature's map token",
-    onclick:()=>pickImage(256, async url=>{ p.image=await storeImg(url,"mon"); saveEnc(); renderEncounters(); })},"📷"));
-  if(p.image) spriteBox.append(el("button",{class:"photo-rm",title:"remove picture — use the default sprite",
-    onclick:()=>{ p.image=""; saveEnc(); renderEncounters(); }},"×"));
+    onclick:()=>pickImage(256, async url=>{ setMonImage(p, await storeImg(url,"mon")); saveEnc(); renderEncounters(); })},"📷"));
+  if(monImage(p)) spriteBox.append(el("button",{class:"photo-rm",title:"remove picture — use the default sprite",
+    onclick:()=>{ setMonImage(p, ""); saveEnc(); renderEncounters(); }},"×"));
   head.append(spriteBox);
   const nw=el("div",{style:"flex:1;min-width:0"});
   nw.append(el("div",{style:"font-weight:800"}, (fainted?"💀 ":"")+encMonName(p), " ", el("span",{html:(sp?.types||[]).map(typeBadge).join(" ")})));
