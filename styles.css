@@ -373,7 +373,6 @@ body.map-mode .map-toolbar{margin:0; border-radius:0; border-left:0; border-righ
   padding:8px 12px; align-items:center; flex:0 0 auto}
 body.map-mode .map-toolbar .btn-secondary,body.map-mode .map-toolbar .btn-primary{padding:7px 11px}
 body.map-mode .map-viewport{flex:1 1 auto; height:auto; min-height:0; border-radius:0; border-left:0; border-right:0}
-body.map-mode #view-map > .muted.small{padding:5px 12px; margin:0; text-align:center; flex:0 0 auto}
 .map-viewport:active{cursor:grabbing}
 /* No will-change:transform here — it pins the scaled stage to a cached GPU raster that only
    re-rasterizes when the DOM changes (e.g. moving a token), so zooming looked pixelated until

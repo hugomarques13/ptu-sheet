@@ -196,10 +196,10 @@ function conditionCSMods(p){
 }
 /* effective Combat Stages = manual (p.cs) + condition mods, clamped −6…+6 */
 function effectiveCS(p){
-  const cond = conditionCSMods(p), wx = weatherCSMods(p), ab = abilityStatusCS(p), out = {};
+  const cond = conditionCSMods(p), wx = weatherCSMods(p), ab = abilityStatusCS(p), aura = auraCSMods(p), out = {};
   const eqSpd = isTrainerOwner(p) ? equipSpeedCS(p) : 0;   // Heavy Armor & co. shift the Speed default CS
-  CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + wx[k] + (ab[k]||0) + (k==="spd"?eqSpd:0))));
-  ACC_EVA_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + (ab[k]||0))));
+  CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + wx[k] + (ab[k]||0) + aura[k] + (k==="spd"?eqSpd:0))));
+  ACC_EVA_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + (ab[k]||0) + aura[k])));
   return out;
 }
 function hasStatus(p, key){ return Array.isArray(p.statuses) && p.statuses.includes(key); }
@@ -613,6 +613,9 @@ function autoAllocMom(p){
   let changed=false;
   STATS.forEach(([k],i)=>{ p.stats[k]=p.stats[k]||{added:0};
     if(p.stats[k].added!==floor[i]){ p.stats[k].added=floor[i]; changed=true; } });
+  // "Mom?" is pinned to exactly 1 HP: forcedStats caps max HP at 1; keep current HP there too.
+  const fh = sp.forcedStats && sp.forcedStats.hp;
+  if(typeof fh==="number" && p.currentHP!==fh){ p.currentHP=fh; changed=true; }
   return changed;
 }
 /* every item that can be held/consumed, for lookups + the Held Item picker */
@@ -1713,8 +1716,8 @@ const WEAPON_PRESETS = {
    Two tiers, gated by the trainer's Combat skill rank: an EOT-frequency Adept Technique (Combat
    Adept+) and a stronger Scene x2 Master Technique (Combat Master) — a Fine Weapon can grant BOTH
    at once. The weapon's own +DB/+AC apply to either. */
-const WEAPON_MOVES_ADEPT  = ["Backswing","Bullseye","Cheap Shot","Wear Down","Wounding Strike","Double Swipe"];
-const WEAPON_MOVES_MASTER = ["Deadly Strike","Furious Strikes","Gouge","Maul","Riposte","Slice","Titanic Slam","Triple Threat"];
+const WEAPON_MOVES_ADEPT  = ["Backswing","Bash!","Bullseye","Cheap Shot","Pierce!","Salvo","Wear Down","Wounding Strike","Double Swipe"];
+const WEAPON_MOVES_MASTER = ["Bleed!","Deadly Strike","Furious Strikes","Gouge","Maul","Riposte","Slice","Sweeping Strike","Titanic Slam","Triple Threat"];
 function weaponMoveRankOk(t, tier){ return !!t.unlocked || rankNum(t.skills.combat) >= (tier==="master"?6:4); }
 function newWeapon(){ return { id:uid(), name:"", category:"Small Melee", type:"Normal", notes:"", weaponMoveAdept:"", weaponMoveMaster:"", equipped:false, ...WEAPON_PRESETS["Small Melee"] }; }
 /* the trainer's Struggle Attack after Combat rank + the equipped weapon */
@@ -3094,6 +3097,17 @@ const GIFT_GROUPS = [
 const GIFT_CATALOG = GIFT_GROUPS.flatMap(g => g.gifts.map(([tier,name,prereq,effect]) =>
   ({ group:g.group, patrons:g.patrons, tier, name, prereq, effect })));
 function giftByName(name){ return GIFT_CATALOG.find(x=>x.name===name) || null; }
+/* the specific Patron a catalog Gift is known to come from, for auto-filling the Add-Gift picker:
+   most multi-patron-group Gifts name their patron right in the title, e.g. "Water Absorb (Suicune)"
+   — pull that out and confirm it's actually one of the group's patrons. Failing that, a single-patron
+   group is unambiguous. Gifts that are genuinely shared across a whole group (Realm Portal, Elemental
+   Soul, Invert Balance…) have no parenthetical and stay unresolved — the GM picks. */
+function giftPatronFor(g){
+  if(!g) return "";
+  const m = /\(([^)]+)\)\s*$/.exec(g.name);
+  if(m && g.patrons.includes(m[1])) return m[1];
+  return g.patrons.length===1 ? g.patrons[0] : "";
+}
 /* the Patron stat a gift grants (a STATS key), resolving "or"/"any" via the stored choice; null if none/unchosen */
 function giftGrantsStat(g){
   const spec = PATRON_STATS[g && g.patron]; if(spec==null) return null;
@@ -3202,7 +3216,7 @@ function openAddGift(t){
   // when a catalog Gift is picked, prefill name/effect/prereq + default the Patron to its group's
   giftSel.addEventListener("change",()=>{
     const g = giftByName(giftSel.value);
-    if(g){ nameIn.value=g.name; effIn.value=g.effect + (g.prereq?`\n\nPrerequisites: ${g.prereq}`:""); fillPatrons(g.patrons.length===1?g.patrons[0]:""); }
+    if(g){ nameIn.value=g.name; effIn.value=g.effect + (g.prereq?`\n\nPrerequisites: ${g.prereq}`:""); fillPatrons(giftPatronFor(g)); }
     syncStatChoice();
   });
   patronSel.addEventListener("change", syncStatChoice);
@@ -3841,6 +3855,7 @@ function openCustomBuff(owner, done){
 }
 
 function renderMonPlay(root, p, sp){
+  if(isMomSpecies(p.species)){ root.append(movesCard(p, sp)); return; }   // "Mom?": Play shows only Moves
   /* quick stat readout — first on the page (shows Combat-Stage-adjusted values) */
   const d = pokeDerived(p);
   const qc = el("div",{class:"card"}, el("h3",{},"Stats at a glance",
@@ -3866,9 +3881,6 @@ function renderMonPlay(root, p, sp){
   /* combat stages */
   root.append(combatStagesCard(p));
 
-  /* buffs & orders (Cheers / Commander Orders / Musician Songs) */
-  root.append(buffsCard(p, ()=>preserveScroll(()=>{ save(); refreshMon(p); })));
-
   /* abilities (a Pokémon can have several) */
   root.append(abilitiesCard(p, sp));
 
@@ -3878,6 +3890,9 @@ function renderMonPlay(root, p, sp){
 
   /* type matchups */
   if(sp && sp.types?.length) root.append(matchupCard(sp.types, p));
+
+  /* buffs & orders (Cheers / Commander Orders / Musician Songs) — kept at the bottom of the page */
+  root.append(buffsCard(p, ()=>preserveScroll(()=>{ save(); refreshMon(p); })));
 }
 
 function renderMonBuild(root, p, sp){
@@ -3910,6 +3925,7 @@ function renderMonBuild(root, p, sp){
   const heldEff = itemByName.get((p.heldItem||"").toLowerCase());
   if(heldEff) idc.append(el("div",{class:"small muted",style:"margin:6px 0"}, el("b",{},heldEff.name+": "), heldEff.effect||""));
   root.append(idc);
+  if(isMomSpecies(p.species)) return;   // "Mom?": Build shows only Identity
 
   /* stat allocation */
   const d = pokeDerived(p);
@@ -4074,6 +4090,35 @@ const AURA_DEFS = [
 ];
 const auraByKey = new Map(AURA_DEFS.map(([n,d])=>[auraKey(n),{name:n,desc:d}]));
 const AURA_NAMES = AURA_DEFS.map(([n])=>n);
+const AURA_CS_BONUS = 2;         // Core rule: "+2 to each Combat Stage" per active Aura
+const AURA_MAX_ACTIVE = 3;       // "at most three Auras active at any one time"
+/* whether one of a Pokémon's known Auras is currently switched on (contributes its +2 CS and counts
+   toward the 3-active cap). Explicit whitelist in p.auraActive, defaulting OFF for anything not set —
+   see initAuraActive() for how a freshly-assigned Domain list picks its starting 3. */
+function auraIsActive(p, name){ return !!(p.auraActive && p.auraActive[auraKey(name)]); }
+function activeAuraCount(p){ return (p.auras||[]).filter(a=>auraIsActive(p,a)).length; }
+/* first assignment of a Domain list (species default or ↺ default): activate up to the first 3 —
+   most legendaries have exactly 3 Domains, so this just turns all of them on out of the box. */
+function initAuraActive(p){
+  p.auraActive = {};
+  (p.auras||[]).slice(0,AURA_MAX_ACTIVE).forEach(n=>{ p.auraActive[auraKey(n)] = true; });
+}
+function toggleAuraActive(p, name, rerender){
+  if(!p.auraActive) initAuraActive(p);
+  const k = auraKey(name);
+  if(!p.auraActive[k] && activeAuraCount(p) >= AURA_MAX_ACTIVE){
+    toast(`Only ${AURA_MAX_ACTIVE} Auras can be active at once — disable another first`); return;
+  }
+  p.auraActive[k] = !p.auraActive[k];
+  rerender();
+}
+/* +2 CS to every Combat Stage per active Aura (Core rule above), summed if several are active at once. */
+function auraCSMods(p){
+  const out = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
+  const n = activeAuraCount(p) * AURA_CS_BONUS;
+  if(n) for(const k in out) out[k] = n;
+  return out;
+}
 const AURA_RULES =
   "All Legendary Pokemon possess at least three Domains (Auras). General guidelines:\n"+
   "• For each active Aura, the Legendary gains +2 to each of their Combat Stages.\n"+
@@ -4199,11 +4244,17 @@ function auraNoteFor(name){
       || (toks.length>1 ? LEGENDARY_AURA_NOTE_MAP[auraKey(toks.slice(0,-1).join(""))] : null)
       || null;
 }
-/* one aura as a collapsible row (name + full rules text); optional remove button for the editor */
-function auraRow(an, onRemove){
+/* one aura as a collapsible row (name + full rules text); optional remove button for the editor.
+   `p`+`rerender` (when given) add an Active/Disabled toggle that drives the +2 CS bonus. */
+function auraRow(an, onRemove, p, rerender){
   const a = auraByKey.get(auraKey(an));
-  const row = el("details",{class:"spoiler"});
+  const active = p ? auraIsActive(p, an) : false;
+  const row = el("details",{class:"spoiler",open:active});
   const sum = el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, a?a.name:an));
+  if(p && rerender) sum.append(el("button",{class:"linkbtn h-act", style:active?"color:var(--good)":"color:var(--muted)",
+    title:"Toggle whether this Aura is currently active (grants +2 to every Combat Stage while active; "
+         +`at most ${AURA_MAX_ACTIVE} may be active at once)`,
+    onclick:e=>{ e.preventDefault(); toggleAuraActive(p, an, rerender); }}, active?"● Active":"○ Disabled"));
   if(onRemove) sum.append(el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove",
     onclick:e=>{ e.preventDefault(); onRemove(); }},"×"));
   row.append(sum);
@@ -4216,11 +4267,13 @@ function auraRow(an, onRemove){
    (encounter tab passes saveEnc()+renderEncounters(); defaults to the party-Pokémon path). */
 function aurasCard(p, sp, rerender){
   const rr = rerender || (()=>{ save(); refreshMon(p); });
-  if(!Array.isArray(p.auras)) p.auras = legendaryAurasFor(p.species);
-  const card = el("div",{class:"card"}, el("h3",{},`Legendary Auras (${p.auras.length})`,
+  if(!Array.isArray(p.auras)){ p.auras = legendaryAurasFor(p.species); initAuraActive(p); }
+  if(!p.auraActive) initAuraActive(p);   // migrate sheets saved before Auras carried a Combat Stage
+  const card = el("div",{class:"card"}, el("h3",{},
+    `Legendary Auras (${activeAuraCount(p)}/${p.auras.length} active)`,
     el("div",{class:"inline"},
       el("button",{class:"linkbtn h-act",title:"reset to this species' book Domains",
-        onclick:()=>{ p.auras = legendaryAurasFor(p.species); rr(); }},"↺ default"),
+        onclick:()=>{ p.auras = legendaryAurasFor(p.species); initAuraActive(p); rr(); }},"↺ default"),
       el("button",{class:"linkbtn h-act",onclick:()=>addAura(p, rr)},"+ add"))));
   const note = auraNoteFor(p.species);
   if(note) card.append(el("div",{class:"small muted",style:"margin-bottom:6px",html:"ℹ "+note}));
@@ -4230,7 +4283,7 @@ function aurasCard(p, sp, rerender){
   rules.append(el("div",{class:"small",style:"margin-top:6px;white-space:pre-wrap"}, AURA_RULES));
   card.append(rules);
   if(!p.auras.length) card.append(el("span",{class:"muted small"},"none — tap “+ add” to give this legendary its Domains."));
-  p.auras.forEach((an,i)=>card.append(auraRow(an, ()=>{ p.auras.splice(i,1); rr(); })));
+  p.auras.forEach((an,i)=>card.append(auraRow(an, ()=>{ p.auras.splice(i,1); delete p.auraActive[auraKey(an)]; rr(); }, p, rr)));
   return card;
 }
 function addAura(p, rerender){
@@ -6206,7 +6259,7 @@ function addEncounterMon(enc, into){
     p.level=5; p.xp=xpForLevel(5);
     if(sp){ p.moves = speciesLevelupNames(sp, p.level).slice(-6);           // pre-load level-up moves
             if(sp.abilities?.basic?.length) p.abilities=[sp.abilities.basic[0]]; }
-    p.auras = legendaryAurasFor(name);                                      // legendaries get their book Domains
+    p.auras = legendaryAurasFor(name); initAuraActive(p);                   // legendaries get their book Domains
     encRandomize(p);                                                        // random nature/gender/shiny/stats
     (into||enc.mons).push(p); saveEnc(); renderEncounters();
   }, "species");
@@ -9335,7 +9388,7 @@ function tokenStatusRingSVG(keys, boxPx, uid){
     const id = `tkring_${uid}_${i}`;
     // full circle drawn as two semicircle arcs, doubling as the path the label text curves along
     const d = `M ${cx} ${(cy-r).toFixed(2)} A ${r} ${r} 0 1 1 ${cx} ${(cy+r).toFixed(2)} A ${r} ${r} 0 1 1 ${cx} ${(cy-r).toFixed(2)}`;
-    parts += `<path id="${id}" d="${d}" fill="none" stroke="${color}" stroke-width="${strokeW}"/>`;
+    parts += `<path id="${id}" d="${d}" fill="none" stroke="${color}" stroke-width="${strokeW}" stroke-opacity="0.72"/>`;
     parts += `<text font-size="${fontSize}" fill="${color}" font-weight="700" style="paint-order:stroke;stroke:#0a0c10;stroke-width:2px"><textPath href="#${id}" startOffset="4%" text-anchor="start">${xmlEscape(s.name)}</textPath></text>`;
   });
   // fixed square SVG sized to its own content; centering is handled purely by CSS on the
@@ -10407,7 +10460,8 @@ function openTokenMenu(token, map){
         auw.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"✨ Legendary Auras"));
         const note = auraNoteFor(p.species);
         if(note) auw.append(el("div",{class:"small muted",style:"margin-bottom:4px",html:"ℹ "+note}));
-        p.auras.forEach(an=>auw.append(auraRow(an)));
+        p.auras.forEach(an=>auw.append(auraRow(an, null, info.editable?p:null,
+          info.editable?(()=>{ saveEnc(); reopenTokenMenu(token,map); }):null)));
         wrap.append(auw);
       }
     }
@@ -11230,9 +11284,6 @@ function renderMap(){
   viewport.append(stage);
   attachPanZoom(viewport, stage);
   root.append(viewport);
-  root.append(el("div",{class:"muted small",style:"margin-top:6px"},
-    mapImgEdit ? "Image-edit mode: drag images to move, corner handle to resize, ⬆⬇ to layer. Turn it off to move tokens."
-      : "Drag tokens to move (snaps to grid, shows metres). Tap a token to edit HP. Scroll to zoom · drag empty space to pan."));
 }
 
 function renderCloudBanner(){
@@ -11415,11 +11466,15 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http")){
     document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") check(); });
     window.addEventListener("pageshow", check);   // bfcache restores don't fire visibilitychange
   }).catch(()=>{});
-  /* Safety net for anyone who still lands on a stale page: when a NEW worker takes over, reload once
-     so they end up on the current version without needing a hard refresh (which is the whole problem
-     on mobile). Skipped on first install — there was no previous version to replace. */
+  /* A NEW worker took over (new deploy). We deliberately do NOT force-reload here anymore: on a phone,
+     every lock/unlock fires visibilitychange→check()→reg.update(), and while actively developing this
+     app that often finds a newer worker — which used to reload the tab out from under the player every
+     single time they unlocked their phone, mid-battle. Just nudge them; the existing manual 🔄 Force
+     refresh button (top bar) or their next natural reload picks up the new version. Skipped on first
+     install — there was no previous version to replace. */
   navigator.serviceWorker.addEventListener("controllerchange", ()=>{
     if(!hadController || swReloading) return;
-    swReloading = true; location.reload();
+    swReloading = true;
+    toast("Update available — tap 🔄 to refresh");
   });
 }

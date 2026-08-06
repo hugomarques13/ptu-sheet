@@ -2479,6 +2479,9 @@
     },
     "noStruggle": true,
     "autoStats": true,
-    "hidden": true
+    "hidden": true,
+    "forcedStats": {
+      "hp": 1
+    }
   }
 ]
