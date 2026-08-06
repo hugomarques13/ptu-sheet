@@ -1849,7 +1849,14 @@ function openTrainerAttack(t, weaponMoveName, w){
   const atk = t.combat.atk.base + t.combat.atk.added;
   const bm = buffMods(t);                 // active Cheers / Orders / Songs (#2)
   const accCS = trainerDerived(t).cs.acc||0;   // Accuracy Combat Stage: flat add to Accuracy Rolls (Core p.234)
-  const diceStr = (DB_TABLE[(st.damageBase||0)+(bm.db||0)]||"").split("/")[0].trim();
+  /* Multi-strike Weapon Moves (Core p.242) — the keywords live in the profile's range string, e.g.
+     Furious Strikes "WR, 1 Target, Five Strike" / Gouge "WR, 1 Target, Double Strike". */
+  const fiveStrike = isFiveStrike(st), dblStrike = isDoubleStrike(st);
+  const nAcc = dblStrike ? 2 : 1;
+  let targetEva = 0;                      // target's Evasion — auto-counts the Double Strike hits
+  const baseDBv = (st.damageBase||0)+(bm.db||0);
+  const diceFor = db => (DB_TABLE[Math.max(0,Math.min(28,db))]||"").split("/")[0].trim();
+  const diceStr = diceFor(baseDBv);
   const dm = diceStr.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
   const dn = dm[1]?+dm[1]:0, dfaces = dm[2]?+dm[2]:0, dflat = dm[3]?parseInt(dm[3].replace(/\s/g,"")):0;
   // Infatuation (Feb 2016 errata): −5 to Damage Rolls unless attacking your Crush, in which case Attack
@@ -1873,18 +1880,38 @@ function openTrainerAttack(t, weaponMoveName, w){
   /* --- rolling guide: how accuracy & damage are worked out (shown before you roll) --- */
   const explain = el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"});
   explain.append(el("div",{style:"margin-bottom:10px"},
-    el("div",{style:"font-size:16px;font-weight:700"}, "Accuracy: 1d20"),
+    el("div",{style:"font-size:16px;font-weight:700"}, dblStrike ? "Accuracy: 2 × 1d20" : "Accuracy: 1d20"),
     el("div",{class:"small muted",style:"margin-top:2px"},
-      `Roll 1d20 — hits if it's ≥ AC ${st.ac} + the target's Physical Evasion. Nat 20 auto-hits/crits, nat 1 auto-misses.`)));
+      `Roll ${dblStrike?"2 separate Attack Rolls — each ":"1d20 — "}hits if it's ≥ AC ${st.ac} + the target's Physical Evasion. Nat 20 auto-hits/crits, nat 1 auto-misses.`)));
   if(dn){
     const terms = [`${dn}d${dfaces}`]; if(dflat) terms.push(String(dflat)); if(atk) terms.push(String(atk));
     const why = [`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${st.damageBase}`];
     if(atk) why.push(`${atk} = your Attack`);
     explain.append(el("div",{},
       el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${terms.join(" + ")}`),
-      el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ") + ". STAB never applies to Struggle. Target then subtracts Defense.")));
+      el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ") + ". STAB never applies to Struggle. Target then subtracts Defense."
+        + (fiveStrike ? " Five Strike multiplies this Damage Base by the rolled hit count." : "")
+        + (dblStrike  ? " Double Strike doubles this Damage Base if both Attack Rolls connect." : ""))));
   }
   body.append(explain);
+
+  /* --- multi-strike Weapon Moves: one Attack Roll per strike, counted automatically --- */
+  if(fiveStrike || dblStrike){
+    const wc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin:0 0 12px"});
+    wc.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},
+      fiveStrike ? "🎯 Five Strike — 1d8 hit count" : "⚔ Double Strike — 2 separate Attack Rolls"));
+    if(dblStrike){
+      const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap"});
+      const inp = el("input",{type:"number",min:0,value:targetEva,style:"width:90px"});
+      inp.addEventListener("input",()=>{ targetEva = Math.max(0, parseInt(inp.value)||0); });
+      row.append(el("span",{class:"small"},"Target's Evasion"), inp);
+      wc.append(row);
+    }
+    wc.append(el("div",{class:"small muted",style:"margin-top:4px"},
+      fiveStrike ? `Rolling 🎲 also rolls 1d8 for the hit count (1 / 2-3 / 4-6 / 7 / 8 → 1 / 2 / 3 / 4 / 5 hits); Damage Base ${baseDBv} is multiplied by it.`
+                 : `Both Attack Rolls are checked against AC ${st.ac} + this Evasion when you press 🎲 (nat 20 always hits, nat 1 always misses). 1 hit → DB ${baseDBv} · both hit → DB ${baseDBv*2}.`));
+    body.append(wc);
+  }
 
   /* --- active buffs (Cheers / Orders / Songs) applied to this roll (#2) --- */
   const tbuffs = ownerBuffs(t);
@@ -1911,26 +1938,67 @@ function openTrainerAttack(t, weaponMoveName, w){
   /* --- results (filled on Roll) --- */
   const out = el("div",{class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:0"});
   out.append(el("div",{class:"muted small"},"Press 🎲 Roll dice to simulate."));
-  const doRoll = () => {
+  /* redo = {nats, forceHits} — re-resolve a Double Strike with the SAME Attack Rolls */
+  const doRoll = (redo) => {
     out.innerHTML=""; out.style.borderStyle="solid";
-    const acc = 1+Math.floor(Math.random()*20), accTot = acc + (bm.acc||0) + accCS;
+    const accMod = (bm.acc||0) + accCS;
+    const nats = redo?.nats || Array.from({length:nAcc}, ()=>1+Math.floor(Math.random()*20));
+    const acc = nats[0], accTot = acc + accMod;
     const accBits = []; if(bm.acc) accBits.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} buffs`); if(accCS) accBits.push(`${accCS>0?"+":"−"}${Math.abs(accCS)} Accuracy CS`);
-    out.append(el("div",{style:"margin-bottom:10px"}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLL"),
-      el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`, el("span",{class:"muted",style:"font-size:13px;font-weight:600"}, accBits.length?`  (${acc} ${accBits.join(" ")})`:" (1d20)")),
-      el("div",{class:"small muted"}, `Hits if ${accTot} ≥ AC ${st.ac} + target's Physical Evasion.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`)));
-    const r = rollDiceString(diceStr);
+    // Double Strike: resolve every Attack Roll against AC + Evasion and count what connects
+    const strikes = dblStrike ? resolveStrikes(nats, accMod, st.ac + targetEva, 20) : null;
+    const forced  = dblStrike && redo?.forceHits!=null;
+    const connected = !dblStrike ? 1 : (forced ? redo.forceHits : strikes.filter(s=>s.hit).length);
+    if(dblStrike){
+      out.append(el("div",{style:"margin-bottom:10px"}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLLS"),
+        el("div",{style:`font-size:24px;font-weight:800;color:var(--${connected?"good":"bad"})`}, `🎯 ${connected} / 2 strikes connected`),
+        el("div",{class:"small muted",style:"margin-top:2px"}, `vs AC ${st.ac} + Evasion ${targetEva} = ${st.ac+targetEva} → ${strikeReadout(strikes)}`),
+        accBits.length?el("div",{class:"small muted"}, `Each roll includes ${accBits.join(" ")}.`):"",
+        forced?el("div",{class:"small muted"}, `Hit count manually overridden to ${connected}.`):""));
+    } else {
+      out.append(el("div",{style:"margin-bottom:10px"}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLL"),
+        el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`, el("span",{class:"muted",style:"font-size:13px;font-weight:600"}, accBits.length?`  (${acc} ${accBits.join(" ")})`:" (1d20)")),
+        el("div",{class:"small muted"}, `Hits if ${accTot} ≥ AC ${st.ac} + target's Physical Evasion.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`)));
+    }
+    // size the Damage Base from the strikes that landed (Core p.242)
+    let db = baseDBv, strikeNote = null;
+    if(dblStrike) db = baseDBv * (connected>=2 ? 2 : 1);
+    if(fiveStrike){ const hi = fiveStrikeRoll(); db = Math.min(28, baseDBv*hi.hits);
+      strikeNote = `🎯 Five Strike: 1d8 → ${hi.d8} = ${hi.hits} hit${hi.hits===1?"":"s"} — DB ${baseDBv} ×${hi.hits} = ${db}`; }
+    else if(dblStrike && connected) strikeNote = `⚔ Double Strike: ${connected} of 2 connected — Damage Base ${db}`;
+    const r = connected>0 ? rollDiceString(diceFor(db)) : null;
+    /* Critical Hit (Core p.235): a natural 20 doubles the Damage Dice (not the Attack bonus).
+       On a Double Strike each connecting strike crits on its own, so add one set per crit. */
+    const nCrit = dblStrike ? Math.min(strikes.filter(s=>s.crit).length, connected) : (acc===20 ? 1 : 0);
+    let critExtra = 0; const critWhy = [];
+    for(let c=0;c<nCrit;c++){ const rc = rollDiceString(diceFor(db)); critExtra += rc.dice; critWhy.push(`+${rc.dice} crit (doubled dice)`); }
+    if(dblStrike && connected===0){
+      out.append(el("div",{}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"),
+        el("div",{style:"font-size:20px;font-weight:800;color:var(--bad)"},"— no damage"),
+        el("div",{class:"small muted",style:"margin-top:2px"},"Neither Attack Roll met AC + Evasion, so the attack misses entirely.")));
+    }
     if(r){ const im = infatMod();
-      const total = Math.max(0, r.total + im.atk + (bm.dmg||0) + im.delta);
+      const total = Math.max(0, r.total + im.atk + (bm.dmg||0) + im.delta + critExtra);
       const parts = [`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`, `+ ${im.atk} Attack${im.halved?" (halved — Infatuated)":""}`];
       if(bm.dmg) parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs`);
       if(im.delta) parts.push(`${im.delta} Infatuated`);
+      if(critWhy.length) parts.push(critWhy.join(" "));
       out.append(el("div",{}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"),
-        el("div",{style:"font-size:26px;font-weight:800;color:var(--accent)"}, `💥 ${total}`),
+        el("div",{style:`font-size:26px;font-weight:800;color:${nCrit?"var(--bad)":"var(--accent)"}`}, `${nCrit?"💥 CRIT! ":"💥 "}${total}`),
+        strikeNote?el("div",{class:"small muted",style:"margin-top:2px"}, strikeNote):"",
         el("div",{class:"small muted",style:"margin-top:2px"}, parts.join("  ") + `. Target subtracts Defense.`)));
       if(bm.crit) out.append(el("div",{class:"small muted"}, `Crit / Effect range widened by +${bm.crit} (buffs).`));
       // GM: apply this trainer hit to a battle-map token (trainer attacks are typeless-or-typed Physical).
       const tw = attackTargetWidget({ dmg:total, type:st.type||"Typeless", physical:!/spec/i.test(st.cls||"") });
       if(tw) out.append(tw);
+    }
+    if(dblStrike){
+      const ov = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center"});
+      ov.append(el("span",{class:"small muted"},"Override hits:"));
+      for(let k=0;k<=nAcc;k++) ov.append(el("button",{class:"btn-secondary",style:"padding:3px 10px",
+        onclick:()=>doRoll({nats, forceHits:k})}, String(k)));
+      ov.append(el("span",{class:"small muted"},"— keeps the Attack Rolls, re-rolls the damage dice."));
+      out.append(ov);
     }
   };
   body.append(out);
@@ -5049,6 +5117,20 @@ function fiveStrikeRoll(){
   const hits = d8===1?1 : d8<=3?2 : d8<=6?3 : d8===7?4 : 5;
   return { d8, hits };
 }
+/* Double Strike / Triple Kick (Core p.242): each strike is its OWN Accuracy Roll. Given the natural
+   d20s, the flat Accuracy modifiers and the target's AC + Evasion, work out which strikes connect
+   (nat 1 always misses, nat 20 always hits) and which of those crit. threshold==null = can't miss. */
+function resolveStrikes(nats, accMod, threshold, critT){
+  return nats.map(nat=>{
+    const tot = nat + accMod;
+    const hit = nat!==1 && (nat===20 || threshold==null || tot >= threshold);
+    return { nat, tot, hit, crit: hit && nat >= (critT||20) };
+  });
+}
+/* one-line read-out of a resolveStrikes() result, e.g. "#1: 17 (15) ✓ hit · #2: 4 ✗ miss" */
+function strikeReadout(strikes){
+  return strikes.map((s,i)=>`#${i+1}: ${s.tot}${s.nat!==s.tot?` (${s.nat})`:""} ${s.crit?"💥 CRIT":s.hit?"✓ hit":"✗ miss"}`).join(" · ");
+}
 /* Special-case damage moves (PTU 1.05): these bypass the Damage-Base dice entirely and instead
    make the target lose an exact number of Hit Points. compute(ctx) → HP loss, where
    ctx = { level, curHP, vals:{inputKey:value}, die }. `die` (if set) is rolled with the attack. */
@@ -5159,6 +5241,7 @@ function openMoveRoll(p, m, sp, opts={}){
   let val    = sp2?.kind==="valueDB" ? sp2.def : 0;     // valueDB number input
   let dieVal = null;                                    // dieDB — rolled on 🎲
   let hitsConnect = sp2?.kind==="doubleStrike" ? 2 : sp2?.kind==="tripleKick" ? 3 : 1;
+  let targetEva  = 0;   // target's Evasion — lets the roll count multi-strike hits automatically
   // fixedDamage: current values of its inputs + a context for compute()
   const fdVals = {}; if(sp2?.kind==="fixedDamage") (sp2.inputs||[]).forEach(i=>{ fdVals[i.key]=i.def; });
   const fdCtx  = (die)=>({ level:p.level||1, curHP:p.currentHP??0, vals:fdVals, die });
@@ -5283,15 +5366,19 @@ function openMoveRoll(p, m, sp, opts={}){
       body.append(el("div",{class:"warnbox",style:"margin:0 0 12px"},
         `🎲 ${sp2.hint} — rolled automatically when you press 🎲 Roll dice.${sp2.onOne?" "+sp2.onOne:""}`));
     } else if(sp2.kind==="doubleStrike" || sp2.kind==="tripleKick"){
-      const maxH = sp2.kind==="tripleKick" ? 3 : 2;
+      const nStrikes = sp2.kind==="tripleKick" ? 3 : 2;
       const wc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin:0 0 12px"});
       wc.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},
-        sp2.kind==="tripleKick" ? "👣 Triple Kick — how many of the 3 attacks connect?" : "⚔ Double Strike — how many of the 2 Attack Rolls connect?"));
-      const inp = el("input",{type:"number",min:1,max:maxH,value:hitsConnect,style:"width:90px"});
-      inp.addEventListener("input",()=>{ hitsConnect = Math.max(1, Math.min(maxH, parseInt(inp.value)||1)); renderDamage(); });
-      wc.append(inp, el("span",{class:"small muted",style:"margin-left:8px"},
-        sp2.kind==="tripleKick" ? "1 hit → DB 1 · 2 hits → DB 3 · 3 hits → DB 6" : `1 hit → DB ${sp2.base} · both hit → DB ${(sp2.base??0)*2} (doubled)`));
-      wc.append(el("div",{class:"small muted",style:"margin-top:4px"}, "Compare each Accuracy Roll (below) to AC + Evasion, then set this to size the damage."));
+        sp2.kind==="tripleKick" ? "👣 Triple Kick — 3 separate Attack Rolls" : "⚔ Double Strike — 2 separate Attack Rolls"));
+      const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap"});
+      const inp = el("input",{type:"number",min:0,value:targetEva,style:"width:90px"});
+      inp.addEventListener("input",()=>{ targetEva = Math.max(0, parseInt(inp.value)||0); });
+      row.append(el("span",{class:"small"}, `Target's ${isSpec?"Special":"Physical"} Evasion`), inp);
+      wc.append(row);
+      wc.append(el("div",{class:"small muted",style:"margin-top:4px"},
+        `All ${nStrikes} Attack Rolls are checked against AC ${effAC??"—"} + this Evasion when you press 🎲 — the connecting hits are counted for you (nat 20 always hits, nat 1 always misses), and the Damage Base is sized from them. `
+        + (sp2.kind==="tripleKick" ? "1 hit → DB 1 · 2 hits → DB 3 · 3 hits → DB 6"
+                                   : `1 hit → DB ${sp2.base} · both hit → DB ${(sp2.base??0)*2} (doubled)`)));
       body.append(wc);
     } else if(sp2.kind==="fixedDamage" && (sp2.inputs||[]).length){
       const wc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin:0 0 12px"});
@@ -5368,9 +5455,9 @@ function openMoveRoll(p, m, sp, opts={}){
       if(fiveStrike) dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
         "🎯 Five Strike — rolling 1d8 for hit count when you roll dice; the Damage Base above is multiplied by hits (Technician already included)."));
       if(sp2?.kind==="doubleStrike") dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
-        `⚔ Double Strike — 2 Attack Rolls; DB doubles only if both connect. Each hit may crit separately (add the pre-doubled dice per crit).`));
+        `⚔ Double Strike — shown with ${hitsConnect===2?"both Attack Rolls connecting":"1 Attack Roll connecting"}; the 🎲 roll counts how many actually hit and re-sizes the Damage Base. Each connecting strike can crit on its own.`));
       if(sp2?.kind==="tripleKick") dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
-        `👣 Triple Kick — 3 Attack Rolls; DB is 1 / 3 / 6 for 1 / 2 / 3 hits.`));
+        `👣 Triple Kick — shown at ${hitsConnect} of 3 connecting; the 🎲 roll counts the real hits and re-sizes the Damage Base (DB 1 / 3 / 6 for 1 / 2 / 3 hits).`));
       if(critT<20) dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
         `Critical Hit Range: ${critT}–20 for this Pokémon/move.`));
     } else {
@@ -5471,7 +5558,9 @@ function openMoveRoll(p, m, sp, opts={}){
   /* --- results (filled when you press Roll dice) --- */
   const out = el("div",{id:"rollOut",class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:0"});
   out.append(el("div",{class:"muted small"}, "Press 🎲 Roll dice to simulate."));
-  const doRoll = () => {
+  /* redo = {nats, forceHits} — re-resolves a multi-strike attack with the SAME Attack Rolls
+     (used by the "override hits" buttons, so the GM can correct the auto hit count). */
+  const doRoll = (redo) => {
     out.style.borderStyle="solid";
     out.innerHTML="";
 
@@ -5513,7 +5602,6 @@ function openMoveRoll(p, m, sp, opts={}){
     // resolve a rolled Damage Base first (Magnitude / Present) so fDB is correct
     let dieNote = null;
     if(sp2?.kind==="dieDB"){ dieVal = 1+Math.floor(Math.random()*sp2.die); dieNote = `1d${sp2.die} → ${dieVal} → DB ${sp2.toDB(dieVal)}`; renderDamage(); }
-    const fDB = finalDB();
     // Present: a roll of 1 heals the target 20 HP instead of dealing damage
     if(sp2?.kind==="dieDB" && sp2.onOne && dieVal===1){
       out.append(el("div",{class:"small muted",style:"margin-bottom:8px"}, `Scaling: ${dieNote}.`));
@@ -5524,32 +5612,49 @@ function openMoveRoll(p, m, sp, opts={}){
       return;
     }
     // multi-strike: roll one d20 per attack; accs[0] drives the detailed crit/threshold read-out
-    const accs = []; for(let i=0;i<nAcc;i++) accs.push(1+Math.floor(Math.random()*20));
+    const accs = redo?.nats || Array.from({length:nAcc}, ()=>1+Math.floor(Math.random()*20));
     const acc = accs[0];
-    const accTot = acc + (bm.acc||0) + accCS;
+    const accMod = (bm.acc||0) + accCS;
+    const accTot = acc + accMod;
     const pureAccCS = d.cs.acc||0;
     const accBits = []; if(bm.acc) accBits.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} buffs`);
     if(pureAccCS) accBits.push(`${pureAccCS>0?"+":"−"}${Math.abs(pureAccCS)} Accuracy CS`);
     abilAcc.why.forEach(w=>accBits.push(w));
     // Critical Hit Range (Core p.235): widened by move/ability (critT) and by active buffs (bm.crit)
     const effCritT = Math.max(2, critT - (bm.crit||0));
-    const isCrit = !wx.autoHit && acc>=effCritT;
+    /* Double Strike / Triple Kick (Core p.242): resolve every Attack Roll against AC + the Evasion
+       entered above, count the connecting strikes automatically, and size the Damage Base from them. */
+    const multi   = nAcc > 1;
+    const thresh  = (wx.autoHit || effAC==null) ? null : effAC + targetEva;
+    const strikes = multi ? resolveStrikes(accs, accMod, thresh, effCritT) : null;
+    const forced  = multi && redo?.forceHits!=null;
+    const connected = !multi ? 1 : (forced ? redo.forceHits : strikes.filter(s=>s.hit).length);
+    if(multi){ hitsConnect = Math.max(1, connected); renderDamage(); }
+    const fDB = finalDB();
+    // crits can't outnumber the strikes that actually landed (matters after a manual override)
+    const nCrit  = multi ? Math.min(strikes.filter(s=>s.crit).length, connected)
+                         : ((!wx.autoHit && acc>=effCritT) ? 1 : 0);
+    const isCrit = nCrit > 0;
     const accLine = el("div",{style:fDB!=null?"margin-bottom:10px":""});
-    accLine.append(el("div",{class:"lbl",style:"color:var(--muted)  ;font-weight:800"},"ACCURACY ROLL"));
+    accLine.append(el("div",{class:"lbl",style:"color:var(--muted)  ;font-weight:800"}, multi?"ACCURACY ROLLS":"ACCURACY ROLL"));
     if(wx.autoHit){
       accLine.append(el("div",{style:"font-size:24px;font-weight:800;color:var(--good)"}, "🎯 Automatic hit"));
       accLine.append(el("div",{class:"small muted"}, `${m.name} cannot miss in ${wx.weather.name} — no Accuracy Check.`));
+    } else if(multi){
+      accLine.append(el("div",{style:`font-size:24px;font-weight:800;color:var(--${connected?"good":"bad"})`},
+        `🎯 ${connected} / ${nAcc} strike${connected===1?"":"s"} connected`));
+      accLine.append(el("div",{class:"small muted",style:"margin-top:2px"},
+        `vs AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote} ${targetEva} = ${thresh} → ${strikeReadout(strikes)}`));
+      if(accBits.length) accLine.append(el("div",{class:"small muted"}, `Each roll includes ${accBits.join(" ")}.`));
+      if(forced) accLine.append(el("div",{class:"small muted"}, `Hit count manually overridden to ${connected}.`));
+      if(isCrit) accLine.append(el("div",{style:"font-size:20px;font-weight:800;color:var(--bad);margin-top:2px"},
+        nCrit>1?`💥 ${nCrit} CRITICAL HITS!`:"💥 CRITICAL HIT!"));
     } else {
       accLine.append(el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`,
         el("span",{class:"muted",style:"font-size:14px;font-weight:600"}, accBits.length?`  (${acc} ${accBits.join(" ")})`:"  (1d20)")));
       if(effAC!=null) accLine.append(el("div",{class:"small muted"},
         `Hits if ${accTot} ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote}.${acc===1?" Natural 1 — auto-miss.":isCrit?` Roll ${acc} ≥ crit range ${effCritT} — Critical Hit!`:""}`));
       if(isCrit) accLine.append(el("div",{style:"font-size:20px;font-weight:800;color:var(--bad);margin-top:2px"}, "💥 CRITICAL HIT!"));
-      if(nAcc>1){
-        const others = accs.slice(1).map(a=>a + (bm.acc||0) + accCS);
-        accLine.append(el("div",{class:"small muted",style:"margin-top:2px"},
-          `All ${nAcc} Attack Rolls: ${[accTot, ...others].join(" · ")}. Count how many meet AC + Evasion, then set “how many connect” above to size the damage.`));
-      }
     }
     out.append(accLine);
     if(dieNote) out.append(el("div",{class:"small muted",style:"margin:2px 0 10px"}, `Scaling: ${dieNote}.`));
@@ -5572,7 +5677,13 @@ function openMoveRoll(p, m, sp, opts={}){
         `▫ ${acc} < ${t.n} — this effect doesn't trigger: ${t.text}`)));
       out.append(tl);
     }
-    if(fDB!=null){
+    if(multi && connected===0){
+      out.append(el("div",{},
+        el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"),
+        el("div",{style:"font-size:20px;font-weight:800;color:var(--bad)"},"— no damage"),
+        el("div",{class:"small muted",style:"margin-top:2px"},"None of the Attack Rolls met AC + Evasion, so the Move misses entirely.")));
+    }
+    if(fDB!=null && !(multi && connected===0)){
       // Five Strike (Core p.242): roll 1d8 for hit count, DB is multiplied by hits before the dice lookup
       const hitsInfo = fiveStrike ? fiveStrikeRoll() : null;
       const effFDB = hitsInfo ? Math.min(28, fDB*hitsInfo.hits) : fDB;
@@ -5581,9 +5692,10 @@ function openMoveRoll(p, m, sp, opts={}){
       const dmgLine = el("div",{});
       dmgLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"));
       if(r){
-        // Critical Hit (Core p.235): the Damage Dice are doubled — the stat bonus is NOT doubled
+        // Critical Hit (Core p.235): the Damage Dice are doubled — the stat bonus is NOT doubled.
+        // On a multi-strike Move each connecting strike crits on its own, so add one set per crit.
         let critExtra = 0; const critWhy = [];
-        if(isCrit){
+        for(let c=0;c<nCrit;c++){
           const r2 = rollDiceString(ds); critExtra += r2.dice; critWhy.push(`+${r2.dice} crit (doubled dice)`);
           if(hasAbility(p,"Sniper")){ const r3 = rollDiceString(ds); critExtra += r3.dice; critWhy.push(`+${r3.dice} Sniper`); }
           if(hasAbility(p,"Sniper [Errata]")){ const r4 = rollDiceString("3d10"); critExtra += r4.total; critWhy.push(`+${r4.total} Sniper [Errata]`); }
@@ -5603,6 +5715,8 @@ function openMoveRoll(p, m, sp, opts={}){
         parts.push(`= ${total}`);
         if(hitsInfo) dmgLine.append(el("div",{class:"small muted",style:"margin-top:2px"},
           `🎯 Five Strike: 1d8 → ${hitsInfo.d8} = ${hitsInfo.hits} hit${hitsInfo.hits===1?"":"s"} — DB ${fDB} ×${hitsInfo.hits} = ${effFDB}`));
+        if(multi) dmgLine.append(el("div",{class:"small muted",style:"margin-top:2px"},
+          `${sp2.kind==="tripleKick"?"👣 Triple Kick":"⚔ Double Strike"}: ${connected} of ${nAcc} connected — Damage Base ${baseDB()}${stab?" +2 STAB":""}${abilMods.db?` +${abilMods.db} ability`:""} = ${fDB}`));
         dmgLine.append(el("div",{class:"small muted",style:"margin-top:4px"}, parts.join("  ")));
         if(bm.crit) dmgLine.append(el("div",{class:"small muted"}, `Crit / Effect range widened by +${bm.crit} (buffs).`));
         dmgLine.append(el("div",{class:"small muted"}, `Target subtracts ${defNote} & damage reduction.`));
@@ -5613,6 +5727,16 @@ function openMoveRoll(p, m, sp, opts={}){
         }
       }
       out.append(dmgLine);
+    }
+    /* GM override: keep the same Attack Rolls but force a different hit count (e.g. the target's
+       real Evasion turned out different, or an ability changed what connects). Damage is re-rolled. */
+    if(multi){
+      const ov = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center"});
+      ov.append(el("span",{class:"small muted"},"Override hits:"));
+      for(let k=0;k<=nAcc;k++) ov.append(el("button",{class:"btn-secondary",style:"padding:3px 10px",
+        onclick:()=>doRoll({nats:accs, forceHits:k})}, String(k)));
+      ov.append(el("span",{class:"small muted"},"— keeps the Attack Rolls, re-rolls the damage dice."));
+      out.append(ov);
     }
     // spend one-shot buffs (Cheers / Strike Again! / Perfect Aim …)
     const oneShots = ownerBuffs(p).filter(b=>b.once);
