@@ -2891,6 +2891,7 @@ const PATRON_STATS = {
   "Giratina":"hp","Xerneas":["atk","spatk"],"Yveltal":["atk","spatk"],
   "Zygarde":"hp","Diancie":["def","spdef"],
   "Vulpoxen":"spatk",   // homebrew: the created Fire/Ghost legendary bonded to Lázaro
+  "Chien-Pao":["atk","spd"],   // homebrew Pantheon entry: The Blessed and the Damned
 };
 const PATRON_NAMES = Object.keys(PATRON_STATS);
 /* Legendary Gifts catalog (book pp.58-71), grouped. Each group lists its member Patrons (for the
@@ -3091,6 +3092,14 @@ const GIFT_GROUPS = [
     ["Major","Emberwake","Minor Gift - Grafted Soul","You gain the Pyre of Grief Ability (heal a Tick of HP + a stacking-capped +5 to your next Damage Roll whenever anything faints within 5m). (Vulpoxen Lv 30 — Nightmare Aura wakes.)"],
     ["Major","Coma Light","Major Gift - Emberwake","Scene x2, Standard Action, AC 6, Range 4m 1 Target: the target falls Asleep and immediately gains Bad Sleep. (Vulpoxen Lv 50 — Death Aura opens.)"],
     ["Pact","Rekindling","All Vulpoxen Major Gifts","You learn the Move Rekindling — a Fire attack that, on a killing blow, revives a fainted ally as a Ghost-Type revenant. (Vulpoxen Lv 75 — full god.)"],
+  ]},
+  { group:"Chien-Pao", patrons:["Chien-Pao"], gifts:[
+    ["Minor","Sense of Ruin","GM Permission","By observing a Pokémon, Trainer, structure, or object, you intuitively know its frailest points, and you can always tell when a living thing bears you or your allies genuine hostility. +3 to any Check made to break, damage, or exploit a weakness in a creature's defenses."],
+    ["Major","Reviled","Minor Gift - Sense of Ruin","Whenever a foe hits you with a Move, you gain +1 Attack Combat Stage (once per round, lasting until end of Scene). You are also immune to Infatuation."],
+    ["Major","Spiteful Frost","Minor Gift - Sense of Ruin","You are immune to the ambient cold of frozen and high-altitude regions, never slip on or sink into snow and ice, and gain the Freezer and Naturewalk (Tundra) Capabilities."],
+    ["Major","Blade of Hate","Major Gift - Reviled","Scene x2 - Trigger: You make a Struggle Attack with an equipped weapon. Effect: That Struggle Attack deals Dark Type damage and gains +3 to its Damage Base."],
+    ["Major","Sword of Ruin","Major Gift - Blade of Hate","You gain the Sword of Ruin Ability."],
+    ["Pact","Ruination","All Chien-Pao Major Gifts","You learn the Move Ruination."],
   ]},
 ];
 /* every gift as a flat list with its group, for pickers/lookups */
@@ -4079,6 +4088,7 @@ const AURA_DEFS = [
   ["Primal Weather","When active, the Possessor sets the Weather with one of: Delta Stream (Strong Winds — Electric, Ice and Rock Moves do neutral damage to Flying Types), Desolate Land (Sunny — Water Moves cannot be used), or Primordial Sea (Rainy — Fire Moves cannot be used). Attempts to override this Weather without removing the Aura fail."],
   ["Rejuvenation","The Possessor is always considered to have the Healer and Regenerator Abilities. They may use both once per round, and may also target others with their Regenerator usage."],
   ["Rivalry","The Possessor cannot be brought below 1 HP unless their paired Rival is one of their enemies. This Aura can only be disabled by another Legendary with the Rivalry Aura (not necessarily their paired Rival)."],
+  ["Ruin","The Possessor embodies the erosion of strength. All who oppose the Possessor treat their Defense as locked at -3 Combat Stages while the Aura is active, and it cannot be raised by any means. Additionally, once per round when the Possessor lands a damaging Move, the target loses a tick of Hit Points as its vitality wears away."],
   ["Sky","Once per round the Possessor may beckon the assistance of the wilds: a new combatant enters the battle at the Possessor's level if a Pokemon, or half their level if a Trainer. (Nature, Oceans and Sky share this effect; a Possessor with several of these Auras may summon one ally per such Aura per round.)"],
   ["Solitude","The Possessor covers the arena in a heavy mist that divides its enemies. They become unaware of their allies' locations and cannot hear, communicate via Aura or Telepathy, or contact them through technological or occult means. The mist remains as long as the Aura is active."],
   ["Storms","The Possessor always has Sandstorm or Hail and Sunny Day or Rain Dance active at once, always Type-Shifted to one of its Types to benefit the Possessor. These Weather conditions cannot be overwritten while the Aura is active."],
@@ -4182,6 +4192,9 @@ const LEGENDARY_AURAS = {
   // Homebrew: the created Fire/Ghost legendary. Symbiotic is permanent (the bond to Lázaro);
   // Nightmare & Death wake as it levels; it also owns Emotion & Willpower to swap in.
   "Vulpoxen":["Symbiotic","Nightmare","Death","Emotion","Willpower"],
+  // Homebrew Pantheon entry (The Blessed and the Damned): a mortal's tyrant-sword reforged into a
+  // living blade of hatred that feeds on the hostility it provokes.
+  "Chien-Pao":["Ruin","War","Storms"],
 };
 /* short GM notes for a few legendaries with book caveats */
 const LEGENDARY_AURA_NOTES = {
@@ -4192,6 +4205,7 @@ const LEGENDARY_AURA_NOTES = {
   "Mesprit":"Lake Guardian: shares Law & Loyalty with Uxie/Azelf; its third Domain is Emotion.",
   "Azelf":"Lake Guardian: shares Law & Loyalty with Uxie/Mesprit; its third Domain is Willpower.",
   "Vulpoxen":"Homebrew. Core three: Symbiotic (permanent — the bond to Lázaro, undone only by slaying one of the pair), Nightmare (wakes ~Lv 30), and Death (opens ~Lv 50). It also owns Emotion & Willpower; only three may be active at once.",
+  "Chien-Pao":"Homebrew Pantheon entry (Upper Pantheon, so it qualifies for a Pact Gift — drop to Lower Pantheon if you'd rather treat the Treasures of Ruin as regional). Domains: Ruin (new Aura, above), War, Storms.",
 };
 const LEGENDARY_AURA_MAP = {};
 Object.entries(LEGENDARY_AURAS).forEach(([k,v])=>{ LEGENDARY_AURA_MAP[auraKey(k)] = v; });
