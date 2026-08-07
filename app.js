@@ -6532,19 +6532,22 @@ const SIG_TECH_MODS = [
   { name:"Shock and Awe", feature:"Inspired Training", category:"aoe",
     effect:"Foes targeted take −2 to Save Checks and −1 Evasion until the end of the user's next turn (hit or miss)." },
   { name:"Vicious Storm", feature:"Brutal Training", category:"aoe",
-    effect:"The Move gains the Smite keyword. Damaging Moves only." },
+    effect:"The Move gains the Smite keyword. Damaging Moves only.",
+    extra: m => (m.class||"")!=="Status" },
   { name:"Guarding Strike", feature:"Inspired Training", category:"single",
     effect:"If this Move hits, the user gains +5 Damage Reduction against that target until the end of their next turn." },
   { name:"Unbalancing Blow", feature:"Brutal Training", category:"single",
     effect:"Hit or miss, the target becomes Vulnerable until next hit by a Damaging Attack or 1 full round passes." },
   { name:"Reliable Attack", feature:"Focused Training", category:"single",
-    effect:"If the Move misses, its Frequency isn't spent and the user may immediately Struggle as a Free Action. Not for Smite Moves." },
+    effect:"If the Move misses, its Frequency isn't spent and the user may immediately Struggle as a Free Action. Not for Smite Moves.",
+    extra: m => !moveHasKeyword(m,"smite") },
   { name:"Alternative Energy", feature:"Focused Training", category:"damaging",
     effect:"Switch the Move's Class from Physical to Special or vice versa." },
   { name:"Bloodied Speed", feature:"Agility Training", category:"damaging",
     effect:"This Move may be used as Priority (Advanced) if the user has less than half its max HP." },
   { name:"Double Down", feature:"Brutal Training", category:"damaging",
-    effect:"The Move gains Double Strike (effects/ranges trigger once). Only for DB≤4 Moves w/o variable or special-case damage." },
+    effect:"The Move gains Double Strike (effects/ranges trigger once). Only for DB≤4 Moves w/o variable or special-case damage.",
+    extra: m => m.damageBase!=null && m.damageBase<=4 },
   { name:"Burst of Motivation", feature:"Inspired Training", category:"status",
     effect:"After resolving, the user may raise any negative-CS Stats by up to +2 CS (not above 0 total)." },
   { name:"Supreme Concentration", feature:"Focused Training", category:"status",
@@ -6553,7 +6556,11 @@ const SIG_TECH_MODS = [
     effect:"The user may target an additional foe. Only for 1-Target Moves." },
 ];
 function sigTechCategoryMatch(cat, m){
-  const aoe = moveHasKeyword(m,"cone")||moveHasKeyword(m,"line")||moveHasKeyword(m,"burst")||moveHasKeyword(m,"blast");
+  // Cone/Line/Burst/Blast keywords can appear as a compound phrase ("Ranged Blast 3", "Close Blast 2"),
+  // not just as their own comma-separated token — moveHasKeyword's comma/start anchor misses those, so
+  // this is a plain substring test over the range text instead (same approach as parseAoE's map-AoE parser).
+  const rangeTxt = String(m?.range||"").toLowerCase();
+  const aoe = ["cone","line","burst","blast"].some(kw=>rangeTxt.includes(kw));
   if(cat==="aoe") return aoe;
   if(cat==="single") return !aoe;
   if(cat==="damaging") return (m.class||"")!=="Status";
@@ -6562,7 +6569,7 @@ function sigTechCategoryMatch(cat, m){
 }
 function sigTechEligibleMods(trainer, m){
   const feats = new Set((trainer && trainer.features) || []);
-  return SIG_TECH_MODS.filter(x => feats.has(x.feature) && sigTechCategoryMatch(x.category, m));
+  return SIG_TECH_MODS.filter(x => feats.has(x.feature) && sigTechCategoryMatch(x.category, m) && (!x.extra || x.extra(m)));
 }
 function clearSigTechnique(p){
   if(!p.sigTechnique) return;
