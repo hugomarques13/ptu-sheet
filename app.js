@@ -145,6 +145,33 @@ const STATUS_DEFS = [
   {key:"petrified", name:"Petrified", kind:"other", cap:0,
    effect:"Is stone, irreversible."},
 ];
+/* Trainings (Core p.76 "Elite Trainer" family — Agility/Brutal/Focused/Inspired Training): a Trainer
+   applies one of these to a Pokémon as an Extended Action; they persist until an Extended Rest. Kept
+   OUT of STATUS_DEFS on purpose — mechanically and visually distinct from Afflictions (no immunity/
+   catch-rate interaction, not cured by End Day the same way), so they get their own toggle row instead
+   of the round statuschip pips. Stored the same way though (p.statuses[]), so hasStatus()/toggleStatus()
+   and the auto-applied effects (critThreshold's Brutal −1, tokenInitiative's Agile +4) work unchanged. */
+const TRAINING_DEFS = [
+  {key:"agile", name:"Agile", feature:"Agility Training",
+   effect:"+1 bonus to Movement Capabilities and +4 to Initiative (the +4 Initiative is auto-applied on the Map's initiative tracker)."},
+  {key:"brutal", name:"Brutal", feature:"Brutal Training",
+   effect:"+1 to Critical-Hit range (auto-applied to move rolls) and +1 to Effect Range (apply by hand — the exact text varies per Move)."},
+  {key:"focused", name:"Focused", feature:"Focused Training",
+   effect:"+1 bonus to Accuracy Rolls (auto-applied to move rolls) and +2 to Skill Checks (apply by hand)."},
+  {key:"inspired", name:"Inspired", feature:"Inspired Training",
+   effect:"+1 bonus to Evasion (auto-applied to Phys/Spec/Speed Evasion) and +2 to Save Checks (apply by hand)."},
+];
+/* shared renderer for the Trainings toggle row — deliberately NOT .statuschip (no round pips): a
+   flatter, square-cornered toggle so it reads as a different kind of thing at a glance. */
+function trainingsRow(p, onToggle){
+  const chips = el("div",{class:"chips training-chips"});
+  TRAINING_DEFS.forEach(s=>{
+    const on = hasStatus(p,s.key);
+    chips.append(el("button",{class:"trainingchip"+(on?" on":""), title:s.effect,
+      onclick:()=>{ toggleStatus(p,s.key); onToggle(); }}, s.name));
+  });
+  return chips;
+}
 const statusByKey = new Map(STATUS_DEFS.map(s=>[s.key, s]));
 /* Move effect text almost never spells out the status ADJECTIVE ("Poisoned") — it uses a VERB
    ("Poisons the target on 18+"). Match verb roots per status, badlyPoisoned checked before
@@ -1243,9 +1270,10 @@ function pokeDerived(p) {
   // so it is added AFTER the cap rather than being squeezed under it. The Evasion Combat Stage
   // (cs.eva, Core p.234) works the same way — a flat add on top, separately capped −6…+6.
   const wEva = weatherEvasion(p);
+  const inspiredEva = hasStatus(p,"inspired") ? 1 : 0;   // Inspired Training: +1 Evasion
   return {
     base, total, cs, eff, maxHP, fullMaxHP, injuries, budget, spent, remaining: budget - spent,
-    physEva: cap6(eff.def)+cs.eva+wEva, specEva: cap6(eff.spdef)+cs.eva+wEva, spdEva: cap6(eff.spd)+cs.eva+wEva,   // evasion uses CS-adjusted stats
+    physEva: cap6(eff.def)+cs.eva+wEva+inspiredEva, specEva: cap6(eff.spdef)+cs.eva+wEva+inspiredEva, spdEva: cap6(eff.spd)+cs.eva+wEva+inspiredEva,   // evasion uses CS-adjusted stats
     weatherEva: wEva,
   };
 }
@@ -3628,6 +3656,25 @@ function statusCard(p){
   }
   return card;
 }
+/* Trainings — a Trainer's Elite Trainer / Training Feature buffs (Agile/Brutal/Focused/Inspired),
+   deliberately its own card rather than living inside Status Conditions: different source (a Trainer
+   spends time training, not an in-combat affliction), different rules (no immunity, no catch-rate
+   bump, doesn't clear on End Scene), and a visibly different toggle style so it doesn't get confused
+   with the round statuschip pips above. */
+function trainingsCard(p){
+  const card = el("div",{class:"card"}, el("h3",{},"Trainings"));
+  card.append(trainingsRow(p, ()=>refreshMon(p)));
+  const active = TRAINING_DEFS.filter(s=>hasStatus(p,s.key));
+  if(active.length){
+    active.forEach(s=>{ const d=el("details",{class:"spoiler",style:"margin-top:6px"});
+      d.append(el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, s.name)));
+      d.append(el("div",{class:"small",style:"margin-top:6px"}, s.effect));
+      card.append(d); });
+  } else {
+    card.append(el("div",{class:"small muted",style:"margin-top:6px"}, "none active"));
+  }
+  return card;
+}
 /* Capture-Rate calculator popup (GM tool) */
 /* info-only capture rate (no roll) — for the GM's "🎯 Catch DC" reference buttons when just
    inspecting a Pokémon. The interactive roll lives on the trainer's own ⚔ Combat tab instead
@@ -3987,6 +4034,7 @@ function renderMonPlay(root, p, sp){
 
   /* status conditions + Catch DC */
   root.append(statusCard(p));
+  root.append(trainingsCard(p));
 
   /* combat stages */
   root.append(combatStagesCard(p));
@@ -5031,6 +5079,7 @@ function critThreshold(p, m){
   if(hasAbility(p,"Razor Edge")) t -= /tail/i.test(m?.name||"") ? 3 : 2;
   if(hasAbility(p,"Beam Cannon") && !/^melee/i.test(m?.range||"") && /1 target/i.test(m?.range||"")) t -= 3;
   if(hasAbility(p,"Gore") && /^horn attack$/i.test(m?.name||"")) t = Math.min(t, 18);
+  if(hasStatus(p,"brutal")) t -= 1;   // Brutal Training: +1 Crit Range
   return Math.max(2, t);
 }
 /* Move-name sets for the abilities that boost a specific printed list of Moves (Core p.199). */
@@ -5263,7 +5312,7 @@ function openMoveRoll(p, m, sp, opts={}){
   const spPending = () => !!sp2 && sp2.kind==="dieDB" && dieVal==null;   // DB unknown until 🎲
   const bm = buffMods(p);                 // active Cheers / Orders / Songs (#2)
   const abilAcc = abilityAccMods(p, m, isPhys);   // always-on Accuracy abilities (Compound Eyes, Hustle)
-  const accCS = (d.cs.acc||0) + abilAcc.acc;      // Accuracy CS (Core p.234) + ability Accuracy mods
+  const accCS = (d.cs.acc||0) + abilAcc.acc + (hasStatus(p,"focused")?1:0);      // Accuracy CS (Core p.234) + ability Accuracy mods + Focused Training
   const wx = weatherRollMods(p, m, mtype);      // current Weather Condition (Core p.342)
   const tx = terrainRollMods(p, m, mtype);      // current Terrain(s) in play — any number can stack
   const effAC = wx.acOverride!=null ? wx.acOverride : m.ac;   // e.g. Thunder is AC 11 in Sun
@@ -5620,6 +5669,7 @@ function openMoveRoll(p, m, sp, opts={}){
     const accBits = []; if(bm.acc) accBits.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} buffs`);
     if(pureAccCS) accBits.push(`${pureAccCS>0?"+":"−"}${Math.abs(pureAccCS)} Accuracy CS`);
     abilAcc.why.forEach(w=>accBits.push(w));
+    if(hasStatus(p,"focused")) accBits.push("+1 Focused");
     // Critical Hit Range (Core p.235): widened by move/ability (critT) and by active buffs (bm.crit)
     const effCritT = Math.max(2, critT - (bm.crit||0));
     /* Double Strike / Triple Kick (Core p.242): resolve every Attack Roll against AC + the Evasion
@@ -6467,7 +6517,74 @@ function addEncTrainerMove(t){
   openPicker("Add a Trainer move", names, name=>{ t.encMoves.push(name); saveEnc(); renderEncounters(); }, "move");
 }
 
-function encounterMoveRow(p, sp, m, mn, favSet, onFav, isStruggle){
+/* Signature Technique (Trainer Classes Feature, Elite Trainer + Expert Command): spend 2 Tutor
+   Points on a Pokemon to mark one of its Moves as its Signature Technique and apply one
+   modification. Each modification requires the Trainer to know a specific Training Feature
+   (Agility/Brutal/Focused/Inspired Training) and only applies to a matching Move category —
+   Cone/Line/Burst/Blast ("aoe") vs Single Target ("single") Moves are targeting-based; Damaging
+   vs Status ("damaging"/"status") are class-based; a Move can be eligible under both axes at once. */
+const SIG_TECH_MODS = [
+  { name:"Scattershot", feature:"Agility Training", category:"aoe",
+    effect:"Instead of the Move's normal range, it has a range of 4m, 3 Targets." },
+  { name:"Shock and Awe", feature:"Inspired Training", category:"aoe",
+    effect:"Foes targeted take −2 to Save Checks and −1 Evasion until the end of the user's next turn (hit or miss)." },
+  { name:"Vicious Storm", feature:"Brutal Training", category:"aoe",
+    effect:"The Move gains the Smite keyword. Damaging Moves only." },
+  { name:"Guarding Strike", feature:"Inspired Training", category:"single",
+    effect:"If this Move hits, the user gains +5 Damage Reduction against that target until the end of their next turn." },
+  { name:"Unbalancing Blow", feature:"Brutal Training", category:"single",
+    effect:"Hit or miss, the target becomes Vulnerable until next hit by a Damaging Attack or 1 full round passes." },
+  { name:"Reliable Attack", feature:"Focused Training", category:"single",
+    effect:"If the Move misses, its Frequency isn't spent and the user may immediately Struggle as a Free Action. Not for Smite Moves." },
+  { name:"Alternative Energy", feature:"Focused Training", category:"damaging",
+    effect:"Switch the Move's Class from Physical to Special or vice versa." },
+  { name:"Bloodied Speed", feature:"Agility Training", category:"damaging",
+    effect:"This Move may be used as Priority (Advanced) if the user has less than half its max HP." },
+  { name:"Double Down", feature:"Brutal Training", category:"damaging",
+    effect:"The Move gains Double Strike (effects/ranges trigger once). Only for DB≤4 Moves w/o variable or special-case damage." },
+  { name:"Burst of Motivation", feature:"Inspired Training", category:"status",
+    effect:"After resolving, the user may raise any negative-CS Stats by up to +2 CS (not above 0 total)." },
+  { name:"Supreme Concentration", feature:"Focused Training", category:"status",
+    effect:"May be used even if Paralyzed, Flinched, Enraged, or failing a Confusion Save." },
+  { name:"Double Curse", feature:"Agility Training", category:"status",
+    effect:"The user may target an additional foe. Only for 1-Target Moves." },
+];
+function sigTechCategoryMatch(cat, m){
+  const aoe = moveHasKeyword(m,"cone")||moveHasKeyword(m,"line")||moveHasKeyword(m,"burst")||moveHasKeyword(m,"blast");
+  if(cat==="aoe") return aoe;
+  if(cat==="single") return !aoe;
+  if(cat==="damaging") return (m.class||"")!=="Status";
+  if(cat==="status") return (m.class||"")==="Status";
+  return false;
+}
+function sigTechEligibleMods(trainer, m){
+  const feats = new Set((trainer && trainer.features) || []);
+  return SIG_TECH_MODS.filter(x => feats.has(x.feature) && sigTechCategoryMatch(x.category, m));
+}
+function clearSigTechnique(p){
+  if(!p.sigTechnique) return;
+  p.tutorPoints = (p.tutorPoints||0) + 1;
+  const was = p.sigTechnique.move;
+  p.sigTechnique = null;
+  saveEnc(); renderEncounters();
+  toast(`${was} is no longer a Signature Technique (+1 Tutor Point refunded)`);
+}
+function openSigTechPicker(trainer, p, m, mn){
+  const eligible = sigTechEligibleMods(trainer, m);
+  if(!eligible.length){ toast("No Signature Technique modification fits — the Trainer needs a matching Training Feature (Agility/Brutal/Focused/Inspired) for this Move's category."); return; }
+  const already = p.sigTechnique && p.sigTechnique.move===mn;
+  if(!already && (p.tutorPoints||0) < 2){ toast(`Signature Technique costs 2 Tutor Points (has ${p.tutorPoints||0}).`); return; }
+  const names = eligible.map(x=>x.name);
+  openPicker(`Signature Technique for ${mn}`, names, name=>{
+    const mod = eligible.find(x=>x.name===name);
+    if(p.sigTechnique && p.sigTechnique.move!==mn) p.tutorPoints = (p.tutorPoints||0) + 1;   // switching moves refunds the old one
+    if(!already) p.tutorPoints = Math.max(0,(p.tutorPoints||0)-2);
+    p.sigTechnique = { move: mn, mod: mod.name };
+    saveEnc(); renderEncounters();
+    toast(`${mn} is now ${p.species}'s Signature Technique (${mod.name})`);
+  });
+}
+function encounterMoveRow(p, sp, m, mn, favSet, onFav, isStruggle, trainer){
   const row=el("div",{class:"inline",style:"gap:6px;align-items:center;margin-top:5px;justify-content:space-between"});
   const left=el("div",{class:"inline",style:"gap:6px;align-items:center;min-width:0;flex:1"});
   if(isStruggle) left.append(el("span",{class:"muted small",title:"always available"},"⚔"));
@@ -6475,6 +6592,8 @@ function encounterMoveRow(p, sp, m, mn, favSet, onFav, isStruggle){
     title:isF?"unpin favourite":"pin favourite",onclick:onFav}, isF?"★":"☆")); }
   left.append(el("span",{style:"font-weight:700;white-space:nowrap"}, m?m.name:mn), m?el("span",{html:typeBadge(effectiveMoveType(p,m))}):"");
   if(m) left.append(el("span",{class:"small muted",style:"min-width:0;overflow:hidden;text-overflow:ellipsis"}, moveLineShort(m)));
+  const isSig = p.sigTechnique && p.sigTechnique.move===mn;
+  if(isSig) left.append(el("span",{class:"kv",title:`Signature Technique: ${p.sigTechnique.mod}`},"🏆 "+p.sigTechnique.mod));
   row.append(left);
   const acts=el("div",{class:"inline",style:"gap:6px"});
   if(m && !isStruggle){ const uc = usesControl(p, "move", m.name, m.frequency, renderEncounters, saveEnc, {bossEot:isBoss(p)}); if(uc) acts.append(uc); }
@@ -6482,6 +6601,10 @@ function encounterMoveRow(p, sp, m, mn, favSet, onFav, isStruggle){
     onclick:()=>modal({title:m.name, bodyNode:el("div",{class:"small",html:moveDetailHTML(m,m.name)}),
       footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Close")]})},"ℹ"));
   if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"roll this move",onclick:()=>openMoveRoll(p,m,sp)},"🎲"));
+  const hasSigFeature = !!(trainer && trainer.features && trainer.features.includes("Signature Technique"));
+  if(m && !isStruggle && trainer && (hasSigFeature || isSig)) acts.append(el("button",{class:"btn-secondary"+(isSig?" on":""),style:"padding:5px 10px",
+    title:isSig?"forget this Signature Technique (+1 Tutor Point)":"make this the Pokémon's Signature Technique (needs 2 Tutor Points + a matching Training Feature)",
+    onclick:()=> isSig ? clearSigTechnique(p) : openSigTechPicker(trainer,p,m,mn)},"🏆"));
   if(!isStruggle) acts.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted)",title:"remove move",
     onclick:()=>{ const i=p.moves.indexOf(mn); if(i>=0){ p.moves.splice(i,1); saveEnc(); renderEncounters(); } }},"×"));
   row.append(acts);
@@ -6902,6 +7025,20 @@ function encStatusControl(p){
   det.append(body);
   return det;
 }
+/* Trainings (Agile/Brutal/Focused/Inspired) — encounter-card counterpart to trainingsCard, same
+   distinct non-statuschip toggle row, collapsed into its own <details> to match encStatusControl. */
+function encTrainingControl(p){
+  const active = TRAINING_DEFS.filter(s=>hasStatus(p,s.key));
+  const det = el("details",{class:"spoiler",style:"margin-top:8px"});
+  det.dataset.key = "training:"+p.id;
+  det.append(el("summary",{},
+    el("span",{style:"font-weight:700;color:var(--ink)"},"Trainings"),
+    el("span",{class:"muted small",style:"margin-left:8px"}, active.length?active.map(s=>s.name).join(", "):"none")));
+  const body = el("div",{style:"margin-top:6px"});
+  body.append(trainingsRow(p, ()=>{ saveEnc(); renderEncounters(); }));
+  det.append(body);
+  return det;
+}
 /* minimize/expand a single encounter Pokémon (focus the active one, tuck away fainted ones) */
 function encMonToggleMin(p){ p.encMin=!p.encMin; saveEnc(); renderEncounters(); }
 /* collapse every fainted (HP ≤ 0) Pokémon in a list at once */
@@ -6909,7 +7046,7 @@ function encCollapseFainted(list){ let n=0; (list||[]).forEach(p=>{ if((p.curren
 /* a small ▾ minimize + × remove control shared by the collapsed & expanded views */
 function encMonRemoveBtn(p,list){ return el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove",
   onclick:()=>{ const i=list.indexOf(p); if(i>=0){ list.splice(i,1); saveEnc(); renderEncounters(); } }},"×"); }
-function encounterMonCard(enc, p, list){
+function encounterMonCard(enc, p, list, trainer){
   normPokemon(p);
   const sp=getSpecies(p.species), d=pokeDerived(p), maxHP=d.maxHP;
   if(p.currentHP==null) p.currentHP=maxHP;
@@ -7024,6 +7161,7 @@ function encounterMonCard(enc, p, list){
   card.append(encStatSpread(p));
   card.append(encCombatStages(p));
   card.append(encStatusControl(p));
+  card.append(encTrainingControl(p));
   // moves — favourites first, each rollable
   const favSet=new Set(p.encFav||[]);
   const mw=el("div",{style:"margin-top:8px"});
@@ -7037,7 +7175,7 @@ function encounterMonCard(enc, p, list){
     if(gm) mw.append(encounterMoveRow(p,sp,gm,gm.name,favSet,null,true)); }
   const ordered=[...p.moves].sort((a,b)=>(favSet.has(b)?1:0)-(favSet.has(a)?1:0));
   ordered.forEach(mn=>{ const m=moveByName.get(mn.toLowerCase());
-    mw.append(encounterMoveRow(p,sp,m,mn,favSet,()=>{ p.encFav=toggleSet(favSet,mn); saveEnc(); renderEncounters(); })); });
+    mw.append(encounterMoveRow(p,sp,m,mn,favSet,()=>{ p.encFav=toggleSet(favSet,mn); saveEnc(); renderEncounters(); },false,trainer)); });
   card.append(mw);
   // abilities — addable, each expandable to explain what it does
   const aw=el("div",{style:"margin-top:8px"});
@@ -7242,7 +7380,7 @@ function encounterTrainerCard(enc, tr){
     el("div",{class:"inline",style:"gap:8px"},
       tmonFainted?el("button",{class:"linkbtn",title:"minimize all fainted",onclick:()=>encCollapseFainted(tr.pokemon)},"▾ fainted"):"",
       el("button",{class:"linkbtn",onclick:()=>addEncounterMon(enc, tr.pokemon)},"+ add Pokémon"))));
-  tr.pokemon.forEach(p=> card.append(encounterMonCard(enc, p, tr.pokemon)));
+  tr.pokemon.forEach(p=> card.append(encounterMonCard(enc, p, tr.pokemon, t)));
   return card;
 }
 function openExpCalc(enc){
@@ -9365,6 +9503,7 @@ function tokenInitiative(token){
   if(obj){
     if(hasStatus(obj,"paralysis")) v = Math.floor(v/2);
     if(hasStatus(obj,"flinch")) v -= 5;
+    if(hasStatus(obj,"agile")) v += 4;   // Agility Training: +4 Initiative
   }
   return v;
 }

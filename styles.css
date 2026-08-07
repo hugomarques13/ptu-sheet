@@ -296,6 +296,13 @@ details.spoiler summary{cursor:pointer; font-weight:700; color:var(--muted)}
 .statuschip:hover{border-color:var(--accent)}
 .statuschip.on{background:var(--bad); color:#fff; border-color:var(--bad)}
 
+/* ---------- trainings (Agile/Brutal/Focused/Inspired) — square, NOT the round statuschip pills,
+   so this reads as a different kind of thing from Status Conditions at a glance ---------- */
+.trainingchip{border:2px solid var(--line); background:var(--panel-2); color:var(--muted);
+  border-radius:5px; padding:4px 11px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap}
+.trainingchip:hover{border-color:var(--accent)}
+.trainingchip.on{background:var(--accent); color:#fff; border-color:var(--accent)}
+
 /* ---------- images / avatars ---------- */
 .idrow{display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap}
 .avatar-wrap{display:flex; flex-direction:column; align-items:center; gap:4px}
