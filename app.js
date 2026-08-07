@@ -7084,7 +7084,7 @@ function encounterMonCard(enc, p, list, trainer){
   const nw=el("div",{style:"flex:1;min-width:0"});
   nw.append(el("div",{style:"font-weight:800"}, (fainted?"💀 ":"")+encMonName(p), " ", el("span",{html:(sp?.types||[]).map(typeBadge).join(" ")})));
   const lvIn=el("input",{type:"number",min:1,max:100,value:p.level,style:"width:60px",title:"level"});
-  lvIn.addEventListener("change",()=>{ const l=Math.max(1,Math.min(100,parseInt(lvIn.value)||1)); p.level=l; p.xp=xpForLevel(l); encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; syncEncMonLevelupMoves(p,sp); saveEnc(); renderEncounters(); });
+  lvIn.addEventListener("change",()=>{ const l=Math.max(1,Math.min(100,parseInt(lvIn.value)||1)); p.level=l; p.xp=xpForLevel(l); encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; syncEncMonLevelupMoves(p,sp); p.tutorPoints=Math.max(p.tutorPoints||0, tutorPointsEarned(l)); saveEnc(); renderEncounters(); });
   nw.append(el("div",{class:"small muted",style:"margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"},
     "Lv", lvIn, `· ${p.nature||"—"} · ${p.gender||"—"}${p.shiny?" · ✨Shiny":""}`));
   nw.append(rotomFormControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
