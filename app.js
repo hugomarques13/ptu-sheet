@@ -4350,6 +4350,8 @@ const LEGENDARY_AURAS = {
   "Missingno":["Chaos","Creation","Glitch"], "MissingNo":["Chaos","Creation","Glitch"],
   "Unown":["Hivemind","Law","Trickery"],
   "Arceus": AURA_NAMES.slice(),                                   // Arceus has access to every Aura
+  // Beyond the book (GM attribution, not printed in The Blessed and the Damned)
+  "Magearna":["Creation","Life","Love"],
   // Homebrew: the created Fire/Ghost legendary. Symbiotic is permanent (the bond to Lázaro);
   // Nightmare & Death wake as it levels; it also owns Emotion & Willpower to swap in.
   "Vulpoxen":["Symbiotic","Nightmare","Death","Emotion","Willpower"],
@@ -4365,6 +4367,7 @@ const LEGENDARY_AURA_NOTES = {
   "Uxie":"Lake Guardian: shares Law & Loyalty with Mesprit/Azelf; its third Domain is Knowledge.",
   "Mesprit":"Lake Guardian: shares Law & Loyalty with Uxie/Azelf; its third Domain is Emotion.",
   "Azelf":"Lake Guardian: shares Law & Loyalty with Uxie/Mesprit; its third Domain is Willpower.",
+  "Magearna":"Not covered by The Blessed and the Damned (Gen 7 Mythical) — Domains attributed here: Creation (an artificial body crafted 500 years ago and given a true soul), Life (the Soul-Heart holds and returns life energy), Love (built to serve and adore its princess; its Fairy heart binds those who strike it). Treat as Lower Pantheon unless your Magearna is the original.",
   "Vulpoxen":"Homebrew. Core three: Symbiotic (permanent — the bond to Lázaro, undone only by slaying one of the pair), Nightmare (wakes ~Lv 30), and Death (opens ~Lv 50). It also owns Emotion & Willpower; only three may be active at once.",
   "Chien-Pao":"Homebrew Pantheon entry (Upper Pantheon, so it qualifies for a Pact Gift — drop to Lower Pantheon if you'd rather treat the Treasures of Ruin as regional). Domains: Ruin (new Aura, above), War, Storms.",
 };
