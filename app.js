@@ -6571,6 +6571,64 @@ function sigTechEligibleMods(trainer, m){
   const feats = new Set((trainer && trainer.features) || []);
   return SIG_TECH_MODS.filter(x => feats.has(x.feature) && sigTechCategoryMatch(x.category, m) && (!x.extra || x.extra(m)));
 }
+/* Applies a chosen Signature Technique modification to a MOVE OBJECT (not the shared DB entry —
+   moveByName.get() returns one shared object reused by every Pokémon in the app, so this returns a
+   fresh clone; the caller swaps it in wherever that move is looked up for the Pokémon carrying the
+   Signature Technique). Structural changes (range/class/keyword) actually feed the roll math —
+   Double Down's "Double Strike" text is read by isDoubleStrike(), Scattershot's range replaces what
+   openMoveRoll shows/uses for targeting, Alternative Energy's class flip changes which stat
+   (Atk/SpAtk) the roll uses. The rest (Shock and Awe, Guarding Strike, Unbalancing Blow, Reliable
+   Attack, Bloodied Speed, Burst of Motivation, Supreme Concentration, Double Curse) have no matching
+   field to hook into — Effect text gets a note instead so the roll's ℹ panel spells out what to apply
+   by hand. */
+function sigTechApplyMod(baseMove, modName){
+  if(!baseMove) return baseMove;
+  const m = Object.assign({}, baseMove);
+  const note = txt => { m.effect = `🏆 Signature Technique — ${modName}: ${txt}\n\n${m.effect||""}`; };
+  switch(modName){
+    case "Scattershot":
+      m.range = "4m, 3 Targets";
+      note("Range replaced (was: "+(baseMove.range||"—")+").");
+      break;
+    case "Vicious Storm":
+      if(!moveHasKeyword(m,"smite")) m.range = (m.range?m.range+", ":"") + "Smite";
+      note("Gains the Smite keyword.");
+      break;
+    case "Double Down":
+      if(!isDoubleStrike(m)) m.range = (m.range?m.range+", ":"") + "Double Strike";
+      note("Gains the Double Strike keyword — effects/Effect Ranges may trigger only once, but either roll may trigger them.");
+      break;
+    case "Alternative Energy":
+      m.class = m.class==="Physical" ? "Special" : m.class==="Special" ? "Physical" : m.class;
+      note(`Class switched to ${m.class}.`);
+      break;
+    case "Shock and Awe":
+      note("Foes targeted (hit or miss) take −2 to Save Checks and −1 Evasion until the end of your next turn."); break;
+    case "Guarding Strike":
+      note("If this hits, you gain +5 Damage Reduction against that target until the end of their next turn."); break;
+    case "Unbalancing Blow":
+      note("Hit or miss, the target becomes Vulnerable until next hit by a Damaging Attack or 1 full round passes."); break;
+    case "Reliable Attack":
+      note("If this misses, its Frequency isn't spent and you may immediately Struggle as a Free Action."); break;
+    case "Bloodied Speed":
+      note("May be used as Priority (Advanced) while you have less than half your max HP."); break;
+    case "Burst of Motivation":
+      note("After resolving, you may raise any negative-CS Stats by up to +2 CS (not above 0 total)."); break;
+    case "Supreme Concentration":
+      note("May be used even if Paralyzed, Flinched, Enraged, or failing a Confusion Save Check."); break;
+    case "Double Curse":
+      note("You may target an additional foe with this Attack."); break;
+  }
+  return m;
+}
+/* returns the move a Pokemon actually uses for `moveName` — its Signature Technique modification
+   applied if that's the move, otherwise the plain DB entry. Centralizes the swap so every lookup
+   site (row rendering, roll, details) sees the same modified object. */
+function moveForMon(p, moveName){
+  const base = moveByName.get((moveName||"").toLowerCase());
+  if(p && p.sigTechnique && p.sigTechnique.move===moveName) return sigTechApplyMod(base, p.sigTechnique.mod);
+  return base;
+}
 function clearSigTechnique(p){
   if(!p.sigTechnique) return;
   p.tutorPoints = (p.tutorPoints||0) + 1;
@@ -7184,7 +7242,7 @@ function encounterMonCard(enc, p, list, trainer){
   if(grant){ const gm=moveByName.get(grant.move.toLowerCase());
     if(gm) mw.append(encounterMoveRow(p,sp,gm,gm.name,favSet,null,true)); }
   const ordered=[...p.moves].sort((a,b)=>(favSet.has(b)?1:0)-(favSet.has(a)?1:0));
-  ordered.forEach(mn=>{ const m=moveByName.get(mn.toLowerCase());
+  ordered.forEach(mn=>{ const m=moveForMon(p,mn);
     mw.append(encounterMoveRow(p,sp,m,mn,favSet,()=>{ p.encFav=toggleSet(favSet,mn); saveEnc(); renderEncounters(); },false,trainer)); });
   card.append(mw);
   // abilities — addable, each expandable to explain what it does
