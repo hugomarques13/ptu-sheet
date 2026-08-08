@@ -361,6 +361,17 @@ details.spoiler summary{cursor:pointer; font-weight:700; color:var(--muted)}
 .stepper button:disabled{opacity:.35; cursor:default}
 .stepper .stepper-val{min-width:26px; text-align:center; font-weight:800}
 
+/* ---------- full-screen image viewer ---------- */
+.zoomable{cursor:zoom-in}
+.img-viewer{position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,.88); display:flex;
+  flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:24px; cursor:zoom-out}
+.img-viewer img{max-width:100%; max-height:88vh; object-fit:contain; border-radius:10px;
+  box-shadow:0 10px 40px rgba(0,0,0,.6)}
+.img-viewer .iv-cap{color:#fff; font-weight:700; text-align:center; text-shadow:0 1px 3px rgba(0,0,0,.8)}
+.img-viewer .iv-close{position:absolute; top:14px; right:16px; width:38px; height:38px; border-radius:50%;
+  border:1px solid rgba(255,255,255,.35); background:rgba(0,0,0,.4); color:#fff; font-size:22px;
+  line-height:1; cursor:pointer}
+
 /* ===== Shared battle map (VTT) ===== */
 .map-toolbar{display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end}
 .map-toolbar .field{max-width:200px}

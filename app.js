@@ -242,9 +242,77 @@ function effectiveCS(p){
   ACC_EVA_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + (ab[k]||0) + aura[k])));
   return out;
 }
+/* the part of effectiveCS that is applied AUTOMATICALLY — status conditions, weather abilities,
+   status-triggered abilities (Guts…), Legendary Auras and worn equipment. Same sum as effectiveCS
+   minus the manual p.cs, so `manual + auto` is exactly what effectiveCS reports (before its clamp).
+   The Combat Stage pads show these instead of hiding them in the total, and use them as a bound the
+   ± steppers can't cross: an automated +2 is a floor, an automated −2 a ceiling — you may stack more
+   in the same direction, but you can't hand-cancel a stage whose source is still active. */
+function csAutoMods(p){
+  const cond = conditionCSMods(p), wx = weatherCSMods(p), ab = abilityStatusCS(p), aura = auraCSMods(p);
+  const eqSpd = isTrainerOwner(p) ? equipSpeedCS(p) : 0;
+  const out = {};
+  CS_STATS.forEach(([k]) => out[k] = (cond[k]||0) + (wx[k]||0) + (ab[k]||0) + (aura[k]||0) + (k==="spd"?eqSpd:0));
+  ACC_EVA_STATS.forEach(([k]) => out[k] = (cond[k]||0) + (ab[k]||0) + (aura[k]||0));
+  return out;
+}
+/* Combat Stages a creature set by hand (everything csAutoMods doesn't account for) — reset at the
+   end of an encounter / Scene, while the automated part stays with its source. */
+function resetManualCS(o){
+  if(!o || !o.cs) return false;
+  let changed = false;
+  ALL_CS_STATS.forEach(([k]) => { if(o.cs[k]){ o.cs[k] = 0; changed = true; } });
+  return changed;
+}
 function hasStatus(p, key){ return Array.isArray(p.statuses) && p.statuses.includes(key); }
 function toggleStatus(p, key){ p.statuses = p.statuses||[];
   const i=p.statuses.indexOf(key); if(i>=0) p.statuses.splice(i,1); else p.statuses.push(key); save(); }
+/* Afflictions that don't survive the end of a fight: every Volatile one (Confused, Enraged,
+   Flinched, Infatuated, Suppressed, Cursed, Disabled, Bad Sleep) plus Stuck and Slowed, whose own
+   Core text says they're "removed by switching or at end of Scene". Persistent afflictions (Burn,
+   Poison, Sleep, Paralysis, Freeze) deliberately stay — those need an Extended Rest or a healing
+   item, and End Day already clears them. */
+const SCENE_STATUS_KEYS = new Set([
+  ...STATUS_DEFS.filter(s=>s.kind==="volatile").map(s=>s.key), "stuck", "slowed",
+]);
+function clearSceneStatuses(o){
+  if(!o || !Array.isArray(o.statuses)) return false;
+  const before = o.statuses.length;
+  o.statuses = o.statuses.filter(k => !SCENE_STATUS_KEYS.has(k));
+  return o.statuses.length !== before;
+}
+/* Confusion (Feb 2016 errata): each time a Confused creature Attacks, roll 1d2 — on a 1 it loses HP
+   equal to half its Attack (Physical Move), half its Special Attack (Special Move), or two Ticks of
+   HP (Status Move). Combat-Stage-adjusted stats, since that's what the attack itself would use. */
+function confusionSelfDamage(o){
+  const isT = isTrainerOwner(o);
+  const d = isT ? trainerDerived(o) : pokeDerived(o);
+  const atk = isT ? d.totals.atk : d.eff.atk, spatk = isT ? d.totals.spatk : d.eff.spatk;
+  const max = isT ? d.hp : d.maxHP;
+  return { phys: Math.floor(atk/2), spec: Math.floor(spatk/2), status: hpTick(max)*2 };
+}
+/* the shared "💫 Confused — hurt itself" control. applyLoss(n) takes the HP off wherever this
+   creature's HP actually lives (sheet, encounter row, map token). */
+function confusionRow(o, applyLoss){
+  const dmg = confusionSelfDamage(o);
+  const wrap = el("div",{style:"margin-top:10px"});
+  wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"💫 Confused — hurt itself"));
+  const out = el("div",{class:"small muted",style:"margin-top:5px"},
+    "Roll 1d2 after each Attack it makes; on a 1 it takes the damage for that Move's class.");
+  const hit = (label, n) => el("button",{class:"btn-secondary",style:"padding:5px 10px",title:`lose ${n} HP`,
+    // toast as well as writing into `out`: applyLoss often re-renders the card this row lives in,
+    // which throws the inline message away before it's been read.
+    onclick:()=>{ out.textContent = `💫 Hurt itself in confusion — −${n} HP (${label} Move).`;
+      toast(`💫 Hurt itself in confusion — −${n} HP`); applyLoss(n); }},
+    `${label} −${n}`);
+  wrap.append(el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;align-items:center"},
+    el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"roll the 1d2 — on a 1 it hurts itself",
+      onclick:()=>{ const r = 1 + Math.floor(Math.random()*2);
+        out.textContent = r===1 ? "🎲 1d2 = 1 — it hurts itself! Tap the Move's class."
+                                : "🎲 1d2 = 2 — no self-damage this time."; }},"🎲 1d2"),
+    hit("Physical", dmg.phys), hit("Special", dmg.spec), hit("Status", dmg.status)), out);
+  return wrap;
+}
 
 /* ===================================================================
    Weather (Core p.342)
@@ -982,19 +1050,25 @@ function applyEndScene(c){
   if(!c) return;
   normTrainer(c.trainer);
   c.trainer.usedAP = 0; c.trainer.tempHP = 0; c.trainer.buffs = []; resetUses(c.trainer, "scene");
-  (c.pokemon||[]).forEach(p => { normPokemon(p); p.tempHP = 0; p.buffs = []; resetUses(p, "scene"); if(p.mega) megaRevert(p,true); });   // buffs are combat-duration → clear (#2); Mega reverts at End Scene
+  // Combat Stages set by hand and Volatile afflictions don't outlast the Scene (Core p.234/p.245).
+  // Stages an active source is still applying (a Burn, weather, an Aura, worn armour) are left to
+  // that source — resetManualCS only zeroes p.cs, and csAutoMods puts the rest back on its own.
+  resetManualCS(c.trainer); clearSceneStatuses(c.trainer);
+  (c.pokemon||[]).forEach(p => { normPokemon(p); p.tempHP = 0; p.buffs = []; resetUses(p, "scene");
+    resetManualCS(p); clearSceneStatuses(p);
+    if(p.mega) megaRevert(p,true); });   // buffs are combat-duration → clear (#2); Mega reverts at End Scene
 }
 /* apply Extended Rest to one character object (heal HP & 1 Injury, restore AP & all uses) */
 function applyEndDay(c){
   if(!c) return;
   const t = c.trainer; normTrainer(t);
-  t.usedAP = 0; t.tempHP = 0; t.buffs = []; resetUses(t, "all");
+  t.usedAP = 0; t.tempHP = 0; t.buffs = []; resetUses(t, "all"); resetManualCS(t);
   t.statuses = [];                                 // Extended Rest cures all Status afflictions (Core p.249)
   t.injuries = Math.max(0, (t.injuries||0) - 1);   // Extended Rest heals 1 Injury (Core p.249)
   t.currentHP = trainerDerived(t).hp;              // heal to remaining-injury-capped max
   (c.pokemon||[]).forEach(p => { normPokemon(p);
     if(p.mega) megaRevert(p,true);        // revert Mega before healing so max HP is the base form's
-    p.tempHP = 0; p.buffs = []; resetUses(p, "all");
+    p.tempHP = 0; p.buffs = []; resetUses(p, "all"); resetManualCS(p);
     p.statuses = [];                      // cure all Status afflictions on the whole party too
     p.injuries = Math.max(0, (p.injuries||0) - 1);
     p.currentHP = pokeDerived(p).maxHP;   // heal to full (already capped by remaining Injuries)
@@ -1608,7 +1682,7 @@ function renderTrainer(){
   row1.append(
     field("Name","trainer.name"),
     field("Level","trainer.level",{type:"number",min:1,max:50,onchange:recalcTrainer}),
-    field("Money ($)","trainer.money",{type:"number",min:0}),
+    moneyField(t),
   );
   const row2 = el("div",{class:"fieldrow"});
   row2.append(
@@ -2054,12 +2128,35 @@ function openTrainerAttack(t, weaponMoveName, w){
 /* Trainer portrait — upload / replace / remove a photo (stored as a compact data URL) */
 function trainerAvatar(t){
   const wrap = el("div",{class:"avatar-wrap"});
-  wrap.append(el("img",{class:"avatar", alt:"Trainer portrait", src: t.avatar || TRAINER_PLACEHOLDER}));
+  wrap.append(zoomImg(el("img",{class:"avatar", alt:"Trainer portrait", src: t.avatar || TRAINER_PLACEHOLDER}),
+    t.name || "Trainer"));
   const acts = el("div",{class:"avatar-acts"});
   acts.append(el("button",{class:"linkbtn",onclick:()=>pickImage(256, async d=>{ t.avatar=await storeImg(d,"avatar"); save(); renderTrainer(); })},
     t.avatar ? "📷 Change" : "📷 Photo"));
   if(t.avatar) acts.append(el("button",{class:"linkbtn",onclick:()=>{ t.avatar=""; save(); renderTrainer(); }},"remove"));
   wrap.append(acts);
+  return wrap;
+}
+/* Money with ± buttons: type an amount and add or subtract it instead of doing the arithmetic by
+   hand in the total. The total itself stays directly editable (GM corrections, starting cash). */
+function moneyField(t){
+  const wrap = el("label",{class:"field"}, el("span",{},"Money ($)"));
+  const total = el("input",{type:"number",min:0,title:"money on hand"});
+  total.value = t.money||0;
+  total.addEventListener("change",()=>{ t.money = Math.max(0, parseFloat(total.value)||0); total.value = t.money; save(); });
+  const amt = el("input",{type:"number",min:0,placeholder:"amount",style:"flex:1;min-width:64px"});
+  const bump = (sign,e) => {
+    if(e) e.preventDefault();
+    const n = Math.abs(parseFloat(amt.value)||0); if(!n) { amt.focus(); return; }
+    t.money = Math.max(0, (parseFloat(t.money)||0) + sign*n);
+    total.value = t.money; amt.value = ""; save();
+    toast(`${sign>0?"＋":"－"}$${n} · now $${t.money}`);
+  };
+  amt.addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); bump(1); } });
+  wrap.append(total, el("div",{class:"inline",style:"gap:6px;margin-top:5px;flex-wrap:nowrap"},
+    amt,
+    el("button",{class:"btn ghost",style:"padding:4px 11px",title:"subtract this amount",onclick:e=>bump(-1,e)},"－"),
+    el("button",{class:"btn-secondary",style:"padding:4px 11px",title:"add this amount",onclick:e=>bump(1,e)},"＋")));
   return wrap;
 }
 /* Trainer EXP (houserule): 10 EXP = one level. t.level stays authoritative; t.xp is 0..9 progress toward it. */
@@ -2152,7 +2249,7 @@ function trainerVitalsCard(t){
 /* Combat Stages card for a Trainer — mirrors the Pokémon one (manual ± per combat stat). */
 function trainerCombatStagesCard(t){
   normTrainer(t);
-  const d = trainerDerived(t), cond = conditionCSMods(t);
+  const d = trainerDerived(t), auto = csAutoMods(t);
   const anyManual = ALL_CS_STATS.some(([k])=>t.cs[k]);
   const card = el("div",{class:"card"}, el("h3",{},"Combat Stages",
     el("div",{class:"inline"},
@@ -2160,26 +2257,26 @@ function trainerCombatStagesCard(t){
       anyManual?el("button",{class:"linkbtn",onclick:()=>{ ALL_CS_STATS.forEach(([k])=>t.cs[k]=0); save(); renderTrainer(); }},"reset"):"")));
   const grid = el("div",{class:"statgrid"});
   CS_STATS.forEach(([k,lbl])=>{
-    const manual = t.cs[k]||0, cm = cond[k]||0, effCS = d.cs[k];
+    const manual = t.cs[k]||0, cm = auto[k]||0, effCS = d.cs[k];
     const box = el("div",{class:"stat"});
     box.append(el("div",{class:"lbl"},lbl));
     box.append(el("div",{class:"big",style: effCS>0?"color:var(--good)":effCS<0?"color:var(--bad)":""}, d.totals[k]));
-    box.append(csStepper(manual, v=>{ t.cs[k]=Math.max(-6,Math.min(6,v)); save(); renderTrainer(); }));
-    box.append(el("div",{class:"sub"}, `${effCS>0?"+":""}${effCS} CS`));
+    box.append(csStepper(manual, v=>{ t.cs[k]=Math.max(-6,Math.min(6,v)); save(); renderTrainer(); }, cm));
+    box.append(el("div",{class:"sub"}, `${effCS>0?"+":""}${effCS} CS` + (cm?` (${manual>=0?"+":""}${manual}${cm>=0?"+":""}${cm})`:"")));
     grid.append(box);
   });
   ACC_EVA_STATS.forEach(([k,lbl])=>{
-    const manual = t.cs[k]||0, effCS = d.cs[k];
+    const manual = t.cs[k]||0, cm = auto[k]||0, effCS = d.cs[k];
     const box = el("div",{class:"stat"});
     box.append(el("div",{class:"lbl"},lbl));
     box.append(el("div",{class:"big",style: effCS>0?"color:var(--good)":effCS<0?"color:var(--bad)":""}, `${effCS>0?"+":""}${effCS}`));
-    box.append(csStepper(manual, v=>{ t.cs[k]=Math.max(-6,Math.min(6,v)); save(); renderTrainer(); }));
-    box.append(el("div",{class:"sub"}, k==="acc"?"to Accuracy Rolls":"to Phys/Spec/Speed Evasion"));
+    box.append(csStepper(manual, v=>{ t.cs[k]=Math.max(-6,Math.min(6,v)); save(); renderTrainer(); }, cm));
+    box.append(el("div",{class:"sub"}, (k==="acc"?"to Accuracy Rolls":"to Phys/Spec/Speed Evasion") + (cm?` (${manual>=0?"+":""}${manual}${cm>=0?"+":""}${cm})`:"")));
     grid.append(box);
   });
   card.append(grid);
   card.append(el("div",{class:"small muted",style:"margin-top:4px"},
-    "Combat Stages clear at end of encounter. Accuracy/Evasion CS are flat (±1 per stage), not %."));
+    "Stages from an active source (condition, equipment…) are included in the ± pad and can't be stepped away. The rest clear at End Scene / end of combat. Accuracy/Evasion CS are flat (±1 per stage), not %."));
   return card;
 }
 
@@ -3577,7 +3674,8 @@ function heroCard(p, sp){
   const card = el("div",{class:"card"});
   const hero = el("div",{class:"monhero"});
   const spriteBox = el("div",{class:"sprite-box"});
-  spriteBox.append(monSprite(sp?.name || p.species, p.shiny, "s-lg", monImage(p)));
+  spriteBox.append(zoomImg(monSprite(sp?.name || p.species, p.shiny, "s-lg", monImage(p)),
+    p.nickname || sp?.name || p.species));
   spriteBox.append(el("button",{class:"photo-btn",title:p.mega?"upload a photo for this Mega form":"upload a photo",
     onclick:()=>pickImage(240, async d=>{ setMonImage(p, await storeImg(d,"mon")); save(); refreshMon(p); })},"📷"));
   if(monImage(p)) spriteBox.append(el("button",{class:"photo-rm",title:"remove photo — use the default sprite",
@@ -3663,6 +3761,11 @@ function statusCard(p){
     });
     card.append(chips);
   });
+  if(hasStatus(p,"confused")) card.append(confusionRow(p, n=>{
+    const max = pokeDerived(p).maxHP;
+    p.currentHP = Math.max(-99, (p.currentHP==null?max:p.currentHP) - n);
+    save(); refreshMon(p);
+  }));
   const active = STATUS_DEFS.filter(s=>hasStatus(p,s.key));
   if(active.length){
     card.append(el("div",{class:"small muted",style:"margin-top:12px;font-weight:700"}, `Active effects (${active.length})`));
@@ -3789,28 +3892,39 @@ function openThrowPokeball(t){
   modal({title:"🎯 Throw a Poké Ball — choose a target", bodyNode:wrap,
     footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Cancel")]});
 }
-/* − value + stepper for a Combat Stage (−6…+6, both directions) */
-function csStepper(cur, onSet){
+/* − value + stepper for a Combat Stage (−6…+6). `cur` is the MANUAL value and onSet still hands back
+   a manual value, but what the pad SHOWS is manual + `auto` — the stages an active source is applying
+   (see csAutoMods) — so a Legendary Aura's +2 or a Burn's −2 Def isn't invisible here.
+   A POSITIVE auto is also a floor: you can add more on top, but you can't step down through stages
+   the source is still granting and quietly cancel it out. A negative auto sets no bound — stacking
+   further down (or buffing back up against a Burn) are both things a GM legitimately does. */
+function csStepper(cur, onSet, auto){
+  const a = auto||0;
+  const eff = Math.max(-6, Math.min(6, cur + a));
+  const lo = a>0 ? Math.min(a,6) : -6;
   const wrap = el("div",{class:"stepper"});
   wrap.append(
-    el("button",{title:"lower",disabled:cur<=-6,onclick:()=>onSet(cur-1)},"−"),
-    el("span",{class:"stepper-val"}, (cur>0?"+":"")+cur),
-    el("button",{title:"raise",disabled:cur>=6,onclick:()=>onSet(cur+1)},"+"));
+    el("button",{disabled:eff<=lo,
+      title: eff<=lo && a>0 ? `${a} of these come from an active effect — they go when it does` : "lower",
+      onclick:()=>onSet(cur-1)},"−"),
+    el("span",{class:"stepper-val",title: a?`${cur>0?"+":""}${cur} set by hand ${a>0?"+":"−"} ${Math.abs(a)} automatic`:""},
+      (eff>0?"+":"")+eff),
+    el("button",{title:"raise",disabled:eff>=6,onclick:()=>onSet(cur+1)},"+"));
   return wrap;
 }
 /* one Accuracy/Evasion Combat Stage cell — same compact layout as the stat-CS cells above, but the
    "effective" number shown is the flat CS itself (no ×0.2/×0.1 multiplier applies to these two). */
-function accEvaCell(lbl, manual, effVal, onSet){
+function accEvaCell(lbl, manual, effVal, onSet, auto){
   const cell = el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:2px;min-width:66px"});
   cell.append(el("div",{class:"small muted",style:"font-weight:700"},lbl));
   cell.append(el("div",{style:`font-weight:800;${effVal>0?"color:var(--good)":effVal<0?"color:var(--bad)":""}`}, `${effVal>0?"+":""}${effVal}`));
-  cell.append(csStepper(manual, onSet));
+  cell.append(csStepper(manual, onSet, auto));
   return cell;
 }
 /* Combat Stages card — manual steppers per stat; conditions apply automatically on top */
 function combatStagesCard(p){
   if(!p.cs) p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
-  const d = pokeDerived(p), cond = conditionCSMods(p);
+  const d = pokeDerived(p), auto = csAutoMods(p);
   const anyManual = ALL_CS_STATS.some(([k])=>p.cs[k]);
   const card = el("div",{class:"card"}, el("h3",{},"Combat Stages",
     el("div",{class:"inline"},
@@ -3818,20 +3932,20 @@ function combatStagesCard(p){
       anyManual?el("button",{class:"linkbtn",onclick:()=>{ ALL_CS_STATS.forEach(([k])=>p.cs[k]=0); save(); refreshMon(p); }},"reset"):"")));
   const grid = el("div",{class:"statgrid"});
   CS_STATS.forEach(([k,lbl])=>{
-    const manual = p.cs[k]||0, cm = cond[k]||0, effCS = d.cs[k];
+    const manual = p.cs[k]||0, cm = auto[k]||0, effCS = d.cs[k];
     const box = el("div",{class:"stat"});
     box.append(el("div",{class:"lbl"},lbl));
     box.append(el("div",{class:"big",style: effCS>0?"color:var(--good)":effCS<0?"color:var(--bad)":""}, d.eff[k]));
-    box.append(csStepper(manual, v=>{ p.cs[k]=Math.max(-6,Math.min(6,v)); save(); refreshMon(p); }));
+    box.append(csStepper(manual, v=>{ p.cs[k]=Math.max(-6,Math.min(6,v)); save(); refreshMon(p); }, cm));
     box.append(el("div",{class:"sub"}, `${effCS>0?"+":""}${effCS} CS` + (cm?` (${manual>=0?"+":""}${manual}${cm>=0?"+":""}${cm})`:"")));
     grid.append(box);
   });
   ACC_EVA_STATS.forEach(([k,lbl])=>{
-    const manual = p.cs[k]||0, cm = cond[k]||0, effCS = d.cs[k];
+    const manual = p.cs[k]||0, cm = auto[k]||0, effCS = d.cs[k];
     const box = el("div",{class:"stat"});
     box.append(el("div",{class:"lbl"},lbl));
     box.append(el("div",{class:"big",style: effCS>0?"color:var(--good)":effCS<0?"color:var(--bad)":""}, `${effCS>0?"+":""}${effCS}`));
-    box.append(csStepper(manual, v=>{ p.cs[k]=Math.max(-6,Math.min(6,v)); save(); refreshMon(p); }));
+    box.append(csStepper(manual, v=>{ p.cs[k]=Math.max(-6,Math.min(6,v)); save(); refreshMon(p); }, cm));
     box.append(el("div",{class:"sub"}, (k==="acc"?"to Accuracy Rolls":"to Phys/Spec/Speed Evasion") + (cm?` (${manual>=0?"+":""}${manual}${cm>=0?"+":""}${cm})`:"")));
     grid.append(box);
   });
@@ -3840,7 +3954,7 @@ function combatStagesCard(p){
   if(src.length) card.append(el("div",{class:"small muted",style:"margin-top:8px"},
     "From conditions: " + src.map(s=>`${s.name} (${Object.entries(CONDITION_CS[s.key]).map(([st,v])=>`${v} ${st}`).join(", ")})`).join(" · ")));
   card.append(el("div",{class:"small muted",style:"margin-top:4px"},
-    "Combat Stages clear on switch-out / end of encounter. Speed CS also shifts Movement by ½ (rounded down). Accuracy/Evasion CS are flat (±1 per stage), not %."));
+    "Stages from an active source (condition, weather, Aura, equipment) are included in the ± pad and can't be stepped away — they go when their source does. End Scene / end of combat clears the rest. Speed CS also shifts Movement by ½ (rounded down). Accuracy/Evasion CS are flat (±1 per stage), not %."));
   return card;
 }
 /* ===================================================================
@@ -4030,7 +4144,6 @@ function openCustomBuff(owner, done){
 }
 
 function renderMonPlay(root, p, sp){
-  if(isMomSpecies(p.species)){ root.append(movesCard(p, sp)); return; }   // "Mom?": Play shows only Moves
   /* quick stat readout — first on the page (shows Combat-Stage-adjusted values) */
   const d = pokeDerived(p);
   const qc = el("div",{class:"card"}, el("h3",{},"Stats at a glance",
@@ -4049,6 +4162,10 @@ function renderMonPlay(root, p, sp){
     .forEach(([l,v])=>dv.append(el("div",{class:"dv"}, el("div",{class:"lbl"},l), el("div",{class:"val"},String(v)))));
   qc.append(dv);
   root.append(qc);
+
+  // "Mom?" reads its own stats but never fights on its own terms: the Play tab stops here, at the
+  // (read-only) numbers plus its Moves. No status/Combat-Stage/ability/matchup tooling.
+  if(isMomSpecies(p.species)){ root.append(movesCard(p, sp)); return; }
 
   /* status conditions + Catch DC */
   root.append(statusCard(p));
@@ -4101,16 +4218,19 @@ function renderMonBuild(root, p, sp){
   const heldEff = itemByName.get((p.heldItem||"").toLowerCase());
   if(heldEff) idc.append(el("div",{class:"small muted",style:"margin:6px 0"}, el("b",{},heldEff.name+": "), heldEff.effect||""));
   root.append(idc);
-  if(isMomSpecies(p.species)) return;   // "Mom?": Build shows only Identity
 
-  /* stat allocation */
+  /* stat allocation — for "Mom?" monStatGrid renders the points as a locked readout (they're
+     auto-assigned from its base stats on every level change), so the numbers are visible but not
+     something Lázaro can move around. */
   const d = pokeDerived(p);
   const sc = el("div",{class:"card"});
-  sc.append(el("h3",{},"Stat Allocation", ptBudgetText(d)));
+  sc.append(el("h3",{},"Stat Allocation",
+    isMomSpecies(p.species) ? el("span",{class:"muted small"},"auto-assigned — locked") : ptBudgetText(d)));
   sc.append(monStatGrid(p));
   sc.append(el("div",{class:"derived",id:"monDerived",style:"margin-top:12px"}));
   fillMonDerived(p);
   root.append(sc);
+  if(isMomSpecies(p.species)) return;   // "Mom?": Build stops at Identity + its read-only stats
 
   /* injuries / temp / tutor */
   const ec = el("div",{class:"card"}, el("h3",{},"Condition"));
@@ -6925,7 +7045,7 @@ function bossCard(owner){
 /* compact combat-stage steppers for an encounter Pokémon (±6 per stat; feeds pokeDerived) */
 function encCombatStages(p){
   if(!p.cs) p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
-  const d = pokeDerived(p);
+  const d = pokeDerived(p), auto = csAutoMods(p);
   const det = el("details",{class:"spoiler",style:"margin-top:8px"});
   const any = ALL_CS_STATS.some(([k])=>p.cs[k]);
   det.dataset.key = "cs:"+p.id;
@@ -6936,11 +7056,11 @@ function encCombatStages(p){
     const cell = el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:2px;min-width:66px"});
     cell.append(el("div",{class:"small muted",style:"font-weight:700"},lbl));
     cell.append(el("div",{style:`font-weight:800;${d.cs[k]>0?"color:var(--good)":d.cs[k]<0?"color:var(--bad)":""}`}, String(d.eff[k])));
-    cell.append(csStepper(p.cs[k]||0, v=>{ p.cs[k]=Math.max(-6,Math.min(6,v)); saveEnc(); renderEncounters(); }));
+    cell.append(csStepper(p.cs[k]||0, v=>{ p.cs[k]=Math.max(-6,Math.min(6,v)); saveEnc(); renderEncounters(); }, auto[k]));
     grid.append(cell);
   });
   ACC_EVA_STATS.forEach(([k,lbl])=> grid.append(accEvaCell(lbl, p.cs[k]||0, d.cs[k],
-    v=>{ p.cs[k]=Math.max(-6,Math.min(6,v)); saveEnc(); renderEncounters(); })));
+    v=>{ p.cs[k]=Math.max(-6,Math.min(6,v)); saveEnc(); renderEncounters(); }, auto[k])));
   det.append(grid);
   // Especially powerful Boss Pokémon can have some Combat Stages set above zero as their Default
   // (Running the Game p.487) — "reset" then returns to THAT saved default instead of flat zero.
@@ -7069,7 +7189,7 @@ function encWeaponsCard(t, key){
 /* Combat Stages control for an encounter Trainer (mirrors encCombatStages, uses trainerDerived) */
 function encTrainerCombatStages(t, key){
   normTrainer(t);
-  const d = trainerDerived(t);
+  const d = trainerDerived(t), auto = csAutoMods(t);
   const det = el("details",{class:"spoiler",style:"margin-top:8px"});
   det.dataset.key = "cs:"+key;
   const any = ALL_CS_STATS.some(([k])=>t.cs[k]);
@@ -7080,11 +7200,11 @@ function encTrainerCombatStages(t, key){
     const cell = el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:2px;min-width:66px"});
     cell.append(el("div",{class:"small muted",style:"font-weight:700"},lbl));
     cell.append(el("div",{style:`font-weight:800;${d.cs[k]>0?"color:var(--good)":d.cs[k]<0?"color:var(--bad)":""}`}, String(d.totals[k])));
-    cell.append(csStepper(t.cs[k]||0, v=>{ t.cs[k]=Math.max(-6,Math.min(6,v)); saveEnc(); renderEncounters(); }));
+    cell.append(csStepper(t.cs[k]||0, v=>{ t.cs[k]=Math.max(-6,Math.min(6,v)); saveEnc(); renderEncounters(); }, auto[k]));
     grid.append(cell);
   });
   ACC_EVA_STATS.forEach(([k,lbl])=> grid.append(accEvaCell(lbl, t.cs[k]||0, d.cs[k],
-    v=>{ t.cs[k]=Math.max(-6,Math.min(6,v)); saveEnc(); renderEncounters(); })));
+    v=>{ t.cs[k]=Math.max(-6,Math.min(6,v)); saveEnc(); renderEncounters(); }, auto[k])));
   det.append(grid);
   if(any) det.append(el("button",{class:"linkbtn",style:"margin-top:6px",
     onclick:()=>{ const def = (isBoss(t) && t.boss.defaultCS) || {};
@@ -7122,6 +7242,11 @@ function encStatusControl(p){
     });
     body.append(el("div",{class:"small muted",style:"font-weight:700;margin:4px 0 2px"},label), chips);
   });
+  if(hasStatus(p,"confused")) body.append(confusionRow(p, n=>{
+    const max = pokeDerived(p).maxHP;
+    p.currentHP = Math.max(-99, (p.currentHP==null?max:p.currentHP) - n);
+    saveEnc(); renderEncounters();
+  }));
   det.append(body);
   return det;
 }
@@ -7949,8 +8074,38 @@ function modal({title, bodyHTML, bodyNode, footNodes}){
   document.addEventListener("keydown",escClose);
   return {bg,m,body};
 }
-function escClose(e){ if(e.key==="Escape") closeModal(); }
+// the full-screen image viewer sits on top of any open modal, so Esc has to close that first
+function escClose(e){ if(e.key==="Escape" && !document.querySelector(".img-viewer")) closeModal(); }
 function closeModal(){ $("#modalRoot").innerHTML=""; document.removeEventListener("keydown",escClose); }
+/* ---- full-screen image viewer ----
+   Tap any zoomable picture — a Pokémon's artwork or uploaded photo, a trainer portrait, the
+   creature behind a map token — to see it at full size. Its own overlay rather than modal() so the
+   picture fills the screen with no card chrome around it; tap anywhere or press Esc to close. */
+function openImageViewer(src, title){
+  if(!src) return;
+  closeImageViewer();
+  const bg = el("div",{class:"img-viewer",onclick:closeImageViewer});
+  bg.append(el("img",{src, alt:title||""}));
+  if(title) bg.append(el("div",{class:"iv-cap"}, title));
+  bg.append(el("button",{class:"iv-close",title:"close",onclick:closeImageViewer},"×"));
+  document.body.append(bg);
+  document.addEventListener("keydown", imgViewerEsc);
+}
+function imgViewerEsc(e){ if(e.key==="Escape") closeImageViewer(); }
+function closeImageViewer(){
+  $$(".img-viewer").forEach(n=>n.remove());
+  document.removeEventListener("keydown", imgViewerEsc);
+}
+/* make an <img> open the viewer when tapped; returns the same node so calls can be inlined.
+   stopPropagation because these sprites often sit inside a clickable row or a token. */
+function zoomImg(img, title){
+  if(!img) return img;
+  img.classList.add("zoomable");
+  img.title = (img.title ? img.title + " — " : "") + "tap to view full screen";
+  img.addEventListener("click", e=>{ e.preventDefault(); e.stopPropagation();
+    openImageViewer(img.currentSrc || img.src, title); });
+  return img;
+}
 function infoModal(title, html){ modal({title, bodyHTML:html, footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Close")]}); }
 
 /* searchable single-select picker. onPick(name). markFn flags priority items with ★.
@@ -9327,9 +9482,89 @@ function pcMonMeta(m){
   const types=(sp?.types||[]).filter(t=>t&&t!=="None").map(typeBadge).join(" ");
   return types + (m._pcFrom?` <span class="muted">· from ${esc(m._pcFrom)}</span>`:"");
 }
+/* Everything about ONE Pokémon, read-only, in a single modal: identity, stats & evasions, species
+   capabilities, its Abilities and every Move with full rules text. The 🖥 PC has no editor to open
+   for a stored Pokémon, so this is how you tell two Gyarados apart before withdrawing one. */
+function monInfoModal(m){
+  const sp = getSpecies(m.species), d = pokeDerived(m);
+  const wrap = el("div",{});
+
+  const head = el("div",{style:"display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px"});
+  head.append(zoomImg(monSprite(sp?.name||m.species, m.shiny, "s-lg", monImage(m)),
+    m.nickname || sp?.name || m.species));
+  const idw = el("div",{style:"flex:1;min-width:180px"});
+  idw.append(el("div",{html:(m.nickname && sp ? `${esc(sp.name)} · ` : "") +
+    (sp?.types||[]).filter(t=>t&&t!=="None").map(typeBadge).join(" ") + (m.shiny?" ✨":"")}));
+  const bits = [];
+  if(m.nature) bits.push(m.nature);
+  if(m.gender) bits.push(m.gender);
+  if(sp?.size) bits.push(`${sp.size} · WC ${sp.weightClass??"?"}`);
+  if(typeof m.loyalty==="number" && m.loyalty) bits.push(`Loyalty ${m.loyalty}`);
+  if(m._pcFrom) bits.push(`from ${m._pcFrom}`);
+  if(bits.length) idw.append(el("div",{class:"small muted",style:"margin-top:4px"}, bits.join(" · ")));
+  const held = m.heldItem && itemByName.get(m.heldItem.toLowerCase());
+  if(m.heldItem) idw.append(el("div",{class:"small",style:"margin-top:4px"},
+    el("b",{},"Holds: "), m.heldItem + (held?.effect ? ` — ${held.effect}` : "")));
+  head.append(idw);
+  wrap.append(head);
+
+  const grid = el("div",{class:"statgrid"});
+  STATS.forEach(([k,l]) => grid.append(el("div",{class:"stat"},
+    el("div",{class:"lbl"},l), el("div",{class:"big"}, String(d.total[k])),
+    el("div",{class:"sub"}, `base ${d.base[k]}${m.stats?.[k]?.added?` +${m.stats[k].added}`:""}`))));
+  wrap.append(grid);
+  const dv = el("div",{class:"derived",style:"margin:10px 0"});
+  [["Max HP",d.maxHP],["Phys. Eva","+"+d.physEva],["Spec. Eva","+"+d.specEva],["Speed Eva","+"+d.spdEva]]
+    .forEach(([l,v])=>dv.append(el("div",{class:"dv"}, el("div",{class:"lbl"},l), el("div",{class:"val"},String(v)))));
+  wrap.append(dv);
+
+  const c = sp?.capabilities || {};
+  const caps = [];
+  ["overland","sky","swim","levitate","burrow"].forEach(k=>{ if(c[k]) caps.push(`${k[0].toUpperCase()+k.slice(1)} ${c[k]}`); });
+  if(c.highJump!=null || c.longJump!=null) caps.push(`Jump ${c.highJump??0}/${c.longJump??0}`);
+  if(c.power!=null) caps.push(`Power ${c.power}`);
+  if(c.naturewalk?.length) caps.push(`Naturewalk (${c.naturewalk.join(", ")})`);
+  (c.other||[]).forEach(o=>caps.push(o));
+  if(caps.length) wrap.append(el("div",{class:"chips",style:"margin-bottom:12px"},
+    ...caps.map(x=>el("span",{class:"chip"}, x))));
+
+  const abs = m.abilities||[];
+  wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"}, `Abilities (${abs.length})`));
+  if(!abs.length) wrap.append(el("div",{class:"small muted",style:"margin-bottom:10px"},"none"));
+  abs.forEach(an=>{
+    const ab = abilityByName.get((an||"").toLowerCase());
+    const det = el("details",{class:"spoiler"});
+    det.append(el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, an),
+      ab?.frequency?el("span",{class:"muted small",style:"margin-left:8px"}, ab.frequency):""));
+    det.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database.</span>"}));
+    wrap.append(det);
+  });
+
+  // Struggle comes from struggleFor (it's a typed clone, not a plain DB row), so carry the object
+  // along rather than looking every entry back up by name
+  const mvs = (m.moves||[]).map(mn => ({ name:mn, mv:moveByName.get((mn||"").toLowerCase()) }));
+  const st = struggleFor(m, sp); if(st) mvs.push({ name:st.name, mv:st });
+  wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin:12px 0 4px"}, `Moves (${mvs.length})`));
+  mvs.forEach(({name, mv})=>{
+    const det = el("details",{class:"spoiler"});
+    det.append(el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, name),
+      mv?el("span",{class:"muted small",style:"margin-left:8px"}, moveLineShort(mv)):""));
+    det.append(el("div",{style:"margin-top:6px",html: moveDetailHTML(mv, name)}));
+    wrap.append(det);
+  });
+  if(!mvs.length) wrap.append(el("div",{class:"small muted"},"none"));
+
+  modal({title:`${m.nickname||sp?.name||m.species} — Lv ${m.level}`, bodyNode:wrap, footNodes:[
+    sp?el("button",{class:"btn-secondary",onclick:()=>speciesModal(sp)},"📖 Species entry"):"",
+    el("button",{class:"btn-primary",onclick:closeModal},"Close"),
+  ].filter(Boolean)});
+}
 function pcMonNode(m, actionBtn){
   const sp=getSpecies(m.species);
-  return el("div",{class:"refitem",style:"display:flex;gap:8px;align-items:center"},
+  // the whole row opens the full read-only detail sheet; the Withdraw/Deposit button keeps its own job
+  return el("div",{class:"refitem",style:"display:flex;gap:8px;align-items:center;cursor:pointer",
+      title:"tap for this Pokémon's full details",
+      onclick:e=>{ if(!e.target.closest("button")) monInfoModal(m); }},
     monSprite(sp?.name||m.species, m.shiny, "s-xs"),
     el("div",{style:"flex:1;min-width:0"},
       el("div",{class:"r-title"}, `${m.nickname||sp?.name||m.species} `, el("span",{class:"muted small"},`Lv ${m.level}`)),
@@ -9624,6 +9859,15 @@ function tokenDefTypes(token){
   }
   return token.species ? (getSpecies(token.species)?.types || []) : [];
 }
+/* a token's three Evasions (Core p.233) — what an attacker needs to beat. Standalone tokens carry
+   no stats, so they get nothing rather than a misleading row of zeroes. */
+function tokenEvasions(token){
+  const L = token.link ? tokenLinked(token) : null;
+  if(!L || !L.obj) return null;
+  const isT = L.kind==="trainer" || L.kind==="enctrainer";
+  const d = isT ? trainerDerived(L.obj) : pokeDerived(L.obj);
+  return { phys:d.physEva, spec:d.specEva, spd:d.spdEva };
+}
 function tokenDefenseStat(token, physical){
   const L = token.link ? tokenLinked(token) : null;
   if(L && L.obj){
@@ -9726,7 +9970,7 @@ function advanceInitiative(map, meta, dir){
       const L = tok.link ? tokenLinked(tok) : null; const owner = L && L.obj;
       if(!owner || seen.has(owner)) return; seen.add(owner);       // one creature may back several tokens
       const gone = expireTurnBuffs(owner, endingId, endingSeq);
-      if(gone.length){ expired = expired.concat(gone); commitTokenBuffs(tok); }
+      if(gone.length){ expired = expired.concat(gone); commitTokenSource(tok); }
     });
   }
   // Optimistic: repaint the board NOW so the turn advances instantly, then sync in the background
@@ -10036,8 +10280,9 @@ async function setTokenCS(token, stat, val){
   if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; }
   renderMap(); cloudSaveRow(row);
 }
-/* persist a linked creature's buffs after an add/remove from the map token menu (#2) */
-async function commitTokenBuffs(token){
+/* persist whatever a token points at after editing it from the map (buffs, Combat Stages, statuses):
+   an encounter creature goes back to the shared encounter row, a sheet creature to its cloud row. */
+async function commitTokenSource(token){
   const info = tokenHp(token);
   const { row, obj, kind } = info; if(!obj) return;
   if(kind==="enc" || kind==="enctrainer"){ saveEnc(); return; }
@@ -10046,7 +10291,11 @@ async function commitTokenBuffs(token){
 }
 function canRemoveToken(token){
   if(cloud.isGM) return true;
-  return !!token.link && canEdit(cloud.byId[token.link.sheetId]);
+  if(!token.link) return false;
+  // the Viewer co-pilot manages the whole party's presence on the board, not just their own sheet —
+  // they place and move everyone's tokens, so they can take everyone's off again. Enemies stay GM-only.
+  if(isMapHpViewer()) return !ENEMY_LINKS.has(token.link.kind);
+  return canEdit(cloud.byId[token.link.sheetId]);
 }
 async function removeToken(token, map){
   const arr = cloud.mapTokens?.data?.byMap?.[map.id]; if(!arr) return;
@@ -10296,7 +10545,7 @@ async function applyAreaBuff(map, buffKey){
   for(const t of targets){
     const L = t.link ? tokenLinked(t) : null; if(!L || L.missing || !L.obj) continue;
     addBuff(L.obj, buffKey);
-    await commitTokenBuffs(t);
+    await commitTokenSource(t);
     n++;
   }
   toast(n ? `Applied to ${n} ${originIsEnemy?"enemy":"ally"} token${n===1?"":"s"} in the area`
@@ -10381,8 +10630,23 @@ async function expireBattleBuffs(map){
     const owner = L.obj; if(!Array.isArray(owner.buffs) || !owner.buffs.length) continue;
     const before = owner.buffs.length;
     owner.buffs = owner.buffs.filter(b=>b.turnStamp==null);
-    if(owner.buffs.length !== before) await commitTokenBuffs(t);
+    if(owner.buffs.length !== before) await commitTokenSource(t);
   }
+}
+/* End of the fight (Core p.234 "Combat Stages … reset at the end of an encounter"): every creature
+   on the board drops the Combat Stages someone set by hand and its Volatile afflictions — the same
+   sweep End Scene does to the active character, but reaching wild Pokémon and NPC trainers too.
+   Stages/statuses that an active source is still applying are untouched: resetManualCS only clears
+   the manual p.cs, and clearSceneStatuses leaves Persistent afflictions (Burn, Poison, Sleep…) for
+   an Extended Rest to cure. */
+async function endCombatEffects(map){
+  let n = 0;
+  for(const t of mapTokensFor(map.id)){
+    const L = t.link ? tokenLinked(t) : null; if(!L || L.missing || !L.obj) continue;
+    const cs = resetManualCS(L.obj), st = clearSceneStatuses(L.obj);
+    if(cs || st){ n++; await commitTokenSource(t); }
+  }
+  if(n){ renderMap(); toast(`Cleared Combat Stages & volatile statuses on ${n} combatant${n===1?"":"s"}`); }
 }
 async function toggleBattle(map){
   const meta = activeMapMeta(); meta.battleOn = !meta.battleOn;
@@ -10395,6 +10659,7 @@ async function toggleBattle(map){
     mapTokensFor(map.id).forEach(t=>{ const k=tokenHp(t).kind; if(k!=="trainer" && k!=="pokemon") t.inInit = false; });
   } else {
     await expireBattleBuffs(map);
+    await endCombatEffects(map);          // the fight is over → hand-set Combat Stages & Volatile statuses go
   }
   mapMetaSave();
   if(meta.battleOn) mapTokensSave();
@@ -10658,7 +10923,7 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
 async function applyTokenDamage(token, br){
   const before = tokenHp(token).cur;
   await setTokenHP(token, before - br.final);
-  if(br.dr > 0 && br.owner && consumeDamageBuffs(br.owner)) await commitTokenBuffs(token);
+  if(br.dr > 0 && br.owner && consumeDamageBuffs(br.owner)) await commitTokenSource(token);
   return before;
 }
 /* one-line "N − Def = …, Type eff = …, − DR → final. HP a → b" breakdown, shared by both callers */
@@ -10777,6 +11042,22 @@ function reopenTokenMenu(token, map){
 function openTokenMenu(token, map){
   const info = tokenHp(token);
   const wrap = el("div",{});
+  if(!info.unlinked){
+    // Portrait at the top so players can see WHO they just tapped (the token on the board is tiny)
+    // — tap it for the full-size picture. The GM already recognises their own cast and gets a much
+    // longer menu below, so their header stays compact.
+    if(!cloud.isGM && info.sprite)
+      wrap.append(el("div",{style:"display:flex;justify-content:center;margin-bottom:10px"},
+        zoomImg(info.sprite, info.name)));
+    // Evasions — the number everyone actually needs when aiming at this token (Core p.233). Kept to
+    // the GM and to creatures whose sheet the viewer can already read, so enemy defences don't leak.
+    if(cloud.isGM || tokenHpVisible(info)){
+      const ev = tokenEvasions(token);
+      if(ev) wrap.append(el("div",{class:"small",style:"margin-bottom:10px;font-weight:700"},
+        el("span",{class:"muted"},"Evasion — "),
+        `Phys +${ev.phys} · Spec +${ev.spec} · Speed +${ev.spd}`));
+    }
+  }
   if(info.unlinked){
     wrap.append(el("div",{class:"r-body"},"⚠ The sheet or Pokémon this token pointed to no longer exists."));
   } else if(!tokenHpVisible(info)){
@@ -10836,6 +11117,10 @@ function openTokenMenu(token, map){
         });
         statusWrap.append(chips);
       });
+      // Confusion's self-damage needs the creature's Attack/Sp.Atk, so it only shows on a linked token
+      const LS = token.link ? tokenLinked(token) : null;
+      if(info.editable && LS && LS.obj && tokenStatusKeys(token).includes("confused"))
+        statusWrap.append(confusionRow(LS.obj, async n=>{ await setTokenHP(token, tokenHp(token).cur - n); draw(); }));
     };
     drawStatuses();
     wrap.append(statusWrap);
@@ -10900,6 +11185,7 @@ function openTokenMenu(token, map){
       const isT = L.kind==="trainer"||L.kind==="enctrainer";
       if(!L.obj.cs) L.obj.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
       const der = isT ? trainerDerived(L.obj) : pokeDerived(L.obj);
+      const csAuto = csAutoMods(L.obj);
       const csw = el("div",{style:"margin-top:16px"});
       csw.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"Combat Stages"));
       const g = el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:8px"});
@@ -10908,13 +11194,13 @@ function openTokenMenu(token, map){
         const c = el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:2px;min-width:60px"});
         c.append(el("div",{class:"small muted",style:"font-weight:700"},lbl));
         c.append(el("div",{style:`font-weight:800;${effCS>0?"color:var(--good)":effCS<0?"color:var(--bad)":""}`}, String(val)));
-        if(info.editable) c.append(csStepper(L.obj.cs[k]||0, async v=>{ await setTokenCS(token,k,v); reopenTokenMenu(token,map); }));
+        if(info.editable) c.append(csStepper(L.obj.cs[k]||0, async v=>{ await setTokenCS(token,k,v); reopenTokenMenu(token,map); }, csAuto[k]));
         else c.append(el("div",{class:"small muted"}, `${effCS>0?"+":""}${effCS}`));
         g.append(c);
       });
       ACC_EVA_STATS.forEach(([k,lbl])=>{
         const effCS = der.cs[k];
-        if(info.editable) g.append(accEvaCell(lbl, L.obj.cs[k]||0, effCS, async v=>{ await setTokenCS(token,k,v); reopenTokenMenu(token,map); }));
+        if(info.editable) g.append(accEvaCell(lbl, L.obj.cs[k]||0, effCS, async v=>{ await setTokenCS(token,k,v); reopenTokenMenu(token,map); }, csAuto[k]));
         else {
           const c = el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:2px;min-width:60px"});
           c.append(el("div",{class:"small muted",style:"font-weight:700"},lbl),
@@ -10991,7 +11277,7 @@ function openTokenMenu(token, map){
     // ---- Buffs & Orders: add/remove Cheers/Orders/Songs on the linked creature (#2) ----
     if(L && L.obj && info.editable){
       if(!Array.isArray(L.obj.buffs)) L.obj.buffs = [];
-      wrap.append(buffsCard(L.obj, async()=>{ await commitTokenBuffs(token); reopenTokenMenu(token, map); }));
+      wrap.append(buffsCard(L.obj, async()=>{ await commitTokenSource(token); reopenTokenMenu(token, map); }));
     } else if(L && L.obj && ownerBuffs(L.obj).length){
       const bl = el("div",{style:"margin-top:16px"});
       bl.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"✨ Active buffs"));
