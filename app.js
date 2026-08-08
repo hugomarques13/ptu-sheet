@@ -553,7 +553,7 @@ function terrainTickReport(p){
 /* how many evolution stages a species still has ahead of it (depth, so branches don't double-count) */
 function evolutionsRemaining(p){
   const sp=getSpecies(p.species); if(!sp?.evolution?.length) return 0;
-  const mine=sp.evolution.find(e=>e.name.toLowerCase()===sp.name.toLowerCase());
+  const mine=evoSelfEntry(sp);
   if(!mine) return 0;
   const maxStage=Math.max(...sp.evolution.map(e=>e.stage));
   return Math.max(0, maxStage - mine.stage);
@@ -568,10 +568,16 @@ function parseEvoEntry(entryName){
   }
   return { species: entryName, method: "" };
 }
+/* A species' own entry in its evolution chain — the anchor every stage comparison hangs off.
+   Must go through parseEvoEntry: an entry's name bakes in the method, so Chansey's own entry reads
+   "Chansey Holding Oval Stone" and a plain name match would find nothing (= no Evolve button). */
+function evoSelfEntry(sp){
+  return (sp.evolution||[]).find(e => parseEvoEntry(e.name).species.toLowerCase() === sp.name.toLowerCase());
+}
 /* the immediate next-stage evolution option(s) for a Pokémon, with level/method requirements */
 function nextEvolutions(p){
   const sp = getSpecies(p.species); if(!sp?.evolution?.length) return [];
-  const mine = sp.evolution.find(e=>e.name.toLowerCase()===sp.name.toLowerCase());
+  const mine = evoSelfEntry(sp);
   if(!mine) return [];
   return sp.evolution.filter(e=>e.stage===mine.stage+1).map(e=>{
     const parsed = parseEvoEntry(e.name);
@@ -635,7 +641,7 @@ function megaFormsFor(p){
   return D.species.filter(s=>{
     const n = s.name.toLowerCase();
     if(!n.startsWith("mega ")) return false;                 // "Meganium"/"MEGAS" won't match (need the space)
-    const rest = n.slice(5).replace(/\s+[xy]$/,"").trim();   // "mega charizard x" → "charizard"
+    const rest = n.slice(5).replace(/\s+[xyz]$/,"").trim();  // "mega charizard x" → "charizard"
     if(rest !== bname) return false;
     const stone = megaToStoneMap.get(s.name);                // only offer the button once its Mega Stone is Held Item
     return !!stone && stone.toLowerCase()===held;
@@ -649,7 +655,7 @@ function megaStonesFor(p){
   const bname = base.name.toLowerCase();
   const out = [];
   megaStoneMap.forEach((megaName, stoneName)=>{
-    const rest = megaName.slice(5).replace(/\s+[xy]$/i,"").trim().toLowerCase();
+    const rest = megaName.slice(5).replace(/\s+[xyz]$/i,"").trim().toLowerCase();
     if(rest===bname) out.push(stoneName);
   });
   return out;
@@ -766,25 +772,28 @@ const megaToStoneMap = new Map();   // megaSpeciesName -> stoneName
 (D.items?.held||[]).forEach(it=>{
   const m = /^Mega Evolves (.+?) when used/i.exec(it.effect||""); if(!m) return;
   let target = m[1].trim(); target = MEGA_STONE_TARGET_FIX[target] || target;
-  const suffix = / X$| Y$/.exec(it.name);
+  const suffix = / X$| Y$| Z$/.exec(it.name);   // Charizardite X/Y, and Z-A's "Absolite Z" alternate Megas
   const megaName = suffix ? `Mega ${target}${suffix[0]}` : `Mega ${target}`;
   if(getSpecies(megaName)){ megaStoneMap.set(it.name, megaName); megaToStoneMap.set(megaName, it.name); }
 });
 /* Mega Evolution ability: the Pokédex PDF carries a "Mega Evolution" blurb on each base species'
    entry ("Type: Steel Ability: Filter Stats: +3 Atk, +5 Def, +2 Sp. Def"), preserved verbatim on
    sp.megaEvolution by tools/build_data.py. Read the ability straight from that instead of
-   hand-listing all ~47 — Charizard/Mewtwo pack both forms in one blurb ("X ... Ability: A ...
-   Mega Evolution Y ... Ability: B ..."), split on the "Mega Evolution Y" marker for those. */
+   hand-listing all ~90 of them. A base mon with more than one Mega packs them into a single blurb
+   separated by "Mega Evolution <suffix>" markers — Charizard/Mewtwo ("X ... Ability: A ...
+   Mega Evolution Y ... Ability: B ...") and Z-A's alternate Megas ("... Mega Evolution Z ...").
+   The text before the first marker is the unsuffixed (or leading "X") form. */
 const MEGA_ABILITY_NAME_FIX = { Refrigerate: "Refridgerate" };   // one dex blurb spells it correctly; the abilities DB has the typo
 function megaAbilityFor(baseSp, megaName){
   const text = baseSp?.megaEvolution; if(!text) return null;
+  const marks = [...text.matchAll(/Mega Evolution\s*([XYZ])\b/g)];
+  const suffix = (/ ([XYZ])$/.exec(megaName)||[])[1];
   let seg = text;
-  if(/ Y$/.test(megaName)){
-    const m = /Mega Evolution\s*Y\b/.exec(text); if(!m) return null;
-    seg = text.slice(m.index + m[0].length);
-  } else if(/ X$/.test(megaName)){
-    const m = /Mega Evolution\s*Y\b/.exec(text);
-    seg = m ? text.slice(0, m.index) : text;
+  if(marks.length){
+    const i = marks.findIndex(m => m[1] === suffix);
+    seg = i >= 0
+      ? text.slice(marks[i].index + marks[i][0].length, i+1 < marks.length ? marks[i+1].index : undefined)
+      : text.slice(0, marks[0].index);
   }
   const m2 = /Ability:\s*([^]+?)\s*Stats:/.exec(seg); if(!m2) return null;
   const name = m2[1].trim();
@@ -4871,9 +4880,10 @@ function effectiveMoveLimit(t){ return MOVE_LIMIT + ((t?.features||[]).includes(
 function speciesLineBackTo(sp){
   const line = [sp];
   if(sp.evolution?.length){
-    const mine = sp.evolution.find(e=>e.name.toLowerCase()===sp.name.toLowerCase())?.stage;
+    const mine = evoSelfEntry(sp)?.stage;
     if(mine){
-      sp.evolution.forEach(e=>{ if(e.stage < mine){ const s=getSpecies(e.name); if(s) line.push(s); } });
+      // parseEvoEntry, not getSpecies: earlier stages carry their method too ("Marowak Alolan Lv25")
+      sp.evolution.forEach(e=>{ if(e.stage < mine){ const s=getSpecies(parseEvoEntry(e.name).species); if(s) line.push(s); } });
     }
   }
   return line;
