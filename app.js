@@ -8451,6 +8451,53 @@ async function casUpsert(row, mergeFn){
 /* mark a freshly-fetched server row as our new synced baseline */
 function adoptRev(row){ if(row){ row._rev = row.rev; row._base = deepClone(row.data); } return row; }
 
+/* Write `source` INTO `target` without ever swapping object identity: every object, and every
+   id-keyed array entry present on both sides, is updated IN PLACE, so a reference captured earlier
+   still points at the live model.
+
+   This matters because the UI hands live model objects to closures that outlive a render:
+   renderMap() passes `meta` (= cloud.mapMeta.data) and `map` (an entry in meta.maps) to
+   initiativePanel, whose ▶ button closes over them; attachTokenDrag closes over the `token` object
+   for the whole drag. adoptRemote used to REBIND cur.data to a fresh object, which orphaned every
+   one of those references — the closure then mutated a detached copy while the live model kept the
+   server's older values. The next render read the live model and the change appeared to REVERT:
+   "▶ next turn jumps back" and "the token snaps back a bit after I drag it".
+
+   The window is not rare: refreshUI defers a re-render whenever uiBusy() — which is true for the
+   entire duration of a token drag (mapDragging) and whenever any input has focus — and map rows
+   carry image data-URLs, so their realtime payloads are routinely truncated, which triggers a full
+   scheduleSharedRefetch("map") → fetchMap() → adoptRemote on essentially every map write, even for
+   a GM playing alone. Preserving identity makes a deferred re-render harmless: the closure and the
+   model are the same objects, so the edit lands wherever it is written. */
+function reconcileInto(target, source){
+  if(target === source) return target;
+  if(Array.isArray(target) && Array.isArray(source)){
+    if(isIdArray(target) && isIdArray(source)){
+      // reuse the existing element object for each surviving id (tokens, maps, party members…)
+      const keep = new Map(target.filter(x=>x && x.id!=null).map(x=>[x.id,x]));
+      const next = source.map(s=>{
+        const t = keep.get(s.id);
+        return (isObj(t) && isObj(s)) ? reconcileInto(t, s) : s;
+      });
+      target.length = 0; target.push(...next);        // same array object, server's order
+      return target;
+    }
+    target.length = 0; target.push(...source);        // leaf array (fog cells, move names…)
+    return target;
+  }
+  if(isObj(target) && isObj(source)){
+    for(const k of Object.keys(target)) if(!Object.prototype.hasOwnProperty.call(source, k)) delete target[k];
+    for(const k of Object.keys(source)){
+      const t = target[k], s = source[k];
+      if(t === s) continue;                            // already the same object (merge3 kept ours)
+      if((isObj(t) && isObj(s)) || (Array.isArray(t) && Array.isArray(s))) reconcileInto(t, s);
+      else target[k] = s;
+    }
+    return target;
+  }
+  return source;                                       // scalar or type change — caller assigns
+}
+
 /* Take a server copy of a row we already hold, WITHOUT ever losing an un-flushed local edit.
    The old code simply IGNORED the incoming row whenever `data` had diverged from `_base`
    ("I still owe the server a write"), both here and in onRealtime. That looks safe but is the
@@ -8467,7 +8514,11 @@ function adoptRemote(cur, incoming, normFn){
   const theirs = normFn ? normFn(incoming.data) : incoming.data;
   if(!cur) return adoptRev({ ...incoming, data: theirs });
   const diverged = cur._base != null && !deepEqual(cur.data, cur._base);
-  cur.data  = diverged ? merge3(cur._base, cur.data, theirs, cloud.isGM ? "mine" : "theirs") : theirs;
+  const next = diverged ? merge3(cur._base, cur.data, theirs, cloud.isGM ? "mine" : "theirs") : theirs;
+  // in place, never rebound — see reconcileInto: live closures (the ▶ turn button, a token mid-drag)
+  // hold references to cur.data and its children, and swapping the object out orphans their edits
+  if((isObj(cur.data) && isObj(next)) || (Array.isArray(cur.data) && Array.isArray(next))) reconcileInto(cur.data, next);
+  else cur.data = next;
   cur._base = deepClone(theirs);
   cur._rev  = incoming.rev;
   cur.rev   = incoming.rev;
