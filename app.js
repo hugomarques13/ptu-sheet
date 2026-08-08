@@ -9696,7 +9696,21 @@ function advanceInitiative(map, meta, dir){
   const list = initiativeList(map); if(!list.length) return;
   const endingId = initEntryToken(meta.initTurnId), endingSeq = meta.initSeq||0;
   let idx = list.findIndex(e=>e.id===meta.initTurnId);
-  idx = idx<0 ? 0 : idx+dir;
+  // The exact ENTRY can be absent for a beat even though the combatant is still very much in the
+  // fight: a transiently-unresolved link (see initiativePanel), or a Swarm/Boss whose act count
+  // shrank so "<tokenId>#3" no longer exists. Resolve to that same TOKEN's first entry before
+  // giving up — silently restarting from the top of the order is what read as the tracker
+  // "rolling back" on every press of ▶.
+  if(idx<0 && meta.initTurnId){
+    const tok = initEntryToken(meta.initTurnId);
+    idx = list.findIndex(e=>initEntryToken(e.id)===tok);
+    // Still not in the order, but that token is still ON the map → its link is mid-reconcile, not
+    // gone. Stepping from here would restart the round at the top, so hold the turn and re-render;
+    // the entry reappears when the link resolves. A token that has genuinely been removed falls
+    // through below and restarts at the top, as before.
+    if(idx<0 && mapTokensFor(map.id).some(t=>t.id===tok)){ renderMap(); return; }
+  }
+  idx = idx<0 ? 0 : idx+dir;   // genuinely unknown (first ▶ of a fight) → start at the top
   let wrapped=false;
   if(idx>=list.length){ idx=0; wrapped=true; }        // stepped past the last combatant → a new round begins
   else if(idx<0){ idx=list.length-1; }                // stepping back before the first (not a round change)
@@ -9786,7 +9800,17 @@ function initiativePanel(map, meta){
   // with NO save — so the next real "next turn" click computed its step from a value the server never
   // saw, producing an apparent skip/jump that got WORSE the faster (the more often re-renders raced)
   // you clicked. Persisting it here keeps every render's decision authoritative and shared.
-  if(!meta.initTurnId || !list.find(e=>e.id===meta.initTurnId)){
+  // ONLY when there is genuinely no current turn yet. A current turn that isn't in `list` right now
+  // is NOT a reason to reset it: tokenInInit drops any token whose link can't resolve at this
+  // instant (tokenLinked → missing), and that happens routinely — fetchRoster deletes and re-adds
+  // cloud.byId entries as it reconciles, cloud.enc is replaced during adoption, and the image-heavy
+  // map rows trigger scheduleSharedRefetch storms. For a render or two the combatant whose turn it
+  // is simply isn't in the list. The old condition treated that gap as "invalid" and snapped
+  // initTurnId to list[0] — the TOP of the order — and, being GM, PERSISTED it. That is the
+  // "initiative tracker keeps rolling back" report: not a lost write, a write of the wrong value.
+  // Keep the id instead; it lights up again when the link resolves, and advanceInitiative can step
+  // from it either way (it falls back to the same token's entry).
+  if(!meta.initTurnId){
     meta.initTurnId = list[0].id;
     if(cloud.isGM) mapMetaSave();
   }
