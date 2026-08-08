@@ -3647,12 +3647,15 @@ function renderMonEditor(root, p){
   const head = el("div",{class:"inline",style:"margin-bottom:10px"});
   head.append(el("button",{class:"btn-secondary",onclick:()=>{openMon=null;renderPokemon();}},"← Party"));
   head.append(el("div",{class:"spacer"}));
-  if(mode==="cloud" && cloud.isGM)
+  // "Mom?" is a Symbiant bound to its trainer, not a Pokémon you pass around: it can't be handed to
+  // another player, deposited in the shared PC, or looked up in the Pokédex.
+  const mom = isMomSpecies(p.species);
+  if(mode==="cloud" && cloud.isGM && !mom)
     head.append(el("button",{class:"btn-secondary",title:"GM: send a copy of this Pokémon to a player",onclick:()=>openSendThisPokemon(p)},"🎁 Send"));
-  if(mode==="cloud" && canEditActive())
+  if(mode==="cloud" && canEditActive() && !mom)
     head.append(el("button",{class:"btn-secondary",title:"Send this Pokémon to the shared PC",
       onclick:()=>depositToPC(cloud.byId[cloud.activeId], p)},"🖥 To PC"));
-  if(sp) head.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("species",sp.name)},"Dex entry"));
+  if(sp && !mom) head.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("species",sp.name)},"Dex entry"));
   root.append(head);
 
   /* persistent hero: sprite + identity + HP (most-used info up top) */
