@@ -213,6 +213,19 @@ const CS_STATS = [["atk","Attack"],["def","Defense"],["spatk","Sp.Atk"],["spdef"
 const ACC_EVA_STATS = [["acc","Accuracy"],["eva","Evasion"]];
 const ALL_CS_STATS = [...CS_STATS, ...ACC_EVA_STATS];
 function csMult(cs){ cs = Math.max(-6, Math.min(6, cs||0)); return cs>=0 ? 1+0.2*cs : 1+0.1*cs; }
+/* Speed Combat Stages also move you (Core p.234): "you gain a bonus or penalty to all Movement
+   Speeds equal to half your current Speed Combat Stage value rounded down" — Speed CS +6 is +3 to
+   every Movement Capability. The penalty is symmetric (so −5 CS is −2, not −3), and "may never
+   reduce it below 2". Takes the effectiveCS() object so auras/weather/conditions all count. */
+function speedCSMove(cs){ const v = cs?.spd || 0; return (v<0 ? -1 : 1) * Math.floor(Math.abs(v)/2); }
+/* apply that shift to one Movement Capability. The "never below 2" floor only ever helps: a
+   capability that already sits below 2 (a Slugma's Overland 2, a 1-square Burrow) is left where it
+   is rather than being raised up to 2 by the floor. */
+function moveWithCS(base, shift){
+  const b = base||0;
+  if(!b || !shift) return b;
+  return shift>0 ? b+shift : Math.max(b+shift, Math.min(b,2));
+}
 /* Status Afflictions that impose Combat Stages (Core p.245-246). Paralysis is NOT here — the Feb
    2016 errata replaced its −4 Speed CS with an Initiative-halving effect instead (see tokenInitiative). */
 const CONDITION_CS = { burned:{def:-2}, poisoned:{spdef:-2}, badlyPoisoned:{spdef:-2}, blinded:{acc:-6} };
@@ -1220,6 +1233,9 @@ function trainerDerived(t) {
   const combat = rankNum(t.skills.combat);
   let power = 4;  if (athl >= 3) power++; if (combat >= 4) power++;
   let hj = 0;     if (acro >= 4) hj++; if (acro >= 6) hj++;
+  const mvCS = speedCSMove(cs);                            // Speed CS shifts every Movement Speed (Core p.234)
+  const ovlBase = 3 + Math.floor((athl+acro)/2) + equipOverland(t);
+  const swimBase = Math.floor((3 + Math.floor((athl+acro)/2))/2);
   const fullHP = t.level*2 + raw("hp")*3 + 10;             // undamaged maximum
   const injuries = Math.max(0, t.injuries||0);
   const hp = injuryHealCap(fullHP, injuries);              // Injuries cap max HP −10% each (Core p.249)
@@ -1229,7 +1245,7 @@ function trainerDerived(t) {
     ap: 5 + Math.floor(t.level/5),
     power, highJump: hj, longJump: Math.floor(acro/2),
     dr: equipDR(t).dr,                                       // worn-armor Damage Reduction (also flows through buffDR on the damage input)
-    overland: 3 + Math.floor((athl+acro)/2) + equipOverland(t), swim: Math.floor((3+Math.floor((athl+acro)/2))/2),
+    overland: moveWithCS(ovlBase, mvCS), swim: moveWithCS(swimBase, mvCS), moveCS: mvCS,
     throwing: 4 + athl,
     totals: Object.fromEntries(STATS.map(([k])=>[k, tot(k)])),        // CS-adjusted (used for attack/defense)
     realTotals: Object.fromEntries(STATS.map(([k])=>[k, raw(k)])),    // pre-CS
@@ -2186,6 +2202,8 @@ function trainerDerivedGrid(t){
     ["Overland", d.overland], ["Swim", d.swim], ["Throwing Range", d.throwing],
   ];
   if(d.dr) items.push(["Damage Reduction", "+"+d.dr]);   // from worn armor (Equipment card)
+  // Speed CS already baked into Overland/Swim above — called out so the shift isn't silent
+  if(d.moveCS) items.push(["Speed CS movement", (d.moveCS>0?"+":"")+d.moveCS]);
   items.forEach(([l,v]) => wrap.append(el("div",{class:"dv"},
     el("div",{class:"lbl"},l), el("div",{class:"val"},String(v)))));
   return wrap;
@@ -4162,7 +4180,7 @@ function renderMonBuild(root, p, sp){
 }
 
 function renderMonInfo(root, p, sp){
-  if(sp) root.append(capsSkillsCard(sp));
+  if(sp) root.append(capsSkillsCard(sp, p));
   const nc = el("div",{class:"card"}, el("h3",{},"Notes"));
   nc.append(field("Notes","",{type:"textarea",value:p.notes,onchange:v=>{p.notes=v;save();}}));
   root.append(nc);
@@ -4283,16 +4301,23 @@ function toggleAuraActive(p, name, rerender){
   p.auraActive[k] = !p.auraActive[k];
   rerender();
 }
-/* +2 CS to every Combat Stage per active Aura (Core rule above), summed if several are active at once. */
+/* +2 CS to every Combat Stage per active Aura (Core rule above), summed if several are active at
+   once. CS_STATS only: Core p.234 limits Combat Stages to Attack/Defense/Sp.Atk/Sp.Def/Speed, and
+   Accuracy and Evasion are separate tracks that effects have to name explicitly (Mud-Slap "Accuracy
+   is lowered by −1", Minimize "gains +4 Evasion") — no Aura does, so "+2 to each of their Combat
+   Stages" never reaches them. The Legendary's Evasion still climbs, just indirectly: the boosted
+   Def/Sp.Def/Speed feed the ⌊stat/5⌋ evasion in pokeDerived, exactly as Core p.233 describes
+   ("Raising your Defense, Special Defense, and Speed Combat Stages can give you additional evasion
+   from the artificially increased defense score"), and stays capped at +6 from Stats. */
 function auraCSMods(p){
   const out = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
   const n = activeAuraCount(p) * AURA_CS_BONUS;
-  if(n) for(const k in out) out[k] = n;
+  if(n) CS_STATS.forEach(([k]) => out[k] = n);
   return out;
 }
 const AURA_RULES =
   "All Legendary Pokemon possess at least three Domains (Auras). General guidelines:\n"+
-  "• For each active Aura, the Legendary gains +2 to each of their Combat Stages.\n"+
+  "• For each active Aura, the Legendary gains +2 to each of their Combat Stages — Attack, Defense, Sp.Atk, Sp.Def and Speed only. Accuracy and Evasion are separate tracks (Core p.233-234) and are not raised directly, though the boosted Def/Sp.Def/Speed do push the stat-derived Evasion up (capped at +6 from Stats), and the Speed CS shifts every Movement Speed by half its value.\n"+
   "• A Legendary may have at most three Auras active at any one time, even if it possesses more.\n"+
   "• While an Aura is active, once per round per active Aura the Legendary may diminish a single Super-Effective attack to a neutral resistance.\n"+
   "• When facing another Legendary that shares an Aura, neither is affected by that shared Aura.\n"+
@@ -4430,7 +4455,8 @@ function auraRow(an, onRemove, p, rerender){
   const row = el("details",{class:"spoiler",open:active});
   const sum = el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, a?a.name:an));
   if(p && rerender) sum.append(el("button",{class:"linkbtn h-act", style:active?"color:var(--good)":"color:var(--muted)",
-    title:"Toggle whether this Aura is currently active (grants +2 to every Combat Stage while active; "
+    title:"Toggle whether this Aura is currently active (grants +2 to each of the five Combat Stages "
+         +"while active — not Accuracy or Evasion, which are separate tracks; "
          +`at most ${AURA_MAX_ACTIVE} may be active at once)`,
     onclick:e=>{ e.preventDefault(); toggleAuraActive(p, an, rerender); }}, active?"● Active":"○ Disabled"));
   if(onRemove) sum.append(el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove",
@@ -4685,15 +4711,21 @@ function capabilityHelp(name){
   const it = itemByName.get(String(name||"").split("(")[0].trim().toLowerCase());
   return it?.effect || "";
 }
-function capsSkillsCard(sp){
+/* the Movement Capability chips a Pokémon actually has, as [label, hover-help], with the Speed-CS
+   movement shift already folded into the numbers (Core p.234 — see speedCSMove). Pass the Pokémon
+   for the CS-adjusted values; omit it for a species-only view (the Pokédex), which shows the base
+   numbers since there is no individual to have Combat Stages. */
+function moveCapEntries(cap, p){
+  const mv = p ? speedCSMove(effectiveCS(p)) : 0;
+  const note = mv ? `\n\nSpeed CS ${mv>0?"+"+mv:mv} to all Movement Speeds (base ` : "";
+  return [["Overland",cap.overland],["Sky",cap.sky],["Swim",cap.swim],["Levitate",cap.levitate],["Burrow",cap.burrow]]
+    .filter(([,base])=>base)     // only capabilities it has — a Speed CS never grants a new movement type
+    .map(([lbl,base])=>[`${lbl} ${moveWithCS(base,mv)}`, CAP_MOVE_HELP[lbl] + (mv?`${note}${base}).`:"")]);
+}
+function capsSkillsCard(sp, p){
   const card = el("div",{class:"card"}, el("h3",{},"Capabilities & Skills"));
   const cap = sp.capabilities;
-  const caps = [];
-  if(cap.overland) caps.push([`Overland ${cap.overland}`, CAP_MOVE_HELP.Overland]);
-  if(cap.sky) caps.push([`Sky ${cap.sky}`, CAP_MOVE_HELP.Sky]);
-  if(cap.swim) caps.push([`Swim ${cap.swim}`, CAP_MOVE_HELP.Swim]);
-  if(cap.levitate) caps.push([`Levitate ${cap.levitate}`, CAP_MOVE_HELP.Levitate]);
-  if(cap.burrow) caps.push([`Burrow ${cap.burrow}`, CAP_MOVE_HELP.Burrow]);
+  const caps = moveCapEntries(cap, p);
   caps.push([`Jump ${cap.highJump}/${cap.longJump}`, CAP_MOVE_HELP.Jump], [`Power ${cap.power}`, CAP_MOVE_HELP.Power]);
   if(cap.naturewalk?.length) caps.push([`Naturewalk (${cap.naturewalk.join(", ")})`, capabilityHelp("Naturewalk")]);
   (cap.other||[]).forEach(o=>caps.push([o, capabilityHelp(o)]));
@@ -7263,7 +7295,7 @@ function encounterMonCard(enc, p, list, trainer){
   if(isLegendarySpeciesName(p.species) || (p.auras||[]).length)
     card.append(aurasCard(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   // capabilities — read-only (derived from species), hover a chip to see what it does
-  if(sp) card.append(encounterCapsRow(sp));
+  if(sp) card.append(encounterCapsRow(sp, p));
   // Buffs & Orders — same shared card as the Sheet/Map token menu, so a GM can grant a wild
   // Pokémon a standing effect (e.g. a custom "+15 Damage Reduction" prop/hazard) without needing
   // to open the Map first — damageHealRow already auto-applies any active DR buff on this card.
@@ -7272,14 +7304,9 @@ function encounterMonCard(enc, p, list, trainer){
 }
 /* movement + special Capabilities chip row for an encounter Pokémon — hover each chip for its
    rules text (movement caps get hand-written help; named ones look up D.items.capabilities) */
-function encounterCapsRow(sp){
+function encounterCapsRow(sp, p){
   const cap = sp.capabilities||{};
-  const entries = [];
-  if(cap.overland) entries.push([`Overland ${cap.overland}`, CAP_MOVE_HELP.Overland]);
-  if(cap.sky) entries.push([`Sky ${cap.sky}`, CAP_MOVE_HELP.Sky]);
-  if(cap.swim) entries.push([`Swim ${cap.swim}`, CAP_MOVE_HELP.Swim]);
-  if(cap.levitate) entries.push([`Levitate ${cap.levitate}`, CAP_MOVE_HELP.Levitate]);
-  if(cap.burrow) entries.push([`Burrow ${cap.burrow}`, CAP_MOVE_HELP.Burrow]);
+  const entries = moveCapEntries(cap, p);
   entries.push([`Jump ${cap.highJump ?? 0}/${cap.longJump ?? 0}`, CAP_MOVE_HELP.Jump], [`Power ${cap.power ?? 0}`, CAP_MOVE_HELP.Power]);
   if(cap.naturewalk?.length) entries.push([`Naturewalk (${cap.naturewalk.join(", ")})`, capabilityHelp("Naturewalk")]);
   (cap.other||[]).forEach(o=>entries.push([o, capabilityHelp(o)]));
@@ -10248,8 +10275,11 @@ function tokenMoveModes(token){
     return [["overland","Land",d.overland],["swim","Swim",d.swim]].filter(m=>m[2]);
   }
   const c = getSpecies(L.obj.species)?.capabilities || {};
+  const mv = speedCSMove(effectiveCS(L.obj));    // Speed CS shifts every Movement Speed (Core p.234)
   return [["overland","Land",c.overland],["sky","Sky",c.sky],["swim","Swim",c.swim],["burrow","Burrow",c.burrow],
-    ["levitate","Levitate",c.levitate]].filter(m=>m[2]);
+    ["levitate","Levitate",c.levitate]]
+    .filter(m=>m[2])                             // filter BEFORE the shift — CS never grants a new movement type
+    .map(([k,lbl,m])=>[k,lbl,moveWithCS(m,mv)]);
 }
 function tokenMoveMode(token){
   const modes = tokenMoveModes(token); if(!modes.length) return null;
