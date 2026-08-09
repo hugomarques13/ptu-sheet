@@ -2482,7 +2482,8 @@
     "hidden": true,
     "forcedStats": {
       "hp": 1
-    }
+    },
+    "giftPatron": "Vulpoxen"
   },
   {
     "name": "Mega Raichu X",

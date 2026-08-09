@@ -3435,6 +3435,20 @@ const GIFT_GROUPS = [
 const GIFT_CATALOG = GIFT_GROUPS.flatMap(g => g.gifts.map(([tier,name,prereq,effect]) =>
   ({ group:g.group, patrons:g.patrons, tier, name, prereq, effect })));
 function giftByName(name){ return GIFT_CATALOG.find(x=>x.name===name) || null; }
+/* Which Pokémon level unlocks each of a Patron's Gifts — read straight off the catalog's own effect
+   text rather than a second hardcoded list, so it can't drift. Some Gift effects end with a
+   parenthetical like "(Vulpoxen Lv 20.)" or "(Bond deepens at Vulpoxen Lv 5.)"; pull the number out
+   of any Gift belonging to the named Patron. Gifts with no level called out (most patrons — that's a
+   book/GM-pacing choice, not a bond level) are simply omitted. Sorted ascending by level. */
+function giftLevelsForPatron(patron){
+  if(!patron) return [];
+  const re = new RegExp(patron.replace(/[.*+?^${}()|[\]\\]/g,"\\$&") + "\\s+Lv\\s*(\\d+)", "i");
+  return GIFT_CATALOG
+    .filter(g => g.patrons.includes(patron))
+    .map(g => { const m = re.exec(g.effect||""); return m ? { level:+m[1], name:g.name, tier:g.tier } : null; })
+    .filter(Boolean)
+    .sort((a,b) => a.level-b.level);
+}
 /* the specific Patron a catalog Gift is known to come from, for auto-filling the Add-Gift picker:
    most multi-patron-group Gifts name their patron right in the title, e.g. "Water Absorb (Suicune)"
    — pull that out and confirm it's actually one of the group's patrons. Failing that, a single-patron
@@ -3740,7 +3754,10 @@ function renderMonEditor(root, p){
   if(mode==="cloud" && canEditActive() && !mom)
     head.append(el("button",{class:"btn-secondary",title:"Send this Pokémon to the shared PC",
       onclick:()=>depositToPC(cloud.byId[cloud.activeId], p)},"🖥 To PC"));
-  if(sp && !mom) head.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("species",sp.name)},"Dex entry"));
+  // "Mom?" isn't handed around or looked up like a normal species, but its Dex entry (species stats,
+  // learnset, and — for a giftPatron species — the bond-level list) is useful GM reference: show the
+  // button only to the GM, never to Lázaro or any other player.
+  if(sp && (!mom || isGM())) head.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("species",sp.name)},"Dex entry"));
   root.append(head);
 
   /* persistent hero: sprite + identity + HP (most-used info up top) */
@@ -8242,6 +8259,13 @@ function speciesModal(s){
   }
   const meta=[]; if(s.diet)meta.push("Diet: "+s.diet); if(s.habitat)meta.push("Habitat: "+s.habitat); if(s.gender)meta.push(s.gender); if(s.eggGroups?.length)meta.push("Egg: "+s.eggGroups.join("/"));
   if(meta.length) html+=`<div class="r-meta" style="margin-top:8px">${esc(meta.join(" · "))}</div>`;
+  // giftPatron species (e.g. "Mom?", bound to Vulpoxen's soul-bond): list the Patron's Legendary
+  // Gift levels straight from the catalog, so the GM can see at a glance which bond level unlocks
+  // the next Gift without cross-referencing the Gifts tab.
+  const giftLvls = giftLevelsForPatron(s.giftPatron);
+  if(giftLvls.length) html += `<div class="r-meta" style="margin-top:10px">🎁 ${esc(s.giftPatron)} Gift Levels</div>
+    <table class="movetable" style="margin-top:4px"><tr><th>Lv</th><th>Gift</th><th>Tier</th></tr>
+    ${giftLvls.map(g=>`<tr><td>${g.level}</td><td>${esc(g.name)}</td><td>${esc(g.tier)}</td></tr>`).join("")}</table>`;
   infoModal(`#${s.order} ${s.name}`, html);
 }
 
