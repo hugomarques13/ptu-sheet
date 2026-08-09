@@ -633,6 +633,20 @@ function unevolveTo(p){
    Stats, types, capabilities and size follow the Mega species automatically (everything derives
    from p.species); the Pokémon keeps its moves, level and XP and its own Ability list — the Mega's
    Ability is surfaced for reference. Unlike evolveTo this is reversible and never permanent. */
+/* A Mega normally belongs to the one species its name spells out ("Mega Arcanine" ← Arcanine). These
+   homebrew Megas are SHARED by several forms of the same Pokémon — one Mega Stone, one Mega species,
+   reachable from either base form (the forms converge into the same creature, so the regional form
+   adopts the shared statline). Keyed lowercase: mega species → every base allowed to become it. */
+const MEGA_SHARED_BASES = {
+  "mega arcanine": ["arcanine", "arcanine hisuian"],
+  "mega marowak":  ["marowak",  "marowak alolan"],
+};
+function megaBaseMatch(megaNameLower, baseNameLower){
+  const shared = MEGA_SHARED_BASES[megaNameLower];
+  if(shared) return shared.includes(baseNameLower);
+  const rest = megaNameLower.slice(5).replace(/\s+[xyz]$/,"").trim();   // "mega charizard x" → "charizard"
+  return rest === baseNameLower;
+}
 function megaFormsFor(p){
   const baseName = (p.mega ? (p.preMega||p.species) : p.species);
   const base = getSpecies(baseName); if(!base) return [];
@@ -641,8 +655,7 @@ function megaFormsFor(p){
   return D.species.filter(s=>{
     const n = s.name.toLowerCase();
     if(!n.startsWith("mega ")) return false;                 // "Meganium"/"MEGAS" won't match (need the space)
-    const rest = n.slice(5).replace(/\s+[xyz]$/,"").trim();  // "mega charizard x" → "charizard"
-    if(rest !== bname) return false;
+    if(!megaBaseMatch(n, bname)) return false;
     const stone = megaToStoneMap.get(s.name);                // only offer the button once its Mega Stone is Held Item
     return !!stone && stone.toLowerCase()===held;
   }).map(s=>s.name);
@@ -655,8 +668,7 @@ function megaStonesFor(p){
   const bname = base.name.toLowerCase();
   const out = [];
   megaStoneMap.forEach((megaName, stoneName)=>{
-    const rest = megaName.slice(5).replace(/\s+[xyz]$/i,"").trim().toLowerCase();
-    if(rest===bname) out.push(stoneName);
+    if(megaBaseMatch(megaName.toLowerCase(), bname)) out.push(stoneName);
   });
   return out;
 }
@@ -1477,20 +1489,76 @@ function slugify(name){
     .replace(/[\s_]+/g,"-")
     .replace(/[^a-z0-9-]/g,"");
 }
-function spriteUrl(name, shiny){
-  const slug = slugify(name);
+/* pokemondb files a Mega's artwork under "<base>-mega" (and "-x"/"-y" for the split ones), NOT
+   "mega-<base>" the way our species are named — so the naive slug 404'd for every single Mega in the
+   DB and they all fell through to the pokéball. Regional forms already match ("arcanine-hisuian",
+   "marowak-alolan"), so only the Mega prefix needs reordering. */
+function spriteSlug(name){
+  const m = /^Mega\s+(.+?)(?:\s+([XYZ]))?$/i.exec(String(name||"").trim());
+  return m ? `${slugify(m[1])}-mega${m[2] ? "-"+m[2].toLowerCase() : ""}` : slugify(name);
+}
+/* `tmp` reads from pokemondb's staging directory, where newly drawn artwork (the Legends Z-A Megas)
+   sits before it is promoted into the main one — 28 Megas are only available there right now. */
+function spriteUrl(name, shiny, tmp){
+  const slug = spriteSlug(name);
   return shiny ? `https://img.pokemondb.net/sprites/black-white/shiny/${slug}.png`
-               : `https://img.pokemondb.net/artwork/${slug}.jpg`;
+               : `https://img.pokemondb.net/artwork/${tmp?"tmp/":""}${slug}.jpg`;
 }
 /* A Mega-Evolved Pokémon keeps its own uploaded photo separate from its base form's (p.megaImage
    vs p.image) — otherwise a photo taken while Mega'd would stick around after reverting, and vice
    versa, since p.species (and so the sprite lookup) toggles but a single shared field wouldn't. */
 function monImage(p){ return p.mega ? (p.megaImage||"") : (p.image||""); }
 function setMonImage(p, url){ if(p.mega) p.megaImage = url; else p.image = url; }
+/* ---------- custom species artwork (homebrew Megas, Vulpoxen, "Mom?", …) ----------
+   spriteUrl hotlinks pokemondb, which has no artwork for homebrew species, so those requests 404 and
+   the sprite drops to the pokéball placeholder. Before giving up we retry against art hosted in the
+   campaign's PUBLIC Storage bucket at `images/species/<slug>.<png|jpg>` (same bucket the photo
+   uploader already uses, so it's CDN-cached and costs no extra setup). Drop a file in with the right
+   name and that species has art everywhere — no code change, no per-species table. The ~1700 species
+   whose pokemondb art loads fine never make these requests at all, since they only fire on error. */
+function speciesArtUrls(name, shiny){
+  const base = (window.PTU_CLOUD && PTU_CLOUD.url || "").replace(/\/+$/,"");
+  if(!base || !name) return [];
+  const pub  = `${base}/storage/v1/object/public/${IMG_BUCKET}/species`;
+  const slug = slugify(name);
+  // a shiny falls back to the normal art when no "-shiny" file has been uploaded
+  return (shiny ? [`${slug}-shiny`, slug] : [slug]).flatMap(n => [`${pub}/${n}.png`, `${pub}/${n}.jpg`]);
+}
+/* same chain for the few sprites built as an HTML string (speciesModal), which need an inline
+   onerror — the remaining candidates ride along in the element's data-art attribute */
+function artFallbackInline(img){
+  let queue = []; try{ queue = JSON.parse(img.getAttribute("data-art")||"[]"); }catch(e){}
+  const next = queue.shift();
+  if(next){ img.setAttribute("data-art", JSON.stringify(queue)); img.src = next; return; }
+  img.onerror = null; img.src = POKEBALL_SVG; img.classList.add("fallback");
+}
+/* try each candidate in turn as the image fails to load, ending at the pokéball placeholder */
+function attachArtFallback(img, srcs){
+  const queue = (srcs||[]).slice();
+  img.addEventListener("error", function(){
+    const next = queue.shift();
+    if(next){ this.src = next; return; }
+    this.src = POKEBALL_SVG; this.classList.add("fallback");
+  });
+}
+/* The full source list for a species, best first. Species flagged `customArt` in the DB (the homebrew
+   Megas, Vulpoxen, …) are known to have no pokemondb artwork, so they go straight to the bucket
+   instead of spending a doomed hotlink request first — and they still render if that request is
+   blocked or hangs rather than cleanly 404ing, which an error-only fallback can't recover from. */
+function speciesArtChain(name, shiny){
+  if(!name) return [POKEBALL_SVG];
+  const bucket = speciesArtUrls(name, shiny);
+  // main directory first so a species keeps working once its art is promoted out of staging; the
+  // staging copy is only reached when the main one 404s, and there's no staging path for shinies
+  const db = shiny ? [spriteUrl(name, true)]
+                   : [spriteUrl(name, false), spriteUrl(name, false, true)];
+  return getSpecies(name)?.customArt ? [...bucket, ...db] : [...db, ...bucket];
+}
 function monSprite(speciesName, shiny, sizeCls="s-sm", override){
-  const img = el("img",{class:`sprite ${sizeCls}`, alt:speciesName||"", loading:"lazy",
-    src: override || (speciesName ? spriteUrl(speciesName, shiny) : POKEBALL_SVG)});
-  img.addEventListener("error", function(){ this.onerror=null; this.src=POKEBALL_SVG; this.classList.add("fallback"); });
+  // an uploaded photo wins outright; if it fails that's just a broken photo, not a missing sprite
+  const chain = override ? [override] : speciesArtChain(speciesName, shiny);
+  const img = el("img",{class:`sprite ${sizeCls}`, alt:speciesName||"", loading:"lazy", src: chain[0]});
+  attachArtFallback(img, chain.slice(1));
   return img;
 }
 const TRAINER_PLACEHOLDER = "data:image/svg+xml,"+encodeURIComponent(
@@ -1981,7 +2049,8 @@ function openTrainerAttack(t, weaponMoveName, w){
   const fiveStrike = isFiveStrike(st), dblStrike = isDoubleStrike(st);
   const nAcc = dblStrike ? 2 : 1;
   let targetEva = 0;                      // target's Evasion — auto-counts the Double Strike hits
-  const baseDBv = (st.damageBase||0)+(bm.db||0);
+  const rawDB   = st.damageBase||0;       // the Move's own Damage Base — what Five Strike multiplies
+  const baseDBv = rawDB + (bm.db||0);
   const diceFor = db => (DB_TABLE[Math.max(0,Math.min(28,db))]||"").split("/")[0].trim();
   const diceStr = diceFor(baseDBv);
   const dm = diceStr.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
@@ -2017,7 +2086,7 @@ function openTrainerAttack(t, weaponMoveName, w){
     explain.append(el("div",{},
       el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${terms.join(" + ")}`),
       el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ") + ". STAB never applies to Struggle. Target then subtracts Defense."
-        + (fiveStrike ? " Five Strike multiplies this Damage Base by the rolled hit count." : "")
+        + (fiveStrike ? ` Five Strike multiplies the Move's own Damage Base (${rawDB}) by the rolled hit count first; other Damage Base bonuses are added after.` : "")
         + (dblStrike  ? " Double Strike doubles this Damage Base if both Attack Rolls connect." : ""))));
   }
   body.append(explain);
@@ -2035,7 +2104,7 @@ function openTrainerAttack(t, weaponMoveName, w){
       wc.append(row);
     }
     wc.append(el("div",{class:"small muted",style:"margin-top:4px"},
-      fiveStrike ? `Rolling 🎲 also rolls 1d8 for the hit count (1 / 2-3 / 4-6 / 7 / 8 → 1 / 2 / 3 / 4 / 5 hits); Damage Base ${baseDBv} is multiplied by it.`
+      fiveStrike ? `Rolling 🎲 also rolls 1d8 for the hit count (1 / 2-3 / 4-6 / 7 / 8 → 1 / 2 / 3 / 4 / 5 hits); the Move's own Damage Base ${rawDB} is multiplied by it${bm.db?`, and the +${bm.db} DB from buffs is added only after that`:""} (Core p.242).`
                  : `Both Attack Rolls are checked against AC ${st.ac} + this Evasion when you press 🎲 (nat 20 always hits, nat 1 always misses). 1 hit → DB ${baseDBv} · both hit → DB ${baseDBv*2}.`));
     body.append(wc);
   }
@@ -2090,15 +2159,22 @@ function openTrainerAttack(t, weaponMoveName, w){
     // size the Damage Base from the strikes that landed (Core p.242)
     let db = baseDBv, strikeNote = null;
     if(dblStrike) db = baseDBv * (connected>=2 ? 2 : 1);
-    if(fiveStrike){ const hi = fiveStrikeRoll(); db = Math.min(28, baseDBv*hi.hits);
-      strikeNote = `🎯 Five Strike: 1d8 → ${hi.d8} = ${hi.hits} hit${hi.hits===1?"":"s"} — DB ${baseDBv} ×${hi.hits} = ${db}`; }
+    /* Five Strike (Core p.242): the Move's OWN Damage Base is multiplied by the hit count, and every
+       other effect that raises Damage Base (here: buffs — trainers never get STAB) is added after. */
+    if(fiveStrike){ const hi = fiveStrikeRoll(); db = Math.min(28, rawDB*hi.hits + (bm.db||0));
+      strikeNote = `🎯 Five Strike: 1d8 → ${hi.d8} = ${hi.hits} hit${hi.hits===1?"":"s"} — DB ${rawDB} ×${hi.hits} = ${rawDB*hi.hits}`
+        + `${bm.db?` +${bm.db} buffs`:""} → DB ${db}`; }
     else if(dblStrike && connected) strikeNote = `⚔ Double Strike: ${connected} of 2 connected — Damage Base ${db}`;
     const r = connected>0 ? rollDiceString(diceFor(db)) : null;
-    /* Critical Hit (Core p.235): a natural 20 doubles the Damage Dice (not the Attack bonus).
-       On a Double Strike each connecting strike crits on its own, so add one set per crit. */
+    /* Critical Hit (Core p.235): a crit adds the whole Damage Base value — dice AND its flat part —
+       a second time ("a DB6 Move Crit would be 4d6+16+Stat"); only the Attack bonus isn't doubled.
+       On a Double Strike each connecting strike crits on its own, and per the keyword the crit bonus
+       uses the Damage Base BEFORE it's doubled (Core p.242). */
     const nCrit = dblStrike ? Math.min(strikes.filter(s=>s.crit).length, connected) : (acc===20 ? 1 : 0);
+    const critDBv = dblStrike ? baseDBv : db;
     let critExtra = 0; const critWhy = [];
-    for(let c=0;c<nCrit;c++){ const rc = rollDiceString(diceFor(db)); critExtra += rc.dice; critWhy.push(`+${rc.dice} crit (doubled dice)`); }
+    for(let c=0;c<nCrit;c++){ const rc = rollDiceString(diceFor(critDBv)); critExtra += rc.total;
+      critWhy.push(`+${rc.total} crit${dblStrike?` (DB ${critDBv}, before doubling)`:""}`); }
     if(dblStrike && connected===0){
       out.append(el("div",{}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"),
         el("div",{style:"font-size:20px;font-weight:800;color:var(--bad)"},"— no damage"),
@@ -5019,6 +5095,7 @@ function poltergeistGrant(p, sp){
 const ATE_ABILITIES = [
   ["Aerilate","Flying"], ["Pixilate","Fairy"], ["Galvanize","Electric"],
   ["Refridgerate","Ice"], ["Refrigerate","Ice"],   // DB carries the "Refridgerate" typo; accept both
+  ["Mentalize","Psychic"],                          // homebrew — Mega Machamp's Mega Ability
 ];
 /* Does an "−ate" ability apply to this move? → {ability, type} or null. A move qualifies only if it's
    a damaging Normal-Type Move (Struggle counts) and the Pokémon isn't running Normalize. */
@@ -5230,6 +5307,15 @@ function effectThresholds(text){
   });
   return res.sort((a,b)=>a.n-b.n);
 }
+/* Which of those thresholds Sheer Force actually trades away. Its text (Core p.199): "If a Pokemon
+   with Sheer Force uses a Move with a secondary effect that triggers during Accuracy Roll, increase
+   that Move's Base Damage by +2 … This does not affect Critical Hits, or moves with increased
+   Critical Hit ranges." So a Move whose only "N+" clause IS a Crit Range (Slash, Stone Edge, Night
+   Slash, Razor Leaf, Attack Order…) is NOT a Sheer Force move: no +2 DB, and it keeps its crit range.
+   Same filter for Sheer Force [Errata], whose "+10 damage" is likewise tied to Effect Ranges. */
+function sheerForceThresholds(thresholds){
+  return (thresholds||[]).filter(t => !/critical\s+(hit|range)/i.test(t.text||""));
+}
 /* ---- Damage-automation helpers (Core p.199 ability texts + p.235/242) ---- */
 const IRON_FIST_MOVES = new Set(["Bullet Punch","Comet Punch","Dizzy Punch","Drain Punch","Dynamic Punch",
   "Fire Punch","Meteor Mash","Shadow Punch","Ice Punch","Mach Punch","Mega Punch","Sky Uppercut",
@@ -5268,11 +5354,14 @@ function abilityDamageMods(p, m, baseDBVal, thresholds, opts={}){
   const mname = (m.name||"").toLowerCase();
   if(hasAbility(p,"Iron Fist") && IRON_FIST_MOVES.has(mname)){
     mods.db += 2; mods.why.push("Iron Fist +2 DB"); }
+  // Technician: DB≤6 is measured on the Move's PRINTED Damage Base, and it "always applies" to
+  // Double/Five Strike Moves — like STAB it is added AFTER the Five Strike multiplication (Core p.242).
   if(hasAbility(p,"Technician") && (isFiveStrike(m) || isDoubleStrike(m) || (baseDBVal!=null && baseDBVal<=6))){
     mods.db += 2; mods.why.push("Technician +2 DB"); }
-  if(hasAbility(p,"Sheer Force") && thresholds.length){
+  const sfT = sheerForceThresholds(thresholds);   // crit ranges don't count as Sheer Force effects
+  if(hasAbility(p,"Sheer Force") && sfT.length){
     mods.db += 2; mods.why.push("Sheer Force +2 DB (secondary effect suppressed)"); }
-  if(hasAbility(p,"Sheer Force [Errata]") && thresholds.length){
+  if(hasAbility(p,"Sheer Force [Errata]") && sfT.length){
     mods.flat += 10; mods.why.push("Sheer Force +10 damage (secondary effect suppressed)"); }
   // Adaptability: +1 DB on Moves the user shares a Type with (i.e. STAB moves)
   if(hasAbility(p,"Adaptability") && opts.stab){
@@ -5488,9 +5577,28 @@ function openMoveRoll(p, m, sp, opts={}){
   const abilMods = abilityDamageMods(p, m, baseDB(), thresholds, {stab, mtype, isPhys, isSpec});
   const fiveStrike = isFiveStrike(m);
   const critT = critThreshold(p, m);
-  const finalDB = () => { const b=baseDB();
-    return b!=null ? b + (stab?2:0) + (bm.db||0) + abilMods.db : null; };
-  const diceStr = () => { const f=finalDB(); return f!=null ? (DB_TABLE[f]||"").split("/")[0].trim() : ""; };
+  /* Final Damage Base. Five Strike (Core p.242): "Multiply the Move's Damage Base by the number of
+     times hit; that becomes its new Damage Base. You may always apply Technician to Moves with Five
+     Strike. Apply STAB and all other effects that raise Damage Base only after the Move's final
+     Damage Base has been calculated." — so the multiplication happens FIRST, on the Move's own DB,
+     and STAB / Technician / buffs / other ability DB bonuses are added to the product. */
+  const finalDB = (hits) => { const b=baseDB();
+    if(b==null) return null;
+    const mult = (fiveStrike && hits) ? b*hits : b;
+    return Math.min(28, mult + (stab?2:0) + (bm.db||0) + abilMods.db); };
+  const diceStr = () => { const f=finalDB(1); return f!=null ? (DB_TABLE[f]||"").split("/")[0].trim() : ""; };
+  /* Damage Base a Critical Hit adds on a multi-strike Move. Double Strike (Core p.242): "Each hit may
+     Critically Hit separately; when adding damage from Critical Hit, add the Damage Base before it's
+     doubled." Triple Kick scales its DB off the hit count the same way and the book is silent on it,
+     so it gets the consistent reading — the crit bonus uses its 1-hit Damage Base. null = no
+     multi-strike bonus to strip, so the crit just uses the Move's final Damage Base (incl. Five
+     Strike, whose multiplied DB the book explicitly calls "its new Damage Base"). */
+  const critDBv = (() => {
+    const bonus = (stab?2:0) + (bm.db||0) + abilMods.db;
+    if(sp2?.kind==="doubleStrike") return Math.min(28, (sp2.base??0) + bonus);
+    if(sp2?.kind==="tripleKick")   return Math.min(28, 1 + bonus);
+    return null;
+  })();
 
   const body = el("div",{});
   body.append(el("div",{style:"margin-bottom:6px"}, el("span",{html:typeBadge(mtype)}),
@@ -5643,12 +5751,13 @@ function openMoveRoll(p, m, sp, opts={}){
         el("div",{class:"small muted",style:"margin-top:2px"}, sp2.hint + (sp2.onOne?" · "+sp2.onOne:""))));
       return;
     }
-    const fDB = finalDB(), ds = diceStr();
+    const fDB = finalDB(1), ds = diceStr();
     const dm = ds.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
     const dn = dm[1]?+dm[1]:0, dfaces = dm[2]?+dm[2]:0, dflat = dm[3]?parseInt(dm[3].replace(/\s/g,"")):0;
-    dbChip.textContent = fDB!=null
-      ? `DB ${baseDB()}${stab?` +2 STAB`:""}${abilMods.db?` +${abilMods.db} ability`:""} → ${fDB}`
-      : "No damage";
+    const dbBonus = `${stab?` +2 STAB`:""}${abilMods.db?` +${abilMods.db} ability`:""}`;
+    dbChip.textContent = fDB==null ? "No damage"
+      : fiveStrike ? `DB ${baseDB()} ×hits${dbBonus} → ${fDB}–${finalDB(5)}`
+      : `DB ${baseDB()}${dbBonus} → ${fDB}`;
     dbChip.style.display = "";
     dmgBox.innerHTML = "";
     if(fDB!=null && dn){
@@ -5670,7 +5779,10 @@ function openMoveRoll(p, m, sp, opts={}){
         el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${expr}`),
         el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ")+`. Target then subtracts their ${defNote}.`)));
       if(fiveStrike) dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
-        "🎯 Five Strike — rolling 1d8 for hit count when you roll dice; the Damage Base above is multiplied by hits (Technician already included)."));
+        `🎯 Five Strike — 🎲 rolls 1d8 for the hit count (1 / 2-3 / 4-6 / 7 / 8 → 1 / 2 / 3 / 4 / 5 hits). `
+        + `DB ${baseDB()} is multiplied by the hits FIRST`
+        + (dbBonus ? `, then${dbBonus} is added on top` : "")
+        + ` (Core p.242). Shown above at 1 hit; 5 hits = DB ${finalDB(5)}.`));
       if(sp2?.kind==="doubleStrike") dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
         `⚔ Double Strike — shown with ${hitsConnect===2?"both Attack Rolls connecting":"1 Attack Roll connecting"}; the 🎲 roll counts how many actually hit and re-sizes the Damage Base. Each connecting strike can crit on its own.`));
       if(sp2?.kind==="tripleKick") dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
@@ -5772,6 +5884,50 @@ function openMoveRoll(p, m, sp, opts={}){
     body.append(ec);
   }
 
+  /* --- Ancestral Connection (Mega Marowak's Mega Ability) — after a damaging Move of the user's
+     connects, the ghost of its departed parent lashes out at the same target with a Ghost-Type
+     Struggle Attack. It's a separate attack with its own Accuracy Roll, Damage Roll and Crit, so it's
+     resolved right here under the main result and the player reads both hits off the one 🎲.
+     STAB, Accuracy CS and active buffs carry over; the triggering Move's own riders do not. */
+  const ancestral = hasAbility(p, "Ancestral Connection") && !getSpecies(p.species)?.noStruggle;
+  function ancestralStrikeNode(){
+    const base = struggleMove(p); if(!base) return null;
+    const gm = Object.assign({}, base, { type:"Ghost", class:"Physical" });
+    const gStab = types.includes("Ghost");
+    const gDB   = Math.max(1, Math.min(28, (gm.damageBase||4) + (gStab?2:0) + (bm.db||0)));
+    const gCritT = critThreshold(p, gm);
+    const acc    = 1+Math.floor(Math.random()*20);
+    const accTot = acc + (bm.acc||0) + accCS;
+    const gCrit  = acc!==1 && acc>=gCritT;
+    const ds = (DB_TABLE[gDB]||"").split("/")[0].trim();
+    const r  = rollDiceString(ds);
+    const critExtra = (gCrit && r) ? rollDiceString(ds).total : 0;  // crit adds the Damage Base again (Core p.235), not the stat
+    const total = r ? Math.max(0, r.total + (d.eff.atk||0) + (bm.dmg||0) + critExtra) : 0;
+
+    const node = el("div",{class:"card",
+      style:`background:var(--panel-2);border:1px solid ${gCrit?"var(--bad)":"var(--line)"};margin:10px 0 0`});
+    node.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},
+      `👻 Ancestral Connection — ${gm.name}, Ghost-Type`));
+    node.append(el("div",{class:"small"},
+      `🎯 ${accTot}`, el("span",{class:"muted"}, acc!==accTot?`  (${acc})`:"  (1d20)"),
+      el("span",{class:"muted"}, ` — hits if ≥ AC ${gm.ac} + the target's Physical Evasion.`
+        + (acc===1?" Natural 1 — auto-miss.":gCrit?` Roll ${acc} ≥ ${gCritT} — Critical Hit!`:""))));
+    if(r) node.append(el("div",{style:`font-size:20px;font-weight:800;color:${gCrit?"var(--bad)":"var(--accent)"};margin-top:2px`},
+      `${gCrit?"💥 CRIT! ":"💥 "}${total}`));
+    const why = [`${r?r.expr:ds} → [${r?r.rolls.join(", "):"—"}] = ${r?r.total:0}`];
+    if(d.eff.atk) why.push(`+ ${d.eff.atk} Attack`);
+    if(bm.dmg)    why.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs`);
+    if(critExtra) why.push(`+${critExtra} crit (Damage Base again)`);
+    node.append(el("div",{class:"small muted",style:"margin-top:2px"},
+      `Damage Base ${gm.damageBase}${gStab?" +2 STAB":""}${bm.db?` ${bm.db>0?"+":""}${bm.db} buffs`:""} = ${gDB} · `
+      + why.join("  ") + `  = ${total}. Target subtracts Defense & damage reduction.`));
+    node.append(el("div",{class:"small muted",style:"margin-top:2px"},
+      "Free Action, resolved only if the triggering Move hit. This bonus strike can't trigger Ancestral Connection again."));
+    const tw = attackTargetWidget({ dmg:total, type:"Ghost", physical:true });
+    if(tw) node.append(tw);
+    return node;
+  }
+
   /* --- results (filled when you press Roll dice) --- */
   const out = el("div",{id:"rollOut",class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:0"});
   out.append(el("div",{class:"muted small"}, "Press 🎲 Roll dice to simulate."));
@@ -5813,6 +5969,7 @@ function openMoveRoll(p, m, sp, opts={}){
       dmgLine.append(el("div",{class:"small muted",style:"margin-top:4px"}, sp2.desc + (sp2.ignores?` ${sp2.ignores}`:"")));
       if(sp2.special) dmgLine.append(el("div",{class:"small",style:"margin-top:4px;font-weight:700;color:var(--bad)"}, `⚠ ${sp2.special}`));
       out.append(dmgLine);
+      if(ancestral && (isPhys||isSpec)){ const an = ancestralStrikeNode(); if(an) out.append(an); }
       return;
     }
 
@@ -5848,7 +6005,7 @@ function openMoveRoll(p, m, sp, opts={}){
     const forced  = multi && redo?.forceHits!=null;
     const connected = !multi ? 1 : (forced ? redo.forceHits : strikes.filter(s=>s.hit).length);
     if(multi){ hitsConnect = Math.max(1, connected); renderDamage(); }
-    const fDB = finalDB();
+    const fDB = finalDB(1);
     // crits can't outnumber the strikes that actually landed (matters after a manual override)
     const nCrit  = multi ? Math.min(strikes.filter(s=>s.crit).length, connected)
                          : ((!wx.autoHit && acc>=effCritT) ? 1 : 0);
@@ -5878,11 +6035,16 @@ function openMoveRoll(p, m, sp, opts={}){
     if(dieNote) out.append(el("div",{class:"small muted",style:"margin:2px 0 10px"}, `Scaling: ${dieNote}.`));
     // extra move effects that trigger on this Accuracy roll (#4) — compared vs the natural 1d20
     const sheerForceActive = hasAbility(p,"Sheer Force") || hasAbility(p,"Sheer Force [Errata]");
-    if(sheerForceActive && thresholds.length){
+    // Sheer Force only trades away Effect Ranges — Crit Ranges are explicitly untouched, so those
+    // clauses still resolve normally even on a Sheer Force user.
+    const sfSuppressed = sheerForceActive ? sheerForceThresholds(thresholds) : [];
+    if(sfSuppressed.length){
       out.append(el("div",{class:"small muted",style:"margin:2px 0 10px"},
         "Sheer Force suppresses this move's secondary effect (traded for the damage bonus above)."));
-    } else if(thresholds.length){
-      const hit = thresholds.filter(t=>acc>=t.n), miss = thresholds.filter(t=>acc<t.n);
+    }
+    const liveThresholds = sfSuppressed.length ? thresholds.filter(t=>!sfSuppressed.includes(t)) : thresholds;
+    if(liveThresholds.length){
+      const hit = liveThresholds.filter(t=>acc>=t.n), miss = liveThresholds.filter(t=>acc<t.n);
       const tl = el("div",{style:"margin:2px 0 10px"});
       hit.forEach(t=>{
         tl.append(el("div",{class:"small",style:"color:var(--good);font-weight:700"},
@@ -5902,22 +6064,29 @@ function openMoveRoll(p, m, sp, opts={}){
         el("div",{class:"small muted",style:"margin-top:2px"},"None of the Attack Rolls met AC + Evasion, so the Move misses entirely.")));
     }
     if(fDB!=null && !(multi && connected===0)){
-      // Five Strike (Core p.242): roll 1d8 for hit count, DB is multiplied by hits before the dice lookup
+      // Five Strike (Core p.242): roll 1d8 for the hit count — the Move's OWN Damage Base is multiplied
+      // by it, and STAB / Technician / other DB bonuses are added to the product (finalDB does both).
       const hitsInfo = fiveStrike ? fiveStrikeRoll() : null;
-      const effFDB = hitsInfo ? Math.min(28, fDB*hitsInfo.hits) : fDB;
+      const effFDB = hitsInfo ? finalDB(hitsInfo.hits) : fDB;
       const ds = (DB_TABLE[effFDB]||DB_TABLE[fDB]||"").split("/")[0].trim();
       const r = rollDiceString(ds);
       const dmgLine = el("div",{});
       dmgLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"));
       if(r){
-        // Critical Hit (Core p.235): the Damage Dice are doubled — the stat bonus is NOT doubled.
-        // On a multi-strike Move each connecting strike crits on its own, so add one set per crit.
+        /* Critical Hit (Core p.235): "A Critical Hit adds the Damage Dice Roll a second time to the
+           total damage dealt, but does not add Stats a second time; for example, a DB6 Move Crit
+           would be 4d6+16+Stat" — DB6 is 2d6+8, so the Damage Base's FLAT part is added again too;
+           only Attack/Sp.Attack isn't. Sniper adds the same value one further time.
+           On a multi-strike Move each connecting strike crits on its own, so add one set per crit —
+           and per the Double Strike keyword the crit bonus uses the Damage Base BEFORE it's doubled. */
+        const critDS = critDBv!=null ? (DB_TABLE[critDBv]||"").split("/")[0].trim() : ds;
         let critExtra = 0; const critWhy = [];
         for(let c=0;c<nCrit;c++){
-          const r2 = rollDiceString(ds); critExtra += r2.dice; critWhy.push(`+${r2.dice} crit (doubled dice)`);
-          if(hasAbility(p,"Sniper")){ const r3 = rollDiceString(ds); critExtra += r3.dice; critWhy.push(`+${r3.dice} Sniper`); }
+          const r2 = rollDiceString(critDS); critExtra += r2.total; critWhy.push(`+${r2.total} crit`);
+          if(hasAbility(p,"Sniper")){ const r3 = rollDiceString(critDS); critExtra += r3.total; critWhy.push(`+${r3.total} Sniper`); }
           if(hasAbility(p,"Sniper [Errata]")){ const r4 = rollDiceString("3d10"); critExtra += r4.total; critWhy.push(`+${r4.total} Sniper [Errata]`); }
         }
+        if(critExtra && critDBv!=null) critWhy.push(`(crit uses DB ${critDBv} — the Damage Base before the multi-strike bonus)`);
         const im = infatMod();
         const total = Math.max(0, r.total + im.atk + (bm.dmg||0) + (wx.dmg||0) + (tx.dmg||0) + abilMods.flat + critExtra + im.delta);
         dmgLine.append(el("div",{style:`font-size:26px;font-weight:800;color:${isCrit?"var(--bad)":"var(--accent)"}`},
@@ -5932,7 +6101,8 @@ function openMoveRoll(p, m, sp, opts={}){
         if(critWhy.length) parts.push(critWhy.join(" "));
         parts.push(`= ${total}`);
         if(hitsInfo) dmgLine.append(el("div",{class:"small muted",style:"margin-top:2px"},
-          `🎯 Five Strike: 1d8 → ${hitsInfo.d8} = ${hitsInfo.hits} hit${hitsInfo.hits===1?"":"s"} — DB ${fDB} ×${hitsInfo.hits} = ${effFDB}`));
+          `🎯 Five Strike: 1d8 → ${hitsInfo.d8} = ${hitsInfo.hits} hit${hitsInfo.hits===1?"":"s"} — DB ${baseDB()} ×${hitsInfo.hits} = ${baseDB()*hitsInfo.hits}`
+          + `${stab?" +2 STAB":""}${abilMods.db?` +${abilMods.db} ability`:""}${bm.db?` +${bm.db} buffs`:""} → DB ${effFDB}`));
         if(multi) dmgLine.append(el("div",{class:"small muted",style:"margin-top:2px"},
           `${sp2.kind==="tripleKick"?"👣 Triple Kick":"⚔ Double Strike"}: ${connected} of ${nAcc} connected — Damage Base ${baseDB()}${stab?" +2 STAB":""}${abilMods.db?` +${abilMods.db} ability`:""} = ${fDB}`));
         dmgLine.append(el("div",{class:"small muted",style:"margin-top:4px"}, parts.join("  ")));
@@ -5945,6 +6115,7 @@ function openMoveRoll(p, m, sp, opts={}){
         }
       }
       out.append(dmgLine);
+      if(ancestral && (isPhys||isSpec)){ const an = ancestralStrikeNode(); if(an) out.append(an); }
     }
     /* GM override: keep the same Attack Rolls but force a different hit count (e.g. the target's
        real Evasion turned out different, or an ability changed what connects). Damage is re-rolled. */
@@ -7958,6 +8129,8 @@ const AUTOMATED_ABILITIES = {
   "galvanize":"Normal damaging moves can be retyped to Electric (toggle in the move roll — affects STAB).",
   "refridgerate":"Normal damaging moves can be retyped to Ice (toggle in the move roll — affects STAB).",
   "refrigerate":"Normal damaging moves can be retyped to Ice (toggle in the move roll — affects STAB).",
+  "mentalize":"Normal damaging moves can be retyped to Psychic (toggle in the move roll — affects STAB).",
+  "ancestral connection":"Adds a Ghost-Type Struggle Attack (own Accuracy & Damage Roll) after every damaging move that hits.",
   "guts":"+2 Attack Combat Stages while suffering a Status.",
   "toxic boost":"+2 Attack Combat Stages while Poisoned.",
   "flare boost":"+2 Sp. Attack Combat Stages while Burned.",
@@ -8031,7 +8204,8 @@ function speciesModal(s){
   if(!s) return;
   const bs=s.baseStats;
   let html = `<div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">
-      <img class="sprite s-lg" loading="lazy" src="${spriteUrl(s.name,false)}" alt="${esc(s.name)}" onerror="this.onerror=null;this.src='${POKEBALL_SVG}';this.classList.add('fallback')">
+      <img class="sprite s-lg" loading="lazy" src="${speciesArtChain(s.name,false)[0]}" alt="${esc(s.name)}"
+           data-art='${JSON.stringify(speciesArtChain(s.name,false).slice(1))}' onerror="artFallbackInline(this)">
       <div><div style="margin-bottom:6px">${(s.types||[]).map(typeBadge).join(" ")}</div>
       <span class="kv">${esc(s.size||"")}</span> <span class="kv">WC ${s.weightClass??"?"}</span>
       ${s.height?`<div class="r-meta" style="margin-top:4px">${esc(s.height)}</div>`:""}</div>

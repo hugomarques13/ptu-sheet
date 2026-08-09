@@ -7768,5 +7768,382 @@
       "tutor": []
     },
     "order": 16046
+  },
+  {
+    "name": "Mega Arcanine",
+    "order": 16047,
+    "baseStats": {
+      "hp": 10,
+      "atk": 14,
+      "def": 10,
+      "spatk": 12,
+      "spdef": 9,
+      "spd": 12
+    },
+    "types": [
+      "Fire",
+      "Fairy"
+    ],
+    "capabilities": {
+      "overland": 8,
+      "sky": 0,
+      "swim": 4,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 2,
+      "longJump": 3,
+      "power": 8,
+      "naturewalk": [
+        "Grassland",
+        "Mountain"
+      ],
+      "other": [
+        "Firestarter",
+        "Tracker",
+        "Mountable 1"
+      ]
+    },
+    "size": "Large",
+    "weightClass": 5,
+    "eggGroups": [
+      "Field"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 3,
+        "mod": "+1"
+      },
+      "athletics": {
+        "dice": 6,
+        "mod": "+3"
+      },
+      "charm": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 4,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 3,
+        "mod": "+1"
+      },
+      "guile": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 5,
+        "mod": "+2"
+      },
+      "stealth": {
+        "dice": 2,
+        "mod": "+2"
+      },
+      "survival": {
+        "dice": 2,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [],
+      "advanced": [],
+      "high": []
+    },
+    "evolution": [],
+    "gender": "75% M / 25% F",
+    "diet": "Carnivore",
+    "habitat": "Grassland, Mountain",
+    "height": "6' 3\" / 1.9m (Large)",
+    "moves": {
+      "levelup": [],
+      "tmhm": [],
+      "egg": [],
+      "tutor": []
+    },
+    "customArt": true
+  },
+  {
+    "name": "Mega Machamp",
+    "order": 16048,
+    "baseStats": {
+      "hp": 9,
+      "atk": 17,
+      "def": 10,
+      "spatk": 7,
+      "spdef": 11,
+      "spd": 8
+    },
+    "types": [
+      "Fighting",
+      "Psychic"
+    ],
+    "capabilities": {
+      "overland": 8,
+      "sky": 0,
+      "swim": 5,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 3,
+      "longJump": 2,
+      "power": 10,
+      "naturewalk": [
+        "Cave",
+        "Mountain"
+      ],
+      "other": []
+    },
+    "size": "Medium",
+    "weightClass": 5,
+    "eggGroups": [
+      "Humanshape"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 2,
+        "mod": "+2"
+      },
+      "athletics": {
+        "dice": 6,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 6,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 3,
+        "mod": "+2"
+      },
+      "guile": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 2,
+        "mod": "+2"
+      },
+      "stealth": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 2,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [],
+      "advanced": [],
+      "high": []
+    },
+    "evolution": [],
+    "gender": "75% M / 25% F",
+    "diet": "Omnivore",
+    "habitat": "Mountain",
+    "height": "5' 3\" / 1.6m (Medium)",
+    "moves": {
+      "levelup": [],
+      "tmhm": [],
+      "egg": [],
+      "tutor": []
+    },
+    "customArt": true
+  },
+  {
+    "name": "Mega Marowak",
+    "order": 16049,
+    "baseStats": {
+      "hp": 6,
+      "atk": 11,
+      "def": 13,
+      "spatk": 6,
+      "spdef": 10,
+      "spd": 7
+    },
+    "types": [
+      "Ground",
+      "Ghost"
+    ],
+    "capabilities": {
+      "overland": 6,
+      "sky": 0,
+      "swim": 3,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 1,
+      "longJump": 2,
+      "power": 4,
+      "naturewalk": [
+        "Cave",
+        "Mountain"
+      ],
+      "other": [
+        "Darkvision",
+        "Wielder",
+        "Underdog"
+      ]
+    },
+    "size": "Medium",
+    "weightClass": 3,
+    "eggGroups": [
+      "Monster"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 4,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 4,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 4,
+        "mod": "+2"
+      },
+      "guile": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 3,
+        "mod": "+1"
+      },
+      "stealth": {
+        "dice": 4,
+        "mod": "+1"
+      },
+      "survival": {
+        "dice": 2,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [],
+      "advanced": [],
+      "high": []
+    },
+    "evolution": [],
+    "gender": "50% M / 50% F",
+    "diet": "Herbivore",
+    "habitat": "Cave, Mountain, Urban",
+    "height": "3' 3\" / 1m (Medium)",
+    "moves": {
+      "levelup": [],
+      "tmhm": [],
+      "egg": [],
+      "tutor": []
+    },
+    "customArt": true
   }
 ]
