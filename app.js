@@ -1037,6 +1037,18 @@ function usesControl(owner, kind, name, freqRaw, rerender, persistFn, opts){
   wrap.append(el("span",{class:"uses-tag muted"}, tag));
   return wrap;
 }
+/* spend one use of a Scene/Daily/EOT move on `owner` (same tracker usesControl draws its pips
+   from). Returns false for at-will/unlimited moves or when no uses are left, so callers can skip
+   persisting when nothing actually changed. */
+function spendMoveUse(owner, m){
+  const info = freqInfo(m?.frequency);
+  if(!freqTrackable(info)) return false;
+  const key = useKey("move", m.name);
+  if(usesLeft(owner, key, info.max) <= 0) return false;
+  owner.uses = owner.uses || {};
+  owner.uses[key] = Math.min(info.max, (owner.uses[key]||0) + 1);
+  return true;
+}
 /* look up the frequency of a stored use-key's item */
 function itemFreqForKey(key){
   const [kind, name] = splitKey(key);
@@ -1688,6 +1700,9 @@ function render(){
   // the Encounters tab is GM-only
   const encBtn = $("#tabEncounters"); if(encBtn) encBtn.hidden = !isGM();
   if(currentTab==="encounters" && !isGM()){ switchTab("trainer"); return; }
+  // the Combat Simulator is a GM planning tool, same gating as Encounters
+  const simBtn = $("#tabSim"); if(simBtn) simBtn.hidden = !isGM();
+  if(currentTab==="sim" && !isGM()){ switchTab("trainer"); return; }
   refreshCharSelect();
   const ac = activeChar();
   $("#partyCount").textContent = (ac?.pokemon?.length) || "";
@@ -1698,6 +1713,7 @@ function render(){
   if (currentTab==="map")        renderMap();
   if (currentTab==="battle")     renderBattle();
   if (currentTab==="encounters") renderEncounters();
+  if (currentTab==="sim")        renderSim();
   if (currentTab==="reference")  renderReference();
   applyReadonlyLock();
 }
@@ -1708,7 +1724,7 @@ function render(){
    Viewer/co-pilot can't use ＋ Add token / ☑ All players even though those are theirs to use. */
 function applyReadonlyLock(){
   const lock = mode==="cloud" && cloud.activeId && !canEditActive();
-  const EXEMPT = new Set(["view-reference","view-battle","view-map"]);
+  const EXEMPT = new Set(["view-reference","view-battle","view-map","view-sim"]);
   $$(".view").forEach(v => v.classList.toggle("ro", !!lock && !EXEMPT.has(v.id)));
 }
 
@@ -5175,7 +5191,8 @@ function moveSlot(p, sp, m, mn, opts={}){
   const slot = el("div",{class:"moveslot"});
   if(opts.onFav) slot.append(el("button",{class:"actstar"+(opts.faved?" on":""),style:"align-self:center;margin-right:0",
     title:opts.faved?"unpin favourite":"pin favourite",onclick:e=>{e.stopPropagation();opts.onFav();}}, opts.faved?"★":"☆"));
-  const info = el("div",{style: m?"cursor:pointer;flex:1":"flex:1", onclick: m? ()=>openMoveRoll(p,m,sp) : null},
+  const rrMon = opts.rerender||(()=>refreshMon(p));
+  const info = el("div",{style: m?"cursor:pointer;flex:1":"flex:1", onclick: m? ()=>openMoveRoll(p,m,sp,{rerender:rrMon}) : null},
     el("div",{style:"font-weight:700"}, m?`${m.name} `:mn,
       m?el("span",{html:typeBadge(effectiveMoveType(p,m))}):"",
       opts.tag?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600"},opts.tag):""),
@@ -5184,7 +5201,7 @@ function moveSlot(p, sp, m, mn, opts={}){
   const acts = el("div",{class:"inline"});
   // Scene/Daily use tracker (Struggle & At-Will moves show nothing)
   if(m && !opts.tag){ const uc = usesControl(p, "move", m.name, m.frequency, opts.rerender||(()=>refreshMon(p))); if(uc) acts.append(uc); }
-  if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",title:"roll this move",onclick:()=>openMoveRoll(p,m,sp)},"🎲 Roll"));
+  if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",title:"roll this move",onclick:()=>openMoveRoll(p,m,sp,{rerender:rrMon})},"🎲 Roll"));
   if(m) acts.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("move",m.name)},"info"));
   if(opts.onRemove) acts.append(el("button",{class:"linkbtn",title:"remove",onclick:opts.onRemove},"×"));
   slot.append(acts);
@@ -5950,9 +5967,16 @@ function openMoveRoll(p, m, sp, opts={}){
   out.append(el("div",{class:"muted small"}, "Press 🎲 Roll dice to simulate."));
   /* redo = {nats, forceHits} — re-resolves a multi-strike attack with the SAME Attack Rolls
      (used by the "override hits" buttons, so the GM can correct the auto hit count). */
+  let usedThisRoll = false;   // mark the move's Frequency spent once per modal, on the FIRST roll —
+  // "override hits" redo's and the one-shot-buff re-roll below both call doRoll() again to recompute
+  // the SAME attack, not a new use of the move.
   const doRoll = (redo) => {
     out.style.borderStyle="solid";
     out.innerHTML="";
+    if(!usedThisRoll){
+      usedThisRoll = true;
+      if(spendMoveUse(p, m)){ (opts.persist||save)(); if(opts.rerender) opts.rerender(); }
+    }
 
     /* --- special-case damage (exact HP loss) & note-only moves --- */
     if(sp2?.kind==="noteOnly"){
@@ -7021,7 +7045,7 @@ function encounterMoveRow(p, sp, m, mn, favSet, onFav, isStruggle, trainer){
   if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"move details",
     onclick:()=>modal({title:m.name, bodyNode:el("div",{class:"small",html:moveDetailHTML(m,m.name)}),
       footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Close")]})},"ℹ"));
-  if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"roll this move",onclick:()=>openMoveRoll(p,m,sp)},"🎲"));
+  if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"roll this move",onclick:()=>openMoveRoll(p,m,sp,{persist:saveEnc,rerender:renderEncounters})},"🎲"));
   const hasSigFeature = !!(trainer && trainer.features && trainer.features.includes("Signature Technique"));
   if(m && !isStruggle && trainer && (hasSigFeature || isSig)) acts.append(el("button",{class:"btn-secondary"+(isSig?" on":""),style:"padding:5px 10px",
     title:isSig?"forget this Signature Technique (+1 Tutor Point)":"make this the Pokémon's Signature Technique (needs 2 Tutor Points + a matching Training Feature)",
@@ -7948,6 +7972,780 @@ function renderEncounters(){
   cur.trainers.forEach(tr=> tc.append(encounterTrainerCard(cur, tr)));
   root.append(tc);
   if(openKeys.size) root.querySelectorAll("details[data-key]").forEach(d=>{ if(openKeys.has(d.dataset.key)) d.open=true; });
+}
+
+/* ===================================================================
+   COMBAT SIMULATOR  (GM-only)
+   "If these two sides fought, who wins and how fast?" — a Monte-Carlo
+   battle runner built on the sheet's own maths: pokeDerived/trainerDerived
+   for stats, the DB_TABLE dice, STAB, the PTU effectiveness ladder,
+   defenceTypeMods, Combat Stages, buffs, abilities and Damage Reduction
+   are all the SAME functions the move-roll modal and the Map use, so a
+   simulated hit lands for the same number a hand-rolled one would.
+
+   What it deliberately does NOT model (PTU is far too big for that):
+   Status Moves & buff/debuff moves (only damaging attacks are used),
+   switching, items, Trainer Features & class abilities, positioning /
+   range / AoE, Interrupts and Attacks of Opportunity, or the many
+   move-specific riders. Read the numbers as "raw slugging-match maths",
+   not as a prediction of a real table's fight — its job is questions like
+   "can this boss realistically drop a player in one round?".
+=================================================================== */
+const SIM_KEY = "ptu_sim_cfg";
+const SIM_FOCUS = [["lowest","Finish the wounded — lowest HP first"],
+                   ["best","Best matchup — whoever it hurts most"],
+                   ["threat","Biggest threat — whoever hits hardest"],
+                   ["random","Random target"]];
+const SIM_AI = [["smart","Optimal — always its best expected attack"],
+                ["solid","Solid — best of two options it happens to consider"],
+                ["random","Reckless — any damaging attack at random"]];
+const SIM_MAX_RUNS = 5000;
+function simNewSide(){ return { sources:[], exclude:[], ai:"smart", focus:"lowest",
+                                attackTrainers:false, trainersFight:true }; }
+function loadSimCfg(){
+  const base = { runs:300, maxRounds:20, startHP:"full", useFreq:true, useWeather:false,
+                 useStatus:true, useInjury:false, A:simNewSide(), B:simNewSide() };
+  try{
+    const s = JSON.parse(localStorage.getItem(SIM_KEY)||"null");
+    if(s && typeof s==="object"){
+      Object.assign(base, s);
+      base.A = Object.assign(simNewSide(), s.A); base.B = Object.assign(simNewSide(), s.B);
+    }
+  }catch(e){}
+  return base;
+}
+let simCfg = loadSimCfg();
+function saveSimCfg(){ try{ localStorage.setItem(SIM_KEY, JSON.stringify(simCfg)); }catch(e){} }
+let simResult = null;      // last aggregate, kept so switching tabs doesn't lose it
+let simRunning = false;
+const simSide = k => k==="A" ? simCfg.A : simCfg.B;
+
+/* ---------- what you can throw into the ring ---------- */
+/* Every character sheet (players + the GM's own NPCs) and every encounter. */
+function simSourceList(){
+  const out = [];
+  if(mode==="cloud"){
+    Object.values(cloud.byId).forEach(r=>{
+      if(!r || !r.data || r.owner_id===PC_OWNER || r.owner_id===MAP_OWNER || r.owner_id===ENC_OWNER) return;
+      const nm = r.data.trainer?.name || r.name || "Trainer";
+      out.push({ key:"char:"+r.id, kind:"char", id:r.id, group:"Characters",
+                 name: nm + (r.owner_name && normName(r.owner_name)!==normName(nm) ? ` (${r.owner_name})` : "") });
+    });
+  } else {
+    (state.characters||[]).forEach(c=> out.push({ key:"char:"+c.id, kind:"char", id:c.id, group:"Characters",
+      name: c.trainer?.name || c.name || "Trainer" }));
+  }
+  encList().forEach(e=> out.push({ key:"enc:"+e.id, kind:"enc", id:e.id, group:"Encounters",
+    name:(e.archived?"📦 ":"")+(e.name||"(unnamed)") }));
+  return out;
+}
+const simSourceByKey = key => simSourceList().find(s=>s.key===key) || null;
+function simSourceChar(id){
+  return mode==="cloud" ? (cloud.byId[id]?.data || null)
+                        : ((state.characters||[]).find(c=>c.id===id) || null);
+}
+/* Flatten one source into individual fighters. `obj` stays a LIVE reference — it's deep-cloned
+   once per simulated battle so nothing the sim does ever touches the real sheet. */
+function simFightersOf(src){
+  const out = [];
+  if(!src) return out;
+  if(src.kind==="char"){
+    const c = simSourceChar(src.id); if(!c) return out;
+    if(c.trainer) out.push({ key:src.key+"|t", name:c.trainer.name||src.name, kind:"trainer", obj:c.trainer });
+    (c.pokemon||[]).filter(p=>p.onTeam!==false).forEach(p=>
+      out.push({ key:src.key+"|p"+p.id, name:encMonName(p), kind:"pokemon", obj:p }));
+  } else {
+    const e = encList().find(x=>x.id===src.id); if(!e) return out;
+    (e.mons||[]).forEach(p=> out.push({ key:src.key+"|m"+p.id, name:encMonName(p), kind:"pokemon", obj:p }));
+    (e.trainers||[]).forEach(tr=>{
+      if(tr.trainer) out.push({ key:src.key+"|t"+tr.id, name:tr.trainer.name||"Trainer", kind:"trainer", obj:tr.trainer });
+      (tr.pokemon||[]).forEach(p=> out.push({ key:src.key+"|tp"+p.id, name:encMonName(p), kind:"pokemon", obj:p }));
+    });
+  }
+  return out;
+}
+/* every fighter a side has picked, minus the ones ticked off in its roster */
+function simSideFighters(side){
+  const skip = new Set(side.exclude||[]);
+  const out = [];
+  (side.sources||[]).forEach(k=> simFightersOf(simSourceByKey(k)).forEach(f=>{ if(!skip.has(f.key)) out.push(f); }));
+  return out;
+}
+
+/* ---------- one fighter inside a simulated battle ---------- */
+function simMaxHP(u){
+  if(isBoss(u.obj)) return bossMaxTotalHP(u.obj);                 // every bar, as one pool
+  if(!u.isT && isSwarm(u.obj)) return swarmMaxTotalHP(u.obj);
+  return u.isT ? u.d().hp : u.d().maxHP;
+}
+function simUnit(f, sideKey, cfg){
+  const obj = JSON.parse(JSON.stringify(f.obj));
+  const isT = f.kind==="trainer";
+  if(isT) normTrainer(obj); else normPokemon(obj);
+  const u = { key:f.key, id:f.key+"/"+sideKey, name:f.name, side:sideKey, isT, obj,
+              sp: isT ? null : getSpecies(obj.species), _d:null, _dm:null, _v:0,
+              used:{}, eotUsed:{}, toxic:0, hp:0, max:0, acts:1, downRound:0,
+              dealt:0, taken:0, kos:0, hits:0, misses:0, crits:0, turns:0 };
+  u.d     = () => u._d  || (u._d  = isT ? trainerDerived(obj) : pokeDerived(obj));
+  u.dmods = () => isT ? null : (u._dm || (u._dm = defenseTypeMods(obj)));
+  // _v invalidates the cached attack profiles below whenever anything about this fighter changes
+  u.bust  = () => { u._d=null; u._dm=null; u._v++; u.max = simMaxHP(u); if(u.hp>u.max) u.hp=u.max; };
+  u.max   = simMaxHP(u);
+  /* Bosses take several turns a round (Running the Game p.487) and Swarms act again per multiplier
+     (Core p.478) — the single biggest factor in "can they alpha-strike us?", so both are honoured. */
+  u.acts  = isBoss(obj) ? Math.max(1, obj.boss.actions||1)
+          : (!isT && isSwarm(obj)) ? Math.max(1, swarmActs(obj)) : 1;
+  u.hp = u.max;
+  if(cfg.startHP==="current"){
+    const cur = isBoss(obj) ? bossTotalHP(obj) : (!isT && isSwarm(obj)) ? swarmTotalHP(obj) : obj.currentHP;
+    if(typeof cur==="number") u.hp = Math.max(0, Math.min(cur, u.max));
+  }
+  u.atks = simAttacks(u);
+  return u;
+}
+/* Every damaging attack this fighter can make, normalised into one shape:
+   {name, type, cls, ac, db, freq, m} where `m` is a move-shaped object (name/effect/range/…) so
+   critThreshold / abilityDamageMods / effectThresholds can all be reused verbatim. */
+function simAttacks(u){
+  const out = [], seen = new Set();
+  const push = m => {
+    if(!m) return;
+    const cls = String(m.class || m.cls || "");
+    if(!/phys|spec/i.test(cls)) return;                       // Status Moves aren't modelled
+    const db = m.damageBase;
+    if(typeof db!=="number" || db<1) return;                  // fixed/special-damage moves are skipped
+    const key = (m.name||"")+"|"+db+"|"+(m.type||"");
+    if(seen.has(key)) return; seen.add(key);
+    out.push({ name:m.name||"Attack", type:m.type||"Normal", cls:/spec/i.test(cls)?"Special":"Physical",
+               ac: m.ac!=null ? m.ac : 4, db, freq:m.frequency||"At-Will", m });
+  };
+  if(u.isT){
+    const t = u.obj;
+    push(trainerStruggle(t, (t.weapons||[]).find(w=>w.equipped) || null));
+    (t.weapons||[]).forEach(w=> [w.weaponMoveAdept, w.weaponMoveMaster].filter(Boolean)
+      .forEach(mn=> push(trainerAttackProfile(t, mn, w))));
+    [...(t.encMoves||[]), ...(t.moves||[])].forEach(mn=> push(moveByName.get(String(mn).toLowerCase())));
+  } else {
+    (u.obj.moves||[]).forEach(mn=> push(moveByName.get(String(mn).toLowerCase())));
+    push(struggleFor(u.obj, u.sp));
+  }
+  return out;
+}
+/* Frequency budget. At-Will is free; EOT is once a round; Scene/Daily are a per-battle allowance. */
+function simCanUse(u, atk, cfg){
+  if(!cfg.useFreq) return true;
+  if(cfg.useStatus && hasStatus(u.obj,"suppressed") && freqInfo(atk.freq).kind!=="atwill") return false;
+  const fi = freqInfo(atk.freq);
+  if(fi.kind==="eot")   return !u.eotUsed[atk.name];
+  if(fi.kind==="scene" || fi.kind==="daily") return (u.used[atk.name]||0) < (fi.max||1);
+  return true;
+}
+function simSpend(u, atk, cfg){
+  if(!cfg.useFreq) return;
+  const fi = freqInfo(atk.freq);
+  if(fi.kind==="eot") u.eotUsed[atk.name] = true;
+  else if(fi.kind==="scene" || fi.kind==="daily") u.used[atk.name] = (u.used[atk.name]||0)+1;
+}
+
+/* ---------- the attack maths (mirrors openMoveRoll / tokenDamageBreakdown) ---------- */
+const simDbAvg = db => { const s = DB_TABLE[Math.max(1,Math.min(28,Math.round(db)))];
+                         return s ? (+String(s).split("/")[1].trim() || 0) : 0; };
+/* effectThresholds() is the one genuinely expensive call in the inner loop (sentence-splitting +
+   regex over free text) and its answer only depends on the effect string — memoise it globally. */
+const _simThr = new Map();
+function simThresholds(effect){
+  const k = effect || "";
+  let v = _simThr.get(k);
+  if(!v){ v = effectThresholds(k); _simThr.set(k, v); }
+  return v;
+}
+/* Everything about an attack that doesn't depend on the target. Cached per fighter-version, so a
+   few hundred battles' worth of AI "what would this do?" queries stay cheap. */
+function simProfile(A, atk, cfg){
+  if(atk._pr && atk._pv === A._v) return atk._pr;
+  const p = A.obj, d = A.d();
+  const isPhys = atk.cls === "Physical";
+  const mtype  = A.isT ? (atk.type||"Normal") : effectiveMoveType(p, atk.m);
+  const stab   = !A.isT && !!mtype && (A.sp?.types||[]).includes(mtype);
+  // Trainers add their raw Attack to every Struggle/Weapon Move (Core p.286); Pokémon use the
+  // Combat-Stage-adjusted Attack / Sp.Attack matching the Move's class.
+  const atkStat = A.isT ? (p.combat.atk.base + p.combat.atk.added)
+                        : (isPhys ? d.eff.atk : d.eff.spatk);
+  const bm  = buffMods(p);
+  const thr = simThresholds(atk.m.effect);
+  const abil = A.isT ? { db:0, flat:0 }
+                     : abilityDamageMods(p, atk.m, atk.db, thr, { stab, mtype, isPhys, isSpec:!isPhys });
+  const wx  = cfg.useWeather ? weatherRollMods(p, atk.m, mtype) : { dmg:0, autoHit:false, acOverride:null };
+  const tx  = cfg.useWeather ? terrainRollMods(p, atk.m, mtype) : { dmg:0 };
+  const aAcc = A.isT ? { acc:0 } : abilityAccMods(p, atk.m, isPhys);
+  atk._pv = A._v;
+  return atk._pr = {
+    mtype, isPhys, stab, thr,
+    baseDB: atk.db,
+    db: Math.min(28, atk.db + (stab?2:0) + (bm.db||0) + (abil.db||0)),
+    dbBonus: (stab?2:0) + (bm.db||0) + (abil.db||0),
+    ac: wx.acOverride!=null ? wx.acOverride : atk.ac,
+    accMod: (bm.acc||0) + (d.cs.acc||0) + (aAcc.acc||0) + (hasStatus(p,"focused")?1:0),
+    critT: Math.max(2, critThreshold(p, atk.m) - (bm.crit||0)),
+    flat: atkStat + (bm.dmg||0) + (wx.dmg||0) + (tx.dmg||0) + (abil.flat||0),
+    autoHit: !!wx.autoHit,
+    fiveStrike: isFiveStrike(atk.m),
+    atkStat,
+  };
+}
+function simDefStat(D, isPhys){
+  const d = D.d();
+  return D.isT ? (isPhys ? d.totals.def : d.totals.spdef) : (isPhys ? d.eff.def : d.eff.spdef);
+}
+/* Vulnerable / Asleep / Frozen / Tripped / Blinded targets apply no Evasion at all (Core p.246). */
+const SIM_NO_EVA = ["vulnerable","sleep","frozen","tripped","blinded"];
+function simEva(D, isPhys, cfg){
+  if(cfg.useStatus && SIM_NO_EVA.some(k=>hasStatus(D.obj,k))) return 0;
+  const d = D.d();
+  return isPhys ? d.physEva : d.specEva;
+}
+function simTypeMult(D, type){
+  if(D.isT) return 1;                                   // Trainers are typeless
+  const mods = D.dmods();
+  if(mods.immune.has(type)) return 0;
+  let m = typeMultAgainst(type, D.sp?.types||[], mods.step?.[type] || 0);
+  if(mods.wonderGuard && m>0 && m<=1) m = 0;
+  if(mods.seReduce && m>1) m = seReducedMult(m);
+  return m;
+}
+/* rolled total → HP actually lost, running the same order as tokenDamageBreakdown */
+function simMitigate(D, raw, type, isPhys){
+  const mult = simTypeMult(D, type);
+  const afterDef = Math.max(0, raw - simDefStat(D, isPhys));
+  const mods = D.dmods();
+  const seDR = (mods && mods.seFlatDR && mult>1) ? mods.seFlatDR : 0;
+  return Math.max(0, Math.floor(afterDef * mult) - buffDR(D.obj).dr - seDR);
+}
+/* average damage this attack would do to this target — what the AI ranks its options by */
+function simExpected(A, atk, D, cfg){
+  const pr = simProfile(A, atk, cfg);
+  let pHit = 1;
+  if(!pr.autoHit && pr.ac!=null){
+    const need = pr.ac + simEva(D, pr.isPhys, cfg);
+    let ok = 0; for(let n=2;n<=20;n++) if(n===20 || n + pr.accMod >= need) ok++;
+    pHit = ok/20;
+  }
+  const db  = pr.fiveStrike ? Math.min(28, pr.baseDB*3 + pr.dbBonus) : pr.db;   // Five Strike averages 3 hits
+  const avg = simDbAvg(db);
+  const pCrit = pr.autoHit ? 0 : Math.max(0, (21-pr.critT)/20);
+  return pHit * simMitigate(D, Math.round(avg + pr.flat + pCrit*avg), pr.mtype, pr.isPhys);
+}
+
+/* ---------- damage / HP bookkeeping ---------- */
+/* Take `amount` off a fighter. `why` is set for damage that has no attack line of its own (Burn,
+   Toxic, Confusion) so it gets logged here; a struck target logs its own line first, then this
+   appends the 💀 underneath it. */
+function simHurt(B, u, amount, why, round){
+  if(amount<=0 || u.hp<=0) return 0;
+  const before = u.hp;
+  u.hp = Math.max(0, u.hp - amount);
+  u.taken += before - u.hp;
+  if(B.cfg.useInjury && !u.isT && !isSwarm(u.obj)){
+    const inj = injuriesFromHit(ownerFullHP(u.obj), before, u.hp, before - u.hp);
+    if(inj>0){ u.obj.injuries = (u.obj.injuries||0) + inj; u.bust(); }
+  }
+  if(why && B.log) B.log.push(`      ☠ ${why}: ${u.name} loses ${before-u.hp} HP (${before}→${u.hp})`);
+  if(u.hp<=0 && !u.downRound){ u.downRound = round; B.log && B.log.push(`      💀 ${u.name} is down.`); }
+  return before - u.hp;
+}
+function simCure(u, key){
+  const i = (u.obj.statuses||[]).indexOf(key);
+  if(i>=0){ u.obj.statuses.splice(i,1); u.bust(); return true; }
+  return false;
+}
+function simInflict(u, def){
+  if(!def || hasStatus(u.obj, def.key)) return false;
+  const types = u.isT ? [] : (u.sp?.types||[]);                 // Trainers have no Type immunities
+  if((def.immune||[]).some(t=>types.includes(t))) return false;
+  u.obj.statuses.push(def.key); u.bust();
+  return true;
+}
+const simD20 = () => 1 + Math.floor(Math.random()*20);
+
+/* ---------- resolving one attack ---------- */
+function simStrike(B, A, atk, D, round){
+  const cfg = B.cfg, pr = simProfile(A, atk, cfg);
+  simSpend(A, atk, cfg);
+  A.turns++;
+  const need = pr.ac==null ? null : pr.ac + simEva(D, pr.isPhys, cfg);
+  const nat  = simD20();
+  const tot  = nat + pr.accMod;
+  const hit  = pr.autoHit || (nat!==1 && (nat===20 || need==null || tot >= need));
+  /* Confusion (Feb 2016 errata): 1d2 on every Attack — on a 1 the user hurts itself. */
+  if(cfg.useStatus && hasStatus(A.obj,"confused") && Math.random()<0.5){
+    const self = confusionSelfDamage(A.obj);
+    simHurt(B, A, pr.isPhys ? self.phys : self.spec, "💫 Confusion", round);
+  }
+  if(!hit){
+    A.misses++;
+    B.log && B.log.push(`   ${A.name} → ${D.name}: ${atk.name} — 🎯 ${tot} vs ${need} … miss`);
+    return 0;
+  }
+  A.hits++;
+  const crit = !pr.autoHit && nat >= pr.critT;
+  if(crit) A.crits++;
+  /* Five Strike (Core p.242): the Move's OWN Damage Base is multiplied by the rolled hit count,
+     and STAB / Technician / buffs are added to the product. */
+  const hits = pr.fiveStrike ? fiveStrikeRoll().hits : 1;
+  const db   = pr.fiveStrike ? Math.min(28, pr.baseDB*hits + pr.dbBonus) : pr.db;
+  const dice = String(DB_TABLE[db]||"").split("/")[0].trim();
+  const r = rollDiceString(dice);
+  let raw = (r ? r.total : 0) + pr.flat;
+  if(crit){                                       // a Crit adds the Damage Dice (incl. their flat) again
+    const r2 = rollDiceString(dice); raw += r2 ? r2.total : 0;
+    if(hasAbility(A.obj,"Sniper")){ const r3 = rollDiceString(dice); raw += r3 ? r3.total : 0; }
+  }
+  const before = D.hp;
+  const done  = Math.min(before, simMitigate(D, Math.max(0,raw), pr.mtype, pr.isPhys));
+  /* Status riders: a triggered Effect Range that names an Affliction applies it (same heuristic the
+     move-roll modal uses for its "Poisoned!" banner). Sheer Force trades these away for damage. */
+  let inflicted = null;
+  if(cfg.useStatus && before-done > 0 && !hasAbility(A.obj,"Sheer Force") && !hasAbility(A.obj,"Sheer Force [Errata]")){
+    for(const t of pr.thr){
+      if(nat < t.n || /critical\s+(hit|range)/i.test(t.text||"")) continue;
+      const def = statusHitFromText(t.text);
+      if(def && simInflict(D, def)){ inflicted = def.name; break; }
+    }
+  }
+  // logged BEFORE the HP is actually taken off, so this line always sits above its own 💀
+  B.log && B.log.push(`   ${A.name} → ${D.name}: ${atk.name} (${pr.mtype}, DB ${db})`
+    + ` — 🎯 ${pr.autoHit?"auto":tot}${crit?" 💥 CRIT":""} · ${done} damage · ${D.name} ${before}→${before-done} HP`
+    + (inflicted?` · ${inflicted}!`:""));
+  simHurt(B, D, done, null, round);
+  A.dealt += done;
+  if(done>0 && consumeDamageBuffs(D.obj)) D.bust();               // Excited & co. are spent absorbing it
+  if(cfg.useStatus && hasStatus(D.obj,"sleep") && done>0) simCure(D, "sleep");   // damage wakes it
+  if(before>0 && D.hp<=0) A.kos++;
+  return done;
+}
+
+/* ---------- target & attack choice ---------- */
+function simPickTarget(B, A, foes){
+  const side = simSide(A.side);
+  const trainers = foes.filter(f=>f.isT), mons = foes.filter(f=>!f.isT);
+  /* "Attack Trainers": go straight for the people if any are on the field. Off = the normal PTU
+     assumption that Pokémon fight Pokémon, and the Trainers only get hit once their team is down. */
+  let pool = side.attackTrainers ? (trainers.length ? trainers : mons)
+                                 : (mons.length ? mons : trainers);
+  if(!pool.length) pool = foes;
+  if(pool.length===1) return pool[0];
+  switch(side.focus){
+    case "random": return pool[Math.floor(Math.random()*pool.length)];
+    case "threat": {
+      // whoever would hit ME hardest
+      let best=pool[0], bv=-1;
+      pool.forEach(f=>{ const v = simBestAttack(B, f, A).score; if(v>bv){ bv=v; best=f; } });
+      return best;
+    }
+    case "best": {
+      let best=pool[0], bv=-1;
+      pool.forEach(f=>{ const v = simBestAttack(B, A, f).score; if(v>bv){ bv=v; best=f; } });
+      return best;
+    }
+    default: {   // "lowest" — finish the wounded (ties broken by who's easiest to hurt)
+      let best=pool[0], bv=Infinity;
+      pool.forEach(f=>{ if(f.hp<bv){ bv=f.hp; best=f; } });
+      return best;
+    }
+  }
+}
+/* the attack this fighter would choose against that target, per its side's tactics setting */
+function simBestAttack(B, A, D){
+  const cfg = B.cfg;
+  const usable = A.atks.filter(a=>simCanUse(A, a, cfg));
+  if(!usable.length) return { atk:null, score:0 };
+  const ai = simSide(A.side).ai;
+  let pool = usable;
+  if(ai==="random"){ const a = usable[Math.floor(Math.random()*usable.length)];
+                     return { atk:a, score:simExpected(A, a, D, cfg) }; }
+  if(ai==="solid" && usable.length>2){
+    pool = [usable[Math.floor(Math.random()*usable.length)], usable[Math.floor(Math.random()*usable.length)]];
+  }
+  let best=null, bv=-1;
+  pool.forEach(a=>{ const v = simExpected(A, a, D, cfg); if(v>bv){ bv=v; best=a; } });
+  return { atk:best, score:Math.max(0,bv) };
+}
+
+/* ---------- end-of-turn upkeep ---------- */
+function simUpkeep(B, u, round){
+  if(!B.cfg.useStatus || u.hp<=0) return;
+  const o = u.obj;
+  if(hasStatus(o,"burned"))        simHurt(B, u, hpTick(u.max), "🔥 Burn", round);
+  if(hasStatus(o,"poisoned"))      simHurt(B, u, hpTick(u.max), "☣ Poison", round);
+  if(hasStatus(o,"badlyPoisoned")){ u.toxic = u.toxic ? u.toxic*2 : 5; simHurt(B, u, u.toxic, "☣ Toxic", round); }
+  if(hasStatus(o,"cursed"))        simHurt(B, u, hpTick(u.max)*2, "👻 Curse", round);
+  if(u.hp<=0) return;
+  if(hasStatus(o,"frozen")   && simD20()>=16) simCure(u, "frozen");
+  if(hasStatus(o,"sleep")    && simD20()>=16) simCure(u, "sleep");
+  if(hasStatus(o,"confused") && simD20()>=16) simCure(u, "confused");
+  if(hasStatus(o,"enraged")  && simD20()>=15) simCure(u, "enraged");
+  if(hasStatus(o,"suppressed")) simCure(u, "suppressed");        // always exactly 1 full round
+}
+/* Frozen and Asleep creatures lose their action entirely (they still take their upkeep Save). */
+const simCanAct = (u,cfg) => u.hp>0 && !(cfg.useStatus && (hasStatus(u.obj,"frozen")||hasStatus(u.obj,"sleep")));
+function simInitiative(u){
+  const d = u.d();
+  let v = (u.isT ? d.totals.spd : d.eff.spd) || 0;
+  if(hasStatus(u.obj,"paralysis")) v = Math.floor(v/2);   // Feb 2016 errata: halves Initiative
+  if(hasStatus(u.obj,"flinch"))    v -= 5;
+  if(hasStatus(u.obj,"agile"))     v += 4;
+  return v;
+}
+
+/* ---------- one whole battle ---------- */
+function simBattle(cfg, fightersA, fightersB, wantLog){
+  const B = { cfg, log: wantLog ? [] : null };
+  const units = [...fightersA.map(f=>simUnit(f,"A",cfg)), ...fightersB.map(f=>simUnit(f,"B",cfg))];
+  const alive = side => units.filter(u=>u.side===side && u.hp>0);
+  if(B.log) B.log.push(`Side A: ${fightersA.map(f=>f.name).join(", ")||"—"}`,
+                       `Side B: ${fightersB.map(f=>f.name).join(", ")||"—"}`);
+  let round = 0, winner = "draw";
+  while(round < cfg.maxRounds){
+    round++;
+    if(B.log) B.log.push(`— Round ${round} —`);
+    units.forEach(u=>{ u.eotUsed = {}; });
+    // Initiative is re-read each round so Combat Stages / Paralysis / Flinch actually matter.
+    const order = units.filter(u=>u.hp>0)
+      .map(u=>({ u, i:simInitiative(u), r:Math.random() }))
+      .sort((a,b)=> b.i-a.i || b.r-a.r).map(x=>x.u);
+    for(const u of order){
+      if(u.hp<=0) continue;
+      if(u.isT && !simSide(u.side).trainersFight) continue;
+      if(simCanAct(u, cfg)){
+        for(let act=0; act<u.acts && u.hp>0; act++){
+          const foes = alive(u.side==="A"?"B":"A");
+          if(!foes.length) break;
+          const D = simPickTarget(B, u, foes);
+          const { atk } = simBestAttack(B, u, D);
+          if(!atk){ B.log && B.log.push(`   ${u.name} has no attack left to use.`); break; }
+          simStrike(B, u, atk, D, round);
+        }
+      } else if(B.log) B.log.push(`   ${u.name} can't act.`);
+      simUpkeep(B, u, round);
+      if(!alive("A").length || !alive("B").length) break;
+    }
+    const aA = alive("A").length, aB = alive("B").length;
+    if(!aA || !aB){ winner = !aA && !aB ? "draw" : (aA ? "A" : "B"); break; }
+  }
+  if(B.log) B.log.push(winner==="draw" ? `Stalemate after ${round} rounds.` : `Side ${winner} wins on round ${round}.`);
+  return { winner, rounds:round, log:B.log, units };
+}
+
+/* ---------- aggregation over many battles ---------- */
+function simNewAgg(cfg, fightersA, fightersB){
+  const units = {};
+  const seed = (f, side)=>{ units[f.key+"/"+side] = { name:f.name, side, kind:f.kind,
+    dealt:0, taken:0, kos:0, hits:0, misses:0, crits:0, turns:0, survived:0, downRounds:0, downs:0 }; };
+  fightersA.forEach(f=>seed(f,"A")); fightersB.forEach(f=>seed(f,"B"));
+  return { target:cfg.runs, runs:0, A:0, B:0, draw:0, roundsA:[], roundsB:[], byRound:{}, units,
+           log:null, sumRounds:0, when:Date.now(),
+           names:{ A:fightersA.map(f=>f.name), B:fightersB.map(f=>f.name) } };
+}
+function simFold(agg, res){
+  agg.runs++;
+  agg.sumRounds += res.rounds;
+  if(res.winner==="A"){ agg.A++; agg.roundsA.push(res.rounds); }
+  else if(res.winner==="B"){ agg.B++; agg.roundsB.push(res.rounds); }
+  else agg.draw++;
+  if(res.winner!=="draw"){
+    const k = res.rounds;
+    (agg.byRound[k] || (agg.byRound[k] = {A:0,B:0}))[res.winner]++;
+  }
+  res.units.forEach(u=>{
+    const s = agg.units[u.id]; if(!s) return;
+    s.dealt+=u.dealt; s.taken+=u.taken; s.kos+=u.kos; s.hits+=u.hits;
+    s.misses+=u.misses; s.crits+=u.crits; s.turns+=u.turns;
+    if(u.hp>0) s.survived++; else { s.downs++; s.downRounds += u.downRound || res.rounds; }
+  });
+  if(!agg.log) agg.log = res.log;
+}
+
+/* ---------- running it (chunked so the tab never freezes) ---------- */
+function simRun(){
+  if(simRunning) return;
+  const fA = simSideFighters(simCfg.A), fB = simSideFighters(simCfg.B);
+  if(!fA.length || !fB.length){ toast("Both sides need at least one fighter"); return; }
+  const cfg = JSON.parse(JSON.stringify(simCfg));
+  cfg.runs = Math.max(1, Math.min(SIM_MAX_RUNS, cfg.runs|0));
+  cfg.maxRounds = Math.max(1, Math.min(100, cfg.maxRounds|0));
+  const agg = simNewAgg(cfg, fA, fB);
+  simResult = agg; simRunning = true;
+  simDrawOut();
+  const step = ()=>{
+    const t0 = performance.now();
+    while(agg.runs < agg.target && performance.now() - t0 < 45){
+      simFold(agg, simBattle(cfg, fA, fB, agg.runs===0));
+    }
+    if(agg.runs < agg.target){ simDrawOut(); setTimeout(step, 0); }
+    else { simRunning = false; simDrawOut(); }
+  };
+  setTimeout(step, 0);
+}
+
+/* ===================================================================
+   SIMULATOR VIEW
+=================================================================== */
+function simRosterCard(sideKey){
+  const side = simSide(sideKey);
+  const card = el("div",{class:"card"});
+  const title = sideKey==="A" ? "🟦 Side A" : "🟥 Side B";
+  card.append(el("h3",{}, `${title} (${simSideFighters(side).length} fighters)`,
+    el("button",{class:"linkbtn h-act",title:"remove every source from this side",
+      onclick:()=>{ side.sources=[]; side.exclude=[]; saveSimCfg(); renderSim(); }},"clear")));
+  // add a source
+  const sources = simSourceList().filter(s=>!side.sources.includes(s.key));
+  const addRow = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-bottom:8px"});
+  const sel = el("select",{style:"flex:1 1 180px;min-width:150px"});
+  sel.append(el("option",{value:""}, sources.length?"— add a character or encounter —":"— nothing left to add —"));
+  ["Characters","Encounters"].forEach(g=>{
+    const rows = sources.filter(s=>s.group===g); if(!rows.length) return;
+    const og = el("optgroup",{label:g});
+    rows.forEach(s=> og.append(el("option",{value:s.key}, s.name)));
+    sel.append(og);
+  });
+  sel.addEventListener("change",()=>{ if(!sel.value) return;
+    side.sources.push(sel.value); saveSimCfg(); renderSim(); });
+  addRow.append(sel);
+  card.append(addRow);
+  if(!side.sources.length)
+    card.append(el("div",{class:"small muted"},"No one on this side yet — add a player's sheet or a whole encounter."));
+  side.sources.forEach(key=>{
+    const src = simSourceByKey(key);
+    const box = el("div",{style:"border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;margin-bottom:8px;background:var(--panel-2)"});
+    box.append(el("div",{class:"inline",style:"justify-content:space-between;gap:8px"},
+      el("b",{}, src ? `${src.kind==="enc"?"👹":"🧑"} ${src.name}` : "⚠ missing source"),
+      el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove",
+        onclick:()=>{ side.sources = side.sources.filter(k=>k!==key); saveSimCfg(); renderSim(); }},"✕")));
+    const fighters = simFightersOf(src);
+    if(!fighters.length) box.append(el("div",{class:"small muted"},"— nothing in it to fight with"));
+    const skip = new Set(side.exclude||[]);
+    fighters.forEach(f=>{
+      const isT = f.kind==="trainer";
+      const d = isT ? trainerDerived(f.obj) : pokeDerived(f.obj);
+      const lbl = el("label",{class:"inline",style:"gap:8px;cursor:pointer;padding:2px 0;align-items:center"});
+      const cb = el("input",{type:"checkbox"}); cb.checked = !skip.has(f.key);
+      cb.addEventListener("change",()=>{
+        side.exclude = (side.exclude||[]).filter(k=>k!==f.key);
+        if(!cb.checked) side.exclude.push(f.key);
+        saveSimCfg(); renderSim();
+      });
+      const types = isT ? [] : (getSpecies(f.obj.species)?.types||[]).filter(t=>t && t!=="None");
+      lbl.append(cb, el("span",{class:"small"}, `${isT?"🧑":"⬤"} ${f.name}`),
+        el("span",{class:"small muted"}, `Lv ${f.obj.level||1} · ${isT?d.hp:d.maxHP} HP`
+          + (types.length ? ` · ${types.join("/")}` : "")
+          + (isBoss(f.obj) ? ` · 👑 Boss ×${f.obj.boss.actions||1}` : "")
+          + (!isT && isSwarm(f.obj) ? " · 🐝 Swarm" : "")));
+      box.append(lbl);
+    });
+    card.append(box);
+  });
+  // tactics
+  const tac = el("div",{style:"border-top:1px dashed var(--line);margin-top:8px;padding-top:8px"});
+  tac.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800;margin-bottom:6px"},"TACTICS"));
+  const check = (label, key, hint)=>{
+    const l = el("label",{class:"inline",style:"gap:8px;cursor:pointer;align-items:flex-start;margin-bottom:4px"});
+    const cb = el("input",{type:"checkbox"}); cb.checked = !!side[key];
+    cb.addEventListener("change",()=>{ side[key]=cb.checked; saveSimCfg(); simInvalidate(); });
+    l.append(cb, el("div",{}, el("div",{class:"small",style:"font-weight:700"},label),
+      el("div",{class:"small muted"},hint)));
+    return l;
+  };
+  tac.append(check("⚔ Attack Trainers","attackTrainers",
+    "Go for the Trainers themselves whenever one is on the field, instead of clearing their Pokémon first."));
+  tac.append(check("🧑 Trainers take turns","trainersFight",
+    "Their Trainers attack too (Struggle / Weapon Moves). Off = they stand there and can still be knocked out."));
+  const selRow = (label, key, opts)=>{
+    const row = el("div",{style:"margin-top:6px"});
+    row.append(el("div",{class:"small muted",style:"font-weight:700"},label));
+    const s = el("select",{style:"width:100%;margin-top:2px"});
+    opts.forEach(([v,t])=> s.append(el("option",{value:v,selected:side[key]===v}, t)));
+    s.addEventListener("change",()=>{ side[key]=s.value; saveSimCfg(); simInvalidate(); });
+    row.append(s); return row;
+  };
+  tac.append(selRow("Targeting","focus",SIM_FOCUS));
+  tac.append(selRow("Move choice","ai",SIM_AI));
+  card.append(tac);
+  return card;
+}
+/* results go stale the moment a setting changes — grey them out rather than silently lying */
+function simInvalidate(){ if(simResult) simResult.stale = true; simDrawOut(); }
+
+function simSettingsCard(){
+  const card = el("div",{class:"card"});
+  card.append(el("h3",{},"⚙ Simulation settings"));
+  const grid = el("div",{class:"fieldrow"});
+  const num = (label, key, min, max, hint)=>{
+    const w = el("div",{});
+    w.append(el("label",{class:"lbl"},label));
+    const i = el("input",{type:"number",min,max,value:simCfg[key]});
+    i.addEventListener("change",()=>{ simCfg[key]=Math.max(min,Math.min(max, parseInt(i.value)||min));
+      i.value=simCfg[key]; saveSimCfg(); simInvalidate(); });
+    w.append(i, el("div",{class:"small muted"},hint));
+    return w;
+  };
+  grid.append(num("Battles to run","runs",1,SIM_MAX_RUNS,"More = steadier percentages."));
+  grid.append(num("Round limit","maxRounds",1,100,"Past this it's scored as a stalemate."));
+  const hpW = el("div",{});
+  hpW.append(el("label",{class:"lbl"},"Starting HP"));
+  const hpSel = el("select",{});
+  [["full","Everyone at full HP"],["current","Current HP from the sheets"]]
+    .forEach(([v,t])=> hpSel.append(el("option",{value:v,selected:simCfg.startHP===v}, t)));
+  hpSel.addEventListener("change",()=>{ simCfg.startHP=hpSel.value; saveSimCfg(); simInvalidate(); });
+  hpW.append(hpSel, el("div",{class:"small muted"},"Injuries on the sheet always count."));
+  grid.append(hpW);
+  card.append(grid);
+  const toggles = el("div",{style:"margin-top:10px"});
+  const opt = (label, key, hint)=>{
+    const l = el("label",{class:"inline",style:"gap:8px;cursor:pointer;align-items:flex-start;margin-bottom:6px"});
+    const cb = el("input",{type:"checkbox"}); cb.checked = !!simCfg[key];
+    cb.addEventListener("change",()=>{ simCfg[key]=cb.checked; saveSimCfg(); simInvalidate(); });
+    l.append(cb, el("div",{}, el("div",{class:"small",style:"font-weight:700"},label),
+      el("div",{class:"small muted"},hint)));
+    toggles.append(l);
+  };
+  opt("Enforce Move Frequencies","useFreq",
+    "Scene / Daily / EOT Moves run out. Off = everyone spams their best attack every round.");
+  opt("Status Afflictions","useStatus",
+    "Effect Ranges that Burn / Poison / Freeze / put to Sleep apply, with their damage-over-time, Saves and lost turns.");
+  opt("Apply the Map's Weather & Terrain","useWeather",
+    "Uses whatever is set on the currently-viewed battle Map (damage bonuses, auto-hits, AC overrides).");
+  opt("Injuries during the fight","useInjury",
+    "Crossing an HP marker or taking Massive Damage costs an Injury, which lowers max HP mid-battle.");
+  card.append(toggles);
+  const runBtn = el("button",{id:"simRunBtn",class:"btn-primary",style:"padding:12px 22px;font-size:16px",
+    disabled:simRunning, onclick:simRun}, simRunning?"⏳ Running…":"▶ Run simulation");
+  card.append(el("div",{class:"inline",style:"gap:10px;margin-top:12px;flex-wrap:wrap"}, runBtn,
+    el("button",{class:"btn-secondary",title:"put Side A's line-up against Side B's and vice-versa",
+      onclick:()=>{ const a=simCfg.A; simCfg.A=simCfg.B; simCfg.B=a; saveSimCfg(); renderSim(); }},"⇄ Swap sides")));
+  return card;
+}
+/* horizontal win-rate bar */
+function simWinBar(agg){
+  const n = agg.runs||1;
+  const bar = el("div",{style:"display:flex;height:26px;border-radius:8px;overflow:hidden;border:1px solid var(--line);margin:8px 0"});
+  const seg = (frac, color, txt)=>{
+    if(frac<=0) return;
+    bar.append(el("div",{style:`width:${(frac*100).toFixed(2)}%;background:${color};color:#fff;font-size:11px;`
+      +"font-weight:800;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap"}, txt));
+  };
+  seg(agg.A/n, "#4b8fed", agg.A/n>0.08 ? `A ${simPct(agg.A,n)}%` : "");
+  seg(agg.draw/n, "var(--muted)", agg.draw/n>0.10 ? `draw ${simPct(agg.draw,n)}%` : "");
+  seg(agg.B/n, "#c22e28", agg.B/n>0.08 ? `B ${simPct(agg.B,n)}%` : "");
+  return bar;
+}
+const simPct = (n,d) => d ? Math.round(n/d*1000)/10 : 0;
+const simAvg = (n,d) => d ? Math.round(n/d*10)/10 : 0;
+
+function simResultsNode(){
+  const agg = simResult;
+  const wrap = el("div",{});
+  if(!agg) return el("div",{class:"card"}, el("span",{class:"muted small"},
+    "No results yet — build both sides above and press ▶ Run simulation."));
+  const n = agg.runs;
+  const card = el("div",{class:"card"});
+  card.append(el("h3",{}, `📊 Results — ${n} of ${agg.target} battles`
+    + (agg.stale ? "  ⚠ settings changed since this ran" : "")));
+  if(simRunning){
+    const pctDone = simPct(agg.runs, agg.target);
+    card.append(el("div",{class:"hpbar",style:"height:12px"}, el("i",{style:`width:${pctDone}%`})),
+                el("div",{class:"small muted",style:"margin-top:4px"}, `Simulating… ${pctDone}%`));
+  }
+  if(!n){ wrap.append(card); return wrap; }
+  card.append(simWinBar(agg));
+  const verdict = el("div",{class:"derived"});
+  const dv = (lbl, val, sub)=> el("div",{class:"dv"}, el("div",{class:"lbl"},lbl),
+    el("div",{class:"val"},val), sub?el("div",{class:"small muted"},sub):"");
+  verdict.append(dv("🟦 Side A wins", `${simPct(agg.A,n)}%`, `${agg.A} of ${n}`));
+  verdict.append(dv("🟥 Side B wins", `${simPct(agg.B,n)}%`, `${agg.B} of ${n}`));
+  verdict.append(dv("Stalemates", `${simPct(agg.draw,n)}%`, `hit the ${simCfg.maxRounds}-round limit`));
+  verdict.append(dv("Avg length", `${simAvg(agg.sumRounds,n)}`, "rounds"));
+  card.append(verdict);
+  // "can they win in N rounds?" — the question this whole tab exists for
+  const rounds = Object.keys(agg.byRound).map(Number).sort((a,b)=>a-b);
+  if(rounds.length){
+    const tbl = el("table",{class:"skilltable",style:"margin-top:12px"});
+    tbl.append(el("tr",{}, el("td",{style:"font-weight:800"},"Fight over by end of round"),
+      el("td",{class:"dice",style:"color:#4b8fed"},"Side A"), el("td",{class:"dice",style:"color:#c22e28"},"Side B")));
+    let cA=0, cB=0;
+    // every round from the first decision to the last, so the running totals read continuously
+    for(let r=rounds[0]; r<=rounds[rounds.length-1]; r++){
+      const b = agg.byRound[r]; cA += b?.A||0; cB += b?.B||0;
+      tbl.append(el("tr",{}, el("td",{},`Round ${r}`),
+        el("td",{class:"dice"}, `${simPct(cA,n)}%`), el("td",{class:"dice"}, `${simPct(cB,n)}%`)));
+    }
+    card.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800;margin-top:14px"},"CUMULATIVE — HOW FAST IT ENDS"));
+    card.append(el("div",{style:"overflow-x:auto"}, tbl));   // narrow phones scroll the table, not the page
+    const oneA = agg.byRound[1]?.A||0, oneB = agg.byRound[1]?.B||0;
+    if(oneA || oneB) card.append(el("div",{class:"warnbox",style:"margin-top:8px"},
+      `⚡ One-round wipe: Side A pulls it off in ${simPct(oneA,n)}% of battles, Side B in ${simPct(oneB,n)}%.`));
+  }
+  wrap.append(card);
+  // per-fighter breakdown
+  const uc = el("div",{class:"card"});
+  uc.append(el("h3",{},"Per-fighter averages (per battle)"));
+  const tbl = el("table",{class:"skilltable"});
+  tbl.append(el("tr",{}, el("td",{style:"font-weight:800"},"Fighter"),
+    el("td",{class:"dice"},"Dmg dealt"), el("td",{class:"dice"},"Dmg taken"),
+    el("td",{class:"dice"},"KOs"), el("td",{class:"dice"},"Survives"), el("td",{class:"dice"},"Hit %")));
+  ["A","B"].forEach(sideKey=>{
+    const rows = Object.values(agg.units).filter(u=>u.side===sideKey);
+    if(!rows.length) return;
+    tbl.append(el("tr",{}, el("td",{colspan:6,style:"font-weight:800;color:var(--muted);padding-top:10px"},
+      sideKey==="A"?"🟦 Side A":"🟥 Side B")));
+    rows.sort((a,b)=>b.dealt-a.dealt).forEach(u=>{
+      const shots = u.hits+u.misses;
+      tbl.append(el("tr",{},
+        el("td",{}, `${u.kind==="trainer"?"🧑":"⬤"} ${u.name}`),
+        el("td",{class:"dice"}, String(simAvg(u.dealt,n))),
+        el("td",{class:"dice"}, String(simAvg(u.taken,n))),
+        el("td",{class:"dice"}, String(simAvg(u.kos,n))),
+        el("td",{class:"dice"}, `${simPct(u.survived,n)}%`),
+        el("td",{class:"dice"}, shots ? `${simPct(u.hits,shots)}%` : "—")));
+    });
+  });
+  uc.append(el("div",{style:"overflow-x:auto"}, tbl));
+  uc.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    "“Survives” = still standing when the battle ended. Damage is what actually came off HP, after Defense, type effectiveness and Damage Reduction."));
+  wrap.append(uc);
+  // one full play-by-play
+  if(agg.log?.length){
+    const det = el("details",{class:"card"});
+    det.append(el("summary",{style:"cursor:pointer;font-weight:800"},"📜 Play-by-play of one sample battle"));
+    const pre = el("pre",{style:"white-space:pre-wrap;font-size:12px;line-height:1.55;margin-top:10px;max-height:420px;overflow:auto"});
+    pre.textContent = agg.log.join("\n");
+    det.append(pre);
+    wrap.append(det);
+  }
+  return wrap;
+}
+function simDrawOut(){
+  const out = $("#simOut"); if(!out) return;
+  out.innerHTML = "";
+  out.append(simResultsNode());
+  const btn = $("#simRunBtn");
+  if(btn){ btn.disabled = simRunning; btn.textContent = simRunning ? "⏳ Running…" : "▶ Run simulation"; }
+}
+function renderSim(){
+  const root = $("#view-sim"); root.innerHTML = "";
+  const intro = el("div",{class:"card"});
+  intro.append(el("h3",{},"⚗ Combat Simulator"));
+  intro.append(el("div",{class:"small muted"},
+    "Throws two sides at each other a few hundred times and reports who wins, how fast, and who carried. "
+    + "It uses this sheet's own combat maths — Combat Stages, STAB, the effectiveness ladder, abilities, "
+    + "Crit ranges, Damage Reduction — but only damaging attacks: no Status Moves, switching, items, "
+    + "Features, positioning or Interrupts. Treat it as a slugging-match stress test, not a prophecy."));
+  root.append(intro);
+  const grid = el("div",{class:"grid cols-2"});
+  grid.append(simRosterCard("A"), simRosterCard("B"));
+  root.append(grid);
+  root.append(simSettingsCard());
+  root.append(el("div",{id:"simOut"}));
+  simDrawOut();
 }
 
 /* ===================================================================
@@ -11436,8 +12234,9 @@ function openTokenMenu(token, map){
         (t.encMoves||[]).concat(t.moves||[]).forEach(mn=>{ if(moveByName.get((mn||"").toLowerCase())) btn(mn, ()=>openTrainerAttack(t,mn)); });
       } else {
         const p=L.obj, sp=getSpecies(p.species);
-        const st=struggleFor(p,sp); if(st) btn(st.name, ()=>openMoveRoll(p,st,sp));
-        (p.moves||[]).forEach(mn=>{ const m=moveByName.get((mn||"").toLowerCase()); if(m) btn(mn, ()=>openMoveRoll(p,m,sp)); });
+        const mrOpts = {persist:()=>commitTokenSource(token)};
+        const st=struggleFor(p,sp); if(st) btn(st.name, ()=>openMoveRoll(p,st,sp,mrOpts));
+        (p.moves||[]).forEach(mn=>{ const m=moveByName.get((mn||"").toLowerCase()); if(m) btn(mn, ()=>openMoveRoll(p,m,sp,mrOpts)); });
       }
       aw.append(row);
       wrap.append(aw);

@@ -8146,5 +8146,81 @@
       "tutor": []
     },
     "customArt": true
+  },
+  {
+    "name": "Mega Annihilape",
+    "order": 16050,
+    "baseStats": {
+      "hp": 10,
+      "atk": 16,
+      "def": 14,
+      "spatk": 5,
+      "spdef": 10,
+      "spd": 8
+    },
+    "types": [
+      "Fighting",
+      "Ghost"
+    ],
+    "capabilities": {
+      "overland": 8,
+      "sky": 0,
+      "swim": 3,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 3,
+      "longJump": 4,
+      "power": 8,
+      "naturewalk": [
+        "Forest",
+        "Mountain"
+      ],
+      "other": [
+        "Breathless"
+      ]
+    },
+    "size": "Medium",
+    "weightClass": 4,
+    "eggGroups": [
+      "Field"
+    ],
+    "skills": {
+      "athletics": {
+        "dice": 6,
+        "mod": "+2"
+      },
+      "acrobatics": {
+        "dice": 6,
+        "mod": "+2"
+      },
+      "combat": {
+        "dice": 6,
+        "mod": "+1"
+      },
+      "stealth": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 2,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [],
+      "advanced": [],
+      "high": []
+    },
+    "evolution": [],
+    "moves": {
+      "levelup": [],
+      "tmhm": [],
+      "egg": [],
+      "tutor": []
+    }
   }
 ]
