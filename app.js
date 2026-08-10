@@ -1198,6 +1198,8 @@ function normPokemon(p){
   if(!Array.isArray(p.auras)) p.auras = [];   // Legendary Auras (encounter-only; seeded when added to an encounter)
   if(!Array.isArray(p.buffs)) p.buffs = [];        // active Cheers / Orders / Songs (#2)
   if(!Array.isArray(p.customMoves)) p.customMoves = [];   // freeform move/action notes not in the DB
+  if(!("typeAce" in p)) p.typeAce = null;    // {ability:"Last Chance"|"Type Strategist", type} — granted by the Trainer's Type Ace Feature
+  if(!("moveSync" in p)) p.moveSync = null;  // {move, type} — the one Move Sync'd Move permanently retyped by Move Sync
   if(!p.cs || typeof p.cs!=="object") p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
   if(typeof p.image!=="string") p.image = "";
   if(typeof p.megaImage!=="string") p.megaImage = "";
@@ -1226,6 +1228,7 @@ function normTrainer(t){
   if(typeof t.struggleType!=="string") t.struggleType = null;     // elemental unarmed Struggle (GM 🔓 only — trainers have no capabilities of their own)
   if(typeof t.struggleSpecial!=="boolean") t.struggleSpecial = false;
   if(typeof t.categoricInclination!=="string") t.categoricInclination = null;  // Body/Mind/Spirit choice for the Categoric Inclination Edge
+  if(!("chosenType" in t)) t.chosenType = null;    // Type Ace's Chosen Type — feeds Type Ace/Type Refresh/Move Sync
   if(!Array.isArray(t.mentorSkills)) t.mentorSkills = [];        // the two Mentor Skills chosen when taking the Mentor class
   if(!t.uses || typeof t.uses!=="object") t.uses = {};
   if(typeof t.avatar!=="string") t.avatar = "";
@@ -2624,6 +2627,18 @@ function classesCard(){
         if(!arr.includes(name)){ arr.push(name); save(); render(); }
       }, "class")}, "+ add"))));
   if(!arr.length){ card.append(el("span",{class:"muted small"},"none yet — tap “+ add” to take a Class, then learn its Features here")); return card; }
+  if(typeAceEligible(t)){
+    const ctWrap = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin-bottom:10px"});
+    ctWrap.append(el("div",{style:"font-weight:700;margin-bottom:4px"},"🎯 Chosen Type (Type Ace)"));
+    const sel = el("select",{});
+    sel.append(el("option",{value:""},"— pick a Type —"));
+    TYPES.forEach(ty=>sel.append(el("option",{value:ty},ty)));
+    sel.value = t.chosenType || "";
+    sel.addEventListener("change",()=>{ t.chosenType = sel.value || null; save(); render(); });
+    ctWrap.append(sel, el("div",{class:"small muted",style:"margin-top:4px"},
+      "Feeds Type Ace's Ability grant (🎯 in a Pokémon's Abilities), Move Sync (🔃 on a Move), and Type Refresh below."));
+    card.append(ctWrap);
+  }
   arr.forEach((name,idx) => {
     const feats = featuresForClass(name);
     const total = feats.length;
@@ -4740,10 +4755,49 @@ function addAura(p, rerender){
     if(!p.auras.some(a=>auraKey(a)===auraKey(name))){ p.auras.push(name); rr(); }
   });
 }
+/* Fraction-of-max-HP check shared by Last Chance / Type Strategist (Core p.119: "under 1/3rd of
+   their Maximum Hit Points"). */
+function pokeUnderThirdHP(p){
+  const maxHP = pokeDerived(p).maxHP;
+  return !!(maxHP && p.currentHP!=null && p.currentHP <= maxHP/3);
+}
+/* Type Ace (Trainer Class, Core p.119): spends 2 Tutor Points to grant a target Pokémon the Last
+   Chance or Type Strategist Ability for the Trainer's Chosen Type. Each Pokémon can only be granted
+   one (tracked as p.typeAce = {ability, type}) — this app treats "having Type Ace" as having taken
+   the Class at least once, and a single Chosen Type per Trainer (the book allows re-taking Type Ace
+   per-Type, which this simpler single-value model doesn't attempt to track separately). */
+function typeAceEligible(t){ return !!(t && (t.classes||[]).includes("Type Ace")); }
+function typeAceAbilityText(grant){
+  if(!grant) return "";
+  return grant.ability==="Last Chance"
+    ? `The user gains a +5 bonus to Damage Rolls when using attacks of the ${grant.type} Type. This bonus increases to +10 when the user is under 1/3rd of their Maximum Hit Points.`
+    : `Whenever the user uses a Move of the ${grant.type} Type, they gain +5 Damage Reduction for one full round. If they are under 1/3rd of their Maximum Hit Points, they instead gain +10 Damage Reduction.`;
+}
+function openTypeAceGrant(p, t){
+  if(!t.chosenType){ toast("Pick a Chosen Type for Type Ace first (Features & Edges → Classes)."); return; }
+  if(p.typeAce){ toast(`${p.species} already has a Type Ace grant (${p.typeAce.ability}, ${p.typeAce.type}).`); return; }
+  if((p.tutorPoints||0) < 2){ toast(`Type Ace costs 2 Tutor Points (has ${p.tutorPoints||0}).`); return; }
+  openPicker(`Type Ace — grant an Ability (${t.chosenType})`, ["Last Chance","Type Strategist"], name=>{
+    p.tutorPoints = Math.max(0,(p.tutorPoints||0)-2);
+    p.typeAce = { ability:name, type:t.chosenType };
+    save(); refreshMon(p);
+    toast(`${p.species} learned ${name} (${t.chosenType})`);
+  });
+}
+function clearTypeAce(p){
+  if(!p.typeAce) return;
+  p.tutorPoints = (p.tutorPoints||0) + 2;
+  const was = p.typeAce; p.typeAce = null;
+  save(); refreshMon(p);
+  toast(`${was.ability} (${was.type}) removed — +2 Tutor Points refunded`);
+}
 function abilitiesCard(p, sp){
   if(!Array.isArray(p.abilities)) p.abilities = [];
+  const t = activeChar().trainer;
   const card = el("div",{class:"card"}, el("h3",{},`Abilities (${p.abilities.length})`,
     el("div",{class:"inline"}, unlockToggle(p),
+      typeAceEligible(t) && !p.typeAce ? el("button",{class:"linkbtn h-act",title:"Type Ace: grant Last Chance or Type Strategist",
+        onclick:()=>openTypeAceGrant(p,t)},"🎯 Type Ace") : "",
       el("button",{class:"linkbtn h-act",onclick:()=>addAbility(p, sp)},"+ add"))));
   const grant = poltergeistGrant(p, sp);
   if(grant){
@@ -4754,7 +4808,16 @@ function abilitiesCard(p, sp){
     grow.append(el("div",{class:"small",style:"margin-top:6px", html: gab? abilityText(gab):"<span class='muted'>Not in database</span>"}));
     card.append(grow);
   }
-  if(!p.abilities.length) card.append(el("span",{class:"muted small"},"none yet — tap “+ add”"));
+  if(p.typeAce){
+    const taRow = el("details",{class:"spoiler"});
+    taRow.append(el("summary",{}, el("span",{style:"color:var(--ink)"}, `${p.typeAce.ability} (${p.typeAce.type})`),
+      el("span",{class:"muted small",style:"margin-left:8px"},"from Type Ace"),
+      el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove — refunds 2 Tutor Points",
+        onclick:e=>{e.preventDefault(); clearTypeAce(p);}},"×")));
+    taRow.append(el("div",{class:"small",style:"margin-top:6px"}, typeAceAbilityText(p.typeAce)));
+    card.append(taRow);
+  }
+  if(!p.abilities.length && !grant && !p.typeAce) card.append(el("span",{class:"muted small"},"none yet — tap “+ add”"));
   p.abilities.forEach((an,i)=>{
     const ab = abilityByName.get((an||"").toLowerCase());
     const row = el("details",{class:"spoiler"});
@@ -5140,8 +5203,15 @@ function ateInfo(p, m){
   for(const [ab,ty] of ATE_ABILITIES) if(hasAbility(p, ab)) return {ability:ab, type:ty};
   return null;
 }
+/* Move Sync (Type Ace branch, Core p.119): permanently retypes the one Move a Trainer with the
+   Move Sync Feature has picked on this Pokémon, to their Chosen Type. */
+function moveSyncType(p, m){
+  return (p && p.moveSync && m && String(p.moveSync.move||"").toLowerCase()===String(m.name||"").toLowerCase())
+    ? p.moveSync.type : null;
+}
 function effectiveMoveType(p, m, opts={}){
   if(hasAbility(p, "Normalize")) return "Normal";
+  const sync = moveSyncType(p, m); if(sync) return sync;               // permanent retype wins over −ate
   if(!opts.noAte){ const a = ateInfo(p, m); if(a) return a.type; }   // −ate re-types Normal moves (togglable in openMoveRoll)
   return (m && m.type) || "Normal";
 }
@@ -5187,14 +5257,39 @@ function unlockToggle(p){
   wrap.append(cb, "🔓 GM: allow any");
   return wrap;
 }
+/* Move Sync (Type Ace branch, Core p.119): spends 1 Tutor Point to permanently retype one Move on
+   the target's Move List to the Trainer's Chosen Type. Only one Move-Sync'd Move at a time — to sync
+   a different one the old one must be forgotten (removed from the Move List) first. */
+function moveSyncEligible(t){ return !!(t && (t.features||[]).includes("Move Sync")); }
+function openMoveSync(p, t, mn){
+  if(!t.chosenType){ toast("Pick a Chosen Type for Type Ace first (Features & Edges → Classes)."); return; }
+  const already = p.moveSync && p.moveSync.move===mn;
+  if(already){ clearMoveSync(p); return; }
+  if(p.moveSync){ toast(`${p.species} already has a Move-Sync'd Move (${p.moveSync.move}) — forget it before syncing a new one.`); return; }
+  if((p.tutorPoints||0) < 1){ toast(`Move Sync costs 1 Tutor Point (has ${p.tutorPoints||0}).`); return; }
+  p.tutorPoints = Math.max(0,(p.tutorPoints||0)-1);
+  p.moveSync = { move: mn, type: t.chosenType };
+  save(); refreshMon(p);
+  toast(`${mn} is now permanently ${t.chosenType}-Type (Move Sync)`);
+}
+function clearMoveSync(p){
+  if(!p.moveSync) return;
+  p.tutorPoints = (p.tutorPoints||0) + 1;
+  const was = p.moveSync.move; p.moveSync = null;
+  save(); refreshMon(p);
+  toast(`${was} is no longer Move-Synced (+1 Tutor Point refunded)`);
+}
 function moveSlot(p, sp, m, mn, opts={}){
   const slot = el("div",{class:"moveslot"});
   if(opts.onFav) slot.append(el("button",{class:"actstar"+(opts.faved?" on":""),style:"align-self:center;margin-right:0",
     title:opts.faved?"unpin favourite":"pin favourite",onclick:e=>{e.stopPropagation();opts.onFav();}}, opts.faved?"★":"☆"));
   const rrMon = opts.rerender||(()=>refreshMon(p));
+  const t = activeChar().trainer;
+  const isSynced = p.moveSync && p.moveSync.move===mn;
   const info = el("div",{style: m?"cursor:pointer;flex:1":"flex:1", onclick: m? ()=>openMoveRoll(p,m,sp,{rerender:rrMon}) : null},
     el("div",{style:"font-weight:700"}, m?`${m.name} `:mn,
       m?el("span",{html:typeBadge(effectiveMoveType(p,m))}):"",
+      isSynced?el("span",{class:"kv",title:`Move Sync: permanently ${p.moveSync.type}-Type`,style:"margin-left:6px"},"🔃 Synced"):"",
       opts.tag?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600"},opts.tag):""),
     el("div",{class:"ms-info"}, m? moveLineShort(m) : "custom / not in database"));
   slot.append(info);
@@ -5203,11 +5298,17 @@ function moveSlot(p, sp, m, mn, opts={}){
   if(m && !opts.tag){ const uc = usesControl(p, "move", m.name, m.frequency, opts.rerender||(()=>refreshMon(p))); if(uc) acts.append(uc); }
   if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",title:"roll this move",onclick:()=>openMoveRoll(p,m,sp,{rerender:rrMon})},"🎲 Roll"));
   if(m) acts.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("move",m.name)},"info"));
+  if(m && !opts.tag && (moveSyncEligible(t) || isSynced)) acts.append(el("button",{class:"btn-secondary"+(isSynced?" on":""),style:"padding:6px 10px",
+    title:isSynced?"forget Move Sync (+1 Tutor Point)":"Move Sync: permanently retype this Move to your Chosen Type (1 Tutor Point)",
+    onclick:()=>openMoveSync(p,t,mn)},"🔃"));
   if(opts.onRemove) acts.append(el("button",{class:"linkbtn",title:"remove",onclick:opts.onRemove},"×"));
   slot.append(acts);
   return slot;
 }
 function movesCard(p, sp){
+  if(p.moveSync && !(p.moves||[]).some(mn=>(mn||"").toLowerCase()===p.moveSync.move.toLowerCase())){
+    p.tutorPoints = (p.tutorPoints||0) + 1; p.moveSync = null; save();   // synced Move was forgotten — refund
+  }
   const limit = effectiveMoveLimit(activeChar().trainer);
   const n = p.moves.length, over = n > limit;
   const atLimit = !p.unlocked && n >= limit;
@@ -5420,6 +5521,11 @@ function abilityDamageMods(p, m, baseDBVal, thresholds, opts={}){
   // Hustle [Errata]: +10 to ALL Damage Rolls (−2 to all Accuracy)
   if(hasAbility(p,"Hustle [Errata]")){
     mods.flat += 10; mods.why.push("Hustle +10 damage"); }
+  // Last Chance (Type Ace branch, Core p.119): +5 to Damage Rolls with the granted Type's attacks,
+  // +10 instead while at or under 1/3rd Max HP.
+  if(p.typeAce && p.typeAce.ability==="Last Chance" && opts.mtype===p.typeAce.type){
+    const bonus = pokeUnderThirdHP(p) ? 10 : 5;
+    mods.flat += bonus; mods.why.push(`Last Chance +${bonus} damage (${p.typeAce.type})`); }
   return mods;
 }
 /* Accuracy-modifying abilities that always apply to the user's own attack rolls (Core p.199).
@@ -5976,6 +6082,18 @@ function openMoveRoll(p, m, sp, opts={}){
     if(!usedThisRoll){
       usedThisRoll = true;
       if(spendMoveUse(p, m)){ (opts.persist||save)(); if(opts.rerender) opts.rerender(); }
+      // Type Strategist (Type Ace branch, Core p.119): using a Move of the granted Type auto-grants
+      // +5 DR (+10 under 1/3 Max HP) for one full round — replaces any earlier instance of the buff
+      // rather than stacking it.
+      if(p.typeAce && p.typeAce.ability==="Type Strategist" && mtype===p.typeAce.type){
+        const bonus = pokeUnderThirdHP(p) ? 10 : 5;
+        p.buffs = ownerBuffs(p).filter(b=>b.name!=="Type Strategist");
+        const nb = { id:uid(), key:"custom", name:"Type Strategist", cat:"Custom", dur:"until end of next turn",
+          once:false, mods:{dr:bonus}, note:`+${bonus} Damage Reduction until the end of your next turn (used a ${p.typeAce.type} Move).` };
+        stampTurnBuff(nb);
+        p.buffs.push(nb);
+        (opts.persist||save)(); if(opts.rerender) opts.rerender();
+      }
     }
 
     /* --- special-case damage (exact HP loss) & note-only moves --- */
@@ -8010,7 +8128,8 @@ function simNewSide(){ return { sources:[], exclude:[], active:{}, order:{}, ai:
                                 trainerFocus:0, trainersFight:true }; }
 function loadSimCfg(){
   const base = { runs:300, maxRounds:20, startHP:"full", useFreq:true, useWeather:false,
-                 useStatus:true, useInjury:false, endOnLastMon:true, A:simNewSide(), B:simNewSide() };
+                 useStatus:true, useInjury:false, endOnLastMon:true, strandOnTrainerKO:true,
+                 A:simNewSide(), B:simNewSide() };
   try{
     const s = JSON.parse(localStorage.getItem(SIM_KEY)||"null");
     if(s && typeof s==="object"){
@@ -8484,7 +8603,22 @@ function simInitiative(u){
 /* Top up a team's field: the first `active` Pokémon of its send-out order that are still standing.
    A replacement chosen here doesn't act until the NEXT round — sending one out costs the Trainer
    the turn, which is also why a fainted Pokémon's slot stays empty for the rest of its round. */
+/* Releasing a Pokémon from its ball is the TRAINER's action, so a knocked-out Trainer can't put
+   anyone else on the field. Whoever is already out fights on alone; the rest of the party is
+   stranded in their balls and out of the fight for good. A team with no Trainer (wild Pokémon, or
+   a Trainer the roster excluded) is never gated this way. */
+const simTeamCanSend = (team, cfg) =>
+  !cfg.strandOnTrainerKO || !team.trainer || team.trainer.hp > 0;
 function simSendOut(B, team, round){
+  if(!simTeamCanSend(team, B.cfg)){
+    const stuck = team.bench.filter(u=>u.hp>0 && !u.sentOut).length;
+    if(!team.stranded){
+      team.stranded = true;
+      if(B.log && stuck) B.log.push(`   ⛔ ${team.label} is down — ${stuck} Pokémon stay in their balls.`);
+    }
+    team.out = team.out.filter(u=>u.hp>0);      // whoever's already out keeps fighting
+    return;
+  }
   const want = team.bench.filter(u=>u.hp>0).slice(0, team.active);
   want.forEach(u=>{
     if(!u.sentOut){
@@ -8495,16 +8629,21 @@ function simSendOut(B, team, round){
   });
   team.out = want;
 }
-/* A side is beaten when every Pokémon it brought has fainted (`endOnLastMon` — how a Trainer
-   battle actually ends), or, with that off (or for a side that brought no Pokémon at all), only
-   once every fighter including the Trainers is down. */
+/* A side is beaten once it can't field anything any more. "Can still fight" = whoever is already
+   out, plus the bench only while a Trainer is left standing to send them — otherwise a party
+   stranded behind a downed Trainer would keep the fight alive forever at full HP.
+   `endOnLastMon` (how a Trainer battle really ends) scores the side beaten the moment it has no
+   Pokémon left that can reach the field; with it off, its Trainers must go down too. */
 function simSideDown(teams, sideKey, cfg){
   const ts = teams.filter(t=>t.side===sideKey);
-  const mons = ts.flatMap(t=>t.bench);
-  const trainersDown = ts.every(t=>!t.trainer || t.trainer.hp<=0);
-  const monsDown = mons.every(u=>u.hp<=0);
-  if(mons.length && cfg.endOnLastMon) return monsDown;
-  return monsDown && trainersDown;
+  let liveMons = 0, liveTrainers = 0, broughtMons = false;
+  ts.forEach(t=>{
+    if(t.bench.length) broughtMons = true;
+    if(t.trainer && t.trainer.hp>0) liveTrainers++;
+    liveMons += (simTeamCanSend(t, cfg) ? t.bench : t.out).filter(u=>u.hp>0).length;
+  });
+  if(broughtMons && cfg.endOnLastMon) return liveMons===0;
+  return liveMons===0 && liveTrainers===0;
 }
 function simBattle(cfg, groupsA, groupsB, wantLog){
   const B = { cfg, log: wantLog ? [] : null };
@@ -8826,6 +8965,9 @@ function simSettingsCard(){
     "Uses whatever is set on the currently-viewed battle Map (damage bonuses, auto-hits, AC overrides).");
   opt("Injuries during the fight","useInjury",
     "Crossing an HP marker or taking Massive Damage costs an Injury, which lowers max HP mid-battle.");
+  opt("A downed Trainer can't send out more","strandOnTrainerKO",
+    "Releasing a Pokémon is the Trainer's action. Knock them out and whoever is already on the field "
+    + "fights on alone — the rest of the party is stranded in their balls and out of the fight.");
   opt("Beaten when the last Pokémon faints","endOnLastMon",
     "How a Trainer battle really ends. Off = the fight only stops once the Trainers are down too.");
   card.append(toggles);
