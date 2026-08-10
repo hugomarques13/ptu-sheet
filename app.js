@@ -8000,11 +8000,14 @@ const SIM_AI = [["smart","Optimal — always its best expected attack"],
                 ["solid","Solid — best of two options it happens to consider"],
                 ["random","Reckless — any damaging attack at random"]];
 const SIM_MAX_RUNS = 5000;
-/* `active` = how many Pokémon each team keeps on the field at once (keyed by team key);
-   `order`   = that team's send-out order (array of fighter keys) — the bench comes out in this
-               order as the ones ahead of them faint. */
+/* `active`       = how many Pokémon each team keeps on the field at once (keyed by team key);
+   `order`        = that team's send-out order (array of fighter keys) — the bench comes out in
+                    this order as the ones ahead of them faint;
+   `trainerFocus` = 0-100, how often this side goes for the enemy TRAINERS instead of working
+                    through their Pokémon first. 0 = never while a Pokémon still stands,
+                    100 = straight for the people every time. */
 function simNewSide(){ return { sources:[], exclude:[], active:{}, order:{}, ai:"smart", focus:"lowest",
-                                attackTrainers:false, trainersFight:true }; }
+                                trainerFocus:0, trainersFight:true }; }
 function loadSimCfg(){
   const base = { runs:300, maxRounds:20, startHP:"full", useFreq:true, useWeather:false,
                  useStatus:true, useInjury:false, endOnLastMon:true, A:simNewSide(), B:simNewSide() };
@@ -8012,7 +8015,15 @@ function loadSimCfg(){
     const s = JSON.parse(localStorage.getItem(SIM_KEY)||"null");
     if(s && typeof s==="object"){
       Object.assign(base, s);
-      base.A = Object.assign(simNewSide(), s.A); base.B = Object.assign(simNewSide(), s.B);
+      ["A","B"].forEach(k=>{
+        const saved = s[k] || {};
+        const side = base[k] = Object.assign(simNewSide(), saved);
+        // migrate the old all-or-nothing "attackTrainers" checkbox onto the 0-100 dial. Test what
+        // was SAVED, not the merged object — that already carries the new field's default.
+        if(typeof saved.trainerFocus!=="number") side.trainerFocus = saved.attackTrainers ? 100 : 0;
+        delete side.attackTrainers;
+        side.trainerFocus = Math.max(0, Math.min(100, Math.round(side.trainerFocus)||0));
+      });
     }
   }catch(e){}
   return base;
@@ -8396,12 +8407,14 @@ function simStrike(B, A, atk, D, round){
 
 /* ---------- target & attack choice ---------- */
 function simPickTarget(B, A, foes){
-  const side = simSide(A.side);
+  const side = B.cfg[A.side];
   const trainers = foes.filter(f=>f.isT), mons = foes.filter(f=>!f.isT);
-  /* "Attack Trainers": go straight for the people if any are on the field. Off = the normal PTU
-     assumption that Pokémon fight Pokémon, and the Trainers only get hit once their team is down. */
-  let pool = side.attackTrainers ? (trainers.length ? trainers : mons)
-                                 : (mons.length ? mons : trainers);
+  /* How hard this side goes for the people: `trainerFocus` is rolled per attack, so 30 means
+     roughly three swings in ten aim past the Pokémon at the Trainer. 0 is the normal PTU
+     assumption — Pokémon fight Pokémon, and the Trainers are only fair game once nothing else is
+     standing. Either preference falls back to the other pool when it's empty. */
+  const goTrainer = trainers.length && Math.random()*100 < (side.trainerFocus||0);
+  let pool = goTrainer ? trainers : (mons.length ? mons : trainers);
   if(!pool.length) pool = foes;
   if(pool.length===1) return pool[0];
   switch(side.focus){
@@ -8429,7 +8442,7 @@ function simBestAttack(B, A, D){
   const cfg = B.cfg;
   const usable = A.atks.filter(a=>simCanUse(A, a, cfg));
   if(!usable.length) return { atk:null, score:0 };
-  const ai = simSide(A.side).ai;
+  const ai = cfg[A.side].ai;
   let pool = usable;
   if(ai==="random"){ const a = usable[Math.floor(Math.random()*usable.length)];
                      return { atk:a, score:simExpected(A, a, D, cfg) }; }
@@ -8523,7 +8536,7 @@ function simBattle(cfg, groupsA, groupsB, wantLog){
       .sort((a,b)=> b.i-a.i || b.r-a.r).map(x=>x.u);
     for(const u of order){
       if(u.hp<=0) continue;
-      if(u.isT && !simSide(u.side).trainersFight) continue;
+      if(u.isT && !cfg[u.side].trainersFight) continue;
       if(simCanAct(u, cfg)){
         for(let act=0; act<u.acts && u.hp>0; act++){
           const foes = field(u.side==="A"?"B":"A");
@@ -8645,6 +8658,39 @@ function simFighterRow(side, g, f, opts={}){
       disabled:opts.idx>=opts.total-1, onclick:()=>simMoveMon(side,g,f.key,1)},"▼")));
   return row;
 }
+/* how a trainerFocus value reads in plain English */
+function simFocusWord(v){
+  if(v<=0)  return "never — they clear the Pokémon first";
+  if(v<10)  return "almost never — the odd opportunist";
+  if(v<30)  return "occasionally — a Pokémon is still the usual target";
+  if(v<50)  return "fairly often — they'll take the opening";
+  if(v<70)  return "more often than not — the people are the point";
+  if(v<95)  return "most of the time — hunting the Trainers";
+  if(v<100) return "almost always";
+  return "always — straight past the Pokémon, every swing";
+}
+/* 0-100 dial: how hard this side goes for the enemy Trainers rather than their Pokémon. Rolled
+   per attack, so it reads as "this share of swings aims at a person". */
+function simTrainerFocusRow(side){
+  const wrap = el("div",{style:"margin-bottom:8px"});
+  const val = Math.max(0, Math.min(100, side.trainerFocus||0));
+  const out = el("span",{class:"small",style:"font-weight:800;color:var(--accent);min-width:42px;text-align:right"}, val+"%");
+  const why = el("div",{class:"small muted"}, simFocusWord(val));
+  const rng = el("input",{type:"range",min:0,max:100,step:5,value:val,style:"flex:1 1 120px;min-width:110px"});
+  const paint = v => { out.textContent = v+"%"; why.textContent = simFocusWord(v); };
+  rng.addEventListener("input",()=> paint(Math.round(+rng.value)));          // live while dragging
+  rng.addEventListener("change",()=>{
+    side.trainerFocus = Math.max(0, Math.min(100, Math.round(+rng.value)));
+    paint(side.trainerFocus); saveSimCfg(); simInvalidate();
+  });
+  wrap.append(el("div",{class:"small",style:"font-weight:700"},"⚔ Goes for the Trainers"));
+  wrap.append(el("div",{class:"inline",style:"gap:8px;margin-top:2px"}, rng, out));
+  wrap.append(why);
+  wrap.append(el("div",{class:"small muted"},
+    "Share of this side's attacks that aim at an enemy Trainer instead of working through their Pokémon. "
+    + "Either way they fall back to whatever is left standing."));
+  return wrap;
+}
 /* one team inside a source: its Trainer, how many Pokémon it fields at once, and the bench order */
 function simTeamNode(side, g){
   const skip = new Set(side.exclude||[]);
@@ -8720,8 +8766,7 @@ function simRosterCard(sideKey){
       el("div",{class:"small muted"},hint)));
     return l;
   };
-  tac.append(check("⚔ Attack Trainers","attackTrainers",
-    "Go for the Trainers themselves whenever one is on the field, instead of clearing their Pokémon first."));
+  tac.append(simTrainerFocusRow(side));
   tac.append(check("🧑 Trainers take turns","trainersFight",
     "Their Trainers attack too (Struggle / Weapon Moves). Off = they stand there and can still be knocked out."));
   const selRow = (label, key, opts)=>{
