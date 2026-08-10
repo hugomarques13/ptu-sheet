@@ -2626,19 +2626,19 @@ function classesCard(){
       el("button",{class:"linkbtn h-act", onclick:()=>openPicker("Add Class", D.classes.map(c=>c.name), name=>{
         if(!arr.includes(name)){ arr.push(name); save(); render(); }
       }, "class")}, "+ add"))));
+  // Chosen Type (Type Ace, Core p.119) — shown unconditionally rather than gated on already having
+  // taken the Type Ace class, so it's always easy to find and set up front.
+  const ctWrap = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin-bottom:10px"});
+  ctWrap.append(el("div",{style:"font-weight:700;margin-bottom:4px"},"🎯 Chosen Type (Type Ace)"));
+  const ctSel = el("select",{});
+  ctSel.append(el("option",{value:""},"— pick a Type —"));
+  TYPES.forEach(ty=>ctSel.append(el("option",{value:ty},ty)));
+  ctSel.value = t.chosenType || "";
+  ctSel.addEventListener("change",()=>{ t.chosenType = ctSel.value || null; save(); render(); });
+  ctWrap.append(ctSel, el("div",{class:"small muted",style:"margin-top:4px"},
+    "Feeds Type Ace's Ability grant (🎯 in a Pokémon's Abilities), Move Sync (🔃 on a Move), and Type Refresh."));
+  card.append(ctWrap);
   if(!arr.length){ card.append(el("span",{class:"muted small"},"none yet — tap “+ add” to take a Class, then learn its Features here")); return card; }
-  if(typeAceEligible(t)){
-    const ctWrap = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin-bottom:10px"});
-    ctWrap.append(el("div",{style:"font-weight:700;margin-bottom:4px"},"🎯 Chosen Type (Type Ace)"));
-    const sel = el("select",{});
-    sel.append(el("option",{value:""},"— pick a Type —"));
-    TYPES.forEach(ty=>sel.append(el("option",{value:ty},ty)));
-    sel.value = t.chosenType || "";
-    sel.addEventListener("change",()=>{ t.chosenType = sel.value || null; save(); render(); });
-    ctWrap.append(sel, el("div",{class:"small muted",style:"margin-top:4px"},
-      "Feeds Type Ace's Ability grant (🎯 in a Pokémon's Abilities), Move Sync (🔃 on a Move), and Type Refresh below."));
-    card.append(ctWrap);
-  }
   arr.forEach((name,idx) => {
     const feats = featuresForClass(name);
     const total = feats.length;
@@ -4763,10 +4763,9 @@ function pokeUnderThirdHP(p){
 }
 /* Type Ace (Trainer Class, Core p.119): spends 2 Tutor Points to grant a target Pokémon the Last
    Chance or Type Strategist Ability for the Trainer's Chosen Type. Each Pokémon can only be granted
-   one (tracked as p.typeAce = {ability, type}) — this app treats "having Type Ace" as having taken
-   the Class at least once, and a single Chosen Type per Trainer (the book allows re-taking Type Ace
-   per-Type, which this simpler single-value model doesn't attempt to track separately). */
-function typeAceEligible(t){ return !!(t && (t.classes||[]).includes("Type Ace")); }
+   one (tracked as p.typeAce = {ability, type}) — offered unconditionally (not gated on having taken
+   the Type Ace Class) so it's easy to find, and a single Chosen Type per Trainer (the book allows
+   re-taking Type Ace per-Type, which this simpler single-value model doesn't track separately). */
 function typeAceAbilityText(grant){
   if(!grant) return "";
   return grant.ability==="Last Chance"
@@ -4797,7 +4796,7 @@ function abilitiesCard(p, sp){
   const t = activeChar().trainer;
   const card = el("div",{class:"card"}, el("h3",{},`Abilities (${p.abilities.length})`,
     el("div",{class:"inline"}, unlockToggle(p),
-      typeAceEligible(t) && !p.typeAce ? el("button",{class:"linkbtn h-act",title:"Type Ace: grant Last Chance or Type Strategist",
+      !p.typeAce ? el("button",{class:"linkbtn h-act",title:"Type Ace: grant Last Chance or Type Strategist",
         onclick:()=>openTypeAceGrant(p,t)},"🎯 Type Ace") : "",
       el("button",{class:"linkbtn h-act",onclick:()=>addAbility(p, sp)},"+ add"))));
   const grant = poltergeistGrant(p, sp);
