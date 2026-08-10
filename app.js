@@ -8000,11 +8000,14 @@ const SIM_AI = [["smart","Optimal — always its best expected attack"],
                 ["solid","Solid — best of two options it happens to consider"],
                 ["random","Reckless — any damaging attack at random"]];
 const SIM_MAX_RUNS = 5000;
-function simNewSide(){ return { sources:[], exclude:[], ai:"smart", focus:"lowest",
+/* `active` = how many Pokémon each team keeps on the field at once (keyed by team key);
+   `order`   = that team's send-out order (array of fighter keys) — the bench comes out in this
+               order as the ones ahead of them faint. */
+function simNewSide(){ return { sources:[], exclude:[], active:{}, order:{}, ai:"smart", focus:"lowest",
                                 attackTrainers:false, trainersFight:true }; }
 function loadSimCfg(){
   const base = { runs:300, maxRounds:20, startHP:"full", useFreq:true, useWeather:false,
-                 useStatus:true, useInjury:false, A:simNewSide(), B:simNewSide() };
+                 useStatus:true, useInjury:false, endOnLastMon:true, A:simNewSide(), B:simNewSide() };
   try{
     const s = JSON.parse(localStorage.getItem(SIM_KEY)||"null");
     if(s && typeof s==="object"){
@@ -8044,33 +8047,62 @@ function simSourceChar(id){
   return mode==="cloud" ? (cloud.byId[id]?.data || null)
                         : ((state.characters||[]).find(c=>c.id===id) || null);
 }
-/* Flatten one source into individual fighters. `obj` stays a LIVE reference — it's deep-cloned
-   once per simulated battle so nothing the sim does ever touches the real sheet. */
-function simFightersOf(src){
+/* Split one source into TEAMS. A team is a Trainer plus the party they send out — Pokémon come out
+   `active` at a time (1 by default, the way this table plays) and a benched one only steps in once
+   the Pokémon ahead of it faints. An encounter yields one team per Trainer in it, plus a "Wild
+   Pokémon" team for its loose mons (those are all on the field at once by default — nobody's
+   holding them in a ball). Each fighter's `obj` stays a LIVE reference; it's deep-cloned once per
+   simulated battle so nothing the sim does ever touches the real sheet. */
+function simGroupsOf(src){
   const out = [];
   if(!src) return out;
+  const team = (suffix, label, kind, trainer, mons, defActive) =>
+    out.push({ key:src.key+"|"+suffix, label, kind, trainer, pokemon:mons, defActive });
   if(src.kind==="char"){
     const c = simSourceChar(src.id); if(!c) return out;
-    if(c.trainer) out.push({ key:src.key+"|t", name:c.trainer.name||src.name, kind:"trainer", obj:c.trainer });
-    (c.pokemon||[]).filter(p=>p.onTeam!==false).forEach(p=>
-      out.push({ key:src.key+"|p"+p.id, name:encMonName(p), kind:"pokemon", obj:p }));
+    team("g", c.trainer?.name || src.name, "trainer",
+      c.trainer ? { key:src.key+"|t", name:c.trainer.name||src.name, kind:"trainer", obj:c.trainer } : null,
+      (c.pokemon||[]).filter(p=>p.onTeam!==false)
+        .map(p=>({ key:src.key+"|p"+p.id, name:encMonName(p), kind:"pokemon", obj:p })), 1);
   } else {
     const e = encList().find(x=>x.id===src.id); if(!e) return out;
-    (e.mons||[]).forEach(p=> out.push({ key:src.key+"|m"+p.id, name:encMonName(p), kind:"pokemon", obj:p }));
-    (e.trainers||[]).forEach(tr=>{
-      if(tr.trainer) out.push({ key:src.key+"|t"+tr.id, name:tr.trainer.name||"Trainer", kind:"trainer", obj:tr.trainer });
-      (tr.pokemon||[]).forEach(p=> out.push({ key:src.key+"|tp"+p.id, name:encMonName(p), kind:"pokemon", obj:p }));
-    });
+    if((e.mons||[]).length)
+      team("gw", "Wild Pokémon", "wild", null,
+        e.mons.map(p=>({ key:src.key+"|m"+p.id, name:encMonName(p), kind:"pokemon", obj:p })), e.mons.length);
+    (e.trainers||[]).forEach(tr=>
+      team("gt"+tr.id, tr.trainer?.name || "Trainer", "trainer",
+        tr.trainer ? { key:src.key+"|t"+tr.id, name:tr.trainer.name||"Trainer", kind:"trainer", obj:tr.trainer } : null,
+        (tr.pokemon||[]).map(p=>({ key:src.key+"|tp"+p.id, name:encMonName(p), kind:"pokemon", obj:p })), 1));
   }
   return out;
 }
-/* every fighter a side has picked, minus the ones ticked off in its roster */
-function simSideFighters(side){
-  const skip = new Set(side.exclude||[]);
+/* a team's Pokémon in the side's chosen send-out order: saved order first, then anything the
+   encounter/party has gained since, in its natural order */
+function simOrderedMons(side, g){
+  const saved = (side.order||{})[g.key] || [];
+  const left = new Map(g.pokemon.map(f=>[f.key,f]));
   const out = [];
-  (side.sources||[]).forEach(k=> simFightersOf(simSourceByKey(k)).forEach(f=>{ if(!skip.has(f.key)) out.push(f); }));
+  saved.forEach(k=>{ const f = left.get(k); if(f){ out.push(f); left.delete(k); } });
+  g.pokemon.forEach(f=>{ if(left.has(f.key)) out.push(f); });
   return out;
 }
+const simActiveCount = (side, g, n) =>
+  Math.max(1, Math.min(Math.max(1,n), (side.active||{})[g.key] ?? g.defActive));
+/* the teams a side actually fields — excluded fighters dropped, Pokémon ordered, `active` clamped */
+function simSideGroups(side){
+  const skip = new Set(side.exclude||[]);
+  const out = [];
+  (side.sources||[]).forEach(k => simGroupsOf(simSourceByKey(k)).forEach(g=>{
+    const mons = simOrderedMons(side, g).filter(f=>!skip.has(f.key));
+    const trainer = (g.trainer && !skip.has(g.trainer.key)) ? g.trainer : null;
+    if(!trainer && !mons.length) return;
+    out.push(Object.assign({}, g, { trainer, pokemon:mons, active:simActiveCount(side, g, mons.length) }));
+  }));
+  return out;
+}
+/* flat list of everyone a side fields (bench included) — for the "is this side empty?" guard */
+const simSideFighters = side =>
+  simSideGroups(side).flatMap(g => [...(g.trainer?[g.trainer]:[]), ...g.pokemon]);
 
 /* ---------- one fighter inside a simulated battle ---------- */
 function simMaxHP(u){
@@ -8100,13 +8132,18 @@ function simUnit(f, sideKey, cfg){
     const cur = isBoss(obj) ? bossTotalHP(obj) : (!isT && isSwarm(obj)) ? swarmTotalHP(obj) : obj.currentHP;
     if(typeof cur==="number") u.hp = Math.max(0, Math.min(cur, u.max));
   }
-  u.atks = simAttacks(u);
+  u.sentOut = false;                       // set when this Pokémon actually reaches the field
+  u.atks = simAttacks(obj, isT, u.sp);
   return u;
 }
-/* Every damaging attack this fighter can make, normalised into one shape:
+/* Every damaging attack a Trainer or Pokémon can make, normalised into one shape:
    {name, type, cls, ac, db, freq, m} where `m` is a move-shaped object (name/effect/range/…) so
-   critThreshold / abilityDamageMods / effectThresholds can all be reused verbatim. */
-function simAttacks(u){
+   critThreshold / abilityDamageMods / effectThresholds can all be reused verbatim.
+   A Trainer's list = their Struggle (with the equipped weapon's +DB/+AC), each weapon's Adept and
+   Master Weapon Moves, and every combat Move they carry — `encMoves` for encounter NPCs, `moves`
+   for the Moves a Feature/class granted a player Trainer. Also used by the roster UI to show a
+   Trainer's attacks, so it takes the raw object rather than a battle unit. */
+function simAttacks(obj, isT, sp){
   const out = [], seen = new Set();
   const push = m => {
     if(!m) return;
@@ -8119,17 +8156,39 @@ function simAttacks(u){
     out.push({ name:m.name||"Attack", type:m.type||"Normal", cls:/spec/i.test(cls)?"Special":"Physical",
                ac: m.ac!=null ? m.ac : 4, db, freq:m.frequency||"At-Will", m });
   };
-  if(u.isT){
-    const t = u.obj;
+  if(isT){
+    const t = obj;
     push(trainerStruggle(t, (t.weapons||[]).find(w=>w.equipped) || null));
     (t.weapons||[]).forEach(w=> [w.weaponMoveAdept, w.weaponMoveMaster].filter(Boolean)
       .forEach(mn=> push(trainerAttackProfile(t, mn, w))));
     [...(t.encMoves||[]), ...(t.moves||[])].forEach(mn=> push(moveByName.get(String(mn).toLowerCase())));
   } else {
-    (u.obj.moves||[]).forEach(mn=> push(moveByName.get(String(mn).toLowerCase())));
-    push(struggleFor(u.obj, u.sp));
+    (obj.moves||[]).forEach(mn=> push(moveByName.get(String(mn).toLowerCase())));
+    push(struggleFor(obj, sp || getSpecies(obj.species)));
   }
   return out;
+}
+/* What an attack costs its own user. "Recoil X" (a range keyword) loses the user that fraction of
+   the damage it just dealt; Explosion / Self-Destruct set the user's own HP below 0 whether or not
+   they connect. Read off the move text once and cached on the attack. */
+function simSelfCost(atk){
+  if(atk._self) return atk._self;
+  const rec = /(?:^|,\s*)recoil\s+(\d+)\s*\/\s*(\d+)/i.exec(String(atk.m.range||""));
+  return atk._self = {
+    recoil: rec ? (+rec[1]) / (+rec[2]) : 0,
+    selfKO: /\buser'?s?\b[^.]{0,60}\bHP is set to\b|\buser\b[^.]{0,70}\bfaints?\b|\blowers? the user to 0\b/i
+              .test(String(atk.m.effect||"")),
+  };
+}
+/* compact one-line summary of an attack list, for the roster card */
+const simAtkSummary = atks => atks.length
+  ? atks.map(a=>`${a.name} (DB ${a.db}${a.cls==="Special"?", Sp.":""})`).join(" · ")
+  : "no damaging attacks — sits this one out";
+/* Move names on a sheet that the Move DB doesn't recognise (a typo, or a spelling the book uses
+   differently). The sim can't roll those, so the roster says so rather than quietly dropping them. */
+function simUnknownMoves(obj, isT){
+  const names = isT ? [...(obj.encMoves||[]), ...(obj.moves||[])] : (obj.moves||[]);
+  return names.filter(n => n && !moveByName.get(String(n).toLowerCase()));
 }
 /* Frequency budget. At-Will is free; EOT is once a round; Scene/Daily are a per-battle allowance. */
 function simCanUse(u, atk, cfg){
@@ -8167,10 +8226,12 @@ function simProfile(A, atk, cfg){
   const isPhys = atk.cls === "Physical";
   const mtype  = A.isT ? (atk.type||"Normal") : effectiveMoveType(p, atk.m);
   const stab   = !A.isT && !!mtype && (A.sp?.types||[]).includes(mtype);
-  // Trainers add their raw Attack to every Struggle/Weapon Move (Core p.286); Pokémon use the
-  // Combat-Stage-adjusted Attack / Sp.Attack matching the Move's class.
-  const atkStat = A.isT ? (p.combat.atk.base + p.combat.atk.added)
-                        : (isPhys ? d.eff.atk : d.eff.spatk);
+  // Both add the Attack / Sp.Attack that matches the Move's class — a Trainer swinging a weapon
+  // uses Attack (Core p.286), but a Special Move a Feature granted them uses Sp.Attack. Combat
+  // Stages are applied on both sides here (`totals`/`eff`), same as the Defense they're measured
+  // against; openTrainerAttack reads the raw stat instead, so the two agree at 0 Attack CS.
+  const atkStat = A.isT ? (isPhys ? d.totals.atk : d.totals.spatk)
+                        : (isPhys ? d.eff.atk   : d.eff.spatk);
   const bm  = buffMods(p);
   const thr = simThresholds(atk.m.effect);
   const abil = A.isT ? { db:0, flat:0 }
@@ -8233,7 +8294,11 @@ function simExpected(A, atk, D, cfg){
   const db  = pr.fiveStrike ? Math.min(28, pr.baseDB*3 + pr.dbBonus) : pr.db;   // Five Strike averages 3 hits
   const avg = simDbAvg(db);
   const pCrit = pr.autoHit ? 0 : Math.max(0, (21-pr.critT)/20);
-  return pHit * simMitigate(D, Math.round(avg + pr.flat + pCrit*avg), pr.mtype, pr.isPhys);
+  const ev = pHit * simMitigate(D, Math.round(avg + pr.flat + pCrit*avg), pr.mtype, pr.isPhys);
+  /* Blowing yourself up is only a good trade when it actually finishes the target — otherwise the
+     side just gave away a whole combatant, so heavily discount it rather than ban it (a Golem whose
+     only real attack IS Self-Destruct still gets to use it). */
+  return (simSelfCost(atk).selfKO && ev < D.hp) ? ev*0.05 : ev;
 }
 
 /* ---------- damage / HP bookkeeping ---------- */
@@ -8281,9 +8346,11 @@ function simStrike(B, A, atk, D, round){
     const self = confusionSelfDamage(A.obj);
     simHurt(B, A, pr.isPhys ? self.phys : self.spec, "💫 Confusion", round);
   }
+  const cost = simSelfCost(atk);
   if(!hit){
     A.misses++;
     B.log && B.log.push(`   ${A.name} → ${D.name}: ${atk.name} — 🎯 ${tot} vs ${need} … miss`);
+    if(cost.selfKO) simHurt(B, A, A.hp, `💥 ${atk.name} — the user goes down with it`, round);
     return 0;
   }
   A.hits++;
@@ -8321,6 +8388,9 @@ function simStrike(B, A, atk, D, round){
   if(done>0 && consumeDamageBuffs(D.obj)) D.bust();               // Excited & co. are spent absorbing it
   if(cfg.useStatus && hasStatus(D.obj,"sleep") && done>0) simCure(D, "sleep");   // damage wakes it
   if(before>0 && D.hp<=0) A.kos++;
+  // what the swing cost its own user
+  if(cost.recoil && done>0) simHurt(B, A, Math.max(1, Math.floor(done*cost.recoil)), "💢 Recoil", round);
+  if(cost.selfKO) simHurt(B, A, A.hp, `💥 ${atk.name} — the user goes down with it`, round);
   return done;
 }
 
@@ -8398,19 +8468,57 @@ function simInitiative(u){
 }
 
 /* ---------- one whole battle ---------- */
-function simBattle(cfg, fightersA, fightersB, wantLog){
+/* Top up a team's field: the first `active` Pokémon of its send-out order that are still standing.
+   A replacement chosen here doesn't act until the NEXT round — sending one out costs the Trainer
+   the turn, which is also why a fainted Pokémon's slot stays empty for the rest of its round. */
+function simSendOut(B, team, round){
+  const want = team.bench.filter(u=>u.hp>0).slice(0, team.active);
+  want.forEach(u=>{
+    if(!u.sentOut){
+      u.sentOut = true;
+      B.log && B.log.push(round<=1 ? `   ▸ ${team.label} leads with ${u.name}.`
+                                   : `   ▸ ${team.label} sends out ${u.name}.`);
+    }
+  });
+  team.out = want;
+}
+/* A side is beaten when every Pokémon it brought has fainted (`endOnLastMon` — how a Trainer
+   battle actually ends), or, with that off (or for a side that brought no Pokémon at all), only
+   once every fighter including the Trainers is down. */
+function simSideDown(teams, sideKey, cfg){
+  const ts = teams.filter(t=>t.side===sideKey);
+  const mons = ts.flatMap(t=>t.bench);
+  const trainersDown = ts.every(t=>!t.trainer || t.trainer.hp<=0);
+  const monsDown = mons.every(u=>u.hp<=0);
+  if(mons.length && cfg.endOnLastMon) return monsDown;
+  return monsDown && trainersDown;
+}
+function simBattle(cfg, groupsA, groupsB, wantLog){
   const B = { cfg, log: wantLog ? [] : null };
-  const units = [...fightersA.map(f=>simUnit(f,"A",cfg)), ...fightersB.map(f=>simUnit(f,"B",cfg))];
-  const alive = side => units.filter(u=>u.side===side && u.hp>0);
-  if(B.log) B.log.push(`Side A: ${fightersA.map(f=>f.name).join(", ")||"—"}`,
-                       `Side B: ${fightersB.map(f=>f.name).join(", ")||"—"}`);
+  const teams = [], units = [];
+  const build = (g, sideKey) => {
+    const t = { key:g.key, label:g.label, side:sideKey, active:g.active, out:[],
+                trainer: g.trainer ? simUnit(g.trainer, sideKey, cfg) : null,
+                bench:   g.pokemon.map(f=>simUnit(f, sideKey, cfg)) };
+    if(t.trainer){ t.trainer.sentOut = true; units.push(t.trainer); }
+    t.bench.forEach(u=>units.push(u));
+    teams.push(t);
+  };
+  groupsA.forEach(g=>build(g,"A")); groupsB.forEach(g=>build(g,"B"));
+  /* who can be seen and hit right now: every Trainer still standing, plus the Pokémon currently
+     out. Benched Pokémon are safe in their ball until it's their turn to step up. */
+  const field = sideKey => teams.filter(t=>t.side===sideKey).flatMap(t=>
+    [...(t.trainer && t.trainer.hp>0 ? [t.trainer] : []), ...t.out.filter(u=>u.hp>0)]);
+  if(B.log) ["A","B"].forEach(k=> B.log.push(`Side ${k}: ` + (teams.filter(t=>t.side===k).map(t=>
+    `${t.label} [${t.trainer?"Trainer + ":""}${t.bench.length} Pokémon, ${t.active} out at a time]`).join(" · ") || "—")));
   let round = 0, winner = "draw";
   while(round < cfg.maxRounds){
     round++;
     if(B.log) B.log.push(`— Round ${round} —`);
     units.forEach(u=>{ u.eotUsed = {}; });
+    teams.forEach(t=>simSendOut(B, t, round));
     // Initiative is re-read each round so Combat Stages / Paralysis / Flinch actually matter.
-    const order = units.filter(u=>u.hp>0)
+    const order = [...field("A"), ...field("B")]
       .map(u=>({ u, i:simInitiative(u), r:Math.random() }))
       .sort((a,b)=> b.i-a.i || b.r-a.r).map(x=>x.u);
     for(const u of order){
@@ -8418,7 +8526,7 @@ function simBattle(cfg, fightersA, fightersB, wantLog){
       if(u.isT && !simSide(u.side).trainersFight) continue;
       if(simCanAct(u, cfg)){
         for(let act=0; act<u.acts && u.hp>0; act++){
-          const foes = alive(u.side==="A"?"B":"A");
+          const foes = field(u.side==="A"?"B":"A");
           if(!foes.length) break;
           const D = simPickTarget(B, u, foes);
           const { atk } = simBestAttack(B, u, D);
@@ -8427,40 +8535,39 @@ function simBattle(cfg, fightersA, fightersB, wantLog){
         }
       } else if(B.log) B.log.push(`   ${u.name} can't act.`);
       simUpkeep(B, u, round);
-      if(!alive("A").length || !alive("B").length) break;
+      if(simSideDown(teams,"A",cfg) || simSideDown(teams,"B",cfg)) break;
     }
-    const aA = alive("A").length, aB = alive("B").length;
-    if(!aA || !aB){ winner = !aA && !aB ? "draw" : (aA ? "A" : "B"); break; }
+    const dA = simSideDown(teams,"A",cfg), dB = simSideDown(teams,"B",cfg);
+    if(dA || dB){ winner = dA && dB ? "draw" : (dA ? "B" : "A"); break; }
   }
   if(B.log) B.log.push(winner==="draw" ? `Stalemate after ${round} rounds.` : `Side ${winner} wins on round ${round}.`);
   return { winner, rounds:round, log:B.log, units };
 }
 
 /* ---------- aggregation over many battles ---------- */
-function simNewAgg(cfg, fightersA, fightersB){
+function simNewAgg(cfg, groupsA, groupsB){
   const units = {};
-  const seed = (f, side)=>{ units[f.key+"/"+side] = { name:f.name, side, kind:f.kind,
-    dealt:0, taken:0, kos:0, hits:0, misses:0, crits:0, turns:0, survived:0, downRounds:0, downs:0 }; };
-  fightersA.forEach(f=>seed(f,"A")); fightersB.forEach(f=>seed(f,"B"));
-  return { target:cfg.runs, runs:0, A:0, B:0, draw:0, roundsA:[], roundsB:[], byRound:{}, units,
-           log:null, sumRounds:0, when:Date.now(),
-           names:{ A:fightersA.map(f=>f.name), B:fightersB.map(f=>f.name) } };
+  const seed = (g, side)=>{
+    const add = (f, kind)=>{ units[f.key+"/"+side] = { name:f.name, side, kind, team:g.label,
+      dealt:0, taken:0, kos:0, hits:0, misses:0, crits:0, turns:0, survived:0, fielded:0, downs:0 }; };
+    if(g.trainer) add(g.trainer, "trainer");
+    g.pokemon.forEach(f=>add(f, "pokemon"));
+  };
+  groupsA.forEach(g=>seed(g,"A")); groupsB.forEach(g=>seed(g,"B"));
+  return { target:cfg.runs, runs:0, A:0, B:0, draw:0, byRound:{}, units,
+           log:null, sumRounds:0, when:Date.now() };
 }
 function simFold(agg, res){
   agg.runs++;
   agg.sumRounds += res.rounds;
-  if(res.winner==="A"){ agg.A++; agg.roundsA.push(res.rounds); }
-  else if(res.winner==="B"){ agg.B++; agg.roundsB.push(res.rounds); }
-  else agg.draw++;
-  if(res.winner!=="draw"){
-    const k = res.rounds;
-    (agg.byRound[k] || (agg.byRound[k] = {A:0,B:0}))[res.winner]++;
-  }
+  if(res.winner==="A") agg.A++; else if(res.winner==="B") agg.B++; else agg.draw++;
+  if(res.winner!=="draw") (agg.byRound[res.rounds] || (agg.byRound[res.rounds] = {A:0,B:0}))[res.winner]++;
   res.units.forEach(u=>{
     const s = agg.units[u.id]; if(!s) return;
     s.dealt+=u.dealt; s.taken+=u.taken; s.kos+=u.kos; s.hits+=u.hits;
     s.misses+=u.misses; s.crits+=u.crits; s.turns+=u.turns;
-    if(u.hp>0) s.survived++; else { s.downs++; s.downRounds += u.downRound || res.rounds; }
+    if(u.sentOut) s.fielded++;
+    if(u.hp>0) s.survived++; else s.downs++;
   });
   if(!agg.log) agg.log = res.log;
 }
@@ -8468,18 +8575,19 @@ function simFold(agg, res){
 /* ---------- running it (chunked so the tab never freezes) ---------- */
 function simRun(){
   if(simRunning) return;
-  const fA = simSideFighters(simCfg.A), fB = simSideFighters(simCfg.B);
-  if(!fA.length || !fB.length){ toast("Both sides need at least one fighter"); return; }
+  const gA = simSideGroups(simCfg.A), gB = simSideGroups(simCfg.B);
+  if(!simSideFighters(simCfg.A).length || !simSideFighters(simCfg.B).length){
+    toast("Both sides need at least one fighter"); return; }
   const cfg = JSON.parse(JSON.stringify(simCfg));
   cfg.runs = Math.max(1, Math.min(SIM_MAX_RUNS, cfg.runs|0));
   cfg.maxRounds = Math.max(1, Math.min(100, cfg.maxRounds|0));
-  const agg = simNewAgg(cfg, fA, fB);
+  const agg = simNewAgg(cfg, gA, gB);
   simResult = agg; simRunning = true;
   simDrawOut();
   const step = ()=>{
     const t0 = performance.now();
     while(agg.runs < agg.target && performance.now() - t0 < 45){
-      simFold(agg, simBattle(cfg, fA, fB, agg.runs===0));
+      simFold(agg, simBattle(cfg, gA, gB, agg.runs===0));
     }
     if(agg.runs < agg.target){ simDrawOut(); setTimeout(step, 0); }
     else { simRunning = false; simDrawOut(); }
@@ -8490,6 +8598,81 @@ function simRun(){
 /* ===================================================================
    SIMULATOR VIEW
 =================================================================== */
+/* nudge one Pokémon up or down a team's send-out order. The order is stored on the SIDE
+   (`side.order[teamKey]`), never on the encounter or the player's sheet — reordering who leads in a
+   what-if run must not rewrite live campaign data. */
+function simMoveMon(side, g, key, dir){
+  const cur = simOrderedMons(side, g).map(f=>f.key);
+  const i = cur.indexOf(key), j = i + dir;
+  if(i<0 || j<0 || j>=cur.length) return;
+  [cur[i], cur[j]] = [cur[j], cur[i]];
+  (side.order || (side.order = {}))[g.key] = cur;
+  saveSimCfg(); renderSim();
+}
+function simFighterRow(side, g, f, opts={}){
+  const isT = f.kind==="trainer";
+  const skip = new Set(side.exclude||[]);
+  const on = !skip.has(f.key);
+  const row = el("div",{style:"display:flex;gap:6px;align-items:flex-start;padding:2px 0"});
+  const cb = el("input",{type:"checkbox",style:"margin-top:3px"}); cb.checked = on;
+  cb.addEventListener("change",()=>{
+    side.exclude = (side.exclude||[]).filter(k=>k!==f.key);
+    if(!cb.checked) side.exclude.push(f.key);
+    saveSimCfg(); renderSim();
+  });
+  row.append(cb);
+  const body = el("div",{style:"flex:1 1 auto;min-width:0"});
+  const d = isT ? trainerDerived(f.obj) : pokeDerived(f.obj);
+  const types = isT ? [] : (getSpecies(f.obj.species)?.types||[]).filter(t=>t && t!=="None");
+  const slot = !on ? "" : opts.pos==null ? "" : opts.pos < opts.active ? " · ⚔ starts out" : " · 🎒 on the bench";
+  body.append(el("div",{class:"small",style:on?"":"opacity:.5"},
+    el("b",{}, `${isT?"🧑":"⬤"} ${f.name}`),
+    el("span",{class:"muted"}, `  Lv ${f.obj.level||1} · ${isT?d.hp:d.maxHP} HP`
+      + (types.length ? ` · ${types.join("/")}` : "")
+      + (isBoss(f.obj) ? ` · 👑 Boss ×${f.obj.boss.actions||1} turns` : "")
+      + (!isT && isSwarm(f.obj) ? " · 🐝 Swarm" : "") + slot)));
+  // a Trainer's own attacks, so it's obvious at a glance what they'll actually throw
+  if(isT && on) body.append(el("div",{class:"small muted",style:"padding-left:14px"},
+    "⚔ " + simAtkSummary(simAttacks(f.obj, true, null))));
+  const unknown = on ? simUnknownMoves(f.obj, isT) : [];
+  if(unknown.length) body.append(el("div",{class:"small",style:"padding-left:14px;color:var(--warn)"},
+    `⚠ not in the Move DB, so it can't be rolled: ${unknown.join(", ")}`));
+  row.append(body);
+  if(opts.reorder) row.append(el("span",{class:"inline",style:"gap:2px;flex:0 0 auto"},
+    el("button",{class:"btn-secondary",style:"padding:1px 7px;font-size:12px",title:"send out earlier",
+      disabled:opts.idx<=0, onclick:()=>simMoveMon(side,g,f.key,-1)},"▲"),
+    el("button",{class:"btn-secondary",style:"padding:1px 7px;font-size:12px",title:"send out later",
+      disabled:opts.idx>=opts.total-1, onclick:()=>simMoveMon(side,g,f.key,1)},"▼")));
+  return row;
+}
+/* one team inside a source: its Trainer, how many Pokémon it fields at once, and the bench order */
+function simTeamNode(side, g){
+  const skip = new Set(side.exclude||[]);
+  const mons = simOrderedMons(side, g);
+  const inMons = mons.filter(f=>!skip.has(f.key));
+  const active = simActiveCount(side, g, inMons.length);
+  const wrap = el("div",{style:"margin-top:8px;padding-top:6px;border-top:1px dotted var(--line)"});
+  const head = el("div",{class:"inline",style:"gap:8px;justify-content:space-between;flex-wrap:wrap"});
+  head.append(el("b",{class:"small"}, (g.kind==="wild" ? "🌿 " : "👤 ") + g.label));
+  if(inMons.length > 1){
+    const n = el("input",{type:"number",min:1,max:inMons.length,value:active,style:"width:58px;padding:3px 6px"});
+    n.addEventListener("change",()=>{
+      (side.active || (side.active = {}))[g.key] =
+        Math.max(1, Math.min(inMons.length, parseInt(n.value)||1));
+      saveSimCfg(); renderSim();
+    });
+    head.append(el("span",{class:"small muted",style:"display:inline-flex;gap:5px;align-items:center"},
+      "sends out", n, `of ${inMons.length} at a time`));
+  }
+  wrap.append(head);
+  if(g.trainer) wrap.append(simFighterRow(side, g, g.trainer));
+  mons.forEach((f,i)=> wrap.append(simFighterRow(side, g, f,
+    { idx:i, total:mons.length, reorder:mons.length>1, active,
+      pos: skip.has(f.key) ? null : inMons.indexOf(f) })));
+  if(inMons.length > active) wrap.append(el("div",{class:"small muted",style:"padding-left:20px"},
+    `▲▼ sets who leads — the bench steps up in this order as the ones ahead of them faint.`));
+  return wrap;
+}
 function simRosterCard(sideKey){
   const side = simSide(sideKey);
   const card = el("div",{class:"card"});
@@ -8521,27 +8704,9 @@ function simRosterCard(sideKey){
       el("b",{}, src ? `${src.kind==="enc"?"👹":"🧑"} ${src.name}` : "⚠ missing source"),
       el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove",
         onclick:()=>{ side.sources = side.sources.filter(k=>k!==key); saveSimCfg(); renderSim(); }},"✕")));
-    const fighters = simFightersOf(src);
-    if(!fighters.length) box.append(el("div",{class:"small muted"},"— nothing in it to fight with"));
-    const skip = new Set(side.exclude||[]);
-    fighters.forEach(f=>{
-      const isT = f.kind==="trainer";
-      const d = isT ? trainerDerived(f.obj) : pokeDerived(f.obj);
-      const lbl = el("label",{class:"inline",style:"gap:8px;cursor:pointer;padding:2px 0;align-items:center"});
-      const cb = el("input",{type:"checkbox"}); cb.checked = !skip.has(f.key);
-      cb.addEventListener("change",()=>{
-        side.exclude = (side.exclude||[]).filter(k=>k!==f.key);
-        if(!cb.checked) side.exclude.push(f.key);
-        saveSimCfg(); renderSim();
-      });
-      const types = isT ? [] : (getSpecies(f.obj.species)?.types||[]).filter(t=>t && t!=="None");
-      lbl.append(cb, el("span",{class:"small"}, `${isT?"🧑":"⬤"} ${f.name}`),
-        el("span",{class:"small muted"}, `Lv ${f.obj.level||1} · ${isT?d.hp:d.maxHP} HP`
-          + (types.length ? ` · ${types.join("/")}` : "")
-          + (isBoss(f.obj) ? ` · 👑 Boss ×${f.obj.boss.actions||1}` : "")
-          + (!isT && isSwarm(f.obj) ? " · 🐝 Swarm" : "")));
-      box.append(lbl);
-    });
+    const groups = simGroupsOf(src);
+    if(!groups.length) box.append(el("div",{class:"small muted"},"— nothing in it to fight with"));
+    groups.forEach(g=> box.append(simTeamNode(side, g)));
     card.append(box);
   });
   // tactics
@@ -8616,6 +8781,8 @@ function simSettingsCard(){
     "Uses whatever is set on the currently-viewed battle Map (damage bonuses, auto-hits, AC overrides).");
   opt("Injuries during the fight","useInjury",
     "Crossing an HP marker or taking Massive Damage costs an Injury, which lowers max HP mid-battle.");
+  opt("Beaten when the last Pokémon faints","endOnLastMon",
+    "How a Trainer battle really ends. Off = the fight only stops once the Trainers are down too.");
   card.append(toggles);
   const runBtn = el("button",{id:"simRunBtn",class:"btn-primary",style:"padding:12px 22px;font-size:16px",
     disabled:simRunning, onclick:simRun}, simRunning?"⏳ Running…":"▶ Run simulation");
@@ -8690,27 +8857,33 @@ function simResultsNode(){
   uc.append(el("h3",{},"Per-fighter averages (per battle)"));
   const tbl = el("table",{class:"skilltable"});
   tbl.append(el("tr",{}, el("td",{style:"font-weight:800"},"Fighter"),
-    el("td",{class:"dice"},"Dmg dealt"), el("td",{class:"dice"},"Dmg taken"),
-    el("td",{class:"dice"},"KOs"), el("td",{class:"dice"},"Survives"), el("td",{class:"dice"},"Hit %")));
+    el("td",{class:"dice"},"Reached the field"), el("td",{class:"dice"},"Dmg dealt"),
+    el("td",{class:"dice"},"Dmg taken"), el("td",{class:"dice"},"KOs"),
+    el("td",{class:"dice"},"Survives"), el("td",{class:"dice"},"Hit %")));
   ["A","B"].forEach(sideKey=>{
     const rows = Object.values(agg.units).filter(u=>u.side===sideKey);
     if(!rows.length) return;
-    tbl.append(el("tr",{}, el("td",{colspan:6,style:"font-weight:800;color:var(--muted);padding-top:10px"},
+    tbl.append(el("tr",{}, el("td",{colspan:7,style:"font-weight:800;color:var(--muted);padding-top:10px"},
       sideKey==="A"?"🟦 Side A":"🟥 Side B")));
     rows.sort((a,b)=>b.dealt-a.dealt).forEach(u=>{
-      const shots = u.hits+u.misses;
+      const shots = u.hits+u.misses, fielded = u.fielded;
       tbl.append(el("tr",{},
-        el("td",{}, `${u.kind==="trainer"?"🧑":"⬤"} ${u.name}`),
+        el("td",{}, `${u.kind==="trainer"?"🧑":"⬤"} ${u.name}`,
+          u.team && u.team!==u.name ? el("span",{class:"small muted"}, `  ${u.team}`) : ""),
+        el("td",{class:"dice"}, `${simPct(fielded,n)}%`),
         el("td",{class:"dice"}, String(simAvg(u.dealt,n))),
         el("td",{class:"dice"}, String(simAvg(u.taken,n))),
         el("td",{class:"dice"}, String(simAvg(u.kos,n))),
-        el("td",{class:"dice"}, `${simPct(u.survived,n)}%`),
+        el("td",{class:"dice"}, fielded ? `${simPct(u.survived - (n-fielded), fielded)}%` : "—"),
         el("td",{class:"dice"}, shots ? `${simPct(u.hits,shots)}%` : "—")));
     });
   });
   uc.append(el("div",{style:"overflow-x:auto"}, tbl));
   uc.append(el("div",{class:"small muted",style:"margin-top:8px"},
-    "“Survives” = still standing when the battle ended. Damage is what actually came off HP, after Defense, type effectiveness and Damage Reduction."));
+    "“Reached the field” = how often this one was even sent out before the fight was decided — the "
+    + "number to watch for a closer on the bench. “Survives” counts only those battles, so a Pokémon "
+    + "that never came out doesn't score a free 100%. Damage is what actually came off HP, after "
+    + "Defense, type effectiveness and Damage Reduction."));
   wrap.append(uc);
   // one full play-by-play
   if(agg.log?.length){
@@ -8736,8 +8909,10 @@ function renderSim(){
   intro.append(el("h3",{},"⚗ Combat Simulator"));
   intro.append(el("div",{class:"small muted"},
     "Throws two sides at each other a few hundred times and reports who wins, how fast, and who carried. "
+    + "Each Trainer fields one Pokémon at a time by default and the next one steps up only when it faints "
+    + "— set “sends out N at a time” per team, and use ▲▼ to decide who leads and who's held back. "
     + "It uses this sheet's own combat maths — Combat Stages, STAB, the effectiveness ladder, abilities, "
-    + "Crit ranges, Damage Reduction — but only damaging attacks: no Status Moves, switching, items, "
+    + "Crit ranges, Damage Reduction — but only damaging attacks: no Status Moves, held items, "
     + "Features, positioning or Interrupts. Treat it as a slugging-match stress test, not a prophecy."));
   root.append(intro);
   const grid = el("div",{class:"grid cols-2"});
@@ -9009,8 +9184,6 @@ function openSettings(){
       hint?el("div",{class:"small muted"},hint):""));
     return row;
   };
-  wrap.append(mk("GM mode", "ptu_gm_mode",
-    "Show GM-only tools on this device (Catch DC, catch-rate notes). In a cloud campaign this follows your GM code automatically."));
   wrap.append(mk("Show Contest stats", "ptu_show_contest",
     "Display each move's Contest type/effect in its details (Cool, Tough, etc.). Off by default."));
   modal({title:"⚙ Settings", bodyNode:wrap, footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Done")]});
