@@ -4773,22 +4773,23 @@ function typeAceAbilityText(grant){
     ? `The user gains a +5 bonus to Damage Rolls when using attacks of the ${grant.type} Type. This bonus increases to +10 when the user is under 1/3rd of their Maximum Hit Points.`
     : `Whenever the user uses a Move of the ${grant.type} Type, they gain +5 Damage Reduction for one full round. If they are under 1/3rd of their Maximum Hit Points, they instead gain +10 Damage Reduction.`;
 }
-function openTypeAceGrant(p, t){
-  if(!t.chosenType){ toast("Pick a Chosen Type for Type Ace first (Features & Edges → Classes)."); return; }
+function openTypeAceGrant(p, t, persistFn, rerenderFn){
+  const persist = persistFn||save, rerender = rerenderFn||(()=>refreshMon(p));
+  if(!t.chosenType){ toast("Pick a Chosen Type for Type Ace first."); return; }
   if(p.typeAce){ toast(`${p.species} already has a Type Ace grant (${p.typeAce.ability}, ${p.typeAce.type}).`); return; }
   if((p.tutorPoints||0) < 2){ toast(`Type Ace costs 2 Tutor Points (has ${p.tutorPoints||0}).`); return; }
   openPicker(`Type Ace — grant an Ability (${t.chosenType})`, ["Last Chance","Type Strategist"], name=>{
     p.tutorPoints = Math.max(0,(p.tutorPoints||0)-2);
     p.typeAce = { ability:name, type:t.chosenType };
-    save(); refreshMon(p);
+    persist(); rerender();
     toast(`${p.species} learned ${name} (${t.chosenType})`);
   });
 }
-function clearTypeAce(p){
+function clearTypeAce(p, persistFn, rerenderFn){
   if(!p.typeAce) return;
   p.tutorPoints = (p.tutorPoints||0) + 2;
   const was = p.typeAce; p.typeAce = null;
-  save(); refreshMon(p);
+  (persistFn||save)(); (rerenderFn||(()=>refreshMon(p)))();
   toast(`${was.ability} (${was.type}) removed — +2 Tutor Points refunded`);
 }
 function abilitiesCard(p, sp){
@@ -5261,22 +5262,23 @@ function unlockToggle(p){
    the target's Move List to the Trainer's Chosen Type. Only one Move-Sync'd Move at a time — to sync
    a different one the old one must be forgotten (removed from the Move List) first. */
 function moveSyncEligible(t){ return !!(t && (t.features||[]).includes("Move Sync")); }
-function openMoveSync(p, t, mn){
-  if(!t.chosenType){ toast("Pick a Chosen Type for Type Ace first (Features & Edges → Classes)."); return; }
+function openMoveSync(p, t, mn, persistFn, rerenderFn){
+  const persist = persistFn||save, rerender = rerenderFn||(()=>refreshMon(p));
+  if(!t.chosenType){ toast("Pick a Chosen Type for Type Ace first."); return; }
   const already = p.moveSync && p.moveSync.move===mn;
-  if(already){ clearMoveSync(p); return; }
+  if(already){ clearMoveSync(p, persist, rerender); return; }
   if(p.moveSync){ toast(`${p.species} already has a Move-Sync'd Move (${p.moveSync.move}) — forget it before syncing a new one.`); return; }
   if((p.tutorPoints||0) < 1){ toast(`Move Sync costs 1 Tutor Point (has ${p.tutorPoints||0}).`); return; }
   p.tutorPoints = Math.max(0,(p.tutorPoints||0)-1);
   p.moveSync = { move: mn, type: t.chosenType };
-  save(); refreshMon(p);
+  persist(); rerender();
   toast(`${mn} is now permanently ${t.chosenType}-Type (Move Sync)`);
 }
-function clearMoveSync(p){
+function clearMoveSync(p, persistFn, rerenderFn){
   if(!p.moveSync) return;
   p.tutorPoints = (p.tutorPoints||0) + 1;
   const was = p.moveSync.move; p.moveSync = null;
-  save(); refreshMon(p);
+  (persistFn||save)(); (rerenderFn||(()=>refreshMon(p)))();
   toast(`${was} is no longer Move-Synced (+1 Tutor Point refunded)`);
 }
 function moveSlot(p, sp, m, mn, opts={}){
@@ -7157,6 +7159,8 @@ function encounterMoveRow(p, sp, m, mn, favSet, onFav, isStruggle, trainer){
   if(m) left.append(el("span",{class:"small muted",style:"min-width:0;overflow:hidden;text-overflow:ellipsis"}, moveLineShort(m)));
   const isSig = p.sigTechnique && p.sigTechnique.move===mn;
   if(isSig) left.append(el("span",{class:"kv",title:`Signature Technique: ${p.sigTechnique.mod}`},"🏆 "+p.sigTechnique.mod));
+  const isSynced = p.moveSync && p.moveSync.move===mn;
+  if(isSynced) left.append(el("span",{class:"kv",title:`Move Sync: permanently ${p.moveSync.type}-Type`},"🔃 "+p.moveSync.type));
   row.append(left);
   const acts=el("div",{class:"inline",style:"gap:6px"});
   if(m && !isStruggle){ const uc = usesControl(p, "move", m.name, m.frequency, renderEncounters, saveEnc, {bossEot:isBoss(p)}); if(uc) acts.append(uc); }
@@ -7168,6 +7172,11 @@ function encounterMoveRow(p, sp, m, mn, favSet, onFav, isStruggle, trainer){
   if(m && !isStruggle && trainer && (hasSigFeature || isSig)) acts.append(el("button",{class:"btn-secondary"+(isSig?" on":""),style:"padding:5px 10px",
     title:isSig?"forget this Signature Technique (+1 Tutor Point)":"make this the Pokémon's Signature Technique (needs 2 Tutor Points + a matching Training Feature)",
     onclick:()=> isSig ? clearSigTechnique(p) : openSigTechPicker(trainer,p,m,mn)},"🏆"));
+  // GM sandbox: Move Sync doesn't require the Feature check the Sheet uses — an NPC Trainer with a
+  // Chosen Type set can Move Sync any of their Pokémon's Moves directly.
+  if(m && !isStruggle && trainer) acts.append(el("button",{class:"btn-secondary"+(isSynced?" on":""),style:"padding:5px 10px",
+    title:isSynced?"forget Move Sync (+1 Tutor Point)":"Move Sync: permanently retype this Move to the Trainer's Chosen Type (1 Tutor Point)",
+    onclick:()=>openMoveSync(p,trainer,mn,saveEnc,renderEncounters)},"🔃"));
   if(!isStruggle) acts.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted)",title:"remove move",
     onclick:()=>{ const i=p.moves.indexOf(mn); if(i>=0){ p.moves.splice(i,1); saveEnc(); renderEncounters(); } }},"×"));
   row.append(acts);
@@ -7616,6 +7625,9 @@ function encMonRemoveBtn(p,list){ return el("button",{class:"x",style:"cursor:po
   onclick:()=>{ const i=list.indexOf(p); if(i>=0){ list.splice(i,1); saveEnc(); renderEncounters(); } }},"×"); }
 function encounterMonCard(enc, p, list, trainer){
   normPokemon(p);
+  if(p.moveSync && !(p.moves||[]).some(mn=>(mn||"").toLowerCase()===p.moveSync.move.toLowerCase())){
+    p.tutorPoints = (p.tutorPoints||0) + 1; p.moveSync = null; saveEnc();   // synced Move was forgotten — refund
+  }
   const sp=getSpecies(p.species), d=pokeDerived(p), maxHP=d.maxHP;
   if(p.currentHP==null) p.currentHP=maxHP;
   const fainted = p.currentHP<=0;
@@ -7747,16 +7759,32 @@ function encounterMonCard(enc, p, list, trainer){
   card.append(mw);
   // abilities — addable, each expandable to explain what it does
   const aw=el("div",{style:"margin-top:8px"});
-  aw.append(el("div",{class:"inline",style:"justify-content:space-between"},
-    el("span",{class:"small muted",style:"font-weight:700"},`Abilities (${p.abilities.length})`),
-    el("button",{class:"linkbtn",onclick:()=>addEncAbility(p,sp)},"+ ability")));
+  const awHead = el("div",{class:"inline",style:"justify-content:space-between;flex-wrap:wrap;gap:6px"},
+    el("span",{class:"small muted",style:"font-weight:700"},`Abilities (${p.abilities.length})`));
+  const awActs = el("div",{class:"inline",style:"gap:6px"});
+  // GM sandbox: no Class check here (NPC Trainers have no Classes UI) — any Trainer with a Chosen
+  // Type set can grant their Pokémon a Type Ace Ability directly.
+  if(trainer && !p.typeAce) awActs.append(el("button",{class:"linkbtn",title:"Type Ace: grant Last Chance or Type Strategist",
+    onclick:()=>openTypeAceGrant(p,trainer,saveEnc,renderEncounters)},"🎯 Type Ace"));
+  awActs.append(el("button",{class:"linkbtn",onclick:()=>addEncAbility(p,sp)},"+ ability"));
+  awHead.append(awActs);
+  aw.append(awHead);
   if(grant){ const gab=abilityByName.get(grant.ability.toLowerCase());
     const grow=el("details",{class:"spoiler",style:"margin-top:5px"});
     grow.append(el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, grant.ability),
       el("span",{class:"muted small",style:"margin-left:8px"},"from Poltergeist — this Form")));
     grow.append(el("div",{class:"small",style:"margin-top:6px",html: gab?abilityText(gab):"<span class='muted'>Not in database</span>"}));
     aw.append(grow); }
-  if(!p.abilities.length) aw.append(el("span",{class:"muted small"},"none — tap + ability"));
+  if(p.typeAce){
+    const taRow=el("details",{class:"spoiler",style:"margin-top:5px"});
+    taRow.append(el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, `${p.typeAce.ability} (${p.typeAce.type})`),
+      el("span",{class:"muted small",style:"margin-left:8px"},"from Type Ace"),
+      el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove — refunds 2 Tutor Points",
+        onclick:e=>{e.preventDefault(); clearTypeAce(p,saveEnc,renderEncounters);}},"×")));
+    taRow.append(el("div",{class:"small",style:"margin-top:6px"}, typeAceAbilityText(p.typeAce)));
+    aw.append(taRow);
+  }
+  if(!p.abilities.length && !grant && !p.typeAce) aw.append(el("span",{class:"muted small"},"none — tap + ability"));
   p.abilities.forEach(an=> aw.append(encounterAbilityRow(p,an)));
   card.append(aw);
   // legendary Auras — only for legendaries (or if this enemy already has some)
@@ -7862,6 +7890,17 @@ function encounterTrainerCard(enc, tr){
     el("span",{style:"font-weight:800;min-width:16px;text-align:center"}, String(t.injuries||0)),
     el("button",{class:"btn-secondary",style:"padding:2px 9px",onclick:()=>{ t.injuries=Math.min(10,(t.injuries||0)+1); if(t.currentHP>trainerDerived(t).hp) t.currentHP=trainerDerived(t).hp; saveEnc(); renderEncounters(); }},"+"));
   card.append(injRow);
+  // Type Ace's Chosen Type — no Classes UI exists for NPC Trainers, so this is offered unconditionally
+  // (GM sandbox) rather than gated on having taken the Type Ace Class.
+  const ctRow=el("div",{class:"inline",style:"gap:6px;margin-top:6px;align-items:center"});
+  ctRow.append(el("span",{class:"small muted",style:"font-weight:700"},"🎯 Chosen Type (Type Ace)"));
+  const ctSel=el("select",{style:"padding:2px 6px"});
+  ctSel.append(el("option",{value:""},"—"));
+  TYPES.forEach(ty=>ctSel.append(el("option",{value:ty},ty)));
+  ctSel.value = t.chosenType || "";
+  ctSel.addEventListener("change",()=>{ t.chosenType = ctSel.value || null; saveEnc(); renderEncounters(); });
+  ctRow.append(ctSel);
+  card.append(ctRow);
   card.append(encTrainerCombatStages(t, tr.id));
   card.append(encTrainerStatSpread(t, tr.id));
   card.append(encWeaponsCard(t, tr.id));
