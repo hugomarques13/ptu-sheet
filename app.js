@@ -144,7 +144,16 @@ const STATUS_DEFS = [
    effect:"−6 to Accuracy Rolls; must pass a DC 10 Acrobatics Check over Rough/Slow Terrain or become Tripped. Always considered Vulnerable."},
   {key:"petrified", name:"Petrified", kind:"other", cap:0,
    effect:"Is stone, irreversible."},
+  /* GM bookkeeping flag rather than a book Affliction — PTU calls this "Fainted" (Core p.249: at 0 HP
+     or below a creature is out of the fight, always Vulnerable, and can't act). It's `gm:true` so only
+     the GM gets the toggle (a player shouldn't be able to declare a foe down), and it's what greys a
+     token out on the Map. Not in SCENE_STATUS_KEYS on purpose: being down outlasts the Scene until the
+     GM says otherwise, and End Day heals + clears it like every other affliction. */
+  {key:"knockedOut", name:"Knocked Out", kind:"other", cap:0, gm:true,
+   effect:"Out of the fight — cannot act, always considered Vulnerable, and can't apply Evasion (Core p.249). The GM sets this; a knocked-out token is greyed out on the Map for everyone."},
 ];
+/* statuses only the GM may toggle (they still SHOW to everyone once applied) */
+function statusPickable(s){ return !s.gm || isGM(); }
 /* Trainings (Core p.76 "Elite Trainer" family — Agility/Brutal/Focused/Inspired Training): a Trainer
    applies one of these to a Pokémon as an Extended Action; they persist until an Extended Rest. Kept
    OUT of STATUS_DEFS on purpose — mechanically and visually distinct from Afflictions (no immunity/
@@ -600,8 +609,9 @@ function findInventoryStone(t, method){
    split share a stage number but aren't interchangeable), so we just record real history instead. */
 function evolveTo(p, targetName, stoneItem){
   const sp = getSpecies(targetName); if(!sp) return;
+  const from = getSpecies(p.species);
   const stoneMsg = stoneItem ? `\nThis consumes one ${stoneItem.name} from your inventory.` : "";
-  if(!confirm(`Evolve ${p.nickname || getSpecies(p.species)?.name || "this Pokémon"} into ${sp.name}?\nStats, moves, abilities, level and XP are kept.${stoneMsg}`)) return;
+  if(!confirm(`Evolve ${p.nickname || from?.name || "this Pokémon"} into ${sp.name}?\nStats, moves, abilities, level and XP are kept.${stoneMsg}`)) return;
   if(stoneItem){
     const t = activeChar().trainer;
     stoneItem.qty = (parseInt(stoneItem.qty)||1) - 1;
@@ -612,7 +622,127 @@ function evolveTo(p, targetName, stoneItem){
   p.species = sp.name;
   const m = pokeDerived(p).maxHP;                         // clamp HP to the new species' max
   if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
-  save(); refreshMon(p); toast(`Evolved into ${sp.name}! ✨`+(stoneItem?` (−1 ${stoneItem.name})`:""));
+  save();
+  // the show: the games' white-silhouette pulse + jingle. The sheet is already updated underneath,
+  // so a skipped/failed animation never leaves the Pokémon half-evolved.
+  playEvolutionFX({ fromName: from?.name || p.species, toName: sp.name, shiny: p.shiny,
+                    fromImg: p.image || "", toImg: p.image || "",
+                    caption: `${p.nickname || from?.name || "Your Pokémon"} evolved into ${sp.name}!` })
+    .then(()=>{ refreshMon(p); });
+  toast(`Evolved into ${sp.name}! ✨`+(stoneItem?` (−1 ${stoneItem.name})`:""));
+}
+
+/* ===================================================================
+   Evolution animation & sound
+   The games' evolution scene: the Pokémon flashes to a white silhouette
+   and swells, snaps back to its old shape, and repeats faster and faster
+   until a final flash leaves the NEW Pokémon standing there — with the
+   beeping that speeds up along with it and a fanfare at the end.
+   Sound is synthesised with WebAudio (square-wave beeps + an ascending
+   arpeggio), so there's no audio file to ship and it still works offline
+   in the single-file bundle. Both halves can be turned off in ⚙ Settings.
+=================================================================== */
+function evoFxOn(){ return localStorage.getItem("ptu_evo_fx") !== "0"; }        // on unless switched off
+function evoSoundOn(){ return localStorage.getItem("ptu_evo_sound") !== "0"; }
+let _audioCtx = null;
+/* one lazily-created AudioContext, resumed on use (browsers start it suspended until a gesture) */
+function audioCtx(){
+  const AC = window.AudioContext || window.webkitAudioContext; if(!AC) return null;
+  if(!_audioCtx){ try{ _audioCtx = new AC(); }catch(e){ return null; } }
+  if(_audioCtx.state === "suspended") _audioCtx.resume().catch(()=>{});
+  return _audioCtx;
+}
+/* one shaped tone. `type` picks the waveform, gain is enveloped so nothing clicks. */
+function beep(freq, startAt, dur, {type="square", vol=0.13, glide=0} = {}){
+  const ctx = audioCtx(); if(!ctx) return;
+  const t0 = ctx.currentTime + startAt;
+  const osc = ctx.createOscillator(), g = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t0);
+  if(glide) osc.frequency.linearRampToValueAtTime(freq + glide, t0 + dur);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(vol, t0 + Math.min(0.02, dur*0.25));
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(g); g.connect(ctx.destination);
+  osc.start(t0); osc.stop(t0 + dur + 0.02);
+}
+/* the "ta-daaa" at the end — an ascending arpeggio finishing on a held major third */
+function evolutionFanfare(delay=0){
+  if(!evoSoundOn()) return;
+  const notes = [523.25, 659.25, 783.99, 1046.50];                       // C5 E5 G5 C6
+  notes.forEach((f,i)=> beep(f, delay + i*0.11, 0.13, {type:"square", vol:0.11}));
+  beep(1046.50, delay + 0.46, 0.55, {type:"square", vol:0.12});          // C6 held
+  beep(1318.51, delay + 0.46, 0.55, {type:"triangle", vol:0.09});        // E6 on top
+}
+/* Runs the overlay. Returns a Promise that resolves when it's gone — always resolves, even if the
+   user taps to skip or the browser blocks audio. */
+function playEvolutionFX({ fromName, toName, shiny, fromImg, toImg, caption } = {}){
+  if(!evoFxOn()) return Promise.resolve();
+  return new Promise(resolve=>{
+    const PULSES = [400, 350, 305, 265, 230, 200, 175, 155, 140, 130];   // ms per pulse — accelerating
+    const overlay = el("div",{class:"evo-overlay"});
+    const stage   = el("div",{class:"evo-stage"});
+    const before  = monSprite(fromName, shiny, "evo-sprite", fromImg || undefined);
+    const after   = monSprite(toName,   shiny, "evo-sprite", toImg   || undefined);
+    after.classList.add("evo-after");
+    stage.append(before, after);
+    const cap = el("div",{class:"evo-caption"}, caption || `${fromName} evolved into ${toName}!`);
+    overlay.append(stage, cap);
+    document.body.append(overlay);
+
+    let done = false, timers = [];
+    const at = (ms, fn) => timers.push(setTimeout(fn, ms));
+    const finish = () => {
+      if(done) return; done = true;
+      timers.forEach(clearTimeout);
+      overlay.classList.add("closing");
+      setTimeout(()=>{ overlay.remove(); resolve(); }, 260);
+    };
+    overlay.addEventListener("click", finish);          // tap anywhere to skip
+    // both sprites are absolutely positioned and centred with a translate, so every scale we set
+    // has to carry that translate with it or the Pokémon slides off-centre as it grows
+    const scaleTo = (node, s) => { node.style.transform = `translate(-50%,-50%) scale(${s})`; };
+
+    // ---- pulse phase: white silhouette swells, then snaps back to the old Pokémon ----
+    let t = 120;
+    PULSES.forEach((dur, i)=>{
+      at(t, ()=>{
+        before.style.transition = `transform ${Math.round(dur*0.5)}ms ease-in, filter ${Math.round(dur*0.35)}ms linear`;
+        before.classList.add("white");
+        scaleTo(before, 1 + 0.05*(i+1));
+        if(evoSoundOn()) beep(430 + i*38, 0, Math.min(0.16, dur/1000*0.55), {vol:0.10, glide:120});
+      });
+      at(t + dur*0.5, ()=>{
+        before.classList.remove("white");
+        scaleTo(before, 1);
+      });
+      t += dur;
+    });
+
+    // ---- the reveal: hold the silhouette, flash, and the new Pokémon is standing there ----
+    at(t, ()=>{
+      before.style.transition = "transform 620ms cubic-bezier(.2,.8,.3,1), opacity 260ms linear";
+      before.classList.add("white");
+      scaleTo(before, 1.55);
+      after.classList.add("white");
+      scaleTo(after, 1.55);
+      if(evoSoundOn()) beep(300, 0, 0.75, {type:"sawtooth", vol:0.08, glide:900});
+    });
+    at(t + 620, ()=>{
+      overlay.classList.add("flash");
+      before.style.opacity = "0";
+      after.classList.add("show");
+    });
+    at(t + 780, ()=>{
+      after.style.transition = "transform 420ms cubic-bezier(.2,.8,.3,1), filter 380ms linear";
+      after.classList.remove("white");
+      scaleTo(after, 1);
+      overlay.classList.remove("flash");
+      cap.classList.add("show");
+      evolutionFanfare(0.05);
+    });
+    at(t + 2600, finish);
+  });
 }
 /* GM-only: undo the most recent evolveTo, e.g. to fix an accidental tap or a wrongly-chosen
    branch (Marowak vs Marowak Alolan, Vaporeon vs Jolteon, ...). Does NOT refund a consumed stone —
@@ -679,6 +809,11 @@ function megaEvolve(p, targetName, rerender){
   const m = pokeDerived(p).maxHP;
   if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
   if(rerender) rerender(); else { save(); refreshMon(p); }
+  // same transformation scene as a real evolution (see playEvolutionFX)
+  playEvolutionFX({ fromName: baseSp?.name || p.preMega, toName: sp.name, shiny: p.shiny,
+                    fromImg: p.image || "", toImg: monImage(p) || "",
+                    caption: `${p.nickname || baseSp?.name || "Your Pokémon"} Mega Evolved into ${sp.name}!` })
+    .then(()=>{ if(rerender) rerender(); else refreshMon(p); });
   toast(`Mega Evolved into ${sp.name}! ✨`+(megaAbility?` (Mega Ability: ${megaAbility})`:""));
 }
 function megaRevert(p, silent, rerender){
@@ -1244,6 +1379,7 @@ function normTrainer(t){
   if(typeof t.struggleSpecial!=="boolean") t.struggleSpecial = false;
   if(typeof t.categoricInclination!=="string") t.categoricInclination = null;  // Body/Mind/Spirit choice for the Categoric Inclination Edge
   if(!("chosenType" in t)) t.chosenType = null;    // Type Ace's Chosen Type — feeds Type Ace/Type Refresh/Move Sync
+  if(!Array.isArray(t.stabTypes)) t.stabTypes = [];  // Type Expertise: the Type(s) this Trainer gets STAB for
   if(!Array.isArray(t.mentorSkills)) t.mentorSkills = [];        // the two Mentor Skills chosen when taking the Mentor class
   if(!t.uses || typeof t.uses!=="object") t.uses = {};
   if(typeof t.avatar!=="string") t.avatar = "";
@@ -2092,11 +2228,17 @@ function trainerAttackProfile(t, weaponMoveName, w){
   }
   return trainerStruggle(t, w);
 }
-/* Roll the trainer's Struggle or Weapon Move (adds Attack; STAB never applies to Struggle) */
+/* Roll the trainer's Struggle or Weapon Move (adds Attack; STAB only via Type Expertise, and
+   never on a Struggle Attack) */
 function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const st = trainerAttackProfile(t, weaponMoveName, w);
   const atk = t.combat.atk.base + t.combat.atk.added;
   const bm = buffMods(t);                 // active Cheers / Orders / Songs (#2)
+  /* Struggle Attacks (unarmed and plain weapon strikes) have no Move behind them and never get
+     STAB; a real Move does, if Type Expertise named its Type. */
+  const isStruggleAtk = !st.move;
+  const stab = trainerStab(t, st.type, isStruggleAtk);
+  const stabDB = stab ? 2 : 0;
   const accCS = trainerDerived(t).cs.acc||0;   // Accuracy Combat Stage: flat add to Accuracy Rolls (Core p.234)
   /* Multi-strike Weapon Moves (Core p.242) — the keywords live in the profile's range string, e.g.
      Furious Strikes "WR, 1 Target, Five Strike" / Gouge "WR, 1 Target, Double Strike". */
@@ -2104,7 +2246,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const nAcc = dblStrike ? 2 : 1;
   let targetEva = 0;                      // target's Evasion — auto-counts the Double Strike hits
   const rawDB   = st.damageBase||0;       // the Move's own Damage Base — what Five Strike multiplies
-  const baseDBv = rawDB + (bm.db||0);
+  const baseDBv = Math.min(28, rawDB + stabDB + (bm.db||0));
   const diceFor = db => (DB_TABLE[Math.max(0,Math.min(28,db))]||"").split("/")[0].trim();
   const diceStr = diceFor(baseDBv);
   const dm = diceStr.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
@@ -2133,27 +2275,42 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   drawFreq();
   body.append(el("div",{class:"chips",style:"margin-bottom:10px"},
     el("span",{html:typeBadge(st.type)}), el("span",{class:"kv"},st.cls||"Physical"),
-    el("span",{class:"kv"},`AC ${st.ac}`), el("span",{class:"kv"},`DB ${st.damageBase}`), el("span",{class:"kv"},st.range),
+    el("span",{class:"kv"},`AC ${st.ac}`),
+    el("span",{class:"kv"},`DB ${st.damageBase}${stabDB?" +2 STAB":""}`), el("span",{class:"kv"},st.range),
+    stab?el("span",{class:"kv",title:"Type Expertise — you gain STAB for this Type"},`⚡ STAB (${st.type})`):"",
     st.frequency?freqChip:""));
   if(st.weapon) body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
     `Weapon: ${st.weapon.name||"(unnamed)"} — ${st.weapon.category}${st.weapon.notes?` · ${st.weapon.notes}`:""}`));
   if(st.effect) body.append(el("div",{class:"small",style:"margin-bottom:8px"}, st.effect));
 
-  /* --- rolling guide: how accuracy & damage are worked out (shown before you roll) --- */
+  /* --- rolling guide: how accuracy & damage are worked out (shown before you roll) ---
+     Everything the 🎲 result will apply is spelled out here too — Accuracy Stages, and the
+     buffs (Songs/Orders/Cheers) that used to appear only after rolling. */
   const explain = el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"});
+  const accModPre = (bm.acc||0) + accCS;
+  const accWhyPre = []; if(bm.acc) accWhyPre.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} buffs`);
+  if(accCS) accWhyPre.push(`${accCS>0?"+":"−"}${Math.abs(accCS)} Accuracy CS`);
   explain.append(el("div",{style:"margin-bottom:10px"},
-    el("div",{style:"font-size:16px;font-weight:700"}, dblStrike ? "Accuracy: 2 × 1d20" : "Accuracy: 1d20"),
+    el("div",{style:"font-size:16px;font-weight:700"},
+      `Accuracy: ${dblStrike ? "2 × 1d20" : "1d20"}${accModPre?` ${accModPre>0?"+":"−"} ${Math.abs(accModPre)}`:""}`),
     el("div",{class:"small muted",style:"margin-top:2px"},
-      `Roll ${dblStrike?"2 separate Attack Rolls — each ":"1d20 — "}hits if it's ≥ AC ${st.ac} + the target's Physical Evasion. Nat 20 auto-hits/crits, nat 1 auto-misses.`)));
+      `Roll ${dblStrike?"2 separate Attack Rolls — each ":"1d20 — "}hits if it's ≥ AC ${st.ac} + the target's Physical Evasion. Nat 20 auto-hits/crits, nat 1 auto-misses.`
+      + (accWhyPre.length?` Includes ${accWhyPre.join(" ")}.`:""))));
   if(dn){
     const terms = [`${dn}d${dfaces}`]; if(dflat) terms.push(String(dflat)); if(atk) terms.push(String(atk));
-    const why = [`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${st.damageBase}`];
+    if(bm.dmg) terms.push(`${bm.dmg>0?"":"−"}${Math.abs(bm.dmg)}`);
+    const why = [`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${baseDBv}`
+      + (stabDB||bm.db ? ` (DB ${rawDB}${stabDB?" +2 STAB":""}${bm.db?` ${bm.db>0?"+":"−"}${Math.abs(bm.db)} buffs`:""})` : "")];
     if(atk) why.push(`${atk} = your Attack`);
+    if(bm.dmg) why.push(`${bm.dmg>0?"+":"−"}${Math.abs(bm.dmg)} = buffs (${buffSources(t,"dmg")})`);
     explain.append(el("div",{},
-      el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${terms.join(" + ")}`),
-      el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ") + ". STAB never applies to Struggle. Target then subtracts Defense."
+      el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${terms.join(" + ").replace(/\+ −/g,"− ")}`),
+      el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ") + ". "
+        + (stab ? `STAB applies — Type Expertise names ${st.type}. ` : isStruggleAtk ? "STAB never applies to Struggle. " : "")
+        + "Target then subtracts Defense."
         + (fiveStrike ? ` Five Strike multiplies the Move's own Damage Base (${rawDB}) by the rolled hit count first; other Damage Base bonuses are added after.` : "")
-        + (dblStrike  ? " Double Strike doubles this Damage Base if both Attack Rolls connect." : ""))));
+        + (dblStrike  ? " Double Strike doubles this Damage Base if both Attack Rolls connect." : "")
+        + (bm.crit ? ` Crit / Effect range widened by +${bm.crit} (buffs).` : ""))));
   }
   body.append(explain);
 
@@ -2170,7 +2327,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       wc.append(row);
     }
     wc.append(el("div",{class:"small muted",style:"margin-top:4px"},
-      fiveStrike ? `Rolling 🎲 also rolls 1d8 for the hit count (1 / 2-3 / 4-6 / 7 / 8 → 1 / 2 / 3 / 4 / 5 hits); the Move's own Damage Base ${rawDB} is multiplied by it${bm.db?`, and the +${bm.db} DB from buffs is added only after that`:""} (Core p.242).`
+      fiveStrike ? `Rolling 🎲 also rolls 1d8 for the hit count (1 / 2-3 / 4-6 / 7 / 8 → 1 / 2 / 3 / 4 / 5 hits); the Move's own Damage Base ${rawDB} is multiplied by it${stabDB||bm.db?`, and the${stabDB?" +2 STAB":""}${bm.db?` ${bm.db>0?"+":"−"}${Math.abs(bm.db)} DB from buffs`:""} is added only after that`:""} (Core p.242).`
                  : `Both Attack Rolls are checked against AC ${st.ac} + this Evasion when you press 🎲 (nat 20 always hits, nat 1 always misses). 1 hit → DB ${baseDBv} · both hit → DB ${baseDBv*2}.`));
     body.append(wc);
   }
@@ -2226,10 +2383,10 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     let db = baseDBv, strikeNote = null;
     if(dblStrike) db = baseDBv * (connected>=2 ? 2 : 1);
     /* Five Strike (Core p.242): the Move's OWN Damage Base is multiplied by the hit count, and every
-       other effect that raises Damage Base (here: buffs — trainers never get STAB) is added after. */
-    if(fiveStrike){ const hi = fiveStrikeRoll(); db = Math.min(28, rawDB*hi.hits + (bm.db||0));
+       other effect that raises Damage Base (STAB from Type Expertise, buffs) is added after. */
+    if(fiveStrike){ const hi = fiveStrikeRoll(); db = Math.min(28, rawDB*hi.hits + stabDB + (bm.db||0));
       strikeNote = `🎯 Five Strike: 1d8 → ${hi.d8} = ${hi.hits} hit${hi.hits===1?"":"s"} — DB ${rawDB} ×${hi.hits} = ${rawDB*hi.hits}`
-        + `${bm.db?` +${bm.db} buffs`:""} → DB ${db}`; }
+        + `${stabDB?" +2 STAB":""}${bm.db?` +${bm.db} buffs`:""} → DB ${db}`; }
     else if(dblStrike && connected) strikeNote = `⚔ Double Strike: ${connected} of 2 connected — Damage Base ${db}`;
     const r = connected>0 ? rollDiceString(diceFor(db)) : null;
     /* Critical Hit (Core p.235): a crit adds the whole Damage Base value — dice AND its flat part —
@@ -2249,12 +2406,14 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     if(r){ const im = infatMod();
       const total = Math.max(0, r.total + im.atk + (bm.dmg||0) + im.delta + critExtra);
       const parts = [`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`, `+ ${im.atk} Attack${im.halved?" (halved — Infatuated)":""}`];
-      if(bm.dmg) parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs`);
+      if(bm.dmg) parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs (${buffSources(t,"dmg")})`);
       if(im.delta) parts.push(`${im.delta} Infatuated`);
       if(critWhy.length) parts.push(critWhy.join(" "));
       out.append(el("div",{}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"),
         el("div",{style:`font-size:26px;font-weight:800;color:${nCrit?"var(--bad)":"var(--accent)"}`}, `${nCrit?"💥 CRIT! ":"💥 "}${total}`),
         strikeNote?el("div",{class:"small muted",style:"margin-top:2px"}, strikeNote):"",
+        stab&&!fiveStrike ? el("div",{class:"small muted",style:"margin-top:2px"},
+          `⚡ Type Expertise: STAB on ${st.type} — Damage Base ${rawDB} +2 = ${rawDB+2}${bm.db?` ${bm.db>0?"+":"−"}${Math.abs(bm.db)} buffs`:""} → DB ${db}`) : "",
         el("div",{class:"small muted",style:"margin-top:2px"}, parts.join("  ") + `. Target subtracts Defense.`)));
       if(bm.crit) out.append(el("div",{class:"small muted"}, `Crit / Effect range widened by +${bm.crit} (buffs).`));
       // GM: apply this trainer hit to a battle-map token (trainer attacks are typeless-or-typed Physical).
@@ -2718,6 +2877,8 @@ function classesCard(){
     card.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
       "Take the Type Ace class (“+ add” above) — or any Type Ace Feature — to unlock its Chosen Type picker here."));
   }
+  // Type Expertise (a Feature, not a class) — the other "pick a Type" choice, kept next to it
+  if(typeExpertiseEligible(t)) card.append(typeExpertiseControl(t, save, render));
   if(!arr.length){ card.append(el("span",{class:"muted small"},"none yet — tap “+ add” to take a Class, then learn its Features here")); return card; }
   arr.forEach((name,idx) => {
     const feats = featuresForClass(name);
@@ -3602,6 +3763,29 @@ function catalogItems(){
     ...D.items.food.map(x=>({...x,cat:"Food"})),
   ];
 }
+/* ---------- Inventory pockets ----------
+   Four buckets, resolved off the item catalog: Poké Balls, Held Items, Restorative Items
+   (potions/revives/vitamins/berries and other food) and everything else. Berries are
+   restoratives here even though they can also be held — that's where you look for them when
+   something is hurt. A name the catalog doesn't know (a custom row) lands in Misc. */
+const INV_CATS = [["balls","🔴 Poké Balls"],["held","💠 Held Items"],
+                  ["restore","🧪 Restorative Items"],["misc","🎒 Misc."]];
+let _heldNameSet = null;
+/* can this item be given to a Pokémon at all? — exactly the Held Item picker's own pool */
+function isHoldableItem(name){
+  if(!_heldNameSet) _heldNameSet = new Set(heldItemNames().map(normItemName));
+  return _heldNameSet.has(normItemName(name));
+}
+function invCategory(name){
+  const it = itemByName.get(String(name||"").toLowerCase());
+  const cat = it?.cat || "";
+  if(/ball/i.test(cat)) return "balls";
+  // heals first: a Berry can be held, but it's a healing item and that's where you'll look for it
+  if(/med kit/i.test(cat) || /berry|potion|restorative|revive|heal\b/i.test(name||"")) return "restore";
+  if(isHoldableItem(name) || /held item/i.test(cat)) return "held";   // Leftovers, herbs, Choice Band…
+  if(/food/i.test(cat)) return "restore";                             // meals & snacks
+  return "misc";
+}
 function inventoryCard(t){
   const card = el("div",{class:"card"}, el("h3",{},"Inventory & Equipment",
     el("div",{class:"inline"},
@@ -3610,36 +3794,14 @@ function inventoryCard(t){
   if(!t.inventory.length) card.append(el("span",{class:"muted small"},"empty — add gear, equipment, Poké Balls, potions… from the catalog"));
   // favourites float to the top (stable otherwise, by original order)
   const items = t.inventory.map((it,i)=>({it,i})).sort((a,b)=>(b.it.fav?1:0)-(a.it.fav?1:0));
-  items.forEach(({it,i}) => {
-    const row = el("div",{class:"moveslot"});
-    const fav = el("button",{class:"actstar"+(it.fav?" on":""),title:it.fav?"unfavourite":"favourite",
-      onclick:()=>{ it.fav=!it.fav; save(); renderTrainer(); }}, it.fav?"★":"☆");
-    const info = el("div",{style:"flex:1;min-width:0"});
-    const name = el("input",{type:"text",placeholder:"Item",style:"width:100%",list:"itemlist"}); name.value=it.name;
-    name.addEventListener("input",()=>{ it.name=name.value; save(); });
-    info.append(name);
-    const cat = itemByName.get((it.name||"").toLowerCase());
-    if(cat){
-      const bk = bookInfo(cat.name);
-      info.append(el("div",{class:"small muted",style:"margin-top:2px"},
-        [cat.cat, cat.slot, cat.cost, bk ? `📚 Book · ${bk.ranks.length} Rank${bk.ranks.length===1?"":"s"}` : null]
-          .filter(Boolean).join(" · ")));
-      /* the rules text used to be truncated mid-sentence; it now opens in full, one paragraph per
-         Rank for Books, which is the only readable way to see what each Rank actually grants. */
-      if(cat.effect){
-        const det = el("details",{class:"spoiler",style:"margin-top:2px"});
-        const preview = cleanupText(bk ? (bk.desc || bk.ranks[0].text) : cat.effect).replace(/\s+/g," ");
-        det.append(el("summary",{class:"small muted"},
-          preview.length>90 ? preview.slice(0,90).trim()+"…" : preview));
-        det.append(itemEffectNode(cat));
-        info.append(det);
-      }
-    }
-    const qty = el("input",{type:"number",min:0,style:"width:56px",title:"qty"}); qty.value=it.qty;
-    qty.addEventListener("input",()=>{ it.qty=parseInt(qty.value)||0; save(); });
-    const del = el("button",{class:"linkbtn",title:"remove",onclick:()=>{ t.inventory.splice(i,1); save(); renderTrainer(); }},"×");
-    row.append(fav, info, qty, del);
-    card.append(row);
+  const char = charOfTrainer(t);
+  const buckets = {}; INV_CATS.forEach(([k])=>buckets[k]=[]);
+  items.forEach(e => buckets[invCategory(e.it.name)].push(e));
+  INV_CATS.forEach(([key,label])=>{
+    const list = buckets[key]; if(!list.length) return;
+    card.append(el("div",{class:"small muted",style:"font-weight:800;margin:12px 0 2px;border-bottom:1px solid var(--line);padding-bottom:3px"},
+      `${label} (${list.length})`));
+    list.forEach(e => card.append(inventoryRow(t, char, e.it, e.i)));
   });
   if(!$("#itemlist")){
     const dl = el("datalist",{id:"itemlist"});
@@ -3647,6 +3809,67 @@ function inventoryCard(t){
     document.body.append(dl);
   }
   return card;
+}
+/* the character sheet a Trainer belongs to — their Pokémon are the ones that can hold their items */
+function charOfTrainer(t){
+  const c = activeChar();
+  if(c && c.trainer===t) return c;
+  if(mode==="cloud"){
+    for(const r of Object.values(cloud.byId||{})) if(r?.data?.trainer===t) return r.data;
+  } else {
+    for(const ch of (state?.characters||[])) if(ch.trainer===t) return ch;
+  }
+  return null;
+}
+function inventoryRow(t, char, it, i){
+  const row = el("div",{class:"moveslot"});
+  const fav = el("button",{class:"actstar"+(it.fav?" on":""),title:it.fav?"unfavourite":"favourite",
+    onclick:()=>{ it.fav=!it.fav; save(); renderTrainer(); }}, it.fav?"★":"☆");
+  /* same artwork the shop shelves use — the row's own `img` (carried over from a shop purchase)
+     first, then the game sprite for its name, then the bag placeholder */
+  const pic = itemImgNode(it.name, 34, it);
+  const info = el("div",{style:"flex:1;min-width:0"});
+  const name = el("input",{type:"text",placeholder:"Item",style:"width:100%",list:"itemlist"}); name.value=it.name;
+  name.addEventListener("input",()=>{ it.name=name.value; save(); });
+  info.append(name);
+  const cat = itemByName.get((it.name||"").toLowerCase());
+  if(cat){
+    const bk = bookInfo(cat.name);
+    info.append(el("div",{class:"small muted",style:"margin-top:2px"},
+      [cat.cat, cat.slot, cat.cost, bk ? `📚 Book · ${bk.ranks.length} Rank${bk.ranks.length===1?"":"s"}` : null]
+        .filter(Boolean).join(" · ")));
+    /* the rules text used to be truncated mid-sentence; it now opens in full, one paragraph per
+       Rank for Books, which is the only readable way to see what each Rank actually grants. */
+    if(cat.effect){
+      const det = el("details",{class:"spoiler",style:"margin-top:2px"});
+      const preview = cleanupText(bk ? (bk.desc || bk.ranks[0].text) : cat.effect).replace(/\s+/g," ");
+      det.append(el("summary",{class:"small muted"},
+        preview.length>90 ? preview.slice(0,90).trim()+"…" : preview));
+      det.append(itemEffectNode(cat));
+      info.append(det);
+    }
+  }
+  /* who's using this one right now — a copy held by a Pokémon is spoken for; the ones left over
+     are what another Pokémon can still be given. */
+  const holders = monsHolding(char, it.name);
+  if(holders.length){
+    const qtyN = Math.max(0, parseInt(it.qty)||0);
+    const spare = qtyN - holders.length;
+    info.append(el("div",{class:"small",style:"margin-top:2px;color:var(--accent);font-weight:700"},
+      `🖐 held by ${holders.map(monLabel).join(", ")}`,
+      el("span",{class:"muted",style:"font-weight:600"},
+        qtyN>1 ? ` · ${spare>0?`${spare} spare`:"none spare"}` : (spare<0?" · more equipped than you carry":""))));
+  }
+  const qty = el("input",{type:"number",min:0,style:"width:56px",title:"qty"}); qty.value=it.qty;
+  qty.addEventListener("input",()=>{ it.qty=parseInt(qty.value)||0; save(); });
+  const del = el("button",{class:"linkbtn",title:"remove",onclick:()=>{
+    const held = monsHolding(char, it.name);
+    if(held.length && !confirm(`${it.name||"That item"} is held by ${held.map(monLabel).join(", ")}.\nRemove it from your bag and take it off ${held.length>1?"them":"it"}?`)) return;
+    held.forEach(m=>{ if(m.mega) megaRevert(m, true); m.heldItem = ""; });
+    t.inventory.splice(i,1); save(); renderTrainer();
+  }},"×");
+  row.append(fav, pic, info, qty, del);
+  return row;
 }
 function openInventoryPicker(t){
   const list = catalogItems();
@@ -4411,10 +4634,11 @@ function statusCard(p){
   groups.forEach(([kind,label])=>{
     card.append(el("div",{class:"small muted",style:"margin:8px 0 4px;font-weight:700"}, label));
     const chips = el("div",{class:"chips"});
-    STATUS_DEFS.filter(s=>s.kind===kind).forEach(s=>{
+    STATUS_DEFS.filter(s=>s.kind===kind).filter(s=>statusPickable(s) || hasStatus(p,s.key)).forEach(s=>{
       const on = hasStatus(p,s.key);
       const immune = s.immune && sp?.types?.some(t=>s.immune.includes(t));
-      const chip = el("button",{class:"statuschip"+(on?" on":""), title: (immune?`${sp.name} is immune. `:"")+s.effect,
+      const chip = el("button",{class:"statuschip"+(on?" on":"")+(statusPickable(s)?"":" ro"), title: (immune?`${sp.name} is immune. `:"")+(statusPickable(s)?"":"GM-set — you can't change this. ")+s.effect,
+        disabled: !statusPickable(s),
         onclick:()=>{ toggleStatus(p,s.key); refreshMon(p); }}, s.name + (immune?" ⃠":""));
       chips.append(chip);
     });
@@ -4737,6 +4961,11 @@ function addCustomBuff(owner, name, mods, note){
   owner.buffs.push({ id:uid(), key:"custom", name:name||"Custom buff", cat:"Custom", dur:"—", note:note||"", once:false, mods:mods||{} });
 }
 function removeBuff(owner, id){ if(owner) owner.buffs = ownerBuffs(owner).filter(b=>b.id!==id); }
+/* which active buffs feed one mod (acc/dmg/db/crit) — so a roll guide can name them, not just
+   show a number ("+5 = buffs (Song of Might)"). */
+function buffSources(owner, key){
+  return ownerBuffs(owner).filter(b=>b.mods && b.mods[key]).map(b=>b.name).join(", ") || "buffs";
+}
 function buffModText(m){
   const p=[]; m=m||{};
   if(m.acc)  p.push(`${m.acc>0?"+":""}${m.acc} Acc`);
@@ -4800,6 +5029,436 @@ function openCustomBuff(owner, done){
       closeModal(); if(done) done();
     }},"Add buff"),
   ]});
+}
+
+/* ===================================================================
+   DIGESTION BUFFS  (Core p.278 "Snacks", p.279 "Refreshment Items")
+   --------------------------------------------------------------------
+   RAW: "Snacks may be consumed at any time by a Pokémon or Trainer as an
+   Extended Action to grant a Digestion Buff. A Pokémon or Trainer may only
+   have one Digestion Buff stored at a time unless they have the Gluttony
+   Ability, and they may trade in this Buff during battle to use the effect
+   of the Snack. Berries are considered snacks." Berries carry an extra
+   gate: their Buff can't be traded in unless the eater is at 50% HP or
+   lower, or is suffering a Status the Berry cures — or whatever alternate
+   condition the Berry itself names.
+
+   So eating and using are two separate steps here, and that's the whole
+   point of the feature: `o.digestion[]` holds what you've eaten and not yet
+   spent. Trading one in resolves its effect right there — HP, a cure, a
+   Combat Stage — or, for the ones that modify a later roll (+5 Damage,
+   +4 Evasion, +1 Crit Range), drops a real entry into the existing buff
+   engine (o.buffs) so openMoveRoll / damageHealRow pick it up for free.
+
+   Refreshments are the other half of "eating food": no Buff, no combat —
+   consumed as an Extended Action out of battle for an immediate heal, one
+   per half hour (two with Gluttony).
+=================================================================== */
+const FLAVORS = ["Spicy","Dry","Sweet","Bitter","Sour","Salty"];
+/* The Snack table. Fields:
+     berry     Berries have the extra "50% HP or a Status it cures" trade-in gate
+     cures     status keys this Snack removes (also satisfies the Berry gate)
+     cond      an extra gate: "hp25" (Starf/Custap) or a free-text situation
+     heal / healFrac / tempHP / tempHPFrac / regen   Hit-Point effects (frac = 1/N of Max HP)
+     cs {stat:n} / csRandom n / resetNegCS           Combat-Stage effects
+     acc / eva / crit / dmg / dr (+ only:"phys"|"spec")  roll effects → pushed into o.buffs
+     flavor    the Taste of a Chef Snack / flavoured Berry (Nature decides like vs dislike)
+     note      the part no engine can resolve — shown verbatim on the buff row
+   Anything not listed here is still eatable as a custom Snack (GM call) with a free-text note. */
+const SNACK_DEFS = [
+  // ---- plain Snacks (Core p.278) ----
+  { name:"Candy Bar",     heal:5 },
+  { name:"Honey",         heal:5, note:"May also be used as Bait. With Honey Paws, this instead acts as Leftovers and doesn't count against the limit." },
+  { name:"Leftovers",     regen:16 },
+  { name:"Black Sludge",  regen:8, note:"Only Poison-Type Pokémon may eat this as a Snack." },
+  // ---- Chef's Tasty Snacks (Core p.131) — each has a Taste; Nature decides like/dislike ----
+  { name:"Salty Surprise",  flavor:"Salty",  tempHP:5,  likeTempHP:10, cond:"when hit by an attack" },
+  { name:"Spicy Wrap",      flavor:"Spicy",  dmg:5,     likeDmg:10, only:"phys", cond:"when making a Physical attack" },
+  { name:"Sour Candy",      flavor:"Sour",   dr:5,      likeDr:10,  only:"phys", cond:"when hit by a Physical attack" },
+  { name:"Dry Wafer",       flavor:"Dry",    dmg:5,     likeDmg:10, only:"spec", cond:"when making a Special attack" },
+  { name:"Bitter Treat",    flavor:"Bitter", dr:5,      likeDr:10,  only:"spec", cond:"when hit by a Special attack" },
+  { name:"Sweet Confection",flavor:"Sweet",  eva:4,     likeAcc:4,  dur:"until end of next turn" },
+  // ---- Tier 1 Berries ----
+  { name:"Cheri Berry",  berry:true, cures:["paralysis"] },
+  { name:"Chesto Berry", berry:true, cures:["sleep"] },
+  { name:"Pecha Berry",  berry:true, cures:["poisoned","badlyPoisoned"] },
+  { name:"Rawst Berry",  berry:true, cures:["burned"] },
+  { name:"Aspear Berry", berry:true, cures:["frozen","chilled"] },
+  { name:"Oran Berry",   berry:true, heal:5 },
+  { name:"Persim Berry", berry:true, cures:["confused"] },
+  // ---- Tier 2 Berries ----
+  { name:"Lum Berry",    berry:true, curesAny:true },
+  { name:"Sitrus Berry", berry:true, heal:15 },
+  { name:"Figy Berry",   berry:true, flavor:"Spicy",  healFrac:8, likeHealFrac:6, dislikeStatus:"confused" },
+  { name:"Wiki Berry",   berry:true, flavor:"Dry",    healFrac:8, likeHealFrac:6, dislikeStatus:"confused" },
+  { name:"Mago Berry",   berry:true, flavor:"Sweet",  healFrac:8, likeHealFrac:6, dislikeStatus:"confused" },
+  { name:"Aguav Berry",  berry:true, flavor:"Bitter", healFrac:8, likeHealFrac:6, dislikeStatus:"confused" },
+  { name:"Iapapa Berry", berry:true, flavor:"Sour",   healFrac:8, likeHealFrac:6, dislikeStatus:"confused" },
+  { name:"Liechi Berry", berry:true, cs:{atk:1} },
+  { name:"Ganlon Berry", berry:true, cs:{def:1} },
+  { name:"Salac Berry",  berry:true, cs:{spd:1} },
+  { name:"Petaya Berry", berry:true, cs:{spatk:1} },
+  { name:"Apicot Berry", berry:true, cs:{spdef:1} },
+  { name:"Lansat Berry", berry:true, crit:1, dur:"rest of the encounter" },
+  { name:"Starf Berry",  berry:true, csRandom:2, cond:"hp25" },
+  { name:"Enigma Berry", berry:true, tempHPFrac:6, cond:"when hit by a Super Effective Move" },
+  { name:"Micle Berry",  berry:true, acc:1 },
+  { name:"Jaboca Berry", berry:true, note:"A foe dealing Physical damage to the user loses 1/8 of their Maximum HP." },
+  { name:"Rowap Berry",  berry:true, note:"A foe dealing Special damage to the user loses 1/8 of their Maximum HP." },
+  { name:"Cornn Berry",  berry:true, cures:["disabled"] },
+  { name:"Magost Berry", berry:true, cures:["enraged"] },
+  { name:"Rabuta Berry", berry:true, cures:["suppressed"] },
+  { name:"Nomel Berry",  berry:true, cures:["infatuation"] },
+  // ---- Tier 3 Berries ----
+  { name:"Leppa Berry",  berry:true, restoreScene:true },
+  { name:"Custap Berry", berry:true, cond:"hp25", note:"Grants the Priority keyword to any one Move." },
+  { name:"Kee Berry",    berry:true, cs:{def:1},   cond:"when hit by a Physical Move (Free Action)" },
+  { name:"Maranga Berry",berry:true, cs:{spdef:1}, cond:"when hit by a Special Move (Free Action)" },
+  // Resist Berries — "one step" of resistance is a defence-roll adjustment the GM applies
+  ...[["Occa","Fire"],["Passho","Water"],["Wacan","Electric"],["Rindo","Grass"],["Yache","Ice"],
+      ["Chople","Fighting"],["Kebia","Poison"],["Shuca","Ground"],["Coba","Flying"],["Payapa","Psychic"],
+      ["Tanga","Bug"],["Charti","Rock"],["Kasib","Ghost"],["Haban","Dragon"],["Colbur","Dark"],
+      ["Babiri","Steel"],["Roseli","Fairy"]].map(([b,ty])=>({
+    name:`${b} Berry`, berry:true, weakenType:ty,
+    cond:`when hit by a super-effective ${ty}-Type Move`,
+    note:`Weakens that ${ty}-Type Move by one step of effectiveness (two steps with Ripen).` })),
+  { name:"Chilan Berry", berry:true, weakenType:"Normal", cond:"when hit by a Normal-Type Move",
+    note:"Weakens that Normal-Type Move by one step of effectiveness (two with Ripen)." },
+  // ---- Herbs (snack-food items, Core p.279) ----
+  { name:"Mental Herb", curesKind:"volatile" },
+  { name:"White Herb",  resetNegCS:true },
+  { name:"Power Herb",  note:"Eliminates the Set-Up turn of a Move with the Set-Up keyword." },
+  // ---- Mushrooms ----
+  { name:"Tiny Mushroom",  heal:-5, csRandom:1, note:"The user loses 5 HP, then gains +1 Combat Stage in a random Stat." },
+  { name:"Big Mushroom",   inflict:"poisoned", csRandom:1, csRandomCount:2,
+    note:"The user becomes Poisoned; if they do, they gain +1 Combat Stage in two random Stats." },
+  { name:"Balm Mushroom",  cures:["burned","paralysis","poisoned","badlyPoisoned"], csRandom:-1,
+    note:"Cures Burn, Paralysis or Poison; if it does, the user loses 1 Combat Stage in a random Stat." },
+];
+const snackByKey = new Map(SNACK_DEFS.map(d=>[normItemName(d.name), d]));
+function snackDef(name){ return snackByKey.get(normItemName(name)) || null; }
+function isSnackItem(name){ return !!snackDef(name); }
+/* Refreshments (Core p.279): consumed out of combat, no Digestion Buff, one per half hour */
+const REFRESHMENTS = [
+  { name:"Enriched Water", heal:20 }, { name:"Shuckle's Berry Juice", heal:30 },
+  { name:"Super Soda Pop", heal:30 }, { name:"Sparkling Lemonade", heal:50 },
+  { name:"MooMoo Milk", heal:80 },
+];
+const refreshByKey = new Map(REFRESHMENTS.map(d=>[normItemName(d.name), d]));
+function refreshmentDef(name){ return refreshByKey.get(normItemName(name)) || null; }
+
+/* ---- the eater ---- */
+function digestionList(o){ if(!Array.isArray(o.digestion)) o.digestion = []; return o.digestion; }
+/* an Ability on a Pokémon OR a Trainer, ignoring the DB's "[Errata]" suffix */
+function ownerHasAbility(o, name){
+  const want = String(name).toLowerCase();
+  return (o?.abilities||[]).some(a => String(a).toLowerCase().replace(/\s*\[errata\]\s*$/,"").trim() === want);
+}
+/* Gluttony (Core, Ability): "may have up to three Digestion/Food Buffs at once" */
+function digestionCap(o){ return ownerHasAbility(o,"Gluttony") ? 3 : 1; }
+/* Nature decides which Tastes a Pokémon likes and hates (natures.json carries both). Trainers have
+   no Nature, so their Taste effects fall back to the plain, un-preferred numbers. */
+function ownerFlavors(o){
+  if(isTrainerOwner(o)) return { liked:o.likedFlavor||"", disliked:o.dislikedFlavor||"" };
+  const n = natureByName.get(String(o?.nature||"").toLowerCase());
+  return { liked:n?.likedFlavor||"", disliked:n?.dislikedFlavor||"" };
+}
+function ownerHP(o){ return o.currentHP==null ? ownerMaxHP(o) : o.currentHP; }
+function setOwnerHP(o, v){ o.currentHP = Math.max(-99, Math.min(ownerMaxHP(o), Math.round(v))); }
+/* Ripen: "any numeric benefits of Berry Food Buffs the user trades in are doubled" */
+function ripenOn(o, def){ return !!(def?.berry && ownerHasAbility(o,"Ripen")); }
+
+/* Can this stored Buff be traded in right now? Returns "" when it can, else the reason it can't.
+   Core p.278: a Berry's Buff needs the user at 50% HP or lower, OR suffering a Status the Berry
+   cures — unless the Berry names its own condition instead (Starf/Custap's 25%, the situational
+   ones), which the GM judges, so those are allowed through with the situation spelled out. */
+function tradeInBlock(o, def){
+  if(!def) return "";
+  if(def.cond === "hp25"){
+    const max = ownerMaxHP(o);
+    return ownerHP(o) <= max*0.25 ? "" : "only at 25% HP or lower";
+  }
+  if(def.cond) return "";                       // a situational Buff — the table's note says when
+  if(!def.berry) return "";                     // plain Snacks have no gate at all
+  const max = ownerMaxHP(o);
+  if(ownerHP(o) <= max*0.5) return "";
+  const cures = def.curesAny ? (o.statuses||[]) : (def.cures||[]).filter(k=>hasStatus(o,k));
+  if(def.curesKind) return "";
+  if(cures.length) return "";
+  return "Berry Buffs need the user at 50% HP or lower, or suffering a Status this Berry cures";
+}
+/* human-readable summary of what trading a Snack in does, with this eater's numbers filled in */
+function snackEffectText(o, def){
+  if(!def) return "";
+  const x = ripenOn(o, def) ? 2 : 1, max = ownerMaxHP(o), fl = ownerFlavors(o);
+  const likes = def.flavor && fl.liked===def.flavor, hates = def.flavor && fl.disliked===def.flavor;
+  const bits = [];
+  if(def.heal)      bits.push(`${def.heal>0?"heals":"costs"} ${Math.abs(def.heal)*x} HP`);
+  if(def.healFrac)  bits.push(`heals 1/${likes && def.likeHealFrac ? def.likeHealFrac : def.healFrac} of Max HP (${Math.floor(max/((likes&&def.likeHealFrac)||def.healFrac))*x})`);
+  if(def.tempHP)    bits.push(`+${(likes&&def.likeTempHP?def.likeTempHP:def.tempHP)*x} Temp HP`);
+  if(def.tempHPFrac)bits.push(`+${Math.floor(max/def.tempHPFrac)*x} Temp HP`);
+  if(def.regen)     bits.push(`recovers 1/${def.regen} of Max HP (${Math.max(1,Math.floor(max/def.regen))}) at the start of each turn for the rest of the encounter`);
+  if(def.cures)     bits.push(`cures ${def.cures.map(k=>statusByKey.get(k)?.name||k).join(" / ")}`);
+  if(def.curesAny)  bits.push("cures any one Status Affliction");
+  if(def.curesKind) bits.push(`cures every ${def.curesKind} Status Affliction`);
+  if(def.cs)        bits.push(Object.entries(def.cs).map(([k,v])=>`+${v*x} ${statLbl(k)} CS`).join(", "));
+  if(def.csRandom)  bits.push(`${def.csRandom>0?"+":""}${def.csRandom*x} CS to ${def.csRandomCount||1} random stat${(def.csRandomCount||1)>1?"s":""}`);
+  if(def.resetNegCS)bits.push("sets every negative Combat Stage back to 0");
+  if(def.crit)      bits.push(`+${def.crit*x} Critical-Hit range`);
+  if(def.acc)       bits.push(`+${def.acc*x} Accuracy`);
+  if(def.eva)       bits.push(`+${def.eva*x} Evasion${likes && def.likeAcc?` and +${def.likeAcc*x} Accuracy`:""}`);
+  if(def.dmg)       bits.push(`+${(likes&&def.likeDmg?def.likeDmg:def.dmg)*x} damage${def.only?` (${def.only==="phys"?"Physical":"Special"} only)`:""}`);
+  if(def.dr)        bits.push(`+${(likes&&def.likeDr?def.likeDr:def.dr)*x} Damage Reduction${def.only?` vs ${def.only==="phys"?"Physical":"Special"}`:""}`);
+  if(def.restoreScene) bits.push("restores one Scene-frequency Move");
+  if(def.inflict)   bits.push(`inflicts ${statusByKey.get(def.inflict)?.name||def.inflict} on the user`);
+  if(hates)         bits.push(def.dislikeStatus ? `— disliked Taste: the user becomes ${statusByKey.get(def.dislikeStatus)?.name||def.dislikeStatus}`
+                                                : "— disliked Taste: the user becomes Enraged");
+  let s = bits.join("; ");
+  if(def.note) s += (s?" · ":"") + def.note;
+  if(def.cond && def.cond!=="hp25") s += (s?" · ":"") + `Traded in ${def.cond}.`;
+  return s;
+}
+/* Eat a Snack: costs an Extended Action, stores a Digestion Buff (Core p.278). Returns a message. */
+function eatSnack(o, itemName, opts={}){
+  const def = snackDef(itemName);
+  const list = digestionList(o);
+  const cap = digestionCap(o);
+  const free = [];                                     // Buffs that don't count against the limit
+  // Honey Paws: "may consume Honey to gain a Buff as if they had consumed Leftovers. This Buff does
+  // not count against their normal limit."
+  const honeyPaws = normItemName(itemName)==="honey" && ownerHasAbility(o,"Honey Paws");
+  // Berry Storage: eating a Berry stores THREE instances, none of which count against the limit,
+  // and only one of them may be traded in each Scene.
+  const berryStorage = !!def?.berry && ownerHasAbility(o,"Berry Storage");
+  const exempt = honeyPaws || berryStorage;
+  const counted = list.filter(b=>!b.exempt).length;
+  if(!exempt && counted >= cap)
+    return { ok:false, msg:`Already carrying ${counted} Digestion Buff${counted===1?"":"s"} — the limit is ${cap}${cap===1?" (Gluttony raises it to 3)":""}. Trade one in or discard it first.` };
+  const mk = () => ({ id:uid(), item: honeyPaws ? "Leftovers" : (def?.name || itemName), from: def?.name || itemName,
+                      exempt, storage: berryStorage, note: opts.note || "" });
+  const add = berryStorage ? [mk(),mk(),mk()] : [mk()];
+  add.forEach(b=>list.push(b));
+  const extras = [];
+  if(honeyPaws)   extras.push("Honey Paws — it acts as Leftovers and doesn't count against your limit");
+  if(berryStorage)extras.push("Berry Storage — 3 instances stored, free of your limit, one per Scene");
+  return { ok:true, msg:`🍎 Ate ${def?.name || itemName} — Digestion Buff stored${extras.length?` (${extras.join("; ")})`:""}.` };
+}
+/* Trade in a stored Digestion Buff and resolve it. Returns {log:[...]} — the caller saves + redraws. */
+function tradeInDigestion(o, buff, opts={}){
+  const def = snackDef(buff.item);
+  const log = [];
+  const x = ripenOn(o, def) ? 2 : 1;
+  const max = ownerMaxHP(o), fl = ownerFlavors(o);
+  const likes = def?.flavor && fl.liked===def.flavor, hates = def?.flavor && fl.disliked===def.flavor;
+  if(def){
+    if(def.heal){ const n = def.heal*x; setOwnerHP(o, ownerHP(o)+n); log.push(`${n>0?"+":""}${n} HP`); }
+    if(def.healFrac){
+      const den = (likes && def.likeHealFrac) ? def.likeHealFrac : def.healFrac;
+      const n = Math.max(1, Math.floor(max/den)) * x;
+      setOwnerHP(o, ownerHP(o)+n); log.push(`+${n} HP (1/${den} of Max${likes?", liked Taste":""})`);
+    }
+    if(def.tempHP || def.tempHPFrac){
+      const n = def.tempHPFrac ? Math.max(1,Math.floor(max/def.tempHPFrac))*x
+                               : ((likes && def.likeTempHP) ? def.likeTempHP : def.tempHP)*x;
+      o.tempHP = (o.tempHP||0) + n; log.push(`+${n} Temporary HP`);
+    }
+    if(def.regen){
+      const n = Math.max(1, Math.floor(max/def.regen));
+      addCustomBuff(o, def.name, {}, `Recovers ${n} HP (1/${def.regen} of Max HP) at the beginning of each of its turns for the rest of the encounter — apply it on the turn tick.`);
+      log.push(`${def.name} regen: ${n} HP per turn`);
+    }
+    const cured = [];
+    if(def.cures) (def.cures||[]).forEach(k=>{ if(hasStatus(o,k)){ o.statuses = o.statuses.filter(s=>s!==k); cured.push(statusByKey.get(k)?.name||k); } });
+    if(def.curesAny && (o.statuses||[]).length){         // Lum: any ONE affliction — take the first
+      const k = o.statuses[0]; o.statuses = o.statuses.slice(1); cured.push(statusByKey.get(k)?.name||k);
+    }
+    if(def.curesKind){                                   // Mental Herb: every Volatile one
+      (o.statuses||[]).slice().forEach(k=>{ if(statusByKey.get(k)?.kind===def.curesKind){
+        o.statuses = o.statuses.filter(s=>s!==k); cured.push(statusByKey.get(k)?.name||k); } });
+    }
+    if(cured.length) log.push(`cured ${cured.join(", ")}`);
+    if(def.inflict && !hasStatus(o,def.inflict)){ (o.statuses=o.statuses||[]).push(def.inflict); log.push(`now ${statusByKey.get(def.inflict)?.name||def.inflict}`); }
+    if(def.cs){ Object.entries(def.cs).forEach(([k,v])=>{ o.cs[k] = Math.max(-6,Math.min(6,(o.cs[k]||0)+v*x)); log.push(`${v>0?"+":""}${v*x} ${statLbl(k)} CS`); }); }
+    if(def.csRandom){
+      // Balm Mushroom's penalty only lands if it actually cured something (its own wording)
+      if(!(def.name==="Balm Mushroom" && !cured.length)){
+        for(let i=0;i<(def.csRandomCount||1);i++){
+          const k = CS_STATS[Math.floor(Math.random()*CS_STATS.length)][0];
+          o.cs[k] = Math.max(-6,Math.min(6,(o.cs[k]||0)+def.csRandom*x));
+          log.push(`${def.csRandom>0?"+":""}${def.csRandom*x} ${statLbl(k)} CS (random)`);
+        }
+      }
+    }
+    if(def.resetNegCS){
+      const fixed = ALL_CS_STATS.filter(([k])=>(o.cs[k]||0)<0).map(([,l])=>l);
+      ALL_CS_STATS.forEach(([k])=>{ if((o.cs[k]||0)<0) o.cs[k]=0; });
+      log.push(fixed.length ? `negative Combat Stages cleared (${fixed.join(", ")})` : "no negative Combat Stages to clear");
+    }
+    // roll-modifying effects ride the existing buff engine so the attack/damage screens pick them up
+    const mods = {};
+    if(def.crit) mods.crit = def.crit*x;
+    if(def.acc)  mods.acc  = def.acc*x;
+    if(def.eva && likes && def.likeAcc) mods.acc = (mods.acc||0) + def.likeAcc*x;
+    if(def.dmg)  mods.dmg  = ((likes && def.likeDmg) ? def.likeDmg : def.dmg)*x;
+    if(def.dr)   mods.dr   = ((likes && def.likeDr)  ? def.likeDr  : def.dr)*x;
+    if(Object.keys(mods).length || def.eva){
+      const nb = { id:uid(), key:"digestion", name:def.name, cat:"Food", once:!!def.dr,
+                   dur:def.dur || (def.only ? `next ${def.only==="phys"?"Physical":"Special"} attack` : "until spent"),
+                   note:snackEffectText(o,def), mods, only:def.only||null };
+      if(!Array.isArray(o.buffs)) o.buffs=[];
+      stampTurnBuff(nb); o.buffs.push(nb);
+      log.push("buff added: "+(buffModText(mods)||`+${(def.eva||0)*x} Evasion`));
+    }
+    if(def.eva){ o.cs.eva = Math.max(-6,Math.min(6,(o.cs.eva||0)+def.eva*x)); log.push(`+${def.eva*x} Evasion (${def.dur||"until end of next turn"} — step it back down when it ends)`); }
+    if(def.restoreScene) log.push("pick one Scene-frequency Move and give it a use back (its ⟳ pip)");
+    if(def.weakenType) log.push(`the incoming ${def.weakenType}-Type Move is weakened ${x>1?"two steps":"one step"}`);
+    if(hates){
+      const k = def.dislikeStatus || "enraged";
+      if(!hasStatus(o,k)){ (o.statuses=o.statuses||[]).push(k); }
+      log.push(`disliked Taste — now ${statusByKey.get(k)?.name||k}`);
+    }
+    if(def.note) log.push(def.note);
+  } else {
+    log.push(buff.note || "custom Snack — resolve its effect by hand");
+  }
+
+  // ---- Abilities that trigger off trading a Buff in ----
+  // Lunchbox (Scene, Free Action): "The user gains 5 Temporary Hit Points" (errata: a Tick).
+  if(ownerHasAbility(o,"Lunchbox")){
+    const n = 5;
+    o.tempHP = (o.tempHP||0) + n;
+    log.push(`Lunchbox: +${n} Temporary HP`);
+  }
+  // Harvest: flip a coin; on heads the Buff isn't used up. Never used up in Sunny Weather.
+  let kept = false;
+  if(def?.berry && ownerHasAbility(o,"Harvest")){
+    const sunny = /sun/i.test(String(activeWeatherKey?.() || activeMapMeta?.()?.weather || ""));
+    const heads = Math.random() < 0.5;
+    if(sunny || heads){ kept = true; log.push(sunny ? "Harvest (Sunny) — the Buff is not used up" : "Harvest — coin came up heads, the Buff is not used up"); }
+    else log.push("Harvest — coin came up tails, the Buff is consumed");
+  }
+  if(!kept) o.digestion = digestionList(o).filter(b=>b.id!==buff.id);
+  if(buff.storage) log.push("Berry Storage — only one of these stored Buffs may be traded in per Scene");
+  return { log, kept };
+}
+/* Refreshments (Core p.279): out-of-combat healing, one per half hour (two with Gluttony) */
+function drinkRefreshment(o, itemName){
+  const def = refreshmentDef(itemName);
+  if(!def) return { ok:false, msg:"Not a Refreshment." };
+  setOwnerHP(o, ownerHP(o) + def.heal);
+  return { ok:true, msg:`🥤 ${def.name} — +${def.heal} HP. (One Refreshment per half hour${ownerHasAbility(o,"Gluttony")?"; Gluttony allows two":""}.)` };
+}
+/* pull one copy of an item out of a Trainer's bag; returns false if they don't have it */
+function consumeInventoryItem(t, name){
+  const want = normItemName(name);
+  const row = (t?.inventory||[]).find(it => normItemName(it.name)===want && (parseInt(it.qty)||0) > 0);
+  if(!row) return false;
+  row.qty = (parseInt(row.qty)||1) - 1;
+  if(row.qty <= 0){ const i = t.inventory.indexOf(row); if(i>=0) t.inventory.splice(i,1); }
+  return true;
+}
+/* the Trainer whose bag this eater draws from (a Pokémon eats out of its Trainer's bag, exactly
+   like Held Items do) — null for an encounter/wild creature, which just picks from the catalog */
+function foodBagFor(o, opts={}){
+  if(opts.free) return null;
+  if(isTrainerOwner(o)) return o;
+  return charOfMon(o)?.trainer || null;
+}
+
+/* ---------- the card ---------- */
+function digestionCard(owner, commit, opts={}){
+  const list = digestionList(owner);
+  const cap = digestionCap(owner);
+  const counted = list.filter(b=>!b.exempt).length;
+  const bag = foodBagFor(owner, opts);
+  const card = el("div",{class:"card"}, el("h3",{},"🍎 Food & Digestion Buffs",
+    el("span",{class:"muted small"}, `${counted}/${cap} stored${list.length>counted?` (+${list.length-counted} free)`:""}`)));
+
+  if(!list.length){
+    card.append(el("div",{class:"muted small"},"No Digestion Buff stored. Eating a Snack is an Extended Action and stores one Buff to spend later, in battle."));
+  }
+  list.forEach(b=>{
+    const def = snackDef(b.item);
+    const block = tradeInBlock(owner, def);
+    const row = el("div",{class:"buff-row"});
+    row.append(el("div",{style:"flex:1;min-width:0"},
+      el("div",{class:"buff-name"}, b.item + (b.from && b.from!==b.item ? ` (from ${b.from})` : "") + (b.exempt?"  ·  free of the limit":"")),
+      el("div",{class:"small muted"}, snackEffectText(owner, def) || b.note || "GM resolves this one by hand"),
+      block ? el("div",{class:"small",style:"color:var(--warn);margin-top:2px"}, "⚠ "+block) : ""));
+    const use = el("button",{class:block?"btn-secondary":"btn-primary",style:"padding:6px 12px",
+      title: block || "Trade this Digestion Buff in and resolve its effect",
+      onclick:()=>{
+        if(block && !confirm(`${block}.\n\nTrade it in anyway? (GM call — some Snacks name their own condition.)`)) return;
+        const r = tradeInDigestion(owner, b);
+        commit();
+        toast(`🍽 ${b.item}: ${r.log.join(" · ")}`);
+      }}, "✔ Trade in");
+    row.append(use);
+    row.append(el("button",{class:"linkbtn danger",title:"discard this Buff without using it",
+      onclick:()=>{ owner.digestion = list.filter(z=>z.id!==b.id); commit(); }},"×"));
+    card.append(row);
+  });
+
+  /* ---- eat / drink ---- */
+  const actions = el("div",{class:"inline",style:"gap:8px;margin-top:10px;flex-wrap:wrap"});
+  actions.append(el("button",{class:"btn-secondary",style:"padding:6px 12px",
+    onclick:()=>openFoodPicker(owner, "snack", bag, commit, opts)},"🍎 Eat a Snack"));
+  actions.append(el("button",{class:"btn-secondary",style:"padding:6px 12px",
+    onclick:()=>openFoodPicker(owner, "refreshment", bag, commit, opts)},"🥤 Refreshment"));
+  card.append(actions);
+
+  /* ---- what's automated for this eater ---- */
+  const abil = [];
+  if(ownerHasAbility(owner,"Gluttony"))     abil.push("Gluttony — up to 3 Buffs at once, and two Refreshments per half hour");
+  if(ownerHasAbility(owner,"Ripen"))        abil.push("Ripen — numeric benefits of Berry Buffs are doubled");
+  if(ownerHasAbility(owner,"Harvest"))      abil.push("Harvest — coin flip on each Berry Buff; heads it isn't used up (always kept in Sun)");
+  if(ownerHasAbility(owner,"Lunchbox"))     abil.push("Lunchbox — +5 Temporary HP whenever a Buff is traded in");
+  if(ownerHasAbility(owner,"Honey Paws"))   abil.push("Honey Paws — Honey acts as Leftovers and is free of the limit");
+  if(ownerHasAbility(owner,"Berry Storage"))abil.push("Berry Storage — a Berry stores 3 free Buffs, one usable per Scene");
+  if(abil.length) card.append(el("div",{class:"small",style:"margin-top:8px;color:var(--accent);font-weight:600"},
+    "⚙ Automated: "+abil.join(" · ")));
+  // Chef's "Hits the Spot" is the Trainer's AP to spend, so it's flagged rather than auto-applied
+  const chef = isTrainerOwner(owner) ? owner : charOfMon(owner)?.trainer;
+  if(chef && (chef.features||[]).includes("Hits the Spot")){
+    const rank = rankNum(chef.skills?.intuition);
+    card.append(el("div",{class:"small muted",style:"margin-top:4px"},
+      `🍳 Hits the Spot (1 AP, Free Action): whenever this creature trades in a Buff, ${chef.name||"your Chef"} may grant it ${rank*2} Temporary HP (Intuition Rank ${rank} doubled) — spend the AP on the Trainer sheet.`));
+  }
+  card.append(el("div",{class:"small muted",style:"margin-top:6px"},
+    "Core p.278 — eating a Snack is an Extended Action and stores one Digestion Buff (three with Gluttony); you trade it in during battle for its effect. A Berry's Buff can only be traded in at 50% HP or lower, or against a Status it cures, unless the Berry names its own condition. Refreshments are drunk out of combat, one per half hour. A foe with Unnerve within 3m stops you trading Buffs in at all."));
+  return card;
+}
+/* the Snack / Refreshment picker — the Trainer's own bag when there is one, the whole catalog for a
+   wild or GM-run creature (same `free` split the Held Item picker uses) */
+function openFoodPicker(owner, kind, bag, commit, opts={}){
+  const isSnack = kind === "snack";
+  const all = isSnack ? SNACK_DEFS.map(d=>d.name) : REFRESHMENTS.map(d=>d.name);
+  let names = all, fromBag = false;
+  if(bag){
+    const owned = new Set((bag.inventory||[]).filter(it=>(parseInt(it.qty)||0)>0).map(it=>normItemName(it.name)));
+    const mine = all.filter(n=>owned.has(normItemName(n)));
+    if(mine.length){ names = mine; fromBag = true; }
+    else { toast(`No ${isSnack?"Snacks":"Refreshments"} in the bag — add some under Trainer → Inventory & Bio.`); return; }
+  }
+  const sub = n => {
+    const def = isSnack ? snackDef(n) : refreshmentDef(n);
+    const txt = isSnack ? snackEffectText(owner, def) : `+${def.heal} HP`;
+    const qty = bag ? inventoryQty(bag, n) : 0;
+    return el("div",{class:"pi-sub"}, (bag?`×${qty} · `:"") + String(txt).slice(0,120));
+  };
+  openPicker(isSnack ? "Eat a Snack (Extended Action)" : "Drink a Refreshment (Extended Action)", names, name=>{
+    if(fromBag && !consumeInventoryItem(bag, name)){ toast(`No ${name} left in the bag.`); return; }
+    const r = isSnack ? eatSnack(owner, name) : drinkRefreshment(owner, name);
+    if(!r.ok){
+      if(fromBag){                                        // put it back — nothing was eaten
+        const row = (bag.inventory||[]).find(it=>normItemName(it.name)===normItemName(name));
+        if(row) row.qty = (parseInt(row.qty)||0) + 1; else bag.inventory.push({name, qty:1, notes:""});
+      }
+      toast("⚠ "+r.msg); return;
+    }
+    commit();
+    toast(r.msg + (fromBag?` (−1 from the bag)`:""));
+  }, null, null, null, sub);
 }
 
 function renderMonPlay(root, p, sp){
@@ -4978,22 +5637,72 @@ function changeSpecies(p, name){
   save(); refreshMon(p);
 }
 function allAbilityNames(sp){ return [...sp.abilities.basic,...sp.abilities.advanced,...sp.abilities.high]; }
+
+/* ===================================================================
+   Held Items come out of the Trainer's bag
+   A Pokémon may only hold something its Trainer actually carries, and one
+   copy can only be in one Pokémon's paws at a time — carrying 2 Oran
+   Berries means 2 Pokémon can hold one each. Nothing is removed from the
+   inventory when equipped: the item is "in use", and the inventory row
+   says who by. Encounter/wild Pokémon (opts.free) keep the full catalog —
+   they have no bag to draw from.
+=================================================================== */
+const heldItemNames = () => [...D.items.held.map(i=>i.name), ...D.items.food.map(i=>i.name)];
+const monLabel = m => m && (m.nickname || getSpecies(m.species)?.name || m.species || "Pokémon");
+/* the character sheet a Pokémon belongs to — its Trainer owns the bag the Held Item comes from */
+function charOfMon(p){
+  const c = activeChar();
+  if(c && (c.pokemon||[]).includes(p)) return c;
+  if(mode==="cloud"){
+    for(const r of Object.values(cloud.byId||{})) if(r?.data && (r.data.pokemon||[]).includes(p)) return r.data;
+  } else {
+    for(const ch of (state?.characters||[])) if((ch.pokemon||[]).includes(p)) return ch;
+  }
+  return null;
+}
+/* how many copies of an item the Trainer carries (a name can sit on more than one inventory row) */
+function inventoryQty(t, name){
+  const want = normItemName(name); if(!want) return 0;
+  return (t?.inventory||[]).reduce((n,it)=> normItemName(it.name)===want ? n + Math.max(0, parseInt(it.qty)||0) : n, 0);
+}
+/* the character's Pokémon currently holding `name` (optionally ignoring one of them) */
+function monsHolding(char, name, except){
+  const want = normItemName(name); if(!want) return [];
+  return (char?.pokemon||[]).filter(m => m!==except && normItemName(m.heldItem)===want);
+}
+/* why this Pokémon can't be given `name` right now — "" / null when it can (openPicker lockFn) */
+function heldItemLock(char, p, name){
+  if(!char || name==="(none)") return null;
+  if(normItemName(name)===normItemName(p.heldItem)) return null;      // already holding it
+  const qty = inventoryQty(char.trainer, name);
+  if(!qty) return "not in your bag — buy or add it under Trainer → Inventory & Bio";
+  const taken = monsHolding(char, name, p);
+  if(taken.length >= qty) return qty===1
+    ? `your only ${name} is held by ${monLabel(taken[0])}`
+    : `all ${qty} copies of ${name} are held by ${taken.map(monLabel).join(", ")}`;
+  return null;
+}
 /* Held Item picker — choose from the item database (held items + berries), or clear it.
    `rerender` defaults to the party-Pokémon path (save()+refreshMon); the Encounters tab passes
-   saveEnc()+renderEncounters(). */
-function heldItemControl(p, rerender){
+   saveEnc()+renderEncounters() and `{free:true}` (no Trainer bag to spend from). */
+function heldItemControl(p, rerender, opts={}){
   const wrap = el("label",{class:"field"}, el("span",{},"Held Item"));
+  // 🔓 (the per-Pokémon GM unlock) lifts the bag restriction, like it does for moves and abilities
+  const char = (opts.free || p.unlocked) ? null : charOfMon(p);
+  const owned = n => n!=="(none)" && !!char && inventoryQty(char.trainer, n) > 0;
   const btn = el("button",{class:"btn-secondary",style:"text-align:left",onclick:()=>{
-    const names = ["(none)", ...D.items.held.map(i=>i.name), ...D.items.food.map(i=>i.name)];
+    const names = ["(none)", ...heldItemNames()];
     openPicker("Held Item", names, v=>{
       p.heldItem = v==="(none)" ? "" : v;
       const req = megaToStoneMap.get(p.species);
       if(p.mega && req && req.toLowerCase()!==(p.heldItem||"").toLowerCase()){
         megaRevert(p, false, rerender);                   // stone unequipped mid-Mega Evolution — snap back
       } else if(rerender) rerender(); else { save(); refreshMon(p); }
-    }, "held");
+    }, "held", char ? owned : null, char ? (n=>heldItemLock(char,p,n)) : null);
   }}, p.heldItem || "choose…");
   wrap.append(btn);
+  if(char) wrap.append(el("div",{class:"small muted",style:"margin-top:3px"},
+    "Only items in your bag, and only one Pokémon per copy."));
   return wrap;
 }
 function pickHeldSub(name){ const it = itemByName.get((name||"").toLowerCase());
@@ -5330,6 +6039,66 @@ function typeAceChosenType(t){
    the Class (or any of its Features) at least once, and a single Chosen Type per Trainer (the book
    allows re-taking Type Ace per-Type, which this simpler single-value model doesn't track). */
 function typeAceEligible(t){ return trainerHasClass(t, "Type Ace"); }
+
+/* ---------- Type Expertise (Feature, [Ranked 2][+Any]) ----------
+   "Each Rank, choose a Type of which you know at least 3 Moves. You gain STAB for the chosen
+   Type. STAB is never applied to Struggle Attacks." — so the Trainer's own Moves of a chosen
+   Type get the usual +2 Damage Base. Ranks aren't tracked one-by-one anywhere in this sheet
+   (t.features is a flat list of names), so the picks themselves live in t.stabTypes[] and the
+   Rank cap simply limits how many Types can be chosen. Unarmed Struggle and weapon strikes are
+   Struggle Attacks and never benefit; a Weapon Move IS a Move, so it does. */
+const TYPE_EXPERTISE_MAX = 2;
+function typeExpertiseEligible(t){ return trainerHasFeature(t, "Type Expertise"); }
+function trainerStabTypes(t){
+  if(!typeExpertiseEligible(t)) return [];
+  return [...new Set((Array.isArray(t.stabTypes)?t.stabTypes:[]).filter(ty=>TYPES.includes(ty)))]
+    .slice(0, TYPE_EXPERTISE_MAX);
+}
+/* does this Trainer get STAB on a Move of `type`? Struggle Attacks never do. */
+function trainerStab(t, type, isStruggle){
+  return !isStruggle && !!type && trainerStabTypes(t).includes(type);
+}
+/* how many Moves of each Type the Trainer's Move List holds — the Feature wants at least 3 */
+function trainerTypeMoveCount(t, type){
+  const want = String(type||"").toLowerCase();
+  return [...(t?.moves||[]), ...(t?.encMoves||[])].filter(mn=>{
+    const m = moveByName.get(String(mn||"").toLowerCase());
+    return m && String(m.type||"").toLowerCase()===want;
+  }).length;
+}
+/* The Type Expertise picker — one <select> per Rank. Shared by the Trainer sheet and the
+   Encounters tab (which passes saveEnc/renderEncounters), so an NPC qualifies exactly like a
+   player: give them the Feature and the picker appears. */
+function typeExpertiseControl(t, saveFn, rerender){
+  saveFn = saveFn || save; rerender = rerender || render;
+  if(!Array.isArray(t.stabTypes)) t.stabTypes = [];
+  const wrap = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin-bottom:10px"});
+  wrap.append(el("div",{style:"font-weight:700;margin-bottom:4px"},"⚡ Type Expertise — STAB Types"));
+  const row = el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;align-items:center"});
+  const picks = trainerStabTypes(t);
+  for(let r=0; r<TYPE_EXPERTISE_MAX; r++){
+    const sel = el("select",{style:"padding:4px 6px"});
+    sel.append(el("option",{value:""}, `Rank ${r+1} — none`));
+    TYPES.forEach(ty=>sel.append(el("option",{value:ty}, ty)));
+    sel.value = picks[r] || "";
+    sel.addEventListener("change",()=>{
+      const next = [];
+      for(let k=0;k<TYPE_EXPERTISE_MAX;k++) next.push(k===r ? sel.value : (picks[k]||""));
+      t.stabTypes = [...new Set(next.filter(Boolean))];
+      saveFn(); rerender();
+    });
+    row.append(sel);
+  }
+  wrap.append(row);
+  const notes = picks.map(ty=>{
+    const n = trainerTypeMoveCount(t, ty);
+    return `${ty}: ${n} ${ty}-Type Move${n===1?"":"s"} known${n<3?" ⚠ the Feature asks for 3":""}`;
+  });
+  wrap.append(el("div",{class:"small muted",style:"margin-top:4px"},
+    (notes.length ? notes.join(" · ") + " · " : "") +
+    "Your Moves of a chosen Type get +2 Damage Base. Rank 2 needs the Feature taken twice. Struggle Attacks (unarmed and weapon strikes) never get STAB."));
+  return wrap;
+}
 function typeAceAbilityText(grant){
   if(!grant) return "";
   return grant.ability==="Last Chance"
@@ -5565,12 +6334,147 @@ const CAP_MOVE_HELP = {
   Jump: "High Jump / Long Jump — squares this Pokémon can jump vertically / horizontally as part of its movement.",
   Power: "Power Capability — how much this Pokémon can lift, carry and break through by brute force.",
 };
+/* Capabilities the app needs a definition for that the imported D.items.capabilities table is
+   missing. Teleporter is a real Core capability (Abra's dex entry lists "Teleporter 2") and the Move
+   Teleport grants it, but it never made it into the sheet's capability tab — so it'd otherwise be an
+   unknown token and get thrown away by the grant parser below. */
+const CAP_EXTRA_HELP = {
+  Teleporter: "Teleporter X — the user may teleport up to X meters as part of a Shift Action, ignoring intervening terrain and obstacles as long as they can see (or clearly picture) the destination.",
+};
 /* hover/expand text for a named capability (Naturewalk, Amorphous, Levitate the ability, …) —
    these live in D.items.capabilities alongside held items/food, keyed lowercase */
 function capabilityHelp(name){
-  const it = itemByName.get(String(name||"").split("(")[0].trim().toLowerCase());
-  return it?.effect || "";
+  const base = String(name||"").split("(")[0].replace(/\s+\d+$/,"").trim();
+  const it = itemByName.get(base.toLowerCase());
+  return it?.effect || CAP_EXTRA_HELP[capCanonName(base)] || "";
 }
+
+/* ===================================================================
+   Capabilities granted by Moves and Abilities (Core "Capability List")
+   A Pokémon's dex entry lists the Capabilities it is BORN with, but plenty
+   of Moves hand out more just by being known — every Move whose effect text
+   ends in "*Grants: Firestarter" / "Grants Teleporter 4" / "Grants: Sky +3"
+   — and a few Abilities do the same (Levitate). Those used to be text a
+   player had to spot and apply by hand; now they're folded into one derived
+   capability set (monCapabilities) that every capability chip row, the Map's
+   movement modes and the Struggle-type picker read from.
+=================================================================== */
+/* the numeric Capabilities that live as their own field on species.capabilities */
+const CAP_NUM_FIELDS = { overland:"overland", sky:"sky", swim:"swim", levitate:"levitate",
+  burrow:"burrow", "high jump":"highJump", "long jump":"longJump", power:"power" };
+const CAP_FIELD_LABEL = { overland:"Overland", sky:"Sky", swim:"Swim", levitate:"Levitate",
+  burrow:"Burrow", highJump:"High Jump", longJump:"Long Jump", power:"Power" };
+/* "Teleporter 2" / "Naturewalk (Forest)" → "Teleporter" / "Naturewalk" */
+function capBaseName(s){ return String(s||"").split("(")[0].replace(/\s+[+-]?\d+$/,"").trim(); }
+/* every Capability NAME the app knows, so the grant parser can throw away prose that merely
+   happens to contain the word "grants" ("Pursuit grants the user a +5 bonus…") */
+let _capNameIndex = null;
+function capNameIndex(){
+  if(_capNameIndex) return _capNameIndex;
+  _capNameIndex = new Map();
+  const add = n => { const b = capBaseName(n).replace(/\s+X$/i,"").trim(); if(b) _capNameIndex.set(b.toLowerCase(), b); };
+  (D.items.capabilities||[]).forEach(c=>add(c.name));
+  Object.keys(CAP_EXTRA_HELP).forEach(add);
+  Object.entries(CAP_FIELD_LABEL).forEach(([,lbl])=>add(lbl));
+  return _capNameIndex;
+}
+function capCanonName(s){ return capNameIndex().get(capBaseName(s).toLowerCase()) || null; }
+/* Parse one "Grants …" clause into grants. Shapes seen in the Move DB:
+     "Threaded"                  → named, no number
+     "Sky +3" / "+1 Long Jump"   → numeric BONUS on top of whatever the species has
+     "Teleporter 4"              → grants the capability AT that value (Abra already has Teleporter 2
+                                   and knowing Teleport makes it 4, not 6 — a bare number is a floor)
+     "Overland and Long Jump +1" → the bonus applies to every name in the list  */
+function parseCapGrantClause(clause){
+  let s = String(clause||"").trim().replace(/\.$/,"");
+  let value = null, mode = null, m;
+  if((m = /^([+-]\d+)\s+(.+)$/.exec(s))){ value = parseInt(m[1]); mode = "add"; s = m[2]; }        // "+1 Long Jump"
+  else if((m = /^(.+?)\s+([+-]\d+)$/.exec(s))){ value = parseInt(m[2]); mode = "add"; s = m[1]; }  // "Sky +3"
+  else if((m = /^(.+?)\s+(\d+)$/.exec(s))){ value = parseInt(m[2]); mode = "min"; s = m[1]; }      // "Teleporter 4"
+  const out = [];
+  s.split(/\s*,\s*|\s+and\s+/i).forEach(part=>{
+    const name = capCanonName(part);
+    if(!name) return;                                       // not a Capability — prose, ignore it
+    out.push({ name, field: CAP_NUM_FIELDS[name.toLowerCase()] || null, value, mode });
+  });
+  return out;
+}
+/* the trailing "*Grants: X" / "Grants X" marker a Move's effect text ends with */
+const CAP_GRANT_RE = /(?:^|[.!*\s])\*?\s*Grants:?\s+([^.*]+?)\s*\.?\s*$/i;
+function moveCapGrants(moveName){
+  const m = moveByName.get(String(moveName||"").toLowerCase());
+  if(!m || !m.effect) return [];
+  const hit = CAP_GRANT_RE.exec(String(m.effect).trim());
+  return hit ? parseCapGrantClause(hit[1]) : [];
+}
+/* Abilities that hand out a Capability. Hand-written rather than parsed: only a handful exist and
+   their wording is nothing like the Moves' tidy "*Grants:" marker. `cond` gates a conditional one.
+   NOTE on Levitate/Elevate — the book says "gains a Levitate Speed of 4, or has existing Levitate
+   Speeds increased by +2", but the printed dex entries of Pokémon whose Basic Ability IS Levitate
+   already bake that in (Gastly's Levitate 4, Gengar's 5). Adding +2 on top of those would double-
+   count, so a Pokémon that already has a Levitate Speed keeps it and only one that has none gains
+   the flat 4. A GM who wants the +2 anyway can still step it by hand. */
+const ABILITY_CAP_GRANTS = {
+  "levitate":  [{ name:"Levitate", field:"levitate", value:4, mode:"min" }],
+  "elevate":   [{ name:"Levitate", field:"levitate", value:4, mode:"min" }],
+  "migraine":  [{ name:"Telekinetic", field:null, value:null, mode:null,
+                  cond:p => { const d = pokeDerived(p); return (p.currentHP==null ? d.maxHP : p.currentHP) <= d.maxHP/2; },
+                  condText:"while at 50% HP or less" }],
+};
+function abilityCapGrants(name){
+  return ABILITY_CAP_GRANTS[String(name||"").toLowerCase().replace(/\s*\[errata\]\s*$/i,"").trim()] || [];
+}
+/* every grant a specific Pokémon currently has, tagged with where it came from */
+function capabilityGrants(p){
+  const out = [];
+  (p?.moves||[]).forEach(mn=>{
+    const nm = canonMoveName(mn);
+    moveCapGrants(nm).forEach(g=>out.push({...g, src:nm}));
+  });
+  (p?.abilities||[]).forEach(an=>{
+    abilityCapGrants(an).forEach(g=>{ if(!g.cond || g.cond(p)) out.push({...g, src:an}); });
+  });
+  return out;
+}
+/* A Pokémon's capabilities as actually played: the species' printed list plus everything its Moves
+   and Abilities grant. Returns the same shape as sp.capabilities (so every existing reader works
+   unchanged) plus `grantedBy`, a name→source map for the chip tooltips. */
+function monCapabilities(p, sp){
+  const base = (sp || getSpecies(p?.species))?.capabilities || {};
+  const cap = { ...base, naturewalk:[...(base.naturewalk||[])], other:[...(base.other||[])], grantedBy:{} };
+  if(!p) return cap;
+  const note = (label, g) => {
+    const k = capBaseName(label);
+    cap.grantedBy[k] = (cap.grantedBy[k] ? cap.grantedBy[k]+", " : "") + g.src + (g.condText?` ${g.condText}`:"");
+  };
+  capabilityGrants(p).forEach(g=>{
+    if(g.field){                                   // a numeric Capability with its own field
+      const cur = cap[g.field] || 0;
+      const next = g.value==null ? cur : (g.mode==="add" ? cur + g.value : Math.max(cur, g.value));
+      if(next !== cur){ cap[g.field] = next; note(CAP_FIELD_LABEL[g.field] || g.name, g); }
+      return;
+    }
+    // a named Capability, which may or may not carry a number ("Teleporter 4" vs "Firestarter")
+    const i = cap.other.findIndex(o => capBaseName(o).toLowerCase() === g.name.toLowerCase());
+    if(g.value==null){
+      if(i < 0){ cap.other.push(g.name); note(g.name, g); }
+      return;
+    }
+    const cur = i<0 ? 0 : (parseInt((String(cap.other[i]).match(/(\d+)\s*$/)||[])[1]) || 0);
+    const next = g.mode==="add" ? cur + g.value : Math.max(cur, g.value);
+    if(next === cur) return;
+    if(i<0) cap.other.push(`${g.name} ${next}`); else cap.other[i] = `${g.name} ${next}`;
+    note(g.name, g);
+  });
+  return cap;
+}
+/* "✨ granted by Teleport" suffix for a capability chip's hover text */
+function capGrantNote(cap, label){
+  const src = cap?.grantedBy?.[capBaseName(label)];
+  return src ? `\n\n✨ Granted by ${src}.` : "";
+}
+/* is this chip one the species didn't print? (used to mark it ✨ in the chip rows) */
+function capIsGranted(cap, label){ return !!(cap?.grantedBy?.[capBaseName(label)]); }
 /* the Movement Capability chips a Pokémon actually has, as [label, hover-help], with the Speed-CS
    movement shift already folded into the numbers (Core p.234 — see speedCSMove). Pass the Pokémon
    for the CS-adjusted values; omit it for a species-only view (the Pokédex), which shows the base
@@ -5584,14 +6488,18 @@ function moveCapEntries(cap, p){
 }
 function capsSkillsCard(sp, p){
   const card = el("div",{class:"card"}, el("h3",{},"Capabilities & Skills"));
-  const cap = sp.capabilities;
+  const cap = monCapabilities(p, sp);        // species list + everything its Moves/Abilities grant
   const caps = moveCapEntries(cap, p);
   caps.push([`Jump ${cap.highJump}/${cap.longJump}`, CAP_MOVE_HELP.Jump], [`Power ${cap.power}`, CAP_MOVE_HELP.Power]);
   if(cap.naturewalk?.length) caps.push([`Naturewalk (${cap.naturewalk.join(", ")})`, capabilityHelp("Naturewalk")]);
   (cap.other||[]).forEach(o=>caps.push([o, capabilityHelp(o)]));
   const chips = el("div",{class:"chips"});
-  caps.forEach(([label,help])=>chips.append(el("span",{class:"chip",title:help||""},label)));
+  caps.forEach(([label,help])=>chips.append(el("span",{class:"chip"+(capIsGranted(cap,label)?" granted":""),
+    title:(help||"")+capGrantNote(cap,label)}, label + (capIsGranted(cap,label)?" ✨":""))));
   card.append(chips);
+  const granted = Object.entries(cap.grantedBy||{});
+  if(granted.length) card.append(el("div",{class:"small muted",style:"margin-top:6px"},
+    "✨ granted by a Move or Ability it knows: " + granted.map(([k,v])=>`${k} (${v})`).join(" · ")));
   if(sp.skills && Object.keys(sp.skills).length){
     const sk = el("div",{class:"chips",style:"margin-top:8px"});
     SKILLS.forEach(([k,lbl])=>{ const s=sp.skills[k]; if(s){ const mod=parseInt((s.mod||"").replace(/\s/g,""))||0;
@@ -5693,17 +6601,19 @@ function struggleMove(p){
 }
 /* ---------- ability / capability type effects ---------- */
 function hasAbility(p, name){ return (p.abilities||[]).some(a => String(a).toLowerCase() === name.toLowerCase()); }
-function monCaps(sp){ return (sp?.capabilities?.other || []).map(o => String(o).split("(")[0].trim()); }
+/* the named ("other") Capabilities, base-named. Takes the Pokémon when there is one so Move/Ability
+   grants count — knowing Ember really does hand a Pokémon Firestarter, and with it a Fire Struggle. */
+function monCaps(sp, p){ return (monCapabilities(p, sp).other || []).map(o => capBaseName(o)); }
 /* which types this Pokémon's Struggle may be: Normal + any granted by capabilities (all 18 if 🔓) */
 function struggleTypeOptions(p, sp){
   if(p?.unlocked) return TYPES.slice();
   const set = new Set(["Normal"]);
-  monCaps(sp).forEach(c => { if(STRUGGLE_TYPE_CAPS[c]) set.add(STRUGGLE_TYPE_CAPS[c]); });
+  monCaps(sp, p).forEach(c => { if(STRUGGLE_TYPE_CAPS[c]) set.add(STRUGGLE_TYPE_CAPS[c]); });
   return [...set];
 }
 /* a capability lets the elemental Struggle also be Special (Sp.Atk) at the user's option */
 function struggleCanBeSpecial(p, sp){
-  return !!(p?.unlocked) || monCaps(sp).some(c => STRUGGLE_TYPE_CAPS[c]);
+  return !!(p?.unlocked) || monCaps(sp, p).some(c => STRUGGLE_TYPE_CAPS[c]);
 }
 /* Rotom's 6 Appliance forms (Core/Gen canon) — the DB has these as separate species entries (plus a
    pile of duplicate-name variants from the spreadsheet import, e.g. "Rotom-H"/"Rotom (H)"; these 6
@@ -6493,6 +7403,9 @@ function openMoveRoll(p, m, sp, opts={}){
   const rollThresholds = fieryCrashThresholds(thresholds, !!fc && mtype==="Fire");
   const fiveStrike = isFiveStrike(m);
   const critT = critThreshold(p, m);
+  /* the crit range as this roll will actually resolve it — buffs (Trick Shot, Pinpoint Strike…)
+     widen it, and the guide above should say the same number the 🎲 result checks against */
+  const critNow = () => Math.max(2, critT - (bm.crit||0));
   /* Final Damage Base. Five Strike (Core p.242): "Multiply the Move's Damage Base by the number of
      times hit; that becomes its new Damage Base. You may always apply Technician to Moves with Five
      Strike. Apply STAB and all other effects that raise Damage Base only after the Move's final
@@ -6608,14 +7521,20 @@ function openMoveRoll(p, m, sp, opts={}){
   const noMissNow = () => wx.autoHit || condMods().noMiss;
   function renderAccGuide(){
     const cxNoMiss = !wx.autoHit && condMods().noMiss;
+    /* the same modifiers the 🎲 result applies, said out loud before rolling: buffs (Songs,
+       Orders, Cheers), Accuracy Stages and always-on Accuracy abilities */
+    const accMod = (bm.acc||0) + accCS;
+    const accWhy = []; if(bm.acc) accWhy.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} buffs (${buffSources(p,"acc")})`);
+    if(accCS) accWhy.push(`${accCS>0?"+":"−"}${Math.abs(accCS)} Accuracy CS`);
     accBox.innerHTML = "";
     accBox.append(
       el("div",{style:"font-size:16px;font-weight:700"},
-        `Accuracy: ${noMissNow() ? "auto-hit" : m.ac!=null ? (nAcc>1?`${nAcc} × 1d20`:"1d20") : "—"}`),
+        `Accuracy: ${noMissNow() ? "auto-hit" : m.ac!=null ? (nAcc>1?`${nAcc} × 1d20`:"1d20") + (accMod?` ${accMod>0?"+":"−"} ${Math.abs(accMod)}`:"") : "—"}`),
       el("div",{class:"small muted",style:"margin-top:2px"},
         wx.autoHit ? `${m.name} cannot miss in ${wx.weather.name} — no Accuracy Check needed.`
         : cxNoMiss ? `${m.name} cannot miss while that condition holds — no Accuracy Check needed.`
-        : m.ac!=null ? `${nAcc>1?`Make ${nAcc} separate Accuracy Rolls`:"Roll 1d20"} — each hits if it's ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote}. Roll ${critT===20?"20":critT+"+"} auto-hits/crits, nat 1 auto-misses.`
+        : m.ac!=null ? `${nAcc>1?`Make ${nAcc} separate Accuracy Rolls`:"Roll 1d20"} — each hits if it's ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote}. Roll ${critNow()===20?"20":critNow()+"+"} auto-hits/crits, nat 1 auto-misses.`
+                     + (accWhy.length?` Every roll includes ${accWhy.join(" ")}.`:"")
                    : "This move has no Accuracy Check."));
   }
   explain.append(accBox);
@@ -6741,7 +7660,7 @@ function openMoveRoll(p, m, sp, opts={}){
     const fDB = finalDB(1), ds = diceStr();
     const dm = ds.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
     const dn = dm[1]?+dm[1]:0, dfaces = dm[2]?+dm[2]:0, dflat = dm[3]?parseInt(dm[3].replace(/\s/g,"")):0;
-    const dbBonus = `${stab?` +2 STAB`:""}${abilMods.db?` +${abilMods.db} ability`:""}`;
+    const dbBonus = `${stab?` +2 STAB`:""}${abilMods.db?` +${abilMods.db} ability`:""}${bm.db?` ${bm.db>0?"+":"−"}${Math.abs(bm.db)} buffs`:""}`;
     dbChip.textContent = fDB==null ? "No damage"
       : fiveStrike ? `DB ${baseDB()} ×hits${dbBonus} → ${fDB}–${finalDB(5)}`
       : `DB ${baseDB()}${dbBonus} → ${fDB}`;
@@ -6753,14 +7672,16 @@ function openMoveRoll(p, m, sp, opts={}){
       const terms=[`${dn}d${dfaces}`]; if(dflat) terms.push(String(dflat)); if(im.atk) terms.push(String(im.atk));
       // weather/terrain are appended with their own operator — pushing "−5" into terms would render "+ −5"
       const expr = terms.join(" + ")
+        + (bm.dmg ? ` ${bm.dmg>0?"+":"−"} ${Math.abs(bm.dmg)}` : "")
         + (wxd ? ` ${wxd>0?"+":"−"} ${Math.abs(wxd)}` : "")
         + (tx.dmg ? ` ${tx.dmg>0?"+":"−"} ${Math.abs(tx.dmg)}` : "")
         + (abilMods.flat ? ` ${abilMods.flat>0?"+":"−"} ${Math.abs(abilMods.flat)}` : "")
         + (cx.dmg ? ` ${cx.dmg>0?"+":"−"} ${Math.abs(cx.dmg)}` : "")
         + (im.delta ? ` − ${Math.abs(im.delta)}` : "")
         + (cx.mult!==1 ? `, then ×${cx.mult}` : "");
-      const why=[`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${fDB}${stab?` (DB ${baseDB()} +2 STAB)`:""}`];
+      const why=[`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${fDB}${dbBonus?` (DB ${baseDB()}${dbBonus})`:""}`];
       if(im.atk) why.push(`${im.atk} = your ${atkLbl}${im.halved?" (halved — Infatuated vs Crush)":""}`);
+      if(bm.dmg) why.push(`${bm.dmg>0?"+":"−"}${Math.abs(bm.dmg)} = buffs (${buffSources(p,"dmg")})`);
       if(wxd) why.push(`${wxd>0?"+":"−"}${Math.abs(wxd)} = ${wx.weather.name}`);
       if(tx.dmg) why.push(`${tx.dmg>0?"+":"−"}${Math.abs(tx.dmg)} = Terrain`);
       if(abilMods.why.length) why.push(abilMods.why.join(", "));
@@ -6778,8 +7699,9 @@ function openMoveRoll(p, m, sp, opts={}){
         `⚔ Double Strike — shown with ${hitsConnect===2?"both Attack Rolls connecting":"1 Attack Roll connecting"}; the 🎲 roll counts how many actually hit and re-sizes the Damage Base. Each connecting strike can crit on its own.`));
       if(sp2?.kind==="tripleKick") dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
         `👣 Triple Kick — shown at ${hitsConnect} of 3 connecting; the 🎲 roll counts the real hits and re-sizes the Damage Base (DB 1 / 3 / 6 for 1 / 2 / 3 hits).`));
-      if(critT<20) dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
-        `Critical Hit Range: ${critT}–20 for this Pokémon/move.`));
+      if(critNow()<20) dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
+        `Critical Hit Range: ${critNow()}–20 for this Pokémon/move`
+        + (bm.crit ? ` — ${critT===20?"normally a natural 20":`normally ${critT}–20`}, widened +${bm.crit} by ${buffSources(p,"crit")}.` : ".")));
     } else {
       dmgBox.append(el("div",{},
         el("div",{style:"font-size:16px;font-weight:700"}, "Damage: —"),
@@ -7110,7 +8032,7 @@ function openMoveRoll(p, m, sp, opts={}){
           `${isCrit?"💥 CRIT! ":"💥 "}${total}`));
         const parts=[`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`];
         if(im.atk) parts.push(`+ ${im.atk} ${atkLbl}${im.halved?" (halved — Infatuated)":""}`);
-        if(bm.dmg)  parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs`);
+        if(bm.dmg)  parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs (${buffSources(p,"dmg")})`);
         if(wxd)     parts.push(`${wxd>0?"+":""}${wxd} ${wx.weather.name}`);
         if(tx.dmg)  parts.push(`${tx.dmg>0?"+":""}${tx.dmg} Terrain`);
         if(abilMods.flat) parts.push(`${abilMods.flat>0?"+":""}${abilMods.flat} ability`);
@@ -7685,10 +8607,13 @@ function customActionsCard(t, rerender){
 /* one rollable attack row in the trainer's Combat tab */
 function trainerAttackSlot(t, profile, rollFn, opts={}){
   const slot = el("div",{class:"moveslot"});
+  // Type Expertise STAB, if this Trainer has it for the attack's Type (never on a Struggle Attack)
+  const stabHere = trainerStab(t, profile.type, !profile.move);
   slot.append(el("div",{style:"flex:1"},
     el("div",{style:"font-weight:700"}, profile.name+" ", el("span",{html:typeBadge(profile.type)}),
-      opts.tag?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600"}, opts.tag):""),
-    el("div",{class:"ms-info"}, `${profile.frequency?profile.frequency+" · ":""}${profile.cls||"Physical"} · AC ${profile.ac} · DB ${profile.damageBase} · ${profile.range} · +Attack`)));
+      opts.tag?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600"}, opts.tag):"",
+      stabHere?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600",title:"Type Expertise — +2 Damage Base"},"⚡ STAB"):""),
+    el("div",{class:"ms-info"}, `${profile.frequency?profile.frequency+" · ":""}${profile.cls||"Physical"} · AC ${profile.ac} · DB ${profile.damageBase}${stabHere?" +2":""} · ${profile.range} · +Attack`)));
   const acts = el("div",{class:"inline"});
   if(opts.uc) acts.append(opts.uc);
   acts.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",onclick:rollFn},"🎲 Roll"));
@@ -7735,6 +8660,16 @@ function openItemAttack(t, prof){
   body.append(el("div",{class:"chips",style:"margin-bottom:10px"},
     el("span",{class:"kv"},"Status"), el("span",{class:"kv"},`AC ${prof.ac}`), el("span",{class:"kv"},prof.range)));
   body.append(el("div",{class:"small",style:"margin-bottom:12px;white-space:pre-wrap"}, prof.effect));
+  // say up front what the roll will add (buffs / Accuracy Stages), not only in the result
+  {
+    const mod = (bm.acc||0) + accCS;
+    const why = []; if(bm.acc) why.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} buffs (${buffSources(t,"acc")})`);
+    if(accCS) why.push(`${accCS>0?"+":"−"}${Math.abs(accCS)} Accuracy CS`);
+    body.append(el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"},
+      el("div",{style:"font-size:16px;font-weight:700"}, `Accuracy: 1d20${mod?` ${mod>0?"+":"−"} ${Math.abs(mod)}`:""}`),
+      el("div",{class:"small muted",style:"margin-top:2px"},
+        `Hits if the total is ≥ AC ${prof.ac} + the target's Evasion.` + (why.length?` Includes ${why.join(" ")}.`:""))));
+  }
   const out = el("div",{class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:0"});
   out.append(el("div",{class:"muted small"},"Press 🎲 Roll to test the Accuracy Check."));
   const doRoll = ()=>{ out.innerHTML=""; out.style.borderStyle="solid";
@@ -8618,7 +9553,7 @@ function encounterMonCard(enc, p, list, trainer){
     const rr = ()=>{ saveEnc(); renderEncounters(); };
     const megas = megaFormsFor(p);
     const megaRow = el("div",{class:"inline",style:"margin-top:8px;gap:6px;align-items:center;flex-wrap:wrap"});
-    megaRow.append(heldItemControl(p, rr));
+    megaRow.append(heldItemControl(p, rr, {free:true}));   // wild/enemy mons have no Trainer bag to spend from
     if(p.mega){
       megaRow.append(el("span",{class:"statuschip on",style:"padding:2px 8px;font-size:11px;cursor:default"},"✨ MEGA"),
         el("button",{class:"btn-secondary",style:"padding:4px 10px",title:"revert to the base form",
@@ -8734,7 +9669,7 @@ function encounterMonCard(enc, p, list, trainer){
 /* movement + special Capabilities chip row for an encounter Pokémon — hover each chip for its
    rules text (movement caps get hand-written help; named ones look up D.items.capabilities) */
 function encounterCapsRow(sp, p){
-  const cap = sp.capabilities||{};
+  const cap = monCapabilities(p, sp);       // species list + Move/Ability grants (Teleport → Teleporter 4, …)
   const entries = moveCapEntries(cap, p);
   entries.push([`Jump ${cap.highJump ?? 0}/${cap.longJump ?? 0}`, CAP_MOVE_HELP.Jump], [`Power ${cap.power ?? 0}`, CAP_MOVE_HELP.Power]);
   if(cap.naturewalk?.length) entries.push([`Naturewalk (${cap.naturewalk.join(", ")})`, capabilityHelp("Naturewalk")]);
@@ -8742,7 +9677,8 @@ function encounterCapsRow(sp, p){
   const wrap=el("div",{style:"margin-top:8px"});
   wrap.append(el("span",{class:"small muted",style:"font-weight:700"},"Capabilities"));
   const chips=el("div",{class:"chips",style:"margin-top:4px"});
-  entries.forEach(([label,help])=>chips.append(el("span",{class:"chip",title:help||""},label)));
+  entries.forEach(([label,help])=>chips.append(el("span",{class:"chip"+(capIsGranted(cap,label)?" granted":""),
+    title:(help||"")+capGrantNote(cap,label)}, label + (capIsGranted(cap,label)?" ✨":""))));
   wrap.append(chips);
   return wrap;
 }
@@ -8838,6 +9774,10 @@ function encounterTrainerCard(enc, tr){
     if(inferred) ctRow.append(el("span",{class:"small muted"},"from their Features"));
     if(moveSyncEligible(t)) ctRow.append(el("span",{class:"kv",title:"has the Move Sync Feature"},"🔃 Move Sync"));
     card.append(ctRow);
+  }
+  // Type Expertise — same rule: an NPC with the Feature (listed below) picks STAB Types here
+  if(typeExpertiseEligible(t)){
+    card.append(typeExpertiseControl(t, saveEnc, renderEncounters));
   }
   card.append(encTrainerCombatStages(t, tr.id));
   card.append(encTrainerStatSpread(t, tr.id));
@@ -9105,6 +10045,8 @@ function normShopItem(x){
   x.name = String(x.name||"");
   if(typeof x.price!=="number" || !isFinite(x.price)) x.price = Math.max(0, bookPriceOf(x.name) ?? 0);
   x.price = Math.max(0, Math.round(x.price));
+  if(typeof x.img!=="string")  x.img  = "";   // this row's own picture, if the GM uploaded one
+  if(typeof x.desc!=="string") x.desc = "";   // this row's own description, overriding the book text
   return x;
 }
 function normShop(s){
@@ -9137,8 +10079,30 @@ function normShops(data){
     });
     c.discount = Math.max(0, Math.min(100, Math.round(Number(c.discount)||0)));
   }
-  data.itemDescs  = obj(data.itemDescs);    // normItemName → GM-written description (overrides the book text)
-  data.itemImages = obj(data.itemImages);   // normItemName → picture URL, reused by every shop
+  /* Legacy: pictures and descriptions used to be stored in two maps keyed by the item's NAME and
+     shared across every shop. Two things went wrong with that. A "+ custom" row starts nameless, so
+     every blank row normalised to the SAME empty key — set a picture on one and it appeared on all
+     of them, and each new blank row was born wearing the last one's image. And renaming a row left
+     its picture behind under the old name. Overrides live on the item itself now (item.img/.desc);
+     lift anything already stored across, then drop the old maps. Idempotent: a value is only lifted
+     into a row that doesn't have its own, so removing a picture can't resurrect it. */
+  const oldDescs = obj(data.itemDescs), oldImgs = obj(data.itemImages);
+  if(Object.keys(oldDescs).length || Object.keys(oldImgs).length){
+    data.shops.forEach(s=>s.items.forEach(it=>{
+      const k = normItemName(it.name); if(!k) return;          // the "" key was the bug — never re-apply it
+      if(!it.img  && oldImgs[k])  it.img  = oldImgs[k];
+      if(!it.desc && oldDescs[k]) it.desc = oldDescs[k];
+    }));
+  }
+  delete data.itemDescs; delete data.itemImages;
+  /* who currently has a storefront open, keyed by device id: { shopId, who, at }. It's how the GM
+     follows the table — a player tapping a door announces it here and the GM's board opens the same
+     shop. Stale entries (a tab closed without closing the shop) age out rather than nagging forever. */
+  data.viewing = obj(data.viewing);
+  for(const k of Object.keys(data.viewing)){
+    const e = data.viewing[k];
+    if(!e || typeof e!=="object" || !e.shopId || (Date.now() - (e.at||0)) > SHOP_VIEW_TTL) delete data.viewing[k];
+  }
   data.log = (Array.isArray(data.log) ? data.log : []).slice(0,40);   // recent purchases, newest first
   return data;
 }
@@ -9147,21 +10111,24 @@ function shopList(){ return mode==="cloud" ? shopData().shops : []; }
 function shopById(id){ return shopList().find(s=>s.id===id) || null; }
 function shopItemById(shop, iid){ return (shop?.items||[]).find(i=>i.id===iid) || null; }
 
-/* ---- per-item description & picture (shared by every shop, keyed by item name) ---- */
-function itemDescOf(name){
-  const custom = shopData().itemDescs[normItemName(name)];
-  return (typeof custom==="string" && custom.trim()) ? custom.trim() : catalogDescOf(name);
+/* ---- description & picture, stored on the shop row itself ----
+   Every override belongs to ONE row on ONE shelf: editing the Potion in the Herb Stall never
+   touches the Potion in the Poké Mart, and a fresh "+ custom" row starts genuinely empty.
+   `item` may be null (a GM freebie that isn't on the shelf) — then it's book text and auto art. */
+function itemDescOf(name, item){
+  const own = String(item?.desc||"").trim();
+  return own || catalogDescOf(name);
 }
-function itemHasOwnDesc(name){ return !!String(shopData().itemDescs[normItemName(name)]||"").trim(); }
-function setItemDesc(name, text){
-  const d = shopData(), k = normItemName(name);
-  if(String(text||"").trim()) d.itemDescs[k] = String(text).trim(); else delete d.itemDescs[k];
+function itemHasOwnDesc(item){ return !!String(item?.desc||"").trim(); }
+function setItemDesc(item, text){
+  if(!item) return;
+  item.desc = String(text||"").trim();
   saveShops();
 }
-function itemImgOf(name){ return shopData().itemImages[normItemName(name)] || ""; }
-function setItemImg(name, url){
-  const d = shopData(), k = normItemName(name);
-  if(url) d.itemImages[k] = url; else delete d.itemImages[k];
+function itemImgOf(item){ return (item && item.img) || ""; }
+function setItemImg(item, url){
+  if(!item) return;
+  item.img = url || "";
   saveShops();
 }
 /* The empty shopping-bag placeholder is painted by `.shop-thumb`'s CSS background, so an item with
@@ -9185,8 +10152,8 @@ function itemSlug(name){
 const ITEM_ART_ALIAS = { "basic ball":"poke-ball", "pokeball":"poke-ball", "hp up":"hp-up",
   "paralyze heal":"paralyze-heal", "parlyz heal":"paralyze-heal", "old rod":"old-rod",
   "super rod":"super-rod", "good rod":"good-rod", "bicycle":"bicycle", "town map":"town-map" };
-function itemArtChain(name){
-  const custom = itemImgOf(name);
+function itemArtChain(name, item){
+  const custom = itemImgOf(item);
   if(custom) return [custom];
   const slug = ITEM_ART_ALIAS[String(name||"").trim().toLowerCase()] || itemSlug(name);
   if(!slug) return [ITEM_PLACEHOLDER];
@@ -9196,28 +10163,41 @@ function itemArtChain(name){
                     `${base}/storage/v1/object/public/${IMG_BUCKET}/item/${slug}.jpg`);
   return out;
 }
-function itemImgNode(name, px){
-  const chain = itemArtChain(name);
-  const img = el("img",{class:"shop-thumb",src:chain[0],alt:"",loading:"lazy",title:name,
-    style:`width:${px}px;height:${px}px`});
+/* Tap any item picture for the full-screen view, exactly like a map token's portrait. Game sprites
+   are ~30px, so they're upscaled `pixelated` (crisp pixel art instead of a blurry smear) while a
+   GM's own upload scales normally. Does nothing while the picture is still loading or when every
+   source failed — there'd be nothing to show. */
+function openItemImage(name, img){
+  if(!img.complete || img.naturalWidth<=1) return;
+  openImageViewer(img.currentSrc || img.src, name);
+  if(img.naturalWidth<=128) document.querySelector(".img-viewer img")?.classList.add("pixel");
+}
+/* `opts.static` = decoration only (picker rows, where a tap has to pick the item, not zoom it) */
+function itemImgNode(name, px, item, opts={}){
+  const chain = itemArtChain(name, item);
+  const img = el("img",{class:"shop-thumb"+(opts.static?"":" zoomable"),src:chain[0],alt:"",loading:"lazy",
+    title:name+(opts.static?"":" — tap to view full screen"), style:`width:${px}px;height:${px}px`});
   const queue = chain.slice(1);
   img.addEventListener("error", function(){
     const next = queue.shift();
     if(next){ this.src = next; return; }
     this.src = ITEM_PLACEHOLDER; this.classList.add("fallback");
+    this.classList.remove("zoomable"); this.title = name;      // nothing left to enlarge
   });
-  // only the GM's own uploads are worth a full-screen look; the game sprites are 32px to begin with
-  return itemImgOf(name) ? zoomImg(img, name) : img;
+  if(opts.static) return img;
+  // stopPropagation: these sit inside rows that are themselves clickable (the GM's 👀 Live list)
+  img.addEventListener("click", e=>{ e.preventDefault(); e.stopPropagation(); openItemImage(name, img); });
+  return img;
 }
 /* short line + a drop-down for the rest when the rules text is long (which it usually is) */
 const SHOP_DESC_SHORT = 84;
-function itemDescNode(name){
-  const full = itemDescOf(name);
+function itemDescNode(name, item){
+  const full = itemDescOf(name, item);
   if(!full) return el("div",{class:"small muted"},"no description yet");
   const one = full.replace(/\s+/g," ").trim();
   if(one.length <= SHOP_DESC_SHORT) return el("div",{class:"small muted"}, one);
   // data-key so the "read the rest" drop-down survives the re-render every cart tick causes
-  const det = el("details",{class:"spoiler","data-key":"itemdesc:"+normItemName(name)});
+  const det = el("details",{class:"spoiler","data-key":"itemdesc:"+(item?.id || normItemName(name))});
   det.append(el("summary",{class:"small muted"}, one.slice(0,SHOP_DESC_SHORT).trim()+"…"));
   det.append(el("div",{class:"item-effect small"},
     full.split(/\n+/).map(s=>s.trim()).filter(Boolean).map(par=>el("p",{},par))));
@@ -9272,13 +10252,13 @@ function ensureItemDatalist(){
 function shopItemRow(shop, item){
   const row = el("div",{class:"shop-edit-row"});
   const pic = el("div",{class:"shop-pic"});
-  pic.append(itemImgNode(item.name, 44));
+  pic.append(itemImgNode(item.name, 44, item));
   const picActs = el("div",{class:"inline",style:"gap:4px;margin-top:3px"});
-  picActs.append(el("button",{class:"linkbtn",title:"upload your own picture for this item (used in every shop, and it beats the automatic sprite)",
-    onclick:()=>pickImage(200, async d=>{ setItemImg(item.name, await storeImg(d,"item")); renderShops(); })},
-    itemImgOf(item.name) ? "change" : "📷 own"));
-  if(itemImgOf(item.name)) picActs.append(el("button",{class:"linkbtn",title:"remove picture",
-    onclick:()=>{ setItemImg(item.name,""); renderShops(); }},"×"));
+  picActs.append(el("button",{class:"linkbtn",title:"upload your own picture for this row (it beats the automatic sprite)",
+    onclick:()=>pickImage(200, async d=>{ setItemImg(item, await storeImg(d,"item")); renderShops(); })},
+    itemImgOf(item) ? "change" : "📷 own"));
+  if(itemImgOf(item)) picActs.append(el("button",{class:"linkbtn",title:"remove picture",
+    onclick:()=>{ setItemImg(item,""); renderShops(); }},"×"));
   pic.append(picActs);
 
   const mid = el("div",{style:"flex:1;min-width:0"});
@@ -9291,16 +10271,16 @@ function shopItemRow(shop, item){
   const book = bookPriceOf(item.name), cat = bookCatOf(item.name);
   mid.append(el("div",{class:"small muted",style:"margin-top:2px"},
     [cat, book!=null ? `book price $${book}` : "no book price — set one"].filter(Boolean).join(" · ")));
-  mid.append(itemDescNode(item.name));
+  mid.append(itemDescNode(item.name, item));
   const dsc = el("details",{class:"spoiler",style:"margin-top:3px","data-key":"shopdesc:"+item.id});
-  dsc.append(el("summary",{class:"small"}, itemHasOwnDesc(item.name) ? "✎ Description (yours)" : "✎ Write a description"));
+  dsc.append(el("summary",{class:"small"}, itemHasOwnDesc(item) ? "✎ Description (yours)" : "✎ Write a description"));
   const ta = el("textarea",{placeholder: catalogDescOf(item.name) || "What is it? What does it do?",
     style:"width:100%;min-height:56px;resize:vertical;margin-top:4px"});
-  ta.value = shopData().itemDescs[normItemName(item.name)] || "";
-  ta.addEventListener("change",()=>{ setItemDesc(item.name, ta.value); renderShops(); });
+  ta.value = item.desc || "";
+  ta.addEventListener("change",()=>{ setItemDesc(item, ta.value); renderShops(); });
   dsc.append(ta);
-  if(itemHasOwnDesc(item.name)) dsc.append(el("button",{class:"linkbtn",
-    onclick:()=>{ setItemDesc(item.name,""); renderShops(); }},"↺ back to the book text"));
+  if(itemHasOwnDesc(item)) dsc.append(el("button",{class:"linkbtn",
+    onclick:()=>{ setItemDesc(item,""); renderShops(); }},"↺ back to the book text"));
   mid.append(dsc);
 
   const right = el("div",{class:"shop-price-col"});
@@ -9516,8 +10496,10 @@ async function completePurchase(shop, row){
   cart.lines.forEach(l=>{
     const k = normItemName(l.name);
     const ex = inv.find(it=>normItemName(it.name)===k);
-    if(ex) ex.qty = (parseInt(ex.qty)||0) + l.qty;
-    else inv.push({ name:l.name, qty:l.qty, notes:"" });
+    // a GM's own artwork for a shelf item follows it into the bag (auto sprite art needs nothing)
+    const art = itemImgOf(shopItemById(shop, l.iid));
+    if(ex){ ex.qty = (parseInt(ex.qty)||0) + l.qty; if(art && !ex.img) ex.img = art; }
+    else inv.push(Object.assign({ name:l.name, qty:l.qty, notes:"" }, art?{img:art}:{}));
   });
   t.money = money - total;
   const d = shopData();
@@ -9543,6 +10525,77 @@ function shopBuyerRows(){
 }
 let shopBuyerId = null;                     // this device's chosen buyer (not synced)
 let shopPanelTab = "items";                 // "items" | "cart" | "live"
+/* Two ways a storefront opens, and they must not fight each other:
+     • the GM PUSHES one to the whole table  → map.shopId (shared, in the map meta)
+     • someone TAPS a shop token on the board → shopViewId (local to that screen only)
+   The local one wins while it's set, so tapping the potion stall doesn't yank everyone else's
+   screen around; `null` means "just follow whatever the GM has pushed". Whenever the GM's push
+   actually changes, the local override is dropped so their new choice is what everyone sees. */
+let shopViewId = null;
+let shopPushSeen = null;
+function openShopId(map){
+  const pushed = (map && map.shopId) || "";
+  if(pushed !== shopPushSeen){ shopPushSeen = pushed; shopViewId = null; }
+  return shopViewId===null ? pushed : shopViewId;
+}
+/* ---- the GM follows the table ----
+   A player tapping a door only changes THEIR screen, so the GM would otherwise have no idea anyone
+   was shopping until a cart showed up. Opening a shop therefore announces it in the shared row, and
+   the GM's board opens the same storefront — they land on the shelf the player is looking at and
+   watch the cart fill live, without having to ask. Announcements are per DEVICE (not per sheet), so
+   a shared Viewer screen counts too, and they expire so a browser closed mid-browse stops nagging. */
+const SHOP_VIEW_TTL = 6*60*60*1000;    // 6h — long enough for a session, short enough to self-clean
+let shopFollowSeen = null;             // the player-opened shop the GM has already reacted to
+function announceShopView(shopId, immediate){
+  if(cloud.isGM || mode!=="cloud" || !cloud.userId) return;   // the GM doesn't follow themselves
+  const v = shopData().viewing;
+  if(shopId) v[cloud.userId] = { shopId, who: cloud.name || "A player", at: Date.now() };
+  else if(!v[cloud.userId]) return;                           // nothing to retract
+  else delete v[cloud.userId];
+  // on disconnect the debounced write would be torn down before it fired — send it now instead
+  if(immediate){ clearTimeout(shopSaveTimer); shopSaveTimer=null; shopUpsert(); } else saveShops();
+}
+function playersViewingShop(){
+  const v = shopData().viewing || {};
+  let best = null;
+  for(const [k,e] of Object.entries(v)){
+    if(!e || !e.shopId || k===cloud.userId) continue;
+    if(Date.now() - (e.at||0) > SHOP_VIEW_TTL) continue;
+    if(!best || (e.at||0) > (best.at||0)) best = e;
+  }
+  return best;
+}
+/* React (once) to the newest player-opened shop changing. Called from the realtime/refetch paths,
+   and primed silently on connect so joining mid-session doesn't yank the GM straight to the board. */
+function noticePlayerShop(silent){
+  if(!cloud.isGM) return;
+  const f = playersViewingShop(), fid = (f && f.shopId) || "";
+  if(fid === shopFollowSeen) return;
+  const wasFollowing = !!shopFollowSeen && shopViewId===shopFollowSeen;
+  shopFollowSeen = fid;
+  if(silent) return;
+  if(fid){
+    const shop = shopById(fid); if(!shop) return;
+    shopViewId = fid; shopPanelTab = "items"; shopCollapsed = false;
+    localStorage.setItem("ptu_shop_collapsed","0");
+    toast(`🛒 ${f.who||"A player"} opened ${shop.name}`);
+    if(currentTab!=="map") switchTab("map"); else renderMap();
+  } else if(wasFollowing){
+    shopViewId = null;                                   // they closed up; drop back to whatever we pushed
+    if(currentTab==="map") renderMap();
+  }
+}
+function closeShopLocally(){ shopViewId = ""; announceShopView(""); refreshShopPanel(); }
+/* tapping a shop token — opens that shop on THIS screen, and tells the GM so they can look too */
+function openShopFromToken(token){
+  const shop = shopById(token.shopId);
+  if(!shop || (shop.archived && !cloud.isGM)){ toast("That shop is closed."); return; }
+  shopViewId = shop.id; shopPushSeen = (currentMapForView()?.shopId)||"";
+  shopPanelTab = "items"; shopCollapsed = false;
+  localStorage.setItem("ptu_shop_collapsed","0");
+  announceShopView(shop.id);
+  renderMap();
+}
 let shopCollapsed = localStorage.getItem("ptu_shop_collapsed")==="1";
 function loadShopPos(){ try{ return JSON.parse(localStorage.getItem("ptu_shop_pos")||"null"); }catch(e){ return null; } }
 function saveShopPos(p){ try{ localStorage.setItem("ptu_shop_pos", JSON.stringify(p)); }catch(e){} }
@@ -9552,6 +10605,7 @@ function shopActiveBuyer(){
 }
 async function setMapShop(map, id){
   map.shopId = id || "";
+  shopPushSeen = map.shopId; shopViewId = null;    // the GM's push is what they want to look at too
   mapMetaSave(); renderMap();
   toast(id ? `🛒 ${shopById(id)?.name||"Shop"} is open to the players` : "Shop closed");
 }
@@ -9571,9 +10625,12 @@ function refreshShopPanel(){
   const body = fresh.querySelector(".shop-body"); if(body) body.scrollTop = scroll;
 }
 function shopPanel(map){
-  if(mode!=="cloud" || !map || !map.shopId) return null;
-  const shop = shopById(map.shopId);
+  if(mode!=="cloud" || !map) return null;
+  const openId = openShopId(map);
+  if(!openId) return null;
+  const shop = shopById(openId);
   if(!shop || (shop.archived && !cloud.isGM)) return null;
+  const pushedHere = map.shopId===shop.id;      // showing on everyone's screen vs opened by tapping a door
 
   const box = el("div",{class:"shop-float"});
   const pos = loadShopPos();
@@ -9584,7 +10641,12 @@ function shopPanel(map){
   header.append(el("span",{style:"font-weight:800;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"},
     "🛒 " + (shop.name||"Shop")));
   header.append(el("span",{style:"flex:1"}));
-  if(cloud.isGM) header.append(initMiniBtn("✕ close","close the shop for everyone",()=>setMapShop(map,"")));
+  // "close" means different things: shut the shop for the whole table (the GM's push) vs just put it
+  // away on this screen (anyone who tapped a door). Both are always available to the person who can do them.
+  if(cloud.isGM && pushedHere)
+    header.append(initMiniBtn("✕ all","close the shop for everyone looking at this map",()=>setMapShop(map,"")));
+  if(!pushedHere || !cloud.isGM)
+    header.append(initMiniBtn("✕","close it on this screen",closeShopLocally));
   header.append(initMiniBtn(shopCollapsed?"▸":"▾", shopCollapsed?"expand":"collapse",
     ()=>{ shopCollapsed=!shopCollapsed; localStorage.setItem("ptu_shop_collapsed", shopCollapsed?"1":"0"); refreshShopPanel(); }));
   box.append(header);
@@ -9613,6 +10675,12 @@ function shopPanel(map){
   }
   who.append(el("span",{class:"shop-money",title:"money on hand"}, `$${money}`));
   box.append(who);
+  // GM: say plainly whose browsing pulled this open, so the panel never appears out of nowhere
+  if(cloud.isGM && !pushedHere){
+    const f = playersViewingShop();
+    if(f && f.shopId===shop.id) box.append(el("div",{class:"shop-note small muted"},
+      `👀 ${f.who||"A player"} is browsing this shop.`));
+  }
   if(shop.note) box.append(el("div",{class:"shop-note small muted"}, shop.note));
 
   // — tabs —
@@ -9662,11 +10730,11 @@ function shopItemsPane(body, shop, buyer, cart, canBuy){
       const inCart = (cart?.lines||[]).filter(l=>l.iid===item.id && !l.free).reduce((s,l)=>s+l.qty,0);
       const own = buyer ? ownedQty(buyer, item.name) : 0;
       const row = el("div",{class:"shop-row"});
-      row.append(itemImgNode(item.name, 38));
+      row.append(itemImgNode(item.name, 38, item));
       const mid = el("div",{style:"flex:1;min-width:0"});
       mid.append(el("div",{class:"shop-row-name"}, item.name || "(unnamed)",
         own ? el("span",{class:"shop-own",title:"already in this trainer's inventory"}, `owns ${own}`) : ""));
-      mid.append(itemDescNode(item.name));
+      mid.append(itemDescNode(item.name, item));
       row.append(mid);
       const right = el("div",{class:"shop-row-buy"});
       right.append(el("div",{class:"shop-cost"}, `$${item.price}`));
@@ -9707,7 +10775,7 @@ function shopCartPane(body, shop, buyer, cart, canBuy, money){
   }
   cart.lines.forEach(line=>{
     const row = el("div",{class:"shop-row"});
-    row.append(itemImgNode(line.name, 32));
+    row.append(itemImgNode(line.name, 32, shopItemById(shop, line.iid)));
     const mid = el("div",{style:"flex:1;min-width:0"});
     mid.append(el("div",{class:"shop-row-name"}, line.name,
       line.free ? el("span",{class:"shop-free"},"🎁 free") : ""));
@@ -9753,6 +10821,82 @@ function fitFloatPanel(box){
     if(shift > 0){ box.style.top = ((parseFloat(box.style.top)||0) - shift) + "px"; r = box.getBoundingClientRect(); }
     if(r.bottom > limit) box.style.maxHeight = Math.max(150, limit - r.top) + "px";
   });
+}
+/* ===== shop tokens: a door on the board players can walk up to and tap ===== */
+/* Default art = a little storefront with a striped awning, drawn inline so it needs no network
+   and inherits nothing that could 404. The GM can replace it per token with their own picture. */
+const SHOP_TOKEN_ICON = "data:image/svg+xml,"+encodeURIComponent(
+  "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"+
+  "<rect x='6' y='26' width='52' height='32' rx='3' fill='#f3e4c8' stroke='#5b4636' stroke-width='3'/>"+
+  "<rect x='24' y='38' width='16' height='20' fill='#8b6b4a' stroke='#5b4636' stroke-width='2.5'/>"+
+  "<rect x='44' y='36' width='9' height='9' fill='#bfe0f2' stroke='#5b4636' stroke-width='2.5'/>"+
+  "<path d='M4 26 L10 12 h44 l6 14 z' fill='#e05a4f' stroke='#5b4636' stroke-width='3'/>"+
+  "<path d='M20 12 l-4 14 M32 12 l0 14 M44 12 l4 14' stroke='#f7f2ea' stroke-width='3'/></svg>");
+const isShopToken = t => !!(t && t.shopId);
+function shopTokenSprite(token){
+  return el("img",{class:"sprite s-sm",src:token.img||SHOP_TOKEN_ICON,alt:token.label||"Shop",loading:"lazy"});
+}
+/* GM's menu for a shop token. Players never reach this — tapping opens the shop for them — so it's
+   purely the management side: which shop the door leads to, its look, and the push-to-everyone switch. */
+function openShopTokenMenu(token, map){
+  const shop = shopById(token.shopId);
+  const wrap = el("div",{});
+  wrap.append(el("div",{style:"display:flex;justify-content:center;margin-bottom:10px"},
+    el("img",{src:token.img||SHOP_TOKEN_ICON,alt:"",style:"width:96px;height:96px;object-fit:contain"})));
+  wrap.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
+    shop ? `${shop.items.length} item${shop.items.length===1?"":"s"} on the shelves. Players tap this token to open it on their own screen.`
+         : "⚠ This token points at a shop that no longer exists — pick another below or remove it."));
+
+  const acts = el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px"});
+  acts.append(el("button",{class:"btn-primary",style:"padding:6px 12px",disabled:!shop,
+    title:"open it here, the way a player sees it",
+    onclick:()=>{ closeModal(); openShopFromToken(token); }},"🛒 Open it here"));
+  const pushed = map.shopId===token.shopId;
+  acts.append(el("button",{class:"btn-secondary"+(pushed?" on":""),style:"padding:6px 12px",disabled:!shop,
+    title:pushed?"stop showing it to everyone":"open it on EVERY screen looking at this map, without them tapping anything",
+    onclick:()=>{ closeModal(); setMapShop(map, pushed?"":token.shopId); }},
+    pushed?"👁 Open for everyone":"👁 Push to everyone"));
+  wrap.append(acts);
+
+  const shops = shopList().filter(s=>!s.archived || s.id===token.shopId);
+  const ssel = el("select");
+  shops.forEach(s=>ssel.append(el("option",{value:s.id,selected:s.id===token.shopId}, (s.archived?"📦 ":"")+s.name)));
+  ssel.addEventListener("change", ()=>{
+    token.shopId = ssel.value;
+    const s = shopById(token.shopId); if(s && !token.labelCustom) token.label = s.name;
+    mapTokensSave(); renderMap(); reopenTokenMenu(token, map);
+  });
+  wrap.append(el("label",{class:"field",style:"margin-top:12px"}, el("span",{},"This door leads to"), ssel));
+
+  const lbl = el("input",{type:"text",value:token.label||"",placeholder:"label under the token"});
+  lbl.addEventListener("change", ()=>{ token.label = lbl.value.trim() || (shop?.name||"Shop");
+    token.labelCustom = true; mapTokensSave(); renderMap(); });
+  wrap.append(el("label",{class:"field",style:"margin-top:10px"}, el("span",{},"Label"), lbl));
+
+  const imgRow = el("div",{class:"tk-menu-row",style:"margin-top:10px;flex-wrap:wrap;gap:6px"});
+  imgRow.append(el("button",{class:"btn-secondary",style:"padding:6px 12px",
+    onclick:()=>pickImage(240, async d=>{ token.img = await storeImg(d,"shop"); mapTokensSave(); renderMap(); reopenTokenMenu(token,map); })},
+    token.img ? "📷 Change picture" : "📷 Use my own picture"));
+  if(token.img) imgRow.append(el("button",{class:"btn-secondary",style:"padding:6px 12px",
+    onclick:()=>{ token.img=""; mapTokensSave(); renderMap(); reopenTokenMenu(token,map); }},"↺ Shop icon"));
+  wrap.append(imgRow);
+
+  const szSel = el("select");
+  [1,2,3,4].forEach(s=>szSel.append(el("option",{value:s,selected:s===(token.size||1)}, `${s}×${s}`)));
+  szSel.addEventListener("change", ()=>{ token.size=parseInt(szSel.value)||1;
+    if(map.fogOn) revealAroundTokens(map); mapTokensSave(); renderMap(); });
+  wrap.append(el("label",{class:"field",style:"margin-top:10px;max-width:150px"}, el("span",{},"Token size"), szSel));
+
+  const hd = el("input",{type:"checkbox"}); hd.checked = !!token.gmHidden;
+  hd.addEventListener("change", ()=>{ token.gmHidden=hd.checked; mapTokensSave(); renderMap();
+    toast(token.gmHidden?"🙈 Hidden from players":"👁 Visible to players"); });
+  wrap.append(el("label",{class:"inline",style:"margin-top:12px;gap:6px;display:flex;align-items:center"},
+    hd, el("span",{class:"small"},"🙈 Hide this shop from players")));
+
+  modal({title: token.label || shop?.name || "Shop", bodyNode:wrap, footNodes:[
+    el("button",{class:"btn-secondary danger",onclick:async()=>{ await removeToken(token,map); closeModal(); }},"🗑 Remove"),
+    el("button",{class:"btn-primary",onclick:closeModal},"Done"),
+  ]});
 }
 function attachShopDrag(handle, box){
   handle.addEventListener("pointerdown", ev=>{
@@ -9961,7 +11105,8 @@ function simUnit(f, sideKey, cfg){
    Trainer's attacks, so it takes the raw object rather than a battle unit. */
 function simAttacks(obj, isT, sp){
   const out = [], seen = new Set();
-  const push = m => {
+  // `struggle` marks the Struggle Attacks, which never get STAB (Type Expertise says so outright)
+  const push = (m, struggle) => {
     if(!m) return;
     const cls = String(m.class || m.cls || "");
     if(!/phys|spec/i.test(cls)) return;                       // Status Moves aren't modelled
@@ -9970,11 +11115,11 @@ function simAttacks(obj, isT, sp){
     const key = (m.name||"")+"|"+db+"|"+(m.type||"");
     if(seen.has(key)) return; seen.add(key);
     out.push({ name:m.name||"Attack", type:m.type||"Normal", cls:/spec/i.test(cls)?"Special":"Physical",
-               ac: m.ac!=null ? m.ac : 4, db, freq:m.frequency||"At-Will", m });
+               ac: m.ac!=null ? m.ac : 4, db, freq:m.frequency||"At-Will", struggle:!!struggle, m });
   };
   if(isT){
     const t = obj;
-    push(trainerStruggle(t, (t.weapons||[]).find(w=>w.equipped) || null));
+    push(trainerStruggle(t, (t.weapons||[]).find(w=>w.equipped) || null), true);
     (t.weapons||[]).forEach(w=> [w.weaponMoveAdept, w.weaponMoveMaster].filter(Boolean)
       .forEach(mn=> push(trainerAttackProfile(t, mn, w))));
     [...(t.encMoves||[]), ...(t.moves||[])].forEach(mn=> push(moveByName.get(String(mn).toLowerCase())));
@@ -10047,7 +11192,9 @@ function simProfile(A, atk, cfg){
   const fc     = A.isT ? null : fieryCrashInfo(p, atk.m, rawType);
   const fcMode = fieryCrashMode(fc, (fc && (A.sp?.types||[]).includes("Fire") && !(A.sp?.types||[]).includes(rawType)) ? "fire" : "db");
   const mtype  = fcMode==="fire" ? "Fire" : rawType;
-  const stab   = !A.isT && !!mtype && (A.sp?.types||[]).includes(mtype);
+  // Pokémon get STAB from their own Types; a Trainer only through Type Expertise (never on Struggle)
+  const stab   = A.isT ? trainerStab(p, mtype, atk.struggle)
+                       : (!!mtype && (A.sp?.types||[]).includes(mtype));
   // Both add the Attack / Sp.Attack that matches the Move's class — a Trainer swinging a weapon
   // uses Attack (Core p.286), but a Special Move a Feature granted them uses Sp.Attack. Combat
   // Stages are applied on both sides here (`totals`/`eff`), same as the Defense they're measured
@@ -11064,9 +12211,12 @@ function showContest(){ return localStorage.getItem("ptu_show_contest")==="1"; }
 function isGM(){ return mode==="cloud" ? !!cloud.isGM : localStorage.getItem("ptu_gm_mode")==="1"; }
 function openSettings(){
   const wrap = el("div",{});
-  const mk = (label, key, hint) => {
+  /* `on` is what an unset key means — most prefs are opt-IN, the evolution scene is opt-OUT */
+  const mk = (label, key, hint, on=false) => {
     const row = el("label",{class:"inline",style:"gap:10px;align-items:flex-start;padding:8px 0;cursor:pointer"});
-    const cb = el("input",{type:"checkbox"}); cb.checked = localStorage.getItem(key)==="1";
+    const cb = el("input",{type:"checkbox"});
+    const cur = localStorage.getItem(key);
+    cb.checked = cur==null ? on : cur==="1";
     cb.addEventListener("change",()=>{ localStorage.setItem(key, cb.checked?"1":"0"); render();
       if($("#view-reference")?.classList.contains("active")) renderReference(); });
     row.append(cb, el("div",{}, el("div",{style:"font-weight:700"},label),
@@ -11075,6 +12225,13 @@ function openSettings(){
   };
   wrap.append(mk("Show Contest stats", "ptu_show_contest",
     "Display each move's Contest type/effect in its details (Cool, Tough, etc.). Off by default."));
+  wrap.append(mk("Evolution animation", "ptu_evo_fx",
+    "Play the full-screen evolution scene (white silhouette, growing and shrinking) when a Pokémon evolves or Mega Evolves. Tap the screen to skip it.", true));
+  wrap.append(mk("Evolution sound", "ptu_evo_sound",
+    "The accelerating beeps and the fanfare that go with it. Turn this off to keep the animation silent.", true));
+  wrap.append(el("div",{class:"inline",style:"margin-top:6px"},
+    el("button",{class:"linkbtn",onclick:()=>playEvolutionFX({fromName:"Bulbasaur",toName:"Ivysaur",
+      caption:"Preview — this is what evolving looks like."})},"▶ preview the evolution scene")));
   modal({title:"⚙ Settings", bodyNode:wrap, footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Done")]});
 }
 function speciesModal(s){
@@ -11205,8 +12362,11 @@ function openPicker(title, names, onPick, refKind, markFn, lockFn){
           : refKind==="feature"? pickFeatureSub(n) : refKind==="held"? pickHeldSub(n)
           : refKind==="technique"? pickTechniqueSub(n) : refKind==="ability"? pickAbilitySub(n) : "",
         lock? el("div",{class:"pi-sub",style:"color:var(--bad)"}, lock) : "");
+      // items get their shop artwork next to the name, the same way species get their sprite
       const item = refKind==="species"
         ? el("div",{class:"pickitem",style:"display:flex;gap:10px;align-items:center"}, monSprite(n,false,"s-xs"), textCol)
+        : refKind==="held" && n!=="(none)"
+        ? el("div",{class:"pickitem",style:"display:flex;gap:10px;align-items:center"}, itemImgNode(n,30,null,{static:true}), textCol)
         : el("div",{class:"pickitem"}, textCol);
       if(lock){ item.style.opacity=".55"; item.style.cursor="not-allowed";
         item.addEventListener("click",()=>toast(lock)); }
@@ -12124,7 +13284,9 @@ function saveShops(){
   const row = ensureShops();
   cacheSharedRow("shops", row);                 // optimistic: survives a refresh before the write lands
   clearTimeout(shopSaveTimer);
-  shopSaveTimer = setTimeout(()=>{ shopSaveTimer=null; shopUpsert(); }, 300);
+  // re-check on fire: disconnecting nulls cloud.shops, and ensureShops() would then upsert a BLANK
+  // row over every shop the campaign has
+  shopSaveTimer = setTimeout(()=>{ shopSaveTimer=null; if(mode==="cloud" && cloud.shops) shopUpsert(); }, 300);
 }
 async function cloudConnect(campaign, name, gmCode, silent, viewer){
   campaign = (campaign||"").trim().toLowerCase(); name = (name||"").trim();
@@ -12145,6 +13307,7 @@ async function cloudConnect(campaign, name, gmCode, silent, viewer){
     recoverUnsyncedShared("enc", ()=>cloud.enc, encUpsert);
     await fetchShops();
     recoverUnsyncedShared("shops", ()=>cloud.shops, shopUpsert);
+    noticePlayerShop(true);   // prime it silently — joining mid-session shouldn't yank the GM to the board
     // One-time seed of a GM's pre-cloud device encounters — ONLY when the cloud row genuinely does
     // NOT exist (query succeeded with no row) AND we've never seeded this campaign before. Never on
     // a fetch error or transient-empty result. Insert-only + this guard together stop a stale device
@@ -12172,6 +13335,7 @@ async function cloudConnect(campaign, name, gmCode, silent, viewer){
   }
 }
 function cloudDisconnect(){
+  announceShopView("", true);  // don't leave a "still shopping" flag behind for the GM to chase
   if(cloud.sub){ try{ cloud.client.removeChannel(cloud.sub); }catch(e){} cloud.sub=null; }
   mode="local"; localStorage.removeItem("ptu_cloud_session");
   cloud.isGM=false; cloud.viewer=false;
@@ -12244,7 +13408,7 @@ function scheduleSharedRefetch(kind){
     if(kind==="pc") refreshUI("pc");
     else if(kind==="map") refreshUI("map");
     else if(kind==="enc") refreshUI("enc");
-    else if(kind==="shops") refreshUI("shops");
+    else if(kind==="shops"){ refreshUI("shops"); noticePlayerShop(); }
     else refreshUI("all");
   }, 140);
 }
@@ -12323,6 +13487,7 @@ function onRealtime(payload){
       repushIfDirty(cloud.shops, saveShops);
     }
     refreshUI("shops");
+    noticePlayerShop();          // GM: a player just opened (or closed) a storefront
     return;
   }
   if(type==="DELETE"){
@@ -12575,12 +13740,17 @@ async function depositToPC(sourceRow, mon){
   ensurePCRow();
   const m = normPokemon(JSON.parse(JSON.stringify(mon)));
   m.id = uid(); m.onTeam = false; m._pcFrom = sourceRow.data?.name || sourceRow.owner_name || ""; m._pcAt = Date.now();
+  /* A stored Pokémon leaves its Held Item behind — the item belongs to the Trainer's bag, and
+     leaving it "in use" in the PC would keep a copy locked away from the rest of the party. */
+  const dropped = m.heldItem;
+  if(dropped){ if(m.mega) megaRevert(m, true); m.heldItem = ""; }
   cloud.pc.data.pokemon.push(m);
   const arr = sourceRow.data.pokemon || [];
   const idx = arr.findIndex(x=>x.id===mon.id);
   if(idx>=0) arr.splice(idx,1);
   openMon = null;                 // close the open Pokémon editor
-  toast(`Deposited ${mon.nickname||getSpecies(mon.species)?.name||"Pokémon"} to the PC ✓`);
+  toast(`Deposited ${mon.nickname||getSpecies(mon.species)?.name||"Pokémon"} to the PC ✓`
+    + (dropped ? ` — ${dropped} is free again` : ""));
   render();                       // instant UI update; upload in the background
   const okPC = await pcUpsert();
   const okSrc = await cloudUpsert(sourceRow);
@@ -12650,7 +13820,7 @@ function monInfoModal(m){
     .forEach(([l,v])=>dv.append(el("div",{class:"dv"}, el("div",{class:"lbl"},l), el("div",{class:"val"},String(v)))));
   wrap.append(dv);
 
-  const c = sp?.capabilities || {};
+  const c = monCapabilities(m, sp);       // includes Move/Ability grants (Teleport → Teleporter 4, …)
   const caps = [];
   ["overland","sky","swim","levitate","burrow"].forEach(k=>{ if(c[k]) caps.push(`${k[0].toUpperCase()+k.slice(1)} ${c[k]}`); });
   if(c.highJump!=null || c.longJump!=null) caps.push(`Jump ${c.highJump??0}/${c.longJump??0}`);
@@ -12658,7 +13828,8 @@ function monInfoModal(m){
   if(c.naturewalk?.length) caps.push(`Naturewalk (${c.naturewalk.join(", ")})`);
   (c.other||[]).forEach(o=>caps.push(o));
   if(caps.length) wrap.append(el("div",{class:"chips",style:"margin-bottom:12px"},
-    ...caps.map(x=>el("span",{class:"chip"}, x))));
+    ...caps.map(x=>el("span",{class:"chip"+(capIsGranted(c,x)?" granted":""), title:capabilityHelp(x)+capGrantNote(c,x)},
+      x + (capIsGranted(c,x)?" ✨":"")))));
 
   const abs = m.abilities||[];
   wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"}, `Abilities (${abs.length})`));
@@ -12949,6 +14120,12 @@ function standaloneSprite(token){
 /* everything the board needs about a token, computed live from its source */
 function tokenHp(token){
   if(!token.link){
+    // a shop token is scenery with a door, not a creature — no HP, no statuses, no initiative
+    if(isShopToken(token)){
+      const shop = shopById(token.shopId);
+      return { cur:1, max:1, editable:cloud.isGM, name:token.label||shop?.name||"Shop",
+               sprite:shopTokenSprite(token), unlinked:false, kind:"shop", shop };
+    }
     const max = Math.max(1, token.maxHp||1); let cur = token.hp; if(cur==null) cur=max;
     return { cur, max, editable:cloud.isGM, name:token.label||"Token", sprite:standaloneSprite(token), unlinked:false, kind:"standalone" };
   }
@@ -12976,12 +14153,13 @@ function tokenHp(token){
 }
 /* players may only see HP for PC trainers/Pokémon; the GM sees everything (incl. enemies & standalone tokens) */
 function tokenHpVisible(info){
+  if(info.kind==="shop") return false;                       // a storefront has no HP bar to show
   return cloud.isGM || info.kind==="trainer" || info.kind==="pokemon";
 }
 /* Status conditions (Burned, Paralyzed, …) are visible in an actual battle even when a creature's
    exact HP isn't — unlike tokenHpVisible, this doesn't gate on GM/kind, only on the token actually
    pointing to something real. Fixes enemy statuses being invisible to players (HANDOFF-2026-07-25). */
-function tokenStatusVisible(info){ return !info.unlinked; }
+function tokenStatusVisible(info){ return !info.unlinked && info.kind!=="shop"; }
 /* ---- quick-attack helper: defender = the clicked token ---- */
 function tokenDefTypes(token){
   const L = token.link ? tokenLinked(token) : null;
@@ -13030,6 +14208,7 @@ function tokenInitiative(token){
   return v;
 }
 function tokenInInit(token){
+  if(isShopToken(token)) return false;                       // shops don't take turns
   const info=tokenHp(token); if(info.unlinked) return false;
   const ally = info.kind==="trainer"||info.kind==="pokemon";
   return ally ? token.inInit!==false : !!token.inInit;   // players auto-join; enemies opt-in via the token menu
@@ -13263,7 +14442,11 @@ const STATUS_RING_COLORS = {
   poisoned:      "#a259d9",  // purple
   badlyPoisoned: "#5c1f80",  // dark purple
   sleep:         "#f2f2f2",  // white
+  knockedOut:    "#8b8f98",  // grey — matches the greyed-out token itself
 };
+/* Knocked Out greys the whole token out (see .map-token.ko in styles.css). Kept as a class rather
+   than an inline filter so the ring/name/HP bar can opt back out of the desaturation. */
+function tokenKO(token){ return tokenStatusKeys(token).includes("knockedOut"); }
 function xmlEscape(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function polarPt(cx,cy,r,angleDeg){ const a=(angleDeg-90)*Math.PI/180; return [(cx+r*Math.cos(a)).toFixed(2), (cy+r*Math.sin(a)).toFixed(2)]; }
 /* builds one full concentric ring per active status (innermost = first status), each with its name curving around it */
@@ -13361,6 +14544,7 @@ function updateTokenStatusDom(token){
   const node = document.querySelector(`#view-map .map-token[data-tid="${token.id}"]`);
   if(!node) return false;
   const info = tokenHp(token);
+  node.classList.toggle("ko", tokenKO(token));       // Knocked Out greys the token out, live
   const old = node.querySelector(".tk-status-ring");
   if(!tokenStatusVisible(info)){ if(old) old.remove(); return true; }
   const boxPx = parseFloat(node.style.width) || 48;
@@ -13730,7 +14914,8 @@ function tokenMoveModes(token){
     const d = trainerDerived(L.obj);
     return [["overland","Land",d.overland],["swim","Swim",d.swim]].filter(m=>m[2]);
   }
-  const c = getSpecies(L.obj.species)?.capabilities || {};
+  // Move/Ability grants count here too — a Pokémon that knows Fly really can take the Sky route
+  const c = monCapabilities(L.obj);
   const mv = speedCSMove(effectiveCS(L.obj));    // Speed CS shifts every Movement Speed (Core p.234)
   return [["overland","Land",c.overland],["sky","Sky",c.sky],["swim","Swim",c.swim],["burrow","Burrow",c.burrow],
     ["levitate","Levitate",c.levitate]]
@@ -13870,7 +15055,7 @@ function mapTokenNode(token, map, originX=0, originY=0){
   // A trainer (the "player" figure) always stacks above Pokémon tokens — even their own party.
   const isTrainerTok = info.kind==="trainer" || info.kind==="enctrainer";
   const playerSide = info.kind==="trainer" || info.kind==="pokemon";
-  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":""),
+  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":""),
     style:`left:${token.x*px+originX}px;top:${token.y*px+originY}px;width:${boxPx}px;height:${boxPx}px;z-index:${isTrainerTok?2:1}`
       +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")
       +(factionColor?`;border-color:${factionColor}`:"")});
@@ -13971,6 +15156,9 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
       if(!moved){
         mapDragging=false;
         if(selecting && info.editable){ mapSelect.ids.has(token.id)?mapSelect.ids.delete(token.id):mapSelect.ids.add(token.id); renderMap(); }
+        // a shop token is a door: players walk up and tap it to shop. The GM gets its management
+        // menu instead (which has an "open it here" button, so they can still see the player's view).
+        else if(isShopToken(token) && !cloud.isGM) openShopFromToken(token);
         else openTokenMenu(token, map);
         return;
       }
@@ -14178,6 +15366,7 @@ function reopenTokenMenu(token, map){
   if(newBody) newBody.scrollTop = st;
 }
 function openTokenMenu(token, map){
+  if(isShopToken(token)) return openShopTokenMenu(token, map);
   const info = tokenHp(token);
   const wrap = el("div",{});
   if(!info.unlinked){
@@ -14241,12 +15430,13 @@ function openTokenMenu(token, map){
       statusWrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"Status effects"));
       const active = tokenStatusKeys(token);
       [["persistent","Persistent"],["volatile","Volatile"],["other","Other"]].forEach(([kind,label])=>{
-        const defs = STATUS_DEFS.filter(s=>s.kind===kind); if(!defs.length) return;
+        const defs = STATUS_DEFS.filter(s=>s.kind===kind).filter(s=>statusPickable(s) || active.includes(s.key));
+        if(!defs.length) return;
         statusWrap.append(el("div",{class:"small muted",style:"margin:6px 0 3px"}, label));
         const chips = el("div",{class:"chips"});
         defs.forEach(s=>{
           const on = active.includes(s.key);
-          chips.append(el("button",{class:"statuschip"+(on?" on":""), disabled:!info.editable, title:s.effect,
+          chips.append(el("button",{class:"statuschip"+(on?" on":"")+(statusPickable(s)?"":" ro"), disabled:!info.editable||!statusPickable(s), title:s.effect,
             onclick: async()=>{
               const cur = tokenStatusKeys(token).slice();
               const i = cur.indexOf(s.key); if(i>=0) cur.splice(i,1); else cur.push(s.key);
@@ -14613,8 +15803,9 @@ function openAddToken(map){
   const tabsBar = el("div",{class:"subtabs"});
   const bPlayers = el("button",{class:"subtab on",onclick:()=>setTab("players")},"🧑 Players");
   const bEnemies = el("button",{class:"subtab",onclick:()=>setTab("enemies")},"👹 Enemies");
+  const bShops   = el("button",{class:"subtab",onclick:()=>setTab("shops")},"🛒 Shops");
   tabsBar.append(bPlayers);
-  if(cloud.isGM) tabsBar.append(bEnemies);
+  if(cloud.isGM) tabsBar.append(bEnemies, bShops);
   const search = el("input",{type:"search",placeholder:"Filter…",style:"margin-bottom:10px"});
   const list = el("div",{class:"picklist"});
   const expanded_ = new Set();                       // trainer/encounter group ids explicitly opened (all start closed)
@@ -14661,6 +15852,20 @@ function openAddToken(map){
         q ? "No matches." : hidden ? "Everyone is already on the map." : "No character sheets yet."));
       return;
     }
+    // shops — drop a storefront on the board; players tap it to open that shop on their own screen
+    if(tab==="shops"){
+      const shops = shopList().filter(s=>!s.archived && (!q || s.name.toLowerCase().includes(q)));
+      if(!shops.length){ list.append(el("div",{class:"pickitem muted"},
+        q ? "No matches." : "No shops yet — build one in the 🛒 Shops tab first.")); return; }
+      const onMap = new Set(mapTokensFor(map.id).filter(isShopToken).map(t=>t.shopId));
+      shops.forEach(s=>list.append(el("div",{class:"pickitem",style:"cursor:pointer",
+        onclick:add(()=>({ shopId:s.id, label:s.name, size:1 }))},
+        el("div",{style:"flex:1;min-width:0"},
+          el("div",{class:"pi-title"}, "🛒 "+s.name),
+          el("div",{class:"pi-sub muted"}, `${s.items.length} item${s.items.length===1?"":"s"}`
+            + (onMap.has(s.id) ? " · already has a door on this map" : ""))))));
+      return;
+    }
     // enemies — grouped by encounter (collapsible), + custom-token entry
     list.append(el("div",{class:"pickitem",style:"font-weight:700",onclick:()=>{ closeModal(); openCustomToken(map); }},
       el("div",{class:"pi-title"},"✎ Custom token…"), el("div",{class:"pi-sub muted"},"Name it, set HP, optional image")));
@@ -14690,7 +15895,8 @@ function openAddToken(map){
     if(!shownE) list.append(el("div",{class:"pickitem muted"},
       q ? "No matches." : hiddenE ? "Every enemy is already on the map." : "No encounters yet — build one in the 👹 Encounters tab."));
   };
-  const setTab = t => { tab=t; bPlayers.classList.toggle("on",t==="players"); bEnemies.classList.toggle("on",t==="enemies"); draw(); };
+  const setTab = t => { tab=t; bPlayers.classList.toggle("on",t==="players");
+    bEnemies.classList.toggle("on",t==="enemies"); bShops.classList.toggle("on",t==="shops"); draw(); };
   search.addEventListener("input", draw); draw();
   wrap.append(tabsBar, search, list);
   modal({title:"Add a token", bodyNode:wrap, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Done")]});

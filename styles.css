@@ -139,6 +139,8 @@ textarea{resize:vertical; min-height:64px}
 .chips{display:flex; flex-wrap:wrap; gap:6px}
 .chip{display:inline-flex; align-items:center; gap:6px; background:var(--panel-2); border:1px solid var(--line);
   border-radius:20px; padding:4px 10px; font-size:13px; font-weight:600}
+/* a Capability the species doesn't print — granted by a Move or Ability it knows (Teleport, Fly…) */
+.chip.granted{border-color:var(--accent); border-style:dashed}
 .chip .x{cursor:pointer; color:var(--muted); font-weight:800}
 .chip .x:hover{color:var(--bad)}
 .addchip{border-style:dashed; color:var(--muted); cursor:pointer}
@@ -295,6 +297,10 @@ details.spoiler summary{cursor:pointer; font-weight:700; color:var(--muted)}
   border-radius:20px; padding:4px 11px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap}
 .statuschip:hover{border-color:var(--accent)}
 .statuschip.on{background:var(--bad); color:#fff; border-color:var(--bad)}
+/* a GM-set status (Knocked Out) shown to a player: visible, but not theirs to toggle */
+.statuschip.ro{cursor:default; opacity:.9}
+.statuschip.ro:hover{border-color:var(--line)}
+.statuschip.ro.on{background:#6c7078; border-color:#6c7078}
 
 /* ---------- trainings (Agile/Brutal/Focused/Inspired) — square, NOT the round statuschip pills,
    so this reads as a different kind of thing from Status Conditions at a glance ---------- */
@@ -367,6 +373,8 @@ details.spoiler summary{cursor:pointer; font-weight:700; color:var(--muted)}
   flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:24px; cursor:zoom-out}
 .img-viewer img{max-width:100%; max-height:88vh; object-fit:contain; border-radius:10px;
   box-shadow:0 10px 40px rgba(0,0,0,.6)}
+/* a ~30px game sprite blown up full screen: keep the pixels crisp instead of smearing them */
+.img-viewer img.pixel{image-rendering:pixelated; width:min(70vh,70vw); height:auto}
 .img-viewer .iv-cap{color:#fff; font-weight:700; text-align:center; text-shadow:0 1px 3px rgba(0,0,0,.8)}
 .img-viewer .iv-close{position:absolute; top:14px; right:16px; width:38px; height:38px; border-radius:50%;
   border:1px solid rgba(255,255,255,.35); background:rgba(0,0,0,.4); color:#fff; font-size:22px;
@@ -408,6 +416,11 @@ body.map-mode .map-viewport{flex:1 1 auto; height:auto; min-height:0; border-rad
 .map-token.editable{cursor:grab}
 .map-token.editable:active{cursor:grabbing}
 .map-token.unlinked{border-color:var(--muted); opacity:.7; filter:grayscale(.6)}
+/* Knocked Out (GM status): the whole token goes grey and dim so it reads as "out of the fight" at a
+   glance. The status ring keeps its own colours (it's what says WHY) — filters don't inherit past an
+   explicit re-saturation, so it's pulled back out of the greyscale here. */
+.map-token.ko{filter:grayscale(1) brightness(.62); border-color:#8b8f98 !important; opacity:.85}
+.map-token.ko .tk-status-ring{filter:grayscale(0) brightness(1.6)}
 .map-token .tk-img{width:100%; height:100%; border-radius:50%; object-fit:cover; display:block; pointer-events:none}
 .map-token .tk-hpwrap{position:absolute; left:6%; right:6%; bottom:-7px; height:6px;
   background:var(--panel-2); border:1px solid var(--line); border-radius:5px; overflow:hidden}
@@ -539,6 +552,11 @@ body.map-mode .map-select-bar{margin:0; border-radius:0; border-left:0; border-r
    fade, so drop it in map mode and the floats are viewport-positioned again, as intended. */
 body.map-mode .view{animation:none}
 /* the popup itself — same floating-panel language as the initiative tracker, one size up */
+/* a shop token is a building, not a creature: square-ish, whole-icon, amber-edged, and it never
+   crops the picture the way a circular creature token does */
+.map-token.shop-token{border-radius:10px; border-color:#f5c518}
+.map-token.shop-token .tk-img{border-radius:8px; object-fit:contain; background:var(--panel-2)}
+.map-token.shop-token .tk-name{background:#f5c518; color:#231a08}
 .shop-float{position:fixed; z-index:60; width:320px; max-width:calc(100vw - 20px); max-height:76vh;
   display:flex; flex-direction:column; background:var(--panel); border:1px solid var(--line);
   border-radius:10px; box-shadow:0 6px 22px rgba(0,0,0,.35); overflow:hidden}
@@ -569,3 +587,31 @@ body.map-mode .view{animation:none}
 .shop-foot{display:flex; align-items:center; gap:8px; padding:7px 8px;
   border-top:1px solid var(--line); background:var(--panel-2)}
 @media (max-width:520px){ .shop-float{width:calc(100vw - 20px)} .shop-price-col{width:78px} }
+
+/* ---------- Evolution scene (playEvolutionFX) ----------
+   Full-screen takeover: the old sprite flashes to a white silhouette and swells, snaps back, and
+   repeats faster until a final flash swaps in the new one. The swelling itself is driven from JS
+   (inline transform/transition per pulse) so the timing can stay in step with the beeps. */
+.evo-overlay{position:fixed; inset:0; z-index:120; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:22px; cursor:pointer;
+  background:radial-gradient(circle at 50% 45%, #1d2330 0%, #05070c 78%);
+  animation:evoIn .22s ease}
+@keyframes evoIn{from{opacity:0}to{opacity:1}}
+.evo-overlay.closing{opacity:0; transition:opacity .25s ease}
+/* the white-out at the moment of the swap */
+.evo-overlay.flash{background:#fff}
+.evo-stage{position:relative; width:min(58vw,280px); height:min(58vw,280px);
+  display:flex; align-items:center; justify-content:center}
+.evo-overlay .evo-sprite{position:absolute; left:50%; top:50%; width:100%; height:100%;
+  transform:translate(-50%,-50%) scale(1); transform-origin:50% 50%;
+  object-fit:contain; background:none; border:none; border-radius:0;
+  filter:drop-shadow(0 0 18px rgba(255,255,255,.25))}
+/* the silhouette: crushed to pure white, glowing */
+.evo-overlay .evo-sprite.white{filter:brightness(0) invert(1) drop-shadow(0 0 26px rgba(255,255,255,.95))}
+.evo-overlay .evo-after{opacity:0}
+.evo-overlay .evo-after.show{opacity:1}
+.evo-caption{font-size:clamp(15px,4.5vw,22px); font-weight:800; color:#fff; text-align:center;
+  padding:0 18px; max-width:90vw; opacity:0; transform:translateY(8px);
+  text-shadow:0 2px 10px rgba(0,0,0,.7)}
+.evo-caption.show{opacity:1; transform:translateY(0); transition:opacity .35s ease, transform .35s ease}
+@media (prefers-reduced-motion:reduce){ .evo-overlay .evo-sprite{transition:none !important} }
