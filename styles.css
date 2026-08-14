@@ -512,3 +512,15 @@ body.map-mode .map-select-bar{margin:0; border-radius:0; border-left:0; border-r
 .equip-focus{padding:3px 6px}
 .badge-auto{display:inline-block; font-size:11px; font-weight:700; line-height:1.4;
   padding:1px 7px; border-radius:20px; background:var(--panel-2); border:1px solid var(--line); color:var(--ink)}
+/* item rules text, as paragraphs instead of one truncated blob */
+.item-effect p{margin:0 0 6px; line-height:1.45}
+.item-effect p:last-child{margin-bottom:0}
+/* ---------- Trainer Books card ---------- */
+.book{padding:10px 0; border-top:1px solid var(--line)}
+.book:first-of-type{border-top:none; padding-top:2px}
+.book-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.book-name{font-weight:800; flex:1; min-width:0}
+.book-subject{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:2px 0 8px}
+.book-rank{display:flex; align-items:flex-start; gap:10px; padding:6px 0 6px 0; margin-top:4px;
+  border-left:3px solid transparent; padding-left:8px; border-radius:0 6px 6px 0}
+.book-rank.on{border-left-color:var(--accent); background:var(--panel-2)}
