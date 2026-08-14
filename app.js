@@ -723,7 +723,34 @@ function captureRate(p, opts={}){
 
 /* fast lookups */
 const speciesByName  = new Map(D.species.map(s => [s.name.toLowerCase(), s]));
-const moveByName     = new Map(D.moves.map(m => [m.name.toLowerCase(), m]));
+/* ---- Move lookup, spelling-tolerant ----
+   The two data sources disagree about Move names. The Fancy sheet (moves.json) writes "Bubblebeam"
+   and "Solar Beam"; the Pokédex PDF the species movelists come from writes "Bubble Beam" and
+   "Solarbeam" — and, worse, its text extraction drops a space into names that were split across a
+   line break ("Swag ger", "Frustra tion", "Mir ror Coat", "Double- Edge"). That's ~1000 movelist
+   entries that resolved to nothing and rendered as "not in DB". So the index also answers to a
+   key with every space/hyphen/apostrophe stripped, which folds all of those onto the real Move.
+   Exact names always win, so "Struggle+" (whose loose key is just "struggle") can't be shadowed. */
+function moveKey(s){ return String(s==null?"":s).toLowerCase().replace(/[‘’ʼ`]/g,"'").replace(/[^a-z0-9]/g,""); }
+/* names the PDF got outright wrong (not just re-spaced) — too few to be worth a fuzzy matcher */
+const MOVE_ALIASES = { "hijumpkick":"High Jump Kick", "zenheabutt":"Zen Headbutt",
+                       "doublechop":"Dual Chop", "wiseguard":"Wide Guard",
+                       "judgment":"Judgement", "naturepowers":"Nature Power" };
+class MoveIndex extends Map {
+  get(name){
+    const k = String(name==null?"":name).toLowerCase();
+    if(!k) return undefined;
+    return super.get(k) || super.get(moveKey(k));
+  }
+}
+const moveByName = new MoveIndex(D.moves.map(m => [m.name.toLowerCase(), m]));
+/* loose keys are only added where nothing exact claimed them — `has` is left exact on purpose */
+const addMoveKey = (k, m) => { if(k && m && !moveByName.has(k)) moveByName.set(k, m); };
+D.moves.forEach(m => addMoveKey(moveKey(m.name), m));
+Object.entries(MOVE_ALIASES).forEach(([k, real]) => addMoveKey(k, moveByName.get(real)));
+/* the DB's spelling of a Move, so a species movelist hands the sheet "Swagger" and not "Swag ger";
+   a name that resolves to nothing is passed through untouched */
+const canonMoveName = n => (moveByName.get(n) || {}).name || n;
 const abilityByName  = new Map(D.abilities.map(a => [a.name.toLowerCase(), a]));
 const natureByName   = new Map(D.natures.map(n => [n.name.toLowerCase(), n]));
 const getSpecies = n => n && speciesByName.get(String(n).toLowerCase());
@@ -5593,7 +5620,7 @@ function speciesLineBackTo(sp){
 function speciesLevelupNames(sp, level){
   if(!sp) return [];
   const set = new Set();
-  speciesLineBackTo(sp).forEach(s => s.moves.levelup.forEach(m=>{ if(m.level<=level) set.add(m.name); }));
+  speciesLineBackTo(sp).forEach(s => s.moves.levelup.forEach(m=>{ if(m.level<=level) set.add(canonMoveName(m.name)); }));
   return [...set];
 }
 /* full learnset (level-up any level + egg + tutor + TM/HM, incl. pre-evos) — prioritised under GM unlock */
@@ -5601,17 +5628,17 @@ function speciesFullLearnset(sp){
   if(!sp) return [];
   const set = new Set();
   speciesLineBackTo(sp).forEach(s => {
-    s.moves.levelup.forEach(m=>set.add(m.name));
-    s.moves.egg.forEach(m=>set.add(m));
-    s.moves.tutor.forEach(m=>set.add(m.replace(/\s*\(N\)\s*$/i,"").trim()));
-    s.moves.tmhm.forEach(m=>set.add(m.replace(/^[A-Z]*\d+\s+/,"").trim()));
+    s.moves.levelup.forEach(m=>set.add(canonMoveName(m.name)));
+    s.moves.egg.forEach(m=>set.add(canonMoveName(m)));
+    s.moves.tutor.forEach(m=>set.add(canonMoveName(m.replace(/\s*\(N\)\s*$/i,"").trim())));
+    s.moves.tmhm.forEach(m=>set.add(canonMoveName(m.replace(/^[A-Z]*\d+\s+/,"").trim())));
   });
   return [...set].filter(Boolean);
 }
 /* ---------- TM/HM eligibility ----------
    TM/HM entries look like "06 Toxic" / "A4 Strength" — strip the index prefix to get the move name.
    A Pokémon is eligible for a TM if the move is in its (or a pre-evolution's) TM/HM list. */
-function tmMoveName(raw){ return String(raw||"").replace(/^[A-Z]*\d+\s+/,"").trim(); }
+function tmMoveName(raw){ return canonMoveName(String(raw||"").replace(/^[A-Z]*\d+\s+/,"").trim()); }
 function speciesLearnsTM(sp, moveName){
   if(!sp) return false;
   const t = String(moveName||"").trim().toLowerCase();
@@ -7192,7 +7219,7 @@ function openTutorMovePicker(p, sp){
   const limit = effectiveMoveLimit(activeChar().trainer);
   if(!p.unlocked && p.moves.length>=limit){ toast(`Move limit reached (${limit}). Tick "🔓 GM: allow any" to add more.`); return; }
   if(!p.unlocked && (p.tutorPoints||0)<TUTOR_COST){ toast(`Not enough Tutor Points — a Tutor move costs ${TUTOR_COST} (has ${p.tutorPoints||0}).`); return; }
-  const cleanTutor = s => (s?.moves?.tutor||[]).map(m=>m.replace(/\s*\(N\)\s*$/i,"").trim());
+  const cleanTutor = s => (s?.moves?.tutor||[]).map(m=>canonMoveName(m.replace(/\s*\(N\)\s*$/i,"").trim()));
   let names, title, markSet;
   if(p.unlocked){
     const learn = cleanTutor(sp);
@@ -11080,15 +11107,21 @@ function speciesModal(s){
     if(s.moves.levelup.length){
       html += `<details class="spoiler" open><summary>Level-Up Moves (${s.moves.levelup.length})</summary>
         <table class="movetable" style="margin-top:6px"><tr><th>Lv</th><th>Move</th><th>Type</th></tr>
-        ${s.moves.levelup.map(m=>`<tr><td>${m.level}</td><td>${esc(m.name)}</td><td>${typeBadge(m.type)}</td></tr>`).join("")}</table></details>`;
+        ${s.moves.levelup.map(m=>`<tr><td>${m.level}</td><td>${esc(canonMoveName(m.name))}</td><td>${typeBadge(m.type)}</td></tr>`).join("")}</table></details>`;
     }
     if(s.moves.tmhm?.length){
       // each TM/HM is clickable → shows which of your Pokémon can learn it
       html += `<details class="spoiler" open><summary>TM/HM Moves (${s.moves.tmhm.length}) <span class="small muted">— tap one to see who can learn it</span></summary><div class="r-body">${
-        s.moves.tmhm.map(raw=>`<span class="tm-chip" data-tmmove="${escAttr(tmMoveName(raw))}" title="See which of your Pokémon can learn ${escAttr(tmMoveName(raw))}">${esc(raw)}</span>`).join(" ")
+        // the printed label is rebuilt from the TM index + the DB's spelling, so PDF line-break
+        // damage ("21 Frustra tion") doesn't reach the page
+        s.moves.tmhm.map(raw=>`<span class="tm-chip" data-tmmove="${escAttr(tmMoveName(raw))}" title="See which of your Pokémon can learn ${escAttr(tmMoveName(raw))}">${esc(((String(raw).match(/^[A-Z]*\d+\s+/)||[""])[0])+tmMoveName(raw))}</span>`).join(" ")
       }</div></details>`;
     }
-    [["Egg",s.moves.egg],["Tutor",s.moves.tutor]].forEach(([l,arr])=>{ if(arr?.length) html+=`<details class="spoiler"><summary>${l} Moves (${arr.length})</summary><div class="r-body">${arr.map(esc).join(", ")}</div></details>`; });
+    // Tutor entries carry a "(N)" cost marker that isn't part of the name — keep it, clean the name
+    [["Egg",s.moves.egg],["Tutor",s.moves.tutor]].forEach(([l,arr])=>{ if(arr?.length) html+=`<details class="spoiler"><summary>${l} Moves (${arr.length})</summary><div class="r-body">${
+      arr.map(raw=>{ const bare=String(raw).replace(/\s*\(N\)\s*$/i,"").trim();
+                     return esc(canonMoveName(bare) + (bare===String(raw).trim() ? "" : " (N)")); }).join(", ")
+    }</div></details>`; });
   }
   const meta=[]; if(s.diet)meta.push("Diet: "+s.diet); if(s.habitat)meta.push("Habitat: "+s.habitat); if(s.gender)meta.push(s.gender); if(s.eggGroups?.length)meta.push("Egg: "+s.eggGroups.join("/"));
   if(meta.length) html+=`<div class="r-meta" style="margin-top:8px">${esc(meta.join(" · "))}</div>`;
