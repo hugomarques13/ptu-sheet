@@ -1299,7 +1299,8 @@ const cloud = { client:null, campaign:"", userId:"", name:"", isGM:false, viewer
                 opsRpc:null,    // null = untested, true = server supports field-level patches, false = fall back
                 lastEvent:0,    // when we last heard ANYTHING from realtime (watchdog input)
                 subStatus:"",   // last realtime subscribe status ("SUBSCRIBED" when healthy)
-                mapMeta:null, mapTokens:null, mapSaveTs:0, enc:null, encSaveTs:0, encTimer:null };
+                mapMeta:null, mapTokens:null, mapSaveTs:0, enc:null, encSaveTs:0, encTimer:null,
+                shops:null };
 /* shared PC storage lives in a reserved sheets row owned by this sentinel, visible to everyone */
 const PC_OWNER = "__pc__";
 const pcId = () => "pc_" + cloud.campaign;
@@ -1311,6 +1312,9 @@ const mapTokensId = () => "maptokens_" + cloud.campaign;
 /* GM encounter prep, synced so map tokens can live-link to encounter monsters */
 const ENC_OWNER = "__enc__";
 const encRowId  = () => "enc_" + cloud.campaign;
+/* GM-authored shops + every open shopping cart, so the GM watches players spend in real time */
+const SHOP_OWNER = "__shop__";
+const shopRowId  = () => "shop_" + cloud.campaign;
 
 /* nested get/set by "a.b.c" path on the active character */
 function setPath(obj, path, val) {
@@ -1701,6 +1705,9 @@ function render(){
   // the Combat Simulator is a GM planning tool, same gating as Encounters
   const simBtn = $("#tabSim"); if(simBtn) simBtn.hidden = !isGM();
   if(currentTab==="sim" && !isGM()){ switchTab("trainer"); return; }
+  // Shops are GM prep too; players never see the tab — they meet a shop as a popup on the map
+  const shopBtn = $("#tabShops"); if(shopBtn) shopBtn.hidden = !isGM();
+  if(currentTab==="shops" && !isGM()){ switchTab("trainer"); return; }
   refreshCharSelect();
   const ac = activeChar();
   $("#partyCount").textContent = (ac?.pokemon?.length) || "";
@@ -1712,6 +1719,7 @@ function render(){
   if (currentTab==="battle")     renderBattle();
   if (currentTab==="encounters") renderEncounters();
   if (currentTab==="sim")        renderSim();
+  if (currentTab==="shops")      renderShops();
   if (currentTab==="reference")  renderReference();
   applyReadonlyLock();
 }
@@ -7457,11 +7465,46 @@ function featureActionTypes(f){
   if(/Full Action/i.test(after))     t.push("full");
   return t;
 }
+/* ---------- Features that hand you other Features ----------
+   The five Order Features (Ravager / Marksman / Trickster / Guardian / Precision — Core pp.61-62)
+   are Static: taking one does nothing on its own, it GIVES you two Orders, and those Orders are the
+   real Standard Actions you use in a fight. Each Order is its own row in the Feature DB, but a
+   player never picks it, so nothing ever surfaced them. Read the grant straight out of the effect
+   text ("You gain the Reckless Advance and Strike Again! Orders.") so any Feature written that way
+   works the same — "Choose one of A, B or C…" is skipped, since that's still a pick the player makes
+   from the normal Feature list. */
+const _featGrantCache = new Map();
+function featureGrantsFeatureNames(f){
+  if(!f || !f.name) return [];
+  if(_featGrantCache.has(f.name)) return _featGrantCache.get(f.name);
+  const eff = String(f.effect||"");
+  const m = /\bchoose\b/i.test(eff) ? null : eff.match(/\byou gain the\s+([^.]+?)\s+(?:Orders?|Features?)\b/i);
+  const out = m ? [...new Set(m[1].split(/\s*,\s*|\s+and\s+/i).map(s=>s.trim()).filter(Boolean)
+        .map(n => featureByKey.get(featKey(n)))
+        .filter(g => g && featKey(g.name) !== featKey(f.name))
+        .map(g => g.name))] : [];
+  _featGrantCache.set(f.name, out);
+  return out;
+}
+/* everything `objs` hands out for free, following grants of grants; never repeats one already held */
+function grantedFeatureObjs(objs){
+  const out = [], seen = new Set(objs.map(f => featKey(f.name))), queue = [...objs];
+  while(queue.length){
+    featureGrantsFeatureNames(queue.shift()).forEach(gn=>{
+      const g = featureByKey.get(featKey(gn));
+      if(!g || seen.has(featKey(g.name))) return;
+      seen.add(featKey(g.name)); out.push(g); queue.push(g);
+    });
+  }
+  return out;
+}
 /* the trainer's Features that grant actions: learned Features + the class-defining Features of
-   any Class they've taken (e.g. taking "Cheerleader" grants its Free-Action Cheer). */
+   any Class they've taken (e.g. taking "Cheerleader" grants its Free-Action Cheer), plus whatever
+   those hand out for free (an Order Feature's two Orders). */
 function trainerFeatureObjs(t){
   const names=[...new Set([...(t.classes||[]), ...(t.features||[])])];
-  return names.map(n => featureByName.get(n) || featureByKey.get(featKey(n))).filter(Boolean);
+  const objs=names.map(n => featureByName.get(n) || featureByKey.get(featKey(n))).filter(Boolean);
+  return objs.concat(grantedFeatureObjs(objs));
 }
 /* Detect the Move(s) a Feature grants: only look when the text actually talks about gaining a
    Move, then match any known move name appearing in it. Conservative on purpose — the manual
@@ -7498,17 +7541,61 @@ function autoGrantFeatureMoves(t, featureName){
   featureGrantsMoveNames(f.effect||"").forEach(nm=>{ if(!t.moves.includes(nm)){ t.moves.push(nm); added.push(nm); } });
   if(added.length) toast(`＋ Move${added.length>1?"s":""} from ${featureName}: ${added.join(", ")}`);
 }
+/* An Order / Cheer / Song Feature the buff engine already models — matched by name, so giving one
+   from Battle drops exactly the buff `openMoveRoll` and `buffDR` know how to apply. */
+const buffByFeatKey = new Map(PTU_BUFFS.map(b=>[featKey(b.name), b]));
+const featureBuffDef = f => buffByFeatKey.get(featKey(f && f.name)) || null;
+/* Give an Order: put its buff on whoever it was ordered at and spend one of the Feature's uses.
+   Targets are the Trainer and their own party — allies on other sheets get theirs from the Map
+   token's "Buffs & Orders" menu, which is the same widget writing to the same place. */
+function openGiveOrder(t, f, def, rerender){
+  const team = (activeChar()?.pokemon||[]).filter(p=>p.onTeam);
+  const sel = el("select");
+  sel.append(el("option",{value:"trainer"}, `🧑 ${t.name||"Trainer"} — yourself`));
+  team.forEach(p=>{ const sp=getSpecies(p.species);
+    sel.append(el("option",{value:p.id}, `🔴 ${p.nickname||sp?.name||"?"} · Lv ${p.level}`)); });
+  const info = freqInfo(f.frequency), key = useKey("feature", f.name);
+  const left = freqTrackable(info) ? usesLeft(t, key, info.max) : null;
+  const cost = (String(f.frequency||"").match(/Bind\s+(\d+)\s*AP/i)||[])[1];
+  const body = el("div",{});
+  if(def.note) body.append(el("div",{class:"small",style:"margin-bottom:10px"}, def.note));
+  const mt = buffModText(def.mods);
+  if(mt) body.append(el("div",{class:"chips",style:"margin-bottom:10px"}, el("span",{class:"kv"}, mt)));
+  body.append(el("label",{class:"field"}, el("span",{},"Give it to"), sel));
+  body.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    `${f.frequency} · lasts ${def.dur}.`
+    + (left!=null ? ` ${left} of ${info.max} use${info.max===1?"":"s"} left this Scene.` : "")
+    + (cost ? ` Binds ${cost} AP while it's up — track that on your Vitals card.` : "")
+    + " Another player's Pokémon: give it from their token's Buffs & Orders menu on the Map."));
+  modal({title:`Give ${f.name}`, bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      const target = sel.value==="trainer" ? t : team.find(p=>p.id===sel.value);
+      if(!target) return;
+      if(left!=null && left<=0){ toast(`No ${f.name} uses left this Scene`); return; }
+      addBuff(target, def.key);
+      if(left!=null){ t.uses = t.uses||{}; t.uses[key] = Math.min(info.max, (t.uses[key]||0)+1); }
+      save(); closeModal();
+      toast(`${f.name} → ${sel.value==="trainer" ? (t.name||"you") : (team.find(p=>p.id===sel.value)?.nickname || getSpecies(team.find(p=>p.id===sel.value)?.species)?.name || "target")} ✓`);
+      (rerender||renderBattle)();
+    }},"✨ Give Order"),
+  ]});
+}
 function featureActionRow(f, owner, rerender){
   const d=el("details",{class:"spoiler"});
   const meta=[f.frequency,f.category].filter(Boolean).join(" · ");
   const uc = owner && usesControl(owner, "feature", f.name, f.frequency, rerender||(()=>{}));
   const favs=getFavActions(), fav=favs.has(featFavId(f.name));
+  // an Order the buff engine models, on the player's own sheet → one tap to actually give it
+  const def = owner && owner===activeChar()?.trainer ? featureBuffDef(f) : null;
   d.append(el("summary",{},
     el("button",{class:"actstar"+(fav?" on":""),title:fav?"unfavourite":"favourite",
       onclick:e=>{ e.preventDefault(); toggleFavAction(featFavId(f.name)); (rerender||renderBattle)(); }}, fav?"★":"☆"),
     el("span",{style:"font-weight:700;color:var(--ink)"}, f.name),
     meta?el("span",{class:"muted small",style:"margin-left:8px"}, meta):"",
-    uc ? el("span",{style:"margin-left:8px"}, uc) : ""));
+    uc ? el("span",{style:"margin-left:8px"}, uc) : "",
+    def ? el("button",{class:"linkbtn",style:"margin-left:8px",title:"apply this Order to one of your creatures",
+      onclick:e=>{ e.preventDefault(); e.stopPropagation(); openGiveOrder(owner, f, def, rerender); }},"✨ Give") : ""));
   d.append(el("div",{class:"small",style:"margin-top:6px",html: refDetailHTML("feature",f.name)}));
   return d;
 }
@@ -8956,6 +9043,715 @@ function renderEncounters(){
 }
 
 /* ===================================================================
+   SHOPS  (GM-authored storefronts + the live shopping popup on the Map)
+   The GM builds a shop in this tab — a name and a list of items, each
+   priced from the book by default but freely editable. On the Map they
+   pick which shop is "open"; everyone looking at that map then gets a
+   floating storefront popup and can fill a cart.
+
+   Everything (shops, per-item GM descriptions/images, every open cart)
+   lives in ONE shared cloud row, so the GM watches a player's cart fill
+   up in real time and can drop in free promo items or set their discount
+   while they shop. Completing a purchase moves money out of the buyer's
+   sheet and the items into their Inventory in a single write.
+
+   Cloud-only on purpose: a shop's whole point is being shown to other
+   people's screens. See fetchShops/saveShops near the encounter row.
+=================================================================== */
+/* "$1,200" → 1200. "--" / "Varies" / blank → null: the book gives no price, so the GM sets one. */
+function bookPriceOf(name){
+  const it = itemByName.get(String(name||"").toLowerCase());
+  const raw = String(it?.cost || "").replace(/[\s,]/g,"");
+  if(!raw || /varies/i.test(raw)) return null;
+  const m = raw.match(/\$?(\d+(?:\.\d+)?)/);
+  return m ? Math.round(parseFloat(m[1])) : null;
+}
+function bookCatOf(name){ return itemByName.get(String(name||"").toLowerCase())?.cat || ""; }
+function catalogDescOf(name){
+  const it = itemByName.get(String(name||"").toLowerCase());
+  return cleanupText(it?.effect || "").trim();
+}
+/* ---- model ---- */
+function newShop(name){ return { id:uid(), name:name||"New Shop", note:"", archived:false, items:[] }; }
+function normShopItem(x){
+  if(!x.id) x.id = uid();
+  x.name = String(x.name||"");
+  if(typeof x.price!=="number" || !isFinite(x.price)) x.price = Math.max(0, bookPriceOf(x.name) ?? 0);
+  x.price = Math.max(0, Math.round(x.price));
+  return x;
+}
+function normShop(s){
+  if(!s || typeof s!=="object") return null;
+  if(!s.id) s.id = uid();
+  if(typeof s.name!=="string") s.name = "Shop";
+  if(typeof s.note!=="string") s.note = "";
+  if(typeof s.archived!=="boolean") s.archived = false;
+  s.items = (Array.isArray(s.items) ? s.items : []).filter(x=>x && typeof x==="object").map(normShopItem);
+  return s;
+}
+function normShops(data){
+  data = (data && typeof data==="object") ? data : {};
+  data.kind = "shops";
+  data.shops = (Array.isArray(data.shops) ? data.shops : []).map(normShop).filter(Boolean);
+  const obj = v => (v && typeof v==="object" && !Array.isArray(v)) ? v : {};
+  // carts: buyer sheet id → { shopId, discount%, lines[] }. Merged per-buyer, so two players
+  // shopping at the same time never overwrite each other.
+  data.carts = obj(data.carts);
+  for(const k of Object.keys(data.carts)){
+    const c = data.carts[k];
+    if(!c || typeof c!=="object"){ delete data.carts[k]; continue; }
+    c.lines = (Array.isArray(c.lines) ? c.lines : []).filter(l=>l && typeof l==="object");
+    c.lines.forEach(l=>{
+      if(!l.id) l.id = uid();
+      l.name = String(l.name||"");
+      if(typeof l.qty!=="number" || l.qty<1) l.qty = 1;
+      if(typeof l.price!=="number" || !isFinite(l.price) || l.price<0) l.price = 0;
+      l.free = !!l.free;
+    });
+    c.discount = Math.max(0, Math.min(100, Math.round(Number(c.discount)||0)));
+  }
+  data.itemDescs  = obj(data.itemDescs);    // normItemName → GM-written description (overrides the book text)
+  data.itemImages = obj(data.itemImages);   // normItemName → picture URL, reused by every shop
+  data.log = (Array.isArray(data.log) ? data.log : []).slice(0,40);   // recent purchases, newest first
+  return data;
+}
+function shopData(){ return ensureShops().data; }
+function shopList(){ return mode==="cloud" ? shopData().shops : []; }
+function shopById(id){ return shopList().find(s=>s.id===id) || null; }
+function shopItemById(shop, iid){ return (shop?.items||[]).find(i=>i.id===iid) || null; }
+
+/* ---- per-item description & picture (shared by every shop, keyed by item name) ---- */
+function itemDescOf(name){
+  const custom = shopData().itemDescs[normItemName(name)];
+  return (typeof custom==="string" && custom.trim()) ? custom.trim() : catalogDescOf(name);
+}
+function itemHasOwnDesc(name){ return !!String(shopData().itemDescs[normItemName(name)]||"").trim(); }
+function setItemDesc(name, text){
+  const d = shopData(), k = normItemName(name);
+  if(String(text||"").trim()) d.itemDescs[k] = String(text).trim(); else delete d.itemDescs[k];
+  saveShops();
+}
+function itemImgOf(name){ return shopData().itemImages[normItemName(name)] || ""; }
+function setItemImg(name, url){
+  const d = shopData(), k = normItemName(name);
+  if(url) d.itemImages[k] = url; else delete d.itemImages[k];
+  saveShops();
+}
+/* The empty shopping-bag placeholder is painted by `.shop-thumb`'s CSS background, so an item with
+   no art — or one whose hotlinked sprite is still in flight, or hanging behind a blocked network —
+   always looks like an item slot rather than a blank gap. This transparent pixel just gets out of
+   its way once every candidate URL has failed. */
+const ITEM_PLACEHOLDER = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+/* ---- item artwork, same "hotlink first, bucket second, placeholder last" chain as species art ----
+   Most of what a shop sells is a real game item, and PokeAPI's sprite repo files every one of them
+   under a kebab-case slug — so Potions, balls, stones, berries and vitamins all just have a picture
+   with no work from the GM. PTU-only gear (Poké Ball Tool Boxes, Med Kits…) 404s there and falls
+   through to `images/item/<slug>.png` in the campaign's own Storage bucket, then to a neutral bag
+   icon. The GM's per-item 📷 upload beats all of it. */
+function itemSlug(name){
+  return String(name||"").replace(/\s*\[[^\]]*\]\s*$/,"")          // drop "[5-15 Playtest]"-style tags
+    .normalize("NFD").replace(/[̀-ͯ]/g,"")               // é → e, so "Poké Ball" slugs cleanly
+    .toLowerCase().replace(/['’.:,()]/g,"").replace(/[\s_/]+/g,"-")
+    .replace(/[^a-z0-9-]/g,"").replace(/-+/g,"-").replace(/^-|-$/g,"");
+}
+/* PTU renames a handful of items the sprite source files under their game names */
+const ITEM_ART_ALIAS = { "basic ball":"poke-ball", "pokeball":"poke-ball", "hp up":"hp-up",
+  "paralyze heal":"paralyze-heal", "parlyz heal":"paralyze-heal", "old rod":"old-rod",
+  "super rod":"super-rod", "good rod":"good-rod", "bicycle":"bicycle", "town map":"town-map" };
+function itemArtChain(name){
+  const custom = itemImgOf(name);
+  if(custom) return [custom];
+  const slug = ITEM_ART_ALIAS[String(name||"").trim().toLowerCase()] || itemSlug(name);
+  if(!slug) return [ITEM_PLACEHOLDER];
+  const out = [`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/${slug}.png`];
+  const base = (window.PTU_CLOUD && PTU_CLOUD.url || "").replace(/\/+$/,"");
+  if(base) out.push(`${base}/storage/v1/object/public/${IMG_BUCKET}/item/${slug}.png`,
+                    `${base}/storage/v1/object/public/${IMG_BUCKET}/item/${slug}.jpg`);
+  return out;
+}
+function itemImgNode(name, px){
+  const chain = itemArtChain(name);
+  const img = el("img",{class:"shop-thumb",src:chain[0],alt:"",loading:"lazy",title:name,
+    style:`width:${px}px;height:${px}px`});
+  const queue = chain.slice(1);
+  img.addEventListener("error", function(){
+    const next = queue.shift();
+    if(next){ this.src = next; return; }
+    this.src = ITEM_PLACEHOLDER; this.classList.add("fallback");
+  });
+  // only the GM's own uploads are worth a full-screen look; the game sprites are 32px to begin with
+  return itemImgOf(name) ? zoomImg(img, name) : img;
+}
+/* short line + a drop-down for the rest when the rules text is long (which it usually is) */
+const SHOP_DESC_SHORT = 84;
+function itemDescNode(name){
+  const full = itemDescOf(name);
+  if(!full) return el("div",{class:"small muted"},"no description yet");
+  const one = full.replace(/\s+/g," ").trim();
+  if(one.length <= SHOP_DESC_SHORT) return el("div",{class:"small muted"}, one);
+  // data-key so the "read the rest" drop-down survives the re-render every cart tick causes
+  const det = el("details",{class:"spoiler","data-key":"itemdesc:"+normItemName(name)});
+  det.append(el("summary",{class:"small muted"}, one.slice(0,SHOP_DESC_SHORT).trim()+"…"));
+  det.append(el("div",{class:"item-effect small"},
+    full.split(/\n+/).map(s=>s.trim()).filter(Boolean).map(par=>el("p",{},par))));
+  return det;
+}
+/* how many of this item the buyer is already carrying (matched the same loose way the
+   inventory/evolution-stone lookups match, so "Great Ball" == "great ball") */
+function ownedQty(row, name){
+  const k = normItemName(name);
+  return ((row?.data?.trainer?.inventory)||[])
+    .filter(it=>normItemName(it.name)===k)
+    .reduce((s,it)=> s + (parseInt(it.qty)||0), 0);
+}
+
+/* ===== GM tab ===== */
+let shopEditId = null;                 // which shop this GM device is editing (not synced)
+let shopShowArchived = false;
+function activeShopForEdit(){
+  const arr = shopList();
+  return arr.find(s=>s.id===shopEditId) || arr.filter(s=>!s.archived)[0] || arr[0] || null;
+}
+function addShopItem(shop, name){
+  if(!name) return;
+  const ex = shop.items.find(i=>normItemName(i.name)===normItemName(name));
+  if(ex){ toast(`${name} is already on the shelf`); return; }
+  shop.items.push(normShopItem({ name, price: bookPriceOf(name) ?? 0 }));
+}
+function openShopItemPicker(shop){
+  const seen = new Set(), names = [];
+  catalogItems().forEach(x=>{ const k=normItemName(x.name); if(!seen.has(k)){ seen.add(k); names.push(x.name); } });
+  openPicker("Stock an item", names, name=>{ addShopItem(shop, name); saveShops(); renderShops(); }, "held",
+    n => shop.items.some(i=>normItemName(i.name)===normItemName(n)));   // ★ = already stocked
+}
+function shopGearCategories(){
+  return [...new Set((D.items?.gear||[]).map(x=>x.cat).filter(Boolean))].sort();
+}
+function stockWholeCategory(shop, cat){
+  if(!cat) return;
+  const add = (D.items?.gear||[]).filter(x=>x.cat===cat);
+  let n = 0;
+  add.forEach(x=>{ if(!shop.items.some(i=>normItemName(i.name)===normItemName(x.name))){ addShopItem(shop, x.name); n++; } });
+  saveShops(); renderShops();
+  toast(n ? `Stocked ${n} ${cat} item${n===1?"":"s"} ✓` : `Every ${cat} is already stocked`);
+}
+/* the shared <datalist> that autocompletes item names (built by the Inventory card too) */
+function ensureItemDatalist(){
+  if($("#itemlist")) return;
+  const dl = el("datalist",{id:"itemlist"});
+  catalogItems().forEach(x=>dl.append(el("option",{value:x.name})));
+  document.body.append(dl);
+}
+function shopItemRow(shop, item){
+  const row = el("div",{class:"shop-edit-row"});
+  const pic = el("div",{class:"shop-pic"});
+  pic.append(itemImgNode(item.name, 44));
+  const picActs = el("div",{class:"inline",style:"gap:4px;margin-top:3px"});
+  picActs.append(el("button",{class:"linkbtn",title:"upload your own picture for this item (used in every shop, and it beats the automatic sprite)",
+    onclick:()=>pickImage(200, async d=>{ setItemImg(item.name, await storeImg(d,"item")); renderShops(); })},
+    itemImgOf(item.name) ? "change" : "📷 own"));
+  if(itemImgOf(item.name)) picActs.append(el("button",{class:"linkbtn",title:"remove picture",
+    onclick:()=>{ setItemImg(item.name,""); renderShops(); }},"×"));
+  pic.append(picActs);
+
+  const mid = el("div",{style:"flex:1;min-width:0"});
+  const nameIn = el("input",{type:"text",placeholder:"Item name",style:"width:100%",list:"itemlist"});
+  nameIn.value = item.name;
+  nameIn.addEventListener("change",()=>{ item.name = nameIn.value.trim();
+    const bp = bookPriceOf(item.name); if(bp!=null) item.price = bp;    // renaming onto a real item picks up its book price
+    saveShops(); renderShops(); });
+  mid.append(nameIn);
+  const book = bookPriceOf(item.name), cat = bookCatOf(item.name);
+  mid.append(el("div",{class:"small muted",style:"margin-top:2px"},
+    [cat, book!=null ? `book price $${book}` : "no book price — set one"].filter(Boolean).join(" · ")));
+  mid.append(itemDescNode(item.name));
+  const dsc = el("details",{class:"spoiler",style:"margin-top:3px","data-key":"shopdesc:"+item.id});
+  dsc.append(el("summary",{class:"small"}, itemHasOwnDesc(item.name) ? "✎ Description (yours)" : "✎ Write a description"));
+  const ta = el("textarea",{placeholder: catalogDescOf(item.name) || "What is it? What does it do?",
+    style:"width:100%;min-height:56px;resize:vertical;margin-top:4px"});
+  ta.value = shopData().itemDescs[normItemName(item.name)] || "";
+  ta.addEventListener("change",()=>{ setItemDesc(item.name, ta.value); renderShops(); });
+  dsc.append(ta);
+  if(itemHasOwnDesc(item.name)) dsc.append(el("button",{class:"linkbtn",
+    onclick:()=>{ setItemDesc(item.name,""); renderShops(); }},"↺ back to the book text"));
+  mid.append(dsc);
+
+  const right = el("div",{class:"shop-price-col"});
+  const price = el("input",{type:"number",min:0,step:1,title:"price players pay",style:"width:92px"});
+  price.value = item.price;
+  price.addEventListener("change",()=>{ item.price = Math.max(0, Math.round(parseFloat(price.value)||0));
+    price.value = item.price; saveShops(); });
+  right.append(el("div",{class:"small muted"},"Price $"), price);
+  if(book!=null && book!==item.price) right.append(el("button",{class:"linkbtn",title:`reset to the book's $${book}`,
+    onclick:()=>{ item.price = book; saveShops(); renderShops(); }},"↺ book"));
+  right.append(el("button",{class:"linkbtn danger",title:"take off the shelf",
+    onclick:()=>{ shop.items = shop.items.filter(i=>i!==item); saveShops(); renderShops(); }},"× remove"));
+
+  row.append(pic, mid, right);
+  return row;
+}
+function shopMapsShowing(shop){
+  return (activeMapMeta().maps||[]).filter(m=>m.shopId===shop.id);
+}
+function renderShops(){
+  const root = $("#view-shops"); root.innerHTML="";
+  if(!cloudConfigured() || mode!=="cloud"){
+    root.append(el("div",{class:"card"}, el("h3",{},"🛒 Shops"),
+      el("div",{class:"r-body"},"Shops are part of cloud play — they're shown to players on the shared Map. Tap ",
+        el("b",{},"☁ Cloud")," to join your campaign, then come back to this tab.")));
+    return;
+  }
+  ensureItemDatalist();
+  const openKeys = new Set([...root.querySelectorAll("details[data-key][open]")].map(d=>d.dataset.key));
+  const arr = shopList();
+  const visible = arr.filter(s=> shopShowArchived || !s.archived);
+  const archivedCount = arr.filter(s=>s.archived).length;
+  let cur = activeShopForEdit();
+  if(cur && cur.archived && !shopShowArchived) cur = visible[0] || null;
+
+  const bar = el("div",{class:"card"});
+  const leftc = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap"});
+  const sel = el("select",{title:"Shop being edited"});
+  if(!visible.length) sel.append(el("option",{value:""},"— no shops —"));
+  visible.forEach(s=>sel.append(el("option",{value:s.id,selected:s.id===cur?.id},(s.archived?"📦 ":"")+(s.name||"(unnamed)"))));
+  sel.addEventListener("change",()=>{ shopEditId = sel.value; renderShops(); });
+  leftc.append(sel);
+  leftc.append(el("button",{class:"btn ghost",onclick:()=>{
+    const n = prompt("Shop name:","Poké Mart"); if(n===null) return;
+    const s = newShop(n||"New Shop"); arr.push(s); shopEditId = s.id; saveShops(); renderShops();
+  }},"＋ New"));
+  if(cur){
+    leftc.append(el("button",{class:"btn ghost",title:"rename",onclick:()=>{
+      const n = prompt("Rename shop:",cur.name); if(n===null) return; cur.name = n||cur.name; saveShops(); renderShops(); }},"✎"));
+    leftc.append(el("button",{class:"btn ghost",title:"duplicate this shop",onclick:()=>{
+      const n = prompt("New shop name:", cur.name+" copy"); if(n===null) return;
+      const c = normShop(JSON.parse(JSON.stringify(cur))); c.id = uid(); c.name = n||cur.name+" copy";
+      c.items.forEach(i=>i.id=uid()); c.archived = false;
+      arr.push(c); shopEditId = c.id; saveShops(); renderShops(); }},"⧉ Duplicate"));
+    leftc.append(el("button",{class:"btn ghost",title:cur.archived?"bring it back to the list":"hide from the list without deleting it",
+      onclick:()=>{ cur.archived=!cur.archived;
+        if(cur.archived){ (activeMapMeta().maps||[]).forEach(m=>{ if(m.shopId===cur.id) m.shopId=""; }); mapMetaSave(); }
+        saveShops(); renderShops(); }}, cur.archived?"📤 Unarchive":"📦 Archive"));
+    leftc.append(el("button",{class:"btn ghost danger",title:"delete",onclick:()=>{
+      if(!confirm(`Delete shop “${cur.name}”?`)) return;
+      const i = arr.findIndex(s=>s.id===cur.id); if(i>=0) arr.splice(i,1);
+      (activeMapMeta().maps||[]).forEach(m=>{ if(m.shopId===cur.id) m.shopId=""; }); mapMetaSave();
+      Object.keys(shopData().carts).forEach(k=>{ if(shopData().carts[k].shopId===cur.id) delete shopData().carts[k]; });
+      shopEditId = arr[0]?.id || null; saveShops(); renderShops(); }},"🗑"));
+  }
+  if(archivedCount) leftc.append(el("button",{class:"btn ghost"+(shopShowArchived?" on":""),
+    onclick:()=>{ shopShowArchived=!shopShowArchived; renderShops(); }},
+    shopShowArchived?"Hide archived":`📦 Archived (${archivedCount})`));
+  bar.append(el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;justify-content:space-between"},
+    leftc, el("span",{class:"small muted"},"GM only · synced to the campaign")));
+  root.append(bar);
+
+  if(!cur){
+    root.append(el("div",{class:"card"}, el("span",{class:"muted"},
+      "No shops yet — tap ＋ New, stock some items, then open it on a Map with the “Shop” picker in the map toolbar.")));
+    root.append(shopLogCard());
+    return;
+  }
+
+  // shop header: where it's showing + notes
+  const head = el("div",{class:"card"});
+  const showing = shopMapsShowing(cur);
+  head.append(el("h3",{}, cur.name, el("span",{class:"small muted"},
+    showing.length ? `👁 open on ${showing.map(m=>m.name).join(", ")}` : "not open on any map")));
+  head.append(el("div",{class:"small muted"},
+    "Players meet this shop as a popup on the Map. Pick it in the map toolbar’s ", el("b",{},"Shop"),
+    " box to open it; set it back to “No shop” to close up."));
+  const note = el("textarea",{placeholder:"Shopkeeper notes / what this place is (shown to players at the top of the shop)",
+    style:"width:100%;margin-top:8px;min-height:52px;resize:vertical"});
+  note.value = cur.note||"";
+  note.addEventListener("input",()=>{ cur.note = note.value; saveShops(); });
+  head.append(note);
+  root.append(head);
+
+  // the shelf
+  const items = el("div",{class:"card"});
+  const catSel = el("select",{title:"stock every item of one book category at once"});
+  catSel.append(el("option",{value:""},"＋ whole category…"));
+  shopGearCategories().forEach(c=>catSel.append(el("option",{value:c},c)));
+  catSel.addEventListener("change",()=>{ const c=catSel.value; catSel.value=""; stockWholeCategory(cur, c); });
+  items.append(el("h3",{},`Items (${cur.items.length})`, el("div",{class:"inline",style:"gap:8px"},
+    catSel,
+    el("button",{class:"linkbtn h-act",onclick:()=>openShopItemPicker(cur)},"+ from catalog"),
+    el("button",{class:"linkbtn h-act",onclick:()=>{ cur.items.push(normShopItem({name:"",price:0})); saveShops(); renderShops(); }},"+ custom"))));
+  items.append(el("div",{class:"small muted",style:"margin:-4px 0 8px"},
+    "Prices default to the book’s and stay editable. Real game items get their picture automatically — use 📷 own for anything that doesn’t, or to override one."));
+  if(!cur.items.length) items.append(el("span",{class:"muted small"},
+    "empty — add items from the catalog (they come priced from the book) or write your own."));
+  cur.items.forEach(it=> items.append(shopItemRow(cur, it)));
+  root.append(items);
+
+  root.append(shopCartsCard(cur));
+  root.append(shopLogCard());
+  if(openKeys.size) root.querySelectorAll("details[data-key]").forEach(d=>{ if(openKeys.has(d.dataset.key)) d.open=true; });
+}
+/* live view of who's shopping right now — the same carts the players are filling on the map */
+function shopCartsCard(shop){
+  const card = el("div",{class:"card"});
+  const carts = Object.entries(shopData().carts).filter(([,c])=>c.shopId===shop.id && c.lines.length);
+  card.append(el("h3",{},`Carts in progress (${carts.length})`));
+  if(!carts.length){ card.append(el("span",{class:"muted small"},"nobody is shopping here right now.")); return card; }
+  carts.forEach(([rowId,cart])=>{
+    const row = cloud.byId[rowId];
+    const who = row?.data?.name || row?.owner_name || "someone";
+    const money = Math.round(parseFloat(row?.data?.trainer?.money)||0);
+    const total = cartTotal(cart);
+    const box = el("div",{class:"moveslot",style:"align-items:flex-start"});
+    const info = el("div",{style:"flex:1;min-width:0"});
+    info.append(el("div",{style:"font-weight:700"}, who,
+      el("span",{class:"small muted",style:"margin-left:8px"}, `$${money} on hand${cart.discount?` · ${cart.discount}% off`:""}`)));
+    info.append(el("div",{class:"small muted"}, cart.lines.map(l=>`${l.qty}× ${l.name}${l.free?" 🎁":""}`).join(", ")));
+    box.append(info, el("div",{style:`font-weight:800;white-space:nowrap;${total>money?"color:var(--bad)":""}`}, `$${total}`));
+    card.append(box);
+  });
+  return card;
+}
+function shopLogCard(){
+  const log = shopData().log;
+  const card = el("div",{class:"card"});
+  card.append(el("h3",{},"Recent purchases", log.length
+    ? el("button",{class:"linkbtn h-act",onclick:()=>{ shopData().log=[]; saveShops(); renderShops(); }},"clear")
+    : ""));
+  if(!log.length){ card.append(el("span",{class:"muted small"},"nothing bought yet.")); return card; }
+  log.forEach(e=>{
+    const when = new Date(e.at||0);
+    card.append(el("div",{class:"small",style:"padding:3px 0;border-bottom:1px solid var(--line)"},
+      el("b",{}, e.buyer||"someone"), ` bought ${(e.items||[]).join(", ")} at ${e.shop||"a shop"} for `,
+      el("b",{}, `$${e.total||0}`), el("span",{class:"muted"}, `  ·  ${when.toLocaleString()}`)));
+  });
+  return card;
+}
+
+/* ===== carts ===== */
+function getCart(shop, rowId){
+  const c = shopData().carts[rowId];
+  return (c && c.shopId===shop.id) ? c : null;
+}
+function ensureCart(shop, rowId){
+  const d = shopData();
+  let c = d.carts[rowId];
+  if(!c || c.shopId!==shop.id) c = d.carts[rowId] = { shopId:shop.id, discount:0, lines:[] };
+  return c;
+}
+/* free promo lines cost nothing; everything else takes the buyer's discount (0 by default). */
+function cartLinePrice(cart, line){
+  if(line.free) return 0;
+  const disc = Math.max(0, Math.min(100, cart.discount||0));
+  return Math.max(0, Math.round((line.price||0) * (100-disc)/100));
+}
+function cartTotal(cart){ return (cart?.lines||[]).reduce((s,l)=> s + cartLinePrice(cart,l)*l.qty, 0); }
+function cartCount(cart){ return (cart?.lines||[]).reduce((s,l)=> s + l.qty, 0); }
+function cartAdd(shop, rowId, item, delta){
+  const cart = ensureCart(shop, rowId);
+  let line = cart.lines.find(l=>l.iid===item.id && !l.free);
+  if(!line){
+    if(delta<0) return;
+    // price is snapshotted when it goes in the cart, so a GM edit mid-browse can't change what
+    // the player already agreed to pay (and a removed item still checks out cleanly)
+    line = { id:uid(), iid:item.id, name:item.name, price:item.price, qty:0, free:false };
+    cart.lines.push(line);
+  }
+  line.qty += delta;
+  if(line.qty<=0) cart.lines = cart.lines.filter(l=>l!==line);
+  if(!cart.lines.length) delete shopData().carts[rowId];
+  saveShops(); refreshShopPanel();
+}
+function cartRemoveLine(shop, rowId, line){
+  const cart = getCart(shop, rowId); if(!cart) return;
+  cart.lines = cart.lines.filter(l=>l.id!==line.id);
+  if(!cart.lines.length) delete shopData().carts[rowId];
+  saveShops(); refreshShopPanel();
+}
+/* GM: hand someone an item for free (a promo, a quest reward, an apology for that crit) */
+function openFreeItemPicker(shop, rowId){
+  const seen = new Set(), names = [];
+  [...shop.items.map(i=>i.name), ...catalogItems().map(x=>x.name)].forEach(n=>{
+    const k = normItemName(n); if(n && !seen.has(k)){ seen.add(k); names.push(n); } });
+  openPicker("Free item (promo)", names, name=>{
+    const cart = ensureCart(shop, rowId);
+    const stocked = shop.items.find(i=>normItemName(i.name)===normItemName(name));
+    cart.lines.push({ id:uid(), iid:stocked?.id||"", name, price:0, qty:1, free:true });
+    saveShops(); refreshShopPanel(); toast(`🎁 ${name} added free`);
+  }, "held");
+}
+async function completePurchase(shop, row){
+  const cart = getCart(shop, row.id);
+  if(!cart || !cart.lines.length){ toast("The cart is empty"); return; }
+  const t = row.data.trainer;
+  const money = Math.max(0, parseFloat(t.money)||0);
+  const total = cartTotal(cart);
+  if(total > money){ toast(`Not enough money — $${total} needed, $${money} on hand`); return; }
+  const inv = Array.isArray(t.inventory) ? t.inventory : (t.inventory = []);
+  cart.lines.forEach(l=>{
+    const k = normItemName(l.name);
+    const ex = inv.find(it=>normItemName(it.name)===k);
+    if(ex) ex.qty = (parseInt(ex.qty)||0) + l.qty;
+    else inv.push({ name:l.name, qty:l.qty, notes:"" });
+  });
+  t.money = money - total;
+  const d = shopData();
+  d.log.unshift({ at:Date.now(), shop:shop.name, buyer:row.data?.name || row.owner_name || "someone",
+                  total, items:cart.lines.map(l=>`${l.qty}× ${l.name}${l.free?" 🎁":""}`) });
+  d.log = d.log.slice(0,40);
+  const bought = cartCount(cart);
+  delete d.carts[row.id];
+  saveShops();
+  cloudUpsert(row).then(ok=>{ if(!ok) toast("⚠ Sync issue — it'll reconcile on the next change"); });
+  toast(`Bought ${bought} item${bought===1?"":"s"} for $${total} ✓`);
+  render();
+}
+
+/* ===== the floating storefront on the Map ===== */
+/* Who this screen may shop for: yourself normally; the GM and a shared "Viewer" screen (the
+   co-pilot device that already drives every player token) may shop for anyone. */
+function shopBuyerRows(){
+  const all = Object.values(cloud.byId).filter(r=>r && r.data && r.data.trainer);
+  const mine = all.filter(ownsRow);
+  if(cloud.isGM || isMapHpViewer()) return all;
+  return mine;
+}
+let shopBuyerId = null;                     // this device's chosen buyer (not synced)
+let shopPanelTab = "items";                 // "items" | "cart" | "live"
+let shopCollapsed = localStorage.getItem("ptu_shop_collapsed")==="1";
+function loadShopPos(){ try{ return JSON.parse(localStorage.getItem("ptu_shop_pos")||"null"); }catch(e){ return null; } }
+function saveShopPos(p){ try{ localStorage.setItem("ptu_shop_pos", JSON.stringify(p)); }catch(e){} }
+function shopActiveBuyer(){
+  const rows = shopBuyerRows();
+  return rows.find(r=>r.id===shopBuyerId) || rows.find(ownsRow) || rows[0] || null;
+}
+async function setMapShop(map, id){
+  map.shopId = id || "";
+  mapMetaSave(); renderMap();
+  toast(id ? `🛒 ${shopById(id)?.name||"Shop"} is open to the players` : "Shop closed");
+}
+/* Re-render just the popup (not the whole board) so a cart tick doesn't repaint every token. */
+function refreshShopPanel(){
+  const old = document.querySelector(".shop-float");
+  if(!old){ if(currentTab==="map") renderMap(); return; }
+  const scroll = old.querySelector(".shop-body")?.scrollTop || 0;
+  const openKeys = new Set([...old.querySelectorAll("details[data-key][open]")].map(d=>d.dataset.key));
+  const filter = old.querySelector(".shop-body input[type=search]")?.value || "";
+  const fresh = shopPanel(currentMapForView());
+  if(!fresh){ old.remove(); return; }
+  old.replaceWith(fresh);
+  fresh.querySelectorAll("details[data-key]").forEach(d=>{ if(openKeys.has(d.dataset.key)) d.open = true; });
+  const search = fresh.querySelector(".shop-body input[type=search]");
+  if(search && filter){ search.value = filter; search.dispatchEvent(new Event("input")); }
+  const body = fresh.querySelector(".shop-body"); if(body) body.scrollTop = scroll;
+}
+function shopPanel(map){
+  if(mode!=="cloud" || !map || !map.shopId) return null;
+  const shop = shopById(map.shopId);
+  if(!shop || (shop.archived && !cloud.isGM)) return null;
+
+  const box = el("div",{class:"shop-float"});
+  const pos = loadShopPos();
+  if(pos){ box.style.left = pos.left+"px"; box.style.top = pos.top+"px"; }
+  else { box.style.left = "14px"; box.style.top = "108px"; }
+
+  const header = el("div",{class:"shop-head"});
+  header.append(el("span",{style:"font-weight:800;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"},
+    "🛒 " + (shop.name||"Shop")));
+  header.append(el("span",{style:"flex:1"}));
+  if(cloud.isGM) header.append(initMiniBtn("✕ close","close the shop for everyone",()=>setMapShop(map,"")));
+  header.append(initMiniBtn(shopCollapsed?"▸":"▾", shopCollapsed?"expand":"collapse",
+    ()=>{ shopCollapsed=!shopCollapsed; localStorage.setItem("ptu_shop_collapsed", shopCollapsed?"1":"0"); refreshShopPanel(); }));
+  box.append(header);
+  attachShopDrag(header, box);
+  if(shopCollapsed) return box;
+
+  const rows = shopBuyerRows();
+  const buyer = shopActiveBuyer();
+  const canBuy = !!buyer && (cloud.isGM || isMapHpViewer() || ownsRow(buyer));
+  const cart = buyer ? getCart(shop, buyer.id) : null;
+  const money = Math.max(0, Math.round(parseFloat(buyer?.data?.trainer?.money)||0));
+  const total = cartTotal(cart);
+  const short = total > money;
+
+  // — who's buying —
+  const who = el("div",{class:"shop-who"});
+  if(rows.length > 1){
+    const bsel = el("select",{title:"who is buying"});
+    rows.forEach(r=>bsel.append(el("option",{value:r.id,selected:r.id===buyer?.id},
+      r.data?.name || r.owner_name || "trainer")));
+    bsel.addEventListener("change",()=>{ shopBuyerId = bsel.value; refreshShopPanel(); });
+    who.append(bsel);
+  } else {
+    who.append(el("span",{style:"font-weight:700;font-size:12px;flex:1;min-width:0"},
+      buyer ? (buyer.data?.name || buyer.owner_name || "You") : "no sheet"));
+  }
+  who.append(el("span",{class:"shop-money",title:"money on hand"}, `$${money}`));
+  box.append(who);
+  if(shop.note) box.append(el("div",{class:"shop-note small muted"}, shop.note));
+
+  // — tabs —
+  const tabs = el("div",{class:"shop-tabs"});
+  const tabDefs = [["items",`🛍 Items`],["cart",`🧺 Cart${cartCount(cart)?" ("+cartCount(cart)+")":""}`]];
+  if(cloud.isGM) tabDefs.push(["live","👀 Live"]);
+  if(!tabDefs.some(([k])=>k===shopPanelTab)) shopPanelTab = "items";
+  tabDefs.forEach(([k,label])=> tabs.append(el("button",{class:"shop-tab"+(shopPanelTab===k?" on":""),
+    onclick:()=>{ shopPanelTab=k; refreshShopPanel(); }}, label)));
+  box.append(tabs);
+
+  const body = el("div",{class:"shop-body"});
+  if(shopPanelTab==="items")      shopItemsPane(body, shop, buyer, cart, canBuy);
+  else if(shopPanelTab==="cart")  shopCartPane(body, shop, buyer, cart, canBuy, money);
+  else                            shopLivePane(body, shop);
+  box.append(body);
+
+  // — footer: the money maths, always visible —
+  if(shopPanelTab!=="live"){
+    const foot = el("div",{class:"shop-foot"});
+    const sums = el("div",{style:"flex:1;min-width:0"});
+    sums.append(el("div",{style:"font-weight:800"}, `Total $${total}`,
+      cart && cart.discount ? el("span",{class:"small muted",style:"margin-left:6px"}, `(${cart.discount}% off)`) : ""));
+    sums.append(el("div",{class:"small "+(short?"":"muted"), style:short?"color:var(--bad);font-weight:700":""},
+      short ? `$${total-money} short` : `$${money-total} left after`));
+    foot.append(sums);
+    const buy = el("button",{class:"btn-primary",style:"padding:7px 12px",
+      onclick:()=>completePurchase(shop, buyer)}, "Buy");
+    if(!buyer || !canBuy || !cartCount(cart) || short){ buy.disabled = true; buy.style.opacity = ".5"; buy.style.cursor="not-allowed"; }
+    buy.title = !canBuy ? "only the buyer (or the GM) can complete this purchase"
+              : short ? "not enough money" : !cartCount(cart) ? "the cart is empty" : "complete the purchase";
+    foot.append(buy);
+    box.append(foot);
+  }
+  fitFloatPanel(box);
+  return box;
+}
+function shopItemsPane(body, shop, buyer, cart, canBuy){
+  if(!shop.items.length){ body.append(el("div",{class:"muted small",style:"padding:8px"},"The shelves are empty.")); return; }
+  const filter = el("input",{type:"search",placeholder:"Filter items…",style:"width:100%;margin-bottom:6px"});
+  const list = el("div",{});
+  const draw = ()=>{
+    const q = filter.value.trim().toLowerCase(); list.innerHTML="";
+    const shown = shop.items.filter(i=>!q || i.name.toLowerCase().includes(q));
+    if(!shown.length){ list.append(el("div",{class:"muted small",style:"padding:8px"},"no matches")); return; }
+    shown.forEach(item=>{
+      const inCart = (cart?.lines||[]).filter(l=>l.iid===item.id && !l.free).reduce((s,l)=>s+l.qty,0);
+      const own = buyer ? ownedQty(buyer, item.name) : 0;
+      const row = el("div",{class:"shop-row"});
+      row.append(itemImgNode(item.name, 38));
+      const mid = el("div",{style:"flex:1;min-width:0"});
+      mid.append(el("div",{class:"shop-row-name"}, item.name || "(unnamed)",
+        own ? el("span",{class:"shop-own",title:"already in this trainer's inventory"}, `owns ${own}`) : ""));
+      mid.append(itemDescNode(item.name));
+      row.append(mid);
+      const right = el("div",{class:"shop-row-buy"});
+      right.append(el("div",{class:"shop-cost"}, `$${item.price}`));
+      if(canBuy){
+        const ctl = el("div",{class:"inline",style:"gap:4px"});
+        if(inCart) ctl.append(el("button",{class:"shop-qty",onclick:()=>cartAdd(shop,buyer.id,item,-1)},"−"),
+                              el("span",{style:"min-width:14px;text-align:center;font-weight:700"}, String(inCart)));
+        ctl.append(el("button",{class:"shop-qty add",title:"add to cart",onclick:()=>cartAdd(shop,buyer.id,item,1)},"＋"));
+        right.append(ctl);
+      }
+      row.append(right);
+      list.append(row);
+    });
+  };
+  filter.addEventListener("input",draw);
+  body.append(filter, list);
+  draw();
+}
+function shopCartPane(body, shop, buyer, cart, canBuy, money){
+  if(cloud.isGM && buyer){
+    const gm = el("div",{class:"shop-gm"});
+    const d = el("input",{type:"number",min:0,max:100,step:1,style:"width:64px",title:"percent off everything (0 by default)"});
+    d.value = cart?.discount || 0;
+    d.addEventListener("change",()=>{
+      const c = ensureCart(shop, buyer.id);
+      c.discount = Math.max(0, Math.min(100, Math.round(parseFloat(d.value)||0)));
+      d.value = c.discount; saveShops(); refreshShopPanel();
+    });
+    gm.append(el("span",{class:"small",style:"font-weight:700"},"Discount"), d, el("span",{class:"small muted"},"%"),
+      el("span",{style:"flex:1"}),
+      el("button",{class:"btn ghost",style:"padding:4px 9px",title:"add an item to this cart for free",
+        onclick:()=>openFreeItemPicker(shop, buyer.id)},"🎁 Free item"));
+    body.append(gm);
+  }
+  if(!cart || !cart.lines.length){
+    body.append(el("div",{class:"muted small",style:"padding:8px"},"The cart is empty — add something from 🛍 Items."));
+    return;
+  }
+  cart.lines.forEach(line=>{
+    const row = el("div",{class:"shop-row"});
+    row.append(itemImgNode(line.name, 32));
+    const mid = el("div",{style:"flex:1;min-width:0"});
+    mid.append(el("div",{class:"shop-row-name"}, line.name,
+      line.free ? el("span",{class:"shop-free"},"🎁 free") : ""));
+    mid.append(el("div",{class:"small muted"}, `${line.qty} × $${cartLinePrice(cart,line)}`));
+    row.append(mid);
+    const right = el("div",{class:"shop-row-buy"});
+    right.append(el("div",{class:"shop-cost"}, `$${cartLinePrice(cart,line)*line.qty}`));
+    if(canBuy) right.append(el("button",{class:"linkbtn danger",title:"remove",
+      onclick:()=>cartRemoveLine(shop, buyer.id, line)},"× remove"));
+    row.append(right);
+    body.append(row);
+  });
+}
+function shopLivePane(body, shop){
+  const carts = Object.entries(shopData().carts).filter(([,c])=>c.shopId===shop.id && c.lines.length);
+  if(!carts.length){ body.append(el("div",{class:"muted small",style:"padding:8px"},"Nobody is shopping yet.")); return; }
+  carts.forEach(([rowId,cart])=>{
+    const row = cloud.byId[rowId];
+    const who = row?.data?.name || row?.owner_name || "someone";
+    const money = Math.max(0, Math.round(parseFloat(row?.data?.trainer?.money)||0));
+    const total = cartTotal(cart);
+    const node = el("div",{class:"shop-row",style:"cursor:pointer",title:"open this cart",
+      onclick:()=>{ shopBuyerId = rowId; shopPanelTab = "cart"; refreshShopPanel(); }});
+    const mid = el("div",{style:"flex:1;min-width:0"});
+    mid.append(el("div",{class:"shop-row-name"}, who));
+    mid.append(el("div",{class:"small muted"}, cart.lines.map(l=>`${l.qty}× ${l.name}`).join(", ")));
+    node.append(mid, el("div",{class:"shop-cost",style: total>money?"color:var(--bad)":""}, `$${total}/$${money}`));
+    body.append(node);
+  });
+}
+/* Keep the panel on screen: slide it up — and shrink it if that isn't enough — so its footer,
+   with the total and the Buy button, is never below the fold on a short screen. Works in deltas
+   off the measured rect, so it stays correct whatever the panel is positioned against. */
+function fitFloatPanel(box){
+  // a timeout, not rAF: rAF is suspended in a background tab, and this must still be right the
+  // moment the GM flips back to it (getBoundingClientRect forces layout on its own anyway)
+  setTimeout(()=>{
+    if(!box.isConnected) return;
+    const limit = window.innerHeight - 10;
+    let r = box.getBoundingClientRect();
+    if(r.bottom <= limit) return;
+    const shift = Math.min(r.bottom - limit, Math.max(0, r.top - 10));
+    if(shift > 0){ box.style.top = ((parseFloat(box.style.top)||0) - shift) + "px"; r = box.getBoundingClientRect(); }
+    if(r.bottom > limit) box.style.maxHeight = Math.max(150, limit - r.top) + "px";
+  });
+}
+function attachShopDrag(handle, box){
+  handle.addEventListener("pointerdown", ev=>{
+    if(ev.target.closest("button,input,select")) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const r = box.getBoundingClientRect();
+    // inline left/top are viewport coordinates only while nothing above us is transformed — measure
+    // the difference once and drag in that frame, so grabbing the panel never makes it jump
+    const baseX = r.left - (parseFloat(box.style.left)||0), baseY = r.top - (parseFloat(box.style.top)||0);
+    const offX = ev.clientX - r.left, offY = ev.clientY - r.top;
+    box.style.right = "auto";
+    try{ handle.setPointerCapture(ev.pointerId); }catch(e){}
+    const move = e=>{
+      box.style.left = (Math.max(0, Math.min(window.innerWidth  - 80, e.clientX-offX)) - baseX)+"px";
+      box.style.top  = (Math.max(0, Math.min(window.innerHeight - 36, e.clientY-offY)) - baseY)+"px";
+    };
+    const up = ()=>{
+      handle.removeEventListener("pointermove",move); handle.removeEventListener("pointerup",up);
+      try{ handle.releasePointerCapture(ev.pointerId); }catch(e){}
+      saveShopPos({ left:parseInt(box.style.left)||0, top:parseInt(box.style.top)||0 });
+    };
+    handle.addEventListener("pointermove",move); handle.addEventListener("pointerup",up);
+  });
+}
+
+/* ===================================================================
    COMBAT SIMULATOR  (GM-only)
    "If these two sides fought, who wins and how fast?" — a Monte-Carlo
    battle runner built on the sheet's own maths: pokeDerived/trainerDerived
@@ -10144,7 +10940,13 @@ function refDetailHTML(kind, name){
   if(kind==="edge"){ const e=D.edges.find(x=>x.name===name);
     return e?`${e.prerequisites?`<div class="r-meta">Prereq: ${esc(e.prerequisites)}</div>`:""}<div class="r-body">${annotateKeywords(esc(e.effect||""))}</div>`:"<span class='muted'>—</span>"; }
   if(kind==="feature"){ const f=D.features.find(x=>x.name===name);
-    return f?`<div class="r-meta">${esc(f.category||"")}${f.frequency?" · "+esc(f.frequency):""}</div>${f.prerequisites?`<div class="r-meta">Prereq: ${esc(f.prerequisites)}</div>`:""}<div class="r-body">${annotateKeywords(esc(f.effect||""))}</div>`:"<span class='muted'>—</span>"; }
+    if(!f) return "<span class='muted'>—</span>";
+    // a Feature that hands you Orders spells them out here — they're yours automatically, and the
+    // player would otherwise have to go looking for two Feature entries they never picked
+    const granted = featureGrantsFeatureNames(f).map(gn=>featureByKey.get(featKey(gn))).filter(Boolean);
+    const grants = granted.length ? `<div class="r-meta" style="margin-top:8px">Grants you${granted.some(g=>featureActionTypes(g).length)?" — usable in ⚔ Battle":""}:</div>`
+      + granted.map(g=>`<div class="r-body" style="margin-top:4px;padding-left:8px;border-left:2px solid var(--line)"><b>${esc(g.name)}</b>${g.frequency?` <span class="muted">· ${esc(g.frequency)}</span>`:""}<br>${annotateKeywords(esc(g.effect||""))}</div>`).join("") : "";
+    return `<div class="r-meta">${esc(f.category||"")}${f.frequency?" · "+esc(f.frequency):""}</div>${f.prerequisites?`<div class="r-meta">Prereq: ${esc(f.prerequisites)}</div>`:""}<div class="r-body">${annotateKeywords(esc(f.effect||""))}</div>${grants}`; }
   return "<span class='muted'>—</span>";
 }
 function openRefDetail(kind, name){
@@ -10931,7 +11733,7 @@ async function fetchRoster(){
   const seen = new Set();
   (data||[]).forEach(r => {
     if(r.owner_id===PC_OWNER){ cloud.pc = mergeShared(cloud.pc, r, pcData); repushIfDirty(cloud.pc, pcUpsert); return; }
-    if(r.owner_id===MAP_OWNER || r.owner_id===ENC_OWNER) return;                        // shared rows aren't characters
+    if(r.owner_id===MAP_OWNER || r.owner_id===ENC_OWNER || r.owner_id===SHOP_OWNER) return;   // shared rows aren't characters
     seen.add(r.id);
     const cur = cloud.byId[r.id];
     if(cur && cloud.inflight[r.id]) return;              // our write is mid-commit → it's authoritative
@@ -10952,7 +11754,7 @@ async function fetchRoster(){
 function recoverUnsavedFromCache(){
   let cached; try{ cached = JSON.parse(localStorage.getItem("ptu_cloud_cache_"+cloud.campaign)||"[]"); }catch(e){ return; }
   if(!Array.isArray(cached)) return;
-  const SENTINELS = [PC_OWNER, MAP_OWNER, ENC_OWNER];
+  const SENTINELS = [PC_OWNER, MAP_OWNER, ENC_OWNER, SHOP_OWNER];
   cached.forEach(cr=>{
     if(!cr || !cr.id || SENTINELS.includes(cr.owner_id)) return;
     const db = cloud.byId[cr.id];
@@ -11057,6 +11859,7 @@ function normMapMeta(data){
     if(typeof m.weather!=="string" || !WEATHER_BY_KEY[m.weather]) m.weather = "clear";   // Core p.342
     if(!Array.isArray(m.terrains)) m.terrains = [];
     m.terrains = m.terrains.filter(k=>TERRAIN_BY_KEY[k]);
+    if(typeof m.shopId!=="string") m.shopId = "";      // the shop currently open on this map ("" = none)
   });
   // playerMapId = the map players see (seed from the old shared activeMapId for back-compat)
   const firstLive = data.maps.find(m=>!m.archived) || data.maps[0] || null;
@@ -11257,6 +12060,39 @@ function encUpsert(){
   row.owner_name = "Encounters"; row.name = "Encounters";
   return serialize(encChain, ()=> syncUpsert(row).then(ok=>{ cacheSharedRow("enc", row); return ok; }));   // conflict-safe (encounters merge by id)
 }
+
+/* ---- shops (GM storefronts + live carts), same reserved-row pattern ----
+   One row holds the shops AND every open cart, because the cart is the thing both sides need to
+   see live: the player builds it, the GM watches it, tweaks the discount and drops in freebies.
+   Carts merge by buyer id and lines merge by line id, so two players shopping at once never
+   collide (see mergeArray/merge3). */
+async function fetchShops(){
+  const { data, error } = await cloud.client.from("sheets").select(SHEET_COLS).eq("id", shopRowId()).limit(1);
+  if(error){ console.error(error); return; }   // keep local on a fetch error
+  cloud.shops = mergeShared(cloud.shops, data && data[0], normShops);
+  repushIfDirty(cloud.shops, saveShops);
+}
+function ensureShops(){
+  if(!cloud.shops) cloud.shops = { id:shopRowId(), campaign:cloud.campaign, owner_id:SHOP_OWNER,
+    owner_name:"Shops", name:"Shops", data:normShops(null) };
+  return cloud.shops;
+}
+const shopChain = { chain: Promise.resolve() };
+function shopUpsert(){
+  const row = ensureShops();
+  row.owner_name = "Shops"; row.name = "Shops";
+  return serialize(shopChain, ()=> syncUpsert(row).then(ok=>{ cacheSharedRow("shops", row); return ok; }));
+}
+/* Debounced like the map rows — a player tapping ＋ on an item five times is one write, and the
+   optimistic local edit + re-render happens immediately either way. */
+let shopSaveTimer;
+function saveShops(){
+  if(mode!=="cloud") return;                    // shops are cloud-only (they're shown on the shared map)
+  const row = ensureShops();
+  cacheSharedRow("shops", row);                 // optimistic: survives a refresh before the write lands
+  clearTimeout(shopSaveTimer);
+  shopSaveTimer = setTimeout(()=>{ shopSaveTimer=null; shopUpsert(); }, 300);
+}
 async function cloudConnect(campaign, name, gmCode, silent, viewer){
   campaign = (campaign||"").trim().toLowerCase(); name = (name||"").trim();
   if(!campaign || !name){ toast("Enter a campaign code and your name"); return; }
@@ -11274,6 +12110,8 @@ async function cloudConnect(campaign, name, gmCode, silent, viewer){
     recoverUnsyncedShared("maptokens", ()=>cloud.mapTokens, ()=>serialize(mapTokensChain, mapTokensUpsert));
     const encStatus = await fetchEnc();
     recoverUnsyncedShared("enc", ()=>cloud.enc, encUpsert);
+    await fetchShops();
+    recoverUnsyncedShared("shops", ()=>cloud.shops, shopUpsert);
     // One-time seed of a GM's pre-cloud device encounters — ONLY when the cloud row genuinely does
     // NOT exist (query succeeded with no row) AND we've never seeded this campaign before. Never on
     // a fetch error or transient-empty result. Insert-only + this guard together stop a stale device
@@ -11304,7 +12142,7 @@ function cloudDisconnect(){
   if(cloud.sub){ try{ cloud.client.removeChannel(cloud.sub); }catch(e){} cloud.sub=null; }
   mode="local"; localStorage.removeItem("ptu_cloud_session");
   cloud.isGM=false; cloud.viewer=false;
-  cloud.pc=null; cloud.mapMeta=null; cloud.mapTokens=null; cloud.enc=null;
+  cloud.pc=null; cloud.mapMeta=null; cloud.mapTokens=null; cloud.enc=null; cloud.shops=null;
   openMon=null; updateCloudButton(); closeModal(); render();
   toast("Switched to this device");
 }
@@ -11349,6 +12187,11 @@ function flushUiRefresh(){
   if(kinds.includes("map") && currentTab==="map") renderMap();
   if(kinds.includes("pc")  && currentTab==="pc")  renderPC();
   if(kinds.includes("enc") && (currentTab==="encounters" || currentTab==="map")) render();
+  // a cart tick shouldn't rebuild the whole board — swap just the floating shop panel when we're on it
+  if(kinds.includes("shops")){
+    if(currentTab==="shops") renderShops();
+    else if(currentTab==="map") refreshShopPanel();
+  }
 }
 function refreshUI(kind){
   uiRefreshWanted.add(kind);
@@ -11363,10 +12206,12 @@ function scheduleSharedRefetch(kind){
     if(kind==="pc")   await fetchPC();
     if(kind==="map")  await fetchMap();
     if(kind==="enc")  await fetchEnc();
+    if(kind==="shops") await fetchShops();
     if(kind==="roster") await fetchRoster();
     if(kind==="pc") refreshUI("pc");
     else if(kind==="map") refreshUI("map");
     else if(kind==="enc") refreshUI("enc");
+    else if(kind==="shops") refreshUI("shops");
     else refreshUI("all");
   }, 140);
 }
@@ -11379,7 +12224,7 @@ function onRealtime(payload){
   // reconcile everything via fresh SELECTs rather than dropping the update on the floor.
   if(!evtId && type!=="DELETE"){
     scheduleSharedRefetch("map"); scheduleSharedRefetch("pc");
-    scheduleSharedRefetch("enc"); scheduleSharedRefetch("roster");
+    scheduleSharedRefetch("enc"); scheduleSharedRefetch("shops"); scheduleSharedRefetch("roster");
     return;
   }
   // A shared reserved row (PC / map meta / map tokens / encounters) is visible to everyone, so it's
@@ -11433,6 +12278,18 @@ function onRealtime(payload){
       repushIfDirty(cloud.enc, saveEnc);
     }
     refreshUI("enc");
+    return;
+  }
+  // shared shops + live carts — visible to everyone (players shop, the GM watches)
+  if(evtOwner===SHOP_OWNER || evtId===shopRowId()){
+    if(type==="DELETE"){ cloud.shops=null; }
+    else if(!payloadHasData(payload.new)){ scheduleSharedRefetch("shops"); return; }
+    else {
+      if(staleShared(cloud.shops, shopRowId())) return;
+      cloud.shops = adoptRemote(cloud.shops, payload.new, normShops);
+      repushIfDirty(cloud.shops, saveShops);
+    }
+    refreshUI("shops");
     return;
   }
   if(type==="DELETE"){
@@ -14217,6 +15074,16 @@ function renderMap(){
       tsel.addEventListener("change", ()=>setMapTerrain(map, tsel.value));
       bar.append(el("span",{class:"map-sep"}),
         el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Terrain"), tsel));
+      // — Shop group: open one of the Shops tab's storefronts on this map, for everyone looking at it —
+      const openShops = shopList().filter(s=>!s.archived);
+      const shsel = el("select",{title:"Open a shop on this map — everyone looking at it gets the shopping popup"});
+      shsel.append(el("option",{value:"",selected:!map.shopId},"— No shop —"));
+      openShops.forEach(s=>shsel.append(el("option",{value:s.id,selected:s.id===map.shopId}, `🛒 ${s.name}`)));
+      if(map.shopId && !openShops.some(s=>s.id===map.shopId))          // shop was deleted/archived while open
+        shsel.append(el("option",{value:map.shopId,selected:true},"🛒 (missing shop)"));
+      shsel.addEventListener("change", ()=>setMapShop(map, shsel.value));
+      bar.append(el("span",{class:"map-sep"}),
+        el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Shop"), shsel));
     }
   } else {
     bar.append(el("div",{class:"map-mapname"}, map ? `🗺 ${map.name}` : "🗺 Battle map"));
@@ -14261,6 +15128,7 @@ function renderMap(){
   const wpanel = weatherPanel(map); if(wpanel) root.append(wpanel);
   const tpanel = terrainPanel(map); if(tpanel) root.append(tpanel);
   if(meta.battleOn) root.append(initiativePanel(map, meta));
+  const shpanel = shopPanel(map); if(shpanel) root.append(shpanel);   // floating storefront (see the SHOPS section)
 
   const { w:stageW, h:stageH, originX, originY } = mapStageSize(map);
   const viewport = el("div",{class:"map-viewport"});
