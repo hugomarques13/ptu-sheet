@@ -2626,22 +2626,24 @@ function classesCard(){
       el("button",{class:"linkbtn h-act", onclick:()=>openPicker("Add Class", D.classes.map(c=>c.name), name=>{
         if(!arr.includes(name)){ arr.push(name); save(); render(); }
       }, "class")}, "+ add"))));
-  // Chosen Type (Type Ace, Core p.119) — only for Trainers who've actually taken the Type Ace Class.
-  // If it's not there yet, a hint explains what unlocks it instead of the control just vanishing.
+  // Chosen Type (Type Ace, Core p.119) — only for Trainers who have Type Ace (the Class or any of
+  // its Features). If they don't, a hint explains what unlocks it instead of the control vanishing.
   if(typeAceEligible(t)){
     const ctWrap = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin-bottom:10px"});
     ctWrap.append(el("div",{style:"font-weight:700;margin-bottom:4px"},"🎯 Chosen Type (Type Ace)"));
     const ctSel = el("select",{});
     ctSel.append(el("option",{value:""},"— pick a Type —"));
     TYPES.forEach(ty=>ctSel.append(el("option",{value:ty},ty)));
-    ctSel.value = t.chosenType || "";
+    const inferred = !t.chosenType && typeAceChosenType(t);
+    ctSel.value = t.chosenType || inferred || "";
     ctSel.addEventListener("change",()=>{ t.chosenType = ctSel.value || null; save(); render(); });
     ctWrap.append(ctSel, el("div",{class:"small muted",style:"margin-top:4px"},
+      (inferred ? `Read from your Features (a per-Type Type Ace Feature requires ${inferred} as Chosen Type). ` : "") +
       "Feeds Type Ace's Ability grant (🎯 in a Pokémon's Abilities), Move Sync (🔃 on a Move), and Type Refresh."));
     card.append(ctWrap);
   } else if(arr.length){
     card.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
-      "Take the Type Ace class (“+ add” above, exact name “Type Ace”) to unlock its Chosen Type picker here."));
+      "Take the Type Ace class (“+ add” above) — or any Type Ace Feature — to unlock its Chosen Type picker here."));
   }
   if(!arr.length){ card.append(el("span",{class:"muted small"},"none yet — tap “+ add” to take a Class, then learn its Features here")); return card; }
   arr.forEach((name,idx) => {
@@ -4766,12 +4768,52 @@ function pokeUnderThirdHP(p){
   const maxHP = pokeDerived(p).maxHP;
   return !!(maxHP && p.currentHP!=null && p.currentHP <= maxHP/3);
 }
+/* "Does this Trainer have X?" is never a manual switch anywhere in the app — it's read off what
+   they actually took: their Classes and their Features.
+   `trainerHasClass` is alias-aware (the class DB stores some classes under their `mechanic` name,
+   see classAliasSet) and also counts owning any Feature of that class line, since a Feature whose
+   prerequisites name the Class can only be held by someone who has the Class (this is how NPC
+   trainers in Encounters qualify — they're usually built out of Features, not a tidy class list). */
+function trainerHasClass(t, className){
+  if(!t) return false;
+  const norm = s => String(s||"").trim().toLowerCase();
+  const aliases = new Set([...(classAliasSet[className] || new Set([className]))].map(norm));
+  if((t.classes||[]).some(c => aliases.has(norm(c)))) return true;
+  return (t.features||[]).some(f => aliases.has(norm(f)) || featureBelongsToClass(f, className));
+}
+/* A Feature counts whether it was recorded as a Feature or as the Class that grants it. */
+function trainerHasFeature(t, featureName){
+  if(!t) return false;
+  const want = String(featureName||"").trim().toLowerCase();
+  return [...(t.features||[]), ...(t.classes||[])].some(n => String(n||"").trim().toLowerCase() === want);
+}
+/* Per-Type Type Ace Features spell their Type out in their prerequisites ("Type Ace, Poison as
+   Chosen Type"), so a Trainer's Chosen Type can usually be read off their Features too. */
+let _chosenTypeByFeat = null;
+function chosenTypeOfFeature(name){
+  if(!_chosenTypeByFeat){
+    _chosenTypeByFeat = new Map();
+    D.features.forEach(f=>{
+      const m = /([A-Za-z]+)\s+as\s+(?:the\s+|its\s+)?Chosen\s+Type/i.exec(f.prerequisites||"");
+      const ty = m && TYPES.find(x => x.toLowerCase()===m[1].toLowerCase());
+      if(ty) _chosenTypeByFeat.set(f.name.toLowerCase(), ty);
+    });
+  }
+  return _chosenTypeByFeat.get(String(name||"").trim().toLowerCase()) || null;
+}
+/* The Chosen Type is a real choice, so an explicit pick always wins; the Features are the fallback. */
+function typeAceChosenType(t){
+  if(!t) return null;
+  if(t.chosenType) return t.chosenType;
+  for(const f of (t.features||[])){ const ty = chosenTypeOfFeature(f); if(ty) return ty; }
+  return null;
+}
 /* Type Ace (Trainer Class, Core p.119): spends 2 Tutor Points to grant a target Pokémon the Last
    Chance or Type Strategist Ability for the Trainer's Chosen Type. Each Pokémon can only be granted
    one (tracked as p.typeAce = {ability, type}) — this app treats "having Type Ace" as having taken
-   the Class at least once, and a single Chosen Type per Trainer (the book allows re-taking Type Ace
-   per-Type, which this simpler single-value model doesn't attempt to track separately). */
-function typeAceEligible(t){ return !!(t && (t.classes||[]).includes("Type Ace")); }
+   the Class (or any of its Features) at least once, and a single Chosen Type per Trainer (the book
+   allows re-taking Type Ace per-Type, which this simpler single-value model doesn't track). */
+function typeAceEligible(t){ return trainerHasClass(t, "Type Ace"); }
 function typeAceAbilityText(grant){
   if(!grant) return "";
   return grant.ability==="Last Chance"
@@ -4780,14 +4822,15 @@ function typeAceAbilityText(grant){
 }
 function openTypeAceGrant(p, t, persistFn, rerenderFn){
   const persist = persistFn||save, rerender = rerenderFn||(()=>refreshMon(p));
-  if(!t.chosenType){ toast("Pick a Chosen Type for Type Ace first."); return; }
+  const chosen = typeAceChosenType(t);
+  if(!chosen){ toast("Pick a Chosen Type for Type Ace first."); return; }
   if(p.typeAce){ toast(`${p.species} already has a Type Ace grant (${p.typeAce.ability}, ${p.typeAce.type}).`); return; }
   if((p.tutorPoints||0) < 2){ toast(`Type Ace costs 2 Tutor Points (has ${p.tutorPoints||0}).`); return; }
-  openPicker(`Type Ace — grant an Ability (${t.chosenType})`, ["Last Chance","Type Strategist"], name=>{
+  openPicker(`Type Ace — grant an Ability (${chosen})`, ["Last Chance","Type Strategist"], name=>{
     p.tutorPoints = Math.max(0,(p.tutorPoints||0)-2);
-    p.typeAce = { ability:name, type:t.chosenType };
+    p.typeAce = { ability:name, type:chosen };
     persist(); rerender();
-    toast(`${p.species} learned ${name} (${t.chosenType})`);
+    toast(`${p.species} learned ${name} (${chosen})`);
   });
 }
 function clearTypeAce(p, persistFn, rerenderFn){
@@ -5266,18 +5309,19 @@ function unlockToggle(p){
 /* Move Sync (Type Ace branch, Core p.119): spends 1 Tutor Point to permanently retype one Move on
    the target's Move List to the Trainer's Chosen Type. Only one Move-Sync'd Move at a time — to sync
    a different one the old one must be forgotten (removed from the Move List) first. */
-function moveSyncEligible(t){ return !!(t && (t.features||[]).includes("Move Sync")); }
+function moveSyncEligible(t){ return trainerHasFeature(t, "Move Sync"); }
 function openMoveSync(p, t, mn, persistFn, rerenderFn){
   const persist = persistFn||save, rerender = rerenderFn||(()=>refreshMon(p));
-  if(!t.chosenType){ toast("Pick a Chosen Type for Type Ace first."); return; }
   const already = p.moveSync && p.moveSync.move===mn;
   if(already){ clearMoveSync(p, persist, rerender); return; }
+  const chosen = typeAceChosenType(t);
+  if(!chosen){ toast("Pick a Chosen Type for Type Ace first."); return; }
   if(p.moveSync){ toast(`${p.species} already has a Move-Sync'd Move (${p.moveSync.move}) — forget it before syncing a new one.`); return; }
   if((p.tutorPoints||0) < 1){ toast(`Move Sync costs 1 Tutor Point (has ${p.tutorPoints||0}).`); return; }
   p.tutorPoints = Math.max(0,(p.tutorPoints||0)-1);
-  p.moveSync = { move: mn, type: t.chosenType };
+  p.moveSync = { move: mn, type: chosen };
   persist(); rerender();
-  toast(`${mn} is now permanently ${t.chosenType}-Type (Move Sync)`);
+  toast(`${mn} is now permanently ${chosen}-Type (Move Sync)`);
 }
 function clearMoveSync(p, persistFn, rerenderFn){
   if(!p.moveSync) return;
@@ -7891,38 +7935,20 @@ function encounterTrainerCard(enc, tr){
     el("span",{style:"font-weight:800;min-width:16px;text-align:center"}, String(t.injuries||0)),
     el("button",{class:"btn-secondary",style:"padding:2px 9px",onclick:()=>{ t.injuries=Math.min(10,(t.injuries||0)+1); if(t.currentHP>trainerDerived(t).hp) t.currentHP=trainerDerived(t).hp; saveEnc(); renderEncounters(); }},"+"));
   card.append(injRow);
-  // Type Ace / Move Sync — NPC Trainers have no Classes/Features management UI, so these are simple
-  // checkboxes toggling membership in t.classes/t.features directly, keeping the SAME gating rule the
-  // Sheet uses (typeAceEligible/moveSyncEligible) rather than exposing the grant unconditionally.
-  const taRow=el("div",{class:"inline",style:"gap:14px;margin-top:6px;align-items:center;flex-wrap:wrap"});
-  const taLbl=el("label",{style:"display:inline-flex;gap:5px;align-items:center;cursor:pointer;font-size:13px"});
-  const taCb=el("input",{type:"checkbox"}); taCb.checked = typeAceEligible(t);
-  taCb.addEventListener("change",()=>{
-    t.classes = t.classes||[];
-    if(taCb.checked){ if(!t.classes.includes("Type Ace")) t.classes.push("Type Ace"); }
-    else t.classes = t.classes.filter(c=>c!=="Type Ace");
-    saveEnc(); renderEncounters();
-  });
-  taLbl.append(taCb, "🎯 Has Type Ace"); taRow.append(taLbl);
-  const msLbl=el("label",{style:"display:inline-flex;gap:5px;align-items:center;cursor:pointer;font-size:13px"});
-  const msCb=el("input",{type:"checkbox"}); msCb.checked = moveSyncEligible(t);
-  msCb.addEventListener("change",()=>{
-    t.features = t.features||[];
-    if(msCb.checked){ if(!t.features.includes("Move Sync")) t.features.push("Move Sync"); }
-    else t.features = t.features.filter(f=>f!=="Move Sync");
-    saveEnc(); renderEncounters();
-  });
-  msLbl.append(msCb, "🔃 Has Move Sync"); taRow.append(msLbl);
-  card.append(taRow);
+  // Type Ace / Move Sync — no "has it?" switches: an NPC qualifies exactly like a player, off the
+  // Classes & Features listed further down this card (give them the Class, or any of its Features).
   if(typeAceEligible(t)){
-    const ctRow=el("div",{class:"inline",style:"gap:6px;margin-top:6px;align-items:center"});
+    const ctRow=el("div",{class:"inline",style:"gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap"});
     ctRow.append(el("span",{class:"small muted",style:"font-weight:700"},"🎯 Chosen Type (Type Ace)"));
     const ctSel=el("select",{style:"padding:2px 6px"});
     ctSel.append(el("option",{value:""},"—"));
     TYPES.forEach(ty=>ctSel.append(el("option",{value:ty},ty)));
-    ctSel.value = t.chosenType || "";
+    const inferred = !t.chosenType && typeAceChosenType(t);
+    ctSel.value = t.chosenType || inferred || "";
     ctSel.addEventListener("change",()=>{ t.chosenType = ctSel.value || null; saveEnc(); renderEncounters(); });
     ctRow.append(ctSel);
+    if(inferred) ctRow.append(el("span",{class:"small muted"},"from their Features"));
+    if(moveSyncEligible(t)) ctRow.append(el("span",{class:"kv",title:"has the Move Sync Feature"},"🔃 Move Sync"));
     card.append(ctRow);
   }
   card.append(encTrainerCombatStages(t, tr.id));
