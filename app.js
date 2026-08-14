@@ -1825,12 +1825,6 @@ function renderTrainer(){
   /* weapons (modify Struggle) */
   root.append(weaponsCard(t));
 
-  /* worn equipment (armor DR, skill mods, shields, Focus… auto-applied) */
-  root.append(equipmentCard(t));
-
-  /* studied Books (Rank effects, AP Drained automatically) */
-  root.append(booksCard(t));
-
   /* skills */
   const skc = el("div",{class:"card"}, el("h3",{},"Skills",
      el("span",{class:"muted small"},"tap a rank · 🎲 to roll")));
@@ -1857,6 +1851,12 @@ function renderTrainer(){
   });
   skc.append(tbl);
   root.append(skc);
+
+  /* worn equipment (armor DR, skill mods, shields, Focus… auto-applied) */
+  root.append(equipmentCard(t));
+
+  /* studied Books (Rank effects, AP Drained automatically) */
+  root.append(booksCard(t));
 }
 
 /* Auto Injuries (Core p.249-250): a Pokémon/Trainer gains an Injury from (a) Massive Damage —
@@ -3375,10 +3375,10 @@ const BOOK_SUBJECTS = {
   "pokemon daycare licensing guide": { kind:"text",  label:"Egg Group" },
 };
 const bookSubjectSpec = name => BOOK_SUBJECTS[bookShortName(name).toLowerCase()] || null;
-/* edition notes the packets attach to particular Books */
-const BOOK_NOTES = {
-  "caretaker's manual": "The September 2015 packet removes this Book and replaces it with the Combat Medic's Primer — check with your GM before binding it.",
-};
+/* edition notes the packets attach to particular Books (none currently — Caretaker's Manual, which
+   Sept 2015 replaced with Combat Medic's Primer, was dropped from the catalog outright instead of
+   kept around with a warning) */
+const BOOK_NOTES = {};
 /* Study Manual Rank 2: a general +2 to its Skill that explicitly does NOT stack with other
    Book or Equipment bonuses to the same Skill — so it's max()'d against gear, not added. */
 function bookSkillBonus(t, skillKey){
@@ -3394,14 +3394,30 @@ function bookSkillBonus(t, skillKey){
 function gearSkillBonus(t, skillKey){
   return Math.max(equipSkillBonus(t, skillKey), bookSkillBonus(t, skillKey));
 }
+/* a Book Rank sometimes just points at a Feature by name ("…use the First Aid Expertise Feature…")
+   without saying what it does — pull out any capitalized "<Name> Feature" phrase that matches a
+   real Feature in the DB, so its Frequency + effect can be shown right underneath. */
+function bookRankFeatureRefs(text){
+  const found = new Map();
+  const re = /\b((?:[A-Z][\w'’-]*\s){1,5}?)Feature\b/g;
+  let m;
+  while((m = re.exec(text||""))){
+    const f = featureByName.get(m[1].trim());
+    if(f && !found.has(f.name)) found.set(f.name, f);
+  }
+  return [...found.values()];
+}
 /* full rules text of an item as readable paragraphs; a Book gets one block per Rank */
 function itemEffectNode(cat){
   const wrap = el("div",{class:"item-effect small"});
   const bk = cat && bookInfo(cat.name);
   if(bk){
     if(bk.desc) wrap.append(el("p",{class:"muted"}, bk.desc));
-    bk.ranks.forEach(r => wrap.append(el("p",{},
-      el("b",{}, `Rank ${r.n} — ${r.rank} ${r.skill}: `), r.text)));
+    bk.ranks.forEach(r => {
+      wrap.append(el("p",{}, el("b",{}, `Rank ${r.n} — ${r.rank} ${r.skill}: `), r.text));
+      bookRankFeatureRefs(r.text).forEach(f => wrap.append(el("p",{class:"muted",style:"margin-top:-3px;padding-left:10px"},
+        el("b",{}, f.name+": "), `${f.frequency?`(${f.frequency}) `:""}${f.effect||""}`)));
+    });
     return wrap;
   }
   cleanupText(cat && cat.effect).split(/\n+/).map(s=>s.trim()).filter(Boolean)
@@ -3517,6 +3533,10 @@ function booksCard(t){
         q.via && !free ? el("span",{class:"muted",style:"font-weight:600;margin-left:6px"},`(via ${q.via})`) : "",
         !q.ok && !free ? el("span",{style:"color:var(--bad);font-weight:600;margin-left:6px"},`🔒 needs ${q.need}`) : ""));
       txt.append(el("div",{class:"small"+(bound?"":" muted"),style:"margin-top:2px"}, r.text));
+      // a Rank that just namedrops a Feature ("…the First Aid Expertise Feature…") gets that
+      // Feature's actual rules spelled out underneath, instead of leaving it as a dangling reference
+      bookRankFeatureRefs(r.text).forEach(f => txt.append(el("div",{class:"small muted",style:"margin-top:4px;padding-left:8px;border-left:2px solid var(--line)"},
+        el("b",{}, f.name+": "), `${f.frequency?`(${f.frequency}) `:""}${f.effect||""}`)));
       row.append(txt);
       box.append(row);
     });
@@ -13524,19 +13544,28 @@ function openTokenMenu(token, map){
       else
         (L.obj.moves||[]).forEach(mn=>{ const m=moveByName.get((mn||"").toLowerCase()); if(m) mv.push(m); });
       const aoeMoves = mv.filter(m=>parseAoE(m.range));
+      // A Musician's Songs aren't Moves (no movelist entry to find a range on) — the class itself grants
+      // them: "As a Standard Action, you may trigger one Song, with an Area of Effect of Burst 4" (the
+      // Songs mechanic text on the Musician class). Offer the same one-click paint for any trainer/
+      // encounter-trainer who's taken the class, alongside their actual AoE moves.
+      const isMusician = (L.kind==="trainer"||L.kind==="enctrainer") &&
+        (L.obj.classes||[]).some(c => featKey(c) === featKey("Musician"));
       const rw = el("div",{style:"margin-top:16px"});
       rw.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"🎯 Attack ranges — paint on map"));
       const rrow = el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px"});
       aoeMoves.forEach(m=>{ const a=parseAoE(m.range);
         rrow.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",title:m.range,
           onclick:()=>{ startAoE(token, a.shape, a.size); closeModal(); }}, `${m.name} · ${a.shape} ${a.size}`)); });
+      if(isMusician) rrow.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
+        title:"Musician: Standard Action, trigger one Song, Area of Effect Burst 4 (Core p.164)",
+        onclick:()=>{ startAoE(token, "burst", 4); closeModal(); }}, "🎵 Song · burst 4"));
       rrow.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
         title:"draw a shape freely, not tied to any move — pick its type, size & facing from the panel that appears on the map",
         onclick:()=>{ startAoE(token, "burst", 1); closeModal(); }}, "✎ Manual shape…"));
       rw.append(rrow);
       rw.append(el("div",{class:"small muted",style:"margin-top:6px"},
         "Opens a panel on the map — turn it with the ↖↑↗ arrows (Burst has no facing), resize with the number box, or ✕ Clear range to remove it."));
-      if(!aoeMoves.length) rw.append(el("div",{class:"small muted"},"None of this creature's moves are area moves — use ✎ Manual shape to draw one."));
+      if(!aoeMoves.length && !isMusician) rw.append(el("div",{class:"small muted"},"None of this creature's moves are area moves — use ✎ Manual shape to draw one."));
       wrap.append(rw);
     }
 
@@ -14149,10 +14178,6 @@ function renderMap(){
       bar.append(el("span",{class:"map-sep"}),
         el("button",{class:"btn-primary",onclick:()=>openAddToken(map)},"＋ Add token"),
         el("button",{class:"btn-secondary",onclick:()=>clearMapTokens(map)},"Clear tokens"),
-        el("button",{class:"btn-secondary",onclick:()=>resizeTokensToSpecies(map),
-          title:"Recompute every token's footprint from its species (Small/Medium=1×1, Large=2×2, Huge=3×3, "
-               +"Gigantic=4×4) — fixes tokens that were placed before this existed, or that evolved since"},
-          "↺ Resize to species"),
         el("button",{class:"btn-secondary"+(map.fogOn?" on":""),onclick:()=>toggleFog(map),
           title:"Auto-reveals around player tokens; explored areas stay revealed"}, map.fogOn?"🌫 Fog on":"🌫 Fog off"),
       );
