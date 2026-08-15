@@ -4771,7 +4771,8 @@ function renderMonEditor(root, p){
   // "Mom?" isn't handed around or looked up like a normal species, but its Dex entry (species stats,
   // learnset, and — for a giftPatron species — the bond-level list) is useful GM reference: show the
   // button only to the GM, never to Lázaro or any other player.
-  if(sp && (!mom || isGM())) head.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("species",sp.name)},"Dex entry"));
+  // pass the Pokémon so the entry's Tutor list is answered for it (level / points / already knows)
+  if(sp && (!mom || isGM())) head.append(el("button",{class:"linkbtn",onclick:()=>speciesModal(sp,p)},"Dex entry"));
   root.append(head);
 
   /* persistent hero: sprite + identity + HP (most-used info up top) */
@@ -8434,25 +8435,30 @@ function openTutorMovePicker(p, sp){
   if(!p.unlocked && p.moves.length>=limit){ toast(`Move limit reached (${limit}). Tick "🔓 GM: allow any" to add more.`); return; }
   if(!p.unlocked && (p.tutorPoints||0)<TUTOR_COST){ toast(`Not enough Tutor Points — a Tutor move costs ${TUTOR_COST} (has ${p.tutorPoints||0}).`); return; }
   const cleanTutor = s => (s?.moves?.tutor||[]).map(m=>canonMoveName(m.replace(/\s*\(N\)\s*$/i,"").trim()));
-  let names, title, markSet;
+  let names, title, markSet, lockFn = null;
   if(p.unlocked){
     const learn = cleanTutor(sp);
     markSet = new Set(learn.map(x=>x.toLowerCase()));
     names = [...new Set([...learn, ...D.moves.map(m=>m.name)])];
     title = `Learn a Tutor move (🔓 any) — ${sp?sp.name+"'s Tutor list on top":"all moves"}`;
   } else {
-    names = cleanTutor(sp).filter(nm => tutorMoveAllowed(nm, p.level));   // level restriction
+    // ineligible moves stay listed but locked, so the player can see WHAT they'll be able to teach
+    // later and why it's blocked now, instead of the move just not being there
+    names = cleanTutor(sp);
     markSet = new Set();
+    lockFn = nm => { const min = tutorMinLevel(nm);
+      return (min!=null && p.level < min)
+        ? `Tutor restriction — this Pokémon must be Lv ${min} (it's Lv ${p.level})` : null; };
     title = `Learn a Tutor move — ${sp.name} (−${TUTOR_COST} Tutor Points, ${p.tutorPoints||0} left)`;
   }
   names = [...new Set(names)].filter(nm => !p.moves.includes(nm));
-  if(!names.length){ toast(p.unlocked?"No new Tutor moves available":`No eligible Tutor moves for Lv ${p.level} (Tutor restriction) — tick 🔓 to bypass.`); return; }
+  if(!names.length){ toast(p.unlocked?"No new Tutor moves available":`${p.nickname||sp.name} already knows every move on its Tutor list.`); return; }
   openPicker(title, names, name=>{
     if(p.moves.includes(name)) return;
     if(!p.unlocked) p.tutorPoints = Math.max(0,(p.tutorPoints||0)-TUTOR_COST);
     p.moves.push(name); save(); refreshMon(p);
     toast(`Learned ${name} (Tutor)`);
-  }, "move", markSet.size ? n=>markSet.has(n.toLowerCase()) : null);
+  }, "move", markSet.size ? n=>markSet.has(n.toLowerCase()) : null, lockFn);
 }
 
 /* Mentor class Feature (Core, Trainer Classes): Daily x3 Extended Action — target a Pokémon with a
@@ -12962,7 +12968,9 @@ function openSettings(){
       caption:"Preview — this is what evolving looks like."})},"▶ preview the evolution scene")));
   modal({title:"⚙ Settings", bodyNode:wrap, footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Done")]});
 }
-function speciesModal(s){
+/* `mon` (optional) = the Pokémon whose "Dex entry" button opened this, so the Tutor list can answer
+   "can I teach this one to THIS Pokémon right now?" rather than only stating the rule. */
+function speciesModal(s, mon){
   if(!s) return;
   const bs=s.baseStats;
   let html = `<div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">
@@ -13008,29 +13016,44 @@ function speciesModal(s){
                      return esc(canonMoveName(bare) + (bare===String(raw).trim() ? "" : " (N)")); }).join(", ")
     }</div></details>`;
     if(s.moves.tutor?.length){
-      // Full stat line per Tutor move, with the level the Tutor/Inheritance restriction gates it behind
-      html += `<details class="spoiler"><summary>Tutor Moves (${s.moves.tutor.length})
+      // Full stat line per Tutor move, with the level the Tutor/Inheritance restriction gates it behind.
+      // With a `mon` in hand, a "Can teach?" column answers it for that Pokémon specifically.
+      const monLv  = mon ? (mon.level||1) : null;
+      const knows  = mon ? new Set((mon.moves||[]).map(x=>String(x).toLowerCase())) : null;
+      const tp     = mon ? (mon.tutorPoints||0) : 0;
+      const rows   = s.moves.tutor.map(raw=>{
+        const bare = String(raw).replace(/\s*\(N\)\s*$/i,"").trim();
+        const nm   = canonMoveName(bare);
+        return { raw, bare, nm, m:moveByName.get(bare.toLowerCase()), min:tutorMinLevel(bare),
+                 known: knows ? knows.has(nm.toLowerCase()) : false };
+      });
+      const okNow = rows.filter(r=>!r.known && (r.min==null || monLv>=r.min)).length;
+      html += `<details class="spoiler"><summary>Tutor Moves (${rows.length})
           <span class="small muted">— Lv = level needed to learn it through Tutoring</span></summary>
+        ${mon?`<div class="r-body" style="margin-top:6px"><b>${esc(monLabel(mon))}</b> · Lv ${monLv} ·
+            ${tp} Tutor Point${tp===1?"":"s"} → <b>${okNow} of ${rows.length}</b> can be taught right now
+            <span class="muted">(${TUTOR_COST} Tutor Points each${tp<TUTOR_COST?" — not enough points":""})</span></div>`:""}
         <div class="r-meta" style="margin-top:6px">Tutor &amp; Inheritance restrictions — Moves taught through Tutoring
           Features (Mentor's Move Tutor and Egg Tutor, Chronicler's Archive Tutor):</div>
         <div class="r-body" style="margin-bottom:6px">
           · Under Lv 20: only At-Will or EOT Frequency, max Damage Base 7.<br>
           · Lv 20–29: up to Scene Frequency, max Damage Base 9.<br>
           · Lv 30+: no restrictions.</div>
-        <table class="movetable"><tr><th>Lv</th><th>Move</th><th>Type</th><th>Damage</th><th>Effect</th></tr>
-        ${s.moves.tutor.map(raw=>{
-          const bare = String(raw).replace(/\s*\(N\)\s*$/i,"").trim();
-          const nm   = canonMoveName(bare);
+        <table class="movetable"><tr>${mon?"<th>Can teach?</th>":""}<th>Lv</th><th>Move</th><th>Type</th><th>Damage</th><th>Effect</th></tr>
+        ${rows.map(({raw,bare,nm,m,min,known})=>{
           const mark = bare===String(raw).trim() ? "" : ` <span class="small muted" title="Mentor's Move Tutor list">(N)</span>`;
-          const m    = moveByName.get(bare.toLowerCase());
-          const min  = tutorMinLevel(bare);
           const lv   = min==null ? `<span class="muted" title="not in the move database — GM's call">—</span>` : min;
           const dmg  = m && m.damageBase
                        ? `DB ${m.damageBase} <span class="small muted">${esc((DB_TABLE[m.damageBase]||"?").split("/")[0].trim())}</span>`
                        : `<span class="muted">—</span>`;
           const meta = m ? [m.frequency, m.class, m.ac!=null&&m.ac!==""?`AC ${m.ac}`:"", m.range]
                              .filter(Boolean).map(x=>esc(x)).join(" · ") : "not in database";
-          return `<tr><td>${lv}</td>
+          const can  = !mon ? ""
+                     : known                ? `<td class="small muted">✔ knows it</td>`
+                     : min==null            ? `<td class="small">✅ <span class="muted">GM's call</span></td>`
+                     : monLv>=min           ? `<td class="small">✅ yes</td>`
+                     : `<td class="small" style="color:var(--bad)">🔒 at Lv ${min}</td>`;
+          return `<tr>${can}<td>${lv}</td>
             <td>${esc(nm)}${mark}<div class="small muted">${meta}</div></td>
             <td>${m?typeBadge(m.type):""}</td><td>${dmg}</td>
             <td class="small">${m?annotateKeywords(esc(m.effect||"—")):"—"}</td></tr>`;
@@ -14619,7 +14642,7 @@ function monInfoModal(m){
   if(!mvs.length) wrap.append(el("div",{class:"small muted"},"none"));
 
   modal({title:`${m.nickname||sp?.name||m.species} — Lv ${m.level}`, bodyNode:wrap, footNodes:[
-    sp?el("button",{class:"btn-secondary",onclick:()=>speciesModal(sp)},"📖 Species entry"):"",
+    sp?el("button",{class:"btn-secondary",onclick:()=>speciesModal(sp,m)},"📖 Species entry"):"",
     el("button",{class:"btn-primary",onclick:closeModal},"Close"),
   ].filter(Boolean)});
 }
