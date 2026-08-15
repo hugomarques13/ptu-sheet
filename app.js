@@ -634,14 +634,20 @@ function evolveTo(p, targetName, stoneItem){
 
 /* ===================================================================
    Evolution animation & sound
-   The games' evolution scene: the Pokémon flashes to a white silhouette
-   and swells, snaps back to its old shape, and repeats faster and faster
-   until a final flash leaves the NEW Pokémon standing there — with the
-   beeping that speeds up along with it and a fanfare at the end.
-   Sound is synthesised with WebAudio (square-wave beeps + an ascending
-   arpeggio), so there's no audio file to ship and it still works offline
-   in the single-file bundle. Both halves can be turned off in ⚙ Settings.
+   The Gen 3 evolution scene, rebuilt from a capture of it: on a black
+   field the Pokémon becomes a pure white silhouette that flips back and
+   forth between its OLD and NEW shapes — the new one bigger — swapping
+   faster and faster, with sparks drifting up past it. It ends on a burst
+   of light, a full white flash, and the new Pokémon standing there.
+
+   The sound is the real thing, cut from that capture and inlined as a
+   data URI in sfx.js: one pass of the looping evolution theme spliced on
+   the loop boundary into the closing sound bite. The splice lands at
+   exactly 4.000s, so EVO_FLASH_AT below is what keeps the white flash on
+   the music. If sfx.js isn't loaded (older offline bundle) it falls back
+   to synthesised beeps. Both halves toggle in ⚙ Settings.
 =================================================================== */
+const EVO_FLASH_AT = 4000;    // ms — the seam in the audio; the flash has to land here
 function evoFxOn(){ return localStorage.getItem("ptu_evo_fx") !== "0"; }        // on unless switched off
 function evoSoundOn(){ return localStorage.getItem("ptu_evo_sound") !== "0"; }
 let _audioCtx = null;
@@ -674,74 +680,116 @@ function evolutionFanfare(delay=0){
   beep(1046.50, delay + 0.46, 0.55, {type:"square", vol:0.12});          // C6 held
   beep(1318.51, delay + 0.46, 0.55, {type:"triangle", vol:0.09});        // E6 on top
 }
+/* The swap schedule: how long each silhouette is held before flipping to the other shape. Starts
+   slow and tightens up, and the whole list is scaled to land exactly on EVO_FLASH_AT. */
+function evoSwapPlan(totalMs){
+  const holds = [];
+  let h = 430, left = totalMs;                          // ~430ms per shape, tightening to ~95ms
+  while(left > 0){
+    const d = Math.min(h, left);
+    holds.push(d); left -= d;
+    h = Math.max(95, h * 0.9);
+  }
+  // a tiny leftover would flicker one shape for a few ms — give it to the swap before it instead
+  if(holds.length > 1 && holds[holds.length-1] < 40) holds[holds.length-2] += holds.pop();
+  return holds;
+}
+/* the drifting sparks that rise past the silhouette while it flips */
+function evoSparkLayer(){
+  const layer = el("div",{class:"evo-sparks"});
+  for(let i=0;i<22;i++){
+    const s = el("i",{style:`left:${Math.round(Math.random()*100)}%;`
+      + `--d:${(1.6+Math.random()*1.8).toFixed(2)}s;--delay:${(Math.random()*3).toFixed(2)}s;`
+      + `--sz:${(2+Math.random()*3).toFixed(1)}px;--drift:${Math.round(-24+Math.random()*48)}px`});
+    layer.append(s);
+  }
+  return layer;
+}
+/* the ring of light that bursts outward the instant before the flash */
+function evoBurstLayer(){
+  const layer = el("div",{class:"evo-burst"});
+  for(let i=0;i<16;i++){
+    const a = (i/16)*Math.PI*2;
+    layer.append(el("i",{style:`--dx:${Math.round(Math.cos(a)*170)}px;--dy:${Math.round(Math.sin(a)*170)}px`}));
+  }
+  return layer;
+}
 /* Runs the overlay. Returns a Promise that resolves when it's gone — always resolves, even if the
    user taps to skip or the browser blocks audio. */
 function playEvolutionFX({ fromName, toName, shiny, fromImg, toImg, caption } = {}){
   if(!evoFxOn()) return Promise.resolve();
   return new Promise(resolve=>{
-    const PULSES = [400, 350, 305, 265, 230, 200, 175, 155, 140, 130];   // ms per pulse — accelerating
     const overlay = el("div",{class:"evo-overlay"});
     const stage   = el("div",{class:"evo-stage"});
     const before  = monSprite(fromName, shiny, "evo-sprite", fromImg || undefined);
-    const after   = monSprite(toName,   shiny, "evo-sprite", toImg   || undefined);
-    after.classList.add("evo-after");
-    stage.append(before, after);
+    const after   = monSprite(toName,   shiny, "evo-sprite evo-after", toImg || undefined);
+    // during the flipping BOTH are silhouettes; the new shape reads bigger, as it does in the games
+    before.classList.add("white","evo-on");
+    after.classList.add("white");
+    const sparks = evoSparkLayer(), burst = evoBurstLayer();
+    stage.append(sparks, before, after, burst);
     const cap = el("div",{class:"evo-caption"}, caption || `${fromName} evolved into ${toName}!`);
     overlay.append(stage, cap);
     document.body.append(overlay);
 
-    let done = false, timers = [];
+    let done = false, timers = [], audio = null;
     const at = (ms, fn) => timers.push(setTimeout(fn, ms));
     const finish = () => {
       if(done) return; done = true;
       timers.forEach(clearTimeout);
+      if(audio){ try{ audio.pause(); }catch(e){} }
       overlay.classList.add("closing");
       setTimeout(()=>{ overlay.remove(); resolve(); }, 260);
     };
     overlay.addEventListener("click", finish);          // tap anywhere to skip
-    // both sprites are absolutely positioned and centred with a translate, so every scale we set
-    // has to carry that translate with it or the Pokémon slides off-centre as it grows
+    // the sprites are absolutely positioned and centred with a translate, so every scale we set has
+    // to carry that translate with it or the Pokémon slides off-centre as it grows
     const scaleTo = (node, s) => { node.style.transform = `translate(-50%,-50%) scale(${s})`; };
 
-    // ---- pulse phase: white silhouette swells, then snaps back to the old Pokémon ----
-    let t = 120;
-    PULSES.forEach((dur, i)=>{
+    // ---- sound: the real clip if sfx.js is loaded, else the synthesised stand-in ----
+    const clip = window.PTU_SFX && PTU_SFX.evolution;
+    if(evoSoundOn() && clip){
+      try{
+        audio = new Audio(clip); audio.volume = 0.55;
+        audio.play().catch(()=>{ audio = null; });      // autoplay refused → just run it silently
+      }catch(e){ audio = null; }
+    }
+    const synth = evoSoundOn() && !clip;                 // only beep when there's no clip to play
+
+    // ---- flip phase: the silhouette snaps between the old and the new shape, faster and faster ----
+    const plan = evoSwapPlan(EVO_FLASH_AT - 200);
+    let t = 200, showingNew = false;
+    plan.forEach((hold, i)=>{
       at(t, ()=>{
-        before.style.transition = `transform ${Math.round(dur*0.5)}ms ease-in, filter ${Math.round(dur*0.35)}ms linear`;
-        before.classList.add("white");
-        scaleTo(before, 1 + 0.05*(i+1));
-        if(evoSoundOn()) beep(430 + i*38, 0, Math.min(0.16, dur/1000*0.55), {vol:0.10, glide:120});
+        showingNew = !showingNew;
+        const on = showingNew ? after : before, off = showingNew ? before : after;
+        // the new shape sits a touch larger, and both creep up in size as the flipping speeds up
+        const grow = 1 + 0.03*i + (showingNew ? 0.16 : 0);
+        on.style.transition = "transform 90ms ease-out";
+        scaleTo(on, grow); on.classList.add("evo-on"); off.classList.remove("evo-on");
+        if(synth) beep(showingNew ? 520 + i*26 : 400 + i*22, 0, Math.min(0.14, hold/1000*0.5), {vol:0.10});
       });
-      at(t + dur*0.5, ()=>{
-        before.classList.remove("white");
-        scaleTo(before, 1);
-      });
-      t += dur;
+      t += hold;
     });
 
-    // ---- the reveal: hold the silhouette, flash, and the new Pokémon is standing there ----
-    at(t, ()=>{
-      before.style.transition = "transform 620ms cubic-bezier(.2,.8,.3,1), opacity 260ms linear";
-      before.classList.add("white");
-      scaleTo(before, 1.55);
-      after.classList.add("white");
-      scaleTo(after, 1.55);
-      if(evoSoundOn()) beep(300, 0, 0.75, {type:"sawtooth", vol:0.08, glide:900});
-    });
-    at(t + 620, ()=>{
+    // ---- the burst, the flash, and the new Pokémon standing there ----
+    at(EVO_FLASH_AT - 320, ()=>{ burst.classList.add("go"); sparks.classList.add("out"); });
+    at(EVO_FLASH_AT, ()=>{
       overlay.classList.add("flash");
-      before.style.opacity = "0";
-      after.classList.add("show");
+      before.classList.remove("evo-on");
+      after.classList.add("evo-on");
+      after.style.transition = "none"; scaleTo(after, 1.5);
+      if(synth){ beep(300, 0, 0.5, {type:"sawtooth", vol:0.08, glide:900}); evolutionFanfare(0.35); }
     });
-    at(t + 780, ()=>{
-      after.style.transition = "transform 420ms cubic-bezier(.2,.8,.3,1), filter 380ms linear";
-      after.classList.remove("white");
-      scaleTo(after, 1);
+    at(EVO_FLASH_AT + 260, ()=>{
       overlay.classList.remove("flash");
-      cap.classList.add("show");
-      evolutionFanfare(0.05);
+      after.style.transition = "transform 520ms cubic-bezier(.2,.8,.3,1), filter 460ms linear";
+      after.classList.remove("white");                   // colour comes back as it settles
+      scaleTo(after, 1);
+      overlay.append(evoSparkLayer());                   // a second drift of sparks over the reveal
     });
-    at(t + 2600, finish);
+    at(EVO_FLASH_AT + 620, ()=>cap.classList.add("show"));
+    at(EVO_FLASH_AT + 2500, finish);                     // ≈ the length of the closing sound bite
   });
 }
 /* GM-only: undo the most recent evolveTo, e.g. to fix an accidental tap or a wrongly-chosen
@@ -1224,6 +1272,11 @@ function resetUses(owner, mode){
     if(kinds.includes(freqInfo(itemFreqForKey(key)).kind)) delete owner.uses[key];
   });
 }
+/* Berry Storage (Ability): the 3 extra Digestion Buffs it stores "are lost after an Extended Rest".
+   Ordinary Buffs are food you've eaten and not yet used, so they survive a rest untouched. */
+function clearStorageDigestion(o){
+  if(o && Array.isArray(o.digestion)) o.digestion = o.digestion.filter(b=>!b.storage);
+}
 /* HP a combatant can be healed up to, capped by Injuries (each Injury = −10% of Max) */
 function injuryHealCap(maxHP, injuries){
   return Math.floor(maxHP * (10 - Math.min(10, injuries||0)) / 10);
@@ -1246,12 +1299,13 @@ function applyEndDay(c){
   if(!c) return;
   const t = c.trainer; normTrainer(t);
   t.usedAP = 0; t.tempHP = 0; t.buffs = []; resetUses(t, "all"); resetManualCS(t);
+  clearStorageDigestion(t);                        // Berry Storage: "all Buffs gained this way are lost after an Extended Rest"
   t.statuses = [];                                 // Extended Rest cures all Status afflictions (Core p.249)
   t.injuries = Math.max(0, (t.injuries||0) - 1);   // Extended Rest heals 1 Injury (Core p.249)
   t.currentHP = trainerDerived(t).hp;              // heal to remaining-injury-capped max
   (c.pokemon||[]).forEach(p => { normPokemon(p);
     if(p.mega) megaRevert(p,true);        // revert Mega before healing so max HP is the base form's
-    p.tempHP = 0; p.buffs = []; resetUses(p, "all"); resetManualCS(p);
+    p.tempHP = 0; p.buffs = []; resetUses(p, "all"); resetManualCS(p); clearStorageDigestion(p);
     p.statuses = [];                      // cure all Status afflictions on the whole party too
     p.injuries = Math.max(0, (p.injuries||0) - 1);
     p.currentHP = pokeDerived(p).maxHP;   // heal to full (already capped by remaining Injuries)
@@ -1307,7 +1361,7 @@ function newTrainer() {
   STATS.forEach(([k]) => combat[k] = { base: k === "hp" ? 10 : 5, added: 0 });
   return {
     name:"", age:"", gender:"", heightTxt:"", weightTxt:"", size:"Medium", weightClass:3,
-    level:1, xp:0, money:0,
+    level:1, xp:0, money:0, moneyLog:[],
     classes:[], skills, combat, edges:[], features:[], techniques:[], abilities:[],
     inventory:[], equipment:{}, books:{}, gifts:[], background:"", notes:"", appearance:"",
     currentHP:null, tempHP:0, injuries:0, usedAP:0, unlocked:false, uses:{}, avatar:"", weapons:[],
@@ -1347,6 +1401,7 @@ function normPokemon(p){
   if(!Array.isArray(p.statuses)) p.statuses = [];
   if(!Array.isArray(p.auras)) p.auras = [];   // Legendary Auras (encounter-only; seeded when added to an encounter)
   if(!Array.isArray(p.buffs)) p.buffs = [];        // active Cheers / Orders / Songs (#2)
+  if(!Array.isArray(p.digestion)) p.digestion = [];       // stored Digestion Buffs from eaten Snacks (Core p.278)
   if(!Array.isArray(p.customMoves)) p.customMoves = [];   // freeform move/action notes not in the DB
   if(!("typeAce" in p)) p.typeAce = null;    // {ability:"Last Chance"|"Type Strategist", type} — granted by the Trainer's Type Ace Feature
   if(!("moveSync" in p)) p.moveSync = null;  // {move, type} — the one Move Sync'd Move permanently retyped by Move Sync
@@ -1387,6 +1442,7 @@ function normTrainer(t){
   if(!t.equipment || typeof t.equipment!=="object" || Array.isArray(t.equipment)) t.equipment = {};  // worn gear per slot
   if(!t.books || typeof t.books!=="object" || Array.isArray(t.books)) t.books = {};                   // studied Books → {name:{bound,subject?,field?}}
   if(!Array.isArray(t.gifts)) t.gifts = [];                        // Legendary Gifts (Blessed and the Damned)
+  if(!Array.isArray(t.moneyLog)) t.moneyLog = [];                  // every dollar in or out, oldest first (see moneyChange)
   // migrate ranged weapons saved with the old (wrong) melee-copied stats — only when they still
   // match the old preset exactly, so hand-tuned weapons are left alone (Core p.286).
   t.weapons.forEach(w=>{
@@ -1404,6 +1460,7 @@ function normTrainer(t){
   if(!t.levelUp || typeof t.levelUp!=="object") t.levelUp = {};   // per-level choice tracker
   if(!Array.isArray(t.techniques)) t.techniques = [];             // learned class Techniques
   if(!Array.isArray(t.abilities)) t.abilities = [];                // Pokémon-style Abilities some Features/classes grant (e.g. Martial Artist's Guts)
+  if(!Array.isArray(t.digestion)) t.digestion = [];                // stored Digestion Buffs from eaten Snacks (Core p.278)
   if(!Array.isArray(t.moves)) t.moves = [];                       // combat Moves granted by Features/class
   if(!Array.isArray(t.buffs)) t.buffs = [];                       // active Cheers / Orders / Songs (#2)
   if(!Array.isArray(t.customActions)) t.customActions = [];       // freeform actions/notes not in any DB/Feature
@@ -1926,6 +1983,7 @@ function renderTrainer(){
     return;
   }
   if(trainerTab==="gear"){
+    root.append(moneyLedgerCard(t));
     root.append(inventoryCard(t));
     const nc = el("div",{class:"card"}, el("h3",{},"Background & Notes"));
     nc.append(field("Appearance","trainer.appearance",{type:"textarea"}));
@@ -1992,6 +2050,9 @@ function renderTrainer(){
 
   /* buffs & orders (Cheers / Commander Orders / Musician Songs) */
   root.append(buffsCard(t, ()=>preserveScroll(()=>{ save(); renderTrainer(); })));
+
+  /* food: Snacks out of the bag → Digestion Buffs, plus Refreshments (Core p.278-279) */
+  root.append(digestionCard(t, ()=>preserveScroll(()=>{ save(); renderTrainer(); })));
 
   /* weapons (modify Struggle) */
   root.append(weaponsCard(t));
@@ -2233,11 +2294,15 @@ function trainerAttackProfile(t, weaponMoveName, w){
 function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const st = trainerAttackProfile(t, weaponMoveName, w);
   const atk = t.combat.atk.base + t.combat.atk.added;
-  const bm = buffMods(t);                 // active Cheers / Orders / Songs (#2)
+  // a Trainer's weapon/Struggle attack is always Physical (Core p.286), bar an elemental Struggle
+  const bm = buffMods(t, {isPhys: (st.cls||"Physical") !== "Special"});
   /* Struggle Attacks (unarmed and plain weapon strikes) have no Move behind them and never get
      STAB; a real Move does, if Type Expertise named its Type. */
   const isStruggleAtk = !st.move;
-  const stab = trainerStab(t, st.type, isStruggleAtk);
+  /* A Status Move has no Damage Base at all, so there is nothing for STAB (or a buff's +DB) to
+     raise — without this guard a DB-less Move would come out as a DB 2 attack. */
+  const dealsDamage = typeof st.damageBase === "number" && st.damageBase > 0;
+  const stab = dealsDamage && trainerStab(t, st.type, isStruggleAtk);
   const stabDB = stab ? 2 : 0;
   const accCS = trainerDerived(t).cs.acc||0;   // Accuracy Combat Stage: flat add to Accuracy Rolls (Core p.234)
   /* Multi-strike Weapon Moves (Core p.242) — the keywords live in the profile's range string, e.g.
@@ -2246,7 +2311,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const nAcc = dblStrike ? 2 : 1;
   let targetEva = 0;                      // target's Evasion — auto-counts the Double Strike hits
   const rawDB   = st.damageBase||0;       // the Move's own Damage Base — what Five Strike multiplies
-  const baseDBv = Math.min(28, rawDB + stabDB + (bm.db||0));
+  const baseDBv = dealsDamage ? Math.min(28, rawDB + stabDB + (bm.db||0)) : 0;
   const diceFor = db => (DB_TABLE[Math.max(0,Math.min(28,db))]||"").split("/")[0].trim();
   const diceStr = diceFor(baseDBv);
   const dm = diceStr.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
@@ -2276,7 +2341,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   body.append(el("div",{class:"chips",style:"margin-bottom:10px"},
     el("span",{html:typeBadge(st.type)}), el("span",{class:"kv"},st.cls||"Physical"),
     el("span",{class:"kv"},`AC ${st.ac}`),
-    el("span",{class:"kv"},`DB ${st.damageBase}${stabDB?" +2 STAB":""}`), el("span",{class:"kv"},st.range),
+    el("span",{class:"kv"}, dealsDamage ? `DB ${st.damageBase}${stabDB?" +2 STAB":""}` : "no damage"),
+    el("span",{class:"kv"},st.range),
     stab?el("span",{class:"kv",title:"Type Expertise — you gain STAB for this Type"},`⚡ STAB (${st.type})`):"",
     st.frequency?freqChip:""));
   if(st.weapon) body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
@@ -2337,8 +2403,11 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   if(tbuffs.length){
     const bcard = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
     bcard.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},"✨ Buffs & Orders active"));
-    tbuffs.forEach(b=>{ const mt=buffModText(b.mods);
-      bcard.append(el("div",{class:"small"}, `• ${b.name}` + (mt?` — ${mt}`:""), b.note?el("span",{class:"muted"},"  "+b.note):"")); });
+    const isPhysAtk = (st.cls||"Physical") !== "Special";
+    tbuffs.forEach(b=>{ const mt=buffModText(b.mods); const off = !buffApplies(b, {isPhys:isPhysAtk});
+      bcard.append(el("div",{class:"small"+(off?" muted":"")}, `• ${b.name}` + (mt?` — ${mt}`:"")
+        + (off?` — ${b.only==="phys"?"Physical":"Special"} attacks only, not counted here`:""),
+        b.note?el("span",{class:"muted"},"  "+b.note):"")); });
     body.append(bcard);
   }
 
@@ -2447,27 +2516,149 @@ function trainerAvatar(t){
   wrap.append(acts);
   return wrap;
 }
+/* ═══════════════════════ MONEY & THE LEDGER ═══════════════════════
+   Money never just changes. Every movement is written down on the sheet itself
+   (`t.moneyLog`): when, how much, what the balance became, why, and who did it. So
+   "where did my $4,000 go?" is a question the sheet answers on its own — whether it
+   went on Hyper Potions, arrived as the GM's payday, or was typed in by hand.
+
+   There is exactly ONE way money moves — moneyChange() — so a source that forgets to
+   write itself down can't exist: the shop till, the GM's Payday tool and the ± buttons
+   all go through here.
+
+   Entries are stored OLDEST FIRST and each carries an `id`, because that's precisely
+   the shape the field-level cloud sync can send as a single append op (see diffOps):
+   a purchase uploads one new line, not the whole history. The UI reverses them. */
+const MONEY_LOG_MAX = 120;                       // keep a session's worth; the oldest fall off the front
+const MONEY_KIND_ICON = { shop:"🛒", payday:"💰", gm:"🎩", hand:"✎", set:"🖉" };
+function moneyOf(t){ const n = parseFloat(t && t.money); return (isFinite(n) && n>0) ? n : 0; }
+function fmtMoney(n){ return "$" + (Math.round((Number(n)||0)*100)/100).toLocaleString(); }
+function moneyLogOf(t){ return Array.isArray(t.moneyLog) ? t.moneyLog : (t.moneyLog = []); }
+/* Who is at the keyboard — so a player reading their own ledger can tell "the GM paid
+   this in" apart from "I typed it in myself". Blank offline: there's only one of you. */
+function moneyActor(){
+  if(mode!=="cloud") return "";
+  const n = (cloud.name||"").trim();
+  return cloud.isGM ? (n ? `${n} (GM)` : "GM") : n;
+}
+/* Move money and record it. Returns the delta ACTUALLY applied — you can't go below $0,
+   and the ledger records what really happened rather than what was asked for. */
+function moneyChange(t, delta, why, opts={}){
+  if(!t) return 0;
+  const before = moneyOf(t);
+  const after  = Math.max(0, before + (Number(delta)||0));
+  const d = after - before;
+  if(!d) return 0;                                  // nothing moved → nothing worth writing down
+  t.money = after;
+  const log = moneyLogOf(t);
+  log.push({ id:uid(), at:Date.now(), delta:d, after,
+             why:String(why||"").trim().slice(0,140), kind:opts.kind||"hand",
+             by:(opts.by!=null ? opts.by : moneyActor()) });
+  if(log.length > MONEY_LOG_MAX) log.splice(0, log.length - MONEY_LOG_MAX);
+  return d;
+}
+/* "the total is wrong" — a correction, logged as the difference it actually made */
+function moneySetTo(t, value, why, opts){
+  return moneyChange(t, Math.max(0, parseFloat(value)||0) - moneyOf(t), why, opts);
+}
+/* the balance the ledger starts from: everything the sheet had before it kept records */
+function moneyLogOpening(t){
+  const log = moneyLogOf(t);
+  return log.length ? Math.max(0, (log[0].after||0) - (log[0].delta||0)) : moneyOf(t);
+}
+/* one line of the ledger. `who` is only passed by the GM's party-wide view. */
+function moneyLogRow(e, who){
+  const when = new Date(e.at||0);
+  const up = (e.delta||0) > 0;
+  const row = el("div",{class:"money-row"});
+  row.append(el("div",{class:"money-amt "+(up?"up":"down"),title:`balance afterwards: ${fmtMoney(e.after)}`},
+    (up?"＋":"－") + fmtMoney(Math.abs(e.delta||0))));
+  const mid = el("div",{style:"flex:1;min-width:0"});
+  mid.append(el("div",{class:"money-why"}, MONEY_KIND_ICON[e.kind]||"", " ",
+    (who ? el("b",{},who+" — ") : ""), e.why || (up?"money in":"money out")));
+  mid.append(el("div",{class:"small muted"}, when.toLocaleString(),
+    e.by ? ` · by ${e.by}` : "", ` · left ${fmtMoney(e.after)}`));
+  row.append(mid);
+  return row;
+}
+/* The ledger itself, newest first. `limit` shows only the most recent few (the card on the
+   Inventory tab); the modal passes nothing and shows the lot. */
+function moneyLogList(t, limit){
+  const log = moneyLogOf(t);
+  const box = el("div",{class:"money-log"});
+  if(!log.length){
+    box.append(el("div",{class:"small muted"},
+      `nothing recorded yet — the balance of ${fmtMoney(moneyOf(t))} is where this sheet starts.`));
+    return box;
+  }
+  const rows = log.slice().reverse();
+  (limit ? rows.slice(0,limit) : rows).forEach(e=> box.append(moneyLogRow(e)));
+  if(!limit || rows.length<=limit)
+    box.append(el("div",{class:"small muted",style:"padding-top:6px"},
+      `…before all this: ${fmtMoney(moneyLogOpening(t))} on hand.`));
+  return box;
+}
+/* `onSave` matters when the GM opens someone ELSE's ledger from the Payday card: plain
+   save() only writes the sheet you're looking at, so that caller passes its own row's upsert. */
+function openMoneyLedger(t, whoseName, onSave){
+  const body = el("div",{});
+  body.append(el("div",{class:"money-balance"}, fmtMoney(moneyOf(t)),
+    el("span",{class:"small muted"}," on hand")));
+  body.append(moneyLogList(t));
+  modal({ title:(whoseName? whoseName+" — " : "")+"💰 Money ledger", bodyNode:body, footNodes:[
+    moneyLogOf(t).length ? el("button",{class:"btn ghost danger",onclick:()=>{
+      if(!confirm("Clear this ledger? The balance is kept — only the history goes.")) return;
+      t.moneyLog = []; (onSave||save)(); closeModal(); render();
+    }},"Clear history") : "",
+    el("button",{class:"btn-primary",onclick:closeModal},"Close"),
+  ]});
+}
 /* Money with ± buttons: type an amount and add or subtract it instead of doing the arithmetic by
-   hand in the total. The total itself stays directly editable (GM corrections, starting cash). */
+   hand in the total. The total itself stays directly editable (GM corrections, starting cash).
+   The "what for?" box is what the ledger will say — leave it blank and it just says by hand. */
 function moneyField(t){
   const wrap = el("label",{class:"field"}, el("span",{},"Money ($)"));
-  const total = el("input",{type:"number",min:0,title:"money on hand"});
+  const total = el("input",{type:"number",min:0,title:"money on hand — every change is written down in the ledger"});
   total.value = t.money||0;
-  total.addEventListener("change",()=>{ t.money = Math.max(0, parseFloat(total.value)||0); total.value = t.money; save(); });
+  const why = el("input",{type:"text",placeholder:"what for? (optional)",style:"margin-top:5px",
+    title:"the note this shows up as in the ledger"});
+  const redraw = () => preserveScroll(()=>{ save(); renderTrainer(); });
+  total.addEventListener("change",()=>{
+    moneySetTo(t, total.value, why.value.trim() || "corrected by hand", {kind:"set"});
+    total.value = t.money; why.value = ""; redraw();
+  });
   const amt = el("input",{type:"number",min:0,placeholder:"amount",style:"flex:1;min-width:64px"});
   const bump = (sign,e) => {
     if(e) e.preventDefault();
     const n = Math.abs(parseFloat(amt.value)||0); if(!n) { amt.focus(); return; }
-    t.money = Math.max(0, (parseFloat(t.money)||0) + sign*n);
-    total.value = t.money; amt.value = ""; save();
-    toast(`${sign>0?"＋":"－"}$${n} · now $${t.money}`);
+    const d = moneyChange(t, sign*n, why.value.trim() || (sign>0?"added by hand":"spent by hand"), {kind:"hand"});
+    amt.value = ""; why.value = "";
+    toast(`${d>0?"＋":"－"}${fmtMoney(Math.abs(d))} · now ${fmtMoney(t.money)}`);
+    redraw();
   };
   amt.addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); bump(1); } });
   wrap.append(total, el("div",{class:"inline",style:"gap:6px;margin-top:5px;flex-wrap:nowrap"},
     amt,
     el("button",{class:"btn ghost",style:"padding:4px 11px",title:"subtract this amount",onclick:e=>bump(-1,e)},"－"),
     el("button",{class:"btn-secondary",style:"padding:4px 11px",title:"add this amount",onclick:e=>bump(1,e)},"＋")));
+  wrap.append(why);
+  wrap.append(el("button",{class:"linkbtn",style:"margin-top:4px;text-align:left",
+    title:"every payment in and out of this sheet",
+    onclick:e=>{ e.preventDefault(); openMoneyLedger(t); }},
+    `📜 Ledger (${moneyLogOf(t).length})`));
   return wrap;
+}
+/* the same ledger as a card, for the Inventory tab — the page you go to when you want
+   to know where the money went rather than to spend it */
+function moneyLedgerCard(t){
+  const log = moneyLogOf(t);
+  const card = el("div",{class:"card"}, el("h3",{},"💰 Money",
+    el("button",{class:"linkbtn h-act",onclick:()=>openMoneyLedger(t)},
+      log.length>8 ? `see all ${log.length}` : "open ledger")));
+  card.append(el("div",{class:"money-balance"}, fmtMoney(moneyOf(t)),
+    el("span",{class:"small muted"}," on hand")));
+  card.append(moneyLogList(t, 8));
+  return card;
 }
 /* Trainer EXP (houserule): 10 EXP = one level. t.level stays authoritative; t.xp is 0..9 progress toward it. */
 const TRAINER_XP_PER_LEVEL = 10;
@@ -4888,16 +5079,27 @@ const PTU_BUFFS = [
 const buffByKey = new Map(PTU_BUFFS.map(b=>[b.key,b]));
 const BUFF_CATS = ["Cheerleader","Commander","Musician"];
 function ownerBuffs(owner){ return Array.isArray(owner?.buffs) ? owner.buffs : []; }
+/* Some buffs only apply to one damage class — a Spicy Wrap's +5 is Physical attacks only, a Dry
+   Wafer's is Special. `b.only` carries that; pass ctx={isPhys} from a roll to honour it. With no
+   ctx (a card just listing what's active) every buff counts, so nothing silently disappears. */
+function buffApplies(b, ctx){
+  if(!b.only || !ctx || ctx.isPhys==null) return true;
+  return b.only === (ctx.isPhys ? "phys" : "spec");
+}
 /* total numeric contribution of an owner's active buffs, for a roll */
-function buffMods(owner){
+function buffMods(owner, ctx){
   const s = { acc:0, dmg:0, crit:0, db:0, dr:0 };
-  ownerBuffs(owner).forEach(b=>{ const m=b.mods||{}; s.acc+=m.acc||0; s.dmg+=m.dmg||0; s.crit+=m.crit||0; s.db+=m.db||0; s.dr+=m.dr||0; });
+  ownerBuffs(owner).forEach(b=>{ if(!buffApplies(b,ctx)) return;
+    const m=b.mods||{}; s.acc+=m.acc||0; s.dmg+=m.dmg||0; s.crit+=m.crit||0; s.db+=m.db||0; s.dr+=m.dr||0; });
   return s;
 }
 /* Damage Reduction an owner's active buffs grant, and which buffs supply it (defender side). */
 function buffDR(owner){
   let dr = 0; const from = [];
-  ownerBuffs(owner).forEach(b=>{ const d=(b.mods&&b.mods.dr)||0; if(d){ dr+=d; from.push(b.name); } });
+  // a class-restricted DR (a Sour Candy is Physical-only) still totals up here — the Damage/Heal box
+  // has no idea what class the incoming hit was — but it says so, so it's obvious when it shouldn't count
+  ownerBuffs(owner).forEach(b=>{ const d=(b.mods&&b.mods.dr)||0;
+    if(d){ dr+=d; from.push(b.name + (b.only?` — ${b.only==="phys"?"Physical":"Special"} only`:"")); } });
   // worn armor adds flat Damage Reduction too (permanent — never consumed like one-shot buffs)
   if(isTrainerOwner(owner)){ const e=equipDR(owner); if(e.dr){ dr+=e.dr; e.from.forEach(n=>from.push(n)); } }
   return { dr, from };
@@ -5124,6 +5326,15 @@ const SNACK_DEFS = [
     note:`Weakens that ${ty}-Type Move by one step of effectiveness (two steps with Ripen).` })),
   { name:"Chilan Berry", berry:true, weakenType:"Normal", cond:"when hit by a Normal-Type Move",
     note:"Weakens that Normal-Type Move by one step of effectiveness (two with Ripen)." },
+  // Berries with no combat effect of their own are still Berries, and "Berries are considered
+  // snacks" (Core p.278) — so they're eatable and store a Buff, it just does nothing but cook.
+  ...["Razz","Bluk","Nanab","Wepear","Pinap","Spelon","Pamtre","Watmel","Durin","Belue"].map(b=>({
+    name:`${b} Berry`, berry:true, note:"Poffin ingredient — no effect of its own when the Buff is traded in." })),
+  // Tier 3 stat-lowering Berries — permanent, out of combat, and a Trainer has to allow it
+  ...[["Pomeg","HP"],["Kelpsy","Attack"],["Qualot","Defense"],["Hondew","Special Attack"],
+      ["Grepa","Special Defense"],["Tamato","Speed"]].map(([b,st])=>({
+    name:`${b} Berry`, berry:true, cond:"with the Trainer's permission",
+    note:`Permanently lowers the eater's ${st} base stat by 1 (with the Trainer's permission) — adjust the stat by hand.` })),
   // ---- Herbs (snack-food items, Core p.279) ----
   { name:"Mental Herb", curesKind:"volatile" },
   { name:"White Herb",  resetNegCS:true },
@@ -5134,6 +5345,9 @@ const SNACK_DEFS = [
     note:"The user becomes Poisoned; if they do, they gain +1 Combat Stage in two random Stats." },
   { name:"Balm Mushroom",  cures:["burned","paralysis","poisoned","badlyPoisoned"], csRandom:-1,
     note:"Cures Burn, Paralysis or Poison; if it does, the user loses 1 Combat Stage in a random Stat." },
+  // ---- Chef / playtest extras ----
+  { name:"Herbal Restorative", note:"[Playtest] +2 bonus on one Save Check." },
+  { name:"Hearty Meal", note:"A Trainer who eats this gains +2 Max AP until the end of their next Extended Rest (only one Hearty Meal at a time). Hearty Meals go off 20 minutes after they're cooked." },
 ];
 const snackByKey = new Map(SNACK_DEFS.map(d=>[normItemName(d.name), d]));
 function snackDef(name){ return snackByKey.get(normItemName(name)) || null; }
@@ -5247,6 +5461,8 @@ function eatSnack(o, itemName, opts={}){
 function tradeInDigestion(o, buff, opts={}){
   const def = snackDef(buff.item);
   const log = [];
+  if(!o.cs || typeof o.cs!=="object") o.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
+  if(!Array.isArray(o.statuses)) o.statuses = [];
   const x = ripenOn(o, def) ? 2 : 1;
   const max = ownerMaxHP(o), fl = ownerFlavors(o);
   const likes = def?.flavor && fl.liked===def.flavor, hates = def?.flavor && fl.disliked===def.flavor;
@@ -5332,7 +5548,7 @@ function tradeInDigestion(o, buff, opts={}){
   // Harvest: flip a coin; on heads the Buff isn't used up. Never used up in Sunny Weather.
   let kept = false;
   if(def?.berry && ownerHasAbility(o,"Harvest")){
-    const sunny = /sun/i.test(String(activeWeatherKey?.() || activeMapMeta?.()?.weather || ""));
+    const sunny = /sun/i.test(String(activeWeather().key || ""));
     const heads = Math.random() < 0.5;
     if(sunny || heads){ kept = true; log.push(sunny ? "Harvest (Sunny) — the Buff is not used up" : "Harvest — coin came up heads, the Buff is not used up"); }
     else log.push("Harvest — coin came up tails, the Buff is consumed");
@@ -5398,6 +5614,27 @@ function digestionCard(owner, commit, opts={}){
       onclick:()=>{ owner.digestion = list.filter(z=>z.id!==b.id); commit(); }},"×"));
     card.append(row);
   });
+
+  /* ---- Tastes ----
+     A Pokémon's Nature already says which Flavors it likes and hates, so those are read-only. A
+     Trainer has no Nature, but the Chef's Tasty Snacks still ask whether "the user likes Salty
+     Food" — so a Trainer picks their own two here. */
+  const fl = ownerFlavors(owner);
+  if(isTrainerOwner(owner)){
+    const row = el("div",{class:"inline small",style:"gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center"});
+    row.append(el("span",{class:"muted",style:"font-weight:700"},"Tastes:"));
+    [["likedFlavor","likes"],["dislikedFlavor","dislikes"]].forEach(([key,lbl])=>{
+      const sel = el("select",{style:"padding:4px 6px"});
+      sel.append(el("option",{value:"",selected:!owner[key]},`${lbl} — none`));
+      FLAVORS.forEach(f=>sel.append(el("option",{value:f,selected:owner[key]===f},`${lbl} ${f}`)));
+      sel.addEventListener("change",()=>{ owner[key]=sel.value; commit(); });
+      row.append(sel);
+    });
+    card.append(row);
+  } else if(fl.liked || fl.disliked){
+    card.append(el("div",{class:"small muted",style:"margin-top:10px"},
+      `Tastes (${owner.nature||"Nature"}): likes ${fl.liked||"—"}, dislikes ${fl.disliked||"—"}.`));
+  }
 
   /* ---- eat / drink ---- */
   const actions = el("div",{class:"inline",style:"gap:8px;margin-top:10px;flex-wrap:wrap"});
@@ -5504,6 +5741,8 @@ function renderMonPlay(root, p, sp){
 
   /* buffs & orders (Cheers / Commander Orders / Musician Songs) — kept at the bottom of the page */
   root.append(buffsCard(p, ()=>preserveScroll(()=>{ save(); refreshMon(p); })));
+  /* food: eat a Snack from the Trainer's bag, spend the Digestion Buff it stores */
+  root.append(digestionCard(p, ()=>preserveScroll(()=>{ save(); refreshMon(p); })));
 }
 
 function renderMonBuild(root, p, sp){
@@ -7390,7 +7629,7 @@ function openMoveRoll(p, m, sp, opts={}){
     return m.damageBase;                  // generic weight moves & normal moves use the printed DB
   }
   const spPending = () => !!sp2 && sp2.kind==="dieDB" && dieVal==null;   // DB unknown until 🎲
-  const bm = buffMods(p);                 // active Cheers / Orders / Songs (#2)
+  const bm = buffMods(p, {isPhys});       // active Cheers / Orders / Songs / Food Buffs (#2)
   const abilAcc = abilityAccMods(p, m, isPhys);   // always-on Accuracy abilities (Compound Eyes, Hustle)
   const accCS = (d.cs.acc||0) + abilAcc.acc + (hasStatus(p,"focused")?1:0);      // Accuracy CS (Core p.234) + ability Accuracy mods + Focused Training
   const wx = weatherRollMods(p, m, mtype);      // current Weather Condition (Core p.342)
@@ -7717,7 +7956,11 @@ function openMoveRoll(p, m, sp, opts={}){
     const bcard = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
     bcard.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},"✨ Buffs & Orders active"));
     buffs.forEach(b=>{ const mt=buffModText(b.mods);
-      bcard.append(el("div",{class:"small"}, `• ${b.name}` + (mt?` — ${mt}`:"") + (b.note?`  `:""),
+      // a class-restricted buff (a Spicy Wrap is Physical-only) is listed but greyed when this
+      // move isn't the class it applies to — it's still active, it just isn't in these numbers
+      const off = !buffApplies(b, {isPhys});
+      bcard.append(el("div",{class:"small"+(off?" muted":"")}, `• ${b.name}` + (mt?` — ${mt}`:"")
+          + (off?` — ${b.only==="phys"?"Physical":"Special"} attacks only, not counted here`:"") + (b.note?`  `:""),
         b.note?el("span",{class:"muted"}, b.note):"")); });
     const net = [];
     if(bm.acc)  net.push(`${bm.acc>0?"+":""}${bm.acc} to Accuracy`);
@@ -8607,13 +8850,18 @@ function customActionsCard(t, rerender){
 /* one rollable attack row in the trainer's Combat tab */
 function trainerAttackSlot(t, profile, rollFn, opts={}){
   const slot = el("div",{class:"moveslot"});
-  // Type Expertise STAB, if this Trainer has it for the attack's Type (never on a Struggle Attack)
-  const stabHere = trainerStab(t, profile.type, !profile.move);
+  // Type Expertise STAB, if this Trainer has it for the attack's Type (never on a Struggle Attack,
+  // and never on a Status Move — there's no Damage Base for it to raise)
+  const stabHere = typeof profile.damageBase === "number" && profile.damageBase > 0
+    && trainerStab(t, profile.type, !profile.move);
   slot.append(el("div",{style:"flex:1"},
     el("div",{style:"font-weight:700"}, profile.name+" ", el("span",{html:typeBadge(profile.type)}),
       opts.tag?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600"}, opts.tag):"",
       stabHere?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600",title:"Type Expertise — +2 Damage Base"},"⚡ STAB"):""),
-    el("div",{class:"ms-info"}, `${profile.frequency?profile.frequency+" · ":""}${profile.cls||"Physical"} · AC ${profile.ac} · DB ${profile.damageBase}${stabHere?" +2":""} · ${profile.range} · +Attack`)));
+    el("div",{class:"ms-info"}, `${profile.frequency?profile.frequency+" · ":""}${profile.cls||"Physical"} · AC ${profile.ac} · `
+      + (typeof profile.damageBase === "number" && profile.damageBase > 0
+          ? `DB ${profile.damageBase}${stabHere?" +2":""} · ${profile.range} · +Attack`
+          : `no damage · ${profile.range}`))));
   const acts = el("div",{class:"inline"});
   if(opts.uc) acts.append(opts.uc);
   acts.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",onclick:rollFn},"🎲 Roll"));
@@ -9664,6 +9912,8 @@ function encounterMonCard(enc, p, list, trainer){
   // Pokémon a standing effect (e.g. a custom "+15 Damage Reduction" prop/hazard) without needing
   // to open the Map first — damageHealRow already auto-applies any active DR buff on this card.
   card.append(buffsCard(p, ()=>{ saveEnc(); renderEncounters(); }));
+  // Food: a wild/enemy Pokémon has no Trainer's bag, so `free` opens the whole Snack catalog
+  card.append(digestionCard(p, ()=>{ saveEnc(); renderEncounters(); }, {free:true}));
   return card;
 }
 /* movement + special Capabilities chip row for an encounter Pokémon — hover each chip for its
@@ -9853,6 +10103,8 @@ function encounterTrainerCard(enc, tr){
     trained.forEach(([k,l])=> chips.append(el("span",{class:"kv",title:t.skills[k]}, `${l} ${rankDice(t.skills[k])}d6`)));
     card.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:8px"},"Skills"), chips);
   }
+  // Food: an encounter Trainer has no tracked bag, so `free` opens the whole Snack catalog
+  card.append(digestionCard(t, ()=>{ saveEnc(); renderEncounters(); }, {free:true}));
   // trainer's Pokémon
   const tmonFainted=tr.pokemon.some(p=>(p.currentHP??1)<=0 && !p.encMin);
   card.append(el("div",{class:"inline",style:"justify-content:space-between;margin-top:10px;gap:8px;flex-wrap:wrap"},
@@ -10152,10 +10404,24 @@ function itemSlug(name){
 const ITEM_ART_ALIAS = { "basic ball":"poke-ball", "pokeball":"poke-ball", "hp up":"hp-up",
   "paralyze heal":"paralyze-heal", "parlyz heal":"paralyze-heal", "old rod":"old-rod",
   "super rod":"super-rod", "good rod":"good-rod", "bicycle":"bicycle", "town map":"town-map" };
+/* PTU ships no TM catalogue, so a GM stocking one just types the name — "TM Flamethrower",
+   "TM32 Double Team", "HM03 Surf", "Surf TM". Pull the Move back out of that and the disc is drawn
+   in its proper elemental colour, the way the games do (tm-fire.png, tm-water.png, …). Returns null
+   for "TM Case" and friends, which then slug normally. `moveByName` is the loose index, so a
+   spelling that's off by a space or a hyphen still lands. */
+function tmMoveOf(name){
+  const s = String(name||"").trim();
+  const m = /^(?:TM|HM|TR)\s*\d*\s*[-:—–]?\s*(.+)$/i.exec(s) || /^(.+?)\s+(?:TM|HM|TR)$/i.exec(s);
+  if(!m) return null;
+  const mv = moveByName.get(m[1].trim());
+  return (mv && mv.type && mv.type!=="None") ? mv : null;
+}
 function itemArtChain(name, item){
   const custom = itemImgOf(item);
   if(custom) return [custom];
-  const slug = ITEM_ART_ALIAS[String(name||"").trim().toLowerCase()] || itemSlug(name);
+  const tm = tmMoveOf(name);
+  const slug = tm ? `tm-${tm.type.toLowerCase()}`
+                  : (ITEM_ART_ALIAS[String(name||"").trim().toLowerCase()] || itemSlug(name));
   if(!slug) return [ITEM_PLACEHOLDER];
   const out = [`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/${slug}.png`];
   const base = (window.PTU_CLOUD && PTU_CLOUD.url || "").replace(/\/+$/,"");
@@ -10353,10 +10619,14 @@ function renderShops(){
     leftc, el("span",{class:"small muted"},"GM only · synced to the campaign")));
   root.append(bar);
 
+  // paying the party doesn't need a shop to exist, so it sits above everything shop-shaped
+  root.append(paydayCard());
+
   if(!cur){
     root.append(el("div",{class:"card"}, el("span",{class:"muted"},
       "No shops yet — tap ＋ New, stock some items, then open it on a Map with the “Shop” picker in the map toolbar.")));
     root.append(shopLogCard());
+    root.append(partyMoneyCard());
     return;
   }
 
@@ -10394,6 +10664,7 @@ function renderShops(){
 
   root.append(shopCartsCard(cur));
   root.append(shopLogCard());
+  root.append(partyMoneyCard());
   if(openKeys.size) root.querySelectorAll("details[data-key]").forEach(d=>{ if(openKeys.has(d.dataset.key)) d.open=true; });
 }
 /* live view of who's shopping right now — the same carts the players are filling on the map */
@@ -10430,6 +10701,134 @@ function shopLogCard(){
       el("b",{}, e.buyer||"someone"), ` bought ${(e.items||[]).join(", ")} at ${e.shop||"a shop"} for `,
       el("b",{}, `$${e.total||0}`), el("span",{class:"muted"}, `  ·  ${when.toLocaleString()}`)));
   });
+  return card;
+}
+
+/* ═══════════ 💰 PAYDAY — pay (or fine) the whole party in one go ═══════════
+   "Everyone gets $2,000 for the badge" should be three taps, not one edit per sheet —
+   and it should land in every player's own ledger carrying the GM's note, so nobody
+   has to remember afterwards where the money came from. Split evenly turns a single
+   pot of loot into equal shares, and says out loud what the remainder was rather than
+   quietly losing it.
+
+   Each sheet is written on its OWN row (cloudUpsert per row), so paying the table
+   mid-session doesn't fight whatever anyone happens to be editing at the time. */
+let payday = { amt:"", why:"", split:false, off:null };   // off: rowId → left out of the payday
+function moneySheetRows(){
+  return Object.values(cloud.byId).filter(r=>r && r.data && r.data.trainer)
+    .sort((a,b)=> String(a.owner_name||"~").localeCompare(String(b.owner_name||"~"))
+               || String(a.data.name||"").localeCompare(String(b.data.name||"")));
+}
+function paydayWho(r){
+  const sheet = r.data?.name || "unnamed sheet", owner = r.owner_name || "";
+  return owner && normName(owner)!==normName(sheet) ? `${sheet} (${owner})` : sheet;
+}
+/* the GM's own sheets start unticked — "pay everyone" means the players */
+function paydayInit(){
+  if(payday.off) return;
+  payday.off = {};
+  moneySheetRows().forEach(r=>{ if(ownsRow(r)) payday.off[r.id] = true; });
+}
+function paydayTargets(){ paydayInit(); return moneySheetRows().filter(r=>!payday.off[r.id]); }
+function runPayday(sign){
+  const rows = paydayTargets();
+  const amt = Math.abs(parseFloat(payday.amt)||0);
+  if(!rows.length){ toast("Nobody is ticked"); return; }
+  if(!amt){ toast("Type an amount first"); return; }
+  const each = payday.split ? Math.floor(amt/rows.length) : amt;
+  if(each<=0){ toast("That splits down to nothing"); return; }
+  const over = payday.split ? amt - each*rows.length : 0;
+  const why = payday.why.trim() || (sign>0 ? "Payday" : "Fine");
+  if(!confirm(`${sign>0?"Pay":"Take"} ${fmtMoney(each)} ${sign>0?"to":"from"} ${rows.length} sheet${rows.length===1?"":"s"}?\n\n`
+    + rows.map(r=>"• "+paydayWho(r)).join("\n") + `\n\nLedger note: “${why}”`)) return;
+  let n = 0, moved = 0;
+  rows.forEach(r=>{
+    const d = moneyChange(r.data.trainer, sign*each, why, {kind:"payday"});
+    if(!d) return;                       // already broke and being fined → nothing happened, nothing written
+    n++; moved += Math.abs(d);
+    cloudUpsert(r).then(ok=>{ if(!ok) toast(`⚠ ${paydayWho(r)} didn't sync — it'll reconcile on the next change`); });
+  });
+  payday.amt = "";
+  toast(n ? `${sign>0?"Paid out":"Took"} ${fmtMoney(moved)} across ${n} sheet${n===1?"":"s"} ✓`
+            + (over ? ` · ${fmtMoney(over)} left over` : "")
+          : "Nothing to take — they're already broke");
+  render();
+}
+function paydayCard(){
+  const card = el("div",{class:"card"});
+  const rows = moneySheetRows();
+  const count = el("span",{class:"small muted"});
+  card.append(el("h3",{},"💰 Payday", count));
+  card.append(el("div",{class:"small muted",style:"margin:-4px 0 10px"},
+    "Hand money to the whole table at once — the reward for the gym, the job, the sunken ship. It lands in every ticked sheet and shows up in that player’s ledger with your note on it."));
+  if(!rows.length){ card.append(el("span",{class:"muted small"},"no player sheets in this campaign yet.")); return card; }
+  paydayInit();
+
+  const hint = el("span",{class:"small muted"});
+  const paint = () => {
+    const n = paydayTargets().length, a = Math.abs(parseFloat(payday.amt)||0);
+    const each = payday.split && n ? Math.floor(a/n) : a;
+    count.textContent = `${n}/${rows.length} ticked`;
+    hint.textContent = !a || !n ? ""
+      : payday.split ? `${fmtMoney(each)} each — split ${n} way${n===1?"":"s"}`
+                        + (a-each*n ? `, ${fmtMoney(a-each*n)} left over` : "")
+      : `${fmtMoney(each)} each · ${fmtMoney(each*n)} in total`;
+  };
+
+  const amt = el("input",{type:"number",min:0,step:1,placeholder:"amount",style:"width:120px"});
+  amt.value = payday.amt;
+  amt.addEventListener("input",()=>{ payday.amt = amt.value; paint(); });
+  const why = el("input",{type:"text",placeholder:"what for? (shown in their ledger)",style:"flex:1;min-width:160px"});
+  why.value = payday.why;
+  why.addEventListener("input",()=>{ payday.why = why.value; });
+  const split = el("input",{type:"checkbox"});
+  split.checked = payday.split;
+  split.addEventListener("change",()=>{ payday.split = split.checked; paint(); });
+
+  card.append(el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap"},
+    amt, why,
+    el("label",{class:"inline",style:"gap:4px;font-size:12px;font-weight:700",
+      title:"treat the amount as one pot and split it evenly between everyone ticked"},
+      split, "split evenly"),
+    el("button",{class:"btn-primary",style:"padding:6px 12px",onclick:()=>runPayday(1)},"＋ Pay"),
+    el("button",{class:"btn ghost danger",style:"padding:6px 12px",
+      title:"take this much off everyone ticked (a fine, a toll, a mugging)",onclick:()=>runPayday(-1)},"－ Take")));
+  card.append(el("div",{style:"margin:6px 0 10px"}, hint));
+
+  rows.forEach(r=>{
+    const t = r.data.trainer;
+    const line = el("div",{class:"moveslot"});
+    const cb = el("input",{type:"checkbox",title:"include this sheet"});
+    cb.checked = !payday.off[r.id];
+    cb.addEventListener("change",()=>{ if(cb.checked) delete payday.off[r.id]; else payday.off[r.id] = true; paint(); });
+    const mid = el("div",{style:"flex:1;min-width:0"});
+    mid.append(el("div",{style:"font-weight:700"}, paydayWho(r)));
+    const last = moneyLogOf(t).slice(-1)[0];
+    mid.append(el("div",{class:"small muted"}, last
+      ? `last: ${last.delta>0?"＋":"－"}${fmtMoney(Math.abs(last.delta))} · ${last.why||"by hand"}`
+      : "nothing recorded yet"));
+    line.append(cb, mid,
+      el("div",{style:"font-weight:800;white-space:nowrap"}, fmtMoney(moneyOf(t))),
+      el("button",{class:"linkbtn",title:"every payment in and out of this sheet",
+        onclick:()=>openMoneyLedger(t, paydayWho(r), ()=>cloudUpsert(r))},"📜"));
+    card.append(line);
+  });
+  paint();
+  return card;
+}
+/* every ledger at once, newest first — the GM's answer to "who has been spending what" */
+function partyMoneyCard(){
+  const card = el("div",{class:"card"});
+  const all = [];
+  moneySheetRows().forEach(r=> moneyLogOf(r.data.trainer)
+    .forEach(e=> all.push({ e, who: r.data?.name || r.owner_name || "someone" })));
+  all.sort((a,b)=>(b.e.at||0)-(a.e.at||0));
+  card.append(el("h3",{},"Money moved (whole party)",
+    el("span",{class:"small muted"}, all.length ? `${all.length} entries` : "")));
+  if(!all.length){ card.append(el("span",{class:"muted small"},"nothing has changed hands yet.")); return card; }
+  const box = el("div",{class:"money-log"});
+  all.slice(0,40).forEach(x=> box.append(moneyLogRow(x.e, x.who)));
+  card.append(box);
   return card;
 }
 
@@ -10501,16 +10900,19 @@ async function completePurchase(shop, row){
     if(ex){ ex.qty = (parseInt(ex.qty)||0) + l.qty; if(art && !ex.img) ex.img = art; }
     else inv.push(Object.assign({ name:l.name, qty:l.qty, notes:"" }, art?{img:art}:{}));
   });
-  t.money = money - total;
+  // the till writes itself into the buyer's own ledger too, so the purchase is visible from
+  // their sheet and not only from the GM's shop log (shop name first — long carts get trimmed)
+  const bought = cart.lines.map(l=>`${l.qty}× ${l.name}${l.free?" 🎁":""}`);
+  moneyChange(t, -total, `${shop.name}: ${bought.join(", ")}`, {kind:"shop"});
   const d = shopData();
   d.log.unshift({ at:Date.now(), shop:shop.name, buyer:row.data?.name || row.owner_name || "someone",
-                  total, items:cart.lines.map(l=>`${l.qty}× ${l.name}${l.free?" 🎁":""}`) });
+                  total, items:bought });
   d.log = d.log.slice(0,40);
-  const bought = cartCount(cart);
+  const count = cartCount(cart);
   delete d.carts[row.id];
   saveShops();
   cloudUpsert(row).then(ok=>{ if(!ok) toast("⚠ Sync issue — it'll reconcile on the next change"); });
-  toast(`Bought ${bought} item${bought===1?"":"s"} for $${total} ✓`);
+  toast(`Bought ${count} item${count===1?"":"s"} for $${total} ✓`);
   render();
 }
 
@@ -10546,6 +10948,17 @@ function openShopId(map){
    a shared Viewer screen counts too, and they expire so a browser closed mid-browse stops nagging. */
 const SHOP_VIEW_TTL = 6*60*60*1000;    // 6h — long enough for a session, short enough to self-clean
 let shopFollowSeen = null;             // the player-opened shop the GM has already reacted to
+/* Self-heal: shops are fetched once, at connect. A player who joined BEFORE the GM built any shop
+   — or who missed the row's INSERT event because realtime truncated it — holds an empty shops row
+   for the rest of the session: their doors fall back to the name stored on the token and tapping one
+   says "That shop is closed". If the board has doors but we know of no shops, fetch them once. */
+let shopRefetchTried = false;
+function healMissingShops(map){
+  if(shopRefetchTried || mode!=="cloud" || !map) return;
+  if(shopList().length || !mapTokensFor(map.id).some(isShopToken)) return;
+  shopRefetchTried = true;
+  scheduleSharedRefetch("shops");
+}
 function announceShopView(shopId, immediate){
   if(cloud.isGM || mode!=="cloud" || !cloud.userId) return;   // the GM doesn't follow themselves
   const v = shopData().viewing;
@@ -10589,7 +11002,19 @@ function closeShopLocally(){ shopViewId = ""; announceShopView(""); refreshShopP
 /* tapping a shop token — opens that shop on THIS screen, and tells the GM so they can look too */
 function openShopFromToken(token){
   const shop = shopById(token.shopId);
+  if(!shop && !shopList().length){          // we have doors but no shop data yet — go get it, don't lie
+    shopRefetchTried = false; healMissingShops(currentMapForView());
+    toast("Fetching the shop — tap again in a moment."); return;
+  }
   if(!shop || (shop.archived && !cloud.isGM)){ toast("That shop is closed."); return; }
+  const reach = shopReach(token);
+  if(!reach.ok){
+    toast(reach.reason==="none"
+      ? "Put one of your tokens on the map to visit a shop."
+      : `Too far away — get within ${SHOP_REACH} tiles of the shop (you're ${reach.dist} away).`);
+    return;
+  }
+  markShopSeen(shop.id);                       // been inside once — its name shows on the board now
   shopViewId = shop.id; shopPushSeen = (currentMapForView()?.shopId)||"";
   shopPanelTab = "items"; shopCollapsed = false;
   localStorage.setItem("ptu_shop_collapsed","0");
@@ -10631,6 +11056,9 @@ function shopPanel(map){
   const shop = shopById(openId);
   if(!shop || (shop.archived && !cloud.isGM)) return null;
   const pushedHere = map.shopId===shop.id;      // showing on everyone's screen vs opened by tapping a door
+  // However it got here, the shop is open in front of them now — so its door stops being anonymous.
+  // Runs before the tokens are built below, so the name plate appears on this very render.
+  markShopSeen(shop.id);
 
   const box = el("div",{class:"shop-float"});
   const pos = loadShopPos();
@@ -10833,8 +11261,52 @@ const SHOP_TOKEN_ICON = "data:image/svg+xml,"+encodeURIComponent(
   "<path d='M4 26 L10 12 h44 l6 14 z' fill='#e05a4f' stroke='#5b4636' stroke-width='3'/>"+
   "<path d='M20 12 l-4 14 M32 12 l0 14 M44 12 l4 14' stroke='#f7f2ea' stroke-width='3'/></svg>");
 const isShopToken = t => !!(t && t.shopId);
+/* A door on the board gives nothing away until you've been inside it: the name under a shop token
+   only appears once THIS player has opened that shop at least once. Kept per device (localStorage,
+   like the other "what has this screen discovered" state) rather than in the campaign row — it's
+   about what one player knows, not a fact about the shop. The GM always sees every name. */
+const SHOPS_SEEN_KEY = "ptu_shops_seen";
+let shopsSeen = (()=>{ try{ return new Set(JSON.parse(localStorage.getItem(SHOPS_SEEN_KEY)||"[]")); }
+                       catch(e){ return new Set(); } })();
+function shopSeen(id){ return cloud.isGM || !id || shopsSeen.has(id); }
+function markShopSeen(id){
+  if(!id || cloud.isGM || shopsSeen.has(id)) return;
+  shopsSeen.add(id);
+  try{ localStorage.setItem(SHOPS_SEEN_KEY, JSON.stringify([...shopsSeen])); }catch(e){}
+}
 function shopTokenSprite(token){
-  return el("img",{class:"sprite s-sm",src:token.img||SHOP_TOKEN_ICON,alt:token.label||"Shop",loading:"lazy"});
+  return el("img",{class:"sprite s-sm",src:token.img||SHOP_TOKEN_ICON,alt:"Shop",loading:"lazy"});
+}
+/* ---- you have to walk up to a shop to go in ----
+   Distance is measured EDGE TO EDGE in grid squares (a 2×2 storefront is "next to" anything touching
+   any of its four cells) and diagonals count as one square, which is how a table eyeballs "four
+   tiles away". Any of your tokens counts — trainer or Pokémon — since a player often has only their
+   party on the board. On the shared Viewer screen ANY player's token counts, because it's the whole
+   table's device. The GM is never blocked, and a shop the GM has PUSHED to everyone ignores this
+   entirely: that's them deliberately putting the shop in front of the table. */
+const SHOP_REACH = 4;
+function tokenTileGap(a, b){
+  const ax=Math.round(a.x), ay=Math.round(a.y), bx=Math.round(b.x), by=Math.round(b.y);
+  const as=a.size||1, bs=b.size||1;
+  const dx = Math.max(0, ax-(bx+bs-1), bx-(ax+as-1));
+  const dy = Math.max(0, ay-(by+bs-1), by-(ay+as-1));
+  return Math.max(dx, dy);
+}
+function myMapTokens(map){
+  return mapTokensFor(map.id).filter(t=>{
+    if(!t.link || !PLAYER_TOKEN_KINDS.has(t.link.kind)) return false;
+    const row = cloud.byId[t.link.sheetId];
+    return isMapHpViewer() ? !!row : ownsRow(row);
+  });
+}
+/* → {ok} | {ok:false, reason:"none"} nobody on the board | {ok:false, dist} too far */
+function shopReach(token){
+  if(cloud.isGM) return { ok:true };
+  const map = currentMapForView(); if(!map) return { ok:true };
+  const mine = myMapTokens(map);
+  if(!mine.length) return { ok:false, reason:"none" };
+  const dist = Math.min(...mine.map(t=>tokenTileGap(t, token)));
+  return { ok: dist<=SHOP_REACH, dist };
 }
 /* GM's menu for a shop token. Players never reach this — tapping opens the shop for them — so it's
    purely the management side: which shop the door leads to, its look, and the push-to-everyone switch. */
@@ -10844,7 +11316,7 @@ function openShopTokenMenu(token, map){
   wrap.append(el("div",{style:"display:flex;justify-content:center;margin-bottom:10px"},
     el("img",{src:token.img||SHOP_TOKEN_ICON,alt:"",style:"width:96px;height:96px;object-fit:contain"})));
   wrap.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
-    shop ? `${shop.items.length} item${shop.items.length===1?"":"s"} on the shelves. Players tap this token to open it on their own screen.`
+    shop ? `${shop.items.length} item${shop.items.length===1?"":"s"} on the shelves. Players tap this token to open it on their own screen — they must have a token within ${SHOP_REACH} tiles, and the name only appears under the door once they've been inside once. “Push to everyone” ignores both.`
          : "⚠ This token points at a shop that no longer exists — pick another below or remove it."));
 
   const acts = el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px"});
@@ -11201,7 +11673,7 @@ function simProfile(A, atk, cfg){
   // against; openTrainerAttack reads the raw stat instead, so the two agree at 0 Attack CS.
   const atkStat = A.isT ? (isPhys ? d.totals.atk : d.totals.spatk)
                         : (isPhys ? d.eff.atk   : d.eff.spatk);
-  const bm  = buffMods(p);
+  const bm  = buffMods(p, {isPhys});
   const printedThr = simThresholds(atk.m.effect);
   const abil = A.isT ? { db:0, flat:0 }
                      : abilityDamageMods(p, atk.m, atk.db, printedThr, { stab, mtype, isPhys, isSpec:!isPhys, fieryCrash:fcMode });
@@ -12343,8 +12815,10 @@ function zoomImg(img, title){
 function infoModal(title, html){ modal({title, bodyHTML:html, footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Close")]}); }
 
 /* searchable single-select picker. onPick(name). markFn flags priority items with ★.
-   lockFn(name) may return a reason string to show the item as locked & unpickable. */
-function openPicker(title, names, onPick, refKind, markFn, lockFn){
+   lockFn(name) may return a reason string to show the item as locked & unpickable.
+   subFn(name) supplies the second line for pools that aren't one of the known refKinds
+   (the Snack / Refreshment pickers, which want this eater's own numbers on each row). */
+function openPicker(title, names, onPick, refKind, markFn, lockFn, subFn){
   const wrap = el("div",{});
   const search = el("input",{type:"search",placeholder:"Type to filter…",style:"margin-bottom:10px"});
   const list = el("div",{class:"picklist"});
@@ -12358,7 +12832,8 @@ function openPicker(title, names, onPick, refKind, markFn, lockFn){
       const lock = lockFn && lockFn(n);
       const textCol = el("div",{style:"flex:1;min-width:0"},
         el("div",{class:"pi-title"}, n + (marked?"  ★":"") + (lock?"  🔒":"")),
-        refKind==="move"? pickMoveSub(n) : refKind==="species"? pickSpeciesSub(n)
+        subFn? (subFn(n) || "")
+          : refKind==="move"? pickMoveSub(n) : refKind==="species"? pickSpeciesSub(n)
           : refKind==="feature"? pickFeatureSub(n) : refKind==="held"? pickHeldSub(n)
           : refKind==="technique"? pickTechniqueSub(n) : refKind==="ability"? pickAbilitySub(n) : "",
         lock? el("div",{class:"pi-sub",style:"color:var(--bad)"}, lock) : "");
@@ -13307,6 +13782,7 @@ async function cloudConnect(campaign, name, gmCode, silent, viewer){
     recoverUnsyncedShared("enc", ()=>cloud.enc, encUpsert);
     await fetchShops();
     recoverUnsyncedShared("shops", ()=>cloud.shops, shopUpsert);
+    shopRefetchTried = false;
     noticePlayerShop(true);   // prime it silently — joining mid-session shouldn't yank the GM to the board
     // One-time seed of a GM's pre-cloud device encounters — ONLY when the cloud row genuinely does
     // NOT exist (query succeeded with no row) AND we've never seeded this campaign before. Never on
@@ -14123,8 +14599,15 @@ function tokenHp(token){
     // a shop token is scenery with a door, not a creature — no HP, no statuses, no initiative
     if(isShopToken(token)){
       const shop = shopById(token.shopId);
-      return { cur:1, max:1, editable:cloud.isGM, name:token.label||shop?.name||"Shop",
-               sprite:shopTokenSprite(token), unlinked:false, kind:"shop", shop };
+      // The LIVE shop name wins, so renaming a shop renames its doors everywhere. token.label is a
+      // snapshot taken when the door was placed: it's the fallback for a client whose shops row
+      // hasn't arrived yet (and `labelCustom` means the GM deliberately named this door something else).
+      const name = token.labelCustom ? (token.label || shop?.name || "Shop")
+                                     : (shop?.name || token.label || "Shop");
+      // `name` stays real — the GM's menu title needs it — and `hideName` is what keeps it off the
+      // board for a player who hasn't been inside this shop yet.
+      return { cur:1, max:1, editable:cloud.isGM, name, sprite:shopTokenSprite(token),
+               unlinked:false, kind:"shop", shop, hideName:!shopSeen(token.shopId) };
     }
     const max = Math.max(1, token.maxHp||1); let cur = token.hp; if(cur==null) cur=max;
     return { cur, max, editable:cloud.isGM, name:token.label||"Token", sprite:standaloneSprite(token), unlinked:false, kind:"standalone" };
@@ -15069,7 +15552,9 @@ function mapTokenNode(token, map, originX=0, originY=0){
     node.append(el("div",{class:"tk-hpwrap"},
       el("div",{class:"tk-hp"+(pct<=25?" low":pct<=50?" mid":""), style:`width:${pct}%`})));
   }
-  node.append(el("div",{class:"tk-name"}, (token.gmHidden?"🙈 ":"") + info.name + (info.unlinked?" ⚠":"")));
+  // an undiscovered shop gets no plate at all — an empty one is just a blank yellow tab
+  if(!info.hideName)
+    node.append(el("div",{class:"tk-name"}, (token.gmHidden?"🙈 ":"") + info.name + (info.unlinked?" ⚠":"")));
   // Player-side tokens rely on the HP bar alone (no numeric readout); enemies/standalone still show it.
   if(hpVisible && !playerSide) node.append(el("div",{class:"tk-hpnum"}, info.unlinked?"⚠ unlinked":`${info.cur}/${info.max}`));
   if(tokenStatusVisible(info)){
@@ -15077,7 +15562,7 @@ function mapTokenNode(token, map, originX=0, originY=0){
     const ringHtml = tokenStatusRingSVG(keys, boxPx, token.id);
     if(ringHtml) node.append(el("div",{class:"tk-status-ring", html:ringHtml}));
   }
-  if(battleOn() && token.moved){                              // movement used this round vs chosen-mode speed
+  if(battleOn() && token.moved && !isShopToken(token)){       // movement used this round vs chosen-mode speed
     const spd = tokenMoveSpeed(token), mode = tokenMoveMode(token);
     const icon = mode ? ({overland:"",sky:" 🕊",swim:" 🌊",burrow:" ⛏",levitate:" ✨"}[mode[0]]||"") : "";
     node.append(el("div",{class:"tk-moved"+(spd && token.moved>spd?" over":"")}, `${token.moved}${spd?("/"+spd):""}m${icon}`));
@@ -15099,7 +15584,9 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
     const px = map.gridSize, scale = mapView.scale;
     const startX = ev.clientX, startY = ev.clientY;
     let moved = false, badge = null;
-    const trackMove = battleOn() && map.gridOn;               // accumulate every tile entered, diagonals cost 2
+    // accumulate every tile entered, diagonals cost 2 — but a shop is scenery being repositioned,
+    // not a combatant taking a Shift, so dragging its door never spends anyone's movement
+    const trackMove = battleOn() && map.gridOn && !isShopToken(token);
     const liveFog = !!map.fogOn;
     const stageSize = mapStageSize(map);                      // origin needed regardless of fog, for DOM<->cell math
     const fogCanvas = liveFog ? document.querySelector("#view-map .map-fog") : null;
@@ -15125,7 +15612,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
         if(map.gridOn && (cx!==c.pathX || cy!==c.pathY)){ c.segMoved += tileCost(c.pathX,c.pathY,cx,cy); c.pathX=cx; c.pathY=cy; }
         if(commit){
           if(map.gridOn){ c.t.x=c.pathX; c.t.y=c.pathY; } else { c.t.x=(nx-originX)/px; c.t.y=(ny-originY)/px; }
-          if(trackMove) c.t.moved = c.alreadyMoved + c.segMoved;
+          if(trackMove && !isShopToken(c.t)) c.t.moved = c.alreadyMoved + c.segMoved;
         }
         if(liveFog && tokenReveals(c.t) && (cx!==c.lastRevealX || cy!==c.lastRevealY)){
           c.lastRevealX=cx; c.lastRevealY=cy; revealAtCell(map, cx, cy, (c.t.size||1)-1); anyRevealed=true;
@@ -15138,7 +15625,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
       if(!moved || !info.editable) return;
       mapDragging = true;
       applyDelta((e.clientX-startX)/scale, (e.clientY-startY)/scale, false);
-      if(map.gridOn){
+      if(map.gridOn && !isShopToken(token)){                  // no distance readout for scenery
         if(!badge){ badge = el("div",{class:"tk-move"}); node.append(badge); }
         const n = ctx.length>1 ? `${ctx.length} tokens · ` : "";
         if(trackMove){
@@ -15614,6 +16101,13 @@ function openTokenMenu(token, map){
       bl.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"✨ Active buffs"));
       ownerBuffs(L.obj).forEach(b=>bl.append(el("div",{class:"small"}, `• ${b.name}` + (buffModText(b.mods)?` — ${buffModText(b.mods)}`:""))));
       wrap.append(bl);
+    }
+
+    // ---- Digestion Buffs: trading one in happens IN battle, so it belongs on the token menu too.
+    // Enemies (enc/enctrainer) have no Trainer's bag to eat out of → the full Snack catalog.
+    if(L && L.obj && info.editable){
+      wrap.append(digestionCard(L.obj, async()=>{ await commitTokenSource(token); reopenTokenMenu(token, map); },
+        { free: ENEMY_LINKS.has(L.kind) }));
     }
 
     // ---- Attack ranges: paint a move's AoE (line/cone/burst/blast) on the map (#1) ----
@@ -16367,6 +16861,7 @@ function renderMap(){
   const wpanel = weatherPanel(map); if(wpanel) root.append(wpanel);
   const tpanel = terrainPanel(map); if(tpanel) root.append(tpanel);
   if(meta.battleOn) root.append(initiativePanel(map, meta));
+  healMissingShops(map);                                              // doors on the board but no shop data → refetch once
   const shpanel = shopPanel(map); if(shpanel) root.append(shpanel);   // floating storefront (see the SHOPS section)
 
   const { w:stageW, h:stageH, originX, originY } = mapStageSize(map);

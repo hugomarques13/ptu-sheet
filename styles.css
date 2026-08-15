@@ -589,29 +589,69 @@ body.map-mode .view{animation:none}
 @media (max-width:520px){ .shop-float{width:calc(100vw - 20px)} .shop-price-col{width:78px} }
 
 /* ---------- Evolution scene (playEvolutionFX) ----------
-   Full-screen takeover: the old sprite flashes to a white silhouette and swells, snaps back, and
-   repeats faster until a final flash swaps in the new one. The swelling itself is driven from JS
-   (inline transform/transition per pulse) so the timing can stay in step with the beeps. */
+   The Gen 3 look: a black field, the Pokémon as a pure white silhouette flipping between its old
+   and new shapes, sparks drifting up past it, then a burst of light and a full white flash. Which
+   silhouette is showing (.evo-on) and how big it is are driven from JS, so the flipping can stay in
+   step with the music; everything else lives here. */
 .evo-overlay{position:fixed; inset:0; z-index:120; display:flex; flex-direction:column;
-  align-items:center; justify-content:center; gap:22px; cursor:pointer;
-  background:radial-gradient(circle at 50% 45%, #1d2330 0%, #05070c 78%);
+  align-items:center; justify-content:center; gap:22px; cursor:pointer; background:#05070a;
   animation:evoIn .22s ease}
 @keyframes evoIn{from{opacity:0}to{opacity:1}}
 .evo-overlay.closing{opacity:0; transition:opacity .25s ease}
 /* the white-out at the moment of the swap */
-.evo-overlay.flash{background:#fff}
-.evo-stage{position:relative; width:min(58vw,280px); height:min(58vw,280px);
+.evo-overlay.flash{background:#fff; transition:background .06s linear}
+.evo-stage{position:relative; width:min(58vw,300px); height:min(58vw,300px);
   display:flex; align-items:center; justify-content:center}
 .evo-overlay .evo-sprite{position:absolute; left:50%; top:50%; width:100%; height:100%;
   transform:translate(-50%,-50%) scale(1); transform-origin:50% 50%;
   object-fit:contain; background:none; border:none; border-radius:0;
-  filter:drop-shadow(0 0 18px rgba(255,255,255,.25))}
+  opacity:0; pointer-events:none}
+/* only the shape currently being shown is visible — the flip is a hard cut, not a crossfade */
+.evo-overlay .evo-sprite.evo-on{opacity:1}
 /* the silhouette: crushed to pure white, glowing */
-.evo-overlay .evo-sprite.white{filter:brightness(0) invert(1) drop-shadow(0 0 26px rgba(255,255,255,.95))}
-.evo-overlay .evo-after{opacity:0}
-.evo-overlay .evo-after.show{opacity:1}
+.evo-overlay .evo-sprite.white{filter:brightness(0) invert(1) drop-shadow(0 0 26px rgba(255,255,255,.9))}
+
+/* sparks drifting upward past the silhouette */
+.evo-sparks{position:absolute; inset:-30% -10%; overflow:hidden; pointer-events:none;
+  transition:opacity .3s linear}
+.evo-sparks.out{opacity:0}
+.evo-sparks i{position:absolute; bottom:-6px; width:var(--sz); height:var(--sz); border-radius:50%;
+  background:#fff; box-shadow:0 0 6px 1px rgba(255,255,255,.85);
+  animation:evoSpark var(--d) linear var(--delay) infinite}
+@keyframes evoSpark{
+  from{transform:translate(0,0) scale(.4); opacity:0}
+  15%{opacity:1}
+  to{transform:translate(var(--drift),-260px) scale(1); opacity:0}}
+
+/* the ring of light thrown outward just before the flash */
+.evo-burst{position:absolute; left:50%; top:50%; width:0; height:0; pointer-events:none}
+.evo-burst i{position:absolute; left:0; top:0; width:9px; height:9px; margin:-4.5px 0 0 -4.5px;
+  border-radius:50%; background:#fff; box-shadow:0 0 10px 2px rgba(255,255,255,.9); opacity:0}
+.evo-burst.go i{animation:evoBurst .42s cubic-bezier(.15,.7,.4,1) forwards}
+@keyframes evoBurst{
+  from{transform:translate(0,0) scale(.3); opacity:1}
+  to{transform:translate(var(--dx),var(--dy)) scale(1.1); opacity:0}}
+
 .evo-caption{font-size:clamp(15px,4.5vw,22px); font-weight:800; color:#fff; text-align:center;
   padding:0 18px; max-width:90vw; opacity:0; transform:translateY(8px);
   text-shadow:0 2px 10px rgba(0,0,0,.7)}
 .evo-caption.show{opacity:1; transform:translateY(0); transition:opacity .35s ease, transform .35s ease}
-@media (prefers-reduced-motion:reduce){ .evo-overlay .evo-sprite{transition:none !important} }
+@media (prefers-reduced-motion:reduce){
+  .evo-overlay .evo-sprite{transition:none !important}
+  .evo-sparks, .evo-burst{display:none}
+}
+
+/* ── the money ledger: every dollar in or out of a sheet ────────────────────
+   Money in green, money out in red, and the balance it left behind under each
+   line — so the column you skim tells the story without reading the notes. */
+.money-balance{font-size:22px; font-weight:800; letter-spacing:-.5px; margin-bottom:8px}
+.money-balance span{font-size:12px; font-weight:600; letter-spacing:0}
+.money-log{display:flex; flex-direction:column}
+.money-row{display:flex; align-items:flex-start; gap:10px; padding:6px 0;
+  border-top:1px solid var(--line)}
+.money-row:first-child{border-top:none}
+.money-amt{flex:none; min-width:78px; text-align:right; font-weight:800; font-size:13px;
+  font-variant-numeric:tabular-nums}
+.money-amt.up{color:var(--good)}
+.money-amt.down{color:var(--bad)}
+.money-why{font-size:12px; font-weight:600; overflow-wrap:anywhere}
