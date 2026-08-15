@@ -9,9 +9,38 @@ const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* ---------- reference constants ---------- */
-const RANKS = ["Pathetic", "Untrained", "Novice", "Adept", "Expert", "Master"];
-const rankNum  = r => Math.max(1, RANKS.indexOf(r) + 1);          // Pathetic=1 … Master=6
+/* Virtuoso is a homebrew 7th Skill Rank for this campaign. Everything downstream keys off
+   rankNum/rankDice (dice pools, "Adept Intimidate" prerequisites, the Combat-Master weapon
+   tiers), so adding it to the ladder is enough — nothing else assumes Master is the top. */
+const RANKS = ["Pathetic", "Untrained", "Novice", "Adept", "Expert", "Master", "Virtuoso"];
+const rankNum  = r => Math.max(1, RANKS.indexOf(r) + 1);          // Pathetic=1 … Master=6, Virtuoso=7
 const rankDice = r => rankNum(r);                                 // #d6
+
+/* The Edge that unlocks Virtuoso. It lives here rather than in data/edges.json because a
+   tools/build_data.py rebuild regenerates that file from the xlsx and would drop it — the same
+   reason the Legendary Auras/Gifts are defined in app.js. Merged into D.edges (right after the
+   other Skill Edges) so it shows up in the Edges list, the Level-Up pickers and the Reference. */
+const VIRTUOSO_LEVEL = 20;
+const VIRTUOSO_EDGE = {
+  name: "Virtuoso Skills",
+  category: "Skill Edges",
+  prerequisites: `Level ${VIRTUOSO_LEVEL}, Master Rank in the Skill`,
+  effect: "You Rank Up a Skill from Master to Virtuoso, rolling 7d6 for its Checks. "
+        + "You may take this Edge multiple times, but only once per Skill. (Homebrew)",
+};
+if(Array.isArray(D.edges) && !D.edges.some(e=>e.name===VIRTUOSO_EDGE.name)){
+  const after = D.edges.findIndex(e=>e.name==="Master Skills");
+  D.edges.splice(after<0 ? D.edges.length : after+1, 0, VIRTUOSO_EDGE);
+}
+/* Virtuoso is the one gated Rank: Level 20+ AND the Edge (GM 🔓 unlock bypasses both). */
+function virtuosoOk(t){
+  if(!t) return false;
+  if(t.unlocked) return true;
+  return (t.level||1) >= VIRTUOSO_LEVEL
+      && (t.edges||[]).some(e => String(e).trim().toLowerCase() === "virtuoso skills");
+}
+function rankAllowed(t, rank){ return rank !== "Virtuoso" || virtuosoOk(t); }
+const VIRTUOSO_LOCK_MSG = `Virtuoso needs Level ${VIRTUOSO_LEVEL} and the “Virtuoso Skills” Edge (or GM 🔓).`;
 
 const SKILLS = [
   ["acrobatics","Acrobatics"], ["athletics","Athletics"], ["combat","Combat"],
@@ -857,11 +886,8 @@ function megaEvolve(p, targetName, rerender){
   const m = pokeDerived(p).maxHP;
   if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
   if(rerender) rerender(); else { save(); refreshMon(p); }
-  // same transformation scene as a real evolution (see playEvolutionFX)
-  playEvolutionFX({ fromName: baseSp?.name || p.preMega, toName: sp.name, shiny: p.shiny,
-                    fromImg: p.image || "", toImg: monImage(p) || "",
-                    caption: `${p.nickname || baseSp?.name || "Your Pokémon"} Mega Evolved into ${sp.name}!` })
-    .then(()=>{ if(rerender) rerender(); else refreshMon(p); });
+  // No evolution scene here on purpose (per the user): a Mega is a temporary in-battle transform
+  // that reverts every End Scene, so a 6-second full-screen takeover every time is too much.
   toast(`Mega Evolved into ${sp.name}! ✨`+(megaAbility?` (Mega Ability: ${megaAbility})`:""));
 }
 function megaRevert(p, silent, rerender){
@@ -2823,9 +2849,13 @@ function recalcTrainer(){
 }
 function rankButtons(skillKey, cur){
   const wrap = el("div",{class:"rankbtns"});
+  const locked = r => !rankAllowed(activeChar().trainer, r);   // re-checked on click: level/edges can change
   RANKS.forEach((r,i) => {
-    const b = el("button",{title:r, class: r===cur?"on":""}, r[0]);
+    const lock = locked(r);
+    const b = el("button",{title: lock ? `${r} — ${VIRTUOSO_LOCK_MSG}` : `${r} (${rankDice(r)}d6)`,
+                           class: (r===cur?"on":"") + (lock?" locked":"")}, r[0]);
     b.addEventListener("click", ()=>{
+      if(locked(r)){ toast(VIRTUOSO_LOCK_MSG); return; }
       activeChar().trainer.skills[skillKey] = r; save();
       $$("button",wrap).forEach((x,j)=>x.classList.toggle("on", RANKS[j]===r));
       recalcTrainer();
@@ -2966,7 +2996,7 @@ function prereqStatus(t, feature){
       const have = classFeatureCount(t, cls);
       if(have<need) unmet.push(`${need} ${cls} Features (have ${have})`);
       return; }
-    m = tok.match(/^(Pathetic|Untrained|Novice|Adept|Expert|Master)\s+(.+)$/i);  // "Adept Intimidate"
+    m = tok.match(/^(Pathetic|Untrained|Novice|Adept|Expert|Master|Virtuoso)\s+(.+)$/i);  // "Adept Intimidate"
     if(m){ const sk = SKILLS.find(s=>s[1].toLowerCase()===m[2].trim().toLowerCase() || s[0].toLowerCase()===m[2].trim().toLowerCase());
       if(sk){ if(rankNum(t.skills[sk[0]]) < rankNum(m[1])) unmet.push(tok); return; } }
     // satisfied if the trainer took this as a Class — directly, or under an aliased class-row name
@@ -3170,7 +3200,7 @@ const LU_MILESTONES = {
         grants:{ "Two Edges":[{kind:"edge", label:"Edge"},{kind:"edge", label:"Edge"}] } } },
   12: { title:"Master Skills", note:"You may now Rank Up Skills to Master.",
         grants:[{kind:"edge", label:"Skill Edge", hint:"not for a Master rank-up"}] },
-  20: { title:"Veteran Trainer", note:"Choose one bonus below.",
+  20: { title:"Veteran Trainer", note:"Choose one bonus below. Homebrew: from this Level you may also Rank Up a Skill to Virtuoso (7d6) — it needs the “Virtuoso Skills” Edge, one per Skill.",
         choice:{ key:"m20", options:[
           "Bonus Stats — +1 Atk/SpAtk on each even Level 22-30",
           "Two Edges"],
@@ -12435,8 +12465,10 @@ function renderReference(){
   inp.addEventListener("input",()=>{ refQuery=inp.value; drawRefList(); });
   bar.append(inp);
   const sub = el("div",{class:"refsub"});
-  [["species","Pokédex"],["move","Moves"],["keyword","Keywords"],["ability","Abilities"],["item","Items"],
-   ["feature","Features"],["edge","Edges"],["nature","Natures"]].forEach(([k,l])=>{
+  const subs = [["species","Pokédex"],["move","Moves"],["keyword","Keywords"],["ability","Abilities"],["item","Items"],
+   ["feature","Features"],["edge","Edges"],["nature","Natures"]];
+  if(isGM()) subs.push(["dc","🎲 DCs"]);      // GM-only: how hard should this Skill Check be?
+  subs.forEach(([k,l])=>{
     sub.append(el("button",{class:refSub===k?"on":"",onclick:()=>{refSub=k;drawRefList();$$(".refsub button").forEach(b=>b.classList.toggle("on",b.textContent===l));}},l));
   });
   bar.append(sub);
@@ -12446,6 +12478,7 @@ function renderReference(){
 }
 function drawRefList(){
   const list = $("#refList"); if(!list) return; list.innerHTML="";
+  if(refSub==="dc" && !isGM()) refSub = "species";     // GM mode turned off while the tab was open
   const q = refQuery.trim().toLowerCase();
   let rows = [];
   const match = s => !q || String(s).toLowerCase().includes(q);
@@ -12463,6 +12496,7 @@ function drawRefList(){
       .sort((a,b)=>a[0].localeCompare(b[0]))
       .map(([term,def])=>refGeneric(term.charAt(0).toUpperCase()+term.slice(1), "Move Keyword", def));
   }
+  else if(refSub==="dc") rows = dcRefRows(q);
   if(!rows.length) list.append(el("div",{class:"muted"},"no matches"));
   rows.forEach(r=>list.append(r));
 }
@@ -12501,6 +12535,189 @@ function refGeneric(name, meta, body, prereq){
   return it;
 }
 const esc = s => String(s??"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+/* ===================================================================
+   GM-only DC reference — "Setting Skill Check Difficulties" (Core pp.465-466).
+   The book deliberately prints no table of set DCs for particular tasks, so the
+   per-Skill examples below are ours (campaign homebrew); the odds, the rank ladder
+   and the DC_BOOK_CHECKS list are straight from the rules.
+=================================================================== */
+const DC_TIERS = [
+  { dc:4,  name:"Trivial",         gist:"Almost anyone pulls it off. Only ask for a roll if failing would actually be interesting." },
+  { dc:7,  name:"Easy",            gist:"The average Untrained roll (2d6). Everyday competence, no training needed." },
+  { dc:10, name:"Moderate",        gist:"The average Novice roll (3d6). A keen hobbyist's territory." },
+  { dc:13, name:"Challenging",     gist:"The average Adept roll (4d6). Adept is roughly “makes a living at it” — routine work for a professional." },
+  { dc:17, name:"Hard",            gist:"The average Expert roll (5d6). The best in town gets called in for this." },
+  { dc:21, name:"Very Hard",       gist:"The average Master roll (6d6). Regionally famous, and still a real chance of failure." },
+  { dc:25, name:"Legendary",       gist:"The average Virtuoso roll (7d6). Homebrew tier — the sort of thing nobody else alive can do." },
+  { dc:30, name:"Nigh-Impossible", gist:"~2% at Master, ~14% at Virtuoso even before penalties. Miracles and story beats only." },
+];
+/* DCs the Core book actually prints for specific checks — handy anchors when improvising */
+const DC_BOOK_CHECKS = [
+  [4,  "Athletics",      "Each round you keep hauling Staggering weight"],
+  [8,  "Athletics",      "Reel a hooked Pokémon in while fishing"],
+  [10, "Acrobatics",     "Stay mounted on a Pokémon you've only just started riding (Athletics also works)"],
+  [10, "Acrobatics",     "Blinded, crossing Rough or Slow Terrain — fail and you're Tripped"],
+  [10, "Pokémon Ed.",    "Pokémon Analysis: learn a target's Level, Types, Nature and Abilities"],
+  [12, "Acrobatics",     "Falling — ignore one extra metre of Fall damage (DC 20 if the fall wasn't your idea)"],
+  [12, "Pokémon Ed.",    "Breeder: guarantee a compatible pair produces an Egg"],
+  [12, "Focus",          "Resist thrown Bait — fail and you spend your next Standard Action eating"],
+  [15, "Technology Ed.", "Repair a Poké Ball that broke on a failed capture (needs a Poké Ball Tool Box)"],
+  [15, "Intuition",      "Mystic Senses: Channel a Pokémon that's hostile to you"],
+  [16, "Acrobatics",     "Permanently raise your High Jump or Long Jump by +1"],
+  [16, "Focus",          "Keep your head after being attacked this round or last — miss it and take −1 to the real check, and another −1 per 4 you fell short"],
+];
+/* Per-Skill flavour for each tier — what a DC of that size should feel like at the table. */
+const DC_SKILL_EXAMPLES = {
+  acrobatics: {4:"Keep your feet on a wet Gym floor.", 7:"Vault a park bench without breaking stride.",
+    10:"Cross a fallen log over a stream without slipping.", 13:"Tumble through a Gym's moving pillars untouched.",
+    17:"Run along the roof of a moving train in the rain.", 21:"Leap from a rooftop onto a passing airship — the gritty-campaign version.",
+    25:"Ride a Sharpedo over a waterfall and land on your feet."},
+  athletics: {4:"Carry a full pack up several flights of stairs.", 7:"Climb a chain-link fence.",
+    10:"Swim a river with a light current.", 13:"Haul a fainted Machoke clear of danger on your own.",
+    17:"Free-climb a wet cliff face with no gear.", 21:"Hold a collapsing ceiling up while the party gets out.",
+    25:"Out-swim a Gyarados' whirlpool to reach the shore."},
+  combat: {4:"Hold your stance while a Rattata circles you.", 7:"Disarm a startled civilian.",
+    10:"Land a clean pommel strike on a fleeing grunt.", 13:"Fight two armed grunts at once without being flanked.",
+    17:"Duel a Gym Leader's bodyguard to a standstill.", 21:"Trade blows with a Black Belt master and come out ahead.",
+    25:"Cross weapons with a living legend and disarm them."},
+  stealth: {4:"Go unnoticed in a busy market crowd.", 7:"Sneak past a dozing Snorlax.",
+    10:"Slip through a bored night guard's patrol route.", 13:"Cross a lit warehouse floor while two guards chat.",
+    17:"Tail a Team grunt through empty streets all night, unseen.", 21:"Empty a Gym's trophy case during a match without anyone noticing.",
+    25:"Walk through a Psychic's wards without tripping a single one."},
+  perception: {4:"Notice the one lit window on a dark street.", 7:"Spot a Pidgey nest in a nearby tree.",
+    10:"Spot a scroll tucked into the nook of a tree.", 13:"Catch a pickpocket's hand before it reaches your bag.",
+    17:"See a Zorua's illusion flickering at the edges.", 21:"Hear a Diglett tunnelling three rooms away.",
+    25:"Pick a cloaked Ghost-type out of total darkness."},
+  intimidate: {4:"Scare a Rattata out of your backpack.", 7:"Make a lone grunt think twice.",
+    10:"Stare down a rowdy drunk in a crowded bar.", 13:"Make a Team squad drop what they stole and walk away.",
+    17:"Cow a hostile wild Ursaring into backing off.", 21:"Silence a packed Gym crowd mid-match with a look.",
+    25:"Make an enraged Legendary stop and hear you out."},
+  survival: {4:"Find drinkable water in a well-used park.", 7:"Get a fire going in dry weather.",
+    10:"Follow a day-old Stantler trail through forest.", 13:"Forage a full day's food in woods you've never seen.",
+    17:"Track a Ninetales across snow after fresh powder has fallen.", 21:"Keep a whole party alive a week on a winter mountain.",
+    25:"Find a Legendary's nesting ground from rumours and weather patterns alone."},
+  generalEd: {4:"Name the region's largest city.", 7:"Remember who won last year's League final.",
+    10:"Recall the local law on capturing wild Pokémon.", 13:"Name the family that owned this ruined manor.",
+    17:"Quote the relevant clause of an obscure trade treaty.", 21:"Identify a dead language from a single carved word.",
+    25:"Reconstruct a lost civilisation's calendar from three broken tablets."},
+  medicineEd: {4:"Apply a bandage properly.", 7:"Treat a Trainer's sprained ankle.",
+    10:"Identify a Poison-type's venom from the symptoms.", 13:"Stabilise a badly injured Pokémon in the field.",
+    17:"Diagnose a rare illness with no lab and no Pokédex.", 21:"Perform field surgery with nothing but a Centre's travel kit.",
+    25:"Improvise an antidote for a toxin no one has ever catalogued."},
+  occultEd: {4:"Recall the shape of the local ghost story.", 7:"Name the usual signs that a Ghost-type haunts a house.",
+    10:"Identify a common ward carved on a shrine gate.", 13:"Read the ritual purpose of an old burial circle.",
+    17:"Recognise which Legendary a seal was made to bind.", 21:"Recite the true rite that opens a sealed tomb.",
+    25:"Interpret a prophecy no one has been able to read in a thousand years."},
+  pokemonEd: {4:"Name a Pikachu on sight.", 7:"Recall what a Growlithe usually eats.",
+    10:"Read a Pokémon's Level, Types, Nature and Abilities (the book's own DC).", 13:"Know a regional form's habits and weak points.",
+    17:"Recall the exact trigger a rare species needs to evolve.", 21:"Identify an undocumented regional variant on sight.",
+    25:"Correctly describe a Legendary nobody has ever confirmed exists."},
+  technologyEd: {4:"Restart a frozen PC terminal.", 7:"Wire a simple alarm to a door.",
+    10:"Replace a part in a car engine — routine shop work.", 13:"Bypass a Gym's electronic lock.",
+    17:"Diagnose an esoteric fault in a rare model nobody stocks parts for.", 21:"Get into a corporate research network without leaving a trace.",
+    25:"Reverse-engineer technology from a civilisation that no longer exists."},
+  guile: {4:"Palm a berry off a market stall.", 7:"Bluff past a distracted receptionist.",
+    10:"Lie convincingly to a suspicious shopkeeper.", 13:"Pass as a grunt inside the Team's own base.",
+    17:"Run a shell game on a professional gambler and win.", 21:"Sell a Gym Leader a forged League summons.",
+    25:"Hold a lie together under a Psychic's direct questioning."},
+  charm: {4:"Get a stranger to give you directions.", 7:"Talk a shopkeeper into a small discount.",
+    10:"Talk your way into a members-only club.", 13:"Talk a hostile Trainer out of a battle entirely.",
+    17:"Turn a hostile crowd around mid-speech.", 21:"Convince a Gym Leader to break their own rules for you.",
+    25:"Charm a Legendary's guardian into standing aside."},
+  command: {4:"Tell your own Pokémon to sit.", 7:"Get a friendly Pokémon that isn't yours to follow you.",
+    10:"Direct two Pokémon through a coordinated manoeuvre.", 13:"Keep a frightened Pokémon fighting while it's taking fire.",
+    17:"Command a newly caught, thoroughly unimpressed Pokémon in battle.", 21:"Run a whole squad of Pokémon at once without a wasted action.",
+    25:"Give an order a wild Legendary actually chooses to obey."},
+  focus: {4:"Read in a noisy room.", 7:"Keep your hands steady on a ledge.",
+    10:"Push on through the pain of a fresh injury.", 13:"Hold your concentration while a Psychic pries at it.",
+    17:"Keep your head on a check immediately after being attacked.", 21:"Shrug off a Hypno that is actively trying to put you under.",
+    25:"Stay yourself in the presence of a Legendary's full attention."},
+  intuition: {4:"Tell that someone is upset.", 7:"Catch an obvious lie.",
+    10:"Sense that you're being followed.", 13:"Read a practised poker face.",
+    17:"Pick the traitor out of five friendly faces.", 21:"Know a stranger's intent before they move.",
+    25:"Feel a Legendary stir on the far side of the region."},
+};
+/* exact odds for a Rank's dice pool vs a DC — DICE_DIST[n][sum] = ways to roll `sum` on n d6 */
+const DICE_DIST = (()=>{
+  const out = [{0:1}];
+  for(let n=1;n<=RANKS.length;n++){
+    const prev = out[n-1], cur = {};
+    for(const k in prev) for(let f=1;f<=6;f++) cur[+k+f] = (cur[+k+f]||0) + prev[k];
+    out.push(cur);
+  }
+  return out;
+})();
+function dcSuccessPct(nDice, dc){
+  const d = DICE_DIST[nDice]; let hit = 0;
+  for(const k in d) if(+k >= dc) hit += d[k];
+  return hit / Math.pow(6, nDice) * 100;
+}
+function dcPctText(p){ return p<=0 ? "—" : p<1 ? "<1%" : p>=99.95 ? "100%" : Math.round(p)+"%"; }
+
+/* The first 7 DC_TIERS line up 1:1 with RANKS — that's the book's "average roll" ladder
+   (Untrained 7 / Novice 10 / Adept 13 / Expert 17 / Master 21), extended down to Pathetic
+   and up to the homebrew Virtuoso. DC 30 is the extra 8th tier, shown only in the odds table. */
+function dcRefRows(q){
+  const rows = [];
+  const match = s => !q || String(s).toLowerCase().includes(q);
+
+  if(!q){
+    /* 1 — how to pick a number */
+    const how = el("div",{class:"refitem"});
+    how.innerHTML = `<div class="r-title">🎲 Setting a DC <span class="muted small">GM only · Core pp.465-466</span></div>
+      <div class="dc-body">Pick the Rank you think <em>ought</em> to handle this routinely and use its average roll as the DC —
+that's a success most of the time with a real chance of failure. Nudge it up a couple of points for awkward conditions,
+and remember most characters carry +1…+4 from Edges and Equipment on their signature Skills.</div>
+      <div class="dc-ladder">${RANKS.map((r,i)=>
+        `<span class="kv"><b>${esc(r)}</b> ${i+1}d6 → DC ${DC_TIERS[i].dc}</span>`).join("")}</div>
+      <div class="dc-body"><b>Reading the odds:</b> every +1 of modifier is worth −1 DC — a +4 Trainer facing DC 14 has the DC 10 column's chances.<br>
+<b>Rather than inflating the DC:</b> for each genuinely bad circumstance (dark, storm, being shot at) roll <b>1 penalty d6</b>
+and subtract it from their result. That keeps high-Rank characters beatable without pushing DCs into the 30s.</div>`;
+    rows.push(how);
+
+    /* 2 — the odds table */
+    const odds = el("div",{class:"refitem"});
+    const head = RANKS.map((r,i)=>`<th title="${escAttr(r)} — ${i+1}d6">${esc(r.slice(0,4))}<span class="muted"> ${i+1}d6</span></th>`).join("");
+    const body = DC_TIERS.map(t=>{
+      const cells = RANKS.map((r,i)=>{
+        const p = dcSuccessPct(i+1, t.dc);
+        return `<td class="${p>=90?"dc-good":p<=5?"dc-bad":""}">${dcPctText(p)}</td>`;
+      }).join("");
+      return `<tr><th class="dc-num">DC ${t.dc}</th><td class="dc-name">${esc(t.name)}</td>${cells}</tr>`;
+    }).join("");
+    odds.innerHTML = `<div class="r-title">Chance to pass, by Rank <span class="muted small">at +0 modifier</span></div>
+      <div class="dc-scroll"><table class="dc-table"><thead><tr><th></th><th></th>${head}</tr></thead><tbody>${body}</tbody></table></div>
+      <div class="dc-body">${DC_TIERS.map(t=>`<b>DC ${t.dc} · ${esc(t.name)}</b> — ${esc(t.gist)}`).join("<br>")}</div>`;
+    rows.push(odds);
+  }
+
+  /* 3 — DCs the book prints outright */
+  const booked = DC_BOOK_CHECKS.filter(([dc,sk,txt])=>match(sk)||match(txt)||match("dc "+dc));
+  if(booked.length){
+    const bk = el("div",{class:"refitem"});
+    bk.innerHTML = `<div class="r-title">DCs the rulebook prints</div>
+      <div class="r-meta">Specific checks with a fixed DC in Core — useful anchors when you're eyeballing a new one</div>
+      <div class="dc-scroll"><table class="dc-table dc-book"><tbody>${booked.map(([dc,sk,txt])=>
+        `<tr><th class="dc-num">DC ${dc}</th><td class="dc-name">${esc(sk)}</td><td>${esc(txt)}</td></tr>`).join("")}</tbody></table></div>`;
+    rows.push(bk);
+  }
+
+  /* 4 — per-Skill examples */
+  SKILLS.forEach(([k,lbl])=>{
+    const ex = DC_SKILL_EXAMPLES[k]; if(!ex) return;
+    const hits = Object.entries(ex).filter(([dc,txt])=>match(lbl)||match(txt));
+    if(!hits.length) return;
+    const it = el("div",{class:"refitem"});
+    it.innerHTML = `<div class="r-title">${esc(lbl)}</div>
+      <div class="dc-scroll"><table class="dc-table dc-ex"><tbody>${hits.map(([dc,txt])=>{
+        const tier = DC_TIERS.find(t=>t.dc===+dc);
+        return `<tr><th class="dc-num">DC ${dc}</th><td class="dc-name">${esc(tier?tier.name:"")}</td><td>${esc(txt)}</td></tr>`;
+      }).join("")}</tbody></table></div>`;
+    rows.push(it);
+  });
+  return rows;
+}
 const escAttr = s => esc(s).replace(/"/g,"&quot;");
 
 /* ===================================================================
@@ -12698,7 +12915,7 @@ function openSettings(){
   wrap.append(mk("Show Contest stats", "ptu_show_contest",
     "Display each move's Contest type/effect in its details (Cool, Tough, etc.). Off by default."));
   wrap.append(mk("Evolution animation", "ptu_evo_fx",
-    "Play the full-screen evolution scene (white silhouette, growing and shrinking) when a Pokémon evolves or Mega Evolves. Tap the screen to skip it.", true));
+    "Play the full-screen evolution scene (white silhouette, growing and shrinking) when a Pokémon evolves. Tap the screen to skip it. Mega Evolution doesn't use it.", true));
   wrap.append(mk("Evolution sound", "ptu_evo_sound",
     "The accelerating beeps and the fanfare that go with it. Turn this off to keep the animation silent.", true));
   wrap.append(el("div",{class:"inline",style:"margin-top:6px"},

@@ -134,6 +134,11 @@ textarea{resize:vertical; min-height:64px}
 .rankbtns{display:flex; gap:3px}
 .rankbtns button{width:26px;height:28px;border:1px solid var(--field-line);background:var(--field);border-radius:6px;font-weight:800;color:var(--muted)}
 .rankbtns button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+/* Virtuoso before you qualify (Level 20 + the Virtuoso Skills Edge) — shown, but not clickable */
+.rankbtns button.locked{opacity:.4; border-style:dashed; cursor:not-allowed}
+.rankbtns button.locked.on{opacity:.8}
+/* 7 ranks is a wide row on a phone — let the buttons shrink instead of pushing the table */
+@media (max-width:560px){ .rankbtns button{width:23px} }
 
 /* ---------- chips / tags ---------- */
 .chips{display:flex; flex-wrap:wrap; gap:6px}
@@ -190,6 +195,19 @@ textarea{resize:vertical; min-height:64px}
 .refitem .r-title{font-weight:800; display:flex; gap:8px; align-items:center; flex-wrap:wrap}
 .refitem .r-meta{font-size:12px; color:var(--muted); margin-top:2px}
 .refitem .r-body{font-size:13px; margin-top:6px; white-space:pre-wrap}
+/* ---------- GM DC reference (Reference ▸ 🎲 DCs) ---------- */
+.refitem .dc-body{font-size:13px; margin-top:6px; line-height:1.45}   /* like r-body, but HTML-formatted */
+.dc-ladder{display:flex; flex-wrap:wrap; gap:2px; margin-top:8px}
+.dc-scroll{overflow-x:auto; -webkit-overflow-scrolling:touch; margin-top:8px}
+.dc-table{border-collapse:collapse; width:100%; font-size:13px}
+.dc-table th,.dc-table td{padding:4px 7px; border-bottom:1px solid var(--line); text-align:center; white-space:nowrap}
+.dc-table thead th{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.3px}
+.dc-table .dc-num{color:var(--accent); font-weight:800; text-align:left}
+.dc-table .dc-name{text-align:left; color:var(--muted); font-weight:600}
+.dc-table .dc-good{color:var(--good); font-weight:700}
+.dc-table .dc-bad{color:var(--muted); opacity:.6}
+/* the example / book-DC tables are prose, not numbers — let the last column wrap */
+.dc-table.dc-ex td:last-child,.dc-table.dc-book td:last-child{text-align:left; white-space:normal; min-width:220px}
 .kv{display:inline-flex; gap:4px; font-size:12px; background:var(--panel-2); border:1px solid var(--line); border-radius:6px; padding:1px 7px; font-weight:600; margin:2px 4px 0 0}
 .kw-hint{border-bottom:1px dotted var(--muted); cursor:help}
 /* clickable TM/HM move → "who can learn it" */
