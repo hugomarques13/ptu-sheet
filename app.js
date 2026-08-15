@@ -9,12 +9,15 @@ const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 /* ---------- reference constants ---------- */
-/* Virtuoso is a homebrew 7th Skill Rank for this campaign. Everything downstream keys off
-   rankNum/rankDice (dice pools, "Adept Intimidate" prerequisites, the Combat-Master weapon
-   tiers), so adding it to the ladder is enough — nothing else assumes Master is the top. */
+/* Virtuoso is a homebrew Rank above Master. It deliberately does NOT add dice — a Virtuoso
+   Skill Check is still 6d6, exactly like Master. What it changes is the Rank *number*: it
+   counts as Rank 8, which is what anything phrased "… + your Rank in <Skill>" reads (Mentor
+   skill sums, Channeling capacity, chef/craft scaling, Rank-gated prerequisites). Hence the
+   two helpers diverging below; everything downstream already goes through one or the other. */
 const RANKS = ["Pathetic", "Untrained", "Novice", "Adept", "Expert", "Master", "Virtuoso"];
-const rankNum  = r => Math.max(1, RANKS.indexOf(r) + 1);          // Pathetic=1 … Master=6, Virtuoso=7
-const rankDice = r => rankNum(r);                                 // #d6
+const RANK_NUM_OVERRIDE = { Virtuoso: 8 };                        // skips 7 on purpose — campaign ruling
+const rankNum  = r => RANK_NUM_OVERRIDE[r] ?? Math.max(1, RANKS.indexOf(r) + 1);  // Pathetic=1 … Master=6, Virtuoso=8
+const rankDice = r => Math.min(6, rankNum(r));                    // #d6 — never more than Master's 6d6
 
 /* The Edge that unlocks Virtuoso. It lives here rather than in data/edges.json because a
    tools/build_data.py rebuild regenerates that file from the xlsx and would drop it — the same
@@ -25,8 +28,9 @@ const VIRTUOSO_EDGE = {
   name: "Virtuoso Skills",
   category: "Skill Edges",
   prerequisites: `Level ${VIRTUOSO_LEVEL}, Master Rank in the Skill`,
-  effect: "You Rank Up a Skill from Master to Virtuoso, rolling 7d6 for its Checks. "
-        + "You may take this Edge multiple times, but only once per Skill. (Homebrew)",
+  effect: "You Rank Up a Skill from Master to Virtuoso. A Virtuoso Skill Check still rolls 6d6, "
+        + "the same as Master — but the Skill counts as Rank 8 for any effect that scales with "
+        + "your Rank in it. You may take this Edge multiple times, but only once per Skill. (Homebrew)",
 };
 if(Array.isArray(D.edges) && !D.edges.some(e=>e.name===VIRTUOSO_EDGE.name)){
   const after = D.edges.findIndex(e=>e.name==="Master Skills");
@@ -2101,7 +2105,8 @@ function renderTrainer(){
     const bonus = categoricBonus(t, k) + gearSkillBonus(t, k);   // Categoric Inclination Edge + worn equipment (Sunglasses, Running Shoes…) / studied Books
     tr.append(el("td",{},lbl+(bonus?` +${bonus}`:"")));
     const rb = el("td",{},rankButtons(k, t.skills[k]));
-    const dice = el("td",{class:"dice","data-dice":k}, `${rankDice(t.skills[k])}d6${bonus?`+${bonus}`:""}`);
+    const dice = el("td",{class:"dice","data-dice":k, html: skillDiceHTML(t.skills[k], bonus),
+      title: t.skills[k]==="Virtuoso" ? "Virtuoso rolls 6d6, the same as Master — it counts as Rank 8 only for effects that scale with your Rank" : ""});
     const roll = el("td",{}, el("button",{class:"btn-secondary",style:"padding:2px 8px",title:`roll ${lbl}`,
       onclick:()=>rollSkill(lbl, rankDice(t.skills[k]), bonus)},"🎲"));
     tr.append(rb, dice, roll);
@@ -2844,15 +2849,22 @@ function recalcTrainer(){
   if(JSON.stringify(t.msStats||{})!==before) save();
   const giftB = giftStatBonus(t), tagB = statTagBonus(t).stats;
   STATS.forEach(([k]) => { const n=$(`[data-tot="${k}"]`); if(n) n.textContent = t.combat[k].base + t.combat[k].added + (giftB[k]||0) + (tagB[k]||0); });
-  SKILLS.forEach(([k]) => { const n=$(`[data-dice="${k}"]`); if(n){ const b=categoricBonus(t,k)+gearSkillBonus(t,k); n.textContent = `${rankDice(t.skills[k])}d6${b?`+${b}`:""}`; } });
+  SKILLS.forEach(([k]) => { const n=$(`[data-dice="${k}"]`); if(n){ const b=categoricBonus(t,k)+gearSkillBonus(t,k); n.innerHTML = skillDiceHTML(t.skills[k], b); } });
   const g = $("#trainerDerived"); if (g) g.replaceWith(trainerDerivedGrid(t));
+}
+/* the dice cell in the Skills table. Virtuoso rolls Master's 6d6, so it gets an "R8" tag —
+   otherwise ranking up to it looks like it did nothing at all. */
+function skillDiceHTML(rank, bonus){
+  return `${rankDice(rank)}d6${bonus?`+${bonus}`:""}`
+    + (rank==="Virtuoso" ? ` <span class="muted small">R8</span>` : "");
 }
 function rankButtons(skillKey, cur){
   const wrap = el("div",{class:"rankbtns"});
   const locked = r => !rankAllowed(activeChar().trainer, r);   // re-checked on click: level/edges can change
   RANKS.forEach((r,i) => {
     const lock = locked(r);
-    const b = el("button",{title: lock ? `${r} — ${VIRTUOSO_LOCK_MSG}` : `${r} (${rankDice(r)}d6)`,
+    const b = el("button",{title: lock ? `${r} — ${VIRTUOSO_LOCK_MSG}`
+                                      : `${r} — Rank ${rankNum(r)}, ${rankDice(r)}d6`,
                            class: (r===cur?"on":"") + (lock?" locked":"")}, r[0]);
     b.addEventListener("click", ()=>{
       if(locked(r)){ toast(VIRTUOSO_LOCK_MSG); return; }
@@ -3200,7 +3212,7 @@ const LU_MILESTONES = {
         grants:{ "Two Edges":[{kind:"edge", label:"Edge"},{kind:"edge", label:"Edge"}] } } },
   12: { title:"Master Skills", note:"You may now Rank Up Skills to Master.",
         grants:[{kind:"edge", label:"Skill Edge", hint:"not for a Master rank-up"}] },
-  20: { title:"Veteran Trainer", note:"Choose one bonus below. Homebrew: from this Level you may also Rank Up a Skill to Virtuoso (7d6) — it needs the “Virtuoso Skills” Edge, one per Skill.",
+  20: { title:"Veteran Trainer", note:"Choose one bonus below. Homebrew: from this Level you may also Rank Up a Skill to Virtuoso with the “Virtuoso Skills” Edge (one per Skill) — still 6d6 on Checks, but it counts as Rank 8 for anything that scales with your Rank.",
         choice:{ key:"m20", options:[
           "Bonus Stats — +1 Atk/SpAtk on each even Level 22-30",
           "Two Edges"],
@@ -8400,14 +8412,21 @@ const TUTOR_COST = 2;
      Lv 20–29    : up to Scene frequency, max Damage Base 9
      Lv 30+      : no restriction. */
 const TUTOR_FREQ_RANK = {atwill:0, eot:1, scene:2, daily:3};
-function tutorMoveAllowed(moveName, level){
-  if((level||1) >= 30) return true;
+/* Lowest level at which a Move may be taught through a Tutoring Feature under the restriction above:
+   1 (At-Will/EOT & DB ≤7), 20 (up to Scene & DB ≤9) or 30 (anything else). null = not in the DB, so
+   it's GM discretion — those are never blocked. */
+function tutorMinLevel(moveName){
   const m = moveByName.get(String(moveName).toLowerCase());
-  if(!m) return true;                                   // custom / not in DB → GM discretion
+  if(!m) return null;                                   // custom / not in DB → GM discretion
   const rank = TUTOR_FREQ_RANK[freqInfo(m.frequency).kind];
   const db = typeof m.damageBase==="number" ? m.damageBase : 0;
-  if(level >= 20) return rank!=null && rank<=TUTOR_FREQ_RANK.scene && db<=9;   // 20–29
-  return rank!=null && rank<=TUTOR_FREQ_RANK.eot && db<=7;                     // under 20
+  if(rank!=null && rank<=TUTOR_FREQ_RANK.eot   && db<=7) return 1;
+  if(rank!=null && rank<=TUTOR_FREQ_RANK.scene && db<=9) return 20;
+  return 30;
+}
+function tutorMoveAllowed(moveName, level){
+  const min = tutorMinLevel(moveName);
+  return min==null || (level||1) >= min;
 }
 function openTutorMovePicker(p, sp){
   if(!p.unlocked && !sp){ toast("Unknown species — tick 🔓 to add any move"); return; }
@@ -12524,7 +12543,9 @@ function refMove(m){
 }
 function refAbility(a){
   const it = el("div",{class:"refitem"});
-  it.innerHTML = `<div class="r-title">${a.name}</div><div class="r-meta">${a.frequency||""}${a.keywords?" · "+a.keywords:""}</div>
+  it.innerHTML = `<div class="r-title">${a.name}</div><div class="r-meta">${esc(cleanFreq(a.frequency))}${a.keywords?" · "+esc(a.keywords):""}</div>
+    ${a.trigger?`<div class="r-body"><b>Trigger:</b> ${esc(a.trigger)}</div>`:""}
+    ${a.target?`<div class="r-body"><b>Target:</b> ${esc(a.target)}</div>`:""}
     <div class="r-body">${esc(a.effect||"")}</div>`;
   return it;
 }
@@ -12548,9 +12569,9 @@ const DC_TIERS = [
   { dc:10, name:"Moderate",        gist:"The average Novice roll (3d6). A keen hobbyist's territory." },
   { dc:13, name:"Challenging",     gist:"The average Adept roll (4d6). Adept is roughly “makes a living at it” — routine work for a professional." },
   { dc:17, name:"Hard",            gist:"The average Expert roll (5d6). The best in town gets called in for this." },
-  { dc:21, name:"Very Hard",       gist:"The average Master roll (6d6). Regionally famous, and still a real chance of failure." },
-  { dc:25, name:"Legendary",       gist:"The average Virtuoso roll (7d6). Homebrew tier — the sort of thing nobody else alive can do." },
-  { dc:30, name:"Nigh-Impossible", gist:"~2% at Master, ~14% at Virtuoso even before penalties. Miracles and story beats only." },
+  { dc:21, name:"Very Hard",       gist:"The average Master roll (6d6) — the top of the dice ladder, and still a real chance of failure." },
+  { dc:25, name:"Legendary",       gist:"Past what even a Master rolls on average (~21%). Needs their bonuses to line up, or a very good day." },
+  { dc:30, name:"Nigh-Impossible", gist:"~2% at 6d6 before any modifiers. Miracles and story beats only." },
 ];
 /* DCs the Core book actually prints for specific checks — handy anchors when improvising */
 const DC_BOOK_CHECKS = [
@@ -12638,10 +12659,11 @@ const DC_SKILL_EXAMPLES = {
     17:"Pick the traitor out of five friendly faces.", 21:"Know a stranger's intent before they move.",
     25:"Feel a Legendary stir on the far side of the region."},
 };
-/* exact odds for a Rank's dice pool vs a DC — DICE_DIST[n][sum] = ways to roll `sum` on n d6 */
+/* exact odds for a Rank's dice pool vs a DC — DICE_DIST[n][sum] = ways to roll `sum` on n d6.
+   6 pools is the whole ladder: Virtuoso rolls the same 6d6 as Master, so it needs no column. */
 const DICE_DIST = (()=>{
   const out = [{0:1}];
-  for(let n=1;n<=RANKS.length;n++){
+  for(let n=1;n<=6;n++){
     const prev = out[n-1], cur = {};
     for(const k in prev) for(let f=1;f<=6;f++) cur[+k+f] = (cur[+k+f]||0) + prev[k];
     out.push(cur);
@@ -12655,9 +12677,11 @@ function dcSuccessPct(nDice, dc){
 }
 function dcPctText(p){ return p<=0 ? "—" : p<1 ? "<1%" : p>=99.95 ? "100%" : Math.round(p)+"%"; }
 
-/* The first 7 DC_TIERS line up 1:1 with RANKS — that's the book's "average roll" ladder
-   (Untrained 7 / Novice 10 / Adept 13 / Expert 17 / Master 21), extended down to Pathetic
-   and up to the homebrew Virtuoso. DC 30 is the extra 8th tier, shown only in the odds table. */
+/* The Ranks that actually have their own dice pool — Virtuoso shares Master's 6d6, so it gets
+   a footnote rather than a ladder rung or a table column. The first 6 DC_TIERS line up 1:1 with
+   these: the book's "average roll" ladder (Untrained 7 / Novice 10 / Adept 13 / Expert 17 /
+   Master 21) extended down to Pathetic. DC 25 and DC 30 are the two "past the ladder" tiers. */
+const DICE_RANKS = RANKS.filter(r => rankDice(r) === rankNum(r));
 function dcRefRows(q){
   const rows = [];
   const match = s => !q || String(s).toLowerCase().includes(q);
@@ -12669,24 +12693,29 @@ function dcRefRows(q){
       <div class="dc-body">Pick the Rank you think <em>ought</em> to handle this routinely and use its average roll as the DC —
 that's a success most of the time with a real chance of failure. Nudge it up a couple of points for awkward conditions,
 and remember most characters carry +1…+4 from Edges and Equipment on their signature Skills.</div>
-      <div class="dc-ladder">${RANKS.map((r,i)=>
+      <div class="dc-ladder">${DICE_RANKS.map((r,i)=>
         `<span class="kv"><b>${esc(r)}</b> ${i+1}d6 → DC ${DC_TIERS[i].dc}</span>`).join("")}</div>
       <div class="dc-body"><b>Reading the odds:</b> every +1 of modifier is worth −1 DC — a +4 Trainer facing DC 14 has the DC 10 column's chances.<br>
 <b>Rather than inflating the DC:</b> for each genuinely bad circumstance (dark, storm, being shot at) roll <b>1 penalty d6</b>
-and subtract it from their result. That keeps high-Rank characters beatable without pushing DCs into the 30s.</div>`;
+and subtract it from their result. That keeps high-Rank characters beatable without pushing DCs into the 30s.<br>
+<b>Virtuoso</b> (homebrew, Level ${VIRTUOSO_LEVEL} + its Edge) doesn't change any of this — it rolls Master's 6d6.
+It's Rank <b>8</b> for effects that read “your Rank in that Skill”, so set its DCs off the Master column.</div>`;
     rows.push(how);
 
     /* 2 — the odds table */
     const odds = el("div",{class:"refitem"});
-    const head = RANKS.map((r,i)=>`<th title="${escAttr(r)} — ${i+1}d6">${esc(r.slice(0,4))}<span class="muted"> ${i+1}d6</span></th>`).join("");
+    const head = DICE_RANKS.map((r,i)=>{
+      const also = r==="Master" ? " (and Virtuoso)" : "";
+      return `<th title="${escAttr(r+also)} — ${i+1}d6">${esc(r.slice(0,4))}<span class="muted"> ${i+1}d6</span></th>`;
+    }).join("");
     const body = DC_TIERS.map(t=>{
-      const cells = RANKS.map((r,i)=>{
+      const cells = DICE_RANKS.map((r,i)=>{
         const p = dcSuccessPct(i+1, t.dc);
         return `<td class="${p>=90?"dc-good":p<=5?"dc-bad":""}">${dcPctText(p)}</td>`;
       }).join("");
       return `<tr><th class="dc-num">DC ${t.dc}</th><td class="dc-name">${esc(t.name)}</td>${cells}</tr>`;
     }).join("");
-    odds.innerHTML = `<div class="r-title">Chance to pass, by Rank <span class="muted small">at +0 modifier</span></div>
+    odds.innerHTML = `<div class="r-title">Chance to pass, by Rank <span class="muted small">at +0 modifier · Virtuoso = the Master column</span></div>
       <div class="dc-scroll"><table class="dc-table"><thead><tr><th></th><th></th>${head}</tr></thead><tbody>${body}</tbody></table></div>
       <div class="dc-body">${DC_TIERS.map(t=>`<b>DC ${t.dc} · ${esc(t.name)}</b> — ${esc(t.gist)}`).join("<br>")}</div>`;
     rows.push(odds);
@@ -12781,7 +12810,12 @@ function annotateKeywords(html){
   let out = html;
   KEYWORD_TERMS.forEach(term=>{
     const re = new RegExp(`\\b(${term.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")})\\b`, "gi");
-    out = out.replace(re, m=>`<span class="kw-hint" data-kw="${term}" title="${escAttr(KEYWORD_DEFS[term])}">${m}</span>`);
+    // Only annotate inside text runs, never inside a tag: a term that also appears in an earlier
+    // term's title="..." definition (e.g. "Reaction") would otherwise inject a span into that
+    // attribute and spill raw markup into the page.
+    out = out.split(/(<[^>]*>)/).map(seg => seg[0]==="<" ? seg
+            : seg.replace(re, m=>`<span class="kw-hint" data-kw="${term}" title="${escAttr(KEYWORD_DEFS[term])}">${m}</span>`))
+          .join("");
   });
   return out;
 }
@@ -12878,12 +12912,17 @@ const AUTOMATED_ABILITIES = {
   "prism armor":"+5 Damage Reduction vs Super-Effective damage in the map damage tool.",
 };
 function abilityAutoNote(name){ return AUTOMATED_ABILITIES[String(name||"").toLowerCase()] || null; }
+/* the sheet's Frequency strings carry stray double spaces ("Scene -  Free Action") */
+function cleanFreq(s){ return String(s||"").replace(/\s+/g," ").trim(); }   // declaration: hoisted, so earlier renderers can use it
 function abilityText(a){
   const auto = abilityAutoNote(a.name);
-  return `<div class="r-meta">${esc(a.frequency||"")}${a.keywords?" · "+esc(a.keywords):""}</div>
+  // Book order: Frequency · Keywords, then Trigger / Target / Effect. Target says who the Ability
+  // may be used on (Healer = "An Adjacent Pokemon or Trainer") — Static/self Abilities have none.
+  return `<div class="r-meta">${esc(cleanFreq(a.frequency))}${a.keywords?" · "+esc(a.keywords):""}</div>
     ${auto?`<div class="r-body" style="color:var(--accent);font-weight:600">⚙ Auto-applied: ${esc(auto)}</div>`:""}
     ${a.trigger?`<div class="r-body"><b>Trigger:</b> ${annotateKeywords(esc(a.trigger))}</div>`:""}
-    <div class="r-body">${annotateKeywords(esc(a.effect||""))}</div>`;
+    ${a.target?`<div class="r-body"><b>Target:</b> ${annotateKeywords(esc(a.target))}</div>`:""}
+    <div class="r-body"><b>Effect:</b> ${annotateKeywords(esc(a.effect||""))}</div>`;
 }
 function moveDetailHTML(m, name){
   if(!m) return "Not in database.";
@@ -12964,10 +13003,39 @@ function speciesModal(s){
       }</div></details>`;
     }
     // Tutor entries carry a "(N)" cost marker that isn't part of the name — keep it, clean the name
-    [["Egg",s.moves.egg],["Tutor",s.moves.tutor]].forEach(([l,arr])=>{ if(arr?.length) html+=`<details class="spoiler"><summary>${l} Moves (${arr.length})</summary><div class="r-body">${
-      arr.map(raw=>{ const bare=String(raw).replace(/\s*\(N\)\s*$/i,"").trim();
+    if(s.moves.egg?.length) html+=`<details class="spoiler"><summary>Egg Moves (${s.moves.egg.length})</summary><div class="r-body">${
+      s.moves.egg.map(raw=>{ const bare=String(raw).replace(/\s*\(N\)\s*$/i,"").trim();
                      return esc(canonMoveName(bare) + (bare===String(raw).trim() ? "" : " (N)")); }).join(", ")
-    }</div></details>`; });
+    }</div></details>`;
+    if(s.moves.tutor?.length){
+      // Full stat line per Tutor move, with the level the Tutor/Inheritance restriction gates it behind
+      html += `<details class="spoiler"><summary>Tutor Moves (${s.moves.tutor.length})
+          <span class="small muted">— Lv = level needed to learn it through Tutoring</span></summary>
+        <div class="r-meta" style="margin-top:6px">Tutor &amp; Inheritance restrictions — Moves taught through Tutoring
+          Features (Mentor's Move Tutor and Egg Tutor, Chronicler's Archive Tutor):</div>
+        <div class="r-body" style="margin-bottom:6px">
+          · Under Lv 20: only At-Will or EOT Frequency, max Damage Base 7.<br>
+          · Lv 20–29: up to Scene Frequency, max Damage Base 9.<br>
+          · Lv 30+: no restrictions.</div>
+        <table class="movetable"><tr><th>Lv</th><th>Move</th><th>Type</th><th>Damage</th><th>Effect</th></tr>
+        ${s.moves.tutor.map(raw=>{
+          const bare = String(raw).replace(/\s*\(N\)\s*$/i,"").trim();
+          const nm   = canonMoveName(bare);
+          const mark = bare===String(raw).trim() ? "" : ` <span class="small muted" title="Mentor's Move Tutor list">(N)</span>`;
+          const m    = moveByName.get(bare.toLowerCase());
+          const min  = tutorMinLevel(bare);
+          const lv   = min==null ? `<span class="muted" title="not in the move database — GM's call">—</span>` : min;
+          const dmg  = m && m.damageBase
+                       ? `DB ${m.damageBase} <span class="small muted">${esc((DB_TABLE[m.damageBase]||"?").split("/")[0].trim())}</span>`
+                       : `<span class="muted">—</span>`;
+          const meta = m ? [m.frequency, m.class, m.ac!=null&&m.ac!==""?`AC ${m.ac}`:"", m.range]
+                             .filter(Boolean).map(x=>esc(x)).join(" · ") : "not in database";
+          return `<tr><td>${lv}</td>
+            <td>${esc(nm)}${mark}<div class="small muted">${meta}</div></td>
+            <td>${m?typeBadge(m.type):""}</td><td>${dmg}</td>
+            <td class="small">${m?annotateKeywords(esc(m.effect||"—")):"—"}</td></tr>`;
+        }).join("")}</table></details>`;
+    }
   }
   const meta=[]; if(s.diet)meta.push("Diet: "+s.diet); if(s.habitat)meta.push("Habitat: "+s.habitat); if(s.gender)meta.push(s.gender); if(s.eggGroups?.length)meta.push("Egg: "+s.eggGroups.join("/"));
   if(meta.length) html+=`<div class="r-meta" style="margin-top:8px">${esc(meta.join(" · "))}</div>`;
@@ -13081,7 +13149,7 @@ function pickTechniqueSub(name){ const tq=techByName.get(name); if(!tq) return "
   const meta=[tq.frequency, tq.prereq?("Prereq: "+tq.prereq):""].filter(Boolean).join(" · ");
   return meta?el("div",{class:"pi-sub"}, meta):""; }
 function pickAbilitySub(name){ const a=abilityByName.get((name||"").toLowerCase()); if(!a) return "";
-  const meta=[a.frequency, a.effect].filter(Boolean).join(" · ");
+  const meta=[cleanFreq(a.frequency), a.target?`Target: ${a.target}`:"", a.effect].filter(Boolean).join(" · ");
   return meta?el("div",{class:"pi-sub"}, String(meta).slice(0,130)):""; }
 
 /* ===================================================================
