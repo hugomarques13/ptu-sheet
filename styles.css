@@ -342,6 +342,12 @@ details.spoiler summary{cursor:pointer; font-weight:700; color:var(--muted)}
 /* compact photo controls for the small encounter-card sprite (56px) — sit on the sprite's corners */
 .sprite-box.sb-sm .photo-btn{width:22px; height:22px; border-radius:6px; font-size:11px; bottom:-5px; right:-5px}
 .sprite-box.sb-sm .photo-rm{width:18px; height:18px; font-size:11px; top:-5px; right:-5px}
+/* the encounter's map-token outline colour picker (Encounters toolbar) */
+.enc-color{width:38px; height:32px; padding:2px; border:1px solid var(--line); border-radius:var(--radius-sm);
+  background:var(--panel); cursor:pointer}
+.enc-color::-webkit-color-swatch-wrapper{padding:0}
+.enc-color::-webkit-color-swatch{border:none; border-radius:4px}
+.enc-color::-moz-color-swatch{border:none; border-radius:4px}
 
 /* ---------- Level-Up tracker ---------- */
 .lu-summary{display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px}
@@ -474,6 +480,17 @@ body.map-mode .map-viewport{flex:1 1 auto; height:auto; min-height:0; border-rad
 .map-token .tk-selected{position:absolute; top:-6px; right:-6px; width:18px; height:18px; border-radius:50%;
   background:var(--accent); color:#fff; font-size:11px; font-weight:900; line-height:18px; text-align:center;
   box-shadow:0 1px 3px rgba(0,0,0,.5); pointer-events:none}
+/* ---- mounting: a rider is drawn small, perched on the top edge of its mount ---- */
+.map-token.riding{border-width:2px; box-shadow:0 1px 5px rgba(0,0,0,.55)}
+.map-token.riding .tk-name{font-size:6px; top:calc(100% + 1px)}
+.map-token.riding .tk-hpwrap{bottom:-5px; height:4px}
+.map-token.riding .tk-hpnum{display:none}            /* no room for numbers up on the saddle */
+.map-token.carrying{border-style:double; border-width:4px}
+.map-token .tk-carry{position:absolute; bottom:-4px; right:-4px; font-size:9px; line-height:1;
+  font-weight:800; color:#fff; background:rgba(46,46,54,.92); border-radius:6px; padding:2px 3px;
+  pointer-events:none}
+/* the token picked as "the rider" while 🐎 Mount mode waits for you to tap its mount */
+.map-token.mount-pending{outline:3px dashed #f5c518; outline-offset:3px}
 .map-paths{position:absolute; left:0; top:0; pointer-events:none}
 .map-select-bar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 12px; margin:-8px 0 10px;
   background:var(--field); border:1px solid var(--field-line); border-radius:8px; font-size:13px}

@@ -9093,7 +9093,14 @@ function battleActionRow(a, favs){
    Pokémon, roll their actions at a glance, and award XP by the book (Core p.460).
    Stored device-locally in state.encounters (never synced — GM prep).
 =================================================================== */
-function newEncounter(name){ return { id:uid(), name:name||"New Encounter", sig:1, players:3, mons:[], trainers:[], notes:"" }; }
+/* the outline colour this encounter's tokens wear on the Map. Red is "an enemy"; the GM can recolour
+   a whole encounter (a rival's team, a neutral NPC, a second hostile faction) so two sides that are
+   both "not the players" stay tellable apart at a glance. Function, not a const, so it's hoisted —
+   normEncounter runs from load() before this point in the file is evaluated. */
+function encDefaultColor(){ return "#e0524f"; }
+function isHexColor(c){ return /^#[0-9a-f]{6}$/i.test(String(c||"")); }
+function encColorOf(e){ return isHexColor(e?.color) ? e.color : encDefaultColor(); }
+function newEncounter(name){ return { id:uid(), name:name||"New Encounter", sig:1, players:3, mons:[], trainers:[], notes:"", color:encDefaultColor() }; }
 function normEncounter(e){
   if(!e) return e;
   if(!Array.isArray(e.mons)) e.mons=[];
@@ -9102,6 +9109,7 @@ function normEncounter(e){
   if(typeof e.players!=="number") e.players=1;
   if(typeof e.archived!=="boolean") e.archived=false;   // hidden from the active list without deleting
   if(typeof e.notes!=="string") e.notes="";
+  if(!isHexColor(e.color)) e.color=encDefaultColor();    // map-token outline colour (red by default)
   e.mons.forEach(normPokemon);
   e.trainers.forEach(tr=>{ if(tr.trainer) normTrainer(tr.trainer); if(!Array.isArray(tr.pokemon)) tr.pokemon=[]; tr.pokemon.forEach(normPokemon); });
   return e;
@@ -10265,6 +10273,16 @@ function renderEncounters(){
   leftc.append(el("button",{class:"btn ghost",onclick:()=>{ const n=prompt("Encounter name:","New Encounter"); if(n===null)return; const e=newEncounter(n||"New Encounter"); arr.push(e); state.activeEncounterId=e.id; saveEnc(); renderEncounters(); }},"＋ New"));
   if(cur){
     leftc.append(el("button",{class:"btn ghost",title:"rename",onclick:()=>{ const n=prompt("Rename encounter:",cur.name); if(n===null)return; cur.name=n; saveEnc(); renderEncounters(); }},"✎"));
+    // outline colour for every token this encounter puts on the Map (red by default). Live-updates
+    // the board as you drag the picker; no re-render here, or the native colour dialog snaps shut.
+    const colIn = el("input",{type:"color", value:encColorOf(cur), class:"enc-color",
+      title:"outline colour for this encounter's tokens on the Map"});
+    const paint = ()=>{ cur.color = colIn.value; saveEnc(); if(currentTab==="map") renderMap(); };
+    colIn.addEventListener("input", paint);
+    colIn.addEventListener("change", paint);
+    leftc.append(el("span",{class:"inline",style:"gap:4px"}, colIn,
+      el("button",{class:"btn ghost",title:"back to the default red",
+        onclick:()=>{ colIn.value=encDefaultColor(); paint(); }},"↺")));
     leftc.append(el("button",{class:"btn ghost",title:"duplicate this encounter",onclick:()=>{
       const n=prompt("New encounter name:", cur.name+" copy"); if(n===null)return;
       const c=duplicateEncounter(cur, n||cur.name+" copy"); arr.push(c); state.activeEncounterId=c.id; saveEnc(); renderEncounters();
@@ -14751,10 +14769,14 @@ let mapGmView = null;                         // map id the GM is privately view
    once"). Per-viewer, not synced to peers, scoped to one map — dragging always resolves the
    selection against the CURRENT map.id, so switching maps can't accidentally drag stale tokens. */
 let mapSelect = { on:false, mapId:null, ids:new Set() };
+/* Mounting mode ("🐎 Mount"): tap the rider, then tap what it climbs onto. Per-viewer and not
+   synced (only the resulting token.riding link is) — see the MOUNTING section further down. */
+let mapMount  = { on:false, mapId:null, riderId:null };
 function mapSelectActive(map){ return mapSelect.on && mapSelect.mapId===map.id; }
 function toggleMapSelect(map){
   mapSelect = mapSelectActive(map) ? { on:false, mapId:map.id, ids:new Set() }
                                     : { on:true,  mapId:map.id, ids:new Set() };
+  if(mapSelect.on) mapMount = { on:false, mapId:map.id, riderId:null };   // the two tap-modes are exclusive
   renderMap();
 }
 function clearMapSelect(map){ mapSelect.ids.clear(); renderMap(); }
@@ -15174,7 +15196,7 @@ function initiativePanel(map, meta){
     // a Swarm's repeat acts are labelled "· act 2/4" and dimmed once it can't pay for any more
     const broke = e.swarmMon && e.act>0 && e.swarmMon.swarm.sp<=0;
     const label = name + (e.acts>1 ? ` · act ${e.act+1}/${e.acts}` : "");
-    row.append(el("span",{style:`flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:${cur?800:600};${enemy?"color:#e0524f":""}${broke?";opacity:.45":""}`,
+    row.append(el("span",{style:`flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:${cur?800:600};${enemy?"color:"+tokenEncColor(e.token):""}${broke?";opacity:.45":""}`,
       title: e.acts>1 ? (e.swarmMon
         ? `${name} — Swarm act ${e.act+1} of ${e.acts}${e.act>0?" (Initiative −"+(5*e.act)+")":" (free Standard Action)"}`
         : `${name} — Boss Template act ${e.act+1} of ${e.acts} (Initiative ${e.init})`) : name},
@@ -15218,11 +15240,19 @@ function attachInitDrag(handle, box){
     handle.addEventListener("pointermove",move); handle.addEventListener("pointerup",up);
   });
 }
-/* faction ring around a token: green for PCs & their Pokémon, red for enemies, none for standalone/unlinked */
-function tokenFactionColor(info){
+/* the colour an encounter-linked token wears — whatever the GM picked for that encounter (red by
+   default). Falls back to the default if the encounter row hasn't arrived on this client yet. */
+function tokenEncColor(token){
+  const encId = token?.link?.encId;
+  if(!encId) return encDefaultColor();
+  return encColorOf(encList().find(e=>e.id===encId));
+}
+/* faction ring around a token: green for PCs & their Pokémon, the encounter's own colour (red unless
+   the GM changed it) for enemies, none for standalone/unlinked */
+function tokenFactionColor(info, token){
   if(info.unlinked) return null;
   if(info.kind==="trainer" || info.kind==="pokemon") return "#3ecf5f";
-  if(info.kind==="enc" || info.kind==="enctrainer") return "#e0524f";
+  if(info.kind==="enc" || info.kind==="enctrainer") return tokenEncColor(token);
   return null;
 }
 const STATUS_RING_DEFAULT_COLOR = "#e0524f";
@@ -15407,6 +15437,9 @@ function canRemoveToken(token){
 async function removeToken(token, map){
   const arr = cloud.mapTokens?.data?.byMap?.[map.id]; if(!arr) return;
   const i = arr.findIndex(t=>t.id===token.id); if(i>=0) arr.splice(i,1);
+  // whoever was riding it is set back down where it stood, so they don't stay pinned to a ghost
+  arr.forEach(t=>{ if(t.riding===token.id){ delete t.riding; t.x=token.x; t.y=token.y; } });
+  if(mapMount.riderId===token.id) mapMount.riderId = null;
   mapTokensSave(); renderMap();
 }
 /* the cell at the centre of what the viewer is currently looking at (for placing new tokens there) */
@@ -15836,18 +15869,198 @@ async function deleteMapImage(map, img){
   map.images.splice(i,1); mapMetaSave(); renderMap();
 }
 
+/* ===================================================================
+   MOUNTING — one token RIDES another (`token.riding` = the mount's id).
+
+   A rider sits on its mount's square (its x/y is kept equal to the mount's, so every mechanic
+   that reads a position — fog reveal, AoE painting, ranges, "apply damage to targets" — sees it
+   exactly where it looks like it is) and is drawn perched on top of the mount instead of buried
+   under it. Several riders can share one mount, and a mount can itself be riding something else
+   (a trainer on a Charizard standing on a Wailord), so a "stack" is resolved as the whole
+   CONNECTED COMPONENT of the ride graph: dragging ANY member moves every token linked to it, in
+   either direction — the mount carries its passengers, and dragging a passenger steers the mount.
+
+   Battle movement is only ever charged to the tokens at the BOTTOM of a stack: a passenger being
+   carried isn't spending their own Shift.
+=================================================================== */
+function tokenById(mapId, id){ return mapTokensFor(mapId).find(t=>t.id===id) || null; }
+function tokenMount(mapId, token){ return token && token.riding ? tokenById(mapId, token.riding) : null; }
+function tokenRiders(mapId, token){ return mapTokensFor(mapId).filter(t=>t.riding===token.id); }
+/* every token in the same riding stack as `token` (itself included), walking both directions */
+function mountGroup(mapId, token){
+  const all = mapTokensFor(mapId);
+  const seen = new Set([token.id]), out = [token], queue = [token];
+  while(queue.length){
+    const t = queue.shift();
+    const nbrs = [];
+    const up = t.riding ? all.find(o=>o.id===t.riding) : null; if(up) nbrs.push(up);
+    all.forEach(o=>{ if(o.riding===t.id) nbrs.push(o); });
+    nbrs.forEach(n=>{ if(!seen.has(n.id)){ seen.add(n.id); out.push(n); queue.push(n); } });
+  }
+  return out;
+}
+/* the carrier at the bottom of `token`'s stack — the one that actually spends the metres */
+function mountBase(mapId, token){
+  let cur = token, guard = 0;
+  while(cur && cur.riding && guard++ < 20){ const m = tokenById(mapId, cur.riding); if(!m) break; cur = m; }
+  return cur || token;
+}
+/* would mounting `rider` on `mount` close a loop (mount already carried by rider)? */
+function mountWouldLoop(mapId, rider, mount){
+  let cur = mount, guard = 0;
+  while(cur && guard++ < 40){ if(cur.id===rider.id) return true; cur = cur.riding ? tokenById(mapId, cur.riding) : null; }
+  return false;
+}
+/* pull everything riding `token` (recursively) onto its square; true if anything actually moved */
+function snapRidersTo(map, token, depth=0){
+  if(depth > 8) return false;
+  let changed = false;
+  tokenRiders(map.id, token).forEach(r=>{
+    if(r.x!==token.x || r.y!==token.y){ r.x = token.x; r.y = token.y; changed = true; }
+    if(snapRidersTo(map, r, depth+1)) changed = true;
+  });
+  return changed;
+}
+function tokenOccupies(t, x, y){ const s=t.size||1; return x>=t.x && x<t.x+s && y>=t.y && y<t.y+s; }
+/* a free square to step off onto when dismounting, searched in rings around the mount's footprint */
+function freeCellNear(map, mount, skipId){
+  const others = mapTokensFor(map.id).filter(t=>t.id!==skipId && !t.riding);
+  const s = mount.size||1;
+  for(let r=1; r<=4; r++){
+    for(let dx=-r; dx<=s-1+r; dx++) for(let dy=-r; dy<=s-1+r; dy++){
+      if(!(dx===-r || dy===-r || dx===s-1+r || dy===s-1+r)) continue;   // ring edge only
+      const x = Math.round(mount.x)+dx, y = Math.round(mount.y)+dy;
+      if(!others.some(t=>tokenOccupies(t,x,y))) return { x, y };
+    }
+  }
+  return { x: mount.x + s, y: mount.y };
+}
+/* a token that can't ride / be ridden (shop doors are scenery, not creatures) */
+function canMountToken(token){ return !!token && !isShopToken(token); }
+function mountToken(map, rider, mount){
+  if(!rider || !mount || rider.id===mount.id) return false;
+  if(!canMountToken(rider) || !canMountToken(mount)){ toast("A shop door can't ride or be ridden"); return false; }
+  if(mountWouldLoop(map.id, rider, mount)){ toast("⚠ They'd end up riding each other"); return false; }
+  rider.riding = mount.id;
+  rider.x = mount.x; rider.y = mount.y;
+  snapRidersTo(map, rider);                       // anything riding the rider comes along
+  if(map.fogOn) revealAroundTokens(map);
+  mapTokensSave(); renderMap();
+  toast(`🐎 ${tokenHp(rider).name} is riding ${tokenHp(mount).name}`);
+  return true;
+}
+function dismountToken(map, rider, quiet){
+  if(!rider || !rider.riding) return false;
+  const mount = tokenById(map.id, rider.riding);
+  const name = tokenHp(rider).name;
+  delete rider.riding;
+  if(mount){ const c = freeCellNear(map, mount, rider.id); rider.x = c.x; rider.y = c.y; snapRidersTo(map, rider); }
+  if(map.fogOn) revealAroundTokens(map);
+  mapTokensSave(); renderMap();
+  if(!quiet) toast(`⬇ ${name} dismounted`);
+  return true;
+}
+/* drop every riding link on this map (the "✕ Dismount all" escape hatch) */
+function dismountAll(map){
+  const riders = mapTokensFor(map.id).filter(t=>t.riding);
+  if(!riders.length){ toast("Nobody is riding anything here"); return; }
+  riders.forEach(r=>{ const m = tokenById(map.id, r.riding); delete r.riding;
+    if(m){ const c = freeCellNear(map, m, r.id); r.x=c.x; r.y=c.y; } });
+  if(map.fogOn) revealAroundTokens(map);
+  mapTokensSave(); renderMap();
+  toast(`⬇ ${riders.length} token${riders.length===1?"":"s"} dismounted`);
+}
+/* Called on every render: drops `riding` links whose mount has been removed (or that a stale sync
+   left pointing at nothing) and re-pins riders onto their mount's square. Purely repair work — it
+   only writes back when the GM is the one holding the board. */
+function healMountLinks(map){
+  const arr = mapTokensFor(map.id); if(!arr.length) return;
+  const ids = new Set(arr.map(t=>t.id));
+  let changed = false;
+  arr.forEach(t=>{
+    if(t.riding && (!ids.has(t.riding) || t.riding===t.id)){ delete t.riding; changed = true; }
+  });
+  arr.forEach(t=>{                                   // break any cycle a bad merge could produce
+    if(t.riding && mountWouldLoop(map.id, t, tokenById(map.id, t.riding))){ delete t.riding; changed = true; }
+  });
+  arr.filter(t=>!t.riding).forEach(t=>{ if(snapRidersTo(map, t)) changed = true; });
+  if(changed && cloud.isGM) mapTokensSave();
+}
+/* ---- "🐎 Mount" tap-mode: tap the rider, then tap what it climbs onto ---- */
+function mapMountActive(map){ return !!(mapMount.on && map && mapMount.mapId===map.id); }
+function toggleMapMount(map){
+  mapMount = mapMountActive(map) ? { on:false, mapId:map.id, riderId:null }
+                                 : { on:true,  mapId:map.id, riderId:null };
+  if(mapMount.on && mapSelectActive(map)) mapSelect = { on:false, mapId:map.id, ids:new Set() };
+  renderMap();
+}
+/* a tap (not a drag) on a token while mounting mode is on */
+function mountTapToken(token, map){
+  if(!tokenHp(token).editable){ toast("You can't move that token"); return; }
+  if(!canMountToken(token)){ toast("A shop door can't ride or be ridden"); return; }
+  if(!mapMount.riderId){                                   // first tap = who's doing the riding
+    mapMount.riderId = token.id; renderMap();
+    toast(`🐎 ${tokenHp(token).name} — now tap what it should ride`);
+    return;
+  }
+  if(mapMount.riderId===token.id){ mapMount.riderId = null; renderMap(); return; }   // tap again = cancel
+  const rider = tokenById(map.id, mapMount.riderId);
+  if(!rider){ mapMount.riderId = token.id; renderMap(); return; }                    // rider vanished mid-pick
+  if(mountToken(map, rider, token)) mapMount.riderId = null;
+  renderMap();
+}
+function mapMountBar(map){
+  const rider = mapMount.riderId ? tokenById(map.id, mapMount.riderId) : null;
+  const row = el("div",{class:"map-select-bar map-mount-bar"});
+  row.append(el("span",{class:"map-select-count"},
+    rider ? `🐎 ${tokenHp(rider).name} → tap the token it rides` : "🐎 Tap a rider, then tap what it climbs onto"));
+  if(rider){
+    row.append(el("span",{class:"muted small"},"tap it again to cancel"));
+    if(rider.riding) row.append(el("button",{class:"btn-secondary",
+      onclick:()=>{ dismountToken(map, rider); mapMount.riderId=null; renderMap(); }},"⬇ Dismount it"));
+    row.append(el("button",{class:"btn-secondary",onclick:()=>{ mapMount.riderId=null; renderMap(); }},"✕ Clear"));
+  } else {
+    row.append(el("span",{class:"muted small"},"a mounted stack moves as one — drag any of them and the rest follow"));
+    if(mapTokensFor(map.id).some(t=>t.riding))
+      row.append(el("button",{class:"btn-secondary",onclick:()=>dismountAll(map)},"⬇ Dismount all"));
+  }
+  row.append(el("button",{class:"btn-secondary",onclick:()=>toggleMapMount(map)},"Done"));
+  return row;
+}
+/* where a token is actually DRAWN. A rider is perched, shrunken, along the top edge of its mount
+   (spread out so several passengers stay individually tappable) rather than sitting on the same
+   pixels; everything else is drawn at its own square. Recursive, so a rider-of-a-rider perches on
+   the perch. */
+function tokenRenderBox(map, token, originX=0, originY=0, depth=0){
+  const px = map.gridSize;
+  const own = { left: token.x*px+originX, top: token.y*px+originY, size:(token.size||1)*px, rider:false };
+  const mount = depth<6 ? tokenMount(map.id, token) : null;
+  if(!mount) return own;
+  const mb = tokenRenderBox(map, mount, originX, originY, depth+1);
+  const riders = tokenRiders(map.id, mount);
+  const n = Math.max(1, riders.length), i = Math.max(0, riders.findIndex(r=>r.id===token.id));
+  const size = Math.max(14, mb.size * (n>2 ? 0.40 : 0.52));
+  const gap  = Math.max(2, size*0.10);
+  const total = n*size + (n-1)*gap;
+  return { left: mb.left + mb.size/2 - total/2 + i*(size+gap), top: mb.top - size*0.55, size, rider:true };
+}
+
 /* one token element */
 function mapTokenNode(token, map, originX=0, originY=0){
   const info = tokenHp(token);
-  const px = map.gridSize, size = token.size||1, boxPx = size*px;
-  const factionColor = tokenFactionColor(info);
+  const box = tokenRenderBox(map, token, originX, originY);
+  const boxPx = box.size;
+  const riding = box.rider, carrying = tokenRiders(map.id, token).length;
+  const pendingRider = mapMountActive(map) && mapMount.riderId===token.id;
+  const factionColor = tokenFactionColor(info, token);
   const selected = mapSelectActive(map) && mapSelect.ids.has(token.id);
   const isTurn = battleOn() && initEntryToken(activeMapMeta().initTurnId) === token.id;
   // A trainer (the "player" figure) always stacks above Pokémon tokens — even their own party.
   const isTrainerTok = info.kind==="trainer" || info.kind==="enctrainer";
   const playerSide = info.kind==="trainer" || info.kind==="pokemon";
-  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":""),
-    style:`left:${token.x*px+originX}px;top:${token.y*px+originY}px;width:${boxPx}px;height:${boxPx}px;z-index:${isTrainerTok?2:1}`
+  // a rider is drawn perched on its mount (see tokenRenderBox) and always stacks above it
+  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":""),
+    style:`left:${box.left}px;top:${box.top}px;width:${boxPx}px;height:${boxPx}px;z-index:${riding?4:isTrainerTok?2:1}`
       +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")
       +(factionColor?`;border-color:${factionColor}`:"")});
   node.dataset.tid = token.id;
@@ -15875,38 +16088,62 @@ function mapTokenNode(token, map, originX=0, originY=0){
     const icon = mode ? ({overland:"",sky:" 🕊",swim:" 🌊",burrow:" ⛏",levitate:" ✨"}[mode[0]]||"") : "";
     node.append(el("div",{class:"tk-moved"+(spd && token.moved>spd?" over":"")}, `${token.moved}${spd?("/"+spd):""}m${icon}`));
   }
+  if(carrying && !isShopToken(token))
+    node.append(el("div",{class:"tk-carry",title:`carrying ${carrying} rider${carrying===1?"":"s"} — they move together`},
+      carrying>1?`🐎${carrying}`:"🐎"));
   return node;
 }
 /* drag-to-move (grid-snap + meter readout) or tap-to-open-menu.
    In select mode, dragging a token that's part of the current selection moves the WHOLE selected
    group together (each token keeps its own relative offset and its own per-token battle-movement
    tally); dragging a token that's NOT selected still just moves that one token, same as always.
-   Tapping (no drag) toggles that token's membership in the selection instead of opening its menu. */
+   Tapping (no drag) toggles that token's membership in the selection instead of opening its menu.
+   A RIDING stack (see the MOUNTING section) always travels as one on top of that: whichever member
+   you grab, everything linked to it comes along — mount and passengers both. */
 function attachTokenDrag(node, token, map, originX=0, originY=0){
   node.addEventListener("pointerdown", ev=>{
     if(ev.button!=null && ev.button>0) return;
     ev.stopPropagation();                                   // don't pan the board
     const info = tokenHp(token);
     const selecting = mapSelectActive(map);
+    const mounting  = mapMountActive(map);
     const grouped = selecting && mapSelect.ids.has(token.id) && mapSelect.ids.size>1;
     const px = map.gridSize, scale = mapView.scale;
     const startX = ev.clientX, startY = ev.clientY;
-    let moved = false, badge = null;
+    let moved = false, badge = null, lockWarned = false;
+    // a stack only moves if this viewer may move EVERY token in it — otherwise a player could drag
+    // their own trainer and haul the GM's Gyarados along with them
+    const stackOK = t => mountGroup(map.id, t).every(m=>tokenHp(m).editable);
+    const stackLocked = !stackOK(token);
     // accumulate every tile entered, diagonals cost 2 — but a shop is scenery being repositioned,
     // not a combatant taking a Shift, so dragging its door never spends anyone's movement
     const trackMove = battleOn() && map.gridOn && !isShopToken(token);
     const liveFog = !!map.fogOn;
     const stageSize = mapStageSize(map);                      // origin needed regardless of fog, for DOM<->cell math
     const fogCanvas = liveFog ? document.querySelector("#view-map .map-fog") : null;
-    // one drag-context per token being moved (just `token` unless dragging a multi-selected group)
-    const group = grouped ? mapTokensFor(map.id).filter(t=>mapSelect.ids.has(t.id) && tokenHp(t).editable) : [token];
-    const ctx = group.map(t=>({
-      t, n: t===token ? node : document.querySelector(`#view-map .map-token[data-tid="${t.id}"]`),
-      baseX0:t.x*px+originX, baseY0:t.y*px+originY, pathX:t.x, pathY:t.y, segMoved:0,
-      alreadyMoved:t.moved||0, moveSpeed:trackMove?tokenMoveSpeed(t):null,
-      lastRevealX:null, lastRevealY:null,
-    })).filter(c=>c.n);
-    const anchor = ctx.find(c=>c.t===token) || ctx[0];
+    // one drag-context per token being moved (just `token` unless dragging a multi-selected group),
+    // then widened to the whole riding stack of everything in it
+    const picked = grouped ? mapTokensFor(map.id).filter(t=>mapSelect.ids.has(t.id) && tokenHp(t).editable && stackOK(t)) : [token];
+    const seenIds = new Set(); const group = [];
+    picked.forEach(t=> mountGroup(map.id, t).forEach(m=>{ if(!seenIds.has(m.id)){ seenIds.add(m.id); group.push(m); } }));
+    const ctx = group.map(t=>{
+      const n = t===token ? node : document.querySelector(`#view-map .map-token[data-tid="${t.id}"]`);
+      // a passenger is being carried, so the metres come off its MOUNT's move, never its own
+      const carried = !!(t.riding && seenIds.has(t.riding));
+      return {
+        t, n, carried,
+        baseX0:t.x*px+originX, baseY0:t.y*px+originY,          // logical square (drives cell math)
+        // where the node is actually DRAWN — a rider is perched above its mount, so the DOM and the
+        // logical square differ; both shift by the same delta so the perch survives the drag
+        visX0: n ? (parseFloat(n.style.left)||0) : 0, visY0: n ? (parseFloat(n.style.top)||0) : 0,
+        pathX:t.x, pathY:t.y, segMoved:0,
+        alreadyMoved:t.moved||0, moveSpeed:(trackMove && !carried)?tokenMoveSpeed(t):null,
+        lastRevealX:null, lastRevealY:null,
+      };
+    }).filter(c=>c.n);
+    // the readout follows the carrier at the bottom of the dragged token's stack — it's the one
+    // actually spending movement
+    const anchor = ctx.find(c=>c.t===mountBase(map.id, token)) || ctx.find(c=>c.t===token) || ctx[0];
     try{ node.setPointerCapture(ev.pointerId); }catch(e){}
     const applyDelta = (dxPx, dyPx, commit)=>{
       let anyRevealed = false;
@@ -15915,12 +16152,12 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
         // (same reasoning as attachImageDrag) — logical cell coords (c.t.x/y) can go negative.
         let nx = c.baseX0+dxPx, ny = c.baseY0+dyPx;
         if(map.gridOn){ nx = Math.round(nx/px)*px; ny = Math.round(ny/px)*px; }   // snap to cells live
-        c.n.style.left = nx+"px"; c.n.style.top = ny+"px";
+        c.n.style.left = (c.visX0 + (nx-c.baseX0))+"px"; c.n.style.top = (c.visY0 + (ny-c.baseY0))+"px";
         const cx = Math.round((nx-originX)/px), cy = Math.round((ny-originY)/px);
         if(map.gridOn && (cx!==c.pathX || cy!==c.pathY)){ c.segMoved += tileCost(c.pathX,c.pathY,cx,cy); c.pathX=cx; c.pathY=cy; }
         if(commit){
           if(map.gridOn){ c.t.x=c.pathX; c.t.y=c.pathY; } else { c.t.x=(nx-originX)/px; c.t.y=(ny-originY)/px; }
-          if(trackMove && !isShopToken(c.t)) c.t.moved = c.alreadyMoved + c.segMoved;
+          if(trackMove && !isShopToken(c.t) && !c.carried) c.t.moved = c.alreadyMoved + c.segMoved;
         }
         if(liveFog && tokenReveals(c.t) && (cx!==c.lastRevealX || cy!==c.lastRevealY)){
           c.lastRevealX=cx; c.lastRevealY=cy; revealAtCell(map, cx, cy, (c.t.size||1)-1); anyRevealed=true;
@@ -15931,6 +16168,10 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
     const move = e=>{
       if(Math.abs(e.clientX-startX)>4 || Math.abs(e.clientY-startY)>4) moved = true;
       if(!moved || !info.editable) return;
+      if(stackLocked){
+        if(!lockWarned){ lockWarned = true; toast("🐎 Riding a token you can't move — ask the GM"); }
+        return;
+      }
       mapDragging = true;
       applyDelta((e.clientX-startX)/scale, (e.clientY-startY)/scale, false);
       if(map.gridOn && !isShopToken(token)){                  // no distance readout for scenery
@@ -15950,15 +16191,17 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
       if(badge) badge.remove();
       if(!moved){
         mapDragging=false;
-        if(selecting && info.editable){ mapSelect.ids.has(token.id)?mapSelect.ids.delete(token.id):mapSelect.ids.add(token.id); renderMap(); }
+        if(mounting) mountTapToken(token, map);
+        else if(selecting && info.editable){ mapSelect.ids.has(token.id)?mapSelect.ids.delete(token.id):mapSelect.ids.add(token.id); renderMap(); }
         // a shop token is a door: players walk up and tap it to shop. The GM gets its management
         // menu instead (which has an "open it here" button, so they can still see the player's view).
         else if(isShopToken(token) && !cloud.isGM) openShopFromToken(token);
         else openTokenMenu(token, map);
         return;
       }
-      if(!info.editable){ mapDragging=false; return; }
+      if(!info.editable || stackLocked){ mapDragging=false; return; }
       applyDelta((e.clientX-startX)/scale, (e.clientY-startY)/scale, true);
+      group.forEach(t=>{ if(!t.riding) snapRidersTo(map, t); });                     // keep passengers pinned
       if(map.fogOn) revealAroundTokens(map);                                        // moving reveals new ground
       mapDragging = false;
       mapTokensSave(); renderMap();
@@ -16490,6 +16733,42 @@ function openTokenMenu(token, map){
         wrap.append(el("div",{class:"small muted",style:"margin-top:12px;font-weight:700"},"Movement type"), chips);
       }
     }
+  }
+  // ---- 🐎 Riding: link this token to another so they always move as one. Same engine the map's
+  // "🐎 Mount" tap-mode drives, reachable from the token itself (and available to a player for
+  // their own trainer + their own Pokémon, since both are theirs to move).
+  if(info.editable && canMountToken(token)){
+    const mount  = tokenMount(map.id, token);
+    const riders = tokenRiders(map.id, token);
+    const rw = el("div",{style:"margin-top:16px"});
+    rw.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"🐎 Riding"));
+    if(mount){
+      rw.append(el("div",{class:"tk-menu-row",style:"align-items:center;gap:8px;flex-wrap:wrap"},
+        el("div",{class:"small"}, `Riding ${tokenHp(mount).name}.`),
+        el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"step off onto a free square nearby",
+          onclick:()=>{ dismountToken(map, token); closeModal(); }},"⬇ Dismount")));
+    } else {
+      const opts = mapTokensFor(map.id).filter(t=>t.id!==token.id && canMountToken(t)
+        && tokenHp(t).editable && !mountWouldLoop(map.id, token, t));
+      if(opts.length){
+        const sel = el("select"); opts.forEach(t=>sel.append(el("option",{value:t.id}, tokenHp(t).name)));
+        rw.append(el("div",{class:"tk-menu-row",style:"align-items:flex-end;gap:6px;flex-wrap:wrap"},
+          el("label",{class:"field",style:"flex:1;min-width:150px"}, el("span",{},"Climb onto…"), sel),
+          el("button",{class:"btn-secondary",style:"padding:8px 10px",
+            onclick:()=>{ mountToken(map, token, tokenById(map.id, sel.value)); closeModal(); }},"🐎 Mount")));
+      } else rw.append(el("div",{class:"small muted"},"Nothing on this map for it to ride."));
+    }
+    if(riders.length){
+      rw.append(el("div",{class:"small",style:"margin-top:8px;font-weight:700"},
+        `Carrying ${riders.length} rider${riders.length===1?"":"s"}`));
+      riders.forEach(r=>rw.append(el("div",{class:"tk-menu-row",style:"align-items:center;gap:8px;margin-top:4px"},
+        el("span",{class:"small"}, "• "+tokenHp(r).name),
+        el("button",{class:"btn-secondary",style:"padding:3px 9px;margin-left:auto",
+          onclick:()=>{ dismountToken(map, r); closeModal(); }},"⬇ Off"))));
+    }
+    rw.append(el("div",{class:"small muted",style:"margin-top:6px"},
+      "A mounted stack moves as one — drag any of them and the rest follow. Riders share their mount's square, and in battle only the mount spends movement."));
+    wrap.append(rw);
   }
   if(battleOn()){
     const used = token.moved||0, spd = tokenMoveSpeed(token), over = spd && used>spd;
@@ -17092,6 +17371,9 @@ function renderMap(){
           mapSelectActive(map)?`✓ Selecting (${mapSelect.ids.size})`:"☑ Select tokens"),
         el("button",{class:"btn-secondary",onclick:()=>selectMapTokens(map, PLAYER_TOKEN_KINDS, "player tokens"),
           title:"Select every trainer/Pokémon token on this map, to move the whole party at once"},"☑ All players"),
+        el("button",{class:"btn-secondary"+(mapMountActive(map)?" on":""),onclick:()=>toggleMapMount(map),
+          title:"Link tokens together: tap a rider, then tap what it climbs onto. A mounted stack always moves as one — several riders can share one mount."},
+          mapMountActive(map)?"🐎 Mounting…":"🐎 Mount"),
       );
       // — Battle group: track movement per token —
       bar.append(el("span",{class:"map-sep"}),
@@ -17158,6 +17440,7 @@ function renderMap(){
   }
   root.append(bar);
   if(map && mapSelectActive(map)) root.append(mapSelectBar(map));
+  if(map && mapMountActive(map)) root.append(mapMountBar(map));
 
   if(!map){
     root.append(el("div",{class:"card muted"}, cloud.isGM
@@ -17170,6 +17453,7 @@ function renderMap(){
   const tpanel = terrainPanel(map); if(tpanel) root.append(tpanel);
   if(meta.battleOn) root.append(initiativePanel(map, meta));
   healMissingShops(map);                                              // doors on the board but no shop data → refetch once
+  healMountLinks(map);                                                // drop dead riding links, re-pin riders
   const shpanel = shopPanel(map); if(shpanel) root.append(shpanel);   // floating storefront (see the SHOPS section)
 
   const { w:stageW, h:stageH, originX, originY } = mapStageSize(map);
