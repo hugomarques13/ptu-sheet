@@ -2324,9 +2324,20 @@ function trainerAttackProfile(t, weaponMoveName, w){
    never on a Struggle Attack) */
 function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const st = trainerAttackProfile(t, weaponMoveName, w);
-  const atk = t.combat.atk.base + t.combat.atk.added;
-  // a Trainer's weapon/Struggle attack is always Physical (Core p.286), bar an elemental Struggle
-  const bm = buffMods(t, {isPhys: (st.cls||"Physical") !== "Special"});
+  const td = trainerDerived(t);
+  /* A Trainer's Struggle and plain weapon strikes are Physical (Core p.286), but a Weapon Move or a
+     Feature-granted Move keeps its OWN class — a Special Move (Hyper Voice, Dark Pulse…) adds
+     Sp.Attack and is subtracted by the target's Special Defense, exactly like the Pokémon path in
+     openMoveRoll. A Status Move adds no attacking stat at all. */
+  const isSpecAtk   = /spec/i.test(st.cls||"");
+  const isStatusAtk = /status/i.test(st.cls||"");
+  const isPhysAtk   = !isSpecAtk && !isStatusAtk;
+  // Combat-Stage-adjusted, same stat the sheet shows (Gift Patron Stat & Feature [+Stat] tags included)
+  const atk = isStatusAtk ? 0 : (isSpecAtk ? td.totals.spatk : td.totals.atk);
+  const atkLbl = isSpecAtk ? "Sp.Attack" : "Attack";
+  const defNote = isSpecAtk ? "Special Defense" : "Defense";
+  const evaNote = isSpecAtk ? "Special Evasion" : "Physical Evasion";
+  const bm = buffMods(t, {isPhys: isPhysAtk});
   /* Struggle Attacks (unarmed and plain weapon strikes) have no Move behind them and never get
      STAB; a real Move does, if Type Expertise named its Type. */
   const isStruggleAtk = !st.move;
@@ -2335,7 +2346,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const dealsDamage = typeof st.damageBase === "number" && st.damageBase > 0;
   const stab = dealsDamage && trainerStab(t, st.type, isStruggleAtk);
   const stabDB = stab ? 2 : 0;
-  const accCS = trainerDerived(t).cs.acc||0;   // Accuracy Combat Stage: flat add to Accuracy Rolls (Core p.234)
+  const accCS = td.cs.acc||0;   // Accuracy Combat Stage: flat add to Accuracy Rolls (Core p.234)
   /* Multi-strike Weapon Moves (Core p.242) — the keywords live in the profile's range string, e.g.
      Furious Strikes "WR, 1 Target, Five Strike" / Gouge "WR, 1 Target, Double Strike". */
   const fiveStrike = isFiveStrike(st), dblStrike = isDoubleStrike(st);
@@ -2391,20 +2402,20 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     el("div",{style:"font-size:16px;font-weight:700"},
       `Accuracy: ${dblStrike ? "2 × 1d20" : "1d20"}${accModPre?` ${accModPre>0?"+":"−"} ${Math.abs(accModPre)}`:""}`),
     el("div",{class:"small muted",style:"margin-top:2px"},
-      `Roll ${dblStrike?"2 separate Attack Rolls — each ":"1d20 — "}hits if it's ≥ AC ${st.ac} + the target's Physical Evasion. Nat 20 auto-hits/crits, nat 1 auto-misses.`
+      `Roll ${dblStrike?"2 separate Attack Rolls — each ":"1d20 — "}hits if it's ≥ AC ${st.ac} + the target's ${evaNote}. Nat 20 auto-hits/crits, nat 1 auto-misses.`
       + (accWhyPre.length?` Includes ${accWhyPre.join(" ")}.`:""))));
   if(dn){
     const terms = [`${dn}d${dfaces}`]; if(dflat) terms.push(String(dflat)); if(atk) terms.push(String(atk));
     if(bm.dmg) terms.push(`${bm.dmg>0?"":"−"}${Math.abs(bm.dmg)}`);
     const why = [`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${baseDBv}`
       + (stabDB||bm.db ? ` (DB ${rawDB}${stabDB?" +2 STAB":""}${bm.db?` ${bm.db>0?"+":"−"}${Math.abs(bm.db)} buffs`:""})` : "")];
-    if(atk) why.push(`${atk} = your Attack`);
+    if(atk) why.push(`${atk} = your ${atkLbl}`);
     if(bm.dmg) why.push(`${bm.dmg>0?"+":"−"}${Math.abs(bm.dmg)} = buffs (${buffSources(t,"dmg")})`);
     explain.append(el("div",{},
       el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${terms.join(" + ").replace(/\+ −/g,"− ")}`),
       el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ") + ". "
         + (stab ? `STAB applies — Type Expertise names ${st.type}. ` : isStruggleAtk ? "STAB never applies to Struggle. " : "")
-        + "Target then subtracts Defense."
+        + `Target then subtracts ${defNote}.`
         + (fiveStrike ? ` Five Strike multiplies the Move's own Damage Base (${rawDB}) by the rolled hit count first; other Damage Base bonuses are added after.` : "")
         + (dblStrike  ? " Double Strike doubles this Damage Base if both Attack Rolls connect." : "")
         + (bm.crit ? ` Crit / Effect range widened by +${bm.crit} (buffs).` : ""))));
@@ -2434,7 +2445,6 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   if(tbuffs.length){
     const bcard = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
     bcard.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},"✨ Buffs & Orders active"));
-    const isPhysAtk = (st.cls||"Physical") !== "Special";
     tbuffs.forEach(b=>{ const mt=buffModText(b.mods); const off = !buffApplies(b, {isPhys:isPhysAtk});
       bcard.append(el("div",{class:"small"+(off?" muted":"")}, `• ${b.name}` + (mt?` — ${mt}`:"")
         + (off?` — ${b.only==="phys"?"Physical":"Special"} attacks only, not counted here`:""),
@@ -2505,7 +2515,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     }
     if(r){ const im = infatMod();
       const total = Math.max(0, r.total + im.atk + (bm.dmg||0) + im.delta + critExtra);
-      const parts = [`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`, `+ ${im.atk} Attack${im.halved?" (halved — Infatuated)":""}`];
+      const parts = [`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`, `+ ${im.atk} ${atkLbl}${im.halved?" (halved — Infatuated)":""}`];
       if(bm.dmg) parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs (${buffSources(t,"dmg")})`);
       if(im.delta) parts.push(`${im.delta} Infatuated`);
       if(critWhy.length) parts.push(critWhy.join(" "));
@@ -2514,10 +2524,10 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         strikeNote?el("div",{class:"small muted",style:"margin-top:2px"}, strikeNote):"",
         stab&&!fiveStrike ? el("div",{class:"small muted",style:"margin-top:2px"},
           `⚡ Type Expertise: STAB on ${st.type} — Damage Base ${rawDB} +2 = ${rawDB+2}${bm.db?` ${bm.db>0?"+":"−"}${Math.abs(bm.db)} buffs`:""} → DB ${db}`) : "",
-        el("div",{class:"small muted",style:"margin-top:2px"}, parts.join("  ") + `. Target subtracts Defense.`)));
+        el("div",{class:"small muted",style:"margin-top:2px"}, parts.join("  ") + `. Target subtracts ${defNote}.`)));
       if(bm.crit) out.append(el("div",{class:"small muted"}, `Crit / Effect range widened by +${bm.crit} (buffs).`));
-      // GM: apply this trainer hit to a battle-map token (trainer attacks are typeless-or-typed Physical).
-      const tw = attackTargetWidget({ dmg:total, type:st.type||"Typeless", physical:!/spec/i.test(st.cls||"") });
+      // GM: apply this trainer hit to a battle-map token — Physical unless the Move itself is Special.
+      const tw = attackTargetWidget({ dmg:total, type:st.type||"Typeless", physical:isPhysAtk });
       if(tw) out.append(tw);
     }
     if(dblStrike){
@@ -8915,7 +8925,7 @@ function trainerAttackSlot(t, profile, rollFn, opts={}){
       stabHere?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600",title:"Type Expertise — +2 Damage Base"},"⚡ STAB"):""),
     el("div",{class:"ms-info"}, `${profile.frequency?profile.frequency+" · ":""}${profile.cls||"Physical"} · AC ${profile.ac} · `
       + (typeof profile.damageBase === "number" && profile.damageBase > 0
-          ? `DB ${profile.damageBase}${stabHere?" +2":""} · ${profile.range} · +Attack`
+          ? `DB ${profile.damageBase}${stabHere?" +2":""} · ${profile.range} · +${/spec/i.test(profile.cls||"")?"Sp.Attack":"Attack"}`
           : `no damage · ${profile.range}`))));
   const acts = el("div",{class:"inline"});
   if(opts.uc) acts.append(opts.uc);
