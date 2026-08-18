@@ -701,6 +701,9 @@ function evolveTo(p, targetName, stoneItem){
   // Underdog's Strength (Poké Edge): "The user may no longer undergo Evolution."
   if(pokeEdgeBlocksEvolution(p) && !p.unlocked){
     toast("Underdog's Strength — this Pokémon may no longer evolve. Drop that Poké Edge first."); return; }
+  // The Empress ▼ — nothing in this Trainer's care grows until the GM lifts it
+  if(trainerBarren(activeChar().trainer) && !p.unlocked){
+    toast("The Barren Season — no Pokémon in your care may evolve while The Empress ▼ holds."); return; }
   const stoneMsg = stoneItem ? `\nThis consumes one ${stoneItem.name} from your inventory.` : "";
   if(!confirm(`Evolve ${p.nickname || from?.name || "this Pokémon"} into ${sp.name}?\nStats, moves, abilities, level and XP are kept.${stoneMsg}`)) return;
   if(stoneItem){
@@ -2410,6 +2413,19 @@ function trainerAttackProfile(t, weaponMoveName, w){
   }
   return trainerStruggle(t, w);
 }
+/* "Versatile" (the Gen-9 port keyword, also handed out by abilities like Mochi Power): the Move is
+   used as EITHER a Physical or a Special attack — the user picks each time. Some rows carry it as
+   the Move's Class ("Versatile"), others only as a Range keyword ("Melee, 1 Target, Versatile"), so
+   both are read here. Left alone the Move matched neither /phys/ nor /spec/ and was silently rolled
+   as Physical — the wrong stat added, and the wrong Defense named. */
+function isVersatileMove(m){
+  if(!m) return false;
+  return /versatile/i.test(String((m.class!=null ? m.class : m.cls) || ""))
+      || /(?:^|[,\s])versatile\b/i.test(String(m.range || ""));
+}
+/* which half a Versatile Move should open on — whichever stat is actually bigger */
+function versatileDefaultSpec(atkStat, spatkStat){ return (spatkStat||0) > (atkStat||0); }
+
 /* Roll the trainer's Struggle or Weapon Move (adds Attack; STAB only via Type Expertise, and
    never on a Struggle Attack) */
 function openTrainerAttack(t, weaponMoveName, w, opts={}){
@@ -2419,8 +2435,11 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
      Feature-granted Move keeps its OWN class — a Special Move (Hyper Voice, Dark Pulse…) adds
      Sp.Attack and is subtracted by the target's Special Defense, exactly like the Pokémon path in
      openMoveRoll. A Status Move adds no attacking stat at all. */
-  const isSpecAtk   = /spec/i.test(st.cls||"");
-  const isStatusAtk = /status/i.test(st.cls||"");
+  const versatile   = isVersatileMove(st);
+  const versSpec    = versatile ? (opts.versSpec != null ? opts.versSpec
+                                   : versatileDefaultSpec(td.totals.atk, td.totals.spatk)) : false;
+  const isSpecAtk   = versatile ? versSpec : /spec/i.test(st.cls||"");
+  const isStatusAtk = !versatile && /status/i.test(st.cls||"");
   const isPhysAtk   = !isSpecAtk && !isStatusAtk;
   // Combat-Stage-adjusted, same stat the sheet shows (Gift Patron Stat & Feature [+Stat] tags included)
   const atk = isStatusAtk ? 0 : (isSpecAtk ? td.totals.spatk : td.totals.atk);
@@ -2471,7 +2490,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   };
   drawFreq();
   body.append(el("div",{class:"chips",style:"margin-bottom:10px"},
-    el("span",{html:typeBadge(st.type)}), el("span",{class:"kv"},st.cls||"Physical"),
+    el("span",{html:typeBadge(st.type)}),
+    el("span",{class:"kv"}, versatile ? `${isSpecAtk?"Special":"Physical"} · Versatile` : (st.cls||"Physical")),
     el("span",{class:"kv"},`AC ${st.ac}`),
     el("span",{class:"kv"}, dealsDamage ? `DB ${st.damageBase}${stabDB?" +2 STAB":""}` : "no damage"),
     el("span",{class:"kv"},st.range),
@@ -2509,6 +2529,19 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         + (fiveStrike ? ` Five Strike multiplies the Move's own Damage Base (${rawDB}) by the rolled hit count first; other Damage Base bonuses are added after.` : "")
         + (dblStrike  ? " Double Strike doubles this Damage Base if both Attack Rolls connect." : "")
         + (bm.crit ? ` Crit / Effect range widened by +${bm.crit} (buffs).` : ""))));
+  }
+  /* --- Versatile: this Move is Physical or Special, whichever the user wants this turn --- */
+  if(versatile){
+    const vc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+    vc.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},"🔀 Versatile — pick which Attack this uses"));
+    const vrow = el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap"});
+    [[false,`Physical (${td.totals.atk} Attack)`],[true,`Special (${td.totals.spatk} Sp.Attack)`]].forEach(([spec,label])=>
+      vrow.append(el("button",{class:"btn-secondary"+(versSpec===spec?" on":""),style:"padding:6px 10px",
+        onclick:()=>{ closeModal(); openTrainerAttack(t, weaponMoveName, w, Object.assign({}, opts, {versSpec:spec})); }}, label)));
+    vc.append(vrow);
+    vc.append(el("div",{class:"small muted",style:"margin-top:4px"},
+      `Rolling it as a ${versSpec?"Special":"Physical"} attack: it adds your ${atkLbl}, and the target uses their ${evaNote} and subtracts ${defNote}.`));
+    body.append(vc);
   }
   body.append(explain);
 
@@ -2577,7 +2610,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     } else {
       out.append(el("div",{style:"margin-bottom:10px"}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLL"),
         el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`, el("span",{class:"muted",style:"font-size:13px;font-weight:600"}, accBits.length?`  (${acc} ${accBits.join(" ")})`:" (1d20)")),
-        el("div",{class:"small muted"}, `Hits if ${accTot} ≥ AC ${st.ac} + target's Physical Evasion.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`)));
+        el("div",{class:"small muted"}, `Hits if ${accTot} ≥ AC ${st.ac} + target's ${evaNote}.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`)));
     }
     // size the Damage Base from the strikes that landed (Core p.242)
     let db = baseDBv, strikeNote = null;
@@ -4902,7 +4935,7 @@ const ARCANA = [
  rev:{t:"now",x:"The GM tells you three things that are false, presented as certain knowledge, at three separate moments of their choosing over the coming arc. You will not know which statements they were.",arc:1}},
 {k:"m03",s:"Major",n:"III — The Empress",p:"Chansey",f:"Abundance / The Barren Season.",
  up:{t:"now",x:"One Pokémon of your choice immediately evolves, ignoring all level, item, and condition requirements. If it cannot evolve, it instead gains +3 to a Base Stat and its Loyalty becomes 6.",fx:{kind:"evolve",target:"mon"}},
- rev:{t:"now",x:"Nothing in your care grows again. No Pokémon you own may ever evolve, none may gain Tutor Points, and no egg you hold will hatch. This does not expire. The GM sets a condition that breaks it — a shrine, a person, a thing you have to give up — and tells you nothing about it."}},
+ rev:{t:"now",x:"Nothing in your care grows again. No Pokémon you own may ever evolve, none may gain Tutor Points, and no egg you hold will hatch. This does not expire. The GM sets a condition that breaks it — a shrine, a person, a thing you have to give up — and tells you nothing about it.",fx:{kind:"barren"}}},
 {k:"m04",s:"Major",n:"IV — The Emperor",p:"Empoleon",f:"The Throne / The Usurper.",
  up:{t:"now",x:"People obey you. Permanently gain +2 Command Skill ranks (max Virtuoso); wild Pokémon treat you as a superior rather than a threat and will not initiate against you; and you gain a retinue — three or four loyal trainers who take your orders.",fx:{kind:"rank",skill:"command",n:2,cap:"Virtuoso"}},
  rev:{t:"now",x:"Someone takes your place. Permanently lose 2 Command Skill ranks (min Pathetic) and every Pokémon you own loses 1 Loyalty. Worse, someone who was once yours now gives orders in your name, and everyone who matters believes them over you.",
@@ -5027,7 +5060,7 @@ function cardLive(t){
   const out = { stats:{hp:0,atk:0,def:0,spatk:0,spdef:0,spd:0}, skills:{}, hp:0, ap:0, dr:0,
                 caps:{power:0,move:0}, party:0, shopBuy:0, shopSell:0 };
   (t && t.cards || []).forEach(c=>{
-    if(!c.applied) return;
+    if(!c.applied || c.broken) return;               // a curse the GM has lifted stops counting
     cardFxList(c).forEach((fx,i)=>{
       if(fx.cond && c.active===false) return;          // condition isn't in play right now
       const pk = cardPick(c,i);
@@ -5052,6 +5085,25 @@ function cardSkillBonus(t, key){ return cardLive(t).skills[key] || 0; }
 function partyCap(t){ return Math.max(1, 6 + cardLive(t).party); }
 /* Two of Pentacles / Page of Pentacles swing what everything costs */
 function cardShopPct(t){ const l = cardLive(t); return { buy:l.shopBuy, sell:l.shopSell }; }
+/* The Empress ▼ — The Barren Season. Nothing in this Trainer's care grows: no evolution,
+   no Tutor Points, no eggs. It holds until the GM presses 🔓 on the card. */
+function trainerBarren(t){
+  return (t && t.cards || []).some(c => c.applied && !c.broken
+    && cardFxList(c).some(fx => fx.kind==="barren"));
+}
+/* Which Trainer owns this Pokémon — tpSync only ever gets handed the Pokémon itself.
+   WRAPPED IN try/catch ON PURPOSE: normPokemon calls tpSync from inside load(), where `state` is
+   still in its temporal dead zone. Touching it there would throw and swallow the whole save. */
+function ownerTrainerOf(p){
+  if(!p) return null;
+  try{
+    const has = c => c && Array.isArray(c.pokemon) && c.pokemon.some(x => x===p || (x.id && x.id===p.id));
+    const act = activeChar(); if(has(act)) return act.trainer;                       // fast path
+    if(mode==="cloud"){ for(const r of Object.values(cloud.byId||{})) if(has(r && r.data)) return r.data.trainer; }
+    else for(const c of (state.characters||[])) if(has(c)) return c.trainer;
+  }catch(e){ return null; }                  // too early to know, and nothing is barren yet anyway
+  return null;
+}
 
 /* ---------- ⚡ Apply: the one-shot effects ---------- */
 /* These write to the sheet through the normal writers (moneyChange, tpChange…) so they land in the
@@ -5084,7 +5136,7 @@ function cardApply(t, c){
         keys.forEach(k=>{
           const was = (t.skills||{})[k] || "Untrained";
           const to  = RANKS[capRank(RANKS.indexOf(was) + fx.n, fx.cap)] || was;
-          c.prevRanks.push({key:k, was});
+          c.prevRanks.push({key:k, was, to});
           t.skills[k] = to;
           done.push(`${(SKILLS.find(s=>s[0]===k)||[])[1]}: ${was} → ${to}`);
         });
@@ -5101,6 +5153,7 @@ function cardApply(t, c){
         if(c.prevRanks.length) done.push(`${c.prevRanks.length} Skill${c.prevRanks.length===1?"":"s"} raised a Rank`);
         break; }
       case "tp": {
+        if(trainerBarren(t)){ toast("The Barren Season — nothing in this Trainer's care may gain Tutor Points"); break; }
         const list = fx.target==="all" ? party() : (mon?[mon]:[]);
         let moved = 0; list.forEach(p=>{ moved += Math.abs(tpChange(p, fx.n, why, {kind:"arcana"})); });
         if(moved) done.push(`${fx.n>0?"＋":"－"}${Math.abs(fx.n)} Tutor Point${Math.abs(fx.n)===1?"":"s"} × ${list.length}`);
@@ -5138,6 +5191,7 @@ function cardApply(t, c){
             p.xp = xpForLevel(p.level); autoAllocMom(p); tpSync(p);
           }); done.push(`party ＋${fx.party} level${fx.party===1?"":"s"}`); }
         break; }
+      case "barren": done.push("The Barren Season holds — no evolution, no Tutor Points, no eggs"); break;
       case "shiny": if(mon){ mon.shiny = true; done.push("✨ shiny"); } break;
       case "rest":  endDay(); done.push("Extended Rest taken"); break;
       case "gift":  setTimeout(()=>openAddGift(t), 0); done.push("Legendary Gift — grant it in the 🎁 tab"); break;
@@ -5166,6 +5220,30 @@ function cardEvolvePick(p, opts){
       el("div",{class:"muted small",style:"margin-bottom:8px"},"Level, item and condition requirements are ignored."), sel),
     footNodes:[ el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
       el("button",{class:"btn-primary",onclick:()=>{ const v=sel.value; closeModal(); evolveTo(p, v, null); }},"Evolve") ]});
+}
+/* Several banes end on a secret condition the GM set when the card landed — "a shrine, a person, a
+   thing you have to give up". This is the button they press when the player finally meets it: every
+   ongoing effect stops and any Skill Rank the card ate is handed back, while the card itself stays on
+   the sheet as a record of what happened. Pressing again binds it back. */
+const CARD_ONGOING = new Set(["skill","hp","ap","dr","cap","party","shop","stat","barren"]);
+function cardHasOngoing(c){
+  return cardFxList(c).some(fx => CARD_ONGOING.has(fx.kind)) || (c.prevRanks||[]).length > 0;
+}
+function cardBreak(t, c){
+  const lifting = !c.broken;
+  if(lifting && !confirm(`The condition is met — lift ${cardTitle(c)}?
+
+Its ongoing effects stop and any Skill Rank it took is given back. The card stays on the sheet as a record.`)) return;
+  c.broken = lifting;
+  c.brokenAt = lifting ? Date.now() : 0;
+  // Rank changes move back and forth with the curse — cardApply stored both ends
+  (c.prevRanks||[]).slice().reverse().forEach(r=>{
+    if(!t.skills) return;
+    if(lifting) t.skills[r.key] = r.was;
+    else if(r.to) t.skills[r.key] = r.to;
+  });
+  save(); renderTrainer();
+  toast(lifting ? `${cardTitle(c)} lifted — the condition was met` : `${cardTitle(c)} binds again`);
 }
 /* Taking a card off the sheet. Live effects vanish with it; Rank changes are put back; anything that
    moved money, levels or Tutor Points stays moved — those went through the ledgers and are history. */
@@ -5213,6 +5291,7 @@ function cardFxText(fx, pk){
     case "evolve": return "evolve one Pokémon, ignoring every requirement";
     case "gift":  return "grant a Legendary Gift";
     case "rest":  return "an Extended Rest for the whole party";
+    case "barren": return "no evolution, no Tutor Points, no eggs — until lifted";
     case "note":  return "";
     default: return "";
   }
@@ -5296,7 +5375,7 @@ function cardsCard(t){
 function arcanaRow(t, c, gm){
   const d = cardDef(c), face = cardFace(c);
   const rev = c.orientation==="rev", major = cardIsMajor(c), masked = cardMasked(c);
-  const row = el("div",{class:"arcana"+(rev?" rev":"")+(major?" major":"")+(c.applied?" done":"")});
+  const row = el("div",{class:"arcana"+(rev?" rev":"")+(major?" major":"")+(c.applied?" done":"")+(c.broken?" broken":"")});
 
   /* head — orientation, name, timing tag */
   const head = el("div",{class:"arcana-head"});
@@ -5311,6 +5390,7 @@ function arcanaRow(t, c, gm){
   if(c.arcExpiry) chips.append(el("span",{class:"arcana-tag t-arc",title:"wears off the moment the badge is won"},"⏳ this arc"));
   if(c.hidden) chips.append(el("span",{class:"arcana-tag t-hidden",title:gm?"players can't read this card's effect":"hidden"},"👁 hidden"));
   if(c.applied) chips.append(el("span",{class:"arcana-tag t-done"}, face && face.t==="held" ? "spent" : "applied"));
+  if(c.broken) chips.append(el("span",{class:"arcana-tag t-done",title:"the GM ruled the condition met"}, "🔓 lifted"));
   titleWrap.append(chips);
   head.append(titleWrap);
   if(gm) head.append(el("button",{class:"linkbtn danger",title:"take this card off the sheet",
@@ -5351,6 +5431,13 @@ function arcanaRow(t, c, gm){
       bar.append(el("button",{class: on?"btn-secondary":"linkbtn",
         title:"this effect only counts while its condition holds — flip it off when it doesn't",
         onclick:()=>{ c.active = !on; save(); renderTrainer(); }}, on?"🔆 in effect":"🌑 dormant"));
+    }
+    /* the escape hatch for a permanent bane: the GM decides the condition was met */
+    if(c.applied && cardHasOngoing(c)){
+      bar.append(el("button",{class: c.broken ? "linkbtn" : "btn-secondary",
+        title: c.broken ? "the curse is lifted — press to bind it again"
+                        : "the player met the secret condition you set — lift this card's ongoing effects",
+        onclick:()=>cardBreak(t,c)}, c.broken ? "🔒 re-bind" : "🔓 condition met"));
     }
     bar.append(el("label",{class:"inline small",style:"gap:5px;cursor:pointer",
       title:"hide this card's effect from the player — only you can read it"},
@@ -6633,7 +6720,13 @@ function tpSync(p){
   const d = total - p.tpCredited;
   if(!d) return 0;
   p.tpCredited = total;
-  return tpChange(p, d, d>0 ? `earned — now Lv ${p.level}` : `total lowered (Lv ${p.level})`, {kind:"level"});
+  const moved = tpChange(p, d, d>0 ? `earned — now Lv ${p.level}` : `total lowered (Lv ${p.level})`, {kind:"level"});
+  /* The Barren Season (The Empress ▼): points are earned and then immediately spent again, so the
+     ledger still records what was owed but the balance never rises — and lifting the curse later
+     can never hand back everything that was earned while it held. */
+  if(moved > 0 && trainerBarren(ownerTrainerOf(p)))
+    tpChange(p, -moved, "consumed — The Barren Season", {kind:"arcana"});
+  return moved;
 }
 /* the balance the ledger starts from: everything the Pokémon had before it kept records */
 function tpLogOpening(p){
@@ -7522,13 +7615,19 @@ function renderMonBuild(root, p, sp){
     const gm = isGM();
     const t = activeChar().trainer;
     const chain = sp.evolution.filter(e=> gm || !e.gm);              // hide GM-only stages from players
-    const evoLocked = pokeEdgeBlocksEvolution(p);                    // Underdog's Strength gave up evolving
-    const nexts = evoLocked ? [] : nextEvolutions(p).filter(n=> gm || !n.gm);
+    const edgeLock = pokeEdgeBlocksEvolution(p);                     // Underdog's Strength gave up evolving
+    const barrenLock = trainerBarren(t);                             // The Empress ▼ — The Barren Season
+    const evoLocked = edgeLock || barrenLock;
+    // Underdog's Strength hides the branches outright; the Barren Season greys them out instead,
+    // so you can still see what it WOULD become while the curse holds
+    const nexts = edgeLock ? [] : nextEvolutions(p).filter(n=> gm || !n.gm);
     if(chain.length>1 || nexts.length){
       const evc = el("div",{class:"card"}, el("h3",{},"Evolution"));
       evc.append(el("div",{class:"r-body",html: chain.map(e=>`${e.stage}. ${esc(e.name)}${e.min?` (Lv ${e.min})`:""}${e.gm?" 🔒":""}`).join("  →  ")}));
-      if(evoLocked) evc.append(el("div",{class:"warnbox",style:"margin-top:8px"},
+      if(edgeLock) evc.append(el("div",{class:"warnbox",style:"margin-top:8px"},
         "🧬 Underdog's Strength: this Pokémon may no longer undergo Evolution. Drop that Poké Edge to give the +1 Base Stats back and evolve again."));
+      if(barrenLock) evc.append(el("div",{class:"warnbox",style:"margin-top:8px"},
+        "🔮 The Barren Season (The Empress ▼): nothing in this Trainer's care grows. No Pokémon may evolve, none gain Tutor Points, and no egg will hatch — until the GM presses 🔓 condition met on the card."));
       if(nexts.length){
         nexts.forEach(n => {
           const stone = evoStoneName(n.method);
@@ -7545,10 +7644,13 @@ function renderMonBuild(root, p, sp){
           rowE.append(el("span",{class:"small"}, `→ Evolves into `, el("b",{}, n.target), ` ${reqTxt}`,
             n.gm?el("span",{class:"muted",title:"GM-only hidden evolution"}," 🔒 GM"):"",
             hint?el("span",{class:"muted"}, hint):""));
-          const btn = el("button",{class:ready?"btn-primary":"btn-secondary",style:"padding:6px 12px",
-            disabled: !ready,
-            onclick: ready ? ()=>evolveTo(p, n.target, stoneItem) : null},
-            ready ? `✨ Evolve into ${n.target}` : (stone ? `Need ${stone}` : `Lv ${n.min} to evolve`));
+          const canGo = ready && !barrenLock;
+          const btn = el("button",{class:canGo?"btn-primary":"btn-secondary",style:"padding:6px 12px",
+            disabled: !canGo,
+            title: barrenLock ? "The Barren Season holds — the GM must lift The Empress ▼ first" : "",
+            onclick: canGo ? ()=>evolveTo(p, n.target, stoneItem) : null},
+            barrenLock ? `🔮 Barren — cannot evolve`
+              : ready ? `✨ Evolve into ${n.target}` : (stone ? `Need ${stone}` : `Lv ${n.min} to evolve`));
           rowE.append(btn);
           evc.append(rowE);
         });
@@ -9333,8 +9435,13 @@ function openMoveRoll(p, m, sp, opts={}){
   const fcMode = fieryCrashMode(fc, opts.fcMode);
   const mtype = fcMode==="fire" ? "Fire" : baseType;
   const stab = mtype && types.includes(mtype);
-  const isPhys = /phys/i.test(m.class||"");
-  const isSpec = /spec/i.test(m.class||"");
+  /* Versatile (Tera Blast, Order Up, Redline): Physical or Special at the user's choice. It opens on
+     whichever stat is bigger and is flipped from the roll window. */
+  const versatile = isVersatileMove(m);
+  const versSpec  = versatile ? (opts.versSpec != null ? opts.versSpec
+                                 : versatileDefaultSpec(d.eff.atk, d.eff.spatk)) : false;
+  const isPhys = versatile ? !versSpec : /phys/i.test(m.class||"");
+  const isSpec = versatile ?  versSpec : /spec/i.test(m.class||"");
   const atkStat = isPhys ? d.eff.atk : isSpec ? d.eff.spatk : 0;   // CS-adjusted Attack / Sp.Attack
   const atkLbl = isPhys ? "Attack" : isSpec ? "Sp. Attack" : null;
   const evaNote = isPhys ? "target's Physical Evasion" : isSpec ? "target's Special Evasion" : "target's Evasion";
@@ -9481,6 +9588,20 @@ function openMoveRoll(p, m, sp, opts={}){
     "🦴 Bone Wielder is only functional while a Thick Club is held — the +1 Accuracy isn't applied."));
   if(scrappyPierces(p, m, mtype)) body.append(el("div",{class:"small",style:"margin:-6px 0 12px;color:var(--accent)"},
     `💪 Scrappy — Ghost-Types are not immune to this ${mtype}-Type Move (applied when you pick a target).`));
+
+  /* --- Versatile: the user picks Physical or Special each time the Move is used --- */
+  if(versatile){
+    const vc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+    vc.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},"🔀 Versatile — pick which Attack this uses"));
+    const vrow = el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap"});
+    [[false,`Physical (${d.eff.atk} Attack)`],[true,`Special (${d.eff.spatk} Sp.Attack)`]].forEach(([spec,label])=>
+      vrow.append(el("button",{class:"btn-secondary"+(versSpec===spec?" on":""),style:"padding:6px 10px",
+        onclick:()=>{ closeModal(); openMoveRoll(p, m, sp, Object.assign({}, opts, {versSpec:spec})); }}, label)));
+    vc.append(vrow);
+    vc.append(el("div",{class:"small muted",style:"margin-top:4px"},
+      `Rolling it as a ${versSpec?"Special":"Physical"} attack: it adds ${versSpec?"Sp.Attack":"Attack"}, and the target subtracts ${defNote}.`));
+    body.append(vc);
+  }
 
   /* --- "−ate" ability toggle (Aerilate / Pixilate / Galvanize / Refrigerate) --- it re-types this
      Normal move, which can gain OR lose STAB, so let the player flip it per-roll and see the effect. */
@@ -10665,7 +10786,7 @@ function trainerAttackSlot(t, profile, rollFn, opts={}){
       stabHere?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600",title:"Type Expertise — +2 Damage Base"},"⚡ STAB"):""),
     el("div",{class:"ms-info"}, `${profile.frequency?profile.frequency+" · ":""}${profile.cls||"Physical"} · AC ${profile.ac} · `
       + (typeof profile.damageBase === "number" && profile.damageBase > 0
-          ? `DB ${profile.damageBase}${stabHere?" +2":""} · ${profile.range} · +${/spec/i.test(profile.cls||"")?"Sp.Attack":"Attack"}`
+          ? `DB ${profile.damageBase}${stabHere?" +2":""} · ${profile.range} · +${isVersatileMove(profile) ? "Attack or Sp.Attack" : (/spec/i.test(profile.cls||"") ? "Sp.Attack" : "Attack")}`
           : `no damage · ${profile.range}`))));
   const acts = el("div",{class:"inline"});
   if(opts.uc) acts.append(opts.uc);
@@ -13484,10 +13605,23 @@ function simUnit(f, sideKey, cfg){
    Trainer's attacks, so it takes the raw object rather than a battle unit. */
 function simAttacks(obj, isT, sp){
   const out = [], seen = new Set();
+  /* A Versatile Move is neither Physical nor Special until its user decides, and there is nobody to
+     ask mid-simulation — so the AI takes whichever stat is bigger. Left alone it matched neither
+     half of the test below and the Move was dropped from the fighter's arsenal entirely. */
+  let _versSpec = null;
+  const versSpecFor = () => {
+    if(_versSpec === null){
+      const dd = isT ? trainerDerived(obj) : pokeDerived(obj);
+      _versSpec = isT ? versatileDefaultSpec(dd.totals.atk, dd.totals.spatk)
+                      : versatileDefaultSpec(dd.eff.atk, dd.eff.spatk);
+    }
+    return _versSpec;
+  };
   // `struggle` marks the Struggle Attacks, which never get STAB (Type Expertise says so outright)
   const push = (m, struggle) => {
     if(!m) return;
-    const cls = String(m.class || m.cls || "");
+    const cls = isVersatileMove(m) ? (versSpecFor() ? "Special" : "Physical")
+                                   : String(m.class || m.cls || "");
     if(!/phys|spec/i.test(cls)) return;                       // Status Moves aren't modelled
     const db = m.damageBase;
     if(typeof db!=="number" || db<1) return;                  // fixed/special-damage moves are skipped

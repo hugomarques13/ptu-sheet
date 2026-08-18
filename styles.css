@@ -734,3 +734,5 @@ body.map-mode .view{animation:none}
 .arcana-note{width:100%; min-height:44px; margin-top:8px; font-size:12px}
 .arcana-notes-ro{margin-top:6px; padding-left:9px; border-left:2px solid var(--line); color:var(--muted)}
 .arcana-preview{border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:var(--panel)}
+
+.arcana.broken{opacity:.6; border-left-style:dashed}
