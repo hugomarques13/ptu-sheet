@@ -1349,6 +1349,9 @@ function itemFreqForKey(key){
   if(kind==="move")    return moveByName.get(name)?.frequency;
   if(kind==="ability") return abilityByName.get(name)?.frequency;
   if(kind==="feature"){ const f=D.features.find(x=>x.name.toLowerCase()===name); return f?.frequency; }
+  // a Feature rider fired on one particular Move ("Play Them Like a Fiddle|Sweet Kiss"): the
+  // Feature says each Move's effect works once per Scene, so it resets with every other Scene use
+  if(kind==="rider") return "Scene";
   return null;
 }
 /* frequency of a named Move/Ability/Feature, for at-a-glance labels (classes/edges have none) */
@@ -1382,6 +1385,7 @@ function applyEndScene(c){
   if(!c) return;
   normTrainer(c.trainer);
   c.trainer.usedAP = 0; c.trainer.tempHP = 0; c.trainer.buffs = []; resetUses(c.trainer, "scene");
+  c.trainer.modes = {};                            // a Feature stance (Enchanting Transformation) lasts until the end of the Scene — and returns its Bound AP with it
   // Combat Stages set by hand and Volatile afflictions don't outlast the Scene (Core p.234/p.245).
   // Stages an active source is still applying (a Burn, weather, an Aura, worn armour) are left to
   // that source — resetManualCS only zeroes p.cs, and csAutoMods puts the rest back on its own.
@@ -1394,7 +1398,7 @@ function applyEndScene(c){
 function applyEndDay(c){
   if(!c) return;
   const t = c.trainer; normTrainer(t);
-  t.usedAP = 0; t.tempHP = 0; t.buffs = []; resetUses(t, "all"); resetManualCS(t);
+  t.usedAP = 0; t.tempHP = 0; t.buffs = []; resetUses(t, "all"); resetManualCS(t); t.modes = {};
   clearStorageDigestion(t);                        // Berry Storage: "all Buffs gained this way are lost after an Extended Rest"
   t.statuses = [];                                 // Extended Rest cures all Status afflictions (Core p.249)
   t.injuries = Math.max(0, (t.injuries||0) - 1);   // Extended Rest heals 1 Injury (Core p.249)
@@ -1542,6 +1546,7 @@ function normTrainer(t){
   if(!Array.isArray(t.weapons)) t.weapons = [];
   if(!t.equipment || typeof t.equipment!=="object" || Array.isArray(t.equipment)) t.equipment = {};  // worn gear per slot
   if(!t.books || typeof t.books!=="object" || Array.isArray(t.books)) t.books = {};                   // studied Books → {name:{bound,subject?,field?}}
+  if(!t.modes || typeof t.modes!=="object" || Array.isArray(t.modes)) t.modes = {};                   // switched-on Feature stances (Enchanting Transformation) — see FEATURE_MODES
   if(!Array.isArray(t.gifts)) t.gifts = [];                        // Legendary Gifts (Blessed and the Damned)
   if(!Array.isArray(t.cards)) t.cards = [];                        // Arcana Deck cards this Trainer is holding
   if(!Array.isArray(t.moneyLog)) t.moneyLog = [];                  // every dollar in or out, oldest first (see moneyChange)
@@ -1797,7 +1802,10 @@ function defenseTypeMods(p){
     why.push(`${filter&&solidRock?"Filter + Solid Rock":filter?"Filter":"Solid Rock"}: Super-Effective softened (×1.5→×1.25, ×2→×1.5)`); }
   if(filter && solidRock){ seFlatDR += 5; why.push("Filter + Solid Rock: +5 DR vs Super-Effective"); }
   if(A("Prism Armor")){ seFlatDR += 5; why.push("Prism Armor: +5 DR vs Super-Effective"); }
-  return { step, immune, wonderGuard, seReduce, seFlatDR, why };
+  // A switched-on Trainer Feature stance (Enchanting Transformation) grants flat Damage Reduction
+  // against named Types. That's a DR, not a ladder step — it comes off AFTER effectiveness, and it
+  // stays out of `why` because it should only be named on hits of a Type it actually covers.
+  return { step, immune, wonderGuard, seReduce, seFlatDR, typeDR: modeTypeDR(p), why };
 }
 /* Filter / Solid Rock soften a Super-Effective multiplier by one "half-step" on the PTU ladder. */
 function seReducedMult(m){ return m>=2 ? 1.5 : m>1 ? 1.25 : m; }
@@ -2304,6 +2312,12 @@ function damageHealRow(getHP, setHP, owner){
     if(dr > 0) wrap.append(el("label",{class:"small muted",style:"display:inline-flex;align-items:center;gap:4px;margin-left:6px",
       title:"Damage Reduction from active buffs auto-applies to damage. Tick to ignore it (indirect damage)."},
       raw, `ignore DR ${dr}`));
+    /* Per-TYPE Damage Reduction (Enchanting Transformation) can't be applied here — this box only
+       knows a number of HP, not what Type hit you. Name it so it isn't silently forgotten; the Map's
+       "apply an attack" tool, which does know the Type, subtracts it automatically. */
+    const tdr = modeTypeDR(owner), tks = Object.keys(tdr);
+    if(tks.length) wrap.append(el("span",{class:"small muted",style:"flex-basis:100%"},
+      `✨ ${tks.map(k=>`${tdr[k].dr} DR vs ${k}`).join(" · ")} (${[...new Set(tks.flatMap(k=>tdr[k].from))].join(", ")}) — subtract by hand here; the Map's attack tool applies it for you.`));
   }
   return wrap;
 }
@@ -2544,6 +2558,11 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     body.append(vc);
   }
   body.append(explain);
+
+  /* --- Feature riders: extra effects a Trainer Feature bolts onto THIS Move (Powerful Motivator,
+     Play Them Like a Fiddle, Enchanting Transformation). Always-on ones just state what also
+     happens; a triggered one gets its own box with a button that spends the use. --- */
+  body.append(riderBoxes(t, st.name, opts.rerender));
 
   /* --- multi-strike Weapon Moves: one Attack Roll per strike, counted automatically --- */
   if(fiveStrike || dblStrike){
@@ -2897,7 +2916,7 @@ function trainerVitalsCard(t){
   card.append(row);
   /* Books Drain AP separately (t.books) — that Drain outlives a Scene, so it's shown next to the
      Scene's spend rather than baked into it. See the BOOKS section. */
-  const drained = bookDrain(t).ap;
+  const bookAP = bookDrain(t).ap, boundAP = modeBindAP(t), drained = bookAP + boundAP;
   const setAP = u => { t.usedAP = Math.max(0, Math.min(maxAP - drained, u)); save(); renderTrainer(); };
   const apRow = el("div",{class:"hpctl",style:"margin-top:10px;align-items:center"});
   const apIn = el("input",{type:"number",min:0,max:maxAP-drained,title:"AP spent"}); apIn.value = t.usedAP;
@@ -2908,8 +2927,10 @@ function trainerVitalsCard(t){
     el("span",{class:"muted",style:"font-weight:800"},`/ ${maxAP}`),
     el("span",{class:"small muted"},`· ${maxAP-trainerAPUsed(t)} AP left`));
   card.append(apRow);
-  if(drained) card.append(el("div",{class:"small muted",style:"margin-top:4px"},
-    `📚 ${drained} AP Drained by studied Books until your next Extended Rest (Trainer → Sheet → Books).`));
+  if(bookAP) card.append(el("div",{class:"small muted",style:"margin-top:4px"},
+    `📚 ${bookAP} AP Drained by studied Books until your next Extended Rest (Trainer → Sheet → Books).`));
+  if(boundAP) card.append(el("div",{class:"small muted",style:"margin-top:4px"},
+    `✨ ${boundAP} AP Bound by ${activeFeatureModes(t).map(d=>d.feat).join(", ")} — it comes back when you end it (⚔ Battle → Combat) or at End Scene.`));
 
   /* End Scene / End Day now live in the persistent top bar (🌙 / ☀), not here */
   card.append(el("div",{class:"small muted",style:"margin-top:6px"},
@@ -3875,8 +3896,9 @@ function bookDrain(t){
   const sp = Math.min(paid, studyPointsMax(t));
   return { ranks, free:freeRanks, sp, ap: paid - sp };
 }
-/* total AP unavailable right now = spent this Scene + Drained by Books */
-function trainerAPUsed(t){ return (t.usedAP||0) + bookDrain(t).ap; }
+/* total AP unavailable right now = spent this Scene + Drained by Books + Bound by an active
+   Feature stance (Enchanting Transformation) */
+function trainerAPUsed(t){ return (t.usedAP||0) + bookDrain(t).ap + modeBindAP(t); }
 /* does the trainer meet a Rank's Skill prerequisite? (Well Read and the GM 🔓 can substitute) */
 function bookRankQualified(t, r){
   if(!r.skillKey) return { ok:true };                       // unparsed Skill — don't block the player
@@ -10583,6 +10605,190 @@ function featureActionTypes(f){
   if(/Full Action/i.test(after))     t.push("full");
   return t;
 }
+/* ===================================================================
+   FEATURE RIDERS & FEATURE MODES
+   ------------------------------------------------------------------
+   Three Provocateur / Glamour Weaver Features do nothing on their own — they
+   bolt EXTRA EFFECTS onto Moves the Trainer already knows:
+
+     • Powerful Motivator        (Static)            — always on
+     • Play Them Like a Fiddle   (Scene x3, Swift)   — triggered; each Move once/Scene
+     • Enchanting Transformation (Bind 2 AP, Shift)  — a stance you switch on
+
+   All three are written the same way in the Feature DB: a prose line, then a
+   bullet list of "<Move Name>: <what it now also does>". So the rider table is
+   READ OUT OF THE RULES TEXT (featureMoveRiders) rather than transcribed here —
+   retyping seven bullets three times is how a sheet and its rulebook drift
+   apart. Only what a bullet list can't express (the per-Type Damage Reduction,
+   the AP bind) is stated in code, in FEATURE_MODES below.
+=================================================================== */
+/* "»» Sweet Kiss: Sweet Kiss ignores Speed Evasion." → Map("Sweet Kiss" → "Sweet Kiss ignores…").
+   The bullet reaches us as mojibake from the PDF extraction, so anything non-alphanumeric in front
+   of the name counts as the bullet. Lines the packet writes the same way but that AREN'T Moves
+   ("Trigger:", "Effect:", "Note:") fall out on their own — they don't resolve in the Move DB. */
+const _riderCache = new Map();
+function featureMoveRiders(f){
+  if(!f || !f.name) return new Map();
+  if(_riderCache.has(f.name)) return _riderCache.get(f.name);
+  const out = new Map();
+  String(f.effect||"").split("\n").forEach(line=>{
+    const m = line.match(/^[^A-Za-z0-9]*\s*([A-Za-z][A-Za-z'’.\- ]{2,28}?)\s*:\s*(\S.*)$/);
+    if(!m) return;
+    const mv = moveByName.get(m[1].trim());
+    if(!mv || out.has(mv.name)) return;
+    out.set(mv.name, m[2].trim());
+  });
+  _riderCache.set(f.name, out);
+  return out;
+}
+/* Which Features carry riders, and HOW each one fires:
+     always  — it just happens; no action, nothing to spend
+     trigger — the player chooses to fire it and spends a use
+     mode    — only while that Feature's stance is switched on */
+const FEATURE_RIDERS = [
+  { feat:"Powerful Motivator",        kind:"always",  icon:"⚡",
+    when:"whether the Move hits or misses — no action, nothing to spend." },
+  { feat:"Play Them Like a Fiddle",   kind:"trigger", icon:"🎻",
+    when:"when you HIT with the Move — a Swift Action. Each Move's effect works only once per Scene." },
+  { feat:"Enchanting Transformation", kind:"mode",    icon:"✨", mode:"enchanting-transformation",
+    when:"while your Enchanting Transformation is up." },
+];
+/* A stance the Trainer switches on and off. Everything here is derived from `t.modes` and never
+   folded into t.usedAP — switching the stance off (or the Scene ending) hands the Bound AP back on
+   its own, exactly the way a Book's Drain is derived from `t.books`. */
+const FEATURE_MODES = [
+  { key:"enchanting-transformation", feat:"Enchanting Transformation", icon:"✨",
+    on:"Transform", off:"End Transformation", dur:"lasts until the end of the Scene", bindAP:2,
+    typeDR:{ Dragon:5, Fighting:5, Dark:5, Bug:5 },
+    blurb:"+5 Damage Reduction against Dragon-, Fighting-, Dark- and Bug-Typed attacks, and your Glamour Weaver Moves gain the extra effects listed in the Feature." },
+];
+const featureModeByFeat = new Map(FEATURE_MODES.map(d=>[featKey(d.feat), d]));
+const featureModeDef = f => featureModeByFeat.get(featKey(f && f.name)) || null;
+function trainerModes(t){ return (t && t.modes && typeof t.modes==="object" && !Array.isArray(t.modes)) ? t.modes : null; }
+function modeIsOn(t, key){ const m = trainerModes(t); return !!(m && m[key]); }
+/* every stance this Trainer has switched on AND still owns the Feature for */
+function activeFeatureModes(t){
+  if(!trainerModes(t)) return [];
+  return FEATURE_MODES.filter(d => modeIsOn(t, d.key) && hasFeatureLoose(t, d.feat));
+}
+/* AP an active stance keeps Bound — added to trainerAPUsed, so it eats into the Scene's AP budget */
+function modeBindAP(t){ return activeFeatureModes(t).reduce((s,d)=> s + (d.bindAP||0), 0); }
+/* flat per-Type Damage Reduction from active stances → {Type:{dr, from:[Feature…]}}.
+   Only Trainers have stances, so a Pokémon owner short-circuits out. */
+function modeTypeDR(o){
+  const out = {};
+  if(!isTrainerOwner(o)) return out;
+  activeFeatureModes(o).forEach(d => Object.entries(d.typeDR||{}).forEach(([ty,n])=>{
+    if(!out[ty]) out[ty] = { dr:0, from:[] };
+    out[ty].dr += n; out[ty].from.push(d.feat);
+  }));
+  return out;
+}
+/* Switch a stance on/off. Turning it on has to be payable out of the AP actually left this Scene
+   (the GM's 🔓 unlock skips the check, like every other AP gate on the sheet). */
+function setFeatureMode(t, def, on, rerender){
+  if(!t || !def) return;
+  if(!trainerModes(t)) t.modes = {};
+  if(on){
+    const free = trainerDerived(t).ap - trainerAPUsed(t);
+    if(!t.unlocked && (def.bindAP||0) > free){
+      toast(`Not enough AP — ${def.feat} Binds ${def.bindAP}, you have ${Math.max(0,free)} free`);
+      return;
+    }
+    t.modes[def.key] = true;
+  } else delete t.modes[def.key];
+  save();
+  toast(on ? `${def.icon} ${def.feat} is up${def.bindAP?` · ${def.bindAP} AP Bound`:""}`
+           : `${def.feat} ended${def.bindAP?` · ${def.bindAP} AP returned`:""}`);
+  (rerender||renderBattle)();
+}
+/* Per-Move once-per-Scene tracking for a triggered rider. Keyed under the "rider" kind so
+   itemFreqForKey can report it as a Scene frequency and End Scene wipes it with everything else. */
+const riderUseKey = (featName, moveName) => useKey("rider", `${featName}|${moveName}`);
+/* every rider that applies to `moveName` for this Trainer right now */
+function ridersForMove(t, moveName){
+  if(!t || !moveName) return [];
+  const canon = canonMoveName(moveName), out = [];
+  FEATURE_RIDERS.forEach(r=>{
+    if(!hasFeatureLoose(t, r.feat)) return;
+    if(r.kind==="mode" && !modeIsOn(t, r.mode)) return;
+    const f = featureByName.get(r.feat) || featureByKey.get(featKey(r.feat));
+    if(!f) return;
+    const text = featureMoveRiders(f).get(canon);
+    if(text) out.push({ r, f, text });
+  });
+  return out;
+}
+/* The rider boxes shown inside a Trainer's move roll. A triggered rider gets its OWN box with a
+   button that spends the use, because that's a decision the player makes at the table — the
+   always-on ones just state what also happens. Redraws itself in place so the counts move without
+   reopening the roll. */
+function riderBoxes(t, moveName, rerenderAll){
+  const wrap = el("div",{});
+  const draw = () => {
+    wrap.innerHTML = "";
+    const canon = canonMoveName(moveName);
+    ridersForMove(t, moveName).forEach(({r,f,text})=>{
+      const box = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+      box.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},
+        `${r.icon} ${f.name}`,
+        f.frequency?el("span",{class:"muted",style:"font-weight:600"}, `  ·  ${f.frequency}`):""));
+      box.append(el("div",{class:"small",style:"margin-bottom:4px"}, el("b",{}, canon+": "), text));
+      if(r.kind!=="trigger"){
+        box.append(el("div",{class:"small muted"}, `Applies ${r.when}`));
+        wrap.append(box); return;
+      }
+      const info = freqInfo(f.frequency), fk = useKey("feature", f.name);
+      const left = freqTrackable(info) ? usesLeft(t, fk, info.max) : null;
+      const mk = riderUseKey(f.name, canon);
+      const usedHere = usesLeft(t, mk, 1) <= 0;
+      const canFire = !usedHere && (left==null || left>0);
+      box.append(el("div",{class:"small muted",style:"margin-bottom:6px"}, `Fires ${r.when}`));
+      const row = el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;align-items:center"});
+      const btn = el("button",{class: canFire?"btn-primary":"btn-secondary",style:"padding:6px 10px",
+        onclick:()=>{
+          if(!canFire) return;
+          t.uses = t.uses || {};
+          if(left!=null) t.uses[fk] = Math.min(info.max, (t.uses[fk]||0)+1);
+          t.uses[mk] = 1;
+          save(); toast(`${r.icon} ${f.name} → ${canon} ✓`);
+          draw(); if(rerenderAll) rerenderAll();
+        }}, usedHere ? "✓ used on this Move this Scene"
+                     : canFire ? `${r.icon} Use it on this Move` : "no uses left this Scene");
+      if(!canFire) btn.disabled = true;
+      row.append(btn);
+      const bits = [];
+      if(left!=null) bits.push(`${left} of ${info.max} Scene use${info.max===1?"":"s"} left`);
+      if(usedHere) bits.push(`${canon}'s effect is spent for this Scene`);
+      if(bits.length) row.append(el("span",{class:"small muted"}, bits.join(" · ")));
+      box.append(row);
+      wrap.append(box);
+    });
+  };
+  draw();
+  return wrap;
+}
+/* Stances card for the Trainer's ⚔ Combat tab — the same switch as the Battle tab's Shift row, in
+   the place a player looks to see what is currently up. Only drawn if they own such a Feature. */
+function trainerModesCard(t, rerender){
+  const avail = FEATURE_MODES.filter(d => hasFeatureLoose(t, d.feat));
+  if(!avail.length) return null;
+  const card = el("div",{class:"card"}, el("h3",{},"Stances & Transformations",
+    el("span",{class:"muted small"},"switch on / off · end at End Scene")));
+  avail.forEach(d=>{
+    const on = modeIsOn(t, d.key);
+    const row = el("div",{class:"buff-row"});
+    row.append(el("div",{style:"flex:1;min-width:0"},
+      el("div",{class:"buff-name"}, `${d.icon} ${d.feat}`,
+        on?el("span",{style:"color:var(--good);margin-left:8px"},"● ACTIVE"):""),
+      el("div",{class:"small muted"}, [d.bindAP?`Binds ${d.bindAP} AP`:"", d.dur].filter(Boolean).join(" · ")),
+      el("div",{class:"small"+(on?"":" muted"),style:"margin-top:2px"}, d.blurb)));
+    row.append(el("button",{class: on?"btn-secondary":"btn-primary",style:"padding:6px 10px;align-self:center;white-space:nowrap",
+      onclick:()=>setFeatureMode(t, d, !on, rerender)}, on ? `⏹ ${d.off}` : `${d.icon} ${d.on}`));
+    card.append(row);
+  });
+  return card;
+}
 /* ---------- Features that hand you other Features ----------
    The five Order Features (Ravager / Marksman / Trickster / Guardian / Precision — Core pp.61-62)
    are Static: taking one does nothing on its own, it GIVES you two Orders, and those Orders are the
@@ -10706,6 +10912,9 @@ function featureActionRow(f, owner, rerender){
   const favs=getFavActions(), fav=favs.has(featFavId(f.name));
   // an Order the buff engine models, on the player's own sheet → one tap to actually give it
   const def = owner && owner===activeChar()?.trainer ? featureBuffDef(f) : null;
+  // a Feature that switches a stance on/off (Enchanting Transformation) toggles straight from here
+  const md  = owner && owner===activeChar()?.trainer ? featureModeDef(f) : null;
+  const mdOn = md && modeIsOn(owner, md.key);
   d.append(el("summary",{},
     el("button",{class:"actstar"+(fav?" on":""),title:fav?"unfavourite":"favourite",
       onclick:e=>{ e.preventDefault(); toggleFavAction(featFavId(f.name)); (rerender||renderBattle)(); }}, fav?"★":"☆"),
@@ -10713,7 +10922,12 @@ function featureActionRow(f, owner, rerender){
     meta?el("span",{class:"muted small",style:"margin-left:8px"}, meta):"",
     uc ? el("span",{style:"margin-left:8px"}, uc) : "",
     def ? el("button",{class:"linkbtn",style:"margin-left:8px",title:"apply this Order to one of your creatures",
-      onclick:e=>{ e.preventDefault(); e.stopPropagation(); openGiveOrder(owner, f, def, rerender); }},"✨ Give") : ""));
+      onclick:e=>{ e.preventDefault(); e.stopPropagation(); openGiveOrder(owner, f, def, rerender); }},"✨ Give") : "",
+    md ? el("button",{class:"linkbtn",style:"margin-left:8px",
+      title: mdOn ? `end it — ${md.bindAP||0} Bound AP comes back` : `switch it on — Binds ${md.bindAP||0} AP, ${md.dur}`,
+      onclick:e=>{ e.preventDefault(); e.stopPropagation(); setFeatureMode(owner, md, !mdOn, rerender); }},
+      mdOn ? `⏹ ${md.off}` : `${md.icon} ${md.on}`) : "",
+    mdOn ? el("span",{class:"small",style:"margin-left:8px;color:var(--good);font-weight:700"},"● ACTIVE") : ""));
   d.append(el("div",{class:"small",style:"margin-top:6px",html: refDetailHTML("feature",f.name)}));
   return d;
 }
@@ -10780,14 +10994,17 @@ function trainerAttackSlot(t, profile, rollFn, opts={}){
   // and never on a Status Move — there's no Damage Base for it to raise)
   const stabHere = typeof profile.damageBase === "number" && profile.damageBase > 0
     && trainerStab(t, profile.type, !profile.move);
-  slot.append(el("div",{style:"flex:1"},
+  const main = el("div",{style:"flex:1"},
     el("div",{style:"font-weight:700"}, profile.name+" ", el("span",{html:typeBadge(profile.type)}),
       opts.tag?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600"}, opts.tag):"",
       stabHere?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600",title:"Type Expertise — +2 Damage Base"},"⚡ STAB"):""),
     el("div",{class:"ms-info"}, `${profile.frequency?profile.frequency+" · ":""}${profile.cls||"Physical"} · AC ${profile.ac} · `
       + (typeof profile.damageBase === "number" && profile.damageBase > 0
           ? `DB ${profile.damageBase}${stabHere?" +2":""} · ${profile.range} · +${isVersatileMove(profile) ? "Attack or Sp.Attack" : (/spec/i.test(profile.cls||"") ? "Sp.Attack" : "Attack")}`
-          : `no damage · ${profile.range}`))));
+          : `no damage · ${profile.range}`)));
+  // Feature riders that fire on this Move — flagged here so the player sees them before they roll
+  (opts.notes||[]).forEach(n => main.append(el("div",{class:"small",style:"margin-top:2px;color:var(--accent);font-weight:600"}, n)));
+  slot.append(main);
   const acts = el("div",{class:"inline"});
   if(opts.uc) acts.append(opts.uc);
   acts.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",onclick:rollFn},"🎲 Roll"));
@@ -10859,6 +11076,9 @@ function openItemAttack(t, prof){
 }
 
 function renderTrainerCombat(root, t){
+  // a stance you can switch on (Enchanting Transformation) sits above the attacks — it changes them
+  const modes = trainerModesCard(t, renderBattle);
+  if(modes) root.append(modes);
   const card=el("div",{class:"card"},el("h3",{},"Struggle & Weapon Attacks"));
   card.append(trainerStruggleControl(t, renderBattle));
   // unarmed Struggle (always available)
@@ -10914,7 +11134,11 @@ function renderTrainerCombat(root, t){
     const m=moveByName.get(mn.toLowerCase());
     const prof = m ? trainerAttackProfile(t, mn) : {name:mn+" (not in DB)",type:"Normal",cls:"?",ac:"—",damageBase:"—",range:"—"};
     const uc = m ? usesControl(t,"move",prof.name,prof.frequency,renderBattle) : null;
-    const slot = trainerAttackSlot(t, prof, ()=>openTrainerAttack(t, m?mn:null, null, {rerender:renderBattle}), {tag:"feature move", uc, move:!!m});
+    const rid = ridersForMove(t, mn);
+    const notes = rid.length ? [rid.map(({r,f})=>`${r.icon} ${f.name}`).join("  ·  ")
+      + (rid.some(x=>x.r.kind==="trigger") ? " — extra effects; open the roll to read them or spend a use"
+                                           : " — extra effects; open the roll to read them")] : null;
+    const slot = trainerAttackSlot(t, prof, ()=>openTrainerAttack(t, m?mn:null, null, {rerender:renderBattle}), {tag:"feature move", uc, move:!!m, notes});
     slot.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);align-self:center;margin-left:4px",title:"remove this move",
       onclick:()=>{ const i=t.moves.indexOf(mn); if(i>=0){ t.moves.splice(i,1); save(); renderBattle(); } }},"×"));
     mvCard.append(slot);
@@ -14825,6 +15049,17 @@ document.addEventListener("click", e=>{
 /* ===================================================================
    Detail popups
 =================================================================== */
+/* Features the sheet actually runs for you — shown as a ⚙ line under the rules text, so a player
+   can tell "the app handles this" from "remember to tell the GM". Keyed by featKey. */
+const FEATURE_AUTO_NOTES = {
+  "powerful motivator":
+    "Rolling Baby-Doll Eyes, Confide, Leer or one of your Provocateur Moves shows that Move's extra effect right in the roll — it applies whether you hit or miss.",
+  "play them like a fiddle":
+    "Rolling one of the listed Moves adds a box with that Move's effect and a button that spends a use — one of the Scene x3, plus that Move's own once-per-Scene. Both refresh at 🌙 End Scene.",
+  "enchanting transformation":
+    "Switch it on from ⚔ Battle → Combat (or the Shift tab). While it's up it Binds 2 AP, gives you +5 Damage Reduction against Dragon/Fighting/Dark/Bug wherever the sheet applies an attack, and adds each Glamour Weaver Move's extra effect to its roll. It ends at 🌙 End Scene and hands the AP back.",
+};
+function featureAutoNote(name){ return FEATURE_AUTO_NOTES[featKey(name)] || null; }
 function refDetailHTML(kind, name){
   if(kind==="move"){ return moveDetailHTML(moveByName.get(name.toLowerCase()), name); }
   if(kind==="ability"){ const a=abilityByName.get(name.toLowerCase()); return a?abilityText(a):"<span class='muted'>Not in database.</span>"; }
@@ -14839,7 +15074,9 @@ function refDetailHTML(kind, name){
     const granted = featureGrantsFeatureNames(f).map(gn=>featureByKey.get(featKey(gn))).filter(Boolean);
     const grants = granted.length ? `<div class="r-meta" style="margin-top:8px">Grants you${granted.some(g=>featureActionTypes(g).length)?" — usable in ⚔ Battle":""}:</div>`
       + granted.map(g=>`<div class="r-body" style="margin-top:4px;padding-left:8px;border-left:2px solid var(--line)"><b>${esc(g.name)}</b>${g.frequency?` <span class="muted">· ${esc(g.frequency)}</span>`:""}<br>${annotateKeywords(esc(g.effect||""))}</div>`).join("") : "";
-    return `<div class="r-meta">${esc(f.category||"")}${f.frequency?" · "+esc(f.frequency):""}</div>${f.prerequisites?`<div class="r-meta">Prereq: ${esc(f.prerequisites)}</div>`:""}<div class="r-body">${annotateKeywords(esc(f.effect||""))}</div>${grants}`; }
+    const auto = featureAutoNote(f.name);
+    const autoTxt = auto ? `<div class="r-body" style="margin-top:8px;color:var(--accent)">⚙ <b>Automated</b> — ${esc(auto)}</div>` : "";
+    return `<div class="r-meta">${esc(f.category||"")}${f.frequency?" · "+esc(f.frequency):""}</div>${f.prerequisites?`<div class="r-meta">Prereq: ${esc(f.prerequisites)}</div>`:""}<div class="r-body">${annotateKeywords(esc(f.effect||""))}</div>${grants}${autoTxt}`; }
   return "<span class='muted'>—</span>";
 }
 function openRefDetail(kind, name){
@@ -18276,8 +18513,12 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
   const afterMult = Math.floor(afterDef * mult);
   const { dr, from } = owner ? buffDR(owner) : { dr:0, from:[] };
   const seDR  = (defMods?.seFlatDR && mult > 1) ? defMods.seFlatDR : 0;
-  const final = Math.max(0, afterMult - dr - seDR);
-  return { def, physical:!!physical, typeless, mult, afterDef, afterMult, dr, from, seDR, final,
+  // flat DR the defender has against this exact Type (a Feature stance, e.g. Enchanting Transformation)
+  const tEntry = (!typeless && defMods?.typeDR) ? defMods.typeDR[type] : null;
+  const typeDR = tEntry ? tEntry.dr : 0, typeDRFrom = tEntry ? tEntry.from : [];
+  const final = Math.max(0, afterMult - dr - seDR - typeDR);
+  return { def, physical:!!physical, typeless, mult, afterDef, afterMult, dr, from, seDR,
+           typeDR, typeDRFrom, final,
            owner, defMods, swarmTgt, swarmStep, extraStep, pierced };
 }
 /* Apply a computed breakdown to the token: subtract its HP and spend any one-shot DR buff that
@@ -18295,6 +18536,7 @@ function damageResultHTML(dmg, typeName, br, before){
   let drTxt = "";
   if(br.dr  > 0) drTxt  = ` − ${br.dr} DR (${br.from.join(", ")})`;
   if(br.seDR > 0) drTxt += ` − ${br.seDR} DR (vs Super-Effective)`;
+  if(br.typeDR > 0) drTxt += ` − ${br.typeDR} DR vs ${typeName} (${br.typeDRFrom.join(", ")})`;
   const swarmTxt = (br.swarmTgt && !br.typeless) ? ` (${br.swarmStep>0?"area, +1 step":"single-target, −1 step"} vs Swarm)` : "";
   const stepTxt  = (br.extraStep && !br.typeless) ? ` (manual ${br.extraStep>0?"+":""}${br.extraStep} step)` : "";
   const pierceTxt = br.pierced ? " <b>(immunity ignored)</b>" : "";
