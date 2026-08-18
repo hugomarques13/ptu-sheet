@@ -3227,9 +3227,11 @@ function classFeatureRow(t, featName){
   const row = el("details",{class:"spoiler",style:"margin-top:6px"});
   const f = featureByName.get(featName);
   const meta = f ? [f.frequency, f.category].filter(Boolean).join(" · ") : "";
+  const uc = usesControl(t, "feature", featName, f && f.frequency, render);
   row.append(el("summary",{},
     el("span",{style:"color:var(--ink);font-weight:700"}, featName),
     meta ? el("span",{class:"muted small",style:"margin-left:8px"}, meta) : "",
+    uc ? el("span",{style:"margin-left:8px"}, uc) : "",
     el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"unlearn this feature",
       onclick:e=>{ e.preventDefault(); const i=t.features.indexOf(featName); if(i>=0){ t.features.splice(i,1); save(); render(); toast(`Unlearned ${featName}`); } }},"×")));
   row.append(el("div",{class:"small",style:"margin-top:6px",html: refDetailHTML("feature",featName)}));
@@ -3333,8 +3335,15 @@ function listCard(title, path, allNames, refKind){
   if(!arr.length){ card.append(el("span",{class:"muted small"},"none yet — tap “+ add”")); return card; }
   arr.forEach((name,idx) => {
     const row = el("details",{class:"spoiler"});
+    /* A Scene/Daily/EOT Feature or Ability is trackable from HERE too, not only from the ⚔ Battle
+       tab — this is the list a player scrolls to see what they have, so "how many uses of Play Them
+       Like a Fiddle are left?" should be answerable without hunting for the action tab. Same widget,
+       same t.uses store, so the two views can't disagree. */
+    const uc = (refKind==="feature" || refKind==="ability")
+      ? usesControl(activeChar().trainer, refKind, name, refFrequency(refKind, name), render) : null;
     row.append(el("summary",{},
       el("span",{style:"color:var(--ink)"}, name),
+      uc ? el("span",{style:"margin-left:8px"}, uc) : "",
       el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove",
         onclick:e=>{ e.preventDefault(); arr.splice(idx,1); save(); render(); }},"×")));
     row.append(el("div",{class:"small",style:"margin-top:6px", html: refDetailHTML(refKind, name)}));
@@ -6033,7 +6042,7 @@ const PTU_BUFFS = [
   { key:"cheered",   cat:"Cheerleader", name:"Cheered",   dur:"until spent", once:true, mods:{},
     note:"Spend when making a Save Check to roll twice and take the better result." },
   { key:"excited",   cat:"Cheerleader", name:"Excited",   dur:"until spent", once:true, mods:{ dr:5 },
-    note:"Spend when hit by a Damaging Attack to gain +5 Damage Reduction against it. (Auto-applied & spent when this creature takes an attack.)" },
+    note:"Spend when hit by a Damaging Attack to gain +5 Damage Reduction against it. (Auto-applied & spent when this creature takes an attack — one Cheer per attack, so several stacked Cheers soften several attacks.)" },
   { key:"motivated", cat:"Cheerleader", name:"Motivated", dur:"until spent", once:true, mods:{},
     note:"Spend as a Free Action to raise a Combat Stage that is below its default by +1." },
   // — Commander Orders (Core pp.61-62). [Stratagem] persist while AP-bound; others are short-duration. —
@@ -6082,24 +6091,45 @@ function buffMods(owner, ctx){
     const m=b.mods||{}; s.acc+=m.acc||0; s.dmg+=m.dmg||0; s.crit+=m.crit||0; s.db+=m.db||0; s.dr+=m.dr||0; });
   return s;
 }
-/* Damage Reduction an owner's active buffs grant, and which buffs supply it (defender side). */
+/* One-shot DR buffs are CHARGES, not a pool: Excited reads "spend when hit by a Damaging Attack to
+   gain +5 Damage Reduction against it" (Core p.93), so a creature carrying three Excited has three
+   attacks it can soften — not 15 DR on the next one. Two copies of the same charge are told apart
+   from two different ones by key+name, since every Digestion Buff shares the key "digestion". */
+const buffChargeKey = b => `${b.key||""}|${b.name||""}`;
+const isDRCharge    = b => !!(b.once && b.mods && b.mods.dr);
+/* Damage Reduction an owner's active buffs grant against ONE incoming attack, and which buffs
+   supply it (defender side). consumeDamageBuffs spends exactly the charges counted here. */
 function buffDR(owner){
-  let dr = 0; const from = [];
+  let dr = 0; const from = [], charged = new Set();
   // a class-restricted DR (a Sour Candy is Physical-only) still totals up here — the Damage/Heal box
   // has no idea what class the incoming hit was — but it says so, so it's obvious when it shouldn't count
   ownerBuffs(owner).forEach(b=>{ const d=(b.mods&&b.mods.dr)||0;
-    if(d){ dr+=d; from.push(b.name + (b.only?` — ${b.only==="phys"?"Physical":"Special"} only`:"")); } });
+    if(!d) return;
+    if(isDRCharge(b)){
+      const k = buffChargeKey(b);
+      if(charged.has(k)) return;          // a second copy of the same charge waits for the next attack
+      charged.add(k);
+    }
+    dr+=d; from.push(b.name + (b.only?` — ${b.only==="phys"?"Physical":"Special"} only`:"")); });
   // worn armor adds flat Damage Reduction too (permanent — never consumed like one-shot buffs)
   if(isTrainerOwner(owner)){ const e=equipDR(owner); if(e.dr){ dr+=e.dr; e.from.forEach(n=>from.push(n)); } }
   return { dr, from };
 }
-/* Spend the one-shot DR buffs (e.g. Excited) after they've absorbed an incoming attack.
+/* Spend the one-shot DR buffs (e.g. Excited) after they've absorbed an incoming attack — ONE
+   charge of each, matching exactly what buffDR counted. Three Excited absorb 5 from this attack and
+   leave two charges for the next hit; it used to wipe all three for a single 5.
    Returns true if anything was consumed. Caller persists via its own commit/save. */
 function consumeDamageBuffs(owner){
   if(!owner) return false;
-  const before = ownerBuffs(owner).length;
-  owner.buffs = ownerBuffs(owner).filter(b=>!(b.once && b.mods && b.mods.dr));
-  return ownerBuffs(owner).length !== before;
+  const spent = new Set(), keep = [];
+  ownerBuffs(owner).forEach(b=>{
+    const k = isDRCharge(b) ? buffChargeKey(b) : null;
+    if(k!=null && !spent.has(k)){ spent.add(k); return; }   // this one is the charge that was spent
+    keep.push(b);
+  });
+  if(!spent.size) return false;
+  owner.buffs = keep;
+  return true;
 }
 /* ---- turn-duration expiry (uses the Map initiative tracker) ----
    "until end of your next turn" / "this turn" buffs (Songs, most short Orders) should fall off
@@ -6195,7 +6225,7 @@ function buffsCard(owner, commit){
   addRow.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",onclick:()=>openCustomBuff(owner, commit)},"✎ Custom…"));
   card.append(addRow);
   card.append(el("div",{class:"small muted",style:"margin-top:6px"},
-    "Attack buffs apply automatically when you roll a move; Damage Reduction auto-applies when this creature takes damage (one-shot DR like Excited is spent on the hit). In Map battle mode, “until end of next turn” buffs fall off on the ▶ next-turn advance; the rest clear on End Scene / End Day."));
+    "Attack buffs apply automatically when you roll a move; Damage Reduction auto-applies when this creature takes damage. A one-shot DR buff like Excited is a charge, not a pool — only ONE of a stack is counted and spent per attack, so three Excited soften three separate hits. In Map battle mode, “until end of next turn” buffs fall off on the ▶ next-turn advance; the rest clear on End Scene / End Day."));
   return card;
 }
 function openCustomBuff(owner, done){
@@ -10705,19 +10735,52 @@ function setFeatureMode(t, def, on, rerender){
 /* Per-Move once-per-Scene tracking for a triggered rider. Keyed under the "rider" kind so
    itemFreqForKey can report it as a Scene frequency and End Scene wipes it with everything else. */
 const riderUseKey = (featName, moveName) => useKey("rider", `${featName}|${moveName}`);
-/* every rider that applies to `moveName` for this Trainer right now */
-function ridersForMove(t, moveName){
+/* Every rider on `moveName` for this Trainer. By default only the ones in force right now; with
+   {includeInactive:true} a stance that's switched OFF still comes back, marked `inactive` — the
+   Move's info panel should tell you what this Move WILL do once you transform, and the roll should
+   only promise what's true this second. */
+function ridersForMove(t, moveName, opts){
   if(!t || !moveName) return [];
   const canon = canonMoveName(moveName), out = [];
   FEATURE_RIDERS.forEach(r=>{
     if(!hasFeatureLoose(t, r.feat)) return;
-    if(r.kind==="mode" && !modeIsOn(t, r.mode)) return;
+    const inactive = r.kind==="mode" && !modeIsOn(t, r.mode);
+    if(inactive && !opts?.includeInactive) return;
     const f = featureByName.get(r.feat) || featureByKey.get(featKey(r.feat));
     if(!f) return;
     const text = featureMoveRiders(f).get(canon);
-    if(text) out.push({ r, f, text });
+    if(text) out.push({ r, f, text, inactive });
   });
   return out;
+}
+/* The same riders as HTML, for the Move's ℹ info panel — read-only (a use is spent from the roll,
+   where the player is actually making the attack). Always about the ACTIVE character's Trainer:
+   the info panel is reached from their own sheet and from the Reference tab, and both should
+   answer "what does MY Sweet Kiss do". Returns "" when nothing applies. */
+function riderDetailHTML(moveName){
+  const t = activeChar()?.trainer;
+  const rows = ridersForMove(t, moveName, {includeInactive:true});
+  if(!rows.length) return "";
+  const canon = canonMoveName(moveName);
+  return `<div class="r-meta" style="margin-top:10px">Your Features add to this Move:</div>` + rows.map(({r,f,text,inactive})=>{
+    let status;
+    if(r.kind==="trigger"){
+      const info = freqInfo(f.frequency), left = freqTrackable(info) ? usesLeft(t, useKey("feature", f.name), info.max) : null;
+      const spent = usesLeft(t, riderUseKey(f.name, canon), 1) <= 0;
+      status = `Fires ${r.when} Spend it from this Move's 🎲 Roll.`
+        + (left!=null ? ` — ${left} of ${info.max} Scene uses left` : "")
+        + (spent ? `, and ${esc(canon)}'s own effect is already spent this Scene` : "");
+    } else if(inactive){
+      status = `Only ${r.when} It isn't up right now — switch it on in ⚔ Battle → Combat.`;
+    } else {
+      status = `Applies ${r.when}`;
+    }
+    return `<div class="r-body" style="margin-top:6px;padding-left:8px;border-left:2px solid var(--line)${inactive?";opacity:.6":""}">`
+      + `<b>${r.icon} ${esc(f.name)}</b>${f.frequency?` <span class="muted">· ${esc(f.frequency)}</span>`:""}`
+      + `${inactive?` <span class="muted">· not active</span>`:""}`
+      + `<br><b>${esc(canon)}:</b> ${annotateKeywords(esc(text))}`
+      + `<br><span class="muted">${esc(status)}</span></div>`;
+  }).join("");
 }
 /* The rider boxes shown inside a Trainer's move roll. A triggered rider gets its OWN box with a
    button that spends the use, because that's a decision the player makes at the table — the
@@ -10744,7 +10807,8 @@ function riderBoxes(t, moveName, rerenderAll){
       const usedHere = usesLeft(t, mk, 1) <= 0;
       const canFire = !usedHere && (left==null || left>0);
       box.append(el("div",{class:"small muted",style:"margin-bottom:6px"}, `Fires ${r.when}`));
-      const row = el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;align-items:center"});
+      const redraw = () => { draw(); if(rerenderAll) rerenderAll(); };
+      const row = el("div",{class:"inline",style:"gap:10px;flex-wrap:wrap;align-items:center"});
       const btn = el("button",{class: canFire?"btn-primary":"btn-secondary",style:"padding:6px 10px",
         onclick:()=>{
           if(!canFire) return;
@@ -10752,15 +10816,20 @@ function riderBoxes(t, moveName, rerenderAll){
           if(left!=null) t.uses[fk] = Math.min(info.max, (t.uses[fk]||0)+1);
           t.uses[mk] = 1;
           save(); toast(`${r.icon} ${f.name} → ${canon} ✓`);
-          draw(); if(rerenderAll) rerenderAll();
+          redraw();
         }}, usedHere ? "✓ used on this Move this Scene"
                      : canFire ? `${r.icon} Use it on this Move` : "no uses left this Scene");
       if(!canFire) btn.disabled = true;
       row.append(btn);
-      const bits = [];
-      if(left!=null) bits.push(`${left} of ${info.max} Scene use${info.max===1?"":"s"} left`);
-      if(usedHere) bits.push(`${canon}'s effect is spent for this Scene`);
-      if(bits.length) row.append(el("span",{class:"small muted"}, bits.join(" · ")));
+      /* Both limits get the ordinary pip boxes, so this reads like every other Frequency on the
+         sheet: the Feature's own Scene x3, and this Move's separate once-per-Scene. Tapping a pip
+         gives a use back — a mis-pressed button shouldn't cost the player a Scene. */
+      const fpips = usesControl(t, "feature", f.name, f.frequency, redraw);
+      if(fpips) row.append(el("span",{class:"inline",style:"gap:5px;align-items:center"},
+        el("span",{class:"small muted"},"Feature"), fpips));
+      const mpips = usesControl(t, "rider", `${f.name}|${canon}`, "Scene", redraw);
+      if(mpips) row.append(el("span",{class:"inline",style:"gap:5px;align-items:center"},
+        el("span",{class:"small muted"}, canon), mpips));
       box.append(row);
       wrap.append(box);
     });
@@ -15061,7 +15130,8 @@ const FEATURE_AUTO_NOTES = {
 };
 function featureAutoNote(name){ return FEATURE_AUTO_NOTES[featKey(name)] || null; }
 function refDetailHTML(kind, name){
-  if(kind==="move"){ return moveDetailHTML(moveByName.get(name.toLowerCase()), name); }
+  // a Move's info panel also spells out what the Trainer's own Features bolt onto it
+  if(kind==="move"){ return moveDetailHTML(moveByName.get(name.toLowerCase()), name) + riderDetailHTML(name); }
   if(kind==="ability"){ const a=abilityByName.get(name.toLowerCase()); return a?abilityText(a):"<span class='muted'>Not in database.</span>"; }
   if(kind==="class"){ const c=D.classes.find(x=>x.name===name);
     return c?`${c.mechanic?`<div class="r-meta"><b>${esc(c.mechanic)}</b></div>`:""}<div class="r-body">${annotateKeywords(esc(c.effect||""))}</div>`:"<span class='muted'>—</span>"; }
