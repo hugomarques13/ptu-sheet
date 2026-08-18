@@ -146,6 +146,8 @@ textarea{resize:vertical; min-height:64px}
   border-radius:20px; padding:4px 10px; font-size:13px; font-weight:600}
 /* a Capability the species doesn't print — granted by a Move or Ability it knows (Teleport, Fly…) */
 .chip.granted{border-color:var(--accent); border-style:dashed}
+/* a Skill above its species default — Ranked up with the Skill Improvement Poké Edge */
+.kv.granted{border-color:var(--accent); border-style:dashed}
 .chip .x{cursor:pointer; color:var(--muted); font-weight:800}
 .chip .x:hover{color:var(--bad)}
 .addchip{border-style:dashed; color:var(--muted); cursor:pointer}
@@ -601,6 +603,15 @@ body.map-mode .view{animation:none}
 .shop-who select{flex:1; min-width:0; font-size:12px; padding:4px 6px}
 .shop-money{font-weight:800; font-size:13px; color:var(--good); white-space:nowrap}
 .shop-note{padding:5px 8px; border-bottom:1px solid var(--line); line-height:1.35}
+/* one tab per storefront open on this screen (several players, several shops) */
+.shop-shoptabs{display:flex; gap:4px; padding:5px 6px 0; overflow-x:auto; scrollbar-width:thin}
+.shop-shoptab{flex:0 0 auto; max-width:120px; display:flex; align-items:center; gap:5px; cursor:pointer;
+  font-size:11px; font-weight:700; padding:4px 7px; border-radius:6px 6px 0 0; color:var(--muted);
+  background:var(--panel-2); border:1px solid var(--line); border-bottom:none;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.shop-shoptab.on{background:var(--panel); color:var(--ink); border-color:var(--accent)}
+.shop-shoptab-x{flex:none; color:var(--muted); font-weight:800; padding:0 1px}
+.shop-shoptab-x:hover{color:var(--bad)}
 .shop-tabs{display:flex; gap:4px; padding:5px 6px; border-bottom:1px solid var(--line)}
 .shop-tab{flex:1; font-size:11px; font-weight:700; padding:4px 6px; border-radius:6px; cursor:pointer;
   background:var(--panel-2); border:1px solid var(--line); color:var(--ink)}
@@ -690,3 +701,36 @@ body.map-mode .view{animation:none}
 .money-amt.up{color:var(--good)}
 .money-amt.down{color:var(--bad)}
 .money-why{font-size:12px; font-weight:600; overflow-wrap:anywhere}
+
+/* ── the Arcana Deck: cards a Trainer is holding ────────────────────────────
+   Upright reads warm, reversed reads cold and slightly off-kilter, and a Major
+   gets a gold edge — the deck's teeth should be visible from across the table
+   before anyone reads a word of it. */
+.arcana{border:1px solid var(--line); border-left:3px solid var(--good); border-radius:8px;
+  padding:10px 12px; margin-bottom:10px; background:var(--panel)}
+.arcana.rev{border-left-color:var(--bad); background:
+  linear-gradient(180deg, color-mix(in srgb, var(--bad) 5%, transparent), transparent 60%), var(--panel)}
+.arcana.major{border-left-width:5px; border-left-color:#c9a227;
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, #c9a227 25%, transparent)}
+.arcana.done{opacity:.92}
+.arcana-head{display:flex; align-items:flex-start; gap:9px}
+.arcana-orient{font-size:19px; line-height:1.1; flex:none}
+.arcana.rev .arcana-orient{color:var(--bad)}
+.arcana:not(.rev) .arcana-orient{color:var(--good)}
+.arcana-name{font-weight:700}
+.arcana-chips{display:flex; gap:5px; flex-wrap:wrap; margin-top:3px}
+.arcana-suit{font-size:11px; font-weight:600; color:var(--muted)}
+.arcana-tag{font-size:10px; font-weight:700; letter-spacing:.3px; padding:1px 6px;
+  border-radius:999px; border:1px solid var(--line)}
+.arcana-tag.t-now{color:var(--good)}
+.arcana-tag.t-held{color:#5b8def}
+.arcana-tag.t-fated{color:var(--bad)}
+.arcana-tag.t-arc, .arcana-tag.t-hidden, .arcana-tag.t-done{color:var(--muted)}
+.arcana-flavour{font-size:12px; font-style:italic; color:var(--muted); margin-top:5px}
+.arcana-text{font-size:13px; margin-top:4px; overflow-wrap:anywhere}
+/* a card the GM is keeping to themselves — the player sees that it exists, not what it does */
+.arcana-masked{font-size:13px; font-style:italic; color:var(--muted); margin-top:6px;
+  padding:8px 10px; border:1px dashed var(--line); border-radius:6px; text-align:center}
+.arcana-note{width:100%; min-height:44px; margin-top:8px; font-size:12px}
+.arcana-notes-ro{margin-top:6px; padding-left:9px; border-left:2px solid var(--line); color:var(--muted)}
+.arcana-preview{border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:var(--panel)}

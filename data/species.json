@@ -8322,7 +8322,7 @@
         "min": 20
       },
       {
-        "stage": 2,
+        "stage": 3,
         "name": "Haxorus",
         "min": 40
       }
@@ -22684,7 +22684,7 @@
         "min": 20
       },
       {
-        "stage": 2,
+        "stage": 3,
         "name": "Chandelure Dusk Stone",
         "min": 35
       }
@@ -60746,7 +60746,7 @@
         "min": 20
       },
       {
-        "stage": 2,
+        "stage": 3,
         "name": "Haxorus",
         "min": 40
       }
@@ -77646,7 +77646,7 @@
         "min": 20
       },
       {
-        "stage": 2,
+        "stage": 3,
         "name": "Haxorus",
         "min": 40
       }
@@ -96828,7 +96828,7 @@
         "min": 20
       },
       {
-        "stage": 2,
+        "stage": 3,
         "name": "Chandelure Dusk Stone",
         "min": 35
       }
@@ -103565,7 +103565,7 @@
         "min": 20
       },
       {
-        "stage": 2,
+        "stage": 3,
         "name": "Chandelure Dusk Stone",
         "min": 35
       }
@@ -122218,6 +122218,11 @@
         "stage": 1,
         "name": "Misdreavus",
         "min": null
+      },
+      {
+        "stage": 2,
+        "name": "Mismagius Dusk Stone",
+        "min": 20
       }
     ],
     "gender": "50% M / 50% F",
@@ -272822,7 +272827,7 @@
         "min": 20
       },
       {
-        "stage": 2,
+        "stage": 3,
         "name": "Hatterene",
         "min": 40
       }
@@ -273038,7 +273043,7 @@
         "min": 20
       },
       {
-        "stage": 2,
+        "stage": 3,
         "name": "Hatterene",
         "min": 40
       }
@@ -273240,7 +273245,7 @@
         "min": 20
       },
       {
-        "stage": 2,
+        "stage": 3,
         "name": "Hatterene",
         "min": 40
       }
@@ -356706,7 +356711,7 @@
         "min": 20
       },
       {
-        "stage": 2,
+        "stage": 3,
         "name": "Hatterene",
         "min": 40
       }

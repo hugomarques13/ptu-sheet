@@ -123,6 +123,61 @@ function xpForLevel(level){ return LEVEL_XP[Math.max(1, Math.min(MAX_LEVEL, leve
 function xpToNext(xp){ const lvl = levelForXP(xp); return lvl>=MAX_LEVEL ? 0 : LEVEL_XP[lvl+1] - Math.max(0,xp||0); }
 /* Tutor Points: a Pokémon starts with 1 upon hatching, +1 more every level evenly divisible by 5 */
 function tutorPointsEarned(level){ return 1 + Math.floor(Math.max(1,level||1)/5); }
+/* …and the Tutor-Point ledger's two constants (the machinery itself is further down, by the Pokémon
+   cards). They have to be declared HERE: normPokemon → tpSync → tpChange can run while load() is
+   still building `state`, and load() swallows exceptions — a const in its temporal dead zone would
+   silently throw away a local save. */
+const TP_LOG_MAX = 60;                     // ledger lines kept per Pokémon; the oldest fall off the front
+const TP_KIND_ICON = { level:"⬆", edge:"🧬", tutor:"🎓", sync:"🔃", ace:"🎯", mentor:"👤", hand:"✎", set:"🖉" };
+
+/* ---------- Level-Up tracker tables (PTU 1.05 Trainer advancement, Core pp.18-19) ----------
+   Data only; the tracker itself lives with the rest of the Trainer UI further down. These sit up
+   here because normTrainer() reads them from load(), before the file has finished evaluating. */
+const LU_MAX_LEVEL = 50;
+/* milestone "extra benefits" at certain levels */
+const LU_MILESTONES = {
+  2:  { title:"Adept Skills", note:"You may now Rank Up Skills to Adept.",
+        grants:[{kind:"edge", label:"Skill Edge", hint:"not for an Adept rank-up"}] },
+  5:  { title:"Amateur Trainer", note:"Choose one bonus below.",
+        choice:{ key:"m5", options:[
+          "Bonus Stats — +1 Atk/SpAtk on each even Level 6-10 (+2 retroactive)",
+          "One General Feature"],
+        grants:{ "One General Feature":[{kind:"feature", label:"General Feature"}] } } },
+  6:  { title:"Expert Skills", note:"You may now Rank Up Skills to Expert.",
+        grants:[{kind:"edge", label:"Skill Edge", hint:"not for an Expert rank-up"}] },
+  10: { title:"Capable Trainer", note:"Choose one bonus below.",
+        choice:{ key:"m10", options:[
+          "Bonus Stats — +1 Atk/SpAtk on each even Level 12-20",
+          "Two Edges"],
+        grants:{ "Two Edges":[{kind:"edge", label:"Edge"},{kind:"edge", label:"Edge"}] } } },
+  12: { title:"Master Skills", note:"You may now Rank Up Skills to Master.",
+        grants:[{kind:"edge", label:"Skill Edge", hint:"not for a Master rank-up"}] },
+  20: { title:"Veteran Trainer", note:"Choose one bonus below. Homebrew: from this Level you may also Rank Up a Skill to Virtuoso with the “Virtuoso Skills” Edge (one per Skill) — still 6d6 on Checks, but it counts as Rank 8 for anything that scales with your Rank.",
+        choice:{ key:"m20", options:[
+          "Bonus Stats — +1 Atk/SpAtk on each even Level 22-30",
+          "Two Edges"],
+        grants:{ "Two Edges":[{kind:"edge", label:"Edge"},{kind:"edge", label:"Edge"}] } } },
+  30: { title:"Elite Trainer", note:"Choose one bonus below.",
+        choice:{ key:"m30", options:[
+          "Bonus Stats — +1 Atk/SpAtk on each even Level 32-40",
+          "Two Edges", "One General Feature"],
+        grants:{ "Two Edges":[{kind:"edge", label:"Edge"},{kind:"edge", label:"Edge"}],
+                 "One General Feature":[{kind:"feature", label:"General Feature"}] } } },
+  40: { title:"Champion", note:"Choose one bonus below.",
+        choice:{ key:"m40", options:[
+          "Bonus Stats — +1 Atk/SpAtk on each even Level 42-50",
+          "Two Edges", "One General Feature"],
+        grants:{ "Two Edges":[{kind:"edge", label:"Edge"},{kind:"edge", label:"Edge"}],
+                 "One General Feature":[{kind:"feature", label:"General Feature"}] } } },
+};
+
+/* the even levels each milestone "Bonus Stats" choice grants one bonus point on — the player
+   assigns each earned point to Attack OR Sp.Attack (L5 folds in its "+2 retroactive" as the two
+   even levels 2 & 4 passed before taking it at L5). Points are hard-restricted to Atk/SpAtk. */
+const LU_STAT_LEVELS = {
+  m5:[2,4,6,8,10], m10:[12,14,16,18,20], m20:[22,24,26,28,30],
+  m30:[32,34,36,38,40], m40:[42,44,46,48,50],
+};
 
 /* Status Afflictions (PTU 1.05 Core pp.245-248), corrected against the Feb 2016 Playtest Packet
    errata (p.2 "Status Conditions") where it overrides Core: Paralysis, Flinch, Infatuation, Confusion,
@@ -643,6 +698,9 @@ function findInventoryStone(t, method){
 function evolveTo(p, targetName, stoneItem){
   const sp = getSpecies(targetName); if(!sp) return;
   const from = getSpecies(p.species);
+  // Underdog's Strength (Poké Edge): "The user may no longer undergo Evolution."
+  if(pokeEdgeBlocksEvolution(p) && !p.unlocked){
+    toast("Underdog's Strength — this Pokémon may no longer evolve. Drop that Poké Edge first."); return; }
   const stoneMsg = stoneItem ? `\nThis consumes one ${stoneItem.name} from your inventory.` : "";
   if(!confirm(`Evolve ${p.nickname || from?.name || "this Pokémon"} into ${sp.name}?\nStats, moves, abilities, level and XP are kept.${stoneMsg}`)) return;
   if(stoneItem){
@@ -653,6 +711,7 @@ function evolveTo(p, targetName, stoneItem){
   if(!Array.isArray(p.evoHistory)) p.evoHistory = [];
   p.evoHistory.push(p.species);
   p.species = sp.name;
+  pokeEdgeAfterEvolve(p, sp);                             // Realized Potential falls off a big enough species
   const m = pokeDerived(p).maxHP;                         // clamp HP to the new species' max
   if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
   save();
@@ -966,6 +1025,10 @@ Object.entries(MOVE_ALIASES).forEach(([k, real]) => addMoveKey(k, moveByName.get
 const canonMoveName = n => (moveByName.get(n) || {}).name || n;
 const abilityByName  = new Map(D.abilities.map(a => [a.name.toLowerCase(), a]));
 const natureByName   = new Map(D.natures.map(n => [n.name.toLowerCase(), n]));
+/* Poké Edges as printed. The table holds both the family ("Skill Improvement") and one
+   pre-expanded row per choice ("Skill Improvement (Athletics)"); the sheet only ever offers the
+   family and asks for the choice itself, so the variants are here purely for the Reference tab. */
+const pokeEdgeByName = new Map((D.pokeEdges||[]).map(e => [String(e.name).toLowerCase(), e]));
 const getSpecies = n => n && speciesByName.get(String(n).toLowerCase());
 /* ---- "Mom?" homebrew Symbiant — a hidden entity gated to the GM and Lázaro ---- */
 function baseName(s){ return String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").trim().toLowerCase(); }
@@ -1393,7 +1456,7 @@ function newTrainer() {
     name:"", age:"", gender:"", heightTxt:"", weightTxt:"", size:"Medium", weightClass:3,
     level:1, xp:0, money:0, moneyLog:[],
     classes:[], skills, combat, edges:[], features:[], techniques:[], abilities:[],
-    inventory:[], equipment:{}, books:{}, gifts:[], background:"", notes:"", appearance:"",
+    inventory:[], equipment:{}, books:{}, gifts:[], cards:[], background:"", notes:"", appearance:"",
     currentHP:null, tempHP:0, injuries:0, usedAP:0, unlocked:false, uses:{}, avatar:"", weapons:[],
     levelUp:{}, buffs:[],
   };
@@ -1410,7 +1473,9 @@ function newPokemon(speciesName) {
     gender:"", shiny:false, onTeam:true, level, xp:0, loyalty:0,
     nature: "Hardy", abilities:[], heldItem:"",
     stats, injuries:0, currentHP:null, tempHP:0,
-    moves:[], tutorPoints: tutorPointsEarned(level), unlocked:false, notes:"",
+    moves:[], tutorPoints: tutorPointsEarned(level), tpCredited: tutorPointsEarned(level), tpLog:[],
+    pokeEdges:[],   // Poké Edges bought with Tutor Points (see POKE_EDGE_DEFS)
+    unlocked:false, notes:"",
     struggleType:null, struggleSpecial:false, uses:{}, image:"", statuses:[], buffs:[],
     cs:{atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0},
     auras: [],   // Legendary Auras are an ENCOUNTER-only concept (caught Pokémon have none); seeded in addEncounterMon
@@ -1444,7 +1509,10 @@ function normPokemon(p){
   if(typeof p.level!=="number") p.level = 1;
   if(p.xp < xpForLevel(p.level)) p.xp = xpForLevel(p.level);
   if(typeof p.tutorPoints!=="number") p.tutorPoints = tutorPointsEarned(p.level);  // legacy objects only — never re-floors spent points
-  normSwarm(p);                                    // Swarm Template block, if this is a swarm (Core p.478)
+  if(!Array.isArray(p.pokeEdges)) p.pokeEdges = [];   // Poké Edges bought with Tutor Points
+  if(!Array.isArray(p.tpLog)) p.tpLog = [];           // every Tutor Point in or out, oldest first (see tpChange)
+  tpSync(p);   // level (or a points-granting Poké Edge) went up while nobody was looking → credit it now
+  normSwarm(p);                                  // Swarm Template block, if this is a swarm (Core p.478)
   normBoss(p);                                     // Boss Template block, if this is a boss (Running the Game p.487)
   autoAllocMom(p);                                 // "Mom?": keep auto-assigned stat points in sync with level
   return p;
@@ -1472,6 +1540,7 @@ function normTrainer(t){
   if(!t.equipment || typeof t.equipment!=="object" || Array.isArray(t.equipment)) t.equipment = {};  // worn gear per slot
   if(!t.books || typeof t.books!=="object" || Array.isArray(t.books)) t.books = {};                   // studied Books → {name:{bound,subject?,field?}}
   if(!Array.isArray(t.gifts)) t.gifts = [];                        // Legendary Gifts (Blessed and the Damned)
+  if(!Array.isArray(t.cards)) t.cards = [];                        // Arcana Deck cards this Trainer is holding
   if(!Array.isArray(t.moneyLog)) t.moneyLog = [];                  // every dollar in or out, oldest first (see moneyChange)
   // migrate ranged weapons saved with the old (wrong) melee-copied stats — only when they still
   // match the old preset exactly, so hand-tuned weapons are left alone (Core p.286).
@@ -1520,7 +1589,12 @@ function load() {
       (s.encounters||[]).forEach(normEncounter);
       return s;
     } }
-  } catch(e){}
+  } catch(e){
+    // A throw in here silently threw away the whole save (a normPokemon/normTrainer that reached a
+    // const still in its temporal dead zone would do it), which looked like "my sheet reset itself".
+    // It still falls back to a fresh sheet — but it says so, loudly, instead of vanishing.
+    console.error("[PTU] saved state could not be loaded and was NOT used:", e);
+  }
   const c = newCharacter("My Trainer");
   return { version:1, activeId:c.id, characters:[c], theme:null, encounters:[] };
 }
@@ -1579,7 +1653,8 @@ function setPath(obj, path, val) {
 function trainerDerived(t) {
   const gift = giftStatBonus(t);                            // Legendary Gift Patron-Stat points (book p.57)
   const tag = statTagBonus(t).stats;                        // Feature [+Stat] tags (Core p.14)
-  const raw = k => t.combat[k].base + t.combat[k].added + (gift[k]||0) + (tag[k]||0);   // pre-Combat-Stage ("real") stat
+  const arc = cardLive(t);                                  // Arcana Deck cards in effect (Strength, The Devil, The World…)
+  const raw = k => t.combat[k].base + t.combat[k].added + (gift[k]||0) + (tag[k]||0) + (arc.stats[k]||0);   // pre-Combat-Stage ("real") stat
   const cap6 = v => Math.min(6, Math.floor(v/5));
   const cs = effectiveCS(t);                               // Combat Stages (manual t.cs + conditions)
   const statB = equipStatBonus(t);                         // Focus item: +5 to a chosen stat, AFTER Combat Stages
@@ -1588,19 +1663,21 @@ function trainerDerived(t) {
   const acro = rankNum(t.skills.acrobatics), athl = rankNum(t.skills.athletics);
   const combat = rankNum(t.skills.combat);
   let power = 4;  if (athl >= 3) power++; if (combat >= 4) power++;
+  power += arc.caps.power;                                 // Ten of Wands moves Power either way
   let hj = 0;     if (acro >= 4) hj++; if (acro >= 6) hj++;
   const mvCS = speedCSMove(cs);                            // Speed CS shifts every Movement Speed (Core p.234)
-  const ovlBase = 3 + Math.floor((athl+acro)/2) + equipOverland(t);
-  const swimBase = Math.floor((3 + Math.floor((athl+acro)/2))/2);
-  const fullHP = t.level*2 + raw("hp")*3 + 10;             // undamaged maximum
+  // The Chariot raises EVERY movement Capability, so it lands on both Overland and Swim
+  const ovlBase = 3 + Math.floor((athl+acro)/2) + equipOverland(t) + arc.caps.move;
+  const swimBase = Math.floor((3 + Math.floor((athl+acro)/2))/2) + arc.caps.move;
+  const fullHP = t.level*2 + raw("hp")*3 + 10 + arc.hp;    // undamaged maximum (Nine of Wands ±5)
   const injuries = Math.max(0, t.injuries||0);
   const hp = injuryHealCap(fullHP, injuries);              // Injuries cap max HP −10% each (Core p.249)
   return {
     hp, fullHP, injuries, cs,
     physEva: cap6(tot("def"))+cs.eva+eqEva, specEva: cap6(tot("spdef"))+cs.eva+eqEva, spdEva: cap6(tot("spd"))+cs.eva+eqEva,   // CS-adjusted evasion (+ shields)
-    ap: 5 + Math.floor(t.level/5),
+    ap: Math.max(0, 5 + Math.floor(t.level/5) + arc.ap),     // Ace of Wands, Justice, The Devil… move the AP ceiling
     power, highJump: hj, longJump: Math.floor(acro/2),
-    dr: equipDR(t).dr,                                       // worn-armor Damage Reduction (also flows through buffDR on the damage input)
+    dr: equipDR(t).dr + arc.dr,                              // worn-armor Damage Reduction (also flows through buffDR on the damage input) + Ten of Swords
     overland: moveWithCS(ovlBase, mvCS), swim: moveWithCS(swimBase, mvCS), moveCS: mvCS,
     throwing: 4 + athl,
     totals: Object.fromEntries(STATS.map(([k])=>[k, tot(k)])),        // CS-adjusted (used for attack/defense)
@@ -1612,9 +1689,13 @@ function pokeBaseStats(p) {
   const sp = getSpecies(p.species);
   const nat = natureByName.get((p.nature||"").toLowerCase());
   const out = {};
+  const edgeBase = pokeEdgeBaseBonus(p);           // Underdog's Strength: +1 to EVERY Base Stat
+  const vit = vitaminStatBonus(p);                 // Vitamins (+1) and Stat Suppressants (−1)
+  const arc = p.arcanaStats || {};                 // permanent Base Stat swings from Arcana cards (Knight of Swords, Strength, The Sun…)
   STATS.forEach(([k]) => {
     let base = sp?.baseStats?.[k] ?? 0;
     if (nat) base += (nat.statMods[k] || 0);
+    base += edgeBase + (vit[k] || 0) + (arc[k] || 0);
     out[k] = Math.max(k === "hp" ? 1 : 1, base);   // stats floor at 1
   });
   // Huge Power / Pure Power double the user's Base Attack stat (incl. Nature, Core p.199) — applied
@@ -1636,7 +1717,10 @@ function pokeDerived(p) {
   const fullMaxHP = (forced && typeof forced.hp==="number") ? forced.hp : (p.level + total.hp*3 + 10);   // undamaged maximum
   const injuries = Math.max(0, p.injuries||0);
   const maxHP = injuryHealCap(fullMaxHP, injuries);      // Injuries cap max HP at −10% each (Core p.249)
-  const budget = p.level + 10;
+  // Level+10 (Core p.72) plus any Bonus Stat Points bought with Tutor Points (Mixed Sweeper,
+  // Realized Potential) — those are spent from the same pool, so they just widen the budget.
+  const edgePts = pokeEdgeStatPoints(p);
+  const budget = p.level + 10 + edgePts;
   const spent = STATS.reduce((s,[k]) => s + (p.stats[k]?.added||0), 0);
   // Snow Cloak in Hail adds flat Evasion on top of the normal ⌊stat/5⌋ (cap 6) — an ability bonus,
   // so it is added AFTER the cap rather than being squeezed under it. The Evasion Combat Stage
@@ -1644,7 +1728,7 @@ function pokeDerived(p) {
   const wEva = weatherEvasion(p);
   const inspiredEva = hasStatus(p,"inspired") ? 1 : 0;   // Inspired Training: +1 Evasion
   return {
-    base, total, cs, eff, maxHP, fullMaxHP, injuries, budget, spent, remaining: budget - spent,
+    base, total, cs, eff, maxHP, fullMaxHP, injuries, budget, spent, remaining: budget - spent, edgePts,
     physEva: cap6(eff.def)+cs.eva+wEva+inspiredEva, specEva: cap6(eff.spdef)+cs.eva+wEva+inspiredEva, spdEva: cap6(eff.spd)+cs.eva+wEva+inspiredEva,   // evasion uses CS-adjusted stats
     weatherEva: wEva,
   };
@@ -1994,11 +2078,17 @@ function renderTrainer(){
   // the Gifts sub-tab shows for the GM (to grant Gifts) or once the Trainer actually has one
   const subTabs = [["sheet","Sheet"],["features","Features & Edges"],["levelup","Level Up"],["gear","Inventory & Bio"]];
   if(giftsCanSee(t)) subTabs.push(["gifts","🎁 Gifts"]);
+  if(cardsCanSee(t)) subTabs.push(["cards","🔮 Cards"]);
   if(trainerTab==="gifts" && !giftsCanSee(t)) trainerTab="sheet";   // last Gift removed → fall back
+  if(trainerTab==="cards" && !cardsCanSee(t)) trainerTab="sheet";   // last card removed → same
   root.append(subTabBar(subTabs, trainerTab, k=>{ trainerTab=k; renderTrainer(); }));
 
   if(trainerTab==="gifts"){
     root.append(giftsCard(t));
+    return;
+  }
+  if(trainerTab==="cards"){
+    root.append(cardsCard(t));
     return;
   }
   if(trainerTab==="features"){
@@ -2102,7 +2192,7 @@ function renderTrainer(){
   const tbl = el("table",{class:"skilltable"});
   SKILLS.forEach(([k,lbl]) => {
     const tr = el("tr",{});
-    const bonus = categoricBonus(t, k) + gearSkillBonus(t, k);   // Categoric Inclination Edge + worn equipment (Sunglasses, Running Shoes…) / studied Books
+    const bonus = categoricBonus(t, k) + gearSkillBonus(t, k) + cardSkillBonus(t, k);   // Categoric Inclination Edge + worn equipment (Sunglasses, Running Shoes…) / studied Books + Arcana cards
     tr.append(el("td",{},lbl+(bonus?` +${bonus}`:"")));
     const rb = el("td",{},rankButtons(k, t.skills[k]));
     const dice = el("td",{class:"dice","data-dice":k, html: skillDiceHTML(t.skills[k], bonus),
@@ -2859,7 +2949,7 @@ function recalcTrainer(){
   if(JSON.stringify(t.msStats||{})!==before) save();
   const giftB = giftStatBonus(t), tagB = statTagBonus(t).stats;
   STATS.forEach(([k]) => { const n=$(`[data-tot="${k}"]`); if(n) n.textContent = t.combat[k].base + t.combat[k].added + (giftB[k]||0) + (tagB[k]||0); });
-  SKILLS.forEach(([k]) => { const n=$(`[data-dice="${k}"]`); if(n){ const b=categoricBonus(t,k)+gearSkillBonus(t,k); n.innerHTML = skillDiceHTML(t.skills[k], b); } });
+  SKILLS.forEach(([k]) => { const n=$(`[data-dice="${k}"]`); if(n){ const b=categoricBonus(t,k)+gearSkillBonus(t,k)+cardSkillBonus(t,k); n.innerHTML = skillDiceHTML(t.skills[k], b); } });
   const g = $("#trainerDerived"); if (g) g.replaceWith(trainerDerivedGrid(t));
 }
 /* the dice cell in the Skills table. Virtuoso rolls Master's 6d6, so it gets an "R8" tag —
@@ -3203,51 +3293,10 @@ function listCard(title, path, allNames, refKind){
    Level-Up tracker (PTU 1.05 Trainer advancement, Core pp.18-19)
    A per-level ledger of what a Trainer gains and what they picked.
 =================================================================== */
-const LU_MAX_LEVEL = 50;
-/* milestone "extra benefits" at certain levels */
-const LU_MILESTONES = {
-  2:  { title:"Adept Skills", note:"You may now Rank Up Skills to Adept.",
-        grants:[{kind:"edge", label:"Skill Edge", hint:"not for an Adept rank-up"}] },
-  5:  { title:"Amateur Trainer", note:"Choose one bonus below.",
-        choice:{ key:"m5", options:[
-          "Bonus Stats — +1 Atk/SpAtk on each even Level 6-10 (+2 retroactive)",
-          "One General Feature"],
-        grants:{ "One General Feature":[{kind:"feature", label:"General Feature"}] } } },
-  6:  { title:"Expert Skills", note:"You may now Rank Up Skills to Expert.",
-        grants:[{kind:"edge", label:"Skill Edge", hint:"not for an Expert rank-up"}] },
-  10: { title:"Capable Trainer", note:"Choose one bonus below.",
-        choice:{ key:"m10", options:[
-          "Bonus Stats — +1 Atk/SpAtk on each even Level 12-20",
-          "Two Edges"],
-        grants:{ "Two Edges":[{kind:"edge", label:"Edge"},{kind:"edge", label:"Edge"}] } } },
-  12: { title:"Master Skills", note:"You may now Rank Up Skills to Master.",
-        grants:[{kind:"edge", label:"Skill Edge", hint:"not for a Master rank-up"}] },
-  20: { title:"Veteran Trainer", note:"Choose one bonus below. Homebrew: from this Level you may also Rank Up a Skill to Virtuoso with the “Virtuoso Skills” Edge (one per Skill) — still 6d6 on Checks, but it counts as Rank 8 for anything that scales with your Rank.",
-        choice:{ key:"m20", options:[
-          "Bonus Stats — +1 Atk/SpAtk on each even Level 22-30",
-          "Two Edges"],
-        grants:{ "Two Edges":[{kind:"edge", label:"Edge"},{kind:"edge", label:"Edge"}] } } },
-  30: { title:"Elite Trainer", note:"Choose one bonus below.",
-        choice:{ key:"m30", options:[
-          "Bonus Stats — +1 Atk/SpAtk on each even Level 32-40",
-          "Two Edges", "One General Feature"],
-        grants:{ "Two Edges":[{kind:"edge", label:"Edge"},{kind:"edge", label:"Edge"}],
-                 "One General Feature":[{kind:"feature", label:"General Feature"}] } } },
-  40: { title:"Champion", note:"Choose one bonus below.",
-        choice:{ key:"m40", options:[
-          "Bonus Stats — +1 Atk/SpAtk on each even Level 42-50",
-          "Two Edges", "One General Feature"],
-        grants:{ "Two Edges":[{kind:"edge", label:"Edge"},{kind:"edge", label:"Edge"}],
-                 "One General Feature":[{kind:"feature", label:"General Feature"}] } } },
-};
-
-/* the even levels each milestone "Bonus Stats" choice grants one bonus point on — the player
-   assigns each earned point to Attack OR Sp.Attack (L5 folds in its "+2 retroactive" as the two
-   even levels 2 & 4 passed before taking it at L5). Points are hard-restricted to Atk/SpAtk. */
-const LU_STAT_LEVELS = {
-  m5:[2,4,6,8,10], m10:[12,14,16,18,20], m20:[22,24,26,28,30],
-  m30:[32,34,36,38,40], m40:[42,44,46,48,50],
-};
+/* LU_MAX_LEVEL / LU_MILESTONES / LU_STAT_LEVELS are declared up with the reference constants,
+   above `let state = load()`: normTrainer → syncMilestoneStats → luStatAlloc reads the milestone
+   table while load() is still parsing a saved sheet, and load() swallows exceptions — so declaring
+   them here (in their temporal dead zone at that moment) silently threw every local save away. */
 /* milestone Bonus-Stats points, tallied for a given level. Each "Bonus Stats" milestone is a SINGLE
    choice of Attack OR Sp.Attack (t.levelUp[`L{L}:{mk}:stat`] = "atk"|"spatk"); ALL points it earns
    (one per even level for 5 levels — L5 folds in Lv2 & Lv4 as its "+2 retroactive") go into that one
@@ -4620,6 +4669,777 @@ function openAddGift(t){
 }
 
 /* ===================================================================
+   THE ARCANA DECK — a Deck of Many Things (campaign homebrew)
+
+   78 cards, each with an UPRIGHT (▲) and a REVERSED (▼) face. The GM picks
+   the card AND the orientation when granting it; the player never chooses.
+
+   Each face carries a timing tag — [Now] resolves on the spot, [Held] is
+   spent when the player decides, [Fated] fires on its own — and, where the
+   engine can actually model it, an `fx` automation descriptor.
+
+   fx kinds, LIVE (folded into trainerDerived / the skill roll, so deleting
+   the card cleanly reverses them):
+     skill  {skill:"charm"|["a","b"]|"pick"|"best", n}   Skill CHECK bonus
+     hp     {n}            maximum HP
+     ap     {n}            maximum AP
+     stat   {n, count|"all"}   Trainer Base Stats (pre-Combat-Stage, like a Gift)
+     dr     {n}            flat Damage Reduction
+     cap    {cap:"power"|"move", n}
+     party  {n}            carried-party size (default 6)
+     shop   {buy, sell}    percentage swing on shop prices
+
+   fx kinds, ONE-SHOT (fire once on ⚡ Apply, through the existing writers so
+   they land in the money/TP ledgers; `repeat:true` keeps the button live):
+     money {n} · moneyZero · rank {n, skill, cap} · rankUpTo {rank}
+     tp {n, target} · loyalty {n|set, target} · injury {n, target}
+     monstat {n, count, target} · heal {target} · levels {trainer, party}
+     shiny · evolve · gift · rest
+
+   `cond:true` marks a live effect whose text is conditional ("in the next
+   settlement", "while they're with you") — those get a 🔆 switch so the GM
+   turns them on only while the condition holds. No fx at all = flavour, and
+   the card still gets its GM note box.
+=================================================================== */
+const ARCANA_SUITS = {
+  Wands:     {icon:"⚔", el:"Fire",  arena:"Drive, reputation, ambition, rivalry, fame"},
+  Cups:      {icon:"♡", el:"Water", arena:"Bonds, Pokémon, family, health, emotion"},
+  Swords:    {icon:"✦", el:"Air",   arena:"Truth, secrets, trouble, information, injury"},
+  Pentacles: {icon:"⬢", el:"Earth", arena:"Money, possessions, work, property, training"},
+  Major:     {icon:"✹", el:"—",     arena:"The deck's teeth — irrevocable, unavoidable"},
+};
+const ARCANA = [
+/* ---------------- ⚔ WANDS — the Spark ---------------- */
+{k:"w01",s:"Wands",n:"Ace of Wands",f:"The raw spark.",
+ up:{t:"now",x:"Something reignites in you. +1 to your maximum AP until the next badge is won.",arc:1,fx:{kind:"ap",n:1}},
+ rev:{t:"now",x:"Something goes out of you. −1 maximum AP until the next badge is won.",arc:1,fx:{kind:"ap",n:-1}}},
+{k:"w02",s:"Wands",n:"Two of Wands",f:"The plan.",
+ up:{t:"held",x:"Spend to declare that you planned for this: name one ordinary item or piece of gear. You brought it, and you always had it."},
+ rev:{t:"now",x:"You left something behind. The GM names one item in your inventory — it's back wherever you last slept."}},
+{k:"w03",s:"Wands",n:"Three of Wands",f:"Word travels.",
+ up:{t:"now",x:"Your name arrives before you do. In the next settlement you reach you're recognised warmly: +2 to Charm there for the arc, and someone offers you lodging for free.",arc:1,fx:{kind:"skill",skill:"charm",n:2,cond:1}},
+ rev:{t:"now",x:"Your name arrives before you do, wrong. −2 to Charm in the next settlement you reach, and no one will host you.",arc:1,fx:{kind:"skill",skill:"charm",n:-2,cond:1}}},
+{k:"w04",s:"Wands",n:"Four of Wands",f:"Celebration.",
+ up:{t:"held",x:"Spend at any time to call a moment worth marking — a fire, a meal, a night off. You and your whole party immediately gain the benefit of an Extended Rest, wherever you are.",fx:{kind:"rest"}},
+ rev:{t:"now",x:"A celebration you weren't invited to. You learn that something important happened without you, and the opportunity is gone."}},
+{k:"w05",s:"Wands",n:"Five of Wands",f:"Competition.",
+ up:{t:"now",x:"A rival appears who sharpens you. Through competing with them, permanently gain +2 to one Skill of your choice.",fx:{kind:"skill",skill:"pick",n:2}},
+ rev:{t:"now",x:"A rival appears who is simply better than you, at the one thing you were proudest of. Permanently take −2 to one Skill — the GM picks your best. They are gracious about it, which is worse.",fx:{kind:"skill",skill:"best",n:-2}}},
+{k:"w06",s:"Wands",n:"Six of Wands",f:"Victory.",
+ up:{t:"now",x:"Public triumph. Gain ₽2,000 in prize money and genuine local fame.",fx:{kind:"money",n:2000}},
+ rev:{t:"now",x:"Someone else takes the credit for something you did, publicly, and it sticks. The ₽2,000 and the fame that should have been yours go to them, and you have to watch."}},
+{k:"w07",s:"Wands",n:"Seven of Wands",f:"Standing your ground.",
+ up:{t:"held",x:"Spend to refuse absolutely: you automatically resist one attempt at coercion, bribery, intimidation, seduction, or manipulation, no roll."},
+ rev:{t:"fated",x:"You cave. The next time someone pressures you — a demand, a bribe, an ultimatum, a plea — you give in. You don't get to roll."}},
+{k:"w08",s:"Wands",n:"Eight of Wands",f:"Swiftness.",
+ up:{t:"now",x:"The road opens. Your next journey takes half the expected time and nothing goes wrong along the way."},
+ rev:{t:"now",x:"The road closes. Your next journey takes twice as long and something goes wrong along the way."}},
+{k:"w09",s:"Wands",n:"Nine of Wands",f:"Resilience.",
+ up:{t:"now",x:"You've taken worse than this. Permanently gain +5 Maximum HP.",fx:{kind:"hp",n:5}},
+ rev:{t:"now",x:"Something in you doesn't fully mend. Permanently lose 5 Maximum HP.",fx:{kind:"hp",n:-5}}},
+{k:"w10",s:"Wands",n:"Ten of Wands",f:"The burden.",
+ up:{t:"now",x:"You can carry anything. Power capability +2 permanently, and you count as one size larger for lifting, dragging, and shoving.",fx:{kind:"cap",cap:"power",n:2}},
+ rev:{t:"now",x:"You've carried too much for too long and your back never quite recovers. Power capability −2 permanently, and you tire visibly before anyone else does.",fx:{kind:"cap",cap:"power",n:-2}}},
+{k:"w11",s:"Wands",n:"Page of Wands",f:"The messenger.",
+ up:{t:"now",x:"A wide-eyed young trainer attaches themselves to you as a hanger-on. Enthusiastic, useless in a fight, and knows every rumour in the region — once per session they hand you a genuine, actionable lead."},
+ rev:{t:"now",x:"The same kid, but they idolize your rival instead, and cheerfully report your movements to them."}},
+{k:"w12",s:"Wands",n:"Knight of Wands",f:"The charge.",
+ up:{t:"now",x:"A hot-headed trainer challenges you. Accept and win, and they'll gift you their ace's Held Item and their respect."},
+ rev:{t:"now",x:"The same challenge, but refusing is not an option and they've brought friends. Win and gain nothing but the story."}},
+{k:"w13",s:"Wands",n:"Queen of Wands",f:"The flame that warms.",
+ up:{t:"now",x:"A confident, well-connected patron takes an interest in you. +2 to all Charm and Intimidate checks within their sphere of influence, and one favour, called in once.",fx:{kind:"skill",skill:["charm","intimidate"],n:2,cond:1}},
+ rev:{t:"now",x:"They take an interest in you as a rival. Doors quietly close: −2 to Charm with anyone who knows them.",fx:{kind:"skill",skill:"charm",n:-2,cond:1}}},
+{k:"w14",s:"Wands",n:"King of Wands",f:"The flame that rules.",
+ up:{t:"now",x:"Permanently gain +1 to your Command Skill rank (max Master). Wild Pokémon treat you as something to be listened to rather than fought.",fx:{kind:"rank",skill:"command",n:1,cap:"Master"}},
+ rev:{t:"now",x:"One of your Pokémon decides it should be in charge. Permanently lose 1 Command Skill rank (min Pathetic) and that Pokémon's Loyalty drops by 1 — both stay lost until you do something that earns its respect back.",
+   fx:[{kind:"rank",skill:"command",n:-1},{kind:"loyalty",n:-1,target:"mon"}]}},
+
+/* ---------------- ♡ CUPS — the Bond ---------------- */
+{k:"c01",s:"Cups",n:"Ace of Cups",f:"The overflowing heart.",
+ up:{t:"held",x:"Spend to restore one Pokémon to full HP and cure all its Persistent Status Afflictions.",fx:{kind:"heal",target:"mon"}},
+ rev:{t:"now",x:"Something drains out of one Pokémon — the deck picks your strongest. It cannot be healed above half its Maximum HP until the next badge is won.",arc:1,fx:{kind:"note",target:"mon"}}},
+{k:"c02",s:"Cups",n:"Two of Cups",f:"The union.",
+ up:{t:"now",x:"Two of your Pokémon become inseparable. Each permanently gains +1 Loyalty (max 6), and they train each other — either may spend the other's Tutor Points as if they were its own.",fx:{kind:"loyalty",n:1,target:"two"}},
+ rev:{t:"now",x:"Two of your Pokémon cannot stand each other. Each permanently loses 1 Loyalty while the other remains in your party, and neither will accept training or a Held Item from you while the other is around. Boxing one ends it — which is the actual cost of the card.",fx:{kind:"loyalty",n:-1,target:"two"}}},
+{k:"c03",s:"Cups",n:"Three of Cups",f:"The gathering.",
+ up:{t:"now",x:"Every Pokémon in your party gains +1 Loyalty (max 6).",fx:{kind:"loyalty",n:1,target:"all"}},
+ rev:{t:"now",x:"Every Pokémon in your party except your highest-Loyalty one loses 1 Loyalty. That one gets insufferable about it.",fx:{kind:"loyalty",n:-1,target:"allBut1"}}},
+{k:"c04",s:"Cups",n:"Four of Cups",f:"Apathy.",
+ up:{t:"now",x:"You become unmovable: immunity to Infatuation, Rage, and Enraged for the arc.",arc:1},
+ rev:{t:"now",x:"Nothing impresses you. Until the end of the arc you cannot benefit from allies' morale-based Features, and you take −2 to Charm because your indifference shows.",arc:1,fx:{kind:"skill",skill:"charm",n:-2}}},
+{k:"c05",s:"Cups",n:"Five of Cups",f:"Grief.",
+ up:{t:"now",x:"Something you lost comes back — an old item, an old contact, an old Pokémon's egg. The GM decides what; it is genuinely yours again."},
+ rev:{t:"now",x:"You lose a small, non-critical possession that mattered to you. It is not recoverable, and you will notice its absence at the worst moment."}},
+{k:"c06",s:"Cups",n:"Six of Cups",f:"Nostalgia.",
+ up:{t:"now",x:"One Pokémon immediately learns an Egg Move or Tutor Move of your choice from its legal list, free of Tutor Points.",fx:{kind:"note",target:"mon"}},
+ rev:{t:"now",x:"One Pokémon forgets its most recently learned Move for good. Getting it back costs a Tutor Point and a trip to someone who teaches it.",fx:{kind:"note",target:"mon"}}},
+{k:"c07",s:"Cups",n:"Seven of Cups",f:"Illusion.",
+ up:{t:"now",x:"The deck shows you three visions of things you could have. The GM describes each in a sentence; you pick one and you get it, for real. But only two were exactly what they appeared — the GM decides in advance which one carries a hidden cost, and doesn't say. Each offer should appeal to a different hunger: power, wealth, knowledge."},
+ rev:{t:"fated",x:"You are convinced of something false. At a moment of their choosing, the GM tells you one lie as if it were fact, and you believe it until it's directly disproven."}},
+{k:"c08",s:"Cups",n:"Eight of Cups",f:"Walking away.",
+ up:{t:"held",x:"Spend to release one Pokémon and immediately encounter a wild Pokémon of equal level that wants to come with you.",fx:{kind:"note",target:"mon"}},
+ rev:{t:"now",x:"One Pokémon of your choosing leaves the party at the end of the Scene. It returns at the end of the arc, changed.",arc:1,fx:{kind:"note",target:"mon"}}},
+{k:"c09",s:"Cups",n:"Nine of Cups",f:"The small wish.",
+ up:{t:"held",x:"A minor wish. Spend to ask for one thing that could plausibly happen in the world. If it isn't campaign-altering, it happens."},
+ rev:{t:"held",x:"The same wish — but you get exactly what you asked for, phrased exactly as you asked for it, and the GM is allowed to be a monster about it. This card cannot be discarded and must be spent before the end of the arc.",arc:1}},
+{k:"c10",s:"Cups",n:"Ten of Cups",f:"Harmony.",
+ up:{t:"now",x:"Permanently increase your maximum party size by 1 (7 carried), and all carried Pokémon rest as though they'd had an Extended Rest at the end of each day.",fx:{kind:"party",n:1}},
+ rev:{t:"now",x:"Permanently decrease your maximum party size by 1 (5 carried). There is friction in the group, and someone always has to stay in the box.",fx:{kind:"party",n:-1}}},
+{k:"c11",s:"Cups",n:"Page of Cups",f:"The gift.",
+ up:{t:"now",x:"You are given a Pokémon Egg. Species is the GM's choice and it will be something regionally sensible but unusual."},
+ rev:{t:"now",x:"You are given an egg. It does not hatch. Something is wrong with it, and it keeps turning up in your bag."}},
+{k:"c12",s:"Cups",n:"Knight of Cups",f:"The romantic.",
+ up:{t:"now",x:"An earnest suitor, ally, or devoted rival appears. Once per session they arrive at a genuinely useful moment. Loyalty 6, effectively."},
+ rev:{t:"now",x:"The same person, but you cannot get rid of them, and they are a liability. −2 to Stealth whenever they are with you, which is often.",fx:{kind:"skill",skill:"stealth",n:-2,cond:1}}},
+{k:"c13",s:"Cups",n:"Queen of Cups",f:"The healer.",
+ up:{t:"now",x:"A healer's blessing, permanently: once per badge, restore one Pokémon to full HP and cure all its statuses with a full-round action."},
+ rev:{t:"now",x:"Your touch unsettles Pokémon, permanently. −2 to Guile and Charm with all Pokémon — not with people, which makes it harder to explain.",fx:{kind:"skill",skill:["guile","charm"],n:-2,cond:1}}},
+{k:"c14",s:"Cups",n:"King of Cups",f:"The still water.",
+ up:{t:"now",x:"Permanently gain +2 to Focus checks. Nothing rattles you.",fx:{kind:"skill",skill:"focus",n:2}},
+ rev:{t:"now",x:"Permanently take −2 to Focus checks, and whenever you are provoked, insulted, or pressured in a social scene, pass a Focus check (DC 12) or say the worst possible thing.",fx:{kind:"skill",skill:"focus",n:-2}}},
+
+/* ---------------- ✦ SWORDS — the Edge ---------------- */
+{k:"s01",s:"Swords",n:"Ace of Swords",f:"Clarity.",
+ up:{t:"held",x:"Spend to ask the GM one question about anything in the world. It is answered truthfully and usefully. (The High Priestess, in miniature.)"},
+ rev:{t:"now",x:"A truth about you gets out. One secret your character has been keeping becomes public knowledge."}},
+{k:"s02",s:"Swords",n:"Two of Swords",f:"The blindfold.",
+ up:{t:"now",x:"A standoff breaks your way. One ongoing negotiation, rivalry, or deadlock resolves in your favour, cleanly."},
+ rev:{t:"now",x:"You are made to choose between two things you wanted. The GM frames the choice; you lose one of them for good."}},
+{k:"s03",s:"Swords",n:"Three of Swords",f:"Heartbreak.",
+ up:{t:"held",x:"Spend when you or a Pokémon would take an Injury to prevent it entirely."},
+ rev:{t:"now",x:"Take 1 Injury immediately. No save, no mitigation.",fx:{kind:"injury",n:1,target:"self"}}},
+{k:"s04",s:"Swords",n:"Four of Swords",f:"Rest.",
+ up:{t:"held",x:"Spend on an Extended Rest: it counts as three days of recovery for Injury healing and Feature refresh purposes."},
+ rev:{t:"fated",x:"You gain no benefit from your next Extended Rest. Bad dreams."}},
+{k:"s05",s:"Swords",n:"Five of Swords",f:"The hollow victory.",
+ up:{t:"now",x:"You win an argument permanently. An NPC who has been opposing you concedes, and stays conceded."},
+ rev:{t:"now",x:"You win something and it costs more than it was worth. The GM destroys one thing you valued in the process."}},
+{k:"s06",s:"Swords",n:"Six of Swords",f:"The passage.",
+ up:{t:"held",x:"Spend to leave cleanly: you and your party exit any non-combat situation without pursuit, notice, or consequence."},
+ rev:{t:"now",x:"You have to leave somewhere in a hurry, and you cannot return to that settlement for the rest of the arc.",arc:1}},
+{k:"s07",s:"Swords",n:"Seven of Swords",f:"The theft.",
+ up:{t:"now",x:"You got away with it. One past crime, debt, or deception of yours is quietly erased from the record."},
+ rev:{t:"now",x:"You are robbed. Lose ₽1,000 or one item (GM's choice).",fx:{kind:"money",n:-1000}}},
+{k:"s08",s:"Swords",n:"Eight of Swords",f:"The binding.",
+ up:{t:"held",x:"Spend to escape any restraint, cell, trap, or binding automatically — physical, legal, or social."},
+ rev:{t:"now",x:"You are detained, restricted, or barred from somewhere you need to be. Getting back in is a problem for later."}},
+{k:"s09",s:"Swords",n:"Nine of Swords",f:"The nightmare.",
+ up:{t:"held",x:"You saw a genuine premonition. Spend to reroll any one d20, taking the better result."},
+ rev:{t:"fated",x:"The next time you would regain AP from a rest, you regain none."}},
+{k:"s10",s:"Swords",n:"Ten of Swords",f:"Ruin. (The worst of the Minors.)",
+ up:{t:"now",x:"You survive something that should have ended you, and it leaves you harder to hurt. Permanently gain Damage Reduction 2.",fx:{kind:"dr",n:2}},
+ rev:{t:"now",x:"Someone you trusted sells you out. An NPC ally becomes a permanent informant for your enemies — every plan you make in their hearing is known in advance, and you will not learn who for a long time."}},
+{k:"s11",s:"Swords",n:"Page of Swords",f:"The watcher.",
+ up:{t:"now",x:"A nervy young informant starts feeding you information. Once per session, ask one yes/no question about anyone's intentions and get a truthful answer."},
+ rev:{t:"now",x:"Someone is watching you. Every plan you make out loud is known to your opposition until you find them."}},
+{k:"s12",s:"Swords",n:"Knight of Swords",f:"The duel.",
+ up:{t:"now",x:"A dangerous, honourable opponent challenges you to a formal single battle. Winning grants a permanent +1 to any one Base Stat of the Pokémon that won.",fx:{kind:"monstat",n:1,target:"mon"}},
+ rev:{t:"now",x:"The same duel, but they don't fight honourably and refusing isn't an option. Losing costs the Pokémon that lost a permanent −1 to one Base Stat, plus an Injury and a reputation.",
+   fx:[{kind:"monstat",n:-1,target:"mon"},{kind:"injury",n:1,target:"mon"}]}},
+{k:"s13",s:"Swords",n:"Queen of Swords",f:"The truth.",
+ up:{t:"now",x:"Permanently gain +2 to Perception and Intuition, and you can always tell when you are being lied to directly.",fx:{kind:"skill",skill:["perception","intuition"],n:2}},
+ rev:{t:"now",x:"You become blunt to the point of damage. −2 to Charm permanently, until you make an amends the GM will recognize.",fx:{kind:"skill",skill:"charm",n:-2}}},
+{k:"s14",s:"Swords",n:"King of Swords",f:"The judgement.",
+ up:{t:"now",x:"Gain a legal or institutional authority — a licence, a badge, a writ. Doors open, and once per arc you can compel official cooperation."},
+ rev:{t:"now",x:"You are formally accused of something. Until it's resolved, you're barred from official facilities: no free Pokémon Centre healing, no Mart credit."}},
+
+/* ---------------- ⬢ PENTACLES — the Weight ---------------- */
+{k:"p01",s:"Pentacles",n:"Ace of Pentacles",f:"The gift.",
+ up:{t:"now",x:"Gain ₽5,000 or one valuable item of comparable worth.",fx:{kind:"money",n:5000}},
+ rev:{t:"now",x:"Lose ₽5,000, or the equivalent in debt if you don't have it. Creditors are patient. Not that patient.",fx:{kind:"money",n:-5000}}},
+{k:"p02",s:"Pentacles",n:"Two of Pentacles",f:"The juggle.",
+ up:{t:"now",x:"You've got a head for money on the road. Until the next badge is won, you buy for 25% less and sell for 25% more, everywhere.",arc:1,fx:{kind:"shop",buy:-25,sell:25}},
+ rev:{t:"now",x:"Money runs through your fingers. Until the next badge is won, you buy for 25% more and sell for 25% less, everywhere.",arc:1,fx:{kind:"shop",buy:25,sell:-25}}},
+{k:"p03",s:"Pentacles",n:"Three of Pentacles",f:"The craft.",
+ up:{t:"now",x:"One item you own is masterwork-upgraded by a specialist for free: a Poké Ball becomes a superior variant, gear gains +1 to its bonus, or a weapon gains +1 DB."},
+ rev:{t:"now",x:"One item you own breaks. It can be repaired for ₽2,000."}},
+{k:"p04",s:"Pentacles",n:"Four of Pentacles",f:"The hoard.",
+ up:{t:"now",x:"Your money and possessions cannot be stolen, lost, or confiscated for the rest of the arc. Nothing leaves your hands unwillingly.",arc:1},
+ rev:{t:"now",x:"You cannot bring yourself to spend. Until the end of the arc, you must make a Focus check (DC 12) to part with any money above ₽500.",arc:1}},
+{k:"p05",s:"Pentacles",n:"Five of Pentacles",f:"The cold outside.",
+ up:{t:"now",x:"You find shelter and allies among the destitute. Gain a safe house in every settlement you visit and a network that will hide you."},
+ rev:{t:"now",x:"You are turned out. No access to Pokémon Centres or Marts in the current settlement, and locals will not house you."}},
+{k:"p06",s:"Pentacles",n:"Six of Pentacles",f:"Charity.",
+ up:{t:"held",x:"Spend by giving ₽1,000 to someone who needs it: permanently gain +1 maximum AP. (You must actually give it, and it must actually cost you.)",
+   fx:[{kind:"money",n:-1000},{kind:"ap",n:1}]},
+ rev:{t:"now",x:"You are cheated by someone you helped. Lose ₽1,000 and permanently lose 1 maximum AP — you don't extend yourself for people the same way afterward.",
+   fx:[{kind:"money",n:-1000},{kind:"ap",n:-1}]}},
+{k:"p07",s:"Pentacles",n:"Seven of Pentacles",f:"The long game.",
+ up:{t:"fated",x:"Keep this card through two badges. When the second is won, the patience pays: the GM decides what you get, and it should be worth two badges of waiting — a rare Pokémon, a serious sum, an item you couldn't otherwise buy, a favour from someone important."},
+ rev:{t:"fated",x:"Your investment sours over the same two badges. The GM decides what you lose — savings, a contact, a project, a reputation — and it should hurt as much as the upright helps."}},
+{k:"p08",s:"Pentacles",n:"Eight of Pentacles",f:"The apprentice.",
+ up:{t:"now",x:"Permanently increase one Skill by one Rank (max Master).",fx:{kind:"rank",skill:"pick",n:1,cap:"Master"}},
+ rev:{t:"now",x:"Permanently decrease one Skill by one Rank (min Pathetic) — the deck chooses your best.",fx:{kind:"rank",skill:"best",n:-1}}},
+{k:"p09",s:"Pentacles",n:"Nine of Pentacles",f:"Self-sufficiency.",
+ up:{t:"now",x:"One Pokémon gains 2 Tutor Points immediately.",fx:{kind:"tp",n:2,target:"mon"}},
+ rev:{t:"now",x:"One Pokémon loses 2 Tutor Points — for each it hasn't got unspent, it forgets a tutored Move instead.",fx:{kind:"tp",n:-2,target:"mon"}}},
+{k:"p10",s:"Pentacles",n:"Ten of Pentacles",f:"The inheritance.",
+ up:{t:"now",x:"You inherit property: a house, a boat, a small ranch. It's real, it's yours, and it will matter later."},
+ rev:{t:"now",x:"You inherit a debt or an obligation attached to your family name. Someone will come to collect."}},
+{k:"p11",s:"Pentacles",n:"Page of Pentacles",f:"The student.",
+ up:{t:"now",x:"An eager apprentice attaches to you. They handle your logistics: all Poké Ball, Potion, and consumable purchases cost 25% less, and your gear is never left behind.",fx:{kind:"shop",buy:-25,cond:1}},
+ rev:{t:"now",x:"An apprentice who means well and costs you money. +25% on all purchases while they're around, and they are around.",fx:{kind:"shop",buy:25,cond:1}}},
+{k:"p12",s:"Pentacles",n:"Knight of Pentacles",f:"The grind.",
+ up:{t:"now",x:"Choose one Pokémon. Through relentless training it permanently gains +1 to one Base Stat.",fx:{kind:"monstat",n:1,target:"mon"}},
+ rev:{t:"now",x:"Choose one Pokémon. You pushed it too hard: it permanently loses 1 from one Base Stat (min 1) and takes 1 Injury now.",
+   fx:[{kind:"monstat",n:-1,target:"mon"},{kind:"injury",n:1,target:"mon"}]}},
+{k:"p13",s:"Pentacles",n:"Queen of Pentacles",f:"The provider.",
+ up:{t:"now",x:"Permanently gain +2 to Survival and Medicine Education, and you can always find food, shelter, and materials in the wild.",fx:{kind:"skill",skill:["survival","medicineEd"],n:2}},
+ rev:{t:"now",x:"The land will not provide for you. Permanently take −2 to Survival and Medicine Education, and supplies always cost you more than they cost everyone else.",fx:{kind:"skill",skill:["survival","medicineEd"],n:-2}}},
+{k:"p14",s:"Pentacles",n:"King of Pentacles",f:"The magnate.",
+ up:{t:"now",x:"Gain a permanent income of ₽2,000 per week, and a business or holding that generates it.",fx:{kind:"money",n:2000,repeat:1,label:"💰 Collect this week's income"}},
+ rev:{t:"now",x:"Gain a permanent expense of ₽2,000 per week — staff, upkeep, protection money. Missing payments has consequences.",fx:{kind:"money",n:-2000,repeat:1,label:"💸 Pay this week's upkeep"}}},
+
+/* ---------------- ✹ THE MAJOR ARCANA — the deck's teeth ---------------- */
+{k:"m00",s:"Major",n:"0 — The Fool",p:"Psyduck",f:"The Leap / The Blank Page.",
+ up:{t:"now",x:"You must immediately draw two more cards, in addition to any remaining from your declaration. They do not count against your maximum. This can chain."},
+ rev:{t:"now",x:"You forget one Feature or Edge of the GM's choosing — not just its use, its existence. It is removed from your sheet and its prerequisites no longer count as met. It can be re-earned through play, at normal cost, if you can figure out what you lost."}},
+{k:"m01",s:"Major",n:"I — The Magician",p:"Alakazam",f:"Mastery / The Trick.",
+ up:{t:"now",x:"Immediately gain any one Feature you currently qualify for, free of cost, ignoring Trainer Level requirements by up to 5 levels."},
+ rev:{t:"now",x:"The power was never really yours. Every Feature you own drops one Frequency step, permanently — At-Will becomes Scene ×2, Scene becomes Daily, Daily becomes once per badge."}},
+{k:"m02",s:"Major",n:"II — The High Priestess",p:"Xatu",f:"The Veil Parts / The Veil Thickens.",
+ up:{t:"now",x:"Ask the GM three questions about anything in the world — plots, locations, identities, the future. They must be answered truthfully and usefully. No riddles."},
+ rev:{t:"now",x:"The GM tells you three things that are false, presented as certain knowledge, at three separate moments of their choosing over the coming arc. You will not know which statements they were.",arc:1}},
+{k:"m03",s:"Major",n:"III — The Empress",p:"Chansey",f:"Abundance / The Barren Season.",
+ up:{t:"now",x:"One Pokémon of your choice immediately evolves, ignoring all level, item, and condition requirements. If it cannot evolve, it instead gains +3 to a Base Stat and its Loyalty becomes 6.",fx:{kind:"evolve",target:"mon"}},
+ rev:{t:"now",x:"Nothing in your care grows again. No Pokémon you own may ever evolve, none may gain Tutor Points, and no egg you hold will hatch. This does not expire. The GM sets a condition that breaks it — a shrine, a person, a thing you have to give up — and tells you nothing about it."}},
+{k:"m04",s:"Major",n:"IV — The Emperor",p:"Empoleon",f:"The Throne / The Usurper.",
+ up:{t:"now",x:"People obey you. Permanently gain +2 Command Skill ranks (max Virtuoso); wild Pokémon treat you as a superior rather than a threat and will not initiate against you; and you gain a retinue — three or four loyal trainers who take your orders.",fx:{kind:"rank",skill:"command",n:2,cap:"Virtuoso"}},
+ rev:{t:"now",x:"Someone takes your place. Permanently lose 2 Command Skill ranks (min Pathetic) and every Pokémon you own loses 1 Loyalty. Worse, someone who was once yours now gives orders in your name, and everyone who matters believes them over you.",
+   fx:[{kind:"rank",skill:"command",n:-2},{kind:"loyalty",n:-1,target:"all"}]}},
+{k:"m05",s:"Major",n:"V — The Hierophant",p:"Bronzong",f:"The Teaching / The Doctrine.",
+ up:{t:"now",x:"Every Pokémon you own gains 3 Tutor Points, and you may immediately spend them. Additionally, you may teach any one Pokémon a Move from another Pokémon in your party's list.",fx:{kind:"tp",n:3,target:"all"}},
+ rev:{t:"now",x:"An order, cult, or institution declares you an apostate. All Move Tutors, Trainers, and teachers within their reach refuse to work with you, permanently, until you settle it."}},
+{k:"m06",s:"Major",n:"VI — The Lovers",p:"Latias & Latios",f:"The Binding / The Chain.",
+ up:{t:"now",x:"Choose one Pokémon. You are soul-bound, permanently: it is Loyalty 6 forever; while the other still lives you each gain +2 to all Save Checks; and it can never be taken from you — not caught, not stolen, not traded, not confiscated.",fx:{kind:"loyalty",set:6,target:"mon"}},
+ rev:{t:"now",x:"The same binding — but you did not choose the Pokémon and neither did it. When one of you takes damage, the other takes half. When one of you falls unconscious, so does the other. It cannot be released, boxed, or traded. It is not always friendly.",fx:{kind:"note",target:"mon"}}},
+{k:"m07",s:"Major",n:"VII — The Chariot",p:"Arcanine",f:"The Road Opens / The Road Closes.",
+ up:{t:"now",x:"Gain a legendary conveyance: a Pokémon or vehicle capable of carrying your whole party anywhere in the region, quickly and safely. Permanently increase all your movement Capabilities by 3.",fx:{kind:"cap",cap:"move",n:3}},
+ rev:{t:"now",x:"Something takes the road from you, permanently. You may never again use assisted travel — no riding, no flying, no ferries, no teleportation, no vehicles. You walk. And something is walking after you: a relentless pursuer that closes the distance whenever you stay anywhere longer than a day, and cannot be killed, only outpaced."}},
+{k:"m08",s:"Major",n:"VIII — Strength",p:"Machamp",f:"The Gentle Hand / The Feral Turn.",
+ up:{t:"now",x:"Permanently gain +2 to any two of your Base Stats, and choose one Pokémon to gain the same. This exceeds normal caps.",
+   fx:[{kind:"stat",n:2,count:2},{kind:"monstat",n:2,count:2,target:"mon"}]},
+ rev:{t:"now",x:"Your highest-level Pokémon goes feral. Its Loyalty drops to 1, it attacks you at the next dramatically appropriate moment, and it will not be recalled to its ball. It can be won back — through play, not dice.",fx:{kind:"loyalty",set:1,target:"mon"}}},
+{k:"m09",s:"Major",n:"IX — The Hermit",p:"Cubone",f:"The Lantern / The Isolation.",
+ up:{t:"now",x:"You withdraw and return transformed. You vanish for one week of game time and come back having gained a full level for yourself and every Pokémon in your party, plus one insight the GM owes you about the campaign's central mystery.",fx:{kind:"levels",trainer:1,party:1}},
+ rev:{t:"now",x:"Something in you closes and will not open. Permanently, you cannot be helped by anyone. No ally's Feature, Move, item, or action can benefit you. You can still do all of those things for others. They simply cannot reach you. The GM sets one condition that breaks it, and does not tell you what it is."}},
+{k:"m10",s:"Major",n:"X — The Wheel of Fortune",p:"Dialga",f:"The Turn / The Grinding.",
+ up:{t:"now",x:"Choose any one past event in the campaign and undo it. A death, a failed roll, a burned bridge, another Arcana card's effect. It never happened. The GM must make it stick."},
+ rev:{t:"now",x:"The GM chooses one past success of yours and reverses it. Something you won, you now lost. Something you saved, you didn't. The world reshapes to match, and everyone remembers it the new way except you."}},
+{k:"m11",s:"Major",n:"XI — Justice",p:"Reshiram & Zekrom",f:"The Scales Balance / The Scales Tip.",
+ up:{t:"now",x:"Every debt, crime, grudge, and obligation attached to your name is settled and forgiven. Bounties are cancelled, enemies made through misunderstanding are reconciled, and you gain +2 AP permanently for a clear conscience.",fx:{kind:"ap",n:2}},
+ rev:{t:"now",x:"Everything you have ever gotten away with comes due at once. Every wronged NPC, every shortcut, every abandoned Pokémon arrives in your life inside the next three sessions, and they've had time to prepare."}},
+{k:"m12",s:"Major",n:"XII — The Hanged Man",p:"Shedinja",f:"The Willing Sacrifice / The Suspension.",
+ up:{t:"now",x:"Permanently sacrifice one Feature and one Pokémon of your choice (released, not killed — it goes on to a good life). In exchange, gain one Legendary Gift of the GM's choosing, appropriate to what you gave up — something noticed the trade and approved of it.",fx:{kind:"gift"}},
+ rev:{t:"now",x:"You fall permanently out of step with the world. You are always late: once per badge the GM may declare that you arrived just after something important finished happening. Any plan that depends on your timing goes wrong. Permanently take −2 to Initiative and −2 to Perception.",fx:{kind:"skill",skill:"perception",n:-2}}},
+{k:"m13",s:"Major",n:"XIII — Death",p:"Yveltal",f:"The Threshold / The Debt.",
+ up:{t:"now",x:"Death looks at you and passes over. The next time you would die, you simply don't. Whatever should have killed you doesn't, you wake up whole, and everyone present sees it happen and understands what they saw. Once. It never expires until it's used, and it works exactly one time."},
+ rev:{t:"now",x:"You do not die. Someone else does — an NPC you care about, chosen by the GM, immediately and off-screen. If there is no such NPC, your highest-Loyalty Pokémon dies instead. It does not come back."}},
+{k:"m14",s:"Major",n:"XIV — Temperance",p:"Kyurem",f:"The Alchemy / The Imbalance.",
+ up:{t:"now",x:"Two things become one. Choose two Pokémon you own: permanently transfer any one Ability and any one Move from either to the other. The recipient keeps both forever and gains +1 to all Base Stats from the blending. Additionally, every Injury carried by you and your entire party is healed.",
+   fx:[{kind:"monstat",n:1,count:"all",target:"mon"},{kind:"injury",clear:1,target:"party"}]},
+ rev:{t:"now",x:"Your growth caps. You may not raise any Base Stat above its current value, and no Pokémon in your care may either, until you find whatever will lift it. The GM knows what that is. You don't."}},
+{k:"m15",s:"Major",n:"XV — The Devil",p:"Hoopa",f:"The Pact / The Collection.",
+ up:{t:"now",x:"You are offered enormous power and you have already accepted. Immediately gain +3 to all Base Stats, +5 maximum AP, and one Legendary Gift of the GM's choosing — with the Patron Stat that comes with it. Whatever blessed you did not do it out of kindness: an entity now owns your best Pokémon. Not yet — but it will come for it.",
+   fx:[{kind:"stat",n:3,count:"all"},{kind:"ap",n:5},{kind:"gift"}]},
+ rev:{t:"now",x:"The contract comes due immediately, without the power. Your highest-level Pokémon is taken, right now, in front of everyone. You will see it again, on the other side of a boss fight.",fx:{kind:"note",target:"mon"}}},
+{k:"m16",s:"Major",n:"XVI — The Tower",p:"Tyranitar",f:"The Necessary Collapse / The Collapse Spreads.",
+ up:{t:"now",x:"You lose everything you own — money, items, holdings, gear, everything but your Pokémon and the clothes you're wearing. In the ruins you find one thing: an artifact of genuine campaign significance, and the GM must make it worth the price.",fx:{kind:"moneyZero"}},
+ rev:{t:"now",x:"The catastrophe hits your allies instead of you. The party's shared resources, base, ship, or funding are destroyed. Every other player loses half their money and one item. You lose nothing, and they will know it was you."}},
+{k:"m17",s:"Major",n:"XVII — The Star",p:"Jirachi",f:"The Wish / The Dimming.",
+ up:{t:"now",x:"Make one wish. It is granted as spoken, generously, with no monkey's-paw twist. It may not create or destroy a life, and it may not resolve the campaign's central conflict. Anything else is on the table."},
+ rev:{t:"now",x:"Hope goes out of you, and it does not come back on a timer. You cannot regain AP by resting, and every Pokémon in your party is capped at Loyalty 3 — including ones you catch later. Nothing you do inspires anyone. It lasts until you find something worth hoping for again."}},
+{k:"m18",s:"Major",n:"XVIII — The Moon",p:"Cresselia",f:"The Dream / The Illusion.",
+ up:{t:"now",x:"Gain 1d3 minor wishes — reality-editing at the scale of a single scene each. A door that was locked wasn't. A Pokémon that was hostile is calm. A fall that was fatal wasn't. Each must be used within the arc, and each is real.",arc:1},
+ rev:{t:"now",x:"For the rest of the arc, the GM narrates one false detail per session to you privately. Locations you visit, people you meet, and battles you fight may not be what you were shown. Your allies see the truth. They cannot convince you.",arc:1}},
+{k:"m19",s:"Major",n:"XIX — The Sun",p:"Ho-Oh",f:"The Radiance / The Burnout.",
+ up:{t:"now",x:"Everything you have grows at once. Gain enough Bonus EXP to advance two Trainer Levels, and enough for every Pokémon in your party to advance two levels. One Pokémon of your choice becomes Shiny and permanently gains +2 to all Base Stats.",
+   fx:[{kind:"levels",trainer:2,party:2},{kind:"shiny",target:"mon"},{kind:"monstat",n:2,count:"all",target:"mon"}]},
+ rev:{t:"now",x:"You blaze and gutter. Gain the same two levels of Bonus EXP — then, at the end of the arc, lose three levels. Your body cannot hold what you were given.",arc:1,fx:{kind:"levels",trainer:2,party:2}}},
+{k:"m20",s:"Major",n:"XX — Judgement",p:"Arceus",f:"The Calling / The Verdict.",
+ up:{t:"now",x:"A Legendary Pokémon judges you worthy and joins you — not as a captured creature but as an ally with its own will. It obeys you in matters it agrees with, which is most of them. It will leave if you become someone it does not recognize."},
+ rev:{t:"now",x:"A Legendary Pokémon judges you unworthy. It becomes a recurring, personal antagonist, it knows where you are at all times, and it will interfere with your plans on principle until you earn its respect or destroy it."}},
+{k:"m21",s:"Major",n:"XXI — The World",p:"Giratina",f:"Completion / The Void.",
+ up:{t:"now",x:"You touch the whole of it for a moment. Permanently gain +1 to every Base Stat, +3 AP, one Feature of your choice, and one rank in every Skill you are below Adept in. You also gain a true, complete answer to any one question about the nature of the setting itself.",
+   fx:[{kind:"stat",n:1,count:"all"},{kind:"ap",n:3},{kind:"rankUpTo",rank:"Adept"}]},
+ rev:{t:"now",x:"Your soul is taken and imprisoned somewhere far outside the world. Your body remains, alive, breathing, and utterly empty. You cannot act, cannot be healed, cannot be woken. Only a direct rescue — a journey the rest of the party must undertake — brings you back. This is the worst card in the deck and it is meant to be."}},
+];
+const arcanaByKey = Object.fromEntries(ARCANA.map(c=>[c.k,c]));
+const ARCANA_TAGS = { now:["Now","resolves the moment it's drawn"],
+                      held:["Held","the player chooses when to spend it"],
+                      fated:["Fated","it fires on its own; it cannot be refused"] };
+
+/* ---------- reading a held card ---------- */
+/* the Cards sub-tab shows for the GM (to deal cards) or once the Trainer actually holds one */
+function cardsCanSee(t){ return isGM() || ((t && t.cards || []).length > 0); }
+function cardDef(c){ return arcanaByKey[c && c.key] || null; }
+function cardFace(c){ const d = cardDef(c); return d ? (c.orientation==="rev" ? d.rev : d.up) : null; }
+function cardFxList(c){ const f = cardFace(c); return !f || !f.fx ? [] : (Array.isArray(f.fx) ? f.fx : [f.fx]); }
+function cardIsMajor(c){ const d = cardDef(c); return !!d && d.s==="Major"; }
+function cardTitle(c){ const d = cardDef(c); return (d ? d.n : "Card") + " " + (c.orientation==="rev" ? "▼" : "▲"); }
+/* a card is only legible to a player once the GM stops hiding it */
+function cardMasked(c){ return !!(c && c.hidden) && !isGM(); }
+/* which Skills an fx touches — fixed in the data, or whatever the GM picked */
+function cardFxSkills(fx, pick){
+  if(Array.isArray(fx.skill)) return fx.skill;
+  if(fx.skill && fx.skill!=="pick" && fx.skill!=="best") return [fx.skill];
+  return (pick && pick.skills) || [];
+}
+/* how many choices an fx still needs before ⚡ Apply can fire */
+function cardFxNeeds(fx){
+  const need = [];
+  if(fx.kind==="skill" && (fx.skill==="pick" || fx.skill==="best")) need.push("skill");
+  if(fx.kind==="rank"  && (fx.skill==="pick" || fx.skill==="best")) need.push("skill");
+  if(fx.kind==="stat"  && fx.count!=="all") need.push("stat");
+  if(fx.kind==="monstat" && fx.count && fx.count!=="all") need.push("monstat");
+  if(fx.target==="mon" || fx.target==="two") need.push(fx.target==="two" ? "mon2" : "mon");
+  return need;
+}
+function cardPick(c, i){ return (c.picks||{})[i] || {}; }
+function cardSetPick(c, i, patch){
+  if(!c.picks) c.picks = {};
+  c.picks[i] = Object.assign({}, c.picks[i]||{}, patch);
+}
+/* every choice filled in? */
+function cardReady(c){
+  return cardFxList(c).every((fx,i)=>{
+    const pk = cardPick(c,i);
+    return cardFxNeeds(fx).every(need=>{
+      if(need==="skill")   return (pk.skills||[]).length>=1;
+      if(need==="stat")    return (pk.stats||[]).length >= (fx.count||1);
+      if(need==="monstat") return (pk.monStats||[]).length >= (fx.count||1);
+      if(need==="mon")     return !!pk.monId;
+      if(need==="mon2")    return !!pk.monId && !!pk.monId2;
+      return true;
+    });
+  });
+}
+/* the Trainer's best Skill — what "the deck chooses your best" means mechanically */
+function cardBestSkill(t){
+  let best = null, n = -1;
+  SKILLS.forEach(([k])=>{ const r = rankNum((t.skills||{})[k] || "Untrained"); if(r > n){ n = r; best = k; } });
+  return best;
+}
+
+/* ---------- the LIVE layer (mirrors giftStatBonus: derived, never written to the sheet) ---------- */
+/* Only applied cards count, and a conditional effect only counts while the GM has its 🔆 switch on. */
+function cardLive(t){
+  const out = { stats:{hp:0,atk:0,def:0,spatk:0,spdef:0,spd:0}, skills:{}, hp:0, ap:0, dr:0,
+                caps:{power:0,move:0}, party:0, shopBuy:0, shopSell:0 };
+  (t && t.cards || []).forEach(c=>{
+    if(!c.applied) return;
+    cardFxList(c).forEach((fx,i)=>{
+      if(fx.cond && c.active===false) return;          // condition isn't in play right now
+      const pk = cardPick(c,i);
+      switch(fx.kind){
+        case "skill": cardFxSkills(fx,pk).forEach(k=>{ out.skills[k] = (out.skills[k]||0) + fx.n; }); break;
+        case "hp":    out.hp += fx.n; break;
+        case "ap":    out.ap += fx.n; break;
+        case "dr":    out.dr += fx.n; break;
+        case "party": out.party += fx.n; break;
+        case "cap":   out.caps[fx.cap] = (out.caps[fx.cap]||0) + fx.n; break;
+        case "shop":  out.shopBuy += (fx.buy||0); out.shopSell += (fx.sell||0); break;
+        case "stat":  (fx.count==="all" ? STATS.map(s=>s[0]) : (pk.stats||[]))
+                        .forEach(k=>{ if(out.stats[k]!==undefined) out.stats[k] += fx.n; }); break;
+      }
+    });
+  });
+  return out;
+}
+function cardStatBonus(t){ return cardLive(t).stats; }
+function cardSkillBonus(t, key){ return cardLive(t).skills[key] || 0; }
+/* carried-party size: 6 by default, moved by Ten of Cups (Core p.63 assumes six) */
+function partyCap(t){ return Math.max(1, 6 + cardLive(t).party); }
+/* Two of Pentacles / Page of Pentacles swing what everything costs */
+function cardShopPct(t){ const l = cardLive(t); return { buy:l.shopBuy, sell:l.shopSell }; }
+
+/* ---------- ⚡ Apply: the one-shot effects ---------- */
+/* These write to the sheet through the normal writers (moneyChange, tpChange…) so they land in the
+   ledgers like any other movement. Rank changes remember what they overwrote, so pulling the card
+   off the sheet can put the Skill back where it was. */
+function cardApply(t, c){
+  const ch = activeChar();
+  const why = `Arcana: ${cardTitle(c)}`;
+  const party = () => (ch.pokemon||[]).filter(p=>p.onTeam && !isMomSpecies(p.species));
+  const done = [];
+  const capRank = (i, cap) => Math.max(0, Math.min(RANKS.indexOf(cap||"Master"), i));
+  cardFxList(c).forEach((fx,i)=>{
+    const pk  = cardPick(c,i);
+    const mon = pk.monId  ? (ch.pokemon||[]).find(p=>p.id===pk.monId)  : null;
+    const mon2= pk.monId2 ? (ch.pokemon||[]).find(p=>p.id===pk.monId2) : null;
+    const bumpStat = (p, keys, n) => {
+      if(!p) return;
+      if(!p.arcanaStats || typeof p.arcanaStats!=="object") p.arcanaStats = {};
+      keys.forEach(k=>{ p.arcanaStats[k] = (p.arcanaStats[k]||0) + n; });
+      done.push(`${p.nickname||getSpecies(p.species)?.name||"Pokémon"} ${n>0?"+":""}${n} ${keys.map(k=>(STATS.find(s=>s[0]===k)||[])[1]||k).join("/")}`);
+    };
+    switch(fx.kind){
+      case "money": { const d = moneyChange(t, fx.n, why, {kind:"arcana"});
+        if(d) done.push(`${d>0?"＋":"－"}${fmtMoney(Math.abs(d))}`); break; }
+      case "moneyZero": { const d = moneySetTo(t, 0, why, {kind:"arcana"});
+        if(d) done.push(`lost ${fmtMoney(Math.abs(d))} — everything`); break; }
+      case "rank": {
+        const keys = cardFxSkills(fx, pk);
+        if(!c.prevRanks) c.prevRanks = [];
+        keys.forEach(k=>{
+          const was = (t.skills||{})[k] || "Untrained";
+          const to  = RANKS[capRank(RANKS.indexOf(was) + fx.n, fx.cap)] || was;
+          c.prevRanks.push({key:k, was});
+          t.skills[k] = to;
+          done.push(`${(SKILLS.find(s=>s[0]===k)||[])[1]}: ${was} → ${to}`);
+        });
+        break; }
+      case "rankUpTo": {
+        const ceiling = RANKS.indexOf(fx.rank);
+        if(!c.prevRanks) c.prevRanks = [];
+        SKILLS.forEach(([k])=>{
+          const was = (t.skills||{})[k] || "Untrained";
+          if(RANKS.indexOf(was) >= ceiling) return;              // only what you're below Adept in
+          c.prevRanks.push({key:k, was});
+          t.skills[k] = RANKS[RANKS.indexOf(was)+1];
+        });
+        if(c.prevRanks.length) done.push(`${c.prevRanks.length} Skill${c.prevRanks.length===1?"":"s"} raised a Rank`);
+        break; }
+      case "tp": {
+        const list = fx.target==="all" ? party() : (mon?[mon]:[]);
+        let moved = 0; list.forEach(p=>{ moved += Math.abs(tpChange(p, fx.n, why, {kind:"arcana"})); });
+        if(moved) done.push(`${fx.n>0?"＋":"－"}${Math.abs(fx.n)} Tutor Point${Math.abs(fx.n)===1?"":"s"} × ${list.length}`);
+        break; }
+      case "loyalty": {
+        const list = fx.target==="all"     ? party()
+                   : fx.target==="allBut1" ? (()=>{ const ps=party().slice().sort((a,b)=>(b.loyalty||0)-(a.loyalty||0)); return ps.slice(1); })()
+                   : fx.target==="two"     ? [mon, mon2].filter(Boolean)
+                   : (mon?[mon]:[]);
+        list.forEach(p=>{ p.loyalty = typeof fx.set==="number" ? fx.set
+                                    : Math.max(0, Math.min(6, (p.loyalty||0) + fx.n)); });
+        if(list.length) done.push(typeof fx.set==="number" ? `Loyalty set to ${fx.set} × ${list.length}`
+                                                           : `${fx.n>0?"＋":"－"}1 Loyalty × ${list.length}`);
+        break; }
+      case "injury": {
+        if(fx.clear){                                            // Temperance: the whole party mends
+          t.injuries = 0; (ch.pokemon||[]).forEach(p=>{ p.injuries = 0; });
+          done.push("all Injuries healed"); break;
+        }
+        const tgt = fx.target==="self" ? t : mon;
+        if(tgt){ tgt.injuries = Math.max(0, (tgt.injuries||0) + fx.n);
+          done.push(`${fx.n>0?"＋":"－"}${Math.abs(fx.n)} Injury`); }
+        break; }
+      case "monstat": {
+        const keys = fx.count==="all" ? STATS.map(s=>s[0]) : (pk.monStats||[]);
+        bumpStat(mon, keys, fx.n); break; }
+      case "heal": {
+        if(mon){ mon.statuses = []; mon.currentHP = pokeDerived(mon).maxHP;
+          done.push(`${mon.nickname||getSpecies(mon.species)?.name||"Pokémon"} fully healed & cured`); }
+        break; }
+      case "levels": {
+        if(fx.trainer){ t.level = Math.max(1, (t.level||1) + fx.trainer); done.push(`Trainer → Lv ${t.level}`); }
+        if(fx.party){ party().forEach(p=>{
+            p.level = Math.max(1, Math.min(MAX_LEVEL, (p.level||1) + fx.party));
+            p.xp = xpForLevel(p.level); autoAllocMom(p); tpSync(p);
+          }); done.push(`party ＋${fx.party} level${fx.party===1?"":"s"}`); }
+        break; }
+      case "shiny": if(mon){ mon.shiny = true; done.push("✨ shiny"); } break;
+      case "rest":  endDay(); done.push("Extended Rest taken"); break;
+      case "gift":  setTimeout(()=>openAddGift(t), 0); done.push("Legendary Gift — grant it in the 🎁 tab"); break;
+      case "evolve":
+        if(mon){
+          const opts = nextEvolutions(mon);
+          if(!opts.length){ toast("Nothing to evolve into — give it +3 to a Base Stat and Loyalty 6 instead"); }
+          else setTimeout(()=>cardEvolvePick(mon, opts), 0);
+        }
+        break;
+    }
+  });
+  c.applied = true;
+  c.appliedAt = Date.now();
+  if(c.active===undefined) c.active = true;                 // conditional effects start switched on
+  c.appliedNote = done.join(" · ");
+  save(); renderTrainer();
+  toast(done.length ? `${cardTitle(c)} — ${done.join(" · ")}` : `${cardTitle(c)} applied`);
+}
+/* The Empress ignores every evolution requirement, so this offers the branch and lets evolveTo do the rest */
+function cardEvolvePick(p, opts){
+  if(opts.length===1) return evolveTo(p, opts[0].target, null);
+  const sel = el("select",{style:"width:100%"});
+  opts.forEach(o=>sel.append(el("option",{value:o.target}, `${o.target}${o.method?`  (normally ${o.method})`:""}`)));
+  modal({title:"The Empress — evolve into", bodyNode:el("div",{},
+      el("div",{class:"muted small",style:"margin-bottom:8px"},"Level, item and condition requirements are ignored."), sel),
+    footNodes:[ el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+      el("button",{class:"btn-primary",onclick:()=>{ const v=sel.value; closeModal(); evolveTo(p, v, null); }},"Evolve") ]});
+}
+/* Taking a card off the sheet. Live effects vanish with it; Rank changes are put back; anything that
+   moved money, levels or Tutor Points stays moved — those went through the ledgers and are history. */
+function cardRemove(t, c){
+  const oneShot = (c.appliedNote||"").trim();
+  const warn = c.applied && oneShot
+    ? `\n\nWhat it already did stays done (${oneShot}) — only its ongoing effects come off.` : "";
+  if(!confirm(`Remove ${cardTitle(c)} from this Trainer?${warn}`)) return;
+  (c.prevRanks||[]).slice().reverse().forEach(r=>{ if(t.skills) t.skills[r.key] = r.was; });
+  t.cards = (t.cards||[]).filter(x=>x!==c);
+  save(); renderTrainer(); toast(`${cardTitle(c)} removed`);
+}
+
+/* ---------- what a card promises, in one line ---------- */
+/* statLbl already exists further down (Natures) — cards reuse it rather than shadow it */
+const skillLbl = k => (SKILLS.find(s=>s[0]===k)||[])[1] || k;
+function cardFxText(fx, pk){
+  const n = fx.n, sign = n>0 ? "+" : "−", abs = Math.abs(n||0);
+  switch(fx.kind){
+    case "skill": { const ks = cardFxSkills(fx, pk);
+      return `${sign}${abs} to ${ks.length ? ks.map(skillLbl).join(" & ")+" checks"
+                                : (fx.skill==="best" ? "your best Skill" : "a Skill of your choice")}`; }
+    case "hp":    return `${sign}${abs} Max HP`;
+    case "ap":    return `${sign}${abs} Max AP`;
+    case "dr":    return `Damage Reduction ${sign}${abs}`;
+    case "party": return `party size ${sign}${abs}`;
+    case "cap":   return fx.cap==="move" ? `${sign}${abs} to every Movement capability` : `Power ${sign}${abs}`;
+    case "shop":  return [fx.buy?`buy ${fx.buy>0?"+":""}${fx.buy}%`:"", fx.sell?`sell ${fx.sell>0?"+":""}${fx.sell}%`:""].filter(Boolean).join(", ");
+    case "stat":  return fx.count==="all" ? `${sign}${abs} to every Base Stat`
+                  : `${sign}${abs} to ${fx.count||1} Base Stat${(fx.count||1)===1?"":"s"}${(pk&&pk.stats||[]).length?` (${pk.stats.map(statLbl).join(", ")})`:""}`;
+    case "money": return `${n>0?"gain":"lose"} ${fmtMoney(abs)}${fx.repeat?" — repeatable":""}`;
+    case "moneyZero": return "lose every ₽ you have";
+    case "rank":  return `${sign}${abs} Skill Rank${fx.cap?` (max ${fx.cap})`:""}`;
+    case "rankUpTo": return `+1 Rank in every Skill below ${fx.rank}`;
+    case "tp":    return `${sign}${abs} Tutor Point${abs===1?"":"s"}${fx.target==="all"?" — whole party":""}`;
+    case "loyalty": return typeof fx.set==="number" ? `Loyalty set to ${fx.set}`
+                  : `${sign}${abs} Loyalty${fx.target==="all"?" — whole party":fx.target==="allBut1"?" — all but your highest":fx.target==="two"?" × 2":""}`;
+    case "injury": return fx.clear ? "heal every Injury in the party" : `${sign}${abs} Injury`;
+    case "monstat": return fx.count==="all" ? `${sign}${abs} to all of its Base Stats`
+                  : `${sign}${abs} to ${fx.count||1} of its Base Stats`;
+    case "heal":  return "fully heal & cure one Pokémon";
+    case "levels": return [fx.trainer?`+${fx.trainer} Trainer level${fx.trainer===1?"":"s"}`:"",
+                           fx.party?`+${fx.party} level${fx.party===1?"":"s"} for the party`:""].filter(Boolean).join(", ");
+    case "shiny": return "one Pokémon becomes ✨ Shiny";
+    case "evolve": return "evolve one Pokémon, ignoring every requirement";
+    case "gift":  return "grant a Legendary Gift";
+    case "rest":  return "an Extended Rest for the whole party";
+    case "note":  return "";
+    default: return "";
+  }
+}
+/* the choices an unapplied card is still waiting on */
+function cardPickerRow(t, c, fx, i){
+  const ch = activeChar(), pk = cardPick(c,i), needs = cardFxNeeds(fx);
+  if(!needs.length) return null;
+  const wrap = el("div",{class:"inline",style:"flex-wrap:wrap;gap:6px;margin-top:5px"});
+  const lock = !!c.applied;
+  const mkSel = (label, value, opts, on) => {
+    const s = el("select",{class:"equip-focus",title:label});
+    s.append(el("option",{value:""}, label));
+    opts.forEach(([k,l])=> s.append(el("option",{value:k, selected:value===k}, l)));
+    s.disabled = lock;
+    s.addEventListener("change",()=>{ on(s.value); save(); renderTrainer(); });
+    return s;
+  };
+  const monOpts = () => (ch.pokemon||[]).filter(p=>!isMomSpecies(p.species))
+    .map(p=>[p.id, `${p.nickname||getSpecies(p.species)?.name||p.species} · Lv${p.level}${p.onTeam?"":" · box"}`]);
+  needs.forEach(need=>{
+    if(need==="skill"){
+      // "the deck chooses your best" — pre-resolve it, but let the GM overrule
+      const cur = (pk.skills||[])[0] || (fx.skill==="best" ? cardBestSkill(t) : "");
+      if(fx.skill==="best" && !(pk.skills||[]).length && cur){ cardSetPick(c,i,{skills:[cur]}); }
+      wrap.append(mkSel(fx.skill==="best" ? "your best Skill…" : "choose a Skill…", cur,
+        SKILLS.map(([k,l])=>[k, `${l} · ${(t.skills||{})[k]||"Untrained"}`]),
+        v=> cardSetPick(c,i,{skills: v?[v]:[]})));
+    }
+    if(need==="stat" || need==="monstat"){
+      const key = need==="stat" ? "stats" : "monStats";
+      const cnt = fx.count||1;
+      for(let j=0;j<cnt;j++){
+        wrap.append(mkSel(cnt>1?`Base Stat ${j+1}…`:"choose a Base Stat…", (pk[key]||[])[j]||"", STATS,
+          v=>{ const arr=(cardPick(c,i)[key]||[]).slice(); arr[j]=v; cardSetPick(c,i,{[key]:arr.filter(Boolean)}); }));
+      }
+    }
+    if(need==="mon" || need==="mon2"){
+      wrap.append(mkSel("choose a Pokémon…", pk.monId||"", monOpts(), v=> cardSetPick(c,i,{monId:v})));
+      if(need==="mon2") wrap.append(mkSel("…and a second", pk.monId2||"", monOpts(), v=> cardSetPick(c,i,{monId2:v})));
+    }
+  });
+  return wrap;
+}
+
+/* ---------- the 🔮 Cards sub-tab ---------- */
+function cardsCard(t){
+  const gm = isGM();
+  const card = el("div",{class:"card"}, el("h3",{},"The Arcana",
+    el("div",{class:"inline"}, gm
+      ? el("button",{class:"linkbtn h-act", onclick:()=>openAddCard(t)}, "+ deal a card")
+      : el("span",{class:"muted small"},"dealt by your GM"))));
+  card.append(el("div",{class:"muted small",style:"margin:-4px 0 8px"},
+    "A Deck of Many Things. ▲ upright and ▼ reversed are different effects — read as it lands, from the drawer's side. Only the GM resolves a card."));
+  const list = t.cards || [];
+  if(!list.length){
+    card.append(el("div",{class:"muted small"}, gm
+      ? "No cards held — tap “+ deal a card” to hand one to this Trainer."
+      : "You are holding no cards."));
+    return card;
+  }
+  list.forEach(c => card.append(arcanaRow(t, c, gm)));
+
+  /* what the held hand is doing to the sheet right now */
+  const live = cardLive(t), bits = [];
+  STATS.forEach(([k,l])=>{ if(live.stats[k]) bits.push(`${live.stats[k]>0?"+":""}${live.stats[k]} ${l}`); });
+  SKILLS.forEach(([k,l])=>{ if(live.skills[k]) bits.push(`${live.skills[k]>0?"+":""}${live.skills[k]} ${l}`); });
+  if(live.hp) bits.push(`${live.hp>0?"+":""}${live.hp} Max HP`);
+  if(live.ap) bits.push(`${live.ap>0?"+":""}${live.ap} Max AP`);
+  if(live.dr) bits.push(`DR ${live.dr>0?"+":""}${live.dr}`);
+  if(live.caps.power) bits.push(`${live.caps.power>0?"+":""}${live.caps.power} Power`);
+  if(live.caps.move)  bits.push(`${live.caps.move>0?"+":""}${live.caps.move} Movement`);
+  if(live.party) bits.push(`party size ${live.party>0?"+":""}${live.party} (${partyCap(t)} carried)`);
+  if(live.shopBuy)  bits.push(`buy ${live.shopBuy>0?"+":""}${live.shopBuy}%`);
+  if(live.shopSell) bits.push(`sell ${live.shopSell>0?"+":""}${live.shopSell}%`);
+  if(bits.length) card.append(el("div",{class:"small",style:"margin-top:10px;padding-top:8px;border-top:1px solid var(--line)"},
+    el("b",{},"In effect right now: "), bits.join(" · "),
+    el("span",{class:"muted"}," (live on your Combat totals and Skill checks)")));
+  return card;
+}
+function arcanaRow(t, c, gm){
+  const d = cardDef(c), face = cardFace(c);
+  const rev = c.orientation==="rev", major = cardIsMajor(c), masked = cardMasked(c);
+  const row = el("div",{class:"arcana"+(rev?" rev":"")+(major?" major":"")+(c.applied?" done":"")});
+
+  /* head — orientation, name, timing tag */
+  const head = el("div",{class:"arcana-head"});
+  head.append(el("span",{class:"arcana-orient",title:rev?"Reversed":"Upright"}, rev?"▼":"▲"));
+  const titleWrap = el("div",{style:"flex:1;min-width:0"});
+  titleWrap.append(el("div",{class:"arcana-name"}, d ? d.n : "Unknown card",
+    d && d.p ? el("span",{class:"muted small",style:"font-weight:400"}, `  ·  ${d.p}`) : ""));
+  const tag = face && ARCANA_TAGS[face.t];
+  const chips = el("div",{class:"arcana-chips"});
+  chips.append(el("span",{class:"arcana-suit"}, `${(ARCANA_SUITS[d?.s]||{}).icon||""} ${d?.s==="Major"?"Major Arcana":d?.s||""}`));
+  if(tag) chips.append(el("span",{class:"arcana-tag t-"+face.t, title:tag[1]}, `[${tag[0]}]`));
+  if(c.arcExpiry) chips.append(el("span",{class:"arcana-tag t-arc",title:"wears off the moment the badge is won"},"⏳ this arc"));
+  if(c.hidden) chips.append(el("span",{class:"arcana-tag t-hidden",title:gm?"players can't read this card's effect":"hidden"},"👁 hidden"));
+  if(c.applied) chips.append(el("span",{class:"arcana-tag t-done"}, face && face.t==="held" ? "spent" : "applied"));
+  titleWrap.append(chips);
+  head.append(titleWrap);
+  if(gm) head.append(el("button",{class:"linkbtn danger",title:"take this card off the sheet",
+    style:"align-self:flex-start", onclick:()=>cardRemove(t,c)},"×"));
+  row.append(head);
+
+  /* body — flavour + the face's text, or the mask */
+  if(masked){
+    row.append(el("div",{class:"arcana-masked"},
+      "🔮 The deck is still deciding. Your GM knows what this one does."));
+    return row;
+  }
+  if(d && d.f) row.append(el("div",{class:"arcana-flavour"}, d.f));
+  if(face) row.append(el("div",{class:"arcana-text"}, face.x));
+
+  /* automation */
+  const fxs = cardFxList(c);
+  const auto = fxs.map((fx,i)=>cardFxText(fx, cardPick(c,i))).filter(Boolean);
+  if(auto.length) row.append(el("div",{style:"margin-top:6px;display:flex;gap:4px;flex-wrap:wrap"},
+    ...auto.map(a=>el("span",{class:"badge-auto"}, a))));
+  if(gm) fxs.forEach((fx,i)=>{ const p = cardPickerRow(t,c,fx,i); if(p) row.append(p); });
+
+  /* GM controls */
+  if(gm){
+    const bar = el("div",{class:"inline",style:"flex-wrap:wrap;gap:8px;margin-top:8px"});
+    const hasFx = fxs.some(fx=>fx.kind!=="note");
+    const repeatable = fxs.some(fx=>fx.repeat);
+    if(hasFx && (!c.applied || repeatable)){
+      const ready = cardReady(c);
+      const lbl = fxs.find(fx=>fx.label)?.label
+        || (face && face.t==="held" ? "⚡ Spend this card" : "⚡ Apply effect");
+      bar.append(el("button",{class:"btn-primary", disabled: !ready,
+        title: ready ? "write this card's effect onto the sheet" : "fill in the card's choices first",
+        onclick:()=>cardApply(t,c)}, lbl));
+    }
+    if(fxs.some(fx=>fx.cond) && c.applied){
+      const on = c.active!==false;
+      bar.append(el("button",{class: on?"btn-secondary":"linkbtn",
+        title:"this effect only counts while its condition holds — flip it off when it doesn't",
+        onclick:()=>{ c.active = !on; save(); renderTrainer(); }}, on?"🔆 in effect":"🌑 dormant"));
+    }
+    bar.append(el("label",{class:"inline small",style:"gap:5px;cursor:pointer",
+      title:"hide this card's effect from the player — only you can read it"},
+      (()=>{ const cb = el("input",{type:"checkbox"}); cb.checked = !!c.hidden;
+             cb.addEventListener("change",()=>{ c.hidden = cb.checked; save(); renderTrainer(); }); return cb; })(),
+      el("span",{},"👁 hide from player")));
+    bar.append(el("label",{class:"inline small",style:"gap:5px;cursor:pointer",
+      title:"wears off the moment the next badge is won — remove it by hand then"},
+      (()=>{ const cb = el("input",{type:"checkbox"}); cb.checked = !!c.arcExpiry;
+             cb.addEventListener("change",()=>{ c.arcExpiry = cb.checked; save(); renderTrainer(); }); return cb; })(),
+      el("span",{},"⏳ expires end of arc")));
+    row.append(bar);
+  }
+
+  if(c.appliedNote) row.append(el("div",{class:"small",style:"margin-top:5px;color:var(--good)"}, "✔ " + c.appliedNote));
+
+  /* the note box — every card gets one, flavour cards especially (which rival, which item, the
+     secret condition that breaks a curse). GM writes; the player reads it unless the card is hidden. */
+  if(gm){
+    const ta = el("textarea",{class:"arcana-note",placeholder:"GM notes — the choice made, the NPC, the secret condition that lifts this…"});
+    ta.value = c.notes || "";
+    ta.addEventListener("change",()=>{ c.notes = ta.value; save(); });
+    row.append(ta);
+  } else if(c.notes){
+    row.append(el("div",{class:"arcana-notes-ro small"}, c.notes));
+  }
+  return row;
+}
+
+/* ---------- dealing a card ---------- */
+function openAddCard(t){
+  if(!isGM()){ toast("Only the GM deals from the Arcana"); return; }
+  const wrap = el("div",{});
+  const cardSel = el("select",{style:"width:100%"});
+  cardSel.append(el("option",{value:""},"— choose the card that landed —"));
+  ["Wands","Cups","Swords","Pentacles","Major"].forEach(suit=>{
+    const info = ARCANA_SUITS[suit];
+    const og = el("optgroup",{label:`${info.icon} ${suit==="Major"?"The Major Arcana":suit+" — "+info.arena}`});
+    ARCANA.filter(c=>c.s===suit).forEach(c=> og.append(el("option",{value:c.k}, c.n)));
+    cardSel.append(og);
+  });
+  const orient = el("select",{style:"width:100%"});
+  orient.append(el("option",{value:"up"},"▲ Upright"), el("option",{value:"rev"},"▼ Reversed"));
+  const hideCb = el("input",{type:"checkbox"});
+  const preview = el("div",{class:"arcana-preview"});
+  const sync = ()=>{
+    preview.innerHTML = "";
+    const d = arcanaByKey[cardSel.value];
+    if(!d){ preview.append(el("span",{class:"muted small"},"Pick a card to see what each side does.")); return; }
+    const face = orient.value==="rev" ? d.rev : d.up;
+    const tag = ARCANA_TAGS[face.t];
+    preview.append(el("div",{class:"arcana-flavour"}, `${(ARCANA_SUITS[d.s]||{}).icon||""} ${d.f}${d.p?`  ·  ${d.p}`:""}`));
+    preview.append(el("div",{style:"margin:4px 0 6px"},
+      el("span",{class:"arcana-tag t-"+face.t}, `[${tag[0]}]`),
+      el("span",{class:"muted small",style:"margin-left:6px"}, tag[1])));
+    preview.append(el("div",{class:"arcana-text"}, face.x));
+    const fxs = !face.fx ? [] : (Array.isArray(face.fx)?face.fx:[face.fx]);
+    const auto = fxs.map(fx=>cardFxText(fx,null)).filter(Boolean);
+    preview.append(auto.length
+      ? el("div",{style:"margin-top:6px;display:flex;gap:4px;flex-wrap:wrap"}, ...auto.map(a=>el("span",{class:"badge-auto"},a)))
+      : el("div",{class:"muted small",style:"margin-top:6px"},"No automation — pure flavour. Write the choice into the card's notes."));
+    if(face.arc) preview.append(el("div",{class:"muted small",style:"margin-top:5px"},"⏳ Lasts until the next badge is won — the “expires end of arc” box will be ticked."));
+  };
+  cardSel.addEventListener("change", sync);
+  orient.addEventListener("change", sync);
+  wrap.append(
+    el("label",{class:"field"}, el("span",{},"Card"), cardSel), el("div",{style:"height:8px"}),
+    el("label",{class:"field"}, el("span",{},"Orientation — read it from the drawer's side"), orient), el("div",{style:"height:8px"}),
+    preview, el("div",{style:"height:8px"}),
+    el("label",{class:"inline",style:"gap:8px;cursor:pointer"}, hideCb,
+      el("span",{class:"small"},"👁 Hide this card's effect from the player (only you can read it)")),
+  );
+  sync();
+  modal({title:"Deal a card from the Arcana", bodyNode:wrap, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      const d = arcanaByKey[cardSel.value];
+      if(!d){ toast("Choose which card landed"); return; }
+      const face = orient.value==="rev" ? d.rev : d.up;
+      if(!Array.isArray(t.cards)) t.cards = [];
+      t.cards.push({ id:uid(), key:d.k, orientation:orient.value, hidden:hideCb.checked,
+                     arcExpiry:!!face.arc, applied:false, picks:{}, notes:"", dealtAt:Date.now() });
+      save(); closeModal(); trainerTab="cards"; renderTrainer();
+      toast(`${d.n} ${orient.value==="rev"?"▼":"▲"} dealt`);
+    }},"Deal it"),
+  ]});
+}
+
+/* ===================================================================
    POKÉMON VIEW
 =================================================================== */
 let openMon = null;   // id of pokemon being edited, or null = party list
@@ -4628,13 +5448,19 @@ function renderPokemon(){
   const c = activeChar();
   if (openMon){ const p = c.pokemon.find(x=>x.id===openMon); if(p){ renderMonEditor(root,p); return; } openMon=null; }
 
+  /* Handing out Pokémon is the GM's job in a campaign: players (and Map Viewers, who are never
+     isGM) get no Add button at all — they gain Pokémon by catching them or withdrawing from the PC.
+     Offline/solo play keeps it, or a sheet used without a campaign could never be filled in. */
+  const mayAdd = isGM() || mode!=="cloud";
   const bar = el("div",{class:"inline",style:"margin-bottom:12px"});
-  bar.append(el("button",{class:"btn-primary",onclick:()=>addPokemon()},"＋ Add Pokémon"));
+  if(mayAdd) bar.append(el("button",{class:"btn-primary",onclick:()=>addPokemon()},"＋ Add Pokémon"));
   if(mode==="cloud") bar.append(el("button",{class:"btn-secondary",onclick:()=>switchTab("pc")},"🖥 PC"));
-  root.append(bar);
+  if(bar.children.length) root.append(bar);
 
   if(!c.pokemon.length){
-    root.append(el("div",{class:"addcard", onclick:()=>addPokemon()}, "＋ Add your first Pokémon"));
+    if(mayAdd) root.append(el("div",{class:"addcard", onclick:()=>addPokemon()}, "＋ Add your first Pokémon"));
+    else root.append(el("div",{class:"card"}, el("span",{class:"muted"},
+      "No Pokémon yet — catch one on the Map, or ask your GM. Anything stored for you shows up in the 🖥 PC.")));
     return;
   }
   // "Mom?" is a hidden Symbiant: it lives in its own section between Team and Box and never
@@ -4667,7 +5493,8 @@ function renderPokemon(){
 }
 function setTeam(p, on){
   const c = activeChar();
-  if(on && c.pokemon.filter(x=>x.onTeam).length>=6){ toast("Team is full (6). Remove one first."); return; }
+  const cap = partyCap(c.trainer);                 // 6, unless Ten of Cups moved it
+  if(on && c.pokemon.filter(x=>x.onTeam).length>=cap){ toast(`Team is full (${cap}). Remove one first.`); return; }
   p.onTeam = on; save(); renderPokemon();
 }
 /* reorder a Pokémon within the party (team). dir = -1 up / +1 down. Swaps its slot
@@ -4756,8 +5583,8 @@ function addPokemon(){
     const sp = getSpecies(name);
     if(sp && sp.abilities.basic[0]){ p.abilities = [sp.abilities.basic[0]]; }
     if(isMomSpecies(name)){ p.onTeam = false; autoAllocMom(p); }   // never on the team; stats auto-filled
-    // limit active team to 6; extra Pokémon go to the box
-    else if(activeChar().pokemon.filter(x=>x.onTeam && !isMomSpecies(x.species)).length >= 6) p.onTeam = false;
+    // limit the active team to the carried-party cap (6 by default); extra Pokémon go to the box
+    else if(activeChar().pokemon.filter(x=>x.onTeam && !isMomSpecies(x.species)).length >= partyCap(activeChar().trainer)) p.onTeam = false;
     activeChar().pokemon.push(p); save(); openMon=p.id; renderPokemon(); render();
   }, "species");
 }
@@ -5751,6 +6578,828 @@ function openFoodPicker(owner, kind, bag, commit, opts={}){
   }, null, null, null, sub);
 }
 
+/* ═══════════════════════ TUTOR POINTS & THE TP LEDGER ═══════════════════════
+   Tutor Points arrive on their own — 1 when the Pokémon is caught/hatched plus 1 for every
+   5 Levels (Core p.72) — and they only ever move through tpChange(), which writes down what
+   happened on the sheet itself (`p.tpLog`), exactly the way the Trainer's money does (see
+   moneyChange). So "why has Ivy only got 1 point left?" is a question the sheet answers by
+   itself: the Tutor moves, the Poké Edges, the Move Sync and the TM the GM charged for are
+   all in the list, newest first.
+
+   Two fields carry it:
+     p.tutorPoints — points still AVAILABLE (every existing reader keeps working unchanged)
+     p.tpCredited  — the formula total already handed over, so levelling up credits only the
+                     DIFFERENCE. Points already spent are never re-floored, and there is no
+                     "sync to earned" button to remember to press.  */
+/* TP_LOG_MAX / TP_KIND_ICON live up with the reference constants, not here: normPokemon → tpSync can
+   reach tpChange while load() is still running, and load() swallows exceptions — a const declared
+   this far down the file would be in its temporal dead zone and quietly wipe a local save. */
+function tpLogOf(p){ return Array.isArray(p.tpLog) ? p.tpLog : (p.tpLog = []); }
+function tpLeft(p){ const n = parseInt(p && p.tutorPoints); return (isFinite(n) && n>0) ? n : 0; }
+/* Tutor Points handed over by something other than levelling. Expand Horizons (a Mentor's
+   Feature, +3 to one Pokémon ever) is the only one in the book. */
+function tpGrantBonus(p){ return pokeEdgeCount(p, "Expand Horizons") * 3; }
+/* every point this Pokémon should ever have been GIVEN, as things stand right now */
+function tpTotalEarned(p){ return tutorPointsEarned(p && p.level) + tpGrantBonus(p); }
+/* Move Tutor Points and record it. Returns the delta ACTUALLY applied — you can't go below 0,
+   and the ledger records what really happened rather than what was asked for. */
+function tpChange(p, delta, why, opts={}){
+  if(!p) return 0;
+  const before = tpLeft(p);
+  const after  = Math.max(0, before + (Math.round(Number(delta)) || 0));
+  const d = after - before;
+  if(!d) return 0;                                   // nothing moved → nothing worth writing down
+  p.tutorPoints = after;
+  const log = tpLogOf(p);
+  log.push({ id:uid(), at:Date.now(), delta:d, after, lvl:p.level||1,
+             why:String(why||"").trim().slice(0,120), kind:opts.kind||"hand" });
+  if(log.length > TP_LOG_MAX) log.splice(0, log.length - TP_LOG_MAX);
+  return d;
+}
+function tpSpend(p, n, why, opts){ return -tpChange(p, -Math.abs(parseInt(n)||0), why, opts); }   // → points actually spent
+function tpRefund(p, n, why, opts){ return tpChange(p,  Math.abs(parseInt(n)||0), why, opts); }
+/* "that total is wrong" — a correction, logged as the difference it actually made */
+function tpSetTo(p, value, why, opts){
+  return tpChange(p, Math.max(0, parseInt(value)||0) - tpLeft(p), why, opts || {kind:"set"});
+}
+/* Keep earned points in step with the Pokémon's Level and grants. Called from normPokemon (so
+   just opening a sheet catches up), from every Level/XP change, from evolution, and whenever a
+   points-granting Poké Edge is taken or dropped. It only ever moves the DIFFERENCE, so spent
+   points stay spent. A legacy Pokémon with no p.tpCredited adopts its current balance as-is. */
+function tpSync(p){
+  if(!p || typeof p.level!=="number") return 0;
+  const total = tpTotalEarned(p);
+  if(typeof p.tpCredited!=="number"){ p.tpCredited = total; return 0; }
+  const d = total - p.tpCredited;
+  if(!d) return 0;
+  p.tpCredited = total;
+  return tpChange(p, d, d>0 ? `earned — now Lv ${p.level}` : `total lowered (Lv ${p.level})`, {kind:"level"});
+}
+/* the balance the ledger starts from: everything the Pokémon had before it kept records */
+function tpLogOpening(p){
+  const log = tpLogOf(p);
+  return log.length ? Math.max(0, (log[0].after||0) - (log[0].delta||0)) : tpLeft(p);
+}
+function tpLogRow(e){
+  const up = (e.delta||0) > 0;
+  const row = el("div",{class:"money-row"});
+  row.append(el("div",{class:"money-amt "+(up?"up":"down"), title:`${e.after} left afterwards`},
+    (up?"＋":"－") + Math.abs(e.delta||0) + " TP"));
+  const mid = el("div",{style:"flex:1;min-width:0"});
+  mid.append(el("div",{class:"money-why"}, (TP_KIND_ICON[e.kind]||"")+" ", e.why || (up?"points in":"points spent")));
+  mid.append(el("div",{class:"small muted"}, new Date(e.at||0).toLocaleString(),
+    e.lvl?` · at Lv ${e.lvl}`:"", ` · left ${e.after}`));
+  row.append(mid);
+  return row;
+}
+function tpLogList(p, limit){
+  const log = tpLogOf(p);
+  const box = el("div",{class:"money-log"});
+  if(!log.length){
+    box.append(el("div",{class:"small muted"},
+      `nothing recorded yet — the ${tpLeft(p)} point${tpLeft(p)===1?"":"s"} on the sheet are where this Pokémon starts.`));
+    return box;
+  }
+  const rows = log.slice().reverse();
+  (limit ? rows.slice(0,limit) : rows).forEach(e=>box.append(tpLogRow(e)));
+  if(!limit || rows.length<=limit)
+    box.append(el("div",{class:"small muted",style:"padding-top:6px"},
+      `…before all this: ${tpLogOpening(p)} Tutor Point${tpLogOpening(p)===1?"":"s"} available.`));
+  return box;
+}
+function openTPLedger(p){
+  const body = el("div",{});
+  body.append(el("div",{class:"money-balance"}, `${tpLeft(p)} TP`,
+    el("span",{class:"small muted"}, ` available · ${tpTotalEarned(p)} earned by Lv ${p.level}`
+      + (tpGrantBonus(p)?` (incl. +${tpGrantBonus(p)} granted)`:""))));
+  body.append(tpLogList(p));
+  modal({ title:`🎓 ${monLabel(p)} — Tutor Point ledger`, bodyNode:body, footNodes:[
+    tpLogOf(p).length ? el("button",{class:"btn ghost danger",onclick:()=>{
+      if(!confirm("Clear this ledger? The available points are kept — only the history goes.")) return;
+      p.tpLog = []; save(); closeModal(); refreshMon(p);
+    }},"Clear history") : "",
+    el("button",{class:"btn-primary",onclick:closeModal},"Close"),
+  ]});
+}
+/* The Tutor Point control: what's left, ± with a reason (a TM the GM charged for, a Move
+   tutored by an NPC…), the total as a direct correction, and the ledger. Replaces the plain
+   number box — points now scale on their own, so this is for spending them, not tracking them. */
+function tutorPointControl(p){
+  const wrap = el("label",{class:"field"}, el("span",{},"Tutor Points"));
+  const total = el("input",{type:"number",min:0,value:tpLeft(p),
+    title:"points available — every change is written down in the ledger"});
+  const why = el("input",{type:"text",placeholder:"what for? (e.g. TM Thunderbolt)",style:"margin-top:5px",
+    title:"the note this shows up as in the ledger"});
+  const redraw = () => preserveScroll(()=>{ save(); refreshMon(p); });
+  total.addEventListener("change",()=>{
+    tpSetTo(p, total.value, why.value.trim() || "corrected by hand");
+    total.value = tpLeft(p); why.value = ""; redraw();
+  });
+  const amt = el("input",{type:"number",min:0,placeholder:"points",style:"flex:1;min-width:60px"});
+  const bump = (sign, ev) => {
+    if(ev) ev.preventDefault();
+    const n = Math.abs(parseInt(amt.value)||0); if(!n){ amt.focus(); return; }
+    const d = tpChange(p, sign*n, why.value.trim() || (sign>0?"added by hand":"spent by hand"), {kind:"hand"});
+    amt.value = ""; why.value = "";
+    if(!d) toast("No Tutor Points left to spend."); else toast(`${d>0?"＋":"－"}${Math.abs(d)} TP · ${tpLeft(p)} left`);
+    redraw();
+  };
+  amt.addEventListener("keydown", ev=>{ if(ev.key==="Enter"){ ev.preventDefault(); bump(-1); } });
+  wrap.append(total, el("div",{class:"inline",style:"gap:6px;margin-top:5px;flex-wrap:nowrap"},
+    amt,
+    el("button",{class:"btn ghost",style:"padding:4px 11px",title:"spend this many (TMs, tutoring, anything the GM charges for)",
+      onclick:ev=>bump(-1,ev)},"－"),
+    el("button",{class:"btn-secondary",style:"padding:4px 11px",title:"give this many back",
+      onclick:ev=>bump(1,ev)},"＋")));
+  wrap.append(why);
+  wrap.append(el("button",{class:"linkbtn",style:"margin-top:4px;text-align:left",
+    title:"every Tutor Point in and out of this Pokémon",
+    onclick:ev=>{ ev.preventDefault(); openTPLedger(p); }}, `📜 Ledger (${tpLogOf(p).length})`));
+  return wrap;
+}
+
+/* ═══════════════════════ POKÉ EDGES ═══════════════════════
+   Poké Edges (Core p.72, plus the two playtest packets) are what a Pokémon spends its Tutor
+   Points on. Each one lives on the sheet as
+       { id, name, arg, arg2, tp, free }
+   — `name` is the Edge as printed, `arg`/`arg2` the choice it asks for (which Skill, which
+   Capability, which Move…). Nothing is copied into the Pokémon's numbers: the derived layers
+   read this list, so an Edge can be dropped and its points refunded without leaving anything
+   behind. What reads what:
+     · Skill Improvement, Digital Avatar ............ monSkills()
+     · Capability Training, Advanced Mobility,
+       Seismometer, Aura Pulse, Psychic Navigator,
+       Gravity Training ............................ capabilityGrants() → monCapabilities()
+     · Mixed Sweeper, Realized Potential ........... pokeDerived().budget
+     · Underdog's Strength ......................... pokeBaseStats() (and it locks Evolution)
+     · Accuracy Training ........................... the AC every Move roll checks against
+     · Advanced Connection ......................... the Move-List limit
+     · Underdog's Lessons .......................... the TM/Tutor lists it may learn from
+     · Basic Ranged Attacks ........................ its elemental Struggle's range
+     · Ability Mastery, Mixed/Twisted Power ........ its Ability list
+     · Expand Horizons ............................. tpTotalEarned()
+   The one Base-Stat-Relation Edge (Attack Conflict) is tracked but not enforced — this sheet
+   has never policed Base Stat Relations, so there is nothing for it to switch off. Everything
+   marked 📋 below is prose the sheet can't resolve for you (an 8-minute Invisibility, driving a
+   vehicle); it still costs the right points, checks its prerequisites and shows its live
+   numbers, but you say it out loud at the table. ⚙ means the sheet applies it. */
+const PE_SKILL_LABEL = Object.fromEntries(SKILLS);                     // key → "Athletics"
+const PE_CAP_TRAIN = [["power","Power"],["highJump","High Jump"],["longJump","Long Jump"]];
+const PE_MOBILITY  = [["overland","Overland"],["sky","Sky"],["swim","Swim"],
+                      ["levitate","Levitate"],["burrow","Burrow"],["Teleporter","Teleporter"]];
+const PE_RANGED_CAPS = ["Firestarter","Fountain","Freezer","Guster","Materializer","Zapper"];
+const TREMORSENSE_BASE = 5;      // metres, from the Capability List — Seismometer adds Perception Rank on top
+/* the dex spells a couple of these differently from the Edges' prerequisite lines */
+const PE_CAP_ALIAS = { "aura reading":"Aura Reader", "telepathy":"Telepath", "invisiblity":"Invisibility" };
+
+/* read-only, and deliberately non-mutating: pokeDerived/monCapabilities call through here for every
+   creature on the Map, and quietly adding an empty array to a GM's encounter monster would show up
+   as a change for the cloud sync to push. Only addPokeEdge creates the list. */
+function pokeEdgeList(p){ return Array.isArray(p && p.pokeEdges) ? p.pokeEdges : []; }
+function pokeEdgesOf(p, name){ return pokeEdgeList(p).filter(e=>e.name===name); }
+function pokeEdgeCount(p, name){ return pokeEdgesOf(p, name).length; }
+function pokeEdgeDB(name){ return pokeEdgeByName.get(String(name||"").toLowerCase()) || null; }
+/* does this Pokémon have a named Capability right now? (base-named, so "Alluring (in Rain)" counts) */
+function monHasCapability(p, sp, name){
+  const want = String(PE_CAP_ALIAS[String(name).toLowerCase()] || name).toLowerCase();
+  return monCaps(sp || getSpecies(p && p.species), p).some(c => String(c).toLowerCase() === want);
+}
+function speciesBST(sp){ return STATS.reduce((s,[k]) => s + (sp?.baseStats?.[k]||0), 0); }
+/* Underdog Pokémon (Capability List): species with a Base Stat Total of 45 or less. The dex
+   flags them with the Underdog Capability; the total is checked too, for homebrew species. */
+function isUnderdogMon(p, sp){
+  sp = sp || getSpecies(p && p.species);
+  return monHasCapability(p, sp, "Underdog") || speciesBST(sp) <= 45;
+}
+/* every species at the end of this Pokémon's evolution line (a branching line has several) */
+function finalEvolutionNames(sp){
+  if(!sp || !sp.evolution || !sp.evolution.length) return [];
+  const maxStage = Math.max(...sp.evolution.map(e=>e.stage));
+  const mine = evoSelfEntry(sp);
+  if(mine && mine.stage >= maxStage) return [];                        // already a final stage
+  return [...new Set(sp.evolution.filter(e=>e.stage===maxStage).map(e=>parseEvoEntry(e.name).species))]
+    .filter(n=>getSpecies(n));
+}
+/* the Move an Ability with the Connection Keyword is connected to ("Connection - Whirlwind.") */
+function connectionMoveOf(abilityName){
+  const a = abilityByName.get(String(abilityName||"").toLowerCase());
+  const hit = /Connection\s*[-–—:]\s*([^.]+)\./i.exec(String((a&&a.effect)||""));
+  return hit ? canonMoveName(hit[1].trim()) : null;
+}
+function monConnectionAbilities(p){
+  return (p?.abilities||[]).filter(an=>connectionMoveOf(an));
+}
+
+/* ---------- the derived layers ---------- */
+/* A Pokémon's Skills as actually played: the species' printed dice/mod plus whatever its Poké
+   Edges bought. For a Pokémon the number of dice IS its Rank in that Skill (1d6 Pathetic … 6d6
+   Master), which is what every "adds their Focus Rank" effect reads. */
+function monSkills(p, sp){
+  sp = sp || getSpecies(p && p.species);
+  const out = {};
+  SKILLS.forEach(([k])=>{
+    const s = sp && sp.skills && sp.skills[k]; if(!s) return;
+    out[k] = { dice: Math.max(1, s.dice||1), mod: parseInt(String(s.mod||"").replace(/\s+/g,""))||0, why:[] };
+  });
+  if(!p) return out;
+  // Digital Avatar: "gains a 3d6 in Technology Education if it did not previously have one"
+  if(pokeEdgeCount(p,"Digital Avatar") && !out.technologyEd)
+    out.technologyEd = { dice:3, mod:0, why:["Digital Avatar"] };
+  // Skill Improvement: one Rank up, and only for a Skill still at its species default
+  pokeEdgesOf(p,"Skill Improvement").forEach(e=>{
+    const s = out[e.arg]; if(!s) return;
+    s.dice = Math.min(6, s.dice + 1);
+    s.why.push("Skill Improvement");
+  });
+  return out;
+}
+function monSkillRank(p, key, sp){ const s = monSkills(p, sp)[key]; return s ? s.dice : 0; }
+/* Capability changes bought with Tutor Points, in the same shape moveCapGrants/abilityCapGrants
+   return — so they flow through monCapabilities() into every chip row, the Map's movement modes
+   and the Struggle-type picker without any of those knowing Poké Edges exist. */
+function pokeEdgeCapGrants(p){
+  const out = [];
+  const add = (name, field, value, mode, src) => out.push({ name, field, value, mode, src });
+  pokeEdgesOf(p,"Capability Training").forEach(e=>{
+    if(!PE_CAP_TRAIN.some(([k])=>k===e.arg)) return;
+    add(CAP_FIELD_LABEL[e.arg], e.arg, 1, "add", "Capability Training");
+  });
+  pokeEdgesOf(p,"Advanced Mobility").forEach(e=>{
+    if(e.arg==="Teleporter"){ add("Teleporter", null, 2, "add", "Advanced Mobility"); return; }
+    if(!PE_MOBILITY.some(([k])=>k===e.arg)) return;
+    add(CAP_FIELD_LABEL[e.arg], e.arg, 2, "add", "Advanced Mobility");
+  });
+  if(pokeEdgeCount(p,"Aura Pulse"))        add("Aura Pulse", null, null, null, "Aura Pulse (Poké Edge)");
+  if(pokeEdgeCount(p,"Psychic Navigator")) add("Psychic Navigator", null, null, null, "Psychic Navigator (Poké Edge)");
+  const grav = pokeEdgeCount(p,"Gravity Training");
+  if(grav) add("Gravitic Tolerance", null, grav*2, "add", "Gravity Training");
+  // Seismometer: Tremorsense reaches 5 m (Capability List) + the user's Perception Rank
+  if(pokeEdgeCount(p,"Seismometer"))
+    add("Tremorsense", null, TREMORSENSE_BASE + monSkillRank(p,"perception"), "min", "Seismometer");
+  return out;
+}
+/* Bonus Stat Points bought with Tutor Points — they widen the Level+10 pool in pokeDerived. */
+function pokeEdgeStatPoints(p, sp){
+  if(!p) return 0;
+  let n = 3 * (pokeEdgeCount(p,"Mixed Sweeper Rank 1") + pokeEdgeCount(p,"Mixed Sweeper Rank 2")
+             + pokeEdgeCount(p,"Mixed Sweeper Rank 3"));
+  if(pokeEdgeCount(p,"Realized Potential")) n += realizedPotentialPoints(p, sp);
+  return n;
+}
+/* Realized Potential: "Subtract the user's Species Base Stat Total from 45." */
+function realizedPotentialPoints(p, sp){
+  return Math.max(0, 45 - speciesBST(sp || getSpecies(p && p.species)));
+}
+function pokeEdgeBaseBonus(p){ return pokeEdgeCount(p,"Underdog's Strength") ? 1 : 0; }
+function pokeEdgeBlocksEvolution(p){ return pokeEdgeCount(p,"Underdog's Strength") > 0; }
+/* Accuracy Training: "the AC of the target Move is permanently lowered by 1" (three Moves max) */
+function monACReduction(p, m){
+  if(!p) return 0;
+  const nm = String((m && (m.name||m)) || "").toLowerCase();
+  if(!nm) return 0;
+  return pokeEdgesOf(p,"Accuracy Training").filter(e=>String(e.arg||"").toLowerCase()===nm).length;
+}
+/* the AC a Move actually hits at for this Pokémon (null for Moves with no Accuracy Check) */
+function monMoveAC(p, m){
+  const base = m && m.ac;
+  if(base==null) return null;
+  return Math.max(1, base - monACReduction(p, m));
+}
+/* Advanced Connection: "the Connected Move no longer takes up a Move Slot for the user" — so
+   each one whose Connected Move the Pokémon actually knows frees a slot. */
+function monMoveLimitBonus(p){
+  if(!p) return 0;
+  return pokeEdgesOf(p,"Advanced Connection").filter(e=>{
+    const mv = connectionMoveOf(e.arg);
+    return mv && (p.moves||[]).some(x=>String(x).toLowerCase()===String(mv).toLowerCase());
+  }).length;
+}
+/* Underdog's Lessons: the Final Evolution whose TM/HM and Tutor lists this Pokémon may now
+   learn from (all three takings must name the same one). */
+function underdogLessonSpecies(p){
+  const e = pokeEdgesOf(p,"Underdog's Lessons")[0];
+  return e && e.arg ? getSpecies(e.arg) : null;
+}
+/* Basic Ranged Attacks: does this Pokémon's elemental Struggle of `type` reach 6 m? */
+function pokeEdgeRangedStruggle(p, type){
+  if(!p || !type || type==="Normal") return false;
+  return pokeEdgesOf(p,"Basic Ranged Attacks").some(e=>STRUGGLE_TYPE_CAPS[e.arg]===type);
+}
+
+/* ---------- what each Edge costs, needs and does ----------
+   tp     Tutor Point cost · level  minimum Level · max  how many times it may be taken
+   args   the choice it asks for, as [value, label] pairs (absent = no choice)
+   need   extra prerequisite → the reason it's blocked, or null
+   auto   ⚙ the sheet applies it · 📋 tracked, resolved at the table
+   live   one line of what it is doing right now, with real numbers
+   onTake / onDrop / extra  side effects and any follow-up control  */
+const peAdded = (p,k) => (p && p.stats && p.stats[k] && p.stats[k].added) || 0;
+const peMixedNeed = n => (p) =>
+  (peAdded(p,"atk") >= n && peAdded(p,"spatk") >= n) ? null
+  : `Needs ${n} Level-Up Stat Points in both Attack (has ${peAdded(p,"atk")}) and Sp.Atk (has ${peAdded(p,"spatk")})`;
+const peCapNeed = cap => (p,sp) => monHasCapability(p,sp,cap) ? null : `Needs the ${cap} Capability`;
+const peUnderdogNeed = (p,sp) => isUnderdogMon(p,sp) ? null
+  : `Not an Underdog Pokémon — ${sp?sp.name:"this species"} has a Base Stat Total of ${speciesBST(sp)} (45 or less qualifies)`;
+/* the Ability that both playtest versions of Mixed/Twisted Power hand over */
+function peGrantAbility(p, name){
+  if(!Array.isArray(p.abilities)) p.abilities = [];
+  if(!p.abilities.some(a=>String(a).toLowerCase()===name.toLowerCase())) p.abilities.push(name);
+}
+function peUngrantAbility(p, name){
+  p.abilities = (p.abilities||[]).filter(a=>String(a).toLowerCase()!==name.toLowerCase());
+}
+const POKE_EDGE_DEFS = {
+  "Skill Improvement": { tp:1, max:17, auto:true, argLabel:"Rank up which Skill?",
+    args:(p,sp)=> SKILLS.filter(([k])=> sp && sp.skills && sp.skills[k] && (sp.skills[k].dice||1) < 6
+                                        && !pokeEdgesOf(p,"Skill Improvement").some(e=>e.arg===k))
+                        .map(([k,l])=>[k, `${l} — ${sp.skills[k].dice}d6 → ${sp.skills[k].dice+1}d6`]),
+    emptyMsg:"Every Skill is either already improved or at Master (6d6).",
+    argText:e=>PE_SKILL_LABEL[e.arg]||e.arg,
+    live:(p,sp,e)=>{
+      const now = monSkillRank(p,e.arg,sp), def = (sp && sp.skills && sp.skills[e.arg] && sp.skills[e.arg].dice) || 0;
+      return `${PE_SKILL_LABEL[e.arg]||e.arg} rolls ${now}d6 (species default ${def}d6) — used everywhere its Rank is asked for`;
+    } },
+  "Attack Conflict": { tp:1, max:2, auto:false, argLabel:"Which Stat is freed?",
+    args:(p)=> [["atk","Attack"],["spatk","Sp.Atk"]].filter(([k])=>!pokeEdgesOf(p,"Attack Conflict").some(e=>e.arg===k)),
+    argText:e=>statLbl(e.arg),
+    live:(p,sp,e)=>`${statLbl(e.arg)} is free of Base Stat Relations. This sheet never enforced them, so nothing changes here — it's recorded for the GM.` },
+  "Mixed Sweeper Rank 1": { tp:1, level:10, max:1, auto:true, need:peMixedNeed(5),
+    live:()=>"+3 Stat Points, already in the Stat Allocation budget" },
+  "Mixed Sweeper Rank 2": { tp:1, level:20, max:1, auto:true,
+    need:(p,sp)=> pokeEdgeCount(p,"Mixed Sweeper Rank 1") ? peMixedNeed(10)(p,sp) : "Needs Mixed Sweeper Rank 1 first",
+    live:()=>"+3 Stat Points, already in the Stat Allocation budget" },
+  "Mixed Sweeper Rank 3": { tp:1, level:40, max:1, auto:true,
+    need:(p,sp)=> pokeEdgeCount(p,"Mixed Sweeper Rank 2") ? peMixedNeed(15)(p,sp) : "Needs Mixed Sweeper Rank 2 first",
+    live:()=>"+3 Stat Points, already in the Stat Allocation budget" },
+  "Underdog's Strength": { tp:1, level:15, max:1, auto:true, need:peUnderdogNeed,
+    live:(p,sp)=>`+1 to every Base Stat (applied) · Evolution is locked off${pokeEdgeCount(p,"Underdog's Lessons")?"":" — Underdog's Lessons is now available"}` },
+  "Realized Potential": { tp:2, level:30, max:1, auto:true, need:peUnderdogNeed,
+    live:(p,sp)=>{ const n = realizedPotentialPoints(p,sp);
+      return n ? `+${n} Bonus Stat Points (45 − Base Stat Total ${speciesBST(sp)}), already in the budget. Base Stat Relations still apply by RAW — this sheet doesn't police them.`
+               : `Base Stat Total is already ${speciesBST(sp)} — no points to gain.`; } },
+  "Ability Mastery": { tp:3, level:60, max:3, auto:true, argLabel:"Which Ability?",
+    args:(p,sp)=> (sp?allAbilityNames(sp):[]).filter(n=>!(p.abilities||[]).some(a=>String(a).toLowerCase()===n.toLowerCase()))
+                    .map(n=>[n,n]),
+    emptyMsg:"It already has every Ability its species could qualify for.",
+    onTake:(p,sp,e)=>peGrantAbility(p, e.arg), onDrop:(p,sp,e)=>peUngrantAbility(p, e.arg),
+    live:(p,sp,e)=>`${e.arg} added to its Abilities — everything the sheet automates for that Ability is live` },
+  "Advanced Connection": { tp:1, max:4, auto:true, argLabel:"Which Connection Ability?",
+    need:(p)=> monConnectionAbilities(p).length ? null : "Needs an Ability with the Connection Keyword",
+    args:(p)=> monConnectionAbilities(p).filter(an=>!pokeEdgesOf(p,"Advanced Connection").some(e=>e.arg===an))
+                 .map(an=>[an, `${an} — Connection: ${connectionMoveOf(an)}`]),
+    live:(p,sp,e)=>{ const mv = connectionMoveOf(e.arg);
+      const knows = mv && (p.moves||[]).some(x=>String(x).toLowerCase()===mv.toLowerCase());
+      return knows ? `${mv} doesn't take up a Move Slot — the Move limit above counts one higher`
+                   : `${mv||"its Connected Move"} isn't on its Move list yet, so no slot is freed`; } },
+  "Accuracy Training": { tp:1, level:20, max:3, auto:true, argLabel:"Lower which Move's AC?",
+    args:(p)=> (p.moves||[]).map(mn=>moveByName.get(String(mn).toLowerCase())).filter(m=>m && m.ac!=null && m.ac>=3)
+                 .filter(m=>!pokeEdgesOf(p,"Accuracy Training").some(e=>String(e.arg).toLowerCase()===m.name.toLowerCase()))
+                 .map(m=>[m.name, `${m.name} — AC ${m.ac} → ${m.ac-1}`]),
+    emptyMsg:"None of its Moves has an AC of 3 or higher left to train.",
+    live:(p,sp,e)=>{ const m = moveByName.get(String(e.arg).toLowerCase());
+      return m ? `${m.name} hits at AC ${monMoveAC(p,m)} instead of ${m.ac} — applied on every roll`
+               : `${e.arg} isn't on its Move list any more`; } },
+  "Underdog's Lessons": { tp:1, max:3, auto:true, argLabel:"From which Final Evolution?",
+    need:(p,sp)=> !pokeEdgeCount(p,"Underdog's Strength") ? "Needs Underdog's Strength first"
+                : !finalEvolutionNames(sp).length ? "This species has no Final Evolution ahead of it" : null,
+    args:(p,sp)=>{ const locked = underdogLessonSpecies(p);
+      return (locked ? [locked.name] : finalEvolutionNames(sp)).map(n=>[n,n]); },
+    onTake:(p,sp,e)=>openUnderdogLessonMove(p, sp, e),
+    live:(p,sp,e)=>`${e.arg}'s TM/HM and Tutor lists are open to it`
+      + (e.arg2 ? ` · learned ${e.arg2} as a Level-Up Move` : " · no Move picked yet"),
+    extra:(p,sp,e)=> e.arg2 ? null : el("button",{class:"btn-secondary",style:"padding:5px 10px;margin-top:6px",
+      onclick:()=>openUnderdogLessonMove(p, sp, e)},"🎓 pick its Level-Up Move") },
+  "Capability Training": { tp:1, level:20, max:3, auto:true, argLabel:"Raise which Capability by 1?",
+    args:(p,sp)=> PE_CAP_TRAIN.filter(([k])=>!pokeEdgesOf(p,"Capability Training").some(e=>e.arg===k))
+                    .map(([k,l])=>[k, `${l} — ${(monCapabilities(p,sp)[k]||0)} → ${(monCapabilities(p,sp)[k]||0)+1}`]),
+    argText:e=>CAP_FIELD_LABEL[e.arg]||e.arg,
+    live:(p,sp,e)=>`${CAP_FIELD_LABEL[e.arg]} is ${monCapabilities(p,sp)[e.arg]||0} with this (+1), on every capability row` },
+  "Advanced Mobility": { tp:1, level:20, max:6, auto:true, argLabel:"Raise which Movement Capability by 2?",
+    args:(p,sp)=>{ const cap = monCapabilities(p,sp);
+      return PE_MOBILITY.filter(([k])=>{
+        if(pokeEdgesOf(p,"Advanced Mobility").some(e=>e.arg===k)) return false;
+        if(k==="Teleporter") return monHasCapability(p,sp,"Teleporter");
+        return (cap[k]||0) > 0;                                   // you can't improve a Speed it hasn't got
+      }).map(([k,l])=>[k,l]); },
+    emptyMsg:"Every Movement Capability it has is already improved.",
+    argText:e=>CAP_FIELD_LABEL[e.arg]||e.arg,
+    live:(p,sp,e)=> e.arg==="Teleporter"
+      ? "Teleporter +2 metres, on every capability row"
+      : `${CAP_FIELD_LABEL[e.arg]} is ${monCapabilities(p,sp)[e.arg]||0} with this (+2), on every capability row` },
+  "Basic Ranged Attacks": { tp:1, level:20, max:6, auto:true, argLabel:"Which elemental Struggle?",
+    need:(p,sp)=> PE_RANGED_CAPS.some(c=>monHasCapability(p,sp,c)) ? null
+      : "Needs one of Firestarter, Fountain, Freezer, Guster, Materializer or Zapper",
+    args:(p,sp)=> PE_RANGED_CAPS.filter(c=>monHasCapability(p,sp,c))
+                    .filter(c=>!pokeEdgesOf(p,"Basic Ranged Attacks").some(e=>e.arg===c))
+                    .map(c=>[c, `${c} — ${STRUGGLE_TYPE_CAPS[c]}-Type Struggle`]),
+    live:(p,sp,e)=>`its ${STRUGGLE_TYPE_CAPS[e.arg]}-Type Struggle has a range of 6 m — pick ${STRUGGLE_TYPE_CAPS[e.arg]} on the Struggle row and the range follows` },
+  "Aura Pulse": { tp:2, level:30, max:1, auto:true, need:peCapNeed("Aura Reading"),
+    live:()=>"Aura Pulse added to its Capabilities. Its Trainer must have Aura Pulse too — that half is the GM's call." },
+  "Enticing Bait": { tp:1, level:20, max:1, auto:false, need:peCapNeed("Alluring"),
+    live:(p,sp)=>{ const a = monSkillRank(p,"athletics",sp), f = monSkillRank(p,"focus",sp);
+      return `+${Math.max(a,f)} to the Alluring d20 (higher of Athletics ${a} / Focus ${f})`; } },
+  "Extended Invisibility": { tp:1, level:20, max:1, auto:false, need:peCapNeed("Invisibility"),
+    live:()=>"stays Invisible for up to 8 minutes instead of 4" },
+  "Far Reading": { tp:1, level:20, max:1, auto:false, need:peCapNeed("Telepathy"),
+    live:(p,sp)=>{ const f = monSkillRank(p,"focus",sp);
+      return `Telepath reaches ${(f+2)*2} m instead of ${f*2} m (Focus Rank ${f}, counted as ${f+2})`; } },
+  "Precise Threading": { tp:1, level:20, max:1, auto:false, need:peCapNeed("Threaded"),
+    live:()=>"Threaded Shift at 6 m and AC 3, instead of Melee and AC 6" },
+  "Seismometer": { tp:1, level:20, max:1, auto:true, need:peCapNeed("Tremorsense"),
+    live:(p,sp)=>{ const r = monSkillRank(p,"perception",sp);
+      return `Tremorsense reaches ${TREMORSENSE_BASE+r} m (5 + Perception Rank ${r}) — shown on its capability row`; } },
+  "TK Mastery": { tp:1, level:20, max:1, auto:false, need:peCapNeed("Telekinetic"),
+    live:(p,sp)=>{ const f = monSkillRank(p,"focus",sp);
+      return `lifts with Telekinesis as Power ${f+2} (Focus Rank ${f}, counted as ${f+2})`; } },
+  "Trail Sniffer": { tp:1, level:20, max:1, auto:false, need:peCapNeed("Tracker"),
+    live:(p,sp)=>`+${monSkillRank(p,"focus",sp)} to Perception Checks made to use Tracker (its Focus Rank)` },
+  "Digital Avatar": { tp:1, max:1, auto:true,
+    live:(p,sp)=> (sp && sp.skills && sp.skills.technologyEd)
+      ? `it may dive into computer systems. It already has Technology Ed ${sp.skills.technologyEd.dice}d6, so no dice are added. Needs the Datajack Augmentation — the GM's call.`
+      : "may dive into computer systems, and rolls Technology Ed 3d6 (it had none) — live on its Skill row. Needs the Datajack Augmentation — the GM's call." },
+  "Gravity Training": { tp:1, max:4, auto:true,
+    live:(p)=>`Gravitic Tolerance ${pokeEdgeCount(p,"Gravity Training")*2} — 2 steps per taking, allocate them either way from its Home Gravity` },
+  "Psychic Navigator": { tp:2, level:20, max:1, auto:true,
+    need:(p,sp)=> (sp?.types||[]).includes("Psychic") ? null : "Needs to be a Psychic-Type",
+    live:()=>"Psychic Navigator added to its Capabilities" },
+  "Vehicle Training": { tp:1, max:1, auto:false,
+    live:()=>"may drive appropriately outfitted vehicles as a Standard Action (body type is the GM's call)" },
+  "Expand Horizons": { tp:0, max:1, auto:true,
+    need:(p)=>{ const t = activeChar() && activeChar().trainer;
+      return (t && (t.features||[]).includes("Expand Horizons")) ? null
+        : "Its Trainer needs the Mentor class and the Expand Horizons Feature"; },
+    live:()=>"+3 Tutor Points, credited to the ledger (once per Pokémon, ever)" },
+  "Mixed Power [9-15 Playtest]": { tp:2, level:10, max:1, auto:true, need:peMixedNeed(5),
+    onTake:(p)=>peGrantAbility(p,"Twisted Power"), onDrop:(p)=>peUngrantAbility(p,"Twisted Power"),
+    live:()=>"Twisted Power added to its Abilities — half its Attack rides on Special Moves and vice versa, applied on every Damage Roll" },
+  "Twisted Power [2-16 Playtest]": { tp:2, level:10, max:1, auto:true, need:peMixedNeed(5),
+    onTake:(p)=>peGrantAbility(p,"Twisted Power"), onDrop:(p)=>peUngrantAbility(p,"Twisted Power"),
+    live:()=>"half its Attack is added to Special Moves' damage and half its Sp.Atk to Physical Moves' — applied on every Damage Roll" },
+};
+/* Poké Edges in the order the book prints them (the DB's order), families only */
+function pokeEdgeNames(){
+  const defs = new Set(Object.keys(POKE_EDGE_DEFS));
+  const out = (D.pokeEdges||[]).map(e=>e.name).filter(n=>defs.has(n));
+  Object.keys(POKE_EDGE_DEFS).forEach(n=>{ if(!out.includes(n)) out.push(n); });   // anything the DB lacks
+  return out;
+}
+function pokeEdgeArgText(e){
+  const def = POKE_EDGE_DEFS[e.name];
+  if(def && def.argText){ try{ return def.argText(e); }catch(err){ return e.arg; } }
+  return PE_SKILL_LABEL[e.arg] || CAP_FIELD_LABEL[e.arg] || e.arg || "";
+}
+function pokeEdgeLabel(e){
+  const arg = pokeEdgeArgText(e);
+  return e.name + (arg ? ` (${arg})` : "");
+}
+/* run one of the table's text/list callbacks without letting a bad pick break the page */
+function peSafe(fn, fallback){ try{ const v = fn(); return v==null ? fallback : v; }catch(err){ return fallback; } }
+/* why this Edge can't be taken right now — null when it can. GM 🔓 ignores prerequisites. */
+function pokeEdgeBlock(p, sp, name){
+  const def = POKE_EDGE_DEFS[name]; if(!def) return "Not a Poké Edge this sheet knows";
+  const taken = pokeEdgeCount(p, name), max = def.max || 1;
+  if(taken >= max) return max>1 ? `Already taken ${taken}× (max ${max})` : "Already taken";
+  if(p.unlocked) return null;                                    // 🔓 GM override: prerequisites off
+  if(def.level && (p.level||1) < def.level) return `Needs Level ${def.level} — it's Lv ${p.level||1}`;
+  const need = def.need ? peSafe(()=>def.need(p, sp), null) : null;
+  if(need) return need;
+  if(def.args){
+    const pairs = peSafe(()=>def.args(p, sp), []);
+    if(!pairs.length) return def.emptyMsg || "No valid choice left for it";
+  }
+  return null;
+}
+function openPokeEdgeArgPicker(title, pairs, cb){
+  const byLabel = new Map(pairs.map(([v,l])=>[String(l), v]));
+  openPicker(title, [...byLabel.keys()], label=>cb(byLabel.get(label)));
+}
+function openPokeEdgePicker(p, sp){
+  const names = pokeEdgeNames();
+  const free = !!p.unlocked;
+  const sub = n => {
+    const def = POKE_EDGE_DEFS[n], db = pokeEdgeDB(n);
+    const bits = [ def.tp ? `${def.tp} TP` : "free", def.level?`Lv ${def.level}+`:"", def.max>1?`up to ${def.max}×`:"",
+                   def.auto?"⚙ automated":"📋 tracked" ].filter(Boolean).join(" · ");
+    return el("div",{class:"pi-sub"}, bits + (db && db.effect ? " · "+String(db.effect).slice(0,110) : ""));
+  };
+  const lockFn = n => {
+    const block = pokeEdgeBlock(p, sp, n);
+    if(block) return block;
+    const cost = POKE_EDGE_DEFS[n].tp || 0;
+    return (!free && cost > tpLeft(p)) ? `Costs ${cost} Tutor Points — only ${tpLeft(p)} left` : null;
+  };
+  openPicker(`Take a Poké Edge — ${tpLeft(p)} TP available`, names,
+    name=>addPokeEdge(p, sp, name), null, null, lockFn, sub);
+}
+function addPokeEdge(p, sp, name){
+  const def = POKE_EDGE_DEFS[name]; if(!def) return;
+  const free = !!p.unlocked;                                     // 🔓 GM override: nothing is charged
+  const cost = def.tp || 0;
+  if(!free && cost > tpLeft(p)){ toast(`${name} costs ${cost} Tutor Points (has ${tpLeft(p)}).`); return; }
+  const commit = arg => {
+    const e = { id:uid(), name, arg:arg||"", arg2:"", tp:(free?0:cost), free };
+    if(!Array.isArray(p.pokeEdges)) p.pokeEdges = [];
+    p.pokeEdges.push(e);
+    if(e.tp) tpSpend(p, e.tp, `Poké Edge — ${pokeEdgeLabel(e)}`, {kind:"edge"});
+    tpSync(p);                                                   // Expand Horizons pays out immediately
+    if(def.onTake) peSafe(()=>def.onTake(p, sp, e), null);
+    save(); refreshMon(p);
+    toast(`🧬 ${pokeEdgeLabel(e)}${e.tp?` — −${e.tp} TP, ${tpLeft(p)} left`:""}`);
+  };
+  const pairs = def.args ? peSafe(()=>def.args(p, sp), []) : null;
+  if(pairs && !pairs.length){ toast(def.emptyMsg || "No valid choice left for this Poké Edge."); return; }
+  if(pairs) openPokeEdgeArgPicker(def.argLabel || `${name} — choose`, pairs, commit);
+  else commit("");
+}
+function removePokeEdge(p, sp, e){
+  const def = POKE_EDGE_DEFS[e.name];
+  if(!confirm(`Drop ${pokeEdgeLabel(e)}?`
+    + (e.tp ? `\n${e.tp} Tutor Point${e.tp===1?"":"s"} are refunded.` : "")
+    + (def && def.onDrop ? "\nWhatever it granted is taken back off the sheet." : ""))) return;
+  p.pokeEdges = pokeEdgeList(p).filter(x=>x.id!==e.id);
+  if(def && def.onDrop) peSafe(()=>def.onDrop(p, sp, e), null);
+  if(e.tp) tpRefund(p, e.tp, `dropped Poké Edge — ${pokeEdgeLabel(e)}`, {kind:"edge"});
+  tpSync(p);                                                     // Expand Horizons' 3 points leave with it
+  save(); refreshMon(p);
+  toast(`Dropped ${pokeEdgeLabel(e)}${e.tp?` (+${e.tp} TP)`:""}`);
+}
+/* Realized Potential: "If the user evolves to a species with a Base Stat Total 45 or higher,
+   Realized Potential is removed and the Tutor Points refunded." Called from evolveTo, after the
+   species has changed. */
+function pokeEdgeAfterEvolve(p, sp){
+  const rp = pokeEdgesOf(p,"Realized Potential")[0];
+  if(!rp) return;
+  const bst = speciesBST(sp || getSpecies(p.species));
+  if(bst < 45) return;
+  p.pokeEdges = pokeEdgeList(p).filter(x=>x.id!==rp.id);
+  if(rp.tp) tpRefund(p, rp.tp, `Realized Potential refunded — evolved into a ${bst} BST species`, {kind:"edge"});
+  toast(`Realized Potential removed — ${sp.name}'s Base Stat Total is ${bst}${rp.tp?`, +${rp.tp} TP refunded`:""}`);
+}
+/* Underdog's Lessons' second half: "Choose a Level-Up Move from one of the user's Final
+   Evolutions that it can learn at or below its current Level." It learns it outright, so this
+   just teaches the Move — the Move-List limit applies exactly as it does to any other Move. */
+function openUnderdogLessonMove(p, sp, e){
+  const fsp = getSpecies(e.arg);
+  if(!fsp){ toast("That Final Evolution isn't in the Pokédex."); return; }
+  const known = new Set((p.moves||[]).map(x=>String(x).toLowerCase()));
+  const names = speciesLevelupNames(fsp, p.level).filter(n=>!known.has(n.toLowerCase()));
+  if(!names.length){ toast(`${fsp.name} has no Level-Up Move at or below Lv ${p.level} that it doesn't already know.`); return; }
+  const limit = effectiveMoveLimit(activeChar().trainer, p);
+  if(!p.unlocked && (p.moves||[]).length >= limit){
+    toast(`Move limit reached (${limit}) — free a slot first, or tick 🔓.`); return; }
+  openPicker(`Underdog's Lessons — a ${fsp.name} Level-Up Move (Lv ${p.level} or lower)`, names, name=>{
+    p.moves.push(name); e.arg2 = name; save(); refreshMon(p);
+    toast(`Learned ${name} (Underdog's Lessons)`);
+  }, "move");
+}
+/* ---------- the card ---------- */
+function pokeEdgesCard(p, sp){
+  const list = pokeEdgeList(p);
+  const card = el("div",{class:"card"}, el("h3",{}, `🧬 Poké Edges (${list.length})`,
+    el("div",{class:"inline"},
+      el("span",{class:"muted small",title:"Tutor Points available"}, `${tpLeft(p)} TP`),
+      el("button",{class:"linkbtn h-act",onclick:()=>openPokeEdgePicker(p, sp)},"+ add"))));
+  if(!list.length) card.append(el("span",{class:"muted small"},
+    "none yet — Poké Edges are what Tutor Points buy: Skill Rank-ups, Capability boosts, lower ACs, extra Abilities."));
+  list.forEach(e=>{
+    const def = POKE_EDGE_DEFS[e.name], db = pokeEdgeDB(pokeEdgeLabel(e)) || pokeEdgeDB(e.name);
+    const row = el("details",{class:"spoiler"});
+    row.append(el("summary",{},
+      el("span",{style:"color:var(--ink)"}, pokeEdgeLabel(e)),
+      el("span",{class:"muted small",style:"margin-left:8px"}, e.tp ? `${e.tp} TP` : (e.free?"🔓 free":"free")),
+      el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",
+        title:e.tp?`remove — refunds ${e.tp} Tutor Point${e.tp===1?"":"s"}`:"remove",
+        onclick:ev=>{ ev.preventDefault(); removePokeEdge(p, sp, e); }},"×")));
+    const live = def && def.live ? peSafe(()=>def.live(p, sp, e), "") : "";
+    if(live) row.append(el("div",{class:"small",style:"margin-top:6px;color:var(--accent);font-weight:600"},
+      (def.auto ? "⚙ " : "📋 ") + live));
+    if(db && db.effect) row.append(el("div",{class:"small",style:"margin-top:4px"}, db.effect));
+    const extra = def && def.extra ? peSafe(()=>def.extra(p, sp, e), null) : null;
+    if(extra) row.append(extra);
+    card.append(row);
+  });
+  card.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    "Core p.72 — a Poké Edge is bought with Tutor Points and is permanent; dropping one here refunds its points "
+    + "and takes its effect back off the sheet. ⚙ is applied for you, 📋 is tracked for you to say at the table. "
+    + "Prerequisites are checked; a GM can tick 🔓 above to ignore them (and pay nothing)."));
+  return card;
+}
+
+/* ═══════════════════════ VITAMINS & TREATS ═══════════════════════
+   The consumables that permanently change a Pokémon (Core pp.298-299). Each one fed lives on the
+   sheet as { id, item, stat, arg, at } in `p.vitamins`, and the numbers are DERIVED from that list —
+   so a Protein raises Attack everywhere at once, the bonus travels with the Pokémon through
+   Evolution ("reapply any Vitamins that were used", Core p.72), and taking one back off undoes it.
+
+     HP Up / Protein / Iron / Calcium / Zinc / Carbos → +1 to that Base Stat
+     Stat Suppressants (one per Stat)                 → −1 to that Base Stat
+     Heart Booster                                    → +2 Tutor Points (once per Pokémon)
+     PP Up                                            → one Move's Frequency up a step (once)
+     Rare Candy                                       → a Level (up to five per Pokémon, ever)
+
+   Only the book's Vitamin table counts against the five-Vitamin cap (seven with a Chef's Dietician
+   Feature); Suppressants and Rare Candies are "not Vitamins, strictly speaking". */
+const VITAMIN_CAP = 5, VITAMIN_CAP_DIETICIAN = 7;
+const RARE_CANDY_MAX = 5;
+/* item name → what feeding it does. `stat` is the Base Stat it moves. */
+const VITAMIN_DEFS = {
+  "hp up":                      { kind:"stat", stat:"hp",    delta:+1, vitamin:true },
+  "protein":                    { kind:"stat", stat:"atk",   delta:+1, vitamin:true },
+  "iron":                       { kind:"stat", stat:"def",   delta:+1, vitamin:true },
+  "calcium":                    { kind:"stat", stat:"spatk", delta:+1, vitamin:true },
+  "zinc":                       { kind:"stat", stat:"spdef", delta:+1, vitamin:true },
+  "carbos":                     { kind:"stat", stat:"spd",   delta:+1, vitamin:true },
+  "heart booster":              { kind:"tp",   tp:2, vitamin:true, once:true },
+  "pp up":                      { kind:"ppup", vitamin:true, once:true },
+  "hp suppressant":             { kind:"stat", stat:"hp",    delta:-1 },
+  "attack suppressant":         { kind:"stat", stat:"atk",   delta:-1 },
+  "defense suppressant":        { kind:"stat", stat:"def",   delta:-1 },
+  "special attack suppressant": { kind:"stat", stat:"spatk", delta:-1 },
+  "special defense suppressant":{ kind:"stat", stat:"spdef", delta:-1 },
+  "speed suppressant":          { kind:"stat", stat:"spd",   delta:-1 },
+  "rare candy":                 { kind:"candy" },
+};
+function vitaminDef(name){ return VITAMIN_DEFS[String(name||"").trim().toLowerCase()] || null; }
+function isVitaminItem(name){ return !!vitaminDef(name); }
+/* read-only, like pokeEdgeList — this runs for every creature the Map draws */
+function vitaminList(p){ return Array.isArray(p && p.vitamins) ? p.vitamins : []; }
+function vitaminsTaken(p){ return vitaminList(p).filter(v=>vitaminDef(v.item)?.vitamin).length; }
+function rareCandiesTaken(p){ return vitaminList(p).filter(v=>vitaminDef(v.item)?.kind==="candy").length; }
+/* Dietician (Chef, Expert Intuition): "Your Pokemon can benefit from a maximum of 7 Vitamins." */
+function vitaminCap(p){
+  const t = charOfMon(p)?.trainer || activeChar()?.trainer;
+  return (t && (t.features||[]).includes("Dietician")) ? VITAMIN_CAP_DIETICIAN : VITAMIN_CAP;
+}
+/* the Base-Stat shift every Vitamin / Suppressant on this sheet adds up to */
+function vitaminStatBonus(p){
+  const out = {};
+  vitaminList(p).forEach(v=>{
+    const def = vitaminDef(v.item);
+    if(!def || def.kind!=="stat") return;
+    const k = v.stat || def.stat; if(!k) return;
+    out[k] = (out[k]||0) + def.delta;
+  });
+  return out;
+}
+/* PP Up (Core p.299): "At-Will Moves cannot have their Frequency increased further. EOT Moves
+   become At-Will. Daily and Scene Moves gain an additional use in their Frequency's unit of time." */
+function bumpFrequency(freqRaw){
+  const raw = String(freqRaw||"").trim();
+  const [usage, ...rest] = raw.split(" - ");
+  const tail = rest.length ? " - " + rest.join(" - ") : "";
+  const info = freqInfo(raw);
+  if(info.kind==="eot") return "At-Will" + tail;
+  if(info.kind==="scene" || info.kind==="daily")
+    return `${info.kind==="scene"?"Scene":"Daily"} x${(info.max||1)+1}${tail}`;
+  return raw;                                   // At-Will / Static / AP-priced — nothing to raise
+}
+/* which Move (if any) this Pokémon's PP Up was spent on */
+function ppUpMove(p){
+  const v = vitaminList(p).find(x=>vitaminDef(x.item)?.kind==="ppup");
+  return v && v.arg ? v.arg : null;
+}
+/* a Move's Frequency as this Pokémon actually uses it — what every use-tracker should read */
+function monMoveFreq(p, m){
+  const raw = m && m.frequency;
+  const up = ppUpMove(p);
+  return (up && m && String(m.name||"").toLowerCase()===String(up).toLowerCase()) ? bumpFrequency(raw) : raw;
+}
+/* Feed one item to a Pokémon. `bag` (a Trainer) is charged a copy when there is one. */
+function giveVitamin(p, name, bag){
+  const def = vitaminDef(name);
+  if(!def) return { ok:false, msg:`${name} isn't something a Pokémon can be fed.` };
+  const label = itemByName.get(String(name).toLowerCase())?.name || name;
+  if(def.once && vitaminList(p).some(v=>vitaminDef(v.item)===def))
+    return { ok:false, msg:`Only one ${label} per Pokémon.` };
+  if(def.vitamin && !p.unlocked && vitaminsTaken(p) >= vitaminCap(p))
+    return { ok:false, msg:`${monLabel(p)} has had its ${vitaminCap(p)} Vitamins — any more have no effect.` };
+  if(def.kind==="candy" && !p.unlocked && rareCandiesTaken(p) >= RARE_CANDY_MAX)
+    return { ok:false, msg:`A Pokémon may benefit from ${RARE_CANDY_MAX} Rare Candies in its lifetime.` };
+  if(def.kind==="candy" && (p.level||1) >= MAX_LEVEL)
+    return { ok:false, msg:`${monLabel(p)} is already Lv ${MAX_LEVEL}.` };
+  if(bag && !consumeInventoryItem(bag, label)) return { ok:false, msg:`No ${label} left in the bag.` };
+
+  const entry = { id:uid(), item:label, stat:def.stat||"", arg:"", at:Date.now() };
+  if(!Array.isArray(p.vitamins)) p.vitamins = [];
+  p.vitamins.push(entry);
+  let msg = `${monLabel(p)} was given ${/^[aeiou]/i.test(label)?"an":"a"} ${label}`;
+  if(def.kind==="stat")      msg += ` — Base ${statLbl(def.stat)} ${def.delta>0?"+":""}${def.delta} (now ${pokeBaseStats(p)[def.stat]})`;
+  else if(def.kind==="tp"){  tpRefund(p, def.tp, `${label} (Vitamin)`, {kind:"hand"});
+                             msg += ` — +${def.tp} Tutor Points (${tpLeft(p)} available)`; }
+  else if(def.kind==="candy"){ setMonLevel(p, (p.level||1) + 1);   // Level, XP and the Tutor Points that follow
+                             msg += ` — Lv ${p.level}`; }
+  return { ok:true, msg, entry, def };
+}
+/* take one back off the sheet (mis-clicks, and a GM undoing a purchase) */
+function removeVitamin(p, entry, bag){
+  const def = vitaminDef(entry.item);
+  const putBack = !!bag && confirm(`Take the ${entry.item} back off ${monLabel(p)}?\n\nOK also returns one ${entry.item} to the bag; Cancel just removes it.`);
+  if(!bag && !confirm(`Take the ${entry.item} back off ${monLabel(p)}?`)) return;
+  p.vitamins = vitaminList(p).filter(v=>v.id!==entry.id);
+  if(def && def.kind==="tp") tpSpend(p, def.tp, `${entry.item} taken back`, {kind:"hand"});
+  if(putBack){
+    const row = (bag.inventory||[]).find(it=>normItemName(it.name)===normItemName(entry.item));
+    if(row) row.qty = (parseInt(row.qty)||0) + 1; else bag.inventory.push({name:entry.item, qty:1, notes:""});
+  }
+  save(); refreshMon(p);
+  toast(def && def.kind==="candy"
+    ? `${entry.item} removed — the Level it granted stays (change it by hand if that's wrong)`
+    : `${entry.item} removed from ${monLabel(p)}`);
+}
+/* the picker: the Trainer's own bag when there is one, the whole catalog for a wild/GM creature */
+function openVitaminPicker(p, sp){
+  const bag = foodBagFor(p, { free: !!(p.unlocked && isGM()) });
+  const all = Object.keys(VITAMIN_DEFS).map(k => itemByName.get(k)?.name || k);
+  let names = all, fromBag = false;
+  if(bag){
+    const owned = new Set((bag.inventory||[]).filter(it=>(parseInt(it.qty)||0)>0).map(it=>normItemName(it.name)));
+    const mine = all.filter(n=>owned.has(normItemName(n)));
+    if(mine.length){ names = mine; fromBag = true; }
+    else { toast("No Vitamins or treats in the bag — buy some in a 🛒 Shop, or add them under Trainer → Inventory & Bio."); return; }
+  }
+  const sub = n => {
+    const def = vitaminDef(n), it = itemByName.get(String(n).toLowerCase());
+    const bits = [];
+    if(fromBag) bits.push(`×${inventoryQty(bag, n)}`);
+    if(def.kind==="stat") bits.push(`Base ${statLbl(def.stat)} ${def.delta>0?"+1":"−1"}`);
+    if(def.vitamin) bits.push(`a Vitamin (${vitaminsTaken(p)}/${vitaminCap(p)} used)`);
+    return el("div",{class:"pi-sub"}, bits.join(" · ") + (it?.effect ? " · "+String(it.effect).slice(0,90) : ""));
+  };
+  const lockFn = n => {
+    const def = vitaminDef(n);
+    if(p.unlocked) return null;                                     // GM 🔓 overrides the caps
+    if(def.once && vitaminList(p).some(v=>vitaminDef(v.item)===def)) return `Only one ${n} per Pokémon`;
+    if(def.vitamin && vitaminsTaken(p) >= vitaminCap(p)) return `Already had ${vitaminCap(p)} Vitamins — this one would do nothing`;
+    if(def.kind==="candy" && rareCandiesTaken(p) >= RARE_CANDY_MAX) return `Already had ${RARE_CANDY_MAX} Rare Candies`;
+    return null;
+  };
+  openPicker(`Give ${monLabel(p)} an item${fromBag?" — from your bag":""}`, names, name=>{
+    const r = giveVitamin(p, name, fromBag ? bag : null);
+    if(!r.ok){ toast("⚠ "+r.msg); return; }
+    save();
+    if(r.def.kind==="ppup") openPPUpMovePicker(p, sp, r.entry); else refreshMon(p);
+    toast(r.msg + (fromBag?" (−1 from the bag)":""));
+  }, null, null, lockFn, sub);
+}
+/* PP Up's follow-up: which of its Moves gets the extra use? */
+function openPPUpMovePicker(p, sp, entry){
+  const opts = (p.moves||[]).filter(mn=>{
+    const m = moveByName.get(String(mn).toLowerCase());
+    return m && bumpFrequency(m.frequency) !== m.frequency;
+  });
+  if(!opts.length){
+    toast("None of its Moves can go up a Frequency step (At-Will Moves can't) — pick one later from the card.");
+    refreshMon(p); return;
+  }
+  openPicker("PP Up — raise which Move's Frequency?", opts, name=>{
+    entry.arg = name; save(); refreshMon(p);
+    const m = moveByName.get(name.toLowerCase());
+    toast(`${name}: ${m.frequency} → ${bumpFrequency(m.frequency)}`);
+  }, "move");
+}
+function vitaminsCard(p, sp){
+  const list = vitaminList(p);
+  const used = vitaminsTaken(p), cap = vitaminCap(p);
+  const bag = foodBagFor(p, { free: !!(p.unlocked && isGM()) });
+  const card = el("div",{class:"card"}, el("h3",{}, "🧪 Vitamins & Treats",
+    el("div",{class:"inline"},
+      el("span",{class:"muted small",
+        title:`Core p.299 — a Pokémon benefits from ${cap} Vitamins${cap===VITAMIN_CAP_DIETICIAN?" (its Trainer has Dietician)":""}`},
+        `${used}/${cap} Vitamins`),
+      el("button",{class:"linkbtn h-act",onclick:()=>openVitaminPicker(p, sp)},"+ give"))));
+  if(!list.length) card.append(el("span",{class:"muted small"},
+    "none yet — a Protein, Iron, Carbos… permanently raises a Base Stat, and the sheet applies it the moment you feed one."));
+  list.forEach(v=>{
+    const def = vitaminDef(v.item) || {};
+    const row = el("div",{class:"buff-row"});
+    let what = "";
+    if(def.kind==="stat")       what = `Base ${statLbl(v.stat||def.stat)} ${def.delta>0?"+":""}${def.delta} — applied`;
+    else if(def.kind==="tp")    what = `+${def.tp} Tutor Points — written into the ledger`;
+    else if(def.kind==="candy") what = "a free Level — already granted";
+    else if(def.kind==="ppup"){
+      const m = v.arg && moveByName.get(String(v.arg).toLowerCase());
+      what = m ? `${v.arg}: ${m.frequency} → ${bumpFrequency(m.frequency)}` : "no Move picked yet";
+    }
+    row.append(el("div",{style:"flex:1;min-width:0"},
+      el("div",{class:"buff-name"}, v.item),
+      el("div",{class:"small",style:"color:var(--accent);font-weight:600"}, "⚙ "+what)));
+    if(def.kind==="ppup" && !v.arg) row.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
+      onclick:()=>openPPUpMovePicker(p, sp, v)},"pick a Move"));
+    row.append(el("button",{class:"linkbtn danger",title:"take it back off the sheet",
+      onclick:()=>removeVitamin(p, v, bag)},"×"));
+    card.append(row);
+  });
+  const bonus = vitaminStatBonus(p);
+  const parts = STATS.filter(([k])=>bonus[k]).map(([k,l])=>`${l} ${bonus[k]>0?"+":""}${bonus[k]}`);
+  if(parts.length) card.append(el("div",{class:"small muted",style:"margin-top:6px"},
+    "Base Stats from Vitamins: " + parts.join(" · ") + " — already in the numbers above, and they survive Evolution."));
+  card.append(el("div",{class:"small muted",style:"margin-top:6px"},
+    `Core pp.298-299 — a Pokémon only ever benefits from ${cap} Vitamins`
+    + (cap===VITAMIN_CAP ? " (7 if its Trainer has the Chef's Dietician Feature)" : "")
+    + ". Stat Suppressants and Rare Candies don't count toward that. Feeding one takes it out of your bag."));
+  return card;
+}
+
 function renderMonPlay(root, p, sp){
   /* quick stat readout — first on the page (shows Combat-Stage-adjusted values) */
   const d = pokeDerived(p);
@@ -5842,6 +7491,9 @@ function renderMonBuild(root, p, sp){
   root.append(sc);
   if(isMomSpecies(p.species)) return;   // "Mom?": Build stops at Identity + its read-only stats
 
+  /* Vitamins & treats — they move the Base Stats printed just above */
+  root.append(vitaminsCard(p, sp));
+
   /* injuries / temp / tutor */
   const ec = el("div",{class:"card"}, el("h3",{},"Condition"));
   const r3 = el("div",{class:"fieldrow"});
@@ -5849,25 +7501,34 @@ function renderMonBuild(root, p, sp){
     field("Injuries","",{type:"number",min:0,value:p.injuries,onchange:v=>{ p.injuries=Math.max(0,parseInt(v)||0);
       const m=pokeDerived(p).maxHP; if(p.currentHP!=null && p.currentHP>m) p.currentHP=m; save(); refreshMon(p); }}),
     field("Temp HP","",{type:"number",min:0,value:p.tempHP,onchange:v=>{p.tempHP=parseInt(v)||0;save();}}),
-    field("Tutor Points","",{type:"number",min:0,value:p.tutorPoints,onchange:v=>{p.tutorPoints=parseInt(v)||0;save();}}),
+    tutorPointControl(p),
   );
   ec.append(r3);
-  const tpEarned = tutorPointsEarned(p.level);
+  // Tutor Points scale on their own (see tpSync) — this line is the receipt, not a button to press
+  const earned = tpTotalEarned(p);
   ec.append(el("div",{class:"inline small",style:"gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px"},
-    el("span",{class:"muted"}, `1 Tutor Point on hatching + 1 every 5 levels → Lv ${p.level} has earned ${tpEarned}.`),
-    el("button",{class:"linkbtn",onclick:()=>{p.tutorPoints=tpEarned;save();refreshMon(p);}},"sync to earned"),
-    el("button",{class:"linkbtn",onclick:()=>openTutorMovePicker(p,sp)},"🎓 learn a Tutor move (−2)")));
+    el("span",{class:"muted"}, `1 Tutor Point on hatching + 1 every 5 levels → Lv ${p.level} has earned ${earned}`
+      + (tpGrantBonus(p)?` (incl. +${tpGrantBonus(p)} granted)`:"")
+      + `, ${tpLeft(p)} still unspent.`),
+    tpLeft(p) > earned ? el("span",{class:"muted",title:"more than the formula gives — a GM grant, or points added by hand"},"⚠ above the formula") : "",
+    el("button",{class:"linkbtn",onclick:()=>openTutorMovePicker(p,sp)},`🎓 learn a Tutor move (−${TUTOR_COST})`)));
   root.append(ec);
+
+  /* Poké Edges — what those Tutor Points buy */
+  root.append(pokeEdgesCard(p, sp));
 
   /* evolution — GM-only ("hidden") stages are concealed from players */
   if(sp && sp.evolution?.length>1){
     const gm = isGM();
     const t = activeChar().trainer;
     const chain = sp.evolution.filter(e=> gm || !e.gm);              // hide GM-only stages from players
-    const nexts = nextEvolutions(p).filter(n=> gm || !n.gm);
+    const evoLocked = pokeEdgeBlocksEvolution(p);                    // Underdog's Strength gave up evolving
+    const nexts = evoLocked ? [] : nextEvolutions(p).filter(n=> gm || !n.gm);
     if(chain.length>1 || nexts.length){
       const evc = el("div",{class:"card"}, el("h3",{},"Evolution"));
       evc.append(el("div",{class:"r-body",html: chain.map(e=>`${e.stage}. ${esc(e.name)}${e.min?` (Lv ${e.min})`:""}${e.gm?" 🔒":""}`).join("  →  ")}));
+      if(evoLocked) evc.append(el("div",{class:"warnbox",style:"margin-top:8px"},
+        "🧬 Underdog's Strength: this Pokémon may no longer undergo Evolution. Drop that Poké Edge to give the +1 Base Stats back and evolve again."));
       if(nexts.length){
         nexts.forEach(n => {
           const stone = evoStoneName(n.method);
@@ -5891,7 +7552,7 @@ function renderMonBuild(root, p, sp){
           rowE.append(btn);
           evc.append(rowE);
         });
-      } else {
+      } else if(!evoLocked){
         evc.append(el("div",{class:"small muted",style:"margin-top:6px"},"Final stage — no further evolutions."));
       }
       // GM-only: undo an accidental evolution (or a wrongly-picked branch, e.g. Marowak vs
@@ -6402,9 +8063,9 @@ function openTypeAceGrant(p, t, persistFn, rerenderFn){
   const chosen = typeAceChosenType(t);
   if(!chosen){ toast("Pick a Chosen Type for Type Ace first."); return; }
   if(p.typeAce){ toast(`${p.species} already has a Type Ace grant (${p.typeAce.ability}, ${p.typeAce.type}).`); return; }
-  if((p.tutorPoints||0) < 2){ toast(`Type Ace costs 2 Tutor Points (has ${p.tutorPoints||0}).`); return; }
+  if(tpLeft(p) < 2){ toast(`Type Ace costs 2 Tutor Points (has ${tpLeft(p)}).`); return; }
   openPicker(`Type Ace — grant an Ability (${chosen})`, ["Last Chance","Type Strategist"], name=>{
-    p.tutorPoints = Math.max(0,(p.tutorPoints||0)-2);
+    tpSpend(p, 2, `Type Ace — ${name} (${chosen})`, {kind:"ace"});
     p.typeAce = { ability:name, type:chosen };
     persist(); rerender();
     toast(`${p.species} learned ${name} (${chosen})`);
@@ -6412,7 +8073,7 @@ function openTypeAceGrant(p, t, persistFn, rerenderFn){
 }
 function clearTypeAce(p, persistFn, rerenderFn){
   if(!p.typeAce) return;
-  p.tutorPoints = (p.tutorPoints||0) + 2;
+  tpRefund(p, 2, `Type Ace removed — ${p.typeAce.ability} (${p.typeAce.type})`, {kind:"ace"});
   const was = p.typeAce; p.typeAce = null;
   (persistFn||save)(); (rerenderFn||(()=>refreshMon(p)))();
   toast(`${was.ability} (${was.type}) removed — +2 Tutor Points refunded`);
@@ -6488,13 +8149,20 @@ function refreshMon(p){ const root=$("#view-pokemon"); root.innerHTML=""; render
 function setMonXP(p, xp){
   p.xp = Math.max(0, Math.floor(xp)||0);
   const nl = levelForXP(p.xp), was = p.level;
-  p.level = nl; autoAllocMom(p); save(); refreshMon(p);
-  if(nl > was) toast(`${p.nickname||getSpecies(p.species)?.name||"Pokémon"} leveled up to ${nl}! 🎉`);
+  p.level = nl; autoAllocMom(p);
+  const tp = tpSync(p);                      // 1 Tutor Point per 5 Levels, credited as it's earned
+  save(); refreshMon(p);
+  if(nl > was) toast(`${p.nickname||getSpecies(p.species)?.name||"Pokémon"} leveled up to ${nl}!`
+    + (tp>0?` +${tp} Tutor Point${tp===1?"":"s"} 🎓`:" 🎉"));
 }
 /* set level directly → snap XP to that level's threshold so future XP still works */
 function setMonLevel(p, lvl){
   p.level = Math.max(1, Math.min(MAX_LEVEL, Math.floor(lvl)||1));
-  p.xp = xpForLevel(p.level); autoAllocMom(p); save(); refreshMon(p);
+  p.xp = xpForLevel(p.level); autoAllocMom(p);
+  const tp = tpSync(p);                      // and the Tutor Points that go with the new Level
+  save(); refreshMon(p);
+  if(tp) toast(tp>0 ? `+${tp} Tutor Point${tp===1?"":"s"} earned (Lv ${p.level})`
+                    : `${-tp} Tutor Point${tp===-1?"":"s"} taken back (Lv ${p.level})`);
 }
 /* XP progress + quick "+ Add XP" (adding XP auto-levels the Pokémon) */
 function xpRow(p){
@@ -6527,13 +8195,15 @@ function monStatGrid(p){
   STATS.forEach(([k,lbl]) => {
     const box = el("div",{class:"stat"});
     box.append(el("div",{class:"lbl"},lbl));
-    box.append(el("div",{class:"sub","data-pbase":k}, `base ${d.base[k]}`));
+    const vitB = vitaminStatBonus(p)[k] || 0;
+    box.append(el("div",{class:"sub","data-pbase":k, title: vitB ? `includes ${vitB>0?"+":""}${vitB} from Vitamins` : ""},
+      `base ${d.base[k]}${vitB?" 🧪":""}`));
     if(auto) box.append(el("div",{class:"stepper", title:"auto-assigned on level up — locked"},
       el("span",{class:"stepper-val",style:"opacity:.7"}, "+"+(p.stats[k].added||0))));
     else box.append(statStepper(p.stats[k].added, canInc, v=>{
       // hard stop, not just a greyed-out button: the Level+10 budget can only be passed with the GM 🔓
       if(v > (p.stats[k].added||0) && !p.unlocked && pokeDerived(p).remaining <= 0){
-        toast(`No Stat Points left (Level ${p.level} + 10 = ${p.level+10}) — the GM can tick 🔓 to override`); return; }
+        toast(`No Stat Points left (${pokeDerived(p).budget} total) — the GM can tick 🔓 to override`); return; }
       p.stats[k].added = v; save(); refreshMon(p); }));
     box.append(el("div",{class:"big","data-ptot":k}, d.total[k]));
     g.append(box);
@@ -6542,8 +8212,9 @@ function monStatGrid(p){
 }
 function ptBudgetText(d){
   const over = d.remaining < 0;
-  return el("span",{id:"ptBudget", class: over?"warnbox":"muted"},
-    `${d.spent}/${d.budget} points used${over?` (${-d.remaining} over!)`:d.remaining>0?` · ${d.remaining} left`:""}`);
+  return el("span",{id:"ptBudget", class: over?"warnbox":"muted",
+    title: d.edgePts ? `Level+10 = ${d.budget-d.edgePts}, plus ${d.edgePts} Bonus Stat Point${d.edgePts===1?"":"s"} from Poké Edges` : ""},
+    `${d.spent}/${d.budget} points used${d.edgePts?` (+${d.edgePts} 🧬)`:""}${over?` (${-d.remaining} over!)`:d.remaining>0?` · ${d.remaining} left`:""}`);
 }
 /* − value + stepper for a stat's "added" points; + is disabled when no budget left (unless GM-unlocked) */
 function statStepper(cur, canInc, onSet){
@@ -6632,6 +8303,8 @@ const CAP_MOVE_HELP = {
    unknown token and get thrown away by the grant parser below. */
 const CAP_EXTRA_HELP = {
   Teleporter: "Teleporter X — the user may teleport up to X meters as part of a Shift Action, ignoring intervening terrain and obstacles as long as they can see (or clearly picture) the destination.",
+  "Psychic Navigator": "Psychic Navigator — the user always knows which way is north and can retrace any route it has travelled, sensing its position psychically rather than by landmarks. (Granted by the Psychic Navigator Poké Edge.)",
+  "Gravitic Tolerance": "Gravitic Tolerance X — how many steps of gravity away from its Home Gravity the user can function in, allocated in either direction. (Granted by the Gravity Training Poké Edge, 2 steps per taking.)",
 };
 /* hover/expand text for a named capability (Naturewalk, Amorphous, Levitate the ability, …) —
    these live in D.items.capabilities alongside held items/food, keyed lowercase */
@@ -6726,6 +8399,8 @@ function capabilityGrants(p){
   (p?.abilities||[]).forEach(an=>{
     abilityCapGrants(an).forEach(g=>{ if(!g.cond || g.cond(p)) out.push({...g, src:an}); });
   });
+  // …and the ones bought with Tutor Points (Capability Training, Advanced Mobility, Seismometer…)
+  if(p) pokeEdgeCapGrants(p).forEach(g=>out.push(g));
   return out;
 }
 /* A Pokémon's capabilities as actually played: the species' printed list plus everything its Moves
@@ -6792,18 +8467,30 @@ function capsSkillsCard(sp, p){
   const granted = Object.entries(cap.grantedBy||{});
   if(granted.length) card.append(el("div",{class:"small muted",style:"margin-top:6px"},
     "✨ granted by a Move or Ability it knows: " + granted.map(([k,v])=>`${k} (${v})`).join(" · ")));
-  if(sp.skills && Object.keys(sp.skills).length){
+  // Skills as actually played: the species' printed dice plus any Poké-Edge Rank-ups (monSkills)
+  const skills = monSkills(p, sp);
+  if(Object.keys(skills).length){
     const sk = el("div",{class:"chips",style:"margin-top:8px"});
-    SKILLS.forEach(([k,lbl])=>{ const s=sp.skills[k]; if(s){ const mod=parseInt((s.mod||"").replace(/\s/g,""))||0;
-      sk.append(el("button",{class:"kv",style:"cursor:pointer;border:none",title:`roll ${lbl}`,
-        onclick:()=>rollSkill(lbl, s.dice, mod)}, `🎲 ${lbl} ${s.dice}d6${s.mod&&s.mod!=="+0"?s.mod:""}`)); } });
+    SKILLS.forEach(([k,lbl])=>{
+      const s = skills[k]; if(!s) return;
+      const bought = s.why.length;
+      const base = sp.skills?.[k]?.dice;
+      sk.append(el("button",{class:"kv"+(bought?" granted":""),style:"cursor:pointer;border:none",
+        title: bought ? `roll ${lbl} — ${s.why.join(", ")}${base?` (species default ${base}d6)`:""}` : `roll ${lbl}`,
+        onclick:()=>rollSkill(lbl, s.dice, s.mod)},
+        `🎲 ${lbl} ${s.dice}d6${s.mod?(s.mod>0?"+":"")+s.mod:""}${bought?" ✨":""}`));
+    });
     card.append(sk);
   }
   return card;
 }
 const MOVE_LIMIT = 6;
-/* Guidance (Feature, prereq Mentor, Static): "Your Pokémon's base Move List limit is increased by +1." */
-function effectiveMoveLimit(t){ return MOVE_LIMIT + ((t?.features||[]).includes("Guidance") ? 1 : 0); }
+/* Guidance (Feature, prereq Mentor, Static): "Your Pokémon's base Move List limit is increased by +1."
+   `p` is optional and adds that one Pokémon's own allowance — an Advanced Connection Poké Edge frees
+   the slot its Connected Move sits in, which is the same thing as one more slot. */
+function effectiveMoveLimit(t, p){
+  return MOVE_LIMIT + ((t?.features||[]).includes("Guidance") ? 1 : 0) + monMoveLimitBonus(p);
+}
 /* the species plus its pre-evolutions (evolved Pokémon inherit earlier stages' moves) */
 function speciesLineBackTo(sp){
   const line = [sp];
@@ -6839,21 +8526,23 @@ function speciesFullLearnset(sp){
    TM/HM entries look like "06 Toxic" / "A4 Strength" — strip the index prefix to get the move name.
    A Pokémon is eligible for a TM if the move is in its (or a pre-evolution's) TM/HM list. */
 function tmMoveName(raw){ return canonMoveName(String(raw||"").replace(/^[A-Z]*\d+\s+/,"").trim()); }
-function speciesLearnsTM(sp, moveName){
+function speciesLearnsTM(sp, moveName, p){
   if(!sp) return false;
   const t = String(moveName||"").trim().toLowerCase();
-  return speciesLineBackTo(sp).some(s => (s.moves?.tmhm||[]).some(x => tmMoveName(x).toLowerCase() === t));
+  // Underdog's Lessons (Poké Edge) opens up the chosen Final Evolution's TM/HM list as well
+  const line = [...speciesLineBackTo(sp), ...(p && underdogLessonSpecies(p) ? [underdogLessonSpecies(p)] : [])];
+  return line.some(s => (s.moves?.tmhm||[]).some(x => tmMoveName(x).toLowerCase() === t));
 }
 /* the active character's Pokémon that can learn `moveName` from a TM/HM */
 function partyEligibleForTM(moveName){
   const c = activeChar(); if(!c) return [];
   return (c.pokemon||[]).map(p=>({p, sp:getSpecies(p.species)}))
-    .filter(x => speciesLearnsTM(x.sp, moveName));
+    .filter(x => speciesLearnsTM(x.sp, moveName, x.p));
 }
 /* teach a TM move to one Pokémon (respects the move limit unless 🔓) */
 function teachTM(p, mn){
   if((p.moves||[]).some(x=>String(x).toLowerCase()===mn.toLowerCase())){ toast("Already knows "+mn); return; }
-  const limit = effectiveMoveLimit(activeChar().trainer);
+  const limit = effectiveMoveLimit(activeChar().trainer, p);
   if(!p.unlocked && p.moves.length>=limit){ toast(`${p.nickname||getSpecies(p.species)?.name||"It"} is at the move limit (${limit}) — free a slot or tick 🔓`); return; }
   p.moves.push(mn); save();
   toast(`${p.nickname||getSpecies(p.species)?.name||"Pokémon"} learned ${mn} ✓`);
@@ -6888,7 +8577,8 @@ function showTMEligibility(moveName){
 /* Struggle (auto-upgrades to Struggle+ for Combat Expert+ species) */
 function struggleMove(p){
   const sp = getSpecies(p.species);
-  const combatDice = sp?.skills?.combat?.dice || 0;
+  // monSkills, not the printed dex line: a Combat Rank bought with Skill Improvement upgrades it too
+  const combatDice = monSkills(p, sp).combat?.dice || 0;
   return moveByName.get(combatDice >= 5 ? "struggle+" : "struggle") || moveByName.get("struggle");
 }
 /* ---------- ability / capability type effects ---------- */
@@ -6984,6 +8674,8 @@ function struggleFor(p, sp){
   if(hasAbility(p, "Normalize")) t = "Normal";
   m.type = t;
   if(t !== "Normal" && p.struggleSpecial && struggleCanBeSpecial(p, sp)) m.class = "Special";
+  // Basic Ranged Attacks (Poké Edge): that elemental Struggle may be thrown up to 6 m
+  if(pokeEdgeRangedStruggle(p, t)) m.range = "6, 1 Target";
   return m;
 }
 /* the Struggle type / Physical-Special picker (shown when the Pokémon has options) */
@@ -7035,15 +8727,15 @@ function openMoveSync(p, t, mn, persistFn, rerenderFn){
   const chosen = typeAceChosenType(t);
   if(!chosen){ toast("Pick a Chosen Type for Type Ace first."); return; }
   if(p.moveSync){ toast(`${p.species} already has a Move-Sync'd Move (${p.moveSync.move}) — forget it before syncing a new one.`); return; }
-  if((p.tutorPoints||0) < 1){ toast(`Move Sync costs 1 Tutor Point (has ${p.tutorPoints||0}).`); return; }
-  p.tutorPoints = Math.max(0,(p.tutorPoints||0)-1);
+  if(tpLeft(p) < 1){ toast(`Move Sync costs 1 Tutor Point (has ${tpLeft(p)}).`); return; }
+  tpSpend(p, 1, `Move Sync — ${mn} (${chosen})`, {kind:"sync"});
   p.moveSync = { move: mn, type: chosen };
   persist(); rerender();
   toast(`${mn} is now permanently ${chosen}-Type (Move Sync)`);
 }
 function clearMoveSync(p, persistFn, rerenderFn){
   if(!p.moveSync) return;
-  p.tutorPoints = (p.tutorPoints||0) + 1;
+  tpRefund(p, 1, `Move Sync dropped — ${p.moveSync.move}`, {kind:"sync"});
   const was = p.moveSync.move; p.moveSync = null;
   (persistFn||save)(); (rerenderFn||(()=>refreshMon(p)))();
   toast(`${was} is no longer Move-Synced (+1 Tutor Point refunded)`);
@@ -7060,11 +8752,11 @@ function moveSlot(p, sp, m, mn, opts={}){
       m?el("span",{html:typeBadge(effectiveMoveType(p,m))}):"",
       isSynced?el("span",{class:"kv",title:`Move Sync: permanently ${p.moveSync.type}-Type`,style:"margin-left:6px"},"🔃 Synced"):"",
       opts.tag?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600"},opts.tag):""),
-    el("div",{class:"ms-info"}, m? moveLineShort(m) : "custom / not in database"));
+    el("div",{class:"ms-info"}, m? moveLineShort(m, p) : "custom / not in database"));
   slot.append(info);
   const acts = el("div",{class:"inline"});
   // Scene/Daily use tracker (Struggle & At-Will moves show nothing)
-  if(m && !opts.tag){ const uc = usesControl(p, "move", m.name, m.frequency, opts.rerender||(()=>refreshMon(p))); if(uc) acts.append(uc); }
+  if(m && !opts.tag){ const uc = usesControl(p, "move", m.name, monMoveFreq(p, m), opts.rerender||(()=>refreshMon(p))); if(uc) acts.append(uc); }
   if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",title:"roll this move",onclick:()=>openMoveRoll(p,m,sp,{rerender:rrMon})},"🎲 Roll"));
   if(m) acts.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("move",m.name)},"info"));
   if(m && !opts.tag && (moveSyncEligible(t) || isSynced)) acts.append(el("button",{class:"btn-secondary"+(isSynced?" on":""),style:"padding:6px 10px",
@@ -7076,9 +8768,10 @@ function moveSlot(p, sp, m, mn, opts={}){
 }
 function movesCard(p, sp){
   if(p.moveSync && !(p.moves||[]).some(mn=>(mn||"").toLowerCase()===p.moveSync.move.toLowerCase())){
-    p.tutorPoints = (p.tutorPoints||0) + 1; p.moveSync = null; save();   // synced Move was forgotten — refund
+    tpRefund(p, 1, `Move Sync refunded — ${p.moveSync.move} was forgotten`, {kind:"sync"});
+    p.moveSync = null; save();
   }
-  const limit = effectiveMoveLimit(activeChar().trainer);
+  const limit = effectiveMoveLimit(activeChar().trainer, p);
   const n = p.moves.length, over = n > limit;
   const atLimit = !p.unlocked && n >= limit;
   const addBtn = el("button",{class:"linkbtn h-act", disabled:atLimit,
@@ -7314,6 +9007,19 @@ function abilityDamageMods(p, m, baseDBVal, thresholds, opts={}){
   // Punk Rock: +2 DB on Sonic Moves
   if(hasAbility(p,"Punk Rock") && moveHasKeyword(m,"sonic")){
     mods.db += 2; mods.why.push("Punk Rock +2 DB (Sonic)"); }
+  /* Twisted Power: "adds half of their Attack Stat to the damage rolls of their Special Moves; and
+     adds half of their Special Attack Stat to the damage of their Physical Moves. This does not
+     change the Damage Class of any attack." — so it's the OPPOSITE stat, added as flat damage, and
+     the target still subtracts whichever Defense the Move's own class calls for. Combat-Stage-
+     adjusted (`eff`), like the attacking stat the roll already adds. Status Moves get nothing. */
+  if(hasAbility(p,"Twisted Power") && (opts.isPhys || opts.isSpec)){
+    const e = pokeDerived(p).eff;
+    const half = Math.floor((opts.isPhys ? e.spatk : e.atk)/2);
+    if(half > 0){
+      mods.flat += half;
+      mods.why.push(`Twisted Power +${half} damage (half your ${opts.isPhys?"Sp.Attack":"Attack"})`);
+    }
+  }
   // Hustle: +10 to Physical Damage Rolls (its −2 Physical Accuracy lives in abilityAccMods)
   if(hasAbility(p,"Hustle") && opts.isPhys){
     mods.flat += 10; mods.why.push("Hustle +10 damage (Physical)"); }
@@ -7353,6 +9059,20 @@ function boneWielderNeedsClub(p, m){
 function boneWielderPierces(p, m, mtype){
   return hasAbility(p,"Bone Wielder [Errata]") && isBoneWielderMove(m)
       && (mtype || (m && m.type)) === "Ground";
+}
+/* Scrappy (Static): "Ghosts are not immune to the user's Normal and Fighting-Type Moves." Rides the
+   same pierceImmune switch as Bone Wielder's errata — the defender's ×0 is read as a plain neutral
+   matchup instead of an immunity, so a Ghost/Dark Spiritomb still resists Fighting the normal way,
+   it just can't shrug it off entirely. Reads the Type the Move is RESOLVING as (Normalize, an
+   −ate ability, Move Sync), not the printed one. */
+function scrappyPierces(p, m, mtype){
+  if(!hasAbility(p,"Scrappy")) return false;
+  const t = mtype || (m && m.type);
+  return t === "Normal" || t === "Fighting";
+}
+/* every attacker-side reason this hit ignores a defender's Type immunity */
+function ignoresTypeImmunity(p, m, mtype){
+  return boneWielderPierces(p, m, mtype) || scrappyPierces(p, m, mtype);
 }
 function abilityAccMods(p, m, isPhys){
   const out = { acc:0, why:[] };
@@ -7687,7 +9407,12 @@ function openMoveRoll(p, m, sp, opts={}){
   const accCS = (d.cs.acc||0) + abilAcc.acc + (hasStatus(p,"focused")?1:0);      // Accuracy CS (Core p.234) + ability Accuracy mods + Focused Training
   const wx = weatherRollMods(p, m, mtype);      // current Weather Condition (Core p.342)
   const tx = terrainRollMods(p, m, mtype);      // current Terrain(s) in play — any number can stack
-  const effAC = wx.acOverride!=null ? wx.acOverride : m.ac;   // e.g. Thunder is AC 11 in Sun
+  /* The AC this roll is checked against: the Move's printed AC, minus any Accuracy Training
+     bought for it with Tutor Points ("permanently lowered by 1"), with the Weather's own
+     override winning on the printed number when there is one (Thunder is AC 11 in Sun). */
+  const acCut = monACReduction(p, m);
+  const printedAC = m.ac!=null ? Math.max(1, m.ac - acCut) : null;
+  const effAC = wx.acOverride!=null ? Math.max(1, wx.acOverride - acCut) : printedAC;
   const thresholds = effectThresholds(m.effect);
   const abilMods = abilityDamageMods(p, m, baseDB(), thresholds, {stab, mtype, isPhys, isSpec, fieryCrash:fcMode});
   // Effect Ranges as this roll actually resolves them — Fiery Crash adds/widens Burn on a Dash Move
@@ -7731,8 +9456,10 @@ function openMoveRoll(p, m, sp, opts={}){
   const freqChip = el("span",{class:"kv",style:"align-items:center;gap:6px;padding:3px 7px"});
   const drawFreq = () => {
     freqChip.innerHTML = "";
-    freqChip.append(el("span",{}, `Freq: ${m.frequency||"—"}`));
-    const uc = usesControl(p, "move", m.name, m.frequency,
+    const freq = monMoveFreq(p, m);
+    freqChip.append(el("span",{title: freq!==m.frequency ? `PP Up: printed ${m.frequency}` : ""},
+      `Freq: ${freq||"—"}${freq!==m.frequency?" ✨":""}`));
+    const uc = usesControl(p, "move", m.name, freq,
       ()=>{ drawFreq(); if(opts.rerender) opts.rerender(); },
       opts.persist||save, {bossEot:isBoss(p)});
     if(uc) freqChip.append(uc);
@@ -7740,7 +9467,9 @@ function openMoveRoll(p, m, sp, opts={}){
   drawFreq();
   body.append(el("div",{class:"chips",style:"margin-bottom:12px"},
     freqChip,
-    el("span",{class:"kv"}, wx.acOverride!=null ? `AC ${effAC} (${wx.weather.name})` : `AC ${m.ac??"—"}`),
+    el("span",{class:"kv", title: acCut ? `Accuracy Training: printed AC ${m.ac}, lowered by ${acCut}` : ""},
+      wx.acOverride!=null ? `AC ${effAC} (${wx.weather.name})` : `AC ${printedAC ?? "—"}`
+      + (acCut?" ✨":"")),
     dbChip,
     el("span",{class:"kv"}, m.range||"—")));
 
@@ -7750,6 +9479,8 @@ function openMoveRoll(p, m, sp, opts={}){
     "🦴 Bone Wielder — this Move ignores immunity to Ground-Type Moves (applied when you target a token)."));
   else if(boneWielderNeedsClub(p, m)) body.append(el("div",{class:"small muted",style:"margin:-6px 0 12px"},
     "🦴 Bone Wielder is only functional while a Thick Club is held — the +1 Accuracy isn't applied."));
+  if(scrappyPierces(p, m, mtype)) body.append(el("div",{class:"small",style:"margin:-6px 0 12px;color:var(--accent)"},
+    `💪 Scrappy — Ghost-Types are not immune to this ${mtype}-Type Move (applied when you pick a target).`));
 
   /* --- "−ate" ability toggle (Aerilate / Pixilate / Galvanize / Refrigerate) --- it re-types this
      Normal move, which can gain OR lose STAB, so let the player flip it per-roll and see the effect. */
@@ -7825,7 +9556,7 @@ function openMoveRoll(p, m, sp, opts={}){
       el("div",{class:"small muted",style:"margin-top:2px"},
         wx.autoHit ? `${m.name} cannot miss in ${wx.weather.name} — no Accuracy Check needed.`
         : cxNoMiss ? `${m.name} cannot miss while that condition holds — no Accuracy Check needed.`
-        : m.ac!=null ? `${nAcc>1?`Make ${nAcc} separate Accuracy Rolls`:"Roll 1d20"} — each hits if it's ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote}. Roll ${critNow()===20?"20":critNow()+"+"} auto-hits/crits, nat 1 auto-misses.`
+        : m.ac!=null ? `${nAcc>1?`Make ${nAcc} separate Accuracy Rolls`:"Roll 1d20"} — each hits if it's ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:acCut?" (Accuracy Training)":""} + ${evaNote}. Roll ${critNow()===20?"20":critNow()+"+"} auto-hits/crits, nat 1 auto-misses.`
                      + (accWhy.length?` Every roll includes ${accWhy.join(" ")}.`:"")
                    : "This move has no Accuracy Check."));
   }
@@ -8181,7 +9912,7 @@ function openMoveRoll(p, m, sp, opts={}){
         accLine.append(el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`,
           el("span",{class:"muted",style:"font-size:14px;font-weight:600"}, acc!==accTot?`  (${acc})`:"  (1d20)")));
         accLine.append(el("div",{class:"small muted"},
-          `Hits if ${accTot} ≥ AC ${m.ac} + ${evaNote}.${acc===20?" Natural 20 — auto-hit!":acc===1?" Natural 1 — auto-miss.":""}`));
+          `Hits if ${accTot} ≥ AC ${effAC} + ${evaNote}.${acc===20?" Natural 20 — auto-hit!":acc===1?" Natural 1 — auto-miss.":""}`));
       } else {
         accLine.append(el("div",{style:"font-size:18px;font-weight:800;color:var(--good)"}, "🎯 Cannot miss"));
         accLine.append(el("div",{class:"small muted"}, "This move has no Accuracy Check."));
@@ -8350,7 +10081,7 @@ function openMoveRoll(p, m, sp, opts={}){
         // GM: drop this rolled hit straight onto a battle-map token (auto Def / type / abilities / DR).
         if(isPhys || isSpec){
           const tw = attackTargetWidget({ dmg:total, type:mtype||"Typeless", physical:isPhys,
-            pierceImmune: boneWielderPierces(p, m, mtype) });
+            pierceImmune: ignoresTypeImmunity(p, m, mtype) });
           if(tw) dmgLine.append(tw);
         }
       }
@@ -8385,12 +10116,18 @@ function openMoveRoll(p, m, sp, opts={}){
     el("button",{class:"btn-primary",onclick:doRoll},"🎲 Roll dice"),
   ]});
 }
-function moveLineShort(m){
+/* `p` is optional: pass the Pokémon whose row this is and the AC shown is the one it actually
+   hits at — Accuracy Training (Poké Edge) lowers a Move's AC permanently. */
+function moveLineShort(m, p){
   const bits=[];
-  if(m.frequency) bits.push(m.frequency);
+  const freq = p ? monMoveFreq(p, m) : m.frequency;
+  if(freq) bits.push(freq + (freq!==m.frequency ? " (PP Up)" : ""));
   if(m.class) bits.push(m.class);
   if(m.damageBase) bits.push(`DB${m.damageBase}`);
-  if(m.ac!=null) bits.push(`AC ${m.ac}`);
+  if(m.ac!=null){
+    const cut = p ? monACReduction(p, m) : 0;
+    bits.push(cut ? `AC ${m.ac-cut} (trained, was ${m.ac})` : `AC ${m.ac}`);
+  }
   if(m.range) bits.push(m.range);
   return bits.join(" · ");
 }
@@ -8441,31 +10178,34 @@ function tutorMoveAllowed(moveName, level){
 }
 function openTutorMovePicker(p, sp){
   if(!p.unlocked && !sp){ toast("Unknown species — tick 🔓 to add any move"); return; }
-  const limit = effectiveMoveLimit(activeChar().trainer);
+  const limit = effectiveMoveLimit(activeChar().trainer, p);
   if(!p.unlocked && p.moves.length>=limit){ toast(`Move limit reached (${limit}). Tick "🔓 GM: allow any" to add more.`); return; }
-  if(!p.unlocked && (p.tutorPoints||0)<TUTOR_COST){ toast(`Not enough Tutor Points — a Tutor move costs ${TUTOR_COST} (has ${p.tutorPoints||0}).`); return; }
+  if(!p.unlocked && tpLeft(p)<TUTOR_COST){ toast(`Not enough Tutor Points — a Tutor move costs ${TUTOR_COST} (has ${tpLeft(p)}).`); return; }
   const cleanTutor = s => (s?.moves?.tutor||[]).map(m=>canonMoveName(m.replace(/\s*\(N\)\s*$/i,"").trim()));
+  // Underdog's Lessons (Poké Edge): the chosen Final Evolution's Tutor list is open to it too
+  const uSp = underdogLessonSpecies(p);
+  const tutorList = s => [...new Set([...cleanTutor(s), ...(uSp ? cleanTutor(uSp) : [])])];
   let names, title, markSet, lockFn = null;
   if(p.unlocked){
-    const learn = cleanTutor(sp);
+    const learn = tutorList(sp);
     markSet = new Set(learn.map(x=>x.toLowerCase()));
     names = [...new Set([...learn, ...D.moves.map(m=>m.name)])];
     title = `Learn a Tutor move (🔓 any) — ${sp?sp.name+"'s Tutor list on top":"all moves"}`;
   } else {
     // ineligible moves stay listed but locked, so the player can see WHAT they'll be able to teach
     // later and why it's blocked now, instead of the move just not being there
-    names = cleanTutor(sp);
+    names = tutorList(sp);
     markSet = new Set();
     lockFn = nm => { const min = tutorMinLevel(nm);
       return (min!=null && p.level < min)
         ? `Tutor restriction — this Pokémon must be Lv ${min} (it's Lv ${p.level})` : null; };
-    title = `Learn a Tutor move — ${sp.name} (−${TUTOR_COST} Tutor Points, ${p.tutorPoints||0} left)`;
+    title = `Learn a Tutor move — ${sp.name} (−${TUTOR_COST} Tutor Points, ${tpLeft(p)} left)`;
   }
   names = [...new Set(names)].filter(nm => !p.moves.includes(nm));
   if(!names.length){ toast(p.unlocked?"No new Tutor moves available":`${p.nickname||sp.name} already knows every move on its Tutor list.`); return; }
   openPicker(title, names, name=>{
     if(p.moves.includes(name)) return;
-    if(!p.unlocked) p.tutorPoints = Math.max(0,(p.tutorPoints||0)-TUTOR_COST);
+    if(!p.unlocked) tpSpend(p, TUTOR_COST, `Tutor move — ${name}`, {kind:"tutor"});
     p.moves.push(name); save(); refreshMon(p);
     toast(`Learned ${name} (Tutor)`);
   }, "move", markSet.size ? n=>markSet.has(n.toLowerCase()) : null, lockFn);
@@ -8489,20 +10229,20 @@ function openMentorPicker(t){
   const left = usesLeft(t, uKey, info.max||3);
   if(left<=0){ toast("No Mentor uses left today"); return; }
   if((t.mentorSkills||[]).length<2){ toast("Pick your two Mentor Skills first"); return; }
-  const party = (activeChar().pokemon||[]).filter(p=>p.unlocked || (p.tutorPoints||0)>0);
+  const party = (activeChar().pokemon||[]).filter(p=>p.unlocked || tpLeft(p)>0);
   if(!party.length){ toast("No Pokémon with a Tutor Point to mentor"); return; }
   const labelFor = p => `${p.nickname||getSpecies(p.species)?.name||p.species} (Lv${p.level}${p.onTeam===false?" · box":""})`;
   const byLabel = new Map(party.map(p=>[labelFor(p), p]));
   openPicker("Mentor which Pokémon?", [...byLabel.keys()], label=>{
     const p = byLabel.get(label); const sp = getSpecies(p.species);
-    if(!p.unlocked && p.moves.length>=effectiveMoveLimit(t)){
-      toast(`${labelFor(p)} is at its move limit (${effectiveMoveLimit(t)}). Tick "🔓 GM: allow any" to add more.`); return; }
+    if(!p.unlocked && p.moves.length>=effectiveMoveLimit(t, p)){
+      toast(`${labelFor(p)} is at its move limit (${effectiveMoveLimit(t, p)}). Tick "🔓 GM: allow any" to add more.`); return; }
     const cap = p.level + mentorSkillSum(t);
     const names = mentorMoveOptions(sp, cap).filter(nm=>!p.moves.includes(nm) && tutorMoveAllowed(nm, p.level));
     if(!names.length){ toast("No eligible moves to teach (level / Tutor restriction)"); return; }
     openPicker(`Teach ${labelFor(p)} a move (cap Lv ${cap})`, names, name=>{
       p.moves.push(name);
-      if(!p.unlocked) p.tutorPoints = Math.max(0,(p.tutorPoints||0)-1);
+      if(!p.unlocked) tpSpend(p, 1, `Mentored — learned ${name}`, {kind:"mentor"});
       t.uses = t.uses||{}; t.uses[uKey] = Math.min(info.max||3, (t.uses[uKey]||0)+1);
       save(); renderBattle();
       toast(`🎓 ${labelFor(p)} learned ${name} (Mentor)`);
@@ -9324,7 +11064,7 @@ function moveForMon(p, moveName){
 }
 function clearSigTechnique(p){
   if(!p.sigTechnique) return;
-  p.tutorPoints = (p.tutorPoints||0) + 1;
+  tpRefund(p, 1, `Signature Technique dropped — ${p.sigTechnique.move}`, {kind:"tutor"});
   const was = p.sigTechnique.move;
   p.sigTechnique = null;
   saveEnc(); renderEncounters();
@@ -9334,12 +11074,13 @@ function openSigTechPicker(trainer, p, m, mn){
   const eligible = sigTechEligibleMods(trainer, m);
   if(!eligible.length){ toast("No Signature Technique modification fits — the Trainer needs a matching Training Feature (Agility/Brutal/Focused/Inspired) for this Move's category."); return; }
   const already = p.sigTechnique && p.sigTechnique.move===mn;
-  if(!already && (p.tutorPoints||0) < 2){ toast(`Signature Technique costs 2 Tutor Points (has ${p.tutorPoints||0}).`); return; }
+  if(!already && tpLeft(p) < 2){ toast(`Signature Technique costs 2 Tutor Points (has ${tpLeft(p)}).`); return; }
   const names = eligible.map(x=>x.name);
   openPicker(`Signature Technique for ${mn}`, names, name=>{
     const mod = eligible.find(x=>x.name===name);
-    if(p.sigTechnique && p.sigTechnique.move!==mn) p.tutorPoints = (p.tutorPoints||0) + 1;   // switching moves refunds the old one
-    if(!already) p.tutorPoints = Math.max(0,(p.tutorPoints||0)-2);
+    if(p.sigTechnique && p.sigTechnique.move!==mn)                                          // switching moves refunds the old one
+      tpRefund(p, 1, `Signature Technique moved off ${p.sigTechnique.move}`, {kind:"tutor"});
+    if(!already) tpSpend(p, 2, `Signature Technique — ${mn}`, {kind:"tutor"});
     p.sigTechnique = { move: mn, mod: mod.name };
     saveEnc(); renderEncounters();
     toast(`${mn} is now ${p.species}'s Signature Technique (${mod.name})`);
@@ -9820,7 +11561,8 @@ function encMonRemoveBtn(p,list){ return el("button",{class:"x",style:"cursor:po
 function encounterMonCard(enc, p, list, trainer){
   normPokemon(p);
   if(p.moveSync && !(p.moves||[]).some(mn=>(mn||"").toLowerCase()===p.moveSync.move.toLowerCase())){
-    p.tutorPoints = (p.tutorPoints||0) + 1; p.moveSync = null; saveEnc();   // synced Move was forgotten — refund
+    tpRefund(p, 1, `Move Sync refunded — ${p.moveSync.move} was forgotten`, {kind:"sync"});
+    p.moveSync = null; saveEnc();
   }
   const sp=getSpecies(p.species), d=pokeDerived(p), maxHP=d.maxHP;
   if(p.currentHP==null) p.currentHP=maxHP;
@@ -9855,7 +11597,7 @@ function encounterMonCard(enc, p, list, trainer){
   const nw=el("div",{style:"flex:1;min-width:0"});
   nw.append(el("div",{style:"font-weight:800"}, (fainted?"💀 ":"")+encMonName(p), " ", el("span",{html:(sp?.types||[]).map(typeBadge).join(" ")})));
   const lvIn=el("input",{type:"number",min:1,max:100,value:p.level,style:"width:60px",title:"level"});
-  lvIn.addEventListener("change",()=>{ const l=Math.max(1,Math.min(100,parseInt(lvIn.value)||1)); p.level=l; p.xp=xpForLevel(l); encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; syncEncMonLevelupMoves(p,sp); p.tutorPoints=Math.max(p.tutorPoints||0, tutorPointsEarned(l)); saveEnc(); renderEncounters(); });
+  lvIn.addEventListener("change",()=>{ const l=Math.max(1,Math.min(100,parseInt(lvIn.value)||1)); p.level=l; p.xp=xpForLevel(l); encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; syncEncMonLevelupMoves(p,sp); tpSync(p); saveEnc(); renderEncounters(); });
   nw.append(el("div",{class:"small muted",style:"margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"},
     "Lv", lvIn, `· ${p.nature||"—"} · ${p.gender||"—"}${p.shiny?" · ✨Shiny":""}`));
   nw.append(rotomFormControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
@@ -10927,10 +12669,20 @@ function ensureCart(shop, rowId){
   return c;
 }
 /* free promo lines cost nothing; everything else takes the buyer's discount (0 by default). */
+/* whose cart this is — carts are keyed by cloud row id, so the buyer's sheet is one lookup away */
+function cartTrainerOf(cart){
+  if(mode!=="cloud" || !cart) return null;
+  const ent = Object.entries(shopData().carts||{}).find(([,c])=>c===cart);
+  return ent ? ((cloud.byId||{})[ent[0]]||{}).data?.trainer || null : null;
+}
 function cartLinePrice(cart, line){
   if(line.free) return 0;
   const disc = Math.max(0, Math.min(100, cart.discount||0));
-  return Math.max(0, Math.round((line.price||0) * (100-disc)/100));
+  let price = Math.max(0, Math.round((line.price||0) * (100-disc)/100));
+  // Two of Pentacles / Page of Pentacles swing what this buyer pays, in every shop
+  const buy = cardShopPct(cartTrainerOf(cart)).buy;
+  if(buy) price = Math.max(0, Math.round(price * (100+buy)/100));
+  return price;
 }
 function cartTotal(cart){ return (cart?.lines||[]).reduce((s,l)=> s + cartLinePrice(cart,l)*l.qty, 0); }
 function cartCount(cart){ return (cart?.lines||[]).reduce((s,l)=> s + l.qty, 0); }
@@ -11012,16 +12764,37 @@ let shopBuyerId = null;                     // this device's chosen buyer (not s
 let shopPanelTab = "items";                 // "items" | "cart" | "live"
 /* Two ways a storefront opens, and they must not fight each other:
      • the GM PUSHES one to the whole table  → map.shopId (shared, in the map meta)
-     • someone TAPS a shop token on the board → shopViewId (local to that screen only)
-   The local one wins while it's set, so tapping the potion stall doesn't yank everyone else's
-   screen around; `null` means "just follow whatever the GM has pushed". Whenever the GM's push
-   actually changes, the local override is dropped so their new choice is what everyone sees. */
-let shopViewId = null;
+     • someone TAPS a shop token on the board → shopViewIds (local to that screen only)
+   A screen can have SEVERAL open at once — they become tabs along the top of the storefront panel.
+   That's what stops a second shop from erasing the one you were reading: the GM watching three
+   players browse three stalls gets three tabs, not a panel that keeps swapping under them.
+   `shopViewIds` is the open list (most recent last) and `shopActiveId` is the tab on show; both are
+   local to this screen and never synced. */
+let shopViewIds = [];
+let shopActiveId = null;
 let shopPushSeen = null;
-function openShopId(map){
+/* keep the list honest: drop shops that were deleted/archived, fold in the GM's push, and make sure
+   something sensible is the active tab. Returns the ids to show as tabs. */
+function shopOpenList(map){
   const pushed = (map && map.shopId) || "";
-  if(pushed !== shopPushSeen){ shopPushSeen = pushed; shopViewId = null; }
-  return shopViewId===null ? pushed : shopViewId;
+  if(pushed !== shopPushSeen){                       // the GM changed what the table is looking at
+    if(shopPushSeen) shopViewIds = shopViewIds.filter(id => id !== shopPushSeen);   // the old push closes
+    shopPushSeen = pushed;
+    if(pushed){ if(!shopViewIds.includes(pushed)) shopViewIds.push(pushed); shopActiveId = pushed; }
+  }
+  shopViewIds = shopViewIds.filter(id=>{
+    const sh = shopById(id);
+    return sh && (!sh.archived || cloud.isGM);
+  });
+  if(!shopViewIds.includes(shopActiveId)) shopActiveId = shopViewIds[shopViewIds.length-1] || null;
+  return shopViewIds;
+}
+/* put a shop on this screen. `focus` false = add the tab but leave the reader where they are. */
+function openShopHere(id, focus){
+  if(!id) return;
+  if(!shopViewIds.includes(id)) shopViewIds.push(id);
+  if(focus || !shopActiveId){ shopActiveId = id; shopPanelTab = "items"; shopCollapsed = false;
+    localStorage.setItem("ptu_shop_collapsed","0"); }
 }
 /* ---- the GM follows the table ----
    A player tapping a door only changes THEIR screen, so the GM would otherwise have no idea anyone
@@ -11030,7 +12803,10 @@ function openShopId(map){
    watch the cart fill live, without having to ask. Announcements are per DEVICE (not per sheet), so
    a shared Viewer screen counts too, and they expire so a browser closed mid-browse stops nagging. */
 const SHOP_VIEW_TTL = 6*60*60*1000;    // 6h — long enough for a session, short enough to self-clean
-let shopFollowSeen = null;             // the player-opened shop the GM has already reacted to
+/* "<user>:<shopId>" pairs the GM has already reacted to. A Set rather than one id: with a single
+   slot, two players browsing two shops kept flipping it back and forth and the storefront reopened
+   over and over. Entries are dropped when that player stops viewing, so re-opening announces again. */
+const shopFollowSeen = new Set();
 /* Self-heal: shops are fetched once, at connect. A player who joined BEFORE the GM built any shop
    — or who missed the row's INSERT event because realtime truncated it — holds an empty shops row
    for the rest of the session: their doors fall back to the name stored on the token and tapping one
@@ -11051,6 +12827,16 @@ function announceShopView(shopId, immediate){
   // on disconnect the debounced write would be torn down before it fired — send it now instead
   if(immediate){ clearTimeout(shopSaveTimer); shopSaveTimer=null; shopUpsert(); } else saveShops();
 }
+/* who (if anyone) is browsing a particular shop right now — drives the 👀 marks on the tabs */
+function playersViewingShopId(id){
+  const v = shopData().viewing || {};
+  for(const [k,e] of Object.entries(v)){
+    if(!e || e.shopId!==id || k===cloud.userId) continue;
+    if(Date.now() - (e.at||0) > SHOP_VIEW_TTL) continue;
+    return e;
+  }
+  return null;
+}
 function playersViewingShop(){
   const v = shopData().viewing || {};
   let best = null;
@@ -11063,25 +12849,42 @@ function playersViewingShop(){
 }
 /* React (once) to the newest player-opened shop changing. Called from the realtime/refetch paths,
    and primed silently on connect so joining mid-session doesn't yank the GM straight to the board. */
+/* React to players opening storefronts. The GM is NOT dragged to the board any more — a new shop
+   arrives as an extra tab on the panel and says so in a toast, so whatever they were already
+   reading stays put. Focus only moves if nothing was open to begin with. */
 function noticePlayerShop(silent){
   if(!cloud.isGM) return;
-  const f = playersViewingShop(), fid = (f && f.shopId) || "";
-  if(fid === shopFollowSeen) return;
-  const wasFollowing = !!shopFollowSeen && shopViewId===shopFollowSeen;
-  shopFollowSeen = fid;
-  if(silent) return;
-  if(fid){
-    const shop = shopById(fid); if(!shop) return;
-    shopViewId = fid; shopPanelTab = "items"; shopCollapsed = false;
-    localStorage.setItem("ptu_shop_collapsed","0");
-    toast(`🛒 ${f.who||"A player"} opened ${shop.name}`);
-    if(currentTab!=="map") switchTab("map"); else renderMap();
-  } else if(wasFollowing){
-    shopViewId = null;                                   // they closed up; drop back to whatever we pushed
-    if(currentTab==="map") renderMap();
-  }
+  const v = shopData().viewing || {};
+  const live = new Set();
+  let added = false;
+  Object.entries(v).forEach(([uid, e])=>{
+    if(!e || !e.shopId || uid===cloud.userId) return;
+    if(Date.now() - (e.at||0) > SHOP_VIEW_TTL) return;
+    const key = uid + ":" + e.shopId;
+    live.add(key);
+    if(shopFollowSeen.has(key)) return;                  // already knew about this one
+    shopFollowSeen.add(key);
+    if(silent) return;
+    const shop = shopById(e.shopId); if(!shop) return;
+    const hadOne = !!shopActiveId;
+    openShopHere(e.shopId, false);                       // a tab, never a takeover
+    added = true;
+    toast(`🛒 ${e.who||"A player"} opened ${shop.name}`
+      + (hadOne ? " — added as a tab" : ""));
+  });
+  // forget the pairings that have gone away, so the same player re-opening announces again
+  [...shopFollowSeen].forEach(k=>{ if(!live.has(k)) shopFollowSeen.delete(k); });
+  if(added && currentTab==="map") renderMap();
 }
-function closeShopLocally(){ shopViewId = ""; announceShopView(""); refreshShopPanel(); }
+/* close one storefront on THIS screen (the others stay open in their tabs) */
+function closeShopLocally(id){
+  const gone = id || shopActiveId;
+  shopViewIds = shopViewIds.filter(x=>x!==gone);
+  if(shopActiveId===gone) shopActiveId = shopViewIds[shopViewIds.length-1] || null;
+  if(gone === shopPushSeen) shopPushSeen = null;   // let the GM's push re-open it later
+  announceShopView(shopActiveId || "");            // the GM follows whatever this screen still has open
+  if(currentTab==="map") renderMap(); else refreshShopPanel();
+}
 /* tapping a shop token — opens that shop on THIS screen, and tells the GM so they can look too */
 function openShopFromToken(token){
   const shop = shopById(token.shopId);
@@ -11098,9 +12901,8 @@ function openShopFromToken(token){
     return;
   }
   markShopSeen(shop.id);                       // been inside once — its name shows on the board now
-  shopViewId = shop.id; shopPushSeen = (currentMapForView()?.shopId)||"";
-  shopPanelTab = "items"; shopCollapsed = false;
-  localStorage.setItem("ptu_shop_collapsed","0");
+  shopPushSeen = (currentMapForView()?.shopId)||"";
+  openShopHere(shop.id, true);                 // tapping a door is a deliberate act — show it
   announceShopView(shop.id);
   renderMap();
 }
@@ -11112,8 +12914,10 @@ function shopActiveBuyer(){
   return rows.find(r=>r.id===shopBuyerId) || rows.find(ownsRow) || rows[0] || null;
 }
 async function setMapShop(map, id){
+  if(shopPushSeen) shopViewIds = shopViewIds.filter(x=>x!==shopPushSeen);   // the previous push closes
   map.shopId = id || "";
-  shopPushSeen = map.shopId; shopViewId = null;    // the GM's push is what they want to look at too
+  shopPushSeen = map.shopId;
+  if(map.shopId) openShopHere(map.shopId, true);   // the GM's push is what they want to look at too
   mapMetaSave(); renderMap();
   toast(id ? `🛒 ${shopById(id)?.name||"Shop"} is open to the players` : "Shop closed");
 }
@@ -11134,7 +12938,8 @@ function refreshShopPanel(){
 }
 function shopPanel(map){
   if(mode!=="cloud" || !map) return null;
-  const openId = openShopId(map);
+  const openIds = shopOpenList(map);                 // every storefront open on this screen
+  const openId = shopActiveId || "";
   if(!openId) return null;
   const shop = shopById(openId);
   if(!shop || (shop.archived && !cloud.isGM)) return null;
@@ -11157,12 +12962,31 @@ function shopPanel(map){
   if(cloud.isGM && pushedHere)
     header.append(initMiniBtn("✕ all","close the shop for everyone looking at this map",()=>setMapShop(map,"")));
   if(!pushedHere || !cloud.isGM)
-    header.append(initMiniBtn("✕","close it on this screen",closeShopLocally));
+    header.append(initMiniBtn("✕", openIds.length>1 ? "close this shop on this screen" : "close it on this screen",
+      ()=>closeShopLocally(shop.id)));
   header.append(initMiniBtn(shopCollapsed?"▸":"▾", shopCollapsed?"expand":"collapse",
     ()=>{ shopCollapsed=!shopCollapsed; localStorage.setItem("ptu_shop_collapsed", shopCollapsed?"1":"0"); refreshShopPanel(); }));
   box.append(header);
   attachShopDrag(header, box);
   if(shopCollapsed) return box;
+
+  /* One tab per storefront open on this screen. The GM watching three players browse three stalls
+     gets three tabs and keeps whichever they were reading — a shop opening never wipes another out. */
+  if(openIds.length > 1){
+    const strip = el("div",{class:"shop-shoptabs"});
+    openIds.forEach(id=>{
+      const sh = shopById(id); if(!sh) return;
+      const watcher = playersViewingShopId(id);
+      const tab = el("button",{class:"shop-shoptab"+(id===openId?" on":""),
+        title: watcher ? `${watcher.who||"A player"} is browsing ${sh.name}` : sh.name,
+        onclick:()=>{ shopActiveId = id; shopPanelTab = "items"; refreshShopPanel(); }},
+        (watcher?"👀 ":"") + (sh.name||"Shop"));
+      tab.append(el("span",{class:"shop-shoptab-x",title:"close this one",
+        onclick:e=>{ e.stopPropagation(); closeShopLocally(id); }},"×"));
+      strip.append(tab);
+    });
+    box.append(strip);
+  }
 
   const rows = shopBuyerRows();
   const buyer = shopActiveBuyer();
@@ -11188,8 +13012,8 @@ function shopPanel(map){
   box.append(who);
   // GM: say plainly whose browsing pulled this open, so the panel never appears out of nowhere
   if(cloud.isGM && !pushedHere){
-    const f = playersViewingShop();
-    if(f && f.shopId===shop.id) box.append(el("div",{class:"shop-note small muted"},
+    const f = playersViewingShopId(shop.id);
+    if(f) box.append(el("div",{class:"shop-note small muted"},
       `👀 ${f.who||"A player"} is browsing this shop.`));
   }
   if(shop.note) box.append(el("div",{class:"shop-note small muted"}, shop.note));
@@ -11669,8 +13493,10 @@ function simAttacks(obj, isT, sp){
     if(typeof db!=="number" || db<1) return;                  // fixed/special-damage moves are skipped
     const key = (m.name||"")+"|"+db+"|"+(m.type||"");
     if(seen.has(key)) return; seen.add(key);
+    // a Pokémon's Accuracy Training lowers the AC the simulator rolls against, same as at the table
+    const acCut = isT ? 0 : monACReduction(obj, m);
     out.push({ name:m.name||"Attack", type:m.type||"Normal", cls:/spec/i.test(cls)?"Special":"Physical",
-               ac: m.ac!=null ? m.ac : 4, db, freq:m.frequency||"At-Will", struggle:!!struggle, m });
+               ac: Math.max(1, (m.ac!=null ? m.ac : 4) - acCut), db, freq:m.frequency||"At-Will", struggle:!!struggle, m });
   };
   if(isT){
     const t = obj;
@@ -11753,7 +13579,7 @@ function simProfile(A, atk, cfg){
   // Both add the Attack / Sp.Attack that matches the Move's class — a Trainer swinging a weapon
   // uses Attack (Core p.286), but a Special Move a Feature granted them uses Sp.Attack. Combat
   // Stages are applied on both sides here (`totals`/`eff`), same as the Defense they're measured
-  // against; openTrainerAttack reads the raw stat instead, so the two agree at 0 Attack CS.
+  // against — and openTrainerAttack now reads the same CS-adjusted stat, so the two always agree.
   const atkStat = A.isT ? (isPhys ? d.totals.atk : d.totals.spatk)
                         : (isPhys ? d.eff.atk   : d.eff.spatk);
   const bm  = buffMods(p, {isPhys});
@@ -11776,7 +13602,7 @@ function simProfile(A, atk, cfg){
     critT: Math.max(2, critThreshold(p, atk.m) - (bm.crit||0)),
     flat: atkStat + (bm.dmg||0) + (wx.dmg||0) + (tx.dmg||0) + (abil.flat||0),
     autoHit: !!wx.autoHit,
-    pierceImmune: !A.isT && boneWielderPierces(p, atk.m, mtype),   // Bone Wielder [Errata]
+    pierceImmune: !A.isT && ignoresTypeImmunity(p, atk.m, mtype),  // Bone Wielder [Errata] / Scrappy
     fiveStrike: isFiveStrike(atk.m),
     atkStat,
   };
@@ -12519,7 +14345,7 @@ function renderReference(){
   bar.append(inp);
   const sub = el("div",{class:"refsub"});
   const subs = [["species","Pokédex"],["move","Moves"],["keyword","Keywords"],["ability","Abilities"],["item","Items"],
-   ["feature","Features"],["edge","Edges"],["nature","Natures"]];
+   ["feature","Features"],["edge","Edges"],["pokeedge","Poké Edges"],["nature","Natures"]];
   if(isGM()) subs.push(["dc","🎲 DCs"]);      // GM-only: how hard should this Skill Check be?
   subs.forEach(([k,l])=>{
     sub.append(el("button",{class:refSub===k?"on":"",onclick:()=>{refSub=k;drawRefList();$$(".refsub button").forEach(b=>b.classList.toggle("on",b.textContent===l));}},l));
@@ -12541,6 +14367,8 @@ function drawRefList(){
   else if(refSub==="item") rows = allItems().filter(i=>match(i.name)||match(i.effect)).slice(0,300).map(i=>refGeneric(i.name,i.cat,i.effect));
   else if(refSub==="feature") rows = D.features.filter(f=>match(f.name)||match(f.category)).slice(0,300).map(f=>refGeneric(f.name,`${f.category||""} · ${f.frequency||""}`,f.effect,f.prerequisites));
   else if(refSub==="edge") rows = D.edges.filter(e=>match(e.name)).slice(0,300).map(e=>refGeneric(e.name,e.category,e.effect,e.prerequisites));
+  else if(refSub==="pokeedge") rows = (D.pokeEdges||[]).filter(e=>match(e.name)||match(e.effect)).slice(0,300)
+    .map(e=>refGeneric(e.name, [e.cost, POKE_EDGE_DEFS[e.name] ? (POKE_EDGE_DEFS[e.name].auto?"⚙ automated on the sheet":"📋 tracked on the sheet") : ""].filter(Boolean).join(" · "), e.effect, e.prerequisites));
   else if(refSub==="nature") rows = D.natures.filter(n=>match(n.name)).map(n=>refGeneric(n.name,natSummary(n),`Likes ${n.likedFlavor}, dislikes ${n.dislikedFlavor}`));
   else if(refSub==="keyword"){
     const seen=new Set();   // several terms are spelling variants of one definition — show each rule once
@@ -12944,6 +14772,9 @@ const AUTOMATED_ABILITIES = {
   "filter":"Softens Super-Effective damage (×1.5→×1.25, ×2→×1.5) in the Type chart & map damage.",
   "solid rock":"Softens Super-Effective damage (×1.5→×1.25, ×2→×1.5); +5 DR vs Super-Effective if paired with Filter.",
   "prism armor":"+5 Damage Reduction vs Super-Effective damage in the map damage tool.",
+  // attacker-side immunity piercing — applied when the rolled hit is dropped on a target
+  "scrappy":"Ghost-Types are not immune to its Normal & Fighting-Type Moves (applied in move rolls and on map damage).",
+  "bone wielder [errata]":"Bone Club / Bonemerang / Bone Rush ignore immunity to Ground-Type Moves.",
 };
 function abilityAutoNote(name){ return AUTOMATED_ABILITIES[String(name||"").toLowerCase()] || null; }
 /* the sheet's Frequency strings carry stray double spaces ("Scene -  Free Action") */
@@ -13181,7 +15012,10 @@ function openPicker(title, names, onPick, refKind, markFn, lockFn, subFn){
         : el("div",{class:"pickitem"}, textCol);
       if(lock){ item.style.opacity=".55"; item.style.cursor="not-allowed";
         item.addEventListener("click",()=>toast(lock)); }
-      else item.addEventListener("click",()=>{ onPick(n); closeModal(); });
+      /* close first, THEN pick: closeModal() empties #modalRoot wholesale, so a callback that opens a
+         follow-up picker (Poké Edge → "which Skill?", Mentor → "which Move?") would otherwise have its
+         brand-new modal wiped out the instant it returned. */
+      else item.addEventListener("click",()=>{ closeModal(); onPick(n); });
       list.append(item);
     });
     if(!filtered.length) list.append(el("div",{class:"pickitem muted"},"no matches"));
@@ -14441,7 +16275,7 @@ function sendPokemonToRow(targetId, mon){
   const m = normPokemon({ ...mon, id: uid() });
   m.currentHP = null;                                   // arrives at full HP
   row.data.pokemon = row.data.pokemon || [];
-  if(row.data.pokemon.filter(p=>p.onTeam).length >= 6) m.onTeam = false;  // party full → box
+  if(row.data.pokemon.filter(p=>p.onTeam).length >= partyCap(row.data.trainer)) m.onTeam = false;  // party full → box
   row.data.pokemon.push(m);
   toast(`Sent ${m.nickname||getSpecies(m.species)?.name||"Pokémon"} to ${row.owner_name||row.data?.name||"player"} ✓`);
   if(targetId===cloud.activeId) render();               // optimistic: lands instantly, uploads behind it
@@ -14578,7 +16412,7 @@ async function withdrawFromPC(mon, targetId){
   const m = normPokemon(JSON.parse(JSON.stringify(mon)));
   m.id = uid(); m.currentHP = null; delete m._pcFrom; delete m._pcAt;
   target.data.pokemon = target.data.pokemon || [];
-  m.onTeam = target.data.pokemon.filter(p=>p.onTeam).length < 6;   // to party if there's room, else its box
+  m.onTeam = target.data.pokemon.filter(p=>p.onTeam).length < partyCap(target.data.trainer);   // to party if there's room, else its box
   target.data.pokemon.push(m);
   cloud.pc.data.pokemon.splice(idx,1);
   toast(`Withdrew ${m.nickname||getSpecies(m.species)?.name||"Pokémon"} to ${target.data?.name||"your party"} ✓`);
@@ -14680,7 +16514,8 @@ function pcMonNode(m, actionBtn){
   return el("div",{class:"refitem",style:"display:flex;gap:8px;align-items:center;cursor:pointer",
       title:"tap for this Pokémon's full details",
       onclick:e=>{ if(!e.target.closest("button")) monInfoModal(m); }},
-    monSprite(sp?.name||m.species, m.shiny, "s-xs"),
+    // the photo uploaded on its sheet travels into storage with it — same override monInfoModal uses
+    monSprite(sp?.name||m.species, m.shiny, "s-xs", monImage(m)||undefined),
     el("div",{style:"flex:1;min-width:0"},
       el("div",{class:"r-title"}, `${m.nickname||sp?.name||m.species} `, el("span",{class:"muted small"},`Lv ${m.level}`)),
       el("div",{class:"r-meta",html: pcMonMeta(m)})),
@@ -14924,7 +16759,8 @@ function visibleWildMonTokens(){
 const TRAINER_TOKEN = (t)=>el("img",{class:"sprite s-sm",src:(t&&t.avatar)||TRAINER_PLACEHOLDER,alt:"trainer",loading:"lazy"});
 /* a linked Pokémon's token uses the picture uploaded on its sheet, falling back to the dex artwork */
 function pokeTokenSprite(mon){
-  if(mon.image) return el("img",{class:"sprite s-sm",src:mon.image,alt:mon.nickname||"",loading:"lazy"});
+  const own = monImage(mon);   // monImage, not mon.image: a Mega has its own picture while it's Mega'd
+  if(own) return el("img",{class:"sprite s-sm",src:own,alt:mon.nickname||"",loading:"lazy"});
   const sp = getSpecies(mon.species);
   return monSprite(sp?.name||mon.species, mon.shiny, "s-sm");
 }
@@ -14973,6 +16809,13 @@ function tokenHp(token){
   const sp=getSpecies(L.obj.species); const max=Math.max(1,pokeDerived(L.obj).maxHP); let cur=L.obj.currentHP; if(cur==null)cur=max;
   return { cur, max, editable:canEditPlayerHP(L.row), name:L.obj.nickname||sp?.name||L.obj.species||"Pokémon",
            sprite:pokeTokenSprite(L.obj), unlinked:false, row:L.row, obj:L.obj, kind:"pokemon" };
+}
+/* "▰2/3" — the HP bars a Boss has left (Running the Game p.487), for the name plate on the board.
+   Only shown to whoever may already see that token's HP, since it IS its HP. */
+function tokenBossBars(token){
+  const L = token.link ? tokenLinked(token) : null;
+  const o = L && L.obj;
+  return isBoss(o) ? ` ▰${o.boss.curBar}/${o.boss.actions}` : "";
 }
 /* players may only see HP for PC trainers/Pokémon; the GM sees everything (incl. enemies & standalone tokens) */
 function tokenHpVisible(info){
@@ -15342,6 +17185,18 @@ async function setTokenHP(token, val){
     if(kind==="enc" && isSwarm(obj)){
       const barMax = pokeDerived(obj).maxHP;
       swarmSetTotalHP(obj, Math.max(0, (obj.swarm.mult||1)-1)*barMax + (val|0));
+      paintTokenHP(token, true); saveEnc(); return;
+    }
+    /* A Boss's HP is the same shape (Running the Game p.487): one bar per action, `val` is the new
+       value of the VISIBLE bar, so fold it back into the running total and let bossSetTotalHP break
+       as many bars as the hit deserves. Without this the map wrote straight to currentHP, so a Boss
+       just went negative on its first bar and read as fainted with every other bar untouched.
+       Injuries first, on the raw hit — that's the order damageHealRow uses in the Encounters tab. */
+    if(isBoss(obj)){
+      const barMax = bossBarMax(obj);
+      const newHP = Math.max(-99, Math.min(barMax, val|0));
+      applyAutoInjury(obj, obj.currentHP||0, newHP);          // Boss rule: only Massive Damage injures
+      bossSetTotalHP(obj, Math.max(0, (obj.boss.curBar||1)-1)*barMax + newHP);
       paintTokenHP(token, true); saveEnc(); return;
     }
     const encMax = kind==="enctrainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
@@ -16085,7 +17940,8 @@ function mapTokenNode(token, map, originX=0, originY=0){
   }
   // an undiscovered shop gets no plate at all — an empty one is just a blank yellow tab
   if(!info.hideName)
-    node.append(el("div",{class:"tk-name"}, (token.gmHidden?"🙈 ":"") + info.name + (info.unlinked?" ⚠":"")));
+    node.append(el("div",{class:"tk-name"}, (token.gmHidden?"🙈 ":"") + info.name
+      + (hpVisible ? tokenBossBars(token) : "") + (info.unlinked?" ⚠":"")));
   // Player-side tokens rely on the HP bar alone (no numeric readout); enemies/standalone still show it.
   if(hpVisible && !playerSide) node.append(el("div",{class:"tk-hpnum"}, info.unlinked?"⚠ unlinked":`${info.cur}/${info.max}`));
   if(tokenStatusVisible(info)){
@@ -16424,6 +18280,12 @@ function openTokenMenu(token, map){
     if(!cloud.isGM && info.sprite)
       wrap.append(el("div",{style:"display:flex;justify-content:center;margin-bottom:10px"},
         zoomImg(info.sprite, info.name)));
+    // Its Type(s) — what you need before picking a Move to answer with. Public knowledge (you can
+    // see a Gyarados is Water/Flying), so unlike Evasion this isn't gated. Trainers have no Types.
+    const tkTypes = tokenDefTypes(token).filter(ty=>ty && ty!=="None");
+    if(tkTypes.length)
+      wrap.append(el("div",{class:"chips",style:"justify-content:center;margin-bottom:10px"},
+        ...tkTypes.map(ty=>el("span",{html:typeBadge(ty)}))));
     // Evasions — the number everyone actually needs when aiming at this token (Core p.233). Kept to
     // the GM and to creatures whose sheet the viewer can already read, so enemy defences don't leak.
     if(cloud.isGM || tokenHpVisible(info)){
