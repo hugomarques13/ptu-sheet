@@ -1500,7 +1500,6 @@ function normPokemon(p){
   if(!("struggleType" in p)) p.struggleType = null;
   if(typeof p.struggleSpecial !== "boolean") p.struggleSpecial = false;
   if(typeof p.wielded !== "boolean") p.wielded = false;          // Living Weapon: currently in the Trainer's hands
-  if(typeof p.lwVariant !== "string") p.lwVariant = "core";      // Honedge Armory variant (Game of Throhs p.33)
   if(!p.uses || typeof p.uses!=="object") p.uses = {};
   if(!Array.isArray(p.statuses)) p.statuses = [];
   if(!Array.isArray(p.auras)) p.auras = [];   // Legendary Auras (encounter-only; seeded when added to an encounter)
@@ -2437,26 +2436,20 @@ function weaponsCard(t){
      • Fainted: still usable as inanimate equipment, but every roll made with it
        takes −2                                                → openTrainerAttack
 
-   Game of Throhs pp.33-34 ("Honedge Armory") adds two cultural variants that are
-   "mechanically identical to the original Honedge line" except for the Moves they
-   grant when wielded — so the variant is a field on the Pokémon, not a species.
+   On the map, a wielded Living Weapon rides its Trainer's token — the Mounting visual
+   with the Pokémon as the rider, since that is what wielding looks like.
 =================================================================== */
-const LIVING_WEAPON_VARIANTS = {
-  core:    { label:"Standard — claymore (Core)",     shieldMove:"King's Shield" },
-  duelist: { label:"Duelist's — rapier (Throhs)",    shieldMove:"Blade Trap" },
-  spartan: { label:"Spartan's — kopis (Throhs)",     shieldMove:"Phalanx" },
-};
-/* one row per evolution stage: how it equips, and the [Adept, Master] Techniques it grants */
+/* one row per evolution stage: how it equips, and the Techniques it grants its wielder */
 const LIVING_WEAPON_FORMS = {
   honedge:  { hands:1, quality:"Simple", category:"Small Melee", evasion:0, blade:false,
               gear:"a Small Melee Weapon",
-              moves:{ core:["Wounding Strike",""], duelist:["Pierce!",""], spartan:["Wounding Strike",""] } },
+              adept:"Wounding Strike", master:"" },
   doublade: { hands:2, quality:"Simple", category:"Small Melee", evasion:2, blade:false,
               gear:"two Small Melee Weapons — one in each hand, for +2 Evasion",
-              moves:{ core:["Double Swipe",""], duelist:["Cheap Shot",""], spartan:["Pierce!",""] } },
+              adept:"Double Swipe", master:"" },
   aegislash:{ hands:2, quality:"Fine",   category:"Small Melee", evasion:2, blade:true,
               gear:"a Small Melee Weapon and a Light Shield (+2 Evasion)",
-              moves:{ core:["Wounding Strike","Bleed!"], duelist:["Pierce!","Riposte"], spartan:["Wounding Strike","Titanic Slam"] } },
+              adept:"Wounding Strike", master:"Bleed!" },
 };
 /* Read the capability off the species (species.json carries it in capabilities.other) rather than
    matching a hardcoded name list — a homebrew sword-mon given "Living Weapon" then wields for free. */
@@ -2469,19 +2462,16 @@ function livingWeaponForm(p){
   const sp = p && getSpecies(p.species); if(!sp) return null;
   return LIVING_WEAPON_FORMS[String(sp.name||"").toLowerCase().split("-")[0].trim()] || null;
 }
-function livingWeaponVariant(p){ return LIVING_WEAPON_VARIANTS[p?.lwVariant] ? p.lwVariant : "core"; }
 /* The derived weapon. Shaped exactly like a t.weapons row so it drops straight into
    trainerStruggle / trainerAttackProfile / trainerAttackSlot with no special-casing downstream. */
 function livingWeaponOf(p){
   if(!p || !p.wielded || !hasLivingWeapon(p)) return null;
   const form = livingWeaponForm(p); if(!form) return null;
-  const v = livingWeaponVariant(p);
-  const [adept, master] = form.moves[v] || form.moves.core;
   const ko = hasStatus(p, "knockedOut");            // Fainted — still equipment, but −2 on every roll
   return { id:"lw-"+p.id, name:(p.nickname || getSpecies(p.species)?.name || "Living Weapon"),
     category:form.category, type:"Normal", ...(WEAPON_PRESETS[form.category] || WEAPON_PRESETS["Small Melee"]),
-    weaponMoveAdept:adept||"", weaponMoveMaster:master||"", notes:form.gear,
-    living:p, form, variant:v, quality:form.quality, ko, accMod: ko ? -2 : 0 };
+    weaponMoveAdept:form.adept||"", weaponMoveMaster:form.master||"", notes:form.gear,
+    living:p, form, quality:form.quality, ko, accMod: ko ? -2 : 0 };
 }
 /* every Living Weapon this trainer currently has in hand */
 function livingWeapons(t){
@@ -2497,28 +2487,19 @@ function livingWeaponControl(p){
   const box = el("div",{style:"margin:6px 0"});
   const row = el("div",{class:"inline small",style:"flex-wrap:wrap;gap:10px;align-items:center"});
   const cb = el("input",{type:"checkbox"}); cb.checked = !!p.wielded;
-  cb.addEventListener("change",()=>{ p.wielded = cb.checked; save(); refreshMon(p); });
+  cb.addEventListener("change",()=>{ p.wielded = cb.checked; save(); syncLivingWeaponMount(p); refreshMon(p); });
   row.append(el("label",{class:"inline",style:"gap:6px;align-items:center;font-weight:700"}, cb,
     "⚔ Wielded as a Living Weapon"));
-  if(form){
-    const sel = el("select");
-    Object.entries(LIVING_WEAPON_VARIANTS).forEach(([k,v])=>
-      sel.append(el("option",{value:k, selected:livingWeaponVariant(p)===k}, v.label)));
-    sel.addEventListener("change",()=>{ p.lwVariant = sel.value; save(); refreshMon(p); });
-    row.append(el("span",{class:"muted"},"Armory:"), sel);
-  }
   box.append(row);
   if(form){
-    const v = livingWeaponVariant(p), [a,m] = form.moves[v] || form.moves.core;
     const bits = [`Counts as ${form.gear}.`,
-      `Grants ${a} (Adept)${m?` and ${m} (Master)`:""} to its wielder — and to itself, if the wielder qualifies.`];
+      `Grants ${form.adept} (Adept)${form.master?` and ${form.master} (Master)`:""} to its wielder — and to itself, if the wielder qualifies.`];
     if(p.wielded){
+      bits.push("Rides its Trainer's token on the Map.");
       bits.push("Cannot benefit from No Guard while wielded.");
       if(form.blade) bits.push("Automatically in Blade Forme.");
       if(hasStatus(p,"knockedOut")) bits.push("Fainted: usable as inanimate equipment at −2 to every roll.");
     }
-    if(LIVING_WEAPON_VARIANTS[v].shieldMove !== "King's Shield")
-      bits.push(`This variant swaps King's Shield for ${LIVING_WEAPON_VARIANTS[v].shieldMove} — set that on its Moves card.`);
     box.append(el("div",{class:"small muted",style:"margin-top:4px"}, bits.join(" ")));
   }
   return box;
@@ -2669,6 +2650,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
      Play Them Like a Fiddle, Enchanting Transformation). Always-on ones just state what also
      happens; a triggered one gets its own box with a button that spends the use. --- */
   body.append(riderBoxes(t, st.name, opts.rerender));
+  if(st.move) body.append(groupRiderBoxes(t, st.move, true));
 
   /* --- multi-strike Weapon Moves: one Attack Roll per strike, counted automatically --- */
   if(fiveStrike || dblStrike){
@@ -9108,12 +9090,19 @@ function moveSlot(p, sp, m, mn, opts={}){
       isSynced?el("span",{class:"kv",title:`Move Sync: permanently ${p.moveSync.type}-Type`,style:"margin-left:6px"},"🔃 Synced"):"",
       opts.tag?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600"},opts.tag):""),
     el("div",{class:"ms-info"}, m? moveLineShort(m, p) : "custom / not in database"));
+  // Abilities that add to this exact Move — flagged before the roll, same as the Trainer's Features
+  const mrid = m ? monRidersForMove(p, m.name) : [];
+  if(mrid.length) info.append(el("div",{class:"small",style:"margin-top:2px;color:var(--accent);font-weight:600"},
+    mrid.map(x=>`\u{1F517} ${x.a.name}`).join("  \u00b7  ")
+    + (mrid.some(x=>x.perMove || freqTrackable(freqInfo(x.a.frequency)))
+        ? " — extra effects; open the roll to read them or spend a use"
+        : " — extra effects; open the roll to read them")));
   slot.append(info);
   const acts = el("div",{class:"inline"});
   // Scene/Daily use tracker (Struggle & At-Will moves show nothing)
   if(m && !opts.tag){ const uc = usesControl(p, "move", m.name, monMoveFreq(p, m), opts.rerender||(()=>refreshMon(p))); if(uc) acts.append(uc); }
   if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",title:"roll this move",onclick:()=>openMoveRoll(p,m,sp,{rerender:rrMon})},"🎲 Roll"));
-  if(m) acts.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("move",m.name)},"info"));
+  if(m) acts.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("move",m.name,p)},"info"));
   if(m && !opts.tag && (moveSyncEligible(t) || isSynced)) acts.append(el("button",{class:"btn-secondary"+(isSynced?" on":""),style:"padding:6px 10px",
     title:isSynced?"forget Move Sync (+1 Tutor Point)":"Move Sync: permanently retype this Move to your Chosen Type (1 Tutor Point)",
     onclick:()=>openMoveSync(p,t,mn)},"🔃"));
@@ -10129,6 +10118,11 @@ function openMoveRoll(p, m, sp, opts={}){
     body.append(bcard);
   }
 
+  /* --- Ability riders: what this Pokémon's own Abilities bolt onto THIS Move (the "Connection"
+     abilities, and Bone Lord [Errata]'s once-per-Scene-per-Move list) --- */
+  body.append(monRiderBoxes(p, m.name, opts.rerender, opts.persist));
+  body.append(groupRiderBoxes(activeChar()?.trainer, m, false));
+
   /* --- Swarm action economy (Core p.478): the cost of THIS move comes from its Frequency, so
          rolling a move is what drives the spending. First Standard Action each round is free. --- */
   if(isSwarm(p)){
@@ -10870,33 +10864,82 @@ function featureActionTypes(f){
    The bullet reaches us as mojibake from the PDF extraction, so anything non-alphanumeric in front
    of the name counts as the bullet. Lines the packet writes the same way but that AREN'T Moves
    ("Trigger:", "Effect:", "Note:") fall out on their own — they don't resolve in the Move DB. */
+/* Parse one Feature's rider block out of its rules text.
+   `Trigger:` / `Effect:` / `Note:` are the block's own headings, not Moves, and are skipped. What's
+   left has to be a bullet list of Moves — and ALL of it has to resolve, which is what keeps two
+   look-alikes out on their own merits rather than by a hardcoded blocklist:
+     • Mentor's "Lessons" lists Skills → Lesson names (»» Intimidate: Corrective Learning), and only
+       "Charm" happens to also be a Move;
+     • "Extreme Weather" lists Weather (»» Hail / Rain / Sandstorm / Sun) — Rain and Sun aren't Moves.
+   Returns {moves, ok, preamble, trigger, perMove}. `preamble` is everything ABOVE the first bullet:
+   feature-wide rules live there, which is why the "once per Scene with each Move" test only reads it
+   — Glitch Burst says that phrase INSIDE its Snatch bullet, about something else entirely. */
+const RIDER_LABEL_SKIP  = /^(trigger|effect|note|special|static effect|prerequisites?)$/i;
+const RIDER_PERMOVE_RE  = /each\s+Move\s+(?:only\s+)?once\s+per\s+Scene|only\s+once\s+per\s+Scene\s+(?:with|for)\s+each\s+Move|once\s+per\s+Scene\s+per\s+Move/i;
+const RIDER_BULLET_RE   = /^[^A-Za-z0-9]*\s*([A-Za-z][A-Za-z'’.\- ]{2,28}?)\s*:\s*(\S.*)$/;
 const _riderCache = new Map();
-function featureMoveRiders(f){
-  if(!f || !f.name) return new Map();
-  if(_riderCache.has(f.name)) return _riderCache.get(f.name);
-  const out = new Map();
-  String(f.effect||"").split("\n").forEach(line=>{
-    const m = line.match(/^[^A-Za-z0-9]*\s*([A-Za-z][A-Za-z'’.\- ]{2,28}?)\s*:\s*(\S.*)$/);
+function featureRiderScan(f, ns){
+  if(!f || !f.name) return { moves:new Map(), ok:false, preamble:"", trigger:"", perMove:false };
+  const ck = (ns||"feat") + "\u0000" + f.name;
+  if(_riderCache.has(ck)) return _riderCache.get(ck);
+  const lines = String(f.effect||"").split("\n");
+  const moves = new Map();
+  let unresolved = 0, firstBullet = -1;
+  lines.forEach((line, i)=>{
+    const m = line.match(RIDER_BULLET_RE);
     if(!m) return;
-    const mv = moveByName.get(m[1].trim());
-    if(!mv || out.has(mv.name)) return;
-    out.set(mv.name, m[2].trim());
+    const lab = m[1].trim();
+    if(RIDER_LABEL_SKIP.test(lab)) return;
+    const mv = moveByName.get(lab);
+    if(!mv){ unresolved++; return; }
+    if(!moves.has(mv.name)) moves.set(mv.name, m[2].trim());
+    if(firstBullet < 0) firstBullet = i;
   });
-  _riderCache.set(f.name, out);
+  const preamble = firstBullet > 0 ? lines.slice(0, firstBullet).join("\n") : "";
+  const out = { moves, ok: moves.size >= 2 && unresolved === 0, preamble,
+    trigger: (String(f.effect||"").match(/^\s*Trigger\s*:\s*(.+?)\s*$/mi)||[])[1] || "",
+    perMove: RIDER_PERMOVE_RE.test(preamble) };
+  _riderCache.set(ck, out);
   return out;
 }
-/* Which Features carry riders, and HOW each one fires:
-     always  — it just happens; no action, nothing to spend
-     trigger — the player chooses to fire it and spends a use
-     mode    — only while that Feature's stance is switched on */
-const FEATURE_RIDERS = [
-  { feat:"Powerful Motivator",        kind:"always",  icon:"⚡",
-    when:"whether the Move hits or misses — no action, nothing to spend." },
-  { feat:"Play Them Like a Fiddle",   kind:"trigger", icon:"🎻",
-    when:"when you HIT with the Move — a Swift Action. Each Move's effect works only once per Scene." },
-  { feat:"Enchanting Transformation", kind:"mode",    icon:"✨", mode:"enchanting-transformation",
-    when:"while your Enchanting Transformation is up." },
-];
+function featureMoveRiders(f){ return featureRiderScan(f).moves; }
+/* One emoji per rider Feature so a player can tell them apart at a glance in a crowded roll.
+   Purely cosmetic — a Feature with no entry falls back to its kind's icon. */
+const RIDER_ICONS = {
+  "powerful motivator":"⚡", "play them like a fiddle":"🎻", "enchanting transformation":"✨",
+  "fearsome display":"😠",  "flip out":"🤸",               "sage's benediction":"🙏",
+  "psionic overload":"🔮",  "glitch burst":"👾",           "prismatic alignment":"🌈",
+  "miasmic spray":"☠",
+};
+/* How a rider fires, read off the Feature itself:
+     always  — Static: it just happens, no action and nothing to spend
+     mode    — its Frequency Binds AP, and FEATURE_MODES models the stance it switches on
+     trigger — everything else: the player chooses to fire it, and pays whatever the Frequency says
+   Built once, from the whole Feature DB, so a Feature added to the data later is picked up with no
+   code change at all. */
+function riderWhenText(f, kind, sc){
+  if(kind==="mode")    return `while your ${f.name} is up.`;
+  if(kind==="trigger") return sc.trigger ? `when: ${sc.trigger.replace(/[.\s]+$/,"")}.` : "when you use this Move.";
+  return /whether the Move hits or misses/i.test(sc.preamble)
+    ? "whether the Move hits or misses — no action, nothing to spend."
+    : "automatically — no action, nothing to spend.";
+}
+let _featureRiders = null;
+function featureRiders(){
+  if(_featureRiders) return _featureRiders;
+  _featureRiders = D.features.filter(f => featureRiderScan(f).ok).map(f=>{
+    const sc = featureRiderScan(f), freq = String(f.frequency||"");
+    const md = featureModeByFeat.get(featKey(f.name)) || null;
+    const kind = md ? "mode" : /^\s*static/i.test(freq) ? "always" : "trigger";
+    const apM = freq.match(/^\s*(?:Bind\s+)?(\d+)\s*AP\b/i);
+    return { feat:f.name, kind, mode: md ? md.key : null,
+      icon: RIDER_ICONS[featKey(f.name)] || (kind==="mode" ? "✨" : kind==="always" ? "⚡" : "🎯"),
+      ap: (kind==="trigger" && apM) ? +apM[1] : 0,   // a Bind cost belongs to the stance, not the trigger
+      perMove: sc.perMove,
+      when: riderWhenText(f, kind, sc) };
+  });
+  return _featureRiders;
+}
 /* A stance the Trainer switches on and off. Everything here is derived from `t.modes` and never
    folded into t.usedAP — switching the stance off (or the Scene ending) hands the Bound AP back on
    its own, exactly the way a Book's Drain is derived from `t.books`. */
@@ -10956,7 +10999,7 @@ const riderUseKey = (featName, moveName) => useKey("rider", `${featName}|${moveN
 function ridersForMove(t, moveName, opts){
   if(!t || !moveName) return [];
   const canon = canonMoveName(moveName), out = [];
-  FEATURE_RIDERS.forEach(r=>{
+  featureRiders().forEach(r=>{
     if(!hasFeatureLoose(t, r.feat)) return;
     const inactive = r.kind==="mode" && !modeIsOn(t, r.mode);
     if(inactive && !opts?.includeInactive) return;
@@ -10980,10 +11023,13 @@ function riderDetailHTML(moveName){
     let status;
     if(r.kind==="trigger"){
       const info = freqInfo(f.frequency), left = freqTrackable(info) ? usesLeft(t, useKey("feature", f.name), info.max) : null;
-      const spent = usesLeft(t, riderUseKey(f.name, canon), 1) <= 0;
+      const spent = r.perMove && usesLeft(t, riderUseKey(f.name, canon), 1) <= 0;
+      const cost = [];
+      if(left!=null) cost.push(`${left} of ${info.max} ${info.kind==="daily"?"Daily":"Scene"} use${info.max===1?"":"s"} left`);
+      if(r.ap)       cost.push(`costs ${r.ap} AP`);
+      if(spent)      cost.push(`${canon}'s own once-per-Scene effect is already spent`);
       status = `Fires ${r.when} Spend it from this Move's 🎲 Roll.`
-        + (left!=null ? ` — ${left} of ${info.max} Scene uses left` : "")
-        + (spent ? `, and ${esc(canon)}'s own effect is already spent this Scene` : "");
+        + (cost.length ? ` — ${cost.join(" · ")}.` : "");
     } else if(inactive){
       status = `Only ${r.when} It isn't up right now — switch it on in ⚔ Battle → Combat.`;
     } else {
@@ -11015,11 +11061,16 @@ function riderBoxes(t, moveName, rerenderAll){
         box.append(el("div",{class:"small muted"}, `Applies ${r.when}`));
         wrap.append(box); return;
       }
+      /* What firing it costs is whatever the Feature's own Frequency says: a Scene/Daily/EOT use
+         (Play Them Like a Fiddle), a flat AP price (Fearsome Display's 2 AP), or both — plus the
+         separate once-per-Scene-per-Move lock, but only for the Features that actually state it. */
       const info = freqInfo(f.frequency), fk = useKey("feature", f.name);
       const left = freqTrackable(info) ? usesLeft(t, fk, info.max) : null;
       const mk = riderUseKey(f.name, canon);
-      const usedHere = usesLeft(t, mk, 1) <= 0;
-      const canFire = !usedHere && (left==null || left>0);
+      const usedHere = r.perMove && usesLeft(t, mk, 1) <= 0;
+      const apFree = trainerDerived(t).ap - trainerAPUsed(t);
+      const apShort = r.ap > 0 && !t.unlocked && r.ap > apFree;
+      const canFire = !usedHere && (left==null || left>0) && !apShort;
       box.append(el("div",{class:"small muted",style:"margin-bottom:6px"}, `Fires ${r.when}`));
       const redraw = () => { draw(); if(rerenderAll) rerenderAll(); };
       const row = el("div",{class:"inline",style:"gap:10px;flex-wrap:wrap;align-items:center"});
@@ -11028,28 +11079,262 @@ function riderBoxes(t, moveName, rerenderAll){
           if(!canFire) return;
           t.uses = t.uses || {};
           if(left!=null) t.uses[fk] = Math.min(info.max, (t.uses[fk]||0)+1);
-          t.uses[mk] = 1;
-          save(); toast(`${r.icon} ${f.name} → ${canon} ✓`);
+          if(r.perMove) t.uses[mk] = 1;
+          if(r.ap) t.usedAP = (t.usedAP||0) + r.ap;
+          save();
+          toast(`${r.icon} ${f.name} → ${canon} ✓` + (r.ap?` · ${r.ap} AP spent`:""));
           redraw();
-        }}, usedHere ? "✓ used on this Move this Scene"
-                     : canFire ? `${r.icon} Use it on this Move` : "no uses left this Scene");
+        }}, usedHere  ? "✓ used on this Move this Scene"
+          : apShort   ? `needs ${r.ap} AP — only ${Math.max(0,apFree)} free`
+          : canFire   ? `${r.icon} Use it on this Move${r.ap?` · ${r.ap} AP`:""}`
+          :             "no uses left this Scene");
       if(!canFire) btn.disabled = true;
       row.append(btn);
-      /* Both limits get the ordinary pip boxes, so this reads like every other Frequency on the
-         sheet: the Feature's own Scene x3, and this Move's separate once-per-Scene. Tapping a pip
-         gives a use back — a mis-pressed button shouldn't cost the player a Scene. */
+      /* Every limit gets the ordinary pip boxes, so this reads like any other Frequency on the
+         sheet. Tapping a pip gives a use back — a mis-pressed button shouldn't cost a Scene. */
       const fpips = usesControl(t, "feature", f.name, f.frequency, redraw);
       if(fpips) row.append(el("span",{class:"inline",style:"gap:5px;align-items:center"},
         el("span",{class:"small muted"},"Feature"), fpips));
-      const mpips = usesControl(t, "rider", `${f.name}|${canon}`, "Scene", redraw);
-      if(mpips) row.append(el("span",{class:"inline",style:"gap:5px;align-items:center"},
-        el("span",{class:"small muted"}, canon), mpips));
+      if(r.perMove){
+        const mpips = usesControl(t, "rider", `${f.name}|${canon}`, "Scene", redraw);
+        if(mpips) row.append(el("span",{class:"inline",style:"gap:5px;align-items:center"},
+          el("span",{class:"small muted"}, canon), mpips));
+      }
       box.append(row);
+      // AP has no pip to un-tap, so point at the one control that can put it back
+      if(r.ap) box.append(el("div",{class:"small muted",style:"margin-top:4px"},
+        `Costs ${r.ap} AP — spent when you press the button. ${Math.max(0,apFree)} AP free right now; correct it on Trainer → Sheet → Action Points if you press it by mistake.`));
       wrap.append(box);
     });
   };
   draw();
   return wrap;
+}
+/* ---------- GROUP RIDERS ----------
+   The third shape the rules use: a Feature that changes a whole CLASS of your Moves rather than a
+   named list — "Your Fire-Type Moves Burn Targets on a roll of 19+", "Your Social Moves' Frequency
+   is not Expended if they miss". The group is read out of the sentence itself, and only the three
+   groupings a Move actually carries are recognised, so an unparseable phrase surfaces nothing
+   instead of guessing:
+     • a Type          — "Fire-Type Moves", "Dark Type Moves"
+     • a Move keyword  — "Sonic Moves", "Social Moves", "Blessing Moves"  (they live in m.range)
+     • a damage class  — "Status-Class Moves", "Special Moves"
+   "your Pokemon's <group> Moves" belongs to the party, not the Trainer, so it's matched on the
+   Pokémon's roll instead of the Trainer's.
+
+   These are stated, never silently applied: several are roll MATH ("+2 Effect Range", "Burn on
+   19+") and quietly changing a damage or crit number the player didn't ask for is how a sheet
+   loses their trust. The box says what the Feature does; the dice stay theirs. */
+const GROUP_KEYWORDS = ["Sonic","Social","Blessing","Dance","Interrupt","Hazard","Friendly","Smite","Shield","Pass","Trigger","Illusion","Groundsource","Sound"];
+const GROUP_RIDER_RE = /\b[Yy]our\s+(Pokemon's\s+|Pokémon's\s+)?((?:[A-Z][\w'’\-]*\s+){1,3}?)Moves?\b/g;
+/* Does `m` belong to the group named by `g`? Returns null when the phrase isn't a grouping we can
+   resolve — the caller then drops it rather than showing it on every Move. */
+function moveInGroup(m, g){
+  if(!m) return null;
+  const s = String(g||"").trim().replace(/\s+/g," ");
+  const ty = s.replace(/[- ]Type$/i,"");
+  if(/[- ]Type$/i.test(s) && TYPES.some(t=>t.toLowerCase()===ty.toLowerCase()))
+    return String(m.type||"").toLowerCase() === ty.toLowerCase();
+  const kw = s.replace(/[- ]Class$/i,"");
+  if(/^(Status|Physical|Special)([- ]Class)?$/i.test(s))
+    return new RegExp("^"+kw,"i").test(String(m.class||""));
+  const k = GROUP_KEYWORDS.find(x=>x.toLowerCase()===s.toLowerCase());
+  if(k) return moveHasKeyword(m, k);
+  return null;
+}
+/* Features whose text modifies a resolvable group of Moves → {feat, group, mine, text}.
+   `mine` false = it's about the player's Pokémon's Moves, not their own. Built once. */
+let _groupRiders = null;
+function groupRiders(){
+  if(_groupRiders) return _groupRiders;
+  const out = [];
+  D.features.forEach(f=>{
+    if(featureRiderScan(f).ok) return;             // already a named-Move rider — don't double-report
+    const eff = String(f.effect||""), seen = new Set();
+    GROUP_RIDER_RE.lastIndex = 0;
+    let m;
+    while((m = GROUP_RIDER_RE.exec(eff))){
+      const g = m[2].trim();
+      if(seen.has(g)) continue;
+      seen.add(g);
+      // the group has to be one we can actually test a Move against
+      if(moveInGroup(D.moves[0], g) === null) continue;
+      // and the sentence has to be doing something to them
+      const sent = eff.slice(Math.max(0, m.index-90), m.index + 260).split(/(?:\n)/)[0];
+      if(!/\b(gain|gains|have|has|may|are|can|deal|deals|count|counts|instead|now|ignore|ignores|add|adds|treat|treated|is|increase[sd]?|lower[sd]?|gain)\b/i.test(sent)) continue;
+      out.push({ feat:f.name, group:g, mine:!m[1], text:eff.trim() });
+    }
+  });
+  _groupRiders = out;
+  return out;
+}
+/* the group riders in force for `m`, for a Trainer (mine) or their Pokémon (!mine) */
+function groupRidersForMove(t, m, mine){
+  if(!t || !m) return [];
+  return groupRiders().filter(r => r.mine===!!mine && hasFeatureLoose(t, r.feat) && moveInGroup(m, r.group)===true);
+}
+/* one read-only box per group rider — no uses, because none of them are spendable */
+function groupRiderBoxes(t, m, mine){
+  const wrap = el("div",{});
+  groupRidersForMove(t, m, mine).forEach(r=>{
+    const f = featureByKey.get(featKey(r.feat));
+    const box = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin:0 0 12px"});
+    box.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},
+      `📐 ${r.feat}`,
+      el("span",{class:"muted",style:"font-weight:600"}, `  ·  every ${r.group} Move${mine?"":" your Pokémon use"}`),
+      f&&f.frequency?el("span",{class:"muted",style:"font-weight:600"}, `  ·  ${f.frequency}`):""));
+    box.append(el("div",{class:"small",style:"white-space:pre-wrap"}, r.text));
+    box.append(el("div",{class:"small muted",style:"margin-top:4px"},
+      "Stated, not applied — the sheet won't change the dice for you. Read it and tell the GM."));
+    wrap.append(box);
+  });
+  return wrap;
+}
+/* the same, as HTML for a Move's ℹ info panel */
+function groupRiderDetailHTML(t, m, mine){
+  const rows = groupRidersForMove(t, m, mine);
+  if(!rows.length) return "";
+  return rows.map(r=>{
+    const f = featureByKey.get(featKey(r.feat));
+    return `<div class="r-body" style="margin-top:6px;padding-left:8px;border-left:2px solid var(--line)">`
+      + `<b>📐 ${esc(r.feat)}</b> <span class="muted">· every ${esc(r.group)} Move${mine?"":" your Pokémon use"}`
+      + `${f&&f.frequency?` · ${esc(f.frequency)}`:""}</span>`
+      + `<br>${annotateKeywords(esc(r.text))}</div>`;
+  }).join("");
+}
+/* ---------- the same riders, on the POKÉMON side ----------
+   An Ability can bolt effects onto a Move exactly the way a Trainer Feature does, and PTU writes
+   those as "Connection - <Move>." abilities — 89 of them in the DB. Bone Lord [Errata] even uses
+   the same Move-keyed bullet list AND the same once-per-Scene-per-Move limit as Play Them Like a
+   Fiddle, so it goes through the identical parser.
+
+   The Connection line is the trustworthy anchor: a Connection ability is BY DEFINITION about the
+   user's own use of that Move. Prose is only believed when the sentence has the user actually
+   ACTING ("the user uses/hits/activates", "When Blastoise uses…"). Without that guard, defensive
+   abilities that merely mention a Move by name would surface on the wrong roll — Damp naming
+   Self-Destruct, Bulletproof naming Razor Wind as an example, Liquid Ooze naming the drain Moves
+   it punishes. With it, the seven prose-only abilities that survive (Decoy, Fox Fire, Impostor,
+   Migraine, Neutralizing Gas, Shell Cannon, Wobble) are all genuine. */
+const RIDER_ACTOR_RE  = /\b(?:the\s+user|user|you|it)\s+(?:may\s+)?(?:uses?|hits?|activates?)\b|\bwhen\s+[A-Z][a-z]+\s+uses\b|\bwhenever\s+the\s+user\b/i;
+const RIDER_BADPRE_RE = /\b(?:per|each|full|this|that|next|one|two|three|an?|[123]|such as|like)\s+$/i;
+/* one alternation over every Move name, built once — 800 separate RegExps per call was the naive
+   way and this runs inside a render */
+let _moveNameRe = null;
+function moveNameRe(){
+  if(!_moveNameRe){
+    const ns = [...new Set(D.moves.map(m=>m.name).filter(n=>n && n.length>=4))]
+      .sort((a,b)=>b.length-a.length).map(n=>n.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"));
+    _moveNameRe = new RegExp("\\b(" + ns.join("|") + ")\\b", "g");
+  }
+  _moveNameRe.lastIndex = 0;
+  return _moveNameRe;
+}
+const _abilRiderCache = new Map();
+function abilityRiderMoves(a){
+  if(!a || !a.name) return new Map();
+  if(_abilRiderCache.has(a.name)) return _abilRiderCache.get(a.name);
+  const sc = featureRiderScan(a, "abil");
+  let out;
+  if(sc.ok) out = sc.moves;                       // a Move-keyed bullet list — per-Move text, as a Feature's
+  else {
+    out = new Map();
+    const eff = String(a.effect||"").trim();
+    const conn = connectionMoveOf(a.name);
+    if(conn && moveByName.get(conn)) out.set(canonMoveName(conn), eff);
+    eff.split(/[.;]\s+/).forEach(sent=>{
+      if(!RIDER_ACTOR_RE.test(sent)) return;
+      const re = moveNameRe(); let mt;
+      while((mt = re.exec(sent))){
+        if(RIDER_BADPRE_RE.test(sent.slice(Math.max(0, mt.index-14), mt.index))) continue;
+        if(!out.has(mt[1])) out.set(mt[1], eff);   // prose can't be split per Move — the whole rule rides
+      }
+    });
+  }
+  _abilRiderCache.set(a.name, out);
+  return out;
+}
+/* every Ability rider this Pokémon has for `moveName` */
+function monRidersForMove(p, moveName){
+  if(!p || !moveName) return [];
+  const canon = canonMoveName(moveName), out = [];
+  (p.abilities||[]).forEach(an=>{
+    const a = abilityByName.get(String(an||"").toLowerCase());
+    if(!a) return;
+    const text = abilityRiderMoves(a).get(canon);
+    if(!text) return;
+    const sc = featureRiderScan(a, "abil");
+    out.push({ a, text, perMove: sc.perMove, keyed: sc.ok });
+  });
+  return out;
+}
+/* The Ability rider boxes inside a Pokémon's move roll. Same shape as the Trainer's: an Ability
+   with a real Frequency (or its own per-Move limit) gets a button that spends it; a Static one just
+   states what also happens. */
+function monRiderBoxes(p, moveName, rerenderAll, persist){
+  const wrap = el("div",{});
+  const commit = persist || save;
+  const draw = () => {
+    wrap.innerHTML = "";
+    const canon = canonMoveName(moveName);
+    monRidersForMove(p, moveName).forEach(({a, text, perMove, keyed})=>{
+      const box = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+      const conn = connectionMoveOf(a.name);
+      box.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},
+        `🔗 ${a.name}`,
+        a.frequency?el("span",{class:"muted",style:"font-weight:600"}, `  ·  ${a.frequency}`):"",
+        conn?el("span",{class:"muted",style:"font-weight:600"}, `  ·  Connection: ${conn}`):""));
+      box.append(keyed
+        ? el("div",{class:"small",style:"margin-bottom:4px"}, el("b",{}, canon+": "), text)
+        : el("div",{class:"small",style:"margin-bottom:4px;white-space:pre-wrap"}, text));
+      const redraw = () => { draw(); if(rerenderAll) rerenderAll(); };
+      const row = el("div",{class:"inline",style:"gap:10px;flex-wrap:wrap;align-items:center"});
+      const info = freqInfo(a.frequency), ak = useKey("ability", a.name);
+      const left = freqTrackable(info) ? usesLeft(p, ak, info.max) : null;
+      const mk = `${a.name}|${canon}`;
+      const usedHere = perMove && usesLeft(p, useKey("rider", mk), 1) <= 0;
+      if(perMove || left != null){
+        const canFire = !usedHere && (left==null || left>0);
+        const btn = el("button",{class: canFire?"btn-primary":"btn-secondary",style:"padding:6px 10px",
+          onclick:()=>{
+            if(!canFire) return;
+            p.uses = p.uses || {};
+            if(left!=null) p.uses[ak] = Math.min(info.max, (p.uses[ak]||0)+1);
+            if(perMove) p.uses[useKey("rider", mk)] = 1;
+            commit(); toast(`🔗 ${a.name} → ${canon} ✓`); redraw();
+          }}, usedHere ? "✓ used on this Move this Scene"
+             : canFire ? "🔗 Use it on this Move" : "no uses left this Scene");
+        if(!canFire) btn.disabled = true;
+        row.append(btn);
+      }
+      const apips = usesControl(p, "ability", a.name, a.frequency, redraw, commit);
+      if(apips) row.append(el("span",{class:"inline",style:"gap:5px;align-items:center"},
+        el("span",{class:"small muted"},"Ability"), apips));
+      if(perMove){
+        const mpips = usesControl(p, "rider", mk, "Scene", redraw, commit);
+        if(mpips) row.append(el("span",{class:"inline",style:"gap:5px;align-items:center"},
+          el("span",{class:"small muted"}, canon), mpips));
+      }
+      if(row.childNodes.length) box.append(row);
+      else box.append(el("div",{class:"small muted"},"Static — it applies on its own, nothing to spend."));
+      wrap.append(box);
+    });
+  };
+  draw();
+  return wrap;
+}
+/* the Pokémon's Ability riders as HTML, for the Move's ℹ info panel (read-only) */
+function monRiderDetailHTML(p, moveName){
+  const rows = monRidersForMove(p, moveName);
+  if(!rows.length) return "";
+  const canon = canonMoveName(moveName);
+  return `<div class="r-meta" style="margin-top:10px">This Pokémon's Abilities add to this Move:</div>`
+    + rows.map(({a,text,keyed})=>{
+      const conn = connectionMoveOf(a.name);
+      return `<div class="r-body" style="margin-top:6px;padding-left:8px;border-left:2px solid var(--line)">`
+        + `<b>🔗 ${esc(a.name)}</b>${a.frequency?` <span class="muted">· ${esc(a.frequency)}</span>`:""}`
+        + `${conn?` <span class="muted">· Connection: ${esc(conn)}</span>`:""}`
+        + `<br>${keyed?`<b>${esc(canon)}:</b> `:""}${annotateKeywords(esc(text))}</div>`;
+    }).join("");
 }
 /* Stances card for the Trainer's ⚔ Combat tab — the same switch as the Battle tab's Shift row, in
    the place a player looks to see what is currently up. Only drawn if they own such a Feature. */
@@ -15363,10 +15648,38 @@ const FEATURE_AUTO_NOTES = {
   "enchanting transformation":
     "Switch it on from ⚔ Battle → Combat (or the Shift tab). While it's up it Binds 2 AP, gives you +5 Damage Reduction against Dragon/Fighting/Dark/Bug wherever the sheet applies an attack, and adds each Glamour Weaver Move's extra effect to its roll. It ends at 🌙 End Scene and hands the AP back.",
 };
-function featureAutoNote(name){ return FEATURE_AUTO_NOTES[featKey(name)] || null; }
-function refDetailHTML(kind, name){
-  // a Move's info panel also spells out what the Trainer's own Features bolt onto it
-  if(kind==="move"){ return moveDetailHTML(moveByName.get(name.toLowerCase()), name) + riderDetailHTML(name); }
+/* Every other rider Feature describes itself, so a Feature added to the data later explains its own
+   automation without anyone writing a sentence for it. */
+function featureAutoNote(name){
+  const hand = FEATURE_AUTO_NOTES[featKey(name)];
+  if(hand) return hand;
+  const r = featureRiders().find(x => featKey(x.feat) === featKey(name));
+  if(!r) return null;
+  const f  = featureByKey.get(featKey(name));
+  const mv = [...featureMoveRiders(f).keys()];
+  const list = mv.length > 4 ? `${mv.slice(0,4).join(", ")} and ${mv.length-4} more` : mv.join(", ");
+  if(r.kind === "always")
+    return `Rolling ${list} shows that Move's extra effect right in the roll — it needs no action and nothing to spend.`;
+  if(r.kind === "mode")
+    return `Switch it on from ⚔ Battle → Combat. While it's up, rolling ${list} shows that Move's extra effect.`;
+  const cost = [];
+  const info = freqInfo(f && f.frequency);
+  if(freqTrackable(info)) cost.push(`one of the ${f.frequency.split(" - ")[0]} uses`);
+  if(r.ap) cost.push(`${r.ap} AP`);
+  if(r.perMove) cost.push("that Move's own once-per-Scene");
+  return `Rolling ${list} adds a box with that Move's effect and a button that spends `
+    + (cost.length ? cost.join(" + ") : "nothing") + `. Uses refresh at 🌙 End Scene.`;
+}
+function refDetailHTML(kind, name, owner){
+  // a Move's info panel also spells out what bolts extra effects onto it: the Trainer's own
+  // Features always, plus the Abilities of the Pokémon whose row was tapped (when there is one)
+  if(kind==="move"){
+    const mv = moveByName.get(name.toLowerCase()), t = activeChar()?.trainer;
+    const grp = mv ? (groupRiderDetailHTML(t, mv, !owner) || "") : "";
+    return moveDetailHTML(mv, name) + riderDetailHTML(name)
+      + (owner ? monRiderDetailHTML(owner, name) : "")
+      + (grp ? `<div class="r-meta" style="margin-top:10px">Your Features also change every Move of this kind:</div>${grp}` : "");
+  }
   if(kind==="ability"){ const a=abilityByName.get(name.toLowerCase()); return a?abilityText(a):"<span class='muted'>Not in database.</span>"; }
   if(kind==="class"){ const c=D.classes.find(x=>x.name===name);
     return c?`${c.mechanic?`<div class="r-meta"><b>${esc(c.mechanic)}</b></div>`:""}<div class="r-body">${annotateKeywords(esc(c.effect||""))}</div>`:"<span class='muted'>—</span>"; }
@@ -15384,9 +15697,9 @@ function refDetailHTML(kind, name){
     return `<div class="r-meta">${esc(f.category||"")}${f.frequency?" · "+esc(f.frequency):""}</div>${f.prerequisites?`<div class="r-meta">Prereq: ${esc(f.prerequisites)}</div>`:""}<div class="r-body">${annotateKeywords(esc(f.effect||""))}</div>${grants}${autoTxt}`; }
   return "<span class='muted'>—</span>";
 }
-function openRefDetail(kind, name){
+function openRefDetail(kind, name, owner){
   if(kind==="species") return speciesModal(getSpecies(name));
-  infoModal(name, refDetailHTML(kind, name));
+  infoModal(name, refDetailHTML(kind, name, owner));
 }
 /* Abilities the sheet mechanically auto-applies (into stat/CS/damage/accuracy/type calculations) →
    name (lowercased) : short note shown as a ⚙ badge so players know it's handled for them.
@@ -18501,6 +18814,28 @@ function dismountToken(map, rider, quiet){
   if(!quiet) toast(`⬇ ${name} dismounted`);
   return true;
 }
+/* ---- Living Weapon: a wielded sword rides its Trainer ----------------------------------
+   Wielding already grants the weapon and its Techniques (see the LIVING WEAPON section); this is
+   only how it LOOKS on the board. Re-used wholesale from Mounting, with the Pokémon as the rider
+   and its Trainer as the mount — so the pair drags as one, shares a square for AoE/fog, and only
+   the Trainer underneath spends movement, all of which is exactly right for a carried sword. */
+function livingWeaponTokenPair(map, p){
+  const arr = mapTokensFor(map.id);
+  const mon = arr.find(t=>t.link?.kind==="pokemon" && t.link.monId===p.id);
+  if(!mon) return null;
+  const trainer = arr.find(t=>t.link?.kind==="trainer" && t.link.sheetId===mon.link.sheetId);
+  return trainer ? { mon, trainer } : null;
+}
+/* called when ⚔ Wield is ticked either way — a no-op unless BOTH tokens are on the open map */
+function syncLivingWeaponMount(p){
+  const map = currentMapForView(); if(!map || !p) return;
+  const pair = livingWeaponTokenPair(map, p); if(!pair) return;
+  if(p.wielded){
+    if(pair.mon.riding !== pair.trainer.id) mountToken(map, pair.mon, pair.trainer);
+  } else if(pair.mon.riding === pair.trainer.id){
+    dismountToken(map, pair.mon);
+  }
+}
 /* drop every riding link on this map (the "✕ Dismount all" escape hatch) */
 function dismountAll(map){
   const riders = mapTokensFor(map.id).filter(t=>t.riding);
@@ -18523,6 +18858,13 @@ function healMountLinks(map){
   });
   arr.forEach(t=>{                                   // break any cycle a bad merge could produce
     if(t.riding && mountWouldLoop(map.id, t, tokenById(map.id, t.riding))){ delete t.riding; changed = true; }
+  });
+  arr.forEach(t=>{                                   // a wielded Living Weapon belongs in its wielder's hand
+    if(t.link?.kind!=="pokemon") return;
+    const mon = tokenLinked(t)?.obj;
+    if(!mon?.wielded) return;
+    const tr = arr.find(o=>o.link?.kind==="trainer" && o.link.sheetId===t.link.sheetId);
+    if(tr && t.riding!==tr.id && !mountWouldLoop(map.id, t, tr)){ t.riding = tr.id; t.x = tr.x; t.y = tr.y; changed = true; }
   });
   arr.filter(t=>!t.riding).forEach(t=>{ if(snapRidersTo(map, t)) changed = true; });
   if(changed && cloud.isGM) mapTokensSave();

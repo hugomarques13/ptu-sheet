@@ -4,8 +4,32 @@
     {
       "name": "ptu-repo",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8778"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8778"
+      ],
       "port": 8778
+    },
+    {
+      "name": "ptu-repo-b",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8779"
+      ],
+      "port": 8779
+    },
+    {
+      "name": "ptu-repo-alt",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8791"
+      ],
+      "port": 8791
     }
   ]
 }
