@@ -1499,6 +1499,8 @@ function normPokemon(p){
   if(typeof p.unlocked !== "boolean") p.unlocked = false;
   if(!("struggleType" in p)) p.struggleType = null;
   if(typeof p.struggleSpecial !== "boolean") p.struggleSpecial = false;
+  if(typeof p.wielded !== "boolean") p.wielded = false;          // Living Weapon: currently in the Trainer's hands
+  if(typeof p.lwVariant !== "string") p.lwVariant = "core";      // Honedge Armory variant (Game of Throhs p.33)
   if(!p.uses || typeof p.uses!=="object") p.uses = {};
   if(!Array.isArray(p.statuses)) p.statuses = [];
   if(!Array.isArray(p.auras)) p.auras = [];   // Legendary Auras (encounter-only; seeded when added to an encounter)
@@ -1666,7 +1668,7 @@ function trainerDerived(t) {
   const cap6 = v => Math.min(6, Math.floor(v/5));
   const cs = effectiveCS(t);                               // Combat Stages (manual t.cs + conditions)
   const statB = equipStatBonus(t);                         // Focus item: +5 to a chosen stat, AFTER Combat Stages
-  const eqEva = equipEvasion(t);                            // shields add flat Evasion (all three types)
+  const eqEva = equipEvasion(t) + livingWeaponEvasion(t);   // shields add flat Evasion (all three types) — a wielded Doublade/Aegislash counts
   const tot = k => k==="hp" ? raw("hp") : (Math.floor(raw(k) * csMult(cs[k])) + (statB[k]||0));   // CS-adjusted (+ Focus)
   const acro = rankNum(t.skills.acrobatics), athl = rankNum(t.skills.athletics);
   const combat = rankNum(t.skills.combat);
@@ -2417,6 +2419,110 @@ function weaponsCard(t){
   });
   return card;
 }
+/* ===================================================================
+   LIVING WEAPON — wielding a Honedge and its evolutions
+   ------------------------------------------------------------------
+   Core p.305: the Honedge line "also count as equipment and may be used as such if
+   the Pokémon is willing". Wielding one is modelled as a DERIVED weapon built from
+   the Pokémon itself — nothing is ever written into t.weapons, so ticking ⚔ Wield
+   on and off never touches the trainer's real gear list.
+
+   Where each half of the rule lands:
+     • the wielder gets a weapon (Honedge/Doublade = Simple, Aegislash = Fine) plus
+       its Techniques, gated on the WIELDER's Combat rank      → renderTrainerCombat
+     • the Pokémon "also adds these Moves to its own Move List, so long as their
+       wielder qualifies to access them"                       → renderPokemonMoves
+     • Doublade one-per-hand = +2 Evasion; Aegislash's shield half is a Light Shield
+       (+2 Evasion)                                            → trainerDerived
+     • Fainted: still usable as inanimate equipment, but every roll made with it
+       takes −2                                                → openTrainerAttack
+
+   Game of Throhs pp.33-34 ("Honedge Armory") adds two cultural variants that are
+   "mechanically identical to the original Honedge line" except for the Moves they
+   grant when wielded — so the variant is a field on the Pokémon, not a species.
+=================================================================== */
+const LIVING_WEAPON_VARIANTS = {
+  core:    { label:"Standard — claymore (Core)",     shieldMove:"King's Shield" },
+  duelist: { label:"Duelist's — rapier (Throhs)",    shieldMove:"Blade Trap" },
+  spartan: { label:"Spartan's — kopis (Throhs)",     shieldMove:"Phalanx" },
+};
+/* one row per evolution stage: how it equips, and the [Adept, Master] Techniques it grants */
+const LIVING_WEAPON_FORMS = {
+  honedge:  { hands:1, quality:"Simple", category:"Small Melee", evasion:0, blade:false,
+              gear:"a Small Melee Weapon",
+              moves:{ core:["Wounding Strike",""], duelist:["Pierce!",""], spartan:["Wounding Strike",""] } },
+  doublade: { hands:2, quality:"Simple", category:"Small Melee", evasion:2, blade:false,
+              gear:"two Small Melee Weapons — one in each hand, for +2 Evasion",
+              moves:{ core:["Double Swipe",""], duelist:["Cheap Shot",""], spartan:["Pierce!",""] } },
+  aegislash:{ hands:2, quality:"Fine",   category:"Small Melee", evasion:2, blade:true,
+              gear:"a Small Melee Weapon and a Light Shield (+2 Evasion)",
+              moves:{ core:["Wounding Strike","Bleed!"], duelist:["Pierce!","Riposte"], spartan:["Wounding Strike","Titanic Slam"] } },
+};
+/* Read the capability off the species (species.json carries it in capabilities.other) rather than
+   matching a hardcoded name list — a homebrew sword-mon given "Living Weapon" then wields for free. */
+function hasLivingWeapon(p){
+  const sp = p && getSpecies(p.species);
+  return (sp?.capabilities?.other||[]).some(c=>/^\s*living weapon\s*$/i.test(String(c)));
+}
+/* Aegislash-Blade and Aegislash-Shield both resolve to the aegislash row */
+function livingWeaponForm(p){
+  const sp = p && getSpecies(p.species); if(!sp) return null;
+  return LIVING_WEAPON_FORMS[String(sp.name||"").toLowerCase().split("-")[0].trim()] || null;
+}
+function livingWeaponVariant(p){ return LIVING_WEAPON_VARIANTS[p?.lwVariant] ? p.lwVariant : "core"; }
+/* The derived weapon. Shaped exactly like a t.weapons row so it drops straight into
+   trainerStruggle / trainerAttackProfile / trainerAttackSlot with no special-casing downstream. */
+function livingWeaponOf(p){
+  if(!p || !p.wielded || !hasLivingWeapon(p)) return null;
+  const form = livingWeaponForm(p); if(!form) return null;
+  const v = livingWeaponVariant(p);
+  const [adept, master] = form.moves[v] || form.moves.core;
+  const ko = hasStatus(p, "knockedOut");            // Fainted — still equipment, but −2 on every roll
+  return { id:"lw-"+p.id, name:(p.nickname || getSpecies(p.species)?.name || "Living Weapon"),
+    category:form.category, type:"Normal", ...(WEAPON_PRESETS[form.category] || WEAPON_PRESETS["Small Melee"]),
+    weaponMoveAdept:adept||"", weaponMoveMaster:master||"", notes:form.gear,
+    living:p, form, variant:v, quality:form.quality, ko, accMod: ko ? -2 : 0 };
+}
+/* every Living Weapon this trainer currently has in hand */
+function livingWeapons(t){
+  const c = charOfTrainer(t);
+  return (c?.pokemon||[]).map(livingWeaponOf).filter(Boolean);
+}
+function livingWeaponEvasion(t){ return livingWeapons(t).reduce((s,w)=>s+(w.form.evasion||0), 0); }
+function livingWeaponHands(t){ return livingWeapons(t).reduce((s,w)=>s+(w.form.hands||1), 0); }
+/* The ⚔ Wield toggle + Armory picker, shown on a Living Weapon's own sheet next to its Held Item —
+   the capability calls it equipment, so that is where a player goes looking for it. */
+function livingWeaponControl(p){
+  const form = livingWeaponForm(p);
+  const box = el("div",{style:"margin:6px 0"});
+  const row = el("div",{class:"inline small",style:"flex-wrap:wrap;gap:10px;align-items:center"});
+  const cb = el("input",{type:"checkbox"}); cb.checked = !!p.wielded;
+  cb.addEventListener("change",()=>{ p.wielded = cb.checked; save(); refreshMon(p); });
+  row.append(el("label",{class:"inline",style:"gap:6px;align-items:center;font-weight:700"}, cb,
+    "⚔ Wielded as a Living Weapon"));
+  if(form){
+    const sel = el("select");
+    Object.entries(LIVING_WEAPON_VARIANTS).forEach(([k,v])=>
+      sel.append(el("option",{value:k, selected:livingWeaponVariant(p)===k}, v.label)));
+    sel.addEventListener("change",()=>{ p.lwVariant = sel.value; save(); refreshMon(p); });
+    row.append(el("span",{class:"muted"},"Armory:"), sel);
+  }
+  box.append(row);
+  if(form){
+    const v = livingWeaponVariant(p), [a,m] = form.moves[v] || form.moves.core;
+    const bits = [`Counts as ${form.gear}.`,
+      `Grants ${a} (Adept)${m?` and ${m} (Master)`:""} to its wielder — and to itself, if the wielder qualifies.`];
+    if(p.wielded){
+      bits.push("Cannot benefit from No Guard while wielded.");
+      if(form.blade) bits.push("Automatically in Blade Forme.");
+      if(hasStatus(p,"knockedOut")) bits.push("Fainted: usable as inanimate equipment at −2 to every roll.");
+    }
+    if(LIVING_WEAPON_VARIANTS[v].shieldMove !== "King's Shield")
+      bits.push(`This variant swaps King's Shield for ${LIVING_WEAPON_VARIANTS[v].shieldMove} — set that on its Moves card.`);
+    box.append(el("div",{class:"small muted",style:"margin-top:4px"}, bits.join(" ")));
+  }
+  return box;
+}
 /* the trainer's attack profile: base Struggle for a weapon, or that weapon's granted Weapon Move */
 function trainerAttackProfile(t, weaponMoveName, w){
   if(weaponMoveName){
@@ -2612,10 +2718,12 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   /* redo = {nats, forceHits} — re-resolve a Double Strike with the SAME Attack Rolls */
   const doRoll = (redo) => {
     out.innerHTML=""; out.style.borderStyle="solid";
-    const accMod = (bm.acc||0) + accCS;
+    const wAcc = st.weapon?.accMod || 0;      // a Fainted Living Weapon is −2 on every roll (Core p.305)
+    const accMod = (bm.acc||0) + accCS + wAcc;
     const nats = redo?.nats || Array.from({length:nAcc}, ()=>1+Math.floor(Math.random()*20));
     const acc = nats[0], accTot = acc + accMod;
     const accBits = []; if(bm.acc) accBits.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} buffs`); if(accCS) accBits.push(`${accCS>0?"+":"−"}${Math.abs(accCS)} Accuracy CS`);
+    if(wAcc) accBits.push(`${wAcc>0?"+":"−"}${Math.abs(wAcc)} Fainted Living Weapon`);
     // Double Strike: resolve every Attack Roll against AC + Evasion and count what connects
     const strikes = dblStrike ? resolveStrikes(nats, accMod, st.ac + targetEva, 20) : null;
     const forced  = dblStrike && redo?.forceHits!=null;
@@ -2656,10 +2764,11 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         el("div",{class:"small muted",style:"margin-top:2px"},"Neither Attack Roll met AC + Evasion, so the attack misses entirely.")));
     }
     if(r){ const im = infatMod();
-      const total = Math.max(0, r.total + im.atk + (bm.dmg||0) + im.delta + critExtra);
+      const total = Math.max(0, r.total + im.atk + (bm.dmg||0) + im.delta + wAcc + critExtra);   // wAcc: Fainted Living Weapon is −2 on EVERY roll
       const parts = [`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`, `+ ${im.atk} ${atkLbl}${im.halved?" (halved — Infatuated)":""}`];
       if(bm.dmg) parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs (${buffSources(t,"dmg")})`);
       if(im.delta) parts.push(`${im.delta} Infatuated`);
+      if(wAcc) parts.push(`${wAcc} Fainted Living Weapon`);
       if(critWhy.length) parts.push(critWhy.join(" "));
       out.append(el("div",{}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"),
         el("div",{style:`font-size:26px;font-weight:800;color:${nCrit?"var(--bad)":"var(--accent)"}`}, `${nCrit?"💥 CRIT! ":"💥 "}${total}`),
@@ -5064,9 +5173,9 @@ function cardSetPick(c, i, patch){
   if(!c.picks) c.picks = {};
   c.picks[i] = Object.assign({}, c.picks[i]||{}, patch);
 }
-/* every choice filled in? */
+/* every choice filled in — only the effects that haven't gone off yet still need one */
 function cardReady(c){
-  return cardFxList(c).every((fx,i)=>{
+  return cardPendingFx(c).every(({fx,i})=>{
     const pk = cardPick(c,i);
     return cardFxNeeds(fx).every(need=>{
       if(need==="skill")   return (pk.skills||[]).length>=1;
@@ -5137,6 +5246,81 @@ function ownerTrainerOf(p){
 }
 
 /* ---------- ⚡ Apply: the one-shot effects ---------- */
+/* Effects are tracked ONE AT A TIME (`c.doneFx`), not per-card. That matters for the multi-part
+   Majors: The Sun hands out two Trainer levels AND makes one Pokémon shiny with +2 to all its Base
+   Stats. If the GM picks the wrong Pokémon, only the Pokémon half may be taken back — re-running the
+   whole card would hand out the two levels a second time. */
+const CARD_MON_REVERSIBLE = new Set(["shiny","monstat","injury","tp","loyalty"]);
+/* cards applied before per-effect tracking existed: everything on them is already resolved */
+function cardDoneFx(c){
+  if(c.doneFx) return c.doneFx;
+  return c.doneFx = c.applied
+    ? Object.fromEntries(cardFxList(c).map((_,i)=>[i,true]))
+    : {};
+}
+function cardPendingFx(c){
+  const doneMap = cardDoneFx(c);
+  return cardFxList(c).map((fx,i)=>({fx,i}))
+    .filter(({fx,i}) => fx.kind!=="note" && (!doneMap[i] || fx.repeat));
+}
+/* can a mis-picked Pokémon be swapped on this card? */
+function cardCanRepick(c){
+  const doneMap = cardDoneFx(c);
+  return !!c.applied && cardFxList(c).some((fx,i)=>
+    doneMap[i] && (fx.target==="mon" || fx.target==="two") && CARD_MON_REVERSIBLE.has(fx.kind));
+}
+function cardUndoSet(c, i, patch){
+  if(!c.undo) c.undo = {};
+  c.undo[i] = Object.assign({}, c.undo[i]||{}, patch);
+}
+/* Put back everything the Pokémon-targeted half of this card did, and clear the pick so the GM has
+   to choose again. Most of it reverses by arithmetic straight off the fx definition, which is why
+   this also works on cards applied before `c.undo` was ever recorded. */
+function cardRepick(t, c){
+  const ch = activeChar(), doneMap = cardDoneFx(c), undone = [];
+  if(!confirm(`Take back the Pokémon half of ${cardTitle(c)}?\n\nThe Pokémon you picked gives back what this card gave it, and you choose again. Anything the card did to the Trainer — levels, money, AP — stays done and will NOT fire twice.`)) return;
+  cardFxList(c).forEach((fx,i)=>{
+    if(!doneMap[i]) return;
+    if(!((fx.target==="mon" || fx.target==="two") && CARD_MON_REVERSIBLE.has(fx.kind))) return;
+    const pk  = cardPick(c,i);
+    const mon = pk.monId ? (ch.pokemon||[]).find(p=>p.id===pk.monId) : null;
+    const nm  = mon ? (mon.nickname||getSpecies(mon.species)?.name||"Pokémon") : "the old pick";
+    const u   = (c.undo||{})[i] || {};
+    switch(fx.kind){
+      case "shiny":
+        if(mon){ mon.shiny = !!u.shinyWas; undone.push(`${nm} is no longer ✨ shiny`); }
+        break;
+      case "monstat":
+        if(mon && mon.arcanaStats){
+          const keys = fx.count==="all" ? STATS.map(s=>s[0]) : (pk.monStats||[]);
+          keys.forEach(k=>{ mon.arcanaStats[k] = (mon.arcanaStats[k]||0) - fx.n;
+                            if(!mon.arcanaStats[k]) delete mon.arcanaStats[k]; });
+          undone.push(`${nm} gives back ${fx.n>0?"+":""}${fx.n} to ${keys.length===6?"every Base Stat":keys.map(statLbl).join("/")}`);
+        }
+        break;
+      case "injury":
+        if(mon){ mon.injuries = Math.max(0,(mon.injuries||0) - fx.n); undone.push(`${nm}'s Injury taken back`); }
+        break;
+      case "tp":
+        if(mon){ tpChange(mon, -fx.n, `re-picked — ${cardTitle(c)}`, {kind:"arcana"});
+                 undone.push(`${nm} ${fx.n>0?"−":"+"}${Math.abs(fx.n)} Tutor Point${Math.abs(fx.n)===1?"":"s"}`); }
+        break;
+      case "loyalty":
+        if(mon){
+          if(typeof fx.set==="number") mon.loyalty = (u.loyaltyWas!=null) ? u.loyaltyWas : (mon.loyalty||0);
+          else mon.loyalty = Math.max(0, Math.min(6, (mon.loyalty||0) - fx.n));
+          undone.push(`${nm}'s Loyalty put back`);
+        }
+        break;
+    }
+    delete doneMap[i];
+    if(c.undo) delete c.undo[i];
+    cardSetPick(c, i, {monId:"", monId2:""});          // force a fresh choice
+  });
+  c.appliedNote = undone.length ? "↺ taken back: " + undone.join(" · ") : c.appliedNote;
+  save(); renderTrainer();
+  toast(undone.length ? `${cardTitle(c)} — pick a new Pokémon, then ⚡ Apply again` : "Nothing to take back");
+}
 /* These write to the sheet through the normal writers (moneyChange, tpChange…) so they land in the
    ledgers like any other movement. Rank changes remember what they overwrote, so pulling the card
    off the sheet can put the Skill back where it was. */
@@ -5145,8 +5329,11 @@ function cardApply(t, c){
   const why = `Arcana: ${cardTitle(c)}`;
   const party = () => (ch.pokemon||[]).filter(p=>p.onTeam && !isMomSpecies(p.species));
   const done = [];
+  const doneMap = cardDoneFx(c);
+  const reapply = Object.keys(doneMap).length > 0;          // some of this card already went off
   const capRank = (i, cap) => Math.max(0, Math.min(RANKS.indexOf(cap||"Master"), i));
   cardFxList(c).forEach((fx,i)=>{
+    if(doneMap[i] && !fx.repeat) return;                    // resolved already — never fire it twice
     const pk  = cardPick(c,i);
     const mon = pk.monId  ? (ch.pokemon||[]).find(p=>p.id===pk.monId)  : null;
     const mon2= pk.monId2 ? (ch.pokemon||[]).find(p=>p.id===pk.monId2) : null;
@@ -5223,7 +5410,9 @@ function cardApply(t, c){
           }); done.push(`party ＋${fx.party} level${fx.party===1?"":"s"}`); }
         break; }
       case "barren": done.push("The Barren Season holds — no evolution, no Tutor Points, no eggs"); break;
-      case "shiny": if(mon){ mon.shiny = true; done.push("✨ shiny"); } break;
+      case "shiny": if(mon){ cardUndoSet(c,i,{shinyWas: !!mon.shiny});    // so ↺ can't "un-shiny" an already-shiny one
+                             mon.shiny = true;
+                             done.push(`${mon.nickname||getSpecies(mon.species)?.name||"Pokémon"} ✨ shiny`); } break;
       case "rest":  endDay(); done.push("Extended Rest taken"); break;
       case "gift":  setTimeout(()=>openAddGift(t), 0); done.push("Legendary Gift — grant it in the 🎁 tab"); break;
       case "evolve":
@@ -5234,11 +5423,14 @@ function cardApply(t, c){
         }
         break;
     }
+    if(fx.kind!=="note") doneMap[i] = true;                  // this one is spent now
   });
   c.applied = true;
   c.appliedAt = Date.now();
   if(c.active===undefined) c.active = true;                 // conditional effects start switched on
-  c.appliedNote = done.join(" · ");
+  // a re-apply after ↺ keeps the "taken back" line, so the card reads as a history of what happened
+  c.appliedNote = reapply ? [c.appliedNote, done.join(" · ")].filter(Boolean).join(" · ")
+                          : done.join(" · ");
   save(); renderTrainer();
   toast(done.length ? `${cardTitle(c)} — ${done.join(" · ")}` : `${cardTitle(c)} applied`);
 }
@@ -5332,7 +5524,7 @@ function cardPickerRow(t, c, fx, i){
   const ch = activeChar(), pk = cardPick(c,i), needs = cardFxNeeds(fx);
   if(!needs.length) return null;
   const wrap = el("div",{class:"inline",style:"flex-wrap:wrap;gap:6px;margin-top:5px"});
-  const lock = !!c.applied;
+  const lock = !!cardDoneFx(c)[i];        // per-effect: a ↺ re-pick unlocks just that one again
   const mkSel = (label, value, opts, on) => {
     const s = el("select",{class:"equip-focus",title:label});
     s.append(el("option",{value:""}, label));
@@ -5447,15 +5639,23 @@ function arcanaRow(t, c, gm){
   /* GM controls */
   if(gm){
     const bar = el("div",{class:"inline",style:"flex-wrap:wrap;gap:8px;margin-top:8px"});
-    const hasFx = fxs.some(fx=>fx.kind!=="note");
-    const repeatable = fxs.some(fx=>fx.repeat);
-    if(hasFx && (!c.applied || repeatable)){
+    const pending = cardPendingFx(c);
+    if(pending.length){
       const ready = cardReady(c);
+      const partial = !!c.applied;              // the rest of the card already went off
       const lbl = fxs.find(fx=>fx.label)?.label
-        || (face && face.t==="held" ? "⚡ Spend this card" : "⚡ Apply effect");
+        || (partial ? "⚡ Apply to the new Pokémon"
+                    : face && face.t==="held" ? "⚡ Spend this card" : "⚡ Apply effect");
       bar.append(el("button",{class:"btn-primary", disabled: !ready,
         title: ready ? "write this card's effect onto the sheet" : "fill in the card's choices first",
         onclick:()=>cardApply(t,c)}, lbl));
+    }
+    /* picked the wrong Pokémon? Take back only what it was given and choose again — whatever the
+       card did to the Trainer (levels, money, AP) is left alone so it can never fire twice. */
+    if(cardCanRepick(c)){
+      bar.append(el("button",{class:"btn-secondary",
+        title:"give back what the chosen Pokémon got from this card and pick a different one",
+        onclick:()=>cardRepick(t,c)}, "↺ wrong Pokémon"));
     }
     if(fxs.some(fx=>fx.cond) && c.applied){
       const on = c.active!==false;
@@ -7621,6 +7821,7 @@ function renderMonBuild(root, p, sp){
   idc.append(r2);
   const heldEff = itemByName.get((p.heldItem||"").toLowerCase());
   if(heldEff) idc.append(el("div",{class:"small muted",style:"margin:6px 0"}, el("b",{},heldEff.name+": "), heldEff.effect||""));
+  if(hasLivingWeapon(p)) idc.append(livingWeaponControl(p));
   root.append(idc);
 
   /* stat allocation — for "Mom?" monStatGrid renders the points as a locked readout (they're
@@ -10608,6 +10809,19 @@ function renderPokemonMoves(root, team){
     card.append(moveSlot(p,sp,m,mn,{rerender:renderBattle, faved:favSet.has(mn),
       onFav:()=>{ p.fav=toggleSet(favSet,mn); save(); renderBattle(); }}));
   });
+  // "While used as a Living Weapon, the Pokémon also adds these Moves to its own Move List, so long
+  // as their wielder qualifies to access them" (Core p.305) — derived, so they never eat a Move slot.
+  const lw = livingWeaponOf(p);
+  if(lw){
+    const wt = charOfMon(p)?.trainer;
+    const granted = [["weaponMoveAdept","adept"],["weaponMoveMaster","master"]]
+      .filter(([f,tier]) => lw[f] && wt && weaponMoveRankOk(wt, tier)).map(([f])=>lw[f]);
+    card.append(el("div",{class:"section-head",style:"margin-top:12px"},"⚔ Granted while wielded"));
+    if(granted.length) granted.forEach(mn=>
+      card.append(moveSlot(p, sp, moveByName.get(mn.toLowerCase()), mn, {rerender:renderBattle, tag:"living weapon"})));
+    else card.append(el("div",{class:"small muted"},
+      `Its wielder isn't qualified yet — ${lw.weaponMoveAdept} needs Combat Adept${lw.weaponMoveMaster?`, ${lw.weaponMoveMaster} needs Combat Master`:""}.`));
+  }
   root.append(card);
   if(p.abilities?.length){
     const ac=el("div",{class:"card"},el("h3",{},`Abilities (${p.abilities.length})`,
@@ -11162,8 +11376,29 @@ function renderTrainerCombat(root, t){
       card.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t, mn, w, {rerender:renderBattle}), {tag, uc, move:true}));
     });
   });
+  // A wielded Honedge/Doublade/Aegislash is equipment too (Core p.305) — same slots, built from the mon
+  const lwHands = livingWeaponHands(t);
+  if(lwHands > 2) card.append(el("div",{class:"small",style:"margin-top:10px;color:var(--bad);font-weight:700"},
+    `⚠ ${lwHands} hands' worth of Living Weapon in two hands — a Doublade or Aegislash takes both.`));
+  livingWeapons(t).forEach(w=>{
+    card.append(el("div",{class:"section-head",style:"margin-top:12px"}, `⚔ ${w.name} — wielded · ${w.quality} Weapon`));
+    card.append(el("div",{class:"small muted",style:"margin:-2px 0 6px"},
+      w.notes + (w.ko ? " · Fainted: −2 to every roll made with it" : "")));
+    card.append(trainerAttackSlot(t, trainerStruggle(t, w), ()=>openTrainerAttack(t, null, w), {tag:"living weapon"}));
+    [["weaponMoveAdept","adept","Adept Technique"],["weaponMoveMaster","master","Master Technique"]].forEach(([field_,tier,tag])=>{
+      const mn = w[field_]; if(!mn) return;
+      if(!weaponMoveRankOk(t, tier)){
+        card.append(el("div",{class:"small muted",style:"opacity:.55;padding:2px 4px"},
+          `${mn} — needs Combat ${tier==="master"?"Master":"Adept"}`));
+        return;
+      }
+      const wm = trainerAttackProfile(t, mn, w);
+      const uc = usesControl(t, "move", wm.name, wm.frequency, renderBattle);
+      card.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t, mn, w, {rerender:renderBattle}), {tag, uc, move:true}));
+    });
+  });
   card.append(el("div",{class:"small muted",style:"margin-top:8px"},
-    (t.weapons||[]).length ? "Each weapon (and its Weapon Move) is listed above. Add/edit weapons in Trainer → Sheet → Weapons."
+    ((t.weapons||[]).length || lwHands) ? "Each weapon (and its Weapon Move) is listed above. Add/edit weapons in Trainer → Sheet → Weapons; tick ⚔ Wield on a Living Weapon's own sheet."
                            : "Unarmed Struggle only — add weapons in Trainer → Sheet → Weapons. Action Features (Cheer, Orders…) appear under the tabs above."));
   root.append(card);
   // Throw a Poké Ball: a real action on the trainer's own sheet, targeting a wild Pokémon
