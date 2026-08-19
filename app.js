@@ -2100,6 +2100,11 @@ function applyReadonlyLock(){
 let trainerTab = "sheet";
 function renderTrainer(){
   const c = activeChar(), t = c.trainer, root = $("#view-trainer");
+  /* Deliberately NOT called from load(): normTrainer runs while `let state = load()` is still
+     evaluating, and this reaches consts declared further down the file (featureByName, the Move
+     index) that would still be in their temporal dead zone there — the same trap the LU_* and
+     BERSERKER_* constants are hoisted to avoid. Rendering is late enough for all of them. */
+  if(ensureLedger(t)) save();          // one-time migration of an older sheet
   root.innerHTML = "";
   // the Gifts sub-tab shows for the GM (to grant Gifts) or once the Trainer actually has one
   const subTabs = [["sheet","Sheet"],["features","Features & Edges"],["levelup","Level Up"],["gear","Inventory & Bio"]];
@@ -2562,7 +2567,9 @@ function weaponizeRange(range, w, asWeaponAttack){
 /* "You learn the Moves Rage and Flail." → ["Rage","Flail"]. The Feature DB writes Double-Edge
    without its hyphen, so every name goes through the loose Move index. */
 function featureLearnedMoveNames(effect){
-  const m = /\b(?:learn|learns|know|knows|gain|gains)\s+the\s+Moves?\s+([^.]+)\./i.exec(effect || "");
+  /* the list runs to the full stop — or to the end of the text, because plenty of Feature entries
+     ("You learn the Moves Sing and Supersonic") simply don't carry one. */
+  const m = /\b(?:learn|learns|know|knows|gain|gains)\s+the\s+Moves?\s+([^.]+?)(?:\.|$)/i.exec(effect || "");
   if(!m) return [];
   return m[1].split(/\s*(?:,|\band\b|\bor\b)\s*/i)
     .map(s => moveByName.get(s.trim().toLowerCase()))
@@ -3568,6 +3575,13 @@ function skillDiceHTML(rank, bonus){
 }
 function rankButtons(skillKey, cur){
   const wrap = el("div",{class:"rankbtns"});
+  /* Ranks are DERIVED from the Skill Background plus the Skill Edges recorded in the Level-Up tab.
+     A player can't type one in here any more — the buttons collapse to a read-only chip so the
+     Rank still reads at a glance, but the only way to move it is to record the Edge that paid. */
+  if(ledgerLocked(activeChar().trainer)){
+    wrap.append(el("span",{class:"rank-ro", title:"Set by your Skill Background + the Skill Edges in the Level Up tab"}, cur||"Untrained"));
+    return wrap;
+  }
   const locked = r => !rankAllowed(activeChar().trainer, r);   // re-checked on click: level/edges can change
   RANKS.forEach((r,i) => {
     const lock = locked(r);
@@ -3752,7 +3766,11 @@ function openClassFeaturePicker(t, className){
     const st = prereqStatus(t, f); return st.met ? null : ("Needs "+st.unmet.join(", "));
   };
   openPicker(`Learn a ${className} Feature${t.unlocked?" (🔓)":""}`, learnable, name=>{
-    if(!t.features.includes(name)){ t.features.push(name); autoGrantFeatureMoves(t, name); save(); render(); toast(`Learned ${name} ✓`); }
+    if(!t.features.includes(name)){
+      if(!Array.isArray(t.extraFeatures)) t.extraFeatures = [];
+      if(!t.extraFeatures.includes(name)) t.extraFeatures.push(name);
+      luCommit(t); save(); render(); toast(`Learned ${name} ✓ (off-ledger)`);
+    }
   }, "feature", null, lockFn);
 }
 function openTechniquePicker(t, className){
@@ -3786,8 +3804,13 @@ function classFeatureRow(t, featName){
     el("span",{style:"color:var(--ink);font-weight:700"}, featName),
     meta ? el("span",{class:"muted small",style:"margin-left:8px"}, meta) : "",
     uc ? el("span",{style:"margin-left:8px"}, uc) : "",
-    el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"unlearn this feature",
-      onclick:e=>{ e.preventDefault(); const i=t.features.indexOf(featName); if(i>=0){ t.features.splice(i,1); save(); render(); toast(`Unlearned ${featName}`); } }},"×")));
+    ledgerLocked(t) ? "" : el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"unlearn this feature",
+      onclick:e=>{ e.preventDefault();
+        t.extraFeatures = (t.extraFeatures||[]).filter(x=>x!==featName);
+        luCommit(t); save(); render();
+        toast((t.features||[]).includes(featName)
+          ? `${featName} is on the ledger — clear its Level-Up slot to remove it` : `Unlearned ${featName}`);
+      }},"×")));
   row.append(el("div",{class:"small",style:"margin-top:6px",html: refDetailHTML("feature",featName)}));
   return row;
 }
@@ -3796,11 +3819,17 @@ function classFeatureRow(t, featName){
 function classesCard(){
   const t = activeChar().trainer;
   const arr = t.classes;
-  const card = el("div",{class:"card"}, el("h3",{},"Classes",
-    el("div",{class:"inline"}, trainerUnlockToggle(t),
-      el("button",{class:"linkbtn h-act", onclick:()=>openPicker("Add Class", D.classes.map(c=>c.name), name=>{
-        if(!arr.includes(name)){ arr.push(name); save(); render(); }
-      }, "class")}, "+ add"))));
+  const locked = ledgerLocked(t);
+  const acts0 = el("div",{class:"inline"}, trainerUnlockToggle(t));
+  /* Taking a class IS spending a Feature pick, so for players it happens in the Level-Up tab like
+     any other Feature. The GM's "+ add" grants one off-ledger. */
+  acts0.append(locked ? luJumpBtn("→ earned in Level Up")
+    : el("button",{class:"linkbtn h-act", onclick:()=>openPicker("Add Class", D.classes.map(c=>c.name), name=>{
+        if(!Array.isArray(t.extraFeatures)) t.extraFeatures = [];
+        if(!t.extraFeatures.includes(name) && !arr.includes(name)) t.extraFeatures.push(name);
+        luCommit(t); save(); render();
+      }, "class")}, "+ add"));
+  const card = el("div",{class:"card"}, el("h3",{},"Classes", acts0));
   // Chosen Type (Type Ace, Core p.119) — only for Trainers who have Type Ace (the Class or any of
   // its Features). If they don't, a hint explains what unlocks it instead of the control vanishing.
   if(typeAceEligible(t)){
@@ -3822,7 +3851,9 @@ function classesCard(){
   }
   // Type Expertise (a Feature, not a class) — the other "pick a Type" choice, kept next to it
   if(typeExpertiseEligible(t)) card.append(typeExpertiseControl(t, save, render));
-  if(!arr.length){ card.append(el("span",{class:"muted small"},"none yet — tap “+ add” to take a Class, then learn its Features here")); return card; }
+  if(!arr.length){ card.append(el("span",{class:"muted small"}, locked
+    ? "none yet — take a Class with one of your Feature picks in the Level Up tab"
+    : "none yet — tap “+ add” to take a Class, then learn its Features here")); return card; }
   arr.forEach((name,idx) => {
     const feats = featuresForClass(name);
     const total = feats.length;
@@ -3837,10 +3868,14 @@ function classesCard(){
       total? el("span",{class:"muted small",style:"margin-left:8px"}, `· ${picked.length}/${total} features`):""));
     const acts = el("div",{class:"inline"});
     // always offer the Learn menu when the class has any Features — locked ones show what they need
-    if(total) acts.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
+    if(total && !locked) acts.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
       onclick:()=>openClassFeaturePicker(t,name)}, "＋ Learn Feature"));
-    acts.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove class",
-      onclick:()=>{ arr.splice(idx,1); save(); render(); }},"×"));
+    if(!locked) acts.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove class",
+      onclick:()=>{
+        t.extraFeatures = (t.extraFeatures||[]).filter(x=>x!==name);
+        luCommit(t); save(); render();
+        if((t.classes||[]).includes(name)) toast(`${name} is on the ledger — clear its Level-Up slot to remove it`);
+      }},"×"));
     head.append(acts);
     block.append(head);
     // signature (class-defining) Feature description
@@ -3881,11 +3916,27 @@ function classesCard(){
 /* generic list backed by a reference name-list; each entry expands to its rules text */
 function listCard(title, path, allNames, refKind){
   const arr = getByPath(path) || [];
-  const card = el("div",{class:"card"}, el("h3",{},title,
-    el("button",{class:"linkbtn h-act", onclick:()=>openPicker(title, allNames, name=>{
+  const t = activeChar().trainer;
+  /* Features and Edges are earned in the Level-Up tab; this card became a read-only view of them.
+     The GM still gets the old free-hand "+ add", and what they add lands in the off-ledger extras
+     so the next ledger rebuild doesn't sweep it away. */
+  const ledgerOwned = (path === "trainer.features" || path === "trainer.edges");
+  const locked = ledgerOwned && ledgerLocked(t);
+  const extras = path === "trainer.features" ? "extraFeatures" : "extraEdges";
+  const head = el("h3",{},title);
+  if(locked) head.append(luJumpBtn("→ earned in Level Up"));
+  else head.append(el("button",{class:"linkbtn h-act", onclick:()=>openPicker(title, allNames, name=>{
       const a = getByPath(path);
-      if(!a.includes(name)){ a.push(name); if(refKind==="feature") autoGrantFeatureMoves(activeChar().trainer, name); save(); render(); }
-    }, refKind)}, "+ add")));
+      if(ledgerOwned){
+        if(!Array.isArray(t[extras])) t[extras] = [];
+        if(!t[extras].includes(name)) t[extras].push(name);
+        luCommit(t); save(); render(); toast(`${name} granted (off-ledger)`); return;
+      }
+      if(!a.includes(name)){ a.push(name); if(refKind==="feature") autoGrantFeatureMoves(t, name); save(); render(); }
+    }, refKind)}, "+ add"));
+  const card = el("div",{class:"card"}, head);
+  if(locked && arr.length) card.append(el("div",{class:"small muted",style:"margin:-4px 0 8px"},
+    `Rebuilt from your Level-Up ledger — pick these at the Level you earn them.`));
   if(!arr.length){ card.append(el("span",{class:"muted small"},"none yet — tap “+ add”")); return card; }
   arr.forEach((name,idx) => {
     const row = el("details",{class:"spoiler"});
@@ -3898,8 +3949,15 @@ function listCard(title, path, allNames, refKind){
     row.append(el("summary",{},
       el("span",{style:"color:var(--ink)"}, name),
       uc ? el("span",{style:"margin-left:8px"}, uc) : "",
-      el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove",
-        onclick:e=>{ e.preventDefault(); arr.splice(idx,1); save(); render(); }},"×")));
+      locked ? "" : el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove",
+        onclick:e=>{ e.preventDefault();
+          if(ledgerOwned){
+            t[extras] = (t[extras]||[]).filter(x=>x!==name);
+            luCommit(t); save(); render();
+            if((getByPath(path)||[]).includes(name)) toast(`${name} is on the ledger — clear its Level-Up slot to remove it`);
+            return;
+          }
+          arr.splice(idx,1); save(); render(); }},"×")));
     row.append(el("div",{class:"small",style:"margin-top:6px", html: refDetailHTML(refKind, name)}));
     card.append(row);
   });
@@ -3954,7 +4012,7 @@ function luStatChoice(t, key){
   const cur = t.levelUp[key] || "";
   const mk = (val,txt)=>el("button",{class:"lu-statbtn"+(cur===val?" on":""),
     title:`Put these bonus points into ${txt}`,
-    onclick:()=>{ t.levelUp[key] = (cur===val?"":val); syncMilestoneStats(t); save(); renderTrainer(); }}, txt);
+    onclick:()=>{ t.levelUp[key] = (cur===val?"":val); luCommit(t); save(); renderTrainer(); }}, txt);
   return el("div",{class:"lu-slot"},
     el("span",{class:"lu-label"}, "Bonus points go into"),
     el("div",{class:"lu-seg"}, mk("atk","Attack"), mk("spatk","Sp.Atk")));
@@ -3974,17 +4032,26 @@ function luSlot(t, key, kind, label, hint){
   const cur = t.levelUp[key] || "";
   let disp = cur || "choose…";
   if(isSkill && cur){ const sk=SKILLS.find(s=>s[1]===cur); const rk=sk?(t.skills?.[sk[0]]||""):""; disp = rk?`${cur} · ${rk}`:cur; }
+  if(!isSkill && cur && !(kind==="edge" ? (D.edges||[]) : D.features).some(x=>x.name===cur)) disp = cur + " ⚠";
   const pickTitle = isSkill ? "Which Skill did you rank up?" : kind==="edge"?"Choose an Edge":"Choose a Feature";
+  /* The Level this slot belongs to — read off the key so every call site gets the check for free.
+     Picks are locked to what the Trainer QUALIFIED FOR then, not to what they qualify for now. */
+  const level = +((/^L(\d+):/.exec(key)||[])[1]) || 1;
+  const lockFn = isSkill ? luSkillPickLock(t, level, key) : luPickLock(t, level, kind, key);
   const btn = el("button",{class:"btn-secondary lu-pick", title: isSkill?"Choose a Skill":"Choose from the "+(kind==="edge"?"Edges":"Features")+" list",
     onclick:()=>openPicker(pickTitle, names, v=>{
-      t.levelUp[key]=v; save(); renderTrainer();
-    }, isSkill?null:kind)}, disp);
+      t.levelUp[key]=v;
+      /* changing the Edge invalidates the Skill recorded under it — a Basic Skills pick can't
+         carry over onto Master Skills */
+      if(!isSkill && kind==="edge" && !edgeRankSteps(v).length) delete t.levelUp[key+":skill"];
+      luCommit(t); save(); renderTrainer();
+    }, isSkill?null:kind, null, lockFn)}, disp);
   if(cur) btn.classList.add("filled");
   const row = el("div",{class:"lu-slot"},
     el("span",{class:"lu-label"}, label + (hint?" ":""), hint?el("span",{class:"muted"},`(${hint})`):""),
     btn);
   if(cur) row.append(el("button",{class:"lu-clear",title:"clear",
-    onclick:()=>{ delete t.levelUp[key]; delete t.levelUp[key+":skill"]; save(); renderTrainer(); }},"×"));
+    onclick:()=>{ delete t.levelUp[key]; delete t.levelUp[key+":skill"]; luCommit(t); save(); renderTrainer(); }},"×"));
   // an Edge that ranks up a Skill reveals a companion picker to record which Skill
   if(kind==="edge" && cur && edgeRanksSkill(cur)){
     const wrap = el("div",{}, row, luSlot(t, key+":skill", "skill", "↳ Skill ranked up"));
@@ -4007,7 +4074,7 @@ function luMilestoneNode(t, level, ms, future){
     sel.append(el("option",{value:""},"— choose —"));
     ms.choice.options.forEach(o=>{ const op=el("option",{value:o}, o); sel.append(op); });
     sel.value = cur;
-    sel.addEventListener("change",()=>{ t.levelUp[ck]=sel.value; syncMilestoneStats(t); save(); renderTrainer(); });
+    sel.addEventListener("change",()=>{ t.levelUp[ck]=sel.value; luCommit(t); save(); renderTrainer(); });
     box.append(sel);
     const extra = ms.choice.grants && ms.choice.grants[cur];
     if(extra) extra.forEach((g,i)=> box.append(luSlot(t, `L${level}:${mk}:${i}`, g.kind, g.label, g.hint)));
@@ -4052,6 +4119,469 @@ function luTotals(t, level){
   return { feat, edge, stat };
 }
 
+/* ===================================================================
+   THE LEDGER IS THE SHEET   (Level-Up tab → Features / Edges / Skills)
+   ------------------------------------------------------------------
+   Everything a Trainer earns by levelling is RECORDED in t.levelUp and
+   DERIVED from there: t.features, t.classes, t.edges and t.skills are
+   rebuilt out of the ledger whenever it changes, so the Features tab
+   and the Skills table can't drift away from what was actually picked
+   at each Level. They used to — a sheet could carry a Feature that
+   occupied no slot, or a Skill Rank no Edge ever paid for, and nothing
+   in the app ever noticed.
+
+   Two things sit OUTSIDE the ledger on purpose:
+     t.skillBase                 the Level-1 Skill Background (Core p.13:
+                                 3 Pathetic / 1 Novice / 1 Adept). It
+                                 isn't earned at a Level — it's where the
+                                 ladder starts.
+     t.extraFeatures/.extraEdges GM freebies. The GM can still hand out a
+                                 Feature no slot pays for; parking it here
+                                 means a rebuild never eats it, and the
+                                 card lists it as "off-ledger" so the
+                                 exception stays visible instead of
+                                 quietly becoming the new normal.
+=================================================================== */
+
+/* "You Rank Up a Skill from Pathetic to Untrained, or Untrained to Novice."
+   → [["Pathetic","Untrained"],["Untrained","Novice"]].  Read out of the Edge's own text rather
+   than transcribed, so a homebrew Skill Edge (Virtuoso Skills) works the day it's added. */
+const _edgeStepCache = new Map();
+function edgeRankSteps(name){
+  if(_edgeStepCache.has(name)) return _edgeStepCache.get(name);
+  const e = (D.edges||[]).find(x=>x.name===name);
+  /* Basic Skills reads "…from Pathetic to Untrained, or Untrained to Novice." — the second
+     alternative carries no "from", so anchoring on that word finds only half the Edge. Gate on the
+     "Rank Up a Skill" phrasing instead and then take every Rank→Rank pair in the sentence. */
+  const txt = String((e && e.effect) || "");
+  const steps = !/Rank\s*Up\s+a\s+Skill/i.test(txt) ? []
+    : [...txt.matchAll(/\b([A-Za-z]+)\s+to\s+([A-Za-z]+)\b/g)]
+        .map(m=>[m[1],m[2]]).filter(([a,b])=>RANKS.includes(a)&&RANKS.includes(b));
+  _edgeStepCache.set(name, steps);
+  return steps;
+}
+const isSkillEdge = name => edgeRankSteps(name).length > 0;
+/* the Level an Edge names in its own prerequisites — "Level 6" for Expert Skills */
+function edgeMinLevel(name){
+  const e = (D.edges||[]).find(x=>x.name===name);
+  const m = /Level\s+(\d+)/i.exec((e && e.prerequisites) || "");
+  return m ? +m[1] : 1;
+}
+/* a [Class] Feature lives in t.classes, everything else in t.features */
+function luIsClass(name){
+  return classNameSet.has(name) || /\[Class\]/i.test((featureByName.get(name)||{}).tags || "");
+}
+/* A Skill gets named three ways across the app and the book — the SKILLS label ("Occult Ed."), the
+   storage key ("occultEd") and the rulebook's longhand ("Occult Education") — with or without the
+   accent on Pokémon. Older ledger rows were written with the longhand and silently matched nothing,
+   so the Edges that paid for those Ranks looked unspent. Fold every spelling onto one shape. */
+function _luNormSkill(s){
+  return String(s||"").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")   // Pokémon → Pokemon
+    .replace(/\beducation\b/g,"ed")                    // Occult Education → Occult Ed
+    .replace(/[^a-z]/g,"");                             // → "occulted"
+}
+const _skillKeyByLabel = new Map();
+SKILLS.forEach(([k,l]) => { [k,l].forEach(v => _skillKeyByLabel.set(_luNormSkill(v), k)); });
+const luSkillKey = label => _skillKeyByLabel.get(_luNormSkill(label)) || "";
+
+/* The ledger keys a Level owns, in the order they RESOLVE. A milestone's Skill Edge lands before
+   that Level's ordinary Edge — which is exactly what makes "Adept Combat then Expert Combat, both
+   at Level 12" legal rather than an error. Mirrors luLevelBlock / luMilestoneNode. */
+function luSlotsAt(t, level){
+  const feats = [], edges = [];
+  if(level === 1){
+    for(let i=0;i<4;i++) feats.push(`L1:feat:${i}`);
+    feats.push("L1:training");
+    for(let i=0;i<4;i++) edges.push(`L1:edge:${i}`);
+  } else if(level % 2) feats.push(`L${level}:feat`);
+  const ms = LU_MILESTONES[level];
+  if(ms){
+    (ms.grants||[]).forEach((g,i)=> (g.kind==="feature"?feats:edges).push(`L${level}:ms:${i}`));
+    if(ms.choice){
+      const mk = ms.choice.key;
+      const extra = ms.choice.grants && ms.choice.grants[(t.levelUp||{})[`L${level}:${mk}`] || ""];
+      (extra||[]).forEach((g,i)=> (g.kind==="feature"?feats:edges).push(`L${level}:${mk}:${i}`));
+    }
+  }
+  if(level !== 1 && level % 2 === 0) edges.push(`L${level}:edge`);
+  return { feats, edges };
+}
+/* everything the ledger records up to the Trainer's current Level, oldest first */
+function luLedger(t){
+  const feats = [], edges = [];
+  const max = Math.max(1, Math.min(LU_MAX_LEVEL, t.level||1));
+  for(let L=1; L<=max; L++){
+    const s = luSlotsAt(t, L);
+    s.feats.forEach(k => { const v = t.levelUp[k]; if(v) feats.push({level:L, key:k, name:v}); });
+    s.edges.forEach(k => { const v = t.levelUp[k];
+      if(v) edges.push({level:L, key:k, name:v, skill:t.levelUp[k+":skill"] || ""}); });
+  }
+  return { feats, edges };
+}
+function luBaseSkills(t){
+  const b = {};
+  SKILLS.forEach(([k])=>{ const v = (t.skillBase||{})[k]; b[k] = RANKS.includes(v) ? v : "Untrained"; });
+  return b;
+}
+/* Skill Ranks = the Background baseline with every recorded Skill Edge applied, in Level order.
+   Also reports what didn't add up, which is what the audit box on the card prints. */
+function luDeriveSkills(t){
+  const out = luBaseSkills(t), issues = [];
+  luLedger(t).edges.forEach(e => {
+    const steps = edgeRankSteps(e.name); if(!steps.length) return;
+    const k = luSkillKey(e.skill);
+    if(!k){ issues.push(`L${e.level}: ${e.name} — no Skill recorded`); return; }
+    const min = edgeMinLevel(e.name);
+    if(e.level < min) issues.push(`L${e.level}: ${e.name} needs Level ${min}`);
+    const hit = steps.find(([from]) => from === out[k]);
+    if(!hit){ issues.push(`L${e.level}: ${e.name} on ${e.skill} — it was ${out[k]} at that point`); return; }
+    out[k] = hit[1];
+  });
+  return { skills: out, issues };
+}
+/* The sheet AS IT WAS at a given Level — what a slot's prerequisites are judged against.
+   `exceptKey` drops one entry so re-picking a slot doesn't count its own current value. */
+function luStateAt(t, level, exceptKey){
+  const skills = luBaseSkills(t), features = [], classes = [];
+  const led = luLedger(t);
+  led.edges.forEach(e => {
+    if(e.level > level || e.key === exceptKey) return;
+    const steps = edgeRankSteps(e.name); if(!steps.length) return;
+    const k = luSkillKey(e.skill); if(!k) return;
+    const hit = steps.find(([from]) => from === skills[k]); if(hit) skills[k] = hit[1];
+  });
+  led.feats.forEach(f => { if(f.level <= level && f.key !== exceptKey)
+    (luIsClass(f.name) ? classes : features).push(f.name); });
+  (t.extraFeatures||[]).forEach(n => (luIsClass(n) ? classes : features).push(n));
+  return { skills, features, classes };
+}
+
+/* ---------- first run on an existing sheet ---------- */
+/* Infer the Background by REVERSE-applying the ledger's Skill Edges from the Ranks the sheet
+   already has, and park anything the ledger can't account for in the GM-extras lists. Nothing is
+   ever dropped: a sheet that was over-budget surfaces as "off-ledger", which is the drift made
+   visible rather than deleted behind the player's back. */
+function migrateLedger(t){
+  let dirty = false;
+  if(!t.skillBase || typeof t.skillBase !== "object"){
+    const base = {};
+    SKILLS.forEach(([k]) => base[k] = RANKS.includes(t.skills[k]) ? t.skills[k] : "Untrained");
+    luLedger(t).edges.slice().reverse().forEach(e => {
+      const steps = edgeRankSteps(e.name); if(!steps.length) return;
+      const k = luSkillKey(e.skill); if(!k) return;
+      const hit = steps.find(([,to]) => to === base[k]);          // unambiguous backwards
+      if(hit) base[k] = hit[0];
+    });
+    t.skillBase = base; dirty = true;
+  }
+  if(!Array.isArray(t.extraFeatures) || !Array.isArray(t.extraEdges)){
+    const led = luLedger(t);
+    if(!Array.isArray(t.extraFeatures)){
+      const onLedger = new Set(led.feats.map(f=>f.name));
+      t.extraFeatures = [...(t.classes||[]), ...(t.features||[])].filter(n => !onLedger.has(n));
+    }
+    if(!Array.isArray(t.extraEdges)){
+      const pool = led.edges.map(e=>e.name);                       // consume one per recorded slot
+      t.extraEdges = (t.edges||[]).filter(n => {
+        const i = pool.indexOf(n); if(i >= 0){ pool.splice(i,1); return false; } return true; });
+    }
+    dirty = true;
+  }
+  if(!Array.isArray(t.featMoves)){ t.featMoves = []; dirty = true; }
+  return dirty;
+}
+
+/* ---------- keeping the sheet in step with the ledger ---------- */
+/* Idempotent the same way syncMilestoneStats is: only the DELTA between the last derived Ranks and
+   the new ones is written, so anything sitting ON TOP of a Skill — an Arcana card's Rank shift,
+   which remembers the Rank it replaced — survives a rebuild instead of being flattened by it. */
+function syncLedgerSkills(t){
+  const want = luDeriveSkills(t).skills;
+  if(!t.skillsDerived){ t.skillsDerived = want; return t; }        // first run: the sheet already agrees
+  const have = t.skillsDerived;
+  SKILLS.forEach(([k]) => {
+    if(want[k] === have[k]) return;                                // the ledger didn't move it — hands off
+    const shift = RANKS.indexOf(want[k]) - RANKS.indexOf(have[k]);
+    const cur = RANKS.indexOf(t.skills[k]);
+    t.skills[k] = cur < 0 ? want[k]
+                : (RANKS[Math.max(0, Math.min(RANKS.length-1, cur + shift))] || want[k]);
+  });
+  t.skillsDerived = want;
+  return t;
+}
+/* A Feature that teaches a Move should put that Move on the sheet — and take it back off when the
+   Feature goes. t.featMoves is the provenance list: only Moves this function put there are ever
+   removed, so a Move typed in by hand is never touched. */
+function syncFeatureMoves(t){
+  const want = new Set();
+  [...(t.classes||[]), ...(t.features||[])].forEach(n => {
+    const f = featureByName.get(n); if(!f) return;
+    featureLearnedMoveNames(f.effect||"").forEach(m => want.add(m));
+    featureGrantsMoveNames(f.effect||"").forEach(m => want.add(m));
+  });
+  if(!Array.isArray(t.moves)) t.moves = [];
+  const owned = new Set(t.featMoves||[]);
+  t.moves = t.moves.filter(m => want.has(m) || !owned.has(m));
+  want.forEach(m => { if(!t.moves.includes(m)) t.moves.push(m); });
+  t.featMoves = [...want];
+  return t;
+}
+/* rebuild the Feature / Class / Edge lists out of the ledger + the GM extras, then re-derive
+   everything that hangs off them. Called after every edit to t.levelUp. */
+function luCommit(t){
+  if(!t || !t.levelUp) return t;
+  const led = luLedger(t);
+  const seen = new Set(), classes = [], features = [];
+  [...led.feats.map(f=>f.name), ...(t.extraFeatures||[])].forEach(n => {
+    if(seen.has(n)) return; seen.add(n);
+    (luIsClass(n) ? classes : features).push(n);
+  });
+  t.classes = classes; t.features = features;
+  /* Edges legitimately repeat (Basic Skills five times over). The Edges card shows one row per
+     distinct Edge; the ledger stays the record of how many were actually spent. */
+  t.edges = [...new Set([...led.edges.map(e=>e.name), ...(t.extraEdges||[])])];
+  syncLedgerSkills(t);
+  syncFeatureMoves(t);
+  syncMilestoneStats(t);
+  return t;
+}
+/* migrate-then-commit, safe to call on every render. Returns true the one time it migrated. */
+function ensureLedger(t){
+  if(!t || !t.levelUp) return false;
+  const dirty = migrateLedger(t);
+  luCommit(t);
+  return dirty;
+}
+
+/* ---------- who may edit what ---------- */
+/* Players earn Features, Edges and Skill Ranks in the Level-Up tab and nowhere else. The GM — or a
+   Trainer the GM has 🔓 unlocked — keeps the free-hand controls, which is how a freebie outside the
+   ledger gets granted in the first place. */
+function ledgerLocked(t){ return !isGM() && !(t && t.unlocked); }
+/* a button that sends the player where the change actually belongs */
+function luJumpBtn(txt){
+  return el("button",{class:"linkbtn h-act", title:"Features, Edges and Skills are earned in the Level Up tab",
+    onclick:()=>{ trainerTab = "levelup"; renderTrainer(); }}, txt || "→ Level Up tab");
+}
+
+/* ---------- Features and Edges you were HANDED ---------- */
+/* Some Features give you another Feature or an Edge outright: Commander picks one of the five
+   Orders Features "even if you do not meet its prerequisites", Push Buttons hands over Demoralize.
+   A grant costs no Level-Up slot and waives its own prerequisites, so treating one as an off-ledger
+   GM freebie makes a perfectly legal sheet read as over budget — which is exactly what it did to
+   Madeline's Ravager Orders. Read the grants out of the text of the Features she actually has. */
+function featureGrantedNames(t){
+  const out = new Map();                                    // granted name → the Feature granting it
+  if(!t) return out;
+  [...(t.classes||[]), ...(t.features||[])].forEach(n => {
+    const f = featureByName.get(n); if(!f) return;
+    const e = String(f.effect || "");
+    // "You gain the Demoralize Edge, even if you do not meet the prerequisites."
+    for(const m of e.matchAll(/\bgain the ([A-Z][A-Za-z'’\-]*(?: [A-Z][A-Za-z'’\-]*)*) (?:Edge|Feature)\b/g))
+      out.set(m[1].trim(), n);
+    // "Choose one of A, B, … or C. … You gain the chosen Feature"
+    if(/gain the chosen (?:Feature|Edge)/i.test(e)){
+      const ch = /Choose one of ([^.]+)\./i.exec(e);
+      if(ch) ch[1].split(/,|\bor\b/i).map(x => x.trim()).filter(Boolean)
+                  .forEach(nm => out.set(nm, n));
+    }
+  });
+  return out;
+}
+
+/* ---------- what doesn't add up ---------- */
+function luAudit(t){
+  const out = [];
+  const level = Math.max(1, Math.min(LU_MAX_LEVEL, t.level||1));
+  out.push(...luDeriveSkills(t).issues);
+  const base = luBaseSkills(t), tally = {};
+  RANKS.forEach(r => tally[r] = 0);
+  SKILLS.forEach(([k]) => tally[base[k]]++);
+  if(tally.Adept !== 1 || tally.Novice !== 1 || tally.Pathetic !== 3)
+    out.push(`Background is ${tally.Pathetic} Pathetic / ${tally.Novice} Novice / ${tally.Adept} Adept — Core p.13 wants 3 / 1 / 1`);
+  /* Nobody starts above Adept. A leftover Expert/Master in the baseline means Skill Edges that
+     really were spent are missing from the ledger — the Rank was kept, its cost wasn't. */
+  const overAdept = SKILLS.filter(([k]) => rankNum(base[k]) > rankNum("Adept")).map(([,l]) => l);
+  if(overAdept.length) out.push(`${overAdept.join(", ")} start${overAdept.length===1?"s":""} above Adept — no Background can do that, so the Skill Edges that paid for it are missing from the ledger`);
+  let openF = 0, openE = 0;
+  for(let L=1; L<=level; L++){
+    const s = luSlotsAt(t, L);
+    s.feats.forEach(k => { if(!t.levelUp[k]) openF++; });
+    s.edges.forEach(k => { if(!t.levelUp[k]) openE++; });
+  }
+  if(openF) out.push(`${openF} Feature slot${openF===1?"":"s"} still open`);
+  if(openE) out.push(`${openE} Edge slot${openE===1?"":"s"} still open`);
+  const led = luLedger(t);
+  const grantedNames = featureGrantedNames(t);
+  led.feats.forEach(f => {
+    if(f.key === "L1:training") return;                            // Core p.13: prerequisites waived
+    if(grantedNames.has(f.name)) return;                           // granted "even if you do not meet" them
+    const def = featureByName.get(f.name); if(!def) return;
+    const un = luPrereqUnmet(luStateAt(t, f.level, f.key), def.prerequisites);
+    if(un.length) out.push(`L${f.level}: ${f.name} needs ${un.join(", ")}`);
+  });
+  led.edges.forEach(e => {
+    const def = grantedNames.has(e.name) ? null : (D.edges||[]).find(x => x.name === e.name);
+    if(def){
+      const un = luPrereqUnmet(luStateAt(t, e.level, e.key), def.prerequisites);
+      if(un.length) out.push(`L${e.level}: ${e.name} needs ${un.join(", ")}`);
+    }
+    const ms = LU_MILESTONES[e.level];
+    if(!/:ms:\d+$/.test(e.key) || !ms || !(ms.grants||[]).length) return;
+    const banned = String(ms.title||"").replace(/\s*Skills$/,"");
+    if(!isSkillEdge(e.name)) out.push(`L${e.level}: the milestone grants a Skill Edge — "${e.name}" isn't one`);
+    else if(edgeRankSteps(e.name).some(([,to]) => to === banned))
+      out.push(`L${e.level}: the milestone Skill Edge may not rank a Skill to ${banned}`);
+  });
+  /* The migration seeds the baseline FROM the sheet, so the two agree on day one. They can drift
+     apart afterwards — an Edge added to the ledger for a Rank the sheet already had, say — and
+     because syncLedgerSkills only writes deltas, that disagreement would otherwise sit there
+     forever without either side noticing. */
+  const derived = luDeriveSkills(t).skills;
+  const clash = SKILLS.filter(([k]) => derived[k] !== t.skills[k])
+    .map(([k,l]) => `${l}: sheet says ${t.skills[k]}, the ledger adds up to ${derived[k]}`);
+  if(clash.length) out.push(`Sheet and ledger disagree — ${clash.join("; ")}`);
+  const granted = featureGrantedNames(t);
+  const extras = [...(t.extraFeatures||[]), ...(t.extraEdges||[])];
+  const gifts  = extras.filter(n => granted.has(n));
+  const free   = extras.filter(n => !granted.has(n));
+  if(gifts.length) out.push(`Granted by a Feature you have (no slot spent): ${
+    gifts.map(n => `${n} — from ${granted.get(n)}`).join("; ")}`);
+  if(free.length) out.push(`Off-ledger (GM freebies): ${free.join(", ")}`);
+  return out;
+}
+
+/* ---------- reading a prerequisite line the way the book means it ---------- */
+/* Prerequisites mix AND and OR in prose:
+       "Dance Form; Adept Acrobatics, Athletics, or Charm"
+       "Acrobatics, Athletics, Stealth, or Survival at Novice"
+       "Two of Charm, Intimidate, Intuition, or Pokemon Education at Novice Rank"
+   prereqTokens splits on every comma, which turns each OR-list into a pile of hard requirements.
+   That's harmless where it only greys out a row on the Features tab, but this is the rule the
+   ledger ENFORCES — Choreographer would be unpickable for a Dancer who took the Charm branch. */
+const _LU_COUNT_WORD = { one:1, two:2, three:3, four:4, five:5 };
+const _LU_RANK_RE = RANKS.join("|");
+/* the Skills named in a comma/or list, as SKILLS keys (anything that isn't a Skill is dropped) */
+function luSkillList(text){
+  return String(text||"").split(/,|\bor\b/i).map(s => luSkillKey(s.replace(/\brank\b/i,"").trim()))
+    .filter(Boolean);
+}
+function luPrereqUnmet(snap, text){
+  const unmet = [];
+  const meets = (k, rank) => rankNum(snap.skills[k]) >= rankNum(rank);
+  String(text||"").split(/;/).map(s=>s.trim()).filter(Boolean).forEach(clause => {
+    let m;
+    // "Two of Charm, Intimidate, Intuition, or Pokemon Education at Novice Rank"
+    if((m = clause.match(new RegExp(`^(\\d+|one|two|three|four|five)\\s+of\\s+(.+?)\\s+at\\s+(${_LU_RANK_RE})(?:\\s+Rank)?$`,"i")))){
+      const need = _LU_COUNT_WORD[m[1].toLowerCase()] || +m[1];
+      const list = luSkillList(m[2]);
+      const have = list.filter(k => meets(k, m[3])).length;
+      if(list.length && have < need) unmet.push(`${need} of ${m[2]} at ${m[3]} (have ${have})`);
+      return;
+    }
+    // "Acrobatics, Athletics, Stealth, or Survival at Novice"
+    if((m = clause.match(new RegExp(`^(.+?)\\s+at\\s+(${_LU_RANK_RE})(?:\\s+Rank)?$`,"i")))){
+      const list = luSkillList(m[1]);
+      if(list.length){ if(!list.some(k => meets(k, m[2]))) unmet.push(clause); return; }
+    }
+    // "Adept Acrobatics, Athletics, or Charm"  — one Rank, several Skills to choose from
+    if((m = clause.match(new RegExp(`^(${_LU_RANK_RE})\\s+(.+)$`,"i"))) && /,|\bor\b/i.test(m[2])){
+      const list = luSkillList(m[2]);
+      if(list.length){ if(!list.some(k => meets(k, m[1]))) unmet.push(clause); return; }
+    }
+    /* No OR-list in this clause — hand its tokens to the existing checker, which already knows
+       Skill Ranks, class membership, named Features and "5 Taskmaster Features". */
+    unmet.push(...prereqStatus(snap, { prerequisites: clause }).unmet);
+  });
+  return unmet;
+}
+
+/* ---------- prerequisite locks for the pickers ---------- */
+/* The whole point of the ledger: a slot may only hold something the Trainer QUALIFIED FOR at that
+   Level. Picks made at the same Level count — Core p.13 lets you alternate Steps 3 and 4. */
+function luPickLock(t, level, kind, key){
+  if(t.unlocked) return null;                                      // GM 🔓 ignores prerequisites
+  return name => {
+    const snap = luStateAt(t, level, key);
+    if(kind === "edge"){
+      const min = edgeMinLevel(name);
+      if(level < min) return `Needs Level ${min}`;
+      const ms = LU_MILESTONES[level];
+      if(/:ms:\d+$/.test(key) && ms && (ms.grants||[]).length){
+        if(!isSkillEdge(name)) return "This milestone grants a Skill Edge";
+        const banned = String(ms.title||"").replace(/\s*Skills$/,"");
+        if(edgeRankSteps(name).some(([,to]) => to === banned))
+          return `Not for ${/^[AEIOU]/i.test(banned)?"an":"a"} ${banned} rank-up`;
+      }
+      const e = (D.edges||[]).find(x => x.name === name);
+      if(!e) return null;
+      const un = luPrereqUnmet(snap, e.prerequisites);
+      return un.length ? "Needs " + un.join(", ") : null;
+    }
+    if(key === "L1:training") return null;                         // the free Training Feature has none
+    const f = featureByName.get(name); if(!f) return null;
+    const un = luPrereqUnmet(snap, f.prerequisites);
+    return un.length ? "Needs " + un.join(", ") : null;
+  };
+}
+/* the "↳ which Skill?" picker under a Skill Edge — only Skills the Edge's step can actually move */
+function luSkillPickLock(t, level, key){
+  const pKey = key.replace(/:skill$/,"");
+  const steps = edgeRankSteps(t.levelUp[pKey] || "");
+  if(!steps.length || t.unlocked) return null;
+  const snap = luStateAt(t, level, pKey);
+  return label => {
+    const k = luSkillKey(label); if(!k) return null;
+    return steps.some(([from]) => from === snap.skills[k])
+      ? null : `${label} is ${snap.skills[k]} at Level ${level}`;
+  };
+}
+
+/* ---------- the Skill Background box (Level 1) ---------- */
+/* Core p.13: 3 Skills down to Pathetic, 1 up to Adept, 1 up to Novice. It isn't earned at a Level,
+   so it lives in t.skillBase — and once play has started only the GM moves it. */
+function luBackgroundBox(t){
+  const base = luBaseSkills(t);
+  const box = el("div",{class:"lu-ms"},
+    el("div",{class:"lu-ms-head"}, el("span",{class:"lu-ms-star"},"◆"), el("b",{},"Skill Background")),
+    el("div",{class:"small muted",style:"margin:2px 0 6px"},
+      "3 Skills to Pathetic, 1 to Adept, 1 to Novice. Every Skill Edge below is applied on top of this."));
+  if(ledgerLocked(t)){
+    const set = SKILLS.filter(([k]) => base[k] !== "Untrained").map(([k,l]) => `${l}: ${base[k]}`);
+    box.append(el("div",{class:"small"}, set.length ? set.join(" · ") : "every Skill Untrained"),
+      el("div",{class:"small muted",style:"margin-top:4px"},"Ask your GM to change your Background."));
+  } else {
+    const grid = el("div",{class:"lu-bg-grid"});
+    SKILLS.forEach(([k,l]) => {
+      const sel = el("select",{class:"lu-select",style:"padding:3px 6px;min-width:96px"});
+      RANKS.forEach(r => sel.append(el("option",{value:r, selected: base[k]===r}, r)));
+      sel.addEventListener("change",()=>{
+        if(!t.skillBase) t.skillBase = base;
+        t.skillBase[k] = sel.value;
+        /* Re-base rather than shift: the ladder now starts somewhere else, so the derived mirror
+           and the sheet are both reset to the new derivation instead of being nudged by a delta. */
+        const want = luDeriveSkills(t).skills;
+        t.skillsDerived = want;
+        SKILLS.forEach(([sk]) => t.skills[sk] = want[sk]);
+        luCommit(t); save(); renderTrainer();
+      });
+      grid.append(el("label",{class:"small lu-bg-row"}, el("span",{},l), sel));
+    });
+    box.append(grid);
+  }
+  const tally = {}; RANKS.forEach(r => tally[r] = 0);
+  SKILLS.forEach(([k]) => tally[base[k]]++);
+  const warn = [];
+  if(tally.Adept !== 1)    warn.push(`${tally.Adept} Adept (want 1)`);
+  if(tally.Novice !== 1)   warn.push(`${tally.Novice} Novice (want 1)`);
+  if(tally.Pathetic !== 3) warn.push(`${tally.Pathetic} Pathetic (want 3)`);
+  const over = SKILLS.filter(([k]) => rankNum(base[k]) > rankNum("Adept")).map(([,l]) => l);
+  if(over.length) warn.push(`${over.join(", ")} above Adept`);
+  if(warn.length) box.append(el("div",{class:"lu-warn small"}, "⚠ " + warn.join(" · ")));
+  return box;
+}
+
 function levelUpCard(t){
   if(!t.levelUp || typeof t.levelUp!=="object") t.levelUp = {};   // cloud/import data may skip normTrainer
   const level = Math.max(1, Math.min(LU_MAX_LEVEL, t.level||1));
@@ -4062,6 +4592,16 @@ function levelUpCard(t){
     "PTU 1.05 Trainer advancement. Every level grants a Stat Point; odd levels a Feature, even levels an Edge. ",
     "Record what you picked at each level — this is a personal tracker and doesn’t change your Features & Edges tab. ",
     "Milestone “Bonus Stats” points are the exception: assign each to Attack or Sp.Attack and they’re added to your Sheet-tab stats automatically."));
+
+  /* This tab is now the ONLY way a player gains a Feature, an Edge or a Skill Rank, so it also has
+     to say what currently doesn't add up — an empty slot, a pick whose prerequisites weren't met
+     at that Level, or a GM freebie sitting outside the ledger entirely. */
+  const problems = luAudit(t);
+  if(problems.length){
+    const box = el("div",{class:"lu-warn"}, el("b",{},`⚠ ${problems.length} thing${problems.length===1?"":"s"} to look at`));
+    problems.forEach(p => box.append(el("div",{class:"small",style:"margin-top:3px"}, p)));
+    card.append(box);
+  }
 
   /* summary tallies */
   const tot = luTotals(t, level);
@@ -4104,8 +4644,9 @@ function luLevelBlock(t, L, future){
   block.append(head);
 
   if(L===1){
+    block.append(luBackgroundBox(t));
     block.append(el("div",{class:"small muted", style:"margin:2px 0 6px"},
-      "Skill Background (3 Pathetic / 1 Novice / 1 Adept) and 10 assigned Stat Points — see the Sheet tab."));
+      "10 assigned Stat Points — see the Sheet tab."));
     block.append(el("div",{class:"lu-grp-label"},"Features (4) + free Training Feature"));
     for(let i=0;i<4;i++) block.append(luSlot(t, `L1:feat:${i}`, "feature", `Feature ${i+1}`));
     block.append(luSlot(t, `L1:training`, "feature", "Training Feature", "no prerequisites"));

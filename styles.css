@@ -374,6 +374,16 @@ details.spoiler summary{cursor:pointer; font-weight:700; color:var(--muted)}
   border-radius:var(--radius-sm); background:var(--panel-2)}
 .lu-ms-head{display:flex; align-items:center; gap:6px}
 .lu-ms-star{color:var(--warn)}
+/* what the ledger can't reconcile — an open slot, a pick whose prerequisites weren't met at that
+   Level, a GM freebie sitting outside the ledger */
+.lu-warn{margin-top:10px; padding:8px 10px; border:1px solid var(--warn);
+  border-radius:var(--radius-sm); background:color-mix(in srgb, var(--warn) 12%, transparent)}
+/* Level-1 Skill Background editor (GM / unlocked only) */
+.lu-bg-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:4px 12px; margin-top:4px}
+.lu-bg-row{display:flex; gap:6px; align-items:center; justify-content:space-between}
+/* a Skill Rank a player can read but not set — the buttons are gone, the Rank isn't */
+.rank-ro{display:inline-block; padding:4px 10px; border:1px solid var(--line); border-radius:6px;
+  background:var(--panel-2); color:var(--muted); font-weight:700; font-size:12px; white-space:nowrap}
 .lu-future{margin-top:14px; border-top:1px dashed var(--line); padding-top:12px}
 .lu-future > summary{cursor:pointer; font-weight:700; color:var(--muted); padding:4px 2px; list-style:none}
 .lu-future > summary::-webkit-details-marker{display:none}
