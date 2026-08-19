@@ -594,6 +594,23 @@ body.map-mode .view{animation:none}
 .map-token.shop-token{border-radius:10px; border-color:#f5c518}
 .map-token.shop-token .tk-img{border-radius:8px; object-fit:contain; background:var(--panel-2)}
 .map-token.shop-token .tk-name{background:#f5c518; color:#231a08}
+/* ---- boats: a bare sprite hull, no ring, drawn under whoever is standing on the deck ---- */
+.map-token.boat-token{border:none; background:none; box-shadow:none; border-radius:0; overflow:visible}
+.map-token.boat-token .tk-img{border-radius:0; object-fit:fill; image-rendering:pixelated;
+  filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}
+.map-token.boat-token.selected{outline:3px solid var(--accent); outline-offset:0}
+/* the floating helm — arrow controls that sail the selected boat (bottom-left, opposite the AoE panel) */
+.boat-panel{position:absolute; left:12px; bottom:12px; z-index:6; background:var(--panel); border:1px solid var(--line);
+  border-radius:10px; padding:10px; box-shadow:0 3px 12px rgba(0,0,0,.4); width:168px}
+.boat-panel.collapsed{padding:6px; width:auto}
+.boat-title{display:flex; align-items:center; gap:6px; font-weight:800; font-size:13px; margin-bottom:8px}
+.boat-x{background:none; border:none; color:var(--muted); font-size:13px; font-weight:800; cursor:pointer; padding:0 2px}
+.boat-dpad{display:grid; grid-template-columns:repeat(3,1fr); gap:4px}
+.boat-dir{height:32px; border-radius:6px; border:1px solid var(--line); background:var(--panel-2); color:var(--ink);
+  font-size:17px; font-weight:800; cursor:pointer}
+.boat-dir.on{background:var(--accent); color:#fff; border-color:var(--accent)}
+.boat-face{display:flex; align-items:center; justify-content:center; font-size:15px; opacity:.8}
+.boat-row{display:flex; gap:6px; margin-top:6px}
 .shop-float{position:fixed; z-index:60; width:320px; max-width:calc(100vw - 20px); max-height:76vh;
   display:flex; flex-direction:column; background:var(--panel); border:1px solid var(--line);
   border-radius:10px; box-shadow:0 6px 22px rgba(0,0,0,.35); overflow:hidden}

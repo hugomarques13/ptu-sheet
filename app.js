@@ -56,6 +56,15 @@ const SKILLS = [
 ];
 const STATS = [["hp","HP"],["atk","Attack"],["def","Defense"],
   ["spatk","Sp.Atk"],["spdef","Sp.Def"],["spd","Speed"]];
+/* Berserker Feature names (Game of Throhs pp.48-49). The automation itself lives in the BERSERKER
+   block down by the weapon code — only the names are up here, above `let state = load()`, because
+   injuryHPCount reads BERSERKER_LESSONS from inside trainerDerived. A const declared further down
+   would still be in its temporal dead zone if load() ever reached the derived layer, and load()
+   swallows exceptions — the same trap the LU_* constants are hoisted for. */
+const BERSERKER_LESSONS  = "Lessons In Rage & Pain";
+const BERSERKER_PUSH     = "Push it to the Limit";
+const BERSERKER_FIGHT_ON = "Fight On and On";
+const BERSERKER_FRENZY   = "Frenzy";
 /* Skill Categories (Core p.62) — used by the Categoric Inclination Edge's +1 bonus */
 const SKILL_CATEGORY = {
   acrobatics:"Body", athletics:"Body", combat:"Body", stealth:"Body",
@@ -1386,6 +1395,7 @@ function applyEndScene(c){
   normTrainer(c.trainer);
   c.trainer.usedAP = 0; c.trainer.tempHP = 0; c.trainer.buffs = []; resetUses(c.trainer, "scene");
   c.trainer.modes = {};                            // a Feature stance (Enchanting Transformation) lasts until the end of the Scene — and returns its Bound AP with it
+  delete c.trainer.fightOn;                        // Fight On and On is a combat-long refusal to drop; the fight is over
   // Combat Stages set by hand and Volatile afflictions don't outlast the Scene (Core p.234/p.245).
   // Stages an active source is still applying (a Burn, weather, an Aura, worn armour) are left to
   // that source — resetManualCS only zeroes p.cs, and csAutoMods puts the rest back on its own.
@@ -1399,7 +1409,8 @@ function applyEndDay(c){
   if(!c) return;
   const t = c.trainer; normTrainer(t);
   t.usedAP = 0; t.tempHP = 0; t.buffs = []; resetUses(t, "all"); resetManualCS(t); t.modes = {};
-  clearStorageDigestion(t);                        // Berry Storage: "all Buffs gained this way are lost after an Extended Rest"
+  delete t.fightOn;
+  clearStorageDigestion(t);                      // Berry Storage: "all Buffs gained this way are lost after an Extended Rest"
   t.statuses = [];                                 // Extended Rest cures all Status afflictions (Core p.249)
   t.injuries = Math.max(0, (t.injuries||0) - 1);   // Extended Rest heals 1 Injury (Core p.249)
   t.currentHP = trainerDerived(t).hp;              // heal to remaining-injury-capped max
@@ -1676,11 +1687,14 @@ function trainerDerived(t) {
   let hj = 0;     if (acro >= 4) hj++; if (acro >= 6) hj++;
   const mvCS = speedCSMove(cs);                            // Speed CS shifts every Movement Speed (Core p.234)
   // The Chariot raises EVERY movement Capability, so it lands on both Overland and Swim
-  const ovlBase = 3 + Math.floor((athl+acro)/2) + equipOverland(t) + arc.caps.move;
-  const swimBase = Math.floor((3 + Math.floor((athl+acro)/2))/2) + arc.caps.move;
+  const bMove = buffMove(t);                               // a buff that raises Movement Speed (Frenzy)
+  const ovlBase = 3 + Math.floor((athl+acro)/2) + equipOverland(t) + arc.caps.move + bMove;
+  const swimBase = Math.floor((3 + Math.floor((athl+acro)/2))/2) + arc.caps.move + bMove;
   const fullHP = t.level*2 + raw("hp")*3 + 10 + arc.hp;    // undamaged maximum (Nine of Wands ±5)
   const injuries = Math.max(0, t.injuries||0);
-  const hp = injuryHealCap(fullHP, injuries);              // Injuries cap max HP −10% each (Core p.249)
+  // Injuries cap max HP −10% each (Core p.249). injuryHPCount is where Lessons In Rage & Pain stops
+  // counting past the 5th — `injuries` itself stays the true total, which Flail and Lessons both read.
+  const hp = injuryHealCap(fullHP, injuryHPCount(t));
   return {
     hp, fullHP, injuries, cs,
     physEva: cap6(tot("def"))+cs.eva+eqEva, specEva: cap6(tot("spdef"))+cs.eva+eqEva, spdEva: cap6(tot("spd"))+cs.eva+eqEva,   // CS-adjusted evasion (+ shields)
@@ -2204,7 +2218,7 @@ function renderTrainer(){
   const tbl = el("table",{class:"skilltable"});
   SKILLS.forEach(([k,lbl]) => {
     const tr = el("tr",{});
-    const bonus = categoricBonus(t, k) + gearSkillBonus(t, k) + cardSkillBonus(t, k);   // Categoric Inclination Edge + worn equipment (Sunglasses, Running Shoes…) / studied Books + Arcana cards
+    const bonus = categoricBonus(t, k) + gearSkillBonus(t, k) + cardSkillBonus(t, k) + buffSkillBonus(t, k);   // Categoric Inclination Edge + worn equipment (Sunglasses, Running Shoes…) / studied Books + Arcana cards + active buffs (Frenzy)
     tr.append(el("td",{},lbl+(bonus?` +${bonus}`:"")));
     const rb = el("td",{},rankButtons(k, t.skills[k]));
     const dice = el("td",{class:"dice","data-dice":k, html: skillDiceHTML(t.skills[k], bonus),
@@ -2290,13 +2304,13 @@ function damageHealRow(getHP, setHP, owner){
       }
     }
     const oldHP = getHP();
-    if(owner) applyAutoInjury(owner, oldHP, oldHP+n);
+    if(owner){ applyAutoInjury(owner, oldHP, oldHP+n); applyAutoKO(owner, oldHP, oldHP+n); }
     setHP(oldHP + n);
   };
   // ± one Tick of HP (1/10 max) — direct HP change, no DR (Ticks are fixed chunks)
   const tickApply = sign => {
     const t = hpTick(ownerMaxHP(owner)); const oldHP = getHP(); const n = sign*t;
-    if(owner) applyAutoInjury(owner, oldHP, oldHP+n);
+    if(owner){ applyAutoInjury(owner, oldHP, oldHP+n); applyAutoKO(owner, oldHP, oldHP+n); }
     setHP(oldHP + n);
   };
   box.addEventListener("keydown", e=>{ if(e.key==="Enter") apply(); });
@@ -2504,13 +2518,334 @@ function livingWeaponControl(p){
   }
   return box;
 }
-/* the trainer's attack profile: base Struggle for a weapon, or that weapon's granted Weapon Move */
-function trainerAttackProfile(t, weaponMoveName, w){
+/* ===================================================================
+   "USE THIS MOVE AS A WEAPON ATTACK"  (Core p.288)
+   ------------------------------------------------------------------
+   Not the same thing as the Weapon Moves a Simple/Fine Weapon grants.
+   Some Features let a Move the Trainer already knows be swung WITH the
+   weapon:
+
+     "you apply the Damage, AC, etc. modifiers from your Weapon to the
+      Move, and your Move gains the Weapon's Range instead if it is
+      1-Target. Line and Ranged Blast Moves retain their area-of-effect
+      keyword but use the Weapon's Range. Burst, Cone, and Close Blast
+      Moves remain their normal range."                    — Core p.288
+
+   and the catch from the Weapons entry one page earlier:
+
+     "All modifications that a Weapon makes to Struggle Attacks also
+      apply to the Moves they grant and to Moves granted by Features
+      with the [Weapon] tag. However, these Moves can never benefit
+      from STAB."                                          — Core p.286
+
+   WHICH Features do this is READ OUT OF THE FEATURE DB — a [Weapon]-
+   tagged Feature whose text says "as a Weapon Attack" — so Berserker
+   (Rage, Flail), Crash and Smash (Double-Edge, Thrash) and anything
+   later written the same way are picked up with no code change.
+=================================================================== */
+/* A Move's Range once it's swung with `w`. A Weapon Move's own "WR" (Weapon Range) is the same
+   substitution, so both go through here. */
+function weaponizeRange(range, w, asWeaponAttack){
+  const r = String(range || "Melee");
+  if(!w) return r;
+  const wr = w.range || "Melee";
+  if(/\bWR\b/.test(r)) return r.replace(/\bWR\b/g, wr);
+  if(!asWeaponAttack) return r;
+  const parts = r.split(",").map(s => s.trim()).filter(Boolean);
+  const head = parts[0] || "";
+  if(/^(Burst|Cone|Close Blast)\b/i.test(head)) return r;                       // area stays where it is
+  if(/^(Line|Ranged Blast)\b/i.test(head)) return [`${head} (${wr})`, ...parts.slice(1)].join(", ");
+  if(!/\b1\s*Target\b/i.test(r)) return r;                                      // only 1-Target Moves take the Weapon's Range
+  parts[0] = wr;
+  return parts.join(", ");
+}
+/* "You learn the Moves Rage and Flail." → ["Rage","Flail"]. The Feature DB writes Double-Edge
+   without its hyphen, so every name goes through the loose Move index. */
+function featureLearnedMoveNames(effect){
+  const m = /\b(?:learn|learns|know|knows|gain|gains)\s+the\s+Moves?\s+([^.]+)\./i.exec(effect || "");
+  if(!m) return [];
+  return m[1].split(/\s*(?:,|\band\b|\bor\b)\s*/i)
+    .map(s => moveByName.get(s.trim().toLowerCase()))
+    .filter(Boolean).map(mv => mv.name);
+}
+let _weaponAttackFeats = null;
+function weaponAttackFeats(){
+  if(_weaponAttackFeats) return _weaponAttackFeats;
+  _weaponAttackFeats = D.features
+    .filter(f => /\[Weapon\]/i.test(f.tags || "") && /as an?\s+Weapon Attack/i.test(f.effect || ""))
+    .map(f => ({ feat:f.name, moves:featureLearnedMoveNames(f.effect),
+                 restrict: /Melee Weapons?/i.test(f.effect) ? "melee"
+                         : /Ranged? Weapons?/i.test(f.effect) ? "ranged" : null }))
+    .filter(d => d.moves.length);
+  return _weaponAttackFeats;
+}
+/* "when wielding Melee Weapons" — a bow can't swing Rage */
+function weaponFitsRestrict(w, restrict){
+  if(!restrict) return true;
+  return restrict === "melee" ? /Melee/i.test(w?.category || "") : /Range/i.test(w?.category || "");
+}
+/* Map(Move name → the Feature that allows it) for one Trainer */
+function trainerWeaponAttackMoves(t){
+  const out = new Map();
+  if(!t) return out;
+  weaponAttackFeats().forEach(d => { if(!hasFeatureLoose(t, d.feat)) return;
+    d.moves.forEach(mn => { if(!out.has(mn)) out.set(mn, d); }); });
+  return out;
+}
+
+/* ===================================================================
+   BERSERKER  (Game of Throhs pp.48-49)
+   ------------------------------------------------------------------
+     Berserker              Static  — Rage & Flail as Weapon Attacks (above)
+     Crash and Smash        Static  — Double-Edge & Thrash likewise (above)
+     Lessons In Rage & Pain Static  — +X damage while Injured; Injuries past the 5th stop hurting Max HP
+     Push it to the Limit   At-Will — buy an Injury for Temp HP, a cure, and a doubled Lessons bonus
+     Frenzy                 Scene×2 — a turn-long surge, gated on being Enraged
+     Fight On and On        Daily   — an Enraged Berserker doesn't drop at 0 HP
+
+   The Move list Lessons names is parsed out of its own rules text rather
+   than transcribed, same reasoning as featureRiderScan: retyping the
+   book is how a sheet and its rulebook drift apart.
+=================================================================== */
+/* BERSERKER_LESSONS / _PUSH / _FIGHT_ON / _FRENZY are declared up with the reference constants,
+   above `let state = load()` — see the note there. */
+/* "add +X to your Damage Rolls with Rage, Flail, Fury Swipes, Thrash, and Weapon Attacks."
+   → { moves:Set, weaponAttacks:true }. This doubles as the definition of a "Berserker Move",
+   which is what Push it to the Limit triggers off. */
+let _lessonsSet = null;
+function lessonsMoveSet(){
+  if(_lessonsSet) return _lessonsSet;
+  const f = featureByName.get(BERSERKER_LESSONS) || featureByKey.get(featKey(BERSERKER_LESSONS));
+  const seg = f && /Damage Rolls with ([^.]+)\./i.exec(f.effect || "");
+  const moves = new Set(); let weaponAttacks = false;
+  if(seg) seg[1].split(/\s*(?:,|\band\b)\s*/i).forEach(s => {
+    s = s.trim(); if(!s) return;
+    if(/^weapon attacks?$/i.test(s)){ weaponAttacks = true; return; }
+    const mv = moveByName.get(s.toLowerCase()); if(mv) moves.add(mv.name);
+  });
+  _lessonsSet = { moves, weaponAttacks };
+  return _lessonsSet;
+}
+/* Is this attack one the class powers up? ctx = {moveName, isWeaponAttack}. */
+function isBerserkerAttack(ctx){
+  const set = lessonsMoveSet();
+  return !!((ctx?.moveName && set.moves.has(canonMoveName(ctx.moveName)))
+         || (set.weaponAttacks && ctx?.isWeaponAttack));
+}
+/* Lessons In Rage & Pain: "While you have at least 1 Injury, add +X to your Damage Rolls … X is
+   equal to your Intimidate Rank plus the number of Injuries you have."  ctx.extraInjury previews
+   the Injury Push it to the Limit is about to hand you; ctx.doubled is that Feature's other half. */
+function lessonsBonus(t, ctx){
+  if(!t || !hasFeatureLoose(t, BERSERKER_LESSONS)) return 0;
+  const inj = Math.max(0, (t.injuries || 0) + (ctx?.extraInjury || 0));
+  if(inj < 1 || !isBerserkerAttack(ctx)) return 0;
+  const x = rankNum(t.skills?.intimidate) + inj;
+  return ctx?.doubled ? x * 2 : x;
+}
+/* "Injuries beyond the 5th do not lower your Maximum Hit Points" — the count trainerDerived feeds
+   injuryHealCap. The real Injury total is left alone: Flail and Lessons both still read it. */
+function injuryHPCount(t){
+  const inj = Math.max(0, t?.injuries || 0);
+  return hasFeatureLoose(t, BERSERKER_LESSONS) ? Math.min(5, inj) : inj;
+}
+/* Push it to the Limit (At-Will, Free Action) — "Immediately gain one Injury before resolving the
+   triggering attack. You gain a Tick of Temporary Hit Points and may cure yourself of a Persistent
+   Status Affliction." Returns what it did, for the roll readout. */
+function pushApplies(t, ctx){ return !!t && hasFeatureLoose(t, BERSERKER_PUSH) && isBerserkerAttack(ctx); }
+function pushItToTheLimit(t, cureKey){
+  t.injuries = Math.min(10, (t.injuries || 0) + 1);
+  const max = trainerDerived(t).hp;                       // the new Injury may have lowered it
+  if(t.currentHP != null && t.currentHP > max) t.currentHP = max;
+  const tick = hpTick(max);
+  t.tempHP = (t.tempHP || 0) + tick;
+  let cured = "";
+  if(cureKey && hasStatus(t, cureKey)){
+    t.statuses = t.statuses.filter(k => k !== cureKey);
+    cured = (STATUS_DEFS.find(s => s.key === cureKey) || {}).name || cureKey;
+  }
+  return { tick, injuries:t.injuries, cured };
+}
+/* the Persistent Afflictions Push it to the Limit could cure right now */
+function persistentStatusesOn(o){ return STATUS_DEFS.filter(s => s.kind === "persistent" && hasStatus(o, s.key)); }
+
+/* Fight On and On (Daily, Free Action) — "Trigger: Your Hit Points are lowered to or below 0 while
+   Enraged. Effect: You are not Fainted; you instead Faint upon reaching -50% of your Max Hit Points.
+   If you have 5 or more injuries, you may use this Feature regardless of Frequency." */
+function fightOnFeature(){ return featureByName.get(BERSERKER_FIGHT_ON) || featureByKey.get(featKey(BERSERKER_FIGHT_ON)); }
+function fightOnUses(t){
+  const f = fightOnFeature(), name = f?.name || BERSERKER_FIGHT_ON;
+  const info = freqInfo(f?.frequency || "Daily - Free Action"), key = useKey("feature", name);
+  return { key, max:info.max, left:usesLeft(t, key, info.max) };
+}
+function fightOnFree(t){ return (t?.injuries || 0) >= 5; }
+function fightOnReady(t){
+  if(!isTrainerOwner(t) || !hasFeatureLoose(t, BERSERKER_FIGHT_ON)) return false;
+  if(!hasStatus(t, "enraged")) return false;
+  return fightOnFree(t) || fightOnUses(t).left > 0;
+}
+/* The HP at or below which a creature is Fainted — 0 for everyone, −50% of Max while a Berserker
+   is Fighting On. */
+function koFloor(o){
+  if(o && isTrainerOwner(o) && o.fightOn) return -Math.floor(ownerMaxHP(o) * 0.5);
+  return 0;
+}
+function startFightOn(t){
+  t.fightOn = true;
+  if(!fightOnFree(t)){ const u = fightOnUses(t); t.uses = t.uses || {}; t.uses[u.key] = Math.min(u.max, (t.uses[u.key] || 0) + 1); }
+  return koFloor(t);
+}
+function fightOnToggle(t, f, rerender){
+  if(t.fightOn){ delete t.fightOn; save(); toast("Fight On and On ended — you Faint at 0 HP again."); (rerender || renderBattle)(); return; }
+  if(!hasStatus(t, "enraged") && !t.unlocked){ toast("Fight On and On triggers while you're Enraged."); return; }
+  if(!fightOnFree(t) && fightOnUses(t).left <= 0 && !t.unlocked){ toast("No Fight On and On uses left today (free at 5+ Injuries)."); return; }
+  const floor = startFightOn(t);
+  save(); toast(`💢 Fight On and On — you Faint at ${floor} HP instead of 0.`);
+  (rerender || renderBattle)();
+}
+/* Power of Rage (Static) — "Choose Enduring Rage or White Flame. You gain the chosen Ability."
+   Both key off being Enraged (Game of Throhs p.48):
+     Enduring Rage — 5 Damage Reduction while Enraged   → folded into buffDR, so the Damage/Heal box
+                                                          and the Map's attack tool both subtract it
+     White Flame   — +5 to all Damage Rolls while Enraged → folded into abilityDamageMods
+   Their shared "may not roll to cure Enraged" half is the player's own Save to simply not make. */
+const POWER_OF_RAGE_ABILITIES = ["Enduring Rage","White Flame"];
+function rageAbilityDamage(o){ return (hasStatus(o,"enraged") && ownerHasAbility(o,"White Flame")) ? 5 : 0; }
+function rageAbilityDR(o){     return (hasStatus(o,"enraged") && ownerHasAbility(o,"Enduring Rage")) ? 5 : 0; }
+function powerOfRagePick(t, f, rerender){
+  if(!Array.isArray(t.abilities)) t.abilities = [];
+  const has = POWER_OF_RAGE_ABILITIES.filter(a => ownerHasAbility(t, a));
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:10px"}, f.effect || ""));
+  POWER_OF_RAGE_ABILITIES.forEach(an=>{
+    const ab = abilityByName.get(an.toLowerCase());
+    const on = has.includes(an);
+    const row = el("div",{class:"moveslot"});
+    row.append(el("div",{style:"flex:1"},
+      el("div",{style:"font-weight:700"}, an, on?el("span",{class:"small",style:"margin-left:8px;color:var(--good);font-weight:700"},"● taken"):""),
+      el("div",{class:"small muted",style:"margin-top:2px"}, ab?.effect || "")));
+    row.append(el("button",{class:on?"btn-secondary":"btn-primary",style:"padding:6px 10px",
+      onclick:()=>{
+        t.abilities = (t.abilities||[]).filter(x => !POWER_OF_RAGE_ABILITIES.some(y => String(x).toLowerCase()===y.toLowerCase()));
+        if(!on) t.abilities.push(an);
+        save(); closeModal(); toast(on ? `${an} removed` : `＋ Ability from ${f.name}: ${an}`);
+        (rerender || renderBattle)();
+      }}, on ? "remove" : "take it"));
+    body.append(row);
+  });
+  modal({title:`${f.name} — choose an Ability`, bodyNode:body,
+    footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+}
+/* Frenzy (Scene x2, Free Action) — Condition: you must be Enraged. */
+function frenzyGo(t, f, rerender){
+  if(!hasStatus(t, "enraged") && !t.unlocked){ toast("Frenzy's Condition: you must be Enraged."); return; }
+  const info = freqInfo(f.frequency), key = useKey("feature", f.name);
+  if(usesLeft(t, key, info.max) <= 0 && !t.unlocked){ toast("No Frenzy uses left this Scene."); return; }
+  t.statuses = (t.statuses || []).filter(k => k !== "slowed" && k !== "stuck");   // "instantly cured of Slowed and Stuck"
+  addBuff(t, "frenzy");
+  t.uses = t.uses || {}; t.uses[key] = Math.min(info.max, (t.uses[key] || 0) + 1);
+  save();
+  toast("🔥 Frenzy! Take your turn with Priority — +2 Crit Range, +2 Movement, +2 Acro/Athl/Combat/Intimidate.");
+  (rerender || renderBattle)();
+}
+/* Features the sheet can actually carry out, given one button on their own Battle-tab row. Orders
+   (✨ Give) and stances (FEATURE_MODES) already have theirs; this is for everything else. */
+const FEATURE_ACTIONS = [
+  { feat:"Power of Rage", run:powerOfRagePick,
+    label:t => POWER_OF_RAGE_ABILITIES.some(a => ownerHasAbility(t,a)) ? "⚙ Change Ability" : "⚙ Choose Ability",
+    title:() => "Enduring Rage (5 DR while Enraged) or White Flame (+5 Damage Rolls while Enraged) — both auto-applied once taken" },
+  { feat:BERSERKER_FRENZY, run:frenzyGo,
+    label:() => "🔥 Frenzy",
+    title:t => hasStatus(t, "enraged") ? "Spend a use: cure Slowed/Stuck and gain the surge for this turn"
+                                       : "Needs the Enraged condition" },
+  { feat:BERSERKER_FIGHT_ON, run:fightOnToggle,
+    label:t => t.fightOn ? "⏹ Stop fighting on" : "💢 Fight On",
+    title:t => t.fightOn ? `Currently Fainting at ${koFloor(t)} HP instead of 0 — tap to end it`
+                         : "Refuse to drop at 0 HP — you Faint at −50% Max HP instead (fires by itself when you hit 0 while Enraged)" },
+];
+const featureActionDef = f => FEATURE_ACTIONS.find(d => featKey(d.feat) === featKey(f && f.name)) || null;
+/* One card on the ⚔ Combat tab gathering everything the class does, so its Static Features (which
+   never surface on an action tab) still have somewhere to be read and pressed. The Feature list is
+   the class's own, taken from the prereq chain rather than retyped. */
+function berserkerCard(t){
+  if(!t || !trainerHasClass(t, "Berserker")) return null;
+  const own = classFeatNameSet("Berserker");
+  const feats = trainerFeatureObjs(t).filter(f => own.has(f.name) || featKey(f.name)===featKey("Berserker"));
+  if(!feats.length) return null;
+  const card = el("div",{class:"card"}, el("h3",{},"💢 Berserker",
+    el("span",{class:"muted small"},"Game of Throhs pp.48-49")));
+  const inj = Math.max(0, t.injuries||0);
+  const bits = [];
+  if(hasFeatureLoose(t, BERSERKER_LESSONS)){
+    const x = rankNum(t.skills?.intimidate) + inj;
+    bits.push(inj >= 1
+      ? `${BERSERKER_LESSONS}: +${x} damage (Intimidate Rank ${rankNum(t.skills?.intimidate)} + ${inj} Injur${inj===1?"y":"ies"}) on ${[...lessonsMoveSet().moves].join(", ")} and any Weapon Attack — already in every roll below.`
+      : `${BERSERKER_LESSONS}: no bonus at 0 Injuries. It would be +${rankNum(t.skills?.intimidate)+1} at 1 Injury.`);
+    bits.push(`Injuries past the 5th no longer lower your Max HP, and you don't lose HP from being Heavily Injured (${inj>=5?`you ARE Heavily Injured at ${inj}`:"not Heavily Injured yet"}).`);
+  }
+  if(hasFeatureLoose(t, BERSERKER_FIGHT_ON)){
+    const u = fightOnUses(t);
+    bits.push(t.fightOn
+      ? `Fight On and On is UP — you Faint at ${koFloor(t)} HP, not 0.`
+      : `Fight On and On: ${fightOnFree(t)?"free (5+ Injuries)":`${u.left} of ${u.max} Daily use${u.max===1?"":"s"} left`}; it fires by itself the moment you hit 0 HP while Enraged.`);
+  }
+  if(hasFeatureLoose(t, BERSERKER_PUSH))
+    bits.push(`${BERSERKER_PUSH}: offered as a tick-box inside the roll of any Berserker Move or Weapon Attack — it costs a real Injury, so it's never applied for you.`);
+  if(!hasStatus(t,"enraged") && (hasFeatureLoose(t,BERSERKER_FRENZY) || hasFeatureLoose(t,BERSERKER_FIGHT_ON)))
+    bits.push("You are not Enraged — Frenzy and Fight On and On both need it. Rage and Thrash both apply it.");
+  bits.forEach(b => card.append(el("div",{class:"small",style:"margin-bottom:4px"}, b)));
+  feats.sort((a,b)=>a.name.localeCompare(b.name)).forEach(f => card.append(featureActionRow(f, t, renderBattle)));
+  return card;
+}
+
+/* ---------- Fainting → the Knocked Out status (Core p.249) ----------
+   "A Pokémon or Trainer that is at 0 Hit Points or lower is Fainted, or Knocked Out." The rest of
+   the app already reads the knockedOut status (greyed Map token, always-Vulnerable), so every HP
+   change now applies and lifts it on its own — the GM's manual chip still works, this just stops it
+   being forgotten. Sits beside applyAutoInjury at each HP setter and, like it, never save()s: the
+   caller owns the store (the sheet, the encounter, or the Map row). */
+function ownerLabel(o){
+  if(!o) return "Someone";
+  return isTrainerOwner(o) ? (o.name || "Trainer")
+                           : (o.nickname || getSpecies(o.species)?.name || "Pokémon");
+}
+function applyAutoKO(owner, oldHP, newHP){
+  if(!owner || typeof newHP !== "number") return null;
+  if(!Array.isArray(owner.statuses)) owner.statuses = [];
+  const was = owner.statuses.includes("knockedOut");
+  if(newHP > 0 && owner.fightOn) delete owner.fightOn;      // back on your feet — the Feature's work is done
+  const down = newHP <= koFloor(owner);
+  if(down && !was){
+    /* An Enraged Berserker with Fight On and On doesn't go down at 0 — the Feature is a Free Action
+       with no choice to make, so it fires here and the Battle-tab row can undo it. A hit that blew
+       straight past −50% of Max HP would Faint them anyway, so the Daily use isn't spent on it. */
+    if(newHP <= 0 && !owner.fightOn && fightOnReady(owner)
+       && newHP > -Math.floor(ownerMaxHP(owner) * 0.5)){
+      const floor = startFightOn(owner);
+      toast(`💢 Fight On and On — ${ownerLabel(owner)} is NOT Fainted; they Faint at ${floor} HP.`
+            + (fightOnFree(owner) ? " (5+ Injuries — no Daily use spent.)" : ""));
+      return "fightOn";
+    }
+    owner.statuses.push("knockedOut");
+    toast(`💀 ${ownerLabel(owner)} is Knocked Out at ${newHP} HP.`);
+    return "ko";
+  }
+  if(!down && was){
+    owner.statuses = owner.statuses.filter(k => k !== "knockedOut");
+    toast(`✅ ${ownerLabel(owner)} is back up at ${newHP} HP.`);
+    return "up";
+  }
+  return null;
+}
+
+/* the trainer's attack profile: base Struggle for a weapon, that weapon's granted Weapon Move, or
+   a Move a [Weapon] Feature lets you swing with the weapon (asWeaponAttack — Core p.288) */
+function trainerAttackProfile(t, weaponMoveName, w, asWeaponAttack){
   if(weaponMoveName){
     const m = moveByName.get(weaponMoveName.toLowerCase());
     if(m) return { name:m.name, type:(w&&w.type&&w.type!=="Normal")?w.type:(m.type||"Normal"),
       damageBase:(m.damageBase||0)+(w?w.dbMod:0), ac:(m.ac!=null?m.ac:4)+(w?w.acMod:0),
-      range:m.range||"Melee", cls:m.class||"Physical", frequency:m.frequency, effect:m.effect, weapon:w, move:m };
+      range:weaponizeRange(m.range||"Melee", w, asWeaponAttack), cls:m.class||"Physical",
+      frequency:m.frequency, effect:m.effect, weapon:w, move:m, weaponAttack:!!(w && asWeaponAttack) };
   }
   return trainerStruggle(t, w);
 }
@@ -2530,7 +2865,7 @@ function versatileDefaultSpec(atkStat, spatkStat){ return (spatkStat||0) > (atkS
 /* Roll the trainer's Struggle or Weapon Move (adds Attack; STAB only via Type Expertise, and
    never on a Struggle Attack) */
 function openTrainerAttack(t, weaponMoveName, w, opts={}){
-  const st = trainerAttackProfile(t, weaponMoveName, w);
+  const st = trainerAttackProfile(t, weaponMoveName, w, opts.weaponAttack);
   const td = trainerDerived(t);
   /* A Trainer's Struggle and plain weapon strikes are Physical (Core p.286), but a Weapon Move or a
      Feature-granted Move keeps its OWN class — a Special Move (Hyper Voice, Dark Pulse…) adds
@@ -2554,7 +2889,11 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   /* A Status Move has no Damage Base at all, so there is nothing for STAB (or a buff's +DB) to
      raise — without this guard a DB-less Move would come out as a DB 2 attack. */
   const dealsDamage = typeof st.damageBase === "number" && st.damageBase > 0;
-  const stab = dealsDamage && trainerStab(t, st.type, isStruggleAtk);
+  /* Nothing swung with a weapon gets STAB: "All modifications that a Weapon makes to Struggle
+     Attacks also apply to the Moves they grant and to Moves granted by Features with the [Weapon]
+     tag. However, these Moves can never benefit from STAB." (Core p.286) — so a Weapon Move and a
+     Move used as a Weapon Attack are both out, not just the bare Struggle. */
+  const stab = dealsDamage && !st.weapon && trainerStab(t, st.type, isStruggleAtk);
   const stabDB = stab ? 2 : 0;
   const accCS = td.cs.acc||0;   // Accuracy Combat Stage: flat add to Accuracy Rolls (Core p.234)
   /* Multi-strike Weapon Moves (Core p.242) — the keywords live in the profile's range string, e.g.
@@ -2562,12 +2901,30 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const fiveStrike = isFiveStrike(st), dblStrike = isDoubleStrike(st);
   const nAcc = dblStrike ? 2 : 1;
   let targetEva = 0;                      // target's Evasion — auto-counts the Double Strike hits
-  const rawDB   = st.damageBase||0;       // the Move's own Damage Base — what Five Strike multiplies
-  const baseDBv = dealsDamage ? Math.min(28, rawDB + stabDB + (bm.db||0)) : 0;
+  /* A Move whose Damage Base is a number read off the sheet — Flail and Reversal count the user's
+     Injuries, Return counts Loyalty, Stored Power counts Combat Stages — uses the SAME table the
+     Pokémon roll does (specialMoveInfo), so the two paths can't drift apart. The weapon's own +DB
+     still stacks on top, which is what a Berserker swinging Flail with an axe needs. `injuries` is
+     the one field both a Trainer and a Pokémon carry, so the seeded default just works here. */
+  const vdb = st.move ? specialMoveInfo(st.move, t) : null;
+  const valDB = (vdb && vdb.kind === "valueDB") ? vdb : null;
+  let valNum = valDB ? valDB.def : 0;
+  const moveOwnDB = () => {
+    if(!valDB) return st.damageBase || 0;
+    const v = Math.max(valDB.min ?? 0, Math.min(valDB.max ?? 1e9, valNum));
+    return Math.min(28, valDB.toDB(v) + (st.weapon ? (st.weapon.dbMod || 0) : 0));
+  };
   const diceFor = db => (DB_TABLE[Math.max(0,Math.min(28,db))]||"").split("/")[0].trim();
-  const diceStr = diceFor(baseDBv);
-  const dm = diceStr.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
-  const dn = dm[1]?+dm[1]:0, dfaces = dm[2]?+dm[2]:0, dflat = dm[3]?parseInt(dm[3].replace(/\s/g,"")):0;
+  // rawDB = the Move's own Damage Base (what Five Strike multiplies); recomputed when valNum changes
+  let rawDB, baseDBv, diceStr, dn, dfaces, dflat;
+  function recalcDB(){
+    rawDB   = moveOwnDB();
+    baseDBv = dealsDamage ? Math.min(28, rawDB + stabDB + (bm.db||0)) : 0;
+    diceStr = diceFor(baseDBv);
+    const dm = diceStr.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
+    dn = dm[1]?+dm[1]:0; dfaces = dm[2]?+dm[2]:0; dflat = dm[3]?parseInt(dm[3].replace(/\s/g,"")):0;
+  }
+  recalcDB();
   // Infatuation (Feb 2016 errata): −5 to Damage Rolls unless attacking your Crush, in which case Attack
   // is halved instead. Toggle only appears if this trainer is Infatuated.
   const infatuated = hasStatus(t, "infatuation");
@@ -2577,6 +2934,15 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     if(crushBox && crushBox.checked) return { atk: Math.floor(atk/2), delta:0, halved:true };
     return { atk, delta:-5, halved:false };
   };
+  /* Berserker: Lessons In Rage & Pain adds +(Intimidate Rank + Injuries) to the Damage Roll of a
+     Berserker Move or any Weapon Attack while Injured, and Push it to the Limit buys one more
+     Injury to double it. A weapon strike counts as a Weapon Attack; unarmed Struggle does not. */
+  const berserkCtx = { moveName: st.move ? st.name : null, isWeaponAttack: !!st.weapon };
+  const canPush = pushApplies(t, berserkCtx);
+  const wFlame = rageAbilityDamage(t);          // White Flame: +5 to all Damage Rolls while Enraged
+  let pushBox = null, pushCureSel = null, pushSpent = null;
+  const berserkBonus = pushed => lessonsBonus(t, Object.assign({}, berserkCtx,
+    { doubled: pushed, extraInjury: (pushed && !pushSpent) ? 1 : 0 }));
   const body = el("div",{});
   /* Frequency chip, with the Move's use pips when it's Scene/Daily/EOT — same tracker as the
      Battle/Encounter rows, so a Weapon or Feature Move can be marked spent from the roll itself. */
@@ -2590,11 +2956,16 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     if(uc) freqChip.append(uc);
   };
   drawFreq();
+  const dbChip = el("span",{class:"kv"});
+  const drawDbChip = () => { dbChip.textContent = dealsDamage
+    ? `DB ${rawDB}${stabDB?" +2 STAB":""}${valDB?` (${valDB.label.toLowerCase()}: ${valNum})`:""}`
+    : "no damage"; };
+  drawDbChip();
   body.append(el("div",{class:"chips",style:"margin-bottom:10px"},
     el("span",{html:typeBadge(st.type)}),
     el("span",{class:"kv"}, versatile ? `${isSpecAtk?"Special":"Physical"} · Versatile` : (st.cls||"Physical")),
     el("span",{class:"kv"},`AC ${st.ac}`),
-    el("span",{class:"kv"}, dealsDamage ? `DB ${st.damageBase}${stabDB?" +2 STAB":""}` : "no damage"),
+    dbChip,
     el("span",{class:"kv"},st.range),
     stab?el("span",{class:"kv",title:"Type Expertise — you gain STAB for this Type"},`⚡ STAB (${st.type})`):"",
     st.frequency?freqChip:""));
@@ -2609,6 +2980,10 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const accModPre = (bm.acc||0) + accCS;
   const accWhyPre = []; if(bm.acc) accWhyPre.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} buffs`);
   if(accCS) accWhyPre.push(`${accCS>0?"+":"−"}${Math.abs(accCS)} Accuracy CS`);
+  /* rebuilt whenever a value-driven Damage Base changes (Flail's Injury count), so the guide never
+     disagrees with what 🎲 is about to roll */
+  function drawExplain(){
+  explain.innerHTML = "";
   explain.append(el("div",{style:"margin-bottom:10px"},
     el("div",{style:"font-size:16px;font-weight:700"},
       `Accuracy: ${dblStrike ? "2 × 1d20" : "1d20"}${accModPre?` ${accModPre>0?"+":"−"} ${Math.abs(accModPre)}`:""}`),
@@ -2618,10 +2993,14 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   if(dn){
     const terms = [`${dn}d${dfaces}`]; if(dflat) terms.push(String(dflat)); if(atk) terms.push(String(atk));
     if(bm.dmg) terms.push(`${bm.dmg>0?"":"−"}${Math.abs(bm.dmg)}`);
+    const berPre = berserkBonus(false); if(berPre) terms.push(String(berPre));
+    if(wFlame) terms.push(String(wFlame));
     const why = [`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${baseDBv}`
       + (stabDB||bm.db ? ` (DB ${rawDB}${stabDB?" +2 STAB":""}${bm.db?` ${bm.db>0?"+":"−"}${Math.abs(bm.db)} buffs`:""})` : "")];
     if(atk) why.push(`${atk} = your ${atkLbl}`);
     if(bm.dmg) why.push(`${bm.dmg>0?"+":"−"}${Math.abs(bm.dmg)} = buffs (${buffSources(t,"dmg")})`);
+    if(berPre) why.push(`+${berPre} = ${BERSERKER_LESSONS} (Intimidate ${rankNum(t.skills?.intimidate)} + ${t.injuries||0} Injur${(t.injuries||0)===1?"y":"ies"})`);
+    if(wFlame) why.push(`+${wFlame} = White Flame (Enraged)`);
     explain.append(el("div",{},
       el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${terms.join(" + ").replace(/\+ −/g,"− ")}`),
       el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ") + ". "
@@ -2630,6 +3009,40 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         + (fiveStrike ? ` Five Strike multiplies the Move's own Damage Base (${rawDB}) by the rolled hit count first; other Damage Base bonuses are added after.` : "")
         + (dblStrike  ? " Double Strike doubles this Damage Base if both Attack Rolls connect." : "")
         + (bm.crit ? ` Crit / Effect range widened by +${bm.crit} (buffs).` : ""))));
+  }
+  }
+  drawExplain();
+  /* --- a Damage Base read off the sheet (Flail/Reversal count Injuries): same number input the
+     Pokémon roll shows, seeded from the sheet and still editable for a hypothetical. --- */
+  let valSeed = valNum;              // what the sheet answered when the modal opened
+  let reseedVal = () => {};          // re-ask the sheet after something changed it (Push's Injury)
+  if(valDB){
+    const wc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin:0 0 12px"});
+    wc.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"}, `🔢 ${valDB.label}`));
+    const inp = el("input",{type:"number",min:valDB.min??0,value:valNum,style:"width:90px"});
+    if(valDB.max != null) inp.max = valDB.max;
+    const hint = el("span",{class:"small muted",style:"margin-left:8px"});
+    const redraw = () => { recalcDB(); drawDbChip(); drawExplain();
+      hint.textContent = valDB.hint
+        + (st.weapon && st.weapon.dbMod ? `, ${st.weapon.dbMod>0?"+":"−"}${Math.abs(st.weapon.dbMod)} from the ${st.weapon.name||st.weapon.category}` : "")
+        + ` → DB ${rawDB}`; };
+    redraw();
+    inp.addEventListener("input",()=>{
+      let v = parseInt(inp.value); if(isNaN(v)) v = valDB.min ?? 0;
+      valNum = Math.max(valDB.min ?? 0, Math.min(valDB.max ?? 1e9, v));
+      redraw();
+    });
+    /* Push it to the Limit hands you an Injury "before resolving the triggering attack", so a Flail
+       swung with it really is one Damage Base higher. Only re-seeds while the player hasn't typed
+       their own number in — a hand-entered hypothetical is left exactly as they set it. */
+    reseedVal = () => {
+      if(valNum !== valSeed) return;
+      const re = specialMoveInfo(st.move, t);
+      if(!re || re.kind !== "valueDB" || re.def === valSeed) return;
+      valNum = valSeed = re.def; inp.value = valNum; redraw();
+    };
+    wc.append(inp, hint);
+    body.append(wc);
   }
   /* --- Versatile: this Move is Physical or Special, whichever the user wants this turn --- */
   if(versatile){
@@ -2682,6 +3095,40 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     body.append(bcard);
   }
 
+  /* --- Push it to the Limit (Berserker): "Trigger: You hit with a Berserker Move or Weapon
+     Attack. Effect: Immediately gain one Injury before resolving the triggering attack. You gain a
+     Tick of Temporary Hit Points and may cure yourself of a Persistent Status Affliction. The
+     triggering attack doubles your damage bonus from Lessons in Rage and Pain." At-Will, so there
+     is nothing to spend — but it costs an Injury, so it's never applied without being asked. --- */
+  if(canPush){
+    const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+    const lbl = el("label",{style:"display:flex;gap:8px;align-items:flex-start;cursor:pointer"});
+    pushBox = el("input",{type:"checkbox"});
+    const pushed = () => berserkBonus(true);
+    const line = el("div",{class:"small muted"});
+    const drawLine = () => {
+      const now = berserkBonus(false), then = pushed();
+      line.textContent = `Gain 1 Injury (${t.injuries||0} → ${(t.injuries||0)+1}), a Tick of Temporary HP`
+        + (hasFeatureLoose(t, BERSERKER_LESSONS)
+            ? `, and this attack's ${BERSERKER_LESSONS} bonus goes ${now ? `+${now} → ` : ""}+${then}.`
+            : ". (You don't have Lessons In Rage & Pain, so there's no damage bonus to double.)");
+    };
+    drawLine();
+    pushBox.addEventListener("change", drawLine);
+    lbl.append(pushBox, el("div",{},
+      el("div",{class:"small",style:"font-weight:700"}, `💢 ${BERSERKER_PUSH} — trade an Injury for this hit?`), line));
+    card.append(lbl);
+    const persist = persistentStatusesOn(t);
+    if(persist.length){
+      pushCureSel = el("select",{style:"padding:4px 6px"});
+      pushCureSel.append(el("option",{value:""},"— cure nothing —"));
+      persist.forEach(s => pushCureSel.append(el("option",{value:s.key}, s.name)));
+      card.append(el("div",{class:"inline small",style:"margin-top:8px;gap:8px;align-items:center"},
+        el("span",{class:"muted",style:"font-weight:700"},"Cure a Persistent Affliction:"), pushCureSel));
+    }
+    body.append(card);
+  }
+
   /* --- Infatuation prompt (only if this trainer is Infatuated) --- */
   if(infatuated && dn){
     const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
@@ -2700,6 +3147,17 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   /* redo = {nats, forceHits} — re-resolve a Double Strike with the SAME Attack Rolls */
   const doRoll = (redo) => {
     out.innerHTML=""; out.style.borderStyle="solid";
+    /* Push it to the Limit fires BEFORE the attack resolves, and only once however many times the
+       roll is repeated — the Injury it costs is real. */
+    const pushOn = !!(pushBox && pushBox.checked);
+    if(pushOn && !pushSpent){
+      pushSpent = pushItToTheLimit(t, pushCureSel ? pushCureSel.value : "");
+      pushBox.checked = true; pushBox.disabled = true;
+      if(pushCureSel) pushCureSel.disabled = true;
+      reseedVal();                      // the fresh Injury also raises a Flail/Reversal Damage Base
+      save(); if(opts.rerender) opts.rerender();
+    }
+    const berN = berserkBonus(pushOn);
     const wAcc = st.weapon?.accMod || 0;      // a Fainted Living Weapon is −2 on every roll (Core p.305)
     const accMod = (bm.acc||0) + accCS + wAcc;
     const nats = redo?.nats || Array.from({length:nAcc}, ()=>1+Math.floor(Math.random()*20));
@@ -2746,9 +3204,11 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         el("div",{class:"small muted",style:"margin-top:2px"},"Neither Attack Roll met AC + Evasion, so the attack misses entirely.")));
     }
     if(r){ const im = infatMod();
-      const total = Math.max(0, r.total + im.atk + (bm.dmg||0) + im.delta + wAcc + critExtra);   // wAcc: Fainted Living Weapon is −2 on EVERY roll
+      const total = Math.max(0, r.total + im.atk + (bm.dmg||0) + berN + wFlame + im.delta + wAcc + critExtra);   // wAcc: Fainted Living Weapon is −2 on EVERY roll
       const parts = [`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`, `+ ${im.atk} ${atkLbl}${im.halved?" (halved — Infatuated)":""}`];
       if(bm.dmg) parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs (${buffSources(t,"dmg")})`);
+      if(berN) parts.push(`+${berN} ${BERSERKER_LESSONS} (Intimidate ${rankNum(t.skills?.intimidate)} + ${t.injuries||0} Injur${(t.injuries||0)===1?"y":"ies"}${pushOn?", doubled by "+BERSERKER_PUSH:""})`);
+      if(wFlame) parts.push(`+${wFlame} White Flame (Enraged)`);
       if(im.delta) parts.push(`${im.delta} Infatuated`);
       if(wAcc) parts.push(`${wAcc} Fainted Living Weapon`);
       if(critWhy.length) parts.push(critWhy.join(" "));
@@ -2759,6 +3219,9 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
           `⚡ Type Expertise: STAB on ${st.type} — Damage Base ${rawDB} +2 = ${rawDB+2}${bm.db?` ${bm.db>0?"+":"−"}${Math.abs(bm.db)} buffs`:""} → DB ${db}`) : "",
         el("div",{class:"small muted",style:"margin-top:2px"}, parts.join("  ") + `. Target subtracts ${defNote}.`)));
       if(bm.crit) out.append(el("div",{class:"small muted"}, `Crit / Effect range widened by +${bm.crit} (buffs).`));
+      if(pushSpent) out.append(el("div",{class:"small",style:"margin-top:4px;color:var(--accent);font-weight:600"},
+        `💢 ${BERSERKER_PUSH}: +1 Injury (now ${pushSpent.injuries}) · +${pushSpent.tick} Temporary HP`
+        + (pushSpent.cured ? ` · cured ${pushSpent.cured}` : "")));
       // GM: apply this trainer hit to a battle-map token — Physical unless the Move itself is Special.
       const tw = attackTargetWidget({ dmg:total, type:st.type||"Typeless", physical:isPhysAtk });
       if(tw) out.append(tw);
@@ -6255,9 +6718,13 @@ const PTU_BUFFS = [
     note:"+2 to Skill Checks and Save Checks (not attack rolls)." },
   { key:"song-of-life",    cat:"Musician", name:"Song of Life",    dur:"until end of next turn", mods:{ dr:5 },
     note:"Gain 5 Damage Reduction. (Auto-applied to incoming damage while active.)" },
+  // — Berserker (Game of Throhs p.49). Switched on from Frenzy's own row on the Battle tab. —
+  { key:"frenzy", cat:"Berserker", name:"Frenzy", dur:"the rest of this turn", self:true,
+    mods:{ crit:2, move:2, skills:{ acrobatics:2, athletics:2, combat:2, intimidate:2 } },
+    note:"You took your turn with Priority and were cured of Slowed and Stuck. +2 Critical Hit Range, +2 Movement Speed and +2 to Acrobatics, Athletics, Combat and Intimidate Checks — all three auto-applied while it's up." },
 ];
 const buffByKey = new Map(PTU_BUFFS.map(b=>[b.key,b]));
-const BUFF_CATS = ["Cheerleader","Commander","Musician"];
+const BUFF_CATS = ["Cheerleader","Commander","Musician","Berserker"];
 function ownerBuffs(owner){ return Array.isArray(owner?.buffs) ? owner.buffs : []; }
 /* Some buffs only apply to one damage class — a Spicy Wrap's +5 is Physical attacks only, a Dry
    Wafer's is Special. `b.only` carries that; pass ctx={isPhys} from a roll to honour it. With no
@@ -6272,6 +6739,13 @@ function buffMods(owner, ctx){
   ownerBuffs(owner).forEach(b=>{ if(!buffApplies(b,ctx)) return;
     const m=b.mods||{}; s.acc+=m.acc||0; s.dmg+=m.dmg||0; s.crit+=m.crit||0; s.db+=m.db||0; s.dr+=m.dr||0; });
   return s;
+}
+/* Buffs that move something other than a roll: `mods.move` raises every Movement Capability
+   (Frenzy's +2 Movement Speed), `mods.skills` is a per-Skill flat bonus on Skill Checks. Both are
+   read by the derived layer / the Skills card rather than by openMoveRoll. */
+function buffMove(owner){ return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods&&b.mods.move)||0), 0); }
+function buffSkillBonus(owner, skillKey){
+  return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods && b.mods.skills && b.mods.skills[skillKey]) || 0), 0);
 }
 /* One-shot DR buffs are CHARGES, not a pool: Excited reads "spend when hit by a Damaging Attack to
    gain +5 Damage Reduction against it" (Core p.93), so a creature carrying three Excited has three
@@ -6295,6 +6769,8 @@ function buffDR(owner){
     dr+=d; from.push(b.name + (b.only?` — ${b.only==="phys"?"Physical":"Special"} only`:"")); });
   // worn armor adds flat Damage Reduction too (permanent — never consumed like one-shot buffs)
   if(isTrainerOwner(owner)){ const e=equipDR(owner); if(e.dr){ dr+=e.dr; e.from.forEach(n=>from.push(n)); } }
+  // Enduring Rage (Power of Rage): 5 DR while Enraged — an Ability, so it's never consumed either
+  const rage = rageAbilityDR(owner); if(rage){ dr+=rage; from.push("Enduring Rage (Enraged)"); }
   return { dr, from };
 }
 /* Spend the one-shot DR buffs (e.g. Excited) after they've absorbed an incoming attack — ONE
@@ -6376,6 +6852,9 @@ function buffModText(m){
   if(m.db)   p.push(`${m.db>0?"+":""}${m.db} DB`);
   if(m.crit) p.push(`+${m.crit} Crit/Effect range`);
   if(m.dr)   p.push(`${m.dr>0?"+":""}${m.dr} DR`);
+  if(m.move) p.push(`${m.move>0?"+":""}${m.move} Movement`);
+  if(m.skills){ const n = Object.values(m.skills)[0];
+    p.push(`${n>0?"+":""}${n} ${Object.keys(m.skills).map(k=>(SKILLS.find(([s])=>s===k)||[,k])[1]).join("/")}`); }
   return p.join(" · ");
 }
 /* buff manager card. `commit` persists + re-renders the surrounding view after any change. */
@@ -9351,6 +9830,8 @@ function abilityDamageMods(p, m, baseDBVal, thresholds, opts={}){
   // Punk Rock: +2 DB on Sonic Moves
   if(hasAbility(p,"Punk Rock") && moveHasKeyword(m,"sonic")){
     mods.db += 2; mods.why.push("Punk Rock +2 DB (Sonic)"); }
+  // White Flame (Power of Rage): "while Enraged, the user gains a +5 Bonus to all Damage Rolls"
+  if(rageAbilityDamage(p)){ mods.flat += 5; mods.why.push("White Flame +5 damage (Enraged)"); }
   /* Twisted Power: "adds half of their Attack Stat to the damage rolls of their Special Moves; and
      adds half of their Special Attack Stat to the damage of their Physical Moves. This does not
      change the Damage Class of any attack." — so it's the OPPOSITE stat, added as flat damage, and
@@ -9527,6 +10008,11 @@ function missingTenths(p){
   const cur = p.currentHP ?? mx;
   return Math.max(0, Math.min(10, Math.floor((mx - cur) * 10 / mx)));
 }
+/* Flail and Reversal both read "for each Injury the user has" — and the sheet knows the number, so
+   seed it instead of making the player retype it. Works for a Trainer too (both count `injuries`),
+   which is what a Berserker swinging Flail as a Weapon Attack needs. Still editable, like every
+   other seeded default here. */
+function userInjuries(p){ return Math.max(0, Math.min(10, p?.injuries || 0)); }
 const weatherIsAny = (...keys) => keys.includes(activeWeather().key);
 /* ---- the table ---- */
 const MOVE_CONDITIONS = {
@@ -9632,8 +10118,8 @@ function specialMoveInfo(m, p){
     "Rollout":      {label:"Consecutive uses so far",  def:0, min:0,        toDB:v=>Math.min(15,3+4*v),hint:"DB = 3 +4 each consecutive use (max 15)"},
     "Ice Ball":     {label:"Consecutive uses so far",  def:0, min:0,        toDB:v=>Math.min(15,3+3*v),hint:"DB = 3 +3 each consecutive use (max 15)"},
     "Stored Power": {label:"Positive Combat Stages",   def:0, min:0,        toDB:v=>Math.min(20,2+2*v),hint:"DB = 2 +2 per positive CS (max 20)"},
-    "Reversal":     {label:"User's Injuries",          def:0, min:0, max:10,toDB:v=>7+v,               hint:"DB = 7 +1 per Injury"},
-    "Flail":        {label:"User's Injuries",          def:0, min:0, max:10,toDB:v=>7+v,               hint:"DB = 7 +1 per Injury"},
+    "Reversal":     {label:"User's Injuries",   def:userInjuries, min:0, max:10,toDB:v=>7+v,          hint:"DB = 7 +1 per Injury"},
+    "Flail":        {label:"User's Injuries",   def:userInjuries, min:0, max:10,toDB:v=>7+v,          hint:"DB = 7 +1 per Injury"},
     "Wring Out":    {label:"Target's % of full HP",    def:100,min:0,max:100,toDB:v=>Math.max(1,12-Math.floor((100-v)/10)),hint:"DB 12, −1 per 10% of HP missing"},
     "Crush Grip":   {label:"Target's % of full HP",    def:100,min:0,max:100,toDB:v=>Math.max(1,12-Math.floor((100-v)/10)),hint:"DB 12, −1 per 10% of HP missing"},
     "Butterfly Knife":{label:"Consecutive hits so far", def:0, min:0, max:3, toDB:v=>Math.min(16,4+4*v),hint:"DB 4/8/12/16 as it connects consecutively"},
@@ -11424,18 +11910,24 @@ function featureGrantsMoveNames(effect){
   const uniq=[...new Set(found)];
   return uniq.length<=3 ? uniq : [];   // long lists = "choose/teach a move" menus, not fixed grants
 }
-/* When a Feature that teaches a Move is learned, add that Move to the trainer's sheet. */
+/* When a Feature that teaches a Move is learned, add that Move to the trainer's sheet.
+   featureLearnedMoveNames handles the explicit "You learn the Moves A and B." list (which the
+   heuristic above only ever caught the FIRST name of, and missed entirely when the Feature spells
+   a Move differently from the DB — "Double Edge" vs "Double-Edge"). */
 function autoGrantFeatureMoves(t, featureName){
   if(!t) return;
   const f=D.features.find(x=>x.name===featureName); if(!f) return;
   if(!Array.isArray(t.moves)) t.moves=[];
   const added=[];
-  featureGrantsMoveNames(f.effect||"").forEach(nm=>{ if(!t.moves.includes(nm)){ t.moves.push(nm); added.push(nm); } });
+  const names = new Set([...featureGrantsMoveNames(f.effect||""), ...featureLearnedMoveNames(f.effect||"")]);
+  names.forEach(nm=>{ if(!t.moves.includes(nm)){ t.moves.push(nm); added.push(nm); } });
   if(added.length) toast(`＋ Move${added.length>1?"s":""} from ${featureName}: ${added.join(", ")}`);
 }
 /* An Order / Cheer / Song Feature the buff engine already models — matched by name, so giving one
    from Battle drops exactly the buff `openMoveRoll` and `buffDR` know how to apply. */
-const buffByFeatKey = new Map(PTU_BUFFS.map(b=>[featKey(b.name), b]));
+/* `self` buffs are things a Feature does TO YOU (Frenzy), not an Order you hand out, so they're kept
+   out of the ✨ Give flow — their own Feature row is what applies them, conditions and all. */
+const buffByFeatKey = new Map(PTU_BUFFS.filter(b=>!b.self).map(b=>[featKey(b.name), b]));
 const featureBuffDef = f => buffByFeatKey.get(featKey(f && f.name)) || null;
 /* Give an Order: put its buff on whoever it was ordered at and spend one of the Feature's uses.
    Targets are the Trainer and their own party — allies on other sheets get theirs from the Map
@@ -11483,6 +11975,9 @@ function featureActionRow(f, owner, rerender){
   // a Feature that switches a stance on/off (Enchanting Transformation) toggles straight from here
   const md  = owner && owner===activeChar()?.trainer ? featureModeDef(f) : null;
   const mdOn = md && modeIsOn(owner, md.key);
+  // a Feature the sheet can actually carry out (Frenzy, Fight On and On) — see FEATURE_ACTIONS
+  const fa  = owner && owner===activeChar()?.trainer ? featureActionDef(f) : null;
+  const faOn = fa && fa.feat===BERSERKER_FIGHT_ON && !!owner.fightOn;
   d.append(el("summary",{},
     el("button",{class:"actstar"+(fav?" on":""),title:fav?"unfavourite":"favourite",
       onclick:e=>{ e.preventDefault(); toggleFavAction(featFavId(f.name)); (rerender||renderBattle)(); }}, fav?"★":"☆"),
@@ -11495,7 +11990,9 @@ function featureActionRow(f, owner, rerender){
       title: mdOn ? `end it — ${md.bindAP||0} Bound AP comes back` : `switch it on — Binds ${md.bindAP||0} AP, ${md.dur}`,
       onclick:e=>{ e.preventDefault(); e.stopPropagation(); setFeatureMode(owner, md, !mdOn, rerender); }},
       mdOn ? `⏹ ${md.off}` : `${md.icon} ${md.on}`) : "",
-    mdOn ? el("span",{class:"small",style:"margin-left:8px;color:var(--good);font-weight:700"},"● ACTIVE") : ""));
+    fa ? el("button",{class:"linkbtn",style:"margin-left:8px",title:fa.title(owner),
+      onclick:e=>{ e.preventDefault(); e.stopPropagation(); fa.run(owner, f, rerender); }}, fa.label(owner)) : "",
+    (mdOn || faOn) ? el("span",{class:"small",style:"margin-left:8px;color:var(--good);font-weight:700"},"● ACTIVE") : ""));
   d.append(el("div",{class:"small",style:"margin-top:6px",html: refDetailHTML("feature",f.name)}));
   return d;
 }
@@ -11560,8 +12057,9 @@ function trainerAttackSlot(t, profile, rollFn, opts={}){
   const slot = el("div",{class:"moveslot"});
   // Type Expertise STAB, if this Trainer has it for the attack's Type (never on a Struggle Attack,
   // and never on a Status Move — there's no Damage Base for it to raise)
+  // …and never on anything swung with a weapon (Core p.286) — Weapon Moves included
   const stabHere = typeof profile.damageBase === "number" && profile.damageBase > 0
-    && trainerStab(t, profile.type, !profile.move);
+    && !profile.weapon && trainerStab(t, profile.type, !profile.move);
   const main = el("div",{style:"flex:1"},
     el("div",{style:"font-weight:700"}, profile.name+" ", el("span",{html:typeBadge(profile.type)}),
       opts.tag?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600"}, opts.tag):"",
@@ -11651,6 +12149,15 @@ function renderTrainerCombat(root, t){
   card.append(trainerStruggleControl(t, renderBattle));
   // unarmed Struggle (always available)
   card.append(trainerAttackSlot(t, trainerStruggle(t), ()=>openTrainerAttack(t), {tag:"unarmed"}));
+  // Moves a [Weapon] Feature lets this Trainer swing with a weapon (Berserker, Crash and Smash)
+  const waMoves = trainerWeaponAttackMoves(t);
+  const weaponAttackRows = (w, tagSuffix) => waMoves.forEach((d, mn)=>{
+    if(!weaponFitsRestrict(w, d.restrict)) return;
+    const wm = trainerAttackProfile(t, mn, w, true);
+    const uc = usesControl(t, "move", wm.name, wm.frequency, renderBattle);
+    card.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t, mn, w, {rerender:renderBattle, weaponAttack:true}),
+      {tag:`${d.feat}${tagSuffix||""} · as a Weapon Attack`, uc, move:true}));
+  });
   // one attack per weapon (+ its Adept/Master Weapon Techniques, gated by Combat rank)
   (t.weapons||[]).forEach(w=>{
     card.append(trainerAttackSlot(t, trainerStruggle(t, w), ()=>openTrainerAttack(t, null, w), {tag:w.category}));
@@ -11660,6 +12167,7 @@ function renderTrainerCombat(root, t){
       const uc = usesControl(t, "move", wm.name, wm.frequency, renderBattle);
       card.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t, mn, w, {rerender:renderBattle}), {tag, uc, move:true}));
     });
+    weaponAttackRows(w);
   });
   // A wielded Honedge/Doublade/Aegislash is equipment too (Core p.305) — same slots, built from the mon
   const lwHands = livingWeaponHands(t);
@@ -11681,11 +12189,13 @@ function renderTrainerCombat(root, t){
       const uc = usesControl(t, "move", wm.name, wm.frequency, renderBattle);
       card.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t, mn, w, {rerender:renderBattle}), {tag, uc, move:true}));
     });
+    weaponAttackRows(w, " · wielded");
   });
   card.append(el("div",{class:"small muted",style:"margin-top:8px"},
     ((t.weapons||[]).length || lwHands) ? "Each weapon (and its Weapon Move) is listed above. Add/edit weapons in Trainer → Sheet → Weapons; tick ⚔ Wield on a Living Weapon's own sheet."
                            : "Unarmed Struggle only — add weapons in Trainer → Sheet → Weapons. Action Features (Cheer, Orders…) appear under the tabs above."));
   root.append(card);
+  const bers = berserkerCard(t); if(bers) root.append(bers);
   // Throw a Poké Ball: a real action on the trainer's own sheet, targeting a wild Pokémon
   // currently visible on the shared Map — not something you trigger by clicking a Pokémon.
   const pb = el("div",{class:"card"}, el("h3",{},"Poké Balls"));
@@ -12800,6 +13310,14 @@ function encounterTrainerCard(enc, tr){
       atkWrap.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t,mn,w,{persist:saveEnc,rerender:renderEncounters}), {tag, move:true, uc}));
       if(!weaponMoveRankOk(t, tier)) atkWrap.append(el("div",{class:"small muted",style:"margin:-2px 0 4px 6px"},
         `↳ book requires ${tier==="master"?"Master":"Adept"} Combat — GM call`));
+    });
+    // an NPC Berserker swings Rage/Flail (and Crash and Smash's pair) with this weapon too
+    trainerWeaponAttackMoves(t).forEach((d, mn)=>{
+      if(!weaponFitsRestrict(w, d.restrict)) return;
+      const wm = trainerAttackProfile(t, mn, w, true);
+      const uc = usesControl(t, "move", wm.name, wm.frequency, renderEncounters, saveEnc, {bossEot:isBoss(t)});
+      atkWrap.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t, mn, w, {persist:saveEnc, rerender:renderEncounters, weaponAttack:true}),
+        {tag:`${d.feat} · as a Weapon Attack`, move:true, uc}));
     });
   });
   card.append(atkWrap);
@@ -17606,6 +18124,9 @@ let mapSelect = { on:false, mapId:null, ids:new Set() };
 /* Mounting mode ("🐎 Mount"): tap the rider, then tap what it climbs onto. Per-viewer and not
    synced (only the resulting token.riding link is) — see the MOUNTING section further down. */
 let mapMount  = { on:false, mapId:null, riderId:null };
+/* Which boat the floating 🚤 helm panel is steering, and whether that panel is collapsed. Per
+   viewer and not synced — the boat itself (position + facing) lives on its token. */
+let mapBoat = { id:null, hidden:false };
 function mapSelectActive(map){ return mapSelect.on && mapSelect.mapId===map.id; }
 function toggleMapSelect(map){
   mapSelect = mapSelectActive(map) ? { on:false, mapId:map.id, ids:new Set() }
@@ -17761,6 +18282,11 @@ function standaloneSprite(token){
 /* everything the board needs about a token, computed live from its source */
 function tokenHp(token){
   if(!token.link){
+    // a boat is a hull, not a creature — no HP bar, no statuses, no turn, and no name plate
+    // cluttering the board (the BOATS section owns everything about it)
+    if(isBoatToken(token))
+      return { cur:1, max:1, editable:canDriveBoat(token), name:token.label||"Boat",
+               sprite:boatSprite(token), unlinked:false, kind:"boat", hideName:true };
     // a shop token is scenery with a door, not a creature — no HP, no statuses, no initiative
     if(isShopToken(token)){
       const shop = shopById(token.shopId);
@@ -17808,13 +18334,13 @@ function tokenBossBars(token){
 }
 /* players may only see HP for PC trainers/Pokémon; the GM sees everything (incl. enemies & standalone tokens) */
 function tokenHpVisible(info){
-  if(info.kind==="shop") return false;                       // a storefront has no HP bar to show
+  if(info.kind==="shop" || info.kind==="boat") return false; // scenery has no HP bar to show
   return cloud.isGM || info.kind==="trainer" || info.kind==="pokemon";
 }
 /* Status conditions (Burned, Paralyzed, …) are visible in an actual battle even when a creature's
    exact HP isn't — unlike tokenHpVisible, this doesn't gate on GM/kind, only on the token actually
    pointing to something real. Fixes enemy statuses being invisible to players (HANDOFF-2026-07-25). */
-function tokenStatusVisible(info){ return !info.unlinked && info.kind!=="shop"; }
+function tokenStatusVisible(info){ return !info.unlinked && info.kind!=="shop" && info.kind!=="boat"; }
 /* ---- quick-attack helper: defender = the clicked token ---- */
 function tokenDefTypes(token){
   const L = token.link ? tokenLinked(token) : null;
@@ -17863,7 +18389,7 @@ function tokenInitiative(token){
   return v;
 }
 function tokenInInit(token){
-  if(isShopToken(token)) return false;                       // shops don't take turns
+  if(isShopToken(token) || isBoatToken(token)) return false; // scenery doesn't take turns
   const info=tokenHp(token); if(info.unlinked) return false;
   const ally = info.kind==="trainer"||info.kind==="pokemon";
   return ally ? token.inInit!==false : !!token.inInit;   // players auto-join; enemies opt-in via the token menu
@@ -18186,11 +18712,13 @@ async function setTokenHP(token, val){
       const newHP = Math.max(-99, Math.min(barMax, val|0));
       applyAutoInjury(obj, obj.currentHP||0, newHP);          // Boss rule: only Massive Damage injures
       bossSetTotalHP(obj, Math.max(0, (obj.boss.curBar||1)-1)*barMax + newHP);
+      applyAutoKO(obj, obj.currentHP||0, obj.currentHP||0);   // a Boss is down only once its LAST bar empties
       paintTokenHP(token, true); saveEnc(); return;
     }
     const encMax = kind==="enctrainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
     const oldHP = obj.currentHP||0, newHP = Math.max(-99, Math.min(encMax, val|0));
     applyAutoInjury(obj, oldHP, newHP);            // map-side HP edits get the same auto-injury check
+    applyAutoKO(obj, oldHP, newHP);                // …and drop/lift Knocked Out with the HP
     obj.currentHP = newHP;
     paintTokenHP(token, true);
     saveEnc(); return;                            // debounced cloud write
@@ -18199,6 +18727,7 @@ async function setTokenHP(token, val){
   const max = kind==="trainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
   const oldHP = obj.currentHP||0, newHP = Math.max(-99, Math.min(max, val|0));
   applyAutoInjury(obj, oldHP, newHP);
+  applyAutoKO(obj, oldHP, newHP);
   obj.currentHP = newHP;
   paintTokenHP(token);
   cloudSaveRow(row);                              // debounced write of the real sheet; realtime syncs the owner
@@ -18790,7 +19319,7 @@ function freeCellNear(map, mount, skipId){
   return { x: mount.x + s, y: mount.y };
 }
 /* a token that can't ride / be ridden (shop doors are scenery, not creatures) */
-function canMountToken(token){ return !!token && !isShopToken(token); }
+function canMountToken(token){ return !!token && !isShopToken(token) && !isBoatToken(token); }
 function mountToken(map, rider, mount){
   if(!rider || !mount || rider.id===mount.id) return false;
   if(!canMountToken(rider) || !canMountToken(mount)){ toast("A shop door can't ride or be ridden"); return false; }
@@ -18914,9 +19443,197 @@ function mapMountBar(map){
    (spread out so several passengers stay individually tappable) rather than sitting on the same
    pixels; everything else is drawn at its own square. Recursive, so a rider-of-a-rider perches on
    the perch. */
+/* ===================================================================
+   BOATS — a rideable piece of scenery that sails as one with its deck.
+
+   A boat token is standalone (no link, no HP, no initiative, no status ring) and, unlike every
+   other token, is NOT square: it occupies `boatLen` × `boatBeam` squares, laid out along whichever
+   of the four compass directions it is `facing`. Two pixel sprites cover all four: a side view
+   (facing East, flipped for West) and a top-down view (facing North, flipped for South), so the
+   picture always matches the footprint.
+
+   Steering happens through the floating 🚤 helm panel (boatPanel below), never by nudging x/y
+   directly: an arrow both TURNS the boat to face that way and sails it one square, and whoever is
+   standing on the deck at that moment is carried along — their positions rotated about the deck's
+   centre so the crew keeps its place on board through a turn. Dragging the hull does the same
+   thing (see attachTokenDrag), just without the turn.
+=================================================================== */
+const isBoatToken = t => !!(t && t.boat);
+/* quarter-turns clockwise from East — the whole rotation math is differences of these */
+const BOAT_ANGLE = { E:0, S:1, W:2, N:3 };
+const BOAT_STEP  = { N:[0,-1], E:[1,0], S:[0,1], W:[-1,0] };
+const BOAT_LEN_DEFAULT = 7, BOAT_BEAM_DEFAULT = 3;    // matches the sprites' 224×96 (7:3) proportions
+/* the sprites, served from our own origin (never inlined into the synced row — token art living in
+   the campaign row is exactly what blew the egress budget once already) */
+const BOAT_SPRITE_SIDE = "assets/boat-side.png?v=1";   // 224×96, bow pointing East
+const BOAT_SPRITE_TOP  = "assets/boat-top.png?v=1";    // 96×224, bow pointing North
+function boatFacing(t){ return BOAT_ANGLE[t && t.facing]!=null ? t.facing : "E"; }
+/* footprint in squares for a given facing (defaults to the boat's own) */
+function boatDims(t, facing){
+  const f = facing || boatFacing(t);
+  const len = Math.max(1, t.boatLen||BOAT_LEN_DEFAULT), beam = Math.max(1, t.boatBeam||BOAT_BEAM_DEFAULT);
+  return (f==="E"||f==="W") ? { w:len, h:beam } : { w:beam, h:len };
+}
+function boatSprite(token){
+  const f = boatFacing(token);
+  const side = (f==="E"||f==="W");
+  const flip = f==="W" ? "scaleX(-1)" : f==="S" ? "scaleY(-1)" : "";
+  return el("img",{class:"sprite s-sm",src:side?BOAT_SPRITE_SIDE:BOAT_SPRITE_TOP,draggable:false,
+    alt:token.label||"Boat", style:flip?("transform:"+flip):""});
+}
+function mapBoats(map){ return map ? mapTokensFor(map.id).filter(isBoatToken) : []; }
+/* Everything standing on the deck RIGHT NOW: any non-boat token whose own footprint overlaps the
+   hull. There is deliberately no persistent "passenger" link — you board a boat by walking onto it
+   and get off by walking away, exactly like a real deck. (A mounted rider sits on the same square
+   as its mount, so a whole riding stack boards and leaves together for free.) */
+function boatPassengers(map, boat){
+  const d = boatDims(boat), bx = Math.round(boat.x), by = Math.round(boat.y);
+  return mapTokensFor(map.id).filter(t=>{
+    if(t.id===boat.id || isBoatToken(t)) return false;
+    const s = t.size||1, tx = Math.round(t.x), ty = Math.round(t.y);
+    return tx < bx+d.w && tx+s > bx && ty < by+d.h && ty+s > by;
+  });
+}
+/* Who may take the helm: the GM and the shared Viewer screen always, plus any player who actually
+   has one of their own tokens aboard — you can steer the boat you're standing on. */
+function canDriveBoat(token){
+  if(cloud.isGM || isMapHpViewer()) return true;
+  const map = currentMapForView(); if(!map) return false;
+  return boatPassengers(map, token).some(t=>t.link && ownsRow(cloud.byId[t.link.sheetId]));
+}
+/* Turn to `dir` (rotating the deck under the crew) and, when `step`, sail one square that way.
+   Returns false if there was nothing to do. */
+function boatSteer(map, boat, dir, step){
+  if(!BOAT_STEP[dir]) return false;
+  const from = boatFacing(boat);
+  const turns = ((BOAT_ANGLE[dir] - BOAT_ANGLE[from]) + 4) % 4;
+  if(!turns && !step) return false;
+  const pax = boatPassengers(map, boat);          // snapshot: who is aboard as the manoeuvre starts
+  if(turns){
+    const a = boatDims(boat, from), b = boatDims(boat, dir);
+    const cx = boat.x + a.w/2, cy = boat.y + a.h/2;             // the deck pivots about its centre
+    const nx = Math.round(cx - b.w/2), ny = Math.round(cy - b.h/2);
+    const ncx = nx + b.w/2, ncy = ny + b.h/2;
+    pax.forEach(p=>{
+      const s = p.size||1;
+      let dx = p.x + s/2 - cx, dy = p.y + s/2 - cy;
+      // 90° clockwise per turn in screen coordinates (y grows downwards): (dx,dy) → (−dy,dx)
+      for(let i=0;i<turns;i++){ const t=dx; dx=-dy; dy=t; }
+      // snapping back to whole squares can land half a cell out when the hull's sides are of
+      // different parity, so clamp everyone back inside the new footprint — nobody falls overboard
+      p.x = Math.min(nx+b.w-s, Math.max(nx, Math.round(ncx + dx - s/2)));
+      p.y = Math.min(ny+b.h-s, Math.max(ny, Math.round(ncy + dy - s/2)));
+    });
+    boat.x = nx; boat.y = ny; boat.facing = dir;
+  }
+  if(step){
+    const [dx, dy] = BOAT_STEP[dir];
+    boat.x += dx; boat.y += dy;
+    pax.forEach(p=>{ p.x += dx; p.y += dy; });
+  }
+  pax.forEach(p=>{ if(!p.riding) snapRidersTo(map, p); });       // keep anyone's own riders pinned
+  if(map.fogOn) revealAroundTokens(map);                        // sailing on reveals new coastline
+  mapTokensSave(); renderMap();
+  return true;
+}
+async function addBoat(map){
+  mapBoat = { id:null, hidden:false };
+  await addToken(map, { boat:true, label:"Boat", facing:"E", boatLen:BOAT_LEN_DEFAULT,
+                        boatBeam:BOAT_BEAM_DEFAULT, size:1 });
+  const b = mapBoats(map).slice(-1)[0]; if(b) mapBoat.id = b.id;
+  renderMap();
+}
+/* ---- the floating helm: arrow controls that sail the boat and turn it to face where it's going ---- */
+function boatPanel(map){
+  const boats = mapBoats(map).filter(canDriveBoat);
+  if(!boats.length) return null;
+  const boat = boats.find(b=>b.id===mapBoat.id) || boats[0];
+  mapBoat.id = boat.id;
+  if(mapBoat.hidden)
+    return el("div",{class:"boat-panel collapsed"},
+      el("button",{class:"btn-secondary",title:"show the boat controls",
+        onclick:()=>{ mapBoat.hidden=false; renderMap(); }},"🚤"));
+
+  const p = el("div",{class:"boat-panel"});
+  const pax = boatPassengers(map, boat).length;
+  p.append(el("div",{class:"boat-title"},
+    el("span",{style:"flex:1;min-width:0"}, "🚤 " + (boat.label||"Boat")),
+    el("button",{class:"boat-x",title:"hide these controls",
+      onclick:()=>{ mapBoat.hidden=true; renderMap(); }},"✕")));
+  if(boats.length>1){
+    const sel = el("select",{style:"width:100%;margin-bottom:8px"});
+    boats.forEach(b=>sel.append(el("option",{value:b.id,selected:b.id===boat.id}, b.label||"Boat")));
+    sel.addEventListener("change", ()=>{ mapBoat.id=sel.value; renderMap(); });
+    p.append(sel);
+  }
+  // the d-pad: each arrow turns the bow that way AND sails one square
+  const pad = el("div",{class:"boat-dpad"});
+  const NAMES = { N:"north", S:"south", E:"east", W:"west" };
+  const dirBtn = (dir, glyph) => el("button",{class:"boat-dir"+(boatFacing(boat)===dir?" on":""),
+    title:"Face "+NAMES[dir]+" and sail one square",
+    onclick:()=>boatSteer(map, boat, dir, true)}, glyph);
+  pad.append(el("div",{}), dirBtn("N","↑"), el("div",{}),
+             dirBtn("W","←"),
+             el("div",{class:"boat-face",title:"which way the bow is pointing"},
+               ({N:"⬆",E:"➡",S:"⬇",W:"⬅"})[boatFacing(boat)]),
+             dirBtn("E","→"),
+             el("div",{}), dirBtn("S","↓"), el("div",{}));
+  p.append(pad);
+  // turning on the spot, for lining the hull up without leaving the square you're on
+  const cw = ["E","S","W","N"];
+  const turn = off => boatSteer(map, boat, cw[(cw.indexOf(boatFacing(boat))+off)%4], false);
+  p.append(el("div",{class:"boat-row"},
+    el("button",{class:"btn-secondary",style:"flex:1",title:"turn to port without moving",
+      onclick:()=>turn(3)},"↺ Turn"),
+    el("button",{class:"btn-secondary",style:"flex:1",title:"turn to starboard without moving",
+      onclick:()=>turn(1)},"Turn ↻")));
+  p.append(el("div",{class:"small muted",style:"margin-top:6px"},
+    pax ? (pax+" aboard — they sail with it") : "Nobody aboard"));
+  return p;
+}
+/* GM-only: rename / resize / remove the hull. A boat has no HP, statuses or turn order, so it gets
+   this short menu instead of the full token one. */
+function openBoatMenu(token, map){
+  const wrap = el("div",{});
+  wrap.append(el("div",{style:"display:flex;justify-content:center;margin-bottom:10px"},
+    el("img",{src:BOAT_SPRITE_SIDE,alt:"",style:"width:168px;image-rendering:pixelated"})));
+  if(!cloud.isGM){
+    wrap.append(el("div",{class:"r-body"},"Walk a token onto the deck, then steer with the 🚤 controls on the board."));
+    modal({title:token.label||"Boat", bodyNode:wrap, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+    return;
+  }
+  const nm = el("input",{type:"text",value:token.label||"Boat"});
+  nm.addEventListener("change", ()=>{ token.label = nm.value.trim()||"Boat"; mapTokensSave(); renderMap(); });
+  wrap.append(el("label",{class:"field"}, el("span",{},"Name"), nm));
+  const mkNum = (key, label, dflt) => {
+    const inp = el("input",{type:"number",min:1,max:20,value:token[key]||dflt});
+    // resized about the same top-left corner; the sprite stretches to whatever shape you give it
+    inp.addEventListener("change", ()=>{ token[key] = Math.max(1, Math.min(20, parseInt(inp.value)||dflt));
+      if(map.fogOn) revealAroundTokens(map); mapTokensSave(); renderMap(); });
+    return el("label",{class:"field",style:"margin-top:10px"}, el("span",{},label), inp);
+  };
+  wrap.append(mkNum("boatLen","Length (squares, bow to stern)",BOAT_LEN_DEFAULT),
+              mkNum("boatBeam","Width (squares, beam)",BOAT_BEAM_DEFAULT));
+  const fsel = el("select");
+  [["N","⬆ North"],["E","➡ East"],["S","⬇ South"],["W","⬅ West"]].forEach(([v,l])=>
+    fsel.append(el("option",{value:v,selected:v===boatFacing(token)},l)));
+  fsel.addEventListener("change", ()=>boatSteer(map, token, fsel.value, false));
+  wrap.append(el("label",{class:"field",style:"margin-top:10px"}, el("span",{},"Facing"), fsel));
+  wrap.append(el("div",{class:"small muted",style:"margin-top:10px"},
+    "Drag the hull to reposition it — everyone standing on the deck comes along. The 🚤 panel on the "
+    + "board sails it a square at a time and turns the bow to match."));
+  modal({title:token.label||"Boat", bodyNode:wrap, footNodes:[
+    el("button",{class:"btn-secondary danger",onclick:()=>{ if(confirm("Remove this boat?")){ closeModal(); removeToken(token, map); } }},"🗑 Remove"),
+    el("button",{class:"btn-secondary",onclick:closeModal},"Close"),
+  ]});
+}
 function tokenRenderBox(map, token, originX=0, originY=0, depth=0){
   const px = map.gridSize;
-  const own = { left: token.x*px+originX, top: token.y*px+originY, size:(token.size||1)*px, rider:false };
+  // A boat is the one token that isn't square, so the box carries w/h as well as size; for
+  // everything else w===h===size, and callers can just read w/h without caring which it is.
+  const bd = isBoatToken(token) ? boatDims(token) : null;
+  const own = { left: token.x*px+originX, top: token.y*px+originY, size:(token.size||1)*px,
+                w:(bd?bd.w:(token.size||1))*px, h:(bd?bd.h:(token.size||1))*px, rider:false };
   const mount = depth<6 ? tokenMount(map.id, token) : null;
   if(!mount) return own;
   const mb = tokenRenderBox(map, mount, originX, originY, depth+1);
@@ -18925,7 +19642,7 @@ function tokenRenderBox(map, token, originX=0, originY=0, depth=0){
   const size = Math.max(14, mb.size * (n>2 ? 0.40 : 0.52));
   const gap  = Math.max(2, size*0.10);
   const total = n*size + (n-1)*gap;
-  return { left: mb.left + mb.size/2 - total/2 + i*(size+gap), top: mb.top - size*0.55, size, rider:true };
+  return { left: mb.left + mb.size/2 - total/2 + i*(size+gap), top: mb.top - size*0.55, size, w:size, h:size, rider:true };
 }
 
 /* one token element */
@@ -18934,6 +19651,7 @@ function mapTokenNode(token, map, originX=0, originY=0){
   const box = tokenRenderBox(map, token, originX, originY);
   const boxPx = box.size;
   const riding = box.rider, carrying = tokenRiders(map.id, token).length;
+  const isBoat = isBoatToken(token);
   const pendingRider = mapMountActive(map) && mapMount.riderId===token.id;
   const factionColor = tokenFactionColor(info, token);
   const selected = mapSelectActive(map) && mapSelect.ids.has(token.id);
@@ -18942,8 +19660,9 @@ function mapTokenNode(token, map, originX=0, originY=0){
   const isTrainerTok = info.kind==="trainer" || info.kind==="enctrainer";
   const playerSide = info.kind==="trainer" || info.kind==="pokemon";
   // a rider is drawn perched on its mount (see tokenRenderBox) and always stacks above it
-  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":""),
-    style:`left:${box.left}px;top:${box.top}px;width:${boxPx}px;height:${boxPx}px;z-index:${riding?4:isTrainerTok?2:1}`
+  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":"")+(isBoat?" boat-token":""),
+    // a hull sits at z-index 0, below every creature, so the crew is drawn standing on the deck
+    style:`left:${box.left}px;top:${box.top}px;width:${box.w}px;height:${box.h}px;z-index:${riding?4:isTrainerTok?2:isBoat?0:1}`
       +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")
       +(factionColor?`;border-color:${factionColor}`:"")});
   node.dataset.tid = token.id;
@@ -19001,7 +19720,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
     const stackLocked = !stackOK(token);
     // accumulate every tile entered, diagonals cost 2 — but a shop is scenery being repositioned,
     // not a combatant taking a Shift, so dragging its door never spends anyone's movement
-    const trackMove = battleOn() && map.gridOn && !isShopToken(token);
+    const trackMove = battleOn() && map.gridOn && !isShopToken(token) && !isBoatToken(token);
     const liveFog = !!map.fogOn;
     const stageSize = mapStageSize(map);                      // origin needed regardless of fog, for DOM<->cell math
     const fogCanvas = liveFog ? document.querySelector("#view-map .map-fog") : null;
@@ -19010,10 +19729,16 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
     const picked = grouped ? mapTokensFor(map.id).filter(t=>mapSelect.ids.has(t.id) && tokenHp(t).editable && stackOK(t)) : [token];
     const seenIds = new Set(); const group = [];
     picked.forEach(t=> mountGroup(map.id, t).forEach(m=>{ if(!seenIds.has(m.id)){ seenIds.add(m.id); group.push(m); } }));
+    // ...and a boat drags its whole deck: whoever is standing on it as the drag starts (plus their
+    // own riding stacks) travels with the hull, the same way the 🚤 helm sails them (see BOATS).
+    const deckIds = new Set();
+    group.slice().filter(isBoatToken).forEach(b=> boatPassengers(map, b).forEach(psg=>
+      mountGroup(map.id, psg).forEach(m=>{ deckIds.add(m.id);
+        if(!seenIds.has(m.id)){ seenIds.add(m.id); group.push(m); } })));
     const ctx = group.map(t=>{
       const n = t===token ? node : document.querySelector(`#view-map .map-token[data-tid="${t.id}"]`);
       // a passenger is being carried, so the metres come off its MOUNT's move, never its own
-      const carried = !!(t.riding && seenIds.has(t.riding));
+      const carried = !!(t.riding && seenIds.has(t.riding)) || deckIds.has(t.id);
       return {
         t, n, carried,
         baseX0:t.x*px+originX, baseY0:t.y*px+originY,          // logical square (drives cell math)
@@ -19058,7 +19783,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
       }
       mapDragging = true;
       applyDelta((e.clientX-startX)/scale, (e.clientY-startY)/scale, false);
-      if(map.gridOn && !isShopToken(token)){                  // no distance readout for scenery
+      if(map.gridOn && !isShopToken(token) && !isBoatToken(token)){   // no distance readout for scenery
         if(!badge){ badge = el("div",{class:"tk-move"}); node.append(badge); }
         const n = ctx.length>1 ? `${ctx.length} tokens · ` : "";
         if(trackMove){
@@ -19198,7 +19923,10 @@ function damageResultHTML(dmg, typeName, br, before){
 function attackTargetWidget({ dmg, type, physical, pierceImmune=false }){
   if(mode!=="cloud" || !cloud.isGM) return null;
   const map = currentMapForView() || activeMap(); if(!map) return null;
-  const tokens = mapTokensFor(map.id).filter(t=>{ const i=tokenHp(t); return i.editable && !i.unlinked; });
+  // scenery (shop doors, boat hulls) is editable and "linked", but it is not a creature you can
+  // roll damage onto — it would otherwise sit in the Enemies column offering a 1/1 HP bar to hit.
+  const tokens = mapTokensFor(map.id).filter(t=>{ const i=tokenHp(t);
+    return i.editable && !i.unlinked && i.kind!=="shop" && i.kind!=="boat"; });
   if(!tokens.length) return null;
   const typeName = type || "Typeless";
   const wrap = el("div",{style:"margin-top:12px;border-top:1px dashed var(--line);padding-top:10px"});
@@ -19294,6 +20022,7 @@ function reopenTokenMenu(token, map){
 }
 function openTokenMenu(token, map){
   if(isShopToken(token)) return openShopTokenMenu(token, map);
+  if(isBoatToken(token)) return openBoatMenu(token, map);
   const info = tokenHp(token);
   const wrap = el("div",{});
   if(!info.unlinked){
@@ -20019,7 +20748,7 @@ function attachPanZoom(viewport, stage){
     // away from the button, so its click never fired ("the trash button does nothing"). The resize
     // handle and the image body were unaffected only because both stopPropagation themselves.
     if(ev.target.closest(".map-token") || ev.target.closest(".aoe-panel") ||
-       ev.target.closest(".map-img-ctrls")) return;
+       ev.target.closest(".boat-panel") || ev.target.closest(".map-img-ctrls")) return;
     pts.set(ev.pointerId, vpXY(ev));
     try{ viewport.setPointerCapture(ev.pointerId); }catch(e){}
     if(pts.size===2) beginPinch();
@@ -20249,6 +20978,8 @@ function renderMap(){
       // — Play group: tokens, fog —
       bar.append(el("span",{class:"map-sep"}),
         el("button",{class:"btn-primary",onclick:()=>openAddToken(map)},"＋ Add token"),
+        el("button",{class:"btn-secondary",onclick:()=>addBoat(map),
+          title:"Drop a boat on the board. Steer it with the 🚤 arrows — it turns to face where it's going and everything standing on the deck sails with it."},"🚤 Boat"),
         el("button",{class:"btn-secondary",onclick:()=>clearMapTokens(map)},"Clear tokens"),
         el("button",{class:"btn-secondary"+(map.fogOn?" on":""),onclick:()=>toggleFog(map),
           title:"Auto-reveals around player tokens; explored areas stay revealed"}, map.fogOn?"🌫 Fog on":"🌫 Fog off"),
@@ -20434,6 +21165,7 @@ function renderMap(){
 
   applyMapCamera(stage);
   if(mapAoE) viewport.append(aoeControlPanel(map));
+  const helm = boatPanel(map); if(helm) viewport.append(helm);   // 🚤 arrow controls (BOATS section)
   viewport.append(stage);
   attachPanZoom(viewport, stage);
   root.append(viewport);
