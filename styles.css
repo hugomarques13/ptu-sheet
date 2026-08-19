@@ -596,8 +596,11 @@ body.map-mode .view{animation:none}
 .map-token.shop-token .tk-name{background:#f5c518; color:#231a08}
 /* ---- boats: a bare sprite hull, no ring, drawn under whoever is standing on the deck ---- */
 .map-token.boat-token{border:none; background:none; box-shadow:none; border-radius:0; overflow:visible}
-.map-token.boat-token .tk-img{border-radius:0; object-fit:fill; image-rendering:pixelated;
-  filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}
+/* the .sprite base class paints a panel-coloured plate + border behind every token picture, which
+   filled in the boat PNG's transparent pixels with a solid rectangle — a hull is drawn straight
+   onto the water, so both are cleared and only the alpha-following drop-shadow is left. */
+.map-token.boat-token .tk-img{border:none; background:none; border-radius:0; object-fit:fill;
+  image-rendering:pixelated; filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}
 .map-token.boat-token.selected{outline:3px solid var(--accent); outline-offset:0}
 /* the floating helm — arrow controls that sail the selected boat (bottom-left, opposite the AoE panel) */
 .boat-panel{position:absolute; left:12px; bottom:12px; z-index:6; background:var(--panel); border:1px solid var(--line);
