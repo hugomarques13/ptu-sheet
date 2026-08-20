@@ -545,7 +545,11 @@ body.map-mode .map-select-bar{margin:0; border-radius:0; border-left:0; border-r
 .map-img-overlay{position:absolute; pointer-events:none}
 .map-img-overlay .map-img-ctrls, .map-img-overlay .map-img-handle{pointer-events:auto}
 /* fog of war overlay (drawn in base coords, scales with the stage transform) */
-.map-fog{position:absolute; left:0; top:0; pointer-events:none}
+
+/* the fog bitmap is one pixel per grid cell, stretched over the stage — nearest-neighbour keeps
+   the cell edges hard instead of smearing a soft gradient across the boundary (see drawFog) */
+.map-fog{position:absolute; left:0; top:0; pointer-events:none;
+  image-rendering:pixelated; image-rendering:crisp-edges}
 /* attack-range / AoE overlay + its floating controls (#1) */
 .map-aoe{position:absolute; left:0; top:0; pointer-events:none}
 .aoe-panel{position:absolute; right:12px; top:12px; z-index:6; background:var(--panel); border:1px solid var(--line);

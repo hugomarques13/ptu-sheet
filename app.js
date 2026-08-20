@@ -1150,11 +1150,39 @@ function transformRevert(p, silent, rerender){
 }
 /* What a creature LOOKS like right now: the body a Transform copied, otherwise its own species.
    Everything that draws a sprite goes through here, so one Ditto stays one Ditto everywhere. */
+
+/* ---------- Minior: Shields Down (Ability, Static) ----------
+   "The user has two sets of base stats; Meteor and Core. The HP of both forms must be the same.
+    When the user is in Meteor Forme and becomes Bruised, they change to Core Forme. The user
+    returns to Meteor Forme while outside of combat if not Bruised."
+   Bruised = at or below half of max HP — the sheet's own 50% HP marker, the same line Zen Mode and
+   Schooling switch on. The two Formes share their HP base stat, so the swap never moves the HP bar;
+   only the rest of the stat block flips (Def/Sp.Def ⇄ Atk/Sp.Atk/Speed).
+
+   The Core Forme's shell colour is pure decoration — all seven colours have identical stats,
+   Abilities and movelists — so the dex carries ONE "Minior Core" species and the colour is rolled
+   once per Pokémon and kept on it, so a given Minior always cracks open the same colour.
+   These consts live up here because normPokemon reaches them and it runs during `let state=load()`. */
+const MINIOR_METEOR = "Minior Meteor", MINIOR_CORE = "Minior Core";
+const MINIOR_COLORS = ["Red","Orange","Yellow","Green","Blue","Indigo","Violet"];
+/* pokemondb only draws the generic core, so the coloured artwork is hotlinked from PokeAPI, which
+   files each colour of the Core Forme under its own form id (minior-blue = 10140, …). */
+const MINIOR_ART = { Red:10136, Orange:10137, Yellow:10138, Green:10139, Blue:10140, Indigo:10141, Violet:10142 };
+function isMinior(p){ const n = p && p.species; return n===MINIOR_METEOR || n===MINIOR_CORE; }
+/* this Minior's rolled shell colour, rolling one the first time it is asked for */
+function miniorColor(p){
+  if(!p) return MINIOR_COLORS[0];
+  if(!MINIOR_COLORS.includes(p.miniorColor))
+    p.miniorColor = MINIOR_COLORS[Math.floor(Math.random()*MINIOR_COLORS.length)];
+  return p.miniorColor;
+}
 function monLookName(p, sp){
   // an Illusion is worn OVER whatever the creature currently is, Transformed or not
   const worn = illusionWorn(p);
   if(worn && worn.species) return worn.species;
   if(p && p.transform && p.transform.species) return p.transform.species;
+  // a cracked-open Minior is drawn in its own colour (speciesArtChain resolves the artwork)
+  if(isMinior(p) && p.species===MINIOR_CORE) return `Minior ${miniorColor(p)} Core`;
   return (sp && sp.name) || (p && p.species) || "";
 }
 /* the species whose BODY it has — Transform "copies its weight and height", so size / Weight Class
@@ -1190,8 +1218,56 @@ function captureRate(p, opts={}){
   return { capturable:true, rate, breakdown:bd };
 }
 
+
 /* fast lookups */
-const speciesByName  = new Map(D.species.map(s => [s.name.toLowerCase(), s]));
+/* ---- Species lookup, spelling-tolerant ----
+   The dex was built from a spreadsheet AND a Pokedex PDF, which spelled alternate forms
+   differently, so every form used to exist 6+ times over ("Minior Core" / "Minior (Core)" /
+   "Minior-Core" / "Minior C" / "Minior (C)" / "Minior-C" / "Minior-Red" …) — and each copy was
+   half-broken, because the spreadsheet rows carry the stat block with no Abilities and the PDF row
+   carries the Abilities with no Skills. Those are merged down to ONE entry per form now, so this
+   index also answers to a punctuation-free key (folding "Minior (Core)" and "Minior-Core" onto
+   "miniorcore") and to the abbreviations/synonyms the deleted rows used — a sheet saved before the
+   merge still finds its Pokemon. Exact names always win. */
+function speciesKey(s){ return String(s==null?"":s).toLowerCase().replace(/[‘’ʼ`]/g,"'").replace(/[^a-z0-9]/g,""); }
+/* canonical form -> the old spellings that speciesKey alone can't reach (abbreviation or synonym).
+   Punctuation variants need no entry here; speciesKey already folds those. */
+const SPECIES_ALIASES = {
+  "Basculegion Female":"basculegionf", "Basculegion Male":"basculegionm", "Calyrex Ice":"calyrexi",
+  "Calyrex Shadow":"calyrexs", "Darmanitan":"darmanitans darmanitanstandard", "Darmanitan Galarian":"darmanitansgalarian darmanitanstandardgalarian",
+  "Darmanitan Zen":"darmanitanz", "Darmanitan Zen Galarian":"darmanitanzgalarian", "Deoxys":"deoxysn deoxysnormal",
+  "Deoxys Attack":"deoxysa", "Deoxys Defense":"deoxysd", "Deoxys Speed":"deoxyss", "Dialga Origin":"dialgao",
+  "Eiscue Ice":"eiscuei", "Eiscue Noice":"eiscuen", "Enamorus Incarnate":"enamorusi", "Enamorus Therian":"enamorust",
+  "Giratina Altered":"giratinaa", "Giratina Origin":"giratinao", "Hoopa":"hoopab hoopabound hoopac hoopacon hoopaconfined",
+  "Hoopa Unbound":"hoopau hoopaun", "Indeedee Female":"indeedeef", "Indeedee Male":"indeedeem", "Kyurem Black":"kyuremz kyuremzekrom",
+  "Kyurem White":"kyuremr kyuremreshiram", "Landorus Incarnate":"landorusi", "Landorus Therian":"landorust",
+  "Lycanroc Dusk":"lycanrocdu", "Lycanroc Midday":"lycanrocda lycanrocday", "Lycanroc Midnight":"lycanrocn lycanrocnight",
+  "Meloetta Aria":"meloettaa", "Meloetta Pirouette":"meloettap meloettas meloettastep", "Minior Core":"miniorblue miniorc miniorgreen miniorindigo miniororange miniorred miniorviolet minioryellow",
+  "Minior Meteor":"miniorm miniorredmeteor", "Necrozma Dawn":"necrozmada", "Necrozma Dusk":"necrozmadu",
+  "Nidoran Female":"nidoranf", "Nidoran Male":"nidoranm", "Oricorio Baile":"oricoriob", "Oricorio Pa'u":"oricoriopa",
+  "Oricorio Pom-Pom":"oricoriopo", "Oricorio Sensu":"oricorios", "Palkia Origin":"palkiao", "Raticate Alolan":"raticatea raticatealola",
+  "Rattata Alolan":"rattataa rattataalola", "Rotom":"rotomn rotomnormal", "Rotom Fan":"rotomfn",
+  "Rotom Frost":"rotomfr", "Rotom Heat":"rotomh", "Rotom Mow":"rotomm", "Rotom Wash":"rotomw", "Shaymin":"shayminl shayminland",
+  "Shaymin Sky":"shaymins", "Thundurus Incarnate":"thundurusi", "Thundurus Therian":"thundurust",
+  "Tornadus Incarnate":"tornadusi", "Tornadus Therian":"tornadust", "Urshifu Rapid Strike":"urshifur urshifurapid",
+  "Urshifu Single Strike":"urshifus urshifusingle", "Wishiwashi School":"wishiwashisc wishiwashitol",
+  "Wishiwashi Solo":"wishiwashismol wishiwashiso", "Wormadam Plant":"wormadamp", "Wormadam Sand":"wormadams wormadamsandy",
+  "Wormadam Trash":"wormadamt", "Zacian":"zacianh zacianhero", "Zacian Crowned":"zacianc", "Zamazenta":"zamazentah zamazentahero",
+  "Zamazenta Crowned":"zamazentac", "Zygarde":"zygarde50", "Zygarde Complete":"zygardec",
+};
+class SpeciesIndex extends Map {
+  get(name){
+    const k = String(name==null?"":name).toLowerCase();
+    if(!k) return undefined;
+    return super.get(k) || super.get(speciesKey(k));
+  }
+}
+const speciesByName  = new SpeciesIndex(D.species.map(s => [s.name.toLowerCase(), s]));
+/* loose keys are only added where nothing exact claimed them — `has` is left exact on purpose */
+const addSpeciesKey = (k, s) => { if(k && s && !speciesByName.has(k)) speciesByName.set(k, s); };
+D.species.forEach(s => addSpeciesKey(speciesKey(s.name), s));
+Object.entries(SPECIES_ALIASES).forEach(([real, keys]) =>
+  keys.split(" ").forEach(k => addSpeciesKey(k, speciesByName.get(real))));
 /* ---- Move lookup, spelling-tolerant ----
    The two data sources disagree about Move names. The Fancy sheet (moves.json) writes "Bubblebeam"
    and "Solar Beam"; the Pokédex PDF the species movelists come from writes "Bubble Beam" and
@@ -1587,9 +1663,11 @@ function applyEndScene(c){
   // Stages an active source is still applying (a Burn, weather, an Aura, worn armour) are left to
   // that source — resetManualCS only zeroes p.cs, and csAutoMods puts the rest back on its own.
   resetManualCS(c.trainer); clearSceneStatuses(c.trainer);
+
   (c.pokemon||[]).forEach(p => { normPokemon(p); p.tempHP = 0; p.buffs = []; resetUses(p, "scene");
     resetManualCS(p); clearSceneStatuses(p);
     if(p.mega) megaRevert(p,true);
+    shieldsDownRevert(p);                // Shields Down: back to Meteor Forme out of combat, if not Bruised
     transformRevert(p,true); });         // buffs are combat-duration → clear (#2); Mega and Transform both end with the Scene
 }
 /* apply Extended Rest to one character object (heal HP & 1 Injury, restore AP & all uses) */
@@ -1607,8 +1685,10 @@ function applyEndDay(c){
     transformRevert(p,true);              // "lasts until ... the end of the encounter"
     p.tempHP = 0; p.buffs = []; resetUses(p, "all"); resetManualCS(p); clearStorageDigestion(p);
     p.statuses = [];                      // cure all Status afflictions on the whole party too
+
     p.injuries = Math.max(0, (p.injuries||0) - 1);
     p.currentHP = pokeDerived(p).maxHP;   // heal to full (already capped by remaining Injuries)
+    shieldsDownRevert(p);                 // …and a patched-up Minior pulls its shell back on
   });
 }
 /* the cloud rows a GM's rest affects: every PLAYER's sheet (not the GM's own characters, not the PC) */
@@ -1720,6 +1800,8 @@ function normPokemon(p){
   if(!Array.isArray(p.pokeEdges)) p.pokeEdges = [];   // Poké Edges bought with Tutor Points
   if(!Array.isArray(p.tpLog)) p.tpLog = [];           // every Tutor Point in or out, oldest first (see tpChange)
   tpSync(p);   // level (or a points-granting Poké Edge) went up while nobody was looking → credit it now
+
+  if(isMinior(p)) miniorColor(p);                // roll this Minior's Core Forme colour once, and keep it
   normSwarm(p);                                  // Swarm Template block, if this is a swarm (Core p.478)
   normBoss(p);                                     // Boss Template block, if this is a boss (Running the Game p.487)
   autoAllocMom(p);                                 // "Mom?": keep auto-assigned stat points in sync with level
@@ -1826,7 +1908,9 @@ const EMPTY_CHAR = { id:"none", name:"", trainer:newTrainer(), pokemon:[] };
 /* cloud-sync state (see Cloud module near the end) */
 const CLOUD_CFG = window.PTU_CLOUD || {};
 let mode = "local";                 // "local" | "cloud"
+
 const cloud = { client:null, campaign:"", userId:"", name:"", isGM:false, viewer:false,
+                tabId: uid(),   // per-TAB id — two tabs of the same account still mirror each other's drags
                 byId:{}, activeId:null, sub:null, lastSaveTs:0, saveTimer:null, pc:null,
                 inflight:{},    // rowId → count of in-flight CAS writes (defer realtime while >0)
                 opsRpc:null,    // null = untested, true = server supports field-level patches, false = fall back
@@ -2118,8 +2202,15 @@ function attachArtFallback(img, srcs){
    Megas, Vulpoxen, …) are known to have no pokemondb artwork, so they go straight to the bucket
    instead of spending a doomed hotlink request first — and they still render if that request is
    blocked or hangs rather than cleanly 404ing, which an error-only fallback can't recover from. */
+
 function speciesArtChain(name, shiny){
   if(!name) return [POKEBALL_SVG];
+  // "Minior Blue Core" & co. aren't species — they're what monLookName calls a cracked-open Minior
+  const mi = /^Minior ([A-Za-z]+) Core$/.exec(name);
+  if(mi && MINIOR_ART[mi[1]]){
+    const art = n => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${n}${MINIOR_ART[mi[1]]}.png`;
+    return [art(shiny?"shiny/":""), art(""), spriteUrl(MINIOR_CORE, shiny)];
+  }
   const bucket = speciesArtUrls(name, shiny);
   // main directory first so a species keeps working once its art is promoted out of staging; the
   // staging copy is only reached when the main one 404s, and there's no staging path for shinies
@@ -2512,15 +2603,16 @@ function damageHealRow(getHP, setHP, owner){
         n = -applied;
       }
     }
+
     if(n < 0 && owner && illBreak.checked) breakIllusion(owner, "hit by a damaging Move");
     const oldHP = getHP();
-    if(owner){ applyAutoInjury(owner, oldHP, oldHP+n); applyAutoKO(owner, oldHP, oldHP+n); }
+    if(owner){ applyAutoInjury(owner, oldHP, oldHP+n); applyAutoKO(owner, oldHP, oldHP+n); applyShieldsDown(owner, oldHP+n); }
     setHP(oldHP + n);
   };
   // ± one Tick of HP (1/10 max) — direct HP change, no DR (Ticks are fixed chunks)
   const tickApply = sign => {
     const t = hpTick(ownerMaxHP(owner)); const oldHP = getHP(); const n = sign*t;
-    if(owner){ applyAutoInjury(owner, oldHP, oldHP+n); applyAutoKO(owner, oldHP, oldHP+n); }
+    if(owner){ applyAutoInjury(owner, oldHP, oldHP+n); applyAutoKO(owner, oldHP, oldHP+n); applyShieldsDown(owner, oldHP+n); }
     setHP(oldHP + n);
   };
   box.addEventListener("keydown", e=>{ if(e.key==="Enter") apply(); });
@@ -3096,6 +3188,31 @@ function applyAutoKO(owner, oldHP, newHP){
     return "up";
   }
   return null;
+}
+
+
+/* ---------- Shields Down: the Meteor ⇄ Core swap (see MINIOR_COLORS up top) ----------
+   Rides along at every HP setter beside applyAutoInjury/applyAutoKO, so a Minior cracks open the
+   moment a hit brings it to half HP or less, wherever that HP came from — the sheet, the Encounters
+   tab or a Map token. Like its neighbours it never save()s; the caller owns the store. */
+function shieldsDown(p){ return isMinior(p) && hasAbility(p, "Shields down"); }
+function applyShieldsDown(owner, newHP){
+  if(!shieldsDown(owner) || typeof newHP !== "number") return null;
+  const max = ownerMaxHP(owner);
+  if(!max || newHP > max*0.5) return null;                 // not Bruised
+  if(owner.species !== MINIOR_METEOR) return null;          // already cracked open
+  owner.species = MINIOR_CORE;
+  toast(`💥 Shields Down — ${ownerLabel(owner)}'s shell shatters into its ${miniorColor(owner).toLowerCase()} Core Forme!`);
+  return "core";
+}
+/* "…returns to Meteor Forme while outside of combat if not Bruised" — run at End Scene / End Day,
+   after any healing, so a Minior that walked away hurt stays cracked until it is patched up. */
+function shieldsDownRevert(p){
+  if(!shieldsDown(p) || p.species !== MINIOR_CORE) return false;
+  const max = ownerMaxHP(p), hp = p.currentHP==null ? max : p.currentHP;
+  if(!max || hp <= max*0.5) return false;
+  p.species = MINIOR_METEOR;
+  return true;
 }
 
 /* A Move's Damage Base as this sheet actually rolls it. Most Moves just use the printed number, but
@@ -10618,7 +10735,9 @@ function alwaysCrits(m){
    threshold. Compared against the natural (un-modified) Accuracy die. */
 function critThreshold(p, m){
   let t = 20;
-  const own = /critical hit (?:range )?(?:is |on )?(\d{1,2})[+-]/i.exec(m?.effect || "");
+  // "…is a Critical Hit on a 19+" / "on an 18+" — the article is optional (Ceaseless Edge, Dire
+  // Claw, Esper Wing, Stone Axe print it; Slash, Stone Edge, Karate Chop et al. don't).
+  const own = /critical hit (?:range )?(?:is |on )?(?:an? )?(\d{1,2})[+-]/i.exec(m?.effect || "");
   if(own) t = Math.min(t, +own[1]);
   if(alwaysCrits(m)) return 2;   // guaranteed crit — nothing below can widen it further
   // Super Luck: crits on 18-20; if the Move already has an extended range, widen it by 2 instead.
@@ -13733,6 +13852,105 @@ function encRandomize(p){
   p.shiny = (roll===1);
   encSpreadStats(p);
 }
+/* ===================================================================
+   RANDOM WILD ENCOUNTERS  (area tables)
+   An area lists what actually lives there, split in two:
+     - common : the everyday sightings. The SAME species can fill more
+                than one slot, which is how a pod of three Wingull happens.
+     - rare   : the notable find. At most ONE rare turns up in an encounter,
+                and never a second copy of it.
+   Rolling an area builds a brand-new encounter of `size` Pokemon at a random
+   level inside `levels`, each one statted exactly the way "+ add Pokemon"
+   does it (level-up moveset for its level, a Basic Ability, random
+   nature/gender/shiny, random stat spread).
+   To add another area, copy the entry below - nothing else needs touching.
+=================================================================== */
+const ENC_AREAS = [
+  { id:"isles", name:"Pokémon Isles",
+    size:[3,5], levels:[12,16], rareChance:.25,
+    common:["Horsea","Chinchou","Remoraid","Wingull","Buizel","Finneon",
+            "Frillish","Wailmer","Cramorant","Arrokuda"],
+    rare:["Mantyke","Corsola","Skrelp","Clobbopus","Wishiwashi Solo","Dhelmise",
+          "Finizen","Veluza"],
+    combos:[{ when:"Mantyke", with:"Remoraid", becomes:"Mantine" }] },
+];
+const encRandInt = (lo,hi)=> lo + Math.floor(Math.random()*(hi-lo+1));
+const encPickOne = arr => arr[Math.floor(Math.random()*arr.length)];
+function encShuffle(arr){
+  for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; }
+  return arr;
+}
+/* one fully-rolled wild Pokemon - the same treatment addEncounterMon gives a hand-picked
+   one, except the level comes from the caller and the Basic Ability is rolled rather than
+   always being the first one listed. */
+function makeWildMon(name, level){
+  const p=newPokemon(name), sp=getSpecies(name);
+  p.level=level; p.xp=xpForLevel(level); tpSync(p);
+  if(sp){
+    p.moves = speciesLevelupNames(sp, p.level).slice(-6);   // its six most recent level-up moves
+    const basic = sp.abilities?.basic || [];
+    if(basic.length) p.abilities=[encPickOne(basic)];
+  }
+  p.auras = legendaryAurasFor(name); initAuraActive(p);     // nothing on these tables is legendary, but stay honest
+  encRandomize(p);
+  return p;
+}
+/* the roster itself: at most one rare, every other slot common and free to repeat */
+function rollAreaRoster(area){
+  const size = encRandInt(area.size[0], area.size[1]);
+  const names = [];
+  if(area.rare?.length && Math.random() < (area.rareChance ?? .25)) names.push(encPickOne(area.rare));
+  while(names.length < size) names.push(encPickOne(area.common));
+  return applyAreaCombos(area, encShuffle(names));           // shuffled, so the rare is not always listed first
+}
+/* Area combos: a rolled pair that means something in the book. Mantyke evolves by interacting
+   with a Remoraid (Min. Lv 10), so an Isles roll that turns up both is a Mantine that has
+   already found its partner - the Remoraid stays right where it is, still swimming along. */
+function applyAreaCombos(area, names){
+  (area.combos||[]).forEach(c=>{
+    const i = names.indexOf(c.when);
+    if(i>=0 && names.includes(c.with) && getSpecies(c.becomes)) names[i] = c.becomes;
+  });
+  return names;
+}
+/* what counts as "the rare find" when reporting the roll - the table's own rares, plus
+   anything a combo upgraded one of them into */
+function areaRareSet(area){
+  const s = new Set(area.rare||[]);
+  (area.combos||[]).forEach(c=>{ if(s.has(c.when)) s.add(c.becomes); });
+  return s;
+}
+/* build a whole encounter from an area table and switch to it */
+function rollWildEncounter(area){
+  const arr = encList();
+  const seen = arr.filter(e=> String(e.name||"").startsWith(area.name+" — wild")).length;
+  const enc = newEncounter(`${area.name} — wild #${seen+1}`);
+  const names = rollAreaRoster(area);
+  const total = {}; names.forEach(n=> total[n] = (total[n]||0)+1);
+  const nth = {};
+  names.forEach(n=>{
+    const p = makeWildMon(n, encRandInt(area.levels[0], area.levels[1]));
+    // A/B/C suffix when a species fills more than one slot, so three Wingull stay tellable
+    // apart on their cards and on their map tokens
+    if(total[n]>1){ nth[n]=(nth[n]||0)+1; p.nickname = `${getSpecies(n)?.name || n} ${"ABCDEFGH"[nth[n]-1]}`; }
+    enc.mons.push(p);
+  });
+  const rareSet = areaRareSet(area);
+  const rare = names.find(n=> rareSet.has(n));
+  enc.notes = `🎲 Rolled from the ${area.name} table — ${names.length} Pokémon, Lv ${area.levels[0]}-${area.levels[1]}.\n`
+            + (rare ? `Rare sighting: ${rare}.` : "No rare this time — all common.");
+  arr.push(enc); state.activeEncounterId = enc.id;
+  saveEnc(); renderEncounters();
+  toast(`🎲 ${enc.name}${rare ? ` — ${rare}!` : ""}`);
+}
+/* the 🎲 button: a single area rolls straight away, several offer a pick-list first */
+function openRandomEncounter(){
+  if(!ENC_AREAS.length){ toast("No encounter areas defined"); return; }
+  if(ENC_AREAS.length===1){ rollWildEncounter(ENC_AREAS[0]); return; }
+  openPicker("Roll a wild encounter", ENC_AREAS.map(a=>a.name), name=>{
+    const a = ENC_AREAS.find(x=>x.name===name); if(a) rollWildEncounter(a);
+  });
+}
 /* send an encounter Pokémon to the shared PC (i.e. it's been caught) and remove it from the field */
 async function sendEncMonToPC(enc, p, list){
   if(mode!=="cloud"){ toast("Join the campaign (☁ cloud) to send Pokémon to the shared PC"); return; }
@@ -14669,6 +14887,7 @@ function renderEncounters(){
   sel.addEventListener("change",()=>{ state.activeEncounterId=sel.value; saveEnc(); renderEncounters(); });
   leftc.append(sel);
   leftc.append(el("button",{class:"btn ghost",onclick:()=>{ const n=prompt("Encounter name:","New Encounter"); if(n===null)return; const e=newEncounter(n||"New Encounter"); arr.push(e); state.activeEncounterId=e.id; saveEnc(); renderEncounters(); }},"＋ New"));
+  leftc.append(el("button",{class:"btn ghost",title:"roll a random wild encounter from an area table",onclick:openRandomEncounter},"🎲 Random"));
   if(cur){
     leftc.append(el("button",{class:"btn ghost",title:"rename",onclick:()=>{ const n=prompt("Rename encounter:",cur.name); if(n===null)return; cur.name=n; saveEnc(); renderEncounters(); }},"✎"));
     // outline colour for every token this encounter puts on the Map (red by default). Live-updates
@@ -14986,6 +15205,15 @@ function ensureItemDatalist(){
   catalogItems().forEach(x=>dl.append(el("option",{value:x.name})));
   document.body.append(dl);
 }
+
+/* GM-chosen shelf order. The array order is what BOTH this editor and the players' shop popup
+   render, so nudging a row here is what decides what they see first. */
+function moveShopItem(shop, item, dir){
+  const i = shop.items.indexOf(item), j = i + dir;
+  if(i < 0 || j < 0 || j >= shop.items.length) return;
+  shop.items.splice(j, 0, shop.items.splice(i, 1)[0]);
+  saveShops(); renderShops();
+}
 function shopItemRow(shop, item){
   const row = el("div",{class:"shop-edit-row"});
   const pic = el("div",{class:"shop-pic"});
@@ -15028,6 +15256,14 @@ function shopItemRow(shop, item){
   right.append(el("div",{class:"small muted"},"Price $"), price);
   if(book!=null && book!==item.price) right.append(el("button",{class:"linkbtn",title:`reset to the book's $${book}`,
     onclick:()=>{ item.price = book; saveShops(); renderShops(); }},"↺ book"));
+
+  // ▲/▼ reorder the shelf — the order the players browse in
+  const idx = shop.items.indexOf(item);
+  const nudge = (label, dir, ok) => el("button",{class:"linkbtn", disabled:!ok,
+    title: ok ? `move it ${dir<0?"up":"down"} the shelf` : `already at the ${dir<0?"top":"bottom"}`,
+    onclick:()=>moveShopItem(shop, item, dir)}, label);
+  right.append(el("div",{class:"inline",style:"gap:6px;margin-top:2px"},
+    nudge("▲", -1, idx>0), nudge("▼", 1, idx<shop.items.length-1)));
   right.append(el("button",{class:"linkbtn danger",title:"take off the shelf",
     onclick:()=>{ shop.items = shop.items.filter(i=>i!==item); saveShops(); renderShops(); }},"× remove"));
 
@@ -15124,10 +15360,13 @@ function renderShops(){
   catSel.addEventListener("change",()=>{ const c=catSel.value; catSel.value=""; stockWholeCategory(cur, c); });
   items.append(el("h3",{},`Items (${cur.items.length})`, el("div",{class:"inline",style:"gap:8px"},
     catSel,
+
     el("button",{class:"linkbtn h-act",onclick:()=>openShopItemPicker(cur)},"+ from catalog"),
-    el("button",{class:"linkbtn h-act",onclick:()=>{ cur.items.push(normShopItem({name:"",price:0})); saveShops(); renderShops(); }},"+ custom"))));
+    el("button",{class:"linkbtn h-act",onclick:()=>{ cur.items.push(normShopItem({name:"",price:0})); saveShops(); renderShops(); }},"+ custom"),
+    el("button",{class:"linkbtn h-act",title:"sort the whole shelf alphabetically — you can still nudge rows afterwards",
+      onclick:()=>{ cur.items.sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""))); saveShops(); renderShops(); }},"A→Z"))));
   items.append(el("div",{class:"small muted",style:"margin:-4px 0 8px"},
-    "Prices default to the book’s and stay editable. Real game items get their picture automatically — use 📷 own for anything that doesn’t, or to override one."));
+    "Prices default to the book’s and stay editable. Real game items get their picture automatically — use 📷 own for anything that doesn’t, or to override one. ▲/▼ set the order players browse in."));
   if(!cur.items.length) items.append(el("span",{class:"muted small"},
     "empty — add items from the catalog (they come priced from the book) or write your own."));
   cur.items.forEach(it=> items.append(shopItemRow(cur, it)));
@@ -18873,7 +19112,9 @@ async function cloudConnect(campaign, name, gmCode, silent, viewer){
 }
 function cloudDisconnect(){
   announceShopView("", true);  // don't leave a "still shopping" flag behind for the GM to chase
+
   if(cloud.sub){ try{ cloud.client.removeChannel(cloud.sub); }catch(e){} cloud.sub=null; }
+  clearDragGhosts(false);      // no peers to mirror any more
   mode="local"; localStorage.removeItem("ptu_cloud_session");
   cloud.isGM=false; cloud.viewer=false;
   cloud.pc=null; cloud.mapMeta=null; cloud.mapTokens=null; cloud.enc=null; cloud.shops=null; cloud.rolls=null;
@@ -18883,10 +19124,13 @@ function cloudDisconnect(){
 function subscribeRealtime(){
   if(cloud.sub){ try{ cloud.client.removeChannel(cloud.sub); }catch(e){} }
   cloud.subStatus = "CONNECTING"; cloud.lastEvent = Date.now();
+
   cloud.sub = cloud.client.channel("sheets-"+cloud.campaign)
     .on("postgres_changes",
         { event:"*", schema:"public", table:"sheets", filter:`campaign=eq.${cloud.campaign}` },
         onRealtime)
+    // live token movement — a pure websocket message, never a row write (see broadcastDrag)
+    .on("broadcast", { event:"tokdrag" }, msg => onDragBroadcast(msg && msg.payload))
     // Track the socket's health. A websocket that quietly died (sleeping laptop, phone switching
     // from wifi to data, a proxy dropping an idle connection) used to leave the tab looking connected
     // while receiving nothing — every change made by anyone else was invisible until a manual reload.
@@ -19519,7 +19763,73 @@ function renderPC(){
    or be STANDALONE (encounter monster / custom) with its own HP.
 =================================================================== */
 let mapView = { scale:1, panX:0, panY:0 };   // each viewer's own camera (not synced)
+
 let mapDragging = false;                      // suppresses realtime re-render mid-drag
+let mapDraggingIds = new Set();               // tokens THIS viewer has hold of (never ghosted, see live drag)
+/* ---- live token movement across the table ----------------------------------------------------
+   A drag used to be invisible to everyone else until it was let go, because the only thing that
+   travels is the `mapTokensSave()` write on release. The position is now also mirrored while the
+   finger is still down — over Realtime BROADCAST, which is a websocket message and nothing else:
+   no row write, no SELECT, no Storage read, so it costs neither database writes nor the egress
+   that already bit this campaign once. It is deliberately cheap:
+
+     • only fires while a drag is actually moving (an idle hold sends nothing),
+     • hard-capped at DRAG_BCAST_MS, well under a frame, and it never queues up behind itself,
+     • the payload is a couple of dozen bytes — token ids and cell coordinates, nothing else,
+     • receivers just nudge the DOM node that is already on screen. No re-render, no data written:
+       a ghost position is never saved, so it cannot fight or corrupt the real sync,
+     • it goes silent the moment the socket is unhealthy, and any ghost with nothing keeping it
+       alive is dropped after DRAG_GHOST_TTL so a closed tab can't strand a token mid-air.
+
+   The authoritative position still arrives the old way, on release. This is purely the picture. */
+const DRAG_BCAST_MS = 50;        // ≤20 messages/second per dragger
+const DRAG_GHOST_TTL = 2500;     // drop a ghost this long after its last update
+let dragGhosts = new Map();      // tokenId → {node, visX0, visY0, x0, y0} — a peer's in-flight drag
+let dragGhostTimer = 0;
+function liveDragOn(){ return mode==="cloud" && cloud.sub && cloud.subStatus==="SUBSCRIBED"; }
+/* mirror the tokens this viewer is dragging to everyone else on the map */
+
+function broadcastDrag(mapId, moves, end){
+  if(!liveDragOn() || !moves.length) return;
+  try{
+    cloud.sub.send({ type:"broadcast", event:"tokdrag", payload:{
+      from: cloud.tabId, map: mapId, end: !!end,
+      t: moves.map(m => [m.id, +m.x.toFixed(2), +m.y.toFixed(2)]) } });
+  }catch(e){}                    // a dropped socket must never break the drag itself
+}
+function clearDragGhosts(rerender){
+  if(!dragGhosts.size) return;
+  dragGhosts.clear();
+  if(dragGhostTimer){ clearTimeout(dragGhostTimer); dragGhostTimer = 0; }
+  if(rerender && currentTab==="map") renderMap();   // fall back to the stored positions
+}
+function onDragBroadcast(msg){
+  if(!msg || msg.from===cloud.tabId || !Array.isArray(msg.t)) return;
+  if(currentTab!=="map") return;
+
+  const map = currentMapForView(); if(!map || map.id!==msg.map) return;
+  const px = map.gridSize;
+  msg.t.forEach(([id, x, y])=>{
+    if(mapDraggingIds.has(id)) return;                        // this viewer has hold of it themselves
+    const node = document.querySelector(`#view-map .map-token[data-tid="${id}"]`);
+    if(!node){ dragGhosts.delete(id); return; }
+    let g = dragGhosts.get(id);
+    // re-anchor whenever the board was re-rendered underneath us (the node is a fresh element)
+    if(!g || g.node!==node || !node.isConnected){
+      const t = mapTokensFor(map.id).find(k=>k.id===id); if(!t) return;
+      g = { node, visX0: parseFloat(node.style.left)||0, visY0: parseFloat(node.style.top)||0,
+            x0: t.x, y0: t.y };
+      dragGhosts.set(id, g);
+    }
+    // same arithmetic the dragger's own screen uses, so a rider stays perched on its mount
+    node.style.left = (g.visX0 + (x-g.x0)*px)+"px";
+    node.style.top  = (g.visY0 + (y-g.y0)*px)+"px";
+  });
+  if(dragGhostTimer) clearTimeout(dragGhostTimer);
+  // on release the real position is already on its way over postgres_changes — just stop ghosting
+  if(msg.end) dragGhosts.clear();
+  else dragGhostTimer = setTimeout(()=>clearDragGhosts(true), DRAG_GHOST_TTL);
+}
 let mapGmView = null;                         // map id the GM is privately viewing (not synced)
 /* Multi-token selection, for dragging several tokens as one group ("move all the players at
    once"). Per-viewer, not synced to peers, scoped to one map — dragging always resolves the
@@ -19596,8 +19906,18 @@ function currentMapForView(){
   return meta.maps.find(m=>m.id===meta.playerMapId) || null;
 }
 function mapTokensFor(mapId){ return (cloud.mapTokens?.data?.byMap?.[mapId]) || []; }
-/* revealed fog cells for a map, as a live Set of "x,y" keys */
-function fogSet(mapId){ return new Set((cloud.mapTokens?.data?.fog?.[mapId]) || []); }
+
+/* Revealed fog cells for a map, as a Set of "x,y" keys — cached per (map, array identity, length).
+   A big, well-explored board holds tens of thousands of keys and this is read on every fog draw,
+   every token visibility test and every frame of a drag; rebuilding the Set each time was a large
+   slice of the lag on huge maps. Treat the result as READ-ONLY — add cells with fogReveal(). */
+let fogCache = { id:null, arr:null, len:-1, set:null };
+function fogSet(mapId){
+  const arr = (cloud.mapTokens?.data?.fog?.[mapId]) || [];
+  if(fogCache.id===mapId && fogCache.arr===arr && fogCache.len===arr.length) return fogCache.set;
+  fogCache = { id:mapId, arr, len:arr.length, set:new Set(arr) };
+  return fogCache.set;
+}
 
 /* find an encounter monster (in mons or a trainer's party) by id, across the cloud/local list */
 function encMonById(encId, monId){
@@ -20128,17 +20448,21 @@ async function setTokenHP(token, val){
     }
     const encMax = kind==="enctrainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
     const oldHP = obj.currentHP||0, newHP = Math.max(-99, Math.min(encMax, val|0));
+
     applyAutoInjury(obj, oldHP, newHP);            // map-side HP edits get the same auto-injury check
     applyAutoKO(obj, oldHP, newHP);                // …and drop/lift Knocked Out with the HP
+    applyShieldsDown(obj, newHP);                  // …and crack a Minior's shell open at half HP
     obj.currentHP = newHP;
     paintTokenHP(token, true);
     saveEnc(); return;                            // debounced cloud write
   }
   if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; }
   const max = kind==="trainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
+
   const oldHP = obj.currentHP||0, newHP = Math.max(-99, Math.min(max, val|0));
   applyAutoInjury(obj, oldHP, newHP);
   applyAutoKO(obj, oldHP, newHP);
+  applyShieldsDown(obj, newHP);
   obj.currentHP = newHP;
   paintTokenHP(token);
   cloudSaveRow(row);                              // debounced write of the real sheet; realtime syncs the owner
@@ -20295,24 +20619,62 @@ function revealDisc(set, cx, cy, r){
   for(let dx=-ri; dx<=ri; dx++) for(let dy=-ri; dy<=ri; dy++)
     if(dx*dx+dy*dy <= rr) set.add((cx+dx)+","+(cy+dy));
 }
-/* reveal discs around every cell of a token's footprint */
+
+/* Reveal every cell within r of a token's footprint rectangle (cx..cx+span, cy..cy+span).
+   One sweep over the bounding box measuring distance to the NEAREST footprint cell — the old
+   version ran a whole disc per footprint cell, i.e. O(span²·r²) adds, which got painful once the
+   radius cap was lifted (a radius-60 Gyarados was ~9M Set writes per drag frame). Same result. */
 function revealFootprint(set, cx, cy, span, r){
-  for(let fx=cx; fx<=cx+span; fx++) for(let fy=cy; fy<=cy+span; fy++) revealDisc(set, fx, fy, r);
+  const ri = Math.ceil(r), rr = (r+0.35)*(r+0.35), x1 = cx+span, y1 = cy+span;
+  for(let x=cx-ri; x<=x1+ri; x++){
+    const dx = x<cx ? cx-x : (x>x1 ? x-x1 : 0);
+    const rest = rr - dx*dx;
+    if(rest < 0) continue;
+    for(let y=cy-ri; y<=y1+ri; y++){
+      const dy = y<cy ? cy-y : (y>y1 ? y-y1 : 0);
+      if(dy*dy <= rest) set.add(x+","+y);
+    }
+  }
 }
+
 function mapFogData(){ ensureMapTokens(); return cloud.mapTokens.data.fog || (cloud.mapTokens.data.fog={}); }
-function revealAroundTokens(map){
+/* Add revealed cells to a map's fog list IN PLACE, and keep the cached Set coherent. Appending
+   rather than rebuilding the array matters twice over: diffOps ships an append as one tiny
+
+   {a:[…]} op instead of re-sending the whole (huge) cell list, and the old
+   `new Set(arr)` → mutate → `[…set]` round trip was O(cells explored) on EVERY revealed step of
+   a drag. Returns null when nothing was dark, else the cell bounding box of what just opened up —
+   which is all drawFog then has to repaint. */
+function fogReveal(map, cells){
   const fogData = mapFogData();
-  const set = new Set(fogData[map.id] || []);
-  const r = Math.max(1, map.fogRadius||3);
-  mapTokensFor(map.id).forEach(t=>{ if(tokenReveals(t)) revealFootprint(set, Math.round(t.x), Math.round(t.y), (t.size||1)-1, r); });
-  fogData[map.id] = [...set];
+  const arr = fogData[map.id] || (fogData[map.id] = []);
+  const set = fogSet(map.id);
+  let box = null;
+  cells.forEach(k=>{
+    if(set.has(k)) return;
+    set.add(k); arr.push(k);
+    const c = k.indexOf(","), x = +k.slice(0,c), y = +k.slice(c+1);
+    if(!box) box = { x0:x, y0:y, x1:x, y1:y };
+    else { if(x<box.x0)box.x0=x; if(x>box.x1)box.x1=x; if(y<box.y0)box.y0=y; if(y>box.y1)box.y1=y; }
+  });
+  if(box && fogCache.arr===arr) fogCache.len = arr.length;   // both halves moved together
+  return box;
+}
+/* the smallest box covering both (either may be null) */
+function fogBoxUnion(a, b){
+  if(!a || !b) return a || b;
+  return { x0:Math.min(a.x0,b.x0), y0:Math.min(a.y0,b.y0), x1:Math.max(a.x1,b.x1), y1:Math.max(a.y1,b.y1) };
+}
+function revealAroundTokens(map){
+  const r = Math.max(1, map.fogRadius||3), cells = new Set();
+  mapTokensFor(map.id).forEach(t=>{ if(tokenReveals(t)) revealFootprint(cells, Math.round(t.x), Math.round(t.y), (t.size||1)-1, r); });
+  return fogReveal(map, cells);
 }
 /* live reveal around a specific cell (used while dragging a token, before it's committed) */
 function revealAtCell(map, cx, cy, span){
-  const fogData = mapFogData();
-  const set = new Set(fogData[map.id] || []);
-  revealFootprint(set, cx, cy, span, Math.max(1, map.fogRadius||3));
-  fogData[map.id] = [...set];
+  const cells = new Set();
+  revealFootprint(cells, cx, cy, span, Math.max(1, map.fogRadius||3));
+  return fogReveal(map, cells);
 }
 async function toggleFog(map){
   map.fogOn = !map.fogOn;
@@ -20321,8 +20683,9 @@ async function toggleFog(map){
   if(map.fogOn) mapTokensSave();      // persist the initial reveal
   renderMap();
 }
+
 async function setFogRadius(map, v){
-  map.fogRadius = Math.max(1, Math.min(20, parseInt(v)||3));
+  map.fogRadius = Math.max(1, parseInt(v)||3);   // no upper cap — huge maps want huge sight lines
   if(map.fogOn){ revealAroundTokens(map); mapTokensSave(); }
   mapMetaSave(); renderMap();
 }
@@ -20336,16 +20699,40 @@ async function resetFog(map){
    originX/Y (from mapStageSize) shift the logical (possibly-negative, e.g. up/left of the canonical
    board) fog cell grid into DOM space — without this, fog only ever covered cells 0..cols/0..rows,
    leaving any area a background image had been dragged into above/left of the old origin unfogged. */
-function drawFog(cv, map, stageW, stageH, originX=0, originY=0){
-  const px = map.gridSize; cv.width = Math.ceil(stageW); cv.height = Math.ceil(stageH);
-  const ctx = cv.getContext("2d"); ctx.clearRect(0,0,cv.width,cv.height);
-  ctx.fillStyle = cloud.isGM ? "rgba(8,10,14,0.5)" : "#0a0c10";
-  const set = fogSet(map.id);
+
+/* The bitmap is ONE PIXEL PER GRID CELL and CSS-stretched over the stage (image-rendering:pixelated,
+   so cell edges stay hard). Fog is a per-cell grid, so nothing is lost — but a stage-sized bitmap on
+   a big board was ~1 canvas pixel per stage pixel: a 12000×9000 map meant a 108-megapixel buffer
+   (~430 MB) reallocated and repainted on every revealed step of a drag, and anything past the
+   browser's ~16384 px canvas limit failed outright and drew NO fog at all. At cell resolution the
+   same map is a 375×282 buffer. Rows are painted as merged runs, so unexplored ground costs one
+   fillRect per row rather than one per cell. */
+
+function drawFog(cv, map, stageW, stageH, originX=0, originY=0, box=null){
+  const px = map.gridSize;
   const minCellX = -Math.round(originX/px), minCellY = -Math.round(originY/px);
   const cols = Math.ceil(stageW/px), rows = Math.ceil(stageH/px);
-  for(let x=0;x<cols;x++) for(let y=0;y<rows;y++){
-    const cx=minCellX+x, cy=minCellY+y;
-    if(!set.has(cx+","+cy)) ctx.fillRect(x*px, y*px, px, px);
+  const ctx = cv.getContext("2d");
+  const sized = cv.width===cols && cv.height===rows;
+  if(!sized){ cv.width=cols; cv.height=rows; box=null; }   // a resize clears the bitmap → full repaint
+  // stretch back over whole cells (cols*px, not stageW) so the fog grid lines up with the map grid
+  cv.style.width = (cols*px)+"px"; cv.style.height = (rows*px)+"px";
+  ctx.imageSmoothingEnabled = false;
+  // Revealing only ever REMOVES cover, so when the caller says which cells just changed we repaint
+  // that box alone. That is what keeps a drag cheap on a huge board: one step costs the reveal
+  // radius, not the whole 600×470-cell island.
+  const cx0 = box ? Math.max(0, box.x0-minCellX) : 0, cy0 = box ? Math.max(0, box.y0-minCellY) : 0;
+  const cx1 = box ? Math.min(cols, box.x1-minCellX+1) : cols, cy1 = box ? Math.min(rows, box.y1-minCellY+1) : rows;
+  ctx.clearRect(cx0, cy0, cx1-cx0, cy1-cy0);
+  ctx.fillStyle = cloud.isGM ? "rgba(8,10,14,0.5)" : "#0a0c10";
+  const set = fogSet(map.id);
+  for(let y=cy0;y<cy1;y++){
+    let run = -1;
+    for(let x=cx0;x<=cx1;x++){
+      const dark = x<cx1 && !set.has((minCellX+x)+","+(minCellY+y));
+      if(dark){ if(run<0) run = x; }
+      else if(run>=0){ ctx.fillRect(run, y, x-run, 1); run = -1; }
+    }
   }
 }
 
@@ -20446,16 +20833,25 @@ function aoeCells(map, token, shape, size, dir){
   }
   return set;
 }
+
+/* An AoE covers a handful of cells, so the canvas is sized to THEIR bounding box and positioned
+   there — a stage-sized buffer was pure waste on a big map, and past the browser's canvas limit it
+   drew nothing at all. Cell outlines need real resolution, so this one stays at stage scale. */
 function drawAoE(cv, map, stageW, stageH, originX=0, originY=0){
-  const px = map.gridSize; cv.width = Math.ceil(stageW); cv.height = Math.ceil(stageH);
-  const ctx = cv.getContext("2d"); ctx.clearRect(0,0,cv.width,cv.height);
-  if(!mapAoE) return;
-  const token = mapTokensFor(map.id).find(t=>t.id===mapAoE.tokenId); if(!token) return;
-  const cells = aoeCells(map, token, mapAoE.shape, mapAoE.size, mapAoE.dir);
+  const px = map.gridSize;
+  const token = mapAoE && mapTokensFor(map.id).find(t=>t.id===mapAoE.tokenId);
+  const cells = token ? aoeCells(map, token, mapAoE.shape, mapAoE.size, mapAoE.dir) : new Set();
+  if(!cells.size){ cv.width = cv.height = 0; return; }
+  let x0=Infinity, y0=Infinity, x1=-Infinity, y1=-Infinity;
+  const pts = [...cells].map(k=>{ const [x,y]=k.split(",").map(Number);
+    if(x<x0)x0=x; if(y<y0)y0=y; if(x>x1)x1=x; if(y>y1)y1=y; return [x,y]; });
+  cv.width = (x1-x0+1)*px; cv.height = (y1-y0+1)*px;
+  cv.style.left = (x0*px+originX)+"px"; cv.style.top = (y0*px+originY)+"px";
+  const ctx = cv.getContext("2d");
   ctx.fillStyle = "rgba(245,166,35,0.32)"; ctx.strokeStyle = "rgba(245,166,35,0.9)";
   ctx.lineWidth = Math.max(1, px*0.05);
-  cells.forEach(k=>{ const [x,y]=k.split(",").map(Number);
-    ctx.fillRect(x*px+originX, y*px+originY, px, px); ctx.strokeRect(x*px+originX+0.5, y*px+originY+0.5, px-1, px-1); });
+  pts.forEach(([x,y])=>{ const dx=(x-x0)*px, dy=(y-y0)*px;
+    ctx.fillRect(dx, dy, px, px); ctx.strokeRect(dx+0.5, dy+0.5, px-1, px-1); });
 }
 function startAoE(token, shape, size){ mapAoE = { tokenId:token.id, shape, size:size||1, dir:"E" }; renderMap(); }
 function clearAoE(){ mapAoE = null; renderMap(); }
@@ -21165,8 +21561,11 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
     // actually spending movement
     const anchor = ctx.find(c=>c.t===mountBase(map.id, token)) || ctx.find(c=>c.t===token) || ctx[0];
     try{ node.setPointerCapture(ev.pointerId); }catch(e){}
+
+
     const applyDelta = (dxPx, dyPx, commit)=>{
-      let anyRevealed = false;
+      let fogBox = null;
+      const live = [];                      // where each token is right now, for the live mirror
       ctx.forEach(c=>{
         // no lower bound: a token can follow a background image up/left of the canonical origin
         // (same reasoning as attachImageDrag) — logical cell coords (c.t.x/y) can go negative.
@@ -21175,25 +21574,47 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
         c.n.style.left = (c.visX0 + (nx-c.baseX0))+"px"; c.n.style.top = (c.visY0 + (ny-c.baseY0))+"px";
         const cx = Math.round((nx-originX)/px), cy = Math.round((ny-originY)/px);
         if(map.gridOn && (cx!==c.pathX || cy!==c.pathY)){ c.segMoved += tileCost(c.pathX,c.pathY,cx,cy); c.pathX=cx; c.pathY=cy; }
+
+        // the logical square it would land on if it were let go here — what peers are shown
+        live.push({ id:c.t.id, x: map.gridOn?cx:(nx-originX)/px, y: map.gridOn?cy:(ny-originY)/px });
         if(commit){
           if(map.gridOn){ c.t.x=c.pathX; c.t.y=c.pathY; } else { c.t.x=(nx-originX)/px; c.t.y=(ny-originY)/px; }
           if(trackMove && !isShopToken(c.t) && !c.carried) c.t.moved = c.alreadyMoved + c.segMoved;
         }
+
+        // only a cell that was actually still dark needs the fog canvas repainted — walking back
+        // over ground you already explored now costs nothing
+
         if(liveFog && tokenReveals(c.t) && (cx!==c.lastRevealX || cy!==c.lastRevealY)){
-          c.lastRevealX=cx; c.lastRevealY=cy; revealAtCell(map, cx, cy, (c.t.size||1)-1); anyRevealed=true;
+          c.lastRevealX=cx; c.lastRevealY=cy;
+          fogBox = fogBoxUnion(fogBox, revealAtCell(map, cx, cy, (c.t.size||1)-1));
         }
       });
-      if(anyRevealed && fogCanvas) drawFog(fogCanvas, map, stageSize.w, stageSize.h, stageSize.originX, stageSize.originY);
-    };
-    const move = e=>{
-      if(Math.abs(e.clientX-startX)>4 || Math.abs(e.clientY-startY)>4) moved = true;
-      if(!moved || !info.editable) return;
-      if(stackLocked){
-        if(!lockWarned){ lockWarned = true; toast("🐎 Riding a token you can't move — ask the GM"); }
-        return;
+
+      if(fogBox && fogCanvas) drawFog(fogCanvas, map, stageSize.w, stageSize.h, stageSize.originX, stageSize.originY, fogBox);
+
+      // mirror to the other screens — rate-limited, and silent for a hold that isn't going anywhere
+      const key = live.map(m=>m.id+":"+m.x.toFixed(2)+":"+m.y.toFixed(2)).join("|");
+      const now = performance.now();
+      const moved2 = key !== lastLiveKey;
+      if(commit || (moved2 && now-lastLiveAt >= DRAG_BCAST_MS)){
+        lastLiveKey = key; lastLiveAt = now;
+        broadcastDrag(map.id, live, commit);
       }
-      mapDragging = true;
-      applyDelta((e.clientX-startX)/scale, (e.clientY-startY)/scale, false);
+    };
+
+
+    let lastLiveKey = "", lastLiveAt = 0;
+    /* Paint at most once per animation frame. Pointermove fires far more often than the screen
+       refreshes (120+/s on a high-refresh display, and the browser delivers coalesced bursts), and
+       each pass moves every token in the stack and can repaint the fog — doing that per EVENT
+       rather than per FRAME is what makes a big board feel sticky under the finger. */
+    let rafId = 0, pendingPt = null;
+    const paint = ()=>{
+      rafId = 0;
+      const p = pendingPt; pendingPt = null;
+      if(!p) return;
+      applyDelta((p.x-startX)/scale, (p.y-startY)/scale, false);
       if(map.gridOn && !isShopToken(token) && !isBoatToken(token)){   // no distance readout for scenery
         if(!badge){ badge = el("div",{class:"tk-move"}); node.append(badge); }
         const n = ctx.length>1 ? `${ctx.length} tokens · ` : "";
@@ -21204,11 +21625,30 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
         } else badge.textContent = `${n}${anchor.segMoved}m`;
       }
     };
+    const move = e=>{
+      if(Math.abs(e.clientX-startX)>4 || Math.abs(e.clientY-startY)>4) moved = true;
+      if(!moved || !info.editable) return;
+      if(stackLocked){
+        if(!lockWarned){ lockWarned = true; toast("🐎 Riding a token you can't move — ask the GM"); }
+        return;
+      }
+
+      mapDragging = true;
+      // claim these tokens so a peer's live-drag mirror can never tug them out from under us
+      ctx.forEach(c=>mapDraggingIds.add(c.t.id));
+      pendingPt = { x:e.clientX, y:e.clientY };
+      if(!rafId) rafId = requestAnimationFrame(paint);
+    };
     const up = async e=>{
       try{ node.releasePointerCapture(ev.pointerId); }catch(err){}
       node.removeEventListener("pointermove", move);
       node.removeEventListener("pointerup", up);
+      // the commit below re-applies the final position anyway, so drop any frame still queued
+      if(rafId){ cancelAnimationFrame(rafId); rafId = 0; }
+      pendingPt = null;
+
       if(badge) badge.remove();
+      ctx.forEach(c=>mapDraggingIds.delete(c.t.id));
       if(!moved){
         mapDragging=false;
         if(mounting) mountTapToken(token, map);
@@ -22300,6 +22740,12 @@ function attachPanZoom(viewport, stage){
     if(pts.size===2) beginPinch();
     else if(pts.size===1) beginPan(vpXY(ev));
   });
+
+  /* same once-per-frame coalescing as the token drag: panning a big stage re-composites the whole
+     board, so running it on every pointermove just queues up work the screen never shows */
+  let camRaf = 0;
+  const camera = ()=>{ camRaf = 0; applyMapCamera(stage); };
+  const queueCamera = ()=>{ if(!camRaf) camRaf = requestAnimationFrame(camera); };
   viewport.addEventListener("pointermove", ev=>{
     if(!pts.has(ev.pointerId)) return;
     pts.set(ev.pointerId, vpXY(ev));
@@ -22309,19 +22755,22 @@ function attachPanZoom(viewport, stage){
       const next = clampScale(pinch.scale0 * (dist/pinch.dist0));
       const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
       mapView.scale = next;
+
       mapView.panX = mx - pinch.ax*next;      // pin the anchor under the moving midpoint
       mapView.panY = my - pinch.ay*next;
-      applyMapCamera(stage);
+      queueCamera();
     } else if(pan && pts.size===1){
       const p = vpXY(ev);
       mapView.panX = pan.px0 + (p.x-pan.sx);
       mapView.panY = pan.py0 + (p.y-pan.sy);
-      applyMapCamera(stage);
+      queueCamera();
     }
   });
   const endPointer = ev=>{
     if(!pts.delete(ev.pointerId)) return;
     try{ viewport.releasePointerCapture(ev.pointerId); }catch(e){}
+    if(camRaf){ cancelAnimationFrame(camRaf); camRaf = 0; }
+    applyMapCamera(stage);                      // land on the exact final camera, unthrottled
     if(pinch){ pinch = null; settle(); }        // re-rasterize at the zoom it settled on
     // lifting one finger of a pinch should keep panning smoothly from where the other one is,
     // not jump — so re-anchor the pan to the surviving pointer instead of ending the gesture.
@@ -22531,7 +22980,8 @@ function renderMap(){
           title:"Auto-reveals around player tokens; explored areas stay revealed"}, map.fogOn?"🌫 Fog on":"🌫 Fog off"),
       );
       if(map.fogOn){
-        const fr = el("input",{type:"number",min:1,max:20,value:map.fogRadius,style:"width:56px",title:"reveal radius (cells)"});
+
+        const fr = el("input",{type:"number",min:1,value:map.fogRadius,style:"width:56px",title:"reveal radius (cells) — no maximum"});
         fr.addEventListener("change", ()=>setFogRadius(map, fr.value));
         bar.append(el("label",{class:"field",style:"max-width:110px"}, el("span",{},"Fog radius"), fr),
           el("button",{class:"btn-secondary",onclick:()=>resetFog(map)},"Reset fog"));
