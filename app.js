@@ -2471,10 +2471,12 @@ function renderTrainer(){
   const sg = el("div",{class:"statgrid"});
   const giftB = giftStatBonus(t);   // Legendary Gift Patron-Stat points fold into the combat total
   const tagB = statTagBonus(t).stats;   // Feature [+Stat] tags likewise (Core p.14)
+  // the 🎁 breakdown is part of the private Gifts picture — another player sees only the total
+  const showGift = sheetIsMine();
   STATS.forEach(([k,lbl]) => {
     const canInc = t.unlocked || tb.remaining > 0;
     const box = el("div",{class:"stat"},
-      el("div",{class:"lbl"},lbl+(giftB[k]?` +${giftB[k]}🎁`:"")+(tagB[k]?` +${tagB[k]}🏷`:"")),
+      el("div",{class:"lbl"},lbl+(showGift&&giftB[k]?` +${giftB[k]}🎁`:"")+(tagB[k]?` +${tagB[k]}🏷`:"")),
       inputMini(`trainer.combat.${k}.base`,  t.combat[k].base,  "base"),
       statStepper(t.combat[k].added, canInc, v=>{ t.combat[k].added = v; save(); renderTrainer(); }),
       el("div",{class:"big","data-tot":k}, t.combat[k].base + t.combat[k].added + (giftB[k]||0) + (tagB[k]||0)),
@@ -5986,6 +5988,97 @@ const GIFT_GROUPS = [
 const GIFT_CATALOG = GIFT_GROUPS.flatMap(g => g.gifts.map(([tier,name,prereq,effect]) =>
   ({ group:g.group, patrons:g.patrons, tier, name, prereq, effect })));
 function giftByName(name){ return GIFT_CATALOG.find(x=>x.name===name) || null; }
+
+/* ---------- General Legendary Gifts (book pp.53-54) ----------------------------------------------
+   Not tied to any one Patron's species list — they're about living in a world where people carry
+   divine sparks. They still carry the [PATRON STAT] tag (so +1 like any Gift) EXCEPT Giftsapper,
+   which is tagged [+Any Stat] on its own and is taken by someone with NO Patron at all — hence the
+   per-entry `statSpec` override that `giftStatSpec` reads before falling back to the Patron. */
+const GENERAL_GIFTS = [
+  { name:"Gift of Command", prereq:"One Major Gift from your Patron",
+    freq:"Static | 2 AP - Standard Action, Interrupt",
+    effect:"Static: You sense the presence of and can identify those with Gifts coming from your Patron's subservient Pokémon. You know which Gifts someone has from your Patron's subservient Pokémon by looking at them. 2 AP: Target Trainer within 8 meters with a Gift from your Patron's subservient Pokémon has the Gift of your choice from that subservient Pokémon disabled for the next ten minutes.",
+    note:"Hierarchies — Lugia: Articuno, Zapdos, Moltres · Ho-Oh: Entei, Raikou, Suicune · Rayquaza: Groudon, Kyogre · Landorus: Thundurus, Tornadus · Regigigas: Regice, Regirock, Registeel · Cobalion: Virizion, Terrakion, Keldeo." },
+  { name:"Symbolsight", prereq:"GM Permission",
+    freq:"Static | 1 AP - Standard Action · Target: Self",
+    effect:"Static: You know when there are people, Pokémon, or objects that would appear differently to you through Symbolsight within an area about the size of a small town. You do not know their location, number, or distance from you, only that there is at least one within range of your sense. 1 AP: For the next ten minutes, you see the world through the lens of Symbolsight. You may end this effect early as a Free Action.",
+    note:"Symbolsight shows the symbolic ties between mortal and divine — a Trainer Gifted by Cobalion might appear carrying three swords under a hanging scale of justice. It is a good Feature for a PC otherwise uninvolved in the Gift plot-line." },
+  { name:"Godslayer", prereq:"GM Permission",
+    freq:"Standard Action — EOT · Target: A Legendary Pokémon",
+    effect:"You may attempt to shatter one of the target's Legendary Auras. The AC of this action is 10. If you successfully disabled the Aura but rolled a 10-15, the feedback from the action gives you an Injury.",
+    note:"Only the Higher Pantheon, some Outsiders, and Arceus himself can bestow this one." },
+  { name:"Giftsapper", prereq:"GM Permission, No Gifts", statSpec:"any",
+    freq:"Static",
+    effect:"As long as Giftsapper's user is conscious, all Trainers within 10 meters must make a Focus Check with DC equal to three times the highest Skill Rank of Giftsapper's user between Focus, Intimidate, or Command in order to activate their Gifts. This Check is made each time a Trainer attempts to use an activated Gift, and a failure means neither any resources such as AP nor the frequency of the Gift is expended. For Gifts with Static or ongoing effects, the Check is made each turn, and a failure ends the effect for that turn.",
+    note:"Giftsapper's user may NEVER gain Gifts." },
+];
+
+/* ---------- Messiah (book pp.47-48) --------------------------------------------------------------
+   An advancement branch, not a [CLASS] — you can already hold four Classes and still take it. Every
+   entry carries [PATRON STAT], so each one taken is another +1 (In My Name is [Ranked 4], i.e. four
+   separate Feature purchases, listed here as four pickable entries). */
+const MESSIAH_FEATURES = [
+  { name:"Messiah", prereq:"Touched, GM Permission", freq:"One Time Use/5 - Extended Action",
+    effect:"Your connection with one of your Patrons has reached such a point that even you are capable of performing the miracles they are renowned and worshiped for. Expending a use of Messiah allows you to perform such a miracle — for example, in a Region where Shaymin is known to restore withered forests to their former glory, a Messiah of Shaymin might cause a forest to rapidly recover from a wildfire. Such acts are usually, but not always, noticeably supernatural and divine." },
+  { name:"In My Name (Rank 1)", prereq:"Messiah, GM Permission", freq:"Static", rank:1 },
+  { name:"In My Name (Rank 2)", prereq:"Completed a task on behalf of your Patron, GM Permission", freq:"Static", rank:2 },
+  { name:"In My Name (Rank 3)", prereq:"A Major Gift, GM Permission", freq:"Static", rank:3 },
+  { name:"In My Name (Rank 4)", prereq:"A Pact Gift, GM Permission", freq:"Static", rank:4 },
+].map(f => f.rank ? Object.assign(f, {
+  effect:`You acquire a Blessing marked Rank ${f.rank} or lower. You must additionally meet any Prerequisites of the Blessing.`
+    + (f.rank===4 ? " If your Patron does not have a Pact Gift, you instead require all their Major Gifts to attain Rank 4." : "") }) : f);
+
+/* ---------- Legendary Blessings (book pp.55-56) --------------------------------------------------
+   Blessings are NOT Gifts: they carry no [PATRON STAT] tag of their own (the Messiah / Signer
+   Feature that hands them out is the tagged one), so `giftStatSpec` returns null for them and they
+   add nothing to Combat Stats. The same nine Blessings read differently depending on which branch
+   granted it — a Messiah channels them directly, a Signer stores them in a Sign (Swift Action, once
+   per Scene, 1 AP) — so each entry carries both texts and the row keeps a `mode`. */
+const BLESSINGS = [
+  { rank:1, name:"Ancient Wisdom", prereq:"",
+    messiah:{freq:"Static", text:"You gain an extra Dice on Education: Occult checks, as well as any Check dealing with Occult topics or situations."},
+    signer:{freq:"Free Action", text:"You may use Ancient Wisdom while making an Education: Occult check to add an additional Two Dice."} },
+  { rank:1, name:"Blessed Strike", prereq:"", note:"Trigger: You hit an enemy with a Struggle Attack.",
+    messiah:{freq:"Scene x3 — Free Action", text:"Your Struggle Attack's Type matches that of your Patron. If your Patron has two Types, choose one."},
+    signer:{freq:"Free Action", text:"Your Struggle Attack deals Typeless Damage."} },
+  { rank:1, name:"Paragon", prereq:"",
+    messiah:{freq:"Static", text:"When you take Paragon, choose either Body, Mind or Spirit. You gain +2 to all Skill Checks made with Skills under that group."},
+    signer:{freq:"Swift Action", text:"You instead choose one of these Skill Groups and gain a +1 bonus to all Skill Checks under it. This lasts until the end of the Scene. You may choose a different Skill Group each time you activate Paragon."} },
+  { rank:1, name:"Spirit Mending", prereq:"", note:"Target: A Pokémon or Trainer.",
+    messiah:{freq:"Daily x3 — Standard Action", text:"Choose one of the following: the Target heals 30 HP, or the Target recovers two Injuries."},
+    signer:{freq:"Standard Action", text:"The Target recovers 50 HP and one Injury."} },
+  { rank:2, name:"Blessed Power", prereq:"Blessed Strike",
+    messiah:{freq:"Static", text:"Choose a Damaging Move on your Patron's Level Up List that has a Damage Base of 8 or lower and matches one of their Types. You learn this Move."},
+    signer:{freq:"Swift Action", text:"You instead gain this chosen Move until the end of combat. You may choose a different Move each time you activate this Sign."} },
+  { rank:2, name:"Luck of the Gods", prereq:"Paragon",
+    note:"Messiah Trigger: You fail a Skill Check or Accuracy Roll. · Signer Trigger: You roll a Skill Check or Accuracy Roll.",
+    messiah:{freq:"Daily — Free Action", text:"You may reroll this Skill Check or Accuracy Roll."},
+    signer:{freq:"Free Action", text:"You may add +4 to this Skill Check or +2 to this Accuracy Roll."} },
+  { rank:2, name:"Soul Mending", prereq:"Spirit Mending",
+    note:"Messiah Trigger: A Trainer or Pokémon dies. · Signer Trigger: A Trainer or Pokémon is reduced below 0 HP.",
+    messiah:{freq:"One Time Use/10 - Extended Action", text:"Your divine powers allow you to intervene, saving the Target's life. They are set to 5 Injuries that will heal at half the normal rate, and 1 HP."},
+    signer:{freq:"Interrupt", text:"The Target receives no further Injuries after being reduced below 0 HP. If being Knocked Out alone would set them to 10 Injuries, they are instead set to 9 Injuries."} },
+  { rank:3, name:"Blessed Resilience", prereq:"Blessed Power",
+    messiah:{freq:"Static", text:"Choose two Types your Patron has Resistance or Immunity to. You gain Resistance to these Types."},
+    signer:{freq:"Standard Action", text:"Choose a single Type your Patron has Resistance or Immunity to. You gain Resistance to this Type until the end of the Scene. You may choose a different Type each time you use Blessed Resilience."} },
+  { rank:3, name:"Insight of the Great Ones", prereq:"Ancient Wisdom", note:"Signer Target: A Pokémon or Trainer.",
+    messiah:{freq:"Scene — Swift Action", text:"You become aware of any Pacts, Patrons, or Allegiances the Target may have to a Legendary being or any organization. If the Target has a particular weakness (both narrative and mechanical), you become aware of it. You also become aware of any goals or motives the Target might possess at the moment."},
+    signer:{freq:"Swift Action", text:"You learn one of the Target's weaknesses (narrative or mechanical). If the Target is aligned to a Legendary or an organization, you become aware of this fact, but not of who or what in particular. You also learn if the Target's motives or goals would harm your Patron or their followers."} },
+];
+function blessingByName(name){ return BLESSINGS.find(b=>b.name===name) || null; }
+/* the effect text a Blessing row shows right now, following its Messiah/Signer mode */
+function blessingSide(b, mode){ return (b && (mode==="signer" ? b.signer : b.messiah)) || {freq:"",text:""}; }
+
+/* The four things that can live in `t.gifts`, keyed by the row's `kind` (absent = "gift", so every
+   sheet written before Blessings existed keeps reading correctly with no migration). */
+const GIFT_KINDS = [
+  { key:"gift",     label:"Legendary Gift",  head:"🎁 Legendary Gifts",  blurb:"Blessings from a Legendary patron, sorted by species (book pp.58-71). Each grants its Patron Stat (p.57)." },
+  { key:"general",  label:"General Gift",    head:"🌐 General Legendary Gifts", blurb:"Gifts sorted by domain rather than species (pp.53-54)." },
+  { key:"messiah",  label:"Messiah Feature", head:"🙏 Messiah",          blurb:"The Messiah advancement branch (pp.47-48) — not a Class; it stacks on top of your four." },
+  { key:"blessing", label:"Blessing",        head:"📜 Legendary Blessings", blurb:"Rank 1-3 Blessings (pp.55-56), granted by In My Name or Sign Mastery. Blessings carry no Patron Stat of their own." },
+];
+function giftKind(g){ return (g && g.kind) || "gift"; }
+
 /* Which Pokémon level unlocks each of a Patron's Gifts — read straight off the catalog's own effect
    text rather than a second hardcoded list, so it can't drift. Some Gift effects end with a
    parenthetical like "(Vulpoxen Lv 20.)" or "(Bond deepens at Vulpoxen Lv 5.)"; pull the number out
@@ -6011,9 +6104,18 @@ function giftPatronFor(g){
   if(m && g.patrons.includes(m[1])) return m[1];
   return g.patrons.length===1 ? g.patrons[0] : "";
 }
+/* The [PATRON STAT] spec that applies to one granted row: a STATS key, ["a","b"] for an "or", "any",
+   or null for "no stat at all". Blessings have no tag; a catalog entry may carry its own (Giftsapper
+   is [+Any Stat] and has no Patron); everything else reads the Patron's p.57 tag. */
+function giftStatSpec(g){
+  if(!g) return null;
+  if(giftKind(g)==="blessing") return null;
+  if(g.statSpec) return g.statSpec;
+  return PATRON_STATS[g.patron] ?? null;
+}
 /* the Patron stat a gift grants (a STATS key), resolving "or"/"any" via the stored choice; null if none/unchosen */
 function giftGrantsStat(g){
-  const spec = PATRON_STATS[g && g.patron]; if(spec==null) return null;
+  const spec = giftStatSpec(g); if(spec==null) return null;
   if(typeof spec==="string" && spec!=="any") return spec;   // fixed single stat
   return (g.statChoice && (spec==="any" || spec.includes?.(g.statChoice))) ? g.statChoice : null;  // or/any → chosen
 }
@@ -6025,7 +6127,7 @@ function giftStatBonus(t){
 }
 /* human label for a gift's patron-stat grant, incl. an unresolved-choice prompt */
 function giftStatText(g){
-  const spec = PATRON_STATS[g && g.patron]; if(spec==null) return "";
+  const spec = giftStatSpec(g); if(spec==null) return "";
   const lbl = k => (STATS.find(s=>s[0]===k)||[])[1]||k;
   if(typeof spec==="string" && spec!=="any") return `+1 ${lbl(spec)}`;
   if(g.statChoice) return `+1 ${lbl(g.statChoice)}`;
@@ -6127,7 +6229,17 @@ function statTagsRow(t){
   }
   return wrap;
 }
-function giftsCanSee(t){ return isGM() || ((t && t.gifts || []).length > 0); }
+/* ---------- Gifts & Cards are PRIVATE ------------------------------------------------------------
+   Every campaign sheet is world-readable in cloud mode (editing is what `ownsRow` gates), which meant
+   any player flipping to someone else's Trainer could read their Gifts and their Arcana cards —
+   including the ones the GM marked hidden. Both tabs are now scoped to the sheet's own holder plus
+   the GM: nobody else even sees the tab exists. In local/solo mode there is nobody to hide from.
+   Note this is a UI scope, not a secret — the row still syncs whole, same as the rest of the sheet. */
+function sheetIsMine(){
+  if(mode!=="cloud" || !cloud.activeId) return true;   // local sheet — it's yours by definition
+  return canEditActive();                              // GM, or the row's own owner (by display name)
+}
+function giftsCanSee(t){ return sheetIsMine() && (isGM() || ((t && t.gifts || []).length > 0)); }
 function giftsCard(t){
   const gm = isGM();
   const card = el("div",{class:"card"}, el("h3",{},"Legendary Gifts",
@@ -6135,26 +6247,48 @@ function giftsCard(t){
       ? el("button",{class:"linkbtn h-act", onclick:()=>openAddGift(t)}, "+ grant a Gift")
       : el("span",{class:"muted small"},"granted by your GM"))));
   card.append(el("div",{class:"muted small",style:"margin:-4px 0 8px"},
-    "Blessings from a Legendary patron (The Blessed and the Damned). Each grants its Patron Stat (p.57)."));
+    "Everything a Legendary patron has handed this Trainer (The Blessed and the Damned): species Gifts, "
+    + "General Gifts, the Messiah branch, and Blessings. Private — only you and your GM see this tab."));
   if(!(t.gifts||[]).length){
     card.append(el("div",{class:"muted small"}, gm
-      ? "No Gifts yet — tap “+ grant a Gift” to bless this Trainer."
+      ? "Nothing granted yet — tap “+ grant a Gift” to bless this Trainer."
       : "You have no Gifts yet."));
     return card;
   }
-  t.gifts.forEach((g,i)=>{
-    const row = el("div",{class:"moveslot"});
-    const info = el("div",{style:"flex:1;min-width:0"});
-    const title = el("div",{style:"font-weight:700"}, g.name || "Gift",
-      el("span",{class:"muted small",style:"font-weight:400"}, `  ·  ${g.tier||"Gift"} · ${g.patron||"?"}`));
-    info.append(title);
-    // Patron-stat badge + (for or/any) an inline chooser
-    const spec = PATRON_STATS[g.patron];
+  /* One section per kind, in book order, so Blessings don't get lost among 141 species Gifts.
+     Indexes are captured from the real array so × still removes the right row. */
+  GIFT_KINDS.forEach(kind => {
+    const rows = (t.gifts||[]).map((g,i)=>({g,i})).filter(x => giftKind(x.g)===kind.key);
+    if(!rows.length) return;
+    card.append(el("div",{style:"margin:14px 0 4px;padding-top:10px;border-top:1px solid var(--line)"},
+      el("div",{style:"font-weight:700"}, kind.head, el("span",{class:"muted small",style:"font-weight:400"}, `  ·  ${rows.length}`)),
+      el("div",{class:"muted small"}, kind.blurb)));
+    rows.forEach(({g,i}) => card.append(giftRow(t, g, i, gm)));
+  });
+
+  // summary of the stat bonuses these Gifts grant
+  const gb = giftStatBonus(t); const parts = STATS.filter(([k])=>gb[k]).map(([k,l])=>`+${gb[k]} ${l}`);
+  if(parts.length) card.append(el("div",{class:"small",style:"margin-top:10px;padding-top:8px;border-top:1px solid var(--line)"},
+    el("b",{},"Patron Stats applied: "), parts.join(" · "), el("span",{class:"muted"}," (added to your Combat totals)")));
+  return card;
+}
+/* one granted row — shared by all four kinds; `i` is its index in t.gifts so × removes the right one */
+function giftRow(t, g, i, gm){
+  const kind = giftKind(g);
+  const row = el("div",{class:"moveslot"});
+  const info = el("div",{style:"flex:1;min-width:0"});
+  const sub = kind==="blessing"
+    ? `Rank ${g.rank||1} Blessing · ${g.mode==="signer" ? "Signer (Sign)" : "Messiah"}`
+    : `${g.tier||"Gift"}${g.patron ? " · "+g.patron : ""}`;
+  info.append(el("div",{style:"font-weight:700"}, g.name || "Gift",
+    el("span",{class:"muted small",style:"font-weight:400"}, `  ·  ${sub}`)));
+  // Patron-stat badge + (for or/any) an inline chooser. Blessings have no tag at all — skip the line.
+  const spec = giftStatSpec(g);
+  if(spec != null){
     const statLine = el("div",{style:"margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"});
     const resolved = giftGrantsStat(g);
-    statLine.append(el("span",{class:"badge-auto"+(resolved?"":" "),style:resolved?"":"opacity:.7"}, giftStatText(g)));
-    const needChoice = spec==="any" || Array.isArray(spec);
-    if(needChoice){
+    statLine.append(el("span",{class:"badge-auto",style:resolved?"":"opacity:.7"}, giftStatText(g)));
+    if(spec==="any" || Array.isArray(spec)){
       const opts = spec==="any" ? STATS.map(s=>s[0]) : spec;
       const sel = el("select",{class:"equip-focus"});
       sel.append(el("option",{value:""},"choose stat…"));
@@ -6164,31 +6298,73 @@ function giftsCard(t){
       statLine.append(sel);
     }
     info.append(statLine);
-    if(g.effect) info.append(el("div",{class:"muted small",style:"margin-top:3px"}, g.effect));
-    if(g.prereq) info.append(el("div",{class:"muted small",style:"margin-top:1px;font-style:italic"}, "Prerequisites: "+g.prereq));
-    if(g.notes) info.append(el("div",{class:"small",style:"margin-top:2px"}, g.notes));
-    row.append(info);
-    if(gm) row.append(el("button",{class:"linkbtn danger",title:"remove this Gift",style:"align-self:flex-start",
-      onclick:()=>{ if(confirm(`Remove the Gift “${g.name}”?`)){ t.gifts.splice(i,1); save(); renderTrainer(); } }}, "×"));
-    card.append(row);
-  });
-  // summary of the stat bonuses these Gifts grant
-  const gb = giftStatBonus(t); const parts = STATS.filter(([k])=>gb[k]).map(([k,l])=>`+${gb[k]} ${l}`);
-  if(parts.length) card.append(el("div",{class:"small",style:"margin-top:10px;padding-top:8px;border-top:1px solid var(--line)"},
-    el("b",{},"Patron Stats applied: "), parts.join(" · "), el("span",{class:"muted"}," (added to your Combat totals)")));
-  return card;
+  }
+  if(g.freq) info.append(el("div",{class:"small",style:"margin-top:3px"}, el("b",{}, g.freq)));
+  // A Blessing reads differently as a Messiah miracle vs a Signer's Sign — the holder flips the mode,
+  // so the row always shows the text that's actually true for them right now.
+  if(kind==="blessing"){
+    const b = blessingByName(g.name);
+    if(b){
+      const side = blessingSide(b, g.mode);
+      info.append(el("div",{class:"muted small",style:"margin-top:3px"}, side.text));
+      const modeSel = el("select",{class:"equip-focus",style:"margin-top:4px"});
+      [["messiah","Messiah — "+b.messiah.freq],["signer","Signer (Sign) — "+b.signer.freq]]
+        .forEach(([v,l])=>modeSel.append(el("option",{value:v, selected:(g.mode||"messiah")===v}, l)));
+      modeSel.disabled = !gm && !canEditActive();
+      modeSel.addEventListener("change",()=>{
+        g.mode = modeSel.value; g.effect = blessingSide(b, g.mode).text; g.freq = blessingSide(b, g.mode).freq;
+        save(); renderTrainer();
+      });
+      info.append(modeSel);
+    } else if(g.effect){
+      info.append(el("div",{class:"muted small",style:"margin-top:3px"}, g.effect));   // custom Blessing
+    }
+  } else if(g.effect){
+    info.append(el("div",{class:"muted small",style:"margin-top:3px"}, g.effect));
+  }
+  if(g.prereq) info.append(el("div",{class:"muted small",style:"margin-top:1px;font-style:italic"}, "Prerequisites: "+g.prereq));
+  if(g.note)  info.append(el("div",{class:"muted small",style:"margin-top:2px;font-style:italic"}, g.note));
+  if(g.notes) info.append(el("div",{class:"small",style:"margin-top:2px"}, g.notes));
+  row.append(info);
+  if(gm) row.append(el("button",{class:"linkbtn danger",title:"remove this",style:"align-self:flex-start",
+    onclick:()=>{ if(confirm(`Remove “${g.name}”?`)){ t.gifts.splice(i,1); save(); renderTrainer(); } }}, "×"));
+  return row;
 }
 function openAddGift(t){
   if(!isGM()){ toast("Only the GM can grant Gifts"); return; }
   const wrap = el("div",{});
   // Gift picker (grouped) + Custom
+  const kindSel = el("select",{style:"width:100%"});
+  GIFT_KINDS.forEach(k => kindSel.append(el("option",{value:k.key}, k.head.replace(/^\S+\s/,""))));
   const giftSel = el("select",{style:"width:100%"});
-  giftSel.append(el("option",{value:""},"— Custom / free-form Gift —"));
-  GIFT_GROUPS.forEach(grp=>{
-    const og = el("optgroup",{label:grp.group});
-    grp.gifts.forEach(([tier,name])=> og.append(el("option",{value:name}, `${tier} — ${name}`)));
-    giftSel.append(og);
-  });
+  /* the picker's contents follow the kind — species Gifts stay grouped by patron set, the other
+     three are short flat lists (General by name, Messiah by feature, Blessings by Rank). */
+  const fillCatalog = ()=>{
+    giftSel.innerHTML = "";
+    const kind = kindSel.value;
+    giftSel.append(el("option",{value:""},"— Custom / free-form —"));
+    if(kind==="gift"){
+      GIFT_GROUPS.forEach(grp=>{
+        const og = el("optgroup",{label:grp.group});
+        grp.gifts.forEach(([tier,name])=> og.append(el("option",{value:name}, `${tier} — ${name}`)));
+        giftSel.append(og);
+      });
+    } else if(kind==="general"){
+      GENERAL_GIFTS.forEach(g => giftSel.append(el("option",{value:g.name}, g.name)));
+    } else if(kind==="messiah"){
+      MESSIAH_FEATURES.forEach(f => giftSel.append(el("option",{value:f.name}, f.name)));
+    } else {
+      [1,2,3].forEach(r=>{
+        const og = el("optgroup",{label:`Rank ${r} Blessings`});
+        BLESSINGS.filter(b=>b.rank===r).forEach(b => og.append(el("option",{value:b.name}, b.name)));
+        giftSel.append(og);
+      });
+    }
+  };
+  const modeSel = el("select",{style:"width:100%"});
+  [["messiah","Messiah — channelled directly (In My Name)"],["signer","Signer — stored in a Sign (Sign Mastery): Swift Action, 1 AP, once per Scene"]]
+    .forEach(([v,l])=>modeSel.append(el("option",{value:v}, l)));
+  const modeWrap = el("label",{class:"field"}, el("span",{},"Granted as"), modeSel);
   const patronSel = el("select",{style:"width:100%"});
   const fillPatrons = (preferred)=>{
     patronSel.innerHTML="";
@@ -6196,49 +6372,98 @@ function openAddGift(t){
     PATRON_NAMES.forEach(p=>patronSel.append(el("option",{value:p, selected:p===preferred}, `${p}  (${giftStatText({patron:p})})`)));
   };
   fillPatrons("");
-  const nameIn = el("input",{type:"text",placeholder:"Gift name",style:"width:100%"});
+  const nameIn = el("input",{type:"text",placeholder:"Name",style:"width:100%"});
   const effIn  = el("textarea",{placeholder:"Effect / notes",style:"width:100%;min-height:60px"});
+  const patronWrap = el("label",{class:"field"}, el("span",{},"Patron (grants the p.57 Stat)"), patronSel);
   const statChoiceWrap = el("div",{style:"margin-top:8px"});
+  /* the picked entry, whichever catalog the kind points at */
+  const picked = ()=>{
+    const v = giftSel.value; if(!v) return null;
+    switch(kindSel.value){
+      case "gift":     return giftByName(v);
+      case "general":  return GENERAL_GIFTS.find(g=>g.name===v) || null;
+      case "messiah":  return MESSIAH_FEATURES.find(f=>f.name===v) || null;
+      default:         return blessingByName(v);
+    }
+  };
+  /* the [PATRON STAT] spec this grant would carry, honouring an entry's own tag (Giftsapper) */
+  const pickedSpec = ()=>{
+    if(kindSel.value==="blessing") return null;
+    const p = picked();
+    return (p && p.statSpec) || PATRON_STATS[patronSel.value] || null;
+  };
   const syncStatChoice = ()=>{
     statChoiceWrap.innerHTML="";
-    const spec = PATRON_STATS[patronSel.value];
+    const spec = pickedSpec();
+    const fake = { statSpec: spec };
     if(spec==="any" || Array.isArray(spec)){
       const opts = spec==="any" ? STATS.map(s=>s[0]) : spec;
       const sc = el("select",{id:"giftStatChoice",style:"max-width:180px"});
       sc.append(el("option",{value:""},"choose stat…"));
       opts.forEach(k=>sc.append(el("option",{value:k}, (STATS.find(s=>s[0]===k)||[])[1]||k)));
-      statChoiceWrap.append(el("label",{class:"field"}, el("span",{},`Patron Stat — this Patron grants ${giftStatText({patron:patronSel.value})}`), sc));
+      statChoiceWrap.append(el("label",{class:"field"}, el("span",{},`Patron Stat — this grants ${giftStatText(fake)}`), sc));
     } else if(spec){
-      statChoiceWrap.append(el("div",{class:"small muted"},`Grants ${giftStatText({patron:patronSel.value})}.`));
+      statChoiceWrap.append(el("div",{class:"small muted"},`Grants ${giftStatText(fake)}.`));
     }
   };
-  // when a catalog Gift is picked, prefill name/effect/prereq + default the Patron to its group's
+  // when a catalog entry is picked, prefill name/effect + default the Patron to its group's
   giftSel.addEventListener("change",()=>{
-    const g = giftByName(giftSel.value);
-    if(g){ nameIn.value=g.name; effIn.value=g.effect + (g.prereq?`\n\nPrerequisites: ${g.prereq}`:""); fillPatrons(giftPatronFor(g)); }
+    const p = picked();
+    if(p){
+      nameIn.value = p.name;
+      effIn.value  = kindSel.value==="blessing" ? blessingSide(p, modeSel.value).text : (p.effect||"");
+      if(kindSel.value==="gift") fillPatrons(giftPatronFor(p));
+    }
     syncStatChoice();
   });
+  modeSel.addEventListener("change",()=>{
+    const p = picked(); if(p && kindSel.value==="blessing") effIn.value = blessingSide(p, modeSel.value).text;
+  });
+  // switching kind swaps the catalog and hides the fields that kind has no use for
+  const syncKind = ()=>{
+    const k = kindSel.value;
+    fillCatalog();
+    modeWrap.style.display  = k==="blessing" ? "" : "none";
+    patronWrap.style.display = k==="blessing" ? "none" : "";
+    nameIn.value = ""; effIn.value = "";
+    if(k!=="gift") fillPatrons("");
+    syncStatChoice();
+  };
+  kindSel.addEventListener("change", syncKind);
   patronSel.addEventListener("change", syncStatChoice);
   wrap.append(
-    el("label",{class:"field"}, el("span",{},"Gift (from The Blessed and the Damned)"), giftSel), el("div",{style:"height:8px"}),
+    el("label",{class:"field"}, el("span",{},"What are you granting?"), kindSel), el("div",{style:"height:8px"}),
+    el("label",{class:"field"}, el("span",{},"Entry (from The Blessed and the Damned)"), giftSel), el("div",{style:"height:8px"}),
+    modeWrap, el("div",{style:"height:8px"}),
     el("label",{class:"field"}, el("span",{},"Name"), nameIn), el("div",{style:"height:8px"}),
-    el("label",{class:"field"}, el("span",{},"Patron (grants the p.57 Stat)"), patronSel),
+    patronWrap,
     statChoiceWrap, el("div",{style:"height:8px"}),
     el("label",{class:"field"}, el("span",{},"Effect"), effIn),
   );
-  syncStatChoice();
+  syncKind();
   modal({title:"Grant a Legendary Gift", bodyNode:wrap, footNodes:[
     el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
     el("button",{class:"btn-primary",onclick:()=>{
-      const name = nameIn.value.trim(); if(!name){ toast("Name the Gift"); return; }
-      const cat = giftByName(giftSel.value);
-      const sc = $("#giftStatChoice");
+      const name = nameIn.value.trim(); if(!name){ toast("Name it first"); return; }
+      const kind = kindSel.value, cat = picked(), sc = $("#giftStatChoice");
       if(!Array.isArray(t.gifts)) t.gifts = [];
-      t.gifts.push({ id:uid(), name, tier:(cat&&cat.tier)||"Gift", patron:patronSel.value||"",
-        statChoice: sc && sc.value || undefined, effect:effIn.value.trim(), prereq:(cat&&cat.prereq)||"" });
+      const row = { id:uid(), kind, name, effect:effIn.value.trim(), prereq:(cat&&cat.prereq)||"",
+                    note:(cat&&cat.note)||"" };
+      if(kind==="blessing"){
+        row.mode = modeSel.value; row.rank = (cat&&cat.rank)||1;
+        row.freq = cat ? blessingSide(cat, row.mode).freq : "";
+      } else {
+        row.tier = kind==="gift" ? ((cat&&cat.tier)||"Gift")
+                 : kind==="general" ? "General Gift" : "Messiah Feature";
+        row.freq = (cat&&cat.freq)||"";
+        row.patron = patronSel.value||"";
+        if(cat && cat.statSpec) row.statSpec = cat.statSpec;   // Giftsapper's own [+Any Stat]
+        if(sc && sc.value) row.statChoice = sc.value;
+      }
+      t.gifts.push(row);
       save(); closeModal(); trainerTab="gifts"; renderTrainer();
       toast(`Granted “${name}”`);
-    }},"Grant Gift"),
+    }},"Grant"),
   ]});
 }
 
@@ -6545,7 +6770,7 @@ const ARCANA_TAGS = { now:["Now","resolves the moment it's drawn"],
 
 /* ---------- reading a held card ---------- */
 /* the Cards sub-tab shows for the GM (to deal cards) or once the Trainer actually holds one */
-function cardsCanSee(t){ return isGM() || ((t && t.cards || []).length > 0); }
+function cardsCanSee(t){ return sheetIsMine() && (isGM() || ((t && t.cards || []).length > 0)); }   // private — see sheetIsMine
 function cardDef(c){ return arcanaByKey[c && c.key] || null; }
 function cardFace(c){ const d = cardDef(c); return d ? (c.orientation==="rev" ? d.rev : d.up) : null; }
 function cardFxList(c){ const f = cardFace(c); return !f || !f.fx ? [] : (Array.isArray(f.fx) ? f.fx : [f.fx]); }
@@ -13539,6 +13764,7 @@ function normEncounter(e){
   if(typeof e.archived!=="boolean") e.archived=false;   // hidden from the active list without deleting
   if(typeof e.notes!=="string") e.notes="";
   if(!isHexColor(e.color)) e.color=encDefaultColor();    // map-token outline colour (red by default)
+  if(typeof e.hideTokens!=="boolean") e.hideTokens=false; // do this encounter's map tokens start hidden from players?
   e.mons.forEach(normPokemon);
   e.trainers.forEach(tr=>{ if(tr.trainer) normTrainer(tr.trainer); if(!Array.isArray(tr.pokemon)) tr.pokemon=[]; tr.pokemon.forEach(normPokemon); });
   return e;
@@ -13857,17 +14083,20 @@ function encRandomize(p){
    An area lists what actually lives there, split in two:
      - common : the everyday sightings. The SAME species can fill more
                 than one slot, which is how a pod of three Wingull happens.
-     - rare   : the notable find. At most ONE rare turns up in an encounter,
-                and never a second copy of it.
-   Rolling an area builds a brand-new encounter of `size` Pokemon at a random
-   level inside `levels`, each one statted exactly the way "+ add Pokemon"
-   does it (level-up moveset for its level, a Basic Ability, random
-   nature/gender/shiny, random stat spread).
+     - rare   : the notable find. Every encounter has exactly one, and
+                `secondRareChance` of them turn up a second - always two
+                DIFFERENT species, never two of the same one.
+   `size` counts the COMMON slots only; the rares ride on top of it, so an
+   Isles roll of 3-5 commons is really a 4-6 creature encounter (5-7 on the
+   rare occasions a second rare shows). Every one is rolled to a random level
+   inside `levels` and statted exactly the way "+ add Pokemon" does it
+   (level-up moveset for its level, a Basic Ability, random nature/gender/
+   shiny, random stat spread).
    To add another area, copy the entry below - nothing else needs touching.
 =================================================================== */
 const ENC_AREAS = [
   { id:"isles", name:"Pokémon Isles",
-    size:[3,5], levels:[12,16], rareChance:.25,
+    size:[3,5], levels:[12,16], secondRareChance:.10,
     common:["Horsea","Chinchou","Remoraid","Wingull","Buizel","Finneon",
             "Frillish","Wailmer","Cramorant","Arrokuda"],
     rare:["Mantyke","Corsola","Skrelp","Clobbopus","Wishiwashi Solo","Dhelmise",
@@ -13895,13 +14124,17 @@ function makeWildMon(name, level){
   encRandomize(p);
   return p;
 }
-/* the roster itself: at most one rare, every other slot common and free to repeat */
+/* the roster itself. Rares come first and are drawn WITHOUT replacement, so a second one is
+   always a different species; then `size` common slots on top, free to repeat. */
 function rollAreaRoster(area){
-  const size = encRandInt(area.size[0], area.size[1]);
   const names = [];
-  if(area.rare?.length && Math.random() < (area.rareChance ?? .25)) names.push(encPickOne(area.rare));
-  while(names.length < size) names.push(encPickOne(area.common));
-  return applyAreaCombos(area, encShuffle(names));           // shuffled, so the rare is not always listed first
+  const pool = [...(area.rare||[])];
+  let want = pool.length ? 1 : 0;                             // one rare is guaranteed
+  if(want && pool.length>1 && Math.random() < (area.secondRareChance ?? .10)) want = 2;
+  for(let i=0;i<want;i++) names.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]);
+  const size = encRandInt(area.size[0], area.size[1]);        // commons are counted on their own
+  for(let i=0;i<size;i++) names.push(encPickOne(area.common));
+  return applyAreaCombos(area, encShuffle(names));            // shuffled, so the rares are not always listed first
 }
 /* Area combos: a rolled pair that means something in the book. Mantyke evolves by interacting
    with a Remoraid (Min. Lv 10), so an Isles roll that turns up both is a Mantine that has
@@ -13925,6 +14158,7 @@ function rollWildEncounter(area){
   const arr = encList();
   const seen = arr.filter(e=> String(e.name||"").startsWith(area.name+" — wild")).length;
   const enc = newEncounter(`${area.name} — wild #${seen+1}`);
+  enc.hideTokens = true;                                     // wild things are not standing in the open
   const names = rollAreaRoster(area);
   const total = {}; names.forEach(n=> total[n] = (total[n]||0)+1);
   const nth = {};
@@ -13936,12 +14170,16 @@ function rollWildEncounter(area){
     enc.mons.push(p);
   });
   const rareSet = areaRareSet(area);
-  const rare = names.find(n=> rareSet.has(n));
-  enc.notes = `🎲 Rolled from the ${area.name} table — ${names.length} Pokémon, Lv ${area.levels[0]}-${area.levels[1]}.\n`
-            + (rare ? `Rare sighting: ${rare}.` : "No rare this time — all common.");
+  const rares = names.filter(n=> rareSet.has(n));
+  const rareLine = rares.length>1 ? `Rare sightings: ${rares.join(" and ")}!`
+                 : rares.length   ? `Rare sighting: ${rares[0]}.`
+                 : "No rares on this table.";
+  enc.notes = `🎲 Rolled from the ${area.name} table — ${names.length} Pokémon `
+            + `(${names.length - rares.length} common + ${rares.length} rare), Lv ${area.levels[0]}-${area.levels[1]}.\n`
+            + rareLine;
   arr.push(enc); state.activeEncounterId = enc.id;
   saveEnc(); renderEncounters();
-  toast(`🎲 ${enc.name}${rare ? ` — ${rare}!` : ""}`);
+  toast(`🎲 ${enc.name}${rares.length ? ` — ${rares.join(" + ")}!` : ""}`);
 }
 /* the 🎲 button: a single area rolls straight away, several offer a pick-list first */
 function openRandomEncounter(){
@@ -14929,6 +15167,11 @@ function renderEncounters(){
   setc.append(el("h3",{}, cur.name,
     el("button",{class:"btn-primary",style:"padding:6px 12px",onclick:()=>openExpCalc(cur)},"🧮 Calculate EXP")));
   setc.append(el("div",{class:"small muted",style:"margin-top:4px"}, `Base XP so far: `, el("b",{}, String(encounterBaseXP(cur))), ` (sum of enemy levels; Trainers count double). Significance ×${cur.sig}, ${cur.players} player${cur.players===1?"":"s"} — edit in Calculate EXP.`));
+  const hideCb = el("input",{type:"checkbox"}); hideCb.checked = !!cur.hideTokens;
+  hideCb.addEventListener("change",()=>{ cur.hideTokens=hideCb.checked; saveEnc(); });
+  setc.append(el("label",{class:"inline",style:"gap:8px;margin-top:8px;cursor:pointer",
+      title:"tokens from this encounter are dropped on the map already hidden — unhide them with the map's 🙈 button when the ambush springs"},
+    hideCb, el("span",{class:"small"},"🙈 Tokens start hidden from players on the map")));
   const notesArea=el("textarea",{placeholder:"GM notes — read-outs, tactics, what happens on a wipe…",
     style:"width:100%;margin-top:8px;min-height:60px;resize:vertical"}); notesArea.value=cur.notes||"";
   notesArea.addEventListener("input",()=>{ cur.notes=notesArea.value; saveEnc(); });
@@ -22476,13 +22719,17 @@ function enemyTokenRows(){
 function enemyTokenGroups(){
   return encList().filter(enc=>!enc.archived).map(enc=>{
     const rows = [];
+    /* An encounter marked hideTokens drops every token onto the board already 🙈 hidden, so the
+       GM can set an ambush up in front of the players without showing it. Same flag the bulk
+       Hide button toggles, just applied at placement time. */
+    const hide = enc.hideTokens ? { gmHidden:true } : {};
     (enc.mons||[]).forEach(p=> rows.push({ label:encMonName(p), sub:`Lv ${p.level}`,
-      make:()=>({ link:{ kind:"enc", encId:enc.id, monId:p.id } }) }));
+      make:()=>({ ...hide, link:{ kind:"enc", encId:enc.id, monId:p.id } }) }));
     (enc.trainers||[]).forEach(tr=>{
       rows.push({ label:(tr.trainer?.name||"Trainer"), sub:`Trainer · Lv ${tr.trainer?.level||1}`,
-        make:()=>({ link:{ kind:"enctrainer", encId:enc.id, trainerId:tr.id } }) });
+        make:()=>({ ...hide, link:{ kind:"enctrainer", encId:enc.id, trainerId:tr.id } }) });
       (tr.pokemon||[]).forEach(p=> rows.push({ label:encMonName(p), sub:`Lv ${p.level} · ${tr.trainer?.name||"trainer"}'s`,
-        make:()=>({ link:{ kind:"enc", encId:enc.id, monId:p.id } }) }));
+        make:()=>({ ...hide, link:{ kind:"enc", encId:enc.id, monId:p.id } }) }));
     });
     return { id:enc.id, name:enc.name||"Encounter", rows };
   }).filter(g=>g.rows.length);
