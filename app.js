@@ -2883,6 +2883,36 @@ function pushItToTheLimit(t, cureKey){
 }
 /* the Persistent Afflictions Push it to the Limit could cure right now */
 function persistentStatusesOn(o){ return STATUS_DEFS.filter(s => s.kind === "persistent" && hasStatus(o, s.key)); }
+function volatileStatusesOn(o){ return STATUS_DEFS.filter(s => s.kind === "volatile" && hasStatus(o, s.key)); }
+/* Edges are hand-typed on NPC cards and imported sheets, so match them through featKey() for the
+   same reason Features do — curly apostrophes and casing must not silently drop an Edge. */
+function trainerHasEdge(t, name){
+  const want = featKey(name);
+  return !!t && (t.edges||[]).some(e => featKey(e) === want);
+}
+/* Bad Mood (Combat Edge, prereq Expert Intimidate): "+1 Critical Hit Range if you are suffering
+   from a Persistent Status Affliction. +1 if you are suffering from a Volatile Status Affliction.
+   These stack with each other, giving a total of +2 ... if you are suffering from both."
+   Counted per KIND, not per Affliction — three Persistent conditions are still a single +1. */
+function badMoodCrit(t){
+  if(!trainerHasEdge(t, "Bad Mood")) return 0;
+  return (persistentStatusesOn(t).length ? 1 : 0) + (volatileStatusesOn(t).length ? 1 : 0);
+}
+function badMoodWhy(t){
+  const n = badMoodCrit(t); if(!n) return "";
+  const kinds = [persistentStatusesOn(t), volatileStatusesOn(t)]
+    .filter(l => l.length).map(l => l.map(x=>x.name).join("/"));
+  return `Bad Mood +${n} (${kinds.join(" + ")})`;
+}
+/* A Trainer's Critical Hit Range. The Trainer path used to crit on a natural 20 and nothing else,
+   while still printing "Crit range widened by +N (buffs)" underneath — so Frenzy's +2, a Weapon
+   Move's own printed range and Brutal Training were all shown and then ignored. This mirrors the
+   Pokémon path: critThreshold() supplies the Move's own range (and Brutal), then Bad Mood and the
+   active buffs widen it. A bare Struggle has no Move object, so Brutal is read directly. */
+function trainerCritThreshold(t, st, buffCrit){
+  const base = (st && st.move) ? critThreshold(t, st.move) : (hasStatus(t,"brutal") ? 19 : 20);
+  return Math.max(2, base - badMoodCrit(t) - (buffCrit||0));
+}
 
 /* Fight On and On (Daily, Free Action) — "Trigger: Your Hit Points are lowered to or below 0 while
    Enraged. Effect: You are not Fainted; you instead Faint upon reaching -50% of your Max Hit Points.
@@ -2910,12 +2940,12 @@ function startFightOn(t){
   if(!fightOnFree(t)){ const u = fightOnUses(t); t.uses = t.uses || {}; t.uses[u.key] = Math.min(u.max, (t.uses[u.key] || 0) + 1); }
   return koFloor(t);
 }
-function fightOnToggle(t, f, rerender){
-  if(t.fightOn){ delete t.fightOn; save(); toast("Fight On and On ended — you Faint at 0 HP again."); (rerender || renderBattle)(); return; }
+function fightOnToggle(t, f, rerender, persist){
+  if(t.fightOn){ delete t.fightOn; (persist||save)(); toast("Fight On and On ended — you Faint at 0 HP again."); (rerender || renderBattle)(); return; }
   if(!hasStatus(t, "enraged") && !t.unlocked){ toast("Fight On and On triggers while you're Enraged."); return; }
   if(!fightOnFree(t) && fightOnUses(t).left <= 0 && !t.unlocked){ toast("No Fight On and On uses left today (free at 5+ Injuries)."); return; }
   const floor = startFightOn(t);
-  save(); toast(`💢 Fight On and On — you Faint at ${floor} HP instead of 0.`);
+  (persist||save)(); toast(`💢 Fight On and On — you Faint at ${floor} HP instead of 0.`);
   (rerender || renderBattle)();
 }
 /* Power of Rage (Static) — "Choose Enduring Rage or White Flame. You gain the chosen Ability."
@@ -2927,8 +2957,13 @@ function fightOnToggle(t, f, rerender){
 const POWER_OF_RAGE_ABILITIES = ["Enduring Rage","White Flame"];
 function rageAbilityDamage(o){ return (hasStatus(o,"enraged") && ownerHasAbility(o,"White Flame")) ? 5 : 0; }
 function rageAbilityDR(o){     return (hasStatus(o,"enraged") && ownerHasAbility(o,"Enduring Rage")) ? 5 : 0; }
-function powerOfRagePick(t, f, rerender){
-  if(!Array.isArray(t.abilities)) t.abilities = [];
+/* `persist` is how the owner's store is written: save() for the player sheet, saveEnc() for an
+   encounter NPC. Defaulting to save() keeps every existing Battle-tab call unchanged. */
+function powerOfRagePick(t, f, rerender, persist){
+  /* An encounter Trainer lists its Abilities in t.encAbilities; the player sheet uses t.abilities.
+     Write into whichever field this owner's card actually renders, so the pick shows up there. */
+  const field = Array.isArray(t.encAbilities) ? "encAbilities" : "abilities";
+  if(!Array.isArray(t[field])) t[field] = [];
   const has = POWER_OF_RAGE_ABILITIES.filter(a => ownerHasAbility(t, a));
   const body = el("div",{});
   body.append(el("div",{class:"small muted",style:"margin-bottom:10px"}, f.effect || ""));
@@ -2941,9 +2976,10 @@ function powerOfRagePick(t, f, rerender){
       el("div",{class:"small muted",style:"margin-top:2px"}, ab?.effect || "")));
     row.append(el("button",{class:on?"btn-secondary":"btn-primary",style:"padding:6px 10px",
       onclick:()=>{
-        t.abilities = (t.abilities||[]).filter(x => !POWER_OF_RAGE_ABILITIES.some(y => String(x).toLowerCase()===y.toLowerCase()));
-        if(!on) t.abilities.push(an);
-        save(); closeModal(); toast(on ? `${an} removed` : `＋ Ability from ${f.name}: ${an}`);
+        const drop = l => (l||[]).filter(x => !POWER_OF_RAGE_ABILITIES.some(y => String(x).toLowerCase()===y.toLowerCase()));
+        t.abilities = drop(t.abilities); if(Array.isArray(t.encAbilities)) t.encAbilities = drop(t.encAbilities);
+        if(!on) t[field].push(an);
+        (persist||save)(); closeModal(); toast(on ? `${an} removed` : `＋ Ability from ${f.name}: ${an}`);
         (rerender || renderBattle)();
       }}, on ? "remove" : "take it"));
     body.append(row);
@@ -2952,14 +2988,14 @@ function powerOfRagePick(t, f, rerender){
     footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
 }
 /* Frenzy (Scene x2, Free Action) — Condition: you must be Enraged. */
-function frenzyGo(t, f, rerender){
+function frenzyGo(t, f, rerender, persist){
   if(!hasStatus(t, "enraged") && !t.unlocked){ toast("Frenzy's Condition: you must be Enraged."); return; }
   const info = freqInfo(f.frequency), key = useKey("feature", f.name);
   if(usesLeft(t, key, info.max) <= 0 && !t.unlocked){ toast("No Frenzy uses left this Scene."); return; }
   t.statuses = (t.statuses || []).filter(k => k !== "slowed" && k !== "stuck");   // "instantly cured of Slowed and Stuck"
   addBuff(t, "frenzy");
   t.uses = t.uses || {}; t.uses[key] = Math.min(info.max, (t.uses[key] || 0) + 1);
-  save();
+  (persist||save)();
   toast("🔥 Frenzy! Take your turn with Priority — +2 Crit Range, +2 Movement, +2 Acro/Athl/Combat/Intimidate.");
   (rerender || renderBattle)();
 }
@@ -2982,7 +3018,7 @@ const featureActionDef = f => FEATURE_ACTIONS.find(d => featKey(d.feat) === feat
 /* One card on the ⚔ Combat tab gathering everything the class does, so its Static Features (which
    never surface on an action tab) still have somewhere to be read and pressed. The Feature list is
    the class's own, taken from the prereq chain rather than retyped. */
-function berserkerCard(t){
+function berserkerCard(t, rerender, persist){
   if(!t || !trainerHasClass(t, "Berserker")) return null;
   const own = classFeatNameSet("Berserker");
   const feats = trainerFeatureObjs(t).filter(f => own.has(f.name) || featKey(f.name)===featKey("Berserker"));
@@ -3016,7 +3052,8 @@ function berserkerCard(t){
   if(!hasStatus(t,"enraged") && (hasFeatureLoose(t,BERSERKER_FRENZY) || hasFeatureLoose(t,BERSERKER_FIGHT_ON)))
     bits.push("You are not Enraged — Frenzy and Fight On and On both need it. Rage and Thrash both apply it.");
   bits.forEach(b => card.append(el("div",{class:"small",style:"margin-bottom:4px"}, b)));
-  feats.sort((a,b)=>a.name.localeCompare(b.name)).forEach(f => card.append(featureActionRow(f, t, renderBattle)));
+  feats.sort((a,b)=>a.name.localeCompare(b.name)).forEach(f =>
+    card.append(featureActionRow(f, t, rerender||renderBattle, {owned:true, persist})));
   return card;
 }
 
@@ -3124,6 +3161,9 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const defNote = isSpecAtk ? "Special Defense" : "Defense";
   const evaNote = isSpecAtk ? "Special Evasion" : "Physical Evasion";
   const bm = buffMods(t, {isPhys: isPhysAtk});
+  /* Crit Range for this attack — Bad Mood, Frenzy & co., and the Move's own printed range. */
+  const critT = trainerCritThreshold(t, st, bm.crit);
+  const critNote = [badMoodWhy(t), bm.crit ? `+${bm.crit} buffs` : ""].filter(Boolean).join(" · ");
   /* Struggle Attacks (unarmed and plain weapon strikes) have no Move behind them and never get
      STAB; a real Move does, if Type Expertise named its Type. */
   const isStruggleAtk = !st.move;
@@ -3229,7 +3269,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     el("div",{style:"font-size:16px;font-weight:700"},
       `Accuracy: ${dblStrike ? "2 × 1d20" : "1d20"}${accModPre?` ${accModPre>0?"+":"−"} ${Math.abs(accModPre)}`:""}`),
     el("div",{class:"small muted",style:"margin-top:2px"},
-      `Roll ${dblStrike?"2 separate Attack Rolls — each ":"1d20 — "}hits if it's ≥ AC ${st.ac} + the target's ${evaNote}. Nat 20 auto-hits/crits, nat 1 auto-misses.`
+      `Roll ${dblStrike?"2 separate Attack Rolls — each ":"1d20 — "}hits if it's ≥ AC ${st.ac} + the target's ${evaNote}. ${critT===20?"Nat 20":`Roll ${critT}+`} auto-hits/crits, nat 1 auto-misses.`
       + (accWhyPre.length?` Includes ${accWhyPre.join(" ")}.`:""))));
   if(dn){
     const terms = [`${dn}d${dfaces}`]; if(dflat) terms.push(String(dflat)); if(atk) terms.push(String(atk));
@@ -3249,7 +3289,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         + `Target then subtracts ${defNote}.`
         + (fiveStrike ? ` Five Strike multiplies the Move's own Damage Base (${rawDB}) by the rolled hit count first; other Damage Base bonuses are added after.` : "")
         + (dblStrike  ? " Double Strike doubles this Damage Base if both Attack Rolls connect." : "")
-        + (bm.crit ? ` Crit / Effect range widened by +${bm.crit} (buffs).` : ""))));
+        + (critT<20 ? ` Critical Hit Range ${critT}–20 — ${critNote}.` : "")
+        + (bm.crit ? ` Effect range widened by +${bm.crit} (buffs).` : ""))));
   }
   }
   drawExplain();
@@ -3397,7 +3438,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       pushBox.checked = true; pushBox.disabled = true;
       if(pushCureSel) pushCureSel.disabled = true;
       reseedVal();                      // the fresh Injury also raises a Flail/Reversal Damage Base
-      save(); if(opts.rerender) opts.rerender();
+      (opts.persist||save)(); if(opts.rerender) opts.rerender();
     }
     const berN = berserkBonus(pushOn);
     const wAcc = st.weapon?.accMod || 0;      // a Fainted Living Weapon is −2 on every roll (Core p.305)
@@ -3407,7 +3448,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     const accBits = []; if(bm.acc) accBits.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} buffs`); if(accCS) accBits.push(`${accCS>0?"+":"−"}${Math.abs(accCS)} Accuracy CS`);
     if(wAcc) accBits.push(`${wAcc>0?"+":"−"}${Math.abs(wAcc)} Fainted Living Weapon`);
     // Double Strike: resolve every Attack Roll against AC + Evasion and count what connects
-    const strikes = dblStrike ? resolveStrikes(nats, accMod, st.ac + targetEva, 20) : null;
+    const strikes = dblStrike ? resolveStrikes(nats, accMod, st.ac + targetEva, critT) : null;
     const forced  = dblStrike && redo?.forceHits!=null;
     const connected = !dblStrike ? 1 : (forced ? redo.forceHits : strikes.filter(s=>s.hit).length);
     if(dblStrike){
@@ -3419,7 +3460,10 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     } else {
       out.append(el("div",{style:"margin-bottom:10px"}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLL"),
         el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`, el("span",{class:"muted",style:"font-size:13px;font-weight:600"}, accBits.length?`  (${acc} ${accBits.join(" ")})`:" (1d20)")),
-        el("div",{class:"small muted"}, `Hits if ${accTot} ≥ AC ${st.ac} + target's ${evaNote}.${acc===20?" Natural 20 — auto-hit/crit!":acc===1?" Natural 1 — auto-miss.":""}`)));
+        el("div",{class:"small muted"}, `Hits if ${accTot} ≥ AC ${st.ac} + target's ${evaNote}.`
+          + (acc===20 ? " Natural 20 — auto-hit/crit!"
+             : acc===1 ? " Natural 1 — auto-miss."
+             : acc>=critT ? ` Roll ${acc} ≥ crit range ${critT} — Critical Hit!${critNote?` (${critNote})`:""}` : ""))));
     }
     // size the Damage Base from the strikes that landed (Core p.242)
     let db = baseDBv, strikeNote = null;
@@ -3435,7 +3479,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
        a second time ("a DB6 Move Crit would be 4d6+16+Stat"); only the Attack bonus isn't doubled.
        On a Double Strike each connecting strike crits on its own, and per the keyword the crit bonus
        uses the Damage Base BEFORE it's doubled (Core p.242). */
-    const nCrit = dblStrike ? Math.min(strikes.filter(s=>s.crit).length, connected) : (acc===20 ? 1 : 0);
+    const nCrit = dblStrike ? Math.min(strikes.filter(s=>s.crit).length, connected) : (acc>=critT ? 1 : 0);
     const critDBv = dblStrike ? baseDBv : db;
     let critExtra = 0; const critWhy = [];
     for(let c=0;c<nCrit;c++){ const rc = rollDiceString(diceFor(critDBv)); critExtra += rc.total;
@@ -7849,7 +7893,11 @@ function digestionList(o){ if(!Array.isArray(o.digestion)) o.digestion = []; ret
 /* an Ability on a Pokémon OR a Trainer, ignoring the DB's "[Errata]" suffix */
 function ownerHasAbility(o, name){
   const want = String(name).toLowerCase();
-  return (o?.abilities||[]).some(a => String(a).toLowerCase().replace(/\s*\[errata\]\s*$/,"").trim() === want);
+  /* An encounter Trainer's Abilities are filed under t.encAbilities (t.abilities is the player-sheet
+     field, which the Encounters card never writes), so read both — otherwise a GM who hands an NPC
+     Berserker White Flame or Enduring Rage through the card's Abilities picker gets nothing. */
+  return [...(o?.abilities||[]), ...(o?.encAbilities||[])]
+    .some(a => String(a).toLowerCase().replace(/\s*\[errata\]\s*$/,"").trim() === want);
 }
 /* Gluttony (Core, Ability): "may have up to three Digestion/Food Buffs at once" */
 function digestionCap(o){ return ownerHasAbility(o,"Gluttony") ? 3 : 1; }
@@ -10557,12 +10605,22 @@ const IRON_FIST_MOVES = new Set(["Bullet Punch","Comet Punch","Dizzy Punch","Dra
   "Thunder Punch","Focus Punch","Hammer Arm","Power-Up Punch"].map(s=>s.toLowerCase()));
 function isFiveStrike(m){ return /five\s*strike/i.test(m?.range||""); }
 function isDoubleStrike(m){ return /double\s*strike/i.test(m?.range||""); }
+/* "If <Move> hits, it is a Critical Hit" — Storm Throw, Frost Breath, Wicked Blow, Surging Strikes,
+   Flower Trick, Deadly Strike. Not a widened Crit Range but a guaranteed crit on every connecting
+   hit, so critThreshold() models it as Crit Range 2 and every downstream reader (the roll guide,
+   resolveStrikes, the Sim) scores it with no special case. This flag then covers the two gaps a
+   range of 2 can't reach: a natural 1 still misses, and a Move that cannot miss rolls no die. */
+function alwaysCrits(m){
+  return /\bif\s+(?:this move|[A-Za-z'’ -]{2,24})\s+hits,\s*(?:it|this move)\s+is\s+a\s+critical\s+hit/i
+    .test(m?.effect || "");
+}
 /* Critical Hit Range (Core p.235): natural 20 always crits; some moves/abilities lower the
    threshold. Compared against the natural (un-modified) Accuracy die. */
 function critThreshold(p, m){
   let t = 20;
   const own = /critical hit (?:range )?(?:is |on )?(\d{1,2})[+-]/i.exec(m?.effect || "");
   if(own) t = Math.min(t, +own[1]);
+  if(alwaysCrits(m)) return 2;   // guaranteed crit — nothing below can widen it further
   // Super Luck: crits on 18-20; if the Move already has an extended range, widen it by 2 instead.
   if(hasAbility(p,"Super Luck")) t = own ? t - 2 : Math.min(t, 18);
   if(hasAbility(p,"Razor Edge")) t -= /tail/i.test(m?.name||"") ? 3 : 2;
@@ -10573,6 +10631,13 @@ function critThreshold(p, m){
 }
 /* Move-name sets for the abilities that boost a specific printed list of Moves (Core p.199). */
 const RECKLESS_MOVES     = new Set(["Jump Kick","Hi Jump Kick","High Jump Kick"].map(s=>s.toLowerCase()));
+/* Reckless [Errata] prints its own, longer list of "Reckless Moves" on top of the Exhaust and Recoil
+   keywords. Newer-gen Moves carry a literal Reckless keyword in their range instead, so the check
+   below reads both. Kept separate from RECKLESS_MOVES: the un-errata'd Ability names only Jump Kick,
+   Hi Jump Kick and Recoil, and a sheet running the printed version should stay at +2 on those. */
+const RECKLESS_ERRATA_MOVES = new Set(["Jump Kick","Hi Jump Kick","High Jump Kick","Close Combat",
+  "Draco Meteor","Hammer Arm","Leaf Storm","Outrage","Overheat","Petal Dance","Psycho Boost",
+  "Superpower","Thrash","V-Create"].map(s=>s.toLowerCase()));
 const STRONG_JAW_MOVES   = new Set(["Bite","Bug Bite","Crunch","Fire Fang","Ice Fang","Thunder Fang",
   "Poison Fang","Hyper Fang","Psychic Fangs","Fishious Rend"].map(s=>s.toLowerCase()));
 const MEGA_LAUNCHER_MOVES= new Set(["Aura Sphere","Dark Pulse","Dragon Pulse","Water Pulse",
@@ -10633,6 +10698,13 @@ function abilityDamageMods(p, m, baseDBVal, thresholds, opts={}){
   // Reckless: +2 DB on Recoil Moves and Jump Kick / Hi Jump Kick
   if(hasAbility(p,"Reckless") && (moveHasKeyword(m,"recoil") || RECKLESS_MOVES.has(mname))){
     mods.db += 2; mods.why.push("Reckless +2 DB"); }
+  /* Reckless [Errata]: "Increases the Damage Base of Moves with the Exhaust, Recoil, or Reckless
+     Keywords by +3." — a bigger bonus over a much wider net, and it names the classic Moves that
+     predate the Reckless keyword (Close Combat, Overheat, Superpower...) as Reckless Moves. */
+  if(hasAbility(p,"Reckless [Errata]") && (moveHasKeyword(m,"recoil") || moveHasKeyword(m,"exhaust")
+       || moveHasKeyword(m,"reckless") || RECKLESS_ERRATA_MOVES.has(mname))){
+    const src = moveHasKeyword(m,"exhaust") ? "Exhaust" : moveHasKeyword(m,"recoil") ? "Recoil" : "Reckless";
+    mods.db += 3; mods.why.push(`Reckless +3 DB (${src})`); }
   // Fiery Crash: the "+2 Damage Base" half of its Dash-Move choice. The retype half is a type
   // change, so the caller resolves it (opts.fieryCrash says which half this roll took).
   if(opts.fieryCrash==="db"){
@@ -11213,6 +11285,7 @@ function openMoveRoll(p, m, sp, opts={}){
   const rollThresholds = fieryCrashThresholds(thresholds, !!fc && mtype==="Fire");
   const fiveStrike = isFiveStrike(m);
   const critT = critThreshold(p, m);
+  const alwaysCrit = alwaysCrits(m);   // "if it hits, it is a Critical Hit" — see critThreshold()
   /* the crit range as this roll will actually resolve it — buffs (Trick Shot, Pinpoint Strike…)
      widen it, and the guide above should say the same number the 🎲 result checks against */
   const critNow = () => Math.max(2, critT - (bm.crit||0));
@@ -11397,9 +11470,9 @@ function openMoveRoll(p, m, sp, opts={}){
       el("div",{style:"font-size:16px;font-weight:700"},
         `Accuracy: ${noMissNow() ? "auto-hit" : m.ac!=null ? (nAcc>1?`${nAcc} × 1d20`:"1d20") + (accMod?` ${accMod>0?"+":"−"} ${Math.abs(accMod)}`:"") : "—"}`),
       el("div",{class:"small muted",style:"margin-top:2px"},
-        wx.autoHit ? `${m.name} cannot miss in ${wx.weather.name} — no Accuracy Check needed.`
-        : cxNoMiss ? `${m.name} cannot miss while that condition holds — no Accuracy Check needed.`
-        : m.ac!=null ? `${nAcc>1?`Make ${nAcc} separate Accuracy Rolls`:"Roll 1d20"} — each hits if it's ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:acCut?" (Accuracy Training)":""} + ${evaNote}. Roll ${critNow()===20?"20":critNow()+"+"} auto-hits/crits, nat 1 auto-misses.`
+        wx.autoHit ? `${m.name} cannot miss in ${wx.weather.name} — no Accuracy Check needed.${alwaysCrit?" It is a Critical Hit automatically.":""}`
+        : cxNoMiss ? `${m.name} cannot miss while that condition holds — no Accuracy Check needed.${alwaysCrit?" It is a Critical Hit automatically.":""}`
+        : m.ac!=null ? `${nAcc>1?`Make ${nAcc} separate Accuracy Rolls`:"Roll 1d20"} — each hits if it's ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:acCut?" (Accuracy Training)":""} + ${evaNote}. ${alwaysCrit?"Every roll that connects is a Critical Hit":`Roll ${critNow()===20?"20":critNow()+"+"} auto-hits/crits`}, nat 1 auto-misses.`
                      + (accWhy.length?` Every roll includes ${accWhy.join(" ")}.`:"")
                    : "This move has no Accuracy Check."));
   }
@@ -11569,7 +11642,9 @@ function openMoveRoll(p, m, sp, opts={}){
       if(zOn && zBoost) dmgBox.append(el("div",{class:"small",style:"margin-top:2px;font-weight:700;color:var(--accent)"},
         zBoost.kind==="z" ? `⚡ ${m.name} is unleashed as ${zBoost.zName} — +${zBoost.db} Damage Base.`
                           : `💎 The ${zBoost.item} shatters — +${zBoost.db} Damage Base on this attack.`));
-      if(critNow()<20) dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
+      if(alwaysCrit) dmgBox.append(el("div",{class:"small",style:"margin-top:2px;font-weight:700;color:var(--bad)"},
+        `💥 ${m.name} is a Critical Hit whenever it connects — no Crit Range to beat.`));
+      else if(critNow()<20) dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
         `Critical Hit Range: ${critNow()}–20 for this Pokémon/move`
         + (bm.crit ? ` — ${critT===20?"normally a natural 20":`normally ${critT}–20`}, widened +${bm.crit} by ${buffSources(p,"crit")}.` : ".")));
     } else {
@@ -11835,8 +11910,13 @@ function openMoveRoll(p, m, sp, opts={}){
     if(multi){ hitsConnect = Math.max(1, connected); renderDamage(); }
     const fDB = finalDB(1);
     // crits can't outnumber the strikes that actually landed (matters after a manual override)
+    /* A guaranteed-crit Move crits on anything that connects. A natural 1 is the one roll that
+       doesn't — except where there was never an Accuracy Check to fail: an automatic hit (weather,
+       a ticked condition) throws no die, and a Move printed with no AC at all (Flower Trick) rolls
+       its d20 only to read Effect Ranges off it. */
     const nCrit  = multi ? Math.min(strikes.filter(s=>s.crit).length, connected)
-                         : ((!cantMiss && acc>=effCritT) ? 1 : 0);
+                         : (alwaysCrit ? ((cantMiss || effAC==null || acc!==1) ? 1 : 0)
+                                       : ((!cantMiss && acc>=effCritT) ? 1 : 0));
     const isCrit = nCrit > 0;
     const accLine = el("div",{style:fDB!=null?"margin-bottom:10px":""});
     accLine.append(el("div",{class:"lbl",style:"color:var(--muted)  ;font-weight:800"}, multi?"ACCURACY ROLLS":"ACCURACY ROLL"));
@@ -11845,6 +11925,7 @@ function openMoveRoll(p, m, sp, opts={}){
       accLine.append(el("div",{class:"small muted"}, wx.autoHit
         ? `${m.name} cannot miss in ${wx.weather.name} — no Accuracy Check.`
         : `${m.name} cannot miss while that condition holds — no Accuracy Check.`));
+      if(isCrit) accLine.append(el("div",{style:"font-size:20px;font-weight:800;color:var(--bad);margin-top:2px"}, "💥 CRITICAL HIT!"));
     } else if(multi){
       accLine.append(el("div",{style:`font-size:24px;font-weight:800;color:var(--${connected?"good":"bad"})`},
         `🎯 ${connected} / ${nAcc} strike${connected===1?"":"s"} connected`));
@@ -11858,7 +11939,7 @@ function openMoveRoll(p, m, sp, opts={}){
       accLine.append(el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`,
         el("span",{class:"muted",style:"font-size:14px;font-weight:600"}, accBits.length?`  (${acc} ${accBits.join(" ")})`:"  (1d20)")));
       if(effAC!=null) accLine.append(el("div",{class:"small muted"},
-        `Hits if ${accTot} ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote}.${acc===1?" Natural 1 — auto-miss.":isCrit?` Roll ${acc} ≥ crit range ${effCritT} — Critical Hit!`:""}`));
+        `Hits if ${accTot} ≥ AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote}.${acc===1?" Natural 1 — auto-miss.":!isCrit?"":alwaysCrit?` ${m.name} is a Critical Hit whenever it connects.`:` Roll ${acc} ≥ crit range ${effCritT} — Critical Hit!`}`));
       if(isCrit) accLine.append(el("div",{style:"font-size:20px;font-weight:800;color:var(--bad);margin-top:2px"}, "💥 CRITICAL HIT!"));
     }
     out.append(accLine);
@@ -12996,18 +13077,22 @@ function openGiveOrder(t, f, def, rerender){
     }},"✨ Give Order"),
   ]});
 }
-function featureActionRow(f, owner, rerender){
+function featureActionRow(f, owner, rerender, opts={}){
   const d=el("details",{class:"spoiler"});
   const meta=[f.frequency,f.category].filter(Boolean).join(" · ");
-  const uc = owner && usesControl(owner, "feature", f.name, f.frequency, rerender||(()=>{}));
+  const uc = owner && usesControl(owner, "feature", f.name, f.frequency, rerender||(()=>{}), opts.persist);
   const favs=getFavActions(), fav=favs.has(featFavId(f.name));
   // an Order the buff engine models, on the player's own sheet → one tap to actually give it
   const def = owner && owner===activeChar()?.trainer ? featureBuffDef(f) : null;
   // a Feature that switches a stance on/off (Enchanting Transformation) toggles straight from here
   const md  = owner && owner===activeChar()?.trainer ? featureModeDef(f) : null;
   const mdOn = md && modeIsOn(owner, md.key);
-  // a Feature the sheet can actually carry out (Frenzy, Fight On and On) — see FEATURE_ACTIONS
-  const fa  = owner && owner===activeChar()?.trainer ? featureActionDef(f) : null;
+  /* a Feature the sheet can actually carry out (Frenzy, Fight On and On) — see FEATURE_ACTIONS.
+     opts.owned lets a view that isn't the player's own sheet press these anyway: the Encounters tab
+     passes {owned:true, persist:saveEnc} so a GM can run an NPC Berserker's Features. The two
+     buttons above stay gated — openGiveOrder and setFeatureMode both read activeChar() and save()
+     to the player sheet, so they'd act on the wrong character. */
+  const fa  = owner && (opts.owned || owner===activeChar()?.trainer) ? featureActionDef(f) : null;
   const faOn = fa && fa.feat===BERSERKER_FIGHT_ON && !!owner.fightOn;
   d.append(el("summary",{},
     el("button",{class:"actstar"+(fav?" on":""),title:fav?"unfavourite":"favourite",
@@ -13022,7 +13107,7 @@ function featureActionRow(f, owner, rerender){
       onclick:e=>{ e.preventDefault(); e.stopPropagation(); setFeatureMode(owner, md, !mdOn, rerender); }},
       mdOn ? `⏹ ${md.off}` : `${md.icon} ${md.on}`) : "",
     fa ? el("button",{class:"linkbtn",style:"margin-left:8px",title:fa.title(owner),
-      onclick:e=>{ e.preventDefault(); e.stopPropagation(); fa.run(owner, f, rerender); }}, fa.label(owner)) : "",
+      onclick:e=>{ e.preventDefault(); e.stopPropagation(); fa.run(owner, f, rerender, opts.persist); }}, fa.label(owner)) : "",
     (mdOn || faOn) ? el("span",{class:"small",style:"margin-left:8px;color:var(--good);font-weight:700"},"● ACTIVE") : ""));
   d.append(el("div",{class:"small",style:"margin-top:6px",html: refDetailHTML("feature",f.name)}));
   return d;
@@ -13911,6 +13996,68 @@ function encTrainerStatSpread(t, key){
   det.append(el("div",{style:"margin-top:6px"}, encUnlockToggle(t)));
   return det;
 }
+/* Skill Ranks for an encounter Trainer. The card used to print read-only chips for the trained
+   Skills only, which left a GM unable to set the Ranks that feed the DERIVED numbers an NPC fights
+   with: Combat drives the Struggle's AC/DB and which Weapon Moves are legal, Athletics and
+   Acrobatics drive Overland/Swim/Power/Jump/Throwing Range, and Intimidate is half of the Berserker's
+   Lessons In Rage & Pain damage. Unlike the player Sheet these ARE pressable — an NPC has no
+   Level-Up ledger to derive them from, so the GM types the build directly.
+   Virtuoso stays gated behind the same Level 20 + Edge check players get (or the 🔓 override). */
+function encTrainerSkills(t, key){
+  normTrainer(t);
+  const det = el("details",{class:"spoiler",style:"margin-top:8px"});
+  det.dataset.key = "skills:"+key;
+  const trained = SKILLS.filter(([k]) => (t.skills?.[k]||"Untrained") !== "Untrained");
+  det.append(el("summary",{}, el("span",{style:"font-weight:700"},"Skills"),
+    el("span",{class:"muted small",style:"margin-left:8px"},
+      trained.length ? trained.map(([k,l])=>`${l} ${t.skills[k]}`).join(" · ") : "all Untrained")));
+  const body = el("div",{style:"margin-top:6px"});
+  /* What the four Body/Spirit Skills are actually buying this NPC right now — the whole reason to
+     edit them here rather than leaving every NPC on Untrained. Recomputed on each render. */
+  const derivedLine = () => {
+    const d = trainerDerived(t), st = trainerStruggle(t);
+    const bits = [`Struggle AC ${st.ac} · DB ${st.damageBase}`,
+                  `Overland ${d.overland} · Swim ${d.swim}`,
+                  `Power ${d.power}`,
+                  `Jump ${d.highJump}/${d.longJump}`,
+                  `Throwing Range ${d.throwing}`];
+    /* Lessons In Rage & Pain pays nothing until the 1st Injury, so at 0 quote what it WOULD be
+       rather than a bonus that isn't there — same phrasing the 💢 Berserker card uses. */
+    if(hasFeatureLoose(t, BERSERKER_LESSONS)){
+      const inj = Math.max(0, t.injuries||0), r = rankNum(t.skills?.intimidate);
+      bits.push(inj >= 1 ? `${BERSERKER_LESSONS} +${r+inj} damage`
+                         : `${BERSERKER_LESSONS} +${r+1} at 1 Injury`);
+    }
+    return bits.join("  ·  ");
+  };
+  const out = el("div",{class:"small muted",style:"margin-bottom:8px;font-weight:700"}, derivedLine());
+  body.append(out);
+  SKILLS.forEach(([k,lbl])=>{
+    const cur = t.skills[k] || "Untrained";
+    const row = el("div",{class:"inline",style:"gap:8px;align-items:center;margin-bottom:3px;flex-wrap:wrap"});
+    row.append(el("span",{class:"small",style:"font-weight:700;min-width:96px"}, lbl));
+    const wrap = el("div",{class:"rankbtns"});
+    RANKS.forEach(r=>{
+      const lock = !rankAllowed(t, r);
+      const b = el("button",{class:(r===cur?"on":"")+(lock?" locked":""),
+        title: lock ? `${r} — ${VIRTUOSO_LOCK_MSG}` : `${r} — Rank ${rankNum(r)}, ${rankDice(r)}d6`}, r[0]);
+      b.addEventListener("click", ()=>{
+        if(!rankAllowed(t, r)){ toast(VIRTUOSO_LOCK_MSG); return; }
+        t.skills[k] = r; saveEnc();
+        $$("button", wrap).forEach((x,j)=> x.classList.toggle("on", RANKS[j]===r));
+        out.textContent = derivedLine();
+      });
+      wrap.append(b);
+    });
+    row.append(wrap);
+    row.append(el("span",{class:"small muted"}, `${rankDice(cur)}d6`));
+    body.append(row);
+  });
+  body.append(el("div",{class:"small muted",style:"margin-top:6px"},
+    "Combat Expert+ makes the unarmed Struggle AC 3 / DB 5 and unlocks Adept (Rank 4) and Master (Rank 6) Weapon Moves."));
+  det.append(body);
+  return det;
+}
 /* Weapons editor for an encounter Trainer — mirrors weaponsCard(t) but persists via saveEnc(). */
 function encWeaponsCard(t, key){
   if(!Array.isArray(t.weapons)) t.weapons=[];
@@ -13977,6 +14124,10 @@ function encTrainerCombatStages(t, key){
   return det;
 }
 /* compact, expandable status-condition toggles for an encounter Pokémon */
+/* Also mounted on the Trainer card. A Trainer has no species (so no Type immunities) and its Max HP
+   comes from trainerDerived, which is what ownerMaxHP() picks between — everything else is the same
+   list of chips. Without this an NPC could never be set Enraged, which is the Condition on Frenzy,
+   Fight On and On, White Flame, Enduring Rage and the Bad Mood Edge alike. */
 function encStatusControl(p){
   if(!Array.isArray(p.statuses)) p.statuses=[];
   const sp=getSpecies(p.species);
@@ -13999,13 +14150,16 @@ function encStatusControl(p){
       return true;
     }).forEach(s=>{
       const on=hasStatus(p,s.key), immune=s.immune && sp?.types?.some(t=>s.immune.includes(t));
-      chips.append(el("button",{class:"statuschip"+(on?" on":""), title:(immune?`${sp.name} is immune. `:"")+s.effect,
-        onclick:()=>{ p.statuses=p.statuses||[]; const i=p.statuses.indexOf(s.key); if(i>=0)p.statuses.splice(i,1); else p.statuses.push(s.key); saveEnc(); renderEncounters(); }}, s.name+(immune?" ⃠":"")));
+      const block = statusCureBlock(p, s.key);   // Enduring Rage / White Flame forbid curing Enraged
+      chips.append(el("button",{class:"statuschip"+(on?" on":""),
+        title:(immune?`${sp.name} is immune. `:"")+s.effect+(block?`\n\n${block}`:""),
+        onclick:()=>{ p.statuses=p.statuses||[]; const i=p.statuses.indexOf(s.key); if(i>=0)p.statuses.splice(i,1); else p.statuses.push(s.key); saveEnc(); renderEncounters(); }},
+        s.name+(immune?" ⃠":"")+(block&&on?" 🔒":"")));
     });
     body.append(el("div",{class:"small muted",style:"font-weight:700;margin:4px 0 2px"},label), chips);
   });
   if(hasStatus(p,"confused")) body.append(confusionRow(p, n=>{
-    const max = pokeDerived(p).maxHP;
+    const max = ownerMaxHP(p);   // Trainer or Pokémon — the card mounts this for both
     p.currentHP = Math.max(-99, (p.currentHP==null?max:p.currentHP) - n);
     saveEnc(); renderEncounters();
   }));
@@ -14328,8 +14482,10 @@ function encounterTrainerCard(enc, tr){
   if(typeExpertiseEligible(t)){
     card.append(typeExpertiseControl(t, saveEnc, renderEncounters));
   }
+  card.append(encStatusControl(t));        // Enraged & co. — the Condition on half the Berserker class
   card.append(encTrainerCombatStages(t, tr.id));
   card.append(encTrainerStatSpread(t, tr.id));
+  card.append(encTrainerSkills(t, tr.id));
   card.append(encWeaponsCard(t, tr.id));
   // Attacks: unarmed Struggle + one slot per weapon (+ its Weapon Move) — reuses the Sheet's slots
   const atkWrap=el("div",{style:"margin-top:8px"});
@@ -14404,12 +14560,10 @@ function encounterTrainerCard(enc, tr){
   });
   card.append(build);
   // Skills — trained ones with their dice, for quick GM checks
-  const trained=SKILLS.filter(([k])=> (t.skills?.[k]||"Untrained")!=="Untrained");
-  if(trained.length){
-    const chips=el("div",{class:"chips",style:"margin-top:4px"});
-    trained.forEach(([k,l])=> chips.append(el("span",{class:"kv",title:t.skills[k]}, `${l} ${rankDice(t.skills[k])}d6`)));
-    card.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:8px"},"Skills"), chips);
-  }
+  /* 💢 Berserker — the same class summary the player's ⚔ Battle tab shows, with its Feature
+     buttons live (Frenzy, Fight On and On, Power of Rage) and writing through saveEnc(). */
+  const bers = berserkerCard(t, renderEncounters, saveEnc);
+  if(bers){ bers.style.margin = "8px 0 0"; card.append(bers); }
   // Food: an encounter Trainer has no tracked bag, so `free` opens the whole Snack catalog
   card.append(digestionCard(t, ()=>{ saveEnc(); renderEncounters(); }, {free:true}));
   // trainer's Pokémon
@@ -16111,6 +16265,7 @@ function simProfile(A, atk, cfg){
     ac: wx.acOverride!=null ? wx.acOverride : atk.ac,
     accMod: (bm.acc||0) + (d.cs.acc||0) + (aAcc.acc||0) + (hasStatus(p,"focused")?1:0),
     critT: Math.max(2, critThreshold(p, atk.m) - (bm.crit||0)),
+    alwaysCrit: alwaysCrits(atk.m),
     flat: atkStat + (bm.dmg||0) + (wx.dmg||0) + (tx.dmg||0) + (abil.flat||0),
     autoHit: !!wx.autoHit,
     pierceImmune: !A.isT && ignoresTypeImmunity(p, atk.m, mtype),  // Bone Wielder [Errata] / Scrappy
@@ -16157,7 +16312,7 @@ function simExpected(A, atk, D, cfg){
   }
   const db  = pr.fiveStrike ? Math.min(28, pr.baseDB*3 + pr.dbBonus) : pr.db;   // Five Strike averages 3 hits
   const avg = simDbAvg(db);
-  const pCrit = pr.autoHit ? 0 : Math.max(0, (21-pr.critT)/20);
+  const pCrit = pr.alwaysCrit ? 1 : pr.autoHit ? 0 : Math.max(0, (21-pr.critT)/20);
   const ev = pHit * simMitigate(D, Math.round(avg + pr.flat + pCrit*avg), pr.mtype, pr.isPhys, pr.pierceImmune);
   /* Blowing yourself up is only a good trade when it actually finishes the target — otherwise the
      side just gave away a whole combatant, so heavily discount it rather than ban it (a Golem whose
@@ -16218,7 +16373,7 @@ function simStrike(B, A, atk, D, round){
     return 0;
   }
   A.hits++;
-  const crit = !pr.autoHit && nat >= pr.critT;
+  const crit = pr.alwaysCrit || (!pr.autoHit && nat >= pr.critT);
   if(crit) A.crits++;
   /* Five Strike (Core p.242): the Move's OWN Damage Base is multiplied by the rolled hit count,
      and STAB / Technician / buffs are added to the product. */
