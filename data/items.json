@@ -691,6 +691,78 @@
       "effect": "Can be consumed as a Free Action to give a +3 DB bonus to one Water-Type attack."
     },
     {
+      "name": "Normalium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Normal-Type Move it uses becomes Breakneck Blitz and gains a +3 Damage Base bonus. Unlike a Normal Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
+      "name": "Firium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Fire-Type Move it uses becomes Inferno Overdrive and gains a +3 Damage Base bonus. Unlike a Fire Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
+      "name": "Waterium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Water-Type Move it uses becomes Hydro Vortex and gains a +3 Damage Base bonus. Unlike a Water Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
+      "name": "Electrium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Electric-Type Move it uses becomes Gigavolt Havoc and gains a +3 Damage Base bonus. Unlike a Electric Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
+      "name": "Grassium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Grass-Type Move it uses becomes Bloom Doom and gains a +3 Damage Base bonus. Unlike a Grass Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
+      "name": "Icium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Ice-Type Move it uses becomes Subzero Slammer and gains a +3 Damage Base bonus. Unlike a Ice Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
+      "name": "Fightinium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Fighting-Type Move it uses becomes All-Out Pummeling and gains a +3 Damage Base bonus. Unlike a Fighting Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
+      "name": "Poisonium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Poison-Type Move it uses becomes Acid Downpour and gains a +3 Damage Base bonus. Unlike a Poison Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
+      "name": "Groundium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Ground-Type Move it uses becomes Tectonic Rage and gains a +3 Damage Base bonus. Unlike a Ground Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
+      "name": "Flyinium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Flying-Type Move it uses becomes Supersonic Skystrike and gains a +3 Damage Base bonus. Unlike a Flying Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
+      "name": "Psychium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Psychic-Type Move it uses becomes Shattered Psyche and gains a +3 Damage Base bonus. Unlike a Psychic Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
+      "name": "Buginium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Bug-Type Move it uses becomes Savage Spin-Out and gains a +3 Damage Base bonus. Unlike a Bug Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
+      "name": "Rockium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Rock-Type Move it uses becomes Continental Crush and gains a +3 Damage Base bonus. Unlike a Rock Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
+      "name": "Ghostium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Ghost-Type Move it uses becomes Never-Ending Nightmare and gains a +3 Damage Base bonus. Unlike a Ghost Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
+      "name": "Dragonium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Dragon-Type Move it uses becomes Devastating Drake and gains a +3 Damage Base bonus. Unlike a Dragon Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
+      "name": "Darkinium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Dark-Type Move it uses becomes Black Hole Eclipse and gains a +3 Damage Base bonus. Unlike a Dark Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
+      "name": "Steelium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Steel-Type Move it uses becomes Corkscrew Crash and gains a +3 Damage Base bonus. Unlike a Steel Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
+      "name": "Fairium Z",
+      "effect": "Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Fairy-Type Move it uses becomes Twinkle Tackle and gains a +3 Damage Base bonus. Unlike a Fairy Gem the crystal is not consumed — it recharges at the end of every Scene."
+    },
+    {
       "name": "Type Plates",
       "effect": "These Rare items come in a variety of each of the Elemental Types, and act as both a Type Booster and a Type Brace."
     },

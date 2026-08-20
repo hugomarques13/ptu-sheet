@@ -139,6 +139,12 @@ textarea{resize:vertical; min-height:64px}
 .rankbtns button.locked.on{opacity:.8}
 /* 7 ranks is a wide row on a phone — let the buttons shrink instead of pushing the table */
 @media (max-width:560px){ .rankbtns button{width:23px} }
+/* read-only ladder (players): the same row of Ranks, lit at the current one, nothing to press */
+.rankbtns .rank-chip{width:26px;height:28px;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--field-line);background:var(--field);border-radius:6px;font-weight:800;
+  color:var(--muted);opacity:.4;cursor:default;user-select:none}
+.rankbtns .rank-chip.on{background:var(--accent);color:#fff;border-color:var(--accent);opacity:1}
+@media (max-width:560px){ .rankbtns .rank-chip{width:23px} }
 
 /* ---------- chips / tags ---------- */
 .chips{display:flex; flex-wrap:wrap; gap:6px}
