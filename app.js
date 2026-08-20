@@ -1063,6 +1063,68 @@ function spendTypeBoost(p, boost){
   p.heldItem = "";
 }
 /* ===================================================================
+   TYPE BOOSTERS — Charcoal, Never-Melt Ice, Twisted Spoon…
+   ------------------------------------------------------------------
+   Core p.296: "These items come in a variety of each of the Elemental Types, and grants a +5 Damage
+   Bonus to all direct damage Moves of its Specific Type when performed by the user. Accessory Item
+   for Trainers." The catalogue lists them under the names they carry in the games, so the table can
+   ask for the item it already knows; the old generic PTU spelling ("Fire Booster") still resolves,
+   for sheets, shops and bags saved before the rename.
+
+   +5 is a flat DAMAGE bonus, not Damage Base: it lands next to the Attack stat on the damage roll,
+   never inside finalDB(). (Contrast the Type Gems above, which are +3 Damage Base.)
+
+   A Pokémon gets it from its Held Item, a Trainer from the Accessory slot of the Equipment card —
+   equipEffFor() synthesises the worn-item effect off this same table. A Type Plate counts too: it
+   "acts as both a Type Booster and a Type Brace".
+=================================================================== */
+const TYPE_BOOSTER_DMG = 5;
+const TYPE_BOOSTER_ITEMS = {
+  Normal:"Silk Scarf",    Fire:"Charcoal",         Water:"Mystic Water",
+  Electric:"Magnet",      Grass:"Miracle Seed",    Ice:"Never-Melt Ice",
+  Fighting:"Black Belt",  Poison:"Poison Barb",    Ground:"Soft Sand",
+  Flying:"Sharp Beak",    Psychic:"Twisted Spoon", Bug:"Silver Powder",
+  Rock:"Hard Stone",      Ghost:"Spell Tag",       Dragon:"Dragon Fang",
+  Dark:"Black Glasses",   Steel:"Iron Charm",      Fairy:"Fairy Feather",
+};
+const TYPE_PLATE_ITEMS = {
+  "Draco Plate":"Dragon", "Dread Plate":"Dark",    "Earth Plate":"Ground",
+  "Fist Plate":"Fighting","Flame Plate":"Fire",    "Icicle Plate":"Ice",
+  "Insect Plate":"Bug",   "Iron Plate":"Steel",    "Meadow Plate":"Grass",
+  "Mind Plate":"Psychic", "Pixie Plate":"Fairy",   "Sky Plate":"Flying",
+  "Splash Plate":"Water", "Spooky Plate":"Ghost",  "Stone Plate":"Rock",
+  "Toxic Plate":"Poison", "Zap Plate":"Electric",  "Normal Plate":"Normal",
+};
+/* item name → the Type it boosts. Built lazily and keyed through normItemName, so "Never-Melt Ice",
+   "Never Melt Ice" and "nevermeltice" are all the same key. */
+let _typeBoosterIdx = null;
+function typeBoosterIndex(){
+  if(_typeBoosterIdx) return _typeBoosterIdx;
+  _typeBoosterIdx = new Map();
+  const put = (nm, ty) => _typeBoosterIdx.set(normItemName(nm), ty);
+  Object.entries(TYPE_BOOSTER_ITEMS).forEach(([ty,nm])=>{ put(nm, ty); put(ty+" Booster", ty); });
+  Object.entries(TYPE_PLATE_ITEMS).forEach(([nm,ty])=>put(nm, ty));
+  put("Pink Pearl", "Psychic");         // "Acts as a Psychic Type Booster" (Core p.297)
+  return _typeBoosterIdx;
+}
+function typeBoosterTypeOf(name){
+  const n = normItemName(name); if(!n) return null;
+  return typeBoosterIndex().get(n) || null;
+}
+/* the Booster this owner is carrying that matches a Move going out as `mtype` — null when it isn't
+   carrying one, or when the Types don't line up. Held Item for a Pokémon, worn gear for a Trainer. */
+function typeBoosterFor(owner, mtype){
+  if(!owner || !mtype) return null;
+  const names = isTrainerOwner(owner) ? equippedList(owner).map(e=>e.name)
+                                      : [String(owner.heldItem||"")];
+  for(const nm of names){
+    if(typeBoosterTypeOf(nm) === mtype) return { item:nm, type:mtype, dmg:TYPE_BOOSTER_DMG };
+  }
+  return null;
+}
+function typeBoosterDmg(owner, mtype){ const b = typeBoosterFor(owner, mtype); return b ? b.dmg : 0; }
+
+/* ===================================================================
    ILLUSION — Ability (Frequency: Special)
    ------------------------------------------------------------------
    "As a Standard Action, the user may mark an object, Pokemon, or Trainer. The user may have a
@@ -1168,13 +1230,20 @@ const MINIOR_COLORS = ["Red","Orange","Yellow","Green","Blue","Indigo","Violet"]
 /* pokemondb only draws the generic core, so the coloured artwork is hotlinked from PokeAPI, which
    files each colour of the Core Forme under its own form id (minior-blue = 10140, …). */
 const MINIOR_ART = { Red:10136, Orange:10137, Yellow:10138, Green:10139, Blue:10140, Indigo:10141, Violet:10142 };
+
 function isMinior(p){ const n = p && p.species; return n===MINIOR_METEOR || n===MINIOR_CORE; }
-/* this Minior's rolled shell colour, rolling one the first time it is asked for */
+/* This Minior's shell colour: the GM's pick if there is one, otherwise DERIVED from the Pokémon's
+   own id. It used to roll a random colour and store it mid-render — but a render never saves, so
+   any re-sync dropped the roll and the next render rolled again, and Miniors quietly changed colour
+   between refreshes. Hashing the id gives the same answer on every client and every reload with no
+   write at all, and an explicit p.miniorColor always wins over it. */
 function miniorColor(p){
   if(!p) return MINIOR_COLORS[0];
-  if(!MINIOR_COLORS.includes(p.miniorColor))
-    p.miniorColor = MINIOR_COLORS[Math.floor(Math.random()*MINIOR_COLORS.length)];
-  return p.miniorColor;
+  if(MINIOR_COLORS.includes(p.miniorColor)) return p.miniorColor;
+  const key = String(p.id || p.nickname || p.species || "minior");
+  let h = 0;
+  for(let i=0;i<key.length;i++) h = (h*31 + key.charCodeAt(i)) >>> 0;
+  return MINIOR_COLORS[h % MINIOR_COLORS.length];
 }
 function monLookName(p, sp){
   // an Illusion is worn OVER whatever the creature currently is, Transformed or not
@@ -1801,7 +1870,7 @@ function normPokemon(p){
   if(!Array.isArray(p.tpLog)) p.tpLog = [];           // every Tutor Point in or out, oldest first (see tpChange)
   tpSync(p);   // level (or a points-granting Poké Edge) went up while nobody was looking → credit it now
 
-  if(isMinior(p)) miniorColor(p);                // roll this Minior's Core Forme colour once, and keep it
+
   normSwarm(p);                                  // Swarm Template block, if this is a swarm (Core p.478)
   normBoss(p);                                     // Boss Template block, if this is a boss (Running the Game p.487)
   autoAllocMom(p);                                 // "Mom?": keep auto-assigned stat points in sync with level
@@ -1967,7 +2036,7 @@ function trainerDerived(t) {
   // The Chariot raises EVERY movement Capability, so it lands on both Overland and Swim
   const bMove = buffMove(t);                               // a buff that raises Movement Speed (Frenzy)
   const ovlBase = 3 + Math.floor((athl+acro)/2) + equipOverland(t) + arc.caps.move + bMove;
-  const swimBase = Math.floor((3 + Math.floor((athl+acro)/2))/2) + arc.caps.move + bMove;
+  const swimBase = Math.floor((3 + Math.floor((athl+acro)/2))/2) + equipSwim(t) + arc.caps.move + bMove;
   const fullHP = t.level*2 + raw("hp")*3 + 10 + arc.hp;    // undamaged maximum (Nine of Wands ±5)
   const injuries = Math.max(0, t.injuries||0);
   // Injuries cap max HP −10% each (Core p.249). injuryHPCount is where Lessons In Rage & Pain stops
@@ -2206,10 +2275,18 @@ function attachArtFallback(img, srcs){
 function speciesArtChain(name, shiny){
   if(!name) return [POKEBALL_SVG];
   // "Minior Blue Core" & co. aren't species — they're what monLookName calls a cracked-open Minior
+
   const mi = /^Minior ([A-Za-z]+) Core$/.exec(name);
   if(mi && MINIOR_ART[mi[1]]){
-    const art = n => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${n}${MINIOR_ART[mi[1]]}.png`;
-    return [art(shiny?"shiny/":""), art(""), spriteUrl(MINIOR_CORE, shiny)];
+    // jsDelivr FIRST, raw.githubusercontent only as a backup. Serving these straight off raw.
+    // githubusercontent measured 1637ms for the seven colours against jsDelivr's 97ms, and when a
+    // board full of Miniors made those requests time out they all fell through to the last resort
+    // below — pokémondb's generic core, which is the RED one. That is the "they all turned red".
+    const id = MINIOR_ART[mi[1]], sh = shiny ? "shiny/" : "";
+    return [`https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/other/official-artwork/${sh}${id}.png`,
+            `https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/other/official-artwork/${id}.png`,
+            `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${sh}${id}.png`,
+            spriteUrl(MINIOR_CORE, shiny)];
   }
   const bucket = speciesArtUrls(name, shiny);
   // main directory first so a species keeps working once its art is promoted out of staging; the
@@ -2471,14 +2548,20 @@ function renderTrainer(){
   const sg = el("div",{class:"statgrid"});
   const giftB = giftStatBonus(t);   // Legendary Gift Patron-Stat points fold into the combat total
   const tagB = statTagBonus(t).stats;   // Feature [+Stat] tags likewise (Core p.14)
+  const msB = luStatAlloc(t);       // Level-Up milestone Bonus Stats — already inside .added, but locked there
   // the 🎁 breakdown is part of the private Gifts picture — another player sees only the total
   const showGift = sheetIsMine();
   STATS.forEach(([k,lbl]) => {
     const canInc = t.unlocked || tb.remaining > 0;
+    const lock = t.unlocked ? 0 : (msB[k]||0);   // GM 🔓 still overrides everything
+    const lblNode = el("div",{class:"lbl"},lbl+(showGift&&giftB[k]?` +${giftB[k]}🎁`:"")+(tagB[k]?` +${tagB[k]}🏷`:""));
+    if(msB[k]) lblNode.append(el("span",{class:"muted",
+      title:`${msB[k]} of these points came from a Level-Up milestone (Bonus Stats) and are locked into ${lbl} — they can't be moved to another stat`},
+      ` ${msB[k]}★`));
     const box = el("div",{class:"stat"},
-      el("div",{class:"lbl"},lbl+(showGift&&giftB[k]?` +${giftB[k]}🎁`:"")+(tagB[k]?` +${tagB[k]}🏷`:"")),
+      lblNode,
       inputMini(`trainer.combat.${k}.base`,  t.combat[k].base,  "base"),
-      statStepper(t.combat[k].added, canInc, v=>{ t.combat[k].added = v; save(); renderTrainer(); }),
+      statStepper(t.combat[k].added, canInc, v=>{ t.combat[k].added = v; save(); renderTrainer(); }, lock),
       el("div",{class:"big","data-tot":k}, t.combat[k].base + t.combat[k].added + (giftB[k]||0) + (tagB[k]||0)),
     );
     sg.append(box);
@@ -3295,6 +3378,10 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
      Move used as a Weapon Attack are both out, not just the bare Struggle. */
   const stab = dealsDamage && !st.weapon && trainerStab(t, st.type, isStruggleAtk);
   const stabDB = stab ? 2 : 0;
+  /* A worn Type Booster (Accessory slot) adds its flat +5 to any damaging attack of its Type —
+     a weapon swing included, since it boosts damage rather than Damage Base. */
+  const tBoost = dealsDamage ? typeBoosterFor(t, st.type) : null;
+  const tDmg = tBoost ? tBoost.dmg : 0;
   const accCS = td.cs.acc||0;   // Accuracy Combat Stage: flat add to Accuracy Rolls (Core p.234)
   /* Multi-strike Weapon Moves (Core p.242) — the keywords live in the profile's range string, e.g.
      Furious Strikes "WR, 1 Target, Five Strike" / Gouge "WR, 1 Target, Double Strike". */
@@ -3395,12 +3482,14 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     if(bm.dmg) terms.push(`${bm.dmg>0?"":"−"}${Math.abs(bm.dmg)}`);
     const berPre = berserkBonus(false); if(berPre) terms.push(String(berPre));
     if(wFlame) terms.push(String(wFlame));
+    if(tDmg) terms.push(String(tDmg));
     const why = [`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${baseDBv}`
       + (stabDB||bm.db ? ` (DB ${rawDB}${stabDB?" +2 STAB":""}${bm.db?` ${bm.db>0?"+":"−"}${Math.abs(bm.db)} buffs`:""})` : "")];
     if(atk) why.push(`${atk} = your ${atkLbl}`);
     if(bm.dmg) why.push(`${bm.dmg>0?"+":"−"}${Math.abs(bm.dmg)} = buffs (${buffSources(t,"dmg")})`);
     if(berPre) why.push(`+${berPre} = ${BERSERKER_LESSONS} (Intimidate ${rankNum(t.skills?.intimidate)} + ${t.injuries||0} Injur${(t.injuries||0)===1?"y":"ies"})`);
     if(wFlame) why.push(`+${wFlame} = White Flame (Enraged)`);
+    if(tDmg) why.push(`+${tDmg} = ${tBoost.item} (${tBoost.type} Type Booster)`);
     explain.append(el("div",{},
       el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${terms.join(" + ").replace(/\+ −/g,"− ")}`),
       el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ") + ". "
@@ -3609,11 +3698,12 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         el("div",{class:"small muted",style:"margin-top:2px"},"Neither Attack Roll met AC + Evasion, so the attack misses entirely.")));
     }
     if(r){ const im = infatMod();
-      const total = Math.max(0, r.total + im.atk + (bm.dmg||0) + berN + wFlame + im.delta + wAcc + critExtra);   // wAcc: Fainted Living Weapon is −2 on EVERY roll
+      const total = Math.max(0, r.total + im.atk + (bm.dmg||0) + berN + wFlame + tDmg + im.delta + wAcc + critExtra);   // wAcc: Fainted Living Weapon is −2 on EVERY roll
       const parts = [`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`, `+ ${im.atk} ${atkLbl}${im.halved?" (halved — Infatuated)":""}`];
       if(bm.dmg) parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs (${buffSources(t,"dmg")})`);
       if(berN) parts.push(`+${berN} ${BERSERKER_LESSONS} (Intimidate ${rankNum(t.skills?.intimidate)} + ${t.injuries||0} Injur${(t.injuries||0)===1?"y":"ies"}${pushOn?", doubled by "+BERSERKER_PUSH:""})`);
       if(wFlame) parts.push(`+${wFlame} White Flame (Enraged)`);
+      if(tDmg) parts.push(`+${tDmg} ${tBoost.item}`);
       if(im.delta) parts.push(`${im.delta} Infatuated`);
       if(wAcc) parts.push(`${wAcc} Fainted Living Weapon`);
       if(critWhy.length) parts.push(critWhy.join(" "));
@@ -4420,6 +4510,11 @@ function syncMilestoneStats(t){
   ["atk","spatk"].forEach(k=>{
     const delta = (want[k]||0) - (have[k]||0);
     if(delta) t.combat[k].added = Math.max(0, (t.combat[k].added||0) + delta);
+    /* Floor: the milestone points are LOCKED into their stat. Sheets edited before the steppers
+       enforced that could have them stepped back out and re-spent elsewhere (they looked exactly
+       like free pool points) — restore them here. Whatever was spent elsewhere then simply shows
+       up as over budget, which is the honest picture. */
+    if((t.combat[k].added||0) < (want[k]||0)) t.combat[k].added = want[k]||0;
   });
   t.msStats = { atk:want.atk, spatk:want.spatk };
   return t;
@@ -5097,6 +5192,8 @@ const EQUIP_SLOTS = ["Head","Body","Hands","Off-Hand","Feet","Accessory"];
      focus     true → +5 to a chosen stat AFTER Combat Stages (stored in item.focusStat)
      skills    {skillKey:N} flat bonus to that Skill's Checks (skillCap = book cap, display only)
      overland  bonus to Overland Speed
+     swim      bonus to Swim Speed
+     typeBoost {type,dmg} +damage on attacks of one Type — synthesised for the Type Boosters
      capabilities  Capabilities granted (display only)
      note      extra rules text worth surfacing                                       */
 const EQUIP_EFFECTS = {
@@ -5125,7 +5222,8 @@ const EQUIP_EFFECTS = {
   "snow boots":             { capabilities:["Naturewalk (Tundra)"], note:"−1 Overland on ice or deep snow." },
   "jungle boots":           { capabilities:["Naturewalk (Forest)"] },
   "flippers":               { note:"+2 Swim when fully submerged, −2 Overland." },
-  "handheld propellor":     { note:"+3 Swim speed." },
+  "handheld propellor":     { swim:3 },
+  "surfboard":              { swim:3 },
   "light shield":           { evasion:2, note:"Ready (Standard): instead +4 Evasion & 10 DR until end of next turn, but Slowed. Two-handed = Small Melee Weapon." },
   "heavy shield":           { evasion:2, note:"Ready (Standard): instead +6 Evasion & 15 DR until end of next turn, but Slowed. Two-handed = Small Melee Weapon." },
   "shield [9-15 playtest]": { evasion:1, note:"Ready (Standard): instead +4 Evasion & 10 DR until end of next turn, but Slowed." },
@@ -5143,9 +5241,15 @@ function cleanupText(s){
     .replace(/Ã©/g,"é").replace(/Ã¨/g,"è").replace(/Ã¡/g,"á").replace(/Ã³/g,"ó")
     .replace(/Ã­/g,"í").replace(/Ã±/g,"ñ").replace(/Ã¼/g,"ü").replace(/�/g,"");
 }
+/* The Type Boosters are catalogued under their game names, so rather than 36 near-identical rows in
+   EQUIP_EFFECTS their worn effect is synthesised from the table the Held Item path already uses. */
+function typeBoosterEquipEff(name){
+  const ty = typeBoosterTypeOf(name);
+  return ty ? { typeBoost:{ type:ty, dmg:TYPE_BOOSTER_DMG } } : null;
+}
 function equipEffFor(name){
   const n = String(name||"").trim().toLowerCase();
-  return EQUIP_EFFECTS[n] || EQUIP_EFFECTS[normItemName(name)] || null;
+  return EQUIP_EFFECTS[n] || EQUIP_EFFECTS[normItemName(name)] || typeBoosterEquipEff(name);
 }
 /* the trainer's currently-worn items, as {slot, name, item, eff} (empty slots skipped) */
 function equippedList(t){
@@ -5168,6 +5272,7 @@ function equipDR(t){
 function equipEvasion(t){ return equippedList(t).reduce((s,{eff})=>s+((eff&&eff.evasion)||0),0); }
 function equipSpeedCS(t){ return equippedList(t).reduce((s,{eff})=>s+((eff&&eff.speedCS)||0),0); }
 function equipOverland(t){ return equippedList(t).reduce((s,{eff})=>s+((eff&&eff.overland)||0),0); }
+function equipSwim(t){ return equippedList(t).reduce((s,{eff})=>s+((eff&&eff.swim)||0),0); }
 function equipSkillBonus(t, skillKey){
   return equippedList(t).reduce((s,{eff})=>s+((eff&&eff.skills&&eff.skills[skillKey])||0),0);
 }
@@ -5192,6 +5297,8 @@ function equipEffBadges(eff){
   if(eff.evasion) b.push(mk(`+${eff.evasion} Evasion`));
   if(eff.speedCS) b.push(mk(`${eff.speedCS>0?"+":""}${eff.speedCS} Speed CS`));
   if(eff.overland) b.push(mk(`+${eff.overland} Overland`));
+  if(eff.swim) b.push(mk(`+${eff.swim} Swim`));
+  if(eff.typeBoost) b.push(mk(`+${eff.typeBoost.dmg} ${eff.typeBoost.type} damage`));
   if(eff.skills) for(const k in eff.skills){ const lbl=((SKILLS.find(s=>s[0]===k)||[])[1])||k; b.push(mk(`+${eff.skills[k]} ${lbl}`)); }
   if(eff.capabilities) eff.capabilities.forEach(c=>b.push(mk(c)));
   return b;
@@ -5203,6 +5310,9 @@ function equipSummary(t){
   if(eva) parts.push(`Evasion +${eva}`);
   if(scs) parts.push(`Speed CS ${scs>0?"+":""}${scs}`);
   if(ovl) parts.push(`Overland +${ovl}`);
+  const swm=equipSwim(t); if(swm) parts.push(`Swim +${swm}`);
+  equippedList(t).forEach(({name,eff})=>{ if(eff && eff.typeBoost)
+    parts.push(`+${eff.typeBoost.dmg} damage on ${eff.typeBoost.type} attacks (${name})`); });
   const fs=equipStatBonus(t); const fk=Object.keys(fs).find(k=>fs[k]);
   if(fk) parts.push(`+${fs[fk]} ${(STATS.find(s=>s[0]===fk)||[])[1]||fk}`);
   const caps=equipCapabilities(t); if(caps.length) parts.push("Capabilities: "+caps.join(", "));
@@ -6185,15 +6295,18 @@ function migrateStatTags(t){
   if(t.statTagsApplied) return;
   t.statTagsApplied = 1;
   if(!t.statTagPick || typeof t.statTagPick !== "object") t.statTagPick = {};
+  /* only FREE pool points can pay a tag back — Level-Up milestone Bonus Stats sit inside `added`
+     too, but they're locked to their stat and must not be siphoned off by this migration. */
+  const msB = luStatAlloc(t);
+  const free = k => Math.max(0, (t.combat[k]?.added||0) - (msB[k]||0));
   trainerStatTags(t).forEach(tag => {
     let k = typeof tag.spec === "string" && tag.spec !== "any" ? tag.spec : "";
     if(!k){                                   // a choice tag: guess the stat they actually spent it on
       const opts = tag.spec === "any" ? STATS.map(s=>s[0]) : tag.spec;
-      k = opts.filter(o => (t.combat[o]?.added||0) > 0)
-              .sort((a,b) => (t.combat[b].added||0) - (t.combat[a].added||0))[0] || "";
+      k = opts.filter(o => free(o) > 0).sort((a,b) => free(b) - free(a))[0] || "";
       if(k) t.statTagPick[tag.key] = k;
     }
-    if(k && (t.combat[k]?.added||0) > 0) t.combat[k].added--;
+    if(k && free(k) > 0) t.combat[k].added--;
   });
 }
 /* Combat Stats card footer: what the Feature tags granted, plus a picker per unresolved choice tag. */
@@ -8725,10 +8838,9 @@ function tutorPointControl(p){
    Capability, which Move…). Nothing is copied into the Pokémon's numbers: the derived layers
    read this list, so an Edge can be dropped and its points refunded without leaving anything
    behind. What reads what:
-     · Skill Improvement, Digital Avatar ............ monSkills()
+     · Skill Improvement ........................... monSkills()
      · Capability Training, Advanced Mobility,
-       Seismometer, Aura Pulse, Psychic Navigator,
-       Gravity Training ............................ capabilityGrants() → monCapabilities()
+       Seismometer, Aura Pulse .................... capabilityGrants() → monCapabilities()
      · Mixed Sweeper, Realized Potential ........... pokeDerived().budget
      · Underdog's Strength ......................... pokeBaseStats() (and it locks Evolution)
      · Accuracy Training ........................... the AC every Move roll checks against
@@ -8801,9 +8913,6 @@ function monSkills(p, sp){
     out[k] = { dice: Math.max(1, s.dice||1), mod: parseInt(String(s.mod||"").replace(/\s+/g,""))||0, why:[] };
   });
   if(!p) return out;
-  // Digital Avatar: "gains a 3d6 in Technology Education if it did not previously have one"
-  if(pokeEdgeCount(p,"Digital Avatar") && !out.technologyEd)
-    out.technologyEd = { dice:3, mod:0, why:["Digital Avatar"] };
   // Skill Improvement: one Rank up, and only for a Skill still at its species default
   pokeEdgesOf(p,"Skill Improvement").forEach(e=>{
     const s = out[e.arg]; if(!s) return;
@@ -8829,9 +8938,6 @@ function pokeEdgeCapGrants(p){
     add(CAP_FIELD_LABEL[e.arg], e.arg, 2, "add", "Advanced Mobility");
   });
   if(pokeEdgeCount(p,"Aura Pulse"))        add("Aura Pulse", null, null, null, "Aura Pulse (Poké Edge)");
-  if(pokeEdgeCount(p,"Psychic Navigator")) add("Psychic Navigator", null, null, null, "Psychic Navigator (Poké Edge)");
-  const grav = pokeEdgeCount(p,"Gravity Training");
-  if(grav) add("Gravitic Tolerance", null, grav*2, "add", "Gravity Training");
   // Seismometer: Tremorsense reaches 5 m (Capability List) + the user's Perception Rank
   if(pokeEdgeCount(p,"Seismometer"))
     add("Tremorsense", null, TREMORSENSE_BASE + monSkillRank(p,"perception"), "min", "Seismometer");
@@ -9012,17 +9118,6 @@ const POKE_EDGE_DEFS = {
       return `lifts with Telekinesis as Power ${f+2} (Focus Rank ${f}, counted as ${f+2})`; } },
   "Trail Sniffer": { tp:1, level:20, max:1, auto:false, need:peCapNeed("Tracker"),
     live:(p,sp)=>`+${monSkillRank(p,"focus",sp)} to Perception Checks made to use Tracker (its Focus Rank)` },
-  "Digital Avatar": { tp:1, max:1, auto:true,
-    live:(p,sp)=> (sp && sp.skills && sp.skills.technologyEd)
-      ? `it may dive into computer systems. It already has Technology Ed ${sp.skills.technologyEd.dice}d6, so no dice are added. Needs the Datajack Augmentation — the GM's call.`
-      : "may dive into computer systems, and rolls Technology Ed 3d6 (it had none) — live on its Skill row. Needs the Datajack Augmentation — the GM's call." },
-  "Gravity Training": { tp:1, max:4, auto:true,
-    live:(p)=>`Gravitic Tolerance ${pokeEdgeCount(p,"Gravity Training")*2} — 2 steps per taking, allocate them either way from its Home Gravity` },
-  "Psychic Navigator": { tp:2, level:20, max:1, auto:true,
-    need:(p,sp)=> (sp?.types||[]).includes("Psychic") ? null : "Needs to be a Psychic-Type",
-    live:()=>"Psychic Navigator added to its Capabilities" },
-  "Vehicle Training": { tp:1, max:1, auto:false,
-    live:()=>"may drive appropriately outfitted vehicles as a Standard Action (body type is the GM's call)" },
   "Expand Horizons": { tp:0, max:1, auto:true,
     need:(p)=>{ const t = activeChar() && activeChar().trainer;
       return (t && (t.features||[]).includes("Expand Horizons")) ? null
@@ -9462,7 +9557,9 @@ function renderMonBuild(root, p, sp){
     field("Nature","",{opts:D.natures.map(n=>n.name), value:p.nature, onchange:v=>{p.nature=v;save();refreshMon(p);}}),
   );
   idc.append(r1);
+
   idc.append(rotomFormControl(p, sp, ()=>{ save(); refreshMon(p); }));
+  idc.append(miniorColorControl(p, sp, ()=>{ save(); refreshMon(p); }));
   idc.append(xpRow(p));
   if(nat) idc.append(el("div",{class:"small muted",style:"margin:6px 0"},
     `Nature ${nat.name}: ${natSummary(nat)} · likes ${nat.likedFlavor}, dislikes ${nat.dislikedFlavor}`));
@@ -10227,11 +10324,15 @@ function ptBudgetText(d){
     title: d.edgePts ? `Level+10 = ${d.budget-d.edgePts}, plus ${d.edgePts} Bonus Stat Point${d.edgePts===1?"":"s"} from Poké Edges` : ""},
     `${d.spent}/${d.budget} points used${d.edgePts?` (+${d.edgePts} 🧬)`:""}${over?` (${-d.remaining} over!)`:d.remaining>0?` · ${d.remaining} left`:""}`);
 }
-/* − value + stepper for a stat's "added" points; + is disabled when no budget left (unless GM-unlocked) */
-function statStepper(cur, canInc, onSet){
+/* − value + stepper for a stat's "added" points; + is disabled when no budget left (unless GM-unlocked).
+   `min` is a hard floor the − button can't cross: Level-Up milestone Bonus Stats live inside `added`
+   but are LOCKED into the stat they were assigned to, so they can't be pulled back out and re-spent. */
+function statStepper(cur, canInc, onSet, min){
+  const lo = Math.max(0, min||0);
   const wrap = el("div",{class:"stepper"});
   wrap.append(
-    el("button",{title:"remove a point",disabled:cur<=0,onclick:()=>onSet(cur-1)},"−"),
+    el("button",{title: lo && cur<=lo ? "locked in by a Level-Up milestone" : "remove a point",
+                 disabled:cur<=lo,onclick:()=>onSet(Math.max(lo,cur-1))},"−"),
     el("span",{class:"stepper-val"}, String(cur)),
     el("button",{title:canInc?"add a point":"no points left (tick 🔓 to override)",disabled:!canInc,onclick:()=>onSet(cur+1)},"+"));
   return wrap;
@@ -10245,8 +10346,9 @@ function trainerStatBudget(t){
 }
 function trainerBudgetText(tb){
   const over = tb.remaining < 0;
-  const bonusNote = tb.ms ? ` (${tb.budget - tb.ms}+${tb.ms} milestone)` : "";
-  return el("span",{class: over?"warnbox":"muted", style:"font-size:12px"},
+  const bonusNote = tb.ms ? ` (${tb.budget - tb.ms}+${tb.ms} milestone★)` : "";
+  return el("span",{class: over?"warnbox":"muted", style:"font-size:12px",
+    title: tb.ms ? `${tb.ms} milestone point(s) are locked into the Attack / Sp.Attack you chose in the Level Up tab — the rest are yours to spend freely.` : ""},
     `${tb.spent}/${tb.budget} pts${bonusNote}${over?` (${-tb.remaining} over!)`:tb.remaining>0?` · ${tb.remaining} left`:""}`);
 }
 function fillMonDerived(p){
@@ -10314,8 +10416,6 @@ const CAP_MOVE_HELP = {
    unknown token and get thrown away by the grant parser below. */
 const CAP_EXTRA_HELP = {
   Teleporter: "Teleporter X — the user may teleport up to X meters as part of a Shift Action, ignoring intervening terrain and obstacles as long as they can see (or clearly picture) the destination.",
-  "Psychic Navigator": "Psychic Navigator — the user always knows which way is north and can retrace any route it has travelled, sensing its position psychically rather than by landmarks. (Granted by the Psychic Navigator Poké Edge.)",
-  "Gravitic Tolerance": "Gravitic Tolerance X — how many steps of gravity away from its Home Gravity the user can function in, allocated in either direction. (Granted by the Gravity Training Poké Edge, 2 steps per taking.)",
 };
 /* hover/expand text for a named capability (Naturewalk, Amorphous, Levitate the ability, …) —
    these live in D.items.capabilities alongside held items/food, keyed lowercase */
@@ -10634,6 +10734,29 @@ function rotomFormControl(p, sp, onChanged){
     onChanged();
   });
   wrap.append(sel, el("span",{class:"muted small"},"switch at will — same Pokémon, keeps stats/moves/level"));
+  return wrap;
+}
+
+/* Minior's Core Forme colour. Purely cosmetic — every colour has the same stats, Abilities and
+   movelist — so it is the GM's call which shooting star this one is. Players see the colour but the
+   picker is read-only for them. Leaving it unset means the colour is derived from the Pokémon's id
+   (see miniorColor), which is why an untouched Minior still keeps the same colour forever. */
+function miniorColorControl(p, sp, onChanged){
+  if(!isMinior(p)) return el("span",{style:"display:none"});
+  const wrap = el("div",{class:"inline small",style:"margin:2px 0 8px;flex-wrap:wrap;gap:8px;align-items:center"});
+  const when = p.species===MINIOR_CORE ? "shown now" : "shown once Shields Down breaks its shell";
+  wrap.append(el("span",{class:"muted",style:"font-weight:700"},"Core colour:"));
+  if(!isGM()){
+    wrap.append(el("span",{class:"kv"}, miniorColor(p)), el("span",{class:"muted small"}, when));
+    return wrap;
+  }
+  const sel = el("select",{style:"padding:4px 6px"});
+  const cur = miniorColor(p);
+  MINIOR_COLORS.forEach(c=>sel.append(el("option",{value:c,selected:cur===c}, c)));
+  sel.addEventListener("change",()=>{ p.miniorColor = sel.value; onChanged(); });
+  wrap.append(sel, el("button",{class:"linkbtn",title:"pick one at random",
+    onclick:()=>{ p.miniorColor = MINIOR_COLORS[Math.floor(Math.random()*MINIOR_COLORS.length)]; onChanged(); }},"🎲"),
+    el("span",{class:"muted small"}, when));
   return wrap;
 }
 /* Poltergeist (Ability, Static): "Rotom gains an Ability and a Move depending on what Form it has
@@ -11594,6 +11717,10 @@ function openMoveRoll(p, m, sp, opts={}){
      `zOn` is the toggle in the card below; nothing is spent until the dice are actually rolled. */
   const zBoost = (isPhys || isSpec) ? heldTypeBoost(p, mtype) : null;
   let zOn = false;
+  /* A held Type Booster (Charcoal, Never-Melt Ice…): a flat +5 on the damage roll, always on — no
+     toggle, nothing to spend. It never touches the Damage Base. */
+  const tBoost = (isPhys || isSpec) ? typeBoosterFor(p, mtype) : null;
+  const tDmg = tBoost ? tBoost.dmg : 0;
   const zDB = () => (zOn && zBoost ? zBoost.db : 0);
   function baseDB(){                      // effective (pre-STAB) Damage Base
     if(wInfo){
@@ -11960,6 +12087,7 @@ function openMoveRoll(p, m, sp, opts={}){
         + (wxd ? ` ${wxd>0?"+":"−"} ${Math.abs(wxd)}` : "")
         + (tx.dmg ? ` ${tx.dmg>0?"+":"−"} ${Math.abs(tx.dmg)}` : "")
         + (abilMods.flat ? ` ${abilMods.flat>0?"+":"−"} ${Math.abs(abilMods.flat)}` : "")
+        + (tDmg ? ` + ${tDmg}` : "")
         + (cx.dmg ? ` ${cx.dmg>0?"+":"−"} ${Math.abs(cx.dmg)}` : "")
         + (im.delta ? ` − ${Math.abs(im.delta)}` : "")
         + (cx.mult!==1 ? `, then ×${cx.mult}` : "");
@@ -11969,6 +12097,7 @@ function openMoveRoll(p, m, sp, opts={}){
       if(wxd) why.push(`${wxd>0?"+":"−"}${Math.abs(wxd)} = ${wx.weather.name}`);
       if(tx.dmg) why.push(`${tx.dmg>0?"+":"−"}${Math.abs(tx.dmg)} = Terrain`);
       if(abilMods.why.length) why.push(abilMods.why.join(", "));
+      if(tDmg) why.push(`+${tDmg} = ${tBoost.item} (${tBoost.type} Type Booster)`);
       if(cx.why.length) why.push(`condition: ${cx.why.join("; ")}`);
       if(im.delta) why.push(`${im.delta} = Infatuated (not the Crush)`);
       dmgBox.append(el("div",{},
@@ -12347,7 +12476,7 @@ function openMoveRoll(p, m, sp, opts={}){
         const cx = condMods(), wxd = wxDmg();
         // a ticked condition can add flat damage (Bolt Beak) and/or scale the finished roll
         // (Solar Blade's half damage in bad weather) — the scaling is applied last.
-        const preMult = r.total + im.atk + (bm.dmg||0) + wxd + (tx.dmg||0) + abilMods.flat + critExtra + im.delta + cx.dmg;
+        const preMult = r.total + im.atk + (bm.dmg||0) + wxd + (tx.dmg||0) + abilMods.flat + tDmg + critExtra + im.delta + cx.dmg;
         const total = Math.max(0, cx.mult!==1 ? Math.floor(preMult * cx.mult) : preMult);
         dmgLine.append(el("div",{style:`font-size:26px;font-weight:800;color:${isCrit?"var(--bad)":"var(--accent)"}`},
           `${isCrit?"💥 CRIT! ":"💥 "}${total}`));
@@ -12357,6 +12486,7 @@ function openMoveRoll(p, m, sp, opts={}){
         if(wxd)     parts.push(`${wxd>0?"+":""}${wxd} ${wx.weather.name}`);
         if(tx.dmg)  parts.push(`${tx.dmg>0?"+":""}${tx.dmg} Terrain`);
         if(abilMods.flat) parts.push(`${abilMods.flat>0?"+":""}${abilMods.flat} ability`);
+        if(tDmg)    parts.push(`+${tDmg} ${tBoost.item}`);
         if(cx.dmg)  parts.push(`${cx.dmg>0?"+":""}${cx.dmg} condition`);
         if(im.delta) parts.push(`${im.delta} Infatuated`);
         if(critWhy.length) parts.push(critWhy.join(" "));
@@ -14435,13 +14565,17 @@ function encTrainerStatSpread(t, key){
     el("span",{class:"muted small",style:"margin-left:8px"}, `${tb.remaining} of ${tb.budget} left`)));
   const grid = el("div",{style:"display:flex;flex-wrap:wrap;gap:8px;margin-top:8px"});
   const canInc = t.unlocked || tb.remaining > 0;
+  const msB = luStatAlloc(t);   // milestone Bonus Stats are locked into their stat (see statStepper)
   STATS.forEach(([k,lbl])=>{
     const added = t.combat[k].added||0;
+    const lock = t.unlocked ? 0 : (msB[k]||0);
     const cell = el("div",{style:"display:flex;flex-direction:column;align-items:center;gap:2px;min-width:66px"});
-    cell.append(el("div",{class:"small muted",style:"font-weight:700"},lbl));
+    cell.append(el("div",{class:"small muted",style:"font-weight:700",
+      title: msB[k] ? `${msB[k]} point(s) locked in by a Level-Up milestone` : ""}, lbl + (msB[k]?" ★":"")));
     const step = el("div",{class:"stepper"});
     step.append(
-      el("button",{title:"lower",disabled:added<=0,onclick:()=>{ t.combat[k].added=Math.max(0,added-1); saveEnc(); renderEncounters(); }},"−"),
+      el("button",{title: lock && added<=lock ? "locked in by a Level-Up milestone" : "lower",
+        disabled:added<=lock,onclick:()=>{ t.combat[k].added=Math.max(lock,added-1); saveEnc(); renderEncounters(); }},"−"),
       el("span",{class:"stepper-val"}, String(added)),
       el("button",{title:canInc?"add a point":"no points left (tick 🔓 to override)",disabled:!canInc,onclick:()=>{ t.combat[k].added=added+1; saveEnc(); renderEncounters(); }},"+"));
     cell.append(step);
@@ -14685,7 +14819,9 @@ function encounterMonCard(enc, p, list, trainer){
   lvIn.addEventListener("change",()=>{ const l=Math.max(1,Math.min(100,parseInt(lvIn.value)||1)); p.level=l; p.xp=xpForLevel(l); encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; syncEncMonLevelupMoves(p,sp); tpSync(p); saveEnc(); renderEncounters(); });
   nw.append(el("div",{class:"small muted",style:"margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"},
     "Lv", lvIn, `· ${p.nature||"—"} · ${p.gender||"—"}${p.shiny?" · ✨Shiny":""}`));
+
   nw.append(rotomFormControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
+  nw.append(miniorColorControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   nw.append(el("div",{class:"small muted",style:"margin-top:2px"}, `Atk ${d.eff.atk} · SpA ${d.eff.spatk} · Def ${d.eff.def} · SpD ${d.eff.spdef} · Spd ${d.eff.spd}`));
   nw.append(el("div",{class:"small muted",style:"margin-top:2px"}, `Evasion — Phys +${d.physEva} · Spec +${d.specEva} · Speed +${d.spdEva}`));
   head.append(nw);
@@ -16748,7 +16884,7 @@ function simProfile(A, atk, cfg){
     accMod: (bm.acc||0) + (d.cs.acc||0) + (aAcc.acc||0) + (hasStatus(p,"focused")?1:0),
     critT: Math.max(2, critThreshold(p, atk.m) - (bm.crit||0)),
     alwaysCrit: alwaysCrits(atk.m),
-    flat: atkStat + (bm.dmg||0) + (wx.dmg||0) + (tx.dmg||0) + (abil.flat||0),
+    flat: atkStat + (bm.dmg||0) + (wx.dmg||0) + (tx.dmg||0) + (abil.flat||0) + typeBoosterDmg(p, mtype),
     autoHit: !!wx.autoHit,
     pierceImmune: !A.isT && ignoresTypeImmunity(p, atk.m, mtype),  // Bone Wielder [Errata] / Scrappy
     fiveStrike: isFiveStrike(atk.m),
@@ -20951,6 +21087,7 @@ async function resetFog(map){
    same map is a 375×282 buffer. Rows are painted as merged runs, so unexplored ground costs one
    fillRect per row rather than one per cell. */
 
+
 function drawFog(cv, map, stageW, stageH, originX=0, originY=0, box=null){
   const px = map.gridSize;
   const minCellX = -Math.round(originX/px), minCellY = -Math.round(originY/px);
@@ -20963,20 +21100,71 @@ function drawFog(cv, map, stageW, stageH, originX=0, originY=0, box=null){
   ctx.imageSmoothingEnabled = false;
   // Revealing only ever REMOVES cover, so when the caller says which cells just changed we repaint
   // that box alone. That is what keeps a drag cheap on a huge board: one step costs the reveal
-  // radius, not the whole 600×470-cell island.
+  // radius, not the whole 400×300-cell island.
   const cx0 = box ? Math.max(0, box.x0-minCellX) : 0, cy0 = box ? Math.max(0, box.y0-minCellY) : 0;
   const cx1 = box ? Math.min(cols, box.x1-minCellX+1) : cols, cy1 = box ? Math.min(rows, box.y1-minCellY+1) : rows;
+  if(cx1<=cx0 || cy1<=cy0) return;
   ctx.clearRect(cx0, cy0, cx1-cx0, cy1-cy0);
   ctx.fillStyle = cloud.isGM ? "rgba(8,10,14,0.5)" : "#0a0c10";
   const set = fogSet(map.id);
-  for(let y=cy0;y<cy1;y++){
-    let run = -1;
-    for(let x=cx0;x<=cx1;x++){
-      const dark = x<cx1 && !set.has((minCellX+x)+","+(minCellY+y));
-      if(dark){ if(run<0) run = x; }
-      else if(run>=0){ ctx.fillRect(run, y, x-run, 1); run = -1; }
+  const area = (cx1-cx0)*(cy1-cy0);
+  if(area <= set.size){
+    // small region (the usual case — one reveal box): ask about each cell directly
+    for(let y=cy0;y<cy1;y++){
+      let run = -1;
+      for(let x=cx0;x<=cx1;x++){
+        const dark = x<cx1 && !set.has((minCellX+x)+","+(minCellY+y));
+        if(dark){ if(run<0) run = x; }
+        else if(run>=0){ ctx.fillRect(run, y, x-run, 1); run = -1; }
+      }
+    }
+  } else {
+    // Whole board: walk the REVEALED cells instead of every cell, and paint the gaps between them.
+    // Building an "x,y" key for each of a 400×300 board's 120 000 cells was 20 of the 39ms this
+    // used to cost; grouping the (far fewer) revealed cells by row costs O(revealed) instead.
+    const byRow = new Map();
+    set.forEach(k=>{
+      const c = k.indexOf(","), y = +k.slice(c+1)-minCellY;
+      if(y<cy0 || y>=cy1) return;
+      const x = +k.slice(0,c)-minCellX;
+      if(x<cx0 || x>=cx1) return;
+      const a = byRow.get(y); if(a) a.push(x); else byRow.set(y,[x]);
+    });
+    for(let y=cy0;y<cy1;y++){
+      const a = byRow.get(y);
+      if(!a){ ctx.fillRect(cx0, y, cx1-cx0, 1); continue; }   // nothing explored on this row
+      a.sort((p,q)=>p-q);
+      let run = cx0;
+      for(let i=0;i<a.length;i++){
+        const x = a[i];
+        if(x>run) ctx.fillRect(run, y, x-run, 1);
+        if(x>=run) run = x+1;
+      }
+      if(run<cx1) ctx.fillRect(run, y, cx1-run, 1);
     }
   }
+  if(cv===fogLayer.cv) fogLayer.drawn = set.size;   // the retained layer is now up to date
+}
+/* ---- the retained fog layer ------------------------------------------------------------------
+   renderMap() rebuilds the whole board on every token move, and it used to build a fresh canvas and
+   repaint all 400×300 cells of fog with it — ~39ms of the ~53ms that made a big island feel sticky,
+   even though the fog itself usually had not changed at all. The bitmap is kept between renders and
+   simply re-attached. It is only repainted when its signature changes (different map, stage, grid or
+   role) or when the number of revealed cells has moved since the last paint — and a reveal repaints
+   just its own box, so the common case draws nothing whatsoever. */
+let fogLayer = { sig:"", cv:null, drawn:-1 };
+function fogCanvasFor(map, stageW, stageH, originX, originY){
+  const cols = Math.ceil(stageW/map.gridSize), rows = Math.ceil(stageH/map.gridSize);
+  const sig = [map.id, cols, rows, map.gridSize, cloud.isGM?1:0].join("|");
+  if(fogLayer.sig!==sig || !fogLayer.cv) fogLayer = { sig, cv: el("canvas",{class:"map-fog"}), drawn:-1 };
+  if(fogLayer.drawn !== fogSet(map.id).size) drawFog(fogLayer.cv, map, stageW, stageH, originX, originY);
+  return fogLayer.cv;
+}
+/* repaint only the cells a reveal just opened up, on the retained layer */
+function fogRepaint(map, box){
+  if(!box || !map || !map.fogOn || !fogLayer.cv) return;
+  const s = mapStageSize(map);
+  drawFog(fogLayer.cv, map, s.w, s.h, s.originX, s.originY, box);
 }
 
 /* ===================================================================
@@ -21904,8 +22092,10 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
       }
       if(!info.editable || stackLocked){ mapDragging=false; return; }
       applyDelta((e.clientX-startX)/scale, (e.clientY-startY)/scale, true);
+
       group.forEach(t=>{ if(!t.riding) snapRidersTo(map, t); });                     // keep passengers pinned
-      if(map.fogOn) revealAroundTokens(map);                                        // moving reveals new ground
+      // moving reveals new ground — repaint just that, so the renderMap below has nothing to redraw
+      if(map.fogOn) fogRepaint(map, revealAroundTokens(map));
       mapDragging = false;
       mapTokensSave(); renderMap();
     };
@@ -23391,7 +23581,8 @@ function renderMap(){
     if(t.link && ownsRow(cloud.byId[t.link.sheetId])) return true;   // always see your own
     return fog.has(Math.round(t.x)+","+Math.round(t.y));
   };
-  const drawFogInto = () => { if(!map.fogOn) return null; const cv=el("canvas",{class:"map-fog"}); drawFog(cv,map,stageW,stageH,originX,originY); return cv; };
+
+  const drawFogInto = () => map.fogOn ? fogCanvasFor(map, stageW, stageH, originX, originY) : null;
 
   if(cloud.isGM){
     const f = drawFogInto(); if(f) stage.append(f);                 // GM: dim fog under tokens
