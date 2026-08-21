@@ -573,9 +573,10 @@ const WEATHER_DEFS = [
   { key:"sandstorm", name:"Sandstorm", icon:"🏜",
     blurb:"Non-Ground/Rock/Steel lose a Tick each turn",
     abilityCS:{ "Sand Rush":{ spd:4 } },
+    abilityEvasion:{ "Sand Veil":2 },   // Stone Warrior (Rock Power): +2 Evasion in a Sandstorm
     abilityDmgTypes:{ "Sand Force":{ types:["ground","rock","steel"], dmg:+5 } },
     ticks:[
-      { all:true, exceptTypes:["ground","rock","steel"], immuneAbilities:["Desert Weather"],
+      { all:true, exceptTypes:["ground","rock","steel"], immuneAbilities:["Desert Weather","Sand Veil"],
         when:"start", sign:-1, kind:"tick", label:"Sandstorm — loses a Tick" },
     ],
     rules:[
@@ -583,6 +584,7 @@ const WEATHER_DEFS = [
       "Sand Force: +5 Damage Bonus to Ground, Rock and Steel-Type Moves.",
       "Sand Rush: Speed Combat Stages increased by +4.",
       "Desert Weather: immune to Sandstorm.",
+      "Sand Veil: Evasion increased by +2; the user (and adjacent allies) take no Sandstorm damage.",
     ] },
 
   { key:"hail", name:"Hail", icon:"❄️",
@@ -1958,6 +1960,7 @@ function normPokemon(p){
   if(!Array.isArray(p.digestion)) p.digestion = [];       // stored Digestion Buffs from eaten Snacks (Core p.278)
   if(!Array.isArray(p.customMoves)) p.customMoves = [];   // freeform move/action notes not in the DB
   if(!("typeAce" in p)) p.typeAce = null;    // {ability:"Last Chance"|"Type Strategist", type} — granted by the Trainer's Type Ace Feature
+  if(!("typeAce2" in p)) p.typeAce2 = null;  // second grant from Extra Ordinary — the OTHER Ability of the same Type (Core: Type Ace, Normal as Chosen Type)
   if(!("moveSync" in p)) p.moveSync = null;  // {move, type} — the one Move Sync'd Move permanently retyped by Move Sync
   if(!p.cs || typeof p.cs!=="object") p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
   if(typeof p.image!=="string") p.image = "";
@@ -2097,6 +2100,12 @@ const pcId = () => "pc_" + cloud.campaign;
 const MAP_OWNER = "__map__";
 const mapMetaId   = () => "mapmeta_"   + cloud.campaign;
 const mapTokensId = () => "maptokens_" + cloud.campaign;
+// Fog lives in its OWN reserved row (not the tokens row). A well-explored board holds tens of
+// thousands of revealed cells (hundreds of KB); keeping that in the tokens row meant every single
+// token nudge / HP tick re-broadcast and re-fetched the whole fog blob to every client — the main
+// driver of the Supabase egress blow-out. Fog changes far less often than token positions, so it
+// gets its own row and only syncs when cells are actually revealed.
+const mapFogId    = () => "mapfog_"    + cloud.campaign;
 /* GM encounter prep, synced so map tokens can live-link to encounter monsters */
 const ENC_OWNER = "__enc__";
 const encRowId  = () => "enc_" + cloud.campaign;
@@ -2186,9 +2195,12 @@ function pokeDerived(p) {
   const cap6 = v => Math.min(6, Math.floor(v/5));
   const cs = effectiveCS(p);                              // Combat Stages (manual + conditions)
   const eff = {}; STATS.forEach(([k]) => eff[k] = k==="hp" ? total.hp : Math.floor(total[k] * csMult(cs[k])));
-  const fullMaxHP = (forced && typeof forced.hp==="number") ? forced.hp : (p.level + total.hp*3 + 10);   // undamaged maximum
-  const injuries = Math.max(0, p.injuries||0);
-  const maxHP = injuryHealCap(fullMaxHP, injuries);      // Injuries cap max HP at −10% each (Core p.249)
+  // Soulless (Shedinja): Max HP is always 1, no matter level/HP stat/Injuries (Core p.485).
+  const soulless = isSoulless(p);
+  const fullMaxHP = soulless ? 1
+    : (forced && typeof forced.hp==="number") ? forced.hp : (p.level + total.hp*3 + 10);   // undamaged maximum
+  const injuries = soulless ? 0 : Math.max(0, p.injuries||0);   // Soulless never gains Injuries
+  const maxHP = soulless ? 1 : injuryHealCap(fullMaxHP, injuries);   // Injuries cap max HP at −10% each (Core p.249)
   // Level+10 (Core p.72) plus any Bonus Stat Points bought with Tutor Points (Mixed Sweeper,
   // Realized Potential) — those are spent from the same pool, so they just widen the budget.
   const edgePts = pokeEdgeStatPoints(p);
@@ -2199,9 +2211,10 @@ function pokeDerived(p) {
   // (cs.eva, Core p.234) works the same way — a flat add on top, separately capped −6…+6.
   const wEva = weatherEvasion(p);
   const inspiredEva = hasStatus(p,"inspired") ? 1 : 0;   // Inspired Training: +1 Evasion
+  const bugSkyEva = insectoidSpdEva(p);                  // Insectoid Utility (Type Ace, Bug): Sky → +1 Speed Evasion
   return {
     base, total, cs, eff, maxHP, fullMaxHP, injuries, budget, spent, remaining: budget - spent, edgePts,
-    physEva: cap6(eff.def)+cs.eva+wEva+inspiredEva, specEva: cap6(eff.spdef)+cs.eva+wEva+inspiredEva, spdEva: cap6(eff.spd)+cs.eva+wEva+inspiredEva,   // evasion uses CS-adjusted stats
+    physEva: cap6(eff.def)+cs.eva+wEva+inspiredEva, specEva: cap6(eff.spdef)+cs.eva+wEva+inspiredEva, spdEva: cap6(eff.spd)+cs.eva+wEva+inspiredEva+bugSkyEva,   // evasion uses CS-adjusted stats
     weatherEva: wEva,
   };
 }
@@ -2244,6 +2257,18 @@ function defenseTypeMods(p){
   let wonderGuard = false;
   const add = (ty,d)=>{ step[ty] = (step[ty]||0) + d; };
   const A = n => hasAbility(p, n);
+  /* Tolerance (Static, Defensive): "Any Types resisted by the user are resisted one step further."
+     Which Types those are depends on the defender's OWN typing, not known here — so it's exposed as a
+     flag and applied at effectiveness time (typeEffectiveness / tokenDamageBreakdown), one extra −1
+     step on any matchup that is already a resist. */
+  const tolerance = A("Tolerance");
+  if(tolerance) why.push("Tolerance: Types you resist are resisted one step further");
+  /* Fur Coat (Static, Defensive): "The user resists all Physical Attacks one step further." That's a
+     Move-CLASS effect, not a Type one, so it can't live on the Type chart / `step` map — it's exposed
+     as a flag and applied per-hit (tokenDamageBreakdown / the Sim) as an extra −1 step on Physical
+     hits only. Even a Typeless Physical hit (Struggle) is resisted one step. */
+  const furCoat = A("Fur Coat");
+  if(furCoat) why.push("Fur Coat: Physical Attacks are resisted one step further");
   // resists a Type one step further
   if(A("Thick Fat")){ add("Fire",-1); add("Ice",-1); why.push("Thick Fat: resists Fire & Ice one step further"); }
   if(A("Heatproof")){ add("Fire",-1); why.push("Heatproof: resists Fire one step further"); }
@@ -2251,10 +2276,15 @@ function defenseTypeMods(p){
   if(A("Purifying Salt")){ add("Ghost",-1); why.push("Purifying Salt: resists Ghost"); }
   // resists a Type one step LESS (extra vulnerability)
   if(A("Fluffy")){ add("Fire",+1); why.push("Fluffy: weaker to Fire (also resists Melee further — not shown on the Type chart)"); }
-  // outright Type immunities (the static immunity only; any on-hit heal/boost is triggered → not auto-applied)
+  // outright Type immunities (the static immunity only; any on-hit heal/boost is triggered → not auto-applied).
+  // Storm Drain / Lightning Rod carry a Scene redirect + Sp.Atk boost that stays the player's to invoke,
+  // but their "the user is immune to the damage and effects of …" clause is always-on — so the immunity
+  // is auto-applied here just like Volt/Water Absorb. Windveiled's Flying immunity is fully Static.
   [["Levitate","Ground"],["Sap Sipper","Grass"],["Volt Absorb","Electric"],["Water Absorb","Water"],
    ["Flash Fire","Fire"],["Motor Drive","Electric"],["Earth Eater","Ground"],["Well-Baked Body","Fire"],
-   ["Dry Skin","Water"]].forEach(([ab,ty])=>{ if(A(ab)){ immune.add(ty); why.push(`${ab}: immune to ${ty}`); } });
+   ["Dry Skin","Water"],["Storm Drain","Water"],["Lightning Rod","Electric"],["Windveiled","Flying"],
+   ["Winter's Kiss","Ice"]   // Frost Touched (Glacial Defense): "does not take damage from Ice-Type Moves" + heals on Ice (the heal is triggered → manual)
+  ].forEach(([ab,ty])=>{ if(A(ab)){ immune.add(ty); why.push(`${ab}: immune to ${ty}`); } });
   // Wonder Guard: only Super-Effective damaging attacks affect the user
   if(A("Wonder Guard")){ wonderGuard = true; why.push("Wonder Guard: only Super-Effective attacks can hit"); }
   // Filter / Solid Rock: soften Super-Effective multipliers (×1.5→×1.25, ×2→×1.5). Having BOTH also
@@ -2269,7 +2299,11 @@ function defenseTypeMods(p){
   // A switched-on Trainer Feature stance (Enchanting Transformation) grants flat Damage Reduction
   // against named Types. That's a DR, not a ladder step — it comes off AFTER effectiveness, and it
   // stays out of `why` because it should only be named on hits of a Type it actually covers.
-  return { step, immune, wonderGuard, seReduce, seFlatDR, typeDR: modeTypeDR(p), why };
+  // Glacial Ice (Type Ace, Ice): the owning Trainer's Feature hands their Ice-Type mon flat DR vs
+  // Super-Effective Fighting/Fire/Rock/Steel hits. Kept out of `why` (the matchup card reads `why`)
+  // so it's only named on the damage line, and only for a Type it actually covers.
+  const glacial = glacialIceDR(p);
+  return { step, immune, wonderGuard, seReduce, seFlatDR, tolerance, furCoat, typeDR: modeTypeDR(p), glacial, why };
 }
 /* Filter / Solid Rock soften a Super-Effective multiplier by one "half-step" on the PTU ladder. */
 function seReducedMult(m){ return m>=2 ? 1.5 : m>1 ? 1.25 : m; }
@@ -2277,7 +2311,10 @@ function typeEffectiveness(defTypes, mods) {
   const res = {};
   TYPES.forEach(atk => {
     if (mods?.immune?.has(atk)) { res[atk] = 0; return; }   // ability grants full immunity
-    let m = typeMultAgainst(atk, defTypes, mods?.step?.[atk] || 0);
+    const baseStep = mods?.step?.[atk] || 0;
+    let m = typeMultAgainst(atk, defTypes, baseStep);
+    // Tolerance: a matchup that is already a resist is pushed one further step down the ladder
+    if (mods?.tolerance && m > 0 && m < 1) m = typeMultAgainst(atk, defTypes, baseStep - 1);
     if (mods?.wonderGuard && m > 0 && m <= 1) m = 0;         // neutral/resisted hits can't land
     if (mods?.seReduce && m > 1) m = seReducedMult(m);        // Filter / Solid Rock soften Super-Effective
     if (m !== 1) res[atk] = m;
@@ -2747,6 +2784,8 @@ function injuriesFromHit(fullHP, oldHP, newHP, dmgAmount){
    separately in bossSetTotalHP (it needs the post-cascade bar count, not a single hit's size). */
 function applyAutoInjury(owner, oldHP, newHP){
   if(!owner || newHP>=oldHP || isSwarm(owner)) return 0;
+  if(owner.species!==undefined && isSoulless(owner)) return 0;   // Soulless (Shedinja) never gains Injuries
+
   const dmg = oldHP - newHP;
   if(isBoss(owner)){
     const full = ownerFullHP(owner);
@@ -3017,6 +3056,14 @@ const LIVING_WEAPON_FORMS = {
 function hasLivingWeapon(p){
   const sp = p && getSpecies(p.species);
   return (sp?.capabilities?.other||[]).some(c=>/^\s*living weapon\s*$/i.test(String(c)));
+}
+/* Soulless (Shedinja's capability, Core p.485): "Its Max Hit Points is always 1. You may not add to
+   its Hit Point stat, and it may not have Temporary Hit Points. However, it can't die and never gains
+   Injuries." Read off the same capabilities.other block so a homebrew Soulless mon works too. The
+   Max-HP=1 clamp lives in pokeDerived; the no-Injuries rule in applyAutoInjury. */
+function isSoulless(p){
+  const sp = p && getSpecies(p.species);
+  return (sp?.capabilities?.other||[]).some(c=>/^\s*soulless\s*$/i.test(String(c)));
 }
 /* Aegislash-Blade and Aegislash-Shield both resolve to the aegislash row */
 function livingWeaponForm(p){
@@ -3385,6 +3432,63 @@ function frenzyGo(t, f, rerender, persist){
   toast("🔥 Frenzy! Take your turn with Priority — +2 Crit Range, +2 Movement, +2 Acro/Athl/Combat/Intimidate.");
   (rerender || renderBattle)();
 }
+/* Elementalist "you gain the chosen Ability" grants (Game of Throhs). Each Feature lists the
+   Abilities it can hand the Trainer; a single-option Feature (Winter is Coming -> Frostbite) is
+   granted automatically, a multi-option one stores the pick in t.featAbil[feature]. Either way the
+   name is surfaced through ownerHasAbility, so every ability hook that reads it (and the two static
+   ones the engine now models -- Winter's Kiss's Ice immunity and Frostbite's Ice Effect Ranges) sees
+   it. The situational/active ones (Unnerve, Shield Dust, Illuminate, Ice Shield, Starlight, Sunglow,
+   Sturdy, Rock Head, Run Up, Sand Veil) are granted for tracking; their effects stay the table's. */
+const FEATURE_ABILITY_CHOICES = [
+  { feat:"Swarmlord",           abilities:["Unnerve","Shield Dust"],       note:"Arachnid's Embrace grants Unnerve; Monarch's Embrace grants Shield Dust." },
+  { feat:"Broodlord",           abilities:["Tinted Lens","Compound Eyes"], note:"Arachnid's Embrace grants Tinted Lens; Monarch's Embrace grants Compound Eyes." },
+  { feat:"Glacial Defense",     abilities:["Ice Shield","Winter's Kiss"],  note:"Frost Touched: choose Ice Shield or Winter's Kiss." },
+  { feat:"Winter is Coming",    abilities:["Frostbite"] },
+  { feat:"Blinding Brightness", abilities:["Illuminate"] },
+  { feat:"Luminous Aura",       abilities:["Starlight","Sunglow"],         note:"Prism: choose Starlight or Sunglow." },
+  { feat:"Rock Power Rank 1",   abilities:["Sturdy","Rock Head","Run Up","Sand Veil"], note:"Stone Warrior: choose one per Rank." },
+  { feat:"Rock Power Rank 2",   abilities:["Sturdy","Rock Head","Run Up","Sand Veil"], note:"Stone Warrior: choose one per Rank." },
+];
+const featureAbilityChoiceDef = f => FEATURE_ABILITY_CHOICES.find(d=>featKey(d.feat)===featKey(f && f.name)) || null;
+/* Every Ability a Trainer's Features currently grant: fixed single-option grants apply on their own;
+   multi-option ones only once the player has chosen (t.featAbil[feature]). */
+function featureAbilityGrants(t){
+  if(!t) return [];
+  const out = [];
+  FEATURE_ABILITY_CHOICES.forEach(d=>{
+    if(!hasFeatureLoose(t, d.feat)) return;
+    if(d.abilities.length===1){ out.push(d.abilities[0]); return; }
+    const pick = t.featAbil && t.featAbil[d.feat];
+    if(pick && d.abilities.includes(pick)) out.push(pick);
+  });
+  return out;
+}
+/* The picker button for a multi-option Embrace grant, styled like Power of Rage's. */
+function featureAbilityPick(t, f, rerender, persist){
+  const def = featureAbilityChoiceDef(f); if(!def) return;
+  if(!t.featAbil || typeof t.featAbil!=='object' || Array.isArray(t.featAbil)) t.featAbil = {};
+  const cur = t.featAbil[def.feat];
+  const body = el("div",{});
+  if(def.note) body.append(el("div",{class:"small muted",style:"margin-bottom:10px"}, def.note));
+  def.abilities.forEach(an=>{
+    const ab = abilityByName.get(an.toLowerCase());
+    const on = cur===an;
+    const row = el("div",{class:"moveslot"});
+    row.append(el("div",{style:"flex:1"},
+      el("div",{style:"font-weight:700"}, an, on?el("span",{class:"small",style:"margin-left:8px;color:var(--good);font-weight:700"},"\u25CF taken"):""),
+      el("div",{class:"small muted",style:"margin-top:2px"}, ab?.effect || "")));
+    row.append(el("button",{class:on?"btn-secondary":"btn-primary",style:"padding:6px 10px",
+      onclick:()=>{
+        t.featAbil[def.feat] = on ? "" : an;
+        (persist||save)(); closeModal();
+        toast(on ? `${an} removed` : `\uFF0B ${f.name}: ${an}`);
+        (rerender||renderBattle)();
+      }}, on?"remove":"take it"));
+    body.append(row);
+  });
+  modal({title:`${f.name} \u2014 choose an Ability`, bodyNode:body,
+    footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+}
 /* Features the sheet can actually carry out, given one button on their own Battle-tab row. Orders
    (✨ Give) and stances (FEATURE_MODES) already have theirs; this is for everything else. */
 const FEATURE_ACTIONS = [
@@ -3400,7 +3504,11 @@ const FEATURE_ACTIONS = [
     title:t => t.fightOn ? `Currently Fainting at ${koFloor(t)} HP instead of 0 — tap to end it`
                          : "Refuse to drop at 0 HP — you Faint at −50% Max HP instead (fires by itself when you hit 0 while Enraged)" },
 ];
-const featureActionDef = f => FEATURE_ACTIONS.find(d => featKey(d.feat) === featKey(f && f.name)) || null;
+const featureActionDef = f => FEATURE_ACTIONS.find(d => featKey(d.feat) === featKey(f && f.name))
+  || (()=>{ const d = featureAbilityChoiceDef(f);
+       return (d && d.abilities.length>1) ? { feat:d.feat, run:featureAbilityPick,
+         label:t => (t.featAbil && t.featAbil[d.feat]) ? "\u2699 Change Ability" : "\u2699 Choose Ability",
+         title:() => "Elementalist Embrace: pick which Ability this Feature grants \u2014 it joins your Ability list once taken." } : null; })();
 /* One card on the ⚔ Combat tab gathering everything the class does, so its Static Features (which
    never surface on an action tab) still have somewhere to be read and pressed. The Feature list is
    the class's own, taken from the prereq chain rather than retyped. */
@@ -3650,6 +3758,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const berserkCtx = { moveName: st.move ? st.name : null, isWeaponAttack: !!st.weapon };
   const canPush = pushApplies(t, berserkCtx);
   const wFlame = rageAbilityDamage(t);          // White Flame: +5 to all Damage Rolls while Enraged
+  const sStance = dealsDamage ? stoneStanceDamage(t) : 0;  // Falling Boulder Stance (Stone Warrior): +5 to all Damage Rolls
   /* Twisted Power borrows half the stat this attack ISN'T using. Status Moves roll no damage at all,
      and it is worded for "Moves" — a Struggle Attack (unarmed, or a plain weapon strike) is not a
      Move, so it gets nothing. A Weapon Move and a Move swung as a Weapon Attack ARE Moves and do
@@ -3710,6 +3819,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     if(bm.dmg) terms.push(`${bm.dmg>0?"":"−"}${Math.abs(bm.dmg)}`);
     const berPre = berserkBonus(false); if(berPre) terms.push(String(berPre));
     if(wFlame) terms.push(String(wFlame));
+    if(sStance) terms.push(String(sStance));
     if(twisted) terms.push(String(twisted));
     if(tDmg) terms.push(String(tDmg));
     const why = [`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${baseDBv}`
@@ -3718,6 +3828,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     if(bm.dmg) why.push(`${bm.dmg>0?"+":"−"}${Math.abs(bm.dmg)} = buffs (${buffSources(t,"dmg")})`);
     if(berPre) why.push(`+${berPre} = ${BERSERKER_LESSONS} (Intimidate ${rankNum(t.skills?.intimidate)} + ${t.injuries||0} Injur${(t.injuries||0)===1?"y":"ies"})`);
     if(wFlame) why.push(`+${wFlame} = White Flame (Enraged)`);
+    if(sStance) why.push(`+${sStance} = Falling Boulder Stance (\u22125 HP Recoil on a hit)`);
     if(twisted) why.push(`+${twisted} = ${twistedPowerWhy(isSpecAtk)}`);
     if(tDmg) why.push(`+${tDmg} = ${tBoost.item} (${tBoost.type} Type Booster)`);
     explain.append(el("div",{},
@@ -3941,11 +4052,12 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         el("div",{class:"small muted",style:"margin-top:2px"},"Neither Attack Roll met AC + Evasion, so the attack misses entirely.")));
     }
     if(r){ const im = infatMod();
-      const total = Math.max(0, r.total + im.atk + (bm.dmg||0) + berN + wFlame + twisted + tDmg + im.delta + wAcc + critExtra);   // wAcc: Fainted Living Weapon is −2 on EVERY roll
+      const total = Math.max(0, r.total + im.atk + (bm.dmg||0) + berN + wFlame + sStance + twisted + tDmg + im.delta + wAcc + critExtra);   // wAcc: Fainted Living Weapon is −2 on EVERY roll
       const parts = [`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`, `+ ${im.atk} ${atkLbl}${im.halved?" (halved — Infatuated)":""}`];
       if(bm.dmg) parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs (${buffSources(t,"dmg")})`);
       if(berN) parts.push(`+${berN} ${BERSERKER_LESSONS} (Intimidate ${rankNum(t.skills?.intimidate)} + ${t.injuries||0} Injur${(t.injuries||0)===1?"y":"ies"}${pushOn?", doubled by "+BERSERKER_PUSH:""})`);
       if(wFlame) parts.push(`+${wFlame} White Flame (Enraged)`);
+      if(sStance) parts.push(`+${sStance} Falling Boulder Stance`);
       if(twisted) parts.push(`+${twisted} ${twistedPowerWhy(isSpecAtk)}`);
       if(tDmg) parts.push(`+${tDmg} ${tBoost.item}`);
       if(im.delta) parts.push(`${im.delta} Infatuated`);
@@ -5558,6 +5670,9 @@ function equipSwim(t){ return equippedList(t).reduce((s,{eff})=>s+((eff&&eff.swi
 const FEATURE_CAPS = [
   { feat:"Maelstrom", swim:2, caps:["Gilled"] },
   { feat:"World of Darkness", caps:["Darkvision"] },   // "As a Static effect, you also gain the Darkvision Capability."
+  { feat:"How To Shoot Web", caps:["Threaded","Wallclimber"] },              // Swarmlord (Bug Elementalist)
+  { feat:"The Cold Never Bothered Me Anyway", caps:["Naturewalk (Tundra)"] },// Frost Touched (Ice Elementalist)
+  { feat:"Lucent Mirage", caps:["Illusionist"] },                            // Prism (Normal Elementalist)
 ];
 function featureCaps(t){ return FEATURE_CAPS.filter(d => hasFeatureLoose(t, d.feat)); }
 function featureSwim(t){ return featureCaps(t).reduce((n,d)=> n + (d.swim||0), 0); }
@@ -8372,6 +8487,7 @@ function buffDR(owner){
   if(isTrainerOwner(owner)){ const e=equipDR(owner); if(e.dr){ dr+=e.dr; e.from.forEach(n=>from.push(n)); } }
   // Enduring Rage (Power of Rage): 5 DR while Enraged — an Ability, so it's never consumed either
   const rage = rageAbilityDR(owner); if(rage){ dr+=rage; from.push("Enduring Rage (Enraged)"); }
+  const stone = stoneStanceDR(owner); if(stone){ dr+=stone; from.push("Moon Mountain Stance"); }
   return { dr, from };
 }
 /* Spend the one-shot DR buffs (e.g. Excited) after they've absorbed an incoming attack — ONE
@@ -8650,7 +8766,7 @@ function ownerHasAbility(o, name){
   /* An encounter Trainer's Abilities are filed under t.encAbilities (t.abilities is the player-sheet
      field, which the Encounters card never writes), so read both — otherwise a GM who hands an NPC
      Berserker White Flame or Enduring Rage through the card's Abilities picker gets nothing. */
-  return [...(o?.abilities||[]), ...(o?.encAbilities||[])]
+  return [...(o?.abilities||[]), ...(o?.encAbilities||[]), ...(isTrainerOwner(o) ? featureAbilityGrants(o) : [])]
     .some(a => String(a).toLowerCase().replace(/\s*\[errata\]\s*$/,"").trim() === want);
 }
 /* Gluttony (Core, Ability): "may have up to three Digestion/Food Buffs at once" */
@@ -10403,6 +10519,46 @@ function typeAceChosenType(t){
    the Class (or any of its Features) at least once, and a single Chosen Type per Trainer (the book
    allows re-taking Type Ace per-Type, which this simpler single-value model doesn't track). */
 function typeAceEligible(t){ return trainerHasClass(t, "Type Ace"); }
+/* Extra Ordinary (Feature; prereq: Type Ace, Normal as Chosen Type): a SECOND Type Ace grant on the
+   same Pokémon — it gains whichever of Last Chance / Type Strategist it doesn't already have, for the
+   granted Type. Costs no Tutor Points and can target a Pokémon only once (tracked as p.typeAce2). */
+function extraOrdinaryEligible(t){ return trainerHasFeature(t, "Extra Ordinary"); }
+/* Every Type Ace Ability grant on a Pokémon — the base Type Ace grant plus any Extra Ordinary one. */
+function typeAceGrants(p){ return [p && p.typeAce, p && p.typeAce2].filter(Boolean); }
+
+/* ---------- Per-Type Type Ace passive Features (owner-driven, applied to that Trainer's Pokémon) ----------
+   Unlike the Type Ace Ability grants above (which live on the Pokémon), these are Trainer Features
+   whose bonus lands on the Trainer's own Pokémon of the matching Type — so they're read off
+   ownerTrainerOf(p) inside the derived layer, and only ever help a player-owned mon (an encounter
+   NPC's mons carry their own hand-written derived fields, so they short-circuit out). */
+/* Glacial Ice (prereq: Type Ace, Ice as Chosen Type): "Your Ice-Type Pokémon gain Damage Reduction
+   equal to your Type-Linked Skill Rank against Fighting, Fire, Rock, and Steel-Typed Attacks from
+   which they would take Super-Effective Damage." Ice's Type-Linked Skills are Athletics or Survival
+   (Core p.119); the higher Rank the Trainer has of the pair sets the DR — the same player-favorable
+   reading the sheet uses for other "Skill A or Skill B" numbers. The Super-Effective test is left to
+   the damage math (it only fires when the hit actually lands as ×1.5+, so a dual-type Ice mon that
+   merely takes neutral Fire damage gets nothing). */
+const GLACIAL_ICE_TYPES = new Set(["Fighting","Fire","Rock","Steel"]);
+function glacialIceDR(p){
+  if(!p) return null;
+  const types = getSpecies(p.species)?.types || [];
+  if(!types.some(ty => String(ty).toLowerCase()==="ice")) return null;
+  const t = ownerTrainerOf(p);
+  if(!t || !trainerHasFeature(t, "Glacial Ice")) return null;
+  const dr = Math.max(rankNum(t.skills?.athletics), rankNum(t.skills?.survival));
+  return dr>0 ? { dr, from:"Glacial Ice", types:GLACIAL_ICE_TYPES } : null;
+}
+/* Insectoid Utility (prereq: Type Ace, Bug as Chosen Type): capability upgrades for the Trainer's
+   Pokémon. The only clause that resolves to a rolled number is Sky → +1 Speed Evasion (folded into
+   pokeDerived below); the rest — Threaded doing Combat Maneuvers, Wallclimber Push/Trip immunity,
+   Naturewalk no-Slow/Stuck in its Terrains — are situational table rulings left as reference. */
+function insectoidSpdEva(p){
+  if(!p) return 0;
+  const t = ownerTrainerOf(p);
+  if(!t || !trainerHasFeature(t, "Insectoid Utility")) return 0;
+  // "Sky" is a numeric Movement Capability (squares/Shift while flying), so having it = sky > 0.
+  return (monCapabilities(p, getSpecies(p.species)).sky > 0) ? 1 : 0;
+}
 
 /* ---------- Type Expertise (Feature, [Ranked 2][+Any]) ----------
    "Each Rank, choose a Type of which you know at least 3 Moves. You gain STAB for the chosen
@@ -10486,8 +10642,25 @@ function clearTypeAce(p, persistFn, rerenderFn){
   if(!p.typeAce) return;
   tpRefund(p, 2, `Type Ace removed — ${p.typeAce.ability} (${p.typeAce.type})`, {kind:"ace"});
   const was = p.typeAce; p.typeAce = null;
+  p.typeAce2 = null;  // Extra Ordinary is a second grant on TOP of the base one — it goes with it
   (persistFn||save)(); (rerenderFn||(()=>refreshMon(p)))();
   toast(`${was.ability} (${was.type}) removed — +2 Tutor Points refunded`);
+}
+/* Extra Ordinary grants the OTHER Type Ace Ability of the same Type. No Tutor Point cost, once per Pokémon. */
+function grantExtraOrdinary(p, t, persistFn, rerenderFn){
+  const persist = persistFn||save, rerender = rerenderFn||(()=>refreshMon(p));
+  if(!p.typeAce){ toast("Grant a Type Ace Ability first — Extra Ordinary adds the other one."); return; }
+  if(p.typeAce2){ toast(`${p.species} already has both Type Ace Abilities.`); return; }
+  const other = p.typeAce.ability==="Last Chance" ? "Type Strategist" : "Last Chance";
+  p.typeAce2 = { ability:other, type:p.typeAce.type, extra:true };
+  persist(); rerender();
+  toast(`${p.species} also learned ${other} (${p.typeAce.type}) — Extra Ordinary`);
+}
+function clearExtraOrdinary(p, persistFn, rerenderFn){
+  if(!p.typeAce2) return;
+  const was = p.typeAce2; p.typeAce2 = null;
+  (persistFn||save)(); (rerenderFn||(()=>refreshMon(p)))();
+  toast(`${was.ability} (${was.type}) removed`);
 }
 function abilitiesCard(p, sp){
   if(!Array.isArray(p.abilities)) p.abilities = [];
@@ -10496,6 +10669,8 @@ function abilitiesCard(p, sp){
     el("div",{class:"inline"}, unlockToggle(p),
       typeAceEligible(t) && !p.typeAce ? el("button",{class:"linkbtn h-act",title:"Type Ace: grant Last Chance or Type Strategist",
         onclick:()=>openTypeAceGrant(p,t)},"🎯 Type Ace") : "",
+      extraOrdinaryEligible(t) && p.typeAce && !p.typeAce2 ? el("button",{class:"linkbtn h-act",title:"Extra Ordinary: also grant the other Type Ace Ability",
+        onclick:()=>grantExtraOrdinary(p,t)},"✨ Extra Ordinary") : "",
       el("button",{class:"linkbtn h-act",onclick:()=>addAbility(p, sp)},"+ add"))));
   const grant = poltergeistGrant(p, sp);
   if(grant){
@@ -10514,6 +10689,15 @@ function abilitiesCard(p, sp){
         onclick:e=>{e.preventDefault(); clearTypeAce(p);}},"×")));
     taRow.append(el("div",{class:"small",style:"margin-top:6px"}, typeAceAbilityText(p.typeAce)));
     card.append(taRow);
+  }
+  if(p.typeAce2){
+    const eoRow = el("details",{class:"spoiler"});
+    eoRow.append(el("summary",{}, el("span",{style:"color:var(--ink)"}, `${p.typeAce2.ability} (${p.typeAce2.type})`),
+      el("span",{class:"muted small",style:"margin-left:8px"},"from Extra Ordinary"),
+      el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove",
+        onclick:e=>{e.preventDefault(); clearExtraOrdinary(p);}},"×")));
+    eoRow.append(el("div",{class:"small",style:"margin-top:6px"}, typeAceAbilityText(p.typeAce2)));
+    card.append(eoRow);
   }
   if(!p.abilities.length && !grant && !p.typeAce) card.append(el("span",{class:"muted small"},"none yet — tap “+ add”"));
   p.abilities.forEach((an,i)=>{
@@ -11454,6 +11638,20 @@ function fieryCrashThresholds(thresholds, active){
     : [...list, { n:19, text:"Fiery Crash — a Dash Move used as Fire-Type Burns the target on 19+." }];
   return out.sort((a,b)=>a.n-b.n);
 }
+/* Frostbite (Rotom-Frost's Ability, also Frost Touched's 'Winter is Coming'): the user's damaging
+   Ice-Type attacks Slow the target on 18+, widen any Freeze Effect Range by +1, and — if the Move
+   never Froze at all — now Freeze on a 20. Injected into the roll's Effect Ranges the same way
+   Fiery Crash's Burn is, so the roll readout resolves it with no special case. */
+function frostbiteThresholds(list, active){
+  if(!active) return list;
+  const arr = (list||[]).slice();
+  const freeze = arr.find(t=>/\bfroze|\bfreez/i.test(t.text||""));
+  const out = arr.map(t => t===freeze ? { n:Math.max(2,t.n-1), text:`${t.text} (Frostbite widens this Freeze Effect Range by +1.)` } : t);
+  if(!freeze) out.push({ n:20, text:"Frostbite \u2014 this Ice Move Freezes the target on 20." });
+  if(!out.some(t=>/\bslow/i.test(t.text||"") && t.n<=18))
+    out.push({ n:18, text:"Frostbite \u2014 this Ice Move Slows the target on 18+." });
+  return out.sort((a,b)=>a.n-b.n);
+}
 /* Damage-boosting abilities that auto-apply to a move roll — mirrors buffMods()' shape so it
    composes the same way. thresholds = effectThresholds(m.effect), needed for Sheer Force's
    "has a secondary effect" check. opts carries roll context the caller already computed:
@@ -11507,12 +11705,27 @@ function abilityDamageMods(p, m, baseDBVal, thresholds, opts={}){
      change the Damage Class of any attack." — so it's the OPPOSITE stat, added as flat damage, and
      the target still subtracts whichever Defense the Move's own class calls for. Combat-Stage-
      adjusted (`eff`), like the attacking stat the roll already adds. Status Moves get nothing. */
-  if(hasAbility(p,"Twisted Power") && (opts.isPhys || opts.isSpec)){
+  /* Mixed Power (9-15 playtest ability) simply "gains the Twisted Power Ability" — same half-the-
+     opposite-stat rule, so it rides the exact same branch. Weird Power (Feb 2016, Hoopa Unbound's
+     High Ability) is the FULL-stat cousin: whichever offensive stat is higher gets added, in full,
+     to the OTHER class's Damage Rolls — and it explicitly "does not stack with Mixed Power", so a
+     mon carrying both only ever takes the Twisted/Mixed half-stat here. */
+  const twistLike = hasAbility(p,"Twisted Power") || hasAbility(p,"Mixed Power");
+  if(twistLike && (opts.isPhys || opts.isSpec)){
     const e = pokeDerived(p).eff;
     const half = Math.floor((opts.isPhys ? e.spatk : e.atk)/2);
     if(half > 0){
       mods.flat += half;
-      mods.why.push(`Twisted Power +${half} damage (half your ${opts.isPhys?"Sp.Attack":"Attack"})`);
+      const lbl = (hasAbility(p,"Mixed Power") && !hasAbility(p,"Twisted Power")) ? "Mixed Power" : "Twisted Power";
+      mods.why.push(`${lbl} +${half} damage (half your ${opts.isPhys?"Sp.Attack":"Attack"})`);
+    }
+  } else if(hasAbility(p,"Weird Power") && (opts.isPhys || opts.isSpec)){
+    const e = pokeDerived(p).eff;
+    // higher stat rides the opposite class, at full value (CS-adjusted like the roll's own stat)
+    if(opts.isSpec && e.atk > e.spatk){
+      mods.flat += e.atk; mods.why.push(`Weird Power +${e.atk} damage (your Attack)`);
+    } else if(opts.isPhys && e.spatk > e.atk){
+      mods.flat += e.spatk; mods.why.push(`Weird Power +${e.spatk} damage (your Sp.Attack)`);
     }
   }
   // Hustle: +10 to Physical Damage Rolls (its −2 Physical Accuracy lives in abilityAccMods)
@@ -11523,10 +11736,33 @@ function abilityDamageMods(p, m, baseDBVal, thresholds, opts={}){
     mods.flat += 10; mods.why.push("Hustle +10 damage"); }
   // Last Chance (Type Ace branch, Core p.119): +5 to Damage Rolls with the granted Type's attacks,
   // +10 instead while at or under 1/3rd Max HP.
-  if(p.typeAce && p.typeAce.ability==="Last Chance" && opts.mtype===p.typeAce.type){
+  const lastChance = typeAceGrants(p).find(g=>g.ability==="Last Chance" && opts.mtype===g.type);
+  if(lastChance){
     const bonus = pokeUnderThirdHP(p) ? 10 : 5;
-    mods.flat += bonus; mods.why.push(`Last Chance +${bonus} damage (${p.typeAce.type})`); }
+    mods.flat += bonus; mods.why.push(`Last Chance +${bonus} damage (${lastChance.type})`); }
+  // Analytic (Static): +5 Damage against a target that has ALREADY acted this Round. Whether that's
+  // true is a fact about the target + the initiative order, which only the caller knows — it reads
+  // the Map's tracker and passes opts.analytic, so this function stays context-free.
+  if(hasAbility(p,"Analytic") && opts.analytic){
+    mods.flat += 5; mods.why.push("Analytic +5 damage (target already acted this round)"); }
   return mods;
+}
+/* Analytic reads the Map's live initiative order: any opponent sitting BEFORE the attacker in the
+   round order has already taken its turn this Round, so a damaging Move against it earns Analytic's
+   +5. Returns { readable, actedBefore, names, round }. readable is false when there's no order to
+   read (no active battle, or the attacker isn't in it) — the roll then falls back to a manual tick. */
+function analyticContext(obj){
+  const map = currentMapForView() || activeMap();
+  if(!map) return { readable:false };
+  const list = initiativeList(map);
+  if(!list.length) return { readable:false };
+  const myIdx = list.findIndex(e=>{ const L = e.token.link ? tokenLinked(e.token) : null; return L && L.obj===obj; });
+  if(myIdx<0) return { readable:false };
+  const ally = k => k==="pokemon" || k==="trainer";        // else "enc"/"enctrainer" = the other side
+  const iAlly = ally(list[myIdx].info.kind);
+  const before = list.slice(0, myIdx).filter(e=> ally(e.info.kind) !== iAlly);   // opponents who acted before me
+  const names = [...new Set(before.map(e=> e.info.name).filter(Boolean))];
+  return { readable:true, actedBefore: before.length>0, names, round: activeMapMeta().initRound||1 };
 }
 /* Accuracy-modifying abilities that always apply to the user's own attack rolls (Core p.199).
    Returns {acc, why:[]} in the same shape buffMods uses, so it folds into accTot. Conditional /
@@ -12071,10 +12307,18 @@ function openMoveRoll(p, m, sp, opts={}){
   const printedAC = m.ac!=null ? Math.max(1, m.ac - acCut) : null;
   const effAC = wx.acOverride!=null ? Math.max(1, wx.acOverride - acCut) : printedAC;
   const thresholds = effectThresholds(m.effect);
-  const abilMods = abilityDamageMods(p, m, baseDB(), thresholds, {stab, mtype, isPhys, isSpec, fieryCrash:fcMode});
+  /* Analytic: +5 vs a target that already acted this Round. The default is READ from the Map's
+     initiative order (any opponent ahead of the attacker has acted); a manual tick overrides it,
+     which matters when the specific target hasn't acted (or there's no live tracker to read). */
+  const hasAnalytic = (isPhys || isSpec) && hasAbility(p,"Analytic");
+  const analCtx = hasAnalytic ? analyticContext(p) : null;
+  const analyticOn = opts.analytic!=null ? !!opts.analytic
+                   : !!(analCtx && analCtx.readable && analCtx.actedBefore);
+  const abilMods = abilityDamageMods(p, m, baseDB(), thresholds, {stab, mtype, isPhys, isSpec, fieryCrash:fcMode, analytic:analyticOn});
   // Effect Ranges as this roll actually resolves them — Fiery Crash adds/widens Burn on a Dash Move
   // that ends up Fire-Typed. Kept separate from `thresholds` so its own rider can't feed Sheer Force.
-  const rollThresholds = fieryCrashThresholds(thresholds, !!fc && mtype==="Fire");
+  const rollThresholds = frostbiteThresholds(fieryCrashThresholds(thresholds, !!fc && mtype==="Fire"),
+    hasAbility(p,"Frostbite") && mtype==="Ice" && (isPhys||isSpec));
   const fiveStrike = isFiveStrike(m);
   const critT = critThreshold(p, m);
   const alwaysCrit = alwaysCrits(m);   // "if it hits, it is a Critical Hit" — see critThreshold()
@@ -12166,6 +12410,24 @@ function openMoveRoll(p, m, sp, opts={}){
       el("div",{class:"small muted"}, vsTagged
         ? `Yes — +${duelMom} Accuracy on this roll (${momentumOf(p)} Momentum, halved and rounded up), and +${duelMom} Evasion against that foe.`
         : `${momentumOf(p)} Momentum banked — tick this if the target carries the Tag for +${duelMom} Accuracy. Note that while any foe is Tagged, Focused Training's Accuracy bonus does NOT apply against anyone else.`)));
+    card.append(lbl); body.append(card);
+  }
+  /* --- Analytic: +5 vs a target that already acted this Round. Auto-read from the initiative order,
+     but tickable so it stays right for the specific target (or when there's no live tracker). --- */
+  if(hasAnalytic){
+    const card = el("div",{class:"card",style:`background:var(--panel);border:1px solid ${analyticOn?"var(--accent)":"var(--line)"};margin:0 0 12px`});
+    const lbl = el("label",{style:"display:flex;gap:8px;align-items:flex-start;cursor:pointer"});
+    const cb = el("input",{type:"checkbox"}); cb.checked = analyticOn;
+    cb.addEventListener("change",()=>{ closeModal(); openMoveRoll(p, m, sp, Object.assign({}, opts, {analytic: cb.checked})); });
+    const note = !analCtx || !analCtx.readable
+      ? (analyticOn ? "On — +5 Damage. No live initiative tracker to read, so tick this for a target that has already acted this Round."
+                    : "No live initiative tracker to read — tick this if the target has already acted this Round for +5 Damage.")
+      : analCtx.actedBefore
+        ? `Round ${analCtx.round}: ${analCtx.names.join(", ")} already acted before you — +5 Damage vs any of them. Untick for a target that hasn't acted yet.`
+        : "No opponent has acted before you yet this Round — tick this only if the target already took its turn.";
+    lbl.append(cb, el("div",{},
+      el("div",{class:"small",style:"font-weight:700"}, `⚡ Analytic — did the target already act this Round?`),
+      el("div",{class:"small muted"}, note)));
     card.append(lbl); body.append(card);
   }
   /* --- "−ate" ability toggle (Aerilate / Pixilate / Galvanize / Refrigerate) --- it re-types this
@@ -12631,11 +12893,12 @@ function openMoveRoll(p, m, sp, opts={}){
       // Type Strategist (Type Ace branch, Core p.119): using a Move of the granted Type auto-grants
       // +5 DR (+10 under 1/3 Max HP) for one full round — replaces any earlier instance of the buff
       // rather than stacking it.
-      if(p.typeAce && p.typeAce.ability==="Type Strategist" && mtype===p.typeAce.type){
+      const tsGrant = typeAceGrants(p).find(g=>g.ability==="Type Strategist" && mtype===g.type);
+      if(tsGrant){
         const bonus = pokeUnderThirdHP(p) ? 10 : 5;
         p.buffs = ownerBuffs(p).filter(b=>b.name!=="Type Strategist");
         const nb = { id:uid(), key:"custom", name:"Type Strategist", cat:"Custom", dur:"until end of next turn",
-          once:false, mods:{dr:bonus}, note:`+${bonus} Damage Reduction until the end of your next turn (used a ${p.typeAce.type} Move).` };
+          once:false, mods:{dr:bonus}, note:`+${bonus} Damage Reduction until the end of your next turn (used a ${tsGrant.type} Move).` };
         stampTurnBuff(nb);
         p.buffs.push(nb);
         (opts.persist||save)(); if(opts.rerender) opts.rerender();
@@ -12841,7 +13104,7 @@ function openMoveRoll(p, m, sp, opts={}){
         // GM: drop this rolled hit straight onto a battle-map token (auto Def / type / abilities / DR).
         if(isPhys || isSpec){
           const tw = attackTargetWidget({ dmg:total, type:mtype||"Typeless", physical:isPhys,
-            pierceImmune: ignoresTypeImmunity(p, m, mtype) });
+            pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: hasAbility(p,"Tinted Lens") });
           if(tw) dmgLine.append(tw);
         }
         /* …and into the GM's feed, carrying the same numbers, so they can drop this hit on a token
@@ -12852,7 +13115,7 @@ function openMoveRoll(p, m, sp, opts={}){
           lines:[`🎯 Accuracy ${accTot} (d20 ${acc})${effAC!=null?` vs AC ${effAC}`:""}`,
                  `${mtype||"Typeless"}${m.class?` · ${m.class}`:""} · DB ${effFDB}`],
           atk: (isPhys||isSpec) ? { dmg:total, type:mtype||"Typeless", physical:isPhys,
-                 pierceImmune: ignoresTypeImmunity(p, m, mtype) } : null });
+                 pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: hasAbility(p,"Tinted Lens") } : null });
       }
       out.append(dmgLine);
       if(ancestral && (isPhys||isSpec)){ const an = ancestralStrikeNode(); if(an) out.append(an); }
@@ -13360,11 +13623,57 @@ const FEATURE_MODES = [
      Checks and Opposed Checks are made at the table — so what the stance automates is the AP: 2 AP
      stay Bound while it is up and come back the moment it ends or the Scene does, exactly like
      Enchanting Transformation. The text is on the row so nobody has to remember the numbers. */
+  /* Stone Stance (Stone Warrior, Rock Elementalist): Bind 2 AP to adopt ONE of three stances,
+     switchable without rebinding. Two carry real numbers the engine applies while the stance is up:
+     Falling Boulder (+5 to every Damage Roll; the 5 HP Recoil on a hit stays the table's) folds into
+     the Trainer damage roll, and Moon Mountain (+5 Damage Reduction) folds into buffDR. The chosen
+     stance is stored as t.modes["stone-stance"] = <stance key> (a string, so modeIsOn still reads it
+     as "on" and the 2 AP Bind is tracked like any other stance). The -5 Initiative, Push/Pull
+     immunity and Roiling Earth's Intercept Struggle are named on the row and left to the table. */
+  { key:"stone-stance", feat:"Stone Stance", icon:"🪨",
+    on:"Adopt a Stance", off:"Drop Stance", dur:"lasts until you drop it \u00b7 needs solid ground", bindAP:2,
+    stances:[
+      { key:"falling", name:"Falling Boulder", dmg:5, blurb:"+5 to all Damage Rolls, but lose 5 HP to Recoil whenever you hit." },
+      { key:"moon",    name:"Moon Mountain",   dr:5,  blurb:"+5 Damage Reduction and immune to Push/Pull, but \u22125 Initiative." },
+      { key:"roiling", name:"Roiling Earth",          blurb:"After a successful Intercept, make a Struggle Attack against a foe in range." },
+    ],
+    blurb:"Bind 2 AP for a Stone stance \u2014 Falling Boulder (+5 damage), Moon Mountain (+5 DR) or Roiling Earth. The active stance's numbers are applied for you; switch it from this button." },
   { key:"sovereignty", feat:"Sovereignty", icon:"👑",
     on:"Assert Sovereignty", off:"End Sovereignty", dur:"lasts until you end it", bindAP:2,
     blurb:"+2 to Save Checks against Volatile Status Afflictions, and +2 to Opposed Checks when defending against being Disarmed, Grappled, Pushed or Tripped. Roll those at the table — the stance tracks the 2 Bound AP for you." },
 ];
 const featureModeByFeat = new Map(FEATURE_MODES.map(d=>[featKey(d.feat), d]));
+/* Stone Stance sub-stance helpers: which stance (if any) is currently adopted, and the numbers it
+   feeds the two engine hooks (the Trainer damage roll and buffDR). */
+function stoneStanceDef(){ return featureModeByFeat.get(featKey("Stone Stance")) || null; }
+function stoneSub(t){ const d=stoneStanceDef(); if(!d) return null;
+  const v = trainerModes(t) && trainerModes(t)[d.key];
+  return (d.stances||[]).find(x=>x.key===v) || null; }
+function stoneStanceDR(o){ if(!isTrainerOwner(o) || !hasFeatureLoose(o,"Stone Stance")) return 0; const su=stoneSub(o); return (su&&su.dr)||0; }
+function stoneStanceDamage(t){ if(!t || !hasFeatureLoose(t,"Stone Stance")) return 0; const su=stoneSub(t); return (su&&su.dmg)||0; }
+/* The stance chooser modal, opened when Stone Stance is switched on (and to swap stance). */
+function openStoneStancePicker(t, def, rerender, saveFn){
+  const free = trainerDerived(t).ap - trainerAPUsed(t);
+  const already = trainerModes(t) && trainerModes(t)[def.key];
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
+    `Bind ${def.bindAP} AP to adopt a stance (you have ${Math.max(0,free)} AP free). Switching stance later costs no extra AP. The benefits need solid ground \u2014 not deep mud/snow, swimming or flying.`));
+  (def.stances||[]).forEach(su=>{
+    const on = already===su.key;
+    const row = el("div",{class:"moveslot"});
+    row.append(el("div",{style:"flex:1"}, el("div",{style:"font-weight:700"}, su.name, on?el("span",{class:"small",style:"margin-left:8px;color:var(--good);font-weight:700"},"\u25CF active"):""),
+      el("div",{class:"small muted",style:"margin-top:2px"}, su.blurb)));
+    row.append(el("button",{class:on?"btn-secondary":"btn-primary",style:"padding:6px 10px",onclick:()=>{
+        if(!already && !t.unlocked && (def.bindAP||0) > free){ toast(`Not enough AP \u2014 ${def.feat} Binds ${def.bindAP}, you have ${Math.max(0,free)} free`); return; }
+        if(!trainerModes(t)) t.modes = {};
+        t.modes[def.key] = su.key; (saveFn||save)(); closeModal();
+        toast(`🪨 ${su.name}${already?" \u2014 stance switched":` \u2014 ${def.bindAP} AP Bound`}`);
+        (rerender||renderBattle)();
+      }}, on?"active":already?"switch to this":"adopt"));
+    body.append(row);
+  });
+  modal({title:"🪨 Stone Stance", bodyNode:body, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Cancel")]});
+}
 const featureModeDef = f => featureModeByFeat.get(featKey(f && f.name)) || null;
 function trainerModes(t){ return (t && t.modes && typeof t.modes==="object" && !Array.isArray(t.modes)) ? t.modes : null; }
 function modeIsOn(t, key){ const m = trainerModes(t); return !!(m && m[key]); }
@@ -13392,6 +13701,7 @@ function setFeatureMode(t, def, on, rerender, saveFn){
   saveFn = saveFn || save;                       // the Encounters card passes saveEnc
   if(!t || !def) return;
   if(!trainerModes(t)) t.modes = {};
+  if(on && def.stances){ openStoneStancePicker(t, def, rerender, saveFn); return; }
   if(on){
     const free = trainerDerived(t).ap - trainerAPUsed(t);
     if(!t.unlocked && (def.bindAP||0) > free){
@@ -14326,8 +14636,14 @@ function addEncounterTrainer(enc){
   enc.trainers.push({ id:uid(), trainer:t, pokemon:[] }); saveEnc(); renderEncounters();
 }
 function addEncMove(p, sp){
-  const names = (sp ? speciesFullLearnset(sp) : D.moves.map(m=>m.name)).filter(n=>!p.moves.includes(n));
-  openPicker("Add a move", [...new Set(names)], name=>{ p.moves.push(name); saveEnc(); renderEncounters(); }, "move");
+  // GM-only tab, so any Move is fair game (a wild/NPC Pokémon may know things outside its learnset,
+  // and some species — e.g. Golisopod — the GM just wants to hand a move it can't normally learn).
+  // The species' own learnset is prioritised and ✓-marked on top; the full Move list follows.
+  const learn = sp ? speciesFullLearnset(sp) : [];
+  const markSet = new Set(learn.map(x=>x.toLowerCase()));
+  const names = [...new Set([...learn, ...D.moves.map(m=>m.name)])].filter(n=>!p.moves.includes(n));
+  const title = sp ? `Add a move (🔓 any) — ${sp.name}'s learnset on top` : "Add a move (🔓 any)";
+  openPicker(title, names, name=>{ p.moves.push(name); saveEnc(); renderEncounters(); }, "move", n=>markSet.has(n.toLowerCase()));
 }
 /* encounter Trainers can carry their own combat Moves (granted by Features/class) — rollable like Pokémon moves */
 function addEncTrainerMove(t){
@@ -15284,6 +15600,8 @@ function encounterMonCard(enc, p, list, trainer){
   const awActs = el("div",{class:"inline",style:"gap:6px"});
   if(trainer && typeAceEligible(trainer) && !p.typeAce) awActs.append(el("button",{class:"linkbtn",title:"Type Ace: grant Last Chance or Type Strategist",
     onclick:()=>openTypeAceGrant(p,trainer,saveEnc,renderEncounters)},"🎯 Type Ace"));
+  if(trainer && extraOrdinaryEligible(trainer) && p.typeAce && !p.typeAce2) awActs.append(el("button",{class:"linkbtn",title:"Extra Ordinary: also grant the other Type Ace Ability",
+    onclick:()=>grantExtraOrdinary(p,trainer,saveEnc,renderEncounters)},"✨ Extra Ordinary"));
   awActs.append(el("button",{class:"linkbtn",onclick:()=>addEncAbility(p,sp)},"+ ability"));
   awHead.append(awActs);
   aw.append(awHead);
@@ -15301,6 +15619,15 @@ function encounterMonCard(enc, p, list, trainer){
         onclick:e=>{e.preventDefault(); clearTypeAce(p,saveEnc,renderEncounters);}},"×")));
     taRow.append(el("div",{class:"small",style:"margin-top:6px"}, typeAceAbilityText(p.typeAce)));
     aw.append(taRow);
+  }
+  if(p.typeAce2){
+    const eoRow=el("details",{class:"spoiler",style:"margin-top:5px"});
+    eoRow.append(el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, `${p.typeAce2.ability} (${p.typeAce2.type})`),
+      el("span",{class:"muted small",style:"margin-left:8px"},"from Extra Ordinary"),
+      el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove",
+        onclick:e=>{e.preventDefault(); clearExtraOrdinary(p,saveEnc,renderEncounters);}},"×")));
+    eoRow.append(el("div",{class:"small",style:"margin-top:6px"}, typeAceAbilityText(p.typeAce2)));
+    aw.append(eoRow);
   }
   if(!p.abilities.length && !grant && !p.typeAce) aw.append(el("span",{class:"muted small"},"none — tap + ability"));
   p.abilities.forEach(an=> aw.append(encounterAbilityRow(p,an)));
@@ -17287,7 +17614,8 @@ function simProfile(A, atk, cfg){
   const abil = A.isT ? { db:0, flat:0 }
                      : abilityDamageMods(p, atk.m, atk.db, printedThr, { stab, mtype, isPhys, isSpec:!isPhys, fieryCrash:fcMode });
   // status riders resolve off the Effect Ranges as modified (Fiery Crash's Burn included)
-  const thr = fieryCrashThresholds(printedThr, !!fc && mtype==="Fire");
+  const thr = frostbiteThresholds(fieryCrashThresholds(printedThr, !!fc && mtype==="Fire"),
+    !A.isT && hasAbility(p,"Frostbite") && mtype==="Ice" && (isPhys || !isPhys));
   const wx  = cfg.useWeather ? weatherRollMods(p, atk.m, mtype) : { dmg:0, autoHit:false, acOverride:null };
   const tx  = cfg.useWeather ? terrainRollMods(p, atk.m, mtype) : { dmg:0 };
   const aAcc = A.isT ? { acc:0 } : abilityAccMods(p, atk.m, isPhys);
@@ -17304,6 +17632,7 @@ function simProfile(A, atk, cfg){
     flat: atkStat + (bm.dmg||0) + (wx.dmg||0) + (tx.dmg||0) + (abil.flat||0) + typeBoosterDmg(p, mtype),
     autoHit: !!wx.autoHit,
     pierceImmune: !A.isT && ignoresTypeImmunity(p, atk.m, mtype),  // Bone Wielder [Errata] / Scrappy
+    atkTinted: !A.isT && hasAbility(p,"Tinted Lens"),              // resisted hits climb one step (capped at neutral)
     pierceDR: A.isT ? attackDRPierce(p, atk) : 0,                  // Herald of Pride ignores DR on Weapon Attacks
     fiveStrike: isFiveStrike(atk.m),
     atkStat,
@@ -17320,23 +17649,35 @@ function simEva(D, isPhys, cfg){
   const d = D.d();
   return isPhys ? d.physEva : d.specEva;
 }
-function simTypeMult(D, type, pierceImmune){
+function simTypeMult(D, type, pierceImmune, atkTinted, isPhys){
   if(D.isT) return 1;                                   // Trainers are typeless
   const mods = D.dmods();
   if(mods.immune.has(type) && !pierceImmune) return 0;
-  let m = typeMultAgainst(type, D.sp?.types||[], mods.step?.[type] || 0, { pierceImmune });
-  if(mods.wonderGuard && m>0 && m<=1) m = 0;
+  const dStep = mods.step?.[type] || 0;
+  // Fur Coat: Physical hits are resisted one step further, whatever the Type (mirrors tokenDamageBreakdown)
+  const furStep = (mods.furCoat && isPhys) ? -1 : 0;
+  let m = typeMultAgainst(type, D.sp?.types||[], dStep + furStep, { pierceImmune });
+  let tol = 0;
+  // Tolerance: a resisted hit is resisted one step further (mirrors tokenDamageBreakdown)
+  if(mods.tolerance && m>0 && m<1){ tol = -1; m = typeMultAgainst(type, D.sp?.types||[], dStep + furStep + tol, { pierceImmune }); }
+  // Wonder Guard keys off raw Type super-effectiveness (pre-Fur-Coat), mirrors tokenDamageBreakdown
+  if(mods.wonderGuard){ const tm = typeMultAgainst(type, D.sp?.types||[], dStep, { pierceImmune }); if(tm>0 && tm<=1) m = 0; }
   if(mods.seReduce && m>1) m = seReducedMult(m);
+  // Tinted Lens: a resisted hit climbs one ladder step, never past neutral (mirrors tokenDamageBreakdown)
+  if(atkTinted && m>0 && m<1){
+    m = Math.min(1, typeMultAgainst(type, D.sp?.types||[], dStep + furStep + tol + 1, { pierceImmune }));
+  }
   return m;
 }
 /* rolled total → HP actually lost, running the same order as tokenDamageBreakdown */
-function simMitigate(D, raw, type, isPhys, pierceImmune, pierceDR){
-  const mult = simTypeMult(D, type, pierceImmune);
+function simMitigate(D, raw, type, isPhys, pierceImmune, pierceDR, atkTinted){
+  const mult = simTypeMult(D, type, pierceImmune, atkTinted, isPhys);
   const afterDef = Math.max(0, raw - simDefStat(D, isPhys));
   const mods = D.dmods();
   const seDR = (mods && mods.seFlatDR && mult>1) ? mods.seFlatDR : 0;
+  const glacialDR = (mods && mods.glacial && mult>1 && mods.glacial.types.has(type)) ? mods.glacial.dr : 0;
   // same pool-then-pierce order tokenDamageBreakdown runs, so the Sim and the table agree
-  const pool = buffDR(D.obj).dr + seDR;
+  const pool = buffDR(D.obj).dr + seDR + glacialDR;
   return Math.max(0, Math.floor(afterDef * mult) - Math.max(0, pool - Math.max(0, pierceDR||0)));
 }
 /* average damage this attack would do to this target — what the AI ranks its options by */
@@ -17351,7 +17692,7 @@ function simExpected(A, atk, D, cfg){
   const db  = pr.fiveStrike ? Math.min(28, pr.baseDB*3 + pr.dbBonus) : pr.db;   // Five Strike averages 3 hits
   const avg = simDbAvg(db);
   const pCrit = pr.alwaysCrit ? 1 : pr.autoHit ? 0 : Math.max(0, (21-pr.critT)/20);
-  const ev = pHit * simMitigate(D, Math.round(avg + pr.flat + pCrit*avg), pr.mtype, pr.isPhys, pr.pierceImmune, pr.pierceDR);
+  const ev = pHit * simMitigate(D, Math.round(avg + pr.flat + pCrit*avg), pr.mtype, pr.isPhys, pr.pierceImmune, pr.pierceDR, pr.atkTinted);
   /* Blowing yourself up is only a good trade when it actually finishes the target — otherwise the
      side just gave away a whole combatant, so heavily discount it rather than ban it (a Golem whose
      only real attack IS Self-Destruct still gets to use it). */
@@ -17425,7 +17766,7 @@ function simStrike(B, A, atk, D, round){
     if(hasAbility(A.obj,"Sniper")){ const r3 = rollDiceString(dice); raw += r3 ? r3.total : 0; }
   }
   const before = D.hp;
-  const done  = Math.min(before, simMitigate(D, Math.max(0,raw), pr.mtype, pr.isPhys, pr.pierceImmune, pr.pierceDR));
+  const done  = Math.min(before, simMitigate(D, Math.max(0,raw), pr.mtype, pr.isPhys, pr.pierceImmune, pr.pierceDR, pr.atkTinted));
   /* Status riders: a triggered Effect Range that names an Affliction applies it (same heuristic the
      move-roll modal uses for its "Poisoned!" banner). Sheer Force trades these away for damage. */
   let inflicted = null;
@@ -18587,6 +18928,7 @@ const AUTOMATED_ABILITIES = {
   "filter":"Softens Super-Effective damage (×1.5→×1.25, ×2→×1.5) in the Type chart & map damage.",
   "solid rock":"Softens Super-Effective damage (×1.5→×1.25, ×2→×1.5); +5 DR vs Super-Effective if paired with Filter.",
   "prism armor":"+5 Damage Reduction vs Super-Effective damage in the map damage tool.",
+  "fur coat":"Resists all Physical Attacks one step further (applied on map damage / the Sim).",
   // attacker-side immunity piercing — applied when the rolled hit is dropped on a target
   "scrappy":"Ghost-Types are not immune to its Normal & Fighting-Type Moves (applied in move rolls and on map damage).",
   "bone wielder [errata]":"Bone Club / Bonemerang / Bone Rush ignore immunity to Ground-Type Moves.",
@@ -19031,6 +19373,11 @@ function migrateChar(data, id){
 /* explicit columns, not "*" — supabase-js can transiently return 0 rows for just-inserted
    rows under a "*" select, which would blank the roster right after someone joins/creates. */
 const SHEET_COLS = "id,campaign,owner_id,owner_name,name,data,rev,updated_at";
+// A successful insert/update only needs the new rev + timestamp echoed back (the writer already holds
+// `data` locally and uses its own clone as the new baseline). Returning the full `data` blob on every
+// write — hundreds of KB for the map/enc rows — was pure wasted egress, paid by the writer on top of
+// the realtime broadcast. Ask only for what we read.
+const WRITE_RET_COLS = "id,rev,updated_at";
 
 /* ───────────────────────── conflict-safe cloud writes ─────────────────────────
    Every sheet is one JSON blob in one row, and two people (a player + the GM) can
@@ -19282,12 +19629,12 @@ async function casUpsert(row, mergeFn){
       const meta = { id, campaign:cloud.campaign, owner_id:row.owner_id, owner_name:row.owner_name, name:row.name };
       const payloadData = deepClone(row.data);                 // exactly what the server will hold on success
       if(row._rev==null){
-        const { data:ins, error } = await cloud.client.from("sheets").insert({ ...meta, data:payloadData }).select(SHEET_COLS);
+        const { data:ins, error } = await cloud.client.from("sheets").insert({ ...meta, data:payloadData }).select(WRITE_RET_COLS);
         if(!error && ins && ins.length){ row._rev=ins[0].rev; row.updated_at=ins[0].updated_at; row._base=payloadData; return true; }
         // error (usually a duplicate id from a race) → fall through to fetch + merge + retry
       } else {
         const { data:upd, error } = await cloud.client.from("sheets").update({ ...meta, data:payloadData })
-          .eq("id", id).eq("rev", row._rev).select(SHEET_COLS);
+          .eq("id", id).eq("rev", row._rev).select(WRITE_RET_COLS);
         if(error){ console.error(error); toast("⚠ Cloud save failed"); return false; }
         if(upd && upd.length){ row._rev=upd[0].rev; row.updated_at=upd[0].updated_at; row._base=payloadData; return true; }
         // 0 rows → the row moved past our rev (someone else wrote) → reconcile
@@ -19558,29 +19905,48 @@ function normMapTokens(data){
   data.kind = "maptokens";
   data.byMap = (data.byMap && typeof data.byMap==="object") ? data.byMap : {};
   for(const k of Object.keys(data.byMap)) if(!Array.isArray(data.byMap[k])) data.byMap[k] = [];
+  // Fog moved to its own row (mapfog_<campaign>). Tolerate a legacy fog blob on an old row so it can
+  // be folded across on first load (see foldLegacyFogIntoFogRow), but NEVER (re)create one here — that
+  // is what keeps this hot, frequently-written row small.
+  if(data.fog && typeof data.fog==="object")
+    for(const k of Object.keys(data.fog)) if(!Array.isArray(data.fog[k])) data.fog[k] = [];
+  return data;
+}
+function normMapFog(data){
+  data = (data && typeof data==="object") ? data : {};
+  data.kind = "mapfog";
   data.fog = (data.fog && typeof data.fog==="object") ? data.fog : {};   // { mapId: ["x,y",…] revealed }
   for(const k of Object.keys(data.fog)) if(!Array.isArray(data.fog[k])) data.fog[k] = [];
   return data;
 }
 async function fetchMap(pre){
-  let meta, toks;
+  let meta, toks, fog;
   if(pre && pre.rows){
     meta = preRow(pre, mapMetaId()) || undefined;      // null (proven absent) reads the same as "not fetched"
     toks = preRow(pre, mapTokensId()) || undefined;    // to mergeShared, which keeps local either way
+    fog  = preRow(pre, mapFogId()) || undefined;
   } else {
     // explicit columns (not "*") — PostgREST/supabase-js can transiently drop just-inserted
     // rows under "*", and a GM's freshly-created map is loaded by players seconds later.
     const { data, error } = await cloud.client.from("sheets")
       .select(SHEET_COLS)
-      .in("id", [mapMetaId(), mapTokensId()]);
+      .in("id", [mapMetaId(), mapTokensId(), mapFogId()]);
     if(error){ console.error(error); return; }   // keep local on a fetch error, don't wipe the board
     meta = (data||[]).find(r=>r.id===mapMetaId());
     toks = (data||[]).find(r=>r.id===mapTokensId());
+    fog  = (data||[]).find(r=>r.id===mapFogId());
   }
   cloud.mapMeta   = mergeShared(cloud.mapMeta, meta, normMapMeta);
   cloud.mapTokens = mergeShared(cloud.mapTokens, toks, normMapTokens);
+  cloud.mapFog    = mergeShared(cloud.mapFog, fog, normMapFog);
   repushIfDirty(cloud.mapMeta,   mapMetaSave);
   repushIfDirty(cloud.mapTokens, mapTokensSave);
+  repushIfDirty(cloud.mapFog,    mapFogSave);
+  // Back-compat: a pre-split tokens row still carries its fog inline. Fold it into the fog row in
+  // memory so fog draws correctly for EVERYONE during the transition; the GM additionally persists
+  // the fog row and strips fog off the (now lean) tokens row so the split becomes permanent.
+  foldLegacyFogIntoFogRow();
+  if(cloud.isGM) migrateFogOffTokensRow();
 }
 function ensureMapMeta(){
   if(!cloud.mapMeta) cloud.mapMeta = { id:mapMetaId(), campaign:cloud.campaign, owner_id:MAP_OWNER,
@@ -19591,6 +19957,56 @@ function ensureMapTokens(){
   if(!cloud.mapTokens) cloud.mapTokens = { id:mapTokensId(), campaign:cloud.campaign, owner_id:MAP_OWNER,
     owner_name:"Map", name:"Map Tokens", data:normMapTokens(null) };
   return cloud.mapTokens;
+}
+function ensureMapFog(){
+  if(!cloud.mapFog) cloud.mapFog = { id:mapFogId(), campaign:cloud.campaign, owner_id:MAP_OWNER,
+    owner_name:"Map", name:"Map Fog", data:normMapFog(null) };
+  return cloud.mapFog;
+}
+/* Copy any fog still living on the (legacy, pre-split) tokens row into the dedicated fog row IN
+   MEMORY, without ever overwriting fog the fog row already holds — a plain union by map, so it's
+   idempotent and safe to run on every client on every load. Non-destructive: it does not touch the
+   tokens row, so fog keeps drawing even before the GM's permanent strip below has run. */
+function foldLegacyFogIntoFogRow(){
+  const legacy = cloud.mapTokens && cloud.mapTokens.data && cloud.mapTokens.data.fog;
+  if(!legacy || typeof legacy!=="object") return;
+  const fg = ensureMapFog().data.fog;
+  for(const k of Object.keys(legacy)){
+    if(!Array.isArray(legacy[k]) || !legacy[k].length) continue;
+    if(!Array.isArray(fg[k]) || !fg[k].length) fg[k] = legacy[k].slice();
+  }
+}
+/* GM-only, one-time: now that the fog is safely in its own row, remove the inline fog blob from the
+   tokens row and persist both. After this the tokens row (written on every drag/HP/status tick) is a
+   few dozen KB instead of hundreds, so realtime stops re-broadcasting the whole fog on every nudge. */
+function migrateFogOffTokensRow(){
+  if(!cloud.isGM) return;
+  const tk = cloud.mapTokens;
+  if(!tk || !tk.data || !("fog" in tk.data)) return;
+  const fogVal = tk.data.fog;
+  const hadFog = fogVal && typeof fogVal==="object" &&
+                 Object.keys(fogVal).some(k=>Array.isArray(fogVal[k]) && fogVal[k].length);
+  foldLegacyFogIntoFogRow();          // make sure the fog row has it before we drop it
+  delete tk.data.fog;                 // strip the heavy blob off the hot row
+  if(hadFog) mapFogSave();            // persist the migrated fog to its own row
+  mapTokensSave();                    // persist the now-lean tokens row (fog key removed)
+}
+async function mapFogUpsert(){
+  const row = ensureMapFog();
+  row.owner_name = "Map"; row.name = "Map Fog";
+  const ok = await syncUpsert(row);   // field-level patch: an incremental reveal ships as one tiny append op
+  cacheSharedRow("mapfog", row);
+  return ok;
+}
+/* Debounced, coalescing save of the fog row — same serialize()+updated_at-stamp discipline as the
+   tokens row (see mapTokensSave), so bursts of reveals during a drag collapse into one ordered write. */
+let mapFogTimer;
+const mapFogChain = { chain: Promise.resolve() };
+function mapFogSave(){
+  const row = ensureMapFog();
+  cacheSharedRow("mapfog", row);
+  clearTimeout(mapFogTimer);
+  mapFogTimer = setTimeout(()=>{ mapFogTimer=null; serialize(mapFogChain, mapFogUpsert); }, 350);
 }
 /* One-time cleanup: existing maps store their backgrounds as base64 data-URLs in the meta row,
    which is exactly what makes that row oversized and re-downloaded on every sync. On connect the
@@ -19610,6 +20026,29 @@ async function migrateMapBgsToStorage(){
     }
   }
   if(changed){ mapMetaSave(); toast("Map images moved to fast storage ✓"); }
+}
+/* One-time cleanup of the encounters row, which for imported/older encounters baked trainer avatars
+   and mon photos in as base64 data-URLs — ~1 MB of them here, re-broadcast and re-fetched on every
+   combat HP tick. On connect the GM lifts each into Storage and rewrites it to a URL, then saves once
+   (field-level patch → only the small URLs are sent). GM-only; no-ops when there's nothing to move. */
+async function migrateEncImagesToStorage(){
+  if(!cloud.isGM || !cloud.client || !cloud.enc?.data?.encounters?.length) return;
+  let changed = false;
+  const lift = async (obj, key) => {
+    const v = obj && obj[key];
+    if(typeof v==="string" && /^data:[^,]*;base64,/i.test(v)){
+      const url = await storeImg(v, "enc");
+      if(url && url!==v){ obj[key] = url; changed = true; }
+    }
+  };
+  for(const e of cloud.enc.data.encounters){
+    for(const m of (e.mons||[])) await lift(m, "image");
+    for(const tr of (e.trainers||[])){
+      if(tr && tr.trainer) await lift(tr.trainer, "avatar");
+      for(const m of (tr.pokemon||[])) await lift(m, "image");
+    }
+  }
+  if(changed){ saveEnc(); toast("Encounter images moved to fast storage ✓"); }
 }
 async function mapMetaUpsert(){
   const row = ensureMapMeta();
@@ -19880,6 +20319,7 @@ async function cloudConnect(campaign, name, gmCode, silent, viewer){
     recoverUnsyncedShared("pc", ()=>cloud.pc, pcUpsert);
     recoverUnsyncedShared("mapmeta", ()=>cloud.mapMeta, ()=>serialize(mapMetaChain, mapMetaUpsert));
     recoverUnsyncedShared("maptokens", ()=>cloud.mapTokens, ()=>serialize(mapTokensChain, mapTokensUpsert));
+    recoverUnsyncedShared("mapfog", ()=>cloud.mapFog, ()=>serialize(mapFogChain, mapFogUpsert));
     recoverUnsyncedShared("enc", ()=>cloud.enc, encUpsert);
     recoverUnsyncedShared("shops", ()=>cloud.shops, shopUpsert);
     shopRefetchTried = false;
@@ -19899,6 +20339,7 @@ async function cloudConnect(campaign, name, gmCode, silent, viewer){
     cloud.activeId = mine ? mine.id : (Object.keys(cloud.byId)[0] || null);
     updateCloudButton(); closeModal(); render();
     migrateMapBgsToStorage();   // fire-and-forget: lift any legacy base64 map backgrounds into Storage
+    migrateEncImagesToStorage();   // and any legacy base64 avatars/sprites baked into the encounters row
     if(!silent) toast(`Connected to “${campaign}”${cloud.isGM?" as GM":""} ✓`);
   }catch(e){
     console.error(e); mode="local";
@@ -20034,17 +20475,20 @@ function onRealtime(payload){
     return;
   }
   // the shared battle map is visible to everyone — handle it before the per-player filter
-  if(evtOwner===MAP_OWNER || evtId===mapMetaId() || evtId===mapTokensId()){
+  if(evtOwner===MAP_OWNER || evtId===mapMetaId() || evtId===mapTokensId() || evtId===mapFogId()){
     const isMeta = evtId===mapMetaId();
-    if(type==="DELETE"){ if(isMeta) cloud.mapMeta=null; else cloud.mapTokens=null; }
+    const isFog  = evtId===mapFogId();
+    if(type==="DELETE"){ if(isMeta) cloud.mapMeta=null; else if(isFog) cloud.mapFog=null; else cloud.mapTokens=null; }
     else if(!payloadHasData(payload.new)){ scheduleSharedRefetch("map"); return; }
     else {
-      const cur = isMeta ? cloud.mapMeta : cloud.mapTokens;
-      if(staleShared(cur, isMeta?mapMetaId():mapTokensId())) return;
+      const cur = isMeta ? cloud.mapMeta : isFog ? cloud.mapFog : cloud.mapTokens;
+      if(staleShared(cur, evtId)) return;
       // Two people dragging at once: their token's x/y merges in, ours stays ours (merge by id),
-      // and the field-level write means the server never even saw a conflict to begin with.
-      if(isMeta){ cloud.mapMeta   = adoptRemote(cloud.mapMeta,   payload.new, normMapMeta);   repushIfDirty(cloud.mapMeta,   mapMetaSave); }
-      else      { cloud.mapTokens = adoptRemote(cloud.mapTokens, payload.new, normMapTokens); repushIfDirty(cloud.mapTokens, mapTokensSave); }
+      // and the field-level write means the server never even saw a conflict to begin with. Fog
+      // merges the same way (union of revealed cells per map).
+      if(isMeta)     { cloud.mapMeta   = adoptRemote(cloud.mapMeta,   payload.new, normMapMeta);   repushIfDirty(cloud.mapMeta,   mapMetaSave); }
+      else if(isFog) { cloud.mapFog    = adoptRemote(cloud.mapFog,    payload.new, normMapFog);    repushIfDirty(cloud.mapFog,    mapFogSave); }
+      else           { cloud.mapTokens = adoptRemote(cloud.mapTokens, payload.new, normMapTokens); repushIfDirty(cloud.mapTokens, mapTokensSave); }
     }
     refreshUI("map");                   // queued until the drag/typing finishes
     return;
@@ -20713,7 +21157,7 @@ function mapTokensFor(mapId){ return (cloud.mapTokens?.data?.byMap?.[mapId]) || 
    slice of the lag on huge maps. Treat the result as READ-ONLY — add cells with fogReveal(). */
 let fogCache = { id:null, arr:null, len:-1, set:null };
 function fogSet(mapId){
-  const arr = (cloud.mapTokens?.data?.fog?.[mapId]) || [];
+  const arr = (cloud.mapFog?.data?.fog?.[mapId]) || [];
   if(fogCache.id===mapId && fogCache.arr===arr && fogCache.len===arr.length) return fogCache.set;
   fogCache = { id:mapId, arr, len:arr.length, set:new Set(arr) };
   return fogCache.set;
@@ -20808,6 +21252,9 @@ function tokenHp(token){
   if(!token.link){
     // a boat is a hull, not a creature — no HP bar, no statuses, no turn, and no name plate
     // cluttering the board (the BOATS section owns everything about it)
+    if(isHazardToken(token)){ const h=hazardDef(token);
+      return { cur:1, max:1, editable:cloud.isGM, name:h.name, sprite:hazardSprite(token),
+               unlinked:false, kind:"hazard", hideName:false }; }
     if(isBoatToken(token))
       return { cur:1, max:1, editable:canDriveBoat(token), name:token.label||"Boat",
                sprite:boatSprite(token), unlinked:false, kind:"boat", hideName:true };
@@ -20865,13 +21312,13 @@ function tokenBossBars(token){
 }
 /* players may only see HP for PC trainers/Pokémon; the GM sees everything (incl. enemies & standalone tokens) */
 function tokenHpVisible(info){
-  if(info.kind==="shop" || info.kind==="boat") return false; // scenery has no HP bar to show
+  if(info.kind==="shop" || info.kind==="boat" || info.kind==="hazard") return false; // scenery has no HP bar to show
   return cloud.isGM || info.kind==="trainer" || info.kind==="pokemon";
 }
 /* Status conditions (Burned, Paralyzed, …) are visible in an actual battle even when a creature's
    exact HP isn't — unlike tokenHpVisible, this doesn't gate on GM/kind, only on the token actually
    pointing to something real. Fixes enemy statuses being invisible to players (HANDOFF-2026-07-25). */
-function tokenStatusVisible(info){ return !info.unlinked && info.kind!=="shop" && info.kind!=="boat"; }
+function tokenStatusVisible(info){ return !info.unlinked && info.kind!=="shop" && info.kind!=="boat" && info.kind!=="hazard"; }
 /* ---- quick-attack helper: defender = the clicked token ---- */
 function tokenDefTypes(token){
   const L = token.link ? tokenLinked(token) : null;
@@ -20920,7 +21367,7 @@ function tokenInitiative(token){
   return v;
 }
 function tokenInInit(token){
-  if(isShopToken(token) || isBoatToken(token)) return false; // scenery doesn't take turns
+  if(isShopToken(token) || isBoatToken(token) || isHazardToken(token)) return false; // scenery doesn't take turns
   const info=tokenHp(token); if(info.unlinked) return false;
   const ally = info.kind==="trainer"||info.kind==="pokemon";
   return ally ? token.inInit!==false : !!token.inInit;   // players auto-join; enemies opt-in via the token menu
@@ -21437,7 +21884,7 @@ function revealFootprint(set, cx, cy, span, r){
   }
 }
 
-function mapFogData(){ ensureMapTokens(); return cloud.mapTokens.data.fog || (cloud.mapTokens.data.fog={}); }
+function mapFogData(){ ensureMapFog(); return cloud.mapFog.data.fog || (cloud.mapFog.data.fog={}); }
 /* Add revealed cells to a map's fog list IN PLACE, and keep the cached Set coherent. Appending
    rather than rebuilding the array matters twice over: diffOps ships an append as one tiny
 
@@ -21458,6 +21905,10 @@ function fogReveal(map, cells){
     else { if(x<box.x0)box.x0=x; if(x>box.x1)box.x1=x; if(y<box.y0)box.y0=y; if(y>box.y1)box.y1=y; }
   });
   if(box && fogCache.arr===arr) fogCache.len = arr.length;   // both halves moved together
+  // Persist revealed cells to the dedicated fog row (debounced). This is the single commit point for
+  // every reveal, so callers no longer have to remember to save fog — they save token positions with
+  // mapTokensSave() as before, and fog rides its own, much-less-frequent row.
+  if(box) mapFogSave();
   return box;
 }
 /* the smallest box covering both (either may be null) */
@@ -21491,9 +21942,9 @@ async function setFogRadius(map, v){
 }
 async function resetFog(map){
   if(!confirm("Re-hide the whole map? Explored areas will be covered again.")) return;
-  if(cloud.mapTokens?.data?.fog) cloud.mapTokens.data.fog[map.id] = [];
-  if(map.fogOn) revealAroundTokens(map);      // keep current token surroundings visible
-  mapTokensSave(); renderMap();
+  mapFogData()[map.id] = [];
+  if(map.fogOn) revealAroundTokens(map);      // keep current token surroundings visible (fogReveal saves)
+  mapFogSave(); renderMap();
 }
 /* draw fog onto a canvas sized to the stage; players see opaque cover, the GM sees a dim overlay.
    originX/Y (from mapStageSize) shift the logical (possibly-negative, e.g. up/left of the canonical
@@ -21978,7 +22429,7 @@ function freeCellNear(map, mount, skipId){
   return { x: mount.x + s, y: mount.y };
 }
 /* a token that can't ride / be ridden (shop doors are scenery, not creatures) */
-function canMountToken(token){ return !!token && !isShopToken(token) && !isBoatToken(token); }
+function canMountToken(token){ return !!token && !isShopToken(token) && !isBoatToken(token) && !isHazardToken(token); }
 function mountToken(map, rider, mount){
   if(!rider || !mount || rider.id===mount.id) return false;
   if(!canMountToken(rider) || !canMountToken(mount)){ toast("A shop door can't ride or be ridden"); return false; }
@@ -22118,6 +22569,60 @@ function mapMountBar(map){
    thing (see attachTokenDrag), just without the turn.
 =================================================================== */
 const isBoatToken = t => !!(t && t.boat);
+/* ---- Cosmetic map hazards (Stealth Rock, Spikes, fire, ...). Pure scenery: a labelled icon dropped
+   on a square with no HP, no turn and no automatic damage -- a visual reminder the GM drags around or
+   clears by hand. Stored as a token with `hazard:<key>`, so it syncs, drags and persists like any
+   other token, but every combat/turn/HP path treats kind==='hazard' as scenery (like boats/shops). */
+const HAZARDS = [
+  { key:'stealthrock', name:'Stealth Rock', icon:'🪨' },
+  { key:'spikes',      name:'Spikes',       icon:'🔺' },
+  { key:'toxicspikes', name:'Toxic Spikes', icon:'☠️' },
+  { key:'stickyweb',   name:'Sticky Web',   icon:'🕸️' },
+  { key:'fire',        name:'Fire',         icon:'🔥' },
+  { key:'lava',        name:'Lava',         icon:'🌋' },
+  { key:'water',       name:'Water / Flood',icon:'🌊' },
+  { key:'ice',         name:'Ice',          icon:'🧊' },
+  { key:'poison',      name:'Poison Pool',  icon:'🟣' },
+  { key:'electric',    name:'Electrified',  icon:'⚡' },
+  { key:'mud',         name:'Mud / Swamp',  icon:'🟤' },
+  { key:'spores',      name:'Spores',       icon:'🍄' },
+  { key:'grass',       name:'Tall Grass',   icon:'🌿' },
+  { key:'thorns',      name:'Thorns',       icon:'🌵' },
+  { key:'trap',        name:'Trap',         icon:'🪤' },
+  { key:'pit',         name:'Pit / Hole',   icon:'🕳️' },
+  { key:'smoke',       name:'Smoke',        icon:'💨' },
+];
+const isHazardToken = t => !!(t && t.hazard);
+const hazardDef = t => HAZARDS.find(h=>h.key===(t&&t.hazard)) || HAZARDS[0];
+function hazardSprite(token){ const h=hazardDef(token);
+  return el('div',{class:'tk-hazard',title:h.name}, h.icon); }
+/* GM drops a hazard marker; it lands top-left of the current view like any new token, ready to drag. */
+async function addHazard(map, key){ await addToken(map, { hazard:key, size:1 }); renderMap(); }
+function openAddHazard(map){
+  const body = el('div',{});
+  body.append(el('div',{class:'small muted',style:'margin-bottom:8px'},
+    'Drop a visual hazard marker on the board -- pure scenery (no HP, no turn, no automatic damage). Drag it to place, tap it to change its type or remove it.'));
+  const grid = el('div',{style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px'});
+  HAZARDS.forEach(h=> grid.append(el('button',{class:'btn-secondary',style:'display:flex;align-items:center;gap:8px;justify-content:flex-start',
+    onclick:async()=>{ closeModal(); await addHazard(map,h.key); }}, el('span',{style:'font-size:20px'},h.icon), h.name)));
+  body.append(grid);
+  modal({title:'☠ Add a hazard', bodyNode:body, footNodes:[el('button',{class:'btn-secondary',onclick:closeModal},'Cancel')]});
+}
+/* Tap a placed hazard (GM only): swap its icon or remove it. */
+function openHazardMenu(token, map){
+  if(!cloud.isGM) return;
+  const cur = hazardDef(token);
+  const body = el('div',{});
+  body.append(el('div',{style:'text-align:center;font-size:38px;margin-bottom:2px'}, cur.icon),
+    el('div',{class:'small muted',style:'text-align:center;margin-bottom:10px'}, 'Visual hazard -- drag to move. No automatic effect; narrate or apply it by hand.'));
+  const grid = el('div',{style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:12px'});
+  HAZARDS.forEach(h=> grid.append(el('button',{class:'btn-secondary'+(h.key===cur.key?' on':''),style:'display:flex;align-items:center;gap:8px;justify-content:flex-start',
+    onclick:()=>{ token.hazard=h.key; mapTokensSave(); renderMap(); closeModal(); }}, el('span',{style:'font-size:18px'},h.icon), h.name)));
+  body.append(grid);
+  modal({title:'☠ '+cur.name, bodyNode:body, footNodes:[
+    el('button',{class:'btn-secondary danger',onclick:()=>{ closeModal(); removeToken(token, map); }},'🗑 Remove'),
+    el('button',{class:'btn-secondary',onclick:closeModal},'Close')]});
+}
 /* quarter-turns clockwise from East — the whole rotation math is differences of these */
 const BOAT_ANGLE = { E:0, S:1, W:2, N:3 };
 const BOAT_STEP  = { N:[0,-1], E:[1,0], S:[0,1], W:[-1,0] };
@@ -22311,6 +22816,7 @@ function mapTokenNode(token, map, originX=0, originY=0){
   const boxPx = box.size;
   const riding = box.rider, carrying = tokenRiders(map.id, token).length;
   const isBoat = isBoatToken(token);
+  const isHaz = isHazardToken(token);
   const pendingRider = mapMountActive(map) && mapMount.riderId===token.id;
   const factionColor = tokenFactionColor(info, token);
   const selected = mapSelectActive(map) && mapSelect.ids.has(token.id);
@@ -22319,9 +22825,9 @@ function mapTokenNode(token, map, originX=0, originY=0){
   const isTrainerTok = info.kind==="trainer" || info.kind==="enctrainer";
   const playerSide = info.kind==="trainer" || info.kind==="pokemon";
   // a rider is drawn perched on its mount (see tokenRenderBox) and always stacks above it
-  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":"")+(isBoat?" boat-token":""),
+  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":"")+(isBoat?" boat-token":"")+(isHaz?" hazard-token":""),
     // a hull sits at z-index 0, below every creature, so the crew is drawn standing on the deck
-    style:`left:${box.left}px;top:${box.top}px;width:${box.w}px;height:${box.h}px;z-index:${riding?4:isTrainerTok?2:isBoat?0:1}`
+    style:`left:${box.left}px;top:${box.top}px;width:${box.w}px;height:${box.h}px;z-index:${riding?4:isTrainerTok?2:(isBoat||isHaz)?0:1}`
       +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")
       +(factionColor?`;border-color:${factionColor}`:"")});
   node.dataset.tid = token.id;
@@ -22379,7 +22885,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
     const stackLocked = !stackOK(token);
     // accumulate every tile entered, diagonals cost 2 — but a shop is scenery being repositioned,
     // not a combatant taking a Shift, so dragging its door never spends anyone's movement
-    const trackMove = battleOn() && map.gridOn && !isShopToken(token) && !isBoatToken(token);
+    const trackMove = battleOn() && map.gridOn && !isShopToken(token) && !isBoatToken(token) && !isHazardToken(token);
     const liveFog = !!map.fogOn;
     const stageSize = mapStageSize(map);                      // origin needed regardless of fog, for DOM<->cell math
     const fogCanvas = liveFog ? document.querySelector("#view-map .map-fog") : null;
@@ -22565,7 +23071,7 @@ function attachImageDrag(node, img, map, overlay, originX=0, originY=0){
    Levitate, Wonder Guard, Filter, …) and any Swarm/manual effectiveness nudge, then Damage
    Reduction (active DR buffs + flat DR vs Super-Effective). Used by BOTH the token menu's manual
    "Apply an attack" box and the roll-result "Apply to target" picker, so the two never diverge. */
-function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0 }){
+function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false }){
   const def = tokenDefenseStat(token, !!physical);
   const swarmTgt = (()=>{ const LL = token.link ? tokenLinked(token) : null;
     return (LL && !LL.missing && LL.kind==="enc" && isSwarm(LL.obj)) ? LL.obj : null; })();
@@ -22577,31 +23083,56 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
   // an attacker-side effect may ignore immunity to this Type (Bone Wielder [Errata] vs Ground) —
   // that covers BOTH kinds of immunity: the Type chart's (Flying) and an Ability's (Levitate)
   const pierced = !!pierceImmune && !typeless;
-  let mult;
-  if(typeless) mult = 1;
+  let mult, tinted = false, tolStep = 0, furStep = 0;
+  // Fur Coat (defender Static): Physical hits are resisted one step further, whatever the Type.
+  const furActive = !!(defMods?.furCoat && physical);
+  if(typeless) mult = furActive ? 0.5 : 1;   // Typeless Physical (Struggle) still gets Fur Coat's step
   else if(defMods && defMods.immune.has(type) && !pierced) mult = 0;
   else {
-    mult = typeMultAgainst(type, tokenDefTypes(token), stepAdj + (defMods?.step?.[type] || 0),
-                           { pierceImmune: pierced });
-    if(defMods?.wonderGuard && mult > 0 && mult <= 1) mult = 0;
+    const defStep = stepAdj + (defMods?.step?.[type] || 0);
+    if(furActive) furStep = -1;
+    mult = typeMultAgainst(type, tokenDefTypes(token), defStep + furStep, { pierceImmune: pierced });
+    // Tolerance (defender Static): a hit the defender resists is resisted one further step.
+    if(defMods?.tolerance && mult > 0 && mult < 1){
+      tolStep = -1;
+      mult = typeMultAgainst(type, tokenDefTypes(token), defStep + furStep + tolStep, { pierceImmune: pierced });
+    }
+    // Wonder Guard keys off raw Type super-effectiveness, so judge it on the pre-Fur-Coat Type mult
+    // (Fur Coat's flat step must never turn a genuinely Super-Effective hit into a blocked one).
+    if(defMods?.wonderGuard){
+      const typeMult = typeMultAgainst(type, tokenDefTypes(token), defStep, { pierceImmune: pierced });
+      if(typeMult > 0 && typeMult <= 1) mult = 0;
+    }
     if(defMods?.seReduce && mult > 1) mult = seReducedMult(mult);   // Filter / Solid Rock
+    /* Tinted Lens (attacker Static): a Resisted hit lands as Neutral, Doubly-Resisted as Resisted,
+       and so on — i.e. climb ONE step up the ladder, but never past Neutral (it can't manufacture a
+       weakness). Only touches genuinely-resisted hits, so a Wonder Guard 0 or an already-neutral/SE
+       hit is left untouched. */
+    if(atkTinted && mult > 0 && mult < 1){
+      const bumped = typeMultAgainst(type, tokenDefTypes(token),
+                       defStep + furStep + tolStep + 1, { pierceImmune: pierced });
+      const up = Math.min(1, bumped);
+      if(up !== mult){ mult = up; tinted = true; }
+    }
   }
   const afterDef  = Math.max(0, dmg - def);
   const afterMult = Math.floor(afterDef * mult);
   const { dr, from } = owner ? buffDR(owner) : { dr:0, from:[] };
   const seDR  = (defMods?.seFlatDR && mult > 1) ? defMods.seFlatDR : 0;
+  // Glacial Ice: flat DR vs Super-Effective hits of the Types it covers (Fighting/Fire/Rock/Steel).
+  const glacialDR = (defMods?.glacial && mult > 1 && !typeless && defMods.glacial.types.has(type)) ? defMods.glacial.dr : 0;
   // flat DR the defender has against this exact Type (a Feature stance, e.g. Enchanting Transformation)
   const tEntry = (!typeless && defMods?.typeDR) ? defMods.typeDR[type] : null;
   const typeDR = tEntry ? tEntry.dr : 0, typeDRFrom = tEntry ? tEntry.from : [];
   /* An attacker that ignores Damage Reduction (Herald of Pride) eats into the whole pool the
      defender brought, not just one source of it — the Feature says "Damage Reduction", full stop.
      Capped at the pool, so it can never turn into bonus damage. */
-  const drPool  = dr + seDR + typeDR;
+  const drPool  = dr + seDR + typeDR + glacialDR;
   const drGone  = Math.max(0, Math.min(drPool, Math.round(pierceDR||0)));
   const final = Math.max(0, afterMult - (drPool - drGone));
-  return { def, physical:!!physical, typeless, mult, afterDef, afterMult, dr, from, seDR,
+  return { def, physical:!!physical, typeless, mult, afterDef, afterMult, dr, from, seDR, glacialDR,
            typeDR, typeDRFrom, final, drPool, drGone,
-           owner, defMods, swarmTgt, swarmStep, extraStep, pierced };
+           owner, defMods, swarmTgt, swarmStep, extraStep, pierced, tinted, tolerance: tolStep<0, furCoat: furActive };
 }
 /* Apply a computed breakdown to the token: subtract its HP and spend any one-shot DR buff that
    absorbed the hit (Excited, Intercept…). Returns the HP value BEFORE the hit. */
@@ -22620,26 +23151,30 @@ function damageResultHTML(dmg, typeName, br, before){
   let drTxt = "";
   if(br.dr  > 0) drTxt  = ` − ${br.dr} DR (${br.from.join(", ")})`;
   if(br.seDR > 0) drTxt += ` − ${br.seDR} DR (vs Super-Effective)`;
+  if(br.glacialDR > 0) drTxt += ` − ${br.glacialDR} DR (Glacial Ice)`;
   if(br.typeDR > 0) drTxt += ` − ${br.typeDR} DR vs ${typeName} (${br.typeDRFrom.join(", ")})`;
   if(br.drGone > 0) drTxt += ` <b>+ ${br.drGone} DR ignored</b>`;
   const swarmTxt = (br.swarmTgt && !br.typeless) ? ` (${br.swarmStep>0?"area, +1 step":"single-target, −1 step"} vs Swarm)` : "";
   const stepTxt  = (br.extraStep && !br.typeless) ? ` (manual ${br.extraStep>0?"+":""}${br.extraStep} step)` : "";
+  const tintTxt  = br.tinted ? " <b>(Tinted Lens: +1 step)</b>" : "";
+  const tolTxt   = br.tolerance ? " <b>(Tolerance: −1 step)</b>" : "";
+  const furTxt   = br.furCoat ? " <b>(Fur Coat: −1 step)</b>" : "";
   const pierceTxt = br.pierced ? " <b>(immunity ignored)</b>" : "";
   const abilTxt  = (br.defMods && br.defMods.why.length && !br.typeless) ? `<br><span style="color:var(--accent)">⚙ ${br.defMods.why.join(" · ")}</span>` : "";
-  return `${dmg} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${pierceTxt}${swarmTxt}${stepTxt} = ${br.afterMult}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${before - br.final}</b>.${abilTxt}`;
+  return `${dmg} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${pierceTxt}${swarmTxt}${stepTxt}${tintTxt}${tolTxt}${furTxt} = ${br.afterMult}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${before - br.final}</b>.${abilTxt}`;
 }
 /* GM tool surfaced on a rolled attack's result: pick a token on the battle map and drop the rolled
    damage on it, running the same full damage math as the token menu (type, phys/spec, abilities, DR).
    Returns a DOM node, or null when it doesn't apply (not the GM, not in cloud, no editable tokens on
    the current map). `dmg` = the rolled total, `type` = the move's effective Type, `physical` picks
    Def vs Sp.Def. */
-function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0 }){
+function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false }){
   if(mode!=="cloud" || !cloud.isGM) return null;
   const map = currentMapForView() || activeMap(); if(!map) return null;
   // scenery (shop doors, boat hulls) is editable and "linked", but it is not a creature you can
   // roll damage onto — it would otherwise sit in the Enemies column offering a 1/1 HP bar to hit.
   const tokens = mapTokensFor(map.id).filter(t=>{ const i=tokenHp(t);
-    return i.editable && !i.unlinked && i.kind!=="shop" && i.kind!=="boat"; });
+    return i.editable && !i.unlinked && i.kind!=="shop" && i.kind!=="boat" && i.kind!=="hazard"; });
   if(!tokens.length) return null;
   const typeName = type || "Typeless";
   const wrap = el("div",{style:"margin-top:12px;border-top:1px dashed var(--line);padding-top:10px"});
@@ -22708,7 +23243,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     if(!chosen.length){ out.textContent = "Tick at least one target (in either tab)."; return; }
     out.innerHTML = "";
     for(const it of chosen){
-      const br = tokenDamageBreakdown(it.t, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR });
+      const br = tokenDamageBreakdown(it.t, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted });
       const before = await applyTokenDamage(it.t, br);
       it.cb.checked = false;                                    // clear so a second Apply doesn't double-hit
       const line = el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"});
@@ -22815,7 +23350,7 @@ function openRollApply(e){
     `${e.by||"?"}${e.who && e.who!==e.by ? ` — ${e.who}` : ""} rolled ${e.label||"an attack"}`
     + (e.headline ? `: ${e.headline}` : "") + ` at ${rollFeedTime(e.at)}.`));
   const w = attackTargetWidget({ dmg:e.atk.dmg, type:e.atk.type, physical:e.atk.physical,
-                                 pierceImmune:e.atk.pierceImmune, pierceDR:e.atk.pierceDR });
+                                 pierceImmune:e.atk.pierceImmune, pierceDR:e.atk.pierceDR, atkTinted:e.atk.atkTinted });
   body.append(w || el("div",{class:"small"},
     "No damageable token on the current map — open the 🗺 Map (or add a token) and try again."));
   modal({title:`🎯 ${e.label||"Apply this hit"}`, bodyNode:body,
@@ -22857,6 +23392,7 @@ function reopenTokenMenu(token, map){
 function openTokenMenu(token, map){
   if(isShopToken(token)) return openShopTokenMenu(token, map);
   if(isBoatToken(token)) return openBoatMenu(token, map);
+  if(isHazardToken(token)) return openHazardMenu(token, map);
   const info = tokenHp(token);
   const wrap = el("div",{});
   if(!info.unlinked){
@@ -23502,12 +24038,13 @@ async function deleteMap(map){
   const meta = cloud.mapMeta.data;
   meta.maps = meta.maps.filter(m=>m.id!==map.id);
   if(cloud.mapTokens?.data?.byMap) delete cloud.mapTokens.data.byMap[map.id];
-  if(cloud.mapTokens?.data?.fog)   delete cloud.mapTokens.data.fog[map.id];
+  if(cloud.mapTokens?.data?.fog)   delete cloud.mapTokens.data.fog[map.id];   // legacy inline fog, if any
+  if(cloud.mapFog?.data?.fog)      delete cloud.mapFog.data.fog[map.id];
   const fallback = meta.maps.find(m=>!m.archived)?.id || null;
   meta.activeMapId = fallback;
   if(meta.playerMapId===map.id) meta.playerMapId = fallback;
   if(mapGmView===map.id) mapGmView = fallback;
-  mapMetaSave(); mapTokensSave(); renderMap();
+  mapMetaSave(); mapTokensSave(); mapFogSave(); renderMap();
 }
 function openArchivedMaps(){
   const meta = activeMapMeta();
@@ -23840,6 +24377,8 @@ function renderMap(){
         el("button",{class:"btn-primary",onclick:()=>openAddToken(map)},"＋ Add token"),
         el("button",{class:"btn-secondary",onclick:()=>addBoat(map),
           title:"Drop a boat on the board. Steer it with the 🚤 arrows — it turns to face where it's going and everything standing on the deck sails with it."},"🚤 Boat"),
+        el("button",{class:"btn-secondary",onclick:()=>openAddHazard(map),
+          title:"Drop a visual hazard marker (Stealth Rock, Spikes, fire...) on the board -- cosmetic only, no automatic effect."},"☠ Hazard"),
         el("button",{class:"btn-secondary",onclick:()=>clearMapTokens(map)},"Clear tokens"),
         el("button",{class:"btn-secondary"+(map.fogOn?" on":""),onclick:()=>toggleFog(map),
           title:"Auto-reveals around player tokens; explored areas stay revealed"}, map.fogOn?"🌫 Fog on":"🌫 Fog off"),

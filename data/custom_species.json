@@ -8222,5 +8222,852 @@
       "egg": [],
       "tutor": []
     }
+  },
+  {
+    "name": "Dracosaur",
+    "baseStats": {
+      "hp": 9,
+      "atk": 11,
+      "def": 9,
+      "spatk": 8,
+      "spdef": 8,
+      "spd": 9
+    },
+    "types": [
+      "Dragon",
+      "None"
+    ],
+    "capabilities": {
+      "overland": 9,
+      "sky": 0,
+      "swim": 4,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 2,
+      "longJump": 3,
+      "power": 7,
+      "naturewalk": [
+        "Forest",
+        "Grassland"
+      ],
+      "other": [
+        "Mountable 2"
+      ]
+    },
+    "size": "Large",
+    "weightClass": 5,
+    "eggGroups": [
+      "None"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 5,
+        "mod": "+1"
+      },
+      "charm": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 4,
+        "mod": "+1"
+      },
+      "command": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 4,
+        "mod": "+1"
+      },
+      "intuition": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "stealth": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 3,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [
+        "Strong Jaw",
+        "Rivalry"
+      ],
+      "advanced": [
+        "Sand Rush",
+        "Rock Head"
+      ],
+      "high": [
+        "Moody"
+      ]
+    },
+    "evolution": [
+      {
+        "stage": 1,
+        "name": "Dracosaur",
+        "min": null,
+        "gm": true
+      }
+    ],
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Tackle",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Leer",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Dragon Breath",
+          "type": "Dragon"
+        },
+        {
+          "level": 7,
+          "name": "Bite",
+          "type": "Dark"
+        },
+        {
+          "level": 14,
+          "name": "Rock Throw",
+          "type": "Rock"
+        },
+        {
+          "level": 21,
+          "name": "Ancient Power",
+          "type": "Rock"
+        },
+        {
+          "level": 28,
+          "name": "Dragon Claw",
+          "type": "Dragon"
+        },
+        {
+          "level": 35,
+          "name": "Crunch",
+          "type": "Dark"
+        },
+        {
+          "level": 42,
+          "name": "Stomp",
+          "type": "Normal"
+        },
+        {
+          "level": 49,
+          "name": "Super Fang",
+          "type": "Normal"
+        },
+        {
+          "level": 56,
+          "name": "Thrash",
+          "type": "Normal"
+        },
+        {
+          "level": 63,
+          "name": "Outrage",
+          "type": "Dragon"
+        },
+        {
+          "level": 70,
+          "name": "Dragon Pulse",
+          "type": "Dragon"
+        },
+        {
+          "level": 77,
+          "name": "Dragon Rush",
+          "type": "Dragon"
+        }
+      ],
+      "tmhm": [],
+      "egg": [],
+      "tutor": []
+    },
+    "gender": "No Gender",
+    "diet": "Carnivore",
+    "habitat": "Forest, Grassland",
+    "height": "9' 10\" / 3.0m (Large)",
+    "order": 16001,
+    "customArt": true
+  },
+  {
+    "name": "Arctosaur",
+    "baseStats": {
+      "hp": 9,
+      "atk": 10,
+      "def": 9,
+      "spatk": 9,
+      "spdef": 10,
+      "spd": 8
+    },
+    "types": [
+      "Ice",
+      "None"
+    ],
+    "capabilities": {
+      "overland": 5,
+      "sky": 6,
+      "swim": 3,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 3,
+      "longJump": 2,
+      "power": 6,
+      "naturewalk": [
+        "Tundra"
+      ],
+      "other": [
+        "Chilled",
+        "Freezer",
+        "Mountable 2"
+      ]
+    },
+    "size": "Large",
+    "weightClass": 5,
+    "eggGroups": [
+      "None"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 4,
+        "mod": "+1"
+      },
+      "athletics": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 4,
+        "mod": "+1"
+      },
+      "stealth": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 2,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [
+        "Slush Rush",
+        "Ice Body"
+      ],
+      "advanced": [
+        "Snow Cloak",
+        "Refridgerate"
+      ],
+      "high": [
+        "Moody"
+      ]
+    },
+    "evolution": [
+      {
+        "stage": 1,
+        "name": "Arctosaur",
+        "min": null,
+        "gm": true
+      }
+    ],
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Powder Snow",
+          "type": "Ice"
+        },
+        {
+          "level": 1,
+          "name": "Peck",
+          "type": "Flying"
+        },
+        {
+          "level": 1,
+          "name": "Leer",
+          "type": "Normal"
+        },
+        {
+          "level": 7,
+          "name": "Icy Wind",
+          "type": "Ice"
+        },
+        {
+          "level": 14,
+          "name": "Pluck",
+          "type": "Flying"
+        },
+        {
+          "level": 21,
+          "name": "Ancient Power",
+          "type": "Rock"
+        },
+        {
+          "level": 28,
+          "name": "Bite",
+          "type": "Dark"
+        },
+        {
+          "level": 35,
+          "name": "Aurora Veil",
+          "type": "Ice"
+        },
+        {
+          "level": 42,
+          "name": "Freeze-Dry",
+          "type": "Ice"
+        },
+        {
+          "level": 49,
+          "name": "Air Slash",
+          "type": "Flying"
+        },
+        {
+          "level": 56,
+          "name": "Ice Fang",
+          "type": "Ice"
+        },
+        {
+          "level": 63,
+          "name": "Icicle Crash",
+          "type": "Ice"
+        },
+        {
+          "level": 70,
+          "name": "Hurricane",
+          "type": "Flying"
+        },
+        {
+          "level": 77,
+          "name": "Blizzard",
+          "type": "Ice"
+        }
+      ],
+      "tmhm": [],
+      "egg": [],
+      "tutor": []
+    },
+    "gender": "No Gender",
+    "diet": "Carnivore",
+    "habitat": "Tundra",
+    "height": "8' 2\" / 2.5m (Large)",
+    "order": 16002,
+    "customArt": true
+  },
+  {
+    "name": "Dunklevish",
+    "baseStats": {
+      "hp": 10,
+      "atk": 11,
+      "def": 10,
+      "spatk": 7,
+      "spdef": 8,
+      "spd": 6
+    },
+    "types": [
+      "Water",
+      "None"
+    ],
+    "capabilities": {
+      "overland": 3,
+      "sky": 0,
+      "swim": 9,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 1,
+      "longJump": 1,
+      "power": 7,
+      "naturewalk": [
+        "Ocean"
+      ],
+      "other": [
+        "Fountain",
+        "Gilled",
+        "Mountable 1"
+      ]
+    },
+    "size": "Large",
+    "weightClass": 5,
+    "eggGroups": [
+      "None"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 5,
+        "mod": "+1"
+      },
+      "charm": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 4,
+        "mod": "+1"
+      },
+      "command": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 4,
+        "mod": "+1"
+      },
+      "intuition": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "stealth": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 2,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [
+        "Water Absorb",
+        "Strong Jaw"
+      ],
+      "advanced": [
+        "Sand Rush",
+        "Rock Head"
+      ],
+      "high": [
+        "Moody"
+      ]
+    },
+    "evolution": [
+      {
+        "stage": 1,
+        "name": "Dunklevish",
+        "min": null,
+        "gm": true
+      }
+    ],
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Tackle",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Water Gun",
+          "type": "Water"
+        },
+        {
+          "level": 1,
+          "name": "Leer",
+          "type": "Normal"
+        },
+        {
+          "level": 7,
+          "name": "Bite",
+          "type": "Dark"
+        },
+        {
+          "level": 14,
+          "name": "Brine",
+          "type": "Water"
+        },
+        {
+          "level": 21,
+          "name": "Ancient Power",
+          "type": "Rock"
+        },
+        {
+          "level": 28,
+          "name": "Aqua Jet",
+          "type": "Water"
+        },
+        {
+          "level": 35,
+          "name": "Crunch",
+          "type": "Dark"
+        },
+        {
+          "level": 42,
+          "name": "Waterfall",
+          "type": "Water"
+        },
+        {
+          "level": 49,
+          "name": "Super Fang",
+          "type": "Normal"
+        },
+        {
+          "level": 56,
+          "name": "Liquidation",
+          "type": "Water"
+        },
+        {
+          "level": 63,
+          "name": "Fishious Rend",
+          "type": "Water"
+        },
+        {
+          "level": 70,
+          "name": "Jaw Lock",
+          "type": "Dark"
+        },
+        {
+          "level": 77,
+          "name": "Hydro Pump",
+          "type": "Water"
+        }
+      ],
+      "tmhm": [],
+      "egg": [],
+      "tutor": []
+    },
+    "gender": "No Gender",
+    "diet": "Carnivore",
+    "habitat": "Ocean",
+    "height": "11' 6\" / 3.5m (Large)",
+    "order": 16003,
+    "customArt": true
+  },
+  {
+    "name": "Raptozolt",
+    "baseStats": {
+      "hp": 9,
+      "atk": 11,
+      "def": 8,
+      "spatk": 7,
+      "spdef": 8,
+      "spd": 11
+    },
+    "types": [
+      "Electric",
+      "None"
+    ],
+    "capabilities": {
+      "overland": 10,
+      "sky": 0,
+      "swim": 3,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 3,
+      "longJump": 3,
+      "power": 6,
+      "naturewalk": [
+        "Forest",
+        "Grassland"
+      ],
+      "other": [
+        "Mountable 2",
+        "Zapper"
+      ]
+    },
+    "size": "Large",
+    "weightClass": 5,
+    "eggGroups": [
+      "None"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 4,
+        "mod": "+1"
+      },
+      "athletics": {
+        "dice": 5,
+        "mod": "+1"
+      },
+      "charm": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 4,
+        "mod": "+1"
+      },
+      "command": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "stealth": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 2,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [
+        "Volt Absorb",
+        "Hustle"
+      ],
+      "advanced": [
+        "Sand Rush",
+        "Sheer Force"
+      ],
+      "high": [
+        "Moody"
+      ]
+    },
+    "evolution": [
+      {
+        "stage": 1,
+        "name": "Raptozolt",
+        "min": null,
+        "gm": true
+      }
+    ],
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Tackle",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Thunder Shock",
+          "type": "Electric"
+        },
+        {
+          "level": 1,
+          "name": "Leer",
+          "type": "Normal"
+        },
+        {
+          "level": 7,
+          "name": "Quick Attack",
+          "type": "Normal"
+        },
+        {
+          "level": 14,
+          "name": "Charge",
+          "type": "Electric"
+        },
+        {
+          "level": 21,
+          "name": "Ancient Power",
+          "type": "Rock"
+        },
+        {
+          "level": 28,
+          "name": "Bite",
+          "type": "Dark"
+        },
+        {
+          "level": 35,
+          "name": "Thunder Fang",
+          "type": "Electric"
+        },
+        {
+          "level": 42,
+          "name": "Stomp",
+          "type": "Normal"
+        },
+        {
+          "level": 49,
+          "name": "Slam",
+          "type": "Normal"
+        },
+        {
+          "level": 56,
+          "name": "Discharge",
+          "type": "Electric"
+        },
+        {
+          "level": 63,
+          "name": "Bolt Beak",
+          "type": "Electric"
+        },
+        {
+          "level": 70,
+          "name": "Crunch",
+          "type": "Dark"
+        },
+        {
+          "level": 77,
+          "name": "Thunderbolt",
+          "type": "Electric"
+        }
+      ],
+      "tmhm": [],
+      "egg": [],
+      "tutor": []
+    },
+    "gender": "No Gender",
+    "diet": "Carnivore",
+    "habitat": "Forest, Grassland",
+    "height": "7' 3\" / 2.2m (Large)",
+    "order": 16004,
+    "customArt": true
   }
 ]

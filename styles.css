@@ -464,6 +464,12 @@ body.map-mode .map-viewport{flex:1 1 auto; height:auto; min-height:0; border-rad
 .map-token.ko{filter:grayscale(1) brightness(.62); border-color:#8b8f98 !important; opacity:.85}
 .map-token.ko .tk-status-ring{filter:grayscale(0) brightness(1.6)}
 .map-token .tk-img{width:100%; height:100%; border-radius:50%; object-fit:cover; display:block; pointer-events:none}
+/* Cosmetic hazard markers: just the emoji, no token chrome (no ring/background/shadow). The icon
+   scales to the token box via container units so it stays crisp at any grid size. */
+.map-token.hazard-token{border:none; background:transparent; box-shadow:none; container-type:size}
+.map-token.hazard-token .tk-hazard{width:100%; height:100%; border-radius:0; display:flex;
+  align-items:center; justify-content:center; line-height:1; font-size:82cqmin;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.65)); pointer-events:none}
 .map-token .tk-hpwrap{position:absolute; left:6%; right:6%; bottom:-7px; height:6px;
   background:var(--panel-2); border:1px solid var(--line); border-radius:5px; overflow:hidden}
 /* player-side tokens drop the numeric HP; the bar sits low, just above the name label
