@@ -21255,9 +21255,13 @@ function tokenHp(token){
     if(isHazardToken(token)){ const h=hazardDef(token);
       return { cur:1, max:1, editable:cloud.isGM, name:h.name, sprite:hazardSprite(token),
                unlinked:false, kind:"hazard", hideName:false }; }
-    if(isBoatToken(token))
-      return { cur:1, max:1, editable:canDriveBoat(token), name:token.label||"Boat",
+    if(isBoatToken(token)){
+      // editable stays canDriveBoat (a passenger may still drag/steer the hull); HP is only ever
+      // edited through the GM-gated box in openBoatMenu, same restriction as the shop/attack tools.
+      const max = Math.max(1, token.maxHp||BOAT_HP_DEFAULT); let cur = token.hp; if(cur==null) cur=max;
+      return { cur, max, editable:canDriveBoat(token), name:token.label||"Boat",
                sprite:boatSprite(token), unlinked:false, kind:"boat", hideName:true };
+    }
     // a shop token is scenery with a door, not a creature — no HP, no statuses, no initiative
     if(isShopToken(token)){
       const shop = shopById(token.shopId);
@@ -21312,7 +21316,8 @@ function tokenBossBars(token){
 }
 /* players may only see HP for PC trainers/Pokémon; the GM sees everything (incl. enemies & standalone tokens) */
 function tokenHpVisible(info){
-  if(info.kind==="shop" || info.kind==="boat" || info.kind==="hazard") return false; // scenery has no HP bar to show
+  if(info.kind==="shop" || info.kind==="hazard") return false; // scenery has no HP bar to show
+  if(info.kind==="boat") return info.cur < info.max;   // stays clean scenery until it's actually taken a hit
   return cloud.isGM || info.kind==="trainer" || info.kind==="pokemon";
 }
 /* Status conditions (Burned, Paralyzed, …) are visible in an actual battle even when a creature's
@@ -21343,6 +21348,7 @@ function tokenDefenseStat(token, physical){
     if(L.kind==="trainer"||L.kind==="enctrainer"){ const d=trainerDerived(L.obj); return physical?d.totals.def:d.totals.spdef; }
     const d=pokeDerived(L.obj); return physical?d.eff.def:d.eff.spdef;
   }
+  if(isBoatToken(token)) return physical ? (token.def||BOAT_DEF_DEFAULT) : (token.spdef||BOAT_SPDEF_DEFAULT);
   return 0;   // standalone token has no defense data
 }
 /* ---- initiative: Speed stat + an editable per-token bonus (amulets, effects…) ---- */
@@ -22627,6 +22633,11 @@ function openHazardMenu(token, map){
 const BOAT_ANGLE = { E:0, S:1, W:2, N:3 };
 const BOAT_STEP  = { N:[0,-1], E:[1,0], S:[0,1], W:[-1,0] };
 const BOAT_LEN_DEFAULT = 7, BOAT_BEAM_DEFAULT = 3;    // matches the sprites' 224×96 (7:3) proportions
+// hittable-vehicle stats (a Small Boat's stat block) — HP/Def/Sp.Def run through the same damage
+// math as any other token; Overland/Breach Security/Breach Capacity are reference-only (no rule in
+// this codebase reads them — they're just shown on the boat's menu for the GM to call by hand).
+const BOAT_HP_DEFAULT = 120, BOAT_DEF_DEFAULT = 10, BOAT_SPDEF_DEFAULT = 10;
+const BOAT_OVERLAND_DEFAULT = 7, BOAT_BREACH_SECURITY_DEFAULT = 1, BOAT_BREACH_CAPACITY_DEFAULT = 4;
 /* the sprites, served from our own origin (never inlined into the synced row — token art living in
    the campaign row is exactly what blew the egress budget once already) */
 const BOAT_SPRITE_SIDE = "assets/boat-side.png?v=1";   // 224×96, bow pointing East
@@ -22703,7 +22714,11 @@ function boatSteer(map, boat, dir, step){
 async function addBoat(map){
   mapBoat = { id:null, hidden:false };
   await addToken(map, { boat:true, label:"Boat", facing:"E", boatLen:BOAT_LEN_DEFAULT,
-                        boatBeam:BOAT_BEAM_DEFAULT, size:1 });
+                        boatBeam:BOAT_BEAM_DEFAULT, size:1,
+                        hp:BOAT_HP_DEFAULT, maxHp:BOAT_HP_DEFAULT,
+                        def:BOAT_DEF_DEFAULT, spdef:BOAT_SPDEF_DEFAULT,
+                        overland:BOAT_OVERLAND_DEFAULT, breachSecurity:BOAT_BREACH_SECURITY_DEFAULT,
+                        breachCapacity:BOAT_BREACH_CAPACITY_DEFAULT });
   const b = mapBoats(map).slice(-1)[0]; if(b) mapBoat.id = b.id;
   renderMap();
 }
@@ -22755,12 +22770,15 @@ function boatPanel(map){
     pax ? (pax+" aboard — they sail with it") : "Nobody aboard"));
   return p;
 }
-/* GM-only: rename / resize / remove the hull. A boat has no HP, statuses or turn order, so it gets
-   this short menu instead of the full token one. */
+/* GM-only: rename / resize / remove the hull, plus HP so the hull can be attacked. A boat has no
+   statuses or turn order, so it gets this short menu instead of the full token one. */
 function openBoatMenu(token, map){
   const wrap = el("div",{});
   wrap.append(el("div",{style:"display:flex;justify-content:center;margin-bottom:10px"},
     el("img",{src:BOAT_SPRITE_SIDE,alt:"",style:"width:168px;image-rendering:pixelated"})));
+  const info0 = tokenHp(token);
+  wrap.append(el("div",{class:"small",style:"text-align:center;margin-bottom:10px;font-weight:800"},
+    `${info0.cur} / ${info0.max} HP`));
   if(!cloud.isGM){
     wrap.append(el("div",{class:"r-body"},"Walk a token onto the deck, then steer with the 🚤 controls on the board."));
     modal({title:token.label||"Boat", bodyNode:wrap, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
@@ -22769,6 +22787,63 @@ function openBoatMenu(token, map){
   const nm = el("input",{type:"text",value:token.label||"Boat"});
   nm.addEventListener("change", ()=>{ token.label = nm.value.trim()||"Boat"; mapTokensSave(); renderMap(); });
   wrap.append(el("label",{class:"field"}, el("span",{},"Name"), nm));
+
+  // ---- HP: same +/-/tick/set controls as any other token, so the hull can actually be sunk ----
+  const readout = el("div",{class:"tk-menu-hp"});
+  const drawHp = ()=>{ const i=tokenHp(token); const p=Math.max(0,Math.min(100,Math.round(i.cur/i.max*100)));
+    readout.innerHTML = `<b>${i.cur}</b> / ${i.max} HP &nbsp;<span class="muted small">${p}%</span>`; };
+  drawHp();
+  const mkHp = (d,l)=>el("button",{class:"btn-secondary",
+    onclick:async()=>{ await setTokenHP(token, tokenHp(token).cur+d); drawHp(); }}, l);
+  const setInp = el("input",{type:"number",style:"width:80px"});
+  const setBtn = el("button",{class:"btn-secondary",
+    onclick:async()=>{ const v=parseInt(setInp.value); if(!isNaN(v)){ await setTokenHP(token,v); drawHp(); setInp.value=""; } }},"Set");
+  const tick = hpTick(tokenHp(token).max);
+  wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:10px;margin-bottom:4px"},"Hit Points"),
+    readout,
+    el("div",{class:"tk-menu-row"}, mkHp(-5,"−5"), mkHp(-1,"−1"), mkHp(+1,"+1"), mkHp(+5,"+5")),
+    el("div",{class:"tk-menu-row"},
+      el("button",{class:"btn-secondary",title:`lose a Tick of HP (${tick} = 1/10 max)`,
+        onclick:async()=>{ await setTokenHP(token, tokenHp(token).cur-tick); drawHp(); }},"−Tick"),
+      el("button",{class:"btn-secondary",title:`regain a Tick of HP (${tick} = 1/10 max)`,
+        onclick:async()=>{ await setTokenHP(token, tokenHp(token).cur+tick); drawHp(); }},"+Tick"),
+      setInp, setBtn),
+    el("button",{class:"btn-secondary",style:"margin-top:4px",
+      onclick:async()=>{ await setTokenHP(token, tokenHp(token).max); drawHp(); }},"MAX"));
+
+  // ---- quick attack, same Core damage steps (Def/Sp.Def → type → DR) as every other token ----
+  const atk = el("div",{style:"margin-top:16px"});
+  atk.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"⚔ Apply an attack to the hull"));
+  const dmgIn = el("input",{type:"number",placeholder:"Damage",style:"width:88px"});
+  const typeSel = el("select");
+  typeSel.append(el("option",{value:"Typeless"},"⚡ Typeless"));
+  TYPES.forEach(ty=>typeSel.append(el("option",{value:ty},ty)));
+  const clsSel = el("select"); clsSel.append(el("option",{value:"phys"},"Physical"), el("option",{value:"spec"},"Special"));
+  const atkOut = el("div",{class:"small",style:"margin-top:6px"});
+  const applyAtk = async ()=>{
+    const dmg = parseInt(dmgIn.value);
+    if(isNaN(dmg)){ atkOut.textContent = "Enter a damage number."; return; }
+    const br = tokenDamageBreakdown(token, { dmg, type:typeSel.value, physical:clsSel.value==="phys" });
+    const before = await applyTokenDamage(token, br); drawHp();
+    atkOut.innerHTML = damageResultHTML(dmg, typeSel.value, br, before);
+  };
+  atk.append(el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;align-items:center"},
+    dmgIn, typeSel, clsSel, el("button",{class:"btn-primary",onclick:applyAtk},"Apply")), atkOut);
+  wrap.append(atk);
+
+  // ---- Defense stats + the reference-only vehicle numbers (no automation reads these) ----
+  const mkStat = (key, label, dflt, max) => {
+    const inp = el("input",{type:"number",min:0,max,value:token[key]!=null?token[key]:dflt});
+    inp.addEventListener("change", ()=>{ token[key] = Math.max(0, Math.min(max, parseInt(inp.value)));
+      if(isNaN(token[key])) token[key]=dflt; mapTokensSave(); });
+    return el("label",{class:"field",style:"margin-top:10px"}, el("span",{},label), inp);
+  };
+  wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:16px;margin-bottom:2px"},"Defenses & vehicle stats"),
+    mkStat("def","Defense",BOAT_DEF_DEFAULT,99), mkStat("spdef","Special Defense",BOAT_SPDEF_DEFAULT,99),
+    mkStat("overland","Overland",BOAT_OVERLAND_DEFAULT,99),
+    mkStat("breachSecurity","Breach Security",BOAT_BREACH_SECURITY_DEFAULT,99),
+    mkStat("breachCapacity","Breach Capacity",BOAT_BREACH_CAPACITY_DEFAULT,99));
+
   const mkNum = (key, label, dflt) => {
     const inp = el("input",{type:"number",min:1,max:20,value:token[key]||dflt});
     // resized about the same top-left corner; the sprite stretches to whatever shape you give it
@@ -22776,7 +22851,8 @@ function openBoatMenu(token, map){
       if(map.fogOn) revealAroundTokens(map); mapTokensSave(); renderMap(); });
     return el("label",{class:"field",style:"margin-top:10px"}, el("span",{},label), inp);
   };
-  wrap.append(mkNum("boatLen","Length (squares, bow to stern)",BOAT_LEN_DEFAULT),
+  wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:16px;margin-bottom:2px"},"Hull shape"),
+    mkNum("boatLen","Length (squares, bow to stern)",BOAT_LEN_DEFAULT),
               mkNum("boatBeam","Width (squares, beam)",BOAT_BEAM_DEFAULT));
   const fsel = el("select");
   [["N","⬆ North"],["E","➡ East"],["S","⬇ South"],["W","⬅ West"]].forEach(([v,l])=>
@@ -23014,6 +23090,9 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
         // a shop token is a door: players walk up and tap it to shop. The GM gets its management
         // menu instead (which has an "open it here" button, so they can still see the player's view).
         else if(isShopToken(token) && !cloud.isGM) openShopFromToken(token);
+        // a non-GM tapping the hull just wants the helm — surface the 🚤 panel (unhiding it if it
+        // was collapsed) instead of the explanatory modal that used to be the only thing here.
+        else if(isBoatToken(token) && !cloud.isGM){ mapBoat.id=token.id; mapBoat.hidden=false; renderMap(); }
         else openTokenMenu(token, map);
         return;
       }
@@ -23171,10 +23250,11 @@ function damageResultHTML(dmg, typeName, br, before){
 function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false }){
   if(mode!=="cloud" || !cloud.isGM) return null;
   const map = currentMapForView() || activeMap(); if(!map) return null;
-  // scenery (shop doors, boat hulls) is editable and "linked", but it is not a creature you can
-  // roll damage onto — it would otherwise sit in the Enemies column offering a 1/1 HP bar to hit.
+  // scenery (shop doors) is editable and "linked", but it is not a creature you can roll damage
+  // onto — it would otherwise sit in the Enemies column offering a 1/1 HP bar to hit. A boat hull
+  // is the one piece of scenery that DOES take damage, so it stays in the list.
   const tokens = mapTokensFor(map.id).filter(t=>{ const i=tokenHp(t);
-    return i.editable && !i.unlinked && i.kind!=="shop" && i.kind!=="boat" && i.kind!=="hazard"; });
+    return i.editable && !i.unlinked && i.kind!=="shop" && i.kind!=="hazard"; });
   if(!tokens.length) return null;
   const typeName = type || "Typeless";
   const wrap = el("div",{style:"margin-top:12px;border-top:1px dashed var(--line);padding-top:10px"});
