@@ -4443,6 +4443,34 @@ function classFeatNameSet(className){
   return _classFeatNameCache[className] || (_classFeatNameCache[className] = new Set(featuresForClass(className).map(f=>f.name)));
 }
 function featureBelongsToClass(featureName, className){ return classFeatNameSet(className).has(featureName); }
+/* A flat alphabet-soup Feature list is unreadable on a Lv20 sheet — twelve names with no hint of
+   which class each came from. Group them the way the book presents them: one bucket per Class the
+   Trainer actually has, in the order they took them, then everything else under "General".
+   A Feature that belongs to two of their classes is filed under the first, so nothing is listed
+   twice and nothing goes missing. Returns [[heading, [names]], …] with empty buckets dropped. */
+function featureGroupsFor(t, names){
+  const classes = (t && t.classes) || [];
+  const buckets = classes.map(c => [c, []]);
+  const general = [];
+  (names || []).forEach(n => {
+    const owner = classes.find(c => featureBelongsToClass(n, c));
+    if(owner) buckets.find(b => b[0] === owner)[1].push(n);
+    else general.push(n);
+  });
+  const out = buckets.filter(b => b[1].length);
+  if(general.length) out.push(["General", general]);
+  return out;
+}
+/* The Skill Edges (Basic/Adept/Expert/Master/Virtuoso Skills) are pure bookkeeping — they are what
+   PAID for the Skill Ranks already printed on the card, and a Lv20 sheet can carry ten of them.
+   Split them out so the Edges list shows the ones that actually do something. */
+function splitSkillEdges(names){
+  const real = [], skill = [];
+  (names || []).forEach(n => (isSkillEdge(n) ? skill : real).push(n));
+  const counts = {};
+  skill.forEach(n => counts[n] = (counts[n] || 0) + 1);
+  return { real, skill, summary: Object.entries(counts).map(([n,c]) => c > 1 ? `${n} ×${c}` : n).join(" · ") };
+}
 /* how many of a Class's Features a Trainer counts toward "N ClassName Features" prereqs.
    Resolves the referenced name through class aliases (so "N Capture Specialist Features" counts the
    "Capture Skills" class the user actually took), and counts the class-defining Feature itself (PTU 1.05). */
@@ -11016,10 +11044,12 @@ function rotomFormControl(p, sp, onChanged){
    movelist — so it is the GM's call which shooting star this one is. Players see the colour but the
    picker is read-only for them. Leaving it unset means the colour is derived from the Pokémon's id
    (see miniorColor), which is why an untouched Minior still keeps the same colour forever. */
+
 function miniorColorControl(p, sp, onChanged){
   if(!isMinior(p)) return el("span",{style:"display:none"});
   const wrap = el("div",{class:"inline small",style:"margin:2px 0 8px;flex-wrap:wrap;gap:8px;align-items:center"});
-  const when = p.species===MINIOR_CORE ? "shown now" : "shown once Shields Down breaks its shell";
+  const cracked = p.species===MINIOR_CORE;
+  const when = cracked ? "shown now" : "shown once Shields Down breaks its shell";
   wrap.append(el("span",{class:"muted",style:"font-weight:700"},"Core colour:"));
   if(!isGM()){
     wrap.append(el("span",{class:"kv"}, miniorColor(p)), el("span",{class:"muted small"}, when));
@@ -11030,8 +11060,16 @@ function miniorColorControl(p, sp, onChanged){
   MINIOR_COLORS.forEach(c=>sel.append(el("option",{value:c,selected:cur===c}, c)));
   sel.addEventListener("change",()=>{ p.miniorColor = sel.value; onChanged(); });
   wrap.append(sel, el("button",{class:"linkbtn",title:"pick one at random",
-    onclick:()=>{ p.miniorColor = MINIOR_COLORS[Math.floor(Math.random()*MINIOR_COLORS.length)]; onChanged(); }},"🎲"),
-    el("span",{class:"muted small"}, when));
+    onclick:()=>{ p.miniorColor = MINIOR_COLORS[Math.floor(Math.random()*MINIOR_COLORS.length)]; onChanged(); }},"🎲"));
+  // shieldsDownRevert() only ever runs at End Scene/End Day, and those only rest PLAYER sheets
+  // (playerRestRows/activeChar) — an Encounters-tab Pokémon has no "end of scene" of its own (the
+  // GM archives/deletes/duplicates encounters instead), so a wild or enemy Minior that cracked open
+  // can never revert on its own. This manual override covers that gap, and doubles as a fix for a
+  // GM who wants a specific Minior back in Meteor Forme right now regardless of its HP.
+  if(cracked) wrap.append(el("button",{class:"linkbtn",
+    title:"Encounters have no End Scene of their own, so this Minior would otherwise stay cracked open forever",
+    onclick:()=>{ p.species = MINIOR_METEOR; onChanged(); }},"↺ Meteor Forme"));
+  wrap.append(el("span",{class:"muted small"}, when));
   return wrap;
 }
 /* Poltergeist (Ability, Static): "Rotom gains an Ability and a Move depending on what Form it has
@@ -15469,14 +15507,34 @@ function encounterTrainerCard(enc, tr){
   ].forEach(([field,label,kind,opts])=>{
     if(!Array.isArray(t[field])) t[field]=[];
     const list=t[field];
+    const shown = field === "edges" ? splitSkillEdges(list).real.length : list.length;
     build.append(el("div",{class:"inline",style:"justify-content:space-between;margin-top:6px"},
-      el("span",{class:"small muted",style:"font-weight:700"},`${label} (${list.length})`),
+      el("span",{class:"small muted",style:"font-weight:700"},
+        `${label} (${shown === list.length ? list.length : `${shown} + ${list.length - shown} Skill`})`),
       el("button",{class:"linkbtn",onclick:()=>openPicker(`Add a ${label.replace(/e?s$/,"")}`,
         opts().filter(n=>!list.includes(n)),
         name=>{ list.push(name); saveEnc(); renderEncounters(); }, kind)},"+ add")));
     if(!list.length){ build.append(el("span",{class:"muted small"},"none")); return; }
-    list.forEach(n=> build.append(encTrainerRefRow(t, tr.id, n, kind,
-      ()=>{ t[field]=list.filter(x=>x!==n); saveEnc(); renderEncounters(); })));
+    const row = n => encTrainerRefRow(t, tr.id, n, kind,
+      ()=>{ t[field]=list.filter(x=>x!==n); saveEnc(); renderEncounters(); });
+    const head = txt => build.append(el("div",{class:"small muted",
+      style:"font-weight:700;margin:6px 0 0;opacity:.75;letter-spacing:.02em"}, txt));
+    if(field === "features"){
+      // one block per Class they actually have, then General — see featureGroupsFor
+      const groups = featureGroupsFor(t, list);
+      groups.forEach(([g, names]) => { if(groups.length > 1) head(g); names.forEach(n => build.append(row(n))); });
+      return;
+    }
+    if(field === "edges"){
+      const { real, skill, summary } = splitSkillEdges(list);
+      real.forEach(n => build.append(row(n)));
+      if(skill.length) build.append(el("div",{class:"small muted",style:"margin-top:6px;font-style:italic",
+        title:"These are what paid for the Skill Ranks above — every one is still recorded on the Level Up tab"},
+        `+ ${skill.length} Skill Edge${skill.length===1?"":"s"} — ${summary}`));
+      if(!real.length && !skill.length) build.append(el("span",{class:"muted small"},"none"));
+      return;
+    }
+    list.forEach(n=> build.append(row(n)));
   });
   card.append(build);
   /* 🎁 Legendary Gifts — the same card the player's Trainer tab shows, writing through saveEnc().
