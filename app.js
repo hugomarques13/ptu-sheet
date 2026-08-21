@@ -21673,7 +21673,10 @@ async function setTokenHP(token, val){
   const info = tokenHp(token);
   if(!info.editable){ toast("Read-only"); return; }
   if(!token.link){
-    token.hp = Math.max(-99, Math.min(token.maxHp||1, val|0));
+    // info.max already carries the right fallback per kind (a boat placed before it had HP fields
+    // falls back to BOAT_HP_DEFAULT here, not to the generic standalone-token default of 1)
+    token.maxHp = info.max;
+    token.hp = Math.max(-99, Math.min(info.max, val|0));
     paintTokenHP(token); mapTokensSave(); return;   // optimistic: paint now, write catches up
   }
   const { row, obj, kind } = info; if(!obj){ toast("Can't edit that token"); return; }
@@ -22920,8 +22923,8 @@ function mapTokenNode(token, map, originX=0, originY=0){
   if(!info.hideName)
     node.append(el("div",{class:"tk-name"}, (token.gmHidden?"🙈 ":"") + info.name
       + (hpVisible ? tokenBossBars(token) : "") + (info.unlinked?" ⚠":"")));
-  // Player-side tokens rely on the HP bar alone (no numeric readout); enemies/standalone still show it.
-  if(hpVisible && !playerSide) node.append(el("div",{class:"tk-hpnum"}, info.unlinked?"⚠ unlinked":`${info.cur}/${info.max}`));
+  // Player-side tokens (and the boat) rely on the HP bar alone, no numeric readout; enemies/standalone still show it.
+  if(hpVisible && !playerSide && info.kind!=="boat") node.append(el("div",{class:"tk-hpnum"}, info.unlinked?"⚠ unlinked":`${info.cur}/${info.max}`));
   if(tokenStatusVisible(info)){
     const keys = tokenStatusKeys(token).filter(k=>statusByKey.has(k));
     const ringHtml = tokenStatusRingSVG(keys, boxPx, token.id);
