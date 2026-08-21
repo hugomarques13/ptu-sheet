@@ -319629,5 +319629,993 @@
    "tutor": []
   },
   "order": 1313
+ },
+ {
+  "name": "Tapu Arou",
+  "baseStats": {
+   "hp": 7,
+   "atk": 8,
+   "def": 11,
+   "spatk": 9,
+   "spdef": 13,
+   "spd": 11
+  },
+  "types": [
+   "Normal",
+   "Fairy"
+  ],
+  "capabilities": {
+   "overland": 5,
+   "sky": 8,
+   "swim": 4,
+   "levitate": 0,
+   "burrow": 0,
+   "highJump": 2,
+   "longJump": 2,
+   "power": 5,
+   "naturewalk": [],
+   "other": [
+    "Aura Reader"
+   ]
+  },
+  "size": "Medium",
+  "weightClass": 2,
+  "eggGroups": [
+   "None"
+  ],
+  "skills": {
+   "acrobatics": {
+    "dice": 4,
+    "mod": "+1"
+   },
+   "athletics": {
+    "dice": 3,
+    "mod": "+0"
+   },
+   "charm": {
+    "dice": 4,
+    "mod": "+1"
+   },
+   "combat": {
+    "dice": 3,
+    "mod": "+0"
+   },
+   "command": {
+    "dice": 3,
+    "mod": "+1"
+   },
+   "generalEd": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "medicineEd": {
+    "dice": 2,
+    "mod": "+1"
+   },
+   "occultEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "pokemonEd": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "technologyEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "focus": {
+    "dice": 4,
+    "mod": "+1"
+   },
+   "guile": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "intimidate": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "intuition": {
+    "dice": 3,
+    "mod": "+1"
+   },
+   "perception": {
+    "dice": 4,
+    "mod": "+2"
+   },
+   "stealth": {
+    "dice": 3,
+    "mod": "+0"
+   },
+   "survival": {
+    "dice": 3,
+    "mod": "+1"
+   }
+  },
+  "abilities": {
+   "basic": [
+    "Relaxing Surge"
+   ],
+   "advanced": [
+    "Telepathy",
+    "Serene Grace"
+   ],
+   "high": [
+    "Unaware"
+   ]
+  },
+  "evolution": [
+   {
+    "stage": 1,
+    "name": "Tapu Arou",
+    "min": null
+   }
+  ],
+  "moves": {
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Quick Attack",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "False Swipe",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Withdraw",
+     "type": "Water"
+    },
+    {
+     "level": 1,
+     "name": "Fairy Wind",
+     "type": "Fairy"
+    },
+    {
+     "level": 8,
+     "name": "Chip Away",
+     "type": "Normal"
+    },
+    {
+     "level": 14,
+     "name": "Uproar",
+     "type": "Normal"
+    },
+    {
+     "level": 20,
+     "name": "Charm",
+     "type": "Fairy"
+    },
+    {
+     "level": 26,
+     "name": "Body Slam",
+     "type": "Normal"
+    },
+    {
+     "level": 32,
+     "name": "Play Rough",
+     "type": "Fairy"
+    },
+    {
+     "level": 38,
+     "name": "Double-Edge",
+     "type": "Normal"
+    },
+    {
+     "level": 43,
+     "name": "Nature'S Madness",
+     "type": "Fairy"
+    },
+    {
+     "level": 48,
+     "name": "Boomburst",
+     "type": "Normal"
+    },
+    {
+     "level": 53,
+     "name": "Hyper Voice",
+     "type": "Normal"
+    },
+    {
+     "level": 58,
+     "name": "Extreme Speed",
+     "type": "Normal"
+    }
+   ],
+   "tmhm": [
+    "04 Calm Mind",
+    "06 Toxic",
+    "10 Hidden Power",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "33 Reflect",
+    "40 Aerial Ace",
+    "41 Torment",
+    "42 Facade",
+    "48 Round",
+    "49 Echoed Voice",
+    "68 Giga Impact",
+    "77 Psych Up",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "96 Nature Power",
+    "99 Dazzling Gleam",
+    "100 Confide"
+   ],
+   "egg": [],
+   "tutor": [
+    "Aromatherapy (N)",
+    "Defog",
+    "Gravity",
+    "Heal Pulse (N)",
+    "Iron Defense",
+    "Magic Coat",
+    "Mean Look (N)",
+    "Relaxing Terrain (N)",
+    "Snore",
+    "Telekinesis",
+    "Trick",
+    "Wonder Room TAPU TUGA"
+   ]
+  },
+  "gender": "No Gender",
+  "diet": "Omnivore",
+  "habitat": "Grassland, Urban",
+  "height": "4' 3\" / 1.3m (Medium)",
+  "order": 1314,
+  "customArt": true
+ },
+ {
+  "name": "Tapu Tuga",
+  "baseStats": {
+   "hp": 7,
+   "atk": 11,
+   "def": 15,
+   "spatk": 8,
+   "spdef": 12,
+   "spd": 6
+  },
+  "types": [
+   "Rock",
+   "Fairy"
+  ],
+  "capabilities": {
+   "overland": 5,
+   "sky": 5,
+   "swim": 2,
+   "levitate": 0,
+   "burrow": 0,
+   "highJump": 1,
+   "longJump": 1,
+   "power": 10,
+   "naturewalk": [],
+   "other": [
+    "Aura Reader",
+    "Materializer"
+   ]
+  },
+  "size": "Large",
+  "weightClass": 4,
+  "eggGroups": [
+   "None"
+  ],
+  "skills": {
+   "acrobatics": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "athletics": {
+    "dice": 5,
+    "mod": "+2"
+   },
+   "charm": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "combat": {
+    "dice": 5,
+    "mod": "+1"
+   },
+   "command": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "generalEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "medicineEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "occultEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "pokemonEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "technologyEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "focus": {
+    "dice": 3,
+    "mod": "+0"
+   },
+   "guile": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "intimidate": {
+    "dice": 4,
+    "mod": "+1"
+   },
+   "intuition": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "perception": {
+    "dice": 4,
+    "mod": "+2"
+   },
+   "stealth": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "survival": {
+    "dice": 4,
+    "mod": "+1"
+   }
+  },
+  "abilities": {
+   "basic": [
+    "Rugged Surge"
+   ],
+   "advanced": [
+    "Telepathy",
+    "Sturdy"
+   ],
+   "high": [
+    "Solid Rock"
+   ]
+  },
+  "evolution": [
+   {
+    "stage": 1,
+    "name": "Tapu Tuga",
+    "min": null
+   }
+  ],
+  "moves": {
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Quick Attack",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "False Swipe",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Withdraw",
+     "type": "Water"
+    },
+    {
+     "level": 1,
+     "name": "Rock Throw",
+     "type": "Rock"
+    },
+    {
+     "level": 8,
+     "name": "Smack Down",
+     "type": "Rock"
+    },
+    {
+     "level": 14,
+     "name": "Ancient Power",
+     "type": "Rock"
+    },
+    {
+     "level": 20,
+     "name": "Iron Defense",
+     "type": "Steel"
+    },
+    {
+     "level": 26,
+     "name": "Stealth Rock",
+     "type": "Rock"
+    },
+    {
+     "level": 32,
+     "name": "Stone Edge",
+     "type": "Rock"
+    },
+    {
+     "level": 38,
+     "name": "Sandstorm",
+     "type": "Rock"
+    },
+    {
+     "level": 43,
+     "name": "Nature'S Madness",
+     "type": "Fairy"
+    },
+    {
+     "level": 48,
+     "name": "Rock Slide",
+     "type": "Rock"
+    },
+    {
+     "level": 53,
+     "name": "Head Smash",
+     "type": "Rock"
+    },
+    {
+     "level": 58,
+     "name": "Diamond Storm",
+     "type": "Rock"
+    }
+   ],
+   "tmhm": [
+    "04 Calm Mind",
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "33 Reflect",
+    "39 Rock Tomb",
+    "41 Torment",
+    "42 Facade",
+    "48 Round",
+    "49 Echoed Voice",
+    "68 Giga Impact",
+    "71 Stone Edge",
+    "77 Psych Up",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "96 Nature Power",
+    "99 Dazzling Gleam",
+    "100 Confide"
+   ],
+   "egg": [],
+   "tutor": [
+    "Dual Chop",
+    "Focus Punch",
+    "Iron Defense",
+    "Mean Look (N)",
+    "Rugged Terrain (N)",
+    "Rock Blast",
+    "Rock Polish",
+    "Snore",
+    "Stealth Rock (N)",
+    "Superpower (N)",
+    "Telekinesis",
+    "Wide Guard TAPU GROU"
+   ]
+  },
+  "gender": "No Gender",
+  "diet": "Omnivore",
+  "habitat": "Mountain, Cave",
+  "height": "6' 7\" / 2.0m (Large)",
+  "order": 1315,
+  "customArt": true
+ },
+ {
+  "name": "Tapu Grou",
+  "baseStats": {
+   "hp": 7,
+   "atk": 7,
+   "def": 9,
+   "spatk": 15,
+   "spdef": 11,
+   "spd": 10
+  },
+  "types": [
+   "Ice",
+   "Fairy"
+  ],
+  "capabilities": {
+   "overland": 4,
+   "sky": 7,
+   "swim": 4,
+   "levitate": 0,
+   "burrow": 0,
+   "highJump": 2,
+   "longJump": 2,
+   "power": 4,
+   "naturewalk": [],
+   "other": [
+    "Aura Reader",
+    "Freezer"
+   ]
+  },
+  "size": "Medium",
+  "weightClass": 2,
+  "eggGroups": [
+   "None"
+  ],
+  "skills": {
+   "acrobatics": {
+    "dice": 4,
+    "mod": "+1"
+   },
+   "athletics": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "charm": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "combat": {
+    "dice": 3,
+    "mod": "+0"
+   },
+   "command": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "generalEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "medicineEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "occultEd": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "pokemonEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "technologyEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "focus": {
+    "dice": 5,
+    "mod": "+2"
+   },
+   "guile": {
+    "dice": 3,
+    "mod": "+1"
+   },
+   "intimidate": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "intuition": {
+    "dice": 3,
+    "mod": "+0"
+   },
+   "perception": {
+    "dice": 4,
+    "mod": "+2"
+   },
+   "stealth": {
+    "dice": 3,
+    "mod": "+0"
+   },
+   "survival": {
+    "dice": 3,
+    "mod": "+1"
+   }
+  },
+  "abilities": {
+   "basic": [
+    "Icey Surge"
+   ],
+   "advanced": [
+    "Telepathy",
+    "Ice Body"
+   ],
+   "high": [
+    "Snow Warning"
+   ]
+  },
+  "evolution": [
+   {
+    "stage": 1,
+    "name": "Tapu Grou",
+    "min": null
+   }
+  ],
+  "moves": {
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Quick Attack",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "False Swipe",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Withdraw",
+     "type": "Water"
+    },
+    {
+     "level": 1,
+     "name": "Powder Snow",
+     "type": "Ice"
+    },
+    {
+     "level": 8,
+     "name": "Ice Shard",
+     "type": "Ice"
+    },
+    {
+     "level": 14,
+     "name": "Icy Wind",
+     "type": "Ice"
+    },
+    {
+     "level": 20,
+     "name": "Aurora Veil",
+     "type": "Ice"
+    },
+    {
+     "level": 26,
+     "name": "Frost Breath",
+     "type": "Ice"
+    },
+    {
+     "level": 32,
+     "name": "Ice Beam",
+     "type": "Ice"
+    },
+    {
+     "level": 38,
+     "name": "Haze",
+     "type": "Ice"
+    },
+    {
+     "level": 43,
+     "name": "Nature'S Madness",
+     "type": "Fairy"
+    },
+    {
+     "level": 48,
+     "name": "Blizzard",
+     "type": "Ice"
+    },
+    {
+     "level": 53,
+     "name": "Freeze-Dry",
+     "type": "Ice"
+    },
+    {
+     "level": 58,
+     "name": "Sheer Cold",
+     "type": "Ice"
+    }
+   ],
+   "tmhm": [
+    "04 Calm Mind",
+    "06 Toxic",
+    "07 Hail",
+    "10 Hidden Power",
+    "12 Taunt",
+    "13 Ice Beam",
+    "14 Blizzard",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "33 Reflect",
+    "41 Torment",
+    "42 Facade",
+    "48 Round",
+    "49 Echoed Voice",
+    "68 Giga Impact",
+    "77 Psych Up",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "96 Nature Power",
+    "99 Dazzling Gleam",
+    "100 Confide"
+   ],
+   "egg": [],
+   "tutor": [
+    "Defog",
+    "Gravity",
+    "Heal Pulse (N)",
+    "Icicle Spear",
+    "Icey Terrain (N)",
+    "Iron Defense",
+    "Mean Look (N)",
+    "Moonblast (N)",
+    "Snore",
+    "Telekinesis",
+    "Trick",
+    "Wonder Room TAPU PEKE"
+   ]
+  },
+  "gender": "No Gender",
+  "diet": "Omnivore",
+  "habitat": "Mountain, Tundra",
+  "height": "4' 7\" / 1.4m (Medium)",
+  "order": 1316,
+  "customArt": true
+ },
+ {
+  "name": "Tapu Peke",
+  "baseStats": {
+   "hp": 7,
+   "atk": 12,
+   "def": 8,
+   "spatk": 10,
+   "spdef": 8,
+   "spd": 14
+  },
+  "types": [
+   "Bug",
+   "Fairy"
+  ],
+  "capabilities": {
+   "overland": 6,
+   "sky": 9,
+   "swim": 3,
+   "levitate": 0,
+   "burrow": 0,
+   "highJump": 3,
+   "longJump": 3,
+   "power": 5,
+   "naturewalk": [],
+   "other": [
+    "Aura Reader"
+   ]
+  },
+  "size": "Small",
+  "weightClass": 1,
+  "eggGroups": [
+   "None"
+  ],
+  "skills": {
+   "acrobatics": {
+    "dice": 5,
+    "mod": "+2"
+   },
+   "athletics": {
+    "dice": 3,
+    "mod": "+0"
+   },
+   "charm": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "combat": {
+    "dice": 3,
+    "mod": "+0"
+   },
+   "command": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "generalEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "medicineEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "occultEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "pokemonEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "technologyEd": {
+    "dice": 1,
+    "mod": "+0"
+   },
+   "focus": {
+    "dice": 3,
+    "mod": "+0"
+   },
+   "guile": {
+    "dice": 4,
+    "mod": "+1"
+   },
+   "intimidate": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "intuition": {
+    "dice": 2,
+    "mod": "+0"
+   },
+   "perception": {
+    "dice": 5,
+    "mod": "+2"
+   },
+   "stealth": {
+    "dice": 4,
+    "mod": "+1"
+   },
+   "survival": {
+    "dice": 2,
+    "mod": "+0"
+   }
+  },
+  "abilities": {
+   "basic": [
+    "Sticky Surge"
+   ],
+   "advanced": [
+    "Telepathy",
+    "Compound Eyes"
+   ],
+   "high": [
+    "Prankster"
+   ]
+  },
+  "evolution": [
+   {
+    "stage": 1,
+    "name": "Tapu Peke",
+    "min": null
+   }
+  ],
+  "moves": {
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Quick Attack",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "False Swipe",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Withdraw",
+     "type": "Water"
+    },
+    {
+     "level": 1,
+     "name": "String Shot",
+     "type": "Bug"
+    },
+    {
+     "level": 8,
+     "name": "Struggle Bug",
+     "type": "Bug"
+    },
+    {
+     "level": 14,
+     "name": "Bug Bite",
+     "type": "Bug"
+    },
+    {
+     "level": 20,
+     "name": "Sticky Web",
+     "type": "Bug"
+    },
+    {
+     "level": 26,
+     "name": "Silver Wind",
+     "type": "Bug"
+    },
+    {
+     "level": 32,
+     "name": "Lunge",
+     "type": "Bug"
+    },
+    {
+     "level": 38,
+     "name": "Infestation",
+     "type": "Bug"
+    },
+    {
+     "level": 43,
+     "name": "Nature'S Madness",
+     "type": "Fairy"
+    },
+    {
+     "level": 48,
+     "name": "X-Scissor",
+     "type": "Bug"
+    },
+    {
+     "level": 53,
+     "name": "Megahorn",
+     "type": "Bug"
+    },
+    {
+     "level": 58,
+     "name": "Bug Buzz",
+     "type": "Bug"
+    }
+   ],
+   "tmhm": [
+    "04 Calm Mind",
+    "06 Toxic",
+    "10 Hidden Power",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "33 Reflect",
+    "40 Aerial Ace",
+    "41 Torment",
+    "42 Facade",
+    "48 Round",
+    "49 Echoed Voice",
+    "68 Giga Impact",
+    "76 Struggle Bug",
+    "77 Psych Up",
+    "81 X-Scissor",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "96 Nature Power",
+    "99 Dazzling Gleam",
+    "100 Confide"
+   ],
+   "egg": [],
+   "tutor": [
+    "Agility",
+    "Defog",
+    "Iron Defense",
+    "Mean Look (N)",
+    "Signal Beam",
+    "Sticky Terrain (N)",
+    "Snore",
+    "Telekinesis",
+    "Tailwind",
+    "Trick",
+    "U-Turn TAPU AROU"
+   ]
+  },
+  "gender": "No Gender",
+  "diet": "Omnivore",
+  "habitat": "Forest, Grassland",
+  "height": "2' 7\" / 0.8m (Small)",
+  "order": 1317,
+  "customArt": true
  }
 ]
