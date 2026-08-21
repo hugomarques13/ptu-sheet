@@ -320056,6 +320056,11 @@
      "type": "Fairy"
     },
     {
+     "level": 45,
+     "name": "Crush",
+     "type": "Fairy"
+    },
+    {
      "level": 48,
      "name": "Rock Slide",
      "type": "Rock"
@@ -320549,6 +320554,11 @@
     {
      "level": 43,
      "name": "Nature'S Madness",
+     "type": "Fairy"
+    },
+    {
+     "level": 45,
+     "name": "Spirit Break",
      "type": "Fairy"
     },
     {
