@@ -14593,6 +14593,22 @@ function saveEnc(){
     clearTimeout(encSaveTimer); encSaveTimer=setTimeout(()=>{ encSaveTimer=null; encUpsert(); }, 400); return; }
   try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){ toast("⚠ Could not save encounter"); }
 }
+/* Persist an enemy-combat change to the DB, but coalesced HARD. Liveness for peers already went out
+   over broadcastEncState, so this write only has to make the change survive a refresh — no need to
+   fire the ~600 KB full-row realtime broadcast on every tick. Debounced ~3.5 s, with an ~8 s max
+   wait so a long continuous fight still checkpoints. Used by the map-side enemy HP/status/CS edits;
+   the Encounters-tab prep edits keep the snappy 400 ms saveEnc(). */
+let encCombatTimer=null, encCombatFirst=0;
+function saveEncCombat(){
+  if(mode!=="cloud"){ saveEnc(); return; }
+  const now = Date.now();
+  if(!encCombatFirst) encCombatFirst = now;
+  const flush = ()=>{ clearTimeout(encCombatTimer); encCombatTimer=null; encCombatFirst=0;
+                      cacheSharedRow("enc", ensureEnc()); encUpsert(); };
+  clearTimeout(encCombatTimer);
+  if(now - encCombatFirst >= 8000) flush();
+  else encCombatTimer = setTimeout(flush, 3500);
+}
 function toggleSet(set, v){ set.has(v)?set.delete(v):set.add(v); return [...set]; }
 /* Base Experience Value: sum of enemy levels; Trainers count double (Core p.460) */
 function encounterBaseXP(enc){
@@ -15555,6 +15571,9 @@ function encounterMonCard(enc, p, list, trainer){
   // GM actions: reroll identity, toggle shiny, Catch DC, send to PC (caught)
   const actRow=el("div",{class:"inline",style:"gap:6px;margin-top:8px;flex-wrap:wrap"});
   actRow.append(
+    el("button",{class:"btn-secondary"+(p.unlocked?" on":""),style:"padding:5px 10px",
+      title:"GM unlock — allow any move/ability and stat points past the normal limits",
+      onclick:()=>{ p.unlocked=!p.unlocked; saveEnc(); renderEncounters(); }}, p.unlocked?"🔓 Unlocked":"🔒 Locked"),
     el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"re-roll nature, gender, shiny & stat spread",
       onclick:()=>{ encRandomize(p); p.currentHP=pokeDerived(p).maxHP; saveEnc(); renderEncounters(); }},"🎲 Reroll"),
     el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"toggle shiny",
@@ -15711,6 +15730,9 @@ function encounterTrainerCard(enc, tr){
   const actions=el("div",{class:"inline",style:"gap:6px;align-items:center"});
   actions.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"minimize",onclick:()=>encTrainerToggleMin(tr)},"▾"));
   actions.append(encOrderBtns(enc.trainers,tr));
+  actions.append(el("button",{class:"btn-secondary"+(t.unlocked?" on":""),style:"padding:3px 9px",
+    title:"GM unlock — allow any move and stat points past the normal limits",
+    onclick:()=>{ t.unlocked=!t.unlocked; saveEnc(); renderEncounters(); }}, t.unlocked?"🔓 Unlocked":"🔒 Locked"));
   actions.append(el("button",{class:"btn-secondary"+(isBoss(t)?" on":""),style:"padding:3px 9px",
     title:"Boss Template (Running the Game p.487) — several HP bars and actions per round",
     onclick:()=>{ toggleBoss(t); saveEnc(); renderEncounters(); }}, isBoss(t)?`👑 Boss ×${t.boss.actions}`:"👑 Boss"));
@@ -19915,8 +19937,13 @@ function normMapTokens(data){
 function normMapFog(data){
   data = (data && typeof data==="object") ? data : {};
   data.kind = "mapfog";
-  data.fog = (data.fog && typeof data.fog==="object") ? data.fog : {};   // { mapId: ["x,y",…] revealed }
-  for(const k of Object.keys(data.fog)) if(!Array.isArray(data.fog[k])) data.fog[k] = [];
+  // Each entry is a packed bitmap {x0,y0,w,h,b} (current) or a legacy ["x,y",…] array; both are read
+  // via fogDecodeInto, so leave whatever's there and only drop entries that are neither.
+  data.fog = (data.fog && typeof data.fog==="object") ? data.fog : {};
+  for(const k of Object.keys(data.fog)){
+    const v = data.fog[k];
+    if(!Array.isArray(v) && !(v && typeof v==="object" && typeof v.b==="string")) delete data.fog[k];
+  }
   return data;
 }
 async function fetchMap(pre){
@@ -19946,6 +19973,7 @@ async function fetchMap(pre){
   // memory so fog draws correctly for EVERYONE during the transition; the GM additionally persists
   // the fog row and strips fog off the (now lean) tokens row so the split becomes permanent.
   foldLegacyFogIntoFogRow();
+  reconcileFogAfterAdopt();          // resync in-memory working sets with the fetched fog row
   if(cloud.isGM) migrateFogOffTokensRow();
 }
 function ensureMapMeta(){
@@ -19970,10 +19998,13 @@ function ensureMapFog(){
 function foldLegacyFogIntoFogRow(){
   const legacy = cloud.mapTokens && cloud.mapTokens.data && cloud.mapTokens.data.fog;
   if(!legacy || typeof legacy!=="object") return;
-  const fg = ensureMapFog().data.fog;
+  ensureMapFog();
   for(const k of Object.keys(legacy)){
     if(!Array.isArray(legacy[k]) || !legacy[k].length) continue;
-    if(!Array.isArray(fg[k]) || !fg[k].length) fg[k] = legacy[k].slice();
+    const set = fogSet(k);          // decodes any existing fog-row bitmap for this map into its Set
+    let added=false;
+    for(const cell of legacy[k]) if(!set.has(cell)){ set.add(cell); added=true; }
+    if(added) fogDirty.add(k);       // will be packed into a bitmap on the next save
   }
 }
 /* GM-only, one-time: now that the fog is safely in its own row, remove the inline fog blob from the
@@ -20003,10 +20034,11 @@ async function mapFogUpsert(){
 let mapFogTimer;
 const mapFogChain = { chain: Promise.resolve() };
 function mapFogSave(){
-  const row = ensureMapFog();
-  cacheSharedRow("mapfog", row);
+  ensureMapFog();
   clearTimeout(mapFogTimer);
-  mapFogTimer = setTimeout(()=>{ mapFogTimer=null; serialize(mapFogChain, mapFogUpsert); }, 350);
+  // Pack the dirty working-sets into the row and cache/upsert ONCE per debounce window (not per
+  // reveal frame) — keeps the encode + the localStorage write off the hot drag path.
+  mapFogTimer = setTimeout(()=>{ mapFogTimer=null; fogFlushDirty(); cacheSharedRow("mapfog", cloud.mapFog); serialize(mapFogChain, mapFogUpsert); }, 350);
 }
 /* One-time cleanup: existing maps store their backgrounds as base64 data-URLs in the meta row,
    which is exactly what makes that row oversized and re-downloaded on every sync. On connect the
@@ -20372,6 +20404,9 @@ function subscribeRealtime(){
         onRealtime)
     // live token movement — a pure websocket message, never a row write (see broadcastDrag)
     .on("broadcast", { event:"tokdrag" }, msg => onDragBroadcast(msg && msg.payload))
+    // live enemy HP/status/CS — a small delta over the socket so the ~600 KB encounters row isn't
+    // re-broadcast to every player on every tick (see broadcastEncState / saveEncCombat)
+    .on("broadcast", { event:"encstate" }, msg => onEncStateBroadcast(msg && msg.payload))
     // Track the socket's health. A websocket that quietly died (sleeping laptop, phone switching
     // from wifi to data, a proxy dropping an idle connection) used to leave the tab looking connected
     // while receiving nothing — every change made by anyone else was invisible until a manual reload.
@@ -20487,7 +20522,7 @@ function onRealtime(payload){
       // and the field-level write means the server never even saw a conflict to begin with. Fog
       // merges the same way (union of revealed cells per map).
       if(isMeta)     { cloud.mapMeta   = adoptRemote(cloud.mapMeta,   payload.new, normMapMeta);   repushIfDirty(cloud.mapMeta,   mapMetaSave); }
-      else if(isFog) { cloud.mapFog    = adoptRemote(cloud.mapFog,    payload.new, normMapFog);    repushIfDirty(cloud.mapFog,    mapFogSave); }
+      else if(isFog) { cloud.mapFog    = adoptRemote(cloud.mapFog,    payload.new, normMapFog);    reconcileFogAfterAdopt(); repushIfDirty(cloud.mapFog, mapFogSave); }
       else           { cloud.mapTokens = adoptRemote(cloud.mapTokens, payload.new, normMapTokens); repushIfDirty(cloud.mapTokens, mapTokensSave); }
     }
     refreshUI("map");                   // queued until the drag/typing finishes
@@ -21074,6 +21109,29 @@ function onDragBroadcast(msg){
   if(msg.end) dragGhosts.clear();
   else dragGhostTimer = setTimeout(()=>clearDragGhosts(true), DRAG_GHOST_TTL);
 }
+/* ── Live enemy combat state (HP / statuses / CS) over BROADCAST, not a DB write ──────────────
+   The encounters row holds the GM's whole library (~600 KB). Realtime always re-broadcasts the
+   WHOLE changed row to every subscriber, so writing it on each enemy HP tick shipped ~600 KB ×
+   every player, every tick — the biggest combat-day egress cost. Instead, the moment an enemy's
+   HP/status/CS changes we push just that creature's small snapshot over the websocket (the same
+   channel token drags use); peers merge it in place and repaint. The DB write is still needed for
+   refresh-durability but is coalesced hard (saveEncCombat, every few seconds) so the big full-row
+   realtime broadcast happens a handful of times per fight instead of hundreds. GM is the only one
+   who edits enemies, so there's no write-conflict from players applying a delta. */
+function broadcastEncState(link, obj){
+  if(mode!=="cloud" || !cloud.sub || !link || !obj) return;
+  try{ cloud.sub.send({ type:"broadcast", event:"encstate",
+    payload:{ from:cloud.tabId, link, obj } }); }catch(e){}   // best-effort; a dropped msg self-heals on the next tick/save
+}
+function onEncStateBroadcast(msg){
+  if(!msg || msg.from===cloud.tabId || !msg.link || !msg.obj) return;
+  const L = msg.link;
+  const target = L.kind==="enctrainer" ? encTrainerById(L.encId, L.trainerId)
+                                       : encMonById(L.encId, L.monId);
+  if(!target) return;                          // we don't hold that encounter (yet) — the next DB sync covers it
+  Object.assign(target, msg.obj);              // merge the volatile combat fields in place (keeps object identity)
+  refreshUI("enc");                            // repaint the board / encounters tab (queued if the viewer is busy)
+}
 let mapGmView = null;                         // map id the GM is privately viewing (not synced)
 /* Multi-token selection, for dragging several tokens as one group ("move all the players at
    once"). Per-viewer, not synced to peers, scoped to one map — dragging always resolves the
@@ -21151,16 +21209,72 @@ function currentMapForView(){
 }
 function mapTokensFor(mapId){ return (cloud.mapTokens?.data?.byMap?.[mapId]) || []; }
 
-/* Revealed fog cells for a map, as a Set of "x,y" keys — cached per (map, array identity, length).
-   A big, well-explored board holds tens of thousands of keys and this is read on every fog draw,
-   every token visibility test and every frame of a drag; rebuilding the Set each time was a large
-   slice of the lag on huge maps. Treat the result as READ-ONLY — add cells with fogReveal(). */
-let fogCache = { id:null, arr:null, len:-1, set:null };
+/* ── Fog storage: a packed BITMAP, not a list of "x,y" strings ───────────────────────────────
+   A well-explored board holds tens of thousands of revealed cells. As a JSON array of "12,34"
+   strings that was ~250 KB for one map (~9.5 bytes/cell); as 1 bit per cell over the explored
+   bounding box it's ~1/75th of that (26 000 cells ≈ 3.3 KB of bytes → ~4.4 KB base64). Since the
+   fog row is re-broadcast/-fetched to every client whenever it changes, shrinking the payload this
+   much is the point.  Stored shape per map: `{x0,y0,w,h,b}` where `b` = base64 of ⌈w·h/8⌉ bytes,
+   bit index = (y-y0)·w + (x-x0).  A legacy `["x,y",…]` array is still accepted on read.
+
+   In memory the authoritative form is a live Set<"x,y"> per map (fast to test/add, no per-frame
+   re-encode); it's decoded from storage lazily and only re-encoded into the row at save time. */
+function bytesToB64(bytes){ let s=""; const CH=0x8000; for(let i=0;i<bytes.length;i+=CH) s+=String.fromCharCode.apply(null, bytes.subarray(i,i+CH)); return btoa(s); }
+function b64ToBytes(b64){ const bin=atob(b64), a=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) a[i]=bin.charCodeAt(i); return a; }
+function fogEncode(set){
+  if(!set || !set.size) return null;
+  let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity;
+  set.forEach(k=>{ const c=k.indexOf(","), x=+k.slice(0,c), y=+k.slice(c+1);
+    if(x<minx)minx=x; if(y<miny)miny=y; if(x>maxx)maxx=x; if(y>maxy)maxy=y; });
+  const w=maxx-minx+1, h=maxy-miny+1, bytes=new Uint8Array(Math.ceil(w*h/8));
+  set.forEach(k=>{ const c=k.indexOf(","), x=+k.slice(0,c), y=+k.slice(c+1), i=(y-miny)*w+(x-minx); bytes[i>>3] |= (1<<(i&7)); });
+  return { x0:minx, y0:miny, w, h, b:bytesToB64(bytes) };
+}
+function fogDecodeInto(set, stored){
+  if(!stored) return set;
+  if(Array.isArray(stored)){ for(const k of stored) set.add(k); return set; }   // legacy array form
+  if(typeof stored==="object" && typeof stored.b==="string"){
+    const bytes=b64ToBytes(stored.b), {x0,y0,w,h}=stored, n=w*h;
+    for(let i=0;i<n;i++) if(bytes[i>>3] & (1<<(i&7))) set.add((x0+(i%w))+","+(y0+Math.floor(i/w)));
+  }
+  return set;
+}
+/* live per-map working sets (authoritative in memory); `fogWork` holds the Set, `fogDirty` the maps
+   whose Set changed since the last encode-to-row, `fogWorkSrc` the storage object each Set was last
+   decoded from (so we only re-decode when the row actually changed under us). */
+const fogWork = new Map(), fogWorkSrc = new Map(), fogDirty = new Set();
 function fogSet(mapId){
-  const arr = (cloud.mapFog?.data?.fog?.[mapId]) || [];
-  if(fogCache.id===mapId && fogCache.arr===arr && fogCache.len===arr.length) return fogCache.set;
-  fogCache = { id:mapId, arr, len:arr.length, set:new Set(arr) };
-  return fogCache.set;
+  let set = fogWork.get(mapId);
+  if(!set){ set = fogDecodeInto(new Set(), (cloud.mapFog?.data?.fog||{})[mapId]); fogWork.set(mapId, set); fogWorkSrc.set(mapId, (cloud.mapFog?.data?.fog||{})[mapId]); }
+  return set;
+}
+/* encode every dirty working-set back into the fog row's data (called just before an upsert, so a
+   drag's worth of reveals is packed once, not once per frame). */
+function fogFlushDirty(){
+  if(!fogDirty.size) return;
+  const fog = mapFogData();
+  for(const mid of fogDirty){
+    const enc = fogEncode(fogWork.get(mid));
+    if(enc) fog[mid] = enc; else delete fog[mid];
+    fogWorkSrc.set(mid, fog[mid]);
+  }
+  fogDirty.clear();
+}
+/* After adopting a remote fog row: absorb its cells into our working sets (union — revealed stays
+   revealed), and if WE still hold cells the incoming row lost (concurrent reveals the server's
+   last-writer-wins dropped), mark them dirty so the next save re-persists the union. */
+function reconcileFogAfterAdopt(){
+  const fog = cloud.mapFog?.data?.fog; if(!fog) return;
+  for(const mid of fogWork.keys()){
+    const set = fogWork.get(mid);
+    const remote = fogDecodeInto(new Set(), fog[mid]);
+    let extra=false;
+    for(const c of set) if(!remote.has(c)){ extra=true; break; }
+    remote.forEach(c=>set.add(c));
+    fogWorkSrc.set(mid, fog[mid]);
+    if(extra) fogDirty.add(mid);
+  }
+  if(fogDirty.size) mapFogSave();
 }
 
 /* find an encounter monster (in mons or a trainer's party) by id, across the cloud/local list */
@@ -21687,7 +21801,7 @@ async function setTokenHP(token, val){
     if(kind==="enc" && isSwarm(obj)){
       const barMax = pokeDerived(obj).maxHP;
       swarmSetTotalHP(obj, Math.max(0, (obj.swarm.mult||1)-1)*barMax + (val|0));
-      paintTokenHP(token, true); saveEnc(); return;
+      paintTokenHP(token, true); broadcastEncState(token.link, obj); saveEncCombat(); return;
     }
     /* A Boss's HP is the same shape (Running the Game p.487): one bar per action, `val` is the new
        value of the VISIBLE bar, so fold it back into the running total and let bossSetTotalHP break
@@ -21700,7 +21814,7 @@ async function setTokenHP(token, val){
       applyAutoInjury(obj, obj.currentHP||0, newHP);          // Boss rule: only Massive Damage injures
       bossSetTotalHP(obj, Math.max(0, (obj.boss.curBar||1)-1)*barMax + newHP);
       applyAutoKO(obj, obj.currentHP||0, obj.currentHP||0);   // a Boss is down only once its LAST bar empties
-      paintTokenHP(token, true); saveEnc(); return;
+      paintTokenHP(token, true); broadcastEncState(token.link, obj); saveEncCombat(); return;
     }
     const encMax = kind==="enctrainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
     const oldHP = obj.currentHP||0, newHP = Math.max(-99, Math.min(encMax, val|0));
@@ -21710,7 +21824,8 @@ async function setTokenHP(token, val){
     applyShieldsDown(obj, newHP);                  // …and crack a Minior's shell open at half HP
     obj.currentHP = newHP;
     paintTokenHP(token, true);
-    saveEnc(); return;                            // debounced cloud write
+    broadcastEncState(token.link, obj);           // live delta to peers (no full-row DB broadcast)
+    saveEncCombat(); return;                       // durability write, coalesced hard
   }
   if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; }
   const max = kind==="trainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
@@ -21765,7 +21880,7 @@ async function setTokenStatuses(token, keys){
   const { row, obj, kind } = info; if(!obj){ toast("Can't edit that token"); return; }
   obj.statuses = keys;
   if(kind==="enc" || kind==="enctrainer"){       // live-linked enemy → write to the encounter itself
-    paintTokenStatus(token, true); saveEnc(); return;
+    paintTokenStatus(token, true); broadcastEncState(token.link, obj); saveEncCombat(); return;
   }
   if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; }
   paintTokenStatus(token);
@@ -21787,7 +21902,7 @@ async function setTokenCS(token, stat, val){
   // token menu open: modal() always tears down and rebuilds #modalRoot independently of #view-map,
   // so a renderMap() here can't disturb it. The old `if(!$(".modal"))` guard just left the board
   // (and initiative order) stale until some unrelated re-render happened to run.
-  if(kind==="enc" || kind==="enctrainer"){ render(); saveEnc(); return; }
+  if(kind==="enc" || kind==="enctrainer"){ render(); broadcastEncState(token.link, obj); saveEncCombat(); return; }
   if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; }
   renderMap(); cloudSaveRow(row);
 }
@@ -21796,7 +21911,7 @@ async function setTokenCS(token, stat, val){
 async function commitTokenSource(token){
   const info = tokenHp(token);
   const { row, obj, kind } = info; if(!obj) return;
-  if(kind==="enc" || kind==="enctrainer"){ saveEnc(); return; }
+  if(kind==="enc" || kind==="enctrainer"){ broadcastEncState(token.link, obj); saveEncCombat(); return; }
   if(row){ if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; } cloudSaveRow(row); }
   else save();
 }
@@ -21902,22 +22017,19 @@ function mapFogData(){ ensureMapFog(); return cloud.mapFog.data.fog || (cloud.ma
    a drag. Returns null when nothing was dark, else the cell bounding box of what just opened up —
    which is all drawFog then has to repaint. */
 function fogReveal(map, cells){
-  const fogData = mapFogData();
-  const arr = fogData[map.id] || (fogData[map.id] = []);
   const set = fogSet(map.id);
   let box = null;
   cells.forEach(k=>{
     if(set.has(k)) return;
-    set.add(k); arr.push(k);
+    set.add(k);
     const c = k.indexOf(","), x = +k.slice(0,c), y = +k.slice(c+1);
     if(!box) box = { x0:x, y0:y, x1:x, y1:y };
     else { if(x<box.x0)box.x0=x; if(x>box.x1)box.x1=x; if(y<box.y0)box.y0=y; if(y>box.y1)box.y1=y; }
   });
-  if(box && fogCache.arr===arr) fogCache.len = arr.length;   // both halves moved together
-  // Persist revealed cells to the dedicated fog row (debounced). This is the single commit point for
-  // every reveal, so callers no longer have to remember to save fog — they save token positions with
-  // mapTokensSave() as before, and fog rides its own, much-less-frequent row.
-  if(box) mapFogSave();
+  // Mark dirty + persist to the dedicated fog row (debounced). The Set is the live truth for drawing;
+  // it's packed into the row (fogFlushDirty) only when the debounced write actually fires, so a drag
+  // never pays a per-frame re-encode. Fog rides its own, much-less-frequent row (not the token row).
+  if(box){ fogDirty.add(map.id); mapFogSave(); }
   return box;
 }
 /* the smallest box covering both (either may be null) */
@@ -21951,8 +22063,11 @@ async function setFogRadius(map, v){
 }
 async function resetFog(map){
   if(!confirm("Re-hide the whole map? Explored areas will be covered again.")) return;
-  mapFogData()[map.id] = [];
-  if(map.fogOn) revealAroundTokens(map);      // keep current token surroundings visible (fogReveal saves)
+  fogWork.set(map.id, new Set());             // clear the live working set (what actually draws)
+  delete mapFogData()[map.id];
+  fogWorkSrc.delete(map.id);
+  fogDirty.add(map.id);                        // persist the clear even if nothing gets re-revealed
+  if(map.fogOn) revealAroundTokens(map);       // keep current token surroundings visible (fogReveal marks dirty)
   mapFogSave(); renderMap();
 }
 /* draw fog onto a canvas sized to the stage; players see opaque cover, the GM sees a dim overlay.
@@ -22607,13 +22722,36 @@ function hazardSprite(token){ const h=hazardDef(token);
   return el('div',{class:'tk-hazard',title:h.name}, h.icon); }
 /* GM drops a hazard marker; it lands top-left of the current view like any new token, ready to drag. */
 async function addHazard(map, key){ await addToken(map, { hazard:key, size:1 }); renderMap(); }
+/* Some Moves (Spikes, Toxic Spikes layers, Stealth Rock across a whole field...) call for MANY
+   markers of the same kind at once -- placing them one at a time meant reopening this menu N times.
+   Drops `qty` copies in one go, fanned out in a spiral around the view centre (same base cell
+   addToken would use) so they land as separate, draggable squares instead of one full stack. */
+const HAZARD_SPIRAL = [[0,0],[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1],[2,-1],[2,0],[2,1],
+  [2,2],[1,2],[0,2],[-1,2],[-2,2],[-2,1],[-2,0],[-2,-1],[-2,-2],[-1,-2],[0,-2],[1,-2],[2,-2]];
+async function addHazardBatch(map, key, qty){
+  if(qty<=1) return addHazard(map, key);
+  ensureMapTokens();
+  const arr = cloud.mapTokens.data.byMap[map.id] || (cloud.mapTokens.data.byMap[map.id]=[]);
+  const base = mapViewCenterCell(map, 1);
+  for(let i=0;i<qty;i++){
+    const off = HAZARD_SPIRAL[i % HAZARD_SPIRAL.length];
+    arr.push({ id:uid(), hazard:key, size:1, x:Math.max(0,base.x+off[0]), y:Math.max(0,base.y+off[1]) });
+  }
+  mapTokensSave(); renderMap();
+}
 function openAddHazard(map){
   const body = el('div',{});
   body.append(el('div',{class:'small muted',style:'margin-bottom:8px'},
     'Drop a visual hazard marker on the board -- pure scenery (no HP, no turn, no automatic damage). Drag it to place, tap it to change its type or remove it.'));
+  const qtyRow = el('div',{style:'display:flex;align-items:center;gap:8px;margin-bottom:10px'});
+  const qtyInp = el('input',{type:'number',min:1,max:30,value:1,style:'width:70px'});
+  qtyRow.append(el('span',{class:'small'},'How many?'), qtyInp,
+    el('span',{class:'small muted'},'(e.g. 8 for a full Spikes layer)'));
+  body.append(qtyRow);
   const grid = el('div',{style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px'});
   HAZARDS.forEach(h=> grid.append(el('button',{class:'btn-secondary',style:'display:flex;align-items:center;gap:8px;justify-content:flex-start',
-    onclick:async()=>{ closeModal(); await addHazard(map,h.key); }}, el('span',{style:'font-size:20px'},h.icon), h.name)));
+    onclick:async()=>{ const qty=Math.max(1,Math.min(30,parseInt(qtyInp.value)||1)); closeModal(); await addHazardBatch(map,h.key,qty); }},
+    el('span',{style:'font-size:20px'},h.icon), h.name)));
   body.append(grid);
   modal({title:'☠ Add a hazard', bodyNode:body, footNodes:[el('button',{class:'btn-secondary',onclick:closeModal},'Cancel')]});
 }
@@ -24123,6 +24261,7 @@ async function deleteMap(map){
   if(cloud.mapTokens?.data?.byMap) delete cloud.mapTokens.data.byMap[map.id];
   if(cloud.mapTokens?.data?.fog)   delete cloud.mapTokens.data.fog[map.id];   // legacy inline fog, if any
   if(cloud.mapFog?.data?.fog)      delete cloud.mapFog.data.fog[map.id];
+  fogWork.delete(map.id); fogWorkSrc.delete(map.id); fogDirty.delete(map.id);
   const fallback = meta.maps.find(m=>!m.archived)?.id || null;
   meta.activeMapId = fallback;
   if(meta.playerMapId===map.id) meta.playerMapId = fallback;
