@@ -21376,11 +21376,21 @@ function reconcileFogAfterAdopt(){
   for(const mid of fogWork.keys()){
     const set = fogWork.get(mid);
     const remote = fogDecodeInto(new Set(), fog[mid]);
-    let extra=false;
-    for(const c of set) if(!remote.has(c)){ extra=true; break; }
-    remote.forEach(c=>set.add(c));
+    // Only defend cells the server "lost" if we actually have an unsaved local reveal pending
+    // (fogDirty). Otherwise our set is just a stale in-memory copy of what the server used to
+    // hold — e.g. after a GM reset — and unioning it back in would silently undo the reset on
+    // every other connected client the moment they get the broadcast.
+    const hadPendingLocal = fogDirty.has(mid);
+    if(hadPendingLocal){
+      let extra=false;
+      for(const c of set) if(!remote.has(c)){ extra=true; break; }
+      remote.forEach(c=>set.add(c));
+      if(extra) fogDirty.add(mid);
+    } else {
+      set.clear();
+      remote.forEach(c=>set.add(c));
+    }
     fogWorkSrc.set(mid, fog[mid]);
-    if(extra) fogDirty.add(mid);
   }
   if(fogDirty.size) mapFogSave();
 }
