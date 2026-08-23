@@ -21421,13 +21421,6 @@ function tokenHp(token){
            name: disguise ? disguise.label : (L.obj.nickname||sp?.name||L.obj.species||"Pokémon"),
            sprite:pokeTokenSprite(L.obj), unlinked:false, row:L.row, obj:L.obj, kind:"pokemon" };
 }
-/* "▰2/3" — the HP bars a Boss has left (Running the Game p.487), for the name plate on the board.
-   Only shown to whoever may already see that token's HP, since it IS its HP. */
-function tokenBossBars(token){
-  const L = token.link ? tokenLinked(token) : null;
-  const o = L && L.obj;
-  return isBoss(o) ? ` ▰${o.boss.curBar}/${o.boss.actions}` : "";
-}
 /* players may only see HP for PC trainers/Pokémon; the GM sees everything (incl. enemies & standalone tokens) */
 function tokenHpVisible(info){
   if(info.kind==="shop" || info.kind==="hazard") return false; // scenery has no HP bar to show
@@ -21994,18 +21987,106 @@ function revealDisc(set, cx, cy, r){
 /* Reveal every cell within r of a token's footprint rectangle (cx..cx+span, cy..cy+span).
    One sweep over the bounding box measuring distance to the NEAREST footprint cell — the old
    version ran a whole disc per footprint cell, i.e. O(span²·r²) adds, which got painful once the
-   radius cap was lifted (a radius-60 Gyarados was ~9M Set writes per drag frame). Same result. */
-function revealFootprint(set, cx, cy, span, r){
+   radius cap was lifted (a radius-60 Gyarados was ~9M Set writes per drag frame). Same result.
+   When `map` has walls, a candidate cell is dropped unless there's a clear line from the footprint's
+   centre to it — so a wall stops fog spreading through it. Only the FUTURE reveal is blocked; ground
+   already explored before the wall existed stays revealed, same as the rest of the fog model. */
+function revealFootprint(set, cx, cy, span, r, map){
   const ri = Math.ceil(r), rr = (r+0.35)*(r+0.35), x1 = cx+span, y1 = cy+span;
+  const walls = map ? mapWalls(map) : null;
+  const ox = cx+(span+1)/2, oy = cy+(span+1)/2;
   for(let x=cx-ri; x<=x1+ri; x++){
     const dx = x<cx ? cx-x : (x>x1 ? x-x1 : 0);
     const rest = rr - dx*dx;
     if(rest < 0) continue;
     for(let y=cy-ri; y<=y1+ri; y++){
       const dy = y<cy ? cy-y : (y>y1 ? y-y1 : 0);
-      if(dy*dy <= rest) set.add(x+","+y);
+      if(dy*dy <= rest){
+        if(walls && walls.length && wallsBlockLOS(walls, ox, oy, x+0.5, y+0.5)) continue;
+        set.add(x+","+y);
+      }
     }
   }
+}
+/* ---- Walls: GM-drawn segments that block fog reveal (a la line-of-sight blockers) ----
+   Stored per map as {id,x1,y1,x2,y2} in grid-cell (corner) units, alongside the map's other meta
+   (gridSize, fogRadius, ...) so they ride the same mapMetaSave row. */
+function mapWalls(map){ return map.walls || (map.walls=[]); }
+function segsCross(ax,ay,bx,by,cx,cy,dx,dy){
+  const d1x=bx-ax, d1y=by-ay, d2x=dx-cx, d2y=dy-cy;
+  const denom = d1x*d2y - d1y*d2x;
+  if(Math.abs(denom) < 1e-9) return false;                 // parallel (or one is zero-length)
+  const t = ((cx-ax)*d2y - (cy-ay)*d2x) / denom, u = ((cx-ax)*d1y - (cy-ay)*d1x) / denom;
+  return t>1e-6 && t<1-1e-6 && u>1e-6 && u<1-1e-6;          // exclude touching only at an endpoint
+}
+function wallsBlockLOS(walls, ox, oy, tx, ty){
+  for(let i=0;i<walls.length;i++){ const w=walls[i];
+    if(segsCross(ox,oy,tx,ty,w.x1,w.y1,w.x2,w.y2)) return true; }
+  return false;
+}
+/* shortest distance from grid-space point (px,py) to a wall segment — used to hit-test a click for
+   "delete this wall" while in wall-draw mode */
+function pointSegDist(px,py, x1,y1,x2,y2){
+  const dx=x2-x1, dy=y2-y1, len2=dx*dx+dy*dy;
+  let t = len2 ? ((px-x1)*dx+(py-y1)*dy)/len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px-(x1+t*dx), py-(y1+t*dy));
+}
+function nearestWall(map, gx, gy, maxDist){
+  let best=null, bestD=maxDist;
+  mapWalls(map).forEach(w=>{ const d = pointSegDist(gx,gy,w.x1,w.y1,w.x2,w.y2); if(d<bestD){ bestD=d; best=w; } });
+  return best;
+}
+/* Draw-walls mode ("🧱 Walls"): tap two points on the map to add a segment; tap an existing wall to
+   remove it. Per-viewer and not synced — only the resulting map.walls list is (via mapMetaSave). */
+let mapWallDraw = { on:false, mapId:null, pending:null };
+function mapWallDrawActive(map){ return !!(mapWallDraw.on && map && mapWallDraw.mapId===map.id); }
+function toggleMapWallDraw(map){
+  mapWallDraw = mapWallDrawActive(map) ? { on:false, mapId:map.id, pending:null }
+                                        : { on:true,  mapId:map.id, pending:null };
+  if(mapWallDraw.on){ mapSelect = { on:false, mapId:map.id, ids:new Set() };   // tap-modes are exclusive
+                       mapMount  = { on:false, mapId:map.id, riderId:null }; }
+  renderMap();
+}
+async function clearMapWalls(map){
+  if(!mapWalls(map).length) return;
+  if(!confirm("Remove every wall on this map?")) return;
+  map.walls = []; mapWallDraw.pending = null;
+  mapMetaSave(); renderMap();
+}
+/* intercepts clicks on the stage background while wall-draw mode is on, before they reach
+   attachPanZoom's own pointerdown (which would otherwise start a pan) — same stopPropagation
+   trick attachTokenDrag uses for tokens. */
+function attachWallDraw(stage, viewport, map, originX, originY){
+  stage.addEventListener("pointerdown", ev=>{
+    if(!cloud.isGM || !mapWallDrawActive(map)) return;
+    if(ev.button!=null && ev.button>0) return;
+    ev.stopPropagation();
+    const px = map.gridSize;
+    const rect = viewport.getBoundingClientRect();
+    const stageX = (ev.clientX-rect.left-mapView.panX)/mapView.scale;
+    const stageY = (ev.clientY-rect.top -mapView.panY)/mapView.scale;
+    const gx0 = (stageX-originX)/px, gy0 = (stageY-originY)/px;
+    if(!mapWallDraw.pending){
+      const hit = nearestWall(map, gx0, gy0, 0.3);
+      if(hit){ map.walls = mapWalls(map).filter(w=>w.id!==hit.id); mapMetaSave(); renderMap(); toast("🧱 Wall removed"); return; }
+    }
+    const gx = Math.round(gx0), gy = Math.round(gy0);
+    if(!mapWallDraw.pending){ mapWallDraw.pending = {x:gx,y:gy}; renderMap(); return; }
+    const p = mapWallDraw.pending; mapWallDraw.pending = null;
+    if(p.x!==gx || p.y!==gy){ mapWalls(map).push({id:uid(), x1:p.x, y1:p.y, x2:gx, y2:gy}); mapMetaSave(); }
+    renderMap();
+  });
+}
+/* thin red lines for the GM only — players never see wall geometry, just its effect on fog */
+function wallsOverlay(map, stageW, stageH, originX, originY){
+  const walls = mapWalls(map), pending = mapWallDrawActive(map) ? mapWallDraw.pending : null;
+  if(!walls.length && !pending) return null;
+  const px = map.gridSize;
+  const lines = walls.map(w=>`<line x1="${w.x1*px+originX}" y1="${w.y1*px+originY}" x2="${w.x2*px+originX}" y2="${w.y2*px+originY}" stroke="#ff3b3b" stroke-width="3" stroke-linecap="round" opacity="0.85"/>`).join("");
+  const dot = pending ? `<circle cx="${pending.x*px+originX}" cy="${pending.y*px+originY}" r="5" fill="#ff3b3b"/>` : "";
+  return el("div",{class:"map-walls",style:`position:absolute;left:0;top:0;width:${stageW}px;height:${stageH}px;pointer-events:none`,
+    html:`<svg width="100%" height="100%" style="overflow:visible">${lines}${dot}</svg>`});
 }
 
 function mapFogData(){ ensureMapFog(); return cloud.mapFog.data.fog || (cloud.mapFog.data.fog={}); }
@@ -22039,13 +22120,13 @@ function fogBoxUnion(a, b){
 }
 function revealAroundTokens(map){
   const r = Math.max(1, map.fogRadius||3), cells = new Set();
-  mapTokensFor(map.id).forEach(t=>{ if(tokenReveals(t)) revealFootprint(cells, Math.round(t.x), Math.round(t.y), (t.size||1)-1, r); });
+  mapTokensFor(map.id).forEach(t=>{ if(tokenReveals(t)) revealFootprint(cells, Math.round(t.x), Math.round(t.y), (t.size||1)-1, r, map); });
   return fogReveal(map, cells);
 }
 /* live reveal around a specific cell (used while dragging a token, before it's committed) */
 function revealAtCell(map, cx, cy, span){
   const cells = new Set();
-  revealFootprint(cells, cx, cy, span, Math.max(1, map.fogRadius||3));
+  revealFootprint(cells, cx, cy, span, Math.max(1, map.fogRadius||3), map);
   return fogReveal(map, cells);
 }
 async function toggleFog(map){
@@ -23060,7 +23141,7 @@ function mapTokenNode(token, map, originX=0, originY=0){
   // an undiscovered shop gets no plate at all — an empty one is just a blank yellow tab
   if(!info.hideName)
     node.append(el("div",{class:"tk-name"}, (token.gmHidden?"🙈 ":"") + info.name
-      + (hpVisible ? tokenBossBars(token) : "") + (info.unlinked?" ⚠":"")));
+      + (info.unlinked?" ⚠":"")));
   // Player-side tokens (and the boat) rely on the HP bar alone, no numeric readout; enemies/standalone still show it.
   if(hpVisible && !playerSide && info.kind!=="boat") node.append(el("div",{class:"tk-hpnum"}, info.unlinked?"⚠ unlinked":`${info.cur}/${info.max}`));
   if(tokenStatusVisible(info)){
@@ -23076,6 +23157,8 @@ function mapTokenNode(token, map, originX=0, originY=0){
   if(carrying && !isShopToken(token))
     node.append(el("div",{class:"tk-carry",title:`carrying ${carrying} rider${carrying===1?"":"s"} — they move together`},
       carrying>1?`🐎${carrying}`:"🐎"));
+  if(token.altitude && !isShopToken(token))
+    node.append(el("div",{class:"tk-altitude",title:"height off the ground"}, `▲ ${token.altitude}m`));
   return node;
 }
 /* drag-to-move (grid-snap + meter readout) or tap-to-open-menu.
@@ -23961,6 +24044,17 @@ function openTokenMenu(token, map){
         wrap.append(el("div",{class:"small muted",style:"margin-top:12px;font-weight:700"},"Movement type"), chips);
       }
     }
+
+    // ---- Altitude: how many meters off the ground this token is, shown as a badge above it ----
+    if(info.editable){
+      const altInp = el("input",{type:"number",value:token.altitude||0,style:"width:80px"});
+      altInp.addEventListener("change", async()=>{
+        token.altitude = Math.max(0, parseInt(altInp.value)||0); altInp.value = token.altitude;
+        mapTokensSave(); renderMap();
+      });
+      wrap.append(el("label",{class:"field",style:"margin-top:12px;max-width:160px"},
+        el("span",{},"Altitude (meters up)"), altInp));
+    }
   }
   // ---- 🐎 Riding: link this token to another so they always move as one. Same engine the map's
   // "🐎 Mount" tap-mode drives, reachable from the token itself (and available to a player for
@@ -24612,6 +24706,11 @@ function renderMap(){
         bar.append(el("label",{class:"field",style:"max-width:110px"}, el("span",{},"Fog radius"), fr),
           el("button",{class:"btn-secondary",onclick:()=>resetFog(map)},"Reset fog"));
       }
+      bar.append(
+        el("button",{class:"btn-secondary"+(mapWallDrawActive(map)?" on":""),onclick:()=>toggleMapWallDraw(map),
+          title:"Tap two points to draw a wall segment that blocks fog from spreading through it; tap an existing wall to remove it"},
+          mapWallDrawActive(map)?"🧱 Drawing walls…":"🧱 Walls"));
+      if(mapWalls(map).length) bar.append(el("button",{class:"btn-secondary",onclick:()=>clearMapWalls(map)},"🗑 Clear walls"));
       // — Select group: multi-token select, so several tokens can be dragged as one group —
       bar.append(el("span",{class:"map-sep"}),
         el("button",{class:"btn-secondary"+(mapSelectActive(map)?" on":""),onclick:()=>toggleMapSelect(map),
@@ -24780,6 +24879,13 @@ function renderMap(){
     mapTokensFor(map.id).forEach(t=>{ if(visibleToken(t)) stage.append(mkToken(t)); });
     const f = drawFogInto(); if(f) stage.append(f);                 // players: opaque fog over hidden tokens
   }
+
+  // walls (block fog vision) — GM-only, drawn above tokens/fog so they stay visible while editing
+  if(cloud.isGM){
+    const wo = wallsOverlay(map, stageW, stageH, originX, originY);
+    if(wo) stage.append(wo);
+  }
+  attachWallDraw(stage, viewport, map, originX, originY);
 
   // attack-range / AoE overlay (#1) — above tokens, with floating controls
   if(mapAoE && mapTokensFor(map.id).some(t=>t.id===mapAoE.tokenId)){
