@@ -2411,6 +2411,14 @@ function attachArtFallback(img, srcs){
    instead of spending a doomed hotlink request first — and they still render if that request is
    blocked or hangs rather than cleanly 404ing, which an error-only fallback can't recover from. */
 
+/* Homebrew species whose artwork ships in the repo itself (assets/species/<slug>.webp), so they
+   render with no Storage-bucket upload needed. Bundled art is same-origin, costs no egress, and
+   still lets the bucket + DB URLs trail behind as fallbacks. Drop a file in and add its slug here. */
+const LOCAL_SPECIES_ART = new Set(["dracosaur","arctosaur","dunklevish","raptozolt"]);
+function localSpeciesArt(name){
+  const slug = slugify(name);
+  return LOCAL_SPECIES_ART.has(slug) ? [`assets/species/${slug}.webp?v=1`] : [];
+}
 function speciesArtChain(name, shiny){
   if(!name) return [POKEBALL_SVG];
   // "Minior Blue Core" & co. aren't species — they're what monLookName calls a cracked-open Minior
@@ -2432,7 +2440,8 @@ function speciesArtChain(name, shiny){
   // staging copy is only reached when the main one 404s, and there's no staging path for shinies
   const db = shiny ? [spriteUrl(name, true)]
                    : [spriteUrl(name, false), spriteUrl(name, false, true)];
-  return getSpecies(name)?.customArt ? [...bucket, ...db] : [...db, ...bucket];
+  const local = localSpeciesArt(name);   // repo-bundled art wins outright when present
+  return [...local, ...(getSpecies(name)?.customArt ? [...bucket, ...db] : [...db, ...bucket])];
 }
 function monSprite(speciesName, shiny, sizeCls="s-sm", override){
   // an uploaded photo wins outright; if it fails that's just a broken photo, not a missing sprite
@@ -3672,7 +3681,13 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   if(dragonOn) st.type = "Dragon";
   /* Herald of Pride ignores Damage Reduction up to their Command/Intimidate Rank on a Weapon
      Attack — carried to the defender through the Apply-to-target widget and the roll feed. */
-  const drPierce = attackDRPierce(t, st);
+  const heraldDR = attackDRPierce(t, st);
+  /* Chip Away / Darkest Lariat / Cut ignore some Damage Reduction (and, for the first two, the
+     target's Defense/Sp.Def Combat Stage changes) on their own — same delivery mechanism, a
+     different source. Take the more generous DR-pierce of the two if both somehow apply. */
+  const movePierce = moveDefPierce(st.move);
+  const drPierce = Math.max(heraldDR, movePierce ? movePierce.dr : 0);
+  const defCSMode = movePierce ? movePierce.defCS : null;
   /* Maelstrom: "Whenever your Water-Type Moves miss all targets, you gain a Tick of Temporary Hit
      Points." A Trainer roll never learns the target's Evasion — it prints "hits if X ≥ AC + Evasion"
      — so the miss can't be detected, only offered. */
@@ -3908,6 +3923,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
      happens; a triggered one gets its own box with a button that spends the use. --- */
   body.append(riderBoxes(t, st.name, opts.rerender));
   if(st.move) body.append(groupRiderBoxes(t, st.move, true));
+  const roughneck = roughneckBox(t, opts.rerender);
+  if(roughneck) body.append(roughneck);
 
   /* --- multi-strike Weapon Moves: one Attack Roll per strike, counted automatically --- */
   if(fiveStrike || dblStrike){
@@ -4075,16 +4092,21 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         + (pushSpent.cured ? ` · cured ${pushSpent.cured}` : "")));
       // GM: apply this trainer hit to a battle-map token — Physical unless the Move itself is Special.
       if(maelstromWhiff) out.append(maelstromWhiffBtn(t, opts));
-      if(drPierce) out.append(el("div",{class:"small",style:"margin-top:4px;color:var(--accent);font-weight:600"},
-        `🛡 Herald of Pride: ignores up to ${drPierce} Damage Reduction (${weaponSkillWhy(t, st.weapon) || "Command / Intimidate"} Rank). Applied for you by the target picker below — subtract it by hand if you use the Damage/Heal box instead.`));
-      const tw = attackTargetWidget({ dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce });
+      if(heraldDR) out.append(el("div",{class:"small",style:"margin-top:4px;color:var(--accent);font-weight:600"},
+        `🛡 Herald of Pride: ignores up to ${heraldDR} Damage Reduction (${weaponSkillWhy(t, st.weapon) || "Command / Intimidate"} Rank). Applied for you by the target picker below — subtract it by hand if you use the Damage/Heal box instead.`));
+      if(movePierce) out.append(el("div",{class:"small",style:"margin-top:4px;color:var(--accent);font-weight:600"},
+        `🗡 ${st.name}: ignores ${movePierce.dr>=PIERCE_ALL_DR?"all":`up to ${movePierce.dr}`} Damage Reduction`
+        + (defCSMode==="all" ? ` and any Armor or Combat-Stage changes to the target's ${isPhysAtk?"Defense":"Sp.Def"}`
+           : defCSMode==="positive" ? ` and the target's positive Defense Combat Stages` : "")
+        + `. Applied for you by the target picker below — subtract it by hand if you use the Damage/Heal box instead.`));
+      const tw = attackTargetWidget({ dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce, defCSMode });
       if(tw) out.append(tw);
       feedLogged = true;
       logRoll({ kind:"move", label:st.name, who:t.name||"",
         headline:`${nCrit?"💥 CRIT ":"💥 "}${total} damage`,
         lines:[`🎯 Accuracy ${accTot} (d20 ${acc}) vs AC ${st.ac}`,
                `${st.type||"Typeless"}${st.cls?` · ${st.cls}`:""} · DB ${db}`],
-        atk: isStatusAtk ? null : { dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce } });
+        atk: isStatusAtk ? null : { dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce, defCSMode } });
     }
     if(dblStrike){
       const ov = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center"});
@@ -12190,6 +12212,12 @@ function openMoveRoll(p, m, sp, opts={}){
   const types = sp?.types || [];
   const ate = ateInfo(p, m);            // an "−ate" ability that could re-type this Normal move
   const ateOn = ate ? !opts.ateOff : false;   // default ON (it's a Free Action the user always takes)
+  /* Anchored (Dhelmise): a Swift Action can shift its Anchor token, then immediately follow up with a
+     damaging attack originating FROM the anchor — melee range, +2d6 damage, Physical Class. There's no
+     map token here, so this is a per-roll toggle: off by default since it's a choice, not automatic. */
+  const anchorDamaging = /phys|spec/i.test(m?.class||"") || m?.damageBase!=null;
+  const anchorEligible = hasAbility(p, "Anchored") && anchorDamaging;
+  const anchorOn = anchorEligible ? !!opts.anchorOn : false;
   // Weather Ball / Terrain Pulse take their Type from the field, so the map's Weather/Terrain wins
   // over the Type printed on the card (their Damage-Base condition below reads the same state).
   // It only beats the PRINTED type though — an ability that genuinely retypes the Move (Normalize,
@@ -12204,14 +12232,17 @@ function openMoveRoll(p, m, sp, opts={}){
   const fc = fieryCrashInfo(p, m, baseType);
   const fcMode = fieryCrashMode(fc, opts.fcMode);
   const mtype = fcMode==="fire" ? "Fire" : baseType;
-  const stab = mtype && types.includes(mtype);
+  /* Steelworker (Dhelmise): "calculates damage as if it was only Steel-Typed" — Steel-Type Moves
+     get STAB regardless of Dhelmise's actual Types (Ghost/Grass never see it lost either way). */
+  const stab = (mtype && types.includes(mtype)) || (mtype==="Steel" && hasAbility(p, "Steelworker"));
   /* Versatile (Tera Blast, Order Up, Redline): Physical or Special at the user's choice. It opens on
      whichever stat is bigger and is flipped from the roll window. */
   const versatile = isVersatileMove(m);
   const versSpec  = versatile ? (opts.versSpec != null ? opts.versSpec
                                  : versatileDefaultSpec(d.eff.atk, d.eff.spatk)) : false;
-  const isPhys = versatile ? !versSpec : /phys/i.test(m.class||"");
-  const isSpec = versatile ?  versSpec : /spec/i.test(m.class||"");
+  // Anchored's Bonus forces Physical Class on the attack it originates from the Anchor
+  const isPhys = anchorOn ? true : versatile ? !versSpec : /phys/i.test(m.class||"");
+  const isSpec = anchorOn ? false : versatile ?  versSpec : /spec/i.test(m.class||"");
   const atkStat = isPhys ? d.eff.atk : isSpec ? d.eff.spatk : 0;   // CS-adjusted Attack / Sp.Attack
   const atkLbl = isPhys ? "Attack" : isSpec ? "Sp. Attack" : null;
   const evaNote = isPhys ? "target's Physical Evasion" : isSpec ? "target's Special Evasion" : "target's Evasion";
@@ -12443,6 +12474,22 @@ function openMoveRoll(p, m, sp, opts={}){
       el("div",{class:"small muted"},
         ateOn ? `Active — this move is ${ate.type}-Type.${stabWith?" STAB applies (+2 DB).":" No STAB from this type."}`
               : `Off — this move stays Normal-Type.${stabAs?" STAB applies (+2 DB).":" No STAB."}`)));
+    card.append(lbl); body.append(card);
+  }
+
+  /* --- Anchored: originate this attack from the Anchor (Swift Action to shift it, Core-rules-style
+     free follow-up here) --- melee range, +2d6 damage, forced Physical Class. Off by default since
+     it's a choice made when the Anchor is actually shifted, not every attack. */
+  if(anchorEligible){
+    const card = el("div",{class:"card",style:`background:var(--panel);border:1px solid ${anchorOn?"var(--accent)":"var(--line)"};margin:0 0 12px`});
+    const lbl = el("label",{style:"display:flex;gap:8px;align-items:flex-start;cursor:pointer"});
+    const cb = el("input",{type:"checkbox"}); cb.checked = anchorOn;
+    cb.addEventListener("change",()=>{ closeModal(); openMoveRoll(p, m, sp, Object.assign({}, opts, {anchorOn: cb.checked})); });
+    lbl.append(cb, el("div",{},
+      el("div",{class:"small",style:"font-weight:700"}, "⚓ Anchored: originate this attack from the Anchor"),
+      el("div",{class:"small muted"},
+        anchorOn ? "Active — range becomes Melee (1 Target), Class → Physical, and the roll adds +2d6 damage."
+                  : "Off — this attack goes out normally. Tick this after shifting the Anchor as a Swift Action to follow up from it.")));
     card.append(lbl); body.append(card);
   }
 
@@ -13071,11 +13118,14 @@ function openMoveRoll(p, m, sp, opts={}){
           if(hasAbility(p,"Sniper [Errata]")){ const r4 = rollDiceString("3d10"); critExtra += r4.total; critWhy.push(`+${r4.total} Sniper [Errata]`); }
         }
         if(critExtra && critDBv!=null) critWhy.push(`(crit uses DB ${critDBv} — the Damage Base before the multi-strike bonus)`);
+        // Anchored's Bonus: originating from the Anchor adds +2d6 to the damage roll
+        const anchorRoll = anchorOn ? rollDiceString("2d6") : null;
+        const anchorExtra = anchorRoll ? anchorRoll.total : 0;
         const im = infatMod();
         const cx = condMods(), wxd = wxDmg();
         // a ticked condition can add flat damage (Bolt Beak) and/or scale the finished roll
         // (Solar Blade's half damage in bad weather) — the scaling is applied last.
-        const preMult = r.total + im.atk + (bm.dmg||0) + wxd + (tx.dmg||0) + abilMods.flat + tDmg + critExtra + im.delta + cx.dmg;
+        const preMult = r.total + im.atk + (bm.dmg||0) + wxd + (tx.dmg||0) + abilMods.flat + tDmg + critExtra + anchorExtra + im.delta + cx.dmg;
         const total = Math.max(0, cx.mult!==1 ? Math.floor(preMult * cx.mult) : preMult);
         dmgLine.append(el("div",{style:`font-size:26px;font-weight:800;color:${isCrit?"var(--bad)":"var(--accent)"}`},
           `${isCrit?"💥 CRIT! ":"💥 "}${total}`));
@@ -13087,6 +13137,7 @@ function openMoveRoll(p, m, sp, opts={}){
         if(abilMods.flat) parts.push(`${abilMods.flat>0?"+":""}${abilMods.flat} ability`);
         if(tDmg)    parts.push(`+${tDmg} ${tBoost.item}`);
         if(cx.dmg)  parts.push(`${cx.dmg>0?"+":""}${cx.dmg} condition`);
+        if(anchorRoll) parts.push(`+${anchorExtra} Anchor (2d6: ${anchorRoll.rolls.join(", ")})`);
         if(im.delta) parts.push(`${im.delta} Infatuated`);
         if(critWhy.length) parts.push(critWhy.join(" "));
         if(cx.mult!==1) parts.push(`= ${preMult} ×${cx.mult}`);
@@ -13101,10 +13152,21 @@ function openMoveRoll(p, m, sp, opts={}){
         dmgLine.append(el("div",{class:"small muted",style:"margin-top:4px"}, parts.join("  ")));
         if(bm.crit) dmgLine.append(el("div",{class:"small muted"}, `Crit / Effect range widened by +${bm.crit} (buffs).`));
         dmgLine.append(el("div",{class:"small muted"}, `Target subtracts ${defNote} & damage reduction.`));
+        /* Chip Away / Darkest Lariat / Cut ignore some Damage Reduction (and, for the first two, the
+           target's Defense/Sp.Def Combat Stage changes) — carried to the defender the same way
+           Herald of Pride's pierce is on the Trainer side. */
+        const movePierce = moveDefPierce(m);
+        const moveDefCS = movePierce ? movePierce.defCS : null;
+        if(movePierce) dmgLine.append(el("div",{class:"small muted",style:"margin-top:2px;color:var(--accent);font-weight:600"},
+          `🗡 ${m.name}: ignores ${movePierce.dr>=PIERCE_ALL_DR?"all":`up to ${movePierce.dr}`} Damage Reduction`
+          + (moveDefCS==="all" ? ` and any Armor or Combat-Stage changes to the target's ${isPhys?"Defense":"Sp.Def"}`
+             : moveDefCS==="positive" ? ` and the target's positive Defense Combat Stages` : "")
+          + `. Applied for you by the target picker below.`));
         // GM: drop this rolled hit straight onto a battle-map token (auto Def / type / abilities / DR).
         if(isPhys || isSpec){
           const tw = attackTargetWidget({ dmg:total, type:mtype||"Typeless", physical:isPhys,
-            pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: hasAbility(p,"Tinted Lens") });
+            pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: hasAbility(p,"Tinted Lens"),
+            pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS });
           if(tw) dmgLine.append(tw);
         }
         /* …and into the GM's feed, carrying the same numbers, so they can drop this hit on a token
@@ -13115,7 +13177,8 @@ function openMoveRoll(p, m, sp, opts={}){
           lines:[`🎯 Accuracy ${accTot} (d20 ${acc})${effAC!=null?` vs AC ${effAC}`:""}`,
                  `${mtype||"Typeless"}${m.class?` · ${m.class}`:""} · DB ${effFDB}`],
           atk: (isPhys||isSpec) ? { dmg:total, type:mtype||"Typeless", physical:isPhys,
-                 pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: hasAbility(p,"Tinted Lens") } : null });
+                 pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: hasAbility(p,"Tinted Lens"),
+                 pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS } : null });
       }
       out.append(dmgLine);
       if(ancestral && (isPhys||isSpec)){ const an = ancestralStrikeNode(); if(an) out.append(an); }
@@ -13835,6 +13898,45 @@ function riderBoxes(t, moveName, rerenderAll){
   };
   draw();
   return wrap;
+}
+/* Roughneck (Trainer Class Feature, 1 AP Swift Action): "you hit a foe with an Attack → the foe
+   loses a Combat Stage in the Stat of your choice." Unlike the riders above it isn't tied to a named
+   list of Moves — it fires off ANY Attack — so it gets its own box (same card layout as riderBoxes)
+   rather than going through featureRiderScan. The Stat drop is the table's to apply to the foe's own
+   sheet/token; this box only tracks the 1 AP it costs and states which Stat was chosen. */
+function roughneckBox(t, rerenderAll){
+  if(!hasFeatureLoose(t, "Roughneck")) return null;
+  const box = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+  box.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},
+    "😤 Roughneck", el("span",{class:"muted",style:"font-weight:600"}, "  ·  1 AP - Swift Action")));
+  box.append(el("div",{class:"small",style:"margin-bottom:6px"},
+    "Trigger: you hit a foe with this Attack. Effect: the foe loses a Combat Stage in the Stat of your choice."));
+  const sel = el("select",{style:"padding:4px 6px"});
+  CS_STATS.forEach(([k,lbl])=>sel.append(el("option",{value:k}, lbl)));
+  const apFree = () => trainerDerived(t).ap - trainerAPUsed(t);
+  const row = el("div",{class:"inline",style:"gap:10px;flex-wrap:wrap;align-items:center"});
+  const btn = el("button",{class:"btn-primary",style:"padding:6px 10px"});
+  const redraw = () => {
+    const free = apFree(), canFire = t.unlocked || free >= 1;
+    btn.className = canFire ? "btn-primary" : "btn-secondary";
+    btn.disabled = !canFire;
+    btn.textContent = canFire ? "😤 Use it — 1 AP" : `needs 1 AP — only ${Math.max(0,free)} free`;
+  };
+  btn.addEventListener("click", ()=>{
+    const free = apFree();
+    if(!t.unlocked && free < 1){ toast(`Not enough AP — Roughneck costs 1, you have ${Math.max(0,free)} free`); return; }
+    t.usedAP = (t.usedAP||0) + 1; save();
+    const lbl = CS_STATS.find(([k])=>k===sel.value)[1];
+    toast(`😤 Roughneck → foe loses 1 Combat Stage in ${lbl}`);
+    redraw();
+    if(rerenderAll) rerenderAll();
+  });
+  redraw();
+  row.append(sel, btn);
+  box.append(row);
+  box.append(el("div",{class:"small muted",style:"margin-top:4px"},
+    "Costs 1 AP, spent when you press the button. Apply the Combat Stage drop to the foe you hit — on the GM's ⚔ Battle → Combat, or on their token's menu on the Map."));
+  return box;
 }
 /* ---------- GROUP RIDERS ----------
    The third shape the rules use: a Feature that changes a whole CLASS of your Moves rather than a
@@ -18919,6 +19021,8 @@ const AUTOMATED_ABILITIES = {
   "refridgerate":"Normal damaging moves can be retyped to Ice (toggle in the move roll — affects STAB).",
   "refrigerate":"Normal damaging moves can be retyped to Ice (toggle in the move roll — affects STAB).",
   "mentalize":"Normal damaging moves can be retyped to Psychic (toggle in the move roll — affects STAB).",
+  "steelworker":"Steel-Type moves always get STAB, regardless of this Pokémon's own Types.",
+  "anchored":"Move roll toggle: originate the attack from the Anchor — Melee/1 Target, +2d6 damage, forced Physical Class.",
   "ancestral connection":"Adds a Ghost-Type Struggle Attack (own Accuracy & Damage Roll) after every damaging move that hits.",
   "guts":"+2 Attack Combat Stages while suffering a Status.",
   "toxic boost":"+2 Attack Combat Stages while Poisoned.",
@@ -20328,7 +20432,9 @@ function logRoll({ kind, label, who, headline, lines, atk }){
   };
   if(atk) e.atk = { dmg: Math.max(0, Math.round(atk.dmg||0)), type: atk.type || "Typeless",
                     physical: !!atk.physical, pierceImmune: !!atk.pierceImmune,
-                    pierceDR: Math.max(0, Math.round(atk.pierceDR||0)) };
+                    pierceDR: Math.max(0, Math.round(atk.pierceDR||0)),
+                    atkTinted: !!atk.atkTinted,
+                    defCSMode: (atk.defCSMode==="all" || atk.defCSMode==="positive") ? atk.defCSMode : null };
   row.data.entries.push(e);
   if(row.data.entries.length > ROLL_FEED_MAX) row.data.entries = row.data.entries.slice(-ROLL_FEED_MAX);
   saveRolls();
@@ -21449,11 +21555,41 @@ function tokenEvasions(token){
   const d = isT ? trainerDerived(L.obj) : pokeDerived(L.obj);
   return { phys:d.physEva, spec:d.specEva, spd:d.spdEva };
 }
-function tokenDefenseStat(token, physical){
+/* Moves that let the attacker ignore some of the target's Defense/Sp.Def Combat Stage changes
+   (Chip Away, Darkest Lariat) on top of Damage Reduction (those two, plus Cut). Hardcoded rather
+   than parsed off the rules text: "ignore ALL Def/SpDef CS changes" vs "ignore only the target's
+   POSITIVE Defense CS" is a real rules distinction free text can't be trusted to carry correctly,
+   and there are only three of these in the whole Move DB. `dr` = how much Damage Reduction (and,
+   for Chip Away, Armor — which is just DR from worn equipment, already folded into buffDR) is
+   ignored; `defCS` = null (nothing), "all" (drop the target's CS shift on this stat entirely, both
+   directions — Chip Away) or "positive" (drop only a positive shift — Darkest Lariat). */
+/* 999 stands in for "all" DR rather than Infinity — this number round-trips through the shared
+   roll-feed row as plain JSON, where JSON.stringify(Infinity) would quietly become null. No DR pool
+   on this sheet gets anywhere near 999, so it still reads as "fully ignored" everywhere it's used. */
+const PIERCE_ALL_DR = 999;
+const MOVE_DEF_PIERCE = {
+  "chip away":     { dr: PIERCE_ALL_DR, defCS: "all" },
+  "darkest lariat":{ dr: PIERCE_ALL_DR, defCS: "positive" },
+  "cut":           { dr: 5,             defCS: null },
+};
+function moveDefPierce(m){ return (m && m.name) ? (MOVE_DEF_PIERCE[m.name.toLowerCase()] || null) : null; }
+/* `defCSMode`: null = normal (CS-adjusted); "all" = the pre-CS ("real") stat, ignoring every CS
+   shift on it (manual or automatic — a Burn's −2 Def counts as much as a hand-raised one); "positive"
+   = the CS shift capped at 0, so a penalty still applies but a bonus doesn't. */
+function tokenDefenseStat(token, physical, defCSMode){
   const L = token.link ? tokenLinked(token) : null;
   if(L && L.obj){
-    if(L.kind==="trainer"||L.kind==="enctrainer"){ const d=trainerDerived(L.obj); return physical?d.totals.def:d.totals.spdef; }
-    const d=pokeDerived(L.obj); return physical?d.eff.def:d.eff.spdef;
+    const k = physical ? "def" : "spdef";
+    if(L.kind==="trainer"||L.kind==="enctrainer"){
+      const d=trainerDerived(L.obj);
+      if(!defCSMode) return d.totals[k];
+      const csv = defCSMode==="all" ? 0 : Math.min(0, d.cs[k]);
+      return Math.floor(d.realTotals[k] * csMult(csv)) + (equipStatBonus(L.obj)[k]||0);
+    }
+    const d=pokeDerived(L.obj);
+    if(!defCSMode) return d.eff[k];
+    const csv = defCSMode==="all" ? 0 : Math.min(0, d.cs[k]);
+    return Math.floor(d.total[k] * csMult(csv));
   }
   if(isBoatToken(token)) return physical ? (token.def||BOAT_DEF_DEFAULT) : (token.spdef||BOAT_SPDEF_DEFAULT);
   return 0;   // standalone token has no defense data
@@ -22017,7 +22153,12 @@ function segsCross(ax,ay,bx,by,cx,cy,dx,dy){
   const denom = d1x*d2y - d1y*d2x;
   if(Math.abs(denom) < 1e-9) return false;                 // parallel (or one is zero-length)
   const t = ((cx-ax)*d2y - (cy-ay)*d2x) / denom, u = ((cx-ax)*d1y - (cy-ay)*d1x) / denom;
-  return t>1e-6 && t<1-1e-6 && u>1e-6 && u<1-1e-6;          // exclude touching only at an endpoint
+  // t (position along the sight ray) stays open — its ends are cell centres, never a wall corner.
+  // u (position along the WALL) is inclusive of its own endpoints: two walls meeting at a shared
+  // corner (an L-shaped or rectangular room) must jointly block a sightline that passes exactly
+  // through that corner — a diagonally-adjacent cell's centre often lines up exactly on it. Excluding
+  // wall endpoints let that line thread the corner as if the wall had a pinhole in it.
+  return t>1e-6 && t<1-1e-6 && u>-1e-6 && u<1+1e-6;
 }
 function wallsBlockLOS(walls, ox, oy, tx, ty){
   for(let i=0;i<walls.length;i++){ const w=walls[i];
@@ -23221,6 +23362,11 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
     try{ node.setPointerCapture(ev.pointerId); }catch(e){}
 
 
+    // Walls block a PLAYER'S drag (the GM freely repositions anything, including past a wall it
+    // just drew — e.g. to set up an ambush behind it). A wall crossing is tested as one segment from
+    // the token's last valid cell to the candidate cell, so a fast drag that jumps several cells in
+    // one frame still can't leap clean over a wall in between.
+    const wallGated = !cloud.isGM && map.gridOn && mapWalls(map).length;
     const applyDelta = (dxPx, dyPx, commit)=>{
       let fogBox = null;
       const live = [];                      // where each token is right now, for the live mirror
@@ -23229,8 +23375,13 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
         // (same reasoning as attachImageDrag) — logical cell coords (c.t.x/y) can go negative.
         let nx = c.baseX0+dxPx, ny = c.baseY0+dyPx;
         if(map.gridOn){ nx = Math.round(nx/px)*px; ny = Math.round(ny/px)*px; }   // snap to cells live
+        let cx = Math.round((nx-originX)/px), cy = Math.round((ny-originY)/px);
+        if(wallGated && (cx!==c.pathX || cy!==c.pathY) &&
+           wallsBlockLOS(mapWalls(map), c.pathX+0.5, c.pathY+0.5, cx+0.5, cy+0.5)){
+          // stuck at the wall — hold at the last cell that was actually reachable
+          cx = c.pathX; cy = c.pathY; nx = cx*px+originX; ny = cy*px+originY;
+        }
         c.n.style.left = (c.visX0 + (nx-c.baseX0))+"px"; c.n.style.top = (c.visY0 + (ny-c.baseY0))+"px";
-        const cx = Math.round((nx-originX)/px), cy = Math.round((ny-originY)/px);
         if(map.gridOn && (cx!==c.pathX || cy!==c.pathY)){ c.segMoved += tileCost(c.pathX,c.pathY,cx,cy); c.pathX=cx; c.pathY=cy; }
 
         // the logical square it would land on if it were let go here — what peers are shown
@@ -23374,8 +23525,8 @@ function attachImageDrag(node, img, map, overlay, originX=0, originY=0){
    Levitate, Wonder Guard, Filter, …) and any Swarm/manual effectiveness nudge, then Damage
    Reduction (active DR buffs + flat DR vs Super-Effective). Used by BOTH the token menu's manual
    "Apply an attack" box and the roll-result "Apply to target" picker, so the two never diverge. */
-function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false }){
-  const def = tokenDefenseStat(token, !!physical);
+function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, defCSMode=null }){
+  const def = tokenDefenseStat(token, !!physical, defCSMode);
   const swarmTgt = (()=>{ const LL = token.link ? tokenLinked(token) : null;
     return (LL && !LL.missing && LL.kind==="enc" && isSwarm(LL.obj)) ? LL.obj : null; })();
   const swarmStep = swarmTgt ? swarmDamageStep(aoe) : 0;
@@ -23471,7 +23622,7 @@ function damageResultHTML(dmg, typeName, br, before){
    Returns a DOM node, or null when it doesn't apply (not the GM, not in cloud, no editable tokens on
    the current map). `dmg` = the rolled total, `type` = the move's effective Type, `physical` picks
    Def vs Sp.Def. */
-function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false }){
+function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, defCSMode=null }){
   if(mode!=="cloud" || !cloud.isGM) return null;
   const map = currentMapForView() || activeMap(); if(!map) return null;
   // scenery (shop doors) is editable and "linked", but it is not a creature you can roll damage
@@ -23487,7 +23638,10 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
   wrap.append(el("div",{class:"small muted",style:"margin-bottom:6px"},
     `Applies the rolled ${dmg} as a ${typeName} ${physical?"Physical":"Special"} hit to each checked target — subtracts their ${physical?"Defense":"Sp.Def"}, type effectiveness, defensive abilities & DR automatically.`
     + (pierceImmune ? ` Immunity to ${typeName} is ignored on this attack.` : "")
-    + (pierceDR ? ` Up to ${pierceDR} Damage Reduction is ignored on this attack.` : "")));
+    + (pierceDR>=PIERCE_ALL_DR ? ` All Damage Reduction is ignored on this attack.`
+       : pierceDR ? ` Up to ${pierceDR} Damage Reduction is ignored on this attack.` : "")
+    + (defCSMode==="all" ? ` Any Combat-Stage changes to the target's ${physical?"Defense":"Sp.Def"} (Armor included) are ignored.`
+       : defCSMode==="positive" ? ` The target's positive Defense Combat Stages are ignored.` : "")));
 
   // one persistent checkbox per token; split into Players / Enemies tabs (players first). The
   // checkboxes survive tab switches, so an area attack can hit tokens across both factions.
@@ -23547,7 +23701,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     if(!chosen.length){ out.textContent = "Tick at least one target (in either tab)."; return; }
     out.innerHTML = "";
     for(const it of chosen){
-      const br = tokenDamageBreakdown(it.t, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted });
+      const br = tokenDamageBreakdown(it.t, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, defCSMode });
       const before = await applyTokenDamage(it.t, br);
       it.cb.checked = false;                                    // clear so a second Apply doesn't double-hit
       const line = el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"});
@@ -23654,7 +23808,8 @@ function openRollApply(e){
     `${e.by||"?"}${e.who && e.who!==e.by ? ` — ${e.who}` : ""} rolled ${e.label||"an attack"}`
     + (e.headline ? `: ${e.headline}` : "") + ` at ${rollFeedTime(e.at)}.`));
   const w = attackTargetWidget({ dmg:e.atk.dmg, type:e.atk.type, physical:e.atk.physical,
-                                 pierceImmune:e.atk.pierceImmune, pierceDR:e.atk.pierceDR, atkTinted:e.atk.atkTinted });
+                                 pierceImmune:e.atk.pierceImmune, pierceDR:e.atk.pierceDR, atkTinted:e.atk.atkTinted,
+                                 defCSMode:e.atk.defCSMode });
   body.append(w || el("div",{class:"small"},
     "No damageable token on the current map — open the 🗺 Map (or add a token) and try again."));
   modal({title:`🎯 ${e.label||"Apply this hit"}`, bodyNode:body,
