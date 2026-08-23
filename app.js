@@ -12232,9 +12232,10 @@ function openMoveRoll(p, m, sp, opts={}){
   const fc = fieryCrashInfo(p, m, baseType);
   const fcMode = fieryCrashMode(fc, opts.fcMode);
   const mtype = fcMode==="fire" ? "Fire" : baseType;
-  /* Steelworker (Dhelmise): "calculates damage as if it was only Steel-Typed" — Steel-Type Moves
-     get STAB regardless of Dhelmise's actual Types (Ghost/Grass never see it lost either way). */
-  const stab = (mtype && types.includes(mtype)) || (mtype==="Steel" && hasAbility(p, "Steelworker"));
+  /* Steelworker (Dhelmise): "calculates damage as if it was only Steel-Typed" — but its own Bonus
+     clause restricts that to Steel-Type Moves originating from the Anchor, so it only fires
+     alongside the Anchored toggle below (it does nothing for a Steel move thrown normally). */
+  const stab = (mtype && types.includes(mtype)) || (mtype==="Steel" && anchorOn && hasAbility(p, "Steelworker"));
   /* Versatile (Tera Blast, Order Up, Redline): Physical or Special at the user's choice. It opens on
      whichever stat is bigger and is flipped from the roll window. */
   const versatile = isVersatileMove(m);
@@ -12481,6 +12482,7 @@ function openMoveRoll(p, m, sp, opts={}){
      free follow-up here) --- melee range, +2d6 damage, forced Physical Class. Off by default since
      it's a choice made when the Anchor is actually shifted, not every attack. */
   if(anchorEligible){
+    const steelworkerStab = mtype==="Steel" && hasAbility(p, "Steelworker");
     const card = el("div",{class:"card",style:`background:var(--panel);border:1px solid ${anchorOn?"var(--accent)":"var(--line)"};margin:0 0 12px`});
     const lbl = el("label",{style:"display:flex;gap:8px;align-items:flex-start;cursor:pointer"});
     const cb = el("input",{type:"checkbox"}); cb.checked = anchorOn;
@@ -12488,8 +12490,8 @@ function openMoveRoll(p, m, sp, opts={}){
     lbl.append(cb, el("div",{},
       el("div",{class:"small",style:"font-weight:700"}, "⚓ Anchored: originate this attack from the Anchor"),
       el("div",{class:"small muted"},
-        anchorOn ? "Active — range becomes Melee (1 Target), Class → Physical, and the roll adds +2d6 damage."
-                  : "Off — this attack goes out normally. Tick this after shifting the Anchor as a Swift Action to follow up from it.")));
+        anchorOn ? `Active — range becomes Melee (1 Target), Class → Physical, and the roll adds +2d6 damage.${steelworkerStab?" Steelworker: STAB applies (+2 DB).":""}`
+                  : `Off — this attack goes out normally. Tick this after shifting the Anchor as a Swift Action to follow up from it.${steelworkerStab?" (Steelworker only grants STAB on Steel moves that originate from the Anchor.)":""}`)));
     card.append(lbl); body.append(card);
   }
 
@@ -19021,8 +19023,8 @@ const AUTOMATED_ABILITIES = {
   "refridgerate":"Normal damaging moves can be retyped to Ice (toggle in the move roll — affects STAB).",
   "refrigerate":"Normal damaging moves can be retyped to Ice (toggle in the move roll — affects STAB).",
   "mentalize":"Normal damaging moves can be retyped to Psychic (toggle in the move roll — affects STAB).",
-  "steelworker":"Steel-Type moves always get STAB, regardless of this Pokémon's own Types.",
-  "anchored":"Move roll toggle: originate the attack from the Anchor — Melee/1 Target, +2d6 damage, forced Physical Class.",
+  "steelworker":"Steel-Type moves get STAB (regardless of this Pokémon's own Types) when the Anchored toggle below is on.",
+  "anchored":"Move roll toggle: originate the attack from the Anchor — Melee/1 Target, +2d6 damage, forced Physical Class, and (with Steelworker) STAB on Steel-Type moves.",
   "ancestral connection":"Adds a Ghost-Type Struggle Attack (own Accuracy & Damage Roll) after every damaging move that hits.",
   "guts":"+2 Attack Combat Stages while suffering a Status.",
   "toxic boost":"+2 Attack Combat Stages while Poisoned.",
