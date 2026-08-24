@@ -24675,7 +24675,8 @@ function attachPanZoom(viewport, stage){
    to add this before it's a screen coordinate. */
 function mapStageSize(map){
   const px = map.gridSize;
-  let w = 30*px, h = 20*px, minX = 0, minY = 0;
+  const hasImages = (map.images||[]).some(im=>im.w && im.h);
+  let w = hasImages ? 0 : 30*px, h = hasImages ? 0 : 20*px, minX = 0, minY = 0;
   (map.images||[]).forEach(im=>{
     if(im.w) w=Math.max(w, im.x+im.w); if(im.h) h=Math.max(h, im.y+im.h);
     minX = Math.min(minX, im.x); minY = Math.min(minY, im.y);
