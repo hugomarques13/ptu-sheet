@@ -2812,6 +2812,18 @@ function injuriesFromHit(fullHP, oldHP, newHP, dmgAmount){
   if(dmgAmount >= fullHP*0.5) n++;               // Massive Damage — independent of markers crossed
   return n;
 }
+/* Vehicle Breaches (house rule): same shape as Injuries but at every 25% max-HP marker instead of
+   every 50%, and "Massive Damage" is still ≥50% of max HP in one hit. Used only by boats. */
+function breachesFromHit(fullHP, oldHP, newHP, dmgAmount){
+  if(!fullHP || dmgAmount<=0) return 0;
+  let n = 0;
+  for(let frac=0.75, i=0; frac*fullHP >= newHP && i<40; frac-=0.25, i++){
+    const t = frac*fullHP;
+    if(oldHP > t && newHP <= t) n++;
+  }
+  if(dmgAmount >= fullHP*0.5) n++;               // Massive Damage — independent of markers crossed
+  return n;
+}
 /* Shared by every HP setter (damageHealRow, setTokenHP): applies injuriesFromHit to a damaging
    change and toasts it. Swarms never take Injuries (Core p.478), so they're excluded here rather
    than at each call site. Bosses (Running the Game p.487) follow a DIFFERENT rule than normal —
@@ -22090,7 +22102,12 @@ async function setTokenHP(token, val){
     // info.max already carries the right fallback per kind (a boat placed before it had HP fields
     // falls back to BOAT_HP_DEFAULT here, not to the generic standalone-token default of 1)
     token.maxHp = info.max;
-    token.hp = Math.max(-99, Math.min(info.max, val|0));
+    const oldHp = info.cur, newHp = Math.max(-99, Math.min(info.max, val|0));
+    token.hp = newHp;
+    if(isBoatToken(token) && newHp < oldHp){
+      const br = breachesFromHit(info.max, oldHp, newHp, oldHp - newHp);
+      if(br > 0){ token.breaches = (token.breaches||0) + br; toast(`+${br} Breach${br===1?"":"es"}!`); }
+    }
     paintTokenHP(token); mapTokensSave(); return;   // optimistic: paint now, write catches up
   }
   const { row, obj, kind } = info; if(!obj){ toast("Can't edit that token"); return; }
@@ -23168,10 +23185,19 @@ const BOAT_ANGLE = { E:0, S:1, W:2, N:3 };
 const BOAT_STEP  = { N:[0,-1], E:[1,0], S:[0,1], W:[-1,0] };
 const BOAT_LEN_DEFAULT = 7, BOAT_BEAM_DEFAULT = 3;    // matches the sprites' 224×96 (7:3) proportions
 // hittable-vehicle stats (a Small Boat's stat block) — HP/Def/Sp.Def run through the same damage
-// math as any other token; Overland/Breach Security/Breach Capacity are reference-only (no rule in
-// this codebase reads them — they're just shown on the boat's menu for the GM to call by hand).
+// math as any other token. Breach Security is read automatically (see applyTokenDamage — once
+// token.breaches reaches it, every hit on the hull splashes onto passengers too); Overland and
+// Breach Capacity stay reference-only for the GM to call by hand.
 const BOAT_HP_DEFAULT = 120, BOAT_DEF_DEFAULT = 10, BOAT_SPDEF_DEFAULT = 10;
 const BOAT_OVERLAND_DEFAULT = 7, BOAT_BREACH_SECURITY_DEFAULT = 1, BOAT_BREACH_CAPACITY_DEFAULT = 4;
+// vehicle rule: always Super-Effective vs these three Types (Levitate/Sky exempts Ground — see tokenDamageBreakdown)
+const VEHICLE_WEAK_TYPES = new Set(["Fire","Electric","Ground"]);
+// a boat's mounted weapons: DB rolls the usual dice (DB_TABLE), `bonus` is the extra flat damage the
+// gun/harpoon adds since a hull has no Attack stat to add instead
+const BOAT_WEAPONS = [
+  { key:"cannon",  name:"Cannon",  range:"Long Range",  db:6, bonus:10 },
+  { key:"harpoon", name:"Harpoon", range:"Short Range", db:5, bonus:10 },
+];
 /* the sprites, served from our own origin (never inlined into the synced row — token art living in
    the campaign row is exactly what blew the egress budget once already) */
 const BOAT_SPRITE_SIDE = "assets/boat-side.png?v=1";   // 224×96, bow pointing East
@@ -23304,6 +23330,24 @@ function boatPanel(map){
     pax ? (pax+" aboard — they sail with it") : "Nobody aboard"));
   return p;
 }
+/* Roll one of the boat's mounted weapons (DB dice + its flat bonus, since a hull has no Attack stat
+   to add instead) and hand the total to the same GM target-picker every other damage roll uses. */
+function fireBoatWeapon(map, boat, w){
+  const dice = (DB_TABLE[w.db]||"").split("/")[0].trim();
+  const r = rollDiceString(dice);
+  const total = r.total + w.bonus;
+  const body = el("div",{});
+  body.append(
+    el("div",{style:"text-align:center;font-size:28px;font-weight:800;color:var(--accent)"}, `💥 ${total}`),
+    el("div",{class:"small muted",style:"text-align:center;margin-bottom:8px"},
+      `${r.expr} → [${r.rolls.join(", ")}] = ${r.total} + ${w.bonus} (weapon bonus) = ${total}. ${w.range}, DB ${w.db}.`));
+  logRoll({ kind:"move", label:w.name, who:boat.label||"Boat", headline:`💥 ${total} damage`,
+    lines:[`${w.range} · DB ${w.db} (${dice})`, `${r.expr} → [${r.rolls.join(", ")}] = ${r.total} + ${w.bonus} = ${total}`],
+    atk:{ dmg:total, type:"Typeless", physical:true } });
+  const tw = attackTargetWidget({ dmg:total, type:"Typeless", physical:true });
+  if(tw) body.append(tw);
+  modal({title:`🔫 ${w.name}`, bodyNode:body, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+}
 /* GM-only: rename / resize / remove the hull, plus HP so the hull can be attacked. A boat has no
    statuses or turn order, so it gets this short menu instead of the full token one. */
 function openBoatMenu(token, map){
@@ -23364,6 +23408,47 @@ function openBoatMenu(token, map){
   atk.append(el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;align-items:center"},
     dmgIn, typeSel, clsSel, el("button",{class:"btn-primary",onclick:applyAtk},"Apply")), atkOut);
   wrap.append(atk);
+
+  // ---- Breaches: this vehicle's stand-in for Injuries — 25% max-HP markers instead of 50% ----
+  const breachWrap = el("div",{style:"margin-top:16px"});
+  const breachRow = el("div",{class:"tk-menu-row",style:"align-items:center;gap:8px"});
+  const drawBreach = ()=>{
+    const n = token.breaches||0, sec = token.breachSecurity!=null?token.breachSecurity:BOAT_BREACH_SECURITY_DEFAULT;
+    breachRow.innerHTML = "";
+    breachRow.append(
+      el("b",{style:"font-size:18px"}, String(n)),
+      el("span",{class:"small muted"}, n===1?"Breach":"Breaches"),
+      n>=sec ? el("span",{class:"small",style:"color:var(--bad);font-weight:700;margin-left:6px"},
+        "⚠ passengers now take splash damage (1 step further resisted)") : "");
+  };
+  drawBreach();
+  breachWrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"⛓ Breaches"),
+    breachRow,
+    el("div",{class:"tk-menu-row",style:"margin-top:4px"},
+      el("button",{class:"btn-secondary",onclick:()=>{ token.breaches=Math.max(0,(token.breaches||0)-1); mapTokensSave(); drawBreach(); }},"−1"),
+      el("button",{class:"btn-secondary",onclick:()=>{ token.breaches=(token.breaches||0)+1; mapTokensSave(); drawBreach(); }},"+1"),
+      el("button",{class:"btn-secondary",onclick:()=>{ token.breaches=0; mapTokensSave(); drawBreach(); }},"Clear")),
+    el("div",{class:"small muted",style:"margin-top:4px"},
+      "A Breach happens whenever the hull takes 50%+ of its max HP in one hit, and for every 25% of max HP it has lost. "
+      +"Once Breaches reach Breach Security (below), every hit on the hull also damages anyone aboard, resisted one step further."));
+  wrap.append(breachWrap);
+
+  // ---- vehicle weakness: Fire/Electric/Ground always Super-Effective, unless Levitate/Sky exempts Ground ----
+  const levCb = el("input",{type:"checkbox"}); levCb.checked = !!token.vehicleLevitate;
+  levCb.addEventListener("change", ()=>{ token.vehicleLevitate = levCb.checked; mapTokensSave(); });
+  wrap.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;margin-top:14px;cursor:pointer"},
+    levCb, el("span",{class:"small"},"Levitate / Sky vehicle (exempt from Ground's Super-Effective damage)")));
+
+  // ---- mounted weapons: roll the DB and hand the total to the usual GM target-picker ----
+  const wpWrap = el("div",{style:"margin-top:16px"});
+  wpWrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"🔫 Weapons"));
+  BOAT_WEAPONS.forEach(w=>{
+    const diceStr = (DB_TABLE[w.db]||"").split("/")[0].trim();
+    wpWrap.append(el("button",{class:"btn-secondary",style:"width:100%;justify-content:space-between;display:flex;margin-bottom:6px",
+      onclick:()=>fireBoatWeapon(map, token, w)},
+      el("span",{}, w.name), el("span",{class:"small muted"}, `${w.range} · DB ${w.db} (${diceStr}) + ${w.bonus}`)));
+  });
+  wrap.append(wpWrap);
 
   // ---- Defense stats + the reference-only vehicle numbers (no automation reads these) ----
   const mkStat = (key, label, dflt, max) => {
@@ -23713,6 +23798,13 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
   const furActive = !!(defMods?.furCoat && physical);
   if(typeless) mult = furActive ? 0.5 : 1;   // Typeless Physical (Struggle) still gets Fur Coat's step
   else if(defMods && defMods.immune.has(type) && !pierced) mult = 0;
+  else if(isBoatToken(token)){
+    // Vehicles (house rule): always Super-Effective vs Fire/Electric/Ground, but a Levitate/Sky
+    // vehicle is exempt from the Ground part. No other Type interaction — a boat carries no other
+    // typing to look up in the chart.
+    const groundExempt = type==="Ground" && !!token.vehicleLevitate;
+    mult = (!groundExempt && VEHICLE_WEAK_TYPES.has(type)) ? 2 : 1;
+  }
   else {
     const defStep = stepAdj + (defMods?.step?.[type] || 0);
     if(furActive) furStep = -1;
@@ -23757,7 +23849,9 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
   const final = Math.max(0, afterMult - (drPool - drGone));
   return { def, physical:!!physical, typeless, mult, afterDef, afterMult, dr, from, seDR, glacialDR,
            typeDR, typeDRFrom, final, drPool, drGone,
-           owner, defMods, swarmTgt, swarmStep, extraStep, pierced, tinted, tolerance: tolStep<0, furCoat: furActive };
+           owner, defMods, swarmTgt, swarmStep, extraStep, pierced, tinted, tolerance: tolStep<0, furCoat: furActive,
+           // kept only so applyTokenDamage can re-run this same hit against a breached boat's passengers
+           dmg, type:(typeless?"Typeless":type), aoe:!!aoe, pierceImmune:!!pierceImmune, pierceDR, atkTinted:!!atkTinted, defCSMode };
 }
 /* Apply a computed breakdown to the token: subtract its HP and spend any one-shot DR buff that
    absorbed the hit (Excited, Intercept…). Returns the HP value BEFORE the hit. */
@@ -23767,6 +23861,19 @@ async function applyTokenDamage(token, br){
   if(br.dr > 0 && br.owner && consumeDamageBuffs(br.owner)) await commitTokenSource(token);
   // an attack that isn't shrugged off as an immunity destroys any Illusion the defender was wearing
   if(br.mult > 0 && br.owner && breakIllusion(br.owner, "hit by a damaging Move")) await commitTokenSource(token);
+  // Breach Security (house rule): once a boat has as many Breaches as its Breach Security, every
+  // attack on the hull also splashes onto its passengers — resisted one step further than usual.
+  if(isBoatToken(token) && br.final > 0 && (token.breaches||0) >= (token.breachSecurity||BOAT_BREACH_SECURITY_DEFAULT)){
+    const map = currentMapForView() || activeMap();
+    if(map){
+      for(const p of boatPassengers(map, token)){
+        const pbr = tokenDamageBreakdown(p, { dmg:br.dmg, type:br.type, physical:br.physical,
+          extraStep:(br.extraStep||0)-1, aoe:br.aoe, pierceImmune:br.pierceImmune, pierceDR:br.pierceDR,
+          atkTinted:br.atkTinted, defCSMode:br.defCSMode });
+        await applyTokenDamage(p, pbr);
+      }
+    }
+  }
   return before;
 }
 /* one-line "N − Def = …, Type eff = …, − DR → final. HP a → b" breakdown, shared by both callers */
