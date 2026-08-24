@@ -1332,6 +1332,19 @@ const MINIOR_COLORS = ["Red","Orange","Yellow","Green","Blue","Indigo","Violet"]
    files each colour of the Core Forme under its own form id (minior-blue = 10140, …). */
 const MINIOR_ART = { Red:10136, Orange:10137, Yellow:10138, Green:10139, Blue:10140, Indigo:10141, Violet:10142 };
 
+/* Unown's inscribed letter is pure decoration too — all 28 formes (A-Z, !, ?) share one stat block,
+   Ability list and movelist, so the dex carries a single "Unown" species and the letter is just a
+   flavor pick stored on the Pokémon, read by monLookName to pick the right artwork. pokemondb only
+   draws the generic (A) art, and its own per-letter pixel sprites don't even cover ! and ?, so all
+   28 are hotlinked from PokeAPI instead, which files them as plain dex-id 201 (+ a per-letter suffix
+   for everything but A) under sprites/pokemon/ — e.g. 201.png, 201-b.png, 201-exclamation.png. */
+const UNOWN_LETTERS = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z","!","?"];
+function isUnownMon(p){ return !!(p && p.species==="Unown"); }
+function unownLetter(p){ return (p && UNOWN_LETTERS.includes(p.unownLetter)) ? p.unownLetter : "A"; }
+function unownSpriteSuffix(letter){
+  return letter==="A" ? "" : letter==="!" ? "-exclamation" : letter==="?" ? "-question" : `-${letter.toLowerCase()}`;
+}
+
 function isMinior(p){ const n = p && p.species; return n===MINIOR_METEOR || n===MINIOR_CORE; }
 /* This Minior's shell colour: the GM's pick if there is one, otherwise DERIVED from the Pokémon's
    own id. It used to roll a random colour and store it mid-render — but a render never saves, so
@@ -1353,6 +1366,8 @@ function monLookName(p, sp){
   if(p && p.transform && p.transform.species) return p.transform.species;
   // a cracked-open Minior is drawn in its own colour (speciesArtChain resolves the artwork)
   if(isMinior(p) && p.species===MINIOR_CORE) return `Minior ${miniorColor(p)} Core`;
+  // an Unown is drawn as whichever letter it's inscribed with (speciesArtChain resolves the artwork)
+  if(isUnownMon(p)) return `Unown ${unownLetter(p)}`;
   return (sp && sp.name) || (p && p.species) || "";
 }
 /* the species whose BODY it has — Transform "copies its weight and height", so size / Weight Class
@@ -1796,6 +1811,8 @@ function itemFreqForKey(key){
   if(kind==="rider") return "Scene";
   // a Z-Crystal's once-per-Scene charge (see heldTypeBoost) — recharges at End Scene like a Move
   if(kind==="zpower") return "Scene";
+  // a worn Accessory's own active use (Soothing Flute) — every one added so far is Scene-frequency
+  if(kind==="item") return "Scene";
   return null;
 }
 /* frequency of a named Move/Ability/Feature, for at-a-glance labels (classes/edges have none) */
@@ -2303,7 +2320,8 @@ function defenseTypeMods(p){
   // Super-Effective Fighting/Fire/Rock/Steel hits. Kept out of `why` (the matchup card reads `why`)
   // so it's only named on the damage line, and only for a Type it actually covers.
   const glacial = glacialIceDR(p);
-  return { step, immune, wonderGuard, seReduce, seFlatDR, tolerance, furCoat, typeDR: modeTypeDR(p), glacial, why };
+  // a Feature stance's typeDR (Enchanting Transformation) merged with a granted buff's (Soothing Flute)
+  return { step, immune, wonderGuard, seReduce, seFlatDR, tolerance, furCoat, typeDR: mergeTypeDR(modeTypeDR(p), buffTypeDR(p)), glacial, why };
 }
 /* Filter / Solid Rock soften a Super-Effective multiplier by one "half-step" on the PTU ladder. */
 function seReducedMult(m){ return m>=2 ? 1.5 : m>1 ? 1.25 : m; }
@@ -2434,6 +2452,15 @@ function speciesArtChain(name, shiny){
             `https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/other/official-artwork/${id}.png`,
             `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${sh}${id}.png`,
             spriteUrl(MINIOR_CORE, shiny)];
+  }
+  // "Unown <Letter>" isn't a species either — it's what monLookName calls this Unown's inscribed
+  // letter. pokemondb only draws the generic (A) art, so every letter is hotlinked from PokeAPI.
+  const un = /^Unown\s+(.+)$/.exec(name);
+  if(un && UNOWN_LETTERS.includes(un[1])){
+    const suf = unownSpriteSuffix(un[1]), sh = shiny ? "shiny/" : "";
+    return [`https://cdn.jsdelivr.net/gh/PokeAPI/sprites@master/sprites/pokemon/${sh}201${suf}.png`,
+            `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${sh}201${suf}.png`,
+            spriteUrl("Unown", shiny)];
   }
   const bucket = speciesArtUrls(name, shiny);
   // main directory first so a species keeps working once its art is promoted out of staging; the
@@ -5643,6 +5670,7 @@ const EQUIP_EFFECTS = {
   "sensor disruption vest": { note:"Pokébots & Eye-Augment attackers take −2 Accuracy on single-target checks vs you." },
   "gravity modulation suit":{ note:"Treat local gravity as 1 higher or lower." },
   "thermal dampening suit": { note:"Invisible to thermal imaging gear." },
+  "soothing flute":         { note:"1/Scene Standard Action: cures Enraged on all who hear it, and grants up to your Occult Ed. Rank allies +5 Damage Reduction against Ghost-Type Attacks for the rest of the Scene — use ⚔ Battle → Standard → 🎵 Soothing Flute." },
 };
 /* mojibake cleanup for the catalog effect strings (é/apostrophes/dashes got double-encoded on import) */
 function cleanupText(s){
@@ -5821,6 +5849,87 @@ function equipmentCard(t){
   if(!anyEquippable) card.append(el("div",{class:"muted small",style:"margin-top:8px"},
     "You own no wearable gear yet — add armor, clothing, shields, Fashions… to your Inventory (the Inventory & Bio tab) to equip it here."));
   return card;
+}
+
+/* ===================================================================
+   SOOTHING FLUTE (Trainer Accessory) — 1/Scene Standard Action: cures
+   Enraged on everyone who hears it, and grants up to Occult Ed. Rank
+   allies +5 Damage Reduction against Ghost-Type Attacks for the rest of
+   the Scene. The DR is one PTU_BUFFS row (soothing-flute-dr) so it flows
+   through the same buffDR / defenseTypeMods plumbing every other buff
+   does; this picker only reaches the caster's own party (Trainer + team
+   Pokémon), exactly like openGiveOrder — another player's Pokémon gets
+   it from their own token's Buffs & Orders "+ Item…" picker on the Map.
+=================================================================== */
+function hasSoothingFlute(t){
+  return equippedList(t).some(({name}) => String(name||"").trim().toLowerCase()==="soothing flute");
+}
+/* remove Enraged, honouring the same "may not roll to cure it" warning toggleStatus shows (still
+   lets it happen — the app never blocks, only says the rule out loud for the table to rule on). */
+function cureEnraged(o){
+  if(!o || !hasStatus(o,"enraged")) return false;
+  const w = statusCureBlock(o, "enraged"); if(w) toast(w);
+  o.statuses = o.statuses.filter(k=>k!=="enraged");
+  return true;
+}
+function openSoothingFlute(t, rerender){
+  const key = useKey("item","Soothing Flute");
+  const team = (activeChar()?.pokemon||[]).filter(p=>p.onTeam);
+  const cap = rankNum(t.skills?.occultEd);
+  const entries = [
+    { obj:t, label:`🧑 ${t.name||"Trainer"} — yourself` },
+    ...team.map(p => ({ obj:p, label:`🔴 ${p.nickname||getSpecies(p.species)?.name||"?"} · Lv ${p.level}` })),
+  ];
+  const body = el("div",{});
+  body.append(el("div",{class:"small",style:"margin-bottom:10px"},
+    `Cures Enraged on everyone who hears it — no limit. Up to your Occult Ed. Rank (${cap}) among them may also gain +5 Damage Reduction against Ghost-Type Attacks for the rest of the Scene.`));
+  const drCount = el("span",{style:"font-weight:700"}, `0 / ${cap}`);
+  const refreshCount = () => { drCount.textContent = `${entries.filter(en=>en.drBox.checked).length} / ${cap}`; };
+  entries.forEach(en=>{
+    const cureBox = el("input",{type:"checkbox", checked: hasStatus(en.obj,"enraged")});
+    const drBox = el("input",{type:"checkbox"});
+    en.cureBox = cureBox; en.drBox = drBox;
+    drBox.addEventListener("change",()=>{
+      if(drBox.checked && entries.filter(x=>x.drBox.checked).length > cap){
+        drBox.checked = false; toast(`Only ${cap} allies can be affected by the Flute — your Occult Ed. Rank`); return;
+      }
+      refreshCount();
+    });
+    body.append(el("div",{style:"margin-top:8px"},
+      el("div",{style:"font-weight:700"}, en.label),
+      el("label",{class:"inline",style:"gap:6px"}, cureBox, "cures Enraged" + (hasStatus(en.obj,"enraged")?" (currently Enraged)":"")),
+      el("label",{class:"inline",style:"gap:6px;margin-left:16px"}, drBox, "+5 DR vs Ghost")));
+  });
+  body.append(el("div",{class:"small muted",style:"margin-top:10px"}, "Getting the DR: ", drCount, "."));
+  modal({title:"🎵 Play Soothing Flute", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      if(usesLeft(t, key, 1)<=0 && !t.unlocked){ toast("No Soothing Flute uses left this Scene"); return; }
+      let curedN=0, buffedN=0;
+      entries.forEach(en=>{
+        if(en.cureBox.checked && cureEnraged(en.obj)) curedN++;
+        if(en.drBox.checked){ addBuff(en.obj, "soothing-flute-dr"); buffedN++; }
+      });
+      t.uses = t.uses||{}; t.uses[key] = Math.min(1, (t.uses[key]||0)+1);
+      save(); closeModal();
+      toast(`🎵 Soothing Flute — cured Enraged on ${curedN}, granted Ghost DR to ${buffedN}`);
+      (rerender||renderBattle)();
+    }},"🎵 Play"),
+  ]});
+}
+/* the Battle-tab Standard-action row, shown only while a Soothing Flute is actually worn */
+function soothingFluteActionRow(t, rerender){
+  const d = el("details",{class:"spoiler"});
+  const uc = usesControl(t, "item", "Soothing Flute", "Scene", rerender, save);
+  d.append(el("summary",{},
+    el("span",{style:"font-weight:700;color:var(--ink)"}, "🎵 Soothing Flute"),
+    el("span",{class:"muted small",style:"margin-left:8px"}, "Standard · Accessory"),
+    uc ? el("span",{style:"margin-left:8px"}, uc) : "",
+    el("button",{class:"linkbtn",style:"margin-left:8px",
+      onclick:e=>{ e.preventDefault(); e.stopPropagation(); openSoothingFlute(t, rerender); }},"🎵 Play")));
+  d.append(el("div",{class:"small",style:"margin-top:6px"},
+    "Cures Enraged on all who hear it, and grants up to your Occult Ed. Rank allies +5 Damage Reduction against Ghost-Type Attacks for the rest of the Scene."));
+  return d;
 }
 
 /* ===================================================================
@@ -8460,9 +8569,14 @@ const PTU_BUFFS = [
   { key:"frenzy", cat:"Berserker", name:"Frenzy", dur:"the rest of this turn", self:true,
     mods:{ crit:2, move:2, skills:{ acrobatics:2, athletics:2, combat:2, intimidate:2 } },
     note:"You took your turn with Priority and were cured of Slowed and Stuck. +2 Critical Hit Range, +2 Movement Speed and +2 to Acrobatics, Athletics, Combat and Intimidate Checks — all three auto-applied while it's up." },
+  // — Trainer Accessories (Core p.192-ish homebrew additions). Granted from the item's own row rather
+  // than a Feature, so it lives here as an ordinary buff — a GM can also drop it on any other sheet
+  // straight from that owner's own Buffs & Orders "+ Item…" picker, same as an Order given cross-sheet. —
+  { key:"soothing-flute-dr", cat:"Item", name:"Soothing Flute (Ghost DR)", dur:"until end of Scene", mods:{ typeDR:{Ghost:5} },
+    note:"+5 Damage Reduction against Ghost-Type Attacks — Soothing Flute (Trainer Accessory), auto-applied by the Map's attack tool whenever the incoming hit is Ghost-Type." },
 ];
 const buffByKey = new Map(PTU_BUFFS.map(b=>[b.key,b]));
-const BUFF_CATS = ["Cheerleader","Commander","Musician","Berserker"];
+const BUFF_CATS = ["Cheerleader","Commander","Musician","Berserker","Item"];
 function ownerBuffs(owner){ return Array.isArray(owner?.buffs) ? owner.buffs : []; }
 /* Some buffs only apply to one damage class — a Spicy Wrap's +5 is Physical attacks only, a Dry
    Wafer's is Special. `b.only` carries that; pass ctx={isPhys} from a roll to honour it. With no
@@ -8591,6 +8705,7 @@ function buffModText(m){
   if(m.db)   p.push(`${m.db>0?"+":""}${m.db} DB`);
   if(m.crit) p.push(`+${m.crit} Crit/Effect range`);
   if(m.dr)   p.push(`${m.dr>0?"+":""}${m.dr} DR`);
+  if(m.typeDR) for(const k in m.typeDR) p.push(`+${m.typeDR[k]} DR vs ${k}`);
   if(m.move) p.push(`${m.move>0?"+":""}${m.move} Movement`);
   if(m.skills){ const n = Object.values(m.skills)[0];
     p.push(`${n>0?"+":""}${n} ${Object.keys(m.skills).map(k=>(SKILLS.find(([s])=>s===k)||[,k])[1]).join("/")}`); }
@@ -10000,6 +10115,7 @@ function renderMonBuild(root, p, sp){
 
   idc.append(rotomFormControl(p, sp, ()=>{ save(); refreshMon(p); }));
   idc.append(miniorColorControl(p, sp, ()=>{ save(); refreshMon(p); }));
+  idc.append(unownLetterControl(p, sp, ()=>{ save(); refreshMon(p); }));
   idc.append(xpRow(p));
   if(nat) idc.append(el("div",{class:"small muted",style:"margin:6px 0"},
     `Nature ${nat.name}: ${natSummary(nat)} · likes ${nat.likedFlavor}, dislikes ${nat.dislikedFlavor}`));
@@ -11276,6 +11392,21 @@ function miniorColorControl(p, sp, onChanged){
     title:"Encounters have no End Scene of their own, so this Minior would otherwise stay cracked open forever",
     onclick:()=>{ p.species = MINIOR_METEOR; onChanged(); }},"↺ Meteor Forme"));
   wrap.append(el("span",{class:"muted small"}, when));
+  return wrap;
+}
+/* Unown's inscribed letter — purely cosmetic (identical stats/Abilities/movelist across all 28
+   formes), and unlike Minior's colour there's no hidden info to gate, so anyone editing the sheet
+   can just pick it. Changing it only swaps the artwork (via monLookName -> speciesArtChain). */
+function unownLetterControl(p, sp, onChanged){
+  if(!isUnownMon(p)) return el("span",{style:"display:none"});
+  const wrap = el("div",{class:"inline small",style:"margin:2px 0 8px;flex-wrap:wrap;gap:8px;align-items:center"});
+  wrap.append(el("span",{class:"muted",style:"font-weight:700"},"Unown letter:"));
+  const sel = el("select",{style:"padding:4px 6px"});
+  const cur = unownLetter(p);
+  UNOWN_LETTERS.forEach(l=>sel.append(el("option",{value:l,selected:cur===l}, l)));
+  sel.addEventListener("change",()=>{ p.unownLetter = sel.value; onChanged(); });
+  wrap.append(sel, el("button",{class:"linkbtn",title:"pick one at random",
+    onclick:()=>{ p.unownLetter = UNOWN_LETTERS[Math.floor(Math.random()*UNOWN_LETTERS.length)]; sel.value = p.unownLetter; onChanged(); }},"🎲"));
   return wrap;
 }
 /* Poltergeist (Ability, Static): "Rotom gains an Ability and a Move depending on what Form it has
@@ -13520,6 +13651,10 @@ function renderBattle(){
     wrap.append(el("div",{class:"section-head",style:"margin-top:14px"}, "Custom Actions"));
     customRows.forEach(a=>wrap.append(customActionRow(a, c.trainer, renderBattle)));
   }
+  if(isTrainer && battleFilter==="standard" && hasSoothingFlute(c.trainer)){
+    wrap.append(el("div",{class:"section-head",style:"margin-top:14px"}, "Equipment"));
+    wrap.append(soothingFluteActionRow(c.trainer, renderBattle));
+  }
   root.append(wrap);
 }
 function isTypeFilter(k){ return ["standard","shift","swift","free","full"].includes(k); }
@@ -13757,6 +13892,29 @@ function modeTypeDR(o){
   activeFeatureModes(o).forEach(d => Object.entries(d.typeDR||{}).forEach(([ty,n])=>{
     if(!out[ty]) out[ty] = { dr:0, from:[] };
     out[ty].dr += n; out[ty].from.push(d.feat);
+  }));
+  return out;
+}
+/* flat per-Type Damage Reduction from active BUFFS (e.g. a Soothing Flute's Ghost DR) — same shape
+   as modeTypeDR, so the two merge straight into defenseTypeMods' typeDR. Works for Trainers AND
+   Pokémon, since a buff can be handed to either. */
+function buffTypeDR(owner){
+  const out = {};
+  ownerBuffs(owner).forEach(b=>{
+    const td = b.mods && b.mods.typeDR; if(!td) return;
+    Object.entries(td).forEach(([ty,n])=>{
+      if(!out[ty]) out[ty] = { dr:0, from:[] };
+      out[ty].dr += n; out[ty].from.push(b.name);
+    });
+  });
+  return out;
+}
+/* combine any number of {Type:{dr,from}} maps (modeTypeDR + buffTypeDR) into one */
+function mergeTypeDR(...maps){
+  const out = {};
+  maps.forEach(m => Object.entries(m||{}).forEach(([ty,e])=>{
+    if(!out[ty]) out[ty] = { dr:0, from:[] };
+    out[ty].dr += e.dr; out[ty].from.push(...e.from);
   }));
   return out;
 }
@@ -15014,7 +15172,7 @@ const ENC_AREAS = [
     common:["Horsea","Chinchou","Remoraid","Wingull","Buizel","Finneon",
             "Frillish","Wailmer","Cramorant","Arrokuda"],
     rare:["Mantyke","Corsola","Skrelp","Clobbopus","Wishiwashi Solo","Dhelmise",
-          "Finizen","Veluza"],
+          "Finizen","Veluza","Lapras"],
     combos:[{ when:"Mantyke", with:"Remoraid", becomes:"Mantine" }] },
 ];
 const encRandInt = (lo,hi)=> lo + Math.floor(Math.random()*(hi-lo+1));
@@ -15621,6 +15779,7 @@ function encounterMonCard(enc, p, list, trainer){
 
   nw.append(rotomFormControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   nw.append(miniorColorControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
+  nw.append(unownLetterControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   nw.append(el("div",{class:"small muted",style:"margin-top:2px"}, `Atk ${d.eff.atk} · SpA ${d.eff.spatk} · Def ${d.eff.def} · SpD ${d.eff.spdef} · Spd ${d.eff.spd}`));
   nw.append(el("div",{class:"small muted",style:"margin-top:2px"}, `Evasion — Phys +${d.physEva} · Spec +${d.specEva} · Speed +${d.spdEva}`));
   head.append(nw);
