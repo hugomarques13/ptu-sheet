@@ -23926,7 +23926,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
   const label = t=>{ const i=tokenHp(t); return `${i.name} — ${i.cur}/${i.max} HP`; };
   const items = tokens.map(t=>{
     const kind = tokenHp(t).kind;
-    const faction = (kind==="trainer"||kind==="pokemon") ? "players" : "enemies";
+    const faction = (kind==="trainer"||kind==="pokemon"||kind==="boat") ? "players" : "enemies";
     const cb = el("input",{type:"checkbox"});
     const txt = el("span",{class:"small"}, label(t));
     const row = el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;padding:2px 0;cursor:pointer"}, cb, txt);
