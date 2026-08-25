@@ -23198,6 +23198,7 @@ const BOAT_WEAPONS = [
   { key:"cannon",  name:"Cannon",  range:"Long Range",  db:6, bonus:10 },
   { key:"harpoon", name:"Harpoon", range:"Short Range", db:5, bonus:10 },
 ];
+const BOAT_WEAPON_AC = 2;   // no Accuracy stat to roll with, so it's a flat d20 vs AC 2 + target's Evasion
 /* the sprites, served from our own origin (never inlined into the synced row — token art living in
    the campaign row is exactly what blew the egress budget once already) */
 const BOAT_SPRITE_SIDE = "assets/boat-side.png?v=1";   // 224×96, bow pointing East
@@ -23333,16 +23334,26 @@ function boatPanel(map){
 /* Roll one of the boat's mounted weapons (DB dice + its flat bonus, since a hull has no Attack stat
    to add instead) and hand the total to the same GM target-picker every other damage roll uses. */
 function fireBoatWeapon(map, boat, w){
+  // Accuracy Check first: no Accuracy stat to add, so it's a flat d20 vs this weapon's AC + target's Evasion.
+  const acc = 1+Math.floor(Math.random()*20);
+  const accNote = acc===20 ? " Natural 20 — auto-hit!" : acc===1 ? " Natural 1 — auto-miss." : "";
+
   const dice = (DB_TABLE[w.db]||"").split("/")[0].trim();
   const r = rollDiceString(dice);
   const total = r.total + w.bonus;
   const body = el("div",{});
   body.append(
+    el("div",{class:"small muted",style:"font-weight:700"}, "Accuracy Check"),
+    el("div",{style:"text-align:center;font-size:24px;font-weight:800"}, `🎯 ${acc}`),
+    el("div",{class:"small muted",style:"text-align:center;margin-bottom:10px"},
+      `Hits if ${acc} ≥ AC ${BOAT_WEAPON_AC} + target's Physical Evasion.${accNote}`),
+    el("div",{class:"small muted",style:"font-weight:700"}, "Damage Roll"),
     el("div",{style:"text-align:center;font-size:28px;font-weight:800;color:var(--accent)"}, `💥 ${total}`),
     el("div",{class:"small muted",style:"text-align:center;margin-bottom:8px"},
       `${r.expr} → [${r.rolls.join(", ")}] = ${r.total} + ${w.bonus} (weapon bonus) = ${total}. ${w.range}, DB ${w.db}.`));
   logRoll({ kind:"move", label:w.name, who:boat.label||"Boat", headline:`💥 ${total} damage`,
-    lines:[`${w.range} · DB ${w.db} (${dice})`, `${r.expr} → [${r.rolls.join(", ")}] = ${r.total} + ${w.bonus} = ${total}`],
+    lines:[`🎯 Accuracy ${acc} vs AC ${BOAT_WEAPON_AC} + target's Physical Evasion.${accNote}`,
+           `${w.range} · DB ${w.db} (${dice})`, `${r.expr} → [${r.rolls.join(", ")}] = ${r.total} + ${w.bonus} = ${total}`],
     atk:{ dmg:total, type:"Typeless", physical:true } });
   const tw = attackTargetWidget({ dmg:total, type:"Typeless", physical:true });
   if(tw) body.append(tw);
@@ -23439,15 +23450,26 @@ function openBoatMenu(token, map){
   wrap.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;margin-top:14px;cursor:pointer"},
     levCb, el("span",{class:"small"},"Levitate / Sky vehicle (exempt from Ground's Super-Effective damage)")));
 
-  // ---- mounted weapons: roll the DB and hand the total to the usual GM target-picker ----
+  // ---- mounted weapons: only an "armed" hull (the Pirate Ship, not the plain player boat) carries
+  // these — toggle it per-boat rather than guessing off the name, since the label is just free text ----
   const wpWrap = el("div",{style:"margin-top:16px"});
-  wpWrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"🔫 Weapons"));
-  BOAT_WEAPONS.forEach(w=>{
-    const diceStr = (DB_TABLE[w.db]||"").split("/")[0].trim();
-    wpWrap.append(el("button",{class:"btn-secondary",style:"width:100%;justify-content:space-between;display:flex;margin-bottom:6px",
-      onclick:()=>fireBoatWeapon(map, token, w)},
-      el("span",{}, w.name), el("span",{class:"small muted"}, `${w.range} · DB ${w.db} (${diceStr}) + ${w.bonus}`)));
-  });
+  const armedCb = el("input",{type:"checkbox"}); armedCb.checked = !!token.armed;
+  const wpBtns = el("div",{style:"margin-top:6px"});
+  const drawWeapons = ()=>{
+    wpBtns.innerHTML = "";
+    if(!token.armed) return;
+    BOAT_WEAPONS.forEach(w=>{
+      const diceStr = (DB_TABLE[w.db]||"").split("/")[0].trim();
+      wpBtns.append(el("button",{class:"btn-secondary",style:"width:100%;justify-content:space-between;display:flex;margin-bottom:6px",
+        onclick:()=>fireBoatWeapon(map, token, w)},
+        el("span",{}, w.name), el("span",{class:"small muted"}, `${w.range} · DB ${w.db} (${diceStr}) + ${w.bonus}`)));
+    });
+  };
+  armedCb.addEventListener("change", ()=>{ token.armed = armedCb.checked; mapTokensSave(); drawWeapons(); });
+  wpWrap.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;cursor:pointer"},
+    armedCb, el("span",{class:"small"},"🔫 Armed (mounts a Cannon & Harpoon — e.g. the Pirate Ship)")));
+  drawWeapons();
+  wpWrap.append(wpBtns);
   wrap.append(wpWrap);
 
   // ---- Defense stats + the reference-only vehicle numbers (no automation reads these) ----
