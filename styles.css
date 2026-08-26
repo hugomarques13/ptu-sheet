@@ -283,6 +283,15 @@ textarea{resize:vertical; min-height:64px}
 .right{text-align:right}
 .spacer{flex:1}
 .warnbox{background:rgba(217,140,0,.12); border:1px solid var(--warn); color:var(--warn); padding:6px 10px; border-radius:var(--radius-sm); font-size:12px; font-weight:600}
+/* Death notice (deathBanner()) — deliberately heavier than .warnbox: this one is permanent and the
+   table needs to read it at a glance from the Trainer, Pokémon and Encounter cards alike. */
+.deadbox{background:linear-gradient(180deg, rgba(125,26,38,.30), rgba(20,4,8,.55)); border:1px solid #7d1a26;
+  color:#ffc7cf; padding:7px 11px; border-radius:var(--radius-sm); font-size:12px; font-weight:800;
+  letter-spacing:.04em; text-transform:uppercase; margin:6px 0;
+  box-shadow:inset 0 0 18px rgba(0,0,0,.5)}
+.deadbox-lift{color:#ffc7cf; text-decoration:underline; margin-left:10px; font-size:11px;
+  letter-spacing:.04em; text-transform:none; opacity:.85}
+.deadbox-lift:hover{opacity:1}
 .eff-line{display:flex; flex-wrap:wrap; gap:5px; align-items:center}
 .eff{font-size:11px; font-weight:800; padding:2px 7px; border-radius:6px}
 .eff.x0{background:#3a3f47;color:#fff}.eff.x25{background:#1c6b3a;color:#fff}.eff.x50{background:#2e9e5b;color:#fff}
@@ -463,6 +472,17 @@ body.map-mode .map-viewport{flex:1 1 auto; height:auto; min-height:0; border-rad
    explicit re-saturation, so it's pulled back out of the greyscale here. */
 .map-token.ko{filter:grayscale(1) brightness(.62); border-color:#8b8f98 !important; opacity:.85}
 .map-token.ko .tk-status-ring{filter:grayscale(0) brightness(1.6)}
+/* Dead — one step darker than Knocked Out (above). The whole token is drained to a near-black
+   silhouette ringed in dried blood, with a skull struck over it (.tk-dead, appended and sized in
+   paintDeadMark()). The label, HP readout and status rings compensate with brightness() so they
+   stay readable through the parent filter, the same trick .ko uses for its ring. */
+.map-token.dead{filter:grayscale(1) brightness(.3) contrast(1.15); border-color:#7d1a26 !important; opacity:.92;
+  box-shadow:0 0 0 2px rgba(0,0,0,.6), 0 0 16px 3px rgba(125,26,38,.45)}
+.map-token.dead .tk-status-ring{filter:grayscale(0) brightness(2.8)}
+.map-token.dead .tk-name,.map-token.dead .tk-hpnum,.map-token.dead .tk-altitude{filter:grayscale(0) brightness(3)}
+.map-token .tk-dead{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  line-height:1; pointer-events:none; color:#ffe3e7; z-index:3;
+  filter:brightness(3.4) drop-shadow(0 1px 2px #000)}
 .map-token .tk-img{width:100%; height:100%; border-radius:50%; object-fit:cover; display:block; pointer-events:none}
 /* Cosmetic hazard markers: just the emoji, no token chrome (no ring/background/shadow). The icon
    scales to the token box via container units so it stays crisp at any grid size. */

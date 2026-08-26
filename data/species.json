@@ -252,7 +252,8 @@
   "diet": "Phototroph",
   "habitat": "Taiga",
   "height": "7' 3\" / 2.2m (Large)",
-  "order": 1
+  "order": 1,
+  "megaEvolution": "Type: Unchanged Ability: Snow Warning Stats: +4 Atk, +3 Def, +4 Sp. Atk, +2 Sp. Def, -3 Speed"
  },
  {
   "name": "Abra",
@@ -826,7 +827,8 @@
   "diet": "Omnivore",
   "habitat": "Forest, Grassland, Mountain",
   "height": "3' 11\" / 1.2m (Medium)",
-  "order": 3
+  "order": 3,
+  "megaEvolution": "Type: Unchanged Ability: Magic Bounce Stats: +2 Atk, +4 Sp. Atk, +4 Speed Mega Evolution Z Type: Dark / Ghost Ability: Sharpness Stats: +2 Atk, +8 Speed"
  },
  {
   "name": "Accelgor",
@@ -1613,7 +1615,8 @@
   "diet": "Carnivore",
   "habitat": "Cave, Mountain",
   "height": "5' 11\" / 1.8m (Huge)",
-  "order": 6
+  "order": 6,
+  "megaEvolution": "Type: Unchanged Ability: Tough Claws Stats: +3 Atk, +2 Def, +1 Sp. Atk, +2 Sp. Def, +2 Speed"
  },
  {
   "name": "Aggron",
@@ -1933,7 +1936,8 @@
   "diet": "Terravore",
   "habitat": "Cave, Mountain",
   "height": "6' 11\" / 2.1m (Large)",
-  "order": 7
+  "order": 7,
+  "megaEvolution": "Type: Steel Ability: Filter Stats: +3 Atk, +5 Def, +2 Sp. Def"
  },
  {
   "name": "Aipom",
@@ -2529,7 +2533,8 @@
   "diet": "Omnivore",
   "habitat": "Urban",
   "height": "4' 11\" / 1.5m (Medium)",
-  "order": 9
+  "order": 9,
+  "megaEvolution": "Type: Unchanged Ability: Trace Stats: +2 Def, +4 Sp. Atk, +3 Speed"
  },
  {
   "name": "Alomomola",
@@ -3089,7 +3094,8 @@
   "diet": "Herbivore",
   "habitat": "Forest, Rainforest",
   "height": "3' 7\" / 1.1m (Medium)",
-  "order": 11
+  "order": 11,
+  "megaEvolution": "Type: Dragon / Fairy Ability: Pixilate Stats: +4 Atk, +2 Def, +4 Sp. Atk"
  },
  {
   "name": "Amaura",
@@ -4201,7 +4207,8 @@
   "diet": "Herbivore",
   "habitat": "Grassland, Mountain",
   "height": "4' 7\" / 1.4m (Medium)",
-  "order": 15
+  "order": 15,
+  "megaEvolution": "Type: Electric/Dragon Ability: Mold Breaker Stats: +2 Atk, +2 Def, +5 Sp. Atk, +2 Sp. Def, -1 Speed"
  },
  {
   "name": "Anorith",
@@ -5043,7 +5050,8 @@
   "diet": "Carnivore",
   "habitat": "Grassland, Mountain",
   "height": "6' 3\" / 1.9m (Large)",
-  "order": 18
+  "order": 18,
+  "megaEvolution": "Type: Fire / Fairy Ability: Pixilate Stats: +3 Atk, +2 Def, +2 Sp. Atk, +1 Sp. Def, +2 Speed"
  },
  {
   "name": "Arceus",
@@ -7605,7 +7613,8 @@
   "diet": "Herbivore",
   "habitat": "Forest, Grassland",
   "height": "3' 7\" / 1.1m (Medium)",
-  "order": 27
+  "order": 27,
+  "megaEvolution": "Type: Normal / Fairy Ability: Healer Stats: +4 Def, +2 Sp. Atk, +4 Sp. Def"
  },
  {
   "name": "Aurorus",
@@ -10125,7 +10134,8 @@
   "diet": "Nullivore",
   "habitat": "Cave, Urban",
   "height": "3' 7\" / 1.1m (Medium)",
-  "order": 36
+  "order": 36,
+  "megaEvolution": "Type: Unchanged Ability: Prankster Stats: +5 Atk, +1 Def, +1 Sp. Atk, +2 Sp. Def, +1 Speed"
  },
  {
   "name": "Barbaracle",
@@ -10429,7 +10439,8 @@
   "diet": "Herbivore",
   "habitat": "Beach, Ocean",
   "height": "4' 03\" / 1.3m (Medium)",
-  "order": 37
+  "order": 37,
+  "megaEvolution": "Type: Rock / Fighting Ability: Tough Claws Stats: +4 Atk, +1 Def, +1 Sp. Atk, +2 Sp. Def, +2 Speed"
  },
  {
   "name": "Barboach",
@@ -12274,7 +12285,8 @@
   "diet": "Herbivore",
   "habitat": "Forest",
   "height": "3' 3\" / 1m (Medium)",
-  "order": 44
+  "order": 44,
+  "megaEvolution": "Type: Unchanged Ability: Adaptability Stats: +6 Atk, -3 Sp. Atk, +7 Speed"
  },
  {
   "name": "Beheeyem",
@@ -14919,7 +14931,8 @@
   "diet": "Omnivore",
   "habitat": "Beach, Freshwater, Ocean",
   "height": "5' 3\" / 1.6m (Medium)",
-  "order": 54
+  "order": 54,
+  "megaEvolution": "Type: Unchanged Ability: Mega Launcher Stats: +2 Atk, +2 Def, +5 Sp. Atk, +1 Sp. Def"
  },
  {
   "name": "Blaziken",
@@ -15214,7 +15227,8 @@
   "diet": "Omnivore",
   "habitat": "Grassland",
   "height": "6' 3\" / 1.9m (Medium)",
-  "order": 55
+  "order": 55,
+  "megaEvolution": "Type: Unchanged Ability: Speed Boost Stats: +4 Atk, +1 Def, +2 Sp. Atk, +1 Sp. Def, +2 Speed"
  },
  {
   "name": "Blissey",
@@ -20589,7 +20603,8 @@
   "diet": "Herbivore",
   "habitat": "Desert, Mountain",
   "height": "6' 3\" / 1.9m (Large)",
-  "order": 75
+  "order": 75,
+  "megaEvolution": "Type: Unchanged Ability: Sheer Force Stats: +2 Atk, +3 Def, +4 Sp. Atk, +3 Sp. Def, -2 Speed"
  },
  {
   "name": "Carbink",
@@ -22810,7 +22825,8 @@
   "diet": "Nullivore",
   "habitat": "Cave, Urban",
   "height": "3' 3\" / 1m (Medium)",
-  "order": 84
+  "order": 84,
+  "megaEvolution": "Type: Unchanged Ability: Infiltrator Stats: +2 Atk, +2 Def, +3 Sp. Atk, +2 Sp. Def, +1 Speed"
  },
  {
   "name": "Chansey",
@@ -23416,7 +23432,8 @@
   "diet": "Carnivore",
   "habitat": "Cave, Mountain",
   "height": "5' 7\" / 1.7m (Medium)",
-  "order": 86
+  "order": 86,
+  "megaEvolution": "X Type: Fire/Dragon Ability: Tough Claws Stats: +5 Atk, +3 Def, +2 Sp. Atk Mega Evolution Y Type: Unchanged Ability: Drought Stats: +2 Atk, +5 Sp. Atk, +3 Sp. Def"
  },
  {
   "name": "Charmander",
@@ -25031,7 +25048,8 @@
   "diet": "Herbivore",
   "habitat": "Forest, Grassland, Rainforest",
   "height": "5' 03\" / 1.6m (Large)",
-  "order": 92
+  "order": 92,
+  "megaEvolution": "Type: Unchanged Ability: Bulletproof Stats: +3 Atk, +5 Def, +4 Sp. Def, -2 Speed"
  },
  {
   "name": "Chespin",
@@ -26168,7 +26186,8 @@
   "diet": "Herbivore",
   "habitat": "Cave, Urban",
   "height": "2' 0\" / 0.6m (Small)",
-  "order": 96
+  "order": 96,
+  "megaEvolution": "Type: Psychic / Steel Ability: Levitate Stats: +3 Def, +4 Sp. Atk, +3 Sp. Def"
  },
  {
   "name": "Chinchou",
@@ -28352,7 +28371,8 @@
   "diet": "Herbivore",
   "habitat": "Cave, Mountain",
   "height": "4' 3\" / 1.3m (Medium)",
-  "order": 104
+  "order": 104,
+  "megaEvolution": "Type: Fairy / Flying Ability: Magic Bounce Stats: +1 Atk, +2 Def, +4 Sp. Atk, +2 Sp. Def, +1 Speed"
  },
  {
   "name": "Clefairy",
@@ -34896,7 +34916,8 @@
   "diet": "Nullivore",
   "habitat": "Forest, Non Space",
   "height": "4' 11\" / 1.5m (Large)",
-  "order": 128
+  "order": 128,
+  "megaEvolution": "Type: Unchanged Ability: Bad Dreams Stats: +3 Atk, +4 Def, +3 Sp. Atk, +4 Sp. Def, -4 Speed"
  },
  {
   "name": "Darmanitan",
@@ -37138,7 +37159,8 @@
   "diet": "Herbivore",
   "habitat": "Forest, Grassland, Urban",
   "height": "4' 11\" / 1.5m (Medium)",
-  "order": 137
+  "order": 137,
+  "megaEvolution": "Type: Unchanged Ability: Levitate Stats: +5 Sp. Atk, +2 Sp. Def, +3 Speed"
  },
  {
   "name": "Deoxys",
@@ -38705,7 +38727,8 @@
   "diet": "Omnivore",
   "habitat": "Cave",
   "height": "2' 04\" / .7m (Small)",
-  "order": 145
+  "order": 145,
+  "megaEvolution": "Type: Unchanged Ability: Magic Bounce Stats: +6 Atk, -4 Def, +6 Sp. Atk, -4 Sp. Def, +6 Speed 722 MELOETTA Aria Form"
  },
  {
   "name": "Diggersby",
@@ -40700,7 +40723,8 @@
   "diet": "Carnivore",
   "habitat": "Ocean",
   "height": "5' 11\" / 1.8m (Large)",
-  "order": 153
+  "order": 153,
+  "megaEvolution": "Type: Unchanged Ability: Regenerator Stats: +1 Atk, +2 Def, +3 Sp. Atk, +4 Sp. Def"
  },
  {
   "name": "Dragonair",
@@ -41259,7 +41283,8 @@
   "diet": "Omnivore",
   "habitat": "Cave, Freshwater, Mountain",
   "height": "7' 3\" / 2.2m (Large)",
-  "order": 155
+  "order": 155,
+  "megaEvolution": "Type: Unchanged Ability: Multiscale Stats: -1 Atk, +2 Def, +5 Sp. Atk, +2 Sp. Def, +2 Speed"
  },
  {
   "name": "Drapion",
@@ -46531,7 +46556,8 @@
   "diet": "Carnivore, Ergovore",
   "habitat": "Cave, Freshwater",
   "height": "6' 11\" / 2.1m (Large)",
-  "order": 174
+  "order": 174,
+  "megaEvolution": "Type: Unchanged Ability: Elevate Stats: +3 Atk, +3 Sp. Atk, +1 Sp. Def, +3 Speed"
  },
  {
   "name": "Eevee",
@@ -49070,7 +49096,8 @@
   "diet": "Omnivore",
   "habitat": "Cave, Grassland, Mountain",
   "height": "5' 3\" / 1.6m (Medium)",
-  "order": 183
+  "order": 183,
+  "megaEvolution": "Type: Unchanged Ability: Mold Breaker Stats: +3 Atk, +1 Def, +1 Sp. Atk, +4 Sp. Def, +1 Speed"
  },
  {
   "name": "Emolga",
@@ -50904,7 +50931,8 @@
   "diet": "Herbivore",
   "habitat": "Cave, Mountain",
   "height": "2' 4\" / 0.7m (Small)",
-  "order": 190
+  "order": 190,
+  "megaEvolution": "Type: Unchanged Ability: Piercing Drill Stats: +3 Atk, +4 Def, +2 Sp. Atk, +1 Speed"
  },
  {
   "name": "Exeggcute",
@@ -53094,7 +53122,8 @@
   "diet": "Carnivore",
   "habitat": "Beach, Freshwater, Marsh",
   "height": "7' 7\" / 2.3m (Large)",
-  "order": 198
+  "order": 198,
+  "megaEvolution": "Type: Water / Dragon Ability: Dragonize Stats: +6 Atk, +2 Def, +1 Sp. Atk, +1 Sp. Def"
  },
  {
   "name": "Ferroseed",
@@ -55823,7 +55852,8 @@
   "diet": "Herbivore",
   "habitat": "Forest, Grassland",
   "height": "0' 08\" / 0.2m (Small)",
-  "order": 209
+  "order": 209,
+  "megaEvolution": "Type: Unchanged Ability: Fairy Aura Stats: +2 Atk, +2 Def, +3 Sp. Atk, +2 Sp. Def, +1 Speed"
  },
  {
   "name": "Florges",
@@ -58306,7 +58336,8 @@
   "diet": "Nullivore",
   "habitat": "Taiga, Tundra",
   "height": "4' 3\" / 1.3m (Medium)",
-  "order": 218
+  "order": 218,
+  "megaEvolution": "Type: Unchanged Ability: Snow Warning Stats: +6 Sp. Atk, +3 Sp. Def, +1 Speed"
  },
  {
   "name": "Furfrou",
@@ -59406,7 +59437,8 @@
   "diet": "Omnivore",
   "habitat": "Forest, Urban",
   "height": "5' 3\" / 1.6m (Medium)",
-  "order": 222
+  "order": 222,
+  "megaEvolution": "Type: Unchanged Ability: Inner Focus Stats: +4 Atk, +3 Def, +3 Speed"
  },
  {
   "name": "Galvantula",
@@ -60188,7 +60220,8 @@
   "diet": "Carnivore",
   "habitat": "Cave, Desert, Mountain",
   "height": "6' 3\" / 1.9m (Large)",
-  "order": 225
+  "order": 225,
+  "megaEvolution": "Type: Unchanged Ability: Sand Force Stats: +4 Atk, +2 Def, +4 Sp. Atk, +1 Sp. Def, -1 Speed Mega Evolution Z Type: Dragon Ability: Levitate Stats: -1 Def, +6 Sp. Atk, +5 Speed"
  },
  {
   "name": "Gardevoir",
@@ -60501,7 +60534,8 @@
   "diet": "Omnivore",
   "habitat": "Forest, Urban",
   "height": "5' 3\" / 1.6m (Medium)",
-  "order": 226
+  "order": 226,
+  "megaEvolution": "Type: Unchanged Ability: Pixilate Stats: +2 Atk, +4 Sp. Atk, +2 Sp. Def, +2 Speed"
  },
  {
   "name": "Gastly",
@@ -61619,7 +61653,8 @@
   "diet": "Nullivore",
   "habitat": "Urban",
   "height": "4' 11\" / 1.5m (Medium)",
-  "order": 230
+  "order": 230,
+  "megaEvolution": "Type: Unchanged Ability: Shadow Tag Stats: +2 Def, +4 Sp. Atk, +2 Sp. Def, +2 Speed"
  },
  {
   "name": "Geodude",
@@ -63460,7 +63495,8 @@
   "diet": "Carnivore",
   "habitat": "Cave, Taiga, Tundra",
   "height": "4' 11\" / 1.5m (Medium)",
-  "order": 238
+  "order": 238,
+  "megaEvolution": "Type: Unchanged Ability: Refrigerate Stats: +4 Atk, +4 Sp. Atk, +2 Speed"
  },
  {
   "name": "Glameow",
@@ -66503,7 +66539,8 @@
   "diet": "Terravore",
   "habitat": "Desert, Mountain",
   "height": "9' 0\" / 2.8m (Large)",
-  "order": 249
+  "order": 249,
+  "megaEvolution": "Type: Unchanged Ability: Unseen Fist Stats: +4 Atk, +3 Def, +1 Sp. Atk, +2 Sp. Def"
  },
  {
   "name": "Goodra",
@@ -66915,7 +66952,7 @@
    {
     "stage": 2,
     "name": "Sliggoo Hisuian",
-    "min": 40
+    "min": 15
    },
    {
     "stage": 3,
@@ -66925,7 +66962,7 @@
    {
     "stage": 3,
     "name": "Goodra Hisuian",
-    "min": 50
+    "min": 30
    }
   ],
   "moves": {
@@ -70118,7 +70155,8 @@
   "diet": "Herbivore",
   "habitat": "Freshwater, Marsh",
   "height": "4' 11\" / 1.5m (Medium)",
-  "order": 262
+  "order": 262,
+  "megaEvolution": "Type: Unchanged Ability: Protean Stats: +3 Atk, +1 Def, +3 Sp. Atk, +1 Sp. Def, +2 Speed"
  },
  {
   "name": "Grimer",
@@ -70945,7 +70983,8 @@
   "diet": "Omnivore",
   "habitat": "Cave, Desert, Mountain",
   "height": "11' 6\" / 3.5m (Gigantic)",
-  "order": 265
+  "order": 265,
+  "megaEvolution": "Type: Ground/Fire Ability: Heat Mirage Stats: +3 Atk, +2 Def, +5 Sp. Atk"
  },
  {
   "name": "Grovyle",
@@ -72631,7 +72670,8 @@
   "diet": "Carnivore",
   "habitat": "Freshwater, Ocean",
   "height": "21' 4\" / 6.5m (Huge)",
-  "order": 271
+  "order": 271,
+  "megaEvolution": "Type: Water/Dark Ability: Mold Breaker Stats: +3 Atk, +3 Def, +1 Sp. Atk, +3 Sp. Def"
  },
  {
   "name": "Happiny",
@@ -73721,7 +73761,8 @@
   "diet": "Carnivore",
   "habitat": "Grassland, Forest",
   "height": "2' 07\" / 0.8m (Small)",
-  "order": 275
+  "order": 275,
+  "megaEvolution": "Type: Unchanged Ability: No Guard Stats: +5 Atk, +2 Def, +3 Sp. Def"
  },
  {
   "name": "Haxorus",
@@ -74550,7 +74591,8 @@
   "diet": "Terravore",
   "habitat": "Mountain",
   "height": "5' 7\" / 1.7m (Huge)",
-  "order": 278
+  "order": 278,
+  "megaEvolution": "Type: Unchanged Ability: Thermal Exchange Stats: +3 Atk, +5 Sp. Atk, +3 Sp. Def, -1 Speed"
  },
  {
   "name": "Heliolisk",
@@ -75346,7 +75388,8 @@
   "diet": "Herbivore",
   "habitat": "Forest, Rainforest",
   "height": "4' 11\" / 1.5m (Medium)",
-  "order": 281
+  "order": 281,
+  "megaEvolution": "Type: Unchanged Ability: Skill Link Stats: +6 Atk, +4 Def, +1 Sp. Def, -1 Speed"
  },
  {
   "name": "Herdier",
@@ -79441,7 +79484,8 @@
   "diet": "Carnivore",
   "habitat": "Cave, Mountain",
   "height": "4' 7\" / 1.4m (Medium)",
-  "order": 296
+  "order": 296,
+  "megaEvolution": "Type: Unchanged Ability: Solar Power Stats: +4 Def, +3 Sp. Atk, +1 Sp. Def, +2 Speed"
  },
  {
   "name": "Houndour",
@@ -85187,7 +85231,8 @@
   "diet": "Herbivore",
   "habitat": "Grassland, Rainforest",
   "height": "7' 3\" / 2.2m (Medium)",
-  "order": 317
+  "order": 317,
+  "megaEvolution": "Type: Unchanged Ability: Parental Bond Stats: +3 Atk, +2 Def, +2 Sp. Atk, +2 Sp. Def, +1 Speed"
  },
  {
   "name": "Karrablast",
@@ -89672,7 +89717,8 @@
   "diet": "Omnivore",
   "habitat": "Arctic, Ocean",
   "height": "14' 9\" / 4.5m (Gigantic)",
-  "order": 334
+  "order": 334,
+  "megaEvolution": "Type: Unchanged Ability: Wash Away Stats: +5 Atk, +3 Sp. Atk, +2 Sp. Def"
  },
  {
   "name": "Kyurem",
@@ -92695,7 +92741,8 @@
   "diet": "Omnivore",
   "habitat": "Beach, Forest, Grassland, Mountain, Ocean",
   "height": "4' 7\" / 1.4m (Large)",
-  "order": 346
+  "order": 346,
+  "megaEvolution": "Type: Unchanged Ability: Levitate Stats: +2 Atk, +3 Def, +3 Sp. Atk, +2 Sp. Def"
  },
  {
   "name": "Latios",
@@ -93010,7 +93057,8 @@
   "diet": "Omnivore",
   "habitat": "Beach, Forest, Grassland, Mountain, Ocean",
   "height": "6' 7\" / 2m (Large)",
-  "order": 347
+  "order": 347,
+  "megaEvolution": "Type: Unchanged Ability: Levitate Stats: +4 Atk, +2 Def, +3 Sp. Atk, +1 Sp. Def"
  },
  {
   "name": "Leafeon",
@@ -97153,7 +97201,8 @@
   "diet": "Herbivore",
   "habitat": "Forest, Grassland",
   "height": "3' 11\" / 1.2m (Medium)",
-  "order": 362
+  "order": 362,
+  "megaEvolution": "Type: Normal / Fight ing Ability: Scrappy Stats: +6 Atk, +1 Def, +3 Speed"
  },
  {
   "name": "Lotad",
@@ -97977,7 +98026,8 @@
   "diet": "Omnivore",
   "habitat": "Cave, Forest, Mountain",
   "height": "3' 11\" / 1.2m (Medium)",
-  "order": 365
+  "order": 365,
+  "megaEvolution": "Type: Unchanged Ability: Adaptability Stats: +4 Atk, +2 Def, +2 Sp. Atk, +2 Speed Mega Evolution Z Type: Unchanged Ability: Prankster Stats: -1 Atk, +5 Sp. Atk, +6 Speed"
  },
  {
   "name": "Ludicolo",
@@ -100141,7 +100191,8 @@
   "diet": "Omnivore",
   "habitat": "Mountain",
   "height": "5' 3\" / 1.6m (Medium)",
-  "order": 373
+  "order": 373,
+  "megaEvolution": "Type: Fighting / Psychic Ability: Mentalize Stats: +4 Atk, +2 Def, +2 Sp. Def, +2 Speed"
  },
  {
   "name": "Machoke",
@@ -103437,7 +103488,8 @@
   "diet": "Carnivore",
   "habitat": "Ocean",
   "height": "4' 11\" / 1.5m (Medium)",
-  "order": 385
+  "order": 385,
+  "megaEvolution": "Type: Unchanged Ability: Contrary Stats: +1 Atk, +3 Sp. Atk, +5 Sp. Def, +1 Speed"
  },
  {
   "name": "Mamoswine",
@@ -104497,7 +104549,8 @@
   "diet": "Carnivore",
   "habitat": "Forest, Grassland",
   "height": "4' 11\" / 1.5m (Medium)",
-  "order": 389
+  "order": 389,
+  "megaEvolution": "Type: Unchanged Ability: Intimidate Stats: +2 Def, +3 Sp. Atk, +2 Sp. Def, +3 Speed"
  },
  {
   "name": "Mankey",
@@ -106455,7 +106508,8 @@
   "diet": "Herbivore",
   "habitat": "Cave, Mountain, Urban",
   "height": "3' 3\" / 1m (Medium)",
-  "order": 396
+  "order": 396,
+  "megaEvolution": "Type: Ground / Ghost Ability: Ancestral Connection Stats: +3 Atk, +2 Def, +1 Sp. Atk, +2 Sp. Def, +2 Speed"
  },
  {
   "name": "Marshtomp",
@@ -107289,7 +107343,8 @@
   "diet": "Carnivore",
   "habitat": "Cave, Forest, Mountain",
   "height": "2' 0\" / 0.6m (Small)",
-  "order": 399
+  "order": 399,
+  "megaEvolution": "Type: Unchanged Ability: Huge Power Stats: +2 Atk, +4 Def, +4 Sp. Def"
  },
  {
   "name": "Medicham",
@@ -107584,7 +107639,8 @@
   "diet": "Omnivore",
   "habitat": "Cave, Mountain",
   "height": "4' 3\" / 1.3m (Medium)",
-  "order": 400
+  "order": 400,
+  "megaEvolution": "Type: Unchanged Ability: Pure Power Stats: +4 Atk, +1 Def, +2 Sp. Atk, +1 Sp. Def, +2 Speed"
  },
  {
   "name": "Meditite",
@@ -108169,7 +108225,8 @@
   "diet": "Phototroph, Herbivore",
   "habitat": "Forest, Grassland",
   "height": "5' 11\" / 1.8m (Large)",
-  "order": 402
+  "order": 402,
+  "megaEvolution": "Type: Grass / Fairy Ability: Mega Sol Stats: +1 Atk, +2 Def, +6 Sp. Atk, +1 Sp. Def"
  },
  {
   "name": "Meloetta Aria",
@@ -108720,7 +108777,8 @@
   "diet": "Herbivore",
   "habitat": "Grassland, Urban",
   "height": "2' 00\" / 0.6m (Small)",
-  "order": 405
+  "order": 405,
+  "megaEvolution": "Type: Unchanged Ability: Trace Stats: +6 Sp. Atk, +2 Sp. Def, +2 Speed"
  },
  {
   "name": "Meowth",
@@ -109558,7 +109616,8 @@
   "diet": "Omnivore",
   "habitat": "Cave, Mountain",
   "height": "5' 3\" / 1.6m (Large)",
-  "order": 408
+  "order": 408,
+  "megaEvolution": "Type: Unchanged Ability: Tough Claws Stats: +1 Atk, +2 Def, +1 Sp. Atk, +2 Sp. Def, +4 Speed"
  },
  {
   "name": "Metang",
@@ -110525,7 +110584,8 @@
   "diet": "Omnivore",
   "habitat": "Cave",
   "height": "6' 7\" / 2m (Large)",
-  "order": 412
+  "order": 412,
+  "megaEvolution": "X Type: Psychic/Fighting Ability: Steadfast Stats: +8 Atk, +1 Def Mega Evolution Y Type: Unchanged Ability: Insomnia Stats: +4 Atk, -2 Def, +4 Sp. Atk, +3 Sp. Def, +1 Speed"
  },
  {
   "name": "Mienfoo",
@@ -127775,7 +127835,8 @@
   "diet": "Carnivore",
   "habitat": "Forest",
   "height": "4' 11\" / 1.5m (Large)",
-  "order": 474
+  "order": 474,
+  "megaEvolution": "Type: Unchanged Ability: No Guard Stats: +7 Sp. Atk, +1 Sp. Def, +2 Speed"
  },
  {
   "name": "Pidgeotto",
@@ -129946,7 +130007,8 @@
   "diet": "Herbivore",
   "habitat": "Forest, Rainforest",
   "height": "4' 11\" / 1.5m (Medium)",
-  "order": 482
+  "order": 482,
+  "megaEvolution": "Type: Bug/Flying Ability: Aerilate Stats: +3 Atk, +2 Def, +1 Sp. Atk, +2 Sp. Def, +2 Speed"
  },
  {
   "name": "Piplup",
@@ -136249,7 +136311,8 @@
   "diet": "Carnivore",
   "habitat": "Grassland",
   "height": "4' 11\" / 1.5m (Medium)",
-  "order": 505
+  "order": 505,
+  "megaEvolution": "Type: Unchanged Ability: Fire Mane Stats: +2 Atk, +2 Def, +2 Sp. Atk, +2 Sp. Def, +2 Speed"
  },
  {
   "name": "Quagsire",
@@ -137668,7 +137731,8 @@
   "diet": "Herbivore",
   "habitat": "Forest",
   "height": "2' 7\" / 0.8m (Small)",
-  "order": 510
+  "order": 510,
+  "megaEvolution": "X Type: Unchanged Ability: Electric Surge Stats: +5 Atk, +4 Def, +1 Sp. Def Mega Evolution Y Type: Unchanged Ability: No Guard Stats: +1 Atk, +7 Sp. Atk, +2 Speed"
  },
  {
   "name": "Raikou",
@@ -139602,7 +139666,8 @@
   "diet": "Omnivore",
   "habitat": "Mountain",
   "height": "23' 0\" / 7m (Gigantic)",
-  "order": 517
+  "order": 517,
+  "megaEvolution": "Type: Unchanged Ability: Run Away Stats: +3 Atk, +1 Def, +3 Sp. Atk, +1 Sp. Def, +2 Speed"
  },
  {
   "name": "Regice",
@@ -145870,7 +145935,8 @@
   "diet": "Terravore",
   "habitat": "Cave, Mountain",
   "height": "1' 8\" / 0.5m (Small)",
-  "order": 540
+  "order": 540,
+  "megaEvolution": "Type: Unchanged Ability: Magic Bounce Stats: +1 Atk, +5 Def, +2 Sp. Atk, +5 Sp. Def, -3 Speed"
  },
  {
   "name": "Salamence",
@@ -146152,7 +146218,8 @@
   "diet": "Carnivore",
   "habitat": "Cave, Mountain",
   "height": "4' 11\" / 1.5m (Large)",
-  "order": 541
+  "order": 541,
+  "megaEvolution": "Type: Unchanged Ability: Aerilate Stats: +1 Atk, +5 Def, +1 Sp. Atk, +1 Sp. Def, +2 Speed"
  },
  {
   "name": "Samurott",
@@ -148301,7 +148368,8 @@
   "diet": "Omnivore",
   "habitat": "Rainforest",
   "height": "5' 7\" / 1.7m (Medium)",
-  "order": 549
+  "order": 549,
+  "megaEvolution": "Type: Grass / Dragon Ability: Lightning Rod Stats: +2 Atk, +1 Def, +4 Sp. Atk, +3 Speed"
  },
  {
   "name": "Scizor",
@@ -148576,7 +148644,8 @@
   "diet": "Carnivore",
   "habitat": "Grassland, Mountain",
   "height": "5' 11\" / 1.8m (Medium)",
-  "order": 550
+  "order": 550,
+  "megaEvolution": "Type: Unchanged Ability: Technician Stats: +2 Atk, +4 Def, +1 Sp. Atk, +2 Sp. Def, +1 Speed"
  },
  {
   "name": "Scolipede",
@@ -148843,7 +148912,8 @@
   "diet": "Herbivore",
   "habitat": "Forest",
   "height": "8' 2\" / 2.5m (Large)",
-  "order": 551
+  "order": 551,
+  "megaEvolution": "Type: Unchanged Ability: Shell Armor Stats: +4 Atk, +6 Def, +2 Sp. Atk, +3 Sp. Def, -5 Speed"
  },
  {
   "name": "Scrafty",
@@ -149128,7 +149198,8 @@
   "diet": "Herbivore",
   "habitat": "Cave, Desert, Mountain",
   "height": "3' 7\" / 1.1m (Medium)",
-  "order": 552
+  "order": 552,
+  "megaEvolution": "Type: Unchanged Ability: Intimidate Stats: +4 Atk, +2 Def, +1 Sp. Atk, +2 Sp. Def, +1 Speed"
  },
  {
   "name": "Scraggy",
@@ -152893,7 +152964,8 @@
   "diet": "Carnivore",
   "habitat": "Freshwater, Ocean",
   "height": "5' 11\" / 1.8m (Medium)",
-  "order": 566
+  "order": 566,
+  "megaEvolution": "Type: Unchanged Ability: Strong Jaw Stats: +2 Atk, +3 Def, +1 Sp. Atk, +3 Sp. Def, +1 Speed"
  },
  {
   "name": "Shaymin",
@@ -157641,7 +157713,8 @@
   "diet": "Carnivore",
   "habitat": "Mountain",
   "height": "5' 7\" / 1.7m (Large)",
-  "order": 585
+  "order": 585,
+  "megaEvolution": "Type: Unchanged Ability: Stalwart Stats: +4 Atk, +2 Def, +2 Sp. Def, +2 Speed"
  },
  {
   "name": "Skiddo",
@@ -160404,7 +160477,8 @@
   "diet": "Herbivore",
   "habitat": "Beach, Freshwater",
   "height": "5' 3\" / 1.6m (Medium)",
-  "order": 595
+  "order": 595,
+  "megaEvolution": "Type: Unchanged Ability: Shell Armor Stats: +7 Def, +3 Sp. Atk"
  },
  {
   "name": "Slowking",
@@ -167204,7 +167278,8 @@
   "diet": "Carnivore",
   "habitat": "Forest, Grassland",
   "height": "3' 11\" / 1.2m (Medium)",
-  "order": 620
+  "order": 620,
+  "megaEvolution": "Type: Fighting / Flying Ability: Contrary Stats: +2 Atk, +3 Def, +1 Sp. Atk, +3 Sp. Def, +1 Speed"
  },
  {
   "name": "Staravia",
@@ -167988,7 +168063,8 @@
   "diet": "Herbivore",
   "habitat": "Ocean",
   "height": "3' 7\" / 1.1m (Medium)",
-  "order": 623
+  "order": 623,
+  "megaEvolution": "Type: Unchanged Ability: Huge Power Stats: +3 Atk, +2 Def, +3 Sp. Atk, +2 Sp. Def"
  },
  {
   "name": "Staryu",
@@ -168566,7 +168642,8 @@
   "diet": "Terravore",
   "habitat": "Cave, Desert, Mountain",
   "height": "30' 2\" / 9.2m (Gigantic)",
-  "order": 625
+  "order": 625,
+  "megaEvolution": "Type: Unchanged Ability: Sand Force Stats: +4 Atk, +3 Def, +3 Sp. Def"
  },
  {
   "name": "Stoutland",
@@ -171758,7 +171835,8 @@
   "diet": "Herbivore",
   "habitat": "Marsh",
   "height": "4' 11\" / 1.5m (Medium)",
-  "order": 637
+  "order": 637,
+  "megaEvolution": "Type: Unchanged Ability: Swift Swim Stats: +4 Atk, +2 Def, +1 Sp. Atk, +2 Sp. Def, +1 Speed"
  },
  {
   "name": "Swanna",
@@ -182672,7 +182750,8 @@
   "diet": "Carnviore, Terravore",
   "habitat": "Cave, Mountain",
   "height": "6' 7\" / 2m (Large)",
-  "order": 679
+  "order": 679,
+  "megaEvolution": "Type: Unchanged Ability: Sand Stream Stats: +3 Atk, +4 Def, +2 Sp. Def, +1 Speed"
  },
  {
   "name": "Tyrantrum",
@@ -186719,7 +186798,8 @@
   "diet": "Omnivore, Phototroph",
   "habitat": "Forest, Grassland, Rainforest",
   "height": "6' 7\" / 2m (Large)",
-  "order": 695
+  "order": 695,
+  "megaEvolution": "Type: Unchanged Ability: Thick Fat Stats: +2 Atk, +4 Def, +2 Sp. Atk, +2 Sp. Def"
  },
  {
   "name": "Vespiquen",
@@ -187835,7 +187915,8 @@
   "diet": "Phototroph, Carnivore",
   "habitat": "Cave, Forest, Marsh, Rainforest",
   "height": "5' 7\" / 1.7m (Medium)",
-  "order": 699
+  "order": 699,
+  "megaEvolution": "Type: Unchanged Ability: Innards Out Stats: +2 Atk, +2 Def, +4 Sp. Atk, +2 Sp. Def"
  },
  {
   "name": "Vigoroth",
@@ -200126,7 +200207,8 @@
   "diet": "Nullivore",
   "habitat": "Cave",
   "height": "16' 05\" / 5m (Huge)",
-  "order": 747
+  "order": 747,
+  "megaEvolution": "Type: Unchanged Ability: Aura Break Stats: -3 Atk, -3 Def, +13 Sp. Atk, -1 Sp. Def, +1 Speed"
  },
  {
   "name": "Automateon",
@@ -206844,7 +206926,8 @@
   "diet": "Herbivore",
   "habitat": "Cave, Mountain, Urban",
   "height": "3' 3\" / 1m (Medium)",
-  "order": 777
+  "order": 777,
+  "megaEvolution": "Type: Ground / Ghost Ability: Ancestral Connection Stats: +3 Atk, +2 Def, +1 Sp. Atk, +2 Sp. Def, +2 Speed"
  },
  {
   "name": "Rowlet",
@@ -211729,7 +211812,8 @@
   "diet": "Omnivore",
   "habitat": "Tundra",
   "height": "5' 7\" / 1.7m (Large)",
-  "order": 796
+  "order": 796,
+  "megaEvolution": "Type: Unchanged Ability: Iron Fist Stats: +3 Atk, +4 Def, +4 Sp. Def, -1 Speed"
  },
  {
   "name": "Oricorio Baile",
@@ -219286,7 +219370,8 @@
   "diet": "Omnivore",
   "habitat": "Beach, Ocean",
   "height": "6' 7\" / 2m (Large)",
-  "order": 830
+  "order": 830,
+  "megaEvolution": "Type: Bug / Steel Ability: Tough Claws Stats: +3 Atk, +3 Def, +1 Sp. Atk, +3 Sp. Def"
  },
  {
   "name": "Sandygast",
@@ -222691,7 +222776,8 @@
   "diet": "Herbivore",
   "habitat": "Mountain",
   "height": "9' 10\" / 3m (Huge)",
-  "order": 843
+  "order": 843,
+  "megaEvolution": "Type: Unchanged Ability: Berserk Stats: +3 Atk, +3 Def, +2 Sp. Atk, +2 Sp. Def"
  },
  {
   "name": "Dhelmise",
@@ -228562,7 +228648,8 @@
   "diet": "Nullivore",
   "habitat": "Urban",
   "height": "3' 3\" / 1m (Medium)",
-  "order": 868
+  "order": 868,
+  "megaEvolution": "Type: Unchanged Ability: Soul Heart Stats: +3 Atk, +4 Sp. Atk, +3 Speed"
  },
  {
   "name": "Marshadow",
@@ -230322,7 +230409,8 @@
   "diet": "Omnivore",
   "habitat": "Forest",
   "height": "4' 11\" / 1.5m (Medium)",
-  "order": 875
+  "order": 875,
+  "megaEvolution": "Type: Unchanged Ability: Speed Boost Stats: +5 Atk, +4 Sp. Atk, +1 Speed"
  },
  {
   "name": "Grookey",
@@ -241837,7 +241925,8 @@
   "diet": "Omnivore",
   "habitat": "Mountain",
   "height": "9' 10\" / 3m (Huge)",
-  "order": 930
+  "order": 930,
+  "megaEvolution": "Type: Unchanged Ability: Defiant Stats: +4 Atk, +4 Def, +2 Speed"
  },
  {
   "name": "Pincurchin",
@@ -255524,7 +255613,7 @@
     "Rock Smash",
     "Snarl",
     "Swift",
-    "Wild Charge ARCANINE Hisuian"
+    "Wild Charge"
    ]
   },
   "gender": "75% M / 25% F",
@@ -255669,43 +255758,98 @@
   "moves": {
    "levelup": [
     {
-     "level": 5,
-     "name": "Ember",
+     "level": 1,
+     "name": "Flame Wheel",
      "type": "Fire"
     },
     {
-     "level": 9,
-     "name": "Bite",
-     "type": "Dark"
+     "level": 1,
+     "name": "Helping Hand",
+     "type": "Normal"
     },
     {
-     "level": 15,
+     "level": 1,
+     "name": "Agility",
+     "type": "Psychic"
+    },
+    {
+     "level": 1,
      "name": "Fire Fang",
      "type": "Fire"
     },
     {
-     "level": 21,
-     "name": "Rock Slide",
-     "type": "Rock"
+     "level": 1,
+     "name": "Retaliate",
+     "type": "Normal"
     },
     {
-     "level": 29,
-     "name": "Raging Fury",
-     "type": "Fire"
-    },
-    {
-     "level": 29,
+     "level": 1,
      "name": "Crunch",
      "type": "Dark"
     },
     {
-     "level": 37,
-     "name": "Double-Edge",
+     "level": 1,
+     "name": "Take Down",
      "type": "Normal"
     },
     {
-     "level": 47,
+     "level": 1,
+     "name": "Roar",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Rock Slide",
+     "type": "Rock"
+    },
+    {
+     "level": 1,
+     "name": "Reversal",
+     "type": "Fighting"
+    },
+    {
+     "level": 1,
      "name": "Flare Blitz",
+     "type": "Fire"
+    },
+    {
+     "level": 1,
+     "name": "Rock Throw",
+     "type": "Rock"
+    },
+    {
+     "level": 1,
+     "name": "Ember",
+     "type": "Fire"
+    },
+    {
+     "level": 1,
+     "name": "Leer",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Howl",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 0,
+     "name": "Extreme Speed",
+     "type": "Normal"
+    },
+    {
+     "level": 5,
+     "name": "Flamethrower",
+     "type": "Fire"
+    },
+    {
+     "level": 64,
+     "name": "Raging Fury",
      "type": "Fire"
     }
    ],
@@ -255729,14 +255873,15 @@
     "Stone Edge",
     "Swift",
     "Thunder Fang",
-    "Wild Charge VOLTORB Hisuian"
+    "Wild Charge"
    ]
   },
   "gender": "75% M / 25% F",
   "diet": "Carnivore",
   "habitat": "Grassland, Mountain",
   "height": "6' 7\" / 2m (Large)",
-  "order": 998
+  "order": 998,
+  "megaEvolution": "Type: Fire / Fairy Ability: Pixilate Stats: +3 Atk, +2 Def, +2 Sp. Atk, +1 Sp. Def, +2 Speed"
  },
  {
   "name": "Voltorb Hisuian",
@@ -257873,12 +258018,12 @@
    {
     "stage": 2,
     "name": "Sliggoo Hisuian",
-    "min": 40
+    "min": 15
    },
    {
     "stage": 3,
     "name": "Goodra Hisuian",
-    "min": 50
+    "min": 30
    }
   ],
   "moves": {
@@ -258068,12 +258213,12 @@
    {
     "stage": 2,
     "name": "Sliggoo Hisuian",
-    "min": 40
+    "min": 15
    },
    {
     "stage": 3,
     "name": "Goodra Hisuian",
-    "min": 50
+    "min": 30
    }
   ],
   "moves": {
@@ -277852,7 +277997,8 @@
   "diet": "Herbivore",
   "habitat": "Desert, Grassland",
   "height": "2'11\" / 0.9m",
-  "order": 1118
+  "order": 1118,
+  "megaEvolution": "Type: Unchanged Ability: Spicy Spray Stats: +3 Atk, +2 Def, +3 Sp. Atk, +2 Sp. Def"
  },
  {
   "name": "Rellor",
@@ -282628,7 +282774,8 @@
   "diet": "Terravore",
   "habitat": "Cave",
   "height": "4'11\" / 1.5m",
-  "order": 1137
+  "order": 1137,
+  "megaEvolution": "Type: Unchanged Ability: Adaptability Stats: +4 Atk, +2 Def, +2 Sp. Atk, +1 Sp. Def, +1 Speed"
  },
  {
   "name": "Greavard",
@@ -284623,7 +284770,8 @@
   "diet": "Carnivore",
   "habitat": "Freshwater",
   "height": "1'0\" / 0.3m",
-  "order": 1145
+  "order": 1145,
+  "megaEvolution": "Type: Unchanged Ability: Storm Drain Stats: +2 Atk, +3 Def, +1 Sp. Atk, +3 Sp. Def, +1 Speed"
  },
  {
   "name": "Paldean Tauros Combat Breed",
@@ -285647,7 +285795,8 @@
   "diet": "Omnivore",
   "habitat": "Forest, Grassland, Mountain, Rainforest",
   "height": "3'11\" / 1.2m",
-  "order": 1149
+  "order": 1149,
+  "megaEvolution": "Type: Unchanged Ability: Rampaging Spirit Stats: +4 Atk, +6 Def, +1 Sp. Def, -1 Speed"
  },
  {
   "name": "Paldean Wooper",
@@ -290742,7 +290891,8 @@
   "diet": "Carnivore",
   "habitat": "Mountain, Tundra",
   "height": "6'11\" / 2.1m",
-  "order": 1169
+  "order": 1169,
+  "megaEvolution": "Type: Unchanged Ability: Thermal Exchange Stats: +3 Atk, +3 Def, +3 Sp. Atk, +1 Sp. Def"
  },
  {
   "name": "Gimmighoul",
@@ -313735,7 +313885,8 @@
   "diet": "Herbivore",
   "habitat": "Grassland, Rainforest",
   "height": "3' 8\" / 1.1m (Small)",
-  "order": 1262
+  "order": 1262,
+  "megaEvolution": "Type: Unchanged Ability: Parental Bond Stats: +3 Atk, +2 Def, +2 Sp. Atk, +2 Sp. Def, +1 Speed"
  },
  {
   "name": "Child Kangaskhan",
@@ -314051,7 +314202,8 @@
   "diet": "Herbivore",
   "habitat": "Grassland, Rainforest",
   "height": "3' 8\" / 1.1m (Small)",
-  "order": 1263
+  "order": 1263,
+  "megaEvolution": "Type: Unchanged Ability: Parental Bond Stats: +3 Atk, +2 Def, +2 Sp. Atk, +2 Sp. Def, +1 Speed"
  },
  {
   "name": "Barrier",

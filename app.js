@@ -248,6 +248,15 @@ const STATUS_DEFS = [
      GM says otherwise, and End Day heals + clears it like every other affliction. */
   {key:"knockedOut", name:"Knocked Out", kind:"other", cap:0, gm:true,
    effect:"Out of the fight — cannot act, always considered Vulnerable, and can't apply Evasion (Core p.249). The GM sets this; a knocked-out token is greyed out on the Map for everyone."},
+  /* Death — the house rule that sits one step past Fainting. A creature dies when it has taken every
+     Injury there is (10, at which point Injuries have eaten 100% of its Max HP anyway) or when it is
+     driven to or below whichever is LOWER of −200% of its full Max HP and −50 HP — the flat floor is
+     what keeps a low-level Trainer from dying to a single lucky hit. Unlike every other chip this one is
+     PERMANENT (see PERMANENT_STATUS_KEYS): End Scene, an Extended Rest, a Pokémon Center and every
+     full-heal item leave it standing, and it pins Knocked Out on no matter how much HP is restored.
+     `gm:true` like Knocked Out — declaring someone dead is the GM's call, and only they can lift it. */
+  {key:"dead", name:"Dead", kind:"other", cap:0, gm:true, permanent:true,
+   effect:"Dead — past Fainted and past healing. Applied automatically at 10 Injuries, or at whichever is LOWER of −200% of full Max HP and −50 HP. Cannot act, is always Vulnerable, and stays Knocked Out however much HP is put back. Rest, Pokémon Centers and full-heal items do NOT cure it — only the GM can untick this chip."},
   /* The Duelist's mark (Core Extras — Class Mechanics). Not an Affliction at all, but it lives on
      the foe, the whole table needs to see which foe carries it, and only one foe may at a time —
      which is exactly what a status chip already does. Applying it clears the others (see toggleStatus). */
@@ -452,6 +461,13 @@ function toggleStatus(p, key){ p.statuses = p.statuses||[];
    at the one moment it's about to be broken, and leave the call with the table. Returns "" when
    nothing objects. */
 function statusCureBlock(o, key){
+  /* Death isn't cured, it's overruled — and unticking the chip while the creature is still at 10
+     Injuries or still below its death floor only holds until the next HP/Injury edit re-applies it.
+     Say so rather than letting the GM think the revive stuck. */
+  if(key === "dead"){
+    const why = deathReason(o);
+    return why ? `⚠ ${ownerLabel(o)} still meets the condition that killed them (${why}) — lifting the chip only holds until the next HP or Injury change puts it straight back. Heal them past it first.` : "";
+  }
   if(key !== "enraged") return "";
   const ab = (typeof POWER_OF_RAGE_ABILITIES !== "undefined" ? POWER_OF_RAGE_ABILITIES : [])
     .filter(a => ownerHasAbility(o, a));
@@ -471,6 +487,18 @@ function clearSceneStatuses(o){
   const before = o.statuses.length;
   o.statuses = o.statuses.filter(k => !SCENE_STATUS_KEYS.has(k));
   return o.statuses.length !== before;
+}
+/* Afflictions that survive a blanket "cure everything". Death is the only one, and it has to be:
+   every full-heal path in the app (Extended Rest, a Pokémon Center, First Aid Expertise, Bounty of
+   Life, the Arcana's heal cards, the "clear" links on the status cards) just assigns `statuses = []`,
+   which would quietly resurrect a corpse. Route those through clearAllStatuses() instead — it wipes
+   everything else and re-pins Knocked Out under the Dead chip. */
+const PERMANENT_STATUS_KEYS = new Set(STATUS_DEFS.filter(s => s.permanent).map(s => s.key));
+function clearAllStatuses(o){
+  if(!o) return [];
+  o.statuses = Array.isArray(o.statuses) ? o.statuses.filter(k => PERMANENT_STATUS_KEYS.has(k)) : [];
+  if(o.statuses.includes("dead") && !o.statuses.includes("knockedOut")) o.statuses.push("knockedOut");
+  return o.statuses;
 }
 /* Confusion (Feb 2016 errata): each time a Confused creature Attacks, roll 1d2 — on a 1 it loses HP
    equal to half its Attack (Physical Move), half its Special Attack (Special Move), or two Ticks of
@@ -937,6 +965,18 @@ function evoBurstLayer(){
 }
 /* Runs the overlay. Returns a Promise that resolves when it's gone — always resolves, even if the
    user taps to skip or the browser blocks audio. */
+/* resolves once an <img> has actually painted something (its real art, or the pokeball fallback
+   at the end of the chain) — never on a mid-chain "error" retry. Capped so a dead network can't
+   hang the sequence forever; the sprite just starts on whatever frame it has by then. */
+function imgPainted(img, timeoutMs=1500){
+  return new Promise(res=>{
+    if(img.complete && img.naturalWidth>0){ res(); return; }
+    let done = false;
+    const fin = () => { if(done) return; done = true; img.removeEventListener("load", fin); res(); };
+    img.addEventListener("load", fin);
+    setTimeout(fin, timeoutMs);
+  });
+}
 function playEvolutionFX({ fromName, toName, shiny, fromImg, toImg, caption } = {}){
   if(!evoFxOn()) return Promise.resolve();
   return new Promise(resolve=>{
@@ -944,6 +984,7 @@ function playEvolutionFX({ fromName, toName, shiny, fromImg, toImg, caption } = 
     const stage   = el("div",{class:"evo-stage"});
     const before  = monSprite(fromName, shiny, "evo-sprite", fromImg || undefined);
     const after   = monSprite(toName,   shiny, "evo-sprite evo-after", toImg || undefined);
+    before.loading = "eager"; after.loading = "eager";   // this pair is on-screen the instant it's created
     // during the flipping BOTH are silhouettes; the new shape reads bigger, as it does in the games
     before.classList.add("white","evo-on");
     after.classList.add("white");
@@ -967,50 +1008,56 @@ function playEvolutionFX({ fromName, toName, shiny, fromImg, toImg, caption } = 
     // to carry that translate with it or the Pokémon slides off-centre as it grows
     const scaleTo = (node, s) => { node.style.transform = `translate(-50%,-50%) scale(${s})`; };
 
-    // ---- sound: the real clip if sfx.js is loaded, else the synthesised stand-in ----
-    const clip = window.PTU_SFX && PTU_SFX.evolution;
-    if(evoSoundOn() && clip){
-      try{
-        audio = new Audio(clip); audio.volume = 0.55;
-        audio.play().catch(()=>{ audio = null; });      // autoplay refused → just run it silently
-      }catch(e){ audio = null; }
-    }
-    const synth = evoSoundOn() && !clip;                 // only beep when there's no clip to play
+    // Everything below is timed relative to "the sequence starts" — held off until both the pre- and
+    // post-evolution art have actually painted something, so the silhouette never flips onto a blank
+    // frame while a sprite URL is still loading (or working through its fallback chain).
+    Promise.all([imgPainted(before), imgPainted(after)]).then(() => {
+      if(done) return;
+      // ---- sound: the real clip if sfx.js is loaded, else the synthesised stand-in ----
+      const clip = window.PTU_SFX && PTU_SFX.evolution;
+      if(evoSoundOn() && clip){
+        try{
+          audio = new Audio(clip); audio.volume = 0.55;
+          audio.play().catch(()=>{ audio = null; });      // autoplay refused → just run it silently
+        }catch(e){ audio = null; }
+      }
+      const synth = evoSoundOn() && !clip;                 // only beep when there's no clip to play
 
-    // ---- flip phase: the silhouette snaps between the old and the new shape, faster and faster ----
-    const plan = evoSwapPlan(EVO_FLASH_AT - 200);
-    let t = 200, showingNew = false;
-    plan.forEach((hold, i)=>{
-      at(t, ()=>{
-        showingNew = !showingNew;
-        const on = showingNew ? after : before, off = showingNew ? before : after;
-        // the new shape sits a touch larger, and both creep up in size as the flipping speeds up
-        const grow = 1 + 0.03*i + (showingNew ? 0.16 : 0);
-        on.style.transition = "transform 90ms ease-out";
-        scaleTo(on, grow); on.classList.add("evo-on"); off.classList.remove("evo-on");
-        if(synth) beep(showingNew ? 520 + i*26 : 400 + i*22, 0, Math.min(0.14, hold/1000*0.5), {vol:0.10});
+      // ---- flip phase: the silhouette snaps between the old and the new shape, faster and faster ----
+      const plan = evoSwapPlan(EVO_FLASH_AT - 200);
+      let t = 200, showingNew = false;
+      plan.forEach((hold, i)=>{
+        at(t, ()=>{
+          showingNew = !showingNew;
+          const on = showingNew ? after : before, off = showingNew ? before : after;
+          // the new shape sits a touch larger, and both creep up in size as the flipping speeds up
+          const grow = 1 + 0.03*i + (showingNew ? 0.16 : 0);
+          on.style.transition = "transform 90ms ease-out";
+          scaleTo(on, grow); on.classList.add("evo-on"); off.classList.remove("evo-on");
+          if(synth) beep(showingNew ? 520 + i*26 : 400 + i*22, 0, Math.min(0.14, hold/1000*0.5), {vol:0.10});
+        });
+        t += hold;
       });
-      t += hold;
-    });
 
-    // ---- the burst, the flash, and the new Pokémon standing there ----
-    at(EVO_FLASH_AT - 320, ()=>{ burst.classList.add("go"); sparks.classList.add("out"); });
-    at(EVO_FLASH_AT, ()=>{
-      overlay.classList.add("flash");
-      before.classList.remove("evo-on");
-      after.classList.add("evo-on");
-      after.style.transition = "none"; scaleTo(after, 1.5);
-      if(synth){ beep(300, 0, 0.5, {type:"sawtooth", vol:0.08, glide:900}); evolutionFanfare(0.35); }
+      // ---- the burst, the flash, and the new Pokémon standing there ----
+      at(EVO_FLASH_AT - 320, ()=>{ burst.classList.add("go"); sparks.classList.add("out"); });
+      at(EVO_FLASH_AT, ()=>{
+        overlay.classList.add("flash");
+        before.classList.remove("evo-on");
+        after.classList.add("evo-on");
+        after.style.transition = "none"; scaleTo(after, 1.5);
+        if(synth){ beep(300, 0, 0.5, {type:"sawtooth", vol:0.08, glide:900}); evolutionFanfare(0.35); }
+      });
+      at(EVO_FLASH_AT + 260, ()=>{
+        overlay.classList.remove("flash");
+        after.style.transition = "transform 520ms cubic-bezier(.2,.8,.3,1), filter 460ms linear";
+        after.classList.remove("white");                   // colour comes back as it settles
+        scaleTo(after, 1);
+        overlay.append(evoSparkLayer());                   // a second drift of sparks over the reveal
+      });
+      at(EVO_FLASH_AT + 620, ()=>cap.classList.add("show"));
+      at(EVO_FLASH_AT + 2500, finish);                     // ≈ the length of the closing sound bite
     });
-    at(EVO_FLASH_AT + 260, ()=>{
-      overlay.classList.remove("flash");
-      after.style.transition = "transform 520ms cubic-bezier(.2,.8,.3,1), filter 460ms linear";
-      after.classList.remove("white");                   // colour comes back as it settles
-      scaleTo(after, 1);
-      overlay.append(evoSparkLayer());                   // a second drift of sparks over the reveal
-    });
-    at(EVO_FLASH_AT + 620, ()=>cap.classList.add("show"));
-    at(EVO_FLASH_AT + 2500, finish);                     // ≈ the length of the closing sound bite
   });
 }
 /* GM-only: undo the most recent evolveTo, e.g. to fix an accidental tap or a wrongly-chosen
@@ -1841,12 +1888,393 @@ function clearStorageDigestion(o){
 function injuryHealCap(maxHP, injuries){
   return Math.floor(maxHP * (10 - Math.min(10, injuries||0)) / 10);
 }
+/* ===================================================================
+   The daily Injury-healing ledger (Core p.252)
+   "Pokémon Centers can remove a maximum of 3 Injuries per day; Injuries cured through natural
+   healing, Bandages, or Features count toward this total." That cap is PER INDIVIDUAL — the
+   Trainer has their own 3 and every Pokémon has its own 3 — so the ledger hangs off each
+   creature as `o.injDay = {used, log}`.
+
+   `used` counts only the heals the rules say count. A few sources are explicitly exempt and pass
+   {free:true}: Walk It Off ("doesn't count against the natural healing limit"), First Aid Expertise
+   used under Proper Care in a real clinic, Defy Death [Errata], and the Legendary Gifts.
+
+   Nothing resets on its own — the ledger survives as many rests as you like in one day, so a
+   party can camp twice for Hit Points without unlocking any more Injury healing. It clears only on
+   the rest planner's 🌙 End the Day button (resetInjuryDay).
+
+   healInjuries() is the ONLY thing that lowers `injuries` as HEALING — the same shape as
+   moneyChange() and tpChange(). The GM's plain Injuries number field still writes freely: typing a
+   number is bookkeeping, not treatment, and the GM needs it to fix mistakes.
+=================================================================== */
+const INJURY_DAY_CAP = 3;
+/* Who may type an Injury count in by hand? Only the GM. A player takes Injuries from what hits them
+   (applyAutoInjury, Push it to the Limit) and sheds them through 🩹 Treat and the ☀ rest
+   planner — both of which spend the 3-a-day ledger. Editing the number freely would walk straight
+   round that cap, so the field is read-only on a player's own sheet.
+   Offline/local mode has no GM to ask, so it stays editable there. */
+function canEditInjuries(){ return mode!=="cloud" || cloud.isGM; }
+const INJURY_LOCK_TIP = "Only the GM can set this by hand — you gain Injuries from what hits you, "
+  + "and clear them with 🩹 Treat or the ☀ rest planner, which both spend your 3 a day (Core p.252).";
+function normInjDay(o){
+  if(!o) return o;
+  if(!o.injDay || typeof o.injDay!=="object") o.injDay = { used:0, log:[] };
+  if(typeof o.injDay.used!=="number") o.injDay.used = 0;
+  if(!Array.isArray(o.injDay.log)) o.injDay.log = [];
+  return o;
+}
+/* the GM's 🔓 unlock lifts the cap — one lever for Synthetic Muscle ("heals one more
+   Injury per day"), the Four of Swords, and any table ruling, instead of a switch per source. */
+function injuryDayCap(o){ return (o && o.unlocked) ? 99 : INJURY_DAY_CAP; }
+function injuryDayUsed(o){ return o ? (normInjDay(o).injDay.used||0) : 0; }
+function injuryDayLeft(o){ return Math.max(0, injuryDayCap(o) - injuryDayUsed(o)); }
+function resetInjuryDay(o){ if(o){ o.injDay = { used:0, log:[] }; } }
+/* Heal Injuries on one creature, through the ledger.
+     n    — how many to try to heal
+     src  — what did it ("Bandages", "First Aid Expertise"); shown in the ledger tooltip
+     opts — {free:true} when the rules exempt this source from the daily cap
+   Returns {healed, blocked, left} so callers can toast the truth rather than a wish. */
+function healInjuries(o, n, src, opts){
+  if(!o) return { healed:0, blocked:0, left:0 };
+  normInjDay(o);
+  const have = Math.max(0, o.injuries||0);
+  const free = !!(opts && opts.free);
+  const budget = free ? have : Math.min(have, injuryDayLeft(o));
+  const healed = Math.max(0, Math.min(n|0, budget));
+  const blocked = Math.max(0, Math.min(n|0, have) - healed);
+  if(healed){
+    o.injuries = Math.max(0, have - healed);
+    if(!free) o.injDay.used = (o.injDay.used||0) + healed;
+    o.injDay.log.push(`${free?"○":"●"}${healed} ${src||"healed"}`);
+  }
+  return { healed, blocked, left: injuryDayLeft(o) };
+}
+/* "1 / 3 treated today" chip for the sheets and the rest planner */
+function injuryDayChip(o, cls){
+  normInjDay(o);
+  const used = injuryDayUsed(o), cap = injuryDayCap(o);
+  const tip = (o.injDay.log||[]).length
+    ? "Treated today: " + o.injDay.log.join(", ")
+      + "\n○ = exempt, didn't count against the cap.\nClears on ☀ End Day → 🌙 End the Day."
+    : "Nothing treated today. Core p.252 allows 3 Injuries per individual per day, counting natural healing, Bandages, Items and Features together.";
+  return el("span",{class:cls||"muted small", title:tip},
+    `${used}/${cap>90?"∞":cap} today`);
+}
+
+/* ===================================================================
+   Injury TREATMENT sources — everything in the books that removes an Injury
+   One table, one modal (openInjuryTreat). Every entry says who has it, how often it may be pressed,
+   how many Injuries it clears, whether the rules exempt it from the 3-a-day cap and what else it
+   does; the modal renders whatever the character actually owns and pushes every press through
+   healInjuries(), so one ledger governs the lot.
+
+     kind    "feature" | "ability" | "item" | "blessing" | "gift" | "core"
+     targets "self" · "mon" (a Pokémon of yours) · "party" (the Trainer or any of their Pokémon)
+     n       Injuries cleared per use
+     free    true when the rules say it does NOT count against the daily cap
+     useOn   "target" when the use-pips belong to the creature treated, not the Trainer
+     extra   runs after the heal lands: Hit Points, Statuses, Move frequencies…
+=================================================================== */
+function fullMaxOf(o){ return isTrainerOwner(o) ? trainerDerived(o).fullHP : pokeDerived(o).fullMaxHP; }
+function capMaxOf(o){ return isTrainerOwner(o) ? trainerDerived(o).hp : pokeDerived(o).maxHP; }
+function curHPOf(o){ return typeof o.currentHP==="number" ? o.currentHP : capMaxOf(o); }
+const injTick = o => Math.max(1, Math.ceil(fullMaxOf(o) / 10));   // a "Tick" = 1/10th of Max HP
+/* raise Hit Points, never past the Injury-capped maximum */
+function healHP(o, amount){
+  const cap = capMaxOf(o), before = curHPOf(o);
+  o.currentHP = Math.min(cap, before + Math.max(0, amount|0));
+  return o.currentHP - before;
+}
+function healToFull(o){ const before = curHPOf(o); o.currentHP = capMaxOf(o); return o.currentHP - before; }
+/* "has the Frequency of all Moves restored" — Healing Wish / Lunar Dance, minus themselves */
+function restoreMoveFrequencies(o, except){
+  if(!o || !o.uses) return 0;
+  let n = 0;
+  Object.keys(o.uses).forEach(k => {
+    const [kind, name] = splitKey(k);
+    if(kind !== "move") return;
+    if((except||[]).some(x => String(x).toLowerCase() === name)) return;
+    delete o.uses[k]; n++;
+  });
+  return n;
+}
+const INJURY_SOURCES = [
+  /* ---- any Trainer at all, straight out of Core p.252 ---- */
+  { name:"Drain 2 AP", kind:"core", targets:"self", n:1,
+    freq:"At-Will — Extended Action", book:"Core p.252",
+    cost:"Drains 2 AP, which doesn't come back until your next Extended Rest",
+    note:"“Trainers can also remove Injuries as an Extended Action by Draining 2 AP.”",
+    extra:(o)=>{ o.manualBoundAP = (o.manualBoundAP||0) + 2; return "2 AP Drained"; } },
+
+  /* ---- Features ---- */
+  { name:"Walk It Off", kind:"feature", targets:"self", n:1, free:true,
+    freq:"Daily — Extended Action", book:"Core, a [+HP] Feature",
+    note:"Exempt — “This Injury removal doesn't count against the natural healing limit on Injuries each day.”",
+    extra:(o)=>`+${healHP(o, Math.floor(fullMaxOf(o)/4))} HP` },
+  { name:"First Aid Expertise", kind:"feature", targets:"party", n:1,
+    freq:"Daily x3 — Extended Action", needs:"a First Aid Kit", book:"Core, Medic",
+    note:"Only once per day per target. Under Proper Care in a Field Clinic / Poké Center / hospital the Injury it removes is exempt from the daily cap.",
+    freeIf:(t)=>hasFeatureLoose(t,"Proper Care"),
+    freeLabel:"You have Proper Care — treat this as happening in a clinic and it's exempt",
+    extra:(o)=>{ const g = healToFull(o); clearAllStatuses(o); return `+${g} HP, every Status cured`; } },
+  { name:"Shrug Off", kind:"feature", targets:"mon", n:1, use:"Daily", useOn:"target",
+    freq:"Daily — Shift Action", book:"Core",
+    note:"Once per day for EACH of your Pokémon, so the use-pip sits on the Pokémon rather than on you. Also fires as a Free Action whenever that Pokémon Takes a Breather." },
+  { name:"Quick Healing", kind:"feature", targets:"mon", n:3,
+    freq:"At-Will — Extended Action", book:"Core, Hardened",
+    note:"Hardened Pokémon only — two Ticks of Hit Points per Injury removed.",
+    extra:(o,r)=>`+${healHP(o, 2 * injTick(o) * r.healed)} HP` },
+
+  /* ---- Items out of the bag ---- */
+  { name:"Bandages", kind:"item", targets:"party", n:1, item:true,
+    freq:"6 hours in place — Extended Action", book:"Core p.253",
+    note:"While worn they also double the natural healing rate — that half is modelled by the ☀ rest planner's 🩹 column." },
+  { name:"Poultices", kind:"item", targets:"party", n:1, item:true,
+    freq:"6 hours in place — Extended Action", book:"Core p.253",
+    note:"Mechanically identical to Bandages." },
+
+  /* ---- Abilities, on the Pokémon itself ---- */
+  { name:"Defy Death", kind:"ability", targets:"self", n:2,
+    freq:"Daily — Swift Action", book:"Ability",
+    note:"“These count towards the total number of Injuries that can be healed each day.” It also pushes death out to −250% Hit Points instead of −200%." },
+  { name:"Defy Death [Errata]", kind:"ability", targets:"self", n:3, free:true,
+    freq:"At-Will — Swift Action", book:"Ability, errata",
+    note:"The errata version is exempt from the shared cap but has its own: at most 3 Injuries a day.",
+    extra:(o,r)=>`+${healHP(o, injTick(o) * r.healed)} HP` },
+  { name:"Soulstealer", kind:"ability", targets:"self", n:1,
+    freq:"Scene — Free Action", book:"Ability",
+    note:"If the triggering attack KILLED its target it instead removes ALL Injuries and all lost Hit Points — for that case use the GM 🔓 unlock, which also lifts the daily cap.",
+    extra:(o)=>`+${healHP(o, Math.floor(fullMaxOf(o)/4))} HP` },
+  { name:"Soulstealer [Errata]", kind:"ability", targets:"self", n:1,
+    freq:"Scene — Free Action", book:"Ability, errata",
+    extra:(o)=>`+${healHP(o, Math.floor(fullMaxOf(o)/4))} HP` },
+  { name:"Gulp", kind:"ability", targets:"self", n:1,
+    freq:"Daily — Extended Action", needs:"10 minutes fully submerged in water", book:"Ability",
+    extra:(o)=>`+${healHP(o, Math.floor(fullMaxOf(o)/4))} HP` },
+  { name:"Photosynthesis", kind:"ability", targets:"self", n:1,
+    freq:"Daily — Extended Action", needs:"10 minutes basking in normal sunlight", book:"Ability",
+    extra:(o)=>`+${healHP(o, Math.floor(fullMaxOf(o)/4))} HP` },
+
+  /* ---- Legendary Blessings & Gifts (The Blessed and the Damned) ---- */
+  { name:"Spirit Mending", kind:"blessing", targets:"party", n:2,
+    freq:"Messiah: Daily x3 — Standard Action", book:"Blessed and the Damned, Rank 1 Blessing",
+    note:"Messiah: 30 Hit Points OR two Injuries — this button takes the Injuries. Signer: one Injury and 50 Hit Points.",
+    variant:(t)=>giftMode(t,"Spirit Mending")==="signer"
+      ? { n:1, use:"At-Will", freq:"Signer: Standard Action", extra:(o)=>`+${healHP(o,50)} HP` } : null },
+  { name:"Bounty of Life", kind:"gift", targets:"party", n:99, free:true,
+    freq:"Daily — Standard Action", book:"Blessed and the Damned, Xerneas Major Gift",
+    note:"“A target is cured of ALL Injuries and Status Effects.” A Legendary's blessing overrides the mortal 3-a-day limit.",
+    extra:(o)=>{ clearAllStatuses(o); return "every Status cured"; } },
+];
+/* a granted Blessing row carries its own Messiah/Signer side (see openAddGift) */
+function giftRowNamed(t, name){
+  return ((t && t.gifts)||[]).find(g => String((g && g.name)||"").toLowerCase()===String(name).toLowerCase()) || null;
+}
+function giftMode(t, name){ const g = giftRowNamed(t, name); return (g && g.mode==="signer") ? "signer" : "messiah"; }
+/* does this sheet actually have the source? */
+function hasInjurySource(def, t, mon){
+  if(def.kind==="core")    return true;
+  if(def.kind==="feature") return hasFeatureLoose(t, def.name);
+  if(def.kind==="item")    return ((t && t.inventory)||[]).some(it =>
+                                    String((it && it.name)||"").toLowerCase()===def.name.toLowerCase()
+                                    && (parseInt(it.qty)||0) > 0);
+  if(def.kind==="ability") return !!mon && (mon.abilities||[]).some(a =>
+                                    String(a||"").toLowerCase()===def.name.toLowerCase());
+  if(def.kind==="blessing" || def.kind==="gift") return !!giftRowNamed(t, def.name);
+  return false;
+}
+/* the use-pip frequency: an explicit `use`, else the head of the display frequency
+   ("Messiah: Daily x3 — Standard Action" → "Daily x3") */
+function injuryUseFreq(def){
+  return def.use || String(def.freq||"").split(" — ")[0].replace(/^[A-Za-z]+:\s*/, "");
+}
+function injuryUseKind(def){ return def.kind==="ability" ? "ability" : def.kind==="feature" ? "feature" : "item"; }
+/* whose pips does a source spend? Abilities and useOn:"target" sources (Shrug Off is once a day per
+   Pokémon) track on the creature being treated; everything else on the Trainer. */
+function injuryUseHolder(def, t, target){
+  return (def.kind==="ability" || def.useOn==="target") ? target : t;
+}
+/* every source that could treat `target`, given whose sheet we're standing on */
+function injurySourcesFor(t, target){
+  const targetIsMon = !isTrainerOwner(target);
+  return INJURY_SOURCES.map(def => {
+    const v = def.variant && def.variant(t);
+    const d = v ? Object.assign({}, def, v) : def;
+    if(!hasInjurySource(d, t, targetIsMon ? target : null)) return null;
+    if(d.targets==="mon" && !targetIsMon) return null;
+    if(d.targets==="self" && d.kind==="ability" && !targetIsMon) return null;
+    if(d.targets==="self" && d.kind!=="ability" && targetIsMon) return null;
+    return d;
+  }).filter(Boolean);
+}
+
+/* ---- the modal ---- */
+function openInjuryTreat(t, target, rerender, persist){
+  const doSave = persist || save;
+  function build(){
+    const body = el("div");
+    const inj = Math.max(0, target.injuries||0);
+    body.append(el("div",{style:"font-weight:700;margin-bottom:4px"},
+      `${ownerLabel(target)} — ${inj} Injur${inj===1?"y":"ies"}`,
+      el("span",{style:"margin-left:10px"}, injuryDayChip(target))));
+    body.append(el("div",{class:"muted small",style:"margin-bottom:12px"},
+      inj ? `Core p.252 allows ${injuryDayCap(target)>90?"any number of":injuryDayCap(target)} Injuries per individual per day — natural healing, Bandages, Items and Features all draw on the same count. ${injuryDayLeft(target)} left today.`
+          : "No Injuries to treat right now."));
+
+    const defs = injurySourcesFor(t, target);
+    if(!defs.length){
+      body.append(el("div",{class:"muted small"},
+        "Nothing on this sheet can treat an Injury yet. Bandages and Poultices come from the Inventory catalog; First Aid Expertise, Walk It Off, Shrug Off and Quick Healing are Medic / Hardened Features; Spirit Mending and Bounty of Life are Legendary Gifts."));
+    }
+    defs.forEach(def => {
+      const free = !!def.free || !!(def.freeIf && def.freeIf(t));
+      const blocked = !free && injuryDayLeft(target) <= 0;
+      const holder = injuryUseHolder(def, t, target);
+      const d = el("details",{class:"spoiler"});
+      const uc = def.item ? null
+        : usesControl(holder, injuryUseKind(def), def.name, injuryUseFreq(def), redraw, doSave);
+      const stock = def.item ? bandageStock(t) : 0;
+      const go = el("button",{class:"linkbtn",style:"margin-left:8px",
+        title: blocked
+          ? `${ownerLabel(target)} has already had ${injuryDayUsed(target)} Injuries treated today — it clears on ☀ End Day → 🌙 End the Day`
+          : (def.needs ? "Needs "+def.needs : "apply it"),
+        onclick:e=>{ e.preventDefault(); e.stopPropagation();
+                     runInjurySource(def, t, target, free, doSave, rerender, redraw); }},
+        blocked ? "⚠ capped" : "🩹 Treat");
+      go.disabled = blocked || !inj;
+      d.append(el("summary",{},
+        el("span",{style:"font-weight:700;color:var(--ink)"}, def.name),
+        el("span",{class:"muted small",style:"margin-left:8px"},
+          def.freq + (free ? " · exempt from the cap" : "") + (def.item ? ` · ${stock} in the bag` : "")),
+        uc ? el("span",{style:"margin-left:8px"}, uc) : "",
+        go));
+      const bits = [`Removes ${def.n>90?"every":def.n} Injur${def.n===1?"y":"ies"}.`];
+      if(def.needs) bits.push("Needs "+def.needs+".");
+      if(def.cost)  bits.push(def.cost+".");
+      if(def.note)  bits.push(def.note);
+      if(free && def.freeIf && def.freeLabel) bits.push(def.freeLabel+".");
+      bits.push(def.book+".");
+      d.append(el("div",{class:"small",style:"margin-top:6px"}, bits.join(" ")));
+      body.append(d);
+    });
+    return body;
+  }
+  function redraw(){
+    const m = document.querySelector(".modal-body");
+    if(m){ m.innerHTML = ""; m.append(build()); }
+  }
+  modal({ title:"🩹 Treat Injuries", bodyNode: build(),
+          footNodes:[ el("button",{class:"btn ghost",onclick:closeModal},"Done") ] });
+}
+/* press one source: spend its use, heal through the ledger, run its extra, then say what happened */
+function runInjurySource(def, t, target, free, doSave, rerender, redraw){
+  // never burn a Daily use (or a Bandage) on a heal the cap would swallow whole
+  if(!Math.max(0, target.injuries||0)){ toast(ownerLabel(target)+" has no Injuries to treat"); return; }
+  if(!free && injuryDayLeft(target) <= 0){
+    toast(ownerLabel(target)+" has already had "+injuryDayUsed(target)+" Injuries treated today (Core p.252)"); return;
+  }
+  if(def.item){
+    if(!spendBandage(t)){ toast(`No ${def.name} left in the bag`); return; }
+  } else {
+    const holder = injuryUseHolder(def, t, target);
+    const info = freqInfo(injuryUseFreq(def));
+    if(freqTrackable(info)){
+      const k = useKey(injuryUseKind(def), def.name);
+      if(usesLeft(holder, k, info.max) <= 0 && !holder.unlocked){
+        toast(`No ${def.name} uses left — tap a spent pip to hand one back if the GM allows it`); return;
+      }
+      holder.uses = holder.uses || {};
+      holder.uses[k] = Math.min(info.max, (holder.uses[k]||0) + 1);
+    }
+  }
+  const r = healInjuries(target, def.n, def.name, { free });
+  const bits = [];
+  if(r.healed) bits.push(`−${r.healed} Injur${r.healed===1?"y":"ies"}`);
+  if(def.extra){ const x = def.extra(target, r); if(x) bits.push(x); }
+  if(r.blocked) bits.push(`⚠ ${r.blocked} blocked by the ${injuryDayCap(target)}/day cap`);
+  if(!r.healed && !r.blocked) bits.push("nothing to heal");
+  doSave();
+  toast(`🩹 ${def.name} on ${ownerLabel(target)} — ${bits.join(", ")}`);
+  if(redraw) redraw();
+  if(rerender) rerender();
+}
+/* a Pokémon's Injuries input — read-only unless you're the GM (see canEditInjuries) */
+function monInjuryField(p){
+  const locked = !canEditInjuries();
+  const f = field("Injuries","",{type:"number",min:0,value:p.injuries, disabled:locked,
+    onchange:v=>{ p.injuries=Math.max(0,parseInt(v)||0);
+      const m=pokeDerived(p).maxHP; if(p.currentHP!=null && p.currentHP>m) p.currentHP=m;
+      applyAutoDeath(p); save(); refreshMon(p); }});
+  if(locked) f.title = INJURY_LOCK_TIP;
+  return f;
+}
+/* the 🩹 button that sits beside an Injuries field */
+function injuryTreatButton(t, target, rerender, persist){
+  return el("button",{class:"btn-secondary",style:"padding:4px 10px;align-self:end",
+    title:"Treat Injuries — Bandages, First Aid Expertise, Walk It Off, abilities, Blessings… all through the same 3-a-day ledger (Core p.252)",
+    onclick:()=>openInjuryTreat(t, target, rerender, persist)}, "🩹 Treat");
+}
+
+/* ===================================================================
+   Healing Wish / Lunar Dance (Core, Daily Psychic Status Moves)
+   "The user immediately Faints, lowering its HP to 0. The user takes no Injuries from HP Markers
+   when using [it]. The target is immediately cured of up to 3 injuries, healed to their Maximum Hit
+   Points, and has the Frequency of all Moves restored. [It] may target a Pokémon in a Poké Ball.
+   [It] does not restore the Frequency of Healing Wish or Lunar Dance. Injuries healed through [it]
+   count toward the total number of Injuries that can be healed each day, and this healing is
+   limited by the same."
+   The user Fainting is applied by hand rather than automatically: the caster is usually a Map token
+   or an encounter creature, and dropping a sheet to 0 behind the GM's back is exactly the kind of
+   thing that wants a confirmation. The button says so.
+=================================================================== */
+const SACRIFICE_HEAL_MOVES = ["Healing Wish","Lunar Dance"];
+const isSacrificeHealMove = nm => SACRIFICE_HEAL_MOVES.some(m => m.toLowerCase()===String(nm||"").toLowerCase());
+function openSacrificeHeal(caster, moveName, rerender){
+  const c = activeChar(); if(!c) return;
+  const t = c.trainer;
+  /* "may target a Pokémon in a Poké Ball" — so the whole box is fair game, not just the team */
+  const picks = [ { obj:t, label:`🧑 ${t.name||"Trainer"}` },
+    ...(c.pokemon||[]).filter(p => p!==caster).map(p => ({ obj:p,
+      label:`${p.onTeam===false?"📦":"🔴"} ${p.nickname||getSpecies(p.species)?.name||"?"} · Lv ${p.level}`
+             + ` · ${curHPOf(p)}/${pokeDerived(p).fullMaxHP} HP · ${p.injuries||0} Inj · ${injuryDayUsed(p)}/${injuryDayCap(p)} today` })) ];
+  const sel = el("select");
+  picks.forEach((p,i)=>sel.append(el("option",{value:String(i)}, p.label)));
+  const faintBox = el("input",{type:"checkbox"}); faintBox.checked = true;
+  const body = el("div",{},
+    el("div",{class:"small",style:"margin-bottom:10px"},
+      `${moveName}: the target is cured of up to 3 Injuries, healed to their Maximum Hit Points, and has the Frequency of all Moves restored (except Healing Wish and Lunar Dance themselves). Those Injuries count against the target's 3 a day like everything else.`),
+    el("label",{class:"field"}, el("span",{},"Target"), sel),
+    el("label",{class:"inline",style:"gap:6px;margin-top:10px"}, faintBox,
+      `${ownerLabel(caster)} Faints — drop to 0 HP, taking no Injuries from Hit Point Markers`));
+  modal({title:`✨ ${moveName}`, bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      const tgt = picks[parseInt(sel.value)||0].obj;
+      // it is a Daily Move, so pressing it here spends that use like rolling it would
+      const mv = moveByName.get(moveName.toLowerCase());
+      if(mv) spendMoveUse(caster, mv);
+      const r = healInjuries(tgt, 3, moveName);
+      const gained = healToFull(tgt);
+      const moves = restoreMoveFrequencies(tgt, SACRIFICE_HEAL_MOVES);
+      const bits = [];
+      if(r.healed) bits.push(`−${r.healed} Injur${r.healed===1?"y":"ies"}`);
+      if(r.blocked) bits.push(`⚠ ${r.blocked} blocked by the ${injuryDayCap(tgt)}/day cap`);
+      bits.push(`+${gained} HP`);
+      if(moves) bits.push(`${moves} Move frequenc${moves===1?"y":"ies"} restored`);
+      if(faintBox.checked){ caster.currentHP = 0; applyAutoKO(caster, 1, 0); bits.push(`${ownerLabel(caster)} Fainted`); }
+      save(); closeModal();
+      toast(`✨ ${moveName} → ${ownerLabel(tgt)} — ${bits.join(", ")}`);
+      (rerender||render)();
+    }},"✨ Use it"),
+  ]});
+}
 /* apply End of Scene to one character object (AP restored, Temp HP lost, Scene/EOT uses refreshed) */
 function applyEndScene(c){
   if(!c) return;
   normTrainer(c.trainer);
   c.trainer.usedAP = 0; c.trainer.tempHP = 0; c.trainer.buffs = []; resetUses(c.trainer, "scene");
   c.trainer.modes = {};                            // a Feature stance (Enchanting Transformation) lasts until the end of the Scene — and returns its Bound AP with it
+  c.trainer.manualBoundAP = 0;                      // any manual GM AP Drain/Bind releases at End Scene too
   delete c.trainer.fightOn;                        // Fight On and On is a combat-long refusal to drop; the fight is over
   // Combat Stages set by hand and Volatile afflictions don't outlast the Scene (Core p.234/p.245).
   // Stages an active source is still applying (a Burn, weather, an Aura, worn armour) are left to
@@ -1860,26 +2288,48 @@ function applyEndScene(c){
     shieldsDownRevert(p);                // Shields Down: back to Meteor Forme out of combat, if not Bruised
     transformRevert(p,true); });         // buffs are combat-duration → clear (#2); Mega and Transform both end with the Scene
 }
-/* apply Extended Rest to one character object (heal HP & 1 Injury, restore AP & all uses) */
-function applyEndDay(c){
-  if(!c) return;
+/* Apply an Extended Rest to one character object (restore AP & all uses, cure statuses, heal HP,
+   and treat the Injuries the rest planner picked).
+   `plan` is what openRestPlanner() worked out for THIS sheet: {center, heals:{key:n}}, where key is
+   "trainer" or a Pokemon's id and n is how many Injuries that individual gets treated. Called with
+   no plan it keeps the old blanket behaviour (heal 1 Injury on everyone, everyone to full) so the
+   Arcana Deck's "take an Extended Rest" card and any other caller still work unchanged. */
+function applyEndDay(c, plan){
+  if(!c) return { healed:0, blocked:0 };
+  const tally = { healed:0, blocked:0 };
+  /* every Injury a rest treats goes through the daily ledger, so camping twice in one day still
+     only ever clears 3 per individual (Core p.252). */
+  const treat = (o, key) => {
+    const n = plan ? Math.max(0, (plan.heals && plan.heals[key]) || 0) : 1;
+    if(!n) return;
+    const r = healInjuries(o, n, (plan && plan.src) || "Extended Rest");
+    tally.healed += r.healed; tally.blocked += r.blocked;
+  };
+  /* Resting can't restore Hit Points to anyone still Heavily Injured once the rest is over --
+     "a Trainer or Pokemon is unable to restore Hit Points through rest if the individual has 5 or
+     more injuries" (Core p.252). A Pokemon Center's machinery has no such limit, and neither does
+     the plan-less legacy path. */
+  const noHP = left => !!plan && !plan.center && left >= 5;
   const t = c.trainer; normTrainer(t);
-  t.usedAP = 0; t.tempHP = 0; t.buffs = []; resetUses(t, "all"); resetManualCS(t); t.modes = {};
+  t.usedAP = 0; t.tempHP = 0; t.buffs = []; resetUses(t, "all"); resetManualCS(t); t.modes = {}; t.manualBoundAP = 0;
   delete t.fightOn;
   clearStorageDigestion(t);                      // Berry Storage: "all Buffs gained this way are lost after an Extended Rest"
-  t.statuses = [];                                 // Extended Rest cures all Status afflictions (Core p.249)
-  t.injuries = Math.max(0, (t.injuries||0) - 1);   // Extended Rest heals 1 Injury (Core p.249)
-  t.currentHP = trainerDerived(t).hp;              // heal to remaining-injury-capped max
+  clearAllStatuses(t);                             // Extended Rest cures all Status afflictions (Core p.249) — except Death
+  treat(t, "trainer");
+  const tCap = trainerDerived(t).hp;               // remaining-injury-capped max
+  t.currentHP = noHP(t.injuries) ? Math.min(typeof t.currentHP==="number" ? t.currentHP : tCap, tCap) : tCap;
   (c.pokemon||[]).forEach(p => { normPokemon(p);
     if(p.mega) megaRevert(p,true);        // revert Mega before healing so max HP is the base form's
     transformRevert(p,true);              // "lasts until ... the end of the encounter"
     p.tempHP = 0; p.buffs = []; resetUses(p, "all"); resetManualCS(p); clearStorageDigestion(p);
-    p.statuses = [];                      // cure all Status afflictions on the whole party too
+    clearAllStatuses(p);                  // cure all Status afflictions on the whole party too (Death excepted)
 
-    p.injuries = Math.max(0, (p.injuries||0) - 1);
-    p.currentHP = pokeDerived(p).maxHP;   // heal to full (already capped by remaining Injuries)
+    treat(p, p.id);
+    const pCap = pokeDerived(p).maxHP;    // already capped by remaining Injuries
+    p.currentHP = noHP(p.injuries) ? Math.min(typeof p.currentHP==="number" ? p.currentHP : pCap, pCap) : pCap;
     shieldsDownRevert(p);                 // …and a patched-up Minior pulls its shell back on
   });
+  return tally;
 }
 /* the cloud rows a GM's rest affects: every PLAYER's sheet (not the GM's own characters, not the PC) */
 function playerRestRows(){
@@ -1902,21 +2352,355 @@ async function endScene(){
   const c = activeChar(); if(!c) return;
   applyEndScene(c); save(); render(); toast("Scene ended — AP restored, Scene uses refreshed");
 }
-/* Extended Rest / End of Day. GM in cloud → applies to all players; otherwise the active character. */
-async function endDay(){
-  const gmAll = mode==="cloud" && cloud.isGM;
-  const scope = gmAll ? "all players" : "this character & its party";
-  if(!confirm(`End the day (Extended Rest) for ${scope}?\nRestores HP & AP, heals 1 Injury, cures all Status afflictions, and refreshes all Scene & Daily uses.`)) return;
-  if(gmAll){
-    await fetchRoster();   // see endScene() — must apply on top of fresh data, not a possibly-stale cache
-    const rows = playerRestRows();
-    rows.forEach(r => applyEndDay(r.data));
-    rows.forEach(r => cloudUpsert(r));
-    render(); toast(`Extended Rest for ${rows.length} player sheet${rows.length===1?"":"s"}`); return;
+/* ===================================================================
+   Extended Rest planner  (Core p.250 Injuries / p.252 Resting)
+   ☀ End Day no longer blanket-heals: it opens a picker where you choose which sheets are
+   resting, tick the Injuries each Trainer and Pokemon gets treated, and the sheet works out how
+   many hours the rest costs. Two clocks, the GM's choice:
+
+     🏕 Camp -- an Extended Rest in the field. At least 4 continuous hours. Hit Points come
+        back at 1/16th of REAL Max HP per continuous half hour (1/8th while Bandaged, or under a
+        Medic's Nurse), and rest stops restoring HP after 8 hours. Anyone left with 5+ Injuries
+        recovers no HP from rest at all. Injuries: the first is the natural "24 hours without
+        gaining any new injuries" heal and costs the rest nothing; every one after that needs a
+        Bandage in place for its full 6 hours (3 hours if a Medic in the party has Proper Care).
+
+     🏥 Pokemon Center -- 1 hour to heal everyone to full and cure every Status, plus a delay
+        for the Injuries walked in with: +30 minutes each, or +1 hour each once the patient is
+        Heavily Injured (5+).
+
+   Either way the party rests at the same time, so the trip costs the LONGEST individual time, not
+   the sum -- and different Trainers rest in parallel too.
+   Max 3 Injuries removed per person per day by any route (Core p.252).
+=================================================================== */
+const REST_MAX_HEALS = 3;
+
+/* the sheets ☀ End Day offers a tab for. The GM and the Viewer co-pilot both drive every
+   player's sheet; anyone else gets the one character they're playing. */
+function restPlannerSheets(){
+  const label = r => (r.data.trainer && r.data.trainer.name) || r.data.name || r.owner_name || "Trainer";
+  if(mode==="cloud"){
+    if(cloud.isGM) return playerRestRows().map(r => ({ id:r.id, row:r, c:r.data, name:label(r) }));
+    if(isMapHpViewer()){
+      const SENT = [PC_OWNER, MAP_OWNER, ENC_OWNER, SHOP_OWNER, ROLL_OWNER];
+      return Object.values(cloud.byId)
+        .filter(r => r && r.data && r.data.trainer && !SENT.includes(r.owner_id))
+        .map(r => ({ id:r.id, row:r, c:r.data, name:label(r) }));
+    }
+    const r = cloud.byId[cloud.activeId];
+    return (r && r.data && r.data.trainer && canEdit(r)) ? [{ id:r.id, row:r, c:r.data, name:label(r) }] : [];
   }
-  const c = activeChar(); if(!c) return;
-  applyEndDay(c); save(); render(); toast("Extended Rest — HP & AP restored, 1 Injury healed, statuses cured, all uses refreshed");
+  const c = activeChar();
+  return (c && c !== EMPTY_CHAR) ? [{ id:c.id, row:null, c, name:(c.trainer && c.trainer.name) || c.name || "Trainer" }] : [];
 }
+/* everyone on one sheet who can rest: the Trainer, then the whole party (boxed Pokemon included --
+   they rest with everyone else, they're just flagged in the list). */
+function restRoster(c){
+  const out = [];
+  const t = c.trainer; normTrainer(t);
+  const dT = trainerDerived(t);
+  out.push({ key:"trainer", mon:false, obj:t, name:(t.name || c.name || "Trainer"),
+             cur: typeof t.currentHP==="number" ? t.currentHP : dT.hp,
+             full: dT.fullHP, inj: Math.max(0, t.injuries||0) });
+  (c.pokemon||[]).forEach(p => { normPokemon(p);
+    const d = pokeDerived(p);
+    out.push({ key:p.id, mon:true, obj:p, boxed: p.onTeam===false,
+               name: p.nickname || (getSpecies(p.species) && getSpecies(p.species).name) || p.species || "Pokemon",
+               cur: typeof p.currentHP==="number" ? p.currentHP : d.maxHP,
+               full: d.fullMaxHP, inj: Math.max(0, p.injuries||0) });
+  });
+  return out;
+}
+/* Nurse cares for everyone resting with the Medic, so a single medic anywhere in the resting group
+   speeds up the whole camp (Proper Care needs Nurse to have something to improve). */
+function restMedics(sheets, per){
+  let nurse = false, properCare = false;
+  sheets.forEach(s => {
+    if(per && per[s.id] && !per[s.id].on) return;
+    const t = s.c.trainer;
+    if(hasFeatureLoose(t,"Nurse")){
+      nurse = true;
+      if(hasFeatureLoose(t,"Proper Care")) properCare = true;
+    }
+  });
+  return { nurse, properCare };
+}
+/* how long ONE individual needs, in hours, plus whether they get their Hit Points back.
+   opts = {center, bandaged, properCare} */
+function restHoursFor(ind, heals, opts){
+  const left = Math.max(0, ind.inj - heals);
+  if(opts.center){
+    // Pokemon Center (Core p.252): an hour flat, plus the delay the Injuries walked in with
+    const per = ind.inj >= 5 ? 1 : 0.5;
+    return { hours: 1 + ind.inj*per, hp:true, left };
+  }
+  let hours = 4;                                        // an Extended Rest is 4+ continuous hours
+  // the first Injury is natural healing (24h with no new Injuries) and costs the rest nothing;
+  // the ones after it each need a Bandage in place for its full duration
+  const bandaged = Math.max(0, heals - 1);
+  if(bandaged) hours = Math.max(hours, bandaged * (opts.properCare ? 3 : 6));
+  let hp = true;
+  if(left >= 5) hp = false;                             // Heavily Injured: no HP from rest at all
+  else {
+    const target = injuryHealCap(ind.full, left);
+    const missing = Math.max(0, target - ind.cur);
+    if(missing > 0){
+      const rate = ind.full / (opts.bandaged ? 8 : 16); // HP restored per continuous half hour
+      const halfHours = Math.ceil(missing / Math.max(1, rate));
+      hours = Math.max(hours, Math.min(16, halfHours) / 2);   // rest gives no more HP past 8 hours
+    }
+  }
+  return { hours, hp, left };
+}
+/* 6.5 -> "6h 30m" */
+function restHoursText(h){
+  if(!h) return "0h";
+  const whole = Math.floor(h + 1e-9), half = (h - whole) >= 0.49;
+  return (whole ? whole+"h" : "") + (half ? (whole ? " 30m" : "30m") : "");
+}
+/* how many Injuries this individual may have treated in THIS rest: whatever is left of their 3 a
+   day, never more than they actually carry, and — in camp — past the first (natural healing)
+   every one needs a Bandage, so an un-bandaged camper can only ever get the 1. */
+function restHealCap(ind, plan, bandagedNow){
+  const cap = Math.min(injuryDayLeft(ind.obj), ind.inj);
+  if(plan.center || bandagedNow) return cap;
+  return Math.min(1, cap);
+}
+/* Bandages and Poultices are mechanically the same item (6 hours, 1 Injury) — either will do. */
+const BANDAGE_ITEMS = ["Bandages","Poultices"];
+const isBandageItem = nm => BANDAGE_ITEMS.some(b => String(nm||"").toLowerCase()===b.toLowerCase());
+function bandageStock(t){
+  return ((t && t.inventory) || []).reduce((n,it) =>
+    n + (isBandageItem(it && it.name) ? Math.max(0, parseInt(it.qty)||0) : 0), 0);
+}
+/* spend one Bandage/Poultice out of the bag; returns the name used, or "" if the bag was empty */
+function spendBandage(t){
+  const inv = (t && t.inventory) || [];
+  const it = inv.find(x => isBandageItem(x && x.name) && (parseInt(x.qty)||0) > 0);
+  if(!it) return "";
+  const nm = it.name;
+  it.qty = (parseInt(it.qty)||0) - 1;
+  if(it.qty <= 0){ const i = inv.indexOf(it); if(i>=0) inv.splice(i,1); }
+  return nm;
+}
+
+/* ---- the modal ---- */
+function openRestPlanner(){
+  const sheets = restPlannerSheets();
+  if(!sheets.length){ toast("Nothing to rest \u2014 no sheet you can edit"); return; }
+  const plan = { center:false, tab:sheets[0].id, per:{} };
+  sheets.forEach(s => plan.per[s.id] = { on:true, heals:{}, band:{} });
+
+  const body = el("div");
+  const summary = el("div",{style:"margin-left:auto;text-align:right;line-height:1.4"});
+  const goBtn = el("button",{class:"btn", title:"Take the rest, but the day carries on — Hit Points, AP, statuses and uses all come back, and every individual's Injuries-treated-today count keeps running.",
+    onclick:()=>{ closeModal(); restApply(sheets, plan, false); }}, "☀ Rest");
+  const dayBtn = el("button",{class:"btn-primary", title:"Take the rest AND roll the day over — everyone's \"treated today\" count resets, so tomorrow they each get a fresh 3.",
+    onclick:()=>{ closeModal(); restApply(sheets, plan, true); }}, "🌙 End the Day");
+
+  /* the whole plan for one sheet, recomputed from scratch every draw */
+  function sheetPlan(s){
+    const st = plan.per[s.id];
+    const med = restMedics(sheets, plan.per);
+    const roster = restRoster(s.c);
+    const rows = roster.map(ind => {
+      const bandagedNow = plan.center ? false : (!!st.band[ind.key] || med.nurse);
+      const capN = restHealCap(ind, plan, bandagedNow);
+      const n = Math.min(capN, Math.max(0, st.heals[ind.key]||0));
+      if((st.heals[ind.key]||0) !== n) st.heals[ind.key] = n;      // a lowered cap can't leave a stale pick
+      const t = restHoursFor(ind, n, { center:plan.center, bandaged:bandagedNow, properCare:med.properCare });
+      return { ind, n, capN, bandagedNow, ...t };
+    });
+    const hours = st.on ? rows.reduce((m,r)=>Math.max(m, r.hours), 0) : 0;
+    return { st, med, rows, hours };
+  }
+
+  function draw(){
+    body.innerHTML = "";
+
+    /* clock picker */
+    const clock = el("div",{style:"display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px"});
+    [["🏕 Camp", false, "An Extended Rest in the field \u2014 4 hours minimum, Hit Points back at 1/16th of Max per half hour, and each Injury past the first needs a Bandage for 6 hours."],
+     ["🏥 Pok\u00e9mon Center", true, "A Pok\u00e9mon Center \u2014 1 hour to heal everyone to full and cure every Status, plus 30 minutes per Injury carried in (a full hour each once Heavily Injured)."]]
+      .forEach(([lbl, isCenter, tip]) => clock.append(el("button",{
+        class:"subtab"+(plan.center===isCenter?" on":""), title:tip,
+        onclick:()=>{ plan.center = isCenter; draw(); }}, lbl)));
+    body.append(clock);
+    body.append(el("div",{class:"muted small",style:"margin-bottom:12px"},
+      plan.center
+        ? "Pok\u00e9mon Center: everyone comes out at full Hit Points with every Status cured and Daily Moves refreshed. Injuries add to the clock \u2014 30 minutes each, or a full hour each for a patient with 5 or more. Max 3 Injuries treated per person per day."
+        : "Camp: at least 4 hours. Hit Points come back at 1/16th of Max per half hour (1/8th once Bandaged or under a Medic's Nurse) and stop coming back after 8 hours. Nobody left with 5+ Injuries recovers Hit Points at all. The first Injury is free natural healing; each one after it needs a Bandage in place 6 hours."));
+
+    /* one tab per sheet */
+    if(sheets.length > 1){
+      const tabs = el("div",{class:"subtabs"});
+      sheets.forEach(s => {
+        const st = plan.per[s.id], sp = sheetPlan(s);
+        tabs.append(el("button",{class:"subtab"+(plan.tab===s.id?" on":""),
+          title: st.on ? "resting \u2014 "+restHoursText(sp.hours) : "not resting",
+          onclick:()=>{ plan.tab = s.id; draw(); }},
+          (st.on ? "" : "\u2013 ") + s.name + (st.on ? "  \u00b7 "+restHoursText(sp.hours) : "")));
+      });
+      body.append(tabs);
+    }
+
+    const s = sheets.find(x => x.id===plan.tab) || sheets[0];
+    plan.tab = s.id;
+    const sp = sheetPlan(s);
+
+    /* does this sheet rest at all? */
+    const onCb = el("input",{type:"checkbox"}); onCb.checked = !!sp.st.on;
+    onCb.addEventListener("change", ()=>{ sp.st.on = onCb.checked; draw(); });
+    body.append(el("label",{style:"display:flex;gap:8px;align-items:center;font-weight:700;margin-bottom:8px",
+      title:"Leave this off and nothing at all happens to this sheet \u2014 no healing, no AP, no refreshed uses."},
+      onCb, s.name + " takes this rest"));
+
+    if(!sp.st.on){
+      body.append(el("div",{class:"muted small"},"Sitting this one out \u2014 nothing on this sheet changes."));
+    } else {
+      if(sp.med.nurse) body.append(el("div",{class:"muted small",style:"margin-bottom:8px"},
+        "❤ A Medic's Nurse covers everyone resting here: Hit Points at 1/8th of Max per half hour, and Bandages aren't needed to treat Injuries"
+        + (sp.med.properCare ? " \u2014 and Proper Care brings each Injury down to 3 hours." : ".")));
+
+      const tbl = el("table",{class:"movetable",style:"width:100%"});
+      tbl.append(el("tr",{},
+        el("th",{},"Who"), el("th",{},"HP"), el("th",{},"Injuries"),
+        el("th",{},"Treat"), plan.center ? el("th",{},"") : el("th",{title:"Bandaged \u2014 doubles the natural healing rate, and is what lets you treat more than the one free Injury"},"🩹"),
+        el("th",{},"⏱")));
+
+      sp.rows.forEach(r => {
+        const ind = r.ind;
+        const tr = el("tr",{});
+        tr.append(el("td",{}, ind.name + (ind.boxed ? " (PC)" : "")));
+        tr.append(el("td",{class:"muted"}, ind.cur + "/" + ind.full));
+        tr.append(el("td",{}, ind.inj ? String(ind.inj) : el("span",{class:"muted"},"—"),
+          injuryDayUsed(ind.obj) ? el("span",{style:"margin-left:6px"}, injuryDayChip(ind.obj)) : ""));
+
+        /* Injuries to treat -- a - n + stepper capped by the rules */
+        const cell = el("td",{});
+        if(!ind.inj){ cell.append(el("span",{class:"muted"},"\u2014")); }
+        else {
+          const set = d => { sp.st.heals[ind.key] = Math.max(0, Math.min(r.capN, (sp.st.heals[ind.key]||0) + d)); draw(); };
+          cell.append(el("button",{class:"btn-secondary",style:"padding:2px 9px",
+            onclick:()=>set(-1)},"\u2212"));
+          cell.append(el("span",{style:"padding:0 8px;font-weight:700"}, String(r.n)));
+          cell.append(el("button",{class:"btn-secondary",style:"padding:2px 9px",
+            title: r.n>=r.capN
+              ? (injuryDayLeft(ind.obj) <= r.n
+                 ? `${injuryDayUsed(ind.obj)} of ${injuryDayCap(ind.obj)} Injuries already treated today (Core p.252) — it clears on 🌙 End the Day`
+                 : "Only the one free natural heal without a Bandage — tick 🩹 to treat more")
+              : "treat one more Injury",
+            onclick:()=>set(+1)},"+"));
+        }
+        tr.append(cell);
+
+        /* bandaged? */
+        const bCell = el("td",{});
+        if(!plan.center){
+          const cb = el("input",{type:"checkbox"});
+          cb.checked = !!r.bandagedNow;
+          const stock = bandageStock(s.c.trainer);
+          const spoken = Object.keys(sp.st.band).filter(k=>sp.st.band[k]).length;
+          if(sp.med.nurse){ cb.disabled = true; cb.title = "already under the Medic's Nurse — no Bandage needed"; }
+          else if(!cb.checked && spoken >= stock){
+            cb.disabled = true;
+            cb.title = stock ? `All ${stock} Bandage${stock===1?"":"s"} in ${s.name}'s bag are already spoken for`
+                             : `No Bandages or Poultices in ${s.name}'s bag — add some from the Inventory catalog`;
+          } else {
+            cb.title = `Apply a Bandage — spends one of the ${stock} in ${s.name}'s bag when the rest is taken`;
+          }
+          cb.addEventListener("change", ()=>{ sp.st.band[ind.key] = cb.checked; draw(); });
+          bCell.append(cb);
+        }
+        tr.append(bCell);
+
+        /* what this one costs */
+        const note = restHoursText(r.hours) + (r.hp ? "" : "  ⚠ no HP");
+        tr.append(el("td",{class: r.hp ? "muted" : "",
+          title: r.hp ? "" : "Still at "+r.left+" Injuries after treatment \u2014 rest restores no Hit Points to the Heavily Injured (Core p.252). A Pok\u00e9mon Center can still do it."}, note));
+        tbl.append(tr);
+      });
+      body.append(tbl);
+    }
+
+    /* the bill */
+    let total = 0;
+    const lines = [];
+    sheets.forEach(x => {
+      const p = sheetPlan(x);
+      if(!p.st.on) return;
+      total = Math.max(total, p.hours);
+      lines.push(x.name + " " + restHoursText(p.hours));
+    });
+    summary.innerHTML = "";
+    if(!lines.length){
+      summary.append(el("span",{class:"muted small"},"nobody is resting"));
+      goBtn.disabled = true;
+    } else {
+      goBtn.disabled = false;
+      summary.append(el("div",{},el("strong",{},"⏱ "+restHoursText(total)),
+        el("span",{class:"muted small"}," \u00b7 "+(lines.length===1?"1 sheet":lines.length+" sheets in parallel"))));
+      summary.append(el("div",{class:"muted small"}, lines.join("  \u00b7  ")));
+    }
+    goBtn.textContent  = "☀ Rest" + (lines.length ? " " + restHoursText(total) : "");
+    dayBtn.textContent = "🌙 End the Day" + (lines.length ? " " + restHoursText(total) : "");
+    dayBtn.disabled = goBtn.disabled;
+  }
+
+  draw();
+  modal({ title:"\u2600 Extended Rest", bodyNode: body,
+          footNodes:[ summary, el("button",{class:"btn ghost",onclick:closeModal},"Cancel"), goBtn, dayBtn ] });
+}
+
+/* run the rest the planner worked out. The cloud paths re-fetch first (see endScene) so the rest
+   lands on FRESH sheets, then clamp every pick against what the fresh data actually shows -- a
+   player who healed an Injury while the modal was open can't be over-healed by a stale plan. */
+async function restApply(sheets, plan, endsDay){
+  const active = sheets.filter(s => plan.per[s.id] && plan.per[s.id].on);
+  if(!active.length){ toast("Nobody rested"); return; }
+  let total = 0, healedN = 0, blockedN = 0, bandagesUsed = 0;
+  const med = restMedics(sheets, plan.per);
+
+  const wide = mode==="cloud" && (cloud.isGM || isMapHpViewer());
+  if(wide) await fetchRoster();
+
+  active.forEach(s => {
+    const st = plan.per[s.id];
+    // after a re-fetch the row object may hold new data -- always re-read it from the cache
+    const c = (mode==="cloud" && cloud.byId[s.id] && cloud.byId[s.id].data) ? cloud.byId[s.id].data : s.c;
+    const heals = {};
+    restRoster(c).forEach(ind => {
+      const bandagedNow = plan.center ? false : (!!st.band[ind.key] || med.nurse);
+      const capN = restHealCap(ind, plan, bandagedNow);
+      const n = Math.min(capN, Math.max(0, st.heals[ind.key]||0));
+      if(n) heals[ind.key] = n;
+      total = Math.max(total, restHoursFor(ind, n, { center:plan.center, bandaged:bandagedNow, properCare:med.properCare }).hours);
+      // a Bandage the planner leaned on is a real item out of the bag (a Medic's Nurse needs none)
+      if(n && st.band[ind.key] && !med.nurse && spendBandage(c.trainer)) bandagesUsed++;
+    });
+    const res = applyEndDay(c, { center:plan.center, heals,
+                                 src: plan.center ? "Pokémon Center" : "Extended Rest" });
+    healedN += res.healed; blockedN += res.blocked;
+    // the rest happens DURING today, so its heals count against today -- then the day rolls over
+    if(endsDay) restRoster(c).forEach(ind => resetInjuryDay(ind.obj));
+    if(mode==="cloud"){
+      const row = cloud.byId[s.id] || s.row;
+      if(row) cloudUpsert(row);
+    }
+  });
+  if(mode!=="cloud") save();
+  render();
+  const bits = [restHoursText(total), active.length + " sheet" + (active.length===1?"":"s")];
+  if(healedN) bits.push(healedN + " Injur" + (healedN===1?"y":"ies") + " treated");
+  if(bandagesUsed) bits.push(bandagesUsed + " Bandage" + (bandagesUsed===1?"":"s") + " used");
+  if(blockedN) bits.push("⚠ " + blockedN + " past the daily cap");
+  if(endsDay) bits.push("new day — Injury counts reset");
+  toast((plan.center ? "🏥 Pokémon Center" : "🏕 Extended Rest") + " — " + bits.join(" · "));
+}
+
+/* ☀ End Day. Opens the rest planner -- the GM and the Viewer get a tab per player sheet, a
+   player gets their own. */
+async function endDay(){ openRestPlanner(); }
 
 /* ===================================================================
    State
@@ -1972,6 +2756,7 @@ function normPokemon(p){
   if(typeof p.wielded !== "boolean") p.wielded = false;          // Living Weapon: currently in the Trainer's hands
   if(!p.uses || typeof p.uses!=="object") p.uses = {};
   if(!Array.isArray(p.statuses)) p.statuses = [];
+  normInjDay(p);                              // today's Injury-healing ledger (see healInjuries)
   if(!Array.isArray(p.auras)) p.auras = [];   // Legendary Auras (encounter-only; seeded when added to an encounter)
   if(!Array.isArray(p.buffs)) p.buffs = [];        // active Cheers / Orders / Songs (#2)
   if(!Array.isArray(p.digestion)) p.digestion = [];       // stored Digestion Buffs from eaten Snacks (Core p.278)
@@ -2004,9 +2789,12 @@ function normTrainer(t){
   if(typeof t.currentHP==="undefined") t.currentHP = null;
   if(typeof t.tempHP!=="number") t.tempHP = 0;
   if(typeof t.injuries!=="number") t.injuries = 0;
+  normInjDay(t);                              // today's Injury-healing ledger (see healInjuries)
   if(!t.cs || typeof t.cs!=="object") t.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};   // Combat Stages
   if(!Array.isArray(t.statuses)) t.statuses = [];
   if(typeof t.usedAP!=="number") t.usedAP = 0;
+  if(typeof t.manualBoundAP!=="number") t.manualBoundAP = 0;      // GM-applied AP Drain/Bind not tied to any Feature/move
+  if(typeof t.xpPool!=="number") t.xpPool = 0;                    // EXP the GM has sent but the player hasn't spent yet
   if(typeof t.xp!=="number") t.xp = 0;                            // EXP toward next level (houserule: 10 = level up)
   if(typeof t.unlocked!=="boolean") t.unlocked = false;
   if(typeof t.struggleType!=="string") t.struggleType = null;     // elemental unarmed Struggle (GM 🔓 only — trainers have no capabilities of their own)
@@ -2470,10 +3258,13 @@ function speciesArtChain(name, shiny){
   const local = localSpeciesArt(name);   // repo-bundled art wins outright when present
   return [...local, ...(getSpecies(name)?.customArt ? [...bucket, ...db] : [...db, ...bucket])];
 }
-function monSprite(speciesName, shiny, sizeCls="s-sm", override){
+function monSprite(speciesName, shiny, sizeCls="s-sm", override, eager){
   // an uploaded photo wins outright; if it fails that's just a broken photo, not a missing sprite
   const chain = override ? [override] : speciesArtChain(speciesName, shiny);
-  const img = el("img",{class:`sprite ${sizeCls}`, alt:speciesName||"", loading:"lazy", src: chain[0]});
+  // `eager` is for the map board: its tokens sit inside a pan/zoom container whose CSS transform
+  // confuses native lazy-loading's viewport check, so a token can be judged "off-screen" and left
+  // unloaded until a later pan recomputes it — the image blinking in and out that this fixes.
+  const img = el("img",{class:`sprite ${sizeCls}`, alt:speciesName||"", loading: eager?"eager":"lazy", src: chain[0]});
   attachArtFallback(img, chain.slice(1));
   return img;
 }
@@ -2549,7 +3340,7 @@ function toast(msg){
 }
 
 /* field factory: label + input bound to a path on active character */
-function field(label, path, {type="text", opts=null, step, min, onchange, value, placeholder}={}) {
+function field(label, path, {type="text", opts=null, step, min, onchange, value, placeholder, disabled=false}={}) {
   const cur = value !== undefined ? value : getByPath(path);
   let input;
   if (opts) {
@@ -2563,8 +3354,10 @@ function field(label, path, {type="text", opts=null, step, min, onchange, value,
   } else {
     input = el("input", { type, placeholder: placeholder||"" });
     if (step!=null) input.step = step; if (min!=null) input.min = min;
-    input.value = cur ?? "";
+    if (type === "checkbox") input.checked = !!cur;
+    else input.value = cur ?? "";
   }
+  if (disabled) input.disabled = true;
   // Fire on "change" (blur / commit) — never on each keystroke — so a handler that
   // re-renders can't recreate the input mid-typing and steal focus. Checkboxes/selects
   // already emit "change" on toggle/select, so this is correct for every input type.
@@ -2610,6 +3403,8 @@ function render(){
   // Shops are GM prep too; players never see the tab — they meet a shop as a popup on the map
   const shopBtn = $("#tabShops"); if(shopBtn) shopBtn.hidden = !isGM();
   if(currentTab==="shops" && !isGM()){ switchTab("trainer"); return; }
+  // End Scene / End Day advance the whole campaign clock — only the GM should trigger them
+  const restActions = $(".rest-actions"); if(restActions) restActions.hidden = !isGM();
   refreshCharSelect();
   const ac = activeChar();
   $("#partyCount").textContent = (ac?.pokemon?.length) || "";
@@ -3321,6 +4116,7 @@ function injuryHPCount(t){
 function pushApplies(t, ctx){ return !!t && hasFeatureLoose(t, BERSERKER_PUSH) && isBerserkerAttack(ctx); }
 function pushItToTheLimit(t, cureKey){
   t.injuries = Math.min(10, (t.injuries || 0) + 1);
+  applyAutoDeath(t);                       // the 10th Injury from a Press kills, same as any other
   const max = trainerDerived(t).hp;                       // the new Injury may have lowered it
   if(t.currentHP != null && t.currentHP > max) t.currentHP = max;
   const tick = hpTick(max);
@@ -3400,11 +4196,19 @@ function fightOnReady(t){
   return fightOnFree(t) || fightOnUses(t).left > 0;
 }
 /* The HP at or below which a creature is Fainted — 0 for everyone, −50% of Max while a Berserker
-   is Fighting On. */
+   is Fighting On, and −50% of Max while a Pokémon with Rampaging Spirit is Enraged (Mega
+   Annihilape's Mega Ability). Both are "you don't drop at 0" effects; they can't co-occur (one is
+   trainer-only, the other a Pokémon Ability) but the deeper floor would win if they ever did. */
 function koFloor(o){
-  if(o && isTrainerOwner(o) && o.fightOn) return -Math.floor(ownerMaxHP(o) * 0.5);
+  if(!o) return 0;
+  if(isTrainerOwner(o)) return o.fightOn ? -Math.floor(ownerMaxHP(o) * 0.5) : 0;
+  if(hasAbility(o, "Rampaging Spirit") && hasStatus(o, "enraged")) return -Math.floor(ownerMaxHP(o) * 0.5);
   return 0;
 }
+/* Hit Points have no lower clamp: a big hit really can put a sheet far below zero, and the exact
+   negative number is what the table reads Fainting and massive damage off — pinning it at some
+   arbitrary floor would also make anything whose koFloor sits deeper than that floor unkillable.
+   Only the Max-HP ceiling is enforced at the setters. */
 function startFightOn(t){
   t.fightOn = true;
   if(!fightOnFree(t)){ const u = fightOnUses(t); t.uses = t.uses || {}; t.uses[u.key] = Math.min(u.max, (t.uses[u.key] || 0) + 1); }
@@ -3613,6 +4417,10 @@ function ownerLabel(o){
 function applyAutoKO(owner, oldHP, newHP){
   if(!owner || typeof newHP !== "number") return null;
   if(!Array.isArray(owner.statuses)) owner.statuses = [];
+  /* Death first: it sits at every HP setter through this one function, and it pins Knocked Out on by
+     itself — so once it fires, `was` is already true below and the ordinary "you Fainted" toast
+     doesn't double up on the death notice. */
+  applyAutoDeath(owner, newHP);
   const was = owner.statuses.includes("knockedOut");
   if(newHP > 0 && owner.fightOn) delete owner.fightOn;      // back on your feet — the Feature's work is done
   const down = newHP <= koFloor(owner);
@@ -3629,10 +4437,22 @@ function applyAutoKO(owner, oldHP, newHP){
     }
     owner.statuses.push("knockedOut");
     transformRevert(owner, true);   // "Transform lasts until the user is ... Fainted" (no-op for anyone else)
+    megaRevert(owner, true);        // a Fainted Pokémon can't stay Mega Evolved (no-op if not Mega)
     toast(`💀 ${ownerLabel(owner)} is Knocked Out at ${newHP} HP.`);
     return "ko";
   }
+  /* Rampaging Spirit holds a Pokémon up past 0 the same way Fight On does for a Berserker, so it
+     announces itself on the crossing — otherwise the table just sees a negative HP bar with no
+     Knocked Out chip and assumes the sheet lost track. */
+  if(!down && !was && newHP <= 0 && oldHP > 0
+     && hasAbility(owner, "Rampaging Spirit") && hasStatus(owner, "enraged")){
+    toast(`💢 Rampaging Spirit — ${ownerLabel(owner)} is NOT Fainted; they Faint at ${koFloor(owner)} HP.`);
+    return "rampaging";
+  }
   if(!down && was){
+    /* a corpse doesn't stand back up because someone poured a potion on it — Knocked Out stays
+       pinned under the Dead chip until the GM lifts it by hand. */
+    if(owner.statuses.includes("dead")) return null;
     owner.statuses = owner.statuses.filter(k => k !== "knockedOut");
     toast(`✅ ${ownerLabel(owner)} is back up at ${newHP} HP.`);
     return "up";
@@ -3640,6 +4460,82 @@ function applyAutoKO(owner, oldHP, newHP){
   return null;
 }
 
+
+/* ---------- Death (house rule) ----------
+   One step past Fainting. A creature dies the moment either of these is true:
+     • it carries DEATH_INJURIES (10) Injuries — the most the sheet allows, and enough to have eaten
+       100% of its Max HP through injuryHealCap() already; or
+     • its Hit Points are at or below whichever is LOWER of −200% of its FULL (undamaged) Max HP and
+       DEATH_HP_FLOOR (−50). The percentage is measured off fullMaxHP, the same number the Injury
+       markers in injuriesFromHit() are measured off, so the two ladders agree; the flat −50 is the
+       floor that stops a 20-HP level-1 Trainer from dying at −40.
+   Death implies Knocked Out (it pins that chip on and applyAutoKO refuses to lift it), reverts a
+   Transform / Mega the same way Fainting does, and is PERMANENT — no rest, Centre or item clears it.
+   Like applyAutoInjury / applyAutoKO it never save()s: the caller owns the store. */
+const DEATH_INJURIES = 10;
+const DEATH_HP_FLOOR = -50;
+/* the HP at or below which `o` is dead. A Boss is deliberately exempt from the HP half of the rule
+   (its currentHP is one BAR of many — −200% of a bar is meaningless; bossDefeated() already handles
+   a Boss running out of bars), but 10 Injuries still kills it. */
+function deathFloor(o){
+  const full = ownerFullHP(o) || 0;
+  return Math.min(-Math.floor(full * 2), DEATH_HP_FLOOR);
+}
+function isDead(o){ return hasStatus(o, "dead"); }
+/* why this creature is dead, as a phrase for the toast/banner — or null if it isn't. `hp` lets an HP
+   setter ask about a value it hasn't written to the object yet. */
+function deathReason(o, hp){
+  if(!o || isSwarm(o)) return null;                 // a Swarm is a horde, not an individual
+  const inj = Math.max(0, o.injuries || 0);
+  if(inj >= DEATH_INJURIES) return `${inj} Injuries`;
+  if(isBoss(o)) return null;
+  const h = typeof hp === "number" ? hp : (typeof o.currentHP === "number" ? o.currentHP : null);
+  if(h === null) return null;
+  const floor = deathFloor(o);
+  return h <= floor ? `${h} HP (death floor ${floor})` : null;
+}
+function applyAutoDeath(owner, newHP){
+  if(!owner) return null;
+  if(!Array.isArray(owner.statuses)) owner.statuses = [];
+  if(owner.statuses.includes("dead")) return null;
+  const why = deathReason(owner, newHP);
+  if(!why) return null;
+  owner.statuses.push("dead");
+  if(!owner.statuses.includes("knockedOut")) owner.statuses.push("knockedOut");
+  delete owner.fightOn;                 // nothing is fighting on any more
+  transformRevert(owner, true);
+  megaRevert(owner, true);
+  toast(`☠️ ${ownerLabel(owner)} has DIED — ${why}. Only the GM can lift the Dead chip.`);
+  return "dead";
+}
+/* The one way back. Death is never lifted by a rule — it's lifted by the GM deciding it is (a
+   Legendary's intervention, a Revive the table agreed on, or simply a mis-click). Takes Knocked Out
+   off with it, and says so out loud when the creature still meets the condition that killed them,
+   because the next HP or Injury edit will then put the chip straight back. */
+function liftDeath(o){
+  if(!o || !Array.isArray(o.statuses)) return false;
+  if(!o.statuses.includes("dead")) return false;
+  const why = deathReason(o);
+  o.statuses = o.statuses.filter(k => k !== "dead" && k !== "knockedOut");
+  toast(why
+    ? `⚰️ ${ownerLabel(o)} is no longer Dead — but they still meet the condition that killed them (${why}), so the next HP or Injury change puts it straight back. Heal them past it.`
+    : `⚰️ ${ownerLabel(o)} is no longer Dead.`);
+  return true;
+}
+/* the red banner the sheet / encounter cards wear once someone is dead. `onLift` (when the viewer is
+   allowed to do GM bookkeeping — same authority as typing an Injury count in) hangs the revive
+   button off it, so a dead sheet can be undone from the sheet itself and not only from the Map. */
+function deathBanner(o, onLift){
+  if(!o || !hasStatus(o, "dead")) return null;
+  const why = deathReason(o);
+  const box = el("div",{class:"deadbox",
+    title:"Permanent — rest, Pokémon Centers and full-heal items won't lift it. Only the GM can."},
+    `☠️ DEAD — ${why || "past the point of no return"}`);
+  if(onLift && canEditInjuries()) box.append(el("button",{class:"linkbtn deadbox-lift",
+    title:"GM: take Death (and the Knocked Out it pins on) back off. Heal them past the death floor first, or it re-applies on the next HP change.",
+    onclick:()=>{ if(liftDeath(o)) onLift(); }}, "⚰️ revive"));
+  return box;
+}
 
 /* ---------- Shields Down: the Meteor ⇄ Core swap (see MINIOR_COLORS up top) ----------
    Rides along at every HP setter beside applyAutoInjury/applyAutoKO, so a Minior cracks open the
@@ -4349,11 +5245,21 @@ function trainerXpCard(t){
     el("div",{class:"hpbar",style:"flex:1;min-width:140px"}, el("i",{style:`width:${pct}%;background:var(--accent)`})),
     el("span",{class:"small muted",style:"white-space:nowrap"}, t.level>=TRAINER_MAX_LEVEL ? "max level" : `${per-cur} to Lv ${t.level+1}`)));
   const inp = el("input",{type:"number",min:1,value:1,style:"width:70px",title:"amount of EXP"});
-  const apply = sign => { const n=Math.abs(parseInt(inp.value)||0); if(n) addTrainerXP(t, sign*n); };
+  const apply = sign => {
+    const n=Math.abs(parseInt(inp.value)||0); if(!n) return;
+    if(sign>0 && !isGM()){
+      if(typeof t.xpPool!=="number") t.xpPool = 0;
+      if(n > t.xpPool){ toast(`Only ${t.xpPool} EXP in your pool — ask the GM to send more`); return; }
+      t.xpPool -= n;
+    }
+    addTrainerXP(t, sign*n);
+  };
   card.append(el("div",{class:"inline",style:"gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center"},
     el("span",{class:"small muted"},"Award:"), inp,
     el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"grant EXP (auto levels up at 10)",onclick:()=>apply(1)},"＋ EXP"),
     el("button",{class:"btn ghost",style:"padding:5px 10px",title:"take EXP back",onclick:()=>apply(-1)},"－ EXP")));
+  if(!isGM()) card.append(el("div",{class:"small muted",style:"margin-top:4px"},
+    `EXP pool: ${t.xpPool||0} — from your GM's "📤 Send EXP" (Encounters → Calculate EXP).`));
   return card;
 }
 /* Trainer HP + AP tracker with Damage/Heal box and End Scene / End Day (rest) buttons */
@@ -4367,9 +5273,10 @@ function trainerVitalsCard(t){
   /* injury note: max HP is capped −10% per Injury (Core p.249) */
   if(d.injuries>0) card.append(el("div",{class:"small",style:"color:var(--bad);font-weight:700;margin-bottom:6px"},
     `${d.injuries} injur${d.injuries===1?"y":"ies"} — max HP ${maxHP} (−${d.fullHP-maxHP} of full ${d.fullHP})`));
+  const trDead = deathBanner(t, ()=>{ save(); renderTrainer(); }); if(trDead) card.append(trDead);
 
   /* HP row */
-  const setHP = v => { t.currentHP = Math.max(-99, Math.min(maxHP, v)); save(); renderTrainer(); };
+  const setHP = v => { t.currentHP = Math.min(maxHP, v); save(); renderTrainer(); };
   const hp = el("div",{class:"hpctl"});
   const cur = el("input",{type:"number",title:"current HP"}); cur.value = t.currentHP;
   cur.addEventListener("change",()=>setHP(parseInt(cur.value)||0));
@@ -4390,12 +5297,20 @@ function trainerVitalsCard(t){
   /* temp HP · Injuries */
   const row = el("div",{class:"fieldrow",style:"margin-top:12px"});
   row.append(field("Temp HP","",{type:"number",min:0,value:t.tempHP,onchange:v=>{t.tempHP=parseInt(v)||0;save();}}));
-  row.append(field("Injuries","",{type:"number",min:0,max:10,value:t.injuries,
-    onchange:v=>{ t.injuries=Math.max(0,Math.min(10,parseInt(v)||0)); save(); renderTrainer(); }}));
+  const injLocked = !canEditInjuries();
+  const injField = field("Injuries","",{type:"number",min:0,max:10,value:t.injuries, disabled:injLocked,
+    onchange:v=>{ t.injuries=Math.max(0,Math.min(10,parseInt(v)||0)); applyAutoDeath(t); save(); renderTrainer(); }});
+  if(injLocked) injField.title = INJURY_LOCK_TIP;
+  row.append(injField);
+  row.append(injuryTreatButton(t, t, renderTrainer));
   card.append(row);
+  card.append(el("div",{class:"muted small",style:"margin-top:6px"},
+    injLocked ? "🔒 Injuries are the GM's to set. You gain them from what hits you and clear them with 🩹 Treat or ☀ End Day. "
+              : "Typing a count in is GM bookkeeping and never touches the daily limit. ",
+    injuryDayChip(t), " — Core p.252 allows 3 per individual per day (natural healing, Bandages, Items and Features share the count). It clears on ☀ End Day → 🌙 End the Day."));
   /* Books Drain AP separately (t.books) — that Drain outlives a Scene, so it's shown next to the
      Scene's spend rather than baked into it. See the BOOKS section. */
-  const bookAP = bookDrain(t).ap, boundAP = modeBindAP(t), drained = bookAP + boundAP;
+  const bookAP = bookDrain(t).ap, boundAP = modeBindAP(t), manualAP = t.manualBoundAP||0, drained = bookAP + boundAP + manualAP;
   const setAP = u => { t.usedAP = Math.max(0, Math.min(maxAP - drained, u)); save(); renderTrainer(); };
   const apRow = el("div",{class:"hpctl",style:"margin-top:10px;align-items:center"});
   const apIn = el("input",{type:"number",min:0,max:maxAP-drained,title:"AP spent"}); apIn.value = t.usedAP;
@@ -4410,10 +5325,30 @@ function trainerVitalsCard(t){
     `📚 ${bookAP} AP Drained by studied Books until your next Extended Rest (Trainer → Sheet → Books).`));
   if(boundAP) card.append(el("div",{class:"small muted",style:"margin-top:4px"},
     `✨ ${boundAP} AP Bound by ${activeFeatureModes(t).map(d=>d.feat).join(", ")} — it comes back when you end it (⚔ Battle → Combat) or at End Scene.`));
+  if(manualAP) card.append(el("div",{class:"small muted",style:"margin-top:4px"},
+    `🔒 ${manualAP} AP Drained/Bound by the GM (not tied to a Feature or move) — released manually or at End Scene.`));
+  if(isGM()){
+    const mRow = el("div",{class:"hpctl",style:"margin-top:8px"});
+    const mIn = el("input",{type:"number",min:0,placeholder:"AP",title:"Drain/Bind this much AP, outside any Feature or move"});
+    mRow.append(
+      el("span",{class:"small muted",style:"font-weight:700"},"GM Drain/Bind AP:"),
+      mIn,
+      el("button",{class:"btn-secondary",style:"padding:6px 10px",onclick:()=>{
+        const n = Math.max(0, parseInt(mIn.value)||0); mIn.value="";
+        if(!n) return;
+        t.manualBoundAP = (t.manualBoundAP||0) + n; save(); renderTrainer();
+        toast(`🔒 ${n} AP Bound (manual)`);
+      }},"Bind"),
+      manualAP ? el("button",{class:"btn-secondary",style:"padding:6px 10px",onclick:()=>{
+        t.manualBoundAP = 0; save(); renderTrainer();
+        toast("🔓 Manually Bound AP released");
+      }},"Release all") : "");
+    card.append(mRow);
+  }
 
   /* End Scene / End Day now live in the persistent top bar (🌙 / ☀), not here */
   card.append(el("div",{class:"small muted",style:"margin-top:6px"},
-    "Use 🌙 End Scene / ☀ End Day at the top of the screen. End Scene restores AP & Scene uses; End Day fully heals, refreshes Daily uses, and heals 1 Injury (on you and your Pokémon)."));
+    "Use 🌙 End Scene / ☀ End Day at the top of the screen. End Scene restores AP & Scene uses; ☀ End Day opens the Extended Rest planner — pick who rests and which Injuries get treated, and it works out how many hours the rest takes."));
   return card;
 }
 /* Combat Stages card for a Trainer — mirrors the Pokémon one (manual ± per combat stat). */
@@ -6075,8 +7010,8 @@ function bookDrain(t){
   return { ranks, free:freeRanks, sp, ap: paid - sp };
 }
 /* total AP unavailable right now = spent this Scene + Drained by Books + Bound by an active
-   Feature stance (Enchanting Transformation) */
-function trainerAPUsed(t){ return (t.usedAP||0) + bookDrain(t).ap + modeBindAP(t); }
+   Feature stance (Enchanting Transformation) + any manual GM Drain/Bind not tied to either */
+function trainerAPUsed(t){ return (t.usedAP||0) + bookDrain(t).ap + modeBindAP(t) + (t.manualBoundAP||0); }
 /* does the trainer meet a Rank's Skill prerequisite? (Well Read and the GM 🔓 can substitute) */
 function bookRankQualified(t, r){
   if(!r.skillKey) return { ok:true };                       // unparsed Skill — don't block the player
@@ -7687,13 +8622,14 @@ function cardApply(t, c){
         }
         const tgt = fx.target==="self" ? t : mon;
         if(tgt){ tgt.injuries = Math.max(0, (tgt.injuries||0) + fx.n);
+          applyAutoDeath(tgt);
           done.push(`${fx.n>0?"＋":"－"}${Math.abs(fx.n)} Injury`); }
         break; }
       case "monstat": {
         const keys = fx.count==="all" ? STATS.map(s=>s[0]) : (pk.monStats||[]);
         bumpStat(mon, keys, fx.n); break; }
       case "heal": {
-        if(mon){ mon.statuses = []; mon.currentHP = pokeDerived(mon).maxHP;
+        if(mon){ clearAllStatuses(mon); mon.currentHP = pokeDerived(mon).maxHP;
           done.push(`${mon.nickname||getSpecies(mon.species)?.name||"Pokémon"} fully healed & cured`); }
         break; }
       case "levels": {
@@ -7707,7 +8643,7 @@ function cardApply(t, c){
       case "shiny": if(mon){ cardUndoSet(c,i,{shinyWas: !!mon.shiny});    // so ↺ can't "un-shiny" an already-shiny one
                              mon.shiny = true;
                              done.push(`${mon.nickname||getSpecies(mon.species)?.name||"Pokémon"} ✨ shiny`); } break;
-      case "rest":  endDay(); done.push("Extended Rest taken"); break;
+      case "rest":  setTimeout(()=>endDay(), 0); done.push("Extended Rest — pick who rests in the planner"); break;
       case "gift":  setTimeout(()=>openAddGift(t), 0); done.push("Legendary Gift — grant it in the 🎁 tab"); break;
       case "evolve":
         if(mon){
@@ -8260,7 +9196,7 @@ function heroCard(p, sp){
   /* compact HP control */
   const hp = el("div",{class:"hpctl hero-hp"});
   const cur = el("input",{type:"number",id:"hpCur"}); cur.value = p.currentHP;
-  const setHP = v => { const max = pokeDerived(p).maxHP; p.currentHP = Math.max(-99, Math.min(max, v));
+  const setHP = v => { const max = pokeDerived(p).maxHP; p.currentHP = Math.min(max, v);
     cur.value=p.currentHP; save(); const ro=$("#hpReadout"); if(ro) ro.textContent = `/ ${max}`;
     const bar=$("#heroHpBar"); if(bar){ const pct=Math.max(0,Math.min(100,Math.round(p.currentHP/max*100)));
       bar.style.width=pct+"%"; bar.style.background=pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"; } };
@@ -8276,6 +9212,7 @@ function heroCard(p, sp){
     el("i",{id:"heroHpBar",style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`})));
   if(d.injuries>0) main.append(el("div",{class:"small",style:"margin-top:4px;color:var(--bad);font-weight:700"},
     `${d.injuries} ${d.injuries===1?"injury":"injuries"} — max HP ${d.maxHP} (−${d.fullMaxHP-d.maxHP} of ${d.fullMaxHP})`));
+  const monDead = deathBanner(p, ()=>{ save(); refreshMon(p); }); if(monDead) main.append(monDead);
   if(p.statuses?.length){
     const sc = el("div",{class:"chips",style:"margin-top:6px"});
     p.statuses.forEach(k=>{ const s=statusByKey.get(k); if(s) sc.append(el("span",{class:"statuschip on",style:"cursor:default;padding:2px 8px;font-size:11px"}, s.name)); });
@@ -8315,7 +9252,7 @@ function statusCard(p){
   const gm = isGM();
   const card = el("div",{class:"card"}, el("h3",{},"Status Conditions",
     el("div",{class:"inline"},
-      p.statuses.length?el("button",{class:"linkbtn",onclick:()=>{ p.statuses=[]; save(); refreshMon(p); }},"clear"):"",
+      p.statuses.length?el("button",{class:"linkbtn",title:"clears every Affliction — Death is permanent and stays",onclick:()=>{ clearAllStatuses(p); save(); refreshMon(p); }},"clear"):"",
       gm?el("button",{class:"linkbtn h-act",onclick:()=>catchRateModal(p)},"🎯 Catch DC"):"")));
   const sp = getSpecies(p.species);
   const groups = gm
@@ -8339,7 +9276,7 @@ function statusCard(p){
   });
   if(hasStatus(p,"confused")) card.append(confusionRow(p, n=>{
     const max = pokeDerived(p).maxHP;
-    p.currentHP = Math.max(-99, (p.currentHP==null?max:p.currentHP) - n);
+    p.currentHP = (p.currentHP==null?max:p.currentHP) - n;
     save(); refreshMon(p);
   }));
   const active = STATUS_DEFS.filter(s=>hasStatus(p,s.key));
@@ -8928,7 +9865,7 @@ function ownerFlavors(o){
   return { liked:n?.likedFlavor||"", disliked:n?.dislikedFlavor||"" };
 }
 function ownerHP(o){ return o.currentHP==null ? ownerMaxHP(o) : o.currentHP; }
-function setOwnerHP(o, v){ o.currentHP = Math.max(-99, Math.min(ownerMaxHP(o), Math.round(v))); }
+function setOwnerHP(o, v){ o.currentHP = Math.min(ownerMaxHP(o), Math.round(v)); }
 /* Ripen: "any numeric benefits of Berry Food Buffs the user trades in are doubled" */
 function ripenOn(o, def){ return !!(def?.berry && ownerHasAbility(o,"Ripen")); }
 
@@ -10121,7 +11058,7 @@ function renderMonBuild(root, p, sp){
       const hn=$("#heroName"); if(hn) hn.textContent = v || sp?.name || "Unknown"; }}),
     spWrap,
     field("Level","",{type:"number",min:1,max:MAX_LEVEL,value:p.level,onchange:v=>setMonLevel(p, parseInt(v)||1)}),
-    field("Nature","",{opts:D.natures.map(n=>n.name), value:p.nature, onchange:v=>{p.nature=v;save();refreshMon(p);}}),
+    field("Nature","",{opts:D.natures.map(n=>n.name), value:p.nature, disabled:!isGM(), onchange:v=>{p.nature=v;save();refreshMon(p);}}),
   );
   idc.append(r1);
 
@@ -10134,7 +11071,7 @@ function renderMonBuild(root, p, sp){
   const r2 = el("div",{class:"fieldrow"});
   r2.append(
     field("Gender","",{opts:["","Male","Female","Genderless"],value:p.gender,onchange:v=>{p.gender=v;save();}}),
-    field("Shiny","",{type:"checkbox",value:p.shiny,onchange:v=>{p.shiny=v;save();refreshMon(p);}}),
+    field("Shiny","",{type:"checkbox",value:p.shiny,disabled:!isGM(),onchange:v=>{p.shiny=v;save();refreshMon(p);}}),
     field("Total XP","",{type:"number",min:0,value:p.xp,onchange:v=>setMonXP(p, parseInt(v)||0)}),
     field("Loyalty","",{type:"number",min:0,value:p.loyalty,onchange:v=>{p.loyalty=parseInt(v)||0;save();}}),
     heldItemControl(p),
@@ -10165,12 +11102,17 @@ function renderMonBuild(root, p, sp){
   const ec = el("div",{class:"card"}, el("h3",{},"Condition"));
   const r3 = el("div",{class:"fieldrow"});
   r3.append(
-    field("Injuries","",{type:"number",min:0,value:p.injuries,onchange:v=>{ p.injuries=Math.max(0,parseInt(v)||0);
-      const m=pokeDerived(p).maxHP; if(p.currentHP!=null && p.currentHP>m) p.currentHP=m; save(); refreshMon(p); }}),
+    monInjuryField(p),
+    injuryTreatButton(activeChar().trainer, p, ()=>refreshMon(p)),
     field("Temp HP","",{type:"number",min:0,value:p.tempHP,onchange:v=>{p.tempHP=parseInt(v)||0;save();}}),
     tutorPointControl(p),
   );
   ec.append(r3);
+  ec.append(el("div",{class:"muted small",style:"margin-top:6px"},
+    canEditInjuries()
+      ? "🩹 Treat spends Bandages, Features and Abilities through the daily count; typing a number here doesn't. "
+      : "🔒 Injuries are the GM's to set — clear them with 🩹 Treat or ☀ End Day. ",
+    injuryDayChip(p), " — every Pokémon has its own 3 Injuries a day, separate from the Trainer's (Core p.252)."));
   // Tutor Points scale on their own (see tpSync) — this line is the receipt, not a button to press
   const earned = tpTotalEarned(p);
   ec.append(el("div",{class:"inline small",style:"gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px"},
@@ -10858,7 +11800,9 @@ function abilitiesCard(p, sp){
       el("span",{style:"color:var(--ink)"}, an || "—"),
       uc ? el("span",{style:"margin-left:8px"}, uc) : "",
       el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove",
-        onclick:e=>{e.preventDefault(); p.abilities.splice(i,1); save(); refreshMon(p);}},"×")));
+        onclick:e=>{e.preventDefault();
+          if(!isGM()){ toast("Only the GM can remove an Ability"); return; }
+          p.abilities.splice(i,1); save(); refreshMon(p);}},"×")));
     row.append(el("div",{class:"small",style:"margin-top:6px", html: ab? abilityText(ab):"<span class='muted'>Not in database</span>"}));
     card.append(row);
   });
@@ -10917,8 +11861,17 @@ function xpRow(p){
   const toNext = xpToNext(p.xp);
   const span = nextMin - curMin, into = p.xp - curMin;
   const pct = atMax ? 100 : Math.max(0, Math.min(100, Math.round(into/Math.max(1,span)*100)));
+  const t = activeChar()?.trainer;
   const addBox = el("input",{type:"number",placeholder:"+ XP",style:"width:84px"});
-  const addXP = () => { const n=parseInt(addBox.value)||0; addBox.value=""; if(n) setMonXP(p, p.xp + n); };
+  const addXP = () => {
+    const n=parseInt(addBox.value)||0; addBox.value=""; if(!n) return;
+    if(n>0 && t && !isGM()){
+      if(typeof t.xpPool!=="number") t.xpPool = 0;
+      if(n > t.xpPool){ toast(`Only ${t.xpPool} EXP in the pool — ask the GM to send more`); return; }
+      t.xpPool -= n;
+    }
+    setMonXP(p, p.xp + n);
+  };
   addBox.addEventListener("keydown",e=>{ if(e.key==="Enter") addXP(); });
   wrap.append(el("div",{class:"inline small",style:"gap:8px;flex-wrap:wrap;align-items:center"},
     el("span",{class:"muted",style:"font-weight:700"},
@@ -10926,6 +11879,8 @@ function xpRow(p){
     el("div",{class:"spacer"}),
     addBox,
     el("button",{class:"btn-secondary",style:"padding:5px 12px",onclick:addXP},"+ Add XP")));
+  if(!isGM() && t) wrap.append(el("div",{class:"small muted",style:"margin-top:4px"},
+    `EXP pool: ${t.xpPool||0} (shared with your Trainer's own EXP award)`));
   wrap.append(el("div",{class:"hpbar",style:"margin-top:6px"},
     el("i",{style:`width:${pct}%;background:var(--accent)`})));
   return wrap;
@@ -11568,6 +12523,11 @@ function moveSlot(p, sp, m, mn, opts={}){
   // Scene/Daily use tracker (Struggle & At-Will moves show nothing)
   if(m && !opts.tag){ const uc = usesControl(p, "move", m.name, monMoveFreq(p, m), opts.rerender||(()=>refreshMon(p))); if(uc) acts.append(uc); }
   if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",title:"roll this move",onclick:()=>openMoveRoll(p,m,sp,{rerender:rrMon})},"🎲 Roll"));
+  // Healing Wish / Lunar Dance do their whole job outside the damage engine - one button applies
+  // the sacrifice, the target's heal and the Move-frequency refresh, all through the Injury ledger
+  if(m && isSacrificeHealMove(m.name)) acts.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",
+    title:"Faint, and cure a target of up to 3 Injuries + full HP + every Move frequency",
+    onclick:()=>openSacrificeHeal(p, m.name, rrMon)},"✨ Use"));
   if(m) acts.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("move",m.name,p)},"info"));
   if(m && !opts.tag && (moveSyncEligible(t) || isSynced)) acts.append(el("button",{class:"btn-secondary"+(isSynced?" on":""),style:"padding:6px 10px",
     title:isSynced?"forget Move Sync (+1 Tutor Point)":"Move Sync: permanently retype this Move to your Chosen Type (1 Tutor Point)",
@@ -15416,7 +16376,7 @@ function bossCard(owner){
       onclick:()=>{ owner.injuries=Math.max(0,(owner.injuries||0)-1); owner.currentHP=Math.min(owner.currentHP,bossBarMax(owner)); saveEnc(); renderEncounters(); }},"−"),
     el("span",{style:"font-weight:800;min-width:16px;text-align:center"}, String(owner.injuries||0)),
     el("button",{class:"btn-secondary",style:"padding:2px 9px",title:"for an explicit effect (e.g. Cruelty) that mandates an Injury — Massive Damage and half-bars-lost are already automatic",
-      onclick:()=>{ owner.injuries=(owner.injuries||0)+1; owner.currentHP=Math.min(owner.currentHP,bossBarMax(owner)); saveEnc(); renderEncounters(); }},"+"));
+      onclick:()=>{ owner.injuries=(owner.injuries||0)+1; owner.currentHP=Math.min(owner.currentHP,bossBarMax(owner)); applyAutoDeath(owner); saveEnc(); renderEncounters(); }},"+"));
   wrap.append(injRow);
   wrap.append(el("div",{class:"small muted",style:"margin-top:2px"},
     "Bosses skip normal Injury rules — only Massive Damage (auto), losing half its HP bars (auto, once), or an explicit effect (use + above) give it one."));
@@ -15693,7 +16653,7 @@ function encStatusControl(p){
   det.append(el("summary",{},
     el("span",{style:"font-weight:700;color:var(--ink)"},"Status Conditions"),
     el("span",{class:"muted small",style:"margin-left:8px"}, active.length?active.map(s=>s.name).join(", "):"none"),
-    active.length?el("button",{class:"linkbtn",style:"float:right",onclick:e=>{ e.preventDefault(); p.statuses=[]; saveEnc(); renderEncounters(); }},"clear"):""));
+    active.length?el("button",{class:"linkbtn",style:"float:right",title:"clears every Affliction — Death is permanent and stays",onclick:e=>{ e.preventDefault(); clearAllStatuses(p); saveEnc(); renderEncounters(); }},"clear"):""));
   const body=el("div",{style:"margin-top:6px"});
   // Boss Template (Running the Game p.488): Sleep/Frozen are replaced by Drowsy/Chilled — swap
   // which pair of chips shows rather than offering all four (a Boss never actually gets normal Sleep).
@@ -15710,7 +16670,7 @@ function encStatusControl(p){
       chips.append(el("button",{class:"statuschip"+(on?" on":""),
         title:(immune?`${sp.name} is immune. `:"")+s.effect+(block?`\n\n${block}`:""),
         onclick:()=>{ p.statuses=p.statuses||[]; const i=p.statuses.indexOf(s.key);
-          if(i>=0) p.statuses.splice(i,1);
+          if(i>=0){ const w = statusCureBlock(p, s.key); p.statuses.splice(i,1); if(w) toast(w); }
           else { p.statuses.push(s.key); if(s.key==="tagged" && clearOtherTags(p)) toast("The previous Tag is lost — only one foe at a time"); }
           saveEnc(); renderEncounters(); }},
         s.name+(immune?" ⃠":"")+(block&&on?" 🔒":"")));
@@ -15719,7 +16679,7 @@ function encStatusControl(p){
   });
   if(hasStatus(p,"confused")) body.append(confusionRow(p, n=>{
     const max = ownerMaxHP(p);   // Trainer or Pokémon — the card mounts this for both
-    p.currentHP = Math.max(-99, (p.currentHP==null?max:p.currentHP) - n);
+    p.currentHP = (p.currentHP==null?max:p.currentHP) - n;
     saveEnc(); renderEncounters();
   }));
   det.append(body);
@@ -15826,7 +16786,7 @@ function encounterMonCard(enc, p, list, trainer){
   const setHP = v => {
     if(isSwarm(p)) swarmSetTotalHP(p, Math.max(0,(p.swarm.mult||1)-1)*maxHP + v);
     else if(isBoss(p)) bossSetTotalHP(p, Math.max(0,(p.boss.curBar||1)-1)*maxHP + v);
-    else p.currentHP = Math.max(-99, Math.min(maxHP, v));
+    else p.currentHP = Math.min(maxHP, v);
     saveEnc(); renderEncounters();
   };
   card.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"},
@@ -15865,6 +16825,7 @@ function encounterMonCard(enc, p, list, trainer){
       onclick:()=>{ if(isSwarm(p)){ toast("Disable Swarm Template first"); return; } toggleBoss(p); saveEnc(); renderEncounters(); }},
       isBoss(p)?`👑 Boss ×${p.boss.actions}`:"👑 Boss"));
   card.append(actRow);
+  const encMonDead = deathBanner(p, ()=>{ saveEnc(); renderEncounters(); }); if(encMonDead) card.append(encMonDead);
   card.append(encStatSpread(p));
   card.append(encCombatStages(p));
   card.append(encStatusControl(p));
@@ -16021,11 +16982,12 @@ function encounterTrainerCard(enc, tr){
     `Evasion — Phys +${td.physEva} · Spec +${td.specEva} · Speed +${td.spdEva}`));
   if(td.injuries>0) card.append(el("div",{class:"small",style:"color:var(--bad);font-weight:700;margin-top:2px"},
     `${td.injuries} injur${td.injuries===1?"y":"ies"} — max HP ${maxHP} (−${td.fullHP-maxHP})`));
+  const encTrDead = deathBanner(t, ()=>{ saveEnc(); renderEncounters(); }); if(encTrDead) card.append(encTrDead);
   // A Boss Trainer's HP is one pool over several bars — same cascade as Boss/Swarm Pokémon, so a
   // big hit can break more than one bar and drop the current bar accordingly (Running the Game p.487).
   const setHP=v=>{
     if(isBoss(t)) bossSetTotalHP(t, Math.max(0,(t.boss.curBar||1)-1)*maxHP + v);
-    else t.currentHP=Math.max(-99,Math.min(maxHP,v));
+    else t.currentHP=Math.min(maxHP,v);
     saveEnc(); renderEncounters();
   };
   const pct=Math.max(0,Math.min(100,Math.round(t.currentHP/maxHP*100)));
@@ -16042,7 +17004,7 @@ function encounterTrainerCard(enc, tr){
   injRow.append(el("span",{class:"small muted",style:"font-weight:700"},"Injuries"),
     el("button",{class:"btn-secondary",style:"padding:2px 9px",onclick:()=>{ t.injuries=Math.max(0,(t.injuries||0)-1); if(t.currentHP>trainerDerived(t).hp) t.currentHP=trainerDerived(t).hp; saveEnc(); renderEncounters(); }},"−"),
     el("span",{style:"font-weight:800;min-width:16px;text-align:center"}, String(t.injuries||0)),
-    el("button",{class:"btn-secondary",style:"padding:2px 9px",onclick:()=>{ t.injuries=Math.min(10,(t.injuries||0)+1); if(t.currentHP>trainerDerived(t).hp) t.currentHP=trainerDerived(t).hp; saveEnc(); renderEncounters(); }},"+"));
+    el("button",{class:"btn-secondary",style:"padding:2px 9px",onclick:()=>{ t.injuries=Math.min(10,(t.injuries||0)+1); if(t.currentHP>trainerDerived(t).hp) t.currentHP=trainerDerived(t).hp; applyAutoDeath(t); saveEnc(); renderEncounters(); }},"+"));
   card.append(injRow);
   // Type Ace / Move Sync — no "has it?" switches: an NPC qualifies exactly like a player, off the
   // Classes & Features listed further down this card (give them the Class, or any of its Features).
@@ -16222,7 +17184,10 @@ function openExpCalc(enc){
     out.append(
       el("div",{style:"font-size:15px"}, `${base} Base × ${sig} significance = `, el("b",{}, String(total)), " total XP"),
       el("div",{style:"font-size:22px;font-weight:800;margin-top:6px;color:var(--accent)"}, `${per} XP per player`),
-      el("div",{class:"small muted",style:"margin-top:4px"}, `${total} ÷ ${pl} player${pl===1?"":"s"}. Each player then splits their share among the Pokémon they used (Core p.460).`));
+      el("div",{class:"small muted",style:"margin-top:4px"}, `${total} ÷ ${pl} player${pl===1?"":"s"}. Each player then splits their share among the Pokémon they used (Core p.460).`),
+      el("button",{class:"btn-primary",style:"padding:6px 12px;margin-top:10px",
+        title:"add this much EXP to every player sheet's pool — they can then spend it on their Trainer or Pokémon",
+        onclick:()=>sendEXP(per)}, "📤 Send EXP"));
   };
   sigIn.addEventListener("input",recalc); plIn.addEventListener("input",recalc);
   body.append(inRow, out); recalc();
@@ -16254,7 +17219,10 @@ function openMonExpCalc(p){
       el("div",{style:"font-size:15px"}, `${base} Base × ${sig} modifier = `, el("b",{},String(total)), " total XP"),
       el("div",{style:"font-size:22px;font-weight:800;margin-top:6px;color:var(--accent)"}, `${per} XP per player`),
       el("div",{class:"small muted",style:"margin-top:4px"},
-        `${total} ÷ ${pl} player${pl===1?"":"s"}. Each player then splits their share among the Pokémon they used (Core p.460).`));
+        `${total} ÷ ${pl} player${pl===1?"":"s"}. Each player then splits their share among the Pokémon they used (Core p.460).`),
+      el("button",{class:"btn-primary",style:"padding:6px 12px;margin-top:10px",
+        title:"add this much EXP to every player sheet's pool — they can then spend it on their Trainer or Pokémon",
+        onclick:()=>sendEXP(per)}, "📤 Send EXP"));
   };
   sigIn.addEventListener("input",recalc); plIn.addEventListener("input",recalc);
   body.append(el("div",{class:"fieldrow"},
@@ -16831,6 +17799,24 @@ function moneySheetRows(){
   return Object.values(cloud.byId).filter(r=>r && r.data && r.data.trainer)
     .sort((a,b)=> String(a.owner_name||"~").localeCompare(String(b.owner_name||"~"))
                || String(a.data.name||"").localeCompare(String(b.data.name||"")));
+}
+/* EXP pool: the GM calculates a number, taps "Send EXP", and it lands in every player sheet's
+   xpPool — same one-row-at-a-time cloudUpsert pattern as Payday. Players can then only spend
+   out of that pool (see trainerXpCard/xpRow), instead of typing any amount they like. */
+function sendEXP(amount){
+  amount = Math.round(Math.abs(amount)||0);
+  if(!amount){ toast("Nothing to send"); return; }
+  const rows = moneySheetRows().filter(r=>!ownsRow(r));
+  if(!rows.length){ toast("No player sheets in this campaign yet."); return; }
+  if(!confirm(`Send ${amount} EXP to ${rows.length} sheet${rows.length===1?"":"s"}'s pool?\n\n`
+    + rows.map(r=>"• "+paydayWho(r)).join("\n"))) return;
+  rows.forEach(r=>{
+    normTrainer(r.data.trainer);
+    r.data.trainer.xpPool = (r.data.trainer.xpPool||0) + amount;
+    cloudUpsert(r).then(ok=>{ if(!ok) toast(`⚠ ${paydayWho(r)} didn't sync — it'll reconcile on the next change`); });
+  });
+  toast(`📤 Sent ${amount} EXP to ${rows.length} sheet${rows.length===1?"":"s"}`);
+  render();
 }
 function paydayWho(r){
   const sheet = r.data?.name || "unnamed sheet", owner = r.owner_name || "";
@@ -19197,6 +20183,7 @@ const AUTOMATED_ABILITIES = {
   "steelworker":"Steel-Type moves get STAB (regardless of this Pokémon's own Types) when the Anchored toggle below is on.",
   "anchored":"Move roll toggle: originate the attack from the Anchor — Melee/1 Target, +2d6 damage, forced Physical Class, and (with Steelworker) STAB on Steel-Type moves.",
   "ancestral connection":"Adds a Ghost-Type Struggle Attack (own Accuracy & Damage Roll) after every damaging move that hits.",
+  "rampaging spirit":"While Enraged, doesn't Faint until −50% of Max HP — the Knocked Out status holds off until then.",
   "guts":"+2 Attack Combat Stages while suffering a Status.",
   "toxic boost":"+2 Attack Combat Stages while Poisoned.",
   "flare boost":"+2 Sp. Attack Combat Stages while Burned.",
@@ -19580,8 +20567,17 @@ function canRest(){
   if(mode==="cloud" && cloud.activeId && !canEditActive()){ toast("Read-only — GM only"); return false; }
   return true;
 }
+/* ☀ End Day opens the rest planner rather than editing the active character, and the Viewer
+   co-pilot runs it for the players it drives -- so it asks "is there any sheet you may rest?"
+   instead of "may you edit the sheet you happen to be looking at?". */
+function canRestDay(){
+  if(mode!=="cloud") return true;
+  if(cloud.isGM || isMapHpViewer()) return true;
+  if(cloud.activeId && !canEditActive()){ toast("Read-only — GM only"); return false; }
+  return true;
+}
 $("#btnEndScene").addEventListener("click", ()=>{ if(canRest()) endScene(); });
-$("#btnEndDay").addEventListener("click",   ()=>{ if(canRest()) endDay(); });
+$("#btnEndDay").addEventListener("click",   ()=>{ if(canRestDay()) endDay(); });
 
 /* ===================================================================
    Cloud sync (Supabase) — progressive enhancement.
@@ -21641,13 +22637,15 @@ const TRAINER_TOKEN = (t)=>el("img",{class:"sprite s-sm",src:(t&&t.avatar)||TRAI
 /* a linked Pokémon's token uses the picture uploaded on its sheet, falling back to the dex artwork */
 function pokeTokenSprite(mon){
   const own = monImage(mon);   // monImage, not mon.image: a Mega has its own picture while it's Mega'd
-  if(own) return el("img",{class:"sprite s-sm",src:own,alt:mon.nickname||"",loading:"lazy"});
+  // eager: a map token's transformed (pan/zoom) container confuses lazy-loading's viewport check
+  // and can leave the image unloaded until a later pan — the flicker this line fixes.
+  if(own) return el("img",{class:"sprite s-sm",src:own,alt:mon.nickname||"",loading:"eager"});
   const sp = getSpecies(mon.species);
-  return monSprite(monLookName(mon, sp), mon.shiny, "s-sm");
+  return monSprite(monLookName(mon, sp), mon.shiny, "s-sm", undefined, true);
 }
 function standaloneSprite(token){
-  if(token.img) return el("img",{class:"sprite s-sm",src:token.img,alt:token.label||"",loading:"lazy"});
-  if(token.species) return monSprite(token.species, token.shiny, "s-sm");
+  if(token.img) return el("img",{class:"sprite s-sm",src:token.img,alt:token.label||"",loading:"eager"});
+  if(token.species) return monSprite(token.species, token.shiny, "s-sm", undefined, true);
   return el("img",{class:"sprite s-sm",src:POKEBALL_SVG,alt:token.label||""});
 }
 /* everything the board needs about a token, computed live from its source */
@@ -22042,10 +23040,25 @@ const STATUS_RING_COLORS = {
   badlyPoisoned: "#5c1f80",  // dark purple
   sleep:         "#f2f2f2",  // white
   knockedOut:    "#8b8f98",  // grey — matches the greyed-out token itself
+  dead:          "#c0303f",  // dried blood — the one ring still legible over a blacked-out token
 };
 /* Knocked Out greys the whole token out (see .map-token.ko in styles.css). Kept as a class rather
    than an inline filter so the ring/name/HP bar can opt back out of the desaturation. */
 function tokenKO(token){ return tokenStatusKeys(token).includes("knockedOut"); }
+/* Dead goes further than Knocked Out: the token is drained almost to black (.map-token.dead in
+   styles.css, declared AFTER .ko so it wins the filter) and wears a skull. The mark is a real DOM
+   node rather than a ::after so it can be sized off the token's own pixel box, exactly like the
+   status rings — the grid size is variable. */
+function tokenDead(token){ return tokenStatusKeys(token).includes("dead"); }
+function paintDeadMark(node, token, boxPx){
+  const dead = tokenDead(token);
+  node.classList.toggle("dead", dead);
+  const old = node.querySelector(".tk-dead");
+  if(!dead){ if(old) old.remove(); return; }
+  const size = Math.max(10, Math.round((boxPx || 48) * 0.5)) + "px";
+  if(old){ old.style.fontSize = size; return; }
+  node.append(el("div",{class:"tk-dead", title:"Dead", style:`font-size:${size}`}, "☠"));
+}
 function xmlEscape(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function polarPt(cx,cy,r,angleDeg){ const a=(angleDeg-90)*Math.PI/180; return [(cx+r*Math.cos(a)).toFixed(2), (cy+r*Math.sin(a)).toFixed(2)]; }
 /* builds one full concentric ring per active status (innermost = first status), each with its name curving around it */
@@ -22102,7 +23115,7 @@ async function setTokenHP(token, val){
     // info.max already carries the right fallback per kind (a boat placed before it had HP fields
     // falls back to BOAT_HP_DEFAULT here, not to the generic standalone-token default of 1)
     token.maxHp = info.max;
-    const oldHp = info.cur, newHp = Math.max(-99, Math.min(info.max, val|0));
+    const oldHp = info.cur, newHp = Math.min(info.max, val|0);
     token.hp = newHp;
     if(isBoatToken(token) && newHp < oldHp){
       const br = breachesFromHit(info.max, oldHp, newHp, oldHp - newHp);
@@ -22127,14 +23140,14 @@ async function setTokenHP(token, val){
        Injuries first, on the raw hit — that's the order damageHealRow uses in the Encounters tab. */
     if(isBoss(obj)){
       const barMax = bossBarMax(obj);
-      const newHP = Math.max(-99, Math.min(barMax, val|0));
+      const newHP = Math.min(barMax, val|0);
       applyAutoInjury(obj, obj.currentHP||0, newHP);          // Boss rule: only Massive Damage injures
       bossSetTotalHP(obj, Math.max(0, (obj.boss.curBar||1)-1)*barMax + newHP);
       applyAutoKO(obj, obj.currentHP||0, obj.currentHP||0);   // a Boss is down only once its LAST bar empties
       paintTokenHP(token, true); broadcastEncState(token.link, obj); saveEncCombat(); return;
     }
     const encMax = kind==="enctrainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
-    const oldHP = obj.currentHP||0, newHP = Math.max(-99, Math.min(encMax, val|0));
+    const oldHP = obj.currentHP||0, newHP = Math.min(encMax, val|0);
 
     applyAutoInjury(obj, oldHP, newHP);            // map-side HP edits get the same auto-injury check
     applyAutoKO(obj, oldHP, newHP);                // …and drop/lift Knocked Out with the HP
@@ -22147,7 +23160,7 @@ async function setTokenHP(token, val){
   if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; }
   const max = kind==="trainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
 
-  const oldHP = obj.currentHP||0, newHP = Math.max(-99, Math.min(max, val|0));
+  const oldHP = obj.currentHP||0, newHP = Math.min(max, val|0);
   applyAutoInjury(obj, oldHP, newHP);
   applyAutoKO(obj, oldHP, newHP);
   applyShieldsDown(obj, newHP);
@@ -22172,6 +23185,7 @@ function updateTokenStatusDom(token){
   if(!node) return false;
   const info = tokenHp(token);
   node.classList.toggle("ko", tokenKO(token));       // Knocked Out greys the token out, live
+  paintDeadMark(node, token, parseFloat(node.style.width) || 48);   // … Dead blacks it out and marks it
   const old = node.querySelector(".tk-status-ring");
   if(!tokenStatusVisible(info)){ if(old) old.remove(); return true; }
   const boxPx = parseFloat(node.style.width) || 48;
@@ -23578,6 +24592,7 @@ function mapTokenNode(token, map, originX=0, originY=0){
       carrying>1?`🐎${carrying}`:"🐎"));
   if(token.altitude && !isShopToken(token))
     node.append(el("div",{class:"tk-altitude",title:"height off the ground"}, `▲ ${token.altitude}m`));
+  paintDeadMark(node, token, boxPx);        // Dead: blacked-out token + skull (see .map-token.dead)
   return node;
 }
 /* drag-to-move (grid-snap + meter readout) or tap-to-open-menu.
@@ -24161,12 +25176,13 @@ function openTokenMenu(token, map){
     if(!cloud.isGM && info.sprite)
       wrap.append(el("div",{style:"display:flex;justify-content:center;margin-bottom:10px"},
         zoomImg(info.sprite, info.name)));
-    // Its Type(s) — what you need before picking a Move to answer with. Public knowledge (you can
-    // see a Gyarados is Water/Flying), so unlike Evasion this isn't gated. Trainers have no Types.
-    const tkTypes = tokenDefTypes(token).filter(ty=>ty && ty!=="None");
-    if(tkTypes.length)
-      wrap.append(el("div",{class:"chips",style:"justify-content:center;margin-bottom:10px"},
-        ...tkTypes.map(ty=>el("span",{html:typeBadge(ty)}))));
+    // Its Type(s) — GM-only info now; players shouldn't see a token's Type just by tapping it.
+    if(cloud.isGM){
+      const tkTypes = tokenDefTypes(token).filter(ty=>ty && ty!=="None");
+      if(tkTypes.length)
+        wrap.append(el("div",{class:"chips",style:"justify-content:center;margin-bottom:10px"},
+          ...tkTypes.map(ty=>el("span",{html:typeBadge(ty)}))));
+    }
     // Evasions — the number everyone actually needs when aiming at this token (Core p.233). Kept to
     // the GM and to creatures whose sheet the viewer can already read, so enemy defences don't leak.
     if(cloud.isGM || tokenHpVisible(info)){
@@ -24230,7 +25246,16 @@ function openTokenMenu(token, map){
           chips.append(el("button",{class:"statuschip"+(on?" on":"")+(statusPickable(s)?"":" ro"), disabled:!info.editable||!statusPickable(s), title:s.effect,
             onclick: async()=>{
               const cur = tokenStatusKeys(token).slice();
-              const i = cur.indexOf(s.key); if(i>=0) cur.splice(i,1); else cur.push(s.key);
+              const i = cur.indexOf(s.key);
+              if(i>=0){
+                /* unticking Dead here is the same GM call as the sheet's revive button — drop the
+                   Knocked Out it pinned on with it, and say so if the condition still stands. */
+                const L = token.link ? tokenLinked(token) : null;
+                const w = L && L.obj ? statusCureBlock(L.obj, s.key) : "";
+                cur.splice(i,1);
+                if(s.key==="dead"){ const j = cur.indexOf("knockedOut"); if(j>=0) cur.splice(j,1); }
+                if(w) toast(w);
+              } else cur.push(s.key);
               await setTokenStatuses(token, cur); drawStatuses();
             }}, s.name));
         });
@@ -25241,6 +26266,17 @@ function renderMap(){
         el("button",{class:"btn-secondary",onclick:()=>selectMapTokens(map, PLAYER_TOKEN_KINDS, "of your tokens")},"☑ My tokens"));
     }
   }
+  // The toolbar grows a lot of buttons once weather/terrain/GM tools are all in play — let it collapse
+  // so it doesn't eat half the screen on a phone. Collapsed state persists across map visits.
+  const barCollapsed = localStorage.getItem("ptu_mapbar_collapsed")==="1";
+  const barBody = el("div",{class:"map-toolbar-body"});
+  while(bar.firstChild) barBody.append(bar.firstChild);
+  barBody.hidden = barCollapsed;
+  bar.append(el("button",{class:"btn-secondary",style:"padding:3px 10px",
+      title: barCollapsed?"Show the map toolbar":"Hide the map toolbar",
+      onclick:()=>{ localStorage.setItem("ptu_mapbar_collapsed", barCollapsed?"0":"1"); renderMap(); }},
+    barCollapsed?"▸ Map bar":"▾ Hide bar"),
+    barBody);
   root.append(bar);
   if(map && mapSelectActive(map)) root.append(mapSelectBar(map));
   if(map && mapMountActive(map)) root.append(mapMountBar(map));

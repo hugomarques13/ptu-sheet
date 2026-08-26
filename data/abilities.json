@@ -5514,7 +5514,7 @@
  {
   "name": "Rampaging Spirit",
   "frequency": "Static",
-  "effect": "While Enraged, this Pokémon Faints at -200% Hit Points instead of 0%.",
+  "effect": "While Enraged, this Pokémon Faints at -50% Hit Points instead of 0%.",
   "trigger": null,
   "target": null,
   "keywords": null
