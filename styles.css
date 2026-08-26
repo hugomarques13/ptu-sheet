@@ -433,6 +433,12 @@ details.spoiler summary{cursor:pointer; font-weight:700; color:var(--muted)}
 
 /* ===== Shared battle map (VTT) ===== */
 .map-toolbar{display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end}
+/* The hide-bar toggle wraps every other control in .map-toolbar-body so one node can be hidden.
+   That wrapper must NOT become a layout box of its own - display:contents keeps each button a
+   direct flex item of .map-toolbar, so the bar wraps/aligns exactly as it did before the toggle.
+   The [hidden] rule wins on specificity, so hiding the wrapper still hides the whole group. */
+.map-toolbar-body{display:contents}
+.map-toolbar-body[hidden]{display:none}
 .map-toolbar .field{max-width:200px}
 .map-toolbar .btn-secondary.on{background:var(--accent); color:#fff; border-color:var(--accent)}
 .map-mapname{font-weight:800; font-size:16px; color:var(--ink); padding:4px 2px}

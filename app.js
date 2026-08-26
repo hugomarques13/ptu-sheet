@@ -5016,6 +5016,30 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
              : acc===1 ? " Natural 1 — auto-miss."
              : acc>=critT ? ` Roll ${acc} ≥ crit range ${critT} — Critical Hit!${critNote?` (${critNote})`:""}` : ""))));
     }
+    /* Demoralize (Edge, prereq Adept Intimidate): "Whenever you land a Critical Hit on a foe, that
+       foe becomes Vulnerable. Status-Class Moves with an Accuracy Roll can Crit for the purposes of
+       activating this effect on a natural roll of 19 or higher, and any effects that expand your
+       Critical-Hit Range also expand this range." — so the Status range walks with critT, and Push
+       Buttons (Provocateur) pulls it one further to 18+ and adds the Tick on a Social Move.
+       ANNOUNCED, never applied: Vulnerable belongs on the foe's sheet, and only the GM knows which
+       foe was hit. */
+    if(trainerHasEdge(t, "Demoralize")){
+      const pushB = hasFeatureLoose(t, "Push Buttons");
+      const statusT = Math.max(2, critT - (pushB ? 2 : 1));       // 19+ normally, 18+ with Push Buttons
+      const hasAcc  = st.ac != null && st.ac !== "";
+      const fired = dblStrike ? (strikes||[]).some(x=>x.crit)
+                  : isStatusAtk ? (hasAcc && acc >= statusT)
+                                : acc >= critT;
+      if(fired){
+        const social = st.move && moveHasKeyword(st.move, "Social");
+        const bits = [`The target becomes <b>Vulnerable</b>.`];
+        if(isStatusAtk) bits.push(`Status-Class "Crit" on ${acc} \u2265 ${statusT}${pushB?" (Push Buttons)":""}.`);
+        if(social && pushB) bits.push(`Push Buttons: a Social Move at this range also costs them a <b>Tick of Hit Points</b>.`);
+        bits.push(`Apply it from their token\u2019s Status Conditions \u2014 the sheet won\u2019t guess who you hit.`);
+        out.append(el("div",{class:"warnbox",style:"margin:0 0 10px;line-height:1.5;border-color:var(--accent);color:var(--accent)",
+          html:`\uD83D\uDCA2 <b>Demoralize!</b> ` + bits.join(" ")}));
+      }
+    }
     // size the Damage Base from the strikes that landed (Core p.242)
     let db = baseDBv, strikeNote = null;
     if(dblStrike) db = baseDBv * (connected>=2 ? 2 : 1);
@@ -15857,36 +15881,11 @@ function orderBoosters(t, f){
   add("Tip the Scales",   kind === "atwill", "every Ally within 10 metres");
   return out;
 }
-/* Every creature this Trainer may hand an Order to right now: always themselves and their own party;
-   with Leadership, every friendly token on the shared Map as well (the GM also sees the enemies, so
-   an NPC Commander on the Encounters tab can order its own side). Map targets carry their token, so
-   the give can commit to the right sheet. */
-function orderTargets(t){
-  const out = [{ id:"self", label:`🧑 ${t.name||"Trainer"} — yourself`, obj:t }];
-  (activeChar()?.pokemon||[]).filter(p=>p.onTeam).forEach(p=>{
-    const sp = getSpecies(p.species);
-    out.push({ id:`mon:${p.id}`, label:`🔴 ${p.nickname||sp?.name||"?"} · Lv ${p.level}`, obj:p });
-  });
-  if(!hasFeatureLoose(t, "Leadership")) return out;
-  const map = (typeof activeMap === "function") ? activeMap() : null;
-  if(!map) return out;
-  const seen = new Set(out.map(o=>o.obj));
-  mapTokensFor(map.id).forEach(tok=>{
-    if(!tok.link) return;
-    const L = tokenLinked(tok); if(!L || !L.obj || seen.has(L.obj)) return;
-    if(ENEMY_LINKS.has(L.kind) && !isGM()) return;                  // enemies are not Allies
-    seen.add(L.obj);
-    const info = tokenHp(tok);
-    out.push({ id:`tok:${tok.id}`, label:`${ENEMY_LINKS.has(L.kind)?"👹":"🤝"} ${info.name} — on the Map`,
-               obj:L.obj, token:tok });
-  });
-  return out;
-}
 function openGiveOrder(t, f, def, rerender){
   const info = freqInfo(f.frequency), key = useKey("feature", f.name);
   const left = freqTrackable(info) ? usesLeft(t, key, info.max) : null;
   const cost = (String(f.frequency||"").match(/Bind\s+(\d+)\s*AP/i)||[])[1];
-  const targets = orderTargets(t);
+  const targets = allyTargets(t);
   const boosters = orderBoosters(t, f);
   const picked = new Set(["self"]);
   const useBoost = new Set();
@@ -15934,8 +15933,8 @@ function openGiveOrder(t, f, def, rerender){
     + (left!=null ? ` ${left} of ${info.max} use${info.max===1?"":"s"} left this Scene.` : "")
     + (cost ? ` Binds ${cost} AP while it's up — track that on your Vitals card.` : "")
     + (hasFeatureLoose(t,"Leadership")
-        ? " Leadership: every friendly token on the Map is a legal target, and the Order is written straight to their sheet."
-        : " Another player's Pokémon: give it from their token's Buffs & Orders menu on the Map.")
+        ? " Leadership: any Ally on the board is a legal target, and the Order is written straight to their sheet."
+        : " Without Leadership an [Orders] Feature with targets only reaches your own Pokémon — everyone else is listed so the GM can wave it through, not because the rules allow it.")
     + (hasFeatureLoose(t,"Complex Orders")
         ? " Complex Orders: give a DIFFERENT Order to each target by running this dialog once per Order — pay each one's cost."
         : "")));
@@ -16212,40 +16211,65 @@ function ownerHeal(o, n){
   applyAutoKO(o, old, next);
   return next - old;
 }
-/* Everyone this Trainer can reach with a Cheer / Song / Restorative: themselves, their own party,
-   and — in a cloud game — every friendly token on the Map. Map entries carry their token so the
-   caller can write the change back to the right sheet. */
+/* Everyone this Trainer can reach with a Cheer / Order / Restorative. Built the same way the
+   attack tool's target picker is (attackTargetWidget): EVERY linked creature token on the map you
+   are actually looking at, not just your own party — a Cheerleader cheers the whole field, and the
+   party list alone left the other players unreachable. Yourself and your own Pokémon come first so
+   the list still works with no Map at all (a local game, or before the board is set up).
+   Map entries carry their token, so the caller can write the change back to the right sheet. */
 function allyTargets(t, opts){
-  const out = [{ id:"self", label:`🧑 ${t.name||"Trainer"} — yourself`, obj:t }];
+  opts = opts || {};
+  const out = [{ id:"self", label:`🧑 ${t.name||"Trainer"} — yourself`, obj:t, ally:true }];
   (activeChar()?.pokemon||[]).filter(p=>p.onTeam).forEach(p=>{
     const sp = getSpecies(p.species);
-    out.push({ id:`mon:${p.id}`, label:`🔴 ${p.nickname||sp?.name||"?"} · Lv ${p.level}`, obj:p });
+    out.push({ id:`mon:${p.id}`, label:`🔴 ${p.nickname||sp?.name||"?"} · Lv ${p.level}`, obj:p, ally:true });
   });
-  const map = (typeof activeMap === "function") ? activeMap() : null;
+  const map = (typeof currentMapForView === "function" ? currentMapForView() : null)
+           || (typeof activeMap === "function" ? activeMap() : null);
   if(!map) return out;
   const seen = new Set(out.map(o=>o.obj));
   mapTokensFor(map.id).forEach(tok=>{
     if(!tok.link) return;
+    const info = tokenHp(tok);
+    // scenery is linked and editable but is not a creature you can hand a Cheer to
+    if(info.unlinked || info.kind==="shop" || info.kind==="hazard" || info.kind==="boat") return;
     const L = tokenLinked(tok); if(!L || !L.obj || seen.has(L.obj)) return;
     const enemy = ENEMY_LINKS.has(L.kind);
-    if(enemy && !(opts && opts.foes && isGM())) return;
+    // enemies are never Allies; only a GM sees them at all, and only where a Feature targets foes
+    if(enemy && !(opts.foes && isGM())) return;
     seen.add(L.obj);
-    out.push({ id:`tok:${tok.id}`, label:`${enemy?"👹":"🤝"} ${tokenHp(tok).name} — on the Map`,
-               obj:L.obj, token:tok, enemy });
+    out.push({ id:`tok:${tok.id}`, obj:L.obj, token:tok, enemy, ally:!enemy,
+               label:`${enemy?"👹":"🤝"} ${info.name} — ${info.cur}/${info.max} HP` });
   });
   return out;
 }
-/* a checkbox list of targets + the commit that writes cross-sheet ones back through their token */
-function targetPicker(list, preselect){
+/* A checkbox list of targets, with the select-all the attack tool has. `onChange` lets a dialog
+   price itself off the selection (the Cheerleader's 0-or-1 AP). */
+function targetPicker(list, preselect, onChange){
   const picked = new Set(preselect || []);
-  const box = el("div",{style:"display:flex;flex-direction:column;gap:2px;max-height:230px;overflow:auto"});
+  const wrap = el("div",{});
+  const box = el("div",{style:"display:flex;flex-direction:column;gap:2px;max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 8px"});
+  const cbs = [];
+  const fire = () => { if(onChange) onChange(list.filter(x=>picked.has(x.id))); };
+  const allCb = el("input",{type:"checkbox"});
+  allCb.addEventListener("change",()=>{
+    cbs.forEach(({tg, cb})=>{ cb.checked = allCb.checked; allCb.checked ? picked.add(tg.id) : picked.delete(tg.id); });
+    fire();
+  });
   list.forEach(tg=>{
     const cb = el("input",{type:"checkbox"}); cb.checked = picked.has(tg.id);
-    cb.addEventListener("change",()=>{ cb.checked ? picked.add(tg.id) : picked.delete(tg.id); });
+    cb.addEventListener("change",()=>{ cb.checked ? picked.add(tg.id) : picked.delete(tg.id); fire(); });
+    cbs.push({tg, cb});
     box.append(el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;padding:2px 0"},
       cb, tg.label));
   });
-  return { node:box, chosen:()=>list.filter(x=>picked.has(x.id)) };
+  if(list.length > 1) wrap.append(el("label",{class:"small muted",
+    style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin-bottom:4px;font-weight:700"},
+    allCb, `everyone (${list.length})`));
+  wrap.append(box);
+  if(!list.some(x=>x.token)) wrap.append(el("div",{class:"small muted",style:"margin-top:4px"},
+    "Only your own sheet is listed — open the 🗺 Map (or place the tokens) and everyone on the board joins this list."));
+  return { node:wrap, chosen:()=>list.filter(x=>picked.has(x.id)) };
 }
 async function commitTargets(chosen){
   for(const x of chosen) if(x.token) await commitTokenSource(x.token);
@@ -16273,8 +16297,28 @@ const MUSICIAN_SONGS = [
   { key:"song-of-courage", name:"Song of Courage", blurb:"+2 to Skill Checks and Save Checks until the end of your next turn." },
   { key:"song-of-life",    name:"Song of Life",    blurb:"5 Damage Reduction until the end of your next turn." },
 ];
-/* "Regardless of the Area of Effect, Songs always affect the user" — so the Musician is ticked by
-   default and the AP is charged once per Song, not once per target. */
+/* Playing a Song is a DECLARATION, not a targeting exercise. The Musician presses one button: it
+   pays the AP and drops a line in the GM's roll feed ("Luciano played a Song"). The GM's own row
+   there grows an ✨ Apply area button, which opens the map's range painter anchored on the
+   Musician's token — Burst 4 by default, with just the three Songs in the buff dropdown — so the
+   area and the Song are chosen by the person who can actually see the board. "Regardless of the
+   Area of Effect, Songs always affect the user" — the shape is anchored on the Musician's own
+   token, so they are inside it however the GM drags it. */
+function playSong(t, rerender, persist){
+  if(!apSpend(t, 1)) return;
+  (persist||save)();
+  logRoll({ kind:"song", label:"🎵 Song", who:t.name||"",
+    headline:`${t.name||"The Musician"} played a Song`,
+    lines:["Burst 4 as a Standard Action · Burst 2 off a Dance Move · the triggering Move's own area off a Sonic Move",
+           "GM: ✨ Apply area to paint it and choose Might / Courage / Life"],
+    area:{ sheetId: (mode==="cloud" ? cloud.activeId : ""), shape:"burst", size:4,
+           buffs: MUSICIAN_SONGS.map(x=>x.key), note:"Musician Song" } });
+  toast(mode==="cloud" ? "🎵 Song played · 1 AP — the GM applies its area"
+                       : "🎵 Song played · 1 AP — pick the Song and its area with your GM");
+  (rerender||renderBattle)();
+}
+/* The old target-by-target version, kept for a table with no shared Map: same AP, but the Musician
+   picks who is in the area themselves. */
 function openPlaySong(t, rerender, persist){
   const targets = allyTargets(t);
   const pick = targetPicker(targets, ["self"]);
@@ -16350,14 +16394,20 @@ function openPowerChord(t, rerender, persist){
 function musicianCard(t, rerender, persist){
   if(!t || !trainerHasClass(t, "Musician")) return null;
   const card = classCard("🎵","Musician","Core p.164");
-  classBit(card, "Songs: 1 AP each, and they always affect you as well. ✨ the buff lands on everyone you tick and "
-    + "expires at the end of your next turn on its own — Might is +5 damage, Courage +2 to Skill and Save Checks, Life 5 Damage Reduction.");
+  classBit(card, "Songs: 1 AP each, and they always affect you as well. Pressing 🎵 Play a Song pays the AP and "
+    + "tells the table — the GM then paints the area on the Map and picks which Song, and the buff lands on every "
+    + "ally token inside it. Might is +5 damage, Courage +2 to Skill and Save Checks, Life 5 Damage Reduction, all until "
+    + "the end of your next turn.");
   if(hasFeatureLoose(t, "Voice Lessons"))
     classBit(card, "Voice Lessons: your and your Pokémon's Sonic Moves gain the Friendly keyword (never Perish Song), and your Pokémon roll +1d6 with Sonic Moves in a Contest — stated here, applied at the table.");
   if(hasFeatureLoose(t, "Mt. Moon Blues") || hasFeatureLoose(t, "Cacophony") || hasFeatureLoose(t, "Noise Complaint"))
     classBit(card, "The Moves those Features teach are already on your Moves card below — they are added and removed with the Feature.");
   const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
-  row.append(el("button",{class:"btn-primary",onclick:()=>openPlaySong(t, rerender, persist)},"🎵 Play a Song"));
+  row.append(el("button",{class:"btn-primary",title:"1 AP — tells the table you played a Song; the GM paints its area and picks which one",
+    onclick:()=>playSong(t, rerender, persist)},"🎵 Play a Song · 1 AP"));
+  row.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",
+    title:"no shared Map? place the Song's buff on the targets yourself",
+    onclick:()=>openPlaySong(t, rerender, persist)},"…by hand"));
   if(hasFeatureLoose(t, "Power Chord")){
     const u = featUses(t, "Power Chord");
     row.append(el("button",{class:"btn-secondary",onclick:()=>openPowerChord(t, rerender, persist)},"🎸 Power Chord"));
@@ -16464,6 +16514,7 @@ function provocateurCard(t, rerender, persist){
   const card = classCard("🎭","Provocateur","Core p.75");
   if(hasFeatureLoose(t, "Push Buttons"))
     classBit(card, "Push Buttons: the Demoralize Edge is already on your Edges card — it is derived from this Feature, so it can never fall off the ledger. "
+      + "Every attack roll you make now watches for Demoralize and announces it — a Critical Hit, or 18+ on a Status Move — and says what the target suffers. "
       + "Your Social Moves' Frequency is not expended on a miss, and Demoralize triggers on 18+ for Status Moves (a Social Move that hits that range also costs the target a Tick of HP) — both are printed on the Move's own roll.");
   if(hasFeatureLoose(t, "Powerful Motivator"))
     classBit(card, "Powerful Motivator: rolling Baby-Doll Eyes, Confide, Leer or a Provocateur Move already shows that Move's extra effect in the roll — hit or miss.");
@@ -16495,23 +16546,40 @@ function openCheer(t, rerender, persist){
   const redraw = ()=>{ const c = CHEERLEADER_CHEERS.find(x=>x.key===sel.value); blurb.textContent = c?c.blurb:""; };
   sel.addEventListener("change", redraw); redraw();
   const targets = allyTargets(t);
-  const pick = targetPicker(targets, []);
+  /* "This Feature costs 0 AP if the triggering effect affects only one ally, and costs 1 AP if it
+     affects two or more" (Core p.93). The price moves as the ticks move, so it is on the dialog
+     and on the button — nobody should have to find out what a Cheer cost by pressing it. */
+  const cheerAP = n => n >= 2 ? 1 : 0;
+  const costLine = el("div",{class:"small",style:"margin-top:8px;font-weight:700"});
+  const goBtn = el("button",{class:"btn-primary"});
+  const priced = chosen => {
+    const n = chosen.length, ap = cheerAP(n);
+    const free = trainerDerived(t).ap - trainerAPUsed(t);
+    costLine.textContent = !n ? "Nobody ticked yet — a Cheer costs 0 AP for one ally, 1 AP for two or more."
+      : `${n} all${n===1?"y":"ies"} → ${ap} AP` + (ap ? ` · ${free} free right now` : " · free");
+    costLine.style.color = (ap && free < ap) ? "var(--bad)" : "";
+    goBtn.textContent = `📣 Cheer · ${ap} AP`;
+  };
+  const pick = targetPicker(targets, [], priced);
   const body = el("div",{});
-  body.append(el("label",{class:"field"}, el("span",{},"Cheer"), sel), blurb, pick.node);
+  body.append(el("label",{class:"field"}, el("span",{},"Cheer"), sel), blurb, pick.node, costLine);
   body.append(el("div",{class:"small muted",style:"margin-top:8px"},
-    "Free Action. Inspirational Support lets you trigger it whenever a Pokémon of yours with Friend Guard uses an "
-    + "Ability or an ally-only Status Move — the sheet leaves the trigger to you and just places the Cheer."));
+    "Free Action, triggered by [Orders]. Inspirational Support lets you trigger it whenever a Pokémon of yours with "
+    + "Friend Guard uses an Ability or an ally-only Status Move — the sheet leaves the trigger to you and just places the Cheer."));
+  priced([]);
+  goBtn.addEventListener("click", async()=>{
+    const chosen = pick.chosen();
+    if(!chosen.length){ toast("Pick who you're cheering"); return; }
+    if(!apSpend(t, cheerAP(chosen.length))) return;
+    chosen.forEach(x=>addBuff(x.obj, sel.value));
+    (persist||save)(); closeModal();
+    await commitTargets(chosen);
+    toast(`📣 ${CHEERLEADER_CHEERS.find(x=>x.key===sel.value).name} → ${chosen.length} ✓`
+      + (cheerAP(chosen.length) ? " · 1 AP" : " · free"));
+    (rerender||renderBattle)();
+  });
   modal({title:"📣 Cheer", bodyNode:body, footNodes:[
-    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
-    el("button",{class:"btn-primary",onclick:async()=>{
-      const chosen = pick.chosen();
-      if(!chosen.length){ toast("Pick who you're cheering"); return; }
-      chosen.forEach(x=>addBuff(x.obj, sel.value));
-      (persist||save)(); closeModal();
-      await commitTargets(chosen);
-      toast(`📣 ${CHEERLEADER_CHEERS.find(x=>x.key===sel.value).name} → ${chosen.length} ✓`);
-      (rerender||renderBattle)();
-    }},"📣 Cheer"),
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"), goBtn,
   ]});
 }
 /* Cheer Brigade (At-Will, Extended): 2 Tutor Points for the Friend Guard Ability. */
@@ -16621,7 +16689,8 @@ function cheerleaderCard(t, rerender, persist){
   if(!t || !trainerHasClass(t, "Cheerleader")) return null;
   const card = classCard("📣","Cheerleader","Core p.93");
   classBit(card, "Cheers are real buffs on the recipient: Excited is spent for you the moment they take a hit, "
-    + "Cheered and Motivated wait on their Buffs & Orders card until they are given up.");
+    + "Cheered and Motivated wait on their Buffs & Orders card until they are given up. A Cheer costs 0 AP for one "
+    + "ally and 1 AP for two or more — the dialog prices it as you tick, and spends it when you press.");
   if(hasFeatureLoose(t, "Inspirational Support"))
     classBit(card, "Inspirational Support: a Free Action Cheer whenever a Pokémon of yours with Friend Guard uses an Ability or an ally-only Status Move.");
   if(hasFeatureLoose(t, "Gleeful Interference"))
@@ -16629,7 +16698,8 @@ function cheerleaderCard(t, rerender, persist){
   if(hasFeatureLoose(t, "Moment of Action"))
     classBit(card, "Moment of Action: ✨ Give it like an Order — the Temporary Action Point is added to that Trainer's AP total for as long as the buff is up.");
   const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
-  row.append(el("button",{class:"btn-primary",onclick:()=>openCheer(t, rerender, persist)},"📣 Cheer"));
+  row.append(el("button",{class:"btn-primary",title:"0 AP for one ally, 1 AP for two or more — the dialog prices it as you tick",
+    onclick:()=>openCheer(t, rerender, persist)},"📣 Cheer · 0–1 AP"));
   if(hasFeatureLoose(t, "Cheer Brigade"))
     row.append(el("button",{class:"btn-secondary",onclick:()=>openCheerBrigade(t, rerender, persist)},"🤝 Cheer Brigade · 2 TP"));
   if(hasFeatureLoose(t, "Go, Fight, Win!"))
@@ -23195,7 +23265,7 @@ function rollerName(o){
 /* Write one roll into the feed. `atk` (only on a roll that produced damage) carries exactly what
    attackTargetWidget needs, so the GM can drop that same hit on map tokens minutes later even
    though the player who rolled it never had the board open. */
-function logRoll({ kind, label, who, headline, lines, atk }){
+function logRoll({ kind, label, who, headline, lines, atk, area }){
   if(mode!=="cloud") return;
   const row = ensureRolls();
   const e = {
@@ -23214,6 +23284,14 @@ function logRoll({ kind, label, who, headline, lines, atk }){
                     pierceDR: Math.max(0, Math.round(atk.pierceDR||0)),
                     atkTinted: !!atk.atkTinted,
                     defCSMode: (atk.defCSMode==="all" || atk.defCSMode==="positive") ? atk.defCSMode : null };
+  /* An "area" entry is a declaration, not a hit: the player says what they did and the GM decides
+     where it lands. It carries the caster's sheet (so the shape can be anchored on their token),
+     the shape to open with, and the buffs the area panel should offer — nothing else, because the
+     GM is the one who picks. */
+  if(area) e.area = { sheetId: area.sheetId || "", shape: area.shape || "burst",
+                      size: Math.max(1, Math.min(20, area.size||1)),
+                      buffs: (area.buffs||[]).filter(k=>buffByKey.has(k)).slice(0,8),
+                      note: String(area.note||"").slice(0,120) };
   row.data.entries.push(e);
   if(row.data.entries.length > ROLL_FEED_MAX) row.data.entries = row.data.entries.slice(-ROLL_FEED_MAX);
   saveRolls();
@@ -25314,7 +25392,10 @@ function drawAoE(cv, map, stageW, stageH, originX=0, originY=0){
   pts.forEach(([x,y])=>{ const dx=(x-x0)*px, dy=(y-y0)*px;
     ctx.fillRect(dx, dy, px, px); ctx.strokeRect(dx+0.5, dy+0.5, px-1, px-1); });
 }
-function startAoE(token, shape, size){ mapAoE = { tokenId:token.id, shape, size:size||1, dir:"E" }; renderMap(); }
+function startAoE(token, shape, size, extra){
+  mapAoE = Object.assign({ tokenId:token.id, shape, size:size||1, dir:"E" }, extra||{});
+  renderMap();
+}
 function clearAoE(){ mapAoE = null; renderMap(); }
 /* Apply a buff (Cheer/Order/Song/custom) to every linked token whose cell falls inside the
    currently-painted AoE (older handoff #1: "combine the buff engine with the map AoE shapes"). */
@@ -25371,7 +25452,13 @@ function aoeControlPanel(map){
     p.append(pad);
   }
   const buffSel = el("select",{style:"flex:1;min-width:0"});
-  PTU_BUFFS.forEach(b=>buffSel.append(el("option",{value:b.key},`${b.name} · ${b.cat}`)));
+  /* `buffOnly` is set when the panel was opened from a declaration in the roll feed (a Musician's
+     Song): the GM should be choosing WHICH Song, not scrolling the whole buff catalog. */
+  const only = Array.isArray(mapAoE.buffOnly) && mapAoE.buffOnly.length ? new Set(mapAoE.buffOnly) : null;
+  PTU_BUFFS.filter(b=>!only || only.has(b.key))
+    .forEach(b=>buffSel.append(el("option",{value:b.key},`${b.name} · ${b.cat}`)));
+  if(only) p.append(el("div",{class:"small muted",style:"margin-top:6px"},
+    "Pick which one, set the area, then ✨ Buff area — it lands on every ally token inside."));
   p.append(el("div",{class:"aoe-row",style:"margin-top:6px"}, buffSel,
     el("button",{class:"btn-secondary",title:"Push this buff onto every linked token inside the shaded area",
       onclick:()=>applyAreaBuff(map, buffSel.value)},"✨ Buff area")));
@@ -26724,7 +26811,25 @@ function rollFeedRow(e){
     style:"padding:2px 8px;margin-top:4px;font-size:11px",
     title:`drop this ${e.atk.dmg} ${e.atk.type} ${e.atk.physical?"Physical":"Special"} hit on map tokens`,
     onclick:()=>openRollApply(e)}, `🎯 Apply ${e.atk.dmg} ${e.atk.type}`));
+  if(e.area && cloud.isGM) row.append(el("button",{class:"btn-secondary",
+    style:"padding:2px 8px;margin-top:4px;font-size:11px",
+    title:"open the range painter on the caster's token, with just these buffs offered",
+    onclick:()=>openAreaApply(e)}, "✨ Apply area"));
   return row;
+}
+/* An area declaration from the feed: anchor the range painter on whoever declared it, open it at
+   the shape they announced, and narrow the panel's buff list to the ones that declaration can
+   place. The GM then drags the size/facing they actually want and presses ✨ Buff area. */
+function openAreaApply(e){
+  const map = currentMapForView() || activeMap();
+  if(!map){ toast("No map open"); return; }
+  const toks = mapTokensFor(map.id);
+  const tok = toks.find(x => x.link && x.link.kind==="trainer" && x.link.sheetId===e.area.sheetId)
+           || toks.find(x => x.link && tokenHp(x).name === (e.who||""));
+  if(!tok){ toast(`${e.who||"The caster"} has no token on this map — place one first`); return; }
+  startAoE(tok, e.area.shape, e.area.size, { buffOnly: e.area.buffs.slice() });
+  switchTab("map");
+  toast(`✨ ${e.label||"Area"} — set the shape, pick the effect, then press ✨ Buff area`);
 }
 /* The roll's own damage math, re-opened later — identical widget, identical numbers. */
 function openRollApply(e){
