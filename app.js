@@ -15887,7 +15887,7 @@ function openGiveOrder(t, f, def, rerender){
   const cost = (String(f.frequency||"").match(/Bind\s+(\d+)\s*AP/i)||[])[1];
   const targets = allyTargets(t);
   const boosters = orderBoosters(t, f);
-  const picked = new Set(["self"]);
+  const picked = new Set(selfTargetId(targets));
   const useBoost = new Set();
   const body = el("div",{});
   if(def.note) body.append(el("div",{class:"small",style:"margin-bottom:10px"}, def.note));
@@ -16211,23 +16211,30 @@ function ownerHeal(o, n){
   applyAutoKO(o, old, next);
   return next - old;
 }
-/* Everyone this Trainer can reach with a Cheer / Order / Restorative. Built the same way the
-   attack tool's target picker is (attackTargetWidget): EVERY linked creature token on the map you
-   are actually looking at, not just your own party — a Cheerleader cheers the whole field, and the
-   party list alone left the other players unreachable. Yourself and your own Pokémon come first so
-   the list still works with no Map at all (a local game, or before the board is set up).
-   Map entries carry their token, so the caller can write the change back to the right sheet. */
+/* Everyone this Trainer can reach with a Cheer / Order / Song / Restorative: the creatures ON THE
+   BOARD, and nothing else. An Ally is someone standing in the fight — a Pokémon resting in the party
+   or sitting in the PC is not a legal target for any of this, and listing them only invited a
+   mis-click. So this is exactly the token list the attack tool works from (attackTargetWidget):
+   every linked creature token on the map you are actually looking at, with its HP.
+
+   The one exception is a table with NO shared Map at all (a local game, or before the board is set
+   up): there is no board to read, so the Trainer and their own party stand in for it and the picker
+   says as much. Map entries carry their token, so the caller can write the change back to the right
+   sheet; `self` marks whichever entry is this Trainer, since the callers pre-tick it. */
 function allyTargets(t, opts){
   opts = opts || {};
-  const out = [{ id:"self", label:`🧑 ${t.name||"Trainer"} — yourself`, obj:t, ally:true }];
-  (activeChar()?.pokemon||[]).filter(p=>p.onTeam).forEach(p=>{
-    const sp = getSpecies(p.species);
-    out.push({ id:`mon:${p.id}`, label:`🔴 ${p.nickname||sp?.name||"?"} · Lv ${p.level}`, obj:p, ally:true });
-  });
   const map = (typeof currentMapForView === "function" ? currentMapForView() : null)
            || (typeof activeMap === "function" ? activeMap() : null);
-  if(!map) return out;
-  const seen = new Set(out.map(o=>o.obj));
+  if(!map){
+    const out = [{ id:"self", label:`🧑 ${t.name||"Trainer"} — yourself`, obj:t, ally:true, self:true, offBoard:true }];
+    (activeChar()?.pokemon||[]).filter(p=>p.onTeam).forEach(p=>{
+      const sp = getSpecies(p.species);
+      out.push({ id:`mon:${p.id}`, label:`🔴 ${p.nickname||sp?.name||"?"} · Lv ${p.level}`,
+                 obj:p, ally:true, offBoard:true });
+    });
+    return out;
+  }
+  const out = [], seen = new Set();
   mapTokensFor(map.id).forEach(tok=>{
     if(!tok.link) return;
     const info = tokenHp(tok);
@@ -16238,11 +16245,15 @@ function allyTargets(t, opts){
     // enemies are never Allies; only a GM sees them at all, and only where a Feature targets foes
     if(enemy && !(opts.foes && isGM())) return;
     seen.add(L.obj);
-    out.push({ id:`tok:${tok.id}`, obj:L.obj, token:tok, enemy, ally:!enemy,
-               label:`${enemy?"👹":"🤝"} ${info.name} — ${info.cur}/${info.max} HP` });
+    const self = L.obj === t;
+    out.push({ id:`tok:${tok.id}`, obj:L.obj, token:tok, enemy, ally:!enemy, self,
+               label:`${self?"🧑":enemy?"👹":"🤝"} ${info.name}${self?" (you)":""} — ${info.cur}/${info.max} HP` });
   });
+  out.sort((a,b)=> (b.self?1:0)-(a.self?1:0));      // you first; the rest in board order
   return out;
 }
+/* the id a caller should pre-tick for "this is me" — nothing, when the caster has no token out */
+function selfTargetId(list){ const me = (list||[]).find(x=>x.self); return me ? [me.id] : []; }
 /* A checkbox list of targets, with the select-all the attack tool has. `onChange` lets a dialog
    price itself off the selection (the Cheerleader's 0-or-1 AP). */
 function targetPicker(list, preselect, onChange){
@@ -16267,8 +16278,10 @@ function targetPicker(list, preselect, onChange){
     style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin-bottom:4px;font-weight:700"},
     allCb, `everyone (${list.length})`));
   wrap.append(box);
-  if(!list.some(x=>x.token)) wrap.append(el("div",{class:"small muted",style:"margin-top:4px"},
-    "Only your own sheet is listed — open the 🗺 Map (or place the tokens) and everyone on the board joins this list."));
+  if(!list.length) wrap.append(el("div",{class:"small",style:"margin-top:4px;color:var(--bad)"},
+    "Nobody is on the board — place the tokens on the 🗺 Map first. Only creatures in the fight can be targeted."));
+  else if(list.some(x=>x.offBoard)) wrap.append(el("div",{class:"small muted",style:"margin-top:4px"},
+    "No shared Map open, so this falls back to you and your own party. With a Map up, this list is the tokens on the board and nothing else."));
   return { node:wrap, chosen:()=>list.filter(x=>picked.has(x.id)) };
 }
 async function commitTargets(chosen){
@@ -16321,7 +16334,7 @@ function playSong(t, rerender, persist){
    picks who is in the area themselves. */
 function openPlaySong(t, rerender, persist){
   const targets = allyTargets(t);
-  const pick = targetPicker(targets, ["self"]);
+  const pick = targetPicker(targets, selfTargetId(targets));
   const sel = el("select");
   MUSICIAN_SONGS.forEach(s=>sel.append(el("option",{value:s.key}, s.name)));
   const blurb = el("div",{class:"small muted",style:"margin:6px 0 10px"});
@@ -16758,7 +16771,7 @@ function openMagicalBurst(t, rerender, persist){
   const def = featureModeByFeat.get(featKey("Enchanting Transformation"));
   const on = def && modeIsOn(t, def.key);
   const targets = allyTargets(t);
-  const pick = targetPicker(targets, ["self"]);
+  const pick = targetPicker(targets, selfTargetId(targets));
   const u = featUses(t, "Magical Burst");
   const body = el("div",{});
   body.append(el("div",{class:"small",style:"margin-bottom:10px"},
