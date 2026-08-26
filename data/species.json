@@ -255758,69 +255758,9 @@
   "moves": {
    "levelup": [
     {
-     "level": 1,
-     "name": "Flame Wheel",
-     "type": "Fire"
-    },
-    {
-     "level": 1,
-     "name": "Helping Hand",
+     "level": 0,
+     "name": "Extreme Speed",
      "type": "Normal"
-    },
-    {
-     "level": 1,
-     "name": "Agility",
-     "type": "Psychic"
-    },
-    {
-     "level": 1,
-     "name": "Fire Fang",
-     "type": "Fire"
-    },
-    {
-     "level": 1,
-     "name": "Retaliate",
-     "type": "Normal"
-    },
-    {
-     "level": 1,
-     "name": "Crunch",
-     "type": "Dark"
-    },
-    {
-     "level": 1,
-     "name": "Take Down",
-     "type": "Normal"
-    },
-    {
-     "level": 1,
-     "name": "Roar",
-     "type": "Normal"
-    },
-    {
-     "level": 1,
-     "name": "Rock Slide",
-     "type": "Rock"
-    },
-    {
-     "level": 1,
-     "name": "Reversal",
-     "type": "Fighting"
-    },
-    {
-     "level": 1,
-     "name": "Flare Blitz",
-     "type": "Fire"
-    },
-    {
-     "level": 1,
-     "name": "Rock Throw",
-     "type": "Rock"
-    },
-    {
-     "level": 1,
-     "name": "Ember",
-     "type": "Fire"
     },
     {
      "level": 1,
@@ -255833,18 +255773,83 @@
      "type": "Normal"
     },
     {
-     "level": 1,
-     "name": "Bite",
-     "type": "Dark"
-    },
-    {
-     "level": 0,
-     "name": "Extreme Speed",
-     "type": "Normal"
+     "level": 5,
+     "name": "Ember",
+     "type": "Fire"
     },
     {
      "level": 5,
      "name": "Flamethrower",
+     "type": "Fire"
+    },
+    {
+     "level": 9,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 9,
+     "name": "Roar",
+     "type": "Normal"
+    },
+    {
+     "level": 13,
+     "name": "Rock Throw",
+     "type": "Rock"
+    },
+    {
+     "level": 15,
+     "name": "Fire Fang",
+     "type": "Fire"
+    },
+    {
+     "level": 17,
+     "name": "Helping Hand",
+     "type": "Normal"
+    },
+    {
+     "level": 19,
+     "name": "Take Down",
+     "type": "Normal"
+    },
+    {
+     "level": 21,
+     "name": "Rock Slide",
+     "type": "Rock"
+    },
+    {
+     "level": 23,
+     "name": "Flame Wheel",
+     "type": "Fire"
+    },
+    {
+     "level": 25,
+     "name": "Retaliate",
+     "type": "Normal"
+    },
+    {
+     "level": 27,
+     "name": "Agility",
+     "type": "Psychic"
+    },
+    {
+     "level": 29,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 33,
+     "name": "Reversal",
+     "type": "Fighting"
+    },
+    {
+     "level": 37,
+     "name": "Double-Edge",
+     "type": "Normal"
+    },
+    {
+     "level": 47,
+     "name": "Flare Blitz",
      "type": "Fire"
     },
     {
