@@ -2318,7 +2318,7 @@ function applyEndDay(c, plan){
   treat(t, "trainer");
   const tCap = trainerDerived(t).hp;               // remaining-injury-capped max
   t.currentHP = noHP(t.injuries) ? Math.min(typeof t.currentHP==="number" ? t.currentHP : tCap, tCap) : tCap;
-  (c.pokemon||[]).forEach(p => { normPokemon(p);
+  restParty(c).forEach(p => {
     if(p.mega) megaRevert(p,true);        // revert Mega before healing so max HP is the base form's
     transformRevert(p,true);              // "lasts until ... the end of the encounter"
     p.tempHP = 0; p.buffs = []; resetUses(p, "all"); resetManualCS(p); clearStorageDigestion(p);
@@ -2402,15 +2402,19 @@ function restRoster(c){
   out.push({ key:"trainer", mon:false, obj:t, name:(t.name || c.name || "Trainer"),
              cur: typeof t.currentHP==="number" ? t.currentHP : dT.hp,
              full: dT.fullHP, inj: Math.max(0, t.injuries||0) });
-  (c.pokemon||[]).forEach(p => { normPokemon(p);
+  restParty(c).forEach(p => {
     const d = pokeDerived(p);
-    out.push({ key:p.id, mon:true, obj:p, boxed: p.onTeam===false,
+    out.push({ key:p.id, mon:true, obj:p,
                name: p.nickname || (getSpecies(p.species) && getSpecies(p.species).name) || p.species || "Pokemon",
                cur: typeof p.currentHP==="number" ? p.currentHP : d.maxHP,
                full: d.fullMaxHP, inj: Math.max(0, p.injuries||0) });
   });
   return out;
 }
+/* Only the Pokémon travelling WITH you rest — anything in the PC sits the whole thing out
+   (no healing, no AP, no refreshed uses). The day still rolls over for them, though: see restApply,
+   which resets every Pokémon's Injury ledger so a boxed one can't get stuck at 3/3 forever. */
+function restParty(c){ return ((c && c.pokemon)||[]).filter(p => normPokemon(p).onTeam !== false); }
 /* Nurse cares for everyone resting with the Medic, so a single medic anywhere in the resting group
    speeds up the whole camp (Proper Care needs Nurse to have something to improve). */
 function restMedics(sheets, per){
@@ -2435,10 +2439,12 @@ function restHoursFor(ind, heals, opts){
     return { hours: 1 + ind.inj*per, hp:true, left };
   }
   let hours = 4;                                        // an Extended Rest is 4+ continuous hours
-  // the first Injury is natural healing (24h with no new Injuries) and costs the rest nothing;
-  // the ones after it each need a Bandage in place for its full duration
+  /* The first Injury is natural healing (24h with no new Injuries) and costs the rest nothing.
+     Past that it's the Bandage doing the work: one Bandage heals one Injury after its full 6 hours,
+     or under a Medic's Proper Care one at 3 hours "in addition [to] the injury healed after 6
+     hours" — so a single Bandage is worth two, and the second still takes the full 6. */
   const bandaged = Math.max(0, heals - 1);
-  if(bandaged) hours = Math.max(hours, bandaged * (opts.properCare ? 3 : 6));
+  if(bandaged) hours = Math.max(hours, (opts.properCare && bandaged === 1) ? 3 : 6);
   let hp = true;
   if(left >= 5) hp = false;                             // Heavily Injured: no HP from rest at all
   else {
@@ -2461,10 +2467,11 @@ function restHoursText(h){
 /* how many Injuries this individual may have treated in THIS rest: whatever is left of their 3 a
    day, never more than they actually carry, and — in camp — past the first (natural healing)
    every one needs a Bandage, so an un-bandaged camper can only ever get the 1. */
-function restHealCap(ind, plan, bandagedNow){
+function restHealCap(ind, plan, bandagedNow, properCare){
   const cap = Math.min(injuryDayLeft(ind.obj), ind.inj);
-  if(plan.center || bandagedNow) return cap;
-  return Math.min(1, cap);
+  if(plan.center) return cap;                       // the Center's machinery has no per-item limit
+  // camp: the free natural heal, plus what the one Bandage on them is worth
+  return Math.min(cap, 1 + (bandagedNow ? (properCare ? 2 : 1) : 0));
 }
 /* Bandages and Poultices are mechanically the same item (6 hours, 1 Injury) — either will do. */
 const BANDAGE_ITEMS = ["Bandages","Poultices"];
@@ -2489,7 +2496,7 @@ function openRestPlanner(){
   const sheets = restPlannerSheets();
   if(!sheets.length){ toast("Nothing to rest \u2014 no sheet you can edit"); return; }
   const plan = { center:false, tab:sheets[0].id, per:{} };
-  sheets.forEach(s => plan.per[s.id] = { on:true, heals:{}, band:{} });
+  sheets.forEach(s => plan.per[s.id] = { on:true, heals:{}, band:{}, touched:{} });
 
   const body = el("div");
   const summary = el("div",{style:"margin-left:auto;text-align:right;line-height:1.4"});
@@ -2505,9 +2512,14 @@ function openRestPlanner(){
     const roster = restRoster(s.c);
     const rows = roster.map(ind => {
       const bandagedNow = plan.center ? false : (!!st.band[ind.key] || med.nurse);
-      const capN = restHealCap(ind, plan, bandagedNow);
-      const n = Math.min(capN, Math.max(0, st.heals[ind.key]||0));
-      if((st.heals[ind.key]||0) !== n) st.heals[ind.key] = n;      // a lowered cap can't leave a stale pick
+      const capN = restHealCap(ind, plan, bandagedNow, med.properCare);
+      /* Until you touch a row it just takes the most it can — which with no Bandage is the one free
+         natural heal, and at a Pokémon Center is everything the daily cap still allows. Touch the
+         stepper once and your number sticks (clamped) instead of chasing the cap. */
+      const n = st.touched[ind.key]
+        ? Math.min(capN, Math.max(0, st.heals[ind.key]||0))
+        : capN;
+      st.heals[ind.key] = n;
       const t = restHoursFor(ind, n, { center:plan.center, bandaged:bandagedNow, properCare:med.properCare });
       return { ind, n, capN, bandagedNow, ...t };
     });
@@ -2565,13 +2577,15 @@ function openRestPlanner(){
       const tbl = el("table",{class:"movetable",style:"width:100%"});
       tbl.append(el("tr",{},
         el("th",{},"Who"), el("th",{},"HP"), el("th",{},"Injuries"),
-        el("th",{},"Treat"), plan.center ? el("th",{},"") : el("th",{title:"Bandaged \u2014 doubles the natural healing rate, and is what lets you treat more than the one free Injury"},"🩹"),
+        el("th",{},"Treat"), plan.center ? el("th",{},"")
+                    : el("th",{title:"Bandaged — doubles the natural healing rate, and heals one Injury beyond the free natural one after 6 hours in place"},
+                        `🩹 ` + bandageStock(s.c.trainer)),
         el("th",{},"⏱")));
 
       sp.rows.forEach(r => {
         const ind = r.ind;
         const tr = el("tr",{});
-        tr.append(el("td",{}, ind.name + (ind.boxed ? " (PC)" : "")));
+        tr.append(el("td",{}, ind.name));
         tr.append(el("td",{class:"muted"}, ind.cur + "/" + ind.full));
         tr.append(el("td",{}, ind.inj ? String(ind.inj) : el("span",{class:"muted"},"—"),
           injuryDayUsed(ind.obj) ? el("span",{style:"margin-left:6px"}, injuryDayChip(ind.obj)) : ""));
@@ -2580,7 +2594,8 @@ function openRestPlanner(){
         const cell = el("td",{});
         if(!ind.inj){ cell.append(el("span",{class:"muted"},"\u2014")); }
         else {
-          const set = d => { sp.st.heals[ind.key] = Math.max(0, Math.min(r.capN, (sp.st.heals[ind.key]||0) + d)); draw(); };
+          const set = d => { sp.st.touched[ind.key] = true;
+            sp.st.heals[ind.key] = Math.max(0, Math.min(r.capN, (sp.st.heals[ind.key]||0) + d)); draw(); };
           cell.append(el("button",{class:"btn-secondary",style:"padding:2px 9px",
             onclick:()=>set(-1)},"\u2212"));
           cell.append(el("span",{style:"padding:0 8px;font-weight:700"}, String(r.n)));
@@ -2597,20 +2612,23 @@ function openRestPlanner(){
         /* bandaged? */
         const bCell = el("td",{});
         if(!plan.center){
-          const cb = el("input",{type:"checkbox"});
-          cb.checked = !!r.bandagedNow;
           const stock = bandageStock(s.c.trainer);
           const spoken = Object.keys(sp.st.band).filter(k=>sp.st.band[k]).length;
-          if(sp.med.nurse){ cb.disabled = true; cb.title = "already under the Medic's Nurse — no Bandage needed"; }
-          else if(!cb.checked && spoken >= stock){
-            cb.disabled = true;
-            cb.title = stock ? `All ${stock} Bandage${stock===1?"":"s"} in ${s.name}'s bag are already spoken for`
-                             : `No Bandages or Poultices in ${s.name}'s bag — add some from the Inventory catalog`;
+          if(sp.med.nurse){
+            bCell.append(el("span",{class:"muted small",title:"A Medic's Nurse covers everyone resting here — no Bandage needed"},"Nurse"));
+          } else if(!r.bandagedNow && spoken >= stock){
+            // say WHY rather than leaving a dead tickbox: an empty bag is the usual reason
+            bCell.append(el("span",{class:"muted small",
+              title: stock ? `All ${stock} Bandage${stock===1?"":"s"} in ${s.name}'s bag are already on someone else this rest`
+                           : `${s.name} is carrying no Bandages or Poultices — add some from Inventory → catalog, and each one heals an Injury after 6 hours`},
+              stock ? "none spare" : "no Bandages"));
           } else {
-            cb.title = `Apply a Bandage — spends one of the ${stock} in ${s.name}'s bag when the rest is taken`;
+            const cb = el("input",{type:"checkbox"});
+            cb.checked = !!r.bandagedNow;
+            cb.title = `Apply a Bandage — doubles the healing rate, heals one more Injury after 6 hours${sp.med.properCare?" (two, under Proper Care)":""}, and spends one of the ${stock} in ${s.name}'s bag`;
+            cb.addEventListener("change", ()=>{ sp.st.band[ind.key] = cb.checked; draw(); });
+            bCell.append(cb);
           }
-          cb.addEventListener("change", ()=>{ sp.st.band[ind.key] = cb.checked; draw(); });
-          bCell.append(cb);
         }
         tr.append(bCell);
 
@@ -2671,7 +2689,7 @@ async function restApply(sheets, plan, endsDay){
     const heals = {};
     restRoster(c).forEach(ind => {
       const bandagedNow = plan.center ? false : (!!st.band[ind.key] || med.nurse);
-      const capN = restHealCap(ind, plan, bandagedNow);
+      const capN = restHealCap(ind, plan, bandagedNow, med.properCare);
       const n = Math.min(capN, Math.max(0, st.heals[ind.key]||0));
       if(n) heals[ind.key] = n;
       total = Math.max(total, restHoursFor(ind, n, { center:plan.center, bandaged:bandagedNow, properCare:med.properCare }).hours);
@@ -2682,7 +2700,9 @@ async function restApply(sheets, plan, endsDay){
                                  src: plan.center ? "Pokémon Center" : "Extended Rest" });
     healedN += res.healed; blockedN += res.blocked;
     // the rest happens DURING today, so its heals count against today -- then the day rolls over
-    if(endsDay) restRoster(c).forEach(ind => resetInjuryDay(ind.obj));
+    // a new day dawns for the whole roster, PC Pokémon included — they never rest, so without this
+    // a boxed one that hit 3/3 would stay locked out of Injury healing for good
+    if(endsDay){ resetInjuryDay(c.trainer); (c.pokemon||[]).forEach(resetInjuryDay); }
     if(mode==="cloud"){
       const row = cloud.byId[s.id] || s.row;
       if(row) cloudUpsert(row);
@@ -2951,6 +2971,7 @@ function trainerDerived(t) {
   const mvCS = speedCSMove(cs);                            // Speed CS shifts every Movement Speed (Core p.234)
   // The Chariot raises EVERY movement Capability, so it lands on both Overland and Swim
   const bMove = buffMove(t);                               // a buff that raises Movement Speed (Frenzy)
+  const bEva  = buffEva(t);                                // a buff that raises Evasion (I Believe In You!, Capricious Whirl)
   const ovlBase = 3 + Math.floor((athl+acro)/2) + equipOverland(t) + featureOverland(t) + arc.caps.move + bMove;
   const swimBase = Math.floor((3 + Math.floor((athl+acro)/2))/2) + equipSwim(t) + featureSwim(t) + arc.caps.move + bMove;
   const fullHP = t.level*2 + raw("hp")*3 + 10 + arc.hp;    // undamaged maximum (Nine of Wands ±5)
@@ -2960,8 +2981,8 @@ function trainerDerived(t) {
   const hp = injuryHealCap(fullHP, injuryHPCount(t));
   return {
     hp, fullHP, injuries, cs,
-    physEva: cap6(tot("def"))+cs.eva+eqEva, specEva: cap6(tot("spdef"))+cs.eva+eqEva, spdEva: cap6(tot("spd"))+cs.eva+eqEva,   // CS-adjusted evasion (+ shields)
-    ap: Math.max(0, 5 + Math.floor(t.level/5) + arc.ap),     // Ace of Wands, Justice, The Devil… move the AP ceiling
+    physEva: cap6(tot("def"))+cs.eva+eqEva+bEva, specEva: cap6(tot("spdef"))+cs.eva+eqEva+bEva, spdEva: cap6(tot("spd"))+cs.eva+eqEva+bEva,   // CS-adjusted evasion (+ shields, + buffs)
+    ap: Math.max(0, 5 + Math.floor(t.level/5) + arc.ap + buffTempAP(t)),     // Ace of Wands, Justice, The Devil… move the AP ceiling; Moment of Action lends a Temporary point
     power, highJump: hj, longJump: Math.floor(acro/2),
     dr: equipDR(t).dr + arc.dr,                              // worn-armor Damage Reduction (also flows through buffDR on the damage input) + Ten of Swords
     overland: moveWithCS(ovlBase, mvCS), swim: moveWithCS(swimBase, mvCS), moveCS: mvCS,
@@ -3017,9 +3038,10 @@ function pokeDerived(p) {
   const wEva = weatherEvasion(p);
   const inspiredEva = hasStatus(p,"inspired") ? 1 : 0;   // Inspired Training: +1 Evasion
   const bugSkyEva = insectoidSpdEva(p);                  // Insectoid Utility (Type Ace, Bug): Sky → +1 Speed Evasion
+  const bEva = buffEva(p);                               // Cheerleader's I Believe In You!, a Commander's Capricious Whirl
   return {
     base, total, cs, eff, maxHP, fullMaxHP, injuries, budget, spent, remaining: budget - spent, edgePts,
-    physEva: cap6(eff.def)+cs.eva+wEva+inspiredEva, specEva: cap6(eff.spdef)+cs.eva+wEva+inspiredEva, spdEva: cap6(eff.spd)+cs.eva+wEva+inspiredEva+bugSkyEva,   // evasion uses CS-adjusted stats
+    physEva: cap6(eff.def)+cs.eva+wEva+inspiredEva+bEva, specEva: cap6(eff.spdef)+cs.eva+wEva+inspiredEva+bEva, spdEva: cap6(eff.spd)+cs.eva+wEva+inspiredEva+bugSkyEva+bEva,   // evasion uses CS-adjusted stats (+ buffs)
     weatherEva: wEva,
   };
 }
@@ -4149,6 +4171,10 @@ function persistentStatusesOn(o){ return STATUS_DEFS.filter(s => s.kind === "per
 function volatileStatusesOn(o){ return STATUS_DEFS.filter(s => s.kind === "volatile" && hasStatus(o, s.key)); }
 /* Edges are hand-typed on NPC cards and imported sheets, so match them through featKey() for the
    same reason Features do — curly apostrophes and casing must not silently drop an Edge. */
+function trainerHasTech(t, name){
+  const want = featKey(name);
+  return !!t && (t.techniques||[]).some(x => featKey(x) === want);
+}
 function trainerHasEdge(t, name){
   const want = featKey(name);
   return !!t && (t.edges||[]).some(e => featKey(e) === want);
@@ -4300,6 +4326,11 @@ const FEATURE_ABILITY_CHOICES = [
   { feat:"Luminous Aura",       abilities:["Starlight","Sunglow"],         note:"Prism: choose Starlight or Sunglow." },
   { feat:"Rock Power Rank 1",   abilities:["Sturdy","Rock Head","Run Up","Sand Veil"], note:"Stone Warrior: choose one per Rank." },
   { feat:"Rock Power Rank 2",   abilities:["Sturdy","Rock Head","Run Up","Sand Veil"], note:"Stone Warrior: choose one per Rank." },
+  /* The player classes' own Ability grants. A single-option grant applies on its own; a
+     two-option one waits for the pick, which the Feature's own Battle row offers. */
+  { feat:"Musical Ability",     abilities:["Drown Out","Soundproof"],     note:"Musician: choose Drown Out or Soundproof." },
+  { feat:"Glamour Mastery",     abilities:["Magic Guard","Magic Bounce"], note:"Glamour Weaver: choose Magic Guard or Magic Bounce." },
+  { feat:"Hex Maniac",          abilities:["Cursed Body","Omen"],         note:"Hex Maniac: choose Cursed Body or Omen." },
 ];
 const featureAbilityChoiceDef = f => FEATURE_ABILITY_CHOICES.find(d=>featKey(d.feat)===featKey(f && f.name)) || null;
 /* Every Ability a Trainer's Features currently grant: fixed single-option grants apply on their own;
@@ -4357,6 +4388,12 @@ const FEATURE_ACTIONS = [
                          : "Refuse to drop at 0 HP — you Faint at −50% Max HP instead (fires by itself when you hit 0 while Enraged)" },
 ];
 const featureActionDef = f => FEATURE_ACTIONS.find(d => featKey(d.feat) === featKey(f && f.name))
+  || (()=>{ const g = featureGiftDef(f);
+       return (g && g.groups.some(x=>x.pick)) ? { feat:g.feat, run:featureGiftPick,
+         label:t => featureGiftPendingCount(t, g.feat) ? "⚙ Choose [Gift]" : "⚙ Change [Gift]",
+         title:t => featureGiftPendingCount(t, g.feat)
+           ? `${featureGiftPendingCount(t, g.feat)} choice(s) still to make — what you pick joins your Features & Edges automatically.`
+           : "Swap which Edge / Feature this [Gift] handed you." } : null; })()
   || (()=>{ const d = featureAbilityChoiceDef(f);
        return (d && d.abilities.length>1) ? { feat:d.feat, run:featureAbilityPick,
          label:t => (t.featAbil && t.featAbil[d.feat]) ? "\u2699 Change Ability" : "\u2699 Choose Ability",
@@ -6176,11 +6213,14 @@ function migrateLedger(t){
     const led = luLedger(t);
     if(!Array.isArray(t.extraFeatures)){
       const onLedger = new Set(led.feats.map(f=>f.name));
-      t.extraFeatures = [...(t.classes||[]), ...(t.features||[])].filter(n => !onLedger.has(n));
+      const gifted = new Set(t.giftGranted||[]);            // derived by luCommit, not an off-ledger freebie
+      t.extraFeatures = [...(t.classes||[]), ...(t.features||[])].filter(n => !onLedger.has(n) && !gifted.has(n));
     }
     if(!Array.isArray(t.extraEdges)){
       const pool = led.edges.map(e=>e.name);                       // consume one per recorded slot
+      const giftedE = new Set(t.giftGranted||[]);
       t.extraEdges = (t.edges||[]).filter(n => {
+        if(giftedE.has(n)) return false;
         const i = pool.indexOf(n); if(i >= 0){ pool.splice(i,1); return false; } return true; });
     }
     dirty = true;
@@ -6238,6 +6278,7 @@ function luCommit(t){
   /* Edges legitimately repeat (Basic Skills five times over). The Edges card shows one row per
      distinct Edge; the ledger stays the record of how many were actually spent. */
   t.edges = [...new Set([...led.edges.map(e=>e.name), ...(t.extraEdges||[])])];
+  applyFeatureGifts(t);            // Push Buttons → Demoralize, I'm A Doctor → its two pairs
   syncLedgerSkills(t);
   syncFeatureMoves(t);
   syncMilestoneStats(t);
@@ -6277,6 +6318,12 @@ function featureGrantedNames(t){
     // "You gain the Demoralize Edge, even if you do not meet the prerequisites."
     for(const m of e.matchAll(/\bgain the ([A-Z][A-Za-z'’\-]*(?: [A-Z][A-Za-z'’\-]*)*) (?:Edge|Feature)\b/g))
       out.set(m[1].trim(), n);
+    // the declared [Gift] pairs (I'm A Doctor's four) — same waiver, unreadable from the prose
+    const gd = featureGiftDef(n);
+    if(gd) gd.groups.forEach(g => {
+      if(g.fixed) out.set(g.fixed.name, n);
+      (g.pick||[]).forEach(o => out.set(o.name, n));
+    });
     // "Choose one of A, B, … or C. … You gain the chosen Feature"
     if(/gain the chosen (?:Feature|Edge)/i.test(e)){
       const ch = /Choose one of ([^.]+)\./i.exec(e);
@@ -6285,6 +6332,118 @@ function featureGrantedNames(t){
     }
   });
   return out;
+}
+
+/* ---------- [Gift] Features: the Edges and Features they hand you ----------
+   featureGrantedNames above reads the ONE shape the Core writes in prose ("You gain the Demoralize
+   Edge") and the audit uses it to waive prerequisites. It cannot read the [Gift] shape the playtest
+   packets use — "Each Rank, you gain one of Field Clinic or Medic Training and one of Nurse or First
+   Aid Expertise" — because that is a CHOICE, and there is no way to guess which half the player took.
+   So the choices are declared here, the pick is stored on the sheet (t.featGift[<feature>] = [group0,
+   group1, …]), and luCommit folds the result into t.features / t.edges like any other line on the
+   sheet. Nothing is spent for them: a [Gift] costs no Level-Up slot and waives its own prerequisites
+   (Sept 2015 Playtest p.6).
+
+   `fixed` grants apply the moment the Feature is held; `pick` groups wait for the player, and the
+   Feature's own Battle-tab row grows a ⚙ button that opens the chooser. */
+const FEATURE_GIFTS = [
+  { feat:"Push Buttons", note:"Provocateur (Core p.75): Push Buttons hands over Demoralize outright.",
+    groups:[ { fixed:{ kind:"edge", name:"Demoralize" },
+               swap:"If you already have Demoralize you may take any other Edge you qualify for instead — record that one in the Level Up tab." } ] },
+  { feat:"I'm A Doctor Rank 1", note:"Medic (Sept 2015 Playtest p.5): each Rank gives one of each pair.",
+    groups:[ { pick:[ {kind:"edge",   name:"Field Clinic"}, {kind:"edge",   name:"Medic Training"} ] },
+             { pick:[ {kind:"feature",name:"Nurse"},        {kind:"feature",name:"First Aid Expertise"} ] } ] },
+  { feat:"I'm A Doctor Rank 2", note:"Medic (Sept 2015 Playtest p.5): each Rank gives one of each pair.",
+    groups:[ { pick:[ {kind:"edge",   name:"Field Clinic"}, {kind:"edge",   name:"Medic Training"} ] },
+             { pick:[ {kind:"feature",name:"Nurse"},        {kind:"feature",name:"First Aid Expertise"} ] } ] },
+];
+const featureGiftDef = f => FEATURE_GIFTS.find(d => featKey(d.feat) === featKey(f && (f.name||f))) || null;
+/* Everything the Trainer's [Gift] Features currently hand over, split by kind. `held` is the name
+   list to test against — luCommit passes the list it is midway through building, so a Gift sitting on
+   a Feature that was itself gifted resolves on the next pass. */
+function featureGiftGrants(t, held){
+  const out = { features:[], edges:[], pending:[] };
+  if(!t) return out;
+  const have = new Set((held || [...(t.classes||[]), ...(t.features||[])]).map(featKey));
+  FEATURE_GIFTS.forEach(d => {
+    if(!have.has(featKey(d.feat))) return;
+    const picks = (t.featGift && t.featGift[d.feat]) || [];
+    d.groups.forEach((g, i) => {
+      if(g.fixed){ out[g.fixed.kind === "edge" ? "edges" : "features"].push(g.fixed.name); return; }
+      const chosen = (g.pick||[]).find(o => o.name === picks[i]);
+      if(chosen) out[chosen.kind === "edge" ? "edges" : "features"].push(chosen.name);
+      else out.pending.push({ feat:d.feat, group:i, options:g.pick||[] });
+    });
+  });
+  return out;
+}
+/* Fold the current [Gift] picks into t.features / t.edges. They cost no Level-Up slot and waive
+   their own prerequisites, so they are DERIVED rather than recorded: dropping the granting Feature
+   drops the gift with it. luCommit calls this while rebuilding both lists from the ledger, which is
+   why it needs no strip pass; a sheet with no ledger at all (an encounter NPC, an older import)
+   calls it with {strip:true} from the picker, and t.giftGranted is the record that lets the previous
+   pick be taken back out. Two passes, so a Gift sitting on a gifted Feature still resolves. */
+function applyFeatureGifts(t, opts){
+  if(!t) return;
+  if(!Array.isArray(t.features)) t.features = [];
+  if(!Array.isArray(t.edges))    t.edges    = [];
+  if(opts && opts.strip && (t.giftGranted||[]).length){
+    const prev = new Set(t.giftGranted);
+    t.features = t.features.filter(n => !prev.has(n));
+    t.edges    = t.edges.filter(n => !prev.has(n));
+  }
+  let gifts = { features:[], edges:[] };
+  for(let pass = 0; pass < 2; pass++){
+    gifts = featureGiftGrants(t, [...(t.classes||[]), ...t.features]);
+    gifts.features.forEach(n => { if(!t.features.includes(n) && !(t.classes||[]).includes(n)) t.features.push(n); });
+  }
+  gifts.edges.forEach(n => { if(!t.edges.includes(n)) t.edges.push(n); });
+  t.giftGranted = [...gifts.features, ...gifts.edges];
+}
+/* how many of this Feature's [Gift] choices are still unmade — drives the ⚙ button's label */
+function featureGiftPendingCount(t, featName){
+  return featureGiftGrants(t).pending.filter(p => featKey(p.feat) === featKey(featName)).length;
+}
+/* The chooser, styled like Power of Rage's Ability picker. */
+function featureGiftPick(t, f, rerender, persist){
+  const def = featureGiftDef(f); if(!def) return;
+  if(!t.featGift || typeof t.featGift !== "object" || Array.isArray(t.featGift)) t.featGift = {};
+  const cur = t.featGift[def.feat] || [];
+  const body = el("div",{});
+  if(def.note) body.append(el("div",{class:"small muted",style:"margin-bottom:10px"}, def.note));
+  def.groups.forEach((g, i) => {
+    if(g.fixed){
+      body.append(el("div",{class:"small",style:"margin-bottom:10px"},
+        el("b",{}, g.fixed.name), " — granted automatically." + (g.swap ? " " + g.swap : "")));
+      return;
+    }
+    body.append(el("div",{class:"section-head",style:"margin-top:6px"}, "Choose one"));
+    (g.pick||[]).forEach(o => {
+      const on = cur[i] === o.name;
+      const src = o.kind === "edge" ? (D.edges||[]).find(x=>x.name===o.name)
+                                    : featureByKey.get(featKey(o.name));
+      const row = el("div",{class:"moveslot"});
+      row.append(el("div",{style:"flex:1"},
+        el("div",{style:"font-weight:700"}, o.name,
+          el("span",{class:"muted small",style:"margin-left:6px;font-weight:600"}, o.kind === "edge" ? "Edge" : "Feature"),
+          on ? el("span",{class:"small",style:"margin-left:8px;color:var(--good);font-weight:700"},"● taken") : ""),
+        el("div",{class:"small muted",style:"margin-top:2px"}, (src && src.effect) || "")));
+      row.append(el("button",{class: on ? "btn-secondary" : "btn-primary", style:"padding:6px 10px",
+        onclick:()=>{
+          const arr = (t.featGift[def.feat] || []).slice();
+          while(arr.length < def.groups.length) arr.push("");
+          arr[i] = on ? "" : o.name;
+          t.featGift[def.feat] = arr;
+          if(t.levelUp) luCommit(t); else applyFeatureGifts(t, {strip:true});
+          (persist||save)(); closeModal();
+          toast(on ? `${o.name} released` : `＋ ${def.feat}: ${o.name}`);
+          (rerender||renderBattle)();
+        }}, on ? "release" : "take it"));
+      body.append(row);
+    });
+  });
+  modal({title:`${def.feat} — [Gift]`, bodyNode:body,
+    footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
 }
 
 /* ---------- what doesn't add up ---------- */
@@ -9344,42 +9503,114 @@ function catchDCModal(p, opts={}){
     return;
   }
 
-  /* ---- actually roll the capture (accuracy vs AC 6, then 1d100 − Trainer Level − Ball bonus) ---- */
+  /* ---- actually roll the capture (accuracy vs AC 6, then 1d100 − Trainer Level − Ball bonus) ----
+     A Capture Specialist's Features and Techniques all land on THIS roll, so they are applied here
+     rather than described somewhere else and added by hand (Core p.64):
+       • Tools of the Trade  — +2 to the Poké Ball's Accuracy Roll (automatic).
+       • Snare               — −10 to the Capture Roll against a Baited / netted / Stuck target
+                               (a tick-box: only the thrower knows how the target got there).
+       • Captured Momentum   — the stored "−(best Capture Skill Rank) on your next Capture Roll",
+                               applied once and then forgotten.
+       • Gotta Catch 'Em All — offered AFTER the d100, as a button that spends a Daily use and swaps
+                               the rolled digits (91 → 19). A 1 is never turned into a natural 100.
+       • Collector Stacks    — spend up to 3 for an equal bonus, or exactly 3 to re-roll entirely. */
   const roll = el("div",{style:"margin-top:16px;border-top:1px solid var(--line);padding-top:12px"});
-  const defLvl = activeChar()?.trainer?.level || 1;
+  const thrower = activeChar()?.trainer || null;
+  const defLvl = thrower?.level || 1;
   const lvlIn  = el("input",{type:"number",min:1,value:defLvl,style:"width:66px",title:"the thrower's Trainer Level"});
   const ballIn = el("input",{type:"number",value:0,style:"width:66px",title:"Poké Ball / Feature bonus to the capture roll (e.g. Great Ball +10)"});
   const result = el("div",{style:"margin-top:10px"});
-  const doRoll = ()=>{
-    const r = captureRate(p, {legendary});
-    if(!r.capturable){ result.innerHTML=""; result.append(el("div",{class:"warnbox"},"Can't be captured at 0 HP.")); return; }
-    const lvl = Math.max(1, parseInt(lvlIn.value)||1), ball = parseInt(ballIn.value)||0;
-    const d = pokeDerived(p);
-    const acc = 1 + Math.floor(Math.random()*20);
-    const ac  = 6 + d.physEva;                       // throwing a Poké Ball is an AC 6 attack vs Evasion
-    const nat20 = acc===20, nat1 = acc===1;
-    const hit = nat20 || (!nat1 && acc >= ac);
-    const d100 = 1 + Math.floor(Math.random()*100);
-    const capBonus = lvl + ball + (nat20?10:0);      // subtracted from the d100 (lower = better)
-    const capRoll = d100 - capBonus;
+  const hasTools = thrower && trainerHasTech(thrower, "Tools of the Trade");
+  const hasSnare = thrower && trainerHasTech(thrower, "Snare");
+  const hasGCEA  = thrower && hasFeatureLoose(thrower, "Gotta Catch 'Em All");
+  const hasStacks= thrower && hasFeatureLoose(thrower, "Gotta Catch 'Em All [Playtest]");
+  const snareCb  = el("input",{type:"checkbox"});
+  const stackIn  = el("input",{type:"number",min:0,max:3,value:0,style:"width:56px",
+    title:"Collector Stacks to spend — up to 3 for an equal bonus"});
+  /* everything that lowers the d100, gathered once so the readout can name each part */
+  const capParts = (lvl, ball, nat20) => {
+    const parts = [[`${lvl} Lv`, lvl]];
+    if(ball) parts.push([`${ball} ball`, ball]);
+    if(nat20) parts.push(["10 nat20", 10]);
+    if(hasSnare && snareCb.checked) parts.push(["10 Snare", 10]);
+    if(thrower && thrower.capMomentum) parts.push([`${thrower.capMomentum} Captured Momentum`, thrower.capMomentum]);
+    const st = hasStacks ? Math.max(0, Math.min(3, Math.min(parseInt(stackIn.value)||0, thrower.collectorStacks||0))) : 0;
+    if(st) parts.push([`${st} Collector Stack${st===1?"":"s"}`, st]);
+    return { parts, stacks:st, total: parts.reduce((n,x)=>n+x[1], 0) };
+  };
+  const show = (st, r, acc, ac, hit, nat20, nat1, d100, cap, swapped) => {
+    const capRoll = d100 - cap.total;
     const caught = d100===100 ? true : (hit && capRoll <= r.rate);
     result.innerHTML="";
     const lines = [
-      `🎯 Accuracy: rolled <b>${acc}</b> vs AC ${ac} (6 + ${d.physEva} Evasion) → <b>${hit?"HIT":"MISS"}</b>${nat20?" (Nat 20 — −10 to capture roll!)":nat1?" (Nat 1 — auto-miss)":""}`,
+      `🎯 Accuracy: rolled <b>${acc}</b>${hasTools?" +2 Tools of the Trade":""} vs AC ${ac} (6 + ${st.physEva} Evasion) → <b>${hit?"HIT":"MISS"}</b>${nat20?" (Nat 20 — −10 to capture roll!)":nat1?" (Nat 1 — auto-miss)":""}`,
     ];
     if(hit){
-      lines.push(`🎲 Capture: 1d100 = <b>${d100}</b> − ${lvl} Lv${ball?` − ${ball} ball`:""}${nat20?" − 10 nat20":""} = <b>${capRoll}</b> vs rate <b>${r.rate}</b>`);
+      lines.push(`🎲 Capture: 1d100 = <b>${d100}</b>${swapped?" <i>(digits swapped)</i>":""} − ${cap.parts.map(x=>x[0]).join(" − ")} = <b>${capRoll}</b> vs rate <b>${r.rate}</b>`);
       lines.push(caught ? `✅ <b>Caught!</b> (${d100===100?"natural 100":`${capRoll} ≤ ${r.rate}`})` : `❌ <b>Broke free.</b> (${capRoll} > ${r.rate})`);
     } else {
       lines.push("The ball missed — no capture roll. Try again!");
     }
     result.append(el("div",{class:"warnbox",style:`line-height:1.5;${caught?"background:rgba(46,160,67,.14);border-color:var(--good);color:var(--good)":""}`,html:lines.join("<br>")}));
+    // the Capture Specialist's two re-rolls, offered only while they would still change something
+    if(hit && !caught && thrower){
+      const extra = el("div",{class:"tk-menu-row",style:"gap:8px;flex-wrap:wrap;margin-top:8px"});
+      const u = hasGCEA ? featUses(thrower, "Gotta Catch 'Em All") : null;
+      if(hasGCEA && !swapped && d100 !== 100 && u.left > 0){
+        const sw = (d100 % 10) * 10 + Math.floor(d100 / 10);
+        extra.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
+          title:"Daily x3, Swift Action — swap the two digits of the d100",
+          onclick:()=>{
+            if(!featSpend(thrower, "Gotta Catch 'Em All")) return;
+            save();
+            show(st, r, acc, ac, hit, nat20, nat1, sw, capParts(Math.max(1,parseInt(lvlIn.value)||1), parseInt(ballIn.value)||0, nat20), true);
+          }}, `🔄 Gotta Catch 'Em All — ${d100} → ${sw} (${u.left} left)`));
+      }
+      if(hasStacks && (thrower.collectorStacks||0) >= 3){
+        extra.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
+          title:"spend exactly three Collector Stacks to re-roll the d100 entirely",
+          onclick:()=>{
+            thrower.collectorStacks = Math.max(0, (thrower.collectorStacks||0) - 3); save();
+            const fresh = 1 + Math.floor(Math.random()*100);
+            show(st, r, acc, ac, hit, nat20, nat1, fresh, capParts(Math.max(1,parseInt(lvlIn.value)||1), parseInt(ballIn.value)||0, nat20), false);
+          }}, `🍀 Re-roll — spend 3 Collector Stacks (${thrower.collectorStacks} held)`));
+      }
+      if(extra.childNodes.length) result.append(extra);
+    }
+    return { caught, cap };
   };
+  const doRoll = ()=>{
+    const r = captureRate(p, {legendary});
+    if(!r.capturable){ result.innerHTML=""; result.append(el("div",{class:"warnbox"},"Can't be captured at 0 HP.")); return; }
+    const lvl = Math.max(1, parseInt(lvlIn.value)||1), ball = parseInt(ballIn.value)||0;
+    const d = pokeDerived(p);
+    const acc = 1 + Math.floor(Math.random()*20) + (hasTools ? 2 : 0);
+    const ac  = 6 + d.physEva;                       // throwing a Poké Ball is an AC 6 attack vs Evasion
+    const nat20 = acc - (hasTools?2:0) === 20, nat1 = acc - (hasTools?2:0) === 1;
+    const hit = nat20 || (!nat1 && acc >= ac);
+    const d100 = 1 + Math.floor(Math.random()*100);
+    const cap = capParts(lvl, ball, nat20);
+    // the one-shot bonuses are consumed the moment they are counted, win or lose
+    if(thrower && hit){
+      if(thrower.capMomentum) thrower.capMomentum = 0;
+      if(cap.stacks) thrower.collectorStacks = Math.max(0, (thrower.collectorStacks||0) - cap.stacks);
+      save();
+    }
+    show(d, r, acc, ac, hit, nat20, nat1, d100, cap, false);
+  };
+  const extras = el("div",{class:"tk-menu-row",style:"gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"});
+  if(hasSnare) extras.append(el("label",{class:"small",style:"display:inline-flex;gap:6px;align-items:center;cursor:pointer"},
+    snareCb, "Snare — Baited / Hand Net / Lasso / Weighted Net / Stuck (−10)"));
+  if(hasStacks) extras.append(el("span",{class:"small"},`Collector Stacks (${thrower.collectorStacks||0} held) — spend`), stackIn);
   roll.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:6px"},"🎲 Roll to Catch"),
     el("div",{class:"tk-menu-row",style:"gap:8px;align-items:center;flex-wrap:wrap"},
       el("span",{class:"small"},"Trainer Lv"), lvlIn,
       el("span",{class:"small"},"Ball bonus"), ballIn,
       el("button",{class:"btn-primary",onclick:doRoll},"Throw a Poké Ball")),
+    extras.childNodes.length ? extras : "",
+    hasTools ? el("div",{class:"small muted",style:"margin-top:4px"},"Tools of the Trade: +2 Accuracy is already in the throw.") : "",
+    (thrower && thrower.capMomentum) ? el("div",{class:"small muted",style:"margin-top:4px"},
+      `Captured Momentum is waiting: −${thrower.capMomentum} on this roll, then it's gone.`) : "",
     result);
   wrap.append(roll);
   modal({title:`🎯 Catch — ${p.nickname||getSpecies(p.species)?.name||"Pokémon"}`, bodyNode:wrap,
@@ -9521,11 +9752,27 @@ const PTU_BUFFS = [
   // — Trainer Accessories (Core p.192-ish homebrew additions). Granted from the item's own row rather
   // than a Feature, so it lives here as an ordinary buff — a GM can also drop it on any other sheet
   // straight from that owner's own Buffs & Orders "+ Item…" picker, same as an Order given cross-sheet. —
+  // — Commander, the rest of the [Orders] Features (Core p.61). Mobilize and Moment of Action carry
+  // no roll math of their own, but modelling them here is what puts a ✨ Give button on their rows
+  // and lets a Commander hand them out from a Map token like any other Order. —
+  { key:"mobilize",         cat:"Commander", name:"Mobilize",         dur:"until end of next turn", mods:{},
+    note:"Cannot provoke Attacks of Opportunity on their next turn. May target the same Ally only once per encounter." },
+  // — Cheerleader [Orders] & Cheers (Core p.93). —
+  { key:"moment-of-action", cat:"Cheerleader", name:"Moment of Action", dur:"until end of next turn", mods:{ tempAP:1 },
+    note:"+1 Temporary Action Point for one full Round — already added to this Trainer's AP total. (Trainers only.)" },
+  { key:"show-your-best",   cat:"Cheerleader", name:"Show Your Best!",  dur:"until end of Scene", mods:{},
+    note:"Go, Fight, Win! — +1 Combat Stage in Defense or Special Defense (applied to the target's own CS pad) and the Motivated Cheer." },
+  { key:"believe-in-you",   cat:"Cheerleader", name:"I Believe In You!", dur:"until end of next turn", mods:{ eva:2 },
+    note:"Go, Fight, Win! — +2 Evasion for one full Round, auto-applied to Physical, Special and Speed Evasion, plus the Cheered Cheer." },
+  // — Medic (Sept 2015 Playtest p.5). Front Line Healer explicitly does not stack with itself, so it
+  // is a plain standing DR for the round rather than a spendable charge like Excited. —
+  { key:"front-line-healer", cat:"Medic", name:"Front Line Healer", dur:"until end of next turn", self:true, mods:{ dr:5 },
+    note:"+5 Damage Reduction for 1 full round after applying a Restorative — auto-subtracted by the Damage/Heal box, the Map's attack tool and the Simulator. Does not stack with itself." },
   { key:"soothing-flute-dr", cat:"Item", name:"Soothing Flute (Ghost DR)", dur:"until end of Scene", mods:{ typeDR:{Ghost:5} },
     note:"+5 Damage Reduction against Ghost-Type Attacks — Soothing Flute (Trainer Accessory), auto-applied by the Map's attack tool whenever the incoming hit is Ghost-Type." },
 ];
 const buffByKey = new Map(PTU_BUFFS.map(b=>[b.key,b]));
-const BUFF_CATS = ["Cheerleader","Commander","Musician","Berserker","Item"];
+const BUFF_CATS = ["Cheerleader","Commander","Musician","Berserker","Medic","Item"];
 function ownerBuffs(owner){ return Array.isArray(owner?.buffs) ? owner.buffs : []; }
 /* Some buffs only apply to one damage class — a Spicy Wrap's +5 is Physical attacks only, a Dry
    Wafer's is Special. `b.only` carries that; pass ctx={isPhys} from a roll to honour it. With no
@@ -9545,6 +9792,13 @@ function buffMods(owner, ctx){
    (Frenzy's +2 Movement Speed), `mods.skills` is a per-Skill flat bonus on Skill Checks. Both are
    read by the derived layer / the Skills card rather than by openMoveRoll. */
 function buffMove(owner){ return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods&&b.mods.move)||0), 0); }
+/* Flat Evasion from a buff (Cheerleader's I Believe In You!, a Commander's Capricious Whirl). Added
+   AFTER the ⌊stat/5⌋ cap in both derived layers, the way an Ability's flat Evasion already is —
+   it is a bonus on top of the stat, not part of it. */
+function buffEva(owner){ return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods&&b.mods.eva)||0), 0); }
+/* Temporary Action Points (Cheerleader's Moment of Action, Captured Momentum). They widen the AP
+   ceiling for as long as the buff is up and vanish with it, so nothing has to be handed back. */
+function buffTempAP(owner){ return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods&&b.mods.tempAP)||0), 0); }
 function buffSkillBonus(owner, skillKey){
   return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods && b.mods.skills && b.mods.skills[skillKey]) || 0), 0);
 }
@@ -9654,6 +9908,8 @@ function buffModText(m){
   if(m.db)   p.push(`${m.db>0?"+":""}${m.db} DB`);
   if(m.crit) p.push(`+${m.crit} Crit/Effect range`);
   if(m.dr)   p.push(`${m.dr>0?"+":""}${m.dr} DR`);
+  if(m.eva)  p.push(`${m.eva>0?"+":""}${m.eva} Evasion`);
+  if(m.tempAP) p.push(`${m.tempAP>0?"+":""}${m.tempAP} Temp AP`);
   if(m.typeDR) for(const k in m.typeDR) p.push(`+${m.typeDR[k]} DR vs ${k}`);
   if(m.move) p.push(`${m.move>0?"+":""}${m.move} Movement`);
   if(m.skills){ const n = Object.values(m.skills)[0];
@@ -14454,6 +14710,138 @@ function openMentorPicker(t){
     }, "move");
   });
 }
+/* ---------- the rest of Mentor: Lessons, Move Tutor, Egg Tutor ----------
+   The four Mentor Lessons are not separate Features you buy — the Lessons Feature (Daily x3,
+   Extended Action) lets you "perform any Mentor Lesson for which you qualify", and you qualify by
+   having that Skill as one of your two Mentor Skills. So they live here rather than in the Feature
+   DB, where they would show up as Features a player could spend a Level-Up slot on. */
+const MENTOR_LESSONS = [
+  { skill:"charm", name:"Empowered Development", tp:1,
+    effect:"The target loses 1 Tutor Point and gains any three of Skill Improvement, Advanced Mobility or Capability Training — prerequisites waived, other limits still apply. A Pokémon may be targeted by Empowered Development only once.",
+    run:"edges" },
+  { skill:"intimidate", name:"Corrective Learning", tp:0,
+    effect:"The target loses one effect gained from a Poké Edge or a Feature, and every Tutor Point spent on it is refunded.",
+    run:"undo" },
+  { skill:"intuition", name:"Changing Viewpoints", tp:1,
+    effect:"The target loses a Tutor Point, and its Nature changes to any other Nature that raises the same Stat OR lowers the same Stat as its current one.",
+    run:"nature" },
+  { skill:"pokemonEd", name:"Versatile Teachings", tp:1,
+    effect:"The target loses 1 Tutor Point and swaps one Basic Ability for another Basic Ability of its species, or one Advanced Ability for any Basic or Advanced Ability of its species.",
+    run:"ability" },
+];
+function mentorLessonPokemon(t, needTP){
+  return (activeChar()?.pokemon||[]).filter(p => p.unlocked || tpLeft(p) >= (needTP||0));
+}
+function openMentorLessons(t, rerender){
+  const u = featUses(t, "Lessons");
+  const mine = new Set(t.mentorSkills||[]);
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
+    `Daily x3, Extended Action${u.left!=null?` · ${u.left} of ${u.max} left today`:""}. You may perform any Lesson whose Skill is one of your two Mentor Skills.`));
+  MENTOR_LESSONS.forEach(L=>{
+    const lbl = (SKILLS.find(x=>x[0]===L.skill)||[,L.skill])[1];
+    const ok = mine.has(L.skill);
+    const row = el("div",{class:"moveslot",style: ok?"":"opacity:.5"});
+    row.append(el("div",{style:"flex:1"},
+      el("div",{style:"font-weight:700"}, L.name,
+        el("span",{class:"muted small",style:"margin-left:6px;font-weight:600"}, `${lbl}${L.tp?` · −${L.tp} Tutor Point`:""}`)),
+      el("div",{class:"small muted",style:"margin-top:2px"}, ok ? L.effect : `${lbl} is not one of your Mentor Skills.`)));
+    if(ok) row.append(el("button",{class:"btn-primary",style:"padding:6px 10px",
+      onclick:()=>runMentorLesson(t, L, rerender)},"perform"));
+    body.append(row);
+  });
+  modal({title:"📚 Mentor Lessons", bodyNode:body,
+    footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+}
+function runMentorLesson(t, L, rerender){
+  const party = mentorLessonPokemon(t, L.tp);
+  if(!party.length){ toast(`No Pokémon with ${L.tp} Tutor Point${L.tp===1?"":"s"} to spend`); return; }
+  const label = p => `${p.nickname||getSpecies(p.species)?.name||p.species} · Lv ${p.level} · ${tpLeft(p)} TP`;
+  const byLabel = new Map(party.map(p=>[label(p), p]));
+  closeModal();
+  openPicker(`${L.name} — which Pokémon?`, [...byLabel.keys()], lbl=>{
+    const p = byLabel.get(lbl), sp = getSpecies(p.species);
+    const finish = why => {
+      if(!featSpend(t, "Lessons")) return;
+      if(L.tp && !p.unlocked) tpSpend(p, L.tp, `${L.name} (Mentor Lesson)`, {kind:"mentorLesson"});
+      save(); (rerender||renderBattle)();
+      toast(`📚 ${L.name}: ${why}`);
+    };
+    if(L.run === "nature"){
+      const cur = natureByName.get((p.nature||"").toLowerCase());
+      if(!cur){ toast("That Pokémon has no Nature set"); return; }
+      const same = (D.natures||[]).filter(n => n.name !== cur.name && (n.raise === cur.raise || n.lower === cur.lower));
+      if(!same.length){ toast("No other Nature shares its raised or lowered Stat"); return; }
+      openPicker(`New Nature for ${p.nickname||sp?.name} (was ${cur.name}: +${cur.raise} / −${cur.lower})`,
+        same.map(n=>`${n.name} — +${n.raise} / −${n.lower}`), pickLbl=>{
+          const n = same.find(x => pickLbl.startsWith(x.name + " "));
+          if(!n) return;
+          p.nature = n.name;
+          finish(`${p.nickname||sp?.name} is now ${n.name}`);
+        });
+      return;
+    }
+    if(L.run === "ability"){
+      if(!sp){ toast("Unknown species"); return; }
+      const pool = [...new Set([...(sp.abilities?.basic||[]), ...(sp.abilities?.advanced||[])])]
+        .filter(a => !(p.abilities||[]).includes(a));
+      if(!pool.length){ toast("Nothing left to swap to on its species list"); return; }
+      const have = (p.abilities||[]).slice();
+      if(!have.length){ toast("It has no Ability to exchange"); return; }
+      openPicker(`Exchange which Ability of ${p.nickname||sp.name}?`, have, oldA=>{
+        const isBasic = (sp.abilities?.basic||[]).includes(oldA);
+        // a Basic may only become another Basic; an Advanced may become a Basic or an Advanced
+        const legal = isBasic ? pool.filter(a => (sp.abilities?.basic||[]).includes(a)) : pool;
+        if(!legal.length){ toast(`No other ${isBasic?"Basic":"Basic or Advanced"} Ability to take`); return; }
+        openPicker(`${oldA} becomes…`, legal, newA=>{
+          p.abilities = (p.abilities||[]).map(a => a === oldA ? newA : a);
+          finish(`${p.nickname||sp.name}: ${oldA} → ${newA}`);
+        }, "ability");
+      }, "ability");
+      return;
+    }
+    if(L.run === "edges"){
+      finish(`${p.nickname||sp?.name} may take Skill Improvement, Advanced Mobility or Capability Training ×3 — grant them on its Poké Edges card (prerequisites waived)`);
+      return;
+    }
+    finish(`drop the Poké Edge or Feature effect on ${p.nickname||sp?.name}'s card — the Tutor Points it cost are refunded when you do`);
+  });
+}
+/* Move Tutor / Egg Tutor (Daily, Extended): 2 Tutor Points for a Move off the target's Tutor or Egg
+   list. openTutorMovePicker already owns the Tutor half (and the campaign's level restriction), so
+   this spends the Feature's Daily use around it and adds the Egg list as its twin. */
+function openMentorTutorFeature(t, which, rerender){
+  const feat = which === "egg" ? "Egg Tutor" : "Move Tutor";
+  const u = featUses(t, feat);
+  if(u.trackable && u.left <= 0){ toast(`No ${feat} uses left today`); return; }
+  const party = (activeChar()?.pokemon||[]).filter(p => p.unlocked || tpLeft(p) >= TUTOR_COST);
+  if(!party.length){ toast(`No Pokémon with ${TUTOR_COST} Tutor Points`); return; }
+  const label = p => `${p.nickname||getSpecies(p.species)?.name||p.species} · Lv ${p.level} · ${tpLeft(p)} TP`;
+  const byLabel = new Map(party.map(p=>[label(p), p]));
+  openPicker(`${feat} — which Pokémon?`, [...byLabel.keys()], lbl=>{
+    const p = byLabel.get(lbl), sp = getSpecies(p.species);
+    // "A Pokemon may be targeted by Egg Tutor only one time" — Move Tutor carries no such limit
+    if(which === "egg" && p.eggTutored){ toast(`${label(p)} has already been targeted by Egg Tutor`); return; }
+    const known = new Set((p.moves||[]).map(x=>String(x).toLowerCase()));
+    const src = which === "egg" ? (sp?.moves?.egg||[]) : (sp?.moves?.tutor||[]);
+    const pool = [...new Set(src.map(m => canonMoveName(String(m).replace(/\s*\(N\)\s*$/i,"").trim())))]
+      .filter(nm => !known.has(nm.toLowerCase()));
+    if(!pool.length){ toast(`${label(p)} already knows every Move on that list`); return; }
+    const limit = effectiveMoveLimit(t, p);
+    if(!p.unlocked && (p.moves||[]).length >= limit){ toast(`Move limit reached (${limit}) — tick 🔓 to add more`); return; }
+    const lockFn = p.unlocked ? null : nm => { const min = tutorMinLevel(nm);
+      return (min!=null && p.level < min) ? `Tutor restriction — needs Lv ${min} (it's Lv ${p.level})` : null; };
+    openPicker(`${feat} — ${sp?.name||p.species} (−${TUTOR_COST} Tutor Points)`, pool, name=>{
+      if(!featSpend(t, feat)) return;
+      if(!p.unlocked) tpSpend(p, TUTOR_COST, `${feat} — ${name}`, {kind: which==="egg"?"eggTutor":"tutor"});
+      if(!Array.isArray(p.moves)) p.moves = [];
+      p.moves.push(name);
+      if(which === "egg") p.eggTutored = true;
+      save(); (rerender||renderBattle)();
+      toast(`${which==="egg"?"🥚":"🎓"} ${label(p)} learned ${name} (${feat})`);
+    }, "move", null, lockFn);
+  });
+}
 function mentorCard(t){
   if(!(t.classes||[]).includes("Mentor")) return "";
   const mf = D.features.find(f=>f.name==="Mentor");
@@ -14477,9 +14865,34 @@ function mentorCard(t){
   if(t.mentorSkills.length===2) card.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
     `Sum of Mentor Skill ranks: +${mentorSkillSum(t)} to the level cap for taught moves.`));
   const uc = usesControl(t, "feature", "Mentor", mf?.frequency||"Daily x3 - Extended Action", renderBattle);
-  card.append(el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap"},
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap"},
     el("button",{class:"btn-primary",onclick:()=>openMentorPicker(t)},"🎓 Use Mentor"),
-    uc?el("span",{},uc):""));
+    uc?el("span",{},uc):"");
+  if(hasFeatureLoose(t, "Lessons")){
+    const u = featUses(t, "Lessons");
+    row.append(el("button",{class:"btn-secondary",onclick:()=>openMentorLessons(t, renderBattle)},"📚 Lessons"),
+      el("span",{class:"small muted"}, u.left!=null?`${u.left} of ${u.max}`:""));
+  }
+  if(hasFeatureLoose(t, "Move Tutor")){
+    const u = featUses(t, "Move Tutor");
+    row.append(el("button",{class:"btn-secondary",onclick:()=>openMentorTutorFeature(t,"tutor",renderBattle)},"🎓 Move Tutor"),
+      el("span",{class:"small muted"}, u.left!=null?`${u.left} of ${u.max}`:""));
+  }
+  if(hasFeatureLoose(t, "Egg Tutor")){
+    const u = featUses(t, "Egg Tutor");
+    row.append(el("button",{class:"btn-secondary",onclick:()=>openMentorTutorFeature(t,"egg",renderBattle)},"🥚 Egg Tutor"),
+      el("span",{class:"small muted"}, u.left!=null?`${u.left} of ${u.max}`:""));
+  }
+  card.append(row);
+  const bits = [];
+  if(hasFeatureLoose(t, "Guidance"))
+    bits.push(`Guidance: every one of your Pokémon may hold ${MOVE_LIMIT + 1} Moves instead of ${MOVE_LIMIT} — the limit the sheet enforces already includes it.`);
+  if(hasFeatureLoose(t, "Expand Horizons"))
+    bits.push("Expand Horizons: it is a Poké Edge on the target's own card — taking it pays out its 3 Tutor Points immediately, and taking it away takes them back.");
+  if(hasFeatureLoose(t, "Lifelong Learning"))
+    bits.push("Lifelong Learning: up to 4 of a Pokémon's Moves may come from TMs or Move Tutors instead of the usual 2 — counted at the table, since the sheet doesn't record where each Move came from.");
+  bits.forEach(b=>card.append(el("div",{class:"small",style:"margin-top:6px"}, b)));
+  classFeatureRows(card, t, "Mentor", renderBattle, save);
   return card;
 }
 /* ===================================================================
@@ -15407,35 +15820,153 @@ const featureBuffDef = f => buffByFeatKey.get(featKey(f && f.name)) || null;
 /* Give an Order: put its buff on whoever it was ordered at and spend one of the Feature's uses.
    Targets are the Trainer and their own party — allies on other sheets get theirs from the Map
    token's "Buffs & Orders" menu, which is the same widget writing to the same place. */
+/* ---------- Commander: how many Allies one Order may reach ----------
+   Five of the six Commander Features do nothing except widen the ✨ Give flow, so they are modelled
+   here rather than each getting a button that says "remember to do this":
+
+     • Leadership        (Static)          — an [Orders] Feature with targets may be given to ANY
+                                             Ally, not just your own Pokémon: the target list grows to
+                                             every friendly token on the Map.
+     • Battle Conductor  (At-Will, Swift)  — +2 targets, At-Will Orders only.
+     • Scheme Twist      (Scene x2, Swift) — +2 targets, Scene/Daily Orders only. Costs a use.
+     • Tip the Scales    (2 AP, Swift)     — At-Will Orders reach every Ally within 10 m instead.
+     • Complex Orders    (At-Will, Shift)  — a different Order per target; giving them one at a time
+                                             already does that, so it is stated, not gated.
+
+   Each booster is a tick-box in the Give dialog, priced and use-tracked; nothing is spent unless the
+   box is actually ticked. */
+function orderFreqKind(f){
+  const head = String(f && f.frequency || "").split(" - ")[0];
+  if(/at-?will/i.test(head)) return "atwill";
+  if(/scene|daily/i.test(head)) return "scene";
+  return "other";
+}
+function orderBoosters(t, f){
+  const kind = orderFreqKind(f), out = [];
+  const add = (feat, when, txt) => {
+    if(!hasFeatureLoose(t, feat) || !when) return;
+    const fo = featureByKey.get(featKey(feat));
+    const inf = freqInfo(fo && fo.frequency), k = useKey("feature", feat);
+    const apM = String(fo && fo.frequency || "").match(/^\s*(\d+)\s*AP\b/i);
+    out.push({ feat, txt, key:k, max:freqTrackable(inf) ? inf.max : null,
+               left:freqTrackable(inf) ? usesLeft(t, k, inf.max) : null,
+               ap: apM ? +apM[1] : 0, freq: fo && fo.frequency || "" });
+  };
+  add("Battle Conductor", kind === "atwill", "+2 more Allies");
+  add("Scheme Twist",     kind === "scene",  "+2 more Allies");
+  add("Tip the Scales",   kind === "atwill", "every Ally within 10 metres");
+  return out;
+}
+/* Every creature this Trainer may hand an Order to right now: always themselves and their own party;
+   with Leadership, every friendly token on the shared Map as well (the GM also sees the enemies, so
+   an NPC Commander on the Encounters tab can order its own side). Map targets carry their token, so
+   the give can commit to the right sheet. */
+function orderTargets(t){
+  const out = [{ id:"self", label:`🧑 ${t.name||"Trainer"} — yourself`, obj:t }];
+  (activeChar()?.pokemon||[]).filter(p=>p.onTeam).forEach(p=>{
+    const sp = getSpecies(p.species);
+    out.push({ id:`mon:${p.id}`, label:`🔴 ${p.nickname||sp?.name||"?"} · Lv ${p.level}`, obj:p });
+  });
+  if(!hasFeatureLoose(t, "Leadership")) return out;
+  const map = (typeof activeMap === "function") ? activeMap() : null;
+  if(!map) return out;
+  const seen = new Set(out.map(o=>o.obj));
+  mapTokensFor(map.id).forEach(tok=>{
+    if(!tok.link) return;
+    const L = tokenLinked(tok); if(!L || !L.obj || seen.has(L.obj)) return;
+    if(ENEMY_LINKS.has(L.kind) && !isGM()) return;                  // enemies are not Allies
+    seen.add(L.obj);
+    const info = tokenHp(tok);
+    out.push({ id:`tok:${tok.id}`, label:`${ENEMY_LINKS.has(L.kind)?"👹":"🤝"} ${info.name} — on the Map`,
+               obj:L.obj, token:tok });
+  });
+  return out;
+}
 function openGiveOrder(t, f, def, rerender){
-  const team = (activeChar()?.pokemon||[]).filter(p=>p.onTeam);
-  const sel = el("select");
-  sel.append(el("option",{value:"trainer"}, `🧑 ${t.name||"Trainer"} — yourself`));
-  team.forEach(p=>{ const sp=getSpecies(p.species);
-    sel.append(el("option",{value:p.id}, `🔴 ${p.nickname||sp?.name||"?"} · Lv ${p.level}`)); });
   const info = freqInfo(f.frequency), key = useKey("feature", f.name);
   const left = freqTrackable(info) ? usesLeft(t, key, info.max) : null;
   const cost = (String(f.frequency||"").match(/Bind\s+(\d+)\s*AP/i)||[])[1];
+  const targets = orderTargets(t);
+  const boosters = orderBoosters(t, f);
+  const picked = new Set(["self"]);
+  const useBoost = new Set();
   const body = el("div",{});
   if(def.note) body.append(el("div",{class:"small",style:"margin-bottom:10px"}, def.note));
   const mt = buffModText(def.mods);
   if(mt) body.append(el("div",{class:"chips",style:"margin-bottom:10px"}, el("span",{class:"kv"}, mt)));
-  body.append(el("label",{class:"field"}, el("span",{},"Give it to"), sel));
+
+  const capLine = el("div",{class:"small muted",style:"margin:8px 0 4px;font-weight:700"});
+  const list = el("div",{style:"display:flex;flex-direction:column;gap:2px"});
+  const cap = () => {
+    if(useBoost.has("Tip the Scales")) return Infinity;
+    return 1 + (useBoost.has("Battle Conductor") ? 2 : 0) + (useBoost.has("Scheme Twist") ? 2 : 0);
+  };
+  const redraw = () => {
+    const c = cap();
+    capLine.textContent = c === Infinity
+      ? `Give it to — every Ally within 10 metres (${picked.size} ticked)`
+      : `Give it to — ${picked.size} of ${c} target${c===1?"":"s"}`;
+    [...list.querySelectorAll("input[type=checkbox]")].forEach(cb=>{
+      cb.disabled = !cb.checked && c !== Infinity && picked.size >= c;
+    });
+  };
+  targets.forEach(tg=>{
+    const cb = el("input",{type:"checkbox"}); cb.checked = picked.has(tg.id);
+    cb.addEventListener("change",()=>{ cb.checked ? picked.add(tg.id) : picked.delete(tg.id); redraw(); });
+    list.append(el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;padding:2px 0"},
+      cb, tg.label));
+  });
+  if(boosters.length){
+    body.append(el("div",{class:"small muted",style:"margin:4px 0;font-weight:700"},"Commander — widen it"));
+    boosters.forEach(b=>{
+      const spent = b.left != null && b.left <= 0;
+      const cb = el("input",{type:"checkbox"}); cb.disabled = spent;
+      cb.addEventListener("change",()=>{ cb.checked ? useBoost.add(b.feat) : useBoost.delete(b.feat); redraw(); });
+      body.append(el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;padding:2px 0"+(spent?";opacity:.5":"")},
+        cb, el("span",{}, el("b",{}, b.feat), ` — ${b.txt}`,
+          el("span",{class:"muted"}, `  ·  ${b.freq}`
+            + (b.left != null ? `  ·  ${b.left} of ${b.max} left` : "")))));
+    });
+  }
+  body.append(capLine, list);
   body.append(el("div",{class:"small muted",style:"margin-top:8px"},
     `${f.frequency} · lasts ${def.dur}.`
     + (left!=null ? ` ${left} of ${info.max} use${info.max===1?"":"s"} left this Scene.` : "")
     + (cost ? ` Binds ${cost} AP while it's up — track that on your Vitals card.` : "")
-    + " Another player's Pokémon: give it from their token's Buffs & Orders menu on the Map."));
+    + (hasFeatureLoose(t,"Leadership")
+        ? " Leadership: every friendly token on the Map is a legal target, and the Order is written straight to their sheet."
+        : " Another player's Pokémon: give it from their token's Buffs & Orders menu on the Map.")
+    + (hasFeatureLoose(t,"Complex Orders")
+        ? " Complex Orders: give a DIFFERENT Order to each target by running this dialog once per Order — pay each one's cost."
+        : "")));
+  redraw();
   modal({title:`Give ${f.name}`, bodyNode:body, footNodes:[
     el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
-    el("button",{class:"btn-primary",onclick:()=>{
-      const target = sel.value==="trainer" ? t : team.find(p=>p.id===sel.value);
-      if(!target) return;
+    el("button",{class:"btn-primary",onclick:async()=>{
+      const chosen = targets.filter(x=>picked.has(x.id));
+      if(!chosen.length){ toast("Pick at least one target"); return; }
       if(left!=null && left<=0){ toast(`No ${f.name} uses left this Scene`); return; }
-      addBuff(target, def.key);
+      const c = cap();
+      if(c !== Infinity && chosen.length > c){ toast(`That is ${chosen.length} targets — this Order reaches ${c}`); return; }
+      // the boosters cost their own uses / AP, and only the ones actually ticked
+      const apCost = boosters.filter(b=>useBoost.has(b.feat)).reduce((n,b)=>n+b.ap, 0);
+      if(apCost){
+        const free = trainerDerived(t).ap - trainerAPUsed(t);
+        if(free < apCost){ toast(`Needs ${apCost} AP — only ${free} free`); return; }
+        t.usedAP = (t.usedAP||0) + apCost;
+      }
+      boosters.filter(b=>useBoost.has(b.feat)).forEach(b=>{
+        if(b.max == null) return;
+        t.uses = t.uses||{}; t.uses[b.key] = Math.min(b.max, (t.uses[b.key]||0)+1);
+      });
+      chosen.forEach(x=>addBuff(x.obj, def.key));
       if(left!=null){ t.uses = t.uses||{}; t.uses[key] = Math.min(info.max, (t.uses[key]||0)+1); }
       save(); closeModal();
-      toast(`${f.name} → ${sel.value==="trainer" ? (t.name||"you") : (team.find(p=>p.id===sel.value)?.nickname || getSpecies(team.find(p=>p.id===sel.value)?.species)?.name || "target")} ✓`);
+      // a target that lives on someone else's sheet has to be written back through its token
+      for(const x of chosen) if(x.token) await commitTokenSource(x.token);
+      const via = boosters.filter(b=>useBoost.has(b.feat)).map(b=>b.feat);
+      toast(`${f.name} → ${chosen.length} target${chosen.length===1?"":"s"} ✓`
+        + (via.length ? ` (${via.join(" + ")})` : ""));
       (rerender||renderBattle)();
     }},"✨ Give Order"),
   ]});
@@ -15623,6 +16154,993 @@ function openItemAttack(t, prof){
   modal({title:prof.name, bodyNode:body, footNodes:[ el("button",{class:"btn-primary",onclick:doRoll},"🎲 Roll dice") ]});
 }
 
+/* ===================================================================
+   PLAYER-CLASS AUTOMATION  —  one card per Class on the ⚔ Combat tab
+   -------------------------------------------------------------------
+   Berserker got its card first (berserkerCard, up by the weapon code) and Mentor its own picker.
+   This block does the same job for the other classes at the table: Musician, Commander,
+   Provocateur, Cheerleader, Glamour Weaver, Capture Specialist, Medic and Hex Maniac.
+
+   The rule everywhere is the one berserkerCard set: anything the engine can genuinely work out is
+   worked out and applied (uses spent, AP spent, buffs placed, HP moved, Tutor Points paid, Moves
+   learned); anything that needs a table ruling is SAID on the card rather than silently guessed.
+   Every card is built from the class's own Feature list, so a Feature the player hasn't taken yet
+   never shows a button they can't press.
+=================================================================== */
+/* the whole modifier stack behind one Skill Check — the same one the Skills table prints */
+function trainerSkillMod(t, k){
+  return categoricBonus(t, k) + gearSkillBonus(t, k) + cardSkillBonus(t, k) + buffSkillBonus(t, k);
+}
+/* a Feature's use counter, resolved through the Feature DB so the Frequency is never retyped */
+function featUses(t, name){
+  /* Several of these Features exist twice in the DB — "Keep Fighting!" and "Keep Fighting!
+     [Playtest]", "Medical Techniques" and "Medical Techniques [Medic]". hasFeatureLoose already
+     ignores the tag, so resolve to whichever variant is actually on the sheet: usesControl keys its
+     counter off that Feature's own name, and looking up the other one would count separately. */
+  const held = [...((t&&t.features)||[]), ...((t&&t.classes)||[])]
+    .find(n => featureShortName(n) === featureShortName(name));
+  const f = featureByKey.get(featKey(held || name)) || featureByKey.get(featKey(name));
+  const info = freqInfo(f && f.frequency), key = useKey("feature", f ? f.name : name);
+  const trackable = freqTrackable(info);
+  return { f, info, key, trackable, max: trackable ? info.max : null,
+           left: trackable ? usesLeft(t, key, info.max) : null };
+}
+/* spend one use of a Feature; false (and a toast) when there is none left */
+function featSpend(t, name){
+  const u = featUses(t, name);
+  if(!u.trackable) return true;
+  if(u.left <= 0){ toast(`No ${u.f ? u.f.name : name} uses left`); return false; }
+  t.uses = t.uses || {}; t.uses[u.key] = Math.min(u.max, (t.uses[u.key]||0) + 1);
+  return true;
+}
+/* spend Action Points, refusing rather than going negative */
+function apSpend(t, n){
+  n = Math.max(0, n|0); if(!n) return true;
+  const free = trainerDerived(t).ap - trainerAPUsed(t);
+  if(free < n){ toast(`Needs ${n} AP — only ${free} free`); return false; }
+  t.usedAP = (t.usedAP||0) + n;
+  return true;
+}
+/* heal (or damage, with a negative n) a Trainer or a Pokémon, clamped to its own maximum, with the
+   Knocked Out / Death bookkeeping every other HP setter in the app does. Returns what actually moved. */
+function ownerHeal(o, n){
+  if(!o || !n) return 0;
+  const max = ownerMaxHP(o) || 1;
+  const old = o.currentHP == null ? max : o.currentHP;
+  const next = Math.min(max, old + n);
+  o.currentHP = next;
+  applyAutoKO(o, old, next);
+  return next - old;
+}
+/* Everyone this Trainer can reach with a Cheer / Song / Restorative: themselves, their own party,
+   and — in a cloud game — every friendly token on the Map. Map entries carry their token so the
+   caller can write the change back to the right sheet. */
+function allyTargets(t, opts){
+  const out = [{ id:"self", label:`🧑 ${t.name||"Trainer"} — yourself`, obj:t }];
+  (activeChar()?.pokemon||[]).filter(p=>p.onTeam).forEach(p=>{
+    const sp = getSpecies(p.species);
+    out.push({ id:`mon:${p.id}`, label:`🔴 ${p.nickname||sp?.name||"?"} · Lv ${p.level}`, obj:p });
+  });
+  const map = (typeof activeMap === "function") ? activeMap() : null;
+  if(!map) return out;
+  const seen = new Set(out.map(o=>o.obj));
+  mapTokensFor(map.id).forEach(tok=>{
+    if(!tok.link) return;
+    const L = tokenLinked(tok); if(!L || !L.obj || seen.has(L.obj)) return;
+    const enemy = ENEMY_LINKS.has(L.kind);
+    if(enemy && !(opts && opts.foes && isGM())) return;
+    seen.add(L.obj);
+    out.push({ id:`tok:${tok.id}`, label:`${enemy?"👹":"🤝"} ${tokenHp(tok).name} — on the Map`,
+               obj:L.obj, token:tok, enemy });
+  });
+  return out;
+}
+/* a checkbox list of targets + the commit that writes cross-sheet ones back through their token */
+function targetPicker(list, preselect){
+  const picked = new Set(preselect || []);
+  const box = el("div",{style:"display:flex;flex-direction:column;gap:2px;max-height:230px;overflow:auto"});
+  list.forEach(tg=>{
+    const cb = el("input",{type:"checkbox"}); cb.checked = picked.has(tg.id);
+    cb.addEventListener("change",()=>{ cb.checked ? picked.add(tg.id) : picked.delete(tg.id); });
+    box.append(el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;padding:2px 0"},
+      cb, tg.label));
+  });
+  return { node:box, chosen:()=>list.filter(x=>picked.has(x.id)) };
+}
+async function commitTargets(chosen){
+  for(const x of chosen) if(x.token) await commitTokenSource(x.token);
+}
+/* the shell every class card shares */
+function classCard(icon, title, src){
+  return el("div",{class:"card"}, el("h3",{}, `${icon} ${title}`,
+    src ? el("span",{class:"muted small"}, src) : ""));
+}
+/* one "the sheet does this for you" line */
+function classBit(card, txt){ card.append(el("div",{class:"small",style:"margin-bottom:4px"}, txt)); }
+/* the Feature rows at the bottom of a class card: the class's own Features, in alphabetical order,
+   each with its use counter, favourite star, ✨ Give / ⚙ picker — exactly as the Battle tab draws them */
+function classFeatureRows(card, t, className, rerender, persist){
+  const own = classFeatNameSet(className);
+  const rows = trainerFeatureObjs(t).filter(f => own.has(f.name) || featKey(f.name) === featKey(className));
+  rows.sort((a,b)=>a.name.localeCompare(b.name))
+      .forEach(f => card.append(featureActionRow(f, t, rerender||renderBattle, {owned:true, persist})));
+  return rows.length;
+}
+
+/* ---------------------------------------------------------------- MUSICIAN (Core p.164) */
+const MUSICIAN_SONGS = [
+  { key:"song-of-might",   name:"Song of Might",   blurb:"+5 to Damage Rolls until the end of your next turn." },
+  { key:"song-of-courage", name:"Song of Courage", blurb:"+2 to Skill Checks and Save Checks until the end of your next turn." },
+  { key:"song-of-life",    name:"Song of Life",    blurb:"5 Damage Reduction until the end of your next turn." },
+];
+/* "Regardless of the Area of Effect, Songs always affect the user" — so the Musician is ticked by
+   default and the AP is charged once per Song, not once per target. */
+function openPlaySong(t, rerender, persist){
+  const targets = allyTargets(t);
+  const pick = targetPicker(targets, ["self"]);
+  const sel = el("select");
+  MUSICIAN_SONGS.forEach(s=>sel.append(el("option",{value:s.key}, s.name)));
+  const blurb = el("div",{class:"small muted",style:"margin:6px 0 10px"});
+  const redraw = () => { const s = MUSICIAN_SONGS.find(x=>x.key===sel.value); blurb.textContent = s ? s.blurb : ""; };
+  sel.addEventListener("change", redraw); redraw();
+  const body = el("div",{});
+  body.append(el("label",{class:"field"}, el("span",{},"Song"), sel), blurb);
+  body.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"Everyone in the Area of Effect"));
+  body.append(pick.node);
+  body.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    "1 AP per Song. Swift after a Sonic Move (its own area), Shift after a Dance Move (Burst 2), "
+    + "Standard for one Song (Burst 4) or Full for two (Burst 4 each). Paint the Burst from your "
+    + "token's 🎵 Song button on the Map; the buff itself lands on whoever you tick here and falls "
+    + "off at the end of your next turn."));
+  modal({title:"🎵 Play a Song", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async()=>{
+      const chosen = pick.chosen();
+      if(!chosen.length){ toast("Nobody is in the area"); return; }
+      if(!apSpend(t, 1)) return;
+      chosen.forEach(x=>addBuff(x.obj, sel.value));
+      (persist||save)(); closeModal();
+      await commitTargets(chosen);
+      toast(`🎵 ${MUSICIAN_SONGS.find(x=>x.key===sel.value).name} → ${chosen.length} · 1 AP`);
+      (rerender||renderBattle)();
+    }},"🎵 Play it"),
+  ]});
+}
+/* Power Chord (Scene x2, Free): "Make a Charm or Focus Check, and add your Special Attack. Foes in
+   the area of effect take Special Normal-Type Damage equal to the result." */
+function openPowerChord(t, rerender, persist){
+  const u = featUses(t, "Power Chord");
+  const opts = [["charm","Charm"],["focus","Focus"]];
+  const sel = el("select");
+  opts.forEach(([k,l])=>sel.append(el("option",{value:k}, `${l} — ${rankDice(t.skills[k])}d6${trainerSkillMod(t,k)?"+"+trainerSkillMod(t,k):""} (${t.skills[k]})`)));
+  const out = el("div",{class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:10px 0 0"});
+  out.append(el("div",{class:"muted small"},"Press 🎸 to roll the Check and read off the damage."));
+  const body = el("div",{});
+  body.append(el("div",{class:"small",style:"margin-bottom:10px"},
+    "Special, Normal-Type damage to every foe in the Song's area of effect, equal to the Check plus your Special Attack. "
+    + "It is not a Move: no Accuracy Roll, no Damage Base, no STAB."));
+  body.append(el("label",{class:"field"}, el("span",{},"Roll with"), sel), out);
+  body.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    `${u.f ? u.f.frequency : "Scene x2 - Free Action"}${u.left!=null?` · ${u.left} of ${u.max} left this Scene`:""} · triggers off a Song, so play one first.`));
+  const doRoll = ()=>{
+    if(!featSpend(t, "Power Chord")) return;
+    const k = sel.value, n = rankDice(t.skills[k]), mod = trainerSkillMod(t, k);
+    const rolls = []; for(let i=0;i<n;i++) rolls.push(1+Math.floor(Math.random()*6));
+    const dice = rolls.reduce((a,b)=>a+b,0);
+    const spatk = trainerDerived(t).totals.spatk;
+    const total = dice + mod + spatk;
+    out.innerHTML=""; out.style.borderStyle="solid";
+    out.append(
+      el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"POWER CHORD — SPECIAL NORMAL DAMAGE"),
+      el("div",{style:"font-size:30px;font-weight:800"}, String(total)),
+      el("div",{class:"small muted"},
+        `${n}d6 [${rolls.join(", ")}] = ${dice}${mod?` + ${mod} skill`:""} + ${spatk} Sp.Atk`),
+      el("div",{class:"small muted",style:"margin-top:4px"},
+        "Apply it to each foe in the area — the Map's damage tool subtracts their Damage Reduction and resistances for you."));
+    logRoll({ kind:"skill", label:"Power Chord", who:t.name||"",
+      headline:`🎸 ${total} Special (Normal)`,
+      lines:[`${(opts.find(o=>o[0]===k)||[])[1]} ${n}d6 [${rolls.join(", ")}] = ${dice}${mod?` +${mod}`:""} + ${spatk} Sp.Atk = ${total}`] });
+    (persist||save)(); (rerender||renderBattle)();
+  };
+  modal({title:"🎸 Power Chord", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Close"),
+    el("button",{class:"btn-primary",onclick:doRoll},"🎸 Roll & spend a use"),
+  ]});
+}
+function musicianCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Musician")) return null;
+  const card = classCard("🎵","Musician","Core p.164");
+  classBit(card, "Songs: 1 AP each, and they always affect you as well. ✨ the buff lands on everyone you tick and "
+    + "expires at the end of your next turn on its own — Might is +5 damage, Courage +2 to Skill and Save Checks, Life 5 Damage Reduction.");
+  if(hasFeatureLoose(t, "Voice Lessons"))
+    classBit(card, "Voice Lessons: your and your Pokémon's Sonic Moves gain the Friendly keyword (never Perish Song), and your Pokémon roll +1d6 with Sonic Moves in a Contest — stated here, applied at the table.");
+  if(hasFeatureLoose(t, "Mt. Moon Blues") || hasFeatureLoose(t, "Cacophony") || hasFeatureLoose(t, "Noise Complaint"))
+    classBit(card, "The Moves those Features teach are already on your Moves card below — they are added and removed with the Feature.");
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  row.append(el("button",{class:"btn-primary",onclick:()=>openPlaySong(t, rerender, persist)},"🎵 Play a Song"));
+  if(hasFeatureLoose(t, "Power Chord")){
+    const u = featUses(t, "Power Chord");
+    row.append(el("button",{class:"btn-secondary",onclick:()=>openPowerChord(t, rerender, persist)},"🎸 Power Chord"));
+    row.append(el("span",{class:"small muted"}, u.left!=null?`${u.left} of ${u.max} left`:""));
+  }
+  card.append(row);
+  classFeatureRows(card, t, "Musician", rerender, persist);
+  return card;
+}
+
+/* ---------------------------------------------------------------- COMMANDER (Core pp.61-62) */
+function commanderCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Commander")) return null;
+  const card = classCard("🎖","Commander","Core pp.61-62");
+  const orders = trainerFeatureObjs(t).filter(f => { const d = featureBuffDef(f); return d && d.cat === "Commander"; });
+  classBit(card, orders.length
+    ? `Your Orders: ${orders.map(f=>f.name).join(", ")}. Each one's ✨ Give button puts the real buff on whoever you pick — the numbers then apply themselves in every roll and every damage box.`
+    : "You have no Orders yet — the Commander class Feature grants a whole Orders Feature (Ravager, Marksman, Trickster, Guardian or Precision), and its two Orders appear as actions by themselves.");
+  if(hasFeatureLoose(t, "Leadership"))
+    classBit(card, "Leadership: ✨ Give now lists every friendly token on the Map, not just your own party, and writes the Order straight to their sheet.");
+  if(hasFeatureLoose(t, "Battle Conductor"))
+    classBit(card, "Battle Conductor: a tick-box inside ✨ Give — +2 more Allies on an At-Will Order, for the Swift Action.");
+  if(hasFeatureLoose(t, "Scheme Twist")){
+    const u = featUses(t, "Scheme Twist");
+    classBit(card, `Scheme Twist: a tick-box inside ✨ Give — +2 more Allies on a Scene or Daily Order. ${u.left} of ${u.max} left this Scene.`);
+  }
+  if(hasFeatureLoose(t, "Tip the Scales"))
+    classBit(card, "Tip the Scales: a tick-box inside ✨ Give — an At-Will Order reaches every Ally within 10 metres instead, and the 2 AP are spent when you tick it.");
+  if(hasFeatureLoose(t, "Complex Orders"))
+    classBit(card, "Complex Orders: give a different Order to each target by running ✨ Give once per Order — each one's own cost and Frequency is charged, which is exactly what the Feature asks.");
+  if(hasFeatureLoose(t, "Mobilize"))
+    classBit(card, "Mobilize: ✨ Give it like any other Order. Only once per encounter per Ally — the sheet doesn't police that, since encounters aren't a thing it tracks.");
+  classFeatureRows(card, t, "Commander", rerender, persist);
+  return card;
+}
+
+/* ---------------------------------------------------------------- PROVOCATEUR (Core p.75) */
+const MANIPULATE_EFFECTS = [
+  { key:"bon-mot",   name:"Bon Mot",   skill:"guile",      status:"enraged",
+    blurb:"Enraged, and cannot spend AP, for one full Round." },
+  { key:"flirt",     name:"Flirt",     skill:"charm",      status:"infatuated",
+    blurb:"Infatuated with you for one full Round." },
+  { key:"terrorize", name:"Terrorize", skill:"intimidate", status:null,
+    blurb:"Loses all Temporary Hit Points and may use only At-Will Moves for one full Round." },
+];
+function openQuickWit(t, rerender, persist){
+  const u = featUses(t, "Quick Wit");
+  const social = (t.moves||[]).filter(mn=>{ const m = moveByName.get(String(mn).toLowerCase()); return m && moveHasKeyword(m, "Social"); });
+  const body = el("div",{});
+  body.append(el("div",{class:"small",style:"margin-bottom:10px"},
+    "Swift Action: make a Manipulate Maneuver, or use a Social Move you know — its own Frequency still applies."));
+  body.append(el("div",{class:"small muted",style:"font-weight:700"},"Your Social Moves"));
+  body.append(el("div",{class:"small",style:"margin-bottom:10px"},
+    social.length ? social.join(" · ") : "none yet — Provocateur teaches Sweet Kiss and Taunt, Mixed Messages adds Lovely Kiss and Torment."));
+  body.append(el("div",{class:"small muted",style:"font-weight:700"},"Manipulate Maneuvers"));
+  MANIPULATE_EFFECTS.forEach(e=>body.append(el("div",{class:"small"},
+    `• ${e.name} — opposed ${(SKILLS.find(s=>s[0]===e.skill)||[,e.skill])[1]} Check · ${e.blurb}`)));
+  body.append(el("div",{class:"small muted",style:"margin-top:10px"},
+    `Scene x3 · ${u.left} of ${u.max} left. Roll the Move from your Moves card (or the Maneuver at the table) — this button only spends the Quick Wit use.`));
+  modal({title:"💬 Quick Wit", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Close"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      if(!featSpend(t, "Quick Wit")) return;
+      (persist||save)(); closeModal(); toast("💬 Quick Wit — a Swift Action spent");
+      (rerender||renderBattle)();
+    }},"Spend a use"),
+  ]});
+}
+/* Enchanting Gaze (2 AP, Standard): a Manipulate effect on every foe in a Cone 2, no opposed roll,
+   ignoring the Maneuver's own once-per-Scene-per-target limit. */
+function openEnchantingGaze(t, rerender, persist){
+  const sel = el("select");
+  MANIPULATE_EFFECTS.forEach(e=>sel.append(el("option",{value:e.key}, `${e.name} — ${e.blurb}`)));
+  const foes = allyTargets(t, {foes:true}).filter(x=>x.enemy);
+  const pick = targetPicker(foes, []);
+  const body = el("div",{});
+  body.append(el("label",{class:"field"}, el("span",{},"Effect"), sel));
+  body.append(el("div",{class:"small muted",style:"margin:8px 0 4px;font-weight:700"},"Foes caught in the Cone 2"));
+  body.append(foes.length ? pick.node
+    : el("div",{class:"small muted"},"No enemy tokens you can edit — apply it from the GM's side, or at the table."));
+  body.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    "2 AP, Standard Action. It succeeds automatically against every target — no opposed roll — and ignores the "
+    + "Maneuver's usual once-per-Scene-per-target limit. Paint the Cone from your token's ✎ Manual shape button on the Map."));
+  modal({title:"👁 Enchanting Gaze", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async()=>{
+      const eff = MANIPULATE_EFFECTS.find(e=>e.key===sel.value);
+      const chosen = pick.chosen();
+      if(!apSpend(t, 2)) return;
+      chosen.forEach(x=>{
+        if(eff.status){ if(!Array.isArray(x.obj.statuses)) x.obj.statuses=[];
+          if(!x.obj.statuses.includes(eff.status)) x.obj.statuses.push(eff.status); }
+        if(eff.key==="terrorize") x.obj.tempHP = 0;
+      });
+      (persist||save)(); closeModal();
+      await commitTargets(chosen);
+      toast(`👁 ${eff.name} → ${chosen.length} foe${chosen.length===1?"":"s"} · 2 AP`);
+      (rerender||renderBattle)();
+    }},"👁 Gaze"),
+  ]});
+}
+function provocateurCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Provocateur")) return null;
+  const card = classCard("🎭","Provocateur","Core p.75");
+  if(hasFeatureLoose(t, "Push Buttons"))
+    classBit(card, "Push Buttons: the Demoralize Edge is already on your Edges card — it is derived from this Feature, so it can never fall off the ledger. "
+      + "Your Social Moves' Frequency is not expended on a miss, and Demoralize triggers on 18+ for Status Moves (a Social Move that hits that range also costs the target a Tick of HP) — both are printed on the Move's own roll.");
+  if(hasFeatureLoose(t, "Powerful Motivator"))
+    classBit(card, "Powerful Motivator: rolling Baby-Doll Eyes, Confide, Leer or a Provocateur Move already shows that Move's extra effect in the roll — hit or miss.");
+  if(hasFeatureLoose(t, "Play Them Like a Fiddle"))
+    classBit(card, "Play Them Like a Fiddle: the roll grows a box with the Move's extra effect and a button that spends one of the Scene x3 plus that Move's own once-per-Scene.");
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  if(hasFeatureLoose(t, "Quick Wit")){
+    const u = featUses(t, "Quick Wit");
+    row.append(el("button",{class:"btn-secondary",onclick:()=>openQuickWit(t, rerender, persist)},"💬 Quick Wit"),
+      el("span",{class:"small muted"}, `${u.left} of ${u.max}`));
+  }
+  if(hasFeatureLoose(t, "Enchanting Gaze"))
+    row.append(el("button",{class:"btn-secondary",onclick:()=>openEnchantingGaze(t, rerender, persist)},"👁 Enchanting Gaze · 2 AP"));
+  if(row.childNodes.length) card.append(row);
+  classFeatureRows(card, t, "Provocateur", rerender, persist);
+  return card;
+}
+
+/* ---------------------------------------------------------------- CHEERLEADER (Core p.93) */
+const CHEERLEADER_CHEERS = [
+  { key:"cheered",   name:"Cheered",   blurb:"Give it up on a Save Check to roll twice and take the better result." },
+  { key:"excited",   name:"Excited",   blurb:"Give it up when hit by a Damaging Attack for +5 Damage Reduction against it — spent automatically by the damage box." },
+  { key:"motivated", name:"Motivated", blurb:"Give it up as a Free Action to raise a Combat Stage that is below its default by +1." },
+];
+function openCheer(t, rerender, persist){
+  const sel = el("select");
+  CHEERLEADER_CHEERS.forEach(c=>sel.append(el("option",{value:c.key}, c.name)));
+  const blurb = el("div",{class:"small muted",style:"margin:6px 0 10px"});
+  const redraw = ()=>{ const c = CHEERLEADER_CHEERS.find(x=>x.key===sel.value); blurb.textContent = c?c.blurb:""; };
+  sel.addEventListener("change", redraw); redraw();
+  const targets = allyTargets(t);
+  const pick = targetPicker(targets, []);
+  const body = el("div",{});
+  body.append(el("label",{class:"field"}, el("span",{},"Cheer"), sel), blurb, pick.node);
+  body.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    "Free Action. Inspirational Support lets you trigger it whenever a Pokémon of yours with Friend Guard uses an "
+    + "Ability or an ally-only Status Move — the sheet leaves the trigger to you and just places the Cheer."));
+  modal({title:"📣 Cheer", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async()=>{
+      const chosen = pick.chosen();
+      if(!chosen.length){ toast("Pick who you're cheering"); return; }
+      chosen.forEach(x=>addBuff(x.obj, sel.value));
+      (persist||save)(); closeModal();
+      await commitTargets(chosen);
+      toast(`📣 ${CHEERLEADER_CHEERS.find(x=>x.key===sel.value).name} → ${chosen.length} ✓`);
+      (rerender||renderBattle)();
+    }},"📣 Cheer"),
+  ]});
+}
+/* Cheer Brigade (At-Will, Extended): 2 Tutor Points for the Friend Guard Ability. */
+function openCheerBrigade(t, rerender, persist){
+  const party = (activeChar()?.pokemon||[]).filter(p => !hasAbility(p, "Friend Guard"));
+  if(!party.length){ toast("Everyone in the party already has Friend Guard"); return; }
+  const label = p => `${p.nickname||getSpecies(p.species)?.name||p.species} · ${tpLeft(p)} TP`;
+  const byLabel = new Map(party.map(p=>[label(p), p]));
+  openPicker("Cheer Brigade — grant Friend Guard", [...byLabel.keys()], lbl=>{
+    const p = byLabel.get(lbl);
+    if(!p.unlocked && tpLeft(p) < 2){ toast(`${label(p)} needs 2 Tutor Points`); return; }
+    if(!Array.isArray(p.abilities)) p.abilities = [];
+    p.abilities.push("Friend Guard");
+    if(!p.unlocked) tpSpend(p, 2, "Cheer Brigade — Friend Guard", {kind:"cheerBrigade"});
+    (persist||save)();
+    toast(`📣 ${label(p)} gained Friend Guard (−2 Tutor Points)`);
+    (rerender||renderBattle)();
+  });
+}
+/* Go, Fight, Win! (At-Will, Standard + Swift) — three cheers, each once per Scene. */
+const GO_FIGHT_WIN = [
+  { id:"show",    name:"Show Your Best!",  desc:"+1 Combat Stage in Defense or Special Defense to every Ally on the field, and they become Motivated." },
+  { id:"dont",    name:"Don't Stop Now!",  desc:"Every Ally on the field gains Temporary Hit Points equal to your Charm Rank, and becomes Excited." },
+  { id:"believe", name:"I Believe In You!", desc:"Every Ally on the field gains +2 Evasion for one full Round, and becomes Cheered." },
+];
+function openGoFightWin(t, rerender, persist){
+  const targets = allyTargets(t);
+  const pick = targetPicker(targets, targets.map(x=>x.id));
+  const sel = el("select");
+  GO_FIGHT_WIN.forEach(c=>{
+    const used = (t.uses||{})[`gfw:${c.id}`];
+    sel.append(el("option",{value:c.id, disabled:!!used}, c.name + (used?" — used this Scene":"")));
+  });
+  const stat = el("select");
+  [["def","Defense"],["spdef","Special Defense"]].forEach(([k,l])=>stat.append(el("option",{value:k}, l)));
+  const statRow = el("label",{class:"field"}, el("span",{},"Which Stat"), stat);
+  const blurb = el("div",{class:"small muted",style:"margin:6px 0 10px"});
+  const redraw = ()=>{ const c = GO_FIGHT_WIN.find(x=>x.id===sel.value); blurb.textContent = c?c.desc:"";
+    statRow.style.display = sel.value==="show" ? "" : "none"; };
+  sel.addEventListener("change", redraw); redraw();
+  const body = el("div",{});
+  body.append(el("label",{class:"field"}, el("span",{},"Cheer"), sel), blurb, statRow, pick.node);
+  body.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    `Standard + Swift Action. Each of the three may be performed only once per Scene — that counter refreshes at 🌙 End Scene. Your Charm Rank is ${rankNum(t.skills.charm)}.`));
+  modal({title:"📣 Go, Fight, Win!", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async()=>{
+      const c = GO_FIGHT_WIN.find(x=>x.id===sel.value);
+      const uk = `gfw:${c.id}`;
+      if((t.uses||{})[uk]){ toast(`${c.name} has already been used this Scene`); return; }
+      const chosen = pick.chosen();
+      if(!chosen.length){ toast("Nobody on the field?"); return; }
+      const charm = rankNum(t.skills.charm);
+      chosen.forEach(x=>{
+        if(c.id==="show"){
+          if(!x.obj.cs) x.obj.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
+          const k = stat.value;
+          x.obj.cs[k] = Math.max(-6, Math.min(6, (x.obj.cs[k]||0) + 1));
+          addBuff(x.obj, "motivated");
+        } else if(c.id==="dont"){
+          x.obj.tempHP = (x.obj.tempHP||0) + charm;
+          addBuff(x.obj, "excited");
+        } else {
+          addBuff(x.obj, "believe-in-you");
+          addBuff(x.obj, "cheered");
+        }
+      });
+      t.uses = t.uses||{}; t.uses[uk] = 1;
+      (persist||save)(); closeModal();
+      await commitTargets(chosen);
+      toast(`📣 ${c.name} → ${chosen.length} ✓`);
+      (rerender||renderBattle)();
+    }},"📣 Perform it"),
+  ]});
+}
+/* Keep Fighting! (Daily x2, Free): the ally is set to 1 HP instead of dropping, then gains
+   Temporary Hit Points equal to twice your Charm Rank. */
+function openKeepFighting(t, rerender, persist){
+  const u = featUses(t, "Keep Fighting!");
+  const targets = allyTargets(t);
+  const pick = targetPicker(targets, []);
+  const charm = rankNum(t.skills.charm);
+  const body = el("div",{});
+  body.append(el("div",{class:"small",style:"margin-bottom:10px"},
+    `Trigger: an Ally above 1 Hit Point is reduced to 0 or lower. Their Hit Points are set to 1 instead, and they gain ${charm*2} Temporary Hit Points (twice your Charm Rank ${charm}).`));
+  body.append(pick.node);
+  body.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    `Daily x2 · ${u.left} of ${u.max} left today. Applying it also lifts the Knocked Out status the drop had just pinned on.`));
+  modal({title:"💪 Keep Fighting!", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async()=>{
+      const chosen = pick.chosen();
+      if(chosen.length !== 1){ toast("Keep Fighting! saves one Ally"); return; }
+      if(!featSpend(t, "Keep Fighting!")) return;
+      const o = chosen[0].obj, old = o.currentHP == null ? ownerMaxHP(o) : o.currentHP;
+      o.currentHP = 1;
+      applyAutoKO(o, old, 1);
+      o.tempHP = (o.tempHP||0) + charm*2;
+      (persist||save)(); closeModal();
+      await commitTargets(chosen);
+      toast(`💪 ${ownerLabel(o)} holds on at 1 HP · +${charm*2} Temp HP`);
+      (rerender||renderBattle)();
+    }},"💪 Keep them up"),
+  ]});
+}
+function cheerleaderCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Cheerleader")) return null;
+  const card = classCard("📣","Cheerleader","Core p.93");
+  classBit(card, "Cheers are real buffs on the recipient: Excited is spent for you the moment they take a hit, "
+    + "Cheered and Motivated wait on their Buffs & Orders card until they are given up.");
+  if(hasFeatureLoose(t, "Inspirational Support"))
+    classBit(card, "Inspirational Support: a Free Action Cheer whenever a Pokémon of yours with Friend Guard uses an Ability or an ally-only Status Move.");
+  if(hasFeatureLoose(t, "Gleeful Interference"))
+    classBit(card, "Gleeful Interference: 1 AP when a Friend Guard Pokémon of yours hits a foe — that foe takes −2 Accuracy for a full Round. Drop it on them from their token's Buffs & Orders → ✎ Custom.");
+  if(hasFeatureLoose(t, "Moment of Action"))
+    classBit(card, "Moment of Action: ✨ Give it like an Order — the Temporary Action Point is added to that Trainer's AP total for as long as the buff is up.");
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  row.append(el("button",{class:"btn-primary",onclick:()=>openCheer(t, rerender, persist)},"📣 Cheer"));
+  if(hasFeatureLoose(t, "Cheer Brigade"))
+    row.append(el("button",{class:"btn-secondary",onclick:()=>openCheerBrigade(t, rerender, persist)},"🤝 Cheer Brigade · 2 TP"));
+  if(hasFeatureLoose(t, "Go, Fight, Win!"))
+    row.append(el("button",{class:"btn-secondary",onclick:()=>openGoFightWin(t, rerender, persist)},"📣 Go, Fight, Win!"));
+  if(hasFeatureLoose(t, "Keep Fighting!")){
+    const u = featUses(t, "Keep Fighting!");
+    row.append(el("button",{class:"btn-secondary",onclick:()=>openKeepFighting(t, rerender, persist)},"💪 Keep Fighting!"),
+      el("span",{class:"small muted"}, `${u.left} of ${u.max}`));
+  }
+  card.append(row);
+  classFeatureRows(card, t, "Cheerleader", rerender, persist);
+  return card;
+}
+
+/* ---------------------------------------------------------------- GLAMOUR WEAVER (Core p.108) */
+const FEY_LAW_TRAITS = ["Status-Class attacks","Combat Maneuvers","attacks with an unmodified Damage Base 10 or higher",
+  "Bug","Dark","Dragon","Electric","Fairy","Fighting","Fire","Flying","Ghost","Grass","Ground","Ice","Normal","Poison","Psychic","Rock","Steel","Water"];
+function feyLawX(t){ return Math.floor(Math.max(rankNum(t.skills.charm), rankNum(t.skills.occultEd)) / 2); }
+function openFeyLaw(t, rerender, persist){
+  const X = feyLawX(t);
+  const sel = el("select");
+  FEY_LAW_TRAITS.forEach(x=>sel.append(el("option",{value:x}, x.length<=6 ? `${x}-Type attacks` : x)));
+  const foes = allyTargets(t, {foes:true}).filter(x=>x.enemy);
+  const pick = targetPicker(foes, []);
+  const body = el("div",{});
+  body.append(el("div",{class:"small",style:"margin-bottom:10px"},
+    `Trigger: you hit a foe with a damaging Fairy attack. The target is Bound and takes −${X} to every roll made to use attacks with the chosen trait `
+    + `(half your better of Charm ${rankNum(t.skills.charm)} and Occult Ed. ${rankNum(t.skills.occultEd)}). It lasts until the end of the Scene; `
+    + "you may unbind them as a Free Action, and nobody carries two instances of Bound at once."));
+  body.append(el("label",{class:"field"}, el("span",{},"They're Bound against"), sel));
+  body.append(foes.length ? pick.node : el("div",{class:"small muted"},"No enemy token you can edit — place the buff from the GM's side."));
+  body.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    "1 AP, Swift Action. The buff lands on their sheet as an Accuracy penalty so the number is visible wherever they roll; "
+    + "remove it from their Buffs & Orders card to unbind them."));
+  modal({title:"🧚 Fey Law", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async()=>{
+      const chosen = pick.chosen();
+      if(chosen.length !== 1){ toast("Fey Law Binds one foe"); return; }
+      if(!apSpend(t, 1)) return;
+      const o = chosen[0].obj;
+      o.buffs = ownerBuffs(o).filter(b => b.key !== "fey-law");         // never two instances of Bound
+      addCustomBuff(o, `Bound — Fey Law (${sel.value})`, { acc:-X },
+        `Bound by ${t.name||"a Glamour Weaver"}: −${X} to every roll made to use ${sel.value}. Lasts until the end of the Scene.`);
+      ownerBuffs(o).slice(-1).forEach(b => b.key = "fey-law");
+      (persist||save)(); closeModal();
+      await commitTargets(chosen);
+      toast(`🧚 ${ownerLabel(o)} is Bound — −${X} vs ${sel.value} · 1 AP`);
+      (rerender||renderBattle)();
+    }},"🧚 Bind them"),
+  ]});
+}
+/* Magical Burst (Scene, Standard): needs Enchanting Transformation Bound; using it unbinds the
+   Transformation AND turns its 2 Bound AP into spent AP. */
+function openMagicalBurst(t, rerender, persist){
+  const def = featureModeByFeat.get(featKey("Enchanting Transformation"));
+  const on = def && modeIsOn(t, def.key);
+  const targets = allyTargets(t);
+  const pick = targetPicker(targets, ["self"]);
+  const u = featUses(t, "Magical Burst");
+  const body = el("div",{});
+  body.append(el("div",{class:"small",style:"margin-bottom:10px"},
+    "Use a Glamour Weaver Move as though it had the range Burst 3, Friendly, Exhaust, Smite. Every Ally in the area gains "
+    + "a Tick of Temporary Hit Points, or cures one Volatile Affliction."));
+  if(!on) body.append(el("div",{class:"warnbox",style:"margin-bottom:10px"},
+    "Enchanting Transformation isn't Bound — Magical Burst can't be used until it is."));
+  body.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"Allies in the Burst 3 — each gains a Tick of Temp HP"));
+  body.append(pick.node);
+  body.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    `${u.left!=null?`${u.left} of ${u.max} left this Scene. `:""}Using it ends your Transformation and the 2 AP it had Bound become SPENT — they do not come back until the Scene does. `
+    + "Roll the Move itself from your Moves card; tick anyone here who would rather cure a Volatile Affliction and do that by hand."));
+  modal({title:"💥 Magical Burst", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async()=>{
+      if(!on){ toast("Enchanting Transformation must be Bound first"); return; }
+      if(!featSpend(t, "Magical Burst")) return;
+      const chosen = pick.chosen();
+      chosen.forEach(x=>{ x.obj.tempHP = (x.obj.tempHP||0) + hpTick(ownerMaxHP(x.obj)||1); });
+      // the stance ends, and its Bind turns into real spent AP (that is what "becomes spent" means)
+      setFeatureMode(t, def, false, ()=>{}, ()=>{});
+      t.usedAP = (t.usedAP||0) + (def.bindAP||2);
+      (persist||save)(); closeModal();
+      await commitTargets(chosen);
+      toast(`💥 Magical Burst — Transformation ended, ${def.bindAP||2} AP spent`);
+      (rerender||renderBattle)();
+    }},"💥 Burst"),
+  ]});
+}
+function glamourCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Glamour Weaver")) return null;
+  const card = classCard("✨","Glamour Weaver","Core p.108");
+  const def = featureModeByFeat.get(featKey("Enchanting Transformation"));
+  if(hasFeatureLoose(t, "Enchanting Transformation"))
+    classBit(card, modeIsOn(t, def.key)
+      ? "Enchanting Transformation is UP — 2 AP Bound, +5 Damage Reduction against Dragon, Fighting, Dark and Bug wherever the sheet applies an attack, and every Glamour Weaver Move's extra effect is in its roll."
+      : "Enchanting Transformation: switch it on from Stances & Transformations above. It Binds 2 AP, gives +5 DR against Dragon/Fighting/Dark/Bug and adds each Glamour Weaver Move's extra effect to its roll.");
+  if(hasFeatureLoose(t, "Passionato Harmony") || hasFeatureLoose(t, "Lucky Clover Grand Finale"))
+    classBit(card, "Dazzling Gleam, Draining Kiss, Moonblast and Aromatic Mist arrive on your Moves card with the Feature that teaches them.");
+  if(hasFeatureLoose(t, "Glamour Mastery"))
+    classBit(card, "Glamour Mastery: pick Magic Guard or Magic Bounce from its own row below — the Ability then counts everywhere the sheet asks whether you have it.");
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  if(hasFeatureLoose(t, "Fey Law"))
+    row.append(el("button",{class:"btn-secondary",onclick:()=>openFeyLaw(t, rerender, persist)},`🧚 Fey Law · −${feyLawX(t)} · 1 AP`));
+  if(hasFeatureLoose(t, "Magical Burst")){
+    const u = featUses(t, "Magical Burst");
+    row.append(el("button",{class:"btn-secondary",onclick:()=>openMagicalBurst(t, rerender, persist)},"💥 Magical Burst"),
+      el("span",{class:"small muted"}, u.left!=null?`${u.left} of ${u.max}`:""));
+  }
+  if(row.childNodes.length) card.append(row);
+  classFeatureRows(card, t, "Glamour Weaver", rerender, persist);
+  return card;
+}
+
+/* ---------------------------------------------------------------- CAPTURE SPECIALIST (Core p.64) */
+const CAPTURE_SKILLS = ["acrobatics","athletics","stealth","survival","guile","perception"];
+function captureSkillBest(t){
+  return CAPTURE_SKILLS.reduce((n,k)=>Math.max(n, rankNum(t.skills[k])), 0);
+}
+/* Captured Momentum (At-Will, Free): one of three effects the moment a capture succeeds. */
+function openCapturedMomentum(t, rerender, persist){
+  const opts = [
+    { id:"acc",  label:`+2 to your or a Pokémon's next Accuracy Roll this combat` },
+    { id:"roll", label:`−${captureSkillBest(t)} on your next Capture Roll this combat (your best Capture Skill Rank)` },
+    { id:"ap",   label:"+1 Temporary Action Point, gone after one full Round" },
+  ];
+  const sel = el("select");
+  opts.forEach(o=>sel.append(el("option",{value:o.id}, o.label)));
+  const body = el("div",{});
+  body.append(el("div",{class:"small",style:"margin-bottom:10px"},"Trigger: you successfully Capture a Pokémon. Choose one."));
+  body.append(el("label",{class:"field"}, el("span",{},"Effect"), sel));
+  body.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    "The Accuracy bonus and the Temporary AP land as buffs that apply themselves; the Capture Roll bonus is remembered and offered inside the next 🎲 Throw a Poké Ball."));
+  modal({title:"🎯 Captured Momentum", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      if(sel.value==="acc") addCustomBuff(t, "Captured Momentum (+2 Accuracy)", { acc:2 },
+        "Spent on your next Accuracy Roll this combat — remove it once it has been used.");
+      else if(sel.value==="ap") addCustomBuff(t, "Captured Momentum (+1 Temp AP)", { tempAP:1 },
+        "One Temporary Action Point, gone after one full Round — already added to your AP total.");
+      else { t.capMomentum = captureSkillBest(t); toast(`Next Capture Roll: −${t.capMomentum}`); }
+      (persist||save)(); closeModal();
+      (rerender||renderBattle)();
+    }},"🎯 Take it"),
+  ]});
+}
+function captureCard(t, rerender, persist){
+  if(!t || (!trainerHasClass(t, "Capture Specialist") && !trainerHasClass(t, "Capture Skills"))) return null;
+  const card = classCard("🎯","Capture Specialist","Core p.64");
+  const bits = [];
+  if(trainerHasTech(t, "Tools of the Trade"))
+    bits.push("Tools of the Trade: +2 to the Accuracy Roll of every Poké Ball, Hand Net, Lasso, Weighted Net and Glue Cannon — already in the throw.");
+  if(trainerHasTech(t, "Snare"))
+    bits.push("Snare: −10 to Capture Rolls against a target held by Bait, a Hand Net, a Lasso, a Weighted Net or a Glue Cannon — a tick-box inside the throw.");
+  if(trainerHasTech(t, "Curve Ball"))
+    bits.push("Curve Ball: a hit with a Poké Ball also deals Struggle damage, before the ball does anything — roll it from your Struggle row.");
+  if(hasFeatureLoose(t, "Gotta Catch 'Em All"))
+    bits.push("Gotta Catch 'Em All: after the 1d100, the throw offers to swap its digits (91 → 19). A 1 never becomes a natural 100.");
+  if(hasFeatureLoose(t, "Gotta Catch 'Em All [Playtest]"))
+    bits.push("Collector Stacks: spend up to 3 for an equal bonus, or exactly 3 to re-roll — both offered inside the throw.");
+  if(t.capMomentum) bits.push(`Captured Momentum is stored: −${t.capMomentum} waiting on your next Capture Roll.`);
+  if(!bits.length) bits.push("Your Capture Techniques are picked on the Trainer → Features & Edges card; the ones the throw can apply by itself say so here once you have them.");
+  bits.forEach(b=>classBit(card, b));
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  if(hasFeatureLoose(t, "Gotta Catch 'Em All [Playtest]")){
+    const n = t.collectorStacks||0;
+    row.append(el("span",{class:"small",style:"font-weight:700"}, `Collector Stacks: ${n}`),
+      el("button",{class:"btn-secondary",style:"padding:4px 10px",title:"one per Wild Pokémon captured from an evolutionary family you own nothing else from",
+        onclick:()=>{ t.collectorStacks = (t.collectorStacks||0)+1; (persist||save)(); (rerender||renderBattle)(); }},"＋"),
+      el("button",{class:"btn-secondary",style:"padding:4px 10px",
+        onclick:()=>{ t.collectorStacks = Math.max(0,(t.collectorStacks||0)-1); (persist||save)(); (rerender||renderBattle)(); }},"−"));
+  }
+  if(hasFeatureLoose(t, "Captured Momentum"))
+    row.append(el("button",{class:"btn-secondary",onclick:()=>openCapturedMomentum(t, rerender, persist)},"🎯 Captured Momentum"));
+  if(row.childNodes.length) card.append(row);
+  classFeatureRows(card, t, "Capture Specialist", rerender, persist);
+  return card;
+}
+
+/* ---------------------------------------------------------------- MEDIC (Sept 2015 Playtest p.5) */
+/* ---------- Restoratives, read out of the item catalog ----------
+   The heal numbers and the cures are already written on every item ("Heals 20 Hit Points", "Cures
+   Poison", "Heals a Pokémon for 80 Hit Points and cures any Status Afflictions", "Revives fainted
+   Pokémon and sets to 20 Hit Points"), so they are PARSED rather than retyped here — an item added
+   to the catalog later is applicable the day it arrives, and a number the GM edits in the data is
+   the number the sheet uses.
+
+   Food and Refreshments are deliberately left out: Snacks become Digestion Buffs and Refreshments
+   have their own flow, and having two places that move the same HP is how a sheet double-heals. */
+const RESTORATIVE_CURE_RULES = [
+  [/cures?[^.]*\b(all|any)\b[^.]*persistent[^.]*status/i, "persistent"],
+  [/cures?[^.]*\b(all|any)\b[^.]*status/i, "allStatus"],
+  [/cures?[^.]*poison/i,                   ["poisoned","badlyPoisoned"]],
+  [/cures?[^.]*paraly/i,                   ["paralysis"]],
+  [/cures?[^.]*burn/i,                     ["burned"]],
+  [/cures?[^.]*(freez|frozen)/i,           ["frozen","chilled"]],
+  [/cures?[^.]*sleep/i,                    ["sleep","badSleep","drowsy"]],
+  [/cures?[^.]*confus/i,                   ["confused"]],
+];
+let _restoDefs = null;
+function restorativeDefs(){
+  if(_restoDefs) return _restoDefs;
+  _restoDefs = new Map();
+  catalogItems().forEach(it=>{
+    const name = it && it.name; if(!name) return;
+    if(snackDef(name) || refreshmentDef(name)) return;          // owned by the Digestion / Refreshment flows
+    /* "Med Kit" is the catalog's own word for the consumable Restoratives, and it is what
+       invCategory already sorts into the 🧪 pocket. Everything else that mentions reviving or
+       curing is a Key Item you keep — a First Aid Kit, a Reanimation Machine — and spending one
+       would be wrong. */
+    if(String(it.cat||"").toLowerCase() !== "med kit") return;
+    const eff = String(it.effect || it.note || "");
+    const healM = /(?:heals?|restores?)\s+(?:a\s+Pok[eé]mon\s+for\s+)?(\d+)\s+Hit Points/i.exec(eff);
+    const revM  = /\bsets?\s+to\s+(\d+)\s+Hit Points/i.exec(eff);
+    const revPctM = /\bsets?\s+to\s+(\d+)\s*%\s+Hit Points/i.exec(eff);
+    const revive = /\brevives?\b/i.test(eff);
+    let cures = [];
+    for(const [re, val] of RESTORATIVE_CURE_RULES){
+      if(!re.test(eff)) continue;
+      if(typeof val === "string"){ cures = val; break; }        // "persistent" / "allStatus" — blanket, stop here
+      cures = [...new Set([...cures, ...val])];
+    }
+    const heal = healM ? +healM[1] : 0;
+    const revivePct = revPctM ? +revPctM[1] : 0;
+    const reviveHP = (revM && !revPctM) ? +revM[1] : 0;
+    const hasCures = typeof cures === "string" ? !!cures : cures.length > 0;
+    if(!heal && !reviveHP && !revivePct && !revive && !hasCures) return;
+    _restoDefs.set(normItemName(name), { name, heal, revive, reviveHP, revivePct, cures, effect:eff });
+  });
+  return _restoDefs;
+}
+function restorativeDef(name){ return restorativeDefs().get(normItemName(name)) || null; }
+/* what one Restorative reads as on the row, without opening its info panel */
+function restorativeBlurb(def, bonus){
+  if(!def) return "";
+  const bits = [];
+  const hp = (def.heal||0) + (bonus||0);
+  if(hp) bits.push(`+${hp} HP`);
+  if(def.revive) bits.push(def.revivePct ? `revives a fainted target to ${def.revivePct}% of its Max HP`
+                         : def.reviveHP  ? `revives a fainted target to ${def.reviveHP + (bonus||0)} HP`
+                                         : "revives a fainted target");
+  if(def.cures === "allStatus") bits.push("cures every Status Affliction");
+  else if(def.cures === "persistent") bits.push("cures every Persistent Status Affliction");
+  else if(def.cures && def.cures.length)
+    bits.push("cures " + def.cures.map(k => (STATUS_DEFS.find(s=>s.key===k)||{}).name || k).join(" / "));
+  return bits.join(" · ");
+}
+/* Field Clinic's +5 applies only to the items the Edge names (Sept 2015 Playtest p.6). */
+const FIELD_CLINIC_ITEMS = new Set(["Potion","Super Potion","Hyper Potion","Max Potion","Full Restore",
+  "Revive","Max Revive","Energy Powder","Energy Root"].map(normItemName));
+/* Stay With Us! names exactly five items it may apply. */
+const STAY_WITH_US_ITEMS = new Set(["Potion","Super Potion","Hyper Potion","Energy Powder","Energy Root"].map(normItemName));
+/* the Restoratives actually in this Trainer's bag, one row per distinct name, with how many are left */
+function bagRestoratives(t, only){
+  const out = new Map();
+  (t && t.inventory || []).forEach(it=>{
+    const def = restorativeDef(it && it.name); if(!def) return;
+    if(only && !only.has(normItemName(def.name))) return;
+    const qty = Math.max(0, parseInt(it.qty)||0); if(!qty) return;
+    const row = out.get(def.name) || { def, qty:0 };
+    row.qty += qty; out.set(def.name, row);
+  });
+  return [...out.values()].sort((a,b)=>a.def.name.localeCompare(b.def.name));
+}
+
+/* One flow for both of the Medic's healing Features: pick a target, pick the item out of your own
+   bag, and the sheet applies the item's own healing and cures, adds Medical Techniques' bonus,
+   spends one copy of the item and puts Front Line Healer's DR on you. */
+function openApplyRestorative(t, rerender, persist, opts){
+  opts = opts || {};
+  const targets = allyTargets(t);
+  const pick = targetPicker(targets, []);
+  const bag = bagRestoratives(t, opts.stayWithUs ? STAY_WITH_US_ITEMS : null);
+  const medRank = rankNum(t.skills.medicineEd);
+  const hasMT = hasFeatureLoose(t, "Medical Techniques [Medic]") || hasFeatureLoose(t, "Medical Techniques");
+  const hasFC = trainerHasEdge(t, "Field Clinic");
+
+  const sel = el("select");
+  bag.forEach(r=>sel.append(el("option",{value:r.def.name}, `${r.def.name} ×${r.qty}`)));
+  sel.append(el("option",{value:""}, bag.length ? "— nothing from the bag (type the amount) —"
+                                                : "— your bag has no Restoratives — type the amount —"));
+  const extra = el("input",{type:"number",value:0,style:"width:80px",title:"anything else the heal is worth — a GM ruling, an item the catalog doesn't carry"});
+  const fcCb  = el("input",{type:"checkbox"});
+  const mtCb  = el("input",{type:"checkbox"}); mtCb.checked = hasMT;
+  const blurb = el("div",{class:"small",style:"margin:6px 0 4px;min-height:18px"});
+
+  const curDef = () => restorativeDef(sel.value);
+  const fcBonus = () => { const d = curDef();
+    return (hasFC && fcCb.checked && d && FIELD_CLINIC_ITEMS.has(normItemName(d.name))) ? 5 : 0; };
+  const redraw = () => {
+    const d = curDef();
+    blurb.textContent = d ? restorativeBlurb(d, fcBonus())
+                          : "Nothing from the bag — whatever you type in Extra HP is all that is applied.";
+    fcCb.parentElement.style.display = hasFC ? "" : "none";
+  };
+  sel.addEventListener("change", redraw);
+  fcCb.addEventListener("change", redraw);
+
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"Who are you treating"));
+  body.append(pick.node);
+  body.append(el("label",{class:"field",style:"margin-top:10px"}, el("span",{},"Restorative — from your bag"), sel));
+  body.append(blurb);
+  body.append(el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin-top:2px"},
+    fcCb, "In a Field Clinic — the items the Edge names heal 5 more"));
+  body.append(el("label",{class:"field",style:"margin-top:6px"}, el("span",{},"Extra HP (GM ruling, an item not in the catalog…)"), extra));
+  if(hasMT) body.append(el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin-top:6px"},
+    mtCb, `Medical Techniques — 1 AP, adds a Tick of HP plus your Medicine Ed. Rank (${medRank})`));
+  const notes = [];
+  if(hasFeatureLoose(t, "Front Line Healer"))
+    notes.push("Front Line Healer: you gain +5 Damage Reduction for 1 full Round — placed on you automatically, and it does not stack with itself.");
+  notes.push(trainerHasEdge(t, "Medic Training")
+    ? "Medic Training: the target does not forfeit their next turn."
+    : "Without Medic Training the target forfeits their next turn — tell the GM.");
+  notes.push("Applying it takes one copy out of your Inventory. Snacks, Berries and Refreshments are not listed: they heal through the 🍎 Digestion card instead, and two places moving the same HP is how a sheet double-heals.");
+  notes.push("The Medic class Feature already gives you the First Aid Manual and the Combat Medic's Primer with their Rank 1 effects Bound at no AP — see your Books card.");
+  if(opts.stayWithUs){
+    const u = featUses(t, "Stay With Us!");
+    notes.unshift(`Stay With Us! — Daily x3, ${u.left} of ${u.max} left. Only a Potion, Super Potion, Hyper Potion, Energy Powder or Energy Root may be applied, and you must be able to Shift to them. The triggering attack's damage, Injuries and Fainting are all settled AFTER this heal.`);
+  }
+  notes.forEach(n=>body.append(el("div",{class:"small muted",style:"margin-top:6px"}, n)));
+  redraw();
+
+  modal({title: opts.stayWithUs ? "🚑 Stay With Us!" : "🧪 Apply a Restorative", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async()=>{
+      const chosen = pick.chosen();
+      if(chosen.length !== 1){ toast("Treat one target at a time"); return; }
+      const def = curDef();
+      const byHand = parseInt(extra.value)||0;
+      if(!def && !byHand){ toast("Pick a Restorative, or type how much it heals"); return; }
+      if(opts.stayWithUs && !featSpend(t, "Stay With Us!")) return;
+      const useMT = hasMT && mtCb.checked;
+      if(useMT && !apSpend(t, 1)) return;
+      // the item leaves the bag before anything is applied — if it isn't there, nothing happens
+      if(def && !consumeInventoryItem(t, def.name)){
+        toast(`${def.name} is no longer in your bag`);
+        (persist||save)(); (rerender||renderBattle)(); return;
+      }
+      const o = chosen[0].obj;
+      const bonus = fcBonus();
+      const mt = useMT ? hpTick(ownerMaxHP(o)||1) + medRank : 0;
+      const done = [];
+      let moved = 0;
+      /* A Revive SETS the target's Hit Points rather than adding to them, and only a fainted target
+         can take one — so it is resolved before the ordinary healing, and the Knocked Out the faint
+         applied is lifted by the same applyAutoKO every other HP setter goes through. */
+      if(def && def.revive && ownerHP(o) <= 0){
+        const old = ownerHP(o);
+        const to = def.revivePct ? Math.max(1, Math.floor((ownerMaxHP(o)||1) * def.revivePct / 100))
+                                 : (def.reviveHP || 1) + bonus;
+        setOwnerHP(o, to);
+        applyAutoKO(o, old, ownerHP(o));
+        moved = ownerHP(o) - old;
+        done.push(`revived to ${ownerHP(o)} HP`);
+      } else {
+        const heal = (def ? def.heal : 0) + bonus + byHand + mt;
+        moved = ownerHeal(o, heal);
+        if(moved) done.push(`+${moved} HP`);
+      }
+      // the cures the item's own text promises
+      if(def && def.cures){
+        const before = (o.statuses||[]).slice();
+        if(def.cures === "allStatus") clearAllStatuses(o);
+        else if(def.cures === "persistent")
+          o.statuses = (o.statuses||[]).filter(k => PERMANENT_STATUS_KEYS.has(k)
+            || (STATUS_DEFS.find(x=>x.key===k)||{}).kind !== "persistent");
+        else o.statuses = (o.statuses||[]).filter(k => !def.cures.includes(k));
+        const gone = before.filter(k => !(o.statuses||[]).includes(k))
+          .map(k => (STATUS_DEFS.find(s=>s.key===k)||{}).name || k);
+        if(gone.length) done.push(`cured ${gone.join(", ")}`);
+      }
+      if(hasFeatureLoose(t, "Front Line Healer")){
+        t.buffs = ownerBuffs(t).filter(b => b.key !== "front-line-healer");   // never stacks with itself
+        addBuff(t, "front-line-healer");
+      }
+      (persist||save)(); closeModal();
+      await commitTargets(chosen);
+      const how = [def ? `${def.name} spent` : "by hand",
+                   mt ? `+${mt} Medical Techniques` : "",
+                   bonus ? "+5 Field Clinic" : ""].filter(Boolean).join(" · ");
+      toast(`🧪 ${ownerLabel(o)}: ${done.join(", ") || "no change"}  (${how})`
+        + (hasFeatureLoose(t,"Front Line Healer") ? " · you gain 5 DR for a Round" : ""));
+      (rerender||renderBattle)();
+    }}, opts.stayWithUs ? "🚑 Save them" : "🧪 Apply it"),
+  ]});
+}
+function medicCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Medic")) return null;
+  const card = classCard("🧪","Medic","Sept 2015 Playtest p.5");
+  classBit(card, "The class itself hands you a First Aid Manual and a Combat Medic's Primer with their Rank 1 effects Bound for free — they are already on your Books card, and they drain no AP.");
+  classBit(card, "🧪 Apply a Restorative works off your own Inventory: it lists the Restoratives you are actually carrying, applies that item's healing and cures, adds Medical Techniques on top and takes one copy out of the bag.");
+  const pend = featureGiftGrants(t).pending.filter(p=>/I'm A Doctor/i.test(p.feat));
+  if(pend.length) classBit(card, `I'm A Doctor: ${pend.length} [Gift] choice${pend.length===1?"":"s"} still to make — press ⚙ Choose [Gift] on its row below. What you pick joins your Features & Edges by itself.`);
+  else if(hasFeatureLoose(t, "I'm A Doctor Rank 1")){
+    const mine = Object.entries((t.featGift)||{})
+      .filter(([k]) => /I'm A Doctor/i.test(k))
+      .flatMap(([,v]) => (v||[]).filter(Boolean));
+    classBit(card, `I'm A Doctor gave you: ${[...new Set(mine)].join(", ") || "—"}.`);
+  }
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  const inBag = bagRestoratives(t).reduce((n,r)=>n+r.qty, 0);
+  row.append(el("button",{class:"btn-primary",onclick:()=>openApplyRestorative(t, rerender, persist)},
+    `🧪 Apply a Restorative${inBag?` · ${inBag} in the bag`:""}`));
+  if(hasFeatureLoose(t, "Stay With Us!")){
+    const u = featUses(t, "Stay With Us!");
+    row.append(el("button",{class:"btn-secondary",onclick:()=>openApplyRestorative(t, rerender, persist, {stayWithUs:true})},"🚑 Stay With Us!"),
+      el("span",{class:"small muted"}, `${u.left} of ${u.max}`));
+  }
+  card.append(row);
+  classFeatureRows(card, t, "Medic", rerender, persist);
+  return card;
+}
+
+/* ---------------------------------------------------------------- HEX MANIAC (Core p.182) */
+/* The Core's Hex Maniac Moves table is exactly six entries — five at Rank 1 and Hex at Rank 3.
+   Rank 2 has no list of its own, so it picks from Rank 1 or lower, which is what the Feature says. */
+const HEX_MANIAC_MOVES = { 1:["Confuse Ray","Curse","Hypnosis","Spite","Will-O-Wisp"], 2:[], 3:["Hex"] };
+function hexRank(t){
+  let r = 0; [1,2,3].forEach(n => { if(hasFeatureLoose(t, `Hex Maniac Studies Rank ${n}`)) r = n; });
+  return r;
+}
+function hexMovePool(t){
+  const r = hexRank(t), out = [];
+  for(let i=1;i<=r;i++) (HEX_MANIAC_MOVES[i]||[]).forEach(m=>out.push(m));
+  return out;
+}
+/* the Hex Maniac Moves this Trainer has actually learned. Read off the Move list rather than a
+   private t.hexMoves record: a sheet imported before this Feature was automated has the Moves but
+   no record, and deleting one from the Moves card should stop it counting. */
+function hexKnown(t){
+  const pool = new Set(hexMovePool(t).map(m => m.toLowerCase()));
+  return [...new Set([...((t&&t.moves)||[]), ...((t&&t.hexMoves)||[])])]
+    .filter(m => pool.has(String(m).toLowerCase()));
+}
+function openHexStudies(t, rerender, persist){
+  const pool = hexMovePool(t).filter(m => !(t.moves||[]).includes(m));
+  const allowed = hexRank(t) * 2;
+  const known = hexKnown(t).length;
+  if(!pool.length){ toast("You already know every Hex Maniac Move your Rank unlocks"); return; }
+  if(known >= allowed && !t.unlocked){
+    toast(`Hex Maniac Studies Rank ${hexRank(t)} pays for ${allowed} Moves and you have ${known} \u2014 take the next Rank first`);
+    return;
+  }
+  openPicker(`Hex Maniac Studies — learn a Move (${known} of ${allowed} taken)`, pool, name=>{
+    if(!Array.isArray(t.moves)) t.moves = [];
+    if(!Array.isArray(t.hexMoves)) t.hexMoves = [];
+    t.moves.push(name); t.hexMoves.push(name);
+    (persist||save)();
+    toast(`🔮 Learned ${name}` + (name==="Curse" ? " — use Curse as though you were a Ghost-Type" : ""));
+    (rerender||renderBattle)();
+  }, "move");
+}
+/* Grand Hex (1 AP, Swift): regain one use of a Hex Maniac Move that can inflict a Status the target has. */
+function openGrandHex(t, rerender, persist){
+  const spent = hexKnown(t).filter(mn=>{
+    const m = moveByName.get(mn.toLowerCase()); if(!m) return false;
+    return ((t.uses||{})[useKey("move", m.name)]||0) > 0;
+  });
+  if(!spent.length){ toast("No Hex Maniac Move has a use to regain"); return; }
+  openPicker("Grand Hex — regain a use", spent, name=>{
+    const m = moveByName.get(name.toLowerCase());
+    if(!apSpend(t, 1)) return;
+    const k = useKey("move", m ? m.name : name);
+    t.uses[k] = Math.max(0, (t.uses[k]||0) - 1);
+    (persist||save)();
+    toast(`🔮 Grand Hex — ${name} regained a use · 1 AP`);
+    (rerender||renderBattle)();
+  }, "move");
+}
+function hexCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Hex Maniac")) return null;
+  const card = classCard("🔮","Hex Maniac","Core p.182");
+  const r = hexRank(t), known = hexKnown(t);
+  if(r) classBit(card, `Hex Maniac Studies Rank ${r}: two Moves per Rank, ${known.length} of ${r*2} taken${known.length?` — ${known.join(", ")}`:""}. They sit on your Moves card and roll like any other Move.`);
+  if(known.includes("Curse")) classBit(card, "Curse is used as though you were a Ghost-Type Pokémon — pick the Ghost version of its effect when you roll it.");
+  if(hasFeatureLoose(t, "Diffuse Pain"))
+    classBit(card, "Diffuse Pain: 2 AP, Swift, when you use a Status-Class Hex Maniac Move — one extra target. Press the button, then roll the Move against both.");
+  if(hasFeatureLoose(t, "Malediction")){
+    const u = featUses(t, "Malediction");
+    classBit(card, `Malediction: ${u.left} of ${u.max} left. When a foe within 5 metres misses everything, fire a Status-Class Hex Maniac Move at them as a Free Action — its own Frequency still has to allow it.`);
+  }
+  if(hasFeatureLoose(t, "Grand Hex"))
+    classBit(card, "Grand Hex: 1 AP, Swift, on hitting a foe with Hex — hand a use back to a Hex Maniac Move that inflicts a Status they are suffering. Once per target per Scene.");
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  if(r) row.append(el("button",{class:"btn-primary",onclick:()=>openHexStudies(t, rerender, persist)},"🔮 Learn a Hex Maniac Move"));
+  if(hasFeatureLoose(t, "Diffuse Pain"))
+    row.append(el("button",{class:"btn-secondary",onclick:()=>{
+      if(!apSpend(t, 2)) return; (persist||save)();
+      toast("🔮 Diffuse Pain — one extra target · 2 AP"); (rerender||renderBattle)();
+    }},"🔮 Diffuse Pain · 2 AP"));
+  if(hasFeatureLoose(t, "Malediction"))
+    row.append(el("button",{class:"btn-secondary",onclick:()=>{
+      if(!featSpend(t, "Malediction")) return; (persist||save)();
+      toast("🔮 Malediction — fire a Status-Class Hex Move as a Free Action"); (rerender||renderBattle)();
+    }},"🔮 Malediction"));
+  if(hasFeatureLoose(t, "Grand Hex"))
+    row.append(el("button",{class:"btn-secondary",onclick:()=>openGrandHex(t, rerender, persist)},"🔮 Grand Hex · 1 AP"));
+  if(row.childNodes.length) card.append(row);
+  classFeatureRows(card, t, "Hex Maniac", rerender, persist);
+  return card;
+}
+
+/* Every class card this Trainer has earned, in the order the cards were written. Both the player's
+   ⚔ Combat tab and the GM's Encounters card call this, so an NPC with a player class gets the same
+   buttons (and passes its own saveEnc as `persist`). */
+function classAutomationCards(t, rerender, persist){
+  return [musicianCard, commanderCard, provocateurCard, cheerleaderCard,
+          glamourCard, captureCard, medicCard, hexCard]
+    .map(fn => fn(t, rerender, persist)).filter(Boolean);
+}
+
 function renderTrainerCombat(root, t){
   // a stance you can switch on (Enchanting Transformation) sits above the attacks — it changes them
   const modes = trainerModesCard(t, renderBattle);
@@ -15678,6 +17196,9 @@ function renderTrainerCombat(root, t){
                            : "Unarmed Struggle only — add weapons in Trainer → Sheet → Weapons. Action Features (Cheer, Orders…) appear under the tabs above."));
   root.append(card);
   const bers = berserkerCard(t); if(bers) root.append(bers);
+  // one card per player Class the Trainer has taken (Musician, Commander, Provocateur, Cheerleader,
+  // Glamour Weaver, Capture Specialist, Medic, Hex Maniac) — see PLAYER-CLASS AUTOMATION above
+  classAutomationCards(t, renderBattle).forEach(c => root.append(c));
   // Throw a Poké Ball: a real action on the trainer's own sheet, targeting a wild Pokémon
   // currently visible on the shared Map — not something you trigger by clicking a Pokémon.
   const pb = el("div",{class:"card"}, el("h3",{},"Poké Balls"));
@@ -17138,6 +18659,10 @@ function encounterTrainerCard(enc, tr){
      buttons live (Frenzy, Fight On and On, Power of Rage) and writing through saveEnc(). */
   const bers = berserkerCard(t, renderEncounters, saveEnc);
   if(bers){ bers.style.margin = "8px 0 0"; card.append(bers); }
+  /* …and the same for every other player Class an NPC has been given (Musician, Commander,
+     Provocateur, Cheerleader, Glamour Weaver, Capture Specialist, Medic, Hex Maniac), writing
+     through saveEnc() so a GM running the NPC's Features never touches the player's own sheet. */
+  classAutomationCards(t, renderEncounters, saveEnc).forEach(c => { c.style.margin = "8px 0 0"; card.append(c); });
   /* Stances (Sovereignty, Enchanting Transformation) — the same switch the player's Combat tab
      shows, writing through saveEnc so the Bound AP lands on the NPC and not on whoever is logged in. */
   const modesC = trainerModesCard(t, renderEncounters, saveEnc);
@@ -20097,6 +21622,91 @@ const FEATURE_AUTO_NOTES = {
     "Rolling one of the listed Moves adds a box with that Move's effect and a button that spends a use — one of the Scene x3, plus that Move's own once-per-Scene. Both refresh at 🌙 End Scene.",
   "enchanting transformation":
     "Switch it on from ⚔ Battle → Combat (or the Shift tab). While it's up it Binds 2 AP, gives you +5 Damage Reduction against Dragon/Fighting/Dark/Bug wherever the sheet applies an attack, and adds each Glamour Weaver Move's extra effect to its roll. It ends at 🌙 End Scene and hands the AP back.",
+  /* --- the rest of the player classes, from the 🎵/🎖/🎭/📣/✨/🎯/🧪/🔮 cards on ⚔ Battle → Combat --- */
+  "musical ability":
+    "Press ⚙ Choose Ability on this row — whichever of Drown Out or Soundproof you take counts everywhere the sheet asks whether you have that Ability.",
+  "power chord":
+    "🎸 Power Chord on the Musician card rolls your Charm or Focus Check, adds your Special Attack and prints the Special Normal-Type damage to hand out, spending one of the Scene x2 as it goes.",
+  "voice lessons":
+    "Stated, not applied: your and your Pokémon's Sonic Moves gain Friendly (never Perish Song), and your Pokémon roll +1d6 with Sonic Moves in a Contest.",
+  "leadership":
+    "✨ Give on any Order now lists every friendly token on the Map, not just your own party, and writes the Order straight to that sheet.",
+  "battle conductor":
+    "A tick-box inside ✨ Give: +2 more Allies on an At-Will Order, for the Swift Action.",
+  "scheme twist":
+    "A tick-box inside ✨ Give: +2 more Allies on a Scene or Daily Order. Ticking it spends one of the Scene x2.",
+  "tip the scales":
+    "A tick-box inside ✨ Give: an At-Will Order reaches every Ally within 10 metres instead, and the 2 AP are spent when you tick it.",
+  "complex orders":
+    "Give a different Order to each target by running ✨ Give once per Order — each one's own AP and Frequency is charged, which is what the Feature asks for.",
+  "mobilize":
+    "✨ Give places it like any other Order. The once-per-encounter-per-Ally limit is yours to keep — the sheet doesn't track encounters.",
+  "push buttons":
+    "The Demoralize Edge is derived from this Feature and sits on your Edges card for as long as you hold it. Its two roll rules (Social Moves aren't expended on a miss; Demoralize triggers on 18+ for Status Moves) are printed on the Move's own roll.",
+  "quick wit":
+    "💬 Quick Wit on the Provocateur card lists your Social Moves and the three Manipulate Maneuvers and spends one of the Scene x3.",
+  "enchanting gaze":
+    "👁 Enchanting Gaze spends the 2 AP and applies the chosen Manipulate effect to every foe you tick — no opposed roll, and Bon Mot / Flirt drop their Status straight onto the target's sheet.",
+  "cheer brigade":
+    "🤝 Cheer Brigade pays the 2 Tutor Points off the Pokémon you pick and adds Friend Guard to its Ability list.",
+  "go, fight, win!":
+    "📣 Go, Fight, Win! applies the whole cheer: the Combat Stage, the Temporary Hit Points (your Charm Rank) or the +2 Evasion, plus the matching Cheer, to everyone you tick — and it remembers which of the three you've already used this Scene.",
+  "keep fighting!":
+    "💪 Keep Fighting! sets the Ally to 1 Hit Point, lifts the Knocked Out the drop had just applied, and adds twice your Charm Rank in Temporary Hit Points, spending one of the Daily x2.",
+  "moment of action":
+    "✨ Give it like an Order — the Temporary Action Point is added to that Trainer's AP total for as long as the buff lasts, and leaves with it.",
+  "inspirational support":
+    "The trigger is yours to spot; 📣 Cheer on the Cheerleader card is the Free Action that places the Cheer.",
+  "gleeful interference":
+    "Stated, not applied: 1 AP for −2 Accuracy on the foe for a full Round. Drop it on them from their token's Buffs & Orders → ✎ Custom.",
+  "fey law":
+    "🧚 Fey Law spends the 1 AP and Binds the foe with a real −X buff (half your better of Charm and Occult Ed.), so the penalty shows wherever they roll. Removing that buff unbinds them, and they can never carry two.",
+  "magical burst":
+    "💥 Magical Burst checks that Enchanting Transformation is Bound, hands every Ally you tick a Tick of Temporary Hit Points, ends the Transformation and turns its 2 Bound AP into spent AP.",
+  "glamour mastery":
+    "Press ⚙ Choose Ability on this row — Magic Guard or Magic Bounce then counts everywhere the sheet asks whether you have it.",
+  "gotta catch 'em all":
+    "After the 1d100 inside 🎲 Throw a Poké Ball, a button offers the digit swap (91 → 19) and spends one of the Daily x3. A 1 is never turned into a natural 100.",
+  "gotta catch 'em all [playtest]":
+    "Your Collector Stacks are counted on the Capture Specialist card; the capture roll lets you spend up to 3 for an equal bonus, or exactly 3 to re-roll, and takes them off the total.",
+  "captured momentum":
+    "🎯 Captured Momentum turns the choice into something real: +2 Accuracy and the Temporary AP become buffs that apply themselves, and the Capture-Roll bonus is remembered and used by your next throw.",
+  "front line healer":
+    "Applying a Restorative from 🧪 on the Medic card gives you the +5 Damage Reduction automatically — one instance only, and the Damage/Heal box subtracts it.",
+  "medical techniques [medic]":
+    "A tick-box inside 🧪 Apply a Restorative: 1 AP, and the target gains a Tick of Hit Points plus your Medicine Ed. Rank on top of the item's own healing.",
+  "medical techniques":
+    "A tick-box inside 🧪 Apply a Restorative: 1 AP, and the target gains a Tick of Hit Points plus your Medicine Ed. Rank on top of the item's own healing.",
+  "stay with us!":
+    "🚑 Stay With Us! is the same Restorative flow, spending one of the Daily x3 — apply it before you settle the triggering attack's Fainting and Injuries, exactly as the Feature says.",
+  "i'm a doctor rank 1":
+    "Press ⚙ Choose [Gift] on this row. What you pick (Field Clinic or Medic Training, and Nurse or First Aid Expertise) is added to your Features & Edges for free — no Level-Up slot, no prerequisites.",
+  "i'm a doctor rank 2":
+    "Press ⚙ Choose [Gift] on this row. What you pick (Field Clinic or Medic Training, and Nurse or First Aid Expertise) is added to your Features & Edges for free — no Level-Up slot, no prerequisites.",
+  "hex maniac studies rank 1":
+    "🔮 Learn a Hex Maniac Move on the Hex Maniac card offers exactly the Moves your Rank unlocks and puts them on your Moves card, where they roll like any other Move.",
+  "hex maniac studies rank 2":
+    "🔮 Learn a Hex Maniac Move on the Hex Maniac card offers exactly the Moves your Rank unlocks and puts them on your Moves card, where they roll like any other Move.",
+  "hex maniac studies rank 3":
+    "🔮 Learn a Hex Maniac Move on the Hex Maniac card offers exactly the Moves your Rank unlocks and puts them on your Moves card, where they roll like any other Move.",
+  "diffuse pain":
+    "🔮 Diffuse Pain spends the 2 AP; roll the Status Move against the extra target yourself.",
+  "malediction":
+    "🔮 Malediction spends one of the Scene x2 and reminds you which Status-Class Hex Maniac Moves you may fire as the Free Action.",
+  "grand hex":
+    "🔮 Grand Hex spends the 1 AP and hands a use back to whichever Hex Maniac Move you pick — the counter on that Move goes down by one.",
+  "lessons":
+    "📚 Lessons on the Mentor card offers only the Lessons your two Mentor Skills qualify you for, spends the Tutor Point and the Daily use, and carries out Changing Viewpoints (the legal Natures) and Versatile Teachings (the species' own Ability lists) itself.",
+  "move tutor":
+    "🎓 Move Tutor pays the 2 Tutor Points, honours the campaign's level restriction and spends one of the Daily uses.",
+  "egg tutor":
+    "🥚 Egg Tutor is the same flow over the Egg Move list, and it remembers that a Pokémon may be targeted by it only once.",
+  "guidance":
+    "Every one of your Pokémon may hold one more Move — the limit the sheet enforces already includes it.",
+  "lifelong learning":
+    "Stated, not applied: up to 4 Moves may come from TMs or Move Tutors. The sheet doesn't record where a Move came from, so that count stays at the table.",
+  "expand horizons":
+    "It is a Poké Edge on the target Pokémon's own card: taking it pays out its 3 Tutor Points immediately, and removing it takes them back.",
 };
 /* Every other rider Feature describes itself, so a Feature added to the data later explains its own
    automation without anyone writing a sentence for it. */
