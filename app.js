@@ -5212,14 +5212,16 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         + (defCSMode==="all" ? ` and any Armor or Combat-Stage changes to the target's ${isPhysAtk?"Defense":"Sp.Def"}`
            : defCSMode==="positive" ? ` and the target's positive Defense Combat Stages` : "")
         + `. Applied for you by the target picker below — subtract it by hand if you use the Damage/Heal box instead.`));
-      const tw = attackTargetWidget({ dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce, defCSMode });
+      const tw = attackTargetWidget({ dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce,
+        atkTinted: ownerHasAbility(t,"Tinted Lens"), atkExploit: ownerHasAbility(t,"Exploit"), defCSMode });
       if(tw) out.append(tw);
       feedLogged = true;
       logRoll({ kind:"move", label:st.name, who:t.name||"",
         headline:`${nCrit?"💥 CRIT ":"💥 "}${total} damage`,
         lines:[`🎯 Accuracy ${accTot} (d20 ${acc}) vs AC ${st.ac}`,
                `${st.type||"Typeless"}${st.cls?` · ${st.cls}`:""} · DB ${db}`],
-        atk: isStatusAtk ? null : { dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce, defCSMode } });
+        atk: isStatusAtk ? null : { dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce,
+               atkTinted: ownerHasAbility(t,"Tinted Lens"), atkExploit: ownerHasAbility(t,"Exploit"), defCSMode } });
     }
     if(dblStrike){
       const ov = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center"});
@@ -12393,31 +12395,71 @@ function updateMonComputed(p){
   const bar = $("#heroHpBar"); if(bar){ const pct=Math.max(0,Math.min(100,Math.round(p.currentHP/d.maxHP*100)));
     bar.style.width=pct+"%"; bar.style.background=pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"; }
 }
-function matchupCard(types, p){
-  types = (types||[]).filter(t=>t && t!=="None");   // drop the empty second slot
-  const mods = p ? defenseTypeMods(p) : null;        // Static defensive abilities (Thick Fat, Levitate…)
+/* The Weak-to / Resists / Immune rows. Shared by the Pokémon's own Type Matchups card and by the
+   Map's token menu, so the board and the sheet can never quietly disagree about a matchup.
+   `mods` is a defenseTypeMods() result — that is what folds the defender's Static abilities
+   (Levitate, Thick Fat, Wonder Guard, Filter/Solid Rock, Tolerance) into the numbers instead of
+   leaving them as something to remember afterwards. */
+function matchupLines(types, mods, opts){
   const eff = typeEffectiveness(types, mods);
-  const card = el("div",{class:"card"}, el("h3",{},"Type Matchups",
-    el("span",{class:"muted small"}, types.join(" / "))));
-  const groups = [
-    ["Weak to (×1.5+)", v=>v>1, "x2"],
-    ["Resists (×½−)", v=>v<1&&v>0, "x50"],
-    ["Immune (×0)", v=>v===0, "x0"],
-  ];
-  groups.forEach(([label,test,cls])=>{
+  const w = (opts && opts.labelWidth) || 110;
+  const out = [];
+  [["Weak to (×1.5+)", v=>v>1],
+   ["Resists (×½−)",   v=>v<1 && v>0],
+   ["Immune (×0)",     v=>v===0]].forEach(([label,test])=>{
     const ents = Object.entries(eff).filter(([,v])=>test(v));
     if(!ents.length) return;
     const line = el("div",{class:"eff-line",style:"margin-bottom:6px"});
-    line.append(el("span",{class:"small muted",style:"width:110px;display:inline-block"},label));
-    ents.sort((a,b)=>b[1]-a[1]).forEach(([t,v])=>{
-      const c = v===0?"x0":v>=4?"x4":v>1?"x2":v<=.25?"x25":"x50";
-      line.append(el("span",{class:`type type-${t}`,title:`x${v}`}, `${t} ×${v}`));
-    });
-    card.append(line);
+    line.append(el("span",{class:"small muted",style:`width:${w}px;display:inline-block`},label));
+    ents.sort((a,b)=>b[1]-a[1]).forEach(([t,v])=>
+      line.append(el("span",{class:`type type-${t}`,title:`×${v}`}, `${t} ×${v}`)));
+    out.push(line);
   });
+  return out;
+}
+function matchupCard(types, p){
+  types = (types||[]).filter(t=>t && t!=="None");   // drop the empty second slot
+  const mods = p ? defenseTypeMods(p) : null;        // Static defensive abilities (Thick Fat, Levitate…)
+  const card = el("div",{class:"card"}, el("h3",{},"Type Matchups",
+    el("span",{class:"muted small"}, types.join(" / "))));
+  matchupLines(types, mods).forEach(n => card.append(n));
   if(mods && mods.why.length) card.append(el("div",{class:"small",style:"margin-top:8px;color:var(--accent);font-weight:600"},
     "⚙ Adjusted by "+mods.why.join(" · ")));
   return card;
+}
+/* "What do I hit it with?" — the question a GM is asked every single round, answered on the token
+   itself rather than by going and finding that creature's sheet. Everything the damage math knows is
+   already in these numbers: the Type chart, the defender's Static abilities, and the flat Damage
+   Reduction it is currently carrying. Open by default (it is the point of tapping the token) but
+   collapsible, since the token menu is long.
+
+   Trainers are typeless and get nothing here — there is no chart to draw for them. */
+function tokenMatchupNode(token){
+  const types = tokenDefTypes(token).filter(ty => ty && ty !== "None");
+  if(!types.length) return null;
+  const L = token.link ? tokenLinked(token) : null;
+  const owner = (L && !L.missing) ? L.obj : null;
+  const mods = (owner && !isTrainerOwner(owner)) ? defenseTypeMods(owner) : null;
+  const d = el("details",{class:"spoiler",style:"margin-bottom:10px"});
+  d.open = true;
+  d.append(el("summary",{}, `🛡 Weak / Resists / Immune`,
+    el("span",{class:"muted small",style:"margin-left:8px;font-weight:600"}, types.join(" / "))));
+  const body = el("div",{style:"margin-top:6px"});
+  matchupLines(types, mods, {labelWidth:96}).forEach(n => body.append(n));
+  /* the flat Damage Reduction on top of all that — a ×2 hit into 15 DR is not the ×2 it looks like */
+  const drInfo = owner ? buffDR(owner) : null;
+  if(drInfo && drInfo.dr) body.append(el("div",{class:"small",style:"margin-top:6px;font-weight:700"},
+    el("span",{class:"muted"},"Damage Reduction — "), `${drInfo.dr} (${drInfo.from.join(", ")})`));
+  const extra = [];
+  if(mods && mods.seFlatDR) extra.push(`${mods.seFlatDR} more DR against Super-Effective hits`);
+  if(mods && mods.glacial)  extra.push(`Glacial Ice: ${mods.glacial.dr} DR vs Super-Effective ${[...mods.glacial.types].join("/")}`);
+  if(mods && mods.furCoat)  extra.push("Fur Coat: Physical hits are resisted one step further (not on the chart above)");
+  Object.entries((mods && mods.typeDR) || {}).forEach(([ty,e]) => extra.push(`${e.dr} DR vs ${ty} (${e.from.join(", ")})`));
+  if(extra.length) body.append(el("div",{class:"small muted",style:"margin-top:4px"}, extra.join(" · ")));
+  if(mods && mods.why.length) body.append(el("div",{class:"small",style:"margin-top:6px;color:var(--accent);font-weight:600"},
+    "⚙ "+mods.why.join(" · ")));
+  d.append(body);
+  return d;
 }
 /* standard PTU movement-capability meanings — these aren't separate DB entries (they're just
    numbers on the species), so hover text is hand-written instead of looked up */
@@ -14706,7 +14748,8 @@ function openMoveRoll(p, m, sp, opts={}){
         // GM: drop this rolled hit straight onto a battle-map token (auto Def / type / abilities / DR).
         if(isPhys || isSpec){
           const tw = attackTargetWidget({ dmg:total, type:mtype||"Typeless", physical:isPhys,
-            pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: hasAbility(p,"Tinted Lens"),
+            pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens"),
+            atkExploit: ownerHasAbility(p,"Exploit"),
             pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS });
           if(tw) dmgLine.append(tw);
         }
@@ -14718,7 +14761,8 @@ function openMoveRoll(p, m, sp, opts={}){
           lines:[`🎯 Accuracy ${accTot} (d20 ${acc})${effAC!=null?` vs AC ${effAC}`:""}`,
                  `${mtype||"Typeless"}${m.class?` · ${m.class}`:""} · DB ${effFDB}`],
           atk: (isPhys||isSpec) ? { dmg:total, type:mtype||"Typeless", physical:isPhys,
-                 pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: hasAbility(p,"Tinted Lens"),
+                 pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens"),
+                 atkExploit: ownerHasAbility(p,"Exploit"),
                  pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS } : null });
       }
       out.append(dmgLine);
@@ -16343,8 +16387,8 @@ function openItemAttack(t, prof){
    Berserker got its card first (berserkerCard, up by the weapon code) and Mentor its own picker.
    This block does the same job for the other classes at the table: Musician, Commander,
    Provocateur, Cheerleader, Glamour Weaver, Capture Specialist, Medic, Hex Maniac, Channeler,
-   Duelist, Herald of Pride, Type Ace, Maelstrom and Shade Caller — plus the 📋 Briefing that
-   opens every one of them, which is derived from whatever the sheet happens to say.
+   Duelist, Herald of Pride, Type Ace, Maelstrom and Shade Caller — plus the 📋 Remember dropdown
+   that opens every one of them: the niche interactions, derived from the sheet, and nothing else.
 
    The rule everywhere is the one berserkerCard set: anything the engine can genuinely work out is
    worked out and applied (uses spent, AP spent, buffs placed, HP moved, Tutor Points paid, Moves
@@ -18704,128 +18748,190 @@ function castWorldOfDarkness(t, rerender, persist){
 }
 
 /* ===================================================================
-   BRIEFING CARD  —  "what can this character actually do?"
+   📋 REMEMBER  —  the short list of things that get forgotten
    -------------------------------------------------------------------
-   A GM opening an encounter mid-session does not want to read fourteen
-   Feature spoilers to find out whether this NPC hits hard. This card is
-   the two-minute answer, and every line of it is DERIVED from the sheet
-   in front of it — the attacks are built through trainerAttackProfile,
-   so the numbers are the ones the roll will actually produce, and a
-   Feature taken later shows up here without anybody editing prose.
+   Not a profile. Everything a GM needs to actually RUN this character
+   is already on the cards below it — attacks, uses, buttons. What isn't
+   anywhere is the handful of niche interactions that decide a fight and
+   that nobody remembers at 11pm: an Ability that blanks half the party's
+   damage, a Feature whose limit is "once per Scene per FOE" rather than
+   per Scene, an armour that is one charge and not a pool.
 
-   `t.brief` is the one hand-written part: a free-text note for the
-   things only the person who built the character knows (how they open,
-   what they are afraid of, who they are). It is edited in place.
+   So this is one collapsed dropdown of one-liners, derived from the
+   sheet. Two sources, both already maintained elsewhere:
+
+     • defenseTypeMods(p).why — the defensive Ability lines the damage
+       math already writes for itself ("Thick Fat: resists Fire & Ice one
+       step further"). Free, and never drifts from the engine.
+     • ABILITY_REMEMBER / FEATURE_REMEMBER — the ones `why` can't know
+       about because they aren't Type-chart effects.
+
+   A line ending "· auto" is one the sheet applies by itself, which is
+   exactly what a GM needs to be told so they don't hand-apply it twice.
 =================================================================== */
-/* the Skills worth naming — anything the Trainer is actually good at */
-function briefTopSkills(t, n){
-  return SKILLS.map(([k, lbl]) => ({ k, lbl, r:rankNum(t.skills && t.skills[k]), name:(t.skills || {})[k] }))
-    .filter(x => x.r >= 4)
-    .sort((a, b) => b.r - a.r)
-    .slice(0, n || 5);
-}
-/* every attack this Trainer can make, as the roll would build it: unarmed, each weapon (and its
-   Weapon Move), each Move a Feature taught them, and each Move swung as a Weapon Attack */
-function briefAttacks(t){
+/* Abilities whose interaction changes how the fight should be PLAYED, and which the defensive
+   Type-chart pass (defenseTypeMods.why) can't describe. Keep this list mean: an Ability that just
+   adds a number belongs in the roll, not in a list of things to remember. */
+const ABILITY_REMEMBER = {
+  "wonder guard":     ["only Super-Effective damage touches it at all", true],
+  "magic guard":      ["takes no indirect damage — weather, status, hazards, recoil", false],
+  "illusion":         ["looks like another Pokémon until a damaging Move connects", true],
+  "impostor":         ["Transforms into the foe the moment it's sent out", false],
+  "sturdy":           ["survives a would-be knockout at 1 HP", false],
+  "shell armor":      ["cannot be Critically Hit", false],
+  "battle armor":     ["cannot be Critically Hit", false],
+  "emergency exit":   ["flees the field when it drops past half HP", false],
+  "wimp out":         ["flees the field when it drops past half HP", false],
+  "moody":            ["random Combat Stages every turn — roll them", false],
+  "protosynthesis":   ["boosts its highest stat in Sun (or on a Booster Energy)", false],
+  "quark drive":      ["boosts its highest stat on Electric Terrain", false],
+  "unaware":          ["ignores the other side's Combat Stages", false],
+  "contrary":         ["Combat Stage changes are reversed on it", false],
+  "simple":           ["Combat Stage changes on it are doubled", false],
+  "magic bounce":     ["reflects Status Moves back at the user", false],
+  "pressure":         ["foes spend an extra use on Moves aimed at it", false],
+  "regenerator":      ["heals when it switches out", false],
+  "poison heal":      ["Poison heals it instead of hurting it", false],
+  "guts":             ["hits harder while suffering a Status", false],
+  "speed boost":      ["+1 Speed Combat Stage every turn", false],
+  "truant":           ["can only act every other turn", false],
+  "slow start":       ["halved Attack and Speed for its first turns", false],
+  "trace":            ["copies an Ability off a foe on entry", false],
+  "serene grace":     ["its Effect Ranges are widened", false],
+  "technician":       ["low Damage Base Moves hit much harder", false],
+  "tinted lens":      ["resisted hits climb one step, capped at neutral", true],
+  "super luck":       ["wider Critical Hit range on everything, Struggle included", true],
+  "exploit":          ["+5 damage on any Super-Effective hit it lands", true],
+  "tolerance":        ["Types it already resists are resisted one step further", true],
+  "twisted power":    ["adds half the other attacking stat to its damage", true],
+  "last chance":      ["one free swing back from the brink, once", false],
+  "type strategist":  ["+5 DR (+10 under a third HP) after using its Type", true],
+  "commander":        ["dives into an allied Dondozo and drives it", false],
+  "wonder skin":      ["Status Moves aimed at it are far less accurate", false],
+  "hyper cutter":     ["its Attack cannot be lowered", false],
+  "strong jaw":       ["every biting Move hits harder", false],
+  "fur coat":         ["Physical attacks are resisted one step further", true],
+  "thermal exchange": ["Fire hits raise its Attack; it can't be Burned", false],
+  "ice body":         ["heals every turn while it is Hailing", false],
+  "snow cloak":       ["extra Evasion while it is Hailing", true],
+};
+/* Feature rules with a limit or an ordering people get wrong. Keyed loosely by Feature name. */
+const FEATURE_REMEMBER = {
+  "deep cold":                 "once per Scene per FOE, not per Scene",
+  "tough as schist":           "the stone armour is ONE charge — one attack, not a pool",
+  "type refresh":              "once per Scene per target",
+  "simple improvements":       "once per Scene per Pokémon",
+  "new normal":                "once per Scene per Pokémon, and never above DB 14",
+  "chitin shield":             "once per Scene per Pokémon, and that Move can't touch it again all Scene",
+  "seize the moment":          "only against a Tagged foe — and only ONE foe is Tagged table-wide",
+  "expend momentum":           "the 3-Momentum Scene refresh is once per Scene per Pokémon",
+  "effective methods":         "one Pokémon can only ever be targeted once",
+  "battle synchronization":    "the +1 Accuracy only counts against the foe that was hit",
+  "channeler":                 "Fainting drops EVERY Channel, and the AP comes back with it",
+  "plainly perfect":           "a Critical Hit's second set of dice is still rolled normally",
+  "pheromone markers":         "the 1d6 is once per Scene per foe, at their third stack",
+  "fishbowl technique":        "their Pokémon carry the Rain — the map's weather is unchanged",
+  "polar vortex":              "their Pokémon carry the Hail — the map's weather is unchanged",
+  "gravel before me":          "triggers on a MISS, an Injury, a crit or a Faint — the party's successes feed it",
+  "rouse the dragon's blood":  "the un-missable Move must be a Herald of Pride one, against that foe",
+  "signature move":            "one Move's Frequency is permanently a step better",
+  "type expertise":            "STAB never applies to a Struggle Attack, weapon strikes included",
+  "spirit boost":              "2 AP stays Bound until it is released — check the AP bar",
+  "prismatic alignment":       "once per Scene with EACH of the six Moves — tick them off",
+};
+/* Everything worth remembering about one creature, deduped BY ABILITY NAME — the damage math's own
+   `why` line always wins over the table below, because it's the one that can't drift from the engine
+   (Wonder Guard was otherwise said twice, in two different wordings). */
+function rememberFor(o){
   const out = [], seen = new Set();
-  const push = (prof, tag) => {
-    if(!prof) return;
-    const k = `${prof.name}|${tag || ""}`; if(seen.has(k)) return; seen.add(k);
-    out.push({ prof, tag });
+  const push = (ability, txt, auto) => {
+    const k = String(ability).toLowerCase().replace(/\s*\[errata\]\s*$/, "").trim();
+    if(!k || seen.has(k)) return; seen.add(k);
+    out.push({ txt, auto:!!auto });
   };
-  push(trainerStruggle(t), "unarmed");
-  (t.weapons || []).forEach(w => {
-    push(trainerStruggle(t, w), w.name || w.category);
-    [["weaponMoveAdept", "adept"], ["weaponMoveMaster", "master"]].forEach(([f]) => {
-      if(w[f]) push(trainerAttackProfile(t, w[f], w), `${w.name || "weapon"} Move`);
-    });
-    trainerWeaponAttackMoves(t).forEach((d, mn) => {
-      if(!weaponFitsRestrict(w, d.restrict)) return;
-      push(trainerAttackProfile(t, mn, w, true), `${d.feat} · as a Weapon Attack`);
-    });
+  /* the defensive Ability pass the damage math already writes for itself, e.g.
+     "Thick Fat: resists Fire & Ice one step further" — the name is everything before the colon */
+  if(!isTrainerOwner(o)) (defenseTypeMods(o).why || []).forEach(w => push(String(w).split(":")[0], w, true));
+  /* …and the ones a Type-chart pass can't describe */
+  const abils = [...(o.abilities || []), ...(o.encAbilities || []),
+                 ...(isTrainerOwner(o) ? featureAbilityGrants(o) : [])];
+  typeAceGrants(o).forEach(g => abils.push(g.ability));
+  abils.forEach(a => {
+    const key = String(a).toLowerCase().replace(/\s*\[errata\]\s*$/, "").trim();
+    const hit = ABILITY_REMEMBER[key]; if(!hit) return;
+    push(key, `${String(a).replace(/\s*\[errata\]\s*$/, "")}: ${hit[0]}`, hit[1]);
   });
-  const own = [...new Set([...(t.moves || []), ...(t.encMoves || [])])];
-  own.forEach(mn => { if(moveByName.get(String(mn).toLowerCase())) push(trainerAttackProfile(t, mn), "Move"); });
   return out;
 }
-/* the Features that do something FOR somebody else — Orders, Stratagems, Training, and the class
-   cards' own support buttons. Read off the tags rather than a list, so a new class needs no edit. */
-function briefSupportFeats(t){
-  return trainerFeatureObjs(t).filter(f => /\[(Orders|Stratagem|Training)\]/i.test(String(f.tags || "")))
-    .map(f => f.name);
+/* the Feature rules this Trainer has to keep straight — limits and orderings, not what they do */
+function rememberFeatures(t){
+  const out = [], seen = new Set();
+  [...(t.classes || []), ...(t.features || [])].forEach(n => {
+    const key = String(n).toLowerCase().replace(/\s*\[[^\]]*\]\s*$/, "").trim();
+    const txt = FEATURE_REMEMBER[key]; if(!txt || seen.has(key)) return;
+    seen.add(key);
+    out.push({ txt:`${n}: ${txt}`, auto:false });
+  });
+  return out;
 }
-function briefingCard(t, rerender, persist){
+/* One collapsed dropdown. Nothing here is a stat block — the cards below already are one.
+   A line two or more of their Pokémon share is said ONCE, with the names after it; otherwise a
+   six-Pokémon gym leader repeats "Last Chance" six times and the list stops being readable. */
+function rememberCard(t, rerender, persist){
   if(!t) return null;
   const saveFn = persist || save, redraw = rerender || renderBattle;
-  const d = trainerDerived(t);
-  const card = el("div", { class:"card" });
-  const head = el("h3", {}, "📋 Briefing",
-    el("span", { class:"muted small" }, "what this character can do"));
-  card.append(head);
-  /* the hand-written half */
-  const note = el("div", { class:"small", style:"white-space:pre-wrap;margin:2px 0 8px" });
-  const drawNote = () => {
-    note.innerHTML = "";
-    if(t.brief) note.append(el("div", { style:"padding:8px 10px;border-left:3px solid var(--accent);background:var(--panel-2);border-radius:0 8px 8px 0;white-space:pre-wrap" }, t.brief));
-    else note.append(el("span", { class:"muted" }, "No GM note yet — press ✎ to write how this character plays."));
-  };
-  drawNote();
-  head.append(el("button", { class:"linkbtn", style:"margin-left:8px", onclick:() => {
-    const ta = el("textarea", { rows:8, style:"width:100%" }); ta.value = t.brief || "";
-    modal({ title:"✎ Briefing note", bodyNode:el("div", {},
-      el("div", { class:"small muted", style:"margin-bottom:8px" },
-        "Free text — how they open, what they're protecting, anything the numbers below can't say. "
-        + "Everything else on this card is read off the sheet and updates itself."), ta),
-      footNodes:[
-        el("button", { class:"btn-secondary", onclick:closeModal }, "Cancel"),
-        el("button", { class:"btn-primary", onclick:() => { t.brief = ta.value.trim(); saveFn(); closeModal(); redraw(); } }, "Save"),
-      ] });
-  } }, t.brief ? "✎ edit" : "✎ write"));
-  card.append(note);
-  /* the derived half */
-  const line = (lbl, body) => card.append(el("div", { class:"small", style:"margin-bottom:4px" },
-    el("span", { class:"muted", style:"font-weight:800" }, lbl + " "), body));
-  const classes = (t.classes || []).join(" / ") || "no class";
-  line("WHO", `Lv ${t.level || 1} · ${classes} · ${d.hp} HP · ${d.ap} AP · Evasion ${d.physEva}/${d.specEva}/${d.spdEva} (Phys/Spec/Speed)`);
-  const skills = briefTopSkills(t, 5);
-  if(skills.length) line("GOOD AT", skills.map(s => `${s.lbl} ${s.name}`).join(" · "));
-  /* attacks, best Damage Base first — that's the order a GM wants them in */
-  const atks = briefAttacks(t).filter(a => a.prof && a.prof.damageBase !== "—")
-    .sort((a, b) => (+b.prof.damageBase || 0) - (+a.prof.damageBase || 0)).slice(0, 8);
-  if(atks.length){
-    card.append(el("div", { class:"small", style:"margin:8px 0 2px" },
-      el("span", { class:"muted", style:"font-weight:800" }, "HITS WITH")));
-    atks.forEach(a => {
-      const p = a.prof;
-      card.append(el("div", { class:"small", style:"margin-left:10px" },
-        el("span", { style:"font-weight:700" }, p.name),
-        el("span", { class:"muted" }, ` — ${p.cls} ${p.type} · DB ${p.damageBase} · AC ${p.ac} · ${p.range}`
-          + (a.tag ? ` · ${a.tag}` : "") + (p.frequency && !/at-?will/i.test(p.frequency) ? ` · ${p.frequency}` : ""))));
-    });
-  }
-  const abils = [...new Set([...(t.abilities || []), ...(t.encAbilities || []), ...featureAbilityGrants(t)])];
-  if(abils.length) line("ABILITIES", abils.join(" · "));
-  const stab = (t.stabTypes || []).length ? `STAB on ${(t.stabTypes || []).join("/")}` : "";
-  const ct = typeAceChosenType(t);
-  if(stab || ct) line("TYPE", [stab, ct ? `Chosen Type ${ct}` : ""].filter(Boolean).join(" · "));
-  const caps = featureCaps(t).flatMap(c => c.caps || []);
-  const sw = featureSwim(t);
-  if(caps.length || sw) line("MOVES ABOUT", [sw ? `+${sw} Swim` : "", ...caps].filter(Boolean).join(" · "));
-  const sup = briefSupportFeats(t);
-  if(sup.length) line("FOR THEIR POKÉMON", sup.join(" · "));
-  const stances = FEATURE_MODES.filter(m => hasFeatureLoose(t, m.feat));
-  if(stances.length) line("STANCES", stances.map(m => `${m.feat} (Bind ${m.bindAP} AP)${modeIsOn(t, m.key) ? " ● ON" : ""}`).join(" · "));
   const mons = trainerOwnMons(t);
-  if(mons.length) line("BRINGS", mons.map(p => {
-    const sp = getSpecies(p.species);
-    return `${p.nickname || sp?.name || p.species} Lv ${p.level}`
-      + ((p.abilities || []).length ? ` (${(p.abilities || []).join(", ")})` : "");
-  }).join(" · "));
-  const boundNow = modeBindAP(t) + channelerBindAP(t) + bookDrain(t).ap + (t.manualBoundAP || 0);
-  if(boundNow) line("AP TIED UP", `${boundNow} of ${d.ap} is Bound or Drained right now — ${d.ap - trainerAPUsed(t)} free.`);
-  card.append(el("div", { class:"small muted", style:"margin-top:8px" },
-    "Everything above the note is read off this sheet as it stands — change a Feature, a weapon or a Skill Rank and "
-    + "this changes with it. The class cards below are where the buttons live."));
+  const perMon = mons.map(p => ({ name:ownerLabel(p), lines:rememberFor(p) }));
+  const tally = new Map();
+  perMon.forEach(m => m.lines.forEach(l => {
+    const e = tally.get(l.txt) || { auto:l.auto, who:[] };
+    e.who.push(m.name); tally.set(l.txt, e);
+  }));
+  const groups = [];
+  const mine = [...rememberFor(t), ...rememberFeatures(t)];
+  if(mine.length) groups.push({ head:t.name || "Trainer", lines:mine });
+  perMon.forEach(m => {
+    const ls = m.lines.filter(l => (tally.get(l.txt) || { who:[] }).who.length === 1);
+    if(ls.length) groups.push({ head:m.name, lines:ls });
+  });
+  const shared = [...tally].filter(([, e]) => e.who.length > 1)
+    .map(([txt, e]) => ({ txt:`${txt} — ${e.who.join(", ")}`, auto:e.auto }));
+  if(shared.length) groups.push({ head:"Shared", lines:shared });
+  const n = groups.reduce((a, g) => a + g.lines.length, 0);
+  const note = (t.brief || "").trim();
+  if(!n && !note) return null;                            // nothing niche about them — say nothing
+
+  const card = el("details", { class:"card spoiler", style:"padding:10px 14px" });
+  const sum = el("summary", { style:"font-size:13px;text-transform:uppercase;letter-spacing:.6px" },
+    `📋 Remember${n ? ` (${n})` : ""}`);
+  sum.append(el("button", { class:"linkbtn", style:"margin-left:8px;text-transform:none;letter-spacing:0",
+    title:"a free-text note of your own, above the derived list",
+    onclick:e => {
+      e.preventDefault(); e.stopPropagation();
+      const ta = el("textarea", { rows:5, style:"width:100%" }); ta.value = t.brief || "";
+      modal({ title:"✎ Your own note", bodyNode:el("div", {},
+        el("div", { class:"small muted", style:"margin-bottom:8px" },
+          "Anything the list below can't work out for itself. Keep it to a line or two — the point of this card is that it fits on one screen."), ta),
+        footNodes:[
+          el("button", { class:"btn-secondary", onclick:closeModal }, "Cancel"),
+          el("button", { class:"btn-primary", onclick:() => { t.brief = ta.value.trim(); saveFn(); closeModal(); redraw(); } }, "Save"),
+        ] });
+    } }, note ? "✎ edit" : "✎ note"));
+  card.append(sum);
+  const body = el("div", { style:"margin-top:8px" });
+  if(note) body.append(el("div", { class:"small",
+    style:"white-space:pre-wrap;padding:6px 10px;border-left:3px solid var(--accent);background:var(--panel-2);border-radius:0 8px 8px 0;margin-bottom:8px" }, note));
+  groups.forEach(g => {
+    body.append(el("div", { class:"small muted", style:"font-weight:800;margin:6px 0 2px;opacity:.75" }, g.head));
+    g.lines.forEach(l => body.append(el("div", { class:"small", style:"margin-left:10px;display:flex;gap:6px" },
+      el("span", { class:"muted" }, "•"),
+      el("span", {}, l.txt,
+        l.auto ? el("span", { class:"muted small", style:"margin-left:6px;font-weight:700" }, "· auto") : ""))));
+  });
+  if(!n) body.append(el("div", { class:"small muted" }, "Nothing niche on this sheet — what they do is on the cards below."));
+  else body.append(el("div", { class:"small muted", style:"margin-top:8px" },
+    "“· auto” means the sheet already applies it — don't add it again by hand."));
+  card.append(body);
   return card;
 }
 
@@ -19266,7 +19372,7 @@ const typeAceBranchFor = t => TYPE_ACE_BRANCH.filter(d => hasFeatureLoose(t, d.f
    ⚔ Combat tab and the GM's Encounters card call this, so an NPC with a player class gets the same
    buttons (and passes its own saveEnc as `persist`). */
 function classAutomationCards(t, rerender, persist){
-  return [briefingCard,
+  return [rememberCard,
           musicianCard, commanderCard, provocateurCard, cheerleaderCard,
           glamourCard, captureCard, medicCard, hexCard, channelerCard,
           duelistCard, heraldCard, typeAceCard, maelstromCard, shadeCallerCard]
@@ -22706,7 +22812,8 @@ function simProfile(A, atk, cfg){
     flat: atkStat + (bm.dmg||0) + (wx.dmg||0) + (tx.dmg||0) + (abil.flat||0) + typeBoosterDmg(p, mtype),
     autoHit: !!wx.autoHit,
     pierceImmune: !A.isT && ignoresTypeImmunity(p, atk.m, mtype),  // Bone Wielder [Errata] / Scrappy
-    atkTinted: !A.isT && hasAbility(p,"Tinted Lens"),              // resisted hits climb one step (capped at neutral)
+    atkTinted: ownerHasAbility(p,"Tinted Lens"),                   // resisted hits climb one step (capped at neutral)
+    atkExploit: ownerHasAbility(p,"Exploit"),                      // +5 on any Super-Effective hit
     pierceDR: A.isT ? attackDRPierce(p, atk) : 0,                  // Herald of Pride ignores DR on Weapon Attacks
     fiveStrike: isFiveStrike(atk.m),
     atkStat,
@@ -22744,8 +22851,9 @@ function simTypeMult(D, type, pierceImmune, atkTinted, isPhys){
   return m;
 }
 /* rolled total → HP actually lost, running the same order as tokenDamageBreakdown */
-function simMitigate(D, raw, type, isPhys, pierceImmune, pierceDR, atkTinted){
+function simMitigate(D, raw, type, isPhys, pierceImmune, pierceDR, atkTinted, atkExploit){
   const mult = simTypeMult(D, type, pierceImmune, atkTinted, isPhys);
+  if(atkExploit && mult > 1) raw += 5;                            // Exploit, same as tokenDamageBreakdown
   const afterDef = Math.max(0, raw - simDefStat(D, isPhys));
   const mods = D.dmods();
   const seDR = (mods && mods.seFlatDR && mult>1) ? mods.seFlatDR : 0;
@@ -22766,7 +22874,7 @@ function simExpected(A, atk, D, cfg){
   const db  = pr.fiveStrike ? Math.min(28, pr.baseDB*3 + pr.dbBonus) : pr.db;   // Five Strike averages 3 hits
   const avg = simDbAvg(db);
   const pCrit = pr.alwaysCrit ? 1 : pr.autoHit ? 0 : Math.max(0, (21-pr.critT)/20);
-  const ev = pHit * simMitigate(D, Math.round(avg + pr.flat + pCrit*avg), pr.mtype, pr.isPhys, pr.pierceImmune, pr.pierceDR, pr.atkTinted);
+  const ev = pHit * simMitigate(D, Math.round(avg + pr.flat + pCrit*avg), pr.mtype, pr.isPhys, pr.pierceImmune, pr.pierceDR, pr.atkTinted, pr.atkExploit);
   /* Blowing yourself up is only a good trade when it actually finishes the target — otherwise the
      side just gave away a whole combatant, so heavily discount it rather than ban it (a Golem whose
      only real attack IS Self-Destruct still gets to use it). */
@@ -22840,7 +22948,7 @@ function simStrike(B, A, atk, D, round){
     if(hasAbility(A.obj,"Sniper")){ const r3 = rollDiceString(dice); raw += r3 ? r3.total : 0; }
   }
   const before = D.hp;
-  const done  = Math.min(before, simMitigate(D, Math.max(0,raw), pr.mtype, pr.isPhys, pr.pierceImmune, pr.pierceDR, pr.atkTinted));
+  const done  = Math.min(before, simMitigate(D, Math.max(0,raw), pr.mtype, pr.isPhys, pr.pierceImmune, pr.pierceDR, pr.atkTinted, pr.atkExploit));
   /* Status riders: a triggered Effect Range that names an Affliction applies it (same heuristic the
      move-roll modal uses for its "Poisoned!" banner). Sheer Force trades these away for damage. */
   let inflicted = null;
@@ -25478,7 +25586,7 @@ function logRoll({ kind, label, who, headline, lines, atk, area }){
   if(atk) e.atk = { dmg: Math.max(0, Math.round(atk.dmg||0)), type: atk.type || "Typeless",
                     physical: !!atk.physical, pierceImmune: !!atk.pierceImmune,
                     pierceDR: Math.max(0, Math.round(atk.pierceDR||0)),
-                    atkTinted: !!atk.atkTinted,
+                    atkTinted: !!atk.atkTinted, atkExploit: !!atk.atkExploit,
                     defCSMode: (atk.defCSMode==="all" || atk.defCSMode==="positive") ? atk.defCSMode : null };
   /* An "area" entry is a declaration, not a hit: the player says what they did and the GM decides
      where it lands. It carries the caster's sheet (so the shape can be anchored on their token),
@@ -28712,7 +28820,7 @@ function attachImageDrag(node, img, map, overlay, originX=0, originY=0){
    Levitate, Wonder Guard, Filter, …) and any Swarm/manual effectiveness nudge, then Damage
    Reduction (active DR buffs + flat DR vs Super-Effective). Used by BOTH the token menu's manual
    "Apply an attack" box and the roll-result "Apply to target" picker, so the two never diverge. */
-function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, defCSMode=null }){
+function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, defCSMode=null }){
   const def = tokenDefenseStat(token, !!physical, defCSMode);
   const swarmTgt = (()=>{ const LL = token.link ? tokenLinked(token) : null;
     return (LL && !LL.missing && LL.kind==="enc" && isSwarm(LL.obj)) ? LL.obj : null; })();
@@ -28763,7 +28871,13 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
       if(up !== mult){ mult = up; tinted = true; }
     }
   }
-  const afterDef  = Math.max(0, dmg - def);
+  /* Exploit (attacker Static): "Whenever you deal Super-Effective Damage to a target, that target
+     treats your damage roll as if it were increased by +5." It is the DAMAGE ROLL that grows, so the
+     +5 goes on before Defense comes off — and it can only be judged once effectiveness is known,
+     which is why it sits here rather than in the roll screen that produced `dmg`. */
+  const exploit  = !!atkExploit && mult > 1;
+  const dmgUsed  = dmg + (exploit ? 5 : 0);
+  const afterDef  = Math.max(0, dmgUsed - def);
   const afterMult = Math.floor(afterDef * mult);
   const { dr, from } = owner ? buffDR(owner) : { dr:0, from:[] };
   const seDR  = (defMods?.seFlatDR && mult > 1) ? defMods.seFlatDR : 0;
@@ -28779,10 +28893,10 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
   const drGone  = Math.max(0, Math.min(drPool, Math.round(pierceDR||0)));
   const final = Math.max(0, afterMult - (drPool - drGone));
   return { def, physical:!!physical, typeless, mult, afterDef, afterMult, dr, from, seDR, glacialDR,
-           typeDR, typeDRFrom, final, drPool, drGone,
+           typeDR, typeDRFrom, final, drPool, drGone, exploit, dmgUsed,
            owner, defMods, swarmTgt, swarmStep, extraStep, pierced, tinted, tolerance: tolStep<0, furCoat: furActive,
            // kept only so applyTokenDamage can re-run this same hit against a breached boat's passengers
-           dmg, type:(typeless?"Typeless":type), aoe:!!aoe, pierceImmune:!!pierceImmune, pierceDR, atkTinted:!!atkTinted, defCSMode };
+           dmg, type:(typeless?"Typeless":type), aoe:!!aoe, pierceImmune:!!pierceImmune, pierceDR, atkTinted:!!atkTinted, atkExploit:!!atkExploit, defCSMode };
 }
 /* Apply a computed breakdown to the token: subtract its HP and spend any one-shot DR buff that
    absorbed the hit (Excited, Intercept…). Returns the HP value BEFORE the hit. */
@@ -28800,7 +28914,7 @@ async function applyTokenDamage(token, br){
       for(const p of boatPassengers(map, token)){
         const pbr = tokenDamageBreakdown(p, { dmg:br.dmg, type:br.type, physical:br.physical,
           extraStep:(br.extraStep||0)-1, aoe:br.aoe, pierceImmune:br.pierceImmune, pierceDR:br.pierceDR,
-          atkTinted:br.atkTinted, defCSMode:br.defCSMode });
+          atkTinted:br.atkTinted, atkExploit:br.atkExploit, defCSMode:br.defCSMode });
         await applyTokenDamage(p, pbr);
       }
     }
@@ -28824,14 +28938,15 @@ function damageResultHTML(dmg, typeName, br, before){
   const furTxt   = br.furCoat ? " <b>(Fur Coat: −1 step)</b>" : "";
   const pierceTxt = br.pierced ? " <b>(immunity ignored)</b>" : "";
   const abilTxt  = (br.defMods && br.defMods.why.length && !br.typeless) ? `<br><span style="color:var(--accent)">⚙ ${br.defMods.why.join(" · ")}</span>` : "";
-  return `${dmg} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${pierceTxt}${swarmTxt}${stepTxt}${tintTxt}${tolTxt}${furTxt} = ${br.afterMult}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${before - br.final}</b>.${abilTxt}`;
+  const expTxt = br.exploit ? ` <b>(Exploit: +5)</b>` : "";
+  return `${br.dmgUsed ?? dmg}${expTxt} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${pierceTxt}${swarmTxt}${stepTxt}${tintTxt}${tolTxt}${furTxt} = ${br.afterMult}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${before - br.final}</b>.${abilTxt}`;
 }
 /* GM tool surfaced on a rolled attack's result: pick a token on the battle map and drop the rolled
    damage on it, running the same full damage math as the token menu (type, phys/spec, abilities, DR).
    Returns a DOM node, or null when it doesn't apply (not the GM, not in cloud, no editable tokens on
    the current map). `dmg` = the rolled total, `type` = the move's effective Type, `physical` picks
    Def vs Sp.Def. */
-function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, defCSMode=null }){
+function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, defCSMode=null }){
   if(mode!=="cloud" || !cloud.isGM) return null;
   const map = currentMapForView() || activeMap(); if(!map) return null;
   // scenery (shop doors) is editable and "linked", but it is not a creature you can roll damage
@@ -28910,7 +29025,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     if(!chosen.length){ out.textContent = "Tick at least one target (in either tab)."; return; }
     out.innerHTML = "";
     for(const it of chosen){
-      const br = tokenDamageBreakdown(it.t, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, defCSMode });
+      const br = tokenDamageBreakdown(it.t, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, defCSMode });
       const before = await applyTokenDamage(it.t, br);
       it.cb.checked = false;                                    // clear so a second Apply doesn't double-hit
       const line = el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"});
@@ -29036,6 +29151,7 @@ function openRollApply(e){
     + (e.headline ? `: ${e.headline}` : "") + ` at ${rollFeedTime(e.at)}.`));
   const w = attackTargetWidget({ dmg:e.atk.dmg, type:e.atk.type, physical:e.atk.physical,
                                  pierceImmune:e.atk.pierceImmune, pierceDR:e.atk.pierceDR, atkTinted:e.atk.atkTinted,
+                                 atkExploit:e.atk.atkExploit,
                                  defCSMode:e.atk.defCSMode });
   body.append(w || el("div",{class:"small"},
     "No damageable token on the current map — open the 🗺 Map (or add a token) and try again."));
@@ -29102,6 +29218,10 @@ function openTokenMenu(token, map){
       if(ev) wrap.append(el("div",{class:"small",style:"margin-bottom:10px;font-weight:700"},
         el("span",{class:"muted"},"Evasion — "),
         `Phys +${ev.phys} · Spec +${ev.spec} · Speed +${ev.spd}`));
+      // …and what it is weak to, resists and shrugs off entirely (see tokenMatchupNode). Same gate as
+      // the Evasion line above: the GM sees every token, a player only the creatures they already own.
+      const mu = tokenMatchupNode(token);
+      if(mu) wrap.append(mu);
     }
   }
   if(info.unlinked){
@@ -29219,7 +29339,8 @@ function openTokenMenu(token, map){
         el("button",{class:"btn-secondary",style:"padding:2px 12px",title:"one step more effective",
           onclick:()=>{ manualStep=Math.min(4,manualStep+1); drawStep(); }},"+")));
       atk.append(el("div",{class:"small muted",style:"margin-bottom:6px"},
-        "Use for abilities the sheet can't auto-apply — e.g. Bulletproof (−1 vs ranged), Tinted Lens, or “resisted one step further” move text."));
+        "Use for abilities the sheet can't auto-apply — e.g. Bulletproof (−1 vs ranged) or “resisted one step further” move text. "
+        + "Tinted Lens, Tolerance and Fur Coat are already applied — don't add them here as well."));
       const apply = async ()=>{
         const dmg = parseInt(dmgIn.value);
         if(isNaN(dmg)){ out.textContent = "Enter a damage number."; return; }
