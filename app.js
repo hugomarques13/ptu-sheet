@@ -643,19 +643,28 @@ function activeWeather(){
   const map = currentMapForView();
   return weatherByKey(map?.weather);
 }
+/* The weather ONE creature is fighting in. Normally the map's, but a buff may carry a personal
+   override (a Maelstrom's Fishbowl Technique) — checked first, so it works on a local sheet with no
+   map at all. Every Pokémon-facing weather reader goes through here; the map-wide questions
+   (which Type is Weather Ball, what the sky looks like) still ask activeWeather(). */
+function ownerWeather(o){
+  const b = ownerBuffs(o);
+  for(let i=b.length-1; i>=0; i--){ const k = b[i].mods && b[i].mods.weather; if(k && WEATHER_BY_KEY[k]) return WEATHER_BY_KEY[k]; }
+  return activeWeather();
+}
 const weatherIsClear = w => (w||activeWeather()).key === "clear";
 /* Combat-Stage bonuses a Pokémon's abilities get from the current weather (Swift Swim, Sand Rush,
    Thermosensitive) — folded into effectiveCS so every derived stat and roll sees them. */
 function weatherCSMods(p){
   const out = { atk:0, def:0, spatk:0, spdef:0, spd:0 };
-  const w = activeWeather(); if(!w.abilityCS) return out;
+  const w = ownerWeather(p); if(!w.abilityCS) return out;
   for(const ab in w.abilityCS)
     if(monHasAbility(p, ab)) for(const k in w.abilityCS[ab]) out[k] += w.abilityCS[ab][k];
   return out;
 }
 /* flat Evasion bonus from a weather ability (Snow Cloak in Hail) */
 function weatherEvasion(p){
-  const w = activeWeather(); if(!w.abilityEvasion) return 0;
+  const w = ownerWeather(p); if(!w.abilityEvasion) return 0;
   let n = 0;
   for(const ab in w.abilityEvasion) if(monHasAbility(p, ab)) n += w.abilityEvasion[ab];
   return n;
@@ -663,7 +672,7 @@ function weatherEvasion(p){
 /* Damage / accuracy changes this weather makes to ONE move by ONE Pokémon. Shaped like buffMods
    so openMoveRoll can display and total it the same way it does Cheers/Orders/Songs. */
 function weatherRollMods(p, m, moveType){
-  const w = activeWeather();
+  const w = ownerWeather(p);
   const res = { weather:w, dmg:0, autoHit:false, acOverride:null, lines:[] };
   if(weatherIsClear(w)) return res;
   const ty = String(moveType||"").toLowerCase();
@@ -2275,6 +2284,7 @@ function applyEndScene(c){
   c.trainer.usedAP = 0; c.trainer.tempHP = 0; c.trainer.buffs = []; resetUses(c.trainer, "scene");
   c.trainer.modes = {};                            // a Feature stance (Enchanting Transformation) lasts until the end of the Scene — and returns its Bound AP with it
   c.trainer.manualBoundAP = 0;                      // any manual GM AP Drain/Bind releases at End Scene too
+  channelerEndScene(c.trainer);                    // a Channeler's Imprints and Spirit Boosts hand their Bound AP back with the Scene; the Channels themselves aren't Scene-bound and stay
   delete c.trainer.fightOn;                        // Fight On and On is a combat-long refusal to drop; the fight is over
   // Combat Stages set by hand and Volatile afflictions don't outlast the Scene (Core p.234/p.245).
   // Stages an active source is still applying (a Burn, weather, an Aura, worn armour) are left to
@@ -2283,6 +2293,9 @@ function applyEndScene(c){
 
   (c.pokemon||[]).forEach(p => { normPokemon(p); p.tempHP = 0; p.buffs = []; resetUses(p, "scene");
     delete p.momentum;                 // Duelist Momentum doesn't outlast the fight (Core Extras)
+    delete p.typeRefreshed;            // Type Refresh is once per target per Scene
+    delete p.deepCold; delete p.simpleImp;             // both are once per Scene per creature
+    delete p.pheromone; delete p.pheroRolled;          // Pheromone Stacks don't outlast the fight
     resetManualCS(p); clearSceneStatuses(p);
     if(p.mega) megaRevert(p,true);
     shieldsDownRevert(p);                // Shields Down: back to Meteor Forme out of combat, if not Bruised
@@ -2312,6 +2325,7 @@ function applyEndDay(c, plan){
   const noHP = left => !!plan && !plan.center && left >= 5;
   const t = c.trainer; normTrainer(t);
   t.usedAP = 0; t.tempHP = 0; t.buffs = []; resetUses(t, "all"); resetManualCS(t); t.modes = {}; t.manualBoundAP = 0;
+  channelerEndScene(t, true);                      // a night's rest ends the Channeling too — nobody sleeps inside a 20 m leash
   delete t.fightOn;
   clearStorageDigestion(t);                      // Berry Storage: "all Buffs gained this way are lost after an Extended Rest"
   clearAllStatuses(t);                             // Extended Rest cures all Status afflictions (Core p.249) — except Death
@@ -2374,6 +2388,11 @@ async function endScene(){
    Max 3 Injuries removed per person per day by any route (Core p.252).
 =================================================================== */
 const REST_MAX_HEALS = 3;
+/* Sheets left out of the rest, by sheet id. Ticking someone off in the planner sticks: a player
+   who isn't at the table tonight stays out of every rest you run until you tick them back in,
+   rather than quietly rejoining the next time ☀ End Day is opened. Device-level, like the other
+   planner UI state — nothing about it is written to a sheet. */
+let restSkip = {};
 
 /* the sheets ☀ End Day offers a tab for. The GM and the Viewer co-pilot both drive every
    player's sheet; anyone else gets the one character they're playing. */
@@ -2496,7 +2515,7 @@ function openRestPlanner(){
   const sheets = restPlannerSheets();
   if(!sheets.length){ toast("Nothing to rest \u2014 no sheet you can edit"); return; }
   const plan = { center:false, tab:sheets[0].id, per:{} };
-  sheets.forEach(s => plan.per[s.id] = { on:true, heals:{}, band:{}, touched:{} });
+  sheets.forEach(s => plan.per[s.id] = { on: !restSkip[s.id], heals:{}, band:{}, touched:{} });
 
   const body = el("div");
   const summary = el("div",{style:"margin-left:auto;text-align:right;line-height:1.4"});
@@ -2543,15 +2562,32 @@ function openRestPlanner(){
         ? "Pok\u00e9mon Center: everyone comes out at full Hit Points with every Status cured and Daily Moves refreshed. Injuries add to the clock \u2014 30 minutes each, or a full hour each for a patient with 5 or more. Max 3 Injuries treated per person per day."
         : "Camp: at least 4 hours. Hit Points come back at 1/16th of Max per half hour (1/8th once Bandaged or under a Medic's Nurse) and stop coming back after 8 hours. Nobody left with 5+ Injuries recovers Hit Points at all. The first Injury is free natural healing; each one after it needs a Bandage in place 6 hours."));
 
-    /* one tab per sheet */
+    /* who's resting — one chip per sheet. The tickbox leaves that sheet out of the whole rest
+       (no healing, no AP, no refreshed uses, no day roll-over) and is remembered in restSkip;
+       the name opens that sheet's Injury list below. */
     if(sheets.length > 1){
+      body.append(el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;margin-bottom:6px"},
+        el("span",{class:"small muted",style:"font-weight:700"},"Who's resting"),
+        el("button",{class:"linkbtn",title:"everyone rests",
+          onclick:()=>{ sheets.forEach(x=>{ plan.per[x.id].on = true; restSkip[x.id] = false; }); draw(); }},"all"),
+        el("button",{class:"linkbtn",title:"nobody — then tick just the ones who do",
+          onclick:()=>{ sheets.forEach(x=>{ plan.per[x.id].on = false; restSkip[x.id] = true; }); draw(); }},"none")));
       const tabs = el("div",{class:"subtabs"});
       sheets.forEach(s => {
         const st = plan.per[s.id], sp = sheetPlan(s);
-        tabs.append(el("button",{class:"subtab"+(plan.tab===s.id?" on":""),
-          title: st.on ? "resting \u2014 "+restHoursText(sp.hours) : "not resting",
+        const chip = el("div",{class:"subtab"+(plan.tab===s.id?" on":""),
+          style:"display:flex;align-items:center;gap:7px;padding:6px 12px"});
+        const cb = el("input",{type:"checkbox",
+          title: st.on ? "resting — untick to leave "+s.name+" out of this rest entirely"
+                       : s.name+" is sitting this one out — tick to bring them back in"});
+        cb.checked = !!st.on;
+        cb.addEventListener("change", ()=>{ st.on = cb.checked; restSkip[s.id] = !cb.checked; draw(); });
+        const nm = el("span",{style:"cursor:pointer"+(st.on?"":";opacity:.6;text-decoration:line-through"),
+          title: st.on ? "open this sheet's Injury list" : "sitting this rest out",
           onclick:()=>{ plan.tab = s.id; draw(); }},
-          (st.on ? "" : "\u2013 ") + s.name + (st.on ? "  \u00b7 "+restHoursText(sp.hours) : "")));
+          s.name + (st.on ? "  \u00b7 "+restHoursText(sp.hours) : ""));
+        chip.append(cb, nm);
+        tabs.append(chip);
       });
       body.append(tabs);
     }
@@ -2562,7 +2598,7 @@ function openRestPlanner(){
 
     /* does this sheet rest at all? */
     const onCb = el("input",{type:"checkbox"}); onCb.checked = !!sp.st.on;
-    onCb.addEventListener("change", ()=>{ sp.st.on = onCb.checked; draw(); });
+    onCb.addEventListener("change", ()=>{ sp.st.on = onCb.checked; restSkip[s.id] = !onCb.checked; draw(); });
     body.append(el("label",{style:"display:flex;gap:8px;align-items:center;font-weight:700;margin-bottom:8px",
       title:"Leave this off and nothing at all happens to this sheet \u2014 no healing, no AP, no refreshed uses."},
       onCb, s.name + " takes this rest"));
@@ -2656,8 +2692,10 @@ function openRestPlanner(){
       goBtn.disabled = true;
     } else {
       goBtn.disabled = false;
+      const sittingOut = sheets.length - lines.length;
       summary.append(el("div",{},el("strong",{},"⏱ "+restHoursText(total)),
-        el("span",{class:"muted small"}," \u00b7 "+(lines.length===1?"1 sheet":lines.length+" sheets in parallel"))));
+        el("span",{class:"muted small"}," \u00b7 "+(lines.length===1?"1 sheet":lines.length+" sheets in parallel")
+          + (sittingOut ? " \u00b7 "+sittingOut+" sitting out" : ""))));
       summary.append(el("div",{class:"muted small"}, lines.join("  \u00b7  ")));
     }
     goBtn.textContent  = "☀ Rest" + (lines.length ? " " + restHoursText(total) : "");
@@ -2829,6 +2867,10 @@ function normTrainer(t){
   if(!t.equipment || typeof t.equipment!=="object" || Array.isArray(t.equipment)) t.equipment = {};  // worn gear per slot
   if(!t.books || typeof t.books!=="object" || Array.isArray(t.books)) t.books = {};                   // studied Books → {name:{bound,subject?,field?}}
   if(!t.modes || typeof t.modes!=="object" || Array.isArray(t.modes)) t.modes = {};                   // switched-on Feature stances (Enchanting Transformation) — see FEATURE_MODES
+  if(!t.chan || typeof t.chan!=="object" || Array.isArray(t.chan)) t.chan = {};                       // Channeler: the roster — who is Channeled, Imprinted and Spirit Boosted (see CHANNELER)
+  if(!Array.isArray(t.chan.on)) t.chan.on = [];
+  if(!Array.isArray(t.chan.imprint)) t.chan.imprint = [];
+  if(!Array.isArray(t.chan.boosts)) t.chan.boosts = [];
   if(!Array.isArray(t.gifts)) t.gifts = [];                        // Legendary Gifts (Blessed and the Damned)
   if(!Array.isArray(t.cards)) t.cards = [];                        // Arcana Deck cards this Trainer is holding
   if(!Array.isArray(t.moneyLog)) t.moneyLog = [];                  // every dollar in or out, oldest first (see moneyChange)
@@ -4331,15 +4373,62 @@ const FEATURE_ABILITY_CHOICES = [
   { feat:"Musical Ability",     abilities:["Drown Out","Soundproof"],     note:"Musician: choose Drown Out or Soundproof." },
   { feat:"Glamour Mastery",     abilities:["Magic Guard","Magic Bounce"], note:"Glamour Weaver: choose Magic Guard or Magic Bounce." },
   { feat:"Hex Maniac",          abilities:["Cursed Body","Omen"],         note:"Hex Maniac: choose Cursed Body or Omen." },
+  /* The scanner below reads every other one straight out of the Feature text. These two are here
+     because the packet spells Lightning Rod "Lightningrod", which resolves against nothing. */
+  { feat:"Earth Mother's Blessing Rank 1", abilities:["Arena Trap","Lightning Rod"], note:"Earth Mother's Blessing: choose one per Rank." },
+  { feat:"Earth Mother's Blessing Rank 2", abilities:["Arena Trap","Lightning Rod"], note:"Earth Mother's Blessing: choose one per Rank." },
 ];
-const featureAbilityChoiceDef = f => FEATURE_ABILITY_CHOICES.find(d=>featKey(d.feat)===featKey(f && f.name)) || null;
+/* ---- Ability grants, READ OUT OF THE RULES TEXT ----
+   Thirty-odd Features across the books end with some spelling of "You gain the chosen Ability",
+   and hand-listing them meant the ones nobody had built a character around silently granted
+   nothing — Noblesse Oblige's Regal Challenge, Dark Soul, Water's Shroud, Marksman's Sniper, a
+   Warper's Probability Control. The shapes are regular, so they are parsed instead of retyped,
+   the same bargain featureRiderScan makes.
+
+   The safety rule is the one that matters: EVERY name the sentence offers has to resolve in the
+   Ability DB, or the whole Feature is dropped. That is what keeps Martial Artist out (its options
+   carry [+Stat] tags, which change the stat pool and belong to featureStatTags, not here) and what
+   caught the Lightningrod spelling above rather than granting half a choice. */
+const ABIL_CHOICE_RE = /(?:^|\n)\s*(?:Each Rank,\s*)?[Cc]hoose\s+(?:one of\s+)?(.+?)\.\s*You gain the\s+[Cc]hosen\s+[Aa]bility/s;
+const ABIL_SINGLE_RE = /You gain the\s+([A-Z][A-Za-z'\- ]{1,28}?)\s+Ability/;
+function featureAbilityScan(f){
+  const e = String((f && f.effect) || ""); if(!e) return null;
+  const m = ABIL_CHOICE_RE.exec(e);
+  if(m){
+    const parts = m[1].replace(/\bor\b/g, ",").split(",").map(x=>x.trim()).filter(Boolean);
+    if(parts.length < 2) return null;
+    const res = parts.map(p => abilityByName.get(p.toLowerCase()));
+    if(res.some(x=>!x)) return null;                      // one unresolved name → trust none of them
+    return { feat:f.name, abilities:res.map(a=>a.name), scanned:true };
+  }
+  const one = ABIL_SINGLE_RE.exec(e);
+  if(one){
+    const a = abilityByName.get(one[1].trim().toLowerCase());
+    if(a) return { feat:f.name, abilities:[a.name], scanned:true };
+  }
+  return null;
+}
+/* every Feature→Ability grant the app knows, built once. Hand-written entries win, so a note or a
+   correction above always beats the parser. */
+let _featAbilDefs = null;
+function featureAbilityDefs(){
+  if(_featAbilDefs) return _featAbilDefs;
+  const m = new Map();
+  D.features.forEach(f => { const d = featureAbilityScan(f); if(d) m.set(featKey(f.name), d); });
+  FEATURE_ABILITY_CHOICES.forEach(d => m.set(featKey(d.feat), d));
+  _featAbilDefs = m;
+  return m;
+}
+const featureAbilityChoiceDef = f => featureAbilityDefs().get(featKey(f && f.name)) || null;
 /* Every Ability a Trainer's Features currently grant: fixed single-option grants apply on their own;
    multi-option ones only once the player has chosen (t.featAbil[feature]). */
+/* ownerHasAbility calls this on every crit check and every damage roll, so it walks the Trainer's
+   OWN short Feature list and looks each one up — not the whole Feature DB. */
 function featureAbilityGrants(t){
   if(!t) return [];
-  const out = [];
-  FEATURE_ABILITY_CHOICES.forEach(d=>{
-    if(!hasFeatureLoose(t, d.feat)) return;
+  const defs = featureAbilityDefs(), out = [];
+  [...(t.classes||[]), ...(t.features||[])].forEach(n=>{
+    const d = defs.get(featKey(n)); if(!d) return;
     if(d.abilities.length===1){ out.push(d.abilities[0]); return; }
     const pick = t.featAbil && t.featAbil[d.feat];
     if(pick && d.abilities.includes(pick)) out.push(pick);
@@ -4382,6 +4471,10 @@ const FEATURE_ACTIONS = [
     label:() => "🔥 Frenzy",
     title:t => hasStatus(t, "enraged") ? "Spend a use: cure Slowed/Stuck and gain the surge for this turn"
                                        : "Needs the Enraged condition" },
+  { feat:"Signature Move", run:signatureMovePick,
+    label:t => t.sigMove ? "⚙ Change Move" : "⚙ Choose Move",
+    title:t => t.sigMove ? `${t.sigMove}'s Frequency is raised one step — tap to move it to another Move`
+                         : "Pick the Move whose Frequency goes up a step (as if you had used a PP Up)" },
   { feat:BERSERKER_FIGHT_ON, run:fightOnToggle,
     label:t => t.fightOn ? "⏹ Stop fighting on" : "💢 Fight On",
     title:t => t.fightOn ? `Currently Fainting at ${koFloor(t)} HP instead of 0 — tap to end it`
@@ -4616,6 +4709,30 @@ function sheetDamageBase(m, owner){
 }
 /* the trainer's attack profile: base Struggle for a weapon, that weapon's granted Weapon Move, or
    a Move a [Weapon] Feature lets you swing with the weapon (asWeaponAttack — Core p.288) */
+/* Signature Move (General Feature): "Choose a Move you know. Increase the Move's Frequency one
+   step, as if you had used a PP Up." Same bump PP Up uses on a Pokémon (bumpFrequency), applied to
+   the ONE Move the Trainer picked — t.sigMove, chosen from the Feature's own row. This is the
+   single funnel every Trainer use-tracker reads, exactly as monMoveFreq is for a Pokémon. */
+function trainerMoveFreq(t, m){
+  const sig = t && t.sigMove;
+  return (sig && m && String(m.name||"").toLowerCase() === String(sig).toLowerCase())
+    ? bumpFrequency(m.frequency) : (m && m.frequency);
+}
+/* the ⚙ picker on the Signature Move row — only Moves whose Frequency can actually go up */
+function signatureMovePick(t, f, rerender, persist){
+  const opts = [...new Set([...(t.moves||[]), ...(t.encMoves||[])])].filter(mn=>{
+    const m = moveByName.get(String(mn).toLowerCase());
+    return m && bumpFrequency(m.frequency) !== m.frequency;
+  });
+  if(!opts.length){ toast("None of their Moves has a Frequency that can be raised (At-Will can't go higher)."); return; }
+  openPicker("Signature Move — raise which Move's Frequency?", opts, name=>{
+    const m = moveByName.get(name.toLowerCase());
+    t.sigMove = m ? m.name : name;
+    (persist||save)();
+    toast(`⭐ ${t.sigMove}: ${m.frequency} → ${bumpFrequency(m.frequency)}`);
+    (rerender||renderBattle)();
+  }, "move");
+}
 function trainerAttackProfile(t, weaponMoveName, w, asWeaponAttack){
   if(weaponMoveName){
     const m = moveByName.get(weaponMoveName.toLowerCase());
@@ -4623,7 +4740,7 @@ function trainerAttackProfile(t, weaponMoveName, w, asWeaponAttack){
     if(m) return { name:m.name, type:(w&&w.type&&w.type!=="Normal")?w.type:(m.type||"Normal"),
       damageBase:Math.min(28,(sd.db||0)+(w?w.dbMod:0)), dbNote:sd.note, ac:(m.ac!=null?m.ac:4)+(w?w.acMod:0),
       range:weaponizeRange(m.range||"Melee", w, asWeaponAttack), cls:m.class||"Physical",
-      frequency:m.frequency, effect:m.effect, weapon:w, move:m, weaponAttack:!!(w && asWeaponAttack) };
+      frequency:trainerMoveFreq(t, m), effect:m.effect, weapon:w, move:m, weaponAttack:!!(w && asWeaponAttack) };
   }
   return trainerStruggle(t, w);
 }
@@ -5371,7 +5488,8 @@ function trainerVitalsCard(t){
     injuryDayChip(t), " — Core p.252 allows 3 per individual per day (natural healing, Bandages, Items and Features share the count). It clears on ☀ End Day → 🌙 End the Day."));
   /* Books Drain AP separately (t.books) — that Drain outlives a Scene, so it's shown next to the
      Scene's spend rather than baked into it. See the BOOKS section. */
-  const bookAP = bookDrain(t).ap, boundAP = modeBindAP(t), manualAP = t.manualBoundAP||0, drained = bookAP + boundAP + manualAP;
+  const bookAP = bookDrain(t).ap, boundAP = modeBindAP(t), chanAP = channelerBindAP(t),
+        manualAP = t.manualBoundAP||0, drained = bookAP + boundAP + chanAP + manualAP;
   const setAP = u => { t.usedAP = Math.max(0, Math.min(maxAP - drained, u)); save(); renderTrainer(); };
   const apRow = el("div",{class:"hpctl",style:"margin-top:10px;align-items:center"});
   const apIn = el("input",{type:"number",min:0,max:maxAP-drained,title:"AP spent"}); apIn.value = t.usedAP;
@@ -5386,6 +5504,8 @@ function trainerVitalsCard(t){
     `📚 ${bookAP} AP Drained by studied Books until your next Extended Rest (Trainer → Sheet → Books).`));
   if(boundAP) card.append(el("div",{class:"small muted",style:"margin-top:4px"},
     `✨ ${boundAP} AP Bound by ${activeFeatureModes(t).map(d=>d.feat).join(", ")} — it comes back when you end it (⚔ Battle → Combat) or at End Scene.`));
+  if(chanAP) card.append(el("div",{class:"small muted",style:"margin-top:4px"},
+    `🧿 ${chanAP} AP Bound by ${channelerBindText(t)} — it comes back the moment you release them (⚔ Battle → Combat → Channeler), at End Scene, or if you Faint.`));
   if(manualAP) card.append(el("div",{class:"small muted",style:"margin-top:4px"},
     `🔒 ${manualAP} AP Drained/Bound by the GM (not tied to a Feature or move) — released manually or at End Scene.`));
   if(isGM()){
@@ -7194,7 +7314,7 @@ function bookDrain(t){
 }
 /* total AP unavailable right now = spent this Scene + Drained by Books + Bound by an active
    Feature stance (Enchanting Transformation) + any manual GM Drain/Bind not tied to either */
-function trainerAPUsed(t){ return (t.usedAP||0) + bookDrain(t).ap + modeBindAP(t) + (t.manualBoundAP||0); }
+function trainerAPUsed(t){ return (t.usedAP||0) + bookDrain(t).ap + modeBindAP(t) + channelerBindAP(t) + (t.manualBoundAP||0); }
 /* does the trainer meet a Rank's Skill prerequisite? (Well Read and the GM 🔓 can substitute) */
 function bookRankQualified(t, r){
   if(!r.skillKey) return { ok:true };                       // unparsed Skill — don't block the player
@@ -8646,6 +8766,23 @@ function trainerBarren(t){
 /* Which Trainer owns this Pokémon — tpSync only ever gets handed the Pokémon itself.
    WRAPPED IN try/catch ON PURPOSE: normPokemon calls tpSync from inside load(), where `state` is
    still in its temporal dead zone. Touching it there would throw and swallow the whole save. */
+/* An encounter NPC's Pokémon belong to somebody too, and until this existed they didn't: every
+   owner-driven passive (Glacial Ice's Damage Reduction, Insectoid Utility's Speed Evasion, Plainly
+   Perfect's maximised dice) silently did nothing for a Gym Leader's whole team. Rebuilt lazily and
+   only for a GM — pokeDerived calls this on every stat read, so it is an id→trainer Map, not a walk. */
+let _encMonOwner = null, _encMonOwnerSeq = -1, encOwnerSeq = 0;
+function encMonOwnerIndex(){
+  if(_encMonOwner && _encMonOwnerSeq === encOwnerSeq) return _encMonOwner;
+  const m = new Map();
+  try{
+    (encList()||[]).forEach(e => (e.trainers||[]).forEach(tr => {
+      if(!tr || !tr.trainer) return;
+      (tr.pokemon||[]).forEach(p => { if(p && p.id) m.set(p.id, tr.trainer); });
+    }));
+  }catch(err){}
+  _encMonOwner = m; _encMonOwnerSeq = encOwnerSeq;
+  return m;
+}
 function ownerTrainerOf(p){
   if(!p) return null;
   try{
@@ -8653,6 +8790,7 @@ function ownerTrainerOf(p){
     const act = activeChar(); if(has(act)) return act.trainer;                       // fast path
     if(mode==="cloud"){ for(const r of Object.values(cloud.byId||{})) if(has(r && r.data)) return r.data.trainer; }
     else for(const c of (state.characters||[])) if(has(c)) return c.trainer;
+    if(p.id && isGM()){ const hit = encMonOwnerIndex().get(p.id); if(hit) return hit; }
   }catch(e){ return null; }                  // too early to know, and nothing is barren yet anyway
   return null;
 }
@@ -9792,11 +9930,17 @@ const PTU_BUFFS = [
   // is a plain standing DR for the round rather than a spendable charge like Excited. —
   { key:"front-line-healer", cat:"Medic", name:"Front Line Healer", dur:"until end of next turn", self:true, mods:{ dr:5 },
     note:"+5 Damage Reduction for 1 full round after applying a Restorative — auto-subtracted by the Damage/Heal box, the Map's attack tool and the Simulator. Does not stack with itself." },
+  // — Herald of Pride (Game of Throhs). Self-only, so it never joins the ✨ Give flow. —
+  { key:"roused", cat:"Field", name:"Roused", dur:"until spent", once:true, self:true, mods:{},
+    note:"Rouse the Dragon's Blood: your next Herald of Pride Move against the foe that crit or Injured you cannot miss, cannot be Intercepted, and nothing that would make it miss can be activated. Remove it when you spend it." },
+  // — Shade Caller's World of Darkness, painted over an area by whoever is holding the Map. —
+  { key:"shifting-darkness", cat:"Field", name:"Shifting Darkness", dur:"until end of encounter", mods:{ acc:-3 },
+    note:"−3 Accuracy while attacking from (or into) the Shifting Darkness — unless you have Darkvision, in which case take this off. The sheet applies it to every Accuracy Roll the carrier makes; a shot fired INTO the zone from outside has to be handled by hand." },
   { key:"soothing-flute-dr", cat:"Item", name:"Soothing Flute (Ghost DR)", dur:"until end of Scene", mods:{ typeDR:{Ghost:5} },
     note:"+5 Damage Reduction against Ghost-Type Attacks — Soothing Flute (Trainer Accessory), auto-applied by the Map's attack tool whenever the incoming hit is Ghost-Type." },
 ];
 const buffByKey = new Map(PTU_BUFFS.map(b=>[b.key,b]));
-const BUFF_CATS = ["Cheerleader","Commander","Musician","Berserker","Medic","Item"];
+const BUFF_CATS = ["Cheerleader","Commander","Musician","Berserker","Medic","Item","Field"];
 function ownerBuffs(owner){ return Array.isArray(owner?.buffs) ? owner.buffs : []; }
 /* Some buffs only apply to one damage class — a Spicy Wrap's +5 is Physical attacks only, a Dry
    Wafer's is Special. `b.only` carries that; pass ctx={isPhys} from a roll to honour it. With no
@@ -9820,6 +9964,9 @@ function buffMove(owner){ return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods&&
    AFTER the ⌊stat/5⌋ cap in both derived layers, the way an Ability's flat Evasion already is —
    it is a bonus on top of the stat, not part of it. */
 function buffEva(owner){ return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods&&b.mods.eva)||0), 0); }
+/* Flat Initiative from a buff (a Channeler's Spirit Boost on a Speed-heavy Pokémon). Read by
+   tokenInitiative, so placing the Boost reorders the Map's turn tracker straight away. */
+function buffInit(owner){ return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods&&b.mods.init)||0), 0); }
 /* Temporary Action Points (Cheerleader's Moment of Action, Captured Momentum). They widen the AP
    ceiling for as long as the buff is up and vanish with it, so nothing has to be handed back. */
 function buffTempAP(owner){ return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods&&b.mods.tempAP)||0), 0); }
@@ -9933,6 +10080,7 @@ function buffModText(m){
   if(m.crit) p.push(`+${m.crit} Crit/Effect range`);
   if(m.dr)   p.push(`${m.dr>0?"+":""}${m.dr} DR`);
   if(m.eva)  p.push(`${m.eva>0?"+":""}${m.eva} Evasion`);
+  if(m.init) p.push(`${m.init>0?"+":""}${m.init} Initiative`);
   if(m.tempAP) p.push(`${m.tempAP>0?"+":""}${m.tempAP} Temp AP`);
   if(m.typeDR) for(const k in m.typeDR) p.push(`+${m.typeDR[k]} DR vs ${k}`);
   if(m.move) p.push(`${m.move>0?"+":""}${m.move} Movement`);
@@ -11917,7 +12065,7 @@ function glacialIceDR(p){
   if(!types.some(ty => String(ty).toLowerCase()==="ice")) return null;
   const t = ownerTrainerOf(p);
   if(!t || !trainerHasFeature(t, "Glacial Ice")) return null;
-  const dr = Math.max(rankNum(t.skills?.athletics), rankNum(t.skills?.survival));
+  const dr = typeLinkedRank(t, "Ice");            // Ice's pair is Athletics or Survival (Core p.119)
   return dr>0 ? { dr, from:"Glacial Ice", types:GLACIAL_ICE_TYPES } : null;
 }
 /* Insectoid Utility (prereq: Type Ace, Bug as Chosen Type): capability upgrades for the Trainer's
@@ -12896,12 +13044,14 @@ function customMovesCard(p, rerender){
 }
 
 /* ---------- dice ---------- */
-function rollDiceString(str){
+/* `max` takes every die at its face value instead of rolling it — Plainly Perfect (Type Ace,
+   Normal) says the Pokemon "acts as if they rolled the maximum value on their Damage Dice Roll". */
+function rollDiceString(str, max){
   // parse "2d10+10" (ignores the "/ avg" part). returns {rolls, flat, total, expr}
   const m = String(str||"").match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/i);
   if(!m) return null;
   const n=+m[1], faces=+m[2], flat=m[3]?parseInt(m[3].replace(/\s/g,"")):0;
-  const rolls=[]; for(let i=0;i<n;i++) rolls.push(1+Math.floor(Math.random()*faces));
+  const rolls=[]; for(let i=0;i<n;i++) rolls.push(max ? faces : 1+Math.floor(Math.random()*faces));
   const sum=rolls.reduce((a,b)=>a+b,0);
   return {rolls, faces, flat, dice:sum, total:sum+flat, expr:`${n}d${faces}${flat?(flat>0?"+"+flat:flat):""}`};
 }
@@ -14484,7 +14634,11 @@ function openMoveRoll(p, m, sp, opts={}){
       const hitsInfo = fiveStrike ? fiveStrikeRoll() : null;
       const effFDB = hitsInfo ? finalDB(hitsInfo.hits) : fDB;
       const ds = (DB_TABLE[effFDB]||DB_TABLE[fDB]||"").split("/")[0].trim();
-      const r = rollDiceString(ds);
+      /* Plainly Perfect (Bind 2 AP): a Normal-Type Move's damage dice are taken at maximum while the
+         Stratagem is bound. "Plainly Perfect only works for the first instance of the Damage Dice Roll
+         on Critical Hits" — so the crit's own extra set below is still rolled. */
+      const ppMax = plainlyPerfectMax(p, mtype);
+      const r = rollDiceString(ds, ppMax);
       const dmgLine = el("div",{});
       dmgLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"));
       if(r){
@@ -14535,6 +14689,8 @@ function openMoveRoll(p, m, sp, opts={}){
         if(cx.why.length) dmgLine.append(el("div",{class:"small muted",style:"margin-top:2px"},
           `❓ Condition${cx.why.length>1?"s":""} applied: ${cx.why.join(" · ")}`));
         dmgLine.append(el("div",{class:"small muted",style:"margin-top:4px"}, parts.join("  ")));
+        if(ppMax) dmgLine.append(el("div",{class:"small muted",style:"margin-top:2px;color:var(--accent);font-weight:600"},
+          `⭐ Plainly Perfect: the Damage Dice weren't rolled — ${ds} was taken at maximum.`));
         if(bm.crit) dmgLine.append(el("div",{class:"small muted"}, `Crit / Effect range widened by +${bm.crit} (buffs).`));
         dmgLine.append(el("div",{class:"small muted"}, `Target subtracts ${defNote} & damage reduction.`));
         /* Chip Away / Darkest Lariat / Cut ignore some Damage Reduction (and, for the first two, the
@@ -15247,6 +15403,31 @@ const FEATURE_MODES = [
       { key:"roiling", name:"Roiling Earth",          blurb:"After a successful Intercept, make a Struggle Attack against a foe in range." },
     ],
     blurb:"Bind 2 AP for a Stone stance \u2014 Falling Boulder (+5 damage), Moon Mountain (+5 DR) or Roiling Earth. The active stance's numbers are applied for you; switch it from this button." },
+  /* Fishbowl Technique (Maelstrom, Game of Throhs) is a [Stratagem]: Bind 2 AP and "your Pokemon may
+     activate Moves and Abilities as if they were in Rainy Weather". The stance is only the AP half —
+     what makes it DO anything is a weather-override buff dropped on each of the Trainer's Pokemon
+     (setWeatherStance), which ownerWeather() reads instead of the map's weather. Switch it from the
+     Maelstrom card, not from here, so the buffs are placed and removed with the AP. */
+  { key:"fishbowl", feat:"Fishbowl Technique", icon:"🐟",
+    on:"Fishbowl", off:"End Fishbowl", dur:"lasts until you release the Bind", bindAP:2, viaCard:"Maelstrom",
+    blurb:"Your Pokémon act as though it were Raining wherever they are — Water attacks +5, Fire attacks −5, Thunder at AC 6, and Swift Swim / Hydration / Rain Dish behaving as they would in Rain. Switch it on from the 🌊 Maelstrom card so the rain actually lands on them." },
+  /* The Type Ace branches' Adept Features are all [Orders][Stratagem], Bind 2 AP, "while this is
+     bound your Pokemon ..." — the same shape as Fishbowl Technique, so they are stances too. Two of
+     them carry a `weather` key and hand that weather to the Trainer's Pokemon (setWeatherStance);
+     the other two are read where their effect actually happens — Plainly Perfect inside the damage
+     roll, Iterative Evolution on whichever effectiveness the GM picks. */
+  { key:"polar-vortex", feat:"Polar Vortex", icon:"❄", weather:"hail",
+    on:"Polar Vortex", off:"End Polar Vortex", dur:"lasts until you release the Bind", bindAP:2, viaCard:"Type Ace",
+    blurb:"Your Pok\u00e9mon act as though they were in Hail wherever they are \u2014 Snow Cloak's Evasion, Ice Body's healing, Blizzard at AC 6, and the Hail chip damage everything else takes." },
+  { key:"plainly-perfect", feat:"Plainly Perfect", icon:"⭐",
+    on:"Plainly Perfect", off:"End Plainly Perfect", dur:"lasts until you release the Bind", bindAP:2,
+    blurb:"Your Pok\u00e9mon stop rolling damage dice for Normal-Type Moves and take the maximum instead. Applied inside the roll; a Critical Hit's second set of dice is still rolled, exactly as the Feature says." },
+  { key:"iterative", feat:"Iterative Evolution", icon:"🐛",
+    on:"Iterative Evolution", off:"End Iterative Evolution", dur:"lasts until you release the Bind", bindAP:2,
+    blurb:"Every damaging Bug attack of theirs takes one of three, by how the target resists it: Super-Effective gains +2 Accuracy, Neutral gains your Type-Linked Rank in damage, Resisted is resisted one step less. Which one is a fact about the target, so choose it on the roll." },
+  { key:"schist", feat:"Tough as Schist", icon:"🪨",
+    on:"Tough as Schist", off:"End Tough as Schist", dur:"lasts until you release the Bind", bindAP:2, viaCard:"Type Ace",
+    blurb:"Your Stealth Rock Hazards within 4 m of your Rock-Type Pok\u00e9mon don't trigger unless you want them to \u2014 and one can be eaten to armour that Pok\u00e9mon for a round. Eat one from the \U0001F3BD Type Ace card." },
   { key:"sovereignty", feat:"Sovereignty", icon:"👑",
     on:"Assert Sovereignty", off:"End Sovereignty", dur:"lasts until you end it", bindAP:2,
     blurb:"+2 to Save Checks against Volatile Status Afflictions, and +2 to Opposed Checks when defending against being Disarmed, Grappled, Pushed or Tripped. Roll those at the table — the stance tracks the 2 Bound AP for you." },
@@ -15334,6 +15515,9 @@ function setFeatureMode(t, def, on, rerender, saveFn){
   if(!t || !def) return;
   if(!trainerModes(t)) t.modes = {};
   if(on && def.stances){ openStoneStancePicker(t, def, rerender, saveFn); return; }
+  /* a stance whose effect is placed ON somebody else has its own switch — flipping the flag alone
+     would Bind the AP and change nothing */
+  if(def.weather){ setWeatherStance(t, def, on, rerender, saveFn); return; }
   if(on){
     const free = trainerDerived(t).ap - trainerAPUsed(t);
     if(!t.unlocked && (def.bindAP||0) > free){
@@ -16158,7 +16342,9 @@ function openItemAttack(t, prof){
    -------------------------------------------------------------------
    Berserker got its card first (berserkerCard, up by the weapon code) and Mentor its own picker.
    This block does the same job for the other classes at the table: Musician, Commander,
-   Provocateur, Cheerleader, Glamour Weaver, Capture Specialist, Medic and Hex Maniac.
+   Provocateur, Cheerleader, Glamour Weaver, Capture Specialist, Medic, Hex Maniac, Channeler,
+   Duelist, Herald of Pride, Type Ace, Maelstrom and Shade Caller — plus the 📋 Briefing that
+   opens every one of them, which is derived from whatever the sheet happens to say.
 
    The rule everywhere is the one berserkerCard set: anything the engine can genuinely work out is
    worked out and applied (uses spent, AP spent, buffs placed, HP moved, Tutor Points paid, Moves
@@ -17215,12 +17401,1875 @@ function hexCard(t, rerender, persist){
   return card;
 }
 
+/* ---------------------------------------------------------------- CHANNELER (Core pp.178-180)
+   Channeler is the fiddliest class at the table. Nothing it does is a big number: it's a dozen +1s
+   and "+ your Intuition Rank" riders hanging off a roster of Pokémon that changes every round, and
+   every one of them is easy to place and then forget to take away. So the ROSTER is the automation.
+   `t.chan` holds it and everything else is derived from it:
+
+     on      [{pid,name}]        — who is being Channeled (cap = your Intuition Rank)
+     imprint [pid]               — Shared Senses; 1 AP Bound per Imprint
+     boosts  [{pid,stat,bid}]    — Spirit Boost; 2 AP Bound each, bid = the buff it placed
+     sync    bool                — Battle Synchronization is running this round
+
+   Derived from that: the Bound AP (channelerBindAP, folded into trainerAPUsed, so RELEASING an
+   Imprint or a Boost hands the points straight back — the same contract a Book's Drain and a
+   Feature stance already keep), and the buffs themselves, which are ordinary PTU_BUFFS-shaped
+   entries pushed onto the Pokémon. That last part is the whole point: once the buff is on the
+   creature, the attack roll, the Map's damage tool, the Evasion line and the Simulator all apply it
+   without any of them knowing Channeler exists, and End Scene clears it like every other buff.
+
+   Only Pokémon IDS are stored, never object references. A token can be picked up and put back down,
+   the fight can move to another Map, a cloud sheet can reload underneath us — the creature is
+   looked up fresh every time it's needed (channelFind), so a Channel can never end up pointing at a
+   stale copy of somebody's Pokémon. That's the bug reconcileInto exists to kill; this never opens
+   the door to it in the first place.
+
+   All of it runs identically for a GM's encounter NPC: classAutomationCards passes saveEnc as
+   `persist`, and every write here goes through that. */
+const CHANNEL_ICON = "🧿";
+/* the Channeler's own state, created on demand (an NPC built before this existed has no t.chan) */
+function channelState(t){
+  if(!t.chan || typeof t.chan !== "object" || Array.isArray(t.chan)) t.chan = {};
+  const c = t.chan;
+  if(!Array.isArray(c.on))      c.on = [];
+  if(!Array.isArray(c.imprint)) c.imprint = [];
+  if(!Array.isArray(c.boosts))  c.boosts = [];
+  if(typeof c.sync !== "boolean") c.sync = false;
+  return c;
+}
+/* "You may Channel a number of Pokémon at a time up to your Intuition Rank." Rank, not dice — a
+   Virtuoso Intuition is Rank 8 and Channels eight (see rankNum's note up top). */
+const channelRank = t => rankNum(t && t.skills && t.skills.intuition);
+/* This Trainer's OWN Pokémon, wherever they live: a player's party, or the list on the NPC's own
+   card in the Encounters tab. Written for the Channeler, but every class card that does something
+   TO its Trainer's Pokémon needs exactly this list — Duelist Momentum, Type Refresh, Fishbowl — and
+   it has to work for an encounter NPC, which is the part activeChar() alone can never do. */
+function trainerOwnMons(t){
+  const ch = activeChar();
+  if(ch && ch.trainer === t) return (ch.pokemon || []).filter(p => p.onTeam);
+  if(isGM()) for(const e of (encList() || []))
+    for(const tr of (e.trainers || [])) if(tr && tr.trainer === t) return tr.pokemon || [];
+  return [];
+}
+/* Every Pokémon this Channeler could reach right now: the creature tokens on the board, then their
+   own Pokémon that aren't on it. Trainers are filtered out — "Target: A Pokémon" is literal.
+   `hostile` marks the ones that need the DC 15 Intuition Check. A player only sees enemy tokens
+   they could actually see on the Map (gmHidden / fog), the same rule visibleWildMonTokens uses. */
+function channelCandidates(t){
+  const out = [], seen = new Set();
+  const map = (typeof currentMapForView === "function" ? currentMapForView() : null)
+           || (typeof activeMap === "function" ? activeMap() : null);
+  if(map){
+    const fog = (map.fogOn && !isGM()) ? fogSet(map.id) : null;
+    mapTokensFor(map.id).forEach(tok => {
+      if(!tok.link) return;
+      const info = tokenHp(tok);
+      if(info.unlinked || info.kind === "shop" || info.kind === "hazard" || info.kind === "boat") return;
+      const L = tokenLinked(tok);
+      if(!L || !L.obj || isTrainerOwner(L.obj)) return;
+      const hostile = ENEMY_LINKS.has(L.kind);
+      if(hostile && !isGM()){
+        if(tok.gmHidden) return;
+        if(fog && !fog.has(Math.round(tok.x) + "," + Math.round(tok.y))) return;
+      }
+      if(seen.has(L.obj.id)) return;
+      seen.add(L.obj.id);
+      out.push({ pid:L.obj.id, obj:L.obj, token:tok, hostile,
+        label:`${hostile ? "👹" : "🔴"} ${info.name} — ${info.cur}/${info.max} HP` });
+    });
+  }
+  trainerOwnMons(t).forEach(p => {
+    if(!p || seen.has(p.id)) return;
+    seen.add(p.id);
+    const sp = getSpecies(p.species);
+    out.push({ pid:p.id, obj:p, token:null, hostile:false,
+      label:`🔴 ${p.nickname || sp?.name || "?"} · Lv ${p.level} — off the board` });
+  });
+  return out;
+}
+/* Resolve one stored Channel back to a live creature. The board and this Trainer's own list first
+   (they carry the token, which is what a cross-sheet write has to be committed through); then, for
+   a GM, every other encounter; then every cloud sheet. Returns null when the Pokémon is genuinely
+   gone, which the roster row draws as a dead entry with a × rather than silently dropping. */
+function channelFind(t, pid){
+  const cand = channelCandidates(t).find(c => c.pid === pid);
+  if(cand) return cand;
+  if(isGM()) for(const e of (encList() || [])){
+    const hit = (e.mons || []).find(p => p && p.id === pid)
+             || (e.trainers || []).reduce((f, tr) => f || (tr.pokemon || []).find(p => p && p.id === pid), null);
+    if(hit) return { pid, obj:hit, token:null, hostile:true, label:ownerLabel(hit) };
+  }
+  for(const row of Object.values((typeof cloud === "object" && cloud.byId) || {})){
+    const hit = (row && row.data && row.data.pokemon || []).find(p => p && p.id === pid);
+    if(hit) return { pid, obj:hit, token:null, hostile:false, label:ownerLabel(hit) };
+  }
+  return null;
+}
+/* the roster, resolved — one entry per Channel, live object attached (or null when it's gone) */
+function channelList(t){
+  return channelState(t).on.map(e => {
+    const f = channelFind(t, e.pid);
+    return { pid:e.pid, obj:f ? f.obj : null, token:f ? f.token : null,
+             name:f ? ownerLabel(f.obj) : (e.name || "—"), missing:!f };
+  });
+}
+/* AP a Channeler currently has Bound. Derived from the roster and never folded into t.usedAP, so
+   releasing an Imprint or ending a Spirit Boost hands the points back on its own. */
+function channelerBindAP(t){
+  const c = t && t.chan; if(!c) return 0;
+  return (Array.isArray(c.imprint) ? c.imprint.length : 0) * 1
+       + (Array.isArray(c.boosts)  ? c.boosts.length  : 0) * 2;
+}
+/* what a Channeler has Bound it to, for the AP line on the Trainer tab */
+function channelerBindText(t){
+  const c = t && t.chan; if(!c) return "";
+  const bits = [];
+  if((c.imprint || []).length) bits.push(`${c.imprint.length} Shared Senses Imprint${c.imprint.length === 1 ? "" : "s"}`);
+  if((c.boosts  || []).length) bits.push(`${c.boosts.length} Spirit Boost${c.boosts.length === 1 ? "" : "s"}`);
+  return bits.join(" + ");
+}
+/* ---- Spirit Boost: which effect the target's highest Combat Stat buys (Core p.179) ----
+   Each one is a real buff on the target, so the roll screens apply it with no Channeler-specific
+   code anywhere: `only` restricts it to one damage class the way a Spicy Wrap's +5 already is. */
+const SPIRIT_BOOST_FX = [
+  { key:"atk",   lbl:"Attack",  txt:"Bonus Damage on Physical attacks",         mk:R => ({ dmg:R }),  only:"phys" },
+  { key:"def",   lbl:"Defense", txt:"Damage Reduction against Physical attacks", mk:R => ({ dr:R }),   only:"phys" },
+  { key:"spatk", lbl:"Sp.Atk",  txt:"Bonus Damage on Special attacks",           mk:R => ({ dmg:R }),  only:"spec" },
+  { key:"spdef", lbl:"Sp.Def",  txt:"Damage Reduction against Special attacks",  mk:R => ({ dr:R }),   only:"spec" },
+  { key:"spd",   lbl:"Speed",   txt:"Initiative",                                mk:R => ({ init:R }), only:null   },
+];
+/* The Pokémon's highest Combat Stat, read off its REAL stats rather than its Combat-Stage-adjusted
+   ones — a Boost that silently switched from Attack to Speed because someone dropped a −2 Def CS
+   would be worse than no automation at all. Ties are the Channeler's choice, so this only picks the
+   dropdown's starting value. */
+function spiritBoostBest(p){
+  const d = pokeDerived(p);
+  let best = SPIRIT_BOOST_FX[0].key, bv = -1;
+  SPIRIT_BOOST_FX.forEach(fx => { const v = d.total[fx.key] || 0; if(v > bv){ bv = v; best = fx.key; } });
+  return { key:best, v:bv };
+}
+/* --- roster edits --- */
+function channelAdd(t, cand, saveFn, redraw){
+  const c = channelState(t), cap = channelRank(t);
+  if(c.on.some(e => e.pid === cand.pid)){ toast("Already Channeled"); return false; }
+  if(!t.unlocked && c.on.length >= cap){
+    toast(`Intuition Rank ${cap} — you can only Channel ${cap} Pokémon at a time`); return false;
+  }
+  c.on.push({ pid:cand.pid, name:ownerLabel(cand.obj) });
+  (saveFn || save)();
+  toast(`${CHANNEL_ICON} Channeling ${ownerLabel(cand.obj)}`);
+  (redraw || renderBattle)();
+  return true;
+}
+/* Take the Spirit Boost buff back off a Pokémon. Everything that ends a Boost goes through here, so
+   there is exactly one place that knows a Boost is a Bind + a buff and not just a list entry. */
+function channelStripBoost(t, b){
+  if(!b) return null;
+  const f = channelFind(t, b.pid);
+  if(f && f.obj){
+    f.obj.buffs = ownerBuffs(f.obj).filter(x => x.id !== b.bid);
+    return f;
+  }
+  return null;
+}
+async function channelEndBoost(t, pid, saveFn, redraw){
+  const c = channelState(t);
+  const b = c.boosts.find(x => x.pid === pid); if(!b) return;
+  c.boosts = c.boosts.filter(x => x !== b);
+  const f = channelStripBoost(t, b);
+  (saveFn || save)();
+  if(f && f.token) await commitTokenSource(f.token);
+  toast("✨ Spirit Boost ended · 2 AP returned");
+  (redraw || renderBattle)();
+}
+async function channelDrop(t, pid, saveFn, redraw){
+  const c = channelState(t);
+  const b = c.boosts.find(x => x.pid === pid);
+  const f = b ? channelStripBoost(t, b) : null;
+  const name = (c.on.find(e => e.pid === pid) || {}).name || "it";
+  c.on      = c.on.filter(e => e.pid !== pid);
+  c.imprint = c.imprint.filter(x => x !== pid);
+  c.boosts  = c.boosts.filter(x => x.pid !== pid);
+  (saveFn || save)();
+  if(f && f.token) await commitTokenSource(f.token);
+  toast(`Stopped Channeling ${name}`);
+  (redraw || renderBattle)();
+}
+/* "If you are Fainted, you stop Channeling all Pokémon." Called from the card, so it fires the
+   moment anyone looks at the sheet after the Channeler goes down — the Bound AP and every Spirit
+   Boost go with it. Synchronous (it runs during a render): the cross-sheet commit is fired off and
+   not awaited, and the local write is what the roster is redrawn from either way. */
+function channelDropAll(t, saveFn){
+  const c = channelState(t);
+  c.boosts.forEach(b => {
+    const f = channelStripBoost(t, b);
+    if(f && f.token) Promise.resolve(commitTokenSource(f.token)).catch(() => {});
+  });
+  c.on = []; c.imprint = []; c.boosts = []; c.sync = false;
+  (saveFn || save)();
+}
+/* End Scene / End Day: Channeling itself has no duration in the rules and survives, but everything
+   with AP Bound to it does not — that AP comes back, so the effects it was paying for have to go
+   with it (the buffs on the Pokémon are wiped by the same End Scene anyway). */
+function channelerEndScene(t, all){
+  const c = t && t.chan; if(!c) return;
+  c.imprint = []; c.boosts = []; c.sync = false;
+  if(all) c.on = [];               // an Extended Rest: nobody is standing inside a 20 m leash all night
+}
+/* --- Channeler (the [Class] Feature): At-Will, Swift, DC 15 vs a Hostile Pokémon --- */
+function openChannelPicker(t, rerender, persist){
+  const c = channelState(t), saveFn = persist || save, redraw = rerender || renderBattle;
+  const cap = channelRank(t), dice = rankDice(t.skills && t.skills.intuition), mod = trainerSkillMod(t, "intuition");
+  const cand = channelCandidates(t).filter(x => !c.on.some(e => e.pid === x.pid));
+  const body = el("div", {});
+  body.append(el("div", { class:"small muted", style:"margin-bottom:10px" },
+    `At-Will · Swift Action. You may Channel ${cap} Pokémon at a time (Intuition Rank ${cap}) and ${c.on.length} `
+    + `${c.on.length === 1 ? "is" : "are"} in use. A Hostile Pokémon takes an Intuition Check of DC 15 — press it and `
+    + `the sheet rolls ${dice}d6${mod ? `+${mod}` : ""} for you and only Channels on a pass.`));
+  const out = el("div", { class:"small", style:"margin:8px 0 0;font-weight:700" });
+  if(!cand.length) body.append(el("div", { class:"small", style:"color:var(--bad)" },
+    "Nothing within reach — put the Pokémon on the 🗺 Map, or add them to this Trainer's own list."));
+  cand.forEach(x => {
+    const row = el("div", { class:"moveslot" });
+    row.append(el("div", { style:"flex:1" },
+      el("div", { style:"font-weight:700" }, x.label),
+      x.hostile ? el("div", { class:"ms-info" }, "Hostile — Intuition Check, DC 15") : ""));
+    row.append(el("button", { class:"btn-primary", style:"padding:6px 10px", onclick:() => {
+      if(x.hostile && !t.unlocked){
+        const rolls = []; for(let i = 0; i < dice; i++) rolls.push(1 + Math.floor(Math.random() * 6));
+        const sum = rolls.reduce((a, b) => a + b, 0), total = sum + mod, ok = total >= 15;
+        out.style.color = ok ? "var(--good)" : "var(--bad)";
+        out.textContent = `Intuition ${dice}d6 [${rolls.join(", ")}] = ${sum}${mod ? ` + ${mod}` : ""} = ${total} vs DC 15 — `
+          + (ok ? `${ownerLabel(x.obj)} lets you in` : `${ownerLabel(x.obj)} shuts you out`);
+        logRoll({ kind:"skill", label:"Channel (Intuition)", who:t.name || "",
+          headline:`${ok ? CHANNEL_ICON : "✖"} ${total} vs DC 15`,
+          lines:[`Channel ${ownerLabel(x.obj)} — ${dice}d6 [${rolls.join(", ")}]${mod ? ` +${mod}` : ""} = ${total}`] });
+        if(!ok){ redraw(); return; }
+      }
+      if(channelAdd(t, x, saveFn, redraw)) closeModal();
+    } }, x.hostile ? "🎲 Channel" : `${CHANNEL_ICON} Channel`));
+    body.append(row);
+  });
+  body.append(out);
+  modal({ title:`${CHANNEL_ICON} Channel a Pokémon`, bodyNode:body,
+    footNodes:[el("button", { class:"btn-secondary", onclick:closeModal }, "Close")] });
+}
+/* --- Shared Senses (Bind 1 AP, Swift): Imprint one Channeled Pokémon --- */
+function channelImprint(t, pid, on, saveFn, redraw){
+  const c = channelState(t);
+  if(on){
+    if(c.imprint.includes(pid)) return;
+    const free = trainerDerived(t).ap - trainerAPUsed(t);
+    if(!t.unlocked && free < 1){ toast("Shared Senses Binds 1 AP — none free"); return; }
+    c.imprint.push(pid);
+  } else c.imprint = c.imprint.filter(x => x !== pid);
+  (saveFn || save)();
+  toast(on ? "👁 Imprinted · 1 AP Bound — no distance limit on this Channel"
+           : "👁 Imprint released · 1 AP returned");
+  (redraw || renderBattle)();
+}
+/* --- Spirit Boost (Bind 2 AP, Standard) --- */
+function openSpiritBoost(t, rerender, persist){
+  const c = channelState(t), saveFn = persist || save, redraw = rerender || renderBattle;
+  const list = channelList(t).filter(x => x.obj && !c.boosts.some(b => b.pid === x.pid));
+  if(!list.length){
+    toast(c.on.length ? "Every Channeled Pokémon already has a Spirit Boost up" : "Channel a Pokémon first");
+    return;
+  }
+  const R = channelRank(t);
+  const who = el("select");
+  list.forEach((x, i) => who.append(el("option", { value:String(i) }, ownerLabel(x.obj))));
+  const stat = el("select");
+  SPIRIT_BOOST_FX.forEach(fx => stat.append(el("option", { value:fx.key }, `${fx.lbl} — +${R} ${fx.txt}`)));
+  const why = el("div", { class:"small muted", style:"margin:6px 0 10px" });
+  const sync = () => {
+    const x = list[+who.value || 0]; if(!x || !x.obj) return;
+    const d = pokeDerived(x.obj), best = spiritBoostBest(x.obj);
+    stat.value = best.key;
+    why.textContent = SPIRIT_BOOST_FX.map(f => `${f.lbl} ${d.total[f.key] || 0}`).join(" · ")
+      + ` — highest is ${(SPIRIT_BOOST_FX.find(f => f.key === best.key) || {}).lbl}. On a tie it's your call, so change it here.`;
+  };
+  who.addEventListener("change", sync); sync();
+  const body = el("div", {});
+  body.append(el("div", { class:"small", style:"margin-bottom:10px" },
+    `Binds 2 AP until you end it. The effect follows the target's own highest Combat Stat, and the number is `
+    + `your Intuition Rank (${R}). It goes on as a real buff, so the attack roll, the Map's damage tool and the `
+    + `Evasion/Initiative lines pick it up by themselves.`));
+  body.append(el("label", { class:"field" }, el("span", {}, "Channeled Pokémon"), who));
+  body.append(el("label", { class:"field", style:"margin-top:8px" }, el("span", {}, "Effect (highest Combat Stat)"), stat), why);
+  modal({ title:"✨ Spirit Boost", bodyNode:body, footNodes:[
+    el("button", { class:"btn-secondary", onclick:closeModal }, "Cancel"),
+    el("button", { class:"btn-primary", onclick:async () => {
+      const x = list[+who.value || 0]; if(!x || !x.obj) return;
+      const fx = SPIRIT_BOOST_FX.find(f => f.key === stat.value) || SPIRIT_BOOST_FX[0];
+      const free = trainerDerived(t).ap - trainerAPUsed(t);
+      if(!t.unlocked && free < 2){ toast(`Spirit Boost Binds 2 AP — only ${Math.max(0, free)} free`); return; }
+      const nb = { id:uid(), key:"spirit-boost", name:`Spirit Boost (${fx.lbl})`, cat:"Channeler",
+        dur:"while Bound", once:false, mods:fx.mk(R), only:fx.only,
+        note:`+${R} ${fx.txt} — the Channeler's Intuition Rank. Ends when they release the Bind, or at End Scene.` };
+      if(!Array.isArray(x.obj.buffs)) x.obj.buffs = [];
+      x.obj.buffs.push(nb);
+      c.boosts.push({ pid:x.pid, stat:fx.key, bid:nb.id });
+      saveFn(); closeModal();
+      if(x.token) await commitTokenSource(x.token);
+      toast(`✨ Spirit Boost → ${ownerLabel(x.obj)} · ${fx.lbl} · 2 AP Bound`);
+      redraw();
+    } }, "✨ Bind 2 AP"),
+  ] });
+}
+/* --- Battle Synchronization (Scene x3, Standard) ---
+   "For one full round, whenever a Channeled Pokémon successfully hits a foe, all Channeled Pokémon
+   gain +1 Accuracy and +1 Evasion against that foe." The per-foe part is the bit no buff engine
+   here can express, so the foe's NAME goes in the buff's own name and the card says out loud that
+   the +1 Accuracy will show up on every roll, not just the ones aimed at them. Everything else is
+   real: the buff is stamped "until end of next turn", so the Map's ▶ next-turn advance takes it
+   off on its own. */
+function channelSyncStart(t, rerender, persist){
+  if(!featSpend(t, "Battle Synchronization")) return;
+  channelState(t).sync = true;
+  (persist || save)();
+  toast("✦ Battle Synchronization is up for one full round");
+  (rerender || renderBattle)();
+}
+function openSyncHit(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const list = channelList(t).filter(x => x.obj);
+  if(!list.length){ toast("Nobody is Channeled"); return; }
+  const foes = channelCandidates(t).filter(x => x.hostile);
+  const sel = el("select");
+  foes.forEach(f => sel.append(el("option", { value:ownerLabel(f.obj) }, ownerLabel(f.obj))));
+  sel.append(el("option", { value:"" }, "— type a name —"));
+  const free = el("input", { type:"text", placeholder:"the foe that was hit" });
+  const body = el("div", {});
+  body.append(el("div", { class:"small", style:"margin-bottom:10px" },
+    `A Channeled Pokémon landed a hit — every one of the ${list.length} you are Channeling gains +1 Accuracy and `
+    + `+1 Evasion against that foe until the end of your next turn. Press this once per foe that gets hit.`));
+  if(foes.length) body.append(el("label", { class:"field" }, el("span", {}, "Foe"), sel));
+  body.append(el("label", { class:"field", style:"margin-top:8px" },
+    el("span", {}, foes.length ? "…or name them" : "Foe"), free));
+  modal({ title:"✦ Battle Synchronization — a Channeled hit", bodyNode:body, footNodes:[
+    el("button", { class:"btn-secondary", onclick:closeModal }, "Cancel"),
+    el("button", { class:"btn-primary", onclick:async () => {
+      const foe = (free.value.trim() || sel.value || "that foe");
+      list.forEach(x => {
+        const nb = { id:uid(), key:"battle-sync", name:`Battle Synchronization (vs ${foe})`, cat:"Channeler",
+          dur:"until end of next turn", once:false, mods:{ acc:1, eva:1 },
+          note:`+1 Accuracy and +1 Evasion against ${foe} only — a Channeled Pokémon hit them. The sheet adds the `
+             + `+1 Accuracy to every roll, so ignore it when you are swinging at somebody else.` };
+        if(!Array.isArray(x.obj.buffs)) x.obj.buffs = [];
+        stampTurnBuff(nb);
+        x.obj.buffs.push(nb);
+      });
+      saveFn(); closeModal();
+      for(const x of list) if(x.token) await commitTokenSource(x.token);
+      toast(`✦ +1 Accuracy / +1 Evasion vs ${foe} → ${list.length} Channeled Pokémon`);
+      redraw();
+    } }, "✦ Sync the link"),
+  ] });
+}
+/* --- Power Conduit (2 AP, Swift) — three separate effects, two of them fully mechanical --- */
+/* every trackable Move use a Pokémon is carrying, for the Move-refresh half of Power Conduit */
+function channelMoveUses(p){
+  if(!p || !p.uses || typeof p.uses !== "object") p.uses = (p && p.uses) || {};
+  return (p.moves || []).map(mn => {
+    const m = moveByName.get(String(mn).toLowerCase()); if(!m) return null;
+    const info = freqInfo(m.frequency); if(!freqTrackable(info)) return null;
+    if(info.kind !== "scene" && info.kind !== "daily") return null;
+    const k = useKey("move", m.name);
+    return { name:m.name, kind:info.kind, max:info.max, key:k,
+             spent:(p.uses[k] || 0), left:usesLeft(p, k, info.max) };
+  }).filter(Boolean);
+}
+function openPowerConduit(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const list = channelList(t).filter(x => x.obj);
+  if(list.length < 1){ toast("Channel a Pokémon first"); return; }
+  const mode = el("select");
+  [["cs", "Trade all Combat Stages for one Stat"],
+   ["move", "Refresh a Scene Move from another's use"],
+   ["coat", "Transfer a Coat"]].forEach(([v, l]) => mode.append(el("option", { value:v }, l)));
+  const pane = el("div", { style:"margin-top:10px" });
+  const monSel = (id) => { const s = el("select"); list.forEach((x, i) => s.append(el("option", { value:String(i) }, ownerLabel(x.obj)))); if(id != null) s.value = String(id); return s; };
+  let apply = async () => { toast("Nothing to do"); return false; };
+  const draw = () => {
+    pane.innerHTML = ""; apply = async () => { toast("Nothing to do"); return false; };
+    if(mode.value === "cs"){
+      if(list.length < 2){ pane.append(el("div", { class:"small", style:"color:var(--bad)" },
+        "Needs two Channeled Pokémon.")); return; }
+      const a = monSel(0), b = monSel(1), st = el("select");
+      CS_STATS.forEach(([k, l]) => st.append(el("option", { value:k }, l)));
+      const out = el("div", { class:"small muted", style:"margin-top:8px" });
+      const preview = () => {
+        const A = list[+a.value] && list[+a.value].obj, B = list[+b.value] && list[+b.value].obj;
+        if(!A || !B) return;
+        const k = st.value;
+        out.textContent = `${ownerLabel(A)} ${(A.cs && A.cs[k]) || 0} ⇄ ${ownerLabel(B)} ${(B.cs && B.cs[k]) || 0} — `
+          + `the Stages set by hand are what trade; anything a condition or an Aura is applying stays where it is.`;
+      };
+      [a, b, st].forEach(s => s.addEventListener("change", preview)); preview();
+      pane.append(el("label", { class:"field" }, el("span", {}, "From"), a),
+        el("label", { class:"field", style:"margin-top:8px" }, el("span", {}, "To"), b),
+        el("label", { class:"field", style:"margin-top:8px" }, el("span", {}, "Stat"), st), out);
+      apply = async () => {
+        const X = list[+a.value], Y = list[+b.value];
+        if(!X || !Y || X.pid === Y.pid){ toast("Pick two different Pokémon"); return false; }
+        const k = st.value;
+        if(!X.obj.cs) X.obj.cs = {}; if(!Y.obj.cs) Y.obj.cs = {};
+        const tmp = X.obj.cs[k] || 0; X.obj.cs[k] = Y.obj.cs[k] || 0; Y.obj.cs[k] = tmp;
+        for(const z of [X, Y]) if(z.token) await commitTokenSource(z.token);
+        toast(`🔗 ${statLbl(k)} Combat Stages traded`);
+        return true;
+      };
+      return;
+    }
+    if(mode.value === "move"){
+      const from = monSel(0), to = monSel(Math.min(1, list.length - 1));
+      const giveUp = el("select"), regain = el("select");
+      const note = el("div", { class:"small muted", style:"margin-top:8px" });
+      const fill = () => {
+        const F = list[+from.value] && list[+from.value].obj, T = list[+to.value] && list[+to.value].obj;
+        giveUp.innerHTML = ""; regain.innerHTML = "";
+        (F ? channelMoveUses(F).filter(u => u.left > 0) : []).forEach(u =>
+          giveUp.append(el("option", { value:u.name }, `${u.name} — ${u.left} of ${u.max} ${u.kind} left`)));
+        (T ? channelMoveUses(T).filter(u => u.kind === "scene" && u.spent > 0) : []).forEach(u =>
+          regain.append(el("option", { value:u.name }, `${u.name} — ${u.spent} of ${u.max} spent`)));
+        note.textContent = (!giveUp.options.length ? "That Pokémon has no Scene or Daily use left to give up. "
+                                                   : "")
+          + (!regain.options.length ? "The other has no spent Scene Move to get back. " : "")
+          + "A Daily use may pay for a Scene Move, never the other way round; each Pokémon may be refreshed once per Scene.";
+      };
+      [from, to].forEach(s => s.addEventListener("change", fill)); fill();
+      pane.append(el("label", { class:"field" }, el("span", {}, "Gives up a use"), from),
+        el("label", { class:"field", style:"margin-top:8px" }, el("span", {}, "…of this Move"), giveUp),
+        el("label", { class:"field", style:"margin-top:8px" }, el("span", {}, "Regains a use"), to),
+        el("label", { class:"field", style:"margin-top:8px" }, el("span", {}, "…of this Scene Move"), regain), note);
+      apply = async () => {
+        const F = list[+from.value], T = list[+to.value];
+        if(!F || !T || !giveUp.value || !regain.value){ toast("Pick both Moves"); return false; }
+        if(F.pid === T.pid){ toast("It has to be another Channeled Pokémon"); return false; }
+        const gk = useKey("move", giveUp.value), rk = useKey("move", regain.value);
+        const gm = moveByName.get(giveUp.value.toLowerCase());
+        F.obj.uses = F.obj.uses || {};
+        F.obj.uses[gk] = Math.min(freqInfo(gm && gm.frequency).max, (F.obj.uses[gk] || 0) + 1);
+        T.obj.uses = T.obj.uses || {};
+        T.obj.uses[rk] = Math.max(0, (T.obj.uses[rk] || 0) - 1);
+        for(const z of [F, T]) if(z.token) await commitTokenSource(z.token);
+        toast(`🔗 ${ownerLabel(T.obj)} got ${regain.value} back — ${ownerLabel(F.obj)} gave up ${giveUp.value}`);
+        return true;
+      };
+      return;
+    }
+    pane.append(el("div", { class:"small" },
+      "Coats aren't tracked as state anywhere on this sheet — Aurora Veil, Light Screen, Reflect and the rest are "
+      + "notes at the table. Pressing this pays the 2 AP and reminds the table; move the Coat by hand."));
+    apply = async () => { toast("🔗 Coat transferred — move it by hand"); return true; };
+  };
+  mode.addEventListener("change", draw); draw();
+  const body = el("div", {});
+  body.append(el("div", { class:"small muted", style:"margin-bottom:10px" },
+    "2 AP · Swift Action · one effect per use."));
+  body.append(el("label", { class:"field" }, el("span", {}, "Effect"), mode), pane);
+  modal({ title:"🔗 Power Conduit", bodyNode:body, footNodes:[
+    el("button", { class:"btn-secondary", onclick:closeModal }, "Cancel"),
+    el("button", { class:"btn-primary", onclick:async () => {
+      if(!apSpend(t, 2)) return;
+      const ok = await apply();
+      if(!ok){ t.usedAP = Math.max(0, (t.usedAP || 0) - 2); return; }   // nothing happened → hand the AP back
+      saveFn(); closeModal(); redraw();
+    } }, "🔗 Use it · 2 AP"),
+  ] });
+}
+/* --- Pain Dampening (Scene x2, Free) ---
+   "…divide the damage from the attack by the number of chosen Pokémon. Each chosen Pokémon then
+   loses that many Hit Points. For each chosen Pokémon that Resists or is Immune to the Type of the
+   triggering attack, subtract your Intuition Rank from the damage of the attack before all
+   calculations." Note the order: every resist takes Rank off the WHOLE attack first, and only then
+   is what's left split. This is not damage being dealt — it's a flat loss of Hit Points — so it
+   skips Defense, effectiveness and Damage Reduction entirely, which is exactly what makes it worth
+   doing and exactly what people get wrong at the table. */
+function channelResistsType(p, type){
+  if(!p || !type || type === "Typeless") return false;
+  const mods = defenseTypeMods(p);
+  if(mods.immune.has(type)) return true;
+  const types = getSpecies(p.species) && getSpecies(p.species).types || [];
+  const base = (mods.step && mods.step[type]) || 0;
+  let mult = typeMultAgainst(type, types, base);
+  if(mods.tolerance && mult > 0 && mult < 1) mult = typeMultAgainst(type, types, base - 1);
+  return mult < 1;
+}
+function openPainDampening(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const list = channelList(t).filter(x => x.obj);
+  if(!list.length){ toast("Nobody is Channeled"); return; }
+  const R = channelRank(t), u = featUses(t, "Pain Dampening");
+  const dmg = el("input", { type:"number", min:0, value:0, style:"width:100px" });
+  const ty = el("select");
+  ty.append(el("option", { value:"" }, "Typeless / no Type"));
+  TYPES.forEach(x => ty.append(el("option", { value:x }, x)));
+  const box = el("div", { style:"display:flex;flex-direction:column;gap:2px;max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 8px" });
+  const picked = new Set([list[0].pid]);
+  const out = el("div", { class:"card", style:"background:var(--panel);border:1px dashed var(--line);margin:10px 0 0" });
+  const calc = () => {
+    const chosen = list.filter(x => picked.has(x.pid));
+    const n = chosen.length;
+    const resist = chosen.filter(x => channelResistsType(x.obj, ty.value));
+    const raw = Math.max(0, parseInt(dmg.value) || 0);
+    const cut = resist.length * R;
+    const after = Math.max(0, raw - cut);
+    const per = n ? Math.floor(after / n) : 0;
+    return { chosen, n, resist, raw, cut, after, per };
+  };
+  const draw = () => {
+    const c = calc();
+    out.innerHTML = "";
+    if(!c.n){ out.append(el("div", { class:"small", style:"color:var(--bad)" }, "Tick at least the Pokémon that was going to Faint.")); return; }
+    out.append(el("div", { class:"lbl", style:"color:var(--muted);font-weight:800" }, "EACH CHOSEN POKÉMON LOSES"),
+      el("div", { style:"font-size:30px;font-weight:800" }, String(c.per) + " HP"),
+      el("div", { class:"small muted" },
+        `${c.raw} damage${c.cut ? ` − ${c.cut} (${c.resist.length} × Intuition Rank ${R}: ${c.resist.map(x => ownerLabel(x.obj)).join(", ")})` : ""}`
+        + ` = ${c.after}, split ${c.n} way${c.n === 1 ? "" : "s"} → ${c.per} each`),
+      el("div", { class:"small muted", style:"margin-top:4px" },
+        "A flat loss of Hit Points, not damage: no Defense, no effectiveness, no Damage Reduction. The remainder is dropped."));
+  };
+  list.forEach(x => {
+    const cb = el("input", { type:"checkbox" }); cb.checked = picked.has(x.pid);
+    cb.addEventListener("change", () => { cb.checked ? picked.add(x.pid) : picked.delete(x.pid); draw(); });
+    const hp = ownerMaxHP(x.obj) || 1, cur = x.obj.currentHP == null ? hp : x.obj.currentHP;
+    box.append(el("label", { class:"small", style:"display:flex;gap:8px;align-items:center;cursor:pointer;padding:2px 0" },
+      cb, `${ownerLabel(x.obj)} — ${cur}/${hp} HP`));
+  });
+  [dmg, ty].forEach(n => n.addEventListener("input", draw));
+  ty.addEventListener("change", draw);
+  const body = el("div", {});
+  body.append(el("div", { class:"small", style:"margin-bottom:10px" },
+    "Trigger: a Channeled Pokémon would be Fainted by a damaging attack. Instead of resolving it, the damage is "
+    + "shared out — and every chosen Pokémon that resists or is immune to its Type takes your Intuition Rank off the "
+    + `attack first (Rank ${R}).`));
+  body.append(el("div", { class:"inline", style:"gap:10px;flex-wrap:wrap" },
+    el("label", { class:"field", style:"max-width:150px" }, el("span", {}, "Damage of the attack"), dmg),
+    el("label", { class:"field", style:"max-width:190px" }, el("span", {}, "Its Type"), ty)));
+  body.append(el("div", { class:"small muted", style:"font-weight:700;margin:10px 0 4px" },
+    "Who shares it — the triggering Pokémon must be one of them"));
+  body.append(box, out);
+  body.append(el("div", { class:"small muted", style:"margin-top:8px" },
+    `${u.f ? u.f.frequency : "Scene x2 - Free Action"}${u.left != null ? ` · ${u.left} of ${u.max} left this Scene` : ""}`));
+  draw();
+  modal({ title:"🩸 Pain Dampening", bodyNode:body, footNodes:[
+    el("button", { class:"btn-secondary", onclick:closeModal }, "Cancel"),
+    el("button", { class:"btn-primary", onclick:async () => {
+      const c = calc();
+      if(!c.n){ toast("Nobody chosen"); return; }
+      if(!featSpend(t, "Pain Dampening")) return;
+      c.chosen.forEach(x => ownerHeal(x.obj, -c.per));
+      saveFn(); closeModal();
+      for(const x of c.chosen) if(x.token) await commitTokenSource(x.token);
+      toast(`🩸 Pain Dampening — ${c.per} HP off each of ${c.n}`);
+      redraw();
+    } }, "🩸 Share it out"),
+  ] });
+}
+/* --- Soothing Connection (Daily x2, Standard): 5 points, one Tick of HP each --- */
+function openSoothingConnection(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const list = channelList(t).filter(x => x.obj);
+  if(!list.length){ toast("Nobody is Channeled"); return; }
+  const u = featUses(t, "Soothing Connection");
+  const pts = {}; list.forEach(x => pts[x.pid] = 0);
+  const left = el("div", { class:"small", style:"font-weight:800;margin:8px 0" });
+  const rows = el("div", {});
+  const spent = () => list.reduce((n, x) => n + (pts[x.pid] || 0), 0);
+  const draw = () => {
+    left.textContent = `${5 - spent()} of 5 points left`;
+    left.style.color = spent() === 5 ? "var(--good)" : "var(--muted)";
+    rows.innerHTML = "";
+    list.forEach(x => {
+      const tick = hpTick(ownerMaxHP(x.obj) || 1), n = pts[x.pid] || 0;
+      const max = ownerMaxHP(x.obj) || 1, cur = x.obj.currentHP == null ? max : x.obj.currentHP;
+      const row = el("div", { class:"moveslot" });
+      row.append(el("div", { style:"flex:1" },
+        el("div", { style:"font-weight:700" }, ownerLabel(x.obj)),
+        el("div", { class:"ms-info" }, `${cur}/${max} HP · one Tick = ${tick} HP`
+          + (n ? ` · ${n} point${n === 1 ? "" : "s"} = +${n * tick} HP` : ""))));
+      row.append(el("div", { class:"stepper" },
+        el("button", { disabled:n <= 0, onclick:() => { pts[x.pid] = Math.max(0, n - 1); draw(); } }, "−"),
+        el("span", { class:"stepper-val" }, String(n)),
+        el("button", { disabled:spent() >= 5, onclick:() => { pts[x.pid] = n + 1; draw(); } }, "+")));
+      rows.append(row);
+    });
+  };
+  draw();
+  const body = el("div", {});
+  body.append(el("div", { class:"small", style:"margin-bottom:10px" },
+    "Daily x2 · Standard Action. Distribute 5 points among the Pokémon you're Channeling; each point is a Tick of "
+    + "Hit Points (1/10th of that Pokémon's own Max HP, so a point is worth more on a big one)."));
+  body.append(left, rows);
+  body.append(el("div", { class:"small muted", style:"margin-top:8px" },
+    `${u.f ? u.f.frequency : "Daily x2 - Standard Action"}${u.left != null ? ` · ${u.left} of ${u.max} left today` : ""}`));
+  modal({ title:"💗 Soothing Connection", bodyNode:body, footNodes:[
+    el("button", { class:"btn-secondary", onclick:closeModal }, "Cancel"),
+    el("button", { class:"btn-primary", onclick:async () => {
+      if(!spent()){ toast("Assign at least one point"); return; }
+      if(!featSpend(t, "Soothing Connection")) return;
+      const touched = [], lines = [];
+      list.forEach(x => {
+        const n = pts[x.pid] || 0; if(!n) return;
+        const got = ownerHeal(x.obj, n * hpTick(ownerMaxHP(x.obj) || 1));
+        lines.push(`${ownerLabel(x.obj)} +${got}`);
+        touched.push(x);
+      });
+      saveFn(); closeModal();
+      for(const x of touched) if(x.token) await commitTokenSource(x.token);
+      toast(`💗 Soothing Connection — ${lines.join(", ")}`);
+      redraw();
+    } }, "💗 Heal them"),
+  ] });
+}
+/* --- the card --- */
+function channelerCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Channeler")) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const c = channelState(t), R = channelRank(t);
+  const card = classCard(CHANNEL_ICON, "Channeler", "Core pp.178-180");
+  const has = n => hasFeatureLoose(t, n);
+  /* "If you are Fainted, you stop Channeling all Pokémon." — done here rather than asked for, so a
+     Channeler who goes down doesn't leave a table's worth of buffs and Bound AP standing. */
+  const downed = (t.currentHP != null && t.currentHP <= 0) || hasStatus(t, "knockedOut");
+  if(downed && (c.on.length || c.boosts.length || c.imprint.length)) channelDropAll(t, saveFn);
+  /* the notice stays up for as long as they are down, not just on the render that cleared the
+     roster — otherwise the Channels vanish between two renders with nothing ever saying why */
+  if(downed) classBit(card, "💀 Fainted — a Channeler who goes down stops Channeling everything. The roster is empty, "
+    + "every Spirit Boost has come back off, and the AP they had Bound is yours again. Channel again once you are back up.");
+  const bound = channelerBindAP(t);
+  classBit(card, `Channeling ${c.on.length} of ${R} (your Intuition Rank). A Channeled Pokémon tells you its `
+    + `intentions and you tell it yours — neither of you can lie — and you know all its Moves, Abilities and `
+    + `Capabilities. Channeled allies may always Intercept for each other whatever their Loyalty. Break the link `
+    + `by going more than 20 metres away${has("Shared Senses") ? " (an Imprinted one is exempt)" : ""}, or by Fainting.`
+    + (bound ? ` Right now ${bound} AP ${bound === 1 ? "is" : "are"} Bound — ${channelerBindText(t)}.` : ""));
+  /* the roster */
+  const list = channelList(t);
+  if(!list.length) card.append(el("div", { class:"small muted", style:"margin:6px 0" },
+    "Nobody Channeled yet — press ⚡ Channel below."));
+  list.forEach(x => {
+    const row = el("div", { class:"moveslot" });
+    if(x.missing){
+      row.append(el("div", { style:"flex:1;opacity:.6" },
+        el("div", { style:"font-weight:700" }, x.name),
+        el("div", { class:"ms-info" }, "gone — this Pokémon isn't on the board or on any sheet this device can see")));
+      row.append(el("button", { class:"x", style:"cursor:pointer;color:var(--muted);font-size:18px",
+        title:"drop this Channel", onclick:() => channelDrop(t, x.pid, saveFn, redraw) }, "×"));
+      card.append(row); return;
+    }
+    const max = ownerMaxHP(x.obj) || 1, cur = x.obj.currentHP == null ? max : x.obj.currentHP;
+    const boost = c.boosts.find(b => b.pid === x.pid);
+    const imp = c.imprint.includes(x.pid);
+    const chips = [];
+    if(imp) chips.push("👁 Imprinted");
+    if(boost) chips.push(`✨ Spirit Boost · ${(SPIRIT_BOOST_FX.find(f => f.key === boost.stat) || {}).lbl} +${R}`);
+    row.append(el("div", { style:"flex:1;min-width:0" },
+      el("div", { style:"font-weight:700" }, x.name,
+        x.token ? "" : el("span", { class:"muted small", style:"margin-left:6px;font-weight:600" }, "off the board")),
+      el("div", { class:"ms-info" }, `${cur}/${max} HP${chips.length ? " · " + chips.join(" · ") : ""}`)));
+    const acts = el("div", { class:"inline", style:"gap:6px;align-items:center;flex-wrap:wrap" });
+    if(has("Shared Senses")) acts.append(el("button", { class:"btn-secondary" + (imp ? " on" : ""), style:"padding:4px 9px",
+      title:imp ? "release the Imprint — the 1 Bound AP comes back" : "Shared Senses — Bind 1 AP to Imprint them (their senses are yours, and no distance limit)",
+      onclick:() => channelImprint(t, x.pid, !imp, saveFn, redraw) }, imp ? "👁 Imprinted" : "👁 Imprint"));
+    if(boost) acts.append(el("button", { class:"btn-secondary on", style:"padding:4px 9px",
+      title:"end the Spirit Boost — 2 AP back and the buff comes off",
+      onclick:() => channelEndBoost(t, x.pid, saveFn, redraw) }, "⏹ Boost"));
+    acts.append(el("button", { class:"x", style:"cursor:pointer;color:var(--muted);font-size:18px",
+      title:"stop Channeling (Free Action)", onclick:() => channelDrop(t, x.pid, saveFn, redraw) }, "×"));
+    row.append(acts);
+    card.append(row);
+  });
+  /* the buttons */
+  const row = el("div", { class:"inline", style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0" });
+  row.append(el("button", { class:"btn-primary",
+    title:"At-Will, Swift — a Hostile Pokémon takes a DC 15 Intuition Check, which this rolls for you",
+    onclick:() => openChannelPicker(t, rerender, persist) }, `⚡ Channel · ${c.on.length}/${R}`));
+  if(has("Spirit Boost")) row.append(el("button", { class:"btn-secondary",
+    title:"Bind 2 AP — the target's highest Combat Stat decides which +Intuition-Rank effect it gets",
+    onclick:() => openSpiritBoost(t, rerender, persist) }, "✨ Spirit Boost · 2 AP"));
+  if(has("Battle Synchronization")){
+    const u = featUses(t, "Battle Synchronization");
+    if(c.sync){
+      row.append(el("button", { class:"btn-secondary on", title:"a Channeled Pokémon just hit — buff the whole link against that foe",
+        onclick:() => openSyncHit(t, rerender, persist) }, "✦ A Channeled hit landed"));
+      row.append(el("button", { class:"linkbtn", title:"the round is over",
+        onclick:() => { c.sync = false; saveFn(); toast("✦ Battle Synchronization ended"); redraw(); } }, "⏹ end"));
+    } else row.append(el("button", { class:"btn-secondary",
+      title:"Scene x3, Standard — for one full round every Channeled hit buffs the whole link",
+      onclick:() => channelSyncStart(t, rerender, persist) }, "✦ Battle Synchronization"));
+    row.append(el("span", { class:"small muted" }, u.left != null ? `${u.left} of ${u.max} left` : ""));
+  }
+  if(has("Power Conduit")) row.append(el("button", { class:"btn-secondary",
+    title:"2 AP, Swift — trade Combat Stages, move a Coat, or refresh a Scene Move",
+    onclick:() => openPowerConduit(t, rerender, persist) }, "🔗 Power Conduit · 2 AP"));
+  if(has("Pain Dampening")){
+    const u = featUses(t, "Pain Dampening");
+    row.append(el("button", { class:"btn-secondary",
+      title:"Scene x2, Free — split a Fainting blow across the link",
+      onclick:() => openPainDampening(t, rerender, persist) }, "🩸 Pain Dampening"));
+    row.append(el("span", { class:"small muted" }, u.left != null ? `${u.left} of ${u.max} left` : ""));
+  }
+  if(has("Soothing Connection")){
+    const u = featUses(t, "Soothing Connection");
+    row.append(el("button", { class:"btn-secondary",
+      title:"Daily x2, Standard — 5 points of Ticks shared out however you like",
+      onclick:() => openSoothingConnection(t, rerender, persist) }, "💗 Soothing Connection"));
+    row.append(el("span", { class:"small muted" }, u.left != null ? `${u.left} of ${u.max} left` : ""));
+  }
+  card.append(row);
+  /* what the sheet is doing for you, and the one thing it deliberately isn't */
+  if(has("Shared Senses")) classBit(card, "Shared Senses: 👁 on a row Binds 1 AP and Imprints them — you get their senses "
+    + "and they stop being held to the 20 m leash. Only one Imprinted Pokémon's senses per round; releasing hands the AP back.");
+  if(has("Spirit Boost")) classBit(card, `Spirit Boost: 2 AP Bound each, and the effect follows the target's own highest `
+    + `Combat Stat — Attack or Sp.Atk is +${R} damage on that class of attack, Defense or Sp.Def is +${R} Damage Reduction `
+    + `against it, Speed is +${R} Initiative. It goes on as a real buff, so the rolls, the Map's damage tool and the `
+    + `initiative order all use it without being told.`);
+  if(has("Battle Synchronization")) classBit(card, "Battle Synchronization: the +1 Accuracy / +1 Evasion is only meant to "
+    + "apply against the foe that got hit, and no buff here can be that fussy — the foe's name is written into the buff and "
+    + "the Evasion side is right either way, so ignore the +1 Accuracy on rolls aimed at somebody else.");
+  if(has("Power Conduit")) classBit(card, "Power Conduit: the Combat Stage trade and the Scene-Move refresh are done for you. "
+    + "Coats aren't state this sheet keeps, so that third option just pays the AP and reminds the table.");
+  if(has("Pain Dampening")) classBit(card, "Pain Dampening: the resisting Pokémon take your Intuition Rank off the whole "
+    + "attack BEFORE it is divided — that ordering is the Feature's actual value and the easiest thing to get wrong by hand.");
+  classFeatureRows(card, t, "Channeler", rerender, persist);
+  return card;
+}
+
+/* ---------------------------------------------------------------- DUELIST (Core pp.62-63)
+   Duelist is an economy, not a set of attacks: the Trainer Tags a foe, keeps a Pokémon Focused, and
+   then SPENDS Momentum. The Momentum counter itself already lives on the Pokémon (momentumOf /
+   setMomentum, with the stepper on its card); what was missing was every Feature that pays out of
+   it, so the GM was doing the arithmetic and the Move-use bookkeeping by hand. */
+function duelistCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Duelist")) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const card = classCard("🎯", "Duelist", "Core pp.62-63");
+  const has = n => hasFeatureLoose(t, n);
+  const mons = trainerOwnMons(t);
+  const withMomentum = mons.filter(p => hasStatus(p, "focused"));
+  classBit(card, "Tag a foe from its status chips (only one foe at a time, table-wide), keep a Pokémon Focused with "
+    + "Focused Training, and its Momentum stepper turns into +½ Momentum Accuracy & Evasion against that Tag — the "
+    + "roll offers it as a tick-box, because only you know who is being swung at.");
+  if(!mons.length) classBit(card, "This Trainer has no Pokémon on their list yet, so everything below has nothing to target.");
+  else classBit(card, "Momentum right now: " + (mons.map(p => `${ownerLabel(p)} ${momentumOf(p)}/${MOMENTUM_MAX}`
+    + (hasStatus(p, "focused") ? " (Focused)" : "")).join(" · ") || "—"));
+  const row = el("div", { class:"inline", style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0" });
+  if(has("Effective Methods")) row.append(el("button", { class:"btn-primary",
+    title:"At-Will, Extended — 2 Tutor Points for the Exploit or Tolerance Ability, once per Pokémon",
+    onclick:() => openEffectiveMethods(t, redraw, saveFn) }, "🧬 Effective Methods"));
+  if(has("Expend Momentum")) row.append(el("button", { class:"btn-secondary",
+    title:"At-Will, Standard — spend 1, 2 or 3 Momentum; the sheet moves the counter and the Move use",
+    onclick:() => openExpendMomentum(t, redraw, saveFn) }, "💠 Expend Momentum"));
+  if(has("Type Methodology")){
+    const u = featUses(t, "Type Methodology");
+    row.append(el("button", { class:"btn-secondary",
+      title:"Scene x2, Free — 2 Momentum to shift one step of effectiveness against a Tagged foe",
+      onclick:() => openTypeMethodology(t, redraw, saveFn) }, "♻ Type Methodology"));
+    row.append(el("span", { class:"small muted" }, u.left != null ? `${u.left} of ${u.max} left` : ""));
+  }
+  if(has("Seize The Moment")){
+    const u = featUses(t, "Seize The Moment");
+    row.append(el("button", { class:"btn-secondary",
+      title:"Scene x2, Free — cash a full 6 Momentum for an Interrupt attack that can't whiff",
+      onclick:() => openSeizeTheMoment(t, redraw, saveFn) }, "⚡ Seize The Moment"));
+    row.append(el("span", { class:"small muted" }, u.left != null ? `${u.left} of ${u.max} left` : ""));
+  }
+  if(row.childNodes.length) card.append(row);
+  if(has("Directed Focus")) classBit(card, "Directed Focus (Static): your Exploit / Tolerance Pokémon gain +1 Momentum "
+    + "whenever they're targeted by an [Order], deal Super-Effective damage, or take it. Step the counter up on its own "
+    + "row — the sheet can't see effectiveness happening on somebody else's roll.");
+  if(has("Focused Training") || has("Inspired Training") || has("Agility Training"))
+    classBit(card, "The [Training] statuses are real conditions here: tick Focused / Inspired / Agile on the Pokémon's own "
+      + "status chips and the +1 Accuracy, +1 Evasion and +4 Initiative are applied by the engine from then on.");
+  classFeatureRows(card, t, "Duelist", rerender, persist);
+  return card;
+}
+/* Effective Methods — "Your Pokemon loses 2 Tutor Points and gains your choice of the Exploit or
+   Tolerance Ability. You may only target a Pokemon once with Effective Methods." Modelled exactly
+   like the Type Ace grant next door: the Tutor Points go through tpChange so the ledger records it,
+   the Ability joins the Pokémon's own list, and `p.effMethods` is what makes it once-per-Pokémon
+   (and what lets it be undone with the points handed back). */
+const EFFECTIVE_METHODS_ABILITIES = ["Exploit", "Tolerance"];
+function openEffectiveMethods(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const mons = trainerOwnMons(t);
+  if(!mons.length){ toast("This Trainer has no Pokémon to teach"); return; }
+  const body = el("div", {});
+  body.append(el("div", { class:"small", style:"margin-bottom:10px" },
+    "At-Will · Extended Action. The Pokémon permanently loses 2 Tutor Points and gains Exploit or Tolerance. "
+    + "Once per Pokémon — press ✕ on the granted row to undo it and get the points back."));
+  mons.forEach(p => {
+    const rowd = el("div", { class:"moveslot" });
+    const got = p.effMethods;
+    const tp = tpLeft(p);
+    rowd.append(el("div", { style:"flex:1" },
+      el("div", { style:"font-weight:700" }, ownerLabel(p)),
+      el("div", { class:"ms-info" }, got ? `already has ${got} from Effective Methods`
+        : `${tp} Tutor Point${tp === 1 ? "" : "s"} left`)));
+    if(got){
+      rowd.append(el("button", { class:"x", style:"cursor:pointer;color:var(--muted);font-size:18px",
+        title:"undo — refunds the 2 Tutor Points", onclick:async () => {
+          p.abilities = (p.abilities || []).filter(a => String(a).toLowerCase() !== String(got).toLowerCase());
+          tpRefund(p, 2, `Effective Methods removed — ${got}`, { kind:"feature" });
+          p.effMethods = null;
+          saveFn(); closeModal();
+          toast(`${ownerLabel(p)} lost ${got} — 2 Tutor Points refunded`);
+          redraw();
+        } }, "×"));
+    } else EFFECTIVE_METHODS_ABILITIES.forEach(an => {
+      const btn = el("button", { class:"btn-secondary", style:"padding:6px 10px", onclick:() => {
+        if(tpLeft(p) < 2 && !p.unlocked){ toast(`${ownerLabel(p)} needs 2 Tutor Points (has ${tpLeft(p)})`); return; }
+        tpSpend(p, 2, `Effective Methods — ${an}`, { kind:"feature" });
+        if(!Array.isArray(p.abilities)) p.abilities = [];
+        if(!p.abilities.some(a => String(a).toLowerCase() === an.toLowerCase())) p.abilities.push(an);
+        p.effMethods = an;
+        saveFn(); closeModal();
+        toast(`${ownerLabel(p)} gained ${an} — 2 Tutor Points spent`);
+        redraw();
+      } }, an);
+      if(tp < 2 && !p.unlocked){ btn.disabled = true; btn.style.opacity = ".5"; }
+      rowd.append(btn);
+    });
+    body.append(rowd);
+  });
+  body.append(el("div", { class:"small muted", style:"margin-top:8px" },
+    "Exploit and Tolerance are what the rest of the class keys off — Directed Focus only feeds Momentum to a Pokémon "
+    + "carrying one of them, and Type Methodology reads which of the two it is."));
+  modal({ title:"🧬 Effective Methods", bodyNode:body,
+    footNodes:[el("button", { class:"btn-secondary", onclick:closeModal }, "Close")] });
+}
+/* Expend Momentum — the two refresh effects are real bookkeeping the sheet can do; the 11-on-a-d20
+   one is a promise about a future roll, so it just moves the counter and says so. */
+const EXPEND_MOMENTUM_OPTS = [
+  { key:"eot",   cost:1, label:"1 Momentum — regain the use of an EOT Move" },
+  { key:"eleven", cost:2, label:"2 Momentum — auto-roll an 11 on one d20 next turn" },
+  { key:"scene", cost:3, label:"3 Momentum — regain the use of a Scene Move (once per Scene per Pokémon)" },
+];
+function openExpendMomentum(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const mons = trainerOwnMons(t).filter(p => momentumOf(p) > 0);
+  if(!mons.length){ toast("No Pokémon of theirs has any Momentum banked"); return; }
+  const who = el("select");
+  mons.forEach((p, i) => who.append(el("option", { value:String(i) },
+    `${ownerLabel(p)} — ${momentumOf(p)} Momentum${hasStatus(p, "focused") ? "" : " (not Focused!)"}`)));
+  const what = el("select");
+  const mvSel = el("select");
+  const note = el("div", { class:"small muted", style:"margin-top:8px" });
+  const spentMoves = (p, kind) => (p.moves || []).map(mn => {
+    const m = moveByName.get(String(mn).toLowerCase()); if(!m) return null;
+    const info = freqInfo(monMoveFreq(p, m)); if(info.kind !== kind) return null;
+    const k = useKey("move", m.name);
+    return { name:m.name, key:k, spent:(p.uses && p.uses[k]) || 0, max:info.max };
+  }).filter(x => x && x.spent > 0);
+  const fill = () => {
+    const p = mons[+who.value || 0];
+    what.innerHTML = "";
+    EXPEND_MOMENTUM_OPTS.forEach(o => {
+      if(o.cost > momentumOf(p)) return;
+      what.append(el("option", { value:o.key }, o.label));
+    });
+    if(!what.options.length) what.append(el("option", { value:"" }, "— not enough Momentum —"));
+    fillMoves();
+  };
+  const fillMoves = () => {
+    const p = mons[+who.value || 0], kind = what.value;
+    mvSel.innerHTML = "";
+    const list = (kind === "eot" || kind === "scene") ? spentMoves(p, kind) : [];
+    list.forEach(x => mvSel.append(el("option", { value:x.name }, `${x.name} — ${x.spent} of ${x.max} spent`)));
+    mvSel.parentElement && (mvSel.parentElement.style.display = list.length ? "" : "none");
+    note.textContent = kind === "eleven"
+      ? "Nothing to write down — the Momentum is spent here and the 11 is claimed on their next d20."
+      : list.length ? "The use comes straight back off that Move's own pip row."
+      : (kind ? `${ownerLabel(p)} has no spent ${kind === "eot" ? "EOT" : "Scene"} Move to get back.` : "");
+  };
+  who.addEventListener("change", fill);
+  what.addEventListener("change", fillMoves);
+  fill();
+  const body = el("div", {});
+  body.append(el("div", { class:"small", style:"margin-bottom:10px" },
+    "At-Will · Standard Action. Targets your Pokémon under the effects of Focused Training."));
+  body.append(el("label", { class:"field" }, el("span", {}, "Pokémon"), who));
+  body.append(el("label", { class:"field", style:"margin-top:8px" }, el("span", {}, "Spend"), what));
+  body.append(el("label", { class:"field", style:"margin-top:8px" }, el("span", {}, "Move"), mvSel));
+  body.append(note);
+  modal({ title:"💠 Expend Momentum", bodyNode:body, footNodes:[
+    el("button", { class:"btn-secondary", onclick:closeModal }, "Cancel"),
+    el("button", { class:"btn-primary", onclick:() => {
+      const p = mons[+who.value || 0], o = EXPEND_MOMENTUM_OPTS.find(x => x.key === what.value);
+      if(!p || !o){ toast("Pick an effect"); return; }
+      if(momentumOf(p) < o.cost){ toast("Not enough Momentum"); return; }
+      if((o.key === "eot" || o.key === "scene")){
+        if(!mvSel.value){ toast("Pick a Move to refresh"); return; }
+        p.uses = p.uses || {};
+        const k = useKey("move", mvSel.value);
+        p.uses[k] = Math.max(0, (p.uses[k] || 0) - 1);
+      }
+      setMomentum(p, momentumOf(p) - o.cost);
+      saveFn(); closeModal();
+      toast(o.key === "eleven"
+        ? `💠 ${ownerLabel(p)} spent 2 Momentum — one d20 next turn is an automatic 11`
+        : `💠 ${ownerLabel(p)} spent ${o.cost} Momentum — ${mvSel.value} has a use back`);
+      redraw();
+    } }, "💠 Spend it"),
+  ] });
+}
+/* Type Methodology — the Momentum and the Scene use are real; the effectiveness step is applied on
+   whichever roll it happens to, so this hands the GM the number and gets out of the way. */
+function openTypeMethodology(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const mons = trainerOwnMons(t).filter(p => momentumOf(p) >= 2);
+  if(!mons.length){ toast("No Pokémon of theirs has 2 Momentum to spend"); return; }
+  const who = el("select");
+  mons.forEach((p, i) => {
+    const ab = ["Tolerance", "Exploit"].find(a => monHasAbility(p, a)) || p.effMethods || null;
+    who.append(el("option", { value:String(i) },
+      `${ownerLabel(p)} — ${momentumOf(p)} Momentum${ab ? ` · ${ab}` : " · has neither Ability!"}`));
+  });
+  const body = el("div", {});
+  body.append(el("div", { class:"small", style:"margin-bottom:10px" },
+    "Scene x2 · Free Action. Spends 2 of that Pokémon's Momentum, and which way the step goes depends on which "
+    + "Ability it carries — Tolerance resists a Super-Effective hit from a Tagged foe one step further; Exploit pushes "
+    + "a Resisted hit on a Tagged foe one step up. Apply the step on the roll itself: the Map's damage box has an "
+    + "effectiveness nudge, and the Move roll's own ± effectiveness control does the same job."));
+  body.append(el("label", { class:"field" }, el("span", {}, "Pokémon"), who));
+  modal({ title:"♻ Type Methodology", bodyNode:body, footNodes:[
+    el("button", { class:"btn-secondary", onclick:closeModal }, "Cancel"),
+    el("button", { class:"btn-primary", onclick:() => {
+      const p = mons[+who.value || 0]; if(!p) return;
+      if(momentumOf(p) < 2){ toast("Not enough Momentum"); return; }
+      if(!featSpend(t, "Type Methodology")) return;
+      setMomentum(p, momentumOf(p) - 2);
+      saveFn(); closeModal();
+      const ab = ["Tolerance", "Exploit"].find(a => monHasAbility(p, a)) || p.effMethods;
+      toast(`♻ ${ownerLabel(p)} spent 2 Momentum — ${ab === "Exploit" ? "one step MORE effective" : "resisted one step further"}`);
+      redraw();
+    } }, "♻ Spend 2 Momentum"),
+  ] });
+}
+/* Seize The Moment — "loses 6 Momentum, and then gains +1". The counter maths and the Scene use are
+   the sheet's; the Interrupt attack itself is rolled from the Pokémon's own card. */
+function openSeizeTheMoment(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const mons = trainerOwnMons(t).filter(p => momentumOf(p) >= MOMENTUM_MAX);
+  if(!mons.length){ toast(`Nobody is at ${MOMENTUM_MAX} Momentum — that's the trigger`); return; }
+  const who = el("select");
+  mons.forEach((p, i) => who.append(el("option", { value:String(i) }, `${ownerLabel(p)} — ${momentumOf(p)} Momentum`)));
+  const body = el("div", {});
+  body.append(el("div", { class:"small", style:"margin-bottom:10px" },
+    `Scene x2 · Free Action, once per Scene per Pokémon. Trigger: they would gain Momentum while already at `
+    + `${MOMENTUM_MAX}. They drop to 1 Momentum and immediately attack a Tagged foe as an Interrupt — on a miss it `
+    + `still deals damage as though it had Smite, on a hit it is automatically a Critical Hit, and if it was already `
+    + `going to crit they instead heal half their Max HP. Roll the attack from their own card.`));
+  body.append(el("label", { class:"field" }, el("span", {}, "Pokémon"), who));
+  modal({ title:"⚡ Seize The Moment", bodyNode:body, footNodes:[
+    el("button", { class:"btn-secondary", onclick:closeModal }, "Cancel"),
+    el("button", { class:"btn-primary", onclick:() => {
+      const p = mons[+who.value || 0]; if(!p) return;
+      if(!featSpend(t, "Seize The Moment")) return;
+      setMomentum(p, 1);
+      saveFn(); closeModal();
+      toast(`⚡ ${ownerLabel(p)} cashed ${MOMENTUM_MAX} Momentum → 1 — take the Interrupt attack now`);
+      redraw();
+    } }, "⚡ Cash it in"),
+  ] });
+}
+
+/* ---------------------------------------------------------------- HERALD OF PRIDE (Game of Throhs)
+   Most of this class was already wired up the first time it was looked at: the [Weapon] Features
+   swing as Weapon Attacks, weaponSkillRank swaps Combat for Command/Intimidate on melee, Channel the
+   Dragon's Spirit is a toggle in the attack modal, Sovereignty is a stance, and attackDRPierce eats
+   the target's Damage Reduction. What was left was Rouse the Dragon's Blood — and that one IS a
+   buff, so it goes on as one and the roll picks it up. */
+function heraldCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Herald of Pride")) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const card = classCard("👑", "Herald of Pride", "Game of Throhs");
+  const has = n => hasFeatureLoose(t, n);
+  const rank = Math.max(rankNum(t.skills && t.skills.command), rankNum(t.skills && t.skills.intimidate));
+  classBit(card, `Your melee weapon maths reads Command or Intimidate instead of Combat when that's kinder (Rank ${rank} `
+    + `right now), and a Weapon Attack ignores up to ${rank} of the target's Damage Reduction — both already inside every `
+    + `roll and every 🎯 Apply from the feed.`);
+  if(has("Channel the Dragon's Spirit")) classBit(card, "Channel the Dragon's Spirit: the attack window carries a "
+    + "🐲 tick-box that retypes the strike to Dragon for 1 AP. On 18+ the target is stuck on At-Will Moves for a round.");
+  const row = el("div", { class:"inline", style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0" });
+  if(has("Rouse the Dragon's Blood")){
+    const u = featUses(t, "Rouse the Dragon's Blood");
+    row.append(el("button", { class:"btn-primary",
+      title:"Scene x2, Free — after a crit or an Injury, your next Herald Move against that foe cannot miss",
+      onclick:() => rouseDragonsBlood(t, redraw, saveFn) }, "🩸 Rouse the Dragon's Blood"));
+    row.append(el("span", { class:"small muted" }, u.left != null ? `${u.left} of ${u.max} left` : ""));
+  }
+  if(row.childNodes.length) card.append(row);
+  const rousedOn = ownerBuffs(t).some(b => b.key === "roused");
+  if(rousedOn) card.append(el("div", { class:"small", style:"color:var(--good);font-weight:700;margin:4px 0" },
+    "● Roused — your next Herald of Pride Move against that foe cannot miss and cannot be Intercepted."));
+  if(has("Noblesse Oblige")) classBit(card, "Noblesse Oblige gives you the Regal Challenge Ability — the sheet now grants "
+    + "that by itself, so it counts everywhere an Ability is checked without being typed into the Abilities list.");
+  if(has("Sovereignty")) classBit(card, "Sovereignty is a stance on the Stances card: Bind 2 AP and the sheet holds the AP "
+    + "for you until you end it. Its two +2s are Save and Opposed Checks, which are rolled at the table.");
+  classFeatureRows(card, t, "Herald of Pride", rerender, persist);
+  return card;
+}
+function rouseDragonsBlood(t, rerender, persist){
+  if(ownerBuffs(t).some(b => b.key === "roused")){ toast("Already Roused — spend it first"); return; }
+  if(!featSpend(t, "Rouse the Dragon's Blood")) return;
+  addBuff(t, "roused");
+  (persist || save)();
+  toast("🩸 Roused — your next Herald of Pride Move against that foe cannot miss");
+  (rerender || renderBattle)();
+}
+
+/* ---------------------------------------------------------------- TYPE ACE (Core p.119)
+   The Ability grants (Last Chance / Type Strategist, and Extra Ordinary's second one) already live
+   on the Pokémon's own Abilities card. Type Refresh is the piece that was missing: it is pure
+   use-tracking, and use-tracking is exactly what this app is for. */
+function typeAceCard(t, rerender, persist){
+  if(!t || !typeAceEligible(t)) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const ty = typeAceChosenType(t);
+  const card = classCard("🎽", "Type Ace", "Core p.119");
+  const has = n => hasFeatureLoose(t, n);
+  classBit(card, ty ? `Chosen Type: ${ty}. Grant Last Chance or Type Strategist from a Pokémon's own Abilities card `
+    + `(🎯 Type Ace — it spends the 2 Tutor Points through the ledger).`
+    : "No Chosen Type set yet — pick one on the Sheet (or, for an NPC, on this encounter card) or none of this knows what Type to look for.");
+  const row = el("div", { class:"inline", style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0" });
+  if(has("Type Refresh")) row.append(el("button", { class:"btn-primary",
+    title:"2 AP, Standard — one Scene Move of your Chosen Type comes back, and every EOT Move of it refreshes",
+    onclick:() => openTypeRefresh(t, redraw, saveFn) }, `♻ Type Refresh · 2 AP`));
+  if(row.childNodes.length) card.append(row);
+  if(has("Flood!")) classBit(card, "Flood! (At-Will, Free): your Water-Type Pokémon may spend a Shift Action to fire a "
+    + "damaging Water Move as a Line 4 or Close Blast 2 instead of its printed range. Nothing to spend — say it, then "
+    + "roll the Move and paint the shape on the Map.");
+  /* the Chosen Type's own four Features — see TYPE ACE, THE PER-TYPE BRANCHES */
+  const branch = typeAceBranchFor(t);
+  if(branch.length){
+    const R = typeLinkedRank(t, ty);
+    card.append(el("div", { class:"section-head", style:"margin-top:10px" },
+      `${ty || "Type"} Ace — your branch`,
+      el("span", { class:"muted small", style:"margin-left:8px;font-weight:600" },
+        ty ? `Type-Linked Skill: ${typeLinkedLabel(ty)} · Rank ${R}` : "")));
+    if(ty && !R) card.append(el("div", { class:"small", style:"color:var(--bad);font-weight:700;margin-bottom:4px" },
+      `No Rank in ${typeLinkedLabel(ty)} — every "equal to your Type-Linked Skill Rank" below is reading 0. `
+      + `Set the Skill on this sheet and the numbers appear.`));
+    const brow = el("div", { class:"inline", style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0" });
+    branch.forEach(d => {
+      classBit(card, d.bit(t, R));
+      const md = d.stance ? FEATURE_MODES.find(m => m.key === d.stance) : null;
+      if(md){
+        const on = modeIsOn(t, md.key);
+        brow.append(el("button", { class: on ? "btn-secondary on" : "btn-secondary",
+          title: on ? `end it — ${md.bindAP} Bound AP comes back` : `Bind ${md.bindAP} AP, ${md.dur}`,
+          onclick:() => setFeatureMode(t, md, !on, rerender || renderBattle, persist) },
+          on ? `⏹ ${md.off}` : `${md.icon} ${md.on} · ${md.bindAP} AP`));
+      }
+      if(!d.btn || !d.run) return;
+      brow.append(el("button", { class:"btn-secondary", onclick:() => d.run(t, rerender || renderBattle, persist) }, d.btn));
+      if(d.uses){ const u = featUses(t, d.feat);
+        brow.append(el("span", { class:"small muted" }, u.left != null ? `${u.left} of ${u.max}` : "")); }
+    });
+    if(brow.childNodes.length) card.append(brow);
+  }
+  classFeatureRows(card, t, "Type Ace", rerender, persist);
+  return card;
+}
+/* Type Refresh: "The target regains one use of a Scene-Frequency Move of your Chosen Type, and
+   refreshes the Frequency of all EOT-Frequency Moves of your chosen Type." Both halves applied. */
+function openTypeRefresh(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const ty = typeAceChosenType(t);
+  if(!ty){ toast("Set a Chosen Type first"); return; }
+  const mons = trainerOwnMons(t);
+  if(!mons.length){ toast("This Trainer has no Pokémon to target"); return; }
+  const typedMoves = (p, kind) => (p.moves || []).map(mn => {
+    const m = moveByName.get(String(mn).toLowerCase()); if(!m) return null;
+    if(String(m.type || "").toLowerCase() !== ty.toLowerCase()) return null;
+    const info = freqInfo(monMoveFreq(p, m)); if(info.kind !== kind) return null;
+    const k = useKey("move", m.name);
+    return { name:m.name, key:k, spent:(p.uses && p.uses[k]) || 0, max:info.max };
+  }).filter(Boolean);
+  const who = el("select");
+  mons.forEach((p, i) => who.append(el("option", { value:String(i) }, ownerLabel(p))));
+  const mv = el("select");
+  const note = el("div", { class:"small muted", style:"margin-top:8px" });
+  const fill = () => {
+    const p = mons[+who.value || 0];
+    mv.innerHTML = "";
+    const scene = typedMoves(p, "scene").filter(x => x.spent > 0);
+    scene.forEach(x => mv.append(el("option", { value:x.name }, `${x.name} — ${x.spent} of ${x.max} spent`)));
+    if(!scene.length) mv.append(el("option", { value:"" }, `— no spent Scene ${ty} Move —`));
+    const eot = typedMoves(p, "eot").filter(x => x.spent > 0);
+    note.textContent = (p.typeRefreshed ? "Already Type Refreshed this Scene — once per target. " : "")
+      + (eot.length ? `Their EOT ${ty} Moves also refresh: ${eot.map(x => x.name).join(", ")}.`
+                    : `No EOT ${ty} Move of theirs is on cooldown.`);
+  };
+  who.addEventListener("change", fill); fill();
+  const body = el("div", {});
+  body.append(el("div", { class:"small", style:"margin-bottom:10px" },
+    `2 AP · Standard Action. One spent Scene-Frequency ${ty} Move comes back, and EVERY EOT ${ty} Move on that `
+    + `Pokémon comes off cooldown. A target can only be Type Refreshed once per Scene.`));
+  body.append(el("label", { class:"field" }, el("span", {}, "Pokémon"), who));
+  body.append(el("label", { class:"field", style:"margin-top:8px" }, el("span", {}, `Scene ${ty} Move`), mv), note);
+  modal({ title:"♻ Type Refresh", bodyNode:body, footNodes:[
+    el("button", { class:"btn-secondary", onclick:closeModal }, "Cancel"),
+    el("button", { class:"btn-primary", onclick:() => {
+      const p = mons[+who.value || 0]; if(!p) return;
+      if(p.typeRefreshed && !t.unlocked){ toast(`${ownerLabel(p)} has already been Type Refreshed this Scene`); return; }
+      if(!apSpend(t, 2)) return;
+      p.uses = p.uses || {};
+      const done = [];
+      if(mv.value){ const k = useKey("move", mv.value); p.uses[k] = Math.max(0, (p.uses[k] || 0) - 1); done.push(mv.value); }
+      typedMoves(p, "eot").forEach(x => { if(x.spent > 0){ p.uses[x.key] = 0; done.push(x.name); } });
+      p.typeRefreshed = true;
+      saveFn(); closeModal();
+      toast(done.length ? `♻ ${ownerLabel(p)}: ${done.join(", ")} refreshed · 2 AP` : "♻ Nothing needed refreshing · 2 AP");
+      redraw();
+    } }, "♻ Refresh · 2 AP"),
+  ] });
+}
+
+/* ---------------------------------------------------------------- MAELSTROM (Game of Throhs)
+   The Swim/Gilled Capabilities and the whiffed-Water-Move Temp HP button were already in. The two
+   left were the Stratagem and Oceanic Feeling, and both are the same shape: they hand something to
+   the Trainer's Pokémon for a while and then have to take it back. */
+function maelstromCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Maelstrom")) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const card = classCard("🌊", "Maelstrom", "Game of Throhs");
+  const has = n => hasFeatureLoose(t, n);
+  const fish = fishbowlDef();
+  classBit(card, "Maelstrom already gives you +2 Swim and the Gilled Capability — they're on your Capabilities line, "
+    + "not something to remember. Whenever your Water-Type Moves miss every target, the roll's result box offers the "
+    + "Tick of Temporary Hit Points rather than taking it for you: a Trainer roll never learns the target's Evasion.");
+  const row = el("div", { class:"inline", style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0" });
+  if(has("Fishbowl Technique") && fish){
+    const on = modeIsOn(t, fish.key);
+    row.append(el("button", { class: on ? "btn-secondary on" : "btn-primary",
+      title: on ? "end it — the 2 Bound AP come back and the rain stops"
+                : "Bind 2 AP — your Pokémon act as though it were Raining, wherever they are",
+      onclick:() => setWeatherStance(t, fish, !on, redraw, saveFn) }, on ? "⏹ End Fishbowl" : "🐟 Fishbowl Technique · 2 AP"));
+  }
+  if(has("Oceanic Feeling")){
+    const u = featUses(t, "Oceanic Feeling");
+    row.append(el("button", { class:"btn-secondary",
+      title:"Scene x2, Free — borrow Wash Away or Storm Drain for one full round and fire it immediately",
+      onclick:() => openOceanicFeeling(t, redraw, saveFn) }, "🌀 Oceanic Feeling"));
+    row.append(el("span", { class:"small muted" }, u.left != null ? `${u.left} of ${u.max} left` : ""));
+  }
+  if(has("Hydro Jet")) row.append(el("button", { class:"btn-secondary",
+    title:"1 AP, Free — a melee Water Move gains Pass, a ranged one becomes Line 4",
+    onclick:() => { if(!apSpend(t, 1)) return; saveFn();
+      toast("💧 Hydro Jet — melee: the Move gains Pass (you may turn during the 4 m); ranged: it becomes a Line 4");
+      redraw(); } }, "💧 Hydro Jet · 1 AP"));
+  if(row.childNodes.length) card.append(row);
+  if(has("Fishbowl Technique") && fish && modeIsOn(t, fish.key)){
+    const wet = trainerOwnMons(t).filter(p => ownerBuffs(p).some(b => b.mods && b.mods.weather));
+    card.append(el("div", { class:"small", style:"color:var(--good);font-weight:700;margin:4px 0" },
+      `● Fishbowl — ${wet.length ? wet.map(ownerLabel).join(", ") : "nobody"} ${wet.length === 1 ? "is" : "are"} acting as though it were Raining. `
+      + `Swift Swim, Hydration, Rain Dish, Thunder's AC 6 and the ±5 to Water/Fire damage all apply on their rolls.`));
+  }
+  if(has("Water's Shroud")) classBit(card, "Water's Shroud hands you Wash Away or Storm Drain — press ⚙ Choose Ability on "
+    + "its row below and the sheet grants it everywhere an Ability is checked.");
+  classFeatureRows(card, t, "Maelstrom", rerender, persist);
+  return card;
+}
+/* Fishbowl Technique is a [Stratagem]: Bind 2 AP and it stays up until released. The stance itself is
+   a FEATURE_MODES entry (so the AP bookkeeping is the one everything else already uses); what makes
+   it DO something is a weather-override buff placed on each of the Trainer's Pokémon, which
+   ownerWeather() reads in place of the map's weather. Doing it as a buff rather than a flag means
+   End Scene clears it for free and the Pokémon's own card shows why it's swimming faster. */
+function fishbowlDef(){ return featureModeByFeat.get(featKey("Fishbowl Technique")) || null; }
+/* A stance that hands the Trainer's Pokémon a private weather (Fishbowl Technique → Rain, Polar
+   Vortex → Hail). The stance flag is only the AP half; what does the work is a weather-override buff
+   on each Pokémon, which ownerWeather() reads in place of the map's. A buff rather than a flag means
+   End Scene clears it for free and the Pokémon's own card says why it is suddenly faster. */
+async function setWeatherStance(t, def, on, rerender, persist){
+  if(!def || !def.weather) return;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const mons = trainerOwnMons(t), wx = WEATHER_BY_KEY[def.weather] || WEATHER_DEFS[0];
+  const bkey = "wx-" + def.key;
+  if(on){
+    const free = trainerDerived(t).ap - trainerAPUsed(t);
+    if(!t.unlocked && (def.bindAP || 0) > free){
+      toast(`Not enough AP — ${def.feat} Binds ${def.bindAP}, you have ${Math.max(0, free)} free`); return;
+    }
+    if(!trainerModes(t)) t.modes = {};
+    t.modes[def.key] = true;
+    mons.forEach(p => {
+      if(!Array.isArray(p.buffs)) p.buffs = [];
+      if(p.buffs.some(b => b.key === bkey)) return;
+      p.buffs.push({ id:uid(), key:bkey, name:def.feat, cat:"Field", dur:"while Bound", once:false,
+        mods:{ weather:def.weather },
+        note:`Acts as though it were in ${wx.name}, wherever it actually is — ${wx.blurb || "that Weather's rules apply to its Moves and Abilities"}` });
+    });
+  } else {
+    delete t.modes[def.key];
+    mons.forEach(p => { p.buffs = ownerBuffs(p).filter(b => b.key !== bkey); });
+  }
+  saveFn();
+  toast(on ? `${def.icon} ${def.feat} is up · ${def.bindAP} AP Bound · ${mons.length} Pokémon in the ${wx.name}`
+           : `${def.feat} ended · ${def.bindAP} AP returned`);
+  redraw();
+}
+/* Plainly Perfect, read from inside the damage roll: the Move has to be Normal-Type and the
+   Pokémon's own Trainer has to have the Stratagem bound right now. */
+function plainlyPerfectMax(p, moveType){
+  if(String(moveType || "").toLowerCase() !== "normal") return false;
+  const t = ownerTrainerOf(p);
+  return !!(t && hasFeatureLoose(t, "Plainly Perfect") && modeIsOn(t, "plainly-perfect"));
+}
+/* Oceanic Feeling: "activate when either Wash Away or Storm Drain would be triggered to gain that
+   Ability for 1 full round, if you do not already have it, and immediately Trigger it." So it only
+   ever offers the one they are MISSING — Water's Shroud already gave them the other. */
+function openOceanicFeeling(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const pair = ["Wash Away", "Storm Drain"];
+  const missing = pair.filter(a => !ownerHasAbility(t, a));
+  const held = pair.filter(a => ownerHasAbility(t, a));
+  if(!missing.length){ toast("You already have both — Oceanic Feeling has nothing to lend you"); return; }
+  const body = el("div", {});
+  body.append(el("div", { class:"small", style:"margin-bottom:10px" },
+    `Scene x2 · Free Action, and each Ability only once per Scene this way. You already have `
+    + `${held.join(" and ") || "neither"}; this borrows the other for 1 full round and fires it immediately, `
+    + `ignoring its own Frequency.`));
+  missing.forEach(an => {
+    const ab = abilityByName.get(an.toLowerCase());
+    const rowd = el("div", { class:"moveslot" });
+    rowd.append(el("div", { style:"flex:1" },
+      el("div", { style:"font-weight:700" }, an),
+      el("div", { class:"ms-info", html: ab ? String(ab.effect || "").slice(0, 220) : "" })));
+    rowd.append(el("button", { class:"btn-primary", style:"padding:6px 10px", onclick:() => {
+      if(!featSpend(t, "Oceanic Feeling")) return;
+      if(!Array.isArray(t.buffs)) t.buffs = [];
+      const nb = { id:uid(), key:"oceanic", name:`Oceanic Feeling — ${an}`, cat:"Field",
+        dur:"until end of next turn", once:false, mods:{}, self:true,
+        note:`You have ${an} for 1 full round, and it triggers right now regardless of its usual Frequency.` };
+      stampTurnBuff(nb);
+      t.buffs.push(nb);
+      saveFn(); closeModal();
+      toast(`🌀 Oceanic Feeling — ${an} for one full round, triggering now`);
+      redraw();
+    } }, "🌀 Borrow it"));
+    body.append(rowd);
+  });
+  modal({ title:"🌀 Oceanic Feeling", bodyNode:body,
+    footNodes:[el("button", { class:"btn-secondary", onclick:closeModal }, "Close")] });
+}
+
+/* ---------------------------------------------------------------- SHADE CALLER (Game of Throhs)
+   Twisted Power, Super Luck's crit range and the Darkvision Capability were done the first time
+   round. World of Darkness is the one thing with a real board effect, and the board is the GM's, so
+   it goes out the way a Musician's Song does — announced into the roll feed with the shape and the
+   buff attached, for whoever is looking at the Map to paint. */
+function shadeCallerCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Shade Caller")) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const card = classCard("🌑", "Shade Caller", "Game of Throhs");
+  const has = n => hasFeatureLoose(t, n);
+  if(has("Living Shadow")){
+    const r = Math.max(rankNum(t.skills && t.skills.guile), rankNum(t.skills && t.skills.stealth));
+    classBit(card, `Living Shadow: your Dark-Type Moves may originate from any square adjacent to you — and from any `
+      + `completely dark square within ${r} m (the higher of Guile and Stealth). Attacks from your shadow don't set off `
+      + `"when hit by a melee attack" effects. Move the origin on the Map; the numbers are unchanged.`);
+  }
+  const row = el("div", { class:"inline", style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0" });
+  if(has("World of Darkness")) row.append(el("button", { class:"btn-primary",
+    title:"2 AP, Standard — a Burst 2 of Shifting Darkness that lasts the whole encounter",
+    onclick:() => castWorldOfDarkness(t, redraw, saveFn) }, "🌑 World of Darkness · 2 AP"));
+  if(row.childNodes.length) card.append(row);
+  if(has("World of Darkness")) classBit(card, "World of Darkness also gives you Darkvision permanently (it's on your "
+    + "Capabilities line), and the zone counts as complete darkness for Living Shadow.");
+  if(has("Arcane Training")) classBit(card, "Arcane Training: an Arcane Weapon's Struggle Attacks are SPECIAL (they add "
+    + "Sp.Attack), and they qualify — and take their bonus Damage Bases — off Occult Education, not Combat. All of that "
+    + "is in the weapon's own rows. You also resist Disarm with Occult Education.");
+  if(has("Dark Soul")) classBit(card, "Dark Soul hands you Shadow Tag or Super Luck — press ⚙ Choose Ability on its row "
+    + "below; Super Luck's widened crit range then applies to Moves and to a bare Struggle alike.");
+  classFeatureRows(card, t, "Shade Caller", rerender, persist);
+  return card;
+}
+function castWorldOfDarkness(t, rerender, persist){
+  if(!apSpend(t, 2)) return;
+  (persist || save)();
+  logRoll({ kind:"song", label:"🌑 Shifting Darkness", who:t.name || "",
+    headline:`${t.name || "The Shade Caller"} drowned the field in Shifting Darkness`,
+    lines:["Burst 2, centred on them · lasts until the end of the encounter",
+           "−3 Accuracy for anyone WITHOUT Darkvision attacking from it or into it",
+           "GM: ✨ Apply area to paint it and drop the −3 on whoever is standing inside"],
+    area:{ sheetId:(mode === "cloud" ? cloud.activeId : ""), shape:"burst", size:2,
+           buffs:["shifting-darkness"], note:"World of Darkness" } });
+  toast("🌑 World of Darkness · 2 AP — Burst 2 of Shifting Darkness, all encounter");
+  (rerender || renderBattle)();
+}
+
+/* ===================================================================
+   BRIEFING CARD  —  "what can this character actually do?"
+   -------------------------------------------------------------------
+   A GM opening an encounter mid-session does not want to read fourteen
+   Feature spoilers to find out whether this NPC hits hard. This card is
+   the two-minute answer, and every line of it is DERIVED from the sheet
+   in front of it — the attacks are built through trainerAttackProfile,
+   so the numbers are the ones the roll will actually produce, and a
+   Feature taken later shows up here without anybody editing prose.
+
+   `t.brief` is the one hand-written part: a free-text note for the
+   things only the person who built the character knows (how they open,
+   what they are afraid of, who they are). It is edited in place.
+=================================================================== */
+/* the Skills worth naming — anything the Trainer is actually good at */
+function briefTopSkills(t, n){
+  return SKILLS.map(([k, lbl]) => ({ k, lbl, r:rankNum(t.skills && t.skills[k]), name:(t.skills || {})[k] }))
+    .filter(x => x.r >= 4)
+    .sort((a, b) => b.r - a.r)
+    .slice(0, n || 5);
+}
+/* every attack this Trainer can make, as the roll would build it: unarmed, each weapon (and its
+   Weapon Move), each Move a Feature taught them, and each Move swung as a Weapon Attack */
+function briefAttacks(t){
+  const out = [], seen = new Set();
+  const push = (prof, tag) => {
+    if(!prof) return;
+    const k = `${prof.name}|${tag || ""}`; if(seen.has(k)) return; seen.add(k);
+    out.push({ prof, tag });
+  };
+  push(trainerStruggle(t), "unarmed");
+  (t.weapons || []).forEach(w => {
+    push(trainerStruggle(t, w), w.name || w.category);
+    [["weaponMoveAdept", "adept"], ["weaponMoveMaster", "master"]].forEach(([f]) => {
+      if(w[f]) push(trainerAttackProfile(t, w[f], w), `${w.name || "weapon"} Move`);
+    });
+    trainerWeaponAttackMoves(t).forEach((d, mn) => {
+      if(!weaponFitsRestrict(w, d.restrict)) return;
+      push(trainerAttackProfile(t, mn, w, true), `${d.feat} · as a Weapon Attack`);
+    });
+  });
+  const own = [...new Set([...(t.moves || []), ...(t.encMoves || [])])];
+  own.forEach(mn => { if(moveByName.get(String(mn).toLowerCase())) push(trainerAttackProfile(t, mn), "Move"); });
+  return out;
+}
+/* the Features that do something FOR somebody else — Orders, Stratagems, Training, and the class
+   cards' own support buttons. Read off the tags rather than a list, so a new class needs no edit. */
+function briefSupportFeats(t){
+  return trainerFeatureObjs(t).filter(f => /\[(Orders|Stratagem|Training)\]/i.test(String(f.tags || "")))
+    .map(f => f.name);
+}
+function briefingCard(t, rerender, persist){
+  if(!t) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const d = trainerDerived(t);
+  const card = el("div", { class:"card" });
+  const head = el("h3", {}, "📋 Briefing",
+    el("span", { class:"muted small" }, "what this character can do"));
+  card.append(head);
+  /* the hand-written half */
+  const note = el("div", { class:"small", style:"white-space:pre-wrap;margin:2px 0 8px" });
+  const drawNote = () => {
+    note.innerHTML = "";
+    if(t.brief) note.append(el("div", { style:"padding:8px 10px;border-left:3px solid var(--accent);background:var(--panel-2);border-radius:0 8px 8px 0;white-space:pre-wrap" }, t.brief));
+    else note.append(el("span", { class:"muted" }, "No GM note yet — press ✎ to write how this character plays."));
+  };
+  drawNote();
+  head.append(el("button", { class:"linkbtn", style:"margin-left:8px", onclick:() => {
+    const ta = el("textarea", { rows:8, style:"width:100%" }); ta.value = t.brief || "";
+    modal({ title:"✎ Briefing note", bodyNode:el("div", {},
+      el("div", { class:"small muted", style:"margin-bottom:8px" },
+        "Free text — how they open, what they're protecting, anything the numbers below can't say. "
+        + "Everything else on this card is read off the sheet and updates itself."), ta),
+      footNodes:[
+        el("button", { class:"btn-secondary", onclick:closeModal }, "Cancel"),
+        el("button", { class:"btn-primary", onclick:() => { t.brief = ta.value.trim(); saveFn(); closeModal(); redraw(); } }, "Save"),
+      ] });
+  } }, t.brief ? "✎ edit" : "✎ write"));
+  card.append(note);
+  /* the derived half */
+  const line = (lbl, body) => card.append(el("div", { class:"small", style:"margin-bottom:4px" },
+    el("span", { class:"muted", style:"font-weight:800" }, lbl + " "), body));
+  const classes = (t.classes || []).join(" / ") || "no class";
+  line("WHO", `Lv ${t.level || 1} · ${classes} · ${d.hp} HP · ${d.ap} AP · Evasion ${d.physEva}/${d.specEva}/${d.spdEva} (Phys/Spec/Speed)`);
+  const skills = briefTopSkills(t, 5);
+  if(skills.length) line("GOOD AT", skills.map(s => `${s.lbl} ${s.name}`).join(" · "));
+  /* attacks, best Damage Base first — that's the order a GM wants them in */
+  const atks = briefAttacks(t).filter(a => a.prof && a.prof.damageBase !== "—")
+    .sort((a, b) => (+b.prof.damageBase || 0) - (+a.prof.damageBase || 0)).slice(0, 8);
+  if(atks.length){
+    card.append(el("div", { class:"small", style:"margin:8px 0 2px" },
+      el("span", { class:"muted", style:"font-weight:800" }, "HITS WITH")));
+    atks.forEach(a => {
+      const p = a.prof;
+      card.append(el("div", { class:"small", style:"margin-left:10px" },
+        el("span", { style:"font-weight:700" }, p.name),
+        el("span", { class:"muted" }, ` — ${p.cls} ${p.type} · DB ${p.damageBase} · AC ${p.ac} · ${p.range}`
+          + (a.tag ? ` · ${a.tag}` : "") + (p.frequency && !/at-?will/i.test(p.frequency) ? ` · ${p.frequency}` : ""))));
+    });
+  }
+  const abils = [...new Set([...(t.abilities || []), ...(t.encAbilities || []), ...featureAbilityGrants(t)])];
+  if(abils.length) line("ABILITIES", abils.join(" · "));
+  const stab = (t.stabTypes || []).length ? `STAB on ${(t.stabTypes || []).join("/")}` : "";
+  const ct = typeAceChosenType(t);
+  if(stab || ct) line("TYPE", [stab, ct ? `Chosen Type ${ct}` : ""].filter(Boolean).join(" · "));
+  const caps = featureCaps(t).flatMap(c => c.caps || []);
+  const sw = featureSwim(t);
+  if(caps.length || sw) line("MOVES ABOUT", [sw ? `+${sw} Swim` : "", ...caps].filter(Boolean).join(" · "));
+  const sup = briefSupportFeats(t);
+  if(sup.length) line("FOR THEIR POKÉMON", sup.join(" · "));
+  const stances = FEATURE_MODES.filter(m => hasFeatureLoose(t, m.feat));
+  if(stances.length) line("STANCES", stances.map(m => `${m.feat} (Bind ${m.bindAP} AP)${modeIsOn(t, m.key) ? " ● ON" : ""}`).join(" · "));
+  const mons = trainerOwnMons(t);
+  if(mons.length) line("BRINGS", mons.map(p => {
+    const sp = getSpecies(p.species);
+    return `${p.nickname || sp?.name || p.species} Lv ${p.level}`
+      + ((p.abilities || []).length ? ` (${(p.abilities || []).join(", ")})` : "");
+  }).join(" · "));
+  const boundNow = modeBindAP(t) + channelerBindAP(t) + bookDrain(t).ap + (t.manualBoundAP || 0);
+  if(boundNow) line("AP TIED UP", `${boundNow} of ${d.ap} is Bound or Drained right now — ${d.ap - trainerAPUsed(t)} free.`);
+  card.append(el("div", { class:"small muted", style:"margin-top:8px" },
+    "Everything above the note is read off this sheet as it stands — change a Feature, a weapon or a Skill Rank and "
+    + "this changes with it. The class cards below are where the buttons live."));
+  return card;
+}
+
+/* ================================================================================================
+   TYPE ACE — THE PER-TYPE BRANCHES  (Core p.119 and the Ace Features, pp.120-128)
+   ------------------------------------------------------------------------------------------------
+   Type Ace is eighteen classes wearing one name. The Class Feature itself (the Last Chance /
+   Type Strategist grant) has been automated for a long time, but the FOUR Features each branch hangs
+   off it never were, and they are where all the play is. They are also astonishingly regular:
+
+     base    Static or At-Will  — the branch's always-on gimmick
+     Adept   [Orders][Stratagem], Bind 2 AP  — a stance over the Trainer's Pokémon
+     Expert  Scene x2, Free     — a triggered rider on a Move that just happened
+     Master  Daily x3, Free     — the big one
+
+   So this is a REGISTRY, not five hand-written cards: one row per Feature, keyed by its Type, with
+   whatever the engine can genuinely carry out attached to it. The four the table needs right now are
+   Rock, Normal, Bug and Ice; the other fourteen slot in the same way with no new plumbing.
+
+   Everything that scales reads the TYPE-LINKED SKILL — Core p.119 gives each Type a pair of Skills
+   and every "equal to your Type-Linked Skill Rank" in the branch means the better of the two.
+================================================================================================ */
+/* Core p.119. Each Type's two Skills; the Rank used is always the higher one the Trainer has, which
+   is the same player-favourable reading the sheet already uses for Glacial Ice and Frozen Domain. */
+const TYPE_LINKED_SKILLS = {
+  Bug:["command","survival"],        Dark:["guile","stealth"],
+  Dragon:["command","intimidate"],   Electric:["focus","technologyEd"],
+  Fairy:["charm","guile"],           Fighting:["combat","intuition"],
+  Fire:["focus","intimidate"],       Flying:["acrobatics","perception"],
+  Ghost:["intimidate","occultEd"],   Grass:["survival","generalEd"],
+  Ground:["perception","intuition"], Ice:["athletics","survival"],
+  Normal:["charm","intuition"],      Poison:["intimidate","stealth"],
+  Psychic:["focus","occultEd"],      Rock:["combat","survival"],
+  Steel:["athletics","intimidate"],  Water:["athletics","intuition"],
+};
+/* the Rank every "equal to your Type-Linked Skill Rank" in a Type Ace branch is talking about */
+function typeLinkedRank(t, ty){
+  const pair = TYPE_LINKED_SKILLS[ty || typeAceChosenType(t)];
+  if(!t || !pair) return 0;
+  return Math.max(rankNum(t.skills && t.skills[pair[0]]), rankNum(t.skills && t.skills[pair[1]]));
+}
+function typeLinkedLabel(ty){
+  const pair = TYPE_LINKED_SKILLS[ty]; if(!pair) return "";
+  return pair.map(k => (SKILLS.find(([s]) => s === k) || [, k])[1]).join(" or ");
+}
+/* the Pokémon of this Trainer whose Type matches the branch — most of the Features say "your
+   <Type>-Type Pokemon" rather than "your Pokemon", and the difference matters at a gym */
+function typedOwnMons(t, ty){
+  if(!ty) return trainerOwnMons(t);
+  return trainerOwnMons(t).filter(p => (getSpecies(p.species)?.types || [])
+    .some(x => String(x).toLowerCase() === ty.toLowerCase()));
+}
+/* Every foe on the board a GM could point one of these at. Same list the attack tool works from. */
+function branchFoes(t){ return allyTargets(t, { foes:true }).filter(x => x.enemy); }
+/* spend a use, persist, redraw — the shape half these Features need and nothing more */
+function branchSpend(t, feat, msg, saveFn, redraw){
+  if(!featSpend(t, feat)) return false;
+  (saveFn || save)();
+  toast(msg);
+  (redraw || renderBattle)();
+  return true;
+}
+/* a target-picking shell every branch dialog below shares: pick creatures, do something to each,
+   commit each one's own sheet. `apply(entry, ctx)` runs per chosen target. */
+function branchTargetDialog({ title, intro, list, preselect, foot, apply, after, saveFn, redraw, gate }){
+  if(!list.length){ toast("Nobody on the board to point that at — place the tokens on the 🗺 Map first"); return; }
+  const pick = targetPicker(list, preselect || []);
+  const body = el("div", {});
+  body.append(el("div", { class:"small", style:"margin-bottom:10px" }, intro));
+  body.append(pick.node);
+  if(foot) body.append(el("div", { class:"small muted", style:"margin-top:8px" }, foot));
+  modal({ title, bodyNode:body, footNodes:[
+    el("button", { class:"btn-secondary", onclick:closeModal }, "Cancel"),
+    el("button", { class:"btn-primary", onclick:async () => {
+      const chosen = pick.chosen();
+      if(!chosen.length){ toast("Nobody chosen"); return; }
+      if(gate && !gate(chosen)) return;
+      const notes = [];
+      chosen.forEach(x => { const n = apply(x); if(n) notes.push(n); });
+      (saveFn || save)(); closeModal();
+      await commitTargets(chosen);
+      toast(after ? after(chosen, notes) : `${chosen.length} target${chosen.length === 1 ? "" : "s"} affected`);
+      (redraw || renderBattle)();
+    } }, "Apply"),
+  ] });
+}
+
+/* ---- ROCK: Stealth Rock as a resource (Core p.127) ------------------------------------------- */
+/* Tough as Schist's armour is a CHARGE, not a standing bonus: "they may consume an allied Stealth
+   Rock Hazard ... to create temporary armor that grants them Damage Reduction equal to your
+   Type-Linked Skill Rank for one full round". A one-shot DR buff is exactly that (the same shape as
+   a Cheerleader's Excited), so buffDR spends one per attack and no more. */
+function openToughAsSchist(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const R = typeLinkedRank(t, "Rock");
+  const mons = typedOwnMons(t, "Rock");
+  if(!mons.length){ toast("Tough as Schist only armours your Rock-Type Pokémon"); return; }
+  const list = mons.map(p => ({ id:p.id, obj:p, token:null,
+    label:`🔴 ${ownerLabel(p)} — ${p.currentHP == null ? ownerMaxHP(p) : p.currentHP}/${ownerMaxHP(p)} HP` }));
+  branchTargetDialog({
+    title:"🪨 Tough as Schist — consume a Stealth Rock",
+    intro:`They just took Super-Effective damage from a Water, Grass, Ground, Fighting or Steel attack, `
+      + `so a Stealth Rock within 4 metres becomes armour: ${R} Damage Reduction for one full round. `
+      + `It is a charge, not a pool — the sheet spends one per incoming attack, which is what the rule says.`,
+    foot:"Take the Stealth Rock off the Map yourself; the sheet doesn't own the board.",
+    list, saveFn, redraw,
+    apply:(x) => {
+      if(!Array.isArray(x.obj.buffs)) x.obj.buffs = [];
+      x.obj.buffs.push({ id:uid(), key:"schist", name:"Tough as Schist (stone armour)", cat:"Field",
+        dur:"until spent", once:true, mods:{ dr:R },
+        note:`${R} Damage Reduction against one incoming attack — a Stealth Rock Hazard was consumed to make it.` });
+      return ownerLabel(x.obj);
+    },
+    after:(c, n) => `🪨 ${R} DR of stone armour → ${n.join(", ")}`,
+  });
+}
+/* Bigger and Boulder: the push distance and the Vulnerable are both real; the Hazards are the GM's
+   to place, so they are named and left alone. */
+function openBiggerAndBoulder(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const R = typeLinkedRank(t, "Rock"), push = Math.floor(R / 2);
+  branchTargetDialog({
+    title:"🪨 Bigger and Boulder",
+    intro:`Everyone your Pokémon just hit with a damaging Rock-Type Move is pushed up to ${push} metres `
+      + `(half your Type-Linked Rank of ${R}) and is Vulnerable for one full round. Ticking them here applies `
+      + `the Vulnerable; drag them the ${push} metres on the Map yourself.`,
+    foot:"…and drop a Stealth Rock Hazard next to each of them (🗺 Map → the token menu's Hazard tool).",
+    list:branchFoes(t), saveFn, redraw,
+    gate:() => featSpend(t, "Bigger and Boulder"),
+    apply:(x) => {
+      if(!Array.isArray(x.obj.statuses)) x.obj.statuses = [];
+      if(!x.obj.statuses.includes("vulnerable")) x.obj.statuses.push("vulnerable");
+      return ownerLabel(x.obj);
+    },
+    after:(c, n) => `🪨 Vulnerable → ${n.join(", ")} · push them ${push} m`,
+  });
+}
+
+/* ---- NORMAL: Prism's gym, where average damage is abolished (Core p.126) ---------------------- */
+/* Simple Improvements is the one Master Feature in the four that is pure arithmetic: "+Rank to all
+   of your Pokemon's rolls this turn" is a buff, and "Temporary Hit Points equal to twice your
+   Type-Linked Skill Rank" is a number to add. Both applied. */
+function openSimpleImprovements(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const R = typeLinkedRank(t, "Normal");
+  const mons = typedOwnMons(t, "Normal");
+  if(!mons.length){ toast("Simple Improvements triggers off your Normal-Type Pokémon gaining Initiative"); return; }
+  const list = mons.map(p => ({ id:p.id, obj:p, token:null,
+    label:`🔴 ${ownerLabel(p)}${p.simpleImp ? " — already used this Scene" : ""}` }));
+  branchTargetDialog({
+    title:"⭐ Simple Improvements",
+    intro:`They just gained Initiative: +${R} to every roll they make this turn, and ${R * 2} Temporary Hit Points. `
+      + `Once per Scene per Pokémon.`,
+    list, saveFn, redraw,
+    gate:(chosen) => {
+      if(chosen.some(x => x.obj.simpleImp) && !t.unlocked){ toast("One of them has already used it this Scene"); return false; }
+      return featSpend(t, "Simple Improvements");
+    },
+    apply:(x) => {
+      if(!Array.isArray(x.obj.buffs)) x.obj.buffs = [];
+      const nb = { id:uid(), key:"simple-improvements", name:"Simple Improvements", cat:"Field",
+        dur:"this turn", once:false, mods:{ acc:R, dmg:R },
+        note:`+${R} to every roll this turn — your Trainer's Type-Linked Skill Rank.` };
+      stampTurnBuff(nb);
+      x.obj.buffs.push(nb);
+      x.obj.tempHP = (x.obj.tempHP || 0) + R * 2;
+      x.obj.simpleImp = true;
+      return `${ownerLabel(x.obj)} +${R * 2} Temp HP`;
+    },
+    after:(c, n) => `⭐ +${R} to their rolls · ${n.join(", ")}`,
+  });
+}
+
+/* ---- BUG: Swarmlord's gym, where the foe is slowly taken apart (Core p.120) ------------------- */
+/* Disruption Order stacks three separate things on everyone the Move hit. Slowed is a real status,
+   the Accuracy penalty is a real buff, and the Flinch-on-16+ is a rider on their next attack that
+   only the GM can adjudicate — so two of the three land and the third is written on the buff. */
+function openDisruptionOrder(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const R = typeLinkedRank(t, "Bug");
+  branchTargetDialog({
+    title:"🐛 Disruption Order",
+    intro:`Everyone your Pokémon just hit with a Bug-Type Move is Slowed, takes −${R} to Accuracy Rolls, and is `
+      + `Flinched by Damaging Attacks on 16+ — all until the end of the user's next turn. The book leaves the `
+      + `penalty as "−X"; this sheet reads X as your Type-Linked Skill Rank (${R}).`,
+    list:branchFoes(t), saveFn, redraw,
+    gate:() => featSpend(t, "Disruption Order"),
+    apply:(x) => {
+      if(!Array.isArray(x.obj.statuses)) x.obj.statuses = [];
+      if(!x.obj.statuses.includes("slowed")) x.obj.statuses.push("slowed");
+      if(!Array.isArray(x.obj.buffs)) x.obj.buffs = [];
+      const nb = { id:uid(), key:"disruption", name:"Disruption Order", cat:"Field",
+        dur:"until end of next turn", once:false, mods:{ acc:-R },
+        note:`−${R} to Accuracy Rolls, Slowed, and Flinched by Damaging Attacks on 16+ — call that last one at the table.` };
+      stampTurnBuff(nb);
+      x.obj.buffs.push(nb);
+      return ownerLabel(x.obj);
+    },
+    after:(c, n) => `🐛 Slowed and −${R} Accuracy → ${n.join(", ")}`,
+  });
+}
+/* Pheromone Markers: a stack counter that lives on the FOE, because that is what the bonus is read
+   off. The sheet keeps the count and rolls the d6; the +2 Accuracy / +1 Crit Range per stack is
+   printed rather than folded into a roll, since a Move roll never learns which foe it is aimed at. */
+function pheromoneOf(p){ return Math.max(0, (p && p.pheromone) || 0); }
+function openPheromoneMarkers(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const foes = branchFoes(t);
+  if(!foes.length){ toast("No foes on the board to mark"); return; }
+  const body = el("div", {});
+  body.append(el("div", { class:"small", style:"margin-bottom:10px" },
+    "1 AP · Free Action, when you hit a foe with a damaging Bug-Type attack. They gain a Pheromone Stack. "
+    + "Your Bug-Type attacks gain +2 Accuracy and +1 Critical Hit Range against them for EACH stack they carry."));
+  const out = el("div", { class:"small", style:"margin:8px 0;font-weight:700" });
+  foes.forEach(x => {
+    const rowd = el("div", { class:"moveslot" });
+    const n = pheromoneOf(x.obj);
+    rowd.append(el("div", { style:"flex:1" },
+      el("div", { style:"font-weight:700" }, ownerLabel(x.obj)),
+      el("div", { class:"ms-info" }, n ? `${n} stack${n === 1 ? "" : "s"} · +${n * 2} Accuracy · +${n} Crit Range against them`
+                                       : "unmarked")));
+    rowd.append(el("button", { class:"btn-primary", style:"padding:6px 10px", onclick:async () => {
+      if(!apSpend(t, 1)) return;
+      x.obj.pheromone = pheromoneOf(x.obj) + 1;
+      const now = x.obj.pheromone;
+      let extra = "";
+      /* "Once per Scene per foe, when they gain their third or higher Pheromone Stack, you may
+         choose to roll 1d6" — offered rather than forced, and the sheet remembers it was taken. */
+      if(now >= 3 && !x.obj.pheroRolled){
+        const d = 1 + Math.floor(Math.random() * 6);
+        const st = d <= 2 ? "confused" : d <= 4 ? "suppressed" : "enraged";
+        if(!Array.isArray(x.obj.statuses)) x.obj.statuses = [];
+        if(!x.obj.statuses.includes(st)) x.obj.statuses.push(st);
+        x.obj.pheroRolled = true;
+        extra = ` · 1d6 → ${d}: ${statusByKey.get(st)?.name || st}`;
+      }
+      saveFn();
+      await commitTargets([x]);
+      out.textContent = `${ownerLabel(x.obj)} is on ${now} stack${now === 1 ? "" : "s"} — `
+        + `+${now * 2} Accuracy, +${now} Crit Range for your Bug attacks${extra}`;
+      toast(`🐛 Pheromone Stack ${now} on ${ownerLabel(x.obj)} · 1 AP${extra}`);
+      redraw();
+    } }, "🐛 Mark · 1 AP"));
+    if(n) rowd.append(el("button", { class:"x", style:"cursor:pointer;color:var(--muted);font-size:18px",
+      title:"clear their stacks", onclick:async () => {
+        x.obj.pheromone = 0; delete x.obj.pheroRolled;
+        saveFn(); await commitTargets([x]); out.textContent = `${ownerLabel(x.obj)} cleared`; redraw();
+      } }, "×"));
+    body.append(rowd);
+  });
+  body.append(out);
+  modal({ title:"🐛 Pheromone Markers", bodyNode:body,
+    footNodes:[el("button", { class:"btn-secondary", onclick:closeModal }, "Close")] });
+}
+
+/* ---- ICE: Frost Touched's gym (Core p.125) ---------------------------------------------------- */
+/* Deep Cold is the single most mechanical thing in any of these four branches — a status and three
+   Combat Stages, once per Scene per foe. All of it applied. */
+function openDeepCold(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  branchTargetDialog({
+    title:"❄ Deep Cold",
+    intro:"Your Pokémon just hit with a damaging Ice-Type Move. The target is Frozen and drops a Combat Stage of "
+      + "Attack, Special Attack and Speed each. They are cured of Frozen automatically after one full round — "
+      + "step the chip off then. A foe may be affected by Deep Cold only once per Scene.",
+    list:branchFoes(t), saveFn, redraw,
+    gate:(chosen) => {
+      if(chosen.some(x => x.obj.deepCold) && !t.unlocked){ toast("One of them has already been Deep Cold'd this Scene"); return false; }
+      return featSpend(t, "Deep Cold");
+    },
+    apply:(x) => {
+      if(!Array.isArray(x.obj.statuses)) x.obj.statuses = [];
+      if(!x.obj.statuses.includes("frozen")) x.obj.statuses.push("frozen");
+      if(!x.obj.cs) x.obj.cs = {};
+      ["atk", "spatk", "spd"].forEach(k => x.obj.cs[k] = Math.max(-6, (x.obj.cs[k] || 0) - 1));
+      x.obj.deepCold = true;
+      return ownerLabel(x.obj);
+    },
+    after:(c, n) => `❄ Frozen, −1 Attack / Sp.Atk / Speed → ${n.join(", ")}`,
+  });
+}
+/* Arctic Zeal hands the Pokémon a Mist Blessing with three ways to spend it. Only the Combat Stage
+   one is a number this sheet owns; the other two are named on the button that spends the use. */
+function openArcticZeal(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const R = typeLinkedRank(t, "Ice");
+  const mons = typedOwnMons(t, "Ice");
+  if(!mons.length){ toast("Arctic Zeal triggers off your Ice-Type Pokémon using an Ice-Type Move"); return; }
+  const who = el("select");
+  mons.forEach((p, i) => who.append(el("option", { value:String(i) }, ownerLabel(p))));
+  const what = el("select");
+  [["def", "Raise Defense by 1 Combat Stage (Swift)"],
+   ["spdef", "Raise Special Defense by 1 Combat Stage (Swift)"],
+   ["chill", "Slow a foe within 5 m and −5 to their Damage Rolls for a round (Swift)"],
+   ["armor", "Add their Tick Value to the Damage Reduction Glacial Ice gives them (Free, when hit)"],
+  ].forEach(([v, l]) => what.append(el("option", { value:v }, l)));
+  const body = el("div", {});
+  body.append(el("div", { class:"small", style:"margin-bottom:10px" },
+    "Scene x2 · Free Action. They use Mist as though it were on their Move List, and may then expend the "
+    + "Blessing for one of these. The two Combat Stage options are applied here; the other two are called at "
+    + "the table (the −5 lands on a foe, and the armour rides on top of Glacial Ice's own Damage Reduction)."));
+  body.append(el("label", { class:"field" }, el("span", {}, "Pokémon"), who));
+  body.append(el("label", { class:"field", style:"margin-top:8px" }, el("span", {}, "Spend the Blessing on"), what));
+  modal({ title:"❄ Arctic Zeal", bodyNode:body, footNodes:[
+    el("button", { class:"btn-secondary", onclick:closeModal }, "Cancel"),
+    el("button", { class:"btn-primary", onclick:() => {
+      const p = mons[+who.value || 0]; if(!p) return;
+      if(!featSpend(t, "Arctic Zeal")) return;
+      let msg;
+      if(what.value === "def" || what.value === "spdef"){
+        if(!p.cs) p.cs = {};
+        p.cs[what.value] = Math.min(6, (p.cs[what.value] || 0) + 1);
+        msg = `❄ ${ownerLabel(p)} +1 ${what.value === "def" ? "Defense" : "Sp.Defense"} Combat Stage`;
+      } else if(what.value === "chill"){
+        msg = `❄ ${ownerLabel(p)} chills a foe within 5 m — Slowed and −5 Damage Rolls for a round (apply it to them)`;
+      } else {
+        const tick = hpTick(ownerMaxHP(p) || 1);
+        msg = `❄ ${ownerLabel(p)}'s stone-cold armour: +${tick} on top of Glacial Ice's ${R} DR against that hit`;
+      }
+      saveFn(); closeModal(); toast(msg); redraw();
+    } }, "❄ Spend the Blessing"),
+  ] });
+}
+function castFrozenDomain(t, rerender, persist){
+  if(!apSpend(t, 2)) return;
+  const dc = 4 + 2 * rankNum(t.skills && t.skills.survival);
+  (persist || save)();
+  logRoll({ kind:"song", label:"❄ Frozen Domain", who:t.name || "",
+    headline:`${t.name || "The Frost Touched"} froze the ground solid`,
+    lines:[`6 square metres of Frozen Domain within range 6 — every square adjacent to another`,
+           `Anyone passing through makes an Acrobatics Check, DC ${dc} (4 + twice Survival Rank), or is Tripped`,
+           `Flying, levitating and Naturewalk (Tundra) are immune · standing on it counts as Hail`,
+           `A Fire-Type attack from or into a square melts that square`],
+    area:{ sheetId:(mode === "cloud" ? cloud.activeId : ""), shape:"burst", size:2, buffs:[], note:"Frozen Domain" } });
+  toast(`❄ Frozen Domain · 2 AP — Acrobatics DC ${dc} or Tripped`);
+  (rerender || renderBattle)();
+}
+
+/* ---- the registry ---------------------------------------------------------------------------- */
+/* `bit` is the line the card prints; `btn` (optional) is what it can actually do. `stance` names a
+   FEATURE_MODES key, so the Bind-2-AP Stratagems draw their own on/off switch. */
+const TYPE_ACE_BRANCH = [
+  /* ---- Rock (Core p.127) ---- */
+  { feat:"Gravel Before Me", type:"Rock",
+    bit:(t, R) => "Gravel Before Me (At-Will, Free): whenever one of your Rock-Type Pokémon misses everything with a "
+      + "Rock Move, takes an Injury, is crit, or Faints — drop a Stealth Rock Hazard next to it. Press it and the "
+      + "table is told; place the Hazard from the Map's own token menu.",
+    btn:"🪨 Gravel Before Me", run:(t, rr, ps) => {
+      logRoll({ kind:"skill", label:"🪨 Gravel Before Me", who:t.name || "",
+        headline:"A Stealth Rock Hazard rises next to their Pokémon",
+        lines:["At-Will, Free Action — triggered by a missed Rock Move, an Injury, a Critical Hit, or Fainting",
+               "GM: drop it from the Map's token menu (🪨 Stealth Rock)"] });
+      toast("🪨 Stealth Rock — place it next to that Pokémon on the Map");
+      (rr || renderBattle)();
+    } },
+  { feat:"Bigger and Boulder", type:"Rock",
+    bit:(t, R) => `Bigger and Boulder (Scene x2, Free): a damaging Rock hit pushes everyone it caught up to ${Math.floor(R / 2)} m `
+      + `(half your Rank of ${R}) and leaves them Vulnerable for a round, with a Stealth Rock beside each.`,
+    btn:"🪨 Bigger and Boulder", run:openBiggerAndBoulder, uses:true },
+  { feat:"Tough as Schist", type:"Rock", stance:"schist",
+    bit:(t, R) => `Tough as Schist (Bind 2 AP): while it's up, your Stealth Rocks within 4 m of your Rock-Type Pokémon `
+      + `never trigger unless you want them to — and one can be eaten to give that Pokémon ${R} Damage Reduction `
+      + `for a round against a Super-Effective Water, Grass, Ground, Fighting or Steel hit.`,
+    btn:"🪨 Eat a Stealth Rock", run:openToughAsSchist },
+  { feat:"Gneiss Aim", type:"Rock",
+    bit:(t, R) => "Gneiss Aim (Daily x3, Free): a Rock Move that just missed gains the Smite keyword for that use — "
+      + "it deals its damage anyway.",
+    btn:"🪨 Gneiss Aim", uses:true,
+    run:(t, rr, ps) => branchSpend(t, "Gneiss Aim", "🪨 Gneiss Aim — that missed Rock Move has Smite: roll its damage anyway", ps, rr) },
+  /* ---- Normal (Core p.126) ---- */
+  { feat:"Plainly Perfect", type:"Normal", stance:"plainly-perfect",
+    bit:() => "Plainly Perfect (Bind 2 AP): while it's up, your Pokémon don't roll damage dice for Normal-Type Moves — "
+      + "they take the maximum. The sheet does that for you inside the roll; a Critical Hit's SECOND set of dice is "
+      + "still rolled normally, exactly as the Feature says.",
+    switchOnly:true },
+  { feat:"New Normal", type:"Normal",
+    bit:() => "New Normal (Scene x2, Free): a Normal Move with a conditional damage modifier uses its best case — "
+      + "Return at DB 9, Wring Out undiminished, Retaliate at DB 14. Never above DB 14, once per Scene per Pokémon.",
+    btn:"⭐ New Normal", uses:true,
+    run:(t, rr, ps) => branchSpend(t, "New Normal", "⭐ New Normal — use that Move's best-case Damage Base (cap DB 14)", ps, rr) },
+  { feat:"Simple Improvements", type:"Normal",
+    bit:(t, R) => `Simple Improvements (Daily x3, Free): when one of your Normal-Type Pokémon gains Initiative, +${R} to `
+      + `every roll it makes this turn and ${R * 2} Temporary Hit Points. Both applied for you.`,
+    btn:"⭐ Simple Improvements", run:openSimpleImprovements, uses:true },
+  /* ---- Bug (Core p.120) ---- */
+  { feat:"Insectoid Utility", type:"Bug",
+    bit:() => "Insectoid Utility (Static): a Sky Capability is +1 Speed Evasion (applied in the derived stats). "
+      + "Threaded may perform Combat Maneuvers, Wallclimber is immune to Push and Trip, and Naturewalk can't be "
+      + "Slowed or Stuck in its own Terrains — those three are table calls.",
+    switchOnly:true },
+  { feat:"Iterative Evolution", type:"Bug", stance:"iterative",
+    bit:(t, R) => `Iterative Evolution (Bind 2 AP): while it's up, every damaging Bug attack of theirs gets one of three — `
+      + `Super-Effective adds +2 Accuracy, Neutral adds +${R} damage, Resisted is resisted one step less. Which one `
+      + `depends on the target, so pick it on the roll: the Move's own ± effectiveness and the damage box take it.`,
+    switchOnly:true },
+  { feat:"Chitin Shield", type:"Bug",
+    bit:() => "Chitin Shield (Daily x3, Free): a Status-Class Move aimed at your Bug-Type Pokémon simply misses, and "
+      + "that Pokémon is immune to that Move for the rest of the Scene. Once per Scene per Pokémon.",
+    btn:"🐛 Chitin Shield", uses:true,
+    run:(t, rr, ps) => branchSpend(t, "Chitin Shield", "🐛 Chitin Shield — that Status Move misses, and it can't touch them again this Scene", ps, rr) },
+  { feat:"Disruption Order", type:"Bug",
+    bit:(t, R) => `Disruption Order (Daily x3, Free): everyone a Bug Move of theirs hits is Slowed, takes −${R} to `
+      + `Accuracy, and Flinches on 16+ until the end of that turn. The Slow and the −${R} are applied for you.`,
+    btn:"🐛 Disruption Order", run:openDisruptionOrder, uses:true },
+  { feat:"Pheromone Markers", type:"Bug",
+    bit:() => "Pheromone Markers (1 AP, Free): mark a foe you hit with a Bug attack. Each stack is +2 Accuracy and "
+      + "+1 Critical Hit Range for your Bug attacks against them, and the third one lets you roll 1d6 for Confused, "
+      + "Suppressed or Enraged. The stacks live on the foe and the sheet counts them.",
+    btn:"🐛 Pheromone Markers · 1 AP", run:openPheromoneMarkers },
+  /* ---- Ice (Core p.125) ---- */
+  { feat:"Glacial Ice", type:"Ice",
+    bit:(t, R) => `Glacial Ice (Static): your Ice-Type Pokémon have ${R} Damage Reduction against Fighting, Fire, Rock `
+      + `and Steel hits that would be Super-Effective. Applied by the damage math — it only fires on a hit that `
+      + `actually lands as ×1.5 or better.`,
+    switchOnly:true },
+  { feat:"Polar Vortex", type:"Ice", stance:"polar-vortex",
+    bit:() => "Polar Vortex (Bind 2 AP): your Pokémon act as though they were in Hail, wherever they are — Snow Cloak's "
+      + "Evasion, Ice Body's healing, Blizzard at AC 6. The sheet puts the Hail on each of them and takes it off "
+      + "when you release the Bind.",
+    switchOnly:true },
+  { feat:"Arctic Zeal", type:"Ice",
+    bit:() => "Arctic Zeal (Scene x2, Free): an Ice-Type Pokémon using an Ice Move gets Mist for free, and may spend "
+      + "the Blessing to raise a defensive Combat Stage, chill a foe, or thicken its Glacial Ice armour.",
+    btn:"❄ Arctic Zeal", run:openArcticZeal, uses:true },
+  { feat:"Deep Cold", type:"Ice",
+    bit:() => "Deep Cold (Daily x3, Free): a damaging Ice hit Freezes the target and drops its Attack, Special Attack "
+      + "and Speed a Combat Stage each. Once per Scene per foe — all of it applied for you.",
+    btn:"❄ Deep Cold", run:openDeepCold, uses:true },
+  { feat:"Frozen Domain", type:"Ice",
+    bit:(t) => `Frozen Domain (2 AP, Standard): 6 square metres of ice within range 6. Anyone crossing it makes an `
+      + `Acrobatics Check at DC ${4 + 2 * rankNum(t.skills && t.skills.survival)} or is Tripped, and standing on it counts as Hail. `
+      + `A Fire attack from or into a square melts it.`,
+    btn:"❄ Frozen Domain · 2 AP", run:castFrozenDomain },
+];
+const typeAceBranchFor = t => TYPE_ACE_BRANCH.filter(d => hasFeatureLoose(t, d.feat));
+
 /* Every class card this Trainer has earned, in the order the cards were written. Both the player's
    ⚔ Combat tab and the GM's Encounters card call this, so an NPC with a player class gets the same
    buttons (and passes its own saveEnc as `persist`). */
 function classAutomationCards(t, rerender, persist){
-  return [musicianCard, commanderCard, provocateurCard, cheerleaderCard,
-          glamourCard, captureCard, medicCard, hexCard]
+  return [briefingCard,
+          musicianCard, commanderCard, provocateurCard, cheerleaderCard,
+          glamourCard, captureCard, medicCard, hexCard, channelerCard,
+          duelistCard, heraldCard, typeAceCard, maelstromCard, shadeCallerCard]
     .map(fn => fn(t, rerender, persist)).filter(Boolean);
 }
 
@@ -17280,7 +19329,7 @@ function renderTrainerCombat(root, t){
   root.append(card);
   const bers = berserkerCard(t); if(bers) root.append(bers);
   // one card per player Class the Trainer has taken (Musician, Commander, Provocateur, Cheerleader,
-  // Glamour Weaver, Capture Specialist, Medic, Hex Maniac) — see PLAYER-CLASS AUTOMATION above
+  // Glamour Weaver, Capture Specialist, Medic, Hex Maniac, Channeler) — see PLAYER-CLASS AUTOMATION above
   classAutomationCards(t, renderBattle).forEach(c => root.append(c));
   // Throw a Poké Ball: a real action on the trainer's own sheet, targeting a wild Pokémon
   // currently visible on the shared Map — not something you trigger by clicking a Pokémon.
@@ -17425,6 +19474,7 @@ function encList(){ return mode==="cloud" ? ensureEnc().data.encounters : (state
 function activeEncounter(){ const a=encList(); return a.find(e=>e.id===state.activeEncounterId) || a[0]; }
 let encSaveTimer;
 function saveEnc(){
+  encOwnerSeq++;                                   // the id→owner index above is rebuilt on next read
   if(mode==="cloud"){
     const row = ensureEnc();   // conflict-safe write is debounced below (CAS by rev, not clock)
     cacheSharedRow("enc", row);   // optimistic: survives a refresh before the debounced write lands
@@ -17691,10 +19741,26 @@ function encTrainerRefRow(t, ownerKey, name, kind, onRemove){
   const freq=refFrequency(kind, name);
   row.dataset.key = kind+":"+ownerKey+":"+name;
   const uc = kind==="feature" ? usesControl(t, "feature", name, freq, renderEncounters, saveEnc) : null;
+  /* A Feature the sheet can actually carry out (⚙ Choose Ability, ⚙ Choose Move, a stance) gets its
+     button HERE as well as on its class card. The class cards only list the Features the prereq chain
+     files under that class, and plenty don't land anywhere — Signature Move is a General Feature,
+     Water's Shroud chains through a Ranked Feature the walk can't follow — so without this a GM had
+     no way at all to make those choices for an NPC. Same {owned:true, persist:saveEnc} contract the
+     Battle-tab row uses; ✨ Give stays out, since openGiveOrder only ever targets the player's party. */
+  const rf = kind==="feature" ? (featureByName.get(name) || featureByKey.get(featKey(name))) : null;
+  const rmd = rf ? featureModeDef(rf) : null, rmdOn = rmd && modeIsOn(t, rmd.key);
+  const rfa = rf ? featureActionDef(rf) : null;
   row.append(el("summary",{},
     el("span",{style:"font-weight:700;color:var(--ink)"}, name),
     freq?el("span",{class:"muted small",style:"margin-left:8px"}, freq):"",
     uc?el("span",{style:"margin-left:8px"},uc):"",
+    rmd?el("button",{class:"linkbtn",style:"margin-left:8px",
+      title: rmdOn ? `end it — ${rmd.bindAP||0} Bound AP comes back` : `switch it on — Binds ${rmd.bindAP||0} AP, ${rmd.dur}`,
+      onclick:e=>{ e.preventDefault(); e.stopPropagation(); setFeatureMode(t, rmd, !rmdOn, renderEncounters, saveEnc); }},
+      rmdOn ? `⏹ ${rmd.off}` : `${rmd.icon} ${rmd.on}`):"",
+    rfa?el("button",{class:"linkbtn",style:"margin-left:8px",title:rfa.title(t),
+      onclick:e=>{ e.preventDefault(); e.stopPropagation(); rfa.run(t, rf, renderEncounters, saveEnc); }}, rfa.label(t)):"",
+    rmdOn?el("span",{class:"small",style:"margin-left:8px;color:var(--good);font-weight:700"},"● ACTIVE"):"",
     el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove",
       onclick:e=>{ e.preventDefault(); onRemove(); }},"×")));
   row.append(el("div",{class:"small",style:"margin-top:6px",html: refDetailHTML(kind, name)}));
@@ -18744,7 +20810,9 @@ function encounterTrainerCard(enc, tr){
   if(bers){ bers.style.margin = "8px 0 0"; card.append(bers); }
   /* …and the same for every other player Class an NPC has been given (Musician, Commander,
      Provocateur, Cheerleader, Glamour Weaver, Capture Specialist, Medic, Hex Maniac), writing
-     through saveEnc() so a GM running the NPC's Features never touches the player's own sheet. */
+     through saveEnc() so a GM running the NPC's Features never touches the player's own sheet. A
+     Channeler NPC gets its whole roster here too: the Channels, the Bound AP and every Spirit
+     Boost land on this encounter's copy and are committed with saveEnc / broadcastEncState. */
   classAutomationCards(t, renderEncounters, saveEnc).forEach(c => { c.style.margin = "8px 0 0"; card.append(c); });
   /* Stances (Sovereignty, Enchanting Transformation) — the same switch the player's Combat tab
      shows, writing through saveEnc so the Bound AP lands on the NPC and not on whoever is logged in. */
@@ -18794,8 +20862,8 @@ function openExpCalc(enc){
       el("div",{style:"font-size:22px;font-weight:800;margin-top:6px;color:var(--accent)"}, `${per} XP per player`),
       el("div",{class:"small muted",style:"margin-top:4px"}, `${total} ÷ ${pl} player${pl===1?"":"s"}. Each player then splits their share among the Pokémon they used (Core p.460).`),
       el("button",{class:"btn-primary",style:"padding:6px 12px;margin-top:10px",
-        title:"add this much EXP to every player sheet's pool — they can then spend it on their Trainer or Pokémon",
-        onclick:()=>sendEXP(per)}, "📤 Send EXP"));
+        title:"pick who was actually there — it lands in those sheets' EXP pools, to spend on their Trainer or Pokémon",
+        onclick:()=>openSendEXP(per, `${per} EXP per player, straight off the calculator — tick who was actually there, then send.`)}, "📤 Send EXP"));
   };
   sigIn.addEventListener("input",recalc); plIn.addEventListener("input",recalc);
   body.append(inRow, out); recalc();
@@ -18829,8 +20897,8 @@ function openMonExpCalc(p){
       el("div",{class:"small muted",style:"margin-top:4px"},
         `${total} ÷ ${pl} player${pl===1?"":"s"}. Each player then splits their share among the Pokémon they used (Core p.460).`),
       el("button",{class:"btn-primary",style:"padding:6px 12px;margin-top:10px",
-        title:"add this much EXP to every player sheet's pool — they can then spend it on their Trainer or Pokémon",
-        onclick:()=>sendEXP(per)}, "📤 Send EXP"));
+        title:"pick who was actually there — it lands in those sheets' EXP pools, to spend on their Trainer or Pokémon",
+        onclick:()=>openSendEXP(per, `${per} EXP per player, straight off the calculator — tick who was actually there, then send.`)}, "📤 Send EXP"));
   };
   sigIn.addEventListener("input",recalc); plIn.addEventListener("input",recalc);
   body.append(el("div",{class:"fieldrow"},
@@ -18862,6 +20930,7 @@ function renderEncounters(){
   leftc.append(sel);
   leftc.append(el("button",{class:"btn ghost",onclick:()=>{ const n=prompt("Encounter name:","New Encounter"); if(n===null)return; const e=newEncounter(n||"New Encounter"); arr.push(e); state.activeEncounterId=e.id; saveEnc(); renderEncounters(); }},"＋ New"));
   leftc.append(el("button",{class:"btn ghost",title:"roll a random wild encounter from an area table",onclick:openRandomEncounter},"🎲 Random"));
+  leftc.append(el("button",{class:"btn ghost",title:"hand EXP to the players — any amount, to anyone you tick, no encounter or calculator needed",onclick:()=>openSendEXP()},"📤 Send EXP"));
   if(cur){
     leftc.append(el("button",{class:"btn ghost",title:"rename",onclick:()=>{ const n=prompt("Rename encounter:",cur.name); if(n===null)return; cur.name=n; saveEnc(); renderEncounters(); }},"✎"));
     // outline colour for every token this encounter puts on the Map (red by default). Live-updates
@@ -19307,6 +21376,8 @@ function renderShops(){
 
   // paying the party doesn't need a shop to exist, so it sits above everything shop-shaped
   root.append(paydayCard());
+  // …and neither does handing out EXP: type a number, tick who earned it, send
+  root.append(expCard());
 
   if(!cur){
     root.append(el("div",{class:"card"}, el("span",{class:"muted"},
@@ -19408,23 +21479,135 @@ function moneySheetRows(){
     .sort((a,b)=> String(a.owner_name||"~").localeCompare(String(b.owner_name||"~"))
                || String(a.data.name||"").localeCompare(String(b.data.name||"")));
 }
-/* EXP pool: the GM calculates a number, taps "Send EXP", and it lands in every player sheet's
-   xpPool — same one-row-at-a-time cloudUpsert pattern as Payday. Players can then only spend
-   out of that pool (see trainerXpCard/xpRow), instead of typing any amount they like. */
-function sendEXP(amount){
-  amount = Math.round(Math.abs(amount)||0);
-  if(!amount){ toast("Nothing to send"); return; }
-  const rows = moneySheetRows().filter(r=>!ownsRow(r));
-  if(!rows.length){ toast("No player sheets in this campaign yet."); return; }
-  if(!confirm(`Send ${amount} EXP to ${rows.length} sheet${rows.length===1?"":"s"}'s pool?\n\n`
-    + rows.map(r=>"• "+paydayWho(r)).join("\n"))) return;
+/* EXP pool: the GM decides a number — off the 🧮 calculator, or just off the top of their head —
+   ticks who was actually there, and it lands in those sheets' xpPool. Players can then only spend
+   out of that pool (see trainerXpCard/xpRow) instead of typing any amount they like.
+
+   Same shape as Payday: one cloudUpsert per row, so awarding EXP mid-session doesn't fight
+   whatever anyone happens to be editing, and its own tick list decides who's in. */
+let expSend = { amt:"", split:false, off:null };   // off: rowId → left out of the award
+/* the GM's own sheets start unticked — "the players" means the players */
+function expInit(){
+  if(expSend.off) return;
+  expSend.off = {};
+  moneySheetRows().forEach(r=>{ if(ownsRow(r)) expSend.off[r.id] = true; });
+}
+function expTargets(){ expInit(); return moneySheetRows().filter(r=>!expSend.off[r.id]); }
+/* the only writer of xpPool from the GM's side. `rows` defaults to whoever is ticked; a negative
+   amount takes unspent EXP back out again. */
+function sendEXP(amount, rows, opts){
+  opts = opts || {};
+  amount = Math.round(amount) || 0;
+  if(!amount){ toast("Nothing to send"); return false; }
+  rows = rows || expTargets();
+  if(!rows.length){ toast("Nobody is ticked — pick who this EXP is for."); return false; }
+  const give = amount > 0, n = Math.abs(amount);
+  if(!opts.quiet && !confirm(`${give?"Send":"Take back"} ${n} EXP ${give?"to":"from"} ${rows.length} sheet${rows.length===1?"":"s"}?\n\n`
+    + rows.map(r=>"• "+paydayWho(r)).join("\n"))) return false;
+  let hit = 0;
   rows.forEach(r=>{
     normTrainer(r.data.trainer);
-    r.data.trainer.xpPool = (r.data.trainer.xpPool||0) + amount;
+    const t = r.data.trainer, before = t.xpPool||0;
+    t.xpPool = Math.max(0, before + amount);
+    if(t.xpPool === before) return;                  // taking back off an empty pool changes nothing
+    hit++;
     cloudUpsert(r).then(ok=>{ if(!ok) toast(`⚠ ${paydayWho(r)} didn't sync — it'll reconcile on the next change`); });
   });
-  toast(`📤 Sent ${amount} EXP to ${rows.length} sheet${rows.length===1?"":"s"}`);
+  toast(hit ? `📤 ${give?"Sent":"Took back"} ${n} EXP ${give?"to":"from"} ${hit} sheet${hit===1?"":"s"}`
+              + (opts.over ? ` · ${opts.over} left over` : "")
+            : "Nothing to take back — those pools are already empty");
   render();
+  return true;
+}
+/* The tick list that decides WHO gets the EXP. Shown two ways: as a card in the GM's Shops tab
+   (hand out EXP whenever, no encounter and no calculator needed) and as the body of the
+   🧮 calculator's "📤 Send EXP" chooser, which just pre-fills the amount it worked out. */
+function expCard(opts){
+  opts = opts || {};
+  const card = el("div",{class:"card"});
+  const rows = moneySheetRows();
+  const count = el("span",{class:"small muted"});
+  if(!opts.inModal) card.append(el("h3",{},"📤 Send EXP", count));
+  card.append(el("div",{class:"small muted",style:"margin:-4px 0 10px"}, opts.note
+    || "Hand out Experience whenever you like — a fight, a puzzle, a good scene. It lands in every ticked sheet's EXP pool and the player spends it on their Trainer or their Pokémon. Untick anyone who wasn't there."));
+  if(!rows.length){ card.append(el("span",{class:"muted small"},"no player sheets in this campaign yet.")); return card; }
+  expInit();
+  if(opts.preset){ expSend.amt = String(Math.round(opts.preset)); expSend.split = false; }
+
+  const cbs = [];
+  const hint = el("span",{class:"small muted"});
+  const paint = () => {
+    const n = expTargets().length, a = Math.abs(parseInt(expSend.amt)||0);
+    const each = expSend.split && n ? Math.floor(a/n) : a;
+    count.textContent = `${n}/${rows.length} ticked`;
+    hint.textContent = !a || !n ? ""
+      : expSend.split ? `${each} EXP each — split ${n} way${n===1?"":"s"}`
+                        + (a-each*n ? `, ${a-each*n} left over` : "")
+      : `${each} EXP each · ${each*n} handed out in total`;
+  };
+
+  const amt = el("input",{type:"number",min:0,step:1,placeholder:"EXP",style:"width:110px"});
+  amt.value = expSend.amt;
+  amt.addEventListener("input",()=>{ expSend.amt = amt.value; paint(); });
+  const split = el("input",{type:"checkbox"});
+  split.checked = expSend.split;
+  split.addEventListener("change",()=>{ expSend.split = split.checked; paint(); });
+
+  const go = sign => {
+    const targets = expTargets();
+    const a = Math.abs(parseInt(expSend.amt)||0);
+    if(!targets.length){ toast("Nobody is ticked — pick who this EXP is for."); return; }
+    if(!a){ toast("Type an amount first"); return; }
+    const each = expSend.split ? Math.floor(a/targets.length) : a;
+    if(each<=0){ toast("That splits down to nothing"); return; }
+    if(sendEXP(sign*each, targets, { over: expSend.split ? a-each*targets.length : 0 }) && opts.onSend) opts.onSend();
+  };
+  const setAll = on => {
+    rows.forEach((r,i)=>{ if(on) delete expSend.off[r.id]; else expSend.off[r.id] = true;
+                          if(cbs[i]) cbs[i].checked = on; });
+    paint();
+  };
+
+  card.append(el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap"},
+    amt,
+    el("label",{class:"inline",style:"gap:4px;font-size:12px;font-weight:700",
+      title:"treat the amount as one pot and split it evenly between everyone ticked"},
+      split, "split evenly"),
+    el("button",{class:"btn-primary",style:"padding:6px 12px",
+      title:"add this much EXP to every ticked sheet's pool",onclick:()=>go(1)},"📤 Send"),
+    el("button",{class:"btn ghost danger",style:"padding:6px 12px",
+      title:"take this much unspent EXP back out of their pools",onclick:()=>go(-1)},"－ Take back")));
+  card.append(el("div",{class:"inline",style:"gap:10px;margin:6px 0 10px"}, hint,
+    el("span",{class:"spacer"}),
+    opts.inModal ? count : "",
+    el("button",{class:"linkbtn",title:"everyone gets it",onclick:()=>setAll(true)},"all"),
+    el("button",{class:"linkbtn",title:"nobody — then tick just the ones who earned it",onclick:()=>setAll(false)},"none")));
+
+  rows.forEach(r=>{
+    const t = r.data.trainer;
+    const line = el("div",{class:"moveslot"});
+    const cb = el("input",{type:"checkbox",title:"include this sheet in the award"});
+    cb.checked = !expSend.off[r.id];
+    cb.addEventListener("change",()=>{ if(cb.checked) delete expSend.off[r.id]; else expSend.off[r.id] = true; paint(); });
+    cbs.push(cb);
+    const mid = el("div",{style:"flex:1;min-width:0"});
+    mid.append(el("div",{style:"font-weight:700"}, paydayWho(r)));
+    mid.append(el("div",{class:"small muted"},
+      `Lv ${t.level||1} · ${Math.max(0, Math.min(TRAINER_XP_PER_LEVEL, t.xp||0))}/${TRAINER_XP_PER_LEVEL} to the next level`));
+    line.append(cb, mid, el("div",{style:"font-weight:800;white-space:nowrap",
+      title:"unspent EXP sitting in this sheet's pool"}, `${t.xpPool||0} EXP`));
+    card.append(line);
+  });
+  paint();
+  return card;
+}
+/* the chooser. Both the 🧮 calculator and the Encounters toolbar land here — the calculator's
+   number is only a suggestion until the GM says who was actually in the fight. */
+function openSendEXP(amount, note){
+  const card = expCard({ preset:amount, note, inModal:true, onSend:closeModal });
+  card.style.margin = "0";
+  modal({ title:"📤 Send EXP", bodyNode: el("div",{}, card),
+          footNodes:[ el("button",{class:"btn ghost",onclick:closeModal},"Close") ] });
 }
 function paydayWho(r){
   const sheet = r.data?.name || "unnamed sheet", owner = r.owner_name || "";
@@ -24494,6 +26677,7 @@ function tokenInitiative(token){
     if(hasStatus(obj,"paralysis")) v = Math.floor(v/2);
     if(hasStatus(obj,"flinch")) v -= 5;
     if(hasStatus(obj,"agile")) v += 4;   // Agility Training: +4 Initiative
+    v += buffInit(obj);                  // a Channeler's Spirit Boost (Speed): +their Intuition Rank
   }
   return v;
 }
