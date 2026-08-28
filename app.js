@@ -1557,6 +1557,10 @@ function isLazaro(){
 }
 function canSeeMom(){ return isGM() || isLazaro(); }
 function isMomSpecies(n){ return String(n||"").trim().toLowerCase() === "mom?"; }
+/* Lazaro may read "Mom?"'s Dex entry, but not what it is going to become. For anyone but the GM the
+   entry keeps the level-up ladder's LEVELS (so he can see WHEN the next Move lands) while blanking
+   the Moves themselves, and drops the Legendary Gift list at the end entirely. */
+function momDexRedacted(s){ return isMomSpecies(s && s.name) && !isGM(); }
 /* auto-distribute a "Mom?" mon's level+10 stat budget across its stats, weighted by base stats
    (Attack base 0 → gets nothing). Largest-remainder method; deterministic. Mutates p.stats. */
 function autoAllocMom(p){
@@ -9476,11 +9480,11 @@ function renderMonEditor(root, p){
   if(mode==="cloud" && canEditActive() && !mom)
     head.append(el("button",{class:"btn-secondary",title:"Send this Pokémon to the shared PC",
       onclick:()=>depositToPC(cloud.byId[cloud.activeId], p)},"🖥 To PC"));
-  // "Mom?" isn't handed around or looked up like a normal species, but its Dex entry (species stats,
-  // learnset, and — for a giftPatron species — the bond-level list) is useful GM reference: show the
-  // button only to the GM, never to Lázaro or any other player.
+  // "Mom?" isn't handed around like a normal species, but its Dex entry (species stats, learnset,
+  // and — for a giftPatron species — the bond-level list) is worth reading. The GM sees all of it;
+  // Lázaro gets the redacted version (momDexRedacted): levels without Moves, and no Gift list.
   // pass the Pokémon so the entry's Tutor list is answered for it (level / points / already knows)
-  if(sp && (!mom || isGM())) head.append(el("button",{class:"linkbtn",onclick:()=>speciesModal(sp,p)},"Dex entry"));
+  if(sp) head.append(el("button",{class:"linkbtn",onclick:()=>speciesModal(sp,p)},"Dex entry"));
   root.append(head);
 
   /* persistent hero: sprite + identity + HP (most-used info up top) */
@@ -13782,7 +13786,133 @@ function transformCard(p, opts){
     "A species picked from the dex hands over the level-up Moves one of its kind would know at your Level, and its Basic Abilities."));
   return card;
 }
+/* ===================================================================
+   METRONOME — Normal, Status, Self, Scene x2
+   "Metronome randomly uses any other Move except for After You, Assist, Bestow, Copycat, Counter,
+    Covet, Crafty Shield, Destiny Bond, Detect, Endure, Feint, Focus Punch, Follow Me, Helping Hand,
+    King's Shield, Metronome, Me First, Mimic, Mirror Coat, Mirror Move, Protect, Quash, Quick Guard,
+    Rage Powder, Sketch, Sleep Talk, Snatch, Snore, Spiky Shield, Switcheroo, Thief, Transform, Trick,
+    and Wide Guard. The GM helps to pick the random Move."
+
+   Pressing Metronome anywhere on the sheet — its row, the 🎲 Roll button, an encounter creature's
+   Move list, a token's Actions on the Map — opens this instead of the ordinary roll window, because
+   every one of those paths goes through openMoveRoll. The dex is rolled here, and the Move that comes
+   up is then rolled for real through openMoveRoll: "randomly USES any other Move" means the user
+   makes that Move's Accuracy and Damage Rolls with their own STAB, Combat Stages, buffs, Abilities
+   and held items, which is exactly what handing it back to the normal roll window gives.
+
+   Metronome's own Scene x2 is the Frequency that gets spent — the Move it rolled up was never one of
+   the user's to spend a use of (see `freqMove` in openMoveRoll) — and, like every other Move on the
+   sheet, nothing is spent until the dice actually go, so closing the window costs nothing.
+
+   "The GM helps to pick the random Move" is why there's a 🔁 Reroll and a 🎯 GM: pick beside the
+   result rather than a single locked-in answer.
+
+   The Glitch Aura (The Blessed and the Damned) is the one rule that changes the shape of this:
+   "Glitch 2: when you use Metronome you roll two Moves and the Possessor chooses which you use.
+   Glitch 3: you roll three Moves and the Possessor picks one." Auras are display-only on this sheet
+   (nothing knows a creature's Glitch level), so the 1/2/3 selector is set by hand.
+=================================================================== */
+const METRONOME_BANNED = ["After You","Assist","Bestow","Copycat","Counter","Covet","Crafty Shield",
+  "Destiny Bond","Detect","Endure","Feint","Focus Punch","Follow Me","Helping Hand","King's Shield",
+  "Metronome","Me First","Mimic","Mirror Coat","Mirror Move","Protect","Quash","Quick Guard",
+  "Rage Powder","Sketch","Sleep Talk","Snatch","Snore","Spiky Shield","Switcheroo","Thief",
+  "Transform","Trick","Wide Guard"];
+const metronomeBanned = new Set(METRONOME_BANNED.map(moveKey));
+function isMetronomeMove(m){ return moveKey(m && m.name) === "metronome"; }
+/* Everything Metronome is allowed to land on. moves.json is scraped out of the book's tables, so
+   next to the Moves it also carries the Trainer Maneuvers (Grapple, Sprint, Disarm — Type "None"),
+   the weapon-Move tier headers (MH Adept, EW Expert), the Static keyword entries (Bind/Wrap/Clamp)
+   and the repeated "Name | Category | Frequency" header row. None of those is a Move a Pokémon can
+   use, so the pool keeps only rows shaped like a real Move rather than blacklisting them by name. */
+let metronomePoolCache = null;
+function metronomePool(){
+  if(metronomePoolCache) return metronomePoolCache;
+  metronomePoolCache = D.moves.filter(m => m && m.name && m.name !== "Name"
+    && /^(Physical|Special|Status|Versatile)$/i.test(m.class || "")
+    && (m.type || "") !== "None"
+    && !/^struggle/i.test(m.name)
+    && !metronomeBanned.has(moveKey(m.name)));
+  return metronomePoolCache;
+}
+/* n distinct Moves off the pool (Glitch rolls two or three, and the same Move twice would give the
+   Possessor nothing to choose between) */
+function metronomeDraw(n){
+  const pool = metronomePool(), out = [], seen = new Set();
+  while(out.length < Math.min(n, pool.length)){
+    const m = pool[Math.floor(Math.random()*pool.length)];
+    if(seen.has(m.name)) continue;
+    seen.add(m.name); out.push(m);
+  }
+  return out;
+}
+function openMetronome(p, metro, sp, opts={}){
+  let count = Math.max(1, Math.min(3, opts.metroCount || 1));
+  let picks = [];
+  const list = el("div",{});
+  const draw = () => {
+    list.innerHTML = "";
+    if(picks.length > 1) list.append(el("div",{class:"small muted",style:"margin-bottom:6px"},
+      "👾 Glitch — the Possessor chooses which of these you use."));
+    picks.forEach(m => {
+      const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 10px"});
+      card.append(el("div",{style:"font-weight:800;font-size:16px"}, `${m.name} `,
+        el("span",{html:typeBadge(effectiveMoveType(p, m))}),
+        el("span",{class:"kv",style:"margin-left:6px"}, m.class || "Status")));
+      card.append(el("div",{class:"ms-info"}, moveLineShort(m, p)));
+      if(m.effect) card.append(el("div",{class:"small muted",style:"margin-top:4px"},
+        String(m.effect).length > 240 ? String(m.effect).slice(0,240) + "…" : String(m.effect)));
+      card.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px"},
+        el("button",{class:"btn-primary",style:"padding:6px 12px",
+          onclick:()=>{ closeModal();
+            openMoveRoll(p, m, sp, Object.assign({}, opts, {viaMetronome:true, freqMove:metro})); }},
+          "🎲 Use it"),
+        el("button",{class:"linkbtn",onclick:()=>openRefDetail("move", m.name, p)},"full text")));
+      list.append(card);
+    });
+  };
+  /* Roll (or reroll) — and tell the GM's feed what came up, so a reroll is never invisible. */
+  const roll = (n) => {
+    if(n != null) count = n;
+    picks = metronomeDraw(count);
+    draw(); drawGlitch();
+    logRoll({ kind:"move", label:"Metronome", who:rollerName(p),
+      headline:`🎰 ${picks.map(m=>m.name).join("  /  ")}`,
+      lines:[ picks.length > 1
+        ? `${picks.length} Moves rolled — the Possessor picks one (Glitch)`
+        : `${picks[0].type || "Typeless"}${picks[0].class?` · ${picks[0].class}`:""} — ${moveLineShort(picks[0], p)}` ] });
+  };
+  const glitch = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-bottom:12px"});
+  const drawGlitch = () => {
+    glitch.innerHTML = "";
+    glitch.append(el("span",{class:"small muted"},"👾 Glitch — Moves rolled:"));
+    [1,2,3].forEach(n => glitch.append(el("button",{class:"btn-secondary"+(count===n?" on":""),
+      style:"padding:4px 11px", title:n===1?"the ordinary rule — one random Move"
+        :`Glitch ${n}: roll ${n} Moves and the Possessor picks one`,
+      onclick:()=>roll(n)}, String(n))));
+  };
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
+    `A Move taken at random from all ${metronomePool().length} Metronome can reach — the ${METRONOME_BANNED.length} the book excludes (Protect, Copycat, Sketch, Transform…) are already out of the pool. `
+    + `${monLabel(p)} then uses it with their own STAB, Combat Stages, buffs and held items; it's Metronome's own ${monMoveFreq(p, metro) || metro.frequency} that gets spent, and only once the dice go.`));
+  body.append(glitch, list);
+  modal({title:"🎰 Metronome", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:()=>roll()},"🔁 Reroll"),
+    /* "The GM helps to pick the random Move" — the escape hatch for a Move that makes no sense here
+       (a Move needing a partner, an ally, water to Dive into…). */
+    el("button",{class:"btn-secondary",onclick:()=>{ closeModal();
+      openPicker("🎯 GM: which Move does Metronome land on?", metronomePool().map(m=>m.name), name=>{
+        const mm = moveByName.get((name||"").toLowerCase());
+        if(mm) openMoveRoll(p, mm, sp, Object.assign({}, opts, {viaMetronome:true, freqMove:metro}));
+      }, "move");
+    }},"🎯 GM: pick"),
+  ]});
+  roll();
+}
 function openMoveRoll(p, m, sp, opts={}){
+  /* Metronome does not resolve as itself: roll the dex first, then come back through here
+     with whatever came up (opts.viaMetronome) and roll THAT for real. */
+  if(isMetronomeMove(m) && !opts.viaMetronome) return openMetronome(p, m, sp, opts);
   const d = pokeDerived(p);
   const types = sp?.types || [];
   const ate = ateInfo(p, m);            // an "−ate" ability that could re-type this Normal move
@@ -13963,12 +14093,16 @@ function openMoveRoll(p, m, sp, opts={}){
      visible (and tappable) at the moment you roll, not only on the Move's row back in the sheet.
      Matters most on the Map, where a token's Actions jump straight into this modal. */
   const freqChip = el("span",{class:"kv",style:"align-items:center;gap:6px;padding:3px 7px"});
+  /* Whose Frequency this roll actually spends. Normally the Move's own — but a Move that Metronome
+     rolled up spends Metronome's Scene x2 instead, because the Move it landed on was never one of
+     this creature's Moves to spend a use of. */
+  const freqMove = opts.freqMove || m;
   const drawFreq = () => {
     freqChip.innerHTML = "";
-    const freq = monMoveFreq(p, m);
-    freqChip.append(el("span",{title: freq!==m.frequency ? `PP Up: printed ${m.frequency}` : ""},
-      `Freq: ${freq||"—"}${freq!==m.frequency?" ✨":""}`));
-    const uc = usesControl(p, "move", m.name, freq,
+    const freq = monMoveFreq(p, freqMove);
+    freqChip.append(el("span",{title: freq!==freqMove.frequency ? `PP Up: printed ${freqMove.frequency}` : ""},
+      `${freqMove!==m ? `${freqMove.name}: ` : "Freq: "}${freq||"—"}${freq!==freqMove.frequency?" ✨":""}`));
+    const uc = usesControl(p, "move", freqMove.name, freq,
       ()=>{ drawFreq(); if(opts.rerender) opts.rerender(); },
       opts.persist||save, {bossEot:isBoss(p)});
     if(uc) freqChip.append(uc);
@@ -13981,6 +14115,9 @@ function openMoveRoll(p, m, sp, opts={}){
       + (acCut?" ✨":"")),
     dbChip,
     el("span",{class:"kv"}, m.range||"—")));
+
+  if(opts.viaMetronome) body.append(el("div",{class:"small",style:"margin:-6px 0 12px;color:var(--accent)"},
+    `🎰 Rolled up by Metronome — ${monLabel(p)} uses ${m.name} with their own STAB, Combat Stages, buffs and held items. Metronome's own Frequency is what gets spent.`));
 
   /* Bone Wielder: say which half of it is live, since both halves are silent otherwise — the +1
      shows up inside the Accuracy breakdown, and the errata only bites when a target is picked. */
@@ -14505,7 +14642,7 @@ function openMoveRoll(p, m, sp, opts={}){
       zBoost.kind==="z" ? `⚡ ${zBoost.zName}!` : `💎 ${zBoost.item} — +${zBoost.db} Damage Base`));
     if(!usedThisRoll){
       usedThisRoll = true;
-      if(spendMoveUse(p, m)){ (opts.persist||save)(); drawFreq(); if(opts.rerender) opts.rerender(); }
+      if(spendMoveUse(p, freqMove)){ (opts.persist||save)(); drawFreq(); if(opts.rerender) opts.rerender(); }
       /* The Gem shatters / the Z-Crystal burns its Scene use only once the dice actually go — a
          ticked box that never gets rolled costs nothing. `spent` then blocks the "override hits" redo. */
       if(zOn && zBoost && !zBoost.spent){
@@ -14795,7 +14932,7 @@ function openMoveRoll(p, m, sp, opts={}){
   };
   body.append(out);
 
-  modal({title:`${m.name}`, bodyNode:body, footNodes:[
+  modal({title: opts.viaMetronome ? `🎰 Metronome → ${m.name}` : `${m.name}`, bodyNode:body, footNodes:[
     m.effect? el("button",{class:"btn-secondary",onclick:()=>openRefDetail("move",m.name)},"Full text") : "",
     el("button",{class:"btn-primary",onclick:doRoll},"🎲 Roll dice"),
   ]});
@@ -24285,13 +24422,17 @@ function speciesModal(s, mon){
     ${s.abilities.high.map(a=>`<span class="chip">${esc(a)} <span class="small muted">high</span></span>`).join("")}</div>`;
   if(s.evolution?.length>1) html += `<div class="r-meta">Evolution</div><div class="r-body" style="margin-bottom:10px">${s.evolution.map(e=>`${e.stage}. ${esc(e.name)}${e.min?` (Lv ${e.min})`:""}`).join("  →  ")}</div>`;
   // move lists
+  const hideMoves = momDexRedacted(s);   // "Mom?" read by a player: levels only, never the Moves
   if(s.moves){
     if(s.moves.levelup.length){
-      html += `<details class="spoiler" open><summary>Level-Up Moves (${s.moves.levelup.length})</summary>
-        <table class="movetable" style="margin-top:6px"><tr><th>Lv</th><th>Move</th><th>Type</th></tr>
-        ${s.moves.levelup.map(m=>`<tr><td>${m.level}</td><td>${esc(canonMoveName(m.name))}</td><td>${typeBadge(m.type)}</td></tr>`).join("")}</table></details>`;
+      html += `<details class="spoiler" open><summary>Level-Up Moves (${s.moves.levelup.length})${
+          hideMoves?` <span class="small muted">— levels only; what it learns is still unwritten</span>`:""}</summary>
+        <table class="movetable" style="margin-top:6px"><tr><th>Lv</th><th>Move</th>${hideMoves?"":"<th>Type</th>"}</tr>
+        ${s.moves.levelup.map(m=>hideMoves
+            ? `<tr><td>${m.level}</td><td class="muted">???</td></tr>`
+            : `<tr><td>${m.level}</td><td>${esc(canonMoveName(m.name))}</td><td>${typeBadge(m.type)}</td></tr>`).join("")}</table></details>`;
     }
-    if(s.moves.tmhm?.length){
+    if(!hideMoves && s.moves.tmhm?.length){
       // each TM/HM is clickable → shows which of your Pokémon can learn it
       html += `<details class="spoiler" open><summary>TM/HM Moves (${s.moves.tmhm.length}) <span class="small muted">— tap one to see who can learn it</span></summary><div class="r-body">${
         // the printed label is rebuilt from the TM index + the DB's spelling, so PDF line-break
@@ -24300,11 +24441,11 @@ function speciesModal(s, mon){
       }</div></details>`;
     }
     // Tutor entries carry a "(N)" cost marker that isn't part of the name — keep it, clean the name
-    if(s.moves.egg?.length) html+=`<details class="spoiler"><summary>Egg Moves (${s.moves.egg.length})</summary><div class="r-body">${
+    if(!hideMoves && s.moves.egg?.length) html+=`<details class="spoiler"><summary>Egg Moves (${s.moves.egg.length})</summary><div class="r-body">${
       s.moves.egg.map(raw=>{ const bare=String(raw).replace(/\s*\(N\)\s*$/i,"").trim();
                      return esc(canonMoveName(bare) + (bare===String(raw).trim() ? "" : " (N)")); }).join(", ")
     }</div></details>`;
-    if(s.moves.tutor?.length){
+    if(!hideMoves && s.moves.tutor?.length){
       // Full stat line per Tutor move, with the level the Tutor/Inheritance restriction gates it behind.
       // With a `mon` in hand, a "Can teach?" column answers it for that Pokémon specifically.
       const monLv  = mon ? (mon.level||1) : null;
@@ -24354,7 +24495,7 @@ function speciesModal(s, mon){
   // giftPatron species (e.g. "Mom?", bound to Vulpoxen's soul-bond): list the Patron's Legendary
   // Gift levels straight from the catalog, so the GM can see at a glance which bond level unlocks
   // the next Gift without cross-referencing the Gifts tab.
-  const giftLvls = giftLevelsForPatron(s.giftPatron);
+  const giftLvls = momDexRedacted(s) ? [] : giftLevelsForPatron(s.giftPatron);
   if(giftLvls.length) html += `<div class="r-meta" style="margin-top:10px">🎁 ${esc(s.giftPatron)} Gift Levels</div>
     <table class="movetable" style="margin-top:4px"><tr><th>Lv</th><th>Gift</th><th>Tier</th></tr>
     ${giftLvls.map(g=>`<tr><td>${g.level}</td><td>${esc(g.name)}</td><td>${esc(g.tier)}</td></tr>`).join("")}</table>`;
