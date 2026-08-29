@@ -25864,6 +25864,11 @@ let uiRefreshTimer = null;
 const uiRefreshWanted = new Set();
 function uiBusy(){
   if(typeof mapDragging!=="undefined" && mapDragging) return true;
+  // Panning counts as busy too. It didn't, and that was worse than a dropped frame: a live update
+  // landing mid-pan ran a full renderMap(), which REPLACES the .map-viewport the gesture is
+  // captured on — so the board stopped following the mouse until you let go and grabbed it again.
+  // Queued instead, it replays the moment the hand comes off (see refreshUI's 400ms retry).
+  if(typeof mapPanning!=="undefined" && mapPanning) return true;
   const t = document.activeElement?.tagName;
   return t==="INPUT" || t==="TEXTAREA" || t==="SELECT";
 }
@@ -26478,6 +26483,10 @@ function renderPC(){
 let mapView = { scale:1, panX:0, panY:0 };   // each viewer's own camera (not synced)
 
 let mapDragging = false;                      // suppresses realtime re-render mid-drag
+/* the same, for dragging the BOARD rather than a token — see attachPanZoom. Declared here beside
+   mapDragging and not next to its own code because uiBusy() guards both with `typeof`, and `typeof`
+   does not shield a `let` that is still in its temporal dead zone. */
+let mapPanning = false;
 let mapDraggingIds = new Set();               // tokens THIS viewer has hold of (never ghosted, see live drag)
 /* ---- live token movement across the table ----------------------------------------------------
    A drag used to be invisible to everyone else until it was let go, because the only thing that
@@ -27491,7 +27500,21 @@ function revealDisc(set, cx, cy, r){
    already explored before the wall existed stays revealed, same as the rest of the fog model. */
 function revealFootprint(set, cx, cy, span, r, map){
   const ri = Math.ceil(r), rr = (r+0.35)*(r+0.35), x1 = cx+span, y1 = cy+span;
-  const walls = map ? mapWalls(map) : null;
+  /* Broad-phase the walls ONCE per footprint instead of re-walking all of them per cell.
+     wallsBlockLOS below is called for every cell inside the sight radius and loops over every wall
+     on the map, so the cost is cells x walls on every revealed step of a drag: a radius-20 sight
+     line is 1681 cells, and 200 drawn walls make that ~336 000 segment-intersection tests for ONE
+     token moving ONE square (and revealAroundTokens pays it per token on every drop). Every
+     sightline tested here starts at the footprint centre and ends at a cell centre, so all of them
+     live inside the reveal box — a wall whose own bounding box misses that box cannot cross any of
+     them. Filtering on that first is exact, not an approximation. */
+  const allWalls = map ? mapWalls(map) : null;
+  let walls = allWalls;
+  if(allWalls && allWalls.length){
+    const bx0 = cx-ri-0.5, bx1 = x1+ri+0.5, by0 = cy-ri-0.5, by1 = y1+ri+0.5;
+    walls = allWalls.filter(w => Math.min(w.x1,w.x2) <= bx1 && Math.max(w.x1,w.x2) >= bx0 &&
+                                 Math.min(w.y1,w.y2) <= by1 && Math.max(w.y1,w.y2) >= by0);
+  }
   const ox = cx+(span+1)/2, oy = cy+(span+1)/2;
   for(let x=cx-ri; x<=x1+ri; x++){
     const dx = x<cx ? cx-x : (x>x1 ? x-x1 : 0);
@@ -30172,7 +30195,7 @@ function attachPanZoom(viewport, stage){
   // layer — which is why moving a token "fixed" it. Rebuild once the gesture settles.
   const settle = ()=>{
     clearTimeout(zoomTimer);
-    zoomTimer = setTimeout(()=>{ if(currentTab==="map" && !mapDragging) renderMap(); }, 200);
+    zoomTimer = setTimeout(()=>{ if(currentTab==="map" && !mapDragging && !mapPanning) renderMap(); }, 200);
   };
   const clampScale = s => Math.max(MAP_ZOOM_MIN, Math.min(MAP_ZOOM_MAX, s));
   const vpXY = e=>{ const r=viewport.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; };
@@ -30198,11 +30221,24 @@ function attachPanZoom(viewport, stage){
   let pan = null;            // {sx,sy,px0,py0} while one-finger/mouse panning
   let pinch = null;          // {dist0,scale0,ax,ay} while two-finger pinching
   const twoPts = ()=>{ const a=[...pts.values()]; return [a[0],a[1]]; };
-  const beginPan = p => { pan = {sx:p.x, sy:p.y, px0:mapView.panX, py0:mapView.panY}; };
+  /* Promote the stage to its own compositor layer WHILE PANNING, and only while panning.
+     The stage is not a layer at rest (see the .map-stage comment in styles.css: a pinned layer
+     re-rasterizes only when the DOM changes, which is what made ZOOMING look pixelated), so every
+     frame of a pan re-paints every token that scrolls through the viewport — border, box-shadow,
+     name label, HP bar, HP readout, five elements each. Measured on a 400x300-cell board zoomed
+     out to 0.25: 40 tokens 6.9ms/frame, 200 tokens 13.9ms, 400 tokens 27.8ms (36fps, and that's on
+     a fast desktop — a player's laptop hits it far sooner). Board size, the background image, the
+     grid and the fog canvas all measured free; it is purely the number of tokens on screen.
+     Promoted, the same 400-token pan is 6.9ms — the pan becomes a compositor translate that
+     touches no token at all. Dropped again on release, so zoom stays crisp exactly as before.
+     Deliberately NOT applied to a pinch: that changes scale, and a scaled promoted layer is the
+     blurry case the .map-stage comment is about. */
+  const promotePan = on => { stage.style.willChange = on ? "transform" : ""; };
+  const beginPan = p => { pan = {sx:p.x, sy:p.y, px0:mapView.panX, py0:mapView.panY}; promotePan(true); };
   const beginPinch = ()=>{
     const [a,b] = twoPts();
     const cx=(a.x+b.x)/2, cy=(a.y+b.y)/2;
-    pan = null;
+    pan = null; promotePan(false);
     pinch = { dist0: Math.hypot(a.x-b.x, a.y-b.y) || 1, scale0: mapView.scale,
       // stage-space point under the starting midpoint — held under the midpoint for the whole
       // gesture, so the pinch scales AND drags together the way a native map gesture does
@@ -30248,12 +30284,14 @@ function attachPanZoom(viewport, stage){
       mapView.panX = pan.px0 + (p.x-pan.sx);
       mapView.panY = pan.py0 + (p.y-pan.sy);
       queueCamera();
-    }
+    } else return;
+    mapPanning = true;                          // set only once the gesture really moves the board
   });
   const endPointer = ev=>{
     if(!pts.delete(ev.pointerId)) return;
     try{ viewport.releasePointerCapture(ev.pointerId); }catch(e){}
     if(camRaf){ cancelAnimationFrame(camRaf); camRaf = 0; }
+    mapPanning = false; promotePan(false);      // back to an unpromoted, crisply-repainted stage
     applyMapCamera(stage);                      // land on the exact final camera, unthrottled
     if(pinch){ pinch = null; settle(); }        // re-rasterize at the zoom it settled on
     // lifting one finger of a pinch should keep panning smoothly from where the other one is,
@@ -30263,6 +30301,9 @@ function attachPanZoom(viewport, stage){
   };
   viewport.addEventListener("pointerup", endPointer);
   viewport.addEventListener("pointercancel", endPointer);
+  // losing the window mid-drag (alt-tab, a modal stealing focus) never fires pointerup on the
+  // viewport, and a stuck mapPanning would silently swallow every live update from then on
+  viewport.addEventListener("lostpointercapture", ()=>{ if(!pts.size){ mapPanning=false; promotePan(false); } });
 }
 
 /* stage dimensions = bounding box of all images, with a default floor */
@@ -30295,7 +30336,7 @@ function resolveImageSizes(map){
   let left = pending.length;
   const done = async ()=>{ if(--left) return;
     if(cloud.isGM) mapMetaSave();
-    if(currentTab==="map" && !mapDragging) renderMap(); };
+    if(currentTab==="map" && !mapDragging && !mapPanning) renderMap(); };
   pending.forEach(im=>{ const p=new Image();
     p.onload =()=>{ im.w=p.naturalWidth||map.gridSize*10; im.h=p.naturalHeight||map.gridSize*10; done(); };
     p.onerror=()=>{ im.w=im.w||map.gridSize*10; im.h=im.h||map.gridSize*10; done(); };
@@ -30596,7 +30637,7 @@ function renderMap(){
     // Re-render ONCE per background after it decodes, keyed by id so cached data-URLs can't loop.
     if(im.id && !decodedBgIds.has(im.id) && node.decode){
       const mark = ()=>decodedBgIds.add(im.id);
-      node.decode().then(()=>{ mark(); if(currentTab==="map" && !mapDragging && !mapImgEdit) renderMap(); }).catch(mark);
+      node.decode().then(()=>{ mark(); if(currentTab==="map" && !mapDragging && !mapPanning && !mapImgEdit) renderMap(); }).catch(mark);
     }
     if(mapImgEdit){
       const wrap = el("div",{class:"map-img-wrap editing",style:`left:${im.x+originX}px;top:${im.y+originY}px;width:${im.w||stageW}px;height:${im.h||stageH}px`});
