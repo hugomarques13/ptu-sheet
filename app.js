@@ -1268,13 +1268,19 @@ function typeBoosterTypeOf(name){
   const n = normItemName(name); if(!n) return null;
   return typeBoosterIndex().get(n) || null;
 }
+/* every item name this creature has ON it right now — a Trainer's worn Equipment slots, a
+   Pokémon's single Held Item. The two are the same question ("is it carrying an X?") asked of two
+   different fields, so everything that has to answer it reads this. */
+function wornOrHeldNames(owner){
+  if(!owner) return [];
+  return isTrainerOwner(owner) ? equippedList(owner).map(e=>e.name)
+                               : [String(owner.heldItem||"")].filter(Boolean);
+}
 /* the Booster this owner is carrying that matches a Move going out as `mtype` — null when it isn't
    carrying one, or when the Types don't line up. Held Item for a Pokémon, worn gear for a Trainer. */
 function typeBoosterFor(owner, mtype){
   if(!owner || !mtype) return null;
-  const names = isTrainerOwner(owner) ? equippedList(owner).map(e=>e.name)
-                                      : [String(owner.heldItem||"")];
-  for(const nm of names){
+  for(const nm of wornOrHeldNames(owner)){
     if(typeBoosterTypeOf(nm) === mtype) return { item:nm, type:mtype, dmg:TYPE_BOOSTER_DMG };
   }
   return null;
@@ -6938,6 +6944,7 @@ const EQUIP_EFFECTS = {
   "heavy shield":           { evasion:2, note:"Ready (Standard): instead +6 Evasion & 15 DR until end of next turn, but Slowed. Two-handed = Small Melee Weapon." },
   "shield [9-15 playtest]": { evasion:1, note:"Ready (Standard): instead +4 Evasion & 10 DR until end of next turn, but Slowed." },
   "focus":                  { focus:true },
+  "shell bell":             { note:"Whenever you damage a foe you gain a Tick of Temporary HP \u2014 tap your token on the \uD83D\uDDFA Map and press \uD83D\uDC1A Shell Bell to take it." },
   "pheromone emitter":      { note:"Swift Action: +4 to a Charm or Intimidate check vs wild Pokémon (needs a Cartridge)." },
   "sensor disruption vest": { note:"Pokébots & Eye-Augment attackers take −2 Accuracy on single-target checks vs you." },
   "gravity modulation suit":{ note:"Treat local gravity as 1 higher or lower." },
@@ -7048,12 +7055,54 @@ function equipSummary(t){
 /* which equipment slot an item can be worn in — by its catalog slot, with Fashions (the Fashionista
    Recipes Adorable/Elegant/Rad/Rough/Slick + the Contest Fashions) treated as Accessory-slot items,
    as the rules state. Returns null for anything that isn't wearable. */
+/* Most "Pokémon Item" rows spell their Trainer slot out in the rules text instead of carrying a
+   `slot` field — "Accessory Item for Trainers.", "Off-hand or Accessory Slot Item for Trainers." —
+   and the catalog import only filled `slot` in for some of them. That is why Shell Bell (and ~100
+   siblings: the Braces, the Orbs, Expert Belt, Focus Sash, Quick Claw, the Gems…) could be bought
+   and carried but never worn: no slot, so no dropdown would offer them. Read the sentence.
+   For an "X or Y" wording the Accessory reading wins — it is the catch-all slot, and it is what the
+   siblings that DO carry a `slot` field were all given. */
+const EQUIP_SLOT_WORDS = [["off-hand","Off-Hand"],["off hand","Off-Hand"],["head","Head"],
+                          ["hand","Hands"],["body","Body"],["feet","Feet"]];
+function slotFromEffectText(txt){
+  const m = /([^.]*?)\s*(?:slot\s+)?items?\s+for\s+trainers/i.exec(String(txt||""));
+  if(!m) return null;
+  const lead = m[1].toLowerCase();
+  if(/accessory/.test(lead)) return "Accessory";
+  for(const [word, slot] of EQUIP_SLOT_WORDS)
+    if(new RegExp("\\b" + word + "\\b").test(lead)) return slot;
+  return null;
+}
 function equipSlotForItem(name){
   const n = String(name||"").trim(); if(!n) return null;
   const cat = itemByName.get(n.toLowerCase());
   if(cat && EQUIP_SLOTS.includes(cat.slot)) return cat.slot;
   if(/\bfashion$/i.test(n)) return "Accessory";   // Fashionista recipes are Accessory-slot gear
-  return null;
+  return slotFromEffectText(cat && cat.effect);
+}
+/* ---- gear whose effect is a TRIGGER somebody has to call ----
+   A worn or held item that changes a derived number belongs in EQUIP_EFFECTS, where the sheet
+   applies it silently. These are the other kind: "whenever the holder damages a foe…" fires on
+   something only the table can see, so instead of quietly doing nothing they put a button on the
+   creature's token — tap the token, press the item, it pays out. Keyed by normItemName so the
+   catalog's spelling and punctuation don't matter. */
+const GEAR_ACTIONS = {
+  "shellbell": {
+    icon:"\uD83D\uDC1A", name:"Shell Bell",
+    title:"Shell Bell — whenever the holder damages a foe, they gain a Tick of Temporary Hit Points",
+    label:o=>`+${hpTick(ownerMaxHP(o))} Temp HP`,
+    run:o=>{ const n = hpTick(ownerMaxHP(o)); o.tempHP = (o.tempHP||0) + n;
+             return `+${n} Temp HP — now ${o.tempHP}`; },
+  },
+};
+/* the GEAR_ACTIONS this creature can fire right now, from whatever it is wearing or holding */
+function gearActionsFor(owner){
+  const out = [], seen = new Set();
+  wornOrHeldNames(owner).forEach(nm=>{
+    const key = normItemName(nm), a = key && GEAR_ACTIONS[key];
+    if(a && !seen.has(key)){ seen.add(key); out.push(a); }
+  });
+  return out;
 }
 /* distinct item names the trainer OWNS (in t.inventory) that can be worn in `slot` — you can only
    equip what you actually carry. The item currently in the slot is kept selectable regardless. */
@@ -29568,6 +29617,24 @@ function openTokenMenu(token, map){
       token.link.kind==="enc" ? "Linked to the encounter — HP syncs with the Encounters tab."
                               : "Linked to a sheet — HP changes sync to that character."));
     if(!info.editable) wrap.append(el("div",{class:"muted small",style:"margin-top:6px"},"Read-only — you can't edit this token."));
+
+    /* worn/held items that pay out on a trigger (Shell Bell…) — one button each, so whoever is
+       running the fight can hand it over the moment it happens rather than remembering it later */
+    const linked = token.link ? tokenLinked(token) : null;
+    const gearActs = info.editable && linked ? gearActionsFor(linked.obj) : [];
+    if(gearActs.length){
+      const said = el("span",{class:"small",style:"color:var(--accent);align-self:center"});
+      const row = el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;margin-top:10px"});
+      gearActs.forEach(a=>row.append(el("button",{class:"btn-secondary",title:a.title,
+        onclick:async()=>{
+          const msg = a.run(linked.obj);
+          await commitTokenSource(token);
+          said.textContent = msg;
+          toast(`${a.icon} ${a.name} — ${msg}`);
+        }}, `${a.icon} ${a.name} · ${a.label(linked.obj)}`)));
+      row.append(said);
+      wrap.append(row);
+    }
 
     const statusWrap = el("div",{style:"margin-top:14px"});
     const drawStatuses = ()=>{
