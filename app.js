@@ -3493,11 +3493,23 @@ function render(){
    are excluded: they aren't the active character's sheet and run their own permission models — the
    Map in particular gates GM tools by isGM and each token by its own `editable` flag, so the blanket
    read-only lock (which greys out & disables every .card button) must not reach its toolbar, or a
-   Viewer/co-pilot can't use ＋ Add token / ☑ All players even though those are theirs to use. */
+   Viewer/co-pilot can't use ＋ Add token / ☑ All players even though those are theirs to use.
+
+   The Viewer co-pilot gets one more hole poked in the lock: it is read-only like any other
+   non-owner, but the whole point of that screen is to ACT for the players sitting at the table, so
+   `.ro-copilot` keeps the 🎲 roll buttons live (see the rule in styles.css). Rolling changes nothing
+   on the sheet — it opens the roll window and posts to the GM's feed — so this hands over no edit
+   rights: every field, every stat control and every use-pip stays locked, and cloudSave() would
+   refuse the write anyway. */
 function applyReadonlyLock(){
   const lock = mode==="cloud" && cloud.activeId && !canEditActive();
   const EXEMPT = new Set(["view-reference","view-battle","view-map","view-sim"]);
-  $$(".view").forEach(v => v.classList.toggle("ro", !!lock && !EXEMPT.has(v.id)));
+  const copilot = !!lock && isMapHpViewer();
+  $$(".view").forEach(v => {
+    const on = !!lock && !EXEMPT.has(v.id);
+    v.classList.toggle("ro", on);
+    v.classList.toggle("ro-copilot", on && copilot);
+  });
 }
 
 /* ===================================================================
@@ -12996,7 +13008,8 @@ function moveSlot(p, sp, m, mn, opts={}){
   const acts = el("div",{class:"inline"});
   // Scene/Daily use tracker (Struggle & At-Will moves show nothing)
   if(m && !opts.tag){ const uc = usesControl(p, "move", m.name, monMoveFreq(p, m), opts.rerender||(()=>refreshMon(p))); if(uc) acts.append(uc); }
-  if(m) acts.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",title:"roll this move",onclick:()=>openMoveRoll(p,m,sp,{rerender:rrMon})},"🎲 Roll"));
+  // `rollbtn` is what survives the read-only lock on the Viewer co-pilot screen (applyReadonlyLock)
+  if(m) acts.append(el("button",{class:"btn-secondary rollbtn",style:"padding:6px 10px",title:"roll this move",onclick:()=>openMoveRoll(p,m,sp,{rerender:rrMon})},"🎲 Roll"));
   // Healing Wish / Lunar Dance do their whole job outside the damage engine - one button applies
   // the sacrifice, the target's heal and the Move-frequency refresh, all through the Injury ledger
   if(m && isSacrificeHealMove(m.name)) acts.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",
@@ -16461,7 +16474,7 @@ function trainerAttackSlot(t, profile, rollFn, opts={}){
   slot.append(main);
   const acts = el("div",{class:"inline"});
   if(opts.uc) acts.append(opts.uc);
-  acts.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",onclick:rollFn},"🎲 Roll"));
+  acts.append(el("button",{class:"btn-secondary rollbtn",style:"padding:6px 10px",onclick:rollFn},"🎲 Roll"));
   if(opts.move) acts.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("move",profile.name)},"info"));
   slot.append(acts);
   return slot;
@@ -19592,7 +19605,7 @@ function renderTrainerCombat(root, t){
   pbSlot.append(el("div",{style:"flex:1"},
     el("div",{style:"font-weight:700"}, "Throw a Poké Ball"),
     el("div",{class:"ms-info"}, "Standard Action · AC 6 · try to capture a wild Pokémon")));
-  pbSlot.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",onclick:()=>openThrowPokeball(t)},"🎲 Roll"));
+  pbSlot.append(el("button",{class:"btn-secondary rollbtn",style:"padding:6px 10px",onclick:()=>openThrowPokeball(t)},"🎲 Roll"));
   pb.append(pbSlot);
   root.append(pb);
   // capture tools carried in inventory grant Status Attacks (Hand Net, Weighted Net…) (#7)
@@ -19605,7 +19618,7 @@ function renderTrainerCombat(root, t){
       slot.append(el("div",{style:"flex:1"},
         el("div",{style:"font-weight:700"}, prof.name, el("span",{class:"muted small",style:"margin-left:6px;font-weight:600"},"item")),
         el("div",{class:"ms-info"}, `Status · AC ${prof.ac} · ${prof.range}`)));
-      slot.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",onclick:()=>openItemAttack(t,prof)},"🎲 Roll"));
+      slot.append(el("button",{class:"btn-secondary rollbtn",style:"padding:6px 10px",onclick:()=>openItemAttack(t,prof)},"🎲 Roll"));
       ic.append(slot);
     });
     root.append(ic);

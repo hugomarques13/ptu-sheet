@@ -257,6 +257,9 @@ textarea{resize:vertical; min-height:64px}
 /* read-only lock: view sheet but block edits (still allow sub-tab navigation) */
 .view.ro input,.view.ro select,.view.ro textarea{pointer-events:none; opacity:.75; background:var(--panel-2)}
 .view.ro .card button:not(.subtab),.view.ro .rankbtns,.view.ro .hpctl,.view.ro .addcard,.view.ro .pc-del{pointer-events:none; opacity:.5}
+/* ...except the dice on the Viewer co-pilot screen: that device is read-only, but it exists to roll
+   the players' Moves for them at the table. Everything else on the sheet stays locked. */
+.view.ro.ro-copilot .card button.rollbtn{pointer-events:auto; opacity:1}
 
 /* ---------- sub-tabs within a view ---------- */
 .subtabs{display:flex; gap:6px; margin-bottom:12px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px}
