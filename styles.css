@@ -6,6 +6,7 @@
   --shadow:0 1px 3px rgba(0,0,0,.08),0 6px 18px rgba(0,0,0,.06);
   --radius:14px; --radius-sm:9px;
   --field:#fff; --field-line:#c7cdd6;
+  --temp:#1f86c9;                       /* Temporary Hit Points - never used by anything else */
 }
 :root[data-theme="dark"]{
   color-scheme:dark;
@@ -13,12 +14,13 @@
   --line:#2b323c; --accent:#e74c3c; --accent-ink:#fff; --good:#3ec27a; --warn:#f0a83a; --bad:#f0574a;
   --shadow:0 1px 3px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
   --field:#141922; --field-line:#333c48;
+  --temp:#4fc3f7;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
     color-scheme:dark;
     --bg:#12151a; --panel:#1b2027; --panel-2:#222933; --ink:#e7ecf2; --muted:#93a0ae;
-    --line:#2b323c; --accent:#e74c3c; --field:#141922; --field-line:#333c48;
+    --line:#2b323c; --accent:#e74c3c; --field:#141922; --field-line:#333c48; --temp:#4fc3f7;
     --shadow:0 1px 3px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
   }
 }
@@ -176,8 +178,19 @@ textarea{resize:vertical; min-height:64px}
 .pcard .pc-name{font-weight:800; font-size:15px}
 .pcard .pc-species{color:var(--muted); font-size:13px}
 .pcard .pc-lvl{font-size:12px; font-weight:800; background:var(--panel-2); border:1px solid var(--line); padding:2px 8px; border-radius:20px}
-.hpbar{height:9px; border-radius:6px; background:var(--panel-2); overflow:hidden; margin-top:8px; border:1px solid var(--line)}
-.hpbar > i{display:block; height:100%; background:var(--good)}
+.hpbar{height:9px; border-radius:6px; background:var(--panel-2); overflow:hidden; margin-top:8px; border:1px solid var(--line); display:flex}
+.hpbar > i{display:block; height:100%; background:var(--good); min-width:0}
+/* Temporary Hit Points: their own segment on the end of the bar, in a colour nothing else uses.
+   The bar is scaled to (max HP + Temp HP), so this chunk really is "bonus health on top" - damage
+   eats it before it touches the real fill beside it. */
+.hpbar > i.temp{background:var(--temp);
+  background-image:linear-gradient(135deg,rgba(255,255,255,.32) 25%,transparent 25%,transparent 50%,
+                   rgba(255,255,255,.32) 50%,rgba(255,255,255,.32) 75%,transparent 75%);
+  background-size:6px 6px; box-shadow:inset 1px 0 0 rgba(0,0,0,.35)}
+/* the "shield N temp" chip that sits beside an HP readout */
+.temphp-tag{display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:800;
+  color:var(--temp); border:1px solid var(--temp); border-radius:999px; padding:1px 7px;
+  background:color-mix(in srgb, var(--temp) 12%, transparent); white-space:nowrap}
 .pc-del{position:absolute; top:8px; right:8px; opacity:0; background:none; border:none; color:var(--muted); font-size:15px}
 .pcard:hover .pc-del{opacity:1}
 .addcard{display:flex; align-items:center; justify-content:center; min-height:96px; border:2px dashed var(--line); border-radius:var(--radius); color:var(--muted); font-weight:700; cursor:pointer; background:var(--panel)}
@@ -310,6 +323,8 @@ textarea{resize:vertical; min-height:64px}
 .hpctl{display:flex; gap:6px; align-items:center; flex-wrap:wrap}
 .hpctl button{width:34px;height:34px;border-radius:8px;border:1px solid var(--field-line);background:var(--field);font-weight:800;font-size:18px; flex:0 0 auto}
 .hpctl input{width:64px; text-align:center; font-weight:800; font-size:18px; flex:0 0 auto}
+/* the MAX button overflows its fixed 34px box, so the Temp-HP chip needs room to clear it */
+.hpctl .temphp-tag{margin-left:14px}
 .dhrow{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px}
 .dhrow .dh-input{width:96px; text-align:center; font-weight:700; padding:7px 8px;
   border:1px solid var(--field-line); background:var(--field); border-radius:var(--radius-sm)}
@@ -503,14 +518,20 @@ body.map-mode .map-viewport{flex:1 1 auto; height:auto; min-height:0; border-rad
 .map-token.hazard-token .tk-hazard{width:100%; height:100%; border-radius:0; display:flex;
   align-items:center; justify-content:center; line-height:1; font-size:82cqmin;
   filter:drop-shadow(0 1px 2px rgba(0,0,0,.65)); pointer-events:none}
-.map-token .tk-hpwrap{position:absolute; left:6%; right:6%; bottom:-7px; height:6px;
+.map-token .tk-hpwrap{position:absolute; left:6%; right:6%; bottom:-7px; height:6px; display:flex;
   background:var(--panel-2); border:1px solid var(--line); border-radius:5px; overflow:hidden}
 /* player-side tokens drop the numeric HP; the bar sits low, just above the name label
    (name stays in its default spot just under the token) */
 .map-token.player-side .tk-hpwrap{bottom:-7px}
-.map-token .tk-hp{height:100%; background:var(--good)}
+.map-token .tk-hp{height:100%; background:var(--good); min-width:0}
 .map-token .tk-hp.mid{background:var(--warn)}
 .map-token .tk-hp.low{background:var(--bad)}
+/* Temp HP segment on a board token - same colour and hatching as the sheet's bars */
+.map-token .tk-hp.temp{background:var(--temp);
+  background-image:linear-gradient(135deg,rgba(255,255,255,.32) 25%,transparent 25%,transparent 50%,
+                   rgba(255,255,255,.32) 50%,rgba(255,255,255,.32) 75%,transparent 75%);
+  background-size:5px 5px; box-shadow:inset 1px 0 0 rgba(0,0,0,.35)}
+.map-token .tk-hpnum.has-temp{color:var(--temp)}
 .map-token .tk-name{position:absolute; top:calc(100% + 3px); left:50%; transform:translateX(-50%);
   white-space:nowrap; font-size:7px; font-weight:700; color:var(--ink); opacity:.72;
   background:var(--panel); border:1px solid var(--line); border-radius:7px; padding:0 4px; pointer-events:none}

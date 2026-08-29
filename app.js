@@ -2005,6 +2005,86 @@ function healHP(o, amount){
   return o.currentHP - before;
 }
 function healToFull(o){ const before = curHPOf(o); o.currentHP = capMaxOf(o); return o.currentHP - before; }
+/* ---------- Temporary Hit Points (Core p.245) -------------------------------------------------
+   "Temporary Hit Points are 'bonus' health that stacks on top of 'real' Hit Points - so you can
+   benefit from gaining it even if you are already at full health. However, Temporary Hit Points are
+   always lost first from damage or any other effects. Damage carries over directly to real Hit
+   Points once the Temporary Hit Points are lost. Furthermore, Temporary Hit Points do not stack
+   with other Temporary Hit Points - only the highest value applies."
+
+   Three rules the whole app now obeys through these four functions:
+     - gainTempHP()  the HIGHEST pool wins, pools never add up. The handful of sources that say in
+                     as many words that they DO stack (Chef Features, the Lunchbox Ability, a
+                     Digestion Buff and the Salty snacks) pass {stack:true}.
+     - tempSoak()    every damaging HP change runs through here first, so the pool is spent before
+                     real Hit Points and the remainder carries over.
+     - percentages   Temp HP is deliberately kept OUT of currentHP/maxHP. The rules are explicit
+                     that it never counts toward HP fractions ("1 real HP and 50 Temp HP" still
+                     reads as 1 HP), so every bar colour, Injury marker, half-HP Ability and
+                     Knocked-Out check below still sees real Hit Points only.
+   It is lost at End of Scene / Take a Breather (applyEndScene), zeroed by Terrorize, and Shedinja
+   "may not have Temporary Hit Points" at all. */
+const TEMP_HP_TIP = "Temporary Hit Points sit on top of real HP and are spent first by anything that deals damage; "
+  + "what is left over carries on into real Hit Points. They never count toward HP percentages, and two sources never "
+  + "add up - only the highest applies. Lost at End of Scene and on Take a Breather (Core p.245).";
+function tempHPOf(o){ return Math.max(0, Math.round((o && o.tempHP) || 0)); }
+function gainTempHP(o, n, opts){
+  n = Math.max(0, Math.round(n || 0));
+  if(!o || !n) return tempHPOf(o);
+  if(o.species !== undefined && isSoulless(o)) return 0;      // Soulless (Shedinja) can never hold any
+  const before = tempHPOf(o);
+  o.tempHP = (opts && opts.stack) ? before + n : Math.max(before, n);
+  return o.tempHP;
+}
+/* how much of `dmg` the pool eats - and it is spent in the process */
+function absorbTempHP(o, dmg){
+  const pool = tempHPOf(o); dmg = Math.max(0, Math.round(dmg || 0));
+  if(!o || !pool || !dmg) return 0;
+  const used = Math.min(pool, dmg);
+  o.tempHP = pool - used;
+  return used;
+}
+/* The gate every damaging HP change goes through: hand it the HP value the creature is ABOUT to
+   drop to, get back the value it actually drops to once Temp HP has soaked what it can. A heal (or
+   no change at all) passes straight through untouched. */
+function tempSoak(o, oldHP, newHP){
+  if(!o || !(newHP < oldHP)) return { hp:newHP, absorbed:0, left:tempHPOf(o) };
+  const absorbed = absorbTempHP(o, oldHP - newHP);
+  return { hp:newHP + absorbed, absorbed, left:tempHPOf(o) };
+}
+/* tempSoak plus the toast that tells the table it happened; returns the new HP value */
+function tempSoakSay(o, oldHP, newHP){
+  const r = tempSoak(o, oldHP, newHP);
+  if(r.absorbed > 0) toast(`\u{1F6E1}\u{FE0F} ${r.absorbed} soaked by Temporary HP \u2014 ${r.left} Temp HP left`);
+  return r.hp;
+}
+/* " +12 temp" tag for the HP readouts (empty when there is no pool) */
+function tempTag(o, pre){ const t = tempHPOf(o); return t ? `${pre === undefined ? " " : pre}+${t} temp` : ""; }
+/* One HP bar, with the Temporary-HP pool drawn as its own segment on the end. Temp HP is bonus
+   health on TOP of the real bar, so the bar is scaled to max+temp and the real fill keeps its own
+   share of it; the colour thresholds still read real HP only (see the percentages note above). */
+function hpBarEl(cur, max, temp, opts){
+  opts = opts || {};
+  const m = Math.max(1, Math.round(max || 1));
+  const c = Math.max(0, Math.min(m, Math.round(cur || 0)));
+  const t = Math.max(0, Math.round(temp || 0));
+  const total = m + t;
+  const pct = Math.round(c / m * 100);
+  const color = opts.color || (pct > 50 ? "var(--good)" : pct > 25 ? "var(--warn)" : "var(--bad)");
+  const attrs = { class:"hpbar", style: opts.style || "" };
+  if(opts.id) attrs.id = opts.id;
+  const bar = el("div", attrs, el("i",{ style:`width:${(c / total * 100).toFixed(2)}%;background:${color}` }));
+  if(t) bar.append(el("i",{ class:"temp", title:`${t} Temporary Hit Points \u2014 damage spends these first`,
+                            style:`width:${(t / total * 100).toFixed(2)}%` }));
+  return bar;
+}
+/* the little coloured "shield N temp" chip that sits beside an HP readout */
+function tempHPChip(o, extraStyle){
+  const t = tempHPOf(o); if(!t) return "";
+  return el("span",{ class:"temphp-tag", style:extraStyle || "",
+    title:"Temporary Hit Points sit on top of real HP and are spent first by anything that deals damage. Two sources never add up - only the highest applies (Core p.245)." },
+    `\u{1F6E1}\u{FE0F} +${t} temp`);
+}
 /* "has the Frequency of all Moves restored" — Healing Wish / Lunar Dance, minus themselves */
 function restoreMoveFrequencies(o, except){
   if(!o || !o.uses) return 0;
@@ -2824,6 +2904,7 @@ function normPokemon(p){
   if(typeof p.wielded !== "boolean") p.wielded = false;          // Living Weapon: currently in the Trainer's hands
   if(!p.uses || typeof p.uses!=="object") p.uses = {};
   if(!Array.isArray(p.statuses)) p.statuses = [];
+  if(typeof p.tempHP!=="number" || !(p.tempHP>=0)) p.tempHP = 0;   // Temporary Hit Points (Core p.245)
   normInjDay(p);                              // today's Injury-healing ledger (see healInjuries)
   if(!Array.isArray(p.auras)) p.auras = [];   // Legendary Auras (encounter-only; seeded when added to an encounter)
   if(!Array.isArray(p.buffs)) p.buffs = [];        // active Cheers / Orders / Songs (#2)
@@ -3761,14 +3842,19 @@ function damageHealRow(getHP, setHP, owner){
 
     if(n < 0 && owner && illBreak.checked) breakIllusion(owner, "hit by a damaging Move");
     const oldHP = getHP();
-    if(owner){ applyAutoInjury(owner, oldHP, oldHP+n); applyAutoKO(owner, oldHP, oldHP+n); applyShieldsDown(owner, oldHP+n); }
-    setHP(oldHP + n);
+    /* Temporary Hit Points are "always lost first from damage", the rest carrying over - so the
+       pool is spent HERE, before Injuries / Knocked Out / Shields Down, every one of which reads
+       the real Hit Points that are actually left. */
+    const newHP = owner ? tempSoakSay(owner, oldHP, oldHP+n) : oldHP+n;
+    if(owner){ applyAutoInjury(owner, oldHP, newHP); applyAutoKO(owner, oldHP, newHP); applyShieldsDown(owner, newHP); }
+    setHP(newHP);
   };
   // ± one Tick of HP (1/10 max) — direct HP change, no DR (Ticks are fixed chunks)
   const tickApply = sign => {
     const t = hpTick(ownerMaxHP(owner)); const oldHP = getHP(); const n = sign*t;
-    if(owner){ applyAutoInjury(owner, oldHP, oldHP+n); applyAutoKO(owner, oldHP, oldHP+n); applyShieldsDown(owner, oldHP+n); }
-    setHP(oldHP + n);
+    const newHP = owner ? tempSoakSay(owner, oldHP, oldHP+n) : oldHP+n;
+    if(owner){ applyAutoInjury(owner, oldHP, newHP); applyAutoKO(owner, oldHP, newHP); applyShieldsDown(owner, newHP); }
+    setHP(newHP);
   };
   box.addEventListener("keydown", e=>{ if(e.key==="Enter") apply(); });
   const tick = hpTick(ownerMaxHP(owner));
@@ -3780,6 +3866,9 @@ function damageHealRow(getHP, setHP, owner){
     el("button",{class:"btn-secondary",style:"padding:6px 10px",title:`regain a Tick of HP (${tick} = 1/10 max)`,onclick:()=>tickApply(+1)},"+Tick"),
     el("span",{class:"small muted"},"+ heals · − damages"));
   if(owner){
+    if(tempHPOf(owner)) wrap.append(el("span",{class:"temphp-tag",style:"margin-left:6px",
+      title:"Damage typed above is taken out of this pool first, and only the remainder reaches real Hit Points."},
+      `\u{1F6E1}\u{FE0F} ${tempHPOf(owner)} Temp HP soaks the next hit`));
     const disguise = illusionWorn(owner);
     if(disguise) wrap.append(el("label",{class:"small",style:"display:inline-flex;align-items:center;gap:4px;margin-left:6px",
       title:"Illusion is destroyed when a damaging Move hits — untick for poison, recoil, weather and other indirect damage."},
@@ -4206,7 +4295,7 @@ function pushItToTheLimit(t, cureKey){
   const max = trainerDerived(t).hp;                       // the new Injury may have lowered it
   if(t.currentHP != null && t.currentHP > max) t.currentHP = max;
   const tick = hpTick(max);
-  t.tempHP = (t.tempHP || 0) + tick;
+  gainTempHP(t, tick);                     // highest pool wins - Temp HP never stacks (Core p.245)
   let cured = "";
   if(cureKey && hasStatus(t, cureKey)){
     t.statuses = t.statuses.filter(k => k !== cureKey);
@@ -4223,10 +4312,11 @@ function maelstromWhiffBtn(t, opts){
   row.append(el("button",{class:"btn-secondary",style:"padding:4px 10px",
     title:"Maelstrom: a Water-Type Move that misses every target pays you a Tick of Temporary HP",
     onclick:()=>{
-      t.tempHP = (t.tempHP||0) + tick;
+      const before = tempHPOf(t), now = gainTempHP(t, tick);
       ((opts && opts.persist) || save)();
       if(opts && opts.rerender) opts.rerender();
-      done.textContent = ` +${tick} Temp HP — now ${t.tempHP}.`;
+      done.textContent = now > before ? ` +${tick} Temp HP — now ${now}.`
+        : ` already holding ${before} Temp HP — pools don't stack, the highest applies.`;
     }}, `🌊 Missed everyone? +${tick} Temp HP`), done);
   return row;
 }
@@ -5479,26 +5569,31 @@ function trainerVitalsCard(t){
 
   /* HP row */
   const setHP = v => { t.currentHP = Math.min(maxHP, v); save(); renderTrainer(); };
+  /* The − buttons deal damage, so they spend Temporary Hit Points first (Core p.245); the number
+     box and MAX set Hit Points outright and leave the pool where it is. */
+  const bumpHP = n => setHP(n < 0 ? tempSoakSay(t, t.currentHP, t.currentHP + n) : t.currentHP + n);
   const hp = el("div",{class:"hpctl"});
   const cur = el("input",{type:"number",title:"current HP"}); cur.value = t.currentHP;
   cur.addEventListener("change",()=>setHP(parseInt(cur.value)||0));
-  hp.append(el("button",{onclick:()=>setHP(t.currentHP-5)},"−5"),
-            el("button",{onclick:()=>setHP(t.currentHP-1)},"−"), cur,
+  hp.append(el("button",{onclick:()=>bumpHP(-5)},"−5"),
+            el("button",{onclick:()=>bumpHP(-1)},"−"), cur,
             el("span",{class:"muted",style:"font-weight:800"},`/ ${maxHP}`),
-            el("button",{onclick:()=>setHP(t.currentHP+1)},"+"),
-            el("button",{onclick:()=>setHP(t.currentHP+5)},"+5"),
+            el("button",{onclick:()=>bumpHP(1)},"+"),
+            el("button",{onclick:()=>bumpHP(5)},"+5"),
             el("button",{title:"full heal",onclick:()=>setHP(maxHP)},"MAX"));
+  const trTemp = tempHPChip(t); if(trTemp) hp.append(trTemp);
   card.append(hp);
-  const pct = Math.max(0,Math.min(100,Math.round(t.currentHP/maxHP*100)));
-  card.append(el("div",{class:"hpbar",style:"margin-top:6px"},
-    el("i",{style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`})));
+  card.append(hpBarEl(t.currentHP, maxHP, tempHPOf(t), {style:"margin-top:6px"}));
 
   /* damage / heal: type a signed number — positive heals, negative damages */
   card.append(damageHealRow(()=>t.currentHP, setHP, t));
 
   /* temp HP · Injuries */
   const row = el("div",{class:"fieldrow",style:"margin-top:12px"});
-  row.append(field("Temp HP","",{type:"number",min:0,value:t.tempHP,onchange:v=>{t.tempHP=parseInt(v)||0;save();}}));
+  const tempFld = field("\u{1F6E1}\u{FE0F} Temp HP","",{type:"number",min:0,value:t.tempHP,
+    onchange:v=>{ t.tempHP=Math.max(0,parseInt(v)||0); save(); renderTrainer(); }});
+  tempFld.title = TEMP_HP_TIP;
+  row.append(tempFld);
   const injLocked = !canEditInjuries();
   const injField = field("Injuries","",{type:"number",min:0,max:10,value:t.injuries, disabled:injLocked,
     onchange:v=>{ t.injuries=Math.max(0,Math.min(10,parseInt(v)||0)); applyAutoDeath(t); save(); renderTrainer(); }});
@@ -7091,8 +7186,9 @@ const GEAR_ACTIONS = {
     icon:"\uD83D\uDC1A", name:"Shell Bell",
     title:"Shell Bell — whenever the holder damages a foe, they gain a Tick of Temporary Hit Points",
     label:o=>`+${hpTick(ownerMaxHP(o))} Temp HP`,
-    run:o=>{ const n = hpTick(ownerMaxHP(o)); o.tempHP = (o.tempHP||0) + n;
-             return `+${n} Temp HP — now ${o.tempHP}`; },
+    run:o=>{ const n = hpTick(ownerMaxHP(o)), before = tempHPOf(o), now = gainTempHP(o, n);
+             return now > before ? `+${n} Temp HP — now ${now}`
+                                 : `already holding ${before} Temp HP — pools don't stack, the highest applies`; },
   },
 };
 /* the GEAR_ACTIONS this creature can fire right now, from whatever it is wearing or holding */
@@ -9496,8 +9592,8 @@ function monCard(p, opts={}){
       el("div",{class:"pc-species", html:(p.nickname && sp ? sp.name+" · " : "")+(sp?.types||[]).map(typeBadge).join(" ")})),
     el("div",{class:"pc-lvl"}, "Lv "+p.level)));
   main.append(el("div",{class:"small muted",style:"margin-top:6px"},
-    `HP ${cur} / ${d.maxHP}${p.injuries?` · ${p.injuries} injuries`:""}`));
-  main.append(el("div",{class:"hpbar"}, el("i",{style:`width:${pct}%;background:${hpColor}`})));
+    `HP ${cur} / ${d.maxHP}${tempTag(p," · ")}${p.injuries?` · ${p.injuries} injuries`:""}`));
+  main.append(hpBarEl(cur, d.maxHP, tempHPOf(p), {color:hpColor}));
   body.append(main);
   card.append(body);
   if(opts.reorder){
@@ -9564,6 +9660,17 @@ function renderMonEditor(root, p){
   return renderMonInfo(root, p, sp);
 }
 
+/* Repaint the hero card's HP number, Temp-HP chip and bar in place (no full re-render). Split out
+   of heroCard so updateMonComputed can call the same thing after a stat edit moves Max HP. */
+function refreshHeroHP(p){
+  const max = pokeDerived(p).maxHP;
+  const ro = $("#hpReadout"); if(ro) ro.textContent = `/ ${max}`;
+  const cur = $("#hpCur"); if(cur) cur.value = p.currentHP;
+  const chip = $("#heroTempTag");
+  if(chip){ const next = tempHPChip(p) || el("span",{}); next.id = "heroTempTag"; chip.replaceWith(next); }
+  const bar = $("#heroHpWrap");
+  if(bar) bar.replaceWith(hpBarEl(p.currentHP, max, tempHPOf(p), {style:"margin-top:6px", id:"heroHpWrap"}));
+}
 function heroCard(p, sp){
   const d = pokeDerived(p);
   if(p.currentHP==null) p.currentHP = d.maxHP;
@@ -9588,20 +9695,23 @@ function heroCard(p, sp){
   /* compact HP control */
   const hp = el("div",{class:"hpctl hero-hp"});
   const cur = el("input",{type:"number",id:"hpCur"}); cur.value = p.currentHP;
+  /* The whole readout (number, Temp-HP chip, two-segment bar) is rebuilt from the data after every
+     press rather than nudging one element's width: the Temporary-HP segment can appear, resize or
+     vanish on any of them. #heroTempTag / #heroHpWrap are what updateMonComputed re-finds. */
+  const heroTempTag = () => { const c = tempHPChip(p) || el("span",{}); c.id = "heroTempTag"; return c; };
   const setHP = v => { const max = pokeDerived(p).maxHP; p.currentHP = Math.min(max, v);
-    cur.value=p.currentHP; save(); const ro=$("#hpReadout"); if(ro) ro.textContent = `/ ${max}`;
-    const bar=$("#heroHpBar"); if(bar){ const pct=Math.max(0,Math.min(100,Math.round(p.currentHP/max*100)));
-      bar.style.width=pct+"%"; bar.style.background=pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"; } };
-  hp.append(el("button",{onclick:()=>setHP(p.currentHP-5)},"−5"),
-            el("button",{onclick:()=>setHP(p.currentHP-1)},"−"), cur,
+    cur.value=p.currentHP; save(); refreshHeroHP(p); };
+  /* damage (the − buttons) spends Temporary Hit Points before real ones; MAX sets HP outright */
+  const bumpHP = n => setHP(n < 0 ? tempSoakSay(p, p.currentHP, p.currentHP + n) : p.currentHP + n);
+  hp.append(el("button",{onclick:()=>bumpHP(-5)},"−5"),
+            el("button",{onclick:()=>bumpHP(-1)},"−"), cur,
             el("span",{id:"hpReadout",class:"muted",style:"font-weight:800"},`/ ${d.maxHP}`),
-            el("button",{onclick:()=>setHP(p.currentHP+1)},"+"),
-            el("button",{onclick:()=>setHP(p.currentHP+5)},"+5"),
-            el("button",{onclick:()=>setHP(pokeDerived(p).maxHP),title:"full heal"},"MAX"));
+            el("button",{onclick:()=>bumpHP(1)},"+"),
+            el("button",{onclick:()=>bumpHP(5)},"+5"),
+            el("button",{onclick:()=>setHP(pokeDerived(p).maxHP),title:"full heal"},"MAX"),
+            heroTempTag());
   main.append(hp);
-  const pct = Math.max(0,Math.min(100,Math.round(p.currentHP/d.maxHP*100)));
-  main.append(el("div",{class:"hpbar",style:"margin-top:6px"},
-    el("i",{id:"heroHpBar",style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`})));
+  main.append(hpBarEl(p.currentHP, d.maxHP, tempHPOf(p), {style:"margin-top:6px", id:"heroHpWrap"}));
   if(d.injuries>0) main.append(el("div",{class:"small",style:"margin-top:4px;color:var(--bad);font-weight:700"},
     `${d.injuries} ${d.injuries===1?"injury":"injuries"} — max HP ${d.maxHP} (−${d.fullMaxHP-d.maxHP} of ${d.fullMaxHP})`));
   const monDead = deathBanner(p, ()=>{ save(); refreshMon(p); }); if(monDead) main.append(monDead);
@@ -9667,8 +9777,8 @@ function statusCard(p){
     card.append(chips);
   });
   if(hasStatus(p,"confused")) card.append(confusionRow(p, n=>{
-    const max = pokeDerived(p).maxHP;
-    p.currentHP = (p.currentHP==null?max:p.currentHP) - n;
+    const max = pokeDerived(p).maxHP, cur = (p.currentHP==null?max:p.currentHP);
+    p.currentHP = tempSoakSay(p, cur, cur - n);      // hurting itself is damage: Temp HP goes first
     save(); refreshMon(p);
   }));
   const active = STATUS_DEFS.filter(s=>hasStatus(p,s.key));
@@ -10462,7 +10572,9 @@ function tradeInDigestion(o, buff, opts={}){
     if(def.tempHP || def.tempHPFrac){
       const n = def.tempHPFrac ? Math.max(1,Math.floor(max/def.tempHPFrac))*x
                                : ((likes && def.likeTempHP) ? def.likeTempHP : def.tempHP)*x;
-      o.tempHP = (o.tempHP||0) + n; log.push(`+${n} Temporary HP`);
+      /* one of the few sources the rules say stacks: "This stacks with any Temporary Hit Points
+         gained through Chef Features, the Lunchbox Ability, and the Digestion Buff" (Core p.278). */
+      gainTempHP(o, n, {stack:true}); log.push(`+${n} Temporary HP`);
     }
     if(def.regen){
       const n = Math.max(1, Math.floor(max/def.regen));
@@ -10528,7 +10640,7 @@ function tradeInDigestion(o, buff, opts={}){
   // Lunchbox (Scene, Free Action): "The user gains 5 Temporary Hit Points" (errata: a Tick).
   if(ownerHasAbility(o,"Lunchbox")){
     const n = 5;
-    o.tempHP = (o.tempHP||0) + n;
+    gainTempHP(o, n, {stack:true});            // named in the same "these stack" clause as the Buff
     log.push(`Lunchbox: +${n} Temporary HP`);
   }
   // Harvest: flip a coin; on heads the Buff isn't used up. Never used up in Sunny Weather.
@@ -11599,11 +11711,17 @@ function renderMonBuild(root, p, sp){
 
   /* injuries / temp / tutor */
   const ec = el("div",{class:"card"}, el("h3",{},"Condition"));
+  const monTempHPField = mon => {
+    const f = field("\u{1F6E1}\u{FE0F} Temp HP","",{type:"number",min:0,value:mon.tempHP,
+      onchange:v=>{ mon.tempHP=Math.max(0,parseInt(v)||0); save(); refreshMon(mon); }});
+    f.title = TEMP_HP_TIP;
+    return f;
+  };
   const r3 = el("div",{class:"fieldrow"});
   r3.append(
     monInjuryField(p),
     injuryTreatButton(activeChar().trainer, p, ()=>refreshMon(p)),
-    field("Temp HP","",{type:"number",min:0,value:p.tempHP,onchange:v=>{p.tempHP=parseInt(v)||0;save();}}),
+    monTempHPField(p),
     tutorPointControl(p),
   );
   ec.append(r3);
@@ -12459,10 +12577,7 @@ function updateMonComputed(p){
   fillMonDerived(p);
   // HP tracker: clamp current HP to new max and refresh readout + hero bar
   if(p.currentHP==null || p.currentHP>d.maxHP) p.currentHP = d.maxHP;
-  const ro = $("#hpReadout"); if(ro) ro.textContent = `/ ${d.maxHP}`;
-  const cur = $("#hpCur"); if(cur) cur.value = p.currentHP;
-  const bar = $("#heroHpBar"); if(bar){ const pct=Math.max(0,Math.min(100,Math.round(p.currentHP/d.maxHP*100)));
-    bar.style.width=pct+"%"; bar.style.background=pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"; }
+  refreshHeroHP(p);
 }
 /* The Weak-to / Resists / Immune rows. Shared by the Pokémon's own Type Matchups card and by the
    Map's token menu, so the board and the sheet can never quietly disagree about a matchup.
@@ -17097,7 +17212,7 @@ function openGoFightWin(t, rerender, persist){
           x.obj.cs[k] = Math.max(-6, Math.min(6, (x.obj.cs[k]||0) + 1));
           addBuff(x.obj, "motivated");
         } else if(c.id==="dont"){
-          x.obj.tempHP = (x.obj.tempHP||0) + charm;
+          gainTempHP(x.obj, charm);
           addBuff(x.obj, "excited");
         } else {
           addBuff(x.obj, "believe-in-you");
@@ -17134,7 +17249,7 @@ function openKeepFighting(t, rerender, persist){
       const o = chosen[0].obj, old = o.currentHP == null ? ownerMaxHP(o) : o.currentHP;
       o.currentHP = 1;
       applyAutoKO(o, old, 1);
-      o.tempHP = (o.tempHP||0) + charm*2;
+      gainTempHP(o, charm*2);
       (persist||save)(); closeModal();
       await commitTargets(chosen);
       toast(`💪 ${ownerLabel(o)} holds on at 1 HP · +${charm*2} Temp HP`);
@@ -17234,7 +17349,7 @@ function openMagicalBurst(t, rerender, persist){
       if(!on){ toast("Enchanting Transformation must be Bound first"); return; }
       if(!featSpend(t, "Magical Burst")) return;
       const chosen = pick.chosen();
-      chosen.forEach(x=>{ x.obj.tempHP = (x.obj.tempHP||0) + hpTick(ownerMaxHP(x.obj)||1); });
+      chosen.forEach(x=>{ gainTempHP(x.obj, hpTick(ownerMaxHP(x.obj)||1)); });
       // the stance ends, and its Bind turns into real spent AP (that is what "becomes spent" means)
       setFeatureMode(t, def, false, ()=>{}, ()=>{});
       t.usedAP = (t.usedAP||0) + (def.bindAP||2);
@@ -19311,7 +19426,7 @@ function openSimpleImprovements(t, rerender, persist){
         note:`+${R} to every roll this turn — your Trainer's Type-Linked Skill Rank.` };
       stampTurnBuff(nb);
       x.obj.buffs.push(nb);
-      x.obj.tempHP = (x.obj.tempHP || 0) + R * 2;
+      gainTempHP(x.obj, R * 2);
       x.obj.simpleImp = true;
       return `${ownerLabel(x.obj)} +${R * 2} Temp HP`;
     },
@@ -20669,7 +20784,8 @@ function encStatusControl(p){
   });
   if(hasStatus(p,"confused")) body.append(confusionRow(p, n=>{
     const max = ownerMaxHP(p);   // Trainer or Pokémon — the card mounts this for both
-    p.currentHP = (p.currentHP==null?max:p.currentHP) - n;
+    const cur = (p.currentHP==null?max:p.currentHP);
+    p.currentHP = tempSoakSay(p, cur, cur - n);      // hurting itself is damage: Temp HP goes first
     saveEnc(); renderEncounters();
   }));
   det.append(body);
@@ -20714,8 +20830,8 @@ function encounterMonCard(enc, p, list, trainer){
     row.append(monSprite(monLookName(p),p.shiny,"s-sm",monImage(p)||undefined));
     row.append(el("span",{style:"font-weight:800;white-space:nowrap"}, (fainted?"💀 ":"")+encMonName(p)));
     row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `Lv ${p.level}`));
-    row.append(el("div",{class:"hpbar",style:"flex:1;min-width:70px"}, el("i",{style:`width:${pct}%;background:${hpColor}`})));
-    row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `${p.currentHP}/${maxHP}`));
+    row.append(hpBarEl(p.currentHP, maxHP, tempHPOf(p), {style:"flex:1;min-width:70px", color:hpColor}));
+    row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `${p.currentHP}/${maxHP}${tempTag(p," ")}`));
     row.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"expand",onclick:()=>encMonToggleMin(p)},"▸"));
     row.append(encOrderBtns(list,p));
     row.append(encMonRemoveBtn(p,list));
@@ -20781,10 +20897,10 @@ function encounterMonCard(enc, p, list, trainer){
   };
   card.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"},
     el("span",{class:"small muted",style:"font-weight:700;white-space:nowrap"},
-      isSwarm(p) ? `HP ${p.currentHP}/${maxHP} · bar ${p.swarm.mult}/${p.swarm.maxMult}`
-      : isBoss(p) ? `HP ${p.currentHP}/${maxHP} · bar ${p.boss.curBar}/${p.boss.actions}`
-      : `HP ${p.currentHP}/${maxHP}`),
-    el("div",{class:"hpbar",style:"flex:1;min-width:120px"}, el("i",{style:`width:${pct}%;background:${hpColor}`})),
+      (isSwarm(p) ? `HP ${p.currentHP}/${maxHP} · bar ${p.swarm.mult}/${p.swarm.maxMult}`
+       : isBoss(p) ? `HP ${p.currentHP}/${maxHP} · bar ${p.boss.curBar}/${p.boss.actions}`
+       : `HP ${p.currentHP}/${maxHP}`) + tempTag(p," · ")),
+    hpBarEl(p.currentHP, maxHP, tempHPOf(p), {style:"flex:1;min-width:120px", color:hpColor}),
     el("button",{class:"linkbtn",style:"padding:2px 6px",title:"full heal",
       onclick:()=>{ if(isSwarm(p)) swarmSetTotalHP(p, swarmMaxTotalHP(p));
         else if(isBoss(p)) bossSetTotalHP(p, bossMaxTotalHP(p));
@@ -20929,8 +21045,8 @@ function encounterTrainerCard(enc, tr){
       style:"width:24px;height:24px;border-radius:50%;object-fit:cover;border:1px solid var(--line);background:var(--panel)"}));
     row.append(el("span",{style:"font-weight:800;white-space:nowrap"}, (fainted0?"💀 ":"")+(t.name||"Trainer")));
     row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `Lv ${t.level}`));
-    row.append(el("div",{class:"hpbar",style:"flex:1;min-width:70px"}, el("i",{style:`width:${pct0}%;background:${pct0>50?"var(--good)":pct0>25?"var(--warn)":"var(--bad)"}`})));
-    row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `${t.currentHP}/${maxHP0}`+(isBoss(t)?` · bar ${t.boss.curBar}/${t.boss.actions}`:"")));
+    row.append(hpBarEl(t.currentHP, maxHP0, tempHPOf(t), {style:"flex:1;min-width:70px"}));
+    row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `${t.currentHP}/${maxHP0}`+tempTag(t," ")+(isBoss(t)?` · bar ${t.boss.curBar}/${t.boss.actions}`:"")));
     row.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"expand",onclick:()=>encTrainerToggleMin(tr)},"▸"));
     row.append(encOrderBtns(enc.trainers,tr));
     row.append(el("button",{class:"x",style:"cursor:pointer;color:var(--muted);font-size:18px;line-height:1",title:"remove trainer",
@@ -20983,8 +21099,8 @@ function encounterTrainerCard(enc, tr){
   const pct=Math.max(0,Math.min(100,Math.round(t.currentHP/maxHP*100)));
   card.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"},
     el("span",{class:"small muted",style:"font-weight:700;white-space:nowrap"},
-      isBoss(t) ? `HP ${t.currentHP}/${maxHP} · bar ${t.boss.curBar}/${t.boss.actions}` : `HP ${t.currentHP}/${maxHP}`),
-    el("div",{class:"hpbar",style:"flex:1;min-width:120px"}, el("i",{style:`width:${pct}%;background:${pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)"}`})),
+      (isBoss(t) ? `HP ${t.currentHP}/${maxHP} · bar ${t.boss.curBar}/${t.boss.actions}` : `HP ${t.currentHP}/${maxHP}`) + tempTag(t," · ")),
+    hpBarEl(t.currentHP, maxHP, tempHPOf(t), {style:"flex:1;min-width:120px"}),
     el("button",{class:"linkbtn",style:"padding:2px 6px",title:"full heal",
       onclick:()=>{ if(isBoss(t)) bossSetTotalHP(t, bossMaxTotalHP(t)); else t.currentHP=maxHP; saveEnc(); renderEncounters(); }},"MAX")));
   card.append(damageHealRow(()=>t.currentHP, setHP, t));
@@ -26313,6 +26429,7 @@ async function depositToPC(sourceRow, mon){
   const dropped = m.heldItem;
   if(dropped){ if(m.mega) megaRevert(m, true); m.heldItem = ""; }
   transformRevert(m, true);   // "Transform lasts until the user is switched out" — into the PC counts
+  m.tempHP = 0;               // Temporary HP "is lost if the user is recalled in a Poké Ball" (Core p.245)
   cloud.pc.data.pokemon.push(m);
   const arr = sourceRow.data.pokemon || [];
   const idx = arr.findIndex(x=>x.id===mon.id);
@@ -27316,11 +27433,26 @@ function updateTokenHpDom(token){
   if(!node) return false;
   const info = tokenHp(token);
   if(!(info.unlinked || tokenHpVisible(info))) return true;
+  const thp = tempHPOf(info.obj), total = info.max + thp;
   const pct = Math.max(0, Math.min(100, Math.round(info.cur/info.max*100)));
-  const bar = node.querySelector(".tk-hp");
-  if(bar){ bar.style.width = pct+"%"; bar.className = "tk-hp"+(pct<=25?" low":pct<=50?" mid":""); }
+  const hpWrap = node.querySelector(".tk-hpwrap");
+  const bar = node.querySelector(".tk-hp:not(.temp)");
+  if(bar){
+    bar.style.width = (Math.max(0,Math.min(info.max,info.cur))/total*100).toFixed(2)+"%";
+    bar.className = "tk-hp"+(pct<=25?" low":pct<=50?" mid":"");
+  }
+  // the Temp-HP segment appears, resizes and disappears on its own without a full renderMap
+  if(hpWrap){
+    let tb = hpWrap.querySelector(".tk-hp.temp");
+    if(thp && !tb){ tb = el("div",{class:"tk-hp temp"}); hpWrap.append(tb); }
+    if(tb && !thp) tb.remove();
+    else if(tb){ tb.style.width = (thp/total*100).toFixed(2)+"%"; tb.title = `${thp} Temporary HP`; }
+  }
   const num = node.querySelector(".tk-hpnum");
-  if(num) num.textContent = info.unlinked ? "⚠ unlinked" : `${info.cur}/${info.max}`;
+  if(num){
+    num.textContent = info.unlinked ? "⚠ unlinked" : `${info.cur}/${info.max}` + (thp?` +${thp}`:"");
+    num.classList.toggle("has-temp", !!thp);
+  }
   return true;
 }
 /* repaint the token now: full renderMap when nothing's overlaid, else a fast surgical bar update
@@ -27330,9 +27462,15 @@ function paintTokenHP(token, encTab){
   else if(encTab) render();                       // enc path also refreshes the Encounters tab
   else renderMap();
 }
-async function setTokenHP(token, val){
+async function setTokenHP(token, val, opts){
   const info = tokenHp(token);
   if(!info.editable){ toast("Read-only"); return; }
+  /* Damage spends Temporary Hit Points first (Core p.245) - done once, up front, so every branch
+     below (Swarm bars, Boss bars, an encounter row, a real sheet) only ever sees the damage that
+     got through the pool, and so Injuries / Knocked Out / Shields Down all judge real Hit Points.
+     `opts.raw` is for the controls that SET an exact HP value (the Set box, MAX) rather than
+     dealing damage - those have to land on the number that was typed. */
+  if(info.obj && !(opts && opts.raw) && (val|0) < info.cur) val = tempSoakSay(info.obj, info.cur, val|0);
   if(!token.link){
     // info.max already carries the right fallback per kind (a boat placed before it had HP fields
     // falls back to BOAT_HP_DEFAULT here, not to the generic standalone-token default of 1)
@@ -28731,7 +28869,7 @@ function openBoatMenu(token, map){
     onclick:async()=>{ await setTokenHP(token, tokenHp(token).cur+d); drawHp(); }}, l);
   const setInp = el("input",{type:"number",style:"width:80px"});
   const setBtn = el("button",{class:"btn-secondary",
-    onclick:async()=>{ const v=parseInt(setInp.value); if(!isNaN(v)){ await setTokenHP(token,v); drawHp(); setInp.value=""; } }},"Set");
+    onclick:async()=>{ const v=parseInt(setInp.value); if(!isNaN(v)){ await setTokenHP(token,v,{raw:true}); drawHp(); setInp.value=""; } }},"Set");
   const tick = hpTick(tokenHp(token).max);
   wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:10px;margin-bottom:4px"},"Hit Points"),
     readout,
@@ -28898,16 +29036,26 @@ function mapTokenNode(token, map, originX=0, originY=0){
   if(selected) node.append(el("div",{class:"tk-selected"},"✓"));
   const hpVisible = info.unlinked || tokenHpVisible(info);   // "unlinked" warning always shows; real HP is gated
   if(hpVisible){
+    // the bar is scaled to max + Temp HP, so the pool shows as its own segment tacked on the end
+    const thp = tempHPOf(info.obj), total = info.max + thp;
     const pct = Math.max(0, Math.min(100, Math.round(info.cur/info.max*100)));
-    node.append(el("div",{class:"tk-hpwrap"},
-      el("div",{class:"tk-hp"+(pct<=25?" low":pct<=50?" mid":""), style:`width:${pct}%`})));
+    const hpWrap = el("div",{class:"tk-hpwrap"},
+      el("div",{class:"tk-hp"+(pct<=25?" low":pct<=50?" mid":""),
+                style:`width:${(Math.max(0,Math.min(info.max,info.cur))/total*100).toFixed(2)}%`}));
+    if(thp) hpWrap.append(el("div",{class:"tk-hp temp", title:`${thp} Temporary HP`,
+                                    style:`width:${(thp/total*100).toFixed(2)}%`}));
+    node.append(hpWrap);
   }
   // an undiscovered shop gets no plate at all — an empty one is just a blank yellow tab
   if(!info.hideName)
     node.append(el("div",{class:"tk-name"}, (token.gmHidden?"🙈 ":"") + info.name
       + (info.unlinked?" ⚠":"")));
   // Player-side tokens (and the boat) rely on the HP bar alone, no numeric readout; enemies/standalone still show it.
-  if(hpVisible && !playerSide && info.kind!=="boat") node.append(el("div",{class:"tk-hpnum"}, info.unlinked?"⚠ unlinked":`${info.cur}/${info.max}`));
+  if(hpVisible && !playerSide && info.kind!=="boat"){
+    const thp = tempHPOf(info.obj);
+    node.append(el("div",{class:"tk-hpnum"+(thp?" has-temp":"")},
+      info.unlinked ? "⚠ unlinked" : `${info.cur}/${info.max}` + (thp?` +${thp}`:"")));
+  }
   if(tokenStatusVisible(info)){
     const keys = tokenStatusKeys(token).filter(k=>statusByKey.has(k));
     const ringHtml = tokenStatusRingSVG(keys, boxPx, token.id);
@@ -29230,8 +29378,13 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
 /* Apply a computed breakdown to the token: subtract its HP and spend any one-shot DR buff that
    absorbed the hit (Excited, Intercept…). Returns the HP value BEFORE the hit. */
 async function applyTokenDamage(token, br){
-  const before = tokenHp(token).cur;
+  const info0 = tokenHp(token);
+  const before = info0.cur, tempBefore = tempHPOf(info0.obj);
   await setTokenHP(token, before - br.final);
+  // read the result back rather than assuming `before - final`: Temporary Hit Points may have eaten
+  // some or all of the hit on the way in, and the readout below has to say so
+  br.tempSoaked = Math.max(0, tempBefore - tempHPOf(tokenHp(token).obj));
+  br.afterHP = tokenHp(token).cur;
   if(br.dr > 0 && br.owner && consumeDamageBuffs(br.owner)) await commitTokenSource(token);
   // an attack that isn't shrugged off as an immunity destroys any Illusion the defender was wearing
   if(br.mult > 0 && br.owner && breakIllusion(br.owner, "hit by a damaging Move")) await commitTokenSource(token);
@@ -29268,7 +29421,9 @@ function damageResultHTML(dmg, typeName, br, before){
   const pierceTxt = br.pierced ? " <b>(immunity ignored)</b>" : "";
   const abilTxt  = (br.defMods && br.defMods.why.length && !br.typeless) ? `<br><span style="color:var(--accent)">⚙ ${br.defMods.why.join(" · ")}</span>` : "";
   const expTxt = br.exploit ? ` <b>(Exploit: +5)</b>` : "";
-  return `${br.dmgUsed ?? dmg}${expTxt} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${pierceTxt}${swarmTxt}${stepTxt}${tintTxt}${tolTxt}${furTxt} = ${br.afterMult}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${before - br.final}</b>.${abilTxt}`;
+  const tempTxt = br.tempSoaked ? ` <span style="color:var(--temp);font-weight:700">(${br.tempSoaked} soaked by Temporary HP)</span>` : "";
+  const after = br.afterHP != null ? br.afterHP : before - br.final;
+  return `${br.dmgUsed ?? dmg}${expTxt} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${pierceTxt}${swarmTxt}${stepTxt}${tintTxt}${tolTxt}${furTxt} = ${br.afterMult}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${after}</b>.${tempTxt}${abilTxt}`;
 }
 /* GM tool surfaced on a rolled attack's result: pick a token on the battle map and drop the rolled
    damage on it, running the same full damage math as the token menu (type, phys/spec, abilities, DR).
@@ -29595,17 +29750,25 @@ function openTokenMenu(token, map){
     } else sw.append(el("div",{class:"small muted"},"None active."));
     wrap.append(sw);
   } else {
+    let tempBox = null, drawTemp = null;      // filled in below, for creature tokens only
     const readout = el("div",{class:"tk-menu-hp"});
+    const hpBarBox = el("div",{});
     const draw = ()=>{ const i=tokenHp(token); const p=Math.max(0,Math.min(100,Math.round(i.cur/i.max*100)));
-      readout.innerHTML = `<b>${i.cur}</b> / ${i.max} HP &nbsp;<span class="muted small">${p}%</span>`; };
+      const th=tempHPOf(i.obj);
+      readout.innerHTML = `<b>${i.cur}</b> / ${i.max} HP &nbsp;<span class="muted small">${p}%</span>`
+        + (th?` &nbsp;<span class="temphp-tag">\u{1F6E1}\u{FE0F} +${th} temp</span>`:"");
+      hpBarBox.innerHTML = "";
+      hpBarBox.append(hpBarEl(i.cur, i.max, th, {style:"margin-top:6px"}));
+      if(drawTemp) drawTemp();
+    };
     draw();
     const mk = (d,l)=>el("button",{class:"btn-secondary",disabled:!info.editable,
       onclick:async()=>{ await setTokenHP(token, tokenHp(token).cur+d); draw(); }}, l);
     const setInp = el("input",{type:"number",style:"width:80px"});
     const setBtn = el("button",{class:"btn-secondary",disabled:!info.editable,
-      onclick:async()=>{ const v=parseInt(setInp.value); if(!isNaN(v)){ await setTokenHP(token,v); draw(); setInp.value=""; } }},"Set");
+      onclick:async()=>{ const v=parseInt(setInp.value); if(!isNaN(v)){ await setTokenHP(token,v,{raw:true}); draw(); setInp.value=""; } }},"Set");
     const tick = hpTick(info.max);   // 1 Tick = 1/10 max HP
-    wrap.append(readout,
+    wrap.append(readout, hpBarBox,
       el("div",{class:"tk-menu-row"}, mk(-5,"−5"), mk(-1,"−1"), mk(+1,"+1"), mk(+5,"+5")),
       el("div",{class:"tk-menu-row"},
         el("button",{class:"btn-secondary",disabled:!info.editable,title:`lose a Tick of HP (${tick} = 1/10 max)`,
@@ -29613,6 +29776,41 @@ function openTokenMenu(token, map){
         el("button",{class:"btn-secondary",disabled:!info.editable,title:`regain a Tick of HP (${tick} = 1/10 max)`,
           onclick:async()=>{ await setTokenHP(token, tokenHp(token).cur+tick); draw(); }},"+Tick"),
         setInp, setBtn));
+
+    /* Temporary Hit Points, granted straight from the board. Nothing here adds to the pool: the
+       rules say two sources never stack and only the highest applies, so "Grant" raises the pool to
+       whatever is bigger and says so when the new source was the smaller one. */
+    if(info.obj){
+      const tempOut = el("span",{class:"small muted",style:"align-self:center"});
+      const tempIn  = el("input",{type:"number",min:0,style:"width:80px",placeholder:"Temp HP"});
+      const drawTempFn = ()=>{ const th=tempHPOf(info.obj);
+        tempOut.textContent = th ? `${th} Temp HP standing` : "no Temporary HP"; };
+      const grant = async n => {
+        n = Math.max(0, Math.round(n||0)); if(!n) return;
+        const before = tempHPOf(info.obj), now = gainTempHP(info.obj, n);
+        await commitTokenSource(token);
+        toast(now > before ? `\u{1F6E1}\u{FE0F} +${n} Temporary HP \u2014 now ${now}`
+                           : `\u{1F6E1}\u{FE0F} already holding ${before} Temp HP \u2014 pools don't stack, the highest applies`);
+        draw();
+      };
+      tempBox = el("div",{style:"margin-top:10px"},
+        el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px",title:TEMP_HP_TIP},
+          "\u{1F6E1}\u{FE0F} Temporary Hit Points"),
+        el("div",{class:"tk-menu-row"},
+          tempIn,
+          el("button",{class:"btn-secondary",disabled:!info.editable,title:TEMP_HP_TIP,
+            onclick:()=>{ const v=parseInt(tempIn.value); if(!isNaN(v)){ grant(v); tempIn.value=""; } }},"Grant"),
+          el("button",{class:"btn-secondary",disabled:!info.editable,
+            title:`grant a Tick of Temporary HP (${tick} = 1/10 max)`,
+            onclick:()=>grant(tick)},"+Tick"),
+          el("button",{class:"btn-secondary",disabled:!info.editable,
+            title:"lose it all \u2014 End of Scene, Take a Breather, Terrorize, or being recalled into a Pok\u00e9 Ball",
+            onclick:async()=>{ info.obj.tempHP = 0; await commitTokenSource(token); draw(); toast("Temporary HP cleared"); }},"Clear"),
+          tempOut));
+      drawTemp = drawTempFn;
+      wrap.append(tempBox);
+      drawTemp();
+    }
     if(token.link) wrap.append(el("div",{class:"muted small",style:"margin-top:6px"},
       token.link.kind==="enc" ? "Linked to the encounter — HP syncs with the Encounters tab."
                               : "Linked to a sheet — HP changes sync to that character."));
