@@ -6916,6 +6916,10 @@ const EQUIP_EFFECTS = {
   "stealth clothes":        { skills:{stealth:4}, skillCap:4, note:"Only to remain unseen." },
   "fancy clothes":          { note:"Contest: roll 2d6 in the Introduction Stage for the assigned Contest Stat's dice." },
   "sunglasses":             { skills:{charm:1,guile:1,intimidate:1}, skillCap:3 },
+  /* homebrew: a Head-slot hat that simply lends its wearer authority. Keyed twice so a
+     typographic apostrophe in the item name still finds it (normItemName strips it). */
+  "captain's hat":          { skills:{intimidate:2} },
+  "captainshat":            { skills:{intimidate:2} },
   "running shoes":          { skills:{athletics:2}, skillCap:3, overland:1 },
   "helmet":                 { drCrit:15, note:"Resist Headbutt & Zen Headbutt; can't be flinched by them." },
   "mind aegis":             { skills:{focus:6}, note:"+6 Focus vs Telepathy (with Iron Mind Edge → grants Mindlock instead)." },
