@@ -14586,13 +14586,14 @@ function openMoveRoll(p, m, sp, opts={}){
      connects, the ghost of its departed parent lashes out at the same target with a Ghost-Type
      Struggle Attack. It's a separate attack with its own Accuracy Roll, Damage Roll and Crit, so it's
      resolved right here under the main result and the player reads both hits off the one 🎲.
-     STAB, Accuracy CS and active buffs carry over; the triggering Move's own riders do not. */
+     Accuracy CS and active buffs carry over; the triggering Move's own riders do not. And it gets
+     NO STAB even on a Ghost-Type user — this is a Struggle Attack, and Struggle never gains STAB
+     (the same rule trainerStab already enforces on the Trainer side). */
   const ancestral = hasAbility(p, "Ancestral Connection") && !getSpecies(p.species)?.noStruggle;
   function ancestralStrikeNode(){
     const base = struggleMove(p); if(!base) return null;
     const gm = Object.assign({}, base, { type:"Ghost", class:"Physical" });
-    const gStab = types.includes("Ghost");
-    const gDB   = Math.max(1, Math.min(28, (gm.damageBase||4) + (gStab?2:0) + (bm.db||0)));
+    const gDB   = Math.max(1, Math.min(28, (gm.damageBase||4) + (bm.db||0)));
     const gCritT = critThreshold(p, gm);
     const acc    = 1+Math.floor(Math.random()*20);
     const accTot = acc + (bm.acc||0) + accCS;
@@ -14601,6 +14602,15 @@ function openMoveRoll(p, m, sp, opts={}){
     const r  = rollDiceString(ds);
     const critExtra = (gCrit && r) ? rollDiceString(ds).total : 0;  // crit adds the Damage Base again (Core p.235), not the stat
     const total = r ? Math.max(0, r.total + (d.eff.atk||0) + (bm.dmg||0) + critExtra) : 0;
+
+    /* …and into the GM's feed as its own entry, exactly like the Move that triggered it. The
+       player rolling this at the table sees both hits in the window; without this the GM only got
+       the triggering Move and had to be told about the ghost strike out loud. */
+    logRoll({ kind:"move", label:"👻 Ancestral Connection", who:rollerName(p),
+      headline:`${gCrit?"💥 CRIT ":"💥 "}${total} damage`,
+      lines:[`🎯 Accuracy ${accTot} (d20 ${acc}) vs AC ${gm.ac} + Physical Evasion`,
+             `Ghost · Physical · DB ${gDB} — Struggle Attack, no STAB`],
+      atk:{ dmg:total, type:"Ghost", physical:true } });
 
     const node = el("div",{class:"card",
       style:`background:var(--panel-2);border:1px solid ${gCrit?"var(--bad)":"var(--line)"};margin:10px 0 0`});
@@ -14617,10 +14627,11 @@ function openMoveRoll(p, m, sp, opts={}){
     if(bm.dmg)    why.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs`);
     if(critExtra) why.push(`+${critExtra} crit (Damage Base again)`);
     node.append(el("div",{class:"small muted",style:"margin-top:2px"},
-      `Damage Base ${gm.damageBase}${gStab?" +2 STAB":""}${bm.db?` ${bm.db>0?"+":""}${bm.db} buffs`:""} = ${gDB} · `
+      `Damage Base ${gm.damageBase}${bm.db?` ${bm.db>0?"+":""}${bm.db} buffs`:""} = ${gDB} · `
       + why.join("  ") + `  = ${total}. Target subtracts Defense & damage reduction.`));
     node.append(el("div",{class:"small muted",style:"margin-top:2px"},
-      "Free Action, resolved only if the triggering Move hit. This bonus strike can't trigger Ancestral Connection again."));
+      "Free Action, resolved only if the triggering Move hit. No STAB — it's a Struggle Attack. "
+      + "This bonus strike can't trigger Ancestral Connection again."));
     const tw = attackTargetWidget({ dmg:total, type:"Ghost", physical:true });
     if(tw) node.append(tw);
     return node;
@@ -25815,6 +25826,8 @@ function subscribeRealtime(){
     // live enemy HP/status/CS — a small delta over the socket so the ~600 KB encounters row isn't
     // re-broadcast to every player on every tick (see broadcastEncState / saveEncCombat)
     .on("broadcast", { event:"encstate" }, msg => onEncStateBroadcast(msg && msg.payload))
+    // live boat steering — position AND facing, since a turn reshapes the hull (see broadcastBoatMove)
+    .on("broadcast", { event:"boatmove" }, msg => onBoatMoveBroadcast(msg && msg.payload))
     // Track the socket's health. A websocket that quietly died (sleeping laptop, phone switching
     // from wifi to data, a proxy dropping an idle connection) used to leave the tab looking connected
     // while receiving nothing — every change made by anyone else was invisible until a manual reload.
@@ -28387,10 +28400,28 @@ function boatPassengers(map, boat){
     return tx < bx+d.w && tx+s > bx && ty < by+d.h && ty+s > by;
   });
 }
-/* Who may take the helm: the GM and the shared Viewer screen always, plus any player who actually
-   has one of their own tokens aboard — you can steer the boat you're standing on. */
+/* A boat's helm is HANDED OVER, never assumed. `token.playerHelm` is a GM switch — the
+   "🔓 Give the crew the helm" button in openBoatMenu, or the padlock on the 🚤 panel itself.
+   Until it's pressed, players get no arrows for that hull and can't drag it either (tokenHp feeds
+   canDriveBoat straight into the token's `editable`), no matter who is standing on the deck. A new
+   boat starts locked, and the GM keeps the helm of every boat either way. */
+function boatHelmGiven(token){ return !!(token && token.playerHelm); }
+/* GM: hand this boat's helm to the players, or take it back. Broadcast alongside the row write so
+   their 🚤 controls appear (or vanish) at once rather than a sync later. */
+function setBoatHelm(map, boat, on){
+  if(!cloud.isGM || !boat) return;
+  boat.playerHelm = !!on;
+  broadcastBoatMove(map, boat, new Map());     // no movement, just the new helm state
+  mapTokensSave(); renderMap();
+  toast(on ? `🔓 ${boat.label||"Boat"} — the crew has the helm`
+           : `🔒 ${boat.label||"Boat"} — helm locked to the GM`);
+}
+/* Who may take the helm: the GM, for any boat. For a boat whose helm has been handed over: the
+   shared Viewer screen, plus any player who actually has one of their own tokens aboard. */
 function canDriveBoat(token){
-  if(cloud.isGM || isMapHpViewer()) return true;
+  if(cloud.isGM) return true;                       // the GM steers every hull on the board
+  if(!boatHelmGiven(token)) return false;           // ...players wait to be given this one
+  if(isMapHpViewer()) return true;
   const map = currentMapForView(); if(!map) return false;
   return boatPassengers(map, token).some(t=>t.link && ownsRow(cloud.byId[t.link.sheetId]));
 }
@@ -28401,6 +28432,8 @@ function boatSteer(map, boat, dir, step){
   const from = boatFacing(boat);
   const turns = ((BOAT_ANGLE[dir] - BOAT_ANGLE[from]) + 4) % 4;
   if(!turns && !step) return false;
+  // where everything sat before the manoeuvre, so the live broadcast below can ship just the deltas
+  const before = new Map(mapTokensFor(map.id).map(t=>[t.id, [t.x, t.y]]));
   const pax = boatPassengers(map, boat);          // snapshot: who is aboard as the manoeuvre starts
   if(turns){
     const a = boatDims(boat, from), b = boatDims(boat, dir);
@@ -28426,12 +28459,54 @@ function boatSteer(map, boat, dir, step){
   }
   pax.forEach(p=>{ if(!p.riding) snapRidersTo(map, p); });       // keep anyone's own riders pinned
   if(map.fogOn) revealAroundTokens(map);                        // sailing on reveals new coastline
+  broadcastBoatMove(map, boat, before);   // peers see the hull move NOW, not when the row write lands
   mapTokensSave(); renderMap();
   return true;
 }
+/* ---- live steering across the table -----------------------------------------------------------
+   A boat used to move for everyone else only once the debounced `mapTokensSave()` write had gone up
+   and come back down as a postgres_changes echo — a second or more of the hull sitting still, which
+   with an arrow you can press four times a second reads as the boat lurching. Steering now travels
+   the same way a token drag does (see broadcastDrag): a websocket BROADCAST of a few dozen bytes,
+   no row write and no egress. Unlike a drag ghost this one is applied to the peer's actual token
+   data — a turn changes `facing`, and with it the sprite AND the footprint, so there is nothing a
+   CSS nudge could fake. The authoritative copy still arrives the old way right behind it; this is
+   the same values, just early, so the echo lands as a no-op. */
+function broadcastBoatMove(map, boat, before){
+  if(!liveDragOn()) return;
+  const moved = mapTokensFor(map.id).reduce((acc,t)=>{
+    const b = before.get(t.id);
+    if(b && (b[0]!==t.x || b[1]!==t.y)) acc.push([t.id, +t.x.toFixed(2), +t.y.toFixed(2)]);
+    return acc;
+  }, []);
+  try{
+    cloud.sub.send({ type:"broadcast", event:"boatmove", payload:{
+      from: cloud.tabId, map: map.id, b: boat.id, f: boatFacing(boat), h: !!boat.playerHelm,
+      bx: +boat.x.toFixed(2), by: +boat.y.toFixed(2), t: moved } });
+  }catch(e){}                    // a dropped socket must never break the helm itself
+}
+function onBoatMoveBroadcast(msg){
+  if(!msg || msg.from===cloud.tabId || !msg.map) return;
+  const list = mapTokensFor(msg.map); if(!list.length) return;
+  const byId = {}; list.forEach(t=>{ byId[t.id] = t; });
+  (Array.isArray(msg.t) ? msg.t : []).forEach(([id,x,y])=>{
+    const t = byId[id];
+    if(t && !mapDraggingIds.has(id)){ t.x = x; t.y = y; }   // ...unless this viewer has hold of it
+  });
+  const b = byId[msg.b];
+  if(b && !mapDraggingIds.has(msg.b)){
+    if(typeof msg.bx==="number"){ b.x = msg.bx; b.y = msg.by; }
+    if(msg.f) b.facing = msg.f;
+  }
+  if(b && typeof msg.h==="boolean") b.playerHelm = msg.h;   // the GM handing over / taking back the helm
+  dragGhosts.delete(msg.b);      // a real position supersedes any stale ghost of this hull
+  (Array.isArray(msg.t) ? msg.t : []).forEach(([id])=>dragGhosts.delete(id));
+  const cur = currentMapForView();
+  if(currentTab==="map" && !mapDragging && cur && cur.id===msg.map) renderMap();
+}
 async function addBoat(map){
   mapBoat = { id:null, hidden:false };
-  await addToken(map, { boat:true, label:"Boat", facing:"E", boatLen:BOAT_LEN_DEFAULT,
+  await addToken(map, { boat:true, label:"Boat", facing:"E", playerHelm:false, boatLen:BOAT_LEN_DEFAULT,
                         boatBeam:BOAT_BEAM_DEFAULT, size:1,
                         hp:BOAT_HP_DEFAULT, maxHp:BOAT_HP_DEFAULT,
                         def:BOAT_DEF_DEFAULT, spdef:BOAT_SPDEF_DEFAULT,
@@ -28455,6 +28530,12 @@ function boatPanel(map){
   const pax = boatPassengers(map, boat).length;
   p.append(el("div",{class:"boat-title"},
     el("span",{style:"flex:1;min-width:0"}, "🚤 " + (boat.label||"Boat")),
+    // the GM's one-click handover, right where they are already steering from
+    cloud.isGM ? el("button",{class:"boat-x",
+      title: boatHelmGiven(boat) ? "The crew can steer this boat — click to take the helm back"
+                                 : "Only you can steer this boat — click to give the crew the helm",
+      onclick:()=>setBoatHelm(map, boat, !boatHelmGiven(boat))},
+      boatHelmGiven(boat) ? "🔓" : "🔒") : "",
     el("button",{class:"boat-x",title:"hide these controls",
       onclick:()=>{ mapBoat.hidden=true; renderMap(); }},"✕")));
   if(boats.length>1){
@@ -28526,13 +28607,31 @@ function openBoatMenu(token, map){
   wrap.append(el("div",{class:"small",style:"text-align:center;margin-bottom:10px;font-weight:800"},
     `${info0.cur} / ${info0.max} HP`));
   if(!cloud.isGM){
-    wrap.append(el("div",{class:"r-body"},"Walk a token onto the deck, then steer with the 🚤 controls on the board."));
+    wrap.append(el("div",{class:"r-body"}, boatHelmGiven(token)
+      ? "Walk a token onto the deck, then steer with the 🚤 controls on the board."
+      : "The GM has the helm of this boat. They can hand it over, and the 🚤 controls will appear."));
     modal({title:token.label||"Boat", bodyNode:wrap, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
     return;
   }
   const nm = el("input",{type:"text",value:token.label||"Boat"});
   nm.addEventListener("change", ()=>{ token.label = nm.value.trim()||"Boat"; mapTokensSave(); renderMap(); });
   wrap.append(el("label",{class:"field"}, el("span",{},"Name"), nm));
+
+  // ---- who may steer: players see this hull's 🚤 arrows only once you hand the helm over ----
+  const helmBtn  = el("button",{style:"margin-top:4px"});
+  const helmNote = el("div",{class:"small muted",style:"margin-top:4px"});
+  const drawHelm = ()=>{
+    const on = boatHelmGiven(token);
+    helmBtn.textContent = on ? "🔒 Take the helm back" : "🔓 Give the crew the helm";
+    helmBtn.className   = on ? "btn-secondary on" : "btn-primary";
+    helmNote.textContent = on
+      ? "Players with a token aboard can steer this boat and drag the hull. You keep the helm either way."
+      : "Only you can steer this boat — players get no 🚤 controls for it, even standing on the deck.";
+  };
+  drawHelm();
+  helmBtn.addEventListener("click", ()=>{ setBoatHelm(map, token, !boatHelmGiven(token)); drawHelm(); });
+  wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:12px;margin-bottom:4px"},"🚤 Helm"),
+    helmBtn, helmNote);
 
   // ---- HP: same +/-/tick/set controls as any other token, so the hull can actually be sunk ----
   const readout = el("div",{class:"tk-menu-hp"});
