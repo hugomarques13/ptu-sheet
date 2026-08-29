@@ -29259,24 +29259,50 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
   const bP = el("button",{class:"subtab",onclick:()=>{ tab="players"; draw(); }});
   const bE = el("button",{class:"subtab",onclick:()=>{ tab="enemies"; draw(); }});
   tabsBar.append(bP, bE);
+  /* A search box over the list: a big fight puts twenty-odd tokens in here and scrolling for the
+     one that just got hit is slower than typing three letters of its name. It filters what is
+     SHOWN only — a target ticked before the search stays ticked and still takes the hit, and a line
+     under the list says so. Typing also hops to the other tab when only that one has matches. */
+  let q = "";
+  const matches = i => !q || label(i.t).toLowerCase().includes(q);
+  const search = el("input",{type:"search",placeholder:"Search targets by name…",
+    style:"width:100%;margin-bottom:6px",
+    oninput:e=>{ q = e.target.value.trim().toLowerCase(); draw(); },
+    onkeydown:e=>{ if(e.key==="Escape" && search.value){ e.stopPropagation(); search.value=""; q=""; draw(); } }});
   const list = el("div",{style:"max-height:160px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-bottom:6px"});
   const allCb = el("input",{type:"checkbox"});
-  allCb.addEventListener("change",()=>{ items.filter(i=>i.faction===tab).forEach(i=>{ i.cb.checked = allCb.checked; }); });
+  allCb.addEventListener("change",()=>{
+    items.filter(i=>i.faction===tab && matches(i)).forEach(i=>{ i.cb.checked = allCb.checked; }); draw();
+  });
+  const allTxt = el("span",{class:"small muted"},"select all in this tab");
   const allWrap = el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;margin-bottom:8px;cursor:pointer"},
-    allCb, el("span",{class:"small muted"},"select all in this tab"));
+    allCb, allTxt);
+  const hiddenNote = el("div",{class:"small",style:"margin-bottom:6px;color:var(--accent);display:none"});
   function draw(){
-    const nP = items.filter(i=>i.faction==="players").length, nE = items.length - nP;
-    bP.textContent = `🧑 Players (${nP})`; bE.textContent = `👹 Enemies (${nE})`;
+    items.forEach(i=>{ i.txt.textContent = label(i.t); });     // keep HP labels fresh (filter reads them)
+    const inP = items.filter(i=>i.faction==="players"), inE = items.filter(i=>i.faction==="enemies");
+    const mP = inP.filter(matches).length, mE = inE.filter(matches).length;
+    // a search that only hits the other faction switches to it rather than showing an empty list
+    if(q && tab==="players" && !mP && mE) tab = "enemies";
+    else if(q && tab==="enemies" && !mE && mP) tab = "players";
+    bP.textContent = `🧑 Players (${q ? `${mP}/${inP.length}` : inP.length})`;
+    bE.textContent = `👹 Enemies (${q ? `${mE}/${inE.length}` : inE.length})`;
     bP.classList.toggle("on", tab==="players"); bE.classList.toggle("on", tab==="enemies");
-    items.forEach(i=>{ i.txt.textContent = label(i.t); });     // keep HP labels fresh
     list.innerHTML = "";
-    const rows = items.filter(i=>i.faction===tab);
-    if(!rows.length) list.append(el("div",{class:"small muted"},
+    const all  = items.filter(i=>i.faction===tab);
+    const rows = all.filter(matches);
+    if(!all.length) list.append(el("div",{class:"small muted"},
       tab==="players" ? "No player tokens on this map." : "No enemy tokens on this map."));
+    else if(!rows.length) list.append(el("div",{class:"small muted"},
+      `Nothing here matches “${search.value}”.`));
     rows.forEach(i=>list.append(i.row));
     allCb.checked = rows.length>0 && rows.every(i=>i.cb.checked);
+    allTxt.textContent = q ? `select all ${rows.length} shown` : "select all in this tab";
+    const hid = items.filter(i=>i.cb.checked && !matches(i)).length;
+    hiddenNote.textContent = hid ? `⚠ ${hid} ticked target${hid===1?" is":"s are"} hidden by this search — ${hid===1?"it":"they"} will still be hit.` : "";
+    hiddenNote.style.display = hid ? "" : "none";
   }
-  wrap.append(tabsBar, list, allWrap);
+  wrap.append(tabsBar, search, list, allWrap, hiddenNote);
 
   // effectiveness nudge (applies to every selected target) + area flag (matters only vs a Swarm)
   let manualStep = 0;
