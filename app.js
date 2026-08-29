@@ -3207,6 +3207,145 @@ function typeMultAgainst(atkType, defTypes, stepAdj=0, opts){
   if(immune) return 0;                          // immunity is absolute — a swarm can't undo it
   return ptuEffMult(steps + stepAdj);
 }
+/* ===================================================================
+   Type-absorbing Abilities — Storm Drain, Volt Absorb, Flash Fire & co.
+   -------------------------------------------------------------------
+   Every one of these reads the same way: "The user is immune to the damage and effects of X-Type
+   attacks, AND whenever they are hit with an X-Type attack, <reward>." Two halves that used to be
+   split — the immunity was auto-applied, the reward was left as reference text for the table to
+   remember. Both now live in this one registry: `defenseTypeMods` builds its immunity set from it,
+   and the Map's damage tool pays the reward out the moment an immune hit lands. The Pokémon's
+   Abilities card carries a manual ⚡ button for hits that never went through a token.
+
+   `reward` shapes —
+     {tick:n}          heal n Ticks of Hit Points (negative = lose them: Dry Skin's Fire clause)
+     {cs:{stat:n}}     raise Combat Stages
+     {csChoice:[a,b]}  "+1 CS in their choice of a or b" — auto-takes whichever stat is higher
+     {buff:key}        drop one of the PTU_BUFFS entries on them (Flash Fire, Windveiled)
+
+   The "[Errata]" printings reward something DIFFERENT from the originals (Flash Fire [Errata] gives
+   a Combat Stage rather than +5 damage), so they are listed separately and matched on their full
+   name — unlike ownerHasAbility, which strips the suffix on purpose.
+=================================================================== */
+const TYPE_ABSORB_ABILITIES = [
+  // — immunity with nothing to pay out —
+  { ab:"Levitate",             type:"Ground",   immune:true,  reward:null, rewardText:"" },
+  { ab:"Elevate",              type:"Ground",   immune:true,  reward:null, rewardText:"" },
+  // — immunity + a Tick of Hit Points —
+  { ab:"Volt Absorb",          type:"Electric", immune:true,  reward:{tick:1},  rewardText:"heals a Tick on every Electric hit" },
+  { ab:"Water Absorb",         type:"Water",    immune:true,  reward:{tick:1},  rewardText:"heals a Tick on every Water hit" },
+  { ab:"Earth Eater",          type:"Ground",   immune:true,  reward:{tick:1},  rewardText:"heals a Tick on every Ground hit" },
+  { ab:"Dry Skin",             type:"Water",    immune:true,  reward:{tick:1},  rewardText:"heals a Tick on every Water hit",
+    note:"Also gains a Tick at the end of a turn spent in Rainy Weather — that half is a turn tick, not a hit." },
+  { ab:"Winter's Kiss",        type:"Ice",      immune:true,  reward:{tick:1},  rewardText:"heals a Tick on every Ice hit",
+    note:"It also heals whenever the user USES an Ice-Type Move — press ⚡ on the Abilities card for that half." },
+  // — immunity + Combat Stages —
+  { ab:"Motor Drive",          type:"Electric", immune:true,  reward:{cs:{spd:1}},    rewardText:"+1 Speed CS on every Electric hit" },
+  { ab:"Sap Sipper",           type:"Grass",    immune:true,  reward:{cs:{atk:1}},    rewardText:"+1 Attack CS on every Grass hit" },
+  { ab:"Sap Sipper [Errata]",  type:"Grass",    immune:true,  reward:{csChoice:["atk","spatk"]}, rewardText:"+1 Attack or Sp.Attack CS on every Grass hit" },
+  { ab:"Storm Drain",          type:"Water",    immune:true,  reward:{cs:{spatk:1}},  rewardText:"+1 Sp.Attack CS on every Water hit" },
+  { ab:"Storm Drain [Errata]", type:"Water",    immune:true,  reward:{cs:{spatk:1}},  rewardText:"+1 Sp.Attack CS on every Water hit" },
+  { ab:"Lightning Rod",        type:"Electric", immune:true,  reward:{cs:{spatk:1}},  rewardText:"+1 Sp.Attack CS on every Electric hit" },
+  { ab:"Lightning Rod [Errata]",type:"Electric",immune:true,  reward:{cs:{spatk:1}},  rewardText:"+1 Sp.Attack CS on every Electric hit" },
+  { ab:"Well-Baked Body",      type:"Fire",     immune:true,  reward:{cs:{def:2}},    rewardText:"+2 Defense CS on every Fire hit" },
+  { ab:"Glisten",              type:"Fairy",    immune:true,  reward:{csChoice:["def","spdef"]}, rewardText:"+1 Defense or Sp.Defense CS on every Fairy hit" },
+  { ab:"Windveiled [Errata]",  type:"Flying",   immune:true,  reward:{cs:{spd:1}},    rewardText:"+1 Speed CS on every Flying hit" },
+  { ab:"Flash Fire [Errata]",  type:"Fire",     immune:true,  reward:{csChoice:["atk","spatk"]}, rewardText:"+1 Attack or Sp.Attack CS on every Fire hit" },
+  // — immunity + a bonus that rides the user's NEXT Move of that Type —
+  { ab:"Flash Fire",           type:"Fire",     immune:true,  reward:{buff:"flash-fire"}, rewardText:"+5 to its next Fire Damage Roll" },
+  { ab:"Windveiled",           type:"Flying",   immune:true,  reward:{buff:"windveiled"}, rewardText:"+1 DB on its next Flying Move" },
+  /* — the OTHER half of Dry Skin: no immunity, it just hurts. Listed here so a Fire hit that
+     LANDS still costs the Tick the Ability charges for it. — */
+  { ab:"Dry Skin",             type:"Fire",     immune:false, reward:{tick:-1}, rewardText:"loses a Tick on every Fire hit",
+    note:"Also loses a Tick at the end of a turn spent in Sunny Weather." },
+];
+/* every Ability name this creature actually has, lower-cased. Unlike ownerHasAbility the "[Errata]"
+   suffix is KEPT — the errata printings pay out differently and have their own registry rows. */
+function ownerAbilityNames(o){
+  return [...(o?.abilities||[]), ...(o?.encAbilities||[]),
+          ...(isTrainerOwner(o) ? featureAbilityGrants(o) : [])]
+    .map(a => String(a||"").toLowerCase().trim()).filter(Boolean);
+}
+/* the absorbing Abilities this creature is actually carrying */
+function absorbEntriesFor(o){
+  if(!o) return [];
+  const have = new Set(ownerAbilityNames(o));
+  return TYPE_ABSORB_ABILITIES.filter(e => have.has(e.ab.toLowerCase()));
+}
+/* … narrowed to one incoming Type, and to the ones that actually PAY something — a pure immunity
+   (Levitate, Elevate) has nothing to hand over, so it never reaches a readout or a button. `immune`
+   picks the half being asked about: true = the hit was soaked by the immunity (Storm Drain),
+   false = the hit landed and still triggers anyway (Dry Skin's Fire clause). */
+function absorbEntriesForType(o, type, immune){
+  if(!type || type==="Typeless") return [];
+  return absorbEntriesFor(o).filter(e => e.type===type && !!e.immune===!!immune && !!e.reward);
+}
+/* one CS-adjusted stat off either kind of sheet, for the "+1 CS in their choice of A or B" rewards */
+function ownerStatFor(o, k){
+  try{
+    if(isTrainerOwner(o)) return (trainerDerived(o).totals||{})[k] || 0;
+    const d = pokeDerived(o); return ((d.eff||d.total||{})[k]) || 0;
+  }catch(_){ return 0; }
+}
+/* What one absorbing Ability pays out on THIS creature — a Tick is 1/10 of its own max HP, and a
+   "its choice" Combat Stage takes whichever of the two stats is currently higher. Pure: it reads the
+   creature and hands back what to do, so the Map (setTokenHP, which syncs) and the sheet
+   (setOwnerHP) can each apply it their own way. */
+function absorbPayout(o, e){
+  const out = { heal:0, cs:{}, buff:null, bits:[] };
+  const r = e && e.reward;
+  if(r){
+    if(r.tick){
+      const n = hpTick(ownerMaxHP(o)) * Math.abs(r.tick);
+      out.heal = r.tick > 0 ? n : -n;
+      out.bits.push(`${r.tick>0?"+":"−"}${n} HP (${Math.abs(r.tick)===1?"a Tick":Math.abs(r.tick)+" Ticks"})`);
+    }
+    if(r.cs) Object.entries(r.cs).forEach(([k,v])=>{
+      out.cs[k] = (out.cs[k]||0) + v; out.bits.push(`${v>0?"+":""}${v} ${statLbl(k)} CS`); });
+    if(r.csChoice){
+      const amt = r.csChoiceAmt || 1;
+      const k = r.csChoice.slice().sort((a,b)=>ownerStatFor(o,b)-ownerStatFor(o,a))[0];
+      out.cs[k] = (out.cs[k]||0) + amt;
+      out.bits.push(`+${amt} ${statLbl(k)} CS (its choice — took the higher of ${r.csChoice.map(statLbl).join(" / ")})`);
+    }
+    if(r.buff){ out.buff = buffByKey.get(r.buff) || null;
+      if(out.buff) out.bits.push(`${buffModText(out.buff.mods)||out.buff.name} on its ${out.buff.dur}`); }
+  }
+  out.text = `${e.ab}: ${out.bits.join(", ") || "immune, nothing further"}`;
+  return out;
+}
+/* Apply everything in a payout EXCEPT the Hit Points (those differ between the Map and the sheet).
+   Returns true when it changed something, so the caller knows to persist. */
+function applyAbsorbNonHP(o, pay){
+  let changed = false;
+  const keys = Object.keys(pay.cs||{});
+  if(keys.length){
+    if(!o.cs || typeof o.cs!=="object") o.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
+    keys.forEach(k=>{ o.cs[k] = Math.max(-6, Math.min(6, (o.cs[k]||0) + pay.cs[k])); });
+    changed = true;
+  }
+  if(pay.buff){
+    /* "a +5 Bonus to their NEXT Damage Roll" — one standing bonus, not a stack, so a second
+       soaked hit refreshes the charge rather than doubling it. */
+    if(Array.isArray(o.buffs)) o.buffs = o.buffs.filter(b=>b.key!==pay.buff.key);
+    addBuff(o, pay.buff.key);
+    changed = true;
+  }
+  return changed;
+}
+/* The sheet-side path: pay one Ability out on a loose owner object (no token involved). Returns the
+   log line; the caller saves + redraws. */
+function applyAbsorbToOwner(o, e){
+  const pay = absorbPayout(o, e);
+  if(pay.heal){
+    const oldHP = ownerHP(o);
+    const newHP = pay.heal < 0 ? tempSoakSay(o, oldHP, oldHP + pay.heal) : oldHP + pay.heal;
+    if(pay.heal < 0){ applyAutoInjury(o, oldHP, newHP); applyAutoKO(o, oldHP, newHP); applyShieldsDown(o, newHP); }
+    setOwnerHP(o, newHP);
+  }
+  applyAbsorbNonHP(o, pay);
+  return pay.text;
+}
 /* Defensive type-chart adjustments from a Pokémon's abilities (Core p.199). Per the always-on rule,
    ONLY Static abilities are auto-applied here — triggered/reactive ones (Lightning Rod, Storm Drain,
    Thermal Exchange, Steelworker…) stay the player's to invoke and are left as reference text.
@@ -3236,15 +3375,15 @@ function defenseTypeMods(p){
   if(A("Purifying Salt")){ add("Ghost",-1); why.push("Purifying Salt: resists Ghost"); }
   // resists a Type one step LESS (extra vulnerability)
   if(A("Fluffy")){ add("Fire",+1); why.push("Fluffy: weaker to Fire (also resists Melee further — not shown on the Type chart)"); }
-  // outright Type immunities (the static immunity only; any on-hit heal/boost is triggered → not auto-applied).
-  // Storm Drain / Lightning Rod carry a Scene redirect + Sp.Atk boost that stays the player's to invoke,
-  // but their "the user is immune to the damage and effects of …" clause is always-on — so the immunity
-  // is auto-applied here just like Volt/Water Absorb. Windveiled's Flying immunity is fully Static.
-  [["Levitate","Ground"],["Sap Sipper","Grass"],["Volt Absorb","Electric"],["Water Absorb","Water"],
-   ["Flash Fire","Fire"],["Motor Drive","Electric"],["Earth Eater","Ground"],["Well-Baked Body","Fire"],
-   ["Dry Skin","Water"],["Storm Drain","Water"],["Lightning Rod","Electric"],["Windveiled","Flying"],
-   ["Winter's Kiss","Ice"]   // Frost Touched (Glacial Defense): "does not take damage from Ice-Type Moves" + heals on Ice (the heal is triggered → manual)
-  ].forEach(([ab,ty])=>{ if(A(ab)){ immune.add(ty); why.push(`${ab}: immune to ${ty}`); } });
+  /* Outright Type immunities — and the reward the Ability pays out when that immunity soaks a hit.
+     Both halves come out of the one TYPE_ABSORB_ABILITIES registry up top, so the Map's damage tool
+     can hand over the Tick / Combat Stage / buff the moment the hit lands instead of leaving it as
+     reference text. Reading the registry also means the "[Errata]" printings and an encounter NPC's
+     own Ability list count, both of which the old hand-written pair list missed. */
+  absorbEntriesFor(p).filter(e=>e.immune).forEach(e=>{
+    immune.add(e.type);
+    why.push(`${e.ab}: immune to ${e.type}${e.rewardText?` — ${e.rewardText}`:""}`);
+  });
   // Wonder Guard: only Super-Effective damaging attacks affect the user
   if(A("Wonder Guard")){ wonderGuard = true; why.push("Wonder Guard: only Super-Effective attacks can hit"); }
   // Filter / Solid Rock: soften Super-Effective multipliers (×1.5→×1.25, ×2→×1.5). Having BOTH also
@@ -4909,7 +5048,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const atkLbl = isSpecAtk ? "Sp.Attack" : "Attack";
   const defNote = isSpecAtk ? "Special Defense" : "Defense";
   const evaNote = isSpecAtk ? "Special Evasion" : "Physical Evasion";
-  const bm = buffMods(t, {isPhys: isPhysAtk});
+  const bm = buffMods(t, {isPhys: isPhysAtk, type: st.type});
   /* Crit Range for this attack — Bad Mood, Frenzy & co., and the Move's own printed range. */
   const critT = trainerCritThreshold(t, st, bm.crit);
   const critNote = [badMoodWhy(t), bm.crit ? `+${bm.crit} buffs` : ""].filter(Boolean).join(" · ");
@@ -5150,9 +5289,9 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   if(tbuffs.length){
     const bcard = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
     bcard.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},"✨ Buffs & Orders active"));
-    tbuffs.forEach(b=>{ const mt=buffModText(b.mods); const off = !buffApplies(b, {isPhys:isPhysAtk});
-      bcard.append(el("div",{class:"small"+(off?" muted":"")}, `• ${b.name}` + (mt?` — ${mt}`:"")
-        + (off?` — ${b.only==="phys"?"Physical":"Special"} attacks only, not counted here`:""),
+    const bctx = {isPhys:isPhysAtk, type: st.type};
+    tbuffs.forEach(b=>{ const mt=buffModText(b.mods); const offTxt = buffOffText(b, bctx);
+      bcard.append(el("div",{class:"small"+(offTxt?" muted":"")}, `• ${b.name}` + (mt?` — ${mt}`:"") + offTxt,
         b.note?el("span",{class:"muted"},"  "+b.note):"")); });
     body.append(bcard);
   }
@@ -10119,16 +10258,40 @@ const PTU_BUFFS = [
     note:"−3 Accuracy while attacking from (or into) the Shifting Darkness — unless you have Darkvision, in which case take this off. The sheet applies it to every Accuracy Roll the carrier makes; a shot fired INTO the zone from outside has to be handled by hand." },
   { key:"soothing-flute-dr", cat:"Item", name:"Soothing Flute (Ghost DR)", dur:"until end of Scene", mods:{ typeDR:{Ghost:5} },
     note:"+5 Damage Reduction against Ghost-Type Attacks — Soothing Flute (Trainer Accessory), auto-applied by the Map's attack tool whenever the incoming hit is Ghost-Type." },
+  /* — Type-absorbing Abilities (TYPE_ABSORB_ABILITIES). Placed automatically the moment the
+       immunity soaks a hit: Flash Fire's "+5 Bonus to their next Damage Roll with a Fire-Type Move"
+       and Windveiled's "+1 Damage Base on their next Flying-Type Move". Both are spent on ONE Move,
+       so they carry `onlyType` and every roll screen greys them out on a Move of the wrong Type. — */
+  { key:"flash-fire", cat:"Ability", name:"Flash Fire", dur:"next Fire-Type Damage Roll", once:true,
+    self:true, onlyType:"Fire", mods:{ dmg:5 },
+    note:"Flash Fire soaked a Fire-Type hit: +5 to your next Damage Roll with a Fire-Type Move. Remove it once you have spent it." },
+  { key:"windveiled", cat:"Ability", name:"Windveiled", dur:"next Flying-Type Move", once:true,
+    self:true, onlyType:"Flying", mods:{ db:1 },
+    note:"Windveiled soaked a Flying-Type hit: +1 Damage Base on your next Flying-Type Move. Remove it once you have spent it." },
 ];
 const buffByKey = new Map(PTU_BUFFS.map(b=>[b.key,b]));
-const BUFF_CATS = ["Cheerleader","Commander","Musician","Berserker","Medic","Item","Field"];
+const BUFF_CATS = ["Cheerleader","Commander","Musician","Berserker","Medic","Item","Ability","Field"];
 function ownerBuffs(owner){ return Array.isArray(owner?.buffs) ? owner.buffs : []; }
 /* Some buffs only apply to one damage class — a Spicy Wrap's +5 is Physical attacks only, a Dry
    Wafer's is Special. `b.only` carries that; pass ctx={isPhys} from a roll to honour it. With no
    ctx (a card just listing what's active) every buff counts, so nothing silently disappears. */
 function buffApplies(b, ctx){
+  /* `b.onlyType` restricts a buff to Moves of one Type (Flash Fire's +5 rides Fire Moves only).
+     A context that doesn't know the Move's Type at all can't honour that, so it leaves the buff
+     OUT rather than quietly handing the bonus to every Move — better a missing +5 the player can
+     see listed than a silent one on the wrong attack. */
+  if(b.onlyType && (!ctx || b.onlyType !== ctx.type)) return false;
   if(!b.only || !ctx || ctx.isPhys==null) return true;
   return b.only === (ctx.isPhys ? "phys" : "spec");
+}
+/* why a listed buff is greyed out on this particular roll — Type first, then damage class */
+function buffOffText(b, ctx){
+  if(!buffApplies(b, ctx)){
+    if(b.onlyType) return ` — ${b.onlyType}-Type Moves only, not counted here`;
+    if(b.only)     return ` — ${b.only==="phys"?"Physical":"Special"} attacks only, not counted here`;
+    return " — not counted on this roll";
+  }
+  return "";
 }
 /* total numeric contribution of an owner's active buffs, for a roll */
 function buffMods(owner, ctx){
@@ -10239,7 +10402,8 @@ function expireTurnBuffs(owner, endingId, endingSeq){
 function addBuff(owner, key){
   if(!Array.isArray(owner.buffs)) owner.buffs=[];
   const b = buffByKey.get(key); if(!b) return;
-  const nb = { id:uid(), key:b.key, name:b.name, cat:b.cat, dur:b.dur, note:b.note, once:!!b.once, mods:Object.assign({},b.mods) };
+  const nb = { id:uid(), key:b.key, name:b.name, cat:b.cat, dur:b.dur, note:b.note, once:!!b.once,
+               mods:Object.assign({},b.mods), only:b.only||null, onlyType:b.onlyType||null };
   stampTurnBuff(nb);
   owner.buffs.push(nb);
 }
@@ -12421,9 +12585,29 @@ function abilitiesCard(p, sp){
           if(!isGM()){ toast("Only the GM can remove an Ability"); return; }
           p.abilities.splice(i,1); save(); refreshMon(p);}},"×")));
     row.append(el("div",{class:"small",style:"margin-top:6px", html: ab? abilityText(ab):"<span class='muted'>Not in database</span>"}));
+    // Storm Drain & co.: one press pays the Ability out for a hit that never went through the Map
+    absorbEntriesFor({abilities:[an]}).filter(e=>e.reward)
+      .forEach(e=>row.append(absorbTriggerRow(p, e, ()=>refreshMon(p))));
     card.append(row);
   });
   return card;
+}
+/* The manual half of a type-absorbing Ability. On the Map the damage tool fires these by itself the
+   moment the immunity soaks a hit; this row is for everything else — a hit rolled at the table, a
+   Pokémon that isn't on the board, or Winter's Kiss healing off a Move the user itself just used. */
+function absorbTriggerRow(p, e, redraw){
+  const pay = absorbPayout(p, e);
+  const gain = pay.bits.join(", ") || "nothing further";
+  const wrap = el("div",{class:"inline small",style:"margin-top:8px;gap:8px;flex-wrap:wrap;align-items:center"});
+  wrap.append(el("button",{class:"btn-secondary",style:"padding:4px 10px",
+    title:`${e.ab} — ${gain}`,
+    onclick:()=>{ const msg = applyAbsorbToOwner(p, e); save(); toast(`\u26A1 ${msg}`); redraw && redraw(); }},
+    e.immune ? `\u26A1 Hit by a ${e.type} Move` : `\u26A0\uFE0F Hit by a ${e.type} Move`));
+  wrap.append(el("span",{class:"muted"},
+    (e.immune ? `Immune \u2014 takes no damage and gains ${gain}.` : `${gain}.`)
+    + " The Map's damage tool does this on its own."));
+  if(e.note) wrap.append(el("span",{class:"muted"}, e.note));
+  return wrap;
 }
 function addAbility(p, sp){
   const speciesAbil = sp ? allAbilityNames(sp) : [];       // every species ability (any tier)
@@ -14208,7 +14392,7 @@ function openMoveRoll(p, m, sp, opts={}){
     return m.damageBase;                  // generic weight moves & normal moves use the printed DB
   }
   const spPending = () => !!sp2 && sp2.kind==="dieDB" && dieVal==null;   // DB unknown until 🎲
-  const bm = buffMods(p, {isPhys});       // active Cheers / Orders / Songs / Food Buffs (#2)
+  const bm = buffMods(p, {isPhys, type: mtype});   // active Cheers / Orders / Songs / Food Buffs (#2)
   const abilAcc = abilityAccMods(p, m, isPhys);   // always-on Accuracy abilities (Compound Eyes, Hustle)
   /* Duelist: half this Pokemon's Momentum (rounded up) is Accuracy AND Evasion, but only against a
      Tagged foe — the roll has no idea who is being shot at, so it asks. Off by default; ticking it
@@ -14676,9 +14860,9 @@ function openMoveRoll(p, m, sp, opts={}){
     buffs.forEach(b=>{ const mt=buffModText(b.mods);
       // a class-restricted buff (a Spicy Wrap is Physical-only) is listed but greyed when this
       // move isn't the class it applies to — it's still active, it just isn't in these numbers
-      const off = !buffApplies(b, {isPhys});
-      bcard.append(el("div",{class:"small"+(off?" muted":"")}, `• ${b.name}` + (mt?` — ${mt}`:"")
-          + (off?` — ${b.only==="phys"?"Physical":"Special"} attacks only, not counted here`:"") + (b.note?`  `:""),
+      const offTxt = buffOffText(b, {isPhys, type: mtype});
+      bcard.append(el("div",{class:"small"+(offTxt?" muted":"")}, `• ${b.name}` + (mt?` — ${mt}`:"")
+          + offTxt + (b.note?`  `:""),
         b.note?el("span",{class:"muted"}, b.note):"")); });
     const net = [];
     if(bm.acc)  net.push(`${bm.acc>0?"+":""}${bm.acc} to Accuracy`);
@@ -23119,7 +23303,7 @@ function simProfile(A, atk, cfg){
   // against — and openTrainerAttack now reads the same CS-adjusted stat, so the two always agree.
   const atkStat = A.isT ? (isPhys ? d.totals.atk : d.totals.spatk)
                         : (isPhys ? d.eff.atk   : d.eff.spatk);
-  const bm  = buffMods(p, {isPhys});
+  const bm  = buffMods(p, {isPhys, type: mtype});
   const printedThr = simThresholds(atk.m.effect);
   const abil = A.isT ? { db:0, flat:0 }
                      : abilityDamageMods(p, atk.m, atk.db, printedThr, { stab, mtype, isPhys, isSpec:!isPhys, fieryCrash:fcMode });
@@ -23295,6 +23479,7 @@ function simStrike(B, A, atk, D, round){
     + (inflicted?` · ${inflicted}!`:""));
   simHurt(B, D, done, null, round);
   A.dealt += done;
+  simAbsorbTriggers(B, D, pr, round);                             // Storm Drain & co. cash in on the hit
   if(done>0 && consumeDamageBuffs(D.obj)) D.bust();               // Excited & co. are spent absorbing it
   if(cfg.useStatus && hasStatus(D.obj,"sleep") && done>0) simCure(D, "sleep");   // damage wakes it
   if(before>0 && D.hp<=0) A.kos++;
@@ -23302,6 +23487,29 @@ function simStrike(B, A, atk, D, round){
   if(cost.recoil && done>0) simHurt(B, A, Math.max(1, Math.floor(done*cost.recoil)), "💢 Recoil", round);
   if(cost.selfKO) simHurt(B, A, A.hp, `💥 ${atk.name} — the user goes down with it`, round);
   return done;
+}
+
+/* Type-absorbing Abilities inside the Simulator — the same TYPE_ABSORB_ABILITIES registry the table
+   runs on. A simulated fighter is a deep clone (simUnit), so paying the reward out here moves the
+   simulated battle without touching a real sheet: a Lanturn thrown at an Electric side now heals off
+   every shot exactly as it would in play, and a Dry Skin Pokémon still pays its Tick for a Fire hit.
+   Gated on the defender actually having one of these Abilities, so the hot loop skips it entirely. */
+function simAbsorbTriggers(B, D, pr, round){
+  if(D.isT || !pr.mtype || pr.mtype==="Typeless") return;
+  const have = absorbEntriesFor(D.obj); if(!have.length) return;
+  const mult = simTypeMult(D, pr.mtype, pr.pierceImmune, pr.atkTinted, pr.isPhys);
+  const mods = D.dmods();
+  // only an ABILITY's immunity pays out — a plain Type-chart 0 (Normal into Ghost) gives nothing
+  const soaked = mult===0 && !!mods && mods.immune.has(pr.mtype) && !pr.pierceImmune;
+  const list = have.filter(e => e.reward && e.type===pr.mtype && (e.immune ? soaked : mult > 0));
+  for(const e of list){
+    const pay = absorbPayout(D.obj, e);
+    if(pay.heal > 0) D.hp = Math.min(D.max, D.hp + pay.heal);
+    else if(pay.heal < 0) simHurt(B, D, -pay.heal, `\u26A1 ${e.ab}`, round);
+    if(applyAbsorbNonHP(D.obj, pay)) D.bust();
+    // a negative payout (Dry Skin on a Fire hit) already logged itself through simHurt, HP and all
+    if(pay.heal >= 0) B.log && B.log.push(`   \u26A1 ${D.name}: ${pay.text}`);
+  }
 }
 
 /* ---------- target & attack choice ---------- */
@@ -24515,15 +24723,6 @@ const AUTOMATED_ABILITIES = {
   "water bubble":"Resists Fire one step further in the Type chart.",
   "fluffy":"Weaker to Fire in the Type chart (Melee resistance not shown).",
   "purifying salt":"Resists Ghost in the Type chart.",
-  "levitate":"Immune to Ground in the Type chart.",
-  "sap sipper":"Immune to Grass in the Type chart.",
-  "volt absorb":"Immune to Electric in the Type chart.",
-  "water absorb":"Immune to Water in the Type chart.",
-  "flash fire":"Immune to Fire in the Type chart.",
-  "motor drive":"Immune to Electric in the Type chart.",
-  "earth eater":"Immune to Ground in the Type chart.",
-  "well-baked body":"Immune to Fire in the Type chart.",
-  "dry skin":"Immune to Water in the Type chart.",
   "wonder guard":"Only Super-Effective attacks can hit (Type chart & map damage).",
   "filter":"Softens Super-Effective damage (×1.5→×1.25, ×2→×1.5) in the Type chart & map damage.",
   "solid rock":"Softens Super-Effective damage (×1.5→×1.25, ×2→×1.5); +5 DR vs Super-Effective if paired with Filter.",
@@ -24533,7 +24732,22 @@ const AUTOMATED_ABILITIES = {
   "scrappy":"Ghost-Types are not immune to its Normal & Fighting-Type Moves (applied in move rolls and on map damage).",
   "bone wielder [errata]":"Bone Club / Bonemerang / Bone Rush ignore immunity to Ground-Type Moves.",
 };
-function abilityAutoNote(name){ return AUTOMATED_ABILITIES[String(name||"").toLowerCase()] || null; }
+function abilityAutoNote(name){
+  const k = String(name||"").toLowerCase();
+  /* The type-absorbing Abilities describe themselves straight out of TYPE_ABSORB_ABILITIES — both
+     halves, the immunity and the reward — so this note can never drift from what the code does, and
+     every printing in the registry gets one instead of the nine that were hand-listed here. */
+  const abs = TYPE_ABSORB_ABILITIES.filter(e => e.ab.toLowerCase()===k);
+  if(abs.length){
+    const parts = abs.map(e => (e.immune ? `immune to ${e.type} in the Type chart` : `${e.type} hits still trigger it`)
+                             + (e.rewardText ? ` \u2014 ${e.rewardText}` : ""));
+    let out = parts.join("; ");
+    out = out.charAt(0).toUpperCase() + out.slice(1) + ".";
+    if(abs.some(e=>e.reward)) out += " The reward is paid out automatically when the hit lands on the Map \u2014 use the \u26A1 button below for a hit rolled off the board.";
+    return out;
+  }
+  return AUTOMATED_ABILITIES[k] || null;
+}
 /* the sheet's Frequency strings carry stray double spaces ("Scene -  Free Action") */
 function cleanFreq(s){ return String(s||"").replace(/\s+/g," ").trim(); }   // declaration: hoisted, so earlier renderers can use it
 function abilityText(a){
@@ -29388,6 +29602,13 @@ async function applyTokenDamage(token, br){
   if(br.dr > 0 && br.owner && consumeDamageBuffs(br.owner)) await commitTokenSource(token);
   // an attack that isn't shrugged off as an immunity destroys any Illusion the defender was wearing
   if(br.mult > 0 && br.owner && breakIllusion(br.owner, "hit by a damaging Move")) await commitTokenSource(token);
+  /* Type-absorbing Abilities (Storm Drain, Volt Absorb, Flash Fire, Well-Baked Body…). The immunity
+     half has already zeroed the damage above; this is the other half — the Tick, the Combat Stage,
+     the one-Move buff. `br.mult===0` on its own is not enough, because a plain Type-chart immunity
+     (Normal into Ghost) pays nothing: it has to be an immunity one of THIS creature's Abilities
+     granted, and one the attacker didn't pierce. The `false` list is the mirror case — an Ability
+     that fires on a Type that hits it perfectly well (Dry Skin's Fire clause). */
+  await applyAbsorbTriggers(token, br);
   // Breach Security (house rule): once a boat has as many Breaches as its Breach Security, every
   // attack on the hull also splashes onto its passengers — resisted one step further than usual.
   if(isBoatToken(token) && br.final > 0 && (token.breaches||0) >= (token.breachSecurity||BOAT_BREACH_SECURITY_DEFAULT)){
@@ -29402,6 +29623,26 @@ async function applyTokenDamage(token, br){
     }
   }
   return before;
+}
+/* Pay out every type-absorbing Ability the defender has for the hit just resolved, and record what
+   happened on the breakdown so damageResultHTML can say so. Hit Points go through setTokenHP (which
+   is what keeps a linked sheet / encounter row in sync); Combat Stages and buffs land on the owner
+   object and are committed once. */
+async function applyAbsorbTriggers(token, br){
+  br.absorb = [];
+  if(!br.owner || br.typeless) return;
+  const soaked = br.mult === 0 && !br.pierced;          // the immunity ate the hit
+  const landed = br.mult > 0;                           // the hit went through and still triggers
+  const list = [ ...(soaked ? absorbEntriesForType(br.owner, br.type, true) : []),
+                 ...(landed ? absorbEntriesForType(br.owner, br.type, false) : []) ];
+  if(!list.length) return;
+  for(const e of list){
+    const pay = absorbPayout(br.owner, e);
+    if(pay.heal) await setTokenHP(token, tokenHp(token).cur + pay.heal);
+    if(applyAbsorbNonHP(br.owner, pay)) await commitTokenSource(token);
+    br.absorb.push(pay.text);
+  }
+  br.afterHP = tokenHp(token).cur;                       // the readout has to show the healed total
 }
 /* one-line "N − Def = …, Type eff = …, − DR → final. HP a → b" breakdown, shared by both callers */
 function damageResultHTML(dmg, typeName, br, before){
@@ -29423,7 +29664,10 @@ function damageResultHTML(dmg, typeName, br, before){
   const expTxt = br.exploit ? ` <b>(Exploit: +5)</b>` : "";
   const tempTxt = br.tempSoaked ? ` <span style="color:var(--temp);font-weight:700">(${br.tempSoaked} soaked by Temporary HP)</span>` : "";
   const after = br.afterHP != null ? br.afterHP : before - br.final;
-  return `${br.dmgUsed ?? dmg}${expTxt} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${pierceTxt}${swarmTxt}${stepTxt}${tintTxt}${tolTxt}${furTxt} = ${br.afterMult}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${after}</b>.${tempTxt}${abilTxt}`;
+  // what a type-absorbing Ability (Storm Drain, Volt Absorb…) just paid the defender for this hit
+  const absTxt = (br.absorb && br.absorb.length)
+    ? `<br><span style="color:var(--accent);font-weight:700">\u26A1 ${br.absorb.join(" \u00B7 ")}</span>` : "";
+  return `${br.dmgUsed ?? dmg}${expTxt} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${pierceTxt}${swarmTxt}${stepTxt}${tintTxt}${tolTxt}${furTxt} = ${br.afterMult}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${after}</b>.${tempTxt}${absTxt}${abilTxt}`;
 }
 /* GM tool surfaced on a rolled attack's result: pick a token on the battle map and drop the rolled
    damage on it, running the same full damage math as the token menu (type, phys/spec, abilities, DR).
