@@ -5676,21 +5676,20 @@ function trainerXpCard(t){
     el("div",{class:"hpbar",style:"flex:1;min-width:140px"}, el("i",{style:`width:${pct}%;background:var(--accent)`})),
     el("span",{class:"small muted",style:"white-space:nowrap"}, t.level>=TRAINER_MAX_LEVEL ? "max level" : `${per-cur} to Lv ${t.level+1}`)));
   const inp = el("input",{type:"number",min:1,value:1,style:"width:70px",title:"amount of EXP"});
+  /* The EXP pool is the POKÉMON's, and only theirs. Trainer levels come from the GM directly — a
+     different currency on a different clock — so this button never touches t.xpPool. The GM says
+     "everyone gain a Trainer level" and each player presses it on their own sheet, the way End Day
+     and the rest of the self-service trackers work. */
   const apply = sign => {
     const n=Math.abs(parseInt(inp.value)||0); if(!n) return;
-    if(sign>0 && !isGM()){
-      if(typeof t.xpPool!=="number") t.xpPool = 0;
-      if(n > t.xpPool){ toast(`Only ${t.xpPool} EXP in your pool — ask the GM to send more`); return; }
-      t.xpPool -= n;
-    }
     addTrainerXP(t, sign*n);
   };
   card.append(el("div",{class:"inline",style:"gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center"},
     el("span",{class:"small muted"},"Award:"), inp,
     el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"grant EXP (auto levels up at 10)",onclick:()=>apply(1)},"＋ EXP"),
     el("button",{class:"btn ghost",style:"padding:5px 10px",title:"take EXP back",onclick:()=>apply(-1)},"－ EXP")));
-  if(!isGM()) card.append(el("div",{class:"small muted",style:"margin-top:4px"},
-    `EXP pool: ${t.xpPool||0} — from your GM's "📤 Send EXP" (Encounters → Calculate EXP).`));
+  card.append(el("div",{class:"small muted",style:"margin-top:4px"},
+    "Trainer EXP is awarded by your GM directly — it does not come out of the Pokémon EXP pool."));
   return card;
 }
 /* Trainer HP + AP tracker with Damage/Heal box and End Scene / End Day (rest) buttons */
@@ -9954,16 +9953,31 @@ function trainingsCard(p){
 /* info-only capture rate (no roll) — for the GM's "🎯 Catch DC" reference buttons when just
    inspecting a Pokémon. The interactive roll lives on the trainer's own ⚔ Combat tab instead
    (openThrowPokeball), not behind clicking a Pokémon. */
-function catchRateModal(p){ catchDCModal(p, {showRoll:false}); }
+function catchRateModal(p){ catchDCModal(p, {showRoll:false, showRate:true}); }
 function catchDCModal(p, opts={}){
   const showRoll = opts.showRoll !== false;
+  /* The Capture Rate is the GM's number. A player throwing a ball sees the two dice and every bonus
+     that went into them, but never the DC they were measured against — so a capture reads like a
+     roll at the table rather than a spreadsheet, and the GM keeps the only copy of the target. */
+  const showRate = opts.showRate != null ? opts.showRate : isGM();
   const wrap = el("div",{});
-  let legendary = false;
+  /* −30 for a Legendary, taken from the species itself rather than from a tick-box: a player never
+     sees the rate and so has nothing to tick, and the maths has to come out the same either way.
+     The GM's box below still opens pre-ticked on a Legendary and can be turned off. */
+  let legendary = isLegendarySpeciesName(p.species);
   const out = el("div",{});
   const redraw = () => {
     out.innerHTML="";
     const r = captureRate(p, {legendary});
     if(!r.capturable){ out.append(el("div",{class:"warnbox"},"At 0 HP or lower — can't be captured (Poké Balls won't energize it).")); return; }
+    if(!showRate){
+      out.append(el("div",{class:"small muted"},
+        "Throw a Poké Ball — an AC 6 attack against its Evasion — then roll 1d100 and take off your "
+        + "Trainer Level plus any Ball and Feature bonuses. Whether that beats the Pokémon's Capture "
+        + "Rate is the GM's to know: a natural 100 always catches, and a Nat 20 on the throw takes "
+        + "another 10 off the capture roll."));
+      return;
+    }
     out.append(el("div",{style:"font-size:13px;font-weight:800;letter-spacing:.5px;color:var(--muted)"},"CAPTURE RATE"));
     out.append(el("div",{style:"font-size:44px;font-weight:800;color:var(--accent);line-height:1;margin:2px 0 8px"}, String(r.rate)));
     out.append(el("div",{class:"small muted",style:"margin-bottom:12px"},
@@ -9975,9 +9989,11 @@ function catchDCModal(p, opts={}){
     out.append(tbl);
   };
   const legLabel = el("label",{class:"inline",style:"gap:8px;cursor:pointer;margin-bottom:12px;font-weight:700"});
-  const cb = el("input",{type:"checkbox"}); cb.addEventListener("change",()=>{ legendary=cb.checked; redraw(); });
+  const cb = el("input",{type:"checkbox"}); cb.checked = legendary;
+  cb.addEventListener("change",()=>{ legendary=cb.checked; redraw(); });
   legLabel.append(cb, el("span",{},"Legendary Pokémon (−30)"));
-  wrap.append(legLabel, out);
+  if(showRate) wrap.append(legLabel);      // a player has no rate to apply it to — it is auto-detected instead
+  wrap.append(out);
   redraw();
   if(!showRoll){
     modal({title:`🎯 Catch DC — ${p.nickname||getSpecies(p.species)?.name||"Pokémon"}`, bodyNode:wrap,
@@ -10028,8 +10044,12 @@ function catchDCModal(p, opts={}){
       `🎯 Accuracy: rolled <b>${acc}</b>${hasTools?" +2 Tools of the Trade":""} vs AC ${ac} (6 + ${st.physEva} Evasion) → <b>${hit?"HIT":"MISS"}</b>${nat20?" (Nat 20 — −10 to capture roll!)":nat1?" (Nat 1 — auto-miss)":""}`,
     ];
     if(hit){
-      lines.push(`🎲 Capture: 1d100 = <b>${d100}</b>${swapped?" <i>(digits swapped)</i>":""} − ${cap.parts.map(x=>x[0]).join(" − ")} = <b>${capRoll}</b> vs rate <b>${r.rate}</b>`);
-      lines.push(caught ? `✅ <b>Caught!</b> (${d100===100?"natural 100":`${capRoll} ≤ ${r.rate}`})` : `❌ <b>Broke free.</b> (${capRoll} > ${r.rate})`);
+      lines.push(`🎲 Capture: 1d100 = <b>${d100}</b>${swapped?" <i>(digits swapped)</i>":""} − ${cap.parts.map(x=>x[0]).join(" − ")} = <b>${capRoll}</b>`
+        + (showRate ? ` vs rate <b>${r.rate}</b>` : ""));
+      // the verdict is the player's to see; the numbers behind it are not
+      lines.push(caught ? `✅ <b>Caught!</b>` + (showRate ? ` (${d100===100?"natural 100":`${capRoll} ≤ ${r.rate}`})`
+                                                         : (d100===100 ? " (natural 100)" : ""))
+                        : `❌ <b>Broke free.</b>` + (showRate ? ` (${capRoll} > ${r.rate})` : ""));
     } else {
       lines.push("The ball missed — no capture roll. Try again!");
     }
@@ -12681,7 +12701,7 @@ function xpRow(p){
     addBox,
     el("button",{class:"btn-secondary",style:"padding:5px 12px",onclick:addXP},"+ Add XP")));
   if(!isGM() && t) wrap.append(el("div",{class:"small muted",style:"margin-top:4px"},
-    `EXP pool: ${t.xpPool||0} (shared with your Trainer's own EXP award)`));
+    `EXP pool: ${t.xpPool||0} — from your GM's "📤 Send EXP". It is spent on Pokémon only; your Trainer's own EXP comes from the GM separately.`));
   wrap.append(el("div",{class:"hpbar",style:"margin-top:6px"},
     el("i",{style:`width:${pct}%;background:var(--accent)`})));
   return wrap;
@@ -21482,7 +21502,7 @@ function openExpCalc(enc){
       el("div",{style:"font-size:22px;font-weight:800;margin-top:6px;color:var(--accent)"}, `${per} XP per player`),
       el("div",{class:"small muted",style:"margin-top:4px"}, `${total} ÷ ${pl} player${pl===1?"":"s"}. Each player then splits their share among the Pokémon they used (Core p.460).`),
       el("button",{class:"btn-primary",style:"padding:6px 12px;margin-top:10px",
-        title:"pick who was actually there — it lands in those sheets' EXP pools, to spend on their Trainer or Pokémon",
+        title:"pick who was actually there — it lands in those sheets' EXP pools, to spend on their Pokémon",
         onclick:()=>openSendEXP(per, `${per} EXP per player, straight off the calculator — tick who was actually there, then send.`)}, "📤 Send EXP"));
   };
   sigIn.addEventListener("input",recalc); plIn.addEventListener("input",recalc);
@@ -21517,7 +21537,7 @@ function openMonExpCalc(p){
       el("div",{class:"small muted",style:"margin-top:4px"},
         `${total} ÷ ${pl} player${pl===1?"":"s"}. Each player then splits their share among the Pokémon they used (Core p.460).`),
       el("button",{class:"btn-primary",style:"padding:6px 12px;margin-top:10px",
-        title:"pick who was actually there — it lands in those sheets' EXP pools, to spend on their Trainer or Pokémon",
+        title:"pick who was actually there — it lands in those sheets' EXP pools, to spend on their Pokémon",
         onclick:()=>openSendEXP(per, `${per} EXP per player, straight off the calculator — tick who was actually there, then send.`)}, "📤 Send EXP"));
   };
   sigIn.addEventListener("input",recalc); plIn.addEventListener("input",recalc);
@@ -22101,7 +22121,10 @@ function moneySheetRows(){
 }
 /* EXP pool: the GM decides a number — off the 🧮 calculator, or just off the top of their head —
    ticks who was actually there, and it lands in those sheets' xpPool. Players can then only spend
-   out of that pool (see trainerXpCard/xpRow) instead of typing any amount they like.
+   out of that pool (see xpRow) instead of typing any amount they like.
+
+   The pool is for POKÉMON EXP alone. Trainer levels are a separate award on a separate clock, so
+   trainerXpCard's ＋/− buttons deliberately don't draw on it.
 
    Same shape as Payday: one cloudUpsert per row, so awarding EXP mid-session doesn't fight
    whatever anyone happens to be editing, and its own tick list decides who's in. */
@@ -22149,7 +22172,7 @@ function expCard(opts){
   const count = el("span",{class:"small muted"});
   if(!opts.inModal) card.append(el("h3",{},"📤 Send EXP", count));
   card.append(el("div",{class:"small muted",style:"margin:-4px 0 10px"}, opts.note
-    || "Hand out Experience whenever you like — a fight, a puzzle, a good scene. It lands in every ticked sheet's EXP pool and the player spends it on their Trainer or their Pokémon. Untick anyone who wasn't there."));
+    || "Hand out Experience whenever you like — a fight, a puzzle, a good scene. It lands in every ticked sheet's EXP pool and the player spends it on their Pokémon. (Trainer levels are separate — award those on the Trainer sheet.) Untick anyone who wasn't there."));
   if(!rows.length){ card.append(el("span",{class:"muted small"},"no player sheets in this campaign yet.")); return card; }
   expInit();
   if(opts.preset){ expSend.amt = String(Math.round(opts.preset)); expSend.split = false; }
