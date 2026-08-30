@@ -1520,6 +1520,29 @@ const MINIOR_COLORS = ["Red","Orange","Yellow","Green","Blue","Indigo","Violet"]
    files each colour of the Core Forme under its own form id (minior-blue = 10140, …). */
 const MINIOR_ART = { Red:10136, Orange:10137, Yellow:10138, Green:10139, Blue:10140, Indigo:10141, Violet:10142 };
 
+/* ---------- Wishiwashi: Schooling (Ability, Daily - Swift Action) ----------
+   "The user changes to Schooling Forme, and gains Temporary Hit Points equal to half of its own
+    maximum Hit Points. The user cannot gain Temporary Hit Points from other sources while in
+    Schooling Forme. When the user is both below 50% of their maximum HP and has no Temporary Hit
+    Points left, they change back into Solo Forme. Bonus: The user has two sets of base stats; Solo
+    and Schooling. The HP of both forms must be the same."
+   The same two-species shape as Shields Down above - the dex carries both Formes and they share one
+   HP base (5/5), so the swap never moves the HP bar; only the rest of the block flips (Atk 2->14,
+   Def 2->13, SpAtk 3->14, SpDef 3->14, Spd 4->3, Small->Huge, Power 1->8). Unlike Minior's shell
+   this one is ACTIVATED, so there is a button to press: it spends the Daily use, swaps the stat
+   block and hands over the pool that IS the rest of the school.
+   These consts live up here beside Minior's for the same reason - nothing below `let state=load()`
+   may be the first thing to touch them. */
+const WISHIWASHI_SOLO = "Wishiwashi Solo", WISHIWASHI_SCHOOL = "Wishiwashi School";
+
+/* ---------- Tatsugiri: Commander (Ability, At-Will - Swift Action, "An adjacent Ally") ----------
+   The three Tatsugiri Forms are three species rows sharing one stat block; the Form is pure flavour
+   everywhere EXCEPT Order Up, which reads it to decide which Combat Stage its Bonus raises. Up here
+   with the other Forme consts so nothing below `let state=load()` is first to touch them. */
+const TATSUGIRI_FORMS = { "tatsugiri":"Curly", "tatsugiri-droopy":"Droopy", "tatsugiri-stretchy":"Stretchy" };
+const TATSUGIRI_FORM_CS = { Curly:"atk", Droopy:"def", Stretchy:"spd" };
+const COMMANDER_ORDER_UP_LEVEL = 30;
+
 /* Unown's inscribed letter is pure decoration too — all 28 formes (A-Z, !, ?) share one stat block,
    Ability list and movelist, so the dex carries a single "Unown" species and the letter is just a
    flavor pick stored on the Pokémon, read by monLookName to pick the right artwork. pokemondb only
@@ -2168,6 +2191,12 @@ function gainTempHP(o, n, opts){
   n = Math.max(0, Math.round(n || 0));
   if(!o || !n) return tempHPOf(o);
   if(o.species !== undefined && isSoulless(o)) return 0;      // Soulless (Shedinja) can never hold any
+  /* "The user cannot gain Temporary Hit Points from other sources while in Schooling Forme" - the
+     shoal IS the pool, so nothing else may add to it. Schooling's own grant passes {schooling:true}. */
+  if(!(opts && opts.schooling) && inSchoolForme(o)){
+    toast(`\u{1F41F} Schooling - ${ownerLabel(o)} can't gain Temporary HP from other sources while in Schooling Forme`);
+    return tempHPOf(o);
+  }
   const before = tempHPOf(o);
   o.tempHP = (opts && opts.stack) ? before + n : Math.max(before, n);
   return o.tempHP;
@@ -2528,6 +2557,9 @@ function applyEndScene(c){
     resetManualCS(p); clearSceneStatuses(p);
     if(p.mega) megaRevert(p,true);
     shieldsDownRevert(p);                // Shields Down: back to Meteor Forme out of combat, if not Bruised
+    /* Schooling: the Scene just took every Temporary Hit Point away, so re-run the Ability's own
+       revert test - a school that walked out of the fight under half HP disperses right here. */
+    applySchooling(p, p.currentHP==null ? ownerMaxHP(p) : p.currentHP);
     transformRevert(p,true); });         // buffs are combat-duration → clear (#2); Mega and Transform both end with the Scene
 }
 /* Apply an Extended Rest to one character object (restore AP & all uses, cure statuses, heal HP,
@@ -2564,6 +2596,7 @@ function applyEndDay(c, plan){
   restParty(c).forEach(p => {
     if(p.mega) megaRevert(p,true);        // revert Mega before healing so max HP is the base form's
     transformRevert(p,true);              // "lasts until ... the end of the encounter"
+    schoolingRevertNow(p);                // a night's rest scatters the school - and hands its Daily use back below
     p.tempHP = 0; p.buffs = []; resetUses(p, "all"); resetManualCS(p); clearStorageDigestion(p);
     clearAllStatuses(p);                  // cure all Status afflictions on the whole party too (Death excepted)
 
@@ -3258,6 +3291,7 @@ function trainerDerived(t) {
     power, highJump: hj, longJump: Math.floor(acro/2),
     dr: equipDR(t).dr + arc.dr,                              // worn-armor Damage Reduction (also flows through buffDR on the damage input) + Ten of Swords
     overland: moveWithCS(ovlBase, mvCS), swim: moveWithCS(swimBase, mvCS), moveCS: mvCS,
+    overlandBase: ovlBase, swimBase,          // pre-Speed-CS, for Commander's Movement swap
     throwing: 4 + athl,
     totals: Object.fromEntries(STATS.map(([k])=>[k, tot(k)])),        // CS-adjusted (used for attack/defense)
     realTotals: Object.fromEntries(STATS.map(([k])=>[k, raw(k)])),    // pre-CS
@@ -3506,7 +3540,7 @@ function applyAbsorbToOwner(o, e){
   if(pay.heal){
     const oldHP = ownerHP(o);
     const newHP = pay.heal < 0 ? tempSoakSay(o, oldHP, oldHP + pay.heal) : oldHP + pay.heal;
-    if(pay.heal < 0){ applyAutoInjury(o, oldHP, newHP); applyAutoKO(o, oldHP, newHP); applyShieldsDown(o, newHP); }
+    if(pay.heal < 0){ applyAutoInjury(o, oldHP, newHP); applyAutoKO(o, oldHP, newHP); applyShieldsDown(o, newHP); applySchooling(o, newHP); }
     setOwnerHP(o, newHP);
   }
   applyAbsorbNonHP(o, pay);
@@ -4014,6 +4048,10 @@ function renderTrainer(){
   sc.append(statTagsRow(t));
   sc.append(el("h3",{style:"margin-top:14px"},"Derived Stats"));
   sc.append(trainerDerivedGrid(t));
+  /* Commander: a Trainer is a legal target ("Ally: Pokémon and Trainers that are on your side") and
+     the Tatsugiri riding them takes the Overland/Swim printed just above. Nothing about the Trainer's
+     own numbers changes - this is the marker that they are carrying one. */
+  sc.append(commanderControl(t, null, ()=>renderTrainer()));
   root.append(sc);
 
   /* combat stages */
@@ -4153,14 +4191,14 @@ function damageHealRow(getHP, setHP, owner){
        pool is spent HERE, before Injuries / Knocked Out / Shields Down, every one of which reads
        the real Hit Points that are actually left. */
     const newHP = owner ? tempSoakSay(owner, oldHP, oldHP+n) : oldHP+n;
-    if(owner){ applyAutoInjury(owner, oldHP, newHP); applyAutoKO(owner, oldHP, newHP); applyShieldsDown(owner, newHP); }
+    if(owner){ applyAutoInjury(owner, oldHP, newHP); applyAutoKO(owner, oldHP, newHP); applyShieldsDown(owner, newHP); applySchooling(owner, newHP); }
     setHP(newHP);
   };
   // ± one Tick of HP (1/10 max) — direct HP change, no DR (Ticks are fixed chunks)
   const tickApply = sign => {
     const t = hpTick(ownerMaxHP(owner)); const oldHP = getHP(); const n = sign*t;
     const newHP = owner ? tempSoakSay(owner, oldHP, oldHP+n) : oldHP+n;
-    if(owner){ applyAutoInjury(owner, oldHP, newHP); applyAutoKO(owner, oldHP, newHP); applyShieldsDown(owner, newHP); }
+    if(owner){ applyAutoInjury(owner, oldHP, newHP); applyAutoKO(owner, oldHP, newHP); applyShieldsDown(owner, newHP); applySchooling(owner, newHP); }
     setHP(newHP);
   };
   box.addEventListener("keydown", e=>{ if(e.key==="Enter") apply(); });
@@ -5110,6 +5148,221 @@ function shieldsDownRevert(p){
   return true;
 }
 
+/* ---------- Schooling: the Solo <-> Schooling swap (see WISHIWASHI_SOLO up top) ----------
+   Shields Down's activated cousin. Nothing here save()s - like applyAutoInjury/applyAutoKO/
+   applyShieldsDown, the caller owns the store. */
+function isWishiwashi(p){ const n = p && p.species; return n===WISHIWASHI_SOLO || n===WISHIWASHI_SCHOOL; }
+function schooling(p){ return isWishiwashi(p) && hasAbility(p, "Schooling"); }
+function inSchoolForme(p){ return !!p && p.species===WISHIWASHI_SCHOOL && schooling(p); }
+/* what the shoal hands over: "Temporary Hit Points equal to half of its own maximum Hit Points" */
+function schoolingTempHP(p){ return Math.max(1, Math.floor(ownerMaxHP(p) / 2)); }
+/* the Daily use left on the Ability - the very pip usesControl already draws next to its name */
+function schoolingUseKey(){ return useKey("ability", "Schooling"); }
+function schoolingUsesLeft(p){
+  const info = freqInfo(abilityByName.get("schooling")?.frequency || "Daily - Swift Action");
+  return usesLeft(p, schoolingUseKey(), info.max || 1);
+}
+/* Swift Action: form up. Spends the Daily use, swaps the stat block, pays the pool out. */
+function schoolingActivate(p){
+  if(!schooling(p)) return null;
+  if(p.species === WISHIWASHI_SCHOOL) return { ok:false, msg:"already in Schooling Forme" };
+  if(schoolingUsesLeft(p) <= 0) return { ok:false, msg:"Schooling is spent for the day - tap its pip to restore the use" };
+  const key = schoolingUseKey();
+  p.uses = p.uses || {};
+  p.uses[key] = (p.uses[key] || 0) + 1;
+  p.species = WISHIWASHI_SCHOOL;
+  const n = schoolingTempHP(p);            // half of Max HP, and both Formes share their HP base
+  gainTempHP(p, n, { schooling:true });    // its own grant is the one source School Forme allows
+  return { ok:true, msg:`Schooling Forme - +${n} Temporary HP`, temp:n };
+}
+/* back to one small fish. The pool goes with it: those Temp HP were the other 299. */
+function schoolingRevertNow(p, why){
+  if(!isWishiwashi(p) || p.species !== WISHIWASHI_SCHOOL) return false;
+  p.species = WISHIWASHI_SOLO;
+  p.tempHP = 0;
+  if(why) toast(`\u{1F41F} ${ownerLabel(p)}'s school scatters - back to Solo Forme (${why})`);
+  return true;
+}
+/* "When the user is both below 50% of their maximum HP and has no Temporary Hit Points left, they
+   change back into Solo Forme." Rides along at every HP setter beside applyShieldsDown, and runs
+   AFTER tempSoak, so the pool it reads is what the hit actually left standing. */
+function applySchooling(owner, newHP){
+  if(!schooling(owner) || owner.species !== WISHIWASHI_SCHOOL || typeof newHP !== "number") return null;
+  if(tempHPOf(owner) > 0) return null;                 // the shoal is still soaking hits
+  const max = ownerMaxHP(owner);
+  if(!max || newHP >= max*0.5) return null;            // "below 50%" - exactly half still holds together
+  schoolingRevertNow(owner, "below half HP with its Temporary HP spent");
+  return "solo";
+}
+
+/* ---------- Commander: Attaching a Tatsugiri (see TATSUGIRI_FORMS up top) ----------
+   "The user Attaches to the target. While Attached, the user occupies the target's square and
+    replaces their Movement capabilities with the target's. Once per Round, the user and target may
+    Intercept attacks for each other as a Free Action.
+    Bonus: If the user is at least Level 30, while Attached, the target may use Order Up as though it
+    were on their Move List.
+    Special: If the target has the Mouthful Ability, they and the user may Intercept attacks any
+    number of times per round for each other, instead of once."
+
+   Four clauses, and three of them already have an engine on this sheet:
+     - "occupies the target's square"  ->  the Map's riding stack. A rider is pinned to its mount's
+       cell and the two drag as one, which is precisely what Attached means, so Attaching mounts the
+       token and Detaching dismounts it (commanderSyncMap).
+     - "replaces their Movement capabilities with the target's"  ->  one override at the tail of
+       monCapabilities, so the sheet's chips, the Pokedex and the Map's movement modes all agree.
+     - "may use Order Up as though it were on their Move List"  ->  the same DERIVED Move shape
+       Poltergeist uses: never written into host.moves, so it can never eat a Move slot.
+   The link is written on BOTH creatures - `tat.commander` on the Tatsugiri, `host.commandedBy` on
+   whatever it Attached to - so each side renders its own half without hunting the other down, and a
+   partner that has since been deleted degrades to a name on the card instead of a crash. */
+function tatsugiriForm(p){ return TATSUGIRI_FORMS[String(p?.species||"").toLowerCase().trim()] || null; }
+/* only a Pokémon is ever the USER of Commander - "the user Attaches to the target" */
+function hasCommander(p){ return !!p && !isTrainerOwner(p) && hasAbility(p, "Commander"); }
+/* The TARGET, though, is "An adjacent Ally", and Core's glossary is explicit about what that is:
+   "Ally: Pokémon and Trainers that are on your side, of course." So a host may be either. A Pokémon
+   carries its own id; a Trainer has none, so it is addressed by the id of the row it hangs off - the
+   character sheet for a PC, the encounter's trainer row for an NPC. One ref shape covers both, and a
+   ref with no `kind` is a link written before Trainers were allowed, i.e. always a Pokémon. */
+function commanderRefFor(o){
+  if(!o) return null;
+  if(!isTrainerOwner(o)) return { kind:"mon", id:o.id, name:ownerLabel(o) };
+  const id = trainerOwnerId(o);
+  return id ? { kind:"trainer", id, name:ownerLabel(o) } : null;
+}
+function commanderRefResolve(ref){
+  if(!ref) return null;
+  return ref.kind === "trainer" ? trainerById(ref.id) : monById(ref.id);
+}
+/* the id a Trainer is addressed by, and the lookup back the other way */
+function trainerOwnerId(t){
+  if(!t) return null;
+  try{
+    if(mode==="cloud"){ for(const k of Object.keys(cloud.byId||{})) if(cloud.byId[k]?.data?.trainer===t) return k; }
+    else for(const ch of (state?.characters||[])) if(ch.trainer===t) return ch.id;
+    const c = charOfTrainer(t); if(c && c.id) return c.id;
+    for(const enc of encList()) for(const tr of (enc.trainers||[])) if(tr.trainer===t) return tr.id;
+  }catch(e){}
+  return null;
+}
+function trainerById(id){
+  if(!id) return null;
+  try{
+    if(mode==="cloud"){
+      const row = cloud.byId?.[id]; if(row?.data?.trainer) return row.data.trainer;
+      for(const r of Object.values(cloud.byId||{})) if(r?.data?.id===id && r.data.trainer) return r.data.trainer;
+    } else for(const ch of (state?.characters||[])) if(ch.id===id) return ch.trainer||null;
+    for(const enc of encList()) for(const tr of (enc.trainers||[])) if(tr.id===id) return tr.trainer||null;
+  }catch(e){}
+  return null;
+}
+/* Find a Pokemon by id anywhere the app can see one - the open sheet, every other cloud sheet (or
+   local character), and every encounter's wild list and NPC parties. Same sweep charOfMon does. */
+function monById(id){
+  if(!id) return null;
+  const pools = [];
+  try{
+    const c = activeChar(); if(c) pools.push(c.pokemon||[]);
+    if(mode==="cloud"){ for(const r of Object.values(cloud.byId||{})) if(r?.data) pools.push(r.data.pokemon||[]); }
+    else for(const ch of (state?.characters||[])) pools.push(ch.pokemon||[]);
+    for(const enc of encList()){ pools.push(enc.mons||[]); for(const tr of (enc.trainers||[])) pools.push(tr.pokemon||[]); }
+  }catch(e){}
+  for(const pool of pools){ const m = (pool||[]).find(x=>x && x.id===id); if(m) return m; }
+  return null;
+}
+/* the two directions of the link, resolved to live objects (null once a partner is gone) */
+function commanderHostOf(tat){ return tat && tat.commander ? commanderRefResolve(tat.commander) : null; }
+function commanderRiderOf(host){ return host && host.commandedBy ? monById(host.commandedBy.id) : null; }
+/* If both creatures are on the board, Attaching really does put the Tatsugiri in the target's
+   square - which is what the riding stack already models. A no-op when either one isn't placed, or
+   when there is no map at all; the token menu's own button covers those cases. */
+function commanderSyncMap(tat, host, attach){
+  try{
+    const map = activeMap(); if(!map || !tat) return false;
+    const toks = mapTokensFor(map.id);
+    const find = obj => toks.find(t => t.link && tokenLinked(t)?.obj === obj) || null;
+    const rt = find(tat); if(!rt) return false;
+    if(!attach) return rt.riding ? dismountToken(map, rt, true) : false;
+    const ht = host && find(host); if(!ht || rt.riding === ht.id) return false;
+    return mountToken(map, rt, ht);
+  }catch(e){ return false; }
+}
+/* Attach (Swift Action). Writes both halves of the link, then puts it in the square for real. */
+function commanderAttach(tat, host){
+  if(!tat || !host || tat === host) return { ok:false, msg:"pick a different ally" };
+  if(!hasCommander(tat)) return { ok:false, msg:"only a Pok\u00e9mon with Commander may Attach" };
+  const ref = commanderRefFor(host);
+  if(!ref) return { ok:false, msg:`can't find the sheet ${ownerLabel(host)} lives on` };
+  if(host.commandedBy && host.commandedBy.id !== tat.id)
+    return { ok:false, msg:`${ownerLabel(host)} already has ${host.commandedBy.name} Attached` };
+  if(tat.commander) commanderDetach(tat, true);     // Attaching again MOVES it; two hosts never stack
+  tat.commander    = ref;
+  host.commandedBy = { kind:"mon", id: tat.id, name: ownerLabel(tat), form: tatsugiriForm(tat) || "Curly" };
+  commanderSyncMap(tat, host, true);
+  return { ok:true, msg:`Attached to ${ownerLabel(host)}` };
+}
+/* Detach, callable from EITHER side - hand it the Tatsugiri or hand it the host. */
+function commanderDetach(p, quiet){
+  if(!p) return false;
+  const tat  = p.commander ? p : commanderRiderOf(p);
+  const host = p.commander ? commanderHostOf(p) : (p.commandedBy ? p : null);
+  let did = false;
+  if(tat && tat.commander){ delete tat.commander; did = true; }
+  if(host && host.commandedBy){ delete host.commandedBy; did = true; }
+  // a half-link whose partner has since been deleted: clear whichever end we were actually handed
+  if(p.commander){ delete p.commander; did = true; }
+  if(p.commandedBy){ delete p.commandedBy; did = true; }
+  if(did) commanderSyncMap(tat || p, null, false);
+  if(did && !quiet) toast("\u{1F363} Commander \u2014 Detached");
+  return did;
+}
+/* "Once per Round ... Intercept attacks for each other as a Free Action" - any number of times per
+   round if the target has Mouthful. There is no per-round tracker on this sheet, so this is the
+   sentence the table reads, with the Mouthful upgrade already resolved. */
+function commanderInterceptText(tat, host){
+  if(!tat || !host) return "";
+  const pair = `${ownerLabel(tat)} and ${ownerLabel(host)}`;
+  return ownerHasAbility(host, "Mouthful")
+    ? `\u{1F6E1}\uFE0F ${pair} may Intercept attacks for each other as a Free Action ANY number of times per round \u2014 ${ownerLabel(host)} has Mouthful.`
+    : `\u{1F6E1}\uFE0F ${pair} may Intercept attacks for each other as a Free Action, once per Round.`;
+}
+/* Commander's Bonus: the host may use Order Up as though it were on their Move List, once the
+   Tatsugiri is Level 30+. Derived like Poltergeist's Move - it never touches host.moves. */
+function commanderOrderUp(host){
+  const tat = commanderRiderOf(host);
+  if(!tat || !hasCommander(tat) || (tat.level||1) < COMMANDER_ORDER_UP_LEVEL) return null;
+  const m = moveByName.get("order up"); if(!m) return null;
+  return { move:m, tat, form: tatsugiriForm(tat) || host.commandedBy?.form || "Curly" };
+}
+/* Order Up: "If a Tatsugiri is Attached to the user and this Move hits, the user gains +1 Combat
+   Stage depending on that Tatsugiri's Form: Curly Form raises Attack, Droopy Form raises Defense,
+   and Stretchy Form raises Speed." Note this rider needs only an ATTACHED Tatsugiri - it does not
+   care whether Order Up came from Commander's Bonus or off the user's own Move List. */
+function orderUpFormCS(host){
+  const tat = commanderRiderOf(host); if(!tat) return null;
+  const form = tatsugiriForm(tat) || host.commandedBy?.form;
+  const stat = TATSUGIRI_FORM_CS[form];
+  return stat ? { form, stat, tat } : null;
+}
+function applyOrderUpFormCS(host){
+  const fx = orderUpFormCS(host); if(!fx) return null;
+  if(!host.cs || typeof host.cs !== "object") host.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
+  const before = host.cs[fx.stat] || 0;
+  host.cs[fx.stat] = Math.max(-6, Math.min(6, before + 1));
+  return { ...fx, before, after: host.cs[fx.stat], capped: host.cs[fx.stat] === before };
+}
+/* Order Up's food clause names "an Attached Commander" as one of the four places the Buff may come
+   from - so the Buff is spent off the TATSUGIRI while its effects land on whoever swung. The Buff is
+   lent to the eater for the length of the call because tradeInDigestion resolves and removes on the
+   same object; Harvest keeping it leaves it on the Tatsugiri, where it started. */
+function orderUpConsumeRiderBuff(host, buff){
+  const tat = commanderRiderOf(host); if(!tat || !buff) return null;
+  digestionList(host).push(buff);
+  const r = tradeInDigestion(host, buff);
+  host.digestion = digestionList(host).filter(b => b.id !== buff.id);
+  if(!r.kept) tat.digestion = digestionList(tat).filter(b => b.id !== buff.id);
+  return r;
+}
+
 /* A Move's Damage Base as this sheet actually rolls it. Most Moves just use the printed number, but
    the ones whose Damage Base is read off the user — Flail and Reversal count Injuries, Eruption and
    friends count missing HP — are computed here, so a LISTING can never disagree with the roll that
@@ -5350,6 +5603,52 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   if(st.weapon) body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
     `Weapon: ${st.weapon.name||"(unnamed)"} — ${st.weapon.category}${st.weapon.notes?` · ${st.weapon.notes}`:""}`));
   if(st.effect) body.append(el("div",{class:"small",style:"margin-bottom:8px"}, st.effect));
+
+  /* --- Order Up with a Tatsugiri Attached, Trainer side. Same two clauses the Pokémon roll window
+     carries (see openMoveRoll): the Form Bonus on a hit, and the Food Buff that may be taken off the
+     Attached Commander. A hit is the table's call, so it is a button rather than automatic. */
+  {
+    const ouFx = /^order up$/i.test(st.name||"") ? orderUpFormCS(t) : null;
+    if(ouFx){
+      const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+      card.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},
+        `\u{1F363} ${ownerLabel(ouFx.tat)} is Attached — ${ouFx.form} Form`));
+      const said = el("span",{class:"small",style:"color:var(--accent);align-self:center"});
+      card.append(el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;align-items:center"},
+        el("button",{class:"btn-secondary",style:"padding:5px 10px",
+          title:`Order Up's Bonus — on a hit the user gains +1 ${statLbl(ouFx.stat)} Combat Stage`,
+          onclick:()=>{
+            const r = applyOrderUpFormCS(t); if(!r) return;
+            (opts.persist||save)();
+            said.textContent = r.capped ? `${statLbl(r.stat)} CS is already at +6`
+                                        : `${statLbl(r.stat)} CS ${r.before} → ${r.after}`;
+            toast(`\u{1F363} Order Up (${r.form} Form) — ${ownerLabel(t)} ${r.capped ? `is already at +6 ${statLbl(r.stat)} CS` : `+1 ${statLbl(r.stat)} CS`}`);
+            if(opts.rerender) opts.rerender();
+          }}, `✅ It hit — +1 ${statLbl(ouFx.stat)} CS`),
+        said));
+      const rbuffs = digestionList(ouFx.tat).slice();
+      if(rbuffs.length){
+        card.append(el("div",{class:"small muted",style:"margin-top:8px;font-weight:700"},
+          `\u{1F34E} ${ownerLabel(ouFx.tat)}'s Food Buffs — Order Up may consume one, ignoring its normal trigger`));
+        rbuffs.forEach(b=>{
+          const def = snackDef(b.item);
+          card.append(el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;align-items:center;margin-top:4px"},
+            el("button",{class:"btn-secondary",style:"padding:4px 10px",
+              title:"spend it off the Tatsugiri; its effects land on whoever is swinging",
+              onclick:()=>{
+                const res = orderUpConsumeRiderBuff(t, b); if(!res) return;
+                (opts.persist||save)();
+                toast(`\u{1F35C} Order Up ate ${b.item}: ${res.log.join(" · ")}`);
+                closeModal(); openTrainerAttack(t, weaponMoveName, w, opts);
+              }}, `\u{1F374} ${b.item}`),
+            el("span",{class:"muted small"}, snackEffectText(t, def) || b.note || "resolve this one by hand")));
+        });
+        card.append(el("div",{class:"small muted",style:"margin-top:6px"},
+          "Consuming one also makes this attack ONE STEP more effective — the Map's damage tool has the effectiveness nudge for that."));
+      }
+      body.append(card);
+    }
+  }
 
   /* --- rolling guide: how accuracy & damage are worked out (shown before you roll) ---
      Everything the 🎲 result will apply is spelled out here too — Accuracy Stages, and the
@@ -6955,6 +7254,14 @@ function featureGrantedNames(t){
     // "You gain the Demoralize Edge, even if you do not meet the prerequisites."
     for(const m of e.matchAll(/\bgain the ([A-Z][A-Za-z'’\-]*(?: [A-Z][A-Za-z'’\-]*)*) (?:Edge|Feature)\b/g))
       out.set(m[1].trim(), n);
+    /* "You gain the Reckless Advance and Strike Again! Orders." — all five Orders Features hand over
+       their pair with the word *Orders*, which the Edge/Feature pattern above can't see, so a
+       Commander who picked Ravager Orders never actually received its two Orders and they never
+       surfaced as Battle actions. Every candidate is checked against the Feature DB before it counts,
+       so a stray capitalised phrase (or "the chosen Feature") can't sneak in. */
+    const om = /\bgain the ([^.]+?)\s+Orders\b/i.exec(e);
+    if(om) om[1].split(/\s+and\s+|,/).map(x => x.trim()).filter(Boolean)
+                .forEach(nm => { if(featureByName.get(nm)) out.set(nm, n); });
     // the declared [Gift] pairs (I'm A Doctor's four) — same waiver, unreadable from the prose
     const gd = featureGiftDef(n);
     if(gd) gd.groups.forEach(g => {
@@ -12387,6 +12694,8 @@ function renderMonBuild(root, p, sp){
   idc.append(rotomFormControl(p, sp, ()=>{ save(); refreshMon(p); }));
   idc.append(miniorColorControl(p, sp, ()=>{ save(); refreshMon(p); }));
   idc.append(unownLetterControl(p, sp, ()=>{ save(); refreshMon(p); }));
+  idc.append(wishiwashiFormeControl(p, sp, ()=>{ save(); refreshMon(p); }));
+  idc.append(commanderControl(p, sp, ()=>{ save(); refreshMon(p); }));
   idc.append(xpRow(p));
   if(nat) idc.append(el("div",{class:"small muted",style:"margin:6px 0"},
     `Nature ${nat.name}: ${natSummary(nat)} · likes ${nat.likedFlavor}, dislikes ${nat.dislikedFlavor}`));
@@ -13187,6 +13496,10 @@ function abilitiesCard(p, sp){
     // Storm Drain & co.: one press pays the Ability out for a hit that never went through the Map
     absorbEntriesFor({abilities:[an]}).filter(e=>e.reward)
       .forEach(e=>row.append(absorbTriggerRow(p, e, ()=>refreshMon(p))));
+    // Schooling: its Swift Action, right under the rules text that describes it
+    if(/^schooling$/i.test(an||"")){ const sr = schoolingTriggerRow(p, ()=>refreshMon(p)); if(sr) row.append(sr); }
+    // Commander: its Swift Action and the state of the Attachment, under the same rules text
+    if(/^commander$/i.test(an||"")){ const cr = commanderTriggerRow(p, ()=>refreshMon(p)); if(cr) row.append(cr); }
     card.append(row);
   });
   return card;
@@ -13546,7 +13859,7 @@ function capabilityGrants(p){
 /* A Pokémon's capabilities as actually played: the species' printed list plus everything its Moves
    and Abilities grant. Returns the same shape as sp.capabilities (so every existing reader works
    unchanged) plus `grantedBy`, a name→source map for the chip tooltips. */
-function monCapabilities(p, sp){
+function monCapabilities(p, sp, opts){
   // Transform: "It gains all of the target's ... Capabilities" — so the base block is the copied
   // form's, not the user's own. Whatever the user's own Moves/Abilities grant still stacks on top.
   const base = monBodySpecies(p, sp)?.capabilities || {};
@@ -13575,6 +13888,26 @@ function monCapabilities(p, sp){
     if(i<0) cap.other.push(`${g.name} ${next}`); else cap.other[i] = `${g.name} ${next}`;
     note(g.name, g);
   });
+  /* Commander: "While Attached, the user ... replaces their Movement capabilities with the target's."
+     Applied LAST and as a REPLACEMENT, so it overrides the grants above rather than stacking on top
+     of them - an Attached Tatsugiri swims at Dondozo's Swim, not its own. `noCommander` stops a pair
+     Attached to each other from recursing. Jump Capabilities are not Movement Capabilities and stay
+     the user's own. */
+  if(p.commander && !(opts && opts.noCommander)){
+    const host = commanderHostOf(p);
+    if(host){
+      /* A Trainer has only the two Movement Capabilities the rules give them - Overland ("how fast a
+         Trainer or Pokémon can walk or run") and Swim - so a Tatsugiri riding one loses Sky, Levitate
+         and Burrow outright. Their PRE-Speed-CS pair is the one to copy: the rider's own Speed CS is
+         applied downstream by moveCapEntries / tokenMoveModes, exactly as for a Pokémon host. */
+      const hc = isTrainerOwner(host)
+        ? (h => ({ overland:h.overlandBase, swim:h.swimBase, sky:0, levitate:0, burrow:0 }))(trainerDerived(host))
+        : monCapabilities(host, getSpecies(host.species), {noCommander:true});
+      const via = { src:`Commander \u2014 Attached to ${ownerLabel(host)}`, condText:"" };
+      [["overland","Overland"],["sky","Sky"],["swim","Swim"],["levitate","Levitate"],["burrow","Burrow"]]
+        .forEach(([k,label])=>{ cap[k] = hc[k] || 0; cap.grantedBy[capBaseName(label)] = via.src; });
+    }
+  }
   return cap;
 }
 /* "✨ granted by Teleport" suffix for a capability chip's hover text */
@@ -13798,6 +14131,189 @@ function miniorColorControl(p, sp, onChanged){
   wrap.append(el("span",{class:"muted small"}, when));
   return wrap;
 }
+/* Wishiwashi's Forme, and the button that forms the school up. Schooling is an ACTIVATED Daily
+   Swift Action, so unlike Minior's shell there is something to press - here on the Build tab, on
+   the Ability itself wherever it is listed, and on the Map token. Anyone who can edit the sheet may
+   press it: it is the Pokémon's own Ability, not a GM secret. The ↺ is the manual way back, and it
+   is what the Encounters tab needs - a wild Wishiwashi has no End Scene of its own. */
+function wishiwashiFormeControl(p, sp, onChanged, persist){
+  if(!schooling(p)) return el("span",{style:"display:none"});
+  const wrap = el("div",{class:"inline small",style:"margin:2px 0 8px;flex-wrap:wrap;gap:8px;align-items:center"});
+  const school = p.species===WISHIWASHI_SCHOOL;
+  wrap.append(el("span",{class:"muted",style:"font-weight:700"},"Forme:"),
+              el("span",{class:"kv"}, school ? "Schooling" : "Solo"));
+  if(school){
+    wrap.append(schoolingRevertButton(p, onChanged, persist),
+      el("span",{class:"muted small"},"no other source may top its Temp HP up · scatters below half HP once the pool is spent"));
+  } else {
+    wrap.append(schoolingButton(p, onChanged, persist),
+      el("span",{class:"muted small"},`Swift Action, Daily — +${schoolingTempHP(p)} Temp HP`));
+  }
+  return wrap;
+}
+/* the one Schooling button, shared by the Forme control, the Ability rows and the Map token menu */
+function schoolingButton(p, onChanged, persist){
+  const left = schoolingUsesLeft(p), n = schoolingTempHP(p);
+  return el("button",{class:"btn-secondary",style:"padding:4px 10px",disabled:left<=0,
+    title: left>0 ? `Schooling (Daily, Swift Action) — become ${WISHIWASHI_SCHOOL} and gain ${n} Temporary Hit Points`
+                  : "Schooling is spent for the day — tap its pip to restore the use",
+    onclick:()=>{
+      const r = schoolingActivate(p);
+      if(!r) return;
+      toast(`\u{1F41F} ${ownerLabel(p)} — ${r.msg}`);
+      if(!r.ok) return;
+      (persist||save)(); onChanged && onChanged();
+    }}, `\u{1F41F} Schooling · +${n} Temp HP`);
+}
+function schoolingRevertButton(p, onChanged, persist){
+  return el("button",{class:"btn-secondary",style:"padding:4px 10px",
+    title:"scatter the school — back to Solo Forme. The shoal's Temporary Hit Points go with it.",
+    onclick:()=>{ if(!schoolingRevertNow(p, "by hand")) return;
+                  (persist||save)(); onChanged && onChanged(); }},"↺ Solo Forme");
+}
+/* The Schooling row that sits under the Ability's own text, wherever Abilities are listed — the
+   sheet, the Battle tab and the Encounters card. One engine behind all of them, so the Forme, the
+   pool and the Daily pip stay in step whichever copy of the button gets pressed. */
+function schoolingTriggerRow(p, redraw, persist){
+  if(!schooling(p)) return null;
+  const wrap = el("div",{class:"inline small",style:"margin-top:8px;gap:8px;flex-wrap:wrap;align-items:center"});
+  if(p.species===WISHIWASHI_SCHOOL){
+    wrap.append(el("span",{class:"kv"},"Schooling Forme"), schoolingRevertButton(p, redraw, persist),
+      el("span",{class:"muted"},"Nothing else may top its Temporary HP up. It scatters on its own once it is below half HP with the pool spent."));
+  } else {
+    wrap.append(schoolingButton(p, redraw, persist),
+      el("span",{class:"muted"},`Swift Action — becomes ${WISHIWASHI_SCHOOL} and gains ${schoolingTempHP(p)} Temporary Hit Points.`));
+  }
+  return wrap;
+}
+/* ---- Commander's controls (engine + rules quote up beside applySchooling) ----
+   One control for BOTH sides of the link: a Tatsugiri carrying the Ability, and whatever it has
+   Attached itself to. Anyone who can edit the sheet may press it - it is the Pokémon's own At-Will
+   Swift Action, not a GM secret. */
+function commanderControl(p, sp, onChanged, persist){
+  if(!p || (!hasCommander(p) && !p.commandedBy)) return el("span",{style:"display:none"});
+  const commit = ()=>{ (persist||save)(); onChanged && onChanged(); };
+  const wrap = el("div",{class:"inline small",style:"margin:2px 0 8px;flex-wrap:wrap;gap:8px;align-items:center"});
+  wrap.append(el("span",{class:"muted",style:"font-weight:700"},"\u{1F363} Commander:"));
+  const detach = title => el("button",{class:"btn-secondary",style:"padding:4px 10px", title,
+    onclick:()=>{ commanderDetach(p); commit(); }},"⬇ Detach");
+  if(p.commander){                                   // the Tatsugiri, Attached
+    const host = commanderHostOf(p);
+    wrap.append(el("span",{class:"kv"}, "Attached to " + (host ? ownerLabel(host) : `${p.commander.name} (no longer on any sheet)`)),
+      detach("Detach — it stops sharing that square and gets its own Movement Capabilities back"));
+    if(host){
+      const cap = monCapabilities(p, sp);
+      const mv = [["Overland",cap.overland],["Sky",cap.sky],["Swim",cap.swim],["Levitate",cap.levitate],["Burrow",cap.burrow]]
+        .filter(([,n])=>n).map(([l,n])=>`${l} ${n}`).join(" · ");
+      wrap.append(el("span",{class:"muted small"},
+        `occupies its square · Movement Capabilities from ${ownerLabel(host)}${mv?` (${mv})`:""}`));
+    }
+  } else if(p.commandedBy){                          // the HOST
+    const tat = commanderRiderOf(p);
+    const form = (tat && tatsugiriForm(tat)) || p.commandedBy.form || "Curly";
+    wrap.append(el("span",{class:"kv"},
+      `${tat ? ownerLabel(tat) : p.commandedBy.name} Attached — ${form} Form`),
+      detach("Detach the Commander"));
+    const ou = commanderOrderUp(p);
+    wrap.append(el("span",{class:"muted small"}, ou
+      ? `may use Order Up as though it were on its Move List — a hit raises ${statLbl(TATSUGIRI_FORM_CS[form])} by +1 CS`
+      : `Order Up is granted once the Tatsugiri is Level ${COMMANDER_ORDER_UP_LEVEL}${tat?` — it is Level ${tat.level||1}`:""}`));
+  } else {                                           // a free Tatsugiri
+    wrap.append(el("button",{class:"btn-secondary",style:"padding:4px 10px",
+      title:"Commander (At-Will, Swift Action) — Attach to an adjacent Ally",
+      onclick:()=>openCommanderAttach(p, onChanged, persist)},"\u{1F363} Attach to…"),
+      el("span",{class:"muted small"},"At-Will, Swift Action · an adjacent Ally"));
+  }
+  return wrap;
+}
+/* The fuller row that sits under the Commander Ability's own text, wherever Abilities are listed —
+   the sheet, the Battle tab and the Encounters card. Same engine as the control above, so the link,
+   the square and the Order Up grant stay in step whichever copy gets pressed. */
+function commanderTriggerRow(p, redraw, persist){
+  if(!hasCommander(p)) return null;
+  const commit = ()=>{ (persist||save)(); redraw && redraw(); };
+  const wrap = el("div",{class:"inline small",style:"margin-top:8px;gap:8px;flex-wrap:wrap;align-items:center"});
+  const line = txt => el("span",{class:"muted",style:"flex-basis:100%"}, txt);
+  const host = commanderHostOf(p);
+  if(p.commander && host){
+    const ou = commanderOrderUp(host);
+    wrap.append(el("span",{class:"kv"},"Attached to "+ownerLabel(host)),
+      el("button",{class:"btn-secondary",style:"padding:4px 10px",
+        onclick:()=>{ commanderDetach(p); commit(); }},"⬇ Detach"),
+      line(commanderInterceptText(p, host)),
+      line(ou
+        ? `\u{1F35C} ${ownerLabel(host)} may use Order Up as though it were on its Move List — it is on its Moves, tagged "Commander". On a hit it gains +1 ${statLbl(TATSUGIRI_FORM_CS[ou.form])} Combat Stage (${ou.form} Form).`
+        : `\u{1F35C} Order Up would be granted to ${ownerLabel(host)} once this Tatsugiri reaches Level ${COMMANDER_ORDER_UP_LEVEL} — it is Level ${p.level||1}.`));
+  } else if(p.commander){
+    wrap.append(el("span",{class:"kv"}, `Attached to ${p.commander.name} — that creature is no longer on any sheet`),
+      el("button",{class:"btn-secondary",style:"padding:4px 10px",
+        onclick:()=>{ commanderDetach(p); commit(); }},"⬇ Detach"));
+  } else {
+    wrap.append(el("button",{class:"btn-secondary",style:"padding:4px 10px",
+      onclick:()=>openCommanderAttach(p, redraw, persist)},"\u{1F363} Attach to…"),
+      el("span",{class:"muted"},"Swift Action — it occupies the ally's square (and rides their token on the Map), takes their Movement Capabilities, and the two may Intercept for each other."));
+  }
+  return wrap;
+}
+/* Everything on the same roster as this Tatsugiri: its Trainer's other Pokémon, or - for a wild or
+   enemy one - the rest of its encounter, wild list and NPC parties alike. */
+function commanderCandidates(tat){
+  const out = [];
+  const push = list => (list||[]).forEach(m=>{ if(m && m!==tat && !out.includes(m)) out.push(m); });
+  try{
+    const add = o => { if(o && o !== tat && !out.includes(o)) out.push(o); };
+    const c = charOfMon(tat);
+    if(c){ push(c.pokemon); add(c.trainer); }        // "Ally: Pokémon and Trainers that are on your side"
+    else for(const enc of encList()){
+      const mine = (enc.mons||[]).includes(tat) || (enc.trainers||[]).some(tr=>(tr.pokemon||[]).includes(tat));
+      if(!mine) continue;
+      push(enc.mons); (enc.trainers||[]).forEach(tr=>{ push(tr.pokemon); add(tr.trainer); });
+    }
+  }catch(e){}
+  return out;
+}
+function openCommanderAttach(tat, onDone, persist){
+  const cands = commanderCandidates(tat);
+  const body = el("div",{});
+  body.append(el("div",{class:"r-meta",style:"margin-bottom:8px"},
+    "At-Will, Swift Action, target: an adjacent Ally. The sheet can't check adjacency for you — pick whoever it is actually beside."));
+  if(!cands.length) body.append(el("div",{class:"muted"},"Nothing else on this roster to Attach to."));
+  cands.forEach(m=>{
+    const isTr = isTrainerOwner(m);
+    const msp = isTr ? null : getSpecies(m.species);
+    const notes = [isTr ? `Trainer · Lv ${m.level||1}` : `${msp?.name||m.species} · Lv ${m.level}`];
+    if(isTr){
+      /* the two Movement Capabilities the rules give a Trainer - and the only two the Tatsugiri
+         would inherit, losing Sky/Levitate/Burrow entirely while Attached to one. */
+      const td = trainerDerived(m);
+      notes.push(`Overland ${td.overlandBase} · Swim ${td.swimBase} — no Sky/Levitate/Burrow`);
+    }
+    if(ownerHasAbility(m,"Mouthful")) notes.push("Mouthful — unlimited Intercepts for the pair");
+    if(m.commandedBy) notes.push(`already has ${m.commandedBy.name} Attached`);
+    const row = el("div",{class:"inline",style:"gap:10px;align-items:center;margin-top:8px"});
+    row.append(isTr ? el("span",{style:"font-size:22px;width:32px;text-align:center"},"\u{1F9D1}")
+                    : monSprite(monLookName(m, msp), m.shiny, "s-sm", monImage(m)));
+    row.append(el("div",{style:"flex:1;min-width:0"},
+      el("div",{style:"font-weight:700"}, ownerLabel(m)),
+      el("div",{class:"small muted"}, notes.join(" · "))));
+    row.append(el("button",{class:"btn-primary",style:"padding:6px 12px",
+      onclick:()=>{
+        const r = commanderAttach(tat, m);
+        toast(`\u{1F363} ${ownerLabel(tat)} — ${r.msg}`);
+        if(!r.ok) return;
+        (persist||save)(); closeModal(); onDone && onDone();
+      }},"Attach"));
+    body.append(row);
+  });
+  modal({title:`\u{1F363} Commander — ${ownerLabel(tat)} Attaches to…`, bodyNode:body,
+         footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Cancel")]});
+}
+/* Commander's Bonus as a Move row, for wherever the HOST's Moves are drawn. Derived exactly like
+   Poltergeist's granted Move - never written into host.moves, so it never costs a Move slot. */
+function commanderMoveSlot(p, sp, opts){
+  const ou = commanderOrderUp(p); if(!ou) return null;
+  return moveSlot(p, sp, ou.move, ou.move.name, Object.assign({tag:"Commander"}, opts||{}));
+}
 /* Unown's inscribed letter — purely cosmetic (identical stats/Abilities/movelist across all 28
    formes), and unlike Minior's colour there's no hidden info to gate, so anyone editing the sheet
    can just pick it. Changing it only swaps the artwork (via monLookName -> speciesArtChain). */
@@ -13995,6 +14511,8 @@ function movesCard(p, sp){
   const grant = poltergeistGrant(p, sp);
   if(grant){ const gm = moveByName.get(grant.move.toLowerCase());
     if(gm) card.append(moveSlot(p, sp, gm, gm.name, {tag:"Poltergeist"})); }
+  // Commander's Bonus: Order Up while a Level 30+ Tatsugiri is Attached — derived, uncounted
+  { const cm = commanderMoveSlot(p, sp); if(cm) card.append(cm); }
   if(!p.moves.length) card.append(el("span",{class:"muted small"},"no moves selected yet"));
   // favourites (tap ☆) sort to the top; splice by the original index so removal stays correct
   const favSet = new Set(p.fav||[]);
@@ -15172,6 +15690,60 @@ function openMoveRoll(p, m, sp, opts={}){
         anchorOn ? `Active — range becomes Melee (1 Target), Class → Physical, and the roll adds +2d6 damage.${steelworkerStab?" Steelworker: STAB applies (+2 DB).":""}`
                   : `Off — this attack goes out normally. Tick this after shifting the Anchor as a Swift Action to follow up from it.${steelworkerStab?" (Steelworker only grants STAB on Steel moves that originate from the Anchor.)":""}`)));
     card.append(lbl); body.append(card);
+  }
+
+  /* --- Order Up with a Tatsugiri Attached: the Form Bonus, and the Commander's Food Buffs ---
+     "If a Tatsugiri is Attached to the user and this Move hits, the user gains +1 Combat Stage
+      depending on that Tatsugiri's Form: Curly Form raises Attack, Droopy Form raises Defense, and
+      Stretchy Form raises Speed."  A hit is something only the table can call, so it is a button
+     rather than something the roll applies by itself. Note this rider only wants an ATTACHED
+     Tatsugiri - it doesn't care whether Order Up arrived via Commander's Bonus or the Move List. */
+  {
+    const ouFx = /^order up$/i.test(m?.name||"") ? orderUpFormCS(p) : null;
+    if(ouFx){
+      const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+      card.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},
+        `\u{1F363} ${ownerLabel(ouFx.tat)} is Attached — ${ouFx.form} Form`));
+      const said = el("span",{class:"small",style:"color:var(--accent);align-self:center"});
+      card.append(el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;align-items:center"},
+        el("button",{class:"btn-secondary",style:"padding:5px 10px",
+          title:`Order Up's Bonus — on a hit the user gains +1 ${statLbl(ouFx.stat)} Combat Stage`,
+          onclick:()=>{
+            const r = applyOrderUpFormCS(p); if(!r) return;
+            (opts.persist||save)();
+            said.textContent = r.capped ? `${statLbl(r.stat)} CS is already at +6`
+                                        : `${statLbl(r.stat)} CS ${r.before} → ${r.after}`;
+            toast(`\u{1F363} Order Up (${r.form} Form) — ${ownerLabel(p)} ${r.capped ? `is already at +6 ${statLbl(r.stat)} CS` : `+1 ${statLbl(r.stat)} CS`}`);
+            if(opts.rerender) opts.rerender();
+          }}, `✅ It hit — +1 ${statLbl(ouFx.stat)} CS`),
+        said));
+      /* "If the user, target, an Attached Commander or a pokemon Grappled by the user has a Food
+         Buff, you may consume one of those Buffs (ignoring its normal trigger condition), gain its
+         effects, and this attack is one step more effective." Only the Attached Commander's share
+         can be resolved from in here: the user's own Buffs sit on their \u{1F34E} card, and the target's
+         (or a grappled Pokémon's) belong to whoever is running that creature. */
+      const rbuffs = digestionList(ouFx.tat).slice();
+      if(rbuffs.length){
+        card.append(el("div",{class:"small muted",style:"margin-top:8px;font-weight:700"},
+          `\u{1F34E} ${ownerLabel(ouFx.tat)}'s Food Buffs — Order Up may consume one, ignoring its normal trigger`));
+        rbuffs.forEach(b=>{
+          const def = snackDef(b.item);
+          card.append(el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;align-items:center;margin-top:4px"},
+            el("button",{class:"btn-secondary",style:"padding:4px 10px",
+              title:"spend it off the Tatsugiri; its effects land on whoever is swinging",
+              onclick:()=>{
+                const res = orderUpConsumeRiderBuff(p, b); if(!res) return;
+                (opts.persist||save)();
+                toast(`\u{1F35C} Order Up ate ${b.item}: ${res.log.join(" · ")}`);
+                closeModal(); openMoveRoll(p, m, sp, opts);
+              }}, `\u{1F374} ${b.item}`),
+            el("span",{class:"muted small"}, snackEffectText(p, def) || b.note || "resolve this one by hand")));
+        });
+        card.append(el("div",{class:"small muted",style:"margin-top:6px"},
+          "Consuming one also makes this attack ONE STEP more effective — the Map's damage tool has the effectiveness nudge for that."));
+      }
+      body.append(card);
+    }
   }
 
   /* --- Fiery Crash: the either/or on a Dash Move. Whichever half leaves the Move Fire-Typed also
@@ -16396,6 +16968,7 @@ function renderPokemonMoves(root, team){
     card.append(moveSlot(p,sp,m,mn,{rerender:renderBattle, faved:favSet.has(mn),
       onFav:()=>{ p.fav=toggleSet(favSet,mn); save(); renderBattle(); }}));
   });
+  { const cm = commanderMoveSlot(p, sp, {rerender:renderBattle}); if(cm) card.append(cm); }
   // "While used as a Living Weapon, the Pokémon also adds these Moves to its own Move List, so long
   // as their wielder qualifies to access them" (Core p.305) — derived, so they never eat a Move slot.
   const lw = livingWeaponOf(p);
@@ -16419,6 +16992,8 @@ function renderPokemonMoves(root, team){
       d.append(el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, an||"—"),
         uc ? el("span",{style:"margin-left:8px"}, uc) : ""));
       d.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database</span>"}));
+      if(/^schooling$/i.test(an||"")){ const sr = schoolingTriggerRow(p, renderBattle); if(sr) d.append(sr); }
+      if(/^commander$/i.test(an||"")){ const cr = commanderTriggerRow(p, renderBattle); if(cr) d.append(cr); }
       ac.append(d); });
     root.append(ac);
   }
@@ -20685,6 +21260,17 @@ function renderTrainerCombat(root, t){
     });
     weaponAttackRows(w);
   });
+  /* Commander's Bonus: "the target may use Order Up as though it were on their Move List". A Trainer
+     has no Move List of their own, so it lands here beside the weapon attacks - trainerAttackProfile
+     builds it straight from the Move with no weapon, which is exactly how a Feature-granted Move is
+     already rolled. Derived: it is never written into any list. */
+  { const ou = commanderOrderUp(t);
+    if(ou){
+      const wm = trainerAttackProfile(t, ou.move.name, null, false);
+      const uc = usesControl(t, "move", wm.name, wm.frequency, renderBattle);
+      card.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t, ou.move.name, null, {rerender:renderBattle}),
+        {tag:`Commander · ${ownerLabel(ou.tat)} Attached (${ou.form} Form)`, uc, move:true}));
+    } }
   // A wielded Honedge/Doublade/Aegislash is equipment too (Core p.305) — same slots, built from the mon
   const lwHands = livingWeaponHands(t);
   if(lwHands > 2) card.append(el("div",{class:"small",style:"margin-top:10px;color:var(--bad);font-weight:700"},
@@ -21116,6 +21702,8 @@ function encounterAbilityRow(p, an){
     el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove ability",
       onclick:e=>{ e.preventDefault(); const i=p.abilities.indexOf(an); if(i>=0){ p.abilities.splice(i,1); saveEnc(); renderEncounters(); } }},"×")));
   row.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database</span>"}));
+  if(/^schooling$/i.test(an||"")){ const sr = schoolingTriggerRow(p, renderEncounters, saveEnc); if(sr) row.append(sr); }
+  if(/^commander$/i.test(an||"")){ const cr = commanderTriggerRow(p, renderEncounters, saveEnc); if(cr) row.append(cr); }
   return row;
 }
 /* one expandable Class/Feature/Edge/Ability row on an encounter trainer card.
@@ -21810,6 +22398,8 @@ function encounterMonCard(enc, p, list, trainer){
   nw.append(rotomFormControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   nw.append(miniorColorControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   nw.append(unownLetterControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
+  nw.append(wishiwashiFormeControl(p, sp, ()=>{ renderEncounters(); }, saveEnc));
+  nw.append(commanderControl(p, sp, ()=>{ renderEncounters(); }, saveEnc));
   nw.append(el("div",{class:"small muted",style:"margin-top:2px"}, `Atk ${d.eff.atk} · SpA ${d.eff.spatk} · Def ${d.eff.def} · SpD ${d.eff.spdef} · Spd ${d.eff.spd}`));
   nw.append(el("div",{class:"small muted",style:"margin-top:2px"}, `Evasion — Phys +${d.physEva} · Spec +${d.specEva} · Speed +${d.spdEva}`));
   head.append(nw);
@@ -21902,6 +22492,8 @@ function encounterMonCard(enc, p, list, trainer){
   const grant = poltergeistGrant(p, sp);
   if(grant){ const gm=moveByName.get(grant.move.toLowerCase());
     if(gm) mw.append(encounterMoveRow(p,sp,gm,gm.name,favSet,null,true)); }
+  { const ou = commanderOrderUp(p);      // Commander's Bonus — derived, never in p.moves
+    if(ou) mw.append(encounterMoveRow(p,sp,ou.move,ou.move.name,favSet,null,true)); }
   const ordered=[...p.moves].sort((a,b)=>(favSet.has(b)?1:0)-(favSet.has(a)?1:0));
   ordered.forEach(mn=>{ const m=moveForMon(p,mn);
     mw.append(encounterMoveRow(p,sp,m,mn,favSet,()=>{ p.encFav=toggleSet(favSet,mn); saveEnc(); renderEncounters(); },false,trainer)); });
@@ -22136,6 +22728,15 @@ function encounterTrainerCard(enc, tr){
       onclick:()=>{ t.encMoves=t.encMoves.filter(x=>x!==mn); saveEnc(); renderEncounters(); }},"×"));
     tmw.append(slot);
   });
+  { const ou = commanderOrderUp(t);          // Commander's Bonus — derived, never in t.encMoves
+    if(ou){
+      const wm = trainerAttackProfile(t, ou.move.name, null, false);
+      const uc = usesControl(t, "move", wm.name, wm.frequency, renderEncounters, saveEnc, {bossEot:isBoss(t)});
+      tmw.append(trainerAttackSlot(t, wm,
+        ()=>openTrainerAttack(t, ou.move.name, null, {persist:saveEnc, rerender:renderEncounters}),
+        {tag:`Commander · ${ownerLabel(ou.tat)} Attached (${ou.form} Form)`, uc, move:true}));
+    } }
+  card.append(commanderControl(t, null, ()=>renderEncounters(), saveEnc));
   card.append(tmw);
   // Classes, Features, Edges & Abilities — what the trainer actually IS. Without this the
   // card showed only stats/moves, so an imported NPC's whole build was invisible to the GM.
@@ -27570,6 +28171,8 @@ function pcMonNode(m, actionBtn){
    wants "🔔 47 new" the first time they open the tab.
 
    Three stores, not one:
+     skip[rowId]  — a sheet the scan is told to ignore. A GM's scratch NPC ("Teste NPC") is not
+                    the party's catch record, and its Pokemon shouldn't count toward the Dex.
      seen[key]    — the register itself
      removed[key] — struck off BY HAND. The scan honours it, so a species you don't want listed
                     stays off even while someone is still carrying it (otherwise the next render
@@ -27584,8 +28187,8 @@ function dexLoad(){
   let d = null;
   try { d = JSON.parse(localStorage.getItem(key) || "null"); } catch(e){}
   dexReg = (d && typeof d === "object" && d.seen && typeof d.seen === "object")
-    ? { seen:d.seen, removed:d.removed||{}, manual:d.manual||{}, ack:d.ack||0, init:!!d.init }
-    : { seen:{}, removed:{}, manual:{}, ack:0, init:false };
+    ? { seen:d.seen, removed:d.removed||{}, manual:d.manual||{}, skip:d.skip||{}, ack:d.ack||0, init:!!d.init }
+    : { seen:{}, removed:{}, manual:{}, skip:{}, ack:0, init:false };
   dexReg._key = key;
   dexFamilyCache.clear();
   return dexReg;
@@ -27594,27 +28197,113 @@ function dexStore(){
   const d = dexLoad();
   dexFamilyCache.clear();
   try { localStorage.setItem(d._key,
-    JSON.stringify({ seen:d.seen, removed:d.removed, manual:d.manual, ack:d.ack, init:d.init })); }
+    JSON.stringify({ seen:d.seen, removed:d.removed, manual:d.manual, skip:d.skip, ack:d.ack, init:d.init })); }
   catch(e){ /* a full quota shouldn't break the tab — the register just won't persist */ }
+}
+/* ---- one entry per Pokémon, not per form ----
+   Gourgeist Small/Average/Large/Super are one Pokémon. So are Minior's two states, Wishiwashi's
+   Solo and School, every Rotom appliance, a Mega, a Gigantamax — and a regional variant: Alolan
+   Vulpix shares Vulpix's Dex number. The species table stores each of those as its own row, so the
+   Dex groups them back together and counts the group once.
+
+   The resolver, in order:
+     1. drop a trailing Gmax marker            Charizard-Gmax        → Charizard
+     2. drop a leading form/region word        Alolan Rattata        → Rattata, Mega Zygarde → Zygarde
+     3. fold onto the longest run of words inside the name that is itself a species
+                                               Vulpix Alolan         → Vulpix
+                                               Paldean Tauros Aqua Breed → Tauros
+                                               Darmanitan Zen Galarian   → Darmanitan
+     4. …unless that species is a genuine EARLIER STAGE of this one, which is what stops
+        Porygon-Z folding into Porygon. Only a chain that names the species itself
+        (`speciesLineBackTo` with a real self-entry) may veto — the data lists the base as
+        "stage 1" of hyphenated forms like Castform-Sunny and Meowstic-Female, and treating that
+        as an evolution would break exactly the groupings we want.
+     5. a family whose base form isn't a species row of its own groups on its shared first word,
+        from the curated list below. It has to be curated: "Iron Treads"/"Iron Bundle" and the
+        eight "Tapu" legendaries share a first word and are entirely different Pokémon.
+   Resolution repeats until it stops changing, so Urshifu-Rapid-Strike-Gmax → Urshifu Rapid Strike
+   → Urshifu. A family added to the data later just won't group until it's listed here — each form
+   shows as its own entry, which is visible and harmless rather than silently wrong. */
+const DEX_FORM_PREFIXES = new Set(["mega","primal","alolan","galarian","hisuian","paldean","kantonian"]);
+const DEX_BASELESS_FAMILIES = {
+  basculegion:"Basculegion", eiscue:"Eiscue", enamorus:"Enamorus", giratina:"Giratina",
+  gourgeist:"Gourgeist", indeedee:"Indeedee", landorus:"Landorus", lycanroc:"Lycanroc",
+  meloetta:"Meloetta", minior:"Minior", oricorio:"Oricorio", pumpkaboo:"Pumpkaboo",
+  thundurus:"Thundurus", tornadus:"Tornadus", urshifu:"Urshifu", wishiwashi:"Wishiwashi",
+  wormadam:"Wormadam" };
+const dexGroupCache = new Map();
+function dexKey(n){ return String(n==null?"":n).toLowerCase().replace(/[^a-z0-9]/g,""); }
+function dexGroupOf(name, depth){
+  const raw = String(name||"").trim();
+  if(!raw) return null;
+  const ck = raw.toLowerCase();
+  if(!depth && dexGroupCache.has(ck)) return dexGroupCache.get(ck);
+  const out = dexResolveGroup(raw, depth||0);
+  if(!depth) dexGroupCache.set(ck, out);
+  return out;
+}
+function dexResolveGroup(name, depth){
+  const sp = getSpecies(name);
+  const n  = sp ? sp.name : String(name).trim();
+  const t  = n.split(/[\s\-]+/).filter(Boolean);
+  if(depth > 6 || !t.length) return { key: dexKey(n), name: n };
+  if(t.length > 1 && dexKey(t[t.length-1]) === "gmax")
+    return dexGroupOf(t.slice(0,-1).join(" "), depth+1);
+  if(t.length > 1 && DEX_FORM_PREFIXES.has(dexKey(t[0])))
+    return dexGroupOf(t.slice(1).join(" "), depth+1);
+  /* only a chain that actually names this species may veto (see the note above) */
+  const line = new Set((sp && evoSelfEntry(sp) ? speciesLineBackTo(sp) : []).map(x => x.name.toLowerCase()));
+  for(let size = t.length-1; size >= 1; size--){
+    for(let i = 0; i + size <= t.length; i++){
+      const cand = getSpecies(t.slice(i, i+size).join(" "));
+      if(cand && cand.name !== n && !line.has(cand.name.toLowerCase()))
+        return dexGroupOf(cand.name, depth+1);
+    }
+  }
+  if(t.length > 1 && DEX_BASELESS_FAMILIES[dexKey(t[0])])
+    return { key: dexKey(t[0]), name: DEX_BASELESS_FAMILIES[dexKey(t[0])] };
+  return { key: dexKey(n), name: n };
+}
+/* groupKey → { key, name, members:[species names], rep } — rep is a REAL species row, so the card
+   has something to draw a sprite from even when the group's name isn't a species ("Gourgeist"). */
+let DEX_GROUPS = null;
+function dexGroupIndex(){
+  if(DEX_GROUPS) return DEX_GROUPS;
+  DEX_GROUPS = new Map();
+  D.species.filter(dexVisibleSpecies).forEach(sp=>{
+    const g = dexGroupOf(sp.name); if(!g) return;
+    let e = DEX_GROUPS.get(g.key);
+    if(!e){ e = { key:g.key, name:g.name, members:[], rep:null }; DEX_GROUPS.set(g.key, e); }
+    e.members.push(sp.name);
+    if(!e.rep || sp.name === g.name) e.rep = sp.name;
+  });
+  return DEX_GROUPS;
+}
+function dexRepOf(entry){
+  const g = dexGroupIndex().get(entry && entry.key);
+  return (g && g.rep) || (entry && entry.rep) || (entry && entry.name) || "";
 }
 /* A hidden species ("Mom?") is not Dex material for ANYONE — not even the people allowed to know it
    exists. It isn't a catchable Pokémon, and a one-off entry that only two accounts can see would
    make the completion count disagree between screens. Not registered, not counted, not in the total. */
 function dexVisibleSpecies(s){ return !!s && !s.hidden; }
 function dexListable(name){ const s = getSpecies(name); return s ? dexVisibleSpecies(s) : true; }
-function dexTotalSpecies(){ return D.species.filter(dexVisibleSpecies).length; }
-/* Every Pokémon the party owns right now: one entry per Trainer's party, plus the shared PC. */
-function dexHolders(){
-  const out = [];
+function dexTotalSpecies(){ return dexGroupIndex().size; }
+/* Every Pokémon the party owns right now: one entry per Trainer's party, plus the shared PC.
+   `all` ignores the skip list — that's the version the "Sheets counted" picker lists. */
+function dexHolders(all){
+  const d = dexLoad(), out = [];
+  const push = o => { if(all || !d.skip[o.id]) out.push(o); };
   if(mode === "cloud"){
     Object.values(cloud.byId).forEach(r=>{
       const c = r && r.data; if(!c) return;
-      out.push({ label: c.name || r.owner_name || "(unnamed)", where:"party", mons: c.pokemon || [] });
+      push({ id:r.id, label: c.name || r.owner_name || "(unnamed)", where:"party", mons: c.pokemon || [] });
     });
-    out.push({ label:"the PC", where:"pc", mons: (cloud.pc && cloud.pc.data && cloud.pc.data.pokemon) || [] });
+    push({ id:"__pc__", label:"the PC", where:"pc",
+           mons: (cloud.pc && cloud.pc.data && cloud.pc.data.pokemon) || [] });
   } else {
     (state.characters || []).forEach(c =>
-      out.push({ label: c.name || "(unnamed)", where:"party", mons: c.pokemon || [] }));
+      push({ id:c.id, label: c.name || "(unnamed)", where:"party", mons: c.pokemon || [] }));
   }
   return out;
 }
@@ -27626,10 +28315,12 @@ function dexHeldNow(){
     const sp = getSpecies(m.species);
     const name = sp ? sp.name : String(m.species||"").trim();
     if(!name || (sp && !dexVisibleSpecies(sp))) return;
-    const k = name.toLowerCase();
-    const rec = held.get(k) || { name, n:0, who:[] };
-    rec.n++; if(!rec.who.includes(h.label)) rec.who.push(h.label);
-    held.set(k, rec);
+    const g = dexGroupOf(name); if(!g) return;
+    const rec = held.get(g.key) || { name:g.name, n:0, who:[], forms:[] };
+    rec.n++;
+    if(!rec.who.includes(h.label)) rec.who.push(h.label);
+    if(name !== g.name && !rec.forms.includes(name)) rec.forms.push(name);
+    held.set(g.key, rec);
   }));
   return held;
 }
@@ -27637,10 +28328,14 @@ function dexHeldNow(){
    or null if it was already there / struck off / not Dex material. */
 function dexRegister(d, name, meta, at){
   if(!name || !dexListable(name)) return null;
-  const k = name.toLowerCase();
-  if(d.removed[k] || d.seen[k]) return null;
-  d.seen[k] = Object.assign({ name, at: at || Date.now() }, meta || {});
-  return d.seen[k];
+  const g = dexGroupOf(name); if(!g) return null;
+  if(d.removed[g.key] || d.seen[g.key]) return null;
+  /* `form` is the row that was actually caught, kept when it isn't the group's own name — the card
+     says "as Vulpix Alolan" so grouping never hides WHICH one is in the party. */
+  d.seen[g.key] = Object.assign({ key:g.key, name:g.name, at: at || Date.now() },
+    (getSpecies(name) || {}).name && getSpecies(name).name !== g.name ? { form:getSpecies(name).name } : {},
+    meta || {});
+  return d.seen[g.key];
 }
 /* …and its whole pre-evolution line with it. speciesLineBackTo returns [self, ...earlier stages],
    and it already understands regional forms (Ninetales Alolan → Vulpix Alolan) and branch
@@ -27649,7 +28344,7 @@ function dexRegisterLine(d, name, meta, at){
   const out = [];
   const sp = getSpecies(name);
   if(!sp){ const one = dexRegister(d, name, meta, at); return one ? [one] : []; }
-  speciesLineBackTo(sp).forEach((s, i)=>{
+  speciesLineUp(sp).forEach((s, i)=>{
     const e = dexRegister(d, s.name, i === 0 ? meta : Object.assign({}, meta, { via: sp.name }), at);
     if(e) out.push(e);
   });
@@ -27665,6 +28360,18 @@ function dexScan(opts){
      carrying entries that no longer belong — drop them here rather than filtering at every reader. */
   let purged = 0;
   Object.keys(d.seen).forEach(k=>{ if(!dexListable(d.seen[k].name)){ delete d.seen[k]; purged++; } });
+  /* A register written before forms were grouped is keyed per species ("vulpixalolan"); re-key it,
+     keeping the earliest discovery date when two forms collapse into one entry. */
+  ["seen","removed","manual"].forEach(store=>{
+    Object.keys(d[store]).forEach(k=>{
+      const rec = d[store][k];
+      const g = dexGroupOf((rec && rec.name) || k); if(!g || g.key === k) return;
+      if(store === "manual"){ d.manual[g.key] = 1; }
+      else if(!d[store][g.key]) d[store][g.key] = Object.assign({}, rec, { key:g.key, name:g.name });
+      else d[store][g.key].at = Math.min(d[store][g.key].at || 0, (rec && rec.at) || 0) || d[store][g.key].at;
+      delete d[store][k]; purged++;
+    });
+  });
   dexHolders().forEach(h => (h.mons||[]).forEach(m=>{
     const sp = getSpecies(m.species);
     const name = sp ? sp.name : String(m.species||"").trim();
@@ -27742,40 +28449,61 @@ function dexFamilyRegistered(speciesName){
   if(!key) return false;
   if(dexFamilyCache.has(key)) return dexFamilyCache.get(key);
   const d = dexLoad(), sp = getSpecies(key);
-  const hit = sp ? speciesFamilyNames(sp).some(n => !!d.seen[n.toLowerCase()])
-                 : !!d.seen[key];
+  const groups = sp ? speciesFamilyNames(sp).map(n => (dexGroupOf(n)||{}).key)
+                    : [(dexGroupOf(key)||{}).key];
+  const hit = groups.some(g => !!(g && d.seen[g]));
   dexFamilyCache.set(key, hit);
   return hit;
 }
 /* ---- the by-hand controls ---- */
 function dexAddByHand(name){
-  const d = dexLoad(), k = String(name||"").toLowerCase();
-  if(!k) return;
-  delete d.removed[k];                       // adding it back un-strikes it
+  const d = dexLoad(), g = dexGroupOf(name);
+  if(!g) return;
+  delete d.removed[g.key];                   // adding it back un-strikes it
   const got = dexRegisterLine(d, getSpecies(name) ? getSpecies(name).name : name,
     { by:"added by hand", where:"manual" });
-  got.forEach(e => { d.manual[e.name.toLowerCase()] = 1; });
+  got.forEach(e => { d.manual[e.key] = 1; });
   dexStore();
   toast(got.length ? `\u{1F4D5} Registered ${got.map(e=>e.name).join(", ")}`
                    : `\u{1F4D5} ${name} was already registered`);
 }
 function dexRemoveByHand(name){
-  const d = dexLoad(), k = String(name||"").toLowerCase();
-  delete d.seen[k]; delete d.manual[k];
-  d.removed[k] = { name, at: Date.now() };   // remembered, or the next scan just puts it back
+  const d = dexLoad(), g = dexGroupOf(name); if(!g) return;
+  delete d.seen[g.key]; delete d.manual[g.key];
+  d.removed[g.key] = { key:g.key, name:g.name, at: Date.now() };   // or the next scan puts it back
   dexStore();
-  toast(`\u{1F4D5} ${name} struck off — it stays off even while someone is carrying one`);
+  toast(`\u{1F4D5} ${g.name} struck off — it stays off even while someone is carrying one`);
 }
 function dexRestore(name){
-  const d = dexLoad(), k = String(name||"").toLowerCase();
-  delete d.removed[k];
+  const d = dexLoad(), g = dexGroupOf(name); if(!g) return;
+  delete d.removed[g.key];
   dexStore();
   dexScan({quiet:true});                     // a held one comes straight back on its own
-  toast(`\u{1F4D5} ${name} is back in play — rescanning`);
+  toast(`\u{1F4D5} ${g.name} is back in play — rescanning`);
+}
+/* Recompute `seen` from scratch over the sheets that are currently counted, keeping the by-hand
+   additions, the by-hand strike-offs, and the original "first registered" date of everything that
+   survives. This is what un-ticking a sheet runs — and why it has to be a rebuild rather than a
+   subtraction: dropping the test NPC must un-register what ONLY it contributed (Aggron, Lairon,
+   Kadabra, Abra, Abomasnow) while Madeline's Aron and Lázaro's Snover and Honedge stay put. */
+function dexRebuild(){
+  const d = dexLoad(), was = d.seen, now = Date.now();
+  d.seen = {};
+  Object.keys(d.manual).forEach(k=>{
+    const g = dexGroupIndex().get(k);
+    const nm = (g && g.rep) || (was[k] && (was[k].form || was[k].name)) || k;
+    dexRegister(d, nm, { by:"added by hand", where:"manual" }, now);
+  });
+  dexHolders().forEach(h => (h.mons||[]).forEach(m=>{
+    const sp = getSpecies(m.species);
+    dexRegisterLine(d, sp ? sp.name : String(m.species||"").trim(), { by:h.label, where:h.where }, now);
+  }));
+  Object.keys(d.seen).forEach(k=>{ if(was[k]) d.seen[k].at = was[k].at; });   // don't re-light every NEW flag
+  dexStore();
 }
 function dexResetAll(){
   const d = dexLoad();
-  d.seen = {}; d.removed = {}; d.manual = {}; d.init = false; d.ack = 0;
+  d.seen = {}; d.removed = {}; d.manual = {}; d.init = false; d.ack = 0;   // `skip` is a setting, it stays
   dexStore();
   dexScan({quiet:true});                     // silent back-fill, exactly like a fresh campaign
 }
@@ -27796,20 +28524,28 @@ function dexEntrySub(e){
   return e.by || "";
 }
 function dexEntryCard(e, held, onChange){
-  const sp = getSpecies(e.name);
-  const rec = held.get(e.name.toLowerCase());
+  const rec = held.get(e.key || dexKey(e.name));
+  /* Draw the form the party actually has, not the group's nominal base — a Dex entry for Ninetales
+     should show the Alolan one if that's the one they caught. Falls back to the registered form,
+     then to the group's representative row. */
+  const rep = (rec && rec.forms[0]) || e.form || dexRepOf(e);
+  const sp = getSpecies(rep);
   const d = dexLoad();
   const isNew = (e.at||0) > (d.ack||0);
   const card = el("div",{class:"dex-cell" + (isNew ? " dex-new" : ""),
     title:`First registered ${new Date(e.at||0).toLocaleString()} — ${dexEntrySub(e)}`});
   const open = el("div",{style:"cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px",
     onclick: sp ? ()=>openRefDetail("species", sp.name) : null});
-  open.append(monSprite(e.name, false, "s-sm"));
+  open.append(monSprite(rep || e.name, false, "s-sm"));
   open.append(el("div",{class:"dex-name"}, e.name));
   if(sp) open.append(el("div",{class:"chips",style:"justify-content:center;gap:2px"},
     ...(sp.types||[]).filter(ty=>ty && ty!=="None").map(ty=>el("span",{html:typeBadge(ty)}))));
   open.append(el("div",{class:"small muted dex-sub"},
     rec ? `×${rec.n} · ${rec.who.join(", ")}` : dexEntrySub(e) || "not held right now"));
+  /* grouping must never hide WHICH form is in the party */
+  const forms = (rec && rec.forms.length) ? rec.forms : (e.form ? [e.form] : []);
+  if(forms.length) open.append(el("div",{class:"small muted dex-sub",style:"opacity:.8"},
+    forms.join(" · ")));
   card.append(open);
   if(isNew) card.append(el("span",{class:"dex-flag"},"NEW"));
   card.append(el("button",{class:"dex-x",title:`strike ${e.name} off the register`,
@@ -27854,6 +28590,31 @@ function renderDex(){
         if(!confirm("Wipe the Pokédex register and rebuild it from what the party is holding right now?\n\nEverything struck off by hand comes back, and everything added by hand is lost.")) return;
         dexResetAll(); toast("\u{1F4D5} Register rebuilt from scratch"); again();
       }},"reset the register") : ""));
+  /* ---- which sheets count. A GM's scratch NPC is not the party's catch record. ---- */
+  const all = dexHolders(true);
+  if(all.length > 1){
+    const on = all.filter(h => !d.skip[h.id]).length;
+    const det = el("details",{class:"spoiler",style:"margin-top:10px"});
+    det.open = all.length !== on;                        // already excluding something? show it
+    det.append(el("summary",{}, el("span",{style:"font-weight:700"},`Sheets counted (${on} of ${all.length})`),
+      el("span",{class:"muted small",style:"margin-left:8px"},"untick a scratch NPC to keep it out of the Dex")));
+    const list = el("div",{style:"margin-top:6px"});
+    all.forEach(h=>{
+      const cb = el("input",{type:"checkbox"}); cb.checked = !d.skip[h.id];
+      cb.addEventListener("change",()=>{
+        if(cb.checked) delete d.skip[h.id]; else d.skip[h.id] = 1;
+        dexStore(); dexRebuild();
+        toast(cb.checked ? `\u{1F4D5} ${h.label} counts again — rebuilt`
+                         : `\u{1F4D5} ${h.label} left out — anything only it had is off the register`);
+        again();
+      });
+      list.append(el("label",{class:"inline",style:"gap:8px;align-items:center;display:flex;margin-top:4px"},
+        cb, el("span",{class:"small"+(d.skip[h.id]?" muted":"")},
+          h.label, el("span",{class:"muted"}, `  — ${(h.mons||[]).length} Pokémon`))));
+    });
+    det.append(list);
+    head.append(det);
+  }
   head.append(el("div",{class:"small muted",style:"margin-top:8px"},
     (mode === "cloud"
       ? "Registered by scanning every Trainer's party and the shared PC. "
@@ -27919,9 +28680,12 @@ function renderDex(){
     }
 
     if(dexFilter.missing){
-      const have = new Set(entries.map(e=>e.name.toLowerCase()));
-      let miss = D.species.filter(dexVisibleSpecies).map(s=>s.name)
-        .filter(n => !have.has(n.toLowerCase()) && (!needle || n.toLowerCase().includes(needle)));
+      const have = new Set(entries.map(e => e.key || dexKey(e.name)));
+      let miss = [...dexGroupIndex().values()]
+        .filter(g => !have.has(g.key)
+          && (!needle || g.name.toLowerCase().includes(needle)
+              || g.members.some(mn => mn.toLowerCase().includes(needle))))
+        .map(g => g.name);
       listWrap.append(el("div",{class:"section-head",style:"margin-top:14px"},
         el("span",{}, `Still missing (${miss.length})`),
         el("span",{class:"muted small"},"tap one to register it")));
@@ -28889,6 +29653,7 @@ async function setTokenHP(token, val, opts){
     applyAutoInjury(obj, oldHP, newHP);            // map-side HP edits get the same auto-injury check
     applyAutoKO(obj, oldHP, newHP);                // …and drop/lift Knocked Out with the HP
     applyShieldsDown(obj, newHP);                  // …and crack a Minior's shell open at half HP
+    applySchooling(obj, newHP);                    // …and scatter a Wishiwashi's school once its pool is gone
     obj.currentHP = newHP;
     paintTokenHP(token, true);
     broadcastEncState(token.link, obj);           // live delta to peers (no full-row DB broadcast)
@@ -28901,6 +29666,7 @@ async function setTokenHP(token, val, opts){
   applyAutoInjury(obj, oldHP, newHP);
   applyAutoKO(obj, oldHP, newHP);
   applyShieldsDown(obj, newHP);
+  applySchooling(obj, newHP);
   obj.currentHP = newHP;
   paintTokenHP(token);
   cloudSaveRow(row);                              // debounced write of the real sheet; realtime syncs the owner
@@ -31246,6 +32012,62 @@ function openTokenMenu(token, map){
           toast(`${a.icon} ${a.name} — ${msg}`);
         }}, `${a.icon} ${a.name} · ${a.label(linked.obj)}`)));
       row.append(said);
+      wrap.append(row);
+    }
+
+    /* Schooling is a Swift Action taken mid-fight, and mid-fight everyone is looking at the board -
+       so the same button lives on the token too, next to the Temp HP it hands over. */
+    if(info.editable && linked && schooling(linked.obj)){
+      const fish = linked.obj;
+      const inSchool = fish.species===WISHIWASHI_SCHOOL;
+      const act = async()=>{
+        if(inSchool){ if(!schoolingRevertNow(fish, "by hand")) return; }
+        else {
+          const r = schoolingActivate(fish);
+          if(!r) return;
+          toast(`\u{1F41F} ${ownerLabel(fish)} — ${r.msg}`);
+          if(!r.ok) return;
+        }
+        await commitTokenSource(token);
+        /* 300 fish take up rather more room than one: Solo is Small (1 square), Schooling is Huge
+           (3), so the footprint moves with the Forme - same thing the token menu's own ↺ Auto
+           button does, which is still there if the GM wants a different size. */
+        token.size = autoTokenSize(token.link);
+        if(map.fogOn) revealAroundTokens(map);
+        mapTokensSave();
+        renderMap();                       // Solo and Schooling are drawn as different creatures
+        reopenTokenMenu(token, map);
+      };
+      wrap.append(el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;margin-top:10px"},
+        el("button",{class:"btn-secondary", disabled: !inSchool && schoolingUsesLeft(fish)<=0,
+          title: inSchool ? "scatter the school — back to Solo Forme. The shoal's Temporary Hit Points go with it."
+                          : `Schooling (Daily, Swift Action) — become ${WISHIWASHI_SCHOOL} and gain ${schoolingTempHP(fish)} Temporary Hit Points`,
+          onclick:act}, inSchool ? "↺ Solo Forme" : `\u{1F41F} Schooling · +${schoolingTempHP(fish)} Temp HP`),
+        el("span",{class:"small muted",style:"align-self:center"},
+          inSchool ? "no other source may top its Temp HP up" : "Daily · Swift Action")));
+    }
+
+    /* Commander: Attaching is a Swift Action taken on the board, and "occupies the target's square"
+       IS the riding stack - so this one button writes the link and mounts (or dismounts) the token. */
+    if(info.editable && linked && (hasCommander(linked.obj) || linked.obj.commandedBy)){
+      const me = linked.obj;
+      const partner = me.commander ? commanderHostOf(me) : commanderRiderOf(me);
+      const after = async()=>{ await commitTokenSource(token); renderMap(); reopenTokenMenu(token, map); };
+      const row = el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;margin-top:10px"});
+      if(me.commander || me.commandedBy){
+        const who = partner ? ownerLabel(partner) : (me.commander || me.commandedBy).name;
+        row.append(el("span",{class:"small",style:"align-self:center"},
+            me.commander ? `\u{1F363} Attached to ${who}` : `\u{1F363} ${who} Attached`),
+          el("button",{class:"btn-secondary",style:"margin-left:auto",
+            title:"Detach — the pair stop sharing a square and each gets their own Movement back",
+            onclick:async()=>{ commanderDetach(me); await after(); }},"⬇ Detach"));
+        if(partner) row.append(el("div",{class:"small muted",style:"flex-basis:100%"},
+          me.commander ? commanderInterceptText(me, partner) : commanderInterceptText(partner, me)));
+      } else {
+        row.append(el("button",{class:"btn-secondary",
+          title:"Commander (At-Will, Swift Action) — Attach to an adjacent Ally. It rides their token and takes their Movement Capabilities.",
+          onclick:()=>openCommanderAttach(me, ()=>{ after(); }, ()=>{})},"\u{1F363} Commander — Attach to…"));
+      }
       wrap.append(row);
     }
 
