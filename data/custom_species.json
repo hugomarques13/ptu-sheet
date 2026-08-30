@@ -9069,5 +9069,292 @@
     "height": "7' 3\" / 2.2m (Large)",
     "order": 16004,
     "customArt": true
+  },
+  {
+    "name": "Iron Mach",
+    "order": 16005,
+    "baseStats": {
+      "hp": 9,
+      "atk": 13,
+      "def": 8,
+      "spatk": 7,
+      "spdef": 8,
+      "spd": 14
+    },
+    "types": [
+      "Dragon",
+      "Flying"
+    ],
+    "capabilities": {
+      "overland": 4,
+      "sky": 10,
+      "swim": 3,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 2,
+      "longJump": 4,
+      "power": 6,
+      "naturewalk": [],
+      "other": [
+        "Breathless",
+        "Glow",
+        "Guster",
+        "Magnetic",
+        "Mountable 1",
+        "Tracker"
+      ]
+    },
+    "size": "Large",
+    "weightClass": 5,
+    "eggGroups": [
+      "None"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 6,
+        "mod": "+2"
+      },
+      "athletics": {
+        "dice": 4,
+        "mod": "+1"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 5,
+        "mod": "+2"
+      },
+      "command": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 4,
+        "mod": "+2"
+      },
+      "guile": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 4,
+        "mod": "+1"
+      },
+      "intuition": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 5,
+        "mod": "+2"
+      },
+      "stealth": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 2,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [
+        "Quark Drive"
+      ],
+      "advanced": [
+        "Gale Wings",
+        "Thrust",
+        "Iron Barbs"
+      ],
+      "high": [
+        "Rocket"
+      ]
+    },
+    "evolution": [
+      {
+        "stage": 1,
+        "name": "Iron Mach",
+        "min": null
+      }
+    ],
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Leer",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Quick Attack",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Peck",
+          "type": "Flying"
+        },
+        {
+          "level": 8,
+          "name": "Dragon Breath",
+          "type": "Dragon"
+        },
+        {
+          "level": 12,
+          "name": "Metal Claw",
+          "type": "Steel"
+        },
+        {
+          "level": 16,
+          "name": "Wing Attack",
+          "type": "Flying"
+        },
+        {
+          "level": 20,
+          "name": "Agility",
+          "type": "Psychic"
+        },
+        {
+          "level": 20,
+          "name": "Dual Chop",
+          "type": "Dragon"
+        },
+        {
+          "level": 24,
+          "name": "Aerial Ace",
+          "type": "Flying"
+        },
+        {
+          "level": 26,
+          "name": "Thunder Fang",
+          "type": "Electric"
+        },
+        {
+          "level": 28,
+          "name": "Slash",
+          "type": "Normal"
+        },
+        {
+          "level": 32,
+          "name": "Dragon Claw",
+          "type": "Dragon"
+        },
+        {
+          "level": 34,
+          "name": "Tailwind",
+          "type": "Flying"
+        },
+        {
+          "level": 36,
+          "name": "Steel Wing",
+          "type": "Steel"
+        },
+        {
+          "level": 40,
+          "name": "Crunch",
+          "type": "Dark"
+        },
+        {
+          "level": 44,
+          "name": "Dragon Rush",
+          "type": "Dragon"
+        },
+        {
+          "level": 48,
+          "name": "Brave Bird",
+          "type": "Flying"
+        },
+        {
+          "level": 50,
+          "name": "Sky Attack",
+          "type": "Flying"
+        }
+      ],
+      "tmhm": [
+        "Acrobatics",
+        "Aerial Ace",
+        "Body Slam",
+        "Breaking Swipe",
+        "Brick Break",
+        "Confide",
+        "Double Team",
+        "Double-Edge",
+        "Dragon Claw",
+        "Dragon Dance",
+        "Dragon Pulse",
+        "Dragon Tail",
+        "Endure",
+        "Facade",
+        "Fly",
+        "Frustration",
+        "Giga Impact",
+        "Hidden Power",
+        "Hone Claws",
+        "Hurricane",
+        "Hyper Beam",
+        "Iron Head",
+        "Metal Claw",
+        "Outrage",
+        "Protect",
+        "Rest",
+        "Return",
+        "Roost",
+        "Round",
+        "Scale Shot",
+        "Scary Face",
+        "Sleep Talk",
+        "Steel Wing",
+        "Substitute",
+        "Swagger",
+        "Swords Dance",
+        "Tailwind",
+        "Take Down",
+        "Tera Blast",
+        "Thunder Fang",
+        "Toxic",
+        "Wild Charge"
+      ],
+      "egg": [],
+      "tutor": [
+        "Draco Meteor",
+        "Dragon Pulse",
+        "Dual Chop",
+        "Iron Head",
+        "Iron Tail",
+        "Outrage",
+        "Sky Attack",
+        "Sleep Talk",
+        "Snore",
+        "Swift",
+        "Twister"
+      ]
+    },
+    "gender": "Unknown",
+    "diet": "Ergovore",
+    "habitat": "Cave, Desert, Mountain",
+    "height": "6' 3\" / 1.9m (Large)",
+    "customArt": true
   }
 ]

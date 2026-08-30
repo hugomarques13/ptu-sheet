@@ -233,6 +233,13 @@ const STATUS_DEFS = [
    effect:"Movement halved (min 1). Removed by switching or at end of Scene. (+5 to Capture Rate.)"},
   {key:"trapped", name:"Trapped", kind:"other", cap:0, immune:["Ghost"],
    effect:"Cannot be recalled into a Poké Ball. Ghost-types immune."},
+  /* A Move keyword rather than an Affliction (Core p.341) — Whirlpool, Fire Spin, Sand Tomb,
+     Infestation and Magma Storm all "put the target in a Vortex". It gets a chip because it is
+     three effects at once plus a countdown nobody remembers: ticking it also ticks Slowed and
+     Trapped (see onVortexToggled), and the turn counter under the chips prints the Save DC that
+     turn actually needs. */
+  {key:"vortex", name:"Vortex", kind:"other", cap:0,
+   effect:"Slowed and Trapped, and loses a Tick of Hit Points at the beginning of each of its turns. At the end of each turn it may roll 1d20 to end all of it — DC 20 on the first turn, then 14, 8, 2, and it wears off by itself on the fifth turn. Ticking this chip also applies Slowed and Trapped; unticking it removes them."},
   {key:"tripped", name:"Tripped", kind:"other", cap:0,
    effect:"Must spend a Shift Action to get up before taking other actions. Always considered Vulnerable."},
   {key:"vulnerable", name:"Vulnerable", kind:"other", cap:0,
@@ -453,6 +460,7 @@ function toggleStatus(p, key){ p.statuses = p.statuses||[];
   const i=p.statuses.indexOf(key);
   if(i>=0){ const w = statusCureBlock(p, key); p.statuses.splice(i,1); if(w) toast(w); }
   else p.statuses.push(key);
+  if(key==="vortex") onVortexToggled(p, p.statuses.includes(key));
   save(); }
 /* Abilities that forbid CURING an affliction rather than changing a number. Power of Rage's pair
    ("The user may not make rolls to cure themselves of the Enraged condition") is the only one so
@@ -480,12 +488,13 @@ function statusCureBlock(o, key){
    Poison, Sleep, Paralysis, Freeze) deliberately stay — those need an Extended Rest or a healing
    item, and End Day already clears them. */
 const SCENE_STATUS_KEYS = new Set([
-  ...STATUS_DEFS.filter(s=>s.kind==="volatile").map(s=>s.key), "stuck", "slowed",
+  ...STATUS_DEFS.filter(s=>s.kind==="volatile").map(s=>s.key), "stuck", "slowed", "vortex",
 ]);
 function clearSceneStatuses(o){
   if(!o || !Array.isArray(o.statuses)) return false;
   const before = o.statuses.length;
   o.statuses = o.statuses.filter(k => !SCENE_STATUS_KEYS.has(k));
+  if(!o.statuses.includes("vortex")) delete o.vortexTurn;
   return o.statuses.length !== before;
 }
 /* Afflictions that survive a blanket "cure everything". Death is the only one, and it has to be:
@@ -497,6 +506,7 @@ const PERMANENT_STATUS_KEYS = new Set(STATUS_DEFS.filter(s => s.permanent).map(s
 function clearAllStatuses(o){
   if(!o) return [];
   o.statuses = Array.isArray(o.statuses) ? o.statuses.filter(k => PERMANENT_STATUS_KEYS.has(k)) : [];
+  delete o.vortexTurn;
   if(o.statuses.includes("dead") && !o.statuses.includes("knockedOut")) o.statuses.push("knockedOut");
   return o.statuses;
 }
@@ -509,6 +519,78 @@ function confusionSelfDamage(o){
   const atk = isT ? d.totals.atk : d.eff.atk, spatk = isT ? d.totals.spatk : d.eff.spatk;
   const max = isT ? d.hp : d.maxHP;
   return { phys: Math.floor(atk/2), spec: Math.floor(spatk/2), status: hpTick(max)*2 };
+}
+/* ---- Vortex: the turn counter (Core p.341) ----
+   "At the end of each turn, the user may roll 1d20 to end all of these effects; during the first
+   turn, they must roll a 20 or higher to dispel the vortex. The DC is lowered by 6 each following
+   turn, automatically wearing off on the fifth turn (20, 14, 8, 2, Dispel)." Which turn a given
+   Vortex is on is the part that always gets lost, so it's stored on the creature (`vortexTurn`)
+   and the DC is derived from it rather than being looked up in the book mid-fight. */
+const VORTEX_DCS   = [20, 14, 8, 2];
+const VORTEX_TURNS = 5;                       // the fifth turn dispels it with no roll at all
+function vortexTurn(o){ return Math.max(1, Math.min(VORTEX_TURNS, (o && o.vortexTurn) || 1)); }
+function vortexDC(turn){ return VORTEX_DCS[turn-1] ?? null; }   // null = it just ends
+/* Being in a Vortex IS being Slowed and Trapped, so the two ride along with the chip — that's the
+   whole point of tracking it as one status instead of three. */
+const VORTEX_RIDERS = ["slowed","trapped"];
+function syncVortexRiders(list, on){
+  VORTEX_RIDERS.forEach(k=>{
+    const i = list.indexOf(k);
+    if(on && i<0) list.push(k);
+    if(!on && i>=0) list.splice(i,1);
+  });
+  return list;
+}
+/* Called by every status-chip handler (sheet, Encounters card, map token) right after the Vortex
+   chip flips, so the riders and the counter stay in step wherever it was toggled from. */
+function onVortexToggled(o, on){
+  if(!o) return;
+  o.statuses = syncVortexRiders(o.statuses || [], on);
+  if(on) o.vortexTurn = 1; else delete o.vortexTurn;
+}
+/* the shared "🌀 Vortex" control: which turn it's on, the DC that turn needs, the 1d20 that breaks
+   out of it, and the Tick of HP it costs at the start of the turn. `applyLoss(n)` and `onChange()`
+   are the same hooks confusionRow takes, so it mounts in all three places unchanged. */
+function vortexRow(o, onChange, applyLoss){
+  const wrap = el("div",{style:"margin-top:10px"});
+  const turn = vortexTurn(o), dc = vortexDC(turn);
+  wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},
+    `🌀 Vortex — turn ${turn} of ${VORTEX_TURNS}`));
+  const out = el("div",{class:"small muted",style:"margin-top:5px"},
+    dc ? `Slowed & Trapped. At the end of this turn it may roll 1d20 — a ${dc} or higher ends the whole thing.`
+       : "Fifth turn — the Vortex wears off at the end of it, no roll needed.");
+  const set = n => { o.vortexTurn = Math.max(1, Math.min(VORTEX_TURNS, n)); onChange(); };
+  const step = el("div",{class:"stepper"});
+  step.append(
+    el("button",{title:"back a turn (mis-click)", disabled:turn<=1, onclick:()=>set(turn-1)},"−"),
+    el("span",{class:"stepper-val"}, `Turn ${turn}`),
+    el("button",{title:"another turn has passed — the DC drops by 6", disabled:turn>=VORTEX_TURNS,
+      onclick:()=>set(turn+1)},"+"));
+  const end = () => {
+    o.statuses = syncVortexRiders((o.statuses||[]).filter(k=>k!=="vortex"), false);
+    delete o.vortexTurn;
+    toast("🌀 Out of the Vortex — Slowed and Trapped lift with it");
+    onChange();
+  };
+  const row = el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:8px;align-items:center"}, step,
+    el("span",{class:"kv"}, dc ? `Break out on ${dc}+` : "wears off this turn"));
+  if(dc) row.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
+    title:`roll the end-of-turn 1d20 against DC ${dc}`,
+    onclick:()=>{ const r = 1 + Math.floor(Math.random()*20);
+      if(r >= dc){ out.textContent = `🎲 1d20 = ${r} ≥ ${dc} — it breaks out!`; end(); }
+      else { out.textContent = `🎲 1d20 = ${r} — not enough (needed ${dc}). Advance the turn.`; toast(`🌀 1d20 = ${r} — still caught`); }
+    }},`🎲 1d20 vs ${dc}`));
+  if(applyLoss){
+    const tick = hpTick(ownerMaxHP(o));
+    row.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
+      title:"the Tick of Hit Points it loses at the beginning of its turn",
+      onclick:()=>{ out.textContent = `🌀 Start of turn in the Vortex — −${tick} HP.`;
+        toast(`🌀 Vortex — −${tick} HP`); applyLoss(tick); }}, `−Tick (${tick})`));
+  }
+  row.append(el("button",{class:"linkbtn",title:"free it — the Vortex ends and Slowed/Trapped lift",
+    onclick:end},"end it"));
+  wrap.append(row, out);
+  return wrap;
 }
 /* the shared "💫 Confused — hurt itself" control. applyLoss(n) takes the HP off wherever this
    creature's HP actually lives (sheet, encounter row, map token). */
@@ -1530,11 +1612,21 @@ const MOVE_ALIASES = { "hijumpkick":"High Jump Kick", "zenheabutt":"Zen Headbutt
                        "judgment":"Judgement", "naturepowers":"Nature Power",
                        // Game of Throhs writes Shade Caller's Move by its pre-Gen-6 name
                        "faintattack":"Feint Attack" };
+/* A movelist entry can arrive carrying a marker the name itself doesn't own: the Pokedex's tutor
+   lists write "Hex (N)" for a Move a Mentor teaches, and a hand-typed or imported entry can pick up
+   an "(TM42)" / "(Egg)" the same way. moveKey folds that into "hexn", which resolves against
+   nothing — so the Move renders as "custom / not in database" and every name-keyed behaviour
+   downstream (the conditional-Damage-Base ticks, riders, pierce) silently stops applying to it.
+   Strip a trailing parenthetical and try again. */
+const bareMoveName = s => String(s==null?"":s).replace(/\s*\([^()]*\)\s*$/,"").trim();
 class MoveIndex extends Map {
   get(name){
     const k = String(name==null?"":name).toLowerCase();
     if(!k) return undefined;
-    return super.get(k) || super.get(moveKey(k));
+    const hit = super.get(k) || super.get(moveKey(k));
+    if(hit) return hit;
+    const bare = bareMoveName(k);
+    return bare && bare!==k ? (super.get(bare) || super.get(moveKey(bare))) : undefined;
   }
 }
 const moveByName = new MoveIndex(D.moves.map(m => [m.name.toLowerCase(), m]));
@@ -2169,7 +2261,7 @@ const INJURY_SOURCES = [
 function giftRowNamed(t, name){
   return ((t && t.gifts)||[]).find(g => String((g && g.name)||"").toLowerCase()===String(name).toLowerCase()) || null;
 }
-function giftMode(t, name){ const g = giftRowNamed(t, name); return (g && g.mode==="signer") ? "signer" : "messiah"; }
+function giftMode(t, name){ return blessingModeFor(t, giftRowNamed(t, name)); }
 /* does this sheet actually have the source? */
 function hasInjurySource(def, t, mon){
   if(def.kind==="core")    return true;
@@ -3514,7 +3606,7 @@ function attachArtFallback(img, srcs){
 /* Homebrew species whose artwork ships in the repo itself (assets/species/<slug>.webp), so they
    render with no Storage-bucket upload needed. Bundled art is same-origin, costs no egress, and
    still lets the bucket + DB URLs trail behind as fallbacks. Drop a file in and add its slug here. */
-const LOCAL_SPECIES_ART = new Set(["dracosaur","arctosaur","dunklevish","raptozolt"]);
+const LOCAL_SPECIES_ART = new Set(["dracosaur","arctosaur","dunklevish","raptozolt","iron-mach"]);
 function localSpeciesArt(name){
   const slug = slugify(name);
   return LOCAL_SPECIES_ART.has(slug) ? [`assets/species/${slug}.webp?v=1`] : [];
@@ -3702,10 +3794,12 @@ function render(){
   refreshCharSelect();
   const ac = activeChar();
   $("#partyCount").textContent = (ac?.pokemon?.length) || "";
+  dexRefreshBadge();              // "someone caught something new" lights up whichever tab is open
   renderCloudBanner();
   if (currentTab==="trainer")    renderTrainer();
   if (currentTab==="pokemon")    renderPokemon();
   if (currentTab==="pc")         renderPC();
+  if (currentTab==="dex")        renderDex();
   if (currentTab==="map")        renderMap();
   if (currentTab==="battle")     renderBattle();
   if (currentTab==="encounters") renderEncounters();
@@ -5082,7 +5176,38 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const vdb = st.move ? specialMoveInfo(st.move, t) : null;
   const valDB = (vdb && vdb.kind === "valueDB") ? vdb : null;
   let valNum = valDB ? valDB.def : 0;
+  /* ...and the OTHER half of that same table: a conditional Damage Base (Hex's "the target has a
+     Status Affliction" → DB 13, Facade, Venoshock, Payback, Assurance…). This path used to read
+     only the valueDB shape, so a Trainer rolling one of these — a Hex Maniac's Hex above all —
+     saw no tick, while the identical Move on a Pokémon offered one. Conditions the sheet can check
+     for itself start ticked; the rest are the table's call. */
+  const condList = (vdb && vdb.kind === "conditionalDB") ? vdb.conds : [];
+  const condAuto = condList.map(c => { try{ return !!(c.auto && c.auto(t)); }catch(e){ return false; } });
+  const condOn   = condAuto.slice();
+  /* Everything the ticked conditions change, combined. A later condition's absolute Damage Base
+     wins over an earlier one (Rage Fist's under-50%-HP tier overrides its Injury tier). */
+  function condMods(){
+    const out = { db:null, dbDelta:0, dmg:0, mult:1, noMiss:false, why:[] };
+    condList.forEach((c,i)=>{
+      if(!condOn[i]) return;
+      if(c.db!=null)   out.db = c.db;
+      if(c.dbDelta)    out.dbDelta += c.dbDelta;
+      if(c.dmg)        out.dmg += c.dmg;
+      if(c.mult!=null) out.mult *= c.mult;
+      if(c.noMiss)     out.noMiss = true;
+      out.why.push(c.label);
+    });
+    return out;
+  }
   const moveOwnDB = () => {
+    if(condList.length){
+      const cx = condMods();
+      /* st.damageBase already carries the weapon's +DB; a condition that REPLACES the printed
+         Damage Base has to have it added back on top. */
+      const base = cx.db != null ? cx.db + (st.weapon ? (st.weapon.dbMod || 0) : 0)
+                                 : (st.damageBase || 0);
+      return Math.max(0, Math.min(28, base + cx.dbDelta));
+    }
     if(!valDB) return st.damageBase || 0;
     const v = Math.max(valDB.min ?? 0, Math.min(valDB.max ?? 1e9, valNum));
     return Math.min(28, valDB.toDB(v) + (st.weapon ? (st.weapon.dbMod || 0) : 0));
@@ -5167,7 +5292,9 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     el("div",{style:"font-size:16px;font-weight:700"},
       `Accuracy: ${dblStrike ? "2 × 1d20" : "1d20"}${accModPre?` ${accModPre>0?"+":"−"} ${Math.abs(accModPre)}`:""}`),
     el("div",{class:"small muted",style:"margin-top:2px"},
-      `Roll ${dblStrike?"2 separate Attack Rolls — each ":"1d20 — "}hits if it's ≥ AC ${st.ac} + the target's ${evaNote}. ${critT===20?"Nat 20":`Roll ${critT}+`} auto-hits/crits, nat 1 auto-misses.`
+      (condMods().noMiss
+        ? `${st.name} cannot miss while that condition holds — no Accuracy Check needed.`
+        : `Roll ${dblStrike?"2 separate Attack Rolls — each ":"1d20 — "}hits if it's ≥ AC ${st.ac} + the target's ${evaNote}. ${critT===20?"Nat 20":`Roll ${critT}+`} auto-hits/crits, nat 1 auto-misses.`)
       + (accWhyPre.length?` Includes ${accWhyPre.join(" ")}.`:""))));
   if(dn){
     const terms = [`${dn}d${dfaces}`]; if(dflat) terms.push(String(dflat)); if(atk) terms.push(String(atk));
@@ -5177,6 +5304,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     if(sStance) terms.push(String(sStance));
     if(twisted) terms.push(String(twisted));
     if(tDmg) terms.push(String(tDmg));
+    const cxPre = condMods();
+    if(cxPre.dmg) terms.push(String(cxPre.dmg));
     const why = [`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${baseDBv}`
       + (stabDB||bm.db ? ` (DB ${rawDB}${stabDB?" +2 STAB":""}${bm.db?` ${bm.db>0?"+":"−"}${Math.abs(bm.db)} buffs`:""})` : "")];
     if(atk) why.push(`${atk} = your ${atkLbl}`);
@@ -5186,6 +5315,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     if(sStance) why.push(`+${sStance} = Falling Boulder Stance (\u22125 HP Recoil on a hit)`);
     if(twisted) why.push(`+${twisted} = ${twistedPowerWhy(isSpecAtk)}`);
     if(tDmg) why.push(`+${tDmg} = ${tBoost.item} (${tBoost.type} Type Booster)`);
+    if(cxPre.dmg) why.push(`${cxPre.dmg>0?"+":"−"}${Math.abs(cxPre.dmg)} = ${cxPre.why.join(" & ")}`);
     explain.append(el("div",{},
       el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${terms.join(" + ").replace(/\+ −/g,"− ")}`),
       el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ") + ". "
@@ -5194,7 +5324,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         + (fiveStrike ? ` Five Strike multiplies the Move's own Damage Base (${rawDB}) by the rolled hit count first; other Damage Base bonuses are added after.` : "")
         + (dblStrike  ? " Double Strike doubles this Damage Base if both Attack Rolls connect." : "")
         + (critT<20 ? ` Critical Hit Range ${critT}–20 — ${critNote}.` : "")
-        + (bm.crit ? ` Effect range widened by +${bm.crit} (buffs).` : ""))));
+        + (bm.crit ? ` Effect range widened by +${bm.crit} (buffs).` : "")
+        + (cxPre.mult !== 1 ? ` Then ×${cxPre.mult} — ${cxPre.why.join(" & ")}.` : ""))));
   }
   }
   drawExplain();
@@ -5243,6 +5374,34 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       : "Retypes this Weapon Attack to Dragon, which is what the target's resistances are then measured against."));
     body.append(dc);
   }
+  /* --- a conditional Damage Base: one checkbox per condition, exactly as the Pokémon roll draws
+     them (specialMoveInfo → MOVE_CONDITIONS is the single shared table). --- */
+  if(condList.length){
+    const anyAuto = condAuto.some(Boolean);
+    const wc = el("div",{class:"card",
+      style:`background:var(--panel);border:1px solid ${anyAuto?"var(--accent)":"var(--line)"};margin:0 0 12px`});
+    wc.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},
+      condList.length>1 ? "❓ Conditions — tick the ones that apply" : "❓ Condition — tick it if it applies"));
+    condList.forEach((c,i)=>{
+      const eff = [];
+      if(c.db!=null)   eff.push(`Damage Base ${c.db} instead of ${st.damageBase ?? "—"}`);
+      if(c.dbDelta)    eff.push(`Damage Base ${c.dbDelta>0?"+":"−"}${Math.abs(c.dbDelta)}`);
+      if(c.dmg)        eff.push(`${c.dmg>0?"+":"−"}${Math.abs(c.dmg)} to the Damage Roll`);
+      if(c.mult!=null) eff.push(c.mult===0.5 ? "half damage" : `damage ×${c.mult}`);
+      if(c.noMiss)     eff.push("cannot miss");
+      const lbl = el("label",{style:"display:flex;gap:8px;align-items:flex-start;cursor:pointer;margin-top:6px"});
+      const cb = el("input",{type:"checkbox"}); cb.checked = condOn[i];
+      cb.addEventListener("change",()=>{ condOn[i] = cb.checked; recalcDB(); drawDbChip(); drawExplain(); });
+      lbl.append(cb, el("div",{},
+        el("div",{class:"small",style:"font-weight:700"}, c.label),
+        el("div",{class:"small muted"}, eff.join(" · ") + (c.note ? ` — ${c.note}` : "")),
+        condAuto[i] ? el("div",{class:"small",style:"color:var(--good);font-weight:700"},
+          "✓ detected from this sheet — untick if that's not the case") : ""));
+      wc.append(lbl);
+    });
+    body.append(wc);
+  }
+
   /* --- Versatile: this Move is Physical or Special, whichever the user wants this turn --- */
   if(versatile){
     const vc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
@@ -5432,8 +5591,9 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         el("div",{style:"font-size:20px;font-weight:800;color:var(--bad)"},"— no damage"),
         el("div",{class:"small muted",style:"margin-top:2px"},"Neither Attack Roll met AC + Evasion, so the attack misses entirely.")));
     }
-    if(r){ const im = infatMod();
-      const total = Math.max(0, r.total + im.atk + (bm.dmg||0) + berN + wFlame + sStance + twisted + tDmg + im.delta + wAcc + critExtra);   // wAcc: Fainted Living Weapon is −2 on EVERY roll
+    if(r){ const im = infatMod(), cx = condMods();
+      let total = Math.max(0, r.total + im.atk + (bm.dmg||0) + berN + wFlame + sStance + twisted + tDmg + cx.dmg + im.delta + wAcc + critExtra);   // wAcc: Fainted Living Weapon is −2 on EVERY roll
+      if(cx.mult !== 1) total = Math.max(0, Math.floor(total * cx.mult));
       const parts = [`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`, `+ ${im.atk} ${atkLbl}${im.halved?" (halved — Infatuated)":""}`];
       if(bm.dmg) parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs (${buffSources(t,"dmg")})`);
       if(berN) parts.push(`+${berN} ${BERSERKER_LESSONS} (Intimidate ${rankNum(t.skills?.intimidate)} + ${t.injuries||0} Injur${(t.injuries||0)===1?"y":"ies"}${pushOn?", doubled by "+BERSERKER_PUSH:""})`);
@@ -5441,6 +5601,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       if(sStance) parts.push(`+${sStance} Falling Boulder Stance`);
       if(twisted) parts.push(`+${twisted} ${twistedPowerWhy(isSpecAtk)}`);
       if(tDmg) parts.push(`+${tDmg} ${tBoost.item}`);
+      if(cx.dmg) parts.push(`${cx.dmg>0?"+":"−"}${Math.abs(cx.dmg)} ${cx.why.join(" & ")}`);
+      if(cx.mult !== 1) parts.push(`×${cx.mult} ${cx.why.join(" & ")}`);
       if(im.delta) parts.push(`${im.delta} Infatuated`);
       if(wAcc) parts.push(`${wAcc} Fainted Living Weapon`);
       if(critWhy.length) parts.push(critWhy.join(" "));
@@ -7972,6 +8134,20 @@ const PATRON_STATS = {
   "Reshiram":"spatk","Zekrom":"atk","Kyurem":"hp","Dialga":"spatk","Palkia":"spatk",
   "Giratina":"hp","Xerneas":["atk","spatk"],"Yveltal":["atk","spatk"],
   "Zygarde":"hp","Diancie":["def","spdef"],
+  /* --- The Book of Divines (v8) adds the post-Gen-6 Pantheon to the p.52 table --------------- */
+  "Galarian Articuno":"spatk","Galarian Zapdos":"atk","Galarian Moltres":"spdef",
+  "Regieleki":"spd","Regidrago":"hp",
+  "Hoopa":"spatk","Volcanion":"spatk",
+  "Tapu Koko":"spd","Tapu Lele":"spatk","Tapu Bulu":"atk","Tapu Fini":"spdef",
+  "Solgaleo":["hp","atk"],"Lunala":["hp","spatk"],"Necrozma":"spatk",
+  "Magearna":"spatk","Marshadow":["atk","spd"],"Zeraora":"spd",
+  "Melmetal":["hp","atk","def"],
+  "Zacian":["atk","spd"],"Zamazenta":["def","spdef","spd"],"Eternatus":"spatk",
+  "Urshifu":"atk","Zarude":"atk",
+  "Glastrier":"atk","Spectrier":"spatk","Calyrex":"hp",
+  /* Not on the printed table: "In the event your Patron isn't a standard Legendary Pokemon, Patron
+     Stats are typically just the Pokemon's highest Stat" (p.52) — left as a choice for the GM. */
+  "MissingNo":"any","Ultra Space (Faller)":"any",
   "Vulpoxen":"spatk",   // homebrew: the created Fire/Ghost legendary bonded to Lázaro
   "Chien-Pao":["atk","spd"],   // homebrew Pantheon entry: The Blessed and the Damned
 };
@@ -7988,27 +8164,43 @@ const GIFT_GROUPS = [
     ["Major","Flash Fire (Entei)","Minor Gift - Elemental Soul","You gain the Flash Fire Ability."],
     ["Major","Volt Absorb (Raikou)","Minor Gift - Elemental Soul","You gain the Volt Absorb Ability."],
     ["Major","Water Absorb (Suicune)","Minor Gift - Elemental Soul","You gain the Water Absorb Ability."],
+    ["Major","Soul Surge","Major Gift - Elemental Manipulation, your Patron's other Major Gift","Scene Free Action, when you use a Damaging Move: the Move's Type changes to that of the Capability granted by Elemental Manipulation, and until the end of your next turn anyone who hits you with a Melee attack takes a tick of damage."],
+  ]},
+  /* The Galarian Birds — the ones that divested themselves from their base elements and rebelled
+     against Lugia (Divines pp.5, 54). Their Patron Stats are on the p.52 table in their own right. */
+  { group:"The Galarian Birds", patrons:["Galarian Articuno","Galarian Zapdos","Galarian Moltres"], gifts:[
+    ["Minor","Perpetual Spite","GM Permission","While Enraged, you have no restrictions on which actions you can take."],
+    ["Major","Defiance to the End","Minor Gift - Perpetual Spite","Daily Free Action when you would Faint: you do not Faint, and regain HP equal to 25% of your Maximum HP. You may immediately make an At-Will attack as a Free Action Reaction."],
+    ["Major","Prime Fury","Minor Gift - Perpetual Spite","You gain the Prime Fury Ability."],
+    ["Major","Mirage Form (Galarian Articuno)","Major Gift - Prime Fury","Scene Standard Action: mark 3 free spots within your movement range. Once before the end of the Scene, when targeted by an attack, you may remove yourself from the board and reappear at one of the marked spots if unoccupied; if the attack can no longer target you it automatically misses."],
+    ["Major","Emotion Burn (Galarian Moltres)","Major Gift - Prime Fury","Scene Standard Action: foes within a Burst 2 lose their Shift action on their next turn (they may still exchange their Standard for a Shift)."],
+    ["Major","Lightning Reposition (Galarian Zapdos)","Major Gift - Prime Fury","Scene Shift Action: move up to 10m. This does not provoke reactions, and may cross liquid surfaces and go up or down sheer cliffs."],
   ]},
   { group:"Celebi", patrons:["Celebi"], gifts:[
     ["Minor","Catastrophe Sense","GM Permission","Intuitive sense of when natural disasters/catastrophes are likely to occur near you."],
     ["Major","Probability Control","Minor Gift - Catastrophe Sense","You gain the Probability Control Ability."],
-    ["Major","Sprouter","Minor Gift - Catastrophe Sense","You gain the Sprouter Capability."],
+    ["Major","Nature's Spirit","Minor Gift - Catastrophe Sense","You gain the Sprouter Capability, are immune to Powder Moves, and ignore the effects of Slow Terrain while in non-artificial environments."],
+    ["Major","Commune with Nature","Major Gift - Nature's Spirit","Drain 1 AP Extended Action, in a non-artificial area: ask a question of your immediate surroundings (up to 100m in every direction). The spirit of the area answers in a sentence or two, to the best of its ability — it only knows what has happened there, and is not all-knowing."],
   ]},
   { group:"The Golems (Regis)", patrons:["Regirock","Regice","Registeel","Regigigas"], gifts:[
     ["Minor","Stoic Stature","GM Permission","Subtract half your Athletics or Focus Rank from meters Push effects move you."],
     ["Major","Mark of Loyalty","Minor Gift - Stoic Stature","1 AP Free Action, target your Pokémon: treat it as one Loyalty higher for the rest of the turn."],
-    ["Major","Clear Body","Major Gift - Mark of Loyalty","You gain the Clear Body Ability."],
+    ["Major","Clear Body","Minor Gift - Stoic Stature","You gain the Clear Body Ability."],
+    ["Major","Hammer Arm","Minor Gift - Stoic Stature","You learn the Move Hammer Arm."],
+    ["Major","Unstoppable Juggernaut","Major Gift - Hammer Arm","2 AP Free Action when you hit a foe with a single-target Physical Attack: the Move gains the Push Keyword and pushes the target half your Athletics or Focus Rank in meters (added on to any existing push). Anyone pushed into another creature pushes that creature the remaining distance."],
   ]},
   { group:"Jirachi", patrons:["Jirachi"], gifts:[
     ["Minor","Watchful Sleep","GM Permission","Make Perception Checks to detect imminent dangers while sleeping."],
     ["Major","Eye of Truth","Minor Gift - Watchful Sleep","1 AP Standard Action: determine whether a professed desire is sought for altruistic reasons."],
+    ["Major","Serene Grace","Minor Gift - Watchful Sleep","You gain the Serene Grace Ability."],
     ["Major","Doom Desire","Major Gift - Eye of Truth","You learn the Move Doom Desire."],
   ]},
   { group:"Eon Duo (Latias/Latios)", patrons:["Latias","Latios"], gifts:[
     ["Minor","Loyal Heart","GM Permission","You are immune to Infatuation."],
     ["Major","Sight Sharing","Minor Gift - Loyal Heart, *Special","Taken alongside a partner (one via Latias, one via Latios) — you become Link Partners, share senses, and never hit each other with AoE unless you want to."],
-    ["Major","Mist Ball (Latias)","Major Gift - Sight Sharing","You learn the Move Mist Ball."],
-    ["Major","Luster Purge (Latios)","Major Gift - Sight Sharing","You learn the Move Luster Purge."],
+    ["Major","Harmonious Spirits","Minor Gift - Loyal Heart","Daily Free Action: all allied Trainers and Pokémon within 5m (including you) become Linked until the end of the Scene, or until recalled or Fainted. Linked creatures may communicate telepathically, and any of them may, as a Free Action Interrupt when another Linked creature takes damage, halve that damage — the interrupter loses HP equal to the damage the other did not take, which may not be reduced in any way."],
+    ["Major","Mist Ball (Latias)","Major Gift - Harmonious Spirits","You learn the Move Mist Ball."],
+    ["Major","Luster Purge (Latios)","Major Gift - Harmonious Spirits","You learn the Move Luster Purge."],
   ]},
   { group:"Lake Guardians", patrons:["Azelf","Uxie","Mesprit"], gifts:[
     ["Minor","Force of Will (Azelf)","GM Permission","Reroll all 1s on Focus and Command Checks."],
@@ -8017,37 +8209,104 @@ const GIFT_GROUPS = [
     ["Major","Shatter Memory (Uxie)","Minor Gift - Fount of Knowledge","3 AP Standard Action: disable one random Ability or two random Moves for the encounter; DC 10 Focus to recall complex memories for 15 min."],
     ["Minor","Emotion's Heart (Mesprit)","GM Permission","Reroll all 1s on Charm and Intuition Checks."],
     ["Major","Negate Emotion (Mesprit)","Minor Gift - Emotion's Heart","3 AP Standard Action: target becomes immune to Enraged/Confused/Infatuation for the encounter, but treats Intimidate/Charm/Intuition/Guile as Pathetic for 15 min."],
+    ["Major","Failsafe Guardian","One Lake Guardian Major Gift","2 AP Standard Action, Interrupt, on a creature within 10m: attempt to disable one of the target's Legendary Gifts — opposed Focus Checks; on a success one of the target's Gifts that you know of is disabled until the end of the Scene. This does not tell you what Gifts anyone has; you must have seen it used or otherwise shown."],
+    ["Major","Future Sight","One Lake Guardian Major Gift","You learn the Move Future Sight."],
   ]},
   { group:"Sea Guardians (Manaphy)", patrons:["Manaphy"], gifts:[
     ["Minor","Sailors' Guardian","GM Permission","Wild Pokémon up to twice your Trainer Level won't attack a water-borne vessel you travel on."],
     ["Major","Hydration","Minor Gift - Sailors' Guardian","You gain the Hydration Ability."],
+    ["Major","Water Soul","Minor Gift - Sailors' Guardian","You gain the Gilled Capability, and may use your Overland Speed in place of your Swim Speed."],
     ["Major","Heart Swap (Manaphy)","Minor Gift - Sailors' Guardian","You learn the Move Heart Swap."],
   ]},
   { group:"Shaymin", patrons:["Shaymin"], gifts:[
     ["Minor","Plant Intuition","GM Permission","Reroll all 1s on plant-related Survival Checks; auto-identify berries and apricorns on sight."],
-    ["Major","Pure Breathing","Minor Gift - Plant Intuition","Immune to Rage Powder, Poison Gas, Poisonpowder, Sleep Powder, Smog, Smokescreen, Spore, Stun Spore, Sweet Scent."],
-    ["Major","Sprouter","Minor Gift - Plant Intuition","You gain the Sprouter Capability."],
-    ["Major","Seed Flare","Major Gift - Pure Breathing, Major Gift - Sprouter","You learn the Move Seed Flare."],
+    ["Major","Pure Breathing","Minor Gift - Plant Intuition","Immune to Rage Powder, Poison Gas, Poisonpowder, Sleep Powder, Smog, Smokescreen, Spore, Stun Spore and Sweet Scent. You also gain the Sprouter Capability."],
+    ["Major","Nature's Purity","Minor Gift - Plant Intuition","2 AP Standard Action, targeting yourself or an adjacent creature: cure the target of one Status Affliction."],
+    ["Major","Seed Flare","Major Gift - Pure Breathing, Major Gift - Nature's Purity","You learn the Move Seed Flare."],
   ]},
   { group:"Swords of Justice", patrons:["Cobalion","Terrakion","Virizion","Keldeo"], gifts:[
-    ["Minor","Spirit of Justice","GM Permission","Add your Spirit Modifier instead of Body for Combat Checks; +2 to Disarming or resisting Disarming."],
-    ["Major","Sacred Sword","Minor Gift - Spirit of Justice","You learn the Move Sacred Sword."],
+    ["Minor","Spirit of Justice","GM Permission","+2 accuracy on Grapple, Push and Disarm Maneuvers, and you may use Focus instead of the usual Skill when making or opposing them."],
     ["Major","Courage","Minor Gift - Spirit of Justice","You gain the Courage Ability."],
+    ["Major","Combat Challenge","Minor Gift - Spirit of Justice","1 AP Free Action, Interrupt, when an adjacent enemy you have hit since the beginning of your last turn Disengages: make a Struggle Attack against it. On a hit it may not disengage. This counts as making an Attack of Opportunity for how often you may use it."],
+    ["Major","Sacred Sword","Major Gift - Courage, Major Gift - Combat Challenge","You learn the Move Sacred Sword."],
   ]},
   { group:"Kami Trio", patrons:["Tornadus","Thundurus","Landorus"], gifts:[
     ["Minor","Cloud Reading","GM Permission","+3 to Survival Checks to discern upcoming weather from clouds."],
     ["Major","Levitate","Minor Gift - Cloud Reading","You gain the Levitate Ability."],
-    ["Major","Therian Form","Minor Gift - Cloud Reading","Daily Free Action: keep an extra stat block (redistribute level-up / [+Any Stat] points) and swap to it for the rest of an encounter."],
+    ["Major","Therian Form","Minor Gift - Cloud Reading","Static | Daily Free Action: keep an extra stat block (redistributing any Stat Points from level-ups or [+Any Stat] tags as you wish), and swap to it for the rest of the encounter. It may be ended early as a Standard Action, and deactivates if you Faint. While active you take on slight Avian, Bestial or Draconic characteristics after your Patron."],
+    ["Major","Storm Spirit","Major Gift - Therian Form","Daily Free Action: until the end of your next turn fierce winds whip around you in a Burst 3 that stays centred on you as you move. The burst is Slow terrain for anything using Sky or Levitate speeds. At the start of your turn you may push any creature in the burst that isn't touching the ground 1m in any direction — and if you are in Therian Form, they also take a tick of damage. Maintain the burst for another turn as a Swift Action."],
   ]},
   { group:"Meloetta", patrons:["Meloetta"], gifts:[
     ["Minor","Dazzling the Stage","GM Permission","Using song/dance for Intimidate, Guile or Charm, add half your highest Rank among them to the Check."],
     ["Major","Soundproof","Minor Gift - Dazzling the Stage","You gain the Soundproof Ability."],
-    ["Major","Relic Song","Major Gift - Soundproof","You learn the Move Relic Song."],
+    ["Major","Natural Inspiration","Minor Gift - Dazzling the Stage","Scene x2 Free Action when you spend AP or use Relic Song: an ally within 10m gains 1 temporary AP and +2 accuracy, both until the end of their next turn."],
+    ["Major","Relic Song","Major Gift - Soundproof, Major Gift - Natural Inspiration","You learn the Move Relic Song."],
   ]},
   { group:"Diancie", patrons:["Diancie"], gifts:[
     ["Minor","Royal Privilege","GM Permission","Wear Shards as a Trainer Accessory; +2 to the Skill linked to the shard's colour (Red→Intimidate, Orange→Command, Yellow→Charm, Green→Intuition, Blue→Guile, Violet→Focus)."],
     ["Major","Magic Bounce","Minor Gift - Royal Privilege","You gain the Magic Bounce Ability."],
+    ["Major","Heart Force","Minor Gift - Royal Privilege","Daily Standard Action: all allies within 5m gain +1 accuracy and +5 damage on the next attack they make this Scene. Until the end of your next turn you gain +5 DR for every ally affected."],
     ["Major","Diamond Storm","Major Gift - Magic Bounce","You learn the Move Diamond Storm."],
+  ]},
+  { group:"Hoopa", patrons:["Hoopa"], gifts:[
+    ["Minor","Portal Sight","GM Permission","You see residual afterimages left by teleportation and dimensional breaches. Teleport / Teleporter residue fades after 24h; stronger effects can last weeks. The residue sticks to creatures, so you can tell someone has transported — and recognise them as the same creature if you saw both."],
+    ["Major","Dimensional Lock","Minor Gift - Portal Sight","1 AP Standard Action, Interrupt, when a creature within 10m uses the Teleporter Capability, Teleport or Ally Switch: the Move or Shift fails and the Action is wasted, and the creature is Suppressed. Until the Suppression wears off it is Stuck, Trapped and Vulnerable."],
+    ["Major","Ring Portal","Major Gift - Dimensional Lock","Bind 1 AP Extended Action: create a 2m ring-shaped portal, embedded in a surface or floating in midair, that remains until you unbind the AP. May be Bound several times. The portal may be visible or invisible (DC 25 Occult Education to detect an invisible one). Drain 1 AP to connect two of your portals for ten minutes — while connected they are visible and passable. Unbinding does not end a connection early."],
+    ["Major","Hyperspace Hole","Major Gift - Dimensional Lock, Major Gift - Ring Portal","You learn the Move Hyperspace Hole."],
+  ]},
+  { group:"Volcanion", patrons:["Volcanion"], gifts:[
+    ["Minor","Fiery Core","GM Permission","You are immune to the Burn status."],
+    ["Major","Water Absorb (Volcanion)","Minor Gift - Fiery Core","You gain the Water Absorb Ability."],
+    ["Major","Vapor Cloud","Minor Gift - Fiery Core","1 AP Standard Action: a cloud of Steam Hazards erupts in a Blast 3 centred on you, persisting until the end of the encounter or until Defog or Whirlwind is used. Attacks made from or into the Steam take −3 accuracy, and any creature in it at the start of its turn that isn't immune to Burns takes a tick of damage."],
+    ["Major","Steam Eruption","Major Gift - Water Absorb (Volcanion)","You learn the Move Steam Eruption."],
+  ]},
+  { group:"The Tapus", patrons:["Tapu Koko","Tapu Lele","Tapu Bulu","Tapu Fini"], gifts:[
+    ["Minor","Thunder Spirit (Tapu Koko)","GM Permission","+2 to Acrobatics Checks and +1 to your High Jump value."],
+    ["Minor","Trickster Spirit (Tapu Lele)","GM Permission","+2 to Guile Checks and +1 to your Overland Speed."],
+    ["Minor","Earth Spirit (Tapu Bulu)","GM Permission","+2 to Athletics Checks and +1 to your Power."],
+    ["Minor","Water Spirit (Tapu Fini)","GM Permission","+2 to Focus Checks and +1 to your Swim Speed."],
+    ["Major","Electric Surge (Tapu Koko)","Minor Gift - Thunder Spirit","You gain the Electric Surge Ability."],
+    ["Major","Psychic Surge (Tapu Lele)","Minor Gift - Trickster Spirit","You gain the Psychic Surge Ability."],
+    ["Major","Grassy Surge (Tapu Bulu)","Minor Gift - Earth Spirit","You gain the Grassy Surge Ability."],
+    ["Major","Misty Surge (Tapu Fini)","Minor Gift - Water Spirit","You gain the Misty Surge Ability."],
+    ["Major","Nature's Madness","One Tapu Major Gift","You learn the Move Nature's Madness."],
+    ["Major","Champion of Nature","One Tapu Major Gift","Daily Standard Action: until the end of the Scene you gain +2 to your Overland, Swim, Jump and Power Capabilities, and your Struggle Attacks and Weapon Moves deal +5 damage and may become a Type of your choosing — Electric for Tapu Koko, Psychic for Tapu Lele, Grass for Tapu Bulu, Water for Tapu Fini, and Fairy for any of them."],
+  ]},
+  { group:"Magearna", patrons:["Magearna"], gifts:[
+    ["Minor","Regal Aide","GM Permission","+2 to Charm, Stealth and Intuition Checks made when interacting with nobility or upper-class society."],
+    ["Major","Magic Guard","Minor Gift - Regal Aide","You gain the Magic Guard Ability."],
+    ["Major","Glory of Ages Past","Major Gift - Magic Guard","Daily Swift Action: you are cured of all Volatile Status. Until the end of the Scene all attacks targeting you take −2 to hit, and you may use the Soul Heart Ability as if you had it."],
+    ["Major","Fleur Cannon","Major Gift - Magic Guard","You learn the Move Fleur Cannon."],
+  ]},
+  { group:"Marshadow", patrons:["Marshadow"], gifts:[
+    ["Minor","Watcher in the Shadows","GM Permission","+3 to Perception and Intuition Checks concerning creatures unaware of your presence."],
+    ["Major","Unseen Lurker","Minor Gift - Watcher in the Shadows","You gain the Darkvision and Dead Silent Capabilities."],
+    ["Major","Quick Study","Minor Gift - Watcher in the Shadows","You learn the Move Copycat."],
+    ["Major","Spectral Thief","Major Gift - Quick Study, Major Gift - Unseen Lurker","You learn the Move Spectral Thief."],
+  ]},
+  { group:"Zeraora", patrons:["Zeraora"], gifts:[
+    ["Minor","Inscrutable Knowledge","GM Permission","+3 to Guile Checks made to deny or hide that you know something."],
+    ["Major","Volt Absorb (Zeraora)","Minor Gift - Inscrutable Knowledge","You gain the Volt Absorb Ability."],
+    ["Major","Zeraora's Puzzle","Minor Gift - Inscrutable Knowledge","Daily Standard Action: choose a creature within 10m that can hear you and roll a Knowledge Skill of your choice. The target is Suppressed and Vulnerable until it equals or beats your Check with the same Knowledge Skill or Focus (a Standard Action each try). It may also end the effect by agreeing to answer your next three questions truthfully — it is compelled to answer, but may still act, fight or flee."],
+    ["Major","Plasma Fists","Major Gift - Volt Absorb (Zeraora)","You learn the Move Plasma Fists."],
+  ]},
+  { group:"Melmetal", patrons:["Melmetal"], gifts:[
+    ["Minor","Metal Sense","GM Permission","You sense Steel-Type Pokémon and large amounts of metal. Pokémon are sensed at 3m (Small), 5m (Medium), 10m (Large), 15m (Huge) and 20m (Gigantic), doubled for pure Steel-Types. Range for objects is the GM's call — possibly hundreds of metres for something like a skyscraper. You know whether what you sense is a Pokémon, and nothing more."],
+    ["Major","Metal Infusion","Minor Gift - Metal Sense","Daily Extended Action on one touched Pokémon: a liquid metal skin replaces one of its Types with Steel (a part-Steel target becomes pure Steel; a pure Steel target instead gains +2 accuracy and +2 Critical Hit range). Either way it may use Metal Burst as if it were on its Move List — doing so ends the effect immediately. Otherwise it lasts until the next Extended Rest."],
+    ["Major","Liquid Metal Body","Minor Gift - Metal Sense","You gain the Amorphous Capability and are immune to being Poisoned."],
+    ["Major","Double Iron Bash","Major Gift - Liquid Metal Body","You gain the Move Double Iron Bash."],
+  ]},
+  { group:"Urshifu", patrons:["Urshifu"], gifts:[
+    ["Minor","Guiding Tutelage","GM Permission","You may spend AP for allies to increase their accuracy as though they were yourself."],
+    ["Major","Follow My Lead","Minor Gift - Guiding Tutelage","Scene x2 Swift Action when you hit a target: once before the start of your next turn, one ally attacking that target may treat their accuracy roll against it as an 11. May be declared after the roll, and does not affect the attack's results against any other target."],
+    ["Major","Trial Through Adversity","Minor Gift - Guiding Tutelage","Scene Free Action when you or an ally miss all targets with an attack, fail a Skill Check, or take Massive Damage. Missed attack: the character gains +2 accuracy for the Scene. Failed Skill Check: their next Skill Check treats the lowest die as a 6. Massive Damage: they gain 2 ticks of Temporary Hit Points and may clear one Injury or Status condition."],
+    ["Major","Wicked Strikes","Major Gift - Follow My Lead","Choose either Wicked Blow or Surging Strikes. You gain the chosen Move."],
+  ]},
+  { group:"Zarude", patrons:["Zarude"], gifts:[
+    ["Minor","Jungle Predator","GM Permission","Reroll all 1s on Intimidate and Acrobatics Checks."],
+    ["Major","Instill Fear","Minor Gift - Jungle Predator","Scene Free Action on a foe within 5m: it chooses to Cower or to Panic. Cowering costs it its next available Shift Action and −1 CS to Attack and Special Attack. Panicking costs it −1 CS to Defense and Special Defense, and at the start of its next turn it must spend its Shift Action moving as far from you as possible, provoking AoO as normal and heedless of hazards. Either way it is Vulnerable until the end of its next turn."],
+    ["Major","Forest Ambush","Minor Gift - Jungle Predator","Daily x3 Swift Action: teleport up to 10m, so long as you end adjacent to a living plant or Grass-Type of at least Medium size, or in Slow or Rough Terrain that is at least partly living plantlife."],
+    ["Major","Jungle Healing","Major Gift - Forest Ambush","You gain the Move Jungle Healing."],
   ]},
   { group:"Mew", patrons:["Mew"], gifts:[
     ["Minor","Motherly Compassion","GM Permission","+3 to Intuition/Charm checks to discern emotions and comfort someone."],
@@ -8070,17 +8329,20 @@ const GIFT_GROUPS = [
     ["Major","Drought (Groudon)","Minor Gift - Landmaster","You gain the Drought Ability."],
     ["Major","Earthshaker (Groudon)","Minor Gift - Landmaster","You gain the Groundshaper Capability."],
     ["Major","Magma Spirit (Groudon)","Minor Gift - Landmaster","Daily Standard Action: for 3 rounds foes within 6m lose the benefits of Sunny Day."],
-    ["Pact","Eruption (Groudon)","All Groudon Major Gifts","You learn the Move Eruption."],
+    ["Pact","Precipice Blades (Groudon)","All Groudon Major Gifts","You learn the Move Precipice Blades."],
+    ["Pact","Eruption (Groudon)","All Groudon Major Gifts","You learn the Move Eruption.  [B&D 1.05 — the Divines update prints Precipice Blades instead.]"],
     ["Minor","Seamaster (Kyogre)","GM Permission","Treat deep water you aren't fully submerged in as Regular Terrain."],
     ["Major","Drizzle (Kyogre)","Minor Gift - Seamaster","You gain the Drizzle Ability."],
     ["Major","Wavecrasher (Kyogre)","Minor Gift - Seamaster","You gain the Fountain Capability."],
     ["Major","Aqua Spirit (Kyogre)","Minor Gift - Seamaster","Daily Standard Action: for 3 rounds foes within 6m lose the benefits of Rain Dance."],
-    ["Pact","Water Spout (Kyogre)","All Kyogre Major Gifts","You learn the Move Water Spout."],
+    ["Pact","Origin Pulse (Kyogre)","All Kyogre Major Gifts","You learn the Move Origin Pulse."],
+    ["Pact","Water Spout (Kyogre)","All Kyogre Major Gifts","You learn the Move Water Spout.  [B&D 1.05 — the Divines update prints Origin Pulse instead.]"],
     ["Minor","Clear Skies (Rayquaza)","GM Permission","You learn the Move Defog."],
     ["Major","Air Lock (Rayquaza)","Minor Gift - Clear Skies","You gain the Air Lock Ability."],
     ["Major","Air Adept (Rayquaza)","Minor Gift - Clear Skies","You gain the Guster Capability."],
     ["Major","Sky Spirit (Rayquaza)","Minor Gift - Clear Skies","Daily Standard Action (needs Clear weather): for 5 rounds halve foes' Sky/Levitate within 10m; allies within 10m +10 Initiative."],
-    ["Pact","Hyper Beam (Rayquaza)","All Rayquaza Major Gifts","You learn the Move Hyper Beam."],
+    ["Pact","Dragon Ascent (Rayquaza)","All Rayquaza Major Gifts","You learn the Move Dragon Ascent."],
+    ["Pact","Hyper Beam (Rayquaza)","All Rayquaza Major Gifts","You learn the Move Hyper Beam.  [B&D 1.05 — the Divines update prints Dragon Ascent instead.]"],
   ]},
   { group:"Creation Trio", patrons:["Dialga","Palkia","Giratina"], gifts:[
     ["Major","Realm Portal","One Creation Trio Major Gift","Daily Extended Action: open a 2-minute portal to any location you've visited within 20 miles."],
@@ -8146,7 +8408,8 @@ const GIFT_GROUPS = [
   ]},
   { group:"Mortality Duo (Xerneas/Yveltal)", patrons:["Xerneas","Yveltal"], gifts:[
     ["Major","Shared Mortality","One Mortality Duo Major Gift","Daily x3 Standard Action: pool your remaining HP with an allied target's and split it as you wish."],
-    ["Minor","Rejuvenating Aura (Xerneas)","GM Permission","On an Extended Rest, you and nearby Trainers/Pokémon are treated as if you spent the night at a Poké Center."],
+    ["Minor","Sense of Life (Xerneas)","GM Permission","You intuitively tell when a creature is below 50% of its maximum HP, and whether it is Heavily Injured."],
+    ["Minor","Rejuvenating Aura (Xerneas)","GM Permission","On an Extended Rest, you and nearby Trainers/Pokémon are treated as if you spent the night at a Poké Center.  [B&D 1.05 — the Divines update prints Sense of Life instead.]"],
     ["Major","Bounty of Life (Xerneas)","Minor Gift - Rejuvenating Aura","Daily Standard Action: a target is cured of all Injuries and Status Effects."],
     ["Major","Fairy Aura (Xerneas)","Major Gift - Bounty of Life","You gain the Fairy Aura Ability."],
     ["Pact","Geomancy (Xerneas)","All Xerneas Major Gifts & shared Mortality Duo Gifts","You learn the Move Geomancy."],
@@ -8159,14 +8422,103 @@ const GIFT_GROUPS = [
     ["Minor","World Serpent's Embrace","GM Permission","Scene Extended Action: sense whether Legendary Pokémon are in the vicinity and roughly where."],
     ["Major","He Who Cannot Be Shackled","Minor Gift - World Serpent's Embrace","Daily x3 Free Action when Trapped/Slowed/Tripped/Grappled: evade that Status/Maneuver."],
     ["Major","God Crusher","Minor Gift - World Serpent's Embrace","You gain the Godslayer Feature (or another Feature if you already have it); Godslayer's AC becomes 8 and no feedback."],
+    ["Minor","World's Guardian","GM Permission","You occasionally receive a vision of a powerful foe, or of an event yet to pass, that could seriously damage the world or disrupt the fabric between dimensions."],
+    ["Major","Serpent's Prey","Minor Gift - World's Guardian","Daily Standard Action on a target within 10m: you gain +2 accuracy and +5 damage against it, and while it is more than 5m away at the start of your turn you may Teleport to any space adjacent to it as a Shift Action. Lasts until the end of the Scene."],
+    ["Major","Cells of the World","Minor Gift - World's Guardian","Daily Free Action when you fall to 0 or fewer HP: you are instead set to 1 HP (and to 9 Injuries if the triggering effect brought you to 10 or more). Gain Temporary HP equal to half your Maximum HP, and ignore the effects of being Heavily Injured until you no longer have Temporary HP."],
     ["Major","Aura Break","Minor Gift - World Serpent's Embrace","You gain the Aura Break Ability."],
     ["Pact","Land's Wrath","All Zygarde Major Gifts","You learn the Move Land's Wrath."],
+  ]},
+  { group:"Zacian & Zamazenta", patrons:["Zacian","Zamazenta"], gifts:[
+    ["Minor","Experience of Ages","GM Permission","You gain a bonus to any roll required for Combat Maneuvers equal to half your Intuition Rank."],
+    ["Major","Crowned Aura","Two Zacian & Zamazenta Major Gifts","Daily Swift Action: gain +1 CS to a stat of your choice, plus either +2 Critical Hit range or 5 DR, until the end of the Scene or until you Faint. Until it ends, enemies adjacent to you take −2 accuracy on any attack that doesn't include you as a target."],
+    ["Major","Vorpal Strike (Zacian)","Minor Gift - Experience of Ages","Scene Free Action when you hit with an attack: after it resolves, one target hit is one step more vulnerable to all damage for one full round."],
+    ["Major","Intrepid Sword (Zacian)","Major Gift - Vorpal Strike","You gain the Intrepid Sword Ability."],
+    ["Pact","Behemoth Blade (Zacian)","All Zacian Major Gifts, Major Gift - Crowned Aura","You learn the Move Behemoth Blade."],
+    ["Major","Aegis Guard (Zamazenta)","Minor Gift - Experience of Ages","Scene Free Action, Interrupt, when a Trainer or Pokémon within 3m is hit by an attack: for one full round the triggering creature, and every other ally hit by that attack, resists all damage one step further."],
+    ["Major","Dauntless Shield (Zamazenta)","Major Gift - Aegis Guard","You gain the Dauntless Shield Ability."],
+    ["Pact","Behemoth Bash (Zamazenta)","All Zamazenta Major Gifts, Major Gift - Crowned Aura","You learn the Move Behemoth Bash."],
+  ]},
+  { group:"Glastrier & Spectrier", patrons:["Glastrier","Spectrier"], gifts:[
+    ["Minor","Eye of Judgement","GM Permission","+3 to Perception and Intuition when assessing another's capabilities."],
+    ["Major","Prove Your Worth","Two Glastrier & Spectrier Major Gifts","Daily Swift Action on a foe within 10m: you and the target may each teleport adjacent to the other as a Shift Action, and each take −3 accuracy against any character besides the other. Lasts until the end of the Scene or until either of you Faints; the first of you to Faint grants the other +2 CS in a stat of their choice."],
+    ["Major","Frigid Armor (Glastrier)","Minor Gift - Eye of Judgement","Daily Swift Action: until the end of the Scene you gain 5 DR and your Overland rises to 8 if lower. You may end it early as a Free Action Reaction when hit by an attack, Freezing the attacker for one full round."],
+    ["Major","Chilling Neigh (Glastrier)","Major Gift - Frigid Armor","You gain the Chilling Neigh Ability."],
+    ["Pact","Glacial Lance (Glastrier)","All Glastrier Major Gifts, Major Gift - Prove Your Worth","You learn the Move Glacial Lance."],
+    ["Major","Soul Sight (Spectrier)","Minor Gift - Eye of Judgement","Daily Swift Action: until the end of the Scene you gain the Blindsense Capability and +2 accuracy. You may end it early as a Free Action when you hit with an attack, Confusing the target and leaving it Slowed until the Confusion is cured."],
+    ["Major","Grim Neigh (Spectrier)","Major Gift - Soul Sight","You gain the Grim Neigh Ability."],
+    ["Pact","Astral Barrage (Spectrier)","All Spectrier Major Gifts, Major Gift - Prove Your Worth","You learn the Move Astral Barrage."],
+  ]},
+  { group:"Calyrex", patrons:["Calyrex"], gifts:[
+    ["Minor","Regal Right","GM Permission","You may use Command instead of the usual Skill for Grapple, Push and Disarm Maneuvers, and for any check to mount or remain mounted."],
+    ["Major","Witness Me","Minor Gift - Regal Right","Scene Swift Action: until the end of your next turn, foes within 8m take −3 accuracy against any character other than you. Each attack an affected character makes against you before it expires gives you +1 CS in a stat of your choice (chosen separately for each attack)."],
+    ["Major","Revitalize the Land","Minor Gift - Regal Right","Daily Shift Action: a Burst 5 around you springs to life with vibrant plants, whatever the terrain or urban structures. The area counts as Slow and Rough terrain for enemies, even those with Naturewalk, and you may place up to 4 Medium Trees up to 4m high anywhere in the zone as Blocking Terrain. At the end of the Scene the plants remain as ordinary forested terrain."],
+    ["Major","As One","Minor Gift - Regal Right","You gain the As One Capability, though you do not gain Types from using it."],
+    ["Pact","Splendorous Rider","All Calyrex Major Gifts","You gain the Splendorous Rider Ability."],
   ]},
   { group:"Outsider — Mewtwo Symbiant", patrons:["Mewtwo"], gifts:[
     ["Minor","Twin Souls","GM Permission","Telepathically communicate with your bound Mewtwo at any distance; gain the Soulbound Edge."],
     ["Major","Expanded Horizons","Minor Gift - Twin Souls","Gain the Telepath or Telekinetic Capability (or the Godslayer Feature if you have both)."],
     ["Major","Mental Suggestion","Major Gift - Expanded Horizons","Daily Extended Action (with your Mewtwo nearby): Focus check as Telepath to instill a thought/action into a target's mind."],
     ["Pact","Psystrike","Twin Souls, Expanded Horizons, Mental Suggestion","You learn the Move Psystrike."],
+  ]},
+  /* MissingNo has no single reading, so the book prints three separate Gift sets and tells you to
+     pick the one that matches your MissingNo (or to grant none at all, like the other Outsiders).
+     Genesect, Deoxys and Silvally explicitly grant no Gifts — they are aliens and experiments. */
+  { group:"Outsider — MissingNo (Cosmic Horror)", patrons:["MissingNo"], gifts:[
+    ["Minor","Alien Countenance","GM Permission","You may add your Mind Modifier instead of your Body Modifier to Intimidate Checks, and gain +2 to Intimidate Checks against Pokémon."],
+    ["Major","Amorphous","Minor Gift - Alien Countenance","You gain the Amorphous Capability."],
+    ["Major","Phasing","Minor Gift - Alien Countenance","You gain the Phasing Capability."],
+    ["Major","Mindlock","Minor Gift - Alien Countenance","You gain the Mindlock Capability."],
+    ["Pact","Hypergeometry","All MissingNo Major Gifts","Static: you may always treat the distance between you and any Trainer or Pokémon as one metre greater or one metre less, as you choose, for range and travel — the value is fixed when an action is announced and cannot be changed afterwards, so it cannot be used to dodge melee. Scene Standard Action, Interrupt: once per Scene, when hit by a single-target attack, it instead hits a target of your choice in an adjacent square."],
+  ]},
+  { group:"Outsider — MissingNo (Fallen Creator)", patrons:["MissingNo"], gifts:[
+    ["Minor","Detect Heretic","GM Permission","You intuitively sense the presence of those carrying non-MissingNo Gifts, though never who they are. The more Gifts someone has the further off you sense them, but never beyond about 15 metres."],
+    ["Major","Knight of the Fallen God","Minor Gift - Detect Heretic","You gain the Giftsapper Feature regardless of its prerequisites, and are not bound by its requirement to have no Gifts. Giftsapper gained this way has no effect on Gifts granted by MissingNo."],
+    ["Major","Corrupt Existence","Minor Gift - Detect Heretic","X AP Standard Action on a Trainer or Pokémon within 6m: for each AP spent (max 3) roll 1d20 — the target becomes one step weaker against a Type determined as if rolling for the Type of Hidden Power. Lasts until the end of the encounter, even if the target is recalled."],
+    ["Major","Storm of the Fallen God","Minor Gift - Detect Heretic","Scene Standard Action, Range: Field. For 5 rounds the Field becomes Bugged: all combatants are treated as having had Heal Block applied to them, everyone becomes Typeless and all effects deal only Typeless damage, and at the beginning of each round every combatant other than you loses 1/16th of their maximum HP."],
+    ["Pact","Slayer of the False Gods","All MissingNo Major Gifts","Daily Standard Action on a Legendary Pokémon within 10m: dispel one of the target's Legendary Auras for the rest of the encounter."],
+  ]},
+  { group:"Outsider — MissingNo (God of Network Security)", patrons:["MissingNo"], gifts:[
+    ["Minor","Intuitive Sabotage","GM Permission","+3 to Technology Education Checks made to destroy, sabotage or otherwise disrupt modern electronics."],
+    ["Major","Glitch Message","Minor Gift - Intuitive Sabotage","2 AP Standard Action, Interrupt, targeting one instance of electronic communication you are aware of nearby — an email being typed at the next computer, a text being sent. You may view and edit the message before it is transmitted, with the sender none the wiser. On extended communication such as a phone or video call, it covers one minute per activation."],
+    ["Major","Dead Zone","Minor Gift - Intuitive Sabotage","Daily/15/30/45 Standard Action: for the next ten minutes all wireless communication within 10m of you fails — radios stop receiving, WiFi shuts down, and cell signals cannot reach phones."],
+    ["Major","See the Wired","Minor Gift - Intuitive Sabotage","Daily Standard Action: for the next 5 minutes you see networks as a visual overlay when looking at people communicating electronically — lines of light arcing from device to device."],
+    ["Pact","Ghost in The Machine","All MissingNo Major Gifts","You gain the Wired Capability. Electronics you occupy gradually degrade and begin to malfunction over time."],
+  ]},
+  { group:"Solgaleo & Lunala", patrons:["Solgaleo","Lunala"], gifts:[
+    ["Minor","Core of the Sun (Solgaleo)","GM Permission","+3 to Occult Education Checks made to identify the purpose of raw materials and reagents."],
+    ["Major","Pierce the Darkness (Solgaleo)","Minor Gift - Core of the Sun","You gain the Glow and Darkvision Capabilities."],
+    ["Major","Aura of Light (Solgaleo)","Major Gift - Pierce the Darkness","Daily Standard Action: until the end of the Scene (or until you end it as a Free Action) every space in a Burst 3 around you is lit by a bright light, and all foes in the burst take −3 evasion."],
+    ["Major","Full Metal Body (Solgaleo)","Minor Gift - Core of the Sun","You gain the Full Metal Body Ability."],
+    ["Pact","Sunsteel Strike (Solgaleo)","All Solgaleo Major Gifts","You learn the Move Sunsteel Strike."],
+    ["Minor","Heart of the Moon (Lunala)","GM Permission","+3 to Survival Checks made to navigate at night."],
+    ["Major","Embrace the Night (Lunala)","Minor Gift - Heart of the Moon","You gain the Stealth and Darkvision Capabilities."],
+    ["Major","Shroud of Darkness (Lunala)","Major Gift - Embrace the Night","Daily Standard Action: until the end of the Scene (or until you end it as a Free Action) every space in a Burst 3 around you is darkened by a clinging shadow, and all foes in the burst take −3 accuracy."],
+    ["Major","Shadow Shield (Lunala)","Minor Gift - Heart of the Moon","You gain the Shadow Shield Ability."],
+    ["Pact","Moongeist Beam (Lunala)","All Lunala Major Gifts","You learn the Move Moongeist Beam."],
+  ]},
+  { group:"Necrozma", patrons:["Necrozma"], gifts:[
+    ["Minor","Prism Shard","GM Permission","Reroll all 1s on Focus and Perception Checks."],
+    ["Major","Hunter in the Darkness","Minor Gift - Prism Shard","You gain the Darkvision and Mindlock Capabilities."],
+    ["Major","Light Devourer","Minor Gift - Prism Shard","You gain the Sunglow or Starlight Ability."],
+    ["Major","Absolute Dark","Major Gift - Light Devourer","Daily Standard Action: for the next five minutes all light within 10m of you is extinguished, leaving a black void. It is Blocking Terrain for line of sight to anyone without Darkvision or Blindsight, and anyone without either suffers Total Blindness inside it. The Glow Capability and Illuminate Ability are disabled within, and Moves granting Glow may not be used. While it is active you may not take Standard Actions; ending it is a Swift Action."],
+    ["Pact","Photon Geyser","All Necrozma Major Gifts","You learn the Move Photon Geyser."],
+  ]},
+  /* The Ultra Beasts grant nothing themselves — these come from Ultra Space and the portals, and
+     are carried by 'Fallers'. Patron Stat is the GM's call (p.52: a non-standard Patron uses its
+     highest Stat), so the roster entry is [+Any Stat]. */
+  { group:"Ultra Space (Fallers)", patrons:["Ultra Space (Faller)"], gifts:[
+    ["Minor","Faller","GM Permission, exposure to Ultra Space or another similar phenomenon","+2 to all Checks dealing with extradimensional creatures, objects and events, and −4 to Stealth Checks against them."],
+    ["Major","Dimension Sense","Minor Gift - Faller","You gain the Tracker Capability, usable only against creatures, objects and phenomena not native to your current dimension (or recently touched by such). You also know the general direction of the nearest portal or rift home, if one exists."],
+    ["Major","Dimensional Adaptation","Minor Gift - Faller","Drain 2 AP Extended Action when you finish an Extended Rest: choose Chilled, Darkvision, Gilled, Glow, Heater, Magnetic, Mindlock, Naturewalk in a terrain of your choice, or Wallclimber — plus Gravitic Tolerance (1-3) or (2-4) if the campaign uses them. You gain that Capability until the end of your next Extended Rest. May be triggered several times from one Rest."],
+    ["Major","Beast Boost","Major Gift - Dimension Sense, Major Gift - Dimensional Adaptation","You gain the Beast Boost Ability."],
+  ]},
+  { group:"Eternatus", patrons:["Eternatus"], gifts:[
+    ["Minor","Eternal Presence","GM Permission","Your Maximum HP can never be reduced below 50% of its full value."],
+    ["Major","Corrosive Presence","Minor Gift - Eternal Presence","You gain the Poison Touch Ability."],
+    ["Major","Energy Siphon","Minor Gift - Eternal Presence","Daily Standard Action on a creature within 5m: roll an AC 2 Status Attack. On a miss nothing happens and the Feature is not expended. On a hit the target loses 10 HP for each Combat Stage it has, then loses every Combat Stage not gained from Legendary Auras — and you regain 5 HP for each Combat Stage lost this way."],
+    ["Major","Dynamax","Major Gift - Energy Siphon","Daily Swift Action: take X Injuries, where X is 1 to 9. Your size grows into a Burst 1 around you if there is room, pushing creatures to the nearest unoccupied space. Until the end of the Scene you gain +2X to all Damage Rolls and 5X Temporary Hit Points."],
+    ["Pact","Dynamax Cannon","All Eternatus Major Gifts","You learn the Move Dynamax Cannon."],
   ]},
   { group:"Vulpoxen (Symbiant)", patrons:["Vulpoxen"], gifts:[
     ["Minor","Grafted Soul","GM Permission","+3 bonus to Occult Education and Medicine Education Checks concerning souls, spirits, death, and the line between the living and the dead. You can sense whether a creature within 10m has died within the last hour. (Bond deepens at Vulpoxen Lv 5.)"],
@@ -8228,6 +8580,38 @@ const MESSIAH_FEATURES = [
   effect:`You acquire a Blessing marked Rank ${f.rank} or lower. You must additionally meet any Prerequisites of the Blessing.`
     + (f.rank===4 ? " If your Patron does not have a Pact Gift, you instead require all their Major Gifts to attain Rank 4." : "") }) : f);
 
+/* ---------- Signer (book p.44) -------------------------------------------------------------------
+   The Messiah's mirror: where a Messiah channels a Patron's miracles directly, a Signer stores the
+   Divine's energy in Signs and spends them. Same shape as MESSIAH_FEATURES — every entry carries
+   [PATRON STAT], and Sign Mastery is [Ranked 4], i.e. four separate Feature purchases. */
+const SIGNER_FEATURES = [
+  { name:"Signer", prereq:"Touched, GM Permission", freq:"Static",
+    effect:"Choose a Rank 1 Blessing. You gain this Blessing in the form of a Sign. Signs store the energy of the Divine and may be activated as a Swift Action. Signs can be used once per Scene, and cost 1 AP to activate." },
+  { name:"Sign Mastery (Rank 1)", prereq:"Signer, GM Permission", freq:"Static", rank:1 },
+  { name:"Sign Mastery (Rank 2)", prereq:"A Major Gift, GM Permission", freq:"Static", rank:2 },
+  { name:"Sign Mastery (Rank 3)", prereq:"All your Patron's Major Gifts, GM Permission", freq:"Static", rank:3 },
+  { name:"Sign Mastery (Rank 4)", prereq:"A Pact Gift, GM Permission", freq:"Static", rank:4 },
+].map(f => f.rank ? Object.assign(f, {
+  effect:`You acquire two Blessings in the form of Signs, marked Rank ${f.rank} or lower. You must additionally meet any Prerequisites of the Blessing.`
+    + (f.rank===4 ? " If your Patron does not have a Pact Gift, you instead require all their Major Gifts to attain Rank 4." : "") }) : f);
+
+/* ---------- The Brands (book p.47) ---------------------------------------------------------------
+   What the Branded Feature actually leaves on you — a deal with the devil made flesh. The book's
+   list is explicitly not exhaustive, so a GM can hand out a free-form one instead. A Brand is not a
+   Gift and carries no [PATRON STAT] of its own (the Branded Feature is the tagged half). */
+const BRANDS = [
+  { name:"Carrion Scent",
+    effect:"Your sense of smell is enhanced, giving you the ability to track living things — as well as the deceased — with little effort. However, you will forever smell of a corpse yourself." },
+  { name:"Mark of the Damned",
+    effect:"You gain a literal Brand: an unsettling tattoo on a noticeable part of your body, or a deformation such as one of your eyes becoming visibly cursed. This Brand lets the one who placed it communicate with you and locate you at any time, and they may even have advice or an offer of help on occasion." },
+  { name:"Stigmata",
+    effect:"You have a permanent pain in your wrists and feet, and whenever you have more than 3 Injuries you bleed from those points. This bleeding will not let you recover from those Injuries without extensive medical care and rest. However, you no longer take Max HP penalties from Injuries." },
+  { name:"Total Solitude",
+    effect:"You completely lose your Aura and gain the Mindlock Capability. This makes you untraceable to Aura Readers, but you also cannot receive Aura Pulse or Telepathic messages at all. If you have a Psychic-related class other than Type Ace, Channeler or Aura Guardian, your Features in those classes are refunded." },
+  { name:"Twisted Form",
+    effect:"Your very being becomes warped, taking on aspects of the one who Branded you. You gain the Elemental Types they possess and +4 to Intimidate Checks, but take a -4 penalty on Charm and Guile Checks, as these deformations are unsettling to most people and Pokémon." },
+];
+
 /* ---------- Legendary Blessings (book pp.55-56) --------------------------------------------------
    Blessings are NOT Gifts: they carry no [PATRON STAT] tag of their own (the Messiah / Signer
    Feature that hands them out is the tagged one), so `giftStatSpec` returns null for them and they
@@ -8242,22 +8626,22 @@ const BLESSINGS = [
     messiah:{freq:"Scene x3 — Free Action", text:"Your Struggle Attack's Type matches that of your Patron. If your Patron has two Types, choose one."},
     signer:{freq:"Free Action", text:"Your Struggle Attack deals Typeless Damage."} },
   { rank:1, name:"Paragon", prereq:"",
-    messiah:{freq:"Static", text:"When you take Paragon, choose either Body, Mind or Spirit. You gain +2 to all Skill Checks made with Skills under that group."},
+    messiah:{freq:"Static", text:"When you take Paragon, choose either Body, Mind or Spirit. You gain +3 to all Skill Checks made with Skills in that group."},
     signer:{freq:"Swift Action", text:"You instead choose one of these Skill Groups and gain a +1 bonus to all Skill Checks under it. This lasts until the end of the Scene. You may choose a different Skill Group each time you activate Paragon."} },
   { rank:1, name:"Spirit Mending", prereq:"", note:"Target: A Pokémon or Trainer.",
-    messiah:{freq:"Daily x3 — Standard Action", text:"Choose one of the following: the Target heals 30 HP, or the Target recovers two Injuries."},
-    signer:{freq:"Standard Action", text:"The Target recovers 50 HP and one Injury."} },
+    messiah:{freq:"Daily x3 — Free Action", text:"Choose one of the following: the Target is healed 50% of their HP, or the Target recovers two Injuries that do not count against the Daily Limit."},
+    signer:{freq:"Standard Action", text:"The Target heals two ticks of HP, and recovers an Injury."} },
   { rank:2, name:"Blessed Power", prereq:"Blessed Strike",
-    messiah:{freq:"Static", text:"Choose a Damaging Move on your Patron's Level Up List that has a Damage Base of 8 or lower and matches one of their Types. You learn this Move."},
+    messiah:{freq:"Static", text:"Choose a Move on your Patron's Level-Up List that matches one of their Types and is either a Damaging Move with a Damage Base of 8 or lower, or a Status Move of a non-Daily Frequency. You learn this Move."},
     signer:{freq:"Swift Action", text:"You instead gain this chosen Move until the end of combat. You may choose a different Move each time you activate this Sign."} },
   { rank:2, name:"Luck of the Gods", prereq:"Paragon",
     note:"Messiah Trigger: You fail a Skill Check or Accuracy Roll. · Signer Trigger: You roll a Skill Check or Accuracy Roll.",
-    messiah:{freq:"Daily — Free Action", text:"You may reroll this Skill Check or Accuracy Roll."},
+    messiah:{freq:"Daily x3 — Free Action", text:"You may reroll this Skill Check or Accuracy Roll."},
     signer:{freq:"Free Action", text:"You may add +4 to this Skill Check or +2 to this Accuracy Roll."} },
   { rank:2, name:"Soul Mending", prereq:"Spirit Mending",
     note:"Messiah Trigger: A Trainer or Pokémon dies. · Signer Trigger: A Trainer or Pokémon is reduced below 0 HP.",
-    messiah:{freq:"One Time Use/10 - Extended Action", text:"Your divine powers allow you to intervene, saving the Target's life. They are set to 5 Injuries that will heal at half the normal rate, and 1 HP."},
-    signer:{freq:"Interrupt", text:"The Target receives no further Injuries after being reduced below 0 HP. If being Knocked Out alone would set them to 10 Injuries, they are instead set to 9 Injuries."} },
+    messiah:{freq:"Special — one use, plus one per Level 5/10/20/30/40 Milestone reached", text:"Your divine powers allow you to intervene, saving the Target's life. Used in combat as a Free Action Interrupt, they are set to 5 Injuries that heal at half the normal rate and to 50% HP; until the end of combat they have DR equal to their tick value and may not be healed. Used out of combat as an Extended Action, the Target is set to 5 Injuries and 1 HP."},
+    signer:{freq:"Free Action", text:"The Target receives no further Injuries after being reduced below 0 HP. If being Knocked Out alone would set them to 10 Injuries, they are instead set to 9 Injuries."} },
   { rank:3, name:"Blessed Resilience", prereq:"Blessed Power",
     messiah:{freq:"Static", text:"Choose two Types your Patron has Resistance or Immunity to. You gain Resistance to these Types."},
     signer:{freq:"Standard Action", text:"Choose a single Type your Patron has Resistance or Immunity to. You gain Resistance to this Type until the end of the Scene. You may choose a different Type each time you use Blessed Resilience."} },
@@ -8269,13 +8653,47 @@ function blessingByName(name){ return BLESSINGS.find(b=>b.name===name) || null; 
 /* the effect text a Blessing row shows right now, following its Messiah/Signer mode */
 function blessingSide(b, mode){ return (b && (mode==="signer" ? b.signer : b.messiah)) || {freq:"",text:""}; }
 
+/* ---- which branch is this sheet actually walking? ------------------------------------------
+   Nobody is both a Messiah and a Signer, so a sheet that has taken one branch should never be
+   shown the other branch's reading of a Blessing. Signer counts if the sheet carries the Signer
+   Feature / any Sign Mastery Rank (however it was recorded — Feature, Class or a Signer row in
+   the Gifts tab); Messiah likewise for Messiah / In My Name. Returns null only when the sheet
+   shows neither branch or (a GM oddity) both — there the row keeps its manual switch. */
+const SIGNER_BRANCH_FEATURES  = ["Signer","Sign Mastery"];
+const MESSIAH_BRANCH_FEATURES = ["Messiah","In My Name"];
+function hasBlessingBranch(t, kind, names){
+  if(!t) return false;
+  if(((t.gifts)||[]).some(g => giftKind(g)===kind)) return true;
+  const owned = [...(t.features||[]), ...(t.classes||[])].map(featureShortName);
+  return names.some(n => owned.some(f => f===n.toLowerCase() || f.startsWith(n.toLowerCase()+" ")));
+}
+function blessingBranch(t){
+  const sg = hasBlessingBranch(t, "signer",  SIGNER_BRANCH_FEATURES);
+  const ms = hasBlessingBranch(t, "messiah", MESSIAH_BRANCH_FEATURES);
+  return sg && !ms ? "signer" : ms && !sg ? "messiah" : null;
+}
+/* the mode a Blessing row on THIS sheet reads in: the sheet's branch wins over the row's own */
+function blessingModeFor(t, g){ return blessingBranch(t) || ((g && g.mode==="signer") ? "signer" : "messiah"); }
+/* a few Blessings print both branches' Triggers/Targets in one note ("Messiah Trigger: … · Signer
+   Trigger: …") — keep only the half that belongs to the mode being shown. */
+function blessingNoteFor(note, mode){
+  const txt = String(note||""); if(!txt) return "";
+  if(!/(Messiah|Signer)\s+(Trigger|Target)/i.test(txt)) return txt;   // one shared note — leave it
+  const mine  = mode==="signer" ? "Signer" : "Messiah";
+  const other = mode==="signer" ? "Messiah" : "Signer";
+  const keep = txt.split(/\s*\u00b7\s*/).filter(part => !new RegExp("^\\s*"+other+"\\s+(Trigger|Target)","i").test(part));
+  return keep.join(" \u00b7 ").replace(new RegExp("^\\s*"+mine+"\\s+","i"), "");
+}
+
 /* The four things that can live in `t.gifts`, keyed by the row's `kind` (absent = "gift", so every
    sheet written before Blessings existed keeps reading correctly with no migration). */
 const GIFT_KINDS = [
   { key:"gift",     label:"Legendary Gift",  head:"🎁 Legendary Gifts",  blurb:"Blessings from a Legendary patron, sorted by species (book pp.58-71). Each grants its Patron Stat (p.57)." },
   { key:"general",  label:"General Gift",    head:"🌐 General Legendary Gifts", blurb:"Gifts sorted by domain rather than species (pp.53-54)." },
   { key:"messiah",  label:"Messiah Feature", head:"🙏 Messiah",          blurb:"The Messiah advancement branch (pp.47-48) — not a Class; it stacks on top of your four." },
+  { key:"signer",   label:"Signer Feature",  head:"✒ Signer",            blurb:"The Signer branch — the Messiah's mirror. Blessings are stored in Signs: Swift Action, 1 AP, once per Scene." },
   { key:"blessing", label:"Blessing",        head:"📜 Legendary Blessings", blurb:"Rank 1-3 Blessings (pp.55-56), granted by In My Name or Sign Mastery. Blessings carry no Patron Stat of their own." },
+  { key:"brand",    label:"Brand",           head:"⛧ Brands",            blurb:"What the Branded Feature left on you (p.47). A Brand is a mark, not a Gift — it carries no Patron Stat." },
 ];
 function giftKind(g){ return (g && g.kind) || "gift"; }
 
@@ -8309,7 +8727,7 @@ function giftPatronFor(g){
    is [+Any Stat] and has no Patron); everything else reads the Patron's p.57 tag. */
 function giftStatSpec(g){
   if(!g) return null;
-  if(giftKind(g)==="blessing") return null;
+  if(giftKind(g)==="blessing" || giftKind(g)==="brand") return null;
   if(g.statSpec) return g.statSpec;
   return PATRON_STATS[g.patron] ?? null;
 }
@@ -8454,8 +8872,9 @@ function giftsCard(t, saveFn, rerender, opts){
       ? el("button",{class:"linkbtn h-act", onclick:()=>openAddGift(t, saveFn, rerender)}, "+ grant a Gift")
       : el("span",{class:"muted small"},"granted by your GM"))));
   card.append(el("div",{class:"muted small",style:"margin:-4px 0 8px"}, opts.blurb ||
-    ("Everything a Legendary patron has handed this Trainer (The Blessed and the Damned): species Gifts, "
-    + "General Gifts, the Messiah branch, and Blessings. Private — only you and your GM see this tab.")));
+    ("Everything a Legendary patron has handed this Trainer (The Blessed and the Damned / The Book of "
+    + "Divines): species Gifts, General Gifts, the Messiah and Signer branches, Blessings, and Brands. "
+    + "Private — only you and your GM see this tab.")));
   if(!(t.gifts||[]).length){
     card.append(el("div",{class:"muted small"}, gm
       ? "Nothing granted yet — tap “+ grant a Gift” to bless this Trainer."
@@ -8485,8 +8904,14 @@ function giftRow(t, g, i, gm, saveFn, rerender){
   const kind = giftKind(g);
   const row = el("div",{class:"moveslot"});
   const info = el("div",{style:"flex:1;min-width:0"});
+  /* a Blessing reads one way for a Messiah and another for a Signer — the sheet's own branch
+     decides, and only a sheet with neither (or both) still picks by hand. */
+  const branch  = kind==="blessing" ? blessingBranch(t) : null;
+  const bMode   = kind==="blessing" ? (branch || (g.mode==="signer" ? "signer" : "messiah")) : null;
+  const bless   = kind==="blessing" ? blessingByName(g.name) : null;
+  const bSide   = bless ? blessingSide(bless, bMode) : null;
   const sub = kind==="blessing"
-    ? `Rank ${g.rank||1} Blessing · ${g.mode==="signer" ? "Signer (Sign)" : "Messiah"}`
+    ? `Rank ${g.rank||1} Blessing · ${bMode==="signer" ? "Signer (Sign)" : "Messiah"}`
     : `${g.tier||"Gift"}${g.patron ? " · "+g.patron : ""}`;
   info.append(el("div",{style:"font-weight:700"}, g.name || "Gift",
     el("span",{class:"muted small",style:"font-weight:400"}, `  ·  ${sub}`)));
@@ -8507,23 +8932,29 @@ function giftRow(t, g, i, gm, saveFn, rerender){
     }
     info.append(statLine);
   }
-  if(g.freq) info.append(el("div",{class:"small",style:"margin-top:3px"}, el("b",{}, g.freq)));
-  // A Blessing reads differently as a Messiah miracle vs a Signer's Sign — the holder flips the mode,
-  // so the row always shows the text that's actually true for them right now.
+  const freqTxt = bSide ? bSide.freq : g.freq;
+  if(freqTxt) info.append(el("div",{class:"small",style:"margin-top:3px"}, el("b",{}, freqTxt)));
+  // A Blessing reads differently as a Messiah miracle vs a Signer's Sign, so the row only ever
+  // shows the one text that's true for this sheet.
   if(kind==="blessing"){
-    const b = blessingByName(g.name);
-    if(b){
-      const side = blessingSide(b, g.mode);
-      info.append(el("div",{class:"muted small",style:"margin-top:3px"}, side.text));
-      const modeSel = el("select",{class:"equip-focus",style:"margin-top:4px"});
-      [["messiah","Messiah — "+b.messiah.freq],["signer","Signer (Sign) — "+b.signer.freq]]
-        .forEach(([v,l])=>modeSel.append(el("option",{value:v, selected:(g.mode||"messiah")===v}, l)));
-      modeSel.disabled = !gm && !canEditActive();
-      modeSel.addEventListener("change",()=>{
-        g.mode = modeSel.value; g.effect = blessingSide(b, g.mode).text; g.freq = blessingSide(b, g.mode).freq;
-        saveFn(); rerender();
-      });
-      info.append(modeSel);
+    if(bless){
+      info.append(el("div",{class:"muted small",style:"margin-top:3px"}, bSide.text));
+      if(branch){
+        // the sheet's branch settles it — no switch, just say which reading this is
+        info.append(el("div",{class:"muted small",style:"margin-top:3px;font-style:italic"},
+          branch==="signer" ? "Read as a Sign — this sheet is a Signer."
+                            : "Read as a miracle — this sheet is a Messiah."));
+      } else {
+        const modeSel = el("select",{class:"equip-focus",style:"margin-top:4px"});
+        [["messiah","Messiah — "+bless.messiah.freq],["signer","Signer (Sign) — "+bless.signer.freq]]
+          .forEach(([v,l])=>modeSel.append(el("option",{value:v, selected:bMode===v}, l)));
+        modeSel.disabled = !gm && !canEditActive();
+        modeSel.addEventListener("change",()=>{
+          g.mode = modeSel.value; g.effect = blessingSide(bless, g.mode).text; g.freq = blessingSide(bless, g.mode).freq;
+          saveFn(); rerender();
+        });
+        info.append(modeSel);
+      }
     } else if(g.effect){
       info.append(el("div",{class:"muted small",style:"margin-top:3px"}, g.effect));   // custom Blessing
     }
@@ -8531,7 +8962,8 @@ function giftRow(t, g, i, gm, saveFn, rerender){
     info.append(el("div",{class:"muted small",style:"margin-top:3px"}, g.effect));
   }
   if(g.prereq) info.append(el("div",{class:"muted small",style:"margin-top:1px;font-style:italic"}, "Prerequisites: "+g.prereq));
-  if(g.note)  info.append(el("div",{class:"muted small",style:"margin-top:2px;font-style:italic"}, g.note));
+  const noteTxt = kind==="blessing" ? blessingNoteFor(bless ? (bless.note||"") : (g.note||""), bMode) : g.note;
+  if(noteTxt) info.append(el("div",{class:"muted small",style:"margin-top:2px;font-style:italic"}, noteTxt));
   if(g.notes) info.append(el("div",{class:"small",style:"margin-top:2px"}, g.notes));
   row.append(info);
   if(gm) row.append(el("button",{class:"linkbtn danger",title:"remove this",style:"align-self:flex-start",
@@ -8562,6 +8994,10 @@ function openAddGift(t, saveFn, rerender){
       GENERAL_GIFTS.forEach(g => giftSel.append(el("option",{value:g.name}, g.name)));
     } else if(kind==="messiah"){
       MESSIAH_FEATURES.forEach(f => giftSel.append(el("option",{value:f.name}, f.name)));
+    } else if(kind==="signer"){
+      SIGNER_FEATURES.forEach(f => giftSel.append(el("option",{value:f.name}, f.name)));
+    } else if(kind==="brand"){
+      BRANDS.forEach(b => giftSel.append(el("option",{value:b.name}, b.name)));
     } else {
       [1,2,3].forEach(r=>{
         const og = el("optgroup",{label:`Rank ${r} Blessings`});
@@ -8573,7 +9009,15 @@ function openAddGift(t, saveFn, rerender){
   const modeSel = el("select",{style:"width:100%"});
   [["messiah","Messiah — channelled directly (In My Name)"],["signer","Signer — stored in a Sign (Sign Mastery): Swift Action, 1 AP, once per Scene"]]
     .forEach(([v,l])=>modeSel.append(el("option",{value:v}, l)));
-  const modeWrap = el("label",{class:"field"}, el("span",{},"Granted as"), modeSel);
+  /* the target's own branch settles how a Blessing reads — a Signer can only be handed Signs,
+     a Messiah only miracles — so lock the switch unless the sheet walks neither branch. */
+  const grantBranch = blessingBranch(t);
+  const modeNote = el("div",{class:"muted small",style:"margin-top:4px"},
+    grantBranch==="signer"  ? "This sheet is a Signer — the Blessing is granted as a Sign."
+    : grantBranch==="messiah" ? "This sheet is a Messiah — the Blessing is granted as a miracle."
+    : "This sheet has neither branch yet, so pick which reading it gets.");
+  if(grantBranch){ modeSel.value = grantBranch; modeSel.disabled = true; }
+  const modeWrap = el("label",{class:"field"}, el("span",{},"Granted as"), modeSel, modeNote);
   const patronSel = el("select",{style:"width:100%"});
   const fillPatrons = (preferred)=>{
     patronSel.innerHTML="";
@@ -8592,12 +9036,14 @@ function openAddGift(t, saveFn, rerender){
       case "gift":     return giftByName(v);
       case "general":  return GENERAL_GIFTS.find(g=>g.name===v) || null;
       case "messiah":  return MESSIAH_FEATURES.find(f=>f.name===v) || null;
+      case "signer":   return SIGNER_FEATURES.find(f=>f.name===v) || null;
+      case "brand":    return BRANDS.find(b=>b.name===v) || null;
       default:         return blessingByName(v);
     }
   };
   /* the [PATRON STAT] spec this grant would carry, honouring an entry's own tag (Giftsapper) */
   const pickedSpec = ()=>{
-    if(kindSel.value==="blessing") return null;
+    if(kindSel.value==="blessing" || kindSel.value==="brand") return null;
     const p = picked();
     return (p && p.statSpec) || PATRON_STATS[patronSel.value] || null;
   };
@@ -8633,7 +9079,7 @@ function openAddGift(t, saveFn, rerender){
     const k = kindSel.value;
     fillCatalog();
     modeWrap.style.display  = k==="blessing" ? "" : "none";
-    patronWrap.style.display = k==="blessing" ? "none" : "";
+    patronWrap.style.display = (k==="blessing" || k==="brand") ? "none" : "";
     nameIn.value = ""; effIn.value = "";
     if(k!=="gift") fillPatrons("");
     syncStatChoice();
@@ -8661,9 +9107,12 @@ function openAddGift(t, saveFn, rerender){
       if(kind==="blessing"){
         row.mode = modeSel.value; row.rank = (cat&&cat.rank)||1;
         row.freq = cat ? blessingSide(cat, row.mode).freq : "";
+      } else if(kind==="brand"){
+        row.tier = "Brand";
       } else {
         row.tier = kind==="gift" ? ((cat&&cat.tier)||"Gift")
-                 : kind==="general" ? "General Gift" : "Messiah Feature";
+                 : kind==="general" ? "General Gift"
+                 : kind==="signer" ? "Signer Feature" : "Messiah Feature";
         row.freq = (cat&&cat.freq)||"";
         row.patron = patronSel.value||"";
         if(cat && cat.statSpec) row.statSpec = cat.statSpec;   // Giftsapper's own [+Any Stat]
@@ -9914,11 +10363,13 @@ function statusCard(p){
     });
     card.append(chips);
   });
-  if(hasStatus(p,"confused")) card.append(confusionRow(p, n=>{
+  const monHpLoss = n => {
     const max = pokeDerived(p).maxHP, cur = (p.currentHP==null?max:p.currentHP);
     p.currentHP = tempSoakSay(p, cur, cur - n);      // hurting itself is damage: Temp HP goes first
     save(); refreshMon(p);
-  }));
+  };
+  if(hasStatus(p,"confused")) card.append(confusionRow(p, monHpLoss));
+  if(hasStatus(p,"vortex")) card.append(vortexRow(p, ()=>{ save(); refreshMon(p); }, monHpLoss));
   const active = STATUS_DEFS.filter(s=>hasStatus(p,s.key));
   if(active.length){
     card.append(el("div",{class:"small muted",style:"margin-top:12px;font-weight:700"}, `Active effects (${active.length})`));
@@ -12099,43 +12550,44 @@ function abilitiesAtLevel(sp, level){
 const auraKey = s => String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
 const AURA_DEFS = [
   ["Chaos","Whenever an opponent rolls to hit the Possessor with a Move, Struggle Attack or Feature, they roll two d20s and take the lower result. Whenever one of its Combat Stages would be lowered, or it would be inflicted with a Status Effect, as the result of a Move, Struggle Attack or Feature that hit it, roll d20; on a result of 11 or higher, the attacker is inflicted instead."],
-  ["Creation","Once per turn the Possessor may do one of the following: (1) Place a Weather effect into play, always Type-Shifted to one of its Types to benefit the Possessor; (2) Change up to five adjacent meters of terrain in any manner they please (walls, difficult terrain, conjured water, etc.); (3) Create a servant to assist them in battle — a Pokemon of the same Level as the Possessor."],
-  ["Creativity","The Possessor may use the Features Nuanced Performance, Reliable Performance, Bardic Flair, Power Chord, Fabulous Max, and Rule of Cool. They may target themselves with these Features, possess AP equal to 3 + (Possessor level / 5), and are considered to have 4d6 in all their Contest Stats."],
-  ["Death","All who oppose the Possessor lose 1/10th their max HP per turn. If any enemy combatant reaches -100% HP, they instantly die, and may be risen by the Possessor as its own loyal servant. If an enemy strikes the Possessor, they roll d20; on a result of 5 or less they are inflicted with Heal Block."],
+  ["Concept","Not an Aura in its own right — shorthand for the fact that each of The Outer Gods possesses two Domains besides Fate. If a Domain shares a name with one of the Concepts tied to that Outer God's Type, it simply has that Domain (Fire has the Love Concept, so it has the Love Domain). Otherwise: Rebellion→Chaos, Suffering→Predator, Truth→Law, Freedom→Heroism, Bloodshed→War, Decay→Pathogen, Bliss→Peace, Terror→Nightmare, Slumber→Dreams, Verve→Creativity, Fact→Knowledge, Fiction→Trickery, Inconsequence→Luck. Concepts by Type: Bug Rebellion · Dark Solitude · Dragon Freedom · Electric Verve · Fairy Fiction · Fighting Suffering · Fire Love · Flying Inconsequence · Ghost Truth · Grass Knowledge · Ground Destruction · Ice Bloodshed · Normal Fact · Poison Bliss · Psychic Terror · Rock Decay · Steel Creation · Water Slumber."],
+  ["Creation","Once per turn, as a Free Action, the Possessor may do one of the following: (1) Place a Weather effect into play, lasting until overwritten, always Type-Shifted to one of its Types to benefit the Possessor; (2) Change up to five adjacent meters of terrain in any manner they please (walls, difficult terrain, conjured water, etc.); (3) Create a servant to assist them in battle — a Pokemon of the same Level as the Possessor. The servant may be created once per enemy Trainer per Scene."],
+  ["Creativity","The Possessor may use the Coordinator, Nuanced Performance, Reliable Performance, Musician, Power Chord, Fabulous Max, Gleeful Steps, Calculated Assault, Macho Charge and Rule of Cool Features. They may target themselves with these Features, possess AP equal to 3 + (Possessor level / 5), and are considered to have 4d6 in all their Contest Stats."],
+  ["Death","All who oppose the Possessor lose 1/10th their max HP per turn. If any enemy combatant reaches -100% HP, they instantly die, and may be risen by the Possessor as its own loyal servant with full HP, as a Swift Action — once per Scene per enemy Trainer. If an enemy strikes the Possessor, they roll d20; on a result of 5 or less they are inflicted with Heal Block."],
   ["Destruction","If the target of a Move used by the Possessor would Resist it or is Immune to it, it instead takes Neutral damage. All passive damage the Possessor deals (weather, status, spikes, etc.) is doubled, and Magic Guard, Sturdy, and other defensive Abilities are disabled."],
   ["Devourer","While the Devourer Aura is active, the Auras of all other Legendary Pokemon in the vicinity are disabled. If the Devourer Aura is disabled, they may invoke their Auras again."],
-  ["Dreams","If the Possessor hits an enemy with a Move, that target instantly falls asleep, even with the Insomnia Ability. Whenever the Possessor is inflicted with a Status Effect, the attacker rolls d20; on a 10 or lower they fall asleep. If the Possessor is put to sleep, all combatants fall asleep."],
+  ["Dreams","All attacks used by the Possessor inflict Sleep on an attack roll of 17+. If the foe is immune to Sleep, this triggers only on a 20, and bypasses that immunity. Whenever the Possessor is inflicted with a Status Effect, the attacker rolls d20; on a 10 or lower they fall asleep. If the Possessor is put to sleep, all combatants fall asleep."],
   ["Emotion","All who oppose the Possessor are immediately Confused, Enraged, and Infatuated with the Possessor. Any Status Moves the Possessor uses that target an enemy or ally instead target all enemies or all allies. Abilities that grant Immunity to Status Effects are disabled before the Possessor."],
-  ["Equilibrium","All damage inflicted to the Possessor is returned to the assailant. The Possessor may use Synchronize as a Free Action any time they are inflicted with a Status Effect that would trigger Synchronize."],
+  ["Equilibrium","Any time damage or HP loss is dealt to the Possessor, directly or indirectly, the creature that caused it loses an equal amount of HP, which may not be reduced or eliminated in any way. The Possessor may use Synchronize as a Free Action any time they are inflicted with a Status Effect that would trigger Synchronize."],
   ["Fate","The Possessor gains +3 to all Attack, Skill, Feature, Status Recovery, and Opposed Rolls while the Aura is active. All who oppose them take a -3 penalty on all of those Rolls."],
   ["Glitch","Hitting the Possessor has a 50% chance of increasing your Glitch by 1. Glitch 1: all your Moves become Metronome (keeping their normal frequencies). Glitch 2: when you use Metronome you roll two Moves and the Possessor chooses which you use. Glitch 3: you roll three Moves and the Possessor picks one. The Possessor always has Glitch 3."],
-  ["Heroism","The Possessor has access to all Cheerleader Features and is treated as having Master Rank Charm and Command. They may target themselves with these Features and possess AP equal to 3 + (Possessor level / 5)."],
-  ["Hivemind","The Possessor may use Hidden Power of any Type of their choice as if they had the Words of Power Feature. The Possessor also copies any Features from Mystical and Elemental Connection Classes from all combatants."],
-  ["Knowledge","While active, all who oppose the Possessor are Suppressed. Furthermore, all Moves they know of Scene or Daily frequency are Disabled (including Moves lowered to that frequency by Suppression). This persists as long as the Aura is active."],
+  ["Heroism","The Possessor has access to Inspired Training and all Cheerleader Features, and is treated as having Master Rank Charm and Command. They may target themselves with these Features and possess AP equal to 3 + (Possessor level / 5)."],
+  ["Hivemind","The Possessor may use Hidden Power of any Type of their choice as if they had the Words of Power Feature. The Possessor also copies any Features from Supernatural Classes (including Elementalist) from all combatants."],
+  ["Knowledge","While active, every time the Possessor is hit by an attack the attacker is Suppressed. Whenever the Possessor is hit by a Move, it may add that Move to its Movelist for the Scene: it has three special extra Move Slots for this, and once all three are full it must overwrite one to learn another. As a Standard Action it may fully refresh the frequencies of every Move in those extra slots."],
   ["Law","The Possessor declares 3 rules. All enemy combatants must abide by them. Breaking a rule provokes the Possessor's wrath: they receive a free priority attack against the one who broke the rule."],
-  ["Life","The Possessor may revive a knocked-out or dead ally once per turn as a Swift Action; the ally is healed as if treated at a Pokecenter and its injuries cleared. The Possessor may also use Heal Bell at EoT frequency and has access to all Medium Features based on White Magic."],
+  ["Life","The Possessor may revive a knocked-out or dead ally once per turn as a Swift Action; the ally is healed as if treated at a Pokecenter and its injuries cleared. This may be used once per Scene per enemy Trainer. The Possessor may also use Heal Bell at EoT frequency and has access to all Sage Features, which they may target themselves with, possessing AP equal to 3 + (Possessor level / 5)."],
   ["Love","The Possessor may inflict one enemy with Infatuation per round (any gender, or genderless). The Possessor is immune to Infatuation. Whenever you hit the Possessor, roll d20; on a 5 or lower your attack is treated as having the Recoil keyword at 1/4th, even if you are immune to Recoil."],
-  ["Loyalty","The Possessor judges the bond between enemies and their Pokemon. Any Pokemon under Loyalty 5 have all Combat Stages lowered to -3. Each time such a Pokemon is issued a command, roll d20; on a 7 or lower each of its Combat Stages is lowered by another -1."],
+  ["Loyalty","The Possessor judges the bond between enemies and their Pokemon. Any Pokemon under Loyalty 5 have all Combat Stages lowered to -3. Each time such a Pokemon ends a turn on which it acted, or has an Order used on it, roll d20; on a 7 or lower each of its Combat Stages is lowered by another -1."],
   ["Luck","Whenever the Possessor would roll a d20, they roll 2d20 and take the higher. They are always treated as under the Super Luck Ability, and emit pure luck — treating themselves and all allies as if holding a Luck Incense."],
   ["Matter","The Possessor may add difficult terrain and physical obstructions (walls, cliffs, pits, lava, water, etc.) to the battleground at will. They and their allies are unaffected by these obstacles. These elements persist even if the Aura is not active."],
-  ["Nature","Once per round the Possessor may beckon the assistance of the wilds: a new combatant enters the battle at the Possessor's level if a Pokemon, or half their level if a Trainer. (Nature, Oceans and Sky share this effect; a Possessor with several of these Auras may summon one ally per such Aura per round.)"],
+  ["Nature","Once per round the Possessor may beckon the assistance of the wilds: a new combatant enters the battle at the Possessor's level if a Pokemon, or half their level if a Trainer. (Nature, Oceans and Sky share this effect; a Possessor with several of these Auras may summon one ally per such Aura per round.) Each of these Auras may be used once per Scene per enemy Trainer."],
   ["Nightmare","Those who oppose the Possessor are affected by Frightened when they fall asleep. Frightened treats the afflicted as Paralyzed and Suppressed, even if they would be immune, and persists for the rest of combat (even if the Aura is disabled) and cannot be removed by conventional means. In the Dream World, all who oppose the Possessor are Frightened as soon as combat begins."],
-  ["Oceans","Once per round the Possessor may beckon the assistance of the wilds: a new combatant enters the battle at the Possessor's level if a Pokemon, or half their level if a Trainer. (Nature, Oceans and Sky share this effect; a Possessor with several of these Auras may summon one ally per such Aura per round.)"],
+  ["Oceans","Once per round the Possessor may beckon the assistance of the wilds: a new combatant enters the battle at the Possessor's level if a Pokemon, or half their level if a Trainer. (Nature, Oceans and Sky share this effect; a Possessor with several of these Auras may summon one ally per such Aura per round.) Each of these Auras may be used once per Scene per enemy Trainer."],
   ["Pathogen","Whenever you hit the Possessor, roll d20; on a 5 or lower you become Infected. Infected individuals are considered Poisoned and Burned even if immune. This persists for the rest of combat (even if the Aura is disabled) and cannot be removed by conventional means."],
   ["Peace","Whenever you hit the Possessor with a Move, that Move becomes Disabled. If all a combatant's Moves are Disabled, their Attack and Special Attack are set to -6 Combat Stages. If the Aura is disabled, these effects fade."],
-  ["Predator","The Possessor has access to all Taskmaster Features (including Press) and is treated as having Master Rank Intimidate and Command. They may target themselves with these Features, possess AP equal to 3 + (Possessor level / 5), and may Press themselves without receiving injuries, losing only 1/16th their max HP."],
+  ["Predator","The Possessor has access to Brutal Training, Press, and all Taskmaster Features, and is treated as having Master Rank Intimidate and Command. They may target themselves with these Features, possess AP equal to 3 + (Possessor level / 5), and may Press themselves, losing only 1/16th their max HP when they do."],
   ["Primal Weather","When active, the Possessor sets the Weather with one of: Delta Stream (Strong Winds — Electric, Ice and Rock Moves do neutral damage to Flying Types), Desolate Land (Sunny — Water Moves cannot be used), or Primordial Sea (Rainy — Fire Moves cannot be used). Attempts to override this Weather without removing the Aura fail."],
-  ["Rejuvenation","The Possessor is always considered to have the Healer and Regenerator Abilities. They may use both once per round, and may also target others with their Regenerator usage."],
-  ["Rivalry","The Possessor cannot be brought below 1 HP unless their paired Rival is one of their enemies. This Aura can only be disabled by another Legendary with the Rivalry Aura (not necessarily their paired Rival)."],
+  ["Rejuvenation","The Possessor is always considered to have the Healer and Regenerator Abilities. They may use both as a Free Action once per Scene per enemy Trainer, ignoring other usage requirements, and may also target others with their Regenerator usage."],
+  ["Rivalry","The Possessor cannot be brought below 1 HP unless their paired Rival is one of their enemies. This Aura can only be disabled by another Legendary with the Rivalry Aura (not necessarily their paired Rival), or by the presence of an active Devourer Aura."],
   ["Ruin","The Possessor embodies the erosion of strength. All who oppose the Possessor treat their Defense as locked at -3 Combat Stages while the Aura is active, and it cannot be raised by any means. Additionally, once per round when the Possessor lands a damaging Move, the target loses a tick of Hit Points as its vitality wears away."],
-  ["Sky","Once per round the Possessor may beckon the assistance of the wilds: a new combatant enters the battle at the Possessor's level if a Pokemon, or half their level if a Trainer. (Nature, Oceans and Sky share this effect; a Possessor with several of these Auras may summon one ally per such Aura per round.)"],
-  ["Solitude","The Possessor covers the arena in a heavy mist that divides its enemies. They become unaware of their allies' locations and cannot hear, communicate via Aura or Telepathy, or contact them through technological or occult means. The mist remains as long as the Aura is active."],
+  ["Sky","Once per round the Possessor may beckon the assistance of the wilds: a new combatant enters the battle at the Possessor's level if a Pokemon, or half their level if a Trainer. (Nature, Oceans and Sky share this effect; a Possessor with several of these Auras may summon one ally per such Aura per round.) Each of these Auras may be used once per Scene per enemy Trainer."],
+  ["Solitude","The Possessor covers the arena in a heavy mist that divides its enemies. Affected creatures perceive their allies only as vague silhouettes and cannot communicate in any way. This does not stop them locating creatures, but no Move, Ability, Feature or anything else that targets an Ally may be used while the Aura is active."],
   ["Storms","The Possessor always has Sandstorm or Hail and Sunny Day or Rain Dance active at once, always Type-Shifted to one of its Types to benefit the Possessor. These Weather conditions cannot be overwritten while the Aura is active."],
   ["Symbiotic","The Possessor extends this Aura to their Symbiant. The two are always aware of each other's location, health and mood and can always communicate telepathically. They may access each other's Moves, Features, Skills and Edges, always using the higher of the two's Skills or Stats. The Combat Stage bonuses of the Aura apply to both. This Aura cannot be disabled by normal means — undoing it requires slaying one of the pair."],
   ["Time","The Possessor may manipulate the Initiative Order in any manner they wish. Once per Scene for every enemy Trainer, they may use Freeze Time as a Free Action at the start of a Round, preventing anyone who does not possess the Time Aura from acting that Round."],
   ["Trickery","The Possessor has access to all Trickster Features and may target themselves with them, possessing AP equal to 3 + (Possessor level / 5). They gain STAB on all Dark Type Moves and the Abilities Prankster, Frisk, Infiltrator, Pickpocket, and Run Away."],
   ["War","All of the Possessor's Moves are treated as if their Frequency were increased by a PP Up. They also inflict Injuries at 25% HP Markers, and Massive Damage is treated as 25%."],
-  ["Willpower","The Possessor may Petrify a target once a Round as a Swift Action. While Petrified, you are completely removed from the initiative order. Petrify cannot be avoided and can only be removed by a Possessor of the Emotion, Knowledge, Life, Rejuvenation, or Willpower Aura. Petrify persists even if the Aura is disabled."],
+  ["Willpower","The Possessor may Petrify a target once a Round as a Swift Action. While Petrified, you are completely removed from the initiative order until you pass a DC 20 Focus Check, which may be attempted at the beginning of your turn. Petrify cannot be avoided, and can otherwise only be removed early by a Possessor of the Emotion, Knowledge, Life, Rejuvenation, or Willpower Aura. Petrify persists even if the Aura is disabled."],
 ];
 const auraByKey = new Map(AURA_DEFS.map(([n,d])=>[auraKey(n),{name:n,desc:d}]));
 const AURA_NAMES = AURA_DEFS.map(([n])=>n);
@@ -12182,7 +12634,7 @@ const AURA_RULES =
   "• While an Aura is active, once per round per active Aura the Legendary may diminish a single Super-Effective attack to a neutral resistance.\n"+
   "• When facing another Legendary that shares an Aura, neither is affected by that shared Aura.\n"+
   "• If an active Aura is disabled and the Legendary possesses more than three, they may instantly activate a remaining one.\n"+
-  "• Arceus has access to every Legendary Aura.\n"+
+  "• Arceus has access to every Legendary Aura except Glitch, Rivalry and Symbiotic.\n"+
   "• A captured Legendary might not have access to all, if any, of its Auras.\n"+
   "• A Legendary may extend an Aura to an ally as a permanent or temporary blessing.\n"+
   "Disabling an Aura is hard — only one Aura can be disabled every two rounds (Massive Damage from a Super-Effective hit, another Aura-bearer nullifying it, the Lake Guardians At-Will, a paired rival, the Godslayer Gift…). Auras disabled this way take 24 hours to fully restore.";
@@ -12192,6 +12644,12 @@ const AURA_RULES =
 const LEGENDARY_AURAS = {
   // Legendary Birds
   "Articuno":["Oceans","War","Storms"], "Zapdos":["Oceans","War","Storms"], "Moltres":["Oceans","War","Storms"],
+  /* The Galarian Birds divested themselves from their base elements and rebelled against Lugia:
+     Solitude stands where Oceans did (Divines p.5). */
+  "Articuno Galarian":["Solitude","War","Storms"], "Zapdos Galarian":["Solitude","War","Storms"],
+  "Moltres Galarian":["Solitude","War","Storms"],
+  "Galarian Articuno":["Solitude","War","Storms"], "Galarian Zapdos":["Solitude","War","Storms"],
+  "Galarian Moltres":["Solitude","War","Storms"],
   // Legendary Beasts
   "Raikou":["Loyalty","Peace","Storms"], "Entei":["Loyalty","Peace","Storms"], "Suicune":["Loyalty","Peace","Storms"],
   "Celebi":["Nature","Law","Time"],
@@ -12227,16 +12685,49 @@ const LEGENDARY_AURAS = {
   "Reshiram":["Equilibrium","Heroism","Rivalry"], "Zekrom":["Equilibrium","Heroism","Rivalry"], "Kyurem":["Fate","Peace","Solitude"],
   // Mortality Duo
   "Xerneas":["Life","Rivalry","War"], "Yveltal":["Death","Rivalry","War"],
-  "Zygarde":["Devourer","Predator","Trickery"],
+  "Zygarde":["Equilibrium","Hivemind","Rejuvenation"],
   // Outsiders
   "Mewtwo":["Loyalty","Symbiotic","Chaos","Destruction","War"],   // book: (Loyalty, Symbiotic) OR (Chaos, Destruction), + War
   "Deoxys":["Life","Pathogen","Storms"],
   "Genesect":["Nature","Predator","Trickery"],                    // book says "Land" — represented as Nature
   "Missingno":["Chaos","Creation","Glitch"], "MissingNo":["Chaos","Creation","Glitch"],
   "Unown":["Hivemind","Law","Trickery"],
-  "Arceus": AURA_NAMES.slice(),                                   // Arceus has access to every Aura
-  // Beyond the book (GM attribution, not printed in The Blessed and the Damned)
-  "Magearna":["Creation","Life","Love"],
+  /* "Arceus has access to every Legendary Aura except for Glitch, Rivalry, and Symbiotic" (Divines
+     p.33). Concept isn't an Aura in its own right, and Ruin is a homebrew entry, so both are out. */
+  "Arceus": AURA_NAMES.filter(n => !["Glitch","Rivalry","Symbiotic","Concept","Ruin"].includes(n)),
+  /* ---- The Book of Divines (v8) — the Pantheon the 1.05 book predated -------------------- */
+  "Hoopa":["Trickery","Solitude","Chaos"],
+  "Volcanion":["Storms","Predator","Destruction"],
+  // The Tapus share Heroism & Nature; the third Domain is one each.
+  "Tapu Koko":["Heroism","Nature","Storms"], "Tapu Lele":["Heroism","Nature","Trickery"],
+  "Tapu Bulu":["Heroism","Nature","Destruction"], "Tapu Fini":["Heroism","Nature","Rejuvenation"],
+  "Magearna":["Peace","Knowledge","Loyalty"],
+  "Marshadow":["Predator","Trickery","Solitude"],
+  "Zeraora":["Knowledge","Nature","Storms"],
+  "Melmetal":["Creation","Matter","Destruction"],
+  "Urshifu":["Heroism","Law","Knowledge"],
+  "Zarude":["Predator","Life","Solitude"],
+  // The Golems again — the two new Regis aren't called out, but the book's Patron Stat table counts them.
+  "Regieleki":["Creation","Loyalty","Matter"], "Regidrago":["Creation","Loyalty","Matter"],
+  // Upper Pantheon
+  "Zacian":["War","Heroism","Solitude","Rivalry"], "Zamazenta":["War","Heroism","Solitude","Rivalry"],
+  "Glastrier":["Loyalty","War","Storms"], "Spectrier":["Loyalty","Nightmare","Dreams"],
+  "Calyrex":["Heroism","Life","Law"],
+  // Outsiders
+  "Cosmog":["Peace","Heroism","Luck"], "Cosmoem":["Peace","Heroism","Luck"],
+  "Solgaleo":["Peace","Heroism","Luck"], "Lunala":["Peace","Heroism","Luck"],
+  "Necrozma":["Devourer","Pathogen","Solitude"],
+  "Silvally":["Predator","Devourer","Loyalty"],
+  "Eternatus":["Chaos","Storms","Destruction"],
+  // The Ultra Beasts all share one set
+  "Nihilego":["Chaos","Destruction","War"], "Buzzwole":["Chaos","Destruction","War"],
+  "Pheromosa":["Chaos","Destruction","War"], "Xurkitree":["Chaos","Destruction","War"],
+  "Celesteela":["Chaos","Destruction","War"], "Kartana":["Chaos","Destruction","War"],
+  "Guzzlord":["Chaos","Destruction","War"], "Poipole":["Chaos","Destruction","War"],
+  "Naganadel":["Chaos","Destruction","War"], "Stakataka":["Chaos","Destruction","War"],
+  "Blacephalon":["Chaos","Destruction","War"],
+  // The Outer Gods: two Concepts plus Fate — see the Concept Aura for the Type→Concept table.
+  "Outer God":["Concept","Fate"],
   // Homebrew: the created Fire/Ghost legendary. Symbiotic is permanent (the bond to Lázaro);
   // Nightmare & Death wake as it levels; it also owns Emotion & Willpower to swap in.
   "Vulpoxen":["Symbiotic","Nightmare","Death","Emotion","Willpower"],
@@ -12247,8 +12738,19 @@ const LEGENDARY_AURAS = {
 /* short GM notes for a few legendaries with book caveats */
 const LEGENDARY_AURA_NOTES = {
   "Mewtwo":"The book gives an either/or: keep either (Loyalty, Symbiotic) OR (Chaos, Destruction), plus War. All are listed — trim to the three that fit this Mewtwo.",
-  "Genesect":"The book lists a 'Land' Domain with no defined rules; it is represented here as the Nature Aura.",
-  "Arceus":"Arceus has access to every Legendary Aura, but only three may be active at once.",
+  "Genesect":"The 1.05 book listed a 'Land' Domain with no defined rules; the Divines update prints Nature, Predator, Trickery, which is what's set here. (Genesect grants no Gifts — it's a science experiment, not a god.)",
+  "Zacian":"Divines p.23: War, Rivalry, and then Heroism or Solitude depending on whether it is active or in hiding — both are listed; keep the one that fits.",
+  "Zamazenta":"Divines p.23: War, Rivalry, and then Heroism or Solitude depending on whether it is active or in hiding — both are listed; keep the one that fits.",
+  "Regieleki":"The Divines book doesn't call the two new Regis out by name, but it lists them on the Patron Stat table, so they take the Golems' shared Domains.",
+  "Regidrago":"The Divines book doesn't call the two new Regis out by name, but it lists them on the Patron Stat table, so they take the Golems' shared Domains.",
+  "Zygarde":"Divines p.23 rewrites Zygarde's Domains to Equilibrium, Hivemind and Rejuvenation (the 1.05 book had Devourer, Predator, Trickery).",
+  "Silvally":"Divines p.29: Type: Null itself has no Domains — these are Silvally's. Neither grants Gifts.",
+  "Necrozma":"Divines p.28: not divinity, but it fuses with creatures or implants them with a shard of itself. Its Gifts grow as the shard devours light.",
+  "Outer God":"One of The Outer Gods: Fate plus two Concept Domains drawn from its Type — see the Concept Aura for the full Type→Concept table and the Concept→Aura mapping.",
+  "Arceus":"Arceus has access to every Legendary Aura except Glitch, Rivalry and Symbiotic (Divines p.33), and only three may be active at once.",
+  "Articuno Galarian":"A Galarian Bird — it swapped its base element for Solitude, an act of rebellion against Lugia. Its Gifts are the Galarian Birds set, not the standard one.",
+  "Zapdos Galarian":"A Galarian Bird — it swapped its base element for Solitude, an act of rebellion against Lugia. Its Gifts are the Galarian Birds set, not the standard one.",
+  "Moltres Galarian":"A Galarian Bird — it swapped its base element for Solitude, an act of rebellion against Lugia. Its Gifts are the Galarian Birds set, not the standard one.",
   "Uxie":"Lake Guardian: shares Law & Loyalty with Mesprit/Azelf; its third Domain is Knowledge.",
   "Mesprit":"Lake Guardian: shares Law & Loyalty with Uxie/Azelf; its third Domain is Emotion.",
   "Azelf":"Lake Guardian: shares Law & Loyalty with Uxie/Mesprit; its third Domain is Willpower.",
@@ -12274,6 +12776,7 @@ const LEGENDARY_SPECIES = new Set([
   "Nihilego","Buzzwole","Pheromosa","Xurkitree","Celesteela","Kartana","Guzzlord","Poipole","Naganadel","Stakataka","Blacephalon",
   "Magearna","Marshadow","Zeraora","Meltan","Melmetal",
   "Zacian","Zamazenta","Eternatus","Kubfu","Urshifu","Zarude","Regieleki","Regidrago","Glastrier","Spectrier","Calyrex","Enamorus",
+  "Outer God",
   "Wo-Chien","Chien-Pao","Ting-Lu","Chi-Yu","Koraidon","Miraidon","Okidogi","Munkidori","Fezandipiti","Ogerpon","Terapagos","Pecharunt",
 ].map(auraKey));
 const FORM_SUFFIXES = new Set(["galarian","alolan","hisuian","paldean","origin","altered","therian","incarnate",
@@ -13994,8 +14497,11 @@ function specialMoveInfo(m, p){
   if(name==="Present")   return {kind:"dieDB", die:6, toDB:x=>2*x, hint:"Roll 1d6 → DB = 2 × result",
                                  onOne:"On a roll of 1 the target instead gains 20 HP (no damage)."};
 
-  /* ---- conditional damage (one checkbox per condition) ---- */
-  const conds = MOVE_CONDITIONS[moveCondKey(name)];
+  /* ---- conditional damage (one checkbox per condition) ----
+     Keyed off the DB's spelling, not whatever the caller happened to hand us: a Move that reached
+     here as "Hex (N)" (a Mentor's tutor entry) or with the Pokedex PDF's re-spacing is the same
+     Move, and has to offer the same tick. */
+  const conds = MOVE_CONDITIONS[moveCondKey(name)] || MOVE_CONDITIONS[moveCondKey(canonMoveName(name))];
   if(conds) return {kind:"conditionalDB", base:m?.damageBase ?? null, conds};
 
   /* ---- value-driven Damage Base (number input) ---- */
@@ -20981,17 +21487,20 @@ function encStatusControl(p){
         onclick:()=>{ p.statuses=p.statuses||[]; const i=p.statuses.indexOf(s.key);
           if(i>=0){ const w = statusCureBlock(p, s.key); p.statuses.splice(i,1); if(w) toast(w); }
           else { p.statuses.push(s.key); if(s.key==="tagged" && clearOtherTags(p)) toast("The previous Tag is lost — only one foe at a time"); }
+          if(s.key==="vortex") onVortexToggled(p, p.statuses.includes(s.key));
           saveEnc(); renderEncounters(); }},
         s.name+(immune?" ⃠":"")+(block&&on?" 🔒":"")));
     });
     body.append(el("div",{class:"small muted",style:"font-weight:700;margin:4px 0 2px"},label), chips);
   });
-  if(hasStatus(p,"confused")) body.append(confusionRow(p, n=>{
+  const encHpLoss = n => {
     const max = ownerMaxHP(p);   // Trainer or Pokémon — the card mounts this for both
     const cur = (p.currentHP==null?max:p.currentHP);
     p.currentHP = tempSoakSay(p, cur, cur - n);      // hurting itself is damage: Temp HP goes first
     saveEnc(); renderEncounters();
-  }));
+  };
+  if(hasStatus(p,"confused")) body.append(confusionRow(p, encHpLoss));
+  if(hasStatus(p,"vortex")) body.append(vortexRow(p, ()=>{ saveEnc(); renderEncounters(); }, encHpLoss));
   det.append(body);
   return det;
 }
@@ -26801,6 +27310,216 @@ function pcMonNode(m, actionBtn){
       el("div",{class:"r-meta",html: pcMonMeta(m)})),
     actionBtn);
 }
+/* ===================================================================
+   Pokédex — what the party has actually caught
+   ------------------------------------------------------------------
+   The GM's question is "did anyone catch something new?", and until now the only way to answer it
+   was to open every sheet and the PC and read the lists. So the app keeps a register: every scan
+   walks every Trainer's party AND the shared PC, and any species that has never been recorded
+   before is written down with the date and who had it. Once registered, a species stays registered
+   — releasing it or trading it away doesn't un-see it, same as the games.
+
+   The register is DEVICE-LOCAL (localStorage, keyed by campaign) on purpose: it is a read-only
+   derivative of data that is already synced, so putting it in a cloud row would add a row, a
+   subscription and egress for something every client can recompute for free. What is local is only
+   the "have I looked at this yet" bookmark — `ack` — which is per-person anyway.
+
+   The very first scan of a campaign back-fills silently and marks everything acknowledged: nobody
+   wants "🔔 47 new" the first time they open the tab. */
+const DEX_STORE_KEY = () => "ptu-dex-" + (mode==="cloud" ? (cloud.campaign || "solo") : "local");
+let dexReg = null;
+function dexLoad(){
+  const key = DEX_STORE_KEY();
+  if(dexReg && dexReg._key === key) return dexReg;
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(key) || "null"); } catch(e){}
+  dexReg = (d && typeof d === "object" && d.seen && typeof d.seen === "object")
+    ? { seen:d.seen, ack:d.ack||0, init:!!d.init } : { seen:{}, ack:0, init:false };
+  dexReg._key = key;
+  return dexReg;
+}
+function dexStore(){
+  const d = dexLoad();
+  try { localStorage.setItem(d._key, JSON.stringify({ seen:d.seen, ack:d.ack, init:d.init })); }
+  catch(e){ /* a full quota shouldn't break the tab — the register just won't persist */ }
+}
+/* "Mom?" and anything else flagged hidden is only a Dex entry for the people allowed to know it
+   exists; for everyone else it is not registered, not counted, and not part of the total. */
+function dexVisibleSpecies(s){ return !!s && !(s.hidden && !canSeeMom()); }
+function dexTotalSpecies(){ return D.species.filter(dexVisibleSpecies).length; }
+/* Every Pokémon the party owns right now: one entry per Trainer's party, plus the shared PC. */
+function dexHolders(){
+  const out = [];
+  if(mode === "cloud"){
+    Object.values(cloud.byId).forEach(r=>{
+      const c = r && r.data; if(!c) return;
+      out.push({ label: c.name || r.owner_name || "(unnamed)", where:"party", mons: c.pokemon || [] });
+    });
+    out.push({ label:"the PC", where:"pc", mons: (cloud.pc && cloud.pc.data && cloud.pc.data.pokemon) || [] });
+  } else {
+    (state.characters || []).forEach(c =>
+      out.push({ label: c.name || "(unnamed)", where:"party", mons: c.pokemon || [] }));
+  }
+  return out;
+}
+/* speciesKey → { name, n, who:[labels] } for what is being held at this moment (as opposed to what
+   has ever been registered) — this is what the "×3 · Madeline, the PC" line under an entry reads. */
+function dexHeldNow(){
+  const held = new Map();
+  dexHolders().forEach(h => (h.mons||[]).forEach(m=>{
+    const sp = getSpecies(m.species);
+    const name = sp ? sp.name : String(m.species||"").trim();
+    if(!name || (sp && !dexVisibleSpecies(sp))) return;
+    const k = name.toLowerCase();
+    const rec = held.get(k) || { name, n:0, who:[] };
+    rec.n++; if(!rec.who.includes(h.label)) rec.who.push(h.label);
+    held.set(k, rec);
+  }));
+  return held;
+}
+/* Register anything new. Returns the entries added by THIS scan (empty on the common path), so the
+   caller can announce them. */
+function dexScan(opts){
+  const d = dexLoad(), now = Date.now(), added = [];
+  const first = !d.init;
+  dexHolders().forEach(h => (h.mons||[]).forEach(m=>{
+    const sp = getSpecies(m.species);
+    const name = sp ? sp.name : String(m.species||"").trim();
+    if(!name || (sp && !dexVisibleSpecies(sp))) return;
+    const k = name.toLowerCase();
+    if(d.seen[k]) return;
+    d.seen[k] = { name, at:now, by:h.label, where:h.where };
+    added.push(d.seen[k]);
+  }));
+  if(first){ d.init = true; d.ack = now; }        // back-fill silently the first time
+  if(added.length || first) dexStore();
+  if(added.length && !first && !(opts && opts.quiet))
+    toast(added.length === 1
+      ? `\u{1F4D5} New Pokédex entry — ${added[0].name} (${added[0].by})`
+      : `\u{1F4D5} ${added.length} new Pokédex entries — ${added.slice(0,3).map(e=>e.name).join(", ")}${added.length>3?"…":""}`);
+  return added;
+}
+function dexUnseen(){
+  const d = dexLoad();
+  return Object.values(d.seen).filter(e => (e.at||0) > (d.ack||0));
+}
+function dexAckAll(){ const d = dexLoad(); d.ack = Date.now(); dexStore(); }
+/* The badge on the tab. Called from render() so a catch made on someone else's sheet lights up
+   here as soon as the sync brings it in, whichever tab is open. */
+function dexRefreshBadge(){
+  const el_ = $("#dexNew"); if(!el_) return;
+  dexScan();
+  const n = dexUnseen().length;
+  el_.textContent = n ? String(n) : "";
+  el_.hidden = !n;
+}
+let dexFilter = { q:"", sort:"new", missing:false };
+function dexWhereLabel(e){ return e.where === "pc" ? "in the PC" : e.by; }
+function dexEntryCard(e, held){
+  const sp = getSpecies(e.name);
+  const rec = held.get(e.name.toLowerCase());
+  const d = dexLoad();
+  const isNew = (e.at||0) > (d.ack||0);
+  const card = el("div",{class:"dex-cell" + (isNew ? " dex-new" : ""),
+    title:`First registered ${new Date(e.at||0).toLocaleString()} — ${dexWhereLabel(e)}`,
+    onclick: sp ? ()=>openRefDetail("species", sp.name) : null});
+  card.append(monSprite(e.name, false, "s-sm"));
+  card.append(el("div",{class:"dex-name"}, e.name));
+  if(sp) card.append(el("div",{class:"chips",style:"justify-content:center;gap:2px"},
+    ...(sp.types||[]).filter(ty=>ty && ty!=="None").map(ty=>el("span",{html:typeBadge(ty)}))));
+  card.append(el("div",{class:"small muted dex-sub"},
+    rec ? `×${rec.n} · ${rec.who.join(", ")}` : "not held right now"));
+  if(isNew) card.append(el("span",{class:"dex-flag"},"NEW"));
+  return card;
+}
+function renderDex(){
+  const root = $("#view-dex"); root.innerHTML = "";
+  dexScan();
+  const d = dexLoad();
+  const entries = Object.values(d.seen);
+  const total = dexTotalSpecies();
+  const held = dexHeldNow();
+  const fresh = entries.filter(e => (e.at||0) > (d.ack||0));
+  const pct = total ? Math.round(entries.length / total * 100) : 0;
+
+  /* ---- header: the count, the completion bar, and the "anything new?" answer ---- */
+  const head = el("div",{class:"card"});
+  head.append(el("h3",{},"\u{1F4D5} Pokédex",
+    el("span",{class:"pill",style:"margin-left:8px"}, String(entries.length))));
+  head.append(el("div",{style:"font-size:22px;font-weight:800"},
+    `${entries.length} `, el("span",{class:"muted",style:"font-size:14px;font-weight:600"}, `of ${total} species registered`),
+    el("span",{class:"kv",style:"margin-left:10px"}, `${pct}%`)));
+  const bar = el("div",{class:"hpbar",style:"margin-top:8px"});
+  bar.append(el("i",{style:`width:${Math.min(100,pct)}%;background:var(--accent)`}));
+  head.append(bar);
+  head.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    mode === "cloud"
+      ? "Registered by scanning every Trainer's party and the shared PC. A species stays registered once caught, even if it's later released or traded away."
+      : "Registered by scanning every character's party on this device. Join a campaign (☁ Cloud) to include the shared PC and everyone else's Pokémon."));
+  root.append(head);
+
+  if(fresh.length){
+    const nb = el("div",{class:"card",style:"border-color:var(--accent)"});
+    nb.append(el("h3",{},`\u{1F514} ${fresh.length} new since you last looked`,
+      el("button",{class:"linkbtn h-act",onclick:()=>{ dexAckAll(); renderDex(); dexRefreshBadge(); }},"mark all as seen")));
+    const grid = el("div",{class:"dex-grid"});
+    fresh.sort((a,b)=>(b.at||0)-(a.at||0)).forEach(e => grid.append(dexEntryCard(e, held)));
+    nb.append(grid);
+    root.append(nb);
+  }
+
+  /* ---- filters ---- */
+  const fcard = el("div",{class:"card"});
+  const frow = el("div",{class:"inline",style:"flex-wrap:wrap;gap:8px"});
+  const q = el("input",{type:"search",placeholder:"Search species…",style:"flex:1;min-width:150px"});
+  q.value = dexFilter.q;
+  const sf = el("select");
+  [["new","Newest first"],["name","Name A–Z"],["held","Most held first"]]
+    .forEach(([v,l])=>sf.append(el("option",{value:v,selected:v===dexFilter.sort}, l)));
+  const mcb = el("input",{type:"checkbox"}); mcb.checked = dexFilter.missing;
+  frow.append(q, sf, el("label",{class:"inline",style:"gap:6px;align-items:center"},
+    mcb, el("span",{class:"small"},"show what's still missing")));
+  fcard.append(frow);
+  const listWrap = el("div",{style:"margin-top:10px"});
+  const draw = ()=>{
+    listWrap.innerHTML = "";
+    const needle = dexFilter.q.trim().toLowerCase();
+    let arr = entries.filter(e => !needle || e.name.toLowerCase().includes(needle));
+    if(dexFilter.sort === "name") arr.sort((a,b)=>a.name.localeCompare(b.name));
+    else if(dexFilter.sort === "held") arr.sort((a,b)=>
+      ((held.get(b.name.toLowerCase())||{n:0}).n - (held.get(a.name.toLowerCase())||{n:0}).n)
+      || a.name.localeCompare(b.name));
+    else arr.sort((a,b)=>(b.at||0)-(a.at||0));
+    listWrap.append(el("div",{class:"section-head"},
+      el("span",{}, `Registered (${arr.length}${needle?` of ${entries.length}`:""})`)));
+    if(!arr.length) listWrap.append(el("div",{class:"muted small"},
+      entries.length ? "Nothing matches that search." : "Nothing registered yet — catch something!"));
+    else {
+      const grid = el("div",{class:"dex-grid"});
+      arr.forEach(e => grid.append(dexEntryCard(e, held)));
+      listWrap.append(grid);
+    }
+    if(dexFilter.missing){
+      const have = new Set(entries.map(e=>e.name.toLowerCase()));
+      let miss = D.species.filter(dexVisibleSpecies).map(s=>s.name)
+        .filter(n => !have.has(n.toLowerCase()) && (!needle || n.toLowerCase().includes(needle)));
+      listWrap.append(el("div",{class:"section-head",style:"margin-top:14px"},
+        el("span",{}, `Still missing (${miss.length})`)));
+      const cap = 400;
+      listWrap.append(el("div",{class:"chips"},
+        ...miss.slice(0,cap).map(n => el("button",{class:"statuschip",style:"cursor:pointer",
+          onclick:()=>openRefDetail("species", n)}, n))));
+      if(miss.length > cap) listWrap.append(el("div",{class:"small muted",style:"margin-top:6px"},
+        `…and ${miss.length-cap} more — search to narrow the list.`));
+    }
+  };
+  q.addEventListener("input",()=>{ dexFilter.q = q.value; draw(); });
+  sf.addEventListener("change",()=>{ dexFilter.sort = sf.value; draw(); });
+  mcb.addEventListener("change",()=>{ dexFilter.missing = mcb.checked; draw(); });
+  draw();
+  fcard.append(listWrap);
+  root.append(fcard);
+}
 function renderPC(){
   const root = $("#view-pc"); root.innerHTML="";
   if(!cloudConfigured() || mode!=="cloud"){
@@ -30126,6 +30845,15 @@ function openTokenMenu(token, map){
                 if(s.key==="dead"){ const j = cur.indexOf("knockedOut"); if(j>=0) cur.splice(j,1); }
                 if(w) toast(w);
               } else cur.push(s.key);
+              /* Vortex carries Slowed + Trapped and its own turn counter — keep all three in step
+                 here too, then let setTokenStatuses write the finished list wherever it lives. */
+              if(s.key==="vortex"){
+                const on = cur.includes("vortex");
+                syncVortexRiders(cur, on);
+                const VL = token.link ? tokenLinked(token) : null;
+                const vo = (VL && VL.obj) ? VL.obj : token;
+                if(on) vo.vortexTurn = 1; else delete vo.vortexTurn;
+              }
               await setTokenStatuses(token, cur); drawStatuses();
             }}, s.name));
         });
@@ -30133,8 +30861,11 @@ function openTokenMenu(token, map){
       });
       // Confusion's self-damage needs the creature's Attack/Sp.Atk, so it only shows on a linked token
       const LS = token.link ? tokenLinked(token) : null;
+      const tkHpLoss = async n => { await setTokenHP(token, tokenHp(token).cur - n); draw(); };
       if(info.editable && LS && LS.obj && tokenStatusKeys(token).includes("confused"))
-        statusWrap.append(confusionRow(LS.obj, async n=>{ await setTokenHP(token, tokenHp(token).cur - n); draw(); }));
+        statusWrap.append(confusionRow(LS.obj, tkHpLoss));
+      if(info.editable && LS && LS.obj && tokenStatusKeys(token).includes("vortex"))
+        statusWrap.append(vortexRow(LS.obj, async()=>{ await commitTokenSource(token); drawStatuses(); paintTokenStatus(token, LS.kind==="enc"||LS.kind==="enctrainer"); }, tkHpLoss));
     };
     drawStatuses();
     wrap.append(statusWrap);
@@ -30248,6 +30979,36 @@ function openTokenMenu(token, map){
       }
       aw.append(row);
       wrap.append(aw);
+    }
+
+    /* ---- Abilities: a Trainer carries them too. A player sheet files them under t.abilities, an
+       encounter NPC under t.encAbilities, and a Feature grant (Martial Artist's Guts, Hex Maniac's
+       Cursed Body, an Elementalist's Embrace) isn't stored on the sheet at all — it's derived from
+       the Feature list by featureAbilityGrants. ownerHasAbility already reads all three, so the
+       token has to as well, or half of what the engine is applying stays invisible on the board. ---- */
+    if(L && L.obj && (L.kind==="trainer"||L.kind==="enctrainer")){
+      const t = L.obj;
+      const own = [...new Set([...(t.abilities||[]), ...(t.encAbilities||[])])].filter(Boolean);
+      /* featureAbilityGrants walks classes AND features, so a Class that is also its own Feature
+         ("Hex Maniac") answers twice — dedupe, or the token lists the grant twice. */
+      const granted = [...new Set(featureAbilityGrants(t))]
+        .filter(a => !own.some(x => String(x).toLowerCase()===String(a).toLowerCase()));
+      if(own.length || granted.length){
+        const abw = el("div",{style:"margin-top:16px"});
+        abw.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"Abilities"));
+        const abilRow = (an, from) => {
+          const ab = abilityByName.get(String(an||"").toLowerCase());
+          const row = el("details",{class:"spoiler"});
+          row.append(el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, an),
+            ab&&ab.frequency?el("span",{class:"muted small",style:"margin-left:8px"}, ab.frequency):"",
+            from?el("span",{class:"muted small",style:"margin-left:8px"}, from):""));
+          row.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database.</span>"}));
+          abw.append(row);
+        };
+        own.forEach(an => abilRow(an, ""));
+        granted.forEach(an => abilRow(an, "from a Feature"));
+        wrap.append(abw);
+      }
     }
 
     // ---- Abilities: show what this Pokémon's abilities do, right from its token ----
