@@ -31985,7 +31985,31 @@ function mapTokenDetail(){ const s = mapView.scale || 1; return s < 0.3 ? 0 : s 
 
 function applyMapCamera(stage){ stage.style.transformOrigin="0 0";
   stage.style.transform = `translate(${mapView.panX}px,${mapView.panY}px) scale(${mapView.scale})`; }
-const MAP_ZOOM_MIN = 0.2, MAP_ZOOM_MAX = 4;
+/* Zoom limits. 0.2 is the right floor for a battle map, but a world map like the Isles is
+   12800x9600px of stage — at 0.2 you still only see a fifth of it, and "show me the whole island"
+   was impossible. So the floor is now worked out from the board itself: you can always zoom out to
+   twice the whole-map view, whatever size the map is, down to an absolute floor of 0.02. A small
+   map keeps the old 0.2 (there is nothing further out to see), so nothing changes for battle maps. */
+const MAP_ZOOM_MIN = 0.2, MAP_ZOOM_MAX = 4, MAP_ZOOM_FLOOR = 0.02;
+/* the scale at which the entire stage fits inside the viewport */
+function mapFitScale(map){
+  const st = mapStageSize(map), vp = mapViewportSize();
+  if(!st.w || !st.h) return 1;
+  return Math.min(vp.w/st.w, vp.h/st.h);
+}
+function mapZoomMin(map){
+  const m = map || currentMapForView();
+  if(!m) return MAP_ZOOM_MIN;
+  return Math.max(MAP_ZOOM_FLOOR, Math.min(MAP_ZOOM_MIN, mapFitScale(m)*0.5));
+}
+/* the whole board, centred - what the toolbar's fit button does */
+function fitMapToView(map){
+  if(!map) return;
+  const st = mapStageSize(map), vp = mapViewportSize();
+  const sc = Math.max(MAP_ZOOM_FLOOR, Math.min(MAP_ZOOM_MAX, mapFitScale(map)*0.96));
+  mapView = { scale:sc, panX:(vp.w - st.w*sc)/2, panY:(vp.h - st.h*sc)/2 };
+  renderMap();
+}
 function attachPanZoom(viewport, stage){
   let zoomTimer = null;
   // The scaled stage is a cached GPU layer rasterized at the zoom it was BUILT at, so zooming
@@ -31998,7 +32022,7 @@ function attachPanZoom(viewport, stage){
     zoomTimer = setTimeout(()=>{ if(currentTab==="map" && !mapDragging && !mapPanning) renderMap(); },
       mapCullStale() ? 50 : 200);
   };
-  const clampScale = s => Math.max(MAP_ZOOM_MIN, Math.min(MAP_ZOOM_MAX, s));
+  const clampScale = s => Math.max(mapZoomMin(), Math.min(MAP_ZOOM_MAX, s));
   const vpXY = e=>{ const r=viewport.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; };
   // scale about a viewport point, keeping whatever is under it pinned there
   const zoomAt = (cx, cy, want)=>{
@@ -32400,6 +32424,12 @@ function renderMap(){
         el("button",{class:"btn-secondary",onclick:()=>selectMapTokens(map, PLAYER_TOKEN_KINDS, "of your tokens")},"☑ My tokens"));
     }
   }
+  /* "show me the whole island" in one tap — everyone gets this, not just the GM, since zooming a
+     world map out by hand is a lot of wheel. Sets the camera to the fitting scale (see mapZoomMin,
+     which is what makes a scale this far out reachable at all) and centres the board in the view. */
+  if(map) bar.append(el("span",{class:"map-sep"}),
+    el("button",{class:"btn-secondary",title:"Zoom out until the whole map fits on screen",
+      onclick:()=>fitMapToView(map)}, "⤢ Fit map"));
   // The toolbar grows a lot of buttons once weather/terrain/GM tools are all in play — let it collapse
   // so it doesn't eat half the screen on a phone. Collapsed state persists across map visits.
   const barCollapsed = localStorage.getItem("ptu_mapbar_collapsed")==="1";
@@ -32484,7 +32514,8 @@ function renderMap(){
   });
   editOverlays.forEach(o=>stage.append(o));
 
-  if(map.gridOn) stage.append(el("div",{class:"map-grid",style:`width:${stageW}px;height:${stageH}px;background-size:${map.gridSize}px ${map.gridSize}px`}));
+  // a grid whose cells are 5px apart is just moire — it goes with the rest of the fine detail
+  if(map.gridOn && mapTokenDetail()>=1) stage.append(el("div",{class:"map-grid",style:`width:${stageW}px;height:${stageH}px;background-size:${map.gridSize}px ${map.gridSize}px`}));
 
   // tokens + fog, with role-dependent stacking. In image-edit mode tokens are inert.
   const fog = fogSet(map.id);
