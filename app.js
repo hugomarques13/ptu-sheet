@@ -387,11 +387,54 @@ function conditionCSMods(p){
   (p.statuses||[]).forEach(k=>{ const c=CONDITION_CS[k]; if(c) for(const s in c) m[s]+=c[s]; });
   return m;
 }
+/* Stat Ace and its five named branches (Core p.60): the Feature name → the Base Stat it raises.
+   Declared here rather than beside statAceBonus() because that function is reachable from load()
+   via normPokemon → pokeDerived → pokeBaseStats, and a const still in its temporal dead zone would
+   throw inside load()'s swallowed catch — the data-loss trap fixed once already. */
+const STAT_ACE_FEATURES = [["Attack Ace","atk"], ["Defense Ace","def"], ["Special Attack Ace","spatk"],
+                           ["Special Defense Ace","spdef"], ["Speed Ace","spd"]];
+const statAceStep = level => 1 + Math.floor(Math.max(1, level||1) / 10);
+/* ---------- Trained Stats (Ace Trainer, Athlete — Core pp.60, 82) ----------
+   "Choose a Stat besides HP; that Stat becomes Trained until an Extended Rest is taken. The default
+   State of Trained Stats is +1 Combat Stages instead of 0."  It is a DEFAULT, not a buff: it can't
+   be stepped away and an End Scene doesn't wipe it, so it belongs with the automated stages below —
+   those are already treated as a floor the ± steppers may raise but never hand-cancel.
+   Stored as o.trainedStats = ["atk", …] on the creature itself, because the choice is per-Pokémon.
+     · Ace Trainer trains its Trainer's Pokémon — one Stat each, two with Champ in the Making.
+     · Athlete trains the Trainer themselves — two Stats, kept on the Trainer the same way.
+   The cap is read live, so dropping the Feature that paid for a Trained Stat takes the +1 back on
+   the next render without destroying the stored choice. */
+const TRAINED_CS = 1;
+function trainedStatCap(o){
+  if(!o) return 0;
+  if(isTrainerOwner(o)) return trainerHasFeature(o, "Athlete") ? 2 : 0;
+  const t = ownerTrainerOf(o);
+  if(!t || !trainerHasClass(t, "Ace Trainer")) return 0;
+  return trainerHasFeature(t, "Champ in the Making") ? 2 : 1;
+}
+function trainedStatsOf(o){
+  const cap = trainedStatCap(o);
+  if(!cap) return [];
+  return (Array.isArray(o && o.trainedStats) ? o.trainedStats : [])
+    .filter(k => CS_STATS.some(([s]) => s === k)).slice(0, cap);
+}
+function trainedCSMods(o){
+  const out = {};
+  trainedStatsOf(o).forEach(k => out[k] = (out[k] || 0) + TRAINED_CS);
+  return out;
+}
+/* Critical Moment (Ace Trainer, Adept Command): "The bonuses from your Pokemon's [Training] are
+   tripled until the end of your next turn." A plain flag rather than a status chip — it is not an
+   affliction, it lasts a turn, and applyEndScene clears it with the rest of the round's state.
+   Every [Training] bonus the engine applies (Agile's +4 Initiative, Brutal's +1 Crit Range,
+   Focused's +1 Accuracy, Inspired's +1 Evasion) is multiplied by this. */
+function trainingMult(o){ return o && o.critMoment ? 3 : 1; }
 /* effective Combat Stages = manual (p.cs) + condition mods, clamped −6…+6 */
 function effectiveCS(p){
   const cond = conditionCSMods(p), wx = weatherCSMods(p), ab = abilityStatusCS(p), aura = auraCSMods(p), out = {};
   const eqSpd = isTrainerOwner(p) ? equipSpeedCS(p) : 0;   // Heavy Armor & co. shift the Speed default CS
-  CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + wx[k] + (ab[k]||0) + aura[k] + (k==="spd"?eqSpd:0))));
+  const tr = trainedCSMods(p);                             // Ace Trainer / Athlete Trained Stats
+  CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + wx[k] + (ab[k]||0) + aura[k] + (tr[k]||0) + (k==="spd"?eqSpd:0))));
   ACC_EVA_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + (ab[k]||0) + aura[k])));
   return out;
 }
@@ -404,8 +447,9 @@ function effectiveCS(p){
 function csAutoMods(p){
   const cond = conditionCSMods(p), wx = weatherCSMods(p), ab = abilityStatusCS(p), aura = auraCSMods(p);
   const eqSpd = isTrainerOwner(p) ? equipSpeedCS(p) : 0;
+  const tr = trainedCSMods(p);
   const out = {};
-  CS_STATS.forEach(([k]) => out[k] = (cond[k]||0) + (wx[k]||0) + (ab[k]||0) + (aura[k]||0) + (k==="spd"?eqSpd:0));
+  CS_STATS.forEach(([k]) => out[k] = (cond[k]||0) + (wx[k]||0) + (ab[k]||0) + (aura[k]||0) + (tr[k]||0) + (k==="spd"?eqSpd:0));
   ACC_EVA_STATS.forEach(([k]) => out[k] = (cond[k]||0) + (ab[k]||0) + (aura[k]||0));
   return out;
 }
@@ -2464,6 +2508,7 @@ function applyEndScene(c){
   if(!c) return;
   normTrainer(c.trainer);
   c.trainer.usedAP = 0; c.trainer.tempHP = 0; c.trainer.buffs = []; resetUses(c.trainer, "scene");
+  delete c.trainer.critMoment;                     // an Athlete's Trainings stop being tripled too
   c.trainer.modes = {};                            // a Feature stance (Enchanting Transformation) lasts until the end of the Scene — and returns its Bound AP with it
   c.trainer.manualBoundAP = 0;                      // any manual GM AP Drain/Bind releases at End Scene too
   channelerEndScene(c.trainer);                    // a Channeler's Imprints and Spirit Boosts hand their Bound AP back with the Scene; the Channels themselves aren't Scene-bound and stay
@@ -2475,6 +2520,8 @@ function applyEndScene(c){
 
   (c.pokemon||[]).forEach(p => { normPokemon(p); p.tempHP = 0; p.buffs = []; resetUses(p, "scene");
     delete p.momentum;                 // Duelist Momentum doesn't outlast the fight (Core Extras)
+    delete p.critMoment;               // Critical Moment triples [Training] for a turn, not a Scene
+    delete p.perseveranceUsed;         // Perseverance is once per Scene per Pokemon
     delete p.typeRefreshed;            // Type Refresh is once per target per Scene
     delete p.deepCold; delete p.simpleImp;             // both are once per Scene per creature
     delete p.pheromone; delete p.pheroRolled;          // Pheromone Stacks don't outlast the fight
@@ -3217,6 +3264,32 @@ function trainerDerived(t) {
   };
 }
 
+/* ---------- Stat Ace and its five named branches (Core p.60) ----------
+   "Your Pokemon have their Chosen Base Stat increased by +1, and by +1 more for every 10 Levels they
+   have (for example, a Level 20 Pokemon would have your Chosen Stat's base value increased by +3)."
+   A TRAINER Feature whose bonus lands on that Trainer's Pokémon, so it is read off ownerTrainerOf —
+   the same reason the Type Ace per-Type passives are (hasFeature only sees a player's own sheet, and
+   an encounter NPC's Features live on the encounter trainer). ownerTrainerOf returns null when it is
+   asked too early to know; a missing owner just means no bonus this pass, and nothing is persisted
+   from here, so the next render picks it up.
+   The generic "Stat Ace" is taken with a Stat chosen at the table — recorded as t.statAcePick[].
+   STAT_ACE_FEATURES / statAceStep are declared up with the other stat tables, above `let state =
+   load()`: this runs inside pokeBaseStats, which load() can reach, and a const in its temporal dead
+   zone would throw into load()'s swallowed catch and silently drop the save. */
+function statAceBonus(p){
+  const out = {};
+  if(!p || isTrainerOwner(p)) return out;                  // Stat Ace only ever touches Pokémon
+  const t = ownerTrainerOf(p);
+  if(!t) return out;
+  const step = statAceStep(p.level);
+  STAT_ACE_FEATURES.forEach(([feat, k]) => {
+    if(trainerHasFeature(t, feat)) out[k] = (out[k]||0) + step;
+  });
+  (Array.isArray(t.statAcePick) ? t.statAcePick : []).forEach(k => {
+    if(k && k !== "hp" && STATS.some(([s]) => s === k)) out[k] = (out[k]||0) + step;
+  });
+  return out;
+}
 function pokeBaseStats(p) {
   const sp = getSpecies(p.species);
   const nat = natureByName.get((p.nature||"").toLowerCase());
@@ -3224,10 +3297,11 @@ function pokeBaseStats(p) {
   const edgeBase = pokeEdgeBaseBonus(p);           // Underdog's Strength: +1 to EVERY Base Stat
   const vit = vitaminStatBonus(p);                 // Vitamins (+1) and Stat Suppressants (−1)
   const arc = p.arcanaStats || {};                 // permanent Base Stat swings from Arcana cards (Knight of Swords, Strength, The Sun…)
+  const ace = statAceBonus(p);                     // its Trainer's Stat Ace / Speed Ace / … branch
   STATS.forEach(([k]) => {
     let base = sp?.baseStats?.[k] ?? 0;
     if (nat) base += (nat.statMods[k] || 0);
-    base += edgeBase + (vit[k] || 0) + (arc[k] || 0);
+    base += edgeBase + (vit[k] || 0) + (arc[k] || 0) + (ace[k] || 0);
     out[k] = Math.max(k === "hp" ? 1 : 1, base);   // stats floor at 1
   });
   // Huge Power / Pure Power double the user's Base Attack stat (incl. Nature, Core p.199) — applied
@@ -3261,7 +3335,7 @@ function pokeDerived(p) {
   // so it is added AFTER the cap rather than being squeezed under it. The Evasion Combat Stage
   // (cs.eva, Core p.234) works the same way — a flat add on top, separately capped −6…+6.
   const wEva = weatherEvasion(p);
-  const inspiredEva = hasStatus(p,"inspired") ? 1 : 0;   // Inspired Training: +1 Evasion
+  const inspiredEva = hasStatus(p,"inspired") ? 1*trainingMult(p) : 0;   // Inspired Training: +1 Evasion (×3 under Critical Moment)
   const bugSkyEva = insectoidSpdEva(p);                  // Insectoid Utility (Type Ace, Bug): Sky → +1 Speed Evasion
   const bEva = buffEva(p);                               // Cheerleader's I Believe In You!, a Commander's Capricious Whirl
   return {
@@ -4588,7 +4662,7 @@ function badMoodWhy(t){
 function trainerCritThreshold(t, st, buffCrit){
   /* A Struggle Attack has no Move object, so critThreshold's ability pass never runs for it — which
      left Super Luck (Shade Caller's Dark Soul) widening a Trainer's Moves but not their weapon. */
-  const bare = (hasStatus(t,"brutal") ? 19 : 20) - (ownerHasAbility(t,"Super Luck") ? 2 : 0);
+  const bare = (hasStatus(t,"brutal") ? 20 - 1*trainingMult(t) : 20) - (ownerHasAbility(t,"Super Luck") ? 2 : 0);
   const base = (st && st.move) ? critThreshold(t, st.move) : bare;
   return Math.max(2, base - badMoodCrit(t) - (buffCrit||0));
 }
@@ -6889,7 +6963,9 @@ function featureGrantedNames(t){
     });
     // "Choose one of A, B, … or C. … You gain the chosen Feature"
     if(/gain the chosen (?:Feature|Edge)/i.test(e)){
-      const ch = /Choose one of ([^.]+)\./i.exec(e);
+      // Elite Trainer drops the "one of" ("Choose Agility Training, Brutal Training, ..."), so
+      // that half is optional - otherwise its granted [Training] Feature reads as off-ledger.
+      const ch = /Choose (?:one of )?([^.]+)\./i.exec(e);
       if(ch) ch[1].split(/,|\bor\b/i).map(x => x.trim()).filter(Boolean)
                   .forEach(nm => out.set(nm, n));
     }
@@ -14082,7 +14158,7 @@ function critThreshold(p, m){
   if(ownerHasAbility(p,"Razor Edge")) t -= /tail/i.test(m?.name||"") ? 3 : 2;
   if(ownerHasAbility(p,"Beam Cannon") && !/^melee/i.test(m?.range||"") && /1 target/i.test(m?.range||"")) t -= 3;
   if(ownerHasAbility(p,"Gore") && /^horn attack$/i.test(m?.name||"")) t = Math.min(t, 18);
-  if(hasStatus(p,"brutal")) t -= 1;   // Brutal Training: +1 Crit Range
+  if(hasStatus(p,"brutal")) t -= 1*trainingMult(p);   // Brutal Training: +1 Crit Range (×3 under Critical Moment)
   return Math.max(2, t);
 }
 /* Move-name sets for the abilities that boost a specific printed list of Moves (Core p.199). */
@@ -14925,7 +15001,7 @@ function openMoveRoll(p, m, sp, opts={}){
      reopens the roll the same way the Versatile switch does. */
   const duelMom  = isDuelistMon(p) ? duelistMomentumBonus(p) : 0;
   const vsTagged = duelMom > 0 && !!opts.vsTagged;
-  const accCS = (d.cs.acc||0) + abilAcc.acc + (hasStatus(p,"focused")?1:0) + (vsTagged?duelMom:0);      // Accuracy CS (Core p.234) + ability Accuracy mods + Focused Training + Duelist Momentum
+  const accCS = (d.cs.acc||0) + abilAcc.acc + (hasStatus(p,"focused")?1*trainingMult(p):0) + (vsTagged?duelMom:0);      // Accuracy CS (Core p.234) + ability Accuracy mods + Focused Training + Duelist Momentum
   const wx = weatherRollMods(p, m, mtype);      // current Weather Condition (Core p.342)
   const tx = terrainRollMods(p, m, mtype);      // current Terrain(s) in play — any number can stack
   /* The AC this roll is checked against: the Move's printed AC, minus any Accuracy Training
@@ -19221,6 +19297,169 @@ function channelerCard(t, rerender, persist){
   return card;
 }
 
+/* ---------------------------------------------------------------- ACE TRAINER (Core pp.59-60)
+   Almost all of this class resolves BEFORE initiative is rolled, which is exactly why none of it was
+   automated: there was no roll to hang it off. The three pieces that do change numbers now do so on
+   their own — Trained Stats sit in csAutoMods (a +1 CS default the steppers can raise but not
+   cancel), the Stat Ace branches are folded into pokeBaseStats, and Critical Moment multiplies every
+   [Training] bonus the engine already applies. This card is the bookkeeping around them. */
+function aceTrainerCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Ace Trainer")) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const card = classCard("🏅", "Ace Trainer", "Core pp.59-60");
+  const has = n => hasFeatureLoose(t, n);
+  const mons = trainerOwnMons(t);
+  classBit(card, "Ace Trainer is prep, not buttons: train a Stat and it stays Trained until an Extended Rest, "
+    + "so its +1 Combat Stage is applied as the Pokémon's DEFAULT state — it shows on the Combat Stage pads as "
+    + "an automated stage you can add to but can't step away.");
+  if(!mons.length) classBit(card, "This Trainer has no Pokémon on their list yet, so there is nothing to train.");
+
+  // what the Stat Ace branches are worth right now, so nobody has to work it out per Pokémon
+  const aces = STAT_ACE_FEATURES.filter(([f]) => has(f)).map(([f, k]) => `${f} (${statLbl(k)})`);
+  if(aces.length || (t.statAcePick || []).length){
+    const picks = (t.statAcePick || []).map(k => `Stat Ace (${statLbl(k)})`);
+    classBit(card, `${[...aces, ...picks].join(" · ")} — applied to every one of your Pokémon's BASE Stats, `
+      + `+1 per 10 Levels. Right now: ` + (mons.length
+        ? mons.map(p => `${ownerLabel(p)} +${statAceStep(p.level)}`).join(" · ")
+        : "no Pokémon to apply it to") + ".");
+  }
+
+  const row = el("div", { class:"inline", style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0" });
+  if(mons.length) row.append(el("button", { class:"btn-primary",
+    title:"Extended Action — pick each Pokémon's Trained Stat(s); they last until an Extended Rest",
+    onclick:() => openTrainedStats(t, redraw, saveFn) }, "🏋 Train Stats"));
+  if(has("Perseverance")) row.append(el("button", { class:"btn-secondary",
+    title:"1 AP, Free Action — a Pokémon that just gained an Injury doesn't. Once per Scene per Pokémon",
+    onclick:() => openPerseverance(t, redraw, saveFn) }, "🛡 Perseverance"));
+  if(has("Critical Moment")){
+    const u = featUses(t, "Critical Moment");
+    row.append(el("button", { class:"btn-secondary",
+      title:"Scene x2, Standard — triple one Pokémon's [Training] bonuses until the end of your next turn",
+      onclick:() => openCriticalMoment(t, redraw, saveFn) }, "⚡ Critical Moment"));
+    row.append(el("span", { class:"small muted" }, u.left != null ? `${u.left} of ${u.max} left` : ""));
+  }
+  if(has("Top Percentage") && mons.length) row.append(el("button", { class:"btn-secondary",
+    title:"Free Action — +1 Tutor Point when a Pokémon reaches a Level divisible by 5, four times each",
+    onclick:() => openTopPercentage(t, redraw, saveFn) }, "🎓 Top Percentage"));
+  if(row.childNodes.length) card.append(row);
+
+  const live = mons.filter(p => trainedStatsOf(p).length);
+  if(live.length) classBit(card, "Trained right now: " + live.map(p =>
+    `${ownerLabel(p)} — ${trainedStatsOf(p).map(statLbl).join(" & ")}`
+    + (p.critMoment ? " ⚡×3" : "")).join(" · "));
+  if(has("Elite Trainer")) classBit(card, "Elite Trainer lets you apply TWO different [Training] Features to each "
+    + "Pokémon — tick both on its Trainings card (Agile, Brutal, Focused, Inspired); the engine applies the "
+    + "+4 Initiative, +1 Crit Range, +1 Accuracy and +1 Evasion from there.");
+  classFeatureRows(card, t, "Ace Trainer", rerender, persist);
+  return card;
+}
+/* The Trained Stat picker. One row per Pokémon (plus the Trainer themselves if they're an Athlete),
+   each offering the five non-HP Stats; the cap comes from trainedStatCap, so Champ in the Making
+   widens it to two without this needing to know why. */
+function openTrainedStats(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const targets = [...trainerOwnMons(t)];
+  if(trainedStatCap(t)) targets.unshift(t);              // Athlete trains the Trainer
+  const body = el("div", {});
+  body.append(el("div", { class:"small", style:"margin-bottom:10px" },
+    "At-Will · Extended Action (half an hour of training). A Trained Stat's default state is +1 Combat Stage "
+    + "instead of 0, and it lasts until an Extended Rest. Ace Trainer drains 1 AP per session, not per Pokémon."));
+  const draw = () => {
+    body.querySelectorAll(".ts-row").forEach(n => n.remove());
+    targets.forEach(o => {
+      const cap = trainedStatCap(o), cur = trainedStatsOf(o);
+      const rowd = el("div", { class:"moveslot ts-row" });
+      rowd.append(el("div", { style:"flex:1" },
+        el("div", { style:"font-weight:700" }, ownerLabel(o) + (isTrainerOwner(o) ? " (Athlete)" : "")),
+        el("div", { class:"ms-info" }, cur.length ? `${cur.map(statLbl).join(" & ")} · +1 CS each`
+                                                  : `nothing trained (${cap} slot${cap === 1 ? "" : "s"})`)));
+      const chips = el("div", { class:"chips" });
+      CS_STATS.forEach(([k, lbl]) => {
+        const on = cur.includes(k);
+        chips.append(el("button", { class:"trainingchip" + (on ? " on" : ""),
+          onclick:() => {
+            const list = trainedStatsOf(o).slice();
+            const i = list.indexOf(k);
+            if(i >= 0) list.splice(i, 1);
+            else if(list.length >= cap) list.splice(0, list.length - cap + 1, k);   // oldest falls off
+            else list.push(k);
+            o.trainedStats = list;
+            saveFn(); draw(); redraw();
+          } }, lbl));
+      });
+      rowd.append(chips);
+      body.append(rowd);
+    });
+  };
+  draw();
+  modal({ title:"🏋 Trained Stats", bodyNode:body,
+          footNodes:[el("button", { class:"btn-primary", onclick:closeModal }, "Done")] });
+}
+/* Perseverance: "Trigger: Your Pokemon gains an Injury. Effect: The target instead does not gain an
+   Injury." Injuries arrive from a dozen places (damage, the Map's damage tool, Arcana, End Day), so
+   rather than trying to intercept every one this takes the Injury back off — same "the sheet offers
+   it, it doesn't guess" contract the Maelstrom Tick uses. Once per Scene per target. */
+function openPerseverance(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const mons = trainerOwnMons(t).filter(p => (p.injuries || 0) > 0);
+  if(!mons.length){ toast("None of your Pokémon is carrying an Injury"); return; }
+  const label = p => `${ownerLabel(p)} — ${p.injuries} Injur${p.injuries === 1 ? "y" : "ies"}`
+    + (p.perseveranceUsed ? " (already used this Scene)" : "");
+  const byLabel = new Map(mons.map(p => [label(p), p]));
+  openPicker("Perseverance — which Pokémon?", [...byLabel.keys()], lbl => {
+    const p = byLabel.get(lbl);
+    if(p.perseveranceUsed){ toast(`${ownerLabel(p)} already used Perseverance this Scene`); return; }
+    if(!apSpend(t, 1)) return;
+    p.injuries = Math.max(0, (p.injuries || 0) - 1);
+    p.perseveranceUsed = true;
+    saveFn(); redraw();
+    toast(`🛡 ${ownerLabel(p)} shrugs it off — Injury not taken (${p.injuries} left)`);
+  });
+}
+/* Critical Moment: triple one Pokémon's [Training] bonuses until the end of your next turn. The flag
+   is read by trainingMult() wherever a Training bonus is applied, and End Scene clears it. */
+function openCriticalMoment(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const mons = trainerOwnMons(t).filter(p => TRAINING_DEFS.some(s => hasStatus(p, s.key)));
+  const on = trainerOwnMons(t).filter(p => p.critMoment);
+  if(on.length){                                   // already running → offer to end it
+    on.forEach(p => { delete p.critMoment; });
+    saveFn(); redraw();
+    toast(`⚡ Critical Moment ended (${on.map(ownerLabel).join(", ")})`);
+    return;
+  }
+  if(!mons.length){ toast("No Pokémon has a [Training] applied to triple"); return; }
+  const label = p => `${ownerLabel(p)} — ${TRAINING_DEFS.filter(s => hasStatus(p, s.key)).map(s => s.name).join(", ")}`;
+  const byLabel = new Map(mons.map(p => [label(p), p]));
+  openPicker("Critical Moment — triple whose Trainings?", [...byLabel.keys()], lbl => {
+    const p = byLabel.get(lbl);
+    if(!featSpend(t, "Critical Moment")) return;
+    p.critMoment = true;
+    saveFn(); redraw();
+    toast(`⚡ ${ownerLabel(p)}'s Trainings are tripled until the end of your next turn`);
+  });
+}
+/* Top Percentage: "+1 Tutor Point when your Pokemon levels up to a Level evenly divisible by 5, a
+   maximum of 4 times per Pokemon." A trigger, so it is a button rather than something folded into
+   tpTotalEarned — ownerTrainerOf returns null while a sheet is still loading, and a level-synced
+   total that could read 0 owners would take points back off the ledger. */
+function openTopPercentage(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const mons = trainerOwnMons(t);
+  if(!mons.length){ toast("This Trainer has no Pokémon"); return; }
+  const label = p => `${ownerLabel(p)} · Lv ${p.level} · ${p.topPercentage || 0}/4 taken · ${tpLeft(p)} TP`;
+  const byLabel = new Map(mons.map(p => [label(p), p]));
+  openPicker("Top Percentage — which Pokémon?", [...byLabel.keys()], lbl => {
+    const p = byLabel.get(lbl);
+    if((p.topPercentage || 0) >= 4){ toast(`${ownerLabel(p)} has taken all four already`); return; }
+    p.topPercentage = (p.topPercentage || 0) + 1;
+    p.tpCredited = (p.tpCredited || 0) + 1;          // it is a GRANT, so the level-sync must not claw it back
+    tpChange(p, +1, `Top Percentage (Lv ${p.level})`, { kind:"ace" });
+    saveFn(); redraw();
+    toast(`🎓 ${ownerLabel(p)} gains a Tutor Point (${p.topPercentage}/4)`);
+  });
+}
+
 /* ---------------------------------------------------------------- DUELIST (Core pp.62-63)
    Duelist is an economy, not a set of attacks: the Trainer Tags a foe, keeps a Pokémon Focused, and
    then SPENDS Momentum. The Momentum counter itself already lives on the Pokémon (momentumOf /
@@ -20414,7 +20653,7 @@ function classAutomationCards(t, rerender, persist){
   return [rememberCard,
           musicianCard, commanderCard, provocateurCard, cheerleaderCard,
           glamourCard, captureCard, medicCard, hexCard, channelerCard,
-          duelistCard, heraldCard, typeAceCard, maelstromCard, shadeCallerCard]
+          aceTrainerCard, duelistCard, heraldCard, typeAceCard, maelstromCard, shadeCallerCard]
     .map(fn => fn(t, rerender, persist)).filter(Boolean);
 }
 
@@ -23852,7 +24091,7 @@ function simProfile(A, atk, cfg){
     db: Math.min(28, atk.db + (stab?2:0) + (bm.db||0) + (abil.db||0)),
     dbBonus: (stab?2:0) + (bm.db||0) + (abil.db||0),
     ac: wx.acOverride!=null ? wx.acOverride : atk.ac,
-    accMod: (bm.acc||0) + (d.cs.acc||0) + (aAcc.acc||0) + (hasStatus(p,"focused")?1:0),
+    accMod: (bm.acc||0) + (d.cs.acc||0) + (aAcc.acc||0) + (hasStatus(p,"focused")?1*trainingMult(p):0),
     critT: Math.max(2, critThreshold(p, atk.m) - (bm.crit||0)),
     alwaysCrit: alwaysCrits(atk.m),
     flat: atkStat + (bm.dmg||0) + (wx.dmg||0) + (tx.dmg||0) + (abil.flat||0) + typeBoosterDmg(p, mtype),
@@ -24115,7 +24354,7 @@ function simInitiative(u){
   let v = (u.isT ? d.totals.spd : d.eff.spd) || 0;
   if(hasStatus(u.obj,"paralysis")) v = Math.floor(v/2);   // Feb 2016 errata: halves Initiative
   if(hasStatus(u.obj,"flinch"))    v -= 5;
-  if(hasStatus(u.obj,"agile"))     v += 4;
+  if(hasStatus(u.obj,"agile"))     v += 4*trainingMult(u.obj);
   return v;
 }
 
@@ -27319,33 +27558,50 @@ function pcMonNode(m, actionBtn){
    before is written down with the date and who had it. Once registered, a species stays registered
    — releasing it or trading it away doesn't un-see it, same as the games.
 
+   Catching an evolved form registers everything it evolved FROM as well (speciesLineBackTo): you
+   can't be holding a Garchomp without the Dex having met a Gible.
+
    The register is DEVICE-LOCAL (localStorage, keyed by campaign) on purpose: it is a read-only
    derivative of data that is already synced, so putting it in a cloud row would add a row, a
    subscription and egress for something every client can recompute for free. What is local is only
    the "have I looked at this yet" bookmark — `ack` — which is per-person anyway.
 
    The very first scan of a campaign back-fills silently and marks everything acknowledged: nobody
-   wants "🔔 47 new" the first time they open the tab. */
+   wants "🔔 47 new" the first time they open the tab.
+
+   Three stores, not one:
+     seen[key]    — the register itself
+     removed[key] — struck off BY HAND. The scan honours it, so a species you don't want listed
+                    stays off even while someone is still carrying it (otherwise the next render
+                    would just put it straight back).
+     manual[key]  — added by hand rather than found by the scan, so the card can say so. */
 const DEX_STORE_KEY = () => "ptu-dex-" + (mode==="cloud" ? (cloud.campaign || "solo") : "local");
 let dexReg = null;
+const dexFamilyCache = new Map();   // speciesKey → is any stage of its line registered (dexFamilyRegistered)
 function dexLoad(){
   const key = DEX_STORE_KEY();
   if(dexReg && dexReg._key === key) return dexReg;
   let d = null;
   try { d = JSON.parse(localStorage.getItem(key) || "null"); } catch(e){}
   dexReg = (d && typeof d === "object" && d.seen && typeof d.seen === "object")
-    ? { seen:d.seen, ack:d.ack||0, init:!!d.init } : { seen:{}, ack:0, init:false };
+    ? { seen:d.seen, removed:d.removed||{}, manual:d.manual||{}, ack:d.ack||0, init:!!d.init }
+    : { seen:{}, removed:{}, manual:{}, ack:0, init:false };
   dexReg._key = key;
+  dexFamilyCache.clear();
   return dexReg;
 }
 function dexStore(){
   const d = dexLoad();
-  try { localStorage.setItem(d._key, JSON.stringify({ seen:d.seen, ack:d.ack, init:d.init })); }
+  dexFamilyCache.clear();
+  try { localStorage.setItem(d._key,
+    JSON.stringify({ seen:d.seen, removed:d.removed, manual:d.manual, ack:d.ack, init:d.init })); }
   catch(e){ /* a full quota shouldn't break the tab — the register just won't persist */ }
 }
-/* "Mom?" and anything else flagged hidden is only a Dex entry for the people allowed to know it
-   exists; for everyone else it is not registered, not counted, and not part of the total. */
-function dexVisibleSpecies(s){ return !!s && !(s.hidden && !canSeeMom()); }
+/* A hidden species ("Mom?") is not Dex material for ANYONE — not even the people allowed to know it
+   exists. It isn't a catchable Pokémon, and a one-off entry that only two accounts can see would
+   make the completion count disagree between screens. Not registered, not counted, not in the total. */
+function dexVisibleSpecies(s){ return !!s && !s.hidden; }
+function dexListable(name){ const s = getSpecies(name); return s ? dexVisibleSpecies(s) : true; }
 function dexTotalSpecies(){ return D.species.filter(dexVisibleSpecies).length; }
 /* Every Pokémon the party owns right now: one entry per Trainer's party, plus the shared PC. */
 function dexHolders(){
@@ -27377,25 +27633,48 @@ function dexHeldNow(){
   }));
   return held;
 }
+/* Write one species into the register, honouring the manual strike-off list. Returns the new entry
+   or null if it was already there / struck off / not Dex material. */
+function dexRegister(d, name, meta, at){
+  if(!name || !dexListable(name)) return null;
+  const k = name.toLowerCase();
+  if(d.removed[k] || d.seen[k]) return null;
+  d.seen[k] = Object.assign({ name, at: at || Date.now() }, meta || {});
+  return d.seen[k];
+}
+/* …and its whole pre-evolution line with it. speciesLineBackTo returns [self, ...earlier stages],
+   and it already understands regional forms (Ninetales Alolan → Vulpix Alolan) and branch
+   evolutions (Sylveon → Eevee). */
+function dexRegisterLine(d, name, meta, at){
+  const out = [];
+  const sp = getSpecies(name);
+  if(!sp){ const one = dexRegister(d, name, meta, at); return one ? [one] : []; }
+  speciesLineBackTo(sp).forEach((s, i)=>{
+    const e = dexRegister(d, s.name, i === 0 ? meta : Object.assign({}, meta, { via: sp.name }), at);
+    if(e) out.push(e);
+  });
+  return out;
+}
 /* Register anything new. Returns the entries added by THIS scan (empty on the common path), so the
    caller can announce them. */
 function dexScan(opts){
-  const d = dexLoad(), now = Date.now(), added = [];
+  const d = dexLoad(), now = Date.now();
+  let added = [];
   const first = !d.init;
+  /* A register written before "Mom?" was excluded (or before a species was struck off) can still be
+     carrying entries that no longer belong — drop them here rather than filtering at every reader. */
+  let purged = 0;
+  Object.keys(d.seen).forEach(k=>{ if(!dexListable(d.seen[k].name)){ delete d.seen[k]; purged++; } });
   dexHolders().forEach(h => (h.mons||[]).forEach(m=>{
     const sp = getSpecies(m.species);
     const name = sp ? sp.name : String(m.species||"").trim();
-    if(!name || (sp && !dexVisibleSpecies(sp))) return;
-    const k = name.toLowerCase();
-    if(d.seen[k]) return;
-    d.seen[k] = { name, at:now, by:h.label, where:h.where };
-    added.push(d.seen[k]);
+    added = added.concat(dexRegisterLine(d, name, { by:h.label, where:h.where }, now));
   }));
   if(first){ d.init = true; d.ack = now; }        // back-fill silently the first time
-  if(added.length || first) dexStore();
+  if(added.length || first || purged) dexStore();
   if(added.length && !first && !(opts && opts.quiet))
     toast(added.length === 1
-      ? `\u{1F4D5} New Pokédex entry — ${added[0].name} (${added[0].by})`
+      ? `\u{1F4D5} New Pokédex entry — ${added[0].name}${added[0].via?` (from ${added[0].via})`:` (${added[0].by})`}`
       : `\u{1F4D5} ${added.length} new Pokédex entries — ${added.slice(0,3).map(e=>e.name).join(", ")}${added.length>3?"…":""}`);
   return added;
 }
@@ -27404,6 +27683,102 @@ function dexUnseen(){
   return Object.values(d.seen).filter(e => (e.at||0) > (d.ack||0));
 }
 function dexAckAll(){ const d = dexLoad(); d.ack = Date.now(); dexStore(); }
+/* ---- "have we met this family?" — what the Poké Ball on a wild token answers ----
+   A species' `evolution` array is the WHOLE chain, in both directions, and species.json lists a
+   species inside its own chain (see [[project-evolution-chain-bugs]]'s rules), so one pass over it
+   covers the pre-evolutions and the later stages at once. Catching a Gible therefore badges every
+   wild Gabite and Garchomp, and vice versa.
+
+   Memoised by species name because this is asked once per token per map repaint, and token count
+   per pan frame is exactly what makes the board lag. dexStore() is the only thing that ever changes
+   the register, so that's where the cache is cleared. */
+/* speciesLineBackTo, but surviving a chain that never names its own species. Jolteon's chain reads
+   just [{stage:1, "Eevee"}] -- no "Jolteon Thunderstone" entry -- so evoSelfEntry finds nothing,
+   there is no stage to compare against, and the whole line is lost. (One of the ~104 chains that
+   stop short; fixing them is a data-pipeline job, and this badge shouldn't wait for it.) The
+   fallback is "every other species named in my chain is a relative", which for a broken entry like
+   Jolteon's is exactly its ancestor list -- and a wrong badge is cosmetic either way. */
+function speciesLineUp(sp){
+  if(!sp) return [];
+  const line = speciesLineBackTo(sp);
+  if(line.length > 1 || !(sp.evolution||[]).length || evoSelfEntry(sp)) return line;
+  const out = [sp];
+  (sp.evolution||[]).forEach(e=>{
+    const s = getSpecies(parseEvoEntry(e.name).species);
+    if(s && s.name !== sp.name && !out.some(x=>x.name===s.name)) out.push(s);
+  });
+  return out;
+}
+/* the reverse of speciesLineUp: who lists THIS species among their ancestors. Built once, in
+   one pass over the whole dex, because the chain data only reliably runs backwards -- Sylveon knows
+   it came from Eevee, but Eevee's own chain never mentions Sylveon, so asking "what does Eevee
+   evolve into" off its own entry silently misses the Gen 6 additions. */
+let SPECIES_DESCENDANTS = null;
+function speciesDescendants(name){
+  if(!SPECIES_DESCENDANTS){
+    SPECIES_DESCENDANTS = new Map();
+    D.species.forEach(s => speciesLineUp(s).forEach((anc,i)=>{
+      if(i === 0) return;                                     // index 0 is s itself
+      const k = anc.name.toLowerCase();
+      if(!SPECIES_DESCENDANTS.has(k)) SPECIES_DESCENDANTS.set(k, []);
+      SPECIES_DESCENDANTS.get(k).push(s.name);
+    }));
+  }
+  return SPECIES_DESCENDANTS.get(String(name||"").toLowerCase()) || [];
+}
+/* a species' LINE: itself, everything it evolved from, everything that evolves from it. Deliberately
+   not "everything in its chain array" -- all eight Eeveelutions share Eevee's chain, but Jolteon is
+   not Vaporeon's evolution, so registering one must not badge the other. Eevee still reaches them all. */
+function speciesFamilyNames(sp){
+  const out = [];
+  if(!sp) return out;
+  const add = n => { if(n && !out.includes(n)) out.push(n); };
+  speciesLineUp(sp).forEach(s => add(s.name));
+  speciesDescendants(sp.name).forEach(add);
+  return out;
+}
+function dexFamilyRegistered(speciesName){
+  const key = String(speciesName||"").trim().toLowerCase();
+  if(!key) return false;
+  if(dexFamilyCache.has(key)) return dexFamilyCache.get(key);
+  const d = dexLoad(), sp = getSpecies(key);
+  const hit = sp ? speciesFamilyNames(sp).some(n => !!d.seen[n.toLowerCase()])
+                 : !!d.seen[key];
+  dexFamilyCache.set(key, hit);
+  return hit;
+}
+/* ---- the by-hand controls ---- */
+function dexAddByHand(name){
+  const d = dexLoad(), k = String(name||"").toLowerCase();
+  if(!k) return;
+  delete d.removed[k];                       // adding it back un-strikes it
+  const got = dexRegisterLine(d, getSpecies(name) ? getSpecies(name).name : name,
+    { by:"added by hand", where:"manual" });
+  got.forEach(e => { d.manual[e.name.toLowerCase()] = 1; });
+  dexStore();
+  toast(got.length ? `\u{1F4D5} Registered ${got.map(e=>e.name).join(", ")}`
+                   : `\u{1F4D5} ${name} was already registered`);
+}
+function dexRemoveByHand(name){
+  const d = dexLoad(), k = String(name||"").toLowerCase();
+  delete d.seen[k]; delete d.manual[k];
+  d.removed[k] = { name, at: Date.now() };   // remembered, or the next scan just puts it back
+  dexStore();
+  toast(`\u{1F4D5} ${name} struck off — it stays off even while someone is carrying one`);
+}
+function dexRestore(name){
+  const d = dexLoad(), k = String(name||"").toLowerCase();
+  delete d.removed[k];
+  dexStore();
+  dexScan({quiet:true});                     // a held one comes straight back on its own
+  toast(`\u{1F4D5} ${name} is back in play — rescanning`);
+}
+function dexResetAll(){
+  const d = dexLoad();
+  d.seen = {}; d.removed = {}; d.manual = {}; d.init = false; d.ack = 0;
+  dexStore();
+  dexScan({quiet:true});                     // silent back-fill, exactly like a fresh campaign
+}
 /* The badge on the tab. Called from render() so a catch made on someone else's sheet lights up
    here as soon as the sync brings it in, whichever tab is open. */
 function dexRefreshBadge(){
@@ -27414,22 +27789,31 @@ function dexRefreshBadge(){
   el_.hidden = !n;
 }
 let dexFilter = { q:"", sort:"new", missing:false };
-function dexWhereLabel(e){ return e.where === "pc" ? "in the PC" : e.by; }
-function dexEntryCard(e, held){
+function dexEntrySub(e){
+  if(e.via) return `via ${e.via}`;
+  if(e.where === "manual") return "added by hand";
+  if(e.where === "pc") return "in the PC";
+  return e.by || "";
+}
+function dexEntryCard(e, held, onChange){
   const sp = getSpecies(e.name);
   const rec = held.get(e.name.toLowerCase());
   const d = dexLoad();
   const isNew = (e.at||0) > (d.ack||0);
   const card = el("div",{class:"dex-cell" + (isNew ? " dex-new" : ""),
-    title:`First registered ${new Date(e.at||0).toLocaleString()} — ${dexWhereLabel(e)}`,
+    title:`First registered ${new Date(e.at||0).toLocaleString()} — ${dexEntrySub(e)}`});
+  const open = el("div",{style:"cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px",
     onclick: sp ? ()=>openRefDetail("species", sp.name) : null});
-  card.append(monSprite(e.name, false, "s-sm"));
-  card.append(el("div",{class:"dex-name"}, e.name));
-  if(sp) card.append(el("div",{class:"chips",style:"justify-content:center;gap:2px"},
+  open.append(monSprite(e.name, false, "s-sm"));
+  open.append(el("div",{class:"dex-name"}, e.name));
+  if(sp) open.append(el("div",{class:"chips",style:"justify-content:center;gap:2px"},
     ...(sp.types||[]).filter(ty=>ty && ty!=="None").map(ty=>el("span",{html:typeBadge(ty)}))));
-  card.append(el("div",{class:"small muted dex-sub"},
-    rec ? `×${rec.n} · ${rec.who.join(", ")}` : "not held right now"));
+  open.append(el("div",{class:"small muted dex-sub"},
+    rec ? `×${rec.n} · ${rec.who.join(", ")}` : dexEntrySub(e) || "not held right now"));
+  card.append(open);
   if(isNew) card.append(el("span",{class:"dex-flag"},"NEW"));
+  card.append(el("button",{class:"dex-x",title:`strike ${e.name} off the register`,
+    onclick:ev=>{ ev.stopPropagation(); dexRemoveByHand(e.name); onChange(); }},"×"));
   return card;
 }
 function renderDex(){
@@ -27441,8 +27825,9 @@ function renderDex(){
   const held = dexHeldNow();
   const fresh = entries.filter(e => (e.at||0) > (d.ack||0));
   const pct = total ? Math.round(entries.length / total * 100) : 0;
+  const again = ()=>{ renderDex(); dexRefreshBadge(); };
 
-  /* ---- header: the count, the completion bar, and the "anything new?" answer ---- */
+  /* ---- header: the count, the completion bar, and the by-hand controls ---- */
   const head = el("div",{class:"card"});
   head.append(el("h3",{},"\u{1F4D5} Pokédex",
     el("span",{class:"pill",style:"margin-left:8px"}, String(entries.length))));
@@ -27452,18 +27837,36 @@ function renderDex(){
   const bar = el("div",{class:"hpbar",style:"margin-top:8px"});
   bar.append(el("i",{style:`width:${Math.min(100,pct)}%;background:var(--accent)`}));
   head.append(bar);
+  head.append(el("div",{class:"inline",style:"flex-wrap:wrap;gap:8px;margin-top:10px"},
+    el("button",{class:"btn-primary",style:"padding:6px 12px",
+      title:"register a species by hand — its pre-evolutions come with it",
+      onclick:()=>{
+        const names = D.species.filter(dexVisibleSpecies).map(s=>s.name);
+        openPicker("Register a species", names, n=>{ dexAddByHand(n); again(); },
+          "species", n => !!d.seen[n.toLowerCase()]);
+      }},"＋ Add a species"),
+    el("button",{class:"btn-secondary",style:"padding:6px 12px",
+      title:"walk every party and the PC again right now",
+      onclick:()=>{ const got = dexScan(); if(!got.length) toast("\u{1F4D5} Nothing new — the register is up to date"); again(); }},"\u{1F504} Rescan"),
+    entries.length ? el("button",{class:"linkbtn danger",
+      title:"throw the whole register away and back-fill it from what the party holds right now",
+      onclick:()=>{
+        if(!confirm("Wipe the Pokédex register and rebuild it from what the party is holding right now?\n\nEverything struck off by hand comes back, and everything added by hand is lost.")) return;
+        dexResetAll(); toast("\u{1F4D5} Register rebuilt from scratch"); again();
+      }},"reset the register") : ""));
   head.append(el("div",{class:"small muted",style:"margin-top:8px"},
-    mode === "cloud"
-      ? "Registered by scanning every Trainer's party and the shared PC. A species stays registered once caught, even if it's later released or traded away."
-      : "Registered by scanning every character's party on this device. Join a campaign (☁ Cloud) to include the shared PC and everyone else's Pokémon."));
+    (mode === "cloud"
+      ? "Registered by scanning every Trainer's party and the shared PC. "
+      : "Registered by scanning every character's party on this device. Join a campaign (☁ Cloud) to include the shared PC and everyone else's Pokémon. ")
+    + "Catching an evolved form registers what it evolved from too. A species stays registered once caught, even if it's later released or traded away — the register is kept on this device, so ＋/× only change what YOU see."));
   root.append(head);
 
   if(fresh.length){
     const nb = el("div",{class:"card",style:"border-color:var(--accent)"});
     nb.append(el("h3",{},`\u{1F514} ${fresh.length} new since you last looked`,
-      el("button",{class:"linkbtn h-act",onclick:()=>{ dexAckAll(); renderDex(); dexRefreshBadge(); }},"mark all as seen")));
+      el("button",{class:"linkbtn h-act",onclick:()=>{ dexAckAll(); again(); }},"mark all as seen")));
     const grid = el("div",{class:"dex-grid"});
-    fresh.sort((a,b)=>(b.at||0)-(a.at||0)).forEach(e => grid.append(dexEntryCard(e, held)));
+    fresh.sort((a,b)=>(b.at||0)-(a.at||0)).forEach(e => grid.append(dexEntryCard(e, held, again)));
     nb.append(grid);
     root.append(nb);
   }
@@ -27493,22 +27896,40 @@ function renderDex(){
     listWrap.append(el("div",{class:"section-head"},
       el("span",{}, `Registered (${arr.length}${needle?` of ${entries.length}`:""})`)));
     if(!arr.length) listWrap.append(el("div",{class:"muted small"},
-      entries.length ? "Nothing matches that search." : "Nothing registered yet — catch something!"));
+      entries.length ? "Nothing matches that search." : "Nothing registered yet — catch something, or ＋ Add a species."));
     else {
       const grid = el("div",{class:"dex-grid"});
-      arr.forEach(e => grid.append(dexEntryCard(e, held)));
+      arr.forEach(e => grid.append(dexEntryCard(e, held, again)));
       listWrap.append(grid);
     }
+
+    /* ---- struck off by hand: never a black hole, always one click back ---- */
+    const gone = Object.values(d.removed).filter(e => !needle || e.name.toLowerCase().includes(needle));
+    if(gone.length){
+      const det = el("details",{class:"spoiler",style:"margin-top:14px"});
+      det.append(el("summary",{}, el("span",{style:"font-weight:700"},`Struck off by hand (${gone.length})`),
+        el("span",{class:"muted small",style:"margin-left:8px"},"they stay off until you put them back")));
+      const chips = el("div",{class:"chips",style:"margin-top:8px"});
+      gone.sort((a,b)=>a.name.localeCompare(b.name)).forEach(e =>
+        chips.append(el("button",{class:"statuschip",style:"cursor:pointer",
+          title:`put ${e.name} back in the register`,
+          onclick:()=>{ dexRestore(e.name); again(); }}, `${e.name}  ↩`)));
+      det.append(chips);
+      listWrap.append(det);
+    }
+
     if(dexFilter.missing){
       const have = new Set(entries.map(e=>e.name.toLowerCase()));
       let miss = D.species.filter(dexVisibleSpecies).map(s=>s.name)
         .filter(n => !have.has(n.toLowerCase()) && (!needle || n.toLowerCase().includes(needle)));
       listWrap.append(el("div",{class:"section-head",style:"margin-top:14px"},
-        el("span",{}, `Still missing (${miss.length})`)));
+        el("span",{}, `Still missing (${miss.length})`),
+        el("span",{class:"muted small"},"tap one to register it")));
       const cap = 400;
       listWrap.append(el("div",{class:"chips"},
         ...miss.slice(0,cap).map(n => el("button",{class:"statuschip",style:"cursor:pointer",
-          onclick:()=>openRefDetail("species", n)}, n))));
+          title:`register ${n} by hand`,
+          onclick:()=>{ dexAddByHand(n); again(); }}, n))));
       if(miss.length > cap) listWrap.append(el("div",{class:"small muted",style:"margin-top:6px"},
         `…and ${miss.length-cap} more — search to narrow the list.`));
     }
@@ -28086,7 +28507,7 @@ function tokenInitiative(token){
   if(obj){
     if(hasStatus(obj,"paralysis")) v = Math.floor(v/2);
     if(hasStatus(obj,"flinch")) v -= 5;
-    if(hasStatus(obj,"agile")) v += 4;   // Agility Training: +4 Initiative
+    if(hasStatus(obj,"agile")) v += 4*trainingMult(obj);   // Agility Training: +4 Initiative (×3 under Critical Moment)
     v += buffInit(obj);                  // a Channeler's Spirit Boost (Speed): +their Intuition Rank
   }
   return v;
@@ -28503,7 +28924,7 @@ function updateTokenStatusDom(token){
   node.classList.toggle("ko", tokenKO(token));       // Knocked Out greys the token out, live
   paintDeadMark(node, token, parseFloat(node.style.width) || 48);   // … Dead blacks it out and marks it
   const old = node.querySelector(".tk-status-ring");
-  if(!tokenStatusVisible(info)){ if(old) old.remove(); return true; }
+  if(!tokenStatusVisible(info) || mapTokenDetail()<1){ if(old) old.remove(); return true; }
   const boxPx = parseFloat(node.style.width) || 48;
   const keys = tokenStatusKeys(token).filter(k=>statusByKey.has(k));
   const ringHtml = tokenStatusRingSVG(keys, boxPx, token.id);
@@ -29968,6 +30389,7 @@ function tokenRenderBox(map, token, originX=0, originY=0, depth=0){
 /* one token element */
 function mapTokenNode(token, map, originX=0, originY=0){
   const info = tokenHp(token);
+  const detail = mapTokenDetail();     // how much of this token is worth drawing at this zoom
   const box = tokenRenderBox(map, token, originX, originY);
   const boxPx = box.size;
   const riding = box.rider, carrying = tokenRiders(map.id, token).length;
@@ -30003,29 +30425,36 @@ function mapTokenNode(token, map, originX=0, originY=0){
     node.append(hpWrap);
   }
   // an undiscovered shop gets no plate at all — an empty one is just a blank yellow tab
-  if(!info.hideName)
+  if(!info.hideName && detail>=2)
     node.append(el("div",{class:"tk-name"}, (token.gmHidden?"🙈 ":"") + info.name
       + (info.unlinked?" ⚠":"")));
   // Player-side tokens (and the boat) rely on the HP bar alone, no numeric readout; enemies/standalone still show it.
-  if(hpVisible && !playerSide && info.kind!=="boat"){
+  if(hpVisible && !playerSide && info.kind!=="boat" && detail>=2){
     const thp = tempHPOf(info.obj);
     node.append(el("div",{class:"tk-hpnum"+(thp?" has-temp":"")},
       info.unlinked ? "⚠ unlinked" : `${info.cur}/${info.max}` + (thp?` +${thp}`:"")));
   }
-  if(tokenStatusVisible(info)){
+  if(tokenStatusVisible(info) && detail>=1){
     const keys = tokenStatusKeys(token).filter(k=>statusByKey.has(k));
     const ringHtml = tokenStatusRingSVG(keys, boxPx, token.id);
     if(ringHtml) node.append(el("div",{class:"tk-status-ring", html:ringHtml}));
   }
-  if(battleOn() && token.moved && !isShopToken(token)){       // movement used this round vs chosen-mode speed
+  if(battleOn() && token.moved && !isShopToken(token) && detail>=2){       // movement used this round vs chosen-mode speed
     const spd = tokenMoveSpeed(token), mode = tokenMoveMode(token);
     const icon = mode ? ({overland:"",sky:" 🕊",swim:" 🌊",burrow:" ⛏",levitate:" ✨"}[mode[0]]||"") : "";
     node.append(el("div",{class:"tk-moved"+(spd && token.moved>spd?" over":"")}, `${token.moved}${spd?("/"+spd):""}m${icon}`));
   }
-  if(carrying && !isShopToken(token))
+  /* "already in the Pokédex" — a small Poké Ball on a WILD Pokémon whose species, or any stage of
+     its evolution line, is registered. Read off what the token LOOKS like (monLookName), never the
+     creature underneath: an Illusion or a Transform must not be given away by its badge. */
+  if(detail>=2 && info.kind==="enc" && info.obj
+     && dexFamilyRegistered(monLookName(info.obj, getSpecies(info.obj.species))))
+    node.append(el("div",{class:"tk-dexball",
+      title:"Already in the Pokédex — this species or its evolution line is registered"}));
+  if(carrying && !isShopToken(token) && detail>=2)
     node.append(el("div",{class:"tk-carry",title:`carrying ${carrying} rider${carrying===1?"":"s"} — they move together`},
       carrying>1?`🐎${carrying}`:"🐎"));
-  if(token.altitude && !isShopToken(token))
+  if(token.altitude && !isShopToken(token) && detail>=2)
     node.append(el("div",{class:"tk-altitude",title:"height off the ground"}, `▲ ${token.altitude}m`));
   paintDeadMark(node, token, boxPx);        // Dead: blacked-out token + skull (see .map-token.dead)
   return node;
@@ -30083,7 +30512,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
         alreadyMoved:t.moved||0, moveSpeed:(trackMove && !carried)?tokenMoveSpeed(t):null,
         lastRevealX:null, lastRevealY:null,
       };
-    }).filter(c=>c.n);
+    });   // c.n can be null: a stack member culled off-screen still MOVES, it just isn't drawn
     // the readout follows the carrier at the bottom of the dragged token's stack — it's the one
     // actually spending movement
     const anchor = ctx.find(c=>c.t===mountBase(map.id, token)) || ctx.find(c=>c.t===token) || ctx[0];
@@ -30109,7 +30538,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
           // stuck at the wall — hold at the last cell that was actually reachable
           cx = c.pathX; cy = c.pathY; nx = cx*px+originX; ny = cy*px+originY;
         }
-        c.n.style.left = (c.visX0 + (nx-c.baseX0))+"px"; c.n.style.top = (c.visY0 + (ny-c.baseY0))+"px";
+        if(c.n){ c.n.style.left = (c.visX0 + (nx-c.baseX0))+"px"; c.n.style.top = (c.visY0 + (ny-c.baseY0))+"px"; }
         if(map.gridOn && (cx!==c.pathX || cy!==c.pathY)){ c.segMoved += tileCost(c.pathX,c.pathY,cx,cy); c.pathX=cx; c.pathY=cy; }
 
         // the logical square it would land on if it were let go here — what peers are shown
@@ -31508,6 +31937,52 @@ async function clearMapTokens(map){ if(!confirm("Remove ALL tokens from this map
   if(mapSelectActive(map)) mapSelect.ids.clear();
   mapTokensSave(); renderMap(); }
 
+/* ───────────────── viewport culling + zoom level-of-detail ─────────────────
+   A board's whole cost is the number of token ELEMENTS standing on the stage (see the .map-stage
+   comment in styles.css and promotePan below): every token is a bordered, shadowed box plus a
+   sprite, an HP bar, a name plate, an HP readout and a status ring, and all of them are restyled,
+   relaid-out and repainted on every renderMap and on every un-promoted camera change. On a world
+   map like the Isles that is hundreds of tokens, nearly all of them either off screen or drawn far
+   too small to read. Two cheap answers, both of them "don't draw what nobody is looking at":
+
+     CULLING — only build the tokens whose box falls inside the visible rect grown by a whole
+       viewport on every side. Panning less than a screenful therefore never needs a rebuild, so
+       nothing pops in under the finger; escaping that margin re-renders (pan release / zoom settle).
+     LOD — below half zoom the 7px name plate is under 4px tall and the HP number is a smudge, so
+       neither is built at all (nor the ▲/🐎/Pokédex badges); below 0.3 the status-ring SVG goes too.
+       Zoom back in and everything is back on the next render.
+
+   Both are purely about what gets DRAWN — no token data, no fog rule and no ownership check is
+   touched, and a token that isn't built still moves normally when its stack is dragged. */
+const MAP_CULL_MARGIN = 1;      // extra viewports of tokens built on each side of the visible rect
+let mapCullRect = null;         // stage-space rect the tokens currently in the DOM were built for
+let mapVpSize = null;           // last known .map-viewport size (cached: renderMap tears the node down)
+function mapViewportSize(){
+  const vp = document.querySelector("#view-map .map-viewport");
+  // Only trust a measurement that looks like a real board. A collapsed/hidden container measures
+  // 0 - or, worse, a couple of px - and a cull rect built from that would leave the map EMPTY.
+  if(vp){ const r = vp.getBoundingClientRect(); if(r.width>=120 && r.height>=120) mapVpSize = {w:r.width, h:r.height}; }
+  const g = mapVpSize || { w: window.innerWidth || 1200, h: (window.innerHeight || 800)*0.7 };
+  return { w: Math.max(320, g.w), h: Math.max(240, g.h) };
+}
+/* which slice of the (unscaled) stage is on screen right now */
+function mapVisibleRect(){
+  const vp = mapViewportSize(), s = mapView.scale || 1;
+  return { x: -mapView.panX/s, y: -mapView.panY/s, w: vp.w/s, h: vp.h/s };
+}
+function mapBuildRect(){
+  const v = mapVisibleRect(), mx = v.w*MAP_CULL_MARGIN, my = v.h*MAP_CULL_MARGIN;
+  return { x: v.x-mx, y: v.y-my, w: v.w+2*mx, h: v.h+2*my };
+}
+/* the camera has left the area the tokens in the DOM were built for — time for a fresh renderMap */
+function mapCullStale(){
+  const r = mapCullRect; if(!r) return false;
+  const v = mapVisibleRect();
+  return v.x < r.x || v.y < r.y || v.x+v.w > r.x+r.w || v.y+v.h > r.y+r.h;
+}
+/* 2 = everything · 1 = no name plate, HP number or badges · 0 = sprite + HP bar only */
+function mapTokenDetail(){ const s = mapView.scale || 1; return s < 0.3 ? 0 : s < 0.55 ? 1 : 2; }
+
 function applyMapCamera(stage){ stage.style.transformOrigin="0 0";
   stage.style.transform = `translate(${mapView.panX}px,${mapView.panY}px) scale(${mapView.scale})`; }
 const MAP_ZOOM_MIN = 0.2, MAP_ZOOM_MAX = 4;
@@ -31518,7 +31993,10 @@ function attachPanZoom(viewport, stage){
   // layer — which is why moving a token "fixed" it. Rebuild once the gesture settles.
   const settle = ()=>{
     clearTimeout(zoomTimer);
-    zoomTimer = setTimeout(()=>{ if(currentTab==="map" && !mapDragging && !mapPanning) renderMap(); }, 200);
+    // Zooming OUT can walk straight off the edge of the culled area — the ground it just exposed
+    // has no tokens built yet — so don't sit on the full 200ms in that case.
+    zoomTimer = setTimeout(()=>{ if(currentTab==="map" && !mapDragging && !mapPanning) renderMap(); },
+      mapCullStale() ? 50 : 200);
   };
   const clampScale = s => Math.max(MAP_ZOOM_MIN, Math.min(MAP_ZOOM_MAX, s));
   const vpXY = e=>{ const r=viewport.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; };
@@ -31620,7 +32098,11 @@ function attachPanZoom(viewport, stage){
     // lifting one finger of a pinch should keep panning smoothly from where the other one is,
     // not jump — so re-anchor the pan to the surviving pointer instead of ending the gesture.
     if(pts.size===1) beginPan([...pts.values()][0]);
-    else if(pts.size===0) pan = null;
+    else if(pts.size===0){
+      pan = null;
+      // panned past the built-out margin: rebuild so the ground we moved onto gets its tokens
+      if(mapCullStale()) settle();
+    }
   };
   viewport.addEventListener("pointerup", endPointer);
   viewport.addEventListener("pointercancel", endPointer);
@@ -31774,7 +32256,9 @@ function terrainPanel(map){
   return card;
 }
 function renderMap(){
-  const root = $("#view-map"); root.innerHTML="";
+  const root = $("#view-map");
+  mapViewportSize();                    // measure the board BEFORE this tears it down (culling)
+  root.innerHTML="";
   if(!cloudConfigured() || mode!=="cloud"){
     root.append(el("div",{class:"card"}, el("h3",{},"🗺 Map — shared battle map"),
       el("div",{class:"r-body"}, "The battle map is part of cloud play. Tap ", el("b",{},"☁ Cloud"),
@@ -32014,11 +32498,24 @@ function renderMap(){
 
   const drawFogInto = () => map.fogOn ? fogCanvasFor(map, stageW, stageH, originX, originY) : null;
 
+  /* Only build the tokens anywhere near the screen — see the culling block above. Anything that is
+     selected, or has an AoE painted from it, is always built regardless: those are steered through
+     DOM lookups by id, and a whole map's worth of "☑ All players" must survive a group drag. */
+  const cullBox = mapBuildRect(); mapCullRect = cullBox;
+  const cullPad = map.gridSize*2 + 48;      // plates, outlines and rider perches hang off the box
+  const nearView = t => {
+    if(mapSelect.ids.has(t.id) || (mapAoE && mapAoE.tokenId===t.id)) return true;
+    const px = map.gridSize, bd = isBoatToken(t) ? boatDims(t) : null;
+    const L = t.x*px+originX-cullPad, T = t.y*px+originY-cullPad;
+    const W = (bd?bd.w:(t.size||1))*px + cullPad*2, H = (bd?bd.h:(t.size||1))*px + cullPad*2;
+    return L < cullBox.x+cullBox.w && L+W > cullBox.x && T < cullBox.y+cullBox.h && T+H > cullBox.y;
+  };
+
   if(cloud.isGM){
     const f = drawFogInto(); if(f) stage.append(f);                 // GM: dim fog under tokens
-    mapTokensFor(map.id).forEach(t=>stage.append(mkToken(t)));
+    mapTokensFor(map.id).forEach(t=>{ if(nearView(t)) stage.append(mkToken(t)); });
   } else {
-    mapTokensFor(map.id).forEach(t=>{ if(visibleToken(t)) stage.append(mkToken(t)); });
+    mapTokensFor(map.id).forEach(t=>{ if(visibleToken(t) && nearView(t)) stage.append(mkToken(t)); });
     const f = drawFogInto(); if(f) stage.append(f);                 // players: opaque fog over hidden tokens
   }
 
