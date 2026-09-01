@@ -3395,8 +3395,13 @@ function ptuEffMult(steps){
    are meant to compose with normal weaknesses, rather than multiplying the final number. */
 function typeMultAgainst(atkType, defTypes, stepAdj=0, opts){
   let steps = 0, immune = false;
+  // `chart`: a MOVE's own matchup, overriding the real chart for the defender Types it names
+  // (Freeze-Dry reads Water as a weakness, Thousand Arrows reads Flying as neutral). Same values
+  // the chart uses — 2 weak / 1 neutral / 0.5 resisted / 0 immune — so it composes with the
+  // defender's OTHER Type exactly as a printed matchup would (Freeze-Dry vs Water/Ice: +1 −1 = neutral).
+  const chart = opts?.chart || null;
   (defTypes||[]).forEach(dt => {
-    const v = TYPE_CHART[atkType]?.[dt] ?? 1;   // chart only holds 2, 0.5 or 0
+    const v = (chart && chart[dt]!=null) ? chart[dt] : (TYPE_CHART[atkType]?.[dt] ?? 1);   // chart only holds 2, 0.5 or 0
     // `pierceImmune` (Bone Wielder [Errata]) reads that 0 as a plain neutral matchup instead of an
     // immunity, so the defender's OTHER type still counts its step normally (Gliscor: Ground/Flying
     // → Ground resisted ×0.5, rather than a flat ×0).
@@ -5272,22 +5277,31 @@ function monById(id){
 /* the two directions of the link, resolved to live objects (null once a partner is gone) */
 function commanderHostOf(tat){ return tat && tat.commander ? commanderRefResolve(tat.commander) : null; }
 function commanderRiderOf(host){ return host && host.commandedBy ? monById(host.commandedBy.id) : null; }
-/* If both creatures are on the board, Attaching really does put the Tatsugiri in the target's
-   square - which is what the riding stack already models. A no-op when either one isn't placed, or
-   when there is no map at all; the token menu's own button covers those cases. */
-function commanderSyncMap(tat, host, attach){
+/* The board Commander reads and writes. It must be the map actually being RENDERED, not
+   activeMap() - a GM privately previewing another map (mapGmView) would otherwise have Commander
+   hunting for tokens on a board nobody is looking at, silently find nothing, and leave the Tatsugiri
+   standing in its own square instead of on the host's head. */
+function commanderMap(){ try{ return currentMapForView() || activeMap(); }catch(e){ return null; } }
+/* the token a given creature is standing on, on that map (null if it isn't placed) */
+function commanderTokenFor(map, obj){
+  if(!map || !obj) return null;
+  return mapTokensFor(map.id).find(t => t.link && canMountToken(t) && tokenLinked(t)?.obj === obj) || null;
+}
+/* "the user occupies the target's square" IS the riding stack, so Attaching mounts the token and
+   Detaching dismounts it. `ctx` lets a caller that already HAS the tokens (the picker builds its
+   whole list from them) hand them straight over instead of matching by object identity again. */
+function commanderSyncMap(tat, host, attach, ctx){
   try{
-    const map = activeMap(); if(!map || !tat) return false;
-    const toks = mapTokensFor(map.id);
-    const find = obj => toks.find(t => t.link && tokenLinked(t)?.obj === obj) || null;
-    const rt = find(tat); if(!rt) return false;
+    const map = (ctx && ctx.map) || commanderMap(); if(!map || !tat) return false;
+    const rt = (ctx && ctx.riderToken) || commanderTokenFor(map, tat); if(!rt) return false;
     if(!attach) return rt.riding ? dismountToken(map, rt, true) : false;
-    const ht = host && find(host); if(!ht || rt.riding === ht.id) return false;
+    const ht = (ctx && ctx.hostToken) || commanderTokenFor(map, host);
+    if(!ht || rt.riding === ht.id) return false;
     return mountToken(map, rt, ht);
   }catch(e){ return false; }
 }
 /* Attach (Swift Action). Writes both halves of the link, then puts it in the square for real. */
-function commanderAttach(tat, host){
+function commanderAttach(tat, host, ctx){
   if(!tat || !host || tat === host) return { ok:false, msg:"pick a different ally" };
   if(!hasCommander(tat)) return { ok:false, msg:"only a Pok\u00e9mon with Commander may Attach" };
   const ref = commanderRefFor(host);
@@ -5297,11 +5311,12 @@ function commanderAttach(tat, host){
   if(tat.commander) commanderDetach(tat, true);     // Attaching again MOVES it; two hosts never stack
   tat.commander    = ref;
   host.commandedBy = { kind:"mon", id: tat.id, name: ownerLabel(tat), form: tatsugiriForm(tat) || "Curly" };
-  commanderSyncMap(tat, host, true);
-  return { ok:true, msg:`Attached to ${ownerLabel(host)}` };
+  const mounted = commanderSyncMap(tat, host, true, ctx);
+  return { ok:true, mounted, msg:`Attached to ${ownerLabel(host)}`
+    + (mounted ? "" : " \u2014 place both tokens on the \u{1F5FA} Map for it to ride along") };
 }
 /* Detach, callable from EITHER side - hand it the Tatsugiri or hand it the host. */
-function commanderDetach(p, quiet){
+function commanderDetach(p, quiet, ctx){
   if(!p) return false;
   const tat  = p.commander ? p : commanderRiderOf(p);
   const host = p.commander ? commanderHostOf(p) : (p.commandedBy ? p : null);
@@ -5311,7 +5326,7 @@ function commanderDetach(p, quiet){
   // a half-link whose partner has since been deleted: clear whichever end we were actually handed
   if(p.commander){ delete p.commander; did = true; }
   if(p.commandedBy){ delete p.commandedBy; did = true; }
-  if(did) commanderSyncMap(tat || p, null, false);
+  if(did) commanderSyncMap(tat || p, null, false, ctx);
   if(did && !quiet) toast("\u{1F363} Commander \u2014 Detached");
   return did;
 }
@@ -5449,6 +5464,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const movePierce = moveDefPierce(st.move);
   const drPierce = Math.max(heraldDR, movePierce ? movePierce.dr : 0);
   const defCSMode = movePierce ? movePierce.defCS : null;
+  // ...and the Move's own per-target matchup rule (Freeze-Dry, Thousand Arrows — MOVE_TARGET_RULES)
+  const moveRule = moveTargetRules(st.move);
   /* Maelstrom: "Whenever your Water-Type Moves miss all targets, you gain a Tick of Temporary Hit
      Points." A Trainer roll never learns the target's Evasion — it prints "hits if X ≥ AC + Evasion"
      — so the miss can't be detected, only offered. */
@@ -5998,8 +6015,10 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         + (defCSMode==="all" ? ` and any Armor or Combat-Stage changes to the target's ${isPhysAtk?"Defense":"Sp.Def"}`
            : defCSMode==="positive" ? ` and the target's positive Defense Combat Stages` : "")
         + `. Applied for you by the target picker below — subtract it by hand if you use the Damage/Heal box instead.`));
+      if(moveRule) out.append(el("div",{class:"small",style:"margin-top:4px;color:var(--accent);font-weight:600"},
+        `❄ ${st.name}: ${moveRule.note}. Applied for you by the target picker below.`));
       const tw = attackTargetWidget({ dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce,
-        atkTinted: ownerHasAbility(t,"Tinted Lens"), atkExploit: ownerHasAbility(t,"Exploit"), defCSMode });
+        atkTinted: ownerHasAbility(t,"Tinted Lens"), atkExploit: ownerHasAbility(t,"Exploit"), defCSMode, moveRule });
       if(tw) out.append(tw);
       feedLogged = true;
       logRoll({ kind:"move", label:st.name, who:t.name||"",
@@ -14255,9 +14274,9 @@ function commanderTriggerRow(p, redraw, persist){
   }
   return wrap;
 }
-/* Everything on the same roster as this Tatsugiri: its Trainer's other Pokémon, or - for a wild or
-   enemy one - the rest of its encounter, wild list and NPC parties alike. */
-function commanderCandidates(tat){
+/* The creatures that share a sheet or an encounter with this one. No longer the candidate list -
+   only the sort key for it, so the obvious pick (its own Dondozo) floats to the top. */
+function commanderRoster(tat){
   const out = [];
   const push = list => (list||[]).forEach(m=>{ if(m && m!==tat && !out.includes(m)) out.push(m); });
   try{
@@ -14272,13 +14291,53 @@ function commanderCandidates(tat){
   }catch(e){}
   return out;
 }
+/* Who this Tatsugiri may Attach to: everything with a TOKEN on the map being viewed.
+   Commander's target is "an adjacent Ally" and the sheet can judge neither half of that. Adjacency
+   it has never known; and who counts as an Ally is a table call that changes between fights - a
+   Rival fighting alongside the party today is a perfectly legal target. So the BOARD is the filter:
+   if it isn't standing on the map it isn't standing beside anybody, and if it is, the GM can decide
+   whether they're allies this scene. Rows carry their token, so Attaching mounts it without having
+   to match the creature back to a token a second time. */
+function commanderCandidates(tat){
+  const out = [], seen = new Set();
+  try{
+    const map = commanderMap(); if(!map) return out;
+    const own = commanderRoster(tat);
+    mapTokensFor(map.id).forEach(tok=>{
+      if(!tok.link || !canMountToken(tok)) return;          // scenery is not a creature
+      const L = tokenLinked(tok), o = L && L.obj;
+      if(!o || o === tat || seen.has(o)) return;
+      if(isTrainerOwner(o) ? !trainerOwnerId(o) : !o.id) return;   // nothing stable to link to
+      seen.add(o);
+      out.push({ obj:o, token:tok, kind:L.kind, sameSide:own.includes(o),
+                 editable:!!tokenHp(tok).editable,
+                 from:(L.kind==="enc"||L.kind==="enctrainer") ? "encounter"
+                      : (L.row?.data?.trainer?.name ? `${L.row.data.trainer.name}'s sheet` : "player sheet") });
+    });
+  }catch(e){}
+  return out;
+}
 function openCommanderAttach(tat, onDone, persist){
+  const map = commanderMap();
   const cands = commanderCandidates(tat);
+  const riderToken = map ? commanderTokenFor(map, tat) : null;
   const body = el("div",{});
   body.append(el("div",{class:"r-meta",style:"margin-bottom:8px"},
-    "At-Will, Swift Action, target: an adjacent Ally. The sheet can't check adjacency for you — pick whoever it is actually beside."));
-  if(!cands.length) body.append(el("div",{class:"muted"},"Nothing else on this roster to Attach to."));
-  cands.forEach(m=>{
+    "At-Will, Swift Action, target: an adjacent Ally. Everyone standing on the \u{1F5FA} Map is listed — "
+    + "including the other side, since a Rival fighting alongside the party is still an Ally. "
+    + "The sheet can't check adjacency for you, so pick whoever it is actually beside."));
+  if(!map) body.append(el("div",{class:"warnbox",style:"margin-bottom:8px"},"There is no Map open to read."));
+  else if(!riderToken) body.append(el("div",{class:"warnbox",style:"margin-bottom:8px"},
+    `${ownerLabel(tat)} has no token on this Map. You can still Attach it here, but it won't ride anyone's square until its token is placed.`));
+  if(!cands.length) body.append(el("div",{class:"muted"},
+    "Nobody else is on the Map — place the tokens on the \u{1F5FA} Map first."));
+  const section = (label, rows) => {
+    if(!rows.length) return;
+    body.append(el("div",{class:"section-head",style:"margin-top:12px"}, label));
+    rows.forEach(c=>body.append(candRow(c)));
+  };
+  const candRow = c => {
+    const m = c.obj;
     const isTr = isTrainerOwner(m);
     const msp = isTr ? null : getSpecies(m.species);
     const notes = [isTr ? `Trainer · Lv ${m.level||1}` : `${msp?.name||m.species} · Lv ${m.level}`];
@@ -14290,29 +14349,76 @@ function openCommanderAttach(tat, onDone, persist){
     }
     if(ownerHasAbility(m,"Mouthful")) notes.push("Mouthful — unlimited Intercepts for the pair");
     if(m.commandedBy) notes.push(`already has ${m.commandedBy.name} Attached`);
+    notes.push(c.from);
     const row = el("div",{class:"inline",style:"gap:10px;align-items:center;margin-top:8px"});
     row.append(isTr ? el("span",{style:"font-size:22px;width:32px;text-align:center"},"\u{1F9D1}")
                     : monSprite(monLookName(m, msp), m.shiny, "s-sm", monImage(m)));
     row.append(el("div",{style:"flex:1;min-width:0"},
       el("div",{style:"font-weight:700"}, ownerLabel(m)),
       el("div",{class:"small muted"}, notes.join(" · "))));
-    row.append(el("button",{class:"btn-primary",style:"padding:6px 12px",
+    row.append(el("button",{class:"btn-primary",style:"padding:6px 12px", disabled:!c.editable,
+      title: c.editable ? `Attach to ${ownerLabel(m)}`
+                        : "You can't edit that sheet, so the Attachment couldn't be saved on their side — ask the GM",
       onclick:()=>{
-        const r = commanderAttach(tat, m);
+        const r = commanderAttach(tat, m, { map, riderToken, hostToken:c.token });
         toast(`\u{1F363} ${ownerLabel(tat)} — ${r.msg}`);
         if(!r.ok) return;
         (persist||save)(); closeModal(); onDone && onDone();
       }},"Attach"));
-    body.append(row);
-  });
+    return row;
+  };
+  section("On its own side", cands.filter(c=>c.sameSide));
+  section("Also on the Map", cands.filter(c=>!c.sameSide));
   modal({title:`\u{1F363} Commander — ${ownerLabel(tat)} Attaches to…`, bodyNode:body,
          footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Cancel")]});
 }
-/* Commander's Bonus as a Move row, for wherever the HOST's Moves are drawn. Derived exactly like
-   Poltergeist's granted Move - never written into host.moves, so it never costs a Move slot. */
-function commanderMoveSlot(p, sp, opts){
-  const ou = commanderOrderUp(p); if(!ou) return null;
-  return moveSlot(p, sp, ou.move, ou.move.name, Object.assign({tag:"Commander"}, opts||{}));
+/* ---- Derived attacks: everything a creature may roll that is NOT on its own Move List ----
+   Poltergeist's Form Move, Commander's Order Up, the Moves a Living Weapon lends while wielded, a
+   weapon's Adept/Master Techniques, the Moves a [Weapon] Feature swings. None of them may cost a
+   Move slot, so none of them is ever written into `moves` - which is exactly why every list that
+   loops `p.moves` / `t.encMoves` silently missed them. The Map's token menu was one of those, so a
+   GM could roll these from a sheet but not from the board they were actually fighting on. Gathering
+   them here means the sheet and the token can't drift apart again.  */
+function derivedMonMoves(p, sp){
+  const out = [], seen = new Set();
+  const add = (mn, tag) => {
+    const m = mn && moveByName.get(String(mn).toLowerCase());
+    if(!m || seen.has(m.name)) return;
+    seen.add(m.name); out.push({ move:m, tag });
+  };
+  const grant = poltergeistGrant(p, sp);   if(grant) add(grant.move, "Poltergeist");
+  const ou    = commanderOrderUp(p);       if(ou)    add(ou.move.name, "Commander");
+  /* "While used as a Living Weapon, the Pokémon also adds these Moves to its own Move List, so long
+     as their wielder qualifies to access them" (Core p.305) */
+  const lw = livingWeaponOf(p);
+  if(lw){
+    const wt = charOfMon(p)?.trainer;
+    [["weaponMoveAdept","adept"],["weaponMoveMaster","master"]].forEach(([f,tier])=>{
+      if(lw[f] && wt && weaponMoveRankOk(wt, tier, lw)) add(lw[f], "living weapon");
+    });
+  }
+  return out;
+}
+/* the Trainer half: Order Up, each weapon's Adept/Master Technique, and the Moves a [Weapon]
+   Feature (Berserker's Rage, Crash and Smash's Thrash) lets them swing with that weapon. */
+function derivedTrainerAttacks(t){
+  const out = [], seen = new Set();
+  const add = (mn, w, tag, wa) => {
+    if(!mn || !moveByName.get(String(mn).toLowerCase())) return;
+    const key = String(mn).toLowerCase() + "|" + ((w && (w.id || w.name || w.category)) || "");
+    if(seen.has(key)) return;
+    seen.add(key); out.push({ name:mn, weapon:w||null, tag, weaponAttack:!!wa });
+  };
+  const ou = commanderOrderUp(t); if(ou) add(ou.move.name, null, "Commander", false);
+  const waMoves = trainerWeaponAttackMoves(t);
+  (t.weapons||[]).forEach(w=>{
+    const wLbl = w.name || w.category || "weapon";
+    [["weaponMoveAdept","adept","Adept"],["weaponMoveMaster","master","Master"]].forEach(([f,tier,lbl])=>{
+      if(w[f] && weaponMoveRankOk(t, tier, w)) add(w[f], w, `${wLbl} · ${lbl} Technique`, false);
+    });
+    waMoves.forEach((d, mn)=>{ if(weaponFitsRestrict(w, d.restrict)) add(mn, w, `${d.feat} · ${wLbl}`, true); });
+  });
+  return out;
 }
 /* Unown's inscribed letter — purely cosmetic (identical stats/Abilities/movelist across all 28
    formes), and unlike Minior's colour there's no hidden info to gate, so anyone editing the sheet
@@ -14508,11 +14614,9 @@ function movesCard(p, sp){
   const st = struggleFor(p, sp);
   if(st){ card.append(struggleControl(p, sp)); card.append(moveSlot(p, sp, st, st.name, {tag:"default"})); }
   // Poltergeist's granted Move — fixed to the current Rotom Form, can't be forgotten/replaced/counted
-  const grant = poltergeistGrant(p, sp);
-  if(grant){ const gm = moveByName.get(grant.move.toLowerCase());
-    if(gm) card.append(moveSlot(p, sp, gm, gm.name, {tag:"Poltergeist"})); }
-  // Commander's Bonus: Order Up while a Level 30+ Tatsugiri is Attached — derived, uncounted
-  { const cm = commanderMoveSlot(p, sp); if(cm) card.append(cm); }
+  // Poltergeist's Form Move, Commander's Order Up, a Living Weapon's lent Moves — all derived, none
+  // of them counted against the limit in the heading above (see derivedMonMoves)
+  derivedMonMoves(p, sp).forEach(d => card.append(moveSlot(p, sp, d.move, d.move.name, {tag:d.tag})));
   if(!p.moves.length) card.append(el("span",{class:"muted small"},"no moves selected yet"));
   // favourites (tap ☆) sort to the top; splice by the original index so removal stays correct
   const favSet = new Set(p.fav||[]);
@@ -16427,6 +16531,11 @@ function openMoveRoll(p, m, sp, opts={}){
            Herald of Pride's pierce is on the Trainer side. */
         const movePierce = moveDefPierce(m);
         const moveDefCS = movePierce ? movePierce.defCS : null;
+        /* Freeze-Dry & co.: the Move's own matchup rule. It can only be resolved against a target,
+           so it rides along to the picker/feed rather than changing anything in this roll. */
+        const moveRule = moveTargetRules(m);
+        if(moveRule) dmgLine.append(el("div",{class:"small muted",style:"margin-top:2px;color:var(--accent);font-weight:600"},
+          `❄ ${m.name}: ${moveRule.note}. Applied for you by the target picker below.`));
         if(movePierce) dmgLine.append(el("div",{class:"small muted",style:"margin-top:2px;color:var(--accent);font-weight:600"},
           `🗡 ${m.name}: ignores ${movePierce.dr>=PIERCE_ALL_DR?"all":`up to ${movePierce.dr}`} Damage Reduction`
           + (moveDefCS==="all" ? ` and any Armor or Combat-Stage changes to the target's ${isPhys?"Defense":"Sp.Def"}`
@@ -16437,7 +16546,7 @@ function openMoveRoll(p, m, sp, opts={}){
           const tw = attackTargetWidget({ dmg:total, type:mtype||"Typeless", physical:isPhys,
             pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens"),
             atkExploit: ownerHasAbility(p,"Exploit"),
-            pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS });
+            pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS, moveRule });
           if(tw) dmgLine.append(tw);
         }
         /* …and into the GM's feed, carrying the same numbers, so they can drop this hit on a token
@@ -16450,7 +16559,7 @@ function openMoveRoll(p, m, sp, opts={}){
           atk: (isPhys||isSpec) ? { dmg:total, type:mtype||"Typeless", physical:isPhys,
                  pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens"),
                  atkExploit: ownerHasAbility(p,"Exploit"),
-                 pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS } : null });
+                 pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS, moveRule } : null });
       }
       out.append(dmgLine);
       if(ancestral && (isPhys||isSpec)){ const an = ancestralStrikeNode(); if(an) out.append(an); }
@@ -16968,7 +17077,8 @@ function renderPokemonMoves(root, team){
     card.append(moveSlot(p,sp,m,mn,{rerender:renderBattle, faved:favSet.has(mn),
       onFav:()=>{ p.fav=toggleSet(favSet,mn); save(); renderBattle(); }}));
   });
-  { const cm = commanderMoveSlot(p, sp, {rerender:renderBattle}); if(cm) card.append(cm); }
+  derivedMonMoves(p, sp).filter(d => d.tag !== "living weapon").forEach(d =>
+    card.append(moveSlot(p, sp, d.move, d.move.name, {rerender:renderBattle, tag:d.tag})));
   // "While used as a Living Weapon, the Pokémon also adds these Moves to its own Move List, so long
   // as their wielder qualifies to access them" (Core p.305) — derived, so they never eat a Move slot.
   const lw = livingWeaponOf(p);
@@ -22489,11 +22599,9 @@ function encounterMonCard(enc, p, list, trainer){
     el("button",{class:"linkbtn",onclick:()=>addEncMove(p,sp)},"+ move")));
   mw.append(struggleControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   const st=struggleFor(p,sp); if(st) mw.append(encounterMoveRow(p,sp,st,st.name,favSet,null,true));
-  const grant = poltergeistGrant(p, sp);
-  if(grant){ const gm=moveByName.get(grant.move.toLowerCase());
-    if(gm) mw.append(encounterMoveRow(p,sp,gm,gm.name,favSet,null,true)); }
-  { const ou = commanderOrderUp(p);      // Commander's Bonus — derived, never in p.moves
-    if(ou) mw.append(encounterMoveRow(p,sp,ou.move,ou.move.name,favSet,null,true)); }
+  const grant = poltergeistGrant(p, sp);   // still needed by the Abilities block further down
+  derivedMonMoves(p, sp).forEach(d =>     // Poltergeist / Commander / Living Weapon — never in p.moves
+    mw.append(encounterMoveRow(p,sp,d.move,d.move.name,favSet,null,true)));
   const ordered=[...p.moves].sort((a,b)=>(favSet.has(b)?1:0)-(favSet.has(a)?1:0));
   ordered.forEach(mn=>{ const m=moveForMon(p,mn);
     mw.append(encounterMoveRow(p,sp,m,mn,favSet,()=>{ p.encFav=toggleSet(favSet,mn); saveEnc(); renderEncounters(); },false,trainer)); });
@@ -24697,7 +24805,8 @@ function simProfile(A, atk, cfg){
     alwaysCrit: alwaysCrits(atk.m),
     flat: atkStat + (bm.dmg||0) + (wx.dmg||0) + (tx.dmg||0) + (abil.flat||0) + typeBoosterDmg(p, mtype),
     autoHit: !!wx.autoHit,
-    pierceImmune: !A.isT && ignoresTypeImmunity(p, atk.m, mtype),  // Bone Wielder [Errata] / Scrappy
+    moveRule: moveTargetRules(atk.m),                              // Freeze-Dry & co. (MOVE_TARGET_RULES)
+    pierceImmune: (!A.isT && ignoresTypeImmunity(p, atk.m, mtype)) || !!moveTargetRules(atk.m)?.pierceImmune,
     atkTinted: ownerHasAbility(p,"Tinted Lens"),                   // resisted hits climb one step (capped at neutral)
     atkExploit: ownerHasAbility(p,"Exploit"),                      // +5 on any Super-Effective hit
     pierceDR: A.isT ? attackDRPierce(p, atk) : 0,                  // Herald of Pride ignores DR on Weapon Attacks
@@ -24716,30 +24825,33 @@ function simEva(D, isPhys, cfg){
   const d = D.d();
   return isPhys ? d.physEva : d.specEva;
 }
-function simTypeMult(D, type, pierceImmune, atkTinted, isPhys){
+function simTypeMult(D, type, pierceImmune, atkTinted, isPhys, rule){
   if(D.isT) return 1;                                   // Trainers are typeless
   const mods = D.dmods();
   if(mods.immune.has(type) && !pierceImmune) return 0;
+  // a Move's own matchup (Freeze-Dry, Thousand Arrows), same registry the table's rolls read
+  const chart = rule?.chart || null;
   const dStep = mods.step?.[type] || 0;
   // Fur Coat: Physical hits are resisted one step further, whatever the Type (mirrors tokenDamageBreakdown)
   const furStep = (mods.furCoat && isPhys) ? -1 : 0;
-  let m = typeMultAgainst(type, D.sp?.types||[], dStep + furStep, { pierceImmune });
+  let m = typeMultAgainst(type, D.sp?.types||[], dStep + furStep, { pierceImmune, chart });
   let tol = 0;
   // Tolerance: a resisted hit is resisted one step further (mirrors tokenDamageBreakdown)
-  if(mods.tolerance && m>0 && m<1){ tol = -1; m = typeMultAgainst(type, D.sp?.types||[], dStep + furStep + tol, { pierceImmune }); }
+  if(mods.tolerance && m>0 && m<1){ tol = -1; m = typeMultAgainst(type, D.sp?.types||[], dStep + furStep + tol, { pierceImmune, chart }); }
   // Wonder Guard keys off raw Type super-effectiveness (pre-Fur-Coat), mirrors tokenDamageBreakdown
-  if(mods.wonderGuard){ const tm = typeMultAgainst(type, D.sp?.types||[], dStep, { pierceImmune }); if(tm>0 && tm<=1) m = 0; }
+  if(mods.wonderGuard){ const tm = typeMultAgainst(type, D.sp?.types||[], dStep, { pierceImmune, chart }); if(tm>0 && tm<=1) m = 0; }
   if(mods.seReduce && m>1) m = seReducedMult(m);
   // Tinted Lens: a resisted hit climbs one ladder step, never past neutral (mirrors tokenDamageBreakdown)
   if(atkTinted && m>0 && m<1){
-    m = Math.min(1, typeMultAgainst(type, D.sp?.types||[], dStep + furStep + tol + 1, { pierceImmune }));
+    m = Math.min(1, typeMultAgainst(type, D.sp?.types||[], dStep + furStep + tol + 1, { pierceImmune, chart }));
   }
   return m;
 }
 /* rolled total → HP actually lost, running the same order as tokenDamageBreakdown */
-function simMitigate(D, raw, type, isPhys, pierceImmune, pierceDR, atkTinted, atkExploit){
-  const mult = simTypeMult(D, type, pierceImmune, atkTinted, isPhys);
+function simMitigate(D, raw, type, isPhys, pierceImmune, pierceDR, atkTinted, atkExploit, rule){
+  const mult = simTypeMult(D, type, pierceImmune, atkTinted, isPhys, rule);
   if(atkExploit && mult > 1) raw += 5;                            // Exploit, same as tokenDamageBreakdown
+  if(mult > 1 && rule?.seBonus) raw += rule.seBonus;              // Electro Drift / Collision Course
   const afterDef = Math.max(0, raw - simDefStat(D, isPhys));
   const mods = D.dmods();
   const seDR = (mods && mods.seFlatDR && mult>1) ? mods.seFlatDR : 0;
@@ -24760,7 +24872,7 @@ function simExpected(A, atk, D, cfg){
   const db  = pr.fiveStrike ? Math.min(28, pr.baseDB*3 + pr.dbBonus) : pr.db;   // Five Strike averages 3 hits
   const avg = simDbAvg(db);
   const pCrit = pr.alwaysCrit ? 1 : pr.autoHit ? 0 : Math.max(0, (21-pr.critT)/20);
-  const ev = pHit * simMitigate(D, Math.round(avg + pr.flat + pCrit*avg), pr.mtype, pr.isPhys, pr.pierceImmune, pr.pierceDR, pr.atkTinted, pr.atkExploit);
+  const ev = pHit * simMitigate(D, Math.round(avg + pr.flat + pCrit*avg), pr.mtype, pr.isPhys, pr.pierceImmune, pr.pierceDR, pr.atkTinted, pr.atkExploit, pr.moveRule);
   /* Blowing yourself up is only a good trade when it actually finishes the target — otherwise the
      side just gave away a whole combatant, so heavily discount it rather than ban it (a Golem whose
      only real attack IS Self-Destruct still gets to use it). */
@@ -24834,7 +24946,7 @@ function simStrike(B, A, atk, D, round){
     if(hasAbility(A.obj,"Sniper")){ const r3 = rollDiceString(dice); raw += r3 ? r3.total : 0; }
   }
   const before = D.hp;
-  const done  = Math.min(before, simMitigate(D, Math.max(0,raw), pr.mtype, pr.isPhys, pr.pierceImmune, pr.pierceDR, pr.atkTinted, pr.atkExploit));
+  const done  = Math.min(before, simMitigate(D, Math.max(0,raw), pr.mtype, pr.isPhys, pr.pierceImmune, pr.pierceDR, pr.atkTinted, pr.atkExploit, pr.moveRule));
   /* Status riders: a triggered Effect Range that names an Affliction applies it (same heuristic the
      move-roll modal uses for its "Poisoned!" banner). Sheer Force trades these away for damage. */
   let inflicted = null;
@@ -24869,7 +24981,7 @@ function simStrike(B, A, atk, D, round){
 function simAbsorbTriggers(B, D, pr, round){
   if(D.isT || !pr.mtype || pr.mtype==="Typeless") return;
   const have = absorbEntriesFor(D.obj); if(!have.length) return;
-  const mult = simTypeMult(D, pr.mtype, pr.pierceImmune, pr.atkTinted, pr.isPhys);
+  const mult = simTypeMult(D, pr.mtype, pr.pierceImmune, pr.atkTinted, pr.isPhys, pr.moveRule);
   const mods = D.dmods();
   // only an ABILITY's immunity pays out — a plain Type-chart 0 (Normal into Ghost) gives nothing
   const soaked = mult===0 && !!mods && mods.immune.has(pr.mtype) && !pr.pierceImmune;
@@ -29233,6 +29345,34 @@ const MOVE_DEF_PIERCE = {
   "cut":           { dr: 5,             defCS: null },
 };
 function moveDefPierce(m){ return (m && m.name) ? (MOVE_DEF_PIERCE[m.name.toLowerCase()] || null) : null; }
+/* ---- Moves whose damage can only be settled once the TARGET is known -------------------------
+   A handful of Moves don't just roll damage: their rules text rewrites the Type chart for their own
+   hit, or pays a bonus for landing a Super-Effective one. None of that can be worked out on the
+   roll screen — it needs the defender's Types — so, like Exploit, it is resolved where the hit
+   actually lands (tokenDamageBreakdown), and the roll only carries the rule along with it.
+
+     chart        defender Type → the matchup value THIS Move uses instead of the real one
+                  (2 = the defender is weak to it, 1 = neutral, 0.5 = resisted, 0 = immune)
+     pierceImmune this Move ignores immunity to its Type, the Ability kind included (Levitate)
+     seBonus      flat damage added to the roll when the hit turns out Super-Effective
+     note         the one-liner shown on the roll and in the target picker
+
+   Keyed by moveKey() rather than the raw name, so the two data sources' spellings ("Freeze-Dry" on
+   the Move, "Freeze Dry" in a species list) both land on the same entry. */
+const MOVE_TARGET_RULES = {
+  "freezedry":       { chart:{ Water:2 },
+                       note:"Water-Types take Freeze-Dry as a weakness" },
+  "thousandarrows":  { chart:{ Flying:1 }, pierceImmune:true,
+                       note:"Flying-Types take Thousand Arrows as a neutral hit, and Levitate is ignored" },
+  "electrodrift":    { seBonus:10,
+                       note:"a Super-Effective hit adds +10 to the Damage Roll" },
+  "collisioncourse": { seBonus:10,
+                       note:"a Super-Effective hit adds +10 to the Damage Roll" },
+};
+function moveTargetRules(m){
+  const n = typeof m==="string" ? m : (m && m.name);
+  return n ? (MOVE_TARGET_RULES[moveKey(n)] || null) : null;
+}
 /* `defCSMode`: null = normal (CS-adjusted); "all" = the pre-CS ("real") stat, ignoring every CS
    shift on it (manual or automatic — a Burn's −2 Def counts as much as a hand-raised one); "positive"
    = the CS shift capped at 0, so a penalty still applies but a bonus doesn't. */
@@ -30317,8 +30457,10 @@ function tokenMoveMode(token){
   const modes = tokenMoveModes(token); if(!modes.length) return null;
   return modes.find(m=>m[0]===token.moveMode) || modes[0];   // chosen mode, else first available (usually Land)
 }
-/* a linked token's movement (metres) for the CHOSEN mode; null for standalone/unknown */
+/* a linked token's movement (metres) for the CHOSEN mode; null for standalone/unknown.
+   A boat has no link and so no modes — its budget comes off the hull itself instead (see BOATS). */
 function tokenMoveSpeed(token){
+  if(isBoatToken(token)) return boatMoveSpeed(token) || null;
   const m = tokenMoveMode(token); return m ? (m[2]||null) : null;
 }
 /* Manhattan tile cost between two cells (no diagonal movement → a diagonal step costs 2) */
@@ -30368,9 +30510,10 @@ async function toggleBattle(map){
   } else {
     await expireBattleBuffs(map);
     await endCombatEffects(map);          // the fight is over → hand-set Combat Stages & Volatile statuses go
+    resetMapMovement(map);                // ...and a boat's tally now runs against its Travel speed instead
   }
   mapMetaSave();
-  if(meta.battleOn) mapTokensSave();
+  mapTokensSave();                        // both directions clear the movement tallies now
   renderMap();
   toast(meta.battleOn ? "⚔ Battle mode on — tracking movement" : "Battle mode off");
 }
@@ -30716,6 +30859,7 @@ function openHazardMenu(token, map){
   HAZARDS.forEach(h=> grid.append(el('button',{class:'btn-secondary'+(h.key===cur.key?' on':''),style:'display:flex;align-items:center;gap:8px;justify-content:flex-start',
     onclick:()=>{ token.hazard=h.key; mapTokensSave(); renderMap(); closeModal(); }}, el('span',{style:'font-size:18px'},h.icon), h.name)));
   body.append(grid);
+  body.append(nameHideToggle(token));
   modal({title:'☠ '+cur.name, bodyNode:body, footNodes:[
     el('button',{class:'btn-secondary danger',onclick:()=>{ closeModal(); removeToken(token, map); }},'🗑 Remove'),
     el('button',{class:'btn-secondary',onclick:closeModal},'Close')]});
@@ -30726,10 +30870,14 @@ const BOAT_STEP  = { N:[0,-1], E:[1,0], S:[0,1], W:[-1,0] };
 const BOAT_LEN_DEFAULT = 7, BOAT_BEAM_DEFAULT = 3;    // matches the sprites' 224×96 (7:3) proportions
 // hittable-vehicle stats (a Small Boat's stat block) — HP/Def/Sp.Def run through the same damage
 // math as any other token. Breach Security is read automatically (see applyTokenDamage — once
-// token.breaches reaches it, every hit on the hull splashes onto passengers too); Overland and
-// Breach Capacity stay reference-only for the GM to call by hand.
+// token.breaches reaches it, every hit on the hull splashes onto passengers too); Overland is the
+// hull's COMBAT speed and is tracked square by square (boatMoveSpeed); Breach Capacity stays
+// reference-only for the GM to call by hand.
 const BOAT_HP_DEFAULT = 120, BOAT_DEF_DEFAULT = 10, BOAT_SPDEF_DEFAULT = 10;
 const BOAT_OVERLAND_DEFAULT = 7, BOAT_BREACH_SECURITY_DEFAULT = 1, BOAT_BREACH_CAPACITY_DEFAULT = 4;
+// out of combat a hull isn't taking Shifts any more, it's cruising: a second, larger budget that the
+// very same tally is measured against once Battle mode is off (see boatMoveSpeed)
+const BOAT_TRAVEL_DEFAULT = 20;
 // vehicle rule: always Super-Effective vs these three Types (Levitate/Sky exempts Ground — see tokenDamageBreakdown)
 const VEHICLE_WEAK_TYPES = new Set(["Fire","Electric","Ground"]);
 // a boat's mounted weapons: DB rolls the usual dice (DB_TABLE), `bonus` is the extra flat damage the
@@ -30769,6 +30917,18 @@ function boatPassengers(map, boat){
     const s = t.size||1, tx = Math.round(t.x), ty = Math.round(t.y);
     return tx < bx+d.w && tx+s > bx && ty < by+d.h && ty+s > by;
   });
+}
+/* ---- how far a hull may go before it is out of movement ---------------------------------------
+   A boat is the one piece of scenery with a movement budget, and the budget has two sizes. In
+   Battle mode it is the hull's Overland speed, spent per ROUND like everyone else's (7 squares by
+   default, refilled by ↺ New round / ⚔ Battle mode). Out of combat it is the cruising speed a leg
+   of a journey is measured against (20) — nothing refills that one automatically, since there are no
+   rounds to hang it off: the ↺ on the 🚤 panel (or in openBoatMenu) starts the next leg. Both
+   numbers live on the hull and are editable in openBoatMenu. */
+function boatMoveSpeed(boat){
+  if(!boat) return 0;
+  return battleOn() ? (boat.overland!=null ? boat.overland : BOAT_OVERLAND_DEFAULT)
+                    : (boat.travel  !=null ? boat.travel   : BOAT_TRAVEL_DEFAULT);
 }
 /* A boat's helm is HANDED OVER, never assumed. `token.playerHelm` is a GM switch — the
    "🔓 Give the crew the helm" button in openBoatMenu, or the padlock on the 🚤 panel itself.
@@ -30826,6 +30986,7 @@ function boatSteer(map, boat, dir, step){
     const [dx, dy] = BOAT_STEP[dir];
     boat.x += dx; boat.y += dy;
     pax.forEach(p=>{ p.x += dx; p.y += dy; });
+    boat.moved = (boat.moved||0) + 1;     // one square off the hull's budget; turning on the spot is free
   }
   pax.forEach(p=>{ if(!p.riding) snapRidersTo(map, p); });       // keep anyone's own riders pinned
   if(map.fogOn) revealAroundTokens(map);                        // sailing on reveals new coastline
@@ -30852,6 +31013,7 @@ function broadcastBoatMove(map, boat, before){
   try{
     cloud.sub.send({ type:"broadcast", event:"boatmove", payload:{
       from: cloud.tabId, map: map.id, b: boat.id, f: boatFacing(boat), h: !!boat.playerHelm,
+      mv: boat.moved||0,                 // the distance tally, so every 🚤 panel counts down together
       bx: +boat.x.toFixed(2), by: +boat.y.toFixed(2), t: moved } });
   }catch(e){}                    // a dropped socket must never break the helm itself
 }
@@ -30869,6 +31031,7 @@ function onBoatMoveBroadcast(msg){
     if(msg.f) b.facing = msg.f;
   }
   if(b && typeof msg.h==="boolean") b.playerHelm = msg.h;   // the GM handing over / taking back the helm
+  if(b && typeof msg.mv==="number") b.moved = msg.mv;       // ...and how far it has sailed so far
   dragGhosts.delete(msg.b);      // a real position supersedes any stale ghost of this hull
   (Array.isArray(msg.t) ? msg.t : []).forEach(([id])=>dragGhosts.delete(id));
   const cur = currentMapForView();
@@ -30880,7 +31043,7 @@ async function addBoat(map){
                         boatBeam:BOAT_BEAM_DEFAULT, size:1,
                         hp:BOAT_HP_DEFAULT, maxHp:BOAT_HP_DEFAULT,
                         def:BOAT_DEF_DEFAULT, spdef:BOAT_SPDEF_DEFAULT,
-                        overland:BOAT_OVERLAND_DEFAULT, breachSecurity:BOAT_BREACH_SECURITY_DEFAULT,
+                        overland:BOAT_OVERLAND_DEFAULT, travel:BOAT_TRAVEL_DEFAULT, breachSecurity:BOAT_BREACH_SECURITY_DEFAULT,
                         breachCapacity:BOAT_BREACH_CAPACITY_DEFAULT });
   const b = mapBoats(map).slice(-1)[0]; if(b) mapBoat.id = b.id;
   renderMap();
@@ -30935,6 +31098,15 @@ function boatPanel(map){
       onclick:()=>turn(3)},"↺ Turn"),
     el("button",{class:"btn-secondary",style:"flex:1",title:"turn to starboard without moving",
       onclick:()=>turn(1)},"Turn ↻")));
+  // how far this hull has sailed, against whichever budget is in force right now (boatMoveSpeed)
+  const sailed = boat.moved||0, cap = boatMoveSpeed(boat), overCap = cap && sailed>cap;
+  p.append(el("div",{class:"boat-row",style:"align-items:center"},
+    el("span",{class:"small"+(overCap?" over":""),style:"flex:1;font-weight:700",
+      title: battleOn() ? "squares sailed this round — refilled by ↺ New round"
+                        : "squares sailed on this leg — out of combat only this ↺ clears it"},
+      `⛵ ${sailed}/${cap}m${battleOn()?" this round":" cruising"}${overCap?" — over!":""}`),
+    el("button",{class:"boat-x",title:"start the count again from zero",
+      onclick:()=>{ boat.moved=0; delete boat.path; mapTokensSave(); renderMap(); }},"↺")));
   p.append(el("div",{class:"small muted",style:"margin-top:6px"},
     pax ? (pax+" aboard — they sail with it") : "Nobody aboard"));
   return p;
@@ -31002,6 +31174,25 @@ function openBoatMenu(token, map){
   helmBtn.addEventListener("click", ()=>{ setBoatHelm(map, token, !boatHelmGiven(token)); drawHelm(); });
   wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:12px;margin-bottom:4px"},"🚤 Helm"),
     helmBtn, helmNote);
+
+  // ---- distance sailed: the same tally the 🚤 panel shows, against the budget in force ----
+  const mvRow = el("div",{class:"tk-menu-row",style:"align-items:center;margin-top:4px"});
+  const drawMv = ()=>{
+    const used = token.moved||0, cap = boatMoveSpeed(token), over = cap && used>cap;
+    mvRow.innerHTML = "";
+    mvRow.append(
+      el("div",{class:"small"+(over?" over":""),style:"font-weight:800;flex:1"},
+        `⛵ ${used} / ${cap}m ${battleOn()?"this round":"on this leg"}`+(over?" — over speed!":"")),
+      el("button",{class:"btn-secondary",
+        onclick:()=>{ token.moved=0; delete token.path; mapTokensSave(); renderMap(); drawMv(); }},"↺ Reset"));
+  };
+  drawMv();
+  wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:12px;margin-bottom:4px"},"⛵ Distance sailed"),
+    mvRow,
+    el("div",{class:"small muted",style:"margin-top:4px"},
+      "In Battle mode the hull spends its Overland speed each round and ↺ New round refills it. Out of "
+      + "combat the same tally runs against the bigger Travel speed instead, and only a ↺ clears it — "
+      + "so it measures a whole leg of the voyage."));
 
   // ---- HP: same +/-/tick/set controls as any other token, so the hull can actually be sunk ----
   const readout = el("div",{class:"tk-menu-hp"});
@@ -31107,7 +31298,8 @@ function openBoatMenu(token, map){
   };
   wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:16px;margin-bottom:2px"},"Defenses & vehicle stats"),
     mkStat("def","Defense",BOAT_DEF_DEFAULT,99), mkStat("spdef","Special Defense",BOAT_SPDEF_DEFAULT,99),
-    mkStat("overland","Overland",BOAT_OVERLAND_DEFAULT,99),
+    mkStat("overland","Overland — combat speed (squares per round)",BOAT_OVERLAND_DEFAULT,99),
+    mkStat("travel","Travel speed — out of combat (squares)",BOAT_TRAVEL_DEFAULT,99),
     mkStat("breachSecurity","Breach Security",BOAT_BREACH_SECURITY_DEFAULT,99),
     mkStat("breachCapacity","Breach Capacity",BOAT_BREACH_CAPACITY_DEFAULT,99));
 
@@ -31190,8 +31382,9 @@ function mapTokenNode(token, map, originX=0, originY=0){
                                     style:`width:${(thp/total*100).toFixed(2)}%`}));
     node.append(hpWrap);
   }
-  // an undiscovered shop gets no plate at all — an empty one is just a blank yellow tab
-  if(!info.hideName && detail>=2)
+  // an undiscovered shop gets no plate at all — an empty one is just a blank yellow tab, and
+  // `token.hideName` is the per-token switch anyone can flip from the token menu (nameHideToggle)
+  if(!info.hideName && !token.hideName && detail>=2)
     node.append(el("div",{class:"tk-name"}, (token.gmHidden?"🙈 ":"") + info.name
       + (info.unlinked?" ⚠":"")));
   // Player-side tokens (and the boat) rely on the HP bar alone, no numeric readout; enemies/standalone still show it.
@@ -31205,7 +31398,8 @@ function mapTokenNode(token, map, originX=0, originY=0){
     const ringHtml = tokenStatusRingSVG(keys, boxPx, token.id);
     if(ringHtml) node.append(el("div",{class:"tk-status-ring", html:ringHtml}));
   }
-  if(battleOn() && token.moved && !isShopToken(token) && detail>=2){       // movement used this round vs chosen-mode speed
+  // movement used vs the chosen-mode speed — a boat's shows out of combat too (it cruises on a budget)
+  if(token.moved && !isShopToken(token) && detail>=2 && (battleOn() || isBoatToken(token))){
     const spd = tokenMoveSpeed(token), mode = tokenMoveMode(token);
     const icon = mode ? ({overland:"",sky:" 🕊",swim:" 🌊",burrow:" ⛏",levitate:" ✨"}[mode[0]]||"") : "";
     node.append(el("div",{class:"tk-moved"+(spd && token.moved>spd?" over":"")}, `${token.moved}${spd?("/"+spd):""}m${icon}`));
@@ -31249,7 +31443,10 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
     const stackLocked = !stackOK(token);
     // accumulate every tile entered, diagonals cost 2 — but a shop is scenery being repositioned,
     // not a combatant taking a Shift, so dragging its door never spends anyone's movement
-    const trackMove = battleOn() && map.gridOn && !isShopToken(token) && !isBoatToken(token) && !isHazardToken(token);
+    // A BOAT is the exception that counts OUT of combat as well: a hull has a cruising budget on
+    // top of its combat one (boatMoveSpeed), so its tally runs whether or not Battle mode is on.
+    const trackMove = map.gridOn && !isShopToken(token) && !isHazardToken(token)
+                      && (battleOn() || isBoatToken(token));
     const liveFog = !!map.fogOn;
     const stageSize = mapStageSize(map);                      // origin needed regardless of fog, for DOM<->cell math
     const fogCanvas = liveFog ? document.querySelector("#view-map .map-fog") : null;
@@ -31311,7 +31508,9 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
         live.push({ id:c.t.id, x: map.gridOn?cx:(nx-originX)/px, y: map.gridOn?cy:(ny-originY)/px });
         if(commit){
           if(map.gridOn){ c.t.x=c.pathX; c.t.y=c.pathY; } else { c.t.x=(nx-originX)/px; c.t.y=(ny-originY)/px; }
-          if(trackMove && !isShopToken(c.t) && !c.carried) c.t.moved = c.alreadyMoved + c.segMoved;
+          // out of combat only the hull itself is counted — dragging a boat never spends the crew's legs
+          if(trackMove && !isShopToken(c.t) && !c.carried && (battleOn() || isBoatToken(c.t)))
+            c.t.moved = c.alreadyMoved + c.segMoved;
         }
 
         // only a cell that was actually still dark needs the fog canvas repainted — walking back
@@ -31347,12 +31546,12 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
       const p = pendingPt; pendingPt = null;
       if(!p) return;
       applyDelta((p.x-startX)/scale, (p.y-startY)/scale, false);
-      if(map.gridOn && !isShopToken(token) && !isBoatToken(token)){   // no distance readout for scenery
+      if(map.gridOn && !isShopToken(token)){   // no distance readout for a shop door being repositioned
         if(!badge){ badge = el("div",{class:"tk-move"}); node.append(badge); }
         const n = ctx.length>1 ? `${ctx.length} tokens · ` : "";
         if(trackMove){
           const total = anchor.alreadyMoved+anchor.segMoved;
-          badge.textContent = `${n}${anchor.segMoved}m · round ${total}${anchor.moveSpeed?("/"+anchor.moveSpeed):""}m`;
+          badge.textContent = `${n}${anchor.segMoved}m · ${battleOn()?"round":"sailed"} ${total}${anchor.moveSpeed?("/"+anchor.moveSpeed):""}m`;
           badge.classList.toggle("over", !!anchor.moveSpeed && total>anchor.moveSpeed);
         } else badge.textContent = `${n}${anchor.segMoved}m`;
       }
@@ -31448,7 +31647,7 @@ function attachImageDrag(node, img, map, overlay, originX=0, originY=0){
    Levitate, Wonder Guard, Filter, …) and any Swarm/manual effectiveness nudge, then Damage
    Reduction (active DR buffs + flat DR vs Super-Effective). Used by BOTH the token menu's manual
    "Apply an attack" box and the roll-result "Apply to target" picker, so the two never diverge. */
-function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, defCSMode=null }){
+function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, defCSMode=null, chartOverride=null, seBonus=0 }){
   const def = tokenDefenseStat(token, !!physical, defCSMode);
   const swarmTgt = (()=>{ const LL = token.link ? tokenLinked(token) : null;
     return (LL && !LL.missing && LL.kind==="enc" && isSwarm(LL.obj)) ? LL.obj : null; })();
@@ -31460,7 +31659,10 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
   // an attacker-side effect may ignore immunity to this Type (Bone Wielder [Errata] vs Ground) —
   // that covers BOTH kinds of immunity: the Type chart's (Flying) and an Ability's (Levitate)
   const pierced = !!pierceImmune && !typeless;
-  let mult, tinted = false, tolStep = 0, furStep = 0;
+  // a Move that rewrites the chart for itself (Freeze-Dry, Thousand Arrows — MOVE_TARGET_RULES);
+  // `chartUsed` only goes true if this particular target actually has one of the Types it names
+  const chartOv = (!typeless && chartOverride) ? chartOverride : null;
+  let mult, tinted = false, tolStep = 0, furStep = 0, chartUsed = false;
   // Fur Coat (defender Static): Physical hits are resisted one step further, whatever the Type.
   const furActive = !!(defMods?.furCoat && physical);
   if(typeless) mult = furActive ? 0.5 : 1;   // Typeless Physical (Struggle) still gets Fur Coat's step
@@ -31475,16 +31677,18 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
   else {
     const defStep = stepAdj + (defMods?.step?.[type] || 0);
     if(furActive) furStep = -1;
-    mult = typeMultAgainst(type, tokenDefTypes(token), defStep + furStep, { pierceImmune: pierced });
+    const mOpts = { pierceImmune: pierced, chart: chartOv };
+    chartUsed = !!chartOv && tokenDefTypes(token).some(dt => chartOv[dt] != null);
+    mult = typeMultAgainst(type, tokenDefTypes(token), defStep + furStep, mOpts);
     // Tolerance (defender Static): a hit the defender resists is resisted one further step.
     if(defMods?.tolerance && mult > 0 && mult < 1){
       tolStep = -1;
-      mult = typeMultAgainst(type, tokenDefTypes(token), defStep + furStep + tolStep, { pierceImmune: pierced });
+      mult = typeMultAgainst(type, tokenDefTypes(token), defStep + furStep + tolStep, mOpts);
     }
     // Wonder Guard keys off raw Type super-effectiveness, so judge it on the pre-Fur-Coat Type mult
     // (Fur Coat's flat step must never turn a genuinely Super-Effective hit into a blocked one).
     if(defMods?.wonderGuard){
-      const typeMult = typeMultAgainst(type, tokenDefTypes(token), defStep, { pierceImmune: pierced });
+      const typeMult = typeMultAgainst(type, tokenDefTypes(token), defStep, mOpts);
       if(typeMult > 0 && typeMult <= 1) mult = 0;
     }
     if(defMods?.seReduce && mult > 1) mult = seReducedMult(mult);   // Filter / Solid Rock
@@ -31494,7 +31698,7 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
        hit is left untouched. */
     if(atkTinted && mult > 0 && mult < 1){
       const bumped = typeMultAgainst(type, tokenDefTypes(token),
-                       defStep + furStep + tolStep + 1, { pierceImmune: pierced });
+                       defStep + furStep + tolStep + 1, mOpts);
       const up = Math.min(1, bumped);
       if(up !== mult){ mult = up; tinted = true; }
     }
@@ -31504,7 +31708,10 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
      +5 goes on before Defense comes off — and it can only be judged once effectiveness is known,
      which is why it sits here rather than in the roll screen that produced `dmg`. */
   const exploit  = !!atkExploit && mult > 1;
-  const dmgUsed  = dmg + (exploit ? 5 : 0);
+  /* ...and the same reasoning covers a Move that pays for its own Super-Effective hit
+     (Electro Drift / Collision Course: "+10 to the Damage Roll"). Judged on the same `mult`. */
+  const seExtra  = mult > 1 ? Math.round(seBonus || 0) : 0;
+  const dmgUsed  = dmg + (exploit ? 5 : 0) + seExtra;
   const afterDef  = Math.max(0, dmgUsed - def);
   const afterMult = Math.floor(afterDef * mult);
   const { dr, from } = owner ? buffDR(owner) : { dr:0, from:[] };
@@ -31521,10 +31728,11 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
   const drGone  = Math.max(0, Math.min(drPool, Math.round(pierceDR||0)));
   const final = Math.max(0, afterMult - (drPool - drGone));
   return { def, physical:!!physical, typeless, mult, afterDef, afterMult, dr, from, seDR, glacialDR,
-           typeDR, typeDRFrom, final, drPool, drGone, exploit, dmgUsed,
+           typeDR, typeDRFrom, final, drPool, drGone, exploit, dmgUsed, seExtra, chartUsed,
            owner, defMods, swarmTgt, swarmStep, extraStep, pierced, tinted, tolerance: tolStep<0, furCoat: furActive,
            // kept only so applyTokenDamage can re-run this same hit against a breached boat's passengers
-           dmg, type:(typeless?"Typeless":type), aoe:!!aoe, pierceImmune:!!pierceImmune, pierceDR, atkTinted:!!atkTinted, atkExploit:!!atkExploit, defCSMode };
+           dmg, type:(typeless?"Typeless":type), aoe:!!aoe, pierceImmune:!!pierceImmune, pierceDR, atkTinted:!!atkTinted, atkExploit:!!atkExploit, defCSMode,
+           chartOverride, seBonus };
 }
 /* Apply a computed breakdown to the token: subtract its HP and spend any one-shot DR buff that
    absorbed the hit (Excited, Intercept…). Returns the HP value BEFORE the hit. */
@@ -31554,7 +31762,8 @@ async function applyTokenDamage(token, br){
       for(const p of boatPassengers(map, token)){
         const pbr = tokenDamageBreakdown(p, { dmg:br.dmg, type:br.type, physical:br.physical,
           extraStep:(br.extraStep||0)-1, aoe:br.aoe, pierceImmune:br.pierceImmune, pierceDR:br.pierceDR,
-          atkTinted:br.atkTinted, atkExploit:br.atkExploit, defCSMode:br.defCSMode });
+          atkTinted:br.atkTinted, atkExploit:br.atkExploit, defCSMode:br.defCSMode,
+          chartOverride:br.chartOverride, seBonus:br.seBonus });
         await applyTokenDamage(p, pbr);
       }
     }
@@ -31599,19 +31808,25 @@ function damageResultHTML(dmg, typeName, br, before){
   const pierceTxt = br.pierced ? " <b>(immunity ignored)</b>" : "";
   const abilTxt  = (br.defMods && br.defMods.why.length && !br.typeless) ? `<br><span style="color:var(--accent)">⚙ ${br.defMods.why.join(" · ")}</span>` : "";
   const expTxt = br.exploit ? ` <b>(Exploit: +5)</b>` : "";
+  const seXTxt = br.seExtra ? ` <b>(+${br.seExtra} Super-Effective)</b>` : "";
+  const chartTxt = br.chartUsed ? " <b>(this Move's own matchup)</b>" : "";
   const tempTxt = br.tempSoaked ? ` <span style="color:var(--temp);font-weight:700">(${br.tempSoaked} soaked by Temporary HP)</span>` : "";
   const after = br.afterHP != null ? br.afterHP : before - br.final;
   // what a type-absorbing Ability (Storm Drain, Volt Absorb…) just paid the defender for this hit
   const absTxt = (br.absorb && br.absorb.length)
     ? `<br><span style="color:var(--accent);font-weight:700">\u26A1 ${br.absorb.join(" \u00B7 ")}</span>` : "";
-  return `${br.dmgUsed ?? dmg}${expTxt} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${pierceTxt}${swarmTxt}${stepTxt}${tintTxt}${tolTxt}${furTxt} = ${br.afterMult}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${after}</b>.${tempTxt}${absTxt}${abilTxt}`;
+  return `${br.dmgUsed ?? dmg}${expTxt}${seXTxt} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${chartTxt}${pierceTxt}${swarmTxt}${stepTxt}${tintTxt}${tolTxt}${furTxt} = ${br.afterMult}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${after}</b>.${tempTxt}${absTxt}${abilTxt}`;
 }
 /* GM tool surfaced on a rolled attack's result: pick a token on the battle map and drop the rolled
    damage on it, running the same full damage math as the token menu (type, phys/spec, abilities, DR).
    Returns a DOM node, or null when it doesn't apply (not the GM, not in cloud, no editable tokens on
    the current map). `dmg` = the rolled total, `type` = the move's effective Type, `physical` picks
    Def vs Sp.Def. */
-function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, defCSMode=null }){
+function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, defCSMode=null, moveRule=null }){
+  // a Move whose own rules bend the matchup (MOVE_TARGET_RULES) travels with the hit, and its
+  // immunity clause folds into the same pierce switch every other source uses
+  const chartOverride = moveRule?.chart || null, seBonus = moveRule?.seBonus || 0;
+  pierceImmune = pierceImmune || !!moveRule?.pierceImmune;
   if(mode!=="cloud" || !cloud.isGM) return null;
   const map = currentMapForView() || activeMap(); if(!map) return null;
   // scenery (shop doors) is editable and "linked", but it is not a creature you can roll damage
@@ -31630,7 +31845,8 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     + (pierceDR>=PIERCE_ALL_DR ? ` All Damage Reduction is ignored on this attack.`
        : pierceDR ? ` Up to ${pierceDR} Damage Reduction is ignored on this attack.` : "")
     + (defCSMode==="all" ? ` Any Combat-Stage changes to the target's ${physical?"Defense":"Sp.Def"} (Armor included) are ignored.`
-       : defCSMode==="positive" ? ` The target's positive Defense Combat Stages are ignored.` : "")));
+       : defCSMode==="positive" ? ` The target's positive Defense Combat Stages are ignored.` : "")
+    + (moveRule?.note ? ` This Move's own rule is applied per target: ${moveRule.note}.` : "")));
 
   // one persistent checkbox per token; split into Players / Enemies tabs (players first). The
   // checkboxes survive tab switches, so an area attack can hit tokens across both factions.
@@ -31716,7 +31932,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     if(!chosen.length){ out.textContent = "Tick at least one target (in either tab)."; return; }
     out.innerHTML = "";
     for(const it of chosen){
-      const br = tokenDamageBreakdown(it.t, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, defCSMode });
+      const br = tokenDamageBreakdown(it.t, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, defCSMode, chartOverride, seBonus });
       const before = await applyTokenDamage(it.t, br);
       it.cb.checked = false;                                    // clear so a second Apply doesn't double-hit
       const line = el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"});
@@ -31843,7 +32059,7 @@ function openRollApply(e){
   const w = attackTargetWidget({ dmg:e.atk.dmg, type:e.atk.type, physical:e.atk.physical,
                                  pierceImmune:e.atk.pierceImmune, pierceDR:e.atk.pierceDR, atkTinted:e.atk.atkTinted,
                                  atkExploit:e.atk.atkExploit,
-                                 defCSMode:e.atk.defCSMode });
+                                 defCSMode:e.atk.defCSMode, moveRule:e.atk.moveRule });
   body.append(w || el("div",{class:"small"},
     "No damageable token on the current map — open the 🗺 Map (or add a token) and try again."));
   modal({title:`🎯 ${e.label||"Apply this hit"}`, bodyNode:body,
@@ -31881,6 +32097,21 @@ function reopenTokenMenu(token, map){
   openTokenMenu(token, map);
   const newBody = document.querySelector("#modalRoot .modal-body");
   if(newBody) newBody.scrollTop = st;
+}
+/* 🏷 the per-token name-plate switch, off by default so every token stays labelled as it always
+   was until someone ticks it. Purely cosmetic and board-wide: the token menu, the initiative list
+   and the roll feed all still call it by name. Hiding the whole TOKEN from players is `gmHidden`,
+   a different switch sitting right next to this one. Unticking deletes the key rather than storing
+   `false`, so an unhidden name costs the synced row nothing. */
+function nameHideToggle(token){
+  const cb = el("input",{type:"checkbox"}); cb.checked = !!token.hideName;
+  cb.addEventListener("change", ()=>{
+    if(cb.checked) token.hideName = true; else delete token.hideName;
+    mapTokensSave(); renderMap();
+  });
+  return el("label",{class:"inline",style:"margin-top:10px;gap:6px;display:flex;align-items:center",
+    title:"Keeps the label off the board — the token itself stays visible"},
+    cb, el("span",{class:"small"},"🏷 Hide this token's name plate"));
 }
 function openTokenMenu(token, map){
   if(isShopToken(token)) return openShopTokenMenu(token, map);
@@ -32060,7 +32291,7 @@ function openTokenMenu(token, map){
             me.commander ? `\u{1F363} Attached to ${who}` : `\u{1F363} ${who} Attached`),
           el("button",{class:"btn-secondary",style:"margin-left:auto",
             title:"Detach — the pair stop sharing a square and each gets their own Movement back",
-            onclick:async()=>{ commanderDetach(me); await after(); }},"⬇ Detach"));
+            onclick:async()=>{ commanderDetach(me, false, { map, riderToken: me.commander ? token : null }); await after(); }},"⬇ Detach"));
         if(partner) row.append(el("div",{class:"small muted",style:"flex-basis:100%"},
           me.commander ? commanderInterceptText(me, partner) : commanderInterceptText(partner, me)));
       } else {
@@ -32222,11 +32453,18 @@ function openTokenMenu(token, map){
         btn("Struggle", ()=>openTrainerAttack(t,null,null,taOpts));
         (t.weapons||[]).forEach(w=> btn(w.name||w.category, ()=>openTrainerAttack(t,null,w,taOpts)));
         (t.encMoves||[]).concat(t.moves||[]).forEach(mn=>{ if(moveByName.get((mn||"").toLowerCase())) btn(mn, ()=>openTrainerAttack(t,mn,null,taOpts)); });
+        // …and the derived ones — Order Up, Weapon Techniques, [Weapon]-Feature Moves
+        derivedTrainerAttacks(t).forEach(d =>
+          btn(`${d.name} (${d.tag})`, ()=>openTrainerAttack(t, d.name, d.weapon,
+            d.weaponAttack ? Object.assign({}, taOpts, {weaponAttack:true}) : taOpts)));
       } else {
         const p=L.obj, sp=getSpecies(p.species);
         const mrOpts = {persist:()=>commitTokenSource(token)};
         const st=struggleFor(p,sp); if(st) btn(st.name, ()=>openMoveRoll(p,st,sp,mrOpts));
         (p.moves||[]).forEach(mn=>{ const m=moveByName.get((mn||"").toLowerCase()); if(m) btn(mn, ()=>openMoveRoll(p,m,sp,mrOpts)); });
+        // …and everything it may roll that never took a Move slot (see derivedMonMoves)
+        derivedMonMoves(p, sp).forEach(d =>
+          btn(`${d.move.name} (${d.tag})`, ()=>openMoveRoll(p, d.move, sp, mrOpts)));
       }
       aw.append(row);
       wrap.append(aw);
@@ -32498,6 +32736,7 @@ function openTokenMenu(token, map){
       hd.addEventListener("change", async()=>{ token.gmHidden = hd.checked; mapTokensSave(); renderMap(); toast(token.gmHidden?"🙈 Hidden from players":"👁 Visible to players"); });
       wrap.append(el("label",{class:"inline",style:"margin-top:10px;gap:6px;display:flex;align-items:center"},
         hd, el("span",{class:"small"},"🙈 Hide this token from players")));
+      wrap.append(nameHideToggle(token));
       if(battleOn()){
         const info2=tokenHp(token), ally=info2.kind==="trainer"||info2.kind==="pokemon";
         const ii=el("input",{type:"checkbox"}); ii.checked = ally ? token.inInit!==false : !!token.inInit;
