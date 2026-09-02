@@ -28363,6 +28363,15 @@ function dexResolveGroup(name, depth){
     return dexGroupOf(t.slice(0,-1).join(" "), depth+1);
   if(t.length > 1 && DEX_FORM_PREFIXES.has(dexKey(t[0])))
     return dexGroupOf(t.slice(1).join(" "), depth+1);
+  /* The species table carries BOTH "Flabebe" and "Flabébé" as rows, and dexKey drops the
+     accents to "flabb", which matches neither -- so the two showed up as two Dex entries, one of
+     them with no number at all. Fold an accented name onto its plain spelling whenever that plain
+     spelling is itself a species. (It is the only such name in the data today.) */
+  const plain = n.normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  if(plain !== n){
+    const s2 = getSpecies(plain);
+    if(s2 && s2.name !== n) return dexGroupOf(s2.name, depth+1);
+  }
   /* only a chain that actually names this species may veto (see the note above) */
   const line = new Set((sp && evoSelfEntry(sp) ? speciesLineBackTo(sp) : []).map(x => x.name.toLowerCase()));
   for(let size = t.length-1; size >= 1; size--){
@@ -28385,9 +28394,13 @@ function dexGroupIndex(){
   D.species.filter(dexVisibleSpecies).forEach(sp=>{
     const g = dexGroupOf(sp.name); if(!g) return;
     let e = DEX_GROUPS.get(g.key);
-    if(!e){ e = { key:g.key, name:g.name, members:[], rep:null }; DEX_GROUPS.set(g.key, e); }
+    if(!e){ e = { key:g.key, name:g.name, members:[], rep:null, num:0 }; DEX_GROUPS.set(g.key, e); }
     e.members.push(sp.name);
     if(!e.rep || sp.name === g.name) e.rep = sp.name;
+    /* the group's National Dex number is the lowest any of its forms carries: every form of one
+       Pokemon shares a number anyway, so this only matters for a group whose own name has none. */
+    const n = DEXNUM[dexKey(sp.name)] || 0;
+    if(n && (!e.num || n < e.num)) e.num = n;
   });
   return DEX_GROUPS;
 }
@@ -28401,6 +28414,102 @@ function dexRepOf(entry){
 function dexVisibleSpecies(s){ return !!s && !s.hidden; }
 function dexListable(name){ const s = getSpecies(name); return s ? dexVisibleSpecies(s) : true; }
 function dexTotalSpecies(){ return dexGroupIndex().size; }
+/* ---- National Dex numbers ----
+   data/dexnum.js keys every species row (dexKey'd, so "Vulpix Alolan" -> vulpixalolan) to its
+   National Dex number, resolved from PokeAPI's national pokedex: a form carries its base Pokemon's
+   number, which is exactly what this tab wants because it groups forms together anyway.
+   Homebrew has no number. It gets 0, prints as a dash, and sorts AFTER everything numbered rather
+   than crowding the front of a "#0001 first" list. */
+const DEXNUM = window.PTU_DEXNUM || {};
+function dexNumOfSpecies(name){
+  if(!name) return 0;
+  const sp = getSpecies(name);
+  return DEXNUM[dexKey(sp ? sp.name : name)] || DEXNUM[dexKey(name)] || 0;
+}
+/* Takes a register entry, a group, or a plain species name. */
+function dexNumOf(x){
+  if(!x) return 0;
+  if(typeof x === "string"){
+    const g = dexGroupOf(x);
+    return (g && (dexGroupIndex().get(g.key)||{}).num) || dexNumOfSpecies(x);
+  }
+  if(x.num) return x.num;
+  const g = dexGroupIndex().get(x.key || dexKey(x.name));
+  return (g && g.num) || dexNumOfSpecies(x.form || x.name);
+}
+function dexNumLabel(n){ return n ? "#" + String(n).padStart(4,"0") : "—"; }
+function dexNumSort(a, b){
+  return ((dexNumOf(a) || 99999) - (dexNumOf(b) || 99999))
+      || String(a.name||"").localeCompare(String(b.name||""));
+}
+/* ---- evolution lines ----
+   A "line" is one family: a root Pokemon and everything that evolves from it, with forms already
+   folded together by dexGroupOf. Eevee's nine groups are ONE line; so are Gible/Gabite/Garchomp.
+
+   The root is the LOWEST-STAGE entry of the chain, not the tail of speciesLineUp -- that array
+   reads [self, stage 1, stage 2, ...], so its last element is the stage just below this one, not
+   the base. A chain that never names its own species (the ~104 short chains) still lists its base
+   at stage 1, and a species with no chain at all is its own root. */
+function dexRootNameOf(sp){
+  if(!sp) return "";
+  let best = null;
+  (sp.evolution||[]).forEach(e=>{
+    if(!e || typeof e.stage !== "number") return;
+    if(!best || e.stage < best.stage) best = e;
+  });
+  if(best){
+    const s = getSpecies(parseEvoEntry(best.name).species);
+    if(s) return s.name;
+  }
+  return sp.name;
+}
+let DEX_LINES = null, DEX_LINE_OF = null;
+function dexLineIndex(){
+  if(DEX_LINES) return DEX_LINES;
+  DEX_LINES = new Map(); DEX_LINE_OF = new Map();
+  [...dexGroupIndex().values()].forEach(g=>{
+    const root = dexGroupOf(dexRootNameOf(getSpecies(dexRepOf(g)))) || g;
+    let L = DEX_LINES.get(root.key);
+    if(!L){
+      /* the line is filed under its ROOT's own number, so the name and the number a row shows can
+         never disagree: the Pichu line is #0172, not #0025 with "Pichu" written next to it. */
+      L = { key:root.key, name:root.name, groups:[],
+            num:(DEX_GROUPS.get(root.key)||{}).num || 0 };
+      DEX_LINES.set(root.key, L);
+    }
+    L.groups.push(g.key);
+    if(!L.num && g.num) L.num = g.num;          // a root with no number of its own (homebrew)
+    DEX_LINE_OF.set(g.key, root.key);
+  });
+  /* inside a line, evolution order beats Dex order -- Pichu, Pikachu, Raichu, not 25, 26, 172 */
+  DEX_LINES.forEach(L => L.groups.sort((a,b)=>
+    (dexStageOfGroup(a) - dexStageOfGroup(b))
+    || (((DEX_GROUPS.get(a)||{}).num||99999) - ((DEX_GROUPS.get(b)||{}).num||99999))
+    || String((DEX_GROUPS.get(a)||{}).name||"").localeCompare(String((DEX_GROUPS.get(b)||{}).name||""))));
+  return DEX_LINES;
+}
+/* which rung of its chain a group sits on; 1 for anything whose chain doesn't say */
+function dexStageOfGroup(key){
+  const g = DEX_GROUPS.get(key); if(!g) return 1;
+  const sp = getSpecies(dexRepOf(g)); if(!sp) return 1;
+  const e = evoSelfEntry(sp);
+  return (e && typeof e.stage === "number") ? e.stage : 1;
+}
+function dexLineOf(groupKey){ dexLineIndex(); return DEX_LINE_OF.get(groupKey) || null; }
+/* How many distinct lines the register touches, and how many of those are finished. */
+function dexLineStats(d){
+  const lines = dexLineIndex(), started = new Set();
+  Object.values(d.seen).forEach(e=>{
+    const lk = dexLineOf(e.key || dexKey(e.name));
+    if(lk) started.add(lk);
+  });
+  let complete = 0;
+  started.forEach(lk=>{
+    const L = lines.get(lk);
+    if(L && L.groups.every(k => !!d.seen[k])) complete++;
+  });
+  return { started, complete, total: lines.size };
+}
 /* Every Pokémon the party owns right now: one entry per Trainer's party, plus the shared PC.
    `all` ignores the skip list — that's the version the "Sheets counted" picker lists. */
 function dexHolders(all){
@@ -28628,7 +28737,7 @@ function dexRefreshBadge(){
   el_.textContent = n ? String(n) : "";
   el_.hidden = !n;
 }
-let dexFilter = { q:"", sort:"new", missing:false };
+let dexFilter = { q:"", sort:"new", missing:false, view:"reg" };
 function dexEntrySub(e){
   if(e.via) return `via ${e.via}`;
   if(e.where === "manual") return "added by hand";
@@ -28648,6 +28757,7 @@ function dexEntryCard(e, held, onChange){
     title:`First registered ${new Date(e.at||0).toLocaleString()} — ${dexEntrySub(e)}`});
   const open = el("div",{style:"cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px",
     onclick: sp ? ()=>openRefDetail("species", sp.name) : null});
+  open.append(el("div",{class:"dex-num"}, dexNumLabel(dexNumOf(e))));
   open.append(monSprite(rep || e.name, false, "s-sm"));
   open.append(el("div",{class:"dex-name"}, e.name));
   if(sp) open.append(el("div",{class:"chips",style:"justify-content:center;gap:2px"},
@@ -28663,6 +28773,77 @@ function dexEntryCard(e, held, onChange){
   card.append(el("button",{class:"dex-x",title:`strike ${e.name} off the register`,
     onclick:ev=>{ ev.stopPropagation(); dexRemoveByHand(e.name); onChange(); }},"×"));
   return card;
+}
+/* The cell for a Pokemon the register has never seen: the National Dex number it would occupy and
+   nothing else. The name stays hidden -- that is the whole point of a blank in a Dex -- so the
+   register-by-hand button names the NUMBER, not the species. */
+function dexUnknownCard(g, onChange){
+  const card = el("div",{class:"dex-cell dex-unknown",
+    title:`${dexNumLabel(g.num)} — not registered yet`});
+  card.append(el("div",{class:"dex-num"}, dexNumLabel(g.num)));
+  card.append(el("div",{class:"dex-qmark"},"?"));
+  card.append(el("div",{class:"dex-name muted"},"???"));
+  card.append(el("div",{class:"small muted dex-sub"},"not registered"));
+  card.append(el("button",{class:"dex-x dex-add",title:`register ${dexNumLabel(g.num)} by hand`,
+    onclick:ev=>{ ev.stopPropagation(); dexAddByHand(g.rep || g.name); onChange(); }},"＋"));
+  return card;
+}
+/* ---- the Full Dex: every entry in National Dex order -- the ones the party has drawn properly,
+   the ones it hasn't as a "?" ---- */
+function dexDrawFull(listWrap, d, held, needle, again){
+  const groups = [...dexGroupIndex().values()]
+    .filter(g => !needle || g.name.toLowerCase().includes(needle)
+      || g.members.some(mn => mn.toLowerCase().includes(needle)))
+    .sort(dexNumSort);
+  const got = groups.filter(g => !!d.seen[g.key]).length;
+  listWrap.append(el("div",{class:"section-head"},
+    el("span",{}, `Full Dex (${got} of ${groups.length} registered)`),
+    el("span",{class:"muted small"},"a ? is a slot nobody has filled yet")));
+  if(!groups.length){ listWrap.append(el("div",{class:"muted small"},"Nothing matches that search.")); return; }
+  const grid = el("div",{class:"dex-grid"});
+  groups.forEach(g => grid.append(d.seen[g.key]
+    ? dexEntryCard(d.seen[g.key], held, again)
+    : dexUnknownCard(g, again)));
+  listWrap.append(grid);
+}
+/* ---- the evolution lines: how many distinct families the party has met, and which ones ---- */
+function dexDrawLines(listWrap, d, needle, showAll, again){
+  const lines = dexLineIndex(), st = dexLineStats(d);
+  const arr = [...lines.values()]
+    .map(L => ({ L, got: L.groups.filter(k => !!d.seen[k]) }))
+    .filter(x => showAll || x.got.length)
+    .filter(x => !needle || x.L.name.toLowerCase().includes(needle)
+      || x.L.groups.some(k => ((dexGroupIndex().get(k)||{}).name||"").toLowerCase().includes(needle)))
+    .sort((a,b)=>dexNumSort(a.L, b.L));
+  listWrap.append(el("div",{class:"section-head"},
+    el("span",{}, `Evolution lines (${st.started.size} of ${st.total} started)`),
+    el("span",{class:"muted small"}, `${st.complete} complete`
+      + (showAll ? "" : " — tick “show what's still missing” for the ones you have not started"))));
+  if(!arr.length){ listWrap.append(el("div",{class:"muted small"},
+    needle ? "No line matches that search." : "No line started yet.")); return; }
+  arr.forEach(({L, got})=>{
+    const row = el("div",{class:"dex-line" + (got.length === L.groups.length ? " dex-line-done" : "")});
+    /* give the row a face the party has actually met, so an unstarted line stays a silhouette */
+    row.append(got.length ? monSprite(dexRepOf(dexGroupIndex().get(got[0])), false, "s-sm")
+                          : el("div",{class:"dex-qmark"},"?"));
+    const body = el("div",{class:"dex-line-body"});
+    body.append(el("div",{class:"inline",style:"gap:8px;align-items:baseline;flex-wrap:wrap"},
+      el("b",{}, `${L.name} line`),
+      el("span",{class:"pill"}, `${got.length} / ${L.groups.length}`),
+      el("span",{class:"muted small"}, dexNumLabel(L.num))));
+    const chips = el("div",{class:"chips",style:"margin-top:6px"});
+    L.groups.forEach(k=>{
+      const g = dexGroupIndex().get(k); if(!g) return;
+      const have = !!d.seen[k];
+      chips.append(el("button",{class:"statuschip" + (have ? "" : " dex-gone"),style:"cursor:pointer",
+        title: have ? `open ${g.name}` : `register ${g.name} by hand`,
+        onclick: have ? ()=>openRefDetail("species", dexRepOf(g))
+                      : ()=>{ dexAddByHand(g.rep || g.name); again(); }}, g.name));
+    });
+    body.append(chips);
+    row.append(body);
+    listWrap.append(row);
+  });
 }
 function renderDex(){
   const root = $("#view-dex"); root.innerHTML = "";
@@ -28685,13 +28866,21 @@ function renderDex(){
   const bar = el("div",{class:"hpbar",style:"margin-top:8px"});
   bar.append(el("i",{style:`width:${Math.min(100,pct)}%;background:var(--accent)`}));
   head.append(bar);
+  /* ...and how many distinct evolutionary families that is. Nine Eeveelutions are ONE line. */
+  const lst = dexLineStats(d);
+  head.append(el("div",{class:"small",style:"margin-top:8px"},
+    el("b",{}, String(lst.started.size)),
+    el("span",{class:"muted"}, ` of ${lst.total} evolution lines started`),
+    el("span",{class:"kv",style:"margin-left:8px"}, `${lst.complete} complete`),
+    el("button",{class:"linkbtn h-act",style:"margin-left:8px",title:"show them one by one",
+      onclick:()=>{ dexFilter.view = "lines"; again(); }},"list them")));
   head.append(el("div",{class:"inline",style:"flex-wrap:wrap;gap:8px;margin-top:10px"},
     el("button",{class:"btn-primary",style:"padding:6px 12px",
       title:"register a species by hand — its pre-evolutions come with it",
       onclick:()=>{
         const names = D.species.filter(dexVisibleSpecies).map(s=>s.name);
         openPicker("Register a species", names, n=>{ dexAddByHand(n); again(); },
-          "species", n => !!d.seen[n.toLowerCase()]);
+          "species", n => !!d.seen[(dexGroupOf(n)||{}).key]);
       }},"＋ Add a species"),
     el("button",{class:"btn-secondary",style:"padding:6px 12px",
       title:"walk every party and the PC again right now",
@@ -28750,30 +28939,48 @@ function renderDex(){
   const q = el("input",{type:"search",placeholder:"Search species…",style:"flex:1;min-width:150px"});
   q.value = dexFilter.q;
   const sf = el("select");
-  [["new","Newest first"],["name","Name A–Z"],["held","Most held first"]]
+  [["new","Newest first"],["num","Dex number ↑"],["name","Name A–Z"],["held","Most held first"]]
     .forEach(([v,l])=>sf.append(el("option",{value:v,selected:v===dexFilter.sort}, l)));
+  const vf = el("select");
+  [["reg","Registered only"],["full","Full Dex (? for blanks)"],["lines","Evolution lines"]]
+    .forEach(([v,l])=>vf.append(el("option",{value:v,selected:v===dexFilter.view}, l)));
   const mcb = el("input",{type:"checkbox"}); mcb.checked = dexFilter.missing;
-  frow.append(q, sf, el("label",{class:"inline",style:"gap:6px;align-items:center"},
-    mcb, el("span",{class:"small"},"show what's still missing")));
+  const mlbl = el("label",{class:"inline",style:"gap:6px;align-items:center"},
+    mcb, el("span",{class:"small"},"show what's still missing"));
+  frow.append(q, vf, sf, mlbl);
   fcard.append(frow);
   const listWrap = el("div",{style:"margin-top:10px"});
   const draw = ()=>{
     listWrap.innerHTML = "";
     const needle = dexFilter.q.trim().toLowerCase();
-    let arr = entries.filter(e => !needle || e.name.toLowerCase().includes(needle));
-    if(dexFilter.sort === "name") arr.sort((a,b)=>a.name.localeCompare(b.name));
-    else if(dexFilter.sort === "held") arr.sort((a,b)=>
-      ((held.get(b.name.toLowerCase())||{n:0}).n - (held.get(a.name.toLowerCase())||{n:0}).n)
-      || a.name.localeCompare(b.name));
-    else arr.sort((a,b)=>(b.at||0)-(a.at||0));
-    listWrap.append(el("div",{class:"section-head"},
-      el("span",{}, `Registered (${arr.length}${needle?` of ${entries.length}`:""})`)));
-    if(!arr.length) listWrap.append(el("div",{class:"muted small"},
-      entries.length ? "Nothing matches that search." : "Nothing registered yet — catch something, or ＋ Add a species."));
-    else {
-      const grid = el("div",{class:"dex-grid"});
-      arr.forEach(e => grid.append(dexEntryCard(e, held, again)));
-      listWrap.append(grid);
+    /* Full Dex and Evolution lines are both in Dex order, and the Full Dex already draws every
+       blank, so neither control means anything there. */
+    sf.disabled = dexFilter.view !== "reg";
+    mcb.disabled = dexFilter.view === "full";
+    mlbl.style.opacity = mcb.disabled ? ".45" : "";
+    if(dexFilter.view === "full"){
+      dexDrawFull(listWrap, d, held, needle, again);
+    } else if(dexFilter.view === "lines"){
+      dexDrawLines(listWrap, d, needle, dexFilter.missing, again);
+    } else {
+      let arr = entries.filter(e => !needle || e.name.toLowerCase().includes(needle));
+      if(dexFilter.sort === "name") arr.sort((a,b)=>a.name.localeCompare(b.name));
+      else if(dexFilter.sort === "num") arr.sort(dexNumSort);
+      /* keyed by GROUP key, the way the register itself is: e.name.toLowerCase() misses every
+         multi-word species ("Mr. Mime" is stored as mrmime), so those all sorted as zero held. */
+      else if(dexFilter.sort === "held") arr.sort((a,b)=>
+        ((held.get(b.key || dexKey(b.name))||{n:0}).n - (held.get(a.key || dexKey(a.name))||{n:0}).n)
+        || a.name.localeCompare(b.name));
+      else arr.sort((a,b)=>(b.at||0)-(a.at||0));
+      listWrap.append(el("div",{class:"section-head"},
+        el("span",{}, `Registered (${arr.length}${needle?` of ${entries.length}`:""})`)));
+      if(!arr.length) listWrap.append(el("div",{class:"muted small"},
+        entries.length ? "Nothing matches that search." : "Nothing registered yet — catch something, or ＋ Add a species."));
+      else {
+        const grid = el("div",{class:"dex-grid"});
+        arr.forEach(e => grid.append(dexEntryCard(e, held, again)));
+        listWrap.append(grid);
+      }
     }
 
     /* ---- struck off by hand: never a black hole, always one click back ---- */
@@ -28791,7 +28998,7 @@ function renderDex(){
       listWrap.append(det);
     }
 
-    if(dexFilter.missing){
+    if(dexFilter.missing && dexFilter.view === "reg"){
       const have = new Set(entries.map(e => e.key || dexKey(e.name)));
       let miss = [...dexGroupIndex().values()]
         .filter(g => !have.has(g.key)
@@ -28812,6 +29019,7 @@ function renderDex(){
   };
   q.addEventListener("input",()=>{ dexFilter.q = q.value; draw(); });
   sf.addEventListener("change",()=>{ dexFilter.sort = sf.value; draw(); });
+  vf.addEventListener("change",()=>{ dexFilter.view = vf.value; draw(); });
   mcb.addEventListener("change",()=>{ dexFilter.missing = mcb.checked; draw(); });
   draw();
   fcard.append(listWrap);
@@ -29309,6 +29517,21 @@ function tokenHpVisible(info){
    exact HP isn't — unlike tokenHpVisible, this doesn't gate on GM/kind, only on the token actually
    pointing to something real. Fixes enemy statuses being invisible to players (HANDOFF-2026-07-25). */
 function tokenStatusVisible(info){ return !info.unlinked && info.kind!=="shop" && info.kind!=="boat" && info.kind!=="hazard"; }
+/* Shiny is a LOOK, not a stat. The sprite already swaps to the shiny artwork, but at map zoom a
+   shiny Gyarados and a normal one are a handful of pixels apart, so a shiny token also gets a small
+   ring of twinkling sparkles around it (.tk-sparkles, drawn in mapTokenNode). Read the flag off the
+   same object the sprite does: a disguised Illusion/Transform token already wears its WEARER's
+   shiny artwork, so the sparkles agree with the picture the board is showing either way. Trainers
+   and scenery (boats, shop doors, hazards) are never shiny. */
+function tokenIsShiny(token){
+  if(!token.link){
+    if(isBoatToken(token) || isShopToken(token) || isHazardToken(token)) return false;
+    return !!token.shiny;
+  }
+  const L = tokenLinked(token);
+  if(!L || !L.obj || L.kind==="trainer" || L.kind==="enctrainer") return false;
+  return !!L.obj.shiny;
+}
 /* ---- quick-attack helper: defender = the clicked token ---- */
 function tokenDefTypes(token){
   const L = token.link ? tokenLinked(token) : null;
@@ -31357,11 +31580,12 @@ function mapTokenNode(token, map, originX=0, originY=0){
   const factionColor = tokenFactionColor(info, token);
   const selected = mapSelectActive(map) && mapSelect.ids.has(token.id);
   const isTurn = battleOn() && initEntryToken(activeMapMeta().initTurnId) === token.id;
+  const shinyTok = tokenIsShiny(token);
   // A trainer (the "player" figure) always stacks above Pokémon tokens — even their own party.
   const isTrainerTok = info.kind==="trainer" || info.kind==="enctrainer";
   const playerSide = info.kind==="trainer" || info.kind==="pokemon";
   // a rider is drawn perched on its mount (see tokenRenderBox) and always stacks above it
-  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":"")+(isBoat?" boat-token":"")+(isHaz?" hazard-token":""),
+  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":"")+(isBoat?" boat-token":"")+(isHaz?" hazard-token":"")+(shinyTok?" shiny":""),
     // a hull sits at z-index 0, below every creature, so the crew is drawn standing on the deck
     style:`left:${box.left}px;top:${box.top}px;width:${box.w}px;height:${box.h}px;z-index:${riding?4:isTrainerTok?2:(isBoat||isHaz)?0:1}`
       +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")
@@ -31369,6 +31593,9 @@ function mapTokenNode(token, map, originX=0, originY=0){
   node.dataset.tid = token.id;
   info.sprite.classList.add("tk-img");
   node.append(info.sprite);
+  // pure decoration, so it is the first thing dropped when the board is zoomed right out
+  if(shinyTok && detail>=1)
+    node.append(el("div",{class:"tk-sparkles",title:"Shiny",html:"<i></i><i></i><i></i><i></i>"}));
   if(selected) node.append(el("div",{class:"tk-selected"},"✓"));
   const hpVisible = info.unlinked || tokenHpVisible(info);   // "unlinked" warning always shows; real HP is gated
   if(hpVisible){

@@ -512,6 +512,33 @@ body.map-mode .map-viewport{flex:1 1 auto; height:auto; min-height:0; border-rad
   line-height:1; pointer-events:none; color:#ffe3e7; z-index:3;
   filter:brightness(3.4) drop-shadow(0 1px 2px #000)}
 .map-token .tk-img{width:100%; height:100%; border-radius:50%; object-fit:cover; display:block; pointer-events:none}
+/* ---- Shiny: four sparkles twinkling around the rim, so a shiny reads as one at map zoom.
+   The stars sit OUTSIDE the token ring (inset is negative) on the corners the badges leave free,
+   and take turns rather than all flashing at once. They are hidden on a Knocked Out / Dead token:
+   those are drained to greyscale by a parent filter and a grey sparkle just reads as fuzz. ---- */
+.map-token .tk-sparkles{position:absolute; inset:-16%; pointer-events:none; z-index:3}
+.map-token .tk-sparkles i{position:absolute; width:28%; height:28%;
+  min-width:5px; min-height:5px; max-width:13px; max-height:13px; opacity:0;
+  background:radial-gradient(circle at 50% 50%, #fff 0 14%, #ffe27a 14% 42%, #ffc94d 42% 70%, transparent 72%);
+  clip-path:polygon(50% 0%, 59% 41%, 100% 50%, 59% 59%, 50% 100%, 41% 59%, 0% 50%, 41% 41%);
+  filter:drop-shadow(0 0 2px rgba(255,214,102,.9));
+  animation:tk-twinkle 2.4s ease-in-out infinite}
+/* Placed around the TOP arc and the two flanks only: the bottom of a token is crowded already
+   (HP bar, the Pokedex ball bottom-left, the rider count bottom-right, the name plate under it). */
+.map-token .tk-sparkles i:nth-child(1){top:-7%; left:6%;    animation-delay:0s}
+.map-token .tk-sparkles i:nth-child(2){top:2%;  right:-3%;  animation-delay:.6s}
+.map-token .tk-sparkles i:nth-child(3){top:44%; right:-11%; animation-delay:1.2s}
+.map-token .tk-sparkles i:nth-child(4){top:32%; left:-11%;  animation-delay:1.8s}
+@keyframes tk-twinkle{
+  0%,100%{opacity:0; transform:scale(.3) rotate(0deg)}
+  30%    {opacity:1; transform:scale(1) rotate(45deg)}
+  62%    {opacity:0; transform:scale(.45) rotate(90deg)}
+}
+.map-token.ko .tk-sparkles,.map-token.dead .tk-sparkles{display:none}
+.map-token.riding .tk-sparkles i{max-width:8px; max-height:8px}   /* no room for full-size stars up on the saddle */
+@media (prefers-reduced-motion: reduce){
+  .map-token .tk-sparkles i{animation:none; opacity:.95}
+}
 /* Cosmetic hazard markers: just the emoji, no token chrome (no ring/background/shadow). The icon
    scales to the token box via container units so it stays crisp at any grid size. */
 .map-token.hazard-token{border:none; background:transparent; box-shadow:none; container-type:size}
@@ -867,6 +894,21 @@ body.map-mode .view{animation:none}
 .dex-cell:hover .dex-x, .dex-x:focus{opacity:1}
 .dex-x:hover{border-color:var(--bad); color:var(--bad)}
 @media (hover:none){ .dex-x{opacity:.75} }
+.dex-cell .dex-num{font-size:10px; font-weight:800; letter-spacing:.6px; color:var(--muted)}
+/* a slot nobody has filled: number only, no name, no art */
+.dex-cell.dex-unknown{opacity:.6; border-style:dashed; cursor:default}
+.dex-cell.dex-unknown:hover{opacity:1; border-color:var(--line)}
+.dex-qmark{width:56px; height:56px; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+  font-size:26px; font-weight:800; color:var(--muted); background:var(--panel);
+  border:1px dashed var(--line); border-radius:12px}
+.dex-add{left:auto; right:2px}
+.dex-add:hover{border-color:var(--accent); color:var(--accent)}
+/* one evolutionary family per row */
+.dex-line{display:flex; gap:10px; align-items:flex-start; margin-top:6px; padding:8px;
+  background:var(--panel-2); border:1px solid var(--line); border-radius:var(--radius-sm)}
+.dex-line.dex-line-done{border-color:var(--accent)}
+.dex-line .dex-line-body{flex:1; min-width:0}
+.statuschip.dex-gone{opacity:.5; border-style:dashed}
 @media (max-width:560px){
   .dex-grid{grid-template-columns:repeat(auto-fill, minmax(94px, 1fr))}
 }
