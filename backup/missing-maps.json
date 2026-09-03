@@ -1,0 +1,163 @@
+[
+ {
+  "map": "Ice Gym",
+  "w": 640,
+  "h": 640,
+  "archived": false,
+  "name": "poketicia/map/mt72cf53svyqe.png"
+ },
+ {
+  "map": "Normal Gym",
+  "w": 960,
+  "h": 480,
+  "archived": false,
+  "name": "poketicia/map/mt72a5cs9nxih.png"
+ },
+ {
+  "map": "Rock Gym",
+  "w": 1600,
+  "h": 1600,
+  "archived": false,
+  "name": "poketicia/map/mt68u6b2eiq72.png"
+ },
+ {
+  "map": "Temple First Floor [1/2]",
+  "w": 640,
+  "h": 960,
+  "archived": false,
+  "name": "poketicia/map/mt7r4ugnvi7zl.png"
+ },
+ {
+  "map": "Temple First Floor [2/2]",
+  "w": 640,
+  "h": 960,
+  "archived": false,
+  "name": "poketicia/map/mt7r4zj6bvzni.png"
+ },
+ {
+  "map": "Temple Second Floor",
+  "w": 640,
+  "h": 960,
+  "archived": false,
+  "name": "poketicia/map/mt7r6g5dq94o5.png"
+ },
+ {
+  "map": "Cave -1",
+  "w": 1600,
+  "h": 2400,
+  "archived": true,
+  "name": "poketicia/map/mscbjsg4awliq.png"
+ },
+ {
+  "map": "Cave -2",
+  "w": 1600,
+  "h": 2400,
+  "archived": true,
+  "name": "poketicia/map/mscbjsvvpwr2j.png"
+ },
+ {
+  "map": "Caves 0",
+  "w": 1600,
+  "h": 2400,
+  "archived": true,
+  "name": "poketicia/map/mscbjrgh35myl.png"
+ },
+ {
+  "map": "Electric Gym",
+  "w": 800,
+  "h": 800,
+  "archived": true,
+  "name": "poketicia/map/mscbjvb1luj16.png"
+ },
+ {
+  "map": "Excurci\u00f3n Hub",
+  "w": 1280,
+  "h": 800,
+  "archived": true,
+  "name": "poketicia/map/mshiw18jr8wzl.png"
+ },
+ {
+  "map": "Generacion Hill [2/2]",
+  "w": 3200,
+  "h": 3200,
+  "archived": true,
+  "name": "poketicia/map/msjdjbhtx85fm.png"
+ },
+ {
+  "map": "Genesect Lab",
+  "w": 832,
+  "h": 672,
+  "archived": true,
+  "name": "poketicia/map/msjb5hk0pud9a.png"
+ },
+ {
+  "map": "Jirachi Lake",
+  "w": 1920,
+  "h": 1180,
+  "archived": true,
+  "name": "poketicia/map/mskc3022vpsl4.png"
+ },
+ {
+  "map": "Kalos",
+  "w": 1080,
+  "h": 1080,
+  "archived": true,
+  "name": "poketicia/map/msjbpt3pq3czx.png"
+ },
+ {
+  "map": "Magearna Lab",
+  "w": 1280,
+  "h": 720,
+  "archived": true,
+  "name": "poketicia/map/msjbgr16v2xl6.png"
+ },
+ {
+  "map": "MewTwo Lab",
+  "w": 864,
+  "h": 576,
+  "archived": true,
+  "name": "poketicia/map/msjatf785c8eg.png"
+ },
+ {
+  "map": "Poison Gym [1/2]",
+  "w": 896,
+  "h": 608,
+  "archived": true,
+  "name": "poketicia/map/mscbjr3p7p74j.png"
+ },
+ {
+  "map": "Poison Gym [2/2]",
+  "w": 896,
+  "h": 608,
+  "archived": true,
+  "name": "poketicia/map/mscbjrag5dq06.png"
+ },
+ {
+  "map": "Ponzona Town",
+  "w": 1600,
+  "h": 2400,
+  "archived": true,
+  "name": "poketicia/map/mscbjqmf1d7ow.png"
+ },
+ {
+  "map": "Rocky End",
+  "w": 608,
+  "h": 896,
+  "archived": true,
+  "name": "poketicia/map/mscbjteec9eps.png"
+ },
+ {
+  "map": "Volcano Center",
+  "w": 1600,
+  "h": 1600,
+  "archived": true,
+  "name": "poketicia/map/mscbjuqeqiih1.png"
+ },
+ {
+  "map": "Volcano Climb",
+  "w": 2560,
+  "h": 7680,
+  "archived": true,
+  "name": "poketicia/map/msdpka092s955.png"
+ }
+]

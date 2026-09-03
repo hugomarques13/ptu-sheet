@@ -14494,6 +14494,11 @@
     "stage": 2,
     "name": "Bisharp",
     "min": 35
+   },
+   {
+    "stage": 3,
+    "name": "Kingambit",
+    "min": 35
    }
   ],
   "moves": {
@@ -35054,7 +35059,88 @@
    }
   ],
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 3,
+     "name": "Rollout",
+     "type": "Rock"
+    },
+    {
+     "level": 6,
+     "name": "Incinerate",
+     "type": "Fire"
+    },
+    {
+     "level": 9,
+     "name": "Rage",
+     "type": "Normal"
+    },
+    {
+     "level": 11,
+     "name": "Fire Fang",
+     "type": "Fire"
+    },
+    {
+     "level": 14,
+     "name": "Headbutt",
+     "type": "Normal"
+    },
+    {
+     "level": 17,
+     "name": "Swagger",
+     "type": "Normal"
+    },
+    {
+     "level": 19,
+     "name": "Facade",
+     "type": "Normal"
+    },
+    {
+     "level": 22,
+     "name": "Fire Punch",
+     "type": "Fire"
+    },
+    {
+     "level": 25,
+     "name": "Work Up",
+     "type": "Normal"
+    },
+    {
+     "level": 27,
+     "name": "Thrash",
+     "type": "Normal"
+    },
+    {
+     "level": 30,
+     "name": "Belly Drum",
+     "type": "Normal"
+    },
+    {
+     "level": 33,
+     "name": "Flare Blitz",
+     "type": "Fire"
+    },
+    {
+     "level": 35,
+     "name": "Hammer Arm",
+     "type": "Fighting"
+    },
+    {
+     "level": 39,
+     "name": "Taunt",
+     "type": "Dark"
+    },
+    {
+     "level": 47,
+     "name": "Superpower",
+     "type": "Fighting"
+    },
+    {
+     "level": 54,
+     "name": "Overheat",
+     "type": "Fire"
+    }
+   ],
    "tmhm": [
     "A4 Strength",
     "05 Roar",
@@ -35238,7 +35324,88 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 3,
+     "name": "Rollout",
+     "type": "Rock"
+    },
+    {
+     "level": 6,
+     "name": "Incinerate",
+     "type": "Fire"
+    },
+    {
+     "level": 9,
+     "name": "Rage",
+     "type": "Normal"
+    },
+    {
+     "level": 11,
+     "name": "Fire Fang",
+     "type": "Fire"
+    },
+    {
+     "level": 14,
+     "name": "Headbutt",
+     "type": "Normal"
+    },
+    {
+     "level": 17,
+     "name": "Swagger",
+     "type": "Normal"
+    },
+    {
+     "level": 19,
+     "name": "Facade",
+     "type": "Normal"
+    },
+    {
+     "level": 22,
+     "name": "Fire Punch",
+     "type": "Fire"
+    },
+    {
+     "level": 25,
+     "name": "Work Up",
+     "type": "Normal"
+    },
+    {
+     "level": 27,
+     "name": "Thrash",
+     "type": "Normal"
+    },
+    {
+     "level": 30,
+     "name": "Belly Drum",
+     "type": "Normal"
+    },
+    {
+     "level": 33,
+     "name": "Flare Blitz",
+     "type": "Fire"
+    },
+    {
+     "level": 35,
+     "name": "Hammer Arm",
+     "type": "Fighting"
+    },
+    {
+     "level": 39,
+     "name": "Taunt",
+     "type": "Dark"
+    },
+    {
+     "level": 47,
+     "name": "Superpower",
+     "type": "Fighting"
+    },
+    {
+     "level": 54,
+     "name": "Overheat",
+     "type": "Fire"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -37274,7 +37441,78 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Leer",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Wrap",
+     "type": "Normal"
+    },
+    {
+     "level": 7,
+     "name": "Night Shade",
+     "type": "Ghost"
+    },
+    {
+     "level": 13,
+     "name": "Teleport",
+     "type": "Psychic"
+    },
+    {
+     "level": 19,
+     "name": "Knock Off",
+     "type": "Dark"
+    },
+    {
+     "level": 25,
+     "name": "Pursuit",
+     "type": "Dark"
+    },
+    {
+     "level": 31,
+     "name": "Psychic",
+     "type": "Psychic"
+    },
+    {
+     "level": 37,
+     "name": "Snatch",
+     "type": "Dark"
+    },
+    {
+     "level": 43,
+     "name": "Psycho Shift",
+     "type": "Psychic"
+    },
+    {
+     "level": 49,
+     "name": "Zen Headbutt",
+     "type": "Psychic"
+    },
+    {
+     "level": 55,
+     "name": "Cosmic Power",
+     "type": "Psychic"
+    },
+    {
+     "level": 61,
+     "name": "Recover",
+     "type": "Normal"
+    },
+    {
+     "level": 67,
+     "name": "Psycho Boost",
+     "type": "Psychic"
+    },
+    {
+     "level": 73,
+     "name": "Hyper Beam",
+     "type": "Normal"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -37393,7 +37631,78 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Leer",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Wrap",
+     "type": "Normal"
+    },
+    {
+     "level": 7,
+     "name": "Night Shade",
+     "type": "Ghost"
+    },
+    {
+     "level": 13,
+     "name": "Teleport",
+     "type": "Psychic"
+    },
+    {
+     "level": 19,
+     "name": "Taunt",
+     "type": "Dark"
+    },
+    {
+     "level": 25,
+     "name": "Pursuit",
+     "type": "Dark"
+    },
+    {
+     "level": 31,
+     "name": "Psychic",
+     "type": "Psychic"
+    },
+    {
+     "level": 37,
+     "name": "Superpower",
+     "type": "Fighting"
+    },
+    {
+     "level": 43,
+     "name": "Psycho Shift",
+     "type": "Psychic"
+    },
+    {
+     "level": 49,
+     "name": "Zen Headbutt",
+     "type": "Psychic"
+    },
+    {
+     "level": 55,
+     "name": "Cosmic Power",
+     "type": "Psychic"
+    },
+    {
+     "level": 61,
+     "name": "Zap Cannon",
+     "type": "Electric"
+    },
+    {
+     "level": 67,
+     "name": "Psycho Boost",
+     "type": "Psychic"
+    },
+    {
+     "level": 73,
+     "name": "Hyper Beam",
+     "type": "Normal"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -37512,7 +37821,88 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Leer",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Wrap",
+     "type": "Normal"
+    },
+    {
+     "level": 7,
+     "name": "Night Shade",
+     "type": "Ghost"
+    },
+    {
+     "level": 13,
+     "name": "Teleport",
+     "type": "Psychic"
+    },
+    {
+     "level": 19,
+     "name": "Knock Off",
+     "type": "Dark"
+    },
+    {
+     "level": 25,
+     "name": "Spikes",
+     "type": "Ground"
+    },
+    {
+     "level": 31,
+     "name": "Psychic",
+     "type": "Psychic"
+    },
+    {
+     "level": 37,
+     "name": "Snatch",
+     "type": "Dark"
+    },
+    {
+     "level": 43,
+     "name": "Psycho Shift",
+     "type": "Psychic"
+    },
+    {
+     "level": 49,
+     "name": "Zen Headbutt",
+     "type": "Psychic"
+    },
+    {
+     "level": 55,
+     "name": "Amnesia",
+     "type": "Psychic"
+    },
+    {
+     "level": 55,
+     "name": "Iron Defense",
+     "type": "Steel"
+    },
+    {
+     "level": 61,
+     "name": "Recover",
+     "type": "Normal"
+    },
+    {
+     "level": 67,
+     "name": "Psycho Boost",
+     "type": "Psychic"
+    },
+    {
+     "level": 73,
+     "name": "Counter",
+     "type": "Fighting"
+    },
+    {
+     "level": 73,
+     "name": "Mirror Coat",
+     "type": "Psychic"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -37631,7 +38021,78 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Leer",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Wrap",
+     "type": "Normal"
+    },
+    {
+     "level": 7,
+     "name": "Night Shade",
+     "type": "Ghost"
+    },
+    {
+     "level": 13,
+     "name": "Double Team",
+     "type": "Normal"
+    },
+    {
+     "level": 19,
+     "name": "Knock Off",
+     "type": "Dark"
+    },
+    {
+     "level": 25,
+     "name": "Pursuit",
+     "type": "Dark"
+    },
+    {
+     "level": 31,
+     "name": "Psychic",
+     "type": "Psychic"
+    },
+    {
+     "level": 37,
+     "name": "Swift",
+     "type": "Normal"
+    },
+    {
+     "level": 43,
+     "name": "Psycho Shift",
+     "type": "Psychic"
+    },
+    {
+     "level": 49,
+     "name": "Zen Headbutt",
+     "type": "Psychic"
+    },
+    {
+     "level": 55,
+     "name": "Agility",
+     "type": "Psychic"
+    },
+    {
+     "level": 61,
+     "name": "Recover",
+     "type": "Normal"
+    },
+    {
+     "level": 67,
+     "name": "Psycho Boost",
+     "type": "Psychic"
+    },
+    {
+     "level": 73,
+     "name": "Extreme Speed",
+     "type": "Normal"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -43914,6 +44375,11 @@
     "stage": 1,
     "name": "Dunsparce",
     "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Dudunsparce",
+    "min": 30
    }
   ],
   "moves": {
@@ -46715,6 +47181,11 @@
    {
     "stage": 2,
     "name": "Glaceon Shiny Stone",
+    "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Sylveon Moon Stone",
     "min": null
    }
   ],
@@ -54304,10 +54775,124 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
-   "tmhm": [],
-   "egg": [],
-   "tutor": []
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Tackle",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Vine Whip",
+     "type": "Grass"
+    },
+    {
+     "level": 6,
+     "name": "Fairy Wind",
+     "type": "Fairy"
+    },
+    {
+     "level": 10,
+     "name": "Lucky Chant",
+     "type": "Normal"
+    },
+    {
+     "level": 15,
+     "name": "Razor Leaf",
+     "type": "Grass"
+    },
+    {
+     "level": 20,
+     "name": "Wish",
+     "type": "Normal"
+    },
+    {
+     "level": 22,
+     "name": "Magical Leaf",
+     "type": "Grass"
+    },
+    {
+     "level": 24,
+     "name": "Grassy Terrain",
+     "type": "Grass"
+    },
+    {
+     "level": 28,
+     "name": "Petal Blizzard",
+     "type": "Grass"
+    },
+    {
+     "level": 33,
+     "name": "Aromatherapy",
+     "type": "Grass"
+    },
+    {
+     "level": 37,
+     "name": "Misty Terrain",
+     "type": "Fairy"
+    },
+    {
+     "level": 41,
+     "name": "Moonblast",
+     "type": "Fairy"
+    },
+    {
+     "level": 45,
+     "name": "Petal Dance",
+     "type": "Grass"
+    },
+    {
+     "level": 48,
+     "name": "Solar Beam",
+     "type": "Grass"
+    }
+   ],
+   "tmhm": [
+    "04 Calm Mind",
+    "06 Toxic",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "17 Protect",
+    "18 Rain Dance",
+    "20 Safeguard",
+    "21 Frustration",
+    "22 Solar Beam",
+    "27 Return",
+    "29 Psychic",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "49 Echoed Voice",
+    "53 Energy Ball",
+    "70 Flash",
+    "86 Grass Knot",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "96 Nature Power",
+    "99 Dazzling Gleam",
+    "100 Confide"
+   ],
+   "egg": [
+    "Camouflage",
+    "Captivate",
+    "Copycat"
+   ],
+   "tutor": [
+    "After You",
+    "Covet",
+    "Endeavor",
+    "Giga Drain",
+    "Heal Bell",
+    "Helping Hand",
+    "Magic Coat",
+    "Seed Bomb",
+    "Snore",
+    "Syn thesis",
+    "Worry Seed"
+   ]
   },
   "order": 203
  },
@@ -62865,7 +63450,78 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Dragon Breath",
+     "type": "Dragon"
+    },
+    {
+     "level": 1,
+     "name": "Scary Face",
+     "type": "Normal"
+    },
+    {
+     "level": 6,
+     "name": "Ominous Wind",
+     "type": "Ghost"
+    },
+    {
+     "level": 10,
+     "name": "Ancient Power",
+     "type": "Rock"
+    },
+    {
+     "level": 15,
+     "name": "Slash",
+     "type": "Normal"
+    },
+    {
+     "level": 19,
+     "name": "Shadow Sneak",
+     "type": "Ghost"
+    },
+    {
+     "level": 24,
+     "name": "Destiny Bond",
+     "type": "Ghost"
+    },
+    {
+     "level": 28,
+     "name": "Dragon Claw",
+     "type": "Dragon"
+    },
+    {
+     "level": 33,
+     "name": "Earth Power",
+     "type": "Ground"
+    },
+    {
+     "level": 37,
+     "name": "Aura Sphere",
+     "type": "Fighting"
+    },
+    {
+     "level": 42,
+     "name": "Shadow Claw",
+     "type": "Ghost"
+    },
+    {
+     "level": 46,
+     "name": "Shadow Force",
+     "type": "Ghost"
+    },
+    {
+     "level": 50,
+     "name": "Hex",
+     "type": "Ghost"
+    },
+    {
+     "level": 55,
+     "name": "Heal Block",
+     "type": "Psychic"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -62987,7 +63643,78 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Dragon Breath",
+     "type": "Dragon"
+    },
+    {
+     "level": 1,
+     "name": "Scary Face",
+     "type": "Normal"
+    },
+    {
+     "level": 6,
+     "name": "Ominous Wind",
+     "type": "Ghost"
+    },
+    {
+     "level": 10,
+     "name": "Ancient Power",
+     "type": "Rock"
+    },
+    {
+     "level": 15,
+     "name": "Slash",
+     "type": "Normal"
+    },
+    {
+     "level": 19,
+     "name": "Shadow Sneak",
+     "type": "Ghost"
+    },
+    {
+     "level": 24,
+     "name": "Destiny Bond",
+     "type": "Ghost"
+    },
+    {
+     "level": 28,
+     "name": "Dragon Claw",
+     "type": "Dragon"
+    },
+    {
+     "level": 33,
+     "name": "Earth Power",
+     "type": "Ground"
+    },
+    {
+     "level": 37,
+     "name": "Aura Sphere",
+     "type": "Fighting"
+    },
+    {
+     "level": 42,
+     "name": "Shadow Claw",
+     "type": "Ghost"
+    },
+    {
+     "level": 46,
+     "name": "Shadow Force",
+     "type": "Ghost"
+    },
+    {
+     "level": 50,
+     "name": "Hex",
+     "type": "Ghost"
+    },
+    {
+     "level": 55,
+     "name": "Heal Block",
+     "type": "Psychic"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -91203,7 +91930,93 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Block",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Mud Shot",
+     "type": "Ground"
+    },
+    {
+     "level": 1,
+     "name": "Rock Tomb",
+     "type": "Rock"
+    },
+    {
+     "level": 7,
+     "name": "Imprison",
+     "type": "Psychic"
+    },
+    {
+     "level": 13,
+     "name": "Punishment",
+     "type": "Dark"
+    },
+    {
+     "level": 19,
+     "name": "Bulldoze",
+     "type": "Ground"
+    },
+    {
+     "level": 25,
+     "name": "Rock Throw",
+     "type": "Rock"
+    },
+    {
+     "level": 31,
+     "name": "Extrasensory",
+     "type": "Psychic"
+    },
+    {
+     "level": 37,
+     "name": "Swords Dance",
+     "type": "Normal"
+    },
+    {
+     "level": 43,
+     "name": "Earth Power",
+     "type": "Ground"
+    },
+    {
+     "level": 49,
+     "name": "Rock Slide",
+     "type": "Rock"
+    },
+    {
+     "level": 55,
+     "name": "Earthquake",
+     "type": "Ground"
+    },
+    {
+     "level": 61,
+     "name": "Sandstorm",
+     "type": "Rock"
+    },
+    {
+     "level": 67,
+     "name": "Fissure",
+     "type": "Ground"
+    },
+    {
+     "level": 73,
+     "name": "Stone Edge",
+     "type": "Rock"
+    },
+    {
+     "level": 79,
+     "name": "Hammer Arm",
+     "type": "Fighting"
+    },
+    {
+     "level": 85,
+     "name": "Outrage",
+     "type": "Dragon"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -91321,7 +92134,93 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Block",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Mud Shot",
+     "type": "Ground"
+    },
+    {
+     "level": 1,
+     "name": "Rock Tomb",
+     "type": "Rock"
+    },
+    {
+     "level": 7,
+     "name": "Imprison",
+     "type": "Psychic"
+    },
+    {
+     "level": 13,
+     "name": "Punishment",
+     "type": "Dark"
+    },
+    {
+     "level": 19,
+     "name": "Bulldoze",
+     "type": "Ground"
+    },
+    {
+     "level": 25,
+     "name": "Rock Throw",
+     "type": "Rock"
+    },
+    {
+     "level": 31,
+     "name": "Extrasensory",
+     "type": "Psychic"
+    },
+    {
+     "level": 37,
+     "name": "Swords Dance",
+     "type": "Normal"
+    },
+    {
+     "level": 43,
+     "name": "Earth Power",
+     "type": "Ground"
+    },
+    {
+     "level": 49,
+     "name": "Rock Slide",
+     "type": "Rock"
+    },
+    {
+     "level": 55,
+     "name": "Earthquake",
+     "type": "Ground"
+    },
+    {
+     "level": 61,
+     "name": "Sandstorm",
+     "type": "Rock"
+    },
+    {
+     "level": 67,
+     "name": "Fissure",
+     "type": "Ground"
+    },
+    {
+     "level": 73,
+     "name": "Stone Edge",
+     "type": "Rock"
+    },
+    {
+     "level": 79,
+     "name": "Hammer Arm",
+     "type": "Fighting"
+    },
+    {
+     "level": 85,
+     "name": "Outrage",
+     "type": "Dragon"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -104681,6 +105580,11 @@
     "stage": 2,
     "name": "Primeape",
     "min": 25
+   },
+   {
+    "stage": 3,
+    "name": "Annihilape",
+    "min": 35
    }
   ],
   "moves": {
@@ -108337,7 +109241,83 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Round",
+     "type": "Normal"
+    },
+    {
+     "level": 6,
+     "name": "Quick Attack",
+     "type": "Normal"
+    },
+    {
+     "level": 11,
+     "name": "Confusion",
+     "type": "Psychic"
+    },
+    {
+     "level": 16,
+     "name": "Sing",
+     "type": "Normal"
+    },
+    {
+     "level": 21,
+     "name": "Teeter Dance",
+     "type": "Normal"
+    },
+    {
+     "level": 26,
+     "name": "Acrobatics",
+     "type": "Flying"
+    },
+    {
+     "level": 31,
+     "name": "Psybeam",
+     "type": "Psychic"
+    },
+    {
+     "level": 36,
+     "name": "Echoed Voice",
+     "type": "Normal"
+    },
+    {
+     "level": 43,
+     "name": "U-turn",
+     "type": "Bug"
+    },
+    {
+     "level": 50,
+     "name": "Wake-Up Slap",
+     "type": "Fighting"
+    },
+    {
+     "level": 57,
+     "name": "Psychic",
+     "type": "Psychic"
+    },
+    {
+     "level": 64,
+     "name": "Hyper Voice",
+     "type": "Normal"
+    },
+    {
+     "level": 71,
+     "name": "Role Play",
+     "type": "Psychic"
+    },
+    {
+     "level": 78,
+     "name": "Close Combat",
+     "type": "Fighting"
+    },
+    {
+     "level": 85,
+     "name": "Perish Song",
+     "type": "Normal"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -108453,7 +109433,83 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Round",
+     "type": "Normal"
+    },
+    {
+     "level": 6,
+     "name": "Quick Attack",
+     "type": "Normal"
+    },
+    {
+     "level": 11,
+     "name": "Confusion",
+     "type": "Psychic"
+    },
+    {
+     "level": 16,
+     "name": "Sing",
+     "type": "Normal"
+    },
+    {
+     "level": 21,
+     "name": "Teeter Dance",
+     "type": "Normal"
+    },
+    {
+     "level": 26,
+     "name": "Acrobatics",
+     "type": "Flying"
+    },
+    {
+     "level": 31,
+     "name": "Psybeam",
+     "type": "Psychic"
+    },
+    {
+     "level": 36,
+     "name": "Echoed Voice",
+     "type": "Normal"
+    },
+    {
+     "level": 43,
+     "name": "U-turn",
+     "type": "Bug"
+    },
+    {
+     "level": 50,
+     "name": "Wake-Up Slap",
+     "type": "Fighting"
+    },
+    {
+     "level": 57,
+     "name": "Psychic",
+     "type": "Psychic"
+    },
+    {
+     "level": 64,
+     "name": "Hyper Voice",
+     "type": "Normal"
+    },
+    {
+     "level": 71,
+     "name": "Role Play",
+     "type": "Psychic"
+    },
+    {
+     "level": 78,
+     "name": "Close Combat",
+     "type": "Fighting"
+    },
+    {
+     "level": 85,
+     "name": "Perish Song",
+     "type": "Normal"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -125569,6 +126625,11 @@
     "stage": 2,
     "name": "Bisharp",
     "min": 35
+   },
+   {
+    "stage": 3,
+    "name": "Kingambit",
+    "min": 35
    }
   ],
   "moves": {
@@ -133160,6 +134221,11 @@
     "stage": 2,
     "name": "Primeape",
     "min": 25
+   },
+   {
+    "stage": 3,
+    "name": "Annihilape",
+    "min": 35
    }
   ],
   "moves": {
@@ -149636,6 +150702,11 @@
     "stage": 2,
     "name": "Scizor Holding Metal Coat",
     "min": 30
+   },
+   {
+    "stage": 2,
+    "name": "Kleavor",
+    "min": 30
    }
   ],
   "moves": {
@@ -153082,7 +154153,78 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Growth",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Defense Curl",
+     "type": "Normal"
+    },
+    {
+     "level": 10,
+     "name": "Magical Leaf",
+     "type": "Grass"
+    },
+    {
+     "level": 19,
+     "name": "Leech Seed",
+     "type": "Grass"
+    },
+    {
+     "level": 28,
+     "name": "Synthesis",
+     "type": "Grass"
+    },
+    {
+     "level": 37,
+     "name": "Sweet Scent",
+     "type": "Normal"
+    },
+    {
+     "level": 46,
+     "name": "Natural Gift",
+     "type": "Normal"
+    },
+    {
+     "level": 55,
+     "name": "Worry Seed",
+     "type": "Grass"
+    },
+    {
+     "level": 64,
+     "name": "Aromatherapy",
+     "type": "Grass"
+    },
+    {
+     "level": 73,
+     "name": "Energy Ball",
+     "type": "Grass"
+    },
+    {
+     "level": 82,
+     "name": "Sweet Kiss",
+     "type": "Fairy"
+    },
+    {
+     "level": 82,
+     "name": "Grass Whistle",
+     "type": "Grass"
+    },
+    {
+     "level": 91,
+     "name": "Healing Wish",
+     "type": "Psychic"
+    },
+    {
+     "level": 91,
+     "name": "Lucky Chant",
+     "type": "Normal"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -153203,7 +154345,63 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Growth",
+     "type": "Normal"
+    },
+    {
+     "level": 10,
+     "name": "Magical Leaf",
+     "type": "Grass"
+    },
+    {
+     "level": 19,
+     "name": "Leech Seed",
+     "type": "Grass"
+    },
+    {
+     "level": 28,
+     "name": "Quick Attack",
+     "type": "Normal"
+    },
+    {
+     "level": 37,
+     "name": "Sweet Scent",
+     "type": "Normal"
+    },
+    {
+     "level": 46,
+     "name": "Natural Gift",
+     "type": "Normal"
+    },
+    {
+     "level": 55,
+     "name": "Worry Seed",
+     "type": "Grass"
+    },
+    {
+     "level": 64,
+     "name": "Air Slash",
+     "type": "Flying"
+    },
+    {
+     "level": 73,
+     "name": "Energy Ball",
+     "type": "Grass"
+    },
+    {
+     "level": 82,
+     "name": "Sweet Kiss",
+     "type": "Fairy"
+    },
+    {
+     "level": 91,
+     "name": "Leaf Storm",
+     "type": "Grass"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -166869,6 +168067,11 @@
     "stage": 1,
     "name": "Stantler",
     "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Wyrdeer",
+    "min": 25
    }
   ],
   "moves": {
@@ -170386,6 +171589,11 @@
     "stage": 1,
     "name": "Sunkern",
     "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Sunflora Sun Stone",
+    "min": 20
    }
   ],
   "moves": {
@@ -174899,6 +176107,17 @@
     "stage": 2,
     "name": "Ursaring",
     "min": 30
+   },
+   {
+    "stage": 3,
+    "name": "Ursaluna",
+    "min": 35
+   },
+   {
+    "stage": 3,
+    "name": "Ursaluna Bloodmoon",
+    "min": 35,
+    "gm": true
    }
   ],
   "moves": {
@@ -176530,7 +177749,93 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Astonish",
+     "type": "Ghost"
+    },
+    {
+     "level": 1,
+     "name": "Thunder Shock",
+     "type": "Electric"
+    },
+    {
+     "level": 1,
+     "name": "Uproar",
+     "type": "Normal"
+    },
+    {
+     "level": 7,
+     "name": "Swagger",
+     "type": "Normal"
+    },
+    {
+     "level": 13,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 19,
+     "name": "Revenge",
+     "type": "Fighting"
+    },
+    {
+     "level": 25,
+     "name": "Shock Wave",
+     "type": "Electric"
+    },
+    {
+     "level": 31,
+     "name": "Heal Block",
+     "type": "Psychic"
+    },
+    {
+     "level": 37,
+     "name": "Agility",
+     "type": "Psychic"
+    },
+    {
+     "level": 43,
+     "name": "Discharge",
+     "type": "Electric"
+    },
+    {
+     "level": 49,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 55,
+     "name": "Charge",
+     "type": "Electric"
+    },
+    {
+     "level": 61,
+     "name": "Nasty Plot",
+     "type": "Dark"
+    },
+    {
+     "level": 67,
+     "name": "Thunder",
+     "type": "Electric"
+    },
+    {
+     "level": 73,
+     "name": "Dark Pulse",
+     "type": "Dark"
+    },
+    {
+     "level": 79,
+     "name": "Hammer Arm",
+     "type": "Fighting"
+    },
+    {
+     "level": 85,
+     "name": "Thrash",
+     "type": "Normal"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -176651,7 +177956,93 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Astonish",
+     "type": "Ghost"
+    },
+    {
+     "level": 1,
+     "name": "Thunder Shock",
+     "type": "Electric"
+    },
+    {
+     "level": 1,
+     "name": "Uproar",
+     "type": "Normal"
+    },
+    {
+     "level": 7,
+     "name": "Swagger",
+     "type": "Normal"
+    },
+    {
+     "level": 13,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 19,
+     "name": "Revenge",
+     "type": "Fighting"
+    },
+    {
+     "level": 25,
+     "name": "Shock Wave",
+     "type": "Electric"
+    },
+    {
+     "level": 31,
+     "name": "Heal Block",
+     "type": "Psychic"
+    },
+    {
+     "level": 37,
+     "name": "Agility",
+     "type": "Psychic"
+    },
+    {
+     "level": 43,
+     "name": "Discharge",
+     "type": "Electric"
+    },
+    {
+     "level": 49,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 55,
+     "name": "Charge",
+     "type": "Electric"
+    },
+    {
+     "level": 61,
+     "name": "Nasty Plot",
+     "type": "Dark"
+    },
+    {
+     "level": 67,
+     "name": "Thunder",
+     "type": "Electric"
+    },
+    {
+     "level": 73,
+     "name": "Dark Pulse",
+     "type": "Dark"
+    },
+    {
+     "level": 79,
+     "name": "Hammer Arm",
+     "type": "Fighting"
+    },
+    {
+     "level": 85,
+     "name": "Thrash",
+     "type": "Normal"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -178808,7 +180199,93 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Astonish",
+     "type": "Ghost"
+    },
+    {
+     "level": 1,
+     "name": "Gust",
+     "type": "Flying"
+    },
+    {
+     "level": 1,
+     "name": "Uproar",
+     "type": "Normal"
+    },
+    {
+     "level": 7,
+     "name": "Swagger",
+     "type": "Normal"
+    },
+    {
+     "level": 13,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 19,
+     "name": "Revenge",
+     "type": "Fighting"
+    },
+    {
+     "level": 25,
+     "name": "Air Cutter",
+     "type": "Flying"
+    },
+    {
+     "level": 31,
+     "name": "Extrasensory",
+     "type": "Psychic"
+    },
+    {
+     "level": 37,
+     "name": "Agility",
+     "type": "Psychic"
+    },
+    {
+     "level": 43,
+     "name": "Air Slash",
+     "type": "Flying"
+    },
+    {
+     "level": 49,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 55,
+     "name": "Tailwind",
+     "type": "Flying"
+    },
+    {
+     "level": 61,
+     "name": "Rain Dance",
+     "type": "Water"
+    },
+    {
+     "level": 67,
+     "name": "Hurricane",
+     "type": "Flying"
+    },
+    {
+     "level": 73,
+     "name": "Dark Pulse",
+     "type": "Dark"
+    },
+    {
+     "level": 79,
+     "name": "Hammer Arm",
+     "type": "Fighting"
+    },
+    {
+     "level": 85,
+     "name": "Thrash",
+     "type": "Normal"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -178929,7 +180406,93 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Astonish",
+     "type": "Ghost"
+    },
+    {
+     "level": 1,
+     "name": "Gust",
+     "type": "Flying"
+    },
+    {
+     "level": 1,
+     "name": "Uproar",
+     "type": "Normal"
+    },
+    {
+     "level": 7,
+     "name": "Swagger",
+     "type": "Normal"
+    },
+    {
+     "level": 13,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 19,
+     "name": "Revenge",
+     "type": "Fighting"
+    },
+    {
+     "level": 25,
+     "name": "Air Cutter",
+     "type": "Flying"
+    },
+    {
+     "level": 31,
+     "name": "Extrasensory",
+     "type": "Psychic"
+    },
+    {
+     "level": 37,
+     "name": "Agility",
+     "type": "Psychic"
+    },
+    {
+     "level": 43,
+     "name": "Air Slash",
+     "type": "Flying"
+    },
+    {
+     "level": 49,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 55,
+     "name": "Tailwind",
+     "type": "Flying"
+    },
+    {
+     "level": 61,
+     "name": "Rain Dance",
+     "type": "Water"
+    },
+    {
+     "level": 67,
+     "name": "Hurricane",
+     "type": "Flying"
+    },
+    {
+     "level": 73,
+     "name": "Dark Pulse",
+     "type": "Dark"
+    },
+    {
+     "level": 79,
+     "name": "Hammer Arm",
+     "type": "Fighting"
+    },
+    {
+     "level": 85,
+     "name": "Thrash",
+     "type": "Normal"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -184319,6 +185882,17 @@
     "stage": 2,
     "name": "Ursaring",
     "min": 30
+   },
+   {
+    "stage": 3,
+    "name": "Ursaluna",
+    "min": 35
+   },
+   {
+    "stage": 3,
+    "name": "Ursaluna Bloodmoon",
+    "min": 35,
+    "gm": true
    }
   ],
   "moves": {
@@ -195162,7 +196736,68 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 10,
+     "name": "Protect",
+     "type": "Normal"
+    },
+    {
+     "level": 15,
+     "name": "Bug Bite",
+     "type": "Bug"
+    },
+    {
+     "level": 20,
+     "name": "Hidden Power",
+     "type": "Normal"
+    },
+    {
+     "level": 23,
+     "name": "Confusion",
+     "type": "Psychic"
+    },
+    {
+     "level": 26,
+     "name": "Razor Leaf",
+     "type": "Grass"
+    },
+    {
+     "level": 29,
+     "name": "Growth",
+     "type": "Normal"
+    },
+    {
+     "level": 32,
+     "name": "Psybeam",
+     "type": "Psychic"
+    },
+    {
+     "level": 35,
+     "name": "Captivate",
+     "type": "Normal"
+    },
+    {
+     "level": 38,
+     "name": "Flail",
+     "type": "Normal"
+    },
+    {
+     "level": 41,
+     "name": "Attract",
+     "type": "Normal"
+    },
+    {
+     "level": 44,
+     "name": "Psychic",
+     "type": "Psychic"
+    },
+    {
+     "level": 47,
+     "name": "Leaf Storm",
+     "type": "Grass"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -195289,7 +196924,68 @@
    ]
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 10,
+     "name": "Protect",
+     "type": "Normal"
+    },
+    {
+     "level": 15,
+     "name": "Bug Bite",
+     "type": "Bug"
+    },
+    {
+     "level": 20,
+     "name": "Hidden Power",
+     "type": "Normal"
+    },
+    {
+     "level": 23,
+     "name": "Confusion",
+     "type": "Psychic"
+    },
+    {
+     "level": 26,
+     "name": "Rock Blast",
+     "type": "Rock"
+    },
+    {
+     "level": 29,
+     "name": "Harden",
+     "type": "Normal"
+    },
+    {
+     "level": 32,
+     "name": "Psybeam",
+     "type": "Psychic"
+    },
+    {
+     "level": 35,
+     "name": "Captivate",
+     "type": "Normal"
+    },
+    {
+     "level": 38,
+     "name": "Flail",
+     "type": "Normal"
+    },
+    {
+     "level": 41,
+     "name": "Attract",
+     "type": "Normal"
+    },
+    {
+     "level": 44,
+     "name": "Psychic",
+     "type": "Psychic"
+    },
+    {
+     "level": 47,
+     "name": "Fissure",
+     "type": "Ground"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -195406,7 +197102,68 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 10,
+     "name": "Protect",
+     "type": "Normal"
+    },
+    {
+     "level": 15,
+     "name": "Bug Bite",
+     "type": "Bug"
+    },
+    {
+     "level": 20,
+     "name": "Hidden Power",
+     "type": "Normal"
+    },
+    {
+     "level": 23,
+     "name": "Confusion",
+     "type": "Psychic"
+    },
+    {
+     "level": 26,
+     "name": "Mirror Shot",
+     "type": "Steel"
+    },
+    {
+     "level": 29,
+     "name": "Metal Sound",
+     "type": "Steel"
+    },
+    {
+     "level": 32,
+     "name": "Psybeam",
+     "type": "Psychic"
+    },
+    {
+     "level": 35,
+     "name": "Captivate",
+     "type": "Normal"
+    },
+    {
+     "level": 38,
+     "name": "Flail",
+     "type": "Normal"
+    },
+    {
+     "level": 41,
+     "name": "Attract",
+     "type": "Normal"
+    },
+    {
+     "level": 44,
+     "name": "Psychic",
+     "type": "Psychic"
+    },
+    {
+     "level": 47,
+     "name": "Iron Head",
+     "type": "Steel"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -202305,6 +204062,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Scary Face",
+     "type": "Normal"
+    },
+    {
      "level": 4,
      "name": "Quick Attack",
      "type": "Normal"
@@ -202568,6 +204330,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Psychic",
+     "type": "Psychic"
+    },
     {
      "level": 5,
      "name": "Tail Whip",
@@ -203137,6 +204904,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Icicle Spear",
+     "type": "Ice"
+    },
     {
      "level": 3,
      "name": "Bide",
@@ -203708,6 +205480,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Dazzling Gleam",
+     "type": "Fairy"
+    },
+    {
      "level": 4,
      "name": "Tail Whip",
      "type": "Normal"
@@ -204255,6 +206032,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Sand Tomb",
+     "type": "Ground"
+    },
+    {
      "level": 4,
      "name": "Growl",
      "type": "Normal"
@@ -204791,6 +206573,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Swift",
+     "type": "Normal"
+    },
     {
      "level": 6,
      "name": "Bite",
@@ -206192,6 +207979,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Venom Drench",
+     "type": "Poison"
+    },
+    {
      "level": 4,
      "name": "Harden",
      "type": "Normal"
@@ -206469,6 +208261,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Dragon Hammer",
+     "type": "Dragon"
+    },
     {
      "level": 1,
      "name": "Barrage",
@@ -207606,6 +209403,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Spirit Shackle",
+     "type": "Ghost"
+    },
+    {
      "level": 4,
      "name": "Growl",
      "type": "Normal"
@@ -208400,6 +210202,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Darkest Lariat",
+     "type": "Dark"
+    },
     {
      "level": 4,
      "name": "Growl",
@@ -209203,6 +211010,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Sparkling Aria",
+     "type": "Water"
+    },
+    {
      "level": 4,
      "name": "Growl",
      "type": "Normal"
@@ -209963,6 +211775,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Beak Blast",
+     "type": "Flying"
+    },
     {
      "level": 3,
      "name": "Growl",
@@ -210968,6 +212785,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Charge",
+     "type": "Electric"
+    },
+    {
      "level": 4,
      "name": "String Shot",
      "type": "Bug"
@@ -211200,6 +213022,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Thunderbolt",
+     "type": "Electric"
+    },
     {
      "level": 4,
      "name": "String Shot",
@@ -211695,6 +213522,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Ice Punch",
+     "type": "Ice"
+    },
+    {
      "level": 5,
      "name": "Rock Smash",
      "type": "Fighting"
@@ -211924,7 +213756,88 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Pound",
+     "type": "Normal"
+    },
+    {
+     "level": 4,
+     "name": "Growl",
+     "type": "Normal"
+    },
+    {
+     "level": 6,
+     "name": "Peck",
+     "type": "Flying"
+    },
+    {
+     "level": 10,
+     "name": "Helping Hand",
+     "type": "Normal"
+    },
+    {
+     "level": 13,
+     "name": "Air Cutter",
+     "type": "Flying"
+    },
+    {
+     "level": 16,
+     "name": "Baton Pass",
+     "type": "Normal"
+    },
+    {
+     "level": 20,
+     "name": "Feather Dance",
+     "type": "Flying"
+    },
+    {
+     "level": 23,
+     "name": "Double Slap",
+     "type": "Normal"
+    },
+    {
+     "level": 26,
+     "name": "Teeter Dance",
+     "type": "Normal"
+    },
+    {
+     "level": 30,
+     "name": "Roost",
+     "type": "Flying"
+    },
+    {
+     "level": 33,
+     "name": "Captivate",
+     "type": "Normal"
+    },
+    {
+     "level": 36,
+     "name": "Air Slash",
+     "type": "Flying"
+    },
+    {
+     "level": 40,
+     "name": "Revelation Dance",
+     "type": "Normal"
+    },
+    {
+     "level": 43,
+     "name": "Mirror Move",
+     "type": "Flying"
+    },
+    {
+     "level": 46,
+     "name": "Agility",
+     "type": "Psychic"
+    },
+    {
+     "level": 50,
+     "name": "Hurricane",
+     "type": "Flying"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -212040,7 +213953,88 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Pound",
+     "type": "Normal"
+    },
+    {
+     "level": 4,
+     "name": "Growl",
+     "type": "Normal"
+    },
+    {
+     "level": 6,
+     "name": "Peck",
+     "type": "Flying"
+    },
+    {
+     "level": 10,
+     "name": "Helping Hand",
+     "type": "Normal"
+    },
+    {
+     "level": 13,
+     "name": "Air Cutter",
+     "type": "Flying"
+    },
+    {
+     "level": 16,
+     "name": "Baton Pass",
+     "type": "Normal"
+    },
+    {
+     "level": 20,
+     "name": "Feather Dance",
+     "type": "Flying"
+    },
+    {
+     "level": 23,
+     "name": "Double Slap",
+     "type": "Normal"
+    },
+    {
+     "level": 26,
+     "name": "Teeter Dance",
+     "type": "Normal"
+    },
+    {
+     "level": 30,
+     "name": "Roost",
+     "type": "Flying"
+    },
+    {
+     "level": 33,
+     "name": "Captivate",
+     "type": "Normal"
+    },
+    {
+     "level": 36,
+     "name": "Air Slash",
+     "type": "Flying"
+    },
+    {
+     "level": 40,
+     "name": "Revelation Dance",
+     "type": "Normal"
+    },
+    {
+     "level": 43,
+     "name": "Mirror Move",
+     "type": "Flying"
+    },
+    {
+     "level": 46,
+     "name": "Agility",
+     "type": "Psychic"
+    },
+    {
+     "level": 50,
+     "name": "Hurricane",
+     "type": "Flying"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -212156,7 +214150,88 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Pound",
+     "type": "Normal"
+    },
+    {
+     "level": 4,
+     "name": "Growl",
+     "type": "Normal"
+    },
+    {
+     "level": 6,
+     "name": "Peck",
+     "type": "Flying"
+    },
+    {
+     "level": 10,
+     "name": "Helping Hand",
+     "type": "Normal"
+    },
+    {
+     "level": 13,
+     "name": "Air Cutter",
+     "type": "Flying"
+    },
+    {
+     "level": 16,
+     "name": "Baton Pass",
+     "type": "Normal"
+    },
+    {
+     "level": 20,
+     "name": "Feather Dance",
+     "type": "Flying"
+    },
+    {
+     "level": 23,
+     "name": "Double Slap",
+     "type": "Normal"
+    },
+    {
+     "level": 26,
+     "name": "Teeter Dance",
+     "type": "Normal"
+    },
+    {
+     "level": 30,
+     "name": "Roost",
+     "type": "Flying"
+    },
+    {
+     "level": 33,
+     "name": "Captivate",
+     "type": "Normal"
+    },
+    {
+     "level": 36,
+     "name": "Air Slash",
+     "type": "Flying"
+    },
+    {
+     "level": 40,
+     "name": "Revelation Dance",
+     "type": "Normal"
+    },
+    {
+     "level": 43,
+     "name": "Mirror Move",
+     "type": "Flying"
+    },
+    {
+     "level": 46,
+     "name": "Agility",
+     "type": "Psychic"
+    },
+    {
+     "level": 50,
+     "name": "Hurricane",
+     "type": "Flying"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -212272,7 +214347,88 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Pound",
+     "type": "Normal"
+    },
+    {
+     "level": 4,
+     "name": "Growl",
+     "type": "Normal"
+    },
+    {
+     "level": 6,
+     "name": "Peck",
+     "type": "Flying"
+    },
+    {
+     "level": 10,
+     "name": "Helping Hand",
+     "type": "Normal"
+    },
+    {
+     "level": 13,
+     "name": "Air Cutter",
+     "type": "Flying"
+    },
+    {
+     "level": 16,
+     "name": "Baton Pass",
+     "type": "Normal"
+    },
+    {
+     "level": 20,
+     "name": "Feather Dance",
+     "type": "Flying"
+    },
+    {
+     "level": 23,
+     "name": "Double Slap",
+     "type": "Normal"
+    },
+    {
+     "level": 26,
+     "name": "Teeter Dance",
+     "type": "Normal"
+    },
+    {
+     "level": 30,
+     "name": "Roost",
+     "type": "Flying"
+    },
+    {
+     "level": 33,
+     "name": "Captivate",
+     "type": "Normal"
+    },
+    {
+     "level": 36,
+     "name": "Air Slash",
+     "type": "Flying"
+    },
+    {
+     "level": 40,
+     "name": "Revelation Dance",
+     "type": "Normal"
+    },
+    {
+     "level": 43,
+     "name": "Mirror Move",
+     "type": "Flying"
+    },
+    {
+     "level": 46,
+     "name": "Agility",
+     "type": "Psychic"
+    },
+    {
+     "level": 50,
+     "name": "Hurricane",
+     "type": "Flying"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -212667,6 +214823,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Pollen Puff",
+     "type": "Bug"
+    },
     {
      "level": 4,
      "name": "Fairy Wind",
@@ -213141,7 +215302,78 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 0,
+     "name": "Accelerock",
+     "type": "Rock"
+    },
+    {
+     "level": 4,
+     "name": "Sand Attack",
+     "type": "Ground"
+    },
+    {
+     "level": 7,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 12,
+     "name": "Howl",
+     "type": "Normal"
+    },
+    {
+     "level": 15,
+     "name": "Rock Throw",
+     "type": "Rock"
+    },
+    {
+     "level": 18,
+     "name": "Odor Sleuth",
+     "type": "Normal"
+    },
+    {
+     "level": 23,
+     "name": "Rock Tomb",
+     "type": "Rock"
+    },
+    {
+     "level": 26,
+     "name": "Roar",
+     "type": "Normal"
+    },
+    {
+     "level": 29,
+     "name": "Stealth Rock",
+     "type": "Rock"
+    },
+    {
+     "level": 34,
+     "name": "Rock Slide",
+     "type": "Rock"
+    },
+    {
+     "level": 37,
+     "name": "Scary Face",
+     "type": "Normal"
+    },
+    {
+     "level": 40,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 45,
+     "name": "Rock Climb",
+     "type": "Normal"
+    },
+    {
+     "level": 48,
+     "name": "Stone Edge",
+     "type": "Rock"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -213259,7 +215491,78 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 0,
+     "name": "Counter",
+     "type": "Fighting"
+    },
+    {
+     "level": 4,
+     "name": "Sand Attack",
+     "type": "Ground"
+    },
+    {
+     "level": 7,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 12,
+     "name": "Howl",
+     "type": "Normal"
+    },
+    {
+     "level": 15,
+     "name": "Rock Throw",
+     "type": "Rock"
+    },
+    {
+     "level": 18,
+     "name": "Odor Sleuth",
+     "type": "Normal"
+    },
+    {
+     "level": 23,
+     "name": "Rock Tomb",
+     "type": "Rock"
+    },
+    {
+     "level": 26,
+     "name": "Roar",
+     "type": "Normal"
+    },
+    {
+     "level": 29,
+     "name": "Stealth Rock",
+     "type": "Rock"
+    },
+    {
+     "level": 34,
+     "name": "Rock Slide",
+     "type": "Rock"
+    },
+    {
+     "level": 37,
+     "name": "Scary Face",
+     "type": "Normal"
+    },
+    {
+     "level": 40,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 45,
+     "name": "Rock Climb",
+     "type": "Normal"
+    },
+    {
+     "level": 48,
+     "name": "Stone Edge",
+     "type": "Rock"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -213376,7 +215679,78 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 0,
+     "name": "Thrash",
+     "type": "Normal"
+    },
+    {
+     "level": 4,
+     "name": "Sand Attack",
+     "type": "Ground"
+    },
+    {
+     "level": 7,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 12,
+     "name": "Howl",
+     "type": "Normal"
+    },
+    {
+     "level": 15,
+     "name": "Rock Throw",
+     "type": "Rock"
+    },
+    {
+     "level": 18,
+     "name": "Odor Sleuth",
+     "type": "Normal"
+    },
+    {
+     "level": 23,
+     "name": "Rock Tomb",
+     "type": "Rock"
+    },
+    {
+     "level": 26,
+     "name": "Roar",
+     "type": "Normal"
+    },
+    {
+     "level": 29,
+     "name": "Stealth Rock",
+     "type": "Rock"
+    },
+    {
+     "level": 34,
+     "name": "Rock Slide",
+     "type": "Rock"
+    },
+    {
+     "level": 37,
+     "name": "Scary Face",
+     "type": "Normal"
+    },
+    {
+     "level": 40,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 45,
+     "name": "Rock Climb",
+     "type": "Normal"
+    },
+    {
+     "level": 48,
+     "name": "Stone Edge",
+     "type": "Rock"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -214250,6 +216624,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Baneful Bunker",
+     "type": "Poison"
+    },
     {
      "level": 5,
      "name": "Peck",
@@ -215735,6 +218114,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Petal Blizzard",
+     "type": "Grass"
+    },
+    {
      "level": 5,
      "name": "Leafage",
      "type": "Grass"
@@ -216747,6 +219131,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Captivate",
+     "type": "Normal"
+    },
+    {
      "level": 5,
      "name": "Ember",
      "type": "Fire"
@@ -217249,6 +219638,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Bind",
+     "type": "Normal"
+    },
+    {
      "level": 5,
      "name": "Bide",
      "type": "Normal"
@@ -217733,6 +220127,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Double Slap",
+     "type": "Normal"
+    },
+    {
      "level": 5,
      "name": "Play Nice",
      "type": "Normal"
@@ -217972,6 +220371,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Trop Kick",
+     "type": "Grass"
+    },
     {
      "level": 5,
      "name": "Swagger",
@@ -219245,6 +221649,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "First Impression",
+     "type": "Bug"
+    },
     {
      "level": 4,
      "name": "Fury Cutter",
@@ -220521,6 +222930,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Multi-Attack",
+     "type": "Normal"
+    },
     {
      "level": 5,
      "name": "Rage",
@@ -223457,6 +225871,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Sky Uppercut",
+     "type": "Fighting"
+    },
+    {
      "level": 5,
      "name": "Leer",
      "type": "Normal"
@@ -223721,6 +226140,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Clanging Scales",
+     "type": "Dragon"
+    },
     {
      "level": 5,
      "name": "Leer",
@@ -225210,6 +227634,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Cosmic Power",
+     "type": "Psychic"
+    },
+    {
      "level": 23,
      "name": "Teleport",
      "type": "Psychic"
@@ -225361,6 +227790,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Sunsteel Strike",
+     "type": "Steel"
+    },
     {
      "level": 1,
      "name": "Metal Claw",
@@ -225634,6 +228068,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Moongeist Beam",
+     "type": "Ghost"
+    },
     {
      "level": 1,
      "name": "Confusion",
@@ -228015,7 +230454,83 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Metal Claw",
+     "type": "Steel"
+    },
+    {
+     "level": 1,
+     "name": "Confusion",
+     "type": "Psychic"
+    },
+    {
+     "level": 7,
+     "name": "Slash",
+     "type": "Normal"
+    },
+    {
+     "level": 13,
+     "name": "Stored Power",
+     "type": "Psychic"
+    },
+    {
+     "level": 19,
+     "name": "Rock Blast",
+     "type": "Rock"
+    },
+    {
+     "level": 23,
+     "name": "Night Slash",
+     "type": "Dark"
+    },
+    {
+     "level": 31,
+     "name": "Gravity",
+     "type": "Psychic"
+    },
+    {
+     "level": 37,
+     "name": "Psycho Cut",
+     "type": "Psychic"
+    },
+    {
+     "level": 43,
+     "name": "Power Gem",
+     "type": "Rock"
+    },
+    {
+     "level": 47,
+     "name": "Autotomize",
+     "type": "Steel"
+    },
+    {
+     "level": 50,
+     "name": "Photon Geyser",
+     "type": "Psychic"
+    },
+    {
+     "level": 53,
+     "name": "Stealth Rock",
+     "type": "Rock"
+    },
+    {
+     "level": 59,
+     "name": "Iron Defense",
+     "type": "Steel"
+    },
+    {
+     "level": 67,
+     "name": "Wring Out",
+     "type": "Normal"
+    },
+    {
+     "level": 73,
+     "name": "Prismatic Laser",
+     "type": "Psychic"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -228134,7 +230649,83 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Metal Claw",
+     "type": "Steel"
+    },
+    {
+     "level": 1,
+     "name": "Confusion",
+     "type": "Psychic"
+    },
+    {
+     "level": 7,
+     "name": "Slash",
+     "type": "Normal"
+    },
+    {
+     "level": 13,
+     "name": "Stored Power",
+     "type": "Psychic"
+    },
+    {
+     "level": 19,
+     "name": "Rock Blast",
+     "type": "Rock"
+    },
+    {
+     "level": 23,
+     "name": "Night Slash",
+     "type": "Dark"
+    },
+    {
+     "level": 31,
+     "name": "Gravity",
+     "type": "Psychic"
+    },
+    {
+     "level": 37,
+     "name": "Psycho Cut",
+     "type": "Psychic"
+    },
+    {
+     "level": 43,
+     "name": "Power Gem",
+     "type": "Rock"
+    },
+    {
+     "level": 47,
+     "name": "Autotomize",
+     "type": "Steel"
+    },
+    {
+     "level": 50,
+     "name": "Photon Geyser",
+     "type": "Psychic"
+    },
+    {
+     "level": 53,
+     "name": "Stealth Rock",
+     "type": "Rock"
+    },
+    {
+     "level": 59,
+     "name": "Iron Defense",
+     "type": "Steel"
+    },
+    {
+     "level": 67,
+     "name": "Wring Out",
+     "type": "Normal"
+    },
+    {
+     "level": 73,
+     "name": "Prismatic Laser",
+     "type": "Psychic"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -228254,7 +230845,88 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Glare",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Bulldoze",
+     "type": "Ground"
+    },
+    {
+     "level": 1,
+     "name": "Dragon Breath",
+     "type": "Dragon"
+    },
+    {
+     "level": 1,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 5,
+     "name": "Safeguard",
+     "type": "Normal"
+    },
+    {
+     "level": 10,
+     "name": "Dig",
+     "type": "Ground"
+    },
+    {
+     "level": 18,
+     "name": "Bind",
+     "type": "Normal"
+    },
+    {
+     "level": 26,
+     "name": "Land's Wrath",
+     "type": "Ground"
+    },
+    {
+     "level": 35,
+     "name": "Sandstorm",
+     "type": "Ground"
+    },
+    {
+     "level": 44,
+     "name": "Haze",
+     "type": "Ice"
+    },
+    {
+     "level": 51,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 55,
+     "name": "Earthquake",
+     "type": "Ground"
+    },
+    {
+     "level": 59,
+     "name": "Camouflage",
+     "type": "Normal"
+    },
+    {
+     "level": 63,
+     "name": "Dragon Pulse",
+     "type": "Dragon"
+    },
+    {
+     "level": 72,
+     "name": "Coil",
+     "type": "Poison"
+    },
+    {
+     "level": 80,
+     "name": "Outrage",
+     "type": "Dragon"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -228375,7 +231047,88 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Glare",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Bulldoze",
+     "type": "Ground"
+    },
+    {
+     "level": 1,
+     "name": "Dragon Breath",
+     "type": "Dragon"
+    },
+    {
+     "level": 1,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 5,
+     "name": "Safeguard",
+     "type": "Normal"
+    },
+    {
+     "level": 10,
+     "name": "Dig",
+     "type": "Ground"
+    },
+    {
+     "level": 18,
+     "name": "Bind",
+     "type": "Normal"
+    },
+    {
+     "level": 26,
+     "name": "Land's Wrath",
+     "type": "Ground"
+    },
+    {
+     "level": 35,
+     "name": "Sandstorm",
+     "type": "Ground"
+    },
+    {
+     "level": 44,
+     "name": "Haze",
+     "type": "Ice"
+    },
+    {
+     "level": 51,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 55,
+     "name": "Earthquake",
+     "type": "Ground"
+    },
+    {
+     "level": 59,
+     "name": "Camouflage",
+     "type": "Normal"
+    },
+    {
+     "level": 63,
+     "name": "Dragon Pulse",
+     "type": "Dragon"
+    },
+    {
+     "level": 72,
+     "name": "Coil",
+     "type": "Poison"
+    },
+    {
+     "level": 80,
+     "name": "Outrage",
+     "type": "Dragon"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -229537,6 +232290,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Air Cutter",
+     "type": "Flying"
+    },
     {
      "level": 7,
      "name": "Fury Attack",
@@ -230775,6 +233533,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Double Hit",
+     "type": "Normal"
+    },
+    {
      "level": 6,
      "name": "Branch Poke",
      "type": "Grass"
@@ -230981,6 +233744,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Drum Beating",
+     "type": "Grass"
+    },
     {
      "level": 6,
      "name": "Branch Poke",
@@ -231635,6 +234403,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Pyro Ball",
+     "type": "Fire"
+    },
+    {
      "level": 6,
      "name": "Ember",
      "type": "Fire"
@@ -232283,6 +235056,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Snipe Shot",
+     "type": "Water"
+    },
+    {
      "level": 6,
      "name": "Water Gun",
      "type": "Water"
@@ -232708,6 +235486,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Covet",
+     "type": "Normal"
+    },
     {
      "level": 5,
      "name": "Bite",
@@ -233344,6 +236127,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Steel Wing",
+     "type": "Steel"
+    },
+    {
      "level": 4,
      "name": "Power Trip",
      "type": "Dark"
@@ -233712,7 +236500,23 @@
    }
   ],
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 0,
+     "name": "Confusion",
+     "type": "Psychic"
+    },
+    {
+     "level": 0,
+     "name": "Reflect",
+     "type": "Psychic"
+    },
+    {
+     "level": 0,
+     "name": "Light Screen",
+     "type": "Psychic"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": [
@@ -234309,6 +237113,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Thief",
+     "type": "Dark"
+    },
+    {
      "level": 4,
      "name": "Beat Up",
      "type": "Dark"
@@ -234718,6 +237527,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Cotton Spore",
+     "type": "Grass"
+    },
     {
      "level": 4,
      "name": "Rapid Spin",
@@ -235533,6 +238347,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Rock Tomb",
+     "type": "Rock"
+    },
     {
      "level": 7,
      "name": "Bite",
@@ -236364,6 +239183,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Flame Charge",
+     "type": "Fire"
+    },
+    {
      "level": 5,
      "name": "Rapid Spin",
      "type": "Normal"
@@ -236571,6 +239395,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Tar Shot",
+     "type": "Rock"
+    },
     {
      "level": 5,
      "name": "Rapid Spin",
@@ -236780,6 +239609,16 @@
     "stage": 2,
     "name": "Appletun",
     "min": 20
+   },
+   {
+    "stage": 2,
+    "name": "Dipplin",
+    "min": 20
+   },
+   {
+    "stage": 3,
+    "name": "Hydrapple",
+    "min": 35
    }
   ],
   "moves": {
@@ -236951,6 +239790,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Wing Attack",
+     "type": "Flying"
+    },
     {
      "level": 4,
      "name": "Acid Spray",
@@ -237167,6 +240011,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Headbutt",
+     "type": "Normal"
+    },
     {
      "level": 4,
      "name": "Curse",
@@ -238597,6 +241446,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Spark",
+     "type": "Electric"
+    },
+    {
      "level": 4,
      "name": "Charge",
      "type": "Electric"
@@ -239487,6 +242341,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Octolock",
+     "type": "Fighting"
+    },
+    {
      "level": 5,
      "name": "Feint",
      "type": "Normal"
@@ -239911,6 +242770,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Teatime",
+     "type": "Normal"
+    },
     {
      "level": 6,
      "name": "Aromatic Mist",
@@ -240343,6 +243207,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Brutal Swing",
+     "type": "Dark"
+    },
+    {
      "level": 5,
      "name": "Life Dew",
      "type": "Water"
@@ -240544,6 +243413,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Psycho Cut",
+     "type": "Psychic"
+    },
     {
      "level": 5,
      "name": "Life Dew",
@@ -240984,6 +243858,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "False Surrender",
+     "type": "Dark"
+    },
+    {
      "level": 4,
      "name": "Bite",
      "type": "Dark"
@@ -241201,6 +244080,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Spirit Break",
+     "type": "Fairy"
+    },
     {
      "level": 4,
      "name": "Bite",
@@ -241640,6 +244524,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Decorate",
+     "type": "Normal"
+    },
     {
      "level": 5,
      "name": "Sweet Kiss",
@@ -242449,6 +245338,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Icy Wind",
+     "type": "Ice"
+    },
+    {
      "level": 4,
      "name": "Stun Spore",
      "type": "Grass"
@@ -242868,7 +245762,68 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Powder Snow",
+     "type": "Ice"
+    },
+    {
+     "level": 1,
+     "name": "Tackle",
+     "type": "Normal"
+    },
+    {
+     "level": 6,
+     "name": "Mist",
+     "type": "Ice"
+    },
+    {
+     "level": 12,
+     "name": "Weather Ball",
+     "type": "Normal"
+    },
+    {
+     "level": 18,
+     "name": "Icy Wind",
+     "type": "Ice"
+    },
+    {
+     "level": 24,
+     "name": "Headbutt",
+     "type": "Normal"
+    },
+    {
+     "level": 30,
+     "name": "Amnesia",
+     "type": "Psychic"
+    },
+    {
+     "level": 36,
+     "name": "Freeze-Dry",
+     "type": "Ice"
+    },
+    {
+     "level": 42,
+     "name": "Hail",
+     "type": "Ice"
+    },
+    {
+     "level": 48,
+     "name": "Aurora Veil",
+     "type": "Ice"
+    },
+    {
+     "level": 54,
+     "name": "Surf",
+     "type": "Water"
+    },
+    {
+     "level": 60,
+     "name": "Blizzard",
+     "type": "Ice"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -242987,7 +245942,68 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Powder Snow",
+     "type": "Ice"
+    },
+    {
+     "level": 1,
+     "name": "Tackle",
+     "type": "Normal"
+    },
+    {
+     "level": 6,
+     "name": "Mist",
+     "type": "Ice"
+    },
+    {
+     "level": 12,
+     "name": "Weather Ball",
+     "type": "Normal"
+    },
+    {
+     "level": 18,
+     "name": "Icy Wind",
+     "type": "Ice"
+    },
+    {
+     "level": 24,
+     "name": "Headbutt",
+     "type": "Normal"
+    },
+    {
+     "level": 30,
+     "name": "Amnesia",
+     "type": "Psychic"
+    },
+    {
+     "level": 36,
+     "name": "Freeze-Dry",
+     "type": "Ice"
+    },
+    {
+     "level": 42,
+     "name": "Hail",
+     "type": "Ice"
+    },
+    {
+     "level": 48,
+     "name": "Aurora Veil",
+     "type": "Ice"
+    },
+    {
+     "level": 54,
+     "name": "Surf",
+     "type": "Water"
+    },
+    {
+     "level": 60,
+     "name": "Blizzard",
+     "type": "Ice"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -243106,7 +246122,73 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Stored Power",
+     "type": "Psychic"
+    },
+    {
+     "level": 1,
+     "name": "Play Nice",
+     "type": "Normal"
+    },
+    {
+     "level": 5,
+     "name": "Encore",
+     "type": "Normal"
+    },
+    {
+     "level": 10,
+     "name": "Disarming Voice",
+     "type": "Fairy"
+    },
+    {
+     "level": 15,
+     "name": "Psybeam",
+     "type": "Psychic"
+    },
+    {
+     "level": 20,
+     "name": "Helping Hand",
+     "type": "Normal"
+    },
+    {
+     "level": 25,
+     "name": "After You",
+     "type": "Normal"
+    },
+    {
+     "level": 30,
+     "name": "Aromatherapy",
+     "type": "Grass"
+    },
+    {
+     "level": 35,
+     "name": "Psychic",
+     "type": "Psychic"
+    },
+    {
+     "level": 40,
+     "name": "Calm Mind",
+     "type": "Psychic"
+    },
+    {
+     "level": 45,
+     "name": "Power Split",
+     "type": "Psychic"
+    },
+    {
+     "level": 50,
+     "name": "Psychic Terrain",
+     "type": "Psychic"
+    },
+    {
+     "level": 55,
+     "name": "Last Resort",
+     "type": "Normal"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -243225,7 +246307,73 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Stored Power",
+     "type": "Psychic"
+    },
+    {
+     "level": 1,
+     "name": "Play Nice",
+     "type": "Normal"
+    },
+    {
+     "level": 5,
+     "name": "Baton Pass",
+     "type": "Normal"
+    },
+    {
+     "level": 10,
+     "name": "Disarming Voice",
+     "type": "Fairy"
+    },
+    {
+     "level": 15,
+     "name": "Psybeam",
+     "type": "Psychic"
+    },
+    {
+     "level": 20,
+     "name": "Helping Hand",
+     "type": "Normal"
+    },
+    {
+     "level": 25,
+     "name": "Follow Me",
+     "type": "Normal"
+    },
+    {
+     "level": 30,
+     "name": "Aromatherapy",
+     "type": "Grass"
+    },
+    {
+     "level": 35,
+     "name": "Psychic",
+     "type": "Psychic"
+    },
+    {
+     "level": 40,
+     "name": "Calm Mind",
+     "type": "Psychic"
+    },
+    {
+     "level": 45,
+     "name": "Guard Split",
+     "type": "Psychic"
+    },
+    {
+     "level": 50,
+     "name": "Psychic Terrain",
+     "type": "Psychic"
+    },
+    {
+     "level": 55,
+     "name": "Healing Wish",
+     "type": "Psychic"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -243829,6 +246977,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Heavy Slam",
+     "type": "Steel"
+    },
     {
      "level": 5,
      "name": "Rollout",
@@ -244915,6 +248068,11 @@
     "stage": 1,
     "name": "Duraludon",
     "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Archaludon",
+    "min": 35
    }
   ],
   "moves": {
@@ -245339,6 +248497,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Dragon Pulse",
+     "type": "Dragon"
+    },
+    {
      "level": 6,
      "name": "Lock-On",
      "type": "Normal"
@@ -245563,6 +248726,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Dragon Darts",
+     "type": "Dragon"
+    },
     {
      "level": 6,
      "name": "Lock-On",
@@ -246016,6 +249184,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Iron Head",
+     "type": "Steel"
+    },
     {
      "level": 4,
      "name": "Hone Claws",
@@ -246914,6 +250087,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Iron Defense",
+     "type": "Steel"
+    },
     {
      "level": 5,
      "name": "Leer",
@@ -248797,6 +251975,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Obstruct",
+     "type": "Dark"
+    },
+    {
      "level": 3,
      "name": "Sand Attack",
      "type": "Ground"
@@ -249257,7 +252440,73 @@
    }
   ],
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 0,
+     "name": "Icicle Crash",
+     "type": "Ice"
+    },
+    {
+     "level": 4,
+     "name": "Taunt",
+     "type": "Dark"
+    },
+    {
+     "level": 8,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 12,
+     "name": "Avalanche",
+     "type": "Ice"
+    },
+    {
+     "level": 16,
+     "name": "Work Up",
+     "type": "Normal"
+    },
+    {
+     "level": 20,
+     "name": "Ice Fang",
+     "type": "Ice"
+    },
+    {
+     "level": 24,
+     "name": "Headbutt",
+     "type": "Normal"
+    },
+    {
+     "level": 28,
+     "name": "Ice Punch",
+     "type": "Ice"
+    },
+    {
+     "level": 32,
+     "name": "Uproar",
+     "type": "Normal"
+    },
+    {
+     "level": 38,
+     "name": "Belly Drum",
+     "type": "Normal"
+    },
+    {
+     "level": 44,
+     "name": "Blizzard",
+     "type": "Ice"
+    },
+    {
+     "level": 50,
+     "name": "Thrash",
+     "type": "Normal"
+    },
+    {
+     "level": 56,
+     "name": "Superpower",
+     "type": "Fighting"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -249391,7 +252640,73 @@
    }
   ],
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 0,
+     "name": "Icicle Crash",
+     "type": "Ice"
+    },
+    {
+     "level": 4,
+     "name": "Taunt",
+     "type": "Dark"
+    },
+    {
+     "level": 8,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 12,
+     "name": "Avalanche",
+     "type": "Ice"
+    },
+    {
+     "level": 16,
+     "name": "Work Up",
+     "type": "Normal"
+    },
+    {
+     "level": 20,
+     "name": "Ice Fang",
+     "type": "Ice"
+    },
+    {
+     "level": 24,
+     "name": "Headbutt",
+     "type": "Normal"
+    },
+    {
+     "level": 28,
+     "name": "Ice Punch",
+     "type": "Ice"
+    },
+    {
+     "level": 32,
+     "name": "Uproar",
+     "type": "Normal"
+    },
+    {
+     "level": 38,
+     "name": "Belly Drum",
+     "type": "Normal"
+    },
+    {
+     "level": 44,
+     "name": "Blizzard",
+     "type": "Ice"
+    },
+    {
+     "level": 50,
+     "name": "Thrash",
+     "type": "Normal"
+    },
+    {
+     "level": 56,
+     "name": "Superpower",
+     "type": "Fighting"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -249768,6 +253083,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Shadow Claw",
+     "type": "Ghost"
+    },
     {
      "level": 4,
      "name": "Haze",
@@ -250203,7 +253523,68 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Metal Claw",
+     "type": "Steel"
+    },
+    {
+     "level": 1,
+     "name": "Howl",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Quick Attack",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 11,
+     "name": "Slash",
+     "type": "Normal"
+    },
+    {
+     "level": 22,
+     "name": "Swords Dance",
+     "type": "Normal"
+    },
+    {
+     "level": 33,
+     "name": "Iron Head",
+     "type": "Steel"
+    },
+    {
+     "level": 44,
+     "name": "Laser Focus",
+     "type": "Normal"
+    },
+    {
+     "level": 55,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 66,
+     "name": "Moonblast",
+     "type": "Fairy"
+    },
+    {
+     "level": 77,
+     "name": "Close Combat",
+     "type": "Fighting"
+    },
+    {
+     "level": 88,
+     "name": "Giga Impact",
+     "type": "Normal"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -250323,7 +253704,68 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Metal Claw",
+     "type": "Steel"
+    },
+    {
+     "level": 1,
+     "name": "Howl",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Quick Attack",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 11,
+     "name": "Slash",
+     "type": "Normal"
+    },
+    {
+     "level": 22,
+     "name": "Swords Dance",
+     "type": "Normal"
+    },
+    {
+     "level": 33,
+     "name": "Iron Head",
+     "type": "Steel"
+    },
+    {
+     "level": 44,
+     "name": "Laser Focus",
+     "type": "Normal"
+    },
+    {
+     "level": 55,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 66,
+     "name": "Moonblast",
+     "type": "Fairy"
+    },
+    {
+     "level": 77,
+     "name": "Close Combat",
+     "type": "Fighting"
+    },
+    {
+     "level": 88,
+     "name": "Giga Impact",
+     "type": "Normal"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -250443,7 +253885,68 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Metal Claw",
+     "type": "Steel"
+    },
+    {
+     "level": 1,
+     "name": "Howl",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Quick Attack",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 11,
+     "name": "Slash",
+     "type": "Normal"
+    },
+    {
+     "level": 22,
+     "name": "Iron Defense",
+     "type": "Steel"
+    },
+    {
+     "level": 33,
+     "name": "Iron Head",
+     "type": "Steel"
+    },
+    {
+     "level": 44,
+     "name": "Laser Focus",
+     "type": "Normal"
+    },
+    {
+     "level": 55,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 66,
+     "name": "Moonblast",
+     "type": "Fairy"
+    },
+    {
+     "level": 77,
+     "name": "Close Combat",
+     "type": "Fighting"
+    },
+    {
+     "level": 88,
+     "name": "Giga Impact",
+     "type": "Normal"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -250563,7 +254066,68 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Metal Claw",
+     "type": "Steel"
+    },
+    {
+     "level": 1,
+     "name": "Howl",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Quick Attack",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 11,
+     "name": "Slash",
+     "type": "Normal"
+    },
+    {
+     "level": 22,
+     "name": "Iron Defense",
+     "type": "Steel"
+    },
+    {
+     "level": 33,
+     "name": "Iron Head",
+     "type": "Steel"
+    },
+    {
+     "level": 44,
+     "name": "Laser Focus",
+     "type": "Normal"
+    },
+    {
+     "level": 55,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 66,
+     "name": "Moonblast",
+     "type": "Fairy"
+    },
+    {
+     "level": 77,
+     "name": "Close Combat",
+     "type": "Fighting"
+    },
+    {
+     "level": 88,
+     "name": "Giga Impact",
+     "type": "Normal"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -251109,6 +254673,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Thunder Punch",
+     "type": "Electric"
+    },
     {
      "level": 8,
      "name": "Tail Whip",
@@ -252341,7 +255910,78 @@
    ]
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 0,
+     "name": "Wicked Blow",
+     "type": "Dark"
+    },
+    {
+     "level": 4,
+     "name": "Endure",
+     "type": "Normal"
+    },
+    {
+     "level": 8,
+     "name": "Focus Energy",
+     "type": "Normal"
+    },
+    {
+     "level": 12,
+     "name": "Aerial Ace",
+     "type": "Flying"
+    },
+    {
+     "level": 16,
+     "name": "Scary Face",
+     "type": "Normal"
+    },
+    {
+     "level": 20,
+     "name": "Headbutt",
+     "type": "Normal"
+    },
+    {
+     "level": 24,
+     "name": "Brick Break",
+     "type": "Fighting"
+    },
+    {
+     "level": 28,
+     "name": "Detect",
+     "type": "Normal"
+    },
+    {
+     "level": 32,
+     "name": "Bulk Up",
+     "type": "Fighting"
+    },
+    {
+     "level": 36,
+     "name": "Iron Head",
+     "type": "Steel"
+    },
+    {
+     "level": 40,
+     "name": "Dynamic Punch",
+     "type": "Fighting"
+    },
+    {
+     "level": 44,
+     "name": "Counter",
+     "type": "Fighting"
+    },
+    {
+     "level": 48,
+     "name": "Close Combat",
+     "type": "Fighting"
+    },
+    {
+     "level": 52,
+     "name": "Focus Punch",
+     "type": "Fighting"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -252467,7 +256107,78 @@
    ]
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 0,
+     "name": "Surging Strikes",
+     "type": "Water"
+    },
+    {
+     "level": 4,
+     "name": "Endure",
+     "type": "Normal"
+    },
+    {
+     "level": 8,
+     "name": "Focus Energy",
+     "type": "Normal"
+    },
+    {
+     "level": 12,
+     "name": "Aerial Ace",
+     "type": "Flying"
+    },
+    {
+     "level": 16,
+     "name": "Scary Face",
+     "type": "Normal"
+    },
+    {
+     "level": 20,
+     "name": "Headbutt",
+     "type": "Normal"
+    },
+    {
+     "level": 24,
+     "name": "Brick Break",
+     "type": "Fighting"
+    },
+    {
+     "level": 28,
+     "name": "Detect",
+     "type": "Normal"
+    },
+    {
+     "level": 32,
+     "name": "Bulk Up",
+     "type": "Fighting"
+    },
+    {
+     "level": 36,
+     "name": "Iron Head",
+     "type": "Steel"
+    },
+    {
+     "level": 40,
+     "name": "Dynamic Punch",
+     "type": "Fighting"
+    },
+    {
+     "level": 44,
+     "name": "Counter",
+     "type": "Fighting"
+    },
+    {
+     "level": 48,
+     "name": "Close Combat",
+     "type": "Fighting"
+    },
+    {
+     "level": 52,
+     "name": "Focus Punch",
+     "type": "Fighting"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -254662,7 +258373,83 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Pound",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Mega Drain",
+     "type": "Grass"
+    },
+    {
+     "level": 1,
+     "name": "Confusion",
+     "type": "Psychic"
+    },
+    {
+     "level": 1,
+     "name": "Growth",
+     "type": "Normal"
+    },
+    {
+     "level": 8,
+     "name": "Life Dew",
+     "type": "Water"
+    },
+    {
+     "level": 16,
+     "name": "Giga Drain",
+     "type": "Grass"
+    },
+    {
+     "level": 24,
+     "name": "Psyshock",
+     "type": "Psychic"
+    },
+    {
+     "level": 23,
+     "name": "Helping Hand",
+     "type": "Normal"
+    },
+    {
+     "level": 40,
+     "name": "Aromatherapy",
+     "type": "Grass"
+    },
+    {
+     "level": 48,
+     "name": "Energy Ball",
+     "type": "Grass"
+    },
+    {
+     "level": 56,
+     "name": "Psychic",
+     "type": "Psychic"
+    },
+    {
+     "level": 64,
+     "name": "Leech Seed",
+     "type": "Grass"
+    },
+    {
+     "level": 72,
+     "name": "Heal Pulse",
+     "type": "Psychic"
+    },
+    {
+     "level": 80,
+     "name": "Solar Beam",
+     "type": "Grass"
+    },
+    {
+     "level": 88,
+     "name": "Future Sight",
+     "type": "Psychic"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -254782,7 +258569,83 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Pound",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Mega Drain",
+     "type": "Grass"
+    },
+    {
+     "level": 1,
+     "name": "Confusion",
+     "type": "Psychic"
+    },
+    {
+     "level": 1,
+     "name": "Growth",
+     "type": "Normal"
+    },
+    {
+     "level": 8,
+     "name": "Life Dew",
+     "type": "Water"
+    },
+    {
+     "level": 16,
+     "name": "Giga Drain",
+     "type": "Grass"
+    },
+    {
+     "level": 24,
+     "name": "Psyshock",
+     "type": "Psychic"
+    },
+    {
+     "level": 23,
+     "name": "Helping Hand",
+     "type": "Normal"
+    },
+    {
+     "level": 40,
+     "name": "Aromatherapy",
+     "type": "Grass"
+    },
+    {
+     "level": 48,
+     "name": "Energy Ball",
+     "type": "Grass"
+    },
+    {
+     "level": 56,
+     "name": "Psychic",
+     "type": "Psychic"
+    },
+    {
+     "level": 64,
+     "name": "Leech Seed",
+     "type": "Grass"
+    },
+    {
+     "level": 72,
+     "name": "Heal Pulse",
+     "type": "Psychic"
+    },
+    {
+     "level": 80,
+     "name": "Solar Beam",
+     "type": "Grass"
+    },
+    {
+     "level": 88,
+     "name": "Future Sight",
+     "type": "Psychic"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -254925,6 +258788,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Rock Smash",
+     "type": "Fighting"
+    },
     {
      "level": 6,
      "name": "Leafage",
@@ -255143,6 +259011,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Hex",
+     "type": "Ghost"
+    },
+    {
      "level": 6,
      "name": "Ember",
      "type": "Fire"
@@ -255354,6 +259227,11 @@
   ],
   "moves": {
    "levelup": [
+    {
+     "level": 0,
+     "name": "Night Slash",
+     "type": "Dark"
+    },
     {
      "level": 6,
      "name": "Aqua Jet",
@@ -257216,6 +261094,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Rock Smash",
+     "type": "Normal"
+    },
+    {
      "level": 5,
      "name": "Leafage",
      "type": "Grass"
@@ -258429,6 +262312,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Rock Slide",
+     "type": "Rock"
+    },
+    {
      "level": 5,
      "name": "Powder Snow",
      "type": "Ice"
@@ -259223,7 +263111,48 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 6,
+     "name": "Aqua Jet",
+     "type": "Water"
+    },
+    {
+     "level": 11,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 11,
+     "name": "Hex",
+     "type": "Ghost"
+    },
+    {
+     "level": 18,
+     "name": "Zen Headbutt",
+     "type": "Psychic"
+    },
+    {
+     "level": 25,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 25,
+     "name": "Shadow Ball",
+     "type": "Ghost"
+    },
+    {
+     "level": 34,
+     "name": "Wave Crash",
+     "type": "Water"
+    },
+    {
+     "level": 43,
+     "name": "Double-Edge",
+     "type": "Normal"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -259345,7 +263274,48 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 6,
+     "name": "Aqua Jet",
+     "type": "Water"
+    },
+    {
+     "level": 11,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 11,
+     "name": "Hex",
+     "type": "Ghost"
+    },
+    {
+     "level": 18,
+     "name": "Zen Headbutt",
+     "type": "Psychic"
+    },
+    {
+     "level": 25,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 25,
+     "name": "Shadow Ball",
+     "type": "Ghost"
+    },
+    {
+     "level": 34,
+     "name": "Wave Crash",
+     "type": "Water"
+    },
+    {
+     "level": 43,
+     "name": "Double-Edge",
+     "type": "Normal"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -259465,7 +263435,78 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Dragon Breath",
+     "type": "Dragon"
+    },
+    {
+     "level": 1,
+     "name": "Scary Face",
+     "type": "Normal"
+    },
+    {
+     "level": 6,
+     "name": "Metal Claw",
+     "type": "Steel"
+    },
+    {
+     "level": 10,
+     "name": "Ancient Power",
+     "type": "Rock"
+    },
+    {
+     "level": 15,
+     "name": "Slash",
+     "type": "Normal"
+    },
+    {
+     "level": 19,
+     "name": "Power Gem",
+     "type": "Rock"
+    },
+    {
+     "level": 24,
+     "name": "Metal Burst",
+     "type": "Steel"
+    },
+    {
+     "level": 28,
+     "name": "Dragon Claw",
+     "type": "Dragon"
+    },
+    {
+     "level": 33,
+     "name": "Earth Power",
+     "type": "Ground"
+    },
+    {
+     "level": 37,
+     "name": "Aura Sphere",
+     "type": "Fighting"
+    },
+    {
+     "level": 42,
+     "name": "Iron Tail",
+     "type": "Steel"
+    },
+    {
+     "level": 46,
+     "name": "Roar of Time",
+     "type": "Dragon"
+    },
+    {
+     "level": 50,
+     "name": "Flash Cannon",
+     "type": "Steel"
+    },
+    {
+     "level": 55,
+     "name": "Heal Block",
+     "type": "Psychic"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -259586,7 +263627,78 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Dragon Breath",
+     "type": "Dragon"
+    },
+    {
+     "level": 1,
+     "name": "Scary Face",
+     "type": "Normal"
+    },
+    {
+     "level": 6,
+     "name": "Water Pulse",
+     "type": "Water"
+    },
+    {
+     "level": 10,
+     "name": "Ancient Power",
+     "type": "Rock"
+    },
+    {
+     "level": 15,
+     "name": "Slash",
+     "type": "Normal"
+    },
+    {
+     "level": 19,
+     "name": "Power Gem",
+     "type": "Rock"
+    },
+    {
+     "level": 24,
+     "name": "Aqua Ring",
+     "type": "Water"
+    },
+    {
+     "level": 28,
+     "name": "Dragon Claw",
+     "type": "Dragon"
+    },
+    {
+     "level": 33,
+     "name": "Earth Power",
+     "type": "Ground"
+    },
+    {
+     "level": 37,
+     "name": "Aura Sphere",
+     "type": "Fighting"
+    },
+    {
+     "level": 42,
+     "name": "Aqua Tail",
+     "type": "Water"
+    },
+    {
+     "level": 46,
+     "name": "Spatial Rend",
+     "type": "Dragon"
+    },
+    {
+     "level": 50,
+     "name": "Hydro Pump",
+     "type": "Water"
+    },
+    {
+     "level": 55,
+     "name": "Heal Block",
+     "type": "Psychic"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -259705,7 +263817,53 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Tackle",
+     "type": "Normal"
+    },
+    {
+     "level": 7,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 11,
+     "name": "Twister",
+     "type": "Dragon"
+    },
+    {
+     "level": 14,
+     "name": "Draining Kiss",
+     "type": "Fairy"
+    },
+    {
+     "level": 22,
+     "name": "Iron Defense",
+     "type": "Steel"
+    },
+    {
+     "level": 31,
+     "name": "Extrasensory",
+     "type": "Psychic"
+    },
+    {
+     "level": 41,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 47,
+     "name": "Moonblast",
+     "type": "Fairy"
+    },
+    {
+     "level": 52,
+     "name": "Springtide Storm",
+     "type": "Fairy"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -259824,7 +263982,53 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 1,
+     "name": "Tackle",
+     "type": "Normal"
+    },
+    {
+     "level": 7,
+     "name": "Bite",
+     "type": "Dark"
+    },
+    {
+     "level": 11,
+     "name": "Twister",
+     "type": "Dragon"
+    },
+    {
+     "level": 14,
+     "name": "Draining Kiss",
+     "type": "Fairy"
+    },
+    {
+     "level": 22,
+     "name": "Iron Defense",
+     "type": "Steel"
+    },
+    {
+     "level": 31,
+     "name": "Extrasensory",
+     "type": "Psychic"
+    },
+    {
+     "level": 41,
+     "name": "Crunch",
+     "type": "Dark"
+    },
+    {
+     "level": 47,
+     "name": "Moonblast",
+     "type": "Fairy"
+    },
+    {
+     "level": 52,
+     "name": "Springtide Storm",
+     "type": "Fairy"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -266677,6 +270881,11 @@
      "type": "Fire"
     },
     {
+     "level": 7,
+     "name": "Spook",
+     "type": "Ghost"
+    },
+    {
      "level": 10,
      "name": "Round",
      "type": "Normal"
@@ -266939,6 +271148,11 @@
      "level": 1,
      "name": "Ember",
      "type": "Fire"
+    },
+    {
+     "level": 7,
+     "name": "Spook",
+     "type": "Ghost"
     },
     {
      "level": 10,
@@ -267205,6 +271419,11 @@
      "level": 1,
      "name": "Ember",
      "type": "Fire"
+    },
+    {
+     "level": 7,
+     "name": "Spook",
+     "type": "Ghost"
     },
     {
      "level": 10,
@@ -269994,6 +274213,11 @@
      "type": "Normal"
     },
     {
+     "level": 3,
+     "name": "Surge",
+     "type": "Electric"
+    },
+    {
      "level": 6,
      "name": "Quick Attack",
      "type": "Normal"
@@ -270247,6 +274471,11 @@
      "level": 1,
      "name": "Growl",
      "type": "Normal"
+    },
+    {
+     "level": 3,
+     "name": "Surge",
+     "type": "Electric"
     },
     {
      "level": 6,
@@ -270515,6 +274744,11 @@
      "type": "Normal"
     },
     {
+     "level": 3,
+     "name": "Surge",
+     "type": "Electric"
+    },
+    {
      "level": 6,
      "name": "Quick Attack",
      "type": "Normal"
@@ -270781,6 +275015,11 @@
      "type": "Fairy"
     },
     {
+     "level": 3,
+     "name": "Sugar Rush",
+     "type": "Fairy"
+    },
+    {
      "level": 5,
      "name": "Echoed Voice",
      "type": "Normal"
@@ -271028,6 +275267,11 @@
     {
      "level": 1,
      "name": "Baby-doll Eyes",
+     "type": "Fairy"
+    },
+    {
+     "level": 3,
+     "name": "Sugar Rush",
      "type": "Fairy"
     },
     {
@@ -271295,6 +275539,11 @@
      "type": "Normal"
     },
     {
+     "level": 10,
+     "name": "Sugar Rush",
+     "type": "Fairy"
+    },
+    {
      "level": 12,
      "name": "Bite",
      "type": "Dark"
@@ -271348,6 +275597,11 @@
      "level": 40,
      "name": "Double-Edge",
      "type": "Normal"
+    },
+    {
+     "level": 44,
+     "name": "Fey Wild",
+     "type": "Fairy"
     },
     {
      "level": 47,
@@ -271535,6 +275789,11 @@
      "type": "Normal"
     },
     {
+     "level": 10,
+     "name": "Sugar Rush",
+     "type": "Fairy"
+    },
+    {
      "level": 12,
      "name": "Bite",
      "type": "Dark"
@@ -271588,6 +275847,11 @@
      "level": 40,
      "name": "Double-Edge",
      "type": "Normal"
+    },
+    {
+     "level": 44,
+     "name": "Fey Wild",
+     "type": "Fairy"
     },
     {
      "level": 47,
@@ -271809,6 +276073,11 @@
      "level": 25,
      "name": "Swift",
      "type": "Normal"
+    },
+    {
+     "level": 27,
+     "name": "Artillerolives",
+     "type": "Grass"
     },
     {
      "level": 30,
@@ -272062,6 +276331,11 @@
      "level": 25,
      "name": "Swift",
      "type": "Normal"
+    },
+    {
+     "level": 27,
+     "name": "Artillerolives",
+     "type": "Grass"
     },
     {
      "level": 30,
@@ -272322,6 +276596,11 @@
      "level": 25,
      "name": "Swift",
      "type": "Normal"
+    },
+    {
+     "level": 27,
+     "name": "Artillerolives",
+     "type": "Grass"
     },
     {
      "level": 30,
@@ -273583,6 +277862,11 @@
      "type": "Fire"
     },
     {
+     "level": 16,
+     "name": "Flash Step",
+     "type": "Psychic"
+    },
+    {
      "level": 18,
      "name": "Ominous Wind",
      "type": "Ghost"
@@ -273820,6 +278104,11 @@
      "level": 14,
      "name": "Flame Wheel",
      "type": "Fire"
+    },
+    {
+     "level": 16,
+     "name": "Flash Step",
+     "type": "Psychic"
     },
     {
      "level": 18,
@@ -274093,6 +278382,11 @@
      "level": 14,
      "name": "Flame Wheel",
      "type": "Fire"
+    },
+    {
+     "level": 16,
+     "name": "Flash Step",
+     "type": "Psychic"
     },
     {
      "level": 18,
@@ -277094,6 +281388,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Mould",
+     "type": "Grass"
+    },
+    {
      "level": 1,
      "name": "Reflect Type",
      "type": "Normal"
@@ -278104,6 +282403,11 @@
      "type": "Normal"
     },
     {
+     "level": 1,
+     "name": "Psy Kick",
+     "type": "Psychic"
+    },
+    {
      "level": 4,
      "name": "Sand Attack",
      "type": "Ground"
@@ -278127,6 +282431,11 @@
      "level": 17,
      "name": "Rollout",
      "type": "Rock"
+    },
+    {
+     "level": 20,
+     "name": "Clayball",
+     "type": "Ground"
     },
     {
      "level": 22,
@@ -278374,6 +282683,11 @@
      "level": 17,
      "name": "Bug Bite",
      "type": "Bug"
+    },
+    {
+     "level": 20,
+     "name": "Clayball",
+     "type": "Ground"
     },
     {
      "level": 22,
@@ -279129,6 +283443,11 @@
      "type": "Fighting"
     },
     {
+     "level": 1,
+     "name": "Sugar Rush",
+     "type": "Fairy"
+    },
+    {
      "level": 5,
      "name": "Baby-Doll Eyes",
      "type": "Fairy"
@@ -279147,6 +283466,11 @@
      "level": 14,
      "name": "Fake Out",
      "type": "Normal"
+    },
+    {
+     "level": 17,
+     "name": "Crush",
+     "type": "Fairy"
     },
     {
      "level": 20,
@@ -279192,6 +283516,11 @@
      "level": 46,
      "name": "Meteor Mash",
      "type": "Steel"
+    },
+    {
+     "level": 49,
+     "name": "Fey Wild",
+     "type": "Fairy"
     },
     {
      "level": 52,
@@ -279359,6 +283688,11 @@
      "type": "Fighting"
     },
     {
+     "level": 1,
+     "name": "Sugar Rush",
+     "type": "Fairy"
+    },
+    {
      "level": 5,
      "name": "Baby-Doll Eyes",
      "type": "Fairy"
@@ -279377,6 +283711,11 @@
      "level": 14,
      "name": "Fake Out",
      "type": "Normal"
+    },
+    {
+     "level": 17,
+     "name": "Crush",
+     "type": "Fairy"
     },
     {
      "level": 20,
@@ -279422,6 +283761,11 @@
      "level": 46,
      "name": "Meteor Mash",
      "type": "Steel"
+    },
+    {
+     "level": 49,
+     "name": "Fey Wild",
+     "type": "Fairy"
     },
     {
      "level": 52,
@@ -279598,6 +283942,11 @@
      "type": "Fighting"
     },
     {
+     "level": 1,
+     "name": "Sugar Rush",
+     "type": "Fairy"
+    },
+    {
      "level": 5,
      "name": "Baby-Doll Eyes",
      "type": "Fairy"
@@ -279616,6 +283965,11 @@
      "level": 14,
      "name": "Fake Out",
      "type": "Normal"
+    },
+    {
+     "level": 17,
+     "name": "Crush",
+     "type": "Fairy"
     },
     {
      "level": 20,
@@ -279661,6 +284015,11 @@
      "level": 46,
      "name": "Meteor Mash",
      "type": "Steel"
+    },
+    {
+     "level": 49,
+     "name": "Fey Wild",
+     "type": "Fairy"
     },
     {
      "level": 52,
@@ -279911,6 +284270,11 @@
      "level": 45,
      "name": "Earthquake",
      "type": "Ground"
+    },
+    {
+     "level": 48,
+     "name": "Brutal Beatdown",
+     "type": "Dark"
     },
     {
      "level": 52,
@@ -280169,6 +284533,11 @@
      "level": 45,
      "name": "Earthquake",
      "type": "Ground"
+    },
+    {
+     "level": 48,
+     "name": "Brutal Beatdown",
+     "type": "Dark"
     },
     {
      "level": 52,
@@ -281940,6 +286309,11 @@
     {
      "level": 28,
      "name": "Dragon Claw",
+     "type": "Dragon"
+    },
+    {
+     "level": 30,
+     "name": "Redline",
      "type": "Dragon"
     },
     {
@@ -283729,6 +288103,11 @@
      "level": 53,
      "name": "Blizzard",
      "type": "Ice"
+    },
+    {
+     "level": 53,
+     "name": "Icebreaker",
+     "type": "Ice"
     }
    ],
    "tmhm": [
@@ -283967,6 +288346,11 @@
      "level": 53,
      "name": "Blizzard",
      "type": "Ice"
+    },
+    {
+     "level": 53,
+     "name": "Icebreaker",
+     "type": "Ice"
     }
    ],
    "tmhm": [
@@ -284124,6 +288508,11 @@
      "type": "Water"
     },
     {
+     "level": 1,
+     "name": "Psy Kick",
+     "type": "Psychic"
+    },
+    {
      "level": 5,
      "name": "Pluck",
      "type": "Flying"
@@ -284147,6 +288536,11 @@
      "level": 15,
      "name": "Bite",
      "type": "Dark"
+    },
+    {
+     "level": 17,
+     "name": "Flash Step",
+     "type": "Psychic"
     },
     {
      "level": 20,
@@ -284197,6 +288591,11 @@
      "level": 45,
      "name": "Crunch",
      "type": "Dark"
+    },
+    {
+     "level": 48,
+     "name": "Occult Razor",
+     "type": "Psychic"
     },
     {
      "level": 51,
@@ -284389,6 +288788,11 @@
      "level": 8,
      "name": "Rest",
      "type": "Psychic"
+    },
+    {
+     "level": 10,
+     "name": "Wave Dash",
+     "type": "Water"
     },
     {
      "level": 12,
@@ -285899,9 +290303,19 @@
      "type": "Normal"
     },
     {
+     "level": 1,
+     "name": "Clayball",
+     "type": "Ground"
+    },
+    {
      "level": 4,
      "name": "Tackle",
      "type": "Normal"
+    },
+    {
+     "level": 8,
+     "name": "Wave Dash",
+     "type": "Water"
     },
     {
      "level": 11,
@@ -286135,9 +290549,19 @@
      "type": "Normal"
     },
     {
+     "level": 1,
+     "name": "Clayball",
+     "type": "Ground"
+    },
+    {
      "level": 4,
      "name": "Tackle",
      "type": "Normal"
+    },
+    {
+     "level": 8,
+     "name": "Wave Dash",
+     "type": "Water"
     },
     {
      "level": 11,
@@ -287084,6 +291508,11 @@
      "level": 52,
      "name": "Sacred Sword",
      "type": "Fighting"
+    },
+    {
+     "level": 55,
+     "name": "Zantetsuken",
+     "type": "Steel"
     }
    ],
    "tmhm": [
@@ -287266,6 +291695,11 @@
      "level": 1,
      "name": "Rock Smash",
      "type": "Fighting"
+    },
+    {
+     "level": 1,
+     "name": "Clayball",
+     "type": "Ground"
     },
     {
      "level": 4,
@@ -287543,6 +291977,11 @@
      "level": 20,
      "name": "Rest",
      "type": "Psychic"
+    },
+    {
+     "level": 24,
+     "name": "Crush",
+     "type": "Fairy"
     },
     {
      "level": 28,
@@ -287843,6 +292282,11 @@
      "type": "Bug"
     },
     {
+     "level": 48,
+     "name": "Brutal Beatdown",
+     "type": "Dark"
+    },
+    {
      "level": 52,
      "name": "Power Whip",
      "type": "Grass"
@@ -288006,6 +292450,11 @@
      "level": 1,
      "name": "Disarming Voice",
      "type": "Fairy"
+    },
+    {
+     "level": 1,
+     "name": "Spook",
+     "type": "Ghost"
     },
     {
      "level": 4,
@@ -288731,6 +293180,11 @@
      "type": "Steel"
     },
     {
+     "level": 1,
+     "name": "Clayball",
+     "type": "Ground"
+    },
+    {
      "level": 4,
      "name": "Rapid Spin",
      "type": "Normal"
@@ -289209,6 +293663,11 @@
      "type": "Normal"
     },
     {
+     "level": 6,
+     "name": "Surge",
+     "type": "Electric"
+    },
+    {
      "level": 8,
      "name": "Whirlwind",
      "type": "Normal"
@@ -289444,6 +293903,11 @@
      "level": 1,
      "name": "Gust",
      "type": "Flying"
+    },
+    {
+     "level": 1,
+     "name": "Disorient",
+     "type": "Dark"
     },
     {
      "level": 4,
@@ -289940,6 +294404,11 @@
      "level": 1,
      "name": "Iron Defense",
      "type": "Steel"
+    },
+    {
+     "level": 1,
+     "name": "Surge",
+     "type": "Electric"
     },
     {
      "level": 4,
@@ -290996,6 +295465,11 @@
      "type": "Normal"
     },
     {
+     "level": 1,
+     "name": "Spook",
+     "type": "Ghost"
+    },
+    {
      "level": 4,
      "name": "Night Shade",
      "type": "Ghost"
@@ -291009,6 +295483,11 @@
      "level": 12,
      "name": "Substitute",
      "type": "Normal"
+    },
+    {
+     "level": 15,
+     "name": "Glint",
+     "type": "Steel"
     },
     {
      "level": 18,
@@ -291059,6 +295538,11 @@
      "level": 41,
      "name": "Memento",
      "type": "Dark"
+    },
+    {
+     "level": 45,
+     "name": "Beckon",
+     "type": "Ghost"
     }
    ],
    "tmhm": [
@@ -291210,6 +295694,11 @@
      "type": "Normal"
     },
     {
+     "level": 1,
+     "name": "Spook",
+     "type": "Ghost"
+    },
+    {
      "level": 4,
      "name": "Night Shade",
      "type": "Ghost"
@@ -291223,6 +295712,11 @@
      "level": 12,
      "name": "Substitute",
      "type": "Normal"
+    },
+    {
+     "level": 15,
+     "name": "Glint",
+     "type": "Steel"
     },
     {
      "level": 18,
@@ -291278,6 +295772,11 @@
      "level": 48,
      "name": "Make it Rain",
      "type": "Steel"
+    },
+    {
+     "level": 52,
+     "name": "Beckon",
+     "type": "Ghost"
     }
    ],
    "tmhm": [
@@ -291439,6 +295938,11 @@
      "type": "Normal"
     },
     {
+     "level": 8,
+     "name": "Disorient",
+     "type": "Dark"
+    },
+    {
      "level": 12,
      "name": "Poison Powder",
      "type": "Poison"
@@ -291527,6 +296031,11 @@
      "level": 52,
      "name": "Grassy Terrain",
      "type": "Grass"
+    },
+    {
+     "level": 56,
+     "name": "Wither",
+     "type": "Dark"
     },
     {
      "level": 60,
@@ -291792,6 +296301,16 @@
      "level": 52,
      "name": "Snowscape",
      "type": "Ice"
+    },
+    {
+     "level": 56,
+     "name": "Brutal Beatdown",
+     "type": "Dark"
+    },
+    {
+     "level": 60,
+     "name": "Icebreaker",
+     "type": "Ice"
     }
    ],
    "tmhm": [
@@ -291954,6 +296473,11 @@
      "type": "Ghost"
     },
     {
+     "level": 1,
+     "name": "Clayball",
+     "type": "Ground"
+    },
+    {
      "level": 4,
      "name": "Sand Attack",
      "type": "Ground"
@@ -292047,6 +296571,11 @@
      "level": 52,
      "name": "Sandstorm",
      "type": "Rock"
+    },
+    {
+     "level": 56,
+     "name": "Brutal Beatdown",
+     "type": "Dark"
     },
     {
      "level": 60,
@@ -292220,6 +296749,11 @@
      "type": "Normal"
     },
     {
+     "level": 8,
+     "name": "Disorient",
+     "type": "Dark"
+    },
+    {
      "level": 12,
      "name": "Will-O-Wisp",
      "type": "Fire"
@@ -292303,6 +296837,11 @@
      "level": 52,
      "name": "Sunny Day",
      "type": "Fire"
+    },
+    {
+     "level": 56,
+     "name": "Wither",
+     "type": "Dark"
     },
     {
      "level": 60,
@@ -292464,6 +297003,11 @@
      "type": "Normal"
     },
     {
+     "level": 1,
+     "name": "Draco Jet",
+     "type": "Dragon"
+    },
+    {
      "level": 4,
      "name": "Flame Charge",
      "type": "Fire"
@@ -292532,6 +297076,11 @@
      "level": 48,
      "name": "Roost",
      "type": "Flying"
+    },
+    {
+     "level": 50,
+     "name": "Brutal Beatdown",
+     "type": "Dark"
     },
     {
      "level": 52,
@@ -292721,6 +297270,11 @@
      "level": 1,
      "name": "Vacuum Wave",
      "type": "Fighting"
+    },
+    {
+     "level": 1,
+     "name": "Butterfly Knife",
+     "type": "Fairy"
     },
     {
      "level": 4,
@@ -292998,6 +297552,11 @@
      "type": "Dragon"
     },
     {
+     "level": 1,
+     "name": "Draco Jet",
+     "type": "Dragon"
+    },
+    {
      "level": 4,
      "name": "Flame Charge",
      "type": "Fire"
@@ -293041,6 +297600,11 @@
      "level": 32,
      "name": "Drain Punch",
      "type": "Fighting"
+    },
+    {
+     "level": 34,
+     "name": "Redline",
+     "type": "Dragon"
     },
     {
      "level": 36,
@@ -293247,6 +297811,11 @@
      "type": "Dragon"
     },
     {
+     "level": 1,
+     "name": "Draco Jet",
+     "type": "Dragon"
+    },
+    {
      "level": 4,
      "name": "Ember",
      "type": "Fire"
@@ -293290,6 +297859,11 @@
      "level": 32,
      "name": "Parabolic Charge",
      "type": "Electric"
+    },
+    {
+     "level": 34,
+     "name": "Redline",
+     "type": "Dragon"
     },
     {
      "level": 36,
@@ -293827,6 +298401,11 @@
      "type": "Fighting"
     },
     {
+     "level": 48,
+     "name": "Brutal Beatdown",
+     "type": "Dark"
+    },
+    {
      "level": 50,
      "name": "Raging Fury",
      "type": "Fire"
@@ -294264,6 +298843,11 @@
      "type": "Normal"
     },
     {
+     "level": 1,
+     "name": "Psy Kick",
+     "type": "Psychic"
+    },
+    {
      "level": 4,
      "name": "Trailblaze",
      "type": "Grass"
@@ -294277,6 +298861,11 @@
      "level": 12,
      "name": "Quick Guard",
      "type": "Fighting"
+    },
+    {
+     "level": 16,
+     "name": "Flash Step",
+     "type": "Psychic"
     },
     {
      "level": 20,
@@ -294337,6 +298926,11 @@
      "level": 50,
      "name": "Solar Blade",
      "type": "Grass"
+    },
+    {
+     "level": 52,
+     "name": "Occult Razor",
+     "type": "Psychic"
     }
    ],
    "tmhm": [
@@ -294500,6 +299094,11 @@
      "type": "Normal"
     },
     {
+     "level": 4,
+     "name": "Psy Kick",
+     "type": "Psychic"
+    },
+    {
      "level": 8,
      "name": "Horn Attack",
      "type": "Normal"
@@ -294573,6 +299172,11 @@
      "level": 50,
      "name": "Close Combat",
      "type": "Fighting"
+    },
+    {
+     "level": 52,
+     "name": "Occult Razor",
+     "type": "Psychic"
     }
    ],
    "tmhm": [
@@ -294721,6 +299325,11 @@
      "level": 1,
      "name": "Confusion",
      "type": "Psychic"
+    },
+    {
+     "level": 4,
+     "name": "Glint",
+     "type": "Steel"
     },
     {
      "level": 8,
@@ -294953,7 +299562,7 @@
    {
     "stage": 3,
     "name": "Hydrapple",
-    "min": null
+    "min": 35
    }
   ],
   "moves": {
@@ -296070,6 +300679,11 @@
      "type": "Poison"
     },
     {
+     "level": 45,
+     "name": "Brutal Beatdown",
+     "type": "Dark"
+    },
+    {
      "level": 48,
      "name": "Superpower",
      "type": "Fighting"
@@ -296246,6 +300860,11 @@
      "type": "Poison"
     },
     {
+     "level": 1,
+     "name": "Disorient",
+     "type": "Dark"
+    },
+    {
      "level": 6,
      "name": "Helping Hand",
      "type": "Normal"
@@ -296314,6 +300933,11 @@
      "level": 42,
      "name": "Sludge Wave",
      "type": "Poison"
+    },
+    {
+     "level": 45,
+     "name": "Wither",
+     "type": "Dark"
     },
     {
      "level": 48,
@@ -296486,6 +301110,11 @@
      "type": "Poison"
     },
     {
+     "level": 1,
+     "name": "Butterfly Knife",
+     "type": "Fairy"
+    },
+    {
      "level": 6,
      "name": "Attract",
      "type": "Normal"
@@ -296554,6 +301183,16 @@
      "level": 42,
      "name": "Gunk Shot",
      "type": "Poison"
+    },
+    {
+     "level": 45,
+     "name": "Brutal Beatdown",
+     "type": "Dark"
+    },
+    {
+     "level": 48,
+     "name": "Fey Wild",
+     "type": "Fairy"
     },
     {
      "level": 51,
@@ -297001,6 +301640,11 @@
      "type": "Normal"
     },
     {
+     "level": 1,
+     "name": "Clayball",
+     "type": "Ground"
+    },
+    {
      "level": 4,
      "name": "Lick",
      "type": "Ghost"
@@ -297089,6 +301733,11 @@
      "level": 49,
      "name": "Hyper Voice",
      "type": "Normal"
+    },
+    {
+     "level": 52,
+     "name": "Mudslide",
+     "type": "Ground"
     }
    ],
    "tmhm": [
@@ -297261,6 +301910,11 @@
      "level": 1,
      "name": "Leer",
      "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Glint",
+     "type": "Steel"
     },
     {
      "level": 6,
@@ -297754,6 +302408,11 @@
      "type": "Dark"
     },
     {
+     "level": 1,
+     "name": "Spook",
+     "type": "Ghost"
+    },
+    {
      "level": 4,
      "name": "Withdraw",
      "type": "Water"
@@ -297817,6 +302476,11 @@
      "level": 41,
      "name": "Psychic",
      "type": "Psychic"
+    },
+    {
+     "level": 44,
+     "name": "Beckon",
+     "type": "Ghost"
     },
     {
      "level": 48,
@@ -311115,7 +315779,78 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 0,
+     "name": "Wicked Blow",
+     "type": "Dark"
+    },
+    {
+     "level": 4,
+     "name": "Endure",
+     "type": "Normal"
+    },
+    {
+     "level": 8,
+     "name": "Focus Energy",
+     "type": "Normal"
+    },
+    {
+     "level": 12,
+     "name": "Aerial Ace",
+     "type": "Flying"
+    },
+    {
+     "level": 16,
+     "name": "Scary Face",
+     "type": "Normal"
+    },
+    {
+     "level": 20,
+     "name": "Headbutt",
+     "type": "Normal"
+    },
+    {
+     "level": 24,
+     "name": "Brick Break",
+     "type": "Fighting"
+    },
+    {
+     "level": 28,
+     "name": "Detect",
+     "type": "Normal"
+    },
+    {
+     "level": 32,
+     "name": "Bulk Up",
+     "type": "Fighting"
+    },
+    {
+     "level": 36,
+     "name": "Iron Head",
+     "type": "Steel"
+    },
+    {
+     "level": 40,
+     "name": "Dynamic Punch",
+     "type": "Fighting"
+    },
+    {
+     "level": 44,
+     "name": "Counter",
+     "type": "Fighting"
+    },
+    {
+     "level": 48,
+     "name": "Close Combat",
+     "type": "Fighting"
+    },
+    {
+     "level": 52,
+     "name": "Focus Punch",
+     "type": "Fighting"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []
@@ -311233,7 +315968,78 @@
    "high": []
   },
   "moves": {
-   "levelup": [],
+   "levelup": [
+    {
+     "level": 0,
+     "name": "Surging Strikes",
+     "type": "Water"
+    },
+    {
+     "level": 4,
+     "name": "Endure",
+     "type": "Normal"
+    },
+    {
+     "level": 8,
+     "name": "Focus Energy",
+     "type": "Normal"
+    },
+    {
+     "level": 12,
+     "name": "Aerial Ace",
+     "type": "Flying"
+    },
+    {
+     "level": 16,
+     "name": "Scary Face",
+     "type": "Normal"
+    },
+    {
+     "level": 20,
+     "name": "Headbutt",
+     "type": "Normal"
+    },
+    {
+     "level": 24,
+     "name": "Brick Break",
+     "type": "Fighting"
+    },
+    {
+     "level": 28,
+     "name": "Detect",
+     "type": "Normal"
+    },
+    {
+     "level": 32,
+     "name": "Bulk Up",
+     "type": "Fighting"
+    },
+    {
+     "level": 36,
+     "name": "Iron Head",
+     "type": "Steel"
+    },
+    {
+     "level": 40,
+     "name": "Dynamic Punch",
+     "type": "Fighting"
+    },
+    {
+     "level": 44,
+     "name": "Counter",
+     "type": "Fighting"
+    },
+    {
+     "level": 48,
+     "name": "Close Combat",
+     "type": "Fighting"
+    },
+    {
+     "level": 52,
+     "name": "Focus Punch",
+     "type": "Fighting"
+    }
+   ],
    "tmhm": [],
    "egg": [],
    "tutor": []

@@ -143,11 +143,17 @@ on conflict (id) do update set public = true;
 drop policy if exists "images public read"  on storage.objects;
 drop policy if exists "images anon insert"  on storage.objects;
 drop policy if exists "images anon update"  on storage.objects;
+drop policy if exists "images anon delete"  on storage.objects;
 create policy "images public read"  on storage.objects for select
   to anon, authenticated using (bucket_id = 'images');
 create policy "images anon insert"  on storage.objects for insert
   to anon, authenticated with check (bucket_id = 'images');
 create policy "images anon update"  on storage.objects for update
   to anon, authenticated using (bucket_id = 'images') with check (bucket_id = 'images');
+-- DELETE is required by removeStoredImg() in app.js: deleting a map background (or a whole map)
+-- frees the file instead of orphaning it. Without this policy that call fails silently and the
+-- bucket fills with unreferenced images again -- the old project had ~18 MB of them.
+create policy "images anon delete"  on storage.objects for delete
+  to anon, authenticated using (bucket_id = 'images');
 
 -- Done. Copy Project URL + anon key into config.js, then deploy.

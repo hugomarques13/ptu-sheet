@@ -240,8 +240,20 @@ const STATUS_DEFS = [
      turn actually needs. */
   {key:"vortex", name:"Vortex", kind:"other", cap:0,
    effect:"Slowed and Trapped, and loses a Tick of Hit Points at the beginning of each of its turns. At the end of each turn it may roll 1d20 to end all of it — DC 20 on the first turn, then 14, 8, 2, and it wears off by itself on the fifth turn. Ticking this chip also applies Slowed and Trapped; unticking it removes them."},
+  /* The Disarm Maneuver (Core p.241): "You and the target each make opposed Combat or Stealth
+     Checks. If you win, the target's Held Item (Main Hand or Off-Hand for humans) falls to the
+     ground." The item isn't destroyed — it is on the floor until somebody picks it up — so rather
+     than blanking the Held Item field (and losing which item it was) this chip switches the item
+     OFF while it lasts. Every effect the sheet reads off held/worn gear goes quiet with it. */
+  {key:"disarmed", name:"Disarmed", kind:"other", cap:0,
+   effect:"The Held Item is on the ground and does nothing while this lasts — every bonus it was giving is switched off, but the item is remembered, so unticking this hands it straight back. A Pokémon loses its Held Item; a Trainer loses only what is in their hands (the Hands and Off-Hand slots) — armour, boots and accessories stay on. Picking the item back up is a Standard Action. Items that cannot be knocked loose (a Mega Stone, a fastened collar, worn Fashion) keep working — see the Held Item's own note."},
   {key:"tripped", name:"Tripped", kind:"other", cap:0,
    effect:"Must spend a Shift Action to get up before taking other actions. Always considered Vulnerable."},
+  /* Flanking (Core p.232). Positional, so on a shared Map the sheet works it out by itself and
+     ticks this chip on and off as tokens move (see sweepMapAuras); the chip is still here to be
+     toggled by hand for a table running the fight without the board. */
+  {key:"flanked", name:"Flanked", kind:"other", cap:0,
+   effect:"−2 Evasion. Flanked when at least two foes are adjacent to you but not adjacent to each other (three for Large, four for Huge, five for Gigantic; a foe occupying several adjacent squares counts once per square, but one combatant can never Flank alone). On the 🗺 Map this is applied and lifted automatically as tokens move."},
   {key:"vulnerable", name:"Vulnerable", kind:"other", cap:0,
    effect:"Cannot apply Evasion of any sort against attacks. (Blinded, Sleeping, Fainted, Frozen, and Tripped targets are always considered Vulnerable too.)"},
   {key:"blinded", name:"Blinded", kind:"other", cap:0,
@@ -381,7 +393,8 @@ function moveWithCS(base, shift){
 }
 /* Status Afflictions that impose Combat Stages (Core p.245-246). Paralysis is NOT here — the Feb
    2016 errata replaced its −4 Speed CS with an Initiative-halving effect instead (see tokenInitiative). */
-const CONDITION_CS = { burned:{def:-2}, poisoned:{spdef:-2}, badlyPoisoned:{spdef:-2}, blinded:{acc:-6} };
+const CONDITION_CS = { burned:{def:-2}, poisoned:{spdef:-2}, badlyPoisoned:{spdef:-2}, blinded:{acc:-6},
+                       flanked:{eva:-2} };   // Flanking (Core p.232): "a -2 penalty to their Evasion" 
 function conditionCSMods(p){
   const m = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
   (p.statuses||[]).forEach(k=>{ const c=CONDITION_CS[k]; if(c) for(const s in c) m[s]+=c[s]; });
@@ -434,8 +447,9 @@ function effectiveCS(p){
   const cond = conditionCSMods(p), wx = weatherCSMods(p), ab = abilityStatusCS(p), aura = auraCSMods(p), out = {};
   const eqSpd = isTrainerOwner(p) ? equipSpeedCS(p) : 0;   // Heavy Armor & co. shift the Speed default CS
   const tr = trainedCSMods(p);                             // Ace Trainer / Athlete Trained Stats
-  CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + wx[k] + (ab[k]||0) + aura[k] + (tr[k]||0) + (k==="spd"?eqSpd:0))));
-  ACC_EVA_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + (ab[k]||0) + aura[k])));
+  const hi = heldCSMods(p);                                // Choice Items, Stat Boosters, Lagging Items…
+  CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + wx[k] + (ab[k]||0) + aura[k] + (tr[k]||0) + (hi[k]||0) + (k==="spd"?eqSpd:0))));
+  ACC_EVA_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + (ab[k]||0) + aura[k] + (hi[k]||0))));
   return out;
 }
 /* the part of effectiveCS that is applied AUTOMATICALLY — status conditions, weather abilities,
@@ -448,9 +462,10 @@ function csAutoMods(p){
   const cond = conditionCSMods(p), wx = weatherCSMods(p), ab = abilityStatusCS(p), aura = auraCSMods(p);
   const eqSpd = isTrainerOwner(p) ? equipSpeedCS(p) : 0;
   const tr = trainedCSMods(p);
+  const hi = heldCSMods(p);
   const out = {};
-  CS_STATS.forEach(([k]) => out[k] = (cond[k]||0) + (wx[k]||0) + (ab[k]||0) + (aura[k]||0) + (tr[k]||0) + (k==="spd"?eqSpd:0));
-  ACC_EVA_STATS.forEach(([k]) => out[k] = (cond[k]||0) + (ab[k]||0) + (aura[k]||0));
+  CS_STATS.forEach(([k]) => out[k] = (cond[k]||0) + (wx[k]||0) + (ab[k]||0) + (aura[k]||0) + (tr[k]||0) + (hi[k]||0) + (k==="spd"?eqSpd:0));
+  ACC_EVA_STATS.forEach(([k]) => out[k] = (cond[k]||0) + (ab[k]||0) + (aura[k]||0) + (hi[k]||0));
   return out;
 }
 /* Combat Stages a creature set by hand (everything csAutoMods doesn't account for) — reset at the
@@ -462,6 +477,22 @@ function resetManualCS(o){
   return changed;
 }
 function hasStatus(p, key){ return Array.isArray(p.statuses) && p.statuses.includes(key); }
+/* Status keys are a plain array, written by ~15 different places (auto-KO, auto-Death, rolled
+   effects, the Arcana, the chips on four different cards, and a cloud row adopted from another
+   client). Any two of those racing, or an older sheet saved before a guard was added, leaves the
+   same key in the list twice - and every renderer draws one chip per ENTRY, so the affliction
+   shows up two or three times. One key can only ever be on or off, so the list is deduped
+   wherever it is normalised, written or read for display. */
+function dedupeStatuses(o){
+  if(!o || !Array.isArray(o.statuses)) return false;
+  const seen = new Set(), out = [];
+  for(const k of o.statuses){ if(!k || seen.has(k)) continue; seen.add(k); out.push(k); }
+  if(out.length === o.statuses.length) return false;
+  o.statuses = out;
+  return true;
+}
+/* the same, for a bare list of keys on the way into a writer */
+function uniqStatusKeys(keys){ return [...new Set((keys||[]).filter(Boolean))]; }
 /* ---- Momentum: the Duelist class mechanic (Core Extras — Class Mechanics) ----
    "Your Pokemon begins each Scene with 0 Momentum. At the end of each Combat round, your Pokemon
    gains +1 Momentum. Whenever your Pokemon hits a Tagged foe, they gain +1 Momentum. Your Pokemon
@@ -501,8 +532,9 @@ function clearOtherTags(except){
   return n;
 }
 function toggleStatus(p, key){ p.statuses = p.statuses||[];
+  dedupeStatuses(p);
   const i=p.statuses.indexOf(key);
-  if(i>=0){ const w = statusCureBlock(p, key); p.statuses.splice(i,1); if(w) toast(w); }
+  if(i>=0){ const w = statusCureBlock(p, key); p.statuses = p.statuses.filter(k=>k!==key); if(w) toast(w); }
   else p.statuses.push(key);
   if(key==="vortex") onVortexToggled(p, p.statuses.includes(key));
   save(); }
@@ -731,6 +763,7 @@ const WEATHER_DEFS = [
     abilityDmgTypes:{ "Sand Force":{ types:["ground","rock","steel"], dmg:+5 } },
     ticks:[
       { all:true, exceptTypes:["ground","rock","steel"], immuneAbilities:["Desert Weather","Sand Veil"],
+        immuneItems:["Go-Goggles"],
         when:"start", sign:-1, kind:"tick", label:"Sandstorm — loses a Tick" },
     ],
     rules:[
@@ -747,7 +780,8 @@ const WEATHER_DEFS = [
     abilityEvasion:{ "Snow Cloak":2 },
     halveMovementAbilities:["Thermosensitive"],
     ticks:[
-      { all:true, exceptTypes:["ice"], when:"start", sign:-1, kind:"tick", label:"Hail — loses a Tick" },
+      { all:true, exceptTypes:["ice"], immuneItems:["Winter Cloak"],
+        when:"start", sign:-1, kind:"tick", label:"Hail — loses a Tick" },
       { ability:"Ice Body", when:"start", sign:+1, kind:"tick", label:"Ice Body — gains a Tick" },
     ],
     rules:[
@@ -831,6 +865,8 @@ function weatherTickReport(p){
     if(t.all){
       if((t.exceptTypes||[]).some(ty=>types.includes(ty))) return;              // typed out of it
       if((t.immuneAbilities||[]).some(ab=>monHasAbility(p, ab))) return;         // ability immunity
+      // …and the two items that simply keep the weather off (Go-Goggles, Winter Cloak)
+      if((t.immuneItems||[]).some(it => wornOrHeldNames(p).some(n => normItemName(n)===normItemName(it)))) return;
     }
     const amt = t.kind==="sixteenth" ? hpSixteenth(maxHP) : hpTick(maxHP);
     out.push({ label:t.label, delta:t.sign*amt, when:t.when });
@@ -993,6 +1029,10 @@ function evolveTo(p, targetName, stoneItem){
   // The Empress ▼ — nothing in this Trainer's care grows until the GM lifts it
   if(trainerBarren(activeChar().trainer) && !p.unlocked){
     toast("The Barren Season — no Pokémon in your care may evolve while The Empress ▼ holds."); return; }
+  // Everstone / Eviolite: "prevents Pokémon from evolving while held"
+  const evoBlock = heldBlocksEvolution(p);
+  if(evoBlock && !p.unlocked){
+    toast(`${evoBlock} prevents evolution while it is held — take it off first.`); return; }
   const stoneMsg = stoneItem ? `\nThis consumes one ${stoneItem.name} from your inventory.` : "";
   if(!confirm(`Evolve ${p.nickname || from?.name || "this Pokémon"} into ${sp.name}?\nStats, moves, abilities, level and XP are kept.${stoneMsg}`)) return;
   if(stoneItem){
@@ -1323,7 +1363,7 @@ const zUseKey = crystal => useKey("zpower", crystal);
    one and when the Types don't match. A Z-Crystal whose Scene use is already spent still comes back
    (with spent:true) so the roll window can SAY it's spent instead of silently dropping the option. */
 function heldTypeBoost(p, mtype){
-  const held = String((p && p.heldItem) || "").trim();
+  const held = heldItemActive(p).trim();          // "" while Disarmed — a Gem on the floor fires nothing
   if(!held || !mtype) return null;
   const gemType = gemTypeOf(held);
   if(gemType) return gemType===mtype
@@ -1344,6 +1384,7 @@ function spendTypeBoost(p, boost){
   const t = charOfMon(p)?.trainer;
   if(t) consumeInventoryItem(t, boost.item);
   p.heldItem = "";
+  syncHeldStatuses(p);            // a consumed Gem stops forcing whatever it forced
 }
 /* ===================================================================
    TYPE BOOSTERS — Charcoal, Never-Melt Ice, Twisted Spoon…
@@ -1394,13 +1435,42 @@ function typeBoosterTypeOf(name){
   const n = normItemName(name); if(!n) return null;
   return typeBoosterIndex().get(n) || null;
 }
+/* Slots a Disarm can empty on a human: "Main Hand or Off-Hand" (Core p.241). Armour, boots and
+   accessories are not in anybody's hand and stay put. */
+const DISARMABLE_SLOTS = new Set(["Hands", "Off-Hand"]);
+/* Can this particular item be knocked out of a creature's grip at all? Mega Stones are bonded
+   rather than held (and disarming one would silently unravel a Mega Evolution), and a few rows say
+   so themselves with `noDisarm`. */
+function itemCanBeDisarmed(name){
+  const fx = heldFxFor(name);
+  if(fx && fx.noDisarm) return false;
+  if(megaStoneNames().has(normItemName(name))) return false;
+  return true;
+}
 /* every item name this creature has ON it right now — a Trainer's worn Equipment slots, a
    Pokémon's single Held Item. The two are the same question ("is it carrying an X?") asked of two
-   different fields, so everything that has to answer it reads this. */
+   different fields, so everything that has to answer it reads this.
+   While Disarmed, whatever could be knocked loose is on the floor and answers nothing (see the
+   `disarmed` chip); the item itself is still remembered, so unticking hands it straight back. */
 function wornOrHeldNames(owner){
   if(!owner) return [];
-  return isTrainerOwner(owner) ? equippedList(owner).map(e=>e.name)
-                               : [String(owner.heldItem||"")].filter(Boolean);
+  const down = hasStatus(owner, "disarmed");
+  if(isTrainerOwner(owner))
+    return equippedList(owner)
+      .filter(e => !(down && DISARMABLE_SLOTS.has(e.slot) && itemCanBeDisarmed(e.name)))
+      .map(e => e.name);
+  const held = String(owner.heldItem||"").trim();
+  if(!held) return [];
+  if(down && itemCanBeDisarmed(held)) return [];
+  return [held];
+}
+/* The Held Item a Pokémon is actually USING right now — "" while it lies Disarmed on the ground.
+   The direct readers (Gems/Z-Crystals, Thick Club) go through this rather than `p.heldItem`, so a
+   Disarm silences them too. megaFormsFor deliberately does NOT: a Mega Evolution already happened,
+   and knocking the stone loose must not quietly undo it. */
+function heldItemActive(owner){
+  const n = wornOrHeldNames(owner);
+  return (owner && owner.species !== undefined) ? (n[0] || "") : "";
 }
 /* the Booster this owner is carrying that matches a Move going out as `mtype` — null when it isn't
    carrying one, or when the Types don't line up. Held Item for a Pokémon, worn gear for a Trainer. */
@@ -1412,6 +1482,320 @@ function typeBoosterFor(owner, mtype){
   return null;
 }
 function typeBoosterDmg(owner, mtype){ const b = typeBoosterFor(owner, mtype); return b ? b.dmg : 0; }
+
+/* ===================================================================
+   HELD & WORN ITEM EFFECTS
+   -------------------------------------------------------------------
+   The catalogue carries 256 Held Items. A handful were already automated as whole families —
+   Type Gems and Z-Crystals (heldTypeBoost), Type Boosters and Plates (typeBoosterFor), the ~90 Mega
+   Stones (megaFormsFor) — but everything with a plain numeric effect was reference text only: you
+   could put a Choice Band on a Pokémon and nothing anywhere changed.
+
+   This is the rest of them, in one table, keyed through normItemName so spelling and punctuation
+   never matter. Every field is read by an existing pipeline, so an item only ever has to be
+   described here:
+
+     cs {stat:n}       default Combat Stages     → heldCSMods   → effectiveCS / csAutoMods
+     stat {stat:n}     flat bonus AFTER Combat Stages           → pokeDerived's eff
+     eva {all,spd}     flat Evasion                             → pokeDerived / trainerDerived
+     immune [Type]     outright Type immunity   → heldDefenseMods → defenseTypeMods
+     loseImmune [Type] cancels a Type immunity the holder has
+     typeDR {Type:n}   flat Damage Reduction against that Type
+     crit n            widens the Critical Hit range            → critThreshold
+     dmg n             flat bonus on every damaging attack      → the two roll windows
+     status [key]      an Affliction the item forces on its holder → syncHeldStatuses
+     stickyStatus      that Affliction OUTLIVES the item (a Flame Orb's Burn is a real Burn);
+                       without it the chip is lifted the moment the item comes off
+     noEvolve          the holder cannot evolve                 → evolveTo
+     grantsAbility     the holder counts as having that Ability → ownerHasAbility
+     onlySpecies       the whole row only applies to that species (Metal Powder, Rare Leek)
+     rollNote          a line printed in the attack window, for the parts only the table can judge
+     note              a line printed under the Held Item field
+
+   Anything whose effect is a TRIGGER somebody has to call (Focus Band, Shock Collar, Life Orb's
+   recoil, Air Balloon popping) also gets a one-tap button through GEAR_ACTIONS further down.
+=================================================================== */
+const CHOICE_SUPPRESS_NOTE = "Choice Item: the holder is Suppressed and — RAW — cannot be cured of it until the end of Combat even if the item is taken off, so unequipping does NOT lift the chip. End Scene clears it like any other Volatile Affliction.";
+const HELD_FX = {
+  /* ---- Choice Items: a default state of +2 Combat Stages, paid for with Suppression ---- */
+  "choiceband":   { cs:{atk:2},   status:["suppressed"], stickyStatus:true, note:CHOICE_SUPPRESS_NOTE },
+  "choicespecs":  { cs:{spatk:2}, status:["suppressed"], stickyStatus:true, note:CHOICE_SUPPRESS_NOTE },
+  "choicescarf":  { cs:{spd:2},   status:["suppressed"], stickyStatus:true, note:CHOICE_SUPPRESS_NOTE },
+  "choiceitemdef":  { cs:{def:2},   status:["suppressed"], stickyStatus:true, note:CHOICE_SUPPRESS_NOTE },
+  "choiceitemsdef": { cs:{spdef:2}, status:["suppressed"], stickyStatus:true, note:CHOICE_SUPPRESS_NOTE },
+  /* ---- Stat Boosters: a default state of +1 ---- */
+  "attackbooster":     { cs:{atk:1} },
+  "defensebooster":    { cs:{def:1} },
+  "sattackbooster":    { cs:{spatk:1} },
+  "specialattackbooster":  { cs:{spatk:1} },
+  "sdefensebooster":   { cs:{spdef:1} },
+  "specialdefensebooster": { cs:{spdef:1} },
+  "speedbooster":      { cs:{spd:1} },
+  "accuracybooster":   { cs:{acc:1} },
+  "evasionbooster":    { cs:{eva:1} },
+  /* ---- Lagging Items: the named Stat is set to −4 Combat Stages ---- */
+  "laggingtail":      { cs:{spd:-4},   note:"Lagging Tail: Speed is set to −4 Combat Stages. Standard Action to drop." },
+  "laggingitematk":   { cs:{atk:-4},   note:"Attack is set to −4 Combat Stages. Standard Action to drop." },
+  "laggingitemdef":   { cs:{def:-4},   note:"Defense is set to −4 Combat Stages. Standard Action to drop." },
+  "laggingitemsatk":  { cs:{spatk:-4}, note:"Special Attack is set to −4 Combat Stages. Standard Action to drop." },
+  "laggingitemsdef":  { cs:{spdef:-4}, note:"Special Defense is set to −4 Combat Stages. Standard Action to drop." },
+  /* ---- Evasion ---- */
+  "brightpowder": { eva:{spd:2} },
+  "laxincense":   { eva:{all:1} },
+  /* ---- defence ---- */
+  "airballoon":   { immune:["Ground"],
+                    note:"Air Balloon: immune to Ground-Type Moves — and it BREAKS the first time the holder is hit by a damaging Move (tap the token and press 💨 Air Balloon to pop it)." },
+  "ironball":     { cs:{spd:-5}, loseImmune:["Ground"],
+                    note:"Iron Ball: Speed halved (applied as −5 Combat Stages, the ×0.5 step), and an Ability-granted immunity to Ground (Levitate, Air Balloon) is cancelled. A FLYING-Type's immunity comes off the Type chart itself — nudge that one with the ± Effectiveness buttons on the token's damage tool. Standard Action to drop." },
+  "safetygoggles":{ note:"Safety Goggles: immune to Moves with the Powder keyword (Sleep Powder, Stun Spore, Spore, Poison Powder, Rage Powder, Cotton Spore…)." },
+  "gogoggles":    { note:"Go-Goggles: takes no Sandstorm damage — already left out of the weather tick." },
+  "wintercloak":  { note:"Winter Cloak: takes no Hail damage — already left out of the weather tick." },
+  "eviolite":     { stat:{def:5, spdef:5}, noEvolve:true,
+                    note:"Eviolite: +5 to two Stats after Combat Stages — this sheet applies Defense and Special Defense, the pair an Eviolite is normally made for; tell the GM if yours was made for a different two. Only works on a not-fully-evolved Pokémon, and prevents it evolving while held." },
+  /* ---- Incenses ---- */
+  "luckincense":  { cs:{acc:1},
+                    rollNote:"Luck Incense: the +1 Accuracy is already in the roll — but a natural 1 still always misses." },
+  /* ---- offence ---- */
+  "razorclaw":    { crit:1 },
+  "expertbelt":   { seFlat:5,
+                    rollNote:"Expert Belt: +5 damage on a Super-Effective hit, applied per target by the 🎯 target picker (and NOT multiplied)." },
+  "quickclaw":    { init:10 },
+  "thickclub":    { grantsAbility:"Pure Power", onlySpecies:["Cubone","Marowak","Marowak Alolan","Alolan Marowak"],
+                    note:"Thick Club: grants Pure Power (Base Attack doubled) to a Cubone or Marowak. Wielded." },
+  "pinkpearl":    { cs:{spatk:1}, onlySpecies:["Spoink","Grumpig"],
+                    note:"Pink Pearl: acts as a Psychic Type Booster for anyone (already applied), and as a Special Attack Booster for a Spoink." },
+  "rareleek":     { crit:2, onlySpecies:["Farfetch'd","Farfetch'D","Sirfetch'd","Sirfetch'D"],
+                    note:"Rare Leek: +2 Critical Hit range (Farfetch'd family only). Wielded." },
+  "lifeorb":      { dmg:5, rollNote:"Life Orb: +5 damage is already in the roll — the holder then loses 1/16th of its Max HP (tap its token and press 💢 Life Orb)." },
+  "kingsrock":    { rollNote:"King's Rock: the attack Flinches its target on an Accuracy roll of 19+. Does not stack with anything else that extends Flinch range." },
+  "razorfang":    { rollNote:"Razor Fang: the attack causes an Injury on an Accuracy roll of 19+." },
+  "bigroot":      { rollNote:"Big Root: an HP-stealing Move restores DOUBLE the Hit Points." },
+  "metalpowder":  { cs:{def:2, spdef:2}, onlySpecies:["Ditto"],
+                    note:"Metal Powder: +2 Defense and +2 Special Defense Combat Stages while this Ditto is untransformed." },
+  /* ---- self-inflicted ---- */
+  /* The Orbs inflict a REAL affliction — dropping the Orb doesn't put the fire out, so the chip
+     stays and is cured like any other Burn/Poison. */
+  "flameorb":     { status:["burned"], stickyStatus:true,
+                    note:"Flame Orb: Burns its holder. Standard Action to drop — but the Burn is a real affliction and stays until it is cured." },
+  "toxicorb":     { status:["poisoned"], stickyStatus:true,
+                    note:"Toxic Orb: Poisons its holder. Standard Action to drop — but the Poison is a real affliction and stays until it is cured." },
+  /* ---- other ---- */
+  "everstone":    { noEvolve:true, note:"Everstone: the holder cannot evolve while it holds this." },
+  "fullincense":  { grantsAbility:"Stall", note:"Full Incense: the holder gains the Stall Ability — it always acts last in the round's queue." },
+  "focusband":    { note:"Focus Band: once per Scene, when the holder would faint, roll 1d20 — on a 16+ it survives at 1 HP instead (tap its token and press 🎗 Focus Band)." },
+  "focussash":    { note:"Focus Sash: once per Scene, a hit that would take the holder from FULL Hit Points to 0 or less leaves them on 1 instead — no roll (tap its token and press 🎀 Focus Sash)." },
+  "tinymushroom": { note:"Tiny Mushroom: eat it to lose 5 HP and gain +1 Combat Stage in a random Stat (tap its token and press 🍄 Tiny Mushroom)." },
+  "bigmushroom":  { note:"Big Mushroom: eat it to become Poisoned and, if you do, gain +1 Combat Stage in two random Stats (tap its token and press 🍄 Big Mushroom)." },
+  "balmmushroom": { note:"Balm Mushroom: eat it to cure Burn, Paralysis or Poison — and if it cured anything, lose 1 Combat Stage in a random Stat (tap its token and press 🍄 Balm Mushroom)." },
+  /* ---- Fashionista recipes: a Free Action, once per Scene. The tracking is the automation; two
+     of the five are declarations the table resolves, so those just spend the use and say so. ---- */
+  "adorablefashion": { noDisarm:true, note:"Adorable Fashion: once per Scene, a Free Action for +2 Evasion for one full round (tap its token and press 👗 Adorable Fashion)." },
+  "elegantfashion":  { noDisarm:true, note:"Elegant Fashion: once per Scene, a Free Action when a foe's effect would lower your Combat Stages — you don't lose them (tap its token to spend the use)." },
+  "radfashion":      { noDisarm:true, note:"Rad Fashion: once per Scene, a Free Action for +4 to a single Save Check (tap its token to spend the use)." },
+  "roughfashion":    { noDisarm:true, note:"Rough Fashion: once per Scene, a Free Action — a foe within 5 metres takes −2 to all rolls for one full round (tap its token and press 👗 Rough Fashion to place it)." },
+  "slickfashion":    { noDisarm:true, note:"Slick Fashion: once per Scene, a Free Action when you would provoke an Attack of Opportunity — you don't provoke it (tap its token to spend the use)." },
+  /* ---- Contest gear: no combat effect, so these are notes rather than automation ---- */
+  "contestaccessory": { noDisarm:true, note:"Contest Accessory: +2d6 in a Contest's Introduction Stage. No combat effect." },
+  "beautyfashion":   { noDisarm:true, note:"Beauty Fashion: once per Contest, re-roll any 1s on a Beauty Move. No combat effect." },
+  "cutefashion":     { noDisarm:true, note:"Cute Fashion: once per Contest, re-roll any 1s on a Cute Move. No combat effect." },
+  "coolfashion":     { noDisarm:true, note:"Cool Fashion: once per Contest, re-roll any 1s on a Cool Move. No combat effect." },
+  "smartfashion":    { noDisarm:true, note:"Smart Fashion: once per Contest, re-roll any 1s on a Smart Move. No combat effect." },
+  "toughfashion":    { noDisarm:true, note:"Tough Fashion: once per Contest, re-roll any 1s on a Tough Move. No combat effect." },
+  "shockcollar":  { noDisarm:true, note:"Shock Collar: the remote makes the holder lose 1/6th of its Max Hit Points — and can be used to activate the Press Feature (tap its token and press ⚡ Shock Collar). Fastened on, so a Disarm can't knock it loose." },
+  "metalcoat":    { note:"Metal Coat: Onix evolves into Steelix and Scyther into Scizor while this is held." },
+};
+/* The 18 Type Braces are one rule ("15 Damage Reduction against all direct-damage X Moves"), so
+   they're synthesised rather than typed out. A Type Plate is "both a Type Booster and a Type
+   Brace", so it answers here too — its Booster half already comes out of typeBoosterFor. */
+const TYPE_BRACE_DR = 15;
+function heldFxFor(name){
+  const key = normItemName(name); if(!key) return null;
+  const fixed = HELD_FX[key];
+  if(fixed) return fixed;
+  const brace = /^(.+)brace$/.exec(key);
+  if(brace){ const ty = TYPES.find(t => normItemName(t) === brace[1]);
+    if(ty) return { typeDR:{ [ty]:TYPE_BRACE_DR } }; }
+  const plateType = TYPE_PLATE_ITEMS[String(name||"").trim()];
+  if(plateType) return { typeDR:{ [plateType]:TYPE_BRACE_DR } };
+  return null;
+}
+/* every Mega Stone in the catalogue, normalised — built once, lazily (megaToStoneMap is the
+   species→stone index the Mega buttons already use). */
+let _megaStoneNames = null;
+function megaStoneNames(){
+  if(_megaStoneNames) return _megaStoneNames;
+  _megaStoneNames = new Set();
+  try{ megaToStoneMap.forEach(v => _megaStoneNames.add(normItemName(v))); }catch(e){}
+  return _megaStoneNames;
+}
+/* every HELD_FX row this creature's worn/held gear actually switches on, as [name, fx] pairs.
+   Reached from effectiveCS → pokeDerived, which runs for every token on every repaint, so the
+   overwhelmingly common case (a Pokémon holding nothing) gets out before allocating anything. */
+const NO_HELD_FX = [];
+function heldFxList(owner){
+  if(!owner) return NO_HELD_FX;
+  if(owner.species !== undefined && !String(owner.heldItem||"").trim()) return NO_HELD_FX;
+  const out = [];
+  wornOrHeldNames(owner).forEach(nm=>{
+    const fx = heldFxFor(nm); if(!fx) return;
+    if(fx.onlySpecies){
+      const look = String(owner.species||"");
+      if(!fx.onlySpecies.some(sn => sn.toLowerCase() === look.toLowerCase())) return;
+      if(normItemName(nm) === "metalpowder" && owner.transform) return;   // "untransformed Ditto"
+    }
+    out.push([nm, fx]);
+  });
+  return out;
+}
+/* default-state Combat Stages from gear (Choice Items, Stat Boosters, Lagging Items, Iron Ball…) */
+function heldCSMods(owner){
+  const out = {};
+  heldFxList(owner).forEach(([,fx]) => { for(const k in (fx.cs||{})) out[k] = (out[k]||0) + fx.cs[k]; });
+  return out;
+}
+/* flat Stat bonuses applied AFTER Combat Stages (Eviolite) */
+function heldStatBonus(owner){
+  const out = {};
+  heldFxList(owner).forEach(([,fx]) => { for(const k in (fx.stat||{})) out[k] = (out[k]||0) + fx.stat[k]; });
+  return out;
+}
+/* flat Evasion from gear — {all, spd} (Lax Incense, Bright Powder) */
+function heldEvaBonus(owner){
+  let all = 0, spd = 0;
+  heldFxList(owner).forEach(([,fx]) => { all += (fx.eva && fx.eva.all) || 0; spd += (fx.eva && fx.eva.spd) || 0; });
+  return { all, spd };
+}
+/* Type immunities gained/lost and flat per-Type Damage Reduction (Air Balloon, Iron Ball, Braces) */
+function heldDefenseMods(owner){
+  const immune = [], lose = [], typeDR = {}, why = [];
+  heldFxList(owner).forEach(([nm, fx])=>{
+    (fx.immune||[]).forEach(t=>{ immune.push(t); why.push(`${nm}: immune to ${t}`); });
+    (fx.loseImmune||[]).forEach(t=>lose.push(t));
+    for(const t in (fx.typeDR||{})) typeDR[t] = { dr: (typeDR[t] ? typeDR[t].dr : 0) + fx.typeDR[t],
+                                                  from: [...((typeDR[t]||{}).from || []), nm] };
+  });
+  return { immune, lose, typeDR, why };
+}
+/* how far this creature's gear widens its Critical Hit range */
+function heldCritBonus(owner){
+  return heldFxList(owner).reduce((n,[,fx]) => n + (fx.crit||0), 0);
+}
+/* Initiative its gear adds (Quick Claw's +10) */
+function heldInitBonus(owner){
+  return heldFxList(owner).reduce((n,[,fx]) => n + (fx.init||0), 0);
+}
+/* flat damage its gear adds ONLY on a Super-Effective hit, added after the multiplier (Expert
+   Belt: "an additional 5 damage — this damage is not multiplied"). Judged per target, so it is
+   carried into tokenDamageBreakdown rather than added in the roll window. */
+function heldSeFlatDamage(owner){
+  return heldFxList(owner).reduce((n,[,fx]) => n + (fx.seFlat||0), 0);
+}
+/* a once-per-Scene charge on a worn/held item — the same "item" use-key family the Soothing Flute
+   and the Focus Band use, so resetUses(o,"scene") hands it back at End Scene. */
+function itemSceneUse(o, name){
+  const key = useKey("item", name);
+  return {
+    left: usesLeft(o, key, 1),
+    spend(){ if(usesLeft(o, key, 1) <= 0) return false;
+             o.uses = o.uses || {}; o.uses[key] = 1; return true; },
+  };
+}
+/* flat damage its gear adds to every damaging attack → {dmg, why} or null */
+function heldFlatDamage(owner, damaging){
+  if(!damaging) return null;
+  let dmg = 0; const from = [];
+  heldFxList(owner).forEach(([nm,fx])=>{ if(fx.dmg){ dmg += fx.dmg; from.push(nm); } });
+  return dmg ? { dmg, why: from.join(" + ") } : null;
+}
+/* the lines an attack window should print for gear whose effect only the table can resolve */
+function heldRollNotes(owner){
+  return heldFxList(owner).map(([,fx]) => fx.rollNote).filter(Boolean);
+}
+/* Afflictions a piece of gear forces on whoever carries it (Flame Orb, Toxic Orb, Choice Items),
+   as key → the item that forces it. */
+function heldForcedStatusMap(owner){
+  const out = {};
+  heldFxList(owner).forEach(([nm,fx]) => (fx.status||[]).forEach(k=>{
+    if(!out[k]) out[k] = { item:nm, sticky:!!fx.stickyStatus };
+  }));
+  return out;
+}
+function heldForcedStatuses(owner){ return Object.keys(heldForcedStatusMap(owner)); }
+/* Keep those Afflictions in step with what is actually being worn — both directions.
+
+   ADDING is the easy half: pick up a Flame Orb and you are Burned.
+
+   TAKING IT OFF is where the rules split, so each row says which it is with `stickyStatus`:
+     · a Flame Orb's Burn and a Toxic Orb's Poison are REAL afflictions. Dropping the Orb doesn't
+       put the fire out — they stay, and are cured like any other Burn/Poison.
+     · a Choice Item's Suppression is sticky too, and says so in as many words: "cannot be cured
+       until the end of Combat, even if the item is removed" (End Scene clears it anyway).
+     · anything NOT marked sticky is lifted the moment its item leaves.
+
+   `o.heldFxStatus` remembers which chip THIS put on, so a lift only ever removes our own — an
+   affliction the creature already had, or one the GM ticked by hand, is never touched. Called from
+   every place a held/worn item is written, so it doesn't matter which path took the item off.
+   Returns {added, removed, stayed} so the caller can say what happened. */
+function syncHeldStatuses(o){
+  if(!o) return { added:[], removed:[], stayed:[] };
+  const want = heldForcedStatusMap(o);
+  const rec  = (o.heldFxStatus && typeof o.heldFxStatus === "object") ? o.heldFxStatus : null;
+  if(!Object.keys(want).length && !rec) return { added:[], removed:[], stayed:[] };
+  if(!Array.isArray(o.statuses)) o.statuses = [];
+  const nameOf = k => (statusByKey.get(k) || {}).name || k;
+  const added = [], removed = [], stayed = [];
+  Object.keys(want).forEach(k=>{
+    if(o.statuses.includes(k)) return;         // already suffering it — not ours, so not ours to lift
+    o.statuses.push(k);
+    added.push(nameOf(k));
+    (o.heldFxStatus = o.heldFxStatus || {})[k] = want[k].sticky ? "sticky" : "lift";
+  });
+  if(rec) Object.keys(rec).forEach(k=>{
+    if(want[k]) return;                        // still being worn — leave it
+    if(rec[k] === "sticky"){ if(o.statuses.includes(k)) stayed.push(nameOf(k)); }
+    else if(o.statuses.includes(k)){ o.statuses = o.statuses.filter(x=>x!==k); removed.push(nameOf(k)); }
+    delete o.heldFxStatus[k];                  // either way, it is no longer the item's to manage
+  });
+  if(o.heldFxStatus && !Object.keys(o.heldFxStatus).length) delete o.heldFxStatus;
+  return { added, removed, stayed };
+}
+/* an Ability handed over by gear rather than by the species (Full Incense → Stall) */
+function heldGrantedAbilities(owner){
+  return heldFxList(owner).map(([,fx]) => fx.grantsAbility).filter(Boolean);
+}
+/* Everstone / Eviolite: "prevents Pokémon from evolving while held" */
+function heldBlocksEvolution(owner){
+  const row = heldFxList(owner).find(([,fx]) => fx.noEvolve);
+  return row ? row[0] : null;
+}
+/* the one-line summary printed under a Pokémon's Held Item field */
+function heldFxNotes(owner){
+  const out = [];
+  heldFxList(owner).forEach(([nm,fx])=>{
+    const bits = [];
+    for(const k in (fx.cs||{})) bits.push(`${statLabelFor(k)} ${fx.cs[k]>0?"+":""}${fx.cs[k]} Combat Stage${Math.abs(fx.cs[k])===1?"":"s"}`);
+    for(const k in (fx.stat||{})) bits.push(`+${fx.stat[k]} ${statLabelFor(k)}`);
+    if(fx.eva && fx.eva.all) bits.push(`+${fx.eva.all} to every Evasion`);
+    if(fx.eva && fx.eva.spd) bits.push(`+${fx.eva.spd} Speed Evasion`);
+    if(fx.crit) bits.push(`+${fx.crit} Critical Hit range`);
+    if(fx.dmg) bits.push(`+${fx.dmg} damage`);
+    if(fx.seFlat) bits.push(`+${fx.seFlat} damage on Super-Effective hits`);
+    if(fx.init) bits.push(`+${fx.init} Initiative`);
+    for(const t in (fx.typeDR||{})) bits.push(`${fx.typeDR[t]} Damage Reduction vs ${t}`);
+    (fx.immune||[]).forEach(t=>bits.push(`immune to ${t}`));
+    (fx.status||[]).forEach(k=>bits.push(statusByKey.get(k)?.name || k));
+    if(fx.grantsAbility) bits.push(`grants ${fx.grantsAbility}`);
+    if(fx.noEvolve) bits.push("cannot evolve");
+    out.push({ name:nm, applied:bits.join(" · "), note:fx.note || "" });
+  });
+  return out;
+}
+/* "atk" → "Attack" for the readouts above (CS_STATS covers the five, ACC_EVA_STATS the other two) */
+function statLabelFor(k){
+  const row = [...CS_STATS, ...ACC_EVA_STATS].find(([s]) => s === k);
+  return row ? row[1] : k;
+}
+
 
 /* ===================================================================
    ILLUSION — Ability (Frequency: Special)
@@ -1678,7 +2062,9 @@ const MOVE_ALIASES = { "hijumpkick":"High Jump Kick", "zenheabutt":"Zen Headbutt
                        "doublechop":"Dual Chop", "wiseguard":"Wide Guard",
                        "judgment":"Judgement", "naturepowers":"Nature Power",
                        // Game of Throhs writes Shade Caller's Move by its pre-Gen-6 name
-                       "faintattack":"Feint Attack" };
+                       "faintattack":"Feint Attack",
+                       // the Pokedex spells Palkia's signature Move the other way round
+                       "spatialrend":"Spacial Rend" };
 /* A movelist entry can arrive carrying a marker the name itself doesn't own: the Pokedex's tutor
    lists write "Hex (N)" for a Move a Mentor teaches, and a hand-typed or imported entry can pick up
    an "(TM42)" / "(Egg)" the same way. moveKey folds that into "hexn", which resolves against
@@ -2013,6 +2399,25 @@ function usesControl(owner, kind, name, freqRaw, rerender, persistFn, opts){
   wrap.append(el("span",{class:"uses-tag muted"}, tag));
   return wrap;
 }
+/* EOT = "Every Other Turn": the Move may be used once, and not again until the user has taken
+   another turn. So the moment this creature acts again - with ANY attack, not just the same one -
+   every OTHER EOT Move it has spent comes back off cooldown. Before this, an EOT pip sat there
+   until the end of the Scene and the table had to clear it by hand.
+   Returns the names that were refreshed, so the caller can say so. */
+function refreshOtherEotUses(owner, exceptName){
+  if(!owner || !owner.uses || typeof owner.uses !== "object") return [];
+  const skip = useKey("move", exceptName || "\u0000");
+  const back = [];
+  Object.keys(owner.uses).forEach(key => {
+    if(key === skip) return;
+    if(!owner.uses[key]) return;
+    if(freqInfo(itemFreqForKey(key)).kind !== "eot") return;
+    delete owner.uses[key];
+    const nm = splitKey(key)[1];
+    back.push(moveByName.get(nm)?.name || nm);
+  });
+  return back;
+}
 /* spend one use of a Scene/Daily/EOT move on `owner` (same tracker usesControl draws its pips
    from). Returns false for at-will/unlimited moves or when no uses are left, so callers can skip
    persisting when nothing actually changed. */
@@ -2135,8 +2540,12 @@ function injuryDayChip(o, cls){
     ? "Treated today: " + o.injDay.log.join(", ")
       + "\n○ = exempt, didn't count against the cap.\nClears on ☀ End Day → 🌙 End the Day."
     : "Nothing treated today. Core p.252 allows 3 Injuries per individual per day, counting natural healing, Bandages, Items and Features together.";
-  return el("span",{class:cls||"muted small", title:tip},
-    `${used}/${cap>90?"∞":cap} today`);
+  /* The GM's 🔓 unlock lifts the cap, but printing "2/∞" just reads as a bug — say the real Core
+     number and mark that the unlock is what's ignoring it. */
+  const lifted = cap > 90;
+  return el("span",{class:cls||"muted small",
+      title: tip + (lifted ? "\n\n🔓 This sheet is GM-unlocked, so the 3-a-day cap isn't being enforced on it. Untick 🔓 to put the cap back." : "")},
+    `${used}/${INJURY_DAY_CAP} today${lifted ? " 🔓" : ""}`);
 }
 
 /* ===================================================================
@@ -2613,13 +3022,15 @@ function playerRestRows(){
     r && r.data && r.data.trainer && !ownsRow(r) && r.owner_id !== PC_OWNER);
 }
 /* End of Scene (Core p.220). GM in cloud → applies to all players; otherwise the active character.
-   GM path re-fetches the roster FIRST (async) — playerRestRows() reads the GM's own in-memory
-   cache, and that cache can be stale (dropped realtime, backgrounded tab, long-open session). Applying
-   rest effects on top of a stale copy and upserting it back used to silently revert every player's
-   sheet to whatever the GM last saw — that's what wiped everyone's Level Up tracker + an avatar. */
+   GM path refreshes FIRST (async) — playerRestRows() reads the GM's own in-memory cache, and that
+   cache can be stale (dropped realtime, backgrounded tab, long-open session). Applying rest effects
+   on top of a stale copy and upserting it back used to silently revert every player's sheet to
+   whatever the GM last saw — that's what wiped everyone's Level Up tracker + an avatar.
+   revPoll(), not fetchRoster(): it reads ids and revs and then downloads only the sheets that have
+   actually moved, which is the same freshness guarantee for a fraction of the bytes. */
 async function endScene(){
   if(mode==="cloud" && cloud.isGM){
-    await fetchRoster();
+    await revPoll();
     const rows = playerRestRows();
     rows.forEach(r => applyEndScene(r.data));
     rows.forEach(r => cloudUpsert(r));
@@ -2970,7 +3381,7 @@ function openRestPlanner(){
           footNodes:[ summary, el("button",{class:"btn ghost",onclick:closeModal},"Cancel"), goBtn, dayBtn ] });
 }
 
-/* run the rest the planner worked out. The cloud paths re-fetch first (see endScene) so the rest
+/* run the rest the planner worked out. The cloud paths refresh first (see endScene) so the rest
    lands on FRESH sheets, then clamp every pick against what the fresh data actually shows -- a
    player who healed an Injury while the modal was open can't be over-healed by a stale plan. */
 async function restApply(sheets, plan, endsDay){
@@ -2980,7 +3391,7 @@ async function restApply(sheets, plan, endsDay){
   const med = restMedics(sheets, plan.per);
 
   const wide = mode==="cloud" && (cloud.isGM || isMapHpViewer());
-  if(wide) await fetchRoster();
+  if(wide) await revPoll();     // ids+revs, then only the sheets that moved (see endScene)
 
   active.forEach(s => {
     const st = plan.per[s.id];
@@ -3076,6 +3487,8 @@ function normPokemon(p){
   if(typeof p.wielded !== "boolean") p.wielded = false;          // Living Weapon: currently in the Trainer's hands
   if(!p.uses || typeof p.uses!=="object") p.uses = {};
   if(!Array.isArray(p.statuses)) p.statuses = [];
+  dedupeStatuses(p);                          // older saves can carry the same affliction twice
+  syncHeldStatuses(p);                        // gear-forced Afflictions follow the gear (see there)
   if(typeof p.tempHP!=="number" || !(p.tempHP>=0)) p.tempHP = 0;   // Temporary Hit Points (Core p.245)
   normInjDay(p);                              // today's Injury-healing ledger (see healInjuries)
   if(!Array.isArray(p.auras)) p.auras = [];   // Legendary Auras (encounter-only; seeded when added to an encounter)
@@ -3113,6 +3526,11 @@ function normTrainer(t){
   normInjDay(t);                              // today's Injury-healing ledger (see healInjuries)
   if(!t.cs || typeof t.cs!=="object") t.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};   // Combat Stages
   if(!Array.isArray(t.statuses)) t.statuses = [];
+  dedupeStatuses(t);                          // older saves can carry the same affliction twice
+  /* NO syncHeldStatuses(t) here on purpose: normTrainer runs while `let state = load()` is still
+     executing, and a Trainer's gear resolves through equippedList -> EQUIP_EFFECTS, a const
+     declared hundreds of lines BELOW that call. Reading it here would throw inside load()'s
+     swallowed catch and eat the save. The equipment card syncs instead (see equipSlotCell). */
   if(typeof t.usedAP!=="number") t.usedAP = 0;
   if(typeof t.manualBoundAP!=="number") t.manualBoundAP = 0;      // GM-applied AP Drain/Bind not tied to any Feature/move
   if(typeof t.xpPool!=="number") t.xpPool = 0;                    // EXP the GM has sent but the player hasn't spent yet
@@ -3277,6 +3695,7 @@ function trainerDerived(t) {
   // The Chariot raises EVERY movement Capability, so it lands on both Overland and Swim
   const bMove = buffMove(t);                               // a buff that raises Movement Speed (Frenzy)
   const bEva  = buffEva(t);                                // a buff that raises Evasion (I Believe In You!, Capricious Whirl)
+  const hEva  = heldEvaBonus(t);                           // worn Lax Incense / Bright Powder
   const ovlBase = 3 + Math.floor((athl+acro)/2) + equipOverland(t) + featureOverland(t) + arc.caps.move + bMove;
   const swimBase = Math.floor((3 + Math.floor((athl+acro)/2))/2) + equipSwim(t) + featureSwim(t) + arc.caps.move + bMove;
   const fullHP = t.level*2 + raw("hp")*3 + 10 + arc.hp;    // undamaged maximum (Nine of Wands ±5)
@@ -3286,7 +3705,7 @@ function trainerDerived(t) {
   const hp = injuryHealCap(fullHP, injuryHPCount(t));
   return {
     hp, fullHP, injuries, cs,
-    physEva: cap6(tot("def"))+cs.eva+eqEva+bEva, specEva: cap6(tot("spdef"))+cs.eva+eqEva+bEva, spdEva: cap6(tot("spd"))+cs.eva+eqEva+bEva,   // CS-adjusted evasion (+ shields, + buffs)
+    physEva: Math.max(0, cap6(tot("def"))+cs.eva+eqEva+bEva+hEva.all), specEva: Math.max(0, cap6(tot("spdef"))+cs.eva+eqEva+bEva+hEva.all), spdEva: Math.max(0, cap6(tot("spd"))+cs.eva+eqEva+bEva+hEva.all+hEva.spd),   // CS-adjusted evasion (+ shields, + buffs, + gear); never below 0 (Core p.234)
     ap: Math.max(0, 5 + Math.floor(t.level/5) + arc.ap + buffTempAP(t)),     // Ace of Wands, Justice, The Devil… move the AP ceiling; Moment of Action lends a Temporary point
     power, highJump: hj, longJump: Math.floor(acro/2),
     dr: equipDR(t).dr + arc.dr,                              // worn-armor Damage Reduction (also flows through buffDR on the damage input) + Ten of Swords
@@ -3340,7 +3759,9 @@ function pokeBaseStats(p) {
   });
   // Huge Power / Pure Power double the user's Base Attack stat (incl. Nature, Core p.199) — applied
   // to the base so allocated points add on top and Combat Stages still multiply the result.
-  if (hasAbility(p,"Huge Power") || hasAbility(p,"Pure Power")) out.atk *= 2;
+  /* ownerHasAbility, not hasAbility: Pure Power can also arrive from a held Thick Club on a
+     Cubone/Marowak (HELD_FX `grantsAbility`), which p.abilities never lists. */
+  if (ownerHasAbility(p,"Huge Power") || ownerHasAbility(p,"Pure Power")) out.atk *= 2;
   return out;
 }
 function pokeDerived(p) {
@@ -3353,7 +3774,9 @@ function pokeDerived(p) {
   if(forced) STATS.forEach(([k])=>{ if(k!=="hp" && typeof forced[k]==="number") total[k]=forced[k]; });
   const cap6 = v => Math.min(6, Math.floor(v/5));
   const cs = effectiveCS(p);                              // Combat Stages (manual + conditions)
-  const eff = {}; STATS.forEach(([k]) => eff[k] = k==="hp" ? total.hp : Math.floor(total[k] * csMult(cs[k])));
+  const heldStat = heldStatBonus(p);        // Eviolite: "+5 … after Combat Stages"
+  const eff = {}; STATS.forEach(([k]) => eff[k] = k==="hp" ? total.hp
+    : Math.floor(total[k] * csMult(cs[k])) + (heldStat[k]||0));
   // Soulless (Shedinja): Max HP is always 1, no matter level/HP stat/Injuries (Core p.485).
   const soulless = isSoulless(p);
   const fullMaxHP = soulless ? 1
@@ -3372,10 +3795,15 @@ function pokeDerived(p) {
   const inspiredEva = hasStatus(p,"inspired") ? 1*trainingMult(p) : 0;   // Inspired Training: +1 Evasion (×3 under Critical Moment)
   const bugSkyEva = insectoidSpdEva(p);                  // Insectoid Utility (Type Ace, Bug): Sky → +1 Speed Evasion
   const bEva = buffEva(p);                               // Cheerleader's I Believe In You!, a Commander's Capricious Whirl
+  const hEva = heldEvaBonus(p);                          // Lax Incense (all), Bright Powder (Speed)
+  /* Core p.234: "Negative Evasion can erase Evasion from other sources, but does not increase the
+     Accuracy of an enemy's Moves" — so the total floors at 0, however far Flanked/Blinded/a
+     Lagging Item push it down. */
+  const eva0 = n => Math.max(0, n);
   return {
     base, total, cs, eff, maxHP, fullMaxHP, injuries, budget, spent, remaining: budget - spent, edgePts,
-    physEva: cap6(eff.def)+cs.eva+wEva+inspiredEva+bEva, specEva: cap6(eff.spdef)+cs.eva+wEva+inspiredEva+bEva, spdEva: cap6(eff.spd)+cs.eva+wEva+inspiredEva+bugSkyEva+bEva,   // evasion uses CS-adjusted stats (+ buffs)
-    weatherEva: wEva,
+    physEva: eva0(cap6(eff.def)+cs.eva+wEva+inspiredEva+bEva+hEva.all), specEva: eva0(cap6(eff.spdef)+cs.eva+wEva+inspiredEva+bEva+hEva.all), spdEva: eva0(cap6(eff.spd)+cs.eva+wEva+inspiredEva+bugSkyEva+bEva+hEva.all+hEva.spd),   // evasion uses CS-adjusted stats (+ buffs, + gear)
+    weatherEva: wEva, heldEva: hEva,
   };
 }
 /* PTU 1.05 effectiveness ladder (Core p.240): net weakness/resist STEPS, not raw ×2/×0.5
@@ -3607,8 +4035,16 @@ function defenseTypeMods(p){
   // Super-Effective Fighting/Fire/Rock/Steel hits. Kept out of `why` (the matchup card reads `why`)
   // so it's only named on the damage line, and only for a Type it actually covers.
   const glacial = glacialIceDR(p);
+  /* Worn/held gear: an Air Balloon's Ground immunity, an Iron Ball cancelling one, and the 18 Type
+     Braces' flat 15 Damage Reduction (a Type Plate counts as its Brace too). */
+  const gear = heldDefenseMods(p);
+  gear.immune.forEach(t=>immune.add(t));
+  gear.lose.forEach(t=>immune.delete(t));
+  if(gear.lose.length) why.push(`Iron Ball: any immunity to ${gear.lose.join("/")} is lost`);
+  why.push(...gear.why);
   // a Feature stance's typeDR (Enchanting Transformation) merged with a granted buff's (Soothing Flute)
-  return { step, immune, wonderGuard, seReduce, seFlatDR, tolerance, furCoat, typeDR: mergeTypeDR(modeTypeDR(p), buffTypeDR(p)), glacial, why };
+  return { step, immune, wonderGuard, seReduce, seFlatDR, tolerance, furCoat,
+           typeDR: mergeTypeDR(mergeTypeDR(modeTypeDR(p), buffTypeDR(p)), gear.typeDR), glacial, why };
 }
 /* Filter / Solid Rock soften a Super-Effective multiplier by one "half-step" on the PTU ladder. */
 function seReducedMult(m){ return m>=2 ? 1.5 : m>1 ? 1.25 : m; }
@@ -3826,6 +4262,30 @@ async function storeImg(dataUrl, subdir){
   }catch(e){ console.error("image upload failed", e); return dataUrl; }
 }
 
+/* Delete an uploaded image from Storage — the counterpart storeImg never had. Without it every
+   removed map background/avatar stayed in the bucket forever: a survey of the live bucket found
+   ~18 MB that no row referenced any more, including three dead 5 MB map pngs. Best-effort by
+   design — a failed delete costs a little dead space, so it must never block or throw into the
+   caller that already removed the reference. */
+async function removeStoredImg(url){
+  if(mode!=="cloud" || !cloud.client || typeof url!=="string") return;
+  const m = url.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
+  if(!m || m[1]!==IMG_BUCKET) return;      // a data-url, a hotlinked sprite, another bucket — not ours
+  try{
+    const { error } = await cloud.client.storage.from(IMG_BUCKET)
+      .remove([decodeURIComponent(m[2].split("?")[0])]);
+    if(error) console.error("image delete failed", error);
+  }catch(e){ console.error("image delete failed", e); }
+}
+/* Is this image still pointed at by some OTHER map? Nothing duplicates a map today, but an import
+   or a hand-edited row could share a src, and deleting the object out from under a second map
+   would blank it permanently with no way back. The scan is a handful of maps — just check. */
+function mapImgInUse(src, exceptImg){
+  const meta = cloud.mapMeta?.data;
+  if(!meta || !Array.isArray(meta.maps)) return true;    // can't prove it's unused → keep the file
+  return meta.maps.some(m => (m.images||[]).some(im => im!==exceptImg && im.src===src));
+}
+
 /* ---------- reusable sub-tab bar ---------- */
 function subTabBar(tabs, active, onPick){
   const bar = el("div",{class:"subtabs"});
@@ -3904,6 +4364,10 @@ function render(){
   if(currentTab==="shops" && !isGM()){ switchTab("trainer"); return; }
   // End Scene / End Day advance the whole campaign clock — only the GM should trigger them
   const restActions = $(".rest-actions"); if(restActions) restActions.hidden = !isGM();
+  /* Deleting a character from a shared campaign is irreversible and takes their Pokémon with them —
+     a GM call, not a button that should sit one mis-tap away on every player's screen. Solo/local
+     play keeps it: there is nobody else's sheet to lose. */
+  const delBtn = $("#btnDelete"); if(delBtn) delBtn.hidden = (mode==="cloud" && !isGM());
   refreshCharSelect();
   const ac = activeChar();
   $("#partyCount").textContent = (ac?.pokemon?.length) || "";
@@ -5505,7 +5969,12 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   /* A worn Type Booster (Accessory slot) adds its flat +5 to any damaging attack of its Type —
      a weapon swing included, since it boosts damage rather than Damage Base. */
   const tBoost = dealsDamage ? typeBoosterFor(t, st.type) : null;
-  const tDmg = tBoost ? tBoost.dmg : 0;
+  /* …and the type-blind ones out of HELD_FX (a worn Life Orb) — same shape, so they ride along on
+     the same term rather than needing their own line through the whole damage assembly. */
+  const oFlat = heldFlatDamage(t, dealsDamage);
+  const tDmg = (tBoost ? tBoost.dmg : 0) + (oFlat ? oFlat.dmg : 0);
+  const tDmgWhy = [tBoost ? `${tBoost.item} (${tBoost.type} Type Booster)` : "", oFlat ? oFlat.why : ""]
+    .filter(Boolean).join(" + ");
   const accCS = td.cs.acc||0;   // Accuracy Combat Stage: flat add to Accuracy Rolls (Core p.234)
   /* Multi-strike Weapon Moves (Core p.242) — the keywords live in the profile's range string, e.g.
      Furious Strikes "WR, 1 Target, Five Strike" / Gouge "WR, 1 Target, Double Strike". */
@@ -5704,7 +6173,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     if(wFlame) why.push(`+${wFlame} = White Flame (Enraged)`);
     if(sStance) why.push(`+${sStance} = Falling Boulder Stance (\u22125 HP Recoil on a hit)`);
     if(twisted) why.push(`+${twisted} = ${twistedPowerWhy(isSpecAtk)}`);
-    if(tDmg) why.push(`+${tDmg} = ${tBoost.item} (${tBoost.type} Type Booster)`);
+    if(tDmg) why.push(`+${tDmg} = ${tDmgWhy}`);
     if(cxPre.dmg) why.push(`${cxPre.dmg>0?"+":"−"}${Math.abs(cxPre.dmg)} = ${cxPre.why.join(" & ")}`);
     explain.append(el("div",{},
       el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${terms.join(" + ").replace(/\+ −/g,"− ")}`),
@@ -5891,13 +6360,28 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     card.append(lbl); body.append(card);
   }
 
+  /* Held/worn gear whose effect the dice can't settle — King's Rock's 19+ Flinch, Razor Fang's
+     19+ Injury, Big Root's doubled drain, Life Orb's recoil. Said here, on the roll it applies to. */
+  heldRollNotes(t).forEach(n => body.append(el("div",{class:"small muted",style:"margin-top:4px"}, "\u{1F48D} " + n)));
+  /* Suppressed (Feb 2016 errata) locks the user down to At-Will Moves — the one thing Pressure
+     actually does to a foe, so it has to be visible at the moment the Move is rolled. */
+  if(hasStatus(t, "suppressed") && freqInfo(st.frequency).kind !== "atwill")
+    body.append(el("div",{class:"warnbox",style:"margin-top:6px"},
+      `\u26D3 Suppressed \u2014 while this lasts only At-Will Moves may be used, and this one is ${freqInfo(st.frequency).kind==="static"?"Static":String(st.frequency||"").split(" - ")[0]}.`));
   /* --- results (filled on Roll) --- */
   const out = el("div",{class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:0"});
   out.append(el("div",{class:"muted small"},"Press 🎲 Roll dice to simulate."));
   /* redo = {nats, forceHits} — re-resolve a Double Strike with the SAME Attack Rolls */
+  let eotRefreshed = false;            // once per modal, not once per re-roll of the same attack
   const doRoll = (redo) => {
     out.innerHTML=""; out.style.borderStyle="solid";
     let feedLogged = false;              // the GM's roll feed gets exactly one line per press of 🎲
+    if(!eotRefreshed){
+      eotRefreshed = true;
+      const eotBack = refreshOtherEotUses(t, st.name);
+      if(eotBack.length){ (opts.persist||save)(); drawFreq(); if(opts.rerender) opts.rerender();
+        toast(`\u21BA EOT back off cooldown: ${eotBack.join(", ")}`); }
+    }
     /* Push it to the Limit fires BEFORE the attack resolves, and only once however many times the
        roll is repeated — the Injury it costs is real. */
     const pushOn = !!(pushBox && pushBox.checked);
@@ -5990,7 +6474,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       if(wFlame) parts.push(`+${wFlame} White Flame (Enraged)`);
       if(sStance) parts.push(`+${sStance} Falling Boulder Stance`);
       if(twisted) parts.push(`+${twisted} ${twistedPowerWhy(isSpecAtk)}`);
-      if(tDmg) parts.push(`+${tDmg} ${tBoost.item}`);
+      if(tDmg) parts.push(`+${tDmg} ${tDmgWhy}`);
       if(cx.dmg) parts.push(`${cx.dmg>0?"+":"−"}${Math.abs(cx.dmg)} ${cx.why.join(" & ")}`);
       if(cx.mult !== 1) parts.push(`×${cx.mult} ${cx.why.join(" & ")}`);
       if(im.delta) parts.push(`${im.delta} Infatuated`);
@@ -6018,7 +6502,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       if(moveRule) out.append(el("div",{class:"small",style:"margin-top:4px;color:var(--accent);font-weight:600"},
         `❄ ${st.name}: ${moveRule.note}. Applied for you by the target picker below.`));
       const tw = attackTargetWidget({ dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce,
-        atkTinted: ownerHasAbility(t,"Tinted Lens"), atkExploit: ownerHasAbility(t,"Exploit"), defCSMode, moveRule });
+        atkTinted: ownerHasAbility(t,"Tinted Lens"), atkExploit: ownerHasAbility(t,"Exploit"),
+        seFlat: heldSeFlatDamage(t), defCSMode, moveRule });
       if(tw) out.append(tw);
       feedLogged = true;
       logRoll({ kind:"move", label:st.name, who:t.name||"",
@@ -6026,7 +6511,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         lines:[`🎯 Accuracy ${accTot} (d20 ${acc}) vs AC ${st.ac}`,
                `${st.type||"Typeless"}${st.cls?` · ${st.cls}`:""} · DB ${db}`],
         atk: isStatusAtk ? null : { dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce,
-               atkTinted: ownerHasAbility(t,"Tinted Lens"), atkExploit: ownerHasAbility(t,"Exploit"), defCSMode } });
+               atkTinted: ownerHasAbility(t,"Tinted Lens"), atkExploit: ownerHasAbility(t,"Exploit"),
+               seFlat: heldSeFlatDamage(t), defCSMode } });
     }
     if(dblStrike){
       const ov = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center"});
@@ -7884,6 +8370,151 @@ function equipSlotForItem(name){
    creature's token — tap the token, press the item, it pays out. Keyed by normItemName so the
    catalog's spelling and punctuation don't matter. */
 const GEAR_ACTIONS = {
+  "focussash": {
+    icon:"🎀", name:"Focus Sash",
+    title:"Focus Sash — once per Scene, damage that would take the holder from FULL Hit Points to 0 or less leaves them on 1 instead. No roll.",
+    label:o=>`${itemSceneUse(o,"Focus Sash").left} of 1 left this Scene`,
+    run:o=>{
+      const u = itemSceneUse(o, "Focus Sash");
+      if(!u.spend()) return "already used this Scene";
+      setOwnerHP(o, 1);
+      o.statuses = (o.statuses||[]).filter(k => k !== "knockedOut");
+      return "held on at 1 HP";
+    },
+  },
+  "tinymushroom": {
+    icon:"🍄", name:"Tiny Mushroom",
+    title:"Tiny Mushroom — eat it: lose 5 Hit Points and gain +1 Combat Stage in a random Stat.",
+    label:()=>"−5 HP, +1 random CS",
+    run:o=>{
+      const old = ownerHP(o), next = tempSoakSay(o, old, old - 5);
+      setOwnerHP(o, next); applyAutoInjury(o, old, next); applyAutoKO(o, old, next);
+      const st = randomCSStat(o, +1);
+      consumeHeldItem(o, "Tiny Mushroom");
+      return `−${old - ownerHP(o)} HP, +1 ${st} Combat Stage`;
+    },
+  },
+  "bigmushroom": {
+    icon:"🍄", name:"Big Mushroom",
+    title:"Big Mushroom — eat it: you become Poisoned, and if you do, gain +1 Combat Stage in two random Stats. A Poison- or Steel-Type can't be Poisoned, so it gets nothing.",
+    label:()=>"Poisoned → +1 CS ×2",
+    run:o=>{
+      if(!Array.isArray(o.statuses)) o.statuses = [];
+      const types = (getSpecies(o.species)?.types || []).map(t=>String(t).toLowerCase());
+      if(types.includes("poison") || types.includes("steel"))
+        return "can't be Poisoned, so the Mushroom does nothing — it is not eaten";
+      if(o.statuses.includes("poisoned")) return "already Poisoned — the Mushroom does nothing, and is not eaten";
+      o.statuses.push("poisoned");
+      // "two different Stats" — the second roll re-rolls off the first
+      const a = randomCSStat(o, +1), b = randomCSStat(o, +1, a);
+      consumeHeldItem(o, "Big Mushroom");
+      return `Poisoned — +1 ${a} and +1 ${b} Combat Stage`;
+    },
+  },
+  "balmmushroom": {
+    icon:"🍄", name:"Balm Mushroom",
+    title:"Balm Mushroom — eat it: cures Burn, Paralysis or Poison. If it cured anything, you lose 1 Combat Stage in a random Stat.",
+    label:()=>"cure Brn/Par/Psn",
+    run:o=>{
+      const curable = ["burned","paralysis","poisoned","badlyPoisoned"];
+      const had = (o.statuses||[]).filter(k => curable.includes(k));
+      if(!had.length) return "nothing to cure — the Mushroom is not eaten";
+      o.statuses = o.statuses.filter(k => !curable.includes(k));
+      const st = randomCSStat(o, -1);
+      consumeHeldItem(o, "Balm Mushroom");
+      const names = had.map(k => (STATUS_DEFS.find(x=>x.key===k)||{}).name || k).join(", ");
+      return `cured ${names} — −1 ${st} Combat Stage`;
+    },
+  },
+  "adorablefashion": {
+    icon:"👗", name:"Adorable Fashion",
+    title:"Adorable Fashion — once per Scene, a Free Action: +2 Evasion for one full round.",
+    label:o=>`${itemSceneUse(o,"Adorable Fashion").left} of 1 left this Scene`,
+    run:o=>{
+      const u = itemSceneUse(o, "Adorable Fashion");
+      if(!u.spend()) return "already used this Scene";
+      if(!Array.isArray(o.buffs)) o.buffs = [];
+      o.buffs = o.buffs.filter(b => b.key !== "adorable-fashion");   // never stacks with itself
+      const nb = { id:uid(), key:"adorable-fashion", name:"Adorable Fashion", cat:"Item",
+                   dur:"one full round", once:false, mods:{ eva:2 },
+                   note:"+2 Evasion for one full round (Adorable Fashion, once per Scene)." };
+      stampTurnBuff(nb); o.buffs.push(nb);
+      return "+2 Evasion for one full round";
+    },
+  },
+  "roughfashion": {
+    icon:"👗", name:"Rough Fashion",
+    title:"Rough Fashion — once per Scene, a Free Action: a foe within 5 metres takes −2 to ALL rolls for one full round. Press this to spend the use, then drop the −2 on them from their own token's Buffs card (✎ Custom…).",
+    label:o=>`${itemSceneUse(o,"Rough Fashion").left} of 1 left this Scene`,
+    run:o=> itemSceneUse(o, "Rough Fashion").spend()
+      ? "used — now put −2 to all rolls on one foe within 5 m for one full round"
+      : "already used this Scene",
+  },
+  /* Elegant, Rad and Slick are declarations the table resolves in the moment ("don't lose those
+     Combat Stages", "+4 to a Save", "don't provoke") — there is no number for the sheet to move,
+     so what these buttons automate is the once-per-Scene charge nobody remembers. */
+  "elegantfashion": {
+    icon:"👗", name:"Elegant Fashion",
+    title:"Elegant Fashion — once per Scene, a Free Action when a foe's effect would lower your Combat Stages: you don't lose them. Press to spend the use.",
+    label:o=>`${itemSceneUse(o,"Elegant Fashion").left} of 1 left this Scene`,
+    run:o=> itemSceneUse(o, "Elegant Fashion").spend()
+      ? "used — those Combat Stages are not lost" : "already used this Scene",
+  },
+  "radfashion": {
+    icon:"👗", name:"Rad Fashion",
+    title:"Rad Fashion — once per Scene, a Free Action: +4 to a single Save Check. Press to spend the use.",
+    label:o=>`${itemSceneUse(o,"Rad Fashion").left} of 1 left this Scene`,
+    run:o=> itemSceneUse(o, "Rad Fashion").spend()
+      ? "used — +4 to this Save Check" : "already used this Scene",
+  },
+  "slickfashion": {
+    icon:"👗", name:"Slick Fashion",
+    title:"Slick Fashion — once per Scene, a Free Action when you would provoke an Attack of Opportunity: you don't provoke it. Press to spend the use.",
+    label:o=>`${itemSceneUse(o,"Slick Fashion").left} of 1 left this Scene`,
+    run:o=> itemSceneUse(o, "Slick Fashion").spend()
+      ? "used — no Attack of Opportunity is provoked" : "already used this Scene",
+  },
+  "focusband": {
+    icon:"\uD83C\uDF97", name:"Focus Band",
+    title:"Focus Band — whenever the holder would faint, roll 1d20. Once per Scene, on a 16+ it does not faint and is left with 1 HP instead.",
+    label:o=>`1d20, 16+ · ${usesLeft(o, useKey("item","Focus Band"), 1)} of 1 left this Scene`,
+    run:o=>{
+      const key = useKey("item","Focus Band");
+      if(usesLeft(o, key, 1) <= 0) return "already used this Scene";
+      const d = 1 + Math.floor(Math.random()*20);
+      if(d < 16) return `rolled ${d} — under 16, the Focus Band does nothing (the use is not spent)`;
+      o.uses = o.uses || {}; o.uses[key] = 1;
+      setOwnerHP(o, 1);
+      o.statuses = (o.statuses||[]).filter(k => k !== "knockedOut");
+      return `rolled ${d} — it holds on at 1 HP`;
+    },
+  },
+  "lifeorb": {
+    icon:"\uD83D\uDCA2", name:"Life Orb",
+    title:"Life Orb — the +5 damage is already in the roll; press this once the hit lands and the holder loses 1/16th of its Max Hit Points.",
+    label:o=>`−${hpSixteenth(ownerMaxHP(o))} HP`,
+    run:o=>{ const n = hpSixteenth(ownerMaxHP(o)), old = ownerHP(o);
+             const next = tempSoakSay(o, old, old - n);
+             setOwnerHP(o, next); applyAutoInjury(o, old, next); applyAutoKO(o, old, next);
+             return `−${old - ownerHP(o)} HP (1/16th of Max)`; },
+  },
+  "shockcollar": {
+    icon:"\u26A1", name:"Shock Collar",
+    title:"Shock Collar — the remote makes the holder lose 1/6th of its Max Hit Points (this is what activates the Press Feature).",
+    label:o=>`−${Math.max(1, Math.ceil(ownerMaxHP(o)/6))} HP`,
+    run:o=>{ const n = Math.max(1, Math.ceil(ownerMaxHP(o)/6)), old = ownerHP(o);
+             const next = tempSoakSay(o, old, old - n);
+             setOwnerHP(o, next); applyAutoInjury(o, old, next); applyAutoKO(o, old, next);
+             return `−${old - ownerHP(o)} HP (1/6th of Max)`; },
+  },
+  "airballoon": {
+    icon:"\uD83D\uDCA8", name:"Air Balloon",
+    title:"Air Balloon — it breaks the first time the holder is hit by a damaging Move. Press this when that happens: the balloon is destroyed and the Ground immunity goes with it.",
+    label:()=>"pop it",
+    run:o=>{ if(!/air balloon/i.test(o.heldItem||"")) return "not holding one any more";
+             o.heldItem = ""; syncHeldStatuses(o);
+             return "burst — the Ground-Type immunity is gone"; },
+  },
   "shellbell": {
     icon:"\uD83D\uDC1A", name:"Shell Bell",
     title:"Shell Bell — whenever the holder damages a foe, they gain a Tick of Temporary Hit Points",
@@ -7893,6 +8524,26 @@ const GEAR_ACTIONS = {
                                  : `already holding ${before} Temp HP — pools don't stack, the highest applies`; },
   },
 };
+/* Raise or lower a random Combat Stage (the Mushrooms) — returns the Stat's label so the button
+   can say which one it landed on. Only the five real Stats; Accuracy and Evasion aren't "Stats". */
+function randomCSStat(o, delta, except){
+  if(!o.cs || typeof o.cs!=="object") o.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
+  const pool = CS_STATS.filter(([,lbl]) => lbl !== except);
+  const [key, label] = pool[Math.floor(Math.random()*pool.length)];
+  o.cs[key] = Math.max(-6, Math.min(6, (o.cs[key]||0) + delta));
+  return label;
+}
+/* A one-use Held Item is gone once it's eaten — and since a Held Item is a copy out of the
+   Trainer's bag (one per Pokémon), the bag loses that copy too. Same rule spendTypeBoost applies
+   to a consumed Gem. */
+function consumeHeldItem(o, name){
+  if(!o || String(o.heldItem||"").toLowerCase() !== String(name).toLowerCase()) return false;
+  const t = (typeof charOfMon === "function") ? (charOfMon(o)||{}).trainer : null;
+  if(t) consumeInventoryItem(t, name);
+  o.heldItem = "";
+  syncHeldStatuses(o);            // whatever it was forcing goes with it (unless it is sticky)
+  return true;
+}
 /* the GEAR_ACTIONS this creature can fire right now, from whatever it is wearing or holding */
 function gearActionsFor(owner){
   const out = [], seen = new Set();
@@ -7933,7 +8584,13 @@ function equipmentCard(t){
       sel.append(el("option",{value:curName, selected:true}, curName+" (not in inventory)"));
     sel.value = curName;
     sel.addEventListener("change",()=>{
+      const was = curName;
       t.equipment[slot] = sel.value ? { name: sel.value } : null;
+      // gear-forced Afflictions follow the gear, both directions (see syncHeldStatuses)
+      const sy = syncHeldStatuses(t);
+      if(sy.added.length)   toast(`${sel.value}: you are now ${sy.added.join(" & ")}`);
+      if(sy.removed.length) toast(`${was} came off — ${sy.removed.join(" & ")} lifted with it`);
+      if(sy.stayed.length)  toast(`${was} came off, but ${sy.stayed.join(" & ")} stays — cure it normally`);
       save(); preserveScroll(()=>renderTrainer());
     });
     cell.append(sel);
@@ -8497,7 +9154,7 @@ function inventoryRow(t, char, it, i){
   const del = el("button",{class:"linkbtn",title:"remove",onclick:()=>{
     const held = monsHolding(char, it.name);
     if(held.length && !confirm(`${it.name||"That item"} is held by ${held.map(monLabel).join(", ")}.\nRemove it from your bag and take it off ${held.length>1?"them":"it"}?`)) return;
-    held.forEach(m=>{ if(m.mega) megaRevert(m, true); m.heldItem = ""; });
+    held.forEach(m=>{ if(m.mega) megaRevert(m, true); m.heldItem = ""; syncHeldStatuses(m); });
     t.inventory.splice(i,1); save(); renderTrainer();
   }},"×");
   row.append(fav, pic, info, qty, del);
@@ -10660,6 +11317,19 @@ function refreshHeroHP(p){
   const bar = $("#heroHpWrap");
   if(bar) bar.replaceWith(hpBarEl(p.currentHP, max, tempHPOf(p), {style:"margin-top:6px", id:"heroHpWrap"}));
 }
+/* ♂ / ♀ / ⚲ — drawn wherever a Pokémon is named, so you can tell a pair apart at a glance.
+   Returns "" for a Pokémon whose gender hasn't been set. */
+const GENDER_MARKS = {
+  male:       { icon:"\u2642", cls:"gender-m", label:"Male" },
+  female:     { icon:"\u2640", cls:"gender-f", label:"Female" },
+  genderless: { icon:"\u26B2", cls:"gender-n", label:"Genderless" },
+};
+function genderMark(g){ return GENDER_MARKS[String(g||"").trim().toLowerCase()] || null; }
+function genderIcon(g, opts){
+  const m = genderMark(g); if(!m) return "";
+  return el("span",{ class:"gender-icon "+m.cls, title:m.label,
+    style: (opts && opts.style) || "" }, m.icon);
+}
 function heroCard(p, sp){
   const d = pokeDerived(p);
   if(p.currentHP==null) p.currentHP = d.maxHP;
@@ -10676,7 +11346,8 @@ function heroCard(p, sp){
   hero.append(spriteBox);
   const main = el("div",{class:"mh-main"});
   main.append(el("div",{class:"inline",style:"justify-content:space-between"},
-    el("div",{class:"mh-name",id:"heroName"}, p.nickname || sp?.name || "Unknown"),
+    el("div",{class:"mh-name",id:"heroName"}, p.nickname || sp?.name || "Unknown",
+      genderIcon(p.gender, {style:"margin-left:7px"})),
     el("div",{class:"pc-lvl"}, "Lv "+p.level)));
   main.append(el("div",{class:"mh-sub", html:(p.nickname && sp?`${sp.name} · `:"")+(sp?.types||[]).map(typeBadge).join(" ")+(p.shiny?" ✨":"")}));
   main.append(el("div",{class:"small muted",style:"margin-top:2px"},
@@ -10706,7 +11377,7 @@ function heroCard(p, sp){
   const monDead = deathBanner(p, ()=>{ save(); refreshMon(p); }); if(monDead) main.append(monDead);
   if(p.statuses?.length){
     const sc = el("div",{class:"chips",style:"margin-top:6px"});
-    p.statuses.forEach(k=>{ const s=statusByKey.get(k); if(s) sc.append(el("span",{class:"statuschip on",style:"cursor:default;padding:2px 8px;font-size:11px"}, s.name)); });
+    uniqStatusKeys(p.statuses).forEach(k=>{ const s=statusByKey.get(k); if(s) sc.append(el("span",{class:"statuschip on",style:"cursor:default;padding:2px 8px;font-size:11px"}, s.name)); });
     main.append(sc);
   }
   /* Transform — the copied form, and the Free Action that drops it (Core Move list) */
@@ -11498,7 +12169,8 @@ function ownerHasAbility(o, name){
   /* An encounter Trainer's Abilities are filed under t.encAbilities (t.abilities is the player-sheet
      field, which the Encounters card never writes), so read both — otherwise a GM who hands an NPC
      Berserker White Flame or Enduring Rage through the card's Abilities picker gets nothing. */
-  return [...(o?.abilities||[]), ...(o?.encAbilities||[]), ...(isTrainerOwner(o) ? featureAbilityGrants(o) : [])]
+  return [...(o?.abilities||[]), ...(o?.encAbilities||[]), ...heldGrantedAbilities(o),
+          ...(isTrainerOwner(o) ? featureAbilityGrants(o) : [])]
     .some(a => String(a).toLowerCase().replace(/\s*\[errata\]\s*$/,"").trim() === want);
 }
 /* Gluttony (Core, Ability): "may have up to three Digestion/Food Buffs at once" */
@@ -12703,7 +13375,9 @@ function renderMonBuild(root, p, sp){
     el("button",{class:"btn-secondary",style:"text-align:left",onclick:()=>openPicker("Change species",D.species.map(s=>s.name),v=>changeSpecies(p,v),"species")}, sp?sp.name:"choose…"));
   r1.append(
     field("Nickname","",{value:p.nickname,onchange:v=>{p.nickname=v;save();
-      const hn=$("#heroName"); if(hn) hn.textContent = v || sp?.name || "Unknown"; }}),
+      const hn=$("#heroName");
+      if(hn){ hn.textContent = v || sp?.name || "Unknown";
+              const gi = genderIcon(p.gender, {style:"margin-left:7px"}); if(gi) hn.append(gi); } }}),
     spWrap,
     field("Level","",{type:"number",min:1,max:MAX_LEVEL,value:p.level,onchange:v=>setMonLevel(p, parseInt(v)||1)}),
     field("Nature","",{opts:D.natures.map(n=>n.name), value:p.nature, disabled:!isGM(), onchange:v=>{p.nature=v;save();refreshMon(p);}}),
@@ -12720,7 +13394,7 @@ function renderMonBuild(root, p, sp){
     `Nature ${nat.name}: ${natSummary(nat)} · likes ${nat.likedFlavor}, dislikes ${nat.dislikedFlavor}`));
   const r2 = el("div",{class:"fieldrow"});
   r2.append(
-    field("Gender","",{opts:["","Male","Female","Genderless"],value:p.gender,onchange:v=>{p.gender=v;save();}}),
+    field("Gender","",{opts:["","Male","Female","Genderless"],value:p.gender,onchange:v=>{p.gender=v;save();refreshMon(p);}}),
     field("Shiny","",{type:"checkbox",value:p.shiny,disabled:!isGM(),onchange:v=>{p.shiny=v;save();refreshMon(p);}}),
     field("Total XP","",{type:"number",min:0,value:p.xp,onchange:v=>setMonXP(p, parseInt(v)||0)}),
     field("Loyalty","",{type:"number",min:0,value:p.loyalty,onchange:v=>{p.loyalty=parseInt(v)||0;save();}}),
@@ -12729,6 +13403,19 @@ function renderMonBuild(root, p, sp){
   idc.append(r2);
   const heldEff = itemByName.get((p.heldItem||"").toLowerCase());
   if(heldEff) idc.append(el("div",{class:"small muted",style:"margin:6px 0"}, el("b",{},heldEff.name+": "), heldEff.effect||""));
+  /* …and what the sheet is actually DOING about it, so an automated item is never mistaken for
+     reference text (see HELD_FX). */
+  if(p.heldItem && hasStatus(p, "disarmed"))
+    idc.append(el("div",{class:"small",style:"margin:4px 0;color:var(--bad);font-weight:700",
+      title:"Untick the Disarmed chip (Condition card, or the token menu) to pick it back up — a Standard Action."},
+      itemCanBeDisarmed(p.heldItem)
+        ? `\u{1F91A} Disarmed — ${p.heldItem} is on the ground and is doing nothing.`
+        : `\u{1F91A} Disarmed, but ${p.heldItem} can't be knocked loose — it keeps working.`));
+  heldFxNotes(p).forEach(n=>{
+    if(n.applied) idc.append(el("div",{class:"small",style:"margin:2px 0;color:var(--accent);font-weight:600"},
+      `\u2699 Applied automatically — ${n.applied}`));
+    if(n.note) idc.append(el("div",{class:"small muted",style:"margin:2px 0"}, n.note));
+  });
   if(hasLivingWeapon(p)) idc.append(livingWeaponControl(p));
   root.append(idc);
 
@@ -12920,7 +13607,16 @@ function heldItemControl(p, rerender, opts={}){
   const btn = el("button",{class:"btn-secondary",style:"text-align:left",onclick:()=>{
     const names = ["(none)", ...heldItemNames()];
     openPicker("Held Item", names, v=>{
+      const was = p.heldItem;
       p.heldItem = v==="(none)" ? "" : v;
+      /* Flame Orb burns, Toxic Orb poisons, a Choice Item Suppresses — on the moment it goes on,
+         and off again when it leaves unless the rules say the affliction outlives the item. Every
+         other effect the item was applying (Combat Stages, Evasion, Damage Reduction, crit range…)
+         is read live off what is held, so those need nothing here: they are simply gone. */
+      const sy = syncHeldStatuses(p);
+      if(sy.added.length)   toast(`${p.heldItem}: ${ownerLabel(p)} is now ${sy.added.join(" & ")}`);
+      if(sy.removed.length) toast(`${was} came off — ${sy.removed.join(" & ")} lifted with it`);
+      if(sy.stayed.length)  toast(`${was} came off, but ${sy.stayed.join(" & ")} stays — it is a real affliction, cure it normally`);
       const req = megaToStoneMap.get(p.species);
       if(p.mega && req && req.toLowerCase()!==(p.heldItem||"").toLowerCase()){
         megaRevert(p, false, rerender);                   // stone unequipped mid-Mega Evolution — snap back
@@ -14002,12 +14698,28 @@ function speciesLineBackTo(sp){
   }
   return line;
 }
-/* moves learned from levelling up to the Pokémon's current level (default legal list), incl. pre-evos */
+/* moves learned from levelling up to the Pokémon's current level (default legal list), incl. pre-evos.
+
+   A species' OWN printed level always wins. The Dex reprints most of a pre-evolution's list on the
+   evolved form at LATER levels (Ralts learns Stored Power at 42, Kirlia at 51, Gardevoir at 58), so
+   naively unioning the line and keeping the earliest entry handed a Lv-42 Gardevoir a Move its own
+   Dex entry doesn't give it until 58. A pre-evolution's list only fills in Moves the current form
+   doesn't print at all. Returned in level order, so callers that take `.slice(-6)` really do get
+   the six most recently learned. */
 function speciesLevelupNames(sp, level){
   if(!sp) return [];
-  const set = new Set();
-  speciesLineBackTo(sp).forEach(s => s.moves.levelup.forEach(m=>{ if(m.level<=level) set.add(canonMoveName(m.name)); }));
-  return [...set];
+  const own = new Map();
+  (sp.moves?.levelup || []).forEach(m=>{ const k = canonMoveName(m.name);
+    if(!own.has(k) || m.level < own.get(k)) own.set(k, m.level); });
+  const at = new Map(own);
+  speciesLineBackTo(sp).slice(1).forEach(s => (s.moves?.levelup || []).forEach(m=>{
+    const k = canonMoveName(m.name);
+    if(own.has(k)) return;                       // this form prints its own level — that one governs
+    if(!at.has(k) || m.level < at.get(k)) at.set(k, m.level);
+  }));
+  return [...at].filter(([,lv]) => lv <= level)
+                .sort((a,b) => a[1]-b[1])
+                .map(([k]) => k);
 }
 /* full learnset (level-up any level + egg + tutor + TM/HM, incl. pre-evos) — prioritised under GM unlock */
 function speciesFullLearnset(sp){
@@ -14592,6 +15304,14 @@ function moveSlot(p, sp, m, mn, opts={}){
   if(m && !opts.tag && (moveSyncEligible(t) || isSynced)) acts.append(el("button",{class:"btn-secondary"+(isSynced?" on":""),style:"padding:6px 10px",
     title:isSynced?"forget Move Sync (+1 Tutor Point)":"Move Sync: permanently retype this Move to your Chosen Type (1 Tutor Point)",
     onclick:()=>openMoveSync(p,t,mn)},"🔃"));
+  /* ↑ / ↓ put the Move list in whatever order the player wants to read it in - the sheet's own
+     order is never derived from anything, so this is purely how it reads on the card. */
+  if(opts.onMove){
+    acts.append(el("button",{class:"linkbtn",title:"move up",disabled:!opts.canUp,
+      style:opts.canUp?"":"opacity:.3;cursor:default",onclick:()=>opts.onMove(-1)},"↑"));
+    acts.append(el("button",{class:"linkbtn",title:"move down",disabled:!opts.canDown,
+      style:opts.canDown?"":"opacity:.3;cursor:default",onclick:()=>opts.onMove(1)},"↓"));
+  }
   if(opts.onRemove) acts.append(el("button",{class:"linkbtn",title:"remove",onclick:opts.onRemove},"×"));
   slot.append(acts);
   return slot;
@@ -14618,18 +15338,27 @@ function movesCard(p, sp){
   // of them counted against the limit in the heading above (see derivedMonMoves)
   derivedMonMoves(p, sp).forEach(d => card.append(moveSlot(p, sp, d.move, d.move.name, {tag:d.tag})));
   if(!p.moves.length) card.append(el("span",{class:"muted small"},"no moves selected yet"));
-  // favourites (tap ☆) sort to the top; splice by the original index so removal stays correct
+  /* favourites (tap ☆) sort to the top, and inside each group the list keeps the order the player
+     put it in with ↑/↓. Reordering writes the DISPLAYED order straight back to p.moves, so what you
+     see and what is stored stay the same list. */
   const favSet = new Set(p.fav||[]);
-  [...p.moves].map((mn,i)=>({mn,i}))
-    .sort((a,b)=>(favSet.has(b.mn)?1:0)-(favSet.has(a.mn)?1:0))
-    .forEach(({mn,i})=>{
-      const m = moveByName.get(mn.toLowerCase());
-      card.append(moveSlot(p, sp, m, mn, {
-        faved: favSet.has(mn),
-        onFav: ()=>{ p.fav = toggleSet(favSet, mn); save(); refreshMon(p); },
-        onRemove: ()=>{ p.moves.splice(i,1); if(p.fav) p.fav=p.fav.filter(x=>x!==mn); save(); refreshMon(p); }
-      }));
-    });
+  const ordered = [...p.moves].sort((a,b)=>(favSet.has(b)?1:0)-(favSet.has(a)?1:0));
+  const reorder = (i, d) => {
+    const j = i + d; if(j<0 || j>=ordered.length) return;
+    const next = ordered.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    p.moves = next; save(); refreshMon(p);
+  };
+  ordered.forEach((mn,i)=>{
+    const m = moveByName.get(mn.toLowerCase());
+    card.append(moveSlot(p, sp, m, mn, {
+      faved: favSet.has(mn),
+      onFav: ()=>{ p.fav = toggleSet(favSet, mn); save(); refreshMon(p); },
+      onMove: d=>reorder(i,d),
+      canUp: i>0, canDown: i<ordered.length-1,
+      onRemove: ()=>{ p.moves = p.moves.filter(x=>x!==mn); if(p.fav) p.fav=p.fav.filter(x=>x!==mn); save(); refreshMon(p); }
+    }));
+  });
   if(atLimit) card.append(el("div",{class:"small muted",style:"margin-top:6px"},
     `Move limit reached (${limit}). Tick “🔓 GM: allow any” to add more.`));
   else if(over) card.append(el("div",{class:"warnbox",style:"margin-top:6px"},
@@ -14781,6 +15510,7 @@ function critThreshold(p, m){
   if(ownerHasAbility(p,"Beam Cannon") && !/^melee/i.test(m?.range||"") && /1 target/i.test(m?.range||"")) t -= 3;
   if(ownerHasAbility(p,"Gore") && /^horn attack$/i.test(m?.name||"")) t = Math.min(t, 18);
   if(hasStatus(p,"brutal")) t -= 1*trainingMult(p);   // Brutal Training: +1 Crit Range (×3 under Critical Moment)
+  t -= heldCritBonus(p);                             // Razor Claw, a Farfetch'd's Rare Leek
   return Math.max(2, t);
 }
 /* Move-name sets for the abilities that boost a specific printed list of Moves (Core p.199). */
@@ -14964,7 +15694,7 @@ function analyticContext(obj){
    other, so the two are checked separately. */
 const BONE_WIELDER_MOVES = new Set(["bone club","bonemerang","bone rush"]);
 const isBoneWielderMove = m => BONE_WIELDER_MOVES.has(String((m&&m.name)||"").toLowerCase());
-const holdsThickClub    = p => /thick club/i.test((p&&p.heldItem)||"");
+const holdsThickClub    = p => /thick club/i.test(heldItemActive(p));
 /* +1 Accuracy — needs the base Ability, one of its Moves, and the Thick Club actually held */
 function boneWielderAcc(p, m){
   return (hasAbility(p,"Bone Wielder") && isBoneWielderMove(m) && holdsThickClub(p)) ? 1 : 0;
@@ -15598,7 +16328,11 @@ function openMoveRoll(p, m, sp, opts={}){
   /* A held Type Booster (Charcoal, Never-Melt Ice…): a flat +5 on the damage roll, always on — no
      toggle, nothing to spend. It never touches the Damage Base. */
   const tBoost = (isPhys || isSpec) ? typeBoosterFor(p, mtype) : null;
-  const tDmg = tBoost ? tBoost.dmg : 0;
+  // …and the type-blind ones out of HELD_FX (a held Life Orb), on the same term
+  const oFlat = heldFlatDamage(p, isPhys || isSpec);
+  const tDmg = (tBoost ? tBoost.dmg : 0) + (oFlat ? oFlat.dmg : 0);
+  const tDmgWhy = [tBoost ? `${tBoost.item} (${tBoost.type} Type Booster)` : "", oFlat ? oFlat.why : ""]
+    .filter(Boolean).join(" + ");
   const zDB = () => (zOn && zBoost ? zBoost.db : 0);
   function baseDB(){                      // effective (pre-STAB) Damage Base
     if(wInfo){
@@ -16098,7 +16832,7 @@ function openMoveRoll(p, m, sp, opts={}){
       if(wxd) why.push(`${wxd>0?"+":"−"}${Math.abs(wxd)} = ${wx.weather.name}`);
       if(tx.dmg) why.push(`${tx.dmg>0?"+":"−"}${Math.abs(tx.dmg)} = Terrain`);
       if(abilMods.why.length) why.push(abilMods.why.join(", "));
-      if(tDmg) why.push(`+${tDmg} = ${tBoost.item} (${tBoost.type} Type Booster)`);
+      if(tDmg) why.push(`+${tDmg} = ${tDmgWhy}`);
       if(cx.why.length) why.push(`condition: ${cx.why.join("; ")}`);
       if(im.delta) why.push(`${im.delta} = Infatuated (not the Crush)`);
       dmgBox.append(el("div",{},
@@ -16280,6 +17014,14 @@ function openMoveRoll(p, m, sp, opts={}){
     return node;
   }
 
+  /* Held/worn gear whose effect the dice can't settle — King's Rock's 19+ Flinch, Razor Fang's
+     19+ Injury, Big Root's doubled drain, Life Orb's recoil. Said here, on the roll it applies to. */
+  heldRollNotes(p).forEach(n => body.append(el("div",{class:"small muted",style:"margin-top:4px"}, "\u{1F48D} " + n)));
+  /* Suppressed (Feb 2016 errata) locks the user down to At-Will Moves — the one thing Pressure
+     actually does to a foe, so it has to be visible at the moment the Move is rolled. */
+  if(hasStatus(p, "suppressed") && freqInfo(monMoveFreq(p, freqMove || m)).kind !== "atwill")
+    body.append(el("div",{class:"warnbox",style:"margin-top:6px"},
+      `\u26D3 Suppressed \u2014 while this lasts only At-Will Moves may be used, and this one is ${freqInfo(monMoveFreq(p, freqMove || m)).kind==="static"?"Static":String(monMoveFreq(p, freqMove || m)||"").split(" - ")[0]}.`));
   /* --- results (filled when you press Roll dice) --- */
   const out = el("div",{id:"rollOut",class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:0"});
   out.append(el("div",{class:"muted small"}, "Press 🎲 Roll dice to simulate."));
@@ -16296,7 +17038,11 @@ function openMoveRoll(p, m, sp, opts={}){
       zBoost.kind==="z" ? `⚡ ${zBoost.zName}!` : `💎 ${zBoost.item} — +${zBoost.db} Damage Base`));
     if(!usedThisRoll){
       usedThisRoll = true;
-      if(spendMoveUse(p, freqMove)){ (opts.persist||save)(); drawFreq(); if(opts.rerender) opts.rerender(); }
+      // taking a turn hands back every OTHER EOT Move that was on cooldown (see refreshOtherEotUses)
+      const eotBack = refreshOtherEotUses(p, freqMove && freqMove.name);
+      const spent = spendMoveUse(p, freqMove);
+      if(spent || eotBack.length){ (opts.persist||save)(); drawFreq(); if(opts.rerender) opts.rerender(); }
+      if(eotBack.length) toast(`\u21BA EOT back off cooldown: ${eotBack.join(", ")}`);
       /* The Gem shatters / the Z-Crystal burns its Scene use only once the dice actually go — a
          ticked box that never gets rolled costs nothing. `spent` then blocks the "override hits" redo. */
       if(zOn && zBoost && !zBoost.spent){
@@ -16507,7 +17253,7 @@ function openMoveRoll(p, m, sp, opts={}){
         if(wxd)     parts.push(`${wxd>0?"+":""}${wxd} ${wx.weather.name}`);
         if(tx.dmg)  parts.push(`${tx.dmg>0?"+":""}${tx.dmg} Terrain`);
         if(abilMods.flat) parts.push(`${abilMods.flat>0?"+":""}${abilMods.flat} ability`);
-        if(tDmg)    parts.push(`+${tDmg} ${tBoost.item}`);
+        if(tDmg)    parts.push(`+${tDmg} ${tDmgWhy}`);
         if(cx.dmg)  parts.push(`${cx.dmg>0?"+":""}${cx.dmg} condition`);
         if(anchorRoll) parts.push(`+${anchorExtra} Anchor (2d6: ${anchorRoll.rolls.join(", ")})`);
         if(im.delta) parts.push(`${im.delta} Infatuated`);
@@ -16545,7 +17291,7 @@ function openMoveRoll(p, m, sp, opts={}){
         if(isPhys || isSpec){
           const tw = attackTargetWidget({ dmg:total, type:mtype||"Typeless", physical:isPhys,
             pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens"),
-            atkExploit: ownerHasAbility(p,"Exploit"),
+            atkExploit: ownerHasAbility(p,"Exploit"), seFlat: heldSeFlatDamage(p),
             pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS, moveRule });
           if(tw) dmgLine.append(tw);
         }
@@ -16558,7 +17304,7 @@ function openMoveRoll(p, m, sp, opts={}){
                  `${mtype||"Typeless"}${m.class?` · ${m.class}`:""} · DB ${effFDB}`],
           atk: (isPhys||isSpec) ? { dmg:total, type:mtype||"Typeless", physical:isPhys,
                  pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens"),
-                 atkExploit: ownerHasAbility(p,"Exploit"),
+                 atkExploit: ownerHasAbility(p,"Exploit"), seFlat: heldSeFlatDamage(p),
                  pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS, moveRule } : null });
       }
       out.append(dmgLine);
@@ -18355,7 +19101,9 @@ function playSong(t, rerender, persist){
     lines:["Burst 4 as a Standard Action · Burst 2 off a Dance Move · the triggering Move's own area off a Sonic Move",
            "GM: ✨ Apply area to paint it and choose Might / Courage / Life"],
     area:{ sheetId: (mode==="cloud" ? cloud.activeId : ""), shape:"burst", size:4,
-           buffs: MUSICIAN_SONGS.map(x=>x.key), note:"Musician Song" } });
+           buffs: MUSICIAN_SONGS.map(x=>x.key), note:"Musician Song",
+           // the AP came off right here, so the GM's ✨ Buff area must not charge it a second time
+           songPaid:true } });
   toast(mode==="cloud" ? "🎵 Song played · 1 AP — the GM applies its area"
                        : "🎵 Song played · 1 AP — pick the Song and its area with your GM");
   (rerender||renderBattle)();
@@ -19095,8 +19843,15 @@ function openApplyRestorative(t, rerender, persist, opts){
                                  : (def.reviveHP || 1) + bonus;
         setOwnerHP(o, to);
         applyAutoKO(o, old, ownerHP(o));
+        /* A Revive SETS Hit Points; everything the Medic adds on top of the item is ordinary
+           healing and still lands. Field Clinic's +5 is already inside `to` for a fixed-HP Revive
+           (Revive/Max Revive are both on its list), so only add it here for the % kind. */
+        const extra = mt + byHand + (def.revivePct ? bonus : 0);
+        const topUp = extra ? ownerHeal(o, extra) : 0;
         moved = ownerHP(o) - old;
-        done.push(`revived to ${ownerHP(o)} HP`);
+        done.push(`revived to ${ownerHP(o)} HP`
+          + (topUp ? ` (+${topUp} on top: ${[mt?`Medical Techniques ${mt}`:"", byHand?`extra ${byHand}`:"",
+                        (def.revivePct && bonus)?`Field Clinic ${bonus}`:""].filter(Boolean).join(", ")})` : ""));
       } else {
         const heal = (def ? def.heal : 0) + bonus + byHand + mt;
         moved = ownerHeal(o, heal);
@@ -21579,11 +22334,41 @@ function saveEncCombat(){
 }
 function toggleSet(set, v){ set.has(v)?set.delete(v):set.add(v); return [...set]; }
 /* Base Experience Value: sum of enemy levels; Trainers count double (Core p.460) */
-function encounterBaseXP(enc){
-  let base=0;
-  (enc.mons||[]).forEach(p=> base += (p.level||0));
-  (enc.trainers||[]).forEach(tr=>{ base += (tr.trainer?.level||0)*2; (tr.pokemon||[]).forEach(p=> base += (p.level||0)); });
-  return base;
+/* Base Experience Value, split by whether it came off a BOSS.
+
+   Running the Game p.487, "Experience and Rewards": "When awarding Experience for a Boss encounter,
+   do NOT divide the Experience from the Boss Enemy itself by the number of players. Looking back to
+   the Basic Encounter Creation section, the GM there had 180 Levels to build an important
+   encounter. A similar boss encounter with a single Pokémon may only be Level 60, which would be
+   far less Experience despite a similar level of difficulty!"
+
+   That example is the whole rule in one line: 180 Levels split between 3 players is 60 each, and a
+   Level 60 Boss undivided is also 60 each — the same payout for the same fight. Lumping the Boss in
+   with everyone else and dividing the lot (what this used to do) paid a third of what it should.
+
+   Trainers still count double (Core p.460), and a Boss Trainer's own doubled Level is undivided
+   too — it is the Boss Enemy. */
+function encounterBaseXPSplit(enc){
+  let boss = 0, normal = 0;
+  const add = (n, isB) => { if(isB) boss += n; else normal += n; };
+  (enc && enc.mons || []).forEach(p => add(p.level||0, isBoss(p)));
+  (enc && enc.trainers || []).forEach(tr => {
+    const t = tr.trainer;
+    add((t?.level||0)*2, isBoss(t));
+    (tr.pokemon||[]).forEach(p => add(p.level||0, isBoss(p)));
+  });
+  return { boss, normal, total: boss + normal };
+}
+function encounterBaseXP(enc){ return encounterBaseXPSplit(enc).total; }
+/* What each player walks away with: the ordinary enemies' share divided between them, plus the
+   whole of the Boss's. */
+function encounterXPPerPlayer(enc, sig, players){
+  const b = encounterBaseXPSplit(enc);
+  const pl = Math.max(1, players|0);
+  const bossXP   = Math.round(b.boss * sig);
+  const normalXP = Math.round(b.normal * sig);
+  return { ...b, sig, players:pl, bossXP, normalXP, total: bossXP + normalXP,
+           per: Math.round(normalXP / pl) + bossXP };
 }
 const encMonName = p => p.nickname || getSpecies(p.species)?.name || p.species || "Pokémon";
 
@@ -22421,9 +23206,9 @@ function encStatusControl(p){
       const block = statusCureBlock(p, s.key);   // Enduring Rage / White Flame forbid curing Enraged
       chips.append(el("button",{class:"statuschip"+(on?" on":""),
         title:(immune?`${sp.name} is immune. `:"")+s.effect+(block?`\n\n${block}`:""),
-        onclick:()=>{ p.statuses=p.statuses||[]; const i=p.statuses.indexOf(s.key);
-          if(i>=0){ const w = statusCureBlock(p, s.key); p.statuses.splice(i,1); if(w) toast(w); }
-          else { p.statuses.push(s.key); if(s.key==="tagged" && clearOtherTags(p)) toast("The previous Tag is lost — only one foe at a time"); }
+        onclick:()=>{ p.statuses=p.statuses||[]; dedupeStatuses(p); const i=p.statuses.indexOf(s.key);
+          if(i>=0){ const w = statusCureBlock(p, s.key); p.statuses = p.statuses.filter(k=>k!==s.key); if(w) toast(w); }
+          else if(!p.statuses.includes(s.key)){ p.statuses.push(s.key); if(s.key==="tagged" && clearOtherTags(p)) toast("The previous Tag is lost — only one foe at a time"); }
           if(s.key==="vortex") onVortexToggled(p, p.statuses.includes(s.key));
           saveEnc(); renderEncounters(); }},
         s.name+(immune?" ⃠":"")+(block&&on?" 🔒":"")));
@@ -22478,7 +23263,8 @@ function encounterMonCard(enc, p, list, trainer){
     const mini=el("div",{style:`border:1px solid var(--line);border-radius:var(--radius-sm);padding:6px 10px;margin-top:8px;background:var(--panel-2);${fainted?"opacity:.5;":""}`});
     const row=el("div",{class:"inline",style:"gap:8px;align-items:center"});
     row.append(monSprite(monLookName(p),p.shiny,"s-sm",monImage(p)||undefined));
-    row.append(el("span",{style:"font-weight:800;white-space:nowrap"}, (fainted?"💀 ":"")+encMonName(p)));
+    row.append(el("span",{style:"font-weight:800;white-space:nowrap"}, (fainted?"💀 ":"")+encMonName(p),
+    genderIcon(p.gender, {style:"margin-left:5px"})));
     row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `Lv ${p.level}`));
     row.append(hpBarEl(p.currentHP, maxHP, tempHPOf(p), {style:"flex:1;min-width:70px", color:hpColor}));
     row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `${p.currentHP}/${maxHP}${tempTag(p," ")}`));
@@ -22499,7 +23285,8 @@ function encounterMonCard(enc, p, list, trainer){
     onclick:()=>{ setMonImage(p, ""); saveEnc(); renderEncounters(); }},"×"));
   head.append(spriteBox);
   const nw=el("div",{style:"flex:1;min-width:0"});
-  nw.append(el("div",{style:"font-weight:800"}, (fainted?"💀 ":"")+encMonName(p), " ", el("span",{html:(sp?.types||[]).map(typeBadge).join(" ")})));
+  nw.append(el("div",{style:"font-weight:800"}, (fainted?"💀 ":"")+encMonName(p),
+    genderIcon(p.gender, {style:"margin-left:5px"}), " ", el("span",{html:(sp?.types||[]).map(typeBadge).join(" ")})));
   const lvIn=el("input",{type:"number",min:1,max:100,value:p.level,style:"width:60px",title:"level"});
   lvIn.addEventListener("change",()=>{ const l=Math.max(1,Math.min(100,parseInt(lvIn.value)||1)); p.level=l; p.xp=xpForLevel(l); encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; syncEncMonLevelupMoves(p,sp); tpSync(p); saveEnc(); renderEncounters(); });
   nw.append(el("div",{class:"small muted",style:"margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"},
@@ -22645,6 +23432,27 @@ function encounterMonCard(enc, p, list, trainer){
   if(!p.abilities.length && !grant && !p.typeAce) aw.append(el("span",{class:"muted small"},"none — tap + ability"));
   p.abilities.forEach(an=> aw.append(encounterAbilityRow(p,an)));
   card.append(aw);
+  /* Injuries — an encounter Pokémon (wild OR one of an encounter Trainer's party) had no control
+     at all here, so a GM running an enemy from this card could never mark one. Same shape as the
+     encounter Trainer's row, but pushed through the daily ledger's healInjuries() on the way DOWN
+     so a Bandage-by-hand still counts against Core p.252's 3 a day. */
+  if(!isBoss(p) && !isSwarm(p)){
+    const clampInj = () => { const m = pokeDerived(p).maxHP;
+      if(p.currentHP != null && p.currentHP > m) p.currentHP = m; };
+    const injRow = el("div",{class:"inline",style:"gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap"});
+    injRow.append(el("span",{class:"small muted",style:"font-weight:700"},"Injuries"),
+      el("button",{class:"btn-secondary",style:"padding:2px 9px",title:"treat one Injury (counts against its 3 a day)",
+        onclick:()=>{ const r = healInjuries(p, 1, "by hand (Encounters tab)");
+          if(!r.healed && r.blocked) toast(`Already treated ${injuryDayUsed(p)}/${injuryDayCap(p)} Injuries today`);
+          clampInj(); saveEnc(); renderEncounters(); }},"−"),
+      el("span",{style:"font-weight:800;min-width:16px;text-align:center"}, String(p.injuries||0)),
+      el("button",{class:"btn-secondary",style:"padding:2px 9px",title:"give it an Injury",
+        onclick:()=>{ p.injuries=Math.min(10,(p.injuries||0)+1); clampInj(); applyAutoDeath(p);
+          saveEnc(); renderEncounters(); }},"+"),
+      injuryDayChip(p),
+      el("span",{class:"small muted"}, `max HP ${pokeDerived(p).maxHP} of ${pokeDerived(p).fullMaxHP}`));
+    card.append(injRow);
+  }
   // legendary Auras — only for legendaries (or if this enemy already has some)
   if(isLegendarySpeciesName(p.species) || (p.auras||[]).length)
     card.append(aurasCard(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
@@ -22936,12 +23744,15 @@ function openExpCalc(enc){
     (tr.pokemon||[]).forEach(p=> rows.push(["↳ "+encMonName(p), `Lv ${p.level}`, p.level]));
   });
   const base=encounterBaseXP(enc);
+  const bsplit=encounterBaseXPSplit(enc);
   const tbl=el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"});
   if(!rows.length) tbl.append(el("span",{class:"muted"},"No combatants yet — add some enemies first."));
   rows.forEach(r=> tbl.append(el("div",{class:"inline",style:"justify-content:space-between;gap:8px"},
     el("span",{}, r[0]), el("span",{class:"muted small"}, `${r[1]} = ${r[2]}`))));
   tbl.append(el("div",{class:"inline",style:"justify-content:space-between;gap:8px;border-top:1px solid var(--line);margin-top:6px;padding-top:6px;font-weight:800"},
     el("span",{},"Base Experience Value"), el("span",{}, String(base))));
+  if(bsplit.boss) tbl.append(el("div",{class:"inline small muted",style:"justify-content:space-between;gap:8px"},
+    el("span",{},"…of which Boss (never divided)"), el("span",{}, String(bsplit.boss))));
   body.append(tbl);
   const sigIn=el("input",{type:"number",min:1,step:0.5,value:enc.sig});
   const plIn =el("input",{type:"number",min:1,value:enc.players});
@@ -22952,15 +23763,23 @@ function openExpCalc(enc){
   const recalc=()=>{
     const sig=Math.max(0,parseFloat(sigIn.value)||0), pl=Math.max(1,parseInt(plIn.value)||1);
     enc.sig=sig; enc.players=pl; saveEnc();
-    const total=Math.round(base*sig), per=Math.round(total/pl);
+    const x = encounterXPPerPlayer(enc, sig, pl);
     out.innerHTML="";
     out.append(
-      el("div",{style:"font-size:15px"}, `${base} Base × ${sig} significance = `, el("b",{}, String(total)), " total XP"),
-      el("div",{style:"font-size:22px;font-weight:800;margin-top:6px;color:var(--accent)"}, `${per} XP per player`),
-      el("div",{class:"small muted",style:"margin-top:4px"}, `${total} ÷ ${pl} player${pl===1?"":"s"}. Each player then splits their share among the Pokémon they used (Core p.460).`),
-      el("button",{class:"btn-primary",style:"padding:6px 12px;margin-top:10px",
-        title:"pick who was actually there — it lands in those sheets' EXP pools, to spend on their Pokémon",
-        onclick:()=>openSendEXP(per, `${per} EXP per player, straight off the calculator — tick who was actually there, then send.`)}, "📤 Send EXP"));
+      el("div",{style:"font-size:15px"}, `${base} Base × ${sig} significance = `, el("b",{}, String(x.total)), " total XP"),
+      el("div",{style:"font-size:22px;font-weight:800;margin-top:6px;color:var(--accent)"}, `${x.per} XP per player`));
+    if(x.boss) out.append(
+      el("div",{class:"small",style:"margin-top:4px;color:var(--accent);font-weight:600",
+        title:"Running the Game p.487 — a Boss is meant to be worth as much to a party of five as to a party of two, so its Experience is not split."},
+        `👹 ${x.bossXP} of that is the Boss, and a Boss's Experience is NOT divided (Running the Game p.487).`),
+      el("div",{class:"small muted",style:"margin-top:2px"},
+        `${x.normalXP} from the rest ÷ ${pl} player${pl===1?"":"s"} = ${Math.round(x.normalXP/pl)}, + ${x.bossXP} Boss = ${x.per} each. `
+        + `Each player then splits their share among the Pokémon they used (Core p.460).`));
+    else out.append(el("div",{class:"small muted",style:"margin-top:4px"},
+      `${x.total} ÷ ${pl} player${pl===1?"":"s"}. Each player then splits their share among the Pokémon they used (Core p.460).`));
+    out.append(el("button",{class:"btn-primary",style:"padding:6px 12px;margin-top:10px",
+      title:"pick who was actually there — it lands in those sheets' EXP pools, to spend on their Pokémon",
+      onclick:()=>openSendEXP(x.per, `${x.per} EXP per player, straight off the calculator — tick who was actually there, then send.`)}, "📤 Send EXP"));
   };
   sigIn.addEventListener("input",recalc); plIn.addEventListener("input",recalc);
   body.append(inRow, out); recalc();
@@ -22973,6 +23792,7 @@ function openExpCalc(enc){
 const MON_EXP_SIG = 1, MON_EXP_PLAYERS = 3;
 function openMonExpCalc(p){
   const base = p.level||0;
+  const boss = isBoss(p);        // a Boss's Experience is never divided (Running the Game p.487)
   const body = el("div",{});
   body.append(el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"},
     el("div",{class:"inline",style:"justify-content:space-between;gap:8px"},
@@ -22986,21 +23806,26 @@ function openMonExpCalc(p){
   const out = el("div",{class:"card",style:"margin:0"});
   const recalc = ()=>{
     const sig = Math.max(0, parseFloat(sigIn.value)||0), pl = Math.max(1, parseInt(plIn.value)||1);
-    const total = Math.round(base*sig), per = Math.round(total/pl);
+    const total = Math.round(base*sig), per = boss ? total : Math.round(total/pl);
     out.innerHTML = "";
     out.append(
       el("div",{style:"font-size:15px"}, `${base} Base × ${sig} modifier = `, el("b",{},String(total)), " total XP"),
       el("div",{style:"font-size:22px;font-weight:800;margin-top:6px;color:var(--accent)"}, `${per} XP per player`),
-      el("div",{class:"small muted",style:"margin-top:4px"},
-        `${total} ÷ ${pl} player${pl===1?"":"s"}. Each player then splits their share among the Pokémon they used (Core p.460).`),
+      boss
+        ? el("div",{class:"small",style:"margin-top:4px;color:var(--accent);font-weight:600",
+            title:"Running the Game p.487 — a Boss is meant to be worth as much to a party of five as to a party of two."},
+            `👹 Boss — its Experience is NOT divided, so every player gets the full ${total}. Each then splits their share among the Pokémon they used (Core p.460).`)
+        : el("div",{class:"small muted",style:"margin-top:4px"},
+            `${total} ÷ ${pl} player${pl===1?"":"s"}. Each player then splits their share among the Pokémon they used (Core p.460).`),
       el("button",{class:"btn-primary",style:"padding:6px 12px;margin-top:10px",
         title:"pick who was actually there — it lands in those sheets' EXP pools, to spend on their Pokémon",
         onclick:()=>openSendEXP(per, `${per} EXP per player, straight off the calculator — tick who was actually there, then send.`)}, "📤 Send EXP"));
   };
   sigIn.addEventListener("input",recalc); plIn.addEventListener("input",recalc);
+  if(boss) plIn.disabled = true;         // nothing to divide by — the whole amount goes to each player
   body.append(el("div",{class:"fieldrow"},
     lbl("Modifier ×",sigIn,"1–1.5 minor · 2–3 average · 4–5 major"),
-    lbl("Players sharing XP",plIn,"count Players, not Pokémon")), out);
+    lbl("Players sharing XP",plIn, boss ? "a Boss's EXP is not divided" : "count Players, not Pokémon")), out);
   recalc();
   modal({title:`🧮 EXP — ${encMonName(p)}`, bodyNode:body});
 }
@@ -24363,6 +25188,144 @@ function tokenTileGap(a, b){
   const dx = Math.max(0, ax-(bx+bs-1), bx-(ax+as-1));
   const dy = Math.max(0, ay-(by+bs-1), by-(ay+as-1));
   return Math.max(dx, dy);
+}
+/* ===================================================================
+   POSITIONAL AUTOMATION — Flanking (Core p.232) and Pressure (Ability)
+   -------------------------------------------------------------------
+   Both are "who is standing where" rules the board already knows the answer to, so the sheet works
+   them out itself rather than asking the table to remember. One square = one metre; tokenTileGap
+   is the Chebyshev gap between two footprints (0 = overlapping, 1 = adjacent).
+=================================================================== */
+/* every grid cell a token's footprint covers */
+function tokenSquares(t){
+  const x = Math.round(t.x), y = Math.round(t.y), n = t.size || 1, out = [];
+  for(let i=0;i<n;i++) for(let j=0;j<n;j++) out.push([x+i, y+j]);
+  return out;
+}
+/* "player side" vs "enemy side" — the only two sides the board models. Standalone tokens (props,
+   markers) belong to neither and never Flank or feel Pressure. */
+function tokenSide(t){
+  if(!t || !t.link) return null;
+  return ENEMY_LINKS.has(t.link.kind) ? "enemy" : "player";
+}
+function tokensAreFoes(a, b){
+  const sa = tokenSide(a), sb = tokenSide(b);
+  return !!sa && !!sb && sa !== sb;
+}
+/* a token that isn't in the fight any more can't Flank or project Pressure */
+function tokenIsDown(t){
+  const L = t && t.link ? tokenLinked(t) : null;
+  if(!L || !L.obj) return true;
+  if(hasStatus(L.obj, "knockedOut") || hasStatus(L.obj, "dead")) return true;
+  const hp = ownerHP(L.obj);
+  return typeof hp === "number" && hp <= 0;
+}
+/* how many of `foe`'s squares sit adjacent to `target`'s footprint — Core p.232: "Foes larger than
+   Medium may occupy multiple squares — they count as a number of foes for the purposes of Flanking
+   equal to the number of squares adjacent to the Flanked target that they're occupying." */
+function adjacentSquareCount(foe, target){
+  const tgt = tokenSquares(target);
+  let n = 0;
+  for(const [fx, fy] of tokenSquares(foe))
+    if(tgt.some(([tx, ty]) => Math.max(Math.abs(fx-tx), Math.abs(fy-ty)) <= 1)) n++;
+  return n;
+}
+/* the heaviest set of adjacent foes that are NOT adjacent to one another (Core p.232's "adjacent to
+   them but not adjacent to each other"). A maximum weighted independent set — the board never has
+   more than a handful of tokens crowded round one target, so an exact search is fine, with a greedy
+   fallback if some GM really does stack a dozen of them. */
+function bestFlankSet(nodes){
+  if(nodes.length > 14){
+    const out = [];
+    [...nodes].sort((a,b)=>b.w-a.w).forEach(n=>{
+      if(!out.some(o => tokenTileGap(o.tok, n.tok) <= 1)) out.push(n);
+    });
+    return out;
+  }
+  let best = [];
+  const bestW = () => best.reduce((s,n)=>s+n.w, 0);
+  const walk = (i, chosen) => {
+    if(i === nodes.length){
+      const w = chosen.reduce((s,n)=>s+n.w, 0);
+      if(w > bestW() || (w === bestW() && chosen.length > best.length)) best = chosen.slice();
+      return;
+    }
+    const n = nodes[i];
+    if(!chosen.some(c => tokenTileGap(c.tok, n.tok) <= 1)){ chosen.push(n); walk(i+1, chosen); chosen.pop(); }
+    walk(i+1, chosen);
+  };
+  walk(0, []);
+  return best;
+}
+/* Is this token Flanked right now?  → {flanked, weight, need, who[]} */
+function tokenFlanking(map, token){
+  const need = (token.size || 1) + 1;      // Small/Medium 2 · Large 3 · Huge 4 · Gigantic 5
+  const blank = { flanked:false, weight:0, need, who:[] };
+  if(!map || !tokenSide(token) || tokenIsDown(token)) return blank;
+  const foes = mapTokensFor(map.id).filter(t =>
+    t.id !== token.id && tokensAreFoes(t, token) && !t.gmHidden
+    && tokenTileGap(t, token) <= 1 && !tokenIsDown(t));
+  if(foes.length < 2) return blank;        // "a single combatant cannot Flank by itself"
+  const nodes = foes.map(t => ({ tok:t, w: Math.max(1, adjacentSquareCount(t, token)) }));
+  const set = bestFlankSet(nodes);
+  if(set.length < 2) return blank;         // still needs two separate bodies
+  const weight = set.reduce((n,x)=>n+x.w, 0);
+  return { flanked: weight >= need, weight, need, who: set.map(x=>tokenHp(x.tok).name) };
+}
+/* Pressure (Ability): "While within 3 meters of the user, all foes are Suppressed. This effect ends
+   when the user is Fainted."  → the names of the foes projecting it onto this token. */
+const PRESSURE_RANGE = 3;
+function tokenPressureSources(map, token){
+  if(!map || !tokenSide(token) || tokenIsDown(token)) return [];
+  return mapTokensFor(map.id).filter(t => {
+    if(t.id === token.id || !tokensAreFoes(t, token) || t.gmHidden) return false;
+    if(tokenTileGap(t, token) > PRESSURE_RANGE || tokenIsDown(t)) return false;
+    const L = tokenLinked(t);
+    return !!(L && L.obj && ownerHasAbility(L.obj, "Pressure"));
+  }).map(t => tokenHp(t).name);
+}
+/* Apply both to the board. Only the GM writes (one authority, no two clients fighting over the same
+   chip), and only when something actually changed. `autoFlanked` / `autoPressure` remember which
+   chips WE put on, so walking out of range lifts ours without touching one set by hand.
+   Called from renderMap, so it is also what keeps the chips honest after a drag. */
+function sweepMapAuras(map){
+  if(!map || !cloud.isGM) return false;
+  const toks = mapTokensFor(map.id);
+  if(!toks.length) return false;
+  /* Flanking is an all-pairs question, so it costs O(n²) footprint comparisons per repaint. That's
+     nothing at table scale and pointless on an overworld map carrying hundreds of markers — bail
+     out there rather than making every pan pay for it. */
+  if(toks.length > 300) return false;
+  const anyPressure = toks.some(t => { const L = t.link ? tokenLinked(t) : null;
+    return L && L.obj && ownerHasAbility(L.obj, "Pressure") && !tokenIsDown(t); });
+  const rows = new Set();
+  let encTouched = false, changed = false;
+  const mark = (obj, key, flag, want) => {
+    if(!Array.isArray(obj.statuses)) obj.statuses = [];
+    const has = obj.statuses.includes(key);
+    if(want && !has){ obj.statuses.push(key); obj[flag] = true; return true; }
+    // only ever lift a chip WE put on — one ticked by hand is the table's call, not ours
+    if(!want && has && obj[flag]){ obj.statuses = obj.statuses.filter(k=>k!==key); delete obj[flag]; return true; }
+    return false;
+  };
+  toks.forEach(token => {
+    const L = token.link ? tokenLinked(token) : null;
+    if(!L || !L.obj || L.missing) return;
+    let hit = false;
+    { const sy = syncHeldStatuses(L.obj);              // Flame Orb / Toxic Orb / a Choice Item
+      if(sy.added.length || sy.removed.length) hit = true; }
+    hit = mark(L.obj, "flanked", "autoFlanked", tokenFlanking(map, token).flanked) || hit;
+    if(anyPressure || L.obj.autoPressure)
+      hit = mark(L.obj, "suppressed", "autoPressure", tokenPressureSources(map, token).length > 0) || hit;
+    if(!hit) return;
+    changed = true;
+    if(ENEMY_LINKS.has(L.kind)) encTouched = true;
+    else if(L.row) rows.add(L.row);
+  });
+  if(!changed) return false;
+  if(encTouched) saveEncCombat();
+  rows.forEach(r => { if(canEditPlayerHP(r)) cloudSaveRow(r); });
+  return true;
 }
 function myMapTokens(map){
   return mapTokensFor(map.id).filter(t=>{
@@ -26873,6 +27836,168 @@ function applyOps(target, ops){
   });
   return target;
 }
+/* ─────────────── live updates over BROADCAST, not postgres_changes ───────────────
+   Supabase Realtime's postgres_changes sends the ENTIRE changed row — every column, the whole
+   `data` jsonb included — to every subscribed client on every write. Our writes were already
+   field-level (a token nudge uploads about 60 bytes), but the echo coming back down was the full
+   200-600 KB row, once per connected player, and any row past Realtime's ~1 MB record limit
+   arrived truncated, which made every client re-SELECT the whole thing instead. Six people round
+   a map for an evening is gigabytes: this is what burned the free plan's 5 GB of egress, three
+   times over, and no amount of shrinking the rows was ever going to fix a per-write cost that
+   scales with the whole row.
+
+   A change is now announced as the ops that made it — the same list the writer just handed the
+   server, a few hundred bytes. `rowops` carries {id, from, rev, ops} and peers replay it ONLY if
+   their copy is standing exactly on `from`, which is what makes a dropped or out-of-order message
+   impossible to apply wrongly: anything that doesn't line up pulls that one row instead.
+
+   Broadcast is not durable, so revPoll() is the backstop — `select id,rev` over the campaign is a
+   few hundred bytes, runs on the 15-second watchdog, and reads back only the rows whose rev
+   actually moved. Missing a broadcast costs one poll of latency instead of silence.
+
+   postgres_changes is kept behind PG_CHANGES for debugging only. Switching it back on against a
+   live table re-opens the leak. */
+const PG_CHANGES = false;
+const OPS_BCAST_MAX = 24000;      // past this, "go read the row" is the cheaper message
+const wireId = "w" + Math.random().toString(36).slice(2,10);   // so we can ignore our own echo
+
+/* Where a row id lives locally, and how to normalize, cache, re-save and redraw it. One table, so
+   the broadcast receiver, the targeted pull and the rev poll all route a row the same way. */
+function localSlot(id){
+  if(id===pcId())        return { kind:"pc",    cache:"pc",        get:()=>cloud.pc,        set:r=>{cloud.pc=r;},        norm:pcData,        save:pcUpsert };
+  if(id===mapMetaId())   return { kind:"map",   cache:"mapmeta",   get:()=>cloud.mapMeta,   set:r=>{cloud.mapMeta=r;},   norm:normMapMeta,   save:mapMetaSave };
+  if(id===mapTokensId()) return { kind:"map",   cache:"maptokens", get:()=>cloud.mapTokens, set:r=>{cloud.mapTokens=r;}, norm:normMapTokens, save:mapTokensSave };
+  if(id===mapFogId())    return { kind:"map",   cache:"mapfog",    get:()=>cloud.mapFog,    set:r=>{cloud.mapFog=r;},    norm:normMapFog,    save:mapFogSave };
+  if(id===encRowId())    return { kind:"enc",   cache:"enc",       get:()=>cloud.enc,       set:r=>{cloud.enc=r;},       norm:normEnc,       save:saveEnc };
+  if(id===shopRowId())   return { kind:"shops", cache:"shops",     get:()=>cloud.shops,     set:r=>{cloud.shops=r;},     norm:normShops,     save:saveShops };
+  if(id===rollRowId())   return { kind:"rolls", cache:"rolls",     get:()=>cloud.rolls,     set:r=>{cloud.rolls=r;},     norm:normRolls,     save:saveRolls };
+  return { kind:"char", cache:"", get:()=>cloud.byId[id], set:r=>{cloud.byId[id]=r;}, norm:d=>migrateChar(d,id),
+           save:()=>{ const r = cloud.byId[id]; if(r && canEdit(r)) cloudSaveRow(r); } };
+}
+/* Redraw whatever that row feeds, and keep the GM's shop notice / character picker honest. */
+function refreshForSlot(slot){
+  refreshUI(slot.kind==="char" ? "all" : slot.kind);
+  if(slot.kind==="shops") noticePlayerShop();
+  if(slot.kind==="char")  refreshCharSelect();
+}
+/* Announce a write we just landed. `ops` is exactly what the server applied, so a peer standing on
+   `from` reaches the same state by replaying it: applyOps mirrors ptu_apply_ops op for op —
+   including which ops it SKIPS — and both sides start from byte-identical data. */
+function broadcastOps(row, ops, from, rev){
+  if(!cloud.sub || from==null || rev==null) return;
+  let body = "";
+  try{ body = JSON.stringify(ops); }catch(e){ body = null; }
+  const payload = (body!=null && body.length <= OPS_BCAST_MAX)
+    ? { src:wireId, id:row.id, from, rev, ops }
+    : { src:wireId, id:row.id, rev };                    // too big to ship — peers pull the row
+  try{ cloud.sub.send({ type:"broadcast", event:"rowops", payload }); }catch(e){}
+}
+/* A whole-blob CAS write or a fresh insert has no ops to replay — just say the row moved. */
+function broadcastRowRev(row, rev){
+  if(!cloud.sub || rev==null) return;
+  try{ cloud.sub.send({ type:"broadcast", event:"rowops", payload:{ src:wireId, id:row.id, rev } }); }catch(e){}
+}
+function broadcastRowGone(id){
+  if(!cloud.sub) return;
+  try{ cloud.sub.send({ type:"broadcast", event:"rowgone", payload:{ src:wireId, id } }); }catch(e){}
+}
+/* ── receiving ── */
+const pullWanted = new Set();
+let pullTimer = null;
+/* Coalesce "I need to read this row" into one SELECT a beat later, so a burst of unrelated
+   broadcasts (a GM re-seeding, three people joining) is a single request for the rows that
+   genuinely need it rather than one round trip each. */
+function schedulePull(id){
+  if(id) pullWanted.add(id);
+  if(pullTimer) return;
+  pullTimer = setTimeout(()=>{ pullTimer=null; const ids=[...pullWanted]; pullWanted.clear(); pullRows(ids); }, 150);
+}
+async function pullRows(ids){
+  if(mode!=="cloud" || !cloud.client || !ids || !ids.length) return;
+  const { data, error } = await cloud.client.from("sheets").select(SHEET_COLS).in("id", ids);
+  if(error){ console.error(error); return; }             // keep local on a fetch error, don't wipe it
+  const kinds = new Set();
+  (data||[]).forEach(r=>{
+    const slot = localSlot(r.id);
+    // mergeShared/adoptRemote: the server copy is taken but any edit of ours it doesn't know about
+    // is merged back on top, and `_dirty` re-pushes what's still only ours.
+    const merged = mergeShared(slot.get(), r, slot.norm);
+    slot.set(merged);
+    if(slot.cache) cacheSharedRow(slot.cache, merged);
+    if(slot.kind==="char" && merged && !canEdit(merged)) merged._dirty = false;
+    repushIfDirty(merged, slot.save);
+    kinds.add(slot.kind);
+  });
+  if(kinds.has("map"))  reconcileFogAfterAdopt();
+  if(kinds.has("char")){ cacheCloud(); refreshCharSelect(); }
+  if(kinds.has("shops")) noticePlayerShop();
+  kinds.forEach(k => refreshUI(k==="char" ? "all" : k));
+}
+function onRowOps(p){
+  if(!p || !p.id || p.src===wireId) return;
+  cloud.lastEvent = Date.now();                          // proof the socket is alive (watchdog input)
+  const id = p.id, slot = localSlot(id), row = slot.get();
+  // Our own write to this row is mid-commit: it reconciles against the server itself, and replaying
+  // someone else's ops underneath it would double-apply. Let the pull settle it.
+  if(cloud.inflight[id]){ schedulePull(id); return; }
+  // No ops (a blob write or an insert), a row we've never seen, or a copy that isn't standing where
+  // the ops were computed from — none of that can be replayed safely, so read that one row.
+  if(!Array.isArray(p.ops) || !row || row._rev==null || row._rev!==p.from){ schedulePull(id); return; }
+  if(typeof p.rev==="number" && p.rev <= row._rev) return;          // duplicate / older message
+  // The baseline follows the server and our live copy takes their change, BOTH IN PLACE — so a
+  // reference the UI is holding (a token mid-drag, the initiative panel's map) stays valid the way
+  // reconcileInto guarantees, and diffOps(_base, data) still describes exactly the edits of ours
+  // that haven't been saved yet.
+  if(row._base) applyOps(row._base, p.ops);
+  applyOps(row.data, p.ops);
+  // Normalize BOTH sides, the way adoptRemote does (it stores the normalized server copy as the
+  // baseline). Normalizing only the live copy leaves any field the normalizer fills in — mapTokens'
+  // byMap index, a defaulted flag — looking like an unsaved edit of ours forever, which is enough
+  // to make flushDivergedRows re-upload the whole row on every 15s watchdog tick.
+  slot.norm(row.data);
+  if(row._base) slot.norm(row._base);
+  row._rev = p.rev;
+  if(slot.cache) cacheSharedRow(slot.cache, row);
+  if(slot.kind==="map")  reconcileFogAfterAdopt();
+  if(slot.kind==="char") cacheCloud();
+  refreshForSlot(slot);
+}
+function onRowGone(p){
+  if(!p || !p.id || p.src===wireId) return;
+  cloud.lastEvent = Date.now();
+  if(!cloud.byId[p.id]) return;                          // reserved rows are never deleted
+  delete cloud.byId[p.id];
+  if(cloud.activeId===p.id) cloud.activeId = Object.keys(cloud.byId)[0] || null;
+  cacheCloud(); softRender();
+}
+/* ── the durable backstop ──
+   Every row's id and server rev and nothing else: about 30 bytes a row, so polling the whole
+   campaign costs less than one token position used to. Anything whose rev has moved past what we
+   hold (a broadcast we never received, edits made while the tab slept, a socket that died quietly)
+   is pulled by id. Returns true when it actually had to read something. */
+async function revPoll(){
+  if(mode!=="cloud" || !cloud.client) return false;
+  const { data, error } = await cloud.client.from("sheets").select("id,rev").eq("campaign", cloud.campaign);
+  if(error){ console.error(error); return false; }
+  const server = new Map((data||[]).map(r=>[r.id, r.rev]));
+  const want = [];
+  server.forEach((rev, id)=>{
+    if(cloud.inflight[id]) return;                       // our write is landing; it carries its own rev
+    const row = localSlot(id).get();
+    if(!row || row._rev==null || (typeof rev==="number" && rev > row._rev)) want.push(id);
+  });
+  // Characters the server no longer has were deleted elsewhere. Reserved rows are never dropped on
+  // absence — a transient partial result must not wipe the board.
+  let removed = false;
+  Object.keys(cloud.byId).forEach(id=>{
+    if(server.has(id) || cloud.inflight[id]) return;
+    delete cloud.byId[id]; removed = true;
+    if(cloud.activeId===id) cloud.activeId = Object.keys(cloud.byId)[0] || null;
+  });
+  if(removed){ cacheCloud(); refreshCharSelect(); }
+  if(want.length) await pullRows(want);
+  return want.length > 0 || removed;
+}
 /* Send a row's pending changes as field-level ops. Returns true (saved), false (failed) or
    "fallback" when the caller should use the whole-blob CAS write instead. */
 let opsRpcFails = 0;
@@ -26913,6 +28038,11 @@ async function opsUpsert(row){
     // our ops applied to our baseline IS the state the server now holds for the fields we touched;
     // anything someone else changed meanwhile arrives via realtime (which merges) — see adoptRemote.
     row._base = snap;
+    // Tell everyone what changed instead of letting Realtime ship them the whole row back. The ops
+    // were applied to the row as it stood at rev-1 (ptu_apply_ops patches the LIVE row and the
+    // trigger bumps rev by one), so that — not our own possibly-stale _rev — is the rev a peer has
+    // to be standing on to replay them and land on exactly what the server now holds.
+    broadcastOps(row, ops, data.rev - 1, data.rev);
     return true;
   } finally {
     cloud.inflight[row.id]--; if(cloud.inflight[row.id]<=0) delete cloud.inflight[row.id];
@@ -26941,13 +28071,15 @@ async function casUpsert(row, mergeFn){
       const payloadData = deepClone(row.data);                 // exactly what the server will hold on success
       if(row._rev==null){
         const { data:ins, error } = await cloud.client.from("sheets").insert({ ...meta, data:payloadData }).select(WRITE_RET_COLS);
-        if(!error && ins && ins.length){ row._rev=ins[0].rev; row.updated_at=ins[0].updated_at; row._base=payloadData; return true; }
+        if(!error && ins && ins.length){ row._rev=ins[0].rev; row.updated_at=ins[0].updated_at; row._base=payloadData;
+          broadcastRowRev(row, ins[0].rev); return true; }
         // error (usually a duplicate id from a race) → fall through to fetch + merge + retry
       } else {
         const { data:upd, error } = await cloud.client.from("sheets").update({ ...meta, data:payloadData })
           .eq("id", id).eq("rev", row._rev).select(WRITE_RET_COLS);
         if(error){ console.error(error); toast("⚠ Cloud save failed"); return false; }
-        if(upd && upd.length){ row._rev=upd[0].rev; row.updated_at=upd[0].updated_at; row._base=payloadData; return true; }
+        if(upd && upd.length){ row._rev=upd[0].rev; row.updated_at=upd[0].updated_at; row._base=payloadData;
+          broadcastRowRev(row, upd[0].rev); return true; }
         // 0 rows → the row moved past our rev (someone else wrote) → reconcile
       }
       const { data:cur, error:fe } = await cloud.client.from("sheets").select(SHEET_COLS).eq("id", id).limit(1);
@@ -27062,12 +28194,42 @@ function adoptRemote(cur, incoming, normFn){
    it did, which is what guards the one-time encounter seed.
    `undefined` = no snapshot to consult (go to the network) · `null` = the snapshot proves no such row. */
 function preRow(pre, id){ return pre && pre.rows ? (pre.rows.get(id) || null) : undefined; }
+const HEAD_COLS = "id,campaign,owner_id,owner_name,name,rev,updated_at";   // every column EXCEPT `data`
+/* The rows this device already holds a provably-current copy of, id → {rev, data}. `_clean` (see
+   cleanStamp) is the server rev that cached `data` was last known to match exactly. */
+function cachedCleanRows(){
+  const out = new Map();
+  const host = CLOUD_CFG.url || "";
+  const add = r => { if(r && r.id && r._clean!=null && r._cleanAt===host && r.data!=null) out.set(r.id, { rev:r._clean, data:r.data }); };
+  try{ const a = JSON.parse(localStorage.getItem("ptu_cloud_cache_"+cloud.campaign)||"[]"); if(Array.isArray(a)) a.forEach(add); }catch(e){}
+  for(const k of ["pc","mapmeta","maptokens","mapfog","enc","shops","rolls"]){
+    try{ add(JSON.parse(localStorage.getItem(sharedCacheKey(k))||"null")); }catch(e){}
+  }
+  return out;
+}
 async function fetchRoster(){
-  const { data, error } = await cloud.client.from("sheets").select(SHEET_COLS).eq("campaign", cloud.campaign);
+  // Ids and revs first; `data` only for what actually moved. A campaign is well over a megabyte of
+  // JSON and almost none of it changes between one visit and the next — yet every refresh, every
+  // PWA relaunch and every phone waking up used to re-download all of it (the encounter library,
+  // the fog, the whole PC box) purely to arrive back at the copy already sitting in localStorage.
+  // With connect being the one remaining place that reads whole rows in bulk, this is now the
+  // largest recurring egress cost there is. The head query is ~150 bytes a row.
+  const { data:heads, error } = await cloud.client.from("sheets").select(HEAD_COLS).eq("campaign", cloud.campaign);
   if(error) throw error;
+  const clean = cachedCleanRows(), need = [], data = [];
+  (heads||[]).forEach(h=>{
+    const c = clean.get(h.id);
+    if(c && c.rev===h.rev) data.push({ ...h, data:c.data });   // unchanged since we cached it
+    else need.push(h.id);
+  });
+  if(need.length){
+    const { data:full, error:e2 } = await cloud.client.from("sheets").select(SHEET_COLS).in("id", need);
+    if(e2) throw e2;
+    (full||[]).forEach(r => data.push(r));
+  }
   const seen = new Set();
   const pre = { rows: new Map() };
-  (data||[]).forEach(r => {
+  data.forEach(r => {
     if(r.owner_id===PC_OWNER || r.owner_id===MAP_OWNER || r.owner_id===ENC_OWNER || r.owner_id===SHOP_OWNER || r.owner_id===ROLL_OWNER)
       pre.rows.set(r.id, r);
     if(r.owner_id===PC_OWNER){ cloud.pc = mergeShared(cloud.pc, r, pcData); repushIfDirty(cloud.pc, pcUpsert); return; }
@@ -27115,9 +28277,29 @@ function recoverUnsavedFromCache(){
    which recoverUnsavedFromCache already protects. Cached one JSON blob per kind (not reused from
    the per-character cache, whose format is a byId array). */
 function sharedCacheKey(kind){ return "ptu_cloud_cache_shared_"+kind+"_"+cloud.campaign; }
+/* `_base` is, by definition, "what the server held at `_rev`" — so a cached row still standing on
+   that rev is a provably-current copy and a reconnect can use it instead of downloading the row
+   again (see cachedCleanRows / fetchRoster). Storing _base outright would nearly double the cache
+   and risk the localStorage quota on the big rows, but it is identical to `data` everywhere except
+   the brief window between an optimistic cache write and the save that follows it — so stamp the
+   rev in that (overwhelmingly common) case and simply forgo the shortcut otherwise. A stamp is
+   never a substitute for the recovery nets below: those still compare `data` against `_rev`, which
+   is exactly the pair that is left untouched here. */
+function cleanStamp(row){
+  const { _base, ...rest } = row;
+  if(_base != null && row._rev != null && deepEqual(row.data, _base)){
+    rest._clean = row._rev;
+    // A rev number only identifies a version WITHIN one database. Stamp the project the row came
+    // from as well, so moving the campaign to a fresh Supabase project (as db/MOVING-PROJECT.md
+    // describes, where a restored row can land on a rev number it also held on the old server)
+    // invalidates every stamp instead of matching one against unrelated data.
+    rest._cleanAt = CLOUD_CFG.url || "";
+  }
+  return rest;
+}
 function cacheSharedRow(kind, row){
   if(!row) return;
-  try{ const { _base, ...rest } = row; localStorage.setItem(sharedCacheKey(kind), JSON.stringify(rest)); }catch(e){}
+  try{ localStorage.setItem(sharedCacheKey(kind), JSON.stringify(cleanStamp(row))); }catch(e){}
 }
 /* On (re)connect, compare the cached copy against the row we just fetched: if the cache was based
    on the SAME server rev (so it was never superseded by our own later successful write) yet its
@@ -27264,6 +28446,7 @@ async function fetchMap(pre){
   foldLegacyFogIntoFogRow();
   reconcileFogAfterAdopt();          // resync in-memory working sets with the fetched fog row
   if(cloud.isGM) migrateFogOffTokensRow();
+  repackLegacyFog();                 // GM-only: squeeze any pre-bitmap fog down to its packed form
 }
 function ensureMapMeta(){
   if(!cloud.mapMeta) cloud.mapMeta = { id:mapMetaId(), campaign:cloud.campaign, owner_id:MAP_OWNER,
@@ -27295,6 +28478,25 @@ function foldLegacyFogIntoFogRow(){
     for(const cell of legacy[k]) if(!set.has(cell)){ set.add(cell); added=true; }
     if(added) fogDirty.add(k);       // will be packed into a bitmap on the next save
   }
+}
+/* GM-only, one-time: fog written before the packed-bitmap format existed is still a ["x,y",…] array,
+   and nothing converts it until that particular map's fog is next revealed — so a board nobody has
+   explored since stays ~50x larger than it needs to be, forever. Measured here: six such maps held
+   302 KB of the fog row's 323 KB, one of them 245 KB that packs to under 5 KB. The fog row is read
+   in full by every cold connect and by any client that misses a broadcast, so one pass at connect
+   pays for itself immediately. Decoding into the working Set and marking it dirty is all it takes —
+   the normal debounced save re-encodes every dirty map as a bitmap. */
+function repackLegacyFog(){
+  if(!cloud.isGM) return;
+  const fog = cloud.mapFog && cloud.mapFog.data && cloud.mapFog.data.fog;
+  if(!fog) return;
+  let n = 0;
+  for(const mid of Object.keys(fog)){
+    if(!Array.isArray(fog[mid])) continue;   // already a bitmap
+    fogSet(mid);                             // decode (fogDecodeInto reads the legacy array form)…
+    fogDirty.add(mid); n++;                  // …and let fogFlushDirty pack it on the next save
+  }
+  if(n) mapFogSave();
 }
 /* GM-only, one-time: now that the fog is safely in its own row, remove the inline fog blob from the
    tokens row and persist both. After this the tokens row (written on every drag/HP/status tick) is a
@@ -27370,6 +28572,45 @@ async function migrateEncImagesToStorage(){
     }
   }
   if(changed){ saveEnc(); toast("Encounter images moved to fast storage ✓"); }
+}
+/* One-time cleanup, GM-only. The two sweeps above cover the map-meta and encounter rows, but base64
+   images predate storeImg() in three places nothing ever migrated: token art on the map-TOKENS row
+   (the hot one, rewritten on every drag and HP tick), photos on PC Pokémon, and avatars/photos on the
+   character sheets themselves. Measured on this campaign: 59 KB across seven images, 16 KB of it
+   riding the tokens row. Small beside a map background, but it is paid again on every cold connect
+   and every un-replayable pull, and the remedy is the same — put it in Storage, keep only the URL.
+   Walks generically instead of naming fields, so img / image / megaImage / avatar / src are all
+   caught wherever they happen to sit. */
+async function liftInlineImages(node, subdir, depth){
+  if(!node || typeof node!=="object" || depth>8) return false;
+  let changed = false;
+  for(const k of Object.keys(node)){
+    const v = node[k];
+    if(typeof v==="string"){
+      // >1 KB, so the tiny inline placeholders (ITEM_PLACEHOLDER's 1x1 gif, the svg pokeball) are
+      // left exactly where they are — uploading those would trade a 62-byte constant for a network
+      // round trip and litter the bucket.
+      if(v.length > 1024 && /^data:image\/[^,]*;base64,/i.test(v)){
+        const url = await storeImg(v, subdir);
+        if(url && url!==v){ node[k] = url; changed = true; }
+      }
+    } else if(v && typeof v==="object"){
+      if(await liftInlineImages(v, subdir, depth+1)) changed = true;
+    }
+  }
+  return changed;
+}
+async function migrateInlineImagesToStorage(){
+  if(!cloud.isGM || !cloud.client) return;
+  let moved = 0;
+  if(cloud.mapTokens && await liftInlineImages(cloud.mapTokens.data, "token", 0)){ mapTokensSave(); moved++; }
+  if(cloud.pc        && await liftInlineImages(cloud.pc.data,        "mon",   0)){ pcUpsert();      moved++; }
+  for(const id of Object.keys(cloud.byId)){
+    const row = cloud.byId[id];
+    if(!row || !row.data || !canEdit(row)) continue;
+    if(await liftInlineImages(row.data, "mon", 0)){ dispatchRowSave(row); moved++; }
+  }
+  if(moved) toast("Inline images moved to fast storage ✓");
 }
 async function mapMetaUpsert(){
   const row = ensureMapMeta();
@@ -27619,6 +28860,7 @@ function logRoll({ kind, label, who, headline, lines, atk, area }){
                     physical: !!atk.physical, pierceImmune: !!atk.pierceImmune,
                     pierceDR: Math.max(0, Math.round(atk.pierceDR||0)),
                     atkTinted: !!atk.atkTinted, atkExploit: !!atk.atkExploit,
+                    seFlat: Math.max(0, Math.round(atk.seFlat||0)),
                     defCSMode: (atk.defCSMode==="all" || atk.defCSMode==="positive") ? atk.defCSMode : null };
   /* An "area" entry is a declaration, not a hit: the player says what they did and the GM decides
      where it lands. It carries the caster's sheet (so the shape can be anchored on their token),
@@ -27627,6 +28869,7 @@ function logRoll({ kind, label, who, headline, lines, atk, area }){
   if(area) e.area = { sheetId: area.sheetId || "", shape: area.shape || "burst",
                       size: Math.max(1, Math.min(20, area.size||1)),
                       buffs: (area.buffs||[]).filter(k=>buffByKey.has(k)).slice(0,8),
+                      songPaid: !!area.songPaid,       // the declaration already paid its AP
                       note: String(area.note||"").slice(0,120) };
   row.data.entries.push(e);
   if(row.data.entries.length > ROLL_FEED_MAX) row.data.entries = row.data.entries.slice(-ROLL_FEED_MAX);
@@ -27671,6 +28914,7 @@ async function cloudConnect(campaign, name, gmCode, silent, viewer){
     updateCloudButton(); closeModal(); render();
     migrateMapBgsToStorage();   // fire-and-forget: lift any legacy base64 map backgrounds into Storage
     migrateEncImagesToStorage();   // and any legacy base64 avatars/sprites baked into the encounters row
+    migrateInlineImagesToStorage();   // …and the stragglers on the tokens row, the PC box and the sheets
     if(!silent) toast(`Connected to “${campaign}”${cloud.isGM?" as GM":""} ✓`);
   }catch(e){
     console.error(e); mode="local";
@@ -27697,10 +28941,17 @@ function subscribeRealtime(){
   if(cloud.sub){ try{ cloud.client.removeChannel(cloud.sub); }catch(e){} }
   cloud.subStatus = "CONNECTING"; cloud.lastEvent = Date.now();
 
-  cloud.sub = cloud.client.channel("sheets-"+cloud.campaign)
-    .on("postgres_changes",
-        { event:"*", schema:"public", table:"sheets", filter:`campaign=eq.${cloud.campaign}` },
-        onRealtime)
+  cloud.sub = cloud.client.channel("sheets-"+cloud.campaign);
+  // The row-change feed. postgres_changes re-sends the WHOLE row to every client on every write and
+  // is what burned the egress quota (see PG_CHANGES above); the ops broadcast carries the identical
+  // change in a few hundred bytes, with revPoll as the durable backstop.
+  if(PG_CHANGES){
+    cloud.sub = cloud.sub.on("postgres_changes",
+      { event:"*", schema:"public", table:"sheets", filter:`campaign=eq.${cloud.campaign}` }, onRealtime);
+  }
+  cloud.sub = cloud.sub
+    .on("broadcast", { event:"rowops"  }, msg => onRowOps(msg && msg.payload))
+    .on("broadcast", { event:"rowgone" }, msg => onRowGone(msg && msg.payload))
     // live token movement — a pure websocket message, never a row write (see broadcastDrag)
     .on("broadcast", { event:"tokdrag" }, msg => onDragBroadcast(msg && msg.payload))
     // live enemy HP/status/CS — a small delta over the socket so the ~600 KB encounters row isn't
@@ -27906,7 +29157,7 @@ function cacheCloud(){
   // (avatars/sprites), risking the localStorage quota. _rev is kept so recovery can detect an
   // unsynced edit on reconnect.
   try{
-    const slim = Object.values(cloud.byId).map(r=>{ const { _base, ...rest } = r; return rest; });
+    const slim = Object.values(cloud.byId).map(cleanStamp);   // _base stripped, _clean rev stamped
     localStorage.setItem("ptu_cloud_cache_"+cloud.campaign, JSON.stringify(slim));
   }catch(e){}
 }
@@ -27993,6 +29244,7 @@ function cloudDeleteCharacter(id){
   render();                                    // optimistic: it disappears immediately
   serialize(rowChain(id), async ()=>{          // ordered behind any pending save of this row
     const { error } = await cloud.client.from("sheets").delete().eq("id", id);
+    if(!error) broadcastRowGone(id);
     if(error){ console.error(error); toast("⚠ Delete failed"); }
   });
 }
@@ -28125,7 +29377,7 @@ async function depositToPC(sourceRow, mon){
   /* A stored Pokémon leaves its Held Item behind — the item belongs to the Trainer's bag, and
      leaving it "in use" in the PC would keep a copy locked away from the rest of the party. */
   const dropped = m.heldItem;
-  if(dropped){ if(m.mega) megaRevert(m, true); m.heldItem = ""; }
+  if(dropped){ if(m.mega) megaRevert(m, true); m.heldItem = ""; syncHeldStatuses(m); }
   transformRevert(m, true);   // "Transform lasts until the user is switched out" — into the PC counts
   m.tempHP = 0;               // Temporary HP "is lost if the user is recalled in a Poké Ball" (Core p.245)
   cloud.pc.data.pokemon.push(m);
@@ -29135,7 +30387,7 @@ let mapDraggingIds = new Set();               // tokens THIS viewer has hold of 
        alive is dropped after DRAG_GHOST_TTL so a closed tab can't strand a token mid-air.
 
    The authoritative position still arrives the old way, on release. This is purely the picture. */
-const DRAG_BCAST_MS = 50;        // ≤20 messages/second per dragger
+const DRAG_BCAST_MS = 100;       // ≤10 msg/s per dragger — Supabase's own default per-client cap
 const DRAG_GHOST_TTL = 2500;     // drop a ghost this long after its last update
 let dragGhosts = new Map();      // tokenId → {node, visX0, visY0, x0, y0} — a peer's in-flight drag
 let dragGhostTimer = 0;
@@ -29636,6 +30888,7 @@ function tokenInitiative(token){
     if(hasStatus(obj,"flinch")) v -= 5;
     if(hasStatus(obj,"agile")) v += 4*trainingMult(obj);   // Agility Training: +4 Initiative (×3 under Critical Moment)
     v += buffInit(obj);                  // a Channeler's Spirit Boost (Speed): +their Intuition Rank
+    v += heldInitBonus(obj);             // a held Quick Claw: +10
   }
   return v;
 }
@@ -30036,9 +31289,9 @@ async function setTokenHP(token, val, opts){
 }
 /* the live list of status-effect keys currently on a token's underlying trainer/Pokémon/enemy/standalone data */
 function tokenStatusKeys(token){
-  if(!token.link) return Array.isArray(token.statuses) ? token.statuses : [];
+  if(!token.link) return uniqStatusKeys(Array.isArray(token.statuses) ? token.statuses : []);
   const L = tokenLinked(token);
-  return (L && L.obj && Array.isArray(L.obj.statuses)) ? L.obj.statuses : [];
+  return uniqStatusKeys((L && L.obj && Array.isArray(L.obj.statuses)) ? L.obj.statuses : []);
 }
 /* Surgically rebuild one token's status-ring SVG on the board, WITHOUT a full renderMap — same
    reasoning as updateTokenHpDom (#6/#HP-lag): the old `if(!$(".modal")) renderMap()` guard meant
@@ -30068,6 +31321,7 @@ function paintTokenStatus(token, encTab){
 }
 /* write a new full set of status keys back to whichever place the token's data actually lives */
 async function setTokenStatuses(token, keys){
+  keys = uniqStatusKeys(keys);          // one chip per affliction, never two
   const info = tokenHp(token);
   if(!info.editable){ toast("Read-only"); return; }
   if(!token.link){
@@ -30111,6 +31365,57 @@ async function commitTokenSource(token){
   if(kind==="enc" || kind==="enctrainer"){ broadcastEncState(token.link, obj); saveEncCombat(); return; }
   if(row){ if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; } cloudSaveRow(row); }
   else save();
+}
+/* ===================================================================
+   RECALL  (Core p.229 "Pokémon Switching", and everything the rules hang off it)
+   -------------------------------------------------------------------
+   Taking a Pokémon off the board is never just taking a token off the board. Recalling it:
+     · is impossible while it is Trapped — "A Pokémon or Trainer that is Trapped cannot be
+       recalled" (Core p.248). The GM's 🔓 unlock overrides.
+     · resets its Combat Stages — "Combat Stages remain until the Pokémon or Trainer is switched
+       out, or until the end of the encounter" (Core p.235); Accuracy and Evasion Stages go with
+       them ("any time Combat Stages would be cleared, Accuracy Stages are cleared as well").
+     · cures every Volatile Affliction — "Volatile Afflictions are cured … from Pokémon by
+       recalling them into their Poké Balls" (Core p.247) — plus Stuck and Slowed, whose own text
+       says they end on switching. Persistent ones (Burn/Poison/Sleep/Paralysis/Freeze) stay.
+     · loses all Temporary Hit Points (Core p.245).
+     · ends a Transformation ("lasts until the user is switched out").
+     · loses all Momentum, for a Duelist's Pokémon (Core Extras — Class Mechanics).
+     · triggers Regenerator: 1/3rd of Max HP back, Daily x2 and once per Scene.
+   Returns { ok, lines[] } — the caller saves, toasts and takes the token off the map.
+=================================================================== */
+function recallBlockedReason(o){
+  if(!o) return "";
+  if(o.unlocked) return "";                                   // GM 🔓 overrides the Trapped rule
+  if(hasStatus(o, "trapped")) return `${ownerLabel(o)} is Trapped — it can't be recalled (Core p.248).`;
+  return "";
+}
+/* Regenerator's payout, if this Pokémon has it and still has a use. Frequency is Daily x2 AND
+   "only once per Scene", so it burns a Daily use and is left to the Scene reset like any other. */
+function recallRegenerator(o){
+  if(!ownerHasAbility(o, "Regenerator")) return null;
+  const ab = abilityByName.get("regenerator");
+  const info = freqInfo(ab && ab.frequency);
+  const key = useKey("ability", "Regenerator");
+  if(freqTrackable(info) && usesLeft(o, key, info.max) <= 0) return null;
+  const gain = ownerHeal(o, Math.max(1, Math.floor((ownerMaxHP(o)||1) / 3)));
+  if(!gain) return null;
+  o.uses = o.uses || {};
+  if(freqTrackable(info)) o.uses[key] = Math.min(info.max, (o.uses[key]||0) + 1);
+  return `♻ Regenerator — +${gain} HP`;
+}
+function recallPokemon(o){
+  const blocked = recallBlockedReason(o);
+  if(blocked){ toast(blocked); return { ok:false, lines:[] }; }
+  const lines = [];
+  if(resetManualCS(o)) lines.push("Combat Stages reset");
+  if(clearSceneStatuses(o)) lines.push("Volatile Afflictions, Stuck and Slowed cured");
+  if(tempHPOf(o)){ lines.push(`${tempHPOf(o)} Temporary HP lost`); o.tempHP = 0; }
+  if(o.transform){ transformRevert(o, true); lines.push("Transformation ended"); }
+  if(momentumOf(o)){ lines.push(`${momentumOf(o)} Momentum lost`); setMomentum(o, 0); }
+  const regen = recallRegenerator(o);
+  if(regen) lines.push(regen);
+  return { ok:true, lines };
 }
 function canRemoveToken(token){
   if(cloud.isGM) return true;
@@ -30597,6 +31902,8 @@ function tokensInAoE(map){
   const cells = aoeCells(map, origin, mapAoE.shape, mapAoE.size, mapAoE.dir);
   return mapTokensFor(map.id).filter(t=>cells.has(Math.round(t.x)+","+Math.round(t.y)));
 }
+/* Is this buff key one of the Musician's three Songs? */
+const isMusicianSongKey = key => MUSICIAN_SONGS.some(x => x.key === key);
 async function applyAreaBuff(map, buffKey){
   // A buff should only land on the caster's OWN side — a player's Cheer/Song shouldn't also buff
   // an enemy caught in the blast, and an enemy buff shouldn't land on the party. Side = whether the
@@ -30605,6 +31912,24 @@ async function applyAreaBuff(map, buffKey){
   const origin = mapTokensFor(map.id).find(t=>t.id===mapAoE?.tokenId);
   const originIsEnemy = !!origin?.link && ENEMY_LINKS.has(origin.link.kind);
   const targets = tokensInAoE(map).filter(t=> (!!t.link && ENEMY_LINKS.has(t.link.kind)) === originIsEnemy);
+  /* A Song costs its Musician 1 AP (Core p.164), and THIS is the moment it is played — the Burst
+     was only ever a proposal until now. Two ways in, so the charge has to know which:
+       · the Musician's own class card (playSong) already paid, and hands the GM a roll-feed entry
+         whose area carries `songPaid`. That flag is consumed once, then cleared, so a second Song
+         painted from the same panel is charged normally.
+       · the 🎵 Song button on the token paints the area unpaid, and every press of ✨ Buff area
+         is one Song played, one AP.
+     Nothing is applied if the AP isn't there. */
+  const originL = origin && origin.link ? tokenLinked(origin) : null;
+  const singer = (originL && !originL.missing
+                  && (originL.kind==="trainer" || originL.kind==="enctrainer")) ? originL.obj : null;
+  if(isMusicianSongKey(buffKey) && targets.length && singer){
+    if(mapAoE && mapAoE.songPaid){ mapAoE.songPaid = false; }
+    else {
+      if(!apSpend(singer, 1)) return;                 // apSpend already says why it failed
+      if(origin) await commitTokenSource(origin);
+    }
+  }
   let n = 0;
   for(const t of targets){
     const L = t.link ? tokenLinked(t) : null; if(!L || L.missing || !L.obj) continue;
@@ -30612,7 +31937,8 @@ async function applyAreaBuff(map, buffKey){
     await commitTokenSource(t);
     n++;
   }
-  toast(n ? `Applied to ${n} ${originIsEnemy?"enemy":"ally"} token${n===1?"":"s"} in the area`
+  const paid = isMusicianSongKey(buffKey) && singer ? " · 1 AP" : "";
+  toast(n ? `Applied to ${n} ${originIsEnemy?"enemy":"ally"} token${n===1?"":"s"} in the area${paid}`
           : `No linked ${originIsEnemy?"enemy":"ally"} tokens in the area`);
 }
 /* redraw only the overlay canvas (keeps input focus while tweaking size/direction) */
@@ -30800,6 +32126,8 @@ async function moveMapImageLayer(map, img, dir){
 async function deleteMapImage(map, img){
   const i = map.images.indexOf(img); if(i<0) return;
   map.images.splice(i,1); mapMetaSave(); renderMap();
+  // the row no longer points at it, so neither should the bucket (see removeStoredImg)
+  if(!mapImgInUse(img.src, img)) removeStoredImg(img.src);
 }
 
 /* ===================================================================
@@ -31625,6 +32953,10 @@ function mapTokenNode(token, map, originX=0, originY=0){
     const ringHtml = tokenStatusRingSVG(keys, boxPx, token.id);
     if(ringHtml) node.append(el("div",{class:"tk-status-ring", html:ringHtml}));
   }
+  // Flanked is positional and changes every time anybody moves — its own corner marker, so it reads
+  // at a glance without hunting for one arc on the status ring.
+  if(detail>=2 && tokenStatusKeys(token).includes("flanked"))
+    node.append(el("div",{class:"tk-flank",title:"Flanked — −2 Evasion (Core p.232)"},"⚑"));
   // movement used vs the chosen-mode speed — a boat's shows out of combat too (it cruises on a budget)
   if(token.moved && !isShopToken(token) && detail>=2 && (battleOn() || isBoatToken(token))){
     const spd = tokenMoveSpeed(token), mode = tokenMoveMode(token);
@@ -31874,7 +33206,7 @@ function attachImageDrag(node, img, map, overlay, originX=0, originY=0){
    Levitate, Wonder Guard, Filter, …) and any Swarm/manual effectiveness nudge, then Damage
    Reduction (active DR buffs + flat DR vs Super-Effective). Used by BOTH the token menu's manual
    "Apply an attack" box and the roll-result "Apply to target" picker, so the two never diverge. */
-function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, defCSMode=null, chartOverride=null, seBonus=0 }){
+function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, defCSMode=null, chartOverride=null, seBonus=0, seFlat=0 }){
   const def = tokenDefenseStat(token, !!physical, defCSMode);
   const swarmTgt = (()=>{ const LL = token.link ? tokenLinked(token) : null;
     return (LL && !LL.missing && LL.kind==="enc" && isSwarm(LL.obj)) ? LL.obj : null; })();
@@ -31941,6 +33273,10 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
   const dmgUsed  = dmg + (exploit ? 5 : 0) + seExtra;
   const afterDef  = Math.max(0, dmgUsed - def);
   const afterMult = Math.floor(afterDef * mult);
+  /* Expert Belt: "whenever the holder deals Super Effective Damage, they deal an additional 5
+     damage (this damage is NOT multiplied)" — so unlike Exploit's +5 it goes on AFTER the
+     multiplier, and still before Damage Reduction. */
+  const seFlatAdd = mult > 1 ? Math.max(0, Math.round(seFlat || 0)) : 0;
   const { dr, from } = owner ? buffDR(owner) : { dr:0, from:[] };
   const seDR  = (defMods?.seFlatDR && mult > 1) ? defMods.seFlatDR : 0;
   // Glacial Ice: flat DR vs Super-Effective hits of the Types it covers (Fighting/Fire/Rock/Steel).
@@ -31953,9 +33289,9 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
      Capped at the pool, so it can never turn into bonus damage. */
   const drPool  = dr + seDR + typeDR + glacialDR;
   const drGone  = Math.max(0, Math.min(drPool, Math.round(pierceDR||0)));
-  const final = Math.max(0, afterMult - (drPool - drGone));
+  const final = Math.max(0, afterMult + seFlatAdd - (drPool - drGone));
   return { def, physical:!!physical, typeless, mult, afterDef, afterMult, dr, from, seDR, glacialDR,
-           typeDR, typeDRFrom, final, drPool, drGone, exploit, dmgUsed, seExtra, chartUsed,
+           typeDR, typeDRFrom, final, drPool, drGone, exploit, dmgUsed, seExtra, seFlat, seFlatAdd, chartUsed,
            owner, defMods, swarmTgt, swarmStep, extraStep, pierced, tinted, tolerance: tolStep<0, furCoat: furActive,
            // kept only so applyTokenDamage can re-run this same hit against a breached boat's passengers
            dmg, type:(typeless?"Typeless":type), aoe:!!aoe, pierceImmune:!!pierceImmune, pierceDR, atkTinted:!!atkTinted, atkExploit:!!atkExploit, defCSMode,
@@ -31990,7 +33326,7 @@ async function applyTokenDamage(token, br){
         const pbr = tokenDamageBreakdown(p, { dmg:br.dmg, type:br.type, physical:br.physical,
           extraStep:(br.extraStep||0)-1, aoe:br.aoe, pierceImmune:br.pierceImmune, pierceDR:br.pierceDR,
           atkTinted:br.atkTinted, atkExploit:br.atkExploit, defCSMode:br.defCSMode,
-          chartOverride:br.chartOverride, seBonus:br.seBonus });
+          chartOverride:br.chartOverride, seBonus:br.seBonus, seFlat:br.seFlat });
         await applyTokenDamage(p, pbr);
       }
     }
@@ -32036,20 +33372,21 @@ function damageResultHTML(dmg, typeName, br, before){
   const abilTxt  = (br.defMods && br.defMods.why.length && !br.typeless) ? `<br><span style="color:var(--accent)">⚙ ${br.defMods.why.join(" · ")}</span>` : "";
   const expTxt = br.exploit ? ` <b>(Exploit: +5)</b>` : "";
   const seXTxt = br.seExtra ? ` <b>(+${br.seExtra} Super-Effective)</b>` : "";
+  const beltTxt = br.seFlatAdd ? ` <b>(Expert Belt: +${br.seFlatAdd}, unmultiplied)</b>` : "";
   const chartTxt = br.chartUsed ? " <b>(this Move's own matchup)</b>" : "";
   const tempTxt = br.tempSoaked ? ` <span style="color:var(--temp);font-weight:700">(${br.tempSoaked} soaked by Temporary HP)</span>` : "";
   const after = br.afterHP != null ? br.afterHP : before - br.final;
   // what a type-absorbing Ability (Storm Drain, Volt Absorb…) just paid the defender for this hit
   const absTxt = (br.absorb && br.absorb.length)
     ? `<br><span style="color:var(--accent);font-weight:700">\u26A1 ${br.absorb.join(" \u00B7 ")}</span>` : "";
-  return `${br.dmgUsed ?? dmg}${expTxt}${seXTxt} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${chartTxt}${pierceTxt}${swarmTxt}${stepTxt}${tintTxt}${tolTxt}${furTxt} = ${br.afterMult}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${after}</b>.${tempTxt}${absTxt}${abilTxt}`;
+  return `${br.dmgUsed ?? dmg}${expTxt}${seXTxt} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${chartTxt}${pierceTxt}${swarmTxt}${stepTxt}${tintTxt}${tolTxt}${furTxt} = ${br.afterMult}${beltTxt}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${after}</b>.${tempTxt}${absTxt}${abilTxt}`;
 }
 /* GM tool surfaced on a rolled attack's result: pick a token on the battle map and drop the rolled
    damage on it, running the same full damage math as the token menu (type, phys/spec, abilities, DR).
    Returns a DOM node, or null when it doesn't apply (not the GM, not in cloud, no editable tokens on
    the current map). `dmg` = the rolled total, `type` = the move's effective Type, `physical` picks
    Def vs Sp.Def. */
-function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, defCSMode=null, moveRule=null }){
+function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, defCSMode=null, moveRule=null, seFlat=0 }){
   // a Move whose own rules bend the matchup (MOVE_TARGET_RULES) travels with the hit, and its
   // immunity clause folds into the same pierce switch every other source uses
   const chartOverride = moveRule?.chart || null, seBonus = moveRule?.seBonus || 0;
@@ -32159,7 +33496,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     if(!chosen.length){ out.textContent = "Tick at least one target (in either tab)."; return; }
     out.innerHTML = "";
     for(const it of chosen){
-      const br = tokenDamageBreakdown(it.t, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, defCSMode, chartOverride, seBonus });
+      const br = tokenDamageBreakdown(it.t, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, defCSMode, chartOverride, seBonus, seFlat });
       const before = await applyTokenDamage(it.t, br);
       it.cb.checked = false;                                    // clear so a second Apply doesn't double-hit
       const line = el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"});
@@ -32273,7 +33610,8 @@ function openAreaApply(e){
   const tok = toks.find(x => x.link && x.link.kind==="trainer" && x.link.sheetId===e.area.sheetId)
            || toks.find(x => x.link && tokenHp(x).name === (e.who||""));
   if(!tok){ toast(`${e.who||"The caster"} has no token on this map — place one first`); return; }
-  startAoE(tok, e.area.shape, e.area.size, { buffOnly: e.area.buffs.slice() });
+  startAoE(tok, e.area.shape, e.area.size,
+    { buffOnly: e.area.buffs.slice(), songPaid: !!e.area.songPaid });
   switchTab("map");
   toast(`✨ ${e.label||"Area"} — set the shape, pick the effect, then press ✨ Buff area`);
 }
@@ -32285,7 +33623,7 @@ function openRollApply(e){
     + (e.headline ? `: ${e.headline}` : "") + ` at ${rollFeedTime(e.at)}.`));
   const w = attackTargetWidget({ dmg:e.atk.dmg, type:e.atk.type, physical:e.atk.physical,
                                  pierceImmune:e.atk.pierceImmune, pierceDR:e.atk.pierceDR, atkTinted:e.atk.atkTinted,
-                                 atkExploit:e.atk.atkExploit,
+                                 atkExploit:e.atk.atkExploit, seFlat:e.atk.seFlat,
                                  defCSMode:e.atk.defCSMode, moveRule:e.atk.moveRule });
   body.append(w || el("div",{class:"small"},
     "No damageable token on the current map — open the 🗺 Map (or add a token) and try again."));
@@ -32367,6 +33705,16 @@ function openTokenMenu(token, map){
       if(ev) wrap.append(el("div",{class:"small",style:"margin-bottom:10px;font-weight:700"},
         el("span",{class:"muted"},"Evasion — "),
         `Phys +${ev.phys} · Spec +${ev.spec} · Speed +${ev.spd}`));
+      const fl = tokenFlanking(map, token);
+      if(fl.flanked) wrap.append(el("div",{class:"small",style:"margin-bottom:10px;color:var(--bad);font-weight:700",
+        title:"Core p.232 — the −2 is already in the Evasion above (the Flanked chip below carries it)."},
+        `⚑ Flanked by ${fl.who.join(" & ")} — −2 Evasion (${fl.weight} of ${fl.need} needed)`));
+      else if(fl.weight) wrap.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
+        `Not Flanked — ${fl.weight} of the ${fl.need} non-adjacent foes it would take.`));
+      const pr = tokenPressureSources(map, token);
+      if(pr.length) wrap.append(el("div",{class:"small",style:"margin-bottom:10px;color:var(--bad);font-weight:700",
+        title:"Pressure (Ability): while within 3 metres of the user, all foes are Suppressed. Walk out of range and the chip lifts by itself."},
+        `⛓ Under Pressure from ${pr.join(" & ")} — Suppressed while within ${PRESSURE_RANGE} m`));
       // …and what it is weak to, resists and shrugs off entirely (see tokenMatchupNode). Same gate as
       // the Evasion line above: the GM sees every token, a player only the creatures they already own.
       const mu = tokenMatchupNode(token);
@@ -32820,9 +34168,14 @@ function openTokenMenu(token, map){
       aoeMoves.forEach(m=>{ const a=parseAoE(m.range);
         rrow.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",title:m.range,
           onclick:()=>{ startAoE(token, a.shape, a.size); closeModal(); }}, `${m.name} · ${a.shape} ${a.size}`)); });
+      /* A Song is 1 AP (Core p.164). Painting the Burst is NOT yet playing it — you resize it,
+         re-aim it, or ✕ Clear it — so the AP comes off when ✨ Buff area actually lands the Song
+         (see applyAreaBuff). `buffOnly` narrows the panel's dropdown to the three Songs, which is
+         also what tells applyAreaBuff this area is a Song and not a Cheer or an Order. */
       if(isMusician) rrow.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
-        title:"Musician: Standard Action, trigger one Song, Area of Effect Burst 4 (Core p.164)",
-        onclick:()=>{ startAoE(token, "burst", 4); closeModal(); }}, "🎵 Song · burst 4"));
+        title:"Musician: 1 AP, Standard Action, trigger one Song, Area of Effect Burst 4 (Core p.164). The AP comes off when you press ✨ Buff area.",
+        onclick:()=>{ startAoE(token, "burst", 4, { buffOnly: MUSICIAN_SONGS.map(x=>x.key) }); closeModal(); }},
+        "🎵 Song · burst 4 · 1 AP"));
       rrow.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
         title:"draw a shape freely, not tied to any move — pick its type, size & facing from the panel that appears on the map",
         onclick:()=>{ startAoE(token, "burst", 1); closeModal(); }}, "✎ Manual shape…"));
@@ -32975,6 +34328,22 @@ function openTokenMenu(token, map){
         wrap.append(el("label",{class:"field",style:"margin-top:8px;max-width:160px"}, el("span",{},"Initiative bonus"), ib));
       }
     }
+    /* Recalling is the normal way a Pokémon leaves the board, so it sits next to Remove and does
+       the whole job: the rules bookkeeping (recallPokemon) AND taking the token off. Remove stays
+       for props, tokens dropped by mistake, and anything that isn't a Pokémon. */
+    const rcL = token.link ? tokenLinked(token) : null;
+    if(rcL && rcL.obj && (rcL.kind==="pokemon" || rcL.kind==="enc"))
+      foot.push(el("button",{class:"btn-secondary",
+        title:"Return it to its Poké Ball: Combat Stages reset, Volatile Afflictions / Stuck / Slowed cured, "
+             +"Temporary HP and Momentum lost, a Transformation ends, Regenerator fires — then the token comes off the board.",
+        onclick:async()=>{
+          const r = recallPokemon(rcL.obj);
+          if(!r.ok) return;
+          await commitTokenSource(token);
+          await removeToken(token, map);
+          closeModal();
+          toast(`\u{1F534} ${ownerLabel(rcL.obj)} recalled` + (r.lines.length ? ` — ${r.lines.join(", ")}` : ""));
+        }},"🔴 Recall"));
     foot.push(el("button",{class:"btn-secondary danger",onclick:async()=>{ await removeToken(token,map); closeModal(); }},"🗑 Remove"));
   }
   foot.push(el("button",{class:"btn-primary",onclick:closeModal},"Done"));
@@ -33181,6 +34550,8 @@ async function deleteMap(map){
   if(!confirm(`Permanently delete map “${map.name}” and its tokens? This can't be undone.`)) return;
   const meta = cloud.mapMeta.data;
   meta.maps = meta.maps.filter(m=>m.id!==map.id);
+  // this map is already out of meta.maps, so anything still referenced belongs to another map
+  (map.images||[]).forEach(im=>{ if(im.src && !mapImgInUse(im.src, im)) removeStoredImg(im.src); });
   if(cloud.mapTokens?.data?.byMap) delete cloud.mapTokens.data.byMap[map.id];
   if(cloud.mapTokens?.data?.fog)   delete cloud.mapTokens.data.fog[map.id];   // legacy inline fog, if any
   if(cloud.mapFog?.data?.fog)      delete cloud.mapFog.data.fog[map.id];
@@ -33580,6 +34951,9 @@ function renderMap(){
   const meta = activeMapMeta();
   const map  = currentMapForView();
   if(cloud.isGM && map) mapGmView = map.id;
+  // Flanking and Pressure are read straight off where everyone is standing — refresh both before
+  // the tokens are painted so the chips on the board are never a move behind (see sweepMapAuras).
+  if(map) sweepMapAuras(map);
 
   const bar = el("div",{class:"map-toolbar card"});
   if(cloud.isGM){
@@ -33933,20 +35307,34 @@ initCloud();
    a brand-new timestamp, clobbering everyone's edits made in the meantime (this is what wiped the
    Level Up trackers). Refetching on resume shrinks that staleness window down to "since I last looked
    at this tab" instead of "since I last touched it", for every tab — GM and players alike. Safe to
-   call anytime: fetchRoster()'s recoverUnsavedFromCache() still protects a genuinely-unsaved local edit. */
+   call anytime: adoptRemote still merges a genuinely-unsaved local edit back on top.
+
+   This used to re-download the campaign IN FULL — every sheet, the map, the encounter library —
+   on every tab focus and every two quiet minutes, per client, whether or not a single byte had
+   changed. On a phone, where visibilitychange fires on every app switch and every screen unlock,
+   one player idling with the tab open cost hundreds of MB a day. It now asks for ids and revs and
+   reads back only the rows that actually moved. */
+let lastResyncTs = 0;
 async function resyncCloud(){
   if(mode!=="cloud" || !cloud.client) return;
+  lastResyncTs = Date.now();
   try{
     await flushPendingCloudWrites();   // commit any debounced edit BEFORE refetching, so the resync can't revert it
-    const pre = await fetchRoster();
-    await Promise.all([fetchPC(pre), fetchMap(pre), fetchEnc(pre), fetchRolls(pre)]);
+    const changed = await revPoll();
     const typing = ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName);
-    if(!typing) softRender();
+    if(changed && !typing) softRender();
   } catch(e){ console.error(e); }
 }
-document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") resyncCloud(); });
-window.addEventListener("pageshow", resyncCloud);   // bfcache restores don't fire visibilitychange
-window.addEventListener("online", resyncCloud);     // back from a tunnel / dropped wifi
+/* Returning to the tab is worth a resync, but on a phone that event fires constantly. Throttled,
+   so flicking away and back is free instead of a round trip; the 15s watchdog covers the gap. */
+function resyncSoon(){
+  if(mode!=="cloud") return;
+  if(Date.now() - lastResyncTs < 8000) return;
+  resyncCloud();
+}
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") resyncSoon(); });
+window.addEventListener("pageshow", resyncSoon);   // bfcache restores don't fire visibilitychange
+window.addEventListener("online", ()=>{ lastResyncTs = 0; resyncSoon(); });   // back from a tunnel / dropped wifi
 
 /* ─────────────────────────── sync watchdog ───────────────────────────
    Everything above is event-driven, and every event source can fail quietly: a websocket dies
@@ -33987,11 +35375,11 @@ async function syncWatchdog(){
     if(cloud.subStatus!=="SUBSCRIBED"){
       subscribeRealtime();          // rebuild the dead channel…
       await resyncCloud();          // …and catch up on whatever it missed while it was down
-    } else if(Date.now() - (cloud.lastEvent||0) > 120000){
-      // Healthy-looking socket that has been silent for two minutes: usually just a quiet table,
-      // occasionally a connection that only LOOKS joined. One cheap catch-up read settles it
-      // without tearing down a working subscription.
-      cloud.lastEvent = Date.now();
+    } else {
+      // Broadcast is fire-and-forget: a message sent while our socket was busy reconnecting is
+      // simply gone, and it leaves no gap for us to notice. So we poll — but the poll is ids and
+      // revs only, a few hundred bytes, cheap enough to run every tick instead of every two
+      // minutes. It doubles as the liveness check the old silence rule was doing.
       await resyncCloud();
     }
   } catch(e){ console.error(e); }
@@ -34018,7 +35406,10 @@ async function forceRefresh(){
     }
     if("caches" in window){
       const keys = await caches.keys();
-      await Promise.all(keys.map(k=>caches.delete(k)));
+      // Keep the uploaded-image cache. Those files are content-addressed, so they can never be
+      // the stale thing this button exists to clear — and dropping them re-downloads every map
+      // background (tens of MB of egress) on every tap. Name must match IMG_CACHE in sw.js.
+      await Promise.all(keys.filter(k=>k!=="ptu-img-v1").map(k=>caches.delete(k)));
     }
   }catch(e){}
   const url = new URL(location.href);

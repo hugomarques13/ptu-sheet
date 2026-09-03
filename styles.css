@@ -290,6 +290,15 @@ textarea{resize:vertical; min-height:64px}
 .monhero .mh-main{flex:1; min-width:0}
 .monhero .mh-name{font-size:18px; font-weight:800; line-height:1.15}
 .monhero .mh-sub{color:var(--muted); font-size:13px; margin-top:2px}
+/* Gender mark (see genderIcon) - drawn beside a Pokemon's name on its sheet, its encounter card
+   and its map token, so a pair of the same species is told apart at a glance. */
+.gender-icon{font-weight:800; line-height:1}
+.gender-icon.gender-m{color:#3b82f6}
+.gender-icon.gender-f{color:#ec4899}
+.gender-icon.gender-n{color:var(--muted)}
+/* Flanked marker on a map token (see tokenFlanking) */
+.map-token .tk-flank{position:absolute; left:-2px; top:-2px; font-size:11px; line-height:1;
+  background:var(--bad); color:#fff; border-radius:4px; padding:1px 3px; font-weight:800; pointer-events:none; z-index:4}
 .hero-hp{margin-top:8px}
 .pcard .pc-body{display:flex; gap:10px; align-items:center}
 .pcard .pc-body .pc-main{flex:1; min-width:0}
