@@ -2321,6 +2321,40 @@ function bossSetTotalHP(owner, total){
 }
 const bossDefeated  = owner => isBoss(owner) && owner.boss.curBar<=0;
 const bossOnLastBar = owner => isBoss(owner) && owner.boss.curBar===1;
+/* --- Rogue Mega (homebrew Boss variant) ---------------------------------------------------------
+   A Mega Evolved Pokemon that has slipped its Trainer's leash - so it has to be WILD. There is no
+   flag to set and no separate template to pick: a wild encounter Pokemon that is BOTH Mega Evolved
+   AND running the Boss Template IS a Rogue Mega. It keeps everything the Boss Template already gives
+   it - one turn and one full HP bar per action, spaced across the round - and adds a rule of its own:
+
+     Any attack that does not come from another Mega Evolved Pokemon is resisted one step further.
+
+   That is a ladder step, not a multiplier, and it hangs off the ATTACKER rather than a Type, so -
+   exactly like Fur Coat - it can't live on defenseTypeMods' `step` map. It's exposed as a flag and
+   spent per hit (tokenDamageBreakdown / the Sim), and it applies to Typeless hits (Struggle) too.
+   Trainers, their weapons and every un-Mega'd Pokemon are all "non-Mega": only a Mega hits it at
+   full strength. */
+const isMegaMon = o => !!(o && o.species !== undefined &&
+  (o.mega === true || /^mega\s/i.test(String(o.species || ""))));
+/* "Wild" is not a flag either - it's WHICH LIST the Pokemon lives in. `enc.mons` is the encounter's
+   Wild Pokemon column; a Trainer's belong to `enc.trainers[].pokemon` and a player's to their own
+   party. So a Trainer who Mega Evolves their ace and wears the Boss Template is a Boss, not a Rogue
+   Mega, and keeps taking full damage from everyone.
+   The scan is a scan on purpose rather than another cached index (encMonOwnerIndex's is only
+   invalidated by saveEnc, and getting this wrong mid-fight silently changes damage): isRogueMega
+   short-circuits on Mega + Boss first, so it only ever runs for the handful of Mega bosses actually
+   on the board, over a list that is a few dozen entries long. Identity OR id, because a cloud sync
+   can hand back a fresh object for the same creature. */
+function isWildEncMon(p){
+  if(!p) return false;
+  try{
+    for(const e of (encList() || []))
+      if((e.mons || []).some(x => x === p || (x && x.id && p.id && x.id === p.id))) return true;
+  }catch(err){}                    // called before `state` exists (load()) - nothing is wild yet
+  return false;
+}
+const isRogueMega = o => isMegaMon(o) && isBoss(o) && isWildEncMon(o);
+const ROGUE_MEGA_WHY = "Rogue Mega: attacks from anything that isn't a Mega Evolved Pok\u00e9mon are resisted one step further";
 /* Initiative Counts a Boss acts on each round (Running the Game p.487): its normal turn at base
    Initiative, then alternating turns at −5 from base until subtracting again would go below 1,
    then any turns still left to place resume climbing +5 above base. Sorted high→low for display/
@@ -4001,6 +4035,11 @@ function defenseTypeMods(p){
      hits only. Even a Typeless Physical hit (Struggle) is resisted one step. */
   const furCoat = A("Fur Coat");
   if(furCoat) why.push("Fur Coat: Physical Attacks are resisted one step further");
+  /* Rogue Mega (homebrew Boss variant, isRogueMega above): a Mega Evolved Pokemon running the Boss
+     Template resists every attack one further step unless the attacker is itself a Mega. Depends on
+     the attacker, not on a Type, so it travels as a flag and is applied per hit alongside Fur Coat. */
+  const rogueMega = isRogueMega(p);
+  if(rogueMega) why.push(ROGUE_MEGA_WHY);
   // resists a Type one step further
   if(A("Thick Fat")){ add("Fire",-1); add("Ice",-1); why.push("Thick Fat: resists Fire & Ice one step further"); }
   if(A("Heatproof")){ add("Fire",-1); why.push("Heatproof: resists Fire one step further"); }
@@ -4043,7 +4082,7 @@ function defenseTypeMods(p){
   if(gear.lose.length) why.push(`Iron Ball: any immunity to ${gear.lose.join("/")} is lost`);
   why.push(...gear.why);
   // a Feature stance's typeDR (Enchanting Transformation) merged with a granted buff's (Soothing Flute)
-  return { step, immune, wonderGuard, seReduce, seFlatDR, tolerance, furCoat,
+  return { step, immune, wonderGuard, seReduce, seFlatDR, tolerance, furCoat, rogueMega,
            typeDR: mergeTypeDR(mergeTypeDR(modeTypeDR(p), buffTypeDR(p)), gear.typeDR), glacial, why };
 }
 /* Filter / Solid Rock soften a Super-Effective multiplier by one "half-step" on the PTU ladder. */
@@ -17291,7 +17330,7 @@ function openMoveRoll(p, m, sp, opts={}){
         if(isPhys || isSpec){
           const tw = attackTargetWidget({ dmg:total, type:mtype||"Typeless", physical:isPhys,
             pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens"),
-            atkExploit: ownerHasAbility(p,"Exploit"), seFlat: heldSeFlatDamage(p),
+            atkExploit: ownerHasAbility(p,"Exploit"), atkMega: isMegaMon(p), seFlat: heldSeFlatDamage(p),
             pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS, moveRule });
           if(tw) dmgLine.append(tw);
         }
@@ -17304,7 +17343,7 @@ function openMoveRoll(p, m, sp, opts={}){
                  `${mtype||"Typeless"}${m.class?` · ${m.class}`:""} · DB ${effFDB}`],
           atk: (isPhys||isSpec) ? { dmg:total, type:mtype||"Typeless", physical:isPhys,
                  pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens"),
-                 atkExploit: ownerHasAbility(p,"Exploit"), seFlat: heldSeFlatDamage(p),
+                 atkExploit: ownerHasAbility(p,"Exploit"), atkMega: isMegaMon(p), seFlat: heldSeFlatDamage(p),
                  pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS, moveRule } : null });
       }
       out.append(dmgLine);
@@ -22288,6 +22327,45 @@ function duplicateEncounter(e, name){
   c.trainers.forEach(tr=>{ tr.id=uid(); if(tr.trainer) tr.trainer.id=uid(); tr.pokemon.forEach(p=>p.id=uid()); });
   return c;
 }
+/* ---- 💚 Heal fully -------------------------------------------------------------------
+   Between fights a GM was pressing MAX, then the Injuries −, then every Status chip, then each
+   spent use pip, on every enemy on the card. This puts ONE creature back the way it was written:
+   Hit Points, Injuries, Statuses, Temporary HP, buffs, the Combat Stages someone set by hand,
+   Mega / Transform / Schooling forms, and every Scene & Daily use.
+   Death is the one thing it will not lift (clearAllStatuses keeps PERMANENT_STATUS_KEYS) — that
+   stays the GM's own call, exactly as it is on a player's sheet. */
+function encHealCreature(o, isT){
+  if(!o) return;
+  if(isT) normTrainer(o); else normPokemon(o);
+  // revert first, so the max HP we heal up to is the base form's
+  if(!isT){ if(o.mega) megaRevert(o, true); transformRevert(o, true); schoolingRevertNow(o); }
+  o.injuries = 0; resetInjuryDay(o);     // encounter creatures have no day — no cap, and no ledger left behind
+  o.tempHP = 0; o.buffs = [];
+  resetUses(o, "all"); resetManualCS(o); clearStorageDigestion(o); clearAllStatuses(o);
+  if(isT){
+    o.usedAP = 0; o.modes = {}; o.manualBoundAP = 0;
+    delete o.fightOn; delete o.critMoment;
+    o.currentHP = trainerDerived(o).hp;
+  } else {
+    delete o.momentum; delete o.critMoment; delete o.perseveranceUsed; delete o.typeRefreshed;
+    delete o.deepCold; delete o.simpleImp; delete o.pheromone; delete o.pheroRolled;
+    if(isSwarm(o)) swarmSetTotalHP(o, swarmMaxTotalHP(o));
+    else if(isBoss(o)){ bossSetTotalHP(o, bossMaxTotalHP(o)); o.boss.halfInjuryGiven = false; }
+    else o.currentHP = pokeDerived(o).maxHP;
+    shieldsDownRevert(o);                // …and a patched-up Minior pulls its shell back on
+  }
+}
+/* every creature in one encounter — wild Pokémon, NPC Trainers and their parties. Returns the count. */
+function encHealFully(enc){
+  if(!enc) return 0;
+  let n = 0;
+  (enc.mons||[]).forEach(p => { encHealCreature(p, false); n++; });
+  (enc.trainers||[]).forEach(tr => {
+    if(tr.trainer){ encHealCreature(tr.trainer, true); n++; }
+    (tr.pokemon||[]).forEach(p => { encHealCreature(p, false); n++; });
+  });
+  return n;
+}
 /* swap an item one slot up(-1)/down(+1) within its list — used to reorder wild Pokémon,
    Trainers, and each Trainer's own party in the Encounters tab */
 function encMoveItem(list, item, dir){
@@ -22896,6 +22974,10 @@ function bossCard(owner){
   }
   wrap.append(el("div",{class:"small muted",style:"margin-top:6px;font-weight:700"},
     `HP bars — ${b.curBar} of ${b.actions} left · ${bossTotalHP(owner)} / ${bossMaxTotalHP(owner)} total`), bars);
+  /* Rogue Mega: a Mega Evolved Pokemon wearing the Boss Template. Nothing to switch on - the two
+     together are the variant - so the card just states the extra rule it is already applying. */
+  if(isRogueMega(owner)) wrap.append(el("div",{class:"small",style:"margin-top:8px;padding:6px 8px;border:1px solid var(--accent);border-radius:8px;font-weight:600"},
+    "⚡ Rogue Mega — this Boss is Mega Evolved, so every attack that doesn't come from another Mega Evolved Pokémon is resisted one step further (Trainers and their weapons included). Applied automatically by the Map's damage tool, the 🎯 target picker and the ⚗ Sim; subtract it by hand if you use the Damage/Heal box."));
   if(bossDefeated(owner)) wrap.append(el("div",{class:"warnbox",style:"margin-top:8px"},"💀 Every Hit Point bar is gone."));
   else if(bossOnLastBar(owner)) wrap.append(el("div",{class:"warnbox",style:"margin-top:8px"},
     "⚠ Last Hit Point bar — consider a special last-stand effect (Enrage to +6 Attack CS, unlock a signature attack, clear its negative Combat Stages/Statuses…)."));
@@ -23314,7 +23396,13 @@ function encounterMonCard(enc, p, list, trainer){
     const megaRow = el("div",{class:"inline",style:"margin-top:8px;gap:6px;align-items:center;flex-wrap:wrap"});
     megaRow.append(heldItemControl(p, rr, {free:true}));   // wild/enemy mons have no Trainer bag to spend from
     if(p.mega){
-      megaRow.append(el("span",{class:"statuschip on",style:"padding:2px 8px;font-size:11px;cursor:default"},"✨ MEGA"),
+      megaRow.append(el("span",{class:"statuschip on",style:"padding:2px 8px;font-size:11px;cursor:default",
+          title: isRogueMega(p)
+            ? "Rogue Mega — Mega Evolved AND running the Boss Template. Every attack that isn't from another Mega Evolved Pokémon is resisted one step further."
+            : isWildEncMon(p)
+              ? "Mega Evolved. Turn on 👑 Boss below to make this a Rogue Mega."
+              : "Mega Evolved. Only a WILD Mega can become a Rogue Mega - a Trainer's Mega with the Boss Template is just a Boss."},
+          isRogueMega(p) ? "⚡ ROGUE MEGA" : "✨ MEGA"),
         el("button",{class:"btn-secondary",style:"padding:4px 10px",title:"revert to the base form",
           onclick:()=>megaRevert(p,false,rr)},"↩ Revert"));
     } else if(megas.length){
@@ -23434,22 +23522,22 @@ function encounterMonCard(enc, p, list, trainer){
   card.append(aw);
   /* Injuries — an encounter Pokémon (wild OR one of an encounter Trainer's party) had no control
      at all here, so a GM running an enemy from this card could never mark one. Same shape as the
-     encounter Trainer's row, but pushed through the daily ledger's healInjuries() on the way DOWN
-     so a Bandage-by-hand still counts against Core p.252's 3 a day. */
+     encounter Trainer's row, and — like it — free of Core p.252's 3-a-day cap: a wild creature or
+     an NPC's party has no day being tracked, and the cap was only ever stopping the GM from putting
+     an enemy back the way they wrote it. Still routed through healInjuries({free:true}), so the
+     ledger keeps its single writer. */
   if(!isBoss(p) && !isSwarm(p)){
     const clampInj = () => { const m = pokeDerived(p).maxHP;
       if(p.currentHP != null && p.currentHP > m) p.currentHP = m; };
     const injRow = el("div",{class:"inline",style:"gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap"});
     injRow.append(el("span",{class:"small muted",style:"font-weight:700"},"Injuries"),
-      el("button",{class:"btn-secondary",style:"padding:2px 9px",title:"treat one Injury (counts against its 3 a day)",
-        onclick:()=>{ const r = healInjuries(p, 1, "by hand (Encounters tab)");
-          if(!r.healed && r.blocked) toast(`Already treated ${injuryDayUsed(p)}/${injuryDayCap(p)} Injuries today`);
+      el("button",{class:"btn-secondary",style:"padding:2px 9px",title:"remove one Injury — no daily limit on encounter creatures",
+        onclick:()=>{ healInjuries(p, 1, "by hand (Encounters tab)", {free:true});
           clampInj(); saveEnc(); renderEncounters(); }},"−"),
       el("span",{style:"font-weight:800;min-width:16px;text-align:center"}, String(p.injuries||0)),
       el("button",{class:"btn-secondary",style:"padding:2px 9px",title:"give it an Injury",
         onclick:()=>{ p.injuries=Math.min(10,(p.injuries||0)+1); clampInj(); applyAutoDeath(p);
           saveEnc(); renderEncounters(); }},"+"),
-      injuryDayChip(p),
       el("span",{class:"small muted"}, `max HP ${pokeDerived(p).maxHP} of ${pokeDerived(p).fullMaxHP}`));
     card.append(injRow);
   }
@@ -23855,6 +23943,13 @@ function renderEncounters(){
   leftc.append(el("button",{class:"btn ghost",title:"hand EXP to the players — any amount, to anyone you tick, no encounter or calculator needed",onclick:()=>openSendEXP()},"📤 Send EXP"));
   if(cur){
     leftc.append(el("button",{class:"btn ghost",title:"rename",onclick:()=>{ const n=prompt("Rename encounter:",cur.name); if(n===null)return; cur.name=n; saveEnc(); renderEncounters(); }},"✎"));
+    leftc.append(el("button",{class:"btn ghost",
+      title:"Heal every creature in this encounter to full — Hit Points, Injuries, Statuses, Temp HP, buffs, Combat Stages and every Scene/Daily use. Anything Dead stays Dead.",
+      onclick:()=>{ const total = (cur.mons||[]).length + (cur.trainers||[]).reduce((n,tr)=>n+1+(tr.pokemon||[]).length,0);
+        if(!total){ toast("Nothing in this encounter to heal"); return; }
+        if(!confirm(`Fully heal all ${total} creature${total===1?"":"s"} in "${cur.name}"?\n\nHit Points, Injuries, Statuses, Temporary HP, buffs, Combat Stages and every Scene/Daily use go back to full. Anything Dead stays Dead.`)) return;
+        const n = encHealFully(cur); saveEnc(); renderEncounters();
+        toast(`💚 ${n} creature${n===1?"":"s"} healed to full`); }},"💚 Heal fully"));
     // outline colour for every token this encounter puts on the Map (red by default). Live-updates
     // the board as you drag the picker; no re-render here, or the native colour dialog snaps shut.
     const colIn = el("input",{type:"color", value:encColorOf(cur), class:"enc-color",
@@ -25772,6 +25867,7 @@ function simProfile(A, atk, cfg){
     pierceImmune: (!A.isT && ignoresTypeImmunity(p, atk.m, mtype)) || !!moveTargetRules(atk.m)?.pierceImmune,
     atkTinted: ownerHasAbility(p,"Tinted Lens"),                   // resisted hits climb one step (capped at neutral)
     atkExploit: ownerHasAbility(p,"Exploit"),                      // +5 on any Super-Effective hit
+    atkMega: isMegaMon(p),                                         // only a Mega hits a Rogue Mega at full strength
     pierceDR: A.isT ? attackDRPierce(p, atk) : 0,                  // Herald of Pride ignores DR on Weapon Attacks
     fiveStrike: isFiveStrike(atk.m),
     atkStat,
@@ -25788,7 +25884,7 @@ function simEva(D, isPhys, cfg){
   const d = D.d();
   return isPhys ? d.physEva : d.specEva;
 }
-function simTypeMult(D, type, pierceImmune, atkTinted, isPhys, rule){
+function simTypeMult(D, type, pierceImmune, atkTinted, isPhys, rule, atkMega){
   if(D.isT) return 1;                                   // Trainers are typeless
   const mods = D.dmods();
   if(mods.immune.has(type) && !pierceImmune) return 0;
@@ -25797,22 +25893,24 @@ function simTypeMult(D, type, pierceImmune, atkTinted, isPhys, rule){
   const dStep = mods.step?.[type] || 0;
   // Fur Coat: Physical hits are resisted one step further, whatever the Type (mirrors tokenDamageBreakdown)
   const furStep = (mods.furCoat && isPhys) ? -1 : 0;
-  let m = typeMultAgainst(type, D.sp?.types||[], dStep + furStep, { pierceImmune, chart });
+  // Rogue Mega: a non-Mega attacker is resisted one step further (mirrors tokenDamageBreakdown)
+  const rogueStep = (mods.rogueMega && !atkMega) ? -1 : 0;
+  let m = typeMultAgainst(type, D.sp?.types||[], dStep + furStep + rogueStep, { pierceImmune, chart });
   let tol = 0;
   // Tolerance: a resisted hit is resisted one step further (mirrors tokenDamageBreakdown)
-  if(mods.tolerance && m>0 && m<1){ tol = -1; m = typeMultAgainst(type, D.sp?.types||[], dStep + furStep + tol, { pierceImmune, chart }); }
+  if(mods.tolerance && m>0 && m<1){ tol = -1; m = typeMultAgainst(type, D.sp?.types||[], dStep + furStep + rogueStep + tol, { pierceImmune, chart }); }
   // Wonder Guard keys off raw Type super-effectiveness (pre-Fur-Coat), mirrors tokenDamageBreakdown
   if(mods.wonderGuard){ const tm = typeMultAgainst(type, D.sp?.types||[], dStep, { pierceImmune, chart }); if(tm>0 && tm<=1) m = 0; }
   if(mods.seReduce && m>1) m = seReducedMult(m);
   // Tinted Lens: a resisted hit climbs one ladder step, never past neutral (mirrors tokenDamageBreakdown)
   if(atkTinted && m>0 && m<1){
-    m = Math.min(1, typeMultAgainst(type, D.sp?.types||[], dStep + furStep + tol + 1, { pierceImmune, chart }));
+    m = Math.min(1, typeMultAgainst(type, D.sp?.types||[], dStep + furStep + rogueStep + tol + 1, { pierceImmune, chart }));
   }
   return m;
 }
 /* rolled total → HP actually lost, running the same order as tokenDamageBreakdown */
-function simMitigate(D, raw, type, isPhys, pierceImmune, pierceDR, atkTinted, atkExploit, rule){
-  const mult = simTypeMult(D, type, pierceImmune, atkTinted, isPhys, rule);
+function simMitigate(D, raw, type, isPhys, pierceImmune, pierceDR, atkTinted, atkExploit, rule, atkMega){
+  const mult = simTypeMult(D, type, pierceImmune, atkTinted, isPhys, rule, atkMega);
   if(atkExploit && mult > 1) raw += 5;                            // Exploit, same as tokenDamageBreakdown
   if(mult > 1 && rule?.seBonus) raw += rule.seBonus;              // Electro Drift / Collision Course
   const afterDef = Math.max(0, raw - simDefStat(D, isPhys));
@@ -25835,7 +25933,7 @@ function simExpected(A, atk, D, cfg){
   const db  = pr.fiveStrike ? Math.min(28, pr.baseDB*3 + pr.dbBonus) : pr.db;   // Five Strike averages 3 hits
   const avg = simDbAvg(db);
   const pCrit = pr.alwaysCrit ? 1 : pr.autoHit ? 0 : Math.max(0, (21-pr.critT)/20);
-  const ev = pHit * simMitigate(D, Math.round(avg + pr.flat + pCrit*avg), pr.mtype, pr.isPhys, pr.pierceImmune, pr.pierceDR, pr.atkTinted, pr.atkExploit, pr.moveRule);
+  const ev = pHit * simMitigate(D, Math.round(avg + pr.flat + pCrit*avg), pr.mtype, pr.isPhys, pr.pierceImmune, pr.pierceDR, pr.atkTinted, pr.atkExploit, pr.moveRule, pr.atkMega);
   /* Blowing yourself up is only a good trade when it actually finishes the target — otherwise the
      side just gave away a whole combatant, so heavily discount it rather than ban it (a Golem whose
      only real attack IS Self-Destruct still gets to use it). */
@@ -25909,7 +26007,7 @@ function simStrike(B, A, atk, D, round){
     if(hasAbility(A.obj,"Sniper")){ const r3 = rollDiceString(dice); raw += r3 ? r3.total : 0; }
   }
   const before = D.hp;
-  const done  = Math.min(before, simMitigate(D, Math.max(0,raw), pr.mtype, pr.isPhys, pr.pierceImmune, pr.pierceDR, pr.atkTinted, pr.atkExploit, pr.moveRule));
+  const done  = Math.min(before, simMitigate(D, Math.max(0,raw), pr.mtype, pr.isPhys, pr.pierceImmune, pr.pierceDR, pr.atkTinted, pr.atkExploit, pr.moveRule, pr.atkMega));
   /* Status riders: a triggered Effect Range that names an Affliction applies it (same heuristic the
      move-roll modal uses for its "Poisoned!" banner). Sheer Force trades these away for damage. */
   let inflicted = null;
@@ -25944,7 +26042,7 @@ function simStrike(B, A, atk, D, round){
 function simAbsorbTriggers(B, D, pr, round){
   if(D.isT || !pr.mtype || pr.mtype==="Typeless") return;
   const have = absorbEntriesFor(D.obj); if(!have.length) return;
-  const mult = simTypeMult(D, pr.mtype, pr.pierceImmune, pr.atkTinted, pr.isPhys, pr.moveRule);
+  const mult = simTypeMult(D, pr.mtype, pr.pierceImmune, pr.atkTinted, pr.isPhys, pr.moveRule, pr.atkMega);
   const mods = D.dmods();
   // only an ABILITY's immunity pays out — a plain Type-chart 0 (Normal into Ghost) gives nothing
   const soaked = mult===0 && !!mods && mods.immune.has(pr.mtype) && !pr.pierceImmune;
@@ -28859,7 +28957,7 @@ function logRoll({ kind, label, who, headline, lines, atk, area }){
   if(atk) e.atk = { dmg: Math.max(0, Math.round(atk.dmg||0)), type: atk.type || "Typeless",
                     physical: !!atk.physical, pierceImmune: !!atk.pierceImmune,
                     pierceDR: Math.max(0, Math.round(atk.pierceDR||0)),
-                    atkTinted: !!atk.atkTinted, atkExploit: !!atk.atkExploit,
+                    atkTinted: !!atk.atkTinted, atkExploit: !!atk.atkExploit, atkMega: !!atk.atkMega,
                     seFlat: Math.max(0, Math.round(atk.seFlat||0)),
                     defCSMode: (atk.defCSMode==="all" || atk.defCSMode==="positive") ? atk.defCSMode : null };
   /* An "area" entry is a declaration, not a hit: the player says what they did and the GM decides
@@ -33206,7 +33304,7 @@ function attachImageDrag(node, img, map, overlay, originX=0, originY=0){
    Levitate, Wonder Guard, Filter, …) and any Swarm/manual effectiveness nudge, then Damage
    Reduction (active DR buffs + flat DR vs Super-Effective). Used by BOTH the token menu's manual
    "Apply an attack" box and the roll-result "Apply to target" picker, so the two never diverge. */
-function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, defCSMode=null, chartOverride=null, seBonus=0, seFlat=0 }){
+function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, defCSMode=null, chartOverride=null, seBonus=0, seFlat=0 }){
   const def = tokenDefenseStat(token, !!physical, defCSMode);
   const swarmTgt = (()=>{ const LL = token.link ? tokenLinked(token) : null;
     return (LL && !LL.missing && LL.kind==="enc" && isSwarm(LL.obj)) ? LL.obj : null; })();
@@ -33221,10 +33319,14 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
   // a Move that rewrites the chart for itself (Freeze-Dry, Thousand Arrows — MOVE_TARGET_RULES);
   // `chartUsed` only goes true if this particular target actually has one of the Types it names
   const chartOv = (!typeless && chartOverride) ? chartOverride : null;
-  let mult, tinted = false, tolStep = 0, furStep = 0, chartUsed = false;
+  let mult, tinted = false, tolStep = 0, furStep = 0, rogueStep = 0, chartUsed = false;
   // Fur Coat (defender Static): Physical hits are resisted one step further, whatever the Type.
   const furActive = !!(defMods?.furCoat && physical);
-  if(typeless) mult = furActive ? 0.5 : 1;   // Typeless Physical (Struggle) still gets Fur Coat's step
+  /* Rogue Mega (defender, homebrew Boss variant): a Mega Evolved Pokemon running the Boss Template
+     resists EVERY attack one further step unless the attacker is a Mega Evolved Pokemon itself. */
+  const rogueActive = !!(defMods?.rogueMega && !atkMega);
+  // Typeless (Struggle) has no chart to walk, so read the ladder directly - it eats both steps
+  if(typeless) mult = ptuEffMult((furActive ? -1 : 0) + (rogueActive ? -1 : 0));
   else if(defMods && defMods.immune.has(type) && !pierced) mult = 0;
   else if(isBoatToken(token)){
     // Vehicles (house rule): always Super-Effective vs Fire/Electric/Ground, but a Levitate/Sky
@@ -33236,13 +33338,14 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
   else {
     const defStep = stepAdj + (defMods?.step?.[type] || 0);
     if(furActive) furStep = -1;
+    if(rogueActive) rogueStep = -1;
     const mOpts = { pierceImmune: pierced, chart: chartOv };
     chartUsed = !!chartOv && tokenDefTypes(token).some(dt => chartOv[dt] != null);
-    mult = typeMultAgainst(type, tokenDefTypes(token), defStep + furStep, mOpts);
+    mult = typeMultAgainst(type, tokenDefTypes(token), defStep + furStep + rogueStep, mOpts);
     // Tolerance (defender Static): a hit the defender resists is resisted one further step.
     if(defMods?.tolerance && mult > 0 && mult < 1){
       tolStep = -1;
-      mult = typeMultAgainst(type, tokenDefTypes(token), defStep + furStep + tolStep, mOpts);
+      mult = typeMultAgainst(type, tokenDefTypes(token), defStep + furStep + rogueStep + tolStep, mOpts);
     }
     // Wonder Guard keys off raw Type super-effectiveness, so judge it on the pre-Fur-Coat Type mult
     // (Fur Coat's flat step must never turn a genuinely Super-Effective hit into a blocked one).
@@ -33257,7 +33360,7 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
        hit is left untouched. */
     if(atkTinted && mult > 0 && mult < 1){
       const bumped = typeMultAgainst(type, tokenDefTypes(token),
-                       defStep + furStep + tolStep + 1, mOpts);
+                       defStep + furStep + rogueStep + tolStep + 1, mOpts);
       const up = Math.min(1, bumped);
       if(up !== mult){ mult = up; tinted = true; }
     }
@@ -33293,8 +33396,9 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
   return { def, physical:!!physical, typeless, mult, afterDef, afterMult, dr, from, seDR, glacialDR,
            typeDR, typeDRFrom, final, drPool, drGone, exploit, dmgUsed, seExtra, seFlat, seFlatAdd, chartUsed,
            owner, defMods, swarmTgt, swarmStep, extraStep, pierced, tinted, tolerance: tolStep<0, furCoat: furActive,
+           rogueMega: rogueActive,
            // kept only so applyTokenDamage can re-run this same hit against a breached boat's passengers
-           dmg, type:(typeless?"Typeless":type), aoe:!!aoe, pierceImmune:!!pierceImmune, pierceDR, atkTinted:!!atkTinted, atkExploit:!!atkExploit, defCSMode,
+           dmg, type:(typeless?"Typeless":type), aoe:!!aoe, pierceImmune:!!pierceImmune, pierceDR, atkTinted:!!atkTinted, atkExploit:!!atkExploit, atkMega:!!atkMega, defCSMode,
            chartOverride, seBonus };
 }
 /* Apply a computed breakdown to the token: subtract its HP and spend any one-shot DR buff that
@@ -33325,7 +33429,7 @@ async function applyTokenDamage(token, br){
       for(const p of boatPassengers(map, token)){
         const pbr = tokenDamageBreakdown(p, { dmg:br.dmg, type:br.type, physical:br.physical,
           extraStep:(br.extraStep||0)-1, aoe:br.aoe, pierceImmune:br.pierceImmune, pierceDR:br.pierceDR,
-          atkTinted:br.atkTinted, atkExploit:br.atkExploit, defCSMode:br.defCSMode,
+          atkTinted:br.atkTinted, atkExploit:br.atkExploit, atkMega:br.atkMega, defCSMode:br.defCSMode,
           chartOverride:br.chartOverride, seBonus:br.seBonus, seFlat:br.seFlat });
         await applyTokenDamage(p, pbr);
       }
@@ -33368,6 +33472,7 @@ function damageResultHTML(dmg, typeName, br, before){
   const tintTxt  = br.tinted ? " <b>(Tinted Lens: +1 step)</b>" : "";
   const tolTxt   = br.tolerance ? " <b>(Tolerance: −1 step)</b>" : "";
   const furTxt   = br.furCoat ? " <b>(Fur Coat: −1 step)</b>" : "";
+  const rogueTxt = br.rogueMega ? " <b>(Rogue Mega: −1 step vs non-Mega)</b>" : "";
   const pierceTxt = br.pierced ? " <b>(immunity ignored)</b>" : "";
   const abilTxt  = (br.defMods && br.defMods.why.length && !br.typeless) ? `<br><span style="color:var(--accent)">⚙ ${br.defMods.why.join(" · ")}</span>` : "";
   const expTxt = br.exploit ? ` <b>(Exploit: +5)</b>` : "";
@@ -33379,14 +33484,14 @@ function damageResultHTML(dmg, typeName, br, before){
   // what a type-absorbing Ability (Storm Drain, Volt Absorb…) just paid the defender for this hit
   const absTxt = (br.absorb && br.absorb.length)
     ? `<br><span style="color:var(--accent);font-weight:700">\u26A1 ${br.absorb.join(" \u00B7 ")}</span>` : "";
-  return `${br.dmgUsed ?? dmg}${expTxt}${seXTxt} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${chartTxt}${pierceTxt}${swarmTxt}${stepTxt}${tintTxt}${tolTxt}${furTxt} = ${br.afterMult}${beltTxt}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${after}</b>.${tempTxt}${absTxt}${abilTxt}`;
+  return `${br.dmgUsed ?? dmg}${expTxt}${seXTxt} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${chartTxt}${pierceTxt}${swarmTxt}${stepTxt}${tintTxt}${tolTxt}${furTxt}${rogueTxt} = ${br.afterMult}${beltTxt}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${after}</b>.${tempTxt}${absTxt}${abilTxt}`;
 }
 /* GM tool surfaced on a rolled attack's result: pick a token on the battle map and drop the rolled
    damage on it, running the same full damage math as the token menu (type, phys/spec, abilities, DR).
    Returns a DOM node, or null when it doesn't apply (not the GM, not in cloud, no editable tokens on
    the current map). `dmg` = the rolled total, `type` = the move's effective Type, `physical` picks
    Def vs Sp.Def. */
-function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, defCSMode=null, moveRule=null, seFlat=0 }){
+function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, defCSMode=null, moveRule=null, seFlat=0 }){
   // a Move whose own rules bend the matchup (MOVE_TARGET_RULES) travels with the hit, and its
   // immunity clause folds into the same pierce switch every other source uses
   const chartOverride = moveRule?.chart || null, seBonus = moveRule?.seBonus || 0;
@@ -33496,7 +33601,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     if(!chosen.length){ out.textContent = "Tick at least one target (in either tab)."; return; }
     out.innerHTML = "";
     for(const it of chosen){
-      const br = tokenDamageBreakdown(it.t, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, defCSMode, chartOverride, seBonus, seFlat });
+      const br = tokenDamageBreakdown(it.t, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, atkMega, defCSMode, chartOverride, seBonus, seFlat });
       const before = await applyTokenDamage(it.t, br);
       it.cb.checked = false;                                    // clear so a second Apply doesn't double-hit
       const line = el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"});
@@ -33623,7 +33728,7 @@ function openRollApply(e){
     + (e.headline ? `: ${e.headline}` : "") + ` at ${rollFeedTime(e.at)}.`));
   const w = attackTargetWidget({ dmg:e.atk.dmg, type:e.atk.type, physical:e.atk.physical,
                                  pierceImmune:e.atk.pierceImmune, pierceDR:e.atk.pierceDR, atkTinted:e.atk.atkTinted,
-                                 atkExploit:e.atk.atkExploit, seFlat:e.atk.seFlat,
+                                 atkExploit:e.atk.atkExploit, atkMega:e.atk.atkMega, seFlat:e.atk.seFlat,
                                  defCSMode:e.atk.defCSMode, moveRule:e.atk.moveRule });
   body.append(w || el("div",{class:"small"},
     "No damageable token on the current map — open the 🗺 Map (or add a token) and try again."));
