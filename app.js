@@ -2337,6 +2337,14 @@ function swarmStraySpecies(p){
   if(!p) return "";
   return isWishiwashi(p) ? WISHIWASHI_SOLO : p.species;
 }
+/* A, B, C … Z, AA, AB … — the same "tell identical wild Pokemon apart" suffix the 🎲 roller puts on
+   a pod of three Wingull, extended past its eight hard-coded letters because a collapsing swarm
+   sheds a good deal more than eight. */
+function strayTag(i){
+  let out = "", n = Math.max(0, i|0);
+  do { out = String.fromCharCode(65 + (n % 26)) + out; n = Math.floor(n / 26) - 1; } while(n >= 0);
+  return out;
+}
 const isStraggler = m => !!(m && m.strayOf);
 function stragglersOf(enc, p){
   return (p && enc && enc.mons || []).filter(m => m.strayOf === p.id);
@@ -23608,7 +23616,10 @@ function encounterMonCard(enc, p, list, trainer){
     if(isSwarm(p)) swarmSetTotalHP(p, Math.max(0,(p.swarm.mult||1)-1)*maxHP + v);
     else if(isBoss(p)) bossSetTotalHP(p, Math.max(0,(p.boss.curBar||1)-1)*maxHP + v);
     else p.currentHP = Math.min(maxHP, v);
-    saveEnc(); renderEncounters();
+    saveEnc();
+    // a bar broken by the ±HP box, −Tick or Set sheds and shrinks exactly as one broken on the Map does
+    if(isSwarm(p)) swarmBarsChanged();
+    renderEncounters();
   };
   card.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;align-items:center;flex-wrap:wrap"},
     el("span",{class:"small muted",style:"font-weight:700;white-space:nowrap"},
@@ -23620,7 +23631,7 @@ function encounterMonCard(enc, p, list, trainer){
       onclick:()=>{ if(isSwarm(p)) swarmSetTotalHP(p, swarmMaxTotalHP(p));
         else if(isBoss(p)) bossSetTotalHP(p, bossMaxTotalHP(p));
         else p.currentHP=maxHP;
-        saveEnc(); renderEncounters(); }},"MAX")));
+        saveEnc(); if(isSwarm(p)) swarmBarsChanged(); renderEncounters(); }},"MAX")));
   card.append(damageHealRow(()=>p.currentHP, setHP, p));
   if(isSwarm(p)) card.append(swarmCard(p));
   else if(isBoss(p)) card.append(bossCard(p));
@@ -25652,11 +25663,24 @@ function sweepMapAuras(map){
   rows.forEach(r => { if(canEditPlayerHP(r)) cloudSaveRow(r); });
   return true;
 }
+/* Everything that has to happen when a Swarm's bar count moves, wherever the damage came from.
+   Hung off the HP WRITE rather than off a repaint: the two Map controls that damage a token (the
+   token menu's −/−Tick/Set and the HP panel) repaint only the bar they just changed, so a shed or a
+   footprint shrink that waited for the next renderMap simply never happened. Returns true if
+   anything actually changed, so the caller knows whether the whole board needs redrawing.
+   Both sweeps are idempotent, so calling this and then rendering (which sweeps again) is safe. */
+function swarmBarsChanged(map){
+  const shed  = sweepSwarmStragglers();
+  const board = map || currentMapForView();
+  const moved = board ? sweepMassiveSchools(board) : false;
+  return shed || moved;
+}
+
 /* ---- shedding stragglers --------------------------------------------------------------------
    Builds one loose fish exactly the way "+ add Pokemon" and the 🎲 random roller do
    (makeWildMon: its six most recent level-up Moves, a rolled Ability, random nature/gender/stats),
    then takes two things off it — Schooling, and any doubt about where it came from. */
-function makeStraggler(enc, swarmMon, n){
+function makeStraggler(enc, swarmMon, n){          // `n` is 0-based — it becomes the A/B/C suffix
   const name = swarmStraySpecies(swarmMon);
   if(!name || !getSpecies(name)) return null;
   const m = makeWildMon(name, swarmStrayLevel(swarmMon));
@@ -25667,7 +25691,9 @@ function makeStraggler(enc, swarmMon, n){
     m.abilities = adv.length ? [adv[0]] : [];
   }
   m.strayOf = swarmMon.id;
-  m.nickname = `Straggler ${n}`;
+  /* Named like any other wild Pokemon — its species plus the house A/B/C suffix — rather than
+     "Straggler 3". What it IS on the board is a Wishiwashi; where it came from is `strayOf`. */
+  m.nickname = `${getSpecies(name)?.name || name} ${strayTag(n)}`;
   m.currentHP = pokeDerived(m).maxHP;
   return m;
 }
@@ -25698,7 +25724,7 @@ function shedStragglers(enc, swarmMon, nth){
   const want = swarmStrayFor(swarmMon, nth);
   let made = 0;
   for(let i=0; i<want; i++){
-    const m = makeStraggler(enc, swarmMon, stragglersOf(enc, swarmMon).length + 1);
+    const m = makeStraggler(enc, swarmMon, stragglersOf(enc, swarmMon).length);   // 0-based: A, B, C…
     if(!m) break;
     enc.mons.push(m);
     placeStragglerTokens(enc, swarmMon, m);
@@ -30961,6 +30987,31 @@ function bulkToggleInInit(map){
   mapTokensSave(); renderMap();
   toast(`${addIn?"⚔ Added":"Removed"} ${sel.length} token${sel.length===1?"":"s"} ${addIn?"to":"from"} initiative`);
 }
+/* Take every selected token off the board at once. Same rules as the single 🗑 in the token menu:
+   only tokens this viewer may remove go, anything else is left alone and reported rather than
+   silently skipped. Riders of a deleted token are set back down where it stood, exactly as
+   removeToken does, so nobody stays pinned to a ghost. The creatures themselves are untouched —
+   this removes their presence on the map, not them. */
+function bulkDeleteTokens(map){
+  const sel = selectedTokens(map); if(!sel.length) return;
+  const mine = sel.filter(canRemoveToken), denied = sel.length - mine.length;
+  if(!mine.length){ toast("None of those are yours to remove"); return; }
+  const what = mine.length===1 ? `“${tokenHp(mine[0]).name}”` : `${mine.length} tokens`;
+  if(!confirm(`Remove ${what} from this map?\n\nThe Pokémon, Trainers and encounters themselves are not deleted — only their tokens.`)) return;
+  const arr = cloud.mapTokens?.data?.byMap?.[map.id]; if(!arr) return;
+  const gone = new Set(mine.map(t=>t.id));
+  const where = new Map(mine.map(t=>[t.id, [t.x, t.y]]));
+  cloud.mapTokens.data.byMap[map.id] = arr.filter(t=>!gone.has(t.id));
+  cloud.mapTokens.data.byMap[map.id].forEach(t=>{
+    if(t.riding && gone.has(t.riding)){ const at = where.get(t.riding);
+      delete t.riding; if(at){ t.x = at[0]; t.y = at[1]; } }
+  });
+  if(mapMount.riderId && gone.has(mapMount.riderId)) mapMount.riderId = null;
+  mapSelect.ids.clear();
+  mapTokensSave(); renderMap();
+  toast(`🗑 Removed ${mine.length} token${mine.length===1?"":"s"}`
+        + (denied ? ` · ${denied} left (not yours to remove)` : ""));
+}
 /* select every token this viewer is allowed to move, restricted to a kind filter */
 function selectMapTokens(map, kinds, label){
   const ids = mapTokensFor(map.id).filter(t=>{ const info=tokenHp(t); return info.editable && kinds.has(info.kind); }).map(t=>t.id);
@@ -30982,6 +31033,10 @@ function mapSelectBar(map){
         onclick:()=>bulkToggleHidden(map)}, allHidden?"👁 Unhide":"🙈 Hide"),
       el("button",{class:"btn-secondary",title:"toggle whether the selected tokens are in the initiative order",
         onclick:()=>bulkToggleInInit(map)}, allIn?"✕ Remove from initiative":"⚔ Add to initiative"));
+    if(sel.some(canRemoveToken))
+      row.append(el("button",{class:"btn-secondary danger",
+        title:"take the selected tokens off this map — the creatures themselves are not deleted",
+        onclick:()=>bulkDeleteTokens(map)}, `🗑 Remove ${sel.filter(canRemoveToken).length}`));
     row.append(el("button",{class:"btn-secondary",onclick:()=>clearMapSelect(map)},"✕ Clear"));
   }
   row.append(el("button",{class:"btn-secondary",onclick:()=>toggleMapSelect(map)},"Done"));
@@ -31712,7 +31767,12 @@ async function setTokenHP(token, val, opts){
     if(kind==="enc" && isSwarm(obj)){
       const barMax = pokeDerived(obj).maxHP;
       swarmSetTotalHP(obj, Math.max(0, (obj.swarm.mult||1)-1)*barMax + (val|0));
-      paintTokenHP(token, true); broadcastEncState(token.link, obj); saveEncCombat(); return;
+      broadcastEncState(token.link, obj); saveEncCombat();
+      /* A broken bar sheds stragglers and thins a Massive School's footprint — new tokens and a new
+         shape, neither of which a repainted HP bar can show. So when either fires, redraw the board
+         instead of just the bar. */
+      if(swarmBarsChanged()) renderMap(); else paintTokenHP(token, true);
+      return;
     }
     /* A Boss's HP is the same shape (Running the Game p.487): one bar per action, `val` is the new
        value of the VISIBLE bar, so fold it back into the running total and let bossSetTotalHP break
