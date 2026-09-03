@@ -2318,7 +2318,18 @@ const massiveSchoolFoot = p => massiveSchoolFootAt(p, (p && p.swarm && p.swarm.m
    once however the Hit Points were written — the Map's damage tool, the encounter card, the roll
    feed's 🎯 Apply, or a peer's change arriving over the socket. */
 const SWARM_STRAY_MAX = 6;
-const swarmStrayCount = p => Math.max(0, Math.min(SWARM_STRAY_MAX, (p && p.swarm && p.swarm.stray) || 0));
+const SWARM_STRAY_BAR_CAP = 24;          // most fish one broken bar may ever produce
+/* `stray` is a RATE, not a headcount: the Nth bar to break sheds `stray x N`. A collapsing swarm
+   comes apart faster than it started to, so one bar down is a straggler or two and the last bar is
+   a scattering — which also means the fight gets loudest exactly as the wall stops being a wall. */
+const swarmStrayRate = p => Math.max(0, Math.min(SWARM_STRAY_MAX, (p && p.swarm && p.swarm.stray) || 0));
+const swarmStrayFor = (p, nth) => Math.min(SWARM_STRAY_BAR_CAP, swarmStrayRate(p) * Math.max(1, nth|0));
+/* everything it would shed across its whole life, for the readout on the card */
+function swarmStrayTotal(p){
+  let n = 0;
+  for(let i=1; i<=((p && p.swarm && p.swarm.maxMult) || 1); i++) n += swarmStrayFor(p, i);
+  return n;
+}
 const swarmStrayLevel = p => Math.max(1, Math.min(MAX_LEVEL, (p && p.swarm && p.swarm.strayLv) || p.level || 1));
 /* what one fish out of this swarm is. A Wishiwashi School sheds Wishiwashi SOLO — the school is a
    Forme, not a species, and a lone one is not still in it. Everything else sheds its own species. */
@@ -23035,7 +23046,7 @@ function swarmCard(p){
   /* ---- Stragglers: what a broken bar leaves behind ---- */
   const strayName = getSpecies(swarmStraySpecies(p))?.name || swarmStraySpecies(p);
   const out = stragglersOf(encOfMon(p), p);
-  const strayIn = el("input",{type:"number",min:0,max:SWARM_STRAY_MAX,value:swarmStrayCount(p),style:"width:64px"});
+  const strayIn = el("input",{type:"number",min:0,max:SWARM_STRAY_MAX,value:swarmStrayRate(p),style:"width:64px"});
   strayIn.addEventListener("change", ()=>{
     s.stray = Math.max(0, Math.min(SWARM_STRAY_MAX, parseInt(strayIn.value)||0));
     s.strayAt = s.mult;                                    // switching it on never back-dates a shed
@@ -23049,14 +23060,22 @@ function swarmCard(p){
   wrap.append(el("div",{class:"small",style:"margin-top:12px;font-weight:700"},
     `🐟 Stragglers — what each broken bar leaves behind`));
   wrap.append(el("div",{class:"fieldrow"},
-    el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Shed per broken bar"), strayIn),
+    el("label",{class:"field",style:"max-width:130px"}, el("span",{},"Shed rate ×"), strayIn),
     el("label",{class:"field",style:"max-width:150px"}, el("span",{},`${strayName} at Level`), lvIn)));
-  if(swarmStrayCount(p)){
+  if(swarmStrayRate(p)){
+    const lost = s.maxMult - s.strayAt;
+    const run = el("div",{class:"chips",style:"margin-top:4px"});
+    for(let i=1; i<=s.maxMult; i++)
+      run.append(el("span",{class:"chip"+(i===lost?" on":"")},
+        `${i}${["st","nd","rd"][i-1]||"th"} bar → ${swarmStrayFor(p, i)}`));
+    wrap.append(run);
     wrap.append(el("div",{class:"small muted",style:"margin-top:4px"},
-      `Every Hit Point bar that breaks adds ${swarmStrayCount(p)} Lv${swarmStrayLevel(p)} ${strayName} to this `
-      + "encounter, placed beside it on any map it is standing on. They act on their own initiative, they "
-      + "cannot be re-absorbed, and they are shed without Schooling — the swarm only ever gets smaller. "
-      + `Shed so far: ${s.maxMult - s.strayAt} of ${s.maxMult - 1} bar${s.maxMult-1===1?"":"s"}.`));
+      `The shed ESCALATES: the first bar to break sheds ${swarmStrayFor(p,1)} Lv${swarmStrayLevel(p)} `
+      + `${strayName}, the next ${swarmStrayFor(p,2)}, and so on — ${swarmStrayTotal(p)} of them in all if it is `
+      + "fought to the last bar. Each one is added to this encounter and placed beside it on any map it is "
+      + "standing on. They act on their own initiative, they cannot be re-absorbed, and they are shed without "
+      + "Schooling — the swarm only ever gets smaller. "
+      + `Broken so far: ${lost} of ${s.maxMult} bar${s.maxMult===1?"":"s"}.`));
     if(out.length){
       const row = el("div",{class:"inline",style:"gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap"});
       row.append(el("span",{class:"small",style:"font-weight:700"}, `${out.length} on the loose`));
@@ -25672,10 +25691,11 @@ function placeStragglerTokens(enc, swarmMon, stray){
   });
   return placed;
 }
-/* one broken bar's worth. Returns how many fish it actually made. */
-function shedStragglers(enc, swarmMon){
+/* one broken bar's worth — `nth` is which bar this is (1 = the first to break), which is what makes
+   the shed escalate. Returns how many fish it actually made. */
+function shedStragglers(enc, swarmMon, nth){
   ensureMapTokens();
-  const want = swarmStrayCount(swarmMon);
+  const want = swarmStrayFor(swarmMon, nth);
   let made = 0;
   for(let i=0; i<want; i++){
     const m = makeStraggler(enc, swarmMon, stragglersOf(enc, swarmMon).length + 1);
@@ -25711,7 +25731,7 @@ function sweepSwarmStragglers(){
   encList().forEach(enc=>{
     if(enc.archived) return;
     (enc.mons || []).slice().forEach(p=>{
-      if(!isSwarm(p) || isStraggler(p) || !swarmStrayCount(p)) return;
+      if(!isSwarm(p) || isStraggler(p) || !swarmStrayRate(p)) return;
       const s = p.swarm;
       if(typeof s.strayAt !== "number") s.strayAt = s.mult;
       // healed back up (or resized) — re-arm, so those bars can shed again if they break again
@@ -25719,7 +25739,7 @@ function sweepSwarmStragglers(){
       let made = 0, bars = 0;
       while(s.strayAt > s.mult && bars < SWARM_MAX_MULT){
         s.strayAt--; bars++;
-        made += shedStragglers(enc, p);
+        made += shedStragglers(enc, p, s.maxMult - s.strayAt);   // 1 for the first bar to break, 2 for the next…
       }
       if(bars){
         changed = true; tokensTouched = true;
