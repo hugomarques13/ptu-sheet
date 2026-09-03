@@ -680,6 +680,14 @@
   "keywords": null
  },
  {
+  "name": "Engulf",
+  "frequency": "Static",
+  "effect": "The user's body fills its entire space, and anything that ends up inside it is inside the user, not beside it. A Pokemon or Trainer that begins its turn within the user's space - or that is moved, pushed or dragged into it - is put in a Vortex: it becomes Slowed and Trapped, and loses a Tick of Hit Points at the beginning of each of its turns. Unlike the Vortex keyword, this one never runs out on its own; it lasts exactly as long as the target is inside the user's space, and ends the moment the target is clear of it. Escaping is a Shift Action: make an opposed Athletics or Acrobatics Check against the user's Athletics Check. On a success, Shift out of the user's space without provoking Attacks of Opportunity; on a failure, the Shift is spent and the target does not move. Allies of the user ignore this Ability.",
+  "trigger": null,
+  "target": null,
+  "keywords": "Homebrew"
+ },
+ {
   "name": "Electrodash",
   "frequency": "Scene -  Free Action",
   "effect": "The user may make a Sprint Action as a Swift Action.",

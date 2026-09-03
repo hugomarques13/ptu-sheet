@@ -2201,8 +2201,14 @@ const SWARM_SIZES = [
   { mult:3, label:"25–40 Pokémon" },
   { mult:4, label:"40–60 Pokémon" },
   { mult:5, label:"60+ Pokémon" },
+  /* The book's own table stops at ×5. These three are homebrew, for the shoals that aren't a
+     crowd of Pokémon standing near each other so much as a landscape feature made of them — see
+     the Massive School block below, which is what they exist for. */
+  { mult:6, label:"Hundreds — homebrew" },
+  { mult:7, label:"A thousand and more — homebrew" },
+  { mult:8, label:"The whole shoal — homebrew" },
 ];
-const SWARM_MAX_MULT = 5;
+const SWARM_MAX_MULT = 8;
 /* Standard-Action cost by Frequency (Core p.478). Keyed off freqInfo().kind. */
 const SWARM_COSTS = { atwill:1, eot:2, scene:3, daily:4 };
 function swarmCost(freq){
@@ -2220,6 +2226,13 @@ function normSwarm(p){
   if(typeof s.sp!=="number") s.sp = s.mult;
   s.sp = Math.max(0, Math.min(s.maxMult, s.sp));
   s.freeUsed = !!s.freeUsed;
+  if(s.massive!=null && !(Array.isArray(s.massive) && s.massive.length===2)) delete s.massive;
+  s.stray = Math.max(0, Math.min(SWARM_STRAY_MAX, parseInt(s.stray) || 0));
+  // Default the shed counter to where the swarm IS, never to its maximum: a swarm already down to
+  // two bars when stragglers get switched on must not immediately cough up four bars' worth.
+  if(typeof s.strayAt !== "number") s.strayAt = s.mult;
+  s.strayAt = Math.max(0, Math.min(s.maxMult, s.strayAt));
+  if(s.strayLv != null) s.strayLv = Math.max(1, Math.min(MAX_LEVEL, parseInt(s.strayLv) || 1));
   return p;
 }
 /* total HP left across every remaining bar */
@@ -2258,6 +2271,73 @@ function swarmSpend(p, freq){
 }
 /* step adjustment applied to damage aimed AT a swarm (Core p.478) */
 const swarmDamageStep = aoe => aoe ? +1 : -1;
+
+/* ---- Massive School (homebrew, layered on top of the Swarm Template) ------------------------
+   A shoal of thousands of Wishiwashi isn't a crowd of separate fish taking separate turns — it is
+   one body of water and scales that physically fills the arena. Mechanically it IS a Swarm, and
+   deliberately adds no second set of rules: same HP bars, same Swarm Points, same "areas hurt it
+   more, single targets bounce off". What it adds is the SHOAL — a map footprint DERIVED from how
+   many bars are left, so as the table breaks it apart the wall of fish visibly thins out, square by
+   square, until the last bar is one Wishiwashi's worth of stragglers.
+     p.swarm.massive = [w, h]   — the FULL-STRENGTH footprint (8×4 by default)
+   Every smaller step is interpolated from that one pair, so a GM picks two numbers and the whole
+   ladder follows whatever Swarm size they chose. */
+const MASSIVE_SCHOOL_FOOT = [8, 4];
+const MASSIVE_SCHOOL_FOOT_MAX = 30;
+const isMassiveSchool = p => isSwarm(p) && Array.isArray(p.swarm.massive);
+function massiveSchoolFullFoot(p){
+  const m = (p && p.swarm && p.swarm.massive) || MASSIVE_SCHOOL_FOOT;
+  const n = (v, d) => Math.max(1, Math.min(MASSIVE_SCHOOL_FOOT_MAX, parseInt(v) || d));
+  return { w:n(m[0], MASSIVE_SCHOOL_FOOT[0]), h:n(m[1], MASSIVE_SCHOOL_FOOT[1]) };
+}
+/* the footprint with `mult` bars left. The last bar is always 1×1 — what is left of the school by
+   then is a single fish's worth of it — and the steps between interpolate linearly, so any Swarm
+   size and any full footprint still give a ladder that shrinks once per broken bar. */
+function massiveSchoolFootAt(p, mult){
+  const full = massiveSchoolFullFoot(p), max = Math.max(1, (p && p.swarm && p.swarm.maxMult) || 1);
+  const m = Math.max(0, Math.min(max, mult));
+  if(m <= 0) return { w:1, h:1 };                 // broken — there is nothing left standing
+  if(max <= 1) return full;
+  const f = (m - 1) / (max - 1);                  // 1 at full strength, 0 on the last bar
+  const step = n => Math.max(1, Math.round(1 + (n - 1) * f));
+  return { w:step(full.w), h:step(full.h) };
+}
+const massiveSchoolFoot = p => massiveSchoolFootAt(p, (p && p.swarm && p.swarm.mult) || 0);
+
+/* ---- Stragglers (homebrew, any Swarm) --------------------------------------------------------
+   Every broken HP bar sheds fish. The shoal thins on the board (massiveSchoolFootAt) and the
+   Pokemon it lost do not simply stop existing — they scatter as individuals that roll their own
+   initiative and fight for themselves. There is deliberately NO way back: a straggler can never be
+   re-absorbed, and it is stripped of Schooling so it cannot start a school of its own. The swarm
+   only ever gets smaller.
+     p.swarm.stray   = fish shed per broken bar (0 = off)
+     p.swarm.strayAt = the LOWEST Multiplier already shed for, so one bar can never shed twice
+     p.swarm.strayLv = the Level they come out at (defaults to the swarm's own)
+   The counter is the whole mechanism, and it is pure data: the shedding is worked out by comparing
+   it against the current Multiplier rather than hooked to a damage event, so it resolves exactly
+   once however the Hit Points were written — the Map's damage tool, the encounter card, the roll
+   feed's 🎯 Apply, or a peer's change arriving over the socket. */
+const SWARM_STRAY_MAX = 6;
+const swarmStrayCount = p => Math.max(0, Math.min(SWARM_STRAY_MAX, (p && p.swarm && p.swarm.stray) || 0));
+const swarmStrayLevel = p => Math.max(1, Math.min(MAX_LEVEL, (p && p.swarm && p.swarm.strayLv) || p.level || 1));
+/* what one fish out of this swarm is. A Wishiwashi School sheds Wishiwashi SOLO — the school is a
+   Forme, not a species, and a lone one is not still in it. Everything else sheds its own species. */
+function swarmStraySpecies(p){
+  if(!p) return "";
+  return isWishiwashi(p) ? WISHIWASHI_SOLO : p.species;
+}
+const isStraggler = m => !!(m && m.strayOf);
+function stragglersOf(enc, p){
+  return (p && enc && enc.mons || []).filter(m => m.strayOf === p.id);
+}
+/* the encounter a wild Pokemon belongs to. A scan rather than another cached index, for the same
+   reason isWildEncMon is one: it only runs for the handful of swarms actually on a card, and a
+   stale answer would put a shed straggler into the wrong fight. */
+function encOfMon(p){
+  if(!p) return null;
+  try{ return encList().find(e => (e.mons||[]).some(m => m===p || (m.id && m.id===p.id))) || null; }
+  catch(err){ return null; }
+}
 
 /* ===================================================================
    Boss Template (Running the Game p.487-488)
@@ -5686,6 +5766,11 @@ function schoolingActivate(p){
 /* back to one small fish. The pool goes with it: those Temp HP were the other 299. */
 function schoolingRevertNow(p, why){
   if(!isWishiwashi(p) || p.species !== WISHIWASHI_SCHOOL) return false;
+  /* A Massive School is not one fish wearing the shoal as armour - it IS the shoal, thousands
+     strong, and the Swarm Template's bars already model it coming apart. Nothing scatters it back
+     to a Solo: it thins out instead (massiveSchoolFootAt). Guarding here covers every caller -
+     applySchooling below, the encounter card's heal, and End Day. */
+  if(isMassiveSchool(p)) return false;
   p.species = WISHIWASHI_SOLO;
   p.tempHP = 0;
   if(why) toast(`\u{1F41F} ${ownerLabel(p)}'s school scatters - back to Solo Forme (${why})`);
@@ -5696,6 +5781,7 @@ function schoolingRevertNow(p, why){
    AFTER tempSoak, so the pool it reads is what the hit actually left standing. */
 function applySchooling(owner, newHP){
   if(!schooling(owner) || owner.species !== WISHIWASHI_SCHOOL || typeof newHP !== "number") return null;
+  if(isMassiveSchool(owner)) return null;              // the shoal IS the school - see schoolingRevertNow
   if(tempHPOf(owner) > 0) return null;                 // the shoal is still soaking hits
   const max = ownerMaxHP(owner);
   if(!max || newHP >= max*0.5) return null;            // "below 50%" - exactly half still holds together
@@ -14912,7 +14998,13 @@ function wishiwashiFormeControl(p, sp, onChanged, persist){
   const school = p.species===WISHIWASHI_SCHOOL;
   wrap.append(el("span",{class:"muted",style:"font-weight:700"},"Forme:"),
               el("span",{class:"kv"}, school ? "Schooling" : "Solo"));
-  if(school){
+  if(isMassiveSchool(p)){
+    // A Massive School has no Forme to go back to — it is thousands of fish, not one wearing a
+    // shoal, and nothing scatters it (schoolingRevertNow refuses). Offering the ↺ here would be a
+    // button that silently does nothing, so it is replaced by what actually happens instead.
+    wrap.append(el("span",{class:"muted small"},
+      "\u{1F30A} Massive School — nothing scatters it back to a Solo; it thins out as its Hit Point bars break"));
+  } else if(school){
     wrap.append(schoolingRevertButton(p, onChanged, persist),
       el("span",{class:"muted small"},"no other source may top its Temp HP up · scatters below half HP once the pool is spent"));
   } else {
@@ -14947,7 +15039,10 @@ function schoolingRevertButton(p, onChanged, persist){
 function schoolingTriggerRow(p, redraw, persist){
   if(!schooling(p)) return null;
   const wrap = el("div",{class:"inline small",style:"margin-top:8px;gap:8px;flex-wrap:wrap;align-items:center"});
-  if(p.species===WISHIWASHI_SCHOOL){
+  if(isMassiveSchool(p)){
+    wrap.append(el("span",{class:"kv"},"Massive School"),
+      el("span",{class:"muted"},"Thousands of fish, not one wearing a shoal — nothing scatters it back to a Solo. It comes apart by losing Hit Point bars instead, thinning its footprint as it goes."));
+  } else if(p.species===WISHIWASHI_SCHOOL){
     wrap.append(el("span",{class:"kv"},"Schooling Forme"), schoolingRevertButton(p, redraw, persist),
       el("span",{class:"muted"},"Nothing else may top its Temporary HP up. It scatters on its own once it is below half HP with the pool spent."));
   } else {
@@ -22895,10 +22990,84 @@ function swarmCard(p){
   sizeSel.addEventListener("change", ()=>{
     s.maxMult = parseInt(sizeSel.value)||1;
     s.mult = s.maxMult; s.sp = s.maxMult; s.freeUsed = false;
+    s.strayAt = s.maxMult;                                 // a fresh swarm has shed nothing yet
     p.currentHP = pokeDerived(p).maxHP;                    // resize = a fresh swarm
     normSwarm(p); saveEnc(); renderEncounters();
   });
   wrap.append(el("label",{class:"field",style:"max-width:280px"}, el("span",{},"Swarm size"), sizeSel));
+
+  /* ---- Massive School: the shoal's own footprint on the Map (see the block by swarmDamageStep) ---- */
+  const msOn = el("input",{type:"checkbox"}); msOn.checked = isMassiveSchool(p);
+  msOn.addEventListener("change", ()=>{
+    if(msOn.checked) s.massive = MASSIVE_SCHOOL_FOOT.slice(); else delete s.massive;
+    saveEnc(); renderEncounters(); if(currentTab==="map") renderMap();
+  });
+  wrap.append(el("label",{class:"inline",style:"margin-top:10px;gap:6px;display:flex;align-items:center"},
+    msOn, el("span",{class:"small",style:"font-weight:700"},"🌊 Massive School — it fills the water")));
+  if(isMassiveSchool(p)){
+    const full = massiveSchoolFullFoot(p);
+    const dim = (i, label) => {
+      const inp = el("input",{type:"number",min:1,max:MASSIVE_SCHOOL_FOOT_MAX,value:(i===0?full.w:full.h),style:"width:64px"});
+      inp.addEventListener("change", ()=>{
+        const v = Math.max(1, Math.min(MASSIVE_SCHOOL_FOOT_MAX, parseInt(inp.value)||1));
+        s.massive = i===0 ? [v, full.h] : [full.w, v];
+        saveEnc(); renderEncounters(); if(currentTab==="map") renderMap();
+      });
+      return el("label",{class:"field",style:"max-width:190px"}, el("span",{},label), inp);
+    };
+    wrap.append(el("div",{class:"fieldrow"}, dim(0,"Squares across (full strength)"), dim(1,"Squares deep (full strength)")));
+    const now = massiveSchoolFoot(p);
+    wrap.append(el("div",{class:"small",style:"margin-top:6px;font-weight:700"},
+      swarmDefeated(p) ? "On the Map right now: scattered"
+                       : `On the Map right now: ${now.w}×${now.h} squares (${now.w*now.h} of them)`));
+    const chips = el("div",{class:"chips",style:"margin-top:2px"});
+    for(let m=s.maxMult; m>=1; m--){
+      const f = massiveSchoolFootAt(p, m);
+      chips.append(el("span",{class:"chip"+(m===s.mult?" on":"")}, `${m} bar${m===1?"":"s"} → ${f.w}×${f.h}`));
+    }
+    wrap.append(chips);
+    wrap.append(el("div",{class:"small muted",style:"margin-top:4px"},
+      "Its token covers that whole rectangle — Flanking, reach, fog of war and every area of effect "
+      + "measure against all of it — and thins out on its own each time a Hit Point bar breaks. "
+      + "Schooling never scatters it back to a Solo: the shoal is already the school."));
+  }
+
+  /* ---- Stragglers: what a broken bar leaves behind ---- */
+  const strayName = getSpecies(swarmStraySpecies(p))?.name || swarmStraySpecies(p);
+  const out = stragglersOf(encOfMon(p), p);
+  const strayIn = el("input",{type:"number",min:0,max:SWARM_STRAY_MAX,value:swarmStrayCount(p),style:"width:64px"});
+  strayIn.addEventListener("change", ()=>{
+    s.stray = Math.max(0, Math.min(SWARM_STRAY_MAX, parseInt(strayIn.value)||0));
+    s.strayAt = s.mult;                                    // switching it on never back-dates a shed
+    saveEnc(); renderEncounters();
+  });
+  const lvIn = el("input",{type:"number",min:1,max:MAX_LEVEL,value:swarmStrayLevel(p),style:"width:64px"});
+  lvIn.addEventListener("change", ()=>{
+    s.strayLv = Math.max(1, Math.min(MAX_LEVEL, parseInt(lvIn.value)||1));
+    saveEnc(); renderEncounters();
+  });
+  wrap.append(el("div",{class:"small",style:"margin-top:12px;font-weight:700"},
+    `🐟 Stragglers — what each broken bar leaves behind`));
+  wrap.append(el("div",{class:"fieldrow"},
+    el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Shed per broken bar"), strayIn),
+    el("label",{class:"field",style:"max-width:150px"}, el("span",{},`${strayName} at Level`), lvIn)));
+  if(swarmStrayCount(p)){
+    wrap.append(el("div",{class:"small muted",style:"margin-top:4px"},
+      `Every Hit Point bar that breaks adds ${swarmStrayCount(p)} Lv${swarmStrayLevel(p)} ${strayName} to this `
+      + "encounter, placed beside it on any map it is standing on. They act on their own initiative, they "
+      + "cannot be re-absorbed, and they are shed without Schooling — the swarm only ever gets smaller. "
+      + `Shed so far: ${s.maxMult - s.strayAt} of ${s.maxMult - 1} bar${s.maxMult-1===1?"":"s"}.`));
+    if(out.length){
+      const row = el("div",{class:"inline",style:"gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap"});
+      row.append(el("span",{class:"small",style:"font-weight:700"}, `${out.length} on the loose`));
+      row.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",
+        title:"remove every straggler this swarm has shed, and their map tokens",
+        onclick:()=>{ if(!confirm(`Remove all ${out.length} straggler${out.length===1?"":"s"}?`)) return;
+          const n = clearStragglers(encOfMon(p), p); renderEncounters();
+          toast(`🧹 Removed ${n} straggler${n===1?"":"s"}`); }},"🧹 Clear"));
+      wrap.append(row);
+    }
+  }
 
   // HP bars
   const bars = el("div",{class:"inline",style:"gap:4px;margin-top:8px;flex-wrap:wrap"});
@@ -23920,6 +24089,8 @@ function openMonExpCalc(p){
 let encShowArchived=false;   // device-level toggle for the Encounters archive view
 function renderEncounters(){
   const root=$("#view-encounters");
+  // damage dealt from a card here sheds stragglers too, not just damage dealt from the Map
+  sweepSwarmStragglers();
   // renderEncounters() does a full teardown/rebuild on every edit (stat/CS steppers, use-pips…),
   // so <details data-key> spoilers would otherwise snap shut after one click — remember which were
   // open and re-open the matching ones once the fresh DOM is built.
@@ -25277,11 +25448,48 @@ function shopTokenSprite(token){
    table's device. The GM is never blocked, and a shop the GM has PUSHED to everyone ignores this
    entirely: that's them deliberately putting the shop in front of the table. */
 const SHOP_REACH = 4;
+/* ---- footprints ------------------------------------------------------------------------------
+   How many squares a token actually covers. Nearly everything on the board is size×size, but two
+   things are not: a boat's hull (boatDims) and a Massive School, whose footprint is DERIVED from
+   how many Swarm bars it has left, so the wall of fish shrinks on the board as it is broken apart.
+   Anything measuring distance, adjacency, fog or an area of effect reads w/h from here rather than
+   assuming token.size is the whole story. */
+function tokenFootprint(t){
+  if(!t) return { w:1, h:1 };
+  if(isBoatToken(t)) return boatDims(t);
+  const ms = massiveSchoolTokenFoot(t);
+  if(ms) return ms;
+  const s = t.size || 1;
+  return { w:s, h:s };
+}
+/* The live footprint of a Massive School standing on the board, or null if this token isn't one.
+   Only encounter-linked tokens are ever looked up, so the party never pays for the check. It also
+   carries `full`, the footprint at full strength — sweepMassiveSchools anchors on that so the shoal
+   thins about a fixed centre instead of creeping across the board half a square per broken bar.
+
+   Memoised for the duration of one repaint. Flanking is an all-pairs sweep over tokenTileGap, so
+   without this every pair of enemy tokens on the board would each walk the encounter library
+   twice looking for a school that almost never exists — n² lookups where n lookups will do. The
+   cache is opened and closed around renderMap alone, where nothing can change underneath it;
+   outside a repaint (a drag's live fog reveal) it is null and every call is answered for real. */
+let msFootCache = null;
+function massiveSchoolTokenFoot(t){
+  if(!t || !t.link || t.link.kind !== "enc") return null;
+  if(msFootCache && msFootCache.has(t.id)) return msFootCache.get(t.id);
+  let f = null;
+  const mon = encMonById(t.link.encId, t.link.monId);
+  if(mon && isMassiveSchool(mon)){
+    f = massiveSchoolFoot(mon);
+    f.full = massiveSchoolFullFoot(mon);
+  }
+  if(msFootCache) msFootCache.set(t.id, f);
+  return f;
+}
 function tokenTileGap(a, b){
   const ax=Math.round(a.x), ay=Math.round(a.y), bx=Math.round(b.x), by=Math.round(b.y);
-  const as=a.size||1, bs=b.size||1;
-  const dx = Math.max(0, ax-(bx+bs-1), bx-(ax+as-1));
-  const dy = Math.max(0, ay-(by+bs-1), by-(ay+as-1));
+  const af=tokenFootprint(a), bf=tokenFootprint(b);
+  const dx = Math.max(0, ax-(bx+bf.w-1), bx-(ax+af.w-1));
+  const dy = Math.max(0, ay-(by+bf.h-1), by-(ay+af.h-1));
   return Math.max(dx, dy);
 }
 /* ===================================================================
@@ -25293,8 +25501,8 @@ function tokenTileGap(a, b){
 =================================================================== */
 /* every grid cell a token's footprint covers */
 function tokenSquares(t){
-  const x = Math.round(t.x), y = Math.round(t.y), n = t.size || 1, out = [];
-  for(let i=0;i<n;i++) for(let j=0;j<n;j++) out.push([x+i, y+j]);
+  const x = Math.round(t.x), y = Math.round(t.y), f = tokenFootprint(t), out = [];
+  for(let i=0;i<f.w;i++) for(let j=0;j<f.h;j++) out.push([x+i, y+j]);
   return out;
 }
 /* "player side" vs "enemy side" — the only two sides the board models. Standalone tokens (props,
@@ -25354,7 +25562,10 @@ function bestFlankSet(nodes){
 }
 /* Is this token Flanked right now?  → {flanked, weight, need, who[]} */
 function tokenFlanking(map, token){
-  const need = (token.size || 1) + 1;      // Small/Medium 2 · Large 3 · Huge 4 · Gigantic 5
+  // Small/Medium 2 · Large 3 · Huge 4 · Gigantic 5 — and for a non-square body (a Massive School,
+  // a hull) its longest side, since that is the side an attacker has to get around.
+  const nf = tokenFootprint(token);
+  const need = Math.max(nf.w, nf.h) + 1;
   const blank = { flanked:false, weight:0, need, who:[] };
   if(!map || !tokenSide(token) || tokenIsDown(token)) return blank;
   const foes = mapTokensFor(map.id).filter(t =>
@@ -25421,6 +25632,141 @@ function sweepMapAuras(map){
   if(encTouched) saveEncCombat();
   rows.forEach(r => { if(canEditPlayerHP(r)) cloudSaveRow(r); });
   return true;
+}
+/* ---- shedding stragglers --------------------------------------------------------------------
+   Builds one loose fish exactly the way "+ add Pokemon" and the 🎲 random roller do
+   (makeWildMon: its six most recent level-up Moves, a rolled Ability, random nature/gender/stats),
+   then takes two things off it — Schooling, and any doubt about where it came from. */
+function makeStraggler(enc, swarmMon, n){
+  const name = swarmStraySpecies(swarmMon);
+  if(!name || !getSpecies(name)) return null;
+  const m = makeWildMon(name, swarmStrayLevel(swarmMon));
+  /* A shed fish can never rebuild the school — that is the point of shedding — so Schooling comes
+     off rather than sitting on its card as a button somebody presses by accident. */
+  if((m.abilities||[]).some(a => String(a).toLowerCase()==="schooling")){
+    const adv = getSpecies(name)?.abilities?.advanced || [];
+    m.abilities = adv.length ? [adv[0]] : [];
+  }
+  m.strayOf = swarmMon.id;
+  m.nickname = `Straggler ${n}`;
+  m.currentHP = pokeDerived(m).maxHP;
+  return m;
+}
+/* Drop it on the board beside the swarm it came off, on every map the swarm is standing on. It is
+   placed with freeCellNear, which rings outwards from the swarm's own footprint (all 32 squares of
+   it, for an 8x4 shoal) and skips occupied cells — and because each new token is pushed before the
+   next is placed, a whole shed lands in a spread rather than in one stack. A swarm with no token
+   anywhere just gets the Pokemon, and the GM drops them by hand. */
+function placeStragglerTokens(enc, swarmMon, stray){
+  const byMap = cloud.mapTokens?.data?.byMap; if(!byMap) return 0;
+  const hide = enc.hideTokens ? { gmHidden:true } : {};
+  let placed = 0;
+  Object.keys(byMap).forEach(mapId=>{
+    const arr = byMap[mapId]; if(!Array.isArray(arr)) return;
+    const host = arr.find(t => t.link && t.link.kind==="enc" && t.link.encId===enc.id && t.link.monId===swarmMon.id);
+    if(!host) return;
+    const pos = freeCellNear({ id:mapId }, host, null);
+    arr.push(Object.assign({ id:uid(), size:1, x:pos.x, y:pos.y,
+      link:{ kind:"enc", encId:enc.id, monId:stray.id } }, hide));
+    placed++;
+  });
+  return placed;
+}
+/* one broken bar's worth. Returns how many fish it actually made. */
+function shedStragglers(enc, swarmMon){
+  ensureMapTokens();
+  const want = swarmStrayCount(swarmMon);
+  let made = 0;
+  for(let i=0; i<want; i++){
+    const m = makeStraggler(enc, swarmMon, stragglersOf(enc, swarmMon).length + 1);
+    if(!m) break;
+    enc.mons.push(m);
+    placeStragglerTokens(enc, swarmMon, m);
+    made++;
+  }
+  return made;
+}
+/* Take them all back off the board — the tidy-up button, not a game mechanic (there is no Reform). */
+function clearStragglers(enc, swarmMon){
+  if(!enc || !swarmMon) return 0;
+  const gone = new Set(stragglersOf(enc, swarmMon).map(m => m.id));
+  if(!gone.size) return 0;
+  enc.mons = enc.mons.filter(m => !gone.has(m.id));
+  const byMap = cloud.mapTokens?.data?.byMap;
+  if(byMap) Object.keys(byMap).forEach(mapId=>{
+    const arr = byMap[mapId]; if(!Array.isArray(arr)) return;
+    byMap[mapId] = arr.filter(t => !(t.link && t.link.kind==="enc" && gone.has(t.link.monId)));
+  });
+  swarmMon.swarm.strayAt = swarmMon.swarm.mult;   // re-arm: the next broken bar sheds again
+  saveEnc(); mapTokensSave();
+  return gone.size;
+}
+/* The shed itself. Derived from the counter rather than from a damage event, so it resolves once and
+   only once no matter which surface wrote the Hit Points. Runs at the top of the two GM surfaces
+   that can show the result (the Encounters tab and the Map), and is GM-only because it writes both
+   the encounters row and the tokens row. */
+function sweepSwarmStragglers(){
+  if(!cloud.isGM) return false;
+  let changed = false, tokensTouched = false;
+  encList().forEach(enc=>{
+    if(enc.archived) return;
+    (enc.mons || []).slice().forEach(p=>{
+      if(!isSwarm(p) || isStraggler(p) || !swarmStrayCount(p)) return;
+      const s = p.swarm;
+      if(typeof s.strayAt !== "number") s.strayAt = s.mult;
+      // healed back up (or resized) — re-arm, so those bars can shed again if they break again
+      if(s.strayAt < s.mult){ s.strayAt = s.mult; changed = true; return; }
+      let made = 0, bars = 0;
+      while(s.strayAt > s.mult && bars < SWARM_MAX_MULT){
+        s.strayAt--; bars++;
+        made += shedStragglers(enc, p);
+      }
+      if(bars){
+        changed = true; tokensTouched = true;
+        toast(`🐟 ${encMonName(p)} sheds ${made} straggler${made===1?"":"s"} — ${bars} bar${bars===1?"":"s"} broken`);
+      }
+    });
+  });
+  if(changed) saveEnc();
+  if(tokensTouched) mapTokensSave();
+  return changed;
+}
+
+/* A Massive School's footprint is derived from the Swarm bars it has left, so it changes the moment
+   one breaks. Left alone the token would shrink towards its top-left corner and appear to lurch; this
+   puts it back so the shoal thins about its own centre. It is written as an ANCHOR (`token.manchor`,
+   the top-left the shoal would have at full strength) rather than a nudge per broken bar, so every
+   bar count maps to exactly one square: the placement is idempotent, and healing the school back up
+   lands it precisely where it started instead of creeping half a square each way. `token.mfoot`
+   records [w, h, x, y] as last written, which is how a GM's own drag is told apart from our own
+   move. GM-only, because it writes to the tokens row — every other screen just reads the derived
+   footprint out of tokenFootprint. */
+function sweepMassiveSchools(map){
+  if(!map || !cloud.isGM) return false;
+  let changed = false;
+  mapTokensFor(map.id).forEach(t=>{
+    const f = massiveSchoolTokenFoot(t); if(!f) return;
+    const full = f.full;
+    // offset of the current footprint's top-left from the FULL-strength one, both centred
+    const off = (a, b) => Math.floor((a - b) / 2);
+    const was = Array.isArray(t.mfoot) ? t.mfoot : null;      // [w, h, x, y] we last wrote
+    // Dragged since we last touched it (or brand new)? Then wherever it sits now IS the shoal's
+    // place — re-derive the full-strength anchor from it. Deriving every position from that one
+    // anchor is what keeps the ladder drift-free: each bar count maps to exactly one square, so
+    // shrinking five bars and healing back lands the school precisely where it started.
+    if(!was || t.x!==was[2] || t.y!==was[3] || !Array.isArray(t.manchor))
+      t.manchor = [ t.x - off(full.w, f.w), t.y - off(full.h, f.h) ];
+    const nx = t.manchor[0] + off(full.w, f.w), ny = t.manchor[1] + off(full.h, f.h);
+    // The record has to be rewritten even when nothing MOVED (a drag that happened to land on the
+    // square its own anchor implies), or the next sweep reads a stale x/y, calls that a fresh drag
+    // and re-anchors on the SHRUNKEN footprint instead of the full-strength one.
+    if(was && was[0]===f.w && was[1]===f.h && was[2]===nx && was[3]===ny && t.x===nx && t.y===ny) return;
+    t.x = nx; t.y = ny;
+    t.mfoot = [f.w, f.h, nx, ny];
+    changed = true;
+  });
+  if(changed){ mapTokensSave(); if(map.fogOn) revealAroundTokens(map); }
+  return changed;
 }
 function myMapTokens(map){
   return mapTokensFor(map.id).filter(t=>{
@@ -31598,8 +31944,9 @@ function revealDisc(set, cx, cy, r){
    When `map` has walls, a candidate cell is dropped unless there's a clear line from the footprint's
    centre to it — so a wall stops fog spreading through it. Only the FUTURE reveal is blocked; ground
    already explored before the wall existed stays revealed, same as the rest of the fog model. */
-function revealFootprint(set, cx, cy, span, r, map){
-  const ri = Math.ceil(r), rr = (r+0.35)*(r+0.35), x1 = cx+span, y1 = cy+span;
+function revealFootprint(set, cx, cy, span, r, map, spanY){
+  const sy = spanY==null ? span : spanY;      // non-square bodies (a hull, a Massive School)
+  const ri = Math.ceil(r), rr = (r+0.35)*(r+0.35), x1 = cx+span, y1 = cy+sy;
   /* Broad-phase the walls ONCE per footprint instead of re-walking all of them per cell.
      wallsBlockLOS below is called for every cell inside the sight radius and loops over every wall
      on the map, so the cost is cells x walls on every revealed step of a drag: a radius-20 sight
@@ -31615,7 +31962,7 @@ function revealFootprint(set, cx, cy, span, r, map){
     walls = allWalls.filter(w => Math.min(w.x1,w.x2) <= bx1 && Math.max(w.x1,w.x2) >= bx0 &&
                                  Math.min(w.y1,w.y2) <= by1 && Math.max(w.y1,w.y2) >= by0);
   }
-  const ox = cx+(span+1)/2, oy = cy+(span+1)/2;
+  const ox = cx+(span+1)/2, oy = cy+(sy+1)/2;
   for(let x=cx-ri; x<=x1+ri; x++){
     const dx = x<cx ? cx-x : (x>x1 ? x-x1 : 0);
     const rest = rr - dx*dx;
@@ -31746,13 +32093,15 @@ function fogBoxUnion(a, b){
 }
 function revealAroundTokens(map){
   const r = Math.max(1, map.fogRadius||3), cells = new Set();
-  mapTokensFor(map.id).forEach(t=>{ if(tokenReveals(t)) revealFootprint(cells, Math.round(t.x), Math.round(t.y), (t.size||1)-1, r, map); });
+  mapTokensFor(map.id).forEach(t=>{ if(!tokenReveals(t)) return;
+    const f = tokenFootprint(t);
+    revealFootprint(cells, Math.round(t.x), Math.round(t.y), f.w-1, r, map, f.h-1); });
   return fogReveal(map, cells);
 }
 /* live reveal around a specific cell (used while dragging a token, before it's committed) */
-function revealAtCell(map, cx, cy, span){
+function revealAtCell(map, cx, cy, span, spanY){
   const cells = new Set();
-  revealFootprint(cells, cx, cy, span, Math.max(1, map.fogRadius||3), map);
+  revealFootprint(cells, cx, cy, span, Math.max(1, map.fogRadius||3), map, spanY);
   return fogReveal(map, cells);
 }
 async function toggleFog(map){
@@ -31903,23 +32252,24 @@ function diagonalTilesForRange(size){
    the rulebook's Close Blast diagram, which never overlaps the origin square). Cardinal facings keep
    the original continuous placement — it centers the block on the token's width, which has no clean
    integer answer anyway when size and token width differ in parity, and isn't what was reported broken. */
-function blockOrigin(tx, ty, s, ux, uy, dx, dy, size){
-  if(dx!==0 && dy!==0) return { x0: dx>0 ? tx+s : tx-size, y0: dy>0 ? ty+s : ty-size };
-  const ocx = tx+s/2, ocy = ty+s/2;
-  const cx = ocx + ux*(s/2+size/2), cy = ocy + uy*(s/2+size/2);
+function blockOrigin(tx, ty, s, ux, uy, dx, dy, size, sh){
+  const sy = sh==null ? s : sh;              // the user's own height, when its body isn't square
+  if(dx!==0 && dy!==0) return { x0: dx>0 ? tx+s : tx-size, y0: dy>0 ? ty+sy : ty-size };
+  const ocx = tx+s/2, ocy = ty+sy/2;
+  const cx = ocx + ux*(s/2+size/2), cy = ocy + uy*(sy/2+size/2);
   return { x0: Math.round(cx-size/2), y0: Math.round(cy-size/2) };
 }
 /* the set of "x,y" cells a shape covers, measured from `token`'s footprint & facing `dir` */
 function aoeCells(map, token, shape, size, dir){
   const set = new Set();
-  const s = token.size||1, span = s-1;
+  const f = tokenFootprint(token), s = f.w, sh = f.h, span = s-1, spanY = sh-1;
   const tx = Math.round(token.x), ty = Math.round(token.y);
   size = Math.max(1, size||1);
   // no x/y>=0 guard: a token facing up/left near the board's (now possibly negative) edge should still
   // get its full AoE shape painted, not one silently clipped to the lower-right quadrant.
   const add = (x,y)=>set.add(x+","+y);
   if(shape==="burst"){                                  // square radius around the user (Chebyshev)
-    for(let x=tx-size; x<=tx+span+size; x++) for(let y=ty-size; y<=ty+span+size; y++) add(x,y);
+    for(let x=tx-size; x<=tx+span+size; x++) for(let y=ty-size; y<=ty+spanY+size; y++) add(x,y);
     return set;
   }
   const d = AOE_DIRS[dir] || AOE_DIRS.E, len = Math.hypot(d[0],d[1]);
@@ -31927,7 +32277,7 @@ function aoeCells(map, token, shape, size, dir){
   const diag = Math.abs(d[0])===1 && Math.abs(d[1])===1;   // facing NE/SE/SW/NW
   // first cell just outside the token's footprint in the facing direction (shared by line/cone)
   let px = tx + (d[0]>0 ? s : d[0]<0 ? -1 : Math.floor(span/2));
-  let py = ty + (d[1]>0 ? s : d[1]<0 ? -1 : Math.floor(span/2));
+  let py = ty + (d[1]>0 ? sh : d[1]<0 ? -1 : Math.floor(spanY/2));
   if(shape==="line"){
     // Core, Move Keywords "Line X": "When used diagonally, apply the same rules as for diagonal
     // movement" — PTU's diagonal movement alternates 1m/2m per step, so a diagonal Line reaches
@@ -31942,7 +32292,7 @@ function aoeCells(map, token, shape, size, dir){
       // Core's own diagram for "Cone X used diagonally" draws a solid X-by-X block touching the
       // user only at the corner — the same placement as Close Blast X — not a rotated triangle
       // (a 3-wide corridor doesn't tile along a 45° diagonal on a square grid).
-      const {x0,y0} = blockOrigin(tx, ty, s, ux, uy, d[0], d[1], size);
+      const {x0,y0} = blockOrigin(tx, ty, s, ux, uy, d[0], d[1], size, sh);
       for(let x=x0; x<x0+size; x++) for(let y=y0; y<y0+size; y++) add(x,y);
       return set;
     }
@@ -31961,7 +32311,7 @@ function aoeCells(map, token, shape, size, dir){
     return set;
   }
   if(shape==="blast"){                                  // size×size square placed adjacent in `dir`
-    const {x0,y0} = blockOrigin(tx, ty, s, ux, uy, d[0], d[1], size);
+    const {x0,y0} = blockOrigin(tx, ty, s, ux, uy, d[0], d[1], size, sh);
     for(let x=x0; x<x0+size; x++) for(let y=y0; y<y0+size; y++) add(x,y);
     return set;
   }
@@ -32280,19 +32630,19 @@ function snapRidersTo(map, token, depth=0){
   });
   return changed;
 }
-function tokenOccupies(t, x, y){ const s=t.size||1; return x>=t.x && x<t.x+s && y>=t.y && y<t.y+s; }
+function tokenOccupies(t, x, y){ const f=tokenFootprint(t); return x>=t.x && x<t.x+f.w && y>=t.y && y<t.y+f.h; }
 /* a free square to step off onto when dismounting, searched in rings around the mount's footprint */
 function freeCellNear(map, mount, skipId){
   const others = mapTokensFor(map.id).filter(t=>t.id!==skipId && !t.riding);
-  const s = mount.size||1;
+  const f = mount ? tokenFootprint(mount) : { w:1, h:1 };
   for(let r=1; r<=4; r++){
-    for(let dx=-r; dx<=s-1+r; dx++) for(let dy=-r; dy<=s-1+r; dy++){
-      if(!(dx===-r || dy===-r || dx===s-1+r || dy===s-1+r)) continue;   // ring edge only
+    for(let dx=-r; dx<=f.w-1+r; dx++) for(let dy=-r; dy<=f.h-1+r; dy++){
+      if(!(dx===-r || dy===-r || dx===f.w-1+r || dy===f.h-1+r)) continue;   // ring edge only
       const x = Math.round(mount.x)+dx, y = Math.round(mount.y)+dy;
       if(!others.some(t=>tokenOccupies(t,x,y))) return { x, y };
     }
   }
-  return { x: mount.x + s, y: mount.y };
+  return { x: mount.x + f.w, y: mount.y };
 }
 /* a token that can't ride / be ridden (shop doors are scenery, not creatures) */
 function canMountToken(token){ return !!token && !isShopToken(token) && !isBoatToken(token) && !isHazardToken(token); }
@@ -32563,8 +32913,8 @@ function boatPassengers(map, boat){
   const d = boatDims(boat), bx = Math.round(boat.x), by = Math.round(boat.y);
   return mapTokensFor(map.id).filter(t=>{
     if(t.id===boat.id || isBoatToken(t)) return false;
-    const s = t.size||1, tx = Math.round(t.x), ty = Math.round(t.y);
-    return tx < bx+d.w && tx+s > bx && ty < by+d.h && ty+s > by;
+    const f = tokenFootprint(t), tx = Math.round(t.x), ty = Math.round(t.y);
+    return tx < bx+d.w && tx+f.w > bx && ty < by+d.h && ty+f.h > by;
   });
 }
 /* ---- how far a hull may go before it is out of movement ---------------------------------------
@@ -32620,14 +32970,14 @@ function boatSteer(map, boat, dir, step){
     const nx = Math.round(cx - b.w/2), ny = Math.round(cy - b.h/2);
     const ncx = nx + b.w/2, ncy = ny + b.h/2;
     pax.forEach(p=>{
-      const s = p.size||1;
-      let dx = p.x + s/2 - cx, dy = p.y + s/2 - cy;
+      const pf = tokenFootprint(p), s = pf.w, sy = pf.h;
+      let dx = p.x + s/2 - cx, dy = p.y + sy/2 - cy;
       // 90° clockwise per turn in screen coordinates (y grows downwards): (dx,dy) → (−dy,dx)
       for(let i=0;i<turns;i++){ const t=dx; dx=-dy; dy=t; }
       // snapping back to whole squares can land half a cell out when the hull's sides are of
       // different parity, so clamp everyone back inside the new footprint — nobody falls overboard
       p.x = Math.min(nx+b.w-s, Math.max(nx, Math.round(ncx + dx - s/2)));
-      p.y = Math.min(ny+b.h-s, Math.max(ny, Math.round(ncy + dy - s/2)));
+      p.y = Math.min(ny+b.h-sy, Math.max(ny, Math.round(ncy + dy - sy/2)));
     });
     boat.x = nx; boat.y = ny; boat.facing = dir;
   }
@@ -32980,8 +33330,13 @@ function tokenRenderBox(map, token, originX=0, originY=0, depth=0){
   // A boat is the one token that isn't square, so the box carries w/h as well as size; for
   // everything else w===h===size, and callers can just read w/h without caring which it is.
   const bd = isBoatToken(token) ? boatDims(token) : null;
-  const own = { left: token.x*px+originX, top: token.y*px+originY, size:(token.size||1)*px,
-                w:(bd?bd.w:(token.size||1))*px, h:(bd?bd.h:(token.size||1))*px, rider:false };
+  const f  = tokenFootprint(token);
+  // `size` is the square the round furniture is drawn against (status ring, perched riders). A hull
+  // keeps its old value of 1 because it wears none of that; anything else uses its shorter side, so
+  // a Massive School's ring still fits inside the shoal instead of spilling off both ends.
+  const own = { left: token.x*px+originX, top: token.y*px+originY,
+                size:(bd ? (token.size||1) : Math.min(f.w, f.h))*px,
+                w:f.w*px, h:f.h*px, rider:false };
   const mount = depth<6 ? tokenMount(map.id, token) : null;
   if(!mount) return own;
   const mb = tokenRenderBox(map, mount, originX, originY, depth+1);
@@ -33175,7 +33530,8 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
 
         if(liveFog && tokenReveals(c.t) && (cx!==c.lastRevealX || cy!==c.lastRevealY)){
           c.lastRevealX=cx; c.lastRevealY=cy;
-          fogBox = fogBoxUnion(fogBox, revealAtCell(map, cx, cy, (c.t.size||1)-1));
+          const df = tokenFootprint(c.t);
+          fogBox = fogBoxUnion(fogBox, revealAtCell(map, cx, cy, df.w-1, df.h-1));
         }
       });
 
@@ -33928,7 +34284,9 @@ function openTokenMenu(token, map){
 
     /* Schooling is a Swift Action taken mid-fight, and mid-fight everyone is looking at the board -
        so the same button lives on the token too, next to the Temp HP it hands over. */
-    if(info.editable && linked && schooling(linked.obj)){
+    // …but never for a Massive School: it has no Forme to swap to, so the button would do nothing
+    // (see wishiwashiFormeControl, which drops it on the card for the same reason).
+    if(info.editable && linked && schooling(linked.obj) && !isMassiveSchool(linked.obj)){
       const fish = linked.obj;
       const inSchool = fish.species===WISHIWASHI_SCHOOL;
       const act = async()=>{
@@ -34404,6 +34762,14 @@ function openTokenMenu(token, map){
   const foot = [];
   if(canRemoveToken(token)){
     if(cloud.isGM){
+      const msFoot = massiveSchoolTokenFoot(token);
+      if(msFoot){
+        // a shoal has no size to set — it is whatever its remaining HP bars say it is
+        wrap.append(el("div",{style:"margin-top:12px"},
+          el("div",{class:"small",style:"font-weight:700"}, `🌊 Massive School — ${msFoot.w}×${msFoot.h} squares`),
+          el("div",{class:"small muted",style:"margin-top:2px"},
+            "Its footprint follows the Swarm bars it has left — break one and the shoal thins out by itself. Resize it from the encounter card's 🐝 Swarm panel.")));
+      } else {
       const szSel = el("select");
       [1,2,3,4].forEach(s=>szSel.append(el("option",{value:s,selected:s===(token.size||1)}, `${s}×${s}`)));
       szSel.addEventListener("change", async()=>{ token.size=parseInt(szSel.value)||1; if(map.fogOn) revealAroundTokens(map); mapTokensSave(); renderMap(); });
@@ -34413,6 +34779,7 @@ function openTokenMenu(token, map){
         szRow.append(el("button",{class:"btn-secondary",style:"padding:8px 10px",title:"recalculate from the Pokémon's Size category (e.g. after it evolves)",
           onclick:async()=>{ token.size=autoTokenSize(token.link); szSel.value=token.size; if(map.fogOn) revealAroundTokens(map); mapTokensSave(); renderMap(); reopenTokenMenu(token,map); }},"↺ Auto"));
       wrap.append(el("div",{style:"margin-top:12px"},szRow));
+      }
       const rv = el("input",{type:"checkbox"}); rv.checked = tokenReveals(token);
       rv.addEventListener("change", async()=>{ token.reveal = rv.checked; if(map.fogOn) revealAroundTokens(map); mapTokensSave(); renderMap(); });
       wrap.append(el("label",{class:"inline",style:"margin-top:10px;gap:6px;display:flex;align-items:center"},
@@ -35058,7 +35425,12 @@ function renderMap(){
   if(cloud.isGM && map) mapGmView = map.id;
   // Flanking and Pressure are read straight off where everyone is standing — refresh both before
   // the tokens are painted so the chips on the board are never a move behind (see sweepMapAuras).
-  if(map) sweepMapAuras(map);
+  // a broken bar sheds its fish and shrinks the shoal BEFORE anything is measured or drawn
+  sweepSwarmStragglers();
+  if(map) sweepMassiveSchools(map);     // a shoal that lost a bar shrinks BEFORE anything measures it
+  // Flanking is all-pairs, so it asks every token's footprint O(n²) times — memoise the Massive
+  // School lookup for exactly this stretch and drop it again straight after (msFootCache).
+  if(map){ msFootCache = new Map(); try { sweepMapAuras(map); } finally { msFootCache = null; } }
 
   const bar = el("div",{class:"map-toolbar card"});
   if(cloud.isGM){
