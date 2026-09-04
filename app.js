@@ -1364,30 +1364,57 @@ function monNaturalTypes(o, sp){
   return (sp && sp.types ? sp.types : []).filter(t => t && t !== "None");
 }
 /* the live Type replacement, or null. `always` marks the Terastal rule (+10 damage on EVERY Move
-   of the new Type); an Ability shift only pays out when the new Type would have been NEW STAB. */
+   of the new Type); an Ability shift only pays out when the new Type would have been NEW STAB.
+   `stab` marks the third kind: an Ability that genuinely CHANGES the user's Elemental Type rather
+   than layering a Terastal one over it (Multitype, Conversion). There the Type really is theirs, so
+   STAB moves with it and the flat +10 does not apply — see monStabTypes / typeShiftDamageBonus. */
 function typeReplacement(o){
   if(!o) return null;
   if(o.tera && TYPES.includes(o.teraType))
     return { type:o.teraType, src:"Terastallization", always:true };
   const ts = o.typeShift;
   if(ts && TYPES.includes(ts.type))
-    return { type:ts.type, src:ts.src || "Ability", always:false };
+    return { type:ts.type, src:ts.src || "Ability", always:false, stab:!!ts.stab };
   return null;
 }
 function monTypes(o, sp){
   const r = typeReplacement(o);
   return r ? [r.type] : monNaturalTypes(o, sp);
 }
-/* STAB is measured against the ORIGINAL typing in both cases - "They retain STAB from their regular
-   Typing, and do not gain additional STAB on their Tera Type", and Tera Shell says the same thing
-   in its own words ("they never change on what Moves they gain STAB"). */
-function monStabTypes(o, sp){ return monNaturalTypes(o, sp); }
+/* STAB is measured against the ORIGINAL typing for Terastallization - "They retain STAB from their
+   regular Typing, and do not gain additional STAB on their Tera Type", and Tera Shell says the same
+   thing in its own words ("they never change on what Moves they gain STAB").
+   A `stab` shift is the exception: Multitype says the user "changes its Elemental Type", full stop,
+   so the new Type IS its Type and carries STAB the way any Type does. */
+function monStabTypes(o, sp){
+  const r = typeReplacement(o);
+  return (r && r.stab) ? [r.type] : monNaturalTypes(o, sp);
+}
 /* the +10 that stands in for the STAB a replaced Type does not grant */
 function typeShiftDamageBonus(o, mtype){
   const r = typeReplacement(o);
   if(!r || !mtype || mtype !== r.type) return null;
+  if(r.stab) return null;                                            // it moved STAB instead - never both
   if(!r.always && monNaturalTypes(o).includes(mtype)) return null;   // already STAB - nothing new
   return { dmg:10, why:`${r.src}: +10 damage on ${r.type}-Type Moves` };
+}
+/* ---- Moves whose Type is simply the user's choice -----------------------------------------
+   "Judgment's Type can be whatever Elemental Type the user wants it to be." Techno Blast says the
+   same thing behind a held Drive/Plate. Read out of the Move's own effect text rather than listed,
+   so a homebrew one works the day it is added. The choice is per-roll (opts.pickType); the default
+   is the user's CURRENT Type, because anyone who can retype at will (Multitype) wants the STAB. */
+const _pickTypeCache = new Map();
+function movePicksOwnType(m){
+  if(!m || !m.name) return false;
+  if(_pickTypeCache.has(m.name)) return _pickTypeCache.get(m.name);
+  const v = /Type\s+can\s+be\s+(?:whatever|any)/i.test(String(m.effect||""));
+  _pickTypeCache.set(m.name, v);
+  return v;
+}
+function chosenMoveTypeDefault(p, m){
+  if(!movePicksOwnType(m)) return null;
+  const own = monTypes(p).filter(t => t && t !== "None");
+  return own[0] || (m.type || "Normal");
 }
 /* Stellar Blast: "While Radiating, the user and all allies within a Burst 2 around them receive a
    +10 Damage Bonus when using Moves of that Type." The user's own half is automatic; the allies'
@@ -1555,7 +1582,7 @@ function teraTag(o){
     return ` <span class="kv" title="Terastalized into ${esc(o.teraType||"?")} - it keeps STAB from its ORIGINAL Types and gets +10 damage on its ${esc(o.teraType||"?")} Moves instead. Ends when it Faints or the Scene ends.">\u{1F48E} TERA</span>`;
   const ts = o.typeShift;
   if(ts && TYPES.includes(ts.type))
-    return ` <span class="kv" title="${esc(ts.src||"Ability")} replaced its Types with ${esc(ts.type)} until the end of the encounter. STAB still comes from its original Types.">\u{1F504} ${esc(ts.src||"Type change")}</span>`;
+    return ` <span class="kv" title="${esc(ts.src||"Ability")} ${ts.stab ? "changed its Elemental Type to" : "replaced its Types with"} ${esc(ts.type)} until the end of the encounter. ${ts.stab ? "It is that Type now, so STAB follows it." : "STAB still comes from its original Types."}">\u{1F504} ${esc(ts.src||"Type change")}</span>`;
   return "";
 }
 /* Is the Terastallization row worth drawing for this creature? The rule is optional, so the row
@@ -1623,6 +1650,101 @@ function teraControl(p, sp, onChanged, opts){
   return wrap;
 }
 
+/* ---- Multitype (Arceus) -------------------------------------------------------------------
+   PTU's Multitype is NOT the video game's Plate-locked version: "At Will - Free Action. The user
+   changes its Elemental Type to any of the Elemental Types. Multitype cannot be copied or disabled."
+   A free swap to any Type, every single turn — offensively (retype to match the Move you are about
+   to throw and collect STAB, +2 DB, plus another +1 if you also have Adaptability) and defensively
+   (become Ghost and Normal cannot touch you). It writes the same `typeShift` slot Tera Shell uses,
+   flagged `stab` because this one really is a change of Type, and it therefore clears at End Scene
+   with everything else through endSceneTypeState. */
+function setUserType(p, type, src, commit){
+  if(!p) return;
+  if(type && TYPES.includes(type)) p.typeShift = { type, src: src || "Ability", stab:true };
+  else delete p.typeShift;
+  commit && commit();
+}
+function multitypeControl(p, onChanged, opts){
+  opts = opts || {};
+  if(!p || !hasAbility(p, "Multitype")) return el("span",{style:"display:none"});
+  const persist = opts.persist || save;
+  const commit = () => { persist(); onChanged && onChanged(); };
+  const cur = (p.typeShift && p.typeShift.src === "Multitype") ? p.typeShift.type : "";
+  const nat = monNaturalTypes(p).join(" / ") || "Normal";
+  const wrap = el("div",{class:"inline small",style:"margin:4px 0 8px;flex-wrap:wrap;gap:8px;align-items:center"});
+  wrap.append(el("span",{class:"muted",style:"font-weight:700"},"\u{1F300} Multitype:"));
+  if(p.tera){
+    wrap.append(el("span",{class:"muted small"},
+      "Terastalized \u2014 a Terastal Pokemon's Type cannot be changed, so Multitype is on hold."));
+    return wrap;
+  }
+  const sel = el("select",{style:"padding:4px 6px",
+    title:"At-Will Free Action: change this Pokemon's Elemental Type to any Type. STAB follows the new Type, so a Move of that Type gains +2 Damage Base (and +1 more with Adaptability)."});
+  sel.append(el("option",{value:""}, `\u2014 natural (${nat}) \u2014`));
+  TYPES.forEach(t => sel.append(el("option",{value:t, selected:cur===t}, t)));
+  sel.addEventListener("change",()=>{ setUserType(p, sel.value, "Multitype", commit); });
+  wrap.append(sel);
+  wrap.append(el("span",{class:"muted small"}, cur
+    ? `Currently ${cur}-Type \u2014 STAB moved with it, and it resets at End Scene.`
+    : "At-Will, Free Action \u2014 pick the Type before the roll and STAB comes with it."));
+  return wrap;
+}
+/* ---- Conversion / Conversion 2 -------------------------------------------------------------
+   "The user becomes the elemental Type of their choice ... until the end of the encounter. Replace
+   all other Types." That is the same genuine Type change Multitype makes, so both write `typeShift`
+   with `stab:true` through setUserType and clear at End Scene with everything else.
+
+   Each has its own condition, and only one of them is checkable from here:
+     Conversion   "as long as they have a Move that is the same elemental Type" — so the picker only
+                  offers Types the user actually has a Move of, read off its own Move list.
+     Conversion 2 "as long as the Type resists the elemental Type of the Move it last took damage
+                  from" — nothing on the sheet records what last hit it, so the picker offers every
+                  Type and says what the table has to check. */
+function conversionKind(m){
+  const n = String((m && m.name) || "").toLowerCase().replace(/\s+/g, "");
+  return n === "conversion" ? 1 : (n === "conversion2" || n === "conversion 2") ? 2 : 0;
+}
+function conversionTypes(p, kind){
+  if(kind !== 1) return TYPES.slice();
+  const have = new Set();
+  [...(p.moves || []), ...((p.customMoves || []).map(x => x && x.name))].forEach(mn => {
+    if(!mn) return;
+    const mm = moveByName.get(String(mn).toLowerCase());
+    if(mm && TYPES.includes(mm.type)) have.add(mm.type);
+  });
+  return TYPES.filter(t => have.has(t));
+}
+function conversionCard(p, m, opts){
+  const kind = conversionKind(m);
+  const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+  const cur = (p.typeShift && /^Conversion/.test(p.typeShift.src||"")) ? p.typeShift.type : "";
+  card.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},
+    `\u{1F300} ${m.name} \u2014 become a Type`));
+  const list = conversionTypes(p, kind);
+  if(!list.length){
+    card.append(el("div",{class:"small muted"},
+      "Conversion needs a Move of the Type you are becoming, and this Pokemon's Move list has none in the database."));
+    return card;
+  }
+  const sel = el("select",{style:"padding:4px 6px"});
+  sel.append(el("option",{value:""},"\u2014 pick a Type \u2014"));
+  list.forEach(t => sel.append(el("option",{value:t, selected:cur===t}, t)));
+  const commit = () => { (opts.persist||save)(); if(opts.rerender) opts.rerender(); };
+  sel.addEventListener("change",()=>{
+    if(!sel.value) return;
+    setUserType(p, sel.value, m.name, commit);
+    toast(`\u{1F300} ${ownerLabel(p)} is now ${sel.value}-Type \u2014 STAB moved with it`);
+    closeModal();
+  });
+  card.append(sel);
+  card.append(el("div",{class:"small muted",style:"margin-top:4px"}, kind === 1
+    ? "Only Types this Pokemon has a Move of are offered, which is Conversion's own condition. It replaces all its other Types until the end of the encounter, and STAB moves with it."
+    : "Every Type is offered: Conversion 2 needs the new Type to RESIST whatever last damaged this Pokemon, and the sheet does not record that \u2014 check it at the table. It replaces all its other Types until the end of the encounter, and STAB moves with it."));
+  if(cur) card.append(el("button",{class:"linkbtn",style:"margin-top:6px",
+    onclick:()=>{ setUserType(p, "", "", commit); toast("Back to its natural Types"); closeModal(); }},
+    "\u21A9 back to its natural Types"));
+  return card;
+}
 /* ---- Terapagos: the Tera Shift Capability -------------------------------------------------
    "Tera Shift: The user is generally in Terastal form. The user may exit this form outside of
    Combat. When Combat starts, they automatically return to Terastal form as a Free Action."
@@ -1886,7 +2008,9 @@ function auraStormBonus(p, m){
 function teraRollNotes(p, m, mtype){
   const out = [];
   const r = typeReplacement(p);
-  if(r) out.push(`${r.src}: ${ownerLabel(p)} is ${r.type}-Type right now (STAB still comes from ${monNaturalTypes(p).join(" / ")||"its own Types"}). Type effectiveness against it is worked out from ${r.type}.`);
+  if(r) out.push(`${r.src}: ${ownerLabel(p)} is ${r.type}-Type right now ${r.stab
+    ? "(it IS that Type, so STAB moved with it)"
+    : "(STAB still comes from " + (monNaturalTypes(p).join(" / ")||"its own Types") + ")"}. Type effectiveness against it is worked out from ${r.type}.`);
   if(p && p.radiate) out.push(`Stellar Blast: Radiating ${p.radiate} \u2014 every ally within a Burst 2 also gets +10 damage on their ${p.radiate}-Type Moves.`);
   if(hasAbility(p,"Type Aura") || hasAbility(p,"Type Aura [Errata]")){
     const ty = typeAuraType(p);
@@ -5299,7 +5423,7 @@ function renderTrainer(){
   const tbl = el("table",{class:"skilltable"});
   SKILLS.forEach(([k,lbl]) => {
     const tr = el("tr",{});
-    const bonus = categoricBonus(t, k) + gearSkillBonus(t, k) + cardSkillBonus(t, k) + buffSkillBonus(t, k);   // Categoric Inclination Edge + worn equipment (Sunglasses, Running Shoes…) / studied Books + Arcana cards + active buffs (Frenzy)
+    const bonus = categoricBonus(t, k) + gearSkillBonus(t, k) + cardSkillBonus(t, k) + buffSkillBonus(t, k) + auraRollBonus(t);   // Categoric Inclination Edge + worn equipment (Sunglasses, Running Shoes…) / studied Books + Arcana cards + active buffs (Frenzy)
     tr.append(el("td",{},lbl+(bonus?` +${bonus}`:"")));
     const rb = el("td",{},rankButtons(k, t.skills[k]));
     const dice = el("td",{class:"dice","data-dice":k, html: skillDiceHTML(t.skills[k], bonus),
@@ -5326,14 +5450,15 @@ function renderTrainer(){
 function ownerFullHP(owner){
   return owner.species!==undefined ? pokeDerived(owner).fullMaxHP : trainerDerived(owner).fullHP;
 }
-function injuriesFromHit(fullHP, oldHP, newHP, dmgAmount){
+function injuriesFromHit(fullHP, oldHP, newHP, dmgAmount, step){
+  step = step > 0 ? step : 0.5;                  // War Aura attackers pass 0.25 (markers AND Massive Damage)
   if(!fullHP || dmgAmount<=0) return 0;
   let n = 0;
-  for(let frac=0.5, i=0; frac*fullHP >= newHP && i<40; frac-=0.5, i++){
+  for(let frac=1-step, i=0; frac*fullHP >= newHP && i<80; frac-=step, i++){
     const t = frac*fullHP;
     if(oldHP > t && newHP <= t) n++;
   }
-  if(dmgAmount >= fullHP*0.5) n++;               // Massive Damage — independent of markers crossed
+  if(dmgAmount >= fullHP*step) n++;              // Massive Damage — independent of markers crossed
   return n;
 }
 /* Vehicle Breaches (house rule): same shape as Injuries but at every 25% max-HP marker instead of
@@ -5354,24 +5479,26 @@ function breachesFromHit(fullHP, oldHP, newHP, dmgAmount){
    they only take an Injury from Massive Damage (≥half their full HP in one hit), never from
    crossing the ordinary 25/50/75% HP markers — the "loses half its HP bars" Injury is handled
    separately in bossSetTotalHP (it needs the post-cascade bar count, not a single hit's size). */
-function applyAutoInjury(owner, oldHP, newHP){
+function applyAutoInjury(owner, oldHP, newHP, step){
   if(!owner || newHP>=oldHP || isSwarm(owner)) return 0;
   if(owner.species!==undefined && isSoulless(owner)) return 0;   // Soulless (Shedinja) never gains Injuries
 
+  step = step > 0 ? step : 0.5;                  // 0.25 when the ATTACKER has the War Aura up
+  const war = step < 0.5 ? " · War Aura: 25% markers" : "";
   const dmg = oldHP - newHP;
   if(isBoss(owner)){
     const full = ownerFullHP(owner);
-    if(full && dmg >= full*0.5){
+    if(full && dmg >= full*step){
       owner.injuries = (owner.injuries||0) + 1;
-      toast("+1 Injury! (Massive Damage on a Boss)");
+      toast("+1 Injury! (Massive Damage on a Boss" + war + ")");
       return 1;
     }
     return 0;
   }
-  const inj = injuriesFromHit(ownerFullHP(owner), oldHP, newHP, dmg);
+  const inj = injuriesFromHit(ownerFullHP(owner), oldHP, newHP, dmg, step);
   if(inj > 0){
     owner.injuries = (owner.injuries||0) + inj;
-    toast(`+${inj} Injur${inj===1?"y":"ies"}! (Massive Damage / HP marker crossed)`);
+    toast(`+${inj} Injur${inj===1?"y":"ies"}! (Massive Damage / HP marker crossed${war})`);
   }
   return inj;
 }
@@ -6930,7 +7057,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
      buffs (Songs/Orders/Cheers) that used to appear only after rolling. */
   const explain = el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"});
   const accModPre = (bm.acc||0) + accCS;
-  const accWhyPre = []; if(bm.acc) accWhyPre.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} buffs`);
+  const accWhyPre = []; if(bm.acc) accWhyPre.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} ${buffSources(t,"acc")}`);
   if(accCS) accWhyPre.push(`${accCS>0?"+":"−"}${Math.abs(accCS)} Accuracy CS`);
   /* rebuilt whenever a value-driven Damage Base changes (Flail's Injury count), so the guide never
      disagrees with what 🎲 is about to roll */
@@ -7291,7 +7418,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       if(moveRule) out.append(el("div",{class:"small",style:"margin-top:4px;color:var(--accent);font-weight:600"},
         `❄ ${st.name}: ${moveRule.note}. Applied for you by the target picker below.`));
       const tw = attackTargetWidget({ dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce,
-        atkTinted: ownerHasAbility(t,"Tinted Lens"), atkExploit: ownerHasAbility(t,"Exploit"),
+        atkTinted: ownerHasAbility(t,"Tinted Lens"), atkExploit: ownerHasAbility(t,"Exploit"), atkWar: auraIsActive(t,"War"),
         seFlat: heldSeFlatDamage(t), defCSMode, moveRule });
       if(tw) out.append(tw);
       feedLogged = true;
@@ -7300,7 +7427,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         lines:[`🎯 Accuracy ${accTot} (d20 ${acc}) vs AC ${st.ac}`,
                `${st.type||"Typeless"}${st.cls?` · ${st.cls}`:""} · DB ${db}`],
         atk: isStatusAtk ? null : { dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce,
-               atkTinted: ownerHasAbility(t,"Tinted Lens"), atkExploit: ownerHasAbility(t,"Exploit"),
+               atkTinted: ownerHasAbility(t,"Tinted Lens"), atkExploit: ownerHasAbility(t,"Exploit"), atkWar: auraIsActive(t,"War"),
                seFlat: heldSeFlatDamage(t), defCSMode } });
     }
     if(dblStrike){
@@ -12449,6 +12576,7 @@ function heroCard(p, sp){
   }
   /* Terastallization — the Tera Type picker and the Daily Swift Action that spends the Tera Orb */
   main.append(teraControl(p, sp, ()=>refreshMon(p), {gm:isGM()}));
+  main.append(multitypeControl(p, ()=>refreshMon(p)));
   hero.append(main);
   card.append(hero);
   /* damage / heal: one signed input — type 8 to heal, −10 to take damage */
@@ -12891,6 +13019,10 @@ function buffMods(owner, ctx){
   const s = { acc:0, dmg:0, crit:0, db:0, dr:0 };
   ownerBuffs(owner).forEach(b=>{ if(!buffApplies(b,ctx)) return;
     const m=b.mods||{}; s.acc+=m.acc||0; s.dmg+=m.dmg||0; s.crit+=m.crit||0; s.db+=m.db||0; s.dr+=m.dr||0; });
+  /* The Fate Aura's +3 to Attack Rolls. Every accuracy roll in the app reads `bm.acc`, so this is
+     the one place it has to go in — the roll modal, the Trainer's weapon swing and the Simulator
+     all pick it up from here. `.acc` is only ever read attacker-side. */
+  s.acc += auraRollBonus(owner);
   return s;
 }
 /* Buffs that move something other than a roll: `mods.move` raises every Movement Capability
@@ -13008,7 +13140,11 @@ function removeBuff(owner, id){ if(owner) owner.buffs = ownerBuffs(owner).filter
 /* which active buffs feed one mod (acc/dmg/db/crit) — so a roll guide can name them, not just
    show a number ("+5 = buffs (Song of Might)"). */
 function buffSources(owner, key){
-  return ownerBuffs(owner).filter(b=>b.mods && b.mods[key]).map(b=>b.name).join(", ") || "buffs";
+  const names = ownerBuffs(owner).filter(b=>b.mods && b.mods[key]).map(b=>b.name);
+  /* The Fate Aura is not a buff, but its +3 rides the same `acc` term (see auraRollBonus), so it has
+     to name itself here or the roll guide credits the whole bonus to "buffs". */
+  if(key === "acc" && auraRollBonus(owner)) names.push("Fate Aura +" + AURA_ROLL_BONUS);
+  return names.join(", ") || "buffs";
 }
 function buffModText(m){
   const p=[]; m=m||{};
@@ -13793,6 +13929,9 @@ function monSkills(p, sp){
     s.dice = Math.min(6, s.dice + 1);
     s.why.push("Skill Improvement");
   });
+  // Fate Aura: +3 to every Skill Check. Folded in here so the chip SHOWS the bonus as well as rolling it.
+  const fate = auraRollBonus(p);
+  if(fate) Object.values(out).forEach(sk => { sk.mod += fate; sk.why.push(`Fate Aura +${fate}`); });
   return out;
 }
 function monSkillRank(p, key, sp){ const s = monSkills(p, sp)[key]; return s ? s.dice : 0; }
@@ -14750,7 +14889,25 @@ const AURA_MAX_ACTIVE = 3;       // "at most three Auras active at any one time"
 /* whether one of a Pokémon's known Auras is currently switched on (contributes its +2 CS and counts
    toward the 3-active cap). Explicit whitelist in p.auraActive, defaulting OFF for anything not set —
    see initAuraActive() for how a freshly-assigned Domain list picks its starting 3. */
-function auraIsActive(p, name){ return !!(p.auraActive && p.auraActive[auraKey(name)]); }
+function auraIsActive(p, name){ return !!(p && p.auraActive && p.auraActive[auraKey(name)]); }
+/* ---- the two Auras whose text is a number the engine can actually carry -----------------------
+   FATE: "The Possessor gains +3 to all Attack, Skill, Feature, Status Recovery, and Opposed Rolls
+   while the Aura is active." The half that is THEIRS rides every roll they make, so it is folded
+   into the two funnels every roll already passes through — `buffMods().acc` for Attack Rolls and
+   `monSkills().mod` / the Trainer's skill-bonus sum for Skill Checks. The other half of the Aura
+   ("All who oppose them take a -3 penalty on all of those Rolls") needs to know who is opposing
+   whom, which no single roll knows on its own, so it stays on the card as a note. Feature, Status
+   Recovery and Opposed Rolls have no roller in the app at all — they are made by hand — so the +3
+   has to be added by hand there too.
+
+   WAR: "They also inflict Injuries at 25% HP Markers, and Massive Damage is treated as 25%." This
+   one is ATTACKER-side, so it threads through the same chain `atkTinted` / `atkExploit` already
+   use: the roll site reads it off the attacker, `tokenDamageBreakdown` turns it into an
+   `injuryStep`, and `applyAutoInjury` counts markers with it. Its other clause (every Move's
+   Frequency up a PP Up) is a Frequency question, not a damage one, and stays a note. */
+const AURA_ROLL_BONUS = 3;
+function auraRollBonus(o){ return auraIsActive(o, "Fate") ? AURA_ROLL_BONUS : 0; }
+const AURA_WAR_STEP = 0.25;   // War: Injury markers and Massive Damage both move to 25%
 function activeAuraCount(p){ return (p.auras||[]).filter(a=>auraIsActive(p,a)).length; }
 /* first assignment of a Domain list (species default or ↺ default): activate up to the first 3 —
    most legendaries have exactly 3 Domains, so this just turns all of them on out of the box. */
@@ -17359,7 +17516,12 @@ function openMoveRoll(p, m, sp, opts={}){
   const naturalType = effectiveMoveType(p, m, {noAte: ate && !ateOn});
   const fieldType = (naturalType === ((m && m.type) || "Normal") && !hasAbility(p,"Normalize"))
     ? fieldMoveType(m) : null;
-  const baseType = fieldType || naturalType;
+  /* Judgement / Techno Blast: the Move's own Type is whatever the user says it is, so the pick beats
+     everything else that could have decided it. */
+  const typePick = movePicksOwnType(m)
+    ? ((opts.pickType && TYPES.includes(opts.pickType)) ? opts.pickType : chosenMoveTypeDefault(p, m))
+    : null;
+  const baseType = typePick || fieldType || naturalType;
   // Fiery Crash on a Dash Move: +2 Damage Base (the default) or use it as Fire-Type — picked below.
   const fc = fieryCrashInfo(p, m, baseType);
   const fcMode = fieryCrashMode(fc, opts.fcMode);
@@ -17698,6 +17860,22 @@ function openMoveRoll(p, m, sp, opts={}){
     }
   }
 
+  /* --- Judgement / Techno Blast: choose the Type this one goes out as --- */
+  if(typePick){
+    const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+    card.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},
+      `\u{1F300} ${m.name} \u2014 its Type is the user's choice`));
+    const sel = el("select",{style:"padding:4px 6px"});
+    TYPES.forEach(t => sel.append(el("option",{value:t, selected:typePick===t}, t)));
+    sel.addEventListener("change",()=>{ closeModal(); openMoveRoll(p, m, sp, Object.assign({}, opts, {pickType:sel.value})); });
+    card.append(sel);
+    card.append(el("div",{class:"small muted",style:"margin-top:4px"},
+      types.includes(typePick)
+        ? `Going out as ${typePick} \u2014 STAB applies (+2 Damage Base).`
+        : `Going out as ${typePick} \u2014 no STAB. Change this Pokemon's own Type first (Multitype is a Free Action) to collect it.`));
+    body.append(card);
+  }
+
   /* --- Fiery Crash: the either/or on a Dash Move. Whichever half leaves the Move Fire-Typed also
      brings the Burn Effect Range with it, which the roll readout below resolves on its own. --- */
   if(fc){
@@ -17724,6 +17902,9 @@ function openMoveRoll(p, m, sp, opts={}){
 
   /* --- Transform: this Move's whole resolution is choosing a form --- */
   if(moveCondKey(m.name)==="transform") body.append(transformCard(p, opts));
+
+  /* --- Conversion / Conversion 2: this Move's whole resolution is choosing a Type --- */
+  if(conversionKind(m)) body.append(conversionCard(p, m, opts));
 
   /* --- Gem / Z-Crystal: a +3 Damage Base the holder chooses to spend on THIS attack --- */
   if(zBoost){
@@ -18408,7 +18589,7 @@ function openMoveRoll(p, m, sp, opts={}){
         if(isPhys || isSpec){
           const tw = attackTargetWidget({ dmg:total, type:mtype||"Typeless", physical:isPhys,
             pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens"),
-            atkExploit: ownerHasAbility(p,"Exploit"), atkMega: isMegaMon(p), seFlat: heldSeFlatDamage(p),
+            atkExploit: ownerHasAbility(p,"Exploit"), atkMega: isMegaMon(p), atkWar: auraIsActive(p,"War"), seFlat: heldSeFlatDamage(p),
             pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS, moveRule });
           if(tw) dmgLine.append(tw);
         }
@@ -18421,7 +18602,7 @@ function openMoveRoll(p, m, sp, opts={}){
                  `${mtype||"Typeless"}${m.class?` · ${m.class}`:""} · DB ${effFDB}`],
           atk: (isPhys||isSpec) ? { dmg:total, type:mtype||"Typeless", physical:isPhys,
                  pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens"),
-                 atkExploit: ownerHasAbility(p,"Exploit"), atkMega: isMegaMon(p), seFlat: heldSeFlatDamage(p),
+                 atkExploit: ownerHasAbility(p,"Exploit"), atkMega: isMegaMon(p), atkWar: auraIsActive(p,"War"), seFlat: heldSeFlatDamage(p),
                  pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS, moveRule } : null });
       }
       out.append(dmgLine);
@@ -20062,7 +20243,7 @@ function openItemAttack(t, prof){
 =================================================================== */
 /* the whole modifier stack behind one Skill Check — the same one the Skills table prints */
 function trainerSkillMod(t, k){
-  return categoricBonus(t, k) + gearSkillBonus(t, k) + cardSkillBonus(t, k) + buffSkillBonus(t, k);
+  return categoricBonus(t, k) + gearSkillBonus(t, k) + cardSkillBonus(t, k) + buffSkillBonus(t, k) + auraRollBonus(t);
 }
 /* a Feature's use counter, resolved through the Feature DB so the Frequency is never retyped */
 function featUses(t, name){
@@ -24576,6 +24757,7 @@ function encounterMonCard(enc, p, list, trainer){
   /* "Wild Pokemon may also utilize this power, by any means the GM deems fit" — so no Orb and
      no Daily use is asked for here; the GM simply presses it. */
   nw.append(teraControl(p, sp, ()=>{ renderEncounters(); }, {free:true, gm:true, persist:saveEnc}));
+  nw.append(multitypeControl(p, ()=>{ renderEncounters(); }, {persist:saveEnc}));
   nw.append(miniorColorControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   nw.append(unownLetterControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   nw.append(wishiwashiFormeControl(p, sp, ()=>{ renderEncounters(); }, saveEnc));
@@ -27255,7 +27437,8 @@ function simProfile(A, atk, cfg){
   if(atk._pr && atk._pv === A._v) return atk._pr;
   const p = A.obj, d = A.d();
   const isPhys = atk.cls === "Physical";
-  const rawType = A.isT ? (atk.type||"Normal") : effectiveMoveType(p, atk.m);
+  const rawType = A.isT ? (atk.type||"Normal")
+                        : (chosenMoveTypeDefault(p, atk.m) || effectiveMoveType(p, atk.m));
   /* Fiery Crash's either/or has nobody to ask mid-simulation, so the AI takes the retype only when
      it's a clear gain — the user is Fire-Typed and the Move isn't already getting STAB — and banks
      the +2 Damage Base otherwise. Type matchups can't inform it here: a profile is target-agnostic. */
@@ -30400,6 +30583,7 @@ function logRoll({ kind, label, who, headline, lines, atk, area }){
                     physical: !!atk.physical, pierceImmune: !!atk.pierceImmune,
                     pierceDR: Math.max(0, Math.round(atk.pierceDR||0)),
                     atkTinted: !!atk.atkTinted, atkExploit: !!atk.atkExploit, atkMega: !!atk.atkMega,
+                    atkWar: !!atk.atkWar,
                     seFlat: Math.max(0, Math.round(atk.seFlat||0)),
                     defCSMode: (atk.defCSMode==="all" || atk.defCSMode==="positive") ? atk.defCSMode : null };
   /* An "area" entry is a declaration, not a hit: the player says what they did and the GM decides
@@ -32847,7 +33031,7 @@ async function setTokenHP(token, val, opts){
     if(isBoss(obj)){
       const barMax = bossBarMax(obj);
       const newHP = Math.min(barMax, val|0);
-      applyAutoInjury(obj, obj.currentHP||0, newHP);          // Boss rule: only Massive Damage injures
+      applyAutoInjury(obj, obj.currentHP||0, newHP, opts && opts.injuryStep);   // Boss rule: only Massive Damage injures
       bossSetTotalHP(obj, Math.max(0, (obj.boss.curBar||1)-1)*barMax + newHP);
       applyAutoKO(obj, obj.currentHP||0, obj.currentHP||0);   // a Boss is down only once its LAST bar empties
       paintTokenHP(token, true); broadcastEncState(token.link, obj); saveEncCombat(); return;
@@ -32855,7 +33039,7 @@ async function setTokenHP(token, val, opts){
     const encMax = kind==="enctrainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
     const oldHP = obj.currentHP||0, newHP = Math.min(encMax, val|0);
 
-    applyAutoInjury(obj, oldHP, newHP);            // map-side HP edits get the same auto-injury check
+    applyAutoInjury(obj, oldHP, newHP, opts && opts.injuryStep);   // map-side HP edits get the same auto-injury check
     applyAutoKO(obj, oldHP, newHP);                // …and drop/lift Knocked Out with the HP
     applyShieldsDown(obj, newHP);                  // …and crack a Minior's shell open at half HP
     applySchooling(obj, newHP);                    // …and scatter a Wishiwashi's school once its pool is gone
@@ -32869,7 +33053,7 @@ async function setTokenHP(token, val, opts){
   const max = kind==="trainer" ? trainerDerived(obj).hp : pokeDerived(obj).maxHP;
 
   const oldHP = obj.currentHP||0, newHP = Math.min(max, val|0);
-  applyAutoInjury(obj, oldHP, newHP);
+  applyAutoInjury(obj, oldHP, newHP, opts && opts.injuryStep);
   applyAutoKO(obj, oldHP, newHP);
   applyShieldsDown(obj, newHP);
   applySchooling(obj, newHP);
@@ -34807,7 +34991,7 @@ function attachImageDrag(node, img, map, overlay, originX=0, originY=0){
    Levitate, Wonder Guard, Filter, …) and any Swarm/manual effectiveness nudge, then Damage
    Reduction (active DR buffs + flat DR vs Super-Effective). Used by BOTH the token menu's manual
    "Apply an attack" box and the roll-result "Apply to target" picker, so the two never diverge. */
-function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, defCSMode=null, chartOverride=null, seBonus=0, seFlat=0, formeStep=0 }){
+function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, defCSMode=null, chartOverride=null, seBonus=0, seFlat=0, formeStep=0 }){
   const def = tokenDefenseStat(token, !!physical, defCSMode);
   const swarmTgt = (()=>{ const LL = token.link ? tokenLinked(token) : null;
     return (LL && !LL.missing && LL.kind==="enc" && isSwarm(LL.obj)) ? LL.obj : null; })();
@@ -34913,6 +35097,10 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
            rogueMega: rogueActive,
            // kept only so applyTokenDamage can re-run this same hit against a breached boat's passengers
            dmg, type:(typeless?"Typeless":type), aoe:!!aoe, pierceImmune:!!pierceImmune, pierceDR, atkTinted:!!atkTinted, atkExploit:!!atkExploit, atkMega:!!atkMega, defCSMode,
+           /* War Aura (attacker): "they inflict Injuries at 25% HP Markers, and Massive Damage is
+              treated as 25%" - carried on the breakdown so applyTokenDamage can hand it to the
+              Injury counter, and so a breached boat's passengers are re-run with the same rule. */
+           atkWar:!!atkWar, injuryStep: atkWar ? AURA_WAR_STEP : 0.5,
            chartOverride, seBonus };
 }
 /* Apply a computed breakdown to the token: subtract its HP and spend any one-shot DR buff that
@@ -34920,7 +35108,7 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
 async function applyTokenDamage(token, br){
   const info0 = tokenHp(token);
   const before = info0.cur, tempBefore = tempHPOf(info0.obj);
-  await setTokenHP(token, before - br.final);
+  await setTokenHP(token, before - br.final, { injuryStep: br.injuryStep });
   // read the result back rather than assuming `before - final`: Temporary Hit Points may have eaten
   // some or all of the hit on the way in, and the readout below has to say so
   br.tempSoaked = Math.max(0, tempBefore - tempHPOf(tokenHp(token).obj));
@@ -34943,7 +35131,7 @@ async function applyTokenDamage(token, br){
       for(const p of boatPassengers(map, token)){
         const pbr = tokenDamageBreakdown(p, { dmg:br.dmg, type:br.type, physical:br.physical,
           extraStep:(br.extraStep||0)-1, aoe:br.aoe, pierceImmune:br.pierceImmune, pierceDR:br.pierceDR,
-          atkTinted:br.atkTinted, atkExploit:br.atkExploit, atkMega:br.atkMega, defCSMode:br.defCSMode,
+          atkTinted:br.atkTinted, atkExploit:br.atkExploit, atkMega:br.atkMega, atkWar:br.atkWar, defCSMode:br.defCSMode,
           chartOverride:br.chartOverride, seBonus:br.seBonus, seFlat:br.seFlat });
         await applyTokenDamage(p, pbr);
       }
@@ -35006,7 +35194,7 @@ function damageResultHTML(dmg, typeName, br, before){
    Returns a DOM node, or null when it doesn't apply (not the GM, not in cloud, no editable tokens on
    the current map). `dmg` = the rolled total, `type` = the move's effective Type, `physical` picks
    Def vs Sp.Def. */
-function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, defCSMode=null, moveRule=null, seFlat=0 }){
+function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, defCSMode=null, moveRule=null, seFlat=0 }){
   // a Move whose own rules bend the matchup (MOVE_TARGET_RULES) travels with the hit, and its
   // immunity clause folds into the same pierce switch every other source uses
   const chartOverride = moveRule?.chart || null, seBonus = moveRule?.seBonus || 0,
@@ -35117,7 +35305,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     if(!chosen.length){ out.textContent = "Tick at least one target (in either tab)."; return; }
     out.innerHTML = "";
     for(const it of chosen){
-      const br = tokenDamageBreakdown(it.t, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, atkMega, defCSMode, chartOverride, seBonus, seFlat, formeStep });
+      const br = tokenDamageBreakdown(it.t, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, atkMega, atkWar, defCSMode, chartOverride, seBonus, seFlat, formeStep });
       const before = await applyTokenDamage(it.t, br);
       it.cb.checked = false;                                    // clear so a second Apply doesn't double-hit
       const line = el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"});
@@ -35244,7 +35432,7 @@ function openRollApply(e){
     + (e.headline ? `: ${e.headline}` : "") + ` at ${rollFeedTime(e.at)}.`));
   const w = attackTargetWidget({ dmg:e.atk.dmg, type:e.atk.type, physical:e.atk.physical,
                                  pierceImmune:e.atk.pierceImmune, pierceDR:e.atk.pierceDR, atkTinted:e.atk.atkTinted,
-                                 atkExploit:e.atk.atkExploit, atkMega:e.atk.atkMega, seFlat:e.atk.seFlat,
+                                 atkExploit:e.atk.atkExploit, atkMega:e.atk.atkMega, atkWar:e.atk.atkWar, seFlat:e.atk.seFlat,
                                  defCSMode:e.atk.defCSMode, moveRule:e.atk.moveRule });
   body.append(w || el("div",{class:"small"},
     "No damageable token on the current map — open the 🗺 Map (or add a token) and try again."));
