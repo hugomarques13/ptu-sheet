@@ -2271,6 +2271,18 @@ function swarmSpend(p, freq){
 }
 /* step adjustment applied to damage aimed AT a swarm (Core p.478) */
 const swarmDamageStep = aoe => aoe ? +1 : -1;
+/* "Accuracy Rolls to hit the Swarm gain a bonus equal to its Swarm Multiplier" (Core p.478). The
+   CURRENT Multiplier, so a swarm that has been broken down is correspondingly harder to hit again.
+
+   This is NOT the same as giving the swarm -Multiplier Evasion, though it looks like it: Core p.234
+   says "Negative Evasion can erase Evasion from other sources, but does not increase the Accuracy of
+   an enemy's Moves", and both pokeDerived and trainerDerived floor Evasion at 0 because of it. A x6
+   swarm with 3 Special Evasion would lose half its bonus to that floor. So it is applied where the
+   number an attacker must BEAT is worked out - AC + Evasion - Multiplier, which may legitimately
+   land below the Move's own AC - and never by editing Evasion itself. */
+const swarmAccBonus = p => (isSwarm(p) ? Math.max(0, p.swarm.mult||0) : 0);
+/* the target number an attack has to meet against this creature, with the Swarm bonus folded in */
+const swarmHitNeed = (p, ac, eva) => (ac||0) + (eva||0) - swarmAccBonus(p);
 
 /* ---- Massive School (homebrew, layered on top of the Swarm Template) ------------------------
    A shoal of thousands of Wishiwashi isn't a crowd of separate fish taking separate turns — it is
@@ -23174,7 +23186,10 @@ function swarmCard(p){
     (s.freeUsed ? "Free Standard Action: used this round." : "Free Standard Action: available.")
     + " Costs — At-Will 1 · EOT 2 · Scene 3 · Daily 4. Rolling one of its moves spends automatically."));
   wrap.append(el("div",{class:"small muted",style:"margin-top:4px"},
-    `Attacks against it: +${s.mult} Accuracy · single-target damage resisted one step further · area attacks one step more effective. It takes no Injuries.`));
+    `Attacks against it: +${s.mult} Accuracy — i.e. subtract ${s.mult} from the AC + Evasion an attacker `
+    + `has to beat. That may drop below the Move's own AC, and it should: this is an Accuracy bonus, not `
+    + `negative Evasion, so the usual floor at 0 Evasion (Core p.234) does not apply to it. `
+    + `Single-target damage is resisted one step further · area attacks one step more effective. It takes no Injuries.`));
   return wrap;
 }
 
@@ -23625,7 +23640,8 @@ function encounterMonCard(enc, p, list, trainer){
   nw.append(wishiwashiFormeControl(p, sp, ()=>{ renderEncounters(); }, saveEnc));
   nw.append(commanderControl(p, sp, ()=>{ renderEncounters(); }, saveEnc));
   nw.append(el("div",{class:"small muted",style:"margin-top:2px"}, `Atk ${d.eff.atk} · SpA ${d.eff.spatk} · Def ${d.eff.def} · SpD ${d.eff.spdef} · Spd ${d.eff.spd}`));
-  nw.append(el("div",{class:"small muted",style:"margin-top:2px"}, `Evasion — Phys +${d.physEva} · Spec +${d.specEva} · Speed +${d.spdEva}`));
+  nw.append(el("div",{class:"small muted",style:"margin-top:2px"}, `Evasion — Phys +${d.physEva} · Spec +${d.specEva} · Speed +${d.spdEva}`
+    + (swarmAccBonus(p) ? `  ·  🐝 attackers get +${swarmAccBonus(p)} Accuracy, so they beat AC + Evasion − ${swarmAccBonus(p)}` : "")));
   head.append(nw);
   head.append(el("button",{class:"btn-secondary",style:"padding:3px 9px;align-self:flex-start",title:"minimize",onclick:()=>encMonToggleMin(p)},"▾"));
   head.append(encOrderBtns(list,p));
@@ -26335,9 +26351,14 @@ function simDefStat(D, isPhys){
 /* Vulnerable / Asleep / Frozen / Tripped / Blinded targets apply no Evasion at all (Core p.246). */
 const SIM_NO_EVA = ["vulnerable","sleep","frozen","tripped","blinded"];
 function simEva(D, isPhys, cfg){
-  if(cfg.useStatus && SIM_NO_EVA.some(k=>hasStatus(D.obj,k))) return 0;
+  /* A Swarm's Accuracy bonus is subtracted here rather than added to the roll - `need` is
+     `pr.ac + simEva(...)`, so the two are identical, and doing it here keeps it out of Evasion
+     itself (see swarmAccBonus: it must be allowed to push `need` below the Move's own AC, which
+     a real Evasion penalty could never do). */
+  const swarm = (!D.isT) ? swarmAccBonus(D.obj) : 0;
+  if(cfg.useStatus && SIM_NO_EVA.some(k=>hasStatus(D.obj,k))) return 0 - swarm;
   const d = D.d();
-  return isPhys ? d.physEva : d.specEva;
+  return (isPhys ? d.physEva : d.specEva) - swarm;
 }
 function simTypeMult(D, type, pierceImmune, atkTinted, isPhys, rule, atkMega){
   if(D.isT) return 1;                                   // Trainers are typeless
