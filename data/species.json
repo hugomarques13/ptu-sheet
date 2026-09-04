@@ -255683,6 +255683,16 @@
     "stage": 1,
     "name": "Kubfu",
     "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Urshifu Single Strike",
+    "min": 30
+   },
+   {
+    "stage": 2,
+    "name": "Urshifu Rapid Strike",
+    "min": 30
    }
   ],
   "moves": {
@@ -255898,17 +255908,29 @@
   },
   "abilities": {
    "basic": [
-    "Unseen fist"
+    "Unseen Fist"
    ],
    "advanced": [
     "Sprint",
-    "Prime fury",
+    "Prime Fury",
     "Aura Storm"
    ],
    "high": [
     "Type Aura"
    ]
   },
+  "evolution": [
+   {
+    "stage": 1,
+    "name": "Kubfu",
+    "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Urshifu Single Strike",
+    "min": 30
+   }
+  ],
   "moves": {
    "levelup": [
     {
@@ -256095,17 +256117,29 @@
   },
   "abilities": {
    "basic": [
-    "Unseen fist"
+    "Unseen Fist"
    ],
    "advanced": [
     "Celebrate",
-    "Prime fury",
-    "Aura storm"
+    "Prime Fury",
+    "Aura Storm"
    ],
    "high": [
     "Type Aura"
    ]
   },
+  "evolution": [
+   {
+    "stage": 1,
+    "name": "Kubfu",
+    "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Urshifu Rapid Strike",
+    "min": 30
+   }
+  ],
   "moves": {
    "levelup": [
     {

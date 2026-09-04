@@ -859,7 +859,7 @@ function weatherTickReport(p){
   const w = activeWeather(); const out = [];
   if(weatherIsClear(w) || !w.ticks) return out;
   const maxHP = pokeDerived(p).maxHP;
-  const types = (getSpecies(p.species)?.types || []).map(t=>String(t).toLowerCase());
+  const types = monTypes(p).map(t=>String(t).toLowerCase());
   w.ticks.forEach(t=>{
     if(t.ability && !monHasAbility(p, t.ability)) return;
     if(t.all){
@@ -1315,6 +1315,594 @@ function megaRevert(p, silent, rerender){
   const m = pokeDerived(p).maxHP;
   if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
   if(!silent){ if(rerender) rerender(); else { save(); refreshMon(p); } toast("Reverted from Mega Evolution"); }
+}
+
+/* ===================================================================
+   TERASTALLIZATION  (Paldea Dex, Appendix II - OPTIONAL, Unofficial Homebrew)
+   ------------------------------------------------------------------
+   "Trainers in possession of a Tera Orb can harness this Power. As a Daily Frequency Swift Action,
+   a trainer can Terastalize their Pokemon."  The Tera Orb is an Off-Hand / Accessory Slot Item, so
+   it is worn on the Equipment card exactly the way a Mega needs its Mega Stone held.
+
+   "Terastalized Pokemon lose their regular types and become their Tera Type. They retain STAB from
+   their regular Typing, and do not gain additional STAB on their Tera Type. Instead, while
+   Terastalized, all Moves of the Tera Type gain a +10 damage bonus, and the Pokemon may activate
+   Abilities (such as Accelerate) as if they gained STAB on that Type. Moves that would change a
+   Pokemon's type (or give it an additional one) have no effect while Terastalized. A Pokemon
+   remains Terastalized until they are Fainted or the Scene ends."
+
+   Three fields carry all of it:
+     p.teraType  - the Pokemon's Tera Type. PERMANENT ("Pokemon retain their Tera type when they
+                   evolve"), so it is set once and outlives every Scene, faint and evolution.
+     p.tera      - true while Terastalized. Cleared by End Scene, fainting, dying and a rest.
+     p.typeShift - {type, src}: the OTHER way a creature's Types get replaced (Tera Shell,
+                   Teraform Zero). Same shape, same reader, but it is an Ability rather than the
+                   Orb - and Terastalizing switches it off, since a Terastalized Pokemon's Type
+                   can no longer be changed.
+   Everything downstream reads monTypes()/monNaturalTypes() instead of sp.types, so the swap lands
+   on the Type chart, the status immunities, the weather ticks and the matchup card at once.
+=================================================================== */
+const TERA_ORB_NAME = "Tera Orb";
+/* Terapagos does not take a Tera Type: Terastalizing it turns it into its Stellar Forme, and the
+   book emulates the Stellar Type with the Stellar Blast Ability rather than a 19th entry on the
+   Type chart ("If a GM desires to emulate a Pokemon being Stellar Type, they should grant the
+   Stellar Blast Ability."). */
+const TERAPAGOS_BASE     = "Terapagos";
+const TERAPAGOS_TERASTAL = "Terapagos-Terastral";
+const TERAPAGOS_STELLAR  = "Terapagos-Stellar";
+const TERAPAGOS_FORMS = [TERAPAGOS_BASE, TERAPAGOS_TERASTAL, TERAPAGOS_STELLAR];
+function isTerapagos(p){
+  return TERAPAGOS_FORMS.some(n => n.toLowerCase() === String((p && p.species) || "").toLowerCase());
+}
+/* ---- the effective-Type layer ------------------------------------------------------------
+   monNaturalTypes = what the species entry prints (a Mega, a Rotom appliance and a Wishiwashi
+   school all change species, so their swap is already baked in here).
+   monTypes        = what the creature IS right now - the natural typing unless something replaced
+   it. STAB never follows a replacement, which is why the two are separate readers. */
+function monNaturalTypes(o, sp){
+  sp = sp || getSpecies(o && o.species);
+  return (sp && sp.types ? sp.types : []).filter(t => t && t !== "None");
+}
+/* the live Type replacement, or null. `always` marks the Terastal rule (+10 damage on EVERY Move
+   of the new Type); an Ability shift only pays out when the new Type would have been NEW STAB. */
+function typeReplacement(o){
+  if(!o) return null;
+  if(o.tera && TYPES.includes(o.teraType))
+    return { type:o.teraType, src:"Terastallization", always:true };
+  const ts = o.typeShift;
+  if(ts && TYPES.includes(ts.type))
+    return { type:ts.type, src:ts.src || "Ability", always:false };
+  return null;
+}
+function monTypes(o, sp){
+  const r = typeReplacement(o);
+  return r ? [r.type] : monNaturalTypes(o, sp);
+}
+/* STAB is measured against the ORIGINAL typing in both cases - "They retain STAB from their regular
+   Typing, and do not gain additional STAB on their Tera Type", and Tera Shell says the same thing
+   in its own words ("they never change on what Moves they gain STAB"). */
+function monStabTypes(o, sp){ return monNaturalTypes(o, sp); }
+/* the +10 that stands in for the STAB a replaced Type does not grant */
+function typeShiftDamageBonus(o, mtype){
+  const r = typeReplacement(o);
+  if(!r || !mtype || mtype !== r.type) return null;
+  if(!r.always && monNaturalTypes(o).includes(mtype)) return null;   // already STAB - nothing new
+  return { dmg:10, why:`${r.src}: +10 damage on ${r.type}-Type Moves` };
+}
+/* Stellar Blast: "While Radiating, the user and all allies within a Burst 2 around them receive a
+   +10 Damage Bonus when using Moves of that Type." The user's own half is automatic; the allies'
+   half is a note (it needs positions, and it reaches creatures this roll knows nothing about). */
+function radiateDamageBonus(o, mtype){
+  const ty = o && o.radiate;
+  if(!ty || !mtype || mtype !== ty) return null;
+  return { dmg:10, why:`Stellar Blast: Radiating ${ty} - +10 damage on ${ty}-Type Moves` };
+}
+/* every flat +10 the Type layer adds to one damage roll, combined */
+function teraDamageBonus(o, mtype){
+  const parts = [typeShiftDamageBonus(o, mtype), radiateDamageBonus(o, mtype)].filter(Boolean);
+  if(!parts.length) return null;
+  return { dmg: parts.reduce((n,x)=>n+x.dmg,0), why: parts.map(x=>x.why).join(" + ") };
+}
+/* "the Pokemon may activate Abilities (such as Accelerate) as if they gained STAB on that Type" -
+   so Adaptability, and every other Ability that keys off STAB, sees the Tera Type as a match even
+   though the Damage Base does not get its +2. */
+function abilityStabFor(o, mtype){
+  if(!mtype) return false;
+  if(monNaturalTypes(o).includes(mtype)) return true;
+  const r = typeReplacement(o);
+  return !!(r && r.always && r.type === mtype);
+}
+/* A species object with the live Types written in, for the few readers that pass `sp` around
+   rather than the creature (the Sim's fighter bundle). Memoised in a WeakMap - NEVER on the
+   creature itself, which gets JSON.stringify'd into the save and synced. */
+const _teraSpeciesCache = new WeakMap();
+function monSpecies(o){
+  const sp = getSpecies(o && o.species);
+  const r = typeReplacement(o);
+  if(!sp || !r) return sp;
+  const key = sp.name + "|" + r.type;
+  const hit = _teraSpeciesCache.get(o);
+  if(hit && hit.key === key) return hit.sp;
+  const clone = Object.assign({}, sp, { types:[r.type] });
+  _teraSpeciesCache.set(o, { key, sp:clone });
+  return clone;
+}
+/* "If a target has changed Forme, this attack is one step more effective against that target...
+   Changing Forme includes any effect that switches Base Stat Sets, such as the Abilities like
+   Stance Change or Schooling; Mega Evolution; Dynamax; Terastilization; or being in any Altered,
+   Origin, or Primal Forme; even if they started the encounter that way." (Tera Starstorm, and
+   Stellar Blast's Tera Blast rider.) */
+const FORME_SPECIES_WORDS = /(?:^|[\s-])(origin|altered|primal|therian|crowned|hero|zen|blade|shield|ultra|complete|busted|school|core|stellar|terastral|gmax|eternamax|noice|hangry|gorging|gulping|resolute|pirouette|unbound|sky|black|white|dusk|dawn|midday|midnight|shadow|ice|mask|sunny|rainy|snowy|baile|pom-pom|sensu|attack|defense|speed|male|female|droopy|stretchy|full-belly)(?:$|[\s-])/i;
+function hasChangedForme(o){
+  if(!o || o.species === undefined) return false;         // Trainers have no Forme
+  if(o.mega || o.tera || o.transform) return true;
+  const n = String(o.species || "");
+  if(/^mega\s/i.test(n)) return true;
+  if(/^nidoran/i.test(n)) return false;      // "Nidoran Male/Female" are two species, not two Formes
+  return FORME_SPECIES_WORDS.test(n);
+}
+
+/* ---- the Tera Orb -------------------------------------------------------------------------
+   "If a Campaign uses Terastalization, a Tera Orb should be made freely available to each player
+   from the point on when the Rule is supposed to be used." Catalogued here as an Off-Hand item so
+   it sits in the same hand a Mega Ring would, and its Daily use rides the same `uses` tracker
+   every other item charge does. */
+function wearsTeraOrb(t){
+  if(!t) return false;
+  try{ return equippedList(t).some(({name}) => normItemName(name) === normItemName(TERA_ORB_NAME)); }
+  catch(e){ return false; }
+}
+function teraOrbUse(t){
+  const key = useKey("dayitem", TERA_ORB_NAME);
+  return {
+    left: usesLeft(t, key, 1),
+    spend(){ if(usesLeft(t, key, 1) <= 0) return false;
+             t.uses = t.uses || {}; t.uses[key] = 1; return true; },
+  };
+}
+/* Can this Pokemon Terastalize right now, and what is stopping it? `free` (the Encounters tab)
+   skips the Orb entirely - "Wild Pokemon may also utilize this power, by any means the GM deems
+   fit." */
+function teraCheck(p, free){
+  if(!p) return { ok:false, why:"no Pokemon" };
+  if(p.tera) return { ok:false, why:"already Terastalized" };
+  if(free) return { ok:true, trainer:null, free:true };
+  const t = ownerTrainerOf(p);
+  if(!t) return { ok:true, trainer:null, free:true };     // an unowned / wild Pokemon - the GM's call
+  if(!wearsTeraOrb(t))
+    return { ok:false, trainer:t,
+             why:`${t.name || "The Trainer"} is not wearing a ${TERA_ORB_NAME} - equip one in the Off-Hand slot (Trainer, Equipment card).` };
+  if(teraOrbUse(t).left <= 0)
+    return { ok:false, trainer:t, why:`The ${TERA_ORB_NAME} is Daily, and it has already been used today.` };
+  return { ok:true, trainer:t, free:false };
+}
+/* every Type this Pokemon may Terastalize into. Terapagos is the exception - it has no Tera Type
+   to pick, it simply goes Stellar. */
+function teraTypeChoices(p){ return isTerapagos(p) ? [] : TYPES.slice(); }
+
+/* `rerender` defaults to the party path (save + refreshMon); the Encounters tab passes
+   saveEnc + renderEncounters, exactly as megaEvolve does. */
+function terastallize(p, type, rerender, opts){
+  opts = opts || {};
+  if(!p || p.tera) return false;
+  const chk = teraCheck(p, opts.free);
+  if(!chk.ok){ toast(chk.why); return false; }
+  if(isTerapagos(p)){
+    /* Terapagos' Terastal Forme IS its Stellar Forme. No Tera Type is chosen; instead it takes on
+       the Stellar statline and the Stellar Blast Ability that stands in for the Stellar Type. */
+    p.preTera = p.species;
+    p.species = TERAPAGOS_STELLAR;
+    p.tera = true;
+    p.teraStellar = true;
+    if(abilityByName.has("stellar blast")){
+      p.abilities = Array.isArray(p.abilities) ? [...p.abilities] : [];
+      if(!p.abilities.some(a => String(a).toLowerCase() === "stellar blast")){
+        p.abilities.push("Stellar Blast");
+        p.teraAbility = "Stellar Blast";
+      }
+    }
+  } else {
+    if(!TYPES.includes(type)){ toast("Pick a Tera Type first."); return false; }
+    p.teraType = type;
+    p.tera = true;
+  }
+  /* "Moves that would change a Pokemon's type (or give it an additional one) have no effect while
+     Terastalized" - so an Ability shift already in place is switched off, and none can be taken. */
+  delete p.typeShift;
+  if(chk.trainer && !chk.free) teraOrbUse(chk.trainer).spend();
+  const m = pokeDerived(p).maxHP;
+  if(p.currentHP != null && p.currentHP > m) p.currentHP = m;
+  if(rerender) rerender(); else { save(); refreshMon(p); }
+  toast(p.teraStellar
+    ? `\u{1F48E} Terastalized \u2014 ${ownerLabel(p)} takes its Stellar Forme, and gains Stellar Blast.`
+    : `\u{1F48E} Terastalized \u2014 ${ownerLabel(p)} is now ${p.teraType}-Type. +10 damage on its ${p.teraType} Moves; STAB stays on its original Types.`);
+  return true;
+}
+function teraRevert(p, silent, rerender){
+  if(!p || !p.tera) return false;
+  const was = p.teraStellar ? "its Stellar Forme" : `${p.teraType}-Type`;
+  if(p.preTera){ p.species = p.preTera; delete p.preTera; }
+  delete p.tera; delete p.teraStellar;
+  if(p.teraAbility){
+    p.abilities = (p.abilities||[]).filter(a => String(a).toLowerCase() !== String(p.teraAbility).toLowerCase());
+    delete p.teraAbility;
+  }
+  const m = pokeDerived(p).maxHP;
+  if(p.currentHP != null && p.currentHP > m) p.currentHP = m;
+  if(!silent){ if(rerender) rerender(); else { save(); refreshMon(p); } toast(`Reverted from ${was}`); }
+  return true;
+}
+/* Tera Shell / Teraform Zero end with the encounter rather than with the Terastal state, and
+   Radiating ends with the Encounter too - but every path that ends a Scene, a fight or a life
+   clears all of them, so they share one call. */
+function clearTypeShift(o){ if(o){ delete o.typeShift; delete o.radiate; } }
+function endSceneTypeState(o){ teraRevert(o, true); clearTypeShift(o); }
+
+/* ===================================================================
+   TERASTALLIZATION - the controls, and everything Terapagos does with it
+   ------------------------------------------------------------------
+   The engine is up top (terastallize / teraRevert / monTypes). This is the part the table presses:
+   the Tera Type picker + the button on every Pokemon card, Terapagos' Tera Shift Forme toggle, and
+   the three Abilities that only make sense once Types can be replaced - Tera Shell, Stellar Blast
+   and Teraform Zero.
+=================================================================== */
+/* the little badge that rides after a creature's Type badges wherever they are drawn */
+function teraTag(o){
+  if(!o) return "";
+  if(o.teraStellar)
+    return ' <span class="kv" title="Terastalized - Stellar Forme. The Stellar Type is emulated by the Stellar Blast Ability.">\u{1F48E} STELLAR</span>';
+  if(o.tera)
+    return ` <span class="kv" title="Terastalized into ${esc(o.teraType||"?")} - it keeps STAB from its ORIGINAL Types and gets +10 damage on its ${esc(o.teraType||"?")} Moves instead. Ends when it Faints or the Scene ends.">\u{1F48E} TERA</span>`;
+  const ts = o.typeShift;
+  if(ts && TYPES.includes(ts.type))
+    return ` <span class="kv" title="${esc(ts.src||"Ability")} replaced its Types with ${esc(ts.type)} until the end of the encounter. STAB still comes from its original Types.">\u{1F504} ${esc(ts.src||"Type change")}</span>`;
+  return "";
+}
+/* Is the Terastallization row worth drawing for this creature? The rule is optional, so the row
+   only appears once it is actually in play here: the Pokemon has a Tera Type, is Terastalized, is
+   Terapagos, its Trainer is wearing the Orb, or the GM is looking. */
+function teraRowVisible(p, opts){
+  if(!p || p.species === undefined) return false;
+  if(p.tera || p.teraType || p.typeShift || p.radiate || isTerapagos(p)) return true;
+  if(opts && opts.gm) return true;
+  try{ return wearsTeraOrb(ownerTrainerOf(p)); }catch(e){ return false; }
+}
+/* The Tera Type picker + the Terastallize / Revert buttons. `opts.free` skips the Orb (Encounters),
+   `opts.gm` forces the row visible, `opts.persist` swaps save() for saveEnc(). */
+function teraControl(p, sp, onChanged, opts){
+  opts = opts || {};
+  if(!teraRowVisible(p, opts)) return el("span",{style:"display:none"});
+  const persist = opts.persist || save;
+  const commit = () => { persist(); onChanged && onChanged(); };
+  const wrap = el("div",{class:"inline small",style:"margin:4px 0 8px;flex-wrap:wrap;gap:8px;align-items:center"});
+  wrap.append(el("span",{class:"muted",style:"font-weight:700"},"\u{1F48E} Tera:"));
+
+  if(isTerapagos(p)){
+    /* Terapagos has no Tera Type to choose - Terastalizing IS its Stellar Forme. */
+    if(p.tera){
+      wrap.append(el("span",{class:"statuschip on",style:"padding:2px 8px;font-size:11px;cursor:default"},"\u{1F48E} STELLAR FORME"),
+        el("button",{class:"btn-secondary",style:"padding:4px 10px",
+          title:"back to its Terastal Forme (also happens automatically when it Faints or the Scene ends)",
+          onclick:()=>{ teraRevert(p, false, commit); }},"\u21A9 Revert"));
+    } else {
+      wrap.append(el("button",{class:"btn-secondary",style:"padding:4px 10px",
+        title:"Terastalize \u2014 Terapagos takes its Stellar Forme (Terapagos-Stellar) and gains Stellar Blast, which is how the book emulates the Stellar Type. Lasts until it Faints or the Scene ends.",
+        onclick:()=>{ terastallize(p, null, commit, {free:!!opts.free}); }},"\u{1F48E} Terastalize \u2192 Stellar"));
+    }
+    wrap.append(el("span",{class:"muted small"},"Terapagos has no Tera Type \u2014 its Terastal Forme is the Stellar Forme."));
+    return wrap;
+  }
+
+  if(p.tera){
+    wrap.append(el("span",{class:"statuschip on",style:"padding:2px 8px;font-size:11px;cursor:default"},
+      `\u{1F48E} ${p.teraType}-TYPE`),
+      el("button",{class:"btn-secondary",style:"padding:4px 10px",
+        title:"drop back to its natural Types (also happens automatically when it Faints or the Scene ends)",
+        onclick:()=>{ teraRevert(p, false, commit); }},"\u21A9 Revert"),
+      el("span",{class:"muted small"},
+        `STAB still comes from ${monNaturalTypes(p, sp).join(" / ") || "its own Types"} \u00b7 +10 damage on its ${p.teraType} Moves`));
+    return wrap;
+  }
+
+  const sel = el("select",{style:"padding:4px 6px",title:"This Pokemon's Tera Type. It is permanent \u2014 it survives evolution, and an expert charges about $5000 to change it."});
+  sel.append(el("option",{value:""}, "\u2014 no Tera Type \u2014"));
+  TYPES.forEach(t => sel.append(el("option",{value:t, selected:p.teraType===t}, t)));
+  sel.addEventListener("change",()=>{ p.teraType = sel.value || ""; commit(); });
+  wrap.append(sel);
+
+  const chk = teraCheck(p, opts.free);
+  wrap.append(el("button",{class:"btn-secondary",style:"padding:4px 10px",
+    disabled: !chk.ok || !p.teraType,
+    title: !p.teraType ? "Pick a Tera Type first."
+         : chk.ok ? `Terastalize (Daily, Swift Action \u2014 needs a ${TERA_ORB_NAME} in the Trainer's Off-Hand). It becomes ${p.teraType}-Type until it Faints or the Scene ends, keeps STAB from its original Types, and gets +10 damage on every ${p.teraType} Move.`
+                  : chk.why,
+    onclick:()=>{ terastallize(p, p.teraType, commit, {free:!!opts.free}); }},"\u{1F48E} Terastallize"));
+  if(!chk.ok && p.teraType) wrap.append(el("span",{class:"muted small"}, chk.why));
+  else if(!p.teraType) wrap.append(el("span",{class:"muted small"},
+    "A Pokemon's Tera Type is permanent \u2014 it survives evolution. It may match one of its own Types, or be something else entirely."));
+  return wrap;
+}
+
+/* ---- Terapagos: the Tera Shift Capability -------------------------------------------------
+   "Tera Shift: The user is generally in Terastal form. The user may exit this form outside of
+   Combat. When Combat starts, they automatically return to Terastal form as a Free Action."
+   The two Formes are separate species entries, so this is the same at-will species swap Rotom's
+   appliances use - stats, size and artwork follow, moves and level are kept. */
+function terapagosFormControl(p, sp, onChanged, persist){
+  if(!isTerapagos(p) || p.tera) return el("span",{style:"display:none"});
+  const commit = () => { (persist||save)(); onChanged && onChanged(); };
+  const isBase = String(p.species).toLowerCase() === TERAPAGOS_BASE.toLowerCase();
+  const wrap = el("div",{class:"inline small",style:"margin:2px 0 8px;flex-wrap:wrap;gap:8px;align-items:center"});
+  wrap.append(el("span",{class:"muted",style:"font-weight:700"},"Forme:"),
+              el("span",{class:"kv"}, isBase ? "Normal" : "Terastal"));
+  wrap.append(el("button",{class:"btn-secondary",style:"padding:4px 10px",
+    title: isBase ? "Tera Shift \u2014 Terapagos returns to its Terastal Forme automatically as a Free Action the moment Combat starts."
+                  : "Tera Shift \u2014 it may leave its Terastal Forme, but only outside of Combat.",
+    onclick:()=>{ p.species = isBase ? TERAPAGOS_TERASTAL : TERAPAGOS_BASE; commit(); }},
+    isBase ? "\u21BB Terastal Forme" : "\u21BB Normal Forme"));
+  wrap.append(el("span",{class:"muted small"},
+    "Tera Shift \u2014 it is generally in its Terastal Forme; it may step out of it only outside Combat, and snaps back (Free Action) when Combat starts."));
+  return wrap;
+}
+
+/* ---- the Abilities that replace a creature's Types ---------------------------------------- */
+/* one Scene/Daily charge on an Ability, spent through the same `uses` tracker its pips draw from */
+function abilityUse(o, name){
+  const info = freqInfo(abilityByName.get(String(name).toLowerCase())?.frequency);
+  const max = freqTrackable(info) ? info.max : 0;
+  const key = useKey("ability", name);
+  return {
+    max, left: max ? usesLeft(o, key, max) : Infinity,
+    spend(){ if(!max) return true;
+             if(usesLeft(o, key, max) <= 0) return false;
+             o.uses = o.uses || {}; o.uses[key] = Math.min(max, (o.uses[key]||0)+1); return true; },
+  };
+}
+/* every Type that resists (or is immune to) an incoming Type, for Tera Shell's "as long as that
+   Type resists the Type of the triggering Move" */
+function typesResisting(incoming){
+  return TYPES.filter(t => typeMultAgainst(incoming, [t], 0) < 1);
+}
+/* Tera Shell (Terapagos, Basic): Scene, Free Action, Interrupt. "The user becomes the Type of their
+   choice as long as that Type resists the Type of the triggering Move, until the end of the
+   encounter. Replace all other Types. Special: When the user changes type, they never change on
+   what Moves they gain STAB. If they would gain STAB on a Move they did not before, they instead
+   gain a +10 Damage Bonus." */
+/* "Moves that would change a Pokemon's type (or give it an additional one) have no effect while
+   Terastalized" - and neither does an Ability that would. Said out loud rather than silently
+   writing a typeShift the Type layer would then ignore. */
+function teraBlocksTypeChange(p, what){
+  if(!p || !p.tera) return false;
+  toast(`${ownerLabel(p)} is Terastalized — its Type can no longer be changed, so ${what} does nothing here.`);
+  return true;
+}
+function openTeraShell(p, redraw, persist){
+  if(teraBlocksTypeChange(p, "Tera Shell")) return;
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
+    "Pick the Type of the Move that just hit. Tera Shell then offers only the Types that RESIST it \u2014 the user becomes that Type (replacing all others) until the end of the encounter. Its STAB does not move: any Move that would newly have been STAB gets a flat +10 damage instead."));
+  const list = el("div",{});
+  const inSel = el("select",{style:"padding:5px 8px"});
+  TYPES.forEach(t => inSel.append(el("option",{value:t}, t)));
+  const draw = () => {
+    list.innerHTML = "";
+    const opts = typesResisting(inSel.value);
+    if(!opts.length){ list.append(el("div",{class:"small muted"},"Nothing resists that Type \u2014 Tera Shell cannot fire against it.")); return; }
+    const row = el("div",{class:"chips",style:"margin-top:8px"});
+    opts.forEach(t => row.append(el("button",{class:"statuschip",
+      title:`become ${t}-Type until the end of the encounter`,
+      onclick:()=>{
+        const u = abilityUse(p, "Tera Shell");
+        if(!u.spend()){ toast("Tera Shell is already spent this Scene."); return; }
+        p.typeShift = { type:t, src:"Tera Shell" };
+        closeModal(); (persist||save)(); redraw && redraw();
+        toast(`\u{1F6E1} Tera Shell \u2014 ${ownerLabel(p)} is now ${t}-Type until the end of the encounter.`);
+      }}, t)));
+    list.append(row);
+  };
+  inSel.addEventListener("change", draw);
+  body.append(el("div",{class:"inline",style:"gap:8px;align-items:center"},
+    el("span",{class:"small",style:"font-weight:700"},"Triggering Move's Type:"), inSel), list);
+  draw();
+  modal({title:"\u{1F6E1} Tera Shell", bodyNode:body});
+}
+/* Stellar Blast (Terapagos, Advanced; also the book's way to emulate the Stellar Type): At-Will
+   Swift Action on hitting a foe. "Choose a Type of the triggering foe. The user then Radiates that
+   Type until the end of the Encounter or they begin Radiating another Type. While Radiating, the
+   user and all allies within a Burst 2 around them receive a +10 Damage Bonus when using Moves of
+   that Type." */
+function openStellarBlast(p, redraw, persist){
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
+    "Choose a Type the foe you just hit possesses. You Radiate it until the end of the Encounter (or until you Radiate something else): +10 damage on your Moves of that Type, and the same for every ally inside a Burst 2 around you \u2014 the allies' half is theirs to add, it is not on their sheets. While Radiating you may also use Tera Blast as that Type."));
+  const row = el("div",{class:"chips"});
+  TYPES.forEach(t => row.append(el("button",{class:"statuschip"+(p.radiate===t?" on":""),
+    onclick:()=>{ p.radiate = t; closeModal(); (persist||save)(); redraw && redraw();
+                  toast(`\u2734 Stellar Blast \u2014 ${ownerLabel(p)} is Radiating ${t}.`); }}, t)));
+  body.append(row);
+  if(p.radiate) body.append(el("button",{class:"linkbtn",style:"margin-top:10px",
+    onclick:()=>{ delete p.radiate; closeModal(); (persist||save)(); redraw && redraw();
+                  toast("Stopped Radiating."); }},"\u2716 stop Radiating"));
+  modal({title:"\u2734 Stellar Blast \u2014 Radiate a Type", bodyNode:body});
+}
+/* Teraform Zero (Terapagos, High): Scene, Free Action, on starting a turn while having changed Type
+   or Radiating. "All Weather and Terrain effects currently on the Field end, and the user may choose
+   any Weather Effect to replace them. The user may then change their Type to the one associated with
+   the chosen Weather." Bonus: Tera Starstorm always matches the user's Type. */
+const TERAFORM_WEATHER_TYPES = { sunny:"Fire", rainy:"Water", sandstorm:"Rock", hail:"Ice" };
+function openTeraformZero(p, redraw, persist){
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
+    "Every Weather and Terrain on the field ends. Choose the Weather that replaces them; the user may then take the Type that Weather is associated with (replacing all its other Types \u2014 STAB does not move, so a newly-STAB Move gets +10 damage instead). Then create ONE of: three continuous squares of Blocking Terrain, two Blast 3 of Slow Terrain, or two Blast 3 of Rough Terrain, anywhere within a Burst 4 \u2014 draw that on the Map by hand."));
+  const canSetMap = (typeof mode !== "undefined" && mode === "cloud" && cloud && cloud.isGM);
+  const fire = (wkey, ty) => {
+    const u = abilityUse(p, "Teraform Zero");
+    if(!u.spend()){ toast("Teraform Zero is already spent this Scene."); return; }
+    if(ty && !p.tera) p.typeShift = { type:ty, src:"Teraform Zero" };   // a Terastalized Pokemon's Type can't change
+    let said = "";
+    if(canSetMap){
+      const map = currentMapForView() || activeMap();
+      if(map){ map.terrains = []; setMapWeather(map, wkey); said = " Weather and Terrain set on the Map."; }
+    }
+    closeModal(); (persist||save)(); redraw && redraw();
+    toast(`\u{1F300} Teraform Zero \u2014 ${weatherByKey(wkey).name}${ty?`, and ${ownerLabel(p)} becomes ${ty}-Type`:""}.${said}`);
+  };
+  const row = el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap"});
+  WEATHER_DEFS.filter(w => w.key !== "clear").forEach(w => {
+    const ty = TERAFORM_WEATHER_TYPES[w.key];
+    row.append(el("button",{class:"btn-secondary",style:"padding:5px 11px",
+      title:`${w.name}${ty?` \u2014 and the user may become ${ty}-Type`:""}`,
+      onclick:()=>fire(w.key, ty)}, `${w.icon} ${w.name}${ty?` \u2192 ${ty}`:""}`));
+  });
+  row.append(el("button",{class:"linkbtn",title:"take the Weather but keep your current Types",
+    onclick:()=>{
+      openPicker("Which Weather? (keep your current Types)",
+        WEATHER_DEFS.filter(w=>w.key!=="clear").map(w=>w.name),
+        nm => { const w = WEATHER_DEFS.find(x=>x.name===nm); if(w) fire(w.key, null); });
+    }, style:"align-self:center"},"\u2026 or keep your Types"));
+  body.append(row);
+  if(!canSetMap) body.append(el("div",{class:"small muted",style:"margin-top:10px"},
+    "Only the GM can change the Map's Weather \u2014 this sets the Type and announces the Weather; ask the GM to switch it on the Map."));
+  modal({title:"\u{1F300} Teraform Zero", bodyNode:body});
+}
+/* The row that sits under an Ability's own rules text wherever Abilities are listed (the sheet, the
+   Battle tab and the Encounters card) - the same shape schoolingTriggerRow uses. */
+function typeAbilityRow(p, an, redraw, persist){
+  const key = String(an||"").toLowerCase();
+  const mk = (label, title, run, tail) => {
+    const wrap = el("div",{class:"inline small",style:"margin-top:8px;gap:8px;flex-wrap:wrap;align-items:center"});
+    wrap.append(el("button",{class:"btn-secondary",style:"padding:4px 10px",title, onclick:run}, label));
+    if(tail) wrap.append(el("span",{class:"muted"}, tail));
+    return wrap;
+  };
+  if(key === "tera shell")
+    return mk("\u{1F6E1} Become a resisting Type",
+      "Scene, Free Action, Interrupt \u2014 on being hit by a Move, become any Type that resists it, until the end of the encounter.",
+      ()=>openTeraShell(p, redraw, persist),
+      p.typeShift && p.typeShift.src==="Tera Shell" ? `currently ${p.typeShift.type}-Type` : null);
+  if(key === "stellar blast")
+    return mk("\u2734 Radiate a Type",
+      "At-Will, Swift Action, on hitting a foe with a Move \u2014 Radiate one of that foe's Types until the end of the Encounter.",
+      ()=>openStellarBlast(p, redraw, persist),
+      p.radiate ? `Radiating ${p.radiate} \u2014 +10 damage on ${p.radiate} Moves (yours, and allies' in a Burst 2)` : null);
+  if(key === "teraform zero")
+    return mk("\u{1F300} Teraform Zero",
+      "Scene, Free Action \u2014 wipe the field's Weather and Terrain, set new Weather, and take that Weather's Type.",
+      ()=>openTeraformZero(p, redraw, persist),
+      "Bonus: Tera Starstorm always goes out as the user's current Type.");
+  if(key === "prime fury")
+    return mk("\u{1F621} Prime Fury",
+      "Scene, Swift Action \u2014 the user becomes Enraged and gains +1 Attack Combat Stage.",
+      ()=>{
+        const u = abilityUse(p, "Prime Fury");
+        if(!u.spend()){ toast("Prime Fury is already spent this Scene."); return; }
+        if(!Array.isArray(p.statuses)) p.statuses = [];
+        if(!p.statuses.includes("enraged")) p.statuses.push("enraged");
+        if(!p.cs || typeof p.cs !== "object") p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
+        p.cs.atk = Math.max(-6, Math.min(6, (p.cs.atk||0) + 1));
+        (persist||save)(); redraw && redraw();
+        toast(`\u{1F621} Prime Fury \u2014 ${ownerLabel(p)} is Enraged, +1 Attack Combat Stage.`);
+      });
+  if(key === "sprint")
+    return mk("\u{1F3C3} Sprint",
+      "Scene, Swift Action, on Sprinting in Combat \u2014 +2 Speed Combat Stages. (Its +2 Overland is static and is already in the Capabilities above.)",
+      ()=>{
+        const u = abilityUse(p, "Sprint");
+        if(!u.spend()){ toast("Sprint is already spent this Scene."); return; }
+        if(!p.cs || typeof p.cs !== "object") p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
+        p.cs.spd = Math.max(-6, Math.min(6, (p.cs.spd||0) + 2));
+        (persist||save)(); redraw && redraw();
+        toast(`\u{1F3C3} Sprint \u2014 ${ownerLabel(p)} gains +2 Speed Combat Stages.`);
+      }, "+2 Overland is applied automatically");
+  if(key === "celebrate")
+    return mk("\u{1F389} Celebrate",
+      "At-Will, Free Action, when the user makes a foe Faint with a damaging attack \u2014 +1 Speed Combat Stage, and an immediate extra Shift Action taken as if Slowed.",
+      ()=>{
+        if(!p.cs || typeof p.cs !== "object") p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
+        p.cs.spd = Math.max(-6, Math.min(6, (p.cs.spd||0) + 1));
+        (persist||save)(); redraw && redraw();
+        toast(`\u{1F389} Celebrate \u2014 ${ownerLabel(p)} gains +1 Speed Combat Stage and an extra Shift (as if Slowed).`);
+      }, "take the extra Shift on the Map yourself \u2014 move at half your Speed");
+  if(key === "aura storm"){
+    const d = pokeDerived(p);
+    const low = !!(d.maxHP && p.currentHP != null && p.currentHP <= d.maxHP/2);
+    const n = 3 * Math.max(0, d.injuries||0) + (low ? 3 : 0);
+    const wrap = el("div",{class:"inline small",style:"margin-top:8px;gap:8px;flex-wrap:wrap;align-items:center"});
+    wrap.append(el("span",{class:"badge-auto"}, n ? `+${n} damage on Aura Moves` : "no bonus right now"),
+      el("span",{class:"muted"},
+        `${d.injuries||0} ${(d.injuries||0)===1?"Injury":"Injuries"} \u00d7 3${low?" + 3 (at or under half HP)":""} \u2014 applied automatically to every Move with the Aura keyword.`));
+    return wrap;
+  }
+  if(key === "unseen fist"){
+    const wrap = el("div",{class:"inline small",style:"margin-top:8px;gap:8px;flex-wrap:wrap;align-items:center"});
+    wrap.append(el("span",{class:"badge-auto"},"Melee Attacks can't be answered"),
+      el("span",{class:"muted"},"Reactions, Interrupts and Blessings may not be activated in response to this Pok\u00e9mon's Melee Attacks \u2014 the roll window says so on every Melee Move."));
+    return wrap;
+  }
+  if(key === "shell armor" || key === "battle armor"){
+    const wrap = el("div",{class:"inline small",style:"margin-top:8px;gap:8px;flex-wrap:wrap;align-items:center"});
+    wrap.append(el("span",{class:"badge-auto"},"immune to Critical Hits"),
+      el("span",{class:"muted"},"A crit against this Pok\u00e9mon is a normal hit instead. The attacker's roll doesn't know who it is aiming at \u2014 drop the crit's extra Damage Base by hand when one lands here."));
+    return wrap;
+  }
+  if(key === "type aura" || key === "type aura [errata]"){
+    const ty = typeAuraType(p);
+    if(!ty) return null;
+    const wrap = el("div",{class:"inline small",style:"margin-top:8px;gap:8px;flex-wrap:wrap;align-items:center"});
+    wrap.append(el("span",{class:"badge-auto"}, `+5 damage on ${ty} Moves`),
+      el("span",{class:"muted"}, `Applied automatically to this Pok\u00e9mon's own ${ty}-Type Moves. Allies within 3 metres get the same +5 \u2014 add it on their rolls by hand.`));
+    return wrap;
+  }
+  return null;
+}
+
+/* ---- Urshifu ------------------------------------------------------------------------------
+   Type Aura is printed on the two Urshifu with the Type spelled out next to it - "High Ability:
+   Type Aura (Dark)" / "(Water)" - while the Ability's own text says "the user's Primary Type".
+   The dex entry wins where it is explicit; everything else falls back to the printed reading. */
+const TYPE_AURA_TYPES = {
+  "urshifu single strike":"Dark",
+  "urshifu rapid strike":"Water",
+  "urshifu-single-strike-gmax":"Dark",
+  "urshifu-rapid-strike-gmax":"Water",
+};
+function typeAuraType(p){
+  if(!p) return null;
+  const fixed = TYPE_AURA_TYPES[String(p.species||"").toLowerCase()];
+  if(fixed) return fixed;
+  return monTypes(p)[0] || null;
+}
+/* Aura Storm: "For each injury the user has, they gain a +3 Damage bonus to all Moves with the Aura
+   keyword. Additionally, while the user is at or under 1/2 of their Max Hit Points, they gain a +3
+   Damage Bonus to all Moves with the Aura Keyword." */
+function auraStormBonus(p, m){
+  if(!hasAbility(p,"Aura Storm") || !moveHasKeyword(m,"aura")) return 0;
+  const d = pokeDerived(p);
+  let n = 3 * Math.max(0, d.injuries || 0);
+  if(d.maxHP && p.currentHP != null && p.currentHP <= d.maxHP/2) n += 3;
+  return n;
+}
+/* Lines a roll should print that only this Type layer knows about. */
+function teraRollNotes(p, m, mtype){
+  const out = [];
+  const r = typeReplacement(p);
+  if(r) out.push(`${r.src}: ${ownerLabel(p)} is ${r.type}-Type right now (STAB still comes from ${monNaturalTypes(p).join(" / ")||"its own Types"}). Type effectiveness against it is worked out from ${r.type}.`);
+  if(p && p.radiate) out.push(`Stellar Blast: Radiating ${p.radiate} \u2014 every ally within a Burst 2 also gets +10 damage on their ${p.radiate}-Type Moves.`);
+  if(hasAbility(p,"Type Aura") || hasAbility(p,"Type Aura [Errata]")){
+    const ty = typeAuraType(p);
+    if(ty && mtype === ty) out.push(`Type Aura: allies within 3 metres get this same +5 on their ${ty}-Type Moves.`);
+  }
+  if(hasAbility(p,"Unseen Fist") && moveHasKeyword(m,"melee"))
+    out.push("Unseen Fist: Reactions, Interrupts and Blessings may not be activated in response to this Melee Attack.");
+  if(/^wicked blow$/i.test(String(m&&m.name||"")))
+    out.push("Wicked Blow always Critically Hits, and Pushes the target 6 metres minus their Weight Class (Tripped on 15+).");
+  if(/^surging strikes$/i.test(String(m&&m.name||"")))
+    out.push("Surging Strikes always Critically Hits. Roll it once per attack: after each one (hit or miss) you may Shift 2 m free of Attacks of Opportunity from that target and strike a DIFFERENT target, up to three attacks in all. Give the remaining attacks up before a roll and this one gains +3 Damage Base each \u2014 set that with the box above.");
+  if(/^tera blast$/i.test(String(m&&m.name||"")) && hasAbility(p,"Stellar Blast"))
+    out.push("Stellar Blast: Tera Blast is one step MORE effective against a target that has changed Forme (Mega, Terastalized, Transformed, Schooling, an Origin/Altered/Primal Forme\u2026), to a maximum of Doubly Super Effective. The \u{1F3AF} target picker applies that automatically.");
+  if(/^tera starstorm$/i.test(String(m&&m.name||"")))
+    out.push("Place a Star Shard in any square of the Area of Effect: an ally entering it, or starting their turn on it, may consume the Shard for +10 damage on their next successful damaging attack.");
+  return out;
 }
 /* ===================================================================
    TYPE GEMS & Z-CRYSTALS
@@ -2588,6 +3176,8 @@ function itemFreqForKey(key){
   if(kind==="zpower") return "Scene";
   // a worn Accessory's own active use (Soothing Flute) — every one added so far is Scene-frequency
   if(kind==="item") return "Scene";
+  // ...and its Daily cousin (the Tera Orb's one Terastallization a day)
+  if(kind==="dayitem") return "Daily";
   return null;
 }
 /* frequency of a named Move/Ability/Feature, for at-a-glance labels (classes/edges have none) */
@@ -3110,6 +3700,7 @@ function applyEndScene(c){
     delete p.pheromone; delete p.pheroRolled;          // Pheromone Stacks don't outlast the fight
     resetManualCS(p); clearSceneStatuses(p);
     if(p.mega) megaRevert(p,true);
+    endSceneTypeState(p);                // Terastallization, Tera Shell / Teraform Zero, Radiating
     shieldsDownRevert(p);                // Shields Down: back to Meteor Forme out of combat, if not Bruised
     /* Schooling: the Scene just took every Temporary Hit Point away, so re-run the Ability's own
        revert test - a school that walked out of the fight under half HP disperses right here. */
@@ -3149,6 +3740,7 @@ function applyEndDay(c, plan){
   t.currentHP = noHP(t.injuries) ? Math.min(typeof t.currentHP==="number" ? t.currentHP : tCap, tCap) : tCap;
   restParty(c).forEach(p => {
     if(p.mega) megaRevert(p,true);        // revert Mega before healing so max HP is the base form's
+    endSceneTypeState(p);                 // ...and a night's rest ends any Terastallization too
     transformRevert(p,true);              // "lasts until ... the end of the encounter"
     schoolingRevertNow(p);                // a night's rest scatters the school - and hands its Daily use back below
     p.tempHP = 0; p.buffs = []; resetUses(p, "all"); resetManualCS(p); clearStorageDigestion(p);
@@ -4244,7 +4836,11 @@ function slugify(name){
    "mega-<base>" the way our species are named — so the naive slug 404'd for every single Mega in the
    DB and they all fell through to the pokéball. Regional forms already match ("arcanine-hisuian",
    "marowak-alolan"), so only the Mega prefix needs reordering. */
+/* pokemondb spells Terapagos' middle Forme "terastal"; our species entry is "Terastral". */
+const SPRITE_SLUG_FIX = { "terapagos-terastral":"terapagos-terastal" };
 function spriteSlug(name){
+  const fix = SPRITE_SLUG_FIX[String(name||"").trim().toLowerCase()];
+  if(fix) return fix;
   const m = /^Mega\s+(.+?)(?:\s+([XYZ]))?$/i.exec(String(name||"").trim());
   return m ? `${slugify(m[1])}-mega${m[2] ? "-"+m[2].toLowerCase() : ""}` : slugify(name);
 }
@@ -4813,6 +5409,7 @@ function damageHealRow(getHP, setHP, owner){
        the real Hit Points that are actually left. */
     const newHP = owner ? tempSoakSay(owner, oldHP, oldHP+n) : oldHP+n;
     if(owner){ applyAutoInjury(owner, oldHP, newHP); applyAutoKO(owner, oldHP, newHP); applyShieldsDown(owner, newHP); applySchooling(owner, newHP); }
+    usurpMirrorHP(owner, oldHP, newHP);   // an Usurper's other form loses the same HP (B&D p.51)
     setHP(newHP);
   };
   // ± one Tick of HP (1/10 max) — direct HP change, no DR (Ticks are fixed chunks)
@@ -4820,6 +5417,7 @@ function damageHealRow(getHP, setHP, owner){
     const t = hpTick(ownerMaxHP(owner)); const oldHP = getHP(); const n = sign*t;
     const newHP = owner ? tempSoakSay(owner, oldHP, oldHP+n) : oldHP+n;
     if(owner){ applyAutoInjury(owner, oldHP, newHP); applyAutoKO(owner, oldHP, newHP); applyShieldsDown(owner, newHP); applySchooling(owner, newHP); }
+    usurpMirrorHP(owner, oldHP, newHP);   // an Usurper's other form loses the same HP (B&D p.51)
     setHP(newHP);
   };
   box.addEventListener("keydown", e=>{ if(e.key==="Enter") apply(); });
@@ -4891,28 +5489,59 @@ const weaponMoveLabel = (w, tier) => isArcaneWeapon(w)
 const weaponMoveNeed = (w, tier) => isArcaneWeapon(w)
   ? { skill:"Occult Education", rank: tier==="master" ? "Expert" : "Novice", num: tier==="master" ? 5 : 3 }
   : { skill:"Combat",           rank: tier==="master" ? "Master" : "Adept",  num: tier==="master" ? 6 : 4 };
-/* Herald of Pride (Game of Throhs): "When wielding Melee Weapons, you may use Command or Intimidate
-   instead of Combat to determine the Damage Base of your Struggle Attacks, to resist Disarm Maneuvers,
-   and to qualify for a Weapon's Moves." This is the one place that decides which Rank the weapon maths
-   reads, so both halves — the Struggle's AC/DB and the Weapon Move gate — get the substitution at once.
-   Melee only, and only ever upward: a Herald with better Combat than Command keeps their Combat. */
+/* Three Game of Throhs classes print the same Static Effect in different Skills: "When wielding
+   Melee Weapons, you may use X or Y instead of Combat to determine the Damage Base of your Struggle
+   Attacks, to resist Disarm Maneuvers, and to qualify for a Weapon's Moves."
+
+     Herald of Pride   Command or Intimidate           (and it ignores DR up to that Rank on top)
+     Apparition        Occult Education or Intimidate
+     Steelheart        Athletics or Focus              - metal Melee Weapons only
+
+   Only Herald was ever implemented here, so a Steelheart's greatsword quietly swung off a Combat
+   Rank they had no reason to buy, and their Weapon Moves stayed locked. All three live in one table
+   now; a Trainer holding more than one simply takes the best Rank any of them offers, which is what
+   "you may use" means. */
+const MELEE_SKILL_SUBS = [
+  { feat:"Herald of Pride", skills:["command","intimidate"] },
+  { feat:"Apparition",      skills:["occultEd","intimidate"] },
+  { feat:"Steelheart",      skills:["athletics","focus"], metalOnly:true },
+];
+/* Steelheart's substitution is for "metal Melee Weapons". There is no metal flag on a weapon row, so
+   this reads the weapon's own name and notes for the handful of words that mean "not metal" and
+   assumes metal otherwise: a greatsword, a spear and a warhammer all pass; a quarterstaff, a club
+   and a bone knife do not. */
+const NON_METAL_WEAPON = /\b(wood|wooden|staff|quarterstaff|club|bat|bone|stone|whip|rope|cloth|glass|crystal|ice)\b/i;
+function weaponIsMetal(w){ return !NON_METAL_WEAPON.test(`${(w&&w.name)||""} ${(w&&w.notes)||""}`); }
+/* Which Skill Rank the weapon maths reads. This is the single place that decides it, so both halves
+   - the Struggle's AC/DB and the Weapon Move gate - get the substitution at once. Melee only, and
+   only ever upward: a Herald with better Combat than Command keeps their Combat. */
 function weaponSkillRank(t, w){
   const combat = rankNum(t && t.skills ? t.skills.combat : "");
-  if(!t || !w) return combat;
-  /* An Arcane Weapon is measured in Occult Education outright — not "whichever is higher", the book
+  if(!t || !w || !t.skills) return combat;
+  /* An Arcane Weapon is measured in Occult Education outright - not "whichever is higher", the book
      replaces the Skill: "you qualify for Arcane Weapon Moves and bonus Struggle Attack Damage Bases
      using Occult Education Ranks, not Combat Ranks." */
   if(isArcaneWeapon(w)) return rankNum(t.skills.occultEd);
   if(!/Melee/i.test(w.category||"")) return combat;
-  if(!hasFeatureLoose(t, "Herald of Pride")) return combat;
-  return Math.max(combat, rankNum(t.skills.command), rankNum(t.skills.intimidate));
+  let best = combat;
+  meleeSkillSubsFor(t, w).forEach(d => d.skills.forEach(k => { best = Math.max(best, rankNum(t.skills[k])); }));
+  return best;
 }
-/* which Skill the substitution actually used, for the "why is this DB higher?" note */
+/* the substitutions this Trainer actually has, for this weapon */
+function meleeSkillSubsFor(t, w){
+  return MELEE_SKILL_SUBS.filter(d => hasFeatureLoose(t, d.feat) && !(d.metalOnly && !weaponIsMetal(w)));
+}
+/* which Skill the substitution actually used, for the "why is this DB higher?" note - it has to name
+   the Skill that WON, not whichever one Herald of Pride happens to offer */
 function weaponSkillWhy(t, w){
   if(isArcaneWeapon(w)) return "Occult Ed.";       // a replacement, so it shows even when it's lower
   const r = weaponSkillRank(t, w);
   if(r <= rankNum(t && t.skills ? t.skills.combat : "")) return "";
-  return rankNum(t.skills.intimidate) >= rankNum(t.skills.command) ? "Intimidate" : "Command";
+  let win = "";
+  meleeSkillSubsFor(t, w).forEach(d => d.skills.forEach(k => {
+    if(!win && rankNum(t.skills[k]) === r) win = (SKILLS.find(x=>x[0]===k)||[])[1] || k;
+  }));
+  return win;
 }
 function weaponMoveRankOk(t, tier, w){ return !!t.unlocked || weaponSkillRank(t, w) >= weaponMoveNeed(w, tier).num; }
 function newWeapon(){ return { id:uid(), name:"", category:"Small Melee", type:"Normal", notes:"", weaponMoveAdept:"", weaponMoveMaster:"", arcane:false, equipped:false, ...WEAPON_PRESETS["Small Melee"] }; }
@@ -5646,6 +6275,7 @@ function applyAutoKO(owner, oldHP, newHP){
     owner.statuses.push("knockedOut");
     transformRevert(owner, true);   // "Transform lasts until the user is ... Fainted" (no-op for anyone else)
     megaRevert(owner, true);        // a Fainted Pokémon can't stay Mega Evolved (no-op if not Mega)
+    endSceneTypeState(owner);       // "remains Terastalized until they are Fainted or the Scene ends"
     toast(`💀 ${ownerLabel(owner)} is Knocked Out at ${newHP} HP.`);
     return "ko";
   }
@@ -5713,6 +6343,7 @@ function applyAutoDeath(owner, newHP){
   delete owner.fightOn;                 // nothing is fighting on any more
   transformRevert(owner, true);
   megaRevert(owner, true);
+  endSceneTypeState(owner);
   toast(`☠️ ${ownerLabel(owner)} has DIED — ${why}. Only the GM can lift the Dead chip.`);
   return "dead";
 }
@@ -6087,7 +6718,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const drPierce = Math.max(heraldDR, movePierce ? movePierce.dr : 0);
   const defCSMode = movePierce ? movePierce.defCS : null;
   // ...and the Move's own per-target matchup rule (Freeze-Dry, Thousand Arrows — MOVE_TARGET_RULES)
-  const moveRule = moveTargetRules(st.move);
+  const moveRule = moveTargetRules(st.move, t);
   /* Maelstrom: "Whenever your Water-Type Moves miss all targets, you gain a Tick of Temporary Hit
      Points." A Trainer roll never learns the target's Evasion — it prints "hits if X ≥ AC + Evasion"
      — so the miss can't be detected, only offered. */
@@ -6907,7 +7538,10 @@ function trainerVitalsCard(t){
   const setHP = v => { t.currentHP = Math.min(maxHP, v); save(); renderTrainer(); };
   /* The − buttons deal damage, so they spend Temporary Hit Points first (Core p.245); the number
      box and MAX set Hit Points outright and leave the pool where it is. */
-  const bumpHP = n => setHP(n < 0 ? tempSoakSay(t, t.currentHP, t.currentHP + n) : t.currentHP + n);
+  const bumpHP = n => { const was = t.currentHP;
+    const v = n < 0 ? tempSoakSay(t, was, was + n) : was + n;
+    usurpMirrorHP(t, was, v);                     // an Usurper's other form loses the same HP
+    setHP(v); };
   const hp = el("div",{class:"hpctl"});
   const cur = el("input",{type:"number",title:"current HP"}); cur.value = t.currentHP;
   cur.addEventListener("change",()=>setHP(parseInt(cur.value)||0));
@@ -8390,6 +9024,7 @@ const EQUIP_EFFECTS = {
   "sensor disruption vest": { note:"Pokébots & Eye-Augment attackers take −2 Accuracy on single-target checks vs you." },
   "gravity modulation suit":{ note:"Treat local gravity as 1 higher or lower." },
   "thermal dampening suit": { note:"Invisible to thermal imaging gear." },
+  "tera orb":               { note:"Daily, Swift Action — Terastalize one of your Pokémon: press \u{1F48E} Terastallize on its card. It loses its regular Types and becomes its Tera Type until it Faints or the Scene ends, keeps STAB from its ORIGINAL Types, gains none on the Tera Type, and gets +10 damage on every Move of that Type instead." },
   "soothing flute":         { note:"1/Scene Standard Action: cures Enraged on all who hear it, and grants up to your Occult Ed. Rank allies +5 Damage Reduction against Ghost-Type Attacks for the rest of the Scene — use ⚔ Battle → Standard → 🎵 Soothing Flute." },
 };
 /* mojibake cleanup for the catalog effect strings (é/apostrophes/dashes got double-encoded on import) */
@@ -8558,7 +9193,7 @@ const GEAR_ACTIONS = {
     label:()=>"Poisoned → +1 CS ×2",
     run:o=>{
       if(!Array.isArray(o.statuses)) o.statuses = [];
-      const types = (getSpecies(o.species)?.types || []).map(t=>String(t).toLowerCase());
+      const types = monTypes(o).map(t=>String(t).toLowerCase());
       if(types.includes("poison") || types.includes("steel"))
         return "can't be Poisoned, so the Mushroom does nothing — it is not eaten";
       if(o.statuses.includes("poisoned")) return "already Poisoned — the Mushroom does nothing, and is not eaten";
@@ -9362,6 +9997,11 @@ const PATRON_STATS = {
   "Zacian":["atk","spd"],"Zamazenta":["def","spdef","spd"],"Eternatus":"spatk",
   "Urshifu":"atk","Zarude":"atk",
   "Glastrier":"atk","Spectrier":"spatk","Calyrex":"hp",
+  /* Arceus is absent from the printed p.57 table, which stops at Diancie. Its Base Stats are all
+     equal, so the book's own fallback — "typically just the Pokemon's two highest Stats" — resolves
+     to a free choice. This matters most for Usurpers: every Usurper Feature's [PATRON STAT] is
+     the stat of the god they killed. */
+  "Arceus":"any",
   /* Not on the printed table: "In the event your Patron isn't a standard Legendary Pokemon, Patron
      Stats are typically just the Pokemon's highest Stat" (p.52) — left as a choice for the GM. */
   "MissingNo":"any","Ultra Space (Faller)":"any",
@@ -9812,6 +10452,51 @@ const SIGNER_FEATURES = [
   effect:`You acquire two Blessings in the form of Signs, marked Rank ${f.rank} or lower. You must additionally meet any Prerequisites of the Blessing.`
     + (f.rank===4 ? " If your Patron does not have a Pact Gift, you instead require all their Major Gifts to attain Rank 4." : "") }) : f);
 
+/* ---------- Usurper (book pp.51-52) --------------------------------------------------------------
+   The third advancement branch, and the loudest of the three: you did not receive a Legendary's
+   blessing, you KILLED one and took its place. Like Messiah and Signer it carries no [CLASS] tag —
+   it stacks on top of your four — and every entry is [PATRON STAT], so each one taken is another +1
+   in the stat of the god you usurped (p.57; Arceus's Base Stats are all equal, so it reads [+Any]).
+
+   Everything past the first Feature gates on the LEGENDARY FORM's Level, not the Trainer's, which is
+   why each entry carries `formLevel`: `usurpGateNote` turns that into the "needs form Lv 40" note on
+   the row so a GM never has to go back to the book. True Power is explicitly takeable three times
+   (form Lv 40 / 60 / 75), so it is listed as three separate purchases — the same shape In My Name's
+   four Ranks already use. Eight entries in all, and taking every one of them costs a Legendary Form
+   at Level 75.
+
+   The book promises on p.51 that "the following Edge is available to Usurpers to utilize their
+   Features" and then never prints one. That is a hole in the book, not a gap here. */
+const USURPER_FEATURES = [
+  { name:"Usurper", formLevel:1, freq:"Static",
+    prereq:"You have slain a God and through occult ritual or technology have absorbed its essence.",
+    effect:"Your human form is now considered your Avatar, and you gain a second set of stats for your Pokémon form. This form is that of the Legendary you usurped, starts at Level 1 with the Nature and Abilities of your choice, and may gain Experience as if it were a Pokémon you owned. Switching between your human form and this one takes a Standard Action. Usurpers cannot receive Gifts or Blessings from other Legendaries, as they are divinity themselves now. Any Touched, Branded, Messiah and Signer Edges and Features you possessed up until this point are refunded.",
+    note:"Damage is SHARED: when an Usurper takes damage in one form, both forms lose HP equal to the final amount dealt. Knocked Out in one form but not the other, they default to the still-conscious one. Your Legendary Form also has access to every Capability, Ability and Move your Avatar does." },
+  { name:"Shared Strengths (Rank 1)", formLevel:20, rank:1, freq:"Static",
+    prereq:"Usurper, Pokémon Form Level 20",
+    effect:"You gain access to your Legendary Form's Abilities while in your Avatar form." },
+  { name:"Shared Strengths (Rank 2)", formLevel:35, rank:2, freq:"Static",
+    prereq:"Shared Strengths Rank 1, Pokémon Form Level 35",
+    effect:"You gain your Legendary Form's Types while in your Avatar form." },
+  { name:"True Power (1st)", formLevel:40, power:1, freq:"Static",
+    prereq:"Shared Strengths Rank 2, Pokémon Form Level 40",
+    effect:"You gain one of the Domains, and its corresponding Legendary Aura, associated with your Legendary Form.",
+    note:"Assign the Domain on the Legendary Form's own sheet — it is a Pokémon, so the Legendary Aura machinery already applies the +2 Combat Stages and the three-active cap." },
+  { name:"Shared Strengths (Rank 3)", formLevel:50, rank:3, freq:"Static",
+    prereq:"True Power, Pokémon Form Level 50",
+    effect:"You gain access to your Legendary Form's Move List while in your Avatar form." },
+  { name:"True Power (2nd)", formLevel:60, power:2, freq:"Static",
+    prereq:"True Power, Pokémon Form Level 60",
+    effect:"A second Domain, and its corresponding Legendary Aura, from your Legendary Form." },
+  { name:"Gift of Power", formLevel:60, freq:"One Time Use · Target: A Trainer",
+    prereq:"Pokémon Form Level 60",
+    effect:"You gift your target with a Blessing of your own. Whether this makes them Touched, a Signer, or Branded is at your discretion. The Blessings need not be the ones listed for your Legendary Form — they may be of your own creation, at your GM's discretion." },
+  { name:"True Power (3rd)", formLevel:75, power:3, freq:"Static",
+    prereq:"True Power, Pokémon Form Level 75",
+    effect:"A third Domain, and its corresponding Legendary Aura, from your Legendary Form." },
+];
+function usurperFeatureByName(name){ return USURPER_FEATURES.find(f=>f.name===name) || null; }
+
 /* ---------- The Brands (book p.47) ---------------------------------------------------------------
    What the Branded Feature actually leaves on you — a deal with the devil made flesh. The book's
    list is explicitly not exhaustive, so a GM can hand out a free-form one instead. A Brand is not a
@@ -9909,10 +10594,101 @@ const GIFT_KINDS = [
   { key:"general",  label:"General Gift",    head:"🌐 General Legendary Gifts", blurb:"Gifts sorted by domain rather than species (pp.53-54)." },
   { key:"messiah",  label:"Messiah Feature", head:"🙏 Messiah",          blurb:"The Messiah advancement branch (pp.47-48) — not a Class; it stacks on top of your four." },
   { key:"signer",   label:"Signer Feature",  head:"✒ Signer",            blurb:"The Signer branch — the Messiah's mirror. Blessings are stored in Signs: Swift Action, 1 AP, once per Scene." },
+  { key:"usurper",  label:"Usurper Feature", head:"👑 Usurper",           blurb:"The Usurper branch (pp.51-52) — you killed a god and took its place. Every Feature past the first gates on your Legendary Form's Level, not yours." },
   { key:"blessing", label:"Blessing",        head:"📜 Legendary Blessings", blurb:"Rank 1-3 Blessings (pp.55-56), granted by In My Name or Sign Mastery. Blessings carry no Patron Stat of their own." },
   { key:"brand",    label:"Brand",           head:"⛧ Brands",            blurb:"What the Branded Feature left on you (p.47). A Brand is a mark, not a Gift — it carries no Patron Stat." },
 ];
 function giftKind(g){ return (g && g.kind) || "gift"; }
+
+/* ===== The Legendary Form =========================================================================
+   An Usurper has two stat blocks, and the app already knows how to run one of them: a Pokemon. So
+   the Legendary Form is stored as a REAL Pokemon on the Usurper's own roster and `t.usurp.monId`
+   just points at it. That is the whole trick - Legendary Auras, the Move list, Abilities, a token on
+   the Map, Injuries, the damage engine and every Type interaction work on the Form for free, and
+   this layer only has to add the four things the book actually asks for on top:
+
+     shared damage   both forms lose the same HP           (usurpMirrorDamage)
+     Rank 1          the Form's Abilities in Avatar form   (folded into ownerHasAbility)
+     Rank 2          the Form's Types in Avatar form       (folded into tokenDefTypes - the one thing
+                     that gives an otherwise typeless Trainer a Type chart, weaknesses included)
+     Rank 3          the Form's Move List in Avatar form   (rollable from the Avatar's attack list)
+
+   Every one of these fast-outs on `t.usurp` being absent, which it is for everybody but the Usurper,
+   so none of it costs the rest of the app anything. */
+function usurpOf(t){ return (t && t.usurp && t.usurp.monId) ? t.usurp : null; }
+function usurpFormOf(t){
+  const u = usurpOf(t); if(!u) return null;
+  return (trainerOwnMons(t) || []).find(p => p && p.id === u.monId) || null;
+}
+function usurpFormLevel(t){ const p = usurpFormOf(t); return p ? (p.level || 1) : 0; }
+/* the Usurper rows on this sheet - they live in t.gifts alongside every other granted row */
+function usurpRows(t){ return ((t && t.gifts) || []).filter(g => giftKind(g) === "usurper"); }
+function isUsurper(t){ return usurpRows(t).some(g => g.name === "Usurper"); }
+/* highest Shared Strengths Rank held, 0-3 */
+function usurpSharedRank(t){
+  let r = 0;
+  usurpRows(t).forEach(g => { const m = /^Shared Strengths \(Rank (\d)\)$/.exec(g.name || ""); if(m) r = Math.max(r, +m[1]); });
+  return r;
+}
+function usurpTruePowers(t){ return usurpRows(t).filter(g => /^True Power/.test(g.name || "")).length; }
+/* "" when the Legendary Form is high enough Level for this Feature, else why it is not */
+function usurpGateNote(t, name){
+  const f = usurperFeatureByName(name); if(!f || (f.formLevel || 1) <= 1) return "";
+  const lv = usurpFormLevel(t);
+  if(!lv) return `needs a Legendary Form (Lv ${f.formLevel})`;
+  return lv >= f.formLevel ? "" : `needs Legendary Form Lv ${f.formLevel} — it is Lv ${lv}`;
+}
+/* Rank 1 - "access to your Legendary Form's Abilities while in your Avatar form" */
+function usurpSharedAbilities(t){
+  if(!t || !t.usurp || usurpSharedRank(t) < 1) return [];
+  const p = usurpFormOf(t); if(!p) return [];
+  return [...(p.abilities || [])];
+}
+/* Rank 2 - "you gain your Legendary Form's Types while in your Avatar Form". It cuts both ways: an
+   Avatar sharing a Normal-Type god's chart is now hit for double by Fighting and untouchable by
+   Ghost, exactly as though they were that god. */
+function usurpSharedTypes(t){
+  if(!t || !t.usurp || usurpSharedRank(t) < 2) return [];
+  const p = usurpFormOf(t); if(!p) return [];
+  return monTypes(p).filter(ty => ty && ty !== "None");
+}
+/* Rank 3 - "access to your Legendary Form's Move List while in your Avatar Form" */
+function usurpSharedMoves(t){
+  if(!t || !t.usurp || usurpSharedRank(t) < 3) return [];
+  const p = usurpFormOf(t); if(!p) return [];
+  return [...new Set([...(p.moves || []), ...((p.customMoves || []).map(m => m && m.name).filter(Boolean))])];
+}
+/* the other half of an Usurper, given either half; null for everybody else */
+function usurpPartnerOf(o){
+  if(!o) return null;
+  if(isTrainerOwner(o)) return usurpFormOf(o);
+  if(!o.usurpOf) return null;
+  const t = ownerTrainerOf(o);
+  return (t && usurpFormOf(t) === o) ? t : null;
+}
+/* "When an Usurper takes damage in one form, both forms lose HP equal to the final amount of damage
+   dealt" (p.51). Only DAMAGE is mirrored: the book says nothing about healing, and copying a full
+   heal across a 200 HP god and a 60 HP human produces nonsense. Injuries stay with the form that was
+   actually hit for the same reason - but the Knocked Out bookkeeping IS re-run on the other half,
+   because "if they are knocked out in one form, but not the other, they default to the still
+   concious form" only means anything if both halves track being down. */
+function usurpMirrorDamage(o, lost){
+  lost = Math.round(lost || 0); if(!o || lost <= 0) return null;
+  const other = usurpPartnerOf(o); if(!other) return null;
+  const max = ownerMaxHP(other) || 1;
+  const old = other.currentHP == null ? max : other.currentHP;
+  const next = old - lost;
+  other.currentHP = next;
+  applyAutoKO(other, old, next);
+  toast(`\u{1F451} Usurper: ${ownerLabel(other)} loses the same ${lost} — ${Math.max(0, next)}/${max} HP`);
+  return { other, old, next, lost };
+}
+/* the same rule expressed as the two HP values a caller already has to hand */
+function usurpMirrorHP(o, oldHP, newHP){
+  return (typeof oldHP === "number" && typeof newHP === "number" && newHP < oldHP)
+    ? usurpMirrorDamage(o, oldHP - newHP) : null;
+}
+
 
 /* Which Pokémon level unlocks each of a Patron's Gifts — read straight off the catalog's own effect
    text rather than a second hardcoded list, so it can't drift. Some Gift effects end with a
@@ -10092,6 +10868,63 @@ function sheetIsMine(){
   if(mode!=="cloud" || !cloud.activeId) return true;   // local sheet — it's yours by definition
   return canEditActive();                              // GM, or the row's own owner (by display name)
 }
+/* The 👑 Legendary Form panel at the top of an Usurper's Gifts tab. The Form is one of the
+   Trainer's own Pokemon; this is where the GM says WHICH one, and where the book's Level gates and
+   what they currently unlock are spelled out. Returns null for every sheet that isn't an Usurper. */
+function usurpFormCard(t, saveFn, rerender, gm){
+  if(!t || (!usurpRows(t).length && !t.usurp)) return null;
+  saveFn = saveFn || save; rerender = rerender || renderTrainer;
+  const mons = trainerOwnMons(t) || [];
+  const form = usurpFormOf(t);
+  const box = el("div",{style:"margin:12px 0 4px;padding:10px 12px;border:1px solid var(--line);border-radius:10px"});
+  box.append(el("div",{style:"font-weight:700"}, "👑 Legendary Form",
+    el("span",{class:"muted small",style:"font-weight:400"}, "  \u00b7  the god they killed"
+      + ((t.usurp && t.usurp.patron) ? "  \u00b7  " + t.usurp.patron : ""))));
+  box.append(el("div",{class:"muted small",style:"margin:3px 0 8px"},
+    "The Form is one of this Trainer's own Pokemon, so it levels, carries Legendary Auras, takes Injuries and "
+  + "stands on the Map like anything else. Switching between the two forms is a Standard Action, and damage dealt "
+  + "to either one is taken by BOTH \u2014 the sheet mirrors it for you."));
+  if(gm){
+    const sel = el("select",{style:"max-width:300px"});
+    sel.append(el("option",{value:""},"\u2014 none yet \u2014"));
+    mons.forEach(p=>{
+      const sp = getSpecies(p.species);
+      sel.append(el("option",{value:p.id, selected:(t.usurp&&t.usurp.monId)===p.id},
+        `${p.nickname || (sp&&sp.name) || p.species || "?"} \u00b7 Lv ${p.level||1}`));
+    });
+    sel.addEventListener("change",()=>{
+      mons.forEach(p=>{ if(p.usurpOf) delete p.usurpOf; });
+      t.usurp = t.usurp || {};
+      if(sel.value){
+        t.usurp.monId = sel.value;
+        const p = mons.find(x=>x.id===sel.value); if(p) p.usurpOf = true;
+      } else delete t.usurp.monId;
+      saveFn(); rerender();
+    });
+    box.append(el("label",{class:"field"}, el("span",{},"Which Pokemon IS the Legendary Form?"), sel));
+    if(!mons.length) box.append(el("div",{class:"small muted",style:"margin-top:4px"},
+      "This Trainer has no Pokemon yet \u2014 add the Legendary to their team first, then point at it here."));
+  }
+  if(form){
+    const d = pokeDerived(form), sp = getSpecies(form.species);
+    const cur = form.currentHP==null ? d.maxHP : form.currentHP;
+    const tys = monTypes(form, sp).filter(x=>x && x!=="None");
+    box.append(el("div",{class:"small",style:"margin-top:6px"},
+      el("b",{}, form.nickname || (sp&&sp.name) || form.species || "?"),
+      el("span",{class:"muted"}, ` \u00b7 Lv ${form.level||1}${tys.length?" \u00b7 "+tys.join("/"):""} \u00b7 ${cur}/${d.maxHP} HP`)));
+    const rank = usurpSharedRank(t), tp = usurpTruePowers(t), auras = (form.auras||[]).length;
+    const bits = [];
+    if(rank>=1) bits.push(`Rank 1 \u2014 the Avatar has the Form's Abilities: ${(form.abilities||[]).join(", ") || "none set on the Form yet"}`);
+    if(rank>=2) bits.push(`Rank 2 \u2014 the Avatar has the Form's Types: ${tys.join("/") || "none"} (weaknesses included)`);
+    if(rank>=3) bits.push(`Rank 3 \u2014 the Avatar can roll the Form's ${usurpSharedMoves(t).length} Moves, listed under \u2694 Attacks`);
+    if(tp) bits.push(`True Power \u00d7${tp} \u2014 ${auras} Domain${auras===1?"":"s"} assigned on the Form's own sheet`
+      + (auras < tp ? " \u2014 assign the other " + (tp-auras) + " there" : ""));
+    bits.forEach(b => box.append(el("div",{class:"small",style:"margin-top:3px;color:var(--accent);font-weight:600"}, "\u2699 "+b)));
+  } else if(!gm){
+    box.append(el("div",{class:"small muted",style:"margin-top:4px"},"Your GM hasn't pointed this at a Pokemon yet."));
+  }
+  return box;
+}
 /* the tab shows for the GM (to grant) or once the Trainer holds a Gift they're allowed to see —
    a sheet whose only Gifts are 👁 hidden doesn't get the tab at all (see giftHiddenFrom) */
 function giftsCanSee(t){ return sheetIsMine() && (isGM() || giftsShown(t).length > 0); }
@@ -10109,6 +10942,8 @@ function giftsCard(t, saveFn, rerender, opts){
     ("Everything a Legendary patron has handed this Trainer (The Blessed and the Damned / The Book of "
     + "Divines): species Gifts, General Gifts, the Messiah and Signer branches, Blessings, and Brands. "
     + "Private — only you and your GM see this tab.")));
+  const uForm = usurpFormCard(t, saveFn, rerender, gm);
+  if(uForm) card.append(uForm);
   /* 👁 hidden rows are dropped here for everyone but the GM — a sheet whose only Gifts are hidden
      reads exactly like a sheet with none. */
   const shown = giftsShown(t);
@@ -10203,6 +11038,12 @@ function giftRow(t, g, i, gm, saveFn, rerender){
     info.append(el("div",{class:"muted small",style:"margin-top:3px"}, g.effect));
   }
   if(g.prereq) info.append(el("div",{class:"muted small",style:"margin-top:1px;font-style:italic"}, "Prerequisites: "+g.prereq));
+  /* Usurper Features gate on the LEGENDARY FORM's Level, not the Trainer's - say so on the row
+     rather than making the GM go and check the book against the Form's sheet. */
+  if(kind==="usurper"){
+    const gate = usurpGateNote(t, g.name);
+    if(gate) info.append(el("div",{class:"small",style:"margin-top:2px;color:var(--warn);font-weight:700"}, "🔒 "+gate));
+  }
   const noteTxt = kind==="blessing" ? blessingNoteFor(bless ? (bless.note||"") : (g.note||""), bMode) : g.note;
   if(noteTxt) info.append(el("div",{class:"muted small",style:"margin-top:2px;font-style:italic"}, noteTxt));
   if(g.notes) info.append(el("div",{class:"small",style:"margin-top:2px"}, g.notes));
@@ -10244,6 +11085,9 @@ function openAddGift(t, saveFn, rerender){
       MESSIAH_FEATURES.forEach(f => giftSel.append(el("option",{value:f.name}, f.name)));
     } else if(kind==="signer"){
       SIGNER_FEATURES.forEach(f => giftSel.append(el("option",{value:f.name}, f.name)));
+    } else if(kind==="usurper"){
+      USURPER_FEATURES.forEach(f => giftSel.append(el("option",{value:f.name},
+        f.name + (f.formLevel>1 ? `  \u2014 Form Lv ${f.formLevel}` : ""))));
     } else if(kind==="brand"){
       BRANDS.forEach(b => giftSel.append(el("option",{value:b.name}, b.name)));
     } else {
@@ -10286,6 +11130,7 @@ function openAddGift(t, saveFn, rerender){
       case "general":  return GENERAL_GIFTS.find(g=>g.name===v) || null;
       case "messiah":  return MESSIAH_FEATURES.find(f=>f.name===v) || null;
       case "signer":   return SIGNER_FEATURES.find(f=>f.name===v) || null;
+      case "usurper":  return usurperFeatureByName(v);
       case "brand":    return BRANDS.find(b=>b.name===v) || null;
       default:         return blessingByName(v);
     }
@@ -10365,6 +11210,7 @@ function openAddGift(t, saveFn, rerender){
       } else {
         row.tier = kind==="gift" ? ((cat&&cat.tier)||"Gift")
                  : kind==="general" ? "General Gift"
+                 : kind==="usurper" ? "Usurper Feature"
                  : kind==="signer" ? "Signer Feature" : "Messiah Feature";
         row.freq = (cat&&cat.freq)||"";
         row.patron = patronSel.value||"";
@@ -10372,6 +11218,9 @@ function openAddGift(t, saveFn, rerender){
         if(sc && sc.value) row.statChoice = sc.value;
       }
       t.gifts.push(row);
+      /* The Patron of an Usurper Feature is the god they killed, and every other Usurper Feature
+         reads it - so remember it on the sheet the first time one is granted. */
+      if(kind==="usurper"){ t.usurp = t.usurp || {}; if(row.patron) t.usurp.patron = row.patron; }
       saveFn(); closeModal();
       if(rerender === renderTrainer) trainerTab = "gifts";   // no such sub-tab on the Encounters card
       rerender();
@@ -11429,7 +12278,7 @@ function monCard(p, opts={}){
   main.append(el("div",{class:"pc-top"},
     el("div",{},
       el("div",{class:"pc-name"}, p.nickname || sp?.name || "?"),
-      el("div",{class:"pc-species", html:(p.nickname && sp ? sp.name+" · " : "")+(sp?.types||[]).map(typeBadge).join(" ")})),
+      el("div",{class:"pc-species", html:(p.nickname && sp ? sp.name+" · " : "")+monTypes(p, sp).map(typeBadge).join(" ")+teraTag(p)})),
     el("div",{class:"pc-lvl"}, "Lv "+p.level)));
   main.append(el("div",{class:"small muted",style:"margin-top:6px"},
     `HP ${cur} / ${d.maxHP}${tempTag(p," · ")}${p.injuries?` · ${p.injuries} injuries`:""}`));
@@ -11543,7 +12392,7 @@ function heroCard(p, sp){
     el("div",{class:"mh-name",id:"heroName"}, p.nickname || sp?.name || "Unknown",
       genderIcon(p.gender, {style:"margin-left:7px"})),
     el("div",{class:"pc-lvl"}, "Lv "+p.level)));
-  main.append(el("div",{class:"mh-sub", html:(p.nickname && sp?`${sp.name} · `:"")+(sp?.types||[]).map(typeBadge).join(" ")+(p.shiny?" ✨":"")}));
+  main.append(el("div",{class:"mh-sub", html:(p.nickname && sp?`${sp.name} · `:"")+monTypes(p, sp).map(typeBadge).join(" ")+teraTag(p)+(p.shiny?" ✨":"")}));
   main.append(el("div",{class:"small muted",style:"margin-top:2px"},
     `Evasion — Phys +${d.physEva} · Spec +${d.specEva} · Speed +${d.spdEva}`));
   /* compact HP control */
@@ -11556,7 +12405,10 @@ function heroCard(p, sp){
   const setHP = v => { const max = pokeDerived(p).maxHP; p.currentHP = Math.min(max, v);
     cur.value=p.currentHP; save(); refreshHeroHP(p); };
   /* damage (the − buttons) spends Temporary Hit Points before real ones; MAX sets HP outright */
-  const bumpHP = n => setHP(n < 0 ? tempSoakSay(p, p.currentHP, p.currentHP + n) : p.currentHP + n);
+  const bumpHP = n => { const was = p.currentHP;
+    const v = n < 0 ? tempSoakSay(p, was, was + n) : was + n;
+    usurpMirrorHP(p, was, v);                     // an Usurper's other form loses the same HP
+    setHP(v); };
   hp.append(el("button",{onclick:()=>bumpHP(-5)},"−5"),
             el("button",{onclick:()=>bumpHP(-1)},"−"), cur,
             el("span",{id:"hpReadout",class:"muted",style:"font-weight:800"},`/ ${d.maxHP}`),
@@ -11595,6 +12447,8 @@ function heroCard(p, sp){
       onclick:()=>megaEvolve(p,nm)}, megas.length>1 ? "✨ "+nm : "✨ Mega Evolve")));
     main.append(row);
   }
+  /* Terastallization — the Tera Type picker and the Daily Swift Action that spends the Tera Orb */
+  main.append(teraControl(p, sp, ()=>refreshMon(p), {gm:isGM()}));
   hero.append(main);
   card.append(hero);
   /* damage / heal: one signed input — type 8 to heal, −10 to take damage */
@@ -11619,7 +12473,7 @@ function statusCard(p){
     const chips = el("div",{class:"chips"});
     STATUS_DEFS.filter(s=>s.kind===kind).filter(s=>statusPickable(s) || hasStatus(p,s.key)).forEach(s=>{
       const on = hasStatus(p,s.key);
-      const immune = s.immune && sp?.types?.some(t=>s.immune.includes(t));
+      const immune = s.immune && monTypes(p, sp).some(t=>s.immune.includes(t));
       const block = statusCureBlock(p, s.key);   // Enduring Rage / White Flame forbid curing Enraged
       const chip = el("button",{class:"statuschip"+(on?" on":"")+(statusPickable(s)?"":" ro"), title: (immune?`${sp.name} is immune. `:"")+(statusPickable(s)?"":"GM-set — you can't change this. ")+s.effect+(block?`\n\n${block}`:""),
         disabled: !statusPickable(s),
@@ -11633,6 +12487,7 @@ function statusCard(p){
   const monHpLoss = n => {
     const max = pokeDerived(p).maxHP, cur = (p.currentHP==null?max:p.currentHP);
     p.currentHP = tempSoakSay(p, cur, cur - n);      // hurting itself is damage: Temp HP goes first
+    usurpMirrorHP(p, cur, p.currentHP);              // …and an Usurper's other form takes it too
     save(); refreshMon(p);
   };
   if(hasStatus(p,"confused")) card.append(confusionRow(p, monHpLoss));
@@ -12363,8 +13218,12 @@ function ownerHasAbility(o, name){
   /* An encounter Trainer's Abilities are filed under t.encAbilities (t.abilities is the player-sheet
      field, which the Encounters card never writes), so read both — otherwise a GM who hands an NPC
      Berserker White Flame or Enduring Rage through the card's Abilities picker gets nothing. */
+  /* An Usurper with Shared Strengths Rank 1 "gains access to your Legendary Form's Abilities while
+     in your Avatar form" - and this is the one function anything asks whether a creature has an
+     Ability, so folding it in here reaches the damage engine, the Type layer and the roll modal at
+     once. usurpSharedAbilities fast-outs unless t.usurp is set, so nobody else pays for it. */
   return [...(o?.abilities||[]), ...(o?.encAbilities||[]), ...heldGrantedAbilities(o),
-          ...(isTrainerOwner(o) ? featureAbilityGrants(o) : [])]
+          ...(isTrainerOwner(o) ? [...featureAbilityGrants(o), ...usurpSharedAbilities(o)] : [])]
     .some(a => String(a).toLowerCase().replace(/\s*\[errata\]\s*$/,"").trim() === want);
 }
 /* Gluttony (Core, Ability): "may have up to three Digestion/Food Buffs at once" */
@@ -13553,7 +14412,7 @@ function renderMonPlay(root, p, sp){
   root.append(customMovesCard(p, ()=>refreshMon(p)));
 
   /* type matchups */
-  if(sp && sp.types?.length) root.append(matchupCard(sp.types, p));
+  if(monTypes(p, sp).length) root.append(matchupCard(monTypes(p, sp), p));
 
   /* buffs & orders (Cheers / Commander Orders / Musician Songs) — kept at the bottom of the page */
   root.append(buffsCard(p, ()=>preserveScroll(()=>{ save(); refreshMon(p); })));
@@ -13579,6 +14438,7 @@ function renderMonBuild(root, p, sp){
   idc.append(r1);
 
   idc.append(rotomFormControl(p, sp, ()=>{ save(); refreshMon(p); }));
+  idc.append(terapagosFormControl(p, sp, ()=>{ save(); refreshMon(p); }));
   idc.append(miniorColorControl(p, sp, ()=>{ save(); refreshMon(p); }));
   idc.append(unownLetterControl(p, sp, ()=>{ save(); refreshMon(p); }));
   idc.append(wishiwashiFormeControl(p, sp, ()=>{ save(); refreshMon(p); }));
@@ -14231,7 +15091,7 @@ function typeAceGrants(p){ return [p && p.typeAce, p && p.typeAce2].filter(Boole
 const GLACIAL_ICE_TYPES = new Set(["Fighting","Fire","Rock","Steel"]);
 function glacialIceDR(p){
   if(!p) return null;
-  const types = getSpecies(p.species)?.types || [];
+  const types = monTypes(p);
   if(!types.some(ty => String(ty).toLowerCase()==="ice")) return null;
   const t = ownerTrainerOf(p);
   if(!t || !trainerHasFeature(t, "Glacial Ice")) return null;
@@ -14407,6 +15267,8 @@ function abilitiesCard(p, sp){
       .forEach(e=>row.append(absorbTriggerRow(p, e, ()=>refreshMon(p))));
     // Schooling: its Swift Action, right under the rules text that describes it
     if(/^schooling$/i.test(an||"")){ const sr = schoolingTriggerRow(p, ()=>refreshMon(p)); if(sr) row.append(sr); }
+    // Tera Shell / Stellar Blast / Teraform Zero / Prime Fury / Type Aura, under their own text
+    { const tr = typeAbilityRow(p, an, ()=>refreshMon(p)); if(tr) row.append(tr); }
     // Commander: its Swift Action and the state of the Attachment, under the same rules text
     if(/^commander$/i.test(an||"")){ const cr = commanderTriggerRow(p, ()=>refreshMon(p)); if(cr) row.append(cr); }
     card.append(row);
@@ -14743,6 +15605,9 @@ function moveCapGrants(moveName){
    the flat 4. A GM who wants the +2 anyway can still step it by hand. */
 const ABILITY_CAP_GRANTS = {
   "levitate":  [{ name:"Levitate", field:"levitate", value:4, mode:"min" }],
+  /* Sprint (Urshifu Single Strike): "Additionally, the user's Overland Speed is always increased
+     by +2." Static and unconditional - the Scene Swift Action half is a button on the Ability. */
+  "sprint":    [{ name:"Overland", field:"overland", value:2, mode:"add" }],
   "elevate":   [{ name:"Levitate", field:"levitate", value:4, mode:"min" }],
   "migraine":  [{ name:"Telekinetic", field:null, value:null, mode:null,
                   cond:p => { const d = pokeDerived(p); return (p.currentHP==null ? d.maxHP : p.currentHP) <= d.maxHP/2; },
@@ -15389,9 +16254,27 @@ function moveSyncType(p, m){
   return (p && p.moveSync && m && String(p.moveSync.move||"").toLowerCase()===String(m.name||"").toLowerCase())
     ? p.moveSync.type : null;
 }
+/* Moves whose Type is read off the user's Terastal state rather than the card.
+   Tera Blast: "If the user is Terastalized, this move's Type becomes the user's Tera Type." Stellar
+   Blast adds a second way in: "While Radiating a Type, the user may use Tera Blast as that Type."
+   Tera Starstorm: Teraform Zero's Bonus - "When using Tera Starstorm, it always changes to match
+   the user's Type." */
+function teraMoveType(p, m){
+  const n = String((m && m.name) || "").toLowerCase();
+  if(n === "tera blast"){
+    if(p && p.tera && TYPES.includes(p.teraType)) return p.teraType;
+    if(p && hasAbility(p,"Stellar Blast") && TYPES.includes(p.radiate)) return p.radiate;
+    return null;
+  }
+  if(n === "tera starstorm" && p && hasAbility(p,"Teraform Zero")){
+    const ts = monTypes(p); if(ts.length) return ts[0];
+  }
+  return null;
+}
 function effectiveMoveType(p, m, opts={}){
   if(hasAbility(p, "Normalize")) return "Normal";
   const sync = moveSyncType(p, m); if(sync) return sync;               // permanent retype wins over −ate
+  const tera = teraMoveType(p, m); if(tera) return tera;               // Tera Blast / Tera Starstorm
   if(!opts.noAte){ const a = ateInfo(p, m); if(a) return a.type; }   // −ate re-types Normal moves (togglable in openMoveRoll)
   return (m && m.type) || "Normal";
 }
@@ -15790,9 +16673,24 @@ function abilityDamageMods(p, m, baseDBVal, thresholds, opts={}){
     mods.db += 2; mods.why.push("Sheer Force +2 DB (secondary effect suppressed)"); }
   if(hasAbility(p,"Sheer Force [Errata]") && sfT.length){
     mods.flat += 10; mods.why.push("Sheer Force +10 damage (secondary effect suppressed)"); }
-  // Adaptability: +1 DB on Moves the user shares a Type with (i.e. STAB moves)
-  if(hasAbility(p,"Adaptability") && opts.stab){
+  /* Adaptability: +1 DB on Moves the user shares a Type with (i.e. STAB moves). A Terastalized
+     Pokemon "may activate Abilities (such as Accelerate) as if they gained STAB on that Type",
+     so opts.abilStab - which counts the Tera Type - is what this reads, not the +2-DB STAB. */
+  if(hasAbility(p,"Adaptability") && (opts.abilStab != null ? opts.abilStab : opts.stab)){
     mods.db += 1; mods.why.push("Adaptability +1 DB (STAB)"); }
+  /* Type Aura (Urshifu's High Ability): "The user and all allies within 3 meters gain a +5 Bonus
+     to Damage Rolls with Moves matching the user's Primary Type." The user's own half is applied
+     here; the allies' half is a roll note (it needs positions the roll never sees). */
+  if(hasAbility(p,"Type Aura") || hasAbility(p,"Type Aura [Errata]")){
+    const taType = typeAuraType(p);
+    if(taType && opts.mtype === taType){
+      mods.flat += 5; mods.why.push(`Type Aura +5 damage (${taType})`); }
+  }
+  /* Aura Storm (Urshifu): +3 damage per Injury on Aura Moves, and +3 more at or under half HP. */
+  {
+    const aura = auraStormBonus(p, m);
+    if(aura){ mods.flat += aura; mods.why.push(`Aura Storm +${aura} damage (Aura Move)`); }
+  }
   // Tough Claws: +2 DB on all Melee Moves
   if(hasAbility(p,"Tough Claws") && moveHasKeyword(m,"melee")){
     mods.db += 2; mods.why.push("Tough Claws +2 DB (Melee)"); }
@@ -16143,6 +17041,11 @@ function specialMoveInfo(m, p){
     "Spit Up":      {label:"Stockpile Count (1–3)",    def:1, min:1, max:3, toDB:v=>8*v,               hint:"DB = 8 × Stockpile Count"},
     "Trump Card":   {label:"Trump Count",             def:0, min:0,        toDB:v=>6+2*v,             hint:"DB = 6 +2 per Trump Count"},
     "Fury Cutter":  {label:"Consecutive hits so far",  def:0, min:0, max:3, toDB:v=>Math.min(16,4+4*v),hint:"DB 4/8/12/16 as it connects consecutively"},
+    /* Surging Strikes is up to THREE attacks, each on a different target, with a free 2 m shift
+       between them. "Before making each attack roll, the user can elect to give up triggering all
+       remaining additional shifts and attacks. Surging Strikes gains +3 DB for each attack that is
+       given up." Roll it once per attack; this dial is how many of the three you are giving up. */
+    "Surging Strikes":{label:"Attacks given up (0–2)", def:0, min:0, max:2, toDB:v=>3+3*v,          hint:"DB 3, +3 for each of the three attacks you give up"},
     "Echoed Voice": {label:"Prior consecutive rounds", def:0, min:0, max:2, toDB:v=>4+4*v,             hint:"DB = 4 +4 per prior round (max +8)"},
     "Rollout":      {label:"Consecutive uses so far",  def:0, min:0,        toDB:v=>Math.min(15,3+4*v),hint:"DB = 3 +4 each consecutive use (max 15)"},
     "Ice Ball":     {label:"Consecutive uses so far",  def:0, min:0,        toDB:v=>Math.min(15,3+3*v),hint:"DB = 3 +3 each consecutive use (max 15)"},
@@ -16436,7 +17339,9 @@ function openMoveRoll(p, m, sp, opts={}){
      with whatever came up (opts.viaMetronome) and roll THAT for real. */
   if(isMetronomeMove(m) && !opts.viaMetronome) return openMetronome(p, m, sp, opts);
   const d = pokeDerived(p);
-  const types = sp?.types || [];
+  /* STAB reads the NATURAL typing: a Terastalized (or Tera Shell'd) Pokemon keeps the STAB it
+     always had and gains none on its new Type - it gets a flat +10 instead (teraDamageBonus). */
+  const types = monStabTypes(p, sp);
   const ate = ateInfo(p, m);            // an "−ate" ability that could re-type this Normal move
   const ateOn = ate ? !opts.ateOff : false;   // default ON (it's a Free Action the user always takes)
   /* Anchored (Dhelmise): a Swift Action can shift its Anchor token, then immediately follow up with a
@@ -16533,8 +17438,13 @@ function openMoveRoll(p, m, sp, opts={}){
   const tBoost = (isPhys || isSpec) ? typeBoosterFor(p, mtype) : null;
   // …and the type-blind ones out of HELD_FX (a held Life Orb), on the same term
   const oFlat = heldFlatDamage(p, isPhys || isSpec);
-  const tDmg = (tBoost ? tBoost.dmg : 0) + (oFlat ? oFlat.dmg : 0);
-  const tDmgWhy = [tBoost ? `${tBoost.item} (${tBoost.type} Type Booster)` : "", oFlat ? oFlat.why : ""]
+  /* Terastallization / Tera Shell / Teraform Zero / Stellar Blast all pay out as a flat +10 on
+     Moves of the replaced (or Radiated) Type instead of moving STAB, so they ride this same
+     always-on damage term rather than touching the Damage Base. */
+  const teraDmg = (isPhys || isSpec) ? teraDamageBonus(p, mtype) : null;
+  const tDmg = (tBoost ? tBoost.dmg : 0) + (oFlat ? oFlat.dmg : 0) + (teraDmg ? teraDmg.dmg : 0);
+  const tDmgWhy = [tBoost ? `${tBoost.item} (${tBoost.type} Type Booster)` : "", oFlat ? oFlat.why : "",
+                   teraDmg ? teraDmg.why : ""]
     .filter(Boolean).join(" + ");
   const zDB = () => (zOn && zBoost ? zBoost.db : 0);
   function baseDB(){                      // effective (pre-STAB) Damage Base
@@ -16577,7 +17487,8 @@ function openMoveRoll(p, m, sp, opts={}){
   const analCtx = hasAnalytic ? analyticContext(p) : null;
   const analyticOn = opts.analytic!=null ? !!opts.analytic
                    : !!(analCtx && analCtx.readable && analCtx.actedBefore);
-  const abilMods = abilityDamageMods(p, m, baseDB(), thresholds, {stab, mtype, isPhys, isSpec, fieryCrash:fcMode, analytic:analyticOn});
+  const abilMods = abilityDamageMods(p, m, baseDB(), thresholds, {stab, abilStab:stab || abilityStabFor(p, mtype),
+                                                                  mtype, isPhys, isSpec, fieryCrash:fcMode, analytic:analyticOn});
   // Effect Ranges as this roll actually resolves them — Fiery Crash adds/widens Burn on a Dash Move
   // that ends up Fire-Typed. Kept separate from `thresholds` so its own rider can't feed Sheer Force.
   const rollThresholds = frostbiteThresholds(fieryCrashThresholds(thresholds, !!fc && mtype==="Fire"),
@@ -17220,6 +18131,9 @@ function openMoveRoll(p, m, sp, opts={}){
   /* Held/worn gear whose effect the dice can't settle — King's Rock's 19+ Flinch, Razor Fang's
      19+ Injury, Big Root's doubled drain, Life Orb's recoil. Said here, on the roll it applies to. */
   heldRollNotes(p).forEach(n => body.append(el("div",{class:"small muted",style:"margin-top:4px"}, "\u{1F48D} " + n)));
+  /* Terastallization / Tera Shell / Stellar Blast / Type Aura / Unseen Fist — the parts of the
+     Type layer the dice can't settle on their own, said on the roll they apply to. */
+  teraRollNotes(p, m, mtype).forEach(n => body.append(el("div",{class:"small muted",style:"margin-top:4px"}, "\u{1F48E} " + n)));
   /* Suppressed (Feb 2016 errata) locks the user down to At-Will Moves — the one thing Pressure
      actually does to a foe, so it has to be visible at the moment the Move is rolled. */
   if(hasStatus(p, "suppressed") && freqInfo(monMoveFreq(p, freqMove || m)).kind !== "atwill")
@@ -17482,7 +18396,7 @@ function openMoveRoll(p, m, sp, opts={}){
         const moveDefCS = movePierce ? movePierce.defCS : null;
         /* Freeze-Dry & co.: the Move's own matchup rule. It can only be resolved against a target,
            so it rides along to the picker/feed rather than changing anything in this roll. */
-        const moveRule = moveTargetRules(m);
+        const moveRule = moveTargetRules(m, p);
         if(moveRule) dmgLine.append(el("div",{class:"small muted",style:"margin-top:2px;color:var(--accent);font-weight:600"},
           `❄ ${m.name}: ${moveRule.note}. Applied for you by the target picker below.`));
         if(movePierce) dmgLine.append(el("div",{class:"small muted",style:"margin-top:2px;color:var(--accent);font-weight:600"},
@@ -18052,6 +18966,7 @@ function renderPokemonMoves(root, team){
         uc ? el("span",{style:"margin-left:8px"}, uc) : ""));
       d.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database</span>"}));
       if(/^schooling$/i.test(an||"")){ const sr = schoolingTriggerRow(p, renderBattle); if(sr) d.append(sr); }
+      { const tr = typeAbilityRow(p, an, renderBattle); if(tr) d.append(tr); }
       if(/^commander$/i.test(an||"")){ const cr = commanderTriggerRow(p, renderBattle); if(cr) d.append(cr); }
       ac.append(d); });
     root.append(ac);
@@ -20694,7 +21609,7 @@ function channelResistsType(p, type){
   if(!p || !type || type === "Typeless") return false;
   const mods = defenseTypeMods(p);
   if(mods.immune.has(type)) return true;
-  const types = getSpecies(p.species) && getSpecies(p.species).types || [];
+  const types = monTypes(p);
   const base = (mods.step && mods.step[type]) || 0;
   let mult = typeMultAgainst(type, types, base);
   if(mods.tolerance && mult > 0 && mult < 1) mult = typeMultAgainst(type, types, base - 1);
@@ -22416,6 +23331,26 @@ function renderTrainerCombat(root, t){
     mvCard.append(slot);
   });
   root.append(mvCard);
+  /* Shared Strengths Rank 3 - "You gain access to your Legendary Form's Move List while in your
+     Avatar Form." Derived, never written into t.moves, so dropping the Feature (or re-pointing the
+     Legendary Form at a different Pokemon) takes the whole list straight back out again. */
+  {
+    const usMoves = usurpSharedMoves(t);
+    if(usMoves.length){
+      const uCard = el("div",{class:"card"}, el("h3",{}, `👑 Legendary Form's Moves (${usMoves.length})`,
+        el("span",{class:"muted small"},"Shared Strengths Rank 3 \u2014 usable in Avatar form")));
+      usMoves.forEach(mn=>{
+        const m = moveByName.get(String(mn).toLowerCase());
+        const prof = m ? trainerAttackProfile(t, mn)
+                       : {name:mn+" (not in DB)",type:"Normal",cls:"?",ac:"\u2014",damageBase:"\u2014",range:"\u2014"};
+        const uc = m ? usesControl(t,"move",prof.name,prof.frequency,renderBattle) : null;
+        uCard.append(trainerAttackSlot(t, prof,
+          ()=> m ? openTrainerAttack(t, mn, null, {rerender:renderBattle}) : toast("Not in the move database"),
+          {tag:"Legendary Form", uc, move:!!m}));
+      });
+      root.append(uCard);
+    }
+  }
   if(!Array.isArray(t.abilities)) t.abilities=[];
   if(t.abilities.length){
     const abc=el("div",{class:"card"},el("h3",{},`Abilities (${t.abilities.length})`,
@@ -22502,7 +23437,7 @@ function encHealCreature(o, isT){
   if(!o) return;
   if(isT) normTrainer(o); else normPokemon(o);
   // revert first, so the max HP we heal up to is the base form's
-  if(!isT){ if(o.mega) megaRevert(o, true); transformRevert(o, true); schoolingRevertNow(o); }
+  if(!isT){ if(o.mega) megaRevert(o, true); endSceneTypeState(o); transformRevert(o, true); schoolingRevertNow(o); }
   o.injuries = 0; resetInjuryDay(o);     // encounter creatures have no day — no cap, and no ledger left behind
   o.tempHP = 0; o.buffs = [];
   resetUses(o, "all"); resetManualCS(o); clearStorageDigestion(o); clearAllStatuses(o);
@@ -22850,6 +23785,7 @@ function encounterAbilityRow(p, an){
       onclick:e=>{ e.preventDefault(); const i=p.abilities.indexOf(an); if(i>=0){ p.abilities.splice(i,1); saveEnc(); renderEncounters(); } }},"×")));
   row.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database</span>"}));
   if(/^schooling$/i.test(an||"")){ const sr = schoolingTriggerRow(p, renderEncounters, saveEnc); if(sr) row.append(sr); }
+  { const tr = typeAbilityRow(p, an, renderEncounters, saveEnc); if(tr) row.append(tr); }
   if(/^commander$/i.test(an||"")){ const cr = commanderTriggerRow(p, renderEncounters, saveEnc); if(cr) row.append(cr); }
   return row;
 }
@@ -23544,7 +24480,7 @@ function encStatusControl(p){
       if(s.boss) return boss;
       return true;
     }).forEach(s=>{
-      const on=hasStatus(p,s.key), immune=s.immune && sp?.types?.some(t=>s.immune.includes(t));
+      const on=hasStatus(p,s.key), immune=s.immune && monTypes(p, sp).some(t=>s.immune.includes(t));
       const block = statusCureBlock(p, s.key);   // Enduring Rage / White Flame forbid curing Enraged
       chips.append(el("button",{class:"statuschip"+(on?" on":""),
         title:(immune?`${sp.name} is immune. `:"")+s.effect+(block?`\n\n${block}`:""),
@@ -23561,6 +24497,7 @@ function encStatusControl(p){
     const max = ownerMaxHP(p);   // Trainer or Pokémon — the card mounts this for both
     const cur = (p.currentHP==null?max:p.currentHP);
     p.currentHP = tempSoakSay(p, cur, cur - n);      // hurting itself is damage: Temp HP goes first
+    usurpMirrorHP(p, cur, p.currentHP);              // …and an Usurper's other form takes it too
     saveEnc(); renderEncounters();
   };
   if(hasStatus(p,"confused")) body.append(confusionRow(p, encHpLoss));
@@ -23628,13 +24565,17 @@ function encounterMonCard(enc, p, list, trainer){
   head.append(spriteBox);
   const nw=el("div",{style:"flex:1;min-width:0"});
   nw.append(el("div",{style:"font-weight:800"}, (fainted?"💀 ":"")+encMonName(p),
-    genderIcon(p.gender, {style:"margin-left:5px"}), " ", el("span",{html:(sp?.types||[]).map(typeBadge).join(" ")})));
+    genderIcon(p.gender, {style:"margin-left:5px"}), " ", el("span",{html:monTypes(p, sp).map(typeBadge).join(" ")+teraTag(p)})));
   const lvIn=el("input",{type:"number",min:1,max:100,value:p.level,style:"width:60px",title:"level"});
   lvIn.addEventListener("change",()=>{ const l=Math.max(1,Math.min(100,parseInt(lvIn.value)||1)); p.level=l; p.xp=xpForLevel(l); encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; syncEncMonLevelupMoves(p,sp); tpSync(p); saveEnc(); renderEncounters(); });
   nw.append(el("div",{class:"small muted",style:"margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"},
     "Lv", lvIn, `· ${p.nature||"—"} · ${p.gender||"—"}${p.shiny?" · ✨Shiny":""}`));
 
   nw.append(rotomFormControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
+  nw.append(terapagosFormControl(p, sp, ()=>{ renderEncounters(); }, saveEnc));
+  /* "Wild Pokemon may also utilize this power, by any means the GM deems fit" — so no Orb and
+     no Daily use is asked for here; the GM simply presses it. */
+  nw.append(teraControl(p, sp, ()=>{ renderEncounters(); }, {free:true, gm:true, persist:saveEnc}));
   nw.append(miniorColorControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   nw.append(unownLetterControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   nw.append(wishiwashiFormeControl(p, sp, ()=>{ renderEncounters(); }, saveEnc));
@@ -24004,6 +24945,24 @@ function encounterTrainerCard(enc, tr){
         ()=>openTrainerAttack(t, ou.move.name, null, {persist:saveEnc, rerender:renderEncounters}),
         {tag:`Commander · ${ownerLabel(ou.tat)} Attached (${ou.form} Form)`, uc, move:true}));
     } }
+  {
+    /* Shared Strengths Rank 3 - the Legendary Form's own Move List, rollable by the Avatar. Derived
+       from the Form, so it is never written into t.encMoves and cannot drift out of sync with it. */
+    const usMoves = usurpSharedMoves(t);
+    if(usMoves.length){
+      tmw.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:8px"},
+        `👑 Legendary Form's Moves (${usMoves.length}) \u2014 Shared Strengths Rank 3`));
+      usMoves.forEach(mn=>{
+        const m = moveByName.get(String(mn).toLowerCase());
+        if(!m) return;
+        const wm = trainerAttackProfile(t, mn);
+        const uc = usesControl(t, "move", wm.name, wm.frequency, renderEncounters, saveEnc, {bossEot:isBoss(t)});
+        tmw.append(trainerAttackSlot(t, wm,
+          ()=>openTrainerAttack(t, mn, null, {persist:saveEnc, rerender:renderEncounters}),
+          {tag:"Legendary Form", uc, move:true}));
+      });
+    }
+  }
   card.append(commanderControl(t, null, ()=>renderEncounters(), saveEnc));
   card.append(tmw);
   // Classes, Features, Edges & Abilities — what the trainer actually IS. Without this the
@@ -24056,7 +25015,7 @@ function encounterTrainerCard(enc, tr){
      exactly as it does for a player, so it reaches the NPC's HP, Evasion and damage by itself. */
   const giftsC = giftsCard(t, saveEnc, renderEncounters, {blurb:
     "What a Legendary patron has handed this NPC (The Blessed and the Damned): species Gifts, General "
-    + "Gifts, the Messiah branch, and Blessings. Each Patron Stat is +1 to that Combat Stat, applied "
+    + "Gifts, the Messiah / Signer / Usurper branches, Blessings and Brands. Each Patron Stat is +1 to that Combat Stat, applied "
     + "automatically — the effects themselves are reference text, same as on a player sheet."});
   giftsC.style.margin = "8px 0 0";
   card.append(giftsC);
@@ -26149,7 +27108,7 @@ function simUnit(f, sideKey, cfg){
   const isT = f.kind==="trainer";
   if(isT) normTrainer(obj); else normPokemon(obj);
   const u = { key:f.key, id:f.key+"/"+sideKey, name:f.name, side:sideKey, isT, obj,
-              sp: isT ? null : getSpecies(obj.species), _d:null, _dm:null, _v:0,
+              sp: isT ? null : monSpecies(obj), _d:null, _dm:null, _v:0,
               used:{}, eotUsed:{}, toxic:0, hp:0, max:0, acts:1, downRound:0,
               dealt:0, taken:0, kos:0, hits:0, misses:0, crits:0, turns:0 };
   u.d     = () => u._d  || (u._d  = isT ? trainerDerived(obj) : pokeDerived(obj));
@@ -26305,7 +27264,7 @@ function simProfile(A, atk, cfg){
   const mtype  = fcMode==="fire" ? "Fire" : rawType;
   // Pokémon get STAB from their own Types; a Trainer only through Type Expertise (never on Struggle)
   const stab   = A.isT ? trainerStab(p, mtype, atk.struggle)
-                       : (!!mtype && (A.sp?.types||[]).includes(mtype));
+                       : (!!mtype && monStabTypes(p).includes(mtype));
   // Both add the Attack / Sp.Attack that matches the Move's class — a Trainer swinging a weapon
   // uses Attack (Core p.286), but a Special Move a Feature granted them uses Sp.Attack. Combat
   // Stages are applied on both sides here (`totals`/`eff`), same as the Defense they're measured
@@ -26315,7 +27274,10 @@ function simProfile(A, atk, cfg){
   const bm  = buffMods(p, {isPhys, type: mtype});
   const printedThr = simThresholds(atk.m.effect);
   const abil = A.isT ? { db:0, flat:0 }
-                     : abilityDamageMods(p, atk.m, atk.db, printedThr, { stab, mtype, isPhys, isSpec:!isPhys, fieryCrash:fcMode });
+                     : abilityDamageMods(p, atk.m, atk.db, printedThr,
+                         { stab, abilStab: stab || abilityStabFor(p, mtype), mtype, isPhys, isSpec:!isPhys, fieryCrash:fcMode });
+  // the flat +10 a replaced / Radiated Type gives, same term openMoveRoll adds it on
+  const teraFlat = A.isT ? 0 : ((teraDamageBonus(p, mtype) || {}).dmg || 0);
   // status riders resolve off the Effect Ranges as modified (Fiery Crash's Burn included)
   const thr = frostbiteThresholds(fieryCrashThresholds(printedThr, !!fc && mtype==="Fire"),
     !A.isT && hasAbility(p,"Frostbite") && mtype==="Ice" && (isPhys || !isPhys));
@@ -26332,10 +27294,10 @@ function simProfile(A, atk, cfg){
     accMod: (bm.acc||0) + (d.cs.acc||0) + (aAcc.acc||0) + (hasStatus(p,"focused")?1*trainingMult(p):0),
     critT: Math.max(2, critThreshold(p, atk.m) - (bm.crit||0)),
     alwaysCrit: alwaysCrits(atk.m),
-    flat: atkStat + (bm.dmg||0) + (wx.dmg||0) + (tx.dmg||0) + (abil.flat||0) + typeBoosterDmg(p, mtype),
+    flat: atkStat + (bm.dmg||0) + (wx.dmg||0) + (tx.dmg||0) + (abil.flat||0) + typeBoosterDmg(p, mtype) + teraFlat,
     autoHit: !!wx.autoHit,
-    moveRule: moveTargetRules(atk.m),                              // Freeze-Dry & co. (MOVE_TARGET_RULES)
-    pierceImmune: (!A.isT && ignoresTypeImmunity(p, atk.m, mtype)) || !!moveTargetRules(atk.m)?.pierceImmune,
+    moveRule: moveTargetRules(atk.m, p),                           // Freeze-Dry & co. (MOVE_TARGET_RULES)
+    pierceImmune: (!A.isT && ignoresTypeImmunity(p, atk.m, mtype)) || !!moveTargetRules(atk.m, p)?.pierceImmune,
     atkTinted: ownerHasAbility(p,"Tinted Lens"),                   // resisted hits climb one step (capped at neutral)
     atkExploit: ownerHasAbility(p,"Exploit"),                      // +5 on any Super-Effective hit
     atkMega: isMegaMon(p),                                         // only a Mega hits a Rogue Mega at full strength
@@ -26366,12 +27328,16 @@ function simTypeMult(D, type, pierceImmune, atkTinted, isPhys, rule, atkMega){
   if(mods.immune.has(type) && !pierceImmune) return 0;
   // a Move's own matchup (Freeze-Dry, Thousand Arrows), same registry the table's rolls read
   const chart = rule?.chart || null;
-  const dStep = mods.step?.[type] || 0;
+  const formeAdj = (rule?.formeStep && hasChangedForme(D.obj)) ? rule.formeStep : 0;
+  const dStep = (mods.step?.[type] || 0) + formeAdj;
   // Fur Coat: Physical hits are resisted one step further, whatever the Type (mirrors tokenDamageBreakdown)
   const furStep = (mods.furCoat && isPhys) ? -1 : 0;
   // Rogue Mega: a non-Mega attacker is resisted one step further (mirrors tokenDamageBreakdown)
   const rogueStep = (mods.rogueMega && !atkMega) ? -1 : 0;
   let m = typeMultAgainst(type, D.sp?.types||[], dStep + furStep + rogueStep, { pierceImmune, chart });
+  // the changed-Forme step is capped at Doubly Super Effective (mirrors tokenDamageBreakdown)
+  if(formeAdj) m = Math.min(m, Math.max(2,
+      typeMultAgainst(type, D.sp?.types||[], dStep + furStep + rogueStep - formeAdj, { pierceImmune, chart })));
   let tol = 0;
   // Tolerance: a resisted hit is resisted one step further (mirrors tokenDamageBreakdown)
   if(mods.tolerance && m>0 && m<1){ tol = -1; m = typeMultAgainst(type, D.sp?.types||[], dStep + furStep + rogueStep + tol, { pierceImmune, chart }); }
@@ -26784,7 +27750,7 @@ function simFighterRow(side, g, f, opts={}){
   row.append(cb);
   const body = el("div",{style:"flex:1 1 auto;min-width:0"});
   const d = isT ? trainerDerived(f.obj) : pokeDerived(f.obj);
-  const types = isT ? [] : (getSpecies(f.obj.species)?.types||[]).filter(t=>t && t!=="None");
+  const types = isT ? [] : monTypes(f.obj).filter(t=>t && t!=="None");
   const slot = !on ? "" : opts.pos==null ? "" : opts.pos < opts.active ? " · ⚔ starts out" : " · 🎒 on the bench";
   body.append(el("div",{class:"small",style:on?"":"opacity:.5"},
     el("b",{}, `${isT?"🧑":"⬤"} ${f.name}`),
@@ -29991,7 +30957,7 @@ let pcFilter = { q:"", type:"", sort:"new" };
 let pcTargetId = null;
 function pcMonMeta(m){
   const sp=getSpecies(m.species);
-  const types=(sp?.types||[]).filter(t=>t&&t!=="None").map(typeBadge).join(" ");
+  const types=monTypes(m, sp).filter(t=>t&&t!=="None").map(typeBadge).join(" ");
   return types + (m._pcFrom?` <span class="muted">· from ${esc(m._pcFrom)}</span>`:"");
 }
 /* Everything about ONE Pokémon, read-only, in a single modal: identity, stats & evasions, species
@@ -30006,7 +30972,7 @@ function monInfoModal(m){
     m.nickname || sp?.name || m.species));
   const idw = el("div",{style:"flex:1;min-width:180px"});
   idw.append(el("div",{html:(m.nickname && sp ? `${esc(sp.name)} · ` : "") +
-    (sp?.types||[]).filter(t=>t&&t!=="None").map(typeBadge).join(" ") + (m.shiny?" ✨":"")}));
+    monTypes(m, sp).filter(t=>t&&t!=="None").map(typeBadge).join(" ") + teraTag(m) + (m.shiny?" ✨":"")}));
   const bits = [];
   if(m.nature) bits.push(m.nature);
   if(m.gender) bits.push(m.gender);
@@ -31391,8 +32357,12 @@ function tokenIsShiny(token){
 function tokenDefTypes(token){
   const L = token.link ? tokenLinked(token) : null;
   if(L && L.obj){
-    if(L.kind==="trainer"||L.kind==="enctrainer") return [];        // trainers are typeless
-    return getSpecies(L.obj.species)?.types || [];
+    /* Trainers are typeless - unless they are an Usurper with Shared Strengths Rank 2, who "gains
+       your Legendary Form's Types while in your Avatar Form" (B&D p.52). That is the only way a
+       human on this board has a Type chart at all, and the grant cuts both ways: the weaknesses
+       come with it. Returns [] for everyone else, exactly as before. */
+    if(L.kind==="trainer"||L.kind==="enctrainer") return usurpSharedTypes(L.obj);
+    return monTypes(L.obj);
   }
   return token.species ? (getSpecies(token.species)?.types || []) : [];
 }
@@ -31446,10 +32416,21 @@ const MOVE_TARGET_RULES = {
                        note:"a Super-Effective hit adds +10 to the Damage Roll" },
   "collisioncourse": { seBonus:10,
                        note:"a Super-Effective hit adds +10 to the Damage Roll" },
+  /* "If a target has changed Forme, this attack is one step more effective against that target."
+     Resolved per target (hasChangedForme) rather than per roll, and capped at Doubly Super
+     Effective by the ladder itself. Tera Blast only gets it through Stellar Blast, so its rule is
+     handed out by moveTargetRules() only when the attacker actually has that Ability. */
+  "terastarstorm":   { formeStep:1,
+                       note:"one step more effective against a target that has changed Forme (Mega, Terastalized, Transformed, Schooling, an Origin/Altered/Primal Forme…)" },
 };
-function moveTargetRules(m){
+/* Tera Blast's Forme rider is not printed on the Move - it comes from Stellar Blast's Bonus. */
+const TERA_BLAST_STELLAR_RULE = { formeStep:1,
+  note:"Stellar Blast — one step more effective against a target that has changed Forme" };
+function moveTargetRules(m, p){
   const n = typeof m==="string" ? m : (m && m.name);
-  return n ? (MOVE_TARGET_RULES[moveKey(n)] || null) : null;
+  if(!n) return null;
+  if(moveKey(n) === "terablast" && p && hasAbility(p,"Stellar Blast")) return TERA_BLAST_STELLAR_RULE;
+  return MOVE_TARGET_RULES[moveKey(n)] || null;
 }
 /* `defCSMode`: null = normal (CS-adjusted); "all" = the pre-CS ("real") stat, ignoring every CS
    shift on it (manual or automatic — a Burn's −2 Def counts as much as a hand-raised one); "positive"
@@ -31878,6 +32859,7 @@ async function setTokenHP(token, val, opts){
     applyAutoKO(obj, oldHP, newHP);                // …and drop/lift Knocked Out with the HP
     applyShieldsDown(obj, newHP);                  // …and crack a Minior's shell open at half HP
     applySchooling(obj, newHP);                    // …and scatter a Wishiwashi's school once its pool is gone
+    usurpMirrorHP(obj, oldHP, newHP);              // …and an Usurper's OTHER form loses the same HP
     obj.currentHP = newHP;
     paintTokenHP(token, true);
     broadcastEncState(token.link, obj);           // live delta to peers (no full-row DB broadcast)
@@ -31891,6 +32873,7 @@ async function setTokenHP(token, val, opts){
   applyAutoKO(obj, oldHP, newHP);
   applyShieldsDown(obj, newHP);
   applySchooling(obj, newHP);
+  usurpMirrorHP(obj, oldHP, newHP);               // an Usurper's other form loses the same HP
   obj.currentHP = newHP;
   paintTokenHP(token);
   cloudSaveRow(row);                              // debounced write of the real sheet; realtime syncs the owner
@@ -33824,12 +34807,17 @@ function attachImageDrag(node, img, map, overlay, originX=0, originY=0){
    Levitate, Wonder Guard, Filter, …) and any Swarm/manual effectiveness nudge, then Damage
    Reduction (active DR buffs + flat DR vs Super-Effective). Used by BOTH the token menu's manual
    "Apply an attack" box and the roll-result "Apply to target" picker, so the two never diverge. */
-function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, defCSMode=null, chartOverride=null, seBonus=0, seFlat=0 }){
+function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, defCSMode=null, chartOverride=null, seBonus=0, seFlat=0, formeStep=0 }){
   const def = tokenDefenseStat(token, !!physical, defCSMode);
   const swarmTgt = (()=>{ const LL = token.link ? tokenLinked(token) : null;
     return (LL && !LL.missing && LL.kind==="enc" && isSwarm(LL.obj)) ? LL.obj : null; })();
   const swarmStep = swarmTgt ? swarmDamageStep(aoe) : 0;
-  const stepAdj = swarmStep + extraStep;                    // Swarm + the GM's manual effectiveness nudge
+  /* Tera Starstorm / a Stellar Blast Tera Blast: "one step more effective" against a target that
+     has changed Forme. Judged on THIS target, so it belongs here beside the Swarm's area step. */
+  const formeTgt = (() => { const L = token && token.link ? tokenLinked(token) : null;
+                            return !!(formeStep && L && L.obj && hasChangedForme(L.obj)); })();
+  const formeAdj = formeTgt ? formeStep : 0;
+  const stepAdj = swarmStep + extraStep + formeAdj;         // Swarm + the GM's manual effectiveness nudge + Forme
   const typeless = !type || type==="Typeless";
   const owner = token.link ? (tokenLinked(token)||{}).obj : null;
   const defMods = owner ? defenseTypeMods(owner) : null;
@@ -33862,6 +34850,12 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
     const mOpts = { pierceImmune: pierced, chart: chartOv };
     chartUsed = !!chartOv && tokenDefTypes(token).some(dt => chartOv[dt] != null);
     mult = typeMultAgainst(type, tokenDefTypes(token), defStep + furStep + rogueStep, mOpts);
+    /* "This may not cause the Effectiveness to be raised above Doubly Super Effective" — the
+       changed-Forme step stops at ×2, but it must not drag a hit that was ALREADY higher down. */
+    if(formeAdj){
+      const noForme = typeMultAgainst(type, tokenDefTypes(token), defStep + furStep + rogueStep - formeAdj, mOpts);
+      mult = Math.min(mult, Math.max(2, noForme));
+    }
     // Tolerance (defender Static): a hit the defender resists is resisted one further step.
     if(defMods?.tolerance && mult > 0 && mult < 1){
       tolStep = -1;
@@ -33915,7 +34909,7 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
   const final = Math.max(0, afterMult + seFlatAdd - (drPool - drGone));
   return { def, physical:!!physical, typeless, mult, afterDef, afterMult, dr, from, seDR, glacialDR,
            typeDR, typeDRFrom, final, drPool, drGone, exploit, dmgUsed, seExtra, seFlat, seFlatAdd, chartUsed,
-           owner, defMods, swarmTgt, swarmStep, extraStep, pierced, tinted, tolerance: tolStep<0, furCoat: furActive,
+           owner, defMods, swarmTgt, swarmStep, extraStep, formeAdj, formeTgt, pierced, tinted, tolerance: tolStep<0, furCoat: furActive,
            rogueMega: rogueActive,
            // kept only so applyTokenDamage can re-run this same hit against a breached boat's passengers
            dmg, type:(typeless?"Typeless":type), aoe:!!aoe, pierceImmune:!!pierceImmune, pierceDR, atkTinted:!!atkTinted, atkExploit:!!atkExploit, atkMega:!!atkMega, defCSMode,
@@ -33988,7 +34982,8 @@ function damageResultHTML(dmg, typeName, br, before){
   if(br.typeDR > 0) drTxt += ` − ${br.typeDR} DR vs ${typeName} (${br.typeDRFrom.join(", ")})`;
   if(br.drGone > 0) drTxt += ` <b>+ ${br.drGone} DR ignored</b>`;
   const swarmTxt = (br.swarmTgt && !br.typeless) ? ` (${br.swarmStep>0?"area, +1 step":"single-target, −1 step"} vs Swarm)` : "";
-  const stepTxt  = (br.extraStep && !br.typeless) ? ` (manual ${br.extraStep>0?"+":""}${br.extraStep} step)` : "";
+  const stepTxt  = ((br.extraStep && !br.typeless) ? ` (manual ${br.extraStep>0?"+":""}${br.extraStep} step)` : "")
+                 + (br.formeAdj ? ` <b>(+${br.formeAdj} step — the target has changed Forme)</b>` : "");
   const tintTxt  = br.tinted ? " <b>(Tinted Lens: +1 step)</b>" : "";
   const tolTxt   = br.tolerance ? " <b>(Tolerance: −1 step)</b>" : "";
   const furTxt   = br.furCoat ? " <b>(Fur Coat: −1 step)</b>" : "";
@@ -34014,7 +35009,8 @@ function damageResultHTML(dmg, typeName, br, before){
 function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, defCSMode=null, moveRule=null, seFlat=0 }){
   // a Move whose own rules bend the matchup (MOVE_TARGET_RULES) travels with the hit, and its
   // immunity clause folds into the same pierce switch every other source uses
-  const chartOverride = moveRule?.chart || null, seBonus = moveRule?.seBonus || 0;
+  const chartOverride = moveRule?.chart || null, seBonus = moveRule?.seBonus || 0,
+        formeStep = moveRule?.formeStep || 0;
   pierceImmune = pierceImmune || !!moveRule?.pierceImmune;
   if(mode!=="cloud" || !cloud.isGM) return null;
   const map = currentMapForView() || activeMap(); if(!map) return null;
@@ -34121,7 +35117,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     if(!chosen.length){ out.textContent = "Tick at least one target (in either tab)."; return; }
     out.innerHTML = "";
     for(const it of chosen){
-      const br = tokenDamageBreakdown(it.t, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, atkMega, defCSMode, chartOverride, seBonus, seFlat });
+      const br = tokenDamageBreakdown(it.t, { dmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, atkMega, defCSMode, chartOverride, seBonus, seFlat, formeStep });
       const before = await applyTokenDamage(it.t, br);
       it.cb.checked = false;                                    // clear so a second Apply doesn't double-hit
       const line = el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"});
