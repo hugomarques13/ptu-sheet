@@ -1413,7 +1413,9 @@ function movePicksOwnType(m){
 }
 function chosenMoveTypeDefault(p, m){
   if(!movePicksOwnType(m)) return null;
-  const own = monTypes(p).filter(t => t && t !== "None");
+  /* A Trainer is typeless and has no monTypes - except an Usurper with Shared Strengths Rank 2, who
+     carries their Legendary Form's. That is exactly who is rolling Judgement from a Trainer sheet. */
+  const own = (isTrainerOwner(p) ? usurpSharedTypes(p) : monTypes(p)).filter(t => t && t !== "None");
   return own[0] || (m.type || "Normal");
 }
 /* Stellar Blast: "While Radiating, the user and all allies within a Burst 2 around them receive a
@@ -4757,7 +4759,7 @@ const TYPE_ABSORB_ABILITIES = [
    suffix is KEPT — the errata printings pay out differently and have their own registry rows. */
 function ownerAbilityNames(o){
   return [...(o?.abilities||[]), ...(o?.encAbilities||[]),
-          ...(isTrainerOwner(o) ? featureAbilityGrants(o) : [])]
+          ...(isTrainerOwner(o) ? trainerGrantedAbilities(o) : [])]
     .map(a => String(a||"").toLowerCase().trim()).filter(Boolean);
 }
 /* the absorbing Abilities this creature is actually carrying */
@@ -5671,7 +5673,16 @@ function weaponSkillWhy(t, w){
   return win;
 }
 function weaponMoveRankOk(t, tier, w){ return !!t.unlocked || weaponSkillRank(t, w) >= weaponMoveNeed(w, tier).num; }
-function newWeapon(){ return { id:uid(), name:"", category:"Small Melee", type:"Normal", notes:"", weaponMoveAdept:"", weaponMoveMaster:"", arcane:false, equipped:false, ...WEAPON_PRESETS["Small Melee"] }; }
+function newWeapon(){ return { id:uid(), name:"", category:"Small Melee", type:"Normal", notes:"", weaponMoveAdept:"", weaponMoveMaster:"", grantedMoves:"", arcane:false, equipped:false, ...WEAPON_PRESETS["Small Melee"] }; }
+/* Moves a specific weapon simply GRANTS, beyond the two standard Weapon-Move slots — a homebrew or
+   artefact weapon whose text reads "grants Sacred Sword". Stored as free text so the GM can type
+   anything; split here so every reader agrees on the shape. Unlike the Adept/Master slots these are
+   NOT gated on a Skill Rank (the weapon hands them over, the wielder does not qualify for them),
+   but they ARE rolled through the weapon, which is what applies its +Damage Base / +AC and bars
+   STAB (Core p.286). */
+function weaponGrantedMoves(w){
+  return String((w && w.grantedMoves) || "").split(",").map(x=>x.trim()).filter(Boolean);
+}
 /* the trainer's Struggle Attack after Combat rank + the equipped weapon */
 /* the trainer's Struggle Attack — unarmed by default, or modified by a given weapon */
 function trainerStruggle(t, w){
@@ -6269,6 +6280,14 @@ function featureAbilityGrants(t){
   });
   return out;
 }
+/* Every Ability a TRAINER has that is not typed into their own list: the ones their Features grant,
+   and - for an Usurper with Shared Strengths Rank 1 - their Legendary Form's. `ownerHasAbility`
+   already unions all of this, so anything that DISPLAYS a Trainer's Abilities has to use the same
+   union or half of what the engine is applying stays invisible on the sheet. */
+function trainerGrantedAbilities(t){
+  if(!t) return [];
+  return [...new Set([...featureAbilityGrants(t), ...usurpSharedAbilities(t)])];
+}
 /* The picker button for a multi-option Embrace grant, styled like Power of Rage's. */
 function featureAbilityPick(t, f, rerender, persist){
   const def = featureAbilityChoiceDef(f); if(!def) return;
@@ -6835,6 +6854,13 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const dragonOK = !!st.weapon && hasFeatureLoose(t, "Channel the Dragon's Spirit");
   const dragonOn = dragonOK && !!opts.dragonSpirit;
   if(dragonOn) st.type = "Dragon";
+  /* Judgement / Techno Blast: "its Type can be whatever Elemental Type the user wants it to be." The
+     Pokemon roll has had this picker since the Multitype pass; a Trainer rolling the same Move -
+     an Usurper using their Legendary Form's Move List - needs it just as much, and had nothing. */
+  const tTypePick = movePicksOwnType(st.move)
+    ? ((opts.pickType && TYPES.includes(opts.pickType)) ? opts.pickType : chosenMoveTypeDefault(t, st.move))
+    : null;
+  if(tTypePick) st.type = tTypePick;
   /* Herald of Pride ignores Damage Reduction up to their Command/Intimidate Rank on a Weapon
      Attack — carried to the defender through the Apply-to-target widget and the roll feed. */
   const heraldDR = attackDRPierce(t, st);
@@ -6881,7 +6907,17 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
      tag. However, these Moves can never benefit from STAB." (Core p.286) — so a Weapon Move and a
      Move used as a Weapon Attack are both out, not just the bare Struggle. */
   const stab = dealsDamage && !st.weapon && trainerStab(t, st.type, isStruggleAtk);
-  const stabDB = stab ? 2 : 0;
+  /* Adaptability: "Increase the Damage of all Moves with which the user shares an Elemental Type by
+     +1 Damage Base." It never came up on a Trainer before, because a Trainer had neither a Type nor
+     any way to hold the Ability — an Usurper has both (Shared Strengths Rank 2 for the Type, Rank 1
+     for the Form's Abilities). It rides on top of STAB, exactly as abilityDamageMods applies it on
+     the Pokémon roll, and ownerHasAbility is what sees a Trainer's granted Abilities at all.
+     NOTE: this is the ONLY damage Ability the Trainer attack path applies. The Pokémon roll runs the
+     whole abilityDamageMods table (Technician, Iron Fist, Reckless, Sheer Force…) and this path runs
+     none of it — a Martial Artist's Iron Fist still does nothing here. */
+  const adaptDB = (stab && ownerHasAbility(t, "Adaptability")) ? 1 : 0;
+  const stabDB = (stab ? 2 : 0) + adaptDB;
+  const stabWhy = stabDB ? (adaptDB ? " +2 STAB +1 Adaptability" : " +2 STAB") : "";
   /* A worn Type Booster (Accessory slot) adds its flat +5 to any damaging attack of its Type —
      a weapon swing included, since it boosts damage rather than Damage Base. */
   const tBoost = dealsDamage ? typeBoosterFor(t, st.type) : null;
@@ -6991,7 +7027,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   drawFreq();
   const dbChip = el("span",{class:"kv"});
   const drawDbChip = () => { dbChip.textContent = dealsDamage
-    ? `DB ${rawDB}${stabDB?" +2 STAB":""}${valDB?` (${valDB.label.toLowerCase()}: ${valNum})`:""}`
+    ? `DB ${rawDB}${stabWhy}${valDB?` (${valDB.label.toLowerCase()}: ${valNum})`:""}`
     : "no damage"; };
   drawDbChip();
   body.append(el("div",{class:"chips",style:"margin-bottom:10px"},
@@ -7000,7 +7036,10 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     el("span",{class:"kv"},`AC ${st.ac}`),
     dbChip,
     el("span",{class:"kv"},st.range),
-    stab?el("span",{class:"kv",title:"Type Expertise — you gain STAB for this Type"},`⚡ STAB (${st.type})`):"",
+    stab?el("span",{class:"kv",title: trainerStabTypes(t).includes(st.type)
+      ? "Type Expertise — you gain STAB for this Type"
+      : "Shared Strengths Rank 2 — this is your Legendary Form's Type, so STAB follows it"},
+      `⚡ STAB (${st.type})${adaptDB?" +Adaptability":""}`):"",
     st.frequency?freqChip:""));
   if(st.weapon) body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
     `Weapon: ${st.weapon.name||"(unnamed)"} — ${st.weapon.category}${st.weapon.notes?` · ${st.weapon.notes}`:""}`));
@@ -7082,7 +7121,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     const cxPre = condMods();
     if(cxPre.dmg) terms.push(String(cxPre.dmg));
     const why = [`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${baseDBv}`
-      + (stabDB||bm.db ? ` (DB ${rawDB}${stabDB?" +2 STAB":""}${bm.db?` ${bm.db>0?"+":"−"}${Math.abs(bm.db)} buffs`:""})` : "")];
+      + (stabDB||bm.db ? ` (DB ${rawDB}${stabWhy}${bm.db?` ${bm.db>0?"+":"−"}${Math.abs(bm.db)} buffs`:""})` : "")];
     if(atk) why.push(`${atk} = your ${atkLbl}`);
     if(bm.dmg) why.push(`${bm.dmg>0?"+":"−"}${Math.abs(bm.dmg)} = buffs (${buffSources(t,"dmg")})`);
     if(berPre) why.push(`+${berPre} = ${BERSERKER_LESSONS} (Intimidate ${rankNum(t.skills?.intimidate)} + ${t.injuries||0} Injur${(t.injuries||0)===1?"y":"ies"})`);
@@ -7094,7 +7133,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     explain.append(el("div",{},
       el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${terms.join(" + ").replace(/\+ −/g,"− ")}`),
       el("div",{class:"small muted",style:"margin-top:2px"}, why.join(" · ") + ". "
-        + (stab ? `STAB applies — Type Expertise names ${st.type}. ` : isStruggleAtk ? "STAB never applies to Struggle. " : "")
+        + (stab ? `STAB applies — ${trainerStabTypes(t).includes(st.type) ? "Type Expertise names" : "the Legendary Form's Type is"} ${st.type}${adaptDB ? ", and Adaptability adds another Damage Base for sharing it" : ""}. ` : isStruggleAtk ? "STAB never applies to Struggle. " : "")
         + `Target then subtracts ${defNote}.`
         + (fiveStrike ? ` Five Strike multiplies the Move's own Damage Base (${rawDB}) by the rolled hit count first; other Damage Base bonuses are added after.` : "")
         + (dblStrike  ? " Double Strike doubles this Damage Base if both Attack Rolls connect." : "")
@@ -7135,6 +7174,23 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     };
     wc.append(inp, hint);
     body.append(wc);
+  }
+  /* --- Judgement / Techno Blast: choose the Type this one goes out as --- */
+  if(tTypePick){
+    const tc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+    tc.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},
+      `\u{1F300} ${st.name} \u2014 its Type is the user's choice`));
+    const tsel = el("select",{style:"padding:4px 6px"});
+    TYPES.forEach(ty => tsel.append(el("option",{value:ty, selected:tTypePick===ty}, ty)));
+    tsel.addEventListener("change",()=>{ closeModal();
+      openTrainerAttack(t, weaponMoveName, w, Object.assign({}, opts, {pickType:tsel.value})); });
+    tc.append(tsel);
+    tc.append(el("div",{class:"small muted",style:"margin-top:4px"},
+      `Going out as ${tTypePick}-Type, which is what the target's resistances are measured against.`
+      + (usurpSharedTypes(t).length
+         ? ` It opens on ${usurpSharedTypes(t).join("/")} \u2014 the Legendary Form's Type, shared up by Shared Strengths Rank 2.`
+         : "")));
+    body.append(tc);
   }
   /* --- Channel the Dragon's Spirit: retype this Weapon Attack to Dragon for 1 AP --- */
   if(dragonOK){
@@ -7213,7 +7269,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       wc.append(row);
     }
     wc.append(el("div",{class:"small muted",style:"margin-top:4px"},
-      fiveStrike ? `Rolling 🎲 also rolls 1d8 for the hit count (1 / 2-3 / 4-6 / 7 / 8 → 1 / 2 / 3 / 4 / 5 hits); the Move's own Damage Base ${rawDB} is multiplied by it${stabDB||bm.db?`, and the${stabDB?" +2 STAB":""}${bm.db?` ${bm.db>0?"+":"−"}${Math.abs(bm.db)} DB from buffs`:""} is added only after that`:""} (Core p.242).`
+      fiveStrike ? `Rolling 🎲 also rolls 1d8 for the hit count (1 / 2-3 / 4-6 / 7 / 8 → 1 / 2 / 3 / 4 / 5 hits); the Move's own Damage Base ${rawDB} is multiplied by it${stabDB||bm.db?`, and the${stabWhy}${bm.db?` ${bm.db>0?"+":"−"}${Math.abs(bm.db)} DB from buffs`:""} is added only after that`:""} (Core p.242).`
                  : `Both Attack Rolls are checked against AC ${st.ac} + this Evasion when you press 🎲 (nat 20 always hits, nat 1 always misses). 1 hit → DB ${baseDBv} · both hit → DB ${baseDBv*2}.`));
     body.append(wc);
   }
@@ -7364,7 +7420,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
        other effect that raises Damage Base (STAB from Type Expertise, buffs) is added after. */
     if(fiveStrike){ const hi = fiveStrikeRoll(); db = Math.min(28, rawDB*hi.hits + stabDB + (bm.db||0));
       strikeNote = `🎯 Five Strike: 1d8 → ${hi.d8} = ${hi.hits} hit${hi.hits===1?"":"s"} — DB ${rawDB} ×${hi.hits} = ${rawDB*hi.hits}`
-        + `${stabDB?" +2 STAB":""}${bm.db?` +${bm.db} buffs`:""} → DB ${db}`; }
+        + `${stabWhy}${bm.db?` +${bm.db} buffs`:""} → DB ${db}`; }
     else if(dblStrike && connected) strikeNote = `⚔ Double Strike: ${connected} of 2 connected — Damage Base ${db}`;
     const r = connected>0 ? rollDiceString(diceFor(db)) : null;
     /* Critical Hit (Core p.235): a crit adds the whole Damage Base value — dice AND its flat part —
@@ -10743,9 +10799,11 @@ function giftKind(g){ return (g && g.kind) || "gift"; }
    Every one of these fast-outs on `t.usurp` being absent, which it is for everybody but the Usurper,
    so none of it costs the rest of the app anything. */
 function usurpOf(t){ return (t && t.usurp && t.usurp.monId) ? t.usurp : null; }
+/* the flag that marks a Pokémon record as an Usurper's own Legendary Form rather than a pet */
+function isUsurpForm(p){ return !!(p && p.usurpOf); }
 function usurpFormOf(t){
   const u = usurpOf(t); if(!u) return null;
-  return (trainerOwnMons(t) || []).find(p => p && p.id === u.monId) || null;
+  return (trainerAllMons(t) || []).find(p => p && p.id === u.monId) || null;
 }
 function usurpFormLevel(t){ const p = usurpFormOf(t); return p ? (p.level || 1) : 0; }
 /* the Usurper rows on this sheet - they live in t.gifts alongside every other granted row */
@@ -10789,8 +10847,8 @@ function usurpSharedMoves(t){
 function usurpPartnerOf(o){
   if(!o) return null;
   if(isTrainerOwner(o)) return usurpFormOf(o);
-  if(!o.usurpOf) return null;
-  const t = ownerTrainerOf(o);
+  if(!isUsurpForm(o)) return null;
+  const t = trainerRowOwnerOf(o);          // raw: ownerTrainerOf deliberately returns null for a Form
   return (t && usurpFormOf(t) === o) ? t : null;
 }
 /* "When an Usurper takes damage in one form, both forms lose HP equal to the final amount of damage
@@ -11001,12 +11059,19 @@ function sheetIsMine(){
 function usurpFormCard(t, saveFn, rerender, gm){
   if(!t || (!usurpRows(t).length && !t.usurp)) return null;
   saveFn = saveFn || save; rerender = rerender || renderTrainer;
-  const mons = trainerOwnMons(t) || [];
+  const mons = trainerAllMons(t) || [];    // the raw list: the Form has to appear in its own picker
   const form = usurpFormOf(t);
-  const box = el("div",{style:"margin:12px 0 4px;padding:10px 12px;border:1px solid var(--line);border-radius:10px"});
-  box.append(el("div",{style:"font-weight:700"}, "👑 Legendary Form",
-    el("span",{class:"muted small",style:"font-weight:400"}, "  \u00b7  the god they killed"
-      + ((t.usurp && t.usurp.patron) ? "  \u00b7  " + t.usurp.patron : ""))));
+  const det = el("details",{class:"spoiler","data-key":"usurpform",
+    style:"margin:12px 0 4px;padding:10px 12px;border:1px solid var(--line);border-radius:10px"});
+  det.open = true;
+  const form0 = usurpFormOf(t);
+  det.append(el("summary",{},
+    el("span",{style:"font-weight:700;color:var(--ink)"}, "👑 Legendary Form"),
+    el("span",{class:"muted small",style:"font-weight:400;margin-left:8px"},
+      (t.usurp && t.usurp.patron ? t.usurp.patron : "the god they killed")
+      + (form0 ? ` \u00b7 Lv ${form0.level||1}` : " \u00b7 not set"))));
+  const box = el("div",{});
+  det.append(box);
   box.append(el("div",{class:"muted small",style:"margin:3px 0 8px"},
     "The Form is one of this Trainer's own Pokemon, so it levels, carries Legendary Auras, takes Injuries and "
   + "stands on the Map like anything else. Switching between the two forms is a Standard Action, and damage dealt "
@@ -11050,7 +11115,7 @@ function usurpFormCard(t, saveFn, rerender, gm){
   } else if(!gm){
     box.append(el("div",{class:"small muted",style:"margin-top:4px"},"Your GM hasn't pointed this at a Pokemon yet."));
   }
-  return box;
+  return det;
 }
 /* the tab shows for the GM (to grant) or once the Trainer holds a Gift they're allowed to see —
    a sheet whose only Gifts are 👁 hidden doesn't get the tab at all (see giftHiddenFrom) */
@@ -11081,14 +11146,27 @@ function giftsCard(t, saveFn, rerender, opts){
     return card;
   }
   /* One section per kind, in book order, so Blessings don't get lost among 141 species Gifts.
-     Indexes are captured from the real array so × still removes the right row. */
+     Indexes are captured from the real array so × still removes the right row.
+
+     Each section is a <details>: a whole branch (the eight Usurper Features, say) is eight full
+     rules paragraphs, which buried everything below it. Sections of three rows or fewer open
+     themselves — a sheet with two Gifts should not need a click to read them — and anything longer
+     starts shut. `data-key` means a section you opened stays open across the re-render that every
+     edit on this card causes. */
   GIFT_KINDS.forEach(kind => {
     const rows = shown.filter(x => giftKind(x.g)===kind.key);
     if(!rows.length) return;
-    card.append(el("div",{style:"margin:14px 0 4px;padding-top:10px;border-top:1px solid var(--line)"},
-      el("div",{style:"font-weight:700"}, kind.head, el("span",{class:"muted small",style:"font-weight:400"}, `  ·  ${rows.length}`)),
-      el("div",{class:"muted small"}, kind.blurb)));
-    rows.forEach(({g,i}) => card.append(giftRow(t, g, i, gm, saveFn, rerender)));
+    const det = el("details",{class:"spoiler","data-key":"giftkind:"+kind.key,
+      style:"margin:12px 0 4px;padding-top:10px;border-top:1px solid var(--line)"});
+    det.open = rows.length <= 3;
+    det.append(el("summary",{},
+      el("span",{style:"font-weight:700;color:var(--ink)"}, kind.head),
+      el("span",{class:"muted small",style:"font-weight:400;margin-left:8px"}, `${rows.length}`),
+      el("span",{class:"muted small",style:"font-weight:400;margin-left:8px"},
+        rows.map(x => x.g.name || "?").join(" · ").slice(0, 90))));
+    det.append(el("div",{class:"muted small",style:"margin:4px 0 2px"}, kind.blurb));
+    rows.forEach(({g,i}) => det.append(giftRow(t, g, i, gm, saveFn, rerender)));
+    card.append(det);
   });
 
   // summary of the stat bonuses these Gifts grant (only the ones this viewer can see — a hidden
@@ -11103,7 +11181,7 @@ function giftRow(t, g, i, gm, saveFn, rerender){
   saveFn = saveFn || save; rerender = rerender || renderTrainer;
   const kind = giftKind(g);
   const row = el("div",{class:"moveslot"});
-  const info = el("div",{style:"flex:1;min-width:0"});
+  let info = el("div",{style:"flex:1;min-width:0"});
   /* a Blessing reads one way for a Messiah and another for a Signer — the sheet's own branch
      decides, and only a sheet with neither (or both) still picks by hand. */
   const branch  = kind==="blessing" ? blessingBranch(t) : null;
@@ -11137,6 +11215,16 @@ function giftRow(t, g, i, gm, saveFn, rerender){
   }
   const freqTxt = bSide ? bSide.freq : g.freq;
   if(freqTxt) info.append(el("div",{class:"small",style:"margin-top:3px"}, el("b",{}, freqTxt)));
+  /* Everything past this point is the rules text, which is what makes this tab enormous. It goes in
+     its own drop-down, keyed so it survives the re-render an edit on the card causes. `info` is
+     rebound to it, so every append below lands inside without any of them knowing. */
+  const infoTop = info;
+  const bodyDet = el("details",{class:"spoiler",style:"margin-top:4px","data-key":"giftbody:"+(g.id||g.name||"")});
+  bodyDet.append(el("summary",{}, el("span",{class:"muted small"},"rules text")));
+  const bodyWrap = el("div",{style:"margin-top:4px"});
+  bodyDet.append(bodyWrap);
+  infoTop.append(bodyDet);
+  info = bodyWrap;
   // A Blessing reads differently as a Messiah miracle vs a Signer's Sign, so the row only ever
   // shows the one text that's true for this sheet.
   if(kind==="blessing"){
@@ -11169,19 +11257,19 @@ function giftRow(t, g, i, gm, saveFn, rerender){
      rather than making the GM go and check the book against the Form's sheet. */
   if(kind==="usurper"){
     const gate = usurpGateNote(t, g.name);
-    if(gate) info.append(el("div",{class:"small",style:"margin-top:2px;color:var(--warn);font-weight:700"}, "🔒 "+gate));
+    if(gate) infoTop.append(el("div",{class:"small",style:"margin-top:2px;color:var(--warn);font-weight:700"}, "🔒 "+gate));
   }
   const noteTxt = kind==="blessing" ? blessingNoteFor(bless ? (bless.note||"") : (g.note||""), bMode) : g.note;
   if(noteTxt) info.append(el("div",{class:"muted small",style:"margin-top:2px;font-style:italic"}, noteTxt));
   if(g.notes) info.append(el("div",{class:"small",style:"margin-top:2px"}, g.notes));
   /* 👁 the GM's own switch — grant something the Trainer isn't told about yet. Only the GM ever
      renders this row at all when it's ticked, so the checkbox can only ever be theirs. */
-  if(gm) info.append(el("label",{class:"inline small",style:"gap:5px;cursor:pointer;margin-top:6px",
+  if(gm) infoTop.append(el("label",{class:"inline small",style:"gap:5px;cursor:pointer;margin-top:6px",
     title:"hide this whole row from the player — they won't see it in their Gifts tab, and it drops out of the +🎁 breakdown on their Combat Stats (the stat itself still applies)"},
     (()=>{ const cb = el("input",{type:"checkbox"}); cb.checked = !!g.hidden;
            cb.addEventListener("change",()=>{ g.hidden = cb.checked || undefined; saveFn(); rerender(); }); return cb; })(),
     el("span",{},"👁 hide from player")));
-  row.append(info);
+  row.append(infoTop);
   if(gm) row.append(el("button",{class:"linkbtn danger",title:"remove this",style:"align-self:flex-start",
     onclick:()=>{ if(confirm(`Remove “${g.name}”?`)){ t.gifts.splice(i,1); saveFn(); rerender(); } }}, "×"));
   return row;
@@ -11766,7 +11854,13 @@ function encMonOwnerIndex(){
   _encMonOwner = m; _encMonOwnerSeq = encOwnerSeq;
   return m;
 }
-function ownerTrainerOf(p){
+/* The Trainer whose POKÉMON this is — null for an Usurper's own Legendary Form, which is not owned
+   by that Trainer, it is that Trainer. That one word is what stops every Feature that reads its way
+   DOWN from a creature to its Trainer — Stat Ace (statAceBonus), Ace Trainer's Trained-Stat cap,
+   Glacial Ice, Insectoid Utility, a bound Stratagem — from buffing a god for being its own owner's
+   pet. `trainerRowOwnerOf` is the raw lookup for the handful of places that genuinely want it. */
+function ownerTrainerOf(p){ return isUsurpForm(p) ? null : trainerRowOwnerOf(p); }
+function trainerRowOwnerOf(p){
   if(!p) return null;
   try{
     const has = c => c && Array.isArray(c.pokemon) && c.pokemon.some(x => x===p || (x.id && x.id===p.id));
@@ -13359,7 +13453,7 @@ function ownerHasAbility(o, name){
      Ability, so folding it in here reaches the damage engine, the Type layer and the roll modal at
      once. usurpSharedAbilities fast-outs unless t.usurp is set, so nobody else pays for it. */
   return [...(o?.abilities||[]), ...(o?.encAbilities||[]), ...heldGrantedAbilities(o),
-          ...(isTrainerOwner(o) ? [...featureAbilityGrants(o), ...usurpSharedAbilities(o)] : [])]
+          ...(isTrainerOwner(o) ? trainerGrantedAbilities(o) : [])]
     .some(a => String(a).toLowerCase().replace(/\s*\[errata\]\s*$/,"").trim() === want);
 }
 /* Gluttony (Core, Ability): "may have up to three Digestion/Food Buffs at once" */
@@ -15281,9 +15375,19 @@ function trainerStabTypes(t){
   return [...new Set((Array.isArray(t.stabTypes)?t.stabTypes:[]).filter(ty=>TYPES.includes(ty)))]
     .slice(0, TYPE_EXPERTISE_MAX);
 }
-/* does this Trainer get STAB on a Move of `type`? Struggle Attacks never do. */
+/* Does this Trainer get STAB on a Move of `type`? Struggle Attacks never do.
+
+   Two doors, and they are the only two. Type Expertise is the one anybody can walk through. The
+   other is an Usurper with Shared Strengths Rank 2, who "gains your Legendary Form's Types while in
+   your Avatar Form" — and STAB is simply what having a Type means; there is no third rule saying a
+   human with a Type is exempt. It moves with the Form, so an Usurper whose god is retyping at will
+   (Multitype) is retyping their Avatar's STAB with it.
+
+   Core p.286 still bars every weapon swing from STAB regardless — the callers gate that separately
+   on `!st.weapon`, so it is not repeated here. */
 function trainerStab(t, type, isStruggle){
-  return !isStruggle && !!type && trainerStabTypes(t).includes(type);
+  if(isStruggle || !type) return false;
+  return trainerStabTypes(t).includes(type) || usurpSharedTypes(t).includes(type);
 }
 /* how many Moves of each Type the Trainer's Move List holds — the Feature wants at least 3 */
 function trainerTypeMoveCount(t, type){
@@ -21343,13 +21447,20 @@ const channelRank = t => rankNum(t && t.skills && t.skills.intuition);
    card in the Encounters tab. Written for the Channeler, but every class card that does something
    TO its Trainer's Pokémon needs exactly this list — Duelist Momentum, Type Refresh, Fishbowl — and
    it has to work for an encounter NPC, which is the part activeChar() alone can never do. */
-function trainerOwnMons(t){
+/* Every creature filed under this Trainer, INCLUDING an Usurper's Legendary Form. Almost nothing
+   wants this - it exists so usurpFormOf can find the Form at all. */
+function trainerAllMons(t){
   const ch = activeChar();
   if(ch && ch.trainer === t) return (ch.pokemon || []).filter(p => p.onTeam);
   if(isGM()) for(const e of (encList() || []))
     for(const tr of (e.trainers || [])) if(tr && tr.trainer === t) return tr.pokemon || [];
   return [];
 }
+/* This Trainer's POKÉMON. An Usurper's Legendary Form lives in the same list — that is what makes
+   the Map, the damage engine and the Aura system work on it for free — but it is not a Pokémon they
+   own, it IS them, a second set of stats. So it is not a legal target for anything that says "your
+   Pokémon": not Ace Trainer's training, not a Cheer, not an Order, not a Channeler's Boost. */
+function trainerOwnMons(t){ return trainerAllMons(t).filter(p => !isUsurpForm(p)); }
 /* Every Pokémon this Channeler could reach right now: the creature tokens on the board, then their
    own Pokémon that aren't on it. Trainers are filtered out — "Target: A Pokémon" is literal.
    `hostile` marks the ones that need the DC 15 Intuition Check. A player only sees enemy tokens
@@ -22871,7 +22982,7 @@ function rememberFor(o){
   if(!isTrainerOwner(o)) (defenseTypeMods(o).why || []).forEach(w => push(String(w).split(":")[0], w, true));
   /* …and the ones a Type-chart pass can't describe */
   const abils = [...(o.abilities || []), ...(o.encAbilities || []),
-                 ...(isTrainerOwner(o) ? featureAbilityGrants(o) : [])];
+                 ...(isTrainerOwner(o) ? trainerGrantedAbilities(o) : [])];
   typeAceGrants(o).forEach(g => abils.push(g.ability));
   abils.forEach(a => {
     const key = String(a).toLowerCase().replace(/\s*\[errata\]\s*$/, "").trim();
@@ -23422,6 +23533,14 @@ function renderTrainerCombat(root, t){
       const uc = usesControl(t, "move", wm.name, wm.frequency, renderBattle);
       card.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t, mn, w, {rerender:renderBattle}), {tag, uc, move:true}));
     });
+    // Moves the weapon itself grants — rolled THROUGH the weapon, so they take its +DB/+AC and no STAB
+    weaponGrantedMoves(w).forEach(mn=>{
+      if(!moveByName.get(mn.toLowerCase())) return;
+      const wm = trainerAttackProfile(t, mn, w);
+      const uc = usesControl(t, "move", wm.name, wm.frequency, renderBattle);
+      card.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t, mn, w, {rerender:renderBattle}),
+        {tag:`granted by ${w.name || "the weapon"}`, uc, move:true}));
+    });
     weaponAttackRows(w);
   });
   /* Commander's Bonus: "the target may use Order Up as though it were on their Move List". A Trainer
@@ -23533,10 +23652,16 @@ function renderTrainerCombat(root, t){
     }
   }
   if(!Array.isArray(t.abilities)) t.abilities=[];
-  if(t.abilities.length){
-    const abc=el("div",{class:"card"},el("h3",{},`Abilities (${t.abilities.length})`,
+  /* Abilities a Feature granted, or an Usurper's Legendary Form shared up, are applied by the engine
+     but were never listed here — so the card showed nothing at all for a Trainer who had typed none
+     of their own in. Same union ownerHasAbility uses. */
+  const grantedAb = trainerGrantedAbilities(t)
+    .filter(a => !t.abilities.some(x => String(x).toLowerCase() === String(a).toLowerCase()));
+  const abilAll = [...t.abilities, ...grantedAb];
+  if(abilAll.length){
+    const abc=el("div",{class:"card"},el("h3",{},`Abilities (${abilAll.length})`,
       el("span",{class:"muted small"},"passive, from Trainer → Features & Edges")));
-    t.abilities.forEach(an=>{
+    abilAll.forEach(an=>{
       const ab=abilityByName.get(an.toLowerCase());
       const row=el("details",{class:"spoiler"});
       const uc=usesControl(t,"ability",an,ab?.frequency,renderBattle);
@@ -23723,7 +23848,10 @@ function encounterBaseXPSplit(enc){
   (enc && enc.trainers || []).forEach(tr => {
     const t = tr.trainer;
     add((t?.level||0)*2, isBoss(t));
-    (tr.pokemon||[]).forEach(p => add(encMonXPValue(p), isBoss(p)));
+    /* An Usurper's Legendary Form is not a second combatant — it is the same person in their other
+       shape, and they are already counted above at Level x2. Counting the Form too paid the party
+       for killing one man twice (a Lv50 Usurper of a Lv100 god was worth 200 instead of 100). */
+    (tr.pokemon||[]).forEach(p => { if(!isUsurpForm(p)) add(encMonXPValue(p), isBoss(p)); });
   });
   return { boss, normal, total: boss + normal };
 }
@@ -24601,7 +24729,10 @@ function encWeaponsCard(t, key){
       field("Arcane Weapon","",{opts:["no","yes"], value:w.arcane?"yes":"no",
         onchange:v=>{ w.arcane = v==="yes"; w.weaponMoveAdept=""; w.weaponMoveMaster=""; saveEnc(); renderEncounters(); }}),
     );
-    box.append(r1, r2, r3, field("Notes","",{value:w.notes,onchange:v=>{ w.notes=v; saveEnc(); }}));
+    box.append(r1, r2, r3,
+      field("Moves this weapon grants","",{value:w.grantedMoves||"",
+        onchange:v=>{ w.grantedMoves=v; saveEnc(); renderEncounters(); }}),
+      field("Notes","",{value:w.notes,onchange:v=>{ w.notes=v; saveEnc(); }}));
     body.append(box);
   });
   det.append(body);
@@ -25092,6 +25223,14 @@ function encounterTrainerCard(enc, tr){
       if(!weaponMoveRankOk(t, tier, w)) atkWrap.append(el("div",{class:"small muted",style:"margin:-2px 0 4px 6px"},
         `↳ book requires ${weaponMoveNeed(w,tier).rank} ${weaponMoveNeed(w,tier).skill} — GM call`));
     });
+    // Moves the weapon itself grants — rolled THROUGH the weapon, so they take its +DB/+AC and no STAB
+    weaponGrantedMoves(w).forEach(mn=>{
+      if(!moveByName.get(mn.toLowerCase())) return;
+      const wm = trainerAttackProfile(t, mn, w);
+      const uc = usesControl(t, "move", wm.name, wm.frequency, renderEncounters, saveEnc, {bossEot:isBoss(t)});
+      atkWrap.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t, mn, w, {persist:saveEnc, rerender:renderEncounters}),
+        {tag:`granted by ${w.name || "the weapon"}`, uc, move:true}));
+    });
     // an NPC Berserker swings Rage/Flail (and Crash and Smash's pair) with this weapon too
     trainerWeaponAttackMoves(t).forEach((d, mn)=>{
       if(!weaponFitsRestrict(w, d.restrict)) return;
@@ -25168,7 +25307,8 @@ function encounterTrainerCard(enc, tr){
       el("button",{class:"linkbtn",onclick:()=>openPicker(`Add a ${label.replace(/e?s$/,"")}`,
         opts().filter(n=>!list.includes(n)),
         name=>{ list.push(name); saveEnc(); renderEncounters(); }, kind)},"+ add")));
-    if(!list.length){ build.append(el("span",{class:"muted small"},"none")); return; }
+    if(!list.length && !(field==="encAbilities" && trainerGrantedAbilities(t).length)){
+      build.append(el("span",{class:"muted small"},"none")); return; }
     const row = n => encTrainerRefRow(t, tr.id, n, kind,
       ()=>{ t[field]=list.filter(x=>x!==n); saveEnc(); renderEncounters(); });
     const head = txt => build.append(el("div",{class:"small muted",
@@ -25186,6 +25326,27 @@ function encounterTrainerCard(enc, tr){
         title:"These are what paid for the Skill Ranks above — every one is still recorded on the Level Up tab"},
         `+ ${skill.length} Skill Edge${skill.length===1?"":"s"} — ${summary}`));
       if(!real.length && !skill.length) build.append(el("span",{class:"muted small"},"none"));
+      return;
+    }
+    if(field === "encAbilities"){
+      list.forEach(n => build.append(row(n)));
+      /* …and the ones nobody typed in: granted by a Feature, or shared up from an Usurper's
+         Legendary Form. Read-only — the way to remove one is to remove what grants it. */
+      const shared = usurpSharedAbilities(t).map(a => String(a).toLowerCase());
+      trainerGrantedAbilities(t)
+        .filter(a => !list.some(x => String(x).toLowerCase() === String(a).toLowerCase()))
+        .forEach(a => {
+          const ab = abilityByName.get(String(a).toLowerCase());
+          const d = el("details",{class:"spoiler","data-key":"grantabil:"+tr.id+":"+a});
+          d.append(el("summary",{}, el("span",{class:"badge-auto"},"auto"), " ",
+            el("span",{style:"font-weight:700;color:var(--ink)"}, a),
+            el("span",{class:"muted small",style:"margin-left:8px"},
+              shared.includes(String(a).toLowerCase())
+                ? "from the Legendary Form · Shared Strengths Rank 1" : "granted by a Feature")));
+          d.append(el("div",{class:"small",style:"margin-top:6px",
+            html: ab ? abilityText(ab) : "<span class='muted'>Not in database.</span>"}));
+          build.append(d);
+        });
       return;
     }
     list.forEach(n=> build.append(row(n)));
@@ -27456,7 +27617,9 @@ function simProfile(A, atk, cfg){
                         : (isPhys ? d.eff.atk   : d.eff.spatk);
   const bm  = buffMods(p, {isPhys, type: mtype});
   const printedThr = simThresholds(atk.m.effect);
-  const abil = A.isT ? { db:0, flat:0 }
+  /* A Trainer runs none of the ability damage table — except Adaptability, which an Usurper's
+     Avatar genuinely has, and which openTrainerAttack applies, so the Simulator has to agree. */
+  const abil = A.isT ? { db: (stab && ownerHasAbility(p, "Adaptability")) ? 1 : 0, flat:0 }
                      : abilityDamageMods(p, atk.m, atk.db, printedThr,
                          { stab, abilStab: stab || abilityStabFor(p, mtype), mtype, isPhys, isSpec:!isPhys, fieryCrash:fcMode });
   // the flat +10 a replaced / Radiated Type gives, same term openMoveRoll adds it on
@@ -35866,7 +36029,7 @@ function openTokenMenu(token, map){
       const own = [...new Set([...(t.abilities||[]), ...(t.encAbilities||[])])].filter(Boolean);
       /* featureAbilityGrants walks classes AND features, so a Class that is also its own Feature
          ("Hex Maniac") answers twice — dedupe, or the token lists the grant twice. */
-      const granted = [...new Set(featureAbilityGrants(t))]
+      const granted = trainerGrantedAbilities(t)
         .filter(a => !own.some(x => String(x).toLowerCase()===String(a).toLowerCase()));
       if(own.length || granted.length){
         const abw = el("div",{style:"margin-top:16px"});
