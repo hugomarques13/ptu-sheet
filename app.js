@@ -4634,12 +4634,14 @@ function renderTrainer(){
   const giftB = giftStatBonus(t);   // Legendary Gift Patron-Stat points fold into the combat total
   const tagB = statTagBonus(t).stats;   // Feature [+Stat] tags likewise (Core p.14)
   const msB = luStatAlloc(t);       // Level-Up milestone Bonus Stats — already inside .added, but locked there
-  // the 🎁 breakdown is part of the private Gifts picture — another player sees only the total
+  // the 🎁 breakdown is part of the private Gifts picture — another player sees only the total,
+  // and a 👁 hidden Gift is left out of the breakdown even on the holder's own sheet
   const showGift = sheetIsMine();
+  const giftShownB = giftStatBonusShown(t);
   STATS.forEach(([k,lbl]) => {
     const canInc = t.unlocked || tb.remaining > 0;
     const lock = t.unlocked ? 0 : (msB[k]||0);   // GM 🔓 still overrides everything
-    const lblNode = el("div",{class:"lbl"},lbl+(showGift&&giftB[k]?` +${giftB[k]}🎁`:"")+(tagB[k]?` +${tagB[k]}🏷`:""));
+    const lblNode = el("div",{class:"lbl"},lbl+(showGift&&giftShownB[k]?` +${giftShownB[k]}🎁`:"")+(tagB[k]?` +${tagB[k]}🏷`:""));
     if(msB[k]) lblNode.append(el("span",{class:"muted",
       title:`${msB[k]} of these points came from a Level-Up milestone (Bonus Stats) and are locked into ${lbl} — they can't be moved to another stat`},
       ` ${msB[k]}★`));
@@ -9940,12 +9942,27 @@ function giftGrantsStat(g){
   if(typeof spec==="string" && spec!=="any") return spec;   // fixed single stat
   return (g.statChoice && (spec==="any" || spec.includes?.(g.statChoice))) ? g.statChoice : null;  // or/any → chosen
 }
-/* +1 per gift to its resolved Patron stat (book p.57 [PATRON STAT] tag) */
-function giftStatBonus(t){
+/* +1 per gift to its resolved Patron stat (book p.57 [PATRON STAT] tag).
+   `list` narrows it to a subset of the rows — only the 👁 display path uses that (see
+   `giftStatBonusShown`); every mechanical caller passes nothing and gets the real total. */
+function giftStatBonus(t, list){
   const out={hp:0,atk:0,def:0,spatk:0,spdef:0,spd:0};
-  (t && t.gifts || []).forEach(g=>{ const k=giftGrantsStat(g); if(k && out[k]!==undefined) out[k]+=1; });
+  (list || (t && t.gifts) || []).forEach(g=>{ const k=giftGrantsStat(g); if(k && out[k]!==undefined) out[k]+=1; });
   return out;
 }
+/* ---- 👁 hiding a granted row from its own holder -------------------------------------------
+   The GM grants a Gift the Trainer isn't supposed to know about yet (a patron that has marked
+   them, a Brand they haven't noticed). A row flagged `hidden` is invisible to everyone but the
+   GM: it drops out of the Gifts tab, out of the tab's Patron-Stat summary and out of the `+N🎁`
+   attribution on the Combat Stats labels. The MECHANICS are untouched — the +1 still reaches
+   their totals, HP and damage — exactly the trade `sheetIsMine()` already makes for another
+   player's sheet: the number changes, the reason for it doesn't show. Same UI-scope caveat as
+   the rest of the sheet: the row still syncs whole, so this hides it, it doesn't encrypt it. */
+function giftHiddenFrom(g){ return !!(g && g.hidden) && !isGM(); }
+/* the rows this viewer may see, each with its real index in t.gifts so × still removes the right one */
+function giftsShown(t){ return ((t && t.gifts)||[]).map((g,i)=>({g,i})).filter(x => !giftHiddenFrom(x.g)); }
+/* the 🎁 breakdown a viewer is allowed to read — hidden rows keep their +1 in the total, not in the label */
+function giftStatBonusShown(t){ return giftStatBonus(t, giftsShown(t).map(x=>x.g)); }
 /* human label for a gift's patron-stat grant, incl. an unresolved-choice prompt */
 function giftStatText(g){
   const spec = giftStatSpec(g); if(spec==null) return "";
@@ -10063,7 +10080,9 @@ function sheetIsMine(){
   if(mode!=="cloud" || !cloud.activeId) return true;   // local sheet — it's yours by definition
   return canEditActive();                              // GM, or the row's own owner (by display name)
 }
-function giftsCanSee(t){ return sheetIsMine() && (isGM() || ((t && t.gifts || []).length > 0)); }
+/* the tab shows for the GM (to grant) or once the Trainer holds a Gift they're allowed to see —
+   a sheet whose only Gifts are 👁 hidden doesn't get the tab at all (see giftHiddenFrom) */
+function giftsCanSee(t){ return sheetIsMine() && (isGM() || giftsShown(t).length > 0); }
 /* `saveFn`/`rerender` default to the player Sheet's pair; the Encounters tab passes saveEnc /
    renderEncounters so a GM can bless an NPC from the same card. `opts.blurb` swaps the standfirst,
    which talks about privacy that only means anything on a player's own sheet. */
@@ -10078,7 +10097,10 @@ function giftsCard(t, saveFn, rerender, opts){
     ("Everything a Legendary patron has handed this Trainer (The Blessed and the Damned / The Book of "
     + "Divines): species Gifts, General Gifts, the Messiah and Signer branches, Blessings, and Brands. "
     + "Private — only you and your GM see this tab.")));
-  if(!(t.gifts||[]).length){
+  /* 👁 hidden rows are dropped here for everyone but the GM — a sheet whose only Gifts are hidden
+     reads exactly like a sheet with none. */
+  const shown = giftsShown(t);
+  if(!shown.length){
     card.append(el("div",{class:"muted small"}, gm
       ? "Nothing granted yet — tap “+ grant a Gift” to bless this Trainer."
       : "You have no Gifts yet."));
@@ -10087,7 +10109,7 @@ function giftsCard(t, saveFn, rerender, opts){
   /* One section per kind, in book order, so Blessings don't get lost among 141 species Gifts.
      Indexes are captured from the real array so × still removes the right row. */
   GIFT_KINDS.forEach(kind => {
-    const rows = (t.gifts||[]).map((g,i)=>({g,i})).filter(x => giftKind(x.g)===kind.key);
+    const rows = shown.filter(x => giftKind(x.g)===kind.key);
     if(!rows.length) return;
     card.append(el("div",{style:"margin:14px 0 4px;padding-top:10px;border-top:1px solid var(--line)"},
       el("div",{style:"font-weight:700"}, kind.head, el("span",{class:"muted small",style:"font-weight:400"}, `  ·  ${rows.length}`)),
@@ -10095,8 +10117,9 @@ function giftsCard(t, saveFn, rerender, opts){
     rows.forEach(({g,i}) => card.append(giftRow(t, g, i, gm, saveFn, rerender)));
   });
 
-  // summary of the stat bonuses these Gifts grant
-  const gb = giftStatBonus(t); const parts = STATS.filter(([k])=>gb[k]).map(([k,l])=>`+${gb[k]} ${l}`);
+  // summary of the stat bonuses these Gifts grant (only the ones this viewer can see — a hidden
+  // row's +1 is in the Combat total but never named here)
+  const gb = giftStatBonusShown(t); const parts = STATS.filter(([k])=>gb[k]).map(([k,l])=>`+${gb[k]} ${l}`);
   if(parts.length) card.append(el("div",{class:"small",style:"margin-top:10px;padding-top:8px;border-top:1px solid var(--line)"},
     el("b",{},"Patron Stats applied: "), parts.join(" · "), el("span",{class:"muted"}," (added to your Combat totals)")));
   return card;
@@ -10117,7 +10140,10 @@ function giftRow(t, g, i, gm, saveFn, rerender){
     ? `Rank ${g.rank||1} Blessing · ${bMode==="signer" ? "Signer (Sign)" : "Messiah"}`
     : `${g.tier||"Gift"}${g.patron ? " · "+g.patron : ""}`;
   info.append(el("div",{style:"font-weight:700"}, g.name || "Gift",
-    el("span",{class:"muted small",style:"font-weight:400"}, `  ·  ${sub}`)));
+    el("span",{class:"muted small",style:"font-weight:400"}, `  ·  ${sub}`),
+    g.hidden ? el("span",{class:"arcana-tag t-hidden",style:"margin-left:6px;font-weight:400",
+      title:"only you can see this row — the Trainer's Gifts tab doesn't show it (the Patron Stat still counts)"},
+      "👁 hidden") : ""));
   // Patron-stat badge + (for or/any) an inline chooser. Blessings have no tag at all — skip the line.
   const spec = giftStatSpec(g);
   if(spec != null){
@@ -10168,6 +10194,13 @@ function giftRow(t, g, i, gm, saveFn, rerender){
   const noteTxt = kind==="blessing" ? blessingNoteFor(bless ? (bless.note||"") : (g.note||""), bMode) : g.note;
   if(noteTxt) info.append(el("div",{class:"muted small",style:"margin-top:2px;font-style:italic"}, noteTxt));
   if(g.notes) info.append(el("div",{class:"small",style:"margin-top:2px"}, g.notes));
+  /* 👁 the GM's own switch — grant something the Trainer isn't told about yet. Only the GM ever
+     renders this row at all when it's ticked, so the checkbox can only ever be theirs. */
+  if(gm) info.append(el("label",{class:"inline small",style:"gap:5px;cursor:pointer;margin-top:6px",
+    title:"hide this whole row from the player — they won't see it in their Gifts tab, and it drops out of the +🎁 breakdown on their Combat Stats (the stat itself still applies)"},
+    (()=>{ const cb = el("input",{type:"checkbox"}); cb.checked = !!g.hidden;
+           cb.addEventListener("change",()=>{ g.hidden = cb.checked || undefined; saveFn(); rerender(); }); return cb; })(),
+    el("span",{},"👁 hide from player")));
   row.append(info);
   if(gm) row.append(el("button",{class:"linkbtn danger",title:"remove this",style:"align-self:flex-start",
     onclick:()=>{ if(confirm(`Remove “${g.name}”?`)){ t.gifts.splice(i,1); saveFn(); rerender(); } }}, "×"));
@@ -10230,6 +10263,7 @@ function openAddGift(t, saveFn, rerender){
   fillPatrons("");
   const nameIn = el("input",{type:"text",placeholder:"Name",style:"width:100%"});
   const effIn  = el("textarea",{placeholder:"Effect / notes",style:"width:100%;min-height:60px"});
+  const hideCb = el("input",{type:"checkbox"});   // 👁 grant it without the player being told
   const patronWrap = el("label",{class:"field"}, el("span",{},"Patron (grants the p.57 Stat)"), patronSel);
   const statChoiceWrap = el("div",{style:"margin-top:8px"});
   /* the picked entry, whichever catalog the kind points at */
@@ -10296,7 +10330,10 @@ function openAddGift(t, saveFn, rerender){
     el("label",{class:"field"}, el("span",{},"Name"), nameIn), el("div",{style:"height:8px"}),
     patronWrap,
     statChoiceWrap, el("div",{style:"height:8px"}),
-    el("label",{class:"field"}, el("span",{},"Effect"), effIn),
+    el("label",{class:"field"}, el("span",{},"Effect"), effIn), el("div",{style:"height:8px"}),
+    el("label",{class:"inline small",style:"gap:6px;cursor:pointer",
+      title:"grant it without telling them — the row stays out of their Gifts tab and out of their +🎁 breakdown until you untick it"},
+      hideCb, el("span",{},"👁 Hide this from the player")),
   );
   syncKind();
   modal({title:"Grant a Legendary Gift", bodyNode:wrap, footNodes:[
@@ -10307,6 +10344,7 @@ function openAddGift(t, saveFn, rerender){
       if(!Array.isArray(t.gifts)) t.gifts = [];
       const row = { id:uid(), kind, name, effect:effIn.value.trim(), prereq:(cat&&cat.prereq)||"",
                     note:(cat&&cat.note)||"" };
+      if(hideCb.checked) row.hidden = true;   // 👁 GM-only until they untick it on the row
       if(kind==="blessing"){
         row.mode = modeSel.value; row.rank = (cat&&cat.rank)||1;
         row.freq = cat ? blessingSide(cat, row.mode).freq : "";
@@ -22540,14 +22578,24 @@ function toggleSet(set, v){ set.has(v)?set.delete(v):set.add(v); return [...set]
 
    Trainers still count double (Core p.460), and a Boss Trainer's own doubled Level is undivided
    too — it is the Boss Enemy. */
+/* A SWARM counts as the whole horde, not as one Pokemon. Core p.460's rule is "total the Level of
+   the enemy combatants which were defeated", and the Swarm Template (Core p.478) is explicitly a
+   stand-in for that many combatants — its Multiplier chart is a headcount ("15-25 Pokemon",
+   "25-40 Pokemon", "60+"). So a x6 Level 40 Swarm is 240 Levels of enemy, not 40, which is the
+   whole reason a party can spend a session on one. It stays in the DIVIDED pile: the Boss's
+   never-divide clause (Running the Game p.487) is written for the Boss Enemy specifically, and
+   its justification — one stat block standing in for a squad that isn't there — doesn't apply to a
+   Swarm, which really is the squad. `maxMult` (what it started as), not the bars left standing. */
+const swarmXPMult = p => (isSwarm(p) ? Math.max(1, p.swarm.maxMult||1) : 1);
+const encMonXPValue = p => (p && p.level || 0) * swarmXPMult(p);
 function encounterBaseXPSplit(enc){
   let boss = 0, normal = 0;
   const add = (n, isB) => { if(isB) boss += n; else normal += n; };
-  (enc && enc.mons || []).forEach(p => add(p.level||0, isBoss(p)));
+  (enc && enc.mons || []).forEach(p => add(encMonXPValue(p), isBoss(p)));
   (enc && enc.trainers || []).forEach(tr => {
     const t = tr.trainer;
     add((t?.level||0)*2, isBoss(t));
-    (tr.pokemon||[]).forEach(p => add(p.level||0, isBoss(p)));
+    (tr.pokemon||[]).forEach(p => add(encMonXPValue(p), isBoss(p)));
   });
   return { boss, normal, total: boss + normal };
 }
@@ -23081,8 +23129,9 @@ function swarmCard(p){
       `The shed ESCALATES: the first bar to break sheds ${swarmStrayFor(p,1)} Lv${swarmStrayLevel(p)} `
       + `${strayName}, the next ${swarmStrayFor(p,2)}, and so on — ${swarmStrayTotal(p)} of them in all if it is `
       + "fought to the last bar. Each one is added to this encounter and placed beside it on any map it is "
-      + "standing on. They act on their own initiative, they cannot be re-absorbed, and they are shed without "
-      + "Schooling — the swarm only ever gets smaller. "
+      + "standing on. They arrive 🙈 hidden from players so you can scatter them where you want them "
+      + "first — the Map's 👁 Unhide is how they turn up. They act on their own initiative, they cannot "
+      + "be re-absorbed, and they are shed without Schooling — the swarm only ever gets smaller. "
       + `Broken so far: ${lost} of ${s.maxMult} bar${s.maxMult===1?"":"s"}.`));
     if(out.length){
       const row = el("div",{class:"inline",style:"gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap"});
@@ -24025,10 +24074,13 @@ function encounterTrainerCard(enc, tr){
 function openExpCalc(enc){
   const body=el("div",{});
   const rows=[];
-  (enc.mons||[]).forEach(p=> rows.push([encMonName(p)+" · wild", `Lv ${p.level}`, p.level]));
+  // a Swarm shows its working: Lv x Multiplier, because that many Pokemon were fought
+  const monRow = (label, p) => [label, isSwarm(p) ? `Lv ${p.level} × ${swarmXPMult(p)} swarm` : `Lv ${p.level}`,
+                                encMonXPValue(p)];
+  (enc.mons||[]).forEach(p=> rows.push(monRow(encMonName(p)+" · wild"+(isSwarm(p)?` · 🐝 x${swarmXPMult(p)}`:""), p)));
   (enc.trainers||[]).forEach(tr=>{
     rows.push([(tr.trainer?.name||"Trainer")+" · Trainer", `Lv ${tr.trainer?.level} × 2`, (tr.trainer?.level||0)*2]);
-    (tr.pokemon||[]).forEach(p=> rows.push(["↳ "+encMonName(p), `Lv ${p.level}`, p.level]));
+    (tr.pokemon||[]).forEach(p=> rows.push(monRow("↳ "+encMonName(p), p)));
   });
   const base=encounterBaseXP(enc);
   const bsplit=encounterBaseXPSplit(enc);
@@ -24040,6 +24092,12 @@ function openExpCalc(enc){
     el("span",{},"Base Experience Value"), el("span",{}, String(base))));
   if(bsplit.boss) tbl.append(el("div",{class:"inline small muted",style:"justify-content:space-between;gap:8px"},
     el("span",{},"…of which Boss (never divided)"), el("span",{}, String(bsplit.boss))));
+  const swarms = [...(enc.mons||[]), ...(enc.trainers||[]).flatMap(tr=>tr.pokemon||[])].filter(isSwarm);
+  if(swarms.length) tbl.append(el("div",{class:"small muted",style:"margin-top:6px"},
+    "🐝 A Swarm counts as its whole size — "
+    + swarms.map(p=>`${encMonName(p)} is ${swarmXPMult(p)} × Lv ${p.level}`).join(", ")
+    + ". Core p.460 totals “the Level of the enemy combatants which were defeated”, and a Swarm's "
+    + "Multiplier is a headcount of exactly that (Core p.478). Unlike a Boss it IS still divided between players."));
   body.append(tbl);
   const sigIn=el("input",{type:"number",min:1,step:0.5,value:enc.sig});
   const plIn =el("input",{type:"number",min:1,value:enc.players});
@@ -24189,7 +24247,7 @@ function renderEncounters(){
   const setc=el("div",{class:"card"});
   setc.append(el("h3",{}, cur.name,
     el("button",{class:"btn-primary",style:"padding:6px 12px",onclick:()=>openExpCalc(cur)},"🧮 Calculate EXP")));
-  setc.append(el("div",{class:"small muted",style:"margin-top:4px"}, `Base XP so far: `, el("b",{}, String(encounterBaseXP(cur))), ` (sum of enemy levels; Trainers count double). Significance ×${cur.sig}, ${cur.players} player${cur.players===1?"":"s"} — edit in Calculate EXP.`));
+  setc.append(el("div",{class:"small muted",style:"margin-top:4px"}, `Base XP so far: `, el("b",{}, String(encounterBaseXP(cur))), ` (sum of enemy levels; Trainers count double, a Swarm counts its whole Multiplier). Significance ×${cur.sig}, ${cur.players} player${cur.players===1?"":"s"} — edit in Calculate EXP.`));
   const hideCb = el("input",{type:"checkbox"}); hideCb.checked = !!cur.hideTokens;
   hideCb.addEventListener("change",()=>{ cur.hideTokens=hideCb.checked; saveEnc(); });
   setc.append(el("label",{class:"inline",style:"gap:8px;margin-top:8px;cursor:pointer",
@@ -25704,7 +25762,11 @@ function makeStraggler(enc, swarmMon, n){          // `n` is 0-based — it beco
    anywhere just gets the Pokemon, and the GM drops them by hand. */
 function placeStragglerTokens(enc, swarmMon, stray){
   const byMap = cloud.mapTokens?.data?.byMap; if(!byMap) return 0;
-  const hide = enc.hideTokens ? { gmHidden:true } : {};
+  /* Always 🙈 hidden on arrival, whatever the encounter's own hideTokens setting says. Nobody
+     chose where these went — freeCellNear just found the first free square — so the GM gets to
+     scatter them properly before the table sees anything. The Map's bulk 👁 Unhide (or the token
+     menu's own switch) is how they come out. */
+  const hide = { gmHidden:true };
   let placed = 0;
   Object.keys(byMap).forEach(mapId=>{
     const arr = byMap[mapId]; if(!Array.isArray(arr)) return;
@@ -25769,7 +25831,8 @@ function sweepSwarmStragglers(){
       }
       if(bars){
         changed = true; tokensTouched = true;
-        toast(`🐟 ${encMonName(p)} sheds ${made} straggler${made===1?"":"s"} — ${bars} bar${bars===1?"":"s"} broken`);
+        toast(`🐟 ${encMonName(p)} sheds ${made} straggler${made===1?"":"s"} — ${bars} bar${bars===1?"":"s"} broken`
+              + (made ? " · 🙈 hidden, place them then unhide" : ""));
       }
     });
   });
