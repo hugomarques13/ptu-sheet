@@ -852,6 +852,66 @@ function confusionRow(o, applyLoss){
    A "Tick" of HP is 1/10th of maximum (Core p.242). Sun Blanket / Desert Weather use 1/16th.
 =================================================================== */
 const hpTick      = max => Math.max(1, Math.floor((max||0)/10));
+/* ---- the HP fractions Moves are actually written in -------------------------------------------
+   A Tick (1/10 max) was the only fraction the sheet could apply, so every Move written as a share
+   of Hit Points — and there are ~56 of them — was arithmetic done in someone's head at the table.
+   These five cover all of them. Same rounding as hpTick: floor, never below 1.
+   `why` lists the Moves that use it, which is what the buttons are for — you press "½" because you
+   just used Heal Pulse, not because you wanted 23. */
+const HP_FRACTIONS = [
+  { lbl:"\u215B", num:1, den:8,
+    why:"1/8 of Max HP \u2014 Blaze Armor, and the Ability/Gift recoils written this way" },
+  { lbl:"\u00BC", num:1, den:4,
+    why:"1/4 of Max HP \u2014 Life Dew, Jungle Healing, Substitute, a missed Jump Kick / High Jump Kick, Swallow at 1 Stockpile, a weather-penalised Synthesis / Moonlight / Morning Sun / Shore Up" },
+  { lbl:"\u2153", num:1, den:3,
+    why:"1/3 of Max HP \u2014 Curse used by a Ghost-Type, Clangorous Soul" },
+  { lbl:"\u00BD", num:1, den:2,
+    why:"1/2 of Max HP \u2014 Heal Pulse, Recover, Roost, Slack Off, Heal Order, Milk Drink, Soft-Boiled, Wish, Pollen Puff, Floral Healing, Belly Drum, Mind Blown, Chloroblast, Swallow at 2 Stockpile" },
+  { lbl:"\u2154", num:2, den:3,
+    why:"2/3 of Max HP \u2014 Synthesis / Moonlight / Morning Sun / Shore Up in their own Weather, Floral Healing on Grassy Terrain" },
+];
+/* Super Fang, Pain Split and Nature's Madness are halves of CURRENT Hit Points, not of the maximum -
+   a different number entirely once anything is hurt, so it gets its own pair rather than quietly
+   sharing the ½ button above. */
+const HP_HALF_CURRENT_WHY = "1/2 of CURRENT Hit Points \u2014 Super Fang, Nature's Madness, and each half of Pain Split";
+const hpFractionOf = (n, f) => Math.max(1, Math.floor(Math.max(0, n||0) * f.num / f.den));
+/* The two rows of \u00b1 buttons. `apply(delta)` takes a SIGNED number of Hit Points and is expected to
+   run whatever pipeline that surface already uses for \u00b1Tick (Temp HP, Injuries, Knocked Out\u2026), so
+   a fraction behaves exactly like the Tick button next to it. Returns { node, refresh } - refresh()
+   re-reads the numbers, which the "of current HP" pair needs after every press. */
+function hpFractionRows({ getMax, getCur, apply, disabled, compact }){
+  const node = el("div",{style:"margin-top:6px"});
+  const head = el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"});
+  const rowMinus = el("div",{class:"tk-menu-row"}), rowPlus = el("div",{class:"tk-menu-row"});
+  const rowCur = el("div",{class:"tk-menu-row",style:"align-items:center"});
+  const curLbl = el("span",{class:"small muted",style:"font-weight:700;align-self:center"},"of current HP:");
+  const btns = [];
+  const mk = (sign, f, ofCur) => {
+    const b = el("button",{class:"btn-secondary", disabled:!!disabled,
+      style: compact ? "padding:5px 9px;font-size:14px" : ""});
+    btns.push({ b, sign, f, ofCur });
+    b.addEventListener("click", () => {
+      const n = hpFractionOf(ofCur ? getCur() : getMax(), f);
+      apply(sign * n);
+    });
+    return b;
+  };
+  HP_FRACTIONS.forEach(f => { rowMinus.append(mk(-1, f, false)); rowPlus.append(mk(+1, f, false)); });
+  const half = HP_FRACTIONS.find(f => f.den === 2);
+  rowCur.append(curLbl, mk(-1, half, true), mk(+1, half, true));
+  const refresh = () => {
+    const max = getMax(), cur = getCur();
+    head.textContent = `\u2696 Move fractions \u2014 of Max HP (${max})`;
+    btns.forEach(({ b, sign, f, ofCur }) => {
+      const n = hpFractionOf(ofCur ? cur : max, f);
+      b.textContent = `${sign < 0 ? "\u2212" : "+"}${f.lbl} ${n}`;
+      b.title = `${sign < 0 ? "lose" : "regain"} ${n} HP \u2014 ${ofCur ? HP_HALF_CURRENT_WHY : f.why}`;
+    });
+  };
+  refresh();
+  node.append(head, rowMinus, rowPlus, rowCur);
+  return { node, refresh };
+}
 const hpSixteenth = max => Math.max(1, Math.floor((max||0)/16));
 const normAbilityName = s => String(s||"").toLowerCase().replace(/[^a-z]/g,"");
 function monHasAbility(p, name){
@@ -6159,14 +6219,19 @@ function damageHealRow(getHP, setHP, owner){
     usurpMirrorHP(owner, oldHP, newHP);   // an Usurper's other form loses the same HP (B&D p.51)
     setHP(newHP);
   };
-  // ± one Tick of HP (1/10 max) — direct HP change, no DR (Ticks are fixed chunks)
-  const tickApply = sign => {
-    const t = hpTick(ownerMaxHP(owner)); const oldHP = getHP(); const n = sign*t;
+  let fracsRefresh = null;              // the Move-fraction buttons, once they exist
+  /* A flat, signed HP change that skips the DR box above — Ticks and the Move fractions are fixed
+     chunks of the Hit Point total, not incoming damage to be reduced. */
+  const flatApply = n => {
+    const oldHP = getHP();
     const newHP = owner ? tempSoakSay(owner, oldHP, oldHP+n) : oldHP+n;
     if(owner){ applyAutoInjury(owner, oldHP, newHP); applyAutoKO(owner, oldHP, newHP); applyShieldsDown(owner, newHP); applySchooling(owner, newHP); }
     usurpMirrorHP(owner, oldHP, newHP);   // an Usurper's other form loses the same HP (B&D p.51)
     setHP(newHP);
+    if(fracsRefresh) fracsRefresh();      // the "of current HP" pair moves with the HP
   };
+  // ± one Tick of HP (1/10 max)
+  const tickApply = sign => flatApply(sign * hpTick(ownerMaxHP(owner)));
   box.addEventListener("keydown", e=>{ if(e.key==="Enter") apply(); });
   const tick = hpTick(ownerMaxHP(owner));
   wrap.append(
@@ -6194,6 +6259,14 @@ function damageHealRow(getHP, setHP, owner){
     const tdr = modeTypeDR(owner), tks = Object.keys(tdr);
     if(tks.length) wrap.append(el("span",{class:"small muted",style:"flex-basis:100%"},
       `✨ ${tks.map(k=>`${tdr[k].dr} DR vs ${k}`).join(" · ")} (${[...new Set(tks.flatMap(k=>tdr[k].from))].join(", ")}) — subtract by hand here; the Map's attack tool applies it for you.`));
+  }
+  /* The same fractions the Map's token menu offers — a Heal Pulse or a Ghost's Curse gets used off
+     the sheet as often as off the board, and the arithmetic is the same either way. */
+  if(owner){
+    const fr = hpFractionRows({ getMax: () => ownerMaxHP(owner), getCur: () => getHP(),
+                                compact:true, apply: flatApply });
+    fracsRefresh = fr.refresh;
+    wrap.append(el("div",{style:"flex-basis:100%"}, fr.node));
   }
   return wrap;
 }
@@ -35470,8 +35543,12 @@ function addMapImage(map){
         probe.onload = async ()=>{
           const w = probe.naturalWidth||map.gridSize*10, h = probe.naturalHeight||map.gridSize*10;
           const src = await storeImg(out, "map");   // upload to Storage; keeps the row tiny (URL, not 6 MB of base64)
-          map.images.push({ id:uid(), src, x:0, y:0, w, h });
+          const im = { id:uid(), src, x:0, y:0, w, h };
+          map.images.push(im);
           mapMetaSave(); renderMap(); toast("Image added ✓");
+          // A background this size decodes to hundreds of MB in EVERY player's browser, so slice it
+          // now — while the GM is standing here to watch — instead of finding out when a phone dies.
+          if(w*h >= MAP_TILE_MIN_MP*1e6) await tileMapImage(map, im);
         };
         probe.onerror = ()=>toast("⚠ Could not read that image");
         probe.src = out;
@@ -35489,7 +35566,9 @@ async function moveMapImageLayer(map, img, dir){
 }
 async function deleteMapImage(map, img){
   const i = map.images.indexOf(img); if(i<0) return;
-  map.images.splice(i,1); mapMetaSave(); renderMap();
+  map.images.splice(i,1);
+  mapDropImageParts(img);            // ...and its overview/tiles, which nothing else can reach now
+  mapMetaSave(); renderMap();
   // the row no longer points at it, so neither should the bucket (see removeStoredImg)
   if(!mapImgInUse(img.src, img)) removeStoredImg(img.src);
 }
@@ -37168,6 +37247,7 @@ function openTokenMenu(token, map){
     wrap.append(sw);
   } else {
     let tempBox = null, drawTemp = null;      // filled in below, for creature tokens only
+    let fracsRefresh = null;                  // the HP-fraction buttons, once they exist
     const readout = el("div",{class:"tk-menu-hp"});
     const hpBarBox = el("div",{});
     const draw = ()=>{ const i=tokenHp(token); const p=Math.max(0,Math.min(100,Math.round(i.cur/i.max*100)));
@@ -37177,6 +37257,7 @@ function openTokenMenu(token, map){
       hpBarBox.innerHTML = "";
       hpBarBox.append(hpBarEl(i.cur, i.max, th, {style:"margin-top:6px"}));
       if(drawTemp) drawTemp();
+      if(fracsRefresh) fracsRefresh();        // the "of current HP" pair moves with the HP
     };
     draw();
     const mk = (d,l)=>el("button",{class:"btn-secondary",disabled:!info.editable,
@@ -37193,6 +37274,19 @@ function openTokenMenu(token, map){
         el("button",{class:"btn-secondary",disabled:!info.editable,title:`regain a Tick of HP (${tick} = 1/10 max)`,
           onclick:async()=>{ await setTokenHP(token, tokenHp(token).cur+tick); draw(); }},"+Tick"),
         setInp, setBtn));
+
+    /* …and the fractions the Moves themselves are written in (Heal Pulse's 1/2, Ghost Curse's 1/3,
+       Life Dew's 1/4). Same setTokenHP call the Tick buttons make, so Temp HP, Injuries, Knocked Out
+       and the Swarm/Boss bar cascade all behave identically. */
+    const fracs = hpFractionRows({
+      getMax: () => tokenHp(token).max,
+      getCur: () => tokenHp(token).cur,
+      disabled: !info.editable,
+      compact: true,
+      apply: async n => { await setTokenHP(token, tokenHp(token).cur + n); draw(); },
+    });
+    wrap.append(fracs.node);
+    fracsRefresh = fracs.refresh;
 
     /* Temporary Hit Points, granted straight from the board. Nothing here adds to the pool: the
        rules say two sources never stack and only the highest applies, so "Grant" raises the pool to
@@ -38071,17 +38165,235 @@ function mapVisibleRect(){
   return { x: -mapView.panX/s, y: -mapView.panY/s, w: vp.w/s, h: vp.h/s };
 }
 function mapBuildRect(){
-  const v = mapVisibleRect(), mx = v.w*MAP_CULL_MARGIN, my = v.h*MAP_CULL_MARGIN;
+  const m = mapCullMargin();
+  const v = mapVisibleRect(), mx = v.w*m, my = v.h*m;
   return { x: v.x-mx, y: v.y-my, w: v.w+2*mx, h: v.h+2*my };
 }
-/* the camera has left the area the tokens in the DOM were built for — time for a fresh renderMap */
+/* The camera has left an area the DOM was built for — time for a fresh renderMap. Two rings are
+   checked: the generous one the TOKENS were built for, and the much tighter one the sharp
+   background TILES were built for (mapTileRect). Escaping the tile ring matters even though it
+   only ever costs sharpness: without it, panning while zoomed in walks onto ground that has
+   nothing but the blurry overview under it and never asks for the tiles that would fix it. */
 function mapCullStale(){
-  const r = mapCullRect; if(!r) return false;
   const v = mapVisibleRect();
-  return v.x < r.x || v.y < r.y || v.x+v.w > r.x+r.w || v.y+v.h > r.y+r.h;
+  const out = r => !!r && (v.x < r.x || v.y < r.y || v.x+v.w > r.x+r.w || v.y+v.h > r.y+r.h);
+  return out(mapCullRect) || out(mapTilesRect);
 }
 /* 2 = everything · 1 = no name plate, HP number or badges · 0 = sprite + HP bar only */
 function mapTokenDetail(){ const s = mapView.scale || 1; return s < 0.3 ? 0 : s < 0.55 ? 1 : 2; }
+
+
+/* ───────────── huge backgrounds: one small overview + native-resolution tiles ─────────────
+   Culling and LOD (above) fixed the TOKEN side of a big board and never touched the background —
+   and on a world map the background IS the problem. Measured against the live Pokemon Isles
+   image: a single 9600x12800 PNG. 5.2 MB on the wire, which sounds harmless, but that is
+   **122.9 megapixels, which the browser decodes to ~469 MB of RGBA** and holds for as long as the
+   map is open (489 ms of decode on a fast desktop). No phone survives that — it is several times
+   a mobile tab's entire memory budget, and 12800 px is past the maximum texture size of most
+   mobile GPUs, so the compositor cannot hold it as one layer either. That, not the 161 tokens
+   standing on it, is what kills the tab.
+
+   The fix is what every slippy map does: never hold the full-resolution picture, hold only the
+   part being looked at, at the resolution it is being looked at.
+
+     im.lod   = { src, w, h } — the whole image downscaled to MAP_LOD_MAX on its longest side.
+                ALWAYS drawn, stretched over the image's full rect. ~2 MP instead of 123, and by
+                itself sharper than the screen whenever the board is zoomed out, which on a world
+                map is nearly always.
+     im.tiles = { tw, th, cols, rows, natW, natH, srcs[] } — the image cut into native-resolution
+                squares, row-major. Only the ones near the viewport are attached, only when the
+                overview has run out of pixels, and only up to a memory budget. They sit ON TOP of
+                the overview, so a tile that isn't built — off screen, over budget, low-detail
+                device — degrades to "slightly soft", never to "blank". There is no pop-in to hide,
+                which is why their ring can be so much tighter than the tokens'.
+
+   Both are produced once by the GM (the 🧩 button in 🖼 Edit images, and automatically for any
+   big image added from now on — see tileMapImage). They are plain extra fields on the image
+   record: an image without them renders exactly as it always did, so every existing map keeps
+   working untouched and nothing has to be migrated.
+
+   This is an egress win too, on a campaign that has hit HTTP 402 three times: a client used to
+   pull the whole 5.2 MB PNG, and now pulls a ~200 KB overview plus the few tiles it looks at.
+   Both are ordinary Storage objects, so the service worker caches them forever (IMG_CACHE in
+   sw.js) just like every other uploaded image. */
+const MAP_LOD_MAX     = 2048;   // longest side of the whole-image overview
+const MAP_TILE_PX     = 1024;   // native-resolution tile size — 1 MP each, so the budget below is spent finely
+const MAP_TILE_MIN_MP = 12;     // anything smaller decodes cheaply enough to leave alone
+const MAP_TILE_MARGIN = 0.25;   // extra viewports of TILES built each side (tokens use MAP_CULL_MARGIN)
+/* A ceiling on decoded tile pixels held at once. 32 MP is ~128 MB — a lot in the abstract, but a
+   quarter of the 469 MB the un-sliced Isles image cost by itself, and only reached in the narrow
+   zoom band where a big board is half on screen. It is tuned to exactly that band: at 24 MP the
+   0.2–0.25 range on the Isles fell back to the overview at 1.5x too soft to read comfortably.
+   A low-detail device never pays it at all — mapImageTiles returns nothing there. */
+const MAP_TILE_BUDGET_MP    = 32;
+const MAP_TILE_BUDGET_MP_LO = 8;
+
+/* Low detail is a DEVICE setting, not a campaign one — it says what this phone or laptop can
+   cope with — so it lives in localStorage and is never synced to anybody else. */
+let mapLowDetailPref = "auto";                                       // "auto" | "on" | "off"
+try{ mapLowDetailPref = localStorage.getItem("ptu_map_lowdetail") || "auto"; }catch(e){}
+function mapDeviceIsSmall(){
+  const dm = navigator.deviceMemory;                                 // Chromium only; undefined elsewhere
+  if(typeof dm==="number" && dm<=4) return true;
+  const coarse = window.matchMedia ? matchMedia("(pointer:coarse)").matches : false;
+  return coarse && Math.min(screen.width||9999, screen.height||9999) <= 900;
+}
+function mapLowDetail(){
+  return mapLowDetailPref==="on" ? true : mapLowDetailPref==="off" ? false : mapDeviceIsSmall();
+}
+function setMapLowDetail(v){
+  mapLowDetailPref = v;
+  try{ localStorage.setItem("ptu_map_lowdetail", v); }catch(e){}
+  renderMap();
+  toast(mapLowDetail() ? "🪶 Low detail — small background, fewer tokens drawn"
+                       : "🖼 Full detail — sharp background tiles");
+}
+/* a low-detail device builds a much tighter ring of tokens too */
+function mapCullMargin(){ return mapLowDetail() ? 0.35 : MAP_CULL_MARGIN; }
+/* the rect sharp tiles are built for — see mapCullStale for why it is checked separately */
+function mapTileRect(){
+  const v = mapVisibleRect(), mx = v.w*MAP_TILE_MARGIN, my = v.h*MAP_TILE_MARGIN;
+  return { x: v.x-mx, y: v.y-my, w: v.w+2*mx, h: v.h+2*my };
+}
+let mapTilesRect = null;        // stage-space rect the sharp tiles currently in the DOM were built for
+
+function mapImgTiles(im){
+  const t = im && im.tiles;
+  if(!t || !Array.isArray(t.srcs) || !t.cols || !t.rows || !t.tw || !t.th || !t.natW || !t.natH) return null;
+  return t;
+}
+/* Does the overview already carry at least one image pixel per screen pixel? If so there is
+   nothing sharper to show and the tiles would be pure cost. */
+function mapLodIsSharp(im){
+  const lod = im && im.lod;
+  if(!lod || !lod.src || !lod.w) return false;
+  return lod.w >= Math.abs(im.w||0) * (mapView.scale||1) * 0.95;      // a hair of slack, so 1:1 doesn't flap
+}
+/* The native-resolution tiles worth attaching over one background right now — [] whenever the
+   overview is doing the job on its own, which is the common case. */
+function mapImageTiles(im, originX, originY){
+  const T = mapImgTiles(im);
+  if(!T || !im.lod || !im.lod.src || mapLowDetail() || mapLodIsSharp(im)) return [];
+  const x0 = im.x+originX, y0 = im.y+originY;
+  const kx = (im.w||T.natW)/T.natW, ky = (im.h||T.natH)/T.natH;       // natural px → stage px
+  const budget = (mapLowDetail()?MAP_TILE_BUDGET_MP_LO:MAP_TILE_BUDGET_MP)*1e6;
+  const gather = box => {
+    const got = []; let spend = 0;
+    for(let r=0; r<T.rows; r++) for(let c=0; c<T.cols; c++){
+      const src = T.srcs[r*T.cols+c];
+      if(typeof src!=="string" || !src) continue;
+      const nw = Math.min(T.tw, T.natW-c*T.tw), nh = Math.min(T.th, T.natH-r*T.th);
+      if(nw<=0 || nh<=0) continue;
+      const L = x0 + c*T.tw*kx, Tp = y0 + r*T.th*ky, W = nw*kx, H = nh*ky;
+      if(L >= box.x+box.w || L+W <= box.x || Tp >= box.y+box.h || Tp+H <= box.y) continue;
+      got.push([src, L, Tp, W, H]);
+      spend += nw*nh;
+    }
+    return (got.length && spend <= budget) ? got : null;
+  };
+  /* Zooming OUT grows the ring faster than the overview gains sharpness, so there is a band —
+     measured at roughly 0.2–0.4 on the Isles — where the padded ring busts the budget while the
+     overview is still visibly soft. Rather than hand that whole band back to the blurry overview,
+     try again with no padding at all: exactly what is on screen and not a pixel more. Only if THAT
+     is still too much do we give up, and by then the board is zoomed out far enough that the
+     overview is within a few percent of sharp anyway. The rect we actually settled on is what
+     mapCullStale watches, so a no-padding build correctly re-renders as soon as the camera moves. */
+  let box = mapTileRect(), want = gather(box);
+  if(!want){ box = mapVisibleRect(); want = gather(box); }
+  if(!want) return [];
+  mapTilesRect = box;
+  // Grown by half a pixel so neighbouring tiles overlap instead of leaving a hairline seam wherever
+  // a tile's stage position lands on a fraction (which it does as soon as an image has been resized
+  // on the board, so kx/ky is no longer exactly 1). Only ever grows, never shifts.
+  return want.map(([src,L,Tp,W,H]) => el("img",{class:"map-img map-tile",src,draggable:false,alt:"",
+    decoding:"async", style:`left:${L}px;top:${Tp}px;width:${W+0.5}px;height:${H+0.5}px`}));
+}
+
+/* Forget (and delete from the bucket) the overview + tiles an image was previously sliced into.
+   Best-effort in the same spirit as removeStoredImg: a failed delete costs a little dead space,
+   and must never throw into the caller that has already dropped the reference. */
+function mapDropImageParts(im){
+  if(!im) return;
+  const gone = [];
+  if(im.lod && im.lod.src) gone.push(im.lod.src);
+  if(im.tiles && Array.isArray(im.tiles.srcs)) gone.push(...im.tiles.srcs);
+  delete im.lod; delete im.tiles;
+  gone.forEach(src => { if(typeof src==="string" && src && !mapImgInUse(src, im)) removeStoredImg(src); });
+}
+
+/* Slice one background into an overview + native tiles. Runs in the GM's browser because that is
+   where the credentials and the source image already are, and because a desktop can afford the
+   single full-resolution decode this needs — which is the entire point, since a phone cannot.
+   One decode, then every piece is a cheap canvas crop of it.
+
+   Tiles are WebP: it keeps the alpha channel a map PNG may be relying on (the Isles image is
+   RGBA), and is a fraction of PNG's size. Falls back to PNG if the browser won't encode WebP. */
+async function tileMapImage(map, im){
+  if(!cloud.isGM || !map || !im) return;
+  if(mode!=="cloud" || !cloud.client || !cloud.campaign)
+    return toast("⚠ Slicing needs a cloud campaign — the pieces are uploaded to Storage");
+  let bmp = null;
+  toast("🧩 Reading the image…");
+  try{
+    const res = await fetch(im.src, { mode:"cors" });
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    bmp = await createImageBitmap(await res.blob());
+  }catch(e){ console.error("slice: could not read source", e); return toast("⚠ Could not read that image"); }
+
+  const natW = bmp.width, natH = bmp.height;
+  const cv = el("canvas"), cx = cv.getContext("2d");
+  const cut = (sx, sy, sw, sh, dw, dh) => {
+    cv.width = dw; cv.height = dh;
+    cx.clearRect(0, 0, dw, dh);
+    cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = "high";
+    cx.drawImage(bmp, sx, sy, sw, sh, 0, 0, dw, dh);
+    let u = ""; try{ u = cv.toDataURL("image/webp", 0.85); }catch(e){}
+    return (u && u.indexOf("data:image/webp")===0) ? u : cv.toDataURL("image/png");
+  };
+  // storeImg hands the data-URL straight back when an upload fails. Letting one of those reach
+  // im.tiles would put a quarter-megabyte of base64 into the hot map row, so treat it as fatal.
+  const uploaded = [];
+  const put = async dataUrl => {
+    const url = await storeImg(dataUrl, "map");
+    if(!/^https?:/i.test(url)) throw new Error("upload failed");
+    uploaded.push(url); return url;
+  };
+
+  try{
+    toast("🧩 Building the overview…");
+    const k = Math.min(1, MAP_LOD_MAX/Math.max(natW, natH));
+    const lw = Math.max(1, Math.round(natW*k)), lh = Math.max(1, Math.round(natH*k));
+    const lodSrc = await put(cut(0, 0, natW, natH, lw, lh));
+
+    const cols = Math.ceil(natW/MAP_TILE_PX), rows = Math.ceil(natH/MAP_TILE_PX);
+    const total = cols*rows, srcs = new Array(total).fill("");
+    const BATCH = 6;                                    // a few uploads in flight; all of them at once is 30 MB of base64
+    for(let i=0; i<total; i+=BATCH){
+      const chunk = [];
+      for(let j=i; j<Math.min(i+BATCH, total); j++){
+        const c = j%cols, r = (j-c)/cols, sx = c*MAP_TILE_PX, sy = r*MAP_TILE_PX;
+        const sw = Math.min(MAP_TILE_PX, natW-sx), sh = Math.min(MAP_TILE_PX, natH-sy);
+        chunk.push([j, cut(sx, sy, sw, sh, sw, sh)]);
+      }
+      const got = await Promise.all(chunk.map(([, u]) => put(u)));
+      got.forEach((url, n) => { srcs[chunk[n][0]] = url; });
+      toast(`🧩 Slicing… ${Math.min(i+BATCH, total)}/${total}`);
+    }
+
+    mapDropImageParts(im);                              // bin the pieces of any previous slicing first
+    im.lod   = { src:lodSrc, w:lw, h:lh };
+    im.tiles = { tw:MAP_TILE_PX, th:MAP_TILE_PX, cols, rows, natW, natH, srcs };
+    mapMetaSave(); renderMap();
+    toast(`✓ Optimised — ${total} tiles + a ${lw}×${lh} overview`);
+  }catch(e){
+    console.error("slicing failed", e);
+    uploaded.forEach(u => removeStoredImg(u));          // don't leave half a tile set in the bucket
+    toast("⚠ Slicing failed — nothing was changed");
+  }finally{
+    if(bmp && bmp.close) bmp.close();
+    cv.width = cv.height = 0;                           // let go of the canvas backing store
+  }
+}
 
 function applyMapCamera(stage){ stage.style.transformOrigin="0 0";
   stage.style.transform = `translate(${mapView.panX}px,${mapView.panY}px) scale(${mapView.scale})`; }
@@ -38537,7 +38849,16 @@ function renderMap(){
      which is what makes a scale this far out reachable at all) and centres the board in the view. */
   if(map) bar.append(el("span",{class:"map-sep"}),
     el("button",{class:"btn-secondary",title:"Zoom out until the whole map fits on screen",
-      onclick:()=>fitMapToView(map)}, "⤢ Fit map"));
+      onclick:()=>fitMapToView(map)}, "⤢ Fit map"),
+    /* Device-local quality switch (see mapLowDetail) — everyone gets it, because it describes the
+       machine in front of you, not the campaign. Low keeps the background on its small overview
+       and builds a much tighter ring of tokens; on a phone that is the difference between opening
+       the Isles and having the tab killed. Auto guesses, and the label says which way it guessed. */
+    el("button",{class:"btn-secondary"+(mapLowDetail()?" on":""),
+      title:"How much detail this device draws. Auto picks by device — force Low if the map still struggles here, Full if it looks softer than it should.",
+      onclick:()=>setMapLowDetail(mapLowDetailPref==="auto" ? "on" : mapLowDetailPref==="on" ? "off" : "auto")},
+      mapLowDetailPref==="auto" ? (mapLowDetail() ? "🪶 Detail: auto (low)" : "🖼 Detail: auto (full)")
+        : mapLowDetailPref==="on" ? "🪶 Detail: low" : "🖼 Detail: full"));
   // The toolbar grows a lot of buttons once weather/terrain/GM tools are all in play — let it collapse
   // so it doesn't eat half the screen on a phone. Collapsed state persists across map visits.
   const barCollapsed = localStorage.getItem("ptu_mapbar_collapsed")==="1";
@@ -38560,8 +38881,14 @@ function renderMap(){
     return;
   }
   resolveImageSizes(map);   // resolve any migrated-bg natural sizes (no-op once done)
-  const wpanel = weatherPanel(map); if(wpanel) root.append(wpanel);
-  const tpanel = terrainPanel(map); if(tpanel) root.append(tpanel);
+  /* The weather and terrain rule cards belong to the toolbar, so ▾ Hide bar folds them away with
+     it — between the two of them they can push the board most of the way off a phone screen, which
+     is the whole reason the bar collapses in the first place. The initiative panel deliberately
+     stays: it is live combat state someone is reading mid-fight, not a reference card. */
+  if(!barCollapsed){
+    const wpanel = weatherPanel(map); if(wpanel) root.append(wpanel);
+    const tpanel = terrainPanel(map); if(tpanel) root.append(tpanel);
+  }
   if(meta.battleOn) root.append(initiativePanel(map, meta));
   healMissingShops(map);                                              // doors on the board but no shop data → refetch once
   healMountLinks(map);                                                // drop dead riding links, re-pin riders
@@ -38574,8 +38901,12 @@ function renderMap(){
   // layered images (back → front)
   if(!map.images.length) stage.append(el("div",{class:"map-nobg",style:`width:${stageW}px;height:${stageH}px`}));
   const editOverlays = [];   // controls/handle for each image, appended AFTER every image wrap (see below)
+  mapTilesRect = null;       // re-set below by mapImageTiles if any sharp tile actually gets built
   map.images.forEach((im,imIdx)=>{
-    const node = el("img",{class:"map-img"+(mapImgEdit?" editing":""),src:im.src,draggable:false,alt:"",decoding:"sync",
+    // Base layer: the small overview whenever this image has been sliced, so a huge background is
+    // never decoded at full resolution again (see the tiling block above); the original otherwise.
+    const baseSrc = (im.lod && im.lod.src) ? im.lod.src : im.src;
+    const node = el("img",{class:"map-img"+(mapImgEdit?" editing":""),src:baseSrc,draggable:false,alt:"",decoding:"sync",
       style:`left:${im.x+originX}px;top:${im.y+originY}px;`+(im.w?`width:${im.w}px;`:"")+(im.h?`height:${im.h}px;`:"")});
     // The scaled stage is a GPU layer rasterized at build time; if a background isn't decoded yet it
     // composites a blurry raster until the next full re-render (moving a token "fixed" it — bug #6).
@@ -38600,6 +38931,12 @@ function renderMap(){
       overlay.append(el("div",{class:"map-img-ctrls",style:`top:${6+imIdx*34}px`},
         el("button",{title:"bring forward",onclick:e=>{e.stopPropagation();moveMapImageLayer(map,im,1);}},"⬆"),
         el("button",{title:"send back",onclick:e=>{e.stopPropagation();moveMapImageLayer(map,im,-1);}},"⬇"),
+        el("button",{title: im.tiles
+            ? "Already sliced — click to redo it (after resizing or replacing the art)"
+            : "Slice into a small overview + sharp tiles, so phones can open this map at all",
+          onclick:e=>{ e.stopPropagation();
+            if(im.tiles && !confirm("Slice this image again? The old pieces are deleted and rebuilt.")) return;
+            tileMapImage(map, im); }}, im.tiles?"🧩✓":"🧩"),
         el("button",{title:"delete",class:"danger",onclick:e=>{e.stopPropagation();if(confirm("Remove this image?"))deleteMapImage(map,im);}},"🗑")));
       overlay.append(el("div",{class:"map-img-handle",title:"drag to resize"}));
       const handle = overlay.querySelector(".map-img-handle");
@@ -38618,6 +38955,8 @@ function renderMap(){
       editOverlays.push(overlay);
     } else {
       stage.append(node);
+      // native-resolution tiles over the overview, wherever the overview has run out of pixels
+      mapImageTiles(im, originX, originY).forEach(tn=>stage.append(tn));
     }
   });
   editOverlays.forEach(o=>stage.append(o));
