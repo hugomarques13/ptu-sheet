@@ -30399,13 +30399,209 @@ function featureAutoNote(name){
   return `Rolling ${list} adds a box with that Move's effect and a button that spends `
     + (cost.length ? cost.join(" + ") : "nothing") + `. Uses refresh at 🌙 End Scene.`;
 }
+/* ---------- "how this Move actually rolls", for its ℹ info panel ---------------------------
+   Everything the sheet does to a Move — STAB, the Abilities that raise its Damage Base, the
+   Accuracy Stages, the buffs, the Weather and Terrain in play, the held items — only ever
+   appeared inside openMoveRoll. Pressing "info" printed the card out of the book, so a player
+   reading their own Move could not see what their own sheet turns it into without opening the
+   dice window and closing it again.
+
+   This recomputes the picture openMoveRoll OPENS WITH — every toggle at its default, nothing
+   spent, no dice — and renders it read-only. Anything the roll asks a question about (an "−ate"
+   retype, Analytic, the Duelist's Tag, a Gem, a conditional Damage Base…) is NAMED at the bottom
+   rather than guessed at, so the number above is never a number the roll would disagree with.
+   Keep in sync with openMoveRoll's opening block. */
+function moveRollFactsHTML(p, m, sp){
+  if(!p || !m || isTrainerOwner(p)) return "";
+  try{
+    const d     = pokeDerived(p);
+    const types = monStabTypes(p, sp);
+    const ate   = ateInfo(p, m);                    // the roll opens with an "−ate" ON, so it is applied
+    const naturalType = effectiveMoveType(p, m);
+    const fieldType = (naturalType === ((m && m.type) || "Normal") && !hasAbility(p,"Normalize"))
+      ? fieldMoveType(m) : null;
+    const typePick = movePicksOwnType(m) ? chosenMoveTypeDefault(p, m) : null;
+    // Fiery Crash opens on its +2 Damage Base, not on the Fire retype, so the Type is unaffected
+    const mtype = typePick || fieldType || naturalType;
+    const fc    = fieryCrashInfo(p, m, mtype);
+    const stab  = !!(mtype && types.includes(mtype));
+    const versatile = isVersatileMove(m);
+    const versSpec  = versatile ? versatileDefaultSpec(d.eff.atk, d.eff.spatk) : false;
+    const isPhys = versatile ? !versSpec : /phys/i.test(m.class||"");
+    const isSpec = versatile ?  versSpec : /spec/i.test(m.class||"");
+    const dealsDmg = isPhys || isSpec;
+    const atkStat = isPhys ? d.eff.atk : isSpec ? d.eff.spatk : 0;
+    const atkLbl  = isPhys ? "Attack" : isSpec ? "Sp. Attack" : null;
+    const defNote = isPhys ? "Defense" : isSpec ? "Special Defense" : "Defense/Sp.Def";
+    const evaNote = isPhys ? "the target's Physical Evasion" : isSpec ? "the target's Special Evasion" : "the target's Evasion";
+
+    /* --- the Damage Base this Move starts from, before STAB and everything else --- */
+    const wInfo = weightMoveInfo(m);
+    const sp2   = specialMoveInfo(m, p);
+    let dbBase = m.damageBase != null ? m.damageBase : null;
+    let dbNote = "", dbPending = "", condDmg = 0, condMult = 1;
+    if(wInfo && wInfo.kind !== "generic"){ dbBase = null; dbPending = wInfo.hint; }
+    else if(sp2) switch(sp2.kind){
+      case "conditionalDB": {
+        // only the conditions the sheet can see for itself are counted — the same ones the roll pre-ticks
+        const on = (sp2.conds||[]).filter(c=>{ try{ return !!(c.auto && c.auto(p)); }catch(e){ return false; } });
+        let b = sp2.base, delta = 0;
+        on.forEach(c=>{ if(c.db != null) b = c.db; if(c.dbDelta) delta += c.dbDelta;
+                        if(c.dmg) condDmg += c.dmg; if(c.mult != null) condMult *= c.mult; });
+        dbBase = b == null ? null : b + delta;
+        dbNote = on.map(c=>c.label).join("; ");
+        break; }
+      case "valueDB": {
+        const v = Math.max(sp2.min||0, Math.min(sp2.max == null ? 1e9 : sp2.max, sp2.def));
+        dbBase = Math.min(28, sp2.toDB(v)); dbNote = `${sp2.label.toLowerCase()}: ${v}`; break; }
+      case "dieDB":        dbBase = null; dbPending = sp2.hint; break;
+      case "doubleStrike": dbBase = (sp2.base||0) * 2; dbNote = "both strikes connecting"; break;
+      case "tripleKick":   dbBase = 6; dbNote = "all three kicks connecting"; break;
+      default:             dbBase = null; dbPending = sp2.desc || sp2.note || sp2.hint || "special damage";
+    }
+
+    /* --- everything that is always on --- */
+    const thresholds = effectThresholds(m.effect);
+    const abilMods = abilityDamageMods(p, m, dbBase, thresholds,
+      { stab, abilStab: stab || abilityStabFor(p, mtype), mtype, isPhys, isSpec,
+        fieryCrash: fc ? "db" : null, analytic:false });
+    const bm  = buffMods(p, {isPhys, type: mtype});
+    const wx  = weatherRollMods(p, m, mtype);
+    const tx  = terrainRollMods(p, m, mtype);
+    const abilAcc = abilityAccMods(p, m, isPhys);
+    const accCS  = (d.cs.acc||0) + abilAcc.acc + (hasStatus(p,"focused") ? 1*trainingMult(p) : 0);
+    const accMod = (bm.acc||0) + accCS;
+    const acCut  = monACReduction(p, m);
+    const printedAC = m.ac != null ? Math.max(1, m.ac - acCut) : null;
+    const effAC  = wx.acOverride != null ? Math.max(1, wx.acOverride - acCut) : printedAC;
+    const fiveStrike = isFiveStrike(m);
+    const dbBonus  = (stab?2:0) + (bm.db||0) + abilMods.db;
+    const finalDB  = dbBase == null ? null : Math.min(28, dbBase + dbBonus);
+    const finalDB5 = (dbBase == null || !fiveStrike) ? null : Math.min(28, dbBase*5 + dbBonus);
+    const tBoost = dealsDmg ? typeBoosterFor(p, mtype) : null;
+    const oFlat  = heldFlatDamage(p, dealsDmg);
+    const teraD  = dealsDmg ? teraDamageBonus(p, mtype) : null;
+    const zBoost = dealsDmg ? heldTypeBoost(p, mtype) : null;   // named below — nothing is spent from here
+    const tDmg   = (tBoost?tBoost.dmg:0) + (oFlat?oFlat.dmg:0) + (teraD?teraD.dmg:0);
+    const critT  = Math.max(2, critThreshold(p, m) - (bm.crit||0));
+    const alwaysCrit = alwaysCrits(m);
+
+    /* --- the damage expression, the same terms in the same order the roll prints --- */
+    const ds = finalDB != null ? String(DB_TABLE[finalDB]||"").split("/")[0].trim() : "";
+    const dm = ds.match(/(\d+)d(\d+)\s*([+-]\s*\d+)?/) || [];
+    const dn = dm[1] ? +dm[1] : 0, dfaces = dm[2] ? +dm[2] : 0;
+    const dflat = dm[3] ? parseInt(dm[3].replace(/\s/g,"")) : 0;
+    const terms = [];
+    if(dn) terms.push(`${dn}d${dfaces}`);
+    if(dflat) terms.push(String(dflat));
+    if(atkStat) terms.push(String(atkStat));
+    let expr = terms.join(" + ");
+    const add = v => { if(v) expr += ` ${v>0?"+":"−"} ${Math.abs(v)}`; };
+    add(bm.dmg); add(wx.dmg); add(tx.dmg); add(abilMods.flat); add(tDmg); add(condDmg);
+    if(condMult !== 1) expr += `, then ×${condMult}`;
+
+    /* --- one line per thing this sheet is doing to the Move --- */
+    const why = [];
+    const printedType = (m.type || "Normal");
+    if(mtype !== printedType){
+      const src = typePick ? "its Type is the user's own choice"
+                : fieldType ? "the field decides its Type"
+                : hasAbility(p,"Normalize") ? "Normalize"
+                : moveSyncType(p, m) ? "Move Sync"
+                : teraMoveType(p, m) ? "Terastallization"
+                : ate ? ate.ability : "an Ability";
+      why.push(`Type ${printedType} → ${mtype} — ${src}`);
+    }
+    if(dealsDmg) why.push(stab
+      ? `+2 Damage Base — STAB (${monLabel(p)} is ${types.join(" / ")||"—"}-Type)`
+      : `No STAB — ${monLabel(p)} is ${types.join(" / ")||"typeless"}, this goes out ${mtype}-Type`);
+    abilMods.why.forEach(w => why.push(w));
+    if(bm.db)   why.push(`${bm.db>0?"+":"−"}${Math.abs(bm.db)} Damage Base — buffs (${buffSources(p,"db")})`);
+    if(bm.dmg)  why.push(`${bm.dmg>0?"+":"−"}${Math.abs(bm.dmg)} damage — buffs (${buffSources(p,"dmg")})`);
+    if(dbNote)  why.push(`Damage Base ${dbBase} — ${dbNote}`);
+    wx.lines.forEach(l => why.push(l));
+    tx.lines.forEach(l => why.push(l));
+    if(tBoost) why.push(`+${tBoost.dmg} damage — ${tBoost.item} (${tBoost.type} Type Booster)`);
+    if(oFlat)  why.push(`+${oFlat.dmg} damage — ${oFlat.why}`);
+    if(teraD)  why.push(`+${teraD.dmg} damage — ${teraD.why}`);
+    abilAcc.why.forEach(w => why.push(`${w} Accuracy`));
+    if(d.cs.acc) why.push(`${d.cs.acc>0?"+":"−"}${Math.abs(d.cs.acc)} Accuracy — Accuracy Combat Stages`);
+    if(hasStatus(p,"focused")) why.push(`+${1*trainingMult(p)} Accuracy — Focused Training`);
+    if(bm.acc)  why.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} Accuracy — buffs (${buffSources(p,"acc")})`);
+    if(acCut)   why.push(`AC ${m.ac} → ${printedAC} — Accuracy Training bought with Tutor Points`);
+    if(bm.crit) why.push(`Crit Range widened by ${bm.crit} — buffs (${buffSources(p,"crit")})`);
+    if(!alwaysCrit && critT < 20) why.push(`Critical Hit on ${critT}+ — ${critThreshold(p,m) < 20 ? "this Move / its Abilities" : "buffs"}`);
+
+    /* --- and what the dice window will still ask before it rolls --- */
+    const asks = [];
+    if(ate) asks.push(`${ate.ability} — keep it ${ate.type}-Type, or send it out as Normal`);
+    if(typePick) asks.push(`${m.name} goes out as whatever Type you choose \u2014 shown here as ${mtype}`);
+    if(sp2 && (sp2.kind === "doubleStrike" || sp2.kind === "tripleKick"))
+      asks.push(`how many of its ${sp2.kind === "tripleKick" ? "three kicks" : "two strikes"} connect \u2014 shown here with all of them landing`);
+    if(fc && fc.canRetype) asks.push("Fiery Crash — +2 Damage Base, or use it as a Fire-Type Move");
+    if(hasAbility(p,"Anchored") && dealsDmg) asks.push("Anchored — originate it from the Anchor (Melee, Physical, +2d6)");
+    if(dealsDmg && hasAbility(p,"Analytic")) asks.push("Analytic — +5 damage if the target already acted this Round");
+    if(isDuelistMon(p) && duelistMomentumBonus(p)) asks.push("Duelist — is the target carrying your Tag?");
+    if(versatile) asks.push("Versatile — Physical or Special, your pick");
+    if(zBoost && !zBoost.spent) asks.push(zBoost.kind === "z"
+      ? `${zBoost.item} — unleash it as ${zBoost.zName} (+${zBoost.db} Damage Base)`
+      : `${zBoost.item} — shatter it for +${zBoost.db} Damage Base`);
+    if(wInfo && wInfo.kind !== "generic") asks.push(`${wInfo.label||"Weight"} — the Damage Base needs the target's Weight Class`);
+    if(sp2 && sp2.kind === "conditionalDB") asks.push("its conditions — tick the ones that apply to this attack");
+    if(sp2 && sp2.kind === "valueDB") asks.push(sp2.label);
+    if(hasStatus(p,"infatuation")) asks.push("Infatuated — is this attack aimed at your Crush?");
+    if((runningStartFor(p, m, isPhys)||[]).length) asks.push("Run Up — did you close the distance in a straight line?");
+    if(fiveStrike) asks.push(`Five Strike — 🎲 rolls the hit count; DB ${dbBase} is multiplied by it first, so this reaches DB ${finalDB5} on five hits`);
+
+    /* --- render --- */
+    const chips = [
+      typeBadge(mtype),
+      `<span class="kv">${esc(versatile ? (versSpec?"Special":"Physical")+" (Versatile)" : (m.class||"Status"))}</span>`,
+      `<span class="kv">${esc(monMoveFreq(p, m) || "—")}</span>`,
+      `<span class="kv">AC ${effAC == null ? "—" : effAC}</span>`,
+      finalDB != null ? `<span class="kv">DB ${dbBase}${fiveStrike?" \u00d7hits":""}${dbBonus?` +${dbBonus}`:""}${(dbBonus||fiveStrike)?` \u2192 ${finalDB}${fiveStrike?`\u2013${finalDB5}`:""}`:""}</span>` : "",
+      `<span class="kv">${esc(m.range||"—")}</span>`,
+    ].filter(Boolean).join(" ");
+
+    const accLine = wx.autoHit ? "auto-hit"
+      : m.ac != null ? `1d20${accMod ? ` ${accMod>0?"+":"−"} ${Math.abs(accMod)}` : ""}` : "—";
+    const accSub = wx.autoHit
+      ? `${m.name} cannot miss in ${wx.weather.name}.${alwaysCrit?" It is a Critical Hit automatically.":""}`
+      : m.ac != null
+        ? `Hits if it comes to AC ${effAC} + ${evaNote} or more. `
+          + (alwaysCrit ? "Every roll that connects is a Critical Hit" : `${critT===20?"A natural 20":`A natural ${critT}+`} auto-hits and crits`)
+          + ", a natural 1 always misses."
+        : "This Move makes no Accuracy Check.";
+    const dmgLine = !dealsDmg ? "—" : dbPending ? "rolled with the dice" : finalDB != null ? expr : "—";
+    const dmgSub  = !dealsDmg ? "This Move deals no damage of its own."
+      : dbPending ? esc(dbPending)
+      : finalDB != null ? `Damage Base ${finalDB} = ${esc(ds)}. The target then subtracts their ${defNote}.`
+      : "";
+
+    return `<div class="card" style="background:var(--panel-2);border:1px solid var(--accent);margin:12px 0 0">
+      <div class="small" style="font-weight:800;margin-bottom:6px">🎲 As ${esc(monLabel(p))} uses it right now</div>
+      <div class="chips" style="margin-bottom:10px">${chips}</div>
+      <div style="font-size:16px;font-weight:700">Accuracy: ${esc(accLine)}</div>
+      <div class="small muted" style="margin-top:2px">${esc(accSub)}</div>
+      <div style="font-size:16px;font-weight:700;margin-top:8px">Damage: ${esc(dmgLine)}</div>
+      <div class="small muted" style="margin-top:2px">${dmgSub}</div>
+      ${why.length ? `<div class="r-meta" style="margin-top:10px">What this sheet is already applying:</div>
+        <div class="small" style="margin-top:2px">${why.map(w=>`• ${annotateKeywords(esc(w))}`).join("<br>")}</div>` : ""}
+      ${asks.length ? `<div class="r-meta" style="margin-top:10px">🎲 Roll still asks about:</div>
+        <div class="small muted" style="margin-top:2px">${asks.map(a=>`• ${esc(a)}`).join("<br>")}</div>` : ""}
+      <div class="small muted" style="margin-top:8px">Read-only — nothing here spends a use or moves a number. Open 🎲 Roll to actually use it.</div>
+    </div>`;
+  }catch(e){ return ""; }
+}
 function refDetailHTML(kind, name, owner, opts){
   // a Move's info panel also spells out what bolts extra effects onto it: the Trainer's own
   // Features always, plus the Abilities of the Pokémon whose row was tapped (when there is one)
   if(kind==="move"){
     const mv = moveByName.get(name.toLowerCase()), t = activeChar()?.trainer;
     const grp = mv ? (groupRiderDetailHTML(t, mv, !owner) || "") : "";
-    return moveDetailHTML(mv, name, opts) + riderDetailHTML(name)
+    return moveDetailHTML(mv, name, opts)
+      + (mv && owner ? moveRollFactsHTML(owner, mv) : "")
+      + riderDetailHTML(name)
       + (owner ? monRiderDetailHTML(owner, name) : "")
       + (grp ? `<div class="r-meta" style="margin-top:10px">Your Features also change every Move of this kind:</div>${grp}` : "");
   }

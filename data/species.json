@@ -939,7 +939,8 @@
    ],
    "advanced": [
     "Swarm",
-    "Hydration"
+    "Hydration",
+    "Unburden"
    ],
    "high": [
     "Vanguard"
@@ -1188,7 +1189,8 @@
    ],
    "advanced": [
     "Hyper Cutter",
-    "Stall"
+    "Sharpness",
+    "Weaponize"
    ],
    "high": [
     "Soulstealer"
@@ -2917,7 +2919,8 @@
    ],
    "advanced": [
     "Serene Grace",
-    "Confidence"
+    "Confidence",
+    "Wistful Melody"
    ],
    "high": [
     "Cloud Nine"
@@ -3207,7 +3210,7 @@
   "abilities": {
    "basic": [
     "Ice Shield",
-    "Refrigerate"
+    "Refridgerate"
    ],
    "advanced": [
     "Full Guard",
@@ -4038,7 +4041,8 @@
    ],
    "advanced": [
     "Illuminate",
-    "Sap Sipper"
+    "Sap Sipper",
+    "Sequence"
    ],
    "high": [
     "Plus"
@@ -4600,7 +4604,7 @@
     "Serpent's Mark*"
    ],
    "high": [
-    "Serpent's Mark* (Serpent's Mark must be chosen as Arbok's Level-20 Ability)"
+    "Serpent's Mark*"
    ]
   },
   "evolution": [
@@ -5168,7 +5172,8 @@
    ],
    "advanced": [
     "Magic Guard",
-    "Pressure"
+    "Pressure",
+    "Regenerator"
    ],
    "high": [
     "Adaptability"
@@ -5479,7 +5484,8 @@
    ],
    "advanced": [
     "Rattled",
-    "Early Bird"
+    "Early Bird",
+    "Dodge"
    ],
    "high": [
     "Conqueror"
@@ -5774,7 +5780,8 @@
    ],
    "advanced": [
     "Frighten",
-    "Early Bird"
+    "Early Bird",
+    "Dodge"
    ],
    "high": [
     "Conqueror"
@@ -6052,8 +6059,9 @@
     "Insomnia"
    ],
    "advanced": [
-    "Swarm",
-    "Silk Threads"
+    "Neurotoxin",
+    "Silk Threads",
+    "Sniper"
    ],
    "high": [
     "Ambush"
@@ -6575,7 +6583,8 @@
    ],
    "advanced": [
     "Healer",
-    "Blessed Touch"
+    "Blessed Touch",
+    "Interference"
    ],
    "high": [
     "Confidence"
@@ -7417,7 +7426,8 @@
    ],
    "advanced": [
     "Regenerator",
-    "Klutz"
+    "Klutz",
+    "Helper"
    ],
    "high": [
     "Blessed Touch"
@@ -7725,7 +7735,7 @@
   "abilities": {
    "basic": [
     "Ice Shield",
-    "Refrigerate"
+    "Refridgerate"
    ],
    "advanced": [
     "Full Guard",
@@ -8023,7 +8033,7 @@
   },
   "abilities": {
    "basic": [
-    "Refrigerate",
+    "Refridgerate",
     "Permafrost"
    ],
    "advanced": [
@@ -8303,7 +8313,8 @@
     "Mold Breaker"
    ],
    "advanced": [
-    "Unnerve Adb Ability 2: Hyper Cutter"
+    "Unnerve",
+    "Hyper Cutter"
    ],
    "high": [
     "Frighten"
@@ -8586,7 +8597,8 @@
    ],
    "advanced": [
     "Inner Focus",
-    "Own Tempo"
+    "Own Tempo",
+    "Sorcery"
    ],
    "high": [
     "Download"
@@ -8858,7 +8870,8 @@
    ],
    "advanced": [
     "Type Aura (Water)",
-    "Huge Power"
+    "Huge Power",
+    "Sap Sipper"
    ],
    "high": [
     "Wash Away"
@@ -9140,7 +9153,8 @@
    ],
    "advanced": [
     "Type Aura (Water)",
-    "Huge Power"
+    "Huge Power",
+    "Sap Sipper"
    ],
    "high": [
     "Wash Away"
@@ -9400,7 +9414,8 @@
    ],
    "advanced": [
     "Moxie",
-    "Sheer Force"
+    "Sheer Force",
+    "Sturdy"
    ],
    "high": [
     "Rock Head"
@@ -9666,7 +9681,8 @@
    ],
    "advanced": [
     "Own Tempo",
-    "Sand Veil"
+    "Sand Veil",
+    "Perception"
    ],
    "high": [
     "Inner Focus"
@@ -10820,7 +10836,9 @@
    ],
    "advanced": [
     "Water Absorb",
-    "Reckless (Red Basculin Only)"
+    "Reckless (Red Basculin Only)",
+    "Rock Head (Blue Basculin Only)",
+    "Swift Swim"
    ],
    "high": [
     "Mold Breaker"
@@ -11605,7 +11623,7 @@
     "Freezing Point"
    ],
    "advanced": [
-    "Refrigerate",
+    "Refridgerate",
     "Thick Fat"
    ],
    "high": [
@@ -11879,7 +11897,8 @@
    ],
    "advanced": [
     "Rivalry",
-    "Cruelty"
+    "Cruelty",
+    "Swarm"
    ],
    "high": [
     "Sap Sipper"
@@ -12137,7 +12156,8 @@
    ],
    "advanced": [
     "Poison Touch",
-    "Technician"
+    "Technician",
+    "Swarm"
    ],
    "high": [
     "Vanguard"
@@ -12684,7 +12704,8 @@
    ],
    "advanced": [
     "Light Metal",
-    "Keen Eye"
+    "Keen Eye",
+    "Klutz"
    ],
    "high": [
     "Unaware"
@@ -12837,7 +12858,8 @@
   },
   "abilities": {
    "basic": [
-    "Sol Veil"
+    "Sol Veil",
+    "Healer"
    ],
    "advanced": [
     "Chlorophyll",
@@ -13386,7 +13408,7 @@
   },
   "abilities": {
    "basic": [
-    "Refrigerate",
+    "Refridgerate",
     "Permafrost"
    ],
    "advanced": [
@@ -14477,7 +14499,7 @@
     "Inner Focus"
    ],
    "advanced": [
-    "Pressure",
+    "Sharpness",
     "Rally"
    ],
    "high": [
@@ -14770,7 +14792,7 @@
     "Shell Cannon"
    ],
    "high": [
-    "Overtcoat"
+    "Overcoat"
    ]
   },
   "evolution": [
@@ -15904,7 +15926,8 @@
    ],
    "advanced": [
     "Sand Rush",
-    "Sand Force"
+    "Sand Force",
+    "Solar Power"
    ],
    "high": [
     "Sunglow"
@@ -16151,7 +16174,8 @@
    ],
    "advanced": [
     "Sturdy",
-    "Cute Tears"
+    "Cute Tears",
+    "Rattled"
    ],
    "high": [
     "Rock Head"
@@ -18280,7 +18304,7 @@
     "Water Veil"
    ],
    "high": [
-    "Maelstrom Pulse"
+    "Maestrom Pulse"
    ]
   },
   "evolution": [
@@ -19410,7 +19434,8 @@
    ],
    "advanced": [
     "Overcoat",
-    "Shed Skin"
+    "Shed Skin",
+    "Tolerance"
    ],
    "high": [
     "Sturdy"
@@ -19585,7 +19610,8 @@
    ],
    "advanced": [
     "Tinted Lens",
-    "Keen Eye"
+    "Keen Eye",
+    "Flutter"
    ],
    "high": [
     "Blow Away"
@@ -20721,7 +20747,8 @@
    ],
    "advanced": [
     "Simple",
-    "Solid Rock"
+    "Solid Rock",
+    "Sturdy"
    ],
    "high": [
     "Filter"
@@ -20987,7 +21014,8 @@
    ],
    "advanced": [
     "Ambush",
-    "Empower"
+    "Empower",
+    "Weird Power"
    ],
    "high": [
     "Big Swallow"
@@ -21788,7 +21816,8 @@
    ],
    "advanced": [
     "Silk Threads",
-    "Battle Armor"
+    "Battle Armor",
+    "Overcoat"
    ],
    "high": [
     "Sturdy"
@@ -21946,7 +21975,8 @@
    ],
    "advanced": [
     "Levitate",
-    "Cloud Nine"
+    "Cloud Nine",
+    "Drought / Drizzle"
    ],
    "high": [
     "Sandstream / Snow Warning"
@@ -22212,7 +22242,8 @@
    ],
    "advanced": [
     "Run Away",
-    "Silk Threads"
+    "Silk Threads",
+    "Stench"
    ],
    "high": [
     "Suction Cups"
@@ -22385,7 +22416,8 @@
    ],
    "advanced": [
     "Magic Guard",
-    "Probability Control"
+    "Probability Control",
+    "Full Guard"
    ],
    "high": [
     "Healer"
@@ -24370,7 +24402,8 @@
    ],
    "advanced": [
     "Chlorophyll",
-    "Flower Power"
+    "Flower Power",
+    "Sun Blanket"
    ],
    "high": [
     "Drought"
@@ -24605,7 +24638,8 @@
    ],
    "advanced": [
     "Chlorophyll",
-    "Flower Power"
+    "Flower Power",
+    "Sun Blanket"
    ],
    "high": [
     "Regenerator"
@@ -26032,7 +26066,8 @@
    ],
    "advanced": [
     "Serene Grace",
-    "Magic Guard"
+    "Magic Guard",
+    "Probability Control"
    ],
    "high": [
     "Soothing Tone"
@@ -26584,7 +26619,8 @@
    ],
    "advanced": [
     "Serene Grace",
-    "Magic Guard"
+    "Magic Guard",
+    "Probability Control"
    ],
    "high": [
     "Cute Charm"
@@ -27332,7 +27368,8 @@
    ],
    "advanced": [
     "Sniper",
-    "Sheer Force"
+    "Sheer Force",
+    "Swift Swim"
    ],
    "high": [
     "Mega Launcher"
@@ -27585,7 +27622,8 @@
    ],
    "advanced": [
     "Sniper",
-    "Sheer Force"
+    "Sheer Force",
+    "Swift Swim"
    ],
    "high": [
     "Mega Launcher"
@@ -27852,7 +27890,8 @@
    ],
    "advanced": [
     "Own Tempo",
-    "Sand Veil"
+    "Sand Veil",
+    "Perception"
    ],
    "high": [
     "Clay Cannons"
@@ -29302,7 +29341,8 @@
    ],
    "advanced": [
     "Sprint",
-    "Inner Focus"
+    "Sharpness",
+    "Discipline"
    ],
    "high": [
     "Courage"
@@ -29565,7 +29605,8 @@
    ],
    "advanced": [
     "Sand Veil",
-    "Shackle"
+    "Shackle",
+    "Stall"
    ],
    "high": [
     "Cursed Body"
@@ -29826,7 +29867,8 @@
    ],
    "advanced": [
     "Hustle",
-    "Pack Hunt"
+    "Pack Hunt",
+    "Teamwork"
    ],
    "high": [
     "Dodge"
@@ -30832,7 +30874,8 @@
     "Regenerator"
    ],
    "advanced": [
-    "Hustle"
+    "Hustle",
+    "Solid Rock"
    ],
    "high": [
     "Refreshing Veil"
@@ -31404,7 +31447,8 @@
    ],
    "advanced": [
     "Life Force",
-    "Storm Drain"
+    "Storm Drain",
+    "Water Absorb"
    ],
    "high": [
     "Regenerator"
@@ -32232,7 +32276,8 @@
    ],
    "advanced": [
     "Serene Grace",
-    "Perception"
+    "Perception",
+    "Mind Mold"
    ],
    "high": [
     "Magic Bounce"
@@ -33619,7 +33664,8 @@
    ],
    "advanced": [
     "Ice Body",
-    "Snow Cloak"
+    "Snow Cloak",
+    "Permafrost"
    ],
    "high": [
     "Snow Warning"
@@ -33889,7 +33935,7 @@
     "Cute Tears"
    ],
    "advanced": [
-    "Refrigerate",
+    "Refridgerate",
     "Thick Fat"
    ],
    "high": [
@@ -34166,7 +34212,8 @@
    ],
    "advanced": [
     "Battle Armor",
-    "Lightning Rod"
+    "Lightning Rod",
+    "Rock Head"
    ],
    "high": [
     "Bone Lord"
@@ -34748,7 +34795,8 @@
    ],
    "advanced": [
     "Insomnia",
-    "Soulstealer"
+    "Soulstealer",
+    "Dark Art"
    ],
    "high": [
     "Fade Away"
@@ -36081,7 +36129,8 @@
    ],
    "advanced": [
     "Chlorophyll",
-    "Sap Sipper"
+    "Sap Sipper",
+    "Ragelope"
    ],
    "high": [
     "Serene Grace"
@@ -36345,7 +36394,8 @@
    ],
    "advanced": [
     "Bully",
-    "Guts"
+    "Guts",
+    "Strong Jaw"
    ],
    "high": [
     "Unaware"
@@ -36929,7 +36979,8 @@
    ],
    "advanced": [
     "Hustle",
-    "Pickup"
+    "Pickup",
+    "Vital Spirit"
    ],
    "high": [
     "Handyman"
@@ -37436,9 +37487,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Pressure"
+   ],
+   "advanced": [
+    "Download",
+    "Perception",
+    "Symbiosis"
+   ],
+   "high": [
+    "Transporter"
+   ]
   },
   "moves": {
    "levelup": [
@@ -37626,9 +37685,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Weird Power"
+   ],
+   "advanced": [
+    "Download",
+    "Perception",
+    "Symbiosis"
+   ],
+   "high": [
+    "Transporter"
+   ]
   },
   "moves": {
    "levelup": [
@@ -37816,9 +37883,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Sturdy"
+   ],
+   "advanced": [
+    "Download",
+    "Perception",
+    "Symbiosis"
+   ],
+   "high": [
+    "Transporter"
+   ]
   },
   "moves": {
    "levelup": [
@@ -38016,9 +38091,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Speed Boost"
+   ],
+   "advanced": [
+    "Download",
+    "Perception",
+    "Symbiosis"
+   ],
+   "high": [
+    "Transporter"
+   ]
   },
   "moves": {
    "levelup": [
@@ -38749,7 +38832,8 @@
    ],
    "advanced": [
     "Synchronize",
-    "Telepathy"
+    "Telepathy",
+    "Pressure"
    ],
    "high": [
     "Heavy Metal"
@@ -39026,7 +39110,8 @@
    ],
    "advanced": [
     "Solid Rock",
-    "Magic Guard"
+    "Magic Guard",
+    "Illuminate"
    ],
    "high": [
     "Diamond Defense"
@@ -39854,7 +39939,7 @@
   },
   "abilities": {
    "basic": [
-    "Imposter",
+    "Impostor",
     "Limber"
    ],
    "advanced": [
@@ -40507,7 +40592,7 @@
     "Frisk"
    ],
    "advanced": [
-    "Sand Veil",
+    "Ballistic",
     "Sand Rush"
    ],
    "high": [
@@ -40759,7 +40844,8 @@
    ],
    "advanced": [
     "Hyper Cutter",
-    "Stall"
+    "Sharpness",
+    "Weaponize"
    ],
    "high": [
     "Soulstealer"
@@ -41297,7 +41383,8 @@
    ],
    "advanced": [
     "Marvel Scale",
-    "Air Lock"
+    "Air Lock",
+    "Gentle Vibe"
    ],
    "high": [
     "Confidence"
@@ -41551,7 +41638,8 @@
    ],
    "advanced": [
     "Multiscale",
-    "Courage"
+    "Courage",
+    "Rocket"
    ],
    "high": [
     "Confidence"
@@ -42135,7 +42223,8 @@
    ],
    "advanced": [
     "Marvel Scale",
-    "Rattled"
+    "Rattled",
+    "Swift Swim"
    ],
    "high": [
     "Confidence"
@@ -44678,7 +44767,8 @@
    ],
    "advanced": [
     "Defy Death",
-    "Levitate"
+    "Levitate",
+    "Regenerator"
    ],
    "high": [
     "Cluster Mind"
@@ -44951,7 +45041,8 @@
     "Swarm"
    ],
    "advanced": [
-    "Truant Adb Ability 2: Oblivious"
+    "Truant",
+    "Oblivious"
    ],
    "high": [
     "Teamwork"
@@ -45214,7 +45305,8 @@
    ],
    "advanced": [
     "Frighten",
-    "Interference"
+    "Interference",
+    "Frisk"
    ],
    "high": [
     "Pressure"
@@ -45509,7 +45601,8 @@
    ],
    "advanced": [
     "Frighten",
-    "Interference"
+    "Interference",
+    "Frisk"
    ],
    "high": [
     "Pressure"
@@ -45806,7 +45899,8 @@
    ],
    "advanced": [
     "Frighten",
-    "Interference"
+    "Interference",
+    "Frisk"
    ],
    "high": [
     "Pressure"
@@ -46086,7 +46180,8 @@
    ],
    "advanced": [
     "Compound Eyes",
-    "Dust Cloud"
+    "Dust Cloud",
+    "Flutter"
    ],
    "high": [
     "Effect Spore"
@@ -46623,7 +46718,8 @@
    ],
    "advanced": [
     "Electrodash",
-    "Sequence"
+    "Sequence",
+    "Storm Drain"
    ],
    "high": [
     "Lightning Rod"
@@ -46869,7 +46965,8 @@
    ],
    "advanced": [
     "Electrodash",
-    "Sequence"
+    "Sequence",
+    "Storm Drain"
    ],
    "high": [
     "Lightning Rod"
@@ -47440,7 +47537,7 @@
     "Intimidate"
    ],
    "advanced": [
-    "Unnnerve"
+    "Unnerve"
    ],
    "high": [
     "Keen Eye"
@@ -49952,10 +50049,10 @@
    ],
    "advanced": [
     "Pride",
-    "Defiant"
+    "Competitive"
    ],
    "high": [
-    "Swift Swim High Abilities: Defiant"
+    "Swift Swim"
    ]
   },
   "evolution": [
@@ -50500,7 +50597,8 @@
    ],
    "advanced": [
     "Lancer",
-    "Overcoat"
+    "Overcoat",
+    "Swarm"
    ],
    "high": [
     "Analytic"
@@ -51011,7 +51109,8 @@
     "Infiltrator"
    ],
    "advanced": [
-    "Oblivious Adb Ability 2: Own Tempo"
+    "Oblivious",
+    "Own Tempo"
    ],
    "high": [
     "Unaware"
@@ -52100,7 +52199,8 @@
    ],
    "advanced": [
     "Scrappy",
-    "Drown Out"
+    "Drown Out",
+    "Intimidate"
    ],
    "high": [
     "Vital Spirit"
@@ -54515,7 +54615,8 @@
    ],
    "advanced": [
     "Fluffy Charge",
-    "Sap Sipper"
+    "Sap Sipper",
+    "Sequence"
    ],
    "high": [
     "Plus"
@@ -56033,7 +56134,7 @@
     "Water Veil"
    ],
    "high": [
-    "Maelstrom Pulse"
+    "Maestrom Pulse"
    ]
   },
   "evolution": [
@@ -56293,7 +56394,8 @@
    ],
    "advanced": [
     "Flower Veil",
-    "Overgrow"
+    "Overgrow",
+    "Perception"
    ],
    "high": [
     "Symbiosis"
@@ -56552,7 +56654,8 @@
    ],
    "advanced": [
     "Flower Veil",
-    "Overgrow"
+    "Overgrow",
+    "Perception"
    ],
    "high": [
     "Symbiosis"
@@ -56814,7 +56917,8 @@
    ],
    "advanced": [
     "Sand Veil",
-    "Sand Rush"
+    "Sand Rush",
+    "Flutter"
    ],
    "high": [
     "Tinted Lens"
@@ -57679,7 +57783,8 @@
     "Mold Breaker"
    ],
    "advanced": [
-    "Unnerve Adb Ability 2: Hyper Cutter"
+    "Unnerve",
+    "Hyper Cutter"
    ],
    "high": [
     "Frighten"
@@ -59033,7 +59138,8 @@
    ],
    "advanced": [
     "Beautiful",
-    "Fabulous Trim"
+    "Fabulous Trim",
+    "Intimidate"
    ],
    "high": [
     "Bodyguard"
@@ -59558,11 +59664,12 @@
     "Sand Veil"
    ],
    "advanced": [
-    "Frighten",
-    "Rough Skin"
+    "Intimidate",
+    "Rough Skin",
+    "Vital Spirit"
    ],
    "high": [
-    "Intimidate"
+    "Dig Away"
    ]
   },
   "evolution": [
@@ -59804,7 +59911,7 @@
   },
   "abilities": {
    "basic": [
-    "Synchronize",
+    "Sharpness",
     "Steadfast"
    ],
    "advanced": [
@@ -60655,10 +60762,11 @@
    ],
    "advanced": [
     "Frighten",
-    "Rough Skin"
+    "Rough Skin",
+    "Vital Spirit"
    ],
    "high": [
-    "Intimidate"
+    "Rocket"
    ]
   },
   "evolution": [
@@ -61234,11 +61342,12 @@
     "Levitate"
    ],
    "advanced": [
+    "Cursed Body",
     "Frighten",
-    "Intimidate"
+    "Spiteful Intervention"
    ],
    "high": [
-    "Prankster"
+    "Soulstealer"
    ]
   },
   "evolution": [
@@ -61766,7 +61875,8 @@
    ],
    "advanced": [
     "Infiltrator",
-    "Pressure"
+    "Pressure",
+    "Targeting System"
    ],
    "high": [
     "Analytic"
@@ -62053,8 +62163,9 @@
     "Levitate"
    ],
    "advanced": [
+    "Cursed Body",
     "Frighten",
-    "Intimidate"
+    "Spiteful Intervention"
    ],
    "high": [
     "Soulstealer"
@@ -62351,7 +62462,8 @@
    ],
    "advanced": [
     "Sand Veil",
-    "Sturdy"
+    "Sturdy",
+    "Bulletproof"
    ],
    "high": [
     "Rock Head"
@@ -62645,11 +62757,12 @@
     "Sand Veil"
    ],
    "advanced": [
-    "Frighten",
-    "Rough Skin"
+    "Intimidate",
+    "Rough Skin",
+    "Vital Spirit"
    ],
    "high": [
-    "Intimidate"
+    "Dig Away"
    ]
   },
   "evolution": [
@@ -62904,7 +63017,8 @@
    ],
    "advanced": [
     "Sand Rush",
-    "Sand Force"
+    "Sand Force",
+    "Solar Power"
    ],
    "high": [
     "Sunglow"
@@ -63445,9 +63559,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Pressure"
+   ],
+   "advanced": [
+    "Bully",
+    "Telepathy",
+    "Prime Fury"
+   ],
+   "high": [
+    "Soulstealer"
+   ]
   },
   "moves": {
    "levelup": [
@@ -63638,9 +63760,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Levitate"
+   ],
+   "advanced": [
+    "Bully",
+    "Telepathy",
+    "Prime Fury"
+   ],
+   "high": [
+    "Soulstealer"
+   ]
   },
   "moves": {
    "levelup": [
@@ -65454,10 +65584,11 @@
    ],
    "advanced": [
     "Chlorophyll",
+    "Rock Head",
     "Sap Sipper"
    ],
    "high": [
-    "Empower"
+    "Noble Steed"
    ]
   },
   "evolution": [
@@ -66549,7 +66680,8 @@
    ],
    "advanced": [
     "Solid Rock",
-    "Sturdy"
+    "Sturdy",
+    "Bulletproof"
    ],
    "high": [
     "Full Guard"
@@ -70425,7 +70557,8 @@
    ],
    "advanced": [
     "Sand Veil",
-    "Sturdy"
+    "Sturdy",
+    "Bulletproof"
    ],
    "high": [
     "Full Guard"
@@ -71292,7 +71425,8 @@
     "Sturdy"
    ],
    "high": [
-    "Natural Cure High Abilities: Shell Armor"
+    "Natural Cure",
+    "Shell Armor"
    ]
   },
   "evolution": [
@@ -71541,7 +71675,8 @@
    ],
    "advanced": [
     "Solar Power",
-    "Sun Blanket"
+    "Sun Blanket",
+    "Mold Breaker"
    ],
    "high": [
     "Sand Force"
@@ -73752,7 +73887,8 @@
    ],
    "advanced": [
     "Guts",
-    "Sheer Force"
+    "Sheer Force",
+    "Thick Fat"
    ],
    "high": [
     "Absorb Force"
@@ -74029,11 +74165,12 @@
     "Levitate"
    ],
    "advanced": [
+    "Cursed Body",
     "Frighten",
-    "Intimidate"
+    "Spiteful Intervention"
    ],
    "high": [
-    "Prankster"
+    "Soulstealer"
    ]
   },
   "evolution": [
@@ -74602,7 +74739,8 @@
     "Mold Breaker"
    ],
    "advanced": [
-    "Unnerve Adb Ability 2: Hyper Cutter"
+    "Unnerve",
+    "Hyper Cutter"
    ],
    "high": [
     "Frighten"
@@ -74877,11 +75015,11 @@
   "abilities": {
    "basic": [
     "White Smoke",
-    "Glutony"
+    "Gluttony"
    ],
    "advanced": [
     "Flame Tongue",
-    "Exploitw"
+    "Exploit"
    ],
    "high": [
     "Big Swallow"
@@ -75173,7 +75311,8 @@
    ],
    "advanced": [
     "Flame Body",
-    "Sun Blanket"
+    "Sun Blanket",
+    "Thermosensitive"
    ],
    "high": [
     "Magma Armor"
@@ -77494,7 +77633,8 @@
     "Technician"
    ],
    "advanced": [
-    "Steadfast Adb Ability 2: Discipline"
+    "Steadfast",
+    "Discipline"
    ],
    "high": [
     "Whirlwind Kicks"
@@ -77764,7 +77904,8 @@
    ],
    "advanced": [
     "Regenerator",
-    "Sun Blanket"
+    "Sun Blanket",
+    "Weird Power"
    ],
    "high": [
     "Life Force"
@@ -78358,7 +78499,8 @@
    ],
    "advanced": [
     "Hyper Cutter",
-    "Stall"
+    "Sharpness",
+    "Weaponize"
    ],
    "high": [
     "Soulstealer"
@@ -79793,7 +79935,8 @@
    ],
    "advanced": [
     "Damp",
-    "Swift Swim"
+    "Swift Swim",
+    "Multiscale"
    ],
    "high": [
     "Spray Down"
@@ -80874,7 +81017,8 @@
    ],
    "advanced": [
     "Bully",
-    "Pride"
+    "Pride",
+    "Polycephaly"
    ],
    "high": [
     "Unaware"
@@ -83407,7 +83551,8 @@
    ],
    "advanced": [
     "Wishmaster",
-    "Deep Sleep"
+    "Deep Sleep",
+    "Life Force"
    ],
    "high": [
     "Wonder Skin"
@@ -85610,7 +85755,8 @@
    ],
    "advanced": [
     "Battle Armor",
-    "Silk Threads"
+    "Silk Threads",
+    "Magic Guard"
    ],
    "high": [
     "Sturdy"
@@ -86072,7 +86218,8 @@
    ],
    "advanced": [
     "Moxie",
-    "Unburden"
+    "Unburden",
+    "Swarm"
    ],
    "high": [
     "No Guard"
@@ -86656,7 +86803,8 @@
    ],
    "advanced": [
     "Sprint",
-    "Inner Focus"
+    "Sharpness",
+    "Discipline"
    ],
    "high": [
     "Courage"
@@ -86914,7 +87062,8 @@
    ],
    "advanced": [
     "Damp",
-    "Poison Point"
+    "Poison Point",
+    "Multiscale"
    ],
    "high": [
     "Spray Down"
@@ -87721,7 +87870,8 @@
    ],
    "advanced": [
     "Clear Body",
-    "Plus or Minus"
+    "Plus or Minus",
+    "Weird Power"
    ],
    "high": [
     "Targeting System"
@@ -87969,7 +88119,8 @@
    ],
    "advanced": [
     "Magician",
-    "Pickup"
+    "Pickup",
+    "Run Away"
    ],
    "high": [
     "Infiltrator"
@@ -88232,7 +88383,8 @@
    ],
    "advanced": [
     "Clear Body",
-    "Plus or Minus"
+    "Plus or Minus",
+    "Weird Power"
    ],
    "high": [
     "Targeting System"
@@ -88485,7 +88637,8 @@
    ],
    "advanced": [
     "Clear Body",
-    "Plus or Minus"
+    "Plus or Minus",
+    "Weird Power"
    ],
    "high": [
     "Targeting System"
@@ -88739,7 +88892,8 @@
    ],
    "advanced": [
     "Sticky Smoke",
-    "Aftermath"
+    "Aftermath",
+    "Stench"
    ],
    "high": [
     "White Smoke"
@@ -90299,7 +90453,8 @@
    ],
    "advanced": [
     "Hydration",
-    "Swift Swim"
+    "Swift Swim",
+    "Water Absorb"
    ],
    "high": [
     "Rain Dish"
@@ -90561,7 +90716,8 @@
    ],
    "advanced": [
     "Winter's Kiss",
-    "Snow Cloak"
+    "Snow Cloak",
+    "Trace"
    ],
    "high": [
     "Inner Focus"
@@ -90833,12 +90989,12 @@
     "Turboblaze"
    ],
    "advanced": [
-    "Flash fire",
-    "Sun blanket",
+    "Flash Fire",
+    "Sun Blanket",
     "Discipline"
    ],
    "high": [
-    "Inner focus"
+    "Inner Focus"
    ]
   },
   "evolution": [
@@ -91107,12 +91263,12 @@
     "Teravolt"
    ],
    "advanced": [
-    "Motor drive",
+    "Motor Drive",
     "Hydration",
     "Discipline"
    ],
    "high": [
-    "Inner focus"
+    "Inner Focus"
    ]
   },
   "evolution": [
@@ -91925,9 +92081,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Intimidate"
+   ],
+   "advanced": [
+    "Frisk",
+    "Defiant",
+    "Run Away"
+   ],
+   "high": [
+    "Healer"
+   ]
   },
   "moves": {
    "levelup": [
@@ -92129,9 +92293,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Sand Force"
+   ],
+   "advanced": [
+    "Frisk",
+    "Defiant",
+    "Run Away"
+   ],
+   "high": [
+    "Healer"
+   ]
   },
   "moves": {
    "levelup": [
@@ -92622,10 +92794,10 @@
    ],
    "advanced": [
     "Wistful Melody",
-    "Wash Away"
+    "Hydration"
    ],
    "high": [
-    "Hydration"
+    "Noble Steed"
    ]
   },
   "evolution": [
@@ -92904,7 +93076,8 @@
    ],
    "advanced": [
     "Fiery Crash",
-    "Tinted Lens"
+    "Tinted Lens",
+    "Swarm"
    ],
    "high": [
     "Reckless"
@@ -93153,7 +93326,8 @@
    ],
    "advanced": [
     "Battle Armor",
-    "Sand Veil"
+    "Sand Veil",
+    "Gluttony"
    ],
    "high": [
     "Unnerve"
@@ -93438,7 +93612,8 @@
    ],
    "advanced": [
     "Rocket",
-    "Keen Eye"
+    "Keen Eye",
+    "Telepathy"
    ],
    "high": [
     "Speed Boost"
@@ -93756,7 +93931,8 @@
    ],
    "advanced": [
     "Rocket",
-    "Keen Eye"
+    "Keen Eye",
+    "Telepathy"
    ],
    "high": [
     "Speed Boost"
@@ -94324,7 +94500,8 @@
    ],
    "advanced": [
     "Full Guard",
-    "Leafy Cloak"
+    "Leafy Cloak",
+    "Swarm"
    ],
    "high": [
     "Leaf Rush"
@@ -95122,7 +95299,8 @@
    ],
    "advanced": [
     "Oblivious",
-    "Own Tempo"
+    "Own Tempo",
+    "Tingle"
    ],
    "high": [
     "Cloud Nine"
@@ -95419,7 +95597,8 @@
    ],
    "advanced": [
     "Oblivious",
-    "Own Tempo"
+    "Own Tempo",
+    "Tingle"
    ],
    "high": [
     "Cloud Nine"
@@ -95996,7 +96175,8 @@
    ],
    "advanced": [
     "Life Force",
-    "Storm Drain"
+    "Storm Drain",
+    "Water Absorb"
    ],
    "high": [
     "Regenerator"
@@ -96834,7 +97014,8 @@
    ],
    "advanced": [
     "Gluttony",
-    "Quick Feet"
+    "Quick Feet",
+    "Sprint"
    ],
    "high": [
     "Tough Claws"
@@ -98480,7 +98661,8 @@
    ],
    "advanced": [
     "Scrappy",
-    "Drown Out"
+    "Drown Out",
+    "Intimidate"
    ],
    "high": [
     "Vital Spirit"
@@ -99327,7 +99509,8 @@
    ],
    "advanced": [
     "Multiscale",
-    "Swift Swim"
+    "Swift Swim",
+    "Natural Cure"
    ],
    "high": [
     "Full Guard"
@@ -99878,7 +100061,8 @@
    ],
    "advanced": [
     "Ice Body",
-    "Magic Guard"
+    "Magic Guard",
+    "Perception"
    ],
    "high": [
     "Starlight"
@@ -100935,7 +101119,7 @@
    {
     "stage": 3,
     "name": "Machamp",
-    "min": 40
+    "min": 35
    }
   ],
   "moves": {
@@ -101226,7 +101410,7 @@
    {
     "stage": 3,
     "name": "Machamp",
-    "min": 40
+    "min": 35
    }
   ],
   "moves": {
@@ -103920,7 +104104,8 @@
    ],
    "advanced": [
     "Guts",
-    "Sheer Force"
+    "Sheer Force",
+    "Thick Fat"
    ],
    "high": [
     "Absorb Force"
@@ -106687,7 +106872,8 @@
    ],
    "advanced": [
     "Fluffy Charge",
-    "Sap Sipper"
+    "Sap Sipper",
+    "Sequence"
    ],
    "high": [
     "Fur Coat"
@@ -106962,7 +107148,8 @@
    ],
    "advanced": [
     "Type Aura (Water)",
-    "Huge Power"
+    "Huge Power",
+    "Sap Sipper"
    ],
    "high": [
     "Wash Away"
@@ -107241,7 +107428,8 @@
    ],
    "advanced": [
     "Battle Armor",
-    "Lightning Rod"
+    "Lightning Rod",
+    "Rock Head"
    ],
    "high": [
     "Bone Lord"
@@ -107533,7 +107721,8 @@
     "Own Tempo"
    ],
    "high": [
-    "Regenerator High Abilities: Hydration"
+    "Regenerator",
+    "Hydration"
    ]
   },
   "evolution": [
@@ -107799,7 +107988,8 @@
    ],
    "advanced": [
     "Spinning Dance",
-    "Unnerve"
+    "Unnerve",
+    "Water Absorb"
    ],
    "high": [
     "Dodge"
@@ -108360,7 +108550,8 @@
    ],
    "advanced": [
     "Spinning Dance",
-    "Scrappy"
+    "Scrappy",
+    "Telepathy"
    ],
    "high": [
     "Aura Storm"
@@ -108655,7 +108846,8 @@
    ],
    "advanced": [
     "Inner Focus",
-    "Scrappy"
+    "Scrappy",
+    "Telepathy"
    ],
    "high": [
     "Aura Storm"
@@ -109236,9 +109428,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Serene Grace"
+   ],
+   "advanced": [
+    "Soundproof",
+    "Drown Out",
+    "Own Tempo"
+   ],
+   "high": [
+    "Lullaby"
+   ]
   },
   "moves": {
    "levelup": [
@@ -109428,9 +109628,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Serene Grace"
+   ],
+   "advanced": [
+    "Soundproof",
+    "Spinning Dance",
+    "Own Tempo"
+   ],
+   "high": [
+    "Lullaby"
+   ]
   },
   "moves": {
    "levelup": [
@@ -109628,11 +109836,13 @@
     "Infiltrator"
    ],
    "advanced": [
-    "(F): Sorcery",
+    "Sorcery (F)",
+    "Prankster (M)",
     "Own Tempo"
    ],
    "high": [
-    "(F): Competitive High Ability (M): Magic Guard"
+    "Competitive (F)",
+    "Magic Guard (M)"
    ]
   },
   "evolution": [
@@ -110242,7 +110452,8 @@
    ],
    "advanced": [
     "Gentle Vibe",
-    "Healer"
+    "Healer",
+    "Confidence"
    ],
    "high": [
     "Prime Fury"
@@ -110505,7 +110716,8 @@
    ],
    "advanced": [
     "Light Metal",
-    "Keen Eye"
+    "Keen Eye",
+    "Perception"
    ],
    "high": [
     "Cluster Mind"
@@ -110786,7 +110998,8 @@
    ],
    "advanced": [
     "Light Metal",
-    "Keen Eye"
+    "Keen Eye",
+    "Perception"
    ],
    "high": [
     "Cluster Mind"
@@ -111060,7 +111273,8 @@
    ],
    "advanced": [
     "Battle Armor",
-    "Silk Threads"
+    "Silk Threads",
+    "Magic Guard"
    ],
    "high": [
     "Sturdy"
@@ -113730,7 +113944,8 @@
    ],
    "advanced": [
     "Static",
-    "Cute Charm"
+    "Cute Charm",
+    "Sequence"
    ],
    "high": [
     "Volt Absorb"
@@ -114028,7 +114243,8 @@
    ],
    "advanced": [
     "Frighten",
-    "Magician"
+    "Magician",
+    "Omen"
    ],
    "high": [
     "Fade Away"
@@ -114317,7 +114533,8 @@
    ],
    "advanced": [
     "Sorcery",
-    "Magician"
+    "Magician",
+    "Omen"
    ],
    "high": [
     "Fade Away"
@@ -115145,7 +115362,8 @@
    ],
    "advanced": [
     "Swarm",
-    "Honey Thief"
+    "Honey Thief",
+    "Flutter"
    ],
    "high": [
     "Compound Eyes"
@@ -116581,7 +116799,8 @@
    ],
    "advanced": [
     "Forewarn",
-    "Hypnotic"
+    "Hypnotic",
+    "Telepathy"
    ],
    "high": [
     "Synchronize"
@@ -117159,7 +117378,8 @@
    ],
    "advanced": [
     "Forewarn",
-    "Hypnotic"
+    "Hypnotic",
+    "Telepathy"
    ],
    "high": [
     "Synchronize"
@@ -119425,7 +119645,8 @@
    ],
    "advanced": [
     "Forewarn",
-    "Run Away"
+    "Run Away",
+    "Sand Veil"
    ],
    "high": [
     "Dig Away"
@@ -119669,7 +119890,8 @@
    ],
    "advanced": [
     "Fox Fire",
-    "Competitive"
+    "Competitive",
+    "Cursed Body"
    ],
    "high": [
     "Drought"
@@ -119970,7 +120192,8 @@
    ],
    "advanced": [
     "Infiltrator",
-    "Rocket"
+    "Rocket",
+    "Blur"
    ],
    "high": [
     "Vanguard"
@@ -123838,7 +124061,8 @@
    ],
    "advanced": [
     "Synchronize",
-    "Telepathy"
+    "Telepathy",
+    "Pressure"
    ],
    "high": [
     "Hydration"
@@ -125237,7 +125461,7 @@
     "Sap Sipper"
    ],
    "high": [
-    "Overgrowth"
+    "Overgrow"
    ]
   },
   "evolution": [
@@ -126608,7 +126832,7 @@
     "Inner Focus"
    ],
    "advanced": [
-    "Pressure",
+    "Sharpness",
     "Teamwork"
    ],
    "high": [
@@ -126902,7 +127126,8 @@
    ],
    "advanced": [
     "Gluttony",
-    "Rain Dish"
+    "Rain Dish",
+    "Lunchbox"
    ],
    "high": [
     "Big Swallow"
@@ -127735,7 +127960,7 @@
     "Frisk"
    ],
    "advanced": [
-    "Sand Veil",
+    "Ballistic",
     "Sand Rush"
    ],
    "high": [
@@ -131186,7 +131411,7 @@
    ],
    "advanced": [
     "Pride",
-    "Defiant"
+    "Competitive"
    ],
    "high": [
     "Swift Swim"
@@ -131455,7 +131680,8 @@
    ],
    "advanced": [
     "Static",
-    "Cute Charm"
+    "Cute Charm",
+    "Sequence"
    ],
    "high": [
     "Lightning Rod"
@@ -134496,7 +134722,7 @@
    ],
    "advanced": [
     "Pride",
-    "Defiant"
+    "Competitive"
    ],
    "high": [
     "Swift Swim"
@@ -136404,7 +136630,8 @@
    ],
    "advanced": [
     "Battle Armor",
-    "Sand Veil"
+    "Sand Veil",
+    "Deep Sleep"
    ],
    "high": [
     "Unnerve"
@@ -140026,7 +140253,7 @@
    ],
    "advanced": [
     "Hustle",
-    "Pick Up"
+    "Pickup"
    ],
    "high": [
     "Nimble Strikes"
@@ -140290,7 +140517,7 @@
    ],
    "advanced": [
     "Hustle",
-    "Pick Up"
+    "Pickup"
    ],
    "high": [
     "Nimble Strikes"
@@ -140565,7 +140792,8 @@
    ],
    "advanced": [
     "Marvel Scale",
-    "Rocket"
+    "Rocket",
+    "Run Away"
    ],
    "high": [
     "Pressure"
@@ -140846,7 +141074,8 @@
    ],
    "advanced": [
     "Ice Body",
-    "Battle Armor"
+    "Battle Armor",
+    "Freezing Point"
    ],
    "high": [
     "Unaware"
@@ -141119,7 +141348,8 @@
    ],
    "advanced": [
     "Clear Body",
-    "Battle Armor"
+    "Battle Armor",
+    "Last Chance"
    ],
    "high": [
     "Unaware"
@@ -141379,7 +141609,8 @@
    ],
    "advanced": [
     "Sturdy",
-    "Battle Armor"
+    "Battle Armor",
+    "Mountain Peak"
    ],
    "high": [
     "Unaware"
@@ -141653,7 +141884,8 @@
    ],
    "advanced": [
     "Light Metal",
-    "Battle Armor"
+    "Battle Armor",
+    "Unbreakable"
    ],
    "high": [
     "Unaware"
@@ -141941,7 +142173,8 @@
    ],
    "advanced": [
     "Rock Head",
-    "Swift Swim"
+    "Swift Swim",
+    "Reckless"
    ],
    "high": [
     "Filter"
@@ -142487,7 +142720,8 @@
    ],
    "advanced": [
     "Flash Fire",
-    "Sun Blanket"
+    "Sun Blanket",
+    "Discipline"
    ],
    "high": [
     "Inner Focus"
@@ -142759,7 +142993,8 @@
    ],
    "advanced": [
     "Defy Death",
-    "Levitate"
+    "Levitate",
+    "Regenerator"
    ],
    "high": [
     "Cluster Mind"
@@ -144239,7 +144474,8 @@
    ],
    "advanced": [
     "Sand Rush",
-    "Sand Force"
+    "Sand Force",
+    "Sand Veil"
    ],
    "high": [
     "Klutz"
@@ -147113,7 +147349,8 @@
    ],
    "advanced": [
     "Moxie",
-    "Sheer Force"
+    "Sheer Force",
+    "Rocket"
    ],
    "high": [
     "Rock Head"
@@ -148269,7 +148506,8 @@
     "Sand Veil"
    ],
    "high": [
-    "Dig Away High Abilities: Sand Rush"
+    "Dig Away",
+    "Sand Rush"
    ]
   },
   "evolution": [
@@ -148808,7 +149046,8 @@
    ],
    "advanced": [
     "Chlorophyll",
-    "Sap Sipper"
+    "Sap Sipper",
+    "Ragelope"
    ],
    "high": [
     "Serene Grace"
@@ -149066,7 +149305,8 @@
    ],
    "advanced": [
     "Shield Dust",
-    "Friend Guard"
+    "Friend Guard",
+    "Suction Cups"
    ],
    "high": [
     "Effect Spore"
@@ -150979,7 +151219,8 @@
    ],
    "advanced": [
     "Damp",
-    "Poison Point"
+    "Poison Point",
+    "Multiscale"
    ],
    "high": [
     "Spray Down"
@@ -151461,7 +151702,8 @@
    ],
    "advanced": [
     "Ice Body",
-    "Oblivious"
+    "Oblivious",
+    "Deep Sleep"
    ],
    "high": [
     "Snow Cloak"
@@ -151714,7 +151956,8 @@
     "Early Bird"
    ],
    "advanced": [
-    "Pickpocket Adb Ability 2: Overcoat"
+    "Pickpocket",
+    "Overcoat"
    ],
    "high": [
     "Bulletproof"
@@ -153632,7 +153875,8 @@
    ],
    "advanced": [
     "Full Guard",
-    "Leafy Cloak"
+    "Leafy Cloak",
+    "Swarm"
    ],
    "high": [
     "Leaf Rush"
@@ -154148,9 +154392,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Natural Cure"
+   ],
+   "advanced": [
+    "Leaf Guard",
+    "Sol Veil",
+    "Flower Veil"
+   ],
+   "high": [
+    "Magic Guard"
+   ]
   },
   "moves": {
    "levelup": [
@@ -154340,9 +154592,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Serene Grace"
+   ],
+   "advanced": [
+    "Leaf Guard",
+    "Sol Veil",
+    "Rocket"
+   ],
+   "high": [
+    "Leaf Rush"
+   ]
   },
   "moves": {
    "levelup": [
@@ -154519,11 +154779,12 @@
   },
   "abilities": {
    "basic": [
-    "Wonderguard"
+    "Wonder Guard"
    ],
    "advanced": [
     "Dodge",
-    "Magic Guard"
+    "Magic Guard",
+    "Wonder Skin"
    ],
    "high": [
     "Pressure"
@@ -154764,7 +155025,8 @@
    ],
    "advanced": [
     "Moxie",
-    "Sheer Force"
+    "Sheer Force",
+    "Sturdy"
    ],
    "high": [
     "Rock Head"
@@ -155534,7 +155796,8 @@
    ],
    "advanced": [
     "Overcoat",
-    "Hydration"
+    "Hydration",
+    "Sturdy"
    ],
    "high": [
     "Dodge"
@@ -156056,10 +156319,10 @@
   "abilities": {
    "basic": [
     "Chlorophyll",
-    "Early Bird"
+    "Wind Rider"
    ],
    "advanced": [
-    "Pickpocket",
+    "Windveiled",
     "Omen"
    ],
    "high": [
@@ -157753,7 +158016,8 @@
    ],
    "advanced": [
     "Silk Threads",
-    "Battle Armor"
+    "Battle Armor",
+    "Overcoat"
    ],
    "high": [
     "Sturdy"
@@ -158192,7 +158456,7 @@
     "Sap Sipper"
    ],
    "high": [
-    "Overgrowth"
+    "Overgrow"
    ]
   },
   "evolution": [
@@ -159027,10 +159291,11 @@
    ],
    "advanced": [
     "Chlorophyll",
+    "Rock Head",
     "Sap Sipper"
    ],
    "high": [
-    "Empower"
+    "Noble Steed"
    ]
   },
   "evolution": [
@@ -160437,7 +160702,8 @@
    ],
    "advanced": [
     "Keen Eye",
-    "Odious Spray"
+    "Odious Spray",
+    "Pickup"
    ],
    "high": [
     "Aftermath"
@@ -160695,7 +160961,8 @@
    ],
    "advanced": [
     "Limber",
-    "Oblivious"
+    "Oblivious",
+    "Own Tempo"
    ],
    "high": [
     "Deep Sleep"
@@ -160982,7 +161249,8 @@
    ],
    "advanced": [
     "Limber",
-    "Oblivious"
+    "Oblivious",
+    "Own Tempo"
    ],
    "high": [
     "Deep Sleep"
@@ -162675,7 +162943,8 @@
    ],
    "advanced": [
     "Frisk",
-    "Lunchbox"
+    "Lunchbox",
+    "Unburden"
    ],
    "high": [
     "Gluttony"
@@ -162941,7 +163210,8 @@
    ],
    "advanced": [
     "Moody",
-    "Own Tempo"
+    "Own Tempo",
+    "Technician"
    ],
    "high": [
     "Exploit"
@@ -165111,7 +165381,8 @@
    ],
    "advanced": [
     "Defy Death",
-    "Levitate"
+    "Levitate",
+    "Regenerator"
    ],
    "high": [
     "Cluster Mind"
@@ -165398,7 +165669,8 @@
    ],
    "advanced": [
     "Solar Power",
-    "Magic Guard"
+    "Magic Guard",
+    "Perception"
    ],
    "high": [
     "Sunglow"
@@ -165940,7 +166212,8 @@
    ],
    "advanced": [
     "Shed Skin",
-    "Friend Guard"
+    "Friend Guard",
+    "Wonder Skin"
    ],
    "high": [
     "Effect Spore"
@@ -166104,7 +166377,8 @@
    ],
    "advanced": [
     "Ice Body",
-    "Oblivious"
+    "Oblivious",
+    "Ballistic"
    ],
    "high": [
     "Snow Cloak"
@@ -166386,8 +166660,9 @@
     "Insomnia"
    ],
    "advanced": [
-    "Swarm",
-    "Silk Threads"
+    "Neurotoxin",
+    "Silk Threads",
+    "Sniper"
    ],
    "high": [
     "Ambush"
@@ -166955,7 +167230,8 @@
    ],
    "advanced": [
     "Infiltrator",
-    "Interference"
+    "Interference",
+    "Shackle"
    ],
    "high": [
     "Cluster Mind"
@@ -167498,7 +167774,8 @@
    ],
    "advanced": [
     "Healer",
-    "Blessed Touch"
+    "Blessed Touch",
+    "Interference"
    ],
    "high": [
     "Confidence"
@@ -167773,7 +168050,7 @@
     "Shell Shield"
    ],
    "high": [
-    "Overtcoat"
+    "Overcoat"
    ]
   },
   "evolution": [
@@ -170502,7 +170779,8 @@
    ],
    "advanced": [
     "Keen Eye",
-    "Odious Spray"
+    "Odious Spray",
+    "Pickup"
    ],
    "high": [
     "Aftermath"
@@ -170772,7 +171050,8 @@
    ],
    "advanced": [
     "Sturdy",
-    "Cute Tears"
+    "Cute Tears",
+    "Mimitree"
    ],
    "high": [
     "Rock Head"
@@ -171855,7 +172134,8 @@
    ],
    "advanced": [
     "Spinning Dance",
-    "Swift Swim"
+    "Swift Swim",
+    "Maestrom Pulse"
    ],
    "high": [
     "Rain Dish"
@@ -172103,7 +172383,8 @@
    ],
    "advanced": [
     "Serene Grace",
-    "Confidence"
+    "Confidence",
+    "Wistful Melody"
    ],
    "high": [
     "Cloud Nine"
@@ -172393,7 +172674,8 @@
    ],
    "advanced": [
     "Full Guard",
-    "Leafy Cloak"
+    "Leafy Cloak",
+    "Swarm"
    ],
    "high": [
     "Leaf Rush"
@@ -173921,7 +174203,8 @@
    ],
    "advanced": [
     "Frisk",
-    "Lunchbox"
+    "Lunchbox",
+    "Unburden"
    ],
    "high": [
     "Gluttony"
@@ -177231,7 +177514,8 @@
    ],
    "advanced": [
     "Sprint",
-    "Inner Focus"
+    "Sharpness",
+    "Discipline"
    ],
    "high": [
     "Courage"
@@ -177744,9 +178028,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Prankster"
+   ],
+   "advanced": [
+    "Frisk",
+    "Pride",
+    "Lightning Rod"
+   ],
+   "high": [
+    "Drizzle"
+   ]
   },
   "moves": {
    "levelup": [
@@ -177951,9 +178243,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Volt Absorb"
+   ],
+   "advanced": [
+    "Frisk",
+    "Pride",
+    "Lightning Rod"
+   ],
+   "high": [
+    "Drizzle"
+   ]
   },
   "moves": {
    "levelup": [
@@ -179912,7 +180212,8 @@
    ],
    "advanced": [
     "Shell Armor",
-    "Shell Shield"
+    "Shell Shield",
+    "Sturdy"
    ],
    "high": [
     "Slow Start"
@@ -180194,9 +180495,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Prankster"
+   ],
+   "advanced": [
+    "Frisk",
+    "Pride",
+    "Windveiled"
+   ],
+   "high": [
+    "Drizzle"
+   ]
   },
   "moves": {
    "levelup": [
@@ -180401,9 +180710,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Regenerator"
+   ],
+   "advanced": [
+    "Frisk",
+    "Pride",
+    "Windveiled"
+   ],
+   "high": [
+    "Drizzle"
+   ]
   },
   "moves": {
    "levelup": [
@@ -181722,7 +182039,8 @@
    ],
    "advanced": [
     "Hyper Cutter",
-    "Strong Jaw"
+    "Strong Jaw",
+    "Sheer Force"
    ],
    "high": [
     "No Guard"
@@ -183672,7 +183990,8 @@
    ],
    "advanced": [
     "Electrodash",
-    "Sequence"
+    "Sequence",
+    "Storm Drain"
    ],
    "high": [
     "Lightning Rod"
@@ -184120,7 +184439,8 @@
    ],
    "advanced": [
     "Battle Armor",
-    "Sand Stream"
+    "Sand Stream",
+    "Enduring Rage"
    ],
    "high": [
     "Unnerve"
@@ -185722,7 +186042,8 @@
    ],
    "advanced": [
     "Forewarn",
-    "Perception"
+    "Perception",
+    "Anticipation"
    ],
    "high": [
     "Keen Eye"
@@ -186139,7 +186460,8 @@
    ],
    "advanced": [
     "Forewarn",
-    "Telepathy"
+    "Telepathy",
+    "Frisk"
    ],
    "high": [
     "Anticipation"
@@ -188485,7 +188807,8 @@
    ],
    "advanced": [
     "Pressure",
-    "Unnerve"
+    "Unnerve",
+    "Friend Guard"
    ],
    "high": [
     "Full Guard"
@@ -188748,7 +189071,8 @@
    ],
    "advanced": [
     "Sand Veil",
-    "Sand Rush"
+    "Sand Rush",
+    "Flutter"
    ],
    "high": [
     "Tinted Lens"
@@ -189044,7 +189368,8 @@
    ],
    "advanced": [
     "Gluttony",
-    "Defiant"
+    "Defiant",
+    "Competitive"
    ],
    "high": [
     "Flash Fire"
@@ -189603,7 +189928,8 @@
    ],
    "advanced": [
     "Limber",
-    "Oblivious"
+    "Oblivious",
+    "Own Tempo"
    ],
    "high": [
     "Vigor"
@@ -190134,7 +190460,8 @@
    ],
    "advanced": [
     "Sprint",
-    "Inner Focus"
+    "Sharpness",
+    "Discipline"
    ],
    "high": [
     "Courage"
@@ -190398,7 +190725,8 @@
    ],
    "advanced": [
     "Shield Dust",
-    "Friend Guard"
+    "Friend Guard",
+    "Wonder Skin"
    ],
    "high": [
     "Effect Spore"
@@ -190930,7 +191258,8 @@
    ],
    "advanced": [
     "Levitate",
-    "Tinted Lens"
+    "Tinted Lens",
+    "Swarm"
    ],
    "high": [
     "Heat Mirage"
@@ -191730,7 +192059,8 @@
    ],
    "advanced": [
     "Fox Fire",
-    "Competitive"
+    "Competitive",
+    "Cute Charm"
    ],
    "high": [
     "Drought"
@@ -192582,7 +192912,8 @@
    ],
    "advanced": [
     "Ice Body",
-    "Oblivious"
+    "Oblivious",
+    "Deep Sleep"
    ],
    "high": [
     "Snow Cloak"
@@ -192853,7 +193184,7 @@
     "Shell Shield"
    ],
    "high": [
-    "Overtcoat"
+    "Overcoat"
    ]
   },
   "evolution": [
@@ -193679,7 +194010,8 @@
    ],
    "advanced": [
     "Run Away",
-    "Silk Threads"
+    "Silk Threads",
+    "Swarm"
    ],
    "high": [
     "Poison Touch"
@@ -194095,7 +194427,8 @@
    ],
    "advanced": [
     "Sticky Smoke",
-    "Aftermath"
+    "Aftermath",
+    "Stench"
    ],
    "high": [
     "White Smoke"
@@ -194635,7 +194968,7 @@
     "Vanguard"
    ],
    "advanced": [
-    "Swarm",
+    "Ballistic",
     "Speed Boost"
    ],
    "high": [
@@ -195144,7 +195477,8 @@
    ],
    "advanced": [
     "Rattled",
-    "Drown Out"
+    "Drown Out",
+    "Cute Charm"
    ],
    "high": [
     "Vital Spirit"
@@ -195736,7 +196070,8 @@
    ],
    "advanced": [
     "Gluttony",
-    "Rain Dish"
+    "Rain Dish",
+    "Lunchbox"
    ],
    "high": [
     "Dodge"
@@ -196004,7 +196339,8 @@
    ],
    "advanced": [
     "Telepathy",
-    "Oblivious"
+    "Oblivious",
+    "Shadow Tag"
    ],
    "high": [
     "Wobble"
@@ -196731,9 +197067,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Anticipation"
+   ],
+   "advanced": [
+    "Overcoat",
+    "Adaptability",
+    "Tolerance"
+   ],
+   "high": [
+    "Grass Pelt"
+   ]
   },
   "moves": {
    "levelup": [
@@ -196920,7 +197264,7 @@
     "Tolerance"
    ],
    "high": [
-    "Sand veil"
+    "Sand Veil"
    ]
   },
   "moves": {
@@ -197097,9 +197441,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Anticipation"
+   ],
+   "advanced": [
+    "Overcoat",
+    "Adaptability",
+    "Tolerance"
+   ],
+   "high": [
+    "Clear Body"
+   ]
   },
   "moves": {
    "levelup": [
@@ -197285,7 +197637,8 @@
    ],
    "advanced": [
     "Silk Threads",
-    "Run Away"
+    "Run Away",
+    "Poison Point"
    ],
    "high": [
     "Suction Cups"
@@ -197465,7 +197818,8 @@
    ],
    "advanced": [
     "Telepathy",
-    "Oblivious"
+    "Oblivious",
+    "Shadow Tag"
    ],
    "high": [
     "Wobble"
@@ -197931,7 +198285,8 @@
    ],
    "advanced": [
     "Magic Guard",
-    "Pressure"
+    "Pressure",
+    "Wonder Skin"
    ],
    "high": [
     "Life Force"
@@ -198206,7 +198561,8 @@
    ],
    "advanced": [
     "Sand Veil",
-    "Shackle"
+    "Shackle",
+    "Stall"
    ],
    "high": [
     "Cursed Body"
@@ -199020,7 +199376,8 @@
    ],
    "advanced": [
     "Mold Breaker",
-    "Pressure"
+    "Pressure",
+    "Cruelty"
    ],
    "high": [
     "Soulstealer"
@@ -200119,7 +200476,8 @@
    ],
    "advanced": [
     "Motor Drive",
-    "Hydration"
+    "Hydration",
+    "Discipline"
    ],
    "high": [
     "Inner Focus"
@@ -200396,7 +200754,8 @@
    ],
    "advanced": [
     "Gluttony",
-    "Quick Feet"
+    "Quick Feet",
+    "Sprint"
    ],
    "high": [
     "Tough Claws"
@@ -200691,7 +201050,8 @@
    ],
    "advanced": [
     "Weird Power",
-    "Pride"
+    "Pride",
+    "Pickpocket"
    ],
    "high": [
     "Vicious"
@@ -200975,7 +201335,8 @@
    ],
    "advanced": [
     "Weird Power",
-    "Cute Tears"
+    "Cute Tears",
+    "Pickpocket"
    ],
    "high": [
     "Courage"
@@ -201541,7 +201902,8 @@
    ],
    "advanced": [
     "Bully",
-    "Guts"
+    "Guts",
+    "Polycephaly"
    ],
    "high": [
     "Unaware"
@@ -201804,7 +202166,8 @@
    ],
    "advanced": [
     "Interference",
-    "Air Lock"
+    "Air Lock",
+    "Filter"
    ],
    "high": [
     "Pressure"
@@ -206827,7 +207190,8 @@
    ],
    "advanced": [
     "Magnet Pull",
-    "Sturdy"
+    "Sturdy",
+    "Galvanize"
    ],
    "high": [
     "Rock Head"
@@ -207116,7 +207480,8 @@
    ],
    "advanced": [
     "Magnet Pull",
-    "Sturdy"
+    "Sturdy",
+    "Galvanize"
    ],
    "high": [
     "Full Guard"
@@ -207386,7 +207751,8 @@
    ],
    "advanced": [
     "Magnet Pull",
-    "Sturdy"
+    "Sturdy",
+    "Galvanize"
    ],
    "high": [
     "Full Guard"
@@ -208546,7 +208912,8 @@
    ],
    "advanced": [
     "Cursed Body",
-    "Lightning Rod"
+    "Lightning Rod",
+    "Rock Head"
    ],
    "high": [
     "Dancer"
@@ -212523,7 +212890,8 @@
    ],
    "advanced": [
     "Swarm",
-    "Shed Skin"
+    "Shed Skin",
+    "Silk Threads"
    ],
    "high": [
     "Type Aura (Electric)"
@@ -212759,7 +213127,8 @@
    ],
    "advanced": [
     "Swarm",
-    "Shed Skin"
+    "Shed Skin",
+    "Silk Threads"
    ],
    "high": [
     "Type Aura (Electric)"
@@ -212997,7 +213366,8 @@
    ],
    "advanced": [
     "Swarm",
-    "Motor Drive"
+    "Motor Drive",
+    "Silk Threads"
    ],
    "high": [
     "Rocket"
@@ -213247,7 +213617,8 @@
    ],
    "advanced": [
     "Anger Point",
-    "Iron Fist"
+    "Iron Fist",
+    "Water Absorb"
    ],
    "high": [
     "Abominable"
@@ -213501,7 +213872,8 @@
    ],
    "advanced": [
     "Anger Point",
-    "Iron Fist"
+    "Iron Fist",
+    "Water Absorb"
    ],
    "high": [
     "Abominable"
@@ -213751,9 +214123,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Dancer"
+   ],
+   "advanced": [
+    "Adaptability",
+    "Spinning Dance",
+    "Revelation"
+   ],
+   "high": [
+    "Competitive"
+   ]
   },
   "moves": {
    "levelup": [
@@ -213948,9 +214328,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Dancer"
+   ],
+   "advanced": [
+    "Adaptability",
+    "Spinning Dance",
+    "Revelation"
+   ],
+   "high": [
+    "Competitive"
+   ]
   },
   "moves": {
    "levelup": [
@@ -214145,9 +214533,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Dancer"
+   ],
+   "advanced": [
+    "Adaptability",
+    "Spinning Dance",
+    "Revelation"
+   ],
+   "high": [
+    "Competitive"
+   ]
   },
   "moves": {
    "levelup": [
@@ -214342,9 +214738,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Dancer"
+   ],
+   "advanced": [
+    "Adaptability",
+    "Spinning Dance",
+    "Revelation"
+   ],
+   "high": [
+    "Competitive"
+   ]
   },
   "moves": {
    "levelup": [
@@ -215297,9 +215701,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Keen Eye",
+    "Vital Spirit"
+   ],
+   "advanced": [
+    "Sand Rush",
+    "Steadfast"
+   ],
+   "high": [
+    "Accelerate"
+   ]
   },
   "moves": {
    "levelup": [
@@ -215486,9 +215898,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Keen Eye",
+    "Vital Spirit"
+   ],
+   "advanced": [
+    "No Guard",
+    "Steadfast"
+   ],
+   "high": [
+    "Super Luck"
+   ]
   },
   "moves": {
    "levelup": [
@@ -215674,9 +216094,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Keen Eye",
+    "Vital Spirit"
+   ],
+   "advanced": [
+    "Own Tempo",
+    "Steadfast"
+   ],
+   "high": [
+    "Tough Claws"
+   ]
   },
   "moves": {
    "levelup": [
@@ -215868,11 +216296,12 @@
     "Schooling"
    ],
    "advanced": [
-    "Swift Swim",
-    "Rattled"
+    "Defeatist",
+    "Horde Break",
+    "Water Veil"
    ],
    "high": [
-    "Aqua Bullet"
+    "Multiscale"
    ]
   },
   "evolution": [
@@ -216110,11 +216539,12 @@
     "Schooling"
    ],
    "advanced": [
-    "Swift Swim",
-    "Rattled"
+    "Defeatist",
+    "Horde Break",
+    "Water Veil"
    ],
    "high": [
-    "Aqua Bullet"
+    "Multiscale"
    ]
   },
   "evolution": [
@@ -216350,7 +216780,8 @@
    ],
    "advanced": [
     "Cruelty",
-    "Defy Death"
+    "Defy Death",
+    "Regenerator"
    ],
    "high": [
     "Merciless"
@@ -216604,7 +217035,8 @@
    ],
    "advanced": [
     "Cruelty",
-    "Defy Death"
+    "Defy Death",
+    "Regenerator"
    ],
    "high": [
     "Merciless"
@@ -216859,7 +217291,8 @@
    ],
    "advanced": [
     "Inner Focus",
-    "Moody"
+    "Moody",
+    "Own Tempo"
    ],
    "high": [
     "Mud Shield"
@@ -217111,7 +217544,8 @@
    ],
    "advanced": [
     "Inner Focus",
-    "Moody"
+    "Moody",
+    "Own Tempo"
    ],
    "high": [
     "Mud Shield"
@@ -217353,7 +217787,8 @@
    ],
    "advanced": [
     "Friend Guard",
-    "Overcoat"
+    "Overcoat",
+    "Water Absorb"
    ],
    "high": [
     "Hydration"
@@ -217608,7 +218043,8 @@
    ],
    "advanced": [
     "Friend Guard",
-    "Overcoat"
+    "Overcoat",
+    "Water Absorb"
    ],
    "high": [
     "Hydration"
@@ -218848,7 +219284,8 @@
    ],
    "advanced": [
     "Brimstone",
-    "Oblivious"
+    "Oblivious",
+    "Sun Blanket"
    ],
    "high": [
     "Pickpocket"
@@ -219110,7 +219547,8 @@
    ],
    "advanced": [
     "Brimstone",
-    "Oblivious"
+    "Oblivious",
+    "Sun Blanket"
    ],
    "high": [
     "Chemical Romance"
@@ -219365,7 +219803,8 @@
    ],
    "advanced": [
     "Klutz",
-    "Cute Charm"
+    "Cute Charm",
+    "Moxie"
    ],
    "high": [
     "Scrappy"
@@ -219617,7 +220056,8 @@
    ],
    "advanced": [
     "Klutz",
-    "Unnerve"
+    "Unnerve",
+    "Moxie"
    ],
    "high": [
     "Scrappy"
@@ -219867,7 +220307,8 @@
    ],
    "advanced": [
     "Sweet Veil",
-    "Leaf Guard"
+    "Leaf Guard",
+    "Run Away"
    ],
    "high": [
     "Chlorophyll"
@@ -220101,7 +220542,8 @@
    ],
    "advanced": [
     "Sweet Veil",
-    "Leaf Guard"
+    "Leaf Guard",
+    "Run Away"
    ],
    "high": [
     "Chlorophyll"
@@ -220346,7 +220788,8 @@
    ],
    "advanced": [
     "Sweet Veil",
-    "Leaf Guard"
+    "Leaf Guard",
+    "Regal Challenge"
    ],
    "high": [
     "Lightning Kicks"
@@ -221449,7 +221892,8 @@
    ],
    "advanced": [
     "Shell Armor",
-    "Poison Point"
+    "Poison Point",
+    "Damp"
    ],
    "high": [
     "Run Away"
@@ -221629,7 +222073,8 @@
    ],
    "advanced": [
     "Shell Armor",
-    "Poison Point"
+    "Poison Point",
+    "Damp"
    ],
    "high": [
     "Tough Claws"
@@ -221896,7 +222341,8 @@
    ],
    "advanced": [
     "Sand Veil",
-    "Sand Stream"
+    "Sand Stream",
+    "Arena Trap"
    ],
    "high": [
     "Absorb Force"
@@ -222160,7 +222606,8 @@
    ],
    "advanced": [
     "Sand Veil",
-    "Sand Stream"
+    "Sand Stream",
+    "Arena Trap"
    ],
    "high": [
     "Absorb Force"
@@ -222407,7 +222854,8 @@
    ],
    "advanced": [
     "Rain Dish",
-    "Unaware"
+    "Unaware",
+    "Wily"
    ],
    "high": [
     "Empower"
@@ -222651,7 +223099,8 @@
    ],
    "advanced": [
     "Adaptability",
-    "Strong Jaw"
+    "Strong Jaw",
+    "Trinity"
    ],
    "high": [
     "Download"
@@ -222915,7 +223364,8 @@
    ],
    "advanced": [
     "Adaptability",
-    "Strong Jaw"
+    "Strong Jaw",
+    "Trinity"
    ],
    "high": [
     "Download"
@@ -223203,12 +223653,12 @@
   },
   "abilities": {
    "basic": [
-    "Shields down"
+    "Shields Down"
    ],
    "advanced": [
-    "Weak armor",
+    "Weak Armor",
     "Sturdy",
-    "Rock head"
+    "Rock Head"
    ],
    "high": [
     "Illuminate"
@@ -223451,12 +223901,12 @@
   },
   "abilities": {
    "basic": [
-    "Shields down"
+    "Shields Down"
    ],
    "advanced": [
-    "Weak armor",
+    "Weak Armor",
     "Sturdy",
-    "Rock head"
+    "Rock Head"
    ],
    "high": [
     "Illuminate"
@@ -223701,7 +224151,8 @@
    ],
    "advanced": [
     "Delayed Reaction",
-    "Immunity"
+    "Immunity",
+    "Oblivious"
    ],
    "high": [
     "Deep Sleep"
@@ -224492,7 +224943,8 @@
    ],
    "advanced": [
     "Copy Master",
-    "Decoy"
+    "Decoy",
+    "Technician"
    ],
    "high": [
     "Moody"
@@ -225017,7 +225469,8 @@
    ],
    "advanced": [
     "Cloud Nine",
-    "Sap Sipper"
+    "Sap Sipper",
+    "Early Bird"
    ],
    "high": [
     "Friend Guard"
@@ -225306,7 +225759,9 @@
     "Steelworker"
    ],
    "high": [
-    "1: Heavy Metal High Ability 2: Sheer Force High Ability 3: Tolerance"
+    "Heavy Metal",
+    "Sheer Force",
+    "Tolerance"
    ]
   },
   "evolution": [
@@ -226405,7 +226860,8 @@
    ],
    "advanced": [
     "Telepathy",
-    "Prime Fury"
+    "Prime Fury",
+    "Shell Shield"
    ],
    "high": [
     "Rocket"
@@ -226668,7 +227124,8 @@
    ],
    "advanced": [
     "Telepathy",
-    "Cruelty"
+    "Cruelty",
+    "Shell Shield"
    ],
    "high": [
     "Flutter"
@@ -226926,7 +227383,8 @@
    ],
    "advanced": [
     "Telepathy",
-    "Mold Breaker"
+    "Mold Breaker",
+    "Shell Shield"
    ],
    "high": [
     "Abominable"
@@ -227188,7 +227646,8 @@
    ],
    "advanced": [
     "Telepathy",
-    "Healer"
+    "Healer",
+    "Shell Shield"
    ],
    "high": [
     "Wash Away"
@@ -227444,7 +227903,8 @@
    ],
    "advanced": [
     "Run Away",
-    "Rally"
+    "Rally",
+    "Snuggle"
    ],
    "high": [
     "Transporter"
@@ -227603,7 +228063,8 @@
    ],
    "advanced": [
     "Sturdy",
-    "Battle Armor"
+    "Battle Armor",
+    "Filter"
    ],
    "high": [
     "Wonder Guard"
@@ -227765,7 +228226,8 @@
    ],
    "advanced": [
     "Illuminate",
-    "Heatproof"
+    "Heatproof",
+    "Sunglow"
    ],
    "high": [
     "Bulletproof"
@@ -228043,7 +228505,8 @@
    ],
    "advanced": [
     "Infiltrator",
-    "Sacred Bell"
+    "Sacred Bell",
+    "Starlight"
    ],
    "high": [
     "Fade Away"
@@ -228320,7 +228783,8 @@
    ],
    "advanced": [
     "Poison Touch",
-    "Infiltrator"
+    "Infiltrator",
+    "Levitate"
    ],
    "high": [
     "Moody"
@@ -228589,7 +229053,8 @@
    ],
    "advanced": [
     "Iron Fist",
-    "Scrappy"
+    "Scrappy",
+    "Sumo Stance"
    ],
    "high": [
     "Empower"
@@ -228852,7 +229317,8 @@
    ],
    "advanced": [
     "Technician",
-    "Vanguard"
+    "Vanguard",
+    "Celebrate"
    ],
    "high": [
     "Lightning Kicks"
@@ -229115,7 +229581,8 @@
    ],
    "advanced": [
     "Hypnotic",
-    "Lightning Rod"
+    "Lightning Rod",
+    "Illuminate"
    ],
    "high": [
     "Type Aura (Electric)"
@@ -229379,7 +229846,8 @@
    ],
    "advanced": [
     "Rocket",
-    "Battle Armor"
+    "Battle Armor",
+    "Beam Cannon"
    ],
    "high": [
     "Clay Cannons"
@@ -229644,7 +230112,8 @@
    ],
    "advanced": [
     "Levitate",
-    "Technician"
+    "Sharpness",
+    "Sniper"
    ],
    "high": [
     "Flutter"
@@ -229900,7 +230369,8 @@
    ],
    "advanced": [
     "Gluttony",
-    "Mold Breaker"
+    "Mold Breaker",
+    "Bully"
    ],
    "high": [
     "Big Swallow"
@@ -230177,7 +230647,8 @@
    ],
    "advanced": [
     "Sunglow or Starlight",
-    "Solar Power"
+    "Solar Power",
+    "Chlorophyll"
    ],
    "high": [
     "Beam Cannon"
@@ -230449,9 +230920,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Prism Armor"
+   ],
+   "advanced": [
+    "Sunglow or Starlight",
+    "Solar Power",
+    "Chlorophyll"
+   ],
+   "high": [
+    "Beam Cannon"
+   ]
   },
   "moves": {
    "levelup": [
@@ -230644,9 +231123,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Prism Armor"
+   ],
+   "advanced": [
+    "Sunglow or Starlight",
+    "Solar Power",
+    "Chlorophyll"
+   ],
+   "high": [
+    "Beam Cannon"
+   ]
   },
   "moves": {
    "levelup": [
@@ -230840,9 +231327,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Aura Break"
+   ],
+   "advanced": [
+    "Interference",
+    "Air Lock",
+    "Filter"
+   ],
+   "high": [
+    "Pressure"
+   ]
   },
   "moves": {
    "levelup": [
@@ -231042,9 +231537,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Power Construct"
+   ],
+   "advanced": [
+    "Interference",
+    "Air Lock",
+    "Filter"
+   ],
+   "high": [
+    "Pressure"
+   ]
   },
   "moves": {
    "levelup": [
@@ -231246,7 +231749,8 @@
    ],
    "advanced": [
     "Quick Curl",
-    "Download"
+    "Download",
+    "Magic Guard"
    ],
    "high": [
     "Life Force"
@@ -231518,7 +232022,8 @@
    ],
    "advanced": [
     "Ambush",
-    "Run Away"
+    "Run Away",
+    "Copy Master"
    ],
    "high": [
     "Fade Away"
@@ -231785,7 +232290,8 @@
    ],
    "advanced": [
     "Fiery Crash",
-    "Spray Down"
+    "Spray Down",
+    "Sheer Force"
    ],
    "high": [
     "Heat Mirage"
@@ -232043,7 +232549,8 @@
    ],
    "advanced": [
     "Poison Point",
-    "Poison Touch"
+    "Poison Touch",
+    "Hustle"
    ],
    "high": [
     "Deadly Poison"
@@ -232270,7 +232777,8 @@
    ],
    "advanced": [
     "Poison Point",
-    "Poison Touch"
+    "Poison Touch",
+    "Multiscale"
    ],
    "high": [
     "Deadly Poison"
@@ -232520,7 +233028,8 @@
    ],
    "advanced": [
     "Suction Cups",
-    "Cluster Mind"
+    "Cluster Mind",
+    "Rock Head"
    ],
    "high": [
     "Filter"
@@ -232769,7 +233278,8 @@
    ],
    "advanced": [
     "Fox Fire",
-    "Illuminate"
+    "Illuminate",
+    "Ambush"
    ],
    "high": [
     "Aftermath"
@@ -233013,7 +233523,8 @@
    ],
    "advanced": [
     "Static",
-    "Vanguard"
+    "Vanguard",
+    "Vicious"
    ],
    "high": [
     "Tough Claws"
@@ -237713,7 +238224,8 @@
    ],
    "advanced": [
     "Run Away",
-    "Friend Guard"
+    "Friend Guard",
+    "Rivalry"
    ],
    "high": [
     "Bulletproof"
@@ -237919,7 +238431,8 @@
    ],
    "advanced": [
     "Steadfast",
-    "Friend Guard"
+    "Friend Guard",
+    "Rivalry"
    ],
    "high": [
     "Bulletproof"
@@ -238533,7 +239046,8 @@
    ],
    "advanced": [
     "Rattled",
-    "Electrodash"
+    "Electrodash",
+    "Gluttony"
    ],
    "high": [
     "Bodyguard"
@@ -238740,7 +239254,8 @@
    ],
    "advanced": [
     "Defiant",
-    "Electrodash"
+    "Electrodash",
+    "Intimidate"
    ],
    "high": [
     "Bodyguard"
@@ -240632,7 +241147,8 @@
    ],
    "advanced": [
     "Gluttony",
-    "Oblivious"
+    "Oblivious",
+    "Early Bird"
    ],
    "high": [
     "Strange Tempo"
@@ -245541,7 +246057,8 @@
    ],
    "advanced": [
     "Sturdy",
-    "Inner Focus"
+    "Inner Focus",
+    "Thrust"
    ],
    "high": [
     "Magic Guard"
@@ -245757,9 +246274,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Ice Face"
+   ],
+   "advanced": [
+    "Snow Cloak",
+    "Dry Skin",
+    "Ice Body"
+   ],
+   "high": [
+    "Snow Warning"
+   ]
   },
   "moves": {
    "levelup": [
@@ -245937,9 +246462,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Ice Face"
+   ],
+   "advanced": [
+    "Snow Cloak",
+    "Dry Skin",
+    "Ice Body"
+   ],
+   "high": [
+    "Snow Warning"
+   ]
   },
   "moves": {
    "levelup": [
@@ -246117,9 +246650,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Inner Focus",
+    "Synchronize"
+   ],
+   "advanced": [
+    "Helper",
+    "Bodyguard"
+   ],
+   "high": [
+    "Psychic Surge"
+   ]
   },
   "moves": {
    "levelup": [
@@ -246302,9 +246843,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Own Tempo",
+    "Synchronize"
+   ],
+   "advanced": [
+    "Helper",
+    "Friend Guard"
+   ],
+   "high": [
+    "Psychic Surge"
+   ]
   },
   "moves": {
    "levelup": [
@@ -246494,7 +247043,8 @@
    ],
    "advanced": [
     "Static",
-    "Cruelty"
+    "Cruelty",
+    "Gluttony"
    ],
    "high": [
     "Aura Storm"
@@ -248057,7 +248607,8 @@
    ],
    "advanced": [
     "Confidence",
-    "Stalwart"
+    "Stalwart",
+    "Battle Armor"
    ],
    "high": [
     "Clear Body"
@@ -250297,7 +250848,8 @@
    ],
    "advanced": [
     "Sticky Smoke",
-    "Aftermath"
+    "Aftermath",
+    "Misty Surge"
    ],
    "high": [
     "Neutralizing Gas"
@@ -252423,9 +252975,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Gorilla Tactics",
+    "Ice Body"
+   ],
+   "advanced": [
+    "Inner Focus",
+    "Winter's Kiss"
+   ],
+   "high": [
+    "Zen Snowed"
+   ]
   },
   "evolution": [
    {
@@ -252623,9 +253183,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Gorilla Tactics",
+    "Ice Body"
+   ],
+   "advanced": [
+    "Inner Focus",
+    "Winter's Kiss"
+   ],
+   "high": [
+    "Zen Snowed"
+   ]
   },
   "evolution": [
    {
@@ -252827,7 +253395,8 @@
    ],
    "advanced": [
     "Sand Force",
-    "Interference"
+    "Interference",
+    "Sturdy"
    ],
    "high": [
     "Cursed Body"
@@ -253063,7 +253632,8 @@
    ],
    "advanced": [
     "Sand Force",
-    "Interference"
+    "Interference",
+    "Sturdy"
    ],
    "high": [
     "Cursed Body"
@@ -253293,7 +253863,8 @@
    ],
    "advanced": [
     "Mud Dweller",
-    "Limber"
+    "Limber",
+    "Decoy"
    ],
    "high": [
     "Arena Trap"
@@ -253518,9 +254089,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Intrepid Sword"
+   ],
+   "advanced": [
+    "Defiant",
+    "Mold Breaker",
+    "Fade Away"
+   ],
+   "high": [
+    "Tough Claws"
+   ]
   },
   "moves": {
    "levelup": [
@@ -253699,9 +254278,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Intrepid Sword"
+   ],
+   "advanced": [
+    "Defiant",
+    "Mold Breaker",
+    "Sprint"
+   ],
+   "high": [
+    "Tough Claws"
+   ]
   },
   "moves": {
    "levelup": [
@@ -253880,9 +254467,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Dauntless Shield"
+   ],
+   "advanced": [
+    "Stamina",
+    "Friend Guard",
+    "Fade Away"
+   ],
+   "high": [
+    "Bulletproof"
+   ]
   },
   "moves": {
    "levelup": [
@@ -254061,9 +254656,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Dauntless Shield"
+   ],
+   "advanced": [
+    "Stamina",
+    "Friend Guard",
+    "Sprint"
+   ],
+   "high": [
+    "Bulletproof"
+   ]
   },
   "moves": {
    "levelup": [
@@ -254248,7 +254851,8 @@
    ],
    "advanced": [
     "Razor Edge",
-    "Life Force"
+    "Life Force",
+    "Regal Challenge"
    ],
    "high": [
     "Aura Break"
@@ -254468,7 +255072,8 @@
    ],
    "advanced": [
     "Frisk",
-    "Keen Eye"
+    "Keen Eye",
+    "Light Metal"
    ],
    "high": [
     "Absorb Force"
@@ -254653,7 +255258,8 @@
    ],
    "advanced": [
     "Mold Breaker",
-    "Keen Eye"
+    "Keen Eye",
+    "Heavy Metal"
    ],
    "high": [
     "Absorb Force"
@@ -255672,7 +256278,8 @@
    ],
    "advanced": [
     "Hustle",
-    "Guts"
+    "Guts",
+    "Aura Storm"
    ],
    "high": [
     "Empower"
@@ -255916,7 +256523,7 @@
     "Aura Storm"
    ],
    "high": [
-    "Type Aura"
+    "Type Aura (Dark)"
    ]
   },
   "evolution": [
@@ -256125,7 +256732,7 @@
     "Aura Storm"
    ],
    "high": [
-    "Type Aura"
+    "Type Aura (Water)"
    ]
   },
   "evolution": [
@@ -256334,7 +256941,8 @@
    ],
    "advanced": [
     "Teamwork",
-    "Tough Claws"
+    "Tough Claws",
+    "Blessed Touch"
    ],
    "high": [
     "Combo Striker"
@@ -257274,7 +257882,8 @@
    ],
    "advanced": [
     "Electrodash",
-    "Absorb Force"
+    "Absorb Force",
+    "Overcharge"
    ],
    "high": [
     "Unaware"
@@ -257497,7 +258106,8 @@
    ],
    "advanced": [
     "Strong Jaw",
-    "Battle Armor"
+    "Battle Armor",
+    "Pure Blooded"
    ],
    "high": [
     "Unaware"
@@ -257725,7 +258335,8 @@
    ],
    "advanced": [
     "Sturdy",
-    "Rock Head"
+    "Rock Head",
+    "Sprint"
    ],
    "high": [
     "Frostbite"
@@ -257949,7 +258560,8 @@
    ],
    "advanced": [
     "Pressure",
-    "Weird Power"
+    "Weird Power",
+    "Sprint"
    ],
    "high": [
     "Fade Away"
@@ -258170,7 +258782,8 @@
    ],
    "advanced": [
     "Battle Armor",
-    "Blessed Touch"
+    "Blessed Touch",
+    "Regal Challenge"
    ],
    "high": [
     "Splendorous Rider"
@@ -258402,9 +259015,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Unnerve"
+   ],
+   "advanced": [
+    "Battle Armor",
+    "Blessed Touch",
+    "Regal Challenge"
+   ],
+   "high": [
+    "Splendorous Rider"
+   ]
   },
   "moves": {
    "levelup": [
@@ -258598,9 +259219,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Unnerve"
+   ],
+   "advanced": [
+    "Battle Armor",
+    "Blessed Touch",
+    "Regal Challenge"
+   ],
+   "high": [
+    "Splendorous Rider"
+   ]
   },
   "moves": {
    "levelup": [
@@ -259235,7 +259864,7 @@
     "Torrent"
    ],
    "advanced": [
-    "Shell Armor",
+    "Sharpness",
     "Bully"
    ],
    "high": [
@@ -261336,7 +261965,7 @@
     "Omen"
    ],
    "high": [
-    "Refrigerate"
+    "Refridgerate"
    ]
   },
   "evolution": [
@@ -261527,7 +262156,7 @@
     "Omen"
    ],
    "high": [
-    "Refrigerate"
+    "Refridgerate"
    ]
   },
   "evolution": [
@@ -262732,7 +263361,7 @@
    ],
    "advanced": [
     "Mold Breaker",
-    "Steadfast"
+    "Sharpness"
    ],
    "high": [
     "Anger Point"
@@ -263140,9 +263769,19 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Aqua Bullet"
+   ],
+   "advanced": [
+    "Shackle",
+    "Reckless (Red)",
+    "Rock Head (Blue)",
+    "Rattled (White)",
+    "Adaptability"
+   ],
+   "high": [
+    "Mold Breaker"
+   ]
   },
   "moves": {
    "levelup": [
@@ -263303,9 +263942,19 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Aqua Bullet"
+   ],
+   "advanced": [
+    "Shackle",
+    "Reckless (Red)",
+    "Rock Head (Blue)",
+    "Rattled (White)",
+    "Adaptability"
+   ],
+   "high": [
+    "Mold Breaker"
+   ]
   },
   "moves": {
    "levelup": [
@@ -263464,9 +264113,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Probability Control"
+   ],
+   "advanced": [
+    "Magic Guard",
+    "Telepathy",
+    "Pressure"
+   ],
+   "high": [
+    "Adaptability"
+   ]
   },
   "moves": {
    "levelup": [
@@ -263656,9 +264313,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Transporter"
+   ],
+   "advanced": [
+    "Magic Guard",
+    "Telepathy",
+    "Pressure"
+   ],
+   "high": [
+    "Adaptability"
+   ]
   },
   "moves": {
    "levelup": [
@@ -263846,9 +264511,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Healer"
+   ],
+   "advanced": [
+    "Frisk",
+    "Pride",
+    "Confidence"
+   ],
+   "high": [
+    "Misty Surge"
+   ]
   },
   "moves": {
    "levelup": [
@@ -264011,9 +264684,17 @@
    }
   },
   "abilities": {
-   "basic": [],
-   "advanced": [],
-   "high": []
+   "basic": [
+    "Overcoat"
+   ],
+   "advanced": [
+    "Frisk",
+    "Pride",
+    "Contrary"
+   ],
+   "high": [
+    "Misty Surge"
+   ]
   },
   "moves": {
    "levelup": [
@@ -276819,7 +277500,7 @@
     "Quill & Rock*"
    ],
    "high": [
-    "Quill & Rock* *Quill & Rock must be chosen as Squawkabilly's level 20 Ability"
+    "Quill & Rock*"
    ]
   },
   "evolution": [
@@ -285201,9 +285882,10 @@
   },
   "abilities": {
    "basic": [
-    "Zero to Hero Adv Ability 1: Run Away"
+    "Zero to Hero"
    ],
    "advanced": [
+    "Run Away",
     "Interference",
     "Damp"
    ],
@@ -295692,7 +296374,7 @@
   },
   "abilities": {
    "basic": [
-    "Good as Gold"
+    "Good As Gold"
    ],
    "advanced": [
     "Clear Body",
@@ -298325,7 +299007,9 @@
    }
   },
   "abilities": {
-   "basic": [],
+   "basic": [
+    "Protosynthesis"
+   ],
    "advanced": [
     "Pressure",
     "Weird Power",
@@ -298578,7 +299262,9 @@
    }
   },
   "abilities": {
-   "basic": [],
+   "basic": [
+    "Protosynthesis"
+   ],
    "advanced": [
     "Pressure",
     "Burning Blaze",
@@ -299093,7 +299779,9 @@
    }
   },
   "abilities": {
-   "basic": [],
+   "basic": [
+    "Quark Drive"
+   ],
    "advanced": [
     "Thrust",
     "Tower Shield",
@@ -299331,7 +300019,9 @@
    }
   },
   "abilities": {
-   "basic": [],
+   "basic": [
+    "Quark Drive"
+   ],
    "advanced": [
     "Intimidate",
     "Inner Focus",
@@ -299572,7 +300262,7 @@
   "abilities": {
    "basic": [
     "Gluttony",
-    "Super Sweet Syrup"
+    "Supersweet Syrup"
    ],
    "advanced": [
     "Ripen",
@@ -299839,7 +300529,7 @@
   "abilities": {
    "basic": [
     "Gluttony",
-    "Super Sweet Syrup"
+    "Supersweet Syrup"
    ],
    "advanced": [
     "Ripen",
@@ -301365,7 +302055,9 @@
    }
   },
   "abilities": {
-   "basic": [],
+   "basic": [
+    "Embody Aspect"
+   ],
    "advanced": [
     "Sturdy",
     "Needles",
@@ -302972,11 +303664,11 @@
     "Intimidate"
    ],
    "advanced": [
-    "Solar power",
-    "Prime fury"
+    "Solar Power",
+    "Prime Fury"
    ],
    "high": [
-    "White flame"
+    "White Flame"
    ]
   },
   "evolution": [
@@ -303267,12 +303959,12 @@
   },
   "abilities": {
    "basic": [
-    "Rain dish",
+    "Rain Dish",
     "Torrent"
    ],
    "advanced": [
-    "Shell armor",
-    "Shell cannon"
+    "Shell Armor",
+    "Shell Cannon"
    ],
    "high": [
     "Overcoat"
@@ -303553,15 +304245,15 @@
   },
   "abilities": {
    "basic": [
-    "Compound eyes"
+    "Compound Eyes"
    ],
    "advanced": [
-    "Tinted lens",
-    "Keen eye",
+    "Tinted Lens",
+    "Keen Eye",
     "Flutter"
    ],
    "high": [
-    "Blow away"
+    "Blow Away"
    ]
   },
   "evolution": [
@@ -303829,10 +304521,10 @@
   "abilities": {
    "basic": [
     "Static",
-    "Cute charm"
+    "Cute Charm"
    ],
    "advanced": [
-    "Lightning rod",
+    "Lightning Rod",
     "Sprint"
    ],
    "high": [
@@ -304412,7 +305104,7 @@
     "Discipline"
    ],
    "high": [
-    "No guard"
+    "No Guard"
    ]
   },
   "evolution": [
@@ -304429,7 +305121,7 @@
    {
     "stage": 3,
     "name": "Machamp",
-    "min": 40
+    "min": 35
    }
   ],
   "moves": {
@@ -304700,7 +305392,7 @@
    "advanced": [
     "Frighten",
     "Cursed Body",
-    "Spiteful intervention"
+    "Spiteful Intervention"
    ],
    "high": [
     "Soulstealer"
@@ -304990,12 +305682,12 @@
   },
   "abilities": {
    "basic": [
-    "Hyper cutter",
-    "Shell armor"
+    "Hyper Cutter",
+    "Shell Armor"
    ],
    "advanced": [
     "Parry",
-    "Sheer force"
+    "Sheer Force"
    ],
    "high": [
     "Hustle"
@@ -305253,11 +305945,11 @@
   },
   "abilities": {
    "basic": [
-    "Shell armor",
-    "Water absorb"
+    "Shell Armor",
+    "Water Absorb"
    ],
    "advanced": [
-    "Wistful melody",
+    "Wistful Melody",
     "Hydration"
    ],
    "high": [
@@ -305533,11 +306225,11 @@
   },
   "abilities": {
    "basic": [
-    "Run away",
+    "Run Away",
     "Sprint"
    ],
    "advanced": [
-    "Last chance",
+    "Last Chance",
     "Anticipation"
    ],
    "high": [
@@ -305830,7 +306522,7 @@
   },
   "abilities": {
    "basic": [
-    "Thick fat",
+    "Thick Fat",
     "Immunity"
    ],
    "advanced": [
@@ -305838,7 +306530,7 @@
     "Gluttony"
    ],
    "high": [
-    "Deep sleep"
+    "Deep Sleep"
    ]
   },
   "evolution": [
@@ -306130,7 +306822,7 @@
    ],
    "advanced": [
     "Levitate",
-    "Cloud nine",
+    "Cloud Nine",
     "Drought / Drizzle"
    ],
    "high": [
@@ -306394,7 +307086,7 @@
    ],
    "advanced": [
     "Levitate",
-    "Cloud nine",
+    "Cloud Nine",
     "Drought / Drizzle"
    ],
    "high": [
@@ -306658,7 +307350,7 @@
    ],
    "advanced": [
     "Levitate",
-    "Cloud nine",
+    "Cloud Nine",
     "Drought / Drizzle"
    ],
    "high": [
@@ -306920,12 +307612,12 @@
     "Torrent"
    ],
    "advanced": [
-    "Water absorb",
+    "Water Absorb",
     "Reckless",
-    "Swift swim"
+    "Swift Swim"
    ],
    "high": [
-    "Mold breaker"
+    "Mold Breaker"
    ]
   },
   "evolution": [
@@ -307187,12 +307879,12 @@
     "Torrent"
    ],
    "advanced": [
-    "Water absorb",
+    "Water Absorb",
     "Rock Head",
-    "Swift swim"
+    "Swift Swim"
    ],
    "high": [
-    "Mold breaker"
+    "Mold Breaker"
    ]
   },
   "evolution": [
@@ -307454,12 +308146,12 @@
     "Torrent"
    ],
    "advanced": [
-    "Water absorb",
+    "Water Absorb",
     "Reckless",
-    "Swift swim"
+    "Swift Swim"
    ],
    "high": [
-    "Mold breaker"
+    "Mold Breaker"
    ]
   },
   "evolution": [
@@ -307718,12 +308410,12 @@
   },
   "abilities": {
    "basic": [
-    "Absorb force",
+    "Absorb Force",
     "Stench"
    ],
    "advanced": [
-    "Flare boost",
-    "Weird power"
+    "Flare Boost",
+    "Weird Power"
    ],
    "high": [
     "Aftermath"
@@ -308501,7 +309193,7 @@
    ],
    "advanced": [
     "Sprint",
-    "Inner focus",
+    "Inner Focus",
     "Discipline"
    ],
    "high": [
@@ -308785,7 +309477,7 @@
   },
   "abilities": {
    "basic": [
-    "Keen eye",
+    "Keen Eye",
     "Infiltrator"
    ],
    "advanced": [
@@ -309103,7 +309795,7 @@
   },
   "abilities": {
    "basic": [
-    "Keen eye",
+    "Keen Eye",
     "Infiltrator"
    ],
    "advanced": [
@@ -309952,7 +310644,7 @@
     "Disguise"
    ],
    "advanced": [
-    "Copy master",
+    "Copy Master",
     "Decoy",
     "Technician"
    ],
@@ -310223,15 +310915,15 @@
   },
   "abilities": {
    "basic": [
-    "Prism armor"
+    "Prism Armor"
    ],
    "advanced": [
     "Illuminate",
-    "Solar power",
-    "Targeting system"
+    "Solar Power",
+    "Targeting System"
    ],
    "high": [
-    "Beam cannon"
+    "Beam Cannon"
    ]
   },
   "evolution": [
@@ -310503,15 +311195,15 @@
   },
   "abilities": {
    "basic": [
-    "Iron fist"
+    "Iron Fist"
    ],
    "advanced": [
-    "Mold breaker",
-    "Keen eye",
-    "Heavy metal"
+    "Mold Breaker",
+    "Keen Eye",
+    "Heavy Metal"
    ],
    "high": [
-    "Absorb force"
+    "Absorb Force"
    ]
   },
   "evolution": [
@@ -310720,14 +311412,14 @@
   "abilities": {
    "basic": [
     "Overgrow",
-    "Vital spirit"
+    "Vital Spirit"
    ],
    "advanced": [
-    "Drown out",
+    "Drown Out",
     "Abominable"
    ],
    "high": [
-    "Grassy surge"
+    "Grassy Surge"
    ]
   },
   "evolution": [
@@ -310946,7 +311638,7 @@
    ],
    "advanced": [
     "Sprint",
-    "Tangled feet"
+    "Tangled Feet"
    ],
    "high": [
     "Protean"
@@ -311381,7 +312073,7 @@
     "Guts"
    ],
    "high": [
-    "Mirror armor"
+    "Mirror Armor"
    ]
   },
   "evolution": [
@@ -311588,7 +312280,7 @@
    ],
    "advanced": [
     "Telepathy",
-    "Compound eyes"
+    "Compound Eyes"
    ],
    "high": [
     "Hypnotic"
@@ -311809,11 +312501,11 @@
   },
   "abilities": {
    "basic": [
-    "Shell armor",
-    "Swift swim"
+    "Shell Armor",
+    "Swift Swim"
    ],
    "advanced": [
-    "Strong jaw",
+    "Strong Jaw",
     "Sturdy"
    ],
    "high": [
@@ -312015,15 +312707,15 @@
   },
   "abilities": {
    "basic": [
-    "Flash fire",
-    "Steam engine"
+    "Flash Fire",
+    "Steam Engine"
    ],
    "advanced": [
     "Sturdy",
-    "Fiery crash"
+    "Fiery Crash"
    ],
    "high": [
-    "Speed boost"
+    "Speed Boost"
    ]
   },
   "evolution": [
@@ -312229,7 +312921,7 @@
   "abilities": {
    "basic": [
     "Gluttony",
-    "Liquid ooze"
+    "Liquid Ooze"
    ],
    "advanced": [
     "Ripen",
@@ -312445,14 +313137,14 @@
   "abilities": {
    "basic": [
     "Gluttony",
-    "Sweet veil"
+    "Sweet Veil"
    ],
    "advanced": [
     "Ripen",
-    "Danger syrup"
+    "Danger Syrup"
    ],
    "high": [
-    "Thick fat"
+    "Thick Fat"
    ]
   },
   "evolution": [
@@ -312867,15 +313559,15 @@
   },
   "abilities": {
    "basic": [
-    "Plus or minus",
-    "Poison point"
+    "Plus or Minus",
+    "Poison Point"
    ],
    "advanced": [
-    "Punk rock",
+    "Punk Rock",
     "Technician"
    ],
    "high": [
-    "Prime fury"
+    "Prime Fury"
    ]
   },
   "evolution": [
@@ -313108,15 +313800,15 @@
   },
   "abilities": {
    "basic": [
-    "Plus or minus",
-    "Poison point"
+    "Plus or Minus",
+    "Poison Point"
    ],
    "advanced": [
-    "Punk rock",
+    "Punk Rock",
     "Technician"
    ],
    "high": [
-    "Prime fury"
+    "Prime Fury"
    ]
   },
   "evolution": [
@@ -313349,15 +314041,15 @@
   },
   "abilities": {
    "basic": [
-    "Plus or minus",
-    "Poison point"
+    "Plus or Minus",
+    "Poison Point"
    ],
    "advanced": [
-    "Punk rock",
+    "Punk Rock",
     "Technician"
    ],
    "high": [
-    "Prime fury"
+    "Prime Fury"
    ]
   },
   "evolution": [
@@ -313590,15 +314282,15 @@
   },
   "abilities": {
    "basic": [
-    "Plus or minus",
-    "Poison point"
+    "Plus or Minus",
+    "Poison Point"
    ],
    "advanced": [
-    "Punk rock",
+    "Punk Rock",
     "Technician"
    ],
    "high": [
-    "Prime fury"
+    "Prime Fury"
    ]
   },
   "evolution": [
@@ -313834,15 +314526,15 @@
   },
   "abilities": {
    "basic": [
-    "Flame body",
-    "Magma armor"
+    "Flame Body",
+    "Magma Armor"
    ],
    "advanced": [
-    "Flash fire",
-    "White smoke"
+    "Flash Fire",
+    "White Smoke"
    ],
    "high": [
-    "Heat mirage"
+    "Heat Mirage"
    ]
   },
   "evolution": [
@@ -314048,10 +314740,10 @@
    ],
    "advanced": [
     "Healer",
-    "Prime fury"
+    "Prime Fury"
    ],
    "high": [
-    "Magic bounce"
+    "Magic Bounce"
    ]
   },
   "evolution": [
@@ -314485,15 +315177,15 @@
   },
   "abilities": {
    "basic": [
-    "Sweet veil",
-    "Aroma veil"
+    "Sweet Veil",
+    "Aroma Veil"
    ],
    "advanced": [
-    "Cherry power",
-    "Flavorful aroma"
+    "Cherry Power",
+    "Flavorful Aroma"
    ],
    "high": [
-    "Absorb force"
+    "Absorb Force"
    ]
   },
   "evolution": [
@@ -314691,7 +315383,7 @@
   },
   "abilities": {
    "basic": [
-    "Hunger switch"
+    "Hunger Switch"
    ],
    "advanced": [
     "Static",
@@ -314699,7 +315391,7 @@
     "Gluttony"
    ],
    "high": [
-    "Aura storm"
+    "Aura Storm"
    ]
   },
   "evolution": [
@@ -314922,7 +315614,7 @@
   },
   "abilities": {
    "basic": [
-    "Hunger switch"
+    "Hunger Switch"
    ],
    "advanced": [
     "Static",
@@ -314930,7 +315622,7 @@
     "Gluttony"
    ],
    "high": [
-    "Aura storm"
+    "Aura Storm"
    ]
   },
   "evolution": [
@@ -315152,11 +315844,11 @@
   "abilities": {
    "basic": [
     "Guts",
-    "Battle armor"
+    "Battle Armor"
    ],
    "advanced": [
-    "Heavy metal",
-    "Sheer force"
+    "Heavy Metal",
+    "Sheer Force"
    ],
    "high": [
     "Heatproof"
@@ -315371,10 +316063,10 @@
    "advanced": [
     "Confidence",
     "Stalwart",
-    "Battle armor"
+    "Battle Armor"
    ],
    "high": [
-    "Clear body"
+    "Clear Body"
    ]
   },
   "evolution": [
@@ -315594,12 +316286,12 @@
     "Pressure"
    ],
    "advanced": [
-    "Razor edge",
-    "Life force",
-    "Regal challenge"
+    "Razor Edge",
+    "Life Force",
+    "Regal Challenge"
    ],
    "high": [
-    "Aura break"
+    "Aura Break"
    ]
   },
   "evolution": [

@@ -4336,7 +4336,7 @@
   "keywords": null
  },
  {
-  "name": "DIsguise",
+  "name": "Disguise",
   "frequency": "Daily - Free Action",
   "effect": "The triggering attack attack instead misses and has no effect. The user then gains +1 CS in a Stat of their choice. [Defensive]",
   "trigger": "The user is hit by a damaging Move.",
