@@ -7689,6 +7689,15 @@ function versatileDefaultSpec(atkStat, spatkStat){ return (spatkStat||0) > (atkS
 /* Roll the trainer's Struggle or Weapon Move (adds Attack; STAB only via Type Expertise, and
    never on a Struggle Attack) */
 function openTrainerAttack(t, weaponMoveName, w, opts={}){
+  /* Metronome on the Trainer side of the sheet. A Pokemon's Metronome is caught in openMoveRoll,
+     but a Trainer never goes through there — a Normal-Type Ace's Move list, an Elementalist's
+     Embrace, an Usurper's Legendary Form, the GM's "+ move" on an encounter NPC all land here —
+     so the same hook has to exist twice. Roll the dex first, then come back through with what
+     came up (opts.viaMetronome) and swing THAT for real. A weapon strike is never Metronome. */
+  if(!w && !opts.weaponAttack && !opts.viaMetronome && isMetronomeMove({name:weaponMoveName})){
+    const metro = moveByName.get("metronome");
+    if(metro) return openMetronome(t, metro, null, opts);
+  }
   const st = trainerAttackProfile(t, weaponMoveName, w, opts.weaponAttack);
   /* Two classes print the same Free Action on a Weapon Attack: Herald of Pride's Channel the
      Dragon's Spirit ("You may have the triggering attack deal Dragon-Type Damage if you wish") and
@@ -7871,10 +7880,16 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   /* Frequency chip, with the Move's use pips when it's Scene/Daily/EOT — same tracker as the
      Battle/Encounter rows, so a Weapon or Feature Move can be marked spent from the roll itself. */
   const freqChip = el("span",{class:"kv",style:"align-items:center;gap:6px;padding:3px 7px"});
+  /* Whose Frequency this swing actually spends. Normally the Move's own — but a Move that
+     Metronome rolled up spends METRONOME's Scene x2 instead, because the Move it landed on was
+     never one of this Trainer's to spend a use of (same rule as `freqMove` in openMoveRoll). */
+  const fqMove = opts.freqMove || null;
+  const fqName = fqMove ? fqMove.name : st.name;
+  const fqFreq = fqMove ? trainerMoveFreq(t, fqMove) : st.frequency;
   const drawFreq = () => {
     freqChip.innerHTML = "";
-    freqChip.append(el("span",{}, st.frequency||"—"));
-    const uc = usesControl(t, "move", st.name, st.frequency,
+    freqChip.append(el("span",{}, `${fqMove?`${fqMove.name}: `:""}${fqFreq||"—"}`));
+    const uc = usesControl(t, "move", fqName, fqFreq,
       ()=>{ drawFreq(); if(opts.rerender) opts.rerender(); },
       opts.persist||save, {bossEot:isBoss(t)});
     if(uc) freqChip.append(uc);
@@ -7895,7 +7910,9 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       ? "Type Expertise — you gain STAB for this Type"
       : "Shared Strengths Rank 2 — this is your Legendary Form's Type, so STAB follows it"},
       `⚡ STAB (${st.type})${adaptDB?" +Adaptability":""}`):"",
-    st.frequency?freqChip:""));
+    (fqFreq||st.frequency)?freqChip:""));
+  if(opts.viaMetronome) body.append(el("div",{class:"small",style:"margin:-4px 0 10px;color:var(--accent)"},
+    `🎰 Rolled up by Metronome — ${t.name||"the Trainer"} uses ${st.name} with their own Attack, Combat Stages, buffs and Type Expertise. Metronome's own Frequency is what gets spent.`));
   if(st.weapon) body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
     `Weapon: ${st.weapon.name||"(unnamed)"} — ${st.weapon.category}${st.weapon.notes?` · ${st.weapon.notes}`:""}`));
   if(st.effect) body.append(el("div",{class:"small",style:"margin-bottom:8px"}, st.effect));
@@ -8214,7 +8231,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     let feedLogged = false;              // the GM's roll feed gets exactly one line per press of 🎲
     if(!eotRefreshed){
       eotRefreshed = true;
-      const eotBack = refreshOtherEotUses(t, st.name);
+      const eotBack = refreshOtherEotUses(t, fqName);
       if(eotBack.length){ (opts.persist||save)(); drawFreq(); if(opts.rerender) opts.rerender();
         toast(`\u21BA EOT back off cooldown: ${eotBack.join(", ")}`); }
     }
@@ -8407,7 +8424,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
              `${st.type||"Typeless"}${st.cls?` · ${st.cls}`:""} — no damage rolled`] });
   };
   body.append(out);
-  modal({title:st.name, bodyNode:body, footNodes:[
+  modal({title: opts.viaMetronome ? `🎰 Metronome → ${st.name}` : st.name, bodyNode:body, footNodes:[
     st.move? el("button",{class:"btn-secondary",onclick:()=>openRefDetail("move",st.name)},"Full text") : "",
     el("button",{class:"btn-primary",onclick:doRoll},"🎲 Roll dice"),
   ]});
@@ -18967,8 +18984,13 @@ function transformCard(p, opts){
 
    Pressing Metronome anywhere on the sheet — its row, the 🎲 Roll button, an encounter creature's
    Move list, a token's Actions on the Map — opens this instead of the ordinary roll window, because
-   every one of those paths goes through openMoveRoll. The dex is rolled here, and the Move that comes
-   up is then rolled for real through openMoveRoll: "randomly USES any other Move" means the user
+   every one of those paths goes through openMoveRoll. A TRAINER who knows Metronome (a Normal-Type
+   Ace, an Elementalist's Embrace, the GM's "+ move" on an encounter NPC) never touches openMoveRoll
+   — they swing through openTrainerAttack — so that function carries the same hook, and this window
+   hands the rolled-up Move back to whichever of the two the user came in from.
+
+   The dex is rolled here, and the Move that comes
+   up is then rolled for real through the ordinary roll window: "randomly USES any other Move" means the user
    makes that Move's Accuracy and Damage Rolls with their own STAB, Combat Stages, buffs, Abilities
    and held items, which is exactly what handing it back to the normal roll window gives.
 
@@ -19018,6 +19040,14 @@ function metronomeDraw(n){
   return out;
 }
 function openMetronome(p, metro, sp, opts={}){
+  /* `p` is whoever pressed Metronome — a Pokemon (rolled through openMoveRoll) or a Trainer who
+     knows the Move themselves (rolled through openTrainerAttack). Everything in between is the
+     same dex roll; only the hand-off at "🎲 Use it" differs. */
+  const forTrainer = isTrainerOwner(p);
+  const label = forTrainer ? (p.name || "The Trainer") : monLabel(p);
+  const useIt = m => { closeModal();
+    if(forTrainer) openTrainerAttack(p, m.name, null, Object.assign({}, opts, {viaMetronome:true, freqMove:metro}));
+    else openMoveRoll(p, m, sp, Object.assign({}, opts, {viaMetronome:true, freqMove:metro})); };
   let count = Math.max(1, Math.min(3, opts.metroCount || 1));
   let picks = [];
   const list = el("div",{});
@@ -19035,8 +19065,7 @@ function openMetronome(p, metro, sp, opts={}){
         String(m.effect).length > 240 ? String(m.effect).slice(0,240) + "…" : String(m.effect)));
       card.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px"},
         el("button",{class:"btn-primary",style:"padding:6px 12px",
-          onclick:()=>{ closeModal();
-            openMoveRoll(p, m, sp, Object.assign({}, opts, {viaMetronome:true, freqMove:metro})); }},
+          onclick:()=>useIt(m)},
           "🎲 Use it"),
         el("button",{class:"linkbtn",onclick:()=>openRefDetail("move", m.name, p)},"full text")));
       list.append(card);
@@ -19065,7 +19094,7 @@ function openMetronome(p, metro, sp, opts={}){
   const body = el("div",{});
   body.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
     `A Move taken at random from all ${metronomePool().length} Metronome can reach — the ${METRONOME_BANNED.length} the book excludes (Protect, Copycat, Sketch, Transform…) are already out of the pool. `
-    + `${monLabel(p)} then uses it with their own STAB, Combat Stages, buffs and held items; it's Metronome's own ${monMoveFreq(p, metro) || metro.frequency} that gets spent, and only once the dice go.`));
+    + `${label} then uses it with their own ${forTrainer ? "Attack, Combat Stages, buffs and Type Expertise" : "STAB, Combat Stages, buffs and held items"}; it's Metronome's own ${(forTrainer ? trainerMoveFreq(p, metro) : monMoveFreq(p, metro)) || metro.frequency} that gets spent, and only once the dice go.`));
   body.append(glitch, list);
   modal({title:"🎰 Metronome", bodyNode:body, footNodes:[
     el("button",{class:"btn-secondary",onclick:()=>roll()},"🔁 Reroll"),
@@ -19074,7 +19103,7 @@ function openMetronome(p, metro, sp, opts={}){
     el("button",{class:"btn-secondary",onclick:()=>{ closeModal();
       openPicker("🎯 GM: which Move does Metronome land on?", metronomePool().map(m=>m.name), name=>{
         const mm = moveByName.get((name||"").toLowerCase());
-        if(mm) openMoveRoll(p, mm, sp, Object.assign({}, opts, {viaMetronome:true, freqMove:metro}));
+        if(mm) useIt(mm);
       }, "move");
     }},"🎯 GM: pick"),
   ]});
@@ -37680,6 +37709,14 @@ function openBoatMenu(token, map){
     el("button",{class:"btn-secondary",onclick:closeModal},"Close"),
   ]});
 }
+/* Paint order for one board. A Massive School shares the hulls' z-index (see mapTokenNode), so
+   the only thing that can put it under a boat as well is the DOM: at equal z-index, the token
+   appended first is the one underneath. Everything else keeps the order it is stored in. */
+function mapDrawOrder(tokens){
+  const shoals = [], rest = [];
+  tokens.forEach(t => (massiveSchoolTokenFoot(t) ? shoals : rest).push(t));
+  return shoals.length ? shoals.concat(rest) : tokens;
+}
 function tokenRenderBox(map, token, originX=0, originY=0, depth=0){
   const px = map.gridSize;
   // A boat is the one token that isn't square, so the box carries w/h as well as size; for
@@ -37712,6 +37749,10 @@ function mapTokenNode(token, map, originX=0, originY=0){
   const riding = box.rider, carrying = tokenRiders(map.id, token).length;
   const isBoat = isBoatToken(token);
   const isHaz = isHazardToken(token);
+  // A Massive School is water, not a creature: the shoal is the floor everything else stands on,
+  // so it drops to the hull layer and is drawn before the hulls (see mapDrawOrder) to sit under
+  // those too. Nothing on the board is ever painted underneath it.
+  const isShoal = !!massiveSchoolTokenFoot(token);
   const pendingRider = mapMountActive(map) && mapMount.riderId===token.id;
   const factionColor = tokenFactionColor(info, token);
   const selected = mapSelectActive(map) && mapSelect.ids.has(token.id);
@@ -37723,7 +37764,7 @@ function mapTokenNode(token, map, originX=0, originY=0){
   // a rider is drawn perched on its mount (see tokenRenderBox) and always stacks above it
   const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":"")+(isBoat?" boat-token":"")+(isHaz?" hazard-token":"")+(shinyTok?" shiny":""),
     // a hull sits at z-index 0, below every creature, so the crew is drawn standing on the deck
-    style:`left:${box.left}px;top:${box.top}px;width:${box.w}px;height:${box.h}px;z-index:${riding?4:isTrainerTok?2:(isBoat||isHaz)?0:1}`
+    style:`left:${box.left}px;top:${box.top}px;width:${box.w}px;height:${box.h}px;z-index:${riding?4:isTrainerTok?2:(isBoat||isHaz||isShoal)?0:1}`
       +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")
       +(factionColor?`;border-color:${factionColor}`:"")});
   node.dataset.tid = token.id;
@@ -40343,9 +40384,9 @@ function renderMap(){
 
   if(cloud.isGM){
     const f = drawFogInto(); if(f) stage.append(f);                 // GM: dim fog under tokens
-    mapTokensFor(map.id).forEach(t=>{ if(nearView(t)) stage.append(mkToken(t)); });
+    mapDrawOrder(mapTokensFor(map.id)).forEach(t=>{ if(nearView(t)) stage.append(mkToken(t)); });
   } else {
-    mapTokensFor(map.id).forEach(t=>{ if(visibleToken(t) && nearView(t)) stage.append(mkToken(t)); });
+    mapDrawOrder(mapTokensFor(map.id)).forEach(t=>{ if(visibleToken(t) && nearView(t)) stage.append(mkToken(t)); });
     const f = drawFogInto(); if(f) stage.append(f);                 // players: opaque fog over hidden tokens
   }
 
