@@ -61,6 +61,17 @@ const STATS = [["hp","HP"],["atk","Attack"],["def","Defense"],
    injuryHPCount reads BERSERKER_LESSONS from inside trainerDerived. A const declared further down
    would still be in its temporal dead zone if load() ever reached the derived layer, and load()
    swallows exceptions — the same trap the LU_* constants are hoisted for. */
+/* Swarmlord's Embrace and Druid's Oath (Game of Throhs pp.63, 79): each hands out an Ability AND a
+   Stat Tag that every Feature of that class then repeats. The Ability half rides FEATURE_ABILITY_CHOICES
+   down below; the Stat Tag half is counted in trainerStatTags, which normTrainer reaches through
+   migrateStatTags from inside load() - so the table is up here for the same reason the Berserker
+   names are. The chosen ABILITY is the key: it is the Embrace, so there is only ever one pick. */
+const EMBRACE_TAG_CLASSES = [
+  { cls:"Swarmlord", byAbility:{ "Unnerve":"atk", "Shield Dust":"spatk" },
+    label:{ "Unnerve":"Arachnid's Embrace", "Shield Dust":"Monarch's Embrace" } },
+  { cls:"Druid", byAbility:{ "Aroma Veil":"spatk", "Effect Spore":"spdef", "Life Force":"atk" },
+    label:{ "Aroma Veil":"Flower Oath", "Effect Spore":"Fungal Oath", "Life Force":"Wood Oath" } },
+];
 const BERSERKER_LESSONS  = "Lessons In Rage & Pain";
 const BERSERKER_PUSH     = "Push it to the Limit";
 const BERSERKER_FIGHT_ON = "Fight On and On";
@@ -678,10 +689,37 @@ function toggleStatus(p, key){ p.statuses = p.statuses||[];
   dedupeStatuses(p);
   const i=p.statuses.indexOf(key);
   if(i>=0){ const w = statusCureBlock(p, key); p.statuses = p.statuses.filter(k=>k!==key); if(w) toast(w); }
-  else p.statuses.push(key);
+  else {
+    /* Outright immunity, not a Save to make: a Fire Bringer cannot be Burned, a Frost Touched cannot
+       be Frozen, a Miasmic cannot be Poisoned. Refuse the chip and say which Feature said so. */
+    const im = statusImmunityFor(p, key);
+    if(im && !p.unlocked){ toast(`\u26A0 ${ownerLabel(p)} is immune to ${statusName(key)} \u2014 ${im}`); return; }
+    p.statuses.push(key);
+  }
   if(key==="vortex") onVortexToggled(p, p.statuses.includes(key));
   latchFlinchInit(p);
   save(); }
+/* ---- Outright Status immunities a Feature (or a stance) hands a Trainer -------------------------
+   Four Elementalist Features simply say "you are immune to X" - not a bonus to the Save, not a
+   shorter duration, immune. Nothing in the app modelled that, so the chip went on anyway and the
+   table had to remember. A stance can grant one too (Shadow Form's Cursed), which is why the active
+   modes are read as well as the Feature list. Returns the source's name, or "" for no immunity. */
+const FEATURE_STATUS_IMMUNITY = [
+  { feat:"Fiery Soul", statuses:["burned"],                     // Fire Bringer (Fire Elementalist)
+    why:"Fiery Soul (Fire Bringer) \u2014 immune to the Burn condition" },
+  { feat:"The Cold Never Bothered Me Anyway", statuses:["frozen","chilled"],   // Frost Touched (Ice)
+    why:"The Cold Never Bothered Me Anyway (Frost Touched) \u2014 immune to being Frozen" },
+  { feat:"Corrupt Blood", statuses:["poisoned","badlyPoisoned"],               // Miasmic (Poison)
+    why:"Corrupt Blood (Miasmic) \u2014 immune to Poisoned and Badly Poisoned" },
+];
+function statusName(key){ const d = STATUS_DEFS.find(s => s.key === key); return d ? d.name : key; }
+function statusImmunityFor(o, key){
+  if(!o || !isTrainerOwner(o)) return "";
+  const f = FEATURE_STATUS_IMMUNITY.find(d => (d.statuses||[]).includes(key) && hasFeatureLoose(o, d.feat));
+  if(f) return f.why;
+  const md = activeFeatureModes(o).find(d => (d.immune||[]).includes(key));
+  return md ? `${md.feat} is up \u2014 it makes you immune while it is Bound` : "";
+}
 /* Abilities that forbid CURING an affliction rather than changing a number. Power of Rage's pair
    ("The user may not make rolls to cure themselves of the Enraged condition") is the only one so
    far. There is no Save-roll button in this app — afflictions are toggled by hand against the DC
@@ -3411,6 +3449,10 @@ const MOVE_ALIASES = { "hijumpkick":"High Jump Kick", "zenheabutt":"Zen Headbutt
                        "judgment":"Judgement", "naturepowers":"Nature Power",
                        // Game of Throhs writes Shade Caller's Move by its pre-Gen-6 name
                        "faintattack":"Feint Attack",
+                       /* Swarmlord's Rank 1 Enhanced Embrace table prints "Fell Needle", which is
+                          not a Move in any edition - it is Fell Stinger, the Bug-Type one every
+                          other entry in that column is. Checked against the PDF (p.63). */
+                       "fellneedle":"Fell Stinger",
                        // the Pokedex spells Palkia's signature Move the other way round
                        "spatialrend":"Spacial Rend" };
 /* A movelist entry can arrive carrying a marker the name itself doesn't own: the Pokedex's tutor
@@ -4444,6 +4486,7 @@ function applyEndScene(c){
   delete c.trainer.critMoment;                     // an Athlete's Trainings stop being tripled too
   c.trainer.modes = {};                            // a Feature stance (Enchanting Transformation) lasts until the end of the Scene — and returns its Bound AP with it
   c.trainer.manualBoundAP = 0;                      // any manual GM AP Drain/Bind releases at End Scene too
+  delete c.trainer.bottled;                        // "At the end of a Scene, all items lose their Charge" (Bottled Lightning)
   channelerEndScene(c.trainer);                    // a Channeler's Imprints and Spirit Boosts hand their Bound AP back with the Scene; the Channels themselves aren't Scene-bound and stay
   delete c.trainer.fightOn;                        // Fight On and On is a combat-long refusal to drop; the fight is over
   // Combat Stages set by hand and Volatile afflictions don't outlast the Scene (Core p.234/p.245).
@@ -5180,6 +5223,14 @@ function setPath(obj, path, val) {
 /* ===================================================================
    PTU calculations
 =================================================================== */
+/* the higher of Acrobatics and Perception - the Rank every Wind Runner number is measured in */
+function windRunnerRank(t){
+  return Math.max(rankNum(t && t.skills ? t.skills.acrobatics : ""),
+                  rankNum(t && t.skills ? t.skills.perception : ""));
+}
+function windRunnerLevitate(t){
+  return (t && hasFeatureLoose(t, "Wind Runner")) ? 4 + Math.floor(windRunnerRank(t)/2) : 0;
+}
 function trainerDerived(t) {
   const gift = giftStatBonus(t);                            // Legendary Gift Patron-Stat points (book p.57)
   const tag = statTagBonus(t).stats;                        // Feature [+Stat] tags (Core p.14)
@@ -5198,6 +5249,7 @@ function trainerDerived(t) {
   let hj = 0;     if (acro >= 4) hj++; if (acro >= 6) hj++;
   hj   += edgeFxSum(t, "highJump");                        // Acrobat (+1 each)
   const mvCS = speedCSMove(cs);                            // Speed CS shifts every Movement Speed (Core p.234)
+  const wrLev = windRunnerLevitate(t);                     // Wind Runner's hover, 0 for everyone else
   // The Chariot raises EVERY movement Capability, so it lands on both Overland and Swim
   const bMove = buffMove(t);                               // a buff that raises Movement Speed (Frenzy)
   const bEva  = buffEva(t);                                // a buff that raises Evasion (I Believe In You!, Capricious Whirl)
@@ -5217,6 +5269,14 @@ function trainerDerived(t) {
     dr: equipDR(t).dr + arc.dr,                              // worn-armor Damage Reduction (also flows through buffDR on the damage input) + Ten of Swords
     overland: moveWithCS(ovlBase, mvCS), swim: moveWithCS(swimBase, mvCS), moveCS: mvCS,
     overlandBase: ovlBase, swimBase,          // pre-Speed-CS, for Commander's Movement swap
+    /* Wind Runner (Flying Elementalist): "You gain the Levitate Ability. You have a total Levitate
+       Speed equal to 4 plus half of the higher of your Acrobatics or Perception Rank." The Ability
+       itself is granted by featureAbilityGrants; the SPEED had nowhere to live, so a Wind Runner's
+       hover was a number the table worked out by hand every time. Speed Combat Stages shift it like
+       every other movement Capability (Core p.234). `sky` is what Flight raises it to for a round -
+       derived, never stored, since Flight lasts one round and nothing should outlive that. */
+    levitate: wrLev ? moveWithCS(wrLev, mvCS) : 0,
+    sky: wrLev ? moveWithCS(wrLev + windRunnerRank(t), mvCS) : 0,
     throwing: 4 + athl + edgeFxSum(t, "throwing"),      // Throwing Masteries (+2)
     totals: Object.fromEntries(STATS.map(([k])=>[k, tot(k)])),        // CS-adjusted (used for attack/defense)
     realTotals: Object.fromEntries(STATS.map(([k])=>[k, raw(k)])),    // pre-CS
@@ -5564,6 +5624,14 @@ function defenseTypeMods(p, opts){
   gear.lose.forEach(t=>immune.delete(t));
   if(gear.lose.length) why.push(`Iron Ball: any immunity to ${gear.lose.join("/")} is lost`);
   why.push(...gear.why);
+  /* Corrupt Blood (Miasmic, Game of Throhs p.87): "resist Poison-type attacks one step further".
+     A human has no Types of their own, so this is the whole matchup: a Poison hit on a Miasmic
+     lands at x0.5 rather than neutral. It is a FEATURE, not an Ability, so Mold Breaker does not
+     switch it off - which is why it is added outside the A() helper. */
+  if(isTrainerOwner(p) && hasFeatureLoose(p, "Corrupt Blood")){
+    add("Poison", -1);
+    why.push("Corrupt Blood: resists Poison one step further (and cannot be Poisoned at all)");
+  }
   // a Feature stance's typeDR (Enchanting Transformation) merged with a granted buff's (Soothing Flute)
   if(mold) why.unshift(MOLD_BREAKER_WHY);
   return { step, immune, wonderGuard, seReduce, seFlatDR, tolerance, furCoat, rogueMega, mold,
@@ -6130,7 +6198,7 @@ function renderTrainer(){
 function ownerFullHP(owner){
   return owner.species!==undefined ? pokeDerived(owner).fullMaxHP : trainerDerived(owner).fullHP;
 }
-function injuriesFromHit(fullHP, oldHP, newHP, dmgAmount, step){
+function injuriesFromHit(fullHP, oldHP, newHP, dmgAmount, step, noMassive){
   step = step > 0 ? step : 0.5;                  // War Aura attackers pass 0.25 (markers AND Massive Damage)
   if(!fullHP || dmgAmount<=0) return 0;
   let n = 0;
@@ -6138,7 +6206,8 @@ function injuriesFromHit(fullHP, oldHP, newHP, dmgAmount, step){
     const t = frac*fullHP;
     if(oldHP > t && newHP <= t) n++;
   }
-  if(dmgAmount >= fullHP*step) n++;              // Massive Damage — independent of markers crossed
+  // Massive Damage — independent of markers crossed. Flexible Form (Miasmic) skips only this half.
+  if(dmgAmount >= fullHP*step && !noMassive) n++;
   return n;
 }
 /* Vehicle Breaches (house rule): same shape as Injuries but at every 25% max-HP marker instead of
@@ -6166,16 +6235,20 @@ function applyAutoInjury(owner, oldHP, newHP, step){
   step = step > 0 ? step : 0.5;                  // 0.25 when the ATTACKER has the War Aura up
   const war = step < 0.5 ? " · War Aura: 25% markers" : "";
   const dmg = oldHP - newHP;
+  /* Flexible Form (Miasmic, Game of Throhs p.87): "You do not gain Injuries from taking Massive
+     damage." Only that half — crossing an HP marker still injures them, and so does anything that
+     hands out an Injury by name. */
+  const noMassive = isTrainerOwner(owner) && hasFeatureLoose(owner, "Flexible Form");
   if(isBoss(owner)){
     const full = ownerFullHP(owner);
-    if(full && dmg >= full*step){
+    if(full && dmg >= full*step && !noMassive){
       owner.injuries = (owner.injuries||0) + 1;
       toast("+1 Injury! (Massive Damage on a Boss" + war + ")");
       return 1;
     }
     return 0;
   }
-  const inj = injuriesFromHit(ownerFullHP(owner), oldHP, newHP, dmg, step);
+  const inj = injuriesFromHit(ownerFullHP(owner), oldHP, newHP, dmg, step, noMassive);
   if(inj > 0){
     owner.injuries = (owner.injuries||0) + inj;
     toast(`+${inj} Injur${inj===1?"y":"ies"}! (Massive Damage / HP marker crossed${war})`);
@@ -6383,7 +6456,18 @@ function trainerStruggle(t, w){
   if(w){ ac += (w.acMod||0); db += (w.dbMod||0); type = w.type || type; range = w.range || range; name = w.name || "Weapon Strike";
     // "All Arcane Weapons modify Struggle Attacks to be Special Attacks" — everything else is Physical
     cls = isArcaneWeapon(w) ? "Special" : "Physical"; }
+  // Silent Assassin (Apparition, Bind 2 AP): the strike itself is Ghost-Typed while it is up
+  type = strikeTypeOverride(t) || type;
   return { name, ac, damageBase:db, type, range, cls, weapon:w };
+}
+/* A stance that retypes every Struggle and Weapon Attack outright (Apparition's Silent Assassin:
+   "While this Feature is Bound, your Struggle Attacks and Weapon Attacks deal Ghost-Type Damage").
+   Unlike Channel the Dragon's Spirit this is not a choice made per swing - it is simply true while
+   the AP is Bound, so it belongs in the profile every card and every roll reads, not in a tick-box.
+   Returns "" when nothing is overriding the Type. */
+function strikeTypeOverride(t){
+  const md = activeFeatureModes(t).find(d => d.strikeType);
+  return md ? md.strikeType : "";
 }
 /* elemental unarmed Struggle for trainers — trainers have no capabilities of their own (those are a
    Pokémon mechanic, Core p.75-ish), so this is GM-flexible via 🔓 unlock only (same "GM adjusts the
@@ -6651,6 +6735,18 @@ function weaponAttackFeats(){
     .filter(d => d.moves.length);
   return _weaponAttackFeats;
 }
+/* ---- Weapon Attacks a Feature lets you retype for 1 AP ----------------------------------------
+   Both are Free Actions on a Weapon Attack whose whole mechanical effect is the Type swap, plus a
+   rider the roll can only announce. They are offered as tick-boxes inside the roll (openTrainerAttack)
+   rather than applied, because "if you wish" is a choice made per swing. The AP is NOT taken here -
+   it never was for Herald, and quietly starting to charge it would double-bill a table that has
+   been tracking it by hand; the box says the cost. */
+const WEAPON_RETYPE_FEATS = [
+  { feat:"Channel the Dragon's Spirit", type:"Dragon", ap:1, icon:"🐉",
+    note:"This attack deals Dragon-Type damage. On an Accuracy Roll of 18+, all targets can only use At-Will Frequency Moves for one full round — apply that part by hand." },
+  { feat:"Champion of Steel", type:"Steel", ap:1, icon:"🛡",
+    note:"This attack deals Steel-Type damage. On an Accuracy Roll of 16+ it also raises your Defense by 1 Combat Stage — shift it on the Combat Stages pad." },
+];
 /* "when wielding Melee Weapons" — a bow can't swing Rage */
 function weaponFitsRestrict(w, restrict){
   if(!restrict) return true;
@@ -6946,6 +7042,12 @@ const FEATURE_ABILITY_CHOICES = [
   { feat:"Luminous Aura",       abilities:["Starlight","Sunglow"],         note:"Prism: choose Starlight or Sunglow." },
   { feat:"Rock Power Rank 1",   abilities:["Sturdy","Rock Head","Run Up","Sand Veil"], note:"Stone Warrior: choose one per Rank." },
   { feat:"Rock Power Rank 2",   abilities:["Sturdy","Rock Head","Run Up","Sand Veil"], note:"Stone Warrior: choose one per Rank." },
+  /* Druid's three Oaths are written as a TABLE ("Flower Oath  Aroma Veil  [+Special Attack]"), which
+     no "choose ... you gain the chosen Ability" sentence exists to parse. Same shape as Swarmlord's
+     Embrace above, and the pick doubles as the Oath: it is what gates the Nature's Embrace Move
+     list and what decides the Stat Tag every Druid Feature carries. */
+  { feat:"Druid",               abilities:["Aroma Veil","Effect Spore","Life Force"],
+    note:"Flower Oath grants Aroma Veil; Fungal Oath grants Effect Spore; Wood Oath grants Life Force." },
   /* The player classes' own Ability grants. A single-option grant applies on its own; a
      two-option one waits for the pick, which the Feature's own Battle row offers. */
   { feat:"Musical Ability",     abilities:["Drown Out","Soundproof"],     note:"Musician: choose Drown Out or Soundproof." },
@@ -7562,7 +7664,9 @@ function trainerAttackProfile(t, weaponMoveName, w, asWeaponAttack){
   if(weaponMoveName){
     const m = moveByName.get(weaponMoveName.toLowerCase());
     const sd = sheetDamageBase(m, t);
-    if(m) return { name:m.name, type:(w&&w.type&&w.type!=="Normal")?w.type:(m.type||"Normal"),
+    // a Weapon Attack is a Weapon Attack: Silent Assassin retypes the Move being swung as well
+    const strikeTy = w ? strikeTypeOverride(t) : "";
+    if(m) return { name:m.name, type:strikeTy || ((w&&w.type&&w.type!=="Normal")?w.type:(m.type||"Normal")),
       damageBase:Math.min(28,(sd.db||0)+(w?w.dbMod:0)), dbNote:sd.note, ac:(m.ac!=null?m.ac:4)+(w?w.acMod:0),
       range:weaponizeRange(m.range||"Melee", w, asWeaponAttack), cls:m.class||"Physical",
       frequency:trainerMoveFreq(t, m), effect:m.effect, weapon:w, move:m, weaponAttack:!!(w && asWeaponAttack) };
@@ -7586,13 +7690,16 @@ function versatileDefaultSpec(atkStat, spatkStat){ return (spatkStat||0) > (atkS
    never on a Struggle Attack) */
 function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const st = trainerAttackProfile(t, weaponMoveName, w, opts.weaponAttack);
-  /* Channel the Dragon's Spirit (Herald of Pride, 1 AP - Free Action): "Trigger: You use a Weapon
-     Attack. Effect: You may have the triggering attack deal Dragon-Type Damage if you wish." The
-     Type swap IS the mechanical effect (the 18+ At-Will lockdown is a reminder in the box), and the
-     profile is a throwaway object built per call, so overwriting its Type never touches the Move DB. */
-  const dragonOK = !!st.weapon && hasFeatureLoose(t, "Channel the Dragon's Spirit");
-  const dragonOn = dragonOK && !!opts.dragonSpirit;
-  if(dragonOn) st.type = "Dragon";
+  /* Two classes print the same Free Action on a Weapon Attack: Herald of Pride's Channel the
+     Dragon's Spirit ("You may have the triggering attack deal Dragon-Type Damage if you wish") and
+     Steelheart's Champion of Steel ("you may have it deal Steel-Type Damage if you wish"). The Type
+     swap IS the mechanical effect; the rider each one carries (Herald's 18+ At-Will lockdown,
+     Steelheart's +1 Defense Combat Stage on 16+) is a reminder in the box. The profile is a
+     throwaway object built per call, so overwriting its Type never touches the Move DB.
+     `opts.retype` names which one is switched on, so the two can never both be. */
+  const retypeOpts = WEAPON_RETYPE_FEATS.filter(d => !!st.weapon && hasFeatureLoose(t, d.feat));
+  const retypeOn = retypeOpts.find(d => featKey(d.feat) === featKey(opts.retype || "")) || null;
+  if(retypeOn) st.type = retypeOn.type;
   /* Judgement / Techno Blast: "its Type can be whatever Elemental Type the user wants it to be." The
      Pokemon roll has had this picker since the Multitype pass; a Trainer rolling the same Move -
      an Usurper using their Legendary Form's Move List - needs it just as much, and had nothing. */
@@ -7636,7 +7743,10 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const evaNote = isSpecAtk ? "Special Evasion" : "Physical Evasion";
   const bm = buffMods(t, {isPhys: isPhysAtk, type: st.type});
   /* Crit Range for this attack — Bad Mood, Frenzy & co., and the Move's own printed range. */
-  const critT = trainerCritThreshold(t, st, bm.crit);
+  /* Flip Out (Tumbler) lets an Aerial Ace decline the Critical Hit test in exchange for the Pass
+     Keyword, so the threshold is a `let`: ticking it pushes the range to 21, which no d20 reaches. */
+  const critTBase = trainerCritThreshold(t, st, bm.crit);
+  let critT = critTBase;
   const critNote = [badMoodWhy(t), bm.crit ? `+${bm.crit} buffs` : ""].filter(Boolean).join(" · ");
   /* Struggle Attacks (unarmed and plain weapon strikes) have no Move behind them and never get
      STAB; a real Move does, if Type Expertise named its Type. */
@@ -7853,7 +7963,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     el("div",{class:"small muted",style:"margin-top:2px"},
       (condMods().noMiss
         ? `${st.name} cannot miss while that condition holds — no Accuracy Check needed.`
-        : `Roll ${dblStrike?"2 separate Attack Rolls — each ":"1d20 — "}hits if it's ≥ AC ${st.ac} + the target's ${evaNote}. ${critT===20?"Nat 20":`Roll ${critT}+`} auto-hits/crits, nat 1 auto-misses.`)
+        : `Roll ${dblStrike?"2 separate Attack Rolls — each ":"1d20 — "}hits if it's ≥ AC ${st.ac} + the target's ${evaNote}. ${critT>20 ? "Nat 20 auto-hits but cannot Crit (you declined the Critical Hit test)" : `${critT===20?"Nat 20":`Roll ${critT}+`} auto-hits/crits`}, nat 1 auto-misses.`)
       + (accWhyPre.length?` Includes ${accWhyPre.join(" ")}.`:""))));
   if(dn){
     const terms = [`${dn}d${dfaces}`]; if(dflat) terms.push(String(dflat)); if(atk) terms.push(String(atk));
@@ -7937,19 +8047,20 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
          : "")));
     body.append(tc);
   }
-  /* --- Channel the Dragon's Spirit: retype this Weapon Attack to Dragon for 1 AP --- */
-  if(dragonOK){
+  /* --- retype this Weapon Attack for 1 AP (Channel the Dragon's Spirit / Champion of Steel) --- */
+  retypeOpts.forEach(d => {
+    const on = retypeOn === d;
     const dc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
     dc.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},
-      "🐉 Channel the Dragon's Spirit — 1 AP, Free Action"));
-    dc.append(el("button",{class:"btn-secondary"+(dragonOn?" on":""),style:"padding:6px 10px",
-      onclick:()=>{ closeModal(); openTrainerAttack(t, weaponMoveName, w, Object.assign({}, opts, {dragonSpirit:!dragonOn})); }},
-      dragonOn ? `⏹ Back to ${(w && w.type) || "Normal"}-Type` : "🐉 Deal Dragon-Type damage"));
-    dc.append(el("div",{class:"small muted",style:"margin-top:4px"}, dragonOn
-      ? "This attack deals Dragon-Type damage. On an Accuracy Roll of 18+, all targets can only use At-Will Frequency Moves for one full round — apply that part by hand."
-      : "Retypes this Weapon Attack to Dragon, which is what the target's resistances are then measured against."));
+      `${d.icon} ${d.feat} — ${d.ap} AP, Free Action`));
+    dc.append(el("button",{class:"btn-secondary"+(on?" on":""),style:"padding:6px 10px",
+      onclick:()=>{ closeModal();
+        openTrainerAttack(t, weaponMoveName, w, Object.assign({}, opts, {retype: on ? "" : d.feat})); }},
+      on ? `⏹ Back to ${(w && w.type) || "Normal"}-Type` : `${d.icon} Deal ${d.type}-Type damage`));
+    dc.append(el("div",{class:"small muted",style:"margin-top:4px"}, on ? d.note
+      : `Retypes this Weapon Attack to ${d.type}, which is what the target's resistances are then measured against.`));
     body.append(dc);
-  }
+  });
   /* --- a conditional Damage Base: one checkbox per condition, exactly as the Pokémon roll draws
      them (specialMoveInfo → MOVE_CONDITIONS is the single shared table). --- */
   if(condList.length){
@@ -7972,7 +8083,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         el("div",{class:"small",style:"font-weight:700"}, c.label),
         el("div",{class:"small muted"}, eff.join(" · ") + (c.note ? ` — ${c.note}` : "")),
         condAuto[i] ? el("div",{class:"small",style:"color:var(--good);font-weight:700"},
-          "✓ detected from this sheet — untick if that's not the case") : ""));
+          (c.autoWhy && c.autoWhy(t)) || "✓ detected from this sheet — untick if that's not the case") : ""));
       wc.append(lbl);
     });
     body.append(wc);
@@ -7997,7 +8108,14 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
      Play Them Like a Fiddle, Enchanting Transformation). Always-on ones just state what also
      happens; a triggered one gets its own box with a button that spends the use. --- */
   { const rsCard = runningStartCard(runStart, runStartState); if(rsCard) body.append(rsCard); }
-  body.append(riderBoxes(t, st.name, opts.rerender));
+  body.append(riderBoxes(t, st.name, opts.rerender, opts.persist));
+  /* …and the one rider whose bullets are more than a sentence apiece: each of Flip Out's four Moves
+     gets a control that actually does the thing (crit test, DR charge, Hazard clearing). */
+  { const fo = flipOutBox(t, st.name, {
+      getNoCrit: () => critT > 20,
+      setNoCrit: on => { critT = on ? 21 : critTBase; drawExplain(); },
+    }, opts);
+    if(fo) body.append(fo); }
   if(st.move) body.append(groupRiderBoxes(t, st.move, true));
   const roughneck = roughneckBox(t, opts.rerender);
   if(roughneck) body.append(roughneck);
@@ -8131,7 +8249,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       out.append(el("div",{style:"margin-bottom:10px"}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLL"),
         el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`, el("span",{class:"muted",style:"font-size:13px;font-weight:600"}, accBits.length?`  (${acc} ${accBits.join(" ")})`:" (1d20)")),
         el("div",{class:"small muted"}, `Hits if ${accTot} ≥ AC ${st.ac} + target's ${evaNote}.`
-          + (acc===20 ? " Natural 20 — auto-hit/crit!"
+          + (acc===20 ? (critT>20 ? " Natural 20 — auto-hit. The Critical Hit test was declined, so it can't Crit; Aerial Ace has Pass instead."
+                                   : " Natural 20 — auto-hit/crit!")
              : acc===1 ? " Natural 1 — auto-miss."
              : acc>=critT ? ` Roll ${acc} ≥ crit range ${critT} — Critical Hit!${critNote?` (${critNote})`:""}` : ""))));
     }
@@ -8142,8 +8261,13 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
        Serene Grace widens every Effect Range by +2. */
     if(st.move){
       const trThr = sereneGraceThresholds(
-        frostbiteThresholds(effectThresholds(st.move.effect),
-          ownerHasAbility(t,"Frostbite") && st.type==="Ice" && !isStatusAtk),
+        burnRangeThresholds(
+          frostbiteThresholds(effectThresholds(st.move.effect),
+            ownerHasAbility(t,"Frostbite") && st.type==="Ice" && !isStatusAtk),
+          /* Firebrand says "your Fire-Type Moves", with no damaging-only clause — so Will-O-Wisp
+             counts too, and only the Type is checked. */
+          hasFeatureLoose(t,"Firebrand") && st.type==="Fire", "Firebrand",
+          "this Fire-Type Move Burns the target on 19+."),
         ownerHasAbility(t,"Serene Grace"));
       if(trThr.length){
         const tl = el("div",{style:"margin:2px 0 10px"});
@@ -8649,6 +8773,7 @@ function trainerDerivedGrid(t){
     ["High Jump", d.highJump], ["Long Jump", d.longJump],
     ["Overland", d.overland], ["Swim", d.swim], ["Throwing Range", d.throwing],
   ];
+  if(d.levitate) items.push(["Levitate", d.levitate]);      // Wind Runner — a human who hovers
   if(d.dr) items.push(["Damage Reduction", "+"+d.dr]);   // from worn armor (Equipment card)
   // every Capability a Feature, Edge or Legendary Gift handed over — trainers have no block of their own
   trainerCapGrants(t).forEach(c => items.push([c.name, "✓"]));
@@ -8758,6 +8883,29 @@ function classNamesForRef(ref){
   const out = D.classes.filter(c => (classAliasSet[c.name]||new Set()).has(featKey(ref))).map(c=>c.name);
   return out.length ? out : [ref];
 }
+/* A [Ranked] Feature is stored as one row per Rank ("Winter's Herald Rank 1", "... Rank 2"), and
+   each row carries only its own prerequisite line. The book prints the class only against Rank 1,
+   so Rank 2 and up were orphans - and so was everything whose prereq named one of them. Strip the
+   Rank and the family shares an identity. */
+const featBaseKey = n => featKey(String(n||"").replace(/\s+Rank\s+\d+\s*$/i, ""));
+/* Features whose prerequisite line names NO class and no Feature - only a Skill Rank ("Expert
+   Athletics or Survival"). Nothing can be inferred from that, so the class is named here. Every one
+   of these is a Game of Throhs Elementalist Feature, checked against the PDF; anything that hangs
+   off them (Flight off One With the Winds, Miasma's Call off Vile Body, Stone Cold Finish off
+   Shards of Stone) chains on its own once the anchor exists. */
+const FEATURE_CLASS_FIXUPS = {
+  "Body of Lightning":            "Spark Master",     // p.69
+  "Fire Breather Rank 1":         "Fire Bringer",     // p.73
+  "One With the Winds":           "Wind Runner",      // p.75
+  "Earth Mother's Blessing Rank 1":"Earth Shaker",    // p.81
+  "Frozen Domain":                "Frost Touched",    // p.83
+  "Winter is Coming":             "Frost Touched",    // p.83
+  "Winter's Herald Rank 1":       "Frost Touched",    // p.83
+  "Vile Body":                    "Miasmic",          // p.87
+  "Shards of Stone":              "Stone Warrior",    // p.89
+  "Rock Power Rank 1":            "Stone Warrior",    // p.89
+};
+const _fixupClassOf = new Map(Object.entries(FEATURE_CLASS_FIXUPS).map(([f, c]) => [featKey(f), c]));
 /* Tokenise every Feature's prerequisites once, and record which classes each Feature belongs to
    DIRECTLY (its prereqs name the class or one of its aliases). */
 const _featTokens = new Map(D.features.map(f => [f.name, membershipTokens(f.prerequisites)]));
@@ -8767,6 +8915,11 @@ D.classes.forEach(c => {
     if(_featTokens.get(f.name).some(tok => tokenMatchesClass(tok, c.name))) _directClassesOf.get(f.name).add(c.name);
   });
 });
+/* the named ones count as directly anchored too, so nothing else can absorb them by accident */
+D.features.forEach(f => {
+  const c = _fixupClassOf.get(featKey(f.name));
+  if(c) _directClassesOf.get(f.name).add(c);
+});
 /* every Feature that belongs to a Class — directly, OR transitively through a chain of Features
    that themselves belong ONLY to this class line (e.g. Capture Specialist → Advanced Capture
    Techniques → Captured Momentum). Features already anchored to another class are NOT absorbed,
@@ -8774,18 +8927,27 @@ D.classes.forEach(c => {
 const _classFeatCache = {};
 function featuresForClass(className){
   if(_classFeatCache[className]) return _classFeatCache[className];
-  const belongs = new Set(), belongKeys = new Set();
-  const add = f => { belongs.add(f.name); belongKeys.add(featKey(f.name)); };
+  const belongs = new Set(), belongKeys = new Set(), belongBases = new Set();
+  const add = f2 => { belongs.add(f2.name); belongKeys.add(featKey(f2.name)); belongBases.add(featBaseKey(f2.name)); };
   // direct membership via token match (works even for canonical class names with no class row of their own,
-  // e.g. "Capture Specialist" whose only class row is the alias "Capture Skills")
-  D.features.forEach(f => { if(_featTokens.get(f.name).some(tok => tokenMatchesClass(tok, className))) add(f); });
+  // e.g. "Capture Specialist" whose only class row is the alias "Capture Skills"), plus the named ones
+  D.features.forEach(f => {
+    if(_featTokens.get(f.name).some(tok => tokenMatchesClass(tok, className))
+       || _fixupClassOf.get(featKey(f.name)) === className) add(f);
+  });
   let changed = true;
   while(changed){
     changed = false;
     D.features.forEach(f => {
       if(belongs.has(f.name)) return;
+      /* Another Rank of a Feature already in: same Feature, so it comes with its family, anchored
+         elsewhere or not — Rank 2 of a Swarmlord's Enhanced Embrace is still a Swarmlord Feature. */
+      if(belongBases.has(featBaseKey(f.name))){ add(f); changed = true; return; }
       if(_directClassesOf.get(f.name).size > 0) return;                 // anchored elsewhere — don't absorb
-      if(_featTokens.get(f.name).some(tok => belongKeys.has(featKey(tok)))){ add(f); changed = true; }
+      /* featBaseKey on the token as well: "Storm Wizard, Adept Focus" names the family, not a Rank. */
+      if(_featTokens.get(f.name).some(tok => belongKeys.has(featKey(tok)) || belongBases.has(featBaseKey(tok)))){
+        add(f); changed = true;
+      }
     });
   }
   const arr = D.features.filter(f => belongs.has(f.name));
@@ -10068,6 +10230,11 @@ const FEATURE_CAPS = [
   { feat:"How To Shoot Web", caps:["Threaded","Wallclimber"] },              // Swarmlord (Bug Elementalist)
   { feat:"The Cold Never Bothered Me Anyway", caps:["Naturewalk (Tundra)"] },// Frost Touched (Ice Elementalist)
   { feat:"Lucent Mirage", caps:["Illusionist"] },                            // Prism (Normal Elementalist)
+  { feat:"Magnetize", caps:["Magnetic"] },                                   // Spark Master (Electric)
+  { feat:"Fiery Soul", caps:["Heater"] },                                    // Fire Bringer (Fire)
+  { feat:"Earthen Bond", caps:["Tremorsense","Naturewalk (Cave)",            // Earth Shaker (Ground)
+                               "Naturewalk (Mountain)","Naturewalk (Desert)"] },
+  { feat:"Green Path", caps:["Naturewalk (Grassland)","Naturewalk (Forest)"] },  // Druid (Grass)
 ];
 function featureCaps(t){ return FEATURE_CAPS.filter(d => hasFeatureLoose(t, d.feat)); }
 /* ---- every Capability this Trainer has been given, from wherever ---------------------------
@@ -10111,6 +10278,9 @@ function trainerCapGrants(t){
     seen.add(k); out.push({ name, src });
   };
   featureCaps(t).forEach(d => (d.caps||[]).forEach(n => push(n, d.feat)));
+  /* ...and the ones a stance grants only while it is up (Silent Assassin's Dead Silent, Shadow
+     Form's Phasing). They come off with the Bind, which is exactly what the book asks for. */
+  activeFeatureModes(t).forEach(d => (d.caps||[]).forEach(n => push(n, d.feat)));
   trainerEdgeFx(t).forEach(d => (d.fx.caps||[]).forEach(n => push(n, d.name)));
   (t.gifts||[]).forEach(g => {
     const def = giftByName(g);
@@ -11700,6 +11870,18 @@ function usurpSharedTypes(t){
   const p = usurpFormOf(t); if(!p) return [];
   return monTypes(p).filter(ty => ty && ty !== "None");
 }
+/* Every Type a TRAINER is measured against defensively. Humans have none - the two exceptions are
+   an Usurper with Shared Strengths Rank 2 (their Legendary Form's Types) and an Apparition in
+   Shadow Form ("Your natural Weaknesses, Resistances, and Immunities change to match that of the
+   Ghost Type"). Both cut both ways: the weaknesses arrive with the resistances. This is the only
+   door into the Type chart for a human, so anything that gives one a typing belongs here.
+   Offensive typing is deliberately NOT this: Shadow Form grants no STAB, so trainerStab is left
+   reading usurpSharedTypes on its own. */
+function trainerBodyTypes(t){
+  const out = usurpSharedTypes(t).slice();
+  activeFeatureModes(t).forEach(d => (d.bodyTypes||[]).forEach(ty => { if(!out.includes(ty)) out.push(ty); }));
+  return out;
+}
 /* Rank 3 - "access to your Legendary Form's Move List while in your Avatar Form" */
 function usurpSharedMoves(t){
   if(!t || !t.usurp || usurpSharedRank(t) < 3) return [];
@@ -11825,11 +12007,44 @@ function featureStatTags(f){
     return opts.length === 1 ? opts[0] : [...new Set(opts)];
   }).filter(Boolean);
 }
+/* Two Game of Throhs classes hand out their Stat Tag by an EMBRACE / OATH table rather than by a
+   [+Stat] tag on each Feature: "Depending on your Embrace, you gain an Ability and Stat Tag.
+   Whenever you gain a <Class> Feature, you gain the same Stat Tag." So the tags are counted here
+   instead - one per Feature of that class the Trainer owns, the class Feature included, all of them
+   the stat the chosen Embrace/Oath names. The pick is the one already stored for the ABILITY grant
+   (t.featAbil), so there is no second choice to make and no second place for it to go stale. */
+/* EMBRACE_TAG_CLASSES is declared up with the reference constants, above `let state = load()`:
+   normTrainer -> migrateStatTags -> trainerStatTags reads it, and normTrainer runs inside load(),
+   where a const in its temporal dead zone would throw the whole save away. See the note there. */
+/* which Embrace/Oath this Trainer took, as {ability, stat, label} - null while it is unchosen */
+function embraceOathOf(t, cls){
+  const d = EMBRACE_TAG_CLASSES.find(x => x.cls === cls);
+  if(!d || !t || !trainerHasClass(t, cls)) return null;
+  const pick = (t.featAbil || {})[cls];
+  if(!pick || !d.byAbility[pick]) return null;
+  return { ability:pick, stat:d.byAbility[pick], label:d.label[pick], cls };
+}
 /* every stat tag a Trainer has earned, keyed stably so a chosen stat sticks to the right tag */
 function trainerStatTags(t){
   const out = [];
   trainerFeatureObjs(t).forEach(f => featureStatTags(f).forEach((spec,i) =>
     out.push({ key: f.name + "#" + i, feature: f.name, spec })));
+  /* featureBelongsToClass reads the class-membership index, which is built FURTHER DOWN the file
+     than `let state = load()` — and normTrainer calls this function from inside load() (through
+     migrateStatTags). Touching a const still in its temporal dead zone there throws, and load()
+     answers a throw by discarding the whole save (see the note on BERSERKER_LESSONS). Nothing is
+     lost by skipping the pass that early: migrateStatTags only ever reclaims free pool points, and
+     an Embrace tag never took one. The first real render has the index and counts them all. */
+  try {
+    EMBRACE_TAG_CLASSES.forEach(d => {
+      /* Nothing until the Embrace/Oath is chosen: an unresolved tag here would offer the player a
+         free pick of ANY stat, which is not what the table grants. The class card says to choose. */
+      const eo = embraceOathOf(t, d.cls); if(!eo) return;
+      [...(t.classes||[]), ...(t.features||[])]
+        .filter(n => featKey(n) === featKey(d.cls) || featureBelongsToClass(n, d.cls))
+        .forEach(n => out.push({ key:`${d.cls}::embrace::${n}`, feature:n, spec:eo.stat, embrace:d.cls }));
+    });
+  } catch(e){ /* too early in the boot to know a class's Feature list — the next render has it */ }
   return out;
 }
 /* the stat a tag actually grants right now (a STATS key), or "" while a choice is unresolved */
@@ -18138,14 +18353,23 @@ function fieryCrashInfo(p, m, baseType){
 function fieryCrashMode(fc, want){ return !fc ? null : (fc.canRetype && want==="fire" ? "fire" : "db"); }
 /* The Burn rider on a Fire-Typed Dash Move. Returns a NEW threshold list (the same one when it
    doesn't apply): an Effect Range that already Burns widens by 2, otherwise Burn lands on 19+. */
-function fieryCrashThresholds(thresholds, active){
+/* Two effects say exactly the same thing about Burn in two different books - Fiery Crash's
+   "Dash Moves used as Fire-Type Burn on 19+, or widen an existing Burn range by +2", and
+   Firebrand's (Fire Bringer, Game of Throhs p.73) "Your Fire-Type Moves Burn Targets on a roll of
+   19+. If a move already has a chance of Burning foes, Firebrand increases the effect range by +2."
+   One function, two callers, so the second can never drift from the first. */
+function burnRangeThresholds(thresholds, active, src, why){
   const list = thresholds || [];
   if(!active) return list;
   const burn = list.find(t => /\bburn/i.test(t.text||""));
   const out = burn
-    ? list.map(t => t===burn ? { n: Math.max(2, t.n-2), text: `${t.text} (Fiery Crash widens this Effect Range by +2.)` } : t)
-    : [...list, { n:19, text:"Fiery Crash — a Dash Move used as Fire-Type Burns the target on 19+." }];
+    ? list.map(t => t===burn ? { n: Math.max(2, t.n-2), text: `${t.text} (${src} widens this Effect Range by +2.)` } : t)
+    : [...list, { n:19, text:`${src} — ${why}` }];
   return out.sort((a,b)=>a.n-b.n);
+}
+function fieryCrashThresholds(thresholds, active){
+  return burnRangeThresholds(thresholds, active, "Fiery Crash",
+    "a Dash Move used as Fire-Type Burns the target on 19+.");
 }
 /* Frostbite (Rotom-Frost's Ability, also Frost Touched's 'Winter is Coming'): the user's damaging
    Ice-Type attacks Slow the target on 18+, widen any Freeze Effect Range by +1, and — if the Move
@@ -18459,8 +18683,14 @@ const MOVE_CONDITIONS = {
   /* --- the user's own condition (all auto-detected from the sheet) --- */
   facade:       [{ label:"The user is afflicted with a Persistent Status Affliction", db:14,
                    auto:userHasPersistentStatus }],
+  /* Flip Out (Tumbler): "You may activate Acrobatics's extra damage even while holding an Item." For
+     a Trainer with the Feature the condition is simply always true, and says so rather than
+     pretending the sheet found an empty hand. */
   acrobatics:   [{ label:"The user is not holding an item", db:11,
-                   auto:p=>!(p.heldItem||"").trim() }],
+                   auto:p=>!(p.heldItem||"").trim() || hasFlipOut(p),
+                   autoWhy:p=>hasFlipOut(p)
+                     ? "🤸 Flip Out — Acrobatics' extra damage applies even while you're holding an Item"
+                     : null }],
   ragefist:     [{ label:"The user has at least 1 Injury", db:10,
                    auto:p=>(p.injuries||0) >= 1 },
                  { label:"The user is under 50% Max HP", db:12, noMiss:true,
@@ -20712,7 +20942,26 @@ const FEATURE_MODES = [
     blurb:"Every damaging Bug attack of theirs takes one of three, by how the target resists it: Super-Effective gains +2 Accuracy, Neutral gains your Type-Linked Rank in damage, Resisted is resisted one step less. Which one is a fact about the target, so choose it on the roll." },
   { key:"schist", feat:"Tough as Schist", icon:"🪨",
     on:"Tough as Schist", off:"End Tough as Schist", dur:"lasts until you release the Bind", bindAP:2, viaCard:"Type Ace",
-    blurb:"Your Stealth Rock Hazards within 4 m of your Rock-Type Pok\u00e9mon don't trigger unless you want them to \u2014 and one can be eaten to armour that Pok\u00e9mon for a round. Eat one from the \U0001F3BD Type Ace card." },
+    blurb:"Your Stealth Rock Hazards within 4 m of your Rock-Type Pok\u00e9mon don't trigger unless you want them to \u2014 and one can be eaten to armour that Pok\u00e9mon for a round. Eat one from the 🎽 Type Ace card." },
+  /* --- Apparition (Ghost Elementalist, Game of Throhs p.77). Two Binds, and between them they are
+     the only place in the app where a stance changes what a Trainer IS rather than what they roll:
+     `strikeType` retypes every Struggle and Weapon Attack (read in trainerStruggle /
+     trainerAttackProfile) and `bodyTypes` gives the human a Type chart to be measured against
+     (read in tokenDefTypes, the same door an Usurper's shared Types come through). `caps` and
+     `cures` are the two smaller halves the book bundles in. --- */
+  { key:"silent-assassin", feat:"Silent Assassin", icon:"🗡",
+    on:"Silent Assassin", off:"End Silent Assassin", dur:"lasts until you release the Bind", bindAP:2,
+    strikeType:"Ghost", caps:["Dead Silent"],
+    blurb:"Your Struggle Attacks and Weapon Attacks deal Ghost-Type damage \u2014 already inside every roll and every 🎯 Apply \u2014 and you gain the Dead Silent Capability." },
+  { key:"shadow-form", feat:"Shadow Form", icon:"👻",
+    on:"Shadow Form", off:"Leave Shadow Form", dur:"Swift Action to drop \u00b7 lasts until you release the Bind", bindAP:2,
+    bodyTypes:["Ghost"], caps:["Phasing"], cures:["cursed"], immune:["cursed"],
+    blurb:"Your Weaknesses, Resistances and Immunities become the Ghost Type's \u2014 the damage math measures every hit on you against that chart \u2014 you are immune to Cursed (and cured of it on the way in), and you gain the Phasing Capability." },
+  /* --- Wind Runner (Flying Elementalist). Pure AP bookkeeping: what the wind DOES is perception at
+     a range this app has no model for, so the range is stated on the card and the Bind is tracked. --- */
+  { key:"one-with-winds", feat:"One With the Winds", icon:"🌬",
+    on:"One With the Winds", off:"End One With the Winds", dur:"lasts until you release the Bind", bindAP:2,
+    blurb:"A breeze follows you and carries your sense of touch \u2014 you feel the shape and texture of anything it can reach, through cracks and holes included. Its range is your Acrobatics Rank plus your Perception Rank, in metres." },
   { key:"sovereignty", feat:"Sovereignty", icon:"👑",
     on:"Assert Sovereignty", off:"End Sovereignty", dur:"lasts until you end it", bindAP:2,
     blurb:"+2 to Save Checks against Volatile Status Afflictions, and +2 to Opposed Checks when defending against being Disarmed, Grappled, Pushed or Tripped. Roll those at the table — the stance tracks the 2 Bound AP for you." },
@@ -20721,33 +20970,63 @@ const featureModeByFeat = new Map(FEATURE_MODES.map(d=>[featKey(d.feat), d]));
 /* Stone Stance sub-stance helpers: which stance (if any) is currently adopted, and the numbers it
    feeds the two engine hooks (the Trainer damage roll and buffDR). */
 function stoneStanceDef(){ return featureModeByFeat.get(featKey("Stone Stance")) || null; }
-function stoneSub(t){ const d=stoneStanceDef(); if(!d) return null;
+/* Stone Stance Mastery: "Whenever you bind Stone Stance, you may choose two Stances and apply the
+   effects of both." So the stored value is a LIST of stance keys, not one - written as a
+   comma-joined string so modeIsOn still reads it as "on" and one Bind is still one Bind. A sheet
+   saved before Mastery existed holds a bare "falling", which splits to a one-entry list unchanged. */
+function stoneSubs(t){ const d=stoneStanceDef(); if(!d) return [];
   const v = trainerModes(t) && trainerModes(t)[d.key];
-  return (d.stances||[]).find(x=>x.key===v) || null; }
-function stoneStanceDR(o){ if(!isTrainerOwner(o) || !hasFeatureLoose(o,"Stone Stance")) return 0; const su=stoneSub(o); return (su&&su.dr)||0; }
-function stoneStanceDamage(t){ if(!t || !hasFeatureLoose(t,"Stone Stance")) return 0; const su=stoneSub(t); return (su&&su.dmg)||0; }
+  const keys = String(v==null||v===true ? "" : v).split(",").map(x=>x.trim()).filter(Boolean);
+  return keys.map(k => (d.stances||[]).find(x=>x.key===k)).filter(Boolean); }
+function stoneSub(t){ return stoneSubs(t)[0] || null; }
+function stoneStanceMax(t){ return hasFeatureLoose(t,"Stone Stance Mastery") ? 2 : 1; }
+function stoneStanceDR(o){ if(!isTrainerOwner(o) || !hasFeatureLoose(o,"Stone Stance")) return 0;
+  return stoneSubs(o).reduce((n,su)=>n+(su.dr||0), 0); }
+function stoneStanceDamage(t){ if(!t || !hasFeatureLoose(t,"Stone Stance")) return 0;
+  return stoneSubs(t).reduce((n,su)=>n+(su.dmg||0), 0); }
 /* The stance chooser modal, opened when Stone Stance is switched on (and to swap stance). */
 function openStoneStancePicker(t, def, rerender, saveFn){
   const free = trainerDerived(t).ap - trainerAPUsed(t);
   const already = trainerModes(t) && trainerModes(t)[def.key];
+  const max = stoneStanceMax(t);
+  let picked = stoneSubs(t).map(su=>su.key);
   const body = el("div",{});
-  body.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
-    `Bind ${def.bindAP} AP to adopt a stance (you have ${Math.max(0,free)} AP free). Switching stance later costs no extra AP. The benefits need solid ground \u2014 not deep mud/snow, swimming or flying.`));
-  (def.stances||[]).forEach(su=>{
-    const on = already===su.key;
-    const row = el("div",{class:"moveslot"});
-    row.append(el("div",{style:"flex:1"}, el("div",{style:"font-weight:700"}, su.name, on?el("span",{class:"small",style:"margin-left:8px;color:var(--good);font-weight:700"},"\u25CF active"):""),
-      el("div",{class:"small muted",style:"margin-top:2px"}, su.blurb)));
-    row.append(el("button",{class:on?"btn-secondary":"btn-primary",style:"padding:6px 10px",onclick:()=>{
-        if(!already && !t.unlocked && (def.bindAP||0) > free){ toast(`Not enough AP \u2014 ${def.feat} Binds ${def.bindAP}, you have ${Math.max(0,free)} free`); return; }
-        if(!trainerModes(t)) t.modes = {};
-        t.modes[def.key] = su.key; (saveFn||save)(); closeModal();
-        toast(`🪨 ${su.name}${already?" \u2014 stance switched":` \u2014 ${def.bindAP} AP Bound`}`);
-        (rerender||renderBattle)();
-      }}, on?"active":already?"switch to this":"adopt"));
-    body.append(row);
-  });
-  modal({title:"🪨 Stone Stance", bodyNode:body, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Cancel")]});
+  const head = el("div",{class:"small muted",style:"margin-bottom:10px"});
+  const rows = el("div",{});
+  const draw = () => {
+    head.textContent = `Bind ${def.bindAP} AP to adopt ${max>1?`up to ${max} stances`:"a stance"} `
+      + `(you have ${Math.max(0,free)} AP free)${max>1?" \u2014 Stone Stance Mastery lets you run two on one Bind":""}. `
+      + `Switching stance later costs no extra AP. The benefits need solid ground \u2014 not deep mud/snow, swimming or flying.`;
+    rows.innerHTML = "";
+    (def.stances||[]).forEach(su=>{
+      const on = picked.includes(su.key);
+      const row = el("div",{class:"moveslot"});
+      row.append(el("div",{style:"flex:1"}, el("div",{style:"font-weight:700"}, su.name, on?el("span",{class:"small",style:"margin-left:8px;color:var(--good);font-weight:700"},"\u25CF chosen"):""),
+        el("div",{class:"small muted",style:"margin-top:2px"}, su.blurb)));
+      row.append(el("button",{class:on?"btn-secondary on":"btn-secondary",style:"padding:6px 10px",onclick:()=>{
+          if(on) picked = picked.filter(k=>k!==su.key);
+          else { picked.push(su.key); while(picked.length > max) picked.shift(); }
+          draw();
+        }}, on?"drop it":"choose"));
+      rows.append(row);
+    });
+  };
+  draw();
+  body.append(head, rows);
+  modal({title:"🪨 Stone Stance", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      if(!picked.length){ toast("Choose a stance"); return; }
+      if(!already && !t.unlocked && (def.bindAP||0) > free){
+        toast(`Not enough AP \u2014 ${def.feat} Binds ${def.bindAP}, you have ${Math.max(0,free)} free`); return; }
+      if(!trainerModes(t)) t.modes = {};
+      t.modes[def.key] = picked.join(",");
+      (saveFn||save)(); closeModal();
+      const names = picked.map(k=>((def.stances||[]).find(x=>x.key===k)||{}).name).filter(Boolean).join(" + ");
+      toast(`🪨 ${names}${already?" \u2014 stance switched":` \u2014 ${def.bindAP} AP Bound`}`);
+      (rerender||renderBattle)();
+    }},"🪨 Adopt"),
+  ]});
 }
 const featureModeDef = f => featureModeByFeat.get(featKey(f && f.name)) || null;
 function trainerModes(t){ return (t && t.modes && typeof t.modes==="object" && !Array.isArray(t.modes)) ? t.modes : null; }
@@ -20810,6 +21089,10 @@ function setFeatureMode(t, def, on, rerender, saveFn){
       return;
     }
     t.modes[def.key] = true;
+    /* "if you were previously Cursed, you are instantly cured upon going into Shadow Form" - a
+       stance that grants an immunity has to clear what it makes you immune to, or the chip sits
+       there contradicting the rule the sheet is now enforcing. */
+    (def.cures||[]).forEach(k => { if(hasStatus(t, k)) t.statuses = (t.statuses||[]).filter(x => x !== k); });
   } else delete t.modes[def.key];
   saveFn();
   toast(on ? `${def.icon} ${def.feat} is up${def.bindAP?` · ${def.bindAP} AP Bound`:""}`
@@ -20873,7 +21156,8 @@ function riderDetailHTML(moveName){
    button that spends the use, because that's a decision the player makes at the table — the
    always-on ones just state what also happens. Redraws itself in place so the counts move without
    reopening the roll. */
-function riderBoxes(t, moveName, rerenderAll){
+function riderBoxes(t, moveName, rerenderAll, persist){
+  const saveFn = persist || save;          // an encounter NPC's spent uses belong in the encounter row
   const wrap = el("div",{});
   const draw = () => {
     wrap.innerHTML = "";
@@ -20908,7 +21192,7 @@ function riderBoxes(t, moveName, rerenderAll){
           if(left!=null) t.uses[fk] = Math.min(info.max, (t.uses[fk]||0)+1);
           if(r.perMove) t.uses[mk] = 1;
           if(r.ap) t.usedAP = (t.usedAP||0) + r.ap;
-          save();
+          saveFn();
           toast(`${r.icon} ${f.name} → ${canon} ✓` + (r.ap?` · ${r.ap} AP spent`:""));
           redraw();
         }}, usedHere  ? "✓ used on this Move this Scene"
@@ -20919,11 +21203,11 @@ function riderBoxes(t, moveName, rerenderAll){
       row.append(btn);
       /* Every limit gets the ordinary pip boxes, so this reads like any other Frequency on the
          sheet. Tapping a pip gives a use back — a mis-pressed button shouldn't cost a Scene. */
-      const fpips = usesControl(t, "feature", f.name, f.frequency, redraw);
+      const fpips = usesControl(t, "feature", f.name, f.frequency, redraw, saveFn);
       if(fpips) row.append(el("span",{class:"inline",style:"gap:5px;align-items:center"},
         el("span",{class:"small muted"},"Feature"), fpips));
       if(r.perMove){
-        const mpips = usesControl(t, "rider", `${f.name}|${canon}`, "Scene", redraw);
+        const mpips = usesControl(t, "rider", `${f.name}|${canon}`, "Scene", redraw, saveFn);
         if(mpips) row.append(el("span",{class:"inline",style:"gap:5px;align-items:center"},
           el("span",{class:"small muted"}, canon), mpips));
       }
@@ -20936,6 +21220,152 @@ function riderBoxes(t, moveName, rerenderAll){
   };
   draw();
   return wrap;
+}
+/* ===================================================================
+   FLIP OUT  (Tumbler, PTU 1.05 Core p.63) — the four bullets, actually run
+   -------------------------------------------------------------------
+   featureRiders already PRINTS the Feature's four bullets on the roll of each
+   Move it names, the same way every other rider Feature is printed. What this
+   block adds is the half a sentence can't do:
+     • Aerial Ace — declining the Critical Hit test really stops the roll from
+       critting (the crit range goes to 21, which no d20 can reach), and the
+       Pass Keyword is spelled out in its place.
+     • Splash     — the Interrupt's Damage Reduction is a one-shot CHARGE on the
+       Trainer (the Excited shape), so the first attack that lands spends it and
+       the next one doesn't get it for free. Once a Scene, tracked on pips.
+     • Acrobatics — the "not holding an Item" condition is force-ticked and says
+       why (MOVE_CONDITIONS.acrobatics, the table both roll paths share).
+     • Bounce     — the Hazards in the landing square and around it really come
+       off the board: the same scenery tokens Gravel Before Me drops.
+   Everything runs off the Trainer object, and openTrainerAttack is the one roll
+   window a player sheet and an encounter NPC both go through, so a Gym Leader
+   with the Feature gets the identical buttons on their encounter card. What
+   persists is whatever the caller handed in — saveEnc there, save on a sheet.
+=================================================================== */
+const FLIP_OUT = "Flip Out";
+const FLIP_OUT_MOVES = ["Aerial Ace","Splash","Acrobatics","Bounce"];
+const hasFlipOut = o => hasFeatureLoose(o, FLIP_OUT);
+/* "Damage Reduction against that attack equal to twice your Acrobatics Rank" */
+const flipOutSplashDR = t => 2 * rankNum(t && t.skills && t.skills.acrobatics);
+/* whichever token on the board this creature is linked to — a player Trainer or an encounter NPC.
+   allyTargets can't answer this for an NPC (their own token is an ENEMY link and is filtered out),
+   so the lookup goes straight through tokenLinked. */
+function ownerMapToken(o){
+  const map = currentMapForView() || activeMap();
+  if(!map || !o) return null;
+  return mapTokensFor(map.id).find(tok => tok.link && (tokenLinked(tok)||{}).obj === o) || null;
+}
+/* Splash as an Interrupt, once a Scene. The DR is a charge, not a standing bonus: buffDR spends one
+   per incoming attack, which is exactly what "against that attack" asks for. */
+function flipOutSplash(t, persist, rerender){
+  const dr = flipOutSplashDR(t);
+  if(!Array.isArray(t.buffs)) t.buffs = [];
+  t.buffs.push({ id:uid(), key:"flip-out-splash", name:"Flip Out (Splash Interrupt)", cat:"Field",
+    dur:"until spent", once:true, mods:{ dr },
+    note:`${dr} Damage Reduction against the attack it interrupted — twice your Acrobatics Rank (${(t.skills&&t.skills.acrobatics)||"—"}).` });
+  t.uses = t.uses || {};
+  t.uses[riderUseKey(FLIP_OUT, "Splash")] = 1;        // the Feature's own once-a-Scene, on this Move
+  (persist||save)();
+  toast(`🤸 Splash as an Interrupt — ${dr} Damage Reduction against that attack`);
+  if(rerender) rerender();
+  return dr;
+}
+/* Bounce: "you may choose to destroy all Hazards in your landing square and adjacent squares."
+   Hazards are the Map's own scenery tokens (isHazardToken), so this clears the ring around wherever
+   the Trainer's token is standing — land first, then press it. */
+function flipOutBounceClear(t){
+  const map = currentMapForView() || activeMap();
+  const tok = ownerMapToken(t);
+  if(!map || !tok) return { ok:false };
+  ensureMapTokens();
+  const arr = cloud.mapTokens.data.byMap[map.id] || [];
+  const span = Math.max(1, tok.size||1);
+  const hit = arr.filter(h => isHazardToken(h)
+    && h.x >= tok.x - 1 && h.x <= tok.x + span && h.y >= tok.y - 1 && h.y <= tok.y + span);
+  if(!hit.length) return { ok:true, cleared:0 };
+  const gone = new Set(hit.map(h=>h.id));
+  cloud.mapTokens.data.byMap[map.id] = arr.filter(h => !gone.has(h.id));
+  mapTokensSave(); renderMap();
+  return { ok:true, cleared:hit.length, names:[...new Set(hit.map(h=>hazardDef(h).name))] };
+}
+/* The box itself, one per Move, and only for a Trainer who actually holds the Feature. `ctx` is how
+   the Aerial Ace tick reaches the roll — the crit test lives in openTrainerAttack's own closure. */
+function flipOutBox(t, moveName, ctx, opts){
+  opts = opts || {};
+  if(!hasFlipOut(t)) return null;
+  const canon = canonMoveName(moveName||"");
+  if(!FLIP_OUT_MOVES.includes(canon)) return null;
+  const persist = opts.persist || save, rerender = opts.rerender;
+  const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+  const draw = () => {
+    card.innerHTML = "";
+    card.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:6px"},
+      `🤸 ${FLIP_OUT} — ${canon}`, el("span",{class:"muted",style:"font-weight:600"},"  ·  Static")));
+    if(canon === "Aerial Ace"){
+      const lbl = el("label",{style:"display:flex;gap:8px;align-items:flex-start;cursor:pointer"});
+      const cb = el("input",{type:"checkbox"}); cb.checked = !!ctx.getNoCrit();
+      cb.addEventListener("change",()=>{ ctx.setNoCrit(cb.checked); draw(); });
+      lbl.append(cb, el("div",{},
+        el("div",{class:"small",style:"font-weight:700"},"Don't test for a Critical Hit — Aerial Ace gains Pass"),
+        el("div",{class:"small muted"}, cb.checked
+          ? "This roll can't Crit, not even on a natural 20 (it still auto-hits on one — and Aerial Ace cannot miss anyway)."
+          : "Tick it before you roll: 🎲 stops checking the Crit range, and the Move gains the Pass Keyword instead.")));
+      card.append(lbl);
+      if(cb.checked) card.append(el("div",{class:"small muted",style:"margin-top:8px;padding-left:8px;border-left:2px solid var(--line)"},
+        el("b",{},"Pass — "), KEYWORD_DEFS["pass"]));
+      return;
+    }
+    if(canon === "Splash"){
+      const dr = flipOutSplashDR(t);
+      const left = usesLeft(t, riderUseKey(FLIP_OUT, "Splash"), 1);
+      card.append(el("div",{class:"small",style:"margin-bottom:6px"},
+        `Once a Scene, on being hit by an attack, Splash may be used as if it had the Interrupt Keyword — `
+        + `you gain ${dr} Damage Reduction against that attack (twice your Acrobatics Rank`
+        + `${(t.skills&&t.skills.acrobatics)?`, ${t.skills.acrobatics}`:""}).`));
+      const row = el("div",{class:"inline",style:"gap:10px;flex-wrap:wrap;align-items:center"});
+      const btn = el("button",{class: left>0 ? "btn-primary" : "btn-secondary", style:"padding:6px 10px",
+        onclick:()=>{ if(left<=0) return; flipOutSplash(t, persist, rerender); draw(); }},
+        left>0 ? `🤸 Interrupt — take ${dr} DR against that attack` : "✓ already used this Scene");
+      if(left<=0) btn.disabled = true;
+      row.append(btn);
+      const pips = usesControl(t, "rider", `${FLIP_OUT}|Splash`, "Scene",
+        ()=>{ draw(); if(rerender) rerender(); }, persist);
+      if(pips) row.append(pips);
+      card.append(row);
+      card.append(el("div",{class:"small muted",style:"margin-top:6px"},
+        "The Damage Reduction lands on you as a one-shot charge: the first attack that actually hits you "
+        + "subtracts it — the Map's damage tool, the ✨ Buffs list and every other place the sheet applies "
+        + "damage read it — and it is spent there rather than carrying into the next attack. Splash's own "
+        + "Jump and +2 Evasion still happen as printed."));
+      return;
+    }
+    if(canon === "Acrobatics"){
+      card.append(el("div",{class:"small"},
+        "Acrobatics' Damage Base 11 applies even while you're holding an Item — the condition above is "
+        + "ticked for you, and there's no Item check left to fail."));
+      return;
+    }
+    /* Bounce */
+    card.append(el("div",{class:"small",style:"margin-bottom:6px"},
+      "You don't trigger Hazards on the turn you use Bounce, and you may destroy every Hazard in your "
+      + "landing square and the squares adjacent to it."));
+    const said = el("span",{class:"small",style:"color:var(--accent);align-self:center"});
+    card.append(el("div",{class:"inline",style:"gap:10px;flex-wrap:wrap;align-items:center"},
+      el("button",{class:"btn-secondary",style:"padding:6px 10px",
+        title:"takes the Hazard markers in the ring around your token off the board — move to the landing square first",
+        onclick:()=>{
+          const r = flipOutBounceClear(t);
+          if(!r.ok){ said.textContent = "no token of yours on the board — clear them by hand"; return; }
+          said.textContent = r.cleared
+            ? `${r.cleared} Hazard${r.cleared===1?"":"s"} destroyed — ${r.names.join(", ")}`
+            : "nothing in that ring to destroy";
+          if(r.cleared) toast(`🤸 Bounce landed — ${r.cleared} Hazard${r.cleared===1?"":"s"} destroyed`);
+        }}, "💥 Destroy the Hazards where you land"), said));
+    card.append(el("div",{class:"small muted",style:"margin-top:6px"},
+      "Drag yourself to the landing square first — the ring is measured from where your token stands right now."));
+  };
+  draw();
+  return card;
 }
 /* Roughneck (Trainer Class Feature, 1 AP Swift Action): "you hit a foe with an Attack → the foe
    loses a Combat Stage in the Stat of your choice." Unlike the riders above it isn't tied to a named
@@ -21406,6 +21836,10 @@ function openGiveOrder(t, f, def, rerender){
         : " Without Leadership an [Orders] Feature with targets only reaches your own Pokémon — everyone else is listed so the GM can wave it through, not because the rules allow it.")
     + (hasFeatureLoose(t,"Complex Orders")
         ? " Complex Orders: give a DIFFERENT Order to each target by running this dialog once per Order — pay each one's cost."
+        : "")
+    + (hasFeatureLoose(t,"Commander's Voice")
+        ? " Commander's Voice: two different Orders cost you one Standard Action between them, or one set of them costs a Swift"
+          + " Action — run this dialog once per Order and the actions are the part you save."
         : "")));
   redraw();
   modal({title:`Give ${f.name}`, bodyNode:body, footNodes:[
@@ -21922,6 +22356,11 @@ function commanderCard(t, rerender, persist){
   }
   if(hasFeatureLoose(t, "Tip the Scales"))
     classBit(card, "Tip the Scales: a tick-box inside ✨ Give — an At-Will Order reaches every Ally within 10 metres instead, and the 2 AP are spent when you tick it.");
+  if(hasFeatureLoose(t, "Commander's Voice"))
+    classBit(card, "Commander's Voice: two different [Orders] for one Standard Action, or one set of them for a Swift Action. "
+      + "It buys ACTIONS, not targets or uses — so run ✨ Give once per Order and the sheet charges each Order's own cost, "
+      + "which is right; what you save is the second Standard Action. Paired with Focused Command, the other Order applies to "
+      + "both Pokémon you commanded. Focused Command itself never becomes a Swift Action.");
   if(hasFeatureLoose(t, "Complex Orders"))
     classBit(card, "Complex Orders: give a different Order to each target by running ✨ Give once per Order — each one's own cost and Frequency is charged, which is exactly what the Feature asks.");
   if(hasFeatureLoose(t, "Mobilize"))
@@ -22345,6 +22784,18 @@ function captureCard(t, rerender, persist){
     bits.push("Gotta Catch 'Em All: after the 1d100, the throw offers to swap its digits (91 → 19). A 1 never becomes a natural 100.");
   if(hasFeatureLoose(t, "Gotta Catch 'Em All [Playtest]"))
     bits.push("Collector Stacks: spend up to 3 for an equal bonus, or exactly 3 to re-roll — both offered inside the throw.");
+  /* "You gain two Capture Techniques of your choice" — four Ranks, eight Techniques, and nothing
+     anywhere counted them. The Techniques themselves are picked on the Trainer → Classes card, so
+     this says how many are paid for and how many are taken rather than opening a second picker. */
+  { let actRank = 0;
+    for(let i = 1; i <= 4; i++) if(hasFeatureLoose(t, `Advanced Capture Techniques Rank ${i}`)) actRank = i;
+    if(actRank){
+      const own = techniquesForClass("Capture Specialist").filter(tq => trainerHasTech(t, tq.name));
+      bits.push(`Advanced Capture Techniques Rank ${actRank} pays for ${actRank*2} Capture Techniques and you have `
+        + `${own.length}${own.length ? ` — ${own.map(tq => tq.name).join(", ")}` : ""}. `
+        + `Pick them on Trainer → Classes (＋ Learn Technique); you may qualify with Acrobatics, Athletics, Stealth, `
+        + `Survival, Guile or Perception only.`);
+    } }
   if(t.capMomentum) bits.push(`Captured Momentum is stored: −${t.capMomentum} waiting on your next Capture Roll.`);
   if(!bits.length) bits.push("Your Capture Techniques are picked on the Trainer → Features & Edges card; the ones the throw can apply by itself say so here once you have them.");
   bits.forEach(b=>classBit(card, b));
@@ -24036,6 +24487,7 @@ function maelstromCard(t, rerender, persist){
   }
   if(has("Water's Shroud")) classBit(card, "Water's Shroud hands you Wash Away or Storm Drain — press ⚙ Choose Ability on "
     + "its row below and the sheet grants it everywhere an Ability is checked.");
+  featMoveListRow(card, t, "Maelstrom", rerender, persist);
   classFeatureRows(card, t, "Maelstrom", rerender, persist);
   return card;
 }
@@ -24258,6 +24710,16 @@ const FEATURE_REMEMBER = {
   "type expertise":            "STAB never applies to a Struggle Attack, weapon strikes included",
   "spirit boost":              "2 AP stays Bound until it is released — check the AP bar",
   "prismatic alignment":       "once per Scene with EACH of the six Moves — tick them off",
+  "miasmic spray":             "once per Scene with EACH of its six Moves, Acid Armor included",
+  "haunted wounds":            "one full round LATER, and only once per Scene per target",
+  "overgrowth":                "once per Scene per foe — and the HP they can't heal comes to you",
+  "blazing inferno":           "spending Blazing on an automatic Burn ENDS it",
+  "bottled lightning":         "Charging spends the Move's own use, and every Charge dies with the Scene",
+  "silent assassin":           "while it is Bound every Struggle and Weapon Attack is Ghost — check resistances",
+  "shadow form":               "they take damage on the GHOST chart now, weaknesses and all",
+  "flexible form":             "no Injury from Massive Damage — HP markers still injure them",
+  "stone stance mastery":      "TWO stances on one Bind, both applying at once",
+  "reactive armour":           "the Burst 1 and the Damage Reduction are the same one use",
 };
 /* Everything worth remembering about one creature, deduped BY ABILITY NAME — the damage math's own
    `why` line always wins over the table below, because it's the one that can't drift from the engine
@@ -24807,7 +25269,8 @@ const TYPE_ACE_BRANCH = [
     bit:(t, R) => `Simple Improvements (Daily x3, Free): when one of your Normal-Type Pokémon gains Initiative, +${R} to `
       + `every roll it makes this turn and ${R * 2} Temporary Hit Points. Both applied for you.`,
     btn:"⭐ Simple Improvements", run:openSimpleImprovements, uses:true },
-  /* ---- Bug (Core p.120) ---- */
+  /* ---- Bug (Core p.120). Pheromone Markers used to sit in here; it is a Swarmlord Feature
+       (Game of Throhs p.63) and now lives on that class's own card. ---- */
   { feat:"Insectoid Utility", type:"Bug",
     bit:() => "Insectoid Utility (Static): a Sky Capability is +1 Speed Evasion (applied in the derived stats). "
       + "Threaded may perform Combat Maneuvers, Wallclimber is immune to Push and Trip, and Naturewalk can't be "
@@ -24827,12 +25290,8 @@ const TYPE_ACE_BRANCH = [
     bit:(t, R) => `Disruption Order (Daily x3, Free): everyone a Bug Move of theirs hits is Slowed, takes −${R} to `
       + `Accuracy, and Flinches on 16+ until the end of that turn. The Slow and the −${R} are applied for you.`,
     btn:"🐛 Disruption Order", run:openDisruptionOrder, uses:true },
-  { feat:"Pheromone Markers", type:"Bug",
-    bit:() => "Pheromone Markers (1 AP, Free): mark a foe you hit with a Bug attack. Each stack is +2 Accuracy and "
-      + "+1 Critical Hit Range for your Bug attacks against them, and the third one lets you roll 1d6 for Confused, "
-      + "Suppressed or Enraged. The stacks live on the foe and the sheet counts them.",
-    btn:"🐛 Pheromone Markers · 1 AP", run:openPheromoneMarkers },
-  /* ---- Ice (Core p.125) ---- */
+  /* ---- Ice (Core p.125). Frozen Domain used to sit in here too; it is a Frost Touched Feature
+       (Game of Throhs p.83), not an Ice Ace one, and now lives on that class's own card. ---- */
   { feat:"Glacial Ice", type:"Ice",
     bit:(t, R) => `Glacial Ice (Static): your Ice-Type Pokémon have ${R} Damage Reduction against Fighting, Fire, Rock `
       + `and Steel hits that would be Super-Effective. Applied by the damage math — it only fires on a hit that `
@@ -24851,14 +25310,672 @@ const TYPE_ACE_BRANCH = [
     bit:() => "Deep Cold (Daily x3, Free): a damaging Ice hit Freezes the target and drops its Attack, Special Attack "
       + "and Speed a Combat Stage each. Once per Scene per foe — all of it applied for you.",
     btn:"❄ Deep Cold", run:openDeepCold, uses:true },
-  { feat:"Frozen Domain", type:"Ice",
-    bit:(t) => `Frozen Domain (2 AP, Standard): 6 square metres of ice within range 6. Anyone crossing it makes an `
-      + `Acrobatics Check at DC ${4 + 2 * rankNum(t.skills && t.skills.survival)} or is Tripped, and standing on it counts as Hail. `
-      + `A Fire attack from or into a square melts it. The six 🧊 squares are dropped on the Map for you — drag them `
-      + `where you want them, and tap one to melt it.`,
-    btn:"❄ Frozen Domain · 2 AP", run:castFrozenDomain },
 ];
 const typeAceBranchFor = t => TYPE_ACE_BRANCH.filter(d => hasFeatureLoose(t, d.feat));
+
+/* ===================================================================
+   THE ELEMENTALIST CLASSES  (Game of Throhs, Chapter 3)
+   -------------------------------------------------------------------
+   Sixteen classes, one per Type outside Fighting and Psychic (Aura Guardian and the three Psychic
+   classes are their Elementalists — the book says so on p.46). Four already had cards of their own
+   because a player took them: Glamour Weaver, Herald of Pride, Maelstrom and Shade Caller. This
+   block is the other twelve, and the shared machinery all sixteen needed.
+
+   Everything mechanical is already wired into the engine by the time you get here, and it is worth
+   knowing where, because none of it lives on these cards:
+
+     Ability grants      FEATURE_ABILITY_CHOICES / featureAbilityScan  (Too Spooky, Vile Body, …)
+     Capabilities        FEATURE_CAPS + a stance's own `caps`          (Heater, Magnetic, Phasing)
+     Moves from prose    syncFeatureMoves                              ("You learn Rock Tomb and…")
+     Move riders         featureRiders                                 (Prismatic Alignment, Miasmic Spray)
+     Stances             FEATURE_MODES                                 (Stone Stance, Shadow Form…)
+     Type immunity       FEATURE_STATUS_IMMUNITY                       (Fiery Soul, Corrupt Blood…)
+     Weapon Attacks      weaponAttackFeats / MELEE_SKILL_SUBS          (Shadow Arms, Steel Wind…)
+
+   What was genuinely missing was the MOVE TABLES: eleven Features hand out Moves from a printed
+   list ("Learn two Moves from the list below at the Rank you are taking or lower"), and no amount
+   of prose-parsing can read a two-column table out of a PDF. Those are transcribed below — checked
+   against the PDF pages, not the text dump — and served by one picker.
+=================================================================== */
+
+/* ---- the Move tables ---------------------------------------------------------------------------
+   `ranks` is one array per Rank; an entry is "Move" or "Move|Embrace or Oath that it needs".
+   `per` is how many Moves each Rank pays for, `ranked` how many Ranks the Feature has (0 = it is a
+   plain "choose two of these" Feature with no Rank suffix). `oath` names the class whose
+   Embrace/Oath gates the marked entries — the pick is the one already stored for the Ability grant,
+   so there is no second choice to make. Every name resolves through moveByName, which is what turns
+   the book's "Mega Horn" into Megahorn and its "Fell Needle" into Fell Stinger. */
+const FEATURE_MOVE_LISTS = [
+  /* Swarmlord — Game of Throhs p.63 */
+  { feat:"Enhanced Embrace", cls:"Swarmlord", ranked:3, per:2, oath:"Swarmlord", icon:"🐛",
+    ranks:[["Defend Order","Fury Cutter","Fell Needle","Struggle Bug|Monarch's Embrace","Sticky Web|Arachnid's Embrace"],
+           ["Attack Order|Arachnid's Embrace","Infestation","Powder|Monarch's Embrace","Signal Beam","Steamroller"],
+           ["Bug Buzz","Mega Horn","Quiver Dance|Monarch's Embrace","Spider Web|Arachnid's Embrace"]] },
+  /* Spark Master — p.69 */
+  { feat:"Storm Wizard", cls:"Spark Master", ranked:3, per:2, icon:"⚡",
+    ranks:[["Charge Beam","Eerie Impulse","Shock Wave","Spark"],
+           ["Charge","Thunder Punch","Thunderbolt"],
+           ["Discharge","Thunder","Thunder Wave","Volt Tackle"]] },
+  /* Fire Bringer — pp.73. The class Feature itself is a "choose two" with no Rank. */
+  { feat:"Fire Bringer", cls:"Fire Bringer", ranked:0, per:2, icon:"🔥",
+    ranks:[["Flame Burst","Flame Wheel","Flame Charge","Will-O-Wisp"]] },
+  { feat:"Fire Breather", cls:"Fire Bringer", ranked:2, per:2, icon:"🔥",
+    ranks:[["Flamethrower","Fire Punch","Fire Spin","Sunny Day"],
+           ["Blaze Kick","Fiery Dance","Flare Blitz","Heat Wave"]] },
+  /* Wind Runner — p.75 */
+  { feat:"Raging Winds", cls:"Wind Runner", ranked:3, per:2, icon:"🌪",
+    ranks:[["Aerial Ace","Air Cutter","Gust","Tailwind"],
+           ["Air Slash","Bounce","Defog","Feather Dance"],
+           ["Brave Bird","Hurricane","Mirror Move","Sky Attack"]] },
+  /* Druid — p.79 */
+  { feat:"Nature's Embrace", cls:"Druid", ranked:3, per:2, oath:"Druid", icon:"🌿",
+    ranks:[["Cotton Spore","Ingrain|Wood Oath","Mega Drain","Razor Leaf","Stun Spore|Fungal Oath","Sweet Scent|Flower Oath"],
+           ["Aromatherapy|Flower Oath","Energy Ball","Giga Drain|Fungal Oath","Magical Leaf","Seed Bomb","Spiky Shield|Wood Oath"],
+           ["Leech Seed","Petal Blizzard|Wood Oath","Petal Dance|Flower Oath","Power Whip","Solar Beam","Spore|Fungal Oath"]] },
+  /* Earth Shaker — p.81. Three separate "pick two of three" Features. */
+  { feat:"Earth Shaker", cls:"Earth Shaker", ranked:0, per:2, icon:"⛰",
+    ranks:[["Bulldoze","Mud Shot","Sand-Attack"]] },
+  { feat:"Ground Out", cls:"Earth Shaker", ranked:0, per:2, icon:"⛰",
+    ranks:[["Drill Run","Magnitude","Mud Bomb"]] },
+  { feat:"Tectonic Shift", cls:"Earth Shaker", ranked:0, per:2, icon:"⛰",
+    ranks:[["Earthquake","Earth Power","Sand Tomb"]] },
+  /* Frost Touched — p.83 */
+  { feat:"Frost Touched", cls:"Frost Touched", ranked:0, per:2, icon:"❄",
+    ranks:[["Haze","Ice Shard","Mist","Powder Snow"]] },
+  { feat:"Winter's Herald", cls:"Frost Touched", ranked:2, per:2, icon:"❄",
+    ranks:[["Freeze-Dry","Ice Punch","Ice Beam","Icicle Crash"],
+           ["Avalanche","Blizzard","Frost Breath","Icicle Spear"]] },
+  /* Maelstrom — p.93. Its card was written before this picker existed and never had one. */
+  { feat:"Call The Current", cls:"Maelstrom", ranked:3, per:2, icon:"🌊",
+    ranks:[["Aqua Jet","Aqua Ring","Water Pulse"],
+           ["Bubblebeam","Waterfall","Whirlpool"],
+           ["Aqua Tail","Rain Dance","Surf"]] },
+];
+const featMoveListsFor = cls => FEATURE_MOVE_LISTS.filter(d => d.cls === cls);
+/* The Feature name at a given Rank — "Winter's Herald Rank 2", or the bare name for an unranked one.
+   The books spell these with a curly apostrophe in places, so every lookup goes through
+   hasFeatureLoose / featKey rather than string equality. */
+function featMoveListName(def, rank){ return def.ranked ? `${def.feat} Rank ${rank}` : def.feat; }
+/* the highest Rank of this Feature the Trainer actually holds — 0 when they hold none */
+function featMoveListRank(t, def){
+  if(!def.ranked) return hasFeatureLoose(t, def.feat) ? 1 : 0;
+  let r = 0;
+  for(let i = 1; i <= def.ranked; i++) if(hasFeatureLoose(t, featMoveListName(def, i))) r = i;
+  return r;
+}
+/* how many Moves the Ranks they hold have paid for */
+function featMoveListAllowance(t, def){ return featMoveListRank(t, def) * def.per; }
+/* Every Move the table offers them right now: the Ranks they hold, minus the entries their
+   Embrace/Oath locks out. Returns [{name, move, need}] with the DB's own spelling of the name. */
+function featMoveListPool(t, def){
+  const R = featMoveListRank(t, def);
+  const eo = def.oath ? embraceOathOf(t, def.oath) : null;
+  const out = [];
+  for(let i = 0; i < R; i++) (def.ranks[i] || []).forEach(entry => {
+    const [raw, need] = String(entry).split("|");
+    const m = moveByName.get(raw.trim().toLowerCase());
+    if(!m) return;                                   // a name the Move DB doesn't know is simply not offered
+    if(need && (!eo || eo.label !== need.trim())) return;
+    out.push({ name:m.name, move:m, need: need ? need.trim() : "" });
+  });
+  return out;
+}
+/* Which of them are already on the sheet. Read off the Move list rather than a private record, for
+   the same reason hexKnown is: a sheet imported before this existed has the Moves but no record,
+   and deleting one from the Moves card should hand the slot back. */
+function featMoveListKnown(t, def){
+  const R = featMoveListRank(t, def) || def.ranked || 1;
+  const eo = def.oath ? embraceOathOf(t, def.oath) : null;
+  const all = new Set();
+  for(let i = 0; i < Math.max(R, def.ranks.length); i++) (def.ranks[i] || []).forEach(entry => {
+    const m = moveByName.get(String(entry).split("|")[0].trim().toLowerCase());
+    if(m) all.add(m.name.toLowerCase());
+  });
+  void eo;
+  return (t.moves || []).filter(m => all.has(String(m).toLowerCase()));
+}
+function openFeatureMoveList(t, def, rerender, persist){
+  const R = featMoveListRank(t, def);
+  if(!R){ toast(`You don't have ${def.feat} yet`); return; }
+  const allowed = featMoveListAllowance(t, def), known = featMoveListKnown(t, def);
+  const have = new Set((t.moves || []).map(m => String(m).toLowerCase()));
+  const pool = featMoveListPool(t, def).filter(x => !have.has(x.name.toLowerCase()));
+  if(!pool.length){ toast(`You already know every ${def.feat} Move your Rank unlocks`); return; }
+  if(known.length >= allowed && !t.unlocked){
+    toast(`${featMoveListName(def, R)} pays for ${allowed} Move${allowed===1?"":"s"} and you have ${known.length}`
+      + (def.ranked && R < def.ranked ? " — take the next Rank first" : ""));
+    return;
+  }
+  openPicker(`${def.feat} — learn a Move (${known.length} of ${allowed} taken)`,
+    pool.map(x => x.name), name => {
+      if(!Array.isArray(t.moves)) t.moves = [];
+      t.moves.push(name);
+      (persist || save)();
+      toast(`${def.icon} Learned ${name}`);
+      (rerender || renderBattle)();
+    }, "move");
+}
+/* The row of "learn a Move" buttons a class card ends with, one per table the Trainer has unlocked.
+   Says what is left rather than only offering the button, since "2 of 4 taken" is the whole point. */
+function featMoveListRow(card, t, cls, rerender, persist){
+  const defs = featMoveListsFor(cls).filter(d => featMoveListRank(t, d) > 0);
+  if(!defs.length) return 0;
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  defs.forEach(d => {
+    const R = featMoveListRank(t, d), allowed = featMoveListAllowance(t, d), known = featMoveListKnown(t, d);
+    const left = Math.max(0, allowed - known.length);
+    row.append(el("button",{ class: left ? "btn-primary" : "btn-secondary",
+      title:`${featMoveListName(d, R)} pays for ${allowed} Move${allowed===1?"":"s"} — ${known.length} taken`,
+      onclick:() => openFeatureMoveList(t, d, rerender, persist) },
+      `${d.icon} ${d.feat}${left ? ` · ${left} to learn` : " · all taken"}`));
+  });
+  card.append(row);
+  defs.forEach(d => {
+    const known = featMoveListKnown(t, d);
+    if(known.length) classBit(card, `${d.feat}: ${known.join(", ")} — on your Moves card, rolled like any other Move.`);
+  });
+  return defs.length;
+}
+/* The Embrace / Oath line every Swarmlord and Druid card opens with: which one they took, what it
+   granted, and (while it is unchosen) the fact that nothing else can resolve until they pick. */
+function embraceBit(card, t, cls){
+  const eo = embraceOathOf(t, cls);
+  const d = EMBRACE_TAG_CLASSES.find(x => x.cls === cls);
+  const all = d ? Object.keys(d.byAbility).map(a => `${d.label[a]} (${a})`).join(", ") : "";
+  if(eo){
+    const n = trainerStatTags(t).filter(x => x.embrace === cls).length;
+    classBit(card, `${eo.label}: it granted you ${eo.ability}, and every ${cls} Feature carries its Stat Tag — `
+      + `${n} so far, all of them +1 ${(STATS.find(s => s[0] === eo.stat) || [,eo.stat])[1]}, already in your Combat Stats.`);
+  } else {
+    classBit(card, `⚠ No ${cls === "Druid" ? "Oath" : "Embrace"} chosen yet — press ⚙ Choose Ability on the ${cls} row `
+      + `below and pick one of ${all}. Until you do, the Ability, the Stat Tags and the Move list it gates are all waiting on it.`);
+  }
+}
+
+/* ---- a stance switch, for the cards that carry one --------------------------------------------
+   Same button every FEATURE_MODES stance draws on the Type Ace card, lifted out so the twelve
+   Elementalist cards don't each rewrite it. */
+function stanceButton(row, t, featName, rerender, persist){
+  const md = featureModeByFeat.get(featKey(featName));
+  if(!md || !hasFeatureLoose(t, featName)) return null;
+  const on = modeIsOn(t, md.key);
+  row.append(el("button",{ class: on ? "btn-secondary on" : "btn-secondary",
+    title: on ? `end it — ${md.bindAP} Bound AP comes back` : `Bind ${md.bindAP} AP, ${md.dur}`,
+    onclick:() => setFeatureMode(t, md, !on, rerender || renderBattle, persist) },
+    on ? `⏹ ${md.off}` : `${md.icon} ${md.on} · ${md.bindAP} AP`));
+  return md;
+}
+/* the "● it is up, and this is what it is doing" line under the switch */
+function stanceLive(card, t, featName){
+  const md = featureModeByFeat.get(featKey(featName));
+  if(!md || !modeIsOn(t, md.key) || !hasFeatureLoose(t, featName)) return;
+  card.append(el("div",{class:"small",style:"color:var(--good);font-weight:700;margin:4px 0"},
+    `● ${md.feat} — ${md.blurb}`));
+}
+/* Spend N AP, say what it bought, redraw. The shape a dozen of these Features share. */
+function elemAP(t, n, msg, rerender, persist){
+  if(!apSpend(t, n)) return false;
+  (persist || save)(); toast(msg); (rerender || renderBattle)();
+  return true;
+}
+/* Spend a use of a Feature, say what it bought, redraw. */
+function elemUse(t, featName, msg, rerender, persist){
+  if(!featSpend(t, featName)) return false;
+  (persist || save)(); toast(msg); (rerender || renderBattle)();
+  return true;
+}
+/* "3 of 4 left" next to a button, or nothing when the Feature has no counter */
+function useSpan(t, featName){
+  const u = featUses(t, featName);
+  return el("span",{class:"small muted"}, u.left != null ? `${u.left} of ${u.max} left` : "");
+}
+
+/* ---------------------------------------------------------------- SWARMLORD (Bug, p.63) */
+function swarmlordCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Swarmlord")) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const card = classCard("🐛", "Swarmlord", "Game of Throhs p.63");
+  const has = n => hasFeatureLoose(t, n);
+  embraceBit(card, t, "Swarmlord");
+  if(has("How To Shoot Web")) classBit(card, "How To Shoot Web: Threaded and Wallclimber are on your Capabilities line — nothing to remember.");
+  if(has("Broodlord")) classBit(card, "Broodlord hands you Tinted Lens or Compound Eyes by your Embrace — press ⚙ Choose Ability on its row below and it counts everywhere an Ability is checked.");
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  if(has("Pheromone Markers")){
+    classBit(card, "Pheromone Markers (1 AP, Free): mark a foe you hit with a damaging Bug attack. Every stack on them is "
+      + "+2 Accuracy and +1 Critical Hit Range for your Bug attacks, and their third one lets you roll 1d6 for Confused, "
+      + "Suppressed or Enraged. The stacks live on the foe, the sheet counts them, and the End of the Scene clears them.");
+    row.append(el("button",{class:"btn-primary",onclick:() => openPheromoneMarkers(t, redraw, saveFn)},"🐛 Pheromone Markers · 1 AP"));
+  }
+  if(row.childNodes.length) card.append(row);
+  featMoveListRow(card, t, "Swarmlord", rerender, persist);
+  classFeatureRows(card, t, "Swarmlord", rerender, persist);
+  return card;
+}
+
+/* ---------------------------------------------------------------- SPARK MASTER (Electric, p.69) */
+/* Bottled Lightning: "Choose one of your Electric Type Moves with a target. You Charge the target
+   item with this Move. Bottled Lightning counts as using the Move for frequency purposes." So the
+   AP, the Move's own use, and the cap (half your Focus Rank) are all things the sheet can do; where
+   the item physically is, and who touches it, are the table's. Charges live on t.bottled and are
+   wiped by End Scene along with every other Scene-length thing. */
+function bottledCap(t){ return Math.floor(rankNum(t && t.skills ? t.skills.focus : "") / 2); }
+function bottledList(t){ return Array.isArray(t && t.bottled) ? t.bottled : []; }
+function openBottledLightning(t, rerender, persist){
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const cap = bottledCap(t), held = bottledList(t);
+  const electric = (t.moves || []).map(mn => moveByName.get(String(mn).toLowerCase()))
+    .filter(m => m && String(m.type||"") === "Electric" && !/no target/i.test(String(m.range||"")));
+  const body = el("div",{});
+  body.append(el("div",{class:"small",style:"margin-bottom:10px"},
+    `2 AP · Standard Action, on an item made of conductive material. Charging counts as USING the Move — its own `
+    + `Frequency is spent here — and you may expend the Charge as a Swift Action later, or as a Priority Swift `
+    + `Action the moment somebody touches the item. You can hold ${cap} Charge${cap===1?"":"s"} at once `
+    + `(half your Focus Rank), and every Charge is lost at the end of the Scene.`));
+  if(!electric.length){
+    body.append(el("div",{class:"small",style:"color:var(--bad);font-weight:700"},
+      "You know no Electric-Type Move with a target — Storm Wizard is what teaches them."));
+  } else {
+    const what = el("input",{type:"text",placeholder:"which item? (a lantern, a doorknob, a coin…)"});
+    const sel = el("select");
+    electric.forEach(m => sel.append(el("option",{value:m.name}, `${m.name} — ${moveLineShort(m)}`)));
+    body.append(el("label",{class:"field"}, el("span",{},"Move"), sel));
+    body.append(el("label",{class:"field",style:"margin-top:8px"}, el("span",{},"Item"), what));
+    body.append(el("div",{class:"small muted",style:"margin-top:8px"},
+      held.length ? `Charged right now: ${held.map(c => `${c.item||"an item"} (${c.move})`).join(", ")}.`
+                  : "Nothing is Charged right now."));
+    body.append(el("div",{class:"inline",style:"margin-top:10px"},
+      el("button",{class:"btn-primary",onclick:() => {
+        if(held.length >= cap && !t.unlocked){
+          toast(`You can only hold ${cap} Charge${cap===1?"":"s"} at once — expend one first`); return; }
+        const m = moveByName.get(sel.value.toLowerCase()); if(!m) return;
+        if(!apSpend(t, 2)) return;
+        const info = freqInfo(trainerMoveFreq(t, m)), key = useKey("move", m.name);
+        if(freqTrackable(info)){ t.uses = t.uses || {}; t.uses[key] = Math.min(info.max, (t.uses[key]||0) + 1); }
+        t.bottled = [...held, { id:uid(), move:m.name, item:(what.value||"").trim() }];
+        saveFn(); closeModal();
+        toast(`⚡ ${m.name} bottled${what.value?` in ${what.value.trim()}`:""} · 2 AP — the Move's use is spent too`);
+        redraw();
+      }},"⚡ Charge it · 2 AP")));
+  }
+  modal({title:"⚡ Bottled Lightning", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+}
+function sparkMasterCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Spark Master")) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const card = classCard("⚡", "Spark Master", "Game of Throhs p.69");
+  const has = n => hasFeatureLoose(t, n);
+  classBit(card, "Spark Master hands you Static or Electrodash — press ⚙ Choose Ability on its row below and the sheet grants it everywhere an Ability is checked.");
+  if(has("Magnetize")) classBit(card, "Magnetize: the Magnetic Capability is on your Capabilities line. You walk your full Overland up walls and across ceilings with enough metal in them, and you may simply refuse to be Pushed while stuck to one.");
+  if(has("Body of Lightning")) classBit(card, "Body of Lightning hands you Volt Absorb or Motor Drive — pick it on its row below. Both are automated: the immunity soaks the hit and pays out on its own.");
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  if(has("Bottled Lightning")){
+    const held = bottledList(t), cap = bottledCap(t);
+    row.append(el("button",{class:"btn-primary",onclick:() => openBottledLightning(t, redraw, saveFn)},
+      `⚡ Bottled Lightning · 2 AP`),
+      el("span",{class:"small muted"}, `${held.length} of ${cap} Charged`));
+    held.forEach(c => row.append(el("button",{class:"btn-secondary",style:"padding:4px 10px",
+      title:"expend the Charge — a Swift Action, or Priority the instant somebody touches the item",
+      onclick:() => { t.bottled = bottledList(t).filter(x => x.id !== c.id); saveFn();
+        toast(`⚡ ${c.move} fires from ${c.item||"the item"} — Swift Action (Priority if they touched it)`); redraw(); }},
+      `⚡ Fire ${c.move}${c.item?` (${c.item})`:""}`)));
+  }
+  if(row.childNodes.length) card.append(row);
+  featMoveListRow(card, t, "Spark Master", rerender, persist);
+  classFeatureRows(card, t, "Spark Master", rerender, persist);
+  return card;
+}
+
+/* ---------------------------------------------------------------- FIRE BRINGER (Fire, p.73) */
+function fireBringerCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Fire Bringer")) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const card = classCard("🔥", "Fire Bringer", "Game of Throhs p.73");
+  const has = n => hasFeatureLoose(t, n);
+  if(has("Fiery Soul")) classBit(card, "Fiery Soul: the Heater Capability is on your Capabilities line, and the sheet simply refuses to Burn you — the chip won't go on.");
+  if(has("Firebrand")) classBit(card, "Firebrand: every Fire-Type Move you roll now lists a Burn at 19+, and a Move that already Burned has its Effect Range widened by 2. It is inside the roll's own Effect Range readout — nothing to press.");
+  if(has("Burning Passion")) classBit(card, "Burning Passion hands you Flash Fire or Flame Body — press ⚙ Choose Ability on its row below. Flash Fire's soak and its +5 to your next Fire Move are both automated.");
+  const blazing = ownerBuffs(t).some(b => b.name === "Blazing");
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  if(has("Blazing Inferno")) row.append(el("button",{ class: blazing ? "btn-secondary on" : "btn-primary",
+    title: blazing ? "you are already Blazing — it ends when you spend it on an automatic Burn"
+                   : "2 AP, Swift Action — become Blazing",
+    onclick:() => {
+      if(blazing){ t.buffs = ownerBuffs(t).filter(b => b.name !== "Blazing"); saveFn();
+        toast("🔥 Blazing spent — that Fire Move Burns one target automatically"); redraw(); return; }
+      if(!apSpend(t, 2)) return;
+      addCustomBuff(t, "Blazing", {},
+        "Blazing Inferno: whenever your Fire-Type Moves inflict Burn, that target immediately loses a Tick of Hit Points "
+        + "and another Combat Stage of Defense. You may also spend Blazing on a damaging Fire-Type hit to Burn one target "
+        + "automatically — doing so ends the Condition.");
+      saveFn(); toast("🔥 Blazing · 2 AP"); redraw();
+    } }, blazing ? "🔥 Spend Blazing (auto-Burn)" : "🔥 Blazing Inferno · 2 AP"));
+  if(row.childNodes.length) card.append(row);
+  if(blazing) card.append(el("div",{class:"small",style:"color:var(--good);font-weight:700;margin:4px 0"},
+    "● Blazing — a Burn you inflict costs the target a Tick of HP and a Defense Combat Stage as well. Spend it to Burn one target of a damaging Fire Move outright."));
+  featMoveListRow(card, t, "Fire Bringer", rerender, persist);
+  classFeatureRows(card, t, "Fire Bringer", rerender, persist);
+  return card;
+}
+
+/* ---------------------------------------------------------------- WIND RUNNER (Flying, p.75) */
+function windRunnerCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Wind Runner")) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const card = classCard("🌪", "Wind Runner", "Game of Throhs p.75");
+  const has = n => hasFeatureLoose(t, n);
+  const d = trainerDerived(t), R = windRunnerRank(t);
+  classBit(card, `Wind Runner: you have the Levitate Ability, and a Levitate Speed of ${d.levitate} `
+    + `(4 plus half your Acrobatics/Perception Rank of ${R}${d.moveCS ? `, shifted ${d.moveCS>0?"+":""}${d.moveCS} by your Speed Combat Stages` : ""}). `
+    + `It is on your derived stats beside Overland and Swim.`);
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  stanceButton(row, t, "One With the Winds", redraw, persist);
+  if(has("Flight")) row.append(el("button",{class:"btn-primary",
+    title:"1 AP, Swift Action — a Sky Speed for the rest of the round",
+    onclick:() => elemAP(t, 1, `🕊 Flight — Sky Speed ${d.sky} for the rest of the round`, redraw, saveFn)},
+    `🕊 Flight · 1 AP → Sky ${d.sky}`));
+  if(row.childNodes.length) card.append(row);
+  stanceLive(card, t, "One With the Winds");
+  if(has("One With the Winds")) classBit(card, `One With the Winds reaches ${rankNum(t.skills.acrobatics) + rankNum(t.skills.perception)} metres — your Acrobatics Rank plus your Perception Rank.`);
+  if(has("Flight")) classBit(card, `Flight: Sky Speed ${d.sky} — your Levitate Speed plus your Acrobatics or Perception Rank — for the remainder of the round. It is one round, so the sheet spends the AP and tells you the number rather than parking a Capability on the sheet that would outlive it.`);
+  if(has("Gale Speed")) classBit(card, "Gale Speed hands you Celebrate or Gale Wings — press ⚙ Choose Ability on its row below.");
+  featMoveListRow(card, t, "Wind Runner", rerender, persist);
+  classFeatureRows(card, t, "Wind Runner", rerender, persist);
+  return card;
+}
+
+/* ---------------------------------------------------------------- APPARITION (Ghost, p.77) */
+function apparitionCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Apparition")) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const card = classCard("👻", "Apparition", "Game of Throhs p.77");
+  const has = n => hasFeatureLoose(t, n);
+  const R = Math.max(rankNum(t.skills && t.skills.occultEd), rankNum(t.skills && t.skills.intimidate));
+  classBit(card, `Your melee weapon maths reads Occult Education or Intimidate instead of Combat when that's kinder `
+    + `(Rank ${R} right now) — the Damage Base of your Struggle, the Rank a Weapon Move needs, and resisting Disarm. `
+    + `Your Weapon Attacks also always count you as having Reach, and foes cannot fire "when hit by a Melee Attack" `
+    + `Reactions at them; both of those are said at the table, not rolled.`);
+  if(has("Shadow Arms") || has("Phantom Menace"))
+    classBit(card, "Shadow Arms and Phantom Menace put their Moves on your Moves card AND give you a swing with them — each appears above as its own Weapon Attack row while you are holding a Melee Weapon, taking the weapon's +DB and +AC and never STAB.");
+  if(has("Too Spooky")) classBit(card, "Too Spooky hands you Pressure or Frighten — press ⚙ Choose Ability on its row below and it counts everywhere an Ability is checked.");
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  stanceButton(row, t, "Silent Assassin", redraw, persist);
+  stanceButton(row, t, "Shadow Form", redraw, persist);
+  if(has("Haunted Wounds")){
+    row.append(el("button",{class:"btn-secondary",
+      title:"Scene x2, Free — after one full round the triggering attack repeats itself, resisted one step further",
+      onclick:() => elemUse(t, "Haunted Wounds",
+        "🩸 Haunted Wounds — after one full round, repeat that attack on one target as a Free Action, at any range. It lands as though resisted one step further.",
+        redraw, saveFn)},"🩸 Haunted Wounds"), useSpan(t, "Haunted Wounds"));
+  }
+  if(row.childNodes.length) card.append(row);
+  stanceLive(card, t, "Silent Assassin");
+  stanceLive(card, t, "Shadow Form");
+  if(has("Haunted Wounds")) classBit(card, "Haunted Wounds: only once per Scene per target, and the trigger has to be an Apparition Move or a Ghost-Typed Weapon Attack — Silent Assassin makes every swing one.");
+  featMoveListRow(card, t, "Apparition", rerender, persist);
+  classFeatureRows(card, t, "Apparition", rerender, persist);
+  return card;
+}
+
+/* ---------------------------------------------------------------- DRUID (Grass, p.79) */
+function druidCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Druid")) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const card = classCard("🌿", "Druid", "Game of Throhs p.79");
+  const has = n => hasFeatureLoose(t, n);
+  embraceBit(card, t, "Druid");
+  if(has("Green Path")) classBit(card, "Green Path: Naturewalk (Grassland) and Naturewalk (Forest) are on your Capabilities line, and Moves with the Powder keyword simply don't touch you.");
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  if(has("Overgrowth")) row.append(el("button",{class:"btn-primary",
+    title:"2 AP, Swift — afflict one target of a Druid Move you just hit with",
+    onclick:() => openOvergrowth(t, redraw, saveFn)},"🌿 Overgrowth · 2 AP"));
+  if(has("Druid's Call")){
+    row.append(el("button",{class:"btn-secondary",
+      title:"Scene x2, Standard — six squares of vegetation within 6 metres",
+      onclick:() => elemUse(t, "Druid's Call",
+        "🌱 Druid's Call — six 1-square plants within 6 m, until the end of the encounter. Rough terrain that blocks line of sight for anyone without Naturewalk (Forest), and your Nature's Embrace Moves may originate from them.",
+        redraw, saveFn)},"🌱 Druid's Call"), useSpan(t, "Druid's Call"));
+  }
+  if(row.childNodes.length) card.append(row);
+  if(has("Druid's Call")) classBit(card, "Druid's Call needs soil under you (a sidewalk or a gravel lot counts). The plants are scenery, so drop six 1-square tokens on the Map where you want them.");
+  featMoveListRow(card, t, "Druid", rerender, persist);
+  classFeatureRows(card, t, "Druid", rerender, persist);
+  return card;
+}
+/* Overgrowth: a condition placed on a foe, so it rides as a buff on THEIR sheet the way a Pheromone
+   Stack does — the GM's damage tool and the target's own card then show it without either of them
+   knowing what a Druid is. Once per Scene per target, which the buff's presence is the record of. */
+function openOvergrowth(t, rerender, persist){
+  const foes = allyTargets(t, {foes:true}).filter(x => x.enemy);
+  const pick = targetPicker(foes, []);
+  const body = el("div",{});
+  body.append(el("div",{class:"small",style:"margin-bottom:10px"},
+    "2 AP · Swift Action, on one target of a Druid Move you just hit with. While they are Overgrown they are one step "
+    + "less Resistant to Grass (never better than neutral for them), and they cannot regain Hit Points or gain "
+    + "Temporary Hit Points at all — every point they would have gained comes to you instead. It is removed when "
+    + "they Take a Breather, or when a damaging Fire, Ice, Poison, Flying or Bug attack hits them. Once per Scene per target."));
+  body.append(foes.length ? pick.node
+    : el("div",{class:"small muted"},"No enemy tokens you can edit — place them on the Map, or apply it from the GM's side."));
+  modal({title:"🌿 Overgrowth", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async () => {
+      const chosen = pick.chosen();
+      if(!chosen.length){ toast("Pick a target"); return; }
+      if(!apSpend(t, 2)) return;
+      chosen.forEach(x => {
+        if(ownerBuffs(x.obj).some(b => b.name === "Overgrowth")) return;   // once per Scene per target
+        addCustomBuff(x.obj, "Overgrowth", {},
+          "Overgrown: one step less Resistant to Grass (capped at neutral), and cannot regain HP or gain Temporary HP — "
+          + `whatever they would have gained goes to ${t.name || "the Druid"} instead. Removed by Taking a Breather, or by a `
+          + "damaging Fire, Ice, Poison, Flying or Bug hit.");
+      });
+      (persist || save)(); closeModal();
+      await commitTargets(chosen);
+      toast(`🌿 Overgrowth → ${chosen.map(x => ownerLabel(x.obj)).join(", ")} · 2 AP`);
+      (rerender || renderBattle)();
+    }},"🌿 Afflict"),
+  ]});
+}
+
+/* ---------------------------------------------------------------- EARTH SHAKER (Ground, p.81) */
+function earthShakerCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Earth Shaker")) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const card = classCard("⛰", "Earth Shaker", "Game of Throhs p.81");
+  const has = n => hasFeatureLoose(t, n);
+  if(has("Earthen Bond")) classBit(card, "Earthen Bond: Tremorsense and Naturewalk for Cave, Mountain and Desert are on your Capabilities line.");
+  if(has("Earth Mother's Blessing Rank 1")) classBit(card, "Earth Mother's Blessing hands you Arena Trap or Lightning Rod, once per Rank — press ⚙ Choose Ability on each Rank's row below.");
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  if(has("Earthshifter")) row.append(el("button",{class:"btn-primary",
+    title:"2 AP, Swift — an automatic Trip on one target of a damaging Ground Move you just hit with",
+    onclick:() => openEarthshifter(t, redraw, saveFn)},"⛰ Earthshifter · 2 AP"));
+  if(row.childNodes.length) card.append(row);
+  featMoveListRow(card, t, "Earth Shaker", rerender, persist);
+  classFeatureRows(card, t, "Earth Shaker", rerender, persist);
+  return card;
+}
+/* Earthshifter: "You initiate a Trip Maneuver against 1 target of the Move. The Maneuver
+   automatically hits" — an automatic hit means there is nothing to roll, so the Tripped chip goes
+   straight on. The opposed-check clause only matters if your table lets the target resist. */
+function openEarthshifter(t, rerender, persist){
+  const foes = allyTargets(t, {foes:true}).filter(x => x.enemy);
+  const pick = targetPicker(foes, []);
+  const R = Math.max(rankNum(t.skills && t.skills.focus), rankNum(t.skills && t.skills.intuition));
+  const body = el("div",{});
+  body.append(el("div",{class:"small",style:"margin-bottom:10px"},
+    `2 AP · Swift Action, on one target of a damaging Ground-Type Move you just hit with. The Trip Maneuver hits `
+    + `automatically — no roll — and where an opposed check is called for you use Focus or Intuition (Rank ${R}) `
+    + `instead of Combat. The Tripped chip goes straight onto whoever you pick.`));
+  body.append(foes.length ? pick.node
+    : el("div",{class:"small muted"},"No enemy tokens you can edit — place them on the Map, or apply it from the GM's side."));
+  modal({title:"⛰ Earthshifter", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async () => {
+      const chosen = pick.chosen();
+      if(!chosen.length){ toast("Pick a target"); return; }
+      if(!apSpend(t, 2)) return;
+      chosen.forEach(x => { if(!Array.isArray(x.obj.statuses)) x.obj.statuses = [];
+        if(!x.obj.statuses.includes("tripped")) x.obj.statuses.push("tripped"); });
+      (persist || save)(); closeModal();
+      await commitTargets(chosen);
+      toast(`⛰ Tripped → ${chosen.map(x => ownerLabel(x.obj)).join(", ")} · 2 AP`);
+      (rerender || renderBattle)();
+    }},"⛰ Trip them"),
+  ]});
+}
+
+/* ---------------------------------------------------------------- FROST TOUCHED (Ice, p.83) */
+function frostTouchedCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Frost Touched")) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const card = classCard("❄", "Frost Touched", "Game of Throhs p.83");
+  const has = n => hasFeatureLoose(t, n);
+  if(has("The Cold Never Bothered Me Anyway")) classBit(card, "The Cold Never Bothered Me Anyway: Naturewalk (Tundra) is on your Capabilities line, the sheet refuses to Freeze you, and Hail costs you nothing.");
+  if(has("Glacial Defense")) classBit(card, "Glacial Defense hands you Ice Shield or Winter's Kiss — press ⚙ Choose Ability on its row below. Winter's Kiss's Ice immunity is applied by the damage math.");
+  if(has("Winter is Coming")) classBit(card, "Winter is Coming gave you Frostbite: every damaging Ice Move you roll now Slows on 18+, widens its own Freeze range by 1, and Freezes on a 20 if it never could. It's inside the roll's Effect Range readout.");
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  if(has("Frozen Domain")){
+    classBit(card, `Frozen Domain (2 AP, Standard): 6 square metres of ice within range 6, every square adjacent to `
+      + `another. Anyone crossing makes an Acrobatics Check at DC ${4 + 2*rankNum(t.skills && t.skills.survival)} `
+      + `(4 + twice your Survival Rank) or is Tripped; flying, levitating and Naturewalk (Tundra) are immune. Standing `
+      + `on it counts as Hail, and a Fire attack from or into a square melts that square. The six 🧊 squares are `
+      + `dropped on the Map for you — drag them where you want them, and tap one to melt it.`);
+    row.append(el("button",{class:"btn-primary",onclick:() => castFrozenDomain(t, redraw, saveFn)},"❄ Frozen Domain · 2 AP"));
+  }
+  if(row.childNodes.length) card.append(row);
+  featMoveListRow(card, t, "Frost Touched", rerender, persist);
+  classFeatureRows(card, t, "Frost Touched", rerender, persist);
+  return card;
+}
+
+/* ---------------------------------------------------------------- PRISM (Normal, p.85) */
+function prismCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Prism")) return null;
+  const card = classCard("🌈", "Prism", "Game of Throhs p.85");
+  const has = n => hasFeatureLoose(t, n);
+  classBit(card, "Prism, Sparkle and Rainbow Surge each write their Moves straight onto your Moves card — Flash and Swift, then Tri Attack and Weather Ball, then Hyper Beam and Morning Sun. They come off again if the Feature ever does.");
+  if(has("Blinding Brightness")) classBit(card, "Blinding Brightness gave you Illuminate; Luminous Aura adds Starlight or Sunglow — pick that one on its row below.");
+  if(has("Lucent Mirage")) classBit(card, "Lucent Mirage: the Illusionist Capability is on your Capabilities line.");
+  if(has("Prismatic Alignment")) classBit(card, "Prismatic Alignment (2 AP, Swift) is already inside each of those six Moves: roll Flash, Swift, Tri Attack, Weather Ball, Hyper Beam or Morning Sun and the roll offers its alignment, charges the 2 AP and ticks that Move off. Once per Scene with EACH Move, tracked per Move.");
+  classFeatureRows(card, t, "Prism", rerender, persist);
+  return card;
+}
+
+/* ---------------------------------------------------------------- MIASMIC (Poison, p.87) */
+function miasmicCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Miasmic")) return null;
+  const card = classCard("☠", "Miasmic", "Game of Throhs p.87");
+  const has = n => hasFeatureLoose(t, n);
+  classBit(card, "Miasmic, Miasma's Call and Miasma Unleashed write their Moves onto your Moves card by themselves — Acid and Clear Smog, then Acid Armor and Sludge Bomb, then Sludge Wave and Toxic.");
+  if(has("Corrupt Blood")) classBit(card, "Corrupt Blood: the sheet refuses to Poison you at all, and every Poison-Type hit on you is resisted one step further — that's in the damage math, so the Map's damage tool already takes it off.");
+  if(has("Flexible Form")) classBit(card, "Flexible Form: Massive Damage no longer gives you an Injury — the sheet skips exactly that Injury and still counts the ones from crossing an HP marker. The +2 to Acrobatics or Athletics for squeezing, contorting and shrugging off Trip and Grapple is an opposed check, so claim it at the table.");
+  if(has("Vile Body")) classBit(card, "Vile Body hands you Absorb Force, Poison Point or Poison Touch — press ⚙ Choose Ability on its row below.");
+  if(has("Miasmic Spray")) classBit(card, "Miasmic Spray (2 AP, Swift) is already inside those Moves: roll Acid, Clear Smog, Sludge Bomb, Sludge Wave, Toxic or Acid Armor and the roll offers the spray, charges the 2 AP and ticks that Move off.");
+  classFeatureRows(card, t, "Miasmic", rerender, persist);
+  return card;
+}
+
+/* ---------------------------------------------------------------- STONE WARRIOR (Rock, p.89) */
+function stoneWarriorCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Stone Warrior")) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const card = classCard("🪨", "Stone Warrior", "Game of Throhs p.89");
+  const has = n => hasFeatureLoose(t, n);
+  classBit(card, "Stone Warrior, Shards of Stone and Stone Cold Finish write their Moves onto your Moves card — Rock Tomb and Wide Guard, then Rock Slide and Stealth Rock, then Stone Edge and Head Smash.");
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  stanceButton(row, t, "Stone Stance", redraw, persist);
+  if(row.childNodes.length) card.append(row);
+  const subs = stoneSubs(t);
+  if(has("Stone Stance") && subs.length) card.append(el("div",{class:"small",style:"color:var(--good);font-weight:700;margin:4px 0"},
+    `● ${subs.map(su => su.name).join(" + ")} — ${subs.map(su => su.blurb).join(" ")}`));
+  if(has("Stone Stance Mastery")) classBit(card, "Stone Stance Mastery: one Bind, two Stances. The picker lets you tick two and applies both — Falling Boulder's +5 damage and Moon Mountain's +5 Damage Reduction land together for the same 2 AP.");
+  else if(has("Stone Stance")) classBit(card, "Stone Stance: one Stance at a time, switchable as a Standard Action without rebinding. Falling Boulder's +5 damage and Moon Mountain's +5 Damage Reduction are applied for you; the −5 Initiative, the Push/Pull immunity, the 5 HP Recoil and Roiling Earth's free Struggle are the table's.");
+  if(has("Rock Power Rank 1")) classBit(card, "Rock Power hands you Sturdy, Rock Head, Run Up or Sand Veil, once per Rank — press ⚙ Choose Ability on each Rank's row below. Taking Sand Veil also makes sand a solid surface for Stone Stance.");
+  classFeatureRows(card, t, "Stone Warrior", rerender, persist);
+  return card;
+}
+
+/* ---------------------------------------------------------------- STEELHEART (Steel, p.91) */
+function steelheartCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Steelheart")) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const card = classCard("🛡", "Steelheart", "Game of Throhs p.91");
+  const has = n => hasFeatureLoose(t, n);
+  const R = Math.max(rankNum(t.skills && t.skills.athletics), rankNum(t.skills && t.skills.focus));
+  classBit(card, `With a METAL Melee Weapon your maths reads Athletics or Focus instead of Combat when that's kinder `
+    + `(Rank ${R} right now) — the Damage Base of your Struggle, the Rank a Weapon Move needs, and resisting Disarm. `
+    + `A wooden staff, a club or a bone knife doesn't count, and the sheet reads the weapon's name and notes to tell. `
+    + `Your Weapon Attacks also cost a Tick of Hit Points to any foe who already hit you with a Melee attack this `
+    + `round — that one is the table's to apply, since the sheet doesn't know who swung at you.`);
+  if(has("Champion of Steel")) classBit(card, "Champion of Steel: every Weapon Attack window now carries a 🛡 tick-box that retypes the strike to Steel. On an Accuracy Roll of 16+ it also raises your Defense by 1 Combat Stage — shift that on the Combat Stages pad.");
+  if(has("Steel Wind") || has("Man of Steel")) classBit(card, "Steel Wind and Man of Steel put their Moves on your Moves card AND give you a swing with them — each shows up above as its own Weapon Attack row while you hold a Melee Weapon.");
+  if(has("Impenetrable")) classBit(card, "Impenetrable gave you Bulletproof — it counts everywhere an Ability is checked without being typed into any list.");
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  if(has("Reactive Armour")){
+    row.append(el("button",{class:"btn-primary",
+      title:"Scene x2, Free — when you take an Injury or a Critical Hit in metal armour",
+      onclick:() => openReactiveArmour(t, redraw, saveFn)},`🛡 Reactive Armour · ${2*R} damage`),
+      useSpan(t, "Reactive Armour"));
+  }
+  if(has("Master of Arms")) row.append(el("button",{class:"btn-secondary",
+    title:"At-Will, Extended — bond a metal weapon to yourself",
+    onclick:() => openCallToArms(t, redraw, saveFn)},"⚒ Call to Arms"));
+  if(row.childNodes.length) card.append(row);
+  if(has("Master of Arms")){
+    classBit(card, `Call to Arms: your Steelheart Bond is ${t.steelBond ? `the ${t.steelBond}` : "not set"}. `
+      + `Only one at a time — a new Bond breaks the old one. Beckoning it to your hand within 10 metres is a Shift `
+      + `Action, opposed by Athletics if somebody is holding on.`);
+    classBit(card, "Unlimited Steel Works: your Bonded Weapon's granted Move(s) can be swapped for any other standard Weapon Moves within Limitations — edit them on the weapon's own row in Trainer → Sheet → Weapons. Still one Adept and one Master Move at most.");
+  }
+  classFeatureRows(card, t, "Steelheart", rerender, persist);
+  return card;
+}
+/* Reactive Armour: "All foes within a Burst 1 lose Hit Points equal to double your Athletics or
+   Focus Rank, and you gain Damage Reduction equal to double your Athletics or Focus Rank for one
+   full round." The DR half is a buff the engine already applies everywhere; the Burst is a shape on
+   the board, so it goes out through the roll feed for the GM to paint, exactly like a Song. */
+function openReactiveArmour(t, rerender, persist){
+  const R = Math.max(rankNum(t.skills && t.skills.athletics), rankNum(t.skills && t.skills.focus));
+  if(!featSpend(t, "Reactive Armour")) return;
+  addCustomBuff(t, `Reactive Armour (+${2*R} DR)`, { dr: 2*R },
+    "Damage Reduction for one full round after the Injury or Critical Hit that set it off. Remove it when the round ends.");
+  (persist || save)();
+  logRoll({ kind:"song", label:"🛡 Reactive Armour", who:t.name || "",
+    headline:`${t.name || "The Steelheart"}'s armour discharged for ${2*R}`,
+    lines:[`Every foe in a Burst 1 around them loses ${2*R} Hit Points (double their Athletics/Focus Rank of ${R})`,
+           `They gain ${2*R} Damage Reduction for one full round — already on their sheet`,
+           "GM: ✨ Apply area to paint the Burst 1 and take the Hit Points off"],
+    area:{ sheetId:(mode === "cloud" ? cloud.activeId : ""), shape:"burst", size:1, buffs:[], note:"Reactive Armour" } });
+  toast(`🛡 Reactive Armour — ${2*R} to every foe in a Burst 1, and ${2*R} Damage Reduction for a round`);
+  (rerender || renderBattle)();
+}
+function openCallToArms(t, rerender, persist){
+  const metal = (t.weapons || []).filter(w => /Melee/i.test(w.category || "") && weaponIsMetal(w));
+  const body = el("div",{});
+  body.append(el("div",{class:"small",style:"margin-bottom:10px"},
+    "At-Will · Extended Action, on a Metal Weapon. You may only hold one Steelheart Bond — creating a new one breaks "
+    + "the old. Once bonded, beckoning the weapon to your hand from within 10 metres is a Shift Action; if somebody is "
+    + "holding it and won't let go, make an Athletics or Focus versus Athletics Opposed Check."));
+  if(!metal.length) body.append(el("div",{class:"small",style:"color:var(--bad);font-weight:700"},
+    "No metal Melee Weapon on your Weapons card — add one in Trainer → Sheet → Weapons first."));
+  metal.forEach(w => {
+    const on = t.steelBond === (w.name || w.category);
+    const rw = el("div",{class:"moveslot"});
+    rw.append(el("div",{style:"flex:1"},
+      el("div",{style:"font-weight:700"}, w.name || w.category,
+        on ? el("span",{class:"small",style:"margin-left:8px;color:var(--good);font-weight:700"},"● Bonded") : ""),
+      el("div",{class:"small muted",style:"margin-top:2px"}, `${w.category}${w.type&&w.type!=="Normal"?` · ${w.type}`:""}`)));
+    rw.append(el("button",{class: on ? "btn-secondary" : "btn-primary",style:"padding:6px 10px",onclick:() => {
+      t.steelBond = on ? "" : (w.name || w.category);
+      (persist || save)(); closeModal();
+      toast(on ? "⚒ Bond released" : `⚒ Steelheart Bond — ${t.steelBond}`);
+      (rerender || renderBattle)();
+    }}, on ? "release" : "bond it"));
+    body.append(rw);
+  });
+  modal({title:"⚒ Call to Arms", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+}
 
 /* Every class card this Trainer has earned, in the order the cards were written. Both the player's
    ⚔ Combat tab and the GM's Encounters card call this, so an NPC with a player class gets the same
@@ -24867,7 +25984,11 @@ function classAutomationCards(t, rerender, persist){
   return [rememberCard,
           musicianCard, commanderCard, provocateurCard, cheerleaderCard,
           glamourCard, captureCard, medicCard, hexCard, channelerCard,
-          aceTrainerCard, duelistCard, heraldCard, typeAceCard, maelstromCard, shadeCallerCard]
+          aceTrainerCard, duelistCard, heraldCard, typeAceCard, maelstromCard, shadeCallerCard,
+          /* the other twelve Elementalists, in the book's own Type order */
+          swarmlordCard, sparkMasterCard, fireBringerCard, windRunnerCard, apparitionCard,
+          druidCard, earthShakerCard, frostTouchedCard, prismCard, miasmicCard,
+          stoneWarriorCard, steelheartCard]
     .map(fn => fn(t, rerender, persist)).filter(Boolean);
 }
 
@@ -25113,7 +26234,7 @@ function encHealCreature(o, isT){
   resetUses(o, "all"); resetManualCS(o); clearStorageDigestion(o); clearAllStatuses(o);
   if(isT){
     o.usedAP = 0; o.modes = {}; o.manualBoundAP = 0;
-    delete o.fightOn; delete o.critMoment;
+    delete o.fightOn; delete o.critMoment; delete o.bottled;
     o.currentHP = trainerDerived(o).hp;
   } else {
     delete o.momentum; delete o.critMoment; delete o.perseveranceUsed; delete o.typeRefreshed;
@@ -25246,6 +26367,32 @@ function syncEncMonLevelupMoves(p, sp){
   const current = speciesLevelupNames(sp, p.level).slice(-6);
   p.moves = [...current, ...kept];
 }
+/* Higher-tier Abilities come with level (PTU 1.05 Core p.199): a Pokemon is born with a Basic
+   Ability, unlocks an Advanced one at Lv 20 and a High one at Lv 40. Wild/NPC creatures are rolled
+   rather than chosen, so each threshold hands this one a RANDOM Ability off that tier of its
+   species list. Which one it rolled is remembered in p.encTierAbil, so:
+     - dropping the level back under the threshold takes that Ability away again,
+     - a tier is only ever rolled once, so a GM who deletes or swaps the rolled Ability by hand
+       (or who had already given it one of that tier) is never overruled on the next level nudge. */
+function syncEncMonTierAbilities(p, sp){
+  if(!sp) return;
+  if(!Array.isArray(p.abilities)) p.abilities = [];
+  const marks = p.encTierAbil = p.encTierAbil || {};
+  [["adv","advanced",20], ["high","high",40]].forEach(([key, tier, need])=>{
+    if((p.level||1) >= need){
+      if(marks[key]) return;                                            // this tier was already rolled once
+      const pool = (sp.abilities?.[tier] || []).filter(Boolean);
+      if(pool.some(a => p.abilities.includes(a))) return;               // GM already gave it one of this tier
+      const fresh = pool.filter(a => !p.abilities.includes(a));
+      if(!fresh.length) return;                                         // species has nothing on this tier
+      const pick = fresh[Math.floor(Math.random()*fresh.length)];
+      p.abilities.push(pick); marks[key] = pick;
+    } else if(marks[key]){
+      p.abilities = p.abilities.filter(a => a !== marks[key]);          // levelled back down - hand it back
+      delete marks[key];
+    }
+  });
+}
 function addEncounterMon(enc, into){
   // "Mega X" DB entries are stat/type stubs for the temporary Mega Evolve transform (megaEvolve) —
   // they carry no moves or abilities of their own, so adding one directly would spawn a mon that
@@ -25256,6 +26403,7 @@ function addEncounterMon(enc, into){
     p.level=5; p.xp=xpForLevel(5);
     if(sp){ p.moves = speciesLevelupNames(sp, p.level).slice(-6);           // pre-load level-up moves
             if(sp.abilities?.basic?.length) p.abilities=[sp.abilities.basic[0]]; }
+    syncEncMonTierAbilities(p, sp);                                     // Advanced at Lv 20, High at Lv 40
     p.auras = legendaryAurasFor(name); initAuraActive(p);                   // legendaries get their book Domains
     encRandomize(p);                                                        // random nature/gender/shiny/stats
     (into||enc.mons).push(p); saveEnc(); renderEncounters();
@@ -25563,6 +26711,7 @@ function makeWildMon(name, level){
     p.moves = speciesLevelupNames(sp, p.level).slice(-6);   // its six most recent level-up moves
     const basic = sp.abilities?.basic || [];
     if(basic.length) p.abilities=[encPickOne(basic)];
+    syncEncMonTierAbilities(p, sp);                        // plus a rolled Advanced (Lv 20+) / High (Lv 40+)
   }
   p.auras = legendaryAurasFor(name); initAuraActive(p);     // nothing on these tables is legendary, but stay honest
   encRandomize(p);
@@ -26245,7 +27394,7 @@ function encounterMonCard(enc, p, list, trainer){
   nw.append(el("div",{style:"font-weight:800"}, (fainted?"💀 ":"")+encMonName(p),
     genderIcon(p.gender, {style:"margin-left:5px"}), " ", el("span",{html:monTypes(p, sp).map(typeBadge).join(" ")+teraTag(p)})));
   const lvIn=el("input",{type:"number",min:1,max:100,value:p.level,style:"width:60px",title:"level"});
-  lvIn.addEventListener("change",()=>{ const l=Math.max(1,Math.min(100,parseInt(lvIn.value)||1)); p.level=l; p.xp=xpForLevel(l); encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; syncEncMonLevelupMoves(p,sp); tpSync(p); saveEnc(); renderEncounters(); });
+  lvIn.addEventListener("change",()=>{ const l=Math.max(1,Math.min(100,parseInt(lvIn.value)||1)); p.level=l; p.xp=xpForLevel(l); encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; syncEncMonLevelupMoves(p,sp); syncEncMonTierAbilities(p,sp); tpSync(p); saveEnc(); renderEncounters(); });
   nw.append(el("div",{class:"small muted",style:"margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"},
     "Lv", lvIn, `· ${p.nature||"—"} · ${p.gender||"—"}${p.shiny?" · ✨Shiny":""}`));
 
@@ -30285,6 +31434,13 @@ document.addEventListener("click", e=>{
 /* Features the sheet actually runs for you — shown as a ⚙ line under the rules text, so a player
    can tell "the app handles this" from "remember to tell the GM". Keyed by featKey. */
 const FEATURE_AUTO_NOTES = {
+  "flip out":
+    "Each of the four Moves gets its own control on its \u{1F3B2} roll. Aerial Ace: tick \"don't test for a "
+    + "Critical Hit\" and the roll really can't Crit, with the Pass Keyword printed in its place. Splash: one "
+    + "button a Scene puts the Interrupt's Damage Reduction (twice your Acrobatics Rank) on you as a one-shot "
+    + "charge, spent by the first attack that lands. Acrobatics: its Damage Base 11 condition is ticked for you "
+    + "whether or not you're holding an Item. Bounce: a button takes every Hazard marker in your landing square "
+    + "and the ring around it off the Map.",
   "powerful motivator":
     "Rolling Baby-Doll Eyes, Confide, Leer or one of your Provocateur Moves shows that Move's extra effect right in the roll — it applies whether you hit or miss.",
   "play them like a fiddle":
@@ -34349,7 +35505,7 @@ function tokenDefTypes(token){
        your Legendary Form's Types while in your Avatar Form" (B&D p.52). That is the only way a
        human on this board has a Type chart at all, and the grant cuts both ways: the weaknesses
        come with it. Returns [] for everyone else, exactly as before. */
-    if(L.kind==="trainer"||L.kind==="enctrainer") return usurpSharedTypes(L.obj);
+    if(L.kind==="trainer"||L.kind==="enctrainer") return trainerBodyTypes(L.obj);
     return monTypes(L.obj);
   }
   return token.species ? (getSpecies(token.species)?.types || []) : [];
