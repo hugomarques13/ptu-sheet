@@ -2610,6 +2610,21 @@ function typeAbilityRow(p, an, redraw, persist){
         (persist||save)(); redraw && redraw();
         toast(`\u{1F3C3} Sprint \u2014 ${ownerLabel(p)} gains +2 Speed Combat Stages.`);
       }, "+2 Overland is applied automatically");
+  if(key === "treasure hoard"){
+    const roaming = hoardForme(p) === "roaming";
+    return mk(roaming ? "\u{1F4E6} Climb back into the chest" : "\u{1F3C3} Leave the chest behind",
+      "At-Will, Swift Action \u2014 step out of the chest into Roaming Forme (the chest stays behind in an "
+      + "adjacent square as Blocking Terrain), or, standing next to it, pick it back up and return to Chest Forme.",
+      () => {
+        if(roaming) treasureHoardRevert(p); else p.hoardForme = "roaming";
+        (persist||save)(); redraw && redraw();
+        toast(roaming ? `\u{1F4E6} ${ownerLabel(p)} is back in its Chest Forme \u2014 +5 Damage Reduction`
+                      : `\u{1F3C3} ${ownerLabel(p)} leaves its chest behind \u2014 +3 Overland, no Attacks of Opportunity provoked`
+                        + ` \u00b7 drop the chest with the Map's \u26F0 Terrain tool (Blocking, 1\u00d71)`);
+      },
+      roaming ? "Roaming: +3 Overland (in the Capabilities above) \u00b7 provokes no Attacks of Opportunity"
+              : "Chest: +5 Damage Reduction (already in this Pok\u00e9mon's damage math)");
+  }
   if(key === "celebrate")
     return mk("\u{1F389} Celebrate",
       "At-Will, Free Action, when the user makes a foe Faint with a damaging attack \u2014 +1 Speed Combat Stage, and an immediate extra Shift Action taken as if Slowed.",
@@ -3980,6 +3995,8 @@ function itemFreqForKey(key){
   if(kind==="item") return "Scene";
   // ...and its Daily cousin (the Tera Orb's one Terastallization a day)
   if(kind==="dayitem") return "Daily";
+  // a Legendary / General Gift's own Frequency, so End Scene and End Day hand its pips back
+  if(kind==="gift") return giftFreqForName(name);
   return null;
 }
 /* frequency of a named Move/Ability/Feature, for at-a-glance labels (classes/edges have none) */
@@ -4507,6 +4524,7 @@ function applyEndScene(c){
     if(p.mega) megaRevert(p,true);
     endSceneTypeState(p);                // Terastallization, Tera Shell / Teraform Zero, Radiating
     shieldsDownRevert(p);                // Shields Down: back to Meteor Forme out of combat, if not Bruised
+    treasureHoardRevert(p);              // …and a Gimmighoul's chest comes back with it
     /* Schooling: the Scene just took every Temporary Hit Point away, so re-run the Ability's own
        revert test - a school that walked out of the fight under half HP disperses right here. */
     applySchooling(p, p.currentHP==null ? ownerMaxHP(p) : p.currentHP);
@@ -4555,6 +4573,7 @@ function applyEndDay(c, plan){
     const pCap = pokeDerived(p).maxHP;    // already capped by remaining Injuries
     p.currentHP = noHP(p.injuries) ? Math.min(typeof p.currentHP==="number" ? p.currentHP : pCap, pCap) : pCap;
     shieldsDownRevert(p);                 // …and a patched-up Minior pulls its shell back on
+    treasureHoardRevert(p);               // …and a Gimmighoul is back in its chest
   });
   return tally;
 }
@@ -5328,6 +5347,11 @@ function pokeBaseStats(p) {
   /* ownerHasAbility, not hasAbility: Pure Power can also arrive from a held Thick Club on a
      Cubone/Marowak (HELD_FX `grantsAbility`), which p.abilities never lists. */
   if (ownerHasAbility(p,"Huge Power") || ownerHasAbility(p,"Pure Power")) out.atk *= 2;
+  /* Sorcery [2-16 Errata]: "The user's Base Special Attack Stat is increased by +5, and by +1 more
+     for every 10 Levels the user has. This Ability cannot be disabled in any way." Applied to the
+     BASE, like Huge Power above, so allocated points add on top and Combat Stages multiply the
+     result. `ownerHasAbility` rather than `hasAbility` so a Thick-Club-style grant counts too. */
+  if (ownerHasAbility(p,"Sorcery")) out.spatk += 5 + Math.floor(Math.max(1, p.level||1)/10);
   return out;
 }
 function pokeDerived(p) {
@@ -5756,9 +5780,26 @@ function artFallbackInline(img){
   if(next){ img.setAttribute("data-art", JSON.stringify(queue)); img.src = next; return; }
   img.onerror = null; img.src = POKEBALL_SVG; img.classList.add("fallback");
 }
+/* Which URL of a species' art chain actually loaded, remembered for the session.
+   pokemondb has no artwork for a lot of the newer Megas, so their FIRST candidate 404s and the
+   chain walks on to the next one — and a 404 carries no cache headers, so every rebuild of the
+   board paid for that failure again. Every zoom settles with a full renderMap, which is why a
+   Mega token blinked through the placeholder on every pinch while everything else sat still.
+   Starting from the URL that worked last time makes the second and every later render a straight
+   cache hit, and the chain still falls through normally if that URL ever stops working. */
+const ART_RESOLVED = new Map();          // "<species>|<shiny>" -> the src that actually loaded
+function artChainFor(key, chain){
+  const good = key ? ART_RESOLVED.get(key) : null;
+  if(!good || good === chain[0]) return chain;
+  return [good, ...chain.filter(u => u !== good)];
+}
 /* try each candidate in turn as the image fails to load, ending at the pokéball placeholder */
-function attachArtFallback(img, srcs){
+function attachArtFallback(img, srcs, key){
   const queue = (srcs||[]).slice();
+  if(key) img.addEventListener("load", function(){
+    // the pokéball placeholder is marked .fallback before its own load fires — never cache that
+    if(this.src && !this.classList.contains("fallback")) ART_RESOLVED.set(key, this.src);
+  });
   img.addEventListener("error", function(){
     const next = queue.shift();
     if(next){ this.src = next; return; }
@@ -5813,12 +5854,13 @@ function speciesArtChain(name, shiny){
 }
 function monSprite(speciesName, shiny, sizeCls="s-sm", override, eager){
   // an uploaded photo wins outright; if it fails that's just a broken photo, not a missing sprite
-  const chain = override ? [override] : speciesArtChain(speciesName, shiny);
+  const artKey = override ? null : `${speciesName||""}|${shiny?1:0}`;
+  const chain = override ? [override] : artChainFor(artKey, speciesArtChain(speciesName, shiny));
   // `eager` is for the map board: its tokens sit inside a pan/zoom container whose CSS transform
   // confuses native lazy-loading's viewport check, so a token can be judged "off-screen" and left
   // unloaded until a later pan recomputes it — the image blinking in and out that this fixes.
   const img = el("img",{class:`sprite ${sizeCls}`, alt:speciesName||"", loading: eager?"eager":"lazy", src: chain[0]});
-  attachArtFallback(img, chain.slice(1));
+  attachArtFallback(img, chain.slice(1), artKey);
   return img;
 }
 const TRAINER_PLACEHOLDER = "data:image/svg+xml,"+encodeURIComponent(
@@ -7254,6 +7296,7 @@ function applyAutoKO(owner, oldHP, newHP){
       return "fightOn";
     }
     owner.statuses.push("knockedOut");
+    treasureHoardRevert(owner);     // "When the user faints ... the chest disappears and they revert to Chest Forme"
     transformRevert(owner, true);   // "Transform lasts until the user is ... Fainted" (no-op for anyone else)
     megaRevert(owner, true);        // a Fainted Pokémon can't stay Mega Evolved (no-op if not Mega)
     endSceneTypeState(owner);       // "remains Terastalized until they are Fainted or the Scene ends"
@@ -11630,6 +11673,36 @@ const GIFT_GROUPS = [
 const GIFT_CATALOG = GIFT_GROUPS.flatMap(g => g.gifts.map(([tier,name,prereq,effect]) =>
   ({ group:g.group, patrons:g.patrons, tier, name, prereq, effect })));
 function giftByName(name){ return GIFT_CATALOG.find(x=>x.name===name) || null; }
+/* ---- a Gift's Frequency ----------------------------------------------------------------------
+   Blessings and the Signer / Messiah branch tables carry `freq` outright. Every species and
+   General Gift only states it inside its own rules text — "Daily x3 Standard Action: …",
+   "Scene x2 - Trigger: …" — so it is read off the front of the effect, which is where the book
+   always prints it. Anything without one (a Static Gift, a Gift that just grants an Ability or a
+   Move) returns "" and gets no pips, exactly like a Static Move. */
+const GIFT_FREQ_RE = /\b(Daily|Scene|At-?Will|Static|EOT|Every Other Turn)\b(?:\s*[x\u00d7]\s*(\d+))?/i;
+function giftFreqText(g){
+  if(!g) return "";
+  // "Messiah: Daily x3 — Standard Action" / "Signer: Scene — Swift Action"
+  const own = String(g.freq||"").replace(/^\s*(messiah|signer)\s*:\s*/i, "").trim();
+  const src = own || String(g.effect || (giftByName(g.name)||{}).effect || "").slice(0, 100);
+  const hit = GIFT_FREQ_RE.exec(src);
+  if(!hit) return own;
+  const w = hit[1].toLowerCase();
+  const base = /^at-?will$/.test(w) ? "At-Will" : w==="static" ? "Static"
+             : (w==="eot" || w==="every other turn") ? "EOT"
+             : w[0].toUpperCase()+w.slice(1);
+  return hit[2] ? `${base} x${hit[2]}` : base;
+}
+/* …so resetUses knows which of a Trainer's "gift:" pips a Scene or a Day hands back */
+function giftFreqForName(name){
+  const n = String(name||"").toLowerCase();
+  const cat = GIFT_CATALOG.find(x => String(x.name).toLowerCase() === n);
+  if(cat) return giftFreqText(cat);
+  const bl = (typeof BLESSINGS !== "undefined" && Array.isArray(BLESSINGS))
+    ? BLESSINGS.find(x => String(x.name).toLowerCase() === n) : null;
+  if(bl) return giftFreqText({ freq: (bl.messiah||{}).freq, effect: (bl.messiah||{}).text });
+  return null;
+}
 
 /* ---------- General Legendary Gifts (book pp.53-54) ----------------------------------------------
    Not tied to any one Patron's species list — they're about living in a world where people carry
@@ -12310,8 +12383,20 @@ function giftRow(t, g, i, gm, saveFn, rerender){
     }
     info.append(statLine);
   }
-  const freqTxt = bSide ? bSide.freq : g.freq;
-  if(freqTxt) info.append(el("div",{class:"small",style:"margin-top:3px"}, el("b",{}, freqTxt)));
+  /* The Frequency line, and — new — the same use pips every Move, Ability and Feature carries.
+     A Daily x3 Gift was previously a sentence of text with nowhere to tick it off, so the table
+     tracked it on paper. Keyed by the Gift's name in the Trainer's own `uses`, so 🌙 End Scene and
+     ☀ End Day refresh it with everything else (see itemFreqForKey's "gift" branch). */
+  const freqTxt = bSide ? bSide.freq : (g.freq || giftFreqText(g));
+  if(freqTxt){
+    const fRow = el("div",{class:"small",style:"margin-top:3px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"},
+      el("b",{}, freqTxt));
+    const uc = usesControl(t, "gift", g.name || "Gift",
+      bSide ? String(bSide.freq||"").replace(/^\s*(messiah|signer)\s*:\s*/i,"") : freqTxt,
+      rerender, saveFn);
+    if(uc) fRow.append(uc);
+    info.append(fRow);
+  }
   /* Everything past this point is the rules text, which is what makes this tab enormous. It goes in
      its own drop-down, keyed so it survives the re-render an edit on the card causes. `info` is
      rebound to it, so every append below lands inside without any of them knowing. */
@@ -14263,7 +14348,26 @@ function buffDR(owner){
   // Enduring Rage (Power of Rage): 5 DR while Enraged — an Ability, so it's never consumed either
   const rage = rageAbilityDR(owner); if(rage){ dr+=rage; from.push("Enduring Rage (Enraged)"); }
   const stone = stoneStanceDR(owner); if(stone){ dr+=stone; from.push("Moon Mountain Stance"); }
+  // Treasure Hoard (Gimmighoul): +5 DR while it is still sitting in its chest. An Ability, so it
+  // is never consumed — same shape as Enduring Rage above.
+  const hoard = treasureHoardDR(owner); if(hoard){ dr+=hoard; from.push("Treasure Hoard (Chest Forme)"); }
   return { dr, from };
+}
+/* ---- Treasure Hoard (Gimmighoul) -----------------------------------------------------------
+   "The user leaves their chest behind in an adjacent square, changing from Chest Forme to Roaming
+   Forme… Bonus: While in Chest Forme, the user receives +5 Damage Reduction. While in Roaming
+   Forme, the user does not provoke Attacks of Opportunity and gains +3 Overland."
+   The Forme is one field, defaulting to Chest (which is how a Gimmighoul is found). Fainting or
+   being recalled reverts it — see treasureHoardRevert, called from the same places Shields Down
+   pulls a Minior's shell back on. */
+const hasTreasureHoard = o => !!o && o.species !== undefined && ownerHasAbility(o, "Treasure Hoard");
+function hoardForme(p){ return (hasTreasureHoard(p) && p.hoardForme === "roaming") ? "roaming" : "chest"; }
+function treasureHoardDR(owner){ return (hasTreasureHoard(owner) && hoardForme(owner)==="chest") ? 5 : 0; }
+/* back into the chest — on fainting, on being recalled, and at the end of the Scene */
+function treasureHoardRevert(p){
+  if(!hasTreasureHoard(p) || hoardForme(p) !== "roaming") return false;
+  delete p.hoardForme;
+  return true;
 }
 /* Spend the one-shot DR buffs (e.g. Excited) after they've absorbed an incoming attack — ONE
    charge of each, matching exactly what buffDR counted. Three Excited absorb 5 from this attack and
@@ -17019,17 +17123,30 @@ function moveCapGrants(moveName){
    count, so a Pokémon that already has a Levitate Speed keeps it and only one that has none gains
    the flat 4. A GM who wants the +2 anyway can still step it by hand. */
 const ABILITY_CAP_GRANTS = {
-  "levitate":  [{ name:"Levitate", field:"levitate", value:4, mode:"min" }],
+  "levitate":  [{ name:"Levitate", field:"levitate", value:4, mode:"minPlus", plus:2, bakedIf:"Levitate" }],
   /* Sprint (Urshifu Single Strike): "Additionally, the user's Overland Speed is always increased
      by +2." Static and unconditional - the Scene Swift Action half is a button on the Ability. */
   "sprint":    [{ name:"Overland", field:"overland", value:2, mode:"add" }],
-  "elevate":   [{ name:"Levitate", field:"levitate", value:4, mode:"min" }],
+  "elevate":   [{ name:"Levitate", field:"levitate", value:4, mode:"minPlus", plus:2, bakedIf:"Elevate" }],
+  /* Treasure Hoard (Gimmighoul): "While in Roaming Forme … gains +3 Overland." The other half of
+     the Bonus (+5 Damage Reduction in Chest Forme) is in buffDR; the Forme itself is the button
+     on the Ability's own row (see typeAbilityRow). */
+  "treasure hoard": [{ name:"Overland", field:"overland", value:3, mode:"add",
+                       cond:p => hoardForme(p)==="roaming", condText:"while in Roaming Forme" }],
   "migraine":  [{ name:"Telekinetic", field:null, value:null, mode:null,
                   cond:p => { const d = pokeDerived(p); return (p.currentHP==null ? d.maxHP : p.currentHP) <= d.maxHP/2; },
                   condText:"while at 50% HP or less" }],
 };
 function abilityCapGrants(name){
   return ABILITY_CAP_GRANTS[String(name||"").toLowerCase().replace(/\s*\[errata\]\s*$/i,"").trim()] || [];
+}
+/* Does this species print `name` in ANY of its three Ability tiers? Used to tell an Ability the
+   dex already accounted for from one the Pokémon picked up later (see ABILITY_CAP_GRANTS). */
+function speciesPrintsAbility(sp, name){
+  const a = sp && sp.abilities; if(!a || !name) return false;
+  const want = String(name).toLowerCase();
+  const norm = x => String(x||"").toLowerCase().replace(/\s*\[errata\]\s*$/,"").trim();
+  return ["basic","advanced","high"].some(k => (a[k]||[]).some(x => norm(x) === want));
 }
 /* every grant a specific Pokémon currently has, tagged with where it came from */
 function capabilityGrants(p){
@@ -17061,7 +17178,17 @@ function monCapabilities(p, sp, opts){
   capabilityGrants(p).forEach(g=>{
     if(g.field){                                   // a numeric Capability with its own field
       const cur = cap[g.field] || 0;
-      const next = g.value==null ? cur : (g.mode==="add" ? cur + g.value : Math.max(cur, g.value));
+      /* "minPlus" is Levitate's own wording — "gains a Levitate Speed of 4, OR has existing
+         Levitate Speeds increased by +2". The catch is that a species whose printed Ability IS
+         Levitate already has the Ability folded into its dex entry (Gastly 4, Gengar 5), so
+         adding again there would double-count; those keep their printed number, and only a
+         Pokémon that picked the Ability up from somewhere else gets the +2. */
+      const next = g.value==null ? cur
+        : g.mode==="add" ? cur + g.value
+        : g.mode==="minPlus"
+          ? ((cur > 0 && !speciesPrintsAbility(monBodySpecies(p, sp), g.bakedIf))
+              ? cur + (g.plus||2) : Math.max(cur, g.value))
+        : Math.max(cur, g.value);
       if(next !== cur){ cap[g.field] = next; note(CAP_FIELD_LABEL[g.field] || g.name, g); }
       return;
     }
@@ -19907,6 +20034,17 @@ function openMoveRoll(p, m, sp, opts={}){
     const critExtra = (gCrit && r) ? rollDiceString(ds).total : 0;  // crit adds the Damage Base again (Core p.235), not the stat
     const total = r ? Math.max(0, r.total + (d.eff.atk||0) + (bm.dmg||0) + critExtra) : 0;
 
+    /* The ghost strike is still an attack made BY this Pokémon, so it has to reach the defender
+       carrying everything the attacker is — Mega (a Rogue Mega only resists non-Megas), Tinted
+       Lens, Exploit, the War Aura, Mold Breaker, a Type Booster's flat super-effective bonus.
+       Without these the bonus hit was resolved as if it came from nobody, so hitting a Mega with
+       it was scored the way a non-Mega's hit is. */
+    const gMold = attackerMoldBreak(p, "Ghost");
+    const gAtk = { dmg:total, type:"Ghost", physical:true,
+      pierceImmune: ignoresTypeImmunity(p, gm, "Ghost"),
+      atkTinted: ownerHasAbility(p,"Tinted Lens") || !!(gMold && gMold.tinted),
+      atkExploit: ownerHasAbility(p,"Exploit"), atkMega: isMegaMon(p),
+      atkWar: ownerAuraActive(p,"War"), atkMold: !!gMold, seFlat: heldSeFlatDamage(p) };
     /* …and into the GM's feed as its own entry, exactly like the Move that triggered it. The
        player rolling this at the table sees both hits in the window; without this the GM only got
        the triggering Move and had to be told about the ghost strike out loud. */
@@ -19914,7 +20052,7 @@ function openMoveRoll(p, m, sp, opts={}){
       headline:`${gCrit?"💥 CRIT ":"💥 "}${total} damage`,
       lines:[`🎯 Accuracy ${accTot} (d20 ${acc}) vs AC ${gm.ac} + Physical Evasion`,
              `Ghost · Physical · DB ${gDB} — Struggle Attack, no STAB`],
-      atk:{ dmg:total, type:"Ghost", physical:true } });
+      atk: gAtk });
 
     const node = el("div",{class:"card",
       style:`background:var(--panel-2);border:1px solid ${gCrit?"var(--bad)":"var(--line)"};margin:10px 0 0`});
@@ -19936,7 +20074,7 @@ function openMoveRoll(p, m, sp, opts={}){
     node.append(el("div",{class:"small muted",style:"margin-top:2px"},
       "Free Action, resolved only if the triggering Move hit. No STAB — it's a Struggle Attack. "
       + "This bonus strike can't trigger Ancestral Connection again."));
-    const tw = attackTargetWidget({ dmg:total, type:"Ghost", physical:true });
+    const tw = attackTargetWidget(gAtk);
     if(tw) node.append(tw);
     return node;
   }
@@ -20006,9 +20144,13 @@ function openMoveRoll(p, m, sp, opts={}){
     }
     if(sp2?.kind==="fixedDamage"){
       const accLine = el("div",{style:"margin-bottom:10px"});
+      // …and the same line the feed gets, so the GM can see whether a Psywave actually connected
+      let accSay = "No Accuracy Check — this Move cannot miss.";
       accLine.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLL"));
       if(m.ac!=null){
         const acc = 1+Math.floor(Math.random()*20), accTot = acc + (bm.acc||0) + accCS;
+        accSay = `🎯 Accuracy ${accTot} (d20 ${acc}) vs AC ${effAC} + ${evaNote}`
+          + (acc===20?" — natural 20, auto-hit!":acc===1?" — natural 1, auto-miss.":"");
         accLine.append(el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`,
           el("span",{class:"muted",style:"font-size:14px;font-weight:600"}, acc!==accTot?`  (${acc})`:"  (1d20)")));
         accLine.append(el("div",{class:"small muted"},
@@ -20032,7 +20174,7 @@ function openMoveRoll(p, m, sp, opts={}){
       // apply-to-token widget would subtract — the GM sets this HP loss by hand.
       feedLogged = true;
       logRoll({ kind:"move", label:m.name, who:rollerName(p), headline:`💥 ${amt} HP`,
-        lines:[`${mtype||"Typeless"} · fixed damage — ignores Defenses`] });
+        lines:[accSay, `${mtype||"Typeless"} · fixed damage — ignores Defenses`] });
       if(ancestral && (isPhys||isSpec)){ const an = ancestralStrikeNode(); if(an) out.append(an); }
       return;
     }
@@ -22175,7 +22317,7 @@ function allyTargets(t, opts){
     // scenery is linked and editable but is not a creature you can hand a Cheer to
     if(info.unlinked || info.kind==="shop" || info.kind==="hazard" || info.kind==="boat") return;
     const L = tokenLinked(tok); if(!L || !L.obj || seen.has(L.obj)) return;
-    const enemy = ENEMY_LINKS.has(L.kind);
+    const enemy = tokenSide(tok)==="enemy";
     // enemies are never Allies; only a GM sees them at all, and only where a Feature targets foes
     if(enemy && !(opts.foes && isGM())) return;
     seen.add(L.obj);
@@ -23249,7 +23391,7 @@ function channelCandidates(t){
       if(info.unlinked || info.kind === "shop" || info.kind === "hazard" || info.kind === "boat") return;
       const L = tokenLinked(tok);
       if(!L || !L.obj || isTrainerOwner(L.obj)) return;
-      const hostile = ENEMY_LINKS.has(L.kind);
+      const hostile = tokenSide(tok)==="enemy";
       if(hostile && !isGM()){
         if(tok.gmHidden) return;
         if(fog && !fog.has(Math.round(tok.x) + "," + Math.round(tok.y))) return;
@@ -26274,6 +26416,7 @@ function encHealCreature(o, isT){
     else if(isBoss(o)){ bossSetTotalHP(o, bossMaxTotalHP(o)); o.boss.halfInjuryGiven = false; }
     else o.currentHP = pokeDerived(o).maxHP;
     shieldsDownRevert(o);                // …and a patched-up Minior pulls its shell back on
+    treasureHoardRevert(o);              // …and a Gimmighoul is back in its chest
   }
 }
 /* every creature in one encounter — wild Pokémon, NPC Trainers and their parties. Returns the count. */
@@ -26391,6 +26534,10 @@ const encMonName = p => p.nickname || getSpecies(p.species)?.name || p.species |
    nudging the level field can never silently wipe a deliberate pick. */
 function syncEncMonLevelupMoves(p, sp){
   if(!sp) return;
+  /* 🔒 Moves locked: the GM has built this creature's Move list by hand and a nudge of the level
+     field must not rewrite it. Nothing else changes — stats, Abilities and Tutor Points still
+     follow the level as before. */
+  if(p.moveLock) return;
   const allLevelup = new Set(speciesLevelupNames(sp, MAX_LEVEL));
   const kept = p.moves.filter(m=>!allLevelup.has(m));
   const current = speciesLevelupNames(sp, p.level).slice(-6);
@@ -26803,13 +26950,76 @@ function rollWildEncounter(area){
   saveEnc(); renderEncounters();
   toast(`🎲 ${enc.name}${rares.length ? ` — ${rares.join(" + ")}!` : ""}`);
 }
-/* the 🎲 button: a single area rolls straight away, several offer a pick-list first */
+/* ---- what this area has actually produced so far -------------------------------------------
+   Every roll makes an encounter named "<Area> — wild #N" (see rollWildEncounter), so the whole
+   history of the table is already sitting in the encounter library. Counting the species across
+   those answers the question the GM actually asks — "which of these have the party never met?" —
+   without any new bookkeeping. A combo result (Mantyke + Remoraid → Mantine) is counted against
+   the species it became AND the one it came from, since both were on the table. */
+function areaSightings(area){
+  const counts = new Map();
+  const bump = n => { if(n) counts.set(n, (counts.get(n)||0) + 1); };
+  try{
+    (encList()||[]).forEach(e=>{
+      if(!String(e.name||"").startsWith(area.name + " \u2014 wild")) return;
+      (e.mons||[]).forEach(p=>{
+        const nm = (getSpecies(p.species)||{}).name || p.species;
+        bump(nm);
+        (area.combos||[]).forEach(c=>{ if(c.becomes === nm){ bump(c.when); bump(c.with); } });
+      });
+    });
+  }catch(err){}
+  return counts;
+}
+function areaReportNode(area){
+  const counts = areaSightings(area);
+  const rolls = (()=>{ try{ return (encList()||[]).filter(e=>String(e.name||"")
+    .startsWith(area.name + " \u2014 wild")).length; }catch(e){ return 0; } })();
+  const wrap = el("div",{style:"margin-top:6px"});
+  wrap.append(el("div",{class:"small muted",style:"margin-bottom:6px"},
+    rolls ? `${rolls} encounter${rolls===1?"":"s"} rolled from this table so far.`
+          : "Nothing has been rolled from this table yet — everything below is still unseen."));
+  const col = (title, names) => {
+    const box = el("div",{});
+    const seen = names.filter(n=>counts.get(n));
+    box.append(el("div",{class:"small",style:"font-weight:800;margin:6px 0 3px"},
+      `${title} — ${seen.length}/${names.length} seen`));
+    names.forEach(n=>{
+      const c = counts.get(n) || 0;
+      box.append(el("div",{class:"small",style:c?"":"color:var(--bad);font-weight:700"},
+        `${c ? "\u2713" : "\u2022"} ${n}` + (c ? ` \u00d7${c}` : " \u2014 never shown up")));
+    });
+    return box;
+  };
+  const grid = el("div",{style:"display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px"});
+  grid.append(col("Common", area.common||[]), col("Rare", area.rare||[]));
+  wrap.append(grid);
+  const missing = [...(area.common||[]), ...(area.rare||[])].filter(n=>!counts.get(n));
+  wrap.append(el("div",{class:"small",style:"margin-top:8px;font-weight:700;color:"+(missing.length?"var(--bad)":"var(--good)")},
+    missing.length ? `Still to be seen (${missing.length}): ${missing.join(", ")}`
+                   : "\u2713 Every species on this table has turned up at least once."));
+  return wrap;
+}
+/* the 🎲 button: roll a table, and see what it has and hasn't produced */
 function openRandomEncounter(){
   if(!ENC_AREAS.length){ toast("No encounter areas defined"); return; }
-  if(ENC_AREAS.length===1){ rollWildEncounter(ENC_AREAS[0]); return; }
-  openPicker("Roll a wild encounter", ENC_AREAS.map(a=>a.name), name=>{
-    const a = ENC_AREAS.find(x=>x.name===name); if(a) rollWildEncounter(a);
+  const body = el("div",{});
+  ENC_AREAS.forEach((a,i)=>{
+    const head = el("div",{class:"inline",style:"gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"
+      + (i?";margin-top:16px;padding-top:12px;border-top:1px solid var(--line)":"")});
+    head.append(el("span",{style:"font-weight:800"}, a.name,
+      el("span",{class:"muted small",style:"font-weight:400;margin-left:8px"},
+        `Lv ${a.levels[0]}\u2013${a.levels[1]} \u00b7 ${a.size[0]}\u2013${a.size[1]} common + 1 rare`)),
+      el("button",{class:"btn-primary",onclick:()=>{ closeModal(); rollWildEncounter(a); }},"\u{1F3B2} Roll"));
+    body.append(head);
+    const det = el("details",{class:"spoiler","data-key":"encarea:"+a.id, style:"margin-top:4px"});
+    det.open = ENC_AREAS.length === 1;
+    det.append(el("summary",{}, el("span",{class:"muted small"},"what has and hasn't shown up")));
+    det.append(areaReportNode(a));
+    body.append(det);
   });
+  modal({title:"\u{1F3B2} Wild encounters", bodyNode:body,
+    footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
 }
 /* send an encounter Pokémon to the shared PC (i.e. it's been caught) and remove it from the field */
 async function sendEncMonToPC(enc, p, list){
@@ -27549,7 +27759,19 @@ function encounterMonCard(enc, p, list, trainer){
   const mw=el("div",{style:"margin-top:8px"});
   mw.append(el("div",{class:"inline",style:"justify-content:space-between"},
     el("span",{class:"small muted",style:"font-weight:700"},"Actions — tap 🎲 to roll"),
-    el("button",{class:"linkbtn",onclick:()=>addEncMove(p,sp)},"+ move")));
+    el("span",{class:"inline",style:"gap:10px"},
+      /* 🔒 pins the Move list against the level field. Changing a level normally re-derives the
+         six most recent level-up Moves (syncEncMonLevelupMoves), which is right for a creature
+         that was rolled up and wrong for one the GM wrote by hand. */
+      el("button",{class:"linkbtn",
+        title: p.moveLock ? "Moves are locked — changing the level leaves them exactly as they are. Tap to unlock."
+                          : "Moves follow the level: changing it re-derives the six most recent level-up Moves. Tap to lock them as they are.",
+        onclick:()=>{ if(p.moveLock) delete p.moveLock; else p.moveLock = true;
+          saveEnc(); renderEncounters();
+          toast(p.moveLock ? "🔒 Moves locked — level changes won't touch them"
+                           : "🔓 Moves follow the level again"); }},
+        p.moveLock ? "🔒 Moves locked" : "🔓 Moves follow level"),
+      el("button",{class:"linkbtn",onclick:()=>addEncMove(p,sp)},"+ move"))));
   mw.append(struggleControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   const st=struggleFor(p,sp); if(st) mw.append(encounterMoveRow(p,sp,st,st.name,favSet,null,true));
   const grant = poltergeistGrant(p, sp);   // still needed by the Abilities block further down
@@ -28008,6 +28230,203 @@ function openExpCalc(enc){
   body.append(inRow, out); recalc();
   modal({title:`🧮 EXP — ${enc.name}`, bodyNode:body});
 }
+
+/* ===================================================================
+   HOW HARD IS THIS ENCOUNTER?  (Core p.473, "Basic Encounter Creation Guidelines")
+
+   The book builds encounters by working BACKWARDS from Experience: an everyday fight is worth
+   "the average Pokémon Level of your PCs × 2" per player, and that number times the number of
+   players is the pool of enemy Levels you get to spend. Run the same arithmetic forwards and it
+   grades a finished encounter — total its Levels (Trainers count double, Core p.460, which
+   encounterBaseXP already does) and divide by that everyday budget.
+
+   The bands are anchored on the book's own two worked examples for the same party: three Level 10
+   Trainers with Level 20 Pokémon get an everyday encounter of 120 Levels (ratio 1.0), and the
+   "bigger, more important fight" that "poses a real threat of taking them all out" is 180 (1.5).
+
+   One ratio does not settle it and the book says so twice — "be wary of action economy!" and
+   "Levels aren't the only factor" — so the read-out also reports turns-per-round on each side and
+   how the two sides' Pokémon Levels line up, instead of pretending the number is the whole answer.
+=================================================================== */
+const DIFF_BANDS = [
+  { max:0.50, label:"Trivial",   sig:1,   color:"var(--muted)",
+    blurb:"A speed bump. Costs them a round or two and nothing else." },
+  { max:0.80, label:"Light",     sig:1.5, color:"#4b8fed",
+    blurb:"Taxes them slightly — some HP, maybe a potion." },
+  { max:1.20, label:"Everyday",  sig:2,   color:"#3fa66a",
+    blurb:"The book's baseline: about one Pokémon Level's worth of fight (Core p.473)." },
+  { max:1.50, label:"Hard",      sig:3,   color:"#c8a32b",
+    blurb:"A taxing fight — spent Dailies, real HP loss, possibly an Injury." },
+  { max:2.00, label:"Major",     sig:4,   color:"#e08a3c",
+    blurb:"The book's \"bigger, more important fight\": it threatens to take them out." },
+  { max:2.75, label:"Boss-tier", sig:5,   color:"#d9534f",
+    blurb:"A Threaten encounter (Core p.475) — best run after something has already taxed them." },
+  { max:Infinity, label:"Overkill", sig:5, color:"#b02a37",
+    blurb:"Past what the guidelines scale to. Expect a wipe unless somebody is holding back." },
+];
+const diffBand = r => DIFF_BANDS.find(b => r < b.max) || DIFF_BANDS[DIFF_BANDS.length-1];
+/* Turns a single body takes in a round — the actual unit of action economy. A Boss gets several
+   (Running the Game p.487) and a Swarm acts on its Multiplier (Core p.478); counting heads instead
+   would rate a 3-action Boss the same as a Magikarp. */
+const diffActs = o => isBoss(o) ? Math.max(1, o.boss?.actions||1)
+                    : isSwarm(o) ? Math.max(1, swarmActs(o)) : 1;
+/* The PC parties to weigh against: in a cloud campaign, every sheet the GM does NOT own; offline,
+   whatever characters live on this device. */
+function diffPartyChars(){
+  if(mode==="cloud") return playerRestRows()
+    .map(r=>({ id:r.id, name:r.data.trainer?.name || r.owner_name || r.name || "Trainer", data:r.data }));
+  return (state.characters||[]).map(c=>({ id:c.id, name:c.trainer?.name || c.name || "Trainer", data:c }));
+}
+/* What a character actually brings: their strongest `n` on-team Pokémon, since those are the ones
+   that come out of the ball. Sorted high-first because nobody leads with their Level 5 Combee. */
+function diffTopLevels(data, n){
+  return (data?.pokemon||[]).filter(p=>p.onTeam!==false).map(p=>Math.max(0,p.level||0))
+    .sort((a,b)=>b-a).slice(0, Math.max(1, n|0));
+}
+const diffAvg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : 0;
+/* every enemy Pokémon in the encounter, wild and pocketed alike */
+const diffFoeMons = enc => [...(enc.mons||[]), ...(enc.trainers||[]).flatMap(tr=>tr.pokemon||[])];
+function encounterDifficulty(enc, avgMon, players, perPlayer, perFoe){
+  players   = Math.max(1, players|0);
+  perPlayer = Math.max(1, perPlayer|0);
+  perFoe    = Math.max(1, perFoe|0);
+  const everyday = Math.round(avgMon * 2 * players);          // Core p.473, Significance x2
+  const base     = encounterBaseXP(enc);
+  const ratio    = everyday > 0 ? base/everyday : 0;
+  /* Turns per round once everyone is on the field. Wild Pokémon are all out at once — nobody is
+     holding them in a ball — while a Trainer's party trickles out `perFoe` at a time. */
+  let foeActs = 0, foeBodies = 0;
+  (enc.mons||[]).forEach(p=>{ foeBodies++; foeActs += diffActs(p); });
+  (enc.trainers||[]).forEach(tr=>{
+    if(tr.trainer){ foeBodies++; foeActs += diffActs(tr.trainer); }
+    (tr.pokemon||[]).slice(0, perFoe).forEach(p=>{ foeBodies++; foeActs += diffActs(p); });
+  });
+  const pcActs = players + players*perPlayer;                 // Trainers act too
+  const foeMons = diffFoeMons(enc);
+  return { everyday, base, ratio, band:diffBand(ratio), players, perPlayer, perFoe,
+           foeActs, foeBodies, pcActs, avgMon,
+           avgFoeMon: diffAvg(foeMons.map(p=>p.level||0)), foeMonCount: foeMons.length,
+           trainers: (enc.trainers||[]).filter(tr=>tr.trainer).length };
+}
+function openEncDifficulty(enc){
+  const body = el("div",{});
+  const chars = diffPartyChars();
+  const skip  = new Set(enc.diffSkip||[]);
+  let perPlayer = Math.max(1, enc.diffPerPlayer||1);
+  let perFoe    = Math.max(1, enc.diffPerFoe||1);
+  let avgTouched = false;                 // once the GM types an average, stop overwriting it
+
+  const who   = el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"});
+  const avgIn = el("input",{type:"number",min:1,max:100,step:0.5});
+  const ppIn  = el("input",{type:"number",min:1,max:6,value:perPlayer});
+  const pfIn  = el("input",{type:"number",min:1,max:6,value:perFoe});
+  const out   = el("div",{class:"card",style:"margin:0"});
+  const picked = () => chars.filter(c=>!skip.has(c.id));
+  /* reads the send-out box itself rather than `perPlayer` — this runs from the box's own `input`
+     handler, before recalc() has copied the new value across, and using the stale one left the
+     average showing the top 1 Pokémon while the roster below already listed the top 3. */
+  const syncAvg = () => {
+    if(avgTouched) return;
+    const n = Math.max(1, parseInt(ppIn.value)||1);
+    avgIn.value = (Math.round(diffAvg(picked().flatMap(c=>diffTopLevels(c.data, n)))*10)/10) || "";
+  };
+
+  if(chars.length){
+    who.append(el("div",{class:"small muted",style:"margin-bottom:6px"},
+      "Who's in this fight — their strongest Pokémon are the ones counted."));
+    chars.forEach(c=>{
+      const cb = el("input",{type:"checkbox"}); cb.checked = !skip.has(c.id);
+      const lv = el("span",{class:"small muted"});
+      c._paint = () => { const l = diffTopLevels(c.data, perPlayer);
+        lv.textContent = `Lv ${c.data.trainer?.level||"?"} · `
+          + (l.length ? `bringing Lv ${l.join(", ")}` : "no Pokémon on team"); };
+      c._paint();
+      cb.addEventListener("change",()=>{
+        if(cb.checked) skip.delete(c.id); else skip.add(c.id);
+        enc.diffSkip = [...skip];
+        /* the people in the fight are the people the EXP is split between — keep the two tools
+           telling the same story instead of quietly disagreeing */
+        enc.players = Math.max(1, picked().length); saveEnc();
+        syncAvg(); recalc();
+      });
+      who.append(el("label",{class:"inline",style:"gap:8px;cursor:pointer;justify-content:space-between"},
+        el("span",{class:"inline",style:"gap:8px"}, cb, el("span",{}, c.name)), lv));
+    });
+  } else {
+    who.append(el("span",{class:"muted small"},
+      "No player sheets here — type the party's average Pokémon Level below instead."));
+  }
+  body.append(who);
+
+  const lbl=(txt,node,hint)=>el("label",{class:"field"}, el("span",{}, txt), node,
+    hint?el("span",{class:"small muted",style:"font-weight:400"},hint):"");
+  const reset = el("button",{class:"linkbtn",style:"margin-left:6px",
+    onclick:()=>{ avgTouched=false; syncAvg(); recalc(); }},"↺ from sheets");
+  const inRow = el("div",{class:"fieldrow"});
+  inRow.append(
+    lbl("Pokémon each player sends out", ppIn, "how many they have on the field at once"),
+    lbl("Pokémon each enemy Trainer sends out", pfIn, "1 for a normal Trainer battle"),
+    lbl(el("span",{},"Party's average Pokémon Level", reset), avgIn, "the Core p.473 baseline"));
+  body.append(inRow, out);
+
+  function recalc(){
+    perPlayer = Math.max(1, parseInt(ppIn.value)||1);
+    perFoe    = Math.max(1, parseInt(pfIn.value)||1);
+    enc.diffPerPlayer = perPlayer; enc.diffPerFoe = perFoe; saveEnc();
+    chars.forEach(c=> c._paint && c._paint());
+    const d = encounterDifficulty(enc, Math.max(0, parseFloat(avgIn.value)||0),
+                                  picked().length || enc.players || 1, perPlayer, perFoe);
+    out.innerHTML = "";
+    if(!d.base){ out.append(el("span",{class:"muted"},"No combatants yet — add some enemies first.")); return; }
+    if(!d.everyday){ out.append(el("span",{class:"muted"},
+      "Set the party's average Pokémon Level and I can weigh it.")); return; }
+    out.append(el("div",{style:"display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding-left:10px;"
+      +`border-left:4px solid ${d.band.color}`},
+      el("span",{style:`font-size:24px;font-weight:800;color:${d.band.color}`}, d.band.label),
+      el("span",{class:"muted"}, `×${Math.round(d.ratio*100)/100} an everyday encounter`)));
+    out.append(el("div",{class:"small",style:"margin:6px 0 10px"}, d.band.blurb));
+    const row = (a,b)=> el("div",{class:"inline small",style:"justify-content:space-between;gap:8px"},
+      el("span",{class:"muted"},a), el("span",{}, b));
+    out.append(
+      row(`Everyday budget — Lv ${Math.round(d.avgMon*10)/10} × 2 × ${d.players} player${d.players===1?"":"s"}`,
+          `${d.everyday} Levels`),
+      row("This encounter — Base Experience Value", `${d.base} Levels`),
+      el("div",{class:"small muted",style:"margin-top:4px"},
+        `Trainers count double (Core p.460), so ${d.trainers} Trainer${d.trainers===1?"":"s"} and `
+        + `${d.foeMonCount} Pokémon come to ${d.base}.`));
+    /* action economy — the book's own closing warning on p.473 */
+    const econ = d.foeActs / Math.max(1, d.pcActs);
+    const econMsg = econ >= 1.5  ? "⚠ the enemy gets far more turns — this is the action-economy warning on Core p.473"
+                  : econ >= 1.2  ? "the enemy gets noticeably more turns per round"
+                  : econ <= 0.67 ? "the party gets far more turns per round"
+                  :                "turns per round are about even";
+    out.append(el("div",{class:"small",style:"margin-top:10px;padding-top:8px;border-top:1px solid var(--line)"},
+      `⚔ On the field: ${d.pcActs} turns a round for the party `
+      + `(${d.players} Trainer${d.players===1?"":"s"} + ${d.players*d.perPlayer} Pokémon) `
+      + `vs ${d.foeActs} for the enemy (${d.foeBodies} bodies) — ${econMsg}.`));
+    if(d.avgFoeMon){
+      const gap = d.avgFoeMon - d.avgMon;
+      const par = Math.abs(gap) <= d.avgMon*0.1 ? "matched"
+                : gap > 0 ? `⚠ ${Math.round(gap)} Levels above the party`
+                          : `${Math.round(-gap)} Levels below the party`;
+      out.append(el("div",{class:"small",style:"margin-top:4px"},
+        `📈 Enemy Pokémon average Lv ${Math.round(d.avgFoeMon*10)/10} vs the party's `
+        + `Lv ${Math.round(d.avgMon*10)/10} — ${par}.`));
+    }
+    out.append(el("div",{class:"inline",style:"gap:8px;margin-top:12px;flex-wrap:wrap"},
+      el("span",{class:"small"}, "Suggested Significance ", el("b",{style:"font-size:16px"},`×${d.band.sig}`),
+        el("span",{class:"muted"}," — Core p.460, raise it further for narrative weight")),
+      el("button",{class:"btn-primary",style:"padding:6px 12px",
+        title:"set this encounter's Significance and open the EXP calculator",
+        onclick:()=>{ enc.sig = d.band.sig; enc.players = d.players; saveEnc(); renderEncounters(); openExpCalc(enc); }},
+        `Use ×${d.band.sig} →`)));
+  }
+  ppIn.addEventListener("input",()=>{ syncAvg(); recalc(); });
+  pfIn.addEventListener("input",recalc);
+  avgIn.addEventListener("input",()=>{ avgTouched=true; recalc(); });
+  syncAvg(); recalc();
+  modal({title:`⚖ Difficulty — ${enc.name}`, bodyNode:body});
+}
 /* EXP for defeating ONE wild Pokémon, rather than a whole encounter (Core p.460: a Pokémon's
    Base Experience Value is simply its level). Separate from openExpCalc — that one totals every
    combatant and persists the encounter's own significance/player count; this is a throwaway
@@ -28124,6 +28543,9 @@ function renderEncounters(){
   // settings + EXP
   const setc=el("div",{class:"card"});
   setc.append(el("h3",{}, cur.name,
+    el("button",{class:"btn-secondary",style:"padding:6px 12px",
+      title:"weigh this encounter against the party using the Core p.473 encounter-building guidelines",
+      onclick:()=>openEncDifficulty(cur)},"⚖ Difficulty"),
     el("button",{class:"btn-primary",style:"padding:6px 12px",onclick:()=>openExpCalc(cur)},"🧮 Calculate EXP")));
   setc.append(el("div",{class:"small muted",style:"margin-top:4px"}, `Base XP so far: `, el("b",{}, String(encounterBaseXP(cur))), ` (sum of enemy levels; Trainers count double, a Swarm counts its whole Multiplier). Significance ×${cur.sig}, ${cur.players} player${cur.players===1?"":"s"} — edit in Calculate EXP.`));
   const hideCb = el("input",{type:"checkbox"}); hideCb.checked = !!cur.hideTokens;
@@ -29434,6 +29856,7 @@ const SHOP_REACH = 4;
    assuming token.size is the whole story. */
 function tokenFootprint(t){
   if(!t) return { w:1, h:1 };
+  if(isZoneToken(t)) return { w: Math.max(1, t.w||1), h: Math.max(1, t.h||1) };
   if(isBoatToken(t)) return boatDims(t);
   const ms = massiveSchoolTokenFoot(t);
   if(ms) return ms;
@@ -29487,7 +29910,12 @@ function tokenSquares(t){
    markers) belong to neither and never Flank or feel Pressure. */
 function tokenSide(t){
   if(!t || !t.link) return null;
-  return ENEMY_LINKS.has(t.link.kind) ? "enemy" : "player";
+  /* 🤝 `ally` flips an encounter-linked creature onto the party's side — a tamed wild Pokémon, a
+     summoned helper, an NPC fighting alongside the players. Everything that asks "whose side is
+     this?" comes through here (Flanking, Pressure, area buffs and Songs, fog reveal, the
+     initiative auto-join, HP visibility, the faction ring, the attack tool's two tabs), so the
+     one tick moves all of them together. */
+  return (ENEMY_LINKS.has(t.link.kind) && !t.ally) ? "enemy" : "player";
 }
 function tokensAreFoes(a, b){
   const sa = tokenSide(a), sb = tokenSide(b);
@@ -30027,9 +30455,25 @@ function simMaxHP(u){
   if(!u.isT && isSwarm(u.obj)) return swarmMaxTotalHP(u.obj);
   return u.isT ? u.d().hp : u.d().maxHP;
 }
+/* A Pokémon Center, applied to the simulator's own throwaway copy of one fighter.
+   "Everyone at full HP" only refills the bar — Injuries still cap how big that bar is, and a
+   Status carried off the sheet (Burned, Paralyzed, Poisoned…) is still in effect on round 1. So a
+   side that limped out of last session's fight was being measured while still hurt, which is not
+   the matchup a GM asking "are these two sides even?" wants to see. This lifts both.
+   Death is NOT undone: clearAllStatuses keeps PERMANENT_STATUS_KEYS and re-pins Knocked Out under
+   the Dead chip, the same guard every other full-heal path in the app goes through. HP itself is
+   set by the caller (u.hp = u.max), so all this has to do is lift what CAPS that maximum. */
+function simFullHeal(o){
+  if(!o) return o;
+  o.injuries = 0;
+  clearAllStatuses(o);
+  return o;
+}
 function simUnit(f, sideKey, cfg){
   const obj = JSON.parse(JSON.stringify(f.obj));
   const isT = f.kind==="trainer";
+  /* before normTrainer/normPokemon, so the derived max HP is recomputed without the Injuries */
+  if(cfg.startHP==="healed") simFullHeal(obj);
   if(isT) normTrainer(obj); else normPokemon(obj);
   const u = { key:f.key, id:f.key+"/"+sideKey, name:f.name, side:sideKey, isT, obj,
               sp: isT ? null : monSpecies(obj), _d:null, _dm:null, _v:0,
@@ -30863,12 +31307,16 @@ function simSettingsCard(){
   grid.append(num("Battles to run","runs",1,SIM_MAX_RUNS,"More = steadier percentages."));
   grid.append(num("Round limit","maxRounds",1,100,"Past this it's scored as a stalemate."));
   const hpW = el("div",{});
-  hpW.append(el("label",{class:"lbl"},"Starting HP"));
+  hpW.append(el("label",{class:"lbl"},"Starting condition"));
   const hpSel = el("select",{});
-  [["full","Everyone at full HP"],["current","Current HP from the sheets"]]
+  [["healed","Everyone fully healed — no damage, Injuries or Statuses"],
+   ["full","Everyone at full HP — Injuries still count"],
+   ["current","Current HP from the sheets"]]
     .forEach(([v,t])=> hpSel.append(el("option",{value:v,selected:simCfg.startHP===v}, t)));
   hpSel.addEventListener("change",()=>{ simCfg.startHP=hpSel.value; saveSimCfg(); simInvalidate(); });
-  hpW.append(hpSel, el("div",{class:"small muted"},"Injuries on the sheet always count."));
+  hpW.append(hpSel, el("div",{class:"small muted"},
+    "\"Fully healed\" is a Pokémon Center on both sides — Injuries cleared so max HP is back to full, "
+    + "and Status Afflictions cured. Nothing on the real sheets is touched. Death is not undone."));
   grid.append(hpW);
   card.append(grid);
   const toggles = el("div",{style:"margin-top:10px"});
@@ -32054,7 +32502,7 @@ function speciesModal(s, mon){
 /* ===================================================================
    Modal + picker
 =================================================================== */
-function modal({title, bodyHTML, bodyNode, footNodes}){
+function modal({title, bodyHTML, bodyNode, footNodes, guardMs}){
   closeModal();
   const bg = el("div",{class:"modal-bg",onclick:e=>{if(e.target===bg)closeModal();}});
   const m = el("div",{class:"modal"});
@@ -32062,8 +32510,19 @@ function modal({title, bodyHTML, bodyNode, footNodes}){
   const body = el("div",{class:"modal-body"});
   if(bodyNode) body.append(bodyNode); else body.innerHTML = bodyHTML||"";
   m.append(body);
-  if(footNodes) m.append(el("div",{class:"modal-foot"}, ...footNodes));
+  const foot = footNodes ? el("div",{class:"modal-foot"}, ...footNodes) : null;
+  if(foot) m.append(foot);
   bg.append(m); $("#modalRoot").append(bg);
+  /* `guardMs` deadens the body and footer for a beat after the window opens. On a phone the tap
+     that opens a token's menu is very easy to land a second time on whatever button has just
+     appeared under the finger — which on this menu means dealing damage, recalling, or removing
+     a token nobody meant to touch. The × and the backdrop stay live throughout, so the window can
+     always be dismissed instantly. */
+  if(guardMs > 0){
+    const armed = [body].concat(foot ? [foot] : []);
+    armed.forEach(n=>{ n.style.pointerEvents = "none"; n.style.opacity = ".72"; });
+    setTimeout(()=>armed.forEach(n=>{ n.style.pointerEvents = ""; n.style.opacity = ""; }), guardMs);
+  }
   document.addEventListener("keydown",escClose);
   return {bg,m,body};
 }
@@ -35436,6 +35895,95 @@ function pokeTokenSprite(mon){
   const sp = getSpecies(mon.species);
   return monSprite(monLookName(mon, sp), mon.shiny, "s-sm", undefined, true);
 }
+/* ---- Token framing: where the round crop sits inside an uploaded picture ----------------------
+   A token is a circle and an uploaded photo is a rectangle, so `object-fit:cover` was picking the
+   middle of the picture and calling it done — which on a group shot, or on anything where the face
+   isn't dead centre, cropped to the wrong thing. `focus` is {x,y} as object-position percentages
+   plus `z`, a zoom percentage, stored beside the picture it belongs to. The default (50/50/100) is
+   stored as nothing at all, so an untouched token is byte-identical to before. */
+function normFocus(f){
+  if(!f || typeof f !== "object") return null;
+  const n = (v, d) => { const x = parseFloat(v); return isFinite(x) ? x : d; };
+  const x = Math.max(0, Math.min(100, n(f.x, 50)));
+  const y = Math.max(0, Math.min(100, n(f.y, 50)));
+  const z = Math.max(100, Math.min(400, n(f.z, 100)));
+  return (x===50 && y===50 && z===100) ? null : { x, y, z };
+}
+function applyImgFocus(img, f){
+  f = normFocus(f); if(!f) return false;
+  img.style.objectPosition = `${f.x}% ${f.y}%`;
+  if(f.z !== 100){ img.style.transform = `scale(${f.z/100})`; img.style.transformOrigin = `${f.x}% ${f.y}%`; }
+  return true;
+}
+/* The uploaded picture a token is drawn with, and how to read/write its framing. null when the
+   token is drawn from dex artwork (nothing uploaded to frame) or is scenery. */
+function tokenImageRef(token){
+  if(!token || isShopToken(token) || isBoatToken(token) || isHazardToken(token) || isZoneToken(token)) return null;
+  if(!token.link){
+    if(!token.img) return null;
+    return { url: token.img, get:()=>token.imgFocus,
+             set:f=>{ if(f) token.imgFocus = f; else delete token.imgFocus; },
+             commit: async()=>{ mapTokensSave(); } };
+  }
+  const L = tokenLinked(token); if(!L || L.missing || !L.obj) return null;
+  const o = L.obj;
+  if(L.kind==="trainer" || L.kind==="enctrainer"){
+    if(!o.avatar) return null;
+    return { url:o.avatar, get:()=>o.avatarFocus,
+             set:f=>{ if(f) o.avatarFocus = f; else delete o.avatarFocus; },
+             commit: async()=>{ await commitTokenSource(token); } };
+  }
+  const url = monImage(o); if(!url) return null;
+  // a Mega keeps its own photo (monImage), so its framing is stored separately too
+  const key = o.mega ? "megaImageFocus" : "imageFocus";
+  return { url, get:()=>o[key], set:f=>{ if(f) o[key] = f; else delete o[key]; },
+           commit: async()=>{ await commitTokenSource(token); } };
+}
+/* Drag the picture behind a circular window to choose the crop; the slider zooms in. */
+function openTokenImageFocus(token, map){
+  const ref = tokenImageRef(token);
+  if(!ref){ toast("This token is drawn from its dex artwork — upload a picture first"); return; }
+  let f = normFocus(ref.get()) || { x:50, y:50, z:100 };
+  const SIZE = 240;
+  const img = el("img",{src:ref.url, alt:"",
+    style:`width:100%;height:100%;object-fit:cover;display:block;user-select:none;-webkit-user-drag:none`});
+  const ring = el("div",{style:`position:absolute;inset:0;border-radius:50%;`
+    + `box-shadow:0 0 0 9999px rgba(0,0,0,.55);pointer-events:none;border:2px solid var(--accent)`});
+  const stage = el("div",{style:`position:relative;width:${SIZE}px;height:${SIZE}px;margin:0 auto;`
+    + `overflow:hidden;border-radius:10px;background:var(--panel-2);touch-action:none;cursor:grab`}, img, ring);
+  const paint = ()=>{ img.style.objectPosition = `${f.x}% ${f.y}%`;
+    img.style.transform = f.z!==100 ? `scale(${f.z/100})` : "";
+    img.style.transformOrigin = `${f.x}% ${f.y}%`; };
+  paint();
+  /* Dragging moves the PICTURE, so the crop window walks the opposite way — a drag to the right
+     shows more of the left of the picture, which is what the hand expects. */
+  let drag = null;
+  stage.addEventListener("pointerdown", ev=>{ ev.preventDefault();
+    drag = { x:ev.clientX, y:ev.clientY, fx:f.x, fy:f.y };
+    try{ stage.setPointerCapture(ev.pointerId); }catch(e){} stage.style.cursor="grabbing"; });
+  stage.addEventListener("pointermove", ev=>{ if(!drag) return;
+    f.x = Math.max(0, Math.min(100, drag.fx - (ev.clientX-drag.x)/SIZE*100));
+    f.y = Math.max(0, Math.min(100, drag.fy - (ev.clientY-drag.y)/SIZE*100));
+    paint(); });
+  const endDrag = ()=>{ drag = null; stage.style.cursor="grab"; };
+  stage.addEventListener("pointerup", endDrag);
+  stage.addEventListener("pointercancel", endDrag);
+  const zoom = el("input",{type:"range",min:100,max:300,step:5,value:f.z,style:"width:100%"});
+  zoom.addEventListener("input", ()=>{ f.z = parseInt(zoom.value)||100; paint(); });
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px;text-align:center"},
+    "Drag the picture to choose what sits inside the token's circle, and zoom in if you want a "
+    + "closer crop. The whole picture is still shown when the token is tapped."));
+  body.append(stage);
+  body.append(el("label",{class:"field",style:"margin-top:12px"}, el("span",{},"Zoom"), zoom));
+  modal({title:"🖼 Token framing", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:async()=>{ ref.set(null); await ref.commit(); mapTokensSave();
+      closeModal(); renderMap(); toast("🖼 Framing reset to centre"); }},"↺ Reset"),
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async()=>{ ref.set(normFocus(f)); await ref.commit(); mapTokensSave();
+      closeModal(); renderMap(); toast("🖼 Framing saved"); }},"✓ Save"),
+  ]});
+}
 function standaloneSprite(token){
   if(token.img) return el("img",{class:"sprite s-sm",src:token.img,alt:token.label||"",loading:"eager"});
   if(token.species) return monSprite(token.species, token.shiny, "s-sm", undefined, true);
@@ -35446,6 +35994,9 @@ function tokenHp(token){
   if(!token.link){
     // a boat is a hull, not a creature — no HP bar, no statuses, no turn, and no name plate
     // cluttering the board (the BOATS section owns everything about it)
+    if(isZoneToken(token)){ const z=zoneDef(token);
+      return { cur:1, max:1, editable:cloud.isGM, name:z.name, sprite:zoneSprite(token),
+               unlinked:false, kind:"zone", hideName:true }; }
     if(isHazardToken(token)){ const h=hazardDef(token);
       return { cur:1, max:1, editable:cloud.isGM, name:h.name, sprite:hazardSprite(token),
                unlinked:false, kind:"hazard", hideName:false }; }
@@ -35503,14 +36054,14 @@ function tokenHp(token){
 }
 /* players may only see HP for PC trainers/Pokémon; the GM sees everything (incl. enemies & standalone tokens) */
 function tokenHpVisible(info){
-  if(info.kind==="shop" || info.kind==="hazard") return false; // scenery has no HP bar to show
+  if(info.kind==="shop" || info.kind==="hazard" || info.kind==="zone") return false; // scenery has no HP bar to show
   if(info.kind==="boat") return info.cur < info.max;   // stays clean scenery until it's actually taken a hit
   return cloud.isGM || info.kind==="trainer" || info.kind==="pokemon";
 }
 /* Status conditions (Burned, Paralyzed, …) are visible in an actual battle even when a creature's
    exact HP isn't — unlike tokenHpVisible, this doesn't gate on GM/kind, only on the token actually
    pointing to something real. Fixes enemy statuses being invisible to players (HANDOFF-2026-07-25). */
-function tokenStatusVisible(info){ return !info.unlinked && info.kind!=="shop" && info.kind!=="boat" && info.kind!=="hazard"; }
+function tokenStatusVisible(info){ return !info.unlinked && info.kind!=="shop" && info.kind!=="boat" && info.kind!=="hazard" && info.kind!=="zone"; }
 /* Shiny is a LOOK, not a stat. The sprite already swaps to the shiny artwork, but at map zoom a
    shiny Gyarados and a normal one are a handful of pixels apart, so a shiny token also gets a small
    ring of twinkling sparkles around it (.tk-sparkles, drawn in mapTokenNode). Read the flag off the
@@ -35519,7 +36070,7 @@ function tokenStatusVisible(info){ return !info.unlinked && info.kind!=="shop" &
    and scenery (boats, shop doors, hazards) are never shiny. */
 function tokenIsShiny(token){
   if(!token.link){
-    if(isBoatToken(token) || isShopToken(token) || isHazardToken(token)) return false;
+    if(isBoatToken(token) || isShopToken(token) || isHazardToken(token) || isZoneToken(token)) return false;
     return !!token.shiny;
   }
   const L = tokenLinked(token);
@@ -35659,9 +36210,17 @@ function tokenInitiative(token){
   return v;
 }
 function tokenInInit(token){
-  if(isShopToken(token) || isBoatToken(token) || isHazardToken(token)) return false; // scenery doesn't take turns
+  if(isShopToken(token) || isBoatToken(token) || isHazardToken(token) || isZoneToken(token)) return false; // scenery doesn't take turns
   const info=tokenHp(token); if(info.unlinked) return false;
-  const ally = info.kind==="trainer"||info.kind==="pokemon";
+  /* A Knocked Out or Dead enemy is not taking turns, so it takes ITSELF off the order rather than
+     leaving the GM to untick every body between rounds. The ⚔ tick below is untouched, so bringing
+     one back up (curing Knocked Out, or lifting Dead) puts it straight back where it stood — and
+     the tick is still there to add or drop anyone by hand. Player-side tokens are left alone: a
+     downed PC keeps its slot, because the table is usually about to do something about it. */
+  if((info.kind==="enc" || info.kind==="enctrainer") && info.obj
+     && (hasStatus(info.obj,"knockedOut") || hasStatus(info.obj,"dead"))) return false;
+  // a 🤝 ally token counts as a player for this, so a summoned/tamed helper joins by itself
+  const ally = tokenSide(token)==="player";
   return ally ? token.inInit!==false : !!token.inInit;   // players auto-join; enemies opt-in via the token menu
 }
 /* An initiative ENTRY id is normally just the token id, but a Swarm gets several entries in one
@@ -35710,11 +36269,24 @@ function advanceInitiative(map, meta, dir){
   if(idx<0 && meta.initTurnId){
     const tok = initEntryToken(meta.initTurnId);
     idx = list.findIndex(e=>initEntryToken(e.id)===tok);
-    // Still not in the order, but that token is still ON the map → its link is mid-reconcile, not
-    // gone. Stepping from here would restart the round at the top, so hold the turn and re-render;
-    // the entry reappears when the link resolves. A token that has genuinely been removed falls
-    // through below and restarts at the top, as before.
-    if(idx<0 && mapTokensFor(map.id).some(t=>t.id===tok)){ renderMap(); return; }
+    if(idx<0){
+      const still = mapTokensFor(map.id).find(t=>t.id===tok);
+      /* Still on the map AND still belongs in the order → its link is mid-reconcile, not gone.
+         Stepping from here would restart the round at the top, so hold the turn and re-render; the
+         entry reappears when the link resolves. */
+      if(still && tokenInInit(still)){ renderMap(); return; }
+      /* On the map but deliberately OUT of the order — it was Knocked Out or killed on its own
+         turn, or the GM unticked it. Restarting the round would be wrong and holding would freeze
+         ▶ on a body, so step to whoever would have come next: the first entry whose Initiative
+         sits below where this one stood. `nxt === list.length` means it stood last, and the shared
+         step below then wraps the round exactly as it normally would. */
+      if(still){
+        const was = tokenInitiative(still);
+        let nxt = list.findIndex(e => e.init < was);
+        if(nxt < 0) nxt = list.length;
+        idx = dir > 0 ? nxt - 1 : nxt;      // idx+dir lands on nxt going forward, nxt−1 going back
+      }
+    }
   }
   idx = idx<0 ? 0 : idx+dir;   // genuinely unknown (first ▶ of a fight) → start at the top
   let wrapped=false;
@@ -35890,6 +36462,8 @@ function tokenEncColor(token){
 function tokenFactionColor(info, token){
   if(info.unlinked) return null;
   if(info.kind==="trainer" || info.kind==="pokemon") return "#3ecf5f";
+  // 🤝 an ally wears its own blue so it never reads as one of the enemy encounter's colours
+  if(token && token.ally && (info.kind==="enc" || info.kind==="enctrainer")) return "#3ea6ff";
   if(info.kind==="enc" || info.kind==="enctrainer") return tokenEncColor(token);
   return null;
 }
@@ -36185,6 +36759,8 @@ function recallPokemon(o){
   if(clearSceneStatuses(o)) lines.push("Volatile Afflictions, Stuck and Slowed cured");
   if(tempHPOf(o)){ lines.push(`${tempHPOf(o)} Temporary HP lost`); o.tempHP = 0; }
   if(o.transform){ transformRevert(o, true); lines.push("Transformation ended"); }
+  // "…or is recalled, the chest disappears and they revert to Chest Forme"
+  if(treasureHoardRevert(o)) lines.push("chest picked back up (Chest Forme)");
   if(momentumOf(o)){ lines.push(`${momentumOf(o)} Momentum lost`); setMomentum(o, 0); }
   const regen = recallRegenerator(o);
   if(regen) lines.push(regen);
@@ -36195,7 +36771,7 @@ function canRemoveToken(token){
   if(!token.link) return false;
   // the Viewer co-pilot manages the whole party's presence on the board, not just their own sheet —
   // they place and move everyone's tokens, so they can take everyone's off again. Enemies stay GM-only.
-  if(isMapHpViewer()) return !ENEMY_LINKS.has(token.link.kind);
+  if(isMapHpViewer()) return tokenSide(token)!=="enemy";   // …and 🤝 allies read as party-side here too
   return canEdit(cloud.byId[token.link.sheetId]);
 }
 /* A token is identified by WHAT it is, not by its id: pull a Pokemon off the board and drop it back
@@ -36293,7 +36869,7 @@ async function addToken(map, partial){
 /* ---- fog of war: auto-reveal a radius around player-character tokens; revealed stays revealed ---- */
 function tokenReveals(token){
   if(typeof token.reveal==="boolean") return token.reveal;   // GM per-token override
-  return !!token.link && !ENEMY_LINKS.has(token.link.kind);  // player characters reveal; enemies/custom don't
+  return tokenSide(token)==="player";   // player characters (and 🤝 allies) reveal; enemies/custom don't
 }
 /* reveal a CIRCULAR disc of cells (Euclidean radius) around a cell. No x/y>=0 guard: the board can
    extend up/left of the canonical origin now (see mapStageSize), so a token near that edge needs its
@@ -36725,8 +37301,8 @@ async function applyAreaBuff(map, buffKey){
   // token's link kind is in ENEMY_LINKS (same check tokenReveals uses); a standalone/unlinked
   // origin (no link at all) is treated as the player side, same as tokenReveals' own convention.
   const origin = mapTokensFor(map.id).find(t=>t.id===mapAoE?.tokenId);
-  const originIsEnemy = !!origin?.link && ENEMY_LINKS.has(origin.link.kind);
-  const targets = tokensInAoE(map).filter(t=> (!!t.link && ENEMY_LINKS.has(t.link.kind)) === originIsEnemy);
+  const originIsEnemy = tokenSide(origin)==="enemy";
+  const targets = tokensInAoE(map).filter(t=> (tokenSide(t)==="enemy") === originIsEnemy);
   /* A Song costs its Musician 1 AP (Core p.164), and THIS is the moment it is played — the Burst
      was only ever a proposal until now. Two ways in, so the charge has to know which:
        · the Musician's own class card (playSong) already paid, and hands the GM a roll-feed entry
@@ -37021,7 +37597,7 @@ function freeCellNear(map, mount, skipId){
   return { x: mount.x + f.w, y: mount.y };
 }
 /* a token that can't ride / be ridden (shop doors are scenery, not creatures) */
-function canMountToken(token){ return !!token && !isShopToken(token) && !isBoatToken(token) && !isHazardToken(token); }
+function canMountToken(token){ return !!token && !isShopToken(token) && !isBoatToken(token) && !isHazardToken(token) && !isZoneToken(token); }
 function mountToken(map, rider, mount){
   if(!rider || !mount || rider.id===mount.id) return false;
   if(!canMountToken(rider) || !canMountToken(mount)){ toast("A shop door can't ride or be ridden"); return false; }
@@ -37191,6 +37767,116 @@ const HAZARDS = [
   { key:'smoke',       name:'Smoke',        icon:'💨' },
 ];
 const isHazardToken = t => !!(t && t.hazard);
+/* ---- Terrain zones: Rough, Slow and Blocking ground (Core p.231) ------------------------------
+     Slow Terrain    — "When Shifting through Slow Terrain, Trainers and their Pokémon treat every
+                       square metre as two square metres instead."
+     Rough Terrain   — "When targeting through Rough Terrain, you take a −2 penalty to Accuracy
+                       Rolls." Most Rough Terrain is also Slow Terrain, which is its own entry.
+     Blocking Terrain— "Terrain that cannot be Shifted or Targeted through."
+   A zone is a RECTANGLE of cells stored as a token (so it syncs, drags, persists and is removed
+   exactly like every other piece of map furniture) carrying `zone`, `w` and `h`. `ghost` is the
+   "this is already painted into the map image" switch: the rules still apply and the movement
+   tally still doubles, but players see nothing and the GM only gets a thin dashed outline. */
+const TERRAIN_ZONES = [
+  { key:"slow", name:"Slow Terrain", icon:"\u{1F7E6}", fill:"rgba(56,132,222,.24)", line:"#3884de", slow:true,
+    note:"Shifting through it, every square metre counts as two. The movement tally on the board doubles for you." },
+  { key:"rough", name:"Rough Terrain", icon:"\u{1F7EB}", fill:"rgba(158,116,58,.26)", line:"#9e743a", rough:true,
+    note:"Targeting THROUGH it is \u22122 to Accuracy Rolls \u2014 call that at the table; the board can't know what you're aiming through. (Squares occupied by other creatures already count as Rough Terrain.)" },
+  { key:"roughslow", name:"Rough + Slow", icon:"\u{1F7E7}", fill:"rgba(200,120,40,.26)", line:"#c87828", rough:true, slow:true,
+    note:"\u201cMost Rough Terrain is also Slow Terrain\u201d \u2014 double movement cost (applied for you) AND \u22122 to Accuracy Rolls through it." },
+  { key:"blocking", name:"Blocking Terrain", icon:"\u2B1B", fill:"rgba(24,24,28,.5)", line:"#8a8a93", block:true,
+    note:"Cannot be Shifted or Targeted through. A player can't drag a token into it; the GM still can." },
+];
+const isZoneToken = t => !!(t && t.zone);
+const zoneDef = t => TERRAIN_ZONES.find(z=>z.key===(t&&t.zone)) || TERRAIN_ZONES[0];
+/* What kind of ground a cell is, from every zone covering it. Called once per cell a drag ENTERS
+   (not per frame), so a straight scan over the board's zone tokens is plenty. */
+function terrainAt(map, cx, cy){
+  const out = { slow:false, rough:false, block:false, names:[] };
+  if(!map) return out;
+  for(const t of mapTokensFor(map.id)){
+    if(!isZoneToken(t)) continue;
+    const f = tokenFootprint(t), x = Math.round(t.x), y = Math.round(t.y);
+    if(cx < x || cx >= x+f.w || cy < y || cy >= y+f.h) continue;
+    const z = zoneDef(t);
+    if(z.slow) out.slow = true;
+    if(z.rough) out.rough = true;
+    if(z.block) out.block = true;
+    if(!out.names.includes(z.name)) out.names.push(z.name);
+  }
+  return out;
+}
+function zoneSprite(token){
+  const z = zoneDef(token);
+  const ghost = !!token.ghost;
+  return el("div",{class:"tk-zone"+(ghost?" ghost":""), title:z.name+(ghost?" \u2014 rules only, already drawn on the map":""),
+    style:`background:${ghost?"transparent":z.fill};border:2px ${ghost?"dashed":"solid"} ${z.line}`},
+    el("span",{class:"tk-zone-lbl"}, ghost ? z.icon : `${z.icon} ${z.name}`));
+}
+async function addTerrainZone(map, key, w, h){
+  await addToken(map, { zone:key, size:1, w:Math.max(1,w|0), h:Math.max(1,h|0) });
+  renderMap();
+}
+function openAddZone(map){
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    "Mark a rectangle of the board as difficult ground. Drag it to place, tap it to resize, "
+    + "re-type it, make it invisible or remove it."));
+  const wIn = el("input",{type:"number",min:1,max:60,value:3,style:"width:64px"});
+  const hIn = el("input",{type:"number",min:1,max:60,value:3,style:"width:64px"});
+  const gh  = el("input",{type:"checkbox"});
+  body.append(el("div",{class:"inline",style:"gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap"},
+    el("span",{class:"small"},"Size (squares)"), wIn, el("span",{class:"small muted"},"\u00d7"), hIn));
+  body.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;margin-bottom:10px;cursor:pointer"},
+    gh, el("span",{class:"small"},"\u{1F441} Invisible \u2014 the ground is already drawn on the map, this just carries the rule")));
+  const grid = el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px"});
+  TERRAIN_ZONES.forEach(z=>{
+    const b = el("button",{class:"btn-secondary",style:"display:flex;align-items:center;gap:8px;justify-content:flex-start;text-align:left",
+      title:z.note,
+      onclick:async()=>{ const w=Math.max(1,Math.min(60,parseInt(wIn.value)||1)), h=Math.max(1,Math.min(60,parseInt(hIn.value)||1));
+        const ghost = gh.checked; closeModal();
+        await addToken(map, { zone:z.key, size:1, w, h, ...(ghost?{ghost:true}:{}) });
+        renderMap(); }},
+      el("span",{style:"font-size:18px"}, z.icon), z.name);
+    grid.append(b);
+  });
+  body.append(grid);
+  body.append(el("div",{class:"small muted",style:"margin-top:10px"},
+    "Slow ground doubles the metres the board counts as a token is dragged across it. Blocking ground "
+    + "stops a player's drag dead. Rough ground's \u22122 to Accuracy is a call at the table \u2014 the "
+    + "board can't tell what a shot is being fired through."));
+  modal({title:"\u26F0 Terrain", bodyNode:body, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Cancel")]});
+}
+function openZoneMenu(token, map){
+  if(!cloud.isGM) return;
+  const cur = zoneDef(token);
+  const f = tokenFootprint(token);
+  const body = el("div",{});
+  body.append(el("div",{style:"text-align:center;font-size:34px;margin-bottom:2px"}, cur.icon),
+    el("div",{class:"small",style:"margin-bottom:10px;color:var(--accent);font-weight:600"}, cur.note));
+  const grid = el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;margin-bottom:12px"});
+  TERRAIN_ZONES.forEach(z=>grid.append(el("button",{class:"btn-secondary"+(z.key===cur.key?" on":""),
+    style:"display:flex;align-items:center;gap:8px;justify-content:flex-start;text-align:left",title:z.note,
+    onclick:()=>{ token.zone=z.key; mapTokensSave(); renderMap(); closeModal(); openZoneMenu(token,map); }},
+    el("span",{style:"font-size:17px"},z.icon), z.name)));
+  body.append(grid);
+  const wIn = el("input",{type:"number",min:1,max:60,value:f.w,style:"width:64px"});
+  const hIn = el("input",{type:"number",min:1,max:60,value:f.h,style:"width:64px"});
+  const resize = ()=>{ token.w=Math.max(1,Math.min(60,parseInt(wIn.value)||1));
+                       token.h=Math.max(1,Math.min(60,parseInt(hIn.value)||1));
+                       mapTokensSave(); renderMap(); };
+  wIn.addEventListener("change",resize); hIn.addEventListener("change",resize);
+  body.append(el("div",{class:"inline",style:"gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap"},
+    el("span",{class:"small"},"Size (squares)"), wIn, el("span",{class:"small muted"},"\u00d7"), hIn));
+  const gh = el("input",{type:"checkbox"}); gh.checked = !!token.ghost;
+  gh.addEventListener("change",()=>{ if(gh.checked) token.ghost=true; else delete token.ghost;
+    mapTokensSave(); renderMap(); });
+  body.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;cursor:pointer"},
+    gh, el("span",{class:"small"},"\u{1F441} Invisible \u2014 already drawn on the map (rules only; players see nothing)")));
+  modal({title:"\u26F0 "+cur.name, bodyNode:body, guardMs:220, footNodes:[
+    el("button",{class:"btn-secondary danger",onclick:()=>{ closeModal(); removeToken(token, map); }},"\u{1F5D1} Remove"),
+    el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+}
 const hazardDef = t => HAZARDS.find(h=>h.key===(t&&t.hazard)) || HAZARDS[0];
 function hazardSprite(token){ const h=hazardDef(token);
   return el('div',{class:'tk-hazard',title:h.name}, h.icon); }
@@ -37713,9 +38399,9 @@ function openBoatMenu(token, map){
    the only thing that can put it under a boat as well is the DOM: at equal z-index, the token
    appended first is the one underneath. Everything else keeps the order it is stored in. */
 function mapDrawOrder(tokens){
-  const shoals = [], rest = [];
-  tokens.forEach(t => (massiveSchoolTokenFoot(t) ? shoals : rest).push(t));
-  return shoals.length ? shoals.concat(rest) : tokens;
+  const zones = [], shoals = [], rest = [];
+  tokens.forEach(t => (isZoneToken(t) ? zones : massiveSchoolTokenFoot(t) ? shoals : rest).push(t));
+  return (zones.length || shoals.length) ? zones.concat(shoals, rest) : tokens;
 }
 function tokenRenderBox(map, token, originX=0, originY=0, depth=0){
   const px = map.gridSize;
@@ -37749,6 +38435,7 @@ function mapTokenNode(token, map, originX=0, originY=0){
   const riding = box.rider, carrying = tokenRiders(map.id, token).length;
   const isBoat = isBoatToken(token);
   const isHaz = isHazardToken(token);
+  const isZone = isZoneToken(token);
   // A Massive School is water, not a creature: the shoal is the floor everything else stands on,
   // so it drops to the hull layer and is drawn before the hulls (see mapDrawOrder) to sit under
   // those too. Nothing on the board is ever painted underneath it.
@@ -37762,14 +38449,19 @@ function mapTokenNode(token, map, originX=0, originY=0){
   const isTrainerTok = info.kind==="trainer" || info.kind==="enctrainer";
   const playerSide = info.kind==="trainer" || info.kind==="pokemon";
   // a rider is drawn perched on its mount (see tokenRenderBox) and always stacks above it
-  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":"")+(isBoat?" boat-token":"")+(isHaz?" hazard-token":"")+(shinyTok?" shiny":""),
+  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":"")+(isBoat?" boat-token":"")+(isHaz?" hazard-token":"")+(isZone?" zone-token":"")+(shinyTok?" shiny":""),
     // a hull sits at z-index 0, below every creature, so the crew is drawn standing on the deck
-    style:`left:${box.left}px;top:${box.top}px;width:${box.w}px;height:${box.h}px;z-index:${riding?4:isTrainerTok?2:(isBoat||isHaz||isShoal)?0:1}`
+    style:`left:${box.left}px;top:${box.top}px;width:${box.w}px;height:${box.h}px;z-index:${riding?4:isTrainerTok?2:isZone?0:(isBoat||isHaz||isShoal)?0:1}`
       +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")
       +(factionColor?`;border-color:${factionColor}`:"")});
   node.dataset.tid = token.id;
   info.sprite.classList.add("tk-img");
-  node.append(info.sprite);
+  /* A framed picture needs something to clip the zoom against, so it gets a round wrapper; an
+     unframed one is appended bare exactly as before. */
+  const focusRef = tokenImageRef(token);
+  if(focusRef && applyImgFocus(info.sprite, focusRef.get()))
+    node.append(el("div",{class:"tk-imgbox"}, info.sprite));
+  else node.append(info.sprite);
   // pure decoration, so it is the first thing dropped when the board is zoomed right out
   if(shinyTok && detail>=1)
     node.append(el("div",{class:"tk-sparkles",title:"Shiny",html:"<i></i><i></i><i></i><i></i>"}));
@@ -37792,7 +38484,7 @@ function mapTokenNode(token, map, originX=0, originY=0){
     node.append(el("div",{class:"tk-name"}, (token.gmHidden?"🙈 ":"") + info.name
       + (info.unlinked?" ⚠":"")));
   // Player-side tokens (and the boat) rely on the HP bar alone, no numeric readout; enemies/standalone still show it.
-  if(hpVisible && !playerSide && info.kind!=="boat" && detail>=2){
+  if(hpVisible && !playerSide && info.kind!=="boat" && info.kind!=="zone" && detail>=2){
     const thp = tempHPOf(info.obj);
     node.append(el("div",{class:"tk-hpnum"+(thp?" has-temp":"")},
       info.unlinked ? "⚠ unlinked" : `${info.cur}/${info.max}` + (thp?` +${thp}`:"")));
@@ -37815,7 +38507,11 @@ function mapTokenNode(token, map, originX=0, originY=0){
   /* "already in the Pokédex" — a small Poké Ball on a WILD Pokémon whose species, or any stage of
      its evolution line, is registered. Read off what the token LOOKS like (monLookName), never the
      creature underneath: an Illusion or a Transform must not be given away by its badge. */
-  if(detail>=2 && info.kind==="enc" && info.obj
+  /* …and only on a WILD one. An encounter's NPC-trainer Pokémon are `enc`-linked too, and a
+     Pokémon somebody already owns is not something the party is about to catch, so the ball on
+     those was pure noise. encMonOwnerIndex is the memoised id→owner map, so this costs nothing
+     per token. */
+  if(detail>=2 && info.kind==="enc" && info.obj && !encMonOwnerIndex().get(info.obj.id)
      && dexFamilyRegistered(monLookName(info.obj, getSpecies(info.obj.species))))
     node.append(el("div",{class:"tk-dexball",
       title:"Already in the Pokédex — this species or its evolution line is registered"}));
@@ -37853,7 +38549,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
     // not a combatant taking a Shift, so dragging its door never spends anyone's movement
     // A BOAT is the exception that counts OUT of combat as well: a hull has a cruising budget on
     // top of its combat one (boatMoveSpeed), so its tally runs whether or not Battle mode is on.
-    const trackMove = map.gridOn && !isShopToken(token) && !isHazardToken(token)
+    const trackMove = map.gridOn && !isShopToken(token) && !isHazardToken(token) && !isZoneToken(token)
                       && (battleOn() || isBoatToken(token));
     const liveFog = !!map.fogOn;
     const stageSize = mapStageSize(map);                      // origin needed regardless of fog, for DOM<->cell math
@@ -37895,6 +38591,11 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
     // the token's last valid cell to the candidate cell, so a fast drag that jumps several cells in
     // one frame still can't leap clean over a wall in between.
     const wallGated = !cloud.isGM && map.gridOn && mapWalls(map).length;
+    /* Blocking Terrain "cannot be Shifted through" — same gate as a wall, and equally the GM's to
+       ignore. Only armed when the board actually carries a zone, so an ordinary map pays nothing. */
+    const zoneGated = !cloud.isGM && map.gridOn && mapTokensFor(map.id).some(isZoneToken);
+    const anyZone   = map.gridOn && mapTokensFor(map.id).some(isZoneToken);
+    let slowSteps   = 0;                 // squares of Slow Terrain crossed, for the drag readout
     const applyDelta = (dxPx, dyPx, commit)=>{
       let fogBox = null;
       const live = [];                      // where each token is right now, for the live mirror
@@ -37904,13 +38605,21 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
         let nx = c.baseX0+dxPx, ny = c.baseY0+dyPx;
         if(map.gridOn){ nx = Math.round(nx/px)*px; ny = Math.round(ny/px)*px; }   // snap to cells live
         let cx = Math.round((nx-originX)/px), cy = Math.round((ny-originY)/px);
-        if(wallGated && (cx!==c.pathX || cy!==c.pathY) &&
-           wallsBlockLOS(mapWalls(map), c.pathX+0.5, c.pathY+0.5, cx+0.5, cy+0.5)){
-          // stuck at the wall — hold at the last cell that was actually reachable
+        const stepped = (cx!==c.pathX || cy!==c.pathY);
+        if(stepped && ((wallGated && wallsBlockLOS(mapWalls(map), c.pathX+0.5, c.pathY+0.5, cx+0.5, cy+0.5))
+                       || (zoneGated && terrainAt(map, cx, cy).block))){
+          // stuck at the wall (or against Blocking Terrain) — hold at the last reachable cell
           cx = c.pathX; cy = c.pathY; nx = cx*px+originX; ny = cy*px+originY;
         }
         if(c.n){ c.n.style.left = (c.visX0 + (nx-c.baseX0))+"px"; c.n.style.top = (c.visY0 + (ny-c.baseY0))+"px"; }
-        if(map.gridOn && (cx!==c.pathX || cy!==c.pathY)){ c.segMoved += tileCost(c.pathX,c.pathY,cx,cy); c.pathX=cx; c.pathY=cy; }
+        if(map.gridOn && (cx!==c.pathX || cy!==c.pathY)){
+          /* Slow Terrain (Core p.231): "treat every square metre as two square metres instead" —
+             charged on the square being ENTERED, so crossing a marsh costs what it should. */
+          const slowHere = anyZone && terrainAt(map, cx, cy).slow;
+          c.segMoved += tileCost(c.pathX,c.pathY,cx,cy) * (slowHere ? 2 : 1);
+          if(slowHere) slowSteps++;
+          c.pathX=cx; c.pathY=cy;
+        }
 
         // the logical square it would land on if it were let go here — what peers are shown
         live.push({ id:c.t.id, x: map.gridOn?cx:(nx-originX)/px, y: map.gridOn?cy:(ny-originY)/px });
@@ -38179,6 +38888,68 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
 }
 /* Apply a computed breakdown to the token: subtract its HP and spend any one-shot DR buff that
    absorbed the hit (Excited, Intercept…). Returns the HP value BEFORE the hit. */
+/* ───────── ↩ Undo the last applied hit ─────────────────────────────────────────────────────
+   Pressing 💥 Apply writes Hit Points, Temporary Hit Points, INJURIES, the Knocked Out / Dead
+   chips, a Minior's cracked shell, a Swarm's or a Boss's bar count — and putting a mis-click back
+   meant editing every one of those by hand on every target. So each press snapshots its targets
+   first and pushes one record here; ↩ restores the whole press exactly as it was.
+   Session-local and GM-side (nobody else can apply a hit), and the restore goes back out through
+   the same commit path the damage used, so the other screens follow. */
+const HIT_UNDO_FIELDS = ["currentHP","tempHP","injuries","species","miniorColor","hoardForme","radiate","typeShift"];
+let hitUndoStack = [];
+function snapHitTarget(token){
+  const o = tokenHp(token).obj;
+  const snap = { tokenId: token.id, tokHp: token.hp, tokBreaches: token.breaches, obj: o || null };
+  if(o){
+    snap.fields = {};
+    HIT_UNDO_FIELDS.forEach(k => { if(k in o) snap.fields[k] = o[k]; });
+    snap.statuses = Array.isArray(o.statuses) ? o.statuses.slice() : null;
+    snap.cs       = o.cs ? Object.assign({}, o.cs) : null;
+    snap.buffs    = Array.isArray(o.buffs) ? o.buffs.map(b=>Object.assign({}, b)) : null;
+    snap.swarm    = o.swarm ? Object.assign({}, o.swarm) : null;
+    snap.boss     = o.boss ? Object.assign({}, o.boss) : null;
+    snap.digest   = Array.isArray(o.digestion) ? o.digestion.map(b=>Object.assign({}, b)) : null;
+  }
+  return snap;
+}
+async function restoreHitTarget(map, snap){
+  const o = snap.obj;
+  if(o && snap.fields){
+    Object.keys(snap.fields).forEach(k => { o[k] = snap.fields[k]; });
+    if(snap.statuses) o.statuses = snap.statuses.slice();
+    if(snap.cs)       o.cs = Object.assign({}, snap.cs);
+    if(snap.buffs)    o.buffs = snap.buffs.map(b=>Object.assign({}, b));
+    if(snap.swarm && o.swarm) o.swarm = Object.assign({}, snap.swarm);
+    if(snap.boss  && o.boss)  o.boss  = Object.assign({}, snap.boss);
+    if(snap.digest) o.digestion = snap.digest.map(b=>Object.assign({}, b));
+  }
+  const token = map ? mapTokensFor(map.id).find(t=>t.id===snap.tokenId) : null;
+  if(token){
+    if(snap.tokHp !== undefined) token.hp = snap.tokHp;
+    if(snap.tokBreaches !== undefined) token.breaches = snap.tokBreaches;
+    if(token.link) await commitTokenSource(token);
+  }
+}
+function pushHitUndo(label, snaps){
+  if(!snaps || !snaps.length) return;
+  hitUndoStack.push({ at: Date.now(), label, snaps });
+  if(hitUndoStack.length > 20) hitUndoStack.shift();
+}
+function lastHitUndoLabel(){
+  const r = hitUndoStack[hitUndoStack.length-1];
+  return r ? r.label : null;
+}
+async function undoLastHit(){
+  const rec = hitUndoStack.pop();
+  if(!rec){ toast("Nothing to take back"); return false; }
+  const map = currentMapForView() || activeMap();
+  for(const snap of rec.snaps){ try{ await restoreHitTarget(map, snap); }catch(e){} }
+  mapTokensSave();
+  renderMap(); renderRollFeed();
+  const n = rec.snaps.length;
+  toast(`\u21A9 Took back ${rec.label} \u2014 HP, Temp HP, Injuries and chips restored on ${n} target${n===1?"":"s"}`);
+  return true;
+}
 async function applyTokenDamage(token, br){
   const info0 = tokenHp(token);
   const before = info0.cur, tempBefore = tempHPOf(info0.obj);
@@ -38292,7 +39063,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
   // onto — it would otherwise sit in the Enemies column offering a 1/1 HP bar to hit. A boat hull
   // is the one piece of scenery that DOES take damage, so it stays in the list.
   const tokens = mapTokensFor(map.id).filter(t=>{ const i=tokenHp(t);
-    return i.editable && !i.unlinked && i.kind!=="shop" && i.kind!=="hazard"; });
+    return i.editable && !i.unlinked && i.kind!=="shop" && i.kind!=="hazard" && i.kind!=="zone"; });
   if(!tokens.length) return null;
   const typeName = type || "Typeless";
   const wrap = el("div",{style:"margin-top:12px;border-top:1px dashed var(--line);padding-top:10px"});
@@ -38313,7 +39084,8 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
   const label = t=>{ const i=tokenHp(t); return `${i.name} — ${i.cur}/${i.max} HP`; };
   const items = tokens.map(t=>{
     const kind = tokenHp(t).kind;
-    const faction = (kind==="trainer"||kind==="pokemon"||kind==="boat") ? "players" : "enemies";
+    // a 🤝 ally is listed with the party, which is the column the GM goes looking for it in
+    const faction = (kind==="trainer"||kind==="pokemon"||kind==="boat"||tokenSide(t)==="player") ? "players" : "enemies";
     const cb = el("input",{type:"checkbox"});
     const txt = el("span",{class:"small"}, label(t));
     const row = el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;padding:2px 0;cursor:pointer"}, cb, txt);
@@ -38391,6 +39163,9 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     const chosen = items.filter(i=>i.cb.checked);
     if(!chosen.length){ out.textContent = "Tick at least one target (in either tab)."; return; }
     out.innerHTML = "";
+    // everything this press is about to change, captured first so ↩ can put it all back
+    const snaps = chosen.map(it => snapHitTarget(it.t));
+    pushHitUndo(`${dmg} ${typeName}`, snaps);
     for(const it of chosen){
       /* Shell Armor / Battle Armor: this target takes the hit without the crit's extra dice. */
       const shell = critExtra > 0 ? critImmunityOf(tokenHp(it.t).obj) : null;
@@ -38405,10 +39180,16 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
         `\u{1F6E1} ${shell}: immune to Critical Hits \u2014 the crit's extra ${critExtra} came back off (${dmg} \u2192 ${useDmg}).`));
       out.append(line);
     }
+    undoBtn.style.display = "";                                 // …and offer to take it straight back
     draw();                                                     // refresh HP labels + select-all state
   };
+  const undoBtn = el("button",{class:"btn-secondary",style:"display:none",
+    title:"Put the last 💥 Apply back exactly as it was — Hit Points, Temporary HP, Injuries, "
+        + "Knocked Out / Dead chips, Combat Stages, buffs and any broken Swarm or Boss bars.",
+    onclick:async()=>{ if(await undoLastHit()){ undoBtn.style.display = "none"; draw(); } }},
+    "\u21A9 Undo that hit");
   wrap.append(el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;align-items:center"},
-    el("button",{class:"btn-primary",onclick:apply},"💥 Apply to selected")), out);
+    el("button",{class:"btn-primary",onclick:apply},"💥 Apply to selected"), undoBtn), out);
   draw();
   return wrap;
 }
@@ -38456,6 +39237,11 @@ function renderRollFeed(){
     head.append(el("span",{style:"background:var(--accent);color:#fff;border-radius:9px;font-size:10px;"
       + "font-weight:800;padding:1px 6px"}, String(fresh)));
   head.append(el("span",{style:"flex:1"}));
+  /* ↩ takes back the last hit that was APPLIED to tokens (not the roll itself): HP, Temporary HP,
+     Injuries and every chip it set, on every target that press hit. */
+  if(hitUndoStack.length) head.append(initMiniBtn("\u21A9",
+    `undo the last applied hit (${lastHitUndoLabel()}) — HP, Temp HP, Injuries and chips go back`,
+    ()=>{ undoLastHit(); }));
   if(entries.length) head.append(initMiniBtn("🗑","clear the feed for the whole table", ()=>{
     if(!confirm("Clear the roll feed for everyone?")) return;
     ensureRolls().data.entries = []; saveRolls(); renderRollFeed();
@@ -38584,13 +39370,22 @@ function openTokenMenu(token, map){
   if(isShopToken(token)) return openShopTokenMenu(token, map);
   if(isBoatToken(token)) return openBoatMenu(token, map);
   if(isHazardToken(token)) return openHazardMenu(token, map);
+  if(isZoneToken(token)) return openZoneMenu(token, map);
   const info = tokenHp(token);
   const wrap = el("div",{});
   if(!info.unlinked){
     // Portrait at the top so players can see WHO they just tapped (the token on the board is tiny)
     // — tap it for the full-size picture. The GM already recognises their own cast and gets a much
     // longer menu below, so their header stays compact.
-    if(!cloud.isGM && info.sprite)
+    /* An uploaded picture is shown WHOLE here — the board's circle is a crop (see
+       openTokenImageFocus), and the point of tapping a token is to see the thing itself. */
+    const menuImg = tokenImageRef(token);
+    if(menuImg)
+      wrap.append(el("div",{style:"display:flex;justify-content:center;margin-bottom:10px"},
+        zoomImg(el("img",{src:menuImg.url, alt:info.name||"",
+          style:"max-width:100%;max-height:220px;object-fit:contain;border-radius:10px;background:var(--panel-2)"}),
+          info.name)));
+    else if(!cloud.isGM && info.sprite)
       wrap.append(el("div",{style:"display:flex;justify-content:center;margin-bottom:10px"},
         zoomImg(info.sprite, info.name)));
     // Its Type(s) — GM-only info now; players shouldn't see a token's Type just by tapping it.
@@ -39244,13 +40039,38 @@ function openTokenMenu(token, map){
       hd.addEventListener("change", async()=>{ token.gmHidden = hd.checked; mapTokensSave(); renderMap(); toast(token.gmHidden?"🙈 Hidden from players":"👁 Visible to players"); });
       wrap.append(el("label",{class:"inline",style:"margin-top:10px;gap:6px;display:flex;align-items:center"},
         hd, el("span",{class:"small"},"🙈 Hide this token from players")));
+      /* 🤝 Ally: an encounter creature fighting FOR the party. One tick moves every side-aware
+         rule at once — Flanking and Pressure stop treating it as a foe, the party's Cheers, Songs
+         and Orders land on it, it reveals fog, it joins the initiative order by itself, its ring
+         turns blue, and the attack tool lists it with the players. */
+      if(info.kind==="enc" || info.kind==="enctrainer"){
+        const al = el("input",{type:"checkbox"}); al.checked = !!token.ally;
+        al.addEventListener("change", async()=>{
+          if(al.checked) token.ally = true; else delete token.ally;
+          mapTokensSave(); renderMap();
+          toast(token.ally ? "🤝 Counts as an ally — fights on the party's side"
+                           : "👹 Back to the enemy side");
+        });
+        wrap.append(el("label",{class:"inline",style:"margin-top:10px;gap:6px;display:flex;align-items:center"},
+          al, el("span",{class:"small"},"🤝 Counts as an ally (party side)")));
+      }
       wrap.append(nameHideToggle(token));
+      if(tokenImageRef(token)) wrap.append(el("div",{style:"margin-top:10px"},
+        el("button",{class:"btn-secondary",style:"padding:5px 10px",
+          title:"Choose which part of this token's picture sits inside its circle on the board.",
+          onclick:()=>{ closeModal(); openTokenImageFocus(token, map); }},"🖼 Framing…")));
       if(battleOn()){
         const info2=tokenHp(token), ally=info2.kind==="trainer"||info2.kind==="pokemon";
         const ii=el("input",{type:"checkbox"}); ii.checked = ally ? token.inInit!==false : !!token.inInit;
         ii.addEventListener("change", async()=>{ token.inInit=ii.checked; mapTokensSave(); renderMap(); });
         wrap.append(el("label",{class:"inline",style:"margin-top:10px;gap:6px;display:flex;align-items:center"},
           ii, el("span",{class:"small"},"⚔ In initiative order")));
+        // a downed enemy is held out of the order by tokenInInit whatever this box says — explain it
+        if(ii.checked && !tokenInInit(token))
+          wrap.append(el("div",{class:"small muted",style:"margin-top:2px;padding-left:22px"},
+            hasStatus(info2.obj||{}, "dead")
+              ? "Held out of the order while it is Dead — lift the chip and it takes its place back."
+              : "Held out of the order while it is Knocked Out — bring it back up and it takes its place back."));
         const ib=el("input",{type:"number",value:token.initBonus||0,style:"width:64px"});
         ib.addEventListener("change", async()=>{ token.initBonus=parseInt(ib.value)||0; mapTokensSave(); renderMap(); });
         wrap.append(el("label",{class:"field",style:"margin-top:8px;max-width:160px"}, el("span",{},"Initiative bonus"), ib));
@@ -39275,7 +40095,7 @@ function openTokenMenu(token, map){
     foot.push(el("button",{class:"btn-secondary danger",onclick:async()=>{ await removeToken(token,map); closeModal(); }},"🗑 Remove"));
   }
   foot.push(el("button",{class:"btn-primary",onclick:closeModal},"Done"));
-  modal({title:info.name||"Token", bodyNode:wrap, footNodes:foot});
+  modal({title:info.name||"Token", bodyNode:wrap, footNodes:foot, guardMs:TOKEN_MENU_GUARD_MS});
 }
 
 /* "Players" tab grouped by trainer: each character sheet → the trainer + their PARTY Pokémon */
@@ -39541,6 +40361,10 @@ async function clearMapTokens(map){ if(!confirm("Remove ALL tokens from this map
 
    Both are purely about what gets DRAWN — no token data, no fog rule and no ownership check is
    touched, and a token that isn't built still moves normally when its stack is dragged. */
+/* How long a freshly-opened token menu ignores taps. Long enough that the second half of an
+   accidental phone double-tap lands on a dead panel, short enough that nobody waiting for it
+   notices. See modal()'s `guardMs`. */
+const TOKEN_MENU_GUARD_MS = 280;
 const MAP_CULL_MARGIN = 1;      // extra viewports of tokens built on each side of the visible rect
 let mapCullRect = null;         // stage-space rect the tokens currently in the DOM were built for
 let mapVpSize = null;           // last known .map-viewport size (cached: renderMap tears the node down)
@@ -40147,6 +40971,8 @@ function renderMap(){
           title:"Drop a boat on the board. Steer it with the 🚤 arrows — it turns to face where it's going and everything standing on the deck sails with it."},"🚤 Boat"),
         el("button",{class:"btn-secondary",onclick:()=>openAddHazard(map),
           title:"Drop a visual hazard marker (Stealth Rock, Spikes, fire...) on the board -- cosmetic only, no automatic effect."},"☠ Hazard"),
+        el("button",{class:"btn-secondary",onclick:()=>openAddZone(map),
+          title:"Mark ground as Rough, Slow or Blocking Terrain. Slow ground doubles the metres a drag across it costs; Blocking ground stops a player's drag. Tick \u{1F441} Invisible when the terrain is already painted into the map art and you only want the rule."},"\u26F0 Terrain"),
         el("button",{class:"btn-secondary",onclick:()=>clearMapTokens(map)},"Clear tokens"),
         el("button",{class:"btn-secondary"+(map.fogOn?" on":""),onclick:()=>toggleFog(map),
           title:"Auto-reveals around player tokens; explored areas stay revealed"}, map.fogOn?"🌫 Fog on":"🌫 Fog off"),
@@ -40361,6 +41187,7 @@ function renderMap(){
   const fog = fogSet(map.id);
   const mkToken = t => { const node=mapTokenNode(t,map,originX,originY); if(!mapImgEdit) attachTokenDrag(node,t,map,originX,originY); else node.style.pointerEvents="none"; return node; };
   const visibleToken = t => {
+    if(isZoneToken(t) && t.ghost) return false;                     // rules-only ground: nothing to draw
     if(t.gmHidden) return false;                                    // GM has hidden this token from players entirely
     if(cloud.isGM || !map.fogOn) return true;
     if(t.link && ownsRow(cloud.byId[t.link.sheetId])) return true;   // always see your own
@@ -40376,9 +41203,14 @@ function renderMap(){
   const cullPad = map.gridSize*2 + 48;      // plates, outlines and rider perches hang off the box
   const nearView = t => {
     if(mapSelect.ids.has(t.id) || (mapAoE && mapAoE.tokenId===t.id)) return true;
+    /* Deliberately NOT tokenFootprint: that walks the encounter library for a Massive School, and
+       this runs for every token on the board on every repaint. Boats and terrain zones are the two
+       non-square shapes it has to know about; everything else is size x size. */
     const px = map.gridSize, bd = isBoatToken(t) ? boatDims(t) : null;
+    const fw = bd ? bd.w : isZoneToken(t) ? Math.max(1, t.w||1) : (t.size||1);
+    const fh = bd ? bd.h : isZoneToken(t) ? Math.max(1, t.h||1) : (t.size||1);
     const L = t.x*px+originX-cullPad, T = t.y*px+originY-cullPad;
-    const W = (bd?bd.w:(t.size||1))*px + cullPad*2, H = (bd?bd.h:(t.size||1))*px + cullPad*2;
+    const W = fw*px + cullPad*2, H = fh*px + cullPad*2;
     return L < cullBox.x+cullBox.w && L+W > cullBox.x && T < cullBox.y+cullBox.h && T+H > cullBox.y;
   };
 

@@ -554,6 +554,21 @@ body.map-mode .map-viewport{flex:1 1 auto; height:auto; min-height:0; border-rad
 .map-token.hazard-token .tk-hazard{width:100%; height:100%; border-radius:0; display:flex;
   align-items:center; justify-content:center; line-height:1; font-size:82cqmin;
   filter:drop-shadow(0 1px 2px rgba(0,0,0,.65)); pointer-events:none}
+/* Terrain zones (Rough / Slow / Blocking): a flat rectangle of ground under everything else, with
+   its name in the corner rather than on a plate. `.ghost` is the rules-only version — the ground is
+   already painted into the map art, so only a thin dashed outline marks it, and only for the GM. */
+.map-token.zone-token{border:none !important; background:transparent; box-shadow:none;
+  border-radius:0; overflow:visible}
+.map-token.zone-token .tk-zone{width:100%; height:100%; border-radius:6px; box-sizing:border-box;
+  display:flex; align-items:flex-start; justify-content:flex-start; pointer-events:none}
+.map-token.zone-token .tk-zone.ghost{opacity:.55}
+.map-token.zone-token .tk-zone-lbl{font-size:10px; font-weight:800; line-height:1.1; padding:2px 5px;
+  border-radius:0 0 6px 0; background:rgba(0,0,0,.45); color:#fff; white-space:nowrap;
+  max-width:100%; overflow:hidden; text-overflow:ellipsis}
+/* A token whose picture has been framed (see openTokenImageFocus) needs something to clip its zoom
+   against, so the <img> gets a round wrapper; an unframed token keeps the bare <img> it always had. */
+.map-token .tk-imgbox{position:absolute; inset:0; border-radius:50%; overflow:hidden}
+.map-token .tk-imgbox .tk-img{width:100%; height:100%; border-radius:0}
 .map-token .tk-hpwrap{position:absolute; left:6%; right:6%; bottom:-7px; height:6px; display:flex;
   background:var(--panel-2); border:1px solid var(--line); border-radius:5px; overflow:hidden}
 /* player-side tokens drop the numeric HP; the bar sits low, just above the name label

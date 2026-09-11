@@ -262580,46 +262580,88 @@
   "moves": {
    "levelup": [
     {
-     "level": 6,
+     "level": 1,
+     "name": "Absorb",
+     "type": "Grass"
+    },
+    {
+     "level": 1,
+     "name": "Tackle",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Water Gun",
+     "type": "Water"
+    },
+    {
+     "level": 1,
+     "name": "Tearful Look",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Dragon Breath",
+     "type": "Dragon"
+    },
+    {
+     "level": 1,
      "name": "Acid Spray",
      "type": "Poison"
     },
     {
-     "level": 11,
-     "name": "Acid Armor",
-     "type": "Poison"
-    },
-    {
-     "level": 18,
-     "name": "Water Pulse",
-     "type": "Water"
-    },
-    {
-     "level": 25,
-     "name": "Iron Head",
-     "type": "Steel"
-    },
-    {
-     "level": 25,
-     "name": "Dragon Pulse",
-     "type": "Dragon"
-    },
-    {
-     "level": 34,
+     "level": 1,
      "name": "Shelter",
      "type": "Normal"
     },
     {
+     "level": 15,
+     "name": "Protect",
+     "type": "Normal"
+    },
+    {
+     "level": 20,
+     "name": "Flail",
+     "type": "Normal"
+    },
+    {
+     "level": 25,
+     "name": "Water Pulse",
+     "type": "Water"
+    },
+    {
+     "level": 30,
+     "name": "Rain Dance",
+     "type": "Water"
+    },
+    {
+     "level": 35,
+     "name": "Dragon Pulse",
+     "type": "Dragon"
+    },
+    {
      "level": 43,
-     "name": "Hydro Pump",
+     "name": "Curse",
+     "type": "Ghost"
+    },
+    {
+     "level": 49,
+     "name": "Iron Head",
+     "type": "Steel"
+    },
+    {
+     "level": 56,
+     "name": "Muddy Water",
      "type": "Water"
     }
    ],
    "tmhm": [],
    "egg": [],
    "tutor": [
-    "Bubble (N)",
+    "Acid Armor",
+    "Bubble",
     "Draco Meteor",
+    "Hydro Pump",
     "Ice Beam",
     "Iron Head",
     "Iron Tail",
@@ -262629,7 +262671,7 @@
     "Sludge Bomb",
     "Steel Beam",
     "Thunderbolt",
-    "Water Pulse GOODRA Hisuian"
+    "Water Pulse"
    ]
   },
   "gender": "50% M / 50% F",
@@ -262775,50 +262817,112 @@
   "moves": {
    "levelup": [
     {
-     "level": 6,
+     "level": 1,
+     "name": "Absorb",
+     "type": "Grass"
+    },
+    {
+     "level": 1,
+     "name": "Tackle",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Water Gun",
+     "type": "Water"
+    },
+    {
+     "level": 1,
+     "name": "Tearful Look",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Feint",
+     "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Dragon Breath",
+     "type": "Dragon"
+    },
+    {
+     "level": 1,
      "name": "Acid Spray",
      "type": "Poison"
     },
     {
-     "level": 11,
-     "name": "Acid Armor",
-     "type": "Poison"
-    },
-    {
-     "level": 18,
-     "name": "Water Pulse",
-     "type": "Water"
-    },
-    {
-     "level": 25,
-     "name": "Iron Head",
-     "type": "Steel"
-    },
-    {
-     "level": 25,
-     "name": "Dragon Pulse",
-     "type": "Dragon"
-    },
-    {
-     "level": 34,
+     "level": 1,
      "name": "Shelter",
      "type": "Normal"
     },
     {
-     "level": 43,
-     "name": "Hydro Pump",
+     "level": 1,
+     "name": "Iron Tail",
+     "type": "Steel"
+    },
+    {
+     "level": 15,
+     "name": "Protect",
+     "type": "Normal"
+    },
+    {
+     "level": 20,
+     "name": "Flail",
+     "type": "Normal"
+    },
+    {
+     "level": 25,
+     "name": "Water Pulse",
      "type": "Water"
+    },
+    {
+     "level": 30,
+     "name": "Rain Dance",
+     "type": "Water"
+    },
+    {
+     "level": 35,
+     "name": "Dragon Pulse",
+     "type": "Dragon"
+    },
+    {
+     "level": 43,
+     "name": "Curse",
+     "type": "Ghost"
+    },
+    {
+     "level": 49,
+     "name": "Iron Head",
+     "type": "Steel"
+    },
+    {
+     "level": 49,
+     "name": "Body Slam",
+     "type": "Normal"
+    },
+    {
+     "level": 58,
+     "name": "Muddy Water",
+     "type": "Water"
+    },
+    {
+     "level": 67,
+     "name": "Heavy Slam",
+     "type": "Steel"
     }
    ],
    "tmhm": [],
    "egg": [],
    "tutor": [
-    "Bubble (N)",
+    "Acid Armor",
+    "Bubble",
     "Bulldoze",
     "Draco Meteor",
     "Fire Punch",
     "Flamethrower",
     "Giga Impact",
+    "Hydro Pump",
     "Hyper Beam",
     "Ice Beam",
     "Iron Head",
@@ -262829,9 +262933,9 @@
     "Rock Smash",
     "Sludge Bomb",
     "Steel Beam",
-    "Thunderbolt",
     "Thunder Punch",
-    "Water Pulse AVALUGG Hisuian"
+    "Thunderbolt",
+    "Water Pulse"
    ]
   },
   "gender": "50% M / 50% F",
