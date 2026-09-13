@@ -1067,26 +1067,34 @@ const weatherIsClear = w => (w||activeWeather()).key === "clear";
    Thermosensitive) — folded into effectiveCS so every derived stat and roll sees them. */
 function weatherCSMods(p){
   const out = { atk:0, def:0, spatk:0, spdef:0, spd:0 };
-  const w = ownerWeather(p); if(!w.abilityCS) return out;
-  for(const ab in w.abilityCS)
-    if(monHasAbility(p, ab)) for(const k in w.abilityCS[ab]) out[k] += w.abilityCS[ab][k];
+  ownerWeathers(p).forEach(w => {
+    if(!w.abilityCS) return;
+    for(const ab in w.abilityCS)
+      if(monHasAbility(p, ab)) for(const k in w.abilityCS[ab]) out[k] += w.abilityCS[ab][k];
+  });
   return out;
 }
 /* flat Evasion bonus from a weather ability (Snow Cloak in Hail) */
 function weatherEvasion(p){
-  const w = ownerWeather(p); if(!w.abilityEvasion) return 0;
   let n = 0;
-  for(const ab in w.abilityEvasion) if(monHasAbility(p, ab)) n += w.abilityEvasion[ab];
+  ownerWeathers(p).forEach(w => {
+    if(!w.abilityEvasion) return;
+    for(const ab in w.abilityEvasion) if(monHasAbility(p, ab)) n += w.abilityEvasion[ab];
+  });
   return n;
 }
 /* Damage / accuracy changes this weather makes to ONE move by ONE Pokémon. Shaped like buffMods
    so openMoveRoll can display and total it the same way it does Cheers/Orders/Songs. */
 function weatherRollMods(p, m, moveType){
-  const w = ownerWeather(p);
-  const res = { weather:w, dmg:0, autoHit:false, acOverride:null, lines:[] };
-  if(weatherIsClear(w)) return res;
+  const all = ownerWeathers(p).filter(x => !weatherIsClear(x));
+  const w0 = ownerWeather(p);
+  /* Two Weathers (Climate Control) read as one combined entry on the roll window: "Sunny + Sandstorm" */
+  const shown = all.length > 1 ? Object.assign({}, all[0], { name:all.map(x=>x.name).join(" + "), icon:all.map(x=>x.icon).join("") }) : w0;
+  const res = { weather:shown, dmg:0, acc:0, autoHit:false, acOverride:null, lines:[] };
+  if(!all.length) return res;
   const ty = String(moveType||"").toLowerCase();
   const mn = String(m?.name||"").toLowerCase();
+  all.forEach(w => {
 
   const byType = w.dmgByType?.[ty];
   if(byType){ res.dmg += byType;
@@ -1101,16 +1109,24 @@ function weatherRollMods(p, m, moveType){
     res.lines.push(`${m.name} cannot miss in ${w.name}`); }
   if(w.acOverride && w.acOverride[mn]!=null){ res.acOverride = w.acOverride[mn];
     res.lines.push(`${m.name} is AC ${w.acOverride[mn]} in ${w.name}`); }
+  });
+  /* Extreme Weather (Researcher, Climatology): −5 damage in Hail, −2 Accuracy in a Sandstorm, for
+     anyone the weather is actually hurting */
+  const ex = extremeWeatherFx(p);
+  if(ex.dmg){ res.dmg += ex.dmg; }
+  if(ex.acc){ res.acc += ex.acc; }
+  ex.lines.forEach(l => res.lines.push(l));
   return res;
 }
 /* Per-turn HP the current weather would move on one Pokémon — REPORTED, never auto-applied.
    Returns [{label, delta, when}] where delta is signed HP. */
 function weatherTickReport(p){
-  const w = activeWeather(); const out = [];
-  if(weatherIsClear(w) || !w.ticks) return out;
+  const out = [];
+  const wlist = [activeWeather(), mapSecondWeather()].filter(w => w && !weatherIsClear(w) && w.ticks);
+  if(!wlist.length) return out;
   const maxHP = pokeDerived(p).maxHP;
   const types = monTypes(p).map(t=>String(t).toLowerCase());
-  w.ticks.forEach(t=>{
+  wlist.forEach(w => w.ticks.forEach(t=>{
     if(t.ability && !monHasAbility(p, t.ability)) return;
     if(t.all){
       if((t.exceptTypes||[]).some(ty=>types.includes(ty))) return;              // typed out of it
@@ -1120,7 +1136,7 @@ function weatherTickReport(p){
     }
     const amt = t.kind==="sixteenth" ? hpSixteenth(maxHP) : hpTick(maxHP);
     out.push({ label:t.label, delta:t.sign*amt, when:t.when });
-  });
+  }));
   return out;
 }
 /* ===================================================================
@@ -2833,6 +2849,7 @@ function teraRollNotes(p, m, mtype){
     out.push("Stellar Blast: Tera Blast is one step MORE effective against a target that has changed Forme (Mega, Terastalized, Transformed, Schooling, an Origin/Altered/Primal Forme\u2026), to a maximum of Doubly Super Effective. The \u{1F3AF} target picker applies that automatically.");
   if(/^tera starstorm$/i.test(String(m&&m.name||"")))
     out.push("Place a Star Shard in any square of the Area of Effect: an ally entering it, or starting their turn on it, may consume the Shard for +10 damage on their next successful damaging attack.");
+  { const pn = powderImmuneNote(m); if(pn) out.push(pn); }       // Green Path / Overcoat / Grass / Safety Goggles
   return out;
 }
 /* ===================================================================
@@ -3034,8 +3051,20 @@ function typeBoosterDmg(owner, mtype){ const b = typeBoosterFor(owner, mtype); r
    Anything whose effect is a TRIGGER somebody has to call (Focus Band, Shock Collar, Life Orb's
    recoil, Air Balloon popping) also gets a one-tap button through GEAR_ACTIONS further down.
 =================================================================== */
+/* Species revived from a Fossil — Prehistoric Bond's items only work on these (Core p.146), and the
+   Paleontology Features look for them. A Pokémon can also be flagged p.fossil by hand. */
+const FOSSIL_SPECIES = ["Omanyte","Omastar","Kabuto","Kabutops","Aerodactyl","Lileep","Cradily","Anorith","Armaldo",
+  "Cranidos","Rampardos","Shieldon","Bastiodon","Tirtouga","Carracosta","Archen","Archeops","Tyrunt","Tyrantrum",
+  "Amaura","Aurorus","Dracozolt","Arctozolt","Dracovish","Arctovish"];
 const CHOICE_SUPPRESS_NOTE = "Choice Item: the holder is Suppressed and — RAW — cannot be cured of it until the end of Combat even if the item is taken off, so unequipping does NOT lift the chip. End Scene clears it like any other Volatile Affliction.";
 const HELD_FX = {
+  /* ---- Prehistoric Bond (Researcher, Paleontology): Fossil Pokémon only ---- */
+  "reliccrown":        { onlySpecies:FOSSIL_SPECIES, note:"Relic Crown: +2 to all Save Checks — roll it at the table." },
+  "primalframe":       { onlySpecies:FOSSIL_SPECIES, crit:1 },
+  "prehistoricrazors": { onlySpecies:FOSSIL_SPECIES, note:"Prehistoric Razors: when a foe hits the holder with a damaging Melee Attack, the holder may make them lose a Tick of Hit Points as a Reaction." },
+  "primalcloak":       { onlySpecies:FOSSIL_SPECIES, eff:1, rollNote:"Primal Cloak: +1 Effect Range — already in the thresholds above." },
+  "prehistoricaegis":  { onlySpecies:FOSSIL_SPECIES, note:"Prehistoric Aegis: 5 Damage Reduction against Ranged Attacks — tell the GM on a Ranged hit." },
+  "relicsash":         { onlySpecies:FOSSIL_SPECIES, note:"Relic Sash: +2 Evasion against Status Moves." },
   /* ---- Choice Items: a default state of +2 Combat Stages, paid for with Suppression ---- */
   "choiceband":   { cs:{atk:2},   status:["suppressed"], stickyStatus:true, note:CHOICE_SUPPRESS_NOTE },
   "choicespecs":  { cs:{spatk:2}, status:["suppressed"], stickyStatus:true, note:CHOICE_SUPPRESS_NOTE },
@@ -3195,6 +3224,8 @@ function heldDefenseMods(owner){
   });
   return { immune, lose, typeDR, why };
 }
+/* how far its gear widens every Effect Range (Primal Cloak) */
+function heldEffectRangeBonus(owner){ return heldFxList(owner).reduce((n,[,fx]) => n + (fx.eff||0), 0); }
 /* how far this creature's gear widens its Critical Hit range */
 function heldCritBonus(owner){
   return heldFxList(owner).reduce((n,[,fx]) => n + (fx.crit||0), 0);
@@ -3677,6 +3708,22 @@ function autoAllocMom(p){
   return changed;
 }
 /* every item that can be held/consumed, for lookups + the Held Item picker */
+/* Items the Researcher Fields craft that no catalogue printed: the Crystal Artificer's Rainbow Gem and
+   Prehistoric Bond's six Fossil-only held items (Core pp.142, 146). */
+(function addResearchItems(){
+  const it = D.items || (D.items = {});
+  const gear = it.gear || (it.gear = []), held = it.held || (it.held = []);
+  const has = (arr, n) => arr.some(x => x && String(x.name).toLowerCase() === n.toLowerCase());
+  if(!has(gear, "Rainbow Gem")) gear.push({ name:"Rainbow Gem", cat:"Equipment", cost:"--", slot:"Accessory",
+    effect:"Crafted by a Crystal Artificer (Rainbow Light): the same effect as a Focus (+5 to a chosen Stat after Combat Stages), but any Trainer with Expert Occult Education may re-attune its Stat as an Extended Action. May be worn as an Accessory, Head or Hand item. Its wearer can use Rainbow Light." });
+  [["Relic Crown","The holder gains a +2 Bonus to all Save Checks."],
+   ["Primal Frame","The holder's damaging attacks have their Critical Hit Range extended by +1."],
+   ["Prehistoric Razors","When a foe hits the holder with a damaging Melee Attack, the holder may cause them to lose a Tick of Hit Points as a Reaction."],
+   ["Primal Cloak","The holder's damaging attacks have their Effect Range extended by +1."],
+   ["Prehistoric Aegis","The holder gains 5 Damage Reduction against Ranged Attacks."],
+   ["Relic Sash","The holder gains +2 Evasion against Status Moves."]]
+    .forEach(([name, eff]) => { if(!has(held, name)) held.push({ name, effect:`${eff} Prehistoric Bond (Paleontology): only a Pokémon revived from a Fossil may use it.` }); });
+})();
 const itemByName = new Map([...(D.items?.held||[]), ...(D.items?.food||[]), ...(D.items?.capabilities||[]),
   ...(D.items?.weather||[]), ...(D.items?.equipment||[]), ...(D.items?.gear||[])].map(i => [i.name.toLowerCase(), i]));
 
@@ -4047,10 +4094,14 @@ function freqInfo(freqRaw){
   if(m) return {kind:"scene", max: m[1] ? +m[1] : 1};
   m = usage.match(/^daily(?:\s*x\s*(\d+))?/i);
   if(m) return {kind:"daily", max: m[1] ? +m[1] : 1};
+  /* Once per week (Sprouter, Gather Unown, Heart Gift). Nothing on the sheet knows when a week has
+     passed, so End Day deliberately leaves these pips alone and the table taps them back by hand. */
+  m = usage.match(/^weekly(?:\s*x\s*(\d+))?/i);
+  if(m) return {kind:"weekly", max: m[1] ? +m[1] : 1};
   if(/\bap\b|bind|drain/.test(u)) return {kind:"ap", max:0};
   return {kind:"other", max:0};
 }
-const freqTrackable = info => info.kind==="scene" || info.kind==="daily" || info.kind==="eot";
+const freqTrackable = info => info.kind==="scene" || info.kind==="daily" || info.kind==="weekly" || info.kind==="eot";
 function useKey(kind, name){ return kind + ":" + String(name).toLowerCase(); }
 function splitKey(key){ const i=key.indexOf(":"); return [key.slice(0,i), key.slice(i+1)]; }
 function usesLeft(owner, key, max){ return Math.max(0, max - ((owner.uses && owner.uses[key]) || 0)); }
@@ -4071,9 +4122,10 @@ function usesControl(owner, kind, name, freqRaw, rerender, persistFn, opts){
     owner.uses = owner.uses || {};
     owner.uses[key] = Math.min(max, Math.max(0, max - nl));   // store consumed = max − remaining
     (persistFn||save)(); (rerender||(()=>{}))(); };
-  const label = info.kind==="scene" ? "Per Scene" : info.kind==="daily" ? "Per Day" : "Every Other Turn";
-  const tag   = info.kind==="scene" ? "scene"     : info.kind==="daily" ? "day"     : "EOT";
+  const label = info.kind==="scene" ? "Per Scene" : info.kind==="daily" ? "Per Day" : info.kind==="weekly" ? "Per Week" : "Every Other Turn";
+  const tag   = info.kind==="scene" ? "scene"     : info.kind==="daily" ? "day"     : info.kind==="weekly" ? "week"     : "EOT";
   const tip   = info.kind==="eot" ? "Every Other Turn — tap when used (refreshes each Scene)"
+              : info.kind==="weekly" ? `${label} — ${left}/${max} uses left. End Day does NOT refresh this: tap the box back when the week turns`
                                   : `${label} — ${left}/${max} uses left (tap the boxes)`;
   const wrap = el("span",{class:"uses"+(left<=0?" spent":""), title:tip,
     // when this widget lives inside a <summary>, keep taps on it from toggling the spoiler
@@ -4135,6 +4187,8 @@ function itemFreqForKey(key){
   if(kind==="dayitem") return "Daily";
   // a Legendary / General Gift's own Frequency, so End Scene and End Day hand its pips back
   if(kind==="gift") return giftFreqForName(name);
+  // a Capability a Gift handed over that has its own clock (Sprouter: once per week)
+  if(kind==="cap") return capabilityFreq(name);
   return null;
 }
 /* frequency of a named Move/Ability/Feature, for at-a-glance labels (classes/edges have none) */
@@ -4148,7 +4202,13 @@ function refFrequency(kind, name){
 /* reset an owner's uses: mode "scene" clears Scene- and EOT-freq keys; "all" clears everything */
 function resetUses(owner, mode){
   if(!owner || !owner.uses) return;
-  if(mode==="all"){ owner.uses = {}; return; }
+  /* "all" is a Day's worth of rest — a Weekly pip (Sprouter) survives it */
+  if(mode==="all"){
+    Object.keys(owner.uses).forEach(key => {
+      if(freqInfo(itemFreqForKey(key)).kind !== "weekly") delete owner.uses[key];
+    });
+    return;
+  }
   const kinds = mode==="scene" ? ["scene","eot"] : [mode];   // EOT cooldowns also clear at end of Scene
   Object.keys(owner.uses).forEach(key => {
     if(kinds.includes(freqInfo(itemFreqForKey(key)).kind)) delete owner.uses[key];
@@ -4291,6 +4351,7 @@ function tempHPOf(o){ return Math.max(0, Math.round((o && o.tempHP) || 0)); }
 function gainTempHP(o, n, opts){
   n = Math.max(0, Math.round(n || 0));
   if(!o || !n) return tempHPOf(o);
+  if(overgrowthIntercept(o, n, true)) return tempHPOf(o);       // Overgrowth: the Druid takes it instead
   if(o.species !== undefined && isSoulless(o)) return 0;      // Soulless (Shedinja) can never hold any
   /* "The user cannot gain Temporary Hit Points from other sources while in Schooling Forme" - the
      shoal IS the pool, so nothing else may add to it. Schooling's own grant passes {schooling:true}. */
@@ -4651,6 +4712,7 @@ function applyEndScene(c){
   delete c.trainer.bottled;                        // "At the end of a Scene, all items lose their Charge" (Bottled Lightning)
   channelerEndScene(c.trainer);                    // a Channeler's Imprints and Spirit Boosts hand their Bound AP back with the Scene; the Channels themselves aren't Scene-bound and stay
   delete c.trainer.fightOn;                        // Fight On and On is a combat-long refusal to drop; the fight is over
+  c.trainer.sageBlessings = []; delete c.trainer.divineWind;   // a Sage's Blessings last the encounter; Divine Wind's once-per-type resets
   // Combat Stages set by hand and Volatile afflictions don't outlast the Scene (Core p.234/p.245).
   // Stages an active source is still applying (a Burn, weather, an Aura, worn armour) are left to
   // that source — resetManualCS only zeroes p.cs, and csAutoMods puts the rest back on its own.
@@ -4703,6 +4765,7 @@ function applyEndDay(c, plan){
   delete t.fightOn;
   clearStorageDigestion(t);                      // Berry Storage: "all Buffs gained this way are lost after an Extended Rest"
   seedBagClear(t);                                 // Seed Bag's harvest lasted "the remainder of the day"
+  (c.pokemon||[]).forEach(p => { if(p && p.pushedSkill) delete p.pushedSkill; });   // Skill Trainer: "Pushed until an Extended Rest is taken"
   clearAllStatuses(t);                             // Extended Rest cures all Status afflictions (Core p.249) — except Death
   treat(t, "trainer");
   const tCap = trainerDerived(t).hp;               // remaining-injury-capped max
@@ -5485,10 +5548,11 @@ function pokeBaseStats(p) {
   const arc = p.arcanaStats || {};                 // permanent Base Stat swings from Arcana cards (Knight of Swords, Strength, The Sun…)
   const ace = statAceBonus(p);                     // its Trainer's Stat Ace / Speed Ace / … branch
   const top = topPercentageBonus(p);              // Ace Trainer's Top Percentage, at its 4th use
+  const reb = (p.rebalance && typeof p.rebalance === "object") ? p.rebalance : {};   // Researcher's Re-Balancing
   STATS.forEach(([k]) => {
     let base = sp?.baseStats?.[k] ?? 0;
     if (nat) base += (nat.statMods[k] || 0);
-    base += edgeBase + (vit[k] || 0) + (arc[k] || 0) + (ace[k] || 0) + top;
+    base += edgeBase + (vit[k] || 0) + (arc[k] || 0) + (ace[k] || 0) + top + (reb[k] || 0);
     out[k] = Math.max(k === "hp" ? 1 : 1, base);   // stats floor at 1
   });
   // Huge Power / Pure Power double the user's Base Attack stat (incl. Nature, Core p.199) — applied
@@ -5818,8 +5882,12 @@ function defenseTypeMods(p, opts){
     why.push("Mental Resistance: 10 Damage Reduction against Special Psychic, Ghost and Dark damage");
   }
   // a Feature stance's typeDR (Enchanting Transformation) merged with a granted buff's (Soothing Flute)
+  /* Overgrowth (Druid, Game of Throhs p.79): "one step less Resistant to Grass-Type attacks, to a
+     maximum of neutral damage". A cap, not a plain step, so it travels as a flag like Tolerance. */
+  const overgrowth = ownerBuffs(p).some(b => b.key === "overgrowth");
+  if(overgrowth) why.push("Overgrowth: one step less resistant to Grass (never past neutral)");
   if(mold) why.unshift(MOLD_BREAKER_WHY);
-  return { step, immune, wonderGuard, seReduce, seFlatDR, tolerance, furCoat, rogueMega, mold,
+  return { step, immune, wonderGuard, seReduce, seFlatDR, tolerance, furCoat, rogueMega, mold, overgrowth,
            typeDR: mergeTypeDR(mergeTypeDR(modeTypeDR(p), buffTypeDR(p)), gear.typeDR), specTypeDR, glacial, why };
 }
 /* ---- Mold Breaker and its two Type-limited cousins (attacker side) ------------------------
@@ -6249,7 +6317,7 @@ function renderTrainer(){
   if(giftsCanSee(t)) subTabs.push(["gifts","🎁 Gifts"]);
   if(cardsCanSee(t)) subTabs.push(["cards","🔮 Cards"]);
   // "Chefs need access to a kitchen" — so a Chef gets one, and nobody else has to look at it
-  if(hasKitchen(t)) subTabs.push(["kitchen","🍳 Kitchen"]);
+  if(hasKitchen(t)) subTabs.push(["kitchen", trainerIsChef(t) ? "🍳 Kitchen" : "⚗ Workshop"]);
   if(trainerTab==="gifts" && !giftsCanSee(t)) trainerTab="sheet";   // last Gift removed → fall back
   if(trainerTab==="cards" && !cardsCanSee(t)) trainerTab="sheet";   // last card removed → same
   if(trainerTab==="kitchen" && !hasKitchen(t)) trainerTab="sheet";
@@ -6266,6 +6334,7 @@ function renderTrainer(){
   if(trainerTab==="kitchen"){
     if(trainerIsChef(t)) root.append(kitchenCard(t, ()=>{ save(); renderTrainer(); }));
     root.append(herbLoreCard(t, ()=>{ save(); renderTrainer(); }));
+    root.append(researchBenchCard(t, ()=>{ save(); renderTrainer(); }));
     root.append(digestionCard(t, ()=>preserveScroll(()=>{ save(); renderTrainer(); })));
     return;
   }
@@ -8170,8 +8239,9 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const isStatusAtk = !versatile && /status/i.test(st.cls||"");
   const isPhysAtk   = !isSpecAtk && !isStatusAtk;
   // Combat-Stage-adjusted, same stat the sheet shows (Gift Patron Stat & Feature [+Stat] tags included)
-  const atk = isStatusAtk ? 0 : (isSpecAtk ? td.totals.spatk : td.totals.atk);
-  const atkLbl = isSpecAtk ? "Sp.Attack" : "Attack";
+  // `opts.atkOverride` swaps the added stat for another number (Fistful of Force: Occult Education ×3)
+  const atk = isStatusAtk ? 0 : (opts.atkOverride ? opts.atkOverride.value : (isSpecAtk ? td.totals.spatk : td.totals.atk));
+  const atkLbl = opts.atkOverride ? opts.atkOverride.label : (isSpecAtk ? "Sp.Attack" : "Attack");
   const defNote = isSpecAtk ? "Special Defense" : "Defense";
   const evaNote = isSpecAtk ? "Special Evasion" : "Physical Evasion";
   const bm = buffMods(t, {isPhys: isPhysAtk, type: st.type});
@@ -8550,6 +8620,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
      happens; a triggered one gets its own box with a button that spends the use. --- */
   { const rsCard = runningStartCard(runStart, runStartState); if(rsCard) body.append(rsCard); }
   body.append(riderBoxes(t, st.name, opts.rerender, opts.persist));
+  { const pn = powderImmuneNote(st.move && typeof st.move === "object" ? st.move : moveByName.get(String(st.name||"").toLowerCase()));
+    if(pn) body.append(el("div",{class:"small muted",style:"margin-top:4px"}, "\u{1F33F} " + pn)); }
   /* …and the one rider whose bullets are more than a sentence apiece: each of Flip Out's four Moves
      gets a control that actually does the thing (crit test, DR charge, Hazard clearing). */
   { const fo = flipOutBox(t, st.name, {
@@ -9348,6 +9420,27 @@ const FEATURE_CLASS_FIXUPS = {
   "Vile Body":                    "Miasmic",          // p.87
   "Shards of Stone":              "Stone Warrior",    // p.89
   "Rock Power Rank 1":            "Stone Warrior",    // p.89
+  /* Researcher Fields of Study (Core pp.140-147). Each Field's entry Feature names only a Skill Rank
+     or an Edge (Green Thumb, Gem Lore, Repel Crafter, Paleontologist), so the class is named here and
+     the rest of the Field chains off it. Without these the Researcher class listed NO Features. */
+  "Breadth of Knowledge":           "Researcher",
+  "Breadth of Knowledge [Playtest]":"Researcher",
+  "Live and Learn":                 "Researcher",
+  "Instant Analysis":               "Researcher",
+  "Echoes of the Future":           "Researcher",
+  "Apothecary":                     "Researcher",
+  "Crystal Artificer":              "Researcher",
+  "Seed Bag Rank 1":                "Researcher",
+  "Top Tier Berries":               "Researcher",
+  "Chemist":                        "Researcher",
+  "Climatology":                    "Researcher",
+  "Witch Hunter":                   "Researcher",
+  "Fossil Restoration":             "Researcher",
+  "Pusher":                         "Researcher",
+  "Well Read [Playtest]":           "Researcher",
+  "Jailbreaker":                    "Researcher",
+  "Upgrader":                       "Researcher",
+  "Improvised Gadgets":             "Researcher",
 };
 const _fixupClassOf = new Map(Object.entries(FEATURE_CLASS_FIXUPS).map(([f, c]) => [featKey(f), c]));
 /* Tokenise every Feature's prerequisites once, and record which classes each Feature belongs to
@@ -9523,6 +9616,7 @@ function openClassFeaturePicker(t, className){
   const learnable = featuresForClass(className).filter(f=>!t.features.includes(f.name)).map(f=>f.name);
   if(!learnable.length){ toast("No more features from this class"); return; }
   const lockFn = t.unlocked ? null : name => {
+    if(className === "Researcher"){ const rl = researchFieldLock(t, name); if(rl) return rl; }
     const f = D.features.find(x=>x.name===name); if(!f) return null;
     const st = prereqStatus(t, f); return st.met ? null : ("Needs "+st.unmet.join(", "));
   };
@@ -9639,6 +9733,13 @@ function classesCard(){
       }},"×"));
     head.append(acts);
     block.append(head);
+    /* Druid's Oath / Swarmlord's Embrace: the one choice the whole class hangs off, right where the
+       class was taken — not only behind a ⚙ on the Battle tab, where nobody went looking for it. */
+    if(EMBRACE_TAG_CLASSES.some(d => d.cls === name)){
+      const os = embraceOathSelect(t, name, () => { save(); render(); });
+      if(os) block.append(os);
+    }
+    if(name === "Researcher") researchFieldChips(block, t, () => render(), save);
     // signature (class-defining) Feature description
     if(sig){
       const sd = el("details",{class:"spoiler",style:"margin-top:6px"});
@@ -9901,6 +10002,7 @@ function luTotals(t, level){
     }
   }
   stat += luStatAlloc(t, level).slots;   // milestone Bonus-Stats points earned (Atk/SpAtk)
+  for(let L=1; L<=level; L++) edge += luSlotsAt(t, L).edges.filter(k => k.includes(":bok:")).length;   // Breadth of Knowledge
   return { feat, edge, stat };
 }
 
@@ -9990,6 +10092,11 @@ function luSlotsAt(t, level){
     }
   }
   if(level !== 1 && level % 2 === 0) edges.push(`L${level}:edge`);
+  /* Breadth of Knowledge (Researcher, General Research): "You gain three Skill Edges for which you
+     qualify" — three more Edge slots at the Level whose Feature slot holds it. A plain regex rather
+     than featKey: this runs from luCommit, which can be reached before the Feature index exists. */
+  if(feats.some(k => /^breadth of knowledge(\s*\[playtest\])?$/i.test(String((t.levelUp||{})[k]||"").trim())))
+    for(let i=0;i<3;i++) edges.push(`L${level}:bok:${i}`);
   return { feats, edges };
 }
 /* everything the ledger records up to the Trainer's current Level, oldest first */
@@ -10604,6 +10711,12 @@ function luLevelBlock(t, L, future){
   } else {
     block.append(luSlot(t, `L${L}:edge`, "edge", "Edge"));
   }
+  const bok = luSlotsAt(t, L).edges.filter(k => k.includes(":bok:"));
+  if(bok.length){
+    block.append(el("div",{class:"lu-grp-label"},"Breadth of Knowledge — 3 Edges"));
+    bok.forEach((k,i) => block.append(luSlot(t, k, "edge", `Education Edge ${i+1}`,
+      "a Skill Edge on an Education Skill, or an Edge with an Education Skill prerequisite")));
+  }
   const ms = LU_MILESTONES[L];
   if(ms) block.append(luMilestoneNode(t, L, ms, future));
   return block;
@@ -10667,6 +10780,7 @@ const EQUIP_EFFECTS = {
   "heavy shield":           { evasion:2, note:"Ready (Standard): instead +6 Evasion & 15 DR until end of next turn, but Slowed. Two-handed = Small Melee Weapon." },
   "shield [9-15 playtest]": { evasion:1, note:"Ready (Standard): instead +4 Evasion & 10 DR until end of next turn, but Slowed." },
   "focus":                  { focus:true },
+  "rainbow gem":            { focus:true, note:"Rainbow Gem: a Focus a Trainer with Expert Occult Education can re-attune as an Extended Action — and what Rainbow Light needs you to be wearing." },
   "shell bell":             { note:"Whenever you damage a foe you gain a Tick of Temporary HP \u2014 tap your token on the \uD83D\uDDFA Map and press \uD83D\uDC1A Shell Bell to take it." },
   "pheromone emitter":      { note:"Swift Action: +4 to a Charm or Intimidate check vs wild Pokémon (needs a Cartridge)." },
   "sensor disruption vest": { note:"Pokébots & Eye-Augment attackers take −2 Accuracy on single-target checks vs you." },
@@ -10779,14 +10893,36 @@ function trainerCapGrants(t){
      Form's Phasing). They come off with the Bind, which is exactly what the book asks for. */
   activeFeatureModes(t).forEach(d => (d.caps||[]).forEach(n => push(n, d.feat)));
   trainerEdgeFx(t).forEach(d => (d.fx.caps||[]).forEach(n => push(n, d.name)));
+  /* The row's own effect text first (a custom Gift, a Blessing, or a GM-edited wording), then the
+     catalog's. This used to call giftByName(g) with the whole ROW, which never matched a name, so no
+     Gift ever granted its Capability — Nature's Spirit's Sprouter included. */
   (t.gifts||[]).forEach(g => {
-    const def = giftByName(g);
-    if(def) capNamesFromText(def.effect).forEach(n => push(n, def.name));
+    if(!g) return;
+    const def = giftByName(g.name);
+    capNamesFromText(g.effect || (def && def.effect) || "").forEach(n => push(n, g.name || (def && def.name)));
   });
   /* A Capability the GM simply handed over at the table, typed into t.extraCaps. Nothing writes
      this automatically — it is the escape hatch for the ones no rules text spells out. */
   (Array.isArray(t.extraCaps) ? t.extraCaps : []).forEach(n => push(n, "GM"));
   return out;
+}
+/* A Capability whose rules text carries its own clock — "Once per week … As a Standard Action"
+   (Sprouter), "once a day as an Extended Action" (Herb Growth), "Up to three times per day"
+   (Gardener). Returned in the same "<usage> - <action>" shape a Feature's frequency uses, so
+   freqInfo / usesControl / resetUses read it without knowing it came from a Capability. "" = no
+   limit worth tracking (Darkvision, Freezer). */
+function capabilityFreq(name){
+  const txt = capabilityHelp(name);
+  if(!txt) return "";
+  const n = { once:1, twice:2, two:2, three:3, four:4 };
+  let usage = "";
+  let m = /\b(?:up to\s+)?(once|twice|two|three|four)(?:\s+times)?\s+(?:per|a|each)\s+(week|day)\b/i.exec(txt)
+       || /\b(once)\s+per\s+24\s+(hours)\b/i.exec(txt);
+  if(!m) return "";
+  const k = n[m[1].toLowerCase()] || 1;
+  usage = (/week/i.test(m[2]) ? "Weekly" : "Daily") + (k > 1 ? ` x${k}` : "");
+  const act = /\b(Standard|Shift|Swift|Free|Full|Extended)\s+Action\b/i.exec(txt);
+  return act ? `${usage} - ${act[1][0].toUpperCase()+act[1].slice(1).toLowerCase()} Action` : usage;
 }
 function trainerHasCapability(t, name){
   const want = String(name||"").toLowerCase();
@@ -12504,6 +12640,30 @@ function giftStatBonus(t, list){
    player's sheet: the number changes, the reason for it doesn't show. Same UI-scope caveat as
    the rest of the sheet: the row still syncs whole, so this hides it, it doesn't encrypt it. */
 function giftHiddenFrom(g){ return !!(g && g.hidden) && !isGM(); }
+/* ---- 🙈 hiding only WHO gave it ------------------------------------------------------------
+   The softer cousin of 👁: the Trainer sees the Gift and everything it does, but not the god behind
+   it. `g.patronHidden` masks the Patron for everyone but the GM — the row's "· Patron" tag, the
+   Prerequisites line (they name the patron's other Gifts), the book note, and any spelling of the
+   Patron's name inside the Gift's own name or rules text ("Water Absorb (Suicune)", "(Vulpoxen Lv 20.)")
+   becomes "your Patron". The Patron Stat still applies — "+1 Speed" names a stat, not a god. */
+function giftPatronHiddenFrom(g){ return !!(g && g.patronHidden) && !isGM(); }
+function giftPatronNames(g){
+  if(!g) return [];
+  const def = giftByName(g.name);
+  return [...new Set([g.patron, ...((def && def.patrons) || [])].filter(Boolean))]
+    .sort((a,b) => b.length - a.length);      // "Articuno Galarian" before "Articuno"
+}
+function giftMaskPatron(g, text){
+  let out = String(text || "");
+  if(!giftPatronHiddenFrom(g)) return out;
+  giftPatronNames(g).forEach(p => {
+    const esc = p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp("\\s*\\(" + esc + "\\)\\s*$"), "")          // "Water Absorb (Suicune)" → "Water Absorb"
+             .replace(new RegExp("\\b" + esc + "(?:'s)?\\b", "g"), m => /'s$/.test(m) ? "your Patron's" : "your Patron");
+  });
+  return out;
+}
+function giftShownName(g){ return giftMaskPatron(g, (g && g.name) || "Gift"); }
 /* the rows this viewer may see, each with its real index in t.gifts so × still removes the right one */
 function giftsShown(t){ return ((t && t.gifts)||[]).map((g,i)=>({g,i})).filter(x => !giftHiddenFrom(x.g)); }
 /* the 🎁 breakdown a viewer is allowed to read — hidden rows keep their +1 in the total, not in the label */
@@ -12780,7 +12940,7 @@ function giftsCard(t, saveFn, rerender, opts){
       el("span",{style:"font-weight:700;color:var(--ink)"}, kind.head),
       el("span",{class:"muted small",style:"font-weight:400;margin-left:8px"}, `${rows.length}`),
       el("span",{class:"muted small",style:"font-weight:400;margin-left:8px"},
-        rows.map(x => x.g.name || "?").join(" · ").slice(0, 90))));
+        rows.map(x => giftShownName(x.g) || "?").join(" · ").slice(0, 90))));
     det.append(el("div",{class:"muted small",style:"margin:4px 0 2px"}, kind.blurb));
     rows.forEach(({g,i}) => det.append(giftRow(t, g, i, gm, saveFn, rerender)));
     card.append(det);
@@ -12959,14 +13119,18 @@ function giftRow(t, g, i, gm, saveFn, rerender){
   const bMode   = kind==="blessing" ? (branch || (g.mode==="signer" ? "signer" : "messiah")) : null;
   const bless   = kind==="blessing" ? blessingByName(g.name) : null;
   const bSide   = bless ? blessingSide(bless, bMode) : null;
+  const maskP = giftPatronHiddenFrom(g);
   const sub = kind==="blessing"
     ? `Rank ${g.rank||1} Blessing · ${bMode==="signer" ? "Signer (Sign)" : "Messiah"}`
-    : `${g.tier||"Gift"}${g.patron ? " · "+g.patron : ""}`;
-  info.append(el("div",{style:"font-weight:700"}, g.name || "Gift",
+    : `${g.tier||"Gift"}${g.patron && !maskP ? " · "+g.patron : ""}`;
+  info.append(el("div",{style:"font-weight:700"}, giftShownName(g),
     el("span",{class:"muted small",style:"font-weight:400"}, `  ·  ${sub}`),
     g.hidden ? el("span",{class:"arcana-tag t-hidden",style:"margin-left:6px;font-weight:400",
       title:"only you can see this row — the Trainer's Gifts tab doesn't show it (the Patron Stat still counts)"},
-      "👁 hidden") : ""));
+      "👁 hidden") : "",
+    (g.patronHidden && gm) ? el("span",{class:"arcana-tag t-hidden",style:"margin-left:6px;font-weight:400",
+      title:"the Trainer sees this Gift and what it does, but not which Legendary gave it"},
+      "🙈 patron hidden") : ""));
   // Patron-stat badge + (for or/any) an inline chooser. Blessings have no tag at all — skip the line.
   const spec = giftStatSpec(g);
   if(spec != null){
@@ -13014,6 +13178,22 @@ function giftRow(t, g, i, gm, saveFn, rerender){
     if(uc) fRow.append(uc);
     info.append(fRow);
   }
+  /* A Capability this row hands over, and — when that Capability runs on its own clock — its pips.
+     Nature's Spirit / Pure Breathing "gain the Sprouter Capability", and Sprouter is "Once per week
+     … As a Standard Action", so the week's one bloom is ticked off right here. Keyed "cap:<name>" in
+     the Trainer's own `uses`, so two Gifts granting the same Capability share ONE weekly use. */
+  const capNames = capNamesFromText(g.effect || (giftByName(g.name)||{}).effect || "");
+  capNames.forEach(cn => {
+    const cf = capabilityFreq(cn);
+    const cRow = el("div",{class:"small",style:"margin-top:3px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"},
+      el("span",{class:"badge-auto",title:capabilityHelp(cn) || "Capability"}, `\u2714 ${cn} Capability`));
+    if(cf){
+      cRow.append(el("b",{}, cf.replace(/\s-\s/, " · ")));
+      const uc = usesControl(t, "cap", cn, cf, rerender, saveFn);
+      if(uc) cRow.append(uc);
+    }
+    info.append(cRow);
+  });
   /* Everything past this point is the rules text, which is what makes this tab enormous. It goes in
      its own drop-down, keyed so it survives the re-render an edit on the card causes. `info` is
      rebound to it, so every append below lands inside without any of them knowing. */
@@ -13049,16 +13229,22 @@ function giftRow(t, g, i, gm, saveFn, rerender){
       info.append(el("div",{class:"muted small",style:"margin-top:3px"}, g.effect));   // custom Blessing
     }
   } else if(g.effect){
-    info.append(el("div",{class:"muted small",style:"margin-top:3px"}, g.effect));
+    info.append(el("div",{class:"muted small",style:"margin-top:3px"}, giftMaskPatron(g, g.effect)));
   }
-  if(g.prereq) info.append(el("div",{class:"muted small",style:"margin-top:1px;font-style:italic"}, "Prerequisites: "+g.prereq));
+  // the granted Capabilities' own rules, so "what does Sprouter do?" is answered on the row
+  capNames.forEach(cn => {
+    const help = capabilityHelp(cn);
+    if(help) info.append(el("div",{class:"muted small",style:"margin-top:3px"}, el("b",{}, cn+": "), help));
+  });
+  // Prerequisites name the Patron's other Gifts ("One Lake Guardian Major Gift"), so they go too
+  if(g.prereq && !maskP) info.append(el("div",{class:"muted small",style:"margin-top:1px;font-style:italic"}, "Prerequisites: "+g.prereq));
   /* Usurper Features gate on the LEGENDARY FORM's Level, not the Trainer's - say so on the row
      rather than making the GM go and check the book against the Form's sheet. */
   if(kind==="usurper"){
     const gate = usurpGateNote(t, g.name);
     if(gate) infoTop.append(el("div",{class:"small",style:"margin-top:2px;color:var(--warn);font-weight:700"}, "🔒 "+gate));
   }
-  const noteTxt = kind==="blessing" ? blessingNoteFor(bless ? (bless.note||"") : (g.note||""), bMode) : g.note;
+  const noteTxt = kind==="blessing" ? blessingNoteFor(bless ? (bless.note||"") : (g.note||""), bMode) : (maskP ? "" : g.note);
   if(noteTxt) info.append(el("div",{class:"muted small",style:"margin-top:2px;font-style:italic"}, noteTxt));
   if(g.notes) info.append(el("div",{class:"small",style:"margin-top:2px"}, g.notes));
   /* 👁 the GM's own switch — grant something the Trainer isn't told about yet. Only the GM ever
@@ -13068,6 +13254,11 @@ function giftRow(t, g, i, gm, saveFn, rerender){
     (()=>{ const cb = el("input",{type:"checkbox"}); cb.checked = !!g.hidden;
            cb.addEventListener("change",()=>{ g.hidden = cb.checked || undefined; saveFn(); rerender(); }); return cb; })(),
     el("span",{},"👁 hide from player")));
+  if(gm && g.patron) infoTop.append(el("label",{class:"inline small",style:"gap:5px;cursor:pointer;margin-top:4px",
+    title:"the Trainer still sees this Gift and its effect — only the Legendary behind it is kept from them (its name, the Prerequisites line and the book note)"},
+    (()=>{ const cb = el("input",{type:"checkbox"}); cb.checked = !!g.patronHidden;
+           cb.addEventListener("change",()=>{ g.patronHidden = cb.checked || undefined; saveFn(); rerender(); }); return cb; })(),
+    el("span",{},"🙈 hide the patron (show only the effect)")));
   row.append(infoTop);
   if(gm) row.append(el("button",{class:"linkbtn danger",title:"remove this",style:"align-self:flex-start",
     onclick:()=>{ if(confirm(`Remove “${g.name}”?`)){ t.gifts.splice(i,1); saveFn(); rerender(); } }}, "×"));
@@ -13134,6 +13325,7 @@ function openAddGift(t, saveFn, rerender){
   const nameIn = el("input",{type:"text",placeholder:"Name",style:"width:100%"});
   const effIn  = el("textarea",{placeholder:"Effect / notes",style:"width:100%;min-height:60px"});
   const hideCb = el("input",{type:"checkbox"});   // 👁 grant it without the player being told
+  const hidePatronCb = el("input",{type:"checkbox"});   // 🙈 tell them the Gift, not the god
   const patronWrap = el("label",{class:"field"}, el("span",{},"Patron (grants the p.57 Stat)"), patronSel);
   const statChoiceWrap = el("div",{style:"margin-top:8px"});
   /* the picked entry, whichever catalog the kind points at */
@@ -13205,6 +13397,10 @@ function openAddGift(t, saveFn, rerender){
     el("label",{class:"inline small",style:"gap:6px;cursor:pointer",
       title:"grant it without telling them — the row stays out of their Gifts tab and out of their +🎁 breakdown until you untick it"},
       hideCb, el("span",{},"👁 Hide this from the player")),
+    el("div",{style:"height:4px"}),
+    el("label",{class:"inline small",style:"gap:6px;cursor:pointer",
+      title:"they see the Gift and what it does, but not which Legendary gave it"},
+      hidePatronCb, el("span",{},"🙈 Hide the patron (the player sees only the effect)")),
   );
   syncKind();
   modal({title:"Grant a Legendary Gift", bodyNode:wrap, footNodes:[
@@ -13228,6 +13424,7 @@ function openAddGift(t, saveFn, rerender){
                  : kind==="signer" ? "Signer Feature" : "Messiah Feature";
         row.freq = (cat&&cat.freq)||"";
         row.patron = patronSel.value||"";
+        if(row.patron && hidePatronCb.checked) row.patronHidden = true;
         if(cat && cat.statSpec) row.statSpec = cat.statSpec;   // Giftsapper's own [+Any Stat]
         if(sc && sc.value) row.statChoice = sc.value;
       }
@@ -15926,7 +16123,13 @@ const PE_CAP_ALIAS = { "aura reading":"Aura Reader", "telepathy":"Telepath", "in
    creature on the Map, and quietly adding an empty array to a GM's encounter monster would show up
    as a change for the cloud sync to push. Only addPokeEdge creates the list. */
 function pokeEdgeList(p){ return Array.isArray(p && p.pokeEdges) ? p.pokeEdges : []; }
-function pokeEdgesOf(p, name){ return pokeEdgeList(p).filter(e=>e.name===name); }
+function pokeEdgesOf(p, name){
+  const own = pokeEdgeList(p).filter(e=>e.name===name);
+  if(!isPusherEdgeName(name)) return own;
+  /* Pusher (its Trainer's Researcher Feature) hands these out free to a Pokémon that qualifies */
+  const free = pusherEdgesFor(p, name).filter(v => !own.some(e => (e.arg||"") === (v.arg||"")));
+  return free.length ? own.concat(free) : own;
+}
 function pokeEdgeCount(p, name){ return pokeEdgesOf(p, name).length; }
 function pokeEdgeDB(name){ return pokeEdgeByName.get(String(name||"").toLowerCase()) || null; }
 /* does this Pokémon have a named Capability right now? (base-named, so "Alluring (in Rain)" counts) */
@@ -15978,6 +16181,13 @@ function monSkills(p, sp){
     s.dice = Math.min(6, s.dice + 1);
     s.why.push("Skill Improvement");
   });
+  /* Skill Trainer (Researcher, Pokémon Caretaking): its one Pushed Skill until the next Extended
+     Rest rolls +1d6 — or +3 when that would take it past 6d6 */
+  if(p.pushedSkill && out[p.pushedSkill]){
+    const s = out[p.pushedSkill];
+    if(s.dice >= 6) s.mod += 3; else s.dice += 1;
+    s.why.push("Pushed (Skill Trainer)");
+  }
   // Fate Aura: +3 to every Skill Check. Folded in here so the chip SHOWS the bonus as well as rolling it.
   const fate = auraRollBonus(p);
   if(fate) Object.values(out).forEach(sk => { sk.mod += fate; sk.why.push(`Fate Aura +${fate}`); });
@@ -16334,6 +16544,9 @@ function pokeEdgesCard(p, sp){
     if(extra) row.append(extra);
     card.append(row);
   });
+  { const pushed = pusherEdgeListAll(p);
+    if(pushed.length) card.append(el("div",{class:"small",style:"margin-top:6px;color:var(--accent);font-weight:600"},
+      `\u{1F95A} Pusher (its Trainer's Feature) grants these free, and they are live: ${pushed.map(pokeEdgeLabel).join(", ")}`)); }
   card.append(el("div",{class:"small muted",style:"margin-top:8px"},
     "Core p.72 — a Poké Edge is bought with Tutor Points and is permanent; dropping one here refunds its points "
     + "and takes its effect back off the sheet. ⚙ is applied for you, 📋 is tracked for you to say at the table. "
@@ -20063,7 +20276,8 @@ function openMoveRoll(p, m, sp, opts={}){
   const stab = (mtype && types.includes(mtype)) || (mtype==="Steel" && anchorOn && hasAbility(p, "Steelworker"));
   /* Versatile (Tera Blast, Order Up, Redline): Physical or Special at the user's choice. It opens on
      whichever stat is bigger and is flipped from the roll window. */
-  const versatile = isVersatileMove(m);
+  // Ancient Heritage (Researcher, Paleontology) makes every Ancient Power this Trainer's Pokémon uses Versatile
+  const versatile = isVersatileMove(m) || ancientHeritageFor(p, m);
   const versSpec  = versatile ? (opts.versSpec != null ? opts.versSpec
                                  : versatileDefaultSpec(d.eff.atk, d.eff.spatk)) : false;
   // Anchored's Bonus forces Physical Class on the attack it originates from the Anchor
@@ -20163,8 +20377,8 @@ function openMoveRoll(p, m, sp, opts={}){
      reopens the roll the same way the Versatile switch does. */
   const duelMom  = isDuelistMon(p) ? duelistMomentumBonus(p) : 0;
   const vsTagged = duelMom > 0 && !!opts.vsTagged;
-  const accCS = (d.cs.acc||0) + abilAcc.acc + (hasStatus(p,"focused")?1*trainingMult(p):0) + (vsTagged?duelMom:0);      // Accuracy CS (Core p.234) + ability Accuracy mods + Focused Training + Duelist Momentum
-  const wx = weatherRollMods(p, m, mtype);      // current Weather Condition (Core p.342)
+  const wx = weatherRollMods(p, m, mtype);      // current Weather Condition(s) (Core p.342) — Climate Control can hold two
+  const accCS = (d.cs.acc||0) + abilAcc.acc + (hasStatus(p,"focused")?1*trainingMult(p):0) + (vsTagged?duelMom:0) + (wx.acc||0);      // Accuracy CS (Core p.234) + ability Accuracy mods + Focused Training + Duelist Momentum + Extreme Sandstorm
   const tx = terrainRollMods(p, m, mtype);      // current Terrain(s) in play — any number can stack
   /* The AC this roll is checked against: the Move's printed AC, minus any Accuracy Training
      bought for it with Tutor Points ("permanently lowered by 1"), with the Weather's own
@@ -20185,9 +20399,9 @@ function openMoveRoll(p, m, sp, opts={}){
   // Effect Ranges as this roll actually resolves them — Fiery Crash adds/widens Burn on a Dash Move
   // that ends up Fire-Typed. Kept separate from `thresholds` so its own rider can't feed Sheer Force.
   const rollThresholds = buffEffectThresholds(sereneGraceThresholds(
-    frostbiteThresholds(fieryCrashThresholds(thresholds, !!fc && mtype==="Fire"),
+    frostbiteThresholds(fieryCrashThresholds(ancientHeritageThresholds(thresholds, p, m), !!fc && mtype==="Fire"),
       hasAbility(p,"Frostbite") && mtype==="Ice" && (isPhys||isSpec)),
-    ownerHasAbility(p,"Serene Grace")), buffEffectRange(p));
+    ownerHasAbility(p,"Serene Grace")), buffEffectRange(p) + heldEffectRangeBonus(p));
   const fiveStrike = isFiveStrike(m);
   /* Rock Head [Errata] / Run Up - ticked on the roll, read back when the damage is rolled */
   const runStart = runningStartFor(p, m, isPhys);
@@ -20794,8 +21008,9 @@ function openMoveRoll(p, m, sp, opts={}){
     const ec = el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"});
     ec.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},"Effect"));
     ec.append(el("div",{class:"small",style:"white-space:pre-wrap"}, m.effect));
+    // the thresholds as THIS roll resolves them (Serene Grace, a Food Buff, Rainbow Light, Ancient Heritage…)
     if(thresholds.length) ec.append(el("div",{class:"small muted",style:"margin-top:6px"},
-      "⚡ Triggers on an Accuracy roll of " + thresholds.map(t=>t.n+"+").join(" / ") + " — watch the roll below."));
+      "⚡ Triggers on an Accuracy roll of " + (rollThresholds.length ? rollThresholds : thresholds).map(t=>t.n+"+").join(" / ") + " — watch the roll below."));
     body.append(ec);
   }
 
@@ -23066,6 +23281,7 @@ function apSpend(t, n){
    Knocked Out / Death bookkeeping every other HP setter in the app does. Returns what actually moved. */
 function ownerHeal(o, n){
   if(!o || !n) return 0;
+  if(n > 0 && overgrowthIntercept(o, n, false)) return 0;      // Overgrowth: the Druid takes it instead
   const max = ownerMaxHP(o) || 1;
   const old = o.currentHP == null ? max : o.currentHP;
   const next = Math.min(max, old + n);
@@ -23824,7 +24040,11 @@ function restorativeDefs(){
   });
   return _restoDefs;
 }
-function restorativeDef(name){ return restorativeDefs().get(normItemName(name)) || null; }
+function restorativeDef(name){
+  return restorativeDefs().get(normItemName(name))
+    || researchRestorativeDef(name)            // "Restorative Patch (Potion)", "Medicinal Blend (Potion + Antidote)"
+    || null;
+}
 /* what one Restorative reads as on the row, without opening its info panel */
 function restorativeBlurb(def, bonus){
   if(!def) return "";
@@ -23869,6 +24089,14 @@ function openApplyRestorative(t, rerender, persist, opts){
   const medRank = rankNum(t.skills.medicineEd);
   const hasMT = hasFeatureLoose(t, "Medical Techniques [Medic]") || hasFeatureLoose(t, "Medical Techniques");
   const hasFC = trainerHasEdge(t, "Field Clinic");
+  /* Affliction Techniques (Apothecary, 9-15 Playtest): a status-heal that actually cures its own
+     Affliction also hands out a +1 Combat Stage, for 1 AP. `stat` "atk|spatk" is Ice Heal's choice. */
+  const AFFLICTION_TECH = { antidote:{ cures:["poisoned","badlyPoisoned"], stat:"spdef" }, burnheal:{ cures:["burned"], stat:"def" },
+                            iceheal:{ cures:["frozen","chilled"], stat:"atk|spatk" }, paralyzeheal:{ cures:["paralysis"], stat:"spd" } };
+  const hasAT = hasFeatureLoose(t, "Affliction Techniques");
+  const atCb = el("input",{type:"checkbox"}); atCb.checked = hasAT;
+  const atStat = el("select",{style:"padding:2px 4px;margin-left:6px"});
+  [["atk","Attack"],["spatk","Sp. Attack"]].forEach(([v,l]) => atStat.append(el("option",{value:v}, l)));
 
   const sel = el("select");
   bag.forEach(r=>sel.append(el("option",{value:r.def.name}, `${r.def.name} ×${r.qty}`)));
@@ -23885,6 +24113,8 @@ function openApplyRestorative(t, rerender, persist, opts){
   const redraw = () => {
     const d = curDef();
     blurb.textContent = d ? restorativeBlurb(d, fcBonus())
+                            + (d.extra ? ` · also: ${d.extra}` : "")
+                            + (d.patch ? " · a Patch — Extended Action only, not in the middle of a fight" : "")
                           : "Nothing from the bag — whatever you type in Extra HP is all that is applied.";
     fcCb.parentElement.style.display = hasFC ? "" : "none";
   };
@@ -23901,6 +24131,8 @@ function openApplyRestorative(t, rerender, persist, opts){
   body.append(el("label",{class:"field",style:"margin-top:6px"}, el("span",{},"Extra HP (GM ruling, an item not in the catalog…)"), extra));
   if(hasMT) body.append(el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin-top:6px"},
     mtCb, `Medical Techniques — 1 AP, adds a Tick of HP plus your Medicine Ed. Rank (${medRank})`));
+  if(hasAT) body.append(el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin-top:6px;flex-wrap:wrap"},
+    atCb, "Affliction Techniques — 1 AP, only if the item cures its linked Affliction: Antidote +1 Sp.Def CS, Burn Heal +1 Def CS, Paralyze Heal +1 Speed CS, Ice Heal +1", atStat, "CS"));
   const notes = [];
   if(hasFeatureLoose(t, "Front Line Healer"))
     notes.push("Front Line Healer: you gain +5 Damage Reduction for 1 full Round — placed on you automatically, and it does not stack with itself.");
@@ -23968,9 +24200,14 @@ function openApplyRestorative(t, rerender, persist, opts){
           o.statuses = (o.statuses||[]).filter(k => PERMANENT_STATUS_KEYS.has(k)
             || (STATUS_DEFS.find(x=>x.key===k)||{}).kind !== "persistent");
         else o.statuses = (o.statuses||[]).filter(k => !def.cures.includes(k));
-        const gone = before.filter(k => !(o.statuses||[]).includes(k))
-          .map(k => (STATUS_DEFS.find(s=>s.key===k)||{}).name || k);
+        const goneKeys = before.filter(k => !(o.statuses||[]).includes(k));
+        const gone = goneKeys.map(k => (STATUS_DEFS.find(s=>s.key===k)||{}).name || k);
         if(gone.length) done.push(`cured ${gone.join(", ")}`);
+        const at = hasAT && atCb.checked ? AFFLICTION_TECH[normItemName((def.baseName || def.name).replace(/^Restorative Patch\s*\((.+)\)$/i, "$1"))] : null;
+        if(at && goneKeys.some(k => at.cures.includes(k)) && apSpend(t, 1)){
+          const st = at.stat === "atk|spatk" ? atStat.value : at.stat;
+          if(changeCS(o, st, 1)) done.push(`Affliction Techniques +1 ${statLbl(st)} CS (1 AP)`);
+        }
       }
       if(hasFeatureLoose(t, "Front Line Healer")){
         t.buffs = ownerBuffs(t).filter(b => b.key !== "front-line-healer");   // never stacks with itself
@@ -26455,17 +26692,19 @@ function featMoveListRow(card, t, cls, rerender, persist){
 }
 /* The Embrace / Oath line every Swarmlord and Druid card opens with: which one they took, what it
    granted, and (while it is unchosen) the fact that nothing else can resolve until they pick. */
-function embraceBit(card, t, cls){
+function embraceBit(card, t, cls, rerender, persist){
   const eo = embraceOathOf(t, cls);
   const d = EMBRACE_TAG_CLASSES.find(x => x.cls === cls);
   const all = d ? Object.keys(d.byAbility).map(a => `${d.label[a]} (${a})`).join(", ") : "";
+  const pickSel = embraceOathSelect(t, cls, () => { (persist || save)(); (rerender || renderBattle)(); });
+  if(pickSel) card.append(pickSel);
   if(eo){
     const n = trainerStatTags(t).filter(x => x.embrace === cls).length;
     classBit(card, `${eo.label}: it granted you ${eo.ability}, and every ${cls} Feature carries its Stat Tag — `
       + `${n} so far, all of them +1 ${(STATS.find(s => s[0] === eo.stat) || [,eo.stat])[1]}, already in your Combat Stats.`);
   } else {
-    classBit(card, `⚠ No ${cls === "Druid" ? "Oath" : "Embrace"} chosen yet — press ⚙ Choose Ability on the ${cls} row `
-      + `below and pick one of ${all}. Until you do, the Ability, the Stat Tags and the Move list it gates are all waiting on it.`);
+    classBit(card, `⚠ No ${cls === "Druid" ? "Oath" : "Embrace"} chosen yet — pick one of ${all} just above. `
+      + `Until you do, the Ability, the Stat Tags and the Move list it gates are all waiting on it.`);
   }
 }
 
@@ -26513,7 +26752,7 @@ function swarmlordCard(t, rerender, persist){
   const saveFn = persist || save, redraw = rerender || renderBattle;
   const card = classCard("🐛", "Swarmlord", "Game of Throhs p.63");
   const has = n => hasFeatureLoose(t, n);
-  embraceBit(card, t, "Swarmlord");
+  embraceBit(card, t, "Swarmlord", rerender, persist);
   if(has("How To Shoot Web")) classBit(card, "How To Shoot Web: Threaded and Wallclimber are on your Capabilities line — nothing to remember.");
   if(has("Broodlord")) classBit(card, "Broodlord hands you Tinted Lens or Compound Eyes by your Embrace — press ⚙ Choose Ability on its row below and it counts everywhere an Ability is checked.");
   const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
@@ -26700,8 +26939,8 @@ function druidCard(t, rerender, persist){
   const saveFn = persist || save, redraw = rerender || renderBattle;
   const card = classCard("🌿", "Druid", "Game of Throhs p.79");
   const has = n => hasFeatureLoose(t, n);
-  embraceBit(card, t, "Druid");
-  if(has("Green Path")) classBit(card, "Green Path: Naturewalk (Grassland) and Naturewalk (Forest) are on your Capabilities line, and Moves with the Powder keyword simply don't touch you.");
+  embraceBit(card, t, "Druid", rerender, persist);
+  if(has("Green Path")) classBit(card, "Green Path: Naturewalk (Grassland) and Naturewalk (Forest) are on your Capabilities line, and Moves with the Powder keyword don't touch you — every Powder Move's roll lists you among the immune.");
   const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
   if(has("Overgrowth")) row.append(el("button",{class:"btn-primary",
     title:"2 AP, Swift — afflict one target of a Druid Move you just hit with",
@@ -26711,10 +26950,11 @@ function druidCard(t, rerender, persist){
       title:"Scene x2, Standard — six squares of vegetation within 6 metres",
       onclick:() => elemUse(t, "Druid's Call",
         "🌱 Druid's Call — six 1-square plants within 6 m, until the end of the encounter. Rough terrain that blocks line of sight for anyone without Naturewalk (Forest), and your Nature's Embrace Moves may originate from them.",
-        redraw, saveFn)},"🌱 Druid's Call"), useSpan(t, "Druid's Call"));
+        redraw, saveFn) && druidCallPlants(t)},"🌱 Druid's Call"), useSpan(t, "Druid's Call"));
   }
   if(row.childNodes.length) card.append(row);
-  if(has("Druid's Call")) classBit(card, "Druid's Call needs soil under you (a sidewalk or a gravel lot counts). The plants are scenery, so drop six 1-square tokens on the Map where you want them.");
+  if(has("Druid's Call")) classBit(card, "Druid's Call needs soil under you (a sidewalk or a gravel lot counts). On a shared Map it drops six 1-square Rough + Slow plant squares around your token — drag them where you want them.");
+  if(has("Overgrowth")) classBit(card, "Overgrowth is a real condition on the target: Grass hits on them are one step less resisted (never past neutral), every Hit Point or Temporary Hit Point they would gain is refused and sent to your token, and a damaging Fire, Ice, Poison, Flying or Bug hit burns it off.");
   featMoveListRow(card, t, "Druid", rerender, persist);
   classFeatureRows(card, t, "Druid", rerender, persist);
   return card;
@@ -26740,11 +26980,12 @@ function openOvergrowth(t, rerender, persist){
       if(!chosen.length){ toast("Pick a target"); return; }
       if(!apSpend(t, 2)) return;
       chosen.forEach(x => {
-        if(ownerBuffs(x.obj).some(b => b.name === "Overgrowth")) return;   // once per Scene per target
-        addCustomBuff(x.obj, "Overgrowth", {},
-          "Overgrown: one step less Resistant to Grass (capped at neutral), and cannot regain HP or gain Temporary HP — "
-          + `whatever they would have gained goes to ${t.name || "the Druid"} instead. Removed by Taking a Breather, or by a `
-          + "damaging Fire, Ice, Poison, Flying or Bug hit.");
+        if(ownerBuffs(x.obj).some(b => b.key === "overgrowth" || b.name === "Overgrowth")) return;   // once per Scene per target
+        const nb = researchBuff(x.obj, { key:"overgrowth", name:"Overgrowth", cat:"Druid", dur:"this Scene",
+          note:"Overgrown: one step less Resistant to Grass (capped at neutral), and cannot regain HP or gain Temporary HP — "
+          + `whatever they would have gained goes to ${t.name || "the Druid"} instead. Removed by Taking a Breather (remove it by hand), or by a `
+          + "damaging Fire, Ice, Poison, Flying or Bug hit (automatic)." });
+        nb.druid = t.name || "";
       });
       (persist || save)(); closeModal();
       await commitTargets(chosen);
@@ -26985,7 +27226,10 @@ const TASTE_SNACK = { Salty:"Salty Surprise", Spicy:"Spicy Wrap", Sour:"Sour Can
 function trainerIsChef(t){ return !!t && trainerHasClass(t, "Chef"); }
 /* who gets a Kitchen tab: a Chef, and anyone else who crafts out of the bag (the Botany
    Researcher's Herb Lore uses the same dialog and the same inventory) */
-function hasKitchen(t){ return trainerIsChef(t) || (typeof botanyRecipesFor === "function" && botanyRecipesFor(t).length > 0); }
+function hasKitchen(t){
+  return trainerIsChef(t) || botanyRecipesFor(t).length > 0
+      || researchBenchRecipes(t).length > 0 || canDowse(t);      // the Researcher's bench shares the tab
+}
 function chefIntuition(t){ return rankNum((t && t.skills || {}).intuition); }   // Novice 3 … Master 6
 function chefCanTaste(t){ return hasFeatureLoose(t, "Accentuated Taste"); }
 /* every Berry, Herb and Mushroom sitting in the bag — Preserves' ingredient list */
@@ -27100,10 +27344,12 @@ function openChefCook(t, rec, commit){
   /* what it makes */
   const picks = rec.pick ? rec.pick(t) : [];
   let pickSel = null;
-  if(picks.length > 1) pickSel = sel("Cook", picks.map(p => ({value:p, label:p})));
-  else if(picks.length === 1) body.append(el("div",{class:"small",style:"margin-bottom:8px"}, `Cooks: ${picks[0]}`));
+  if(picks.length > 1) pickSel = sel(rec.bench ? "Make" : "Cook", picks.map(p => ({value:p, label:p})));
+  else if(picks.length === 1) body.append(el("div",{class:"small",style:"margin-bottom:8px"}, `${rec.bench ? "Makes" : "Cooks"}: ${picks[0]}`));
   else if(rec.pick && !picks.length){
-    body.append(el("div",{class:"small",style:"color:var(--bad)"}, "Your Intuition Rank doesn't unlock anything on this Recipe yet."));
+    body.append(el("div",{class:"small",style:"color:var(--bad)"}, rec.bench
+      ? "Nothing in your bag can go into this Recipe yet."
+      : "Your Intuition Rank doesn't unlock anything on this Recipe yet."));
   }
 
   /* what it eats */
@@ -27118,14 +27364,16 @@ function openChefCook(t, rec, commit){
   }
   /* Dumplings takes two, from two different lists */
   let d1 = null, d2 = null;
+  // a Recipe may bring its own two-ingredient lists (Medicinal Blend); otherwise it is the Dumpling pair
+  const twoSpec = (rec.two && typeof rec.two === "object") ? rec.two : null;
   if(rec.two){
-    const a = chefDumplingIngredients(t, false), b = chefDumplingIngredients(t, true);
+    const a = twoSpec ? twoSpec.a(t) : chefDumplingIngredients(t, false), b = twoSpec ? twoSpec.b(t) : chefDumplingIngredients(t, true);
     if(!a.length || !b.length){
-      body.append(el("div",{class:"small",style:"color:var(--bad);margin-bottom:8px"},
-        "Dumplings need Leftovers, Preserves or a Snack you cooked in the bag — and the second ingredient must be Leftovers or Preserves."));
+      body.append(el("div",{class:"small",style:"color:var(--bad);margin-bottom:8px"}, twoSpec ? twoSpec.empty
+        : "Dumplings need Leftovers, Preserves or a Snack you cooked in the bag — and the second ingredient must be Leftovers or Preserves."));
     } else {
-      d1 = sel("Ingredient 1", a.map(n => ({value:n, label:n})));
-      d2 = sel("Ingredient 2", b.map(n => ({value:n, label:n})));
+      d1 = sel(twoSpec ? twoSpec.labelA : "Ingredient 1", a.map(n => ({value:n, label:n})));
+      d2 = sel(twoSpec ? twoSpec.labelB : "Ingredient 2", b.map(n => ({value:n, label:n})));
     }
   }
 
@@ -27157,9 +27405,10 @@ function openChefCook(t, rec, commit){
   };
   drawPrice(); if(pickSel) pickSel.addEventListener("change", drawPrice);
   body.append(priceLine);
-  body.append(el("div",{class:"small muted"}, "Cooking is an At-Will Extended Action, and needs a kitchen or a Cooking Kit."));
+  body.append(el("div",{class:"small muted"}, rec.bench ? `${rec.bench} Recipes are At-Will Extended Actions.`
+                                                       : "Cooking is an At-Will Extended Action, and needs a kitchen or a Cooking Kit."));
 
-  modal({ title:`🍳 ${rec.name}`, bodyNode:body, footNodes:[
+  modal({ title:`${rec.icon || "🍳"} ${rec.name}`, bodyNode:body, footNodes:[
     el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
     el("button",{class:"btn-primary",onclick:()=>{
       const item = pickSel ? pickSel.value : (picks[0] || "");
@@ -27167,24 +27416,36 @@ function openChefCook(t, rec, commit){
       const bundle = eatSel ? bundles.find(b => b.label===eatSel.value) : null;
       if(rec.eats && !bundle){ toast("Pick the ingredients"); return; }
       if(rec.two && !(d1 && d2)){ toast("Pick both ingredients"); return; }
-      if(rec.two && d1.value === d2.value){ toast("The two ingredients must be different items"); return; }
+      if(rec.two){
+        const why = (twoSpec && twoSpec.check) ? twoSpec.check(t, d1.value, d2.value)
+                  : (d1.value === d2.value ? "The two ingredients must be different items" : null);
+        if(why){ toast(why); return; }
+      }
+      if(rec.pick && !item){ toast("Nothing to make"); return; }
       if(price > moneyOf(t)){ toast(`Needs ${fmtMoney(price)}`); return; }
       /* take the ingredients first — if any of them is short, nothing has been spent yet */
       const take = bundle ? bundle.take.slice() : [];
       if(rec.two) take.push([d1.value,1],[d2.value,1]);
+      if(rec.take){
+        const extra = rec.take(t, item) || [];
+        if(!extra.length){ toast("Not enough ingredients in the bag"); return; }
+        take.push(...extra);
+      }
       for(const [n,q] of take) if(inventoryQty(t, n) < q){ toast(`Not enough ${n}`); return; }
       take.forEach(([n,q]) => { for(let i=0;i<q;i++) consumeInventoryItem(t, n); });
-      if(price) moneyChange(t, -price, `Chef — ${rec.name}`, {kind:"buy"});
+      if(price) moneyChange(t, -price, `${rec.bench || "Chef"} — ${rec.name}`, {kind:"buy"});
 
-      const made = rec.two ? `Dumpling (${d1.value} + ${d2.value})`
+      const made = rec.two ? (twoSpec ? twoSpec.result(d1.value, d2.value) : `Dumpling (${d1.value} + ${d2.value})`)
                  : rec.result ? rec.result(t, item, bundle)
                  : item;
       const taste = tasteSel ? tasteSel.value : "";
       // Herb Lore's yield depends on which ingredient went in (an Energy Root makes three, not two)
-      chefBagAdd(t, made, (bundle && bundle.qty) || rec.qty || 1, taste);
+      // a Researcher's bench makes plain items — only the Chef's own cooking is stamped as a Chef Snack
+      if(rec.bench) benchBagAdd(t, made, (bundle && bundle.qty) || rec.qty || 1, rec.name);
+      else chefBagAdd(t, made, (bundle && bundle.qty) || rec.qty || 1, taste);
       commit(); closeModal();
-      toast(`🍳 Cooked ${rec.qty>1?`${rec.qty}× `:""}${made}${taste?` · ${taste} Taste`:""}${price?` · −${fmtMoney(price)}`:""}`);
-    }},"🍳 Cook"),
+      toast(`${rec.icon || "🍳"} ${rec.bench ? "Made" : "Cooked"} ${rec.qty>1?`${rec.qty}× `:""}${made}${taste?` · ${taste} Taste`:""}${price?` · −${fmtMoney(price)}`:""}`);
+    }}, rec.verb || "🍳 Cook"),
   ]});
 }
 
@@ -27429,62 +27690,6 @@ const BOTANY_RECIPES = [
 ];
 function botanyRecipesFor(t){ return BOTANY_RECIPES.filter(r => hasFeatureLoose(t, r.feat)); }
 
-function researcherCard(t, rerender, persist){
-  if(!t) return null;
-  const has = n => hasFeatureLoose(t, n);
-  const botany  = has("Seed Bag Rank 1") || has("Top Tier Berries") || has("Herb Lore");
-  const occult  = has("Witch Hunter") || has("Mental Resistance") || has("Psionic Analysis") || has("Immutable Mind");
-  if(!botany && !occult) return null;
-  const saveFn = persist || save, redraw = rerender || renderBattle;
-  const card = classCard("\u{1F52C}", "Researcher", "Core p.139");
-
-  if(botany){
-    classBit(card, "\u{1F33F} Botany Field —");
-    if(has("Top Tier Berries")){
-      const rank = Math.max(rankNum((t.skills||{}).generalEd), rankNum((t.skills||{}).survival));
-      const tiers = [];
-      if(rank >= 3) tiers.push("Tier 2 Berries");
-      if(rank >= 4) tiers.push("Mental / Power / White Herbs and Tiny Mushrooms");
-      if(rank >= 5) tiers.push("Revival Herbs, Energy Roots, Big Mushrooms and Tier 3 Berries");
-      classBit(card, `Top Tier Berries: on the higher of General Education and Survival you may grow ${tiers.length ? tiers.join("; ") : "nothing beyond Green Thumb's Apricorns and Tier 1 Berries yet"}${rank >= 6 ? " — and Master adds +1 Soil Quality to every plant you grow" : ""}.`);
-    }
-    if(seedBagRank(t)) classBit(card, `Seed Bag Rank ${seedBagRank(t)}: harvestable Moves are ${seedBagMoveList(t).join(", ")}. Twice per day per Rank (${seedBagRank(t)*2} uses), and what you harvest drops off the sheet at your next Extended Rest.`);
-    const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
-    if(seedBagRank(t)) row.append(el("button",{class:"btn-primary",
-      title:"X Daily, Extended Action — harvest a Powder Move off a willing Grass-Type",
-      onclick:()=>openSeedBag(t, redraw, saveFn)},"\u{1F33E} Seed Bag"));
-    botanyRecipesFor(t).forEach(r => row.append(el("button",{class:"btn-secondary",
-      onclick:()=>openChefCook(t, r, ()=>{ saveFn(); redraw(); })}, `\u{1F33F} ${r.name}`)));
-    if(row.childNodes.length) card.append(row);
-    if(Array.isArray(t.seedBag) && t.seedBag.length)
-      classBit(card, `Harvested today: ${t.seedBag.join(", ")} — on your Move list until your next Extended Rest.`);
-  }
-
-  if(occult){
-    classBit(card, "\u{1F52E} Occultism Field —");
-    if(has("Witch Hunter")) classBit(card, "Witch Hunter: Psionic Sight is yours whether or not you qualify for it — Psychic Residue on people and Pokémon is simply visible to you.");
-    if(has("Mental Resistance")) classBit(card, "Mental Resistance: Mindlock is on your Capabilities line, and 10 Damage Reduction against SPECIAL Psychic, Ghost and Dark damage is applied by the damage math (a Physical one of those Types gets nothing — that is the Feature).");
-    const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
-    if(has("Psionic Analysis")){
-      row.append(el("button",{class:"btn-secondary",
-        title:"Scene, Extended Action — read the Psychic Residue",
-        onclick:()=>{ if(!featSpend(t,"Psionic Analysis")) return; saveFn();
-          toast("\u{1F50E} Psionic Analysis — human or Pokémon, which Psychic Moves they know, and whether they have Telepath / Telekinetic / Warper");
-          redraw(); }},"\u{1F50E} Psionic Analysis"), useSpan(t, "Psionic Analysis"));
-    }
-    if(has("Immutable Mind")){
-      row.append(el("button",{class:"btn-primary",
-        title:"Scene, Free Action — when a Psychic, Ghost or Dark Move hits you",
-        onclick:()=>{ if(!featSpend(t,"Immutable Mind")) return; saveFn();
-          toast("\u{1F6E1} Immutable Mind — a Status-Class Move fails outright; a damaging one's roll-triggered secondary effect can't touch you");
-          redraw(); }},"\u{1F6E1} Immutable Mind"), useSpan(t, "Immutable Mind"));
-    }
-    if(row.childNodes.length) card.append(row);
-  }
-
-  classFeatureRows(card, t, "Researcher", rerender, persist);
-  return card;
-}
 /* Seed Bag: pick the donor and the Move. The use counter is the Feature's own ("X Daily", twice per
    day per Rank), so it is spent through featSpend like every other Feature use. */
 function openSeedBag(t, rerender, persist){
@@ -27517,9 +27722,1444 @@ function openSeedBag(t, rerender, persist){
   ]});
 }
 
+/* ═══════════════════ RESEARCHER — every Field of Study (Core pp.139-147) ═══════════════════
+   Researcher is a [Branch] Class: "Choose two Researcher Fields of Study. You may take Features from
+   those Fields with this instance of Researcher." Botany and Occultism were built first (their pieces
+   are just above); this block finishes the other seven and gives the class a real card:
+
+     GENERAL RESEARCH  Breadth of Knowledge's three Skill Edges become Level-Up slots; Live and Learn
+                       places its one-roll bonus as a buff; Echoes of the Future rolls twice and keeps
+                       the best; Instant Analysis pays 2 Tutor Points for Forewarn.
+     APOTHECARY        the four Recipes on the crafting bench; Patch Cure distils a Restorative into
+                       three Patches and Medicinal Blend fuses two, and BOTH come out of the bag as
+                       real Restoratives (restorativeDef unwraps the name) that 🧪 Apply spends.
+     CRYSTAL ARTIFICE  the six Shard Recipes, a Dowsing roll that drops Shards in the bag (Crystal
+                       Resonance's +3d6 included), Rainbow Light's +3 Effect Range buff, and Fistful of
+                       Force destroying a Shard to swing Judgment on Occult Education ×3.
+     CHEMISTRY         Enhancers and the three Pester Ball Recipes; Caustic Chemistry rolls Technology
+                       Education and takes the Hit Points; Playing God hatches a Lv5 Pokémon with its
+                       upgrades applied (the +1 Base Stats go in as Vitamins, which is what they are).
+     CLIMATOLOGY       Overcoat is already parsed out of the text; Climate Control puts a SECOND
+                       Weather on the Map (ownerWeathers reads both), Extreme Weather switches the
+                       intense riders on in the roll maths, Weather Systems tutors the four weather Moves.
+     PALEONTOLOGY      Fossil Restoration, Ancient Heritage (and its static 18+ / choose-a-class on
+                       every Ancient Power), Genetic Memory, and Prehistoric Bond's six held items.
+     CARETAKING        Pusher's nine Poké Edges are granted free to any Pokémon that qualifies (see
+                       pokeEdgesOf), Skill Trainer's Pushed Skill rides monSkills, Re-Balancing rides
+                       pokeBaseStats, This One's Special keeps count. */
+const RESEARCH_FIELDS = [
+  { key:"general",      name:"General Research",   icon:"\u{1F4D6}", skill:"generalEd",
+    feats:["Breadth of Knowledge","Live and Learn","Instant Analysis","Echoes of the Future","Bookworm","Well Read"] },
+  { key:"apothecary",   name:"Apothecary",         icon:"⚗",    skill:"medicineEd",
+    feats:["Apothecary","Patch Cure","Medical Techniques","Medicinal Blend","Affliction Techniques"] },
+  { key:"artificer",    name:"Crystal Artifice",   icon:"\u{1F48E}", skill:"occultEd",
+    feats:["Crystal Artificer","Crystal Resonance","Fistful of Force","Rainbow Light"] },
+  { key:"botany",       name:"Botany",             icon:"\u{1F33F}", skill:"survival",
+    feats:["Seed Bag","Top Tier Berries","Herb Lore"] },
+  { key:"chemistry",    name:"Chemistry",          icon:"\u{1F9EA}", skill:"technologyEd",
+    feats:["Chemist","Chemical Warfare","Caustic Chemistry","Playing God"] },
+  { key:"climatology",  name:"Climatology",        icon:"\u{1F326}", skill:"survival",
+    feats:["Climatology","Climate Control","Extreme Weather","Weather Systems"] },
+  { key:"occultism",    name:"Occultism",          icon:"\u{1F52E}", skill:"occultEd",
+    feats:["Witch Hunter","Psionic Analysis","Mental Resistance","Immutable Mind"] },
+  { key:"paleontology", name:"Paleontology",       icon:"\u{1F9B4}", skill:"pokemonEd",
+    feats:["Fossil Restoration","Ancient Heritage","Genetic Memory","Prehistoric Bond"] },
+  { key:"caretaking",   name:"Pokémon Caretaking", icon:"\u{1F95A}", skill:"pokemonEd",
+    feats:["Pusher","This One's Special, I Know It","Skill Trainer","Re-Balancing"] },
+  /* The supplement Fields (Do Porygon Dream of Mareep; the May 2015 playtest's Gadgeteer). They hang
+     off whole subsystems the sheet doesn't model — Poké Ball Cases, Augmentations and their Capacity,
+     Cap Cannon ammo — so they are listed, picked and use-counted like any other Field, but their
+     Features run from their rows rather than a dedicated button. (The Engineer Field is Pokébot
+     material, which this table doesn't use.) */
+  { key:"jailbreaker",  name:"Jailbreaker",        icon:"\u{1F534}", skill:"technologyEd", supplement:true,
+    feats:["Jailbreaker","Poké Ball Mods","Poke Ball Mods","Fusion Cases","Case Specialist"] },
+  { key:"upgrader",     name:"Upgrader",           icon:"\u{1F9BE}", skill:"technologyEd", supplement:true,
+    feats:["Upgrader","Emergency Reactivation","Efficient Installation","Experimental Designs"] },
+  { key:"gadgeteer",    name:"Gadgeteer",          icon:"\u{1F527}", skill:"technologyEd", supplement:true,
+    feats:["Improvised Gadgets","I Meant to Do That","Capsule Science","Enhanced Capsules"] },
+];
+/* One identity per Feature family: the Rank drops off (Seed Bag Rank 2 is Seed Bag) and so does the
+   [Playtest] tag (Bookworm [Playtest] is Bookworm) — but NOT [Medic], because "Medical Techniques
+   [Medic]" is the Medic's Feature and must never count as the Apothecary's. */
+function researchKey(n){ return featBaseKey(String(n||"").replace(/\s*\[Playtest\]\s*$/i, "")); }
+function researchFieldOfFeature(name){
+  const k = researchKey(name);
+  const f = RESEARCH_FIELDS.find(d => d.feats.some(x => researchKey(x) === k));
+  return f ? f.key : null;
+}
+const researchFieldDef = key => RESEARCH_FIELDS.find(f => f.key === key) || null;
+/* does this Trainer hold the Researcher Feature `name` (any Rank, any [Playtest] printing)? */
+function hasResearch(t, name){
+  if(!t) return false;
+  const k = researchKey(name);
+  return [...(t.features||[]), ...(t.classes||[])].some(f => researchKey(f) === k);
+}
+/* The Fields this Trainer studies: the ones picked on the card, plus any Field one of their Features
+   already sits in (a sheet built before the picker existed still shows the right sections). */
+function researchFieldsOf(t){
+  const on = new Set(Array.isArray(t && t.researchFields) ? t.researchFields : []);
+  [...((t && t.features) || []), ...((t && t.classes) || [])].forEach(n => {
+    const k = researchFieldOfFeature(n); if(k) on.add(k);
+  });
+  return RESEARCH_FIELDS.filter(f => on.has(f.key)).map(f => f.key);
+}
+/* "You may not take Features from a Field of Study you haven't chosen" — the class picker's lock. */
+function researchFieldLock(t, featName){
+  const k = researchFieldOfFeature(featName);
+  if(!k || !t || t.unlocked) return null;
+  const chosen = researchFieldsOf(t);
+  if(!chosen.length || chosen.includes(k)) return null;
+  return `Needs the ${researchFieldDef(k).name} Field of Study — choose it on the Researcher card first`;
+}
+/* the Researcher's own Pokémon, wherever the sheet lives */
+function researchMons(t){
+  const c = charOfTrainer(t);
+  return (c && Array.isArray(c.pokemon)) ? c.pokemon : trainerPokemonList(t);
+}
+/* a Pokémon picker whose labels stay unique (openPicker's only handle on a row is its label) */
+function researchPickMon(title, mons, lockFn, onPick, extra){
+  const byLabel = new Map();
+  mons.forEach(p => {
+    let l = `${ownerLabel(p)} · Lv ${p.level||1} · ${tpLeft(p)} TP${extra ? " · " + extra(p) : ""}`;
+    while(byLabel.has(l)) l += " ";
+    byLabel.set(l, p);
+  });
+  openPicker(title, [...byLabel.keys()], label => { const p = byLabel.get(label); if(p) onPick(p); },
+    null, null, lockFn ? (label => lockFn(byLabel.get(label))) : null);
+}
+/* the whole modifier stack behind a Trainer's Skill Check — the one the Skills table prints */
+function researchSkillRoll(t, k){
+  const dice = rankDice((t.skills||{})[k]);
+  const mod = trainerSkillMod(t, k) + (typeof edgeSkillBonus === "function" ? edgeSkillBonus(t, k) : 0);
+  const rolls = []; for(let i = 0; i < dice; i++) rolls.push(1 + Math.floor(Math.random()*6));
+  return { dice, mod, rolls, total: rolls.reduce((a,b)=>a+b, 0) + mod };
+}
+/* place a buff with a real duration — turn-tracked when a Map initiative is running */
+function researchBuff(o, spec){
+  if(!Array.isArray(o.buffs)) o.buffs = [];
+  const nb = { id:uid(), key:spec.key || "custom", name:spec.name, cat:spec.cat || "Custom", dur:spec.dur || "—",
+               note:spec.note || "", once:!!spec.once, mods:Object.assign({}, spec.mods || {}), only:null, onlyType:null };
+  stampTurnBuff(nb);
+  o.buffs.push(nb);
+  return nb;
+}
+/* put a crafted item in the bag (a plain row — NOT stamped chef:true, so it can't pass as a Chef Snack) */
+function benchBagAdd(t, name, qty, notes){
+  qty = Math.max(1, parseInt(qty)||1);
+  const want = normItemName(name);
+  const row = (t.inventory = t.inventory || []).find(it => normItemName(it.name) === want && !it.accTaste && !it.chef);
+  if(row) row.qty = (parseInt(row.qty)||0) + qty;
+  else t.inventory.push({ name, qty, notes: notes || "" });
+}
+/* Teach a Pokémon a Move through a Feature. Returns "ok" | "already" | "full". */
+function researchTeachMove(p, moveName){
+  if(!Array.isArray(p.moves)) p.moves = [];
+  if(p.moves.some(m => String(m).toLowerCase() === String(moveName).toLowerCase())) return "already";
+  const t = (typeof ownerTrainerOf === "function" && ownerTrainerOf(p)) || activeChar()?.trainer;
+  if(!p.unlocked && p.moves.length >= effectiveMoveLimit(t, p)) return "full";
+  p.moves.push(moveName);
+  return "ok";
+}
+/* a species' Egg / Tutor / TM list as plain Move names ("A3 Surf" → "Surf", "Ancient Power (N)" → "Ancient Power") */
+function speciesMoveNamesOf(sp, kind){
+  const raw = (sp && sp.moves && sp.moves[kind]) || [];
+  return [...new Set(raw.map(x => typeof x === "string" ? x : ((x && x.name) || ""))
+    .map(s => String(s).replace(/^(?:TM|HM)?\s*[A-Z]?\d+\s+/i, "").replace(/\s*\([^)]*\)\s*$/, "").trim())
+    .filter(Boolean)
+    .map(n => (moveByName.get(n.toLowerCase()) || { name:n }).name))];
+}
+const monLevelupList = p => { const sp = getSpecies(p && p.species); return sp ? speciesLevelupNames(sp, 100) : []; };
+const moveInList = (list, name) => list.some(n => String(n).toLowerCase() === String(name).toLowerCase());
+
+/* ---------------------------------------------------------------- GENERAL RESEARCH */
+/* Live and Learn: "Add half of your General Education Rank to the next roll of the same type that
+   the triggering user makes." The bonus is placed as a one-shot buff on whoever missed or failed —
+   an Accuracy buff rides every attack roll already, a Skill one rides every Skill Check. */
+function liveAndLearnBonus(t){ return Math.max(1, Math.floor(rankNum((t.skills||{}).generalEd) / 2)); }
+function openLiveAndLearn(t, rerender, persist){
+  const list = allyTargets(t);
+  const pick = targetPicker(list, selfTargetId(list));
+  const n = liveAndLearnBonus(t);
+  const kind = el("select",{style:"padding:6px"});
+  [["acc","they missed with an attack → +"+n+" to their next Accuracy Roll"],
+   ["skill","they failed a Skill Check → +"+n+" to their next Skill Check"],
+   ["save","they failed a Save Check → +"+n+" to their next Save Check"]]
+    .forEach(([v,l]) => kind.append(el("option",{value:v}, l)));
+  const u = featUses(t, "Live and Learn");
+  const body = el("div",{},
+    el("div",{class:"small",style:"margin-bottom:10px"},
+      `Daily x3 · Free Action (${u.left ?? "—"} of ${u.max ?? "—"} left). Half your General Education Rank (${n}) goes on the NEXT roll of the same kind by whoever missed or failed. It is placed as a one-shot buff on them — remove it once it has been spent.`),
+    el("label",{class:"field"}, el("span",{},"What happened"), kind),
+    el("div",{class:"small muted",style:"font-weight:700;margin:8px 0 4px"},"Who (you, or one of your Pokémon)"), pick.node);
+  modal({ title:"\u{1F4D6} Live and Learn", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async ()=>{
+      const chosen = pick.chosen();
+      if(chosen.length !== 1){ toast("Pick the one who missed or failed"); return; }
+      if(!featSpend(t, "Live and Learn")) return;
+      const o = chosen[0].obj, k = kind.value;
+      const mods = k === "acc" ? { acc:n } : k === "skill" ? { skills:Object.fromEntries(SKILLS.map(([s]) => [s, n])) } : {};
+      researchBuff(o, { key:"live-and-learn", name:"Live and Learn", cat:"Researcher", once:true,
+        dur: k === "acc" ? "next Accuracy Roll" : k === "skill" ? "next Skill Check" : "next Save Check", mods,
+        note: `+${n} (half ${t.name || "the Researcher"}'s General Education Rank) to the next ${k === "acc" ? "Accuracy Roll" : k === "skill" ? "Skill Check" : "Save Check — add it at the table"}. Remove it once it has been used.` });
+      (persist||save)(); closeModal();
+      await commitTargets(chosen);
+      toast(`\u{1F4D6} Live and Learn → ${ownerLabel(o)} · +${n} next ${k === "acc" ? "Accuracy Roll" : k === "skill" ? "Skill Check" : "Save Check"}`);
+      (rerender||renderBattle)();
+    }},"\u{1F4D6} Learn from it"),
+  ]});
+}
+/* Echoes of the Future: "You or your Pokémon make a roll — you may roll twice and keep the best
+   result." The roll is made right here, twice, and the better one is what goes to the table feed. */
+function openEchoesOfTheFuture(t, rerender, persist){
+  const who = el("select",{style:"padding:6px"});
+  who.append(el("option",{value:"trainer"}, `\u{1F9D1} ${t.name || "You"}`));
+  researchMons(t).filter(p => p.onTeam !== false).forEach(p => who.append(el("option",{value:p.id}, `\u{1F534} ${ownerLabel(p)}`)));
+  const what = el("select",{style:"padding:6px"});
+  what.append(el("option",{value:"d20"},"1d20 — an Accuracy Roll or a Save Check"));
+  SKILLS.forEach(([k,l]) => what.append(el("option",{value:k}, `${l} Check`)));
+  const modIn = el("input",{type:"number",value:0,style:"width:80px",title:"the flat modifier on a d20 roll"});
+  const out = el("div",{class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:10px 0 0"},
+    el("div",{class:"small muted"},"Press \u{1F3B2} Roll twice."));
+  const u = featUses(t, "Echoes of the Future");
+  const body = el("div",{},
+    el("div",{class:"small",style:"margin-bottom:10px"},
+      `Daily x2 · Free Action (${u.left ?? "—"} of ${u.max ?? "—"} left). The roll is made twice and the best one stands.`),
+    el("label",{class:"field"}, el("span",{},"Who is rolling"), who),
+    el("label",{class:"field"}, el("span",{},"What they roll"), what),
+    el("label",{class:"field"}, el("span",{},"Flat modifier (d20 only)"), modIn), out);
+  const rollOnce = () => {
+    const mon = who.value === "trainer" ? null : researchMons(t).find(p => p.id === who.value);
+    if(what.value === "d20"){
+      const r = 1 + Math.floor(Math.random()*20), m = parseInt(modIn.value)||0;
+      return { total:r + m, text:`1d20 [${r}]${m ? (m>0?" +":" ")+m : ""}` };
+    }
+    let dice = 1, mod = 0;
+    if(mon){ const s = monSkills(mon)[what.value]; dice = s ? s.dice : 1; mod = s ? s.mod : 0; }
+    else { dice = rankDice((t.skills||{})[what.value]); mod = trainerSkillMod(t, what.value) + (typeof edgeSkillBonus === "function" ? edgeSkillBonus(t, what.value) : 0); }
+    const rolls = []; for(let i = 0; i < dice; i++) rolls.push(1 + Math.floor(Math.random()*6));
+    return { total:rolls.reduce((a,b)=>a+b,0) + mod, text:`${dice}d6 [${rolls.join(", ")}]${mod ? (mod>0?" +":" ")+mod : ""}` };
+  };
+  modal({ title:"\u{1F52E} Echoes of the Future", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Close"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      if(!featSpend(t, "Echoes of the Future")) return;
+      const a = rollOnce(), b = rollOnce(), best = a.total >= b.total ? a : b;
+      const whoName = who.options[who.selectedIndex].textContent.replace(/^\S+\s/, "");
+      const whatName = what.options[what.selectedIndex].textContent;
+      out.innerHTML = ""; out.style.borderStyle = "solid";
+      out.append(el("div",{style:"font-size:24px;font-weight:800"}, `\u{1F3B2} ${best.total}`),
+        el("div",{class:"small"}, `${a.text} = ${a.total}  ·  ${b.text} = ${b.total} — kept the best`));
+      logRoll({ kind:"skill", label:`Echoes of the Future — ${whatName}`, who:whoName, headline:`\u{1F3B2} ${best.total}`,
+        lines:[`rolled twice: ${a.total} and ${b.total} — kept ${best.total}`] });
+      (persist||save)(); (rerender||(()=>{}))();
+    }},"\u{1F3B2} Roll twice"),
+  ]});
+}
+/* Instant Analysis / Culinary Appreciation shape: "Your Pokémon loses 2 Tutor Points and gains the X Ability." */
+function openTutorAbility(t, featName, ability, cost, rerender, persist){
+  const mons = researchMons(t).filter(p => !ownerHasAbility(p, ability));
+  if(!mons.length){ toast(`Every one of your Pokémon already has ${ability}`); return; }
+  researchPickMon(`${featName} — ${cost} Tutor Points for ${ability}`, mons,
+    p => tpLeft(p) < cost ? `needs ${cost} Tutor Points — ${tpLeft(p)} left` : null,
+    p => {
+      if(tpSpend(p, cost, `${featName} — ${ability}`, {kind:"feature"}) < cost){ toast("Not enough Tutor Points"); return; }
+      peGrantAbility(p, ability);
+      (persist||save)();
+      toast(`${featName}: ${ownerLabel(p)} gained ${ability} — ${cost} Tutor Points spent`);
+      (rerender||renderBattle)();
+    });
+}
+
+/* ---------------------------------------------------------------- APOTHECARY */
+/* Restorative Patches and Medicinal Blends are named for what went into them, and restorativeDef
+   unwraps that name back into a real Restorative — so the bag, the 🧪 Apply dialog and the
+   item-spending path all work on them unchanged, exactly the way snackDef unwraps a Preserves. */
+const PATCH_RE = /^Restorative Patch\s*\((.+)\)\s*$/i;
+const BLEND_RE = /^Medicinal Blend\s*\((.+?)\s\+\s(.+)\)\s*$/i;
+function researchRestorativeDef(name){
+  const s = String(name||"").trim();
+  let m = PATCH_RE.exec(s);
+  if(m){
+    const base = restorativeDef(m[1]) || researchRestorativeDef(m[1]);
+    return base ? Object.assign({}, base, { name:s, baseName:base.baseName || base.name, patch:true }) : null;
+  }
+  m = BLEND_RE.exec(s);
+  if(m){
+    const a = restorativeDef(m[1]) || researchRestorativeDef(m[1]);
+    const b = restorativeDef(m[2]) || researchRestorativeDef(m[2]);
+    const x = !a ? m[1] : !b ? m[2] : null;              // the half that is an X-Item, if any
+    const both = [a, b].filter(Boolean);
+    if(!both.length) return null;
+    const cures = both.some(d => d.cures === "allStatus") ? "allStatus"
+                : both.some(d => d.cures === "persistent") ? "persistent"
+                : [...new Set(both.flatMap(d => Array.isArray(d.cures) ? d.cures : []))];
+    const xi = x ? itemByName.get(String(x).toLowerCase()) : null;
+    return { name:s, heal:both.reduce((n,d)=>n+(d.heal||0),0), revive:both.some(d=>d.revive),
+             reviveHP:Math.max(0, ...both.map(d=>d.reviveHP||0)), revivePct:Math.max(0, ...both.map(d=>d.revivePct||0)),
+             cures, blend:true, patch: both.some(d => d.patch),
+             extra: x ? `${x}${xi && xi.effect ? ` — ${xi.effect}` : ""}` : "",
+             effect: both.map(d => d.effect).concat(xi && xi.effect ? [xi.effect] : []).join(" / ") };
+  }
+  return null;
+}
+/* "If you choose two Restoratives, they cannot be Restoratives with the same effect (you could not,
+   for example, mix a Potion and a Super Potion)." */
+function blendSameEffect(a, b){
+  if(!a || !b) return false;
+  if((a.heal && b.heal) || (a.revive && b.revive)) return true;
+  if(typeof a.cures === "string" || typeof b.cures === "string") return a.cures === b.cures && !!a.cures;
+  return (a.cures||[]).some(k => (b.cures||[]).includes(k));
+}
+const X_ITEMS = ["X Attack","X Defend","X Special","X Sp. Def.","X Speed","X Accuracy","Dire Hit","Guard Spec"];
+const APOTHECARY_RECIPES = [
+  { name:"Restorative Science", feat:"Apothecary", bench:"Apothecary", icon:"⚗", verb:"⚗ Brew", qty:1, cost:100,
+    pick:() => ["Antidote","Paralyze Heal","Burn Heal","Ice Heal","Potion"],
+    blurb:"$100 — an Antidote, Paralyze Heal, Burn Heal, Ice Heal or Potion." },
+  { name:"Super Cures", feat:"Patch Cure", bench:"Apothecary", icon:"⚗", verb:"⚗ Brew", qty:1, cost:200,
+    pick:() => ["Revive","Super Potion"],
+    blurb:"$200 — a Revive or a Super Potion." },
+  { name:"Hyper Cures", feat:"Medical Techniques", bench:"Apothecary", icon:"⚗", verb:"⚗ Brew", qty:1,
+    pick:() => ["Full Heal","Hyper Potion","Full Restore"],
+    cost:(t, item) => ({ "Full Heal":300, "Hyper Potion":400, "Full Restore":700 })[item] || 0,
+    blurb:"A Full Heal for $300, a Hyper Potion for $400 or a Full Restore for $700." },
+  { name:"Performance Enhancers", feat:"Medicinal Blend", bench:"Apothecary", icon:"⚗", verb:"⚗ Brew", qty:1, cost:4900,
+    pick:() => ["PP Up","Heart Booster"],
+    blurb:"$4900 — a PP Up or a Heart Booster. Feed them from the Pokémon's own Vitamins card." },
+  { name:"Heart Booster (from a Heart Scale)", feat:"Medicinal Blend", bench:"Apothecary", icon:"⚗", verb:"⚗ Brew", qty:1, cost:0,
+    pick:() => ["Heart Booster"],
+    eats:() => [ { label:"x1 Heart Scale", take:[["Heart Scale",1]] } ],
+    blurb:"Destroy a Heart Scale to make a Heart Booster without paying the $4900." },
+  { name:"Patch Cure", feat:"Patch Cure", bench:"Apothecary", icon:"\u{1FA79}", verb:"\u{1FA79} Distil", qty:3, cost:0,
+    eats: t => bagRestoratives(t).filter(r => !r.def.patch && !r.def.blend)
+                 .map(r => ({ label:`x1 ${r.def.name}`, take:[[r.def.name,1]] })),
+    result: (t, pick, bundle) => `Restorative Patch (${bundle.take[0][0]})`,
+    blurb:"Distil one Restorative into THREE Restorative Patches with its exact effect. A Patch can only be applied as an Extended Action." },
+  { name:"Medicinal Blend", feat:"Medicinal Blend", bench:"Apothecary", icon:"⚗", verb:"⚗ Fuse", qty:1, cost:0,
+    two:{ a: t => bagRestoratives(t).filter(r => !r.def.blend).map(r => r.def.name),
+          b: t => [...bagRestoratives(t).filter(r => !r.def.blend).map(r => r.def.name),
+                   ...X_ITEMS.filter(n => inventoryQty(t, n) > 0)],
+          labelA:"Restorative", labelB:"Restorative or X-Item",
+          empty:"Medicinal Blend needs a Restorative in the bag, plus a second Restorative or an X-Item.",
+          check:(t, a, b) => {
+            if(a === b) return "The two ingredients must be different items";
+            const da = restorativeDef(a), db = restorativeDef(b);
+            return (da && db && blendSameEffect(da, db)) ? `${a} and ${b} have the same effect — the Feature forbids that pairing` : null;
+          },
+          result:(a, b) => `Medicinal Blend (${a} + ${b})` },
+    blurb:"Fuse two Restoratives (not two with the same effect), or a Restorative and an X-Item, into ONE item with both effects. A Patch in the mix makes the result Extended-Action only." },
+];
+
+/* ---------------------------------------------------------------- CRYSTAL ARTIFICE */
+/* Core p.284: "Each color is associated with three Types." */
+const SHARD_COLORS = { Red:["Fire","Fairy","Psychic"], Orange:["Normal","Fighting","Dragon"], Yellow:["Electric","Rock","Steel"],
+                       Green:["Bug","Grass","Ground"], Blue:["Water","Ice","Flying"], Violet:["Poison","Dark","Ghost"] };
+const shardName = c => `${c} Shard`;
+const shardColorOfType = ty => Object.keys(SHARD_COLORS).find(c => SHARD_COLORS[c].includes(ty)) || null;
+const shardCount = (t, c) => inventoryQty(t, shardName(c));
+const shardTotal = t => Object.keys(SHARD_COLORS).reduce((n, c) => n + shardCount(t, c), 0);
+/* "Any Six Shards": taken from the biggest stacks first, so the rarer colours are the ones kept */
+function shardsAnySix(t){
+  const have = Object.fromEntries(Object.keys(SHARD_COLORS).map(c => [c, shardCount(t, c)]));
+  const take = {};
+  for(let i = 0; i < 6; i++){
+    const c = Object.keys(have).sort((a,b) => have[b] - have[a])[0];
+    if(!c || have[c] <= 0) return null;
+    have[c]--; take[c] = (take[c]||0) + 1;
+  }
+  return Object.entries(take).map(([c, n]) => [shardName(c), n]);
+}
+const STAT_BOOSTER_ITEMS = ["Attack Booster","Defense Booster","S Attack Booster","S Defense Booster","Speed Booster","Accuracy Booster","Evasion Booster"];
+const typeOfPick = s => String(s||"").split(" — ")[0];
+const ARTIFICER_RECIPES = [
+  { name:"Type Booster", feat:"Crystal Artificer", bench:"Crystal Artifice", icon:"\u{1F48E}", verb:"\u{1F48E} Craft", qty:1, cost:0,
+    pick: t => TYPES.filter(ty => shardColorOfType(ty) && shardCount(t, shardColorOfType(ty)) >= 4)
+                    .map(ty => `${ty} — ${TYPE_BOOSTER_ITEMS[ty]}`),
+    take: (t, item) => [[shardName(shardColorOfType(typeOfPick(item))), 4]],
+    result: (t, item) => TYPE_BOOSTER_ITEMS[typeOfPick(item)],
+    blurb:"Four Shards of one colour make a Type Booster of one of that colour's three Types." },
+  { name:"Type Brace", feat:"Crystal Artificer", bench:"Crystal Artifice", icon:"\u{1F48E}", verb:"\u{1F48E} Craft", qty:1, cost:0,
+    pick: t => TYPES.filter(ty => shardColorOfType(ty) && shardCount(t, shardColorOfType(ty)) >= 4)
+                    .map(ty => `${ty} — ${ty} Brace`),
+    take: (t, item) => [[shardName(shardColorOfType(typeOfPick(item))), 4]],
+    result: (t, item) => `${typeOfPick(item)} Brace`,
+    blurb:"Four Shards of one colour make a Type Brace of one of that colour's three Types." },
+  { name:"Focus Gem", feat:"Crystal Resonance", bench:"Crystal Artifice", icon:"\u{1F48E}", verb:"\u{1F48E} Craft", qty:1, cost:0,
+    pick: t => shardTotal(t) >= 6 ? ["Focus"] : [],
+    take: t => shardsAnySix(t) || [],
+    blurb:"Any six Shards (taken from your biggest stacks) make a Focus — pick its Stat when you wear it." },
+  { name:"Chakra Crystal", feat:"Crystal Resonance", bench:"Crystal Artifice", icon:"\u{1F48E}", verb:"\u{1F48E} Craft", qty:1, cost:0,
+    pick: t => shardTotal(t) >= 6 ? STAT_BOOSTER_ITEMS.slice() : [],
+    take: t => shardsAnySix(t) || [],
+    blurb:"Any six Shards (taken from your biggest stacks) make a Stat Booster." },
+  { name:"Rainbow Gem", feat:"Rainbow Light", bench:"Crystal Artifice", icon:"\u{1F308}", verb:"\u{1F308} Craft", qty:1, cost:0,
+    pick: t => Object.keys(SHARD_COLORS).every(c => shardCount(t, c) >= 2) ? ["Rainbow Gem"] : [],
+    take: () => Object.keys(SHARD_COLORS).map(c => [shardName(c), 2]),
+    blurb:"Two Shards of every colour make a Rainbow Gem — a Focus whose Stat can be re-attuned. Wear it to use Rainbow Light." },
+  { name:"Plate Crafter", feat:"Rainbow Light", bench:"Crystal Artifice", icon:"\u{1F48E}", verb:"\u{1F48E} Craft", qty:1, cost:0,
+    pick: t => TYPES.filter(ty => inventoryQty(t, TYPE_BOOSTER_ITEMS[ty]) > 0 && inventoryQty(t, `${ty} Brace`) > 0)
+                    .map(ty => `${ty} — ${Object.keys(TYPE_PLATE_ITEMS).find(k => TYPE_PLATE_ITEMS[k] === ty)}`),
+    take: (t, item) => { const ty = typeOfPick(item); return [[TYPE_BOOSTER_ITEMS[ty], 1], [`${ty} Brace`, 1]]; },
+    result: (t, item) => Object.keys(TYPE_PLATE_ITEMS).find(k => TYPE_PLATE_ITEMS[k] === typeOfPick(item)),
+    blurb:"A Type Booster and a Type Brace of the same Type make that Type's Plate." },
+];
+/* Dowsing Rod (Core p.284): 1d6 per Occult Education Rank, +1d6 on sandy/rocky ground, +1d6 with
+   Skill Stunt (Dowsing), +3d6 with Crystal Resonance. Every 4+ is a Shard of a random colour, and a 6
+   rolls again. Uses per day: half your Occult Education Rank. */
+const DOWSE_KEY = "dayitem:dowsing rod";
+function dowseUsesMax(t){ return Math.max(0, Math.floor(rankNum((t.skills||{}).occultEd) / 2)); }
+function canDowse(t){ return !!t && (inventoryQty(t, "Dowsing Rod") > 0 || hasResearch(t, "Crystal Artificer")); }
+function openDowsing(t, rerender, persist){
+  const max = dowseUsesMax(t), left = usesLeft(t, DOWSE_KEY, max);
+  const sandy = el("input",{type:"checkbox"}), stunt = el("input",{type:"checkbox"});
+  stunt.checked = (t.edges||[]).some(e => /skill stunt/i.test(e)) && /dowsing/i.test(JSON.stringify(t.edgeNotes || t.notes || ""));
+  const reso = hasResearch(t, "Crystal Resonance");
+  const out = el("div",{class:"small",style:"margin-top:8px"});
+  const body = el("div",{},
+    el("div",{class:"small",style:"margin-bottom:8px"},
+      `Ten minutes of searching. ${left} of ${max} uses left today (half your Occult Education Rank). `
+      + (inventoryQty(t, "Dowsing Rod") > 0 ? "" : "⚠ There is no Dowsing Rod in your bag. ")
+      + `Every die showing 4+ is a Shard of a random colour; a 6 is rolled again.${reso ? " Crystal Resonance adds 3d6." : ""}`),
+    el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer"}, sandy, "A beach, cave, desert or other sandy / rocky area (+1d6)"),
+    el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin-top:4px"}, stunt, "Skill Stunt (Dowsing) (+1d6)"),
+    out);
+  modal({ title:"\u{1F52E} Dowsing", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Close"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      if(usesLeft(t, DOWSE_KEY, max) <= 0 && !t.unlocked){ toast("No Dowsing left today"); return; }
+      t.uses = t.uses || {}; t.uses[DOWSE_KEY] = Math.min(max, (t.uses[DOWSE_KEY]||0) + 1);
+      let dice = rankNum((t.skills||{}).occultEd) + (sandy.checked ? 1 : 0) + (stunt.checked ? 1 : 0) + (reso ? 3 : 0);
+      const rolls = [], found = {};
+      for(let guard = 0; dice > 0 && guard < 200; guard++){
+        dice--;
+        const r = 1 + Math.floor(Math.random()*6); rolls.push(r);
+        if(r >= 4){ const c = Object.keys(SHARD_COLORS)[Math.floor(Math.random()*6)]; found[c] = (found[c]||0) + 1; }
+        if(r === 6) dice++;
+      }
+      Object.entries(found).forEach(([c, n]) => benchBagAdd(t, shardName(c), n, "found Dowsing"));
+      const n = Object.values(found).reduce((a,b)=>a+b, 0);
+      out.innerHTML = "";
+      out.append(el("div",{style:"font-weight:700"}, n ? `Found ${n} Shard${n===1?"":"s"}: ${Object.entries(found).map(([c,k])=>`${k} ${c}`).join(", ")}` : "Nothing this time."),
+        el("div",{class:"muted"}, `Rolled [${rolls.join(", ")}] — they are in your bag.`));
+      logRoll({ kind:"skill", label:"Dowsing", who:t.name||"", headline: n ? `\u{1F48E} ${n} Shard${n===1?"":"s"}` : "\u{1F48E} none",
+        lines:[`[${rolls.join(", ")}]`, n ? Object.entries(found).map(([c,k])=>`${k} ${c}`).join(", ") : "no Shards"] });
+      (persist||save)(); (rerender||(()=>{}))();
+    }},"\u{1F52E} Dowse"),
+  ]});
+}
+/* Rainbow Light: "Condition: You are wearing a Rainbow Gem. You create a Rainbow lasting one full
+   round. While this Rainbow persists, the Effect Range of all Allies is increased by +3." */
+function wearingRainbowGem(t){ return equippedList(t).some(e => e && normItemName(e.name) === "rainbowgem"); }
+function openRainbowLight(t, rerender, persist){
+  if(!wearingRainbowGem(t) && !t.unlocked){ toast("Rainbow Light needs a Rainbow Gem worn in an Equipment slot"); return; }
+  const list = allyTargets(t).filter(x => !x.enemy);
+  const pick = targetPicker(list, list.map(x => x.id));
+  const body = el("div",{},
+    el("div",{class:"small",style:"margin-bottom:10px"},
+      "2 AP · Standard Action. For one full round every Ally's Effect Range is +3 — placed as a buff, so every Move roll they make shows the lower thresholds, and it falls off at the end of your next turn when the Map's initiative is running."),
+    pick.node);
+  modal({ title:"\u{1F308} Rainbow Light", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async ()=>{
+      const chosen = pick.chosen();
+      if(!chosen.length){ toast("Pick your Allies"); return; }
+      if(!apSpend(t, 2)) return;
+      chosen.forEach(x => {
+        x.obj.buffs = ownerBuffs(x.obj).filter(b => b.key !== "rainbow-light");
+        researchBuff(x.obj, { key:"rainbow-light", name:"Rainbow Light", cat:"Researcher", dur:"until the end of your next turn",
+          mods:{ eff:3 }, note:`${t.name || "A Crystal Artificer"}'s Rainbow: +3 to the Effect Range of every attack for one full round.` });
+      });
+      (persist||save)(); closeModal();
+      await commitTargets(chosen);
+      toast(`\u{1F308} Rainbow Light → ${chosen.length} All${chosen.length===1?"y":"ies"} · +3 Effect Range · 2 AP`);
+      (rerender||renderBattle)();
+    }},"\u{1F308} Shine"),
+  ]});
+}
+/* Fistful of Force: destroy a held Shard to use Judgment, Typed to one of that Shard's colours, adding
+   Occult Education ×3 instead of Special Attack if you like. */
+function openFistfulOfForce(t, rerender, persist){
+  const colors = Object.keys(SHARD_COLORS).filter(c => shardCount(t, c) > 0);
+  if(!colors.length){ toast("You have no Shards to destroy"); return; }
+  const colSel = el("select",{style:"padding:6px"}), tySel = el("select",{style:"padding:6px"});
+  colors.forEach(c => colSel.append(el("option",{value:c}, `${c} Shard ×${shardCount(t, c)} — ${SHARD_COLORS[c].join(" / ")}`)));
+  const fillTypes = () => { tySel.innerHTML = ""; SHARD_COLORS[colSel.value].forEach(ty => tySel.append(el("option",{value:ty}, ty))); };
+  colSel.addEventListener("change", fillTypes); fillTypes();
+  const occ = rankNum((t.skills||{}).occultEd) * 3, spa = trainerDerived(t).totals.spatk;
+  const useOcc = el("input",{type:"checkbox"}); useOcc.checked = occ > spa;
+  const u = featUses(t, "Fistful of Force");
+  const body = el("div",{},
+    el("div",{class:"small",style:"margin-bottom:10px"},
+      `Scene · Standard Action (${u.left ?? "—"} of ${u.max ?? "—"} left). The Shard has to be in your Main Hand or Off-Hand. It is destroyed, and you use Judgment as one of its colour's Types.`),
+    el("label",{class:"field"}, el("span",{},"Shard"), colSel),
+    el("label",{class:"field"}, el("span",{},"Judgment's Type"), tySel),
+    el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin-top:6px"}, useOcc,
+      `Add Occult Education ×3 (${occ}) instead of Special Attack (${spa})`));
+  modal({ title:"\u{1F48E} Fistful of Force", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      if(!moveByName.get("judgment")){ toast("Judgment isn't in the Move database"); return; }
+      if(!featSpend(t, "Fistful of Force")) return;
+      if(!consumeInventoryItem(t, shardName(colSel.value))){ toast("That Shard is gone from your bag"); return; }
+      (persist||save)(); closeModal();
+      toast(`\u{1F48E} ${colSel.value} Shard destroyed — Judgment as ${tySel.value}`);
+      openTrainerAttack(t, "Judgment", null, { pickType:tySel.value, rerender, persist,
+        atkOverride: useOcc.checked ? { value:occ, label:"Occult Ed. ×3" } : null });
+    }},"\u{1F48E} Destroy it"),
+  ]});
+}
+
+/* ---------------------------------------------------------------- CHEMISTRY */
+const CHEMISTRY_RECIPES = [
+  { name:"Enhancers", feat:"Chemist", bench:"Chemistry", icon:"\u{1F9EA}", verb:"\u{1F9EA} Mix", qty:1, cost:100,
+    pick:() => X_ITEMS.slice(),
+    blurb:"$100 — any X-Item, a Dire Hit or a Guard Spec." },
+  { name:"Pester Balls: Disorient", feat:"Chemist", bench:"Chemistry", icon:"\u{1F9EA}", verb:"\u{1F9EA} Mix", qty:1, cost:50,
+    pick:() => ["Pester Ball: Rage","Pester Ball: Confusion"],
+    blurb:"$50 — a Pester Ball that inflicts Rage or Confusion." },
+  { name:"Pester Balls: Pain", feat:"Chemical Warfare", bench:"Chemistry", icon:"\u{1F9EA}", verb:"\u{1F9EA} Mix", qty:1, cost:50,
+    pick:() => ["Pester Ball: Burn","Pester Ball: Poison"],
+    blurb:"$50 — a Pester Ball that inflicts Burn or Poison." },
+  { name:"Pester Balls: Shut Down", feat:"Caustic Chemistry", bench:"Chemistry", icon:"\u{1F9EA}", verb:"\u{1F9EA} Mix", qty:1, cost:50,
+    pick:() => ["Pester Ball: Paralysis","Pester Ball: Sleep"],
+    blurb:"$50 — a Pester Ball that inflicts Paralysis or Sleep." },
+];
+/* Caustic Chemistry: "Make a Technology Education Roll. All targets affected by this Feature's
+   trigger lose Hit Points equal to your roll. This may only affect a target once per Scene." The
+   buff it leaves on each target is the once-per-Scene record, and End Scene clears it. */
+function openCausticChemistry(t, rerender, persist){
+  const list = allyTargets(t, { foes:true });
+  const pick = targetPicker(list, []);
+  const body = el("div",{},
+    el("div",{class:"small",style:"margin-bottom:10px"},
+      "1 AP · Swift Action, when you hit with a Pester Ball or apply a Repel to a Pokémon. Tick everyone the trigger affected: your Technology Education Roll comes off their Hit Points (Hit Points LOST, not damage — no Defense, no Type, no Damage Reduction). Once per Scene per target."),
+    pick.node);
+  modal({ title:"\u{1F9EA} Caustic Chemistry", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async ()=>{
+      const chosen = pick.chosen().filter(x => !ownerBuffs(x.obj).some(b => b.key === "caustic-chemistry"));
+      if(!chosen.length){ toast("Pick a target that hasn't been hit by Caustic Chemistry this Scene"); return; }
+      if(!apSpend(t, 1)) return;
+      const r = researchSkillRoll(t, "technologyEd");
+      for(const x of chosen){
+        researchBuff(x.obj, { key:"caustic-chemistry", name:"Caustic Chemistry (spent)", cat:"Researcher", dur:"this Scene",
+          note:"Already lost Hit Points to Caustic Chemistry this Scene — it can't affect this target again until the Scene ends." });
+        if(x.token) await setTokenHP(x.token, tokenHp(x.token).cur - r.total, { raw:true });
+        else ownerHeal(x.obj, -r.total);
+      }
+      (persist||save)(); closeModal();
+      await commitTargets(chosen);
+      logRoll({ kind:"skill", label:"Caustic Chemistry", who:t.name||"", headline:`\u{1F9EA} −${r.total} HP`,
+        lines:[`Technology Ed. ${r.dice}d6 [${r.rolls.join(", ")}]${r.mod ? ` +${r.mod}` : ""} = ${r.total}`,
+               `lost by ${chosen.map(x => ownerLabel(x.obj)).join(", ")}`] });
+      toast(`\u{1F9EA} Caustic Chemistry: ${r.total} Hit Points lost by ${chosen.map(x => ownerLabel(x.obj)).join(", ")} · 1 AP`);
+      (rerender||renderBattle)();
+    }},"\u{1F9EA} Roll & apply"),
+  ]});
+}
+/* Playing God: $3500, an artificial Egg of one of eight species that hatches at Lv5 with a chosen
+   Nature and Basic Ability, plus one upgrade per Technology Education Rank. */
+const PLAYING_GOD_SPECIES = ["Castform","Grimer","Koffing","Magnemite","Porygon","Solosis","Trubbish","Voltorb"];
+const STAT_VITAMIN = { hp:"HP Up", atk:"Protein", def:"Iron", spatk:"Calcium", spdef:"Zinc", spd:"Carbos" };
+function openPlayingGod(t, rerender, persist){
+  const c = charOfTrainer(t);
+  if(!c){ toast("Playing God needs a character sheet to hatch the Pokémon onto"); return; }
+  const ups = rankNum((t.skills||{}).technologyEd);
+  const spSel = el("select",{style:"padding:6px"});
+  PLAYING_GOD_SPECIES.filter(n => getSpecies(n)).forEach(n => spSel.append(el("option",{value:n}, n)));
+  const natSel = el("select",{style:"padding:6px"});
+  (D.natures||[]).forEach(n => natSel.append(el("option",{value:n.name, selected:n.name === "Hardy"}, n.name)));
+  const abSel = el("select",{style:"padding:6px"});
+  const fillAb = () => { abSel.innerHTML = ""; ((getSpecies(spSel.value)||{}).abilities||{basic:[]}).basic.forEach(a => abSel.append(el("option",{value:a}, a))); };
+  spSel.addEventListener("change", () => { fillAb(); drawUps(); }); fillAb();
+  const stats = {}; const statBox = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap"});
+  STATS.forEach(([k,l]) => { const i = el("input",{type:"number",min:0,max:5,value:0,style:"width:52px"}); stats[k] = i;
+    i.addEventListener("input", () => drawUps()); statBox.append(el("label",{class:"small"}, `${l} `, i)); });
+  const colorCb = el("input",{type:"checkbox"});
+  const contestSel = el("select",{style:"padding:4px"}); ["Cool","Beauty","Cute","Smart","Tough"].forEach(s => contestSel.append(el("option",{value:s}, s)));
+  const inhBox = el("div",{});
+  const inh = [];
+  const drawInh = () => {
+    inhBox.innerHTML = ""; inh.length = 0;
+    const sp = getSpecies(spSel.value);
+    const pool = [...speciesMoveNamesOf(sp, "egg"), ...speciesMoveNamesOf(sp, "tutor")];
+    for(let i = 0; i < 3; i++){
+      const s = el("select",{style:"padding:4px;margin:2px 4px 2px 0"});
+      s.append(el("option",{value:""},"— no Inheritance Move —"));
+      [...new Set(pool)].forEach(n => s.append(el("option",{value:n}, n)));
+      s.addEventListener("change", () => drawUps());
+      inh.push(s); inhBox.append(s);
+    }
+  };
+  spSel.addEventListener("change", drawInh); drawInh();
+  const upLine = el("div",{class:"small",style:"font-weight:700;margin-top:8px"});
+  const used = () => STATS.reduce((n,[k]) => n + Math.max(0, parseInt(stats[k].value)||0), 0) + (colorCb.checked ? 1 : 0) + inh.filter(s => s.value).length;
+  function drawUps(){
+    const n = used(), statN = STATS.reduce((a,[k]) => a + Math.max(0, parseInt(stats[k].value)||0), 0);
+    upLine.textContent = `${n} of ${ups} upgrades used (Technology Education Rank ${ups})${statN > 5 ? " — at most 5 Base Stat upgrades" : ""}`;
+    upLine.style.color = (n > ups || statN > 5) ? "var(--bad)" : "";
+  }
+  colorCb.addEventListener("change", drawUps); drawUps();
+  const body = el("div",{},
+    el("div",{class:"small",style:"margin-bottom:10px"},
+      `At-Will · Extended Action · $3500 (you have ${fmtMoney(moneyOf(t))}). Your Chemistry Set makes an artificial Egg that hatches within a day into a Lv 5 Pokémon. The Base Stat upgrades go on as Vitamins (they count as Vitamins); an Inheritance Move is added to its notes and its Move list.`),
+    el("label",{class:"field"}, el("span",{},"Species"), spSel),
+    el("label",{class:"field"}, el("span",{},"Nature"), natSel),
+    el("label",{class:"field"}, el("span",{},"Basic Ability"), abSel),
+    el("div",{class:"small muted",style:"font-weight:700;margin-top:8px"},"Upgrades"),
+    el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin:4px 0"}, colorCb, "Unusual coloration — +2d6 in the Introduction Stage of a Contest for ", contestSel),
+    el("div",{class:"small muted"},"+1 Base Stat each (up to 5 in all):"), statBox,
+    el("div",{class:"small muted",style:"margin-top:6px"},"Inheritance Moves from its Egg / Tutor lists (up to 3):"), inhBox,
+    upLine);
+  modal({ title:"\u{1F9EC} Playing God", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      const statN = STATS.reduce((a,[k]) => a + Math.max(0, parseInt(stats[k].value)||0), 0);
+      if((used() > ups || statN > 5) && !t.unlocked){ toast("Too many upgrades"); return; }
+      if(moneyOf(t) < 3500){ toast("Playing God costs $3500"); return; }
+      if(inventoryQty(t, "Chemistry Set") <= 0 && !t.unlocked && !confirm("There is no Chemistry Set in your bag. Hatch it anyway?")) return;
+      moneyChange(t, -3500, "Chemistry — Playing God", {kind:"buy"});
+      const p = normPokemon(newPokemon(spSel.value));
+      p.nature = natSel.value; p.abilities = abSel.value ? [abSel.value] : [];
+      const sp = getSpecies(p.species);
+      p.moves = speciesLevelupNames(sp, p.level).slice(-6);
+      p.onTeam = (c.pokemon||[]).filter(x => x.onTeam).length < 6;
+      if(!Array.isArray(p.vitamins)) p.vitamins = [];
+      STATS.forEach(([k]) => { for(let i = 0; i < Math.max(0, parseInt(stats[k].value)||0); i++)
+        p.vitamins.push({ id:uid(), item:STAT_VITAMIN[k], stat:k, arg:"Playing God", at:Date.now() }); });
+      const inhMoves = [...new Set(inh.map(s => s.value).filter(Boolean))];
+      inhMoves.forEach(m => researchTeachMove(p, m));
+      const notes = [`\u{1F9EC} Artificial Egg (Playing God, by ${t.name || "a Chemist"}).`];
+      if(colorCb.checked) notes.push(`Unusual coloration: +2d6 in a Contest's Introduction Stage for ${contestSel.value}.`);
+      if(inhMoves.length) notes.push(`Inheritance List: ${inhMoves.join(", ")}.`);
+      p.notes = notes.join(" ");
+      p.playingGod = true;
+      (c.pokemon = c.pokemon || []).push(p);
+      (persist||save)(); closeModal();
+      toast(`\u{1F9EC} A ${p.species} hatched (Lv 5, ${p.nature}) — −$3500`);
+      (rerender||renderBattle)();
+    }},"\u{1F9EC} Create it"),
+  ]});
+}
+
+/* ---------------------------------------------------------------- CLIMATOLOGY */
+/* The weathers a creature is fighting in: the Map's, plus the second one Climate Control is holding
+   on the field. Every per-creature weather reader (Combat Stages, Evasion, the roll maths, the
+   per-turn HP report) walks this list, so two weathers really do "exist simultaneously". */
+function mapSecondWeather(){
+  try{
+    if(mode !== "cloud" || !cloud.mapMeta?.data) return null;
+    const map = currentMapForView();
+    const k = map && map.weather2;
+    return (k && WEATHER_BY_KEY[k] && k !== "clear" && k !== map.weather) ? WEATHER_BY_KEY[k] : null;
+  }catch(e){ return null; }
+}
+function ownerWeathers(o){
+  const first = ownerWeather(o);
+  const second = mapSecondWeather();
+  // a personal override (Fishbowl Technique) replaces the field entirely, second weather included
+  if(ownerBuffs(o).some(b => b.mods && b.mods.weather)) return [first];
+  return (second && second.key !== first.key) ? [first, second] : [first];
+}
+function extremeWeatherOn(){
+  try{
+    if(mode !== "cloud" || !cloud.mapMeta?.data) return false;
+    const map = currentMapForView();
+    return !!(map && map.extremeWeather);
+  }catch(e){ return false; }
+}
+/* does this creature take the per-turn HP loss of weather `w` (Hail / Sandstorm)? — the same
+   exceptions the per-turn HP report uses */
+function safeTypesOf(o){ try{ return (monTypes(o) || []).map(x => String(x)); }catch(e){ return []; } }
+function takesWeatherDamage(o, w){
+  const tick = ((w && w.ticks) || []).find(x => x.all && x.sign < 0);
+  if(!tick || !o) return false;
+  const types = safeTypesOf(o).map(x => x.toLowerCase());
+  if((tick.exceptTypes||[]).some(ty => types.includes(ty))) return false;
+  if((tick.immuneAbilities||[]).some(ab => ownerHasAbility(o, ab))) return false;
+  if((tick.immuneItems||[]).some(it => wornOrHeldNames(o).some(n => normItemName(n) === normItemName(it)))) return false;
+  return true;
+}
+/* Extreme Weather's four riders, on one creature. `acc` and `dmg` feed the roll; `status` is what the
+   weather panel offers to apply. */
+function extremeWeatherFx(o){
+  const out = { acc:0, dmg:0, status:[], lines:[] };
+  if(!extremeWeatherOn() || !o) return out;
+  const types = safeTypesOf(o);
+  ownerWeathers(o).forEach(w => {
+    if(w.key === "hail" && takesWeatherDamage(o, w)){ out.dmg -= 5; out.lines.push("Extreme Hail: −5 to Damage Rolls for anyone taking Hail damage"); }
+    if(w.key === "sandstorm" && takesWeatherDamage(o, w)){ out.acc -= 2; out.lines.push("Extreme Sandstorm: −2 to Accuracy Rolls for anyone taking Sandstorm damage"); }
+    if(w.key === "rainy" && !types.some(ty => ty === "Water" || ty === "Grass")){ out.status.push("slowed"); out.lines.push("Extreme Rain: not Water- or Grass-Typed, so Slowed"); }
+    if(w.key === "sunny" && !types.some(ty => ty === "Fire" || ty === "Grass")){ out.status.push("suppressed"); out.lines.push("Extreme Sun: not Fire- or Grass-Typed, so Suppressed"); }
+  });
+  return out;
+}
+/* is there a Climatologist on this board? — decides whether the GM's weather bar grows its extra
+   two controls at all */
+function climatologistOnMap(map){
+  try{
+    return mapTokensFor(map.id).some(tok => {
+      const L = tok.link ? tokenLinked(tok) : null;
+      return L && L.obj && isTrainerOwner(L.obj) && (hasResearch(L.obj, "Climate Control") || hasResearch(L.obj, "Extreme Weather"));
+    });
+  }catch(e){ return false; }
+}
+function openClimateControl(t, rerender, persist){
+  const map = (mode === "cloud") ? (currentMapForView() || null) : null;
+  const w1 = map ? weatherByKey(map.weather) : null;
+  const sel = el("select",{style:"padding:6px"});
+  sel.append(el("option",{value:""},"— only one Weather (let the new one replace it) —"));
+  WEATHER_DEFS.filter(w => w.key !== "clear").forEach(w => sel.append(el("option",{value:w.key, selected: map && map.weather2 === w.key}, `${w.icon} ${w.name}`)));
+  const gm = isGM() && !!map;
+  const body = el("div",{},
+    el("div",{class:"small",style:"margin-bottom:10px"},
+      `1 AP · Free Action, when a Move or Ability creates a Weather while non-standard Weather is already in effect: the new one doesn't replace the old — both exist at once. ${map ? `The Map's Weather is ${w1 ? `${w1.icon} ${w1.name}` : "Clear"}.` : "No shared Map is open."} `
+      + (gm ? "Pick the second Weather and it goes on the Map: every roll, Combat Stage and per-turn HP report reads both." : "The GM sets the second Weather on the Map — this spends the AP and tells them in the roll feed.")),
+    el("label",{class:"field"}, el("span",{},"The second Weather"), sel));
+  modal({ title:"\u{1F326} Climate Control", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      if(!apSpend(t, 1)) return;
+      const w2 = WEATHER_BY_KEY[sel.value];
+      if(gm){ map.weather2 = sel.value || ""; mapMetaSave(); try{ renderMap(); }catch(e){} }
+      else logRoll({ kind:"skill", label:"Climate Control", who:t.name||"", headline:"\u{1F326} Climate Control",
+        lines:[w2 ? `keep ${w2.name} on the field alongside the current Weather` : "hold the current Weather", "GM: set the second Weather on the Map's weather bar"] });
+      (persist||save)(); closeModal();
+      toast(`\u{1F326} Climate Control · 1 AP${w2 ? ` — ${w2.name} joins the field` : ""}`);
+      (rerender||renderBattle)();
+    }},"\u{1F326} Hold both"),
+  ]});
+}
+function openExtremeWeather(t, rerender, persist){
+  const map = (mode === "cloud") ? (currentMapForView() || null) : null;
+  const gm = isGM() && !!map;
+  const u = featUses(t, "Extreme Weather");
+  const body = el("div",{},
+    el("div",{class:"small",style:"margin-bottom:8px"},
+      `Daily x3 · Free Action (${u.left ?? "—"} of ${u.max ?? "—"} left), when you or your Pokémon create a Weather. It is particularly intense:`),
+    ...["Hail — everyone who takes Hail damage is −5 on Damage Rolls (applied in the roll).",
+        "Rain — everyone not Water- or Grass-Typed is Slowed (the Map's weather panel applies it).",
+        "Sandstorm — everyone who takes Sandstorm damage is −2 on Accuracy Rolls (applied in the roll).",
+        "Sun — everyone not Fire- or Grass-Typed is Suppressed (the Map's weather panel applies it)."]
+      .map(s => el("div",{class:"small"}, "• " + s)),
+    el("div",{class:"small muted",style:"margin-top:8px"}, gm ? "This switches Extreme Weather on for the Map until the weather is cleared." : "The GM switches it on from the Map's weather bar — this spends the use and tells them in the roll feed."));
+  modal({ title:"\u{1F32A} Extreme Weather", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      if(!featSpend(t, "Extreme Weather")) return;
+      if(gm){ map.extremeWeather = true; mapMetaSave(); try{ renderMap(); }catch(e){} }
+      else logRoll({ kind:"skill", label:"Extreme Weather", who:t.name||"", headline:"\u{1F32A} Extreme Weather",
+        lines:["the Weather just created is Extreme", "GM: tick \u{1F32A} Extreme on the Map's weather bar"] });
+      (persist||save)(); closeModal();
+      toast("\u{1F32A} Extreme Weather!");
+      (rerender||renderBattle)();
+    }},"\u{1F32A} Make it extreme"),
+  ]});
+}
+const WEATHER_SYSTEM_MOVES = ["Hail","Rain Dance","Sandstorm","Sunny Day"];
+/* Weather Systems: 2 Tutor Points (free when it's on the Level-Up list) for one of the four weather
+   Moves, which it must be able to learn by Level-Up, TM or Tutor. */
+function openWeatherSystems(t, rerender, persist){
+  const opts = [];
+  researchMons(t).forEach(p => {
+    const sp = getSpecies(p.species); if(!sp) return;
+    const lv = monLevelupList(p), tm = speciesMoveNamesOf(sp, "tmhm"), tu = speciesMoveNamesOf(sp, "tutor");
+    WEATHER_SYSTEM_MOVES.forEach(mv => {
+      if(moveInList(p.moves||[], mv)) return;
+      const free = moveInList(lv, mv), ok = free || moveInList(tm, mv) || moveInList(tu, mv);
+      if(ok || p.unlocked) opts.push({ p, mv, cost: free ? 0 : 2,
+        label:`${ownerLabel(p)} — ${mv} (${free ? "Level-Up list: free" : moveInList(tm, mv) ? "TM: 2 TP" : moveInList(tu, mv) ? "Tutor: 2 TP" : "\u{1F513} 2 TP"}) · ${tpLeft(p)} TP` });
+    });
+  });
+  if(!opts.length){ toast("None of your Pokémon can learn Hail, Rain Dance, Sandstorm or Sunny Day that it doesn't already know"); return; }
+  const byLabel = new Map(opts.map(o => [o.label, o]));
+  openPicker("\u{1F326} Weather Systems — teach a weather Move", [...byLabel.keys()], label => {
+    const o = byLabel.get(label); if(!o) return;
+    if(o.cost && tpLeft(o.p) < o.cost){ toast(`${ownerLabel(o.p)} needs ${o.cost} Tutor Points`); return; }
+    const r = researchTeachMove(o.p, o.mv);
+    if(r === "full"){ toast("Its Move list is full — free a slot first"); return; }
+    if(o.cost) tpSpend(o.p, o.cost, `Weather Systems — ${o.mv}`, {kind:"feature"});
+    (persist||save)();
+    toast(`\u{1F326} ${ownerLabel(o.p)} learned ${o.mv}${o.cost ? ` — ${o.cost} Tutor Points` : " (free: on its Level-Up list)"}`);
+    (rerender||renderBattle)();
+  }, null, null, label => { const o = byLabel.get(label); return o && o.cost && tpLeft(o.p) < o.cost ? `needs ${o.cost} Tutor Points` : null; });
+}
+
+/* ---------------------------------------------------------------- PALEONTOLOGY */
+function isFossilMon(p){
+  if(!p) return false;
+  if(p.fossil) return true;
+  const n = String(p.species||"").replace(/^Mega\s+/i, "").split(/\s+/)[0];
+  return FOSSIL_SPECIES.includes(n);
+}
+/* Fossil Restoration: "The resulting Pokemon is born with 2 fewer Tutor Points, and gains its second
+   Basic Ability. If it only has one Basic Ability, it gains one of its Advanced Abilities, chosen by
+   the GM." Run once per revived Pokémon. */
+function openFossilRestoration(t, rerender, persist){
+  const mons = researchMons(t).filter(p => isFossilMon(p) && !p.fossilRestored);
+  if(!mons.length){ toast("No freshly revived Fossil Pokémon on your sheet — add it first, then run this"); return; }
+  const finish = (p, ability) => {
+    tpSpend(p, Math.min(2, tpLeft(p)), "Fossil Restoration — born with 2 fewer Tutor Points", {kind:"feature"});
+    if(ability) peGrantAbility(p, ability);
+    p.fossil = true; p.fossilRestored = true;
+    (persist||save)();
+    toast(`\u{1F9B4} ${ownerLabel(p)} restored${ability ? ` — gains ${ability}` : ""} · −2 Tutor Points`);
+    (rerender||renderBattle)();
+  };
+  researchPickMon("\u{1F9B4} Fossil Restoration — which revived Pokémon?", mons, null, p => {
+    const sp = getSpecies(p.species) || { abilities:{ basic:[], advanced:[] } };
+    const basic = sp.abilities.basic || [];
+    if(basic.length >= 2){ finish(p, basic[1]); return; }
+    const adv = (sp.abilities.advanced || []).filter(a => !ownerHasAbility(p, a));
+    if(!adv.length){ finish(p, null); return; }
+    openPicker(`${ownerLabel(p)} has one Basic Ability — the GM picks one of its Advanced Abilities`, adv, a => finish(p, a), "ability");
+  });
+}
+/* Ancient Heritage, static half: "whenever your Pokémon use Ancient Power, its activated effect occurs
+   on 18+ and you may always choose whether it deals Physical or Special Damage". */
+function ancientHeritageFor(p, m){
+  if(!p || !m || !/^ancient power$/i.test(String(m.name||""))) return false;
+  try{ const t = ownerTrainerOf(p); return !!t && hasResearch(t, "Ancient Heritage"); }catch(e){ return false; }
+}
+function ancientHeritageThresholds(list, p, m){
+  if(!ancientHeritageFor(p, m)) return list;
+  return (list||[]).map(x => x.n === 19 ? { n:18, text:`${x.text} (Ancient Heritage: 18+.)` } : x).sort((a,b) => a.n - b.n);
+}
+function openAncientHeritage(t, rerender, persist){
+  const mons = researchMons(t).filter(p => isFossilMon(p) && !moveInList(p.moves||[], "Ancient Power"));
+  if(!mons.length){ toast("None of your Fossil Pokémon is missing Ancient Power"); return; }
+  const cost = p => moveInList(monLevelupList(p), "Ancient Power") ? 0 : 2;
+  researchPickMon("\u{1F9B4} Ancient Heritage — teach Ancient Power", mons,
+    p => cost(p) && tpLeft(p) < 2 ? "needs 2 Tutor Points" : null,
+    p => {
+      const c = cost(p);
+      const r = researchTeachMove(p, "Ancient Power");
+      if(r === "full"){ toast("Its Move list is full — free a slot first"); return; }
+      if(c) tpSpend(p, c, "Ancient Heritage — Ancient Power", {kind:"feature"});
+      (persist||save)();
+      toast(`\u{1F9B4} ${ownerLabel(p)} learned Ancient Power${c ? " — 2 Tutor Points" : " (free: on its Level-Up list)"}`);
+      (rerender||renderBattle)();
+    }, p => cost(p) ? "2 TP" : "free");
+}
+/* Genetic Memory: Daily x2, a Fossil Pokémon's Egg or Tutor Move for 2 Tutor Points — once each per
+   Pokémon, ever (`p.geneticMemory = {egg, tutor}`). */
+function openGeneticMemory(t, rerender, persist){
+  const opts = [];
+  researchMons(t).filter(isFossilMon).forEach(p => {
+    const sp = getSpecies(p.species); if(!sp) return;
+    const gmem = p.geneticMemory || {};
+    [["egg","Egg Move"],["tutor","Tutor Move"]].forEach(([kind, lbl]) => {
+      if(gmem[kind]) return;
+      speciesMoveNamesOf(sp, kind).filter(mv => !moveInList(p.moves||[], mv))
+        .forEach(mv => opts.push({ p, kind, mv, label:`${ownerLabel(p)} — ${mv} (${lbl}) · ${tpLeft(p)} TP` }));
+    });
+  });
+  if(!opts.length){ toast("No Fossil Pokémon of yours has an unused Egg or Tutor slot for Genetic Memory"); return; }
+  const byLabel = new Map(opts.map(o => [o.label, o]));
+  openPicker("\u{1F9EC} Genetic Memory — 2 Tutor Points", [...byLabel.keys()], label => {
+    const o = byLabel.get(label); if(!o) return;
+    if(tpLeft(o.p) < 2){ toast("Needs 2 Tutor Points"); return; }
+    if(researchTeachMove(o.p, o.mv) === "full"){ toast("Its Move list is full — free a slot first"); return; }
+    if(!featSpend(t, "Genetic Memory")){ o.p.moves = (o.p.moves||[]).filter(m => m !== o.mv); return; }
+    tpSpend(o.p, 2, `Genetic Memory — ${o.mv}`, {kind:"feature"});
+    o.p.geneticMemory = Object.assign({}, o.p.geneticMemory || {}, { [o.kind]: o.mv });
+    (persist||save)();
+    toast(`\u{1F9EC} ${ownerLabel(o.p)} remembered ${o.mv}${o.kind === "egg" ? " — it doesn't count against the 3 TM/Tutor Move limit" : ""}`);
+    (rerender||renderBattle)();
+  }, null, null, label => { const o = byLabel.get(label); return o && tpLeft(o.p) < 2 ? "needs 2 Tutor Points" : null; });
+}
+/* Prehistoric Bond: a held item from the remains, keyed to the revived Pokémon's highest Base Stat
+   (Nature counted, nothing else). A tie is the GM's call, so it asks. */
+const PREHISTORIC_ITEMS = { hp:"Relic Crown", atk:"Primal Frame", def:"Prehistoric Razors",
+                            spatk:"Primal Cloak", spdef:"Prehistoric Aegis", spd:"Relic Sash" };
+function openPrehistoricBond(t, rerender, persist){
+  const mons = researchMons(t).filter(isFossilMon);
+  if(!mons.length){ toast("No Fossil Pokémon on your sheet"); return; }
+  const give = (p, k) => {
+    benchBagAdd(t, PREHISTORIC_ITEMS[k], 1, `from ${ownerLabel(p)}'s Fossil — only a Fossil Pokémon can use it`);
+    (persist||save)();
+    toast(`\u{1F9B4} ${PREHISTORIC_ITEMS[k]} (from ${ownerLabel(p)}'s highest Base Stat, ${statLbl(k)}) is in your bag`);
+    (rerender||renderBattle)();
+  };
+  researchPickMon("\u{1F9B4} Prehistoric Bond — whose remains?", mons, null, p => {
+    const sp = getSpecies(p.species);
+    const nat = natureByName.get(String(p.nature||"").toLowerCase());
+    const base = {}; STATS.forEach(([k]) => base[k] = ((sp && sp.baseStats && sp.baseStats[k]) || 0) + ((nat && nat.statMods && nat.statMods[k]) || 0));
+    const top = Math.max(...Object.values(base));
+    const tied = STATS.map(([k]) => k).filter(k => base[k] === top);
+    if(tied.length === 1){ give(p, tied[0]); return; }
+    const byLabel = new Map(tied.map(k => [`${PREHISTORIC_ITEMS[k]} — ${statLbl(k)} ${top}`, k]));
+    openPicker("Tied highest Base Stats — the GM decides", [...byLabel.keys()], l => give(p, byLabel.get(l)));
+  });
+}
+
+/* ---------------------------------------------------------------- POKÉMON CARETAKING */
+/* This One's Special, I Know It: "may be activated one time per Pokémon Education Rank above
+   Untrained" — Novice once, Adept twice … Master four times. */
+function thisOneSpecialMax(t){ return Math.max(0, rankNum((t.skills||{}).pokemonEd) - rankNum("Untrained")); }
+function openThisOneSpecial(t, rerender, persist){
+  const used = t.thisOneSpecial || 0, max = thisOneSpecialMax(t);
+  if(used >= max && !t.unlocked){ toast(`This One's Special has been used ${used} of ${max} times`); return; }
+  const mons = researchMons(t);
+  if(!mons.length){ toast("Hatch the egg onto your sheet first"); return; }
+  researchPickMon(`✨ This One's Special, I Know It (${used} of ${max} used) — which hatchling?`, mons, null, p => {
+    t.thisOneSpecial = used + 1;
+    p.notes = `${p.notes ? p.notes + " " : ""}✨ This One's Special, I Know It — born with special qualities the GM decides.`;
+    logRoll({ kind:"skill", label:"This One's Special, I Know It", who:t.name||"", headline:"✨ a special hatchling",
+      lines:[`${ownerLabel(p)} hatched with special qualities — GM, decide what they are`] });
+    (persist||save)();
+    toast(`✨ ${ownerLabel(p)} is special — the GM decides how (${t.thisOneSpecial} of ${max} used)`);
+    (rerender||renderBattle)();
+  });
+}
+/* Skill Trainer: every Pokémon that was Trained gets one Pushed Skill until an Extended Rest —
+   +1d6, or +3 where that would mean more than 6d6. Read by monSkills. */
+function openSkillTrainer(t, rerender, persist){
+  const mons = researchMons(t);
+  if(!mons.length){ toast("No Pokémon on your sheet"); return; }
+  const rows = [];
+  const body = el("div",{},
+    el("div",{class:"small",style:"margin-bottom:10px"},
+      "At-Will · Free Action, when you Train your Pokémon. Each one Trained Pushes one Skill until your next Extended Rest: +1d6 on it, or +3 if that would go past 6d6. One Pushed Skill per Pokémon."));
+  mons.forEach(p => {
+    const skills = monSkills(p);
+    const sel = el("select",{style:"padding:4px"});
+    sel.append(el("option",{value:""},"— not Trained this time —"));
+    SKILLS.forEach(([k,l]) => { if(skills[k]) sel.append(el("option",{value:k, selected:p.pushedSkill === k}, `${l} (${skills[k].dice}d6)`)); });
+    rows.push({ p, sel });
+    body.append(el("div",{class:"inline",style:"gap:8px;justify-content:space-between;margin:4px 0;flex-wrap:wrap"},
+      el("span",{class:"small",style:"font-weight:700"}, `${ownerLabel(p)} · Lv ${p.level||1}`), sel));
+  });
+  modal({ title:"\u{1F3CB} Skill Trainer", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      const set = rows.filter(r => r.sel.value);
+      set.forEach(r => { r.p.pushedSkill = r.sel.value; });
+      (persist||save)(); closeModal();
+      toast(set.length ? `\u{1F3CB} Pushed: ${set.map(r => `${ownerLabel(r.p)} → ${(SKILLS.find(s => s[0] === r.sel.value)||[,r.sel.value])[1]}`).join(", ")}` : "Nothing Pushed");
+      (rerender||renderBattle)();
+    }},"\u{1F3CB} Push them"),
+  ]});
+}
+/* Re-Balancing: "+1 to all Base Stats, +2 to two different Base Stats, or +3 to a single Base Stat"
+   for 2 Tutor Points, once per Pokémon. Stored as p.rebalance and added in pokeBaseStats. */
+function openReBalancing(t, rerender, persist){
+  const mons = researchMons(t).filter(p => !p.rebalance);
+  if(!mons.length){ toast("Every one of your Pokémon has already been Re-Balanced"); return; }
+  const monSel = el("select",{style:"padding:6px"});
+  mons.forEach(p => monSel.append(el("option",{value:p.id}, `${ownerLabel(p)} · Lv ${p.level||1} · ${tpLeft(p)} TP`)));
+  const modeSel = el("select",{style:"padding:6px"});
+  [["all","+1 to every Base Stat"],["two","+2 to two different Base Stats"],["one","+3 to one Base Stat"]].forEach(([v,l]) => modeSel.append(el("option",{value:v}, l)));
+  const s1 = el("select",{style:"padding:4px"}), s2 = el("select",{style:"padding:4px"});
+  STATS.forEach(([k,l]) => { s1.append(el("option",{value:k}, l)); s2.append(el("option",{value:k}, l)); });
+  s2.value = "spd";
+  const statRow = el("div",{class:"inline",style:"gap:8px;margin-top:6px"}, s1, s2);
+  const draw = () => { statRow.style.display = modeSel.value === "all" ? "none" : ""; s2.style.display = modeSel.value === "two" ? "" : "none"; };
+  modeSel.addEventListener("change", draw); draw();
+  const body = el("div",{},
+    el("div",{class:"small",style:"margin-bottom:10px"},
+      "At-Will · Extended Action. 2 Tutor Points, once per Pokémon, ever. The Base Stats move here and now — then re-spread its Stat Points on its Build tab."),
+    el("label",{class:"field"}, el("span",{},"Pokémon"), monSel),
+    el("label",{class:"field"}, el("span",{},"Which"), modeSel), statRow);
+  modal({ title:"⚖ Re-Balancing", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      const p = mons.find(x => x.id === monSel.value); if(!p) return;
+      if(modeSel.value === "two" && s1.value === s2.value){ toast("Two DIFFERENT Base Stats"); return; }
+      if(tpLeft(p) < 2){ toast("Needs 2 Tutor Points"); return; }
+      tpSpend(p, 2, "Re-Balancing", {kind:"feature"});
+      const r = {};
+      if(modeSel.value === "all") STATS.forEach(([k]) => r[k] = 1);
+      else if(modeSel.value === "two"){ r[s1.value] = 2; r[s2.value] = 2; }
+      else r[s1.value] = 3;
+      p.rebalance = r;
+      (persist||save)(); closeModal();
+      toast(`⚖ ${ownerLabel(p)} Re-Balanced (${Object.entries(r).map(([k,n]) => `+${n} ${statLbl(k)}`).join(", ")}) — re-spread its Stat Points`);
+      (rerender||renderBattle)();
+    }},"⚖ Re-Balance"),
+  ]});
+}
+/* Pusher: "Your Pokemon gain the Basic Ranged Attacks, Aura Pulse, Enticing Bait, Extended
+   Invisibility, Far Reading, Precise Threadings, Seismometer, TK Mastery, and Trail Sniffer Poke
+   Edges automatically if they qualify for them, without having to invest any Tutor Points."
+   These are DERIVED, never bought: pokeEdgesOf hands them out, so every reader that asks whether a
+   Pokémon has Seismometer (its Tremorsense), Basic Ranged Attacks (its Struggle's range) or the
+   rest simply sees yes. A `var` cache on purpose: pokeEdgesOf can run from inside load(), where a
+   `let`/`const` further down the file would still be in its temporal dead zone. */
+function isPusherEdgeName(n){
+  return ["Basic Ranged Attacks","Aura Pulse","Enticing Bait","Extended Invisibility","Far Reading",
+          "Precise Threading","Seismometer","TK Mastery","Trail Sniffer"].includes(n);
+}
+var _pusherBusy = false, _pusherAnyAt = 0, _pusherAny = false;
+function pusherAnywhere(){
+  const now = Date.now();
+  if(now - _pusherAnyAt < 1500) return _pusherAny;
+  _pusherAnyAt = now; _pusherAny = false;
+  try{
+    const trainers = [];
+    const act = activeChar(); if(act && act.trainer) trainers.push(act.trainer);
+    if(mode === "cloud") Object.values(cloud.byId||{}).forEach(r => r && r.data && r.data.trainer && trainers.push(r.data.trainer));
+    else (state.characters||[]).forEach(c => c && c.trainer && trainers.push(c.trainer));
+    (encList()||[]).forEach(e => (e.trainers||[]).forEach(tr => tr && tr.trainer && trainers.push(tr.trainer)));
+    _pusherAny = trainers.some(t => [...(t.features||[]), ...(t.classes||[])].some(f => /^pusher\b/i.test(String(f))));
+  }catch(e){ _pusherAny = false; }
+  return _pusherAny;
+}
+function pusherEdgesFor(p, name){
+  if(_pusherBusy || !p || p.species === undefined || !isPusherEdgeName(name)) return [];
+  try{
+    if(!pusherAnywhere()) return [];
+    const t = ownerTrainerOf(p);
+    if(!t || !hasResearch(t, "Pusher")) return [];
+    const def = POKE_EDGE_DEFS[name]; if(!def) return [];
+    _pusherBusy = true;
+    const sp = getSpecies(p.species);
+    if(def.level && (p.level||1) < def.level) return [];
+    if(def.need){
+      let why; try{ why = def.need(p, sp); }catch(e){ why = "unknown"; }   // can't tell → not granted
+      if(why) return [];
+    }
+    const mk = arg => ({ id:`pusher:${name}:${arg}`, name, arg, arg2:"", tp:0, free:true, pusher:true });
+    if(name === "Basic Ranged Attacks") return PE_RANGED_CAPS.filter(c => monHasCapability(p, sp, c)).map(mk);
+    return [mk("")];
+  }catch(e){ return []; }
+  finally{ _pusherBusy = false; }
+}
+/* the Pusher grants this Pokémon is getting that it didn't buy — for the Poké Edges card */
+function pusherEdgeListAll(p){
+  const own = pokeEdgeList(p);
+  return ["Basic Ranged Attacks","Aura Pulse","Enticing Bait","Extended Invisibility","Far Reading",
+          "Precise Threading","Seismometer","TK Mastery","Trail Sniffer"]
+    .flatMap(n => pusherEdgesFor(p, n).filter(v => !own.some(e => e.name === v.name && (e.arg||"") === (v.arg||""))));
+}
+
+/* ---------------------------------------------------------------- THE CARD */
+function researchFieldChips(card, t, rerender, persist){
+  const inferred = new Set();
+  [...(t.features||[]), ...(t.classes||[])].forEach(n => { const k = researchFieldOfFeature(n); if(k) inferred.add(k); });
+  const chosen = new Set(researchFieldsOf(t));
+  const wrap = el("div",{class:"chips",style:"margin:4px 0 8px"});
+  RESEARCH_FIELDS.forEach(f => {
+    const on = chosen.has(f.key), locked = inferred.has(f.key);
+    wrap.append(el("button",{class:"chip" + (on ? " granted" : ""), style:"cursor:pointer;border:none",
+      title: locked ? "You already hold a Feature from this Field" : on ? "tap to un-choose" : "tap to choose this Field",
+      onclick:() => {
+        if(locked){ toast(`${f.name}: you already have one of its Features`); return; }
+        const cur = new Set(Array.isArray(t.researchFields) ? t.researchFields : []);
+        if(cur.has(f.key)) cur.delete(f.key);
+        else {
+          if(chosen.size >= 2 && !t.unlocked && !isGM()
+             && !confirm(`Researcher chooses TWO Fields per instance of the class — you already study ${chosen.size}. Took Researcher again?`)) return;
+          cur.add(f.key);
+        }
+        t.researchFields = [...cur];
+        (persist||save)(); (rerender||renderBattle)();
+      }}, `${f.icon} ${f.name}${on ? " ✓" : ""}`));
+  });
+  card.append(el("div",{class:"small muted"}, "Fields of Study — two per time you take Researcher. Features from any other Field stay locked in the class picker."), wrap);
+}
+function researchRow(card){ const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0 10px"}); card.append(row); return row; }
+function researchBtn(row, label, title, fn, primary){
+  row.append(el("button",{class: primary ? "btn-primary" : "btn-secondary", title, onclick:fn}, label));
+}
+function researcherCard(t, rerender, persist){
+  if(!t) return null;
+  const fields = researchFieldsOf(t);
+  if(!trainerHasClass(t, "Researcher") && !fields.length) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const has = n => hasResearch(t, n);
+  const card = classCard("\u{1F52C}", "Researcher", "Core p.139");
+  researchFieldChips(card, t, rerender, persist);
+  if(!fields.length) classBit(card, "Choose your two Fields of Study above — the card fills in with what each one does.");
+  const head = key => { const f = researchFieldDef(key); card.append(el("div",{style:"font-weight:800;margin-top:8px"}, `${f.icon} ${f.name}`)); };
+  const uses = n => { const u = featUses(t, n); return u.left != null ? ` · ${u.left}/${u.max}` : ""; };
+
+  if(fields.includes("general")){
+    head("general");
+    if(has("Breadth of Knowledge")) classBit(card, "Breadth of Knowledge: three extra Edge slots sit on the Level Up tab, at the Level you took it — Skill Edges on an Education Skill, or Edges with an Education Skill prerequisite.");
+    if(has("Bookworm") || has("Well Read")) classBit(card, "Bookworm / Well Read: your Study Points and the General Education substitution are counted on the Books card.");
+    const row = researchRow(card);
+    if(has("Live and Learn")) researchBtn(row, `\u{1F4D6} Live and Learn · +${liveAndLearnBonus(t)}${uses("Live and Learn")}`, "Daily x3, Free — after a miss or a failed Check", () => openLiveAndLearn(t, redraw, saveFn), true);
+    if(has("Echoes of the Future")) researchBtn(row, `\u{1F52E} Echoes of the Future${uses("Echoes of the Future")}`, "Daily x2, Free — roll twice, keep the best", () => openEchoesOfTheFuture(t, redraw, saveFn));
+    if(has("Instant Analysis")) researchBtn(row, "\u{1F50D} Instant Analysis", "At-Will, Extended — 2 Tutor Points for Forewarn", () => openTutorAbility(t, "Instant Analysis", "Forewarn", 2, redraw, saveFn));
+    if(!row.childNodes.length) row.remove();
+  }
+  if(fields.includes("apothecary")){
+    head("apothecary");
+    classBit(card, `Your Recipes live on the Trainer page's ${benchTabLabel(t)} tab (the Research Bench): what you brew lands in your bag and the money comes off the ledger.`);
+    if(has("Affliction Techniques")) classBit(card, "Affliction Techniques (9-15 Playtest): tick it in \u{1F9EA} Apply a Restorative — when an Antidote, Burn Heal, Ice Heal or Paralyze Heal actually cures its Affliction, 1 AP buys the +1 Combat Stage and it is applied.");
+    if(has("Medical Techniques")) classBit(card, `Medical Techniques: tick it in \u{1F9EA} Apply a Restorative — 1 AP for a Tick of HP plus your Medicine Education Rank (${rankNum((t.skills||{}).medicineEd)}) on top of the item.`);
+    const row = researchRow(card);
+    const inBag = bagRestoratives(t).reduce((n,r) => n + r.qty, 0);
+    researchBtn(row, `\u{1F9EA} Apply a Restorative${inBag ? ` · ${inBag} in the bag` : ""}`, "spends the item, applies its healing and cures", () => openApplyRestorative(t, rerender, persist), true);
+  }
+  if(fields.includes("artificer")){
+    head("artificer");
+    const counts = Object.keys(SHARD_COLORS).map(c => `${shardCount(t, c)} ${c}`).join(" · ");
+    classBit(card, `Shards in the bag: ${counts}. The Shard Recipes are on the ${benchTabLabel(t)} tab.${has("Crystal Resonance") ? " Crystal Resonance's +3d6 is already in the Dowsing roll." : ""}`);
+    const row = researchRow(card);
+    if(canDowse(t)) researchBtn(row, `\u{1F52E} Dowse · ${usesLeft(t, DOWSE_KEY, dowseUsesMax(t))}/${dowseUsesMax(t)}`, "Dowsing Rod — find Shards", () => openDowsing(t, redraw, saveFn));
+    if(has("Rainbow Light")) researchBtn(row, "\u{1F308} Rainbow Light · 2 AP", wearingRainbowGem(t) ? "+3 Effect Range to your Allies for a round" : "needs a Rainbow Gem worn in an Equipment slot", () => openRainbowLight(t, redraw, saveFn), true);
+    if(has("Fistful of Force")) researchBtn(row, `\u{1F48E} Fistful of Force${uses("Fistful of Force")}`, "Scene, Standard — destroy a Shard for Judgment", () => openFistfulOfForce(t, redraw, saveFn));
+    if(!row.childNodes.length) row.remove();
+  }
+  if(fields.includes("chemistry")){
+    head("chemistry");
+    classBit(card, `Enhancers and Pester Balls are brewed on the ${benchTabLabel(t)} tab${inventoryQty(t, "Chemistry Set") > 0 ? "" : " — ⚠ you need a Chemistry Set in your bag"}.`);
+    if(has("Chemical Warfare")) classBit(card, `Chemical Warfare (Scene x2, Free${uses("Chemical Warfare")}): a Pester Ball you throw bursts as a Blast 2 — every target in it rolls against the Ball.`);
+    const row = researchRow(card);
+    if(has("Chemical Warfare")) researchBtn(row, "\u{1F4A5} Chemical Warfare", "Scene x2, Free — your Pester Ball becomes a Blast 2",
+      () => elemUse(t, "Chemical Warfare", "\u{1F4A5} Chemical Warfare — this Pester Ball creates a Blast 2 and affects every target in it.", redraw, saveFn));
+    if(has("Caustic Chemistry")) researchBtn(row, "\u{1F9EA} Caustic Chemistry · 1 AP", "Swift — Technology Education Roll in lost Hit Points", () => openCausticChemistry(t, redraw, saveFn), true);
+    if(has("Playing God")) researchBtn(row, "\u{1F9EC} Playing God · $3500", "Extended — create an artificial Egg", () => openPlayingGod(t, redraw, saveFn));
+    if(!row.childNodes.length) row.remove();
+  }
+  if(fields.includes("climatology")){
+    head("climatology");
+    if(has("Climatology")) classBit(card, "Climatology: Overcoat is on your Ability list — no weather damage, and immune to Powder Moves.");
+    const w2 = mapSecondWeather();
+    if(w2) classBit(card, `Climate Control is holding ${w2.icon} ${w2.name} on the field alongside the Map's Weather.`);
+    if(extremeWeatherOn()) classBit(card, "\u{1F32A} Extreme Weather is on for this Map.");
+    const row = researchRow(card);
+    if(has("Climate Control")) researchBtn(row, "\u{1F326} Climate Control · 1 AP", "Free — two Weathers at once", () => openClimateControl(t, redraw, saveFn), true);
+    if(has("Extreme Weather")) researchBtn(row, `\u{1F32A} Extreme Weather${uses("Extreme Weather")}`, "Daily x3, Free", () => openExtremeWeather(t, redraw, saveFn));
+    if(has("Weather Systems")) researchBtn(row, "\u{1F326} Weather Systems", "Extended — teach Hail / Rain Dance / Sandstorm / Sunny Day", () => openWeatherSystems(t, redraw, saveFn));
+    if(!row.childNodes.length) row.remove();
+  }
+  if(fields.includes("botany")){
+    head("botany");
+    if(has("Top Tier Berries")){
+      const rank = Math.max(rankNum((t.skills||{}).generalEd), rankNum((t.skills||{}).survival));
+      const tiers = [];
+      if(rank >= 3) tiers.push("Tier 2 Berries");
+      if(rank >= 4) tiers.push("Mental / Power / White Herbs and Tiny Mushrooms");
+      if(rank >= 5) tiers.push("Revival Herbs, Energy Roots, Big Mushrooms and Tier 3 Berries");
+      classBit(card, `Top Tier Berries: on the higher of General Education and Survival you may grow ${tiers.length ? tiers.join("; ") : "nothing beyond Green Thumb's Apricorns and Tier 1 Berries yet"}${rank >= 6 ? " — and Master adds +1 Soil Quality to every plant you grow" : ""}.`);
+    }
+    if(seedBagRank(t)) classBit(card, `Seed Bag Rank ${seedBagRank(t)}: harvestable Moves are ${seedBagMoveList(t).join(", ")}. Twice per day per Rank (${seedBagRank(t)*2} uses), and what you harvest drops off the sheet at your next Extended Rest.`);
+    const row = researchRow(card);
+    if(seedBagRank(t)) researchBtn(row, "\u{1F33E} Seed Bag", "X Daily, Extended — harvest a Powder Move off a willing Grass-Type", () => openSeedBag(t, redraw, saveFn), true);
+    botanyRecipesFor(t).forEach(r => researchBtn(row, `\u{1F33F} ${r.name}`, r.blurb, () => openChefCook(t, r, () => { saveFn(); redraw(); })));
+    if(!row.childNodes.length) row.remove();
+    if(Array.isArray(t.seedBag) && t.seedBag.length)
+      classBit(card, `Harvested today: ${t.seedBag.join(", ")} — on your Move list until your next Extended Rest.`);
+  }
+  if(fields.includes("occultism")){
+    head("occultism");
+    if(has("Witch Hunter")) classBit(card, "Witch Hunter: Psionic Sight is yours whether or not you qualify for it — Psychic Residue on people and Pokémon is simply visible to you.");
+    if(has("Mental Resistance")) classBit(card, "Mental Resistance: Mindlock is on your Capabilities line, and 10 Damage Reduction against SPECIAL Psychic, Ghost and Dark damage is applied by the damage math (a Physical one of those Types gets nothing — that is the Feature).");
+    const row = researchRow(card);
+    if(has("Psionic Analysis")) row.append(el("button",{class:"btn-secondary", title:"Scene, Extended Action — read the Psychic Residue",
+      onclick:()=>{ if(!featSpend(t,"Psionic Analysis")) return; saveFn();
+        toast("\u{1F50E} Psionic Analysis — human or Pokémon, which Psychic Moves they know, and whether they have Telepath / Telekinetic / Warper");
+        redraw(); }},"\u{1F50E} Psionic Analysis"), useSpan(t, "Psionic Analysis"));
+    if(has("Immutable Mind")) row.append(el("button",{class:"btn-primary", title:"Scene, Free Action — when a Psychic, Ghost or Dark Move hits you",
+      onclick:()=>{ if(!featSpend(t,"Immutable Mind")) return; saveFn();
+        toast("\u{1F6E1} Immutable Mind — a Status-Class Move fails outright; a damaging one's roll-triggered secondary effect can't touch you");
+        redraw(); }},"\u{1F6E1} Immutable Mind"), useSpan(t, "Immutable Mind"));
+    if(!row.childNodes.length) row.remove();
+  }
+  if(fields.includes("paleontology")){
+    head("paleontology");
+    if(has("Ancient Heritage")) classBit(card, "Ancient Heritage: every one of your Pokémon's Ancient Power rolls already triggers on 18+ and opens with a Physical / Special switch.");
+    if(has("Prehistoric Bond")) classBit(card, "Prehistoric Bond's items (Relic Crown, Primal Frame, Prehistoric Razors, Primal Cloak, Prehistoric Aegis, Relic Sash) work only on a Fossil Pokémon — the Held Item field enforces it.");
+    const row = researchRow(card);
+    if(has("Fossil Restoration")) researchBtn(row, "\u{1F9B4} Fossil Restoration", "Extended — on a Fossil you are reviving", () => openFossilRestoration(t, redraw, saveFn), true);
+    if(has("Ancient Heritage")) researchBtn(row, "\u{1F9B4} Ancient Heritage", "Extended — teach Ancient Power", () => openAncientHeritage(t, redraw, saveFn));
+    if(has("Genetic Memory")) researchBtn(row, `\u{1F9EC} Genetic Memory${uses("Genetic Memory")}`, "Daily x2, Extended — an Egg or Tutor Move", () => openGeneticMemory(t, redraw, saveFn));
+    if(has("Prehistoric Bond")) researchBtn(row, "\u{1F9B4} Prehistoric Bond", "Extended — a held item from the remains", () => openPrehistoricBond(t, redraw, saveFn));
+    if(!row.childNodes.length) row.remove();
+  }
+  if(fields.includes("caretaking")){
+    head("caretaking");
+    if(has("Pusher")) classBit(card, "Pusher: Basic Ranged Attacks, Aura Pulse, Enticing Bait, Extended Invisibility, Far Reading, Precise Threading, Seismometer, TK Mastery and Trail Sniffer are on every Pokémon of yours that qualifies, for free — its Poké Edges card lists them.");
+    const pushed = researchMons(t).filter(p => p.pushedSkill);
+    if(pushed.length) classBit(card, `Pushed until your next Extended Rest: ${pushed.map(p => `${ownerLabel(p)} → ${(SKILLS.find(s => s[0] === p.pushedSkill)||[,p.pushedSkill])[1]}`).join(", ")}.`);
+    const row = researchRow(card);
+    if(has("This One's Special, I Know It")) researchBtn(row, `✨ This One's Special · ${t.thisOneSpecial||0}/${thisOneSpecialMax(t)}`, "Free — on a hatching egg", () => openThisOneSpecial(t, redraw, saveFn));
+    if(has("Skill Trainer")) researchBtn(row, "\u{1F3CB} Skill Trainer", "Free — when you Train your Pokémon", () => openSkillTrainer(t, redraw, saveFn), true);
+    if(has("Re-Balancing")) researchBtn(row, "⚖ Re-Balancing", "Extended — 2 Tutor Points, once per Pokémon", () => openReBalancing(t, redraw, saveFn));
+    if(!row.childNodes.length) row.remove();
+  }
+  RESEARCH_FIELDS.filter(f => f.supplement && fields.includes(f.key)).forEach(f => {
+    head(f.key);
+    classBit(card, `${f.name} (supplement): its Features are listed below with their use counters and AP — the Poké Ball Case / Augmentation / Cap Cannon rules they build on are run at the table.`);
+  });
+  classFeatureRows(card, t, "Researcher", rerender, persist);
+  return card;
+}
+/* Every Researcher recipe this Trainer can run, for the crafting bench on the Kitchen tab. The feat
+   test is hasResearch (exact family), so a Medic's "Medical Techniques [Medic]" never unlocks the
+   Apothecary's Hyper Cures. */
+/* what the Kitchen sub-tab is called for this Trainer (a Chef cooks; everyone else has a Workshop) */
+function benchTabLabel(t){ return trainerIsChef(t) ? "\u{1F373} Kitchen" : "\u2697 Workshop"; }
+function researchBenchRecipes(t){
+  if(!t) return [];
+  return [...APOTHECARY_RECIPES, ...ARTIFICER_RECIPES, ...CHEMISTRY_RECIPES].filter(r => hasResearch(t, r.feat));
+}
+function researchBenchCard(t, commit){
+  const rows = researchBenchRecipes(t), dowse = canDowse(t);
+  if(!rows.length && !dowse) return el("span",{style:"display:none"});
+  const card = el("div",{class:"card"}, el("h3",{},"⚗ Research Bench",
+    el("span",{class:"muted small"},"Core pp.141-144 · Researcher Recipes")));
+  card.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    `${fmtMoney(moneyOf(t))} in hand. Everything here is an At-Will Extended Action: the ingredients come out of your bag, the money off the ledger, and the result goes into Inventory & Bio.`));
+  let lastBench = "";
+  rows.forEach(r => {
+    if(r.bench !== lastBench){ lastBench = r.bench; card.append(el("div",{style:"font-weight:800;margin-top:8px"}, `${r.icon} ${r.bench}`)); }
+    const row = el("div",{class:"buff-row"});
+    row.append(el("div",{style:"flex:1;min-width:0"}, el("div",{class:"buff-name"}, r.name), el("div",{class:"small muted"}, r.blurb)));
+    row.append(el("button",{class:"btn-primary",style:"padding:6px 12px",onclick:()=>openChefCook(t, r, commit)}, r.verb || "Craft"));
+    card.append(row);
+  });
+  if(dowse){
+    const row = el("div",{class:"buff-row"});
+    row.append(el("div",{style:"flex:1;min-width:0"}, el("div",{class:"buff-name"},"Dowsing"),
+      el("div",{class:"small muted"}, `${usesLeft(t, DOWSE_KEY, dowseUsesMax(t))} of ${dowseUsesMax(t)} left today — Shards land in the bag.`)));
+    row.append(el("button",{class:"btn-secondary",style:"padding:6px 12px",onclick:()=>openDowsing(t, commit, ()=>{})},"\u{1F52E} Dowse"));
+    card.append(row);
+  }
+  return card;
+}
+
+/* ═══════════════════ SAGE (Core p.188) ═══════════════════
+   Sage              At-Will Standard: an ally's Damage Reduction = your Occult Education Rank ×2 or
+                     their Tick Value, whichever is higher, for one full round. Doesn't stack between
+                     Trainers, so a second Sage replaces a smaller one rather than adding to it.
+   Sacred Shield /   "You learn the Moves …" — already put on the Move list by syncFeatureMoves.
+   Mystic Defense
+   Sage's Benediction the Blessing tracker below: an ally activating one of your Blessings offers the
+                     +1 (Defense CS / Sp.Def CS / Evasion / Accuracy) for 1 AP and applies it.
+   Lay on Hands      Blessed Touch or Healer — the Ability picker on its row (parsed out of the text).
+   Highly Responsive Scene x3 Free: the Sage ward as a Free Action, and THESE copies stack.
+   Divine Wind       2 AP: every Blessing you laid of another type becomes the chosen type, capped at
+                     the chosen Move's own activation count; each type once per Scene. */
+const SAGE_BLESSINGS = [
+  { move:"Reflect",      bonus:"+1 Defense Combat Stage",    apply:o => changeCS(o, "def", 1) },
+  { move:"Light Screen", bonus:"+1 Sp. Defense Combat Stage", apply:o => changeCS(o, "spdef", 1) },
+  { move:"Safeguard",    bonus:"+1 Evasion",                  apply:o => researchBuff(o, { key:"sage-benediction", name:"Sage's Benediction (Safeguard)", cat:"Sage", dur:"this Scene", mods:{ eva:1 }, note:"+1 Evasion from a Sage's Benediction." }) },
+  { move:"Lucky Chant",  bonus:"+1 Accuracy",                 apply:o => researchBuff(o, { key:"sage-benediction", name:"Sage's Benediction (Lucky Chant)", cat:"Sage", dur:"this Scene", mods:{ acc:1 }, note:"+1 Accuracy from a Sage's Benediction." }) },
+];
+function blessingActivations(moveName){
+  const m = moveByName.get(String(moveName).toLowerCase());
+  const hit = /activated\s+(\d+)\s+times/i.exec(String((m && m.effect) || ""));
+  return hit ? +hit[1] : 2;
+}
+function sageWardValue(t, o){ return Math.max(rankNum((t.skills||{}).occultEd) * 2, hpTick(ownerMaxHP(o) || 1)); }
+function openSageWard(t, rerender, persist, opts){
+  opts = opts || {};
+  const hrp = !!opts.hrp;
+  const list = allyTargets(t).filter(x => !x.enemy);
+  const pick = targetPicker(list, []);
+  const u = hrp ? featUses(t, "Highly Responsive to Prayers") : null;
+  const body = el("div",{},
+    el("div",{class:"small",style:"margin-bottom:10px"},
+      hrp ? `Highly Responsive to Prayers — Scene x3, Free Action (${u.left ?? "—"} of ${u.max ?? "—"} left), when you use Blessed Touch or Healer on an ally or an ally receives an Injury. The Sage ward as a Free Action — and these copies DO stack.`
+          : `At-Will · Standard Action · an ally within 5 metres. Damage Reduction equal to your Occult Education Rank doubled (${rankNum((t.skills||{}).occultEd) * 2}) or their Tick Value, whichever is higher, for one full round. Another Trainer's Sage ward on them doesn't stack — the higher one stays.`),
+    pick.node);
+  modal({ title: hrp ? "\u{1F64F} Highly Responsive to Prayers" : "\u{1F6E1} Sage", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async ()=>{
+      const chosen = pick.chosen();
+      if(chosen.length !== 1){ toast("One ally"); return; }
+      if(hrp && !featSpend(t, "Highly Responsive to Prayers")) return;
+      const o = chosen[0].obj, n = sageWardValue(t, o);
+      if(!hrp){
+        const old = ownerBuffs(o).find(b => b.key === "sage-ward");
+        if(old && ((old.mods && old.mods.dr) || 0) > n){ toast(`${ownerLabel(o)} already has a bigger Sage ward (${old.mods.dr} DR)`); closeModal(); return; }
+        o.buffs = ownerBuffs(o).filter(b => b.key !== "sage-ward");
+      }
+      researchBuff(o, { key: hrp ? "sage-ward-hrp" : "sage-ward", name: hrp ? "Sage (Highly Responsive)" : "Sage", cat:"Sage",
+        dur:"until the end of your next turn", mods:{ dr:n },
+        note:`${t.name || "A Sage"}'s ward: ${n} Damage Reduction for one full round.` });
+      (persist||save)(); closeModal();
+      await commitTargets(chosen);
+      toast(`\u{1F6E1} ${hrp ? "Highly Responsive to Prayers" : "Sage"} → ${ownerLabel(o)} · ${n} Damage Reduction for a round`);
+      (rerender||renderBattle)();
+    }}, hrp ? "\u{1F64F} Answer" : "\u{1F6E1} Ward them"),
+  ]});
+}
+function sageBlessingList(t){ return Array.isArray(t && t.sageBlessings) ? t.sageBlessings : []; }
+function sageKnownBlessings(t){ return SAGE_BLESSINGS.filter(b => moveInList(t.moves||[], b.move)); }
+function sageLayBlessing(t, move){
+  t.sageBlessings = [...sageBlessingList(t), { id:uid(), move, left:blessingActivations(move) }];
+}
+/* Sage's Benediction: an ally activates one of your Blessings → 1 AP, the matching bonus on them */
+function openBenediction(t, rec, rerender, persist){
+  const def = SAGE_BLESSINGS.find(b => b.move === rec.move);
+  const list = allyTargets(t).filter(x => !x.enemy);
+  const pick = targetPicker(list, []);
+  const bene = hasResearch(t, "Sage's Benediction");
+  const cb = el("input",{type:"checkbox"}); cb.checked = bene;
+  const body = el("div",{},
+    el("div",{class:"small",style:"margin-bottom:10px"},
+      `An ally activates your ${rec.move} (${rec.left} activation${rec.left === 1 ? "" : "s"} left). Tick who.`),
+    pick.node,
+    bene ? el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin-top:8px"}, cb,
+      `Sage's Benediction — 1 AP, Free: ${def ? def.bonus : "its bonus"} for them once the Blessing and the attack resolve`) : "");
+  modal({ title:`✨ ${rec.move}`, bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async ()=>{
+      const chosen = pick.chosen();
+      if(chosen.length !== 1){ toast("The one ally who activated it"); return; }
+      const useBene = bene && cb.checked && def;
+      if(useBene && !apSpend(t, 1)) return;
+      rec.left = Math.max(0, (rec.left||0) - 1);
+      t.sageBlessings = sageBlessingList(t).filter(b => b.left > 0);
+      const o = chosen[0].obj;
+      if(useBene) def.apply(o);
+      (persist||save)(); closeModal();
+      await commitTargets(chosen);
+      toast(`✨ ${ownerLabel(o)} activated ${rec.move}${useBene ? ` — Sage's Benediction: ${def.bonus} · 1 AP` : ""}`);
+      (rerender||renderBattle)();
+    }},"✨ Activate"),
+  ]});
+}
+function openDivineWind(t, rerender, persist){
+  const known = sageKnownBlessings(t).map(b => b.move);
+  const done = new Set(Array.isArray(t.divineWind) ? t.divineWind : []);
+  const choices = known.filter(mv => !done.has(mv));
+  if(!sageBlessingList(t).length){ toast("You have no Blessings on the field to convert"); return; }
+  if(!choices.length){ toast("Every Blessing type you can generate has been chosen once this Scene"); return; }
+  openPicker("\u{1F32C} Divine Wind — 2 AP: turn your Blessings into…", choices, mv => {
+    if(!apSpend(t, 2)) return;
+    const cap = blessingActivations(mv);
+    t.sageBlessings = sageBlessingList(t).map(b => b.move === mv ? b : { id:b.id, move:mv, left:Math.min(b.left, cap) });
+    t.divineWind = [...done, mv];
+    (persist||save)();
+    toast(`\u{1F32C} Divine Wind — your Blessings are now ${mv} · 2 AP`);
+    (rerender||renderBattle)();
+  });
+}
+function sageCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Sage")) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const has = n => hasFeatureLoose(t, n);
+  const card = classCard("\u{1F6E1}", "Sage", "Core p.188");
+  const occ = rankNum((t.skills||{}).occultEd);
+  classBit(card, `Sage: an ally within 5 m gets ${occ * 2} Damage Reduction (Occult Education ${occ} ×2) or their own Tick Value if that is higher, for one full round. The buff carries the number and falls off at the end of your next turn on a running Map.`);
+  if(has("Sacred Shield") || has("Mystic Defense")) classBit(card, `${[has("Sacred Shield") ? "Sacred Shield (Reflect, Lucky Chant)" : "", has("Mystic Defense") ? "Mystic Defense (Light Screen, Safeguard)" : ""].filter(Boolean).join(" and ")}: the Moves are on your Moves card already.`);
+  if(has("Lay on Hands")){
+    const pick = (t.featAbil || {})["Lay on Hands"];
+    classBit(card, pick ? `Lay on Hands gave you ${pick}.` : "⚠ Lay on Hands: choose Blessed Touch or Healer — press ⚙ Choose Ability on its row below.");
+  }
+  const row = researchRow(card);
+  researchBtn(row, "\u{1F6E1} Sage", "At-Will, Standard — Damage Reduction for an ally", () => openSageWard(t, redraw, saveFn), true);
+  if(has("Highly Responsive to Prayers")) row.append(el("button",{class:"btn-secondary", title:"Scene x3, Free — a stacking Sage ward",
+    onclick:() => openSageWard(t, redraw, saveFn, { hrp:true })}, "\u{1F64F} Highly Responsive"), useSpan(t, "Highly Responsive to Prayers"));
+  if(has("Divine Wind")) researchBtn(row, "\u{1F32C} Divine Wind · 2 AP", "Free, Interrupt — convert your Blessings", () => openDivineWind(t, redraw, saveFn));
+
+  /* the Blessings this Sage has laid, with their activations left */
+  const known = sageKnownBlessings(t);
+  const laid = sageBlessingList(t);
+  card.append(el("div",{style:"font-weight:800;margin-top:10px"}, "✨ Your Blessings on the field"));
+  if(!laid.length) card.append(el("div",{class:"small muted"}, known.length
+    ? "None laid. When you use one of your Blessing Moves, add it here — activating it for an ally counts it down and offers Sage's Benediction."
+    : "You don't know Reflect, Light Screen, Safeguard or Lucky Chant yet (Sacred Shield / Mystic Defense teach them)."));
+  laid.forEach(rec => {
+    const r = el("div",{class:"buff-row"});
+    r.append(el("div",{style:"flex:1"}, el("div",{class:"buff-name"}, rec.move),
+      el("div",{class:"small muted"}, `${rec.left} activation${rec.left === 1 ? "" : "s"} left`)));
+    r.append(el("button",{class:"btn-primary",style:"padding:4px 10px",onclick:() => openBenediction(t, rec, redraw, saveFn)},"✨ Activate"),
+      el("button",{class:"x",style:"cursor:pointer;color:var(--muted)",title:"remove",
+        onclick:() => { t.sageBlessings = laid.filter(b => b.id !== rec.id); saveFn(); redraw(); }},"×"));
+    card.append(r);
+  });
+  if(known.length){
+    const addRow = researchRow(card);
+    known.forEach(b => researchBtn(addRow, `＋ ${b.move} (${blessingActivations(b.move)})`, `you used ${b.move} — lay the Blessing`,
+      () => { sageLayBlessing(t, b.move); saveFn(); redraw(); toast(`✨ ${b.move} laid — ${blessingActivations(b.move)} activations`); }));
+  }
+  classFeatureRows(card, t, "Sage", rerender, persist);
+  return card;
+}
+
+/* ═══════════════════ DRUID engine pieces ═══════════════════ */
+/* The Oath picker, drawn wherever the class is shown (the Classes card, the Druid card, an encounter
+   NPC) — a plain select, since an Oath is a single choice that the rest of the class hangs off. The
+   pick IS the Ability grant (t.featAbil[cls]), so the Stat Tags and the Move table follow it. */
+function embraceOathSelect(t, cls, onChange){
+  const d = EMBRACE_TAG_CLASSES.find(x => x.cls === cls); if(!d) return null;
+  if(!t.featAbil || typeof t.featAbil !== "object" || Array.isArray(t.featAbil)) t.featAbil = {};
+  const sel = el("select",{style:"padding:5px"});
+  sel.append(el("option",{value:""}, `— choose your ${cls === "Druid" ? "Oath" : "Embrace"} —`));
+  Object.keys(d.byAbility).forEach(ab => sel.append(el("option",{value:ab, selected:t.featAbil[cls] === ab},
+    `${d.label[ab]} — ${ab} [+${statLbl(d.byAbility[ab])}]`)));
+  sel.addEventListener("change", () => {
+    t.featAbil[cls] = sel.value;
+    (onChange || (() => {}))();
+    toast(sel.value ? `\u{1F33F} ${cls}: ${d.label[sel.value]} — ${sel.value}, +1 ${statLbl(d.byAbility[sel.value])} per ${cls} Feature` : `${cls}: no ${cls === "Druid" ? "Oath" : "Embrace"}`);
+  });
+  return el("label",{class:"field",style:"margin:4px 0 8px"},
+    el("span",{}, cls === "Druid" ? "\u{1F33F} Druid's Oath (Game of Throhs p.79)" : "\u{1F41B} Swarmlord's Embrace (Game of Throhs p.63)"), sel);
+}
+/* Green Path, Overcoat, a Grass-Type body, Safety Goggles: immune to Moves with the Powder Keyword. */
+function powderImmuneWhy(o){
+  if(!o) return null;
+  if(isTrainerOwner(o) && hasFeatureLoose(o, "Green Path")) return "Green Path";
+  if(ownerHasAbility(o, "Overcoat")) return "Overcoat";
+  if(safeTypesOf(o).includes("Grass")) return "Grass-Type";
+  if(wornOrHeldNames(o).some(n => normItemName(n) === "safetygoggles")) return "Safety Goggles";
+  return null;
+}
+function powderImmuneNote(m){
+  if(!m || !moveHasKeyword(m, "powder")) return null;
+  try{
+    const map = currentMapForView() || activeMap();
+    if(!map) return "Powder: Grass-Types, Overcoat, Safety Goggles and a Druid's Green Path are immune.";
+    const imm = [];
+    mapTokensFor(map.id).forEach(tok => {
+      const L = tok.link ? tokenLinked(tok) : null; if(!L || !L.obj) return;
+      const why = powderImmuneWhy(L.obj); if(why) imm.push(`${tokenHp(tok).name} (${why})`);
+    });
+    return imm.length ? `Powder: immune on this board — ${imm.join(", ")}.` : "Powder: nobody on this board is immune.";
+  }catch(e){ return null; }
+}
+/* Overgrowth: "they cannot recover Hit Points or gain Temporary Hit Points. Whenever they would do so,
+   you gain those Hit Points or Temporary Hit Points instead." Every healing chokepoint asks this
+   first; it returns true when it swallowed the gain (and passes it on to the Druid's token). */
+function overgrowthIntercept(o, n, temp){
+  if(!o || !(n > 0)) return false;
+  const b = ownerBuffs(o).find(x => x.key === "overgrowth");
+  if(!b) return false;
+  toast(`\u{1F33F} Overgrowth — ${ownerLabel(o)} can't gain that; ${n} ${temp ? "Temporary " : ""}HP goes to ${b.druid || "the Druid"} instead`);
+  try{
+    const map = (mode === "cloud") ? (currentMapForView() || activeMap()) : null;
+    const tok = map && mapTokensFor(map.id).find(tk => {
+      const L = tk.link ? tokenLinked(tk) : null;
+      return L && L.obj && isTrainerOwner(L.obj) && (L.obj.name || "") === (b.druid || "") && hasFeatureLoose(L.obj, "Overgrowth");
+    });
+    if(tok){
+      const d = tokenLinked(tok).obj;
+      if(temp){ gainTempHP(d, n); commitTokenSource(tok); }
+      else setTokenHP(tok, tokenHp(tok).cur + n);
+    }
+  }catch(e){}
+  return true;
+}
+const OVERGROWTH_BREAKERS = ["Fire","Ice","Poison","Flying","Bug"];
+/* Druid's Call on the board: six 1-square Rough + Slow patches around the Druid's own token. */
+function druidCallPlants(t){
+  try{
+    if(mode !== "cloud") return 0;
+    const map = currentMapForView() || activeMap(); if(!map) return 0;
+    const me = mapTokensFor(map.id).find(tk => { const L = tk.link ? tokenLinked(tk) : null; return L && L.obj === t; });
+    if(!me) return 0;
+    ensureMapTokens();
+    const arr = cloud.mapTokens.data.byMap[map.id] || (cloud.mapTokens.data.byMap[map.id] = []);
+    const oath = embraceOathOf(t, "Druid");
+    const label = oath ? ({ "Flower Oath":"\u{1F33C} flowery bush", "Fungal Oath":"\u{1F344} mushroom patch", "Wood Oath":"\u{1F333} sapling" })[oath.label] : "\u{1F331} plant";
+    const ring = [[-2,-2],[0,-2],[2,-2],[-2,2],[0,2],[2,2]];
+    const x0 = Math.round(me.x), y0 = Math.round(me.y);
+    ring.forEach(([dx,dy]) => arr.push({ id:uid(), zone:"roughslow", size:1, w:1, h:1, x:x0+dx, y:y0+dy, label:`Druid's Call — ${label}`, druidCall:true }));
+    mapTokensSave(); renderMap();
+    return 6;
+  }catch(e){ return 0; }
+}
+
 function classAutomationCards(t, rerender, persist){
   return [rememberCard,
-          chefCard, researcherCard,
+          chefCard, researcherCard, sageCard,
           musicianCard, commanderCard, provocateurCard, cheerleaderCard,
           glamourCard, captureCard, medicCard, hexCard, channelerCard,
           aceTrainerCard, duelistCard, heraldCard, typeAceCard, maelstromCard, shadeCallerCard,
@@ -28169,7 +29809,7 @@ function encTrainerRefRow(t, ownerKey, name, kind, onRemove){
      Water's Shroud chains through a Ranked Feature the walk can't follow — so without this a GM had
      no way at all to make those choices for an NPC. Same {owned:true, persist:saveEnc} contract the
      Battle-tab row uses; ✨ Give stays out, since openGiveOrder only ever targets the player's party. */
-  const rf = kind==="feature" ? (featureByName.get(name) || featureByKey.get(featKey(name))) : null;
+  const rf = (kind==="feature" || kind==="class") ? (featureByName.get(name) || featureByKey.get(featKey(name))) : null;
   const rmd = rf ? featureModeDef(rf) : null, rmdOn = rmd && modeIsOn(t, rmd.key);
   const rfa = rf ? featureActionDef(rf) : null;
   row.append(el("summary",{},
@@ -35247,6 +36887,7 @@ function normMapMeta(data){
     if(typeof m.fogOn!=="boolean") m.fogOn = false;
     if(typeof m.fogRadius!=="number" || m.fogRadius<1) m.fogRadius = 3;
     if(typeof m.weather!=="string" || !WEATHER_BY_KEY[m.weather]) m.weather = "clear";   // Core p.342
+    if(m.weather2 && (!WEATHER_BY_KEY[m.weather2] || m.weather2 === "clear")) m.weather2 = "";   // Climate Control's second Weather
     if(!Array.isArray(m.terrains)) m.terrains = [];
     m.terrains = m.terrains.filter(k=>TERRAIN_BY_KEY[k]);
     if(typeof m.shopId!=="string") m.shopId = "";      // the shop currently open on this map ("" = none)
@@ -38337,6 +39978,10 @@ function paintTokenHP(token, encTab){
 async function setTokenHP(token, val, opts){
   const info = tokenHp(token);
   if(!info.editable){ toast("Read-only"); return; }
+  /* Overgrowth (Druid): a creature under it can't recover Hit Points — the Druid gets them instead */
+  if(info.obj && !(opts && opts.raw) && (val|0) > info.cur && overgrowthIntercept(info.obj, (val|0) - info.cur, false)){
+    paintTokenHP(token); return;
+  }
   /* Damage spends Temporary Hit Points first (Core p.245) - done once, up front, so every branch
      below (Swarm bars, Boss bars, an encounter row, a real sheet) only ever sees the damage that
      got through the pool, and so Injuries / Knocked Out / Shields Down all judge real Hit Points.
@@ -40560,7 +42205,7 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
   // a Move that rewrites the chart for itself (Freeze-Dry, Thousand Arrows — MOVE_TARGET_RULES);
   // `chartUsed` only goes true if this particular target actually has one of the Types it names
   const chartOv = (!typeless && chartOverride) ? chartOverride : null;
-  let mult, tinted = false, tolStep = 0, furStep = 0, rogueStep = 0, chartUsed = false;
+  let mult, tinted = false, tolStep = 0, furStep = 0, rogueStep = 0, chartUsed = false, overgrown = false;
   // Fur Coat (defender Static): Physical hits are resisted one step further, whatever the Type.
   const furActive = !!(defMods?.furCoat && physical);
   /* Rogue Mega (defender, homebrew Boss variant): a Mega Evolved Pokemon running the Boss Template
@@ -40599,6 +42244,11 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
     if(defMods?.tolerance && mult > 0 && mult < 1){
       tolStep = -1;
       mult = typeMultAgainst(type, tokenDefTypes(token), defStep + furStep + rogueStep + tolStep, mOpts);
+    }
+    // Overgrowth: a resisted Grass hit climbs one step, stopping at neutral
+    if(defMods?.overgrowth && type === "Grass" && mult > 0 && mult < 1){
+      const up = Math.min(1, typeMultAgainst(type, tokenDefTypes(token), defStep + furStep + rogueStep + tolStep + 1, mOpts));
+      if(up !== mult){ mult = up; overgrown = true; }
     }
     // Wonder Guard keys off raw Type super-effectiveness, so judge it on the pre-Fur-Coat Type mult
     // (Fur Coat's flat step must never turn a genuinely Super-Effective hit into a blocked one).
@@ -40661,7 +42311,7 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
            typeDR, typeDRFrom, final, drPool, drGone, exploit, drPaid, dmgUsed, seExtra, seFlat, seFlatAdd, chartUsed,
            atkMold:!!atkMold, drBonus,
            owner, defMods, swarmTgt, swarmStep, extraStep, formeAdj, formeTgt, pierced, tinted, tolerance: tolStep<0, furCoat: furActive,
-           rogueMega: rogueActive,
+           rogueMega: rogueActive, overgrown,
            // kept only so applyTokenDamage can re-run this same hit against a breached boat's passengers
            dmg, type:(typeless?"Typeless":type), aoe:!!aoe, pierceImmune:!!pierceImmune, pierceDR, atkTinted:!!atkTinted, atkExploit:!!atkExploit, atkMega:!!atkMega, atkDeicide:!!atkDeicide, defCSMode,
            /* War Aura (attacker): "they inflict Injuries at 25% HP Markers, and Massive Damage is
@@ -40743,6 +42393,13 @@ async function applyTokenDamage(token, br){
   br.tempSoaked = Math.max(0, tempBefore - tempHPOf(tokenHp(token).obj));
   br.afterHP = tokenHp(token).cur;
   if(br.dr > 0 && br.owner && consumeDamageBuffs(br.owner)) await commitTokenSource(token);
+  // Overgrowth burns off when "hit by a damaging Fire, Ice, Poison, Flying, or Bug-Type attack"
+  if(br.owner && br.mult > 0 && !br.typeless && OVERGROWTH_BREAKERS.includes(br.type)
+     && ownerBuffs(br.owner).some(b => b.key === "overgrowth")){
+    br.owner.buffs = ownerBuffs(br.owner).filter(b => b.key !== "overgrowth");
+    await commitTokenSource(token);
+    toast(`\u{1F33F} ${br.type} hit — Overgrowth is gone from ${tokenHp(token).name}`);
+  }
   // an attack that isn't shrugged off as an immunity destroys any Illusion the defender was wearing
   if(br.mult > 0 && br.owner && breakIllusion(br.owner, "hit by a damaging Move")) await commitTokenSource(token);
   /* Type-absorbing Abilities (Storm Drain, Volt Absorb, Flash Fire, Well-Baked Body…). The immunity
@@ -40806,6 +42463,7 @@ function damageResultHTML(dmg, typeName, br, before){
   const tolTxt   = br.tolerance ? " <b>(Tolerance: −1 step)</b>" : "";
   const furTxt   = br.furCoat ? " <b>(Fur Coat: −1 step)</b>" : "";
   const rogueTxt = br.rogueMega ? " <b>(Rogue Mega: −1 step vs non-Mega)</b>" : "";
+  const ogTxt    = br.overgrown ? " <b>(Overgrowth: +1 step, capped at neutral)</b>" : "";
   const pierceTxt = br.pierced ? " <b>(immunity ignored)</b>" : "";
   const deiTxt   = br.deicide ? " <b>(Deicide: +1 step vs the divine)</b>" : "";
   const abilTxt  = (br.defMods && br.defMods.why.length && !br.typeless) ? `<br><span style="color:var(--accent)">⚙ ${br.defMods.why.join(" · ")}</span>` : "";
@@ -40819,7 +42477,7 @@ function damageResultHTML(dmg, typeName, br, before){
   // what a type-absorbing Ability (Storm Drain, Volt Absorb…) just paid the defender for this hit
   const absTxt = (br.absorb && br.absorb.length)
     ? `<br><span style="color:var(--accent);font-weight:700">\u26A1 ${br.absorb.join(" \u00B7 ")}</span>` : "";
-  return `${br.dmgUsed ?? dmg}${expTxt}${drBonusTxt}${seXTxt} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${chartTxt}${pierceTxt}${swarmTxt}${stepTxt}${deiTxt}${tintTxt}${tolTxt}${furTxt}${rogueTxt} = ${br.afterMult}${beltTxt}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${after}</b>.${tempTxt}${absTxt}${abilTxt}`;
+  return `${br.dmgUsed ?? dmg}${expTxt}${drBonusTxt}${seXTxt} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${chartTxt}${pierceTxt}${swarmTxt}${stepTxt}${deiTxt}${tintTxt}${tolTxt}${ogTxt}${furTxt}${rogueTxt} = ${br.afterMult}${beltTxt}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${after}</b>.${tempTxt}${absTxt}${abilTxt}`;
 }
 /* GM tool surfaced on a rolled attack's result: pick a token on the battle map and drop the rolled
    damage on it, running the same full damage math as the token menu (type, phys/spec, abilities, DR).
@@ -42592,6 +44250,8 @@ function resolveImageSizes(map){
    the GM changes it, rather than the book's 5 rounds. */
 function setMapWeather(map, key){
   map.weather = WEATHER_BY_KEY[key] ? key : "clear";
+  // clearing the sky clears Climate Control's second Weather and Extreme Weather along with it
+  if(map.weather === "clear"){ if(map.weather2) map.weather2 = ""; if(map.extremeWeather) map.extremeWeather = false; }
   mapMetaSave(); renderMap();
   const w = weatherByKey(map.weather);
   toast(weatherIsClear(w) ? "🌤 Weather cleared" : `${w.icon} ${w.name} — weather set`);
@@ -42614,11 +44274,37 @@ function weatherPanel(map){
   const w = weatherByKey(map?.weather);
   if(!map || weatherIsClear(w)) return null;
   const card = el("details",{class:"card map-weather"});
+  const w2 = (map.weather2 && WEATHER_BY_KEY[map.weather2] && map.weather2 !== "clear" && map.weather2 !== w.key) ? WEATHER_BY_KEY[map.weather2] : null;
   card.append(el("summary",{},
-    el("span",{style:"font-weight:800"}, `${w.icon} ${w.name}`),
+    el("span",{style:"font-weight:800"}, `${w.icon} ${w.name}${w2 ? ` + ${w2.icon} ${w2.name}` : ""}${map.extremeWeather ? " · \u{1F32A} Extreme" : ""}`),
     el("span",{class:"muted small",style:"margin-left:8px"}, w.blurb)));
   const body = el("div",{style:"margin-top:8px"});
   w.rules.forEach(r=>body.append(el("div",{class:"small"}, "• "+r)));
+  if(w2){
+    body.append(el("div",{class:"small",style:"font-weight:800;margin-top:8px"}, `${w2.icon} ${w2.name} — held on the field by Climate Control`));
+    w2.rules.forEach(r=>body.append(el("div",{class:"small"}, "• "+r)));
+  }
+  /* Extreme Weather: the damage and Accuracy riders are in the rolls already; Slowed / Suppressed are
+     real Afflictions, so they are offered here one tap per creature */
+  if(map.extremeWeather){
+    body.append(el("div",{class:"small",style:"font-weight:800;margin-top:8px"}, "\u{1F32A} Extreme Weather"));
+    const hit = [];
+    mapTokensFor(map.id).forEach(tok => {
+      const L = tok.link ? tokenLinked(tok) : null; if(!L || L.missing || !L.obj) return;
+      const ex = extremeWeatherFx(L.obj);
+      if(ex.lines.length) hit.push({ tok, obj:L.obj, ex });
+    });
+    if(!hit.length) body.append(el("div",{class:"small muted"}, "Nobody on this board is touched by it."));
+    hit.forEach(r => {
+      const need = r.ex.status.filter(k => !hasStatus(r.obj, k));
+      const line = el("div",{class:"inline",style:"gap:8px;justify-content:space-between;flex-wrap:wrap;margin-top:4px"},
+        el("span",{class:"small"}, `${tokenHp(r.tok).name} — `, el("span",{class:"muted"}, r.ex.lines.join(" · "))));
+      if(need.length && tokenHp(r.tok).editable) line.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",
+        onclick:async()=>{ need.forEach(k => { if(!hasStatus(r.obj, k)) toggleStatus(r.obj, k); }); await commitTokenSource(r.tok); renderMap(); }},
+        `apply ${need.map(k => (STATUS_DEFS.find(x=>x.key===k)||{}).name || k).join(" + ")}`));
+      body.append(line);
+    });
+  }
 
   const rows = [];
   mapTokensFor(map.id).forEach(t=>{
@@ -42798,6 +44484,19 @@ function renderMap(){
       wsel.addEventListener("change", ()=>setMapWeather(map, wsel.value));
       bar.append(el("span",{class:"map-sep"}),
         el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Weather"), wsel));
+      /* Climatology's two controls — a second Weather (Climate Control) and Extreme Weather — only
+         once a Climatologist is on the board or one of them is already in play */
+      if(map.weather2 || map.extremeWeather || climatologistOnMap(map)){
+        const w2sel = el("select",{title:"Climate Control — a second Weather held on the field alongside the first"});
+        w2sel.append(el("option",{value:"",selected:!map.weather2},"— none —"));
+        WEATHER_DEFS.filter(w=>w.key!=="clear").forEach(w=>w2sel.append(el("option",{value:w.key,selected:w.key===map.weather2}, `${w.icon} ${w.name}`)));
+        w2sel.addEventListener("change", ()=>{ map.weather2 = w2sel.value; mapMetaSave(); renderMap(); });
+        bar.append(el("label",{class:"field",style:"max-width:170px"}, el("span",{},"2nd Weather"), w2sel),
+          el("button",{class:"btn-secondary"+(map.extremeWeather?" on":""),
+            title:"Extreme Weather (Climatology): Hail −5 damage, Rain Slows, Sandstorm −2 Accuracy, Sun Suppresses",
+            onclick:()=>{ map.extremeWeather = !map.extremeWeather; mapMetaSave(); renderMap(); }},
+            map.extremeWeather ? "\u{1F32A} Extreme on" : "\u{1F32A} Extreme"));
+      }
       // — Terrain group: like Weather, only one Terrain can be active at a time (they cancel
       //   each other out) — Weather and Terrain are independent, so both selects sit side by side —
       const curTerrain = (map.terrains||[])[0] || "";
