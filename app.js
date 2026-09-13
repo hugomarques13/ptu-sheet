@@ -7604,6 +7604,7 @@ function applyAutoKO(owner, oldHP, newHP){
     powerConstructRevert(owner, true);   // ...nor Complete, which the Ability ends at 0 HP with everything else
     endSceneTypeState(owner);       // "remains Terastalized until they are Fainted or the Scene ends"
     toast(`💀 ${ownerLabel(owner)} is Knocked Out at ${newHP} HP.`);
+    pyreOfGriefOnFaint(owner);      // anyone with Pyre of Grief standing within 5 m feeds on it
     return "ko";
   }
   /* Rampaging Spirit holds a Pokémon up past 0 the same way Fight On does for a Berserker, so it
@@ -7625,6 +7626,77 @@ function applyAutoKO(owner, oldHP, newHP){
   return null;
 }
 
+/* ---------- Pyre of Grief (Vulpoxen, homebrew Ability) ----------
+   "Whenever a Pokémon or Trainer faints within 5 meters of the user, the user is healed one Tick of
+   Hit Points and gains a +5 Bonus to its next Damage Roll for the rest of the Scene. This bonus does
+   not stack."
+   Distance is a Map question, so the automatic half needs both bodies on the board. applyAutoKO calls
+   pyreOfGriefOnFaint the moment anything is Knocked Out; it finds that creature's token on the map
+   being viewed, and every OTHER token within PYRE_RANGE (tokenTileGap, one square = one metre, either
+   side) whose creature carries the Ability and is still standing gets its Tick through setTokenHP
+   (which writes the right store — sheet, encounter, Boss bar) and the buff through commitTokenSource.
+   Deferred a tick, because applyAutoKO runs INSIDE an HP setter that hasn't written the fainted
+   creature's own HP yet. Off the board, the 🔥 button on the Ability's row does the same by hand. */
+const PYRE_RANGE = 5;
+function pyreGrantBuff(o){
+  if(Array.isArray(o.buffs)) o.buffs = o.buffs.filter(b => b.key !== "pyre-of-grief");   // refresh, never stack
+  addBuff(o, "pyre-of-grief");
+}
+function pyreCanFire(o){
+  return !!o && !hasStatus(o, "knockedOut") && !hasStatus(o, "dead") && ownerHP(o) > 0;
+}
+function pyreOfGriefOnFaint(owner){
+  if(mode !== "cloud" || !owner) return;
+  const map = currentMapForView() || activeMap();
+  if(!map) return;
+  const toks = mapTokensFor(map.id);
+  if(!toks.length || toks.length > 300) return;
+  const objOf = t => { const L = t.link ? tokenLinked(t) : null; return (L && !L.missing) ? L.obj : null; };
+  const fallen = toks.filter(t => objOf(t) === owner);
+  if(!fallen.length) return;                               // not on the board — nobody can be "within 5 m"
+  const holders = toks.filter(t => {
+    if(fallen.includes(t)) return false;
+    const o = objOf(t);
+    if(!o || o === owner || !ownerHasAbility(o, "Pyre of Grief") || !pyreCanFire(o)) return false;
+    return fallen.some(f => tokenTileGap(t, f) <= PYRE_RANGE);
+  });
+  if(!holders.length) return;
+  const who = ownerLabel(owner);
+  setTimeout(async () => {
+    for(const t of holders){
+      const info = tokenHp(t), o = info.obj;
+      if(!pyreCanFire(o)) continue;
+      if(!info.editable){
+        toast(`\u{1F525} Pyre of Grief — ${ownerLabel(o)} heals a Tick and gains +5 to its next Damage Roll (its owner can press 🔥 on the Ability).`);
+        continue;
+      }
+      const gain = hpTick(ownerMaxHP(o));
+      await setTokenHP(t, info.cur + gain);
+      pyreGrantBuff(o);
+      await commitTokenSource(t);
+      toast(`\u{1F525} Pyre of Grief — ${ownerLabel(o)} feeds on ${who} fainting: +${gain} HP and +5 to its next Damage Roll.`);
+    }
+  }, 0);
+}
+/* the by-hand half, for a faint the Map didn't see */
+function applyPyreToOwner(o){
+  if(!pyreCanFire(o)) return `${ownerLabel(o)} is down — Pyre of Grief doesn't fire.`;
+  const old = ownerHP(o);
+  setOwnerHP(o, old + hpTick(ownerMaxHP(o)));
+  pyreGrantBuff(o);
+  return `Pyre of Grief — ${ownerLabel(o)} +${ownerHP(o) - old} HP and +5 to its next Damage Roll.`;
+}
+function pyreTriggerRow(p, redraw, persist){
+  const gain = hpTick(ownerMaxHP(p));
+  const wrap = el("div",{class:"inline small",style:"margin-top:8px;gap:8px;flex-wrap:wrap;align-items:center"});
+  wrap.append(el("button",{class:"btn-secondary",style:"padding:4px 10px",
+    title:`Pyre of Grief — +${gain} HP and +5 to the next Damage Roll`,
+    onclick:()=>{ const msg = applyPyreToOwner(p); (persist || save)(); toast(`\u{1F525} ${msg}`); redraw && redraw(); }},
+    "\u{1F525} Something fainted within 5 m"));
+  wrap.append(el("span",{class:"muted"},
+    `Heals a Tick (+${gain} HP) and places a +5 next-Damage-Roll buff that doesn't stack. On the Map this fires by itself whenever a token faints within 5 m.`));
+  return wrap;
+}
 
 /* ---------- Death (house rule) ----------
    One step past Fainting. A creature dies the moment either of these is true:
@@ -14817,6 +14889,13 @@ const PTU_BUFFS = [
   { key:"windveiled", cat:"Ability", name:"Windveiled", dur:"next Flying-Type Move", once:true,
     self:true, onlyType:"Flying", mods:{ db:1 },
     note:"Windveiled soaked a Flying-Type hit: +1 Damage Base on your next Flying-Type Move. Remove it once you have spent it." },
+  /* — Pyre of Grief (Vulpoxen, homebrew). Placed by pyreOfGriefOnFaint / the Ability's own button when
+       something faints within 5 m: +5 to the NEXT Damage Roll for the rest of the Scene (End Scene
+       already clears every buff). "This bonus does not stack" — a second faint refreshes the one
+       charge instead of adding another +5. — */
+  { key:"pyre-of-grief", cat:"Ability", name:"Pyre of Grief", dur:"next Damage Roll (this Scene)", once:true,
+    self:true, mods:{ dmg:5 },
+    note:"Something fainted within 5 m: +5 to your next Damage Roll this Scene. Doesn't stack. Remove it once you have spent it." },
 ];
 const buffByKey = new Map(PTU_BUFFS.map(b=>[b.key,b]));
 const BUFF_CATS = ["Cheerleader","Commander","Musician","Berserker","Medic","Item","Ability","Field"];
@@ -17479,6 +17558,7 @@ function abilitiesCard(p, sp){
       .forEach(e=>row.append(absorbTriggerRow(p, e, ()=>refreshMon(p))));
     // Schooling: its Swift Action, right under the rules text that describes it
     if(/^schooling$/i.test(an||"")){ const sr = schoolingTriggerRow(p, ()=>refreshMon(p)); if(sr) row.append(sr); }
+    if(/^pyre of grief$/i.test(an||"")) row.append(pyreTriggerRow(p, ()=>refreshMon(p)));
     // Tera Shell / Stellar Blast / Teraform Zero / Prime Fury / Type Aura, under their own text
     { const tr = typeAbilityRow(p, an, ()=>refreshMon(p)); if(tr) row.append(tr); }
     // Commander: its Swift Action and the state of the Attachment, under the same rules text
@@ -28071,6 +28151,7 @@ function encounterAbilityRow(p, an){
       onclick:e=>{ e.preventDefault(); const i=p.abilities.indexOf(an); if(i>=0){ p.abilities.splice(i,1); saveEnc(); renderEncounters(); } }},"×")));
   row.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database</span>"}));
   if(/^schooling$/i.test(an||"")){ const sr = schoolingTriggerRow(p, renderEncounters, saveEnc); if(sr) row.append(sr); }
+  if(/^pyre of grief$/i.test(an||"")) row.append(pyreTriggerRow(p, renderEncounters, saveEnc));
   { const tr = typeAbilityRow(p, an, renderEncounters, saveEnc); if(tr) row.append(tr); }
   if(/^commander$/i.test(an||"")){ const cr = commanderTriggerRow(p, renderEncounters, saveEnc); if(cr) row.append(cr); }
   return row;
@@ -35793,6 +35874,7 @@ function flushUiRefresh(){
   if(!kinds.length) return;
   if(kinds.includes("all")){ softRender(); return; }
   if(kinds.includes("map") && currentTab==="map") renderMap();
+  if(kinds.includes("map") && currentTab==="dex") renderDex();     // "Sheets counted" rides the map-meta row
   if(kinds.includes("pc")  && currentTab==="pc")  renderPC();
   if(kinds.includes("enc") && (currentTab==="encounters" || currentTab==="map")) render();
   if(kinds.includes("rolls")) renderRollFeed();          // floats over every tab, so no tab check
@@ -36348,7 +36430,7 @@ function dexLoad(){
   let d = null;
   try { d = JSON.parse(localStorage.getItem(key) || "null"); } catch(e){}
   dexReg = (d && typeof d === "object" && d.seen && typeof d.seen === "object")
-    ? { seen:d.seen, removed:d.removed||{}, manual:d.manual||{}, skip:d.skip||{}, ack:d.ack||0, init:!!d.init }
+    ? { seen:d.seen, removed:d.removed||{}, manual:d.manual||{}, skip:d.skip||{}, ack:d.ack||0, init:!!d.init, skipSig:d.skipSig }
     : { seen:{}, removed:{}, manual:{}, skip:{}, ack:0, init:false };
   dexReg._key = key;
   dexFamilyCache.clear();
@@ -36358,8 +36440,44 @@ function dexStore(){
   const d = dexLoad();
   dexFamilyCache.clear();
   try { localStorage.setItem(d._key,
-    JSON.stringify({ seen:d.seen, removed:d.removed, manual:d.manual, skip:d.skip, ack:d.ack, init:d.init })); }
+    JSON.stringify({ seen:d.seen, removed:d.removed, manual:d.manual, skip:d.skip, ack:d.ack, init:d.init, skipSig:d.skipSig })); }
   catch(e){ /* a full quota shouldn't break the tab — the register just won't persist */ }
+}
+/* ---- "Sheets counted" is a CAMPAIGN setting ----
+   It used to live in each device's register (d.skip), so the GM had to untick the same scratch NPC on
+   every computer they played from. In cloud play it now lives on the map-meta row (`dexSkip`) — the
+   small, rarely-written shared row every client already loads on connect — and only the GM sets it.
+   The register itself (`seen`) stays device-local: it's rebuilt from the list whenever the list moves
+   (dexScan compares `skipSig`). Offline it's still d.skip. A campaign with no shared list yet falls
+   back to this device's old one, and the GM's first scan seeds the shared list from it. */
+function dexSkipMap(){
+  if(mode === "cloud"){
+    const m = cloud.mapMeta && cloud.mapMeta.data;
+    if(m && m.dexSkip && typeof m.dexSkip === "object") return m.dexSkip;
+  }
+  return dexLoad().skip;
+}
+function dexSkipSig(){ const k = dexSkipMap(); return Object.keys(k).filter(id => k[id]).sort().join("|"); }
+function dexSkipEditable(){ return mode !== "cloud" || !!cloud.isGM; }
+function dexSeedGlobalSkip(){
+  if(mode !== "cloud" || !cloud.isGM || !cloud.mapMeta || !cloud.mapMeta.data) return;
+  const m = cloud.mapMeta.data;
+  if(m.dexSkip && typeof m.dexSkip === "object") return;
+  m.dexSkip = Object.assign({}, dexLoad().skip || {});
+  mapMetaSave();
+}
+function dexSetSkip(id, off){
+  const d = dexLoad();
+  if(mode === "cloud"){
+    const row = ensureMapMeta();
+    if(!row.data.dexSkip || typeof row.data.dexSkip !== "object") row.data.dexSkip = Object.assign({}, d.skip || {});
+    if(off) row.data.dexSkip[id] = 1; else delete row.data.dexSkip[id];
+    mapMetaSave();
+  } else {
+    if(off) d.skip[id] = 1; else delete d.skip[id];
+  }
+  d.skipSig = dexSkipSig();
+  dexStore();
 }
 /* ---- one entry per Pokémon, not per form ----
    Gourgeist Small/Average/Large/Super are one Pokémon. So are Minior's two states, Wishiwashi's
@@ -36562,8 +36680,8 @@ function dexLineStats(d){
 /* Every Pokémon the party owns right now: one entry per Trainer's party, plus the shared PC.
    `all` ignores the skip list — that's the version the "Sheets counted" picker lists. */
 function dexHolders(all){
-  const d = dexLoad(), out = [];
-  const push = o => { if(all || !d.skip[o.id]) out.push(o); };
+  const skip = dexSkipMap(), out = [];
+  const push = o => { if(all || !skip[o.id]) out.push(o); };
   if(mode === "cloud"){
     Object.values(cloud.byId).forEach(r=>{
       const c = r && r.data; if(!c) return;
@@ -36625,6 +36743,10 @@ function dexRegisterLine(d, name, meta, at){
 function dexScan(opts){
   const d = dexLoad(), now = Date.now();
   let added = [];
+  /* the GM unticked (or re-ticked) a sheet somewhere else — rebuild this device's register to match */
+  dexSeedGlobalSkip();
+  { const sig = dexSkipSig();
+    if(d.skipSig !== sig){ d.skipSig = sig; if(d.init) dexRebuild(); else dexStore(); } }
   const first = !d.init;
   /* A register written before "Mom?" was excluded (or before a species was struck off) can still be
      carrying entries that no longer belong — drop them here rather than filtering at every reader. */
@@ -36943,23 +37065,28 @@ function renderDex(){
   /* ---- which sheets count. A GM's scratch NPC is not the party's catch record. ---- */
   const all = dexHolders(true);
   if(all.length > 1){
-    const on = all.filter(h => !d.skip[h.id]).length;
+    const skip = dexSkipMap(), canSet = dexSkipEditable();
+    const on = all.filter(h => !skip[h.id]).length;
     const det = el("details",{class:"spoiler",style:"margin-top:10px"});
     det.open = all.length !== on;                        // already excluding something? show it
     det.append(el("summary",{}, el("span",{style:"font-weight:700"},`Sheets counted (${on} of ${all.length})`),
-      el("span",{class:"muted small",style:"margin-left:8px"},"untick a scratch NPC to keep it out of the Dex")));
+      el("span",{class:"muted small",style:"margin-left:8px"},
+        mode === "cloud" ? (canSet ? "untick a scratch NPC to keep it out of the Dex — applies to everyone in the campaign"
+                                   : "set by the GM for the whole campaign")
+                         : "untick a scratch NPC to keep it out of the Dex")));
     const list = el("div",{style:"margin-top:6px"});
     all.forEach(h=>{
-      const cb = el("input",{type:"checkbox"}); cb.checked = !d.skip[h.id];
+      const cb = el("input",{type:"checkbox",disabled:!canSet}); cb.checked = !skip[h.id];
       cb.addEventListener("change",()=>{
-        if(cb.checked) delete d.skip[h.id]; else d.skip[h.id] = 1;
-        dexStore(); dexRebuild();
+        if(!dexSkipEditable()){ cb.checked = !dexSkipMap()[h.id]; toast("Only the GM decides which sheets the Dex counts"); return; }
+        dexSetSkip(h.id, !cb.checked);
+        dexRebuild();
         toast(cb.checked ? `\u{1F4D5} ${h.label} counts again — rebuilt`
                          : `\u{1F4D5} ${h.label} left out — anything only it had is off the register`);
         again();
       });
       list.append(el("label",{class:"inline",style:"gap:8px;align-items:center;display:flex;margin-top:4px"},
-        cb, el("span",{class:"small"+(d.skip[h.id]?" muted":"")},
+        cb, el("span",{class:"small"+(skip[h.id]?" muted":"")},
           h.label, el("span",{class:"muted"}, `  — ${(h.mons||[]).length} Pokémon`))));
     });
     det.append(list);
@@ -36969,7 +37096,8 @@ function renderDex(){
     (mode === "cloud"
       ? "Registered by scanning every Trainer's party and the shared PC. "
       : "Registered by scanning every character's party on this device. Join a campaign (☁ Cloud) to include the shared PC and everyone else's Pokémon. ")
-    + "Catching an evolved form registers what it evolved from too. A species stays registered once caught, even if it's later released or traded away — the register is kept on this device, so ＋/× only change what YOU see."));
+    + "Catching an evolved form registers what it evolved from too. A species stays registered once caught, even if it's later released or traded away — the register is kept on this device, so ＋/× only change what YOU see"
+    + (mode === "cloud" ? " (which sheets are counted is shared by the whole campaign)." : ".")));
   root.append(head);
 
   if(fresh.length){
