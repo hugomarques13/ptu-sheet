@@ -5255,7 +5255,7 @@
     },
     {
      "level": 100,
-     "name": "Judgment",
+     "name": "Judgement",
      "type": "Normal"
     }
    ],
@@ -5363,7 +5363,7 @@
     "Tailwind",
     "Trick",
     "Twister",
-    "Zen Headbutt 746 HOOPA Confined"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -8361,7 +8361,7 @@
     },
     {
      "level": 13,
-     "name": "Double Chop",
+     "name": "Dual Chop",
      "type": "Dragon"
     },
     {
@@ -8748,7 +8748,7 @@
     "Trick",
     "Uproar",
     "Wonder Room",
-    "Zen Headbutt 704 TORNADUS Incarnate Forme"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -10985,7 +10985,7 @@
     "Superpower",
     "Thrash (N)",
     "Uproar",
-    "Zen Heabutt"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -19487,7 +19487,7 @@
     "Bug Bite",
     "Electroweb",
     "Snore",
-    "String Shot 286 WORMADAM Plant Cloak Form"
+    "String Shot"
    ]
   },
   "gender": "50% M / 50% F",
@@ -20879,9 +20879,7 @@
     "99 Dazzling Gleam",
     "100 Confide"
    ],
-   "egg": [
-    "None"
-   ],
+   "egg": [],
    "tutor": [
     "After You",
     "Covet",
@@ -35248,7 +35246,7 @@
     "Su perpower",
     "Uproar",
     "Work Up",
-    "Zen Headbutt DARMANITAN Zen Mode"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -57826,7 +57824,7 @@
     },
     {
      "level": 13,
-     "name": "Double Chop",
+     "name": "Dual Chop",
      "type": "Dragon"
     },
     {
@@ -67659,19 +67657,7 @@
     "Snore",
     "Superpower",
     "Thunder Punch",
-    "Water Pulse 682 Legendary Pokemon are incredibly rare and powerful Pokemon. The difference in rar ity may differ",
-    "for example an Articuno",
-    "which usually will have at least one per major body of land",
-    "can be found more then once while Palkia and Dialga",
-    "the rulers of Time and Space",
-    "are found only once as they are the sole Pokemon who have majority dominion over Time and Space. It is unlikely that you meet more then one to three Legendary Pokemon during a cam paign unless your campagin is specifically about them. The following entries are merely suggestions as to the power level of each Legendary Pokemon if they are even able to be captured in the campaign you are playing. The default assumption here is that Legendary Pokemon are merely very rare and powerful rather than divinity",
-    "and the Capabilities and Skills here reflect that. It is entirely possible that a captured Legendary Pokemon has completely different",
-    "unique-to-your-campaign Skills",
-    "Capabilities",
-    "Abilities or Moves. The Blessed and the Damned Legendary splatbook provides some ideas and options toward this end if you wish to portray Legendary Pokemon as divine creatures. (Legendary Pokemon have signature Moves. They are marked with a \"§\" symbol. These Moves are not always unique to the Legendary",
-    "but are used often",
-    "as a favorite",
-    "of the Legendary.) Legendary Pokemon"
+    "Water Pulse"
    ]
   },
   "gender": "50% M / 50% F",
@@ -74782,7 +74768,7 @@
     },
     {
      "level": 13,
-     "name": "Double Chop",
+     "name": "Dual Chop",
      "type": "Dragon"
     },
     {
@@ -77410,7 +77396,7 @@
     },
     {
      "level": 29,
-     "name": "Hi Jump Kick",
+     "name": "High Jump Kick",
      "type": "Fighting"
     },
     {
@@ -90865,9 +90851,7 @@
     "Signal Beam",
     "Sleep Talk",
     "Snore",
-    "Zen Headbutt Dragon Fusion: The user can merge with a willing Zekrom as an Extended Action to turn into the Zekrom Fusion Forme",
-    "and with a willing Reshiram to turn into its Reshiram Fusion Forme. The respective Zekrom and Reshiram are absorbed and disappear while Fused. The user may unmerge as an Extended Action",
-    "and its partner then reappears. All XP earned while Fused is split evenly between Kyurem and its partner. 736 KYUREM Zekrom Fusion Forme"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -91139,9 +91123,7 @@
     "Signal Beam",
     "Sleep Talk",
     "Snore",
-    "Zen Headbutt Dragon Fusion: The user can merge with a willing Zekrom as an Extended Action to turn into the Zekrom Fusion Forme",
-    "and with a willing Reshiram to turn into its Reshiram Fusion Forme. The respective Zekrom and Reshiram are absorbed and disappear while Fused. The user may unmerge as an Extended Action",
-    "and its partner then reappears. All XP earned while Fused is split evenly between Kyurem and its partner. 736 KYUREM Zekrom Fusion Forme"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -91413,9 +91395,7 @@
     "Signal Beam",
     "Sleep Talk",
     "Snore",
-    "Zen Headbutt Dragon Fusion: The user can merge with a willing Zekrom as an Extended Action to turn into the Zekrom Fusion Forme",
-    "and with a willing Reshiram to turn into its Reshiram Fusion Forme. The respective Zekrom and Reshiram are absorbed and disappear while Fused. The user may unmerge as an Extended Action",
-    "and its partner then reappears. All XP earned while Fused is split evenly between Kyurem and its partner. 736 KYUREM Zekrom Fusion Forme"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -95767,8 +95747,7 @@
     "Ice Punch",
     "Icy Wind",
     "Iron Tail",
-    "Knock",
-    "Off",
+    "Knock Off",
     "Mega Kick",
     "Mega Punch",
     "Mud-Slap",
@@ -108618,7 +108597,7 @@
     },
     {
      "level": 28,
-     "name": "Hi Jump Kick",
+     "name": "High Jump Kick",
      "type": "Fighting"
     },
     {
@@ -108919,7 +108898,7 @@
     },
     {
      "level": 28,
-     "name": "Hi Jump Kick",
+     "name": "High Jump Kick",
      "type": "Fighting"
     },
     {
@@ -110016,27 +109995,13 @@
    ],
    "egg": [],
    "tutor": [
-    "Covet",
-    "Gravity",
-    "Heal Bell",
-    "Helping Hand",
-    "Iron Tail",
-    "Magic Coat",
-    "Magic Room",
-    "Recycle",
-    "Role Play",
-    "Shock Wave",
-    "Signal Beam",
-    "Snatch",
-    "Snore",
-    "Trick",
-    "Wonder Room",
-    "Zen Headbutt (M) Helping Hand (N)",
-    "(M) Mean Look (N)",
-    "(M) Quick Guard (N)",
-    "(F) Magical Leaf (N)",
-    "(F) Me First (N)",
-    "(F) Stored Power (N)"
+    "Zen Headbutt",
+    "Helping Hand (N)",
+    "Mean Look (N)",
+    "Quick Guard (N)",
+    "Magical Leaf (N)",
+    "Me First (N)",
+    "Stored Power (N)"
    ]
   },
   "gender": "50% M / 50% F",
@@ -111521,9 +111486,7 @@
     "Mew can learn any TM/HM"
    ],
    "egg": [],
-   "tutor": [
-    "Mew can be Tutored to learn any Move"
-   ]
+   "tutor": []
   },
   "gender": "No Gender",
   "diet": "Omnivore",
@@ -112058,7 +112021,7 @@
     },
     {
      "level": 53,
-     "name": "Hi Jump Kick",
+     "name": "High Jump Kick",
      "type": "Fighting"
     },
     {
@@ -112338,7 +112301,7 @@
     },
     {
      "level": 56,
-     "name": "Hi Jump Kick",
+     "name": "High Jump Kick",
      "type": "Fighting"
     },
     {
@@ -118477,7 +118440,7 @@
     "Super Fang",
     "Thunder Punch",
     "Uproar",
-    "Water Pulse 101 NIDORAN (M)"
+    "Water Pulse"
    ]
   },
   "gender": "0% M / 100% F",
@@ -124211,7 +124174,7 @@
     "Sleep Talk",
     "Snore",
     "Swift",
-    "Twister 740 GIRATINA Origin Forme"
+    "Twister"
    ]
   },
   "gender": "No Gender",
@@ -133785,7 +133748,7 @@
     "Swift",
     "Trick",
     "Wonder Room",
-    "Zen Headbutt 120 PORYGON2"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -144325,7 +144288,7 @@
     "Cross Chop",
     "Crunch",
     "Detect",
-    "Hi Jump Kick",
+    "High Jump Kick",
     "Iron Defense",
     "Low Kick",
     "Mind Reader",
@@ -150394,7 +150357,7 @@
     },
     {
      "level": 31,
-     "name": "Hi Jump Kick",
+     "name": "High Jump Kick",
      "type": "Fighting"
     },
     {
@@ -150691,7 +150654,7 @@
     },
     {
      "level": 31,
-     "name": "Hi Jump Kick",
+     "name": "High Jump Kick",
      "type": "Fighting"
     },
     {
@@ -170657,7 +170620,7 @@
     "Snore",
     "Spite",
     "Stealth Rock",
-    "Uproar 607 ROTOM Normal Form"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -175394,7 +175357,7 @@
     "Heat Wave",
     "Snatch",
     "Snore",
-    "Tailwind 98 NIDORAN (F)"
+    "Tailwind"
    ]
   },
   "gender": "50% M / 50% F",
@@ -178616,7 +178579,7 @@
     "Mach Punch",
     "Reversal",
     "Smelling Salts",
-    "Wise Guard"
+    "Wide Guard"
    ],
    "tutor": [
     "Block",
@@ -179217,7 +179180,7 @@
     "Uproar",
     "Water Pulse",
     "Work Up",
-    "Zen Headbutt 242 FLABÉBÉ"
+    "Zen Headbutt"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -185121,7 +185084,7 @@
     "Endure",
     "Feint",
     "Helping Hand",
-    "Hi Jump Kick",
+    "High Jump Kick",
     "Mach Punch",
     "Mind Reader",
     "Pursuit",
@@ -189534,7 +189497,7 @@
     "Uproar",
     "§ V-Create",
     "Work Up",
-    "Zen Headbutt 719 SHAYMIN Land Forme"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -202219,7 +202182,7 @@
     },
     {
      "level": 28,
-     "name": "Land'S Wrath",
+     "name": "Land's Wrath",
      "type": "Ground"
     },
     {
@@ -202320,15 +202283,17 @@
     "Snore",
     "Spite",
     "Superpower",
-    "Zen Headbutt"
+    "Zen Headbutt",
+    "Thousand Arrows",
+    "Thousand Waves",
+    "Core Enforcer"
    ]
   },
   "gender": "Genderless",
   "diet": "Nullivore",
   "habitat": "Cave",
   "height": "16' 05\" / 5m (Huge)",
-  "order": 747,
-  "megaEvolution": "Type: Unchanged Ability: Aura Break Stats: -3 Atk, -3 Def, +13 Sp. Atk, -1 Sp. Def, +1 Speed"
+  "order": 747
  },
  {
   "name": "Automateon",
@@ -203756,7 +203721,7 @@
     "Snore",
     "Super Fang",
     "Uproar",
-    "Zen Headbutt RATICATE Alola"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -204023,7 +203988,7 @@
     "Snore",
     "Super Fang",
     "Uproar",
-    "Zen Headbutt RATICATE Alola"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -204279,7 +204244,7 @@
     "Swords Dance (N)",
     "Throat Chop",
     "Uproar",
-    "Zen Headbutt RAICHU Alola"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -204540,7 +204505,7 @@
     "Swords Dance (N)",
     "Throat Chop",
     "Uproar",
-    "Zen Headbutt RAICHU Alola"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -204836,7 +204801,7 @@
     "Speed Swap (N)",
     "Telekinesis",
     "Thunder Punch",
-    "Thunderbolt (N) SANDSHREW Alola"
+    "Thunderbolt (N)"
    ]
   },
   "gender": "50% M / 50% F",
@@ -205125,7 +205090,7 @@
     "Snore",
     "Stealth Rock",
     "Super Fang",
-    "Throat Chop SANDSLASH Alola"
+    "Throat Chop"
    ]
   },
   "gender": "50% M / 50% F",
@@ -205402,7 +205367,7 @@
     "Snore",
     "Stealth Rock",
     "Super Fang",
-    "Throat Chop VULPIX Alola"
+    "Throat Chop"
    ]
   },
   "gender": "50% M / 50% F",
@@ -205699,7 +205664,7 @@
     "Role Play",
     "Snore",
     "Spite",
-    "Zen Headbutt NINETALES Alola"
+    "Zen Headbutt"
    ]
   },
   "gender": "25% M / 75% F",
@@ -205993,7 +205958,7 @@
     "Snore",
     "Spite",
     "Wonder Room",
-    "Zen Headbutt DIGLETT Alola"
+    "Zen Headbutt"
    ]
   },
   "gender": "25% M / 75% F",
@@ -206253,7 +206218,7 @@
     "Iron Head",
     "Snore",
     "Stealth Rock",
-    "Stomping Tantrum DUGTRIO Alola"
+    "Stomping Tantrum"
    ]
   },
   "gender": "50% M / 50% F",
@@ -206503,7 +206468,7 @@
     "Snore",
     "Stealth Rock",
     "Stomping Tantrum",
-    "Tri Attack (N) MEOWTH Alola"
+    "Tri Attack (N)"
    ]
   },
   "gender": "50% M / 50% F",
@@ -206793,7 +206758,7 @@
     "Spite",
     "Throat Chop",
     "Uproar",
-    "Water Pulse PERSIAN Alola"
+    "Water Pulse"
    ]
   },
   "gender": "50% M / 50% F",
@@ -207069,7 +207034,7 @@
     "Switcheroo (N)",
     "Throat Chop",
     "Uproar",
-    "Water Pulse GEODUDE Alola"
+    "Water Pulse"
    ]
   },
   "gender": "50% M / 50% F",
@@ -207356,7 +207321,7 @@
     "Snore",
     "Stealth Rock",
     "Superpower",
-    "Thunder Punch GRAVELER Alola"
+    "Thunder Punch"
    ]
   },
   "gender": "50% M / 50% F",
@@ -207627,7 +207592,7 @@
     "Stealth Rock",
     "Stomping Tantrum",
     "Superpower",
-    "Thunder Punch GOLEM Alola"
+    "Thunder Punch"
    ]
   },
   "gender": "50% M / 50% F",
@@ -207910,7 +207875,7 @@
     "Stealth Rock",
     "Stomping Tantrum",
     "Superpower",
-    "Thunder Punch GRIMER Alola"
+    "Thunder Punch"
    ]
   },
   "gender": "50% M / 50% F",
@@ -208201,7 +208166,7 @@
     "Shock Wave",
     "Snore",
     "Spite",
-    "Thunder Punch MUK Alola"
+    "Thunder Punch"
    ]
   },
   "gender": "50% M / 50% F",
@@ -208480,7 +208445,7 @@
     "Shock Wave",
     "Snore",
     "Spite",
-    "Thunder Punch EXEGGUTOR Alola"
+    "Thunder Punch"
    ]
   },
   "gender": "50% M / 50% F",
@@ -208788,7 +208753,7 @@
     "Synthesis",
     "Telekinesis",
     "Worry Seed",
-    "Zen Headbutt MAROWAK Alola"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -209083,7 +209048,7 @@
     "Stomping Tantrum",
     "Throat Chop",
     "Thunder Punch",
-    "Uproar TAPU KOKO"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -209362,7 +209327,7 @@
     "Sky Attack",
     "Snore",
     "Synthesis",
-    "Worry Seed DARTRIX"
+    "Worry Seed"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -209623,7 +209588,7 @@
     "Sky Attack",
     "Snore",
     "Synthesis",
-    "Worry Seed DECIDUEYE"
+    "Worry Seed"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -209898,7 +209863,7 @@
     "Synthesis",
     "Tailwind",
     "U-Turn (N)",
-    "Worry Seed LITTEN"
+    "Worry Seed"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -210169,7 +210134,7 @@
     "Fire Pledge",
     "Heat Wave",
     "Outrage",
-    "Snore TORRACAT"
+    "Snore"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -210423,7 +210388,7 @@
     "Fire Pledge",
     "Heat Wave",
     "Outrage",
-    "Snore INCINEROAR"
+    "Snore"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -210708,7 +210673,7 @@
     "Stomping Tantrum",
     "Superpower",
     "Throat Chop (N)",
-    "Thunder Punch POPPLIO"
+    "Thunder Punch"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -210978,7 +210943,7 @@
     "Uproar",
     "Water Pledge",
     "Water Pulse",
-    "Wonder Room BRIONNE"
+    "Wonder Room"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -211231,7 +211196,7 @@
     "Uproar",
     "Water Pledge",
     "Water Pulse",
-    "Wonder Room PRIMARINA"
+    "Wonder Room"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -211500,7 +211465,7 @@
     "Uproar",
     "Water Pledge",
     "Water Pulse",
-    "Wonder Room PIKIPEK"
+    "Wonder Room"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -211754,7 +211719,7 @@
     "Sky Attack",
     "Snore",
     "Tailwind",
-    "Uproar TRUMBEAK"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -211998,7 +211963,7 @@
     "Sky Attack",
     "Snore",
     "Tailwind",
-    "Uproar TOUCANNON"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -212249,7 +212214,7 @@
     "Sky Attack",
     "Snore",
     "Tailwind",
-    "Uproar YUNGOOS"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -212509,7 +212474,7 @@
     "Shock Wave",
     "Snore",
     "Stomping Tantrum",
-    "Super Fang GUMSHOOS"
+    "Super Fang"
    ]
   },
   "gender": "50% M / 50% F",
@@ -212769,7 +212734,7 @@
     "Stomping Tantrum",
     "Super Fang",
     "Thunder Punch",
-    "Zen Headbutt GRUBBIN"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -213005,7 +212970,7 @@
     "Electroweb",
     "Magnet Rise",
     "Shock Wave",
-    "Snore CHARJABUG"
+    "Snore"
    ]
   },
   "gender": "50% M / 50% F",
@@ -213248,7 +213213,7 @@
     "Iron Defense",
     "Magnet Rise",
     "Shock Wave",
-    "Snore VIKAVOLT"
+    "Snore"
    ]
   },
   "gender": "50% M / 50% F",
@@ -213499,7 +213464,7 @@
     "Magnet Rise",
     "Shock Wave",
     "Signal Beam",
-    "Snore CRABRAWLER"
+    "Snore"
    ]
   },
   "gender": "50% M / 50% F",
@@ -213752,7 +213717,7 @@
     "Snore",
     "Superpower",
     "Thunder Punch",
-    "Zen Headbutt CRABOMINABLE"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -214009,7 +213974,7 @@
     "Snore",
     "Superpower",
     "Thunder Punch",
-    "Zen Headbutt ORICORIO"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -215085,7 +215050,7 @@
     "Tailwind",
     "Telekinesis",
     "Trick",
-    "Wonder Room RIBOMBEE"
+    "Wonder Room"
    ]
   },
   "gender": "50% M / 50% F",
@@ -215332,7 +215297,7 @@
     "Tailwind",
     "Telekinesis",
     "Trick",
-    "Wonder Room ROCKRUFF"
+    "Wonder Room"
    ]
   },
   "gender": "50% M / 50% F",
@@ -215587,7 +215552,7 @@
     "Snore",
     "Stealth Rock",
     "Stomping Tantrum",
-    "Zen Headbutt LYCANROC Midday"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -216917,7 +216882,7 @@
     "Snatch",
     "Snore",
     "Spite",
-    "Water Pulse TOXAPEX"
+    "Water Pulse"
    ]
   },
   "gender": "50% M / 50% F",
@@ -217170,7 +217135,7 @@
     "Snatch",
     "Snore",
     "Spite",
-    "Water Pulse MUDBRAY"
+    "Water Pulse"
    ]
   },
   "gender": "50% M / 50% F",
@@ -217423,7 +217388,7 @@
     "Snore",
     "Stealth Rock",
     "Stomping Tantrum",
-    "Superpower MUDSDALE"
+    "Superpower"
    ]
   },
   "gender": "50% M / 50% F",
@@ -217667,7 +217632,7 @@
     "Snore",
     "Stealth Rock",
     "Stomping Tantrum",
-    "Superpower DEWPIDER"
+    "Superpower"
    ]
   },
   "gender": "50% M / 50% F",
@@ -217923,7 +217888,7 @@
     "Signal Beam",
     "Snore",
     "Water Pulse",
-    "Wonder Room ARAQUANID"
+    "Wonder Room"
    ]
   },
   "gender": "50% M / 50% F",
@@ -218168,7 +218133,7 @@
     "Soak (N)",
     "Water Pulse",
     "Wide Guard (N)",
-    "Wonder Room FOMANTIS"
+    "Wonder Room"
    ]
   },
   "gender": "50% M / 50% F",
@@ -218409,7 +218374,7 @@
     "Signal Beam",
     "Snore",
     "Synthesis",
-    "Worry Seed LURANTIS"
+    "Worry Seed"
    ]
   },
   "gender": "50% M / 50% F",
@@ -218653,7 +218618,7 @@
     "Superpower",
     "Synthesis",
     "Worry Seed",
-    "X- Scissor (N) MORELULL"
+    "X- Scissor (N)"
    ]
   },
   "gender": "50% M / 50% F",
@@ -218912,7 +218877,7 @@
     "Snore",
     "Synthesis",
     "Wonder Room",
-    "Worry Seed SHIINOTIC"
+    "Worry Seed"
    ]
   },
   "gender": "50% M / 50% F",
@@ -219162,7 +219127,7 @@
     "Snore",
     "Synthesis",
     "Wonder Room",
-    "Worry Seed SALANDIT"
+    "Worry Seed"
    ]
   },
   "gender": "50% M / 50% F",
@@ -219425,7 +219390,7 @@
     "Iron Tail",
     "Knock Off",
     "Snatch",
-    "Snore SALAZZLE"
+    "Snore"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -219685,7 +219650,7 @@
     "Snatch",
     "Snore",
     "Swagger (N)",
-    "Torment (N) STUFFUL"
+    "Torment (N)"
    ]
   },
   "gender": "0% M / 100% F",
@@ -219940,7 +219905,7 @@
     "Stomping Tantrum",
     "Superpower",
     "Thunder Punch",
-    "Zen Headbutt BEWEAR"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -220187,7 +220152,7 @@
     "Stomping Tantrum",
     "Superpower",
     "Thunder Punch",
-    "Zen Headbutt BOUNSWEET"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -220422,7 +220387,7 @@
     "Snore",
     "Synthesis",
     "Worry Seed",
-    "Zen Headbutt STEENEE"
+    "Zen Headbutt"
    ]
   },
   "gender": "0% M / 100% F",
@@ -220669,7 +220634,7 @@
     "Snore",
     "Synthesis",
     "Worry Seed",
-    "Zen Headbutt TSAREENA"
+    "Zen Headbutt"
    ]
   },
   "gender": "0% M / 100% F",
@@ -220932,7 +220897,7 @@
     "Snore",
     "Synthesis",
     "Worry Seed",
-    "Zen Headbutt COMFEY"
+    "Zen Headbutt"
    ]
   },
   "gender": "0% M / 100% F",
@@ -221222,7 +221187,7 @@
     "Tailwind",
     "Telekinesis",
     "Trick",
-    "Worry Seed ORANGURU"
+    "Worry Seed"
    ]
   },
   "gender": "25% M / 75% F",
@@ -221498,7 +221463,7 @@
     "Telekinesis",
     "Trick",
     "Wonder Room",
-    "Zen Headbutt PASSIMIAN"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -221772,7 +221737,7 @@
     "Snatch",
     "Snore",
     "Superpower",
-    "Uproar WIMPOD"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -221954,7 +221919,7 @@
     "Wide Guard"
    ],
    "tutor": [
-    "Snore GOLISOPOD"
+    "Snore"
    ]
   },
   "gender": "50% M / 50% F",
@@ -222217,7 +222182,7 @@
     "Snore",
     "Spite",
     "Throat Chop",
-    "Water Pulse SANDYGAST"
+    "Water Pulse"
    ]
   },
   "gender": "50% M / 50% F",
@@ -222483,7 +222448,7 @@
     "Snore",
     "Spite",
     "Stealth Rock",
-    "Trick PALOSSAND"
+    "Trick"
    ]
   },
   "gender": "50% M / 50% F",
@@ -222735,7 +222700,7 @@
     "Snore",
     "Spite",
     "Stealth Rock",
-    "Trick PYUKUMUKU"
+    "Trick"
    ]
   },
   "gender": "50% M / 50% F",
@@ -222982,7 +222947,7 @@
     "Gastro Acid",
     "Helping Hand",
     "Pain Split",
-    "Recycle TYPE: NULL"
+    "Recycle"
    ]
   },
   "gender": "50% M / 50% F",
@@ -223246,7 +223211,7 @@
     "Last Resort",
     "Magic Coat",
     "Signal Beam",
-    "Snore SILVALLY"
+    "Snore"
    ]
   },
   "gender": "No Gender",
@@ -223538,7 +223503,7 @@
     "Tailwind",
     "Thunder Fang (N)",
     "Water Pledge",
-    "Zen Headbutt MINIOR Meteor"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -224277,7 +224242,7 @@
     "Snore",
     "Stomping Tantrum",
     "Superpower",
-    "Zen Headbutt TURTONATOR"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -224552,7 +224517,7 @@
     "Shock Wave",
     "Snore",
     "Stomping Tantrum",
-    "Uproar TOGEDEMARU"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -224823,7 +224788,7 @@
     "Shock Wave",
     "Snore",
     "Super Fang",
-    "Zen Headbutt MIMIKYU"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -225095,7 +225060,7 @@
     "Spite",
     "Telekinesis",
     "Trick",
-    "Wood Hammer (N) BRUXISH"
+    "Wood Hammer (N)"
    ]
   },
   "gender": "50% M / 50% F",
@@ -225349,7 +225314,7 @@
     "Telekinesis",
     "Uproar",
     "Water Pulse",
-    "Wonder Room DRAMPA"
+    "Wonder Room"
    ]
   },
   "gender": "50% M / 50% F",
@@ -225636,7 +225601,7 @@
     "Superpower",
     "Tailwind",
     "Uproar",
-    "Water Pulse DHELMISE"
+    "Water Pulse"
    ]
   },
   "gender": "50% M / 50% F",
@@ -225911,7 +225876,7 @@
     "Snore",
     "Spite",
     "Synthesis",
-    "Telekinesis JANGMO-O"
+    "Telekinesis"
    ]
   },
   "gender": "No Gender",
@@ -226179,7 +226144,7 @@
     "Low Kick",
     "Outrage",
     "Snore",
-    "Uproar HAKAMO-O"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -226451,7 +226416,7 @@
     "Low Kick",
     "Outrage",
     "Snore",
-    "Uproar KOMMO-O"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -226741,7 +226706,7 @@
     "Superpower",
     "Thunder Punch",
     "Uproar",
-    "Water Pulse RATTATA Alola"
+    "Water Pulse"
    ]
   },
   "gender": "50% M / 50% F",
@@ -227005,7 +226970,7 @@
     "Sky Attack",
     "Snore",
     "Telekinesis",
-    "Thunder Punch TAPU LELE"
+    "Thunder Punch"
    ]
   },
   "gender": "No Gender",
@@ -227263,7 +227228,7 @@
     "Skill Swap",
     "Snore",
     "Telekinesis",
-    "Wonder Room TAPU BULU"
+    "Wonder Room"
    ]
   },
   "gender": "No Gender",
@@ -227527,7 +227492,7 @@
     "Telekinesis",
     "Wood Hammer (N)",
     "Worry Seed",
-    "Zen Headbutt TAPU FINI"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -227786,7 +227751,7 @@
     "Telekinesis",
     "Trick",
     "Water Pulse",
-    "Wonder Room COSMOG"
+    "Wonder Room"
    ]
   },
   "gender": "No Gender",
@@ -228383,7 +228348,7 @@
     "Superpower",
     "Teleport (N)",
     "Wake-Up Slap (N)",
-    "Zen Headbutt LUNALA"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -228664,7 +228629,7 @@
     "Telekinesis",
     "Teleport (N)",
     "Trick",
-    "Wonder Room NECROZMA"
+    "Wonder Room"
    ]
   },
   "gender": "No Gender",
@@ -228937,7 +228902,7 @@
     "Telekinesis",
     "Wonder Room",
     "Worry Seed",
-    "Zen Headbutt BUZZWOLE"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -229199,7 +229164,7 @@
     "Snore",
     "Stomping Tantrum",
     "Superpower",
-    "Thunder Punch (N) PHEROMOSA"
+    "Thunder Punch (N)"
    ]
   },
   "gender": "No Gender",
@@ -229462,7 +229427,7 @@
     "Signal Beam",
     "Snatch",
     "Snore",
-    "Throat Chop XURKITREE"
+    "Throat Chop"
    ]
   },
   "gender": "No Gender",
@@ -229728,7 +229693,7 @@
     "Signal Beam",
     "Snore",
     "Tail Glow (N)",
-    "Thunder Punch CELESTEELA"
+    "Thunder Punch"
    ]
   },
   "gender": "No Gender",
@@ -229996,7 +229961,7 @@
     "Stomping Tantrum",
     "Superpower",
     "Wide Guard (N)",
-    "Zen Headbutt KARTANA"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -230249,7 +230214,7 @@
     "Snore",
     "Synthesis",
     "Tailwind",
-    "Vacuum Wave (N) GUZZLORD"
+    "Vacuum Wave (N)"
    ]
   },
   "gender": "No Gender",
@@ -230527,7 +230492,7 @@
     "Shock Wave",
     "Snore",
     "Stomping Tantrum",
-    "Wide Guard (N) POIPOLE"
+    "Wide Guard (N)"
    ]
   },
   "gender": "No Gender",
@@ -230804,7 +230769,7 @@
     "Signal Beam",
     "Snore",
     "Stealth Rock",
-    "Telekinesis NECROZMA Dusk Mane"
+    "Telekinesis"
    ]
   },
   "gender": "No Gender",
@@ -231424,7 +231389,11 @@
    ],
    "tmhm": [],
    "egg": [],
-   "tutor": []
+   "tutor": [
+    "Thousand Arrows",
+    "Thousand Waves",
+    "Core Enforcer"
+   ]
   },
   "order": 866
  },
@@ -231634,9 +231603,14 @@
    ],
    "tmhm": [],
    "egg": [],
-   "tutor": []
+   "tutor": [
+    "Thousand Arrows",
+    "Thousand Waves",
+    "Core Enforcer"
+   ]
   },
-  "order": 867
+  "order": 867,
+  "megaEvolution": "Type: Unchanged Ability: Aura Break Stats: -3 Atk, -3 Def, +13 Sp. Atk, -1 Sp. Def, +1 Speed"
  },
  {
   "name": "Magearna",
@@ -231898,7 +231872,7 @@
     "Shock Wave",
     "Signal Beam",
     "Snore",
-    "Zen Headbutt MARSHADOW"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -232169,7 +232143,7 @@
     "Superpower",
     "Throat Chop",
     "Thunder Punch (N)",
-    "Zen Headbutt ZERAORA"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -232432,7 +232406,7 @@
     "Steam Eruption (N)",
     "Stomping Tantrum",
     "Superpower",
-    "Water Pulse NIHILEGO"
+    "Water Pulse"
    ]
   },
   "gender": "No Gender",
@@ -232661,7 +232635,7 @@
     "Signal Beam",
     "Snatch",
     "Snore",
-    "Uproar NAGANADEL"
+    "Uproar"
    ]
   },
   "gender": "No Gender",
@@ -232909,7 +232883,7 @@
     "Snore",
     "Tailwind",
     "Throat Chop",
-    "Uproar STAKATAKA"
+    "Uproar"
    ]
   },
   "gender": "No Gender",
@@ -233158,7 +233132,7 @@
     "Superpower",
     "Telekinesis",
     "Wonder Room",
-    "Zen Headbutt BLACEPHALON"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -233404,7 +233378,7 @@
     "Snore",
     "Spite",
     "Trick",
-    "Uproar MAGEARNA"
+    "Uproar"
    ]
   },
   "gender": "No Gender",
@@ -233671,7 +233645,7 @@
     "Snore",
     "Superpower",
     "Throat Chop",
-    "Thunder Punch TABLE OF CONTENTS . . . . . . . . . . . . . . . . . . . . . . . .002 GROOKEY . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 003 SCORBUNNY . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .006 SOBBLE . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 009 SKWOVET . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 012 ROOKIDEE . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .014 BLIPBUG . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 017 NICKIT . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .020 GOSSIFLEUR . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 022 WOOLOO . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 024 CHEWTLE . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 026 YAMPER . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 028 ROLYCOLY . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .030 APPLIN . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 033 SILICOBRA . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .036 CRAMORANT . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 038 ARROKUDA . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .039 TOXEL . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 041 SIZZLIPEDE . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 043 CLOBBOPUS . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 045 SINISTEA . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .047 HATENNA . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 049 IMPIDIMP . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .052 MILCERY . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 055 FALINKS . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .057 PINCURCHIN . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .058 SNOM . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 059 STONJOURNER . . . . . . . . . . . . . . . . . . . . . . . . . . . . .061 EISCUE . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .062 INDEEDEE . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 064 MORPEKO . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .066 CUFANT . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .067 DRACOZOLT . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 069 ARCTOZOLT . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 070 DRACOVISH . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 071 ARCTOVISH . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .072 DURALUDON . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 073 DREEPY . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .074 GALARIAN MEOWTH . . . . . . . . . . . . . . . . . . . . . . . .077 GALARIAN PONYTA . . . . . . . . . . . . . . . . . . . . . . . . . 079 GALARIAN FARFETCH'D . . . . . . . . . . . . . . . . . . . . . .081 GALARIAN WEEZING . . . . . . . . . . . . . . . . . . . . . . . . 083 GALARIAN MR. MIME . . . . . . . . . . . . . . . . . . . . . . . 084 GALARIAN CORSOLA . . . . . . . . . . . . . . . . . . . . . . . . 086 GALARIAN ZIGZAGOON . . . . . . . . . . . . . . . . . . . . . .088 GALARIAN DARUMAKA . . . . . . . . . . . . . . . . . . . . . .091 GALARIAN YAMASK . . . . . . . . . . . . . . . . . . . . . . . . .094 GALARIAN STUNFISK . . . . . . . . . . . . . . . . . . . . . . . . 096 GALARIAN SLOWPOKE . . . . . . . . . . . . . . . . . . . . . . .097 ZACIAN . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 100 ZAMAZENTA . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .102 ETERNATUS . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 104 MELTAN . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 105 KUBFU . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .107 ZARUDE . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .110 GALARIAN ARTICUNO . . . . . . . . . . . . . . . . . . . . . . . 111 GALARIAN ZAPDOS . . . . . . . . . . . . . . . . . . . . . . . . . 112 GALARIAN MOLTRES . . . . . . . . . . . . . . . . . . . . . . . . 113 REGIELEKI . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .114 REGIDRAGO . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 115 GLASTRIER . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 116 SPECTRIER . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 117 CALYREX . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .118 GROOKEY"
+    "Thunder Punch"
    ]
   },
   "gender": "No Gender",
@@ -233875,7 +233849,34 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "12 Taunt",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "53 Energy Ball",
+    "54 False Swipe",
+    "56 Fling",
+    "62 Acrobatics",
+    "75 Swords Dance",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "86 Grass Knot",
+    "89 U-Turn",
+    "90 Substitute",
+    "96 Nature Power",
+    "100 Confide"
+   ],
    "egg": [
     "Fake Out",
     "Growth",
@@ -233896,7 +233897,7 @@
     "Snore",
     "Swift",
     "Uproar",
-    "Worry Seed THWACKEY"
+    "Worry Seed"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -234094,7 +234095,34 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "12 Taunt",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "53 Energy Ball",
+    "54 False Swipe",
+    "56 Fling",
+    "62 Acrobatics",
+    "75 Swords Dance",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "86 Grass Knot",
+    "89 U-Turn",
+    "90 Substitute",
+    "96 Nature Power",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Drain Punch",
@@ -234109,7 +234137,7 @@
     "Snore",
     "Swift",
     "Uproar",
-    "Worry Seed RILLABOOM"
+    "Worry Seed"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -234311,7 +234339,43 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "26 Earthquake",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "52 Focus Blast",
+    "53 Energy Ball",
+    "54 False Swipe",
+    "56 Fling",
+    "59 Brutal Swing",
+    "62 Acrobatics",
+    "68 Giga Impact",
+    "75 Swords Dance",
+    "78 Bulldoze",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "86 Grass Knot",
+    "89 U-Turn",
+    "90 Substitute",
+    "95 Snarl",
+    "96 Nature Power",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -234336,7 +234400,7 @@
     "Superpower",
     "Swift",
     "Uproar",
-    "Worry Seed SCORBUNNY"
+    "Worry Seed"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -234539,7 +234603,32 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "12 Taunt",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "35 Flamethrower",
+    "38 Fire Blast",
+    "42 Facade",
+    "43 Flame Charge",
+    "44 Rest",
+    "45 Attract",
+    "47 Low Sweep",
+    "48 Round",
+    "50 Overheat",
+    "62 Acrobatics",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 U-Turn",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [
     "High Jump Kick",
     "Sand Attack",
@@ -234559,7 +234648,7 @@
     "Snore",
     "Sucker Punch",
     "Super Fang",
-    "Swift RABOOT"
+    "Swift"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -234752,7 +234841,33 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "12 Taunt",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "35 Flamethrower",
+    "38 Fire Blast",
+    "42 Facade",
+    "43 Flame Charge",
+    "44 Rest",
+    "45 Attract",
+    "47 Low Sweep",
+    "48 Round",
+    "50 Overheat",
+    "62 Acrobatics",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 U-Turn",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ally Switch",
@@ -234767,7 +234882,7 @@
     "Snore",
     "Sucker Punch",
     "Super Fang",
-    "Swift CINDERACE"
+    "Swift"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -234969,7 +235084,38 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "35 Flamethrower",
+    "38 Fire Blast",
+    "42 Facade",
+    "43 Flame Charge",
+    "44 Rest",
+    "45 Attract",
+    "47 Low Sweep",
+    "48 Round",
+    "50 Overheat",
+    "52 Focus Blast",
+    "62 Acrobatics",
+    "68 Giga Impact",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 UTurn",
+    "90 Substitute",
+    "95 Snarl",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ally Switch",
@@ -234990,7 +235136,7 @@
     "Sucker Punch",
     "Super Fang",
     "Swift",
-    "Zen Headbutt SOBBLE"
+    "Zen Headbutt"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -235193,7 +235339,29 @@
      "type": "Water"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "10 Hidden Power",
+    "16 Light Screen",
+    "17 Protect",
+    "18 Rain Dance",
+    "20 Safeguard",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "33 Reflect",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 U-Turn",
+    "90 Substitute",
+    "94 Surf",
+    "100 Confide"
+   ],
    "egg": [
     "Aqua Jet",
     "Aqua Ring",
@@ -235212,7 +235380,7 @@
     "Swift",
     "Water Pledge",
     "Water Pulse",
-    "Whirlpool DRIZZILE"
+    "Whirlpool"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -235406,7 +235574,30 @@
      "type": "Water"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "10 Hidden Power",
+    "16 Light Screen",
+    "17 Protect",
+    "18 Rain Dance",
+    "20 Safeguard",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "33 Reflect",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "56 Fling",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 U-Turn",
+    "90 Substitute",
+    "94 Surf",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Bounce",
@@ -235418,7 +235609,7 @@
     "Swift",
     "Water Pledge",
     "Water Pulse",
-    "Whirlpool INTELEON"
+    "Whirlpool"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -235622,7 +235813,38 @@
      "type": "Water"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "18 Rain Dance",
+    "20 Safeguard",
+    "21 Frustration",
+    "27 Return",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "33 Reflect",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "55 Scald",
+    "56 Fling",
+    "62 Acrobatics",
+    "68 Giga Impact",
+    "75 Swords Dance",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 U-Turn",
+    "90 Substitute",
+    "94 Surf",
+    "97 Dark Pulse",
+    "98 Waterfall",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Acrobatics (N)",
@@ -235638,7 +235860,7 @@
     "Swift",
     "Water Pledge",
     "Water Pulse",
-    "Whirlpool SKWOVET"
+    "Whirlpool"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -235842,7 +236064,27 @@
      "type": "Poison"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "56 Fling",
+    "59 Brutal Swing",
+    "66 Payback",
+    "74 Gyro Ball",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [
     "Belly Drum",
     "Defense Curl",
@@ -235861,7 +236103,7 @@
     "Seed Bomb",
     "Snore",
     "Super Fang",
-    "Uproar GREEDENT"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -236058,7 +236300,32 @@
      "type": "Poison"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "26 Earthquake",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "56 Fling",
+    "59 Brutal Swing",
+    "66 Payback",
+    "68 Giga Impact",
+    "74 Gyro Ball",
+    "75 Swords Dance",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "93 Wild Charge",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -236075,7 +236342,7 @@
     "Stomping Tantrum",
     "Super Fang",
     "Superpower",
-    "Uproar ROOKIDEE"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -236275,7 +236542,29 @@
      "type": "Flying"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "10 Hidden Power",
+    "12 Taunt",
+    "17 Protect",
+    "19 Roost",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "66 Payback",
+    "76 Fly",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 U-Turn",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [
     "Defog",
     "Rock Smash",
@@ -236292,7 +236581,7 @@
     "Snore",
     "Spite",
     "Swift",
-    "Tailwind CORVISQUIRE"
+    "Tailwind"
    ]
   },
   "gender": "50% M / 50% F",
@@ -236482,7 +236771,29 @@
      "type": "Flying"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "10 Hidden Power",
+    "12 Taunt",
+    "17 Protect",
+    "19 Roost",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "66 Payback",
+    "76 Fly",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 U-Turn",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Defog",
@@ -236492,7 +236803,7 @@
     "Snore",
     "Spite",
     "Swift",
-    "Tailwind CORVIKNIGHT"
+    "Tailwind"
    ]
   },
   "gender": "50% M / 50% F",
@@ -236688,7 +236999,35 @@
      "type": "Flying"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "19 Roost",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "33 Reflect",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "51 Steel Wing",
+    "66 Payback",
+    "76 Fly",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 UTurn",
+    "90 Substitute",
+    "91 Flash Cannon",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -236703,7 +237042,7 @@
     "Spite",
     "Steel Beam",
     "Swift",
-    "Tailwind BLIPBUG"
+    "Tailwind"
    ]
   },
   "gender": "50% M / 50% F",
@@ -236856,12 +237195,14 @@
      "type": "Bug"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "83 Infestation"
+   ],
    "egg": [
     "Infestation",
     "Recover",
     "Sticky Web",
-    "Supersonic DOTTLER"
+    "Supersonic"
    ],
    "tutor": []
   },
@@ -237028,7 +237369,33 @@
      "type": "Psychic"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "03 Psyshock",
+    "04 Calm Mind",
+    "06 Toxic",
+    "10 Hidden Power",
+    "16 Light Screen",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "22 Solar Beam",
+    "27 Return",
+    "28 Leech Life",
+    "29 Psychic",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "33 Reflect",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "53 Energy Ball",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "92 Trick Room",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ally Switch",
@@ -237041,7 +237408,7 @@
     "Snore",
     "Trick",
     "Wonder Room",
-    "Zen Headbutt ORBEETLE"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -237251,7 +237618,36 @@
      "type": "Psychic"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "03 Psyshock",
+    "04 Calm Mind",
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "22 Solar Beam",
+    "27 Return",
+    "28 Leech Life",
+    "29 Psychic",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "33 Reflect",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "53 Energy Ball",
+    "66 Payback",
+    "68 Giga Impact",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "92 Trick Room",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ally Switch",
@@ -237269,7 +237665,7 @@
     "Snore",
     "Trick",
     "Wonder Room",
-    "Zen Headbutt NICKIT"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -237468,7 +237864,26 @@
      "type": "Dark"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "12 Taunt",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "41 Torment",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "95 Snarl",
+    "100 Confide"
+   ],
    "egg": [
     "Howl",
     "Knock Off",
@@ -237480,7 +237895,7 @@
     "Knock Off",
     "Snore",
     "Sucker Punch",
-    "Swift THIEVUL"
+    "Swift"
    ]
   },
   "gender": "50% M / 50% F",
@@ -237679,7 +238094,34 @@
      "type": "Dark"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "41 Torment",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "62 Acrobatics",
+    "65 Shadow Claw",
+    "68 Giga Impact",
+    "86 Grass Knot",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 U-Turn",
+    "90 Substitute",
+    "95 Snarl",
+    "97 Dark Pulse",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Endure",
@@ -237687,7 +238129,7 @@
     "Knock Off",
     "Snore",
     "Sucker Punch",
-    "Swift GOSSIFLEUR"
+    "Swift"
    ]
   },
   "gender": "50% M / 50% F",
@@ -237882,7 +238324,27 @@
      "type": "Grass"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "16 Light Screen",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "53 Energy Ball",
+    "86 Grass Knot",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [
     "Growth",
     "Leech Seed",
@@ -237899,7 +238361,7 @@
     "Hyper Voice",
     "Snore",
     "Synthesis",
-    "Worry Seed ELDEGOSS"
+    "Worry Seed"
    ]
   },
   "gender": "50% M / 50% F",
@@ -238094,7 +238556,29 @@
      "type": "Grass"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "53 Energy Ball",
+    "68 Giga Impact",
+    "86 Grass Knot",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Bullet Seed",
@@ -238105,7 +238589,7 @@
     "Seed Bomb",
     "Snore",
     "Synthesis",
-    "Worry Seed WOOLOO"
+    "Worry Seed"
    ]
   },
   "gender": "50% M / 50% F",
@@ -238306,7 +238790,25 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "66 Payback",
+    "73 Thunder Wave",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "93 Wild Charge",
+    "100 Confide"
+   ],
    "egg": [
     "Counter",
     "Stomp"
@@ -238314,7 +238816,7 @@
    "tutor": [
     "Double-Edge",
     "Endure",
-    "Snore DUBWOOL"
+    "Snore"
    ]
   },
   "gender": "50% M / 50% F",
@@ -238508,7 +239010,28 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "66 Payback",
+    "68 Giga Impact",
+    "73 Thunder Wave",
+    "75 Swords Dance",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "93 Wild Charge",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -238519,7 +239042,7 @@
     "Last Resort",
     "Mega Kick",
     "Snore",
-    "Zen Headbutt CHEWTLE"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -238706,7 +239229,26 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "17 Protect",
+    "18 Rain Dance",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "66 Payback",
+    "82 Dragon Tail",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "94 Surf",
+    "100 Confide"
+   ],
    "egg": [
     "Gastro Acid",
     "Skull Bash"
@@ -238718,7 +239260,7 @@
     "Gastro Acid",
     "Liquidation",
     "Snore",
-    "Whirlpool DREDNAW"
+    "Whirlpool"
    ]
   },
   "gender": "50% M / 50% F",
@@ -238906,7 +239448,43 @@
      "type": "Rock"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "13 Ice Beam",
+    "14 Blizzard",
+    "15 Hyper Beam",
+    "17 Protect",
+    "18 Rain Dance",
+    "21 Frustration",
+    "26 Earthquake",
+    "27 Return",
+    "32 Double Team",
+    "37 Sandstorm",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "54 False Swipe",
+    "55 Scald",
+    "66 Payback",
+    "67 Smart Strike",
+    "68 Giga Impact",
+    "69 Rock Polish",
+    "71 Stone Edge",
+    "75 Swords Dance",
+    "78 Bulldoze",
+    "80 Rock Slide",
+    "82 Dragon Tail",
+    "84 Poison Jab",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "94 Surf",
+    "98 Waterfall",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -238926,7 +239504,7 @@
     "Stomping Tantrum",
     "Superpower",
     "Throat Chop",
-    "Whirlpool YAMPER"
+    "Whirlpool"
    ]
   },
   "gender": "50% M / 50% F",
@@ -239123,7 +239701,29 @@
      "type": "Fairy"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "17 Protect",
+    "21 Frustration",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "43 Flame Charge",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "72 Volt Switch",
+    "73 Thunder Wave",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "93 Wild Charge",
+    "95 Snarl",
+    "100 Confide"
+   ],
    "egg": [
     "Discharge",
     "Double-Edge",
@@ -239135,7 +239735,7 @@
     "Endure",
     "Helping Hand",
     "Swift",
-    "Uproar BOLTUND"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -239326,7 +239926,31 @@
      "type": "Electric"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "43 Flame Charge",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "68 Giga Impact",
+    "72 Volt Switch",
+    "73 Thunder Wave",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "93 Wild Charge",
+    "95 Snarl",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Double-Edge",
@@ -239335,7 +239959,7 @@
     "Helping Hand",
     "Hyper Voice",
     "Swift",
-    "Uproar ROLYCOLY"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -239533,7 +240157,32 @@
      "type": "Rock"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "17 Protect",
+    "21 Frustration",
+    "23 Smack Down",
+    "27 Return",
+    "32 Double Team",
+    "33 Reflect",
+    "37 Sandstorm",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "61 Will-OWisp",
+    "64 Explosion",
+    "69 Rock Polish",
+    "71 Stone Edge",
+    "74 Gyro Ball",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [
     "Block",
     "Mud-Slap"
@@ -239546,7 +240195,7 @@
     "Iron Head",
     "Mud-Slap",
     "Snore",
-    "Stealth Rock CARKOL"
+    "Stealth Rock"
    ]
   },
   "gender": "50% M / 50% F",
@@ -239748,7 +240397,36 @@
      "type": "Fire"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "17 Protect",
+    "21 Frustration",
+    "23 Smack Down",
+    "27 Return",
+    "32 Double Team",
+    "33 Reflect",
+    "35 Flamethrower",
+    "37 Sandstorm",
+    "38 Fire Blast",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "50 Overheat",
+    "55 Scald",
+    "61 Will-OWisp",
+    "64 Explosion",
+    "69 Rock Polish",
+    "71 Stone Edge",
+    "74 Gyro Ball",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ancient Power",
@@ -239760,7 +240438,7 @@
     "Iron Head",
     "Mud-Slap",
     "Snore",
-    "Stealth Rock COALOSSAL"
+    "Stealth Rock"
    ]
   },
   "gender": "50% M / 50% F",
@@ -239961,7 +240639,41 @@
      "type": "Fire"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "23 Smack Down",
+    "26 Earthquake",
+    "27 Return",
+    "32 Double Team",
+    "33 Reflect",
+    "35 Flamethrower",
+    "37 Sandstorm",
+    "38 Fire Blast",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "50 Overheat",
+    "55 Scald",
+    "61 Will-O-Wisp",
+    "64 Explosion",
+    "68 Giga Impact",
+    "69 Rock Polish",
+    "71 Stone Edge",
+    "74 Gyro Ball",
+    "78 Bulldoze",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ancient Power",
@@ -239979,7 +240691,7 @@
     "Mega Punch",
     "Mud-Slap",
     "Snore",
-    "Stealth Rock APPLIN"
+    "Stealth Rock"
    ]
   },
   "gender": "50% M / 50% F",
@@ -240149,7 +240861,9 @@
      "type": "Ghost"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "45 Attract"
+   ],
    "egg": [
     "Defense Curl",
     "Recycle",
@@ -240161,7 +240875,7 @@
     "Draco Meteor",
     "Recycle",
     "Rollout",
-    "Sucker Punch FLAPPLE"
+    "Sucker Punch"
    ]
   },
   "gender": "50% M / 50% F",
@@ -240366,7 +241080,31 @@
      "type": "Dragon"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "16 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "53 Energy Ball",
+    "62 Acrobatics",
+    "68 Giga Impact",
+    "72 Fly",
+    "76 Grass Knot",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 U-Turn",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Bullet Seed",
@@ -240383,7 +241121,7 @@
     "Seed Bomb",
     "Snore",
     "Sucker Punch",
-    "Twister (N) APPLETUN"
+    "Twister (N)"
    ]
   },
   "gender": "50% M / 50% F",
@@ -240587,7 +241325,35 @@
      "type": "Grass"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "22 Solar Beam",
+    "26 Earthquake",
+    "27 Return",
+    "32 Double Team",
+    "33 Reflect",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "53 Energy Ball",
+    "66 Payback",
+    "68 Giga Impact",
+    "74 Gyro Ball",
+    "78 Bulldoze",
+    "86 Grass Knot",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -240607,7 +241373,7 @@
     "Snore",
     "Sucker Punch",
     "Superpower",
-    "Sweet Scent (N) SILICOBRA"
+    "Sweet Scent (N)"
    ]
   },
   "gender": "50% M / 50% F",
@@ -240809,7 +241575,26 @@
      "type": "Ground"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "17 Protect",
+    "21 Frustration",
+    "26 Earthquake",
+    "27 Return",
+    "32 Double Team",
+    "37 Sandstorm",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "59 Brutal Swing",
+    "78 Bulldoze",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [
     "Belch",
     "Dragon Rush",
@@ -240823,7 +241608,7 @@
     "Endure",
     "Last Resort",
     "Mud- Slap",
-    "Snore SANDACONDA"
+    "Snore"
    ]
   },
   "gender": "50% M / 50% F",
@@ -241013,7 +241798,31 @@
      "type": "Ground"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "26 Earthquake",
+    "27 Return",
+    "32 Double Team",
+    "37 Sandstorm",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "59 Brutal Swing",
+    "68 Giga Impact",
+    "71 Stone Edge",
+    "78 Bulldoze",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -241028,7 +241837,7 @@
     "Skull Bash (N)",
     "Snore",
     "Stealth Rock",
-    "Zen Headbutt CRAMORANT"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -241224,7 +242033,34 @@
      "type": "Water"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "13 Ice Beam",
+    "14 Blizzard",
+    "15 Hyper Beam",
+    "17 Protect",
+    "18 Rain Dance",
+    "19 Roost",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "40 Aerial Ace",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "51 Steel Wing",
+    "55 Scald",
+    "68 Giga Impact",
+    "76 Fly",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "94 Surf",
+    "100 Confide"
+   ],
    "egg": [
     "Aqua Ring",
     "Defog",
@@ -241242,7 +242078,7 @@
     "Superpower",
     "Throat Chop",
     "Uproar",
-    "Whirlpool ARROKUDA"
+    "Whirlpool"
    ]
   },
   "gender": "50% M / 50% F",
@@ -241433,7 +242269,27 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "17 Protect",
+    "18 Rain Dance",
+    "21 Frustration",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "55 Scald",
+    "84 Poison Jab",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "98 Waterfall",
+    "100 Confide"
+   ],
    "egg": [
     "Acupressure",
     "Night Slash",
@@ -241451,7 +242307,7 @@
     "Snore",
     "Swift",
     "Throat Chop",
-    "Whirlpool BARRASKEWDA"
+    "Whirlpool"
    ]
   },
   "gender": "50% M / 50% F",
@@ -241631,7 +242487,30 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "17 Protect",
+    "18 Rain Dance",
+    "21 Frustration",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "55 Scald",
+    "68 Giga Impact",
+    "84 Poison Jab",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "94 Surf",
+    "98 Waterfall",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Bounce",
@@ -241644,7 +242523,7 @@
     "Snore",
     "Swift",
     "Throat Chop (N)",
-    "Whirlpool TOXEL"
+    "Whirlpool"
    ]
   },
   "gender": "50% M / 50% F",
@@ -241808,7 +242687,22 @@
      "type": "Poison"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [
     "Endeavor",
     "Metal Sound",
@@ -241819,7 +242713,7 @@
     "Endeavor",
     "Endure",
     "Tearful Look (N)",
-    "Snore TOXTRICITY"
+    "Snore"
    ]
   },
   "gender": "50% M / 50% F",
@@ -242042,7 +242936,37 @@
      "type": "Electric"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "09 Venoshock",
+    "10 Hidden Power",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "27 Return",
+    "32 Double Team",
+    "34 Sludge Wave",
+    "36 Sludge Bomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "56 Fling",
+    "66 Payback",
+    "68 Giga Impact",
+    "72 Volt Switch",
+    "73 Thunder Wave",
+    "84 Poison Jab",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "93 Wild Charge",
+    "95 Snarl",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Acid Spray (N)",
@@ -242065,7 +242989,7 @@
     "Throat Chop",
     "Thunder Punch",
     "Thunder Shock (N)",
-    "Uproar SIZZLIPEDE"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -242276,7 +243200,27 @@
      "type": "Fire"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "09 Venoshock",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "28 Leech Life",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "55 Scald",
+    "59 Brutal Swing",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [
     "Defense Curl",
     "Knock Off",
@@ -242290,7 +243234,7 @@
     "Heat Wave",
     "Knock Off",
     "Rollout",
-    "Snore CENTISKORCH"
+    "Snore"
    ]
   },
   "gender": "50% M / 50% F",
@@ -242491,7 +243435,35 @@
      "type": "Fire"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "09 Venoshock",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "27 Return",
+    "28 Leech Life",
+    "32 Double Team",
+    "35 Flamethrower",
+    "38 Fire Blast",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "50 Overheat",
+    "55 Scald",
+    "59 Brutal Swing",
+    "61 Will-O-Wisp",
+    "68 Giga Impact",
+    "81 XScissor",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Bug Bite",
@@ -242501,7 +243473,7 @@
     "Inferno (N)",
     "Knock Off",
     "Rollout",
-    "Snore CLOBBOPUS"
+    "Snore"
    ]
   },
   "gender": "50% M / 50% F",
@@ -242697,7 +243669,29 @@
      "type": "Fighting"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "12 Taunt",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "52 Focus Blast",
+    "66 Payback",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "98 Waterfall",
+    "100 Confide"
+   ],
    "egg": [
     "Circle Throw",
     "Pain Split",
@@ -242717,7 +243711,7 @@
     "Pain Split",
     "Snore",
     "Sucker Punch",
-    "Superpower GRAPPLOCT"
+    "Superpower"
    ]
   },
   "gender": "50% M / 50% F",
@@ -242912,7 +243906,33 @@
      "type": "Dark"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "52 Focus Blast",
+    "59 Brutal Swing",
+    "66 Payback",
+    "68 Giga Impact",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "94 Surf",
+    "98 Waterfall",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Slam",
@@ -242929,7 +243949,7 @@
     "Stomping Tantrum",
     "Sucker Punch",
     "Superpower",
-    "Whirlpool SINISTEA"
+    "Whirlpool"
    ]
   },
   "gender": "50% M / 50% F",
@@ -243133,7 +244153,27 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "03 Psyshock",
+    "06 Toxic",
+    "10 Hidden Power",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "29 Psychic",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "48 Round",
+    "61 Will-O-Wisp",
+    "66 Payback",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "97 Dark Pulse",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ally Switch",
@@ -243144,7 +244184,7 @@
     "Snore",
     "Sucker Punch",
     "Trick",
-    "Wonder Room POLTEAGEIST"
+    "Wonder Room"
    ]
   },
   "gender": "No Gender",
@@ -243347,7 +244387,32 @@
      "type": "Ghost"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "03 Psyshock",
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "29 Psychic",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "33 Reflect",
+    "42 Facade",
+    "44 Rest",
+    "48 Round",
+    "61 Will-O-Wisp",
+    "64 Explosion",
+    "66 Payback",
+    "68 Giga Impact",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "97 Dark Pulse",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ally Switch",
@@ -243359,7 +244424,7 @@
     "Strength Sap (N)",
     "Sucker Punch",
     "Trick",
-    "Wonder Room HATENNA"
+    "Wonder Room"
    ]
   },
   "gender": "No Gender",
@@ -243562,7 +244627,31 @@
      "type": "Psychic"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "03 Psyshock",
+    "04 Calm Mind",
+    "06 Toxic",
+    "10 Hidden Power",
+    "16 Light Screen",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "27 Return",
+    "29 Psychic",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "60 Quash",
+    "73 Thunder Wave",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "97 Dark Pulse",
+    "99 Dazzling Gleam",
+    "100 Confide"
+   ],
    "egg": [
     "After You",
     "Aromatic Mist",
@@ -243575,7 +244664,7 @@
     "Giga Drain",
     "Helping Hand",
     "Skill Swap",
-    "Snore HATTREM"
+    "Snore"
    ]
   },
   "gender": "0% M / 100% F",
@@ -243773,7 +244862,32 @@
      "type": "Psychic"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "03 Psyshock",
+    "04 Calm Mind",
+    "06 Toxic",
+    "10 Hidden Power",
+    "16 Light Screen",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "27 Return",
+    "29 Psychic",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "59 Brutal Swing",
+    "60 Quash",
+    "73 Thunder Wave",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "97 Dark Pulse",
+    "99 Dazzling Gleam",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "After You",
@@ -243781,7 +244895,7 @@
     "Giga Drain",
     "Helping Hand",
     "Skill Swap",
-    "Snore HATTERENE"
+    "Snore"
    ]
   },
   "gender": "0% M / 100% F",
@@ -243985,7 +245099,38 @@
      "type": "Psychic"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "03 Psyshock",
+    "04 Calm Mind",
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "27 Return",
+    "29 Psychic",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "59 Brutal Swing",
+    "60 Quash",
+    "65 Shadow Claw",
+    "68 Giga Impact",
+    "73 Thunder Wave",
+    "75 Swords Dance",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "92 Trick Room",
+    "97 Dark Pulse",
+    "99 Dazzling Gleam",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "After You",
@@ -243996,7 +245141,7 @@
     "Magic Room",
     "Skill Swap",
     "Snore",
-    "Wonder Room IMPIDIMP"
+    "Wonder Room"
    ]
   },
   "gender": "0% M / 100% F",
@@ -244211,7 +245356,29 @@
      "type": "Dark"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "12 Taunt",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "28 Leech Life",
+    "32 Double Team",
+    "41 Torment",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "73 Thunder Wave",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "97 Dark Pulse",
+    "99 Dazzling Gleam",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Drain Punch",
@@ -244224,7 +245391,7 @@
     "Snore",
     "Sucker Punch",
     "Trick",
-    "Uproar MORGREM"
+    "Uproar"
    ]
   },
   "gender": "100% M / 0% F",
@@ -244434,7 +245601,32 @@
      "type": "Dark"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "12 Taunt",
+    "16 Light Screen",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "28 Leech Life",
+    "32 Double Team",
+    "33 Reflect",
+    "41 Torment",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "65 Shadow Claw",
+    "73 Thunder Wave",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "97 Dark Pulse",
+    "99 Dazzling Gleam",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Drain Punch",
@@ -244448,7 +245640,7 @@
     "Sucker Punch",
     "Throat Chop",
     "Trick",
-    "Uproar GRIMMSNARL"
+    "Uproar"
    ]
   },
   "gender": "100% M / 0% F",
@@ -244662,7 +245854,37 @@
      "type": "Fighting"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "28 Leech Life",
+    "31 Brick Break",
+    "32 Double Team",
+    "33 Reflect",
+    "41 Torment",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "52 Focus Blast",
+    "65 Shadow Claw",
+    "68 Giga Impact",
+    "73 Thunder Wave",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "97 Dark Pulse",
+    "99 Dazzling Gleam",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -244687,7 +245909,7 @@
     "Thunder Punch",
     "Trick",
     "Uproar",
-    "Wonder Room MILCERY"
+    "Wonder Room"
    ]
   },
   "gender": "100% M / 0% F",
@@ -244890,7 +246112,24 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "56 Fling",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "99 Dazzling Gleam",
+    "100 Confide"
+   ],
    "egg": [
     "Baby-Doll Eyes",
     "Last Resort"
@@ -244899,7 +246138,7 @@
     "Endure",
     "Helping Hand",
     "Last Resort",
-    "Snore ALCREMIE"
+    "Snore"
    ]
   },
   "gender": "0% M / 100% F",
@@ -245096,7 +246335,32 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "03 Psyshock",
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "22 Solar Beam",
+    "27 Return",
+    "29 Psychic",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "53 Energy Ball",
+    "56 Fling",
+    "68 Giga Impact",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "99 Dazzling Gleam",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Drain Punch",
@@ -245107,7 +246371,7 @@
     "Magic Room",
     "Metronome",
     "Snore",
-    "Wonder Room FALINKS"
+    "Wonder Room"
    ]
   },
   "gender": "0% M / 100% F",
@@ -245313,7 +246577,33 @@
      "type": "Fighting"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "48 Round",
+    "52 Focus Blast",
+    "54 False Swipe",
+    "66 Payback",
+    "67 Smart Strike",
+    "68 Giga Impact",
+    "75 Swords Dance",
+    "80 Rock Slide",
+    "84 Poison Jab",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Endure",
@@ -245323,7 +246613,7 @@
     "Snore",
     "Superpower",
     "Throat Chop",
-    "Zen Headbutt PINCURCHIN"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -245533,7 +246823,31 @@
      "type": "Electric"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "09 Venoshock",
+    "10 Hidden Power",
+    "17 Protect",
+    "21 Frustration",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "55 Scald",
+    "64 Explosion",
+    "66 Payback",
+    "73 Thunder Wave",
+    "84 Poison Jab",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "94 Surf",
+    "100 Confide"
+   ],
    "egg": [
     "Memento",
     "Sucker Punch"
@@ -245544,7 +246858,7 @@
     "Liquidation",
     "Snore",
     "Sucker Punch",
-    "Throat Chop SNOM"
+    "Throat Chop"
    ]
   },
   "gender": "50% M / 50% F",
@@ -245700,7 +247014,22 @@
      "type": "Bug"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [
     "Bug Bite",
     "Fairy Wind",
@@ -245709,7 +247038,7 @@
    "tutor": [
     "Bug Bite",
     "Endure",
-    "Snore FROSMOTH"
+    "Snore"
    ]
   },
   "gender": "50% M / 50% F",
@@ -245924,7 +247253,36 @@
      "type": "Bug"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "04 Calm Mind",
+    "06 Toxic",
+    "07 Hail",
+    "10 Hidden Power",
+    "13 Ice Beam",
+    "14 Blizzard",
+    "15 Hyper Beam",
+    "16 Reflect",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "27 Return",
+    "28 Leech Life",
+    "32 Double Team",
+    "33 Reflect",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "62 Acrobatics",
+    "68 Giga Impact",
+    "70 Aurora Veil",
+    "83 Infestation",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 U-Turn",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Attract (N)",
@@ -245936,7 +247294,7 @@
     "Helping Hand (N)",
     "Icy Wind (N)",
     "Snore",
-    "Tailwind STONJOURNER"
+    "Tailwind"
    ]
   },
   "gender": "50% M / 50% F",
@@ -246139,7 +247497,33 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "26 Earthquake",
+    "27 Return",
+    "32 Double Team",
+    "37 Sandstorm",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "59 Brutal Swing",
+    "64 Explosion",
+    "68 Giga Impact",
+    "69 Rock Polish",
+    "71 Stone Edge",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [
     "Ancient Power",
     "Curse"
@@ -246158,7 +247542,7 @@
     "Stealth Rock",
     "Stomping Tantrum",
     "Superpower",
-    "Wonder Room EISCUE Ice Face"
+    "Wonder Room"
    ]
   },
   "gender": "50% M / 50% F",
@@ -247130,7 +248514,36 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "12 Taunt",
+    "17 Protect",
+    "21 Frustration",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "41 Torment",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "56 Fling",
+    "60 Quash",
+    "66 Payback",
+    "72 Volt Switch",
+    "73 Thunder Wave",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "93 Wild Charge",
+    "95 Snarl",
+    "97 Dark Pulse",
+    "100 Confide"
+   ],
    "egg": [
     "Charge",
     "Fake Out",
@@ -247151,7 +248564,7 @@
     "Super Fang",
     "Swift",
     "Thunder Punch",
-    "Uproar CUFANT"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -247360,7 +248773,29 @@
      "type": "Fighting"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "10 Hidden Power",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "56 Fling",
+    "59 Brutal Swing",
+    "78 Bulldoze",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [
     "Belch",
     "Curse",
@@ -247385,7 +248820,7 @@
     "Steel Beam",
     "Stomping Tantrum",
     "Superpower",
-    "Zen Headbutt COPPERAJAH"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -247588,7 +249023,35 @@
      "type": "Fighting"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "26 Earthquake",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "56 Fling",
+    "59 Brutal Swing",
+    "66 Payback",
+    "68 Giga Impact",
+    "71 Stone Edge",
+    "78 Bulldoze",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "95 Snarl",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -247607,7 +249070,7 @@
     "Steel Beam",
     "Stomping Tantrum",
     "Superpower",
-    "Zen Headbutt DRACOZOLT"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -247811,7 +249274,40 @@
      "type": "Dragon"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "17 Protect",
+    "18 Rain Dance",
+    "21 Frustration",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "26 Earthquake",
+    "27 Return",
+    "32 Double Team",
+    "35 Flamethrower",
+    "38 Fire Blast",
+    "39 Rock Tomb",
+    "40 Aerial Ace",
+    "42 Facade",
+    "44 Rest",
+    "48 Round",
+    "59 Brutal Swing",
+    "68 Giga Impact",
+    "71 Stone Edge",
+    "73 Thunder Wave",
+    "78 Bulldoze",
+    "80 Rock Slide",
+    "82 Dragon Tail",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "93 Wild Charge",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ancient Power",
@@ -247826,7 +249322,7 @@
     "Outrage",
     "Pluck",
     "Stomping Tantrum",
-    "Thunder Punch ARCTOZOLT"
+    "Thunder Punch"
    ]
   },
   "gender": "No Gender",
@@ -248031,7 +249527,39 @@
      "type": "Ice"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "09 Hail",
+    "10 Hidden Power",
+    "12 Taunt",
+    "13 Ice Beam",
+    "14 Blizzard",
+    "15 Hyper Beam",
+    "17 Protect",
+    "18 Rain Dance",
+    "21 Frustration",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "27 Return",
+    "32 Double Team",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "48 Round",
+    "49 Echoed Voice",
+    "66 Payback",
+    "68 Giga Impact",
+    "71 Stone Edge",
+    "73 Thunder Wave",
+    "78 Bulldoze",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "93 Wild Charge",
+    "94 Surf",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Avalanche",
@@ -248046,7 +249574,7 @@
     "Mega Punch",
     "Pluck",
     "Stomping Tantrum",
-    "Thunder Punch DRACOVISH"
+    "Thunder Punch"
    ]
   },
   "gender": "No Gender",
@@ -248250,7 +249778,34 @@
      "type": "Dragon"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "17 Protect",
+    "18 Rain Dance",
+    "21 Frustration",
+    "26 Earthquake",
+    "27 Return",
+    "28 Leech Life",
+    "32 Double Team",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "48 Round",
+    "55 Scald",
+    "59 Brutal Swing",
+    "68 Giga Impact",
+    "71 Stone Edge",
+    "78 Bulldoze",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "94 Surf",
+    "98 Waterfall",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ancient Power",
@@ -248268,7 +249823,7 @@
     "Stomping Tantrum",
     "Super Fang",
     "Whirlpool",
-    "Zen Headbutt ARCTOVISH"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -248473,7 +250028,33 @@
      "type": "Ice"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "09 Hail",
+    "10 Hidden Power",
+    "13 Ice Beam",
+    "14 Blizzard",
+    "15 Hyper Beam",
+    "17 Protect",
+    "18 Rain Dance",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "48 Round",
+    "68 Giga Impact",
+    "70 Aurora Veil",
+    "71 Stone Edge",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "94 Surf",
+    "98 Waterfall",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ancient Power",
@@ -248488,7 +250069,7 @@
     "Liquidation",
     "Super Fang",
     "Whirlpool",
-    "Zen Headbutt DURALUDON"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -248694,7 +250275,40 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "33 Reflect",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "68 Giga Impact",
+    "71 Stone Edge",
+    "73 Thunder Wave",
+    "74 Gyro Ball",
+    "75 Swords Dance",
+    "80 Rock Slide",
+    "82 Dragon Tail",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "91 Flash Cannon",
+    "95 Snarl",
+    "97 Dark Pulse",
+    "100 Confide"
+   ],
    "egg": [
     "Mirror Coat",
     "Night Slash",
@@ -248714,7 +250328,7 @@
     "Snore",
     "Stealth Rock",
     "Steel Beam",
-    "Stomping Tantrum DREEPY"
+    "Stomping Tantrum"
    ]
   },
   "gender": "50% M / 50% F",
@@ -248884,7 +250498,25 @@
      "type": "Dark"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "73 Thunder Wave",
+    "82 Dragon Tail",
+    "83 Infestation",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [
     "Confuse Ray",
     "Curse",
@@ -248898,7 +250530,7 @@
     "Helping Hand",
     "Snore",
     "Sucker Punch",
-    "Swift DRAKLOAK"
+    "Swift"
    ]
   },
   "gender": "50% M / 50% F",
@@ -249113,7 +250745,37 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "17 Protect",
+    "21 Frustration",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "27 Return",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "35 Flamethrower",
+    "35 Fire Blast",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "51 Steel Wing",
+    "55 Scald",
+    "61 Will-O-Wisp",
+    "62 Acrobatics",
+    "73 Thunder Wave",
+    "82 Dragon Tail",
+    "83 Infestation",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 U-Turn",
+    "90 Substitute",
+    "94 Surf",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ally Switch",
@@ -249128,7 +250790,7 @@
     "Outrage",
     "Snore",
     "Sucker Punch",
-    "Swift DRAGAPULT"
+    "Swift"
    ]
   },
   "gender": "50% M / 50% F",
@@ -249343,7 +251005,43 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "27 Return",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "33 Reflect",
+    "35 Flamethrower",
+    "35 Fire Blast",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "51 Steel Wing",
+    "55 Scald",
+    "61 Will-O-Wisp",
+    "62 Acrobatics",
+    "68 Giga Impact",
+    "73 Thunder Wave",
+    "76 Fly",
+    "82 Dragon Tail",
+    "83 Infestation",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 U-Turn",
+    "90 Substitute",
+    "94 Surf",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ally Switch",
@@ -249360,7 +251058,7 @@
     "Outrage",
     "Snore",
     "Sucker Punch (N)",
-    "Swift MEOWTH Galar"
+    "Swift"
    ]
   },
   "gender": "50% M / 50% F",
@@ -249593,7 +251291,7 @@
     "Spite",
     "Steel Beam",
     "Throat Chop",
-    "Uproar PERRSERKER"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -249796,7 +251494,38 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "17 Protect",
+    "18 Rain Dance",
+    "21 Frustration",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "27 Return",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "65 Shadow Claw",
+    "66 Payback",
+    "68 Giga Impact",
+    "74 Gyro Ball",
+    "75 Swords Dance",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 U-Turn",
+    "90 Substitute",
+    "97 Dark Pulse",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Slam",
@@ -249815,7 +251544,7 @@
     "Spite",
     "Steel Beam",
     "Throat Chop",
-    "Uproar PONYTA Galar"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -250042,7 +251771,7 @@
     "Low Kick",
     "Snore",
     "Swift",
-    "Zen Headbutt RAPIDASH Galar"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -250258,7 +251987,7 @@
     "Swift",
     "Throat Chop",
     "Wonder Room",
-    "Zen Headbutt FARFETCH'D Galar"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -250499,7 +252228,7 @@
     "Sky Attack",
     "Snore",
     "Superpower",
-    "Throat Chop SIRFETCH'D"
+    "Throat Chop"
    ]
   },
   "gender": "50% M / 50% F",
@@ -250714,7 +252443,29 @@
      "type": "Fighting"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "10 Hidden Power",
+    "17 Protect",
+    "18 Sunny Day",
+    "21 Frustration",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "51 Steel Wing",
+    "59 Brutal Swing",
+    "75 Swords Dance",
+    "84 Poison Jab",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Slam",
@@ -250730,7 +252481,7 @@
     "Sky Attack",
     "Snore",
     "Superpower",
-    "Throat Chop WEEZING Galar"
+    "Throat Chop"
    ]
   },
   "gender": "50% M / 50% F",
@@ -250951,7 +252702,7 @@
     "Spite",
     "Strange Steam (N)",
     "Uproar",
-    "Wonder Room MR. MIME Galar"
+    "Wonder Room"
    ]
   },
   "gender": "50% M / 50% F",
@@ -251200,7 +252951,7 @@
     "Trick",
     "Uproar",
     "Wonder Room",
-    "Zen Headbutt MR. RIME"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -251415,7 +253166,50 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "03 Psyshock",
+    "04 Calm Mind",
+    "06 Toxic",
+    "09 Hail",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "12 Taunt",
+    "13 Ice Beam",
+    "14 Blizzard",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "18 Rain Dance",
+    "20 Safeguard",
+    "21 Frustration",
+    "22 Solar Beam",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "27 Return",
+    "29 Psychic",
+    "30 Shadow Ball",
+    "31 Brick Break",
+    "32 Double Team",
+    "33 Reflect",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "52 Focus Blast",
+    "53 Energy Ball",
+    "56 Fling",
+    "66 Payback",
+    "68 Giga Impact",
+    "73 Thunder Wave",
+    "86 Grass Knot",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "92 Trick Room",
+    "99 Dazzling Gleam",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "After You (N)",
@@ -251453,7 +253247,7 @@
     "Trick",
     "Uproar",
     "Wonder Room",
-    "Zen Headbutt CORSOLA Galar"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -251689,7 +253483,7 @@
     "Stomping Tantrum",
     "Throat Chop",
     "Water Pulse",
-    "Whirlpool CURSOLA"
+    "Whirlpool"
    ]
   },
   "gender": "25% M / 75% F",
@@ -251890,7 +253684,47 @@
      "type": "Psychic"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "04 Calm Mind",
+    "06 Toxic",
+    "09 Hail",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "13 Ice Beam",
+    "14 Blizzard",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "18 Rain Dance",
+    "20 Safeguard",
+    "21 Frustration",
+    "26 Earthquake",
+    "27 Return",
+    "28 Leech Life",
+    "29 Psychic",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "33 Reflect",
+    "37 Sandstorm",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "55 Scald",
+    "61 Will-O-Wisp",
+    "64 Explosion",
+    "68 Giga Impact",
+    "71 Stone Edge",
+    "78 Bulldoze",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "94 Surf",
+    "96 Nature Power",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ancient Power",
@@ -251909,7 +253743,7 @@
     "Stomping Tantrum",
     "Throat Chop",
     "Water Pulse",
-    "Whirlpool ZIGZAGOON Galar"
+    "Whirlpool"
    ]
   },
   "gender": "25% M / 75% F",
@@ -252147,7 +253981,7 @@
     "Seed Bomb",
     "Swift",
     "Trick",
-    "Whirlpool LINOONE Galar"
+    "Whirlpool"
    ]
   },
   "gender": "50% M / 50% F",
@@ -252378,7 +254212,7 @@
     "Switcheroo (N)",
     "Throat Chop",
     "Trick",
-    "Whirlpool OBSTAGOON"
+    "Whirlpool"
    ]
   },
   "gender": "50% M / 50% F",
@@ -252592,7 +254426,44 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "12 Taunt",
+    "13 Ice Beam",
+    "14 Blizzard",
+    "15 Hyper Beam",
+    "17 Protect",
+    "18 Rain Dance",
+    "21 Frustration",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "27 Return",
+    "30 Shadow Ball",
+    "31 Brick Break",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "56 Fling",
+    "65 Shadow Claw",
+    "66 Payback",
+    "68 Giga Impact",
+    "73 Thunder Wave",
+    "81 X-Scissor",
+    "86 Grass Knot",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "94 Surf",
+    "95 Snarl",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Baby-Doll Eyes (N)",
@@ -252621,7 +254492,7 @@
     "Throat Chop",
     "Thunder Punch",
     "Trick",
-    "Whirlpool DARUMAKA Galar"
+    "Whirlpool"
    ]
   },
   "gender": "50% M / 50% F",
@@ -252857,8 +254728,7 @@
     "Snore",
     "Superpower",
     "Uproar",
-    "Zen Headbutt DARMANITAN Galar",
-    "Standard Mode"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -253510,7 +255380,7 @@
     "Snore",
     "Trick",
     "Wonder Room",
-    "Zen Headbutt RUNERIGUS"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -253729,7 +255599,44 @@
      "type": "Ghost"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "04 Calm Mind",
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "17 Protect",
+    "18 Rain Dance",
+    "20 Safeguard",
+    "21 Frustration",
+    "26 Earthquake",
+    "27 Return",
+    "29 Psychic",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "37 Sandstorm",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "53 Energy Ball",
+    "59 Brutal Swing",
+    "61 Will-OWisp",
+    "65 Shadow Claw",
+    "66 Payback",
+    "68 Giga Impact",
+    "71 Stone Edge",
+    "78 Bulldoze",
+    "80 Rock Slide",
+    "86 Grass Knot",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "92 Trick Room",
+    "97 Dark Pulse",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ally Switch",
@@ -253744,7 +255651,7 @@
     "Stealth Rock",
     "Trick",
     "Wonder Room",
-    "Zen Headbutt STUNFISK Galar"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -253972,7 +255879,7 @@
     "Stealth Rock",
     "Stomping Tantrum",
     "Sucker Punch",
-    "Uproar SLOWPOKE Galar"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -254943,13 +256850,43 @@
      "type": "Dragon"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "09 Venoshock",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "27 Return",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "33 Reflect",
+    "34 Sludge Wave",
+    "35 Flamethrower",
+    "36 Sludge Bomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "59 Brutal Swing",
+    "66 Payback",
+    "68 Giga Impact",
+    "76 Fly",
+    "82 Dragon Tail",
+    "84 Poison Jab",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "91 Flash Cannon"
+   ],
    "egg": [],
    "tutor": [
     "Draco Meteor",
     "Dragon Pulse",
     "Endure",
-    "Snore MELTAN"
+    "Snore"
    ]
   },
   "gender": "No Gender",
@@ -255129,13 +257066,32 @@
      "type": "Steel"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "17 Protect",
+    "21 Frustration",
+    "24 Thunderbolt",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "73 Thunder Wave",
+    "74 Gyro Ball",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "91 Flash Cannon",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Endure",
     "Iron Defense",
     "Snore",
-    "Steel Beam MELMETAL"
+    "Steel Beam"
    ]
   },
   "gender": "Genderless",
@@ -255345,7 +257301,36 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "13 Ice Beam",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "59 Brutal Swing",
+    "64 Explosion",
+    "68 Giga Impact",
+    "73 Thunder Wave",
+    "74 Gyro Ball",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "91 Flash Cannon",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -255359,7 +257344,7 @@
     "Mega Punch",
     "Snore",
     "Steel Beam",
-    "Thunder Punch (N) KUBFU"
+    "Thunder Punch (N)"
    ]
   },
   "gender": "Genderless",
@@ -255632,7 +257617,7 @@
     "Water Pulse",
     "Whirlpool",
     "Wonder Room",
-    "Zen Headbutt SLOWBRO Galar"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -255893,7 +257878,7 @@
     "Water Pulse",
     "Withdraw (N)",
     "Wonder Room",
-    "Zen Headbutt SLOWKING Galar"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -256159,7 +258144,7 @@
     "Trick",
     "Water Pulse",
     "Wonder Room",
-    "Zen Headbutt ZACIAN Hero of Many Battles Forme"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -256380,7 +258365,29 @@
      "type": "Fighting"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "40 Aerial Ace",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "47 Low Sweep",
+    "48 Round",
+    "62 Acrobatics",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 U-Turn",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Slam",
@@ -256399,7 +258406,7 @@
     "Snore",
     "Superpower",
     "Thunder Punch",
-    "Zen Headbutt URSHIFU Single Strike Form"
+    "Zen Headbutt"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -257043,7 +259050,41 @@
      "type": "Grass"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "53 Energy Ball",
+    "56 Fling",
+    "59 Brutal Swing",
+    "62 Acrobatics",
+    "66 Payback",
+    "68 Giga Impact",
+    "80 Rock Slide",
+    "86 Grass Knot",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 U-Turn",
+    "90 Substitute",
+    "95 Snarl",
+    "97 Dark Pulse",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Slam",
@@ -257064,7 +259105,7 @@
     "Superpower",
     "Swift",
     "Synthesis",
-    "Throat Chop ARTICUNO Galar"
+    "Throat Chop"
    ]
   },
   "gender": "No Gender",
@@ -257294,7 +259335,7 @@
     "Snore",
     "Swift",
     "Tailwind",
-    "Twister ZAPDOS Galar"
+    "Twister"
    ]
   },
   "gender": "No Gender",
@@ -257528,7 +259569,7 @@
     "Swift",
     "Tailwind",
     "Throat Chop",
-    "Twister MOLTRES Galar"
+    "Twister"
    ]
   },
   "gender": "No Gender",
@@ -257762,7 +259803,7 @@
     "Sucker Punch",
     "Swift",
     "Tailwind",
-    "Twister REGIELEKI"
+    "Twister"
    ]
   },
   "gender": "No Gender",
@@ -257974,7 +260015,33 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "18 Rain Dance",
+    "21 Frustration",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "27 Return",
+    "32 Double Team",
+    "33 Reflect",
+    "42 Facade",
+    "44 Rest",
+    "48 Round",
+    "62 Acrobatics",
+    "64 Explosion",
+    "68 Giga Impact",
+    "72 Volt Switch",
+    "73 Thunder Wave",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "93 Wild Charge",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ancient Power",
@@ -257988,7 +260055,7 @@
     "Rising Voltage",
     "Shock Wave",
     "Snore",
-    "Swift REGIDRAGO"
+    "Swift"
    ]
   },
   "gender": "No Gender",
@@ -258198,7 +260265,28 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "02 Dragon Claw",
+    "05 Roar",
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "33 Reflect",
+    "42 Facade",
+    "44 Rest",
+    "48 Round",
+    "64 Explosion",
+    "68 Giga Impact",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ancient Power",
@@ -258212,7 +260300,7 @@
     "Outrage",
     "Scale Shot",
     "Snore",
-    "Thunder Fang (N) GLASTRIER"
+    "Thunder Fang (N)"
    ]
   },
   "gender": "No Gender",
@@ -258422,7 +260510,33 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "07 Hail",
+    "10 Hidden Power",
+    "12 Taunt",
+    "13 Ice Beam",
+    "14 Blizzard",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "41 Torment",
+    "42 Facade",
+    "44 Rest",
+    "48 Round",
+    "66 Payback",
+    "67 Smart Strike",
+    "68 Giga Impact",
+    "75 Swords Dance",
+    "78 Bulldoze",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "95 Snarl",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Avalanche",
@@ -258439,7 +260553,7 @@
     "Stomping Tantrum",
     "Superpower",
     "Throat Chop",
-    "Uproar SPECTRIER"
+    "Uproar"
    ]
   },
   "gender": "No Gender",
@@ -258647,7 +260761,31 @@
      "type": "Dark"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "04 Calm Mind",
+    "06 Toxic",
+    "10 Hidden Power",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "48 Round",
+    "61 Will-O-Wisp",
+    "66 Payback",
+    "68 Giga Impact",
+    "78 Bulldoze",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "95 Snarl",
+    "97 Dark Pulse",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Slam",
@@ -258658,7 +260796,7 @@
     "§ Phantom Force (N)",
     "Snore",
     "Stomping Tantrum",
-    "Swift CALYREX"
+    "Swift"
    ]
   },
   "gender": "No Gender",
@@ -258874,7 +261012,35 @@
      "type": "Psychic"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "03 Psyshock",
+    "04 Calm Mind",
+    "06 Toxic",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "22 Solar Beam",
+    "27 Return",
+    "29 Psychic",
+    "32 Double Team",
+    "33 Reflect",
+    "42 Facade",
+    "44 Rest",
+    "48 Round",
+    "53 Energy Ball",
+    "67 Smart Strike",
+    "68 Giga Impact",
+    "86 Grass Knot",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "92 Trick Room",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ally Switch",
@@ -258894,7 +261060,7 @@
     "Swift",
     "Trick",
     "Wonder Room",
-    "Zen Headbutt CALYREX Ice Rider"
+    "Zen Headbutt"
    ]
   },
   "gender": "No Gender",
@@ -259524,7 +261690,7 @@
     "Rock Smash",
     "Shadow Claw",
     "Spikes",
-    "Swift TYPHLOSION Hisuian"
+    "Swift"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -259741,7 +261907,7 @@
     "Shadow Claw",
     "Swift",
     "Thunder Punch",
-    "Wild Charge SAMUROTT Hisuian"
+    "Wild Charge"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -259956,7 +262122,7 @@
     "Psycho Cut",
     "Tackle (N)",
     "Water Pulse",
-    "X-Scissor GROWLITHE Hisuian"
+    "X-Scissor"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -260613,7 +262779,7 @@
     "Rest",
     "Swift",
     "Thunderbolt",
-    "Wild Charge ELECTRODE Hisuian"
+    "Wild Charge"
    ]
   },
   "gender": "No Gender",
@@ -260807,7 +262973,7 @@
     "Rest",
     "Swift",
     "Thunderbolt",
-    "Wild Charge QWILFISH Hisuian"
+    "Wild Charge"
    ]
   },
   "gender": "No Gender",
@@ -261015,7 +263181,7 @@
     "Sludge Bomb",
     "Spikes",
     "Swift",
-    "Water Pulse OVERQWIL"
+    "Water Pulse"
    ]
   },
   "gender": "50% M / 50% F",
@@ -261221,7 +263387,7 @@
     "Sludge Bomb",
     "Spikes",
     "Swift",
-    "Water Pulse SNEASEL Hisuian"
+    "Water Pulse"
    ]
   },
   "gender": "50% M / 50% F",
@@ -261416,7 +263582,7 @@
     "Shadow Claw",
     "Snarl",
     "Swift",
-    "X- Scissor SNEASLER"
+    "X- Scissor"
    ]
   },
   "gender": "50% M / 50% F",
@@ -261614,7 +263780,7 @@
     "Shadow Claw",
     "Snarl",
     "Swift",
-    "X-Scissor LILLIGANT Hisuian"
+    "X-Scissor"
    ]
   },
   "gender": "50% M / 50% F",
@@ -261836,7 +264002,7 @@
     "Magical Leaf",
     "Poison Jab",
     "Rest",
-    "Rock Smash ZORUA Hisuian"
+    "Rock Smash"
    ]
   },
   "gender": "0% M / 100% F",
@@ -262028,7 +264194,7 @@
     "Shadow Ball",
     "Sludge Bomb",
     "Snarl",
-    "Swift ZOROARK Hisuian"
+    "Swift"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -262228,7 +264394,7 @@
     "Shadow Ball",
     "Sludge Bomb",
     "Snarl",
-    "Swift BRAVIARY Hisuian"
+    "Swift"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -262431,7 +264597,7 @@
     "Rock Smash",
     "Shadow Ball",
     "Swift",
-    "Zen Headbutt SLIGGOO Hisuian"
+    "Zen Headbutt"
    ]
   },
   "gender": "100% M / 0% F",
@@ -263150,7 +265316,7 @@
     "Stealth Rock",
     "Stone Edge",
     "Tackle (N)",
-    "Water Pulse WYRDEER"
+    "Water Pulse"
    ]
   },
   "gender": "50% M / 50% F",
@@ -263345,7 +265511,7 @@
     "Swift",
     "Thunderbolt",
     "Wild Charge",
-    "Zen Headbutt KLEAVOR"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -263548,7 +265714,7 @@
     "Stealth Rock",
     "Stone Edge",
     "Swift",
-    "X-Scissor URSALUNA"
+    "X-Scissor"
    ]
   },
   "gender": "50% M / 50% F",
@@ -263732,7 +265898,56 @@
      "type": "Ground"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "A1 Cut",
+    "A4 Strength",
+    "01 Hone Claws",
+    "02 Dragon Claw",
+    "05 Roar",
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "13 Ice Beam",
+    "14 Blizzard",
+    "15 Hyper Beam",
+    "17 Protect",
+    "18 Rain Dance",
+    "20 Safeguard",
+    "21 Frustration",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "26 Earthquake",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "35 Flamethrower",
+    "37 Sandstorm",
+    "38 Fire Blast",
+    "39 Rock Tomb",
+    "40 Aerial Ace",
+    "42 Facade",
+    "44 Rest",
+    "48 Round",
+    "49 Echoed Voice",
+    "50 Overheat",
+    "59 Incinerate",
+    "65 Shadow Claw",
+    "68 Giga Impact",
+    "70 Flash",
+    "71 Stone Edge",
+    "73 Thunder Wave",
+    "77 Psych Up",
+    "78 Bulldoze",
+    "80 Rock Slide",
+    "82 Dragon Tail",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "91 Flash Cannon",
+    "92 Trick Room",
+    "94 Rock Smash"
+   ],
    "egg": [],
    "tutor": [
     "Aerial Ace",
@@ -263754,7 +265969,7 @@
     "Stone Edge",
     "Swift",
     "Tackle (N)",
-    "Thunder Punch BASCULEGION Male"
+    "Thunder Punch"
    ]
   },
   "gender": "50% M / 50% F",
@@ -307865,7 +310080,7 @@
     "Superpower",
     "Thrash (N)",
     "Uproar",
-    "Zen Heabutt"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -308132,7 +310347,7 @@
     "Superpower",
     "Thrash (N)",
     "Uproar",
-    "Zen Heabutt"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -308399,7 +310614,7 @@
     "Superpower",
     "Thrash (N)",
     "Uproar",
-    "Zen Heabutt"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -309763,27 +311978,13 @@
    ],
    "egg": [],
    "tutor": [
-    "Covet",
-    "Gravity",
-    "Heal Bell",
-    "Helping Hand",
-    "Iron Tail",
-    "Magic Coat",
-    "Magic Room",
-    "Recycle",
-    "Role Play",
-    "Shock Wave",
-    "Signal Beam",
-    "Snatch",
-    "Snore",
-    "Trick",
-    "Wonder Room",
-    "Zen Headbutt (M) Helping Hand (N)",
-    "(M) Mean Look (N)",
-    "(M) Quick Guard (N)",
-    "(F) Magical Leaf (N)",
-    "(F) Me First (N)",
-    "(F) Stored Power (N)"
+    "Zen Headbutt",
+    "Helping Hand (N)",
+    "Mean Look (N)",
+    "Quick Guard (N)",
+    "Magical Leaf (N)",
+    "Me First (N)",
+    "Stored Power (N)"
    ]
   },
   "gender": "50% M / 50% F",
@@ -310081,27 +312282,13 @@
    ],
    "egg": [],
    "tutor": [
-    "Covet",
-    "Gravity",
-    "Heal Bell",
-    "Helping Hand",
-    "Iron Tail",
-    "Magic Coat",
-    "Magic Room",
-    "Recycle",
-    "Role Play",
-    "Shock Wave",
-    "Signal Beam",
-    "Snatch",
-    "Snore",
-    "Trick",
-    "Wonder Room",
-    "Zen Headbutt (M) Helping Hand (N)",
-    "(M) Mean Look (N)",
-    "(M) Quick Guard (N)",
-    "(F) Magical Leaf (N)",
-    "(F) Me First (N)",
-    "(F) Stored Power (N)"
+    "Zen Headbutt",
+    "Helping Hand (N)",
+    "Mean Look (N)",
+    "Quick Guard (N)",
+    "Magical Leaf (N)",
+    "Me First (N)",
+    "Stored Power (N)"
    ]
   },
   "gender": "50% M / 50% F",
@@ -310901,7 +313088,7 @@
     "Spite",
     "Telekinesis",
     "Trick",
-    "Wood Hammer (N) BRUXISH"
+    "Wood Hammer (N)"
    ]
   },
   "gender": "50% M / 50% F",
@@ -311180,7 +313367,7 @@
     "Signal Beam",
     "Snore",
     "Stealth Rock",
-    "Telekinesis NECROZMA Dusk Mane"
+    "Telekinesis"
    ]
   },
   "gender": "No Gender",
@@ -311325,6 +313512,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Thunder Punch",
+     "type": "Electric"
+    },
+    {
      "level": 8,
      "name": "Tail Whip",
      "type": "Normal"
@@ -311385,7 +313577,36 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "13 Ice Beam",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "59 Brutal Swing",
+    "64 Explosion",
+    "68 Giga Impact",
+    "73 Thunder Wave",
+    "74 Gyro Ball",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "91 Flash Cannon",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -311399,7 +313620,7 @@
     "Mega Punch",
     "Snore",
     "Steel Beam",
-    "Thunder Punch (N) KUBFU"
+    "Thunder Punch (N)"
    ]
   },
   "gender": "Genderless",
@@ -311546,6 +313767,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Drum Beating",
+     "type": "Grass"
+    },
+    {
      "level": 6,
      "name": "Branch Poke",
      "type": "Grass"
@@ -311596,7 +313822,43 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "26 Earthquake",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "52 Focus Blast",
+    "53 Energy Ball",
+    "54 False Swipe",
+    "56 Fling",
+    "59 Brutal Swing",
+    "62 Acrobatics",
+    "68 Giga Impact",
+    "75 Swords Dance",
+    "78 Bulldoze",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "86 Grass Knot",
+    "89 U-Turn",
+    "90 Substitute",
+    "95 Snarl",
+    "96 Nature Power",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -311621,7 +313883,7 @@
     "Superpower",
     "Swift",
     "Uproar",
-    "Worry Seed SCORBUNNY"
+    "Worry Seed"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -311768,6 +314030,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Pyro Ball",
+     "type": "Fire"
+    },
+    {
      "level": 6,
      "name": "Ember",
      "type": "Fire"
@@ -311818,7 +314085,38 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "35 Flamethrower",
+    "38 Fire Blast",
+    "42 Facade",
+    "43 Flame Charge",
+    "44 Rest",
+    "45 Attract",
+    "47 Low Sweep",
+    "48 Round",
+    "50 Overheat",
+    "52 Focus Blast",
+    "62 Acrobatics",
+    "68 Giga Impact",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 UTurn",
+    "90 Substitute",
+    "95 Snarl",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ally Switch",
@@ -311839,7 +314137,7 @@
     "Sucker Punch",
     "Super Fang",
     "Swift",
-    "Zen Headbutt SOBBLE"
+    "Zen Headbutt"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -311988,6 +314286,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Snipe Shot",
+     "type": "Water"
+    },
+    {
      "level": 6,
      "name": "Water Gun",
      "type": "Water"
@@ -312038,7 +314341,38 @@
      "type": "Water"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "18 Rain Dance",
+    "20 Safeguard",
+    "21 Frustration",
+    "27 Return",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "33 Reflect",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "55 Scald",
+    "56 Fling",
+    "62 Acrobatics",
+    "68 Giga Impact",
+    "75 Swords Dance",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 U-Turn",
+    "90 Substitute",
+    "94 Surf",
+    "97 Dark Pulse",
+    "98 Waterfall",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Acrobatics (N)",
@@ -312054,7 +314388,7 @@
     "Swift",
     "Water Pledge",
     "Water Pulse",
-    "Whirlpool SKWOVET"
+    "Whirlpool"
    ]
   },
   "gender": "87.5% M / 12.5% F",
@@ -312200,6 +314534,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Steel Wing",
+     "type": "Steel"
+    },
+    {
      "level": 4,
      "name": "Power Trip",
      "type": "Dark"
@@ -312245,7 +314584,35 @@
      "type": "Flying"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "19 Roost",
+    "21 Frustration",
+    "27 Return",
+    "32 Double Team",
+    "33 Reflect",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "51 Steel Wing",
+    "66 Payback",
+    "76 Fly",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 UTurn",
+    "90 Substitute",
+    "91 Flash Cannon",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -312260,7 +314627,7 @@
     "Spite",
     "Steel Beam",
     "Swift",
-    "Tailwind BLIPBUG"
+    "Tailwind"
    ]
   },
   "gender": "50% M / 50% F",
@@ -312470,7 +314837,36 @@
      "type": "Psychic"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "03 Psyshock",
+    "04 Calm Mind",
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "22 Solar Beam",
+    "27 Return",
+    "28 Leech Life",
+    "29 Psychic",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "33 Reflect",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "53 Energy Ball",
+    "66 Payback",
+    "68 Giga Impact",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "92 Trick Room",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ally Switch",
@@ -312488,7 +314884,7 @@
     "Snore",
     "Trick",
     "Wonder Room",
-    "Zen Headbutt NICKIT"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -312631,6 +315027,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Rock Tomb",
+     "type": "Rock"
+    },
+    {
      "level": 7,
      "name": "Bite",
      "type": "Dark"
@@ -312671,7 +315072,43 @@
      "type": "Rock"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "13 Ice Beam",
+    "14 Blizzard",
+    "15 Hyper Beam",
+    "17 Protect",
+    "18 Rain Dance",
+    "21 Frustration",
+    "26 Earthquake",
+    "27 Return",
+    "32 Double Team",
+    "37 Sandstorm",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "54 False Swipe",
+    "55 Scald",
+    "66 Payback",
+    "67 Smart Strike",
+    "68 Giga Impact",
+    "69 Rock Polish",
+    "71 Stone Edge",
+    "75 Swords Dance",
+    "78 Bulldoze",
+    "80 Rock Slide",
+    "82 Dragon Tail",
+    "84 Poison Jab",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "94 Surf",
+    "98 Waterfall",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -312691,7 +315128,7 @@
     "Stomping Tantrum",
     "Superpower",
     "Throat Chop",
-    "Whirlpool YAMPER"
+    "Whirlpool"
    ]
   },
   "gender": "50% M / 50% F",
@@ -312842,6 +315279,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Tar Shot",
+     "type": "Rock"
+    },
+    {
      "level": 5,
      "name": "Rapid Spin",
      "type": "Normal"
@@ -312887,7 +315329,41 @@
      "type": "Fire"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "23 Smack Down",
+    "26 Earthquake",
+    "27 Return",
+    "32 Double Team",
+    "33 Reflect",
+    "35 Flamethrower",
+    "37 Sandstorm",
+    "38 Fire Blast",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "50 Overheat",
+    "55 Scald",
+    "61 Will-O-Wisp",
+    "64 Explosion",
+    "68 Giga Impact",
+    "69 Rock Polish",
+    "71 Stone Edge",
+    "74 Gyro Ball",
+    "78 Bulldoze",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Ancient Power",
@@ -312905,7 +315381,7 @@
     "Mega Punch",
     "Mud-Slap",
     "Snore",
-    "Stealth Rock APPLIN"
+    "Stealth Rock"
    ]
   },
   "gender": "50% M / 50% F",
@@ -313050,6 +315526,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Wing Attack",
+     "type": "Flying"
+    },
+    {
      "level": 4,
      "name": "Acid Spray",
      "type": "Poison"
@@ -313105,7 +315586,31 @@
      "type": "Dragon"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "16 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "27 Return",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "53 Energy Ball",
+    "62 Acrobatics",
+    "68 Giga Impact",
+    "72 Fly",
+    "76 Grass Knot",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "89 U-Turn",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Bullet Seed",
@@ -313122,7 +315627,7 @@
     "Seed Bomb",
     "Snore",
     "Sucker Punch",
-    "Twister (N) APPLETUN"
+    "Twister (N)"
    ]
   },
   "gender": "50% M / 50% F",
@@ -313266,6 +315771,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Headbutt",
+     "type": "Normal"
+    },
+    {
      "level": 4,
      "name": "Curse",
      "type": "Ghost"
@@ -313321,7 +315831,35 @@
      "type": "Grass"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "22 Solar Beam",
+    "26 Earthquake",
+    "27 Return",
+    "32 Double Team",
+    "33 Reflect",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "53 Energy Ball",
+    "66 Payback",
+    "68 Giga Impact",
+    "74 Gyro Ball",
+    "78 Bulldoze",
+    "86 Grass Knot",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -313341,7 +315879,7 @@
     "Snore",
     "Sucker Punch",
     "Superpower",
-    "Sweet Scent (N) SILICOBRA"
+    "Sweet Scent (N)"
    ]
   },
   "gender": "50% M / 50% F",
@@ -313531,7 +316069,31 @@
      "type": "Ground"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "26 Earthquake",
+    "27 Return",
+    "32 Double Team",
+    "37 Sandstorm",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "59 Brutal Swing",
+    "68 Giga Impact",
+    "71 Stone Edge",
+    "78 Bulldoze",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -313546,7 +316108,7 @@
     "Skull Bash (N)",
     "Snore",
     "Stealth Rock",
-    "Zen Headbutt CRAMORANT"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -313787,7 +316349,7 @@
     "Throat Chop",
     "Thunder Punch",
     "Thunder Shock (N)",
-    "Uproar SIZZLIPEDE"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -314028,7 +316590,7 @@
     "Throat Chop",
     "Thunder Punch",
     "Thunder Shock (N)",
-    "Uproar SIZZLIPEDE"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -314269,7 +316831,7 @@
     "Throat Chop",
     "Thunder Punch",
     "Thunder Shock (N)",
-    "Uproar SIZZLIPEDE"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -314510,7 +317072,7 @@
     "Throat Chop",
     "Thunder Punch",
     "Thunder Shock (N)",
-    "Uproar SIZZLIPEDE"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -314711,7 +317273,35 @@
      "type": "Fire"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "09 Venoshock",
+    "10 Hidden Power",
+    "11 Sunny Day",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "27 Return",
+    "28 Leech Life",
+    "32 Double Team",
+    "35 Flamethrower",
+    "38 Fire Blast",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "50 Overheat",
+    "55 Scald",
+    "59 Brutal Swing",
+    "61 Will-O-Wisp",
+    "68 Giga Impact",
+    "81 XScissor",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Bug Bite",
@@ -314721,7 +317311,7 @@
     "Inferno (N)",
     "Knock Off",
     "Rollout",
-    "Snore CLOBBOPUS"
+    "Snore"
    ]
   },
   "gender": "50% M / 50% F",
@@ -314870,6 +317460,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Psycho Cut",
+     "type": "Psychic"
+    },
+    {
      "level": 5,
      "name": "Life Dew",
      "type": "Water"
@@ -314920,7 +317515,38 @@
      "type": "Psychic"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "03 Psyshock",
+    "04 Calm Mind",
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "27 Return",
+    "29 Psychic",
+    "30 Shadow Ball",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "59 Brutal Swing",
+    "60 Quash",
+    "65 Shadow Claw",
+    "68 Giga Impact",
+    "73 Thunder Wave",
+    "75 Swords Dance",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "92 Trick Room",
+    "97 Dark Pulse",
+    "99 Dazzling Gleam",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "After You",
@@ -314931,7 +317557,7 @@
     "Magic Room",
     "Skill Swap",
     "Snore",
-    "Wonder Room IMPIDIMP"
+    "Wonder Room"
    ]
   },
   "gender": "0% M / 100% F",
@@ -315080,6 +317706,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Spirit Break",
+     "type": "Fairy"
+    },
+    {
      "level": 4,
      "name": "Bite",
      "type": "Dark"
@@ -315140,7 +317771,37 @@
      "type": "Fighting"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "12 Taunt",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "28 Leech Life",
+    "31 Brick Break",
+    "32 Double Team",
+    "33 Reflect",
+    "41 Torment",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "46 Thief",
+    "48 Round",
+    "52 Focus Blast",
+    "65 Shadow Claw",
+    "68 Giga Impact",
+    "73 Thunder Wave",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "97 Dark Pulse",
+    "99 Dazzling Gleam",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -315165,7 +317826,7 @@
     "Thunder Punch",
     "Trick",
     "Uproar",
-    "Wonder Room MILCERY"
+    "Wonder Room"
    ]
   },
   "gender": "100% M / 0% F",
@@ -315307,6 +317968,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Decorate",
+     "type": "Normal"
+    },
+    {
      "level": 5,
      "name": "Sweet Kiss",
      "type": "Fairy"
@@ -315357,7 +318023,32 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "03 Psyshock",
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "20 Safeguard",
+    "21 Frustration",
+    "22 Solar Beam",
+    "27 Return",
+    "29 Psychic",
+    "32 Double Team",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "53 Energy Ball",
+    "56 Fling",
+    "68 Giga Impact",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "99 Dazzling Gleam",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Drain Punch",
@@ -315368,7 +318059,7 @@
     "Magic Room",
     "Metronome",
     "Snore",
-    "Wonder Room FALINKS"
+    "Wonder Room"
    ]
   },
   "gender": "0% M / 100% F",
@@ -315599,7 +318290,7 @@
     "Super Fang",
     "Swift",
     "Thunder Punch",
-    "Uproar CUFANT"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -315830,7 +318521,7 @@
     "Super Fang",
     "Swift",
     "Thunder Punch",
-    "Uproar CUFANT"
+    "Uproar"
    ]
   },
   "gender": "50% M / 50% F",
@@ -315973,6 +318664,11 @@
   "moves": {
    "levelup": [
     {
+     "level": 0,
+     "name": "Heavy Slam",
+     "type": "Steel"
+    },
+    {
      "level": 5,
      "name": "Rollout",
      "type": "Rock"
@@ -316028,7 +318724,35 @@
      "type": "Fighting"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "01 Work Up",
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "17 Protect",
+    "21 Frustration",
+    "26 Earthquake",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "56 Fling",
+    "59 Brutal Swing",
+    "66 Payback",
+    "68 Giga Impact",
+    "71 Stone Edge",
+    "78 Bulldoze",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "95 Snarl",
+    "100 Confide"
+   ],
    "egg": [],
    "tutor": [
     "Body Press",
@@ -316047,7 +318771,7 @@
     "Steel Beam",
     "Stomping Tantrum",
     "Superpower",
-    "Zen Headbutt DRACOZOLT"
+    "Zen Headbutt"
    ]
   },
   "gender": "50% M / 50% F",
@@ -316248,7 +318972,40 @@
      "type": "Normal"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "06 Toxic",
+    "10 Hidden Power",
+    "15 Hyper Beam",
+    "16 Light Screen",
+    "17 Protect",
+    "21 Frustration",
+    "22 Solar Beam",
+    "24 Thunderbolt",
+    "25 Thunder",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "33 Reflect",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "68 Giga Impact",
+    "71 Stone Edge",
+    "73 Thunder Wave",
+    "74 Gyro Ball",
+    "75 Swords Dance",
+    "80 Rock Slide",
+    "82 Dragon Tail",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "91 Flash Cannon",
+    "95 Snarl",
+    "97 Dark Pulse",
+    "100 Confide"
+   ],
    "egg": [
     "Mirror Coat",
     "Night Slash",
@@ -316268,7 +319025,7 @@
     "Snore",
     "Stealth Rock",
     "Steel Beam",
-    "Stomping Tantrum DREEPY"
+    "Stomping Tantrum"
    ]
   },
   "gender": "50% M / 50% F",
@@ -316489,7 +319246,7 @@
     "Draco Meteor",
     "Dragon Pulse",
     "Endure",
-    "Snore MELTAN"
+    "Snore"
    ]
   },
   "gender": "No Gender",
@@ -324160,12 +326917,12 @@
  {
   "name": "Mega Zygarde",
   "baseStats": {
-   "hp": 11,
+   "hp": 22,
    "atk": 7,
    "def": 9,
-   "spatk": 21,
+   "spatk": 22,
    "spdef": 9,
-   "spd": 11
+   "spd": 10
   },
   "types": [
    "Dragon",
@@ -324274,7 +327031,11 @@
    "levelup": [],
    "tmhm": [],
    "egg": [],
-   "tutor": []
+   "tutor": [
+    "Thousand Arrows",
+    "Thousand Waves",
+    "Core Enforcer"
+   ]
   },
   "gender": "Genderless",
   "diet": "Nullivore",
@@ -326006,7 +328767,7 @@
     "Snore",
     "Telekinesis",
     "Trick",
-    "Wonder Room TAPU TUGA"
+    "Wonder Room"
    ]
   },
   "gender": "No Gender",
@@ -326260,7 +329021,7 @@
     "Stealth Rock (N)",
     "Superpower (N)",
     "Telekinesis",
-    "Wide Guard TAPU GROU"
+    "Wide Guard"
    ]
   },
   "gender": "No Gender",
@@ -326508,7 +329269,7 @@
     "Snore",
     "Telekinesis",
     "Trick",
-    "Wonder Room TAPU PEKE"
+    "Wonder Room"
    ]
   },
   "gender": "No Gender",
@@ -326759,7 +329520,7 @@
     "Telekinesis",
     "Tailwind",
     "Trick",
-    "U-Turn TAPU AROU"
+    "U-Turn"
    ]
   },
   "gender": "No Gender",

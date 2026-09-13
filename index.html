@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://xbdxfruzkddhuesrwcvc.supabase.co" crossorigin>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='46' fill='%23e74c3c' stroke='%23111' stroke-width='6'/><rect x='4' y='47' width='92' height='6' fill='%23111'/><circle cx='50' cy='50' r='14' fill='%23fff' stroke='%23111' stroke-width='6'/></svg>">
-<link rel="stylesheet" href="styles.css?v=78">
+<link rel="stylesheet" href="styles.css?v=79">
 </head>
 <body>
 <header id="topbar">
@@ -27,6 +27,7 @@
     <button id="btnNew"    class="btn" title="New character">＋ New</button>
     <button id="btnRename" class="btn ghost" title="Rename">✎</button>
     <button id="btnDelete" class="btn ghost danger" title="Delete character">🗑</button>
+    <button id="btnChars"  class="btn ghost" title="Hide or archive characters">📦</button>
     <button id="btnExport" class="btn ghost" title="Export all data to a file">⭳ Export</button>
     <button id="btnImport" class="btn ghost" title="Import from a file">⭱ Import</button>
     <button id="btnTheme"  class="btn ghost" title="Toggle light/dark">🌓</button>
@@ -70,11 +71,11 @@
 <div id="toast"></div>
 
 <!-- App core (must not depend on the network): data, config, then the app itself. -->
-<script src="data/data.js?v=63"></script>
+<script src="data/data.js?v=67"></script>
 <script src="data/dexnum.js?v=1"></script>
 <script src="sfx.js?v=1"></script>
 <script src="config.js"></script>
-<script src="app.js?v=490"></script>
+<script src="app.js?v=503"></script>
 <!-- Cloud sync SDK (optional) loads async & LAST so it can never block the app from starting.
      app.js waits for it and enables ☁ cloud sync once it arrives. -->
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

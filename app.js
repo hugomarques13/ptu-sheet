@@ -400,6 +400,12 @@ const STATUS_DEFS = [
   /* The Duelist's mark (Core Extras — Class Mechanics). Not an Affliction at all, but it lives on
      the foe, the whole table needs to see which foe carries it, and only one foe may at a time —
      which is exactly what a status chip already does. Applying it clears the others (see toggleStatus). */
+  /* Giftsapper's field (The Blessed and the Damned, General Gifts). Not an Affliction either — it
+     is where you are STANDING — but it belongs on the chip row for the same reason Tagged does: the
+     whole table needs to see who is inside it. On the 🗺 Map it is applied and lifted automatically
+     as tokens move (see sweepMapAuras), and only ever to a Trainer who actually has Gifts. */
+  {key:"giftsapped", name:"Gift-Sapped", kind:"other", cap:0,
+   effect:"Standing inside a Giftsapper's 10-metre field. Every Gift you try to activate needs a Focus Check first, at a DC of three times the Giftsapper's best Rank in Focus, Intimidate or Command. A failure costs you nothing — not the AP, not the Frequency — it just doesn't happen. A Static or ongoing Gift is checked each turn, and a failed check switches it off for that turn. On the 🗺 Map this is applied and lifted automatically as tokens move; the Gifts tab prints the exact DC."},
   {key:"tagged", name:"Tagged", kind:"other", cap:0,
    effect:"Marked by a Duelist. Their Pokemon under Focused Training add half their Momentum (rounded up) to Accuracy and Evasion against this foe — and give up Focused Training's Accuracy bonus against everyone else. Only one foe can be Tagged at a time; Tagging a new one clears the old."},
 ];
@@ -1546,6 +1552,14 @@ function unevolveTo(p){
 const MEGA_SHARED_BASES = {
   "mega arcanine": ["arcanine", "arcanine hisuian"],
   "mega marowak":  ["marowak",  "marowak alolan"],
+  /* Mega Zygarde is the other use of this table: not a Mega shared by several forms, but one
+     RESTRICTED to a form the default rule would never have picked. "Mega Zygarde".slice(5) is
+     "zygarde", so the plain rule offers it off the 50% Forme — and Legends Z-A only lets Zygarde
+     Mega Evolve out of COMPLETE FORME. The PTU port's own numbers agree: its printed delta
+     (-3 Atk, -3 Def, +13 Sp.Atk, -1 Sp.Def, +1 Speed) is the game's delta from Complete, not from
+     50%. So the Mega is gated behind Power Construct, which is gated behind dropping under half HP:
+     three formes, in order, and the third one flips the Pokemon from physical to special. */
+  "mega zygarde":  ["zygarde complete"],
 };
 function megaBaseMatch(megaNameLower, baseNameLower){
   const shared = MEGA_SHARED_BASES[megaNameLower];
@@ -1582,6 +1596,16 @@ function megaCheck(p, free){
              why:`${t.name || "The Trainer"} is not wearing a ${MEGA_RING_NAME} — equip one in the Accessory slot (Trainer, Equipment card).` };
   return { ok:true, trainer:t, free:false };
 }
+/* ---- Moves a Mega Evolution REPLACES ---------------------------------------------------------
+   "When Zygarde's Complete Forme knows Core Enforcer and undergoes Mega Evolution, Core Enforcer
+   transforms into Nihil Light for the duration of that transformation." Nihil Light is the only new
+   Move in Legends Z-A and it is Mega Zygarde's alone, so it is not learnable any other way — it is
+   the same bargain megaEvolve already makes for the Mega's Ability: swapped in on the transform,
+   remembered in `p.megaSwapMoves`, and put back exactly as it was on revert. Keyed lowercase by the
+   Mega species; each pair is [the Move it replaces, the Move it becomes]. */
+const MEGA_MOVE_SWAPS = {
+  "mega zygarde": [["Core Enforcer", "Nihil Light"]],
+};
 function megaFormsFor(p){
   const baseName = (p.mega ? (p.preMega||p.species) : p.species);
   const base = getSpecies(baseName); if(!base) return [];
@@ -1603,6 +1627,15 @@ function megaEvolve(p, targetName, rerender){
   p.preMega = p.species;
   p.mega = true;
   p.species = sp.name;
+  /* ...and the Moves it rewrites (Core Enforcer -> Nihil Light). Only a Move the Pokemon actually
+     knows is touched, and only the slot it was in, so its Move order never shuffles. */
+  (MEGA_MOVE_SWAPS[sp.name.toLowerCase()] || []).forEach(([from, to]) => {
+    const i = (p.moves || []).findIndex(m => moveKey(m) === moveKey(from));
+    if(i < 0 || !moveByName.get(to.toLowerCase())) return;
+    p.megaSwapMoves = p.megaSwapMoves || [];
+    p.megaSwapMoves.push([i, p.moves[i]]);
+    p.moves[i] = to;
+  });
   const megaAbility = megaAbilityFor(baseSp, sp.name);
   if(megaAbility && abilityByName.has(megaAbility.toLowerCase())){
     p.abilities = Array.isArray(p.abilities) ? [...p.abilities] : [];
@@ -1616,7 +1649,8 @@ function megaEvolve(p, targetName, rerender){
   if(rerender) rerender(); else { save(); refreshMon(p); }
   // No evolution scene here on purpose (per the user): a Mega is a temporary in-battle transform
   // that reverts every End Scene, so a 6-second full-screen takeover every time is too much.
-  toast(`Mega Evolved into ${sp.name}! ✨`+(megaAbility?` (Mega Ability: ${megaAbility})`:""));
+  toast(`Mega Evolved into ${sp.name}! ✨`+(megaAbility?` (Mega Ability: ${megaAbility})`:"")
+        + ((p.megaSwapMoves||[]).length ? ` — ${p.megaSwapMoves.map(([i])=>p.moves[i]).join(", ")}` : ""));
 }
 function megaRevert(p, silent, rerender){
   if(!p.mega) return;
@@ -1626,11 +1660,95 @@ function megaRevert(p, silent, rerender){
     p.abilities = (p.abilities||[]).filter(a=>(a||"").toLowerCase()!==p.megaAddedAbility.toLowerCase());
     delete p.megaAddedAbility;
   }
+  (p.megaSwapMoves||[]).forEach(([i, was]) => { if(Array.isArray(p.moves) && p.moves[i] !== undefined) p.moves[i] = was; });
+  delete p.megaSwapMoves;
   const m = pokeDerived(p).maxHP;
   if(p.currentHP!=null && p.currentHP>m) p.currentHP = m;
   if(!silent){ if(rerender) rerender(); else { save(); refreshMon(p); } toast("Reverted from Mega Evolution"); }
 }
 
+/* ===================================================================
+   POWER CONSTRUCT  (Zygarde's Complete Forme)
+   -------------------------------------------------------------------
+   "Daily - Swift Action: The user changes to Complete Forme until the end of the Scene, and gains
+    Temporary Hit Points equal to half of the maximum hit points that Complete Forme would have. The
+    user cannot gain Temporary Hit Points from other sources while in Complete Forme.
+    Special: The user still uses the HP total and HP Maximum of the Forme that it was in (10% or 50%
+    Forme) before entering Complete Forme. Both Formes must still follow BSR. The user can only use
+    Power Construct while below 50% HP."
+
+   Mechanically this is a Mega Evolution with one twist, so it is built the same way (species swap,
+   reversible, gone at End Scene) — the twist being that Maximum HP does NOT follow the new statline.
+   That is what `p.pcForm.maxHP` is: the number pokeDerived keeps using while the Forme is up, so
+   Zygarde fights with Complete's Defense, Special Defense and size on 50% Forme's health bar, with
+   half of what Complete's bar WOULD have been sitting in front of it as Temporary Hit Points.
+
+   The HP floor is a gate, not a cost: the button is dead above 50%. Both are the GM's to override
+   with 🔓, like everything else here. */
+const POWER_CONSTRUCT_FORME = "Zygarde Complete";
+const POWER_CONSTRUCT_ABILITY = "Power Construct";
+function inCompleteForme(p){ return !!(p && p.pcForm); }
+/* why this Pokémon can't press it right now — "" when it can */
+function powerConstructBlock(p){
+  if(!p || !ownerHasAbility(p, POWER_CONSTRUCT_ABILITY)) return "needs the Power Construct Ability";
+  if(inCompleteForme(p)) return "already in Complete Forme";
+  if(p.mega) return "already Mega Evolved — revert first";
+  if(!getSpecies(POWER_CONSTRUCT_FORME)) return "Zygarde Complete is missing from the species data";
+  if(p.unlocked) return "";                        // 🔓 GM override, same as everywhere else
+  const max = pokeDerived(p).maxHP;
+  const cur = p.currentHP == null ? max : p.currentHP;
+  if(max && cur > max/2) return "Power Construct only works below 50% HP";
+  if(!usesLeft(p, useKey("ability", POWER_CONSTRUCT_ABILITY), 1)) return "already used today (Daily)";
+  return "";
+}
+/* the Temporary HP the transform pays out — "half of the maximum hit points that Complete Forme
+   would have", i.e. the bar it is NOT getting to use */
+function powerConstructTempHP(p){
+  const was = p.species;
+  p.species = POWER_CONSTRUCT_FORME;
+  let full = 0;
+  try { full = pokeDerived(p).fullMaxHP; } finally { p.species = was; }
+  return Math.floor(full / 2);
+}
+function powerConstructGo(p, rerender){
+  if(powerConstructBlock(p)) { toast(powerConstructBlock(p)); return; }
+  const temp = powerConstructTempHP(p);
+  p.pcForm = { from: p.species, maxHP: pokeDerived(p).fullMaxHP };
+  p.species = POWER_CONSTRUCT_FORME;
+  p.uses = p.uses || {};
+  p.uses[useKey("ability", POWER_CONSTRUCT_ABILITY)] = 1;     // Daily, spent
+  gainTempHP(p, temp, { powerConstruct:true });
+  if(rerender) rerender(); else { save(); refreshMon(p); }
+  toast(`⚡ POWER CONSTRUCT — Complete Forme! +${temp} Temporary HP (the HP bar stays ${p.pcForm.from}'s)`);
+}
+function powerConstructRevert(p, silent, rerender){
+  if(!inCompleteForme(p)) return;
+  p.species = p.pcForm.from || p.species;
+  delete p.pcForm;
+  p.tempHP = 0;                                    // the Forme's Temporary HP goes with the Forme
+  const m = pokeDerived(p).maxHP;
+  if(p.currentHP != null && p.currentHP > m) p.currentHP = m;
+  if(!silent){ if(rerender) rerender(); else { save(); refreshMon(p); } toast("Reverted from Complete Forme"); }
+}
+/* the ⚡ button, shared by the party card and the Encounters card (which passes its own persist) */
+function powerConstructControl(p, rerender){
+  if(!ownerHasAbility(p, POWER_CONSTRUCT_ABILITY) && !inCompleteForme(p)) return null;
+  const row = el("div",{class:"inline",style:"margin-top:6px;gap:6px;align-items:center;flex-wrap:wrap"});
+  if(inCompleteForme(p)){
+    row.append(el("span",{class:"statuschip on",style:"padding:2px 8px;font-size:11px;cursor:default",
+        title:`Complete Forme. Maximum HP is still ${p.pcForm.from}'s (${p.pcForm.maxHP}) — Complete's own bar was paid out as Temporary HP instead, and no other source may add to it while this lasts.`},
+      "⚡ COMPLETE FORME"),
+      el("button",{class:"btn-secondary",style:"padding:4px 10px",title:"revert to the base Forme (also happens automatically at End Scene)",
+        onclick:()=>powerConstructRevert(p, false, rerender)},"↩ Revert"));
+  } else {
+    const why = powerConstructBlock(p);
+    row.append(el("button",{class:"btn-secondary",style:"padding:4px 10px", disabled: !!why,
+      title: why || "Daily, Swift Action: become Complete Forme until End Scene. Stats, types and size follow Complete; the HP bar does NOT — half of Complete's maximum arrives as Temporary HP instead.",
+      onclick:()=>powerConstructGo(p, rerender)}, "⚡ Power Construct"));
+    if(why) row.append(el("span",{class:"muted small"}, why));
+  }
+  return row;
+}
 /* ===================================================================
    TERASTALLIZATION  (Paldea Dex, Appendix II - OPTIONAL, Unofficial Homebrew)
    ------------------------------------------------------------------
@@ -3299,6 +3417,26 @@ function transformRevert(p, silent, rerender){
    Abilities and movelists — so the dex carries ONE "Minior Core" species and the colour is rolled
    once per Pokémon and kept on it, so a given Minior always cracks open the same colour.
    These consts live up here because normPokemon reaches them and it runs during `let state=load()`. */
+/* ---------- the named Last Chance Abilities (Core p.119, and the Ability index) ----------
+   "Last Chance Abilities are always associated with an Elemental Type. The user gains a +5 bonus to
+    Damage Rolls when using attacks of that Type. This bonus increases to +10 when the user is under
+    1/3rd of their Maximum Hit Points."
+   Eighteen Abilities in the dex are nothing but that sentence wearing a species-flavoured name --
+   Blaze IS Last Chance (Fire), Overgrow is Grass, Torrent is Water, Swarm is Bug, and so on for
+   every Type. Until now the only thing that produced a Last Chance was the Type Ace Feature's grant
+   (p.typeAce / p.typeAce2), so a Charizard with Blaze printed on its sheet rolled damage as if the
+   Ability line were blank. Declared here, `typeAceGrants` returns these alongside the Type Ace
+   grants and every existing reader -- the damage math, the Remember card, the Sim -- picks them up
+   without learning a new concept.
+   Up here with the other early consts for the `let state=load()` reason above. */
+const LAST_CHANCE_ABILITIES = {
+  "blaze":"Fire", "overgrow":"Grass", "torrent":"Water", "swarm":"Bug",
+  "dark art":"Dark", "focus":"Fighting", "freezing point":"Ice", "haunt":"Ghost",
+  "landslide":"Ground", "last chance":"Normal", "mach speed":"Flying", "mind mold":"Psychic",
+  "miracle mile":"Fairy", "mountain peak":"Rock", "overcharge":"Electric",
+  "pure blooded":"Dragon", "unbreakable":"Steel", "venom":"Poison",
+};
+
 const MINIOR_METEOR = "Minior Meteor", MINIOR_CORE = "Minior Core";
 const MINIOR_COLORS = ["Red","Orange","Yellow","Green","Blue","Indigo","Violet"];
 /* pokemondb only draws the generic core, so the coloured artwork is hotlinked from PokeAPI, which
@@ -4160,6 +4298,13 @@ function gainTempHP(o, n, opts){
     toast(`\u{1F41F} Schooling - ${ownerLabel(o)} can't gain Temporary HP from other sources while in Schooling Forme`);
     return tempHPOf(o);
   }
+  /* ...and Power Construct prints the very same clause: "The user cannot gain Temporary Hit Points
+     from other sources while in Complete Forme." Its own payout passes {powerConstruct:true}, which
+     matters because powerConstructGo sets p.pcForm BEFORE paying it out. */
+  if(!(opts && opts.powerConstruct) && inCompleteForme(o)){
+    toast(`\u26A1 Power Construct - ${ownerLabel(o)} can't gain Temporary HP from other sources while in Complete Forme`);
+    return tempHPOf(o);
+  }
   const before = tempHPOf(o);
   o.tempHP = (opts && opts.stack) ? before + n : Math.max(before, n);
   return o.tempHP;
@@ -4521,7 +4666,7 @@ function applyEndScene(c){
     if(p.traced){ p.abilities = (p.abilities||[]).filter(a => a !== p.traced); delete p.traced; }
     delete p.pheromone; delete p.pheroRolled;          // Pheromone Stacks don't outlast the fight
     resetManualCS(p); clearSceneStatuses(p);
-    if(p.mega) megaRevert(p,true);
+    if(p.mega) megaRevert(p,true); powerConstructRevert(p,true);
     endSceneTypeState(p);                // Terastallization, Tera Shell / Teraform Zero, Radiating
     shieldsDownRevert(p);                // Shields Down: back to Meteor Forme out of combat, if not Bruised
     treasureHoardRevert(p);              // …and a Gimmighoul's chest comes back with it
@@ -4557,12 +4702,13 @@ function applyEndDay(c, plan){
   channelerEndScene(t, true);                      // a night's rest ends the Channeling too — nobody sleeps inside a 20 m leash
   delete t.fightOn;
   clearStorageDigestion(t);                      // Berry Storage: "all Buffs gained this way are lost after an Extended Rest"
+  seedBagClear(t);                                 // Seed Bag's harvest lasted "the remainder of the day"
   clearAllStatuses(t);                             // Extended Rest cures all Status afflictions (Core p.249) — except Death
   treat(t, "trainer");
   const tCap = trainerDerived(t).hp;               // remaining-injury-capped max
   t.currentHP = noHP(t.injuries) ? Math.min(typeof t.currentHP==="number" ? t.currentHP : tCap, tCap) : tCap;
   restParty(c).forEach(p => {
-    if(p.mega) megaRevert(p,true);        // revert Mega before healing so max HP is the base form's
+    if(p.mega) megaRevert(p,true); powerConstructRevert(p,true);   // revert transforms before healing so max HP is the base form's
     endSceneTypeState(p);                 // ...and a night's rest ends any Terastallization too
     transformRevert(p,true);              // "lasts until ... the end of the encounter"
     schoolingRevertNow(p);                // a night's rest scatters the school - and hands its Daily use back below
@@ -4579,8 +4725,10 @@ function applyEndDay(c, plan){
 }
 /* the cloud rows a GM's rest affects: every PLAYER's sheet (not the GM's own characters, not the PC) */
 function playerRestRows(){
+  /* an ARCHIVED sheet is retired -- it never rests again, so it never turns up in a GM sweep
+     (see charArchived). Un-archive it from the Characters manager to bring it back. */
   return Object.values(cloud.byId).filter(r =>
-    r && r.data && r.data.trainer && !ownsRow(r) && r.owner_id !== PC_OWNER);
+    r && r.data && r.data.trainer && !charArchived(r.data) && !ownsRow(r) && r.owner_id !== PC_OWNER);
 }
 /* End of Scene (Core p.220). GM in cloud → applies to all players; otherwise the active character.
    GM path refreshes FIRST (async) — playerRestRows() reads the GM's own in-memory cache, and that
@@ -4637,7 +4785,7 @@ function restPlannerSheets(){
     if(isMapHpViewer()){
       const SENT = [PC_OWNER, MAP_OWNER, ENC_OWNER, SHOP_OWNER, ROLL_OWNER];
       return Object.values(cloud.byId)
-        .filter(r => r && r.data && r.data.trainer && !SENT.includes(r.owner_id))
+        .filter(r => r && r.data && r.data.trainer && !charArchived(r.data) && !SENT.includes(r.owner_id))
         .map(r => ({ id:r.id, row:r, c:r.data, name:label(r) }));
     }
     const r = cloud.byId[cloud.activeId];
@@ -5336,10 +5484,11 @@ function pokeBaseStats(p) {
   const vit = vitaminStatBonus(p);                 // Vitamins (+1) and Stat Suppressants (−1)
   const arc = p.arcanaStats || {};                 // permanent Base Stat swings from Arcana cards (Knight of Swords, Strength, The Sun…)
   const ace = statAceBonus(p);                     // its Trainer's Stat Ace / Speed Ace / … branch
+  const top = topPercentageBonus(p);              // Ace Trainer's Top Percentage, at its 4th use
   STATS.forEach(([k]) => {
     let base = sp?.baseStats?.[k] ?? 0;
     if (nat) base += (nat.statMods[k] || 0);
-    base += edgeBase + (vit[k] || 0) + (arc[k] || 0) + (ace[k] || 0);
+    base += edgeBase + (vit[k] || 0) + (arc[k] || 0) + (ace[k] || 0) + top;
     out[k] = Math.max(k === "hp" ? 1 : 1, base);   // stats floor at 1
   });
   // Huge Power / Pure Power double the user's Base Attack stat (incl. Nature, Core p.199) — applied
@@ -5369,7 +5518,10 @@ function pokeDerived(p) {
     : Math.floor(total[k] * csMult(cs[k])) + (heldStat[k]||0));
   // Soulless (Shedinja): Max HP is always 1, no matter level/HP stat/Injuries (Core p.485).
   const soulless = isSoulless(p);
+  /* Power Construct: "The user still uses the HP total and HP Maximum of the Forme that it was in
+     before entering Complete Forme" — so the transform changes every stat EXCEPT this one. */
   const fullMaxHP = soulless ? 1
+    : (p.pcForm && typeof p.pcForm.maxHP === "number") ? p.pcForm.maxHP
     : (forced && typeof forced.hp==="number") ? forced.hp : (p.level + total.hp*3 + 10);   // undamaged maximum
   const injuries = soulless ? 0 : Math.max(0, p.injuries||0);   // Soulless never gains Injuries
   const maxHP = soulless ? 1 : injuryHealCap(fullMaxHP, injuries);   // Injuries cap max HP at −10% each (Core p.249)
@@ -5656,10 +5808,19 @@ function defenseTypeMods(p, opts){
     add("Poison", -1);
     why.push("Corrupt Blood: resists Poison one step further (and cannot be Poisoned at all)");
   }
+  /* Mental Resistance (Researcher, Occultism Field, Core p.145): "You gain the Mindlock Capability
+     and 10 Damage Reduction against Special Psychic, Ghost, and Dark-Type damage." The damage CLASS
+     is half the Feature, and the plain typeDR map is class-blind, so it rides its own map and is
+     only folded in when the hit that arrives is actually Special. */
+  const specTypeDR = {};
+  if(isTrainerOwner(p) && hasFeatureLoose(p, "Mental Resistance")){
+    ["Psychic","Ghost","Dark"].forEach(ty => { specTypeDR[ty] = { dr:10, from:["Mental Resistance"] }; });
+    why.push("Mental Resistance: 10 Damage Reduction against Special Psychic, Ghost and Dark damage");
+  }
   // a Feature stance's typeDR (Enchanting Transformation) merged with a granted buff's (Soothing Flute)
   if(mold) why.unshift(MOLD_BREAKER_WHY);
   return { step, immune, wonderGuard, seReduce, seFlatDR, tolerance, furCoat, rogueMega, mold,
-           typeDR: mergeTypeDR(mergeTypeDR(modeTypeDR(p), buffTypeDR(p)), gear.typeDR), glacial, why };
+           typeDR: mergeTypeDR(mergeTypeDR(modeTypeDR(p), buffTypeDR(p)), gear.typeDR), specTypeDR, glacial, why };
 }
 /* ---- Mold Breaker and its two Type-limited cousins (attacker side) ------------------------
    Mold Breaker            "The user ignores the effect of enemies' Defensive Abilities."
@@ -5959,7 +6120,7 @@ function toast(msg){
 }
 
 /* field factory: label + input bound to a path on active character */
-function field(label, path, {type="text", opts=null, step, min, onchange, value, placeholder, disabled=false}={}) {
+function field(label, path, {type="text", opts=null, step, min, onchange, value, placeholder, disabled=false, title=""}={}) {
   const cur = value !== undefined ? value : getByPath(path);
   let input;
   if (opts) {
@@ -5988,7 +6149,9 @@ function field(label, path, {type="text", opts=null, step, min, onchange, value,
     save();
     onchange && onchange(v);
   });
-  return el("label", { class:"field" }, el("span",{}, label), input);
+  const wrap = el("label", { class:"field" }, el("span",{}, label), input);
+  if(title) wrap.title = title;          // hover help for a row whose label has no room to explain it
+  return wrap;
 }
 function getByPath(path){ if(!path) return ""; return path.split(".").reduce((o,k)=>o?.[k], activeChar()); }
 
@@ -6085,8 +6248,11 @@ function renderTrainer(){
   const subTabs = [["sheet","Sheet"],["features","Features & Edges"],["levelup","Level Up"],["gear","Inventory & Bio"]];
   if(giftsCanSee(t)) subTabs.push(["gifts","🎁 Gifts"]);
   if(cardsCanSee(t)) subTabs.push(["cards","🔮 Cards"]);
+  // "Chefs need access to a kitchen" — so a Chef gets one, and nobody else has to look at it
+  if(hasKitchen(t)) subTabs.push(["kitchen","🍳 Kitchen"]);
   if(trainerTab==="gifts" && !giftsCanSee(t)) trainerTab="sheet";   // last Gift removed → fall back
   if(trainerTab==="cards" && !cardsCanSee(t)) trainerTab="sheet";   // last card removed → same
+  if(trainerTab==="kitchen" && !hasKitchen(t)) trainerTab="sheet";
   root.append(subTabBar(subTabs, trainerTab, k=>{ trainerTab=k; renderTrainer(); }));
 
   if(trainerTab==="gifts"){
@@ -6095,6 +6261,12 @@ function renderTrainer(){
   }
   if(trainerTab==="cards"){
     root.append(cardsCard(t));
+    return;
+  }
+  if(trainerTab==="kitchen"){
+    if(trainerIsChef(t)) root.append(kitchenCard(t, ()=>{ save(); renderTrainer(); }));
+    root.append(herbLoreCard(t, ()=>{ save(); renderTrainer(); }));
+    root.append(digestionCard(t, ()=>preserveScroll(()=>{ save(); renderTrainer(); })));
     return;
   }
   if(trainerTab==="features"){
@@ -6412,6 +6584,31 @@ const WEAPON_MOVES_MASTER = ["Bleed!","Deadly Strike","Furious Strikes","Gouge",
 const ARCANE_MOVES_NOVICE = ["Arcane Fury","Energy Blast","Energy Sphere","Rending Spell","Resonance Beam","Secret Force"];
 const ARCANE_MOVES_EXPERT = ["Arcane Storm","Bane","Cone of Force","Energy Vortex","Magic Burst","Spirit Lance"];
 const isArcaneWeapon = w => !!(w && w.arcane);
+/* ---- DEICIDE weapons (campaign homebrew) -----------------------------------------------------
+   An artefact forged to kill gods. Two clauses, and both of them are Type-chart questions:
+
+     "Every attack made with it deals TYPELESS damage"   - no chart to walk at all, so nothing the
+       target is (Ghost, Fairy, an Aura that rewrites resistances) can blunt it, and nothing the
+       wielder is can sharpen it either: Typeless damage never takes STAB.
+     "...and that damage is always SUPER-EFFECTIVE against the divine"  - one step up the PTU
+       ladder (x1.5) against a Legendary Pokemon or against any Trainer carrying a Legendary Gift.
+
+   The second clause is worth more than the number suggests: a Super-Effective hit that does
+   Massive Damage is one of the few things in the book that can DISABLE a Legendary Aura
+   (see AURA_RULES), and it is what Exploit / Expert Belt / seDR all key off.
+
+   It rides `w.deicide`, so the property belongs to the WEAPON and travels with it if the GM ever
+   hands it to somebody else. */
+const isDeicideWeapon = w => !!(w && w.deicide);
+const DEICIDE_HELP = "A god-killing artefact: every attack made with it deals TYPELESS damage (no resistance, no immunity, no STAB) and lands Super-Effective on any Legendary Pokémon or any Trainer carrying a Legendary Gift. Applied automatically by the roll screen and the Apply-to-target picker.";
+/* "Divine" for the Deicide clause: a Legendary Pokemon, or a Trainer who carries any Legendary
+   Gift at all (a Blessing and a Brand count - they are a god's mark either way). An Usurper is
+   divinity themselves, so their Avatar answers yes through their Gifts list too. */
+function ownerIsDivine(o){
+  if(!o) return false;
+  if(isTrainerOwner(o)) return ((o.gifts)||[]).length > 0;
+  return isLegendarySpeciesName(o.species) || ((o.auras)||[]).length > 0;
+}
 /* which list a weapon's lower / upper Move slot offers, and what each slot is called on the card */
 const weaponMoveList = (w, tier) => isArcaneWeapon(w)
   ? (tier === "master" ? ARCANE_MOVES_EXPERT : ARCANE_MOVES_NOVICE)
@@ -6479,7 +6676,7 @@ function weaponSkillWhy(t, w){
   return win;
 }
 function weaponMoveRankOk(t, tier, w){ return !!t.unlocked || weaponSkillRank(t, w) >= weaponMoveNeed(w, tier).num; }
-function newWeapon(){ return { id:uid(), name:"", category:"Small Melee", type:"Normal", notes:"", weaponMoveAdept:"", weaponMoveMaster:"", grantedMoves:"", arcane:false, equipped:false, ...WEAPON_PRESETS["Small Melee"] }; }
+function newWeapon(){ return { id:uid(), name:"", category:"Small Melee", type:"Normal", notes:"", weaponMoveAdept:"", weaponMoveMaster:"", grantedMoves:"", arcane:false, deicide:false, equipped:false, ...WEAPON_PRESETS["Small Melee"] }; }
 /* Moves a specific weapon simply GRANTS, beyond the two standard Weapon-Move slots — a homebrew or
    artefact weapon whose text reads "grants Sacred Sword". Stored as free text so the GM can type
    anything; split here so every reader agrees on the shape. Unlike the Adept/Master slots these are
@@ -6500,7 +6697,10 @@ function trainerStruggle(t, w){
     cls = isArcaneWeapon(w) ? "Special" : "Physical"; }
   // Silent Assassin (Apparition, Bind 2 AP): the strike itself is Ghost-Typed while it is up
   type = strikeTypeOverride(t) || type;
-  return { name, ac, damageBase:db, type, range, cls, weapon:w };
+  /* A Deicide weapon deals Typeless damage, full stop - so it is applied AFTER every retype, which
+     is the whole point of the artefact (nothing it hits gets to have a Type interaction with it). */
+  if(isDeicideWeapon(w)) type = "Typeless";
+  return { name, ac, damageBase:db, type, range, cls, weapon:w, deicide:isDeicideWeapon(w) };
 }
 /* A stance that retypes every Struggle and Weapon Attack outright (Apparition's Silent Assassin:
    "While this Feature is Bound, your Struggle Attacks and Weapon Attacks deal Ghost-Type Damage").
@@ -6589,13 +6789,17 @@ function weaponsCard(t){
       field(weaponMoveLabel(w,"master"),"",{opts:["", ...weaponMoveList(w,"master")], value:w.weaponMoveMaster||"", onchange:v=>{ w.weaponMoveMaster=v; save(); renderTrainer(); }}),
       field("Arcane Weapon","",{opts:["no","yes"], value:w.arcane?"yes":"no",
         onchange:v=>{ w.arcane = v==="yes"; w.weaponMoveAdept=""; w.weaponMoveMaster=""; save(); renderTrainer(); }}),
+      field("\u2694 Deicide","",{opts:["no","yes"], value:w.deicide?"yes":"no", title:DEICIDE_HELP,
+        onchange:v=>{ w.deicide = v==="yes"; save(); renderTrainer(); }}),
     );
     box.append(r1, r2, r3, field("Notes","",{value:w.notes,onchange:v=>{ w.notes=v; save(); }}));
     const ws = trainerStruggle(t, w);
     const wWhy = weaponSkillWhy(t, w);
     box.append(el("div",{class:"small",style:"margin-top:6px"}, el("b",{},"Attack: "),
       el("span",{html:typeBadge(ws.type)}), ` Physical · AC ${ws.ac} · DB ${ws.damageBase} (${(DB_TABLE[ws.damageBase]||"?").split("/")[0].trim()}) · ${ws.range}`,
-      wWhy ? el("span",{class:"muted",title:"Herald of Pride: Command or Intimidate replaces Combat for Melee Weapons"}, ` · via ${wWhy}`) : ""));
+      wWhy ? el("span",{class:"muted",title:"Herald of Pride: Command or Intimidate replaces Combat for Melee Weapons"}, ` · via ${wWhy}`) : "",
+      isDeicideWeapon(w) ? el("span",{style:"color:var(--accent);font-weight:700",title:DEICIDE_HELP},
+        " \u00b7 \u2694 Deicide \u2014 Typeless, Super-Effective vs the divine") : ""));
     [["weaponMoveAdept","adept"],["weaponMoveMaster","master"]].forEach(([field_,tier])=>{
       const mn = w[field_]; if(!mn) return;
       const wm = moveByName.get(mn.toLowerCase()); if(!wm) return;
@@ -7157,13 +7361,31 @@ function featureAbilityGrants(t){
   });
   return out;
 }
+/* ...and the same sentence as it appears on a granted GIFT. A dozen Legendary Gifts end with
+   "You gain the <X> Ability" — Zygarde's Aura Break, Xerneas's Fairy Aura, Yveltal's Dark Aura,
+   Zacian's Intrepid Sword, Zamazenta's Dauntless Shield, Spectrier's Grim Neigh, Glastrier's
+   Chilling Neigh, Calyrex's Splendorous Rider — and not one of them reached the engine: the sheet
+   printed the rules text and `ownerHasAbility` went on answering no. The row's own `effect` text is
+   what is read (a GM who edited the wording keeps whatever they typed), through the same parser and
+   the same safety rule Features use: the name has to resolve in the Ability DB or nothing is
+   granted. */
+function giftAbilityGrants(t){
+  if(!t || !Array.isArray(t.gifts)) return [];
+  const out = [];
+  t.gifts.forEach(g => {
+    const d = featureAbilityScan({ name:g && g.name, effect:g && g.effect });
+    if(d) d.abilities.forEach(a => out.push(a));
+  });
+  return out;
+}
 /* Every Ability a TRAINER has that is not typed into their own list: the ones their Features grant,
-   and - for an Usurper with Shared Strengths Rank 1 - their Legendary Form's. `ownerHasAbility`
-   already unions all of this, so anything that DISPLAYS a Trainer's Abilities has to use the same
-   union or half of what the engine is applying stays invisible on the sheet. */
+   the ones their Legendary Gifts grant, and - for an Usurper with Shared Strengths Rank 1 - their
+   Legendary Form's. `ownerHasAbility` already unions all of this, so anything that DISPLAYS a
+   Trainer's Abilities has to use the same union or half of what the engine is applying stays
+   invisible on the sheet. */
 function trainerGrantedAbilities(t){
   if(!t) return [];
-  return [...new Set([...featureAbilityGrants(t), ...usurpSharedAbilities(t)])];
+  return [...new Set([...featureAbilityGrants(t), ...giftAbilityGrants(t), ...usurpSharedAbilities(t)])];
 }
 /* The picker button for a multi-option Embrace grant, styled like Power of Rage's. */
 function featureAbilityPick(t, f, rerender, persist){
@@ -7191,6 +7413,79 @@ function featureAbilityPick(t, f, rerender, persist){
   modal({title:`${f.name} \u2014 choose an Ability`, bodyNode:body,
     footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
 }
+/* ---------- Top Percentage (Ace Trainer, Core p.59) ----------
+   "Trigger: Your Pokemon levels up to a Level evenly divisible by 5. Effect: Your Pokemon gains an
+    extra Tutor Point. Top Percentage may be used on a single Pokemon a maximum of 4 times. Once a
+    Pokemon has gained 4 Tutor Points in this way, increase each of that Pokemon's Base Stats by +1."
+
+   It is a button rather than an automatic effect for the reason every levelling Feature is: the
+   trigger is a level-up that already happened, often several sessions ago, and only the table knows
+   whether the Trainer spent it. So the COUNT is stored (`p.topPercent`, 0-4) and everything else is
+   derived from it — the Tutor Point goes through tpChange like every other TP movement, so it lands
+   in the ledger with its reason, and the fourth use turns on the +1 to every Base Stat here. */
+const TOP_PERCENTAGE_MAX = 4;
+function topPercentUses(p){ return Math.max(0, Math.min(TOP_PERCENTAGE_MAX, (p && p.topPercent) || 0)); }
+function topPercentageBonus(p){ return topPercentUses(p) >= TOP_PERCENTAGE_MAX ? 1 : 0; }
+/* Move the counter, paying (or taking back) the Tutor Point that goes with each step. */
+function setTopPercent(p, n){
+  const was = topPercentUses(p), now = Math.max(0, Math.min(TOP_PERCENTAGE_MAX, n|0));
+  if(now === was) return 0;
+  p.topPercent = now;
+  tpChange(p, now - was, "Top Percentage (Ace Trainer)", { kind:"feature" });
+  return now - was;
+}
+/* The Feature's own button, on the Trainer's Battle tab and on an encounter NPC's Feature row. */
+function topPercentagePick(t, f, rerender, persist){
+  const mons = trainerPokemonList(t);
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
+    `At-Will, Free Action, when one of your Pokémon levels up to a multiple of 5: it gains an extra `
+    + `Tutor Point. Four times per Pokémon, ever — and the fourth also raises every one of its Base `
+    + `Stats by +1. The Tutor Point is logged for you; the +1s apply the moment the counter reaches ${TOP_PERCENTAGE_MAX}.`));
+  if(!mons.length){
+    body.append(el("div",{class:"small"},"This Trainer has no Pokémon on the sheet."));
+  }
+  mons.forEach(p=>{
+    const row = el("div",{class:"moveslot"});
+    const n = topPercentUses(p);
+    row.append(el("div",{style:"flex:1"},
+      el("div",{style:"font-weight:700"}, encMonName(p),
+        el("span",{class:"muted small",style:"font-weight:400;margin-left:8px"}, `Lv ${p.level||1}`)),
+      el("div",{class:"small",style:`margin-top:2px;${n>=TOP_PERCENTAGE_MAX?"color:var(--good);font-weight:700":"color:var(--muted)"}`},
+        `${n}/${TOP_PERCENTAGE_MAX} used`
+        + (n>=TOP_PERCENTAGE_MAX ? " — +1 to every Base Stat, applied" : ` — ${TOP_PERCENTAGE_MAX-n} more for the Base Stat bonus`))));
+    const step = v => { if(!setTopPercent(p, v)) return;
+                        (persist||save)(); closeModal();
+                        toast(`🏆 Top Percentage: ${topPercentUses(p)}/${TOP_PERCENTAGE_MAX} on ${encMonName(p)}`);
+                        (rerender||renderBattle)(); };
+    row.append(el("div",{class:"stepper"},
+      el("button",{disabled:n<=0, title:"take a use back (the Tutor Point comes with it)", onclick:()=>step(n-1)},"−"),
+      el("span",{class:"stepper-val"}, String(n)),
+      el("button",{disabled:n>=TOP_PERCENTAGE_MAX, title:"spend a use (+1 Tutor Point)", onclick:()=>step(n+1)},"+")));
+    body.append(row);
+  });
+  modal({title:"🏆 Top Percentage", bodyNode:body,
+         footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+}
+/* Every Pokémon this Trainer owns, wherever the sheet lives — a player's party row, or the
+   `pokemon` array beside an encounter NPC. The reverse of ownerTrainerOf, which every Feature that
+   reads DOWN from a Trainer to their team has so far had to improvise. */
+function trainerPokemonList(t){
+  if(!t) return [];
+  try{
+    const act = activeChar();
+    if(act && act.trainer === t) return (act.pokemon||[]).slice();
+    if(mode==="cloud"){
+      for(const r of Object.values(cloud.byId||{}))
+        if(r && r.data && r.data.trainer === t) return (r.data.pokemon||[]).slice();
+    } else {
+      for(const c of (state.characters||[])) if(c.trainer === t) return (c.pokemon||[]).slice();
+    }
+    for(const e of (encList()||[]))
+      for(const tr of (e.trainers||[])) if(tr && tr.trainer === t) return (tr.pokemon||[]).slice();
+  }catch(err){}
+  return [];
+}
 /* Features the sheet can actually carry out, given one button on their own Battle-tab row. Orders
    (✨ Give) and stances (FEATURE_MODES) already have theirs; this is for everything else. */
 const FEATURE_ACTIONS = [
@@ -7201,6 +7496,13 @@ const FEATURE_ACTIONS = [
     label:() => "🔥 Frenzy",
     title:t => hasStatus(t, "enraged") ? "Spend a use: cure Slowed/Stuck and gain the surge for this turn"
                                        : "Needs the Enraged condition" },
+  { feat:"Top Percentage", run:topPercentagePick,
+    label:() => "🏆 Top Percentage",
+    title:() => "Count the times you have spent it on each Pokémon. Each use is a Tutor Point (logged); the fourth also raises every one of that Pokémon's Base Stats by +1." },
+  { feat:"Godslayer", run:godslayerGo,
+    label:() => "\u2694 Godslayer",
+    title:t => `Standard Action, EOT: shatter one of a Legendary's Auras. AC ${godslayerAC(t)}`
+             + (godCrusherOn(t) ? " (God Crusher). No feedback Injury." : "; a success rolled 10-15 gives you an Injury.") },
   { feat:"Signature Move", run:signatureMovePick,
     label:t => t.sigMove ? "⚙ Change Move" : "⚙ Choose Move",
     title:t => t.sigMove ? `${t.sigMove}'s Frequency is raised one step — tap to move it to another Move`
@@ -7299,6 +7601,7 @@ function applyAutoKO(owner, oldHP, newHP){
     treasureHoardRevert(owner);     // "When the user faints ... the chest disappears and they revert to Chest Forme"
     transformRevert(owner, true);   // "Transform lasts until the user is ... Fainted" (no-op for anyone else)
     megaRevert(owner, true);        // a Fainted Pokémon can't stay Mega Evolved (no-op if not Mega)
+    powerConstructRevert(owner, true);   // ...nor Complete, which the Ability ends at 0 HP with everything else
     endSceneTypeState(owner);       // "remains Terastalized until they are Fainted or the Scene ends"
     toast(`💀 ${ownerLabel(owner)} is Knocked Out at ${newHP} HP.`);
     return "ko";
@@ -7709,10 +8012,13 @@ function trainerAttackProfile(t, weaponMoveName, w, asWeaponAttack){
     const sd = sheetDamageBase(m, t);
     // a Weapon Attack is a Weapon Attack: Silent Assassin retypes the Move being swung as well
     const strikeTy = w ? strikeTypeOverride(t) : "";
-    if(m) return { name:m.name, type:strikeTy || ((w&&w.type&&w.type!=="Normal")?w.type:(m.type||"Normal")),
+    if(m) return { name:m.name,
+      type: isDeicideWeapon(w) ? "Typeless"
+          : strikeTy || ((w&&w.type&&w.type!=="Normal")?w.type:(m.type||"Normal")),
       damageBase:Math.min(28,(sd.db||0)+(w?w.dbMod:0)), dbNote:sd.note, ac:(m.ac!=null?m.ac:4)+(w?w.acMod:0),
       range:weaponizeRange(m.range||"Melee", w, asWeaponAttack), cls:m.class||"Physical",
-      frequency:trainerMoveFreq(t, m), effect:m.effect, weapon:w, move:m, weaponAttack:!!(w && asWeaponAttack) };
+      frequency:trainerMoveFreq(t, m), effect:m.effect, weapon:w, move:m, weaponAttack:!!(w && asWeaponAttack),
+      deicide:isDeicideWeapon(w) };
   }
   return trainerStruggle(t, w);
 }
@@ -7759,6 +8065,9 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     ? ((opts.pickType && TYPES.includes(opts.pickType)) ? opts.pickType : chosenMoveTypeDefault(t, st.move))
     : null;
   if(tTypePick) st.type = tTypePick;
+  /* A Deicide weapon overrules every one of them: whatever the Move was, whatever it was retyped
+     to, it leaves the blade Typeless. Applied last so nothing can put a Type back on it. */
+  if(st.deicide) st.type = "Typeless";
   /* Herald of Pride ignores Damage Reduction up to their Command/Intimidate Rank on a Weapon
      Attack — carried to the defender through the Apply-to-target widget and the roll feed. */
   const heraldDR = attackDRPierce(t, st);
@@ -8320,7 +8629,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
        parser, and the same two Abilities that bend it: Frostbite widens Freeze on an Ice Move,
        Serene Grace widens every Effect Range by +2. */
     if(st.move){
-      const trThr = sereneGraceThresholds(
+      const trThr = buffEffectThresholds(sereneGraceThresholds(
         burnRangeThresholds(
           frostbiteThresholds(effectThresholds(st.move.effect),
             ownerHasAbility(t,"Frostbite") && st.type==="Ice" && !isStatusAtk),
@@ -8328,7 +8637,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
              counts too, and only the Type is checked. */
           hasFeatureLoose(t,"Firebrand") && st.type==="Fire", "Firebrand",
           "this Fire-Type Move Burns the target on 19+."),
-        ownerHasAbility(t,"Serene Grace"));
+        ownerHasAbility(t,"Serene Grace")), buffEffectRange(t));
       if(trThr.length){
         const tl = el("div",{style:"margin:2px 0 10px"});
         trThr.filter(x=>acc>=x.n).forEach(x=>{
@@ -8434,11 +8743,13 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         + `. Applied for you by the target picker below — subtract it by hand if you use the Damage/Heal box instead.`));
       if(moveRule) out.append(el("div",{class:"small",style:"margin-top:4px;color:var(--accent);font-weight:600"},
         `❄ ${st.name}: ${moveRule.note}. Applied for you by the target picker below.`));
+      if(st.deicide) out.append(el("div",{class:"small",style:"margin-top:4px;color:var(--accent);font-weight:600"},
+        `\u2694 ${st.weapon && st.weapon.name ? st.weapon.name : "Deicide weapon"}: this damage is TYPELESS \u2014 no resistance, no immunity, no STAB \u2014 and lands Super-Effective (\u00d71.5) on any Legendary Pok\u00e9mon or Gift-carrying Trainer. Applied for you by the target picker below.`));
       if(tMold) out.append(el("div",{class:"small",style:"margin-top:4px;color:var(--accent);font-weight:600"},
         `\u{1F528} ${tMold.why}${tMold.tinted?", and a hit they would resist lands as neutral":""}. Applied for you by the target picker below.`));
       const tw = attackTargetWidget({ dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce,
         atkTinted: ownerHasAbility(t,"Tinted Lens") || !!(tMold && tMold.tinted), atkMold: !!tMold,
-        atkExploit: ownerHasAbility(t,"Exploit"), atkWar: ownerAuraActive(t,"War"),
+        atkExploit: ownerHasAbility(t,"Exploit"), atkWar: ownerAuraActive(t,"War"), atkDeicide: !!st.deicide,
         seFlat: heldSeFlatDamage(t), defCSMode, moveRule, critExtra });
       if(tw) out.append(tw);
       feedLogged = true;
@@ -8448,7 +8759,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
                `${st.type||"Typeless"}${st.cls?` · ${st.cls}`:""} · DB ${db}`],
         atk: isStatusAtk ? null : { dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce, critExtra,
                atkTinted: ownerHasAbility(t,"Tinted Lens") || !!(tMold && tMold.tinted), atkMold: !!tMold, moveRule,
-               atkExploit: ownerHasAbility(t,"Exploit"), atkWar: ownerAuraActive(t,"War"),
+               atkExploit: ownerHasAbility(t,"Exploit"), atkWar: ownerAuraActive(t,"War"), atkDeicide: !!st.deicide,
                seFlat: heldSeFlatDamage(t), defCSMode } });
     }
     if(dblStrike){
@@ -8902,6 +9213,7 @@ function prereqTokens(str){ return String(str||"").split(/,|;|\band\b/i).map(s=>
    so a Feature reachable through any branch is still grouped under its class. */
 function membershipTokens(str){ return String(str||"").split(/,|;|\band\b|\bor\b|\n|\//i).map(s=>s.trim()).filter(Boolean); }
 const featureByName = new Map(D.features.map(f=>[f.name, f]));
+const edgeByName = new Map((D.edges||[]).map(e=>[e.name, e]));
 /* Feature/class references in the sheet are hand-typed and drift from the canonical name: curly vs
    straight apostrophes ("Conqueror’s March" vs "Conqueror's March"), casing ("Lessons in Rage & Pain"),
    and a leading article ("A Major Gift"). Match every reference through this key so a prerequisite
@@ -9037,6 +9349,23 @@ function featureGroupsFor(t, names){
   if(general.length) out.push(["General", general]);
   return out;
 }
+/* Which Classes does a Feature belong to? The inverse of featuresForClass, built once across all
+   70 classes the first time anything asks. Its empty answer is the definition of a GENERAL Feature:
+   the book's Combat / Pokemon Training / Other chapters, which no class line claims. */
+let _featClassMap = null;
+function featureClassesOf(name){
+  if(!_featClassMap){
+    _featClassMap = new Map();
+    D.classes.forEach(c => classFeatNameSet(c.name).forEach(n => {
+      if(!_featClassMap.has(n)) _featClassMap.set(n, []);
+      _featClassMap.get(n).push(c.name);
+    }));
+  }
+  return _featClassMap.get(name) || [];
+}
+/* a [Class] Feature is its own thing (see the "New Classes" picker tab), not a General Feature */
+function featureIsGeneral(name){ return !luIsClass(name) && featureClassesOf(name).length === 0; }
+
 /* The Skill Edges (Basic/Adept/Expert/Master/Virtuoso Skills) are pure bookkeeping — they are what
    PAID for the Skill Ranks already printed on the card, and a Lv20 sheet can carry ten of them.
    Split them out so the Edges list shows the ones that actually do something. */
@@ -9409,11 +9738,19 @@ function luSlot(t, key, kind, label, hint){
   let disp = cur || "choose…";
   if(isSkill && cur){ const sk=SKILLS.find(s=>s[1]===cur); const rk=sk?(t.skills?.[sk[0]]||""):""; disp = rk?`${cur} · ${rk}`:cur; }
   if(!isSkill && cur && !(kind==="edge" ? (D.edges||[]) : D.features).some(x=>x.name===cur)) disp = cur + " ⚠";
-  const pickTitle = isSkill ? "Which Skill did you rank up?" : kind==="edge"?"Choose an Edge":"Choose a Feature";
+  const pickTitle = isSkill ? "Which Skill did you rank up?"
+    : `Choose ${kind==="edge" ? "an Edge" : "a Feature"} — Level ${(/^L(\d+):/.exec(key)||[0,"?"])[1]}`;
   /* The Level this slot belongs to — read off the key so every call site gets the check for free.
      Picks are locked to what the Trainer QUALIFIED FOR then, not to what they qualify for now. */
   const level = +((/^L(\d+):/.exec(key)||[])[1]) || 1;
   const lockFn = isSkill ? luSkillPickLock(t, level, key) : luPickLock(t, level, kind, key);
+  /* Features and Edges get the browsable picker: tabs for where each one comes from, and a switch
+     between "everything in the book" and "what this Trainer can actually take at this Level".
+     Built on open, not on render — luFeatureTabs re-derives the ledger, and a Lv20 sheet draws
+     forty of these slots. */
+  const pickOpts = () => isSkill ? null
+    : { tabs: kind==="edge" ? luEdgeTabs() : luFeatureTabs(t, level, key),
+        lockToggle: true, memKey: kind };
   const btn = el("button",{class:"btn-secondary lu-pick", title: isSkill?"Choose a Skill":"Choose from the "+(kind==="edge"?"Edges":"Features")+" list",
     onclick:()=>openPicker(pickTitle, names, v=>{
       t.levelUp[key]=v;
@@ -9421,7 +9758,7 @@ function luSlot(t, key, kind, label, hint){
          carry over onto Master Skills */
       if(!isSkill && kind==="edge" && !edgeRankSteps(v).length) delete t.levelUp[key+":skill"];
       luCommit(t); save(); renderTrainer();
-    }, isSkill?null:kind, null, lockFn)}, disp);
+    }, isSkill?null:kind, null, lockFn, null, pickOpts())}, disp);
   if(cur) btn.classList.add("filled");
   const row = el("div",{class:"lu-slot"},
     el("span",{class:"lu-label"}, label + (hint?" ":""), hint?el("span",{class:"muted"},`(${hint})`):""),
@@ -10013,8 +10350,10 @@ function luPrereqUnmet(snap, text){
    Level. Picks made at the same Level count — Core p.13 lets you alternate Steps 3 and 4. */
 function luPickLock(t, level, kind, key){
   if(t.unlocked) return null;                                      // GM 🔓 ignores prerequisites
+  /* one snapshot for the whole picker: it is the Trainer's state at this Level, which no candidate
+     name can change. Rebuilding it per name made the Feature list (700 names) crawl. */
+  const snap = luStateAt(t, level, key);
   return name => {
-    const snap = luStateAt(t, level, key);
     if(kind === "edge"){
       const min = edgeMinLevel(name);
       if(level < min) return `Needs Level ${min}`;
@@ -10047,6 +10386,31 @@ function luSkillPickLock(t, level, key){
     return steps.some(([from]) => from === snap.skills[k])
       ? null : `${label} is ${snap.skills[k]} at Level ${level}`;
   };
+}
+
+/* ---------- picker tabs for the Level-Up slots ----------
+   A flat 700-name Feature list is unreadable and tells you nothing about where a Feature comes
+   from. Split it the way the book lays it out: the General Features, then one tab per Class the
+   Trainer already held AT THIS LEVEL, then the Class Features themselves (what taking a NEW class
+   costs). "All" keeps everything reachable, and each tab counts what you actually qualify for. */
+function luFeatureTabs(t, level, key){
+  const owned = luStateAt(t, level, key).classes;
+  const ownedSet = new Set(owned);
+  const tabs = [{ id:"all", label:"All" },
+                { id:"general", label:"General", test:n => featureIsGeneral(n) }];
+  owned.forEach(c => tabs.push({ id:"c:"+c, label:c, test:n => featureBelongsToClass(n, c) }));
+  tabs.push({ id:"newclass", label:"New Classes", test:n => luIsClass(n) && !ownedSet.has(n) });
+  return tabs;
+}
+/* Edges come pre-filed by the books: Skill / Combat / Training / Crafting / Other, then one bucket
+   per supplement. Order the core five the way the chapter does and let the rest follow. */
+const EDGE_CAT_ORDER = [/^Skill/i, /^Combat/i, /Training/i, /^Crafting/i, /^Other/i];
+const edgeCatRank = c => { const i = EDGE_CAT_ORDER.findIndex(r => r.test(c)); return i < 0 ? 99 : i; };
+function luEdgeTabs(){
+  const cats = [...new Set((D.edges||[]).map(e => e.category).filter(Boolean))]
+    .sort((a,b) => edgeCatRank(a) - edgeCatRank(b) || a.localeCompare(b));
+  return [{ id:"all", label:"All" },
+    ...cats.map(c => ({ id:"e:"+c, label:c.replace(/\s+Edges$/,""), test:n => (edgeByName.get(n)||{}).category === c }))];
 }
 
 /* ---------- the Skill Background box (Level 1) ---------- */
@@ -10295,6 +10659,7 @@ const FEATURE_CAPS = [
   { feat:"Earthen Bond", caps:["Tremorsense","Naturewalk (Cave)",            // Earth Shaker (Ground)
                                "Naturewalk (Mountain)","Naturewalk (Desert)"] },
   { feat:"Green Path", caps:["Naturewalk (Grassland)","Naturewalk (Forest)"] },  // Druid (Grass)
+  { feat:"Mental Resistance", caps:["Mindlock"] },   // Researcher, Occultism Field (Core p.145)
 ];
 function featureCaps(t){ return FEATURE_CAPS.filter(d => hasFeatureLoose(t, d.feat)); }
 /* ---- every Capability this Trainer has been given, from wherever ---------------------------
@@ -12306,6 +12671,16 @@ function giftsCard(t, saveFn, rerender, opts){
     + "Private — only you and your GM see this tab.")));
   const uForm = usurpFormCard(t, saveFn, rerender, gm);
   if(uForm) card.append(uForm);
+  /* Standing in somebody's Giftsapper field is the single most important thing this tab can tell
+     you, so it goes above everything — with the DC already worked out. Read off the chip the Map
+     sweep set, so it is true for a player who cannot see the board. */
+  if(hasStatus(t, "giftsapped")){
+    const map = currentMapForView() || activeMap();
+    const src = map ? tokenGiftsapSources(map, tokenForOwner(t)) : [];
+    card.append(el("div",{class:"small",style:"margin:0 0 10px;padding:8px 10px;border:1px solid var(--bad);border-radius:var(--radius-sm);color:var(--bad);font-weight:600"},
+      "\u26D3 GIFT-SAPPED \u2014 " + (giftsapNote(src) ||
+        "you are inside a Giftsapper's field: every Gift you activate needs a Focus Check first, and a failure spends neither AP nor its Frequency.")));
+  }
   /* 👁 hidden rows are dropped here for everyone but the GM — a sheet whose only Gifts are hidden
      reads exactly like a sheet with none. */
   const shown = giftsShown(t);
@@ -12346,6 +12721,160 @@ function giftsCard(t, saveFn, rerender, opts){
     el("b",{},"Patron Stats applied: "), parts.join(" · "), el("span",{class:"muted"}," (added to your Combat totals)")));
   return card;
 }
+/* ===================================================================
+   GIFTSAPPER and GODSLAYER — the two General Gifts that fight other Gifts
+   -------------------------------------------------------------------
+   Both are written as things one character does TO another, which is why neither had any
+   mechanical presence: the sheet that owns them is not the sheet the effect lands on.
+
+   GIFTSAPPER is a FIELD, not an action: "As long as Giftsapper's user is conscious, all Trainers
+   within 10 meters must make a Focus Check with DC equal to three times the highest Skill Rank of
+   Giftsapper's user between Focus, Intimidate, or Command in order to activate their Gifts." The
+   Map already knows who is standing within 10 metres of whom — it is exactly the shape of
+   Pressure's 3-metre aura — so it is swept the same way, onto a ⛓ chip that says the DC. Unlike
+   Pressure it is not limited to FOES (the book says "all Trainers") and it only lands on somebody
+   who actually has a Gift to lose.
+
+   GODSLAYER is a Standard Action: "You may attempt to shatter one of the target's Legendary Auras.
+   The AC of this action is 10. If you successfully disabled the Aura, but rolled a 10-15, the
+   feedback from the action gives you an Injury." Zygarde's God Crusher Gift rewrites both numbers
+   ("Godslayer's AC becomes 8 and no feedback"), so both are derived rather than typed.
+=================================================================== */
+const GIFTSAPPER_RANGE = 10;                    // metres, per the Gift's own text
+const GIFTSAPPER_SKILLS = ["focus","intimidate","command"];
+/* Held as a Gift row (how the GM grants it) or as a plain Feature (how a player sheet that took it
+   through the Level-Up ledger records it) — either counts. */
+function hasGiftsapper(t){
+  return !!t && (!!giftRowNamed(t, "Giftsapper") || trainerHasFeature(t, "Giftsapper"));
+}
+/* "three times the highest Skill Rank ... between Focus, Intimidate, or Command" */
+function giftsapperDC(t){
+  if(!t || !t.skills) return 0;
+  return 3 * Math.max(...GIFTSAPPER_SKILLS.map(k => rankNum(t.skills[k])));
+}
+/* which of the three Skills is setting the DC, so the chip can say why */
+function giftsapperSkill(t){
+  if(!t || !t.skills) return "";
+  let best = "", n = -1;
+  GIFTSAPPER_SKILLS.forEach(k => { const r = rankNum(t.skills[k]); if(r > n){ n = r; best = k; } });
+  return best ? `${(SKILLS.find(x=>x[0]===best)||[])[1] || best} ${t.skills[best]}` : "";
+}
+/* Does this creature have anything for a Giftsapper to sap? Pokémon never carry Gifts, so the
+   field simply does not apply to them — which also keeps the sweep off every wild mon on the board. */
+function carriesGifts(o){ return isTrainerOwner(o) && ((o.gifts)||[]).length > 0; }
+/* the Giftsappers projecting onto this token right now, strongest DC first. "As long as
+   Giftsapper's user is conscious" — a downed one projects nothing. */
+function tokenGiftsapSources(map, token){
+  if(!map || !token) return [];
+  const L = token.link ? tokenLinked(token) : null;
+  if(!L || !L.obj || L.missing || !carriesGifts(L.obj)) return [];
+  return mapTokensFor(map.id).filter(x => {
+    if(x.id === token.id || x.gmHidden || tokenIsDown(x)) return false;
+    if(tokenTileGap(x, token) > GIFTSAPPER_RANGE) return false;
+    const XL = tokenLinked(x);
+    return !!(XL && XL.obj && !XL.missing && hasGiftsapper(XL.obj));
+  }).map(x => ({ name: tokenHp(x).name, dc: giftsapperDC(tokenLinked(x).obj),
+                 why: giftsapperSkill(tokenLinked(x).obj) }))
+    .sort((a,b) => b.dc - a.dc);
+}
+/* the one line the chip and the Gifts card both say */
+function giftsapNote(src){
+  if(!src || !src.length) return "";
+  const top = src[0];
+  return `Within ${GIFTSAPPER_RANGE}m of ${src.map(x=>x.name).join(" & ")} — every Gift you activate `
+       + `needs a DC ${top.dc} Focus Check first${top.why?` (3 × ${top.why})`:""}. `
+       + `A failure spends nothing: no AP, no Frequency. A Static or ongoing Gift is checked each turn, `
+       + `and a failure switches it off for that turn.`;
+}
+
+/* ---- Godslayer -------------------------------------------------------------------------------- */
+/* Zygarde's God Crusher: "You gain the Godslayer Feature ...; Godslayer's AC becomes 8 and no
+   feedback." Both numbers are derived from whether that Gift is on the sheet. */
+function hasGodslayer(t){
+  return !!t && (!!giftRowNamed(t, "Godslayer") || !!giftRowNamed(t, "God Crusher")
+                 || trainerHasFeature(t, "Godslayer"));
+}
+function godCrusherOn(t){ return !!t && !!giftRowNamed(t, "God Crusher"); }
+function godslayerAC(t){ return godCrusherOn(t) ? 8 : 10; }
+/* Every Aura-bearing creature on the board this action could be pointed at. The Map is the honest
+   source — Godslayer needs a target you can see, and a Legendary with no ACTIVE Aura has nothing
+   left to shatter. */
+function godslayerTargets(){
+  const map = currentMapForView() || activeMap(); if(!map) return [];
+  return mapTokensFor(map.id).map(tok => {
+    const L = tok.link ? tokenLinked(tok) : null;
+    if(!L || !L.obj || L.missing) return null;
+    const live = ((L.obj.auras)||[]).filter(a => auraIsActive(L.obj, a));
+    return live.length ? { tok, obj:L.obj, name: tokenHp(tok).name, auras: live } : null;
+  }).filter(Boolean);
+}
+/* The action itself: pick a target, pick an Aura, roll d20 vs the AC. A success switches that Aura
+   off (the same flag the ● Active toggle writes, so the card, the +2 Combat Stages per Aura and
+   every Aura reader agree at once) and the AURA_RULES note about the 24-hour restore is printed
+   rather than tracked — the book puts that on the table, not on a timer. */
+function godslayerGo(t, rerender, persist){
+  const ac = godslayerAC(t), feedback = !godCrusherOn(t);
+  const tgts = godslayerTargets();
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    `Standard Action, EOT. Roll d20 + your Accuracy modifiers against AC ${ac}`
+    + (godCrusherOn(t) ? " — lowered from 10 by God Crusher, which also waives the feedback Injury."
+                       : " — on a success rolled 10-15, the feedback gives YOU an Injury.")
+    + " Only one Aura can be disabled every two rounds, whatever the source, and a shattered Aura"
+    + " takes 24 hours to come back. A Legendary holding more than three Domains may instantly"
+    + " switch a spare one on in its place."));
+  if(!tgts.length){
+    body.append(el("div",{class:"small"},"Nothing on the current Map is carrying an ACTIVE Legendary Aura — open the 🗺 Map, or switch one on from the target's own Auras card."));
+    modal({title:"⚔ Godslayer", bodyNode:body, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+    return;
+  }
+  tgts.forEach(tg => {
+    const box = el("div",{style:"border:1px solid var(--line);border-radius:var(--radius-sm);padding:8px 10px;margin-top:8px"});
+    box.append(el("div",{style:"font-weight:700"}, tg.name,
+      el("span",{class:"muted small",style:"font-weight:400;margin-left:8px"}, `${tg.auras.length} active`)));
+    tg.auras.forEach(an => {
+      const row = el("div",{class:"moveslot"});
+      row.append(el("div",{style:"flex:1"}, el("div",{style:"font-weight:700"}, an),
+        el("div",{class:"small muted"}, (auraByKey.get(auraKey(an))||{}).desc || "")));
+      row.append(el("button",{class:"btn-primary",style:"padding:6px 10px",
+        onclick:()=>{
+          const d = 1 + Math.floor(Math.random()*20);
+          const hit = d >= ac;
+          const inj = hit && feedback && d >= 10 && d <= 15;
+          if(hit){
+            tg.obj.auraActive = tg.obj.auraActive || {};
+            tg.obj.auraActive[auraKey(an)] = false;
+            commitTokenSource(tg.tok);
+          }
+          if(inj){ t.injuries = Math.max(0, (t.injuries||0) + 1); (persist||save)(); }
+          logRoll({ kind:"feature", label:"Godslayer", who:t.name||"",
+            headline: hit ? `⚔ ${an} SHATTERED` : `✖ missed (needed ${ac})`,
+            lines:[`d20 ${d} vs AC ${ac} — ${tg.name}'s ${an} Aura`,
+                   hit ? (inj ? `Aura disabled for 24 hours · feedback: +1 Injury (now ${t.injuries})`
+                              : "Aura disabled for 24 hours")
+                       : "no effect — the Aura holds"] });
+          toast(hit ? `⚔ ${tg.name}'s ${an} Aura shattered (d20 ${d})${inj?" — +1 Injury from the feedback":""}`
+                    : `✖ d20 ${d} vs AC ${ac} — ${an} holds`);
+          closeModal();
+          (rerender||renderBattle)();
+        }}, "⚔ Shatter"));
+      box.append(row);
+    });
+    body.append(box);
+  });
+  modal({title:"⚔ Godslayer — shatter a Legendary Aura", bodyNode:body,
+         footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Cancel")]});
+}
+/* Buttons a granted Gift row can carry, the same bargain FEATURE_ACTIONS makes for Features.
+   Matched on the row's NAME, so a Gift that merely grants the Feature (God Crusher → Godslayer)
+   surfaces the same button as the Feature itself. */
+const GIFT_ACTIONS = [
+  { names:["Godslayer","God Crusher"], run:godslayerGo,
+    label:() => "⚔ Godslayer",
+    title:t => `Standard Action, EOT: shatter one of a Legendary's Auras. AC ${godslayerAC(t)}.` },
+];
+const giftActionDef = g => GIFT_ACTIONS.find(d =>
+  d.names.some(n => n.toLowerCase() === String((g && g.name) || "").toLowerCase())) || null;
 /* one granted row — shared by all four kinds; `i` is its index in t.gifts so × removes the right one */
 function giftRow(t, g, i, gm, saveFn, rerender){
   saveFn = saveFn || save; rerender = rerender || renderTrainer;
@@ -12382,6 +12911,22 @@ function giftRow(t, g, i, gm, saveFn, rerender){
       statLine.append(sel);
     }
     info.append(statLine);
+  }
+  /* Giftsapper's whole effect is a number worked out from the holder's own Skill ladder, so the row
+     says what that number IS rather than leaving the table to do 3 × Rank at the table. */
+  if(/^giftsapper$/i.test(String(g.name||""))){
+    info.append(el("div",{class:"small",style:"margin-top:3px;color:var(--accent);font-weight:700"},
+      `\u26D3 Field: DC ${giftsapperDC(t)} Focus Check to activate any Gift within ${GIFTSAPPER_RANGE}m`
+      + (giftsapperSkill(t) ? ` \u2014 3 \u00d7 ${giftsapperSkill(t)}` : "")));
+  }
+  /* ...and a Gift the sheet can actually carry out gets its button here, the way a Feature gets one
+     on the Battle tab. The Gifts card is mounted on the Encounters tab too, so this is the only
+     place an NPC's Godslayer could ever be pressed. */
+  {
+    const act = giftActionDef(g);
+    if(act) info.append(el("div",{style:"margin-top:5px"},
+      el("button",{class:"btn-secondary",style:"padding:4px 10px",title:act.title(t),
+        onclick:()=>act.run(t, rerender, saveFn)}, act.label(t))));
   }
   /* The Frequency line, and — new — the same use pips every Move, Ability and Feature carries.
      A Daily x3 Gift was previously a sentence of text with nowhere to tick it off, so the table
@@ -13854,6 +14399,8 @@ function heroCard(p, sp){
     if(!mchk.ok) row.append(el("span",{class:"muted small"}, mchk.why));
     main.append(row);
   }
+  /* Power Construct — Zygarde's Complete Forme, the same shape as a Mega but on its own HP bar */
+  { const pc = powerConstructControl(p, null); if(pc) main.append(pc); }
   /* Terastallization — the Tera Type picker and the Daily Swift Action that spends the Tera Orb */
   main.append(teraControl(p, sp, ()=>refreshMon(p), {gm:isGM()}));
   main.append(multitypeControl(p, ()=>refreshMon(p)));
@@ -14317,6 +14864,19 @@ function buffEva(owner){ return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods&&b
 /* Flat Initiative from a buff (a Channeler's Spirit Boost on a Speed-heavy Pokémon). Read by
    tokenInitiative, so placing the Boost reorders the Map's turn tracker straight away. */
 function buffInit(owner){ return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods&&b.mods.init)||0), 0); }
+/* A flat widening of EVERY Effect Range on a Move that comes from a buff rather than an Ability —
+   the Chef's Dry Taste ("Increase the user's Effect Range of all attacks by +1"). Kept apart from
+   mods.crit, which moves the Critical-Hit threshold: those are different numbers (Core p.235), and
+   the Spicy Taste buys one while the Dry Taste buys the other. */
+function buffEffectRange(owner){ return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods&&b.mods.eff)||0), 0); }
+/* …applied at the same two chokepoints Serene Grace uses, so the two compose. An Effect Range is a
+   number the d20 has to MEET, so widening it by n drops the threshold by n. */
+function buffEffectThresholds(list, n){
+  if(!n) return (list||[]);
+  return (list||[]).map(t => ({ n: Math.max(2, t.n - n),
+      text: `${t.text} (a Food Buff widens this Effect Range by +${n}.)` }))
+    .sort((a,b)=>a.n-b.n);
+}
 /* Temporary Action Points (Cheerleader's Moment of Action, Captured Momentum). They widen the AP
    ceiling for as long as the buff is up and vanish with it, so nothing has to be handed back. */
 function buffTempAP(owner){ return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods&&b.mods.tempAP)||0), 0); }
@@ -14452,6 +15012,7 @@ function buffModText(m){
   if(m.dmg)  p.push(`${m.dmg>0?"+":""}${m.dmg} Dmg`);
   if(m.db)   p.push(`${m.db>0?"+":""}${m.db} DB`);
   if(m.crit) p.push(`+${m.crit} Crit/Effect range`);
+  if(m.eff)  p.push(`+${m.eff} Effect range`);
   if(m.dr)   p.push(`${m.dr>0?"+":""}${m.dr} DR`);
   if(m.eva)  p.push(`${m.eva>0?"+":""}${m.eva} Evasion`);
   if(m.init) p.push(`${m.init>0?"+":""}${m.init} Initiative`);
@@ -14635,7 +15196,48 @@ const SNACK_DEFS = [
   { name:"Hearty Meal", note:"A Trainer who eats this gains +2 Max AP until the end of their next Extended Rest (only one Hearty Meal at a time). Hearty Meals go off 20 minutes after they're cooked." },
 ];
 const snackByKey = new Map(SNACK_DEFS.map(d=>[normItemName(d.name), d]));
-function snackDef(name){ return snackByKey.get(normItemName(name)) || null; }
+/* Two Chef recipes make a Snack out of OTHER Snacks and are named for them:
+     Preserves  "Preserves have the same effect as the consumable from which they were made"
+     Dumplings  "you mix the two ingredients into one Snack that has the same effect as its
+                 ingredients. The two ingredients must be different items."
+   Rather than inventing catalog rows for every possible combination, the Chef names the item for
+   its source -- "Preserves (Sitrus Berry)", "Dumpling (Leftovers + Preserves (Lum Berry))" -- and
+   the lookup unwraps the name back to the row(s) it was cooked from. Every reader downstream
+   (snackEffectText, tradeInBlock, tradeInDigestion) then works on it with no special case. */
+function mergeSnackDefs(a, b, name){
+  const out = { name, note:[a.note, b.note].filter(Boolean).join(" · ") || undefined };
+  const num = ["heal","tempHP","likeTempHP","dmg","likeDmg","dr","likeDr","crit","acc","eva","likeAcc",
+               "csRandom","csRandomCount"];
+  num.forEach(k => { const v = (a[k]||0) + (b[k]||0); if(v) out[k] = v; });
+  // "1/N of Max HP" stacks by taking the BETTER (smaller denominator) of the two, not by adding
+  ["healFrac","likeHealFrac","tempHPFrac","regen"].forEach(k => {
+    const v = [a[k], b[k]].filter(Boolean); if(v.length) out[k] = Math.min(...v);
+  });
+  const cures = [...(a.cures||[]), ...(b.cures||[])];
+  if(cures.length) out.cures = [...new Set(cures)];
+  ["curesAny","resetNegCS","restoreScene","berry"].forEach(k => { if(a[k] || b[k]) out[k] = true; });
+  ["curesKind","only","weakenType","dislikeStatus","inflict","flavor","dur"].forEach(k => {
+    if(a[k] || b[k]) out[k] = a[k] || b[k];
+  });
+  if(a.cs || b.cs){ out.cs = { ...(a.cs||{}) }; Object.entries(b.cs||{}).forEach(([k,v])=> out.cs[k] = (out.cs[k]||0) + v); }
+  // a gate on either half gates the whole Dumpling -- you cannot eat around the Berry rule
+  const cond = [a.cond, b.cond].filter(Boolean);
+  if(cond.length) out.cond = cond.join("; and ");
+  return out;
+}
+function snackDef(name){
+  const direct = snackByKey.get(normItemName(name));
+  if(direct) return direct;
+  const raw = String(name||"").trim();
+  const pres = /^preserves\s*\((.+)\)$/i.exec(raw);
+  if(pres){ const src = snackDef(pres[1]); return src ? { ...src, name:raw } : null; }
+  const dump = /^dumplings?\s*\((.+?)\s*\+\s*(.+)\)$/i.exec(raw);
+  if(dump){
+    const a = snackDef(dump[1]), b = snackDef(dump[2]);
+    if(a && b) return mergeSnackDefs(a, b, raw);
+  }
+  return null;
+}
 function isSnackItem(name){ return !!snackDef(name); }
 /* Refreshments (Core p.279): consumed out of combat, no Digestion Buff, one per half hour */
 const REFRESHMENTS = [
@@ -14658,18 +15260,33 @@ function ownerHasAbility(o, name){
      in your Avatar form" - and this is the one function anything asks whether a creature has an
      Ability, so folding it in here reaches the damage engine, the Type layer and the roll modal at
      once. usurpSharedAbilities fast-outs unless t.usurp is set, so nobody else pays for it. */
+  return ownerAbilityKeys(o).some(a => a.key === want);
+}
+/* every Ability this creature actually has, as {name, key} -- key is lowercased with the DB's
+   "[Errata]" suffix stripped, which is the form ownerHasAbility compares against, while name keeps
+   the printing so a readout can quote it. Split out of ownerHasAbility so a scan that needs the
+   names (namedLastChanceGrants) builds the list once instead of asking "do you have X?" eighteen
+   times in a row. Distinct from ownerAbilityNames above, which KEEPS the "[Errata]" suffix because
+   the registries it feeds have separate rows for the errata printings. */
+function ownerAbilityKeys(o){
   return [...(o?.abilities||[]), ...(o?.encAbilities||[]), ...heldGrantedAbilities(o),
           ...(isTrainerOwner(o) ? trainerGrantedAbilities(o) : [])]
-    .some(a => String(a).toLowerCase().replace(/\s*\[errata\]\s*$/,"").trim() === want);
+    .map(a => ({ name:String(a).replace(/\s*\[errata\]\s*$/i,"").trim(),
+                 key:String(a).toLowerCase().replace(/\s*\[errata\]\s*$/,"").trim() }));
 }
 /* Gluttony (Core, Ability): "may have up to three Digestion/Food Buffs at once" */
 function digestionCap(o){ return ownerHasAbility(o,"Gluttony") ? 3 : 1; }
 /* Nature decides which Tastes a Pokémon likes and hates (natures.json carries both). Trainers have
    no Nature, so their Taste effects fall back to the plain, un-preferred numbers. */
 function ownerFlavors(o){
-  if(isTrainerOwner(o)) return { liked:o.likedFlavor||"", disliked:o.dislikedFlavor||"" };
+  /* natures.json spells "no preference" as the literal string "None" (the six neutral Natures --
+     Hardy, Docile, Bashful, Quirky, Serious, Composed -- raise and lower the same Stat, and Core
+     p.107 says they have no flavour preferences at all). "None" is truthy, so it has to be washed
+     out here or the card reads "likes None, dislikes None" and every `fl.liked` test looks live. */
+  const clean = v => { const x = String(v||"").trim(); return (!x || /^(none|-|\u2014)$/i.test(x)) ? "" : x; };
+  if(isTrainerOwner(o)) return { liked:clean(o.likedFlavor), disliked:clean(o.dislikedFlavor) };
   const n = natureByName.get(String(o?.nature||"").toLowerCase());
-  return { liked:n?.likedFlavor||"", disliked:n?.dislikedFlavor||"" };
+  return { liked:clean(n?.likedFlavor), disliked:clean(n?.dislikedFlavor) };
 }
 function ownerHP(o){ return o.currentHP==null ? ownerMaxHP(o) : o.currentHP; }
 function setOwnerHP(o, v){ o.currentHP = Math.min(ownerMaxHP(o), Math.round(v)); }
@@ -14726,6 +15343,13 @@ function snackEffectText(o, def){
   if(def.cond && def.cond!=="hp25") s += (s?" · ":"") + `Traded in ${def.cond}.`;
   return s;
 }
+/* The Taste an item carries by itself: a Chef's Tasty Snack "must be assigned its corresponding
+   Taste", and a flavoured Berry has one printed. Anything else only has a Taste if a Chef with
+   Accentuated Taste assigned one while cooking it (opts.taste). */
+function snackTasteOf(itemName, def){
+  const d = def || snackDef(itemName);
+  return (d && d.flavor) || "";
+}
 /* Eat a Snack: costs an Extended Action, stores a Digestion Buff (Core p.278). Returns a message. */
 function eatSnack(o, itemName, opts={}){
   const def = snackDef(itemName);
@@ -14743,7 +15367,12 @@ function eatSnack(o, itemName, opts={}){
   if(!exempt && counted >= cap)
     return { ok:false, msg:`Already carrying ${counted} Digestion Buff${counted===1?"":"s"} — the limit is ${cap}${cap===1?" (Gluttony raises it to 3)":""}. Trade one in or discard it first.` };
   const mk = () => ({ id:uid(), item: honeyPaws ? "Leftovers" : (def?.name || itemName), from: def?.name || itemName,
-                      exempt, storage: berryStorage, note: opts.note || "" });
+                      exempt, storage: berryStorage, note: opts.note || "",
+                      /* Accentuated Taste: the Taste the Chef assigned when they cooked it. It
+                         travels with the Buff, not with the eater, so a Snack handed to a Pokemon
+                         still pays out the Chef's Taste bonus when THAT Pokemon trades it in. */
+                      taste: snackTasteOf(itemName, def) || "",
+                      accTaste: opts.accTaste || "" });
   const add = berryStorage ? [mk(),mk(),mk()] : [mk()];
   add.forEach(b=>list.push(b));
   const extras = [];
@@ -14834,6 +15463,28 @@ function tradeInDigestion(o, buff, opts={}){
     log.push(buff.note || "custom Snack — resolve its effect by hand");
   }
 
+  /* ---- Accentuated Taste (Chef, Core p.131) ----
+     "Whenever a Pokemon trades in a Digestion Buff from a Snack with an assigned Taste they do not
+     dislike, they gain the following bonuses." Only a Chef with the Feature can put a Taste on a
+     Snack, so buff.accTaste is only ever set by the Kitchen; a plain Tasty Snack's own flavour is
+     NOT this bonus (that one is already in the Snack's own numbers). The May playtest errata caps
+     it at once per item, which is why it is consumed with the Buff and not re-granted by Complex
+     Aftertaste's second Buff. */
+  const accT = buff.accTaste && ACCENTUATED_TASTES[buff.accTaste];
+  if(accT && ownerFlavors(o).disliked !== buff.accTaste){
+    if(accT.tempHP){ gainTempHP(o, accT.tempHP, {stack:true}); }
+    if(Object.keys(accT.mods||{}).length || accT.noteOnly){
+      if(!Array.isArray(o.buffs)) o.buffs = [];
+      const nb = { id:uid(), key:"custom", name:`Accentuated Taste (${buff.accTaste})`, cat:"Food",
+                   dur:"rest of the encounter", once:false, mods:{ ...(accT.mods||{}) },
+                   note:`${buff.accTaste} Taste: ${accT.text} (the book gives no duration — GM's call)` };
+      stampTurnBuff(nb); o.buffs.push(nb);
+    }
+    log.push(`Accentuated Taste (${buff.accTaste}): ${accT.text}`);
+  } else if(buff.accTaste){
+    log.push(`Accentuated Taste (${buff.accTaste}) — disliked Taste, no bonus`);
+  }
+
   // ---- Abilities that trigger off trading a Buff in ----
   // Lunchbox (Scene, Free Action): "The user gains 5 Temporary Hit Points" (errata: a Tick).
   if(ownerHasAbility(o,"Lunchbox")){
@@ -14859,6 +15510,13 @@ function drinkRefreshment(o, itemName){
   if(!def) return { ok:false, msg:"Not a Refreshment." };
   setOwnerHP(o, ownerHP(o) + def.heal);
   return { ok:true, msg:`🥤 ${def.name} — +${def.heal} HP. (One Refreshment per half hour${ownerHasAbility(o,"Gluttony")?"; Gluttony allows two":""}.)` };
+}
+/* the Taste a Chef assigned to this item when they cooked it, off the bag row that carries it */
+function inventoryTasteOf(t, name){
+  const want = normItemName(name);
+  // the same row consumeInventoryItem will take, so the Taste and the copy always match
+  const row = (t?.inventory||[]).find(it => normItemName(it.name)===want && (parseInt(it.qty)||0) > 0);
+  return (row && row.accTaste) || "";
 }
 /* pull one copy of an item out of a Trainer's bag; returns false if they don't have it */
 function consumeInventoryItem(t, name){
@@ -14930,6 +15588,11 @@ function digestionCard(owner, commit, opts={}){
   } else if(fl.liked || fl.disliked){
     card.append(el("div",{class:"small muted",style:"margin-top:10px"},
       `Tastes (${owner.nature||"Nature"}): likes ${fl.liked||"—"}, dislikes ${fl.disliked||"—"}.`));
+  } else if(owner.nature){
+    /* the six neutral Natures raise and lower the same Stat, and Core p.107 gives them no flavour
+       preferences at all — say so, rather than leaving a silent gap where the line normally is */
+    card.append(el("div",{class:"small muted",style:"margin-top:10px"},
+      `Tastes: ${owner.nature} is a neutral Nature — no liked or disliked Flavour, so a Taste is never doubled and never Enrages.`));
   }
 
   /* ---- eat / drink ---- */
@@ -14968,8 +15631,13 @@ function openFoodPicker(owner, kind, bag, commit, opts={}){
   const all = isSnack ? SNACK_DEFS.map(d=>d.name) : REFRESHMENTS.map(d=>d.name);
   let names = all, fromBag = false;
   if(bag){
-    const owned = new Set((bag.inventory||[]).filter(it=>(parseInt(it.qty)||0)>0).map(it=>normItemName(it.name)));
-    const mine = all.filter(n=>owned.has(normItemName(n)));
+    const rows = (bag.inventory||[]).filter(it=>(parseInt(it.qty)||0)>0);
+    const owned = new Set(rows.map(it=>normItemName(it.name)));
+    /* Chef creations are named for their source ("Preserves (Sitrus Berry)") rather than being
+       catalog rows, so they never appear in SNACK_DEFS -- pick them up off the bag itself. */
+    const cooked = !isSnack ? [] : [...new Set(rows.map(it=>String(it.name||"").trim())
+      .filter(n => n && !all.some(a=>normItemName(a)===normItemName(n)) && snackDef(n)))];
+    const mine = [...all.filter(n=>owned.has(normItemName(n))), ...cooked];
     if(mine.length){ names = mine; fromBag = true; }
     else { toast(`No ${isSnack?"Snacks":"Refreshments"} in the bag — add some under Trainer → Inventory & Bio.`); return; }
   }
@@ -14980,8 +15648,10 @@ function openFoodPicker(owner, kind, bag, commit, opts={}){
     return el("div",{class:"pi-sub"}, (bag?`×${qty} · `:"") + String(txt).slice(0,120));
   };
   openPicker(isSnack ? "Eat a Snack (Extended Action)" : "Drink a Refreshment (Extended Action)", names, name=>{
+    // read the Chef Taste off the bag row BEFORE the copy is consumed (Accentuated Taste)
+    const accTaste = fromBag ? inventoryTasteOf(bag, name) : "";
     if(fromBag && !consumeInventoryItem(bag, name)){ toast(`No ${name} left in the bag.`); return; }
-    const r = isSnack ? eatSnack(owner, name) : drinkRefreshment(owner, name);
+    const r = isSnack ? eatSnack(owner, name, {accTaste}) : drinkRefreshment(owner, name);
     if(!r.ok){
       if(fromBag){                                        // put it back — nothing was eaten
         const row = (bag.inventory||[]).find(it=>normItemName(it.name)===normItemName(name));
@@ -15844,6 +16514,14 @@ function renderMonPlay(root, p, sp){
   qc.append(dv);
   root.append(qc);
 
+  /* A Rotom changes appliance at will, mid-fight, and that changes its second Type and its whole
+     stat line -- so the switch belongs on the tab you play from, not buried three cards down the
+     Build tab where only the GM ever went looking for it. Same control, same permissions. */
+  if(isRotomForm(sp)){
+    root.append(el("div",{class:"card"}, el("h3",{},"\u26A1 Appliance"),
+      rotomFormControl(p, sp, ()=>{ save(); refreshMon(p); })));
+  }
+
   // "Mom?" reads its own stats but never fights on its own terms: the Play tab stops here, at the
   // (read-only) numbers plus its Moves. No status/Combat-Stage/ability/matchup tooling.
   if(isMomSpecies(p.species)){ root.append(movesCard(p, sp)); return; }
@@ -16583,7 +17261,22 @@ function typeAceEligible(t){ return trainerHasClass(t, "Type Ace"); }
    granted Type. Costs no Tutor Points and can target a Pokémon only once (tracked as p.typeAce2). */
 function extraOrdinaryEligible(t){ return trainerHasFeature(t, "Extra Ordinary"); }
 /* Every Type Ace Ability grant on a Pokémon — the base Type Ace grant plus any Extra Ordinary one. */
-function typeAceGrants(p){ return [p && p.typeAce, p && p.typeAce2].filter(Boolean); }
+/* A Last Chance a creature owns because of its own Ability, in the same {ability,type} shape the
+   Type Ace grant uses. `from` is the Ability as printed on the sheet, so the damage breakdown can
+   say "Blaze +10 damage" rather than something the player has to translate; `derived:true` marks it
+   as read off an Ability rather than ledgered on the sheet. */
+function namedLastChanceGrants(o){
+  if(!o) return [];
+  const out = [];
+  ownerAbilityKeys(o).forEach(a => {
+    const type = LAST_CHANCE_ABILITIES[a.key];
+    if(type) out.push({ ability:"Last Chance", type, from:a.name, derived:true });
+  });
+  return out;
+}
+function typeAceGrants(p){
+  return [p && p.typeAce, p && p.typeAce2].filter(Boolean).concat(namedLastChanceGrants(p));
+}
 
 /* ---------- Per-Type Type Ace passive Features (owner-driven, applied to that Trainer's Pokémon) ----------
    Unlike the Type Ace Ability grants above (which live on the Pokémon), these are Trainer Features
@@ -17415,10 +18108,22 @@ function struggleCanBeSpecial(p, sp){
    evolution — same Pokémon, keeps stats/moves/level, only species (→ typing/base stats) changes. */
 const ROTOM_FORMS = ["Rotom","Rotom Heat","Rotom Wash","Rotom Frost","Rotom Fan","Rotom Mow"];
 function isRotomForm(sp){ return !!sp && ROTOM_FORMS.includes(sp.name); }
-function rotomFormControl(p, sp, onChanged){
+/* Anyone who may edit the sheet may flip the appliance -- it is the Pokemon's own at-will move,
+   not a GM adjudication, so a player looking at their own Rotom gets the picker and a spectator
+   gets the same line read-only. (`opts.canEdit` lets a caller that already knows say so.) */
+function canEditOwnerSheet(opts){
+  if(opts && typeof opts.canEdit === "boolean") return opts.canEdit;
+  if(mode !== "cloud") return true;
+  return isGM() || canEditActive();
+}
+function rotomFormControl(p, sp, onChanged, opts={}){
   if(!isRotomForm(sp)) return el("span",{style:"display:none"});
   const wrap = el("div",{class:"inline small",style:"margin:2px 0 8px;flex-wrap:wrap;gap:8px;align-items:center"});
   wrap.append(el("span",{class:"muted",style:"font-weight:700"},"Rotom Form:"));
+  if(!canEditOwnerSheet(opts)){
+    wrap.append(el("span",{class:"kv"}, sp.name), el("span",{class:"muted small"},"switched at will by its Trainer"));
+    return wrap;
+  }
   const sel = el("select",{style:"padding:4px 6px"});
   ROTOM_FORMS.forEach(n=>sel.append(el("option",{value:n,selected:sp.name===n}, n)));
   sel.addEventListener("change",()=>{
@@ -18641,7 +19346,8 @@ function abilityDamageMods(p, m, baseDBVal, thresholds, opts={}){
   const lastChance = typeAceGrants(p).find(g=>g.ability==="Last Chance" && opts.mtype===g.type);
   if(lastChance){
     const bonus = pokeUnderThirdHP(p) ? 10 : 5;
-    mods.flat += bonus; mods.why.push(`Last Chance +${bonus} damage (${lastChance.type})`); }
+    mods.flat += bonus;
+    mods.why.push(`${lastChance.from || "Last Chance"} +${bonus} damage (${lastChance.type})`); }
   // Analytic (Static): +5 Damage against a target that has ALREADY acted this Round. Whether that's
   // true is a fact about the target + the initiative order, which only the caller knows — it reads
   // the Map's tracker and passes opts.analytic, so this function stays context-free.
@@ -19398,10 +20104,10 @@ function openMoveRoll(p, m, sp, opts={}){
                                                                   mtype, isPhys, isSpec, fieryCrash:fcMode, analytic:analyticOn});
   // Effect Ranges as this roll actually resolves them — Fiery Crash adds/widens Burn on a Dash Move
   // that ends up Fire-Typed. Kept separate from `thresholds` so its own rider can't feed Sheer Force.
-  const rollThresholds = sereneGraceThresholds(
+  const rollThresholds = buffEffectThresholds(sereneGraceThresholds(
     frostbiteThresholds(fieryCrashThresholds(thresholds, !!fc && mtype==="Fire"),
       hasAbility(p,"Frostbite") && mtype==="Ice" && (isPhys||isSpec)),
-    ownerHasAbility(p,"Serene Grace"));
+    ownerHasAbility(p,"Serene Grace")), buffEffectRange(p));
   const fiveStrike = isFiveStrike(m);
   /* Rock Head [Errata] / Run Up - ticked on the roll, read back when the damage is rolled */
   const runStart = runningStartFor(p, m, isPhys);
@@ -24847,7 +25553,26 @@ const ABILITY_REMEMBER = {
   "exploit":          ["+5 damage on any Super-Effective hit it lands", true],
   "tolerance":        ["Types it already resists are resisted one step further", true],
   "twisted power":    ["adds half the other attacking stat to its damage", true],
-  "last chance":      ["one free swing back from the brink, once", false],
+  /* the eighteen named Last Chance Abilities (see LAST_CHANCE_ABILITIES) -- all one rule, and the
+     damage math applies it now, so they are all marked auto */
+  "last chance":      ["+5 damage with Normal attacks, +10 under a third HP", true],
+  "blaze":            ["+5 damage with Fire attacks, +10 under a third HP", true],
+  "overgrow":         ["+5 damage with Grass attacks, +10 under a third HP", true],
+  "torrent":          ["+5 damage with Water attacks, +10 under a third HP", true],
+  "swarm":            ["+5 damage with Bug attacks, +10 under a third HP", true],
+  "overcharge":       ["+5 damage with Electric attacks, +10 under a third HP", true],
+  "freezing point":   ["+5 damage with Ice attacks, +10 under a third HP", true],
+  "focus":            ["+5 damage with Fighting attacks, +10 under a third HP", true],
+  "venom":            ["+5 damage with Poison attacks, +10 under a third HP", true],
+  "landslide":        ["+5 damage with Ground attacks, +10 under a third HP", true],
+  "mach speed":       ["+5 damage with Flying attacks, +10 under a third HP", true],
+  "mind mold":        ["+5 damage with Psychic attacks, +10 under a third HP", true],
+  "mountain peak":    ["+5 damage with Rock attacks, +10 under a third HP", true],
+  "haunt":            ["+5 damage with Ghost attacks, +10 under a third HP", true],
+  "pure blooded":     ["+5 damage with Dragon attacks, +10 under a third HP", true],
+  "dark art":         ["+5 damage with Dark attacks, +10 under a third HP", true],
+  "unbreakable":      ["+5 damage with Steel attacks, +10 under a third HP", true],
+  "miracle mile":     ["+5 damage with Fairy attacks, +10 under a third HP", true],
   "type strategist":  ["+5 DR (+10 under a third HP) after using its Type", true],
   "commander":        ["dives into an allied Dondozo and drives it", false],
   "wonder skin":      ["Status Moves aimed at it are far less accurate", false],
@@ -24908,7 +25633,8 @@ function rememberFor(o){
   /* …and the ones a Type-chart pass can't describe */
   const abils = [...(o.abilities || []), ...(o.encAbilities || []),
                  ...(isTrainerOwner(o) ? trainerGrantedAbilities(o) : [])];
-  typeAceGrants(o).forEach(g => abils.push(g.ability));
+  // a derived grant (Blaze & co.) is already in o.abilities under its own name - see LAST_CHANCE_ABILITIES
+  typeAceGrants(o).forEach(g => { if(!g.derived) abils.push(g.ability); });
   abils.forEach(a => {
     const key = String(a).toLowerCase().replace(/\s*\[errata\]\s*$/, "").trim();
     const hit = ABILITY_REMEMBER[key]; if(!hit) return;
@@ -26151,8 +26877,569 @@ function openCallToArms(t, rerender, persist){
 /* Every class card this Trainer has earned, in the order the cards were written. Both the player's
    ⚔ Combat tab and the GM's Encounters card call this, so an NPC with a player class gets the same
    buttons (and passes its own saveEnc as `persist`). */
+/* ═══════════════════════════ CHEF (Core p.130) — the 🍳 Kitchen ═══════════════════════════
+   "Chefs need access to a kitchen or to a Cooking Kit to create food." So the Chef gets a Kitchen:
+   a sub-tab on their own Trainer page listing every Recipe they qualify for, what it costs, what it
+   eats out of the bag, and a Cook button that actually does it — money through moneyChange() so the
+   ledger records the spend, ingredients out of the inventory, the result into it.
+
+   Which Recipes a Chef has is not a separate list to tick: this data's Feature rows carry their own
+   ("Recipes - Meal Planner, Salty Surprise, …" on Chef; "Recipe - Hearty Meal" on Hits the Spot),
+   so the Recipe is unlocked by the Feature that prints it, exactly as the book has it. */
+
+/* Accentuated Taste (Core p.131): the six Taste bonuses, paid to anyone who does NOT dislike the
+   Taste the Chef assigned. Applied in tradeInDigestion, where the Buff is spent. */
+const ACCENTUATED_TASTES = {
+  Salty:  { tempHP:5,        text:"+5 Temporary Hit Points (stacks with the Buff's own, Hits the Spot and Lunchbox)" },
+  Spicy:  { mods:{crit:1},   text:"+1 Critical-Hit range" },
+  Sour:   { mods:{eva:1},    text:"+1 Evasion against damaging attacks" },
+  Dry:    { mods:{eff:1},    text:"+1 Effect Range on all attacks" },
+  Bitter: { mods:{}, noteOnly:true, text:"+1 to all Save Checks — roll it at the table" },
+  Sweet:  { mods:{init:5},   text:"+5 Initiative" },
+};
+/* Complex Aftertaste hands over "a Digestion Buff according to the Taste of the Snack granting the
+   Buff … matching the corresponding basic Tasty Snack recipe" — this is that correspondence. */
+const TASTE_SNACK = { Salty:"Salty Surprise", Spicy:"Spicy Wrap", Sour:"Sour Candy",
+                      Dry:"Dry Wafer", Bitter:"Bitter Treat", Sweet:"Sweet Confection" };
+
+function trainerIsChef(t){ return !!t && trainerHasClass(t, "Chef"); }
+/* who gets a Kitchen tab: a Chef, and anyone else who crafts out of the bag (the Botany
+   Researcher's Herb Lore uses the same dialog and the same inventory) */
+function hasKitchen(t){ return trainerIsChef(t) || (typeof botanyRecipesFor === "function" && botanyRecipesFor(t).length > 0); }
+function chefIntuition(t){ return rankNum((t && t.skills || {}).intuition); }   // Novice 3 … Master 6
+function chefCanTaste(t){ return hasFeatureLoose(t, "Accentuated Taste"); }
+/* every Berry, Herb and Mushroom sitting in the bag — Preserves' ingredient list */
+function chefPreservables(t){
+  return (t && t.inventory || [])
+    .filter(it => (parseInt(it.qty)||0) > 0 && /\b(berry|herb|mushroom)\b/i.test(String(it.name||"")))
+    .map(it => String(it.name).trim());
+}
+/* Dumplings: "Ingredient 1: Leftovers, Preserves, or a Snack made with Chef. Ingredient 2:
+   Leftovers or Preserves." A Snack made with Chef is one of the six Tasty Snacks or anything the
+   Kitchen cooked (which is why cooked rows are stamped chef:true). */
+function chefDumplingIngredients(t, second){
+  const tasty = new Set(Object.values(TASTE_SNACK).map(normItemName));
+  return (t && t.inventory || []).filter(it => {
+    if((parseInt(it.qty)||0) <= 0) return false;
+    const n = normItemName(it.name);
+    if(n === "leftovers" || /^preserves\s*\(/i.test(String(it.name||"").trim())) return true;
+    if(second) return false;
+    return tasty.has(n) || !!it.chef;
+  }).map(it => String(it.name).trim());
+}
+/* put a cooked item in the bag. Rows are merged by name AND assigned Taste, so a Spicy batch and a
+   plain batch of the same Snack stay tellable apart (inventoryTasteOf reads the row back). */
+function chefBagAdd(t, name, qty, accTaste){
+  qty = Math.max(1, parseInt(qty)||1);
+  const want = normItemName(name);
+  const row = (t.inventory = t.inventory || []).find(it =>
+    normItemName(it.name)===want && (it.accTaste||"") === (accTaste||""));
+  if(row) row.qty = (parseInt(row.qty)||0) + qty;
+  else t.inventory.push({ name, qty, notes:"", chef:true, ...(accTaste ? {accTaste} : {}) });
+}
+
+/* ---------- the Recipe book ----------
+   `feat`   the Feature that prints this Recipe
+   `pick`   what it can make (a list, or a function of the Trainer for the rank-gated ones)
+   `cost`   flat price, or a function of the chosen result
+   `eats`   ingredient bundles, each {label, take:[[itemName, qty], …]} — a function of the Trainer
+            so it can read the bag */
+const CHEF_RECIPES = [
+  { name:"Tasty Snacks", feat:"Chef", cost:100, qty:1, tasteable:true,
+    pick:() => Object.values(TASTE_SNACK),
+    blurb:"$100 — a Salty Surprise, Spicy Wrap, Sour Candy, Dry Wafer, Bitter Treat or Sweet Confection. Each is traded in on its own trigger, and pays double to a Pokémon that likes the Taste (a disliked Taste Enrages it instead)." },
+
+  { name:"Meal Planner", feat:"Chef", qty:1,
+    pick: t => MEAL_PLANNER.filter(m => chefIntuition(t) >= rankNum(m.rank)).map(m => m.item),
+    cost: (t, item) => (MEAL_PLANNER.find(m => m.item===item) || {}).price || 0,
+    blurb:"Refreshments, unlocked by Intuition Rank: Enriched Water $40 (Novice), Super Soda Pop $65 (Adept), Sparkling Lemonade $125 (Expert), MooMoo Milk $250 (Master)." },
+
+  { name:"Hearty Meal", feat:"Hits the Spot", qty:5, cost:0,
+    pick:() => ["Hearty Meal"],
+    eats: () => [
+      { label:"x2 Tiny Mushroom",  take:[["Tiny Mushroom",2]] },
+      { label:"x1 Big Mushroom",   take:[["Big Mushroom",1]] },
+      { label:"x1 Balm Mushroom",  take:[["Balm Mushroom",1]] },
+      { label:"x2 Power Herb",     take:[["Power Herb",2]] },
+      { label:"x2 White Herb",     take:[["White Herb",2]] },
+      { label:"x2 Mental Herb",    take:[["Mental Herb",2]] },
+    ],
+    blurb:"Makes up to five. A Trainer who eats one (Extended Action) gains +2 Max AP until the end of their next Extended Rest — one at a time, and they go off 20 minutes after they leave the pan." },
+
+  { name:"Bait Mixer", feat:"Culinary Appreciation", qty:1,
+    pick:() => ["Bait","Super Bait","Vile Bait"],
+    cost:(t, item) => item==="Bait" ? 150 : 200,
+    blurb:"$150 for Bait, $200 for Super Bait (add your Intuition Rank to rolls made to attract Pokémon) or Vile Bait (Pokémon that eat it are Poisoned). Honey can stand in for the $150 — cook it from the bag instead." },
+
+  { name:"Preserves", feat:"Accentuated Taste", qty:2, cost:50,
+    eats: t => chefPreservables(t).map(n => ({ label:`x1 ${n}`, take:[[n,1]] })),
+    result: (t, pick, bundle) => `Preserves (${bundle.take[0][0]})`,
+    tasteable:true,
+    blurb:"$50 and any Berry, Herb or Mushroom makes two Units of Preserves with that item's exact effect — they keep, and they are legal Dumpling ingredients." },
+
+  { name:"Leftovers", feat:"Complex Aftertaste", qty:1, cost:100, tasteable:true,
+    pick:() => ["Leftovers"],
+    blurb:"$100. Its Buff recovers 1/16th of Max HP at the start of each turn for the rest of the encounter." },
+
+  { name:"Vitamins", feat:"Dietician", qty:1,
+    pick:() => ["HP Up","Protein","Iron","Calcium","Zinc","Carbos","Stat Suppressants"],
+    cost:(t, item) => item==="Stat Suppressants" ? 200 : 2450,
+    blurb:"$2450 a Vitamin, $200 for Stat Suppressants. Dietician already raises your Pokémon's Vitamin ceiling to 7 — the Pokémon's own Vitamins card enforces it." },
+
+  { name:"Dumplings", feat:"Dumplings", qty:1, cost:0, tasteable:true,
+    two:true,
+    blurb:"Mixes two DIFFERENT items into one Snack carrying both effects. Ingredient 1: Leftovers, Preserves, or a Snack you cooked. Ingredient 2: Leftovers or Preserves. (May playtest errata: a Dumpling can't be an ingredient.)" },
+];
+const MEAL_PLANNER = [
+  { rank:"Novice", item:"Enriched Water",    price:40 },
+  { rank:"Adept",  item:"Super Soda Pop",    price:65 },
+  { rank:"Expert", item:"Sparkling Lemonade",price:125 },
+  { rank:"Master", item:"MooMoo Milk",       price:250 },
+];
+/* The two Recipes the Class Feature itself prints are keyed off having the CLASS, not off the
+   literal word "Chef" sitting in a list: an NPC or an encounter Trainer is usually built out of
+   Features rather than a tidy class row, and trainerHasClass already knows that (it counts any
+   Feature of the line). Everything else is printed by a named Feature, so it is asked for by name. */
+function chefRecipesFor(t){
+  return CHEF_RECIPES.filter(r => r.feat === "Chef" ? trainerIsChef(t) : hasFeatureLoose(t, r.feat));
+}
+
+/* ---------- one dialog cooks them all ---------- */
+function openChefCook(t, rec, commit){
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:10px"}, rec.blurb));
+
+  const sel = (label, opts) => {
+    const wrap = el("label",{class:"field",style:"margin-bottom:8px"}, el("span",{},label));
+    const s = el("select",{style:"padding:6px"});
+    opts.forEach(o => s.append(el("option",{value:o.value}, o.label)));
+    wrap.append(s); body.append(wrap);
+    return s;
+  };
+
+  /* what it makes */
+  const picks = rec.pick ? rec.pick(t) : [];
+  let pickSel = null;
+  if(picks.length > 1) pickSel = sel("Cook", picks.map(p => ({value:p, label:p})));
+  else if(picks.length === 1) body.append(el("div",{class:"small",style:"margin-bottom:8px"}, `Cooks: ${picks[0]}`));
+  else if(rec.pick && !picks.length){
+    body.append(el("div",{class:"small",style:"color:var(--bad)"}, "Your Intuition Rank doesn't unlock anything on this Recipe yet."));
+  }
+
+  /* what it eats */
+  const bundles = rec.eats ? rec.eats(t) : [];
+  let eatSel = null;
+  if(rec.eats){
+    const usable = bundles.filter(b => b.take.every(([n,q]) => inventoryQty(t, n) >= q));
+    if(!usable.length){
+      body.append(el("div",{class:"small",style:"color:var(--bad);margin-bottom:8px"},
+        "None of this Recipe's ingredients are in the bag: " + (bundles.length ? bundles.map(b=>b.label).join(", ") : "nothing to preserve.")));
+    } else eatSel = sel("Ingredients", usable.map(b => ({value:b.label, label:b.label})));
+  }
+  /* Dumplings takes two, from two different lists */
+  let d1 = null, d2 = null;
+  if(rec.two){
+    const a = chefDumplingIngredients(t, false), b = chefDumplingIngredients(t, true);
+    if(!a.length || !b.length){
+      body.append(el("div",{class:"small",style:"color:var(--bad);margin-bottom:8px"},
+        "Dumplings need Leftovers, Preserves or a Snack you cooked in the bag — and the second ingredient must be Leftovers or Preserves."));
+    } else {
+      d1 = sel("Ingredient 1", a.map(n => ({value:n, label:n})));
+      d2 = sel("Ingredient 2", b.map(n => ({value:n, label:n})));
+    }
+  }
+
+  /* Accentuated Taste */
+  let tasteSel = null;
+  if(rec.tasteable && chefCanTaste(t)){
+    const forced = rec.name === "Tasty Snacks";
+    tasteSel = sel("Assign a Taste", (forced ? [] : [{value:"", label:"— no Taste —"}])
+      .concat(FLAVORS.map(f => ({value:f, label:`${f} — ${ACCENTUATED_TASTES[f].text}`}))));
+    if(forced){
+      const sync = () => { const n = pickSel ? pickSel.value : picks[0];
+        const f = Object.keys(TASTE_SNACK).find(k => TASTE_SNACK[k] === n);
+        if(f){ tasteSel.value = f; tasteSel.disabled = true; } };
+      sync(); if(pickSel) pickSel.addEventListener("change", sync);
+      body.append(el("div",{class:"small muted",style:"margin:-4px 0 8px"},
+        "A Tasty Snack must be assigned its own Taste — the book says so, so this one is fixed."));
+    }
+  }
+
+  const priceOf = () => {
+    const item = pickSel ? pickSel.value : (picks[0] || "");
+    return typeof rec.cost === "function" ? rec.cost(t, item) : (rec.cost || 0);
+  };
+  const priceLine = el("div",{class:"small",style:"margin:8px 0;font-weight:700"});
+  const drawPrice = () => {
+    const p = priceOf();
+    priceLine.textContent = p ? `Cost ${fmtMoney(p)} · you have ${fmtMoney(moneyOf(t))}` : `No money cost · you have ${fmtMoney(moneyOf(t))}`;
+    priceLine.style.color = p > moneyOf(t) ? "var(--bad)" : "";
+  };
+  drawPrice(); if(pickSel) pickSel.addEventListener("change", drawPrice);
+  body.append(priceLine);
+  body.append(el("div",{class:"small muted"}, "Cooking is an At-Will Extended Action, and needs a kitchen or a Cooking Kit."));
+
+  modal({ title:`🍳 ${rec.name}`, bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      const item = pickSel ? pickSel.value : (picks[0] || "");
+      const price = priceOf();
+      const bundle = eatSel ? bundles.find(b => b.label===eatSel.value) : null;
+      if(rec.eats && !bundle){ toast("Pick the ingredients"); return; }
+      if(rec.two && !(d1 && d2)){ toast("Pick both ingredients"); return; }
+      if(rec.two && d1.value === d2.value){ toast("The two ingredients must be different items"); return; }
+      if(price > moneyOf(t)){ toast(`Needs ${fmtMoney(price)}`); return; }
+      /* take the ingredients first — if any of them is short, nothing has been spent yet */
+      const take = bundle ? bundle.take.slice() : [];
+      if(rec.two) take.push([d1.value,1],[d2.value,1]);
+      for(const [n,q] of take) if(inventoryQty(t, n) < q){ toast(`Not enough ${n}`); return; }
+      take.forEach(([n,q]) => { for(let i=0;i<q;i++) consumeInventoryItem(t, n); });
+      if(price) moneyChange(t, -price, `Chef — ${rec.name}`, {kind:"buy"});
+
+      const made = rec.two ? `Dumpling (${d1.value} + ${d2.value})`
+                 : rec.result ? rec.result(t, item, bundle)
+                 : item;
+      const taste = tasteSel ? tasteSel.value : "";
+      // Herb Lore's yield depends on which ingredient went in (an Energy Root makes three, not two)
+      chefBagAdd(t, made, (bundle && bundle.qty) || rec.qty || 1, taste);
+      commit(); closeModal();
+      toast(`🍳 Cooked ${rec.qty>1?`${rec.qty}× `:""}${made}${taste?` · ${taste} Taste`:""}${price?` · −${fmtMoney(price)}`:""}`);
+    }},"🍳 Cook"),
+  ]});
+}
+
+/* ---------- the 🍳 Kitchen tab ---------- */
+function kitchenCard(t, commit){
+  const card = el("div",{class:"card"}, el("h3",{},"🍳 Kitchen",
+    el("span",{class:"muted small"},"Core p.130 · Chef Recipes")));
+  const rank = (t.skills||{}).intuition || "Untrained";
+  card.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    `Intuition ${rank} · ${fmtMoney(moneyOf(t))} in hand. Cooking is an At-Will Extended Action and needs a kitchen or a Cooking Kit; everything you cook lands in Inventory & Bio, and the money comes off the ledger.`));
+
+  const rows = chefRecipesFor(t);
+  if(!rows.length){
+    card.append(el("div",{class:"muted small"},
+      "No Recipes yet — the Chef Feature itself prints Tasty Snacks and Meal Planner, and each Chef Feature after it prints one more (Hits the Spot → Hearty Meal, Culinary Appreciation → Bait Mixer, Accentuated Taste → Preserves, Complex Aftertaste → Leftovers, Dietician → Vitamins)."));
+  }
+  rows.forEach(r => {
+    const row = el("div",{class:"buff-row"});
+    row.append(el("div",{style:"flex:1;min-width:0"},
+      el("div",{class:"buff-name"}, r.name),
+      el("div",{class:"small muted"}, r.blurb)));
+    row.append(el("button",{class:"btn-primary",style:"padding:6px 12px",
+      onclick:()=>openChefCook(t, r, commit)},"🍳 Cook"));
+    card.append(row);
+  });
+
+  if(chefCanTaste(t)){
+    const box = el("div",{class:"small",style:"margin-top:10px"});
+    box.append(el("div",{style:"font-weight:700;margin-bottom:2px"},"Accentuated Taste — what an assigned Taste pays"));
+    FLAVORS.forEach(f => box.append(el("div",{class:"muted"}, `${f}: ${ACCENTUATED_TASTES[f].text}`)));
+    box.append(el("div",{class:"muted",style:"margin-top:4px"},
+      "It lands automatically when the Buff is traded in, on anyone who doesn't dislike that Taste — once per item (May playtest errata)."));
+    card.append(box);
+  }
+  return card;
+}
+
+/* Herb Lore's bench, shown in the same Kitchen tab — it is the same "spend what's in the bag"
+   crafting, and a Trainer who is both a Chef and a Botanist wants one place to do it. */
+function herbLoreCard(t, commit){
+  const rows = (typeof botanyRecipesFor === "function") ? botanyRecipesFor(t) : [];
+  if(!rows.length) return el("span",{style:"display:none"});
+  const card = el("div",{class:"card"}, el("h3",{},"🌿 Herb Lore",
+    el("span",{class:"muted small"},"Core p.143 · Researcher, Botany Field")));
+  card.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    "Powders and Poultices out of the Berries, Mushrooms and Herbs in your bag. No money changes hands — only ingredients."));
+  rows.forEach(r => {
+    const row = el("div",{class:"buff-row"});
+    row.append(el("div",{style:"flex:1;min-width:0"},
+      el("div",{class:"buff-name"}, r.name),
+      el("div",{class:"small muted"}, r.blurb)));
+    row.append(el("button",{class:"btn-primary",style:"padding:6px 12px",
+      onclick:()=>openChefCook(t, r, commit)},"🌿 Make"));
+    card.append(row);
+  });
+  return card;
+}
+
+/* ---------- the Chef's in-combat Features ---------- */
+function chefCard(t, rerender, persist){
+  if(!t || !trainerIsChef(t)) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const card = classCard("🍳", "Chef", "Core p.130");
+  const has = n => hasFeatureLoose(t, n);
+  const rank = chefIntuition(t);
+
+  if(has("Dietician")) classBit(card, "Dietician: your Pokémon's Vitamin ceiling is 7 instead of 5 — the Pokémon's own Vitamins card already counts to it.");
+  if(chefCanTaste(t)) classBit(card, "Accentuated Taste: a Taste you assign in the 🍳 Kitchen pays its bonus automatically when that Buff is traded in, to anyone who doesn't dislike it.");
+
+  const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+  if(has("Hits the Spot")) row.append(el("button",{class:"btn-primary",
+    title:`1 AP, Free Action — when you or your Pokémon trade in a Buff: ${rank*2} Temporary HP`,
+    onclick:()=>openHitsTheSpot(t, redraw, saveFn)}, `🍲 Hits the Spot · ${rank*2} Temp HP · 1 AP`));
+  if(has("Complex Aftertaste")) row.append(el("button",{class:"btn-secondary",
+    title:"1 AP, Free Action — a second Buff matching the Taste of the one just traded in",
+    onclick:()=>openComplexAftertaste(t, redraw, saveFn)},"🍮 Complex Aftertaste · 1 AP"));
+  if(has("Culinary Appreciation")) row.append(el("button",{class:"btn-secondary",
+    title:"At-Will, Extended Action — 2 Tutor Points for the Gluttony Ability",
+    onclick:()=>openCulinaryAppreciation(t, redraw, saveFn)},"🍴 Culinary Appreciation"));
+  if(row.childNodes.length) card.append(row);
+
+  if(trainerIsChef(t)) classBit(card, "The Recipes themselves live on the Trainer page's 🍳 Kitchen tab — cooking is an Extended Action, not a combat one.");
+  classFeatureRows(card, t, "Chef", rerender, persist);
+  return card;
+}
+/* Hits the Spot: "The target gains Temporary Hit Points equal to your Intuition Rank doubled.
+   These stack from any Temporary Hit Points granted by Accentuated Taste, the Digestion Buff or by
+   the Lunchbox Ability" — which is exactly gainTempHP's {stack:true}. */
+function openHitsTheSpot(t, rerender, persist){
+  const list = allyTargets(t);
+  const pick = targetPicker(list, selfTargetId(list));
+  const n = chefIntuition(t) * 2;
+  const body = el("div",{});
+  body.append(el("div",{class:"small",style:"margin-bottom:10px"},
+    `1 AP · Free Action, triggered by you or your Pokémon trading in a Digestion Buff. The target gains ${n} Temporary Hit Points (Intuition Rank ${chefIntuition(t)} doubled) — these stack with the Buff's own, with Accentuated Taste and with Lunchbox.`));
+  body.append(pick.node);
+  modal({title:"🍲 Hits the Spot", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async ()=>{
+      const chosen = pick.chosen();
+      if(!chosen.length){ toast("Pick a target"); return; }
+      if(!apSpend(t, 1)) return;
+      chosen.forEach(x => gainTempHP(x.obj, n, {stack:true}));
+      (persist||save)(); closeModal();
+      await commitTargets(chosen);
+      toast(`🍲 Hits the Spot → ${chosen.map(x=>ownerLabel(x.obj)).join(", ")} · +${n} Temp HP · 1 AP`);
+      (rerender||renderBattle)();
+    }},"🍲 Serve"),
+  ]});
+}
+/* Complex Aftertaste: a second Digestion Buff, the basic Tasty Snack of that Taste. It is a Buff,
+   not a Snack eaten — so it is pushed straight onto the target's stored list, exempt from the cap
+   (nothing was eaten and no Extended Action was spent), and it carries NO assigned Taste: the May
+   playtest errata says the Accentuated Taste bonus is once per item. */
+function openComplexAftertaste(t, rerender, persist){
+  const list = allyTargets(t);
+  const pick = targetPicker(list, selfTargetId(list));
+  const body = el("div",{});
+  body.append(el("div",{class:"small",style:"margin-bottom:10px"},
+    "1 AP · Free Action, triggered when you or an ally trade in a Digestion Buff from an item with a Taste. The target gains a second Digestion Buff — the basic Tasty Snack matching that Taste."));
+  const tasteSel = el("select",{style:"padding:6px;margin-bottom:10px"});
+  FLAVORS.forEach(f => tasteSel.append(el("option",{value:f}, `${f} → ${TASTE_SNACK[f]}`)));
+  body.append(el("label",{class:"field"}, el("span",{},"The Taste of the Snack that granted the Buff"), tasteSel));
+  body.append(pick.node);
+  modal({title:"🍮 Complex Aftertaste", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async ()=>{
+      const chosen = pick.chosen();
+      if(!chosen.length){ toast("Pick a target"); return; }
+      if(!apSpend(t, 1)) return;
+      const snack = TASTE_SNACK[tasteSel.value];
+      chosen.forEach(x => digestionList(x.obj).push({
+        id:uid(), item:snack, from:`Complex Aftertaste (${tasteSel.value})`, exempt:true,
+        note:"Granted by Complex Aftertaste — free of the normal Buff limit." }));
+      (persist||save)(); closeModal();
+      await commitTargets(chosen);
+      toast(`🍮 Complex Aftertaste → ${chosen.map(x=>ownerLabel(x.obj)).join(", ")} · ${snack} Buff · 1 AP`);
+      (rerender||renderBattle)();
+    }},"🍮 Serve"),
+  ]});
+}
+/* Culinary Appreciation: "The target loses 2 Tutor Points and gains the Gluttony Ability." */
+function openCulinaryAppreciation(t, rerender, persist){
+  const c = charOfTrainer(t);
+  const mons = (c && c.pokemon || []).filter(p => tpLeft(p) >= 2 && !hasAbility(p, "Gluttony"));
+  if(!mons.length){ toast("No Pokémon with 2 Tutor Points left that doesn't already have Gluttony"); return; }
+  // labels are the picker's only handle on a row, so make them unique before handing them over
+  const byLabel = new Map();
+  mons.forEach(p => {
+    let l = `${ownerLabel(p)} · Lv ${p.level} · ${tpLeft(p)} TP`;
+    while(byLabel.has(l)) l += " ";
+    byLabel.set(l, p);
+  });
+  openPicker("🍴 Culinary Appreciation — 2 Tutor Points for Gluttony",
+    [...byLabel.keys()],
+    label => {
+      const p = byLabel.get(label);
+      if(!p) return;
+      if(tpSpend(p, 2, "Culinary Appreciation — Gluttony") < 2){ toast("Not enough Tutor Points"); return; }
+      p.abilities = [...(p.abilities||[]), "Gluttony"];
+      (persist||save)();
+      toast(`🍴 ${ownerLabel(p)} gained Gluttony — 2 Tutor Points spent`);
+      (rerender||renderBattle)();
+    });
+}
+
+/* ═══════════════════ RESEARCHER (Core p.139) — Botany & Occultism ═══════════════════
+   Researcher is a [Branch] Class: the Class Feature itself does nothing but let you take Features
+   from two Fields of Study, so there is no "Researcher" behaviour to automate — each Field is its
+   own little class. Two of them are built here, the two this table uses.
+
+     BOTANY (p.143)     Seed Bag hands the TRAINER a Powder Move harvested off a willing Grass-Type
+                        for the rest of the day; Top Tier Berries says what you may grow; Herb Lore
+                        turns Berries, Mushrooms and Herbs into Powders and Poultices.
+     OCCULTISM (p.145)  Witch Hunter hands over Psionic Sight (already granted, in prose, by
+                        featureGrantedNames); Mental Resistance is a real defensive number and is
+                        applied in defenseTypeMods; Psionic Analysis and Immutable Mind are Scene
+                        uses with a counter. */
+
+/* Seed Bag (Ranked 2): "You may target a willing Grass-Type Pokémon that knows Sleep Powder, Stun
+   Spore, or Poison Powder. Add this move to your Move list for the remainder of the day." Rank 2
+   adds the other four. The harvested Move goes onto t.moves like any other Trainer Move — and is
+   listed in t.seedBag so the Extended Rest can take it back off again without touching a Move the
+   player typed in by hand (the same provenance trick t.featMoves uses). */
+const SEED_BAG_MOVES = {
+  1: ["Sleep Powder","Stun Spore","Poison Powder"],
+  2: ["Cotton Spore","Leech Seed","Spore","Worry Seed"],
+};
+function seedBagRank(t){
+  return hasFeatureLoose(t,"Seed Bag Rank 2") ? 2 : (hasFeatureLoose(t,"Seed Bag Rank 1") ? 1 : 0);
+}
+function seedBagMoveList(t){
+  const r = seedBagRank(t);
+  return r >= 2 ? [...SEED_BAG_MOVES[1], ...SEED_BAG_MOVES[2]] : (r === 1 ? SEED_BAG_MOVES[1].slice() : []);
+}
+/* the Grass-Types in this Trainer's own party that actually know one of the harvestable Moves —
+   "a willing Grass-Type Pokémon that knows …", so the donor is checked, not assumed */
+function seedBagDonors(t){
+  const want = new Set(seedBagMoveList(t).map(m => m.toLowerCase()));
+  const c = charOfTrainer(t);
+  const out = [];
+  (c && c.pokemon || []).forEach(p => {
+    if(!monTypes(p).some(ty => String(ty).toLowerCase()==="grass")) return;
+    const have = (p.moves||[]).filter(m => want.has(String(m).toLowerCase()));
+    if(have.length) out.push({ p, moves:have });
+  });
+  return out;
+}
+function seedBagHarvest(t, moveName){
+  if(!Array.isArray(t.seedBag)) t.seedBag = [];
+  if(!Array.isArray(t.moves)) t.moves = [];
+  if(t.moves.includes(moveName)) return false;        // "may not have multiple instances of the same move"
+  t.moves.push(moveName); t.seedBag.push(moveName);
+  return true;
+}
+/* an Extended Rest is the end of "the remainder of the day" */
+function seedBagClear(t){
+  if(!t || !Array.isArray(t.seedBag) || !t.seedBag.length) return;
+  const drop = new Set(t.seedBag);
+  t.moves = (t.moves||[]).filter(m => !drop.has(m));
+  t.seedBag = [];
+}
+
+/* Herb Lore (Botany): the same shape the Chef's Recipes use, so openChefCook runs them unchanged. */
+const BOTANY_RECIPES = [
+  { name:"Energy Powder", feat:"Herb Lore", cost:0, qty:2,
+    pick:() => ["Energy Powder"],
+    eats:() => [ { label:"x1 Sitrus Berry",  take:[["Sitrus Berry",1]],  qty:2 },
+                 { label:"x1 Tiny Mushroom", take:[["Tiny Mushroom",1]], qty:2 },
+                 { label:"x1 Energy Root",   take:[["Energy Root",1]],   qty:3 } ],
+    blurb:"A Sitrus Berry or Tiny Mushroom makes two; an Energy Root makes three." },
+  { name:"Heal Powder", feat:"Herb Lore", cost:0, qty:2,
+    pick:() => ["Heal Powder"],
+    eats:() => [ { label:"x1 Lum Berry",    take:[["Lum Berry",1]],    qty:2 },
+                 { label:"x1 Big Mushroom", take:[["Big Mushroom",1]], qty:2 },
+                 { label:"x1 Revival Herb", take:[["Revival Herb",1]], qty:3 } ],
+    blurb:"A Lum Berry or Big Mushroom makes two; a Revival Herb makes three." },
+  { name:"Poultices", feat:"Herb Lore", cost:0, qty:3,
+    pick:() => ["Poultices"],
+    eats:() => [ { label:"x1 Energy Powder + x1 Heal Powder", take:[["Energy Powder",1],["Heal Powder",1]], qty:3 } ],
+    blurb:"One Energy Powder and one Heal Powder make three Poultices." },
+];
+function botanyRecipesFor(t){ return BOTANY_RECIPES.filter(r => hasFeatureLoose(t, r.feat)); }
+
+function researcherCard(t, rerender, persist){
+  if(!t) return null;
+  const has = n => hasFeatureLoose(t, n);
+  const botany  = has("Seed Bag Rank 1") || has("Top Tier Berries") || has("Herb Lore");
+  const occult  = has("Witch Hunter") || has("Mental Resistance") || has("Psionic Analysis") || has("Immutable Mind");
+  if(!botany && !occult) return null;
+  const saveFn = persist || save, redraw = rerender || renderBattle;
+  const card = classCard("\u{1F52C}", "Researcher", "Core p.139");
+
+  if(botany){
+    classBit(card, "\u{1F33F} Botany Field —");
+    if(has("Top Tier Berries")){
+      const rank = Math.max(rankNum((t.skills||{}).generalEd), rankNum((t.skills||{}).survival));
+      const tiers = [];
+      if(rank >= 3) tiers.push("Tier 2 Berries");
+      if(rank >= 4) tiers.push("Mental / Power / White Herbs and Tiny Mushrooms");
+      if(rank >= 5) tiers.push("Revival Herbs, Energy Roots, Big Mushrooms and Tier 3 Berries");
+      classBit(card, `Top Tier Berries: on the higher of General Education and Survival you may grow ${tiers.length ? tiers.join("; ") : "nothing beyond Green Thumb's Apricorns and Tier 1 Berries yet"}${rank >= 6 ? " — and Master adds +1 Soil Quality to every plant you grow" : ""}.`);
+    }
+    if(seedBagRank(t)) classBit(card, `Seed Bag Rank ${seedBagRank(t)}: harvestable Moves are ${seedBagMoveList(t).join(", ")}. Twice per day per Rank (${seedBagRank(t)*2} uses), and what you harvest drops off the sheet at your next Extended Rest.`);
+    const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+    if(seedBagRank(t)) row.append(el("button",{class:"btn-primary",
+      title:"X Daily, Extended Action — harvest a Powder Move off a willing Grass-Type",
+      onclick:()=>openSeedBag(t, redraw, saveFn)},"\u{1F33E} Seed Bag"));
+    botanyRecipesFor(t).forEach(r => row.append(el("button",{class:"btn-secondary",
+      onclick:()=>openChefCook(t, r, ()=>{ saveFn(); redraw(); })}, `\u{1F33F} ${r.name}`)));
+    if(row.childNodes.length) card.append(row);
+    if(Array.isArray(t.seedBag) && t.seedBag.length)
+      classBit(card, `Harvested today: ${t.seedBag.join(", ")} — on your Move list until your next Extended Rest.`);
+  }
+
+  if(occult){
+    classBit(card, "\u{1F52E} Occultism Field —");
+    if(has("Witch Hunter")) classBit(card, "Witch Hunter: Psionic Sight is yours whether or not you qualify for it — Psychic Residue on people and Pokémon is simply visible to you.");
+    if(has("Mental Resistance")) classBit(card, "Mental Resistance: Mindlock is on your Capabilities line, and 10 Damage Reduction against SPECIAL Psychic, Ghost and Dark damage is applied by the damage math (a Physical one of those Types gets nothing — that is the Feature).");
+    const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
+    if(has("Psionic Analysis")){
+      row.append(el("button",{class:"btn-secondary",
+        title:"Scene, Extended Action — read the Psychic Residue",
+        onclick:()=>{ if(!featSpend(t,"Psionic Analysis")) return; saveFn();
+          toast("\u{1F50E} Psionic Analysis — human or Pokémon, which Psychic Moves they know, and whether they have Telepath / Telekinetic / Warper");
+          redraw(); }},"\u{1F50E} Psionic Analysis"), useSpan(t, "Psionic Analysis"));
+    }
+    if(has("Immutable Mind")){
+      row.append(el("button",{class:"btn-primary",
+        title:"Scene, Free Action — when a Psychic, Ghost or Dark Move hits you",
+        onclick:()=>{ if(!featSpend(t,"Immutable Mind")) return; saveFn();
+          toast("\u{1F6E1} Immutable Mind — a Status-Class Move fails outright; a damaging one's roll-triggered secondary effect can't touch you");
+          redraw(); }},"\u{1F6E1} Immutable Mind"), useSpan(t, "Immutable Mind"));
+    }
+    if(row.childNodes.length) card.append(row);
+  }
+
+  classFeatureRows(card, t, "Researcher", rerender, persist);
+  return card;
+}
+/* Seed Bag: pick the donor and the Move. The use counter is the Feature's own ("X Daily", twice per
+   day per Rank), so it is spent through featSpend like every other Feature use. */
+function openSeedBag(t, rerender, persist){
+  const donors = seedBagDonors(t);
+  if(!donors.length){
+    toast("No willing Grass-Type in your party knows " + seedBagMoveList(t).join(", "));
+    return;
+  }
+  const body = el("div",{});
+  body.append(el("div",{class:"small",style:"margin-bottom:10px"},
+    "X Daily · Extended Action, twice per day per Rank. Harvest one Powder or Seed Move off a willing Grass-Type of your own; it sits on YOUR Move list until your next Extended Rest. You may not hold two instances of the same Move."));
+  const opts = [];
+  donors.forEach(d => d.moves.forEach(m => opts.push({ p:d.p, move:m })));
+  const sel = el("select",{style:"padding:6px"});
+  opts.forEach((o,i) => sel.append(el("option",{value:String(i)},
+    `${o.move} — from ${ownerLabel(o.p)}${(t.moves||[]).includes(o.move) ? " (you already have it)" : ""}`)));
+  body.append(el("label",{class:"field"}, el("span",{},"Harvest"), sel));
+  modal({title:"\u{1F33E} Seed Bag", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      const o = opts[parseInt(sel.value)||0]; if(!o) return;
+      if((t.moves||[]).includes(o.move)){ toast(`You already have ${o.move}`); return; }
+      const feat = seedBagRank(t) >= 2 && SEED_BAG_MOVES[2].includes(o.move) ? "Seed Bag Rank 2" : "Seed Bag Rank 1";
+      if(!featSpend(t, feat)) return;
+      seedBagHarvest(t, o.move);
+      (persist||save)(); closeModal();
+      toast(`\u{1F33E} Harvested ${o.move} from ${ownerLabel(o.p)} — on your Move list until your next Extended Rest`);
+      (rerender||renderBattle)();
+    }},"\u{1F33E} Harvest"),
+  ]});
+}
+
 function classAutomationCards(t, rerender, persist){
   return [rememberCard,
+          chefCard, researcherCard,
           musicianCard, commanderCard, provocateurCard, cheerleaderCard,
           glamourCard, captureCard, medicCard, hexCard, channelerCard,
           aceTrainerCard, duelistCard, heraldCard, typeAceCard, maelstromCard, shadeCallerCard,
@@ -26399,7 +27686,7 @@ function encHealCreature(o, isT){
   if(!o) return;
   if(isT) normTrainer(o); else normPokemon(o);
   // revert first, so the max HP we heal up to is the base form's
-  if(!isT){ if(o.mega) megaRevert(o, true); endSceneTypeState(o); transformRevert(o, true); schoolingRevertNow(o); }
+  if(!isT){ if(o.mega) megaRevert(o, true); powerConstructRevert(o, true); endSceneTypeState(o); transformRevert(o, true); schoolingRevertNow(o); }
   o.injuries = 0; resetInjuryDay(o);     // encounter creatures have no day — no cap, and no ledger left behind
   o.tempHP = 0; o.buffs = [];
   resetUses(o, "all"); resetManualCS(o); clearStorageDigestion(o); clearAllStatuses(o);
@@ -27482,6 +28769,8 @@ function encWeaponsCard(t, key){
       field(weaponMoveLabel(w,"master"),"",{opts:["", ...weaponMoveList(w,"master")], value:w.weaponMoveMaster||"", onchange:v=>{ w.weaponMoveMaster=v; saveEnc(); renderEncounters(); }}),
       field("Arcane Weapon","",{opts:["no","yes"], value:w.arcane?"yes":"no",
         onchange:v=>{ w.arcane = v==="yes"; w.weaponMoveAdept=""; w.weaponMoveMaster=""; saveEnc(); renderEncounters(); }}),
+      field("\u2694 Deicide","",{opts:["no","yes"], value:w.deicide?"yes":"no", title:DEICIDE_HELP,
+        onchange:v=>{ w.deicide = v==="yes"; saveEnc(); renderEncounters(); }}),
     );
     box.append(r1, r2, r3,
       field("Moves this weapon grants","",{value:w.grantedMoves||"",
@@ -27695,6 +28984,8 @@ function encounterMonCard(enc, p, list, trainer){
         title:"Mega Evolve (needs the matching Mega Stone held). Stats, types, Ability & size follow the Mega form; moves & level are kept.",
         onclick:()=>megaEvolve(p,nm,rr)}, megas.length>1 ? "✨ "+nm : "✨ Mega Evolve")));
     }
+    const pc = powerConstructControl(p, rr);
+    if(pc) Array.from(pc.childNodes).forEach(n => megaRow.append(n));
     card.append(megaRow);
   }
   // HP tracker
@@ -28261,10 +29552,15 @@ const DIFF_BANDS = [
     blurb:"The book's \"bigger, more important fight\": it threatens to take them out." },
   { max:2.75, label:"Boss-tier", sig:5,   color:"#d9534f",
     blurb:"A Threaten encounter (Core p.475) — best run after something has already taxed them." },
-  { max:Infinity, label:"Overkill", sig:5, color:"#b02a37",
+  { max:Infinity, label:"Overkill", sig:5, color:"#b02a37", warn:true,
     blurb:"Past what the guidelines scale to. Expect a wipe unless somebody is holding back." },
 ];
 const diffBand = r => DIFF_BANDS.find(b => r < b.max) || DIFF_BANDS[DIFF_BANDS.length-1];
+/* Where the book's scale runs out: the Significance Multiplier "should range from x1 to about x5"
+   (Core p.460), and Boss-tier already pays that x5. Anything past this ratio is an encounter the
+   rules have no multiplier left to price and no guidance for — read from the bands themselves so
+   the warning can never drift away from the band that raises it. */
+const DIFF_OVERKILL_AT = DIFF_BANDS[DIFF_BANDS.length-2].max;
 /* Turns a single body takes in a round — the actual unit of action economy. A Boss gets several
    (Running the Game p.487) and a Swarm acts on its Multiplier (Core p.478); counting heads instead
    would rate a 3-action Boss the same as a Magikarp. */
@@ -28307,6 +29603,58 @@ function encounterDifficulty(enc, avgMon, players, perPlayer, perFoe){
            foeActs, foeBodies, pcActs, avgMon,
            avgFoeMon: diffAvg(foeMons.map(p=>p.level||0)), foeMonCount: foeMons.length,
            trainers: (enc.trainers||[]).filter(tr=>tr.trainer).length };
+}
+/* ---- the same question, settled by fighting it out ----
+   The ratio above is arithmetic; this runs the encounter against the party through the ⚗ Sim
+   engine. It reuses simSideGroups / simBattle / simFold wholesale but builds its OWN side objects
+   and cfg, so pressing the button never touches — or saves over — the Sim tab's own setup.
+   Each Trainer team sends out the number the difficulty boxes already ask for; wild Pokémon keep
+   the encounter's own all-at-once default, because nobody is holding those in a ball. */
+function diffBuildSide(sourceKeys, active, trainerFocus){
+  const side = Object.assign(simNewSide(), { sources:sourceKeys.slice(), trainerFocus, active:{} });
+  sourceKeys.forEach(k => simGroupsOf(simSourceByKey(k)).forEach(g=>{
+    if(g.kind==="trainer") side.active[g.key] = active;
+  }));
+  return side;
+}
+let diffSimRunning = false;
+/* Chunked the same way simRun is, so a thousand battles never freeze the tab. `draw(agg, done)`
+   is called after every slice — the caller owns what the read-out looks like. */
+function diffRunSim(opts, draw){
+  const { enc, chars, perPlayer, perFoe, focusA, focusB, runs, healed } = opts;
+  const A = diffBuildSide(chars.map(c=>"char:"+c.id), perPlayer, focusA);
+  const B = diffBuildSide(["enc:"+enc.id], perFoe, focusB);
+  const gA = simSideGroups(A), gB = simSideGroups(B);
+  if(!gA.length) return { error:"None of the ticked characters could be loaded as a side." };
+  if(!gB.length) return { error:"This encounter has no combatants to fight." };
+  /* inherit the Sim tab's RULES toggles (Frequencies, Statuses, Weather, Injuries, …) so the two
+     tools agree on how a fight resolves — only the line-up and the starting condition are ours. */
+  const cfg = JSON.parse(JSON.stringify(simCfg));
+  cfg.A = A; cfg.B = B;
+  cfg.runs = Math.max(1, Math.min(SIM_MAX_RUNS, runs|0));
+  cfg.maxRounds = Math.max(1, Math.min(100, simCfg.maxRounds|0)) || 20;
+  if(healed) cfg.startHP = "healed";
+  const agg = simNewAgg(cfg, gA, gB);
+  diffSimRunning = true;
+  const step = ()=>{
+    const t0 = performance.now();
+    try{
+      while(agg.runs < agg.target && performance.now() - t0 < 45) simFold(agg, simBattle(cfg, gA, gB, false));
+    }catch(err){
+      /* one malformed fighter used to throw out of the setTimeout and strand diffSimRunning at
+         true, which disables the button for the rest of the session. Report it and let go. */
+      diffSimRunning = false;
+      console.error("Difficulty sim failed", err);
+      draw(agg, true, err);
+      return;
+    }
+    const done = agg.runs >= agg.target;
+    if(done) diffSimRunning = false;
+    draw(agg, done);
+    if(!done) setTimeout(step, 0);
+  };
+  setTimeout(step, 0);
+  return { agg };
 }
 function openEncDifficulty(enc){
   const body = el("div",{});
@@ -28369,6 +29717,73 @@ function openEncDifficulty(enc){
     lbl(el("span",{},"Party's average Pokémon Level", reset), avgIn, "the Core p.473 baseline"));
   body.append(inRow, out);
 
+  /* ---- and the same question settled by fighting it out ---- */
+  const simBox = el("div",{class:"card",style:"margin:12px 0 0"});
+  simBox.append(el("h3",{style:"margin-top:0"},"⚔ Fight it out"));
+  simBox.append(el("div",{class:"small muted"},
+    "Runs this encounter against the ticked party through the ⚗ Sim engine, with the same send-out "
+    + "numbers above. Damaging attacks only — no Status Moves, items, Trainer Features or positioning."));
+  const faIn   = el("input",{type:"number",min:0,max:100,value:enc.diffFocusA ?? 0});
+  const fbIn   = el("input",{type:"number",min:0,max:100,value:enc.diffFocusB ?? 0});
+  const runsIn = el("input",{type:"number",min:1,max:SIM_MAX_RUNS,value:enc.diffRuns || 1000});
+  const healCb = el("input",{type:"checkbox"}); healCb.checked = enc.diffHealed !== false;
+  const simRow = el("div",{class:"fieldrow",style:"margin-top:8px"});
+  simRow.append(
+    lbl("Party aims at enemy Trainers", faIn, "% of attacks that go past the Pokémon at the people"),
+    lbl("Enemy aims at your Trainers",  fbIn, "0 = normal PTU, Pokémon fight Pokémon"),
+    lbl("Battles to run", runsIn, "more = steadier percentages"));
+  simBox.append(simRow);
+  simBox.append(el("label",{class:"inline",style:"gap:8px;margin-top:6px;cursor:pointer"},
+    healCb, el("span",{class:"small"},"Both sides start fully healed — no damage, Injuries or Statuses")));
+  const simOut = el("div",{style:"margin-top:10px"});
+  const runBtn = el("button",{class:"btn-primary",style:"padding:8px 16px;margin-top:10px"},"⚔ Fight it out");
+  const paintRunBtn = () => { runBtn.textContent = diffSimRunning ? "⏳ Running…"
+    : `⚔ Run ${Math.max(1, parseInt(runsIn.value)||1)} battles`; runBtn.disabled = diffSimRunning; };
+  const drawSim = (agg, done, err)=>{
+    paintRunBtn();
+    const n = agg.runs || 1;
+    simOut.innerHTML = "";
+    if(err){ simOut.append(el("div",{class:"small",style:"color:var(--bad)"},
+      `The simulation stopped after ${agg.runs} battle${agg.runs===1?"":"s"}: ${err.message}`));
+      if(!agg.runs) return; }
+    if(!done) simOut.append(el("div",{class:"small muted"}, `Running… ${agg.runs} / ${agg.target}`));
+    simOut.append(simWinBar(agg));
+    const pctA = Math.round(agg.A/n*100), pctB = Math.round(agg.B/n*100);
+    const verdict = pctA >= 90 ? "the party walks it"
+                  : pctA >= 70 ? "the party is favoured"
+                  : pctA >= 55 ? "the party edges it"
+                  : pctA >= 45 ? "a coin flip"
+                  : pctA >= 30 ? "the encounter is favoured"
+                  : pctA >= 10 ? "the encounter is heavily favoured"
+                  :              "the party is outmatched";
+    simOut.append(el("div",{style:"font-size:15px;margin-top:6px"},
+      el("b",{},`Party wins ${pctA}%`), ` · encounter wins ${pctB}%`,
+      agg.draw ? ` · ${Math.round(agg.draw/n*100)}% went to the round limit` : "",
+      ` — ${verdict}.`));
+    simOut.append(el("div",{class:"small muted",style:"margin-top:2px"},
+      `Average ${(agg.sumRounds/n).toFixed(1)} rounds over ${agg.runs} battle${agg.runs===1?"":"s"}.`));
+  };
+  runBtn.addEventListener("click",()=>{
+    if(diffSimRunning) return;
+    if(simRunning){ toast("The ⚗ Sim tab is already running a batch"); return; }
+    const live = picked();
+    if(!live.length){ toast("Tick at least one character to fight"); return; }
+    enc.diffFocusA = Math.max(0,Math.min(100, parseInt(faIn.value)||0));
+    enc.diffFocusB = Math.max(0,Math.min(100, parseInt(fbIn.value)||0));
+    enc.diffRuns   = Math.max(1,Math.min(SIM_MAX_RUNS, parseInt(runsIn.value)||1000));
+    enc.diffHealed = healCb.checked; saveEnc();
+    simOut.innerHTML = "";
+    const r = diffRunSim({ enc, chars:live, perPlayer, perFoe,
+                           focusA:enc.diffFocusA, focusB:enc.diffFocusB,
+                           runs:enc.diffRuns, healed:enc.diffHealed }, drawSim);
+    if(r.error){ simOut.append(el("span",{class:"muted small"}, r.error)); return; }
+    paintRunBtn();
+  });
+  runsIn.addEventListener("input", paintRunBtn);
+  paintRunBtn();
+  simBox.append(runBtn, simOut);
+  body.append(simBox);
+
   function recalc(){
     perPlayer = Math.max(1, parseInt(ppIn.value)||1);
     perFoe    = Math.max(1, parseInt(pfIn.value)||1);
@@ -28385,6 +29800,29 @@ function openEncDifficulty(enc){
       el("span",{style:`font-size:24px;font-weight:800;color:${d.band.color}`}, d.band.label),
       el("span",{class:"muted"}, `×${Math.round(d.ratio*100)/100} an everyday encounter`)));
     out.append(el("div",{class:"small",style:"margin:6px 0 10px"}, d.band.blurb));
+    /* Past the top of the book's own scale. Significance stops at about ×5 (Core p.460) and
+       Boss-tier already pays that, so there is no multiplier left to price this one — which is the
+       book's own signal that it is past what the guidelines cover. Worth saying loudly, and worth
+       pricing the nerf rather than printing a label and leaving the GM to do the subtraction. */
+    if(d.band.warn){
+      const target = Math.round(d.everyday * DIFF_OVERKILL_AT);   // top of Boss-tier
+      const cut    = Math.max(0, d.base - target);
+      const monLv  = Math.max(1, Math.round(d.avgFoeMon || d.avgMon));
+      const nMons  = Math.max(1, Math.round(cut / monLv));
+      const w = el("div",{style:"margin:0 0 10px;padding:8px 10px;border-left:4px solid var(--bad);"
+        +"border-radius:6px;background:rgba(217,83,79,.12)"});
+      w.append(el("div",{style:"font-weight:800;color:var(--bad)"},
+        "⚠ Over the ×5 Significance cap — this one wants nerfing"));
+      w.append(el("div",{class:"small",style:"margin-top:4px"},
+        `The Significance Multiplier only runs to about ×5 (Core p.460) and Boss-tier already pays it, `
+        + `so at ×${Math.round(d.ratio*100)/100} an everyday fight there is no multiplier left to price `
+        + `this — the book has nothing above it.`
+        + (d.ratio >= 5 ? " At more than five times an everyday encounter this is very likely a wipe." : "")));
+      if(cut) w.append(el("div",{class:"small",style:"margin-top:4px"},
+        `Cutting about ${cut} Levels brings it to ${target}, the top of Boss-tier — roughly `
+        + `${nMons} Pokémon at Lv ${monLv}, or half that many Trainers, since a Trainer counts double.`));
+      out.append(w);
+    }
     const row = (a,b)=> el("div",{class:"inline small",style:"justify-content:space-between;gap:8px"},
       el("span",{class:"muted"},a), el("span",{}, b));
     out.append(
@@ -30019,6 +31457,10 @@ function sweepMapAuras(map){
   if(toks.length > 300) return false;
   const anyPressure = toks.some(t => { const L = t.link ? tokenLinked(t) : null;
     return L && L.obj && hasCorePressure(L.obj) && !tokenIsDown(t); });
+  /* Giftsapper's 10m field — same shape as Pressure's 3m, and skipped entirely (as Pressure is)
+     when nobody on the board is projecting one and nobody is still wearing the chip. */
+  const anySapper = toks.some(t => { const L = t.link ? tokenLinked(t) : null;
+    return L && L.obj && hasGiftsapper(L.obj) && !tokenIsDown(t); });
   const rows = new Set();
   let encTouched = false, changed = false;
   const mark = (obj, key, flag, want) => {
@@ -30038,6 +31480,8 @@ function sweepMapAuras(map){
     hit = mark(L.obj, "flanked", "autoFlanked", tokenFlanking(map, token).flanked) || hit;
     if(anyPressure || L.obj.autoPressure)
       hit = mark(L.obj, "suppressed", "autoPressure", tokenPressureSources(map, token).length > 0) || hit;
+    if(anySapper || L.obj.autoGiftsap)
+      hit = mark(L.obj, "giftsapped", "autoGiftsap", tokenGiftsapSources(map, token).length > 0) || hit;
     if(!hit) return;
     changed = true;
     if(ENEMY_LINKS.has(L.kind)) encTouched = true;
@@ -32563,24 +34007,69 @@ function infoModal(title, html){ modal({title, bodyHTML:html, footNodes:[el("but
 /* searchable single-select picker. onPick(name). markFn flags priority items with ★.
    lockFn(name) may return a reason string to show the item as locked & unpickable.
    subFn(name) supplies the second line for pools that aren't one of the known refKinds
-   (the Snack / Refreshment pickers, which want this eater's own numbers on each row). */
-function openPicker(title, names, onPick, refKind, markFn, lockFn, subFn){
+   (the Snack / Refreshment pickers, which want this eater's own numbers on each row).
+
+   opts (optional) turns a flat list into a browsable one:
+     tabs        [{id, label, test(name)}] — a row of sub-tabs above the search box. A tab with no
+                 `test` shows everything ("All"). Each tab is labelled with how many of its entries
+                 the picker would actually let you take.
+     lockToggle  show the 🔓/🔒 switch, and START by hiding everything lockFn refuses. A 700-name
+                 Feature list of which you qualify for eleven is not a list, it's a haystack.
+     memKey      remembers that switch per pool, across openings. */
+function openPicker(title, names, onPick, refKind, markFn, lockFn, subFn, opts){
+  opts = opts || {};
+  const tabs = (opts.tabs || []).filter(Boolean);
   const wrap = el("div",{});
-  const search = el("input",{type:"search",placeholder:"Type to filter…",style:"margin-bottom:10px"});
+  const search = el("input",{type:"search",placeholder:"Type to filter…",style:"flex:1;min-width:0;margin:0"});
   const list = el("div",{class:"picklist"});
+  const foot = el("div",{class:"small muted",style:"margin-top:6px"});
+  /* the tab counts need every name's lock status, and lockFn can be costly — ask once per name. */
+  const _lock = new Map();
+  const lockOf = n => { if(!_lock.has(n)) _lock.set(n, (lockFn && lockFn(n)) || null); return _lock.get(n); };
+  const canToggle = !!(lockFn && opts.lockToggle) && names.some(n => lockOf(n));
+  const memKey = "ptu_picklocked_" + (opts.memKey || "x");
+  let showLocked = canToggle ? localStorage.getItem(memKey) === "1" : true;
+  let tab = 0;
+
+  const tabBar = el("div",{class:"subtabs pick-tabs"});
+  const tabBtns = tabs.map((tb,i) => {
+    const b = el("button",{class:"subtab", onclick:()=>{ tab=i; draw(); }}, tb.label);
+    tabBar.append(b); return b;
+  });
+  const toggle = canToggle ? el("button",{class:"btn-secondary",
+    style:"flex:0 0 auto;white-space:nowrap",
+    onclick:()=>{ showLocked = !showLocked; localStorage.setItem(memKey, showLocked?"1":"0"); draw(); }}) : null;
+  const namesIn = tb => (tb && tb.test) ? names.filter(tb.test) : names;
+
   const draw = () => {
     const q = search.value.trim().toLowerCase(); list.innerHTML="";
-    let arr = names;
-    if(markFn) arr = [...names].sort((a,b)=>(markFn(b)?1:0)-(markFn(a)?1:0));
-    const filtered = arr.filter(n=>!q||n.toLowerCase().includes(q)).slice(0,200);
-    filtered.forEach(n=>{
+    tabBtns.forEach((b,i) => {
+      b.classList.toggle("on", i===tab);
+      const pool = namesIn(tabs[i]);
+      const open = lockFn ? pool.filter(n=>!lockOf(n)).length : pool.length;
+      b.textContent = `${tabs[i].label} (${open})`;
+      b.title = lockFn && open !== pool.length
+        ? `${open} you qualify for, of ${pool.length}` : `${pool.length} entries`;
+    });
+    let arr = namesIn(tabs[tab]);
+    if(markFn) arr = [...arr].sort((a,b)=>(markFn(b)?1:0)-(markFn(a)?1:0));
+    const matched = arr.filter(n=>!q||n.toLowerCase().includes(q));
+    let hidden = 0;
+    const rows = [];
+    matched.forEach(n => {
+      const lock = lockOf(n);
+      if(lock && !showLocked){ hidden++; return; }
+      rows.push([n, lock]);
+    });
+    const filtered = rows.slice(0,200);
+    filtered.forEach(([n, lock])=>{
       const marked = markFn && markFn(n);
-      const lock = lockFn && lockFn(n);
       const textCol = el("div",{style:"flex:1;min-width:0"},
         el("div",{class:"pi-title"}, n + (marked?"  ★":"") + (lock?"  🔒":"")),
         subFn? (subFn(n) || "")
           : refKind==="move"? pickMoveSub(n) : refKind==="species"? pickSpeciesSub(n)
           : refKind==="feature"? pickFeatureSub(n) : refKind==="held"? pickHeldSub(n)
+          : refKind==="edge"? pickEdgeSub(n)
           : refKind==="technique"? pickTechniqueSub(n) : refKind==="ability"? pickAbilitySub(n) : "",
         lock? el("div",{class:"pi-sub",style:"color:var(--bad)"}, lock) : "");
       // items get their shop artwork next to the name, the same way species get their sprite
@@ -32597,18 +34086,41 @@ function openPicker(title, names, onPick, refKind, markFn, lockFn, subFn){
       else item.addEventListener("click",()=>{ closeModal(); onPick(n); });
       list.append(item);
     });
-    if(!filtered.length) list.append(el("div",{class:"pickitem muted"},"no matches"));
+    if(!filtered.length) list.append(el("div",{class:"pickitem muted"},
+      hidden ? `nothing here you qualify for yet — ${hidden} locked` : "no matches"));
+    if(toggle) toggle.textContent = showLocked ? "🔒 Obtainable only" : `🔓 Show locked (${hidden})`;
+    const bits = [`${filtered.length} shown`];
+    if(rows.length > filtered.length) bits.push(`of ${rows.length}`);
+    if(hidden) bits.push(`${hidden} hidden — prerequisites not met`);
+    foot.textContent = bits.join(" · ");
   };
   search.addEventListener("input",draw);
-  wrap.append(search,list);
+  const top = el("div",{style:"display:flex;gap:8px;align-items:center;margin-bottom:10px"}, search);
+  if(toggle) top.append(toggle);
+  if(tabs.length) wrap.append(tabBar);
+  wrap.append(top, list, foot);
   modal({title, bodyNode:wrap});
   draw(); setTimeout(()=>search.focus(),50);
 }
 function pickMoveSub(name){ const m=moveByName.get(name.toLowerCase()); return m?el("div",{class:"pi-sub"}, `${m.type||""} · ${moveLineShort(m)}`):el("div",{class:"pi-sub muted"},"not in DB"); }
 function pickSpeciesSub(name){ const s=getSpecies(name); return s?el("div",{class:"pi-sub",html:(s.types||[]).map(typeBadge).join(" ")}):""; }
-function pickFeatureSub(name){ const f=D.features.find(x=>x.name===name); if(!f) return "";
-  const meta=[f.frequency, f.prerequisites?("Prereq: "+f.prerequisites):""].filter(Boolean).join(" · ");
-  return meta?el("div",{class:"pi-sub"}, meta):""; }
+/* Where does this Feature come from, what does it cost to use, and what does it do? All three fit
+   in two small lines, and without them the picker is 700 names and no way to choose between them. */
+function pickFeatureSub(name){ const f=featureByName.get(name); if(!f) return "";
+  const home = luIsClass(name) ? "[Class]" : (featureClassesOf(name)[0] || "General");
+  const meta=[home, f.frequency, f.prerequisites?("Prereq: "+f.prerequisites):""].filter(Boolean).join(" · ");
+  return pickSubLines(meta, f.effect); }
+function pickEdgeSub(name){ const e=edgeByName.get(name); if(!e) return "";
+  const meta=[e.category, e.prerequisites?("Prereq: "+e.prerequisites):""].filter(Boolean).join(" · ");
+  return pickSubLines(meta, e.effect); }
+/* a meta line plus a one-line taste of the rules text (Trigger:/Effect: labels dropped — they eat
+   the whole line and say nothing you can choose on) */
+function pickSubLines(meta, effect){
+  const kids = [];
+  if(meta) kids.push(el("div",{class:"pi-sub"}, meta));
+  const body = String(effect||"").replace(/\s+/g," ").replace(/^(Trigger|Effect|Note)\s*:\s*/i,"").trim();
+  if(body) kids.push(el("div",{class:"pi-sub pi-eff"}, body.length>150 ? body.slice(0,150)+"…" : body));
+  return kids.length ? el("div",{}, ...kids) : ""; }
 function pickTechniqueSub(name){ const tq=techByName.get(name); if(!tq) return "";
   const meta=[tq.frequency, tq.prereq?("Prereq: "+tq.prereq):""].filter(Boolean).join(" · ");
   return meta?el("div",{class:"pi-sub"}, meta):""; }
@@ -32619,19 +34131,130 @@ function pickAbilitySub(name){ const a=abilityByName.get((name||"").toLowerCase(
 /* ===================================================================
    Character management + top bar
 =================================================================== */
+/* ---------- Hidden (🙈) and Archived (📦) characters ----------
+   Two different ideas, deliberately kept apart:
+
+     HIDE    the sheet is still completely live - it plays, it rests, it sits on the Map. It just
+             stops being LISTED for anyone else: only its own owner and the GM still see it in the
+             character picker. That is what the GM's pile of NPC trainers wants, and what a sheet
+             nobody is supposed to know exists yet wants.
+
+     ARCHIVE the character is retired. It leaves the picker for EVERYONE (the manager's "show
+             archived" switch brings them back), and the GM's End Scene / End Day sweeps step over
+             it - a retired Trainer never soaks up another rest or AP refresh.
+
+   Both are plain flags stored on the sheet itself, so they travel with it and every client agrees
+   on them. Neither deletes anything, and both are reversible from the same manager. The character
+   you are CURRENTLY looking at is never dropped from the picker, whatever its flags say - losing
+   the selection out from under you is worse than one extra row. */
+function charHidden(c){ return !!(c && c.hidden); }
+function charArchived(c){ return !!(c && c.archived); }
+let showArchivedChars = localStorage.getItem("ptu_show_archived")==="1";
+function setShowArchivedChars(v){
+  showArchivedChars = !!v;
+  localStorage.setItem("ptu_show_archived", showArchivedChars ? "1" : "0");
+}
+/* box first, then the monkey - an archived sheet reads as archived before it reads as private */
+function charFlagPrefix(c){
+  return (charArchived(c) ? "📦 " : "") + (charHidden(c) ? "🙈 " : "");
+}
+/* may I even KNOW this sheet exists? (the GM and the owner always may) */
+function charRowVisibleToMe(r){ return !charHidden(r?.data) || cloud.isGM || ownsRow(r); }
+function charRowInPicker(r){
+  if(!r || !r.data) return false;
+  if(r.id === cloud.activeId) return true;
+  if(charArchived(r.data) && !showArchivedChars) return false;
+  return charRowVisibleToMe(r);
+}
+/* the campaign's character rows in the order the picker has always used them */
+function charRowsSorted(){
+  return Object.values(cloud.byId).sort((a,b)=>(a.owner_name||"").localeCompare(b.owner_name||"")||(a.name||"").localeCompare(b.name||""));
+}
 function refreshCharSelect(){
   const sel = $("#charSelect"); sel.innerHTML="";
   if(mode==="cloud"){
-    const rows = Object.values(cloud.byId).sort((a,b)=>(a.owner_name||"").localeCompare(b.owner_name||"")||(a.name||"").localeCompare(b.name||""));
-    if(!rows.length){ sel.append(el("option",{value:""}, "— no characters yet —")); return; }
-    rows.forEach(r => {
+    const rows = charRowsSorted();
+    const vis = rows.filter(charRowInPicker);
+    if(!vis.length){
+      sel.append(el("option",{value:""}, rows.length ? "— all characters hidden —" : "— no characters yet —"));
+      return;
+    }
+    vis.forEach(r => {
       const mine = ownsRow(r);
-      const label = `${r.data?.name||"(unnamed)"} — ${r.owner_name||"?"}${mine?" (you)":""}`;
+      const label = `${charFlagPrefix(r.data)}${r.data?.name||"(unnamed)"} — ${r.owner_name||"?"}${mine?" (you)":""}`;
       sel.append(el("option",{value:r.id,selected:r.id===cloud.activeId}, label));
     });
     return;
   }
-  state.characters.forEach(c => sel.append(el("option",{value:c.id,selected:c.id===state.activeId}, c.name || "(unnamed)")));
+  /* local mode: every sheet on the device is yours, so Hide has nobody to hide from - it stays
+     listed and just wears its icon. Archive still files it away. */
+  state.characters
+    .filter(c => c.id===state.activeId || !charArchived(c) || showArchivedChars)
+    .forEach(c => sel.append(el("option",{value:c.id,selected:c.id===state.activeId}, charFlagPrefix(c) + (c.name || "(unnamed)"))));
+}
+/* the manager: one row per character, with its two switches. Un-ticking is the Restore. */
+function openCharManager(){
+  const body = el("div",{});
+  const draw = () => {
+    body.innerHTML = "";
+    body.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
+      "🙈 Hidden — the sheet stays fully playable, it just drops out of the character picker for everyone but its owner and the GM. "
+      + "📦 Archived — retired: out of the picker for everyone, and skipped by 🌙 End Scene and ☀ End Day. Nothing is deleted either way."));
+
+    const arcRow = el("label",{class:"inline",style:"gap:8px;align-items:center;margin-bottom:12px"});
+    const arcBox = el("input",{type:"checkbox"});
+    arcBox.checked = showArchivedChars;
+    arcBox.addEventListener("change",()=>{ setShowArchivedChars(arcBox.checked); refreshCharSelect(); draw(); });
+    arcRow.append(arcBox, el("span",{},"Show archived characters in the picker (this device)"));
+    body.append(arcRow);
+
+    /* [{ key, name, sub, data, editable, commit }] - one shape for both storage modes */
+    let items = [];
+    if(mode==="cloud"){
+      items = charRowsSorted().filter(charRowVisibleToMe).map(r => ({
+        key: r.id,
+        name: r.data?.name || "(unnamed)",
+        sub: `${r.owner_name || "?"}${ownsRow(r) ? " (you)" : ""}`,
+        data: r.data,
+        editable: canEdit(r),
+        commit: () => cloudUpsert(r),
+      }));
+    } else {
+      items = state.characters.map(c => ({
+        key: c.id, name: c.name || "(unnamed)", sub: "this device",
+        data: c, editable: true, commit: () => save(),
+      }));
+    }
+    if(!items.length){ body.append(el("div",{class:"muted"},"No characters yet.")); return; }
+
+    items.forEach(it => {
+      const row = el("div",{class:"inline",style:"gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--line)"});
+      row.append(el("div",{style:"flex:1;min-width:0"},
+        el("div",{style:"font-weight:700"}, charFlagPrefix(it.data) + it.name),
+        el("div",{class:"small muted"}, it.sub)));
+      if(!it.editable){
+        row.append(el("span",{class:"muted small"},"read-only"));
+        body.append(row); return;
+      }
+      const toggle = (field, label, title) => {
+        const lab = el("label",{class:"inline",style:"gap:5px;align-items:center",title});
+        const box = el("input",{type:"checkbox"});
+        box.checked = !!it.data[field];
+        box.addEventListener("change",()=>{
+          if(box.checked) it.data[field] = true; else delete it.data[field];
+          it.commit(); refreshCharSelect(); draw();
+        });
+        lab.append(box, el("span",{class:"small"},label));
+        return lab;
+      };
+      row.append(toggle("hidden", "🙈 Hidden", "Keep it out of everyone else's character picker"),
+                 toggle("archived", "📦 Archived", "Retire it: out of the picker, and skipped by End Scene / End Day"));
+      body.append(row);
+    });
+  };
+  draw();
+  modal({title:"📦 Characters — hide & archive", bodyNode:body,
+         footNodes:[el("button",{class:"btn-primary",onclick:()=>{ closeModal(); render(); }},"Done")]});
 }
 $("#charSelect").addEventListener("change", e=>{
   if(mode==="cloud"){ cloud.activeId = e.target.value; } else { state.activeId = e.target.value; }
@@ -32692,6 +34315,7 @@ $("#btnTheme").addEventListener("click", ()=>{
   const next = dark ? "light" : "dark";
   localStorage.setItem("ptu_theme", next); state.theme = next; applyTheme();
 });
+$("#btnChars") && $("#btnChars").addEventListener("click", openCharManager);
 $("#btnSettings").addEventListener("click", openSettings);
 $("#btnRefresh").addEventListener("click", forceRefresh);
 
@@ -34017,7 +35641,8 @@ function logRoll({ kind, label, who, headline, lines, atk, area }){
     headline: headline || "",
     lines: (lines||[]).filter(Boolean).map(String).slice(0,4),
   };
-  if(atk) e.atk = { dmg: Math.max(0, Math.round(atk.dmg||0)), type: atk.type || "Typeless",
+  if(atk) e.atk = { atkDeicide: !!atk.atkDeicide,
+                    dmg: Math.max(0, Math.round(atk.dmg||0)), type: atk.type || "Typeless",
                     physical: !!atk.physical, pierceImmune: !!atk.pierceImmune,
                     pierceDR: Math.max(0, Math.round(atk.pierceDR||0)),
                     atkTinted: !!atk.atkTinted, atkExploit: !!atk.atkExploit, atkMega: !!atk.atkMega,
@@ -35870,6 +37495,18 @@ function tokenLinked(token){
   const mon = (row.data?.pokemon||[]).find(p=>p.id===token.link.monId);
   return { row, obj:mon||null, kind:"pokemon", missing:!mon };
 }
+/* The token on the current Map that stands for this creature, or null. The Map's links all point
+   one way (token → sheet), and a card that wants to ask a POSITIONAL question about the creature
+   it is drawing — "am I inside somebody's aura?" — needs the other direction. Identity, not id:
+   tokenLinked already resolves a link to the live object, so comparing objects is exact. */
+function tokenForOwner(o){
+  if(!o) return null;
+  const map = currentMapForView() || activeMap(); if(!map) return null;
+  return mapTokensFor(map.id).find(tok => {
+    const L = tok.link ? tokenLinked(tok) : null;
+    return !!(L && L.obj === o);
+  }) || null;
+}
 /* wild (encounter-linked) Pokémon tokens on the map this player can currently see — same
    visibility rule renderMap uses for tokens (fog of war, gmHidden), reused so "Throw a Poké Ball"
    from the Trainer Combat tab can only target something the player could actually see & aim at. */
@@ -36115,6 +37752,9 @@ const MOVE_DEF_PIERCE = {
   "chip away":     { dr: PIERCE_ALL_DR, defCS: "all" },
   "darkest lariat":{ dr: PIERCE_ALL_DR, defCS: "positive" },
   "cut":           { dr: 5,             defCS: null },
+  /* Nihil Light (Mega Zygarde): "deals damage while ignoring stat changes on its targets." Both
+     directions, like Chip Away — but it says nothing about Damage Reduction, so it pierces none. */
+  "nihil light":   { dr: 0,             defCS: "all" },
 };
 function moveDefPierce(m){ return (m && m.name) ? (MOVE_DEF_PIERCE[m.name.toLowerCase()] || null) : null; }
 /* ---- Moves whose damage can only be settled once the TARGET is known -------------------------
@@ -36149,6 +37789,13 @@ const MOVE_TARGET_RULES = {
      Resolved per target (hasChangedForme) rather than per roll, and capped at Doubly Super
      Effective by the ladder itself. Tera Blast only gets it through Stellar Blast, so its rule is
      handed out by moveTargetRules() only when the attacker actually has that Ability. */
+  /* Nihil Light's other half: "it bypasses Fairy-type immunity to Dragon moves, dealing neutral
+     damage instead. When used against dual-type Pokemon with Fairy as one type, only the other type
+     is considered." Reading Fairy as a flat 1 does exactly that — the Fairy half contributes no step
+     at all and the other Type walks the real chart, which is the same shape Freeze-Dry and Thousand
+     Arrows already use. */
+  "nihillight":      { chart:{ Fairy:1 },
+                       note:"Fairy-Types are not immune — they take Nihil Light as a neutral hit, and a dual-Type with Fairy counts only its other Type" },
   "terastarstorm":   { formeStep:1,
                        note:"one step more effective against a target that has changed Forme (Mega, Terastalized, Transformed, Schooling, an Origin/Altered/Primal Forme…)" },
 };
@@ -38765,7 +40412,7 @@ function attachImageDrag(node, img, map, overlay, originX=0, originY=0){
    Levitate, Wonder Guard, Filter, …) and any Swarm/manual effectiveness nudge, then Damage
    Reduction (active DR buffs + flat DR vs Super-Effective). Used by BOTH the token menu's manual
    "Apply an attack" box and the roll-result "Apply to target" picker, so the two never diverge. */
-function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, defCSMode=null, chartOverride=null, seBonus=0, seFlat=0, formeStep=0, drBonus=0 }){
+function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, chartOverride=null, seBonus=0, seFlat=0, formeStep=0, drBonus=0 }){
   const def = tokenDefenseStat(token, !!physical, defCSMode);
   const swarmTgt = (()=>{ const LL = token.link ? tokenLinked(token) : null;
     return (LL && !LL.missing && LL.kind==="enc" && isSwarm(LL.obj)) ? LL.obj : null; })();
@@ -38791,8 +40438,14 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
   /* Rogue Mega (defender, homebrew Boss variant): a Mega Evolved Pokemon running the Boss Template
      resists EVERY attack one further step unless the attacker is a Mega Evolved Pokemon itself. */
   const rogueActive = !!(defMods?.rogueMega && !atkMega);
+  /* A Deicide weapon is "always Super-Effective against the divine" — judged on the TARGET, which
+     is why it can only be answered here and not at the roll screen. It is a step on the same ladder
+     as everything else, so a defender that resists one step further (Fur Coat, a Rogue Mega) still
+     gets that step; the artefact promises a weakness, not immunity to arithmetic. */
+  const deicide = !!atkDeicide && ownerIsDivine(owner);
+  const deiStep = deicide ? 1 : 0;
   // Typeless (Struggle) has no chart to walk, so read the ladder directly - it eats both steps
-  if(typeless) mult = ptuEffMult((furActive ? -1 : 0) + (rogueActive ? -1 : 0));
+  if(typeless) mult = ptuEffMult(deiStep + (furActive ? -1 : 0) + (rogueActive ? -1 : 0));
   else if(defMods && defMods.immune.has(type) && !pierced) mult = 0;
   else if(isBoatToken(token)){
     // Vehicles (house rule): always Super-Effective vs Fire/Electric/Ground, but a Levitate/Sky
@@ -38802,7 +40455,7 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
     mult = (!groundExempt && VEHICLE_WEAK_TYPES.has(type)) ? 2 : 1;
   }
   else {
-    const defStep = stepAdj + (defMods?.step?.[type] || 0);
+    const defStep = stepAdj + deiStep + (defMods?.step?.[type] || 0);
     if(furActive) furStep = -1;
     if(rogueActive) rogueStep = -1;
     const mOpts = { pierceImmune: pierced, chart: chartOv };
@@ -38852,7 +40505,9 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
   /* Pierce! (MOVE_TARGET_RULES.drBonus): +10 to the Damage Roll against a target that actually has
      Damage Reduction. Judged on the pool the defender brought, before the attack eats into it. */
   const tEntry0 = (!typeless && defMods?.typeDR) ? defMods.typeDR[type] : null;
-  const hasDR   = (dr + (tEntry0 ? tEntry0.dr : 0)) > 0;
+  // Mental Resistance's 10 only exists against a SPECIAL hit of its three Types (see defenseTypeMods)
+  const sEntry  = (!typeless && !physical && defMods?.specTypeDR) ? defMods.specTypeDR[type] : null;
+  const hasDR   = (dr + (tEntry0 ? tEntry0.dr : 0) + (sEntry ? sEntry.dr : 0)) > 0;
   const drPaid  = (hasDR && drBonus > 0) ? Math.round(drBonus) : 0;
   const dmgUsed  = dmg + (exploit ? 5 : 0) + seExtra + drPaid;
   const afterDef  = Math.max(0, dmgUsed - def);
@@ -38866,20 +40521,21 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
   const glacialDR = (defMods?.glacial && mult > 1 && !typeless && defMods.glacial.types.has(type)) ? defMods.glacial.dr : 0;
   // flat DR the defender has against this exact Type (a Feature stance, e.g. Enchanting Transformation)
   const tEntry = (!typeless && defMods?.typeDR) ? defMods.typeDR[type] : null;
-  const typeDR = tEntry ? tEntry.dr : 0, typeDRFrom = tEntry ? tEntry.from : [];
+  const typeDR = (tEntry ? tEntry.dr : 0) + (sEntry ? sEntry.dr : 0);
+  const typeDRFrom = [...(tEntry ? tEntry.from : []), ...(sEntry ? sEntry.from : [])];
   /* An attacker that ignores Damage Reduction (Herald of Pride) eats into the whole pool the
      defender brought, not just one source of it — the Feature says "Damage Reduction", full stop.
      Capped at the pool, so it can never turn into bonus damage. */
   const drPool  = dr + seDR + typeDR + glacialDR;
   const drGone  = Math.max(0, Math.min(drPool, Math.round(pierceDR||0)));
   const final = Math.max(0, afterMult + seFlatAdd - (drPool - drGone));
-  return { def, physical:!!physical, typeless, mult, afterDef, afterMult, dr, from, seDR, glacialDR,
+  return { def, physical:!!physical, typeless, mult, afterDef, afterMult, dr, from, seDR, glacialDR, deicide,
            typeDR, typeDRFrom, final, drPool, drGone, exploit, drPaid, dmgUsed, seExtra, seFlat, seFlatAdd, chartUsed,
            atkMold:!!atkMold, drBonus,
            owner, defMods, swarmTgt, swarmStep, extraStep, formeAdj, formeTgt, pierced, tinted, tolerance: tolStep<0, furCoat: furActive,
            rogueMega: rogueActive,
            // kept only so applyTokenDamage can re-run this same hit against a breached boat's passengers
-           dmg, type:(typeless?"Typeless":type), aoe:!!aoe, pierceImmune:!!pierceImmune, pierceDR, atkTinted:!!atkTinted, atkExploit:!!atkExploit, atkMega:!!atkMega, defCSMode,
+           dmg, type:(typeless?"Typeless":type), aoe:!!aoe, pierceImmune:!!pierceImmune, pierceDR, atkTinted:!!atkTinted, atkExploit:!!atkExploit, atkMega:!!atkMega, atkDeicide:!!atkDeicide, defCSMode,
            /* War Aura (attacker): "they inflict Injuries at 25% HP Markers, and Massive Damage is
               treated as 25%" - carried on the breakdown so applyTokenDamage can hand it to the
               Injury counter, and so a breached boat's passengers are re-run with the same rule. */
@@ -38977,7 +40633,7 @@ async function applyTokenDamage(token, br){
         const pbr = tokenDamageBreakdown(p, { dmg:br.dmg, type:br.type, physical:br.physical,
           extraStep:(br.extraStep||0)-1, aoe:br.aoe, pierceImmune:br.pierceImmune, pierceDR:br.pierceDR,
           atkTinted:br.atkTinted, atkExploit:br.atkExploit, atkMega:br.atkMega, atkWar:br.atkWar,
-          atkMold:br.atkMold, drBonus:br.drBonus, defCSMode:br.defCSMode,
+          atkMold:br.atkMold, atkDeicide:br.atkDeicide, drBonus:br.drBonus, defCSMode:br.defCSMode,
           chartOverride:br.chartOverride, seBonus:br.seBonus, seFlat:br.seFlat });
         await applyTokenDamage(p, pbr);
       }
@@ -39023,6 +40679,7 @@ function damageResultHTML(dmg, typeName, br, before){
   const furTxt   = br.furCoat ? " <b>(Fur Coat: −1 step)</b>" : "";
   const rogueTxt = br.rogueMega ? " <b>(Rogue Mega: −1 step vs non-Mega)</b>" : "";
   const pierceTxt = br.pierced ? " <b>(immunity ignored)</b>" : "";
+  const deiTxt   = br.deicide ? " <b>(Deicide: +1 step vs the divine)</b>" : "";
   const abilTxt  = (br.defMods && br.defMods.why.length && !br.typeless) ? `<br><span style="color:var(--accent)">⚙ ${br.defMods.why.join(" · ")}</span>` : "";
   const expTxt = br.exploit ? ` <b>(Exploit: +5)</b>` : "";
   const drBonusTxt = br.drPaid ? ` <b>(+${br.drPaid} — the target has Damage Reduction)</b>` : "";
@@ -39034,7 +40691,7 @@ function damageResultHTML(dmg, typeName, br, before){
   // what a type-absorbing Ability (Storm Drain, Volt Absorb…) just paid the defender for this hit
   const absTxt = (br.absorb && br.absorb.length)
     ? `<br><span style="color:var(--accent);font-weight:700">\u26A1 ${br.absorb.join(" \u00B7 ")}</span>` : "";
-  return `${br.dmgUsed ?? dmg}${expTxt}${drBonusTxt}${seXTxt} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${chartTxt}${pierceTxt}${swarmTxt}${stepTxt}${tintTxt}${tolTxt}${furTxt}${rogueTxt} = ${br.afterMult}${beltTxt}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${after}</b>.${tempTxt}${absTxt}${abilTxt}`;
+  return `${br.dmgUsed ?? dmg}${expTxt}${drBonusTxt}${seXTxt} − ${br.def} ${br.physical?"Def":"SpDef"} = ${br.afterDef}, ${typeName} ${eff}${chartTxt}${pierceTxt}${swarmTxt}${stepTxt}${deiTxt}${tintTxt}${tolTxt}${furTxt}${rogueTxt} = ${br.afterMult}${beltTxt}${drTxt} → <b>${br.final}</b> damage.<br>HP ${before} → <b>${after}</b>.${tempTxt}${absTxt}${abilTxt}`;
 }
 /* GM tool surfaced on a rolled attack's result: pick a token on the battle map and drop the rolled
    damage on it, running the same full damage math as the token menu (type, phys/spec, abilities, DR).
@@ -39051,7 +40708,7 @@ function critImmunityOf(o){
   const have = new Set(ownerAbilityNames(o));
   return CRIT_IMMUNE_ABILITIES.find(a => have.has(a.toLowerCase())) || null;
 }
-function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, defCSMode=null, moveRule=null, seFlat=0, critExtra=0 }){
+function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, moveRule=null, seFlat=0, critExtra=0 }){
   // a Move whose own rules bend the matchup (MOVE_TARGET_RULES) travels with the hit, and its
   // immunity clause folds into the same pierce switch every other source uses
   const chartOverride = moveRule?.chart || null, seBonus = moveRule?.seBonus || 0,
@@ -39077,7 +40734,8 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     + (defCSMode==="all" ? ` Any Combat-Stage changes to the target's ${physical?"Defense":"Sp.Def"} (Armor included) are ignored.`
        : defCSMode==="positive" ? ` The target's positive Defense Combat Stages are ignored.` : "")
     + (moveRule?.note ? ` This Move's own rule is applied per target: ${moveRule.note}.` : "")
-    + (atkMold ? ` \u{1F528} The attacker's Mold Breaker is on: every defensive ABILITY is ignored (gear and Features still count).` : "")));
+    + (atkMold ? ` \u{1F528} The attacker's Mold Breaker is on: every defensive ABILITY is ignored (gear and Features still count).` : "")
+    + (atkDeicide ? ` \u2694 DEICIDE: this hit is Super-Effective against any Legendary Pok\u00e9mon and against any Trainer carrying a Legendary Gift \u2014 judged per target, automatically.` : "")));
 
   // one persistent checkbox per token; split into Players / Enemies tabs (players first). The
   // checkboxes survive tab switches, so an area attack can hit tokens across both factions.
@@ -39170,7 +40828,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
       /* Shell Armor / Battle Armor: this target takes the hit without the crit's extra dice. */
       const shell = critExtra > 0 ? critImmunityOf(tokenHp(it.t).obj) : null;
       const useDmg = shell ? Math.max(0, dmg - critExtra) : dmg;
-      const br = tokenDamageBreakdown(it.t, { dmg:useDmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, atkMega, atkWar, atkMold, defCSMode, chartOverride, seBonus, seFlat, formeStep, drBonus });
+      const br = tokenDamageBreakdown(it.t, { dmg:useDmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, atkMega, atkWar, atkMold, atkDeicide, defCSMode, chartOverride, seBonus, seFlat, formeStep, drBonus });
       const before = await applyTokenDamage(it.t, br);
       it.cb.checked = false;                                    // clear so a second Apply doesn't double-hit
       const line = el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"});
@@ -39311,7 +40969,7 @@ function openRollApply(e){
   const w = attackTargetWidget({ dmg:e.atk.dmg, type:e.atk.type, physical:e.atk.physical,
                                  pierceImmune:e.atk.pierceImmune, pierceDR:e.atk.pierceDR, atkTinted:e.atk.atkTinted,
                                  atkExploit:e.atk.atkExploit, atkMega:e.atk.atkMega, atkWar:e.atk.atkWar,
-                                 atkMold:e.atk.atkMold, seFlat:e.atk.seFlat,
+                                 atkMold:e.atk.atkMold, atkDeicide:e.atk.atkDeicide, seFlat:e.atk.seFlat,
                                  defCSMode:e.atk.defCSMode, moveRule:e.atk.moveRule, critExtra:e.atk.critExtra||0 });
   body.append(w || el("div",{class:"small"},
     "No damageable token on the current map — open the 🗺 Map (or add a token) and try again."));

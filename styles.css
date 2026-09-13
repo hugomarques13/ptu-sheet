@@ -260,6 +260,11 @@ textarea{resize:vertical; min-height:64px}
 .pickitem.pick-group .pi-title{font-weight:800}
 .pick-caret{width:14px; text-align:center; color:var(--muted); font-weight:900; flex:0 0 auto}
 .pickitem.pick-mon{padding-left:34px}
+/* the rules-text taste line under a Feature/Edge: one line, ellipsised, never pushes the row tall */
+.pickitem .pi-eff{opacity:.85; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+/* the picker's own sub-tabs sit inside a modal - smaller than the ones that head a whole view */
+.pick-tabs{margin-bottom:10px; gap:5px}
+.pick-tabs .subtab{padding:5px 11px; font-size:12px}
 
 /* ---------- misc ---------- */
 /* ---------- cloud sync ---------- */
