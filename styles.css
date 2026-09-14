@@ -391,6 +391,13 @@ details.spoiler summary{cursor:pointer; font-weight:700; color:var(--muted)}
 /* compact photo controls for the small encounter-card sprite (56px) — sit on the sprite's corners */
 .sprite-box.sb-sm .photo-btn{width:22px; height:22px; border-radius:6px; font-size:11px; bottom:-5px; right:-5px}
 .sprite-box.sb-sm .photo-rm{width:18px; height:18px; font-size:11px; top:-5px; right:-5px}
+/* 🖼 framing button — bottom-left, opposite the 📷 */
+.sprite-box .photo-btn.photo-frame{right:auto; left:4px}
+.sprite-box.sb-sm .photo-btn.photo-frame{right:auto; left:-5px}
+/* a framed photo (framedPic): the wrapper clips the zoom, and its ::after redraws the border the
+   <img> gave up (a border on the img itself would be scaled and cropped with the picture) */
+.img-frame{position:relative; overflow:hidden; flex:0 0 auto; display:block; width:max-content; line-height:0}
+.img-frame::after{content:""; position:absolute; inset:0; border-radius:inherit; border:1px solid var(--line); pointer-events:none}
 /* the encounter's map-token outline colour picker (Encounters toolbar) */
 .enc-color{width:38px; height:32px; padding:2px; border:1px solid var(--line); border-radius:var(--radius-sm);
   background:var(--panel); cursor:pointer}

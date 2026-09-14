@@ -6011,7 +6011,10 @@ function monImage(p){
   if(p && p.transform) return "";
   return p.mega ? (p.megaImage||"") : (p.image||"");
 }
-function setMonImage(p, url){ if(p.mega) p.megaImage = url; else p.image = url; }
+function setMonImage(p, url){
+  if(p.mega) p.megaImage = url; else p.image = url;
+  delete p[p.mega ? "megaImageFocus" : "imageFocus"];   // a new photo needs a new crop (openMonImageFocus)
+}
 /* ---------- custom species artwork (homebrew Megas, Vulpoxen, "Mom?", …) ----------
    spriteUrl hotlinks pokemondb, which has no artwork for homebrew species, so those requests 404 and
    the sprite drops to the pokéball placeholder. Before giving up we retry against art hosted in the
@@ -8974,12 +8977,14 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
 /* Trainer portrait — upload / replace / remove a photo (stored as a compact data URL) */
 function trainerAvatar(t){
   const wrap = el("div",{class:"avatar-wrap"});
-  wrap.append(zoomImg(el("img",{class:"avatar", alt:"Trainer portrait", src: t.avatar || TRAINER_PLACEHOLDER}),
-    t.name || "Trainer"));
+  wrap.append(framedPic(zoomImg(el("img",{class:"avatar", alt:"Trainer portrait", src: t.avatar || TRAINER_PLACEHOLDER}),
+    t.name || "Trainer"), t.avatar ? t.avatarFocus : null));
   const acts = el("div",{class:"avatar-acts"});
-  acts.append(el("button",{class:"linkbtn",onclick:()=>pickImage(256, async d=>{ t.avatar=await storeImg(d,"avatar"); save(); renderTrainer(); })},
+  acts.append(el("button",{class:"linkbtn",onclick:()=>pickImage(256, async d=>{ setAvatar(t, await storeImg(d,"avatar")); save(); renderTrainer(); })},
     t.avatar ? "📷 Change" : "📷 Photo"));
-  if(t.avatar) acts.append(el("button",{class:"linkbtn",onclick:()=>{ t.avatar=""; save(); renderTrainer(); }},"remove"));
+  if(t.avatar) acts.append(el("button",{class:"linkbtn",title:"choose which part of the picture is shown",
+    onclick:()=>openAvatarFocus(t, ()=>{ save(); renderTrainer(); })},"🖼 Frame"));
+  if(t.avatar) acts.append(el("button",{class:"linkbtn",onclick:()=>{ setAvatar(t, ""); save(); renderTrainer(); }},"remove"));
   wrap.append(acts);
   return wrap;
 }
@@ -14598,7 +14603,7 @@ function monCard(p, opts={}){
   const hpColor = pct>50?"var(--good)":pct>25?"var(--warn)":"var(--bad)";
   const card = el("div",{class:"pcard", onclick:()=>{ openMon=p.id; renderPokemon(); }});
   const body = el("div",{class:"pc-body"});
-  body.append(monSprite(monLookName(p, sp), p.shiny, "s-sm", monImage(p)));
+  body.append(monPic(p, sp, "s-sm"));
   const main = el("div",{class:"pc-main"});
   main.append(el("div",{class:"pc-top"},
     el("div",{},
@@ -14705,10 +14710,11 @@ function heroCard(p, sp){
   const card = el("div",{class:"card"});
   const hero = el("div",{class:"monhero"});
   const spriteBox = el("div",{class:"sprite-box"});
-  spriteBox.append(zoomImg(monSprite(monLookName(p, sp), p.shiny, "s-lg", monImage(p)),
-    p.nickname || sp?.name || p.species));
+  spriteBox.append(monPic(p, sp, "s-lg", p.nickname || sp?.name || p.species));
   spriteBox.append(el("button",{class:"photo-btn",title:p.mega?"upload a photo for this Mega form":"upload a photo",
     onclick:()=>pickImage(240, async d=>{ setMonImage(p, await storeImg(d,"mon")); save(); refreshMon(p); })},"📷"));
+  if(monImage(p)) spriteBox.append(el("button",{class:"photo-btn photo-frame",title:"frame the photo — choose which part is shown",
+    onclick:()=>openMonImageFocus(p, ()=>{ save(); refreshMon(p); })},"🖼"));
   if(monImage(p)) spriteBox.append(el("button",{class:"photo-rm",title:"remove photo — use the default sprite",
     onclick:()=>{ setMonImage(p, ""); save(); refreshMon(p); }},"×"));
   hero.append(spriteBox);
@@ -18505,7 +18511,7 @@ function showTMEligibility(moveName){
   } else elig.forEach(({p,sp})=>{
     const knows = (p.moves||[]).some(x=>String(x).toLowerCase()===mn.toLowerCase());
     const row = el("div",{class:"inline",style:"gap:10px;align-items:center;margin-top:8px"});
-    row.append(monSprite(monLookName(p, sp), p.shiny, "s-sm", monImage(p)));
+    row.append(monPic(p, sp, "s-sm"));
     row.append(el("div",{style:"flex:1;min-width:0"},
       el("div",{style:"font-weight:700"}, p.nickname||sp?.name||p.species),
       el("div",{class:"small muted"}, `${sp?.name||""} · Lv ${p.level} · ${p.onTeam?"team":"box"}`)));
@@ -18816,7 +18822,7 @@ function openCommanderAttach(tat, onDone, persist){
     notes.push(c.from);
     const row = el("div",{class:"inline",style:"gap:10px;align-items:center;margin-top:8px"});
     row.append(isTr ? el("span",{style:"font-size:22px;width:32px;text-align:center"},"\u{1F9D1}")
-                    : monSprite(monLookName(m, msp), m.shiny, "s-sm", monImage(m)));
+                    : monPic(m, msp, "s-sm"));
     row.append(el("div",{style:"flex:1;min-width:0"},
       el("div",{style:"font-weight:700"}, ownerLabel(m)),
       el("div",{class:"small muted"}, notes.join(" · "))));
@@ -31912,7 +31918,7 @@ function encounterMonCard(enc, p, list, trainer){
   if(p.encMin){
     const mini=el("div",{style:`border:1px solid var(--line);border-radius:var(--radius-sm);padding:6px 10px;margin-top:8px;background:var(--panel-2);${fainted?"opacity:.5;":""}`});
     const row=el("div",{class:"inline",style:"gap:8px;align-items:center"});
-    row.append(monSprite(monLookName(p),p.shiny,"s-sm",monImage(p)||undefined));
+    row.append(monPic(p, undefined, "s-sm"));
     row.append(el("span",{style:"font-weight:800;white-space:nowrap"}, (fainted?"💀 ":"")+encMonName(p),
     genderIcon(p.gender, {style:"margin-left:5px"})));
     row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `Lv ${p.level}`));
@@ -31928,9 +31934,11 @@ function encounterMonCard(enc, p, list, trainer){
   const head=el("div",{class:"inline",style:"gap:10px;align-items:flex-start"});
   // sprite with a 📷 overlay (same affordance as the Pokémon sheet) — this is the map token's picture
   const spriteBox=el("div",{class:"sprite-box sb-sm",style:"flex:0 0 auto"});
-  spriteBox.append(monSprite(monLookName(p),p.shiny,"s-sm",monImage(p)||undefined));
+  spriteBox.append(monPic(p, undefined, "s-sm"));
   spriteBox.append(el("button",{class:"photo-btn",title:"picture used for this creature's map token",
     onclick:()=>pickImage(256, async url=>{ setMonImage(p, await storeImg(url,"mon")); saveEnc(); renderEncounters(); })},"📷"));
+  if(monImage(p)) spriteBox.append(el("button",{class:"photo-btn photo-frame",title:"frame the picture — choose which part is shown",
+    onclick:()=>openMonImageFocus(p, ()=>{ saveEnc(); renderEncounters(); })},"🖼"));
   if(monImage(p)) spriteBox.append(el("button",{class:"photo-rm",title:"remove picture — use the default sprite",
     onclick:()=>{ setMonImage(p, ""); saveEnc(); renderEncounters(); }},"×"));
   head.append(spriteBox);
@@ -32196,8 +32204,9 @@ function encounterTrainerCard(enc, tr){
     const pct0=Math.max(0,Math.min(100,Math.round(t.currentHP/maxHP0*100)));
     const mini=el("div",{style:`border:1px solid var(--accent);border-radius:var(--radius-sm);padding:6px 10px;margin-top:8px;background:var(--panel-2);${fainted0?"opacity:.5;":""}`});
     const row=el("div",{class:"inline",style:"gap:8px;align-items:center"});
-    row.append(el("img",{src:t.avatar||TRAINER_PLACEHOLDER,alt:"",
-      style:"width:24px;height:24px;border-radius:50%;object-fit:cover;border:1px solid var(--line);background:var(--panel)"}));
+    row.append(framedPic(el("img",{src:t.avatar||TRAINER_PLACEHOLDER,alt:"",
+      style:"width:24px;height:24px;border-radius:50%;object-fit:cover;border:1px solid var(--line);background:var(--panel)"}),
+      t.avatar ? t.avatarFocus : null));
     row.append(el("span",{style:"font-weight:800;white-space:nowrap"}, (fainted0?"💀 ":"")+(t.name||"Trainer")));
     row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `Lv ${t.level}`));
     row.append(hpBarEl(t.currentHP, maxHP0, tempHPOf(t), {style:"flex:1;min-width:70px"}));
@@ -32216,13 +32225,16 @@ function encounterTrainerCard(enc, tr){
   nameIn.addEventListener("change",()=>{ t.name=nameIn.value; saveEnc(); renderEncounters(); });
   const lvIn=el("input",{type:"number",min:1,max:100,value:t.level,style:"width:58px",title:"trainer level"});
   lvIn.addEventListener("change",()=>{ t.level=Math.max(1,parseInt(lvIn.value)||1); saveEnc(); });
-  const av = el("img",{src:t.avatar||TRAINER_PLACEHOLDER,alt:"",
-    style:"width:32px;height:32px;border-radius:50%;object-fit:cover;border:1px solid var(--line);background:var(--panel-2)"});
+  const av = framedPic(el("img",{src:t.avatar||TRAINER_PLACEHOLDER,alt:"",
+    style:"width:32px;height:32px;border-radius:50%;object-fit:cover;border:1px solid var(--line);background:var(--panel-2)"}),
+    t.avatar ? t.avatarFocus : null);
   info.append(av, nameIn, el("span",{class:"small muted"},"Lv"), lvIn,
     el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"picture used for this trainer's map token",
-      onclick:()=>pickImage(256, async d=>{ t.avatar=await storeImg(d,"avatar"); saveEnc(); renderEncounters(); })}, t.avatar?"📷 Change":"📷 Image"));
+      onclick:()=>pickImage(256, async d=>{ setAvatar(t, await storeImg(d,"avatar")); saveEnc(); renderEncounters(); })}, t.avatar?"📷 Change":"📷 Image"));
+  if(t.avatar) info.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"frame the picture — choose which part is shown",
+    onclick:()=>openAvatarFocus(t, ()=>{ saveEnc(); renderEncounters(); })},"🖼"));
   if(t.avatar) info.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"remove image — use the default icon",
-    onclick:()=>{ t.avatar=""; saveEnc(); renderEncounters(); }},"×"));
+    onclick:()=>{ setAvatar(t, ""); saveEnc(); renderEncounters(); }},"×"));
   head.append(info);
   const actions=el("div",{class:"inline",style:"gap:6px;align-items:center"});
   actions.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"minimize",onclick:()=>encTrainerToggleMin(tr)},"▾"));
@@ -39356,8 +39368,7 @@ function monInfoModal(m){
   const wrap = el("div",{});
 
   const head = el("div",{style:"display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px"});
-  head.append(zoomImg(monSprite(monLookName(m, sp), m.shiny, "s-lg", monImage(m)),
-    m.nickname || sp?.name || m.species));
+  head.append(monPic(m, sp, "s-lg", m.nickname || sp?.name || m.species));
   const idw = el("div",{style:"flex:1;min-width:180px"});
   idw.append(el("div",{html:(m.nickname && sp ? `${esc(sp.name)} · ` : "") +
     monTypes(m, sp).filter(t=>t&&t!=="None").map(typeBadge).join(" ") + teraTag(m) + (m.shiny?" ✨":"")}));
@@ -39436,7 +39447,7 @@ function pcMonNode(m, actionBtn){
       title:"tap for this Pokémon's full details",
       onclick:e=>{ if(!e.target.closest("button")) monInfoModal(m); }},
     // the photo uploaded on its sheet travels into storage with it — same override monInfoModal uses
-    monSprite(monLookName(m, sp), m.shiny, "s-xs", monImage(m)||undefined),
+    monPic(m, sp, "s-xs"),
     el("div",{style:"flex:1;min-width:0"},
       el("div",{class:"r-title"}, `${m.nickname||sp?.name||m.species} `, el("span",{class:"muted small"},`Lv ${m.level}`)),
       el("div",{class:"r-meta",html: pcMonMeta(m)})),
@@ -40789,6 +40800,12 @@ function tokenImageRef(token){
 function openTokenImageFocus(token, map){
   const ref = tokenImageRef(token);
   if(!ref){ toast("This token is drawn from its dex artwork — upload a picture first"); return; }
+  openImageFocus(ref, ()=>{ mapTokensSave(); renderMap(); });
+}
+/* The same framing is read by the sheets (framedPic) as by the map token, so this one editor serves
+   both: the square stage IS the sheet portrait's crop, the circle inside it the token's. `after`
+   runs once the choice is committed — save + re-render whatever view opened it. */
+function openImageFocus(ref, after){
   let f = normFocus(ref.get()) || { x:50, y:50, z:100 };
   const SIZE = 240;
   const img = el("img",{src:ref.url, alt:"",
@@ -40818,18 +40835,54 @@ function openTokenImageFocus(token, map){
   zoom.addEventListener("input", ()=>{ f.z = parseInt(zoom.value)||100; paint(); });
   const body = el("div",{});
   body.append(el("div",{class:"small muted",style:"margin-bottom:8px;text-align:center"},
-    "Drag the picture to choose what sits inside the token's circle, and zoom in if you want a "
-    + "closer crop. The whole picture is still shown when the token is tapped."));
+    "Drag the picture to choose what it shows, and zoom in for a closer crop. The square is the "
+    + "portrait on the sheet, the circle the map token. Tapping the picture still shows all of it."));
   body.append(stage);
   body.append(el("label",{class:"field",style:"margin-top:12px"}, el("span",{},"Zoom"), zoom));
-  modal({title:"🖼 Token framing", bodyNode:body, footNodes:[
-    el("button",{class:"btn-secondary",onclick:async()=>{ ref.set(null); await ref.commit(); mapTokensSave();
-      closeModal(); renderMap(); toast("🖼 Framing reset to centre"); }},"↺ Reset"),
+  modal({title:"🖼 Picture framing", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:async()=>{ ref.set(null); await ref.commit();
+      closeModal(); if(after) after(); toast("🖼 Framing reset"); }},"↺ Reset"),
     el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
-    el("button",{class:"btn-primary",onclick:async()=>{ ref.set(normFocus(f)); await ref.commit(); mapTokensSave();
-      closeModal(); renderMap(); toast("🖼 Framing saved"); }},"✓ Save"),
+    el("button",{class:"btn-primary",onclick:async()=>{ ref.set(normFocus(f)); await ref.commit();
+      closeModal(); if(after) after(); toast("🖼 Framing saved"); }},"✓ Save"),
   ]});
 }
+/* ---- The same framing on the sheets ----
+   A trainer's portrait (`t.avatarFocus`) and a Pokémon's photo (`p.imageFocus`, or
+   `p.megaImageFocus` while Mega'd) share their framing with the map token. A framed picture is
+   drawn `cover` inside a clipping wrapper (the zoom is a transform, which would spill out of an
+   unwrapped <img>); an unframed one is returned untouched, so every sheet looks as it did. */
+function monFocusKey(p){ return p && p.mega ? "megaImageFocus" : "imageFocus"; }
+function monImageFocus(p){ return monImage(p) ? p[monFocusKey(p)] : null; }
+function framedPic(img, focus){
+  if(!img || !applyImgFocus(img, focus)) return img;
+  img.style.objectFit = "cover";
+  const cs = img.classList, st = img.style;
+  const radius = st.borderRadius || (cs.contains("s-xs") ? "9px" : cs.contains("s-sm") ? "12px" : "14px");
+  st.borderRadius = "0"; st.border = "0";
+  return el("div",{class:"img-frame", style:`border-radius:${radius}`}, img);
+}
+/* a Pokémon's picture as the sheets draw it: uploaded photo (framed) or dex artwork */
+function monPic(p, sp, cls, zoomTitle){
+  const img = monSprite(monLookName(p, sp), p.shiny, cls, monImage(p)||undefined);
+  if(zoomTitle) zoomImg(img, zoomTitle);
+  return framedPic(img, monImageFocus(p));
+}
+/* the 🖼 editor for a sheet's own picture; `after` saves + re-renders the view it lives in */
+function openMonImageFocus(p, after){
+  if(!monImage(p)){ toast("Upload a photo first — dex artwork has nothing to frame"); return; }
+  const key = monFocusKey(p);
+  openImageFocus({ url:monImage(p), get:()=>p[key], set:f=>{ if(f) p[key] = f; else delete p[key]; },
+                   commit: async()=>{} }, after);
+}
+function openAvatarFocus(t, after){
+  if(!t.avatar){ toast("Upload a picture first"); return; }
+  openImageFocus({ url:t.avatar, get:()=>t.avatarFocus,
+                   set:f=>{ if(f) t.avatarFocus = f; else delete t.avatarFocus; },
+                   commit: async()=>{} }, after);
+}
+/* a new picture needs a new crop — the old one was chosen for a different photo */
+function setAvatar(t, url){ t.avatar = url; delete t.avatarFocus; }
 function standaloneSprite(token){
   if(token.img) return el("img",{class:"sprite s-sm",src:token.img,alt:token.label||"",loading:"eager"});
   if(token.species) return monSprite(token.species, token.shiny, "s-sm", undefined, true);
