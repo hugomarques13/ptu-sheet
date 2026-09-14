@@ -29506,7 +29506,7 @@ function gardenCropIcon(crop){
 function gardenSkillRank(t){ return Math.max(rankNum((t.skills||{}).generalEd), rankNum((t.skills||{}).survival)); }
 function gardenMaster(t){ return hasFeatureLoose(t, "Top Tier Berries") && gardenSkillRank(t) >= 6; }
 /* the GM (or the 🔓) can plant anything on anyone's sheet */
-function gardenFree(t){ return !!(t && t.unlocked) || (mode==="cloud" && !!cloud.isGM); }
+function gardenFree(t){ return !!(t && t.unlocked) || isGM(); }   // isGM(): the cloud GM, or a device in ⚙ GM mode
 function gardenCanGrow(t, tier){
   if(gardenFree(t)) return { ok:true };
   if(!trainerHasEdge(t, "Green Thumb")) return { ok:false, why:"needs the Green Thumb Edge" };
@@ -29530,6 +29530,18 @@ function gardenOwedCount(t){
   return (Array.isArray(t && t.garden) ? t.garden : []).reduce((n, pl) => n + ((pl && pl.owed) || []).length, 0);
 }
 function gardenGrowers(t){ return Math.max(0, inventoryQty(t, "Portable Grower")); }
+/* the bag row a crop sits under — the catalog says "Oran Berry", a hand-typed row often says
+   "Oran Berries" / "Red Apricorns" (consumeInventoryItem matches names exactly). "" if there's none. */
+function gardenCropBagName(t, crop){
+  const want = normItemName(crop);
+  const alts = new Set([want, want + "s", want.replace(/berry$/, "berries")]);
+  const row = ((t && t.inventory) || []).find(it => (parseInt(it.qty) || 0) > 0 && !it.chef && alts.has(normItemName(it.name)));
+  return row ? String(row.name).trim() : "";
+}
+function gardenCropStock(t, crop){
+  const nm = gardenCropBagName(t, crop);
+  return nm ? inventoryQty(t, nm) : 0;
+}
 /* Planter / Planter (Berries) / Planter(Herbs) — null if the Pokémon can't hold a plant */
 function gardenPlanterOf(p){
   const cap = ((monCapabilities(p, getSpecies(p.species)) || {}).other || []).find(o => /^planter\b/i.test(String(o)));
@@ -29689,7 +29701,13 @@ function gardenTokenSprite(token){
   const { pl } = gardenTokenSource(token);
   const crop = (pl && pl.crop) || token.label || "";
   const sprouting = !!pl && pl.age < GARDEN_MATURE_DAYS;
-  return el("div",{class:"tk-hazard", title: crop + (sprouting ? " (sprouting)" : "")}, sprouting ? "\u{1F331}" : gardenCropIcon(crop));
+  const ready = !!pl && pl.owed.length > 0;
+  const node = el("div",{class:"tk-hazard", style:"position:relative",
+    title: crop + (sprouting ? " (sprouting)" : ready ? " — ready to harvest, tap it" : "")},
+    sprouting ? "\u{1F331}" : gardenCropIcon(crop));
+  // a basket in the corner while a harvest is waiting, so it reads from across the board
+  if(ready) node.append(el("span",{style:"position:absolute;right:-4px;top:-6px;font-size:55%;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.5))"}, "\u{1F9FA}"));
+  return node;
 }
 /* the map a new plot token would go on: whatever this viewer is looking at */
 function gardenMapTarget(){ return (mode === "cloud" && cloud.mapMeta) ? currentMapForView() : null; }
@@ -29751,10 +29769,35 @@ function openGardenTokenMenu(token, map){
     lines.append(el("div",{style: sprouting ? "" : "color:var(--good)"},
       sprouting ? `Sprouting — Mature in ${left} day${left === 1 ? "" : "s"}` : "Mature — gives a Yield Roll every day"));
     if(tier) lines.append(el("div",{class:"muted"}, `Yield Roll ${tier.dice}${gardenSgn(tier.flat)} + Soil Quality`));
-    if(pl.owed.length) lines.append(el("div",{}, `\u{1F3B2} ${pl.owed.length} Yield Roll${pl.owed.length === 1 ? "" : "s"} waiting in the Trainer's \u{1F331} Garden tab`));
+    const canHarvest = gardenTokenEditable(token);
+    if(pl.owed.length && !canHarvest) lines.append(el("div",{}, `\u{1F9FA} Ready to harvest (${pl.owed.length} Yield Roll${pl.owed.length === 1 ? "" : "s"})`));
     if(pl.mulchNext) lines.append(el("div",{class:"muted"}, `\u{1F342} ${pl.mulchNext} down for tomorrow`));
     if(pl.harvested) lines.append(el("div",{class:"muted"}, `${pl.harvested} harvested so far`));
     body.append(lines);
+
+    /* 🧺 Harvest, right here on the board: the same Yield Roll rows as the Garden tab, for the Trainer
+       who planted it (or the GM). What comes off the plant lands in THAT Trainer's bag. */
+    if(canHarvest && pl.owed.length){
+      const hv = el("div",{style:"margin-bottom:12px;padding:8px 10px;border:1px solid var(--good);border-radius:10px"});
+      hv.append(el("div",{style:"font-weight:700;color:var(--good)"},
+        `\u{1F9FA} Harvest — ${pl.owed.length} Yield Roll${pl.owed.length === 1 ? "" : "s"} ready`));
+      const commitHarvest = () => {
+        cloudUpsert(row);
+        if(cloud.activeId === row.id && currentTab === "trainer") renderTrainer();
+        reopen();
+      };
+      if(soil.value != null && tier && pl.owed.length > 1)
+        hv.append(el("button",{class:"btn-primary",style:"margin-top:6px",
+          title:"Roll every waiting Yield Roll for this plant here, one after another",
+          onclick:()=>{
+            let got = 0, n = 0;
+            while(pl.owed.length){ const r = gardenRollYield(t, pl, 0, null, false); if(!r) break; got += r.got; n++; }
+            commitHarvest();
+            toast(`\u{1F9FA} ${pl.crop}: ${n} Yield Roll${n === 1 ? "" : "s"} — ${got} into ${t.name || "the Trainer"}'s bag`);
+          }}, `\u{1F3B2} Harvest all ${pl.owed.length} digitally`));
+      gardenYieldRows(t, pl, hv, commitHarvest);
+      body.append(hv);
+    }
     if(sprouting && cloud.isGM)
       body.append(el("button",{class:"btn-secondary",style:"margin-bottom:10px",
         title:"Skip the wait: the plant is Mature right now and today's Yield Roll is ready for its Trainer",
@@ -29844,23 +29887,32 @@ function openGardenPlant(t, c, commit){
   body.append(note);
 
   let seedCb = null;
+  const free = gardenFree(t);
   const drawCrops = () => {
     const w = whereSel.value;
     const planter = w.startsWith("planter:") ? planters.find(x => "planter:" + x.p.id === w) : null;
     const prev = cropSel.value;
     cropSel.innerHTML = "";
     let first = "";
+    /* A player plants out of their bag, so the list IS the bag: only crops they carry appear (one they
+       can't grow yet stays visible, greyed, with the reason). The GM gets the whole catalog. */
     GARDEN_TIERS.forEach(tier => {
       const can = gardenCanGrow(t, tier);
       const grp = el("optgroup",{label:`${tier.label} · Yield ${tier.dice}${gardenSgn(tier.flat)}${can.ok ? "" : " · \u{1F512} " + can.why}`});
       tier.crops.forEach(crop => {
+        const stock = gardenCropStock(t, crop);
+        if(!free && stock <= 0) return;
         const kindOk = !planter || !planter.cap.kinds || planter.cap.kinds.includes(gardenCropKind(crop));
         const ok = can.ok && kindOk;
-        grp.append(el("option",{value:crop, disabled:!ok}, crop + (kindOk ? "" : ` — ${gardenMonName(planter.p)}'s Planter: ${gardenPlanterAllows(planter.cap)}`)));
+        grp.append(el("option",{value:crop, disabled:!ok}, crop
+          + (stock > 0 ? ` (${stock} in bag)` : "")
+          + (!kindOk ? ` — ${gardenMonName(planter.p)}'s Planter: ${gardenPlanterAllows(planter.cap)}` : "")));
         if(ok && !first) first = crop;
       });
-      cropSel.append(grp);
+      if(grp.children.length) cropSel.append(grp);
     });
+    if(!cropSel.options.length)
+      cropSel.append(el("option",{value:"", disabled:true}, "— no Berries, Apricorns or Herbs in your bag —"));
     const prevOpt = [...cropSel.options].find(o => o.value === prev && !o.disabled);
     cropSel.value = prevOpt ? prev : first;
     placeWrap.hidden = w !== "ground";
@@ -29870,15 +29922,23 @@ function openGardenPlant(t, c, commit){
     seedWrap.innerHTML = ""; seedCb = null;
     const crop = cropSel.value;
     const tier = gardenTierOf(crop);
-    const have = crop ? inventoryQty(t, gardenCropKind(crop) === "apricorn" ? apricornBagName(t, crop.replace(/\s*Apricorn$/i, "")) : crop) : 0;
-    if(have > 0){
-      seedCb = el("input",{type:"checkbox"}); seedCb.checked = true;
+    const have = crop ? gardenCropStock(t, crop) : 0;
+    if(crop && free){
+      // the GM (or a 🔓 sheet) may plant from nothing — a quest reward, a seed an NPC hands over
+      seedCb = el("input",{type:"checkbox"}); seedCb.checked = have > 0; seedCb.disabled = have <= 0;
       seedWrap.append(el("label",{style:"display:flex;gap:8px;align-items:center;margin-bottom:6px"}, seedCb,
-        `Plant one of the ${have} in your bag`));
+        have > 0 ? `Use one of the ${have} in the bag (GM: untick to plant it for free)` : "None in the bag — GM: planted for free"));
+    } else if(crop){
+      seedWrap.append(el("div",{class:"small",style:"margin-bottom:6px"}, `Uses 1 ${crop} from your bag (you have ${have}).`));
     }
     note.textContent = tier
-      ? `Matures in ${GARDEN_MATURE_DAYS} days (two 🌙 End the Days), then gives one Yield Roll of ${tier.dice}${gardenSgn(tier.flat)} + Soil Quality every day. The book doesn't say planting uses up a ${gardenCropKind(crop) === "apricorn" ? "Apricorn" : "Berry"} — untick above if your GM hands you the seed.`
-      : "Nothing you can grow yet — Green Thumb (Edge) unlocks Tier 1 Berries and Apricorns.";
+      ? `Matures in ${GARDEN_MATURE_DAYS} days (two 🌙 End the Days), then gives one Yield Roll of ${tier.dice}${gardenSgn(tier.flat)} + Soil Quality every day.`
+      : free ? "Nothing to plant."
+      : !cropSel.querySelector("option:not([disabled])") && cropSel.options.length && cropSel.options[0].value
+        ? (!trainerHasEdge(t, "Green Thumb")
+            ? "You can't grow what's in your bag yet — Green Thumb (Edge) unlocks Tier 1 Berries and Apricorns."
+            : "Nothing in your bag can go here — see the reasons next to each crop.")
+      : "You plant a crop you're carrying — buy or find a Berry, Apricorn or Herb first.";
   };
   whereSel.addEventListener("change", drawCrops);
   cropSel.addEventListener("change", drawSeed);
@@ -29898,8 +29958,11 @@ function openGardenPlant(t, c, commit){
                  place: w === "ground" ? placeIn.value.trim() : "", soil:null, age:0, owed:[], log:[], harvested:0,
                  plantedDay: t.gardenDay || 0, mulchNext:"", mulchOn:"" };
     if(w === "ground" && soilSel && soilSel.value !== "") pl.soil = parseInt(soilSel.value);
-    if(seedCb && seedCb.checked)
-      consumeInventoryItem(t, gardenCropKind(crop) === "apricorn" ? apricornBagName(t, crop.replace(/\s*Apricorn$/i, "")) : crop);
+    // the seed is spent from the bag — required for a player, optional for the GM
+    if(!free || (seedCb && seedCb.checked)){
+      const bagName = gardenCropBagName(t, crop);
+      if(!bagName || !consumeInventoryItem(t, bagName)){ toast(`\u{1F331} You need a ${crop} in your bag to plant one`); return; }
+    }
     list.push(pl);
     const onMap = w === "ground" && tokenCb && tokenCb.checked && gardenPlaceToken(t, pl, tokenMap);
     closeModal(); commit();
@@ -29975,6 +30038,39 @@ function gardenCard(t, c, commit){
   const gardeners = ((c && c.pokemon) || []).filter(p => monHasAbility(p, "Gardener"));
   list.forEach(pl => card.append(gardenPlantRow(t, c, pl, gardeners, commit)));
   return card;
+}
+/* One row per waiting Yield Roll: the formula, 🎲 to roll it here, or type the die you threw at the
+   table and ✓. Shared by the Garden tab and the plot's Map token menu. `commit` saves + redraws. */
+function gardenYieldRows(t, pl, box, commit){
+  const tier = gardenTierOf(pl.crop);
+  pl.owed.forEach((entry, idx) => {
+    const soil = gardenSoil(t, pl, !!entry.mulch);
+    const row = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;padding:6px 8px;border-radius:9px;background:var(--panel-2)"});
+    if(!tier){ row.append(el("span",{class:"small"}, `Day ${entry.day}: not on the Yield table — the GM decides what this gives`)); box.append(row); return; }
+    const mod = soil.value == null ? null : tier.flat + soil.value;
+    row.append(el("span",{class:"small",style:"font-weight:700"}, `\u{1F3B2} Day ${entry.day}`));
+    row.append(el("span",{class:"small"}, soil.value == null
+      ? `Roll ${tier.dice}${gardenSgn(tier.flat)} + Soil (not set yet)`
+      : `Roll ${tier.dice}${gardenSgn(tier.flat)} ${soil.parts.map(p => p.replace(/^([+−-]\d+)\s*/, "$1 ")).join(" ")} → ${tier.dice}${mod ? gardenSgn(mod) : ""}`));
+    let bookCb = null;
+    if(gardenBookLeft(t)){
+      bookCb = el("input",{type:"checkbox"});
+      row.append(el("label",{class:"small",style:"display:flex;gap:4px;align-items:center",title:"How Berries?? Rank 1 — once per day, +1 to a Yield Roll"}, bookCb, "+1 How Berries??"));
+    }
+    const faces = parseInt(tier.dice.split("d")[1]) || 2;
+    const faceIn = el("input",{type:"number",min:1,max:faces,placeholder:"die",style:"width:58px;padding:3px 6px",
+      title:`Rolled a real d${faces}? Type what it showed and press ✓`});
+    const done = r => { if(!r) return; commit();
+      toast(`${gardenCropIcon(pl.crop)} ${pl.crop}: [${r.f}] → ${r.total} — ${r.got ? r.got + " into the bag" : "nothing today"}`); };
+    const blocked = soil.value == null;
+    row.append(el("button",{class:"btn-primary",style:"padding:3px 10px;margin-left:auto", disabled:blocked,
+      onclick:()=>done(gardenRollYield(t, pl, idx, null, bookCb && bookCb.checked))}, "\u{1F3B2} Roll"));
+    row.append(faceIn);
+    row.append(el("button",{class:"btn-secondary",style:"padding:3px 10px", disabled:blocked, title:"use the die I rolled at the table",
+      onclick:()=>{ const v = parseInt(faceIn.value); if(!(v >= 1 && v <= faces)){ toast(`Type the d${faces} face (1–${faces})`); return; }
+                    done(gardenRollYield(t, pl, idx, v, bookCb && bookCb.checked)); }}, "✓"));
+    box.append(row);
+  });
 }
 function gardenPlantRow(t, c, pl, gardeners, commit){
   const tier = gardenTierOf(pl.crop);
@@ -30060,34 +30156,7 @@ function gardenPlantRow(t, c, pl, gardeners, commit){
   }
 
   /* the day's Yield Rolls, waiting */
-  pl.owed.forEach((entry, idx) => {
-    const soil = gardenSoil(t, pl, !!entry.mulch);
-    const row = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;padding:6px 8px;border-radius:9px;background:var(--panel-2)"});
-    if(!tier){ row.append(el("span",{class:"small"}, `Day ${entry.day}: not on the Yield table — the GM decides what this gives`)); box.append(row); return; }
-    const mod = soil.value == null ? null : tier.flat + soil.value;
-    row.append(el("span",{class:"small",style:"font-weight:700"}, `\u{1F3B2} Day ${entry.day}`));
-    row.append(el("span",{class:"small"}, soil.value == null
-      ? `Roll ${tier.dice}${gardenSgn(tier.flat)} + Soil (not set yet)`
-      : `Roll ${tier.dice}${gardenSgn(tier.flat)} ${soil.parts.map(p => p.replace(/^([+−-]\d+)\s*/, "$1 ")).join(" ")} → ${tier.dice}${mod ? gardenSgn(mod) : ""}`));
-    let bookCb = null;
-    if(gardenBookLeft(t)){
-      bookCb = el("input",{type:"checkbox"});
-      row.append(el("label",{class:"small",style:"display:flex;gap:4px;align-items:center",title:"How Berries?? Rank 1 — once per day, +1 to a Yield Roll"}, bookCb, "+1 How Berries??"));
-    }
-    const faces = parseInt(tier.dice.split("d")[1]) || 2;
-    const faceIn = el("input",{type:"number",min:1,max:faces,placeholder:"die",style:"width:58px;padding:3px 6px",
-      title:`Rolled a real d${faces}? Type what it showed and press ✓`});
-    const done = r => { if(!r) return; commit();
-      toast(`${gardenCropIcon(pl.crop)} ${pl.crop}: [${r.f}] → ${r.total} — ${r.got ? r.got + " into the bag" : "nothing today"}`); };
-    const blocked = soil.value == null;
-    row.append(el("button",{class:"btn-primary",style:"padding:3px 10px;margin-left:auto", disabled:blocked,
-      onclick:()=>done(gardenRollYield(t, pl, idx, null, bookCb && bookCb.checked))}, "\u{1F3B2} Roll"));
-    row.append(faceIn);
-    row.append(el("button",{class:"btn-secondary",style:"padding:3px 10px", disabled:blocked, title:"use the die I rolled at the table",
-      onclick:()=>{ const v = parseInt(faceIn.value); if(!(v >= 1 && v <= faces)){ toast(`Type the d${faces} face (1–${faces})`); return; }
-                    done(gardenRollYield(t, pl, idx, v, bookCb && bookCb.checked)); }}, "✓"));
-    box.append(row);
-  });
+  gardenYieldRows(t, pl, box, commit);
 
   if(pl.log.length) box.append(el("div",{class:"small muted",style:"margin-top:6px"},
     "Last harvests: " + pl.log.map(l => `day ${l.day} [${l.face}]→${l.got}${l.digital ? "" : "✋"}`).join(" · ")));
@@ -38317,7 +38386,7 @@ function foldLegacyFogIntoFogRow(){
     if(!Array.isArray(legacy[k]) || !legacy[k].length) continue;
     const set = fogSet(k);          // decodes any existing fog-row bitmap for this map into its Set
     let added=false;
-    for(const cell of legacy[k]) if(!set.has(cell)){ set.add(cell); added=true; }
+    for(const cell of legacy[k]) if(!set.has(cell)){ set.add(cell); fogPendSet(fogPendAdd, k).add(cell); added=true; }
     if(added) fogDirty.add(k);       // will be packed into a bitmap on the next save
   }
 }
@@ -38371,7 +38440,11 @@ function mapFogSave(){
   clearTimeout(mapFogTimer);
   // Pack the dirty working-sets into the row and cache/upsert ONCE per debounce window (not per
   // reveal frame) — keeps the encode + the localStorage write off the hot drag path.
-  mapFogTimer = setTimeout(()=>{ mapFogTimer=null; fogFlushDirty(); cacheSharedRow("mapfog", cloud.mapFog); serialize(mapFogChain, mapFogUpsert); }, 350);
+  mapFogTimer = setTimeout(()=>{ mapFogTimer=null;
+    const snap = fogFlushDirty(); cacheSharedRow("mapfog", cloud.mapFog);
+    // the reveals/hides this write carries stay "ours" until it lands (see reconcileFogAfterAdopt)
+    const done = ()=>{ fogInflight = fogInflight.filter(s=>s!==snap); };
+    serialize(mapFogChain, mapFogUpsert).then(done, done); }, 350);
 }
 /* One-time cleanup: existing maps store their backgrounds as base64 data-URLs in the meta row,
    which is exactly what makes that row oversized and re-downloaded on every sync. On connect the
@@ -40374,7 +40447,8 @@ function mapSelectActive(map){ return mapSelect.on && mapSelect.mapId===map.id; 
 function toggleMapSelect(map){
   mapSelect = mapSelectActive(map) ? { on:false, mapId:map.id, ids:new Set() }
                                     : { on:true,  mapId:map.id, ids:new Set() };
-  if(mapSelect.on) mapMount = { on:false, mapId:map.id, riderId:null };   // the two tap-modes are exclusive
+  if(mapSelect.on){ mapMount = { on:false, mapId:map.id, riderId:null };   // the tap-modes are exclusive
+                    mapFogPaint.on = false; }
   renderMap();
 }
 function clearMapSelect(map){ mapSelect.ids.clear(); renderMap(); }
@@ -40506,8 +40580,23 @@ function fogSet(mapId){
 }
 /* encode every dirty working-set back into the fog row's data (called just before an upsert, so a
    drag's worth of reveals is packed once, not once per frame). */
+/* What THIS client changed and the server may not have yet, per map: cells it revealed
+   (`fogPendAdd`) and cells the GM hid again (`fogPendDel`) since the last flush. A flush moves them
+   into `fogInflight` until that write lands. Only these deltas are defended against an incoming row —
+   defending the whole local Set (the old union) let any player who happened to be mid-drag resurrect
+   every cell the GM had just re-fogged or reset. */
+const fogPendAdd = new Map(), fogPendDel = new Map();
+let fogInflight = [];
+/* a comparable fingerprint of one map's stored bitmap ("" = no fog stored; null = legacy array, never skipped) */
+const fogWorkKey = new Map();
+function fogSrcKey(stored){
+  if(!stored) return "";
+  if(typeof stored==="object" && typeof stored.b==="string") return stored.x0+"|"+stored.y0+"|"+stored.w+"|"+stored.h+"|"+stored.b;
+  return null;
+}
+function fogPendSet(pend, mid){ let s = pend.get(mid); if(!s) pend.set(mid, s = new Set()); return s; }
 function fogFlushDirty(){
-  if(!fogDirty.size) return;
+  if(!fogDirty.size) return null;
   const fog = mapFogData();
   for(const mid of fogDirty){
     const enc = fogEncode(fogWork.get(mid));
@@ -40515,30 +40604,46 @@ function fogFlushDirty(){
     fogWorkSrc.set(mid, fog[mid]);
   }
   fogDirty.clear();
+  if(!fogPendAdd.size && !fogPendDel.size) return null;
+  const snap = { add:new Map(fogPendAdd), del:new Map(fogPendDel) };
+  fogPendAdd.clear(); fogPendDel.clear();
+  fogInflight.push(snap);
+  return snap;
 }
-/* After adopting a remote fog row: absorb its cells into our working sets (union — revealed stays
-   revealed), and if WE still hold cells the incoming row lost (concurrent reveals the server's
-   last-writer-wins dropped), mark them dirty so the next save re-persists the union. */
+/* this client's not-yet-confirmed reveals and hides for one map, oldest first so the latest wins */
+function fogPendingFor(mid){
+  const add = new Set(), del = new Set();
+  for(const s of [...fogInflight, { add:fogPendAdd, del:fogPendDel }]){
+    const a = s.add.get(mid), d = s.del.get(mid);
+    if(a) a.forEach(c=>{ add.add(c); del.delete(c); });
+    if(d) d.forEach(c=>{ del.add(c); add.delete(c); });
+  }
+  return { add, del };
+}
+/* After adopting a remote fog row: the row is the truth, plus whatever this client revealed or hid
+   that hasn't reached the server yet. If the incoming row lost one of those (a concurrent write won
+   last-writer-wins), mark the map dirty so the next save puts it back. */
 function reconcileFogAfterAdopt(){
   const fog = cloud.mapFog?.data?.fog; if(!fog) return;
   for(const mid of fogWork.keys()){
     const set = fogWork.get(mid);
-    const remote = fogDecodeInto(new Set(), fog[mid]);
-    // Only defend cells the server "lost" if we actually have an unsaved local reveal pending
-    // (fogDirty). Otherwise our set is just a stale in-memory copy of what the server used to
-    // hold — e.g. after a GM reset — and unioning it back in would silently undo the reset on
-    // every other connected client the moment they get the broadcast.
-    const hadPendingLocal = fogDirty.has(mid);
-    if(hadPendingLocal){
-      let extra=false;
-      for(const c of set) if(!remote.has(c)){ extra=true; break; }
-      remote.forEach(c=>set.add(c));
-      if(extra) fogDirty.add(mid);
-    } else {
-      set.clear();
-      remote.forEach(c=>set.add(c));
+    const pend = fogPendingFor(mid);
+    // A peer's token move adopts the map rows too — skip the decode when this map's fog didn't change
+    const key = fogSrcKey(fog[mid]);
+    if(key!==null && key===fogWorkKey.get(mid) && !pend.add.size && !pend.del.size) continue;
+    fogWorkKey.set(mid, key);
+    const next = fogDecodeInto(new Set(), fog[mid]);
+    let lost = false;
+    pend.add.forEach(c=>{ if(!next.has(c)){ next.add(c); lost = true; } });
+    pend.del.forEach(c=>{ if(next.has(c)){ next.delete(c); lost = true; } });
+    let same = next.size===set.size;
+    if(same) for(const c of next) if(!set.has(c)){ same = false; break; }
+    if(!same){
+      set.clear(); next.forEach(c=>set.add(c));
+      fogLayer.drawn = -1;        // same count, different cells (a hide + a reveal) must still repaint
     }
     fogWorkSrc.set(mid, fog[mid]);
+    if(lost) fogDirty.add(mid);
   }
   if(fogDirty.size) mapFogSave();
 }
@@ -41720,7 +41825,8 @@ function toggleMapWallDraw(map){
   mapWallDraw = mapWallDrawActive(map) ? { on:false, mapId:map.id, pending:null }
                                         : { on:true,  mapId:map.id, pending:null };
   if(mapWallDraw.on){ mapSelect = { on:false, mapId:map.id, ids:new Set() };   // tap-modes are exclusive
-                       mapMount  = { on:false, mapId:map.id, riderId:null }; }
+                       mapMount  = { on:false, mapId:map.id, riderId:null };
+                       mapFogPaint.on = false; }
   renderMap();
 }
 async function clearMapWalls(map){
@@ -41774,10 +41880,12 @@ function mapFogData(){ ensureMapFog(); return cloud.mapFog.data.fog || (cloud.ma
    which is all drawFog then has to repaint. */
 function fogReveal(map, cells){
   const set = fogSet(map.id);
-  let box = null;
+  let box = null, pendA = null, pendD = fogPendDel.get(map.id);
   cells.forEach(k=>{
     if(set.has(k)) return;
     set.add(k);
+    (pendA || (pendA = fogPendSet(fogPendAdd, map.id))).add(k);
+    if(pendD) pendD.delete(k);
     const c = k.indexOf(","), x = +k.slice(0,c), y = +k.slice(c+1);
     if(!box) box = { x0:x, y0:y, x1:x, y1:y };
     else { if(x<box.x0)box.x0=x; if(x>box.x1)box.x1=x; if(y<box.y0)box.y0=y; if(y>box.y1)box.y1=y; }
@@ -41821,12 +41929,90 @@ async function setFogRadius(map, v){
 }
 async function resetFog(map){
   if(!confirm("Re-hide the whole map? Explored areas will be covered again.")) return;
-  fogWork.set(map.id, new Set());             // clear the live working set (what actually draws)
+  const set = fogSet(map.id);
+  if(set.size){ const del = fogPendSet(fogPendDel, map.id); set.forEach(c=>del.add(c)); }   // defend the clear against a peer's in-flight reveal
+  fogPendAdd.delete(map.id);
+  set.clear();                                 // clear the live working set (what actually draws)
   delete mapFogData()[map.id];
   fogWorkSrc.delete(map.id);
   fogDirty.add(map.id);                        // persist the clear even if nothing gets re-revealed
   if(map.fogOn) revealAroundTokens(map);       // keep current token surroundings visible (fogReveal marks dirty)
+  fogLayer.drawn = -1;
   mapFogSave(); renderMap();
+}
+/* Cover cells again (the GM's 🖌 Hide area). The mirror of fogReveal: removes from the live Set, marks
+   the map dirty and returns the cell box to repaint (null when nothing was revealed there). */
+function fogHide(map, cells){
+  const set = fogSet(map.id);
+  let box = null, pendD = null;
+  const pendA = fogPendAdd.get(map.id);
+  cells.forEach(k=>{
+    if(!set.has(k)) return;
+    set.delete(k);
+    (pendD || (pendD = fogPendSet(fogPendDel, map.id))).add(k);
+    if(pendA) pendA.delete(k);
+    const c = k.indexOf(","), x = +k.slice(0,c), y = +k.slice(c+1);
+    if(!box) box = { x0:x, y0:y, x1:x, y1:y };
+    else { if(x<box.x0)box.x0=x; if(x>box.x1)box.x1=x; if(y<box.y0)box.y0=y; if(y>box.y1)box.y1=y; }
+  });
+  if(box){ fogDirty.add(map.id); mapFogSave(); }
+  return box;
+}
+/* ---- Fog painting: the GM drags a rectangle to put fog BACK over part of the map (or to uncover one)
+   without resetting the whole board. Per-viewer mode, not synced — only the fog row it edits is. ---- */
+let mapFogPaint = { on:false, mapId:null, mode:"hide" };
+function mapFogPaintActive(map){ return !!(mapFogPaint.on && map && map.fogOn && mapFogPaint.mapId===map.id); }
+function toggleMapFogPaint(map, mode){
+  const same = mapFogPaintActive(map) && mapFogPaint.mode===mode;
+  mapFogPaint = { on:!same, mapId:map.id, mode };
+  if(mapFogPaint.on){ mapWallDraw = { on:false, mapId:map.id, pending:null };      // tap-modes are exclusive
+                      mapSelect   = { on:false, mapId:map.id, ids:new Set() };
+                      mapMount    = { on:false, mapId:map.id, riderId:null }; }
+  renderMap();
+}
+/* Captures the pointerdown before tokens (they stopPropagation for their own drag) and before
+   attachPanZoom, so a drag that starts on top of a token still paints. Move/up listen on window: a
+   peer's update can re-render the board mid-drag and throw this stage away. */
+function attachFogPaint(stage, viewport, map, originX, originY){
+  stage.addEventListener("pointerdown", ev=>{
+    if(!cloud.isGM || !mapFogPaintActive(map)) return;
+    if(ev.button!=null && ev.button>0) return;
+    if(mapFogPaint.drag) return;               // a second finger: leave it to pinch-zoom
+    ev.stopPropagation(); ev.preventDefault();
+    const px = map.gridSize, hide = mapFogPaint.mode==="hide";
+    const cellAt = e=>{
+      const rect = viewport.getBoundingClientRect();
+      const sx = (e.clientX-rect.left-mapView.panX)/mapView.scale, sy = (e.clientY-rect.top-mapView.panY)/mapView.scale;
+      return { x:Math.floor((sx-originX)/px), y:Math.floor((sy-originY)/px) };
+    };
+    const a = cellAt(ev); let b = a;
+    const rectOf = ()=>({ x0:Math.min(a.x,b.x), y0:Math.min(a.y,b.y), x1:Math.max(a.x,b.x), y1:Math.max(a.y,b.y) });
+    const shade = el("div",{style:"position:absolute;pointer-events:none;z-index:50;box-sizing:border-box;border-radius:3px;"
+      + "display:flex;align-items:center;justify-content:center;font:700 13px system-ui;color:#fff;text-shadow:0 1px 2px #000;"
+      + (hide ? "background:rgba(10,12,16,0.55);border:2px dashed #cfd6e4" : "background:rgba(255,230,140,0.22);border:2px dashed #ffd24a")});
+    const place = ()=>{ const r = rectOf();
+      shade.style.left = (r.x0*px+originX)+"px"; shade.style.top = (r.y0*px+originY)+"px";
+      shade.style.width = ((r.x1-r.x0+1)*px)+"px"; shade.style.height = ((r.y1-r.y0+1)*px)+"px";
+      shade.textContent = `${r.x1-r.x0+1}×${r.y1-r.y0+1}`; };
+    place(); stage.append(shade);
+    const pid = ev.pointerId;
+    mapFogPaint.drag = true;
+    const move = e=>{ if(e.pointerId!==pid) return; const c = cellAt(e);
+      if(c.x!==b.x || c.y!==b.y){ b = c; place(); if(!shade.isConnected){ const st = document.querySelector("#view-map .map-stage"); if(st) st.append(shade); } } };
+    const up = e=>{
+      if(e.pointerId!==pid) return;
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", up);
+      mapFogPaint.drag = false; shade.remove();
+      if(e.type==="pointercancel") return;
+      const r = rectOf(), cells = [];
+      for(let y=r.y0; y<=r.y1; y++) for(let x=r.x0; x<=r.x1; x++) cells.push(x+","+y);
+      const box = hide ? fogHide(map, cells) : fogReveal(map, cells);
+      if(!box){ toast(hide ? "\u{1F32B} That area is already fogged" : "\u{1F526} That area is already revealed"); return; }
+      fogRepaint(map, box); renderMap();
+      toast(hide ? `\u{1F32B} Fog put back over ${r.x1-r.x0+1}×${r.y1-r.y0+1} cells` : `\u{1F526} Revealed ${r.x1-r.x0+1}×${r.y1-r.y0+1} cells`);
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up); window.addEventListener("pointercancel", up);
+  }, true);
 }
 /* draw fog onto a canvas sized to the stage; players see opaque cover, the GM sees a dim overlay.
    originX/Y (from mapStageSize) shift the logical (possibly-negative, e.g. up/left of the canonical
@@ -42441,6 +42627,7 @@ function toggleMapMount(map){
   mapMount = mapMountActive(map) ? { on:false, mapId:map.id, riderId:null }
                                  : { on:true,  mapId:map.id, riderId:null };
   if(mapMount.on && mapSelectActive(map)) mapSelect = { on:false, mapId:map.id, ids:new Set() };
+  if(mapMount.on) mapFogPaint.on = false;
   renderMap();
 }
 /* a tap (not a drag) on a token while mounting mode is on */
@@ -45797,7 +45984,14 @@ function renderMap(){
 
         const fr = el("input",{type:"number",min:1,value:map.fogRadius,style:"width:56px",title:"reveal radius (cells) — no maximum"});
         fr.addEventListener("change", ()=>setFogRadius(map, fr.value));
+        const hiding = mapFogPaintActive(map) && mapFogPaint.mode==="hide", revealing = mapFogPaintActive(map) && mapFogPaint.mode==="reveal";
         bar.append(el("label",{class:"field",style:"max-width:110px"}, el("span",{},"Fog radius"), fr),
+          el("button",{class:"btn-secondary"+(hiding?" on":""),onclick:()=>toggleMapFogPaint(map, "hide"),
+            title:"Drag a box on the map to put the fog back over it (tap = one cell). A player token standing close by will see it again the next time tokens move."},
+            hiding?"\u{1F58C} Hiding… (drag)":"\u{1F58C} Hide area"),
+          el("button",{class:"btn-secondary"+(revealing?" on":""),onclick:()=>toggleMapFogPaint(map, "reveal"),
+            title:"Drag a box on the map to uncover it for the players (tap = one cell)"},
+            revealing?"\u{1F526} Revealing… (drag)":"\u{1F526} Reveal area"),
           el("button",{class:"btn-secondary",onclick:()=>resetFog(map)},"Reset fog"));
       }
       bar.append(
@@ -46058,6 +46252,7 @@ function renderMap(){
     if(wo) stage.append(wo);
   }
   attachWallDraw(stage, viewport, map, originX, originY);
+  attachFogPaint(stage, viewport, map, originX, originY);
 
   // attack-range / AoE overlay (#1) — above tokens, with floating controls
   if(mapAoE && mapTokensFor(map.id).some(t=>t.id===mapAoE.tokenId)){
