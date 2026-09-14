@@ -29917,6 +29917,7 @@ function catchResolveSection(p){
 =================================================================== */
 const GARDEN_MATURE_DAYS = 2;
 const GARDEN_SOIL_CAP = 2;
+const GARDEN_YIELD_CAP = 1;      // unharvested Yield Rolls a plant can hold
 const GARDEN_TIERS = [
   { key:"t1",    label:"Tier 1 Berries", dice:"1d3", flat:-1, need:"Green Thumb",
     crops:["Cheri","Chesto","Pecha","Rawst","Aspear","Oran","Persim","Razz","Bluk","Nanab","Wepear","Pinap"].map(b => b+" Berry") },
@@ -29977,10 +29978,19 @@ function gardenList(t){
   if(!Array.isArray(t.garden)) t.garden = [];
   t.garden.forEach(pl => {
     if(!Array.isArray(pl.owed)) pl.owed = [];
+    if(pl.owed.length > GARDEN_YIELD_CAP) pl.owed = pl.owed.slice(0, GARDEN_YIELD_CAP);   // older saves piled them up
     if(!Array.isArray(pl.log)) pl.log = [];
     if(typeof pl.age !== "number") pl.age = 0;
   });
   return t.garden;
+}
+/* Yields don't pile up (table ruling): a plant holds ONE unharvested Yield Roll. Once it's full, a new
+   day (or a GM Force grow) adds nothing until that one is harvested. */
+function gardenFull(pl){ return !!pl && Array.isArray(pl.owed) && pl.owed.length >= GARDEN_YIELD_CAP; }
+function gardenQueueYield(pl, day){
+  if(gardenFull(pl)) return false;
+  pl.owed.push({ day, mulch:pl.mulchOn || "" });
+  return true;
 }
 function gardenOwedCount(t){
   return (Array.isArray(t && t.garden) ? t.garden : []).reduce((n, pl) => n + ((pl && pl.owed) || []).length, 0);
@@ -30092,23 +30102,22 @@ function gardenNewDay(c){
     pl.age += 1;
     pl.mulchOn = pl.mulchNext || "";            // yesterday's Mulch is today's Soil
     pl.mulchNext = "";
-    if(pl.age >= GARDEN_MATURE_DAYS){ pl.owed.push({ day:t.gardenDay, mulch:pl.mulchOn || "" }); owed++; }
+    if(pl.age >= GARDEN_MATURE_DAYS && gardenQueueYield(pl, t.gardenDay)) owed++;
   });
   return owed;
 }
-/* GM fast-forward: Mature right now, and — as on a natural morning of maturing — today's Yield Roll
-   is queued at once (only if today doesn't already have one), so the plant yields today. */
+/* GM fast-forward: Mature right now, and — as on a natural morning of maturing — its Yield Roll is
+   ready at once (unless it's already holding one), so the plant yields today. */
 function gardenMatureNow(t, pl){
   if(!pl || pl.age >= GARDEN_MATURE_DAYS) return false;
   gardenList(t);
   pl.age = GARDEN_MATURE_DAYS;
-  const today = t.gardenDay || 0;
-  if(!pl.owed.some(o => o.day === today)) pl.owed.push({ day:today, mulch:pl.mulchOn || "" });
+  gardenQueueYield(pl, t.gardenDay || 0);
   return true;
 }
 /* GM force-grow, one plant, one day's worth — WITHOUT ending the day for anyone (the sheet's day
    counter, Mulch and the other plants don't move). Sprouting: one day older, and on reaching Mature
-   today's Yield Roll is queued. Already Mature: one extra Yield Roll is queued. */
+   its Yield Roll is ready. Already Mature: its Yield Roll is ready — unless it's full already. */
 function gardenForceGrow(t, pl){
   if(!pl) return "";
   gardenList(t);
@@ -30116,16 +30125,16 @@ function gardenForceGrow(t, pl){
   if(pl.age < GARDEN_MATURE_DAYS){
     pl.age += 1;
     if(pl.age < GARDEN_MATURE_DAYS) return "grew";
-    if(!pl.owed.some(o => o.day === today)) pl.owed.push({ day:today, mulch:pl.mulchOn || "" });
+    gardenQueueYield(pl, today);
     return "mature";
   }
-  pl.owed.push({ day:today, mulch:pl.mulchOn || "" });
-  return "roll";
+  return gardenQueueYield(pl, today) ? "roll" : "full";
 }
 function gardenForceGrowToast(pl, r){
   return r === "grew" ? `⏩ ${pl.crop} grew a day — Mature in ${GARDEN_MATURE_DAYS - pl.age} day${GARDEN_MATURE_DAYS - pl.age === 1 ? "" : "s"}`
-       : r === "mature" ? `⏩ ${pl.crop} is Mature — today's Yield Roll is ready`
-       : `⏩ ${pl.crop} grew — one more Yield Roll is ready`;
+       : r === "mature" ? `⏩ ${pl.crop} is Mature — its Yield Roll is ready`
+       : r === "full" ? `\u{1F9FA} ${pl.crop} is already full — harvest it first`
+       : `⏩ ${pl.crop} grew — its Yield Roll is ready`;
 }
 /* Resolve one queued Yield Roll. `face` = what the physical die showed, or null to roll it here. */
 function gardenRollYield(t, pl, idx, face, useBook){
@@ -30244,7 +30253,8 @@ function openGardenTokenMenu(token, map){
       `Planted by ${t.name || row.owner_name || "a Trainer"}${pl.place ? " — " + pl.place : ""}`));
     const lines = el("div",{class:"small",style:"display:flex;flex-direction:column;gap:4px;margin-bottom:10px"});
     lines.append(el("div",{style: sprouting ? "" : "color:var(--good)"},
-      sprouting ? `Sprouting — Mature in ${left} day${left === 1 ? "" : "s"}` : "Mature — gives a Yield Roll every day"));
+      sprouting ? `Sprouting — Mature in ${left} day${left === 1 ? "" : "s"}`
+        : gardenFull(pl) ? "Mature — full: no new Yield until this one is harvested" : "Mature — a new Yield Roll each day, one at a time"));
     if(tier) lines.append(el("div",{class:"muted"}, `Yield Roll ${tier.dice}${gardenSgn(tier.flat)} + Soil Quality`));
     const canHarvest = gardenTokenEditable(token);
     if(pl.owed.length && !canHarvest) lines.append(el("div",{}, `\u{1F9FA} Ready to harvest (${pl.owed.length} Yield Roll${pl.owed.length === 1 ? "" : "s"})`));
@@ -30277,11 +30287,13 @@ function openGardenTokenMenu(token, map){
     }
     if(cloud.isGM){
       const gmBar = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-bottom:10px"});
-      gmBar.append(el("button",{class:"btn-secondary",
+      const full = !sprouting && gardenFull(pl);
+      gmBar.append(el("button",{class:"btn-secondary", disabled:full,
         title: sprouting ? "GM — force growth: this plant grows one day right now (nobody's day ends)"
-                         : "GM — force growth: queue one more Yield Roll for this plant right now (nobody's day ends)",
+             : full ? "It's already holding a Yield Roll — a plant can't hold more than one. Harvest it first."
+                    : "GM — force growth: its Yield Roll is ready right now (nobody's day ends)",
         onclick:()=>{ const r = gardenForceGrow(t, pl); cloudUpsert(row); if(cloud.activeId === row.id && currentTab === "trainer") renderTrainer(); reopen(); toast(gardenForceGrowToast(pl, r)); }},
-        sprouting ? "⏩ Force grow a day" : "⏩ Force grow (+1 Yield Roll)"));
+        sprouting ? "⏩ Force grow a day" : full ? "\u{1F9FA} Full" : "⏩ Force grow (Yield Roll)"));
       if(sprouting && left > 1) gmBar.append(el("button",{class:"btn-secondary",
         title:"Skip the wait: the plant is Mature right now and today's Yield Roll is ready for its Trainer",
         onclick:()=>{ gardenMatureNow(t, pl); cloudUpsert(row); if(cloud.activeId === row.id && currentTab === "trainer") renderTrainer(); reopen(); toast(`⏩ ${pl.crop} is Mature`); }},
@@ -30417,7 +30429,7 @@ function openGardenPlant(t, c, commit){
       seedWrap.append(el("div",{class:"small",style:"margin-bottom:6px"}, `Uses 1 ${crop} from your bag (you have ${have}).`));
     }
     note.textContent = tier
-      ? `Matures in ${GARDEN_MATURE_DAYS} days (two 🌙 End the Days), then gives one Yield Roll of ${tier.dice}${gardenSgn(tier.flat)} + Soil Quality every day.`
+      ? `Matures in ${GARDEN_MATURE_DAYS} days (two 🌙 End the Days), then gives one Yield Roll of ${tier.dice}${gardenSgn(tier.flat)} + Soil Quality each day (one waiting at a time — harvest it to make room for the next).`
       : free ? "Nothing to plant."
       : !cropSel.querySelector("option:not([disabled])") && cropSel.options.length && cropSel.options[0].value
         ? (!trainerHasEdge(t, "Green Thumb")
@@ -30472,7 +30484,7 @@ function gardenCard(t, c, commit){
   const card = el("div",{class:"card"}, el("h3",{},"\u{1F331} Garden",
     el("span",{class:"muted small"},"Core p.280 · Apricorns, Berries & Herbs")));
   card.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
-    `A plant is Mature ${GARDEN_MATURE_DAYS} days after planting, then gives one Yield Roll every day. The clock is ☀ End Day → \u{1F319} End the Day (a plain ☀ Rest doesn't move it). This sheet is on day ${t.gardenDay || 0}.`));
+    `A plant is Mature ${GARDEN_MATURE_DAYS} days after planting, then gives a Yield Roll each day — but it holds only one at a time: until that one is harvested, a new day adds nothing. The clock is ☀ End Day → \u{1F319} End the Day (a plain ☀ Rest doesn't move it). This sheet is on day ${t.gardenDay || 0}.`));
 
   /* capacity + what can be grown */
   const growers = gardenGrowers(t), inGrowers = list.filter(pl => pl.where === "grower").length;
@@ -30500,12 +30512,12 @@ function gardenCard(t, c, commit){
   const bar = el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;margin-bottom:6px"});
   bar.append(el("button",{class:"btn-primary", onclick:()=>openGardenPlant(t, c, commit)}, "\u{1F331} Plant something"));
   if(isGM() && list.length) bar.append(el("button",{class:"btn-secondary",
-    title:"GM — force growth on every plant here: sprouting ones grow a day, Mature ones get one more Yield Roll. Nobody's day ends.",
+    title:"GM — force growth on every plant here: sprouting ones grow a day, Mature ones get their Yield Roll (a plant already holding one stays as it is). Nobody's day ends.",
     onclick:()=>{
-      let rolls = 0;
-      list.forEach(pl => { const r = gardenForceGrow(t, pl); if(r !== "grew") rolls++; });
+      let rolls = 0, full = 0;
+      list.forEach(pl => { const r = gardenForceGrow(t, pl); if(r === "full") full++; else if(r !== "grew") rolls++; });
       commit();
-      toast(`⏩ ${list.length} plant${list.length === 1 ? "" : "s"} grew a day${rolls ? ` — ${rolls} Yield Roll${rolls === 1 ? "" : "s"} ready` : ""}`);
+      toast(`⏩ ${list.length - full} plant${list.length - full === 1 ? "" : "s"} grew${rolls ? ` — ${rolls} Yield Roll${rolls === 1 ? "" : "s"} ready` : ""}${full ? ` · ${full} already full` : ""}`);
     }}, `⏩ GM: Force grow all (${list.length})`));
   const rollable = list.filter(pl => pl.owed.length && gardenSoil(t, pl, false).value != null && gardenTierOf(pl.crop));
   const owedN = rollable.reduce((n, pl) => n + pl.owed.length, 0);
@@ -30577,8 +30589,9 @@ function gardenPlantRow(t, c, pl, gardeners, commit){
   const head = el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;align-items:center"},
     el("strong",{}, `${gardenCropIcon(pl.crop)} ${pl.crop}`),
     el("span",{class:"kv small"}, whereTxt),
-    el("span",{class:"kv small", style: mature ? "color:var(--good)" : ""},
-      mature ? "Mature · yielding" : `Sprouting · Mature in ${left} day${left === 1 ? "" : "s"}`),
+    el("span",{class:"kv small", style: mature ? "color:var(--good)" : "",
+        title: mature ? "A plant holds one Yield Roll at a time — once it's full, new days add nothing until it's harvested" : ""},
+      !mature ? `Sprouting · Mature in ${left} day${left === 1 ? "" : "s"}` : gardenFull(pl) ? "Mature · \u{1F9FA} full — harvest it" : "Mature · yielding"),
     pl.harvested ? el("span",{class:"small muted"}, `${pl.harvested} harvested so far`) : "");
   box.append(head);
 
@@ -30586,11 +30599,13 @@ function gardenPlantRow(t, c, pl, gardeners, commit){
   if(isGM()){
     const gm = el("div",{class:"inline small",style:"gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;padding:5px 8px;border:1px dashed var(--warn);border-radius:9px"},
       el("span",{style:"font-weight:700;color:var(--warn)"}, "GM"));
-    gm.append(el("button",{class:"btn-secondary",style:"padding:3px 10px",
-      title: mature ? "GM — force growth: queue one more Yield Roll for this plant right now (nobody's day ends)"
-                    : "GM — force growth: this plant grows one day right now (nobody's day ends)",
+    const full = mature && gardenFull(pl);
+    gm.append(el("button",{class:"btn-secondary",style:"padding:3px 10px", disabled:full,
+      title: !mature ? "GM — force growth: this plant grows one day right now (nobody's day ends)"
+           : full ? "It's already holding a Yield Roll — a plant can't hold more than one. Harvest it first."
+                  : "GM — force growth: its Yield Roll is ready right now (nobody's day ends)",
       onclick:()=>{ const r = gardenForceGrow(t, pl); commit(); toast(gardenForceGrowToast(pl, r)); }},
-      mature ? "⏩ Force grow (+1 Yield Roll)" : "⏩ Force grow a day"));
+      !mature ? "⏩ Force grow a day" : full ? "\u{1F9FA} Full — harvest first" : "⏩ Force grow (Yield Roll)"));
     if(!mature && left > 1) gm.append(el("button",{class:"btn-secondary",style:"padding:3px 10px",
       title:"GM — skip the wait: the plant is Mature right now and today's Yield Roll is ready",
       onclick:()=>{ gardenMatureNow(t, pl); commit(); toast(`⏩ ${pl.crop} is Mature — today's Yield Roll is ready`); }},
