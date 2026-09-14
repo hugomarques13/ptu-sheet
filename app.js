@@ -69,8 +69,10 @@ const STATS = [["hp","HP"],["atk","Attack"],["def","Defense"],
 const EMBRACE_TAG_CLASSES = [
   { cls:"Swarmlord", byAbility:{ "Unnerve":"atk", "Shield Dust":"spatk" },
     label:{ "Unnerve":"Arachnid's Embrace", "Shield Dust":"Monarch's Embrace" } },
-  { cls:"Druid", byAbility:{ "Aroma Veil":"spatk", "Effect Spore":"spdef", "Life Force":"atk" },
-    label:{ "Aroma Veil":"Flower Oath", "Effect Spore":"Fungal Oath", "Life Force":"Wood Oath" } },
+  /* The Flower Oath hands out the ERRATA Aroma Veil (adjacent, "cannot become") at this table, not the
+     Core printing — a sheet that picked the old name is moved across in normTrainer. */
+  { cls:"Druid", byAbility:{ "Aroma Veil [Errata]":"spatk", "Effect Spore":"spdef", "Life Force":"atk" },
+    label:{ "Aroma Veil [Errata]":"Flower Oath", "Effect Spore":"Fungal Oath", "Life Force":"Wood Oath" } },
 ];
 const BERSERKER_LESSONS  = "Lessons In Rage & Pain";
 const BERSERKER_PUSH     = "Push it to the Limit";
@@ -4706,6 +4708,7 @@ function applyEndScene(c){
   if(!c) return;
   normTrainer(c.trainer);
   c.trainer.usedAP = 0; c.trainer.tempHP = 0; c.trainer.buffs = []; resetUses(c.trainer, "scene");
+  delete c.trainer.tasteLog;                       // the Scene's trade-ins (Complex Aftertaste's triggers) go with it
   delete c.trainer.critMoment;                     // an Athlete's Trainings stop being tripled too
   c.trainer.modes = {};                            // a Feature stance (Enchanting Transformation) lasts until the end of the Scene — and returns its Bound AP with it
   c.trainer.manualBoundAP = 0;                      // any manual GM AP Drain/Bind releases at End Scene too
@@ -4719,6 +4722,7 @@ function applyEndScene(c){
   resetManualCS(c.trainer); clearSceneStatuses(c.trainer);
 
   (c.pokemon||[]).forEach(p => { normPokemon(p); p.tempHP = 0; p.buffs = []; resetUses(p, "scene");
+    delete p.tasteLog;                 // this Scene's trade-ins, for Complex Aftertaste
     delete p.momentum;                 // Duelist Momentum doesn't outlast the fight (Core Extras)
     delete p.critMoment;               // Critical Moment triples [Training] for a turn, not a Scene
     delete p.perseveranceUsed;         // Perseverance is once per Scene per Pokemon
@@ -4761,6 +4765,7 @@ function applyEndDay(c, plan){
   const noHP = left => !!plan && !plan.center && left >= 5;
   const t = c.trainer; normTrainer(t);
   t.usedAP = 0; t.tempHP = 0; t.buffs = []; resetUses(t, "all"); resetManualCS(t); t.modes = {}; t.manualBoundAP = 0;
+  delete t.tasteLog;
   channelerEndScene(t, true);                      // a night's rest ends the Channeling too — nobody sleeps inside a 20 m leash
   delete t.fightOn;
   clearStorageDigestion(t);                      // Berry Storage: "all Buffs gained this way are lost after an Extended Rest"
@@ -4775,7 +4780,7 @@ function applyEndDay(c, plan){
     endSceneTypeState(p);                 // ...and a night's rest ends any Terastallization too
     transformRevert(p,true);              // "lasts until ... the end of the encounter"
     schoolingRevertNow(p);                // a night's rest scatters the school - and hands its Daily use back below
-    p.tempHP = 0; p.buffs = []; resetUses(p, "all"); resetManualCS(p); clearStorageDigestion(p);
+    p.tempHP = 0; p.buffs = []; resetUses(p, "all"); resetManualCS(p); clearStorageDigestion(p); delete p.tasteLog;
     clearAllStatuses(p);                  // cure all Status afflictions on the whole party too (Death excepted)
 
     treat(p, p.id);
@@ -4966,7 +4971,7 @@ function openRestPlanner(){
   const summary = el("div",{style:"margin-left:auto;text-align:right;line-height:1.4"});
   const goBtn = el("button",{class:"btn", title:"Take the rest, but the day carries on — Hit Points, AP, statuses and uses all come back, and every individual's Injuries-treated-today count keeps running.",
     onclick:()=>{ closeModal(); restApply(sheets, plan, false); }}, "☀ Rest");
-  const dayBtn = el("button",{class:"btn-primary", title:"Take the rest AND roll the day over — everyone's \"treated today\" count resets, so tomorrow they each get a fresh 3.",
+  const dayBtn = el("button",{class:"btn-primary", title:"Take the rest AND roll the day over — everyone's \"treated today\" count resets, so tomorrow they each get a fresh 3. Garden plants age a day too, and Mature ones get their Yield Roll.",
     onclick:()=>{ closeModal(); restApply(sheets, plan, true); }}, "🌙 End the Day");
 
   /* the whole plan for one sheet, recomputed from scratch every draw */
@@ -5159,7 +5164,7 @@ function openRestPlanner(){
 async function restApply(sheets, plan, endsDay){
   const active = sheets.filter(s => plan.per[s.id] && plan.per[s.id].on);
   if(!active.length){ toast("Nobody rested"); return; }
-  let total = 0, healedN = 0, blockedN = 0, bandagesUsed = 0;
+  let total = 0, healedN = 0, blockedN = 0, bandagesUsed = 0, yieldsN = 0;
   const med = restMedics(sheets, plan.per);
 
   const wide = mode==="cloud" && (cloud.isGM || isMapHpViewer());
@@ -5186,6 +5191,8 @@ async function restApply(sheets, plan, endsDay){
     // a new day dawns for the whole roster, PC Pokémon included — they never rest, so without this
     // a boxed one that hit 3/3 would stay locked out of Injury healing for good
     if(endsDay){ resetInjuryDay(c.trainer); (c.pokemon||[]).forEach(resetInjuryDay); }
+    // …and it's the Garden's clock too: plants age, yesterday's Mulch soaks in, Mature ones owe a Yield Roll
+    if(endsDay) yieldsN += gardenNewDay(c);
     if(mode==="cloud"){
       const row = cloud.byId[s.id] || s.row;
       if(row) cloudUpsert(row);
@@ -5198,6 +5205,7 @@ async function restApply(sheets, plan, endsDay){
   if(bandagesUsed) bits.push(bandagesUsed + " Bandage" + (bandagesUsed===1?"":"s") + " used");
   if(blockedN) bits.push("⚠ " + blockedN + " past the daily cap");
   if(endsDay) bits.push("new day — Injury counts reset");
+  if(yieldsN) bits.push(`\u{1F331} ${yieldsN} Yield Roll${yieldsN===1?"":"s"} ready in the Garden`);
   toast((plan.center ? "🏥 Pokémon Center" : "🏕 Extended Rest") + " — " + bits.join(" · "));
 }
 
@@ -5295,6 +5303,8 @@ function normPokemon(p){
 /* migrate older Trainer objects to include HP/AP/uses tracking */
 function normTrainer(t){
   if(!t) return t;
+  // a Flower Oath picked before it switched to the errata printing (see EMBRACE_TAG_CLASSES)
+  if(t.featAbil && t.featAbil.Druid === "Aroma Veil") t.featAbil.Druid = "Aroma Veil [Errata]";
   if(typeof t.currentHP==="undefined") t.currentHP = null;
   if(typeof t.tempHP!=="number") t.tempHP = 0;
   if(typeof t.injuries!=="number") t.injuries = 0;
@@ -5473,10 +5483,23 @@ function trainerDerived(t) {
   const tot = k => k==="hp" ? raw("hp") : (Math.floor(raw(k) * csMult(cs[k])) + (statB[k]||0));   // CS-adjusted (+ Focus)
   const acro = rankNum(t.skills.acrobatics), athl = rankNum(t.skills.athletics);
   const combat = rankNum(t.skills.combat);
-  let power = 4;  if (athl >= 3) power++; if (combat >= 4) power++;
+  /* Traveler (Survival Edge, Core "Other Edges"): "You may use Survival instead of Athletics and Acrobatics to
+     determine your Power Capability, High Jump, and Long Jump values. Determine your Overland Movement
+     by substituting your Survival Rank for the lower of your Athletics or Acrobatics Rank." It is a
+     "may", so Survival only ever stands in where it is the better Rank — a Trainer whose Athletics
+     already beats their Survival loses nothing by having the Edge. Throwing Range is not on the list
+     and keeps reading Athletics. A plain name test rather than trainerHasEdge: featKey is declared
+     below `let state = load()`, and trainerDerived can be reached from inside load(). */
+  const traveler = (t.edges||[]).some(e => /^traveler$/i.test(String(e||"").trim()));
+  const surv = rankNum(t.skills.survival);
+  const athlCap = traveler ? Math.max(athl, surv) : athl;          // the Athletics that Power reads
+  const acroCap = traveler ? Math.max(acro, surv) : acro;          // the Acrobatics both Jumps read
+  // Overland's (Athletics + Acrobatics): Survival replaces whichever of the two is lower
+  const ovlRanks = traveler ? Math.max(athl, acro) + Math.max(Math.min(athl, acro), surv) : athl + acro;
+  let power = 4;  if (athlCap >= 3) power++; if (combat >= 4) power++;
   power += arc.caps.power;                                 // Ten of Wands moves Power either way
   power += edgeFxSum(t, "power");                          // Power Boost (+2)
-  let hj = 0;     if (acro >= 4) hj++; if (acro >= 6) hj++;
+  let hj = 0;     if (acroCap >= 4) hj++; if (acroCap >= 6) hj++;
   hj   += edgeFxSum(t, "highJump");                        // Acrobat (+1 each)
   const mvCS = speedCSMove(cs);                            // Speed CS shifts every Movement Speed (Core p.234)
   const wrLev = windRunnerLevitate(t);                     // Wind Runner's hover, 0 for everyone else
@@ -5484,8 +5507,8 @@ function trainerDerived(t) {
   const bMove = buffMove(t);                               // a buff that raises Movement Speed (Frenzy)
   const bEva  = buffEva(t);                                // a buff that raises Evasion (I Believe In You!, Capricious Whirl)
   const hEva  = heldEvaBonus(t);                           // worn Lax Incense / Bright Powder
-  const ovlBase = 3 + Math.floor((athl+acro)/2) + equipOverland(t) + featureOverland(t) + arc.caps.move + bMove;
-  const swimBase = Math.floor((3 + Math.floor((athl+acro)/2))/2) + equipSwim(t) + featureSwim(t) + edgeFxSum(t, "swim") + arc.caps.move + bMove;
+  const ovlBase = 3 + Math.floor(ovlRanks/2) + equipOverland(t) + featureOverland(t) + arc.caps.move + bMove;
+  const swimBase = Math.floor((3 + Math.floor(ovlRanks/2))/2) + equipSwim(t) + featureSwim(t) + edgeFxSum(t, "swim") + arc.caps.move + bMove;
   const fullHP = t.level*2 + raw("hp")*3 + 10 + arc.hp;    // undamaged maximum (Nine of Wands ±5)
   const injuries = Math.max(0, t.injuries||0);
   // Injuries cap max HP −10% each (Core p.249). injuryHPCount is where Lessons In Rage & Pain stops
@@ -5495,7 +5518,8 @@ function trainerDerived(t) {
     hp, fullHP, injuries, cs,
     physEva: Math.max(0, cap6(tot("def"))+cs.eva+eqEva+bEva+hEva.all), specEva: Math.max(0, cap6(tot("spdef"))+cs.eva+eqEva+bEva+hEva.all), spdEva: Math.max(0, cap6(tot("spd"))+cs.eva+eqEva+bEva+hEva.all+hEva.spd),   // CS-adjusted evasion (+ shields, + buffs, + gear); never below 0 (Core p.234)
     ap: Math.max(0, 5 + Math.floor(t.level/5) + arc.ap + buffTempAP(t)),     // Ace of Wands, Justice, The Devil… move the AP ceiling; Moment of Action lends a Temporary point
-    power, highJump: hj, longJump: Math.floor(acro/2) + edgeFxSum(t, "longJump"),
+    power, highJump: hj, longJump: Math.floor(acroCap/2) + edgeFxSum(t, "longJump"),
+    traveler,                                  // so the Derived Stats card can say where the numbers came from
     dr: equipDR(t).dr + arc.dr,                              // worn-armor Damage Reduction (also flows through buffDR on the damage input) + Ten of Swords
     overland: moveWithCS(ovlBase, mvCS), swim: moveWithCS(swimBase, mvCS), moveCS: mvCS,
     overlandBase: ovlBase, swimBase,          // pre-Speed-CS, for Commander's Movement swap
@@ -6317,11 +6341,19 @@ function renderTrainer(){
   if(giftsCanSee(t)) subTabs.push(["gifts","🎁 Gifts"]);
   if(cardsCanSee(t)) subTabs.push(["cards","🔮 Cards"]);
   // "Chefs need access to a kitchen" — so a Chef gets one, and nobody else has to look at it
-  if(hasKitchen(t)) subTabs.push(["kitchen", trainerIsChef(t) ? "🍳 Kitchen" : "⚗ Workshop"]);
+  if(hasKitchen(t)) subTabs.push(["kitchen", benchTabLabel(t)]);
+  // Green Thumb gardeners, anyone with a plant or a Portable Grower — and the GM, who sets the soil
+  if(gardenCanSee(t)) subTabs.push(["garden", gardenTabLabel(t)]);
   if(trainerTab==="gifts" && !giftsCanSee(t)) trainerTab="sheet";   // last Gift removed → fall back
   if(trainerTab==="cards" && !cardsCanSee(t)) trainerTab="sheet";   // last card removed → same
   if(trainerTab==="kitchen" && !hasKitchen(t)) trainerTab="sheet";
+  if(trainerTab==="garden" && !gardenCanSee(t)) trainerTab="sheet";
   root.append(subTabBar(subTabs, trainerTab, k=>{ trainerTab=k; renderTrainer(); }));
+
+  if(trainerTab==="garden"){
+    root.append(gardenCard(t, c, ()=>preserveScroll(()=>{ save(); renderTrainer(); })));
+    return;
+  }
 
   if(trainerTab==="gifts"){
     root.append(giftsCard(t));
@@ -6332,9 +6364,10 @@ function renderTrainer(){
     return;
   }
   if(trainerTab==="kitchen"){
-    if(trainerIsChef(t)) root.append(kitchenCard(t, ()=>{ save(); renderTrainer(); }));
+    if(trainerIsChef(t) || chefRecipesFor(t).length) root.append(kitchenCard(t, ()=>{ save(); renderTrainer(); }));   // a Chef, or a Basic Cooking Trainer
     root.append(herbLoreCard(t, ()=>{ save(); renderTrainer(); }));
     root.append(researchBenchCard(t, ()=>{ save(); renderTrainer(); }));
+    root.append(pokeBallBenchCard(t, ()=>{ save(); renderTrainer(); }));
     root.append(digestionCard(t, ()=>preserveScroll(()=>{ save(); renderTrainer(); })));
     return;
   }
@@ -7361,8 +7394,8 @@ const FEATURE_ABILITY_CHOICES = [
      no "choose ... you gain the chosen Ability" sentence exists to parse. Same shape as Swarmlord's
      Embrace above, and the pick doubles as the Oath: it is what gates the Nature's Embrace Move
      list and what decides the Stat Tag every Druid Feature carries. */
-  { feat:"Druid",               abilities:["Aroma Veil","Effect Spore","Life Force"],
-    note:"Flower Oath grants Aroma Veil; Fungal Oath grants Effect Spore; Wood Oath grants Life Force." },
+  { feat:"Druid",               abilities:["Aroma Veil [Errata]","Effect Spore","Life Force"],
+    note:"Flower Oath grants Aroma Veil [Errata]; Fungal Oath grants Effect Spore; Wood Oath grants Life Force." },
   /* The player classes' own Ability grants. A single-option grant applies on its own; a
      two-option one waits for the pick, which the Feature's own Battle row offers. */
   { feat:"Musical Ability",     abilities:["Drown Out","Soundproof"],     note:"Musician: choose Drown Out or Soundproof." },
@@ -8722,6 +8755,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   out.append(el("div",{class:"muted small"},"Press 🎲 Roll dice to simulate."));
   /* redo = {nats, forceHits} — re-resolve a Double Strike with the SAME Attack Rolls */
   let eotRefreshed = false;            // once per modal, not once per re-roll of the same attack
+  let blessingLaid = false;            // …and a Blessing Move is laid on the field once per modal too
   const doRoll = (redo) => {
     out.innerHTML=""; out.style.borderStyle="solid";
     let feedLogged = false;              // the GM's roll feed gets exactly one line per press of 🎲
@@ -8730,6 +8764,14 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       const eotBack = refreshOtherEotUses(t, fqName);
       if(eotBack.length){ (opts.persist||save)(); drawFreq(); if(opts.rerender) opts.rerender();
         toast(`\u21BA EOT back off cooldown: ${eotBack.join(", ")}`); }
+    }
+    /* Rolling a Blessing Move (Reflect, Light Screen, Safeguard, Lucky Chant, Mist…) IS using it: the
+       Scene use comes off and the Blessing goes onto the field tracker the Sage card draws. */
+    if(!blessingLaid && !opts.viaMetronome && isBlessingMove(st.move)){
+      blessingLaid = true;
+      const r = layBlessingFromRoll(t, st.move);
+      if(r.laid){ (opts.persist||save)(); drawFreq(); if(opts.rerender) opts.rerender(); }
+      toast(r.msg);
     }
     /* Push it to the Limit fires BEFORE the attack resolves, and only once however many times the
        roll is repeated — the Injury it costs is real. */
@@ -9294,8 +9336,22 @@ function trainerDerivedGrid(t){
   trainerCapGrants(t).forEach(c => items.push([c.name, "✓"]));
   // Speed CS already baked into Overland/Swim above — called out so the shift isn't silent
   if(d.moveCS) items.push(["Speed CS movement", (d.moveCS>0?"+":"")+d.moveCS]);
-  items.forEach(([l,v]) => wrap.append(el("div",{class:"dv"},
-    el("div",{class:"lbl"},l), el("div",{class:"val"},String(v)))));
+  // Traveler: which of the movement numbers above Survival is actually standing in for
+  const travel = new Set();
+  let travelTip = "";
+  if(d.traveler){
+    const sv = rankNum(t.skills.survival), a = rankNum(t.skills.athletics), c = rankNum(t.skills.acrobatics);
+    const used = [];
+    if(sv > a){ travel.add("Power"); used.push("Power (for Athletics)"); }
+    if(sv > c){ travel.add("High Jump"); travel.add("Long Jump"); used.push("High & Long Jump (for Acrobatics)"); }
+    if(sv > Math.min(a, c)){ travel.add("Overland"); travel.add("Swim"); used.push(`Overland & Swim (for ${a <= c ? "Athletics" : "Acrobatics"})`); }
+    travelTip = used.length ? `Traveler: Survival Rank ${sv} is used for ${used.join(", ")}.`
+                            : `Traveler: your Athletics and Acrobatics already match or beat Survival Rank ${sv}, so nothing changes.`;
+  }
+  items.forEach(([l,v]) => wrap.append(el("div",{class:"dv", title: travel.has(l) ? travelTip : ""},
+    el("div",{class:"lbl"}, l + (travel.has(l) ? " \u{1F9ED}" : "")),
+    el("div",{class:"val"},String(v)))));
+  if(travelTip) wrap.append(el("div",{class:"small muted",style:"grid-column:1/-1;margin-top:4px"}, "\u{1F9ED} " + travelTip));
   return wrap;
 }
 function recalcTrainer(){
@@ -9925,7 +9981,10 @@ function luSlot(t, key, kind, label, hint){
     : { tabs: kind==="edge" ? luEdgeTabs() : luFeatureTabs(t, level, key),
         lockToggle: true, memKey: kind };
   const btn = el("button",{class:"btn-secondary lu-pick", title: isSkill?"Choose a Skill":"Choose from the "+(kind==="edge"?"Edges":"Features")+" list",
-    onclick:()=>openPicker(pickTitle, names, v=>{
+    onclick:()=>openPicker(pickTitle,
+      isSkill ? names : (owned => names.filter(n => !luHiddenSource(n, kind)
+        && (!owned.has(luPlaytestBase(n)) || luRepeatable(n, kind))))(luOwnedNames(t, kind, key)),
+      v=>{
       t.levelUp[key]=v;
       /* changing the Edge invalidates the Skill recorded under it — a Basic Skills pick can't
          carry over onto Master Skills */
@@ -10586,10 +10645,57 @@ function luFeatureTabs(t, level, key){
 const EDGE_CAT_ORDER = [/^Skill/i, /^Combat/i, /Training/i, /^Crafting/i, /^Other/i];
 const edgeCatRank = c => { const i = EDGE_CAT_ORDER.findIndex(r => r.test(c)); return i < 0 ? 99 : i; };
 function luEdgeTabs(){
-  const cats = [...new Set((D.edges||[]).map(e => e.category).filter(Boolean))]
+  const cats = [...new Set((D.edges||[]).map(e => e.category).filter(c => c && !LU_HIDDEN_SOURCES.test(c)))]
     .sort((a,b) => edgeCatRank(a) - edgeCatRank(b) || a.localeCompare(b));
   return [{ id:"all", label:"All" },
     ...cats.map(c => ({ id:"e:"+c, label:c.replace(/\s+Edges$/,""), test:n => (edgeByName.get(n)||{}).category === c }))];
+}
+
+/* ---------- already-owned entries drop out of the Level-Up pickers ----------
+   Only a handful of Features and Edges say they can be taken again — the Skill Edges, Skill
+   Stunt / Enhancement, Virtuoso, Touched, Soulbound, Tutoring, Stat Ace, Style Expert, Researcher.
+   Read that straight off the rules text, and only when the sentence names THIS entry ("You may take
+   Stat Ace multiple times" printed under Attack Ace is about Stat Ace, not Attack Ace). A [Ranked]
+   Feature needs no special case: every Rank is its own row. */
+/* Two supplements are not taken with a Level-Up pick at this table: "Do Porygon Dream of Mareep"
+   and "The Blessed and the Damned" (whose Features/Edges arrive through Gifts, which cost no slot
+   anyway). Their rows stay in the data — Gifts, the Reference tab and anything already on a sheet
+   still resolve — they just aren't offered in the Level-Up pickers. */
+const LU_HIDDEN_SOURCES = /Porygon Dream of Mareep|Blessed (?:and|&) the Damned/i;
+function luHiddenSource(name, kind){
+  const row = kind === "edge" ? edgeByName.get(name) : featureByName.get(name);
+  return !!(row && LU_HIDDEN_SOURCES.test(row.category || ""));
+}
+const _repeatableCache = new Map();
+function luRepeatable(name, kind){
+  const k = kind + "|" + name;
+  if(_repeatableCache.has(k)) return _repeatableCache.get(k);
+  const row = kind === "edge" ? edgeByName.get(name) : featureByName.get(name);
+  const txt = String((row && row.effect) || "").replace(/\s+/g, " ");
+  const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const who = "(?:this (?:Edge|Feature)|" + esc + ")";
+  const re = new RegExp(`(?:You may take ${who}|${who} may be taken)\\s+(?:multiple|any number of) times`, "i");
+  const out = re.test(txt);
+  _repeatableCache.set(k, out);
+  return out;
+}
+/* Everything the Trainer already holds of this kind, from every source: the other ledger slots
+   (planned future Levels included — taking it at Level 9 means it isn't on offer at Level 3),
+   GM extras and [Gift] grants. The slot being edited doesn't count against its own current pick. */
+const luPlaytestBase = n => String(n||"").replace(/\s*\[[^\]]*Playtest\]\s*$/i, "");
+function luOwnedNames(t, kind, key){
+  const cur = t.levelUp[key] || "";
+  const isName = n => kind === "edge" ? edgeByName.has(n) : featureByName.has(n);
+  const out = new Set();
+  Object.entries(t.levelUp || {}).forEach(([k, v]) => {
+    if(k === key || /:(skill|stat)$/.test(k) || typeof v !== "string") return;
+    if(isName(v)) out.add(luPlaytestBase(v));
+  });
+  const derived = kind === "edge"
+    ? [...(t.edges||[]), ...(t.extraEdges||[])]
+    : [...(t.features||[]), ...(t.classes||[]), ...(t.extraFeatures||[])];
+  [...derived, ...(t.giftGranted||[])].forEach(n => { if(n !== cur && isName(n)) out.add(luPlaytestBase(n)); });
+  return out;
 }
 
 /* ---------- the Skill Background box (Level 1) ---------- */
@@ -14693,6 +14799,7 @@ function statusCard(p){
   const groups = gm
     ? [["persistent","Persistent · +10 catch each"],["volatile","Volatile · +5 each"],["other","Other"]]
     : [["persistent","Persistent"],["volatile","Volatile"],["other","Other"]];
+  const veils = statusVeilsFor(p);          // Aroma / Sweet / Pastel Veil keeping Afflictions off it
   groups.forEach(([kind,label])=>{
     card.append(el("div",{class:"small muted",style:"margin:8px 0 4px;font-weight:700"}, label));
     const chips = el("div",{class:"chips"});
@@ -14704,10 +14811,11 @@ function statusCard(p){
         disabled: !statusPickable(s),
         onclick:()=>{ toggleStatus(p,s.key);
           if(s.key==="tagged" && hasStatus(p,"tagged") && clearOtherTags(p)) toast("The previous Tag is lost — only one foe at a time");
-          refreshMon(p); }}, s.name + (immune?" ⃠":"") + (block&&on?" 🔒":""));
+          refreshMon(p); }}, s.name + (immune?" ⃠":"") + (block&&on?" 🔒":"") + (!on && statusVeiledBy(p, s.key, veils).length ? " \u{1F6E1}" : ""));
       chips.append(chip);
     });
     card.append(chips);
+    { const vn = statusVeilNotes(p, null, kind, veils); if(vn) card.append(vn); }
   });
   const monHpLoss = n => {
     const max = pokeDerived(p).maxHP, cur = (p.currentHP==null?max:p.currentHP);
@@ -15715,18 +15823,24 @@ function tradeInDigestion(o, buff, opts={}){
     const mods = {};
     if(def.crit) mods.crit = def.crit*x;
     if(def.acc)  mods.acc  = def.acc*x;
+    /* Sweet Confection: "+4 Evasion until the end of the user's next turn". Flat Evasion rides the
+       buff (buffEva, after the stat cap) so the turn tracker expires it — it used to be written into
+       cs.eva, where it sat until somebody remembered to step it back down. */
+    if(def.eva)  mods.eva  = def.eva*x;
     if(def.eva && likes && def.likeAcc) mods.acc = (mods.acc||0) + def.likeAcc*x;
     if(def.dmg)  mods.dmg  = ((likes && def.likeDmg) ? def.likeDmg : def.dmg)*x;
     if(def.dr)   mods.dr   = ((likes && def.likeDr)  ? def.likeDr  : def.dr)*x;
-    if(Object.keys(mods).length || def.eva){
+    if(Object.keys(mods).length){
       const nb = { id:uid(), key:"digestion", name:def.name, cat:"Food", once:!!def.dr,
                    dur:def.dur || (def.only ? `next ${def.only==="phys"?"Physical":"Special"} attack` : "until spent"),
                    note:snackEffectText(o,def), mods, only:def.only||null };
       if(!Array.isArray(o.buffs)) o.buffs=[];
       stampTurnBuff(nb); o.buffs.push(nb);
       log.push("buff added: "+(buffModText(mods)||`+${(def.eva||0)*x} Evasion`));
+      if(def.eva) log.push(nb.turnStamp!=null
+        ? `+${def.eva*x} Evasion — ends by itself at the end of this creature's next turn`
+        : `+${def.eva*x} Evasion — no initiative running, so it lasts until End Scene`);
     }
-    if(def.eva){ o.cs.eva = Math.max(-6,Math.min(6,(o.cs.eva||0)+def.eva*x)); log.push(`+${def.eva*x} Evasion (${def.dur||"until end of next turn"} — step it back down when it ends)`); }
     if(def.restoreScene) log.push("pick one Scene-frequency Move and give it a use back (its ⟳ pip)");
     if(def.weakenType) log.push(`the incoming ${def.weakenType}-Type Move is weakened ${x>1?"two steps":"one step"}`);
     if(hates){
@@ -15760,6 +15874,7 @@ function tradeInDigestion(o, buff, opts={}){
   } else if(buff.accTaste){
     log.push(`Accentuated Taste (${buff.accTaste}) — disliked Taste, no bonus`);
   }
+  tasteLogRecord(o, buff, def);
 
   // ---- Abilities that trigger off trading a Buff in ----
   // Lunchbox (Scene, Free Action): "The user gains 5 Temporary Hit Points" (errata: a Tick).
@@ -15779,6 +15894,32 @@ function tradeInDigestion(o, buff, opts={}){
   if(!kept) o.digestion = digestionList(o).filter(b=>b.id!==buff.id);
   if(buff.storage) log.push("Berry Storage — only one of these stored Buffs may be traded in per Scene");
   return { log, kept };
+}
+/* ---- the Scene's trade-in log (what Complex Aftertaste triggers off) ----
+   "Trigger: You or an ally trades in a Digestion/Food Buff from an item with a Taste." Each trade-in
+   of a Tasted item is noted ON THE EATER (o.tasteLog), so it travels with that creature's own sheet
+   and the Chef reads it back through allyTargets — the same objects the dialog then serves. The
+   Taste is whatever the item carried: a Chef-assigned Accentuated Taste and/or the Snack's own
+   flavour (a Tasty Snack, a flavoured Berry). Complex Aftertaste's own Buff is not "an item", so it
+   never logs — that would chain forever. Cleared by End Scene. */
+const TASTE_LOG_MAX = 12;
+function tasteLogRecord(o, buff, def){
+  if(!o || !buff) return;
+  if(/^Complex Aftertaste/i.test(String(buff.from||""))) return;
+  const tastes = [...new Set([buff.accTaste, def && def.flavor].filter(f => FLAVORS.includes(f)))];
+  if(!tastes.length) return;
+  const meta = battleOn() ? activeMapMeta() : null;
+  if(!Array.isArray(o.tasteLog)) o.tasteLog = [];
+  o.tasteLog.push({ id:uid(), at:Date.now(), item:buff.item, tastes,
+                    round: meta ? (meta.initRound||1) : null, served:null });
+  if(o.tasteLog.length > TASTE_LOG_MAX) o.tasteLog = o.tasteLog.slice(-TASTE_LOG_MAX);
+}
+/* every logged trade-in this Chef can answer, newest first: [{tg, entry}] */
+function tasteLogEntries(t){
+  const out = [];
+  allyTargets(t).forEach(tg => (Array.isArray(tg.obj.tasteLog) ? tg.obj.tasteLog : [])
+    .forEach(entry => out.push({ tg, entry })));
+  return out.sort((a,b) => b.entry.at - a.entry.at);
 }
 /* Refreshments (Core p.279): out-of-combat healing, one per half hour (two with Gluttony) */
 function drinkRefreshment(o, itemName){
@@ -27227,8 +27368,10 @@ function trainerIsChef(t){ return !!t && trainerHasClass(t, "Chef"); }
 /* who gets a Kitchen tab: a Chef, and anyone else who crafts out of the bag (the Botany
    Researcher's Herb Lore uses the same dialog and the same inventory) */
 function hasKitchen(t){
-  return trainerIsChef(t) || botanyRecipesFor(t).length > 0
-      || researchBenchRecipes(t).length > 0 || canDowse(t);      // the Researcher's bench shares the tab
+  return trainerIsChef(t) || chefRecipesFor(t).length > 0          // Basic Cooking needs no Chef class
+      || botanyRecipesFor(t).length > 0
+      || researchBenchRecipes(t).length > 0 || canDowse(t)       // the Researcher's bench shares the tab
+      || pokeBallRecipesFor(t).length > 0;                        // …and so do the Poké Ball crafting Edges
 }
 function chefIntuition(t){ return rankNum((t && t.skills || {}).intuition); }   // Novice 3 … Master 6
 function chefCanTaste(t){ return hasFeatureLoose(t, "Accentuated Taste"); }
@@ -27269,6 +27412,14 @@ function chefBagAdd(t, name, qty, accTaste){
    `eats`   ingredient bundles, each {label, take:[[itemName, qty], …]} — a function of the Trainer
             so it can read the bag */
 const CHEF_RECIPES = [
+  /* Basic Cooking (Crafting Edge, Core): "You may create 'Candy Bars' or 'Baby Food' with cooking
+     ingredients costing $50." An EDGE, not a Chef Recipe — it is the Chef class's own prerequisite,
+     so plenty of Trainers have it without being a Chef. `edge` makes chefRecipesFor ask the Edge
+     list, and `bench` sends the result through benchBagAdd: a Candy Bar made this way is a plain
+     Snack, not "a Snack made with Chef", so it can't be passed off as a Dumpling ingredient. */
+  { name:"Basic Cooking", edge:"Basic Cooking", bench:"Basic Cooking", icon:"\u{1F373}", verb:"\u{1F373} Cook", qty:1, cost:50,
+    pick:() => ["Candy Bar","Baby Food"],
+    blurb:"$50 of ingredients — a Candy Bar (a Snack whose Digestion Buff heals 5 HP) or Baby Food (a Pokémon at Level 15 or lower gains 20% more Experience for the rest of the day)." },
   { name:"Tasty Snacks", feat:"Chef", cost:100, qty:1, tasteable:true,
     pick:() => Object.values(TASTE_SNACK),
     blurb:"$100 — a Salty Surprise, Spicy Wrap, Sour Candy, Dry Wafer, Bitter Treat or Sweet Confection. Each is traded in on its own trigger, and pays double to a Pokémon that likes the Taste (a disliked Taste Enrages it instead)." },
@@ -27325,7 +27476,9 @@ const MEAL_PLANNER = [
    Features rather than a tidy class row, and trainerHasClass already knows that (it counts any
    Feature of the line). Everything else is printed by a named Feature, so it is asked for by name. */
 function chefRecipesFor(t){
-  return CHEF_RECIPES.filter(r => r.feat === "Chef" ? trainerIsChef(t) : hasFeatureLoose(t, r.feat));
+  if(!t) return [];
+  return CHEF_RECIPES.filter(r => r.edge ? trainerHasEdge(t, r.edge)
+                                : r.feat === "Chef" ? trainerIsChef(t) : hasFeatureLoose(t, r.feat));
 }
 
 /* ---------- one dialog cooks them all ---------- */
@@ -27351,6 +27504,14 @@ function openChefCook(t, rec, commit){
       ? "Nothing in your bag can go into this Recipe yet."
       : "Your Intuition Rank doesn't unlock anything on this Recipe yet."));
   }
+
+  /* `rec.batch`: make several in one go — the ingredients, the price and the yield all scale with it */
+  let countIn = null;
+  if(rec.batch){
+    countIn = el("input",{type:"number",min:1,max:99,value:1,style:"padding:6px;width:90px"});
+    body.append(el("label",{class:"field",style:"margin-bottom:8px"}, el("span",{},"How many"), countIn));
+  }
+  const count = () => countIn ? Math.max(1, Math.min(99, parseInt(countIn.value)||1)) : 1;
 
   /* what it eats */
   const bundles = rec.eats ? rec.eats(t) : [];
@@ -27399,21 +27560,34 @@ function openChefCook(t, rec, commit){
   };
   const priceLine = el("div",{class:"small",style:"margin:8px 0;font-weight:700"});
   const drawPrice = () => {
-    const p = priceOf();
-    priceLine.textContent = p ? `Cost ${fmtMoney(p)} · you have ${fmtMoney(moneyOf(t))}` : `No money cost · you have ${fmtMoney(moneyOf(t))}`;
+    const n = count(), p = priceOf() * n;
+    priceLine.textContent = (p ? `Cost ${fmtMoney(p)}${n>1?` (${n} × ${fmtMoney(priceOf())})`:""}` : "No money cost")
+      + ` · you have ${fmtMoney(moneyOf(t))}`;
     priceLine.style.color = p > moneyOf(t) ? "var(--bad)" : "";
   };
   drawPrice(); if(pickSel) pickSel.addEventListener("change", drawPrice);
+  if(countIn) countIn.addEventListener("input", drawPrice);
   body.append(priceLine);
-  body.append(el("div",{class:"small muted"}, rec.bench ? `${rec.bench} Recipes are At-Will Extended Actions.`
-                                                       : "Cooking is an At-Will Extended Action, and needs a kitchen or a Cooking Kit."));
+  /* `rec.tool`: "requires access to a Poké Ball Tool Box" — access, not ownership, so a borrowed one
+     or a Poké Mart's bench counts. Pre-ticked when one is in the bag; otherwise the player says so. */
+  let toolCb = null;
+  if(rec.tool){
+    const own = inventoryQty(t, rec.tool) > 0;
+    toolCb = el("input",{type:"checkbox"}); toolCb.checked = own;
+    body.append(el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin-bottom:6px"},
+      toolCb, own ? `A ${rec.tool} is in your bag` : `I have access to a ${rec.tool} (borrowed, or at a shop) — there isn't one in your bag`));
+  }
+  body.append(el("div",{class:"small muted"}, rec.actionText || (rec.bench ? `${rec.bench} Recipes are At-Will Extended Actions.`
+                                                       : "Cooking is an At-Will Extended Action, and needs a kitchen or a Cooking Kit.")));
 
   modal({ title:`${rec.icon || "🍳"} ${rec.name}`, bodyNode:body, footNodes:[
     el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
     el("button",{class:"btn-primary",onclick:()=>{
       const item = pickSel ? pickSel.value : (picks[0] || "");
-      const price = priceOf();
+      const n = count();
+      const price = priceOf() * n;
       const bundle = eatSel ? bundles.find(b => b.label===eatSel.value) : null;
+      if(toolCb && !toolCb.checked){ toast(`Needs access to a ${rec.tool}`); return; }
       if(rec.eats && !bundle){ toast("Pick the ingredients"); return; }
       if(rec.two && !(d1 && d2)){ toast("Pick both ingredients"); return; }
       if(rec.two){
@@ -27431,8 +27605,9 @@ function openChefCook(t, rec, commit){
         if(!extra.length){ toast("Not enough ingredients in the bag"); return; }
         take.push(...extra);
       }
-      for(const [n,q] of take) if(inventoryQty(t, n) < q){ toast(`Not enough ${n}`); return; }
-      take.forEach(([n,q]) => { for(let i=0;i<q;i++) consumeInventoryItem(t, n); });
+      if(n > 1) take.splice(0, take.length, ...take.map(([nm,q]) => [nm, q*n]));   // fresh pairs — bundle.take must not be scaled in place
+      for(const [nm,q] of take) if(inventoryQty(t, nm) < q){ toast(`Not enough ${nm} — ${q} needed, ${inventoryQty(t, nm)} in the bag`); return; }
+      take.forEach(([nm,q]) => { for(let i=0;i<q;i++) consumeInventoryItem(t, nm); });
       if(price) moneyChange(t, -price, `${rec.bench || "Chef"} — ${rec.name}`, {kind:"buy"});
 
       const made = rec.two ? (twoSpec ? twoSpec.result(d1.value, d2.value) : `Dumpling (${d1.value} + ${d2.value})`)
@@ -27441,10 +27616,11 @@ function openChefCook(t, rec, commit){
       const taste = tasteSel ? tasteSel.value : "";
       // Herb Lore's yield depends on which ingredient went in (an Energy Root makes three, not two)
       // a Researcher's bench makes plain items — only the Chef's own cooking is stamped as a Chef Snack
-      if(rec.bench) benchBagAdd(t, made, (bundle && bundle.qty) || rec.qty || 1, rec.name);
-      else chefBagAdd(t, made, (bundle && bundle.qty) || rec.qty || 1, taste);
+      const yieldQty = ((bundle && bundle.qty) || rec.qty || 1) * n;
+      if(rec.bench) benchBagAdd(t, made, yieldQty, rec.name);
+      else chefBagAdd(t, made, yieldQty, taste);
       commit(); closeModal();
-      toast(`${rec.icon || "🍳"} ${rec.bench ? "Made" : "Cooked"} ${rec.qty>1?`${rec.qty}× `:""}${made}${taste?` · ${taste} Taste`:""}${price?` · −${fmtMoney(price)}`:""}`);
+      toast(`${rec.icon || "🍳"} ${rec.bench ? "Made" : "Cooked"} ${yieldQty>1?`${yieldQty}× `:""}${made}${taste?` · ${taste} Taste`:""}${price?` · −${fmtMoney(price)}`:""}`);
     }}, rec.verb || "🍳 Cook"),
   ]});
 }
@@ -27519,9 +27695,13 @@ function chefCard(t, rerender, persist){
   if(has("Hits the Spot")) row.append(el("button",{class:"btn-primary",
     title:`1 AP, Free Action — when you or your Pokémon trade in a Buff: ${rank*2} Temporary HP`,
     onclick:()=>openHitsTheSpot(t, redraw, saveFn)}, `🍲 Hits the Spot · ${rank*2} Temp HP · 1 AP`));
-  if(has("Complex Aftertaste")) row.append(el("button",{class:"btn-secondary",
-    title:"1 AP, Free Action — a second Buff matching the Taste of the one just traded in",
-    onclick:()=>openComplexAftertaste(t, redraw, saveFn)},"🍮 Complex Aftertaste · 1 AP"));
+  if(has("Complex Aftertaste")){
+    const waiting = tasteLogEntries(t).filter(x => !x.entry.served).length;
+    row.append(el("button",{class: waiting ? "btn-primary" : "btn-secondary",
+      title:"1 AP, Free Action — a second Buff matching the Taste of a Buff someone just traded in",
+      onclick:()=>openComplexAftertaste(t, redraw, saveFn)},
+      `🍮 Complex Aftertaste · 1 AP${waiting ? ` · ${waiting} to serve` : ""}`));
+  }
   if(has("Culinary Appreciation")) row.append(el("button",{class:"btn-secondary",
     title:"At-Will, Extended Action — 2 Tutor Points for the Gluttony Ability",
     onclick:()=>openCulinaryAppreciation(t, redraw, saveFn)},"🍴 Culinary Appreciation"));
@@ -27561,30 +27741,71 @@ function openHitsTheSpot(t, rerender, persist){
    (nothing was eaten and no Extended Action was spent), and it carries NO assigned Taste: the May
    playtest errata says the Accentuated Taste bonus is once per item. */
 function openComplexAftertaste(t, rerender, persist){
-  const list = allyTargets(t);
-  const pick = targetPicker(list, selfTargetId(list));
   const body = el("div",{});
   body.append(el("div",{class:"small",style:"margin-bottom:10px"},
-    "1 AP · Free Action, triggered when you or an ally trade in a Digestion Buff from an item with a Taste. The target gains a second Digestion Buff — the basic Tasty Snack matching that Taste."));
+    "1 AP · Free Action, triggered when you or an ally trade in a Digestion Buff from an item with a Taste. The one who ate it gains a second Digestion Buff — the basic Tasty Snack matching that Taste."));
+  /* one serve path for both halves of the dialog; `entry` marks the logged trade-in as answered */
+  const serve = async (targets, taste, entry) => {
+    if(!apSpend(t, 1)) return;
+    const snack = TASTE_SNACK[taste];
+    targets.forEach(x => digestionList(x.obj).push({
+      id:uid(), item:snack, from:`Complex Aftertaste (${taste})`, exempt:true,
+      note:"Granted by Complex Aftertaste — free of the normal Buff limit." }));
+    if(entry) entry.served = t.name || "Chef";
+    (persist||save)(); closeModal();
+    await commitTargets(targets);
+    toast(`🍮 Complex Aftertaste → ${targets.map(x=>ownerLabel(x.obj)).join(", ")} · ${snack} Buff · 1 AP`);
+    (rerender||renderBattle)();
+  };
+
+  /* ---- this Scene's trade-ins: the Taste is already known, so answering one is a single press ---- */
+  const meta = battleOn() ? activeMapMeta() : null;
+  const nowRound = meta ? (meta.initRound||1) : null;
+  const logged = tasteLogEntries(t);
+  body.append(el("div",{class:"section-head",style:"margin-top:4px"}, "This Scene's trade-ins"));
+  if(!logged.length){
+    body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+      "Nobody on the board has traded in a Buff from a Tasted item yet this Scene. Trade-ins show up here as they happen."));
+  }
+  logged.forEach(({tg, entry}) => {
+    const when = entry.round == null ? "out of initiative"
+               : entry.round === nowRound ? "this round" : `Round ${entry.round}`;
+    const row = el("div",{class:"moveslot"});
+    row.append(el("div",{style:"flex:1;min-width:0"},
+      el("div",{style:"font-weight:700"}, `${ownerLabel(tg.obj)} ate ${entry.item}`),
+      el("div",{class:"small muted"}, `${entry.tastes.join(" / ")} Taste · ${when}`
+        + (entry.served ? ` · ✓ already served by ${entry.served}` : ""))));
+    const btns = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;justify-content:flex-end"});
+    entry.tastes.forEach(f => btns.append(el("button",{
+      class: entry.served ? "btn-secondary" : "btn-primary", style:"padding:6px 10px",
+      title: entry.served ? "This trade-in was already answered — serving again is a GM call" : `1 AP — ${ownerLabel(tg.obj)} gains a ${TASTE_SNACK[f]} Buff`,
+      onclick:() => {
+        if(entry.served && !confirm(`${entry.served} already served a Complex Aftertaste for this trade-in. Serve another anyway?`)) return;
+        serve([tg], f, entry);
+      }}, `🍮 ${TASTE_SNACK[f]} · 1 AP`)));
+    row.append(btns);
+    body.append(row);
+  });
+
+  /* ---- by hand: a trade-in the log didn't see (resolved at the table, or before this existed) ---- */
+  const list = allyTargets(t);
+  const pick = targetPicker(list, selfTargetId(list));
   const tasteSel = el("select",{style:"padding:6px;margin-bottom:10px"});
   FLAVORS.forEach(f => tasteSel.append(el("option",{value:f}, `${f} → ${TASTE_SNACK[f]}`)));
-  body.append(el("label",{class:"field"}, el("span",{},"The Taste of the Snack that granted the Buff"), tasteSel));
-  body.append(pick.node);
+  const manual = el("details",{class:"spoiler",style:"margin-top:10px"});
+  if(!logged.length) manual.open = true;
+  manual.append(el("summary",{}, el("span",{class:"small",style:"font-weight:700"}, "Not on the list? Pick the Taste and target by hand")));
+  manual.append(el("label",{class:"field",style:"margin-top:8px"}, el("span",{},"The Taste of the Snack that granted the Buff"), tasteSel));
+  manual.append(pick.node);
+  manual.append(el("button",{class:"btn-primary",style:"margin-top:8px",onclick:() => {
+    const chosen = pick.chosen();
+    if(!chosen.length){ toast("Pick a target"); return; }
+    serve(chosen, tasteSel.value, null);
+  }},"🍮 Serve"));
+  body.append(manual);
+
   modal({title:"🍮 Complex Aftertaste", bodyNode:body, footNodes:[
-    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
-    el("button",{class:"btn-primary",onclick:async ()=>{
-      const chosen = pick.chosen();
-      if(!chosen.length){ toast("Pick a target"); return; }
-      if(!apSpend(t, 1)) return;
-      const snack = TASTE_SNACK[tasteSel.value];
-      chosen.forEach(x => digestionList(x.obj).push({
-        id:uid(), item:snack, from:`Complex Aftertaste (${tasteSel.value})`, exempt:true,
-        note:"Granted by Complex Aftertaste — free of the normal Buff limit." }));
-      (persist||save)(); closeModal();
-      await commitTargets(chosen);
-      toast(`🍮 Complex Aftertaste → ${chosen.map(x=>ownerLabel(x.obj)).join(", ")} · ${snack} Buff · 1 AP`);
-      (rerender||renderBattle)();
-    }},"🍮 Serve"),
+    el("button",{class:"btn-secondary",onclick:closeModal},"Close"),
   ]});
 }
 /* Culinary Appreciation: "The target loses 2 Tutor Points and gains the Gluttony Ability." */
@@ -28891,8 +29112,675 @@ function researcherCard(t, rerender, persist){
 /* Every Researcher recipe this Trainer can run, for the crafting bench on the Kitchen tab. The feat
    test is hasResearch (exact family), so a Medic's "Medical Techniques [Medic]" never unlocks the
    Apothecary's Hyper Cures. */
-/* what the Kitchen sub-tab is called for this Trainer (a Chef cooks; everyone else has a Workshop) */
-function benchTabLabel(t){ return trainerIsChef(t) ? "\u{1F373} Kitchen" : "\u2697 Workshop"; }
+/* ═══════════════════ POKÉ BALL CRAFTING (Core — Crafting Edges) ═══════════════════
+   Apricorn Balls (Edge, Novice Survival or Adept Technology Education): "As an Extended Action, you
+   may craft Apricorns into their corresponding Poké Ball. Use of this Feature requires access to a
+   Poké Ball Tool Box." The book prints no price and no roll, so it's one Apricorn in, one Ball out —
+   Red → Level, Yellow → Moon, Blue → Lure, Green → Friend, Pink → Love, White → Fast, Black → Heavy
+   (the Apricorns table in Gear and Items). Its two siblings on the same Tool Box ride along:
+   Basic Balls (Edge) — a Basic Ball for $100, a Great Ball for $175; Poké Ball Crafter (Feature) —
+   Dusk/Dive/Heal/Luxury/Net/Nest/Quick/Repeat/Timer for $700. All three run through openChefCook,
+   `batch` so a bag of twelve Red Apricorns is one press, `tool` for the Tool Box. Poké Ball Repair
+   isn't here: the sheet has no notion of a broken Ball to fix. */
+const POKEBALL_TOOL = "Poké Ball Tool Box";
+const APRICORN_BALLS = [["Red","Level Ball"],["Yellow","Moon Ball"],["Blue","Lure Ball"],["Green","Friend Ball"],
+                        ["Pink","Love Ball"],["White","Fast Ball"],["Black","Heavy Ball"]];
+/* the bag row an Apricorn actually sits under — the catalog says "Red Apricorn", a hand-typed row
+   often says "Red Apricorns", and consumeInventoryItem matches names exactly */
+function apricornBagName(t, color){
+  const want = normItemName(`${color} Apricorn`);
+  const row = (t && t.inventory || []).find(it => (parseInt(it.qty)||0) > 0
+    && (normItemName(it.name) === want || normItemName(it.name) === want + "s"));
+  return row ? String(row.name).trim() : `${color} Apricorn`;
+}
+const POKEBALL_RECIPES = [
+  { name:"Apricorn Balls", edge:"Apricorn Balls", bench:"Poké Ball crafting", icon:"\u{1F528}", verb:"\u{1F528} Craft",
+    qty:1, cost:0, batch:true, tool:POKEBALL_TOOL,
+    actionText:"Crafting is an Extended Action and needs access to a Poké Ball Tool Box.",
+    eats: t => APRICORN_BALLS.map(([c, ball]) => { const nm = apricornBagName(t, c);
+      return { label:`${nm} → ${ball} (${inventoryQty(t, nm)} in bag)`, take:[[nm,1]], ball }; }),
+    result: (t, item, bundle) => bundle.ball,
+    blurb:"One Apricorn makes one Ball of its colour: Red → Level, Yellow → Moon, Blue → Lure, Green → Friend, Pink → Love, White → Fast, Black → Heavy. No money — just the Apricorn." },
+  { name:"Basic Balls", edge:"Basic Balls", bench:"Poké Ball crafting", icon:"\u{1F528}", verb:"\u{1F528} Craft",
+    qty:1, batch:true, tool:POKEBALL_TOOL,
+    actionText:"Crafting needs access to a Poké Ball Tool Box.",
+    pick:() => ["Basic Ball","Great Ball"],
+    cost:(t, item) => item === "Great Ball" ? 175 : 100,
+    blurb:"A Basic Ball for $100 or a Great Ball for $175 (shop price $250 / $400)." },
+  { name:"Specialty Balls", feat:"Poké Ball Crafter", bench:"Poké Ball crafting", icon:"\u{1F528}", verb:"\u{1F528} Craft",
+    qty:1, cost:700, batch:true, tool:POKEBALL_TOOL,
+    actionText:"Crafting needs access to a Poké Ball Tool Box.",
+    pick:() => ["Dusk Ball","Dive Ball","Heal Ball","Luxury Ball","Net Ball","Nest Ball","Quick Ball","Repeat Ball","Timer Ball"],
+    blurb:"$700 — a Dusk, Dive, Heal, Luxury, Net, Nest, Quick, Repeat or Timer Ball." },
+];
+function pokeBallRecipesFor(t){
+  if(!t) return [];
+  return POKEBALL_RECIPES.filter(r => r.edge ? trainerHasEdge(t, r.edge) : hasFeatureLoose(t, r.feat));
+}
+function pokeBallBenchCard(t, commit){
+  const rows = pokeBallRecipesFor(t);
+  if(!rows.length) return el("span",{style:"display:none"});
+  const card = el("div",{class:"card"}, el("h3",{},"\u{1F528} Poké Ball Crafting",
+    el("span",{class:"muted small"},"Core · Crafting Edges")));
+  const box = inventoryQty(t, POKEBALL_TOOL) > 0;
+  card.append(el("div",{class:"small",style:"margin-bottom:8px"+(box?"":";color:var(--bad)")},
+    box ? `\u2705 Poké Ball Tool Box in your bag · ${fmtMoney(moneyOf(t))} in hand. Crafted Balls land in Inventory & Bio.`
+        : `\u26A0\uFE0F No Poké Ball Tool Box in your bag ($500 at most Poké Marts). You can still craft if you have access to someone else's — the dialog asks.`));
+  rows.forEach(r => {
+    const row = el("div",{class:"buff-row"});
+    row.append(el("div",{style:"flex:1;min-width:0"}, el("div",{class:"buff-name"}, r.name), el("div",{class:"small muted"}, r.blurb)));
+    row.append(el("button",{class:"btn-primary",style:"padding:6px 12px",onclick:()=>openChefCook(t, r, commit)}, r.verb));
+    card.append(row);
+  });
+  if(rows.some(r => r.name === "Apricorn Balls")){
+    const have = APRICORN_BALLS.map(([c, ball]) => [c, ball, inventoryQty(t, apricornBagName(t, c))]);
+    const grid = el("div",{class:"small",style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:4px 12px;margin-top:8px"});
+    have.forEach(([c, ball, n]) => grid.append(el("div",{class:n?"":"muted"}, `${c} Apricorn ×${n} → ${ball}`)));
+    card.append(el("div",{style:"font-weight:700;margin-top:10px"},"Apricorns in your bag"), grid);
+  }
+  if(trainerHasEdge(t, "Poké Ball Repair") || trainerHasEdge(t, "Poke Ball Repair"))
+    card.append(el("div",{class:"small muted",style:"margin-top:8px"},
+      "Poké Ball Repair: roll Technology Education against DC 15 at the table — success fixes a Ball that broke on a failed capture, failure breaks it for good."));
+  return card;
+}
+
+/* ===================================================================
+   GARDENING  (Core p.280 — Apricorns, Berries, and Herbs)
+   ------------------------------------------------------------------
+   The rules, all of them:
+     · Green Thumb (Edge) grows Apricorns and Tier 1 Berries "using a Portable Grower or Fertilized
+       Soil". Top Tier Berries adds more on the higher of General Education / Survival, and at Master
+       gives +1 Soil Quality to every plant you grow.
+     · "Once planted, it takes two days for a Plant to Mature. After becoming Mature, a plant's
+       caretaker should roll the plant's Yield Roll every day" — that many come off the plant, and
+       zero or less is nothing that day.
+     · Yield Rolls assume +0 Soil. A Portable Grower — and a Pokémon with Planter, which "can act as a
+       Portable Grower, holding one plant at a time" — or an exceptionally fertile spot is +1. Bad
+       ground is worse, by however much the GM says.
+     · Mulch: +1 Soil Quality "for the following day", and it can't take Soil above +2. The Gardener
+       Ability is the same thing "as if Mulch has been applied", Daily x3, on a plant already yielding.
+     · How Berries?? [5-15 Playtest]: Rank 1 +1 to one Yield Roll a day; Rank 2 makes Mulch from Food Scrap.
+
+   What the sheet does: plants live on the Trainer (`t.garden`), and the rest planner's 🌙 End the Day
+   is the clock. gardenNewDay() ages every plant, turns yesterday's Mulch on for today, and once a
+   plant is Mature queues ONE Yield Roll for the new day (`pl.owed`). The roll is never made for you:
+   each queued roll spells out what to throw, and you either press 🎲 or type what your die showed.
+   Either way the harvest lands in the bag and the GM's roll feed hears about it.
+
+   Soil in the ground is the GM's number (`pl.soil`, null until set). A player can plant in a field,
+   but only the GM — or an offline sheet, which has nobody to ask — decides how good that field is,
+   and a plot with no Soil set can't be rolled yet. Growers and Planters are always +1.
+   Balm Mushrooms: Top Tier Berries' Expert line forgets them, but the Yield table groups them with
+   Revival Herbs, so they sit in that tier here.
+=================================================================== */
+const GARDEN_MATURE_DAYS = 2;
+const GARDEN_SOIL_CAP = 2;
+const GARDEN_TIERS = [
+  { key:"t1",    label:"Tier 1 Berries", dice:"1d3", flat:-1, need:"Green Thumb",
+    crops:["Cheri","Chesto","Pecha","Rawst","Aspear","Oran","Persim","Razz","Bluk","Nanab","Wepear","Pinap"].map(b => b+" Berry") },
+  { key:"apri",  label:"Apricorns", dice:"1d2", flat:-2, need:"Green Thumb",
+    crops:["Red","Yellow","Blue","Green","Pink","White","Black"].map(c => c+" Apricorn") },
+  { key:"t2",    label:"Tier 2 Berries", dice:"1d3", flat:-2, need:3,
+    crops:["Lum","Sitrus","Figy","Wiki","Mago","Aguav","Iapapa","Liechi","Ganlon","Salac","Petaya","Apicot",
+           "Pamtre","Watmel","Durin","Belue","Enigma","Lansat","Micle","Cornn","Magost","Rabuta","Nomel",
+           "Spelon","Jaboca","Rowap","Starf"].map(b => b+" Berry") },
+  { key:"herb2", label:"Mental, Power & White Herbs · Tiny Mushrooms", dice:"1d3", flat:-2, need:4,
+    crops:["Mental Herb","Power Herb","White Herb","Tiny Mushroom"] },
+  { key:"t3",    label:"Tier 3 Berries", dice:"1d4", flat:-3, need:5,
+    crops:["Leppa","Pomeg","Kelpsy","Qualot","Hondew","Grepa","Tamato","Custap","Kee","Maranga",
+           "Occa","Passho","Wacan","Rindo","Yache","Chople","Kebia","Shuca","Coba","Payapa","Tanga",
+           "Charti","Kasib","Haban","Colbur","Babiri","Roseli","Chilan"].map(b => b+" Berry") },
+  { key:"herb3", label:"Revival Herbs · Energy Roots · Big & Balm Mushrooms", dice:"1d4", flat:-3, need:5,
+    crops:["Revival Herb","Energy Root","Big Mushroom","Balm Mushroom"] },
+];
+/* the GM's Soil Quality menu for a plot in the ground */
+const GARDEN_SOIL_OPTIONS = [
+  [ 1, "+1 · exceptionally fertile spot"],
+  [ 0, "+0 · ordinary fertilized soil (the book's baseline)"],
+  [-1, "−1 · poor soil"],
+  [-2, "−2 · bad soil"],
+  [-3, "−3 · sand / rock — “not going to work”"],
+];
+const gardenSgn = n => (n < 0 ? "−" : "+") + Math.abs(n);
+const GARDEN_MULCH = "Mulch";
+const GARDEN_SCRAP = "Food Scrap";
+
+function gardenTierOf(crop){
+  const want = normItemName(crop);
+  return GARDEN_TIERS.find(tr => tr.crops.some(c => normItemName(c) === want)) || null;
+}
+function gardenCropKind(crop){
+  const s = String(crop||"").toLowerCase();
+  return /apricorn/.test(s) ? "apricorn" : /berry/.test(s) ? "berry" : "herb";
+}
+function gardenCropIcon(crop){
+  if(/mushroom/i.test(crop)) return "\u{1F344}";
+  return { berry:"\u{1FAD0}", apricorn:"\u{1F34E}", herb:"\u{1F33F}" }[gardenCropKind(crop)];
+}
+function gardenSkillRank(t){ return Math.max(rankNum((t.skills||{}).generalEd), rankNum((t.skills||{}).survival)); }
+function gardenMaster(t){ return hasFeatureLoose(t, "Top Tier Berries") && gardenSkillRank(t) >= 6; }
+/* the GM (or the 🔓) can plant anything on anyone's sheet */
+function gardenFree(t){ return !!(t && t.unlocked) || (mode==="cloud" && !!cloud.isGM); }
+function gardenCanGrow(t, tier){
+  if(gardenFree(t)) return { ok:true };
+  if(!trainerHasEdge(t, "Green Thumb")) return { ok:false, why:"needs the Green Thumb Edge" };
+  if(tier.need === "Green Thumb") return { ok:true };
+  if(!hasFeatureLoose(t, "Top Tier Berries")) return { ok:false, why:"needs Top Tier Berries" };
+  if(gardenSkillRank(t) >= tier.need) return { ok:true };
+  return { ok:false, why:`needs ${RANKS[tier.need-1] || "a higher"} General Education or Survival` };
+}
+/* who decides how good a patch of ground is */
+function gardenCanSetSoil(){ return mode!=="cloud" || !!cloud.isGM; }
+function gardenList(t){
+  if(!Array.isArray(t.garden)) t.garden = [];
+  t.garden.forEach(pl => {
+    if(!Array.isArray(pl.owed)) pl.owed = [];
+    if(!Array.isArray(pl.log)) pl.log = [];
+    if(typeof pl.age !== "number") pl.age = 0;
+  });
+  return t.garden;
+}
+function gardenOwedCount(t){
+  return (Array.isArray(t && t.garden) ? t.garden : []).reduce((n, pl) => n + ((pl && pl.owed) || []).length, 0);
+}
+function gardenGrowers(t){ return Math.max(0, inventoryQty(t, "Portable Grower")); }
+/* Planter / Planter (Berries) / Planter(Herbs) — null if the Pokémon can't hold a plant */
+function gardenPlanterOf(p){
+  const cap = ((monCapabilities(p, getSpecies(p.species)) || {}).other || []).find(o => /^planter\b/i.test(String(o)));
+  if(!cap) return null;
+  const r = (String(cap).match(/\(([^)]*)\)/) || [])[1];
+  const kinds = r ? [/berr/i.test(r) && "berry", /herb|mushroom|root/i.test(r) && "herb", /apricorn/i.test(r) && "apricorn"].filter(Boolean) : [];
+  return { label:String(cap).replace(/\s*\(/, " ("), kinds: kinds.length ? kinds : null };
+}
+function gardenMonName(p){ return (p && (p.nickname || p.species)) || "Pokémon"; }
+function gardenMonById(c, id){ return ((c && c.pokemon) || []).find(m => m && m.id === id) || null; }
+/* how good the soil is under this plant today (`mulched`: the day's roll has Mulch on it) */
+function gardenSoil(t, pl, mulched){
+  const parts = [];
+  let v;
+  if(pl.where === "ground"){
+    if(typeof pl.soil !== "number") return { value:null, parts:["Soil Quality not set yet — the GM decides it"] };
+    v = pl.soil; parts.push(`${gardenSgn(v)} soil`);
+  } else {
+    v = 1; parts.push(`+1 ${pl.where === "planter" ? "Planter" : "Portable Grower"}`);
+  }
+  if(gardenMaster(t)){ v += 1; parts.push("+1 Top Tier Berries"); }
+  if(mulched){
+    if(v < GARDEN_SOIL_CAP){ v = Math.min(GARDEN_SOIL_CAP, v + 1); parts.push("+1 Mulch"); }
+    else parts.push("Mulch (no effect — Soil is already +2)");
+  }
+  return { value:v, parts };
+}
+/* How Berries?? — the Rank bound on it, and its once-a-day +1 (a Daily use key, so any rest hands it back) */
+function gardenBookRank(t){
+  return ownedBookNames(t).filter(n => bookShortName(n).toLowerCase() === "how berries??")
+    .reduce((m, n) => Math.max(m, bookBound(t, n)), 0);
+}
+function gardenBookKey(){ return useKey("dayitem", "how berries"); }
+function gardenBookLeft(t){ return gardenBookRank(t) >= 1 && usesLeft(t, gardenBookKey(), 1) > 0; }
+
+/* 🌙 End the Day, for one sheet. Returns how many Yield Rolls the new day brought. */
+function gardenNewDay(c){
+  const t = c && c.trainer; if(!t) return 0;
+  t.gardenDay = (t.gardenDay || 0) + 1;
+  if(!Array.isArray(t.garden) || !t.garden.length) return 0;
+  let owed = 0;
+  gardenList(t).forEach(pl => {
+    pl.age += 1;
+    pl.mulchOn = pl.mulchNext || "";            // yesterday's Mulch is today's Soil
+    pl.mulchNext = "";
+    if(pl.age >= GARDEN_MATURE_DAYS){ pl.owed.push({ day:t.gardenDay, mulch:pl.mulchOn || "" }); owed++; }
+  });
+  return owed;
+}
+/* GM fast-forward: Mature right now, and — as on a natural morning of maturing — today's Yield Roll
+   is queued at once (only if today doesn't already have one), so the plant yields today. */
+function gardenMatureNow(t, pl){
+  if(!pl || pl.age >= GARDEN_MATURE_DAYS) return false;
+  gardenList(t);
+  pl.age = GARDEN_MATURE_DAYS;
+  const today = t.gardenDay || 0;
+  if(!pl.owed.some(o => o.day === today)) pl.owed.push({ day:today, mulch:pl.mulchOn || "" });
+  return true;
+}
+/* Resolve one queued Yield Roll. `face` = what the physical die showed, or null to roll it here. */
+function gardenRollYield(t, pl, idx, face, useBook){
+  const entry = pl.owed[idx]; if(!entry) return null;
+  const tier = gardenTierOf(pl.crop);
+  if(!tier){ toast(`\u{1F331} ${pl.crop} isn't on the Yield table — the GM decides what it gives`); return null; }
+  const soil = gardenSoil(t, pl, !!entry.mulch);
+  if(soil.value == null){ toast("\u{1F331} The GM hasn't set this plot's Soil Quality yet"); return null; }
+  const faces = parseInt(tier.dice.split("d")[1]) || 2;
+  const digital = face == null;
+  const f = digital ? 1 + Math.floor(Math.random() * faces) : Math.max(1, Math.min(faces, parseInt(face) || 1));
+  const book = useBook && gardenBookLeft(t) ? 1 : 0;
+  if(book){ t.uses = t.uses || {}; t.uses[gardenBookKey()] = 1; }
+  const total = f + tier.flat + soil.value + book;
+  const got = Math.max(0, total);
+  const bagName = gardenCropKind(pl.crop) === "apricorn"
+    ? apricornBagName(t, pl.crop.replace(/\s*Apricorns?$/i, "")) : pl.crop;
+  if(got) benchBagAdd(t, bagName, got);
+  pl.owed.splice(idx, 1);
+  pl.harvested = (pl.harvested || 0) + got;
+  pl.log.unshift({ day:entry.day, face:f, total, got, digital });
+  pl.log = pl.log.slice(0, 6);
+  logRoll({ kind:"dice", label:`Yield Roll · ${pl.crop}`, who:rollerName(t), headline:`\u{1F331} ${got}`,
+    lines:[ `${tier.dice} → [${f}]${digital ? "" : " (rolled at the table)"} ${gardenSgn(tier.flat)} ${gardenSgn(soil.value)} soil${book ? " +1 How Berries??" : ""} = ${total}`,
+            soil.parts.join(", "),
+            got ? `${got} × ${pl.crop} into the bag` : "Nothing came off the plant today" ] });
+  return { f, total, got, digital };
+}
+
+/* ---------- a plot in the ground, standing on the shared Map ----------
+   The plant itself stays on the Trainer's sheet — the token is only a marker pointing back at it
+   (`token.garden = {sheetId, plantId}`), and `pl.map = {mapId, tokenId}` points the other way.
+   It rides the HAZARD path (`hazard:"garden"`), so every "scenery doesn't fight" check on the board
+   — no HP bar, no statuses, no initiative, no mounting, no movement tally — already covers it.
+   Its Trainer (and the GM) can drag it; tapping it shows how the plant is doing, and the GM sets the
+   plot's Soil Quality right there on the board. A player only loads their own sheets, so someone
+   else's plot reads as just "a planted crop". */
+const isGardenToken = tk => !!(tk && tk.garden);
+function gardenTokenSource(token){
+  const row = (cloud.byId && token && token.garden) ? cloud.byId[token.garden.sheetId] : null;
+  const t = row && row.data && row.data.trainer;
+  const pl = (t && Array.isArray(t.garden)) ? t.garden.find(p => p && p.id === token.garden.plantId) || null : null;
+  return { row, t, pl };
+}
+function gardenTokenEditable(token){
+  const { row } = gardenTokenSource(token);
+  return !!cloud.isGM || (!!row && canEdit(row));
+}
+function gardenTokenSprite(token){
+  const { pl } = gardenTokenSource(token);
+  const crop = (pl && pl.crop) || token.label || "";
+  const sprouting = !!pl && pl.age < GARDEN_MATURE_DAYS;
+  return el("div",{class:"tk-hazard", title: crop + (sprouting ? " (sprouting)" : "")}, sprouting ? "\u{1F331}" : gardenCropIcon(crop));
+}
+/* the map a new plot token would go on: whatever this viewer is looking at */
+function gardenMapTarget(){ return (mode === "cloud" && cloud.mapMeta) ? currentMapForView() : null; }
+function gardenTokenOf(pl){
+  if(mode !== "cloud" || !pl || !pl.map) return null;
+  return mapTokensFor(pl.map.mapId).find(tk => tk.id === pl.map.tokenId) || null;
+}
+function gardenMapName(mapId){ const m = activeMapMeta().maps.find(x => x.id === mapId); return (m && m.name) || "the Map"; }
+/* drop the marker next to the Trainer's own token if they're on this map, else mid-view */
+function gardenPlaceToken(t, pl, map){
+  if(mode !== "cloud" || !map || !pl) return false;
+  const row = Object.values(cloud.byId || {}).find(r => r && r.data && r.data.trainer === t);
+  if(!row) return false;
+  ensureMapTokens();
+  const arr = cloud.mapTokens.data.byMap[map.id] || (cloud.mapTokens.data.byMap[map.id] = []);
+  const me = arr.find(tk => { const L = tk.link ? tokenLinked(tk) : null; return L && L.obj === t; });
+  let pos;
+  if(me){
+    const taken = new Set(arr.map(tk => Math.round(tk.x) + "," + Math.round(tk.y)));
+    const x0 = Math.round(me.x), y0 = Math.round(me.y);
+    pos = HAZARD_SPIRAL.slice(1).map(([dx, dy]) => ({ x:x0 + dx, y:y0 + dy })).find(p => !taken.has(p.x + "," + p.y))
+       || { x:x0 + 1, y:y0 };
+  } else pos = mapViewCenterCell(map, 1);
+  const tok = { id:uid(), hazard:"garden", size:1, x:pos.x, y:pos.y, label:pl.crop, garden:{ sheetId:row.id, plantId:pl.id } };
+  arr.push(tok);
+  pl.map = { mapId:map.id, tokenId:tok.id };
+  mapTokensSave();
+  if(currentTab === "map") renderMap();
+  return true;
+}
+function gardenRemoveToken(pl){
+  const tok = gardenTokenOf(pl);
+  if(tok){
+    const arr = cloud.mapTokens.data.byMap[pl.map.mapId];
+    const i = arr.indexOf(tok); if(i >= 0) arr.splice(i, 1);
+    mapTokensSave();
+    if(currentTab === "map") renderMap();
+  }
+  delete pl.map;
+}
+function openGardenTokenMenu(token, map){
+  const { row, t, pl } = gardenTokenSource(token);
+  const crop = (pl && pl.crop) || token.label || "Plant";
+  const body = el("div",{});
+  const sprouting = !!pl && pl.age < GARDEN_MATURE_DAYS;
+  body.append(el("div",{style:"text-align:center;font-size:38px;margin-bottom:4px"}, sprouting ? "\u{1F331}" : gardenCropIcon(crop)));
+  const reopen = () => { renderMap(); reopenTokenMenu(token, map); };
+  if(!pl){
+    body.append(el("div",{class:"small muted",style:"text-align:center;margin-bottom:10px"},
+      row ? "This plant isn't in its Trainer's Garden any more — it was uprooted. The marker can go."
+          : "A planted crop. Only the Trainer who planted it (and the GM) can see how it's doing."));
+  } else {
+    const tier = gardenTierOf(pl.crop);
+    const left = GARDEN_MATURE_DAYS - pl.age;
+    const soil = gardenSoil(t, pl, !!pl.mulchOn);
+    body.append(el("div",{class:"small",style:"text-align:center;margin-bottom:10px"},
+      `Planted by ${t.name || row.owner_name || "a Trainer"}${pl.place ? " — " + pl.place : ""}`));
+    const lines = el("div",{class:"small",style:"display:flex;flex-direction:column;gap:4px;margin-bottom:10px"});
+    lines.append(el("div",{style: sprouting ? "" : "color:var(--good)"},
+      sprouting ? `Sprouting — Mature in ${left} day${left === 1 ? "" : "s"}` : "Mature — gives a Yield Roll every day"));
+    if(tier) lines.append(el("div",{class:"muted"}, `Yield Roll ${tier.dice}${gardenSgn(tier.flat)} + Soil Quality`));
+    if(pl.owed.length) lines.append(el("div",{}, `\u{1F3B2} ${pl.owed.length} Yield Roll${pl.owed.length === 1 ? "" : "s"} waiting in the Trainer's \u{1F331} Garden tab`));
+    if(pl.mulchNext) lines.append(el("div",{class:"muted"}, `\u{1F342} ${pl.mulchNext} down for tomorrow`));
+    if(pl.harvested) lines.append(el("div",{class:"muted"}, `${pl.harvested} harvested so far`));
+    body.append(lines);
+    if(sprouting && cloud.isGM)
+      body.append(el("button",{class:"btn-secondary",style:"margin-bottom:10px",
+        title:"Skip the wait: the plant is Mature right now and today's Yield Roll is ready for its Trainer",
+        onclick:()=>{ gardenMatureNow(t, pl); cloudUpsert(row); reopen(); toast(`⏩ ${pl.crop} is Mature`); }},
+        "⏩ Mature now"));
+
+    if(cloud.isGM){
+      const s = el("select",{style:"padding:6px"});
+      s.append(el("option",{value:""}, "not decided yet"));
+      GARDEN_SOIL_OPTIONS.forEach(([v, lbl]) => s.append(el("option",{value:String(v)}, lbl)));
+      s.value = typeof pl.soil === "number" ? String(pl.soil) : "";
+      s.addEventListener("change", ()=>{ pl.soil = s.value === "" ? null : parseInt(s.value); cloudUpsert(row); reopen(); });
+      body.append(el("label",{class:"field",style:"margin-bottom:6px"}, el("span",{},"Soil Quality of this spot (GM)"), s));
+    }
+    body.append(el("div",{class:"small",style: soil.value == null ? "color:var(--warn)" : ""},
+      soil.value == null ? "⏳ The GM hasn't set this spot's Soil Quality yet — its Yield Rolls wait until they do."
+                         : `Soil today ${gardenSgn(soil.value)} (${soil.parts.join(", ")})`));
+    if(cloud.activeId === row.id)
+      body.append(el("button",{class:"btn-secondary",style:"margin-top:10px",
+        onclick:()=>{ closeModal(); trainerTab = "garden"; switchTab("trainer"); }}, "\u{1F331} Open the Garden"));
+  }
+  const foot = [];
+  if(gardenTokenEditable(token))
+    foot.push(el("button",{class:"btn-secondary danger",
+      title:"Takes the marker off the board — the plant itself keeps growing on the Trainer's sheet",
+      onclick:()=>{ closeModal(); if(pl){ delete pl.map; cloudUpsert(row); } removeToken(token, map); }},
+      "\u{1F5D1} Take off the Map"));
+  foot.push(el("button",{class:"btn-secondary",onclick:closeModal},"Close"));
+  modal({ title:`${sprouting ? "\u{1F331}" : gardenCropIcon(crop)} ${crop}`, bodyNode:body, guardMs:220, footNodes:foot });
+}
+
+/* ---------- planting ---------- */
+function openGardenPlant(t, c, commit){
+  const list = gardenList(t);
+  const growers = gardenGrowers(t);
+  const growersFree = growers - list.filter(pl => pl.where === "grower").length;
+  const planters = ((c && c.pokemon) || []).map(p => ({ p, cap:gardenPlanterOf(p) }))
+    .filter(x => x.cap && !list.some(pl => pl.where === "planter" && pl.monId === x.p.id));
+  const body = el("div",{});
+  const field = (label, node) => { body.append(el("label",{class:"field",style:"margin-bottom:8px"}, el("span",{},label), node)); return node; };
+
+  const whereSel = field("Where", el("select",{style:"padding:6px"}));
+  whereSel.append(el("option",{value:"grower", disabled: growersFree <= 0},
+    growers ? `\u{1FAB4} Portable Grower — ${Math.max(0, growersFree)} of ${growers} free · Soil +1`
+            : "\u{1FAB4} Portable Grower — none in your bag ($2000)"));
+  planters.forEach(x => whereSel.append(el("option",{value:"planter:" + x.p.id},
+    `\u{1F33F} ${gardenMonName(x.p)} — ${x.cap.label} · Soil +1`)));
+  whereSel.append(el("option",{value:"ground"}, "\u{1F4CD} In the ground — the GM sets the Soil Quality"));
+  whereSel.value = growersFree > 0 ? "grower" : planters.length ? "planter:" + planters[0].p.id : "ground";
+
+  const cropSel = field("Plant", el("select",{style:"padding:6px"}));
+  const placeWrap = el("div",{});
+  const placeIn = el("input",{type:"text",placeholder:"e.g. behind the Pokémon Center, Route 4 clearing",style:"padding:6px"});
+  placeWrap.append(el("label",{class:"field",style:"margin-bottom:8px"}, el("span",{},"Where exactly"), placeIn));
+  let soilSel = null;
+  if(gardenCanSetSoil()){
+    soilSel = el("select",{style:"padding:6px"});
+    soilSel.append(el("option",{value:""}, "not decided yet"));
+    GARDEN_SOIL_OPTIONS.forEach(([v, lbl]) => soilSel.append(el("option",{value:String(v)}, lbl)));
+    soilSel.value = "0";
+    placeWrap.append(el("label",{class:"field",style:"margin-bottom:8px"}, el("span",{},"Soil Quality (GM)"), soilSel));
+  } else {
+    placeWrap.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+      "The GM decides how good this ground is. Until they set its Soil Quality the plot still grows, but its Yield Rolls wait."));
+  }
+  const tokenMap = gardenMapTarget();
+  let tokenCb = null;
+  if(tokenMap){
+    tokenCb = el("input",{type:"checkbox"}); tokenCb.checked = true;
+    placeWrap.append(el("label",{style:"display:flex;gap:8px;align-items:center;margin-bottom:8px",
+      title:"A marker on the shared Map, next to your Trainer's token if they're on it. Drag it to the exact spot; tapping it shows the plant, and the GM sets the Soil there."},
+      tokenCb, `\u{1F4CD} Put a token on the Map (${tokenMap.name || "current map"})`));
+  }
+  body.append(placeWrap);
+  const seedWrap = el("div",{});
+  body.append(seedWrap);
+  const note = el("div",{class:"small muted",style:"margin-top:6px"});
+  body.append(note);
+
+  let seedCb = null;
+  const drawCrops = () => {
+    const w = whereSel.value;
+    const planter = w.startsWith("planter:") ? planters.find(x => "planter:" + x.p.id === w) : null;
+    const prev = cropSel.value;
+    cropSel.innerHTML = "";
+    let first = "";
+    GARDEN_TIERS.forEach(tier => {
+      const can = gardenCanGrow(t, tier);
+      const grp = el("optgroup",{label:`${tier.label} · Yield ${tier.dice}${gardenSgn(tier.flat)}${can.ok ? "" : " · \u{1F512} " + can.why}`});
+      tier.crops.forEach(crop => {
+        const kindOk = !planter || !planter.cap.kinds || planter.cap.kinds.includes(gardenCropKind(crop));
+        const ok = can.ok && kindOk;
+        grp.append(el("option",{value:crop, disabled:!ok}, crop + (kindOk ? "" : " — not for this Planter")));
+        if(ok && !first) first = crop;
+      });
+      cropSel.append(grp);
+    });
+    const prevOpt = [...cropSel.options].find(o => o.value === prev && !o.disabled);
+    cropSel.value = prevOpt ? prev : first;
+    placeWrap.hidden = w !== "ground";
+    drawSeed();
+  };
+  const drawSeed = () => {
+    seedWrap.innerHTML = ""; seedCb = null;
+    const crop = cropSel.value;
+    const tier = gardenTierOf(crop);
+    const have = crop ? inventoryQty(t, gardenCropKind(crop) === "apricorn" ? apricornBagName(t, crop.replace(/\s*Apricorn$/i, "")) : crop) : 0;
+    if(have > 0){
+      seedCb = el("input",{type:"checkbox"}); seedCb.checked = true;
+      seedWrap.append(el("label",{style:"display:flex;gap:8px;align-items:center;margin-bottom:6px"}, seedCb,
+        `Plant one of the ${have} in your bag`));
+    }
+    note.textContent = tier
+      ? `Matures in ${GARDEN_MATURE_DAYS} days (two 🌙 End the Days), then gives one Yield Roll of ${tier.dice}${gardenSgn(tier.flat)} + Soil Quality every day. The book doesn't say planting uses up a ${gardenCropKind(crop) === "apricorn" ? "Apricorn" : "Berry"} — untick above if your GM hands you the seed.`
+      : "Nothing you can grow yet — Green Thumb (Edge) unlocks Tier 1 Berries and Apricorns.";
+  };
+  whereSel.addEventListener("change", drawCrops);
+  cropSel.addEventListener("change", drawSeed);
+  drawCrops();
+
+  const go = el("button",{class:"btn-primary", onclick:()=>{
+    const crop = cropSel.value, w = whereSel.value;
+    if(!crop){ toast("\u{1F331} Pick something to plant"); return; }
+    if(w === "grower" && growersFree <= 0){ toast("\u{1F331} Every Portable Grower in your bag already holds a plant"); return; }
+    const pl = { id:uid(), crop, where: w.startsWith("planter:") ? "planter" : w, monId: w.startsWith("planter:") ? w.slice(8) : "",
+                 place: w === "ground" ? placeIn.value.trim() : "", soil:null, age:0, owed:[], log:[], harvested:0,
+                 plantedDay: t.gardenDay || 0, mulchNext:"", mulchOn:"" };
+    if(w === "ground" && soilSel && soilSel.value !== "") pl.soil = parseInt(soilSel.value);
+    if(seedCb && seedCb.checked)
+      consumeInventoryItem(t, gardenCropKind(crop) === "apricorn" ? apricornBagName(t, crop.replace(/\s*Apricorn$/i, "")) : crop);
+    list.push(pl);
+    const onMap = w === "ground" && tokenCb && tokenCb.checked && gardenPlaceToken(t, pl, tokenMap);
+    closeModal(); commit();
+    toast(`${gardenCropIcon(crop)} ${crop} planted${onMap ? " — its token is on the Map" : ""} — Mature after ${GARDEN_MATURE_DAYS} × \u{1F319} End the Day`);
+  }}, "\u{1F331} Plant");
+  modal({ title:"\u{1F331} Plant something", bodyNode:body,
+          footNodes:[ el("button",{class:"btn ghost",onclick:closeModal},"Cancel"), go ] });
+}
+
+/* ---------- the Garden sub-tab ---------- */
+function gardenCanSee(t){
+  if(!t) return false;
+  return isGM() || gardenList(t).length > 0 || trainerHasEdge(t, "Green Thumb") || hasFeatureLoose(t, "Top Tier Berries")
+      || gardenGrowers(t) > 0 || gardenBookRank(t) > 0;
+}
+function gardenTabLabel(t){
+  const n = gardenOwedCount(t);
+  return "\u{1F331} Garden" + (n ? ` · ${n} \u{1F3B2}` : "");
+}
+function gardenCard(t, c, commit){
+  const list = gardenList(t);
+  const card = el("div",{class:"card"}, el("h3",{},"\u{1F331} Garden",
+    el("span",{class:"muted small"},"Core p.280 · Apricorns, Berries & Herbs")));
+  card.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    `A plant is Mature ${GARDEN_MATURE_DAYS} days after planting, then gives one Yield Roll every day. The clock is ☀ End Day → \u{1F319} End the Day (a plain ☀ Rest doesn't move it). This sheet is on day ${t.gardenDay || 0}.`));
+
+  /* capacity + what can be grown */
+  const growers = gardenGrowers(t), inGrowers = list.filter(pl => pl.where === "grower").length;
+  const planters = ((c && c.pokemon) || []).filter(p => gardenPlanterOf(p));
+  const cap = [`\u{1FAB4} Portable Growers: ${inGrowers} / ${growers} in use`];
+  if(planters.length) cap.push(`\u{1F33F} Planters: ${planters.map(p => gardenMonName(p) + (list.some(pl => pl.where === "planter" && pl.monId === p.id) ? " (full)" : "")).join(", ")}`);
+  cap.push(`\u{1F342} Mulch in bag: ${inventoryQty(t, GARDEN_MULCH)}`);
+  if(gardenMaster(t)) cap.push("Top Tier Berries (Master): +1 Soil on everything");
+  card.append(el("div",{class:"small",style:"margin-bottom:8px"}, cap.join("  ·  ")));
+
+  const grow = el("div",{class:"small",style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:3px 14px;margin-bottom:10px"});
+  GARDEN_TIERS.forEach(tier => {
+    const can = gardenCanGrow(t, tier);
+    grow.append(el("div",{class:can.ok ? "" : "muted", title: tier.crops.join(", ")},
+      `${can.ok ? "✅" : "\u{1F512}"} ${tier.label} · ${tier.dice}${gardenSgn(tier.flat)}${can.ok ? "" : " — " + can.why}`));
+  });
+  card.append(grow);
+
+  /* actions */
+  const bar = el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;margin-bottom:6px"});
+  bar.append(el("button",{class:"btn-primary", onclick:()=>openGardenPlant(t, c, commit)}, "\u{1F331} Plant something"));
+  const rollable = list.filter(pl => pl.owed.length && gardenSoil(t, pl, false).value != null && gardenTierOf(pl.crop));
+  const owedN = rollable.reduce((n, pl) => n + pl.owed.length, 0);
+  if(owedN) bar.append(el("button",{class:"btn-secondary", title:"Roll every queued Yield Roll here, one after another (How Berries?? isn't spent by this — use a plant's own row for that)",
+    onclick:()=>{
+      let got = 0, n = 0;
+      rollable.forEach(pl => { while(pl.owed.length){ const r = gardenRollYield(t, pl, 0, null, false); if(!r) break; got += r.got; n++; } });
+      commit(); toast(`\u{1F3B2} ${n} Yield Roll${n === 1 ? "" : "s"} — ${got} item${got === 1 ? "" : "s"} into the bag`);
+    }}, `\u{1F3B2} Roll all ${owedN} digitally`));
+  if(gardenBookRank(t) >= 2){
+    const scraps = inventoryQty(t, GARDEN_SCRAP);
+    bar.append(el("button",{class:"btn-secondary", disabled: scraps <= 0,
+      title: scraps ? "How Berries?? Rank 2 — one Food Scrap becomes one Mulch" : "How Berries?? Rank 2 turns Food Scrap into Mulch — there's no Food Scrap in your bag (add a row by hand)",
+      onclick:()=>{ if(!consumeInventoryItem(t, GARDEN_SCRAP)) return; benchBagAdd(t, GARDEN_MULCH, 1); commit(); toast("\u{1F342} Food Scrap → Mulch"); }},
+      `♻ Mulch from Food Scrap (${scraps})`));
+  }
+  card.append(bar);
+
+  if(!list.length){
+    card.append(el("div",{class:"small muted",style:"margin-top:6px"}, "Nothing planted yet."));
+    return card;
+  }
+  const gardeners = ((c && c.pokemon) || []).filter(p => monHasAbility(p, "Gardener"));
+  list.forEach(pl => card.append(gardenPlantRow(t, c, pl, gardeners, commit)));
+  return card;
+}
+function gardenPlantRow(t, c, pl, gardeners, commit){
+  const tier = gardenTierOf(pl.crop);
+  const box = el("div",{style:"border-top:1px solid var(--line);padding:10px 0"});
+  const mon = pl.where === "planter" ? gardenMonById(c, pl.monId) : null;
+  const whereTxt = pl.where === "grower" ? "\u{1FAB4} Portable Grower"
+    : pl.where === "planter" ? `\u{1F33F} Planter: ${mon ? gardenMonName(mon) : "a Pokémon no longer on this sheet"}`
+    : `\u{1F4CD} In the ground${pl.place ? " — " + pl.place : ""}`;
+  const mature = pl.age >= GARDEN_MATURE_DAYS;
+  const left = GARDEN_MATURE_DAYS - pl.age;
+  const head = el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;align-items:center"},
+    el("strong",{}, `${gardenCropIcon(pl.crop)} ${pl.crop}`),
+    el("span",{class:"kv small"}, whereTxt),
+    el("span",{class:"kv small", style: mature ? "color:var(--good)" : ""},
+      mature ? "Mature · yielding" : `Sprouting · Mature in ${left} day${left === 1 ? "" : "s"}`),
+    pl.harvested ? el("span",{class:"small muted"}, `${pl.harvested} harvested so far`) : "",
+    (!mature && isGM()) ? el("button",{class:"btn-secondary",style:"padding:3px 10px",
+      title:"GM — skip the wait: the plant is Mature right now and today's Yield Roll is ready",
+      onclick:()=>{ gardenMatureNow(t, pl); commit(); toast(`⏩ ${pl.crop} is Mature — today's Yield Roll is ready`); }},
+      "⏩ Mature now") : "");
+  box.append(head);
+
+  /* soil */
+  const soilToday = gardenSoil(t, pl, !!pl.mulchOn);
+  const soilLine = el("div",{class:"small",style:"margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"});
+  if(pl.where === "ground" && gardenCanSetSoil()){
+    const s = el("select",{style:"padding:3px 6px;width:auto;max-width:100%", title:"GM only — how good this patch of ground is"});
+    s.append(el("option",{value:""}, "Soil: not decided yet"));
+    GARDEN_SOIL_OPTIONS.forEach(([v, lbl]) => s.append(el("option",{value:String(v)}, "Soil " + lbl)));
+    s.value = typeof pl.soil === "number" ? String(pl.soil) : "";
+    s.addEventListener("change", ()=>{ pl.soil = s.value === "" ? null : parseInt(s.value); commit(); });
+    soilLine.append(s);
+  }
+  soilLine.append(el("span",{class: soilToday.value == null ? "" : "muted", style: soilToday.value == null ? "color:var(--warn)" : ""},
+    soilToday.value == null ? "⏳ Waiting for the GM to set this plot's Soil Quality"
+      : `Soil today ${gardenSgn(soilToday.value)} (${soilToday.parts.join(", ")})`));
+  if(tier) soilLine.append(el("span",{class:"muted"}, `· Yield ${tier.dice}${gardenSgn(tier.flat)} + Soil`));
+  if(pl.where === "ground") soilLine.append(el("span",{class:"muted", title:"A Portable Grower protects its plant from the weather — a plot in the ground doesn't have one"}, "· exposed to weather"));
+  box.append(soilLine);
+
+  /* Mulch / Gardener / uproot */
+  const acts = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"});
+  if(pl.mulchNext) acts.append(el("span",{class:"small",style:"color:var(--good)"}, `\u{1F342} ${pl.mulchNext} down — +1 Soil on tomorrow's roll`));
+  else {
+    const mulch = inventoryQty(t, GARDEN_MULCH);
+    // Mulch works on "the following day" — on a plant that won't be yielding by then it's just thrown away
+    const tooYoung = pl.age + 1 < GARDEN_MATURE_DAYS;
+    acts.append(el("button",{class:"btn-secondary",style:"padding:3px 10px", disabled: mulch <= 0 || tooYoung,
+      title: tooYoung ? "It won't be Mature tomorrow, so there's no Yield Roll for Mulch to help — wait a day"
+        : mulch ? `Spend one Mulch — +1 Soil Quality for the following day (never above +2). ${mulch} in your bag.` : "No Mulch in your bag ($200)",
+      onclick:()=>{ if(!consumeInventoryItem(t, GARDEN_MULCH)) return; pl.mulchNext = "Mulch"; commit(); }}, `\u{1F342} Mulch (${mulch})`));
+    if(mature) gardeners.forEach(p => {
+      const key = useKey("ability", "Gardener"), leftG = usesLeft(p, key, 3);
+      acts.append(el("button",{class:"btn-secondary",style:"padding:3px 10px", disabled: leftG <= 0,
+        title:`${gardenMonName(p)}'s Gardener — as if Mulch had been applied (Daily x3, once per plant a day). ${leftG}/3 left today.`,
+        onclick:()=>{ p.uses = p.uses || {}; p.uses[key] = Math.min(3, (p.uses[key] || 0) + 1);
+                      pl.mulchNext = `Gardener (${gardenMonName(p)})`; commit(); }},
+        `\u{1F33F} Gardener · ${gardenMonName(p)} ${leftG}/3`));
+    });
+  }
+  if(pl.mulchOn) acts.append(el("span",{class:"small muted"}, `\u{1F342} ${pl.mulchOn} is in today's soil`));
+  acts.append(el("button",{class:"linkbtn",style:"margin-left:auto", title:"Pull the plant up — it's gone, and so are its waiting Yield Rolls",
+    onclick:()=>{ if(!confirm(`Uproot the ${pl.crop}?${pl.owed.length ? ` Its ${pl.owed.length} unrolled Yield Roll${pl.owed.length === 1 ? "" : "s"} go with it.` : ""}`)) return;
+      gardenRemoveToken(pl);
+      const i = t.garden.indexOf(pl); if(i >= 0) t.garden.splice(i, 1); commit(); }}, "uproot"));
+  box.append(acts);
+
+  /* a plot in the ground can stand on the shared Map */
+  if(pl.where === "ground" && mode === "cloud"){
+    const tok = gardenTokenOf(pl), target = gardenMapTarget();
+    const mapLine = el("div",{class:"inline small",style:"gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px"});
+    if(tok){
+      mapLine.append(el("span",{}, `\u{1F4CD} Token on ${gardenMapName(pl.map.mapId)}`));
+      mapLine.append(el("button",{class:"linkbtn", title:"Take the marker off the board — the plant keeps growing",
+        onclick:()=>{ gardenRemoveToken(pl); commit(); }}, "take off the Map"));
+    } else if(target){
+      mapLine.append(el("button",{class:"btn-secondary",style:"padding:3px 10px",
+        title:"Drop a marker for this plot on the shared Map — next to your Trainer's token if they're on it",
+        onclick:()=>{ if(gardenPlaceToken(t, pl, target)){ commit(); toast(`\u{1F4CD} ${pl.crop} is on ${target.name || "the Map"}`); } }},
+        `\u{1F4CD} Put a token on ${target.name || "the Map"}`));
+    }
+    if(mapLine.childNodes.length) box.append(mapLine);
+  }
+
+  /* the day's Yield Rolls, waiting */
+  pl.owed.forEach((entry, idx) => {
+    const soil = gardenSoil(t, pl, !!entry.mulch);
+    const row = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;padding:6px 8px;border-radius:9px;background:var(--panel-2)"});
+    if(!tier){ row.append(el("span",{class:"small"}, `Day ${entry.day}: not on the Yield table — the GM decides what this gives`)); box.append(row); return; }
+    const mod = soil.value == null ? null : tier.flat + soil.value;
+    row.append(el("span",{class:"small",style:"font-weight:700"}, `\u{1F3B2} Day ${entry.day}`));
+    row.append(el("span",{class:"small"}, soil.value == null
+      ? `Roll ${tier.dice}${gardenSgn(tier.flat)} + Soil (not set yet)`
+      : `Roll ${tier.dice}${gardenSgn(tier.flat)} ${soil.parts.map(p => p.replace(/^([+−-]\d+)\s*/, "$1 ")).join(" ")} → ${tier.dice}${mod ? gardenSgn(mod) : ""}`));
+    let bookCb = null;
+    if(gardenBookLeft(t)){
+      bookCb = el("input",{type:"checkbox"});
+      row.append(el("label",{class:"small",style:"display:flex;gap:4px;align-items:center",title:"How Berries?? Rank 1 — once per day, +1 to a Yield Roll"}, bookCb, "+1 How Berries??"));
+    }
+    const faces = parseInt(tier.dice.split("d")[1]) || 2;
+    const faceIn = el("input",{type:"number",min:1,max:faces,placeholder:"die",style:"width:58px;padding:3px 6px",
+      title:`Rolled a real d${faces}? Type what it showed and press ✓`});
+    const done = r => { if(!r) return; commit();
+      toast(`${gardenCropIcon(pl.crop)} ${pl.crop}: [${r.f}] → ${r.total} — ${r.got ? r.got + " into the bag" : "nothing today"}`); };
+    const blocked = soil.value == null;
+    row.append(el("button",{class:"btn-primary",style:"padding:3px 10px;margin-left:auto", disabled:blocked,
+      onclick:()=>done(gardenRollYield(t, pl, idx, null, bookCb && bookCb.checked))}, "\u{1F3B2} Roll"));
+    row.append(faceIn);
+    row.append(el("button",{class:"btn-secondary",style:"padding:3px 10px", disabled:blocked, title:"use the die I rolled at the table",
+      onclick:()=>{ const v = parseInt(faceIn.value); if(!(v >= 1 && v <= faces)){ toast(`Type the d${faces} face (1–${faces})`); return; }
+                    done(gardenRollYield(t, pl, idx, v, bookCb && bookCb.checked)); }}, "✓"));
+    box.append(row);
+  });
+
+  if(pl.log.length) box.append(el("div",{class:"small muted",style:"margin-top:6px"},
+    "Last harvests: " + pl.log.map(l => `day ${l.day} [${l.face}]→${l.got}${l.digital ? "" : "✋"}`).join(" · ")));
+  return box;
+}
+
+/* what the Kitchen sub-tab is called for this Trainer (a Chef cooks; everyone else Crafts) */
+function benchTabLabel(t){ return (trainerIsChef(t) || chefRecipesFor(t).length) ? "\u{1F373} Kitchen" : "\u{1F528} Crafting"; }
 function researchBenchRecipes(t){
   if(!t) return [];
   return [...APOTHECARY_RECIPES, ...ARTIFICER_RECIPES, ...CHEMISTRY_RECIPES].filter(r => hasResearch(t, r.feat));
@@ -28984,6 +29872,24 @@ function sageKnownBlessings(t){ return SAGE_BLESSINGS.filter(b => moveInList(t.m
 function sageLayBlessing(t, move){
   t.sageBlessings = [...sageBlessingList(t), { id:uid(), move, left:blessingActivations(move) }];
 }
+/* a Move with the Blessing Keyword (it sits in the Move's range line: "Blessing") */
+function isBlessingMove(m){ return !!(m && typeof m === "object" && moveHasKeyword(m, "blessing")); }
+/* Rolling a Blessing Move from the Trainer's attack window: spend its Scene use and lay it on the
+   field. A Blessing with no use left is NOT laid (the GM's 🔓 unlock waives that), so a mis-press
+   can't conjure a free fourth Reflect. Returns {laid, msg}. */
+function layBlessingFromRoll(t, m){
+  const info = freqInfo(trainerMoveFreq(t, m) || m.frequency);
+  if(freqTrackable(info)){
+    const key = useKey("move", m.name);
+    if(usesLeft(t, key, info.max) <= 0 && !t.unlocked)
+      return { laid:false, msg:`⚠ ${m.name} has no ${info.kind === "daily" ? "Daily" : "Scene"} uses left — the Blessing was not laid` };
+    t.uses = t.uses || {};
+    t.uses[key] = Math.min(info.max, (t.uses[key]||0) + 1);
+  }
+  sageLayBlessing(t, m.name);
+  const n = blessingActivations(m.name);
+  return { laid:true, msg:`✨ ${m.name} is on the field — ${n} activation${n === 1 ? "" : "s"}${freqTrackable(info) ? " · Scene use spent" : ""}` };
+}
 /* Sage's Benediction: an ally activates one of your Blessings → 1 AP, the matching bonus on them */
 function openBenediction(t, rec, rerender, persist){
   const def = SAGE_BLESSINGS.find(b => b.move === rec.move);
@@ -29054,7 +29960,7 @@ function sageCard(t, rerender, persist){
   const laid = sageBlessingList(t);
   card.append(el("div",{style:"font-weight:800;margin-top:10px"}, "✨ Your Blessings on the field"));
   if(!laid.length) card.append(el("div",{class:"small muted"}, known.length
-    ? "None laid. When you use one of your Blessing Moves, add it here — activating it for an ally counts it down and offers Sage's Benediction."
+    ? "None laid. Rolling one of your Blessing Moves spends its Scene use and lays it here by itself (the ＋ buttons below are for one used off the sheet) — activating it for an ally counts it down and offers Sage's Benediction."
     : "You don't know Reflect, Light Screen, Safeguard or Lucky Chant yet (Sacred Shield / Mystic Defense teach them)."));
   laid.forEach(rec => {
     const r = el("div",{class:"buff-row"});
@@ -30544,11 +31450,15 @@ function encStatusControl(p){
   det.append(el("summary",{},
     el("span",{style:"font-weight:700;color:var(--ink)"},"Status Conditions"),
     el("span",{class:"muted small",style:"margin-left:8px"}, active.length?active.map(s=>s.name).join(", "):"none"),
+    (()=>{ const on = statusVeilsFor(p).filter(x => !x.off);
+      return on.length ? el("span",{class:"small",style:"margin-left:8px;color:var(--bad);font-weight:700"},
+        `\u{1F6E1} ${[...new Set(on.map(x => x.veil.name))].join(", ")}`) : ""; })(),
     active.length?el("button",{class:"linkbtn",style:"float:right",title:"clears every Affliction — Death is permanent and stays",onclick:e=>{ e.preventDefault(); clearAllStatuses(p); saveEnc(); renderEncounters(); }},"clear"):""));
   const body=el("div",{style:"margin-top:6px"});
   // Boss Template (Running the Game p.488): Sleep/Frozen are replaced by Drowsy/Chilled — swap
   // which pair of chips shows rather than offering all four (a Boss never actually gets normal Sleep).
   const boss = isBoss(p);
+  const veils = statusVeilsFor(p);          // Aroma / Sweet / Pastel Veil keeping Afflictions off it
   [["persistent","Persistent · +10 catch"],["volatile","Volatile · +5"],["other","Other"]].forEach(([kind,label])=>{
     const chips=el("div",{class:"chips"});
     STATUS_DEFS.filter(s=>s.kind===kind).filter(s=>{
@@ -30565,9 +31475,10 @@ function encStatusControl(p){
           else if(!p.statuses.includes(s.key)){ p.statuses.push(s.key); if(s.key==="tagged" && clearOtherTags(p)) toast("The previous Tag is lost — only one foe at a time"); }
           if(s.key==="vortex") onVortexToggled(p, p.statuses.includes(s.key));
           saveEnc(); renderEncounters(); }},
-        s.name+(immune?" ⃠":"")+(block&&on?" 🔒":"")));
+        s.name+(immune?" ⃠":"")+(block&&on?" 🔒":"")+(!on && statusVeiledBy(p, s.key, veils).length ? " \u{1F6E1}" : "")));
     });
     body.append(el("div",{class:"small muted",style:"font-weight:700;margin:4px 0 2px"},label), chips);
+    { const vn = statusVeilNotes(p, null, kind, veils); if(vn) body.append(vn); }
   });
   const encHpLoss = n => {
     const max = ownerMaxHP(p);   // Trainer or Pokémon — the card mounts this for both
@@ -33163,6 +34074,114 @@ function tokenPressureSources(map, token){
     const L = tokenLinked(t);
     return !!(L && L.obj && hasCorePressure(L.obj));
   }).map(t => tokenHp(t).name);
+}
+/* ---- Status Veils: Abilities that keep Afflictions off everyone standing near the user ----------
+   Aroma Veil, Sweet Veil and Pastel Veil are the same shape as Pressure — "who is standing where" —
+   but they PROTECT rather than inflict, and applying a status is the GM's call. So nothing is refused
+   or lifted: every status panel (the Pokémon sheet, an encounter card, the Map's token menu) prints a
+   red reminder under the Afflictions the creature is currently shielded from, and says whose Veil it
+   is and how far away they stand.
+
+   The two Aroma Veils are different Abilities and are NOT read the same way:
+     Aroma Veil           "The user and all Pokemon and Trainers within 3 meters cannot BE Confused,
+                          Enraged, or Suppressed." — 3 m, friend or foe, and "cannot be" is a state:
+                          an Affliction already on someone who walks into range is covered too, so
+                          that case gets its own (grey) line instead of the red reminder.
+     Aroma Veil [Errata]  "The user and all ADJACENT Pokemon and Trainers cannot BECOME Confused,
+                          Enraged, or Suppressed." — adjacent only (1 m), and it only stops a NEW
+                          Affliction; one they already carry is untouched, so nothing is said about it.
+   Sweet Veil / Pastel Veil reach only the user and its ALLIES within 3 m ("are immune" / "cannot be").
+
+   Matched on the exact printed name (ownerAbilityNames keeps "[errata]"), for the same reason
+   hasCorePressure is: ownerHasAbility strips the suffix and would read both Aroma Veils as one.
+   Neutralizing Gas ("Defensive abilities do not function in that area", a Burst 1 round its user)
+   switches a Veil off when either the Veil's user or the creature it would cover stands in it. */
+const STATUS_VEILS = [
+  { ab:"aroma veil", name:"Aroma Veil", range:3, alliesOnly:false, verb:"be", holds:true,
+    blocks:["confused","enraged","suppressed"],
+    rule:"the user and all Pokémon and Trainers within 3 m cannot be Confused, Enraged or Suppressed" },
+  { ab:"aroma veil [errata]", name:"Aroma Veil [Errata]", range:1, alliesOnly:false, verb:"become", holds:false,
+    blocks:["confused","enraged","suppressed"],
+    rule:"the user and all adjacent Pokémon and Trainers cannot become Confused, Enraged or Suppressed" },
+  { ab:"sweet veil", name:"Sweet Veil", range:3, alliesOnly:true, verb:"be", holds:true,
+    blocks:["sleep","drowsy","badSleep"],
+    rule:"the user and allies within 3 m are immune to Sleep" },
+  { ab:"pastel veil", name:"Pastel Veil", range:3, alliesOnly:true, verb:"be", holds:true,
+    blocks:["poisoned","badlyPoisoned"],
+    rule:"the user and allies within 3 m cannot be Poisoned or Badly Poisoned" },
+];
+/* is this token standing inside somebody else's Neutralizing Gas (a Burst 1 round its user)? */
+function inNeutralizingGas(map, token){
+  return mapTokensFor(map.id).some(t => {
+    if(t.id === token.id || t.gmHidden || tokenTileGap(t, token) > 1 || tokenIsDown(t)) return false;
+    const L = t.link ? tokenLinked(t) : null;
+    return !!(L && L.obj && ownerAbilityNames(L.obj).some(a => a === "neutralizing gas" || a.startsWith("neutralizing gas ")));
+  });
+}
+/* Every Veil covering creature `o` right now → [{veil, who, self, dist, off}]. Its own Veil needs no
+   Map; anyone else's is read off the board, so it only appears while both stand on the shared Map. */
+function statusVeilsFor(o){
+  if(!o) return [];
+  const out = [];
+  let map = null, me = null;
+  try{
+    if(mode === "cloud"){ me = tokenForOwner(o); map = me ? (currentMapForView() || activeMap()) : null; }
+  }catch(e){ me = null; map = null; }
+  const meGassed = (map && me) ? inNeutralizingGas(map, me) : false;
+  const mine = new Set(ownerAbilityNames(o));
+  STATUS_VEILS.forEach(v => { if(mine.has(v.ab)) out.push({ veil:v, who:ownerLabel(o), self:true, dist:0, off:meGassed }); });
+  if(map && me){
+    mapTokensFor(map.id).forEach(t => {
+      if(t.id === me.id || t.gmHidden || tokenIsDown(t)) return;
+      const L = t.link ? tokenLinked(t) : null;
+      if(!L || !L.obj || L.missing || L.obj === o) return;
+      const names = new Set(ownerAbilityNames(L.obj));
+      const veils = STATUS_VEILS.filter(v => names.has(v.ab));
+      if(!veils.length) return;
+      const gap = tokenTileGap(t, me);
+      veils.forEach(v => {
+        if(gap > v.range) return;
+        if(v.alliesOnly && tokensAreFoes(t, me)) return;          // Sweet / Pastel Veil: allies only
+        out.push({ veil:v, who:tokenHp(t).name, self:false, dist:gap, off: meGassed || inNeutralizingGas(map, t) });
+      });
+    });
+  }
+  return out;
+}
+/* the status keys a Veil covers that actually exist for THIS creature (a Boss sleeps as Drowsy) */
+function veilKeysFor(o, veil){
+  const boss = (typeof isBoss === "function") && o && o.species !== undefined && isBoss(o);
+  return veil.blocks.filter(k => !(k === "sleep" && boss) && !(k === "drowsy" && !boss));
+}
+/* is status `key` currently kept off `o` by a working Veil? — for the " 🛡" on the chip itself */
+function statusVeiledBy(o, key, veils){
+  return (veils || statusVeilsFor(o)).filter(x => !x.off && veilKeysFor(o, x.veil).includes(key));
+}
+/* The reminder lines for one group of status chips (persistent / volatile / other) — drawn right
+   under that group. `active` is the list of keys the creature carries (the Map reads a token's). */
+function statusVeilNotes(o, active, kind, veils){
+  veils = veils || statusVeilsFor(o);
+  if(!veils.length) return null;
+  const has = new Set(active || (o && o.statuses) || []);
+  const inKind = k => { const s = STATUS_DEFS.find(d => d.key === k); return !!s && (!kind || s.kind === kind); };
+  const box = el("div",{style:"margin:4px 0 2px"});
+  veils.forEach(x => {
+    const keys = veilKeysFor(o, x.veil).filter(inKind);
+    if(!keys.length) return;
+    const where = x.self ? "its own Ability" : `${x.who}, ${x.dist === 0 ? "sharing its square" : `${x.dist} m away`}`;
+    if(x.off){
+      box.append(el("div",{class:"small muted"},
+        `${x.veil.name} (${where}) is switched off — Neutralizing Gas stops Defensive Abilities within 1 m.`));
+      return;
+    }
+    const free = keys.filter(k => !has.has(k)), held = keys.filter(k => has.has(k));
+    if(free.length) box.append(el("div",{class:"small",style:"color:var(--bad);font-weight:700"},
+      `\u{1F6E1} ${x.veil.name} (${where}): can't ${x.veil.verb} ${free.map(statusName).join(" / ")} — ${x.veil.rule}.`));
+    /* only the "cannot be" printings reach an Affliction that is already there */
+    if(held.length && x.veil.holds) box.append(el("div",{class:"small muted"},
+      `${x.veil.name} (${where}): "cannot be" also covers the ${held.map(statusName).join(" / ")} already on it — it does nothing while it stays in range.`));
+  });
+  return box.childNodes.length ? box : null;
 }
 /* Apply both to the board. Only the GM writes (one authority, no two clients fighting over the same
    chip), and only when something actually changed. `autoFlanked` / `autoPressure` remember which
@@ -39403,6 +40422,10 @@ function tokenHp(token){
     if(isZoneToken(token)){ const z=zoneDef(token);
       return { cur:1, max:1, editable:cloud.isGM, name:z.name, sprite:zoneSprite(token),
                unlinked:false, kind:"zone", hideName:true }; }
+    // a Garden plot: hazard-shaped scenery, but its own Trainer may drag it (see GARDENING)
+    if(isGardenToken(token)){ const { pl } = gardenTokenSource(token);
+      return { cur:1, max:1, editable:gardenTokenEditable(token), name:(pl && pl.crop) || token.label || "Plant",
+               sprite:gardenTokenSprite(token), unlinked:false, kind:"hazard", hideName:false }; }
     if(isHazardToken(token)){ const h=hazardDef(token);
       return { cur:1, max:1, editable:cloud.isGM, name:h.name, sprite:hazardSprite(token),
                unlinked:false, kind:"hazard", hideName:false }; }
@@ -42813,6 +43836,7 @@ function nameHideToggle(token){
 function openTokenMenu(token, map){
   if(isShopToken(token)) return openShopTokenMenu(token, map);
   if(isBoatToken(token)) return openBoatMenu(token, map);
+  if(isGardenToken(token)) return openGardenTokenMenu(token, map);   // before hazards — it rides that path
   if(isHazardToken(token)) return openHazardMenu(token, map);
   if(isZoneToken(token)) return openZoneMenu(token, map);
   const info = tokenHp(token);
@@ -43040,6 +44064,9 @@ function openTokenMenu(token, map){
       statusWrap.innerHTML = "";
       statusWrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"Status effects"));
       const active = tokenStatusKeys(token);
+      const VL0 = token.link ? tokenLinked(token) : null;
+      const veilObj = (VL0 && VL0.obj && !VL0.missing) ? VL0.obj : null;
+      const veils = veilObj ? statusVeilsFor(veilObj) : [];   // Aroma / Sweet / Pastel Veil
       [["persistent","Persistent"],["volatile","Volatile"],["other","Other"]].forEach(([kind,label])=>{
         const defs = STATUS_DEFS.filter(s=>s.kind===kind).filter(s=>statusPickable(s) || active.includes(s.key));
         if(!defs.length) return;
@@ -43070,9 +44097,10 @@ function openTokenMenu(token, map){
                 if(on) vo.vortexTurn = 1; else delete vo.vortexTurn;
               }
               await setTokenStatuses(token, cur); drawStatuses();
-            }}, s.name));
+            }}, s.name + (!on && veilObj && statusVeiledBy(veilObj, s.key, veils).length ? " \u{1F6E1}" : "")));
         });
         statusWrap.append(chips);
+        if(veilObj){ const vn = statusVeilNotes(veilObj, active, kind, veils); if(vn) statusWrap.append(vn); }
       });
       // Confusion's self-damage needs the creature's Attack/Sp.Atk, so it only shows on a linked token
       const LS = token.link ? tokenLinked(token) : null;
@@ -44676,6 +45704,7 @@ function renderMap(){
     if(t.gmHidden) return false;                                    // GM has hidden this token from players entirely
     if(cloud.isGM || !map.fogOn) return true;
     if(t.link && ownsRow(cloud.byId[t.link.sheetId])) return true;   // always see your own
+    if(t.garden && ownsRow(cloud.byId[t.garden.sheetId])) return true;   // …including the plot you planted
     return fog.has(Math.round(t.x)+","+Math.round(t.y));
   };
 
