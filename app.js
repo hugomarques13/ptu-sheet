@@ -5340,6 +5340,8 @@ function normTrainer(t){
   if(!Array.isArray(t.gifts)) t.gifts = [];                        // Legendary Gifts (Blessed and the Damned)
   if(!Array.isArray(t.cards)) t.cards = [];                        // Arcana Deck cards this Trainer is holding
   if(!Array.isArray(t.moneyLog)) t.moneyLog = [];                  // every dollar in or out, oldest first (see moneyChange)
+  if(!t.scrap || typeof t.scrap!=="object" || Array.isArray(t.scrap)) t.scrap = {};   // Scrap by category, in $ (see scrapChange)
+  if(!Array.isArray(t.scrapLog)) t.scrapLog = [];
   // migrate ranged weapons saved with the old (wrong) melee-copied stats — only when they still
   // match the old preset exactly, so hand-tuned weapons are left alone (Core p.286).
   t.weapons.forEach(w=>{
@@ -14902,6 +14904,7 @@ function catchDCModal(p, opts={}){
   wrap.append(out);
   redraw();
   if(!showRoll){
+    if(isGM()) wrap.append(catchResolveSection(p));      // which Ball, whose bag, and the salvage Scrap
     modal({title:`🎯 Catch DC — ${p.nickname||getSpecies(p.species)?.name||"Pokémon"}`, bodyNode:wrap,
       footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Close")]});
     return;
@@ -27558,12 +27561,16 @@ function openChefCook(t, rec, commit){
     const item = pickSel ? pickSel.value : (picks[0] || "");
     return typeof rec.cost === "function" ? rec.cost(t, item) : (rec.cost || 0);
   };
+  /* `rec.scrap`: the price is paid in that category's Scrap ONLY — cash can't stand in for it */
+  const scrapCat = rec.scrap ? scrapCatDef(rec.scrap) : null;
+  const purse = () => scrapCat ? scrapOf(t, scrapCat.key) : moneyOf(t);
+  const purseName = scrapCat ? ` ${scrapCat.name} Scrap` : "";
   const priceLine = el("div",{class:"small",style:"margin:8px 0;font-weight:700"});
   const drawPrice = () => {
     const n = count(), p = priceOf() * n;
-    priceLine.textContent = (p ? `Cost ${fmtMoney(p)}${n>1?` (${n} × ${fmtMoney(priceOf())})`:""}` : "No money cost")
-      + ` · you have ${fmtMoney(moneyOf(t))}`;
-    priceLine.style.color = p > moneyOf(t) ? "var(--bad)" : "";
+    priceLine.textContent = (p ? `Cost ${fmtMoney(p)}${purseName}${n>1?` (${n} × ${fmtMoney(priceOf())})`:""}` : (scrapCat ? "No Scrap cost" : "No money cost"))
+      + ` · you have ${fmtMoney(purse())}${purseName}`;
+    priceLine.style.color = p > purse() ? "var(--bad)" : "";
   };
   drawPrice(); if(pickSel) pickSel.addEventListener("change", drawPrice);
   if(countIn) countIn.addEventListener("input", drawPrice);
@@ -27596,7 +27603,7 @@ function openChefCook(t, rec, commit){
         if(why){ toast(why); return; }
       }
       if(rec.pick && !item){ toast("Nothing to make"); return; }
-      if(price > moneyOf(t)){ toast(`Needs ${fmtMoney(price)}`); return; }
+      if(price > purse()){ toast(`Needs ${fmtMoney(price)}${purseName}`); return; }
       /* take the ingredients first — if any of them is short, nothing has been spent yet */
       const take = bundle ? bundle.take.slice() : [];
       if(rec.two) take.push([d1.value,1],[d2.value,1]);
@@ -27608,7 +27615,8 @@ function openChefCook(t, rec, commit){
       if(n > 1) take.splice(0, take.length, ...take.map(([nm,q]) => [nm, q*n]));   // fresh pairs — bundle.take must not be scaled in place
       for(const [nm,q] of take) if(inventoryQty(t, nm) < q){ toast(`Not enough ${nm} — ${q} needed, ${inventoryQty(t, nm)} in the bag`); return; }
       take.forEach(([nm,q]) => { for(let i=0;i<q;i++) consumeInventoryItem(t, nm); });
-      if(price) moneyChange(t, -price, `${rec.bench || "Chef"} — ${rec.name}`, {kind:"buy"});
+      if(price && scrapCat) scrapChange(t, scrapCat.key, -price, `Crafted ${n>1?`${n}× `:""}${item || rec.name}`, {kind:"craft"});
+      else if(price) moneyChange(t, -price, `${rec.bench || "Chef"} — ${rec.name}`, {kind:"buy"});
 
       const made = rec.two ? (twoSpec ? twoSpec.result(d1.value, d2.value) : `Dumpling (${d1.value} + ${d2.value})`)
                  : rec.result ? rec.result(t, item, bundle)
@@ -27620,7 +27628,7 @@ function openChefCook(t, rec, commit){
       if(rec.bench) benchBagAdd(t, made, yieldQty, rec.name);
       else chefBagAdd(t, made, yieldQty, taste);
       commit(); closeModal();
-      toast(`${rec.icon || "🍳"} ${rec.bench ? "Made" : "Cooked"} ${yieldQty>1?`${yieldQty}× `:""}${made}${taste?` · ${taste} Taste`:""}${price?` · −${fmtMoney(price)}`:""}`);
+      toast(`${rec.icon || "🍳"} ${rec.bench ? "Made" : "Cooked"} ${yieldQty>1?`${yieldQty}× `:""}${made}${taste?` · ${taste} Taste`:""}${price?` · −${fmtMoney(price)}${purseName}`:""}`);
     }}, rec.verb || "🍳 Cook"),
   ]});
 }
@@ -29142,16 +29150,16 @@ const POKEBALL_RECIPES = [
     result: (t, item, bundle) => bundle.ball,
     blurb:"One Apricorn makes one Ball of its colour: Red → Level, Yellow → Moon, Blue → Lure, Green → Friend, Pink → Love, White → Fast, Black → Heavy. No money — just the Apricorn." },
   { name:"Basic Balls", edge:"Basic Balls", bench:"Poké Ball crafting", icon:"\u{1F528}", verb:"\u{1F528} Craft",
-    qty:1, batch:true, tool:POKEBALL_TOOL,
+    qty:1, batch:true, tool:POKEBALL_TOOL, scrap:"pokeballs",
     actionText:"Crafting needs access to a Poké Ball Tool Box.",
     pick:() => ["Basic Ball","Great Ball"],
     cost:(t, item) => item === "Great Ball" ? 175 : 100,
-    blurb:"A Basic Ball for $100 or a Great Ball for $175 (shop price $250 / $400)." },
+    blurb:"A Basic Ball for $100 or a Great Ball for $175 of Poké Ball Scrap — not cash (shop price $250 / $400)." },
   { name:"Specialty Balls", feat:"Poké Ball Crafter", bench:"Poké Ball crafting", icon:"\u{1F528}", verb:"\u{1F528} Craft",
-    qty:1, cost:700, batch:true, tool:POKEBALL_TOOL,
+    qty:1, cost:700, batch:true, tool:POKEBALL_TOOL, scrap:"pokeballs",
     actionText:"Crafting needs access to a Poké Ball Tool Box.",
     pick:() => ["Dusk Ball","Dive Ball","Heal Ball","Luxury Ball","Net Ball","Nest Ball","Quick Ball","Repeat Ball","Timer Ball"],
-    blurb:"$700 — a Dusk, Dive, Heal, Luxury, Net, Nest, Quick, Repeat or Timer Ball." },
+    blurb:"$700 of Poké Ball Scrap — a Dusk, Dive, Heal, Luxury, Net, Nest, Quick, Repeat or Timer Ball." },
 ];
 function pokeBallRecipesFor(t){
   if(!t) return [];
@@ -29164,8 +29172,10 @@ function pokeBallBenchCard(t, commit){
     el("span",{class:"muted small"},"Core · Crafting Edges")));
   const box = inventoryQty(t, POKEBALL_TOOL) > 0;
   card.append(el("div",{class:"small",style:"margin-bottom:8px"+(box?"":";color:var(--bad)")},
-    box ? `\u2705 Poké Ball Tool Box in your bag · ${fmtMoney(moneyOf(t))} in hand. Crafted Balls land in Inventory & Bio.`
+    box ? `\u2705 Poké Ball Tool Box in your bag. Crafted Balls land in Inventory & Bio.`
         : `\u26A0\uFE0F No Poké Ball Tool Box in your bag ($500 at most Poké Marts). You can still craft if you have access to someone else's — the dialog asks.`));
+  if(rows.some(r => r.scrap)) card.append(scrapBalanceLine(t, "pokeballs",
+    "Basic, Great and Specialty Balls are paid in Poké Ball Scrap only, never cash. The GM hands Scrap out as loot, and a Ball that fails a capture salvages for 25% of its price."));
   rows.forEach(r => {
     const row = el("div",{class:"buff-row"});
     row.append(el("div",{style:"flex:1;min-width:0"}, el("div",{class:"buff-name"}, r.name), el("div",{class:"small muted"}, r.blurb)));
@@ -29182,6 +29192,242 @@ function pokeBallBenchCard(t, commit){
     card.append(el("div",{class:"small muted",style:"margin-top:8px"},
       "Poké Ball Repair: roll Technology Education against DC 15 at the table — success fixes a Ball that broke on a failed capture, failure breaks it for good."));
   return card;
+}
+
+/* ═══════════════════ SCRAP (Core p.284 — "Scrap and Crafting Items") ═══════════════════
+   "Scrap is money that can only be used to pay for a certain category of Crafting Edge or Feature."
+   Table ruling: crafted Poké Balls are paid for in Poké Ball Scrap ONLY — a recipe's `scrap` key
+   makes openChefCook take its price from here and never from the money ledger (Apricorn Balls cost
+   no money, so they don't need any). The GM gives Scrap out two ways:
+     · the ⚙ Scrap card in Shops & $ — plain loot, to one sheet;
+     · the 🎯 Catch DC popup — the thrower's Ball leaves their bag either way, and one that broke
+       free salvages SCRAP_FAILED_CATCH of its book price to the table's crafter (a house rule).
+   `scrapChange` is the only writer of `t.scrap`; each movement lands in `t.scrapLog`, oldest first
+   with ids like moneyLog, so an entry uploads as one append op instead of the whole history. */
+const SCRAP_CATS = [ { key:"pokeballs", name:"Poké Ball", icon:"⚙" } ];
+const SCRAP_LOG_MAX = 120;
+const SCRAP_FAILED_CATCH = 0.25;
+const SCRAP_KIND_ICON = { loot:"\u{1F381}", salvage:"♻", craft:"\u{1F528}", gm:"\u{1F3A9}" };
+const SCRAP_SALVAGER_KEY = "ptu_scrap_salvager";
+const scrapLoot = { to:"", amt:"", why:"" };        // the GM card's half-typed award (not synced)
+function scrapCatDef(key){ return SCRAP_CATS.find(c => c.key === key) || SCRAP_CATS[0]; }
+function scrapOf(t, cat){ const n = parseFloat(t && t.scrap && t.scrap[cat]); return (isFinite(n) && n > 0) ? n : 0; }
+function scrapLogOf(t){ return Array.isArray(t.scrapLog) ? t.scrapLog : (t.scrapLog = []); }
+/* Move Scrap and record it. Returns the delta ACTUALLY applied (never below $0), like moneyChange. */
+function scrapChange(t, cat, delta, why, opts={}){
+  if(!t) return 0;
+  const before = scrapOf(t, cat);
+  const after  = Math.max(0, Math.round((before + (Number(delta)||0)) * 100) / 100);
+  const d = Math.round((after - before) * 100) / 100;
+  if(!d) return 0;
+  if(!t.scrap || typeof t.scrap !== "object" || Array.isArray(t.scrap)) t.scrap = {};
+  t.scrap[cat] = after;
+  const log = scrapLogOf(t);
+  log.push({ id:uid(), at:Date.now(), cat, delta:d, after,
+             why:String(why||"").trim().slice(0,140), kind:opts.kind||"gm",
+             by:(opts.by!=null ? opts.by : moneyActor()) });
+  if(log.length > SCRAP_LOG_MAX) log.splice(0, log.length - SCRAP_LOG_MAX);
+  return d;
+}
+function scrapLogRow(e, who){
+  const up = (e.delta||0) > 0, cat = scrapCatDef(e.cat);
+  const row = el("div",{class:"money-row"});
+  row.append(el("div",{class:"money-amt "+(up?"up":"down"),title:`${cat.name} Scrap afterwards: ${fmtMoney(e.after)}`},
+    (up?"＋":"－") + fmtMoney(Math.abs(e.delta||0))));
+  row.append(el("div",{style:"flex:1;min-width:0"},
+    el("div",{class:"money-why"}, SCRAP_KIND_ICON[e.kind]||"", " ", (who ? el("b",{},who+" — ") : ""), e.why || (up?"Scrap in":"Scrap out")),
+    el("div",{class:"small muted"}, new Date(e.at||0).toLocaleString(), e.by ? ` · by ${e.by}` : "",
+      ` · ${cat.name} Scrap left ${fmtMoney(e.after)}`)));
+  return row;
+}
+function openScrapLedger(t, whoseName, onSave){
+  const body = el("div",{});
+  SCRAP_CATS.forEach(c => body.append(el("div",{class:"money-balance"}, fmtMoney(scrapOf(t, c.key)),
+    el("span",{class:"small muted"},` ${c.name} Scrap`))));
+  const box = el("div",{class:"money-log"});
+  const log = scrapLogOf(t);
+  if(!log.length) box.append(el("div",{class:"small muted"},"nothing recorded yet."));
+  log.slice().reverse().forEach(e => box.append(scrapLogRow(e)));
+  body.append(box);
+  modal({ title:(whoseName ? whoseName+" — " : "")+"⚙ Scrap ledger", bodyNode:body, footNodes:[
+    log.length && isGM() ? el("button",{class:"btn ghost danger",onclick:()=>{
+      if(!confirm("Clear this Scrap history? The balance is kept — only the history goes.")) return;
+      t.scrapLog = []; (onSave||save)(); closeModal(); render();
+    }},"Clear history") : "",
+    el("button",{class:"btn-primary",onclick:closeModal},"Close"),
+  ]});
+}
+/* the balance on a crafting card — read-only for players; the GM moves it from Shops & $ */
+function scrapBalanceLine(t, cat, note){
+  const c = scrapCatDef(cat);
+  const box = el("div",{style:"margin:0 0 10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px"});
+  box.append(el("div",{class:"inline",style:"gap:8px;justify-content:space-between;flex-wrap:wrap"},
+    el("span",{style:"font-weight:800"}, `${c.icon} ${fmtMoney(scrapOf(t, c.key))} ${c.name} Scrap`),
+    el("button",{class:"linkbtn",onclick:()=>openScrapLedger(t, "", save)}, `📜 Ledger (${scrapLogOf(t).length})`)));
+  if(note) box.append(el("div",{class:"small muted",style:"margin-top:4px"}, note));
+  return box;
+}
+
+/* Every character sheet the GM can hand Scrap to or take a Ball from. `persist` writes THAT sheet
+   (the GM editing someone else's row must upsert it — plain save() only writes the active one), and
+   `sheet()` re-reads the live object at click time: a realtime reconcile can swap row.data under an
+   open dialog, and a write into the stale copy would silently vanish. */
+function scrapSheets(){
+  if(mode === "cloud"){
+    return moneySheetRows().filter(r => !charArchived(r.data)).map(r => ({
+      id:r.id, name:paydayWho(r),
+      sheet:() => (cloud.byId[r.id] || {}).data || null,
+      persist:() => cloudUpsert(cloud.byId[r.id] || r).then(ok => { if(!ok) toast(`⚠ ${paydayWho(r)} didn't sync — it'll reconcile on the next change`); }),
+      active:() => r.id === cloud.activeId,
+    }));
+  }
+  return (state.characters || []).filter(c => !charArchived(c)).map(c => ({
+    id:c.id, name:c.name || (c.trainer && c.trainer.name) || "unnamed sheet",
+    sheet:() => (state.characters || []).find(x => x.id === c.id) || null,
+    persist:() => save(), active:() => c.id === state.activeId,
+  }));
+}
+const scrapFold = s => String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase();
+/* who salvages failed Balls: the GM's last pick on this device, else Lázaro, else whoever can craft Balls */
+function scrapDefaultSalvager(list){
+  let saved = ""; try { saved = localStorage.getItem(SCRAP_SALVAGER_KEY) || ""; } catch(e){}
+  const named = s => { const c = s.sheet(); return scrapFold(`${s.name} ${c && c.name} ${c && c.trainer && c.trainer.name}`); };
+  return list.find(s => s.id === saved)
+      || list.find(s => named(s).includes("lazaro"))
+      || list.find(s => { const c = s.sheet(); return c && pokeBallRecipesFor(c.trainer).some(r => r.scrap); })
+      || list[0] || null;
+}
+/* the Poké Balls in a bag, one entry per distinct Ball */
+function bagPokeBalls(t){
+  const seen = new Map();
+  ((t && t.inventory) || []).forEach(it => {
+    const n = String(it.name||"").trim();
+    if(!n || (parseInt(it.qty)||0) <= 0 || /pester/i.test(n)) return;
+    if(bookCatOf(n) !== "Poké Ball" && !/\bball$/i.test(n)) return;
+    const k = normItemName(n);
+    if(!seen.has(k)) seen.set(k, { name:n, qty:inventoryQty(t, n), price:bookPriceOf(n) });
+  });
+  return [...seen.values()];
+}
+
+/* GM · Shops & $: hand out Scrap as loot */
+function scrapLootCard(){
+  const card = el("div",{class:"card"});
+  card.append(el("h3",{},"⚙ Scrap", el("span",{class:"small muted"},"Core p.284")));
+  card.append(el("div",{class:"small muted",style:"margin:-4px 0 10px"},
+    "Money that only pays for one kind of crafting. Poké Ball Scrap is the only thing crafted Poké Balls can be paid with. Failed captures add to it automatically from the 🎯 Catch DC popup."));
+  const list = scrapSheets();
+  if(!list.length){ card.append(el("span",{class:"muted small"},"no character sheets in this campaign yet.")); return card; }
+  const cat = SCRAP_CATS[0];
+  if(!list.some(s => s.id === scrapLoot.to)) scrapLoot.to = (scrapDefaultSalvager(list) || list[0]).id;
+  const to = el("select",{style:"padding:6px"});
+  list.forEach(s => to.append(el("option",{value:s.id, selected:s.id === scrapLoot.to}, s.name)));
+  to.addEventListener("change",()=>{ scrapLoot.to = to.value; });
+  const amt = el("input",{type:"number",min:0,step:1,placeholder:"$ of Scrap",style:"width:110px"});
+  amt.value = scrapLoot.amt; amt.addEventListener("input",()=>{ scrapLoot.amt = amt.value; });
+  const why = el("input",{type:"text",placeholder:"where from? (shown in their ledger)",style:"flex:1;min-width:160px"});
+  why.value = scrapLoot.why; why.addEventListener("input",()=>{ scrapLoot.why = why.value; });
+  const go = sign => {
+    const s = list.find(x => x.id === scrapLoot.to), c = s && s.sheet();
+    const a = Math.abs(parseFloat(scrapLoot.amt)||0);
+    if(!c){ toast("Pick who gets it"); return; }
+    if(!a){ toast("Type an amount first"); return; }
+    const d = scrapChange(c.trainer, cat.key, sign*a, scrapLoot.why.trim() || (sign > 0 ? "Loot" : "Taken by the GM"), {kind: sign > 0 ? "loot" : "gm"});
+    if(!d){ toast("Nothing to take — they have no Scrap"); return; }
+    s.persist();
+    scrapLoot.amt = ""; scrapLoot.why = "";
+    toast(`${sign > 0 ? "Gave" : "Took"} ${fmtMoney(Math.abs(d))} ${cat.name} Scrap ${sign > 0 ? "to" : "from"} ${s.name} ✓`);
+    render();
+  };
+  card.append(el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;margin-bottom:10px"}, to, amt, why,
+    el("button",{class:"btn-primary",style:"padding:6px 12px",onclick:()=>go(1)},"＋ Give"),
+    el("button",{class:"btn ghost danger",style:"padding:6px 12px",onclick:()=>go(-1)},"－ Take")));
+  list.forEach(s => {
+    const c = s.sheet(); if(!c) return;
+    const line = el("div",{class:"moveslot"});
+    const last = scrapLogOf(c.trainer).slice(-1)[0];
+    line.append(el("div",{style:"flex:1;min-width:0"},
+      el("div",{style:"font-weight:700"}, s.name),
+      el("div",{class:"small muted"}, last ? `last: ${last.delta>0?"＋":"－"}${fmtMoney(Math.abs(last.delta))} · ${last.why}` : "no Scrap yet")),
+      el("div",{style:"font-weight:800;white-space:nowrap"}, fmtMoney(scrapOf(c.trainer, cat.key))),
+      el("button",{class:"linkbtn",title:"every Scrap movement on this sheet",onclick:()=>openScrapLedger(c.trainer, s.name, s.persist)},"📜"));
+    card.append(line);
+  });
+  return card;
+}
+
+/* GM · 🎯 Catch DC: settle a thrown Ball. The Ball leaves the thrower's bag either way; one that
+   broke free is salvaged for SCRAP_FAILED_CATCH of its price as Poké Ball Scrap. EXP and sending
+   the Pokémon to the PC stay separate on purpose — this is only the Ball bookkeeping. */
+function catchResolveSection(p){
+  const sec = el("div",{style:"margin-top:16px;border-top:1px solid var(--line);padding-top:12px"});
+  const monName = p.nickname || getSpecies(p.species)?.name || "a Pokémon";
+  const draw = () => {
+    sec.innerHTML = "";
+    sec.append(el("div",{style:"font-weight:800;margin-bottom:4px"},"\u{1F392} Resolve the throw"));
+    const list = scrapSheets();
+    if(!list.length){ sec.append(el("div",{class:"small muted"},"No character sheets to throw from.")); return; }
+    const withBalls = s => { const c = s.sheet(); return c ? bagPokeBalls(c.trainer) : []; };
+    const throwers = list.filter(s => withBalls(s).length);
+    if(!throwers.length){ sec.append(el("div",{class:"small muted"},"Nobody has a Poké Ball in their Inventory.")); return; }
+    const field = (label, node) => { sec.append(el("label",{class:"field",style:"margin-bottom:8px"}, el("span",{},label), node)); return node; };
+    const whoSel = field("Who threw it", el("select",{style:"padding:6px"}));
+    throwers.forEach(s => whoSel.append(el("option",{value:s.id}, `${s.name} (${withBalls(s).reduce((n,b)=>n+b.qty,0)} Balls)`)));
+    if(throwers.some(s => s.id === catchResolveSection.lastThrower)) whoSel.value = catchResolveSection.lastThrower;
+    const ballSel = field("Which Ball", el("select",{style:"padding:6px"}));
+    const priceIn = el("input",{type:"number",min:0,step:1,style:"width:110px",title:"this Ball isn't in the catalog — type its price"});
+    const priceWrap = el("label",{class:"field",style:"margin-bottom:8px"}, el("span",{},"Ball price ($) — not in the catalog"), priceIn);
+    sec.append(priceWrap);
+    const salSel = field("Salvaged Scrap goes to", el("select",{style:"padding:6px"}));
+    const sal0 = scrapDefaultSalvager(list);
+    list.forEach(s => salSel.append(el("option",{value:s.id, selected: sal0 && s.id === sal0.id}, s.name)));
+    salSel.addEventListener("change",()=>{ try { localStorage.setItem(SCRAP_SALVAGER_KEY, salSel.value); } catch(e){} paintLine(); });
+    const line = el("div",{class:"small",style:"margin:4px 0 10px"});
+    sec.append(line);
+    const ball = () => { const s = throwers.find(x => x.id === whoSel.value); return s ? withBalls(s).find(b => b.name === ballSel.value) : null; };
+    const value = () => { const b = ball(); return b ? (b.price != null ? b.price : Math.max(0, parseFloat(priceIn.value)||0)) : 0; };
+    const salvage = () => Math.round(value() * SCRAP_FAILED_CATCH * 100) / 100;
+    const paintLine = () => {
+      const b = ball(), sal = list.find(s => s.id === salSel.value);
+      priceWrap.hidden = !b || b.price != null;
+      line.textContent = !b ? "" : `Caught → the ${b.name} is used up. Broke free → it's used up and ${sal ? sal.name : "the salvager"} gets ${fmtMoney(salvage())} Poké Ball Scrap (${Math.round(SCRAP_FAILED_CATCH*100)}% of ${fmtMoney(value())}).`;
+    };
+    const fillBalls = () => {
+      ballSel.innerHTML = "";
+      const s = throwers.find(x => x.id === whoSel.value);
+      (s ? withBalls(s) : []).forEach(b => ballSel.append(el("option",{value:b.name},
+        `${b.name} ×${b.qty}${b.price != null ? ` — ${fmtMoney(b.price)}` : ""}`)));
+      paintLine();
+    };
+    whoSel.addEventListener("change", fillBalls);
+    ballSel.addEventListener("change", paintLine);
+    priceIn.addEventListener("input", paintLine);
+    fillBalls();
+
+    const settle = caught => {
+      const s = throwers.find(x => x.id === whoSel.value), c = s && s.sheet(), b = ball();
+      if(!c || !b){ toast("Pick the thrower and the Ball"); return; }
+      if(!consumeInventoryItem(c.trainer, b.name)){ toast(`${s.name} has no ${b.name} left`); draw(); return; }
+      catchResolveSection.lastThrower = s.id;
+      const touched = [s];
+      let msg = `${caught ? "✅" : "❌"} ${s.name}'s ${b.name} ${caught ? `caught ${monName}` : `— ${monName} broke free`}`;
+      if(!caught){
+        const sal = list.find(x => x.id === salSel.value), sc = sal && sal.sheet();
+        const d = sc ? scrapChange(sc.trainer, "pokeballs", salvage(), `Salvaged ${b.name} (${s.name}'s throw at ${monName} failed)`, {kind:"salvage"}) : 0;
+        if(d){ if(sal.id !== s.id) touched.push(sal); msg += ` · ${sal.name} +${fmtMoney(d)} Scrap`; }
+      }
+      touched.forEach(x => x.persist());
+      toast(msg);
+      if(touched.some(x => x.active())) render();
+      draw();
+    };
+    sec.append(el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap"},
+      el("button",{class:"btn-primary",style:"padding:6px 12px",onclick:()=>settle(true)},"✅ Caught"),
+      el("button",{class:"btn ghost danger",style:"padding:6px 12px",onclick:()=>settle(false)},"❌ Broke free")));
+    sec.append(el("div",{class:"small muted",style:"margin-top:6px"},"Only the Ball is handled here — EXP and sending it to the PC are still done separately."));
+  };
+  draw();
+  return sec;
 }
 
 /* ===================================================================
@@ -29293,7 +29539,56 @@ function gardenPlanterOf(p){
   return { label:String(cap).replace(/\s*\(/, " ("), kinds: kinds.length ? kinds : null };
 }
 function gardenMonName(p){ return (p && (p.nickname || p.species)) || "Pokémon"; }
-function gardenMonById(c, id){ return ((c && c.pokemon) || []).find(m => m && m.id === id) || null; }
+/* what a Planter will take, in words */
+function gardenPlanterAllows(cap){
+  if(!cap || !cap.kinds) return "grows anything";
+  const nm = { berry:"Berries", herb:"Herbs & Mushrooms", apricorn:"Apricorns" };
+  return cap.kinds.map(k => nm[k]).join(" / ") + " only";
+}
+const GARDEN_SENTINEL_OWNERS = () => [PC_OWNER, MAP_OWNER, ENC_OWNER, SHOP_OWNER, ROLL_OWNER];
+/* every character sheet a plant could be sitting on: this one first, then (online) the rest of the
+   campaign. Mon ids are uid()s, so a Planter is found by id wherever it lives. */
+function gardenAllSheets(c){
+  const out = c ? [c] : [];
+  if(mode === "cloud") Object.values(cloud.byId || {}).forEach(r => {
+    if(r && r.data && r.data.trainer && r.data !== c && !GARDEN_SENTINEL_OWNERS().includes(r.owner_id)) out.push(r.data);
+  });
+  return out;
+}
+/* Planter capability holders in reach: your own PARTY, then each ally's party — every other
+   character sheet in the campaign that isn't 📦 Archived or 🙈 Hidden (Hidden is how the GM keeps an
+   NPC's sheet to themselves, so those aren't anyone's ally). Boxed Pokémon aren't travelling with you. */
+function gardenPlanterPool(c){
+  const out = [];
+  const add = (sheet, own) => ((sheet && sheet.pokemon) || []).forEach(p => {
+    if(!p || p.onTeam === false) return;
+    const cap = gardenPlanterOf(p); if(!cap) return;
+    out.push({ p, cap, own, owner: own ? "" : ((sheet.trainer && sheet.trainer.name) || sheet.name || "an ally") });
+  });
+  add(c, true);
+  gardenAllSheets(c).slice(1).forEach(sh => { if(!charArchived(sh) && !charHidden(sh)) add(sh, false); });
+  return out;
+}
+/* the plant a Planter is already holding — on ANY sheet, since an ally may have planted in it — or null */
+function gardenPlanterHolding(c, monId){
+  for(const sh of gardenAllSheets(c)){
+    const pl = ((sh.trainer && sh.trainer.garden) || []).find(x => x && x.where === "planter" && x.monId === monId);
+    if(pl) return { pl, sheet:sh };
+  }
+  return null;
+}
+/* the Planter a plant sits in, and whose party it's in (null once it's gone — traded, boxed elsewhere) */
+function gardenMonById(c, id){
+  for(const sh of gardenAllSheets(c)){
+    const p = (sh.pokemon || []).find(m => m && m.id === id);
+    if(p) return p;
+  }
+  return null;
+}
+function gardenMonOwnerName(c, id){
+  const sh = gardenAllSheets(c).find(s => (s.pokemon || []).some(m => m && m.id === id));
+  return (!sh || sh === c) ? "" : ((sh.trainer && sh.trainer.name) || sh.name || "an ally");
+}
 /* how good the soil is under this plant today (`mulched`: the day's roll has Mulch on it) */
 function gardenSoil(t, pl, mulched){
   const parts = [];
@@ -29496,8 +29791,8 @@ function openGardenPlant(t, c, commit){
   const list = gardenList(t);
   const growers = gardenGrowers(t);
   const growersFree = growers - list.filter(pl => pl.where === "grower").length;
-  const planters = ((c && c.pokemon) || []).map(p => ({ p, cap:gardenPlanterOf(p) }))
-    .filter(x => x.cap && !list.some(pl => pl.where === "planter" && pl.monId === x.p.id));
+  const planters = gardenPlanterPool(c).map(x => ({ ...x, busy:gardenPlanterHolding(c, x.p.id) }));
+  const freePlanters = planters.filter(x => !x.busy);
   const body = el("div",{});
   const field = (label, node) => { body.append(el("label",{class:"field",style:"margin-bottom:8px"}, el("span",{},label), node)); return node; };
 
@@ -29505,10 +29800,19 @@ function openGardenPlant(t, c, commit){
   whereSel.append(el("option",{value:"grower", disabled: growersFree <= 0},
     growers ? `\u{1FAB4} Portable Grower — ${Math.max(0, growersFree)} of ${growers} free · Soil +1`
             : "\u{1FAB4} Portable Grower — none in your bag ($2000)"));
-  planters.forEach(x => whereSel.append(el("option",{value:"planter:" + x.p.id},
-    `\u{1F33F} ${gardenMonName(x.p)} — ${x.cap.label} · Soil +1`)));
+  // your own Planters, then each ally's — a Planter already holding something is listed but can't be picked
+  const planterOpt = x => el("option",{value:"planter:" + x.p.id, disabled:!!x.busy},
+    `\u{1F33F} ${gardenMonName(x.p)} — ${x.cap.label}: ${gardenPlanterAllows(x.cap)}`
+    + (x.busy ? ` · holding ${x.busy.sheet === c ? "your" : ((x.busy.sheet.trainer && x.busy.sheet.trainer.name) || "someone") + "'s"} ${x.busy.pl.crop}` : " · Soil +1"));
+  const mine = planters.filter(x => x.own), theirs = planters.filter(x => !x.own);
+  if(mine.length){ const g = el("optgroup",{label:"Your party"}); mine.forEach(x => g.append(planterOpt(x))); whereSel.append(g); }
+  [...new Set(theirs.map(x => x.owner))].forEach(owner => {
+    const g = el("optgroup",{label:`${owner}'s party`});
+    theirs.filter(x => x.owner === owner).forEach(x => g.append(planterOpt(x)));
+    whereSel.append(g);
+  });
   whereSel.append(el("option",{value:"ground"}, "\u{1F4CD} In the ground — the GM sets the Soil Quality"));
-  whereSel.value = growersFree > 0 ? "grower" : planters.length ? "planter:" + planters[0].p.id : "ground";
+  whereSel.value = growersFree > 0 ? "grower" : freePlanters.length ? "planter:" + freePlanters[0].p.id : "ground";
 
   const cropSel = field("Plant", el("select",{style:"padding:6px"}));
   const placeWrap = el("div",{});
@@ -29552,7 +29856,7 @@ function openGardenPlant(t, c, commit){
       tier.crops.forEach(crop => {
         const kindOk = !planter || !planter.cap.kinds || planter.cap.kinds.includes(gardenCropKind(crop));
         const ok = can.ok && kindOk;
-        grp.append(el("option",{value:crop, disabled:!ok}, crop + (kindOk ? "" : " — not for this Planter")));
+        grp.append(el("option",{value:crop, disabled:!ok}, crop + (kindOk ? "" : ` — ${gardenMonName(planter.p)}'s Planter: ${gardenPlanterAllows(planter.cap)}`)));
         if(ok && !first) first = crop;
       });
       cropSel.append(grp);
@@ -29584,6 +29888,12 @@ function openGardenPlant(t, c, commit){
     const crop = cropSel.value, w = whereSel.value;
     if(!crop){ toast("\u{1F331} Pick something to plant"); return; }
     if(w === "grower" && growersFree <= 0){ toast("\u{1F331} Every Portable Grower in your bag already holds a plant"); return; }
+    if(w.startsWith("planter:")){
+      const x = planters.find(y => "planter:" + y.p.id === w);
+      // re-checked at the moment of planting: an ally may have filled it while this dialog was open
+      if(!x || gardenPlanterHolding(c, x.p.id)){ toast("\u{1F331} That Planter is already holding a plant"); return; }
+      if(x.cap.kinds && !x.cap.kinds.includes(gardenCropKind(crop))){ toast(`\u{1F331} ${gardenMonName(x.p)}'s Planter ${gardenPlanterAllows(x.cap)}`); return; }
+    }
     const pl = { id:uid(), crop, where: w.startsWith("planter:") ? "planter" : w, monId: w.startsWith("planter:") ? w.slice(8) : "",
                  place: w === "ground" ? placeIn.value.trim() : "", soil:null, age:0, owed:[], log:[], harvested:0,
                  plantedDay: t.gardenDay || 0, mulchNext:"", mulchOn:"" };
@@ -29618,9 +29928,14 @@ function gardenCard(t, c, commit){
 
   /* capacity + what can be grown */
   const growers = gardenGrowers(t), inGrowers = list.filter(pl => pl.where === "grower").length;
-  const planters = ((c && c.pokemon) || []).filter(p => gardenPlanterOf(p));
+  const planters = gardenPlanterPool(c);
   const cap = [`\u{1FAB4} Portable Growers: ${inGrowers} / ${growers} in use`];
-  if(planters.length) cap.push(`\u{1F33F} Planters: ${planters.map(p => gardenMonName(p) + (list.some(pl => pl.where === "planter" && pl.monId === p.id) ? " (full)" : "")).join(", ")}`);
+  const planterTxt = x => {
+    const h = gardenPlanterHolding(c, x.p.id);
+    const held = !h ? "free" : h.sheet === c ? `holding your ${h.pl.crop}` : `holding ${(h.sheet.trainer && h.sheet.trainer.name) || "an ally"}'s ${h.pl.crop}`;
+    return `${gardenMonName(x.p)}${x.own ? "" : ` (${x.owner}'s)`} — ${gardenPlanterAllows(x.cap)}, ${held}`;
+  };
+  if(planters.length) cap.push(`\u{1F33F} Planters: ${planters.map(planterTxt).join("; ")}`);
   cap.push(`\u{1F342} Mulch in bag: ${inventoryQty(t, GARDEN_MULCH)}`);
   if(gardenMaster(t)) cap.push("Top Tier Berries (Master): +1 Soil on everything");
   card.append(el("div",{class:"small",style:"margin-bottom:8px"}, cap.join("  ·  ")));
@@ -29666,7 +29981,7 @@ function gardenPlantRow(t, c, pl, gardeners, commit){
   const box = el("div",{style:"border-top:1px solid var(--line);padding:10px 0"});
   const mon = pl.where === "planter" ? gardenMonById(c, pl.monId) : null;
   const whereTxt = pl.where === "grower" ? "\u{1FAB4} Portable Grower"
-    : pl.where === "planter" ? `\u{1F33F} Planter: ${mon ? gardenMonName(mon) : "a Pokémon no longer on this sheet"}`
+    : pl.where === "planter" ? `\u{1F33F} Planter: ${mon ? gardenMonName(mon) + (gardenMonOwnerName(c, pl.monId) ? ` (${gardenMonOwnerName(c, pl.monId)}'s)` : "") : "a Pokémon that's no longer around"}`
     : `\u{1F4CD} In the ground${pl.place ? " — " + pl.place : ""}`;
   const mature = pl.age >= GARDEN_MATURE_DAYS;
   const left = GARDEN_MATURE_DAYS - pl.age;
@@ -33034,6 +33349,7 @@ function renderShops(){
 
   // paying the party doesn't need a shop to exist, so it sits above everything shop-shaped
   root.append(paydayCard());
+  root.append(scrapLootCard());          // crafting-only money (Poké Ball Scrap)
   // …and neither does handing out EXP: type a number, tick who earned it, send
   root.append(expCard());
 
