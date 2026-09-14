@@ -1825,11 +1825,32 @@ function typeReplacement(o){
   const ts = o.typeShift;
   if(ts && TYPES.includes(ts.type))
     return { type:ts.type, src:ts.src || "Ability", always:false, stab:!!ts.stab };
+  return autoTypeAbility(o);
+}
+/* The two Abilities whose Type is simply READ off the world rather than chosen, so nobody has to
+   press anything: Forecast follows the Weather ("Fire Type if it is Sunny, Ice Type if it is Hailing,
+   Water Type if it is Rainy, and Rock Type if there is a Sandstorm. It returns to Normal Type" in
+   clear weather), RKS System follows the held Memory Disc. Both are a genuine change of Type, so
+   STAB goes with them. An explicit typeShift (Conversion, Color Change…) is checked first and wins. */
+const FORECAST_TYPES = { sunny:"Fire", rainy:"Water", hail:"Ice", sandstorm:"Rock" };
+function autoTypeAbility(o){
+  if(!o || o.species === undefined || !Array.isArray(o.abilities) || !o.abilities.length) return null;
+  if(!o.abilities.some(a => /forecast|rks/i.test(String(a)))) return null;   // cheap gate - this runs on every Type read
+  if(monHasAbility(o, "Forecast")){
+    let w = null; try{ w = ownerWeather(o); }catch(e){}
+    const ty = FORECAST_TYPES[(w && w.key) || ""];
+    if(ty) return { type:ty, src:"Forecast", always:false, stab:true, auto:true };
+  }
+  if(monHasAbility(o, "RKS System")){
+    const mm = /^\s*([a-z]+)\s+memory\b/i.exec(String(o.heldItem || ""));
+    const ty = mm && TYPES.find(t => t.toLowerCase() === mm[1].toLowerCase());
+    if(ty) return { type:ty, src:"RKS System", always:false, stab:true, auto:true };
+  }
   return null;
 }
 function monTypes(o, sp){
   const r = typeReplacement(o);
-  return r ? [r.type] : monNaturalTypes(o, sp);
+  return applyTypeMods(o, r ? [r.type] : monNaturalTypes(o, sp));
 }
 /* STAB is measured against the ORIGINAL typing for Terastallization - "They retain STAB from their
    regular Typing, and do not gain additional STAB on their Tera Type", and Tera Shell says the same
@@ -1838,8 +1859,121 @@ function monTypes(o, sp){
    so the new Type IS its Type and carries STAB the way any Type does. */
 function monStabTypes(o, sp){
   const r = typeReplacement(o);
-  return (r && r.stab) ? [r.type] : monNaturalTypes(o, sp);
+  return applyTypeMods(o, (r && r.stab) ? [r.type] : monNaturalTypes(o, sp));
 }
+/* ---- Types GAINED or LOST (layered on top, never a replacement) ---------------------------
+   typeReplacement swaps a creature's whole typing. These sit on top of whatever it is right now:
+     add   "The target gains the Ghost Type in addition to its other Types for 5 turns" -
+           Trick-or-Treat (Ghost), Forest's Curse (Grass), Magic Powder (Psychic), Soak (Water);
+           Quick Cloak's secondary Type while Burmy wears a Cloak.
+     lose  Burn Up (Fire, until the end of the encounter), Roost (Flying) and Double Shock (Electric)
+           until the start of the user's next turn. "Pure Fire-Types become Normal-Type" - the one
+           rule printed for it, used for all three.
+     swap  Reflect Type - "changes one of the user's Types into one Type of your choice that the
+           target has for the rest of the scene".
+   A gained Type is a real Type: it is on the chart AND it carries STAB, and a lost one takes its STAB
+   with it. A Terastalized Pokemon ignores all of them ("Moves that would change a Pokemon's type (or
+   give it an additional one) have no effect while Terastalized").
+   o.typeMods = [{ id, kind, type, from?, src, dur:"turns"|"startNext"|"scene"|"manual", left?, seq? }]
+   `seq` = the Map's turn sequence when it went on (curTurnSeq); advanceInitiative ticks them through
+   tickTypeModTurns. Off the Map nothing ticks - they last until End Scene (endSceneTypeState). */
+function typeModsLive(o){
+  if(!o || o.tera || !Array.isArray(o.typeMods) || !o.typeMods.length) return [];
+  return o.typeMods.filter(x => x && TYPES.includes(x.type));
+}
+function applyTypeMods(o, base){
+  const mods = typeModsLive(o);
+  if(!mods.length) return base;
+  let out = base.slice();
+  mods.forEach(x => { if(x.kind === "swap"){ const i = out.indexOf(x.from); if(i >= 0) out[i] = x.type; } });
+  mods.forEach(x => { if(x.kind === "lose") out = out.filter(t => t !== x.type); });
+  mods.forEach(x => { if(x.kind === "add" && !out.includes(x.type)) out.push(x.type); });
+  out = [...new Set(out)];
+  return out.length ? out : ["Normal"];
+}
+const TYPE_MOD_DUR_TEXT = { turns:"", startNext:"until the start of its next turn", scene:"until the end of the Scene", manual:"until it is taken off" };
+function typeModShort(x){
+  return x.kind === "add" ? `+${x.type}` : x.kind === "lose" ? `−${x.type}` : `${x.from}→${x.type}`;
+}
+function typeModDur(x){
+  if(x.dur === "turns") return `${x.left == null ? "?" : x.left} turn${x.left === 1 ? "" : "s"} left`;
+  return TYPE_MOD_DUR_TEXT[x.dur] || "";
+}
+function typeModLabel(x){
+  const what = x.kind === "add" ? `gains the ${x.type} Type` : x.kind === "lose" ? `loses the ${x.type} Type`
+             : `${x.from} is ${x.type} instead`;
+  return `${x.src || "Type change"}: ${what}`;
+}
+/* Put one on. The same source again REFRESHES its timer rather than stacking a second copy. Returns
+   a reason string when it can't land (a Trainer has no Type; a Terastal Pokemon's can't change). */
+function addTypeMod(o, mod){
+  if(!o || isTrainerOwner(o) || o.species === undefined) return "Trainers have no Type to change";
+  if(o.tera) return "Terastalized — its Type can't change";
+  if(!TYPES.includes(mod.type)) return "no such Type";
+  if(!Array.isArray(o.typeMods)) o.typeMods = [];
+  o.typeMods = o.typeMods.filter(x => x.src !== mod.src);
+  const nm = Object.assign({ id:uid() }, mod);
+  if(nm.dur === "turns" && nm.left == null) nm.left = nm.turns || 5;
+  delete nm.turns;
+  let seq = null; try{ seq = curTurnSeq(); }catch(e){}
+  if(seq != null) nm.seq = seq;
+  o.typeMods.push(nm);
+  return "";
+}
+function removeTypeMod(o, pred){
+  if(!o || !Array.isArray(o.typeMods)) return false;
+  const n = o.typeMods.length;
+  o.typeMods = o.typeMods.filter(x => !pred(x));
+  if(!o.typeMods.length) delete o.typeMods;
+  return (o.typeMods ? o.typeMods.length : 0) !== n;
+}
+/* End Scene / faint / rest: everything goes except a Cloak, which is a thing Burmy is wearing */
+function clearTypeMods(o){ removeTypeMod(o, x => x.dur !== "manual"); }
+/* The Map's ▶: the creature whose turn just ENDED counts down its "for 5 turns" effects (not one put on
+   during that very turn), and the one whose turn is STARTING drops its "until the start of its next
+   turn" ones. Returns what ended, for the toast. */
+function tickTypeModTurns(map, endingId, endingSeq, startingId, newSeq){
+  const out = [];
+  const toks = mapTokensFor(map.id);
+  const find = id => { const tok = toks.find(t => t.id === id); const L = tok && tok.link ? tokenLinked(tok) : null;
+                       return (L && L.obj && Array.isArray(L.obj.typeMods) && L.obj.typeMods.length) ? { tok, o:L.obj } : null; };
+  const end = find(endingId);
+  if(end){
+    let changed = false;
+    end.o.typeMods = end.o.typeMods.filter(x => {
+      if(x.dur !== "turns" || x.seq === endingSeq) return true;
+      x.left = (x.left == null ? 5 : x.left) - 1; changed = true;
+      if(x.left > 0) return true;
+      out.push(`${ownerLabel(end.o)} — ${typeModLabel(x)}`);
+      return false;
+    });
+    if(!end.o.typeMods.length) delete end.o.typeMods;
+    if(changed) commitTokenSource(end.tok);
+  }
+  const start = find(startingId);
+  if(start){
+    const gone = removeTypeMod(start.o, x => {
+      if(x.dur !== "startNext" || (x.seq != null && x.seq >= newSeq)) return false;
+      out.push(`${ownerLabel(start.o)} — ${typeModLabel(x)}`);
+      return true;
+    });
+    if(gone && (!end || end.tok !== start.tok)) commitTokenSource(start.tok);
+  }
+  return out;
+}
+/* The Moves that do it. `who` = which side of the roll it lands on; `ifHas` = only if the user has
+   that Type to lose (Roost: "If the user is a Flying Type"). */
+const TYPE_MOD_MOVES = {
+  trickortreat: { kind:"add",  type:"Ghost",    who:"target", dur:"turns", turns:5 },
+  forestscurse: { kind:"add",  type:"Grass",    who:"target", dur:"turns", turns:5 },
+  magicpowder:  { kind:"add",  type:"Psychic",  who:"target", dur:"turns", turns:5 },
+  soak:         { kind:"add",  type:"Water",    who:"target", dur:"turns", turns:5 },
+  burnup:       { kind:"lose", type:"Fire",     who:"user",   dur:"scene",     ifHas:true },
+  roost:        { kind:"lose", type:"Flying",   who:"user",   dur:"startNext", ifHas:true },
+  doubleshock:  { kind:"lose", type:"Electric", who:"user",   dur:"startNext", ifHas:true },
+};
+function typeModMove(m){ return TYPE_MOD_MOVES[moveKey(m && m.name)] || null; }
+function typeModDurPhrase(fx){ return fx.dur === "turns" ? `for ${fx.turns} turns` : TYPE_MOD_DUR_TEXT[fx.dur]; }
 /* the +10 that stands in for the STAB a replaced Type does not grant */
 function typeShiftDamageBonus(o, mtype){
   const r = typeReplacement(o);
@@ -1887,7 +2021,7 @@ function teraDamageBonus(o, mtype){
    though the Damage Base does not get its +2. */
 function abilityStabFor(o, mtype){
   if(!mtype) return false;
-  if(monNaturalTypes(o).includes(mtype)) return true;
+  if(monNaturalTypes(o).includes(mtype) || monStabTypes(o).includes(mtype)) return true;
   const r = typeReplacement(o);
   return !!(r && r.always && r.type === mtype);
 }
@@ -1897,12 +2031,14 @@ function abilityStabFor(o, mtype){
 const _teraSpeciesCache = new WeakMap();
 function monSpecies(o){
   const sp = getSpecies(o && o.species);
-  const r = typeReplacement(o);
-  if(!sp || !r) return sp;
-  const key = sp.name + "|" + r.type;
+  if(!sp) return sp;
+  const live = monTypes(o, sp);
+  const nat = (sp.types || []).filter(t => t && t !== "None");
+  if(live.length === nat.length && live.every((t, i) => t === nat[i])) return sp;
+  const key = sp.name + "|" + live.join("/");
   const hit = _teraSpeciesCache.get(o);
   if(hit && hit.key === key) return hit.sp;
-  const clone = Object.assign({}, sp, { types:[r.type] });
+  const clone = Object.assign({}, sp, { types:live });
   _teraSpeciesCache.set(o, { key, sp:clone });
   return clone;
 }
@@ -2015,7 +2151,7 @@ function teraRevert(p, silent, rerender){
    Radiating ends with the Encounter too - but every path that ends a Scene, a fight or a life
    clears all of them, so they share one call. */
 function clearTypeShift(o){ if(o){ delete o.typeShift; delete o.radiate; } }
-function endSceneTypeState(o){ teraRevert(o, true); clearTypeShift(o); }
+function endSceneTypeState(o){ teraRevert(o, true); clearTypeShift(o); clearTypeMods(o); }
 
 /* ===================================================================
    TERASTALLIZATION - the controls, and everything Terapagos does with it
@@ -2028,6 +2164,20 @@ function endSceneTypeState(o){ teraRevert(o, true); clearTypeShift(o); }
 /* the little badge that rides after a creature's Type badges wherever they are drawn */
 function teraTag(o){
   if(!o) return "";
+  return teraTagBase(o) + typeModsTag(o);
+}
+/* the gained / lost Type chips (Trick-or-Treat, Burn Up, a Cloak…) and the Weather/Memory-driven ones */
+function typeModsTag(o){
+  let s = "";
+  const r = (!o.tera && !o.typeShift) ? autoTypeAbility(o) : null;
+  if(r) s += ` <span class="kv" title="${esc(r.src)}: it is ${esc(r.type)}-Type because of ${r.src === "Forecast" ? "the Weather" : "its held Memory"} — STAB follows it.">\u{1F504} ${esc(r.src)}</span>`;
+  const mods = Array.isArray(o.typeMods) ? o.typeMods : [];
+  mods.forEach(x => {
+    s += ` <span class="kv" title="${esc(typeModLabel(x))} — ${esc(typeModDur(x))}.${o.tera ? " On hold: a Terastalized Pokemon's Type can't change." : ""}">${x.kind === "lose" ? "➖" : "➕"} ${esc(typeModShort(x))}${x.dur === "turns" && x.left != null ? ` · ${x.left}` : ""}</span>`;
+  });
+  return s;
+}
+function teraTagBase(o){
   if(o.teraStellar)
     return ' <span class="kv" title="Terastalized - Stellar Forme. The Stellar Type is emulated by the Stellar Blast Ability.">\u{1F48E} STELLAR</span>';
   if(o.tera)
@@ -2125,16 +2275,20 @@ function setUserType(p, type, src, commit){
 /* Camouflage's off-switch, on the sheet itself: the Move set a Type that has no printed duration,
    so the one thing the card must always offer is a way to stop being that Type. Only rendered while
    it is actually in effect. */
+/* Mimicry (the same field table), Color Change and Protean write the same kind of shift and have no
+   printed end either, so they share this off-switch. */
+const ENDABLE_TYPE_SHIFTS = { "Camouflage":"\u{1F343}", "Mimicry":"\u{1F343}", "Color Change":"\u{1F3A8}", "Protean":"\u{1F504}" };
 function camouflageControl(p, onChanged, opts){
   opts = opts || {};
-  if(!p || !p.typeShift || p.typeShift.src !== "Camouflage") return el("span",{style:"display:none"});
+  if(!p || !p.typeShift || !ENDABLE_TYPE_SHIFTS[p.typeShift.src]) return el("span",{style:"display:none"});
+  const src = p.typeShift.src;
   const commit = () => { (opts.persist || save)(); onChanged && onChanged(); };
   const wrap = el("div",{class:"inline small",style:"margin:4px 0 8px;flex-wrap:wrap;gap:8px;align-items:center"});
-  wrap.append(el("span",{class:"muted",style:"font-weight:700"},"\u{1F343} Camouflage:"),
+  wrap.append(el("span",{class:"muted",style:"font-weight:700"},`${ENDABLE_TYPE_SHIFTS[src]} ${src}:`),
     el("span",{class:"statuschip on",style:"padding:2px 8px;font-size:11px;cursor:default"}, `${p.typeShift.type}-TYPE`),
     el("button",{class:"btn-secondary",style:"padding:4px 10px",
-      title:"stop matching the field and go back to its natural Types (also happens at End Scene)",
-      onclick:()=>{ setUserType(p, "", "", commit); toast("Camouflage ended."); }},"\u21A9 End"),
+      title:"go back to its natural Types (also happens at End Scene)",
+      onclick:()=>{ setUserType(p, "", "", commit); toast(`${src} ended.`); }},"\u21A9 End"),
     el("span",{class:"muted small"},"replaces its natural Types, and STAB moved with it"));
   return wrap;
 }
@@ -2255,11 +2409,12 @@ function camouflageCard(p, m, opts){
   opts = opts || {};
   const persist = opts.persist || save;
   const commit = () => { persist(); (opts.rerender || (()=>refreshMon(p)))(); };
-  const cur = (p.typeShift && p.typeShift.src === "Camouflage") ? p.typeShift.type : "";
+  const SRC = opts.src || "Camouflage";           // Mimicry (the Ability) prints the very same table
+  const cur = (p.typeShift && p.typeShift.src === SRC) ? p.typeShift.type : "";
   const wx  = camouflageWeatherKey(p);
   const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
   card.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},
-    "\u{1F343} Camouflage \u2014 take the field's Type"));
+    `\u{1F343} ${SRC} \u2014 take the field's Type`));
   card.append(el("div",{class:"small muted",style:"margin-bottom:6px"},
     "Pick the row that matches where this fight is happening. If two rows apply (terrain and Weather), "
     + "pick one \u2014 that is the Move's own rule. It replaces every other Type, STAB moves with it, and it "
@@ -2272,17 +2427,204 @@ function camouflageCard(p, m, opts){
       grid.append(el("button",{ class:"btn-secondary"+(on?" on":""),
         style:"padding:4px 9px"+(live?";border-color:var(--accent)":""),
         title:`${row.field} \u2192 ${ty}-Type`+(live?" \u2014 this Weather is running on the Map right now":""),
-        onclick:()=>{ setUserType(p, ty, "Camouflage", commit);
-                      toast(`\u{1F343} Camouflage \u2014 ${ownerLabel(p)} is ${ty}-Type (${row.field}).`);
+        onclick:()=>{ setUserType(p, ty, SRC, commit);
+                      toast(`\u{1F343} ${SRC} \u2014 ${ownerLabel(p)} is ${ty}-Type (${row.field}).`);
                       closeModal(); } },
         `${row.field}${live?" \u25CF":""} \u2192 ${ty}`));
     });
   });
   card.append(grid);
   if(cur) card.append(el("button",{class:"linkbtn",style:"margin-top:8px",
-    title:"drop the camouflage and go back to its natural Types",
-    onclick:()=>{ setUserType(p, "", "", commit); toast("Camouflage ended \u2014 back to its natural Types."); closeModal(); }},
-    `\u21A9 end Camouflage (currently ${cur}-Type)`));
+    title:"drop it and go back to its natural Types",
+    onclick:()=>{ setUserType(p, "", "", commit); toast(`${SRC} ended \u2014 back to its natural Types.`); closeModal(); }},
+    `\u21A9 end ${SRC} (currently ${cur}-Type)`));
+  return card;
+}
+
+/* ---- Gained / lost Types on the Pokemon card ---------------------------------------------------
+   The chips for whatever is on it right now (each with its own \u2715), plus the Abilities that change a
+   Type on a trigger the sheet can't see coming: Quick Cloak (a secondary Type while cloaked), Color
+   Change ("changes to match the Type of the triggering Move" - the Move that just hit it) and Mimicry
+   (the field table). The GM also gets a free-form "+ Type effect" for anything homebrew. */
+const QUICK_CLOAKS = [["Grass","Plant Cloak"], ["Ground","Sandy Cloak"], ["Steel","Trash Cloak"]];
+function typeModsControl(p, onChanged, opts){
+  opts = opts || {};
+  const none = el("span",{style:"display:none"});
+  if(!p || p.species === undefined) return none;
+  const mods = Array.isArray(p.typeMods) ? p.typeMods : [];
+  const cloak = hasAbility(p, "Quick Cloak"), color = hasAbility(p, "Color Change"), mimic = hasAbility(p, "Mimicry");
+  const gm = isGM();
+  if(!mods.length && !cloak && !color && !mimic && !gm) return none;
+  const persist = opts.persist || save;
+  const commit = () => { persist(); onChanged && onChanged(); };
+  const wrap = el("div",{class:"inline small",style:"margin:4px 0 8px;flex-wrap:wrap;gap:8px;align-items:center"});
+  if(mods.length){
+    wrap.append(el("span",{class:"muted",style:"font-weight:700"}, "\u{1F9EC} Types:"));
+    mods.forEach(x => wrap.append(el("span",{class:"statuschip on",style:"padding:2px 8px;font-size:11px;display:inline-flex;gap:6px;align-items:center",
+        title:`${typeModLabel(x)} \u2014 ${typeModDur(x)}`},
+      `${typeModShort(x)} \u00B7 ${x.src || "?"} \u00B7 ${typeModDur(x)}`,
+      el("button",{class:"linkbtn",style:"padding:0 2px", title:"take it off now",
+        onclick:()=>{ removeTypeMod(p, y => y.id === x.id); commit(); toast(`${typeModLabel(x)} \u2014 ended`); }}, "\u2715"))));
+    if(p.tera) wrap.append(el("span",{class:"muted small"}, "on hold while Terastalized"));
+  }
+  if(cloak){
+    const cur = mods.find(x => x.src === "Quick Cloak");
+    const sel = el("select",{style:"padding:3px 6px",
+      title:"Quick Cloak (At-Will, Standard Action): the Cloak's Type becomes a secondary Type. Destroyed if Burmy is hit for Super-Effective damage, or makes a new Cloak."});
+    sel.append(el("option",{value:""}, "\u{1F342} Quick Cloak: none"));
+    QUICK_CLOAKS.forEach(([ty, nm]) => sel.append(el("option",{value:ty, selected: !!cur && cur.type === ty}, `${nm} (${ty})`)));
+    sel.addEventListener("change", ()=>{
+      if(!sel.value) removeTypeMod(p, x => x.src === "Quick Cloak");
+      else { const why = addTypeMod(p, { kind:"add", type:sel.value, src:"Quick Cloak", dur:"manual" }); if(why){ toast(why); } }
+      commit();
+    });
+    wrap.append(sel);
+  }
+  if(color){
+    const sel = el("select",{style:"padding:3px 6px",
+      title:"Color Change (At-Will, Free Action): when it is hit by a Move, its Type changes to that Move's Type. STAB comes with it."});
+    sel.append(el("option",{value:""}, "\u{1F3A8} Color Change \u2014 hit by a\u2026"));
+    TYPES.forEach(t => sel.append(el("option",{value:t}, `${t} Move`)));
+    sel.addEventListener("change", ()=>{ if(!sel.value) return;
+      if(p.tera){ toast("Terastalized \u2014 its Type can't change"); return; }
+      setUserType(p, sel.value, "Color Change", commit); toast(`\u{1F3A8} ${ownerLabel(p)} is ${sel.value}-Type now`); });
+    wrap.append(sel);
+  }
+  if(mimic) wrap.append(el("button",{class:"btn-secondary",style:"padding:3px 10px",
+    title:"Mimicry (Scene, Free Action): take the field's Type from the same table Camouflage uses",
+    onclick:()=>{ if(p.tera){ toast("Terastalized \u2014 its Type can't change"); return; }
+      modal({ title:"\u{1F343} Mimicry", bodyNode:camouflageCard(p, { name:"Mimicry" }, { src:"Mimicry", persist, rerender:onChanged }),
+              footNodes:[el("button",{class:"btn ghost",onclick:closeModal},"Close")] }); }}, "\u{1F343} Mimicry\u2026"));
+  if(gm) wrap.append(el("button",{class:"linkbtn", title:"GM: give it a Type, or take one away, for a while (homebrew, a Move the sheet doesn't know)",
+    onclick:()=>openTypeModDialog(p, commit)}, "\uFF0B Type effect"));
+  return wrap;
+}
+function openTypeModDialog(p, commit){
+  const body = el("div",{});
+  const kind = el("select",{style:"padding:5px"});
+  [["add","gains the Type"],["lose","loses the Type"]].forEach(([v,l]) => kind.append(el("option",{value:v}, l)));
+  const type = el("select",{style:"padding:5px"});
+  TYPES.forEach(t => type.append(el("option",{value:t}, t)));
+  const dur = el("select",{style:"padding:5px"});
+  [["turns","for 5 turns"],["startNext","until the start of its next turn"],["scene","until the end of the Scene"],["manual","until taken off"]]
+    .forEach(([v,l]) => dur.append(el("option",{value:v}, l)));
+  const src = el("input",{type:"text",value:"GM",style:"padding:5px"});
+  body.append(el("div",{class:"small",style:"margin-bottom:8px"}, `${ownerLabel(p)} is ${monTypes(p).join(" / ")} right now.`));
+  [["It", kind],["Type", type],["How long", dur],["Name", src]].forEach(([l, node]) =>
+    body.append(el("label",{class:"field",style:"margin-bottom:6px"}, el("span",{}, l), node)));
+  modal({ title:"\u{1F9EC} Type effect", bodyNode:body, footNodes:[
+    el("button",{class:"btn ghost",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      const why = addTypeMod(p, { kind:kind.value, type:type.value, src:src.value.trim() || "GM", dur:dur.value, turns:5 });
+      if(why){ toast(why); return; }
+      closeModal(); commit(); toast(`\u{1F9EC} ${ownerLabel(p)} is ${monTypes(p).join(" / ")}`);
+    }},"Apply") ] });
+}
+
+/* ---- the Moves, on the roll ---------------------------------------------------------------------
+   Trick-or-Treat & co. land on whoever was hit: a button opens the shared target picker, the same one
+   the Combat Stage block uses (only the GM sees enemy tokens). Burn Up / Roost / Double Shock happen to
+   the USER however the attack goes, so they go on by themselves the moment the dice are thrown (an
+   upsert - re-rolling doesn't stack them) with a \u21A9 to take it back. */
+function moveTypeNode(actor, m, redraw, persist){
+  const fx = typeModMove(m);
+  if(!fx) return null;
+  const saveFn = persist || save;
+  const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin:10px 0 0"});
+  card.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"}, `\u{1F9EC} ${m.name} \u2014 Type`));
+  if(fx.who === "user"){
+    if(isTrainerOwner(actor)){ card.append(el("div",{class:"small muted"}, "A Trainer has no Type to lose.")); return card; }
+    const src = m.name;
+    if(fx.ifHas && !monTypes(actor).includes(fx.type) && !(actor.typeMods||[]).some(x => x.src === src)){
+      card.append(el("div",{class:"small muted"}, `${ownerLabel(actor)} isn't ${fx.type}-Type, so it has nothing to lose.`));
+      return card;
+    }
+    const why = addTypeMod(actor, { kind:fx.kind, type:fx.type, src, dur:fx.dur, turns:fx.turns });
+    if(why){ card.append(el("div",{class:"small muted"}, why)); return card; }
+    saveFn(); redraw && redraw();
+    card.append(el("div",{class:"small",style:"color:var(--good)"},
+      `\u2714 ${ownerLabel(actor)} lost the ${fx.type} Type ${typeModDurPhrase(fx)} \u2014 it is ${monTypes(actor).join(" / ")} now.`));
+    card.append(el("button",{class:"linkbtn",style:"margin-top:4px",
+      onclick:()=>{ removeTypeMod(actor, x => x.src === src); saveFn(); redraw && redraw();
+        card.replaceChildren(el("div",{class:"small muted"}, `\u21A9 ${m.name}'s Type loss taken back.`)); }},
+      "\u21A9 undo"));
+    return card;
+  }
+  const line = `Everyone it hit gains the ${fx.type} Type in addition to its other Types ${typeModDurPhrase(fx)}.`;
+  card.append(el("div",{class:"small"}, line));
+  /* allyTargets is written for a Trainer: off the Map its "yourself" row is whoever asked, so a
+     Pokemon would be listed twice (once as a "Trainer") - keep one row per creature, the real one */
+  const all = allyTargets(actor, { foes:true }).filter(x => x.obj && !isTrainerOwner(x.obj));
+  const list = all.filter(x => !(x.self && x.offBoard && all.some(y => y !== x && y.obj === x.obj)))
+    .map(x => (x.self && x.offBoard) ? Object.assign({}, x, { label:`\u{1F534} ${ownerLabel(x.obj)} — itself` }) : x);
+  if(!list.length){ card.append(el("div",{class:"small muted",style:"margin-top:4px"}, "No Pok\u00E9mon to point it at.")); return card; }
+  card.append(el("button",{class:"btn-secondary",style:"margin-top:6px;padding:4px 10px",
+    onclick:()=>branchTargetDialog({
+      title:`\u{1F9EC} ${m.name}`, intro:line, list, saveFn, redraw,
+      foot: isGM() ? "The turns count down on the Map's initiative tracker, on the target's own turns." : "Only the GM sees enemy tokens \u2014 they apply it to foes.",
+      apply:(x) => { const why = addTypeMod(x.obj, { kind:fx.kind, type:fx.type, src:m.name, dur:fx.dur, turns:fx.turns });
+                     return `${ownerLabel(x.obj)}${why ? ` (${why})` : ` \u2192 ${monTypes(x.obj).join("/")}`}`; },
+      after:(c, n) => `\u{1F9EC} ${n.join(", ")}`,
+    })}, "\u{1F3AF} Apply to targets\u2026"));
+  return card;
+}
+/* Reflect Type: "changes one of the user's Types into one Type of your choice that the target has for
+   the rest of the scene". The target's Types are offered from the creatures on the board when there
+   are any (every Type otherwise, with a note). */
+function isReflectType(m){ return moveKey(m && m.name) === "reflecttype"; }
+function reflectTypeCard(p, m, opts){
+  opts = opts || {};
+  const commit = () => { (opts.persist || save)(); (opts.rerender || (()=>refreshMon(p)))(); };
+  const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+  card.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"}, "\u{1FA9E} Reflect Type \u2014 copy one of the target's Types"));
+  const cur = (p.typeMods || []).find(x => x.src === "Reflect Type");
+  const mine = monTypes(p).filter(t => !(cur && t === cur.type));
+  const own = cur ? [cur.from, ...mine.filter(t => t !== cur.from)] : mine;
+  const board = new Map();
+  try{ allyTargets(p, { foes:true }).forEach(x => { if(x.obj && x.obj !== p && !isTrainerOwner(x.obj))
+         monTypes(x.obj).forEach(t => { if(!board.has(t)) board.set(t, ownerLabel(x.obj)); }); }); }catch(e){}
+  const from = el("select",{style:"padding:4px 6px"});
+  own.forEach(t => from.append(el("option",{value:t}, t)));
+  const to = el("select",{style:"padding:4px 6px"});
+  if(board.size) board.forEach((who, t) => to.append(el("option",{value:t}, `${t} (${who})`)));
+  else TYPES.forEach(t => to.append(el("option",{value:t}, t)));
+  card.append(el("div",{class:"inline small",style:"gap:6px;flex-wrap:wrap;align-items:center"},
+    "Change my", from, "into", to,
+    el("button",{class:"btn-primary",style:"padding:4px 10px",onclick:()=>{
+      if(p.tera){ toast("Terastalized \u2014 its Type can't change"); return; }
+      if(from.value === to.value){ toast(`It is already ${to.value}-Type`); return; }
+      addTypeMod(p, { kind:"swap", from:from.value, type:to.value, src:"Reflect Type", dur:"scene" });
+      commit(); closeModal(); toast(`\u{1FA9E} ${ownerLabel(p)} is ${monTypes(p).join(" / ")} for the rest of the Scene`);
+    }}, "Reflect")));
+  card.append(el("div",{class:"small muted",style:"margin-top:4px"}, board.size
+    ? "The Types listed are the ones on the board. STAB follows the new Type; it lasts the rest of the Scene."
+    : "No board to read the target from, so every Type is offered \u2014 pick one the target really has."));
+  if(cur) card.append(el("button",{class:"linkbtn",style:"margin-top:6px",
+    onclick:()=>{ removeTypeMod(p, x => x.src === "Reflect Type"); commit(); closeModal(); toast("Back to its own Types"); }},
+    `\u21A9 undo (currently ${cur.from}\u2192${cur.type})`));
+  return card;
+}
+/* Protean: "The user's Type changes to match the Type of the triggering Move. This Ability resolves
+   before the Move is resolved (And thus you may apply STAB...)". So it's offered on the roll screen,
+   BEFORE the dice, and the screen reopens with STAB worked out on the new Type. */
+function proteanCard(p, m, sp, mtype, opts){
+  if(!hasAbility(p, "Protean") || !mtype || !TYPES.includes(mtype)) return null;
+  const now = monTypes(p);
+  const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+  if(now.length === 1 && now[0] === mtype){
+    card.append(el("div",{class:"small"}, `\u{1F504} Protean \u2014 already ${mtype}-Type, so STAB applies.`));
+    return card;
+  }
+  if(p.tera){ card.append(el("div",{class:"small muted"}, "\u{1F504} Protean \u2014 Terastalized, so its Type can't change.")); return card; }
+  card.append(el("div",{class:"inline small",style:"gap:8px;flex-wrap:wrap;align-items:center"},
+    el("span",{style:"font-weight:700"}, "\u{1F504} Protean"),
+    el("button",{class:"btn-secondary",style:"padding:4px 10px",
+      title:"At-Will, Swift Action \u2014 resolves before the Move, so this roll gets STAB",
+      onclick:()=>{ setUserType(p, mtype, "Protean", ()=>(opts.persist || save)());
+        opts.rerender && opts.rerender();
+        closeModal(); openMoveRoll(p, m, sp, opts); toast(`\u{1F504} ${ownerLabel(p)} is ${mtype}-Type \u2014 STAB applies`); }},
+      `Become ${mtype}-Type first`),
+    el("span",{class:"muted"}, `now ${now.join(" / ")}`)));
   return card;
 }
 /* ---- Terapagos: the Tera Shift Capability -------------------------------------------------
@@ -2836,6 +3178,7 @@ function teraRollNotes(p, m, mtype){
   if(r) out.push(`${r.src}: ${ownerLabel(p)} is ${r.type}-Type right now ${r.stab
     ? "(it IS that Type, so STAB moved with it)"
     : "(STAB still comes from " + (monNaturalTypes(p).join(" / ")||"its own Types") + ")"}. Type effectiveness against it is worked out from ${r.type}.`);
+  typeModsLive(p).forEach(x => out.push(`${typeModLabel(x)} (${typeModDur(x)}) — ${ownerLabel(p)} is ${monTypes(p).join(" / ")} right now, and STAB follows that.`));
   if(p && p.radiate) out.push(`Stellar Blast: Radiating ${p.radiate} \u2014 every ally within a Burst 2 also gets +10 damage on their ${p.radiate}-Type Moves.`);
   if(hasAbility(p,"Type Aura") || hasAbility(p,"Type Aura [Errata]")){
     const ty = typeAuraType(p);
@@ -8846,6 +9189,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       const rsn = randomStatusNode(st.move, acc); if(rsn) out.append(rsn);
       const csn = moveCSNode(t, st.move, acc, opts.rerender, opts.persist);
       if(csn) out.append(csn);
+      const tn = moveTypeNode(t, st.move, opts.rerender, opts.persist);
+      if(tn) out.append(tn);
       const ok = ohkoNode(t, st.move); if(ok) out.append(ok);
     }
     /* Demoralize (Edge, prereq Adept Intimidate): "Whenever you land a Critical Hit on a foe, that
@@ -11912,7 +12257,10 @@ function inventoryRow(t, char, it, i){
     held.forEach(m=>{ if(m.mega) megaRevert(m, true); m.heldItem = ""; syncHeldStatuses(m); });
     t.inventory.splice(i,1); save(); renderTrainer();
   }},"×");
-  row.append(fav, pic, info, qty, del);
+  row.append(fav, pic, info, qty);
+  if(canSendItems(char)) row.append(el("button",{class:"linkbtn",title:"send some of this to another character",
+    onclick:()=>openSendItem(char, it)},"🎁"));
+  row.append(del);
   return row;
 }
 function openInventoryPicker(t){
@@ -11923,6 +12271,99 @@ function openInventoryPicker(t){
     if(ex){ ex.qty=(parseInt(ex.qty)||0)+1; } else { t.inventory.push({name, qty:1, notes:""}); }
     save(); renderTrainer();
   }, "held");
+}
+/* ---------- Sending items between sheets ----------
+   The GM hands items across the table: N copies leave this bag and land in another character's.
+   Cloud: GM only, to any campaign sheet (the PC row and archived sheets excluded). Local: between
+   the characters on this device. Copies still in use (held by a Pokémon, worn in an Equipment slot)
+   can be sent too, but only after confirming they come off — otherwise a Pokémon would keep holding
+   an item its Trainer no longer owns. */
+function itemSendTargets(fromChar){
+  if(mode==="cloud"){
+    if(!cloud.isGM) return [];
+    return Object.values(cloud.byId).filter(r => r && r.data && r.data.trainer && r.data!==fromChar
+        && r.owner_id!==PC_OWNER && !charArchived(r.data))
+      .map(r => ({ char:r.data, label:`${r.data.name||"(unnamed)"} — ${r.owner_name||"?"}${ownsRow(r)?" (you)":""}`,
+                   commit:()=> cloudUpsert(r).then(ok=>{ if(!ok) toast("⚠ Sync issue — it'll reconcile on the next change"); }) }))
+      .sort((a,b)=>a.label.localeCompare(b.label));
+  }
+  return (state?.characters||[]).filter(c => c && c.trainer && c!==fromChar && !charArchived(c))
+    .map(c => ({ char:c, label:c.name||c.trainer.name||"(unnamed)", commit:()=>{} }));
+}
+function canSendItems(fromChar){ return !!fromChar && itemSendTargets(fromChar).length > 0; }
+/* two inventory rows are one stack when they're the same item with nothing else telling them apart
+   (a row carrying its own notes, shop art or a Chef's taste stays its own row) */
+function sameItemStack(a, b){
+  if(normItemName(a.name)!==normItemName(b.name)) return false;
+  const skip = new Set(["name","qty","fav"]);
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)].filter(k=>!skip.has(k)));
+  const blank = v => v==null || v==="";
+  for(const k of keys){
+    if(blank(a[k]) && blank(b[k])) continue;
+    if(JSON.stringify(a[k])!==JSON.stringify(b[k])) return false;
+  }
+  return true;
+}
+/* move `n` of inventory row `it` from fromChar's bag to target.char's; false when cancelled */
+function sendInventoryItem(fromChar, it, target, n){
+  const t = fromChar.trainer, tt = target.char.trainer;
+  const have = Math.max(0, parseInt(it.qty)||0);
+  n = Math.max(1, Math.min(have, parseInt(n)||0));
+  if(!have){ toast("There are none of that item to send"); return false; }
+  const key = normItemName(it.name), label = it.name || "item";
+  // copies in use must be covered by what stays behind in the bag
+  const holders = monsHolding(fromChar, it.name);
+  const worn = EQUIP_SLOTS.filter(s => t.equipment?.[s] && normItemName(t.equipment[s].name)===key);
+  const excess = holders.length + worn.length - (inventoryQty(t, it.name) - n);
+  if(excess > 0){
+    const nMons = Math.min(excess, holders.length);
+    const offMons = nMons ? holders.slice(-nMons) : [];
+    const offSlots = worn.slice(0, Math.max(0, excess - offMons.length));
+    const who = [...offMons.map(monLabel), ...offSlots.map(s=>`${t.name||"the Trainer"}'s ${s} slot`)];
+    if(!confirm(`Sending ${n} ${label} leaves too few behind for what's in use.\nTake it off ${who.join(", ")}?`)) return false;
+    offMons.forEach(m => { if(m.mega) megaRevert(m, true); m.heldItem = ""; syncHeldStatuses(m); });
+    offSlots.forEach(s => { t.equipment[s] = null; });
+    if(offSlots.length) syncHeldStatuses(t);
+  }
+  if(!Array.isArray(tt.inventory)) tt.inventory = [];
+  const stack = tt.inventory.find(x => x && sameItemStack(x, it));
+  if(stack) stack.qty = (Math.max(0, parseInt(stack.qty)||0)) + n;
+  else { const copy = JSON.parse(JSON.stringify(it)); copy.qty = n; delete copy.fav; tt.inventory.push(copy); }
+  it.qty = have - n;
+  if(it.qty <= 0){ const i = t.inventory.indexOf(it); if(i>=0) t.inventory.splice(i,1); }
+  target.commit();
+  save();                                   // the sheet being viewed — the one the item left
+  toast(`🎁 Sent ${n}× ${label} to ${target.char.name||tt.name||"them"} ✓`);
+  return true;
+}
+function openSendItem(fromChar, it){
+  const targets = itemSendTargets(fromChar);
+  if(!targets.length){ toast(mode==="cloud" ? "Only the GM can send items between sheets" : "No other character to send to"); return; }
+  const have = Math.max(0, parseInt(it.qty)||0);
+  if(!have){ toast("There are none of that item to send"); return; }
+  const wrap = el("div",{});
+  wrap.append(el("div",{class:"inline",style:"gap:10px;align-items:center;margin-bottom:10px"},
+    itemImgNode(it.name, 34, it),
+    el("div",{}, el("div",{style:"font-weight:800"}, it.name||"(unnamed item)"),
+      el("div",{class:"small muted"}, `${fromChar.name||fromChar.trainer.name||"This sheet"} carries ${have}`))));
+  const sel = el("select");
+  targets.forEach((x,i) => sel.append(el("option",{value:i}, x.label)));
+  wrap.append(el("label",{class:"field"}, el("span",{},"Send to"), sel));
+  const qty = el("input",{type:"number",min:1,max:have,value:have>1?1:have,style:"width:90px"});
+  const all = el("button",{class:"btn-secondary",style:"padding:4px 10px",onclick:()=>{ qty.value = have; }},`All (${have})`);
+  wrap.append(el("label",{class:"field",style:"margin-top:8px"}, el("span",{},"How many"),
+    el("div",{class:"inline",style:"gap:8px;align-items:center"}, qty, have>1 ? all : "")));
+  const inUse = monsHolding(fromChar, it.name).length;
+  if(inUse) wrap.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    `🖐 ${inUse} held by a Pokémon — sending more than the spare ones asks before taking them off.`));
+  modal({title:"🎁 Send item", bodyNode:wrap, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      const n = parseInt(qty.value)||0;
+      if(n<1 || n>have){ toast(`Send between 1 and ${have}`); return; }
+      if(sendInventoryItem(fromChar, it, targets[parseInt(sel.value)||0], n)){ closeModal(); renderTrainer(); }
+    }},"🎁 Send"),
+  ]});
 }
 
 /* ===================================================================
@@ -14788,6 +15229,7 @@ function heroCard(p, sp){
   main.append(teraControl(p, sp, ()=>refreshMon(p), {gm:isGM()}));
   main.append(multitypeControl(p, ()=>refreshMon(p)));
   main.append(camouflageControl(p, ()=>refreshMon(p)));
+  main.append(typeModsControl(p, ()=>refreshMon(p)));
   hero.append(main);
   card.append(hero);
   /* damage / heal: one signed input — type 8 to heal, −10 to take damage */
@@ -20815,6 +21257,12 @@ function openMoveRoll(p, m, sp, opts={}){
   /* --- Camouflage: same, but the Type is dictated by the ground you are standing on --- */
   if(isCamouflage(m)) body.append(camouflageCard(p, m, opts));
 
+  /* --- Reflect Type: swap one of the user's Types for one of the target's --- */
+  if(isReflectType(m)) body.append(reflectTypeCard(p, m, opts));
+
+  /* --- Protean: become the Move's Type before it resolves, so STAB comes with it --- */
+  { const pc = proteanCard(p, m, sp, mtype, opts); if(pc) body.append(pc); }
+
   /* --- Gem / Z-Crystal: a +3 Damage Base the holder chooses to spend on THIS attack --- */
   if(zBoost){
     const isZ  = zBoost.kind==="z";
@@ -21427,6 +21875,8 @@ function openMoveRoll(p, m, sp, opts={}){
     { const rsn = randomStatusNode(m, acc); if(rsn) out.append(rsn); }
     { const csn = moveCSNode(p, m, acc, opts.rerender || (()=>refreshMon(p)), opts.persist);
       if(csn) out.append(csn); }
+    { const tn = moveTypeNode(p, m, opts.rerender || (()=>refreshMon(p)), opts.persist);
+      if(tn) out.append(tn); }
     { const ok = ohkoNode(p, m); if(ok) out.append(ok); }
     if(multi && connected===0){
       out.append(el("div",{},
@@ -29656,6 +30106,27 @@ function gardenMatureNow(t, pl){
   if(!pl.owed.some(o => o.day === today)) pl.owed.push({ day:today, mulch:pl.mulchOn || "" });
   return true;
 }
+/* GM force-grow, one plant, one day's worth — WITHOUT ending the day for anyone (the sheet's day
+   counter, Mulch and the other plants don't move). Sprouting: one day older, and on reaching Mature
+   today's Yield Roll is queued. Already Mature: one extra Yield Roll is queued. */
+function gardenForceGrow(t, pl){
+  if(!pl) return "";
+  gardenList(t);
+  const today = t.gardenDay || 0;
+  if(pl.age < GARDEN_MATURE_DAYS){
+    pl.age += 1;
+    if(pl.age < GARDEN_MATURE_DAYS) return "grew";
+    if(!pl.owed.some(o => o.day === today)) pl.owed.push({ day:today, mulch:pl.mulchOn || "" });
+    return "mature";
+  }
+  pl.owed.push({ day:today, mulch:pl.mulchOn || "" });
+  return "roll";
+}
+function gardenForceGrowToast(pl, r){
+  return r === "grew" ? `⏩ ${pl.crop} grew a day — Mature in ${GARDEN_MATURE_DAYS - pl.age} day${GARDEN_MATURE_DAYS - pl.age === 1 ? "" : "s"}`
+       : r === "mature" ? `⏩ ${pl.crop} is Mature — today's Yield Roll is ready`
+       : `⏩ ${pl.crop} grew — one more Yield Roll is ready`;
+}
 /* Resolve one queued Yield Roll. `face` = what the physical die showed, or null to roll it here. */
 function gardenRollYield(t, pl, idx, face, useBook){
   const entry = pl.owed[idx]; if(!entry) return null;
@@ -29804,11 +30275,19 @@ function openGardenTokenMenu(token, map){
       gardenYieldRows(t, pl, hv, commitHarvest);
       body.append(hv);
     }
-    if(sprouting && cloud.isGM)
-      body.append(el("button",{class:"btn-secondary",style:"margin-bottom:10px",
+    if(cloud.isGM){
+      const gmBar = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-bottom:10px"});
+      gmBar.append(el("button",{class:"btn-secondary",
+        title: sprouting ? "GM — force growth: this plant grows one day right now (nobody's day ends)"
+                         : "GM — force growth: queue one more Yield Roll for this plant right now (nobody's day ends)",
+        onclick:()=>{ const r = gardenForceGrow(t, pl); cloudUpsert(row); if(cloud.activeId === row.id && currentTab === "trainer") renderTrainer(); reopen(); toast(gardenForceGrowToast(pl, r)); }},
+        sprouting ? "⏩ Force grow a day" : "⏩ Force grow (+1 Yield Roll)"));
+      if(sprouting && left > 1) gmBar.append(el("button",{class:"btn-secondary",
         title:"Skip the wait: the plant is Mature right now and today's Yield Roll is ready for its Trainer",
-        onclick:()=>{ gardenMatureNow(t, pl); cloudUpsert(row); reopen(); toast(`⏩ ${pl.crop} is Mature`); }},
+        onclick:()=>{ gardenMatureNow(t, pl); cloudUpsert(row); if(cloud.activeId === row.id && currentTab === "trainer") renderTrainer(); reopen(); toast(`⏩ ${pl.crop} is Mature`); }},
         "⏩ Mature now"));
+      body.append(gmBar);
+    }
 
     if(cloud.isGM){
       const s = el("select",{style:"padding:6px"});
@@ -30020,6 +30499,14 @@ function gardenCard(t, c, commit){
   /* actions */
   const bar = el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;margin-bottom:6px"});
   bar.append(el("button",{class:"btn-primary", onclick:()=>openGardenPlant(t, c, commit)}, "\u{1F331} Plant something"));
+  if(isGM() && list.length) bar.append(el("button",{class:"btn-secondary",
+    title:"GM — force growth on every plant here: sprouting ones grow a day, Mature ones get one more Yield Roll. Nobody's day ends.",
+    onclick:()=>{
+      let rolls = 0;
+      list.forEach(pl => { const r = gardenForceGrow(t, pl); if(r !== "grew") rolls++; });
+      commit();
+      toast(`⏩ ${list.length} plant${list.length === 1 ? "" : "s"} grew a day${rolls ? ` — ${rolls} Yield Roll${rolls === 1 ? "" : "s"} ready` : ""}`);
+    }}, `⏩ GM: Force grow all (${list.length})`));
   const rollable = list.filter(pl => pl.owed.length && gardenSoil(t, pl, false).value != null && gardenTierOf(pl.crop));
   const owedN = rollable.reduce((n, pl) => n + pl.owed.length, 0);
   if(owedN) bar.append(el("button",{class:"btn-secondary", title:"Roll every queued Yield Roll here, one after another (How Berries?? isn't spent by this — use a plant's own row for that)",
@@ -30092,12 +30579,24 @@ function gardenPlantRow(t, c, pl, gardeners, commit){
     el("span",{class:"kv small"}, whereTxt),
     el("span",{class:"kv small", style: mature ? "color:var(--good)" : ""},
       mature ? "Mature · yielding" : `Sprouting · Mature in ${left} day${left === 1 ? "" : "s"}`),
-    pl.harvested ? el("span",{class:"small muted"}, `${pl.harvested} harvested so far`) : "",
-    (!mature && isGM()) ? el("button",{class:"btn-secondary",style:"padding:3px 10px",
+    pl.harvested ? el("span",{class:"small muted"}, `${pl.harvested} harvested so far`) : "");
+  box.append(head);
+
+  /* GM force-grow — on every plant, sprouting or Mature */
+  if(isGM()){
+    const gm = el("div",{class:"inline small",style:"gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;padding:5px 8px;border:1px dashed var(--warn);border-radius:9px"},
+      el("span",{style:"font-weight:700;color:var(--warn)"}, "GM"));
+    gm.append(el("button",{class:"btn-secondary",style:"padding:3px 10px",
+      title: mature ? "GM — force growth: queue one more Yield Roll for this plant right now (nobody's day ends)"
+                    : "GM — force growth: this plant grows one day right now (nobody's day ends)",
+      onclick:()=>{ const r = gardenForceGrow(t, pl); commit(); toast(gardenForceGrowToast(pl, r)); }},
+      mature ? "⏩ Force grow (+1 Yield Roll)" : "⏩ Force grow a day"));
+    if(!mature && left > 1) gm.append(el("button",{class:"btn-secondary",style:"padding:3px 10px",
       title:"GM — skip the wait: the plant is Mature right now and today's Yield Roll is ready",
       onclick:()=>{ gardenMatureNow(t, pl); commit(); toast(`⏩ ${pl.crop} is Mature — today's Yield Roll is ready`); }},
-      "⏩ Mature now") : "");
-  box.append(head);
+      "⏩ Mature now"));
+    box.append(gm);
+  }
 
   /* soil */
   const soilToday = gardenSoil(t, pl, !!pl.mulchOn);
@@ -31972,6 +32471,7 @@ function encounterMonCard(enc, p, list, trainer){
   }
   nw.append(multitypeControl(p, ()=>{ renderEncounters(); }, {persist:saveEnc}));
   nw.append(camouflageControl(p, ()=>{ renderEncounters(); }, {persist:saveEnc}));
+  nw.append(typeModsControl(p, ()=>{ renderEncounters(); }, {persist:saveEnc}));
   nw.append(miniorColorControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   nw.append(unownLetterControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   nw.append(wishiwashiFormeControl(p, sp, ()=>{ renderEncounters(); }, saveEnc));
@@ -41220,12 +41720,15 @@ function advanceInitiative(map, meta, dir){
       if(gone.length){ expired = expired.concat(gone); commitTokenSource(tok); }
     });
   }
+  // Trick-or-Treat's 5 turns / Roost's "until the start of its next turn"
+  const typeEnded = dir>0 ? tickTypeModTurns(map, endingId, endingSeq, initEntryToken(meta.initTurnId), meta.initSeq||0) : [];
   // Optimistic: repaint the board NOW so the turn advances instantly, then sync in the background
   // (awaiting the Supabase round-trips first is what made "Next turn" feel laggy). Realtime echoes
   // are dropped by the mapMeta/mapTokens updated_at guards, so the background writes are safe.
   renderMap();
   mapMetaSave();                                    // coalesced — rapid clicks write once, in order
   if(expired.length) toast(`⌛ Buff expired: ${expired.join(", ")}`);
+  if(typeEnded.length) toast(`⌛ Type change ended: ${typeEnded.join(" · ")}`);
   if(wrapped){ mapTokensSave(); toast(`↺ Round ${meta.initRound} — movement reset`); }
 }
 /* GM taps a name in the initiative list to jump straight to their turn — a manual correction like
