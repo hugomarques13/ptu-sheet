@@ -565,6 +565,15 @@ function trainedCSMods(o){
   trainedStatsOf(o).forEach(k => out[k] = (out[k] || 0) + TRAINED_CS);
   return out;
 }
+/* Herbal Restoratives (May 2015 Playtest, Misc. Errata p.11): from the third one in a day "the user's
+   default Combat Stage for the rolled Stat is reduced by 1 until they take an Extended Rest". A
+   DEFAULT, like a Trained Stat — End Scene can't wipe it — kept on the creature as o.herbal.cs and
+   cleared by 🌙 End the Day (herbalNewDay). The counter and the rest live with HERBAL RESTORATIVES. */
+function herbalCSMods(o){
+  const cs = o && o.herbal && o.herbal.cs, out = {};
+  if(cs && typeof cs === "object") Object.keys(cs).forEach(k => { const v = parseInt(cs[k]) || 0; if(v) out[k] = v; });
+  return out;
+}
 /* Critical Moment (Ace Trainer, Adept Command): "The bonuses from your Pokemon's [Training] are
    tripled until the end of your next turn." A plain flag rather than a status chip — it is not an
    affliction, it lasts a turn, and applyEndScene clears it with the rest of the round's state.
@@ -577,7 +586,8 @@ function effectiveCS(p){
   const eqSpd = isTrainerOwner(p) ? equipSpeedCS(p) : 0;   // Heavy Armor & co. shift the Speed default CS
   const tr = trainedCSMods(p);                             // Ace Trainer / Athlete Trained Stats
   const hi = heldCSMods(p);                                // Choice Items, Stat Boosters, Lagging Items…
-  CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + wx[k] + (ab[k]||0) + aura[k] + (tr[k]||0) + (hi[k]||0) + (k==="spd"?eqSpd:0))));
+  const hb = herbalCSMods(p);                              // a third Herbal Restorative in one day
+  CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + wx[k] + (ab[k]||0) + aura[k] + (tr[k]||0) + (hi[k]||0) + (hb[k]||0) + (k==="spd"?eqSpd:0))));
   ACC_EVA_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + (ab[k]||0) + aura[k] + (hi[k]||0))));
   return out;
 }
@@ -592,8 +602,9 @@ function csAutoMods(p){
   const eqSpd = isTrainerOwner(p) ? equipSpeedCS(p) : 0;
   const tr = trainedCSMods(p);
   const hi = heldCSMods(p);
+  const hb = herbalCSMods(p);
   const out = {};
-  CS_STATS.forEach(([k]) => out[k] = (cond[k]||0) + (wx[k]||0) + (ab[k]||0) + (aura[k]||0) + (tr[k]||0) + (hi[k]||0) + (k==="spd"?eqSpd:0));
+  CS_STATS.forEach(([k]) => out[k] = (cond[k]||0) + (wx[k]||0) + (ab[k]||0) + (aura[k]||0) + (tr[k]||0) + (hi[k]||0) + (hb[k]||0) + (k==="spd"?eqSpd:0));
   ACC_EVA_STATS.forEach(([k]) => out[k] = (cond[k]||0) + (ab[k]||0) + (aura[k]||0) + (hi[k]||0));
   return out;
 }
@@ -4698,6 +4709,12 @@ function gainTempHP(o, n, opts){
   if(!o || !n) return tempHPOf(o);
   if(overgrowthIntercept(o, n, true)) return tempHPOf(o);       // Overgrowth: the Druid takes it instead
   if(o.species !== undefined && isSoulless(o)) return 0;      // Soulless (Shedinja) can never hold any
+  /* Herbal Restoratives: a second one in a day leaves the creature "unable to gain Food Buffs or
+     Temporary Hit Points until they take an Extended Rest" (May 2015 Playtest errata) */
+  if(herbalBlocked(o)){
+    toast(`\u{1F33F} ${ownerLabel(o)} can't gain Temporary HP — ${herbalCount(o)} Herbal Restoratives since the last End the Day`);
+    return tempHPOf(o);
+  }
   /* "The user cannot gain Temporary Hit Points from other sources while in Schooling Forme" - the
      shoal IS the pool, so nothing else may add to it. Schooling's own grant passes {schooling:true}. */
   if(!(opts && opts.schooling) && inSchoolForme(o)){
@@ -5537,6 +5554,8 @@ async function restApply(sheets, plan, endsDay){
     if(endsDay){ resetInjuryDay(c.trainer); (c.pokemon||[]).forEach(resetInjuryDay); }
     // …and it's the Garden's clock too: plants age, yesterday's Mulch soaks in, Mature ones owe a Yield Roll
     if(endsDay) yieldsN += gardenNewDay(c);
+    // …and the Herbal Restorative count (with its −1 default Combat Stages) starts over
+    if(endsDay) herbalNewDay(c);
     if(mode==="cloud"){
       const row = cloud.byId[s.id] || s.row;
       if(row) cloudUpsert(row);
@@ -11953,6 +11972,24 @@ function bookFreeRank(t, name){
 function bookBound(t, name){
   return Math.max(((t.books||{})[name]||{}).bound || 0, bookFreeRank(t, name));
 }
+/* the Rank bound on a Book, looked up by its name without the playtest tag ("How Berries??") */
+function bookRankNamed(t, short){
+  if(!t) return 0;
+  const want = String(short||"").toLowerCase();
+  return ownedBookNames(t).filter(n => bookShortName(n).toLowerCase() === want)
+    .reduce((m, n) => Math.max(m, bookBound(t, n)), 0);
+}
+/* what the sheet already does for a Book Rank, shown under its rules text */
+function bookRankAutoNote(name, n){
+  return ({
+    "the joy of cooking|1": "Automated: 🍳 Kitchen prices are 10% off for anything that comes out as Food.",
+    "the joy of cooking|2": "Automated: Meals and Refreshments you cook are marked 📖 in the bag, and whoever eats one heals a Tick.",
+    "how berries??|1": "Automated: a +1 tick-box on a 🌱 Garden Yield Roll, once per day (🌙 End the Day hands it back).",
+    "how berries??|2": "Automated: ♻ Mulch from Food Scrap on the 🌱 Garden tab.",
+    "traditional medicine reference|1": "Automated: 🧪 Apply a Restorative skips the Combat Stage penalty on Herbal Restoratives you administer.",
+    "traditional medicine reference|2": "Automated: 🧪 Apply a Restorative offers the Food Buff on every Herbal Restorative you administer.",
+  })[bookShortName(name).toLowerCase() + "|" + n] || "";
+}
 /* Ranks currently bound, and how many of them the Medic Feature is paying for */
 function bookBoundInfo(t){
   let ranks = 0, freeRanks = 0;
@@ -12151,6 +12188,8 @@ function booksCard(t){
         q.via && !free ? el("span",{class:"muted",style:"font-weight:600;margin-left:6px"},`(via ${q.via})`) : "",
         !q.ok && !free ? el("span",{style:"color:var(--bad);font-weight:600;margin-left:6px"},`🔒 needs ${q.need}`) : ""));
       txt.append(el("div",{class:"small"+(bound?"":" muted"),style:"margin-top:2px"}, r.text));
+      const auto = bookRankAutoNote(name, r.n);
+      if(auto) txt.append(el("div",{class:"small",style:"margin-top:2px;color:var(--accent);font-weight:600"}, "⚙ " + auto));
       // a Rank that just namedrops a Feature ("…the First Aid Expertise Feature…") gets that
       // Feature's actual rules spelled out underneath, instead of leaving it as a dangling reference
       bookRankFeatureRefs(r.text).forEach(f => txt.append(el("div",{class:"small muted",style:"margin-top:4px;padding-left:8px;border-left:2px solid var(--line)"},
@@ -12270,7 +12309,24 @@ function inventoryRow(t, char, it, i){
       det.append(itemEffectNode(cat));
       info.append(det);
     }
+  } else {
+    /* a Chef's creation named for its source ("Preserves (Sitrus Berry)", "Dumpling (A + B)") has no
+       catalog row of its own — say what it does from what went in */
+    const eff = kitchenItemEffect(it.name);
+    if(eff){
+      const det = el("details",{class:"spoiler",style:"margin-top:2px"});
+      const flat = eff.replace(/\s+/g," ");
+      det.append(el("summary",{class:"small muted"}, flat.length>90 ? flat.slice(0,90).trim()+"…" : flat));
+      det.append(el("div",{class:"item-effect small"}, eff));
+      info.append(det);
+    }
   }
+  /* the Taste a Chef assigned with Accentuated Taste rides on the row — it pays out when the Buff is
+     traded in, so it has to be readable here, where the item actually sits */
+  if(it.accTaste) info.append(el("div",{class:"small",style:"margin-top:2px;color:var(--accent);font-weight:700"},
+    `\u{1F9C2} ${it.accTaste} Taste — ${kitchenTasteText(it.accTaste)}`));
+  if(it.joy) info.append(el("div",{class:"small",style:"margin-top:2px;color:var(--accent);font-weight:700"},
+    "\u{1F4D6} The Joy of Cooking — whoever eats or drinks one of these also gains a Tick of Hit Points"));
   /* who's using this one right now — a copy held by a Pokémon is spoken for; the ones left over
      are what another Pokémon can still be given. */
   const holders = monsHolding(char, it.name);
@@ -16159,7 +16215,7 @@ const SNACK_DEFS = [
   { name:"Balm Mushroom",  cures:["burned","paralysis","poisoned","badlyPoisoned"], csRandom:-1,
     note:"Cures Burn, Paralysis or Poison; if it does, the user loses 1 Combat Stage in a random Stat." },
   // ---- Chef / playtest extras ----
-  { name:"Herbal Restorative", note:"[Playtest] +2 bonus on one Save Check." },
+  { name:"Herbal Restorative", saveBonus:2, note:"[Playtest] +2 bonus on one Save Check. Handed out by the first Herbal Restorative (Energy Powder, Energy Root, Heal Powder, Revival Herb) someone takes in a day." },
   { name:"Hearty Meal", note:"A Trainer who eats this gains +2 Max AP until the end of their next Extended Rest (only one Hearty Meal at a time). Hearty Meals go off 20 minutes after they're cooked." },
 ];
 const snackByKey = new Map(SNACK_DEFS.map(d=>[normItemName(d.name), d]));
@@ -16174,7 +16230,7 @@ const snackByKey = new Map(SNACK_DEFS.map(d=>[normItemName(d.name), d]));
 function mergeSnackDefs(a, b, name){
   const out = { name, note:[a.note, b.note].filter(Boolean).join(" · ") || undefined };
   const num = ["heal","tempHP","likeTempHP","dmg","likeDmg","dr","likeDr","crit","acc","eva","likeAcc",
-               "csRandom","csRandomCount"];
+               "csRandom","csRandomCount","saveBonus"];
   num.forEach(k => { const v = (a[k]||0) + (b[k]||0); if(v) out[k] = v; });
   // "1/N of Max HP" stacks by taking the BETTER (smaller denominator) of the two, not by adding
   ["healFrac","likeHealFrac","tempHPFrac","regen"].forEach(k => {
@@ -16322,6 +16378,9 @@ function eatSnack(o, itemName, opts={}){
   const def = snackDef(itemName);
   const list = digestionList(o);
   const cap = digestionCap(o);
+  // a second Herbal Restorative today: no Food Buffs until End the Day (Traditional Medicine Reference R2 passes herbalOK)
+  if(!opts.herbalOK && herbalBlocked(o))
+    return { ok:false, msg:`${ownerLabel(o)} has had ${herbalCount(o)} Herbal Restoratives since the last End the Day — no Food Buffs until the next one.` };
   const free = [];                                     // Buffs that don't count against the limit
   // Honey Paws: "may consume Honey to gain a Buff as if they had consumed Leftovers. This Buff does
   // not count against their normal limit."
@@ -16425,6 +16484,11 @@ function tradeInDigestion(o, buff, opts={}){
         : `+${def.eva*x} Evasion — no initiative running, so it lasts until End Scene`);
     }
     if(def.restoreScene) log.push("pick one Scene-frequency Move and give it a use back (its ⟳ pip)");
+    if(def.saveBonus){
+      researchBuff(o, { key:"custom", name:def.name, cat:"Food", once:true, dur:"next Save Check",
+        note:`+${def.saveBonus*x} to the next Save Check — roll it at the table, then remove this` });
+      log.push(`+${def.saveBonus*x} on the next Save Check (placed as a one-shot buff)`);
+    }
     if(def.weakenType) log.push(`the incoming ${def.weakenType}-Type Move is weakened ${x>1?"two steps":"one step"}`);
     if(hates){
       const k = def.dislikeStatus || "enraged";
@@ -16519,9 +16583,12 @@ function inventoryTasteOf(t, name){
   return (row && row.accTaste) || "";
 }
 /* pull one copy of an item out of a Trainer's bag; returns false if they don't have it */
-function consumeInventoryItem(t, name){
+function consumeInventoryItem(t, name, taste, pred){
   const want = normItemName(name);
-  const row = (t?.inventory||[]).find(it => normItemName(it.name)===want && (parseInt(it.qty)||0) > 0);
+  // `taste` (optional): only a row carrying that Accentuated Taste ("" = an untasted row)
+  // `pred`  (optional): only a row it accepts (a Joy of Cooking copy)
+  const row = (t?.inventory||[]).find(it => normItemName(it.name)===want && (parseInt(it.qty)||0) > 0
+    && (taste === undefined || (it.accTaste||"") === taste) && (!pred || pred(it)));
   if(!row) return false;
   row.qty = (parseInt(row.qty)||1) - 1;
   if(row.qty <= 0){ const i = t.inventory.indexOf(row); if(i>=0) t.inventory.splice(i,1); }
@@ -16544,6 +16611,8 @@ function digestionCard(owner, commit, opts={}){
   const card = el("div",{class:"card"}, el("h3",{},"🍎 Food & Digestion Buffs",
     el("span",{class:"muted small"}, `${counted}/${cap} stored${list.length>counted?` (+${list.length-counted} free)`:""}`)));
 
+  const herb = herbalStatusNode(owner, commit);
+  if(herb) card.append(herb);
   if(!list.length){
     card.append(el("div",{class:"muted small"},"No Digestion Buff stored. Eating a Snack is an Extended Action and stores one Buff to spend later, in battle."));
   }
@@ -16554,6 +16623,9 @@ function digestionCard(owner, commit, opts={}){
     row.append(el("div",{style:"flex:1;min-width:0"},
       el("div",{class:"buff-name"}, b.item + (b.from && b.from!==b.item ? ` (from ${b.from})` : "") + (b.exempt?"  ·  free of the limit":"")),
       el("div",{class:"small muted"}, snackEffectText(owner, def) || b.note || "GM resolves this one by hand"),
+      (b.accTaste && ACCENTUATED_TASTES[b.accTaste]) ? el("div",{class:"small",style:"margin-top:2px;color:var(--accent);font-weight:600"},
+        `\u{1F9C2} Accentuated Taste (${b.accTaste}): ${kitchenTasteText(b.accTaste)}`
+        + (ownerFlavors(owner).disliked === b.accTaste ? " — a Taste this eater dislikes, so it pays nothing" : "")) : "",
       block ? el("div",{class:"small",style:"color:var(--warn);margin-top:2px"}, "⚠ "+block) : ""));
     const use = el("button",{class:block?"btn-secondary":"btn-primary",style:"padding:6px 12px",
       title: block || "Trade this Digestion Buff in and resolve its effect",
@@ -16641,26 +16713,53 @@ function openFoodPicker(owner, kind, bag, commit, opts={}){
     if(mine.length){ names = mine; fromBag = true; }
     else { toast(`No ${isSnack?"Snacks":"Refreshments"} in the bag — add some under Trainer → Inventory & Bio.`); return; }
   }
-  const sub = n => {
+  /* A Chef's Accentuated Taste splits one Snack into separate bag rows (a plain Leftovers and a Salty
+     one are not the same food), so each Taste gets its own line and the eater picks WHICH one. */
+  const pickRef = new Map();                              // label → {name, taste}
+  const tastedRows = (n, tt) => (bag && bag.inventory || []).filter(it => (parseInt(it.qty)||0) > 0
+    && normItemName(it.name)===normItemName(n) && (tt === undefined || (it.accTaste||"") === tt));
+  if(fromBag && isSnack){
+    const labels = [];
+    names.forEach(n => {
+      const tastes = [...new Set(tastedRows(n).map(it => it.accTaste || ""))];
+      (tastes.length ? tastes : [""]).forEach(tt => {
+        const label = tt ? `${n} · ${tt} Taste` : n;
+        labels.push(label); pickRef.set(label, { name:n, taste:tt });
+      });
+    });
+    names = labels;
+  }
+  const refOf = label => pickRef.get(label) || { name:label, taste:"" };
+  const sub = label => {
+    const { name:n, taste } = refOf(label);
     const def = isSnack ? snackDef(n) : refreshmentDef(n);
     const txt = isSnack ? snackEffectText(owner, def) : `+${def.heal} HP`;
-    const qty = bag ? inventoryQty(bag, n) : 0;
-    return el("div",{class:"pi-sub"}, (bag?`×${qty} · `:"") + String(txt).slice(0,120));
+    const qty = !bag ? 0 : (fromBag && isSnack) ? tastedRows(n, taste).reduce((a, it) => a + (parseInt(it.qty)||0), 0) : inventoryQty(bag, n);
+    const tasteTxt = taste ? `\u{1F9C2} ${taste}: ${kitchenTasteText(taste)} · ` : "";
+    return el("div",{class:"pi-sub"}, (bag?`×${qty} · `:"") + String(tasteTxt + txt).slice(0,160));
   };
-  openPicker(isSnack ? "Eat a Snack (Extended Action)" : "Drink a Refreshment (Extended Action)", names, name=>{
-    // read the Chef Taste off the bag row BEFORE the copy is consumed (Accentuated Taste)
-    const accTaste = fromBag ? inventoryTasteOf(bag, name) : "";
-    if(fromBag && !consumeInventoryItem(bag, name)){ toast(`No ${name} left in the bag.`); return; }
+  openPicker(isSnack ? "Eat a Snack (Extended Action)" : "Drink a Refreshment (Extended Action)", names, label=>{
+    const { name, taste } = refOf(label);
+    // the Chef Taste comes off the very row being eaten (Accentuated Taste)
+    const accTaste = (fromBag && isSnack) ? taste : "";
+    /* The Joy of Cooking Rank 2 rides the bag row the way a Taste does: a Meal or Refreshment its
+       reader cooked heals a Tick when it is eaten. Those copies go first — same food, only better. */
+    const joy = fromBag && (bag.inventory||[]).some(it => it.joy && (parseInt(it.qty)||0) > 0
+      && normItemName(it.name)===normItemName(name) && (!isSnack || (it.accTaste||"")===accTaste));
+    if(fromBag && !consumeInventoryItem(bag, name, isSnack ? taste : undefined, joy ? (it => !!it.joy) : undefined)){ toast(`No ${name} left in the bag.`); return; }
     const r = isSnack ? eatSnack(owner, name, {accTaste}) : drinkRefreshment(owner, name);
     if(!r.ok){
       if(fromBag){                                        // put it back — nothing was eaten
-        const row = (bag.inventory||[]).find(it=>normItemName(it.name)===normItemName(name));
-        if(row) row.qty = (parseInt(row.qty)||0) + 1; else bag.inventory.push({name, qty:1, notes:""});
+        const row = (bag.inventory||[]).find(it=>normItemName(it.name)===normItemName(name) && (it.accTaste||"")===accTaste && !!it.joy===joy);
+        if(row) row.qty = (parseInt(row.qty)||0) + 1;
+        else bag.inventory.push({name, qty:1, notes:"", ...(accTaste ? {accTaste, chef:true} : {}), ...(joy ? {joy:true, chef:true} : {})});
       }
       toast("⚠ "+r.msg); return;
     }
+    let joyMsg = "";
+    if(joy){ const n = ownerHeal(owner, hpTick(ownerMaxHP(owner))); joyMsg = ` · \u{1F4D6} The Joy of Cooking: +${n} HP (a Tick)`; }
     commit();
-    toast(r.msg + (fromBag?` (−1 from the bag)`:""));
+    toast(r.msg + joyMsg + (fromBag?` (−1 from the bag)`:""));
   }, null, null, null, sub);
 }
 
@@ -22652,6 +22751,10 @@ function renderBattle(){
     wrap.append(el("div",{class:"section-head",style:"margin-top:14px"}, "Custom Actions"));
     customRows.forEach(a=>wrap.append(customActionRow(a, c.trainer, renderBattle)));
   }
+  if(isTrainer && battleFilter==="standard"){
+    wrap.append(el("div",{class:"section-head",style:"margin-top:14px"}, "Items"));
+    wrap.append(restorativeActionRow(c.trainer, renderBattle));
+  }
   if(isTrainer && battleFilter==="standard" && hasSoothingFlute(c.trainer)){
     wrap.append(el("div",{class:"section-head",style:"margin-top:14px"}, "Equipment"));
     wrap.append(soothingFluteActionRow(c.trainer, renderBattle));
@@ -24992,8 +25095,13 @@ function bagRestoratives(t, only){
 function openApplyRestorative(t, rerender, persist, opts){
   opts = opts || {};
   const targets = allyTargets(t);
-  const pick = targetPicker(targets, []);
+  let redrawRef = () => {};
+  const pick = targetPicker(targets, [], () => redrawRef());
   const bag = bagRestoratives(t, opts.stayWithUs ? STAY_WITH_US_ITEMS : null);
+  const tmrRank = bookRankNamed(t, "Traditional Medicine Reference");
+  const herbBox = el("div",{class:"small",style:"margin:4px 0 6px;padding:6px 8px;border-radius:8px;background:var(--panel-2)"});
+  const tmrCb = el("input",{type:"checkbox"}); tmrCb.checked = true;
+  tmrCb.addEventListener("click", e => e.stopPropagation());
   const medRank = rankNum(t.skills.medicineEd);
   const hasMT = hasFeatureLoose(t, "Medical Techniques [Medic]") || hasFeatureLoose(t, "Medical Techniques");
   const hasFC = trainerHasEdge(t, "Field Clinic");
@@ -25025,7 +25133,20 @@ function openApplyRestorative(t, rerender, persist, opts){
                             + (d.patch ? " · a Patch — Extended Action only, not in the middle of a fight" : "")
                           : "Nothing from the bag — whatever you type in Extra HP is all that is applied.";
     fcCb.parentElement.style.display = hasFC ? "" : "none";
+    // Herbal Restoratives: the rules, and what THIS one does to each ticked target
+    const herbal = d && isHerbalRestorative(d);
+    herbBox.innerHTML = "";
+    herbBox.style.display = herbal ? "" : "none";
+    if(herbal){
+      herbBox.append(el("div",{style:"font-weight:700"},"\u{1F33F} An Herbal Restorative"),
+        el("div",{class:"muted"}, "Counted per creature until 🌙 End the Day: the 1st gives a Food Buff (+2 on a Save Check); the 2nd stops them gaining Food Buffs or Temporary HP; every one after that rolls 1d6 and lowers that Stat's default Combat Stage by 1."));
+      pick.chosen().forEach(x => herbBox.append(el("div",{style:"margin-top:2px"}, `${ownerLabel(x.obj)}: ${herbalNextText(x.obj, tmrRank, tmrRank >= 2 && tmrCb.checked)}`)));
+      if(tmrRank >= 2) herbBox.append(el("label",{style:"display:flex;gap:6px;align-items:center;cursor:pointer;margin-top:4px"}, tmrCb,
+        "Traditional Medicine Reference Rank 2 — they take the Food Buff however many they've had"));
+    }
   };
+  redrawRef = redraw;
+  tmrCb.addEventListener("change", redraw);
   sel.addEventListener("change", redraw);
   fcCb.addEventListener("change", redraw);
 
@@ -25034,6 +25155,7 @@ function openApplyRestorative(t, rerender, persist, opts){
   body.append(pick.node);
   body.append(el("label",{class:"field",style:"margin-top:10px"}, el("span",{},"Restorative — from your bag"), sel));
   body.append(blurb);
+  body.append(herbBox);
   body.append(el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin-top:2px"},
     fcCb, "In a Field Clinic — the items the Edge names heal 5 more"));
   body.append(el("label",{class:"field",style:"margin-top:6px"}, el("span",{},"Extra HP (GM ruling, an item not in the catalog…)"), extra));
@@ -25048,7 +25170,7 @@ function openApplyRestorative(t, rerender, persist, opts){
     ? "Medic Training: the target does not forfeit their next turn."
     : "Without Medic Training the target forfeits their next turn — tell the GM.");
   notes.push("Applying it takes one copy out of your Inventory. Snacks, Berries and Refreshments are not listed: they heal through the 🍎 Digestion card instead, and two places moving the same HP is how a sheet double-heals.");
-  notes.push("The Medic class Feature already gives you the First Aid Manual and the Combat Medic's Primer with their Rank 1 effects Bound at no AP — see your Books card.");
+  if(trainerHasClass(t, "Medic")) notes.push("The Medic class Feature already gives you the First Aid Manual and the Combat Medic's Primer with their Rank 1 effects Bound at no AP — see your Books card.");
   if(opts.stayWithUs){
     const u = featUses(t, "Stay With Us!");
     notes.unshift(`Stay With Us! — Daily x3, ${u.left} of ${u.max} left. Only a Potion, Super Potion, Hyper Potion, Energy Powder or Energy Root may be applied, and you must be able to Shift to them. The triggering attack's damage, Injuries and Fainting are all settled AFTER this heal.`);
@@ -25117,6 +25239,8 @@ function openApplyRestorative(t, rerender, persist, opts){
           if(changeCS(o, st, 1)) done.push(`Affliction Techniques +1 ${statLbl(st)} CS (1 AP)`);
         }
       }
+      // an Herbal Restorative counts toward the target's day (Food Buff / no Temp HP / −1 default CS)
+      if(def && isHerbalRestorative(def)) done.push(...herbalConsume(o, t, { buff: tmrRank >= 2 && tmrCb.checked }));
       if(hasFeatureLoose(t, "Front Line Healer")){
         t.buffs = ownerBuffs(t).filter(b => b.key !== "front-line-healer");   // never stacks with itself
         addBuff(t, "front-line-healer");
@@ -25131,6 +25255,111 @@ function openApplyRestorative(t, rerender, persist, opts){
       (rerender||renderBattle)();
     }}, opts.stayWithUs ? "🚑 Save them" : "🧪 Apply it"),
   ]});
+}
+/* ---------------------------------------------------------------- HERBAL RESTORATIVES
+   May 2015 Playtest Packet p.11, Miscellaneous Errata: the old Repulsive Medicines (Energy Powder,
+   Energy Root, Heal Powder, Revival Herb) are now Herbal Restoratives and no longer upset a Pokémon.
+   Instead every creature keeps a count, reset by an Extended Rest — on this sheet 🌙 End the Day,
+   the same clock the Garden and the Injury ledger run on (herbalNewDay, from restApply):
+     1st   a Food Buff that trades in for +2 on a Save Check (the "Herbal Restorative" Snack row)
+     2nd   unable to gain Food Buffs or Temporary Hit Points (herbalBlocked — read by eatSnack,
+           gainTempHP and Complex Aftertaste)
+     3rd+  roll 1d6, 6 re-rolled (Atk/Def/SpAtk/SpDef/Speed): that Stat's DEFAULT Combat Stage drops
+           by 1 (o.herbal.cs, folded into effectiveCS/csAutoMods by herbalCSMods)
+   Traditional Medicine Reference [5-15 Playtest] is the ADMINISTERING Trainer's Book:
+     Rank 1  targets you administer to never lose the Combat Stage
+     Rank 2  they may take the Food Buff however many they've had (it goes past the block)
+   Everything sits on the creature itself as o.herbal = {n, cs, log}, so it follows a Pokémon onto the
+   Map and between sheets. Only 🧪 Apply a Restorative spends one, so that is the one place it counts. */
+function isHerbalRestorative(def){
+  return !!def && /\brepulsive\b|herbal restorative/i.test(String(def.effect||""));
+}
+function herbalCount(o){ return Math.max(0, parseInt(o && o.herbal && o.herbal.n) || 0); }
+function herbalBlocked(o){ return herbalCount(o) >= 2; }
+/* what the NEXT Herbal Restorative does to this creature, for the dialog */
+function herbalNextText(o, tmrRank, buff){
+  const n = herbalCount(o) + 1;
+  const ord = n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`;
+  const bits = [];
+  if(n === 1 || buff) bits.push("Food Buff (+2 on a Save Check)");
+  if(n === 2) bits.push("no Food Buffs or Temporary HP until End the Day");
+  if(n >= 3) bits.push(tmrRank >= 1 ? "no Combat Stage lost (Traditional Medicine Reference)" : "−1 default Combat Stage in a random Stat");
+  return `their ${ord} today → ${bits.join(" · ")}`;
+}
+function herbalConsume(o, admin, opts){
+  opts = opts || {};
+  if(!o.herbal || typeof o.herbal !== "object") o.herbal = { n:0, cs:{} };
+  const h = o.herbal;
+  if(!h.cs || typeof h.cs !== "object") h.cs = {};
+  h.n = herbalCount(o) + 1;
+  const tmr = bookRankNamed(admin, "Traditional Medicine Reference");
+  const ord = h.n === 1 ? "1st" : h.n === 2 ? "2nd" : h.n === 3 ? "3rd" : `${h.n}th`;
+  const log = [`\u{1F33F} ${ord} Herbal Restorative today`];
+  if(h.n === 1 || opts.buff){
+    const r = eatSnack(o, "Herbal Restorative", { herbalOK:true, note:"From an Herbal Restorative" });
+    log.push(r.ok ? `Food Buff stored (+2 on a Save Check)${h.n > 1 ? " — Traditional Medicine Reference" : ""}`
+                  : `no Food Buff — ${r.msg}`);
+  }
+  if(h.n === 2) log.push("no more Food Buffs or Temporary HP until End the Day");
+  if(h.n >= 3){
+    if(tmr >= 1) log.push("Traditional Medicine Reference — no Combat Stage lost");
+    else {
+      const STATS = [["atk","Attack"],["def","Defense"],["spatk","Special Attack"],["spdef","Special Defense"],["spd","Speed"]];
+      let d; do { d = 1 + Math.floor(Math.random() * 6); } while(d === 6);
+      const [k, lbl] = STATS[d - 1];
+      h.cs[k] = Math.max(-6, (parseInt(h.cs[k]) || 0) - 1);
+      log.push(`d6 → ${d}: ${lbl} default Combat Stage −1 until End the Day`);
+    }
+  }
+  h.log = [...(Array.isArray(h.log) ? h.log : []), { at:Date.now(), by:(admin && admin.name) || "", n:h.n }].slice(-10);
+  return log;
+}
+/* 🌙 End the Day, for one sheet: the count and its Combat Stage penalties start over */
+function herbalNewDay(c){
+  if(!c) return;
+  if(c.trainer) delete c.trainer.herbal;
+  (c.pokemon||[]).forEach(p => { if(p) delete p.herbal; });
+}
+/* the one-line reminder on the 🍎 Food card (Pokémon Play, Trainer Sheet, encounter cards, Map token) */
+function herbalStatusNode(o, commit){
+  const n = herbalCount(o); if(!n) return null;
+  const bits = [`\u{1F33F} ${n} Herbal Restorative${n===1?"":"s"} since the last End the Day`];
+  if(n >= 2) bits.push("can't gain Food Buffs or Temporary HP");
+  const cs = Object.entries(herbalCSMods(o)).map(([k,v]) => `${statLbl(k)} ${v}`).join(", ");
+  if(cs) bits.push(`default Combat Stages ${cs}`);
+  bits.push(n === 1 ? "the next one blocks Food Buffs and Temporary HP" : "each one after this lowers a random default Combat Stage");
+  const row = el("div",{class:"small",style:"margin:6px 0;color:var(--warn);font-weight:600"}, bits.join(" · "));
+  if(isGM() && commit) row.append(el("button",{class:"linkbtn",style:"margin-left:8px",
+    title:"GM — clear the count and its Combat Stage penalties (🌙 End the Day does this by itself)",
+    onclick:()=>{ delete o.herbal; commit(); }},"reset"));
+  return row;
+}
+/* Anyone can hand out a Restorative. The Medic's 🧪 is this same dialog; for everyone else it spends
+   the item out of their own bag, applies it to whoever they tick, and that's all. */
+function restorativeInBag(t){ return bagRestoratives(t).reduce((n,r)=>n+r.qty, 0); }
+function restorativeCard(t, rerender, persist){
+  const inBag = restorativeInBag(t);
+  const card = el("div",{class:"card"}, el("h3",{},"\u{1F9EA} Restoratives",
+    el("span",{class:"muted small"}, inBag ? `${inBag} in your bag` : "none in your bag")));
+  const slot = el("div",{class:"moveslot"});
+  slot.append(el("div",{style:"flex:1"},
+    el("div",{style:"font-weight:700"}, "Apply a Restorative"),
+    el("div",{class:"ms-info"}, "Standard Action · a Potion, Revive, Status heal or Herbal Restorative from your bag, on you or an ally on the board")));
+  slot.append(el("button",{class:"btn-secondary rollbtn",style:"padding:6px 10px",
+    onclick:()=>openApplyRestorative(t, rerender, persist)},"\u{1F9EA} Apply"));
+  card.append(slot);
+  return card;
+}
+function restorativeActionRow(t, rerender){
+  const d = el("details",{class:"spoiler"});
+  d.append(el("summary",{},
+    el("span",{style:"font-weight:700;color:var(--ink)"}, "\u{1F9EA} Apply a Restorative"),
+    el("span",{class:"muted small",style:"margin-left:8px"}, `Standard · ${restorativeInBag(t)} in the bag`),
+    el("button",{class:"linkbtn",style:"margin-left:8px",
+      onclick:e=>{ e.preventDefault(); e.stopPropagation(); openApplyRestorative(t, rerender); }},"\u{1F9EA} Apply")));
+  d.append(el("div",{class:"small",style:"margin-top:6px"},
+    "Pick who you're treating and a Restorative from your bag: its healing and cures are applied and one copy leaves the bag. Herbal Restoratives also count toward that creature's daily limit."));
+  return d;
 }
 function medicCard(t, rerender, persist){
   if(!t || !trainerHasClass(t, "Medic")) return null;
@@ -28045,6 +28274,229 @@ const ACCENTUATED_TASTES = {
 const TASTE_SNACK = { Salty:"Salty Surprise", Spicy:"Spicy Wrap", Sour:"Sour Candy",
                       Dry:"Dry Wafer", Bitter:"Bitter Treat", Sweet:"Sweet Confection" };
 
+/* ---------- what a Kitchen item does, and the Kitchen in Spanish ----------
+   Handels plays in Spanish, so when HE is the one looking — the name signed in to the cloud, not whose
+   sheet is open, so the GM reading Handels's sheet still gets English — the Kitchen's item effects,
+   Recipe blurbs and Taste bonuses read in Spanish. Item names and rules keywords (Digestion Buff,
+   Combat Stages, Extended Action, the status names…) stay in English on purpose: they are what the
+   rest of the sheet and the table call them. Anything without a translation falls back to English. */
+const KITCHEN_ES_VIEWERS = ["handels"];
+function kitchenSpanish(){
+  if(mode !== "cloud" || !cloud.name) return false;
+  const n = String(cloud.name).trim().toLowerCase();
+  return KITCHEN_ES_VIEWERS.some(v => n.includes(v));
+}
+const ACCENTUATED_TASTES_ES = {
+  Salty:  "+5 Temporary Hit Points (se acumulan con los del propio Buff, Hits the Spot y Lunchbox)",
+  Spicy:  "+1 al Critical-Hit range",
+  Sour:   "+1 Evasion contra ataques que hacen daño",
+  Dry:    "+1 Effect Range en todos los ataques",
+  Bitter: "+1 a todas las Save Checks — se tira en la mesa",
+  Sweet:  "+5 Initiative",
+};
+function kitchenTasteText(f){
+  const a = ACCENTUATED_TASTES[f]; if(!a) return "";
+  return (kitchenSpanish() && ACCENTUATED_TASTES_ES[f]) || a.text;
+}
+const RECIPE_BLURB_ES = {
+  "Basic Cooking": "$50 de ingredientes — una Candy Bar (un Snack cuyo Digestion Buff cura 5 HP) o Baby Food (un Pokémon de nivel 15 o menos gana un 20% más de Experience durante el resto del día).",
+  "Tasty Snacks": "$100 — una Salty Surprise, Spicy Wrap, Sour Candy, Dry Wafer, Bitter Treat o Sweet Confection. Cada una se canjea con su propio disparador, y paga el doble a un Pokémon al que le gusta ese Taste (un Taste que no le gusta lo deja Enraged).",
+  "Meal Planner": "Refreshments, desbloqueados por tu Rank de Intuition: Enriched Water $40 (Novice), Super Soda Pop $65 (Adept), Sparkling Lemonade $125 (Expert), MooMoo Milk $250 (Master).",
+  "Hearty Meal": "Prepara hasta cinco. Un Trainer que se come uno (Extended Action) gana +2 Max AP hasta el final de su siguiente Extended Rest — solo uno a la vez, y se estropean 20 minutos después de salir de la sartén.",
+  "Bait Mixer": "$150 por Bait, $200 por Super Bait (suma tu Intuition Rank a las tiradas para atraer Pokémon) o Vile Bait (los Pokémon que se lo comen quedan Poisoned). La Honey puede sustituir los $150 — cocínala desde la bolsa.",
+  "Preserves": "$50 y cualquier Berry, Herb o Mushroom preparan dos unidades de Preserves con el efecto exacto de ese objeto — se conservan y sirven como ingrediente de Dumplings.",
+  "Leftovers": "$100. Su Buff recupera 1/16 del Max HP al principio de cada turno durante el resto del encuentro.",
+  "Vitamins": "$2450 por Vitamin, $200 por Stat Suppressants. Dietician ya sube a 7 el límite de Vitamins de tus Pokémon — la tarjeta Vitamins del propio Pokémon lo aplica.",
+  "Dumplings": "Mezcla dos objetos DISTINTOS en un solo Snack con los dos efectos. Ingrediente 1: Leftovers, Preserves o un Snack que hayas cocinado. Ingrediente 2: Leftovers o Preserves. (Errata del playtest de mayo: un Dumpling no puede ser ingrediente.)",
+  "Energy Powder": "Una Sitrus Berry o un Tiny Mushroom dan dos; una Energy Root da tres.",
+  "Heal Powder": "Una Lum Berry o un Big Mushroom dan dos; una Revival Herb da tres.",
+  "Poultices": "Un Energy Powder y un Heal Powder dan tres Poultices.",
+  "Restorative Science": "$100 — un Antidote, Paralyze Heal, Burn Heal, Ice Heal o Potion.",
+  "Super Cures": "$200 — un Revive o una Super Potion.",
+  "Hyper Cures": "Un Full Heal por $300, una Hyper Potion por $400 o un Full Restore por $700.",
+  "Performance Enhancers": "$4900 — un PP Up o un Heart Booster. Dáselos desde la tarjeta Vitamins del propio Pokémon.",
+  "Heart Booster (from a Heart Scale)": "Destruye una Heart Scale para hacer un Heart Booster sin pagar los $4900.",
+  "Patch Cure": "Destila un Restorative en TRES Restorative Patches con su efecto exacto. Un Patch solo puede aplicarse como Extended Action.",
+  "Medicinal Blend": "Fusiona dos Restoratives (no dos con el mismo efecto), o un Restorative y un X-Item, en UN solo objeto con los dos efectos. Si hay un Patch en la mezcla, el resultado solo se puede usar como Extended Action.",
+  "Type Booster": "Cuatro Shards de un color hacen un Type Booster de uno de los tres Types de ese color.",
+  "Type Brace": "Cuatro Shards de un color hacen un Type Brace de uno de los tres Types de ese color.",
+  "Focus Gem": "Seis Shards cualesquiera (tomados de tus montones más grandes) hacen un Focus — eliges su Stat al llevarlo puesto.",
+  "Chakra Crystal": "Seis Shards cualesquiera (tomados de tus montones más grandes) hacen un Stat Booster.",
+  "Rainbow Gem": "Dos Shards de cada color hacen una Rainbow Gem — un Focus cuya Stat se puede reajustar. Llévala puesta para usar Rainbow Light.",
+  "Plate Crafter": "Un Type Booster y un Type Brace del mismo Type hacen la Plate de ese Type.",
+  "Enhancers": "$100 — cualquier X-Item, un Dire Hit o un Guard Spec.",
+  "Pester Balls: Disorient": "$50 — una Pester Ball que inflige Rage o Confusion.",
+  "Pester Balls: Pain": "$50 — una Pester Ball que inflige Burn o Poison.",
+  "Pester Balls: Shut Down": "$50 — una Pester Ball que inflige Paralysis o Sleep.",
+  "Apricorn Balls": "Un Apricorn hace una Ball de su color: Red → Level, Yellow → Moon, Blue → Lure, Green → Friend, Pink → Love, White → Fast, Black → Heavy. Sin dinero — solo el Apricorn.",
+  "Basic Balls": "Una Basic Ball por $100 o una Great Ball por $175 de Poké Ball Scrap — no efectivo (precio en tienda $250 / $400).",
+  "Specialty Balls": "$700 de Poké Ball Scrap — una Dusk, Dive, Heal, Luxury, Net, Nest, Quick, Repeat o Timer Ball.",
+};
+function recipeBlurb(rec){ return (kitchenSpanish() && RECIPE_BLURB_ES[rec.name]) || rec.blurb; }
+const BAIT_ES_TAIL = "Para distraer Pokémon, lánzalo a un Pokémon salvaje como Standard Action. El objetivo debe hacer una Focus Roll con DC 12. Si falla, el Pokémon renuncia a su siguiente Standard Action para comerse la comida.";
+const ITEM_EFFECT_ES = {
+  "Candy Bar": "Snack. Otorga un Digestion Buff que cura 5 Hit Points.",
+  "Baby Food": "Comida nutritiva que hace crecer rápido a los Pokémon jóvenes. Al consumirla, la Experience que ganan los Pokémon de nivel 15 o menos aumenta un 20% durante el resto del día.",
+  "Salty Surprise": "El usuario puede canjear el Digestion Buff de este Snack al recibir un ataque para ganar 5 Temporary Hit Points. Si al usuario le gusta el sabor Salty, gana 10 Temporary Hit Points en su lugar. Si no le gusta la comida Salty, queda Enraged.",
+  "Spicy Wrap": "El usuario puede canjear el Digestion Buff de este Snack al hacer un ataque Physical para infligir +5 de Damage adicional. Si prefiere la comida Spicy, inflige +10 de Damage adicional en su lugar. Si no le gusta la comida Spicy, queda Enraged.",
+  "Sour Candy": "El usuario puede canjear el Digestion Buff de este Snack al recibir un ataque Physical para aumentar su Damage Reduction en +5 contra ese ataque. Si prefiere la comida Sour, gana +10 de Damage Reduction en su lugar. Si no le gusta la comida Sour, queda Enraged.",
+  "Dry Wafer": "El usuario puede canjear el Digestion Buff de este Snack al hacer un ataque Special para infligir +5 de Damage adicional. Si prefiere la comida Dry, inflige +10 de Damage adicional en su lugar. Si no le gusta la comida Dry, queda Enraged.",
+  "Bitter Treat": "El usuario puede canjear el Digestion Buff de este Snack al recibir un ataque Special para aumentar su Damage Reduction en +5 contra ese ataque. Si prefiere la comida Bitter, gana +10 de Damage Reduction en su lugar. Si no le gusta la comida Bitter, queda Enraged.",
+  "Sweet Confection": "El usuario puede canjear el Digestion Buff de este Snack para ganar +4 Evasion hasta el final de su siguiente turno. Si prefiere la comida Sweet, también gana +4 Accuracy. Si no le gusta la comida Sweet, queda Enraged.",
+  "Hearty Meal": "Al consumirlo, ese Trainer gana +2 a su Max AP hasta el final de su siguiente Extended Rest. Un Trainer solo puede estar bajo el efecto de un Hearty Meal a la vez. Los Hearty Meals que no se consumen en los 20 minutos siguientes a prepararlos pierden todo su sabor y todo su efecto.",
+  "Bait": "El Bait es un bocado sabroso y de olor fuerte pensado para atraer Pokémon. Se puede usar de dos maneras: para atraer Pokémon o para distraerlos.\n\nPara atraer Pokémon, deja el Bait en una ruta. A partir de entonces, cada 15 minutos tira 1d20 hasta sacar 15 o más. Si tiras 3 veces sin éxito, el Bait pierde su potencia y falla. Si tienes éxito, aparece un Pokémon aleatorio. El Bait se usa a menudo así para pescar (Fishing).\n" + BAIT_ES_TAIL,
+  "Super Bait": "El Super Bait es un bocado sabroso y de olor fuerte pensado para atraer Pokémon. Se puede usar de dos maneras: para atraer Pokémon o para distraerlos.\n\nPara atraer Pokémon, deja el Super Bait en una ruta. A partir de entonces, cada 15 minutos tira 1d20 + tu Intuition Rank hasta sacar 15 o más. Si tiras 3 veces sin éxito, el Super Bait pierde su potencia y falla. Si tienes éxito, aparece un Pokémon aleatorio. El Super Bait se usa a menudo así para pescar (Fishing).\n" + BAIT_ES_TAIL,
+  "Vile Bait": "El Vile Bait es un bocado de olor fuerte pensado para atraer Pokémon. Los Pokémon que se lo comen quedan Poisoned.\n\nPara atraer Pokémon, deja el Vile Bait en una ruta. A partir de entonces, cada 15 minutos tira 1d20 hasta sacar 15 o más. Si tiras 3 veces sin éxito, el Vile Bait pierde su potencia y falla. Si tienes éxito, aparece un Pokémon aleatorio. El Vile Bait se usa a menudo así para pescar (Fishing).\n" + BAIT_ES_TAIL,
+  "Leftovers": "Snack. Cuando se canjea su Digestion Buff, el usuario recupera 1/16 de sus Hit Points máximos al principio de cada turno durante el resto del encuentro.",
+  "Stat Suppressants": "Estas medicinas tienen el mismo efecto que las Suppressant Berries: bajan en 1 punto una de las Base Stats del usuario, y solo funcionan si el Trainer del Pokémon quiere.",
+  "Poultices": "Las Poultices se aplican como Extended Action sobre Pokémon o Trainers. Duran 6 horas; mientras están puestas, duplican la Natural Healing Rate del Pokémon o Trainer, es decir, cura 1/8 de sus Hit Points cada media hora. Las Poultices también curan de inmediato una Injury si siguen puestas toda su duración.\n\nSi el Pokémon recibe daño o pierde Hit Points de cualquier forma, las Poultices dejan de funcionar al instante. Las Poultices pican e irritan la piel y pueden causar pérdida de Loyalty.",
+  "Revive": "Revive a un Pokémon debilitado (fainted) y lo deja en 20 Hit Points.",
+  "Full Restore": "Cura a un Pokémon 80 Hit Points y cualquier Status Affliction.",
+  "Revival Herb": "Revive a un Pokémon y lo deja al 50% de sus Hit Points - Repulsive",
+  "PP Up": "Sube un nivel la Frequency de uno de los Moves del usuario. Solo uno por Pokémon.",
+  "Heart Booster": "El Pokémon gana 2 Tutor Points. Solo uno por Pokémon.",
+  "Dire Hit": "Aumenta en +2 el Critical Hit Range de todos los Moves.",
+  "Guard Spec": "Impide que se reduzcan los Combat Stages o la Accuracy del Pokémon durante 5 turnos.",
+  "Tiny Mushroom": "El usuario pierde 5 HP y gana +1 Combat Stage en una Stat aleatoria.",
+  "Big Mushroom": "El usuario queda Poisoned; si es así, gana +1 Combat Stage en dos Stats aleatorias.",
+  "Balm Mushroom": "El usuario se cura de Burn, Paralysis o Poison. Si es así, pierde 1 Combat Stage en una Stat aleatoria.",
+  "Power Herb": "Elimina el turno de preparación de los Moves con la keyword Set-Up.",
+  "White Herb": "Todos los Combat Stages negativos vuelven a 0.",
+  "Mirror Herb": "(Las Mirror Herbs son un tipo de Herb y por tanto un Food Buff, y crecen igual que una Berry de Tier 2.) Cuando otro Pokémon o Trainer gana Combat Stages positivos, el usuario puede canjear este Food Buff para ganar también esos Combat Stages.",
+  "Level Ball": "Modifier de -20 si el objetivo tiene menos de la mitad del nivel de tu Pokémon activo.",
+  "Moon Ball": "Modifier de -20 si el objetivo evoluciona con una Evolution Stone.",
+  "Lure Ball": "Modifier de -20 si el objetivo fue atraído al encuentro con comida.",
+  "Friend Ball": "El Pokémon capturado empieza con +1 Loyalty.",
+  "Love Ball": "Modifier de -30 si el usuario tiene un Pokémon activo de la misma línea evolutiva que el objetivo y de género opuesto. No funciona con Pokémon sin género.",
+  "Fast Ball": "Modifier de -20 si el objetivo tiene una Movement Capability superior a 7.",
+  "Heavy Ball": "Modifier de -5 por cada Weight Class del objetivo por encima de 1.",
+  "Basic Ball": "La Poké Ball básica; a menudo se la llama simplemente “Poké Ball”.",
+  "Great Ball": "Una Poké Ball mejor, sin efectos especiales.",
+  "Dusk Ball": "Modifier de -20 si al usarla está oscuro o hay muy poca luz.",
+  "Dive Ball": "Modifier de -20 si el objetivo se encontró bajo el agua o bajo tierra.",
+  "Heal Ball": "El Pokémon capturado se cura hasta su Max HP nada más ser capturado.",
+  "Luxury Ball": "El Pokémon capturado se contenta con facilidad y empieza con la felicidad aumentada.",
+  "Net Ball": "Modifier de -20 si el objetivo es de Type Water o Bug.",
+  "Nest Ball": "Modifier de -20 si el objetivo es de nivel inferior a 10.",
+  "Quick Ball": "+5 al Modifier tras 1 ronda del encuentro, +10 al Modifier tras la ronda 2, +20 al Modifier tras la ronda 3.",
+  "Repeat Ball": "Modifier de -20 si ya tienes un Pokémon de la especie del objetivo.",
+  "Timer Ball": "-5 al Modifier por cada ronda desde el inicio del encuentro, hasta que el Modifier llegue a -20.",
+  "Focus": "Un Focus otorga un Bonus de +5 a una Stat, elegida al fabricarlo. Este Bonus se aplica DESPUÉS de los Combat Stages. Los Focus suelen ser Accessory-Slot Items, pero también se pueden fabricar como Head-Slot, Hand u Off-Hand Slot Items; un Trainer solo puede beneficiarse de un Focus a la vez, sea cual sea el Equipment Slot. Normalmente no se venden en tiendas, pero a veces se pueden encontrar por $6000 a discreción del GM.",
+  "Rainbow Gem": "Fabricada por un Crystal Artificer (Rainbow Light): el mismo efecto que un Focus (+5 a una Stat elegida, después de los Combat Stages), pero cualquier Trainer con Occult Education Expert puede reajustar su Stat como Extended Action. Se puede llevar como objeto de Accessory, Head o Hand. Quien la lleva puede usar Rainbow Light.",
+};
+/* the formulaic ones (Berries, Potions, X-Items, Pester Balls, Boosters, Braces, Plates…) translate by
+   sentence shape instead of one row each — applied in order, so the specific shapes come first */
+const ITEM_EFFECT_ES_PATTERNS = [
+  [/Cures any single status ailment/gi, "Cura una sola Status Affliction cualquiera"],
+  [/Cures? all Persistent Status Afflictions/gi, "Cura todas las Persistent Status Afflictions"],
+  [/Cures all Volatile Status Effects/gi, "Cura todos los Volatile Status Effects"],
+  [/Cures (\w+) condition/g, "Cura la condición $1"],
+  [/Cures (\w+)/g, "Cura $1"],
+  [/, (\w+) or (\w+) Poffin Ingredient/g, ", ingrediente de Poffin $1 o $2"],
+  [/(\w+) or (\w+) Poffin Ingredient/g, "Ingrediente de Poffin $1 o $2"],
+  [/, (\w+) Poffin Ingredient/g, ", ingrediente de Poffin $1"],
+  [/(\w+) Poffin Ingredient/g, "Ingrediente de Poffin $1"],
+  [/Restores (\d+) Hit Points/g, "Restaura $1 Hit Points"],
+  [/Heals (\d+) Hit Points/g, "Cura $1 Hit Points"],
+  [/Restores a Scene Move/g, "Restaura un Move de Scene"],
+  [/\+(\d) (Attack|Defense|Speed|Special Attack|Special Defense) CS/g, "+$1 CS de $2"],
+  [/Activates as a Free Action when hit by a (Physical|Special) Move/g, "Se activa como Free Action al recibir un Move $1"],
+  [/Increases Critical Range by \+1 for the remainder of the encounter/g, "Aumenta el Critical Range en +1 durante el resto del encuentro"],
+  [/\+2 CS to a random Stat/g, "+2 CS a una Stat aleatoria"],
+  [/May (?:be used only|only be used) at 25% HP or lower/g, "Solo se puede usar con el 25% de HP o menos"],
+  [/User gains Temporary HP equal to 1\/6th of their Max HP when hit by a Super Effective Move/g, "El usuario gana Temporary HP igual a 1/6 de su Max HP al recibir un Move Super Effective"],
+  [/Increases Accuracy by \+(\d)/g, "Aumenta la Accuracy en +$1"],
+  [/Foe dealing (Physical|Special) Damage to the user loses 1\/8 of their Maximum HP/g, "El enemigo que inflija Damage $1 al usuario pierde 1/8 de su Maximum HP"],
+  [/Weakens foe['’]s super ?effective (\w+)-type move/gi, "Debilita un Move de Type $1 super effective del enemigo"],
+  [/Weakens foe['’]s (\w+)-type move/gi, "Debilita un Move de Type $1 del enemigo"],
+  [/Grants the Priority keyword to any Move/g, "Otorga la keyword Priority a cualquier Move"],
+  [/Lowers (HP|Attack|Defense|Special Attack|Special Defense|Speed) stat by 1 with trainer permission/g, "Baja en 1 la stat de $1 con permiso del Trainer"],
+  [/Raise the user['’]s (.+?) Base Stat 1/g, "Sube en 1 la Base Stat de $1 del usuario"],
+  [/Increases the Pokémon['’]s (.+?) by two Combat Stages/g, "Aumenta en dos Combat Stages la stat de $1 del Pokémon"],
+  [/Inflicts (\w+) on the target/g, "Inflige $1 al objetivo"],
+  [/Causes the target to fall asleep/g, "Hace que el objetivo se duerma (Sleep)"],
+  [/After being hit by any Pester Ball, a target becomes immune to the effects of further Pester Balls for 1 hour/g, "Tras recibir cualquier Pester Ball, el objetivo se vuelve inmune a los efectos de otras Pester Balls durante 1 hora"],
+  [/Throwing and hitting with Pester Balls is the same as with Poké Balls/g, "Lanzar y acertar con Pester Balls funciona igual que con las Poké Balls"],
+  [/Grants a \+5 Damage Bonus to all direct-damage (\w+) Moves used by the holder/g, "Otorga +5 de Damage Bonus a todos los Moves de Type $1 de daño directo que use el portador"],
+  [/Grants the holder 15 Damage Reduction against all direct-damage (\w+) Moves/g, "Otorga al portador 15 de Damage Reduction contra todos los Moves de Type $1 de daño directo"],
+  [/Acts as both an? (\w+) Type Booster and an? (\w+) Brace/g, "Funciona a la vez como Type Booster de $1 y como $2 Brace"],
+  [/The default state of the holder['’]s (.+?) Stat is \+1 Combat Stage/g, "El estado por defecto de la Stat de $1 del portador es +1 Combat Stage"],
+  [/Grants the holder \+1 (Accuracy|Evasion)/g, "Otorga al portador +1 $1"],
+  [/Accessory Slot Item for Trainers/g, "Accessory Slot Item para Trainers"],
+  [/Accessory Item for Trainers/g, "Accessory Item para Trainers"],
+];
+function itemEffectEs(name, en){
+  if(ITEM_EFFECT_ES[name]) return ITEM_EFFECT_ES[name];
+  let out = en;
+  ITEM_EFFECT_ES_PATTERNS.forEach(([re, to]) => { out = out.replace(re, to); });
+  return out;
+}
+/* What an item the Kitchen (or the benches beside it) makes actually does — the catalog's own rules
+   text, and for the Chef's named-for-their-source creations the effect of what went in. "" when the
+   catalog has nothing to say. In Spanish for Handels (see kitchenSpanish). */
+function kitchenItemEffect(name){
+  const es = kitchenSpanish(), raw = String(name||"").trim();
+  let m;
+  if((m = /^preserves\s*\((.+)\)$/i.exec(raw))){
+    const e = kitchenItemEffect(m[1]);
+    return (es ? `Mismo efecto que ${m[1]}` : `Same effect as ${m[1]}`) + (e ? `: ${e}` : "");
+  }
+  if((m = /^restorative patch\s*\((.+)\)$/i.exec(raw))){
+    const e = kitchenItemEffect(m[1]);
+    return (es ? `Mismo efecto que ${m[1]}, pero solo se aplica como Extended Action` : `Same effect as ${m[1]}, but it can only be applied as an Extended Action`) + (e ? `: ${e}` : "");
+  }
+  if((m = /^(?:dumplings?|medicinal blend)\s*\((.+?)\s*\+\s*(.+)\)$/i.exec(raw))){
+    const a = m[1], b = m[2];
+    return (es ? "Un solo objeto con los dos efectos — " : "One item with both effects — ")
+      + `${a}: ${kitchenItemEffect(a) || "—"} · ${b}: ${kitchenItemEffect(b) || "—"}`;
+  }
+  const cat = itemByName.get(raw.toLowerCase());
+  let en = (cat && cat.effect) ? cleanupText(cat.effect).trim() : "";
+  if(!en){ const sd = snackDef(raw); en = (sd && sd.note) || ""; }
+  if(!en){ const r = refreshmentDef(raw); if(r) en = `Heals ${r.heal} Hit Points`; }
+  if(!en) return "";
+  return es ? itemEffectEs(cat ? cat.name : raw, en) : en;
+}
+/* the "What it does" box the cook dialog shows for whatever is currently picked */
+function kitchenEffectNode(name, taste){
+  const es = kitchenSpanish(), eff = kitchenItemEffect(name);
+  const box = el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 10px;padding:8px 10px"});
+  box.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:2px"}, `${es ? "Qué hace" : "What it does"} — ${name}`));
+  if(eff) eff.split(/\n+/).map(x => x.trim()).filter(Boolean)
+    .forEach(p => box.append(el("div",{class:"small",style:"margin-top:2px"}, p)));
+  else box.append(el("div",{class:"small muted"}, es ? "El catálogo no tiene texto de efecto para este objeto — pregunta al GM." : "The catalog has no effect text for this item — ask the GM."));
+  if(taste && ACCENTUATED_TASTES[taste]) box.append(el("div",{class:"small",style:"margin-top:4px;color:var(--accent);font-weight:600"},
+    `\u{1F9C2} Accentuated Taste (${taste}): ${kitchenTasteText(taste)}`));
+  return box;
+}
+/* everything a Recipe can turn out right now, by name (a bag-driven Recipe lists what the bag allows) */
+function recipeOutputs(t, rec){
+  let picks = [], bundles = [];
+  try{ picks = rec.pick ? rec.pick(t) : []; }catch(e){ picks = []; }
+  try{ bundles = rec.eats ? rec.eats(t) : []; }catch(e){ bundles = []; }
+  const out = [];
+  const safe = f => { try{ out.push(f()); }catch(e){} };
+  if(rec.result && bundles.length) bundles.forEach(b => safe(() => rec.result(t, picks[0], b)));
+  else if(rec.result) picks.forEach(p => safe(() => rec.result(t, p, null)));
+  else picks.forEach(p => out.push(p));
+  return [...new Set(out.filter(Boolean))];
+}
+/* the fold-out under each Recipe row: every thing it makes and what that thing does */
+function recipeWhatNode(t, rec){
+  const outs = recipeOutputs(t, rec);
+  if(!outs.length) return "";
+  const es = kitchenSpanish();
+  const det = el("details",{class:"spoiler",style:"margin-top:4px"});
+  det.append(el("summary",{class:"small",style:"font-weight:700"},
+    es ? (outs.length === 1 ? "Qué hace" : `Qué hace cada uno (${outs.length})`)
+       : (outs.length === 1 ? "What it does" : `What each one does (${outs.length})`)));
+  outs.forEach(n => {
+    const e = kitchenItemEffect(n);
+    det.append(el("div",{class:"small",style:"margin:4px 0 0 8px"}, el("b",{}, `${n}: `), e ? e.replace(/\s*\n+\s*/g, " ") : "—"));
+  });
+  return det;
+}
+
 function trainerIsChef(t){ return !!t && trainerHasClass(t, "Chef"); }
 /* who gets a Kitchen tab: a Chef, and anyone else who crafts out of the bag (the Botany
    Researcher's Herb Lore uses the same dialog and the same inventory) */
@@ -28077,14 +28529,33 @@ function chefDumplingIngredients(t, second){
 }
 /* put a cooked item in the bag. Rows are merged by name AND assigned Taste, so a Spicy batch and a
    plain batch of the same Snack stay tellable apart (inventoryTasteOf reads the row back). */
-function chefBagAdd(t, name, qty, accTaste){
+function chefBagAdd(t, name, qty, accTaste, joy){
   qty = Math.max(1, parseInt(qty)||1);
   const want = normItemName(name);
   const row = (t.inventory = t.inventory || []).find(it =>
-    normItemName(it.name)===want && (it.accTaste||"") === (accTaste||""));
+    normItemName(it.name)===want && (it.accTaste||"") === (accTaste||"") && !!it.joy === !!joy);
   if(row) row.qty = (parseInt(row.qty)||0) + qty;
-  else t.inventory.push({ name, qty, notes:"", chef:true, ...(accTaste ? {accTaste} : {}) });
+  else t.inventory.push({ name, qty, notes:"", chef:true, ...(accTaste ? {accTaste} : {}), ...(joy ? {joy:true} : {}) });
 }
+
+/* ---------- The Joy of Cooking [5-15 Playtest] (General Education Book, May 2015 Playtest p.8) ----------
+   Rank 1 (Novice): "Your material costs for crafting Food Items of any variety are reduced by 10%."
+   Rank 2 (Expert): "Meal and Refreshment Items you create cause whoever eats them to gain a Tick of
+   Hit Points."
+   The Rank is whatever the Books card has bound. Rank 1 is read by openChefCook's price — money only,
+   and only when what comes out is Food (a Snack, a Refreshment, or a catalog "Food" row), so Bait,
+   Vitamins and Poké Balls pay full price. Rank 2 stamps the cooked bag row `joy:true`; like an
+   Accentuated Taste it travels with the item, so a Refreshment handed to a friend still carries the
+   Tick, and openFoodPicker pays it when that copy is eaten. The Meal is the Hearty Meal. */
+function joyOfCookingRank(t){ return bookRankNamed(t, "The Joy of Cooking"); }
+function joyIsFood(name){
+  if(!name) return false;
+  if(snackDef(name) || refreshmentDef(name)) return true;
+  const cat = itemByName.get(String(name).trim().toLowerCase());
+  return !!cat && /^food$/i.test(String(cat.cat||""));
+}
+function joyIsMealOrRefreshment(name){ return !!refreshmentDef(name) || /\bmeal\b/i.test(String(name||"")); }
+function joyPrice(p){ return Math.max(0, p - Math.floor(p / 10)); }
 
 /* ---------- the Recipe book ----------
    `feat`   the Feature that prints this Recipe
@@ -28165,7 +28636,7 @@ function chefRecipesFor(t){
 /* ---------- one dialog cooks them all ---------- */
 function openChefCook(t, rec, commit){
   const body = el("div",{});
-  body.append(el("div",{class:"small muted",style:"margin-bottom:10px"}, rec.blurb));
+  body.append(el("div",{class:"small muted",style:"margin-bottom:10px"}, recipeBlurb(rec)));
 
   const sel = (label, opts) => {
     const wrap = el("label",{class:"field",style:"margin-bottom:8px"}, el("span",{},label));
@@ -28224,7 +28695,7 @@ function openChefCook(t, rec, commit){
   if(rec.tasteable && chefCanTaste(t)){
     const forced = rec.name === "Tasty Snacks";
     tasteSel = sel("Assign a Taste", (forced ? [] : [{value:"", label:"— no Taste —"}])
-      .concat(FLAVORS.map(f => ({value:f, label:`${f} — ${ACCENTUATED_TASTES[f].text}`}))));
+      .concat(FLAVORS.map(f => ({value:f, label:`${f} — ${kitchenTasteText(f)}`}))));
     if(forced){
       const sync = () => { const n = pickSel ? pickSel.value : picks[0];
         const f = Object.keys(TASTE_SNACK).find(k => TASTE_SNACK[k] === n);
@@ -28235,10 +28706,35 @@ function openChefCook(t, rec, commit){
     }
   }
 
-  const priceOf = () => {
+  /* what the thing being made actually does — read BEFORE the money and the ingredients go. Follows
+     every selector, so changing the pick, the ingredient or the Taste redraws it. */
+  const effWrap = el("div",{});
+  const madeName = () => {
+    const item = pickSel ? pickSel.value : (picks[0] || "");
+    const bundle = eatSel ? bundles.find(b => b.label===eatSel.value) : null;
+    try{
+      if(rec.two) return (d1 && d2) ? (twoSpec ? twoSpec.result(d1.value, d2.value) : `Dumpling (${d1.value} + ${d2.value})`) : "";
+      if(rec.result) return (rec.eats && !bundle) ? "" : rec.result(t, item, bundle);
+    }catch(e){ return ""; }
+    return item;
+  };
+  const drawEff = () => {
+    effWrap.innerHTML = "";
+    const n = madeName();
+    if(n) effWrap.append(kitchenEffectNode(n, tasteSel ? tasteSel.value : ""));
+  };
+  drawEff();
+  [pickSel, eatSel, d1, d2, tasteSel].forEach(x => { if(x) x.addEventListener("change", drawEff); });
+  body.append(effWrap);
+
+  const basePriceOf = () => {
     const item = pickSel ? pickSel.value : (picks[0] || "");
     return typeof rec.cost === "function" ? rec.cost(t, item) : (rec.cost || 0);
   };
+  // The Joy of Cooking Rank 1 — 10% off the money a Food Item costs to make (never a Scrap price)
+  const joyCut = () => !rec.scrap && joyOfCookingRank(t) >= 1
+    && joyIsFood(madeName() || (pickSel ? pickSel.value : (picks[0] || "")));
+  const priceOf = () => { const p = basePriceOf(); return joyCut() ? joyPrice(p) : p; };
   /* `rec.scrap`: the price is paid in that category's Scrap ONLY — cash can't stand in for it */
   const scrapCat = rec.scrap ? scrapCatDef(rec.scrap) : null;
   const purse = () => scrapCat ? scrapOf(t, scrapCat.key) : moneyOf(t);
@@ -28247,10 +28743,11 @@ function openChefCook(t, rec, commit){
   const drawPrice = () => {
     const n = count(), p = priceOf() * n;
     priceLine.textContent = (p ? `Cost ${fmtMoney(p)}${purseName}${n>1?` (${n} × ${fmtMoney(priceOf())})`:""}` : (scrapCat ? "No Scrap cost" : "No money cost"))
+      + (p && joyCut() ? ` · 10% off with The Joy of Cooking (was ${fmtMoney(basePriceOf() * n)})` : "")
       + ` · you have ${fmtMoney(purse())}${purseName}`;
     priceLine.style.color = p > purse() ? "var(--bad)" : "";
   };
-  drawPrice(); if(pickSel) pickSel.addEventListener("change", drawPrice);
+  drawPrice(); [pickSel, eatSel, d1, d2].forEach(x => { if(x) x.addEventListener("change", drawPrice); });
   if(countIn) countIn.addEventListener("input", drawPrice);
   body.append(priceLine);
   /* `rec.tool`: "requires access to a Poké Ball Tool Box" — access, not ownership, so a borrowed one
@@ -28294,7 +28791,7 @@ function openChefCook(t, rec, commit){
       for(const [nm,q] of take) if(inventoryQty(t, nm) < q){ toast(`Not enough ${nm} — ${q} needed, ${inventoryQty(t, nm)} in the bag`); return; }
       take.forEach(([nm,q]) => { for(let i=0;i<q;i++) consumeInventoryItem(t, nm); });
       if(price && scrapCat) scrapChange(t, scrapCat.key, -price, `Crafted ${n>1?`${n}× `:""}${item || rec.name}`, {kind:"craft"});
-      else if(price) moneyChange(t, -price, `${rec.bench || "Chef"} — ${rec.name}`, {kind:"buy"});
+      else if(price) moneyChange(t, -price, `${rec.bench || "Chef"} — ${rec.name}${joyCut() ? " (The Joy of Cooking −10%)" : ""}`, {kind:"buy"});
 
       const made = rec.two ? (twoSpec ? twoSpec.result(d1.value, d2.value) : `Dumpling (${d1.value} + ${d2.value})`)
                  : rec.result ? rec.result(t, item, bundle)
@@ -28303,10 +28800,12 @@ function openChefCook(t, rec, commit){
       // Herb Lore's yield depends on which ingredient went in (an Energy Root makes three, not two)
       // a Researcher's bench makes plain items — only the Chef's own cooking is stamped as a Chef Snack
       const yieldQty = ((bundle && bundle.qty) || rec.qty || 1) * n;
+      // The Joy of Cooking Rank 2: the Meals and Refreshments this cook makes heal a Tick when eaten
+      const joy = !rec.bench && joyOfCookingRank(t) >= 2 && joyIsMealOrRefreshment(made);
       if(rec.bench) benchBagAdd(t, made, yieldQty, rec.name);
-      else chefBagAdd(t, made, yieldQty, taste);
+      else chefBagAdd(t, made, yieldQty, taste, joy);
       commit(); closeModal();
-      toast(`${rec.icon || "🍳"} ${rec.bench ? "Made" : "Cooked"} ${yieldQty>1?`${yieldQty}× `:""}${made}${taste?` · ${taste} Taste`:""}${price?` · −${fmtMoney(price)}${purseName}`:""}`);
+      toast(`${rec.icon || "🍳"} ${rec.bench ? "Made" : "Cooked"} ${yieldQty>1?`${yieldQty}× `:""}${made}${taste?` · ${taste} Taste`:""}${joy?" · \u{1F4D6} heals a Tick when eaten":""}${price?` · −${fmtMoney(price)}${purseName}`:""}`);
     }}, rec.verb || "🍳 Cook"),
   ]});
 }
@@ -28328,7 +28827,7 @@ function kitchenCard(t, commit){
     const row = el("div",{class:"buff-row"});
     row.append(el("div",{style:"flex:1;min-width:0"},
       el("div",{class:"buff-name"}, r.name),
-      el("div",{class:"small muted"}, r.blurb)));
+      el("div",{class:"small muted"}, recipeBlurb(r)), recipeWhatNode(t, r)));
     row.append(el("button",{class:"btn-primary",style:"padding:6px 12px",
       onclick:()=>openChefCook(t, r, commit)},"🍳 Cook"));
     card.append(row);
@@ -28337,7 +28836,7 @@ function kitchenCard(t, commit){
   if(chefCanTaste(t)){
     const box = el("div",{class:"small",style:"margin-top:10px"});
     box.append(el("div",{style:"font-weight:700;margin-bottom:2px"},"Accentuated Taste — what an assigned Taste pays"));
-    FLAVORS.forEach(f => box.append(el("div",{class:"muted"}, `${f}: ${ACCENTUATED_TASTES[f].text}`)));
+    FLAVORS.forEach(f => box.append(el("div",{class:"muted"}, `${f}: ${kitchenTasteText(f)}`)));
     box.append(el("div",{class:"muted",style:"margin-top:4px"},
       "It lands automatically when the Buff is traded in, on anyone who doesn't dislike that Taste — once per item (May playtest errata)."));
     card.append(box);
@@ -28358,7 +28857,7 @@ function herbLoreCard(t, commit){
     const row = el("div",{class:"buff-row"});
     row.append(el("div",{style:"flex:1;min-width:0"},
       el("div",{class:"buff-name"}, r.name),
-      el("div",{class:"small muted"}, r.blurb)));
+      el("div",{class:"small muted"}, recipeBlurb(r)), recipeWhatNode(t, r)));
     row.append(el("button",{class:"btn-primary",style:"padding:6px 12px",
       onclick:()=>openChefCook(t, r, commit)},"🌿 Make"));
     card.append(row);
@@ -28432,6 +28931,12 @@ function openComplexAftertaste(t, rerender, persist){
     "1 AP · Free Action, triggered when you or an ally trade in a Digestion Buff from an item with a Taste. The one who ate it gains a second Digestion Buff — the basic Tasty Snack matching that Taste."));
   /* one serve path for both halves of the dialog; `entry` marks the logged trade-in as answered */
   const serve = async (targets, taste, entry) => {
+    const blocked = targets.filter(x => herbalBlocked(x.obj));
+    if(blocked.length){
+      toast(`\u{1F33F} ${blocked.map(x => ownerLabel(x.obj)).join(", ")} can't gain Food Buffs until End the Day — too many Herbal Restoratives`);
+      targets = targets.filter(x => !herbalBlocked(x.obj));
+      if(!targets.length) return;
+    }
     if(!apSpend(t, 1)) return;
     const snack = TASTE_SNACK[taste];
     targets.forEach(x => digestionList(x.obj).push({
@@ -29840,7 +30345,7 @@ function pokeBallBenchCard(t, commit){
     "Basic, Great and Specialty Balls are paid in Poké Ball Scrap only, never cash. The GM hands Scrap out as loot, and a Ball that fails a capture salvages for 25% of its price."));
   rows.forEach(r => {
     const row = el("div",{class:"buff-row"});
-    row.append(el("div",{style:"flex:1;min-width:0"}, el("div",{class:"buff-name"}, r.name), el("div",{class:"small muted"}, r.blurb)));
+    row.append(el("div",{style:"flex:1;min-width:0"}, el("div",{class:"buff-name"}, r.name), el("div",{class:"small muted"}, recipeBlurb(r)), recipeWhatNode(t, r)));
     row.append(el("button",{class:"btn-primary",style:"padding:6px 12px",onclick:()=>openChefCook(t, r, commit)}, r.verb));
     card.append(row);
   });
@@ -30290,13 +30795,13 @@ function gardenSoil(t, pl, mulched){
   }
   return { value:v, parts };
 }
-/* How Berries?? — the Rank bound on it, and its once-a-day +1 (a Daily use key, so any rest hands it back) */
+/* How Berries?? — the Rank bound on it, and its once-a-day +1. "A day" is the Garden's own clock
+   (t.gardenDay, moved only by 🌙 End the Day), so a ☀ Rest in the middle of the day doesn't hand it back. */
 function gardenBookRank(t){
   return ownedBookNames(t).filter(n => bookShortName(n).toLowerCase() === "how berries??")
     .reduce((m, n) => Math.max(m, bookBound(t, n)), 0);
 }
-function gardenBookKey(){ return useKey("dayitem", "how berries"); }
-function gardenBookLeft(t){ return gardenBookRank(t) >= 1 && usesLeft(t, gardenBookKey(), 1) > 0; }
+function gardenBookLeft(t){ return gardenBookRank(t) >= 1 && t.howBerriesDay !== (t.gardenDay || 0); }
 
 /* 🌙 End the Day, for one sheet. Returns how many Yield Rolls the new day brought. */
 function gardenNewDay(c){
@@ -30353,7 +30858,7 @@ function gardenRollYield(t, pl, idx, face, useBook){
   const digital = face == null;
   const f = digital ? 1 + Math.floor(Math.random() * faces) : Math.max(1, Math.min(faces, parseInt(face) || 1));
   const book = useBook && gardenBookLeft(t) ? 1 : 0;
-  if(book){ t.uses = t.uses || {}; t.uses[gardenBookKey()] = 1; }
+  if(book) t.howBerriesDay = t.gardenDay || 0;
   const total = f + tier.flat + soil.value + book;
   const got = Math.max(0, total);
   const bagName = gardenCropKind(pl.crop) === "apricorn"
@@ -30906,7 +31411,7 @@ function researchBenchCard(t, commit){
   rows.forEach(r => {
     if(r.bench !== lastBench){ lastBench = r.bench; card.append(el("div",{style:"font-weight:800;margin-top:8px"}, `${r.icon} ${r.bench}`)); }
     const row = el("div",{class:"buff-row"});
-    row.append(el("div",{style:"flex:1;min-width:0"}, el("div",{class:"buff-name"}, r.name), el("div",{class:"small muted"}, r.blurb)));
+    row.append(el("div",{style:"flex:1;min-width:0"}, el("div",{class:"buff-name"}, r.name), el("div",{class:"small muted"}, recipeBlurb(r)), recipeWhatNode(t, r)));
     row.append(el("button",{class:"btn-primary",style:"padding:6px 12px",onclick:()=>openChefCook(t, r, commit)}, r.verb || "Craft"));
     card.append(row);
   });
@@ -31290,6 +31795,7 @@ function renderTrainerCombat(root, t){
   pbSlot.append(el("button",{class:"btn-secondary rollbtn",style:"padding:6px 10px",onclick:()=>openThrowPokeball(t)},"🎲 Roll"));
   pb.append(pbSlot);
   root.append(pb);
+  root.append(restorativeCard(t, renderBattle));
   // capture tools carried in inventory grant Status Attacks (Hand Net, Weighted Net…) (#7)
   const itemAtks = inventoryItemAttacks(t);
   if(itemAtks.length){
@@ -43247,32 +43753,79 @@ function resetMapMovement(map){
    above). If Battle mode is turned off before their expiry turn comes around (fight ends abruptly,
    GM forgets to run it out), they'd otherwise linger until the next End Scene. Sweep every token on
    the map and drop any still-stamped buffs once the fight that was tracking them is over. */
-async function expireBattleBuffs(map){
-  for(const t of mapTokensFor(map.id)){
-    const L = t.link ? tokenLinked(t) : null; if(!L || L.missing || !L.obj) continue;
-    const owner = L.obj; if(!Array.isArray(owner.buffs) || !owner.buffs.length) continue;
-    const before = owner.buffs.length;
-    owner.buffs = owner.buffs.filter(b=>b.turnStamp==null);
-    if(owner.buffs.length !== before) await commitTokenSource(t);
-  }
+/* A buff that belongs to the fight. Turning Battle off means EVERY combatant's turn has ended, so
+   anything worded by turns goes whether or not the tracker stamped it ("this turn", "until the end
+   of your next turn", "one full round" — Sweet Confection's Evasion, Songs, Sage wards), and so does
+   anything worded for the whole encounter/combat: Accentuated Taste (Sweet's +5 Initiative), Lansat
+   Berry, Shifting Darkness. "Next attack", "until spent", Bound and Scene buffs are not the fight's
+   and stay for their own trigger or End Scene. */
+function isCombatDurBuff(b){
+  return !!b && (b.turnStamp!=null || isTurnDurBuff(b)
+    || /encounter|combat|battle|fight|round|\bturns?\b/i.test(b.dur||""));
 }
-/* End of the fight (Core p.234 "Combat Stages … reset at the end of an encounter"): every creature
-   on the board drops the Combat Stages someone set by hand and its Volatile afflictions — the same
-   sweep End Scene does to the active character, but reaching wild Pokémon and NPC trainers too.
-   Stages/statuses that an active source is still applying are untouched: resetManualCS only clears
-   the manual p.cs, and clearSceneStatuses leaves Persistent afflictions (Burn, Poison, Sleep…) for
-   an Extended Rest to cure. */
+/* End of the fight, for ONE creature. Returns true if anything came off. Core p.234 "Combat Stages …
+   reset at the end of an encounter" — resetManualCS only clears the hand-set p.cs, so stages an
+   active source still applies (Burn, weather, an Aura, armour) stay with that source — and Volatile
+   afflictions go (clearSceneStatuses leaves Persistent ones for an Extended Rest). Then everything
+   else whose text ends "at the end of combat/the encounter" or with a turn:
+     · EOT cooldowns — the turn they were waiting on has passed (resetUses "eot")
+     · Trick-or-Treat & co.'s "for 5 turns", Roost/Double Shock's "until the start of its next turn",
+       Burn Up's "until the end of the encounter" (a Cloak and Reflect Type's Scene are left alone)
+     · Tera Shell / Teraform Zero / Radiating (the Terastal state itself stays to End Scene)
+     · Critical Moment (a turn), Fight On and On, Starlight's Luminous, Pheromone Stacks, Trace,
+       Duelist Momentum ("lost when … combat ends"), Transform ("until the end of the encounter")
+     · Shields Down: a healthy Minior pulls its shell back on out of combat */
+function endCombatCreature(o){
+  if(!o) return false;
+  let ch = false;
+  if(Array.isArray(o.buffs) && o.buffs.length){
+    const n = o.buffs.length; o.buffs = o.buffs.filter(b=>!isCombatDurBuff(b));
+    if(o.buffs.length !== n) ch = true;
+  }
+  if(resetManualCS(o)) ch = true;
+  if(clearSceneStatuses(o)) ch = true;
+  if(o.uses){ const n = Object.keys(o.uses).length; resetUses(o, "eot"); if(Object.keys(o.uses).length !== n) ch = true; }
+  if(removeTypeMod(o, x => x.dur==="turns" || x.dur==="startNext" || /^burn up$/i.test(x.src||""))) ch = true;
+  if(o.typeShift || o.radiate){ clearTypeShift(o); ch = true; }
+  ["critMoment","fightOn","luminous","pheromone","pheroRolled"].forEach(k=>{ if(o[k] != null){ delete o[k]; ch = true; } });
+  if(o.traced){ o.abilities = (o.abilities||[]).filter(a => a !== o.traced); delete o.traced; ch = true; }
+  if(o.momentum){ setMomentum(o, 0); ch = true; }
+  if(o.transform){ transformRevert(o, true); ch = true; }
+  if(o.species !== undefined && shieldsDownRevert(o)) ch = true;
+  return ch;
+}
+/* End of the fight for everyone it touched. Not just the creatures standing on the board: a Trainer's
+   token reaches their whole sheet (a Pokémon that ate a Sweet snack and was recalled still carries the
+   +5 Initiative), and an encounter token reaches every creature in that encounter. Each sheet row and
+   the encounter row are written once. */
 async function endCombatEffects(map){
-  let n = 0;
+  const rows = new Set(), encToks = [], seen = new Set();
+  let n = 0, encTouched = false;
+  const sweep = o => { if(!o || seen.has(o)) return false; seen.add(o); if(endCombatCreature(o)){ n++; return true; } return false; };
   for(const t of mapTokensFor(map.id)){
     const L = t.link ? tokenLinked(t) : null; if(!L || L.missing || !L.obj) continue;
-    const cs = resetManualCS(L.obj), st = clearSceneStatuses(L.obj);
-    if(cs || st){ n++; await commitTokenSource(t); }
+    if(L.enc){
+      if(sweep(L.obj)){ encTouched = true; encToks.push([t.link, L.obj]); }
+      const enc = encList().find(e=>e.id===t.link.encId);
+      if(enc){
+        (enc.mons||[]).forEach(p=>{ if(sweep(p)) encTouched = true; });
+        (enc.trainers||[]).forEach(tr=>{ if(sweep(tr.trainer)) encTouched = true; (tr.pokemon||[]).forEach(p=>{ if(sweep(p)) encTouched = true; }); });
+      }
+    } else if(L.row && L.row.data){
+      const d = L.row.data;
+      let hit = sweep(L.obj);
+      if(sweep(d.trainer)) hit = true;
+      (d.pokemon||[]).forEach(p=>{ if(sweep(p)) hit = true; });
+      if(hit) rows.add(L.row);
+    } else if(sweep(L.obj)) await commitTokenSource(t);
   }
-  if(n){ renderMap(); toast(`Cleared Combat Stages & volatile statuses on ${n} combatant${n===1?"":"s"}`); }
+  rows.forEach(r=>{ if(canEditPlayerHP(r)) cloudSaveRow(r); });
+  if(encTouched){ encToks.forEach(([link,obj])=>broadcastEncState(link, obj)); saveEncCombat(); }
+  return n;
 }
 async function toggleBattle(map){
   const meta = activeMapMeta(); meta.battleOn = !meta.battleOn;
+  let battleEndedN = 0;
   if(meta.battleOn){
     resetMapMovement(map);                            // start combat with fresh movement counters
     // Fresh fight: round/turn order restart, and enemies (wild Pokémon/NPC trainers/standalone
@@ -43281,14 +43834,16 @@ async function toggleBattle(map){
     meta.initRound = 1; meta.initSeq = 0; meta.initTurnId = null;
     mapTokensFor(map.id).forEach(t=>{ const k=tokenHp(t).kind; if(k!=="trainer" && k!=="pokemon") t.inInit = false; });
   } else {
-    await expireBattleBuffs(map);
-    await endCombatEffects(map);          // the fight is over → hand-set Combat Stages & Volatile statuses go
+    // the fight is over → everyone's turns have ended: turn & combat-long buffs, hand-set Combat
+    // Stages, Volatile statuses, EOT cooldowns and the rest of endCombatCreature's list all go
+    battleEndedN = await endCombatEffects(map);
     resetMapMovement(map);                // ...and a boat's tally now runs against its Travel speed instead
   }
   mapMetaSave();
   mapTokensSave();                        // both directions clear the movement tallies now
   renderMap();
-  toast(meta.battleOn ? "⚔ Battle mode on — tracking movement" : "Battle mode off");
+  toast(meta.battleOn ? "⚔ Battle mode on — tracking movement"
+    : `Battle mode off${battleEndedN ? ` — combat effects ended on ${battleEndedN} creature${battleEndedN===1?"":"s"}` : ""}`);
 }
 async function newRound(map){
   resetMapMovement(map); refreshSwarmRounds(map); mapTokensSave(); renderMap();
