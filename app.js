@@ -32504,54 +32504,41 @@ function rollWildEncounter(area){
   saveEnc(); renderEncounters();
   toast(`🎲 ${enc.name}${rares.length ? ` — ${rares.join(" + ")}!` : ""}`);
 }
-/* ---- what this area has actually produced so far -------------------------------------------
-   Every roll makes an encounter named "<Area> — wild #N" (see rollWildEncounter), so the whole
-   history of the table is already sitting in the encounter library. Counting the species across
-   those answers the question the GM actually asks — "which of these have the party never met?" —
-   without any new bookkeeping. A combo result (Mantyke + Remoraid → Mantine) is counted against
-   the species it became AND the one it came from, since both were on the table. */
-function areaSightings(area){
-  const counts = new Map();
-  const bump = n => { if(n) counts.set(n, (counts.get(n)||0) + 1); };
-  try{
-    (encList()||[]).forEach(e=>{
-      if(!String(e.name||"").startsWith(area.name + " \u2014 wild")) return;
-      (e.mons||[]).forEach(p=>{
-        const nm = (getSpecies(p.species)||{}).name || p.species;
-        bump(nm);
-        (area.combos||[]).forEach(c=>{ if(c.becomes === nm){ bump(c.when); bump(c.with); } });
-      });
-    });
-  }catch(err){}
-  return counts;
+/* ---- which of this table's species the party has in the Pokédex -----------------------------
+   The question the GM asks is "which of these have the party never got?", and the answer lives in
+   the 📕 Dex register, not in the encounter library — a rolled Wingull that swam off was never
+   caught, and a Buizel bought in a shop or sent by the GM is registered without ever being rolled.
+   So this reads the register (after a scan, so a catch that just synced counts) by Dex entry:
+   forms fold together (Wishiwashi Solo is the Wishiwashi entry), and a caught evolution has
+   already registered its pre-evolutions (see dexRegisterLine). */
+function areaDexEntry(name){
+  const d = dexLoad(), g = dexGroupOf((getSpecies(name)||{}).name || name);
+  return (g && d.seen[g.key]) || null;
 }
 function areaReportNode(area){
-  const counts = areaSightings(area);
-  const rolls = (()=>{ try{ return (encList()||[]).filter(e=>String(e.name||"")
-    .startsWith(area.name + " \u2014 wild")).length; }catch(e){ return 0; } })();
+  try{ dexScan({quiet:true}); }catch(err){}
   const wrap = el("div",{style:"margin-top:6px"});
   wrap.append(el("div",{class:"small muted",style:"margin-bottom:6px"},
-    rolls ? `${rolls} encounter${rolls===1?"":"s"} rolled from this table so far.`
-          : "Nothing has been rolled from this table yet — everything below is still unseen."));
+    "Checked against the \u{1F4D5} Pokédex register — ✓ means it is registered."));
   const col = (title, names) => {
     const box = el("div",{});
-    const seen = names.filter(n=>counts.get(n));
+    const got = names.filter(n=>areaDexEntry(n));
     box.append(el("div",{class:"small",style:"font-weight:800;margin:6px 0 3px"},
-      `${title} — ${seen.length}/${names.length} seen`));
+      `${title} — ${got.length}/${names.length} in the Dex`));
     names.forEach(n=>{
-      const c = counts.get(n) || 0;
-      box.append(el("div",{class:"small",style:c?"":"color:var(--bad);font-weight:700"},
-        `${c ? "\u2713" : "\u2022"} ${n}` + (c ? ` \u00d7${c}` : " \u2014 never shown up")));
+      const e = areaDexEntry(n), sub = e ? dexEntrySub(e) : "";
+      box.append(el("div",{class:"small",style:e?"":"color:var(--bad);font-weight:700"},
+        `${e ? "✓" : "•"} ${n}` + (e ? (sub ? ` · ${sub}` : "") : " — not in the Dex")));
     });
     return box;
   };
   const grid = el("div",{style:"display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px"});
   grid.append(col("Common", area.common||[]), col("Rare", area.rare||[]));
   wrap.append(grid);
-  const missing = [...(area.common||[]), ...(area.rare||[])].filter(n=>!counts.get(n));
+  const missing = [...(area.common||[]), ...(area.rare||[])].filter(n=>!areaDexEntry(n));
   wrap.append(el("div",{class:"small",style:"margin-top:8px;font-weight:700;color:"+(missing.length?"var(--bad)":"var(--good)")},
-    missing.length ? `Still to be seen (${missing.length}): ${missing.join(", ")}`
-                   : "\u2713 Every species on this table has turned up at least once."));
+    missing.length ? `Not in the Dex yet (${missing.length}): ${missing.join(", ")}`
+                   : "✓ Every species on this table is registered in the Pokédex."));
   return wrap;
 }
 /* the 🎲 button: roll a table, and see what it has and hasn't produced */
@@ -32568,7 +32555,7 @@ function openRandomEncounter(){
     body.append(head);
     const det = el("details",{class:"spoiler","data-key":"encarea:"+a.id, style:"margin-top:4px"});
     det.open = ENC_AREAS.length === 1;
-    det.append(el("summary",{}, el("span",{class:"muted small"},"what has and hasn't shown up")));
+    det.append(el("summary",{}, el("span",{class:"muted small"},"which are (and aren't) in the Pokédex")));
     det.append(areaReportNode(a));
     body.append(det);
   });
