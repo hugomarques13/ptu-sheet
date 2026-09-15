@@ -377,6 +377,10 @@ const STATUS_DEFS = [
      toggled by hand for a table running the fight without the board. */
   {key:"flanked", name:"Flanked", kind:"other", cap:0,
    effect:"−2 Evasion. Flanked when at least two foes are adjacent to you but not adjacent to each other (three for Large, four for Huge, five for Gigantic; a foe occupying several adjacent squares counts once per square, but one combatant can never Flank alone). On the 🗺 Map this is applied and lifted automatically as tokens move."},
+  /* Invisible (the Invisibility Capability and friends). Nobody can Flank with a creature they can't
+     see coming — on the Map an Invisible token never counts toward someone else's Flank. Scene-bound. */
+  {key:"invisible", name:"Invisible", kind:"other", cap:0,
+   effect:"Can't be seen. Doesn't count toward Flanking anyone (on the 🗺 Map this is automatic). Ends with the Scene, or earlier if its source says so."},
   {key:"vulnerable", name:"Vulnerable", kind:"other", cap:0,
    effect:"Cannot apply Evasion of any sort against attacks. (Blinded, Sleeping, Fainted, Frozen, and Tripped targets are always considered Vulnerable too.)"},
   {key:"blinded", name:"Blinded", kind:"other", cap:0,
@@ -705,6 +709,7 @@ function flinchInitPenalty(o){ return 5 * Math.max(0, (o && o.flinchInit) || 0);
 function addFlinchStack(o){ if(o) o.flinchInit = Math.max(0, (o.flinchInit||0)) + 1; }
 function clearFlinchInit(o){ if(o && o.flinchInit){ delete o.flinchInit; return true; } return false; }
 function toggleStatus(p, key){ p.statuses = p.statuses||[];
+  if(key==="knockedOut" || key==="dead" || key==="invisible") queueAuraSweep();
   dedupeStatuses(p);
   const i=p.statuses.indexOf(key);
   if(i>=0){ const w = statusCureBlock(p, key); p.statuses = p.statuses.filter(k=>k!==key); if(w) toast(w); }
@@ -765,7 +770,7 @@ function statusCureBlock(o, key){
    Poison, Sleep, Paralysis, Freeze) deliberately stay — those need an Extended Rest or a healing
    item, and End Day already clears them. */
 const SCENE_STATUS_KEYS = new Set([
-  ...STATUS_DEFS.filter(s=>s.kind==="volatile").map(s=>s.key), "stuck", "slowed", "vortex",
+  ...STATUS_DEFS.filter(s=>s.kind==="volatile").map(s=>s.key), "stuck", "slowed", "vortex", "invisible",
 ]);
 function clearSceneStatuses(o){
   if(!o || !Array.isArray(o.statuses)) return false;
@@ -916,6 +921,8 @@ const hpTick      = max => Math.max(1, Math.floor((max||0)/10));
    `why` lists the Moves that use it, which is what the buttons are for — you press "½" because you
    just used Heal Pulse, not because you wanted 23. */
 const HP_FRACTIONS = [
+  { lbl:"\u00B9\u2044\u2081\u2086", num:1, den:16,
+    why:"1/16 of Max HP \u2014 Leftovers, Sun Blanket, Solar Power, Rain Dish / Ice Body in their Weather, and every other 'a sixteenth' effect" },
   { lbl:"\u215B", num:1, den:8,
     why:"1/8 of Max HP \u2014 Blaze Armor, and the Ability/Gift recoils written this way" },
   { lbl:"\u00BC", num:1, den:4,
@@ -973,7 +980,38 @@ const hpSixteenth = max => Math.max(1, Math.floor((max||0)/16));
 const normAbilityName = s => String(s||"").toLowerCase().replace(/[^a-z]/g,"");
 function monHasAbility(p, name){
   const want = normAbilityName(name);
-  return (p?.abilities||[]).some(a=>normAbilityName(a)===want);
+  return activeAbilityList(p).some(a=>normAbilityName(a)===want);
+}
+/* ---- switched-off Abilities ----
+   o.abilitiesOff = the keys (lower-case, "[Errata]" stripped) of Abilities this creature still HAS
+   but the table has switched off — a Pokémon that isn't using Intimidate this fight, an Ability the
+   GM is suppressing. It stays listed on every card, struck through, with its on/off switch; but
+   everything that asks "does it have X?" (ownerHasAbility, monHasAbility, hasAbility,
+   ownerAbilityNames / ownerAbilityKeys and the few direct readers) treats it as absent. */
+function abilityOffKey(name){ return String(name||"").toLowerCase().replace(/\s*\[errata\]\s*$/,"").trim(); }
+function abilityDisabled(o, name){
+  const off = o && o.abilitiesOff;
+  return Array.isArray(off) && off.length > 0 && off.includes(abilityOffKey(name));
+}
+function activeAbilityList(o){ return (o?.abilities||[]).filter(a => !abilityDisabled(o, a)); }
+function setAbilityDisabled(o, name, off){
+  const k = abilityOffKey(name);
+  const cur = Array.isArray(o.abilitiesOff) ? o.abilitiesOff.filter(x => x !== k) : [];
+  if(off) cur.push(k);
+  if(cur.length) o.abilitiesOff = cur; else delete o.abilitiesOff;
+}
+/* the little on/off pill on an Ability row. Lives inside a <summary>, so it eats its own click. */
+function abilityOffSwitch(o, name, onChange){
+  const off = abilityDisabled(o, name);
+  return el("button",{class:"linkbtn",
+    style:"margin-left:8px;font-size:11px;font-weight:700;"+(off?"color:var(--bad)":"color:var(--muted)"),
+    title: off ? `${name} is switched OFF \u2014 nothing it does is applied. Tap to switch it back on.`
+               : `switch ${name} off \u2014 it stays on the sheet, but nothing it does is applied until it's switched back on`,
+    onclick:e=>{ e.preventDefault(); e.stopPropagation(); setAbilityDisabled(o, name, !off); onChange(); }},
+    off ? "\u2716 OFF" : "\u2714 on");
+}
+function abilityNameStyle(o, name, base){
+  return (base||"") + (abilityDisabled(o, name) ? ";text-decoration:line-through;opacity:.55" : "");
 }
 const WEATHER_DEFS = [
   { key:"clear", name:"Clear skies", icon:"🌤", blurb:"No Weather Effect in play.", rules:[] },
@@ -1846,7 +1884,7 @@ function typeReplacement(o){
 const FORECAST_TYPES = { sunny:"Fire", rainy:"Water", hail:"Ice", sandstorm:"Rock" };
 function autoTypeAbility(o){
   if(!o || o.species === undefined || !Array.isArray(o.abilities) || !o.abilities.length) return null;
-  if(!o.abilities.some(a => /forecast|rks/i.test(String(a)))) return null;   // cheap gate - this runs on every Type read
+  if(!activeAbilityList(o).some(a => /forecast|rks/i.test(String(a)))) return null;   // cheap gate - this runs on every Type read
   if(monHasAbility(o, "Forecast")){
     let w = null; try{ w = ownerWeather(o); }catch(e){}
     const ty = FORECAST_TYPES[(w && w.key) || ""];
@@ -4873,7 +4911,7 @@ function hasInjurySource(def, t, mon){
   if(def.kind==="item")    return ((t && t.inventory)||[]).some(it =>
                                     String((it && it.name)||"").toLowerCase()===def.name.toLowerCase()
                                     && (parseInt(it.qty)||0) > 0);
-  if(def.kind==="ability") return !!mon && (mon.abilities||[]).some(a =>
+  if(def.kind==="ability") return !!mon && activeAbilityList(mon).some(a =>
                                     String(a||"").toLowerCase()===def.name.toLowerCase());
   if(def.kind==="blessing" || def.kind==="gift") return !!giftRowNamed(t, def.name);
   return false;
@@ -5135,7 +5173,7 @@ function applyEndDay(c, plan){
   treat(t, "trainer");
   const tCap = trainerDerived(t).hp;               // remaining-injury-capped max
   t.currentHP = noHP(t.injuries) ? Math.min(typeof t.currentHP==="number" ? t.currentHP : tCap, tCap) : tCap;
-  restParty(c).forEach(p => {
+  restParty(c, !!(plan && plan.pc)).forEach(p => {
     if(p.mega) megaRevert(p,true); powerConstructRevert(p,true);   // revert transforms before healing so max HP is the base form's
     endSceneTypeState(p);                 // ...and a night's rest ends any Terastallization too
     transformRevert(p,true);              // "lasts until ... the end of the encounter"
@@ -5225,26 +5263,30 @@ function restPlannerSheets(){
 }
 /* everyone on one sheet who can rest: the Trainer, then the whole party (boxed Pokemon included --
    they rest with everyone else, they're just flagged in the list). */
-function restRoster(c){
+function restRoster(c, withPC){
   const out = [];
   const t = c.trainer; normTrainer(t);
   const dT = trainerDerived(t);
   out.push({ key:"trainer", mon:false, obj:t, name:(t.name || c.name || "Trainer"),
              cur: typeof t.currentHP==="number" ? t.currentHP : dT.hp,
              full: dT.fullHP, inj: Math.max(0, t.injuries||0) });
-  restParty(c).forEach(p => {
+  restParty(c, withPC).forEach(p => {
     const d = pokeDerived(p);
     out.push({ key:p.id, mon:true, obj:p,
-               name: p.nickname || (getSpecies(p.species) && getSpecies(p.species).name) || p.species || "Pokemon",
+               name: (p.nickname || (getSpecies(p.species) && getSpecies(p.species).name) || p.species || "Pokemon")
+                     + (p.onTeam === false ? "  \u{1F5A5} PC" : ""),
                cur: typeof p.currentHP==="number" ? p.currentHP : d.maxHP,
                full: d.fullMaxHP, inj: Math.max(0, p.injuries||0) });
   });
   return out;
 }
-/* Only the Pokémon travelling WITH you rest — anything in the PC sits the whole thing out
-   (no healing, no AP, no refreshed uses). The day still rolls over for them, though: see restApply,
-   which resets every Pokémon's Injury ledger so a boxed one can't get stuck at 3/3 forever. */
-function restParty(c){ return ((c && c.pokemon)||[]).filter(p => normPokemon(p).onTeam !== false); }
+/* Who rests: the party, and — unless the planner's "🖥 PC Pokémon rest too" switch is off — every
+   Pokémon in the PC as well (healed, cured and refreshed like the party). The switch is device-level
+   (restPcPref). The plan-less legacy callers (the Arcana's Extended Rest card) keep party-only. The
+   day rolls over for everyone regardless: see restApply, which resets every Pokémon's Injury ledger. */
+function restParty(c, withPC){ return ((c && c.pokemon)||[]).filter(p => normPokemon(p).onTeam !== false || !!withPC); }
+function restPcPref(){ try{ return localStorage.getItem("ptu_rest_pc") !== "0"; }catch(e){ return true; } }
+function setRestPcPref(on){ try{ localStorage.setItem("ptu_rest_pc", on ? "1" : "0"); }catch(e){} }
 /* Nurse cares for everyone resting with the Medic, so a single medic anywhere in the resting group
    speeds up the whole camp (Proper Care needs Nurse to have something to improve). */
 function restMedics(sheets, per){
@@ -5325,7 +5367,7 @@ function spendBandage(t){
 function openRestPlanner(){
   const sheets = restPlannerSheets();
   if(!sheets.length){ toast("Nothing to rest \u2014 no sheet you can edit"); return; }
-  const plan = { center:false, tab:sheets[0].id, per:{} };
+  const plan = { center:false, tab:sheets[0].id, per:{}, pc:restPcPref() };
   sheets.forEach(s => plan.per[s.id] = { on: !restSkip[s.id], heals:{}, band:{}, touched:{} });
 
   const body = el("div");
@@ -5339,7 +5381,7 @@ function openRestPlanner(){
   function sheetPlan(s){
     const st = plan.per[s.id];
     const med = restMedics(sheets, plan.per);
-    const roster = restRoster(s.c);
+    const roster = restRoster(s.c, plan.pc);
     const rows = roster.map(ind => {
       const bandagedNow = plan.center ? false : (!!st.band[ind.key] || med.nurse);
       const capN = restHealCap(ind, plan, bandagedNow, med.properCare);
@@ -5372,6 +5414,11 @@ function openRestPlanner(){
       plan.center
         ? "Pok\u00e9mon Center: everyone comes out at full Hit Points with every Status cured and Daily Moves refreshed. Injuries add to the clock \u2014 30 minutes each, or a full hour each for a patient with 5 or more. Max 3 Injuries treated per person per day."
         : "Camp: at least 4 hours. Hit Points come back at 1/16th of Max per half hour (1/8th once Bandaged or under a Medic's Nurse) and stop coming back after 8 hours. Nobody left with 5+ Injuries recovers Hit Points at all. The first Injury is free natural healing; each one after it needs a Bandage in place 6 hours."));
+    const pcCb = el("input",{type:"checkbox"}); pcCb.checked = !!plan.pc;
+    pcCb.addEventListener("change", ()=>{ plan.pc = pcCb.checked; setRestPcPref(plan.pc); draw(); });
+    body.append(el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin-bottom:12px",
+      title:"On: Pokémon stored in each Trainer's PC heal, get cured and have their uses refreshed along with the party. Off: only the party rests. Remembered on this device."},
+      pcCb, "\u{1F5A5} PC Pok\u00e9mon rest too"));
 
     /* who's resting — one chip per sheet. The tickbox leaves that sheet out of the whole rest
        (no healing, no AP, no refreshed uses, no day roll-over) and is remembered in restSkip;
@@ -5536,7 +5583,7 @@ async function restApply(sheets, plan, endsDay){
     // after a re-fetch the row object may hold new data -- always re-read it from the cache
     const c = (mode==="cloud" && cloud.byId[s.id] && cloud.byId[s.id].data) ? cloud.byId[s.id].data : s.c;
     const heals = {};
-    restRoster(c).forEach(ind => {
+    restRoster(c, plan.pc).forEach(ind => {
       const bandagedNow = plan.center ? false : (!!st.band[ind.key] || med.nurse);
       const capN = restHealCap(ind, plan, bandagedNow, med.properCare);
       const n = Math.min(capN, Math.max(0, st.heals[ind.key]||0));
@@ -5545,7 +5592,7 @@ async function restApply(sheets, plan, endsDay){
       // a Bandage the planner leaned on is a real item out of the bag (a Medic's Nurse needs none)
       if(n && st.band[ind.key] && !med.nurse && spendBandage(c.trainer)) bandagesUsed++;
     });
-    const res = applyEndDay(c, { center:plan.center, heals,
+    const res = applyEndDay(c, { center:plan.center, heals, pc:!!plan.pc,
                                  src: plan.center ? "Pokémon Center" : "Extended Rest" });
     healedN += res.healed; blockedN += res.blocked;
     // the rest happens DURING today, so its heals count against today -- then the day rolls over
@@ -6097,6 +6144,7 @@ const TYPE_ABSORB_ABILITIES = [
 function ownerAbilityNames(o){
   return [...(o?.abilities||[]), ...(o?.encAbilities||[]),
           ...(isTrainerOwner(o) ? trainerGrantedAbilities(o) : [])]
+    .filter(a => !abilityDisabled(o, a))
     .map(a => String(a||"").toLowerCase().trim()).filter(Boolean);
 }
 /* the absorbing Abilities this creature is actually carrying */
@@ -8049,6 +8097,7 @@ function ownerLabel(o){
 }
 function applyAutoKO(owner, oldHP, newHP){
   if(!owner || typeof newHP !== "number") return null;
+  queueAuraSweep();                 // a KO (or a revive) changes who can Flank — see queueAuraSweep
   if(!Array.isArray(owner.statuses)) owner.statuses = [];
   /* Death first: it sits at every HP setter through this one function, and it pins Knocked Out on by
      itself — so once it fires, `was` is already true below and the ordinary "you Fainted" toast
@@ -9490,6 +9539,21 @@ function moneyField(t){
     title:"every payment in and out of this sheet",
     onclick:e=>{ e.preventDefault(); openMoneyLedger(t); }},
     `📜 Ledger (${moneyLogOf(t).length})`));
+  const fs = scrapOf(t, "food");
+  if(fs > 0 || isGM()){
+    const line = el("div",{class:"inline small",style:"gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap",
+      title:"Food Scrap — always spent before money when cooking Food (not in shops)"},
+      el("span",{style:"font-weight:700"}, `\u{1F34E} ${fmtMoney(fs)} Food Scrap`),
+      el("button",{class:"linkbtn",onclick:e=>{ e.preventDefault(); openScrapLedger(t, "", save); }},"📜"));
+    if(isGM()) line.append(el("button",{class:"linkbtn",title:"GM: add or take Food Scrap (a negative number takes it)",
+      onclick:e=>{ e.preventDefault();
+        const v = parseFloat(prompt("Food Scrap to add (negative to take away):", "") || "");
+        if(!v) return;
+        const d = scrapChange(t, "food", v, v > 0 ? "Given by the GM" : "Taken by the GM", {kind: v > 0 ? "loot" : "gm"});
+        toast(`\u{1F34E} ${d >= 0 ? "＋" : "－"}${fmtMoney(Math.abs(d))} Food Scrap · now ${fmtMoney(scrapOf(t, "food"))}`);
+        redraw(); }}, "± adjust"));
+    wrap.append(line);
+  }
   return wrap;
 }
 /* the same ledger as a card, for the Inventory tab — the page you go to when you want
@@ -12369,9 +12433,14 @@ function openInventoryPicker(t){
    an item its Trainer no longer owns. */
 function itemSendTargets(fromChar){
   if(mode==="cloud"){
-    if(!cloud.isGM) return [];
+    /* a player gives out of a bag that is theirs, to any sheet at the table they can see (not the
+       archived or the hidden ones); the GM may move items out of any sheet */
+    if(!cloud.isGM){
+      const src = Object.values(cloud.byId).find(r => r && r.data === fromChar);
+      if(!src || !canEdit(src)) return [];
+    }
     return Object.values(cloud.byId).filter(r => r && r.data && r.data.trainer && r.data!==fromChar
-        && r.owner_id!==PC_OWNER && !charArchived(r.data))
+        && r.owner_id!==PC_OWNER && !charArchived(r.data) && charRowVisibleToMe(r))
       .map(r => ({ char:r.data, label:`${r.data.name||"(unnamed)"} — ${r.owner_name||"?"}${ownsRow(r)?" (you)":""}`,
                    commit:()=> cloudUpsert(r).then(ok=>{ if(!ok) toast("⚠ Sync issue — it'll reconcile on the next change"); }) }))
       .sort((a,b)=>a.label.localeCompare(b.label));
@@ -12427,7 +12496,7 @@ function sendInventoryItem(fromChar, it, target, n){
 }
 function openSendItem(fromChar, it){
   const targets = itemSendTargets(fromChar);
-  if(!targets.length){ toast(mode==="cloud" ? "Only the GM can send items between sheets" : "No other character to send to"); return; }
+  if(!targets.length){ toast(mode==="cloud" ? "Nobody to send it to — you can only give items out of your own bag" : "No other character to send to"); return; }
   const have = Math.max(0, parseInt(it.qty)||0);
   if(!have){ toast("There are none of that item to send"); return; }
   const wrap = el("div",{});
@@ -16294,6 +16363,7 @@ function ownerHasAbility(o, name){
 function ownerAbilityKeys(o){
   return [...(o?.abilities||[]), ...(o?.encAbilities||[]), ...heldGrantedAbilities(o),
           ...(isTrainerOwner(o) ? trainerGrantedAbilities(o) : [])]
+    .filter(a => !abilityDisabled(o, a))
     .map(a => ({ name:String(a).replace(/\s*\[errata\]\s*$/i,"").trim(),
                  key:String(a).toLowerCase().replace(/\s*\[errata\]\s*$/,"").trim() }));
 }
@@ -16431,7 +16501,8 @@ function tradeInDigestion(o, buff, opts={}){
     }
     if(def.regen){
       const n = Math.max(1, Math.floor(max/def.regen));
-      addCustomBuff(o, def.name, {}, `Recovers ${n} HP (1/${def.regen} of Max HP) at the beginning of each of its turns for the rest of the encounter — apply it on the turn tick.`);
+      addCustomBuff(o, def.name, {}, `Recovers ${n} HP (1/${def.regen} of Max HP) at the beginning of each of its turns for the rest of the encounter — applied automatically when its turn comes up on the Map's ▶ initiative.`);
+      o.buffs[o.buffs.length-1].regen = def.regen;       // read by applyTurnStartRegen
       log.push(`${def.name} regen: ${n} HP per turn`);
     }
     const cured = [];
@@ -16983,7 +17054,7 @@ function connectionMoveOf(abilityName){
   return hit ? canonMoveName(hit[1].trim()) : null;
 }
 function monConnectionAbilities(p){
-  return (p?.abilities||[]).filter(an=>connectionMoveOf(an));
+  return activeAbilityList(p).filter(an=>connectionMoveOf(an));
 }
 
 /* ---------- the derived layers ---------- */
@@ -18582,8 +18653,9 @@ function abilitiesCard(p, sp){
     const row = el("details",{class:"spoiler"});
     const uc = ab && usesControl(p, "ability", an, ab.frequency, ()=>refreshMon(p));
     row.append(el("summary",{},
-      el("span",{style:"color:var(--ink)"}, an || "—"),
+      el("span",{style:abilityNameStyle(p, an, "color:var(--ink)")}, an || "—"),
       uc ? el("span",{style:"margin-left:8px"}, uc) : "",
+      abilityOffSwitch(p, an, ()=>{ save(); refreshMon(p); }),
       el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove",
         onclick:e=>{e.preventDefault();
           if(!isGM()){ toast("Only the GM can remove an Ability"); return; }
@@ -18964,7 +19036,7 @@ function capabilityGrants(p){
     const nm = canonMoveName(mn);
     moveCapGrants(nm).forEach(g=>out.push({...g, src:nm}));
   });
-  (p?.abilities||[]).forEach(an=>{
+  activeAbilityList(p).forEach(an=>{
     abilityCapGrants(an).forEach(g=>{ if(!g.cond || g.cond(p)) out.push({...g, src:an}); });
   });
   // …and the ones bought with Tutor Points (Capability Training, Advanced Mobility, Seismometer…)
@@ -19203,7 +19275,7 @@ function struggleMove(p){
   return moveByName.get(combatDice >= 5 ? "struggle+" : "struggle") || moveByName.get("struggle");
 }
 /* ---------- ability / capability type effects ---------- */
-function hasAbility(p, name){ return (p.abilities||[]).some(a => String(a).toLowerCase() === name.toLowerCase()); }
+function hasAbility(p, name){ return activeAbilityList(p).some(a => String(a).toLowerCase() === name.toLowerCase()); }
 /* the named ("other") Capabilities, base-named. Takes the Pokémon when there is one so Move/Ability
    grants count — knowing Ember really does hand a Pokémon Firestarter, and with it a Fire Struggle. */
 function monCaps(sp, p){ return (monCapabilities(p, sp).other || []).map(o => capBaseName(o)); }
@@ -19590,7 +19662,7 @@ const ROTOM_POLTERGEIST = {
   "Rotom Mow":   { ability:"Grass Pelt",  move:"Leaf Storm" },
 };
 function poltergeistGrant(p, sp){
-  if(!sp || !(p.abilities||[]).some(a=>(a||"").toLowerCase()==="poltergeist")) return null;
+  if(!sp || !activeAbilityList(p).some(a=>(a||"").toLowerCase()==="poltergeist")) return null;
   return ROTOM_POLTERGEIST[sp.name] || null;
 }
 /* effective type of a move after ability overrides (e.g. Normalize → Normal) */
@@ -22798,8 +22870,9 @@ function renderPokemonMoves(root, team){
     p.abilities.forEach(an=>{ const ab=abilityByName.get((an||"").toLowerCase());
       const uc = ab && usesControl(p, "ability", an, ab.frequency, renderBattle);
       const d=el("details",{class:"spoiler"});
-      d.append(el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, an||"—"),
-        uc ? el("span",{style:"margin-left:8px"}, uc) : ""));
+      d.append(el("summary",{}, el("span",{style:abilityNameStyle(p, an, "font-weight:700;color:var(--ink)")}, an||"—"),
+        uc ? el("span",{style:"margin-left:8px"}, uc) : "",
+        abilityOffSwitch(p, an, ()=>{ save(); renderBattle(); })));
       d.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database</span>"}));
       if(/^schooling$/i.test(an||"")){ const sr = schoolingTriggerRow(p, renderBattle); if(sr) d.append(sr); }
       { const tr = typeAbilityRow(p, an, renderBattle); if(tr) d.append(tr); }
@@ -23582,7 +23655,7 @@ function abilityRiderMoves(a){
 function monRidersForMove(p, moveName){
   if(!p || !moveName) return [];
   const canon = canonMoveName(moveName), out = [];
-  (p.abilities||[]).forEach(an=>{
+  activeAbilityList(p).forEach(an=>{
     const a = abilityByName.get(String(an||"").toLowerCase());
     if(!a) return;
     const text = abilityRiderMoves(a).get(canon);
@@ -24240,7 +24313,10 @@ function targetPicker(list, preselect, onChange){
   return { node:wrap, chosen:()=>list.filter(x=>picked.has(x.id)) };
 }
 async function commitTargets(chosen){
-  for(const x of chosen) if(x.token) await commitTokenSource(x.token);
+  /* `ally`: a Feature aimed at somebody else's creature (Complex Aftertaste, Hits the Spot, a Cheer)
+     is the one legitimate way a player writes to a sheet they don't own — without it the Buff landed
+     in memory, the save was refused with "Can't edit that sheet", and the next sync took it away. */
+  for(const x of chosen) if(x.token) await commitTokenSource(x.token, { ally:true });
 }
 /* ---------------------------------------------------------------- EFFECTS ON A FOE, PICKED BY THE GM
    A player never sees enemy tokens (allyTargets only lists them for the GM), so every Feature or
@@ -27090,6 +27166,7 @@ function rememberFor(o){
   // a derived grant (Blaze & co.) is already in o.abilities under its own name - see LAST_CHANCE_ABILITIES
   typeAceGrants(o).forEach(g => { if(!g.derived) abils.push(g.ability); });
   abils.forEach(a => {
+    if(abilityDisabled(o, a)) return;
     const key = String(a).toLowerCase().replace(/\s*\[errata\]\s*$/, "").trim();
     const hit = ABILITY_REMEMBER[key]; if(!hit) return;
     push(key, `${String(a).replace(/\s*\[errata\]\s*$/, "")}: ${hit[0]}`, hit[1]);
@@ -28737,14 +28814,17 @@ function openChefCook(t, rec, commit){
   const priceOf = () => { const p = basePriceOf(); return joyCut() ? joyPrice(p) : p; };
   /* `rec.scrap`: the price is paid in that category's Scrap ONLY — cash can't stand in for it */
   const scrapCat = rec.scrap ? scrapCatDef(rec.scrap) : null;
-  const purse = () => scrapCat ? scrapOf(t, scrapCat.key) : moneyOf(t);
+  /* no Scrap-only price, and what comes out is Food → Food Scrap goes first, money after it */
+  const foodPay = () => !scrapCat && isFoodItemName(madeName() || (pickSel ? pickSel.value : (picks[0] || "")));
+  const purse = () => scrapCat ? scrapOf(t, scrapCat.key) : (foodPay() ? foodPurse(t) : moneyOf(t));
   const purseName = scrapCat ? ` ${scrapCat.name} Scrap` : "";
   const priceLine = el("div",{class:"small",style:"margin:8px 0;font-weight:700"});
   const drawPrice = () => {
     const n = count(), p = priceOf() * n;
     priceLine.textContent = (p ? `Cost ${fmtMoney(p)}${purseName}${n>1?` (${n} × ${fmtMoney(priceOf())})`:""}` : (scrapCat ? "No Scrap cost" : "No money cost"))
       + (p && joyCut() ? ` · 10% off with The Joy of Cooking (was ${fmtMoney(basePriceOf() * n)})` : "")
-      + ` · you have ${fmtMoney(purse())}${purseName}`;
+      + ` · you have ${fmtMoney(purse())}${purseName}`
+      + (foodPay() && scrapOf(t, "food") > 0 ? ` (${fmtMoney(scrapOf(t, "food"))} Food Scrap, spent first)` : "");
     priceLine.style.color = p > purse() ? "var(--bad)" : "";
   };
   drawPrice(); [pickSel, eatSel, d1, d2].forEach(x => { if(x) x.addEventListener("change", drawPrice); });
@@ -28791,6 +28871,7 @@ function openChefCook(t, rec, commit){
       for(const [nm,q] of take) if(inventoryQty(t, nm) < q){ toast(`Not enough ${nm} — ${q} needed, ${inventoryQty(t, nm)} in the bag`); return; }
       take.forEach(([nm,q]) => { for(let i=0;i<q;i++) consumeInventoryItem(t, nm); });
       if(price && scrapCat) scrapChange(t, scrapCat.key, -price, `Crafted ${n>1?`${n}× `:""}${item || rec.name}`, {kind:"craft"});
+      else if(price && foodPay()) payFoodPrice(t, price, `${rec.bench || "Chef"} — ${rec.name}${joyCut() ? " (The Joy of Cooking −10%)" : ""}`, "buy");
       else if(price) moneyChange(t, -price, `${rec.bench || "Chef"} — ${rec.name}${joyCut() ? " (The Joy of Cooking −10%)" : ""}`, {kind:"buy"});
 
       const made = rec.two ? (twoSpec ? twoSpec.result(d1.value, d2.value) : `Dumpling (${d1.value} + ${d2.value})`)
@@ -28817,6 +28898,8 @@ function kitchenCard(t, commit){
   const rank = (t.skills||{}).intuition || "Untrained";
   card.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
     `Intuition ${rank} · ${fmtMoney(moneyOf(t))} in hand. Cooking is an At-Will Extended Action and needs a kitchen or a Cooking Kit; everything you cook lands in Inventory & Bio, and the money comes off the ledger.`));
+  if(scrapOf(t, "food") > 0) card.append(scrapBalanceLine(t, "food",
+    "Food Scrap is spent before money whenever what you cook is Food."));
 
   const rows = chefRecipesFor(t);
   if(!rows.length){
@@ -30371,12 +30454,35 @@ function pokeBallBenchCard(t, commit){
        free salvages SCRAP_FAILED_CATCH of its book price to the table's crafter (a house rule).
    `scrapChange` is the only writer of `t.scrap`; each movement lands in `t.scrapLog`, oldest first
    with ids like moneyLog, so an entry uploads as one append op instead of the whole history. */
-const SCRAP_CATS = [ { key:"pokeballs", name:"Poké Ball", icon:"⚙" } ];
+/* `first`: this Scrap is spent BEFORE money on anything of its kind, and money covers the rest
+   (Food Scrap pays for the Food a Chef cooks — never for shop purchases; see payFoodPrice). Without
+   `first` a Scrap is the ONLY way to pay (Poké Ball Scrap, the table's crafting ruling). */
+const SCRAP_CATS = [ { key:"pokeballs", name:"Poké Ball", icon:"⚙" },
+                     { key:"food", name:"Food", icon:"\u{1F34E}", first:true } ];
 const SCRAP_LOG_MAX = 120;
 const SCRAP_FAILED_CATCH = 0.25;
-const SCRAP_KIND_ICON = { loot:"\u{1F381}", salvage:"♻", craft:"\u{1F528}", gm:"\u{1F3A9}" };
+const SCRAP_KIND_ICON = { loot:"\u{1F381}", salvage:"♻", craft:"\u{1F528}", gm:"\u{1F3A9}", spend:"\u{1F6D2}" };
 const SCRAP_SALVAGER_KEY = "ptu_scrap_salvager";
-const scrapLoot = { to:"", amt:"", why:"" };        // the GM card's half-typed award (not synced)
+const scrapLoot = { to:"", amt:"", why:"", cat:"pokeballs" };   // the GM card's half-typed award (not synced)
+/* is this a Food item — a Snack, a Refreshment, a Berry or anything else the catalog files as Food? */
+var _foodNameSet = null;
+function isFoodItemName(name){
+  if(!name) return false;
+  if(joyIsFood(name)) return true;
+  if(!_foodNameSet) _foodNameSet = new Set(((D.items && D.items.food) || []).map(x => normItemName(x.name)));
+  return _foodNameSet.has(normItemName(name));
+}
+/* Pay a Food price: Food Scrap first, money for whatever is left. Returns {scrap, cash} actually
+   taken. The caller checks foodPurse(t) covers the price first. */
+function foodPurse(t){ return scrapOf(t, "food") + moneyOf(t); }
+function payFoodPrice(t, price, why, kind){
+  price = Math.max(0, Math.round((Number(price)||0) * 100) / 100);
+  const useScrap = Math.min(scrapOf(t, "food"), price);
+  const s = useScrap ? -scrapChange(t, "food", -useScrap, why, {kind:"spend"}) : 0;
+  const rest = Math.round((price - s) * 100) / 100;
+  const c = rest ? -moneyChange(t, -rest, why + (s ? ` (${fmtMoney(s)} of it in Food Scrap)` : ""), {kind: kind || "buy"}) : 0;
+  return { scrap:s, cash:c };
+}
 function scrapCatDef(key){ return SCRAP_CATS.find(c => c.key === key) || SCRAP_CATS[0]; }
 function scrapOf(t, cat){ const n = parseFloat(t && t.scrap && t.scrap[cat]); return (isFinite(n) && n > 0) ? n : 0; }
 function scrapLogOf(t){ return Array.isArray(t.scrapLog) ? t.scrapLog : (t.scrapLog = []); }
@@ -30482,11 +30588,14 @@ function scrapLootCard(){
   const card = el("div",{class:"card"});
   card.append(el("h3",{},"⚙ Scrap", el("span",{class:"small muted"},"Core p.284")));
   card.append(el("div",{class:"small muted",style:"margin:-4px 0 10px"},
-    "Money that only pays for one kind of crafting. Poké Ball Scrap is the only thing crafted Poké Balls can be paid with. Failed captures add to it automatically from the 🎯 Catch DC popup."));
+    "Money that only pays for one kind of thing. Poké Ball Scrap is the only thing crafted Poké Balls can be paid with; failed captures add to it automatically from the 🎯 Catch DC popup. Food Scrap is always spent before money when a Chef cooks Food (shops take money only)."));
   const list = scrapSheets();
   if(!list.length){ card.append(el("span",{class:"muted small"},"no character sheets in this campaign yet.")); return card; }
-  const cat = SCRAP_CATS[0];
+  const cat = scrapCatDef(scrapLoot.cat);
   if(!list.some(s => s.id === scrapLoot.to)) scrapLoot.to = (scrapDefaultSalvager(list) || list[0]).id;
+  const catSel = el("select",{style:"padding:6px",title:"which Scrap"});
+  SCRAP_CATS.forEach(c => catSel.append(el("option",{value:c.key, selected:c.key === cat.key}, `${c.icon} ${c.name} Scrap`)));
+  catSel.addEventListener("change",()=>{ scrapLoot.cat = catSel.value; render(); });
   const to = el("select",{style:"padding:6px"});
   list.forEach(s => to.append(el("option",{value:s.id, selected:s.id === scrapLoot.to}, s.name)));
   to.addEventListener("change",()=>{ scrapLoot.to = to.value; });
@@ -30506,7 +30615,7 @@ function scrapLootCard(){
     toast(`${sign > 0 ? "Gave" : "Took"} ${fmtMoney(Math.abs(d))} ${cat.name} Scrap ${sign > 0 ? "to" : "from"} ${s.name} ✓`);
     render();
   };
-  card.append(el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;margin-bottom:10px"}, to, amt, why,
+  card.append(el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;margin-bottom:10px"}, catSel, to, amt, why,
     el("button",{class:"btn-primary",style:"padding:6px 12px",onclick:()=>go(1)},"＋ Give"),
     el("button",{class:"btn ghost danger",style:"padding:6px 12px",onclick:()=>go(-1)},"－ Take")));
   list.forEach(s => {
@@ -30516,7 +30625,9 @@ function scrapLootCard(){
     line.append(el("div",{style:"flex:1;min-width:0"},
       el("div",{style:"font-weight:700"}, s.name),
       el("div",{class:"small muted"}, last ? `last: ${last.delta>0?"＋":"－"}${fmtMoney(Math.abs(last.delta))} · ${last.why}` : "no Scrap yet")),
-      el("div",{style:"font-weight:800;white-space:nowrap"}, fmtMoney(scrapOf(c.trainer, cat.key))),
+      el("div",{style:"font-weight:800;white-space:nowrap;text-align:right"},
+        ...SCRAP_CATS.map(k => el("div",{style: k.key === cat.key ? "" : "font-weight:600;opacity:.6;font-size:12px"},
+          `${k.icon} ${fmtMoney(scrapOf(c.trainer, k.key))}`))),
       el("button",{class:"linkbtn",title:"every Scrap movement on this sheet",onclick:()=>openScrapLedger(c.trainer, s.name, s.persist)},"📜"));
     card.append(line);
   });
@@ -31875,9 +31986,10 @@ function renderTrainerCombatRest(root, t){
       const row=el("details",{class:"spoiler"});
       const uc=usesControl(t,"ability",an,ab?.frequency,renderBattle);
       row.append(el("summary",{},
-        el("span",{style:"font-weight:700;color:var(--ink)"}, an),
+        el("span",{style:abilityNameStyle(t, an, "font-weight:700;color:var(--ink)")}, an),
         ab&&ab.frequency?el("span",{class:"muted small",style:"margin-left:8px"}, ab.frequency):"",
-        uc?el("span",{style:"margin-left:8px"},uc):""));
+        uc?el("span",{style:"margin-left:8px"},uc):"",
+        abilityOffSwitch(t, an, ()=>{ save(); renderBattle(); })));
       row.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database.</span>"}));
       abc.append(row);
     });
@@ -32330,9 +32442,10 @@ function encounterAbilityRow(p, an){
   row.dataset.key = "ability:"+p.id+":"+an;
   const uc = usesControl(p, "ability", an, ab?.frequency, renderEncounters, saveEnc, {bossEot:isBoss(p)});
   row.append(el("summary",{},
-    el("span",{style:"font-weight:700;color:var(--ink)"}, an||"—"),
+    el("span",{style:abilityNameStyle(p, an, "font-weight:700;color:var(--ink)")}, an||"—"),
     ab&&ab.frequency?el("span",{class:"muted small",style:"margin-left:8px"}, ab.frequency):"",
     uc?el("span",{style:"margin-left:8px"},uc):"",
+    abilityOffSwitch(p, an, ()=>{ saveEnc(); renderEncounters(); }),
     el("button",{class:"x",style:"float:right;cursor:pointer;color:var(--muted)",title:"remove ability",
       onclick:e=>{ e.preventDefault(); const i=p.abilities.indexOf(an); if(i>=0){ p.abilities.splice(i,1); saveEnc(); renderEncounters(); } }},"×")));
   row.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database</span>"}));
@@ -33837,7 +33950,7 @@ const diffActs = o => isBoss(o) ? Math.max(1, o.boss?.actions||1)
 function diffPartyChars(){
   if(mode==="cloud") return playerRestRows()
     .map(r=>({ id:r.id, name:r.data.trainer?.name || r.owner_name || r.name || "Trainer", data:r.data }));
-  return (state.characters||[]).map(c=>({ id:c.id, name:c.trainer?.name || c.name || "Trainer", data:c }));
+  return (state.characters||[]).filter(c=>!charArchived(c)).map(c=>({ id:c.id, name:c.trainer?.name || c.name || "Trainer", data:c }));
 }
 /* What a character actually brings: their strongest `n` on-team Pokémon, since those are the ones
    that come out of the ball. Sorted high-first because nobody leads with their Level 5 Combee. */
@@ -34768,7 +34881,7 @@ function shopLogCard(){
    mid-session doesn't fight whatever anyone happens to be editing at the time. */
 let payday = { amt:"", why:"", split:false, off:null };   // off: rowId → left out of the payday
 function moneySheetRows(){
-  return Object.values(cloud.byId).filter(r=>r && r.data && r.data.trainer)
+  return Object.values(cloud.byId).filter(r=>r && r.data && r.data.trainer && !charArchived(r.data))
     .sort((a,b)=> String(a.owner_name||"~").localeCompare(String(b.owner_name||"~"))
                || String(a.data.name||"").localeCompare(String(b.data.name||"")));
 }
@@ -35116,7 +35229,7 @@ async function completePurchase(shop, row){
 /* Who this screen may shop for: yourself normally; the GM and a shared "Viewer" screen (the
    co-pilot device that already drives every player token) may shop for anyone. */
 function shopBuyerRows(){
-  const all = Object.values(cloud.byId).filter(r=>r && r.data && r.data.trainer);
+  const all = Object.values(cloud.byId).filter(r=>r && r.data && r.data.trainer && !charArchived(r.data));
   const mine = all.filter(ownsRow);
   if(cloud.isGM || isMapHpViewer()) return all;
   return mine;
@@ -35626,6 +35739,28 @@ function tokensAreFoes(a, b){
   const sa = tokenSide(a), sb = tokenSide(b);
   return !!sa && !!sb && sa !== sb;
 }
+/* an Invisible creature can't be part of a Flank */
+function tokenIsInvisible(t){
+  const L = t && t.link ? tokenLinked(t) : null;
+  return !!(L && L.obj && hasStatus(L.obj, "invisible"));
+}
+/* The Flanked / Pressure chips are worked out in renderMap, but a hit that Knocks someone Out only
+   repaints its HP bar — so the foe they were Flanking kept the chip until the next drag. Anything
+   that can take a creature out of (or put it back into) the fight asks for a sweep here; it runs
+   once, shortly after, however many HP writes landed in between. GM only, like the sweep itself. */
+var auraSweepTimer = null;
+function queueAuraSweep(){
+  try{
+    if(auraSweepTimer || mode!=="cloud" || !cloud.isGM) return;
+    auraSweepTimer = setTimeout(()=>{
+      auraSweepTimer = null;
+      try{
+        const map = currentMapForView() || activeMap();
+        if(map && sweepMapAuras(map) && document.body.classList.contains("map-mode")) renderMap();
+      }catch(e){ console.error(e); }
+    }, 300);
+  }catch(e){}
+}
 /* a token that isn't in the fight any more can't Flank or project Pressure */
 function tokenIsDown(t){
   const L = t && t.link ? tokenLinked(t) : null;
@@ -35681,7 +35816,7 @@ function tokenFlanking(map, token){
   if(!map || !tokenSide(token) || tokenIsDown(token)) return blank;
   const foes = mapTokensFor(map.id).filter(t =>
     t.id !== token.id && tokensAreFoes(t, token) && !t.gmHidden
-    && tokenTileGap(t, token) <= 1 && !tokenIsDown(t));
+    && tokenTileGap(t, token) <= 1 && !tokenIsDown(t) && !tokenIsInvisible(t));
   if(foes.length < 2) return blank;        // "a single combatant cannot Flank by itself"
   const nodes = foes.map(t => ({ tok:t, w: Math.max(1, adjacentSquareCount(t, token)) }));
   const set = bestFlankSet(nodes);
@@ -36193,13 +36328,13 @@ function simSourceList(){
   if(mode==="cloud"){
     Object.values(cloud.byId).forEach(r=>{
       if(!r || !r.data || r.owner_id===PC_OWNER || r.owner_id===MAP_OWNER || r.owner_id===ENC_OWNER
-         || r.owner_id===SHOP_OWNER || r.owner_id===ROLL_OWNER) return;
+         || r.owner_id===SHOP_OWNER || r.owner_id===ROLL_OWNER || charArchived(r.data)) return;
       const nm = r.data.trainer?.name || r.name || "Trainer";
       out.push({ key:"char:"+r.id, kind:"char", id:r.id, group:"Characters",
                  name: nm + (r.owner_name && normName(r.owner_name)!==normName(nm) ? ` (${r.owner_name})` : "") });
     });
   } else {
-    (state.characters||[]).forEach(c=> out.push({ key:"char:"+c.id, kind:"char", id:c.id, group:"Characters",
+    (state.characters||[]).filter(c=>!charArchived(c)).forEach(c=> out.push({ key:"char:"+c.id, kind:"char", id:c.id, group:"Characters",
       name: c.trainer?.name || c.name || "Trainer" }));
   }
   encList().forEach(e=> out.push({ key:"enc:"+e.id, kind:"enc", id:e.id, group:"Encounters",
@@ -38524,6 +38659,9 @@ function pickAbilitySub(name){ const a=abilityByName.get((name||"").toLowerCase(
    the selection out from under you is worse than one extra row. */
 function charHidden(c){ return !!(c && c.hidden); }
 function charArchived(c){ return !!(c && c.archived); }
+/* a cloud character row that is still in play — every roster, picker and award list filters on this;
+   only the 📦 Characters manager (and "show archived") still lists the retired ones */
+function liveCharRow(r){ return !!(r && r.data && !charArchived(r.data)); }
 let showArchivedChars = localStorage.getItem("ptu_show_archived")==="1";
 function setShowArchivedChars(v){
   showArchivedChars = !!v;
@@ -40110,6 +40248,18 @@ function clearTableBlessings(){
   if(mode!=="cloud" || !cloud.rolls || !tableBlessings().length) return;
   cloud.rolls.data.blessings = []; saveRolls(); renderBlessingPops();
 }
+/* what a Blessing on the field actually does — the Move's own text, from tapping its square */
+function openBlessingInfo(b){
+  const m = moveByName.get(String(b.move||"").toLowerCase());
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
+    `Laid by ${b.who || b.by || "someone"} \u00b7 ${b.left} of ${b.max || b.left} activation${(b.max||b.left)===1?"":"s"} left. Any ally may activate it; Use counts it down for the whole table.`));
+  body.append(el("div",{class:"small", html: m ? moveDetailHTML(m, m.name) : "<span class='muted'>This Move isn't in the database.</span>"}));
+  modal({ title:`${blessingIcon(b.move)} ${b.move}`, bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Close"),
+    el("button",{class:"btn-primary",onclick:()=>{ closeModal(); tableUseBlessing(b.id); }},"Use"),
+  ]});
+}
 function renderBlessingPops(){
   const old = document.getElementById("blessingPops");
   const list = mode==="cloud" ? tableBlessings().filter(b => (b.left||0) > 0) : [];
@@ -40123,7 +40273,9 @@ function renderBlessingPops(){
       + "background:var(--panel);border:2px solid var(--accent);border-radius:10px;"
       + "box-shadow:0 6px 18px rgba(0,0,0,.35);text-align:center",
       title:`${b.move} — laid by ${b.who || b.by || "someone"}. ${b.left} of ${b.max || b.left} activations left. `
-        + "Any ally may activate it; pressing Use counts it down for the whole table."});
+        + "Tap to read what it does; pressing Use counts it down for the whole table."});
+    sq.style.cursor = "pointer";
+    sq.addEventListener("click", e => { if(e.target.closest("button")) return; openBlessingInfo(b); });
     sq.append(
       el("div",{style:"font-size:10px;font-weight:800;line-height:1.1;max-width:100%;overflow:hidden;"
         + "text-overflow:ellipsis;white-space:nowrap"}, `${blessingIcon(b.move)} ${b.move}`),
@@ -40547,7 +40699,7 @@ function transferPokemon(sourceRow, targetId, mon){
 /* GM: send THIS Pokémon to a player — it moves off the current sheet */
 function openSendThisPokemon(p){
   if(mode!=="cloud" || !cloud.isGM){ toast("Join a campaign as GM to send Pokémon"); return; }
-  const rows = Object.values(cloud.byId);
+  const rows = Object.values(cloud.byId).filter(liveCharRow);
   if(!rows.length){ toast("No characters in the campaign yet"); return; }
   const sp = getSpecies(p.species);
   const sourceRow = cloud.byId[cloud.activeId];
@@ -40573,7 +40725,7 @@ function openSendThisPokemon(p){
 /* GM tool: pick a target player + a species (or copy one of your own), then send */
 function openSendPokemon(presetId){
   if(mode!=="cloud" || !cloud.isGM){ toast("Join a campaign as GM to send Pokémon"); return; }
-  const rows = Object.values(cloud.byId);
+  const rows = Object.values(cloud.byId).filter(liveCharRow);
   if(!rows.length){ toast("No players in the campaign yet"); return; }
   let targetId = presetId || cloud.activeId || rows[0].id;
   if(!cloud.byId[targetId]) targetId = rows[0].id;
@@ -40625,7 +40777,7 @@ function openSendPokemon(presetId){
 /* my own sheets that can deposit — for the GM this includes their NPC trainers */
 function pcMyRows(){ return Object.values(cloud.byId).filter(r=>ownsRow(r)); }
 /* characters a withdraw can go to — players: their own; GM: any character in the campaign */
-function pcTargetRows(){ return cloud.isGM ? Object.values(cloud.byId) : pcMyRows(); }
+function pcTargetRows(){ return (cloud.isGM ? Object.values(cloud.byId) : pcMyRows()).filter(liveCharRow); }
 function pcDefaultTargetId(){
   const active = cloud.byId[cloud.activeId];
   if(active && canEdit(active)) return active.id;      // whatever you're viewing (own sheet, or GM anywhere)
@@ -41067,13 +41219,13 @@ function dexHolders(all){
   const push = o => { if(all || !skip[o.id]) out.push(o); };
   if(mode === "cloud"){
     Object.values(cloud.byId).forEach(r=>{
-      const c = r && r.data; if(!c) return;
+      const c = r && r.data; if(!c || charArchived(c)) return;
       push({ id:r.id, label: c.name || r.owner_name || "(unnamed)", where:"party", mons: c.pokemon || [] });
     });
     push({ id:"__pc__", label:"the PC", where:"pc",
            mons: (cloud.pc && cloud.pc.data && cloud.pc.data.pokemon) || [] });
   } else {
-    (state.characters || []).forEach(c =>
+    (state.characters || []).filter(c => !charArchived(c)).forEach(c =>
       push({ id:c.id, label: c.name || "(unnamed)", where:"party", mons: c.pokemon || [] }));
   }
   return out;
@@ -42493,6 +42645,29 @@ function initiativeList(map){
   return rows.sort((a,b)=> b.init-a.init || tokenSpeed(b.token)-tokenSpeed(a.token)
                         || (a.info.name||"").localeCompare(b.info.name||"") || a.act-b.act);
 }
+/* ---- Leftovers & co.: "recovers 1/N of Max HP at the beginning of each turn" ----
+   The Buff tradeInDigestion lays carries `regen` (the N). A Buff laid before this was automated has
+   no field, so its name is looked up in the Snack table instead. Paid by advanceInitiative when a
+   creature's turn STARTS (its first act only — a Swarm's or Boss's extra acts are the same turn). */
+function buffRegenDen(b){
+  if(!b) return 0;
+  if(b.regen) return b.regen|0;
+  if(b.key !== "custom") return 0;
+  const d = snackDef(b.name);
+  return (d && d.regen) || 0;
+}
+function applyTurnStartRegen(owner){
+  if(!owner || hasStatus(owner, "knockedOut") || hasStatus(owner, "dead")) return null;
+  const regs = ownerBuffs(owner).map(b => [b, buffRegenDen(b)]).filter(([, den]) => den > 0);
+  if(!regs.length) return null;
+  const max = ownerMaxHP(owner) || 0;
+  let gained = 0; const names = [];
+  regs.forEach(([b, den]) => {
+    const g = ownerHeal(owner, Math.max(1, Math.floor(max / den)));
+    if(g > 0){ gained += g; names.push(b.name); }
+  });
+  return gained ? `${ownerLabel(owner)} +${gained} HP (${names.join(", ")})` : null;
+}
 function advanceInitiative(map, meta, dir){
   const list = initiativeList(map); if(!list.length) return;
   const endingId = initEntryToken(meta.initTurnId), endingSeq = meta.initSeq||0;
@@ -42543,6 +42718,14 @@ function advanceInitiative(map, meta, dir){
       if(gone.length){ expired = expired.concat(gone); commitTokenSource(tok); }
     });
   }
+  // Leftovers & co. pay out as the new combatant's turn begins
+  const regenLines = [];
+  if(dir>0){
+    const start = list[idx];
+    const L = (start && start.act===0 && start.token.link) ? tokenLinked(start.token) : null;
+    const line = (L && L.obj && !L.missing) ? applyTurnStartRegen(L.obj) : null;
+    if(line){ regenLines.push(line); commitTokenSource(start.token); }
+  }
   // Trick-or-Treat's 5 turns / Roost's "until the start of its next turn"
   const typeEnded = dir>0 ? tickTypeModTurns(map, endingId, endingSeq, initEntryToken(meta.initTurnId), meta.initSeq||0) : [];
   // Optimistic: repaint the board NOW so the turn advances instantly, then sync in the background
@@ -42552,6 +42735,7 @@ function advanceInitiative(map, meta, dir){
   mapMetaSave();                                    // coalesced — rapid clicks write once, in order
   if(expired.length) toast(`⌛ Buff expired: ${expired.join(", ")}`);
   if(typeEnded.length) toast(`⌛ Type change ended: ${typeEnded.join(" · ")}`);
+  if(regenLines.length) toast(`\u{1F34E} ${regenLines.join(" · ")}`);
   if(wrapped){ mapTokensSave(); toast(`↺ Round ${meta.initRound} — movement reset`); }
 }
 /* GM taps a name in the initiative list to jump straight to their turn — a manual correction like
@@ -42949,11 +43133,14 @@ async function setTokenCS(token, stat, val){
 }
 /* persist whatever a token points at after editing it from the map (buffs, Combat Stages, statuses):
    an encounter creature goes back to the shared encounter row, a sheet creature to its cloud row. */
-async function commitTokenSource(token){
+async function commitTokenSource(token, opts){
   const info = tokenHp(token);
   const { row, obj, kind } = info; if(!obj) return;
   if(kind==="enc" || kind==="enctrainer"){ broadcastEncState(token.link, obj); saveEncCombat(); return; }
-  if(row){ if(!canEditPlayerHP(row)){ toast("Can't edit that sheet"); return; } cloudSaveRow(row); }
+  if(row){
+    const allyWrite = !!(opts && opts.ally) && mode==="cloud" && !!(row.data && row.data.trainer);
+    if(!canEditPlayerHP(row) && !allyWrite){ toast("Can't edit that sheet"); return; }
+    cloudSaveRow(row); }
   else save();
 }
 /* ===================================================================
@@ -46224,9 +46411,13 @@ function openTokenMenu(token, map){
         const abilRow = (an, from) => {
           const ab = abilityByName.get(String(an||"").toLowerCase());
           const row = el("details",{class:"spoiler"});
-          row.append(el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, an),
+          const commit = async()=>{ await commitTokenSource(token); reopenTokenMenu(token, map); };
+          const uc = info.editable && ab ? usesControl(t, "ability", an, ab.frequency, ()=>reopenTokenMenu(token, map), ()=>commitTokenSource(token)) : null;
+          row.append(el("summary",{}, el("span",{style:abilityNameStyle(t, an, "font-weight:700;color:var(--ink)")}, an),
             ab&&ab.frequency?el("span",{class:"muted small",style:"margin-left:8px"}, ab.frequency):"",
-            from?el("span",{class:"muted small",style:"margin-left:8px"}, from):""));
+            uc?el("span",{style:"margin-left:8px"}, uc):"",
+            from?el("span",{class:"muted small",style:"margin-left:8px"}, from):"",
+            info.editable ? abilityOffSwitch(t, an, commit) : ""));
           row.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database.</span>"}));
           abw.append(row);
         };
@@ -46247,8 +46438,13 @@ function openTokenMenu(token, map){
         p.abilities.forEach(an=>{
           const ab = abilityByName.get((an||"").toLowerCase());
           const row = el("details",{class:"spoiler"});
-          row.append(el("summary",{}, el("span",{style:"font-weight:700;color:var(--ink)"}, an),
-            ab&&ab.frequency?el("span",{class:"muted small",style:"margin-left:8px"}, ab.frequency):""));
+          const commit = async()=>{ await commitTokenSource(token); reopenTokenMenu(token, map); };
+          const uc = info.editable && ab ? usesControl(p, "ability", an, ab.frequency, ()=>reopenTokenMenu(token, map), ()=>commitTokenSource(token), {bossEot:isBoss(p)}) : null;
+          row.append(el("summary",{}, el("span",{style:abilityNameStyle(p, an, "font-weight:700;color:var(--ink)")}, an),
+            ab&&ab.frequency?el("span",{class:"muted small",style:"margin-left:8px"}, ab.frequency):
+              el("span",{class:"muted small",style:"margin-left:8px"}, ab ? "Static" : ""),
+            uc?el("span",{style:"margin-left:8px"}, uc):"",
+            info.editable ? abilityOffSwitch(p, an, commit) : ""));
           row.append(el("div",{class:"small",style:"margin-top:6px",html: ab?abilityText(ab):"<span class='muted'>Not in database.</span>"}));
           abw.append(row);
         });
@@ -46547,8 +46743,8 @@ function openTokenMenu(token, map){
 
 /* "Players" tab grouped by trainer: each character sheet → the trainer + their PARTY Pokémon */
 function playerTokenGroups(){
-  const sheetRows = (cloud.isGM || isMapHpViewer()) ? Object.values(cloud.byId)
-                               : Object.values(cloud.byId).filter(r=>ownsRow(r));
+  const sheetRows = ((cloud.isGM || isMapHpViewer()) ? Object.values(cloud.byId)
+                               : Object.values(cloud.byId).filter(r=>ownsRow(r))).filter(liveCharRow);
   return sheetRows.map(r=>({
     id: r.id,
     owner: r.owner_name || "",
@@ -47761,7 +47957,7 @@ function openCloudPanel(){
     if(cloud.isGM) wrap.append(el("div",{style:"margin-top:10px"},
       el("button",{class:"btn-primary",onclick:()=>openSendPokemon()},"🎁 Send a Pokémon to a player…")));
     const roster = el("div",{class:"reflist",style:"margin-top:10px"});
-    Object.values(cloud.byId).sort((a,b)=>(a.owner_name||"").localeCompare(b.owner_name||"")).forEach(r=>{
+    Object.values(cloud.byId).filter(r => liveCharRow(r) || showArchivedChars).sort((a,b)=>(a.owner_name||"").localeCompare(b.owner_name||"")).forEach(r=>{
       const item = el("div",{class:"refitem",style:"cursor:pointer;display:flex;gap:8px;align-items:center",
         onclick:()=>{ cloud.activeId=r.id; openMon=null; closeModal(); switchTab("trainer"); }},
         el("div",{style:"flex:1;min-width:0"},
