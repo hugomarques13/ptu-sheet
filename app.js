@@ -2557,6 +2557,15 @@ function moveTypeNode(actor, m, redraw, persist){
   const all = allyTargets(actor, { foes:true }).filter(x => x.obj && !isTrainerOwner(x.obj));
   const list = all.filter(x => !(x.self && x.offBoard && all.some(y => y !== x && y.obj === x.obj)))
     .map(x => (x.self && x.offBoard) ? Object.assign({}, x, { label:`\u{1F534} ${ownerLabel(x.obj)} — itself` }) : x);
+  /* the foes it hit are the GM's to tick — a player hands that half over */
+  if(foeFxDeferred()) card.append(el("button",{class:"btn-secondary",style:"margin:6px 6px 0 0;padding:4px 10px",
+    title:"enemy tokens are the GM's \u2014 they pick which foes it hit from the \u{1F3B2} Rolls feed",
+    onclick:(ev)=>{
+      foeFxDeclare({ fx:"typemod", caster:actor, icon:"\u{1F9EC}", name:m.name,
+        P:{ kind:fx.kind, type:fx.type, src:m.name, dur:fx.dur, turns:fx.turns }, headline:line });
+      ev.currentTarget.disabled = true; ev.currentTarget.textContent = "\u{1F4E8} Sent to the GM";
+      toast(`\u{1F9EC} ${m.name} \u2014 sent to the GM to pick the foes it hit`);
+    }}, "\u{1F4E8} Foes: send to the GM\u2026"));
   if(!list.length){ card.append(el("div",{class:"small muted",style:"margin-top:4px"}, "No Pok\u00E9mon to point it at.")); return card; }
   card.append(el("button",{class:"btn-secondary",style:"margin-top:6px;padding:4px 10px",
     onclick:()=>branchTargetDialog({
@@ -2882,15 +2891,10 @@ function rollMoody(p, redraw, persist){
 /* Omen: "Choose a Pokemon or Trainer within 5 meters. The target's Accuracy is lowered by 2." That
    is an Accuracy Combat Stage, which the sheet tracks - so this picks the foe and writes it. */
 function openOmen(p, redraw, persist){
-  branchTargetDialog({
-    title:"\u{1F52E} Omen",
+  foeFxDialog({ fx:"omen", caster:p, icon:"\u{1F52E}", name:"Omen", verb:"\u{1F52E} Omen", single:true,
     intro:"Choose a Pok\u00e9mon or Trainer within 5 metres. Their Accuracy drops by 2 Combat Stages.",
-    list: allyTargets(p, { foes:true }).filter(x => x.enemy),
-    saveFn: persist || save, redraw,
-    apply: (x) => lowerCS(x.obj, "acc", 2, { quiet:true }) ? ownerLabel(x.obj)
-                : `${ownerLabel(x.obj)} (held by ${csLowerBlock(x.obj, "acc")})`,
-    after: (c, n) => `\u{1F52E} Omen \u2014 \u22122 Accuracy: ${n.join(", ")}`,
-  });
+    headline:() => "\u22122 Accuracy Combat Stages on one foe within 5 m",
+    saveFn: persist || save, redraw });
 }
 /* The row that sits under an Ability's own rules text wherever Abilities are listed (the sheet, the
    Battle tab and the Encounters card) - the same shape schoolingTriggerRow uses. */
@@ -2941,17 +2945,11 @@ function typeAbilityRow(p, an, redraw, persist){
       `Scene, Swift Action \u2014 all foes within ${PRESSURE_RANGE} metres are Suppressed for 1 full round. (The errata printing is an ACTION, not the Core aura \u2014 nothing is applied to the board until you press this.)`,
       () => {
         if(u.left <= 0){ toast("Pressure [Errata] is already spent this Scene."); return; }
-        branchTargetDialog({
-          title:"\u26D3 Pressure [Errata]",
-          intro:`Every foe within ${PRESSURE_RANGE} metres is Suppressed for 1 full round \u2014 tick the ones in range.`,
-          list: allyTargets(p, { foes:true }).filter(x => x.enemy),
+        foeFxDialog({ fx:"pressure", caster:p, icon:"\u26D3", name:"Pressure [Errata]", verb:"\u26D3 Suppress", cost:"its Scene use",
+          intro:`Every foe within ${PRESSURE_RANGE} metres is Suppressed for 1 full round.`,
+          headline:() => `Every foe within ${PRESSURE_RANGE} m is Suppressed for 1 full round`,
           saveFn: persist || save, redraw,
-          gate: () => u.spend() || (toast("Pressure [Errata] is already spent this Scene."), false),
-          apply: (x) => { if(!Array.isArray(x.obj.statuses)) x.obj.statuses = [];
-                          if(!x.obj.statuses.includes("suppressed")) x.obj.statuses.push("suppressed");
-                          return ownerLabel(x.obj); },
-          after: (c, n) => `\u26D3 Pressure \u2014 Suppressed for 1 full round: ${n.join(", ")}`,
-        });
+          pay: () => u.spend() || (toast("Pressure [Errata] is already spent this Scene."), false) });
       },
       u.max ? `${u.left} of ${u.max} left` : null);
   }
@@ -4505,9 +4503,11 @@ function refreshOtherEotUses(owner, exceptName){
 }
 /* spend one use of a Scene/Daily/EOT move on `owner` (same tracker usesControl draws its pips
    from). Returns false for at-will/unlimited moves or when no uses are left, so callers can skip
-   persisting when nothing actually changed. */
-function spendMoveUse(owner, m){
-  const info = freqInfo(m?.frequency);
+   persisting when nothing actually changed. `freq` is the Frequency this owner actually has for
+   the Move (monMoveFreq / trainerMoveFreq) — a PP Up'd Scene x2 must count against 2, not the
+   printed 1. Defaults to the printed one. */
+function spendMoveUse(owner, m, freq){
+  const info = freqInfo(freq != null ? freq : m?.frequency);
   if(!freqTrackable(info)) return false;
   const key = useKey("move", m.name);
   if(usesLeft(owner, key, info.max) <= 0) return false;
@@ -5154,6 +5154,7 @@ async function endScene(){
     const rows = playerRestRows();
     rows.forEach(r => applyEndScene(r.data));
     rows.forEach(r => cloudUpsert(r));
+    clearTableBlessings();             // the Blessings on the field end with the Scene, like a Sage's own list
     render(); toast(`Scene ended for ${rows.length} player sheet${rows.length===1?"":"s"}`); return;
   }
   const c = activeChar(); if(!c) return;
@@ -6647,6 +6648,7 @@ function render(){
   if (currentTab==="shops")      renderShops();
   if (currentTab==="reference")  renderReference();
   renderRollFeed();               // GM-only float, pinned over whichever tab is showing
+  renderBlessingPops();           // everyone's float: the Blessings on the field and their uses left
   applyReadonlyLock();
 }
 /* lock the SHEET views when viewing a cloud character you can't edit. Reference, Battle, Map and PC
@@ -9110,8 +9112,14 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     if(!eotRefreshed){
       eotRefreshed = true;
       const eotBack = refreshOtherEotUses(t, fqName);
-      if(eotBack.length){ (opts.persist||save)(); drawFreq(); if(opts.rerender) opts.rerender();
-        toast(`\u21BA EOT back off cooldown: ${eotBack.join(", ")}`); }
+      /* Rolling it IS using it: a Scene / Daily / EOT Move's use comes off on the first roll of this
+         window (re-rolls and hit overrides recompute the same attack). Metronome spends Metronome's. */
+      const blessingSpends = !opts.viaMetronome && isBlessingMove(st.move);
+      const spent = !blessingSpends && spendMoveUse(t, {name:fqName, frequency:fqFreq}, fqFreq);
+      if(spent || eotBack.length){ (opts.persist||save)(); drawFreq(); if(opts.rerender) opts.rerender(); }
+      if(eotBack.length) toast(`\u21BA EOT back off cooldown: ${eotBack.join(", ")}`);
+      if(!spent && !blessingSpends && freqTrackable(freqInfo(fqFreq)) && !(isBoss(t) && freqInfo(fqFreq).kind==="eot"))
+        toast(`\u26A0 ${fqName} has no ${String(fqFreq).split(" - ")[0]} uses left`);
     }
     /* Rolling a Blessing Move (Reflect, Light Screen, Safeguard, Lucky Chant, Mist…) IS using it: the
        Scene use comes off and the Blessing goes onto the field tracker the Sage card draws. */
@@ -10317,7 +10325,14 @@ function luSlot(t, key, kind, label, hint){
     : kind==="edge" ? D.edges.map(x=>x.name) : D.features.map(x=>x.name);
   const cur = t.levelUp[key] || "";
   let disp = cur || "choose…";
-  if(isSkill && cur){ const sk=SKILLS.find(s=>s[1]===cur); const rk=sk?(t.skills?.[sk[0]]||""):""; disp = rk?`${cur} · ${rk}`:cur; }
+  /* The Rank this Edge took the Skill TO, at the Level it was spent — not the Skill's Rank today.
+     Showing t.skills made every Basic Skills row on a sheet read "Intuition · Expert". */
+  let stepNote = "";
+  if(isSkill && cur){
+    const st = luSkillStepAt(t, key.replace(/:skill$/,""));
+    if(st && st.to){ disp = `${cur} · ${st.from} → ${st.to}`; stepNote = `${st.from} → ${st.to} at Level ${st.level}`; }
+    else if(st){ disp = `${cur} ⚠`; stepNote = `This Edge can't rank ${cur} up — it was ${st.from} at Level ${st.level}`; }
+  }
   if(!isSkill && cur && !(kind==="edge" ? (D.edges||[]) : D.features).some(x=>x.name===cur)) disp = cur + " ⚠";
   const pickTitle = isSkill ? "Which Skill did you rank up?"
     : `Choose ${kind==="edge" ? "an Edge" : "a Feature"} — Level ${(/^L(\d+):/.exec(key)||[0,"?"])[1]}`;
@@ -10332,7 +10347,7 @@ function luSlot(t, key, kind, label, hint){
   const pickOpts = () => isSkill ? null
     : { tabs: kind==="edge" ? luEdgeTabs() : luFeatureTabs(t, level, key),
         lockToggle: true, memKey: kind };
-  const btn = el("button",{class:"btn-secondary lu-pick", title: isSkill?"Choose a Skill":"Choose from the "+(kind==="edge"?"Edges":"Features")+" list",
+  const btn = el("button",{class:"btn-secondary lu-pick", title: isSkill?(stepNote||"Choose a Skill"):"Choose from the "+(kind==="edge"?"Edges":"Features")+" list",
     onclick:()=>openPicker(pickTitle,
       isSkill ? names : (owned => names.filter(n => !luHiddenSource(n, kind)
         && (!owned.has(luPlaytestBase(n)) || luRepeatable(n, kind))))(luOwnedNames(t, kind, key)),
@@ -10542,6 +10557,24 @@ function luDeriveSkills(t){
     out[k] = hit[1];
   });
   return { skills: out, issues };
+}
+/* What one Skill Edge slot did to its Skill: {level, from, to} with `to` null when the step is
+   illegal from the Rank the Skill held then. Replays the Background plus every Skill Edge in
+   resolve order up to that slot — so it also works for slots above the Trainer's current Level. */
+function luSkillStepAt(t, edgeKey){
+  const L = +((/^L(\d+):/.exec(edgeKey)||[])[1]) || 1;
+  const skills = luBaseSkills(t);
+  for(let lv=1; lv<=L; lv++){
+    for(const k of luSlotsAt(t, lv).edges){
+      const name = t.levelUp[k], sk = luSkillKey(t.levelUp[k+":skill"]);
+      const steps = name ? edgeRankSteps(name) : [];
+      const hit = steps.length && sk ? steps.find(([from]) => from === skills[sk]) : null;
+      if(k === edgeKey)
+        return sk && steps.length ? { level:lv, from:skills[sk], to:hit ? hit[1] : null } : null;
+      if(hit) skills[sk] = hit[1];
+    }
+  }
+  return null;
 }
 /* The sheet AS IT WAS at a given Level — what a slot's prerequisites are judged against.
    `exceptKey` drops one entry so re-picking a slot doesn't count its own current value. */
@@ -15479,21 +15512,120 @@ function catchDCModal(p, opts={}){
    see on the map, then open the real capture roll (catchDCModal) for it. Cloud-only — capture
    needs a shared wild target, which only the Map provides. */
 function openThrowPokeball(t){
-  if(mode!=="cloud"){ infoModal("🎯 Throw a Poké Ball", "Capturing needs the shared ⚔ Map (cloud campaign) so everyone sees the same wild Pokémon."); return; }
-  const targets = visibleWildMonTokens();
-  if(!targets.length){ infoModal("🎯 Throw a Poké Ball", "No wild Pokémon are currently visible to you on the map."); return; }
-  const wrap = el("div",{});
-  wrap.append(el("div",{class:"small muted",style:"margin-bottom:10px"},"Choose a wild Pokémon to target:"));
-  const list = el("div",{class:"picklist"});
-  targets.forEach(({mon})=>{
-    const sp = getSpecies(mon.species);
-    list.append(el("div",{class:"pickitem",style:"cursor:pointer",onclick:()=>{ closeModal(); catchDCModal(mon); }},
-      monSprite(monLookName(mon, sp), mon.shiny, "s-xs"),
-      el("div",{style:"flex:1;min-width:0"}, el("div",{class:"pi-title"}, encMonName(mon)), el("div",{class:"pi-sub muted"}, `Lv ${mon.level}`))));
-  });
-  wrap.append(list);
-  modal({title:"🎯 Throw a Poké Ball — choose a target", bodyNode:wrap,
-    footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Cancel")]});
+  t = t || activeChar()?.trainer;
+  if(!t){ toast("No Trainer on this sheet"); return; }
+  /* The throw is an AC 6 Accuracy Roll with everything a Poké Ball's Accuracy Roll gets: Tools of
+     the Trade's +2, Accuracy buffs (Captured Momentum's among them) and the Accuracy Combat Stage.
+     No target picker — which wild Pokémon it was thrown at, and the Capture Rate the d100 is held
+     against, are the GM's. Both rolls land in the 🎲 Rolls feed. */
+  const bm = buffMods(t), accCS = trainerDerived(t).cs.acc || 0;
+  const tools = trainerHasTech(t, "Tools of the Trade") ? 2 : 0;
+  const mod = tools + (bm.acc || 0) + accCS;
+  const sg = n => `${n > 0 ? "+" : "−"}${Math.abs(n)}`;
+  const bits = [];
+  if(tools) bits.push("+2 Tools of the Trade");
+  if(bm.acc) bits.push(`${sg(bm.acc)} buffs (${buffSources(t, "acc")})`);
+  if(accCS) bits.push(`${sg(accCS)} Accuracy CS`);
+  const hasSnare  = trainerHasTech(t, "Snare");
+  const hasGCEA   = hasFeatureLoose(t, "Gotta Catch 'Em All");
+  const hasStacks = hasFeatureLoose(t, "Gotta Catch 'Em All [Playtest]");
+  const who = t.name || "Trainer";
+  const body = el("div",{});
+  body.append(el("div",{class:"card",style:"background:var(--panel-2);margin:0 0 12px"},
+    el("div",{style:"font-size:16px;font-weight:700"}, `Accuracy: 1d20${mod ? ` ${mod > 0 ? "+" : "−"} ${Math.abs(mod)}` : ""}`),
+    el("div",{class:"small muted",style:"margin-top:2px"},
+      "Standard Action · AC 6 — it hits if the total is at least 6 + the target's Evasion. A natural 20 always hits "
+      + "and takes 10 off the Capture Roll; a natural 1 misses." + (bits.length ? ` Includes ${bits.join(", ")}.` : ""))));
+  const out = el("div",{class:"card",style:"background:var(--panel);border:1px dashed var(--line);margin:0"});
+  out.append(el("div",{class:"muted small"},"Press 🎲 Throw to roll the Accuracy Check."));
+  body.append(out);
+
+  /* the Capture Roll, offered once a ball has been thrown: 1d100 minus the Trainer Level and every
+     bonus the Capture Specialist carries — the GM holds it against the Capture Rate */
+  let nat20 = false;
+  const cap = el("div",{style:"margin-top:12px;border-top:1px solid var(--line);padding-top:10px;display:none"});
+  const ballIn  = el("input",{type:"number",value:0,style:"width:66px",title:"Poké Ball / Feature bonus to the Capture Roll (e.g. Great Ball +10)"});
+  const snareCb = el("input",{type:"checkbox"});
+  const stackIn = el("input",{type:"number",min:0,max:3,value:0,style:"width:56px",title:"Collector Stacks to spend — up to 3 for an equal bonus"});
+  const capOut  = el("div",{style:"margin-top:8px"});
+  const capParts = () => {
+    const lvl = Math.max(1, t.level || 1), ball = parseInt(ballIn.value) || 0;
+    const parts = [[`${lvl} Lv`, lvl]];
+    if(ball) parts.push([`${ball} ball`, ball]);
+    if(nat20) parts.push(["10 nat 20", 10]);
+    if(hasSnare && snareCb.checked) parts.push(["10 Snare", 10]);
+    if(t.capMomentum) parts.push([`${t.capMomentum} Captured Momentum`, t.capMomentum]);
+    const st = hasStacks ? Math.max(0, Math.min(3, parseInt(stackIn.value) || 0, t.collectorStacks || 0)) : 0;
+    if(st) parts.push([`${st} Collector Stack${st === 1 ? "" : "s"}`, st]);
+    return { parts, stacks:st, total:parts.reduce((n, x) => n + x[1], 0) };
+  };
+  const showCap = (d100, c, swapped) => {
+    const total = d100 - c.total;
+    const minus = c.parts.map(x => x[0]).join(" − ");
+    capOut.innerHTML = "";
+    capOut.append(el("div",{class:"warnbox",style:"line-height:1.5",
+      html:`🎲 Capture Roll: 1d100 = <b>${d100}</b>${swapped ? " <i>(digits swapped)</i>" : ""} − ${minus} = <b>${total}</b>`
+        + (d100 === 100 ? "<br>✅ <b>Natural 100 — always caught.</b>" : "<br>Your GM holds it against the Pokémon's Capture Rate.")}));
+    logRoll({ kind:"capture", label:"🎲 Capture Roll", who, headline:`🎲 ${total}${d100 === 100 ? " · natural 100" : ""}`,
+      lines:[`1d100 ${d100}${swapped ? " (digits swapped)" : ""} − ${minus}`,
+             d100 === 100 ? "Natural 100 — always caught" : "caught if ≤ the Capture Rate"] });
+    const extra = el("div",{class:"tk-menu-row",style:"gap:8px;flex-wrap:wrap;margin-top:8px"});
+    const u = hasGCEA ? featUses(t, "Gotta Catch 'Em All") : null;
+    if(hasGCEA && !swapped && d100 !== 100 && u.left > 0){
+      const sw = (d100 % 10) * 10 + Math.floor(d100 / 10);
+      extra.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
+        title:"Daily x3, Swift Action — swap the two digits of the d100",
+        onclick:() => { if(!featSpend(t, "Gotta Catch 'Em All")) return; save(); showCap(sw, c, true); }},
+        `🔄 Gotta Catch 'Em All — ${d100} → ${sw} (${u.left} left)`));
+    }
+    if(hasStacks && d100 !== 100 && (t.collectorStacks || 0) >= 3){
+      extra.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
+        title:"spend exactly three Collector Stacks to re-roll the d100 entirely",
+        onclick:() => { t.collectorStacks = Math.max(0, (t.collectorStacks || 0) - 3); save();
+                        showCap(1 + Math.floor(Math.random() * 100), c, false); }},
+        `🍀 Re-roll — spend 3 Collector Stacks (${t.collectorStacks} held)`));
+    }
+    if(extra.childNodes.length) capOut.append(extra);
+  };
+  const doCapture = () => {
+    const c = capParts();
+    const d100 = 1 + Math.floor(Math.random() * 100);
+    // the one-shot bonuses are spent the moment they are counted
+    if(t.capMomentum) t.capMomentum = 0;
+    if(c.stacks) t.collectorStacks = Math.max(0, (t.collectorStacks || 0) - c.stacks);
+    save();
+    showCap(d100, c, false);
+  };
+  cap.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:6px"},"🎲 It hit? Roll to catch"),
+    el("div",{class:"tk-menu-row",style:"gap:8px;align-items:center;flex-wrap:wrap"},
+      el("span",{class:"small"},`Trainer Lv ${t.level || 1} · Ball bonus`), ballIn,
+      el("button",{class:"btn-primary",onclick:doCapture},"🎲 Capture Roll")),
+    hasSnare ? el("label",{class:"small",style:"display:flex;gap:6px;align-items:center;cursor:pointer;margin-top:6px"},
+      snareCb, "Snare — Baited / Hand Net / Lasso / Weighted Net / Stuck (−10)") : "",
+    hasStacks ? el("div",{class:"tk-menu-row",style:"gap:8px;align-items:center;margin-top:6px"},
+      el("span",{class:"small"},`Collector Stacks (${t.collectorStacks || 0} held) — spend`), stackIn) : "",
+    t.capMomentum ? el("div",{class:"small muted",style:"margin-top:4px"},
+      `Captured Momentum is waiting: −${t.capMomentum} on the Capture Roll, then it's gone.`) : "",
+    capOut);
+  body.append(cap);
+  const doThrow = () => {
+    const nat = 1 + Math.floor(Math.random() * 20), tot = nat + mod;
+    nat20 = nat === 20;
+    out.innerHTML = ""; out.style.borderStyle = "solid";
+    out.append(el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"POKÉ BALL THROW"),
+      el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${tot}`,
+        el("span",{class:"muted",style:"font-size:13px;font-weight:600"}, bits.length ? `  (${nat} ${bits.join(" ")})` : " (1d20)")),
+      el("div",{class:"small muted"}, nat === 20 ? "Natural 20 — it hits, and 10 comes off the Capture Roll."
+        : nat === 1 ? "Natural 1 — the ball misses." : `Hits if ${tot} ≥ 6 + the target's Evasion.`));
+    logRoll({ kind:"capture", label:"🎯 Poké Ball throw", who,
+      headline:`🎯 ${tot}${nat === 20 ? " · natural 20" : nat === 1 ? " · natural 1" : ""}`,
+      lines:[`1d20 ${nat}${bits.length ? " " + bits.join(" ") : ""}`, "vs AC 6 + the target's Evasion"] });
+    cap.style.display = nat === 1 ? "none" : "";
+    capOut.innerHTML = "";
+  };
+  modal({title:"🎯 Throw a Poké Ball", bodyNode:body,
+    footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close"),
+               el("button",{class:"btn-primary",onclick:doThrow},"🎲 Throw")]});
 }
 /* − value + stepper for a Combat Stage (−6…+6). `cur` is the MANUAL value and onSet still hands back
    a manual value, but what the pad SHOWS is manual + `auto` — the stages an active source is applying
@@ -19907,6 +20039,14 @@ function moveCSNode(actor, m, acc, redraw, persist){
           return `${ownerLabel(x.obj)}${r.held.length ? ` (held: ${r.held.join(", ")})` : ""}`; },
         after:(c, n) => `\u{1F53A} ${n.join(", ")}`,
       }) }, "\u{1F3AF} Apply to targets\u2026"));
+    else if(foeFxDeferred()) card.append(el("button", { class:"btn-secondary", style:"margin-top:6px;padding:4px 10px",
+      title:"the GM picks who this Move caught, from the 🎲 Rolls feed",
+      onclick:(ev) => {
+        foeFxDeclare({ fx:"csfx", caster:actor, icon:"\u{1F53A}", name:m.name || "Combat Stages", P:{ fx:theirs },
+          headline:theirs.map(csFxLine).join(" \u00b7 ") });
+        ev.currentTarget.disabled = true; ev.currentTarget.textContent = "\u{1F4E8} Sent to the GM";
+        toast("\u{1F53A} Sent to the GM \u2014 they pick who it caught");
+      } }, "\u{1F4E8} Send to the GM to apply\u2026"));
     else card.append(el("div", { class:"small muted", style:"margin-top:4px" },
       "Apply it from the target's own Combat Stage pads \u2014 the roll doesn't know who you pointed this at."));
   }
@@ -21707,9 +21847,20 @@ function openMoveRoll(p, m, sp, opts={}){
       usedThisRoll = true;
       // taking a turn hands back every OTHER EOT Move that was on cooldown (see refreshOtherEotUses)
       const eotBack = refreshOtherEotUses(p, freqMove && freqMove.name);
-      const spent = spendMoveUse(p, freqMove);
+      const effFreq = monMoveFreq(p, freqMove);
+      const spent = spendMoveUse(p, freqMove, effFreq);
       if(spent || eotBack.length){ (opts.persist||save)(); drawFreq(); if(opts.rerender) opts.rerender(); }
       if(eotBack.length) toast(`\u21BA EOT back off cooldown: ${eotBack.join(", ")}`);
+      if(!spent && freqTrackable(freqInfo(effFreq)) && !(isBoss(p) && freqInfo(effFreq).kind==="eot"))
+        toast(`\u26A0 ${freqMove.name} has no ${String(effFreq).split(" - ")[0]} uses left`);
+      /* A Blessing Move (Reflect, Light Screen, Safeguard, Lucky Chant, Mist\u2026) goes up on the field as
+         a floating square every screen at the table sees. Not when the Frequency had nothing left to
+         spend (the GM's \uD83D\uDD13 unlock waives that), so a mis-press can't conjure a free extra Reflect. */
+      if(isBlessingMove(m) && (spent || p.unlocked || !freqTrackable(freqInfo(effFreq)))){
+        const n = blessingActivations(m.name);
+        if(tableLayBlessing(m.name, n, ownerLabel(p)))
+          toast(`${blessingIcon(m.name)} ${m.name} is on the field \u2014 ${n} activation${n === 1 ? "" : "s"}`);
+      }
       /* The Gem shatters / the Z-Crystal burns its Scene use only once the dice actually go — a
          ticked box that never gets rolled costs nothing. `spent` then blocks the "override hits" redo. */
       if(zOn && zBoost && !zBoost.spent){
@@ -22456,13 +22607,16 @@ function renderBattle(){
               : "This Pokémon's turn — it can't use Trainer-only maneuvers (Poké Balls, Manipulate, items…)."));
   root.append(sc);
 
-  const firstLabel = isTrainer ? "⚔ Combat" : "⚔ Moves";
-  root.append(subTabBar([["moves",firstLabel],["fav","★ Fav"],["standard","Standard"],["shift","Shift"],["swift","Swift"],["free","Free"],["full","Full"]],
+  // a Pokémon's first tab already IS its Moves; only the Trainer gets a separate Moves tab
+  if(battleFilter==="tmoves" && !isTrainer) battleFilter="moves";
+  const tabs = isTrainer ? [["moves","⚔ Combat"],["tmoves","Moves"]] : [["moves","⚔ Moves"]];
+  root.append(subTabBar([...tabs,["fav","★ Fav"],["standard","Standard"],["shift","Shift"],["swift","Swift"],["free","Free"],["full","Full"]],
     battleFilter, k=>{ battleFilter=k; renderBattle(); }));
 
   if(battleFilter==="moves"){
     return isTrainer ? renderTrainerCombat(root, c.trainer) : renderPokemonMoves(root, team);
   }
+  if(battleFilter==="tmoves") return renderTrainerMoves(root, c.trainer);
 
   // maneuver lists, filtered to what this actor may do
   const favs=getFavActions();
@@ -23942,16 +24096,36 @@ function targetPicker(list, preselect, onChange){
   const fire = () => { if(onChange) onChange(list.filter(x=>picked.has(x.id))); };
   const allCb = el("input",{type:"checkbox"});
   allCb.addEventListener("change",()=>{
-    cbs.forEach(({tg, cb})=>{ cb.checked = allCb.checked; allCb.checked ? picked.add(tg.id) : picked.delete(tg.id); });
+    cbs.forEach(({tg, cb, row})=>{ if(row.style.display === "none") return;
+      cb.checked = allCb.checked; allCb.checked ? picked.add(tg.id) : picked.delete(tg.id); });
     fire();
   });
   list.forEach(tg=>{
     const cb = el("input",{type:"checkbox"}); cb.checked = picked.has(tg.id);
     cb.addEventListener("change",()=>{ cb.checked ? picked.add(tg.id) : picked.delete(tg.id); fire(); });
-    cbs.push({tg, cb});
-    box.append(el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;padding:2px 0"},
-      cb, tg.label));
+    const row = el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;padding:2px 0"},
+      cb, tg.label);
+    cbs.push({tg, cb, row});
+    box.append(row);
   });
+  /* A search box once the list is long enough to hunt through. It only HIDES rows, so a creature
+     already ticked stays ticked while you look for the next one — and "everyone" ticks everyone
+     still showing, not the ones the search filtered away. */
+  if(list.length > 3){
+    const none = el("div",{class:"small muted",style:"padding:4px 0;display:none"},"Nobody matches that.");
+    box.append(none);
+    const q = el("input",{type:"search",placeholder:`🔍 Search ${list.length}…`,
+      style:"width:100%;box-sizing:border-box;margin-bottom:6px;padding:6px 8px"});
+    q.addEventListener("input",()=>{
+      const want = q.value.trim().toLowerCase();
+      let shown = 0;
+      cbs.forEach(c=>{ const hit = !want || String(c.tg.label||"").toLowerCase().includes(want);
+                       c.row.style.display = hit ? "flex" : "none"; if(hit) shown++; });
+      none.style.display = shown ? "none" : "";
+      allCb.checked = false;
+    });
+    wrap.append(q);
+  }
   if(list.length > 1) wrap.append(el("label",{class:"small muted",
     style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin-bottom:4px;font-weight:700"},
     allCb, `everyone (${list.length})`));
@@ -23964,6 +24138,178 @@ function targetPicker(list, preselect, onChange){
 }
 async function commitTargets(chosen){
   for(const x of chosen) if(x.token) await commitTokenSource(x.token);
+}
+/* ---------------------------------------------------------------- EFFECTS ON A FOE, PICKED BY THE GM
+   A player never sees enemy tokens (allyTargets only lists them for the GM), so every Feature or
+   Ability that puts something ON a foe used to open an empty picker for them. Now the player just
+   DECLARES it: the AP / use comes off their own sheet and one line drops into the 🎲 Rolls feed.
+   That line carries a key into FOE_FX plus the few numbers the effect needs (a Rank, a chosen trait,
+   a roll) — never a closure — so the GM's 🎯 Choose targets button can run exactly the same apply
+   later, on whoever they tick. The GM (and a local table) still get the picker straight away.
+   Each entry: apply(x, P) → an optional note after the target's name; skip(x, P) → a reason not to. */
+function fxStatus(o, key){
+  if(!Array.isArray(o.statuses)) o.statuses = [];
+  if(!o.statuses.includes(key)) o.statuses.push(key);
+}
+const FOE_FX = {
+  overgrowth: {
+    skip:(x) => ownerBuffs(x.obj).some(b => b.key === "overgrowth" || b.name === "Overgrowth") ? "already Overgrown this Scene" : "",
+    apply:(x, P) => {
+      const nb = researchBuff(x.obj, { key:"overgrowth", name:"Overgrowth", cat:"Druid", dur:"this Scene",
+        note:"Overgrown: one step less Resistant to Grass (capped at neutral), and cannot regain HP or gain Temporary HP — "
+        + `whatever they would have gained goes to ${P.druid || "the Druid"} instead. Removed by Taking a Breather (remove it by hand), or by a `
+        + "damaging Fire, Ice, Poison, Flying or Bug hit (automatic)." });
+      nb.druid = P.druid || "";
+    } },
+  earthshifter: { apply:(x) => { fxStatus(x.obj, "tripped"); } },
+  gaze: { apply:(x, P) => {
+      const eff = MANIPULATE_EFFECTS.find(e => e.key === P.eff); if(!eff) return "";
+      if(eff.status) fxStatus(x.obj, eff.status);
+      if(eff.key === "terrorize") x.obj.tempHP = 0;
+    } },
+  feylaw: { apply:(x, P) => {
+      const o = x.obj, X = P.X | 0;
+      o.buffs = ownerBuffs(o).filter(b => b.key !== "fey-law");         // never two instances of Bound
+      addCustomBuff(o, `Bound — Fey Law (${P.trait})`, { acc:-X },
+        `Bound by ${P.by || "a Glamour Weaver"}: −${X} to every roll made to use ${P.trait}. Lasts until the end of the Scene.`);
+      ownerBuffs(o).slice(-1).forEach(b => b.key = "fey-law");
+    } },
+  omen: { apply:(x) => lowerCS(x.obj, "acc", 2, { quiet:true }) ? "" : `(held by ${csLowerBlock(x.obj, "acc")})` },
+  pressure: { apply:(x) => { fxStatus(x.obj, "suppressed"); } },
+  boulder: { apply:(x) => { fxStatus(x.obj, "vulnerable"); dropStealthRockBy(x.token, currentMapForView() || activeMap()); } },
+  disruption: { apply:(x, P) => {
+      const R = P.R | 0;
+      fxStatus(x.obj, "slowed");
+      if(!Array.isArray(x.obj.buffs)) x.obj.buffs = [];
+      const nb = { id:uid(), key:"disruption", name:"Disruption Order", cat:"Field",
+        dur:"until end of next turn", once:false, mods:{ acc:-R },
+        note:`−${R} to Accuracy Rolls, Slowed, and Flinched by Damaging Attacks on 16+ — call that last one at the table.` };
+      stampTurnBuff(nb);
+      x.obj.buffs.push(nb);
+    } },
+  deepcold: {
+    skip:(x, P) => (x.obj.deepCold && !P.force) ? "already hit by Deep Cold this Scene" : "",
+    apply:(x) => {
+      fxStatus(x.obj, "frozen");
+      const held = ["atk", "spatk", "spd"].filter(k => !lowerCS(x.obj, k, 1, { quiet:true }));
+      x.obj.deepCold = true;
+      return held.length ? `(${csLowerBlock(x.obj, held[0])} held ${held.join(", ")})` : "";
+    } },
+  caustic: {
+    skip:(x) => ownerBuffs(x.obj).some(b => b.key === "caustic-chemistry") ? "already lost HP to it this Scene" : "",
+    apply:async (x, P) => {
+      const n = Math.max(0, P.total | 0);
+      researchBuff(x.obj, { key:"caustic-chemistry", name:"Caustic Chemistry (spent)", cat:"Researcher", dur:"this Scene",
+        note:"Already lost Hit Points to Caustic Chemistry this Scene — it can't affect this target again until the Scene ends." });
+      if(x.token) await setTokenHP(x.token, tokenHp(x.token).cur - n, { raw:true });
+      else ownerHeal(x.obj, -n);
+      return `−${n} HP`;
+    } },
+  pheromone: { apply:(x) => {
+      x.obj.pheromone = pheromoneOf(x.obj) + 1;
+      const now = x.obj.pheromone;
+      let extra = "";
+      /* "Once per Scene per foe, when they gain their third or higher Pheromone Stack, you may
+         choose to roll 1d6" — offered rather than forced, and the sheet remembers it was taken. */
+      if(now >= 3 && !x.obj.pheroRolled){
+        const d = 1 + Math.floor(Math.random() * 6);
+        const st = d <= 2 ? "confused" : d <= 4 ? "suppressed" : "enraged";
+        fxStatus(x.obj, st);
+        x.obj.pheroRolled = true;
+        extra = ` · 1d6 → ${d}: ${statusByKey.get(st)?.name || st}`;
+      }
+      return `is on ${now} stack${now === 1 ? "" : "s"} — +${now * 2} Accuracy, +${now} Crit Range for Bug attacks${extra}`;
+    } },
+  csfx: { apply:(x, P) => {
+      const r = applyCSFx(x.obj, Array.isArray(P.fx) ? P.fx : []);
+      return r.held.length ? `(held: ${r.held.join(", ")})` : "";
+    } },
+  typemod: { apply:(x, P) => {
+      const why = addTypeMod(x.obj, { kind:P.kind, type:P.type, src:P.src, dur:P.dur, turns:P.turns });
+      return why ? `(${why})` : `→ ${monTypes(x.obj).join("/")}`;
+    } },
+};
+/* a player in a cloud game can't see foes — their effects go to the GM */
+function foeFxDeferred(){ return mode === "cloud" && !cloud.isGM; }
+/* what rides in the shared feed row: plain JSON, and small */
+function foeFxParams(P){
+  try{ const j = JSON.stringify(P || {}); return j.length <= 2000 ? JSON.parse(j) : {}; }catch(e){ return {}; }
+}
+async function runFoeFx(fx, chosen, P){
+  const def = FOE_FX[fx], hit = [], done = [], skipped = [];
+  if(!def) return { hit, done, skipped };
+  for(const x of chosen){
+    const why = def.skip ? def.skip(x, P || {}) : "";
+    if(why){ skipped.push(`${ownerLabel(x.obj)} (${why})`); continue; }
+    const note = await def.apply(x, P || {});
+    hit.push(x); done.push(note ? `${ownerLabel(x.obj)} ${note}` : ownerLabel(x.obj));
+  }
+  return { hit, done, skipped };
+}
+/* drop the declaration in the feed — the GM's row for it grows 🎯 Choose targets */
+function foeFxDeclare({ fx, caster, icon, name, P, single, headline, lines }){
+  const who = ownerLabel(caster);
+  logRoll({ kind:"foefx", label:`${icon} ${name}`, who,
+    headline: headline || `${who} used ${name}`,
+    lines: lines || [],
+    foe:{ fx, single:!!single, icon, name, P:foeFxParams(P) } });
+}
+/* The one dialog every foe-targeting Feature opens. For the GM it is the picker it always was; for a
+   player it has nothing to tick — pressing the button pays the cost and declares it to the GM.
+   `params()` reads the dialog's own controls into P; `pay(P)` spends the cost (false = abort) and
+   may add to P (Caustic Chemistry's roll). */
+function foeFxDialog(spec){
+  const { fx, caster, icon, name, intro, controls, params, pay, cost, single, anyone, verb, foot, headline, lines, logDirect } = spec;
+  const saveFn = spec.saveFn || save, redraw = spec.redraw || renderBattle;
+  const later = foeFxDeferred();
+  const title = `${icon} ${name}`;
+  const def = FOE_FX[fx];
+  const body = el("div",{});
+  if(intro) body.append(el("div",{class:"small",style:"margin-bottom:10px"}, intro));
+  (controls || []).forEach(n => body.append(n));
+  let pick = null;
+  if(later){
+    body.append(el("div",{class:"small",style:"margin-top:8px;padding:8px 10px;border:1px dashed var(--line);border-radius:8px"},
+      `📨 The enemy tokens are your GM's, so there's nothing to tick here. Pressing Declare pays ${cost || "the cost"} `
+      + `on your sheet and tells the GM in their 🎲 Rolls feed — they choose who it lands on.`));
+  } else {
+    const list = allyTargets(caster, { foes:true }).filter(x => anyone || x.enemy);
+    pick = targetPicker(list, []);
+    body.append(el("div",{class:"small muted",style:"font-weight:700;margin:6px 0 4px"}, single ? "Target (one)" : "Targets"));
+    body.append(pick.node);
+  }
+  if(foot) body.append(el("div",{class:"small muted",style:"margin-top:8px"}, foot));
+  modal({ title, bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async () => {
+      const P = Object.assign({ by: caster && caster.name || ownerLabel(caster) }, params ? params() : {});
+      let chosen = [];
+      if(!later){
+        chosen = pick.chosen();
+        if(!chosen.length){ toast("Pick a target"); return; }
+        if(single && chosen.length > 1){ toast(`${name} affects one target`); return; }
+        if(def && def.skip && chosen.every(x => def.skip(x, P))){
+          toast(`${name}: ${chosen.map(x => `${ownerLabel(x.obj)} — ${def.skip(x, P)}`).join("; ")}`); return;
+        }
+      }
+      if(pay && pay(P) === false) return;
+      if(later){
+        saveFn(); closeModal();
+        foeFxDeclare({ fx, caster, icon, name, P, single,
+          headline: headline ? headline(P) : "", lines: lines ? lines(P) : [] });
+        toast(`${title}${cost ? ` · ${cost}` : ""} — sent to the GM to pick the target${single ? "" : "s"}`);
+        redraw(); return;
+      }
+      const r = await runFoeFx(fx, chosen, P);
+      saveFn(); closeModal();
+      await commitTargets(r.hit);
+      if(logDirect) logRoll({ kind:"foefx", label:title, who:ownerLabel(caster),
+        headline: headline ? headline(P) : `${ownerLabel(caster)} used ${name}`,
+        lines:[...(lines ? lines(P) : []), r.done.length ? `→ ${r.done.join(", ")}` : ""] });
+      toast(`${title} → ${r.done.join(", ") || "nobody"}${r.skipped.length ? ` · skipped ${r.skipped.join(", ")}` : ""}${cost ? ` · ${cost}` : ""}`);
+      redraw();
+    }}, later ? "📨 Declare" : (verb || "Apply")),
+  ]});
 }
 /* the shell every class card shares */
 function classCard(icon, title, src){
@@ -24179,33 +24525,14 @@ function openQuickWit(t, rerender, persist){
 function openEnchantingGaze(t, rerender, persist){
   const sel = el("select");
   MANIPULATE_EFFECTS.forEach(e=>sel.append(el("option",{value:e.key}, `${e.name} — ${e.blurb}`)));
-  const foes = allyTargets(t, {foes:true}).filter(x=>x.enemy);
-  const pick = targetPicker(foes, []);
-  const body = el("div",{});
-  body.append(el("label",{class:"field"}, el("span",{},"Effect"), sel));
-  body.append(el("div",{class:"small muted",style:"margin:8px 0 4px;font-weight:700"},"Foes caught in the Cone 2"));
-  body.append(foes.length ? pick.node
-    : el("div",{class:"small muted"},"No enemy tokens you can edit — apply it from the GM's side, or at the table."));
-  body.append(el("div",{class:"small muted",style:"margin-top:8px"},
-    "2 AP, Standard Action. It succeeds automatically against every target — no opposed roll — and ignores the "
-    + "Maneuver's usual once-per-Scene-per-target limit. Paint the Cone from your token's ✎ Manual shape button on the Map."));
-  modal({title:"👁 Enchanting Gaze", bodyNode:body, footNodes:[
-    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
-    el("button",{class:"btn-primary",onclick:async()=>{
-      const eff = MANIPULATE_EFFECTS.find(e=>e.key===sel.value);
-      const chosen = pick.chosen();
-      if(!apSpend(t, 2)) return;
-      chosen.forEach(x=>{
-        if(eff.status){ if(!Array.isArray(x.obj.statuses)) x.obj.statuses=[];
-          if(!x.obj.statuses.includes(eff.status)) x.obj.statuses.push(eff.status); }
-        if(eff.key==="terrorize") x.obj.tempHP = 0;
-      });
-      (persist||save)(); closeModal();
-      await commitTargets(chosen);
-      toast(`👁 ${eff.name} → ${chosen.length} foe${chosen.length===1?"":"s"} · 2 AP`);
-      (rerender||renderBattle)();
-    }},"👁 Gaze"),
-  ]});
+  foeFxDialog({ fx:"gaze", caster:t, icon:"👁", name:"Enchanting Gaze", verb:"👁 Gaze", cost:"2 AP",
+    intro:"Every foe caught in a Cone 2 suffers the Manipulate effect you choose.",
+    controls:[el("label",{class:"field"}, el("span",{},"Effect"), sel)],
+    params:() => ({ eff:sel.value }),
+    headline:(P) => `${(MANIPULATE_EFFECTS.find(e => e.key === P.eff) || {}).name || P.eff} on every foe in a Cone 2`,
+    foot:"2 AP, Standard Action. It succeeds automatically against every target — no opposed roll — and ignores the "
+      + "Maneuver's usual once-per-Scene-per-target limit. Paint the Cone from your token's ✎ Manual shape button on the Map.",
+    pay:() => apSpend(t, 2), saveFn:persist || save, redraw:rerender || renderBattle });
 }
 function provocateurCard(t, rerender, persist){
   if(!t || !trainerHasClass(t, "Provocateur")) return null;
@@ -24420,35 +24747,16 @@ function openFeyLaw(t, rerender, persist){
   const X = feyLawX(t);
   const sel = el("select");
   FEY_LAW_TRAITS.forEach(x=>sel.append(el("option",{value:x}, x.length<=6 ? `${x}-Type attacks` : x)));
-  const foes = allyTargets(t, {foes:true}).filter(x=>x.enemy);
-  const pick = targetPicker(foes, []);
-  const body = el("div",{});
-  body.append(el("div",{class:"small",style:"margin-bottom:10px"},
-    `Trigger: you hit a foe with a damaging Fairy attack. The target is Bound and takes −${X} to every roll made to use attacks with the chosen trait `
-    + `(half your better of Charm ${rankNum(t.skills.charm)} and Occult Ed. ${rankNum(t.skills.occultEd)}). It lasts until the end of the Scene; `
-    + "you may unbind them as a Free Action, and nobody carries two instances of Bound at once."));
-  body.append(el("label",{class:"field"}, el("span",{},"They're Bound against"), sel));
-  body.append(foes.length ? pick.node : el("div",{class:"small muted"},"No enemy token you can edit — place the buff from the GM's side."));
-  body.append(el("div",{class:"small muted",style:"margin-top:8px"},
-    "1 AP, Swift Action. The buff lands on their sheet as an Accuracy penalty so the number is visible wherever they roll; "
-    + "remove it from their Buffs & Orders card to unbind them."));
-  modal({title:"🧚 Fey Law", bodyNode:body, footNodes:[
-    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
-    el("button",{class:"btn-primary",onclick:async()=>{
-      const chosen = pick.chosen();
-      if(chosen.length !== 1){ toast("Fey Law Binds one foe"); return; }
-      if(!apSpend(t, 1)) return;
-      const o = chosen[0].obj;
-      o.buffs = ownerBuffs(o).filter(b => b.key !== "fey-law");         // never two instances of Bound
-      addCustomBuff(o, `Bound — Fey Law (${sel.value})`, { acc:-X },
-        `Bound by ${t.name||"a Glamour Weaver"}: −${X} to every roll made to use ${sel.value}. Lasts until the end of the Scene.`);
-      ownerBuffs(o).slice(-1).forEach(b => b.key = "fey-law");
-      (persist||save)(); closeModal();
-      await commitTargets(chosen);
-      toast(`🧚 ${ownerLabel(o)} is Bound — −${X} vs ${sel.value} · 1 AP`);
-      (rerender||renderBattle)();
-    }},"🧚 Bind them"),
-  ]});
+  foeFxDialog({ fx:"feylaw", caster:t, icon:"🧚", name:"Fey Law", verb:"🧚 Bind them", cost:"1 AP", single:true,
+    intro:`Trigger: you hit a foe with a damaging Fairy attack. The target is Bound and takes −${X} to every roll made to use attacks with the chosen trait `
+      + `(half your better of Charm ${rankNum(t.skills.charm)} and Occult Ed. ${rankNum(t.skills.occultEd)}). It lasts until the end of the Scene; `
+      + "you may unbind them as a Free Action, and nobody carries two instances of Bound at once.",
+    controls:[el("label",{class:"field"}, el("span",{},"They're Bound against"), sel)],
+    params:() => ({ X, trait:sel.value }),
+    headline:(P) => `Bound: −${P.X} to rolls with ${P.trait}`,
+    foot:"1 AP, Swift Action. The buff lands on their sheet as an Accuracy penalty so the number is visible wherever they roll; "
+      + "remove it from their Buffs & Orders card to unbind them.",
+    pay:() => apSpend(t, 1), saveFn:persist || save, redraw:rerender || renderBattle });
 }
 /* Magical Burst (Scene, Standard): needs Enchanting Transformation Bound; using it unbinds the
    Transformation AND turns its 2 Bound AP into spent AP. */
@@ -26798,24 +27106,14 @@ function openGravelBeforeMe(t, rerender, persist){
 /* Bigger and Boulder: the push distance and the Vulnerable are both real; the Hazards are the GM's
    to place, so they are named and left alone. */
 function openBiggerAndBoulder(t, rerender, persist){
-  const saveFn = persist || save, redraw = rerender || renderBattle;
   const R = typeLinkedRank(t, "Rock"), push = Math.floor(R / 2);
-  branchTargetDialog({
-    title:"🪨 Bigger and Boulder",
+  foeFxDialog({ fx:"boulder", caster:t, icon:"🪨", name:"Bigger and Boulder", verb:"🪨 Apply", cost:"a use",
     intro:`Everyone your Pokémon just hit with a damaging Rock-Type Move is pushed up to ${push} metres `
-      + `(half your Type-Linked Rank of ${R}) and is Vulnerable for one full round. Ticking them here applies `
-      + `the Vulnerable; drag them the ${push} metres on the Map yourself.`,
-    foot:"A Stealth Rock Hazard is dropped in a free square beside each of them for you.",
-    list:branchFoes(t), saveFn, redraw,
-    gate:() => featSpend(t, "Bigger and Boulder"),
-    apply:(x) => {
-      if(!Array.isArray(x.obj.statuses)) x.obj.statuses = [];
-      if(!x.obj.statuses.includes("vulnerable")) x.obj.statuses.push("vulnerable");
-      dropStealthRockBy(x.token, currentMapForView() || activeMap());
-      return ownerLabel(x.obj);
-    },
-    after:(c, n) => `🪨 Vulnerable + a Stealth Rock → ${n.join(", ")} · push them ${push} m`,
-  });
+      + `(half your Type-Linked Rank of ${R}) and is Vulnerable for one full round. Ticking them applies `
+      + `the Vulnerable; drag them the ${push} metres on the Map.`,
+    foot:"A Stealth Rock Hazard is dropped in a free square beside each of them.",
+    headline:() => `Vulnerable for one full round + a Stealth Rock beside each · push them ${push} m`,
+    pay:() => featSpend(t, "Bigger and Boulder"), saveFn:persist || save, redraw:rerender || renderBattle });
 }
 
 /* ---- NORMAL: Prism's gym, where average damage is abolished (Core p.126) ---------------------- */
@@ -26858,28 +27156,14 @@ function openSimpleImprovements(t, rerender, persist){
    the Accuracy penalty is a real buff, and the Flinch-on-16+ is a rider on their next attack that
    only the GM can adjudicate — so two of the three land and the third is written on the buff. */
 function openDisruptionOrder(t, rerender, persist){
-  const saveFn = persist || save, redraw = rerender || renderBattle;
   const R = typeLinkedRank(t, "Bug");
-  branchTargetDialog({
-    title:"🐛 Disruption Order",
+  foeFxDialog({ fx:"disruption", caster:t, icon:"🐛", name:"Disruption Order", verb:"🐛 Apply", cost:"a use",
     intro:`Everyone your Pokémon just hit with a Bug-Type Move is Slowed, takes −${R} to Accuracy Rolls, and is `
       + `Flinched by Damaging Attacks on 16+ — all until the end of the user's next turn. The book leaves the `
       + `penalty as "−X"; this sheet reads X as your Type-Linked Skill Rank (${R}).`,
-    list:branchFoes(t), saveFn, redraw,
-    gate:() => featSpend(t, "Disruption Order"),
-    apply:(x) => {
-      if(!Array.isArray(x.obj.statuses)) x.obj.statuses = [];
-      if(!x.obj.statuses.includes("slowed")) x.obj.statuses.push("slowed");
-      if(!Array.isArray(x.obj.buffs)) x.obj.buffs = [];
-      const nb = { id:uid(), key:"disruption", name:"Disruption Order", cat:"Field",
-        dur:"until end of next turn", once:false, mods:{ acc:-R },
-        note:`−${R} to Accuracy Rolls, Slowed, and Flinched by Damaging Attacks on 16+ — call that last one at the table.` };
-      stampTurnBuff(nb);
-      x.obj.buffs.push(nb);
-      return ownerLabel(x.obj);
-    },
-    after:(c, n) => `🐛 Slowed and −${R} Accuracy → ${n.join(", ")}`,
-  });
+    params:() => ({ R }),
+    headline:(P) => `Slowed, −${P.R} Accuracy, Flinched on 16+ — everyone their Bug Move hit`,
+    pay:() => featSpend(t, "Disruption Order"), saveFn:persist || save, redraw:rerender || renderBattle });
 }
 /* Pheromone Markers: a stack counter that lives on the FOE, because that is what the bonus is read
    off. The sheet keeps the count and rolls the d6; the +2 Accuracy / +1 Crit Range per stack is
@@ -26887,6 +27171,11 @@ function openDisruptionOrder(t, rerender, persist){
 function pheromoneOf(p){ return Math.max(0, (p && p.pheromone) || 0); }
 function openPheromoneMarkers(t, rerender, persist){
   const saveFn = persist || save, redraw = rerender || renderBattle;
+  if(foeFxDeferred()) return foeFxDialog({ fx:"pheromone", caster:t, icon:"🐛", name:"Pheromone Markers", cost:"1 AP", single:true,
+    intro:"1 AP · Free Action, when you hit a foe with a damaging Bug-Type attack. They gain a Pheromone Stack. "
+      + "Your Bug-Type attacks gain +2 Accuracy and +1 Critical Hit Range against them for EACH stack they carry.",
+    headline:() => "+1 Pheromone Stack on the foe their Bug attack hit",
+    pay:() => apSpend(t, 1), saveFn, redraw });
   const foes = branchFoes(t);
   if(!foes.length){ toast("No foes on the board to mark"); return; }
   const body = el("div", {});
@@ -26903,24 +27192,11 @@ function openPheromoneMarkers(t, rerender, persist){
                                        : "unmarked")));
     rowd.append(el("button", { class:"btn-primary", style:"padding:6px 10px", onclick:async () => {
       if(!apSpend(t, 1)) return;
-      x.obj.pheromone = pheromoneOf(x.obj) + 1;
-      const now = x.obj.pheromone;
-      let extra = "";
-      /* "Once per Scene per foe, when they gain their third or higher Pheromone Stack, you may
-         choose to roll 1d6" — offered rather than forced, and the sheet remembers it was taken. */
-      if(now >= 3 && !x.obj.pheroRolled){
-        const d = 1 + Math.floor(Math.random() * 6);
-        const st = d <= 2 ? "confused" : d <= 4 ? "suppressed" : "enraged";
-        if(!Array.isArray(x.obj.statuses)) x.obj.statuses = [];
-        if(!x.obj.statuses.includes(st)) x.obj.statuses.push(st);
-        x.obj.pheroRolled = true;
-        extra = ` · 1d6 → ${d}: ${statusByKey.get(st)?.name || st}`;
-      }
+      const r = await runFoeFx("pheromone", [x], {});
       saveFn();
       await commitTargets([x]);
-      out.textContent = `${ownerLabel(x.obj)} is on ${now} stack${now === 1 ? "" : "s"} — `
-        + `+${now * 2} Accuracy, +${now} Crit Range for your Bug attacks${extra}`;
-      toast(`🐛 Pheromone Stack ${now} on ${ownerLabel(x.obj)} · 1 AP${extra}`);
+      out.textContent = r.done[0] || ownerLabel(x.obj);
+      toast(`🐛 Pheromone Stack · ${r.done[0] || ownerLabel(x.obj)} · 1 AP`);
       redraw();
     } }, "🐛 Mark · 1 AP"));
     if(n) rowd.append(el("button", { class:"x", style:"cursor:pointer;color:var(--muted);font-size:18px",
@@ -26939,28 +27215,13 @@ function openPheromoneMarkers(t, rerender, persist){
 /* Deep Cold is the single most mechanical thing in any of these four branches — a status and three
    Combat Stages, once per Scene per foe. All of it applied. */
 function openDeepCold(t, rerender, persist){
-  const saveFn = persist || save, redraw = rerender || renderBattle;
-  branchTargetDialog({
-    title:"❄ Deep Cold",
+  foeFxDialog({ fx:"deepcold", caster:t, icon:"❄", name:"Deep Cold", verb:"❄ Apply", cost:"a use",
     intro:"Your Pokémon just hit with a damaging Ice-Type Move. The target is Frozen and drops a Combat Stage of "
       + "Attack, Special Attack and Speed each. They are cured of Frozen automatically after one full round — "
       + "step the chip off then. A foe may be affected by Deep Cold only once per Scene.",
-    list:branchFoes(t), saveFn, redraw,
-    gate:(chosen) => {
-      if(chosen.some(x => x.obj.deepCold) && !t.unlocked){ toast("One of them has already been Deep Cold'd this Scene"); return false; }
-      return featSpend(t, "Deep Cold");
-    },
-    apply:(x) => {
-      if(!Array.isArray(x.obj.statuses)) x.obj.statuses = [];
-      if(!x.obj.statuses.includes("frozen")) x.obj.statuses.push("frozen");
-      const held = ["atk", "spatk", "spd"].filter(k => !lowerCS(x.obj, k, 1, { quiet:true }));
-      if(held.length) toast(`\u{1F6E1} ${csLowerBlock(x.obj, held[0])} held ${ownerLabel(x.obj)}'s `
-        + `${held.join(", ")} Combat Stages.`);
-      x.obj.deepCold = true;
-      return ownerLabel(x.obj);
-    },
-    after:(c, n) => `❄ Frozen, −1 Attack / Sp.Atk / Speed → ${n.join(", ")}`,
-  });
+    params:() => ({ force:!!t.unlocked }),
+    headline:() => "Frozen, −1 Attack / Sp.Atk / Speed on the target of their Ice Move",
+    pay:() => featSpend(t, "Deep Cold"), saveFn:persist || save, redraw:rerender || renderBattle });
 }
 /* Arctic Zeal hands the Pokémon a Mist Blessing with three ways to spend it. Only the Combat Stage
    one is a number this sheet owns; the other two are named on the button that spends the use. */
@@ -27563,36 +27824,14 @@ function druidCard(t, rerender, persist){
    Stack does — the GM's damage tool and the target's own card then show it without either of them
    knowing what a Druid is. Once per Scene per target, which the buff's presence is the record of. */
 function openOvergrowth(t, rerender, persist){
-  const foes = allyTargets(t, {foes:true}).filter(x => x.enemy);
-  const pick = targetPicker(foes, []);
-  const body = el("div",{});
-  body.append(el("div",{class:"small",style:"margin-bottom:10px"},
-    "2 AP · Swift Action, on one target of a Druid Move you just hit with. While they are Overgrown they are one step "
-    + "less Resistant to Grass (never better than neutral for them), and they cannot regain Hit Points or gain "
-    + "Temporary Hit Points at all — every point they would have gained comes to you instead. It is removed when "
-    + "they Take a Breather, or when a damaging Fire, Ice, Poison, Flying or Bug attack hits them. Once per Scene per target."));
-  body.append(foes.length ? pick.node
-    : el("div",{class:"small muted"},"No enemy tokens you can edit — place them on the Map, or apply it from the GM's side."));
-  modal({title:"🌿 Overgrowth", bodyNode:body, footNodes:[
-    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
-    el("button",{class:"btn-primary",onclick:async () => {
-      const chosen = pick.chosen();
-      if(!chosen.length){ toast("Pick a target"); return; }
-      if(!apSpend(t, 2)) return;
-      chosen.forEach(x => {
-        if(ownerBuffs(x.obj).some(b => b.key === "overgrowth" || b.name === "Overgrowth")) return;   // once per Scene per target
-        const nb = researchBuff(x.obj, { key:"overgrowth", name:"Overgrowth", cat:"Druid", dur:"this Scene",
-          note:"Overgrown: one step less Resistant to Grass (capped at neutral), and cannot regain HP or gain Temporary HP — "
-          + `whatever they would have gained goes to ${t.name || "the Druid"} instead. Removed by Taking a Breather (remove it by hand), or by a `
-          + "damaging Fire, Ice, Poison, Flying or Bug hit (automatic)." });
-        nb.druid = t.name || "";
-      });
-      (persist || save)(); closeModal();
-      await commitTargets(chosen);
-      toast(`🌿 Overgrowth → ${chosen.map(x => ownerLabel(x.obj)).join(", ")} · 2 AP`);
-      (rerender || renderBattle)();
-    }},"🌿 Afflict"),
-  ]});
+  foeFxDialog({ fx:"overgrowth", caster:t, icon:"🌿", name:"Overgrowth", verb:"🌿 Afflict", cost:"2 AP",
+    intro:"2 AP · Swift Action, on one target of a Druid Move you just hit with. While they are Overgrown they are one step "
+      + "less Resistant to Grass (never better than neutral for them), and they cannot regain Hit Points or gain "
+      + "Temporary Hit Points at all — every point they would have gained comes to you instead. It is removed when "
+      + "they Take a Breather, or when a damaging Fire, Ice, Poison, Flying or Bug attack hits them. Once per Scene per target.",
+    params:() => ({ druid:t.name || "" }),
+    headline:() => "Overgrowth on a target of the Druid Move they just hit with",
+    pay:() => apSpend(t, 2), saveFn:persist || save, redraw:rerender || renderBattle });
 }
 
 /* ---------------------------------------------------------------- EARTH SHAKER (Ground, p.81) */
@@ -27616,30 +27855,13 @@ function earthShakerCard(t, rerender, persist){
    automatically hits" — an automatic hit means there is nothing to roll, so the Tripped chip goes
    straight on. The opposed-check clause only matters if your table lets the target resist. */
 function openEarthshifter(t, rerender, persist){
-  const foes = allyTargets(t, {foes:true}).filter(x => x.enemy);
-  const pick = targetPicker(foes, []);
   const R = Math.max(rankNum(t.skills && t.skills.focus), rankNum(t.skills && t.skills.intuition));
-  const body = el("div",{});
-  body.append(el("div",{class:"small",style:"margin-bottom:10px"},
-    `2 AP · Swift Action, on one target of a damaging Ground-Type Move you just hit with. The Trip Maneuver hits `
-    + `automatically — no roll — and where an opposed check is called for you use Focus or Intuition (Rank ${R}) `
-    + `instead of Combat. The Tripped chip goes straight onto whoever you pick.`));
-  body.append(foes.length ? pick.node
-    : el("div",{class:"small muted"},"No enemy tokens you can edit — place them on the Map, or apply it from the GM's side."));
-  modal({title:"⛰ Earthshifter", bodyNode:body, footNodes:[
-    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
-    el("button",{class:"btn-primary",onclick:async () => {
-      const chosen = pick.chosen();
-      if(!chosen.length){ toast("Pick a target"); return; }
-      if(!apSpend(t, 2)) return;
-      chosen.forEach(x => { if(!Array.isArray(x.obj.statuses)) x.obj.statuses = [];
-        if(!x.obj.statuses.includes("tripped")) x.obj.statuses.push("tripped"); });
-      (persist || save)(); closeModal();
-      await commitTargets(chosen);
-      toast(`⛰ Tripped → ${chosen.map(x => ownerLabel(x.obj)).join(", ")} · 2 AP`);
-      (rerender || renderBattle)();
-    }},"⛰ Trip them"),
-  ]});
+  foeFxDialog({ fx:"earthshifter", caster:t, icon:"⛰", name:"Earthshifter", verb:"⛰ Trip them", cost:"2 AP",
+    intro:`2 AP · Swift Action, on one target of a damaging Ground-Type Move you just hit with. The Trip Maneuver hits `
+      + `automatically — no roll — and where an opposed check is called for you use Focus or Intuition (Rank ${R}) `
+      + `instead of Combat. The Tripped chip goes straight onto whoever is picked.`,
+    headline:() => "Tripped — an automatic Trip on a target of their Ground Move",
+    pay:() => apSpend(t, 2), saveFn:persist || save, redraw:rerender || renderBattle });
 }
 
 /* ---------------------------------------------------------------- FROST TOUCHED (Ice, p.83) */
@@ -28913,34 +29135,18 @@ const CHEMISTRY_RECIPES = [
    trigger lose Hit Points equal to your roll. This may only affect a target once per Scene." The
    buff it leaves on each target is the once-per-Scene record, and End Scene clears it. */
 function openCausticChemistry(t, rerender, persist){
-  const list = allyTargets(t, { foes:true });
-  const pick = targetPicker(list, []);
-  const body = el("div",{},
-    el("div",{class:"small",style:"margin-bottom:10px"},
-      "1 AP · Swift Action, when you hit with a Pester Ball or apply a Repel to a Pokémon. Tick everyone the trigger affected: your Technology Education Roll comes off their Hit Points (Hit Points LOST, not damage — no Defense, no Type, no Damage Reduction). Once per Scene per target."),
-    pick.node);
-  modal({ title:"\u{1F9EA} Caustic Chemistry", bodyNode:body, footNodes:[
-    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
-    el("button",{class:"btn-primary",onclick:async ()=>{
-      const chosen = pick.chosen().filter(x => !ownerBuffs(x.obj).some(b => b.key === "caustic-chemistry"));
-      if(!chosen.length){ toast("Pick a target that hasn't been hit by Caustic Chemistry this Scene"); return; }
-      if(!apSpend(t, 1)) return;
+  foeFxDialog({ fx:"caustic", caster:t, icon:"\u{1F9EA}", name:"Caustic Chemistry", verb:"\u{1F9EA} Roll & apply",
+    cost:"1 AP", anyone:true, logDirect:true,
+    intro:"1 AP · Swift Action, when you hit with a Pester Ball or apply a Repel to a Pokémon. Everyone the trigger affected: your Technology Education Roll comes off their Hit Points (Hit Points LOST, not damage — no Defense, no Type, no Damage Reduction). Once per Scene per target.",
+    pay:(P) => {
+      if(!apSpend(t, 1)) return false;
       const r = researchSkillRoll(t, "technologyEd");
-      for(const x of chosen){
-        researchBuff(x.obj, { key:"caustic-chemistry", name:"Caustic Chemistry (spent)", cat:"Researcher", dur:"this Scene",
-          note:"Already lost Hit Points to Caustic Chemistry this Scene — it can't affect this target again until the Scene ends." });
-        if(x.token) await setTokenHP(x.token, tokenHp(x.token).cur - r.total, { raw:true });
-        else ownerHeal(x.obj, -r.total);
-      }
-      (persist||save)(); closeModal();
-      await commitTargets(chosen);
-      logRoll({ kind:"skill", label:"Caustic Chemistry", who:t.name||"", headline:`\u{1F9EA} −${r.total} HP`,
-        lines:[`Technology Ed. ${r.dice}d6 [${r.rolls.join(", ")}]${r.mod ? ` +${r.mod}` : ""} = ${r.total}`,
-               `lost by ${chosen.map(x => ownerLabel(x.obj)).join(", ")}`] });
-      toast(`\u{1F9EA} Caustic Chemistry: ${r.total} Hit Points lost by ${chosen.map(x => ownerLabel(x.obj)).join(", ")} · 1 AP`);
-      (rerender||renderBattle)();
-    }},"\u{1F9EA} Roll & apply"),
-  ]});
+      P.total = r.total;
+      P.roll = `Technology Ed. ${r.dice}d6 [${r.rolls.join(", ")}]${r.mod ? ` +${r.mod}` : ""} = ${r.total}`;
+    },
+    headline:(P) => `\u{1F9EA} −${P.total} HP`,
+    lines:(P) => [P.roll, "Hit Points LOST — no Defense, Type or Damage Reduction"],
+    saveFn:persist || save, redraw:rerender || renderBattle });
 }
 /* Playing God: $3500, an artificial Egg of one of eight species that hatches at Lv5 with a chosen
    Nature and Basic Ability, plus one upgrade per Technology Education Rank. */
@@ -30774,7 +30980,19 @@ function openSageWard(t, rerender, persist, opts){
 function sageBlessingList(t){ return Array.isArray(t && t.sageBlessings) ? t.sageBlessings : []; }
 function sageKnownBlessings(t){ return SAGE_BLESSINGS.filter(b => moveInList(t.moves||[], b.move)); }
 function sageLayBlessing(t, move){
-  t.sageBlessings = [...sageBlessingList(t), { id:uid(), move, left:blessingActivations(move) }];
+  const rec = { id:uid(), move, left:blessingActivations(move) };
+  if(tableLayBlessing(move, rec.left, (t && t.name) || "", rec.id)) rec.shared = true;   // the table's floating square
+  t.sageBlessings = [...sageBlessingList(t), rec];
+}
+/* the Sage's laid Blessings as the table currently has them: a shared one reads its uses from the
+   floating square (anyone may have spent some), and one the table used up is gone. Display copies —
+   a render never writes; the actions below store the result. */
+function sageBlessingsLive(t){
+  return sageBlessingList(t).map(rec => {
+    if(!rec.shared || mode!=="cloud" || !cloud.rolls) return rec;
+    const b = tableBlessingById(rec.id);
+    return b ? Object.assign({}, rec, { left:b.left, move:b.move }) : null;
+  }).filter(Boolean);
 }
 /* a Move with the Blessing Keyword (it sits in the Move's range line: "Blessing") */
 function isBlessingMove(m){ return !!(m && typeof m === "object" && moveHasKeyword(m, "blessing")); }
@@ -30814,8 +31032,12 @@ function openBenediction(t, rec, rerender, persist){
       if(chosen.length !== 1){ toast("The one ally who activated it"); return; }
       const useBene = bene && cb.checked && def;
       if(useBene && !apSpend(t, 1)) return;
-      rec.left = Math.max(0, (rec.left||0) - 1);
-      t.sageBlessings = sageBlessingList(t).filter(b => b.left > 0);
+      const live = sageBlessingsLive(t);
+      const cur = live.find(b => b.id === rec.id);
+      if(!cur){ toast(`${rec.move} is already used up`); closeModal(); (rerender||renderBattle)(); return; }
+      const left = Math.max(0, (cur.left||0) - 1);
+      t.sageBlessings = live.map(b => b.id === rec.id ? Object.assign({}, b, { left }) : b).filter(b => b.left > 0);
+      if(rec.shared) tableSetBlessing(rec.id, left);
       const o = chosen[0].obj;
       if(useBene) def.apply(o);
       (persist||save)(); closeModal();
@@ -30829,12 +31051,13 @@ function openDivineWind(t, rerender, persist){
   const known = sageKnownBlessings(t).map(b => b.move);
   const done = new Set(Array.isArray(t.divineWind) ? t.divineWind : []);
   const choices = known.filter(mv => !done.has(mv));
-  if(!sageBlessingList(t).length){ toast("You have no Blessings on the field to convert"); return; }
+  if(!sageBlessingsLive(t).length){ toast("You have no Blessings on the field to convert"); return; }
   if(!choices.length){ toast("Every Blessing type you can generate has been chosen once this Scene"); return; }
   openPicker("\u{1F32C} Divine Wind — 2 AP: turn your Blessings into…", choices, mv => {
     if(!apSpend(t, 2)) return;
     const cap = blessingActivations(mv);
-    t.sageBlessings = sageBlessingList(t).map(b => b.move === mv ? b : { id:b.id, move:mv, left:Math.min(b.left, cap) });
+    t.sageBlessings = sageBlessingsLive(t).map(b => b.move === mv ? b : Object.assign({}, b, { move:mv, left:Math.min(b.left, cap) }));
+    t.sageBlessings.forEach(b => { if(b.shared) tableSetBlessing(b.id, b.left, b.move); });
     t.divineWind = [...done, mv];
     (persist||save)();
     toast(`\u{1F32C} Divine Wind — your Blessings are now ${mv} · 2 AP`);
@@ -30861,7 +31084,7 @@ function sageCard(t, rerender, persist){
 
   /* the Blessings this Sage has laid, with their activations left */
   const known = sageKnownBlessings(t);
-  const laid = sageBlessingList(t);
+  const laid = sageBlessingsLive(t);
   card.append(el("div",{style:"font-weight:800;margin-top:10px"}, "✨ Your Blessings on the field"));
   if(!laid.length) card.append(el("div",{class:"small muted"}, known.length
     ? "None laid. Rolling one of your Blessing Moves spends its Scene use and lays it here by itself (the ＋ buttons below are for one used off the sheet) — activating it for an ally counts it down and offers Sage's Benediction."
@@ -30872,7 +31095,7 @@ function sageCard(t, rerender, persist){
       el("div",{class:"small muted"}, `${rec.left} activation${rec.left === 1 ? "" : "s"} left`)));
     r.append(el("button",{class:"btn-primary",style:"padding:4px 10px",onclick:() => openBenediction(t, rec, redraw, saveFn)},"✨ Activate"),
       el("button",{class:"x",style:"cursor:pointer;color:var(--muted)",title:"remove",
-        onclick:() => { t.sageBlessings = laid.filter(b => b.id !== rec.id); saveFn(); redraw(); }},"×"));
+        onclick:() => { t.sageBlessings = laid.filter(b => b.id !== rec.id); if(rec.shared) tableSetBlessing(rec.id, 0); saveFn(); redraw(); }},"×"));
     card.append(r);
   });
   if(known.length){
@@ -31082,6 +31305,11 @@ function renderTrainerCombat(root, t){
     });
     root.append(ic);
   }
+  renderTrainerMoves(root, t);
+  renderTrainerCombatRest(root, t);
+}
+/* The Trainer's Move cards — shown on ⚔ Combat and again on their own ⚔ Moves tab. */
+function renderTrainerMoves(root, t){
   // Moves granted by Features/class — rollable (adds Attack, no STAB), like weapon moves
   if(!Array.isArray(t.moves)) t.moves=[];
   const mvCard=el("div",{class:"card"});
@@ -31124,6 +31352,8 @@ function renderTrainerCombat(root, t){
       root.append(uCard);
     }
   }
+}
+function renderTrainerCombatRest(root, t){
   if(!Array.isArray(t.abilities)) t.abilities=[];
   /* Abilities a Feature granted, or an Usurper's Legendary Form shared up, are applied by the engine
      but were never listed here — so the card showed nothing at all for a Trainer who had typed none
@@ -39245,6 +39475,9 @@ function normRolls(data){
   data.kind = "rolls";
   data.entries = Array.isArray(data.entries)
     ? data.entries.filter(e => e && typeof e==="object" && e.id) : [];
+  /* the Blessings on the field ride the same row (see renderBlessingPops) — one used up is deleted */
+  data.blessings = Array.isArray(data.blessings)
+    ? data.blessings.filter(b => b && typeof b==="object" && b.id && (b.left||0) > 0) : [];
   return data;
 }
 async function fetchRolls(pre){
@@ -39284,7 +39517,7 @@ function rollerName(o){
 /* Write one roll into the feed. `atk` (only on a roll that produced damage) carries exactly what
    attackTargetWidget needs, so the GM can drop that same hit on map tokens minutes later even
    though the player who rolled it never had the board open. */
-function logRoll({ kind, label, who, headline, lines, atk, area }){
+function logRoll({ kind, label, who, headline, lines, atk, area, foe }){
   if(mode!=="cloud") return;
   const row = ensureRolls();
   const e = {
@@ -39325,10 +39558,92 @@ function logRoll({ kind, label, who, headline, lines, atk, area }){
                       buffs: (area.buffs||[]).filter(k=>buffByKey.has(k)).slice(0,8),
                       songPaid: !!area.songPaid,       // the declaration already paid its AP
                       note: String(area.note||"").slice(0,120) };
+  /* A "foe" entry is the same kind of declaration for an effect ON a creature (Overgrowth, Omen…):
+     the player paid for it, the GM picks who it lands on. Just the FOE_FX key and its numbers. */
+  if(foe && foe.fx) e.foe = { fx: String(foe.fx).slice(0,40), single: !!foe.single,
+                              icon: String(foe.icon||"").slice(0,8), name: String(foe.name||"").slice(0,60),
+                              P: foeFxParams(foe.P) };
   row.data.entries.push(e);
   if(row.data.entries.length > ROLL_FEED_MAX) row.data.entries = row.data.entries.slice(-ROLL_FEED_MAX);
   saveRolls();
   if(cloud.isGM) renderRollFeed();              // our own roll shows without waiting for the echo
+}
+/* ===================================================================
+   BLESSINGS ON THE FIELD  (small floating squares, on every screen at the table)
+   A Blessing Move — Reflect, Light Screen, Safeguard, Lucky Chant, Mist… — covers every ally and
+   lasts until its activations are spent, so the whole table needs the same counter. The moment one
+   is laid (rolled by a Trainer or a Pokémon, or ＋'d on the Sage card) it goes into the shared rolls
+   row as `data.blessings` — everyone may already write there — and every player and the GM get a
+   square showing the uses left. Anyone pressing Use counts it down for everybody; at 0 the entry is
+   deleted and the square disappears. A Sage's own t.sageBlessings record shares the entry's id, so
+   the Sage card and the square are one counter (sageBlessingsLive).
+=================================================================== */
+/* (a literal inside the function, not a top-level const: render() reaches here at boot — see bug-local-load TDZ) */
+function blessingIcon(move){
+  return ({ "reflect":"🛡", "light screen":"🔷", "safeguard":"💚", "lucky chant":"🍀", "mist":"🌫" })[String(move||"").toLowerCase()] || "✨";
+}
+function tableBlessings(){
+  const d = cloud.rolls && cloud.rolls.data;
+  return (d && Array.isArray(d.blessings)) ? d.blessings : [];
+}
+function tableBlessingById(id){ return tableBlessings().find(b => b.id === id) || null; }
+/* put a Blessing on the field for the whole table; returns the entry, or null offline */
+function tableLayBlessing(move, left, who, id){
+  if(mode!=="cloud") return null;
+  const row = ensureRolls();
+  const n = Math.max(1, Math.round(left||0));
+  const b = { id: id || uid(), move: String(move||"Blessing"), left:n, max:n, who: who || "",
+              by: (cloud.name||"").trim() || "Someone", at: Date.now() };
+  row.data.blessings = [...tableBlessings().filter(x => x.id !== b.id), b];
+  saveRolls(); renderBlessingPops();
+  return b;
+}
+/* set one Blessing's activations left (and its Move, for Divine Wind); 0 takes it off for everyone */
+function tableSetBlessing(id, left, move){
+  if(mode!=="cloud" || !cloud.rolls) return;
+  const b = tableBlessingById(id); if(!b) return;
+  if(left <= 0) cloud.rolls.data.blessings = tableBlessings().filter(x => x.id !== id);
+  else { b.left = left; if((b.max||0) < left) b.max = left; if(move) b.move = move; }
+  saveRolls(); renderBlessingPops();
+}
+function tableUseBlessing(id){
+  const b = tableBlessingById(id);
+  if(!b){ renderBlessingPops(); return; }
+  const left = Math.max(0, (b.left||0) - 1);
+  tableSetBlessing(id, left);
+  toast(`${blessingIcon(b.move)} ${b.move} activated — ${left ? `${left} left` : "used up"}`);
+}
+function clearTableBlessings(){
+  if(mode!=="cloud" || !cloud.rolls || !tableBlessings().length) return;
+  cloud.rolls.data.blessings = []; saveRolls(); renderBlessingPops();
+}
+function renderBlessingPops(){
+  const old = document.getElementById("blessingPops");
+  const list = mode==="cloud" ? tableBlessings().filter(b => (b.left||0) > 0) : [];
+  if(!list.length){ if(old) old.remove(); return; }
+  const box = el("div",{id:"blessingPops"});
+  box.style.cssText = "position:fixed;z-index:71;left:14px;bottom:14px;display:flex;flex-wrap:wrap-reverse;"
+    + "gap:10px;max-width:calc(100vw - 28px);pointer-events:none";
+  list.slice().sort((a,b)=>(a.at||0)-(b.at||0)).forEach(b => {
+    const sq = el("div",{style:"pointer-events:auto;position:relative;width:86px;height:80px;box-sizing:border-box;"
+      + "display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:4px;"
+      + "background:var(--panel);border:2px solid var(--accent);border-radius:10px;"
+      + "box-shadow:0 6px 18px rgba(0,0,0,.35);text-align:center",
+      title:`${b.move} — laid by ${b.who || b.by || "someone"}. ${b.left} of ${b.max || b.left} activations left. `
+        + "Any ally may activate it; pressing Use counts it down for the whole table."});
+    sq.append(
+      el("div",{style:"font-size:10px;font-weight:800;line-height:1.1;max-width:100%;overflow:hidden;"
+        + "text-overflow:ellipsis;white-space:nowrap"}, `${blessingIcon(b.move)} ${b.move}`),
+      el("div",{style:"font-size:24px;font-weight:900;line-height:1"}, String(b.left)),
+      el("button",{class:"btn-primary",style:"padding:1px 10px;font-size:10px;line-height:1.4",
+        title:`activate ${b.move} — one use off for everyone`, onclick:() => tableUseBlessing(b.id)}, "Use"));
+    if(cloud.isGM) sq.append(el("button",{title:"take this Blessing off the field for everyone",
+      style:"position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;padding:0;"
+        + "border:1px solid var(--line);background:var(--panel-2);color:var(--muted);font-size:12px;line-height:1;cursor:pointer",
+      onclick:() => { if(confirm(`Take ${b.move} off the field for everyone?`)) tableSetBlessing(b.id, 0); }}, "×"));
+    box.append(sq);
+  });
+  if(old) old.replaceWith(box); else document.body.append(box);
 }
 async function cloudConnect(campaign, name, gmCode, silent, viewer){
   campaign = (campaign||"").trim().toLowerCase(); name = (name||"").trim();
@@ -39453,7 +39768,7 @@ function flushUiRefresh(){
   if(kinds.includes("map") && currentTab==="dex") renderDex();     // "Sheets counted" rides the map-meta row
   if(kinds.includes("pc")  && currentTab==="pc")  renderPC();
   if(kinds.includes("enc") && (currentTab==="encounters" || currentTab==="map")) render();
-  if(kinds.includes("rolls")) renderRollFeed();          // floats over every tab, so no tab check
+  if(kinds.includes("rolls")){ renderRollFeed(); renderBlessingPops(); }   // both float over every tab, so no tab check
   // a cart tick shouldn't rebuild the whole board — swap just the floating shop panel when we're on it
   if(kinds.includes("shops")){
     if(currentTab==="shops") renderShops();
@@ -44826,7 +45141,51 @@ function rollFeedRow(e){
     style:"padding:2px 8px;margin-top:4px;font-size:11px",
     title:"open the range painter on the caster's token, with just these buffs offered",
     onclick:()=>openAreaApply(e)}, "✨ Apply area"));
+  if(e.foe && e.foe.done) row.append(el("div",{style:"font-size:11px;color:var(--good)"}, `✔ ${e.foe.done}`));
+  if(e.foe && cloud.isGM) row.append(el("button",{class:"btn-secondary",
+    style:"padding:2px 8px;margin-top:4px;font-size:11px",
+    title:"pick who this lands on from the creatures on the current map",
+    onclick:()=>openFoeFxApply(e)}, e.foe.done ? "🎯 Apply to more…" : `🎯 Choose target${e.foe.single ? "" : "s"}`));
   return row;
+}
+/* A declared effect from the feed: every creature token on the map the GM is looking at, foes first,
+   with a search box — tick who it hit and the same FOE_FX apply the player's dialog would have run
+   lands on them. The row remembers who it went to, so a second GM device sees it was done. */
+function openFoeFxApply(e){
+  const f = e.foe || {}, def = FOE_FX[f.fx];
+  if(!def){ toast("This sheet doesn't know that effect — reload the page"); return; }
+  const map = currentMapForView() || activeMap();
+  const all = map ? allyTargets({}, { foes:true }) : [];
+  const list = all.filter(x => x.enemy).concat(all.filter(x => !x.enemy));
+  const pick = targetPicker(list, []);
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:6px"},
+    `${e.by||"?"}${e.who && e.who!==e.by ? ` — ${e.who}` : ""} used ${f.name || e.label || "an effect"} at ${rollFeedTime(e.at)}.`));
+  if(e.headline) body.append(el("div",{style:"font-weight:800;margin-bottom:4px"}, e.headline));
+  (e.lines||[]).forEach(l => body.append(el("div",{class:"small muted"}, l)));
+  if(f.done) body.append(el("div",{class:"small",style:"margin-top:6px;color:var(--good)"}, `✔ Already applied → ${f.done}`));
+  body.append(el("div",{class:"small muted",style:"font-weight:700;margin:10px 0 4px"},
+    f.single ? "Who does it land on? (one target)" : "Who does it land on?"));
+  body.append(map ? pick.node : el("div",{class:"small",style:"color:var(--bad)"},
+    "No map open — open the 🗺 Map with the tokens on it and try again."));
+  modal({ title:`🎯 ${e.label || f.name || "Apply"}`, bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async () => {
+      const chosen = pick.chosen();
+      if(!chosen.length){ toast("Pick a target"); return; }
+      if(f.single && chosen.length > 1){ toast(`${f.name || "It"} affects one target`); return; }
+      const r = await runFoeFx(f.fx, chosen, f.P || {});
+      await commitTargets(r.hit);
+      if(r.done.length){
+        const live = ((ensureRolls().data.entries)||[]).find(x => x.id === e.id);
+        const tgt = (live && live.foe) || f;
+        tgt.done = [tgt.done, r.done.join(", ")].filter(Boolean).join("; ").slice(0, 240);
+        saveRolls();
+      }
+      closeModal(); renderRollFeed(); refreshUI("all");
+      toast(`${e.label || f.name} → ${r.done.join(", ") || "nobody"}${r.skipped.length ? ` · skipped ${r.skipped.join(", ")}` : ""}`);
+    }}, "🎯 Apply"),
+  ]});
 }
 /* An area declaration from the feed: anchor the range painter on whoever declared it, open it at
    the shape they announced, and narrow the panel's buff list to the ones that declaration can
