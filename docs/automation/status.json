@@ -1,0 +1,396 @@
+{
+ "abilities": {
+  "Emergency Exit": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off) (Trapped Bonus); left: the recall below half HP (ABILITY_REMEMBER reminder only)",
+   "status": "partial"
+  },
+  "Immunity": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off)",
+   "status": "auto"
+  },
+  "Inner Focus": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off); left: 'Initiative set to 0 is not affected'",
+   "status": "partial"
+  },
+  "Inner Focus [Errata]": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off) (not Defensive); left: 'Initiative cannot be unwillingly lowered'",
+   "status": "partial"
+  },
+  "Insomnia": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off); left: 'cannot use the move Rest' is not enforced",
+   "status": "partial"
+  },
+  "Keen Eye": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off) (Blind, not Defensive); Accuracy-can't-be-lowered is CS_LOWER_GUARDS (not re-verified); left: ignore Accuracy Penalties + non-Stat Evasion",
+   "status": "partial"
+  },
+  "Limber": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off)",
+   "status": "auto"
+  },
+  "Magma Armor": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off) (Frozen + Boss Chilled)",
+   "status": "auto"
+  },
+  "Magma Armor [Errata]": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off); left: the Tick on foes that hit it in Melee / end a turn grappling it",
+   "status": "partial"
+  },
+  "Mind's Eye": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off) (Blind Bonus); left: Blood Moon connection, Accuracy clauses, Ghost-not-immune to Normal",
+   "status": "partial"
+  },
+  "Oblivious": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off)",
+   "status": "auto"
+  },
+  "Own Tempo": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off)",
+   "status": "auto"
+  },
+  "Purifying Salt": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off); Ghost resist was already in defenseTypeMods",
+   "status": "auto"
+  },
+  "Quick Draw": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off) (the Bonus); left: the Interrupt Move and its -2 attack penalty",
+   "status": "partial"
+  },
+  "Run Away": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off) (Slowed/Stuck/Trapped, not Defensive); the no-AoO-on-Shift clause has no engine in the app — table rule",
+   "status": "auto"
+  },
+  "Run Away [Errata]": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off) (Trapped only); the no-AoO-on-Shift clause has no engine in the app — table rule",
+   "status": "auto"
+  },
+  "Tangled Feet [Errata]": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off) (Vulnerable); left: +3 Evasion while Confused or Slowed",
+   "status": "partial"
+  },
+  "Thermal Exchange": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off); +1 Attack CS on Fire hits was already TYPE_ABSORB_ABILITIES",
+   "status": "auto"
+  },
+  "Vital Spirit": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off); left: 'cannot use the move Rest' is not enforced",
+   "status": "partial"
+  },
+  "Water Bubble": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off); Fire resist was already in defenseTypeMods; left: 'always act as though in Rainy Weather' and the Melee Water-Move bonus",
+   "status": "partial"
+  },
+  "Water Veil": {
+   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off)",
+   "status": "auto"
+  }
+ },
+ "foundations": {
+  "found-01": {
+   "note": "app.js?v=545: CS_PATTERNS 4→15 shapes + csNormalize (book typos) + all-stats/gain-lose/chain forms; 73 more Moves parse, 0 regressions vs the 110 already parsed. Left for the moves batches (not sentence shapes): swaps/copies/resets (Psych Up, Heart/Guard/Power Swap, Topsy-Turvy, Haze, Clear Smog, Spectral Thief, Baton Pass), DB-by-CS (Power Trip, Stored Power, Punishment, Behemoth x2, Dynamax Cannon), chosen-stat (Spicy Extract, Torch Song, Mystical Power), hazard (Sticky Web), 'instead' alternatives (Toxic Threads 2nd sentence).",
+   "status": "auto"
+  },
+  "found-02": {
+   "note": "moveStatusEffects/moveStatusLive parse 186 Moves (Effect Range, always-on, even rolls, user-side, durations) through the roll's real thresholds (Serene Grace/Frostbite/Firebrand/Sheer Force); moveStatusNode = banner + Apply self / GM picker / FOE_FX statusfx; moveHitFx rides target statuses+CS into attackTargetWidget + feed atk.fx (per target, skipped on x0/down, undoable); inflictStatus = Type/Veil/Feature immunity; fxStatus routed through it; Simulator uses it. Not parsed on purpose: Disabled (needs a Move), counter effects on the attacker (Beak Blast, Baneful Bunker, Silk Trap), numbered/d6 choices (Last Respects, Encore, Fickle Beam), grapple-gated Octolock, Ghost Curse",
+   "status": "auto"
+  },
+  "found-03": {
+   "note": "app.js?v=548: STATUS_IMMUNE_ABILITIES (20 printings, exact-name like STATUS_VEILS, errata fallback) inside statusImmunityFor (trainer-only bail dropped; Features still Trainer-only); statusBlockFor(o,key,opts) adds TERRAIN_STATUS_IMMUNITY (Electric: Sleep, Rugged: Confused/Enraged/Infatuated — only surely-grounded creatures with a token); opts.mold (attacker Mold Breaker) skips Veils + Defensive rows, Neutralizing Gas skips Defensive rows; Vortex riders checked one by one (Ghost not Trapped). Routed through the funnel: Prime Fury, syncHeldStatuses (Flame/Toxic Orb), Big Mushroom, food inflict + disliked Taste, sweepMapAuras (Pressure's Suppressed), simInflict. statusChipImmunity marks ⃠ + reason on sheet / Encounter / Map chips; toggleStatus refuses Ability immunities like Feature ones. Hand chips on Encounter/Map stay the GM's (marked, not refused).",
+   "status": "auto"
+  }
+ },
+ "moves": {
+  "Acid Armor": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: weather, multiturn, status, typing",
+   "status": "partial"
+  },
+  "Agility": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Amnesia": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Aqua Step": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Armor Cannon": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Aromatic Mist": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Aura Wheel": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Aurora Beam": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: status",
+   "status": "partial"
+  },
+  "Belly Drum": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Brutal Beatdown": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Bulldoze": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Calm Mind": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Chilling Water": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Coaching": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Cosmic Power": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Cotton Guard": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Cotton Spore": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Curse": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: heal, interrupt, status",
+   "status": "partial"
+  },
+  "Decorate": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Dragon Ascent": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Earth Power": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Energy Ball": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Energy Sphere": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Feather Dance": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Fey Wild": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Flame Charge": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Fleur Cannon": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Flower Shield": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Gear Up": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: swap",
+   "status": "partial"
+  },
+  "Gear Up [SS]": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Glaciate": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: status",
+   "status": "partial"
+  },
+  "Glint": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Grass Pledge": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: interrupt, status",
+   "status": "partial"
+  },
+  "Hammer Arm": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Headlong Rush": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: position",
+   "status": "partial"
+  },
+  "Howl [SS]": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Icy Wind": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "King's Shield": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Leaf Storm": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Magnetic Flux": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: swap",
+   "status": "partial"
+  },
+  "Magnetic Flux [SM]": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: swap",
+   "status": "partial"
+  },
+  "Meditate": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Memento": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: swap, status",
+   "status": "partial"
+  },
+  "Meteor Beam": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: multiturn",
+   "status": "partial"
+  },
+  "Mud Shot": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "No Retreat": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: position, multiturn, status",
+   "status": "partial"
+  },
+  "Noble Roar": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Obstruct": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Octolock": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: status",
+   "status": "partial"
+  },
+  "Overheat": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Parting Shot": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: position, status",
+   "status": "partial"
+  },
+  "Psychic": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: position",
+   "status": "partial"
+  },
+  "Rage": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: multiturn, status",
+   "status": "partial"
+  },
+  "Rapid Spin [SS]": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: status, cure",
+   "status": "partial"
+  },
+  "Resonance Beam": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Rock Smash": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Rototiller": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Seed Flare": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Shelter": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Silk Trap": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: multiturn, status",
+   "status": "partial"
+  },
+  "Solar Blade": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: weather, multiturn",
+   "status": "partial"
+  },
+  "Spirit Break": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Stuff Cheeks": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: swap",
+   "status": "partial"
+  },
+  "Sugar Rush": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: weather",
+   "status": "partial"
+  },
+  "Take Heart": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: cure",
+   "status": "partial"
+  },
+  "Tearful Look": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Thunderous Kick": {
+   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Toxic Threads": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: heal, status",
+   "status": "partial"
+  },
+  "Trailblaze": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: weather",
+   "status": "partial"
+  },
+  "Triple Arrows": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: swap",
+   "status": "partial"
+  },
+  "Venom Drench": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: status",
+   "status": "partial"
+  },
+  "Victory Dance": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: multiturn",
+   "status": "partial"
+  },
+  "Water Pledge": {
+   "note": "found-01: CS clause now parsed (⬆ Apply); still open: interrupt, multiturn, status",
+   "status": "partial"
+  }
+ }
+}

@@ -715,9 +715,10 @@ function toggleStatus(p, key){ p.statuses = p.statuses||[];
   if(i>=0){ const w = statusCureBlock(p, key); p.statuses = p.statuses.filter(k=>k!==key); if(w) toast(w); }
   else {
     /* Outright immunity, not a Save to make: a Fire Bringer cannot be Burned, a Frost Touched cannot
-       be Frozen, a Miasmic cannot be Poisoned. Refuse the chip and say which Feature said so. */
+       be Frozen, an Insomnia holder cannot fall Asleep. Refuse the chip and say which Feature or
+       Ability said so \u2014 an Ability being ignored (Mold Breaker) is switched off on its row first. */
     const im = statusImmunityFor(p, key);
-    if(im && !p.unlocked){ toast(`\u26A0 ${ownerLabel(p)} is immune to ${statusName(key)} \u2014 ${im}`); return; }
+    if(im && !p.unlocked){ toast(`\u26A0 ${ownerLabel(p)} is immune to ${statusName(key)} \u2014 ${im}${/ \u2014 can't be /.test(im) ? " (switch the Ability off if something ignores it)" : ""}`); return; }
     p.statuses.push(key);
   }
   if(key==="vortex") onVortexToggled(p, p.statuses.includes(key));
@@ -736,13 +737,163 @@ const FEATURE_STATUS_IMMUNITY = [
   { feat:"Corrupt Blood", statuses:["poisoned","badlyPoisoned"],               // Miasmic (Poison)
     why:"Corrupt Blood (Miasmic) \u2014 immune to Poisoned and Badly Poisoned" },
 ];
+/* ---- Outright Status immunities an ABILITY hands its holder (automation plan found-03) ------------
+   One row per printing that says "immune to X" / "cannot be X" — not a Save bonus (Early Bird), not a
+   cure (Shed Skin, Hydration, Leaf Guard) and not a "no HP loss" (Magic Guard, Heatproof [Errata]).
+   Matched on the exact printed name the way STATUS_VEILS is (ownerAbilityNames keeps "[Errata]"),
+   because printings differ: Run Away blocks Slowed/Stuck/Trapped, Run Away [Errata] only Trapped. A
+   printing with no row of its own falls back to the plain name's row. The Veils that also cover
+   allies stay in STATUS_VEILS (they need the Map); these guard only their holder, so they work on a
+   local sheet too — and a Trainer's granted Abilities (Vulcan's Intuition → Magma Armor) count.
+   `defensive` = the printing carries the Defensive keyword: an attacker's Mold Breaker (opts.mold)
+   and a Neutralizing Gas the holder stands in both switch it off. Keen Eye, Mind's Eye, Run Away and
+   Tangled Feet [Errata] aren't Defensive and hold through both. */
+const SLEEP_STATUS_KEYS = ["sleep","drowsy","badSleep"];
+const STATUS_IMMUNE_ABILITIES = [
+  { ab:"insomnia",         name:"Insomnia",         defensive:true,  statuses:SLEEP_STATUS_KEYS },
+  { ab:"vital spirit",     name:"Vital Spirit",     defensive:true,  statuses:SLEEP_STATUS_KEYS },
+  { ab:"immunity",         name:"Immunity",         defensive:true,  statuses:["poisoned","badlyPoisoned"] },
+  { ab:"limber",           name:"Limber",           defensive:true,  statuses:["paralysis"] },
+  { ab:"magma armor",      name:"Magma Armor",      defensive:true,  statuses:["frozen","chilled"] },
+  { ab:"oblivious",        name:"Oblivious",        defensive:true,  statuses:["enraged","infatuation"] },
+  { ab:"own tempo",        name:"Own Tempo",        defensive:true,  statuses:["confused"] },
+  { ab:"water veil",       name:"Water Veil",       defensive:true,  statuses:["burned"] },
+  { ab:"water bubble",     name:"Water Bubble",     defensive:true,  statuses:["burned"] },
+  { ab:"thermal exchange", name:"Thermal Exchange", defensive:true,  statuses:["burned"] },
+  { ab:"purifying salt",   name:"Purifying Salt",   defensive:true,
+    statuses:["burned","frozen","chilled","paralysis","poisoned","badlyPoisoned","cursed",...SLEEP_STATUS_KEYS] },
+  { ab:"inner focus",      name:"Inner Focus",      defensive:true,  statuses:["flinch"] },
+  { ab:"inner focus [errata]", name:"Inner Focus [Errata]", defensive:false, statuses:["flinch"] },
+  { ab:"quick draw",       name:"Quick Draw",       defensive:true,  statuses:["flinch"] },
+  { ab:"emergency exit",   name:"Emergency Exit",   defensive:true,  statuses:["trapped"] },
+  { ab:"keen eye",         name:"Keen Eye",         defensive:false, statuses:["blinded"] },
+  { ab:"mind's eye",       name:"Mind's Eye",       defensive:false, statuses:["blinded"] },
+  { ab:"run away",         name:"Run Away",         defensive:false, statuses:["slowed","stuck","trapped"] },
+  { ab:"run away [errata]", name:"Run Away [Errata]", defensive:false, statuses:["trapped"] },
+  { ab:"tangled feet [errata]", name:"Tangled Feet [Errata]", defensive:false, statuses:["vulnerable"] },
+];
+const STATUS_IMMUNE_ABILITY_KEYS = new Set(STATUS_IMMUNE_ABILITIES.map(d => d.ab));
 function statusName(key){ const d = STATUS_DEFS.find(s => s.key === key); return d ? d.name : key; }
-function statusImmunityFor(o, key){
-  if(!o || !isTrainerOwner(o)) return "";
+/* is this creature's token standing in somebody else's Neutralizing Gas? (Defensive Abilities off) */
+function defensiveAbilitiesGassed(o){
+  try{
+    if(mode !== "cloud") return false;
+    const me = tokenForOwner(o); if(!me) return false;
+    const map = currentMapForView() || activeMap();
+    return !!map && inNeutralizingGas(map, me);
+  }catch(e){ return false; }
+}
+function abilityStatusImmunity(o, key, opts){
+  const rows = STATUS_IMMUNE_ABILITIES.filter(d => d.statuses.includes(key));
+  if(!rows.length) return "";
+  const names = ownerAbilityNames(o);
+  if(!names.length) return "";
+  const plain = n => n.replace(/\s*\[errata\]\s*$/, "");
+  const hits = rows.filter(d => names.some(n => n === d.ab || (!STATUS_IMMUNE_ABILITY_KEYS.has(n) && plain(n) === d.ab)));
+  if(!hits.length) return "";
+  const say = d => `${d.name} — can't be ${statusName(key)}`;
+  const firm = hits.find(d => !d.defensive);
+  if(firm) return say(firm);
+  if(opts && opts.mold) return "";                  // Mold Breaker ignores Defensive Abilities
+  if(defensiveAbilitiesGassed(o)) return "";
+  return say(hits[0]);
+}
+/* Terrains that keep an Affliction off whoever is GROUNDED (Electric: Sleep; Rugged: Confusion,
+   Enraged, Infatuation). Only the funnel reads these, only for a creature with a token on the Map,
+   and only when it is surely on the ground — a Flying-Type or anything with a Sky / Levitate speed may
+   be airborne, which the Map doesn't model, so it is left to the table. */
+const TERRAIN_STATUS_IMMUNITY = [
+  { terrain:"electric", statuses:SLEEP_STATUS_KEYS },
+  { terrain:"rugged",   statuses:["confused","enraged","infatuation"] },
+];
+function surelyGrounded(o){
+  if(isTrainerOwner(o)) return !(windRunnerLevitate(o) > 0);
+  if((monTypes(o) || []).includes("Flying")) return false;
+  const c = monCapabilities(o, getSpecies(o.species)) || {};
+  return !(c.sky > 0) && !(c.levitate > 0);
+}
+function terrainStatusBlock(o, key){
+  try{
+    const rows = TERRAIN_STATUS_IMMUNITY.filter(r => r.statuses.includes(key));
+    if(!rows.length) return "";
+    const on = activeTerrains(); if(!on.length) return "";
+    const hit = rows.map(r => on.find(t => t.key === r.terrain)).find(Boolean);
+    if(!hit || !tokenForOwner(o) || !surelyGrounded(o)) return "";
+    return `${hit.name} — grounded`;
+  }catch(e){ return ""; }
+}
+function statusImmunityFor(o, key, opts){
+  if(!o) return "";
+  const ab = abilityStatusImmunity(o, key, opts);
+  if(ab) return ab;
+  if(!isTrainerOwner(o)) return "";
   const f = FEATURE_STATUS_IMMUNITY.find(d => (d.statuses||[]).includes(key) && hasFeatureLoose(o, d.feat));
   if(f) return f.why;
   const md = activeFeatureModes(o).find(d => (d.immune||[]).includes(key));
   return md ? `${md.feat} is up \u2014 it makes you immune while it is Bound` : "";
+}
+/* ---- Putting an Affliction ON a creature automatically ------------------------------------------
+   The status chips are the table's own hand: they mark an immunity (\u20e0) but let the GM tick it anyway.
+   Anything the SHEET applies \u2014 a Move's Effect Range, a Feature aimed at a foe \u2014 goes through here
+   instead, so the book's immunities are honoured without anyone remembering them: the Type immunities
+   printed on STATUS_DEFS (a Fire-Type is never Burned), the Veils covering the creature, and whatever
+   statusImmunityFor knows. Never toggles OFF \u2014 a creature already Burned stays Burned. Doesn't save:
+   the caller commits (a token's sheet, an encounter row) the way it already does for Combat Stages.
+   Returns { ok, already, why }. `opts.mold` = the attacker's Mold Breaker is on for this Move, which
+   ignores the Veils and every Defensive immunity Ability (never a Type, Feature or Terrain). */
+function statusTypeImmunity(o, key, sp){
+  const def = statusByKey.get(key);
+  if(!o || !def || !def.immune || isTrainerOwner(o)) return "";
+  let types = [];
+  try{ types = monTypes(o, sp) || []; }catch(e){ types = []; }
+  const ty = types.find(t => def.immune.includes(t));
+  return ty ? `${ty}-Types can't be ${def.name}` : "";
+}
+function statusBlockFor(o, key, opts){
+  if(!o) return "";
+  const ty = statusTypeImmunity(o, key);
+  if(ty) return ty;
+  if(!(opts && opts.mold)) try{
+    const v = statusVeiledBy(o, key)[0];
+    if(v) return `${v.veil.name}${v.self ? "" : ` (${v.who})`}`;
+  }catch(e){}
+  return statusImmunityFor(o, key, opts) || terrainStatusBlock(o, key);
+}
+/* the \u20e0 on a hand-ticked chip: why this creature can't have it right now ("" = nothing objects) */
+function statusChipImmunity(o, s, sp){
+  if(!o || !s) return "";
+  return statusTypeImmunity(o, s.key, sp) || statusImmunityFor(o, s.key);
+}
+function inflictStatus(o, key, opts){
+  if(!o || !statusByKey.has(key)) return { ok:false, why:"" };
+  if(!Array.isArray(o.statuses)) o.statuses = [];
+  dedupeStatuses(o);
+  if(o.statuses.includes(key)) return { ok:false, already:true, why:"" };
+  const why = o.unlocked ? "" : statusBlockFor(o, key, opts);
+  if(why) return { ok:false, why };
+  if(key==="knockedOut" || key==="dead" || key==="invisible") queueAuraSweep();
+  o.statuses.push(key);
+  if(key==="vortex"){
+    /* the Vortex's own Slowed + Trapped ride in with it \u2014 but a Ghost can't be Trapped and a Run Away
+       can't be Slowed, so each rider that is newly added is put through the same check */
+    const had = new Set(o.statuses);
+    onVortexToggled(o, true);
+    if(!o.unlocked) VORTEX_RIDERS.forEach(k => {
+      if(!had.has(k) && o.statuses.includes(k) && statusBlockFor(o, k, opts)) o.statuses = o.statuses.filter(x => x !== k);
+    });
+  }
+  latchFlinchInit(o);
+  return { ok:true, why:"" };
+}
+/* several at once \u2192 { on:["Burned"], held:["Frozen (Ice-Types can't be Frozen)"] } for the readout */
+function inflictStatuses(o, keys, opts){
+  const on = [], held = [];
+  uniqStatusKeys(keys).forEach(k => {
+    const r = inflictStatus(o, k, opts);
+    if(r.ok) on.push(statusName(k));
+    else if(r.why) held.push(`${statusName(k)} (${r.why})`);
+  });
+  return { on, held };
 }
 /* Abilities that forbid CURING an affliction rather than changing a number. Power of Rage's pair
    ("The user may not make rolls to cure themselves of the Enraged condition") is the only one so
@@ -3117,12 +3268,11 @@ function typeAbilityRow(p, an, redraw, persist){
       ()=>{
         const u = abilityUse(p, "Prime Fury");
         if(!u.spend()){ toast("Prime Fury is already spent this Scene."); return; }
-        if(!Array.isArray(p.statuses)) p.statuses = [];
-        if(!p.statuses.includes("enraged")) p.statuses.push("enraged");
+        const rg = inflictStatus(p, "enraged");      // Oblivious / Rugged Terrain keep the Rage off
         if(!p.cs || typeof p.cs !== "object") p.cs = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
         p.cs.atk = Math.max(-6, Math.min(6, (p.cs.atk||0) + 1));
         (persist||save)(); redraw && redraw();
-        toast(`\u{1F621} Prime Fury \u2014 ${ownerLabel(p)} is Enraged, +1 Attack Combat Stage.`);
+        toast(`\u{1F621} Prime Fury \u2014 ${ownerLabel(p)} ${rg.why ? `isn't Enraged (${rg.why})` : "is Enraged"}, +1 Attack Combat Stage.`);
       });
   if(key === "sprint")
     return mk("\u{1F3C3} Sprint",
@@ -3688,6 +3838,12 @@ function syncHeldStatuses(o){
   const added = [], removed = [], stayed = [];
   Object.keys(want).forEach(k=>{
     if(o.statuses.includes(k)) return;         // already suffering it — not ours, so not ours to lift
+    /* a Flame Orb can't Burn a Water Veil / a Fire-Type — nothing is recorded, so switching the
+       Ability off (or the next sync after it goes) lets the item land. Guarded: this also runs from
+       normPokemon inside load(), where the Map-reading half of the check isn't declared yet. */
+    let blocked = "";
+    try{ blocked = o.unlocked ? "" : statusBlockFor(o, k); }catch(e){ blocked = ""; }
+    if(blocked) return;
     o.statuses.push(k);
     added.push(nameOf(k));
     (o.heldFxStatus = o.heldFxStatus || {})[k] = want[k].sticky ? "sticky" : "lift";
@@ -6534,7 +6690,18 @@ function monSprite(speciesName, shiny, sizeCls="s-sm", override, eager){
 }
 const TRAINER_PLACEHOLDER = "data:image/svg+xml,"+encodeURIComponent(
   "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='none'/><circle cx='50' cy='38' r='20' fill='%23888'/><path d='M16 92c0-19 15-30 34-30s34 11 34 30z' fill='%23888'/></svg>");
-/* Pick a local image file, downscale it to maxDim px, and hand back a compact JPEG data URL. */
+/* How big a picture that can be FRAMED (portraits, Pokémon photos, token art) is kept. Framing
+   crops to a square/circle and zooms up to 300%, so the stored file has to carry far more pixels
+   than the 56-120px it's drawn at — at the old 256px a landscape photo had ~140px of real height
+   left for the square crop, and a 3× zoom was stretching ~50 source pixels across the whole
+   editor. Only when the file goes to the Storage bucket, though: offline, it's inlined as base64
+   into localStorage, where ten 720px photos would eat the 5 MB quota. */
+function framablePicDim(){ return (mode==="cloud" && cloud.client && cloud.campaign) ? 720 : 320; }
+/* Pick a local image file, downscale it so its SHORT side is at most maxDim px (long side at most
+   2×maxDim — a crop only ever keeps the short side), and hand back a compact data URL: WebP where
+   the browser can encode it (keeps transparency), otherwise PNG for a picture with transparency
+   and JPEG for one without. JPEG was used for everything before, which painted transparent art
+   onto black. */
 function pickImage(maxDim, onData){
   const inp = el("input",{type:"file",accept:"image/*",style:"display:none"});
   inp.addEventListener("change",()=>{
@@ -6544,11 +6711,32 @@ function pickImage(maxDim, onData){
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-        const w = Math.max(1, Math.round(img.width*scale)), h = Math.max(1, Math.round(img.height*scale));
+        const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
+        const scale = Math.min(1, maxDim / Math.min(W, H), 2*maxDim / Math.max(W, H));
+        const w = Math.max(1, Math.round(W*scale)), h = Math.max(1, Math.round(H*scale));
+        /* One big drawImage from a 4000px photo to a few hundred px samples only a handful of source
+           pixels per output pixel and comes out jagged, so halve in steps first. */
+        let src = img, sw = W, sh = H;
+        while(sw/2 >= w*1.01 && sh/2 >= h*1.01){
+          const nw = Math.round(sw/2), nh = Math.round(sh/2);
+          const step = el("canvas"); step.width = nw; step.height = nh;
+          const sx = step.getContext("2d"); sx.imageSmoothingEnabled = true; sx.imageSmoothingQuality = "high";
+          sx.drawImage(src, 0, 0, sw, sh, 0, 0, nw, nh);
+          src = step; sw = nw; sh = nh;
+        }
         const cv = el("canvas"); cv.width = w; cv.height = h;
-        cv.getContext("2d").drawImage(img, 0, 0, w, h);
-        let out; try{ out = cv.toDataURL("image/jpeg", 0.82); }catch(e){ out = reader.result; }
+        const cx = cv.getContext("2d"); cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = "high";
+        cx.drawImage(src, 0, 0, sw, sh, 0, 0, w, h);
+        let out = "";
+        try{
+          out = cv.toDataURL("image/webp", 0.9);
+          if(out.indexOf("data:image/webp")!==0){        // Safari can't encode WebP and hands back PNG
+            let alpha = false;
+            try{ const px = cx.getImageData(0, 0, w, h).data;
+                 for(let i=3;i<px.length;i+=4) if(px[i]<255){ alpha = true; break; } }catch(e){}
+            out = alpha ? cv.toDataURL("image/png") : cv.toDataURL("image/jpeg", 0.9);
+          }
+        }catch(e){ out = reader.result; }
         onData(out); inp.remove();
       };
       img.onerror = () => { toast("⚠ Could not read that image"); inp.remove(); };
@@ -9238,6 +9426,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
        them at all - so the whole gym's secondary effects were being read off the PDF by hand. Same
        parser, and the same two Abilities that bend it: Frostbite widens Freeze on an Ice Move,
        Serene Grace widens every Effect Range by +2. */
+    let hitFx = null;                    // the target's Afflictions / CS, carried to the 💥 Apply below
     if(st.move){
       const trThr = buffEffectThresholds(sereneGraceThresholds(
         burnRangeThresholds(
@@ -9254,16 +9443,18 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
           tl.append(el("div",{class:"small",style:"color:var(--good);font-weight:700"},
             `\u26A1 ${acc} \u2265 ${x.n} \u2014 extra effect triggers: `,
             el("span",{class:"muted",style:"font-weight:400"}, x.text)));
-          const stx = moveRandomStatus(st.move) ? null : statusHitFromText(x.text);
-          if(stx) tl.append(el("div",{style:"font-size:26px;font-weight:800;color:var(--bad);text-align:center;margin:4px 0 8px;letter-spacing:.5px"},
-            stx.name+"!"));
         });
         trThr.filter(x=>acc<x.n).forEach(x=>tl.append(el("div",{class:"small muted"},
           `\u25AB ${acc} < ${x.n} \u2014 this effect doesn't trigger: ${x.text}`)));
         out.append(tl);
       }
       const rsn = randomStatusNode(st.move, acc); if(rsn) out.append(rsn);
-      const csn = moveCSNode(t, st.move, acc, opts.rerender, opts.persist);
+      const rideHit = mode==="cloud" && !isStatusAtk && connected > 0;
+      const sn = moveStatusNode(t, st.move, trThr, acc, { redraw:opts.rerender, persist:opts.persist,
+        extra: rsn && rsn.picked, rideHit });
+      if(sn) out.append(sn);
+      hitFx = moveHitFx(st.move, trThr, acc, rsn && rsn.picked);
+      const csn = moveCSNode(t, st.move, acc, opts.rerender, opts.persist, rideHit);
       if(csn) out.append(csn);
       const tn = moveTypeNode(t, st.move, opts.rerender, opts.persist);
       if(tn) out.append(tn);
@@ -9362,7 +9553,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       const tw = attackTargetWidget({ dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce,
         atkTinted: ownerHasAbility(t,"Tinted Lens") || !!(tMold && tMold.tinted), atkMold: !!tMold,
         atkExploit: ownerHasAbility(t,"Exploit"), atkWar: ownerAuraActive(t,"War"), atkDeicide: !!st.deicide,
-        seFlat: heldSeFlatDamage(t), defCSMode, moveRule, critExtra });
+        seFlat: heldSeFlatDamage(t), defCSMode, moveRule, critExtra, fx: hitFx });
       if(tw) out.append(tw);
       feedLogged = true;
       logRoll({ kind:"move", label:st.name, who:t.name||"",
@@ -9372,7 +9563,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         atk: isStatusAtk ? null : { dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce, critExtra,
                atkTinted: ownerHasAbility(t,"Tinted Lens") || !!(tMold && tMold.tinted), atkMold: !!tMold, moveRule,
                atkExploit: ownerHasAbility(t,"Exploit"), atkWar: ownerAuraActive(t,"War"), atkDeicide: !!st.deicide,
-               seFlat: heldSeFlatDamage(t), defCSMode } });
+               seFlat: heldSeFlatDamage(t), defCSMode, fx: hitFx } });
     }
     if(dblStrike){
       const ov = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center"});
@@ -9401,7 +9592,7 @@ function trainerAvatar(t){
   wrap.append(framedPic(zoomImg(el("img",{class:"avatar", alt:"Trainer portrait", src: t.avatar || TRAINER_PLACEHOLDER}),
     t.name || "Trainer"), t.avatar ? t.avatarFocus : null));
   const acts = el("div",{class:"avatar-acts"});
-  acts.append(el("button",{class:"linkbtn",onclick:()=>pickImage(256, async d=>{ setAvatar(t, await storeImg(d,"avatar")); save(); renderTrainer(); })},
+  acts.append(el("button",{class:"linkbtn",onclick:()=>pickImage(framablePicDim(), async d=>{ setAvatar(t, await storeImg(d,"avatar")); save(); renderTrainer(); })},
     t.avatar ? "📷 Change" : "📷 Photo"));
   if(t.avatar) acts.append(el("button",{class:"linkbtn",title:"choose which part of the picture is shown",
     onclick:()=>openAvatarFocus(t, ()=>{ save(); renderTrainer(); })},"🖼 Frame"));
@@ -11615,12 +11806,9 @@ const GEAR_ACTIONS = {
     title:"Big Mushroom — eat it: you become Poisoned, and if you do, gain +1 Combat Stage in two random Stats. A Poison- or Steel-Type can't be Poisoned, so it gets nothing.",
     label:()=>"Poisoned → +1 CS ×2",
     run:o=>{
-      if(!Array.isArray(o.statuses)) o.statuses = [];
-      const types = monTypes(o).map(t=>String(t).toLowerCase());
-      if(types.includes("poison") || types.includes("steel"))
-        return "can't be Poisoned, so the Mushroom does nothing — it is not eaten";
-      if(o.statuses.includes("poisoned")) return "already Poisoned — the Mushroom does nothing, and is not eaten";
-      o.statuses.push("poisoned");
+      const r = inflictStatus(o, "poisoned");       // Poison/Steel-Types, Immunity, Pastel Veil…
+      if(r.already) return "already Poisoned — the Mushroom does nothing, and is not eaten";
+      if(!r.ok) return `can't be Poisoned (${r.why || "immune"}), so the Mushroom does nothing — it is not eaten`;
       // "two different Stats" — the second roll re-rolls off the first
       const a = randomCSStat(o, +1), b = randomCSStat(o, +1, a);
       consumeHeldItem(o, "Big Mushroom");
@@ -15311,7 +15499,7 @@ function heroCard(p, sp){
   const spriteBox = el("div",{class:"sprite-box"});
   spriteBox.append(monPic(p, sp, "s-lg", p.nickname || sp?.name || p.species));
   spriteBox.append(el("button",{class:"photo-btn",title:p.mega?"upload a photo for this Mega form":"upload a photo",
-    onclick:()=>pickImage(240, async d=>{ setMonImage(p, await storeImg(d,"mon")); save(); refreshMon(p); })},"📷"));
+    onclick:()=>pickImage(framablePicDim(), async d=>{ setMonImage(p, await storeImg(d,"mon")); save(); refreshMon(p); })},"📷"));
   if(monImage(p)) spriteBox.append(el("button",{class:"photo-btn photo-frame",title:"frame the photo — choose which part is shown",
     onclick:()=>openMonImageFocus(p, ()=>{ save(); refreshMon(p); })},"🖼"));
   if(monImage(p)) spriteBox.append(el("button",{class:"photo-rm",title:"remove photo — use the default sprite",
@@ -15413,9 +15601,9 @@ function statusCard(p){
     const chips = el("div",{class:"chips"});
     STATUS_DEFS.filter(s=>s.kind===kind).filter(s=>statusPickable(s) || hasStatus(p,s.key)).forEach(s=>{
       const on = hasStatus(p,s.key);
-      const immune = s.immune && monTypes(p, sp).some(t=>s.immune.includes(t));
+      const imWhy = statusChipImmunity(p, s, sp), immune = !!imWhy;   // Type, Ability or Feature
       const block = statusCureBlock(p, s.key);   // Enduring Rage / White Flame forbid curing Enraged
-      const chip = el("button",{class:"statuschip"+(on?" on":"")+(statusPickable(s)?"":" ro"), title: (immune?`${sp.name} is immune. `:"")+(statusPickable(s)?"":"GM-set — you can't change this. ")+s.effect+(block?`\n\n${block}`:""),
+      const chip = el("button",{class:"statuschip"+(on?" on":"")+(statusPickable(s)?"":" ro"), title: (immune?`Immune: ${imWhy}. `:"")+(statusPickable(s)?"":"GM-set — you can't change this. ")+s.effect+(block?`\n\n${block}`:""),
         disabled: !statusPickable(s),
         onclick:()=>{ toggleStatus(p,s.key);
           if(s.key==="tagged" && hasStatus(p,"tagged") && clearOtherTags(p)) toast("The previous Tag is lost — only one foe at a time");
@@ -16515,7 +16703,8 @@ function tradeInDigestion(o, buff, opts={}){
         o.statuses = o.statuses.filter(s=>s!==k); cured.push(statusByKey.get(k)?.name||k); } });
     }
     if(cured.length) log.push(`cured ${cured.join(", ")}`);
-    if(def.inflict && !hasStatus(o,def.inflict)){ (o.statuses=o.statuses||[]).push(def.inflict); log.push(`now ${statusByKey.get(def.inflict)?.name||def.inflict}`); }
+    if(def.inflict && !hasStatus(o,def.inflict)){ const r = inflictStatus(o, def.inflict);
+      log.push(r.ok ? `now ${statusName(def.inflict)}` : `not ${statusName(def.inflict)} (${r.why || "immune"})`); }
     if(def.cs){ Object.entries(def.cs).forEach(([k,v])=>{ o.cs[k] = Math.max(-6,Math.min(6,(o.cs[k]||0)+v*x)); log.push(`${v>0?"+":""}${v*x} ${statLbl(k)} CS`); }); }
     if(def.csRandom){
       // Balm Mushroom's penalty only lands if it actually cured something (its own wording)
@@ -16563,8 +16752,8 @@ function tradeInDigestion(o, buff, opts={}){
     if(def.weakenType) log.push(`the incoming ${def.weakenType}-Type Move is weakened ${x>1?"two steps":"one step"}`);
     if(hates){
       const k = def.dislikeStatus || "enraged";
-      if(!hasStatus(o,k)){ (o.statuses=o.statuses||[]).push(k); }
-      log.push(`disliked Taste — now ${statusByKey.get(k)?.name||k}`);
+      const r = inflictStatus(o, k);
+      log.push(r.why ? `disliked Taste — but it can't be ${statusName(k)} (${r.why})` : `disliked Taste — now ${statusName(k)}`);
     }
     if(def.note) log.push(def.note);
   } else {
@@ -20037,6 +20226,7 @@ function randomStatusNode(m, acc){
       `${rs.opts[0].name} AND ${rs.opts[1].name}!`),
       el("div", { class:"small muted", style:"text-align:center" },
         `Natural ${acc} \u2014 ${m.name} inflicts both.`));
+    wrap.picked = rs.opts.map(o => o.key);
     return wrap;
   }
   if(acc < rs.at){
@@ -20045,14 +20235,218 @@ function randomStatusNode(m, acc){
     return wrap;
   }
   const pick = rs.opts[Math.floor(Math.random() * rs.opts.length)];
+  wrap.picked = [pick.key];            // moveStatusNode offers to put it on the target
   wrap.append(el("div", { class:"small", style:"color:var(--good);font-weight:700" },
     `\u26A1 ${acc} \u2265 ${rs.at} \u2014 ${m.name} inflicts a condition: `
     + (rs.kind === "d3" ? "1d3" : "a coin flip") + " decides which."),
     el("div", { style:"font-size:26px;font-weight:800;color:var(--bad);text-align:center;margin:4px 0 8px;letter-spacing:.5px" },
       pick.name + "!"),
     el("div", { class:"small muted", style:"text-align:center" },
-      `One of ${rs.opts.map(o => o.name).join(" / ")}. Apply it from the target's own Status Conditions.`));
+      `One of ${rs.opts.map(o => o.name).join(" / ")}.`));
   return wrap;
+}
+/* ===================================================================
+   MOVE STATUS EFFECTS — the Afflictions a Move hands out (found-02)
+   -------------------------------------------------------------------
+   ~150 Moves put a condition on their target — "Ember Burns the target on 18+", "The target is
+   Confused.", "Legal targets hit by Glacial Lance are Stuck and Trapped until the end of their next
+   turn", "After damage is dealt, the user becomes Enraged and Confused". The roll used to only SHOUT
+   the first one ("Burned!") and left the chip to the table; the always-on ones weren't even shouted.
+
+   Parsed out of the effect text, two sentence shapes:
+     A  "<Move> Burns / Badly Poisons / Confuses … (the target | all legal targets) (on N+)"
+     B  "(the target | legal targets hit by X | the user …) (is|are|becomes|falls|gains) (also)
+         <Poisoned | Stuck and Trapped | put in a Vortex …> (on N+) (until … / for 1 full round)"
+   A sentence is NOT believed when it is conditional or about something else: "If the target is
+   already Poisoned…", "instead", "cannot", "cures", "immune", "runs into the hazard", "the
+   triggering attacker", "On a result of 1 or 2", "may choose", a numbered alternative ("1: …").
+   The coin-flip / 1d3 Moves are moveRandomStatus's, so this stands down for them entirely.
+   Disabled is never parsed: it needs a Move chosen, which no sentence can supply.
+
+   Each entry: { who:"target"|"user", keys:[…], range:N|null, even:bool, dur:"…", text:sentence }.
+   Where it lands: the user's half is one press; the target's half rides WITH THE HIT when the Move
+   rolled damage in a cloud game (attackTargetWidget / the GM's feed apply it per target, after
+   Type immunity), and otherwise opens the foe picker (GM) or goes to the GM's feed (player) —
+   every path through inflictStatus, so Type / Veil / Feature immunities hold. */
+const MS_RANGE_RE = /\bon\s+(?:an?\s+)?(?:(?:accuracy\s+)?roll\s+of\s+(?:an?\s+)?)?(\d{1,2})\s*(?:\+|or\s+(?:higher|above|more))/i;
+const MS_EVEN_RE  = /\beven[-\s]numbered\s+rolls?\b/i;
+const MS_DUR_RE   = /\b(until the end of (?:their|its|the user's|your|the target's) next turn|until the beginning of your next turn|for (?:one|1|two|2|three|3) (?:full )?(?:rounds?|turns?)|for the remainder of the (?:encounter|scene)|until the end of the (?:encounter|scene)|until it is switched out|while the user remains in the encounter|at the end of its next turn)\b/i;
+const MS_SKIP_RE  = /\b(?:instead|already|no\s+longer|immun\w*|cannot|can\s+only|may\s+only|can\s+be\s+only|cure[sd]?|remov\w+|freed|lets\s+a\s+trapped|even\s+if\s+(?:they|the\s+user|it)\s+(?:is|are)|if\s+the\s+(?:user|target)\s+is|despite|resolution\s+effect|on\s+a\s+miss|may\s+choose|may\s+perform|may\s+attempt|may\s+be\s+put|runs?\s+into|triggering|once\s+per\s+scene|on\s+a\s+result\s+of|not\s+become|counts\s+as|terrain|interrupt)\b|»/i;
+const MS_LEAD_SKIP_RE = /^\W*(?:if\b(?!\s+(?:successful|you\s+do|used\s+this\s+way)\b)|(?:however,\s*)?while\b|\d+\s*:|on\s+\d\b)/i;
+const MS_VERB_RE  = /\b(badly\s+poisons|poisons|burns|freezes|paralyzes|confuses|flinches|infatuates|suppresses|slows|trips|curses|blinds)\b(?:\s+(?:the\s+targets?|its\s+targets?|a\s+target|all\s+(?:legal\s+)?targets?|all\s+foes|the\s+foes?))?(?=\s*(?:on\b|if\b|even\b|until\b|for\b|and\b|,|\.|;|$))/i;
+const MS_SUBJ_RE  = new RegExp("\\b(the\\s+user|(?:the\\s+|its\\s+|a\\s+|each\\s+|all\\s+)?(?:legal\\s+)?(?:targets?|foes?)"
+  + "(?:\\s+(?:hit\\s+by|of)\\s+[^,.;]{1,40}?|\\s+that\\s+are\\s+hit|\\s+adjacent\\s+to\\s+\\w+|\\s+on\\s+the\\s+ground)?)"
+  + "\\s+(?:(?:also|additionally|then|now)\\s+)?(?:is|are|becomes?|falls?|gains?)\\s+(?:(?:also|additionally|then|now)\\s+)?"
+  + "((?:put|trapped)\\s+in\\s+a\\s+vortex|badly\\s+poisoned|bad\\s+sleep|poisoned|burned|frozen|paralyzed|asleep|confused|cursed"
+  + "|enraged|flinched|infatuated|suppressed|stuck|slowed|trapped|tripped|vulnerable|blinded|knocked\\s+over)\\b([^;]*)", "i");
+/* every Affliction a stretch of text names, each once — "badly poisoned" is not also "poisoned",
+   "Bad Sleep" is not also "Sleep", "trapped in a Vortex" is the Vortex (which brings Trapped itself) */
+function statusKeysIn(text){
+  let s = String(text || "");
+  const out = [];
+  const take = (key, re) => { if(re.test(s)){ out.push(key); s = s.replace(new RegExp(re.source, "gi"), " "); } };
+  take("vortex", /\b(?:put|trapped)\s+in\s+a\s+vortex\b/i);
+  take("badSleep", /\bbad\s+sleep\b/i);
+  for(const [key, re] of STATUS_KEYWORDS){
+    if(key === "disabled" || key === "badSleep") continue;
+    take(key, re);
+  }
+  return out;
+}
+function msRangeIn(s){ const r = MS_RANGE_RE.exec(s || ""); return r ? Math.max(2, Math.min(20, +r[1])) : null; }
+/* one sentence → its status entries (no caching; moveStatusEffects caches per Move text) */
+function statusClauses(sentence){
+  const text = String(sentence || "").trim().replace(/\s+/g, " ");
+  if(!text || MS_SKIP_RE.test(text) || MS_LEAD_SKIP_RE.test(text)) return [];
+  const out = [];
+  const durOf = s => { const d = MS_DUR_RE.exec(s || ""); return d ? d[1] : ""; };
+  const a = MS_VERB_RE.exec(text);
+  if(a){
+    const keys = statusKeysIn(a[1]);
+    const after = text.slice(a.index + a[0].length);
+    if(keys.length) out.push({ who:"target", keys, range: msRangeIn(after) ?? msRangeIn(text),
+      even: MS_EVEN_RE.test(text), dur: durOf(after), text });
+  }
+  const b = MS_SUBJ_RE.exec(text);
+  if(b){
+    const who = /user/i.test(b[1]) ? "user" : "target";
+    const lead = text.slice(0, b.index);
+    const pred = b[2] + b[3];
+    // "Vulnerable, and is Paralyzed on 16+" / "Flinched on a 15+ and Frozen on a 19+" — each half its own range
+    const segs = pred.split(/,?\s+and\s+(?:is|are|becomes?)\s+|\s+and\s+(?=\w+\s+on\s+(?:an?\s+)?\d)/i);
+    segs.forEach(seg => {
+      const head = seg.split(/\b(?:until|for|while|unless|when|instead|even|after|at\s+the\s+end|if|and\s+(?:loses?|receives?|gains?|has|have))\b/i)[0];
+      const keys = statusKeysIn(head).filter(k => !out.some(e => e.who === who && e.keys.includes(k)));
+      if(!keys.length) return;
+      const range = segs.length > 1 ? (msRangeIn(seg) ?? msRangeIn(lead)) : (msRangeIn(pred) ?? msRangeIn(text));
+      out.push({ who, keys, range, even: MS_EVEN_RE.test(segs.length > 1 ? seg + " " + lead : text),
+        dur: durOf(seg) || durOf(pred), text });
+    });
+  }
+  return out;
+}
+const _msCache = new Map();
+function moveStatusEffects(m){
+  const text = String((m && m.effect) || "");
+  if(!text) return [];
+  if(_msCache.has(text)) return _msCache.get(text);
+  const out = moveRandomStatus(m) ? []
+    : text.split(/(?<=[.;])\s+|\n+/).flatMap(s => statusClauses(s));
+  _msCache.set(text, out);
+  return out;
+}
+/* Which of them this roll triggers. `thresholds` is the Effect-Range list the roll is really using —
+   Serene Grace / Frostbite / Firebrand / a Food Buff already widened it, and Sheer Force already
+   took its ranges away — so a parsed "on 19+" is re-read through it rather than trusted as printed.
+   A range an Ability ADDED (Frostbite's Slow on 18+) has no sentence in the Move: it's parsed from
+   the threshold's own text. A natural 1 misses, so nothing lands. */
+function moveStatusLive(m, thresholds, acc){
+  const live = [], dead = [];
+  const raw = effectThresholds(m && m.effect);
+  const thr = thresholds || raw;
+  const sameRange = (t, r) => t.text === r.text || String(t.text).startsWith(r.text + " (");
+  moveStatusEffects(m).forEach(e => {
+    if(e.range == null){
+      ((!e.even || acc % 2 === 0) ? live : dead).push(e);
+      return;
+    }
+    const rawS = raw.filter(r => e.text.includes(r.text));
+    const modS = thr.filter(t => rawS.some(r => sameRange(t, r)));
+    if(rawS.length && !modS.length){ dead.push(Object.assign({}, e, { suppressed:true })); return; }
+    let n = e.range;
+    if(rawS.length && modS.length === rawS.length){
+      const rs = rawS.map(r => r.n).sort((x, y) => x - y), ms = modS.map(t => t.n).sort((x, y) => x - y);
+      const i = rs.indexOf(e.range);
+      if(i >= 0) n = ms[i];
+    }
+    const x = Object.assign({}, e, { range:n });
+    (acc >= n ? live : dead).push(x);
+  });
+  thr.filter(t => !raw.some(r => sameRange(t, r))).forEach(t => {
+    statusClauses(t.text).forEach(c => {
+      const x = Object.assign({}, c, { range:t.n, even:false, added:true });
+      (acc >= t.n ? live : dead).push(x);
+    });
+  });
+  if(acc === 1) return { live:[], dead: dead.concat(live) };
+  return { live, dead };
+}
+function msKeysLine(keys){ return uniqStatusKeys(keys).map(statusName).join(" & "); }
+/* The block the roll shows: a banner per Affliction that landed, and the button that writes it.
+   o = { redraw, persist, extra:[keys] (randomStatusNode's pick), rideHit:true when the target half
+   travels with the damage to attackTargetWidget / the GM's feed instead of needing its own press } */
+function moveStatusNode(actor, m, thresholds, acc, o){
+  o = o || {};
+  const { live, dead } = moveStatusLive(m, thresholds, acc);
+  const extra = (o.extra && o.extra.length && acc !== 1) ? [{ who:"target", keys:o.extra, range:null, random:true, dur:"" }] : [];
+  const evenDead = dead.filter(e => e.even && !e.suppressed);
+  if(!live.length && !extra.length && !evenDead.length) return null;
+  const card = el("div", { class:"card", style:"background:var(--panel);border:1px solid var(--line);margin:10px 0 0" });
+  card.append(el("div", { class:"small", style:"font-weight:800;margin-bottom:4px" }, "\u{1F4AB} Status Afflictions"));
+  evenDead.forEach(e => card.append(el("div", { class:"small muted" },
+    `▫ ${acc} is odd — doesn't trigger: ${e.text}`)));
+  live.forEach(e => {
+    if(e.even) card.append(el("div", { class:"small", style:"color:var(--good);font-weight:700" },
+      `⚡ ${acc} is even — triggers: `, el("span", { class:"muted", style:"font-weight:400" }, e.text)));
+    card.append(el("div", { style:"font-size:26px;font-weight:800;color:var(--bad);text-align:center;margin:4px 0 2px;letter-spacing:.5px" },
+      msKeysLine(e.keys) + "!"));
+    card.append(el("div", { class:"small muted", style:"text-align:center;margin-bottom:6px" },
+      (e.who === "user" ? `${ownerLabel(actor)} itself` : "the target, if the Move hits")
+      + (e.range != null ? ` · on ${e.range}+` : "") + (e.dur ? ` · ${e.dur}` : "")));
+  });
+  const mine = uniqStatusKeys(live.filter(e => e.who === "user").flatMap(e => e.keys));
+  const theirs = uniqStatusKeys(live.concat(extra).filter(e => e.who === "target").flatMap(e => e.keys));
+  const dur = [...new Set(live.filter(e => e.who === "target" && e.dur).map(e => e.dur))].join("; ");
+  const persist = o.persist || save;
+  if(mine.length) card.append(el("button", { class:"btn-secondary", style:"margin-top:4px;padding:4px 10px",
+    onclick:(ev) => {
+      const r = inflictStatuses(actor, mine);
+      persist(); o.redraw && o.redraw();
+      ev.currentTarget.disabled = true;
+      toast(`\u{1F4AB} ${ownerLabel(actor)}: ${r.on.join(", ") || "nothing new"}${r.held.length ? ` — held: ${r.held.join(", ")}` : ""}`);
+    } }, `⬆ Apply ${msKeysLine(mine)} to ${ownerLabel(actor)}`));
+  if(theirs.length){
+    const what = msKeysLine(theirs);
+    /* Mold Breaker ignores the targets' Defensive immunity Abilities and Veils (found-03) */
+    const mold = !!attackerMoldBreak(actor, m && m.type);
+    if(o.rideHit) card.append(el("div", { class:"small muted", style:"margin-top:4px" },
+      `\u{1F3AF} ${what} rides with the hit — the GM's \u{1F4A5} Apply puts it on every target it damages (Type & Ability immunities checked).`));
+    else if(isGM() && allyTargets(actor, { foes:true }).some(x => x.enemy))
+      card.append(el("button", { class:"btn-secondary", style:"margin-top:4px;padding:4px 10px",
+        onclick:() => branchTargetDialog({
+          title:`\u{1F4AB} ${m.name || "Status"}`,
+          intro:`Everyone this Move caught becomes ${what}${dur ? ` (${dur})` : ""}. Type and Ability immunities are checked per target${mold ? " — Mold Breaker ignores the Defensive ones" : ""}.`,
+          list:allyTargets(actor, { foes:true }), saveFn:persist, redraw:o.redraw,
+          apply:(x) => { const r = inflictStatuses(x.obj, theirs, { mold });
+            return `${ownerLabel(x.obj)}${r.on.length ? ` → ${r.on.join(", ")}` : ""}${r.held.length ? ` (held: ${r.held.join(", ")})` : ""}`; },
+          after:(c, n) => `\u{1F4AB} ${n.join(", ")}`,
+        }) }, `\u{1F3AF} Apply ${what} to targets…`));
+    else if(foeFxDeferred()) card.append(el("button", { class:"btn-secondary", style:"margin-top:4px;padding:4px 10px",
+      title:"the GM picks who this Move caught, from the 🎲 Rolls feed",
+      onclick:(ev) => {
+        foeFxDeclare({ fx:"statusfx", caster:actor, icon:"\u{1F4AB}", name:m.name || "Status",
+          P:{ keys:theirs, dur, mold }, headline:`${what}${dur ? ` · ${dur}` : ""}` });
+        ev.currentTarget.disabled = true; ev.currentTarget.textContent = "\u{1F4E8} Sent to the GM";
+        toast(`\u{1F4AB} Sent to the GM — they pick who ${what} lands on`);
+      } }, `\u{1F4E8} Send ${what} to the GM…`));
+    else card.append(el("div", { class:"small muted", style:"margin-top:4px" },
+      "Apply it from the target's own Status Conditions — the roll doesn't know who you pointed this at."));
+  }
+  return card;
+}
+/* what the target half of a damaging roll carries to attackTargetWidget / the feed: plain JSON */
+function moveHitFx(m, thresholds, acc, extraKeys){
+  if(acc === 1) return null;
+  const keys = uniqStatusKeys(moveStatusLive(m, thresholds, acc).live
+    .filter(e => e.who === "target").flatMap(e => e.keys).concat(extraKeys || []));
+  const cs = moveCSEffects(m).filter(e => e.who === "target" && (e.range == null || acc >= e.range))
+    .map(e => ({ who:"target", stats:e.stats, n:e.n }));
+  return (keys.length || cs.length) ? { name:(m && m.name) || "", status:keys, cs } : null;
+}
+function hitFxLine(fx){
+  return [fx.status && fx.status.length ? msKeysLine(fx.status) : "",
+          ...(fx.cs || []).map(e => `${e.n > 0 ? "+" : "−"}${Math.abs(e.n)} ${e.stats.map(k => CS_FX_LABEL[k]).join(" / ")} CS`)]
+    .filter(Boolean).join(" · ");
 }
 /* ---- the 1d100 one-hit knockouts (Fissure, Sheer Cold, Guillotine, Horn Drill) ---------------
    "Roll 1d100. This roll may not be modified in any way. If you roll X or lower, the target Faints.
@@ -20091,20 +20485,77 @@ const CS_STAT_WORDS = [
 ];
 const CS_STAT_RE = "(?:special\\s+attack|special\\s+defense|sp\\.?\\s*attack|sp\\.?\\s*defense|attack|defense|speed|accuracy|evasion)";
 const CS_LIST_RE = `(?:${CS_STAT_RE})(?:\\s*(?:,\\s*and|,|and)\\s*(?:${CS_STAT_RE}))*`;
+const CS_CUE = "(?:CS|Combat\\s+Stages?)";
 const CS_PATTERNS = [
-  // Raise/Lower the user's|target's <list> by +N CS
-  { re: new RegExp(`\\b(rais\\w*|lower\\w*)\\s+(?:the\\s+)?(user|target)'?s?\\s+(${CS_LIST_RE})\\s+by\\s+([+-]?\\d)\\s*(?:CS|Combat Stage)`, "ig"),
+  // Raise/Lower the user's|target's <list> (by) +N CS — "Raise the user's Speed 2 Combat Stages" (Agility)
+  // writes no "by", and Cosmic Power chains two of these in one sentence
+  { re: new RegExp(`\\b(rais\\w*|lower\\w*)\\s+(?:the\\s+)?(user|target)'?s?\\s+(${CS_LIST_RE})\\s+(?:by\\s+)?([+-]?\\d)\\s*${CS_CUE}`, "ig"),
     verb:1, who:2, list:3, n:4 },
-  // Raise/Lower the <list> of all legal targets by +N
-  { re: new RegExp(`\\b(rais\\w*|lower\\w*)\\s+(?:the\\s+)?(${CS_LIST_RE})\\s+of\\s+all\\s+legal\\s+targets?\\s+by\\s+([+-]?\\d)`, "ig"),
+  // Raise/Lower the <list> of all (allied / Grass-Type …) legal targets (with …) (by) +N
+  { re: new RegExp(`\\b(rais\\w*|lower\\w*)\\s+(?:the\\s+)?(${CS_LIST_RE})\\s+of\\s+all\\s+(?:[\\w-]+\\s+){0,3}?legal\\s+targets?(?:\\s+with\\b[^.;]*?)?\\s+(?:by\\s+)?([+-]?\\d)`, "ig"),
     verb:1, who:null, list:2, n:3 },
   // The user's|target's <list> is raised|lowered by +N
   { re: new RegExp(`\\bthe\\s+(user|target)'?s?\\s+(${CS_LIST_RE})\\s+(?:is|are)\\s+(rais\\w*|lower\\w*)\\s+(?:by\\s+)?([+-]?\\d)`, "ig"),
     verb:3, who:1, list:2, n:4 },
-  // All Legal Targets have their <list> raised|lowered by +N
-  { re: new RegExp(`\\ball\\s+legal\\s+targets?\\s+have\\s+their\\s+(${CS_LIST_RE})\\s+(rais\\w*|lower\\w*)\\s+by\\s+([+-]?\\d)`, "ig"),
+  // …the same without the "is": "the user's Speed raises 1 CS" (Rapid Spin [SS]), "their Attack is lowered by
+  // -1 Combat Stage" (Glint) — only believed with the CS word after the number
+  { re: new RegExp(`\\b(?:the\\s+)?(user|target|their)'?s?\\s+(${CS_LIST_RE})\\s+(?:(?:is|are)\\s+)?(rais\\w*|lower\\w*)\\s+(?:by\\s+)?([+-]?\\d)\\s*${CS_CUE}`, "ig"),
+    verb:3, who:1, list:2, n:4 },
+  // "the user's Defense CS is raised by 2" (Stuff Cheeks)
+  { re: new RegExp(`\\bthe\\s+(user|target)'?s?\\s+(${CS_LIST_RE})\\s+CS\\s+(?:is|are)\\s+(rais\\w*|lower\\w*)\\s+(?:by\\s+)?([+-]?\\d)`, "ig"),
+    verb:3, who:1, list:2, n:4 },
+  // All (Legal / Poisoned …) Targets have their <list> raised|lowered (by) +N
+  { re: new RegExp(`\\ball\\s+(?:[\\w-]+\\s+){0,2}?targets?\\s+(?:hit\\s+)?have\\s+their\\s+(${CS_LIST_RE})\\s+(rais\\w*|lower\\w*)\\s+(?:by\\s+)?([+-]?\\d)`, "ig"),
     verb:2, who:null, list:1, n:3 },
+  // "All Legal Targets are lowered 1 Speed Combat Stage" (Bulldoze)
+  { re: new RegExp(`\\ball\\s+(?:legal\\s+)?targets?\\s+(?:are|is)\\s+(rais\\w*|lower\\w*)\\s+(?:by\\s+)?([+-]?\\d)\\s+(${CS_LIST_RE})\\s+${CS_CUE}`, "ig"),
+    verb:1, who:null, list:3, n:2 },
+  // "…and have their Speed lowered by 2 Combat Stages" (the Pledges) — whoever "their" is, it is not the user
+  { re: new RegExp(`\\bhave\\s+their\\s+(${CS_LIST_RE})\\s+(?:CS\\s+)?(rais\\w*|lower\\w*)\\s+(?:by\\s+)?([+-]?\\d)`, "ig"),
+    verb:2, who:null, list:1, n:3, notUserAllies:true },
+  // "The user and any allies in the Burst have their Attack and Defense raised by 1 CS" (Coaching, Howl [SS])
+  { re: new RegExp(`\\bthe\\s+user\\s+and\\s+(?:any|all)\\s+(?:of\\s+(?:its|their)\\s+)?allies\\b[^.;]*?\\bhave\\s+their\\s+(${CS_LIST_RE})\\s+(?:CS\\s+)?(rais\\w*|lower\\w*)\\s+(?:by\\s+)?([+-]?\\d)`, "ig"),
+    verb:2, who:null, list:1, n:3, both:true },
+  // "Noble Roar lowers all legal targets' Attack and Special Attack by +1 CS"
+  { re: new RegExp(`\\b(rais\\w*|lower\\w*)\\s+all\\s+(?:legal\\s+)?targets'\\s+(${CS_LIST_RE})\\s+(?:by\\s+)?([+-]?\\d)`, "ig"),
+    verb:1, who:null, list:2, n:3 },
+  // "The user lowers their Speed by -1 CS" (Hammer Arm), Curse's "…but raises Attack and Defense by +1 Combat Stage each"
+  { re: new RegExp(`\\bthe\\s+user\\s+(rais\\w*|lower\\w*)\\s+(?:its|their)\\s+(${CS_LIST_RE})\\s+(?:by\\s+)?([+-]?\\d)`, "ig"),
+    verb:1, whoFixed:"user", list:2, n:3 },
+  { re: new RegExp(`\\bthe\\s+user\\s+(?:rais\\w*|lower\\w*)\\s+(?:its|their)\\s+[^.;]*?\\bbut\\s+(rais\\w*|lower\\w*)\\s+(${CS_LIST_RE})\\s+(?:by\\s+)?([+-]?\\d)`, "ig"),
+    verb:1, whoFixed:"user", list:2, n:3 },
+  // "All Grass-type Pokemon in the area raise their Attack and Special Attack 1 Combat Stage" (Rototiller)
+  { re: new RegExp(`\\ball\\s+[\\w-]+\\s+pok[eé]mon\\b[^.;]*?\\b(rais\\w*|lower\\w*)\\s+their\\s+(${CS_LIST_RE})\\s+(?:by\\s+)?([+-]?\\d)\\s*${CS_CUE}`, "ig"),
+    verb:1, who:null, list:2, n:3 },
+  // gain / lose / receive — "The target gains +2 CS in both Attack and Special Attack" (Decorate),
+  // "Targets hit by Triple Arrows lose 1 CS in both Defense and Special Defense", Octolock's "loses 1 CS in …"
+  { re: new RegExp(`\\b(the\\s+user|user|you|the\\s+target|targets?|all\\s+(?:legal\\s+)?targets?|they)\\b[^.;]{0,40}?\\b(gains?|loses?|receives?)\\s+([+-]?\\d)\\s+${CS_CUE}\\s+in\\s+(?:both\\s+)?(${CS_LIST_RE})`, "ig"),
+    verb:2, who:1, list:4, n:3 },
+  // "The user gains +6 Attack CS" (Belly Drum), "receives -1 Speed Combat Stage" (Toxic Threads), "All legal
+  // targets lose -1 Attack and Special Attack CS each" (Tearful Look), "You gain +1 Special Defense Combat Stage"
+  { re: new RegExp(`\\b(the\\s+user|user|you|the\\s+target|targets?|all\\s+(?:legal\\s+)?targets?|they)\\b[^.;]{0,40}?\\b(gains?|loses?|receives?)\\s+([+-]?\\d)\\s+(${CS_LIST_RE})\\s+${CS_CUE}`, "ig"),
+    verb:2, who:1, list:4, n:3, chain:true },
 ];
+/* The book's own slips, straightened out before matching (the stored `text` stays as printed): "lowed by",
+   "by by", "one CS", "stats are lowered", "are each lowered", "the foe's"/"the attacker's" for the target,
+   "increased"/"reduced", and Solar Blade's "the user's gains". */
+const CS_NUM_WORDS = { one:1, two:2, three:3, four:4, five:5, six:6 };
+function csNormalize(s){
+  return String(s || "")
+    .replace(/\bby\s+by\b/gi, "by").replace(/\blowed\b/gi, "lowered")
+    .replace(/\b(one|two|three|four|five|six)\b(?=\s+(?:CS|Combat\s+Stages?)\b)/gi, w => CS_NUM_WORDS[w.toLowerCase()])
+    .replace(/\b(attack|defense|speed)\s+stats?\b(?=\s+(?:is|are|rais|lower))/gi, "$1")
+    .replace(/\b(is|are)\s+each\b/gi, "$1")
+    .replace(/\b(?:foe|attacker)'s\b/gi, "target's")
+    .replace(/\bincreas(e[sd]?|ing)\b/gi, "rais$1").replace(/\b(?:reduc|decreas)(e[sd]?|ing)\b/gi, "lower$1")
+    .replace(/\buser's\s+(gains?)\b/gi, "user $1");
+}
+/* "+1 Attack CS and +1 Special Defense CS" — the stats after the first gain/lose keep its subject and verb */
+const CS_CHAIN_RE = new RegExp(`^\\s*(?:,\\s*)?and\\s+([+-]?\\d)\\s+(${CS_LIST_RE})\\s+${CS_CUE}`, "i");
+/* "Lower each of the target's stats by -2 CS" (Memento) — the target-side twin of CS_ALL_STATS_RE */
+const CS_ALL_TARGET_RE = /\b(rais\w*|lower\w*)\s+each\s+of\s+the\s+target'?s\s+stats\s+by\s+([+-]?\d)/i;
+/* "The user gains +1 CS in each stat" (No Retreat), "+1 CS in all its stats" (Take Heart) */
+const CS_GAIN_ALL_RE = /\b(?:the\s+user|user|you)\b[^.;]{0,20}?\b(gains?|loses?)\s+([+-]?\d)\s+(?:CS|Combat\s+Stages?)\s+in\s+(?:each|all)\s+(?:of\s+)?(?:its\s+|their\s+|the\s+user's\s+)?stats?\b/i;
 /* "The user has each of its stats raised by +1 CS on 19+" - Ancient Power, Ominous Wind, Silver
    Wind, Clangorous Soul, Springtide Storm. "Stats" here means the five Combat Stage stats; Accuracy
    and Evasion are not Stats and are deliberately left out. */
@@ -20120,31 +20571,47 @@ function moveCSEffects(m){
   if(!text) return [];
   if(_csFxCache.has(text)) return _csFxCache.get(text);
   const out = [], seen = new Set();
+  const push = (who, stats, n, range, sentence) => {
+    const key = `${who}|${stats.join(",")}|${n}|${range}`;
+    if(seen.has(key)) return;
+    seen.add(key);
+    out.push({ who, stats, n, range, text: sentence.trim() });
+  };
+  // Direction comes from the VERB. "receive" is the one neutral verb, so only there does the printed sign decide.
+  const signed = (verb, num) => Math.abs(parseInt(num, 10) || 1)
+    * ((/^(lower|los)/i.test(verb) || (/^receiv/i.test(verb) && /^-/.test(String(num).trim()))) ? -1 : 1);
   text.split(/(?<=[.;])\s+|\n+/).forEach(sentence => {
+    // "If the target is already Poisoned, they instead … -2 Speed" replaces the sentence before it; applying
+    // both would double the drop, so the alternative is left to the text
+    if(/\binstead\b/i.test(sentence)) return;
+    const s = csNormalize(sentence);
     // a threshold named in the same sentence gates the whole clause ("...on 17+")
-    const th = /\bon\s+(?:an?\s+)?(\d{1,2})\s*(?:\+|or\s+(?:higher|above))/i.exec(sentence);
+    const th = /\bon\s+(?:an?\s+)?(\d{1,2})\s*(?:\+|or\s+(?:higher|above))/i.exec(s);
     const range = th ? Math.max(2, Math.min(20, +th[1])) : null;
-    const allM = CS_ALL_STATS_RE.exec(sentence);
+    const allM = CS_ALL_STATS_RE.exec(s);
     if(allM){
       const verb = allM[1] || allM[3], num = allM[2] || allM[4];
-      const n = Math.abs(parseInt(num, 10) || 1) * (/^lower/i.test(verb) ? -1 : 1);
-      const key = `user|all|${n}|${range}`;
-      if(!seen.has(key)){ seen.add(key);
-        out.push({ who:"user", stats:CS_STATS.map(x => x[0]), n, range, text:sentence.trim() }); }
+      push("user", CS_STATS.map(x => x[0]), signed(verb, num), range, sentence);
     }
+    const allT = CS_ALL_TARGET_RE.exec(s);
+    if(allT) push("target", CS_STATS.map(x => x[0]), signed(allT[1], allT[2]), range, sentence);
+    const gainAll = CS_GAIN_ALL_RE.exec(s);
+    if(gainAll) push("user", CS_STATS.map(x => x[0]), signed(gainAll[1], gainAll[2]), range, sentence);
     CS_PATTERNS.forEach(pat => {
       pat.re.lastIndex = 0;
       let mm;
-      while((mm = pat.re.exec(sentence))){
+      while((mm = pat.re.exec(s))){
         const stats = csStatKeys(mm[pat.list]);
         if(!stats.length) continue;
-        const down = /^lower/i.test(mm[pat.verb]);
-        const n = Math.abs(parseInt(mm[pat.n], 10) || 1) * (down ? -1 : 1);
-        const who = pat.who ? (/user/i.test(mm[pat.who]) ? "user" : "target") : "target";
-        const key = `${who}|${stats.join(",")}|${n}|${range}`;
-        if(seen.has(key)) continue;
-        seen.add(key);
-        out.push({ who, stats, n, range, text: sentence.trim() });
+        if(pat.notUserAllies && /\bthe\s+user\s+and\b/i.test(s.slice(0, mm.index))) continue;
+        const n = signed(mm[pat.verb], mm[pat.n]);
+        const who = pat.whoFixed || (pat.who ? (/user|you/i.test(mm[pat.who]) ? "user" : "target") : "target");
+        push(who, stats, n, range, sentence);
+        if(pat.both) push("user", stats, n, range, sentence);
+        if(pat.chain){
+          const rest = s.slice(mm.index + mm[0].length), ch = CS_CHAIN_RE.exec(rest);
+          if(ch){ const st2 = csStatKeys(ch[2]); if(st2.length) push(who, st2, signed(mm[pat.verb], ch[1]), range, sentence); }
+        }
       }
     });
   });
@@ -20178,7 +20645,7 @@ function applyCSFx(o, entries){
 /* The block the roll shows once the d20 is known: everything this Move does to Combat Stages, with
    a button that writes it. The user's own half needs no target at all, so it is one press; the
    foes' half opens the same picker the Type Ace branches use, and only a GM sees enemy tokens. */
-function moveCSNode(actor, m, acc, redraw, persist){
+function moveCSNode(actor, m, acc, redraw, persist, rideHit){
   const fx = moveCSEffects(m);
   if(!fx.length) return null;
   const live = fx.filter(e => e.range == null || acc >= e.range);
@@ -20200,8 +20667,11 @@ function moveCSNode(actor, m, acc, redraw, persist){
   }
   if(theirs.length){
     card.append(el("div", { class:"small", style:"margin-top:6px" }, theirs.map(csFxLine).join(" \u00b7 ")));
-    const foes = isGM() ? allyTargets(actor, { foes:true }).filter(x => x.enemy) : [];
-    if(foes.length) card.append(el("button", { class:"btn-secondary", style:"margin-top:6px;padding:4px 10px",
+    const foes = (isGM() && !rideHit) ? allyTargets(actor, { foes:true }).filter(x => x.enemy) : [];
+    // a damaging roll carries these to the GM's \ud83d\udca5 Apply (moveHitFx) \u2014 one press lands hit and drop together
+    if(rideHit) card.append(el("div", { class:"small muted", style:"margin-top:4px" },
+      "\u{1F3AF} Rides with the hit \u2014 the GM's \u{1F4A5} Apply puts it on every target it damages."));
+    else if(foes.length) card.append(el("button", { class:"btn-secondary", style:"margin-top:6px;padding:4px 10px",
       onclick:() => branchTargetDialog({
         title:"\u{1F53A} " + (m.name || "Combat Stages"),
         intro:`Everyone this Move caught takes ${theirs.map(csFxLine).join(" \u00b7 ")}.`,
@@ -22186,16 +22656,20 @@ function openMoveRoll(p, m, sp, opts={}){
       hit.forEach(t=>{
         tl.append(el("div",{class:"small",style:"color:var(--good);font-weight:700"},
           `⚡ ${acc} ≥ ${t.n} — extra effect triggers: `, el("span",{class:"muted",style:"font-weight:400"}, t.text)));
-        const st = moveRandomStatus(m) ? null : statusHitFromText(t.text);
-        if(st) tl.append(el("div",{style:"font-size:26px;font-weight:800;color:var(--bad);text-align:center;margin:4px 0 8px;letter-spacing:.5px"},
-          st.name+"!"));
       });
       miss.forEach(t=>tl.append(el("div",{class:"small muted"},
         `▫ ${acc} < ${t.n} — this effect doesn't trigger: ${t.text}`)));
       out.append(tl);
     }
-    { const rsn = randomStatusNode(m, acc); if(rsn) out.append(rsn); }
-    { const csn = moveCSNode(p, m, acc, opts.rerender || (()=>refreshMon(p)), opts.persist);
+    /* a damaging roll in a cloud game hands the target's Afflictions / Combat Stages to the 💥 Apply
+       (attackTargetWidget + the feed) rather than asking for a second press on the same creatures */
+    const rideHit = mode==="cloud" && (isPhys||isSpec) && fDB!=null && !(multi && connected===0);
+    const rsn = randomStatusNode(m, acc); if(rsn) out.append(rsn);
+    { const sn = moveStatusNode(p, m, liveThresholds, acc, { redraw: opts.rerender || (()=>refreshMon(p)),
+        persist: opts.persist, extra: rsn && rsn.picked, rideHit });
+      if(sn) out.append(sn); }
+    const hitFx = moveHitFx(m, liveThresholds, acc, rsn && rsn.picked);
+    { const csn = moveCSNode(p, m, acc, opts.rerender || (()=>refreshMon(p)), opts.persist, rideHit);
       if(csn) out.append(csn); }
     { const tn = moveTypeNode(p, m, opts.rerender || (()=>refreshMon(p)), opts.persist);
       if(tn) out.append(tn); }
@@ -22297,7 +22771,7 @@ function openMoveRoll(p, m, sp, opts={}){
           const tw = attackTargetWidget({ dmg:total, type:mtype||"Typeless", physical:isPhys, atkMold: !!mold,
             pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens") || !!(mold && mold.tinted),
             atkExploit: ownerHasAbility(p,"Exploit"), atkMega: isMegaMon(p), atkWar: ownerAuraActive(p,"War"), seFlat: heldSeFlatDamage(p),
-            pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS, moveRule, critExtra });
+            pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS, moveRule, critExtra, fx: hitFx });
           if(tw) dmgLine.append(tw);
         }
         /* …and into the GM's feed, carrying the same numbers, so they can drop this hit on a token
@@ -22310,7 +22784,7 @@ function openMoveRoll(p, m, sp, opts={}){
           atk: (isPhys||isSpec) ? { dmg:total, type:mtype||"Typeless", physical:isPhys, atkMold: !!mold,
                  pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens") || !!(mold && mold.tinted),
                  atkExploit: ownerHasAbility(p,"Exploit"), atkMega: isMegaMon(p), atkWar: ownerAuraActive(p,"War"), seFlat: heldSeFlatDamage(p),
-                 pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS, moveRule, critExtra } : null });
+                 pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS, moveRule, critExtra, fx: hitFx } : null });
       }
       out.append(dmgLine);
       if(ancestral && (isPhys||isSpec)){ const an = ancestralStrikeNode(); if(an) out.append(an); }
@@ -24326,10 +24800,7 @@ async function commitTargets(chosen){
    a roll) — never a closure — so the GM's 🎯 Choose targets button can run exactly the same apply
    later, on whoever they tick. The GM (and a local table) still get the picker straight away.
    Each entry: apply(x, P) → an optional note after the target's name; skip(x, P) → a reason not to. */
-function fxStatus(o, key){
-  if(!Array.isArray(o.statuses)) o.statuses = [];
-  if(!o.statuses.includes(key)) o.statuses.push(key);
-}
+function fxStatus(o, key){ return inflictStatus(o, key).why; }   // immunities honoured, never toggles off
 const FOE_FX = {
   overgrowth: {
     skip:(x) => ownerBuffs(x.obj).some(b => b.key === "overgrowth" || b.name === "Overgrowth") ? "already Overgrown this Scene" : "",
@@ -24402,6 +24873,12 @@ const FOE_FX = {
   csfx: { apply:(x, P) => {
       const r = applyCSFx(x.obj, Array.isArray(P.fx) ? P.fx : []);
       return r.held.length ? `(held: ${r.held.join(", ")})` : "";
+    } },
+  /* a Move's Afflictions (moveStatusNode) — P.keys are STATUS_DEFS keys */
+  statusfx: { apply:(x, P) => {
+      const r = inflictStatuses(x.obj, Array.isArray(P.keys) ? P.keys : [], { mold: !!P.mold });
+      return [r.on.length ? `→ ${r.on.join(", ")}` : "", r.held.length ? `(held: ${r.held.join(", ")})` : ""]
+        .filter(Boolean).join(" ");
     } },
   typemod: { apply:(x, P) => {
       const why = addTypeMod(x.obj, { kind:P.kind, type:P.type, src:P.src, dur:P.dur, turns:P.turns });
@@ -33206,10 +33683,10 @@ function encStatusControl(p){
       if(s.boss) return boss;
       return true;
     }).forEach(s=>{
-      const on=hasStatus(p,s.key), immune=s.immune && monTypes(p, sp).some(t=>s.immune.includes(t));
+      const on=hasStatus(p,s.key), imWhy=statusChipImmunity(p, s, sp), immune=!!imWhy;
       const block = statusCureBlock(p, s.key);   // Enduring Rage / White Flame forbid curing Enraged
       chips.append(el("button",{class:"statuschip"+(on?" on":""),
-        title:(immune?`${sp.name} is immune. `:"")+s.effect+(block?`\n\n${block}`:""),
+        title:(immune?`Immune: ${imWhy}. `:"")+s.effect+(block?`\n\n${block}`:""),
         onclick:()=>{ p.statuses=p.statuses||[]; dedupeStatuses(p); const i=p.statuses.indexOf(s.key);
           if(i>=0){ const w = statusCureBlock(p, s.key); p.statuses = p.statuses.filter(k=>k!==s.key); if(w) toast(w); }
           else if(!p.statuses.includes(s.key)){ p.statuses.push(s.key); if(s.key==="tagged" && clearOtherTags(p)) toast("The previous Tag is lost — only one foe at a time"); }
@@ -33286,7 +33763,7 @@ function encounterMonCard(enc, p, list, trainer){
   const spriteBox=el("div",{class:"sprite-box sb-sm",style:"flex:0 0 auto"});
   spriteBox.append(monPic(p, undefined, "s-sm"));
   spriteBox.append(el("button",{class:"photo-btn",title:"picture used for this creature's map token",
-    onclick:()=>pickImage(256, async url=>{ setMonImage(p, await storeImg(url,"mon")); saveEnc(); renderEncounters(); })},"📷"));
+    onclick:()=>pickImage(framablePicDim(), async url=>{ setMonImage(p, await storeImg(url,"mon")); saveEnc(); renderEncounters(); })},"📷"));
   if(monImage(p)) spriteBox.append(el("button",{class:"photo-btn photo-frame",title:"frame the picture — choose which part is shown",
     onclick:()=>openMonImageFocus(p, ()=>{ saveEnc(); renderEncounters(); })},"🖼"));
   if(monImage(p)) spriteBox.append(el("button",{class:"photo-rm",title:"remove picture — use the default sprite",
@@ -33581,7 +34058,7 @@ function encounterTrainerCard(enc, tr){
     t.avatar ? t.avatarFocus : null);
   info.append(av, nameIn, el("span",{class:"small muted"},"Lv"), lvIn,
     el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"picture used for this trainer's map token",
-      onclick:()=>pickImage(256, async d=>{ setAvatar(t, await storeImg(d,"avatar")); saveEnc(); renderEncounters(); })}, t.avatar?"📷 Change":"📷 Image"));
+      onclick:()=>pickImage(framablePicDim(), async d=>{ setAvatar(t, await storeImg(d,"avatar")); saveEnc(); renderEncounters(); })}, t.avatar?"📷 Change":"📷 Image"));
   if(t.avatar) info.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"frame the picture — choose which part is shown",
     onclick:()=>openAvatarFocus(t, ()=>{ saveEnc(); renderEncounters(); })},"🖼"));
   if(t.avatar) info.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"remove image — use the default icon",
@@ -35976,6 +36453,8 @@ function sweepMapAuras(map){
   const mark = (obj, key, flag, want) => {
     if(!Array.isArray(obj.statuses)) obj.statuses = [];
     const has = obj.statuses.includes(key);
+    // Aroma Veil / Own Tempo-style immunities keep an aura's chip off too (Pressure → Suppressed)
+    if(want && !has && key !== "flanked" && !obj.unlocked && statusBlockFor(obj, key)) want = false;
     if(want && !has){ obj.statuses.push(key); obj[flag] = true; return true; }
     // only ever lift a chip WE put on — one ticked by hand is the table's call, not ours
     if(!want && has && obj[flag]){ obj.statuses = obj.statuses.filter(k=>k!==key); delete obj[flag]; return true; }
@@ -36213,7 +36692,7 @@ function openShopTokenMenu(token, map){
 
   const imgRow = el("div",{class:"tk-menu-row",style:"margin-top:10px;flex-wrap:wrap;gap:6px"});
   imgRow.append(el("button",{class:"btn-secondary",style:"padding:6px 12px",
-    onclick:()=>pickImage(240, async d=>{ token.img = await storeImg(d,"shop"); mapTokensSave(); renderMap(); reopenTokenMenu(token,map); })},
+    onclick:()=>pickImage(framablePicDim(), async d=>{ token.img = await storeImg(d,"shop"); mapTokensSave(); renderMap(); reopenTokenMenu(token,map); })},
     token.img ? "📷 Change picture" : "📷 Use my own picture"));
   if(token.img) imgRow.append(el("button",{class:"btn-secondary",style:"padding:6px 12px",
     onclick:()=>{ token.img=""; mapTokensSave(); renderMap(); reopenTokenMenu(token,map); }},"↺ Shop icon"));
@@ -36751,6 +37230,7 @@ function simInflict(u, def){
   if(!def || hasStatus(u.obj, def.key)) return false;
   const types = u.isT ? [] : (u.sp?.types||[]);                 // Trainers have no Type immunities
   if((def.immune||[]).some(t=>types.includes(t))) return false;
+  if(statusImmunityFor(u.obj, def.key)) return false;          // Insomnia, Limber, Fiery Soul… (found-03)
   u.obj.statuses.push(def.key); u.bust();
   return true;
 }
@@ -36793,15 +37273,25 @@ function simStrike(B, A, atk, D, round){
   }
   const before = D.hp;
   const done  = Math.min(before, simMitigate(D, Math.max(0,raw), pr.mtype, pr.isPhys, pr.pierceImmune, pr.pierceDR, pr.atkTinted, pr.atkExploit, pr.moveRule, pr.atkMega, pr.atkMold));
-  /* Status riders: a triggered Effect Range that names an Affliction applies it (same heuristic the
-     move-roll modal uses for its "Poisoned!" banner). Sheer Force trades these away for damage. */
+  /* Status riders: the same moveStatusLive the roll modal reads — triggered Effect Ranges AND the
+     always-on clauses ("Nuzzle Paralyzes the target"), on the target or the user (Outrage), plus the
+     coin-flip / 1d3 Moves. Sheer Force trades the Effect Ranges away for damage, not the rest. */
   let inflicted = null;
-  if(cfg.useStatus && before-done > 0 && !hasAbility(A.obj,"Sheer Force") && !hasAbility(A.obj,"Sheer Force [Errata]")){
-    for(const t of pr.thr){
-      if(nat < t.n || /critical\s+(hit|range)/i.test(t.text||"")) continue;
-      const def = statusHitFromText(t.text);
-      if(def && simInflict(D, def)){ inflicted = def.name; break; }
+  if(cfg.useStatus && before-done > 0){
+    const sf = hasAbility(A.obj,"Sheer Force") || hasAbility(A.obj,"Sheer Force [Errata]");
+    const sfGone = sf ? sheerForceThresholds(pr.thr) : [];
+    const thrUse = sf ? pr.thr.filter(t => !sfGone.includes(t)) : pr.thr;
+    const names = [];
+    moveStatusLive(atk.m, thrUse, nat).live.forEach(e => e.keys.forEach(k => {
+      const u = e.who === "user" ? A : D, def = statusByKey.get(k);
+      if(def && simInflict(u, def)) names.push(e.who === "user" ? `${A.name} ${def.name}` : def.name);
+    }));
+    const rs = sf ? null : moveRandomStatus(atk.m);
+    if(rs && nat >= rs.at){
+      const picks = (rs.bothAt != null && nat >= rs.bothAt) ? rs.opts : [rs.opts[Math.floor(Math.random()*rs.opts.length)]];
+      picks.forEach(def => { if(simInflict(D, def)) names.push(def.name); });
     }
+    if(names.length) inflicted = names.join(", ");
   }
   // logged BEFORE the HP is actually taken off, so this line always sits above its own 💀
   B.log && B.log.push(`   ${A.name} → ${D.name}: ${atk.name} (${pr.mtype}, DB ${db})`
@@ -45470,7 +45960,9 @@ function tokenDamageBreakdown(token, { dmg, type, physical, extraStep=0, aoe=fal
    first and pushes one record here; ↩ restores the whole press exactly as it was.
    Session-local and GM-side (nobody else can apply a hit), and the restore goes back out through
    the same commit path the damage used, so the other screens follow. */
-const HIT_UNDO_FIELDS = ["currentHP","tempHP","injuries","species","miniorColor","hoardForme","radiate","typeShift"];
+const HIT_UNDO_FIELDS = ["currentHP","tempHP","injuries","species","miniorColor","hoardForme","radiate","typeShift","vortexTurn","flinchInit"];
+/* written by a hit's Afflictions (inflictStatus) and simply absent before — ↩ deletes them again */
+const HIT_UNDO_ADDED = ["vortexTurn","flinchInit"];
 let hitUndoStack = [];
 function snapHitTarget(token){
   const o = tokenHp(token).obj;
@@ -45491,6 +45983,7 @@ async function restoreHitTarget(map, snap){
   const o = snap.obj;
   if(o && snap.fields){
     Object.keys(snap.fields).forEach(k => { o[k] = snap.fields[k]; });
+    HIT_UNDO_ADDED.forEach(k => { if(!(k in snap.fields)) delete o[k]; });
     if(snap.statuses) o.statuses = snap.statuses.slice();
     if(snap.cs)       o.cs = Object.assign({}, snap.cs);
     if(snap.buffs)    o.buffs = snap.buffs.map(b=>Object.assign({}, b));
@@ -45635,7 +46128,7 @@ function critImmunityOf(o){
   const have = new Set(ownerAbilityNames(o));
   return CRIT_IMMUNE_ABILITIES.find(a => have.has(a.toLowerCase())) || null;
 }
-function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, moveRule=null, seFlat=0, critExtra=0 }){
+function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, moveRule=null, seFlat=0, critExtra=0, fx=null }){
   // a Move whose own rules bend the matchup (MOVE_TARGET_RULES) travels with the hit, and its
   // immunity clause folds into the same pierce switch every other source uses
   const chartOverride = moveRule?.chart || null, seBonus = moveRule?.seBonus || 0,
@@ -45742,6 +46235,15 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
       onclick:()=>{ manualStep=Math.min(4,manualStep+1); drawStep(); }},"+")));
   wrap.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;margin-bottom:6px;cursor:pointer"},
     aoeCb, el("span",{class:"small muted"},"Area / multi-target attack (a Swarm takes area hits one step more effective)")));
+  /* found-02: what the Move's triggered Effect Ranges / always-on clauses do to whoever it hits
+     (moveHitFx) — landed in the same press, per target, only where the hit wasn't shrugged off as an
+     immunity and the target is still standing. Statuses go through inflictStatus (Type / Veil /
+     Feature immunities), Combat Stages through applyCSFx → lowerCS (Clear Body & co.). */
+  const hasFx = !!(fx && ((fx.status||[]).length || (fx.cs||[]).length));
+  const fxCb = el("input",{type:"checkbox"}); fxCb.checked = true;
+  if(hasFx) wrap.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;margin-bottom:6px;cursor:pointer"},
+    fxCb, el("span",{class:"small",style:"font-weight:700;color:var(--accent)"},
+      `\u{1F4AB} Also apply ${fx.name ? fx.name + "'s " : "the Move's "}effects: ${hitFxLine(fx)}`)));
 
   const out = el("div",{class:"small",style:"margin-top:8px"});
   const apply = async ()=>{
@@ -45763,6 +46265,22 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
         el("div",{html: damageResultHTML(useDmg, typeName, br, before)}));
       if(shell) line.append(el("div",{class:"small",style:"color:var(--accent);font-weight:600"},
         `\u{1F6E1} ${shell}: immune to Critical Hits \u2014 the crit's extra ${critExtra} came back off (${dmg} \u2192 ${useDmg}).`));
+      if(hasFx && fxCb.checked){
+        const o = tokenHp(it.t).obj;
+        let fxTxt;
+        if(!o) fxTxt = "not a creature \u2014 effects skipped";
+        else if(br.mult === 0) fxTxt = "immune to the hit \u2014 its effects don't land";
+        else if(tokenHp(it.t).cur <= 0) fxTxt = "down \u2014 nothing to stick";
+        else {
+          const s = inflictStatuses(o, fx.status || [], { mold: atkMold });   // Mold Breaker: Defensive immunities off
+          const c = applyCSFx(o, fx.cs || []);
+          if(s.on.length || c.moved.length) await commitTokenSource(it.t);
+          const held = [...s.held, ...c.held];
+          fxTxt = [[...s.on, ...c.moved].join(", "), held.length ? `held: ${held.join(", ")}` : ""]
+            .filter(Boolean).join(" \u2014 ") || "nothing new";
+        }
+        line.append(el("div",{class:"small",style:"color:var(--accent);font-weight:600"}, `\u{1F4AB} ${fxTxt}`));
+      }
       out.append(line);
     }
     undoBtn.style.display = "";                                 // …and offer to take it straight back
@@ -45941,7 +46459,8 @@ function openRollApply(e){
                                  pierceImmune:e.atk.pierceImmune, pierceDR:e.atk.pierceDR, atkTinted:e.atk.atkTinted,
                                  atkExploit:e.atk.atkExploit, atkMega:e.atk.atkMega, atkWar:e.atk.atkWar,
                                  atkMold:e.atk.atkMold, atkDeicide:e.atk.atkDeicide, seFlat:e.atk.seFlat,
-                                 defCSMode:e.atk.defCSMode, moveRule:e.atk.moveRule, critExtra:e.atk.critExtra||0 });
+                                 defCSMode:e.atk.defCSMode, moveRule:e.atk.moveRule, critExtra:e.atk.critExtra||0,
+                                 fx:e.atk.fx||null });
   body.append(w || el("div",{class:"small"},
     "No damageable token on the current map — open the 🗺 Map (or add a token) and try again."));
   modal({title:`🎯 ${e.label||"Apply this hit"}`, bodyNode:body,
@@ -46236,7 +46755,8 @@ function openTokenMenu(token, map){
         const chips = el("div",{class:"chips"});
         defs.forEach(s=>{
           const on = active.includes(s.key);
-          chips.append(el("button",{class:"statuschip"+(on?" on":"")+(statusPickable(s)?"":" ro"), disabled:!info.editable||!statusPickable(s), title:s.effect,
+          const imWhy = veilObj ? statusChipImmunity(veilObj, s) : "";   // Type, Ability or Feature
+          chips.append(el("button",{class:"statuschip"+(on?" on":"")+(statusPickable(s)?"":" ro"), disabled:!info.editable||!statusPickable(s), title:(imWhy?`Immune: ${imWhy}. `:"")+s.effect,
             onclick: async()=>{
               const cur = tokenStatusKeys(token).slice();
               const i = cur.indexOf(s.key);
@@ -46259,7 +46779,7 @@ function openTokenMenu(token, map){
                 if(on) vo.vortexTurn = 1; else delete vo.vortexTurn;
               }
               await setTokenStatuses(token, cur); drawStatuses();
-            }}, s.name + (!on && veilObj && statusVeiledBy(veilObj, s.key, veils).length ? " \u{1F6E1}" : "")));
+            }}, s.name + (imWhy ? " ⃠" : "") + (!on && veilObj && statusVeiledBy(veilObj, s.key, veils).length ? " \u{1F6E1}" : "")));
         });
         statusWrap.append(chips);
         if(veilObj){ const vn = statusVeilNotes(veilObj, active, kind, veils); if(vn) statusWrap.append(vn); }
@@ -46902,7 +47422,7 @@ function openCustomToken(map){
   const nm = el("input",{type:"text",placeholder:"e.g. Boss, Trap, NPC"});
   const hp = el("input",{type:"number",value:50});
   let img = "";
-  const imgBtn = el("button",{class:"btn-secondary",onclick:()=>pickImage(240, async d=>{ img=await storeImg(d,"rival"); imgBtn.textContent="✓ image set"; })},"📷 Image (optional)");
+  const imgBtn = el("button",{class:"btn-secondary",onclick:()=>pickImage(framablePicDim(), async d=>{ img=await storeImg(d,"rival"); imgBtn.textContent="✓ image set"; })},"📷 Image (optional)");
   const wrap = el("div",{},
     el("label",{class:"field"}, el("span",{},"Name"), nm), el("div",{style:"height:8px"}),
     el("label",{class:"field"}, el("span",{},"Max HP"), hp), el("div",{style:"height:8px"}), imgBtn);
