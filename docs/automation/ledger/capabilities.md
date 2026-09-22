@@ -129,111 +129,111 @@ P3 · 9 open of 9 · open
 
 P9 · 35 open of 35 · open
 
-- 🟢 **Alluring** — `likely` · P3 · themes: swap, action · code: POKE_EDGE_DEFS:17458
+- 🟢 **Alluring** — `likely` · P3 · themes: swap, action · code: POKE_EDGE_DEFS:17514
   - Pokemon who are Alluring smell very pleasant. Once per day, they may act as if they were a Bait Item.
 
-- 🟢 **Aura Pulse** — `likely` · P3 · themes: other · code: pokeEdgeCapGrants:17295, POKE_EDGE_DEFS:17456, isPusherEdgeName:30646, pusherEdgeListAll:30687
+- 🟢 **Aura Pulse** — `likely` · P3 · themes: other · code: pokeEdgeCapGrants:17351, POKE_EDGE_DEFS:17512, isPusherEdgeName:31026, pusherEdgeListAll:31067
   - Pokemon and Trainers with Aura Pulse are blessed by a great power. They can project their thoughts using Aura, straight into the minds of those they wish to communicate with. They can read the surface thoughts of minds in return, but only minds that open up to them willingly.
 
-- 🟢 **Aura Reader** — `likely` · P3 · themes: barrier · code: PE_CAP_ALIAS:17203
+- 🟢 **Aura Reader** — `likely` · P3 · themes: barrier · code: PE_CAP_ALIAS:17259
   - These Trainers and Pokemon can read the Auras of other living beings. Each Aura conveys two pieces of information. First, its hue or color reveals something about the personality of the target. The hue of an Aura may change over time if an individual undergoes significant changes in personality or worldview. Second, Auras also appear brightened or darkened at times. Brightened auras can reflect good moods and intentions, whereas darkened auras can reflect a sour mood or deceptive and negative intentions.
 
-- 🟢 **Chilled** — `likely` · P3 · themes: other · code: STATUS_DEFS:325, FEATURE_STATUS_IMMUNITY:735, STATUS_IMMUNE_ABILITIES:757, SNACK_DEFS:16414, RESTORATIVE_CURE_RULES:25571, openApplyRestorative:25664
+- 🟢 **Chilled** — `likely` · P3 · themes: other · code: STATUS_DEFS:325, FEATURE_STATUS_IMMUNITY:735, STATUS_IMMUNE_ABILITIES:757, SNACK_DEFS:16470, RESTORATIVE_CURE_RULES:25951, openApplyRestorative:26044
   - Pokemon with the Chilled Capability are always cold.
 
-- 🟢 **Darkvision** — `likely` · P3 · themes: status · code: EQUIP_EFFECTS:11533, FEATURE_CAPS:11604
+- 🟢 **Darkvision** — `likely` · P3 · themes: status · code: EQUIP_EFFECTS:11589, FEATURE_CAPS:11660
   - A Pokemon with the Darkvision Capability never has their vision hampered by a loss of light. They can even see in total darkness and are never Blind or affected by Total Blindness due to low-light conditions.
 
-- 🟢 **Dead Silent** — `likely` · P3 · themes: other · code: FEATURE_MODES:23530
+- 🟢 **Dead Silent** — `likely` · P3 · themes: other · code: FEATURE_MODES:23910
   - A Pokemon with the Dead Silent capability does not breathe or have a heartbeat, and does not shuffle or make noise as they walk unless they wish to.
 
-- 🟢 **Firestarter** — `likely` · P3 · themes: damage · code: PE_RANGED_CAPS:17200, monCapabilities:19265
+- 🟢 **Firestarter** — `likely` · P3 · themes: damage · code: PE_RANGED_CAPS:17256, monCapabilities:19321
   - The Pokemon's Struggle Attacks may be Fire-Typed if they wish. They may also add their Special Attack instead of their Attack and have the attack deal Special Damage, if they wish.
 
-- 🟢 **Fountain** — `likely` · P3 · themes: damage · code: PE_RANGED_CAPS:17200
+- 🟢 **Fountain** — `likely` · P3 · themes: damage · code: PE_RANGED_CAPS:17256
   - The Pokemon's Struggle Attacks may be Water-Typed if they wish. They may also add their Special Attack instead of their Attack and have the attack deal Special Damage, if they wish.
 
-- 🟢 **Freezer** — `likely` · P3 · themes: damage · code: PE_RANGED_CAPS:17200
+- 🟢 **Freezer** — `likely` · P3 · themes: damage · code: PE_RANGED_CAPS:17256
   - The Pokemon's struggle Attacks may be Ice-Typed if they wish. They may also add their Special Attack instead of their Attack and have the attack deal Special Damage, if they wish.
 
-- 🟢 **Gardener** — `likely` · P3 · themes: action · code: trainerCapGrants:11676, gardenCard:31842, gardenPlantRow:31945
+- 🟢 **Gardener** — `likely` · P3 · themes: action · code: trainerCapGrants:11732, gardenCard:32222, gardenPlantRow:32325
   - Up to three times per day as an Extended Action, the user may apply Mulch to a yielding plant.
 
-- 🟢 **Gilled** — `likely` · P3 · themes: other · code: FEATURE_CAPS:11603
+- 🟢 **Gilled** — `likely` · P3 · themes: other · code: FEATURE_CAPS:11659
   - A Gilled Pokemon can breathe underwater. It never needs to come up for air and can remain underwater for as long as it wants to.
 
-- 🟢 **Guster** — `likely` · P3 · themes: damage · code: PE_RANGED_CAPS:17200
+- 🟢 **Guster** — `likely` · P3 · themes: damage · code: PE_RANGED_CAPS:17256
   - The Pokemon's Struggle Attacks may be Flying-Typed if they wish. They may also add their Special Attack instead of their Attack and have the attack deal Special Damage, if they wish.
 
-- 🟢 **Heater** — `likely` · P3 · themes: other · code: FEATURE_CAPS:11609
+- 🟢 **Heater** — `likely` · P3 · themes: other · code: FEATURE_CAPS:11665
   - A Pokemon with the Heater Capability is always warm.
 
-- 🟢 **Herb Growth** — `likely` · P3 · themes: action, stat · code: trainerCapGrants:11675
+- 🟢 **Herb Growth** — `likely` · P3 · themes: action, stat · code: trainerCapGrants:11731
   - Pokemon of at least Level 20 with this Capability may produce a Revival Herb once a day as an Extended Action. This Herb may be harvested by a Trainer.
 
-- 🟢 **Illusionist** — `likely` · P3 · themes: action, skill · code: FEATURE_CAPS:11607
+- 🟢 **Illusionist** — `likely` · P3 · themes: action, skill · code: FEATURE_CAPS:11663
   - Pokemon with the Illusionist Capability can create minor visual Illusions as a Standard Action. These may be no more than half a meter in any dimension and produce no sensory sensations outside of sight. Any physical contact noticeably disrupts an Illusion, and all other effects that see through Illusions can do so. Otherwise, the Illusion appears life-like and can be made to move, though it cannot move further than the user's Focus Rank in meters away from the user. Actively manipulating the Illusion requires constant attention from the user. For minor effects such as making an illusionary flame dance, this requires the user to constantly spend its Swift Actions. For more major effects such …
 
-- 🟢 **Invisibility** — `likely` · P3 · themes: damage, action · code: PE_CAP_ALIAS:17203, POKE_EDGE_DEFS:17461
+- 🟢 **Invisibility** — `likely` · P3 · themes: damage, action · code: PE_CAP_ALIAS:17259, POKE_EDGE_DEFS:17517
   - Pokemon who have the Invisibility Capability can turn invisible as a Shift Action. Pokemon may not perform Moves while invisible. While invisible, you must roll +4 during Accuracy Checks to hit the Pokemon. When a Pokemon turns invisible, they can only remain invisible for up to 4 minutes or can turn visible again as a Free Action. After becoming visible, they must wait two plus the number of minutes they spent invisible before turning invisible again.
 
-- 🟢 **Living Weapon** — `likely` · P3 · themes: swap, status, damage, action, skill · code: LIVING_WEAPON_FORMS:7556, livingWeaponOf:7580, derivedMonMoves:19801, renderPokemonMoves:23325, renderTrainerCombat:32354
+- 🟢 **Living Weapon** — `likely` · P3 · themes: swap, status, damage, action, skill · code: LIVING_WEAPON_FORMS:7603, livingWeaponOf:7627, derivedMonMoves:19857, renderPokemonMoves:23705, renderTrainerCombat:32734
   - In addition to being a Pokemon, Honedge and its evolutionary relatives also count as equipment and may be used as such if the Pokemon is willing. Honedge may be used as a Small Melee Weapon. Doublade may be used as two Small Melee Weapons; when one is held in each hand, the user gains +2 to Evasion. Aegislash may be used as a Small Melee Weapon and a Light Shield. When Fainted, these Pokemon may still be used as inanimate pieces of equipment, but all rolls made with them take a -2 penalty.
     
     If the Living Weapon is also being used as an active Pokemon, the Wielder and the Living Weapon use the Wielder's Movement Speed to shift during each of their turns, and the total amount Shifted during th …
 
-- 🟢 **Magnetic** — `likely` · P3 · themes: position · code: FEATURE_CAPS:11608
+- 🟢 **Magnetic** — `likely` · P3 · themes: position · code: FEATURE_CAPS:11664
   - Magnetic Pokemon can lightly manipulate magnetic fields. With this, they can repel or attract iron and/or steel, holding it to their body or pushing it away. Through this magnetic manipulation, they can also feel magnetic fields and discern magnetic north.
 
-- 🟢 **Materializer** — `likely` · P3 · themes: damage · code: PE_RANGED_CAPS:17200
+- 🟢 **Materializer** — `likely` · P3 · themes: damage · code: PE_RANGED_CAPS:17256
   - The Pokemon's struggle Attacks may be Rock-Typed if they wish. They may also add their Special Attack instead of their Attack and have the attack deal Special Damage, if they wish.
 
-- 🟢 **Mindlock** — `likely` · P3 · themes: interrupt, typing · code: FEATURE_CAPS:11613
+- 🟢 **Mindlock** — `likely` · P3 · themes: interrupt, typing · code: FEATURE_CAPS:11669
   - Pokemon who have the Capability Mindlock cannot have their minds read by Telepathy, are immune to the Move Mind Reader, cannot have their emotions calmed with Gentle Vibe, and Telepathic Warning cannot trigger on their attacks. The Dream Reader Capability cannot read their dreams.
 
-- 🟢 **Naturewalk** — `likely` · P3 · themes: weather · code: trainerHasCapability:11695, CAP_FIELD_LABEL:19145, capsSkillsCard:19327, encounterCapsRow:34015
+- 🟢 **Naturewalk** — `likely` · P3 · themes: weather · code: trainerHasCapability:11751, CAP_FIELD_LABEL:19201, capsSkillsCard:19383, encounterCapsRow:34395
   - Naturewalk is always listed with Terrain types in parentheses, such as Naturewalk (Forest and Grassland). Pokemon with Naturewalk treat all listed terrains as Basic Terrain.
 
-- 🟢 **Phasing** — `likely` · P3 · themes: weather, heal, action · code: FEATURE_MODES:23534
+- 🟢 **Phasing** — `likely` · P3 · themes: weather, heal, action · code: FEATURE_MODES:23914
   - A Pokemon with Phasing may Shift through Slow Terrain without their Speed Capabilities being affected. As a Standard action, they may turn completely Intangible. While Intangible, they cannot be targeted by Moves or attacks, cannot perform Standard Actions, and lose a Tick of Hit Points at the end of each round. While Intangible, they may pass through solid walls and all other blocking terrain during their Shift Action. Becoming Tangible again is a Shift Action.
 
-- 🟢 **Planter** — `likely` · P3 · themes: other · code: gardenPlanterHolding:31352, gardenSoil:31377, openGardenPlant:31753, gardenPlantRow:31882
+- 🟢 **Planter** — `likely` · P3 · themes: other · code: gardenPlanterHolding:31732, gardenSoil:31757, openGardenPlant:32133, gardenPlantRow:32262
   - Pokemon with the Planter Capability can act as a Portable Grower, holding one plant at a time. Pokemon with this Capability may be limited in what they can grow. In these cases, they will have parentheses on their Planter Capability denoting what they can grow. For example, Planter (Berries) would allow the Pokemon to grow Berry plants only.
 
-- 🟢 **Reach** — `likely` · P3 · themes: other · code: ITEM_MOVES:24584
+- 🟢 **Reach** — `likely` · P3 · themes: other · code: ITEM_MOVES:24964
   - A Pokemon with Reach has the Range of their Melee attacks increased based on their size category; Small and Medium Pokemon may make Melee attacks from up to 2 meters away, and Large and bigger Pokemon may make Melee attacks from up to 3 meters away. Pokemon with Reach are either really large or have a stretchy limb with which they can strike foes from a distance.
 
-- 🟢 **Sprouter** — `likely` · P3 · themes: action · code: resetUses:4755, trainerCapGrants:11675
+- 🟢 **Sprouter** — `likely` · P3 · themes: action · code: resetUses:4755, trainerCapGrants:11731
   - Once per week, Pokemon with the Sprouter capability can rapidly influence the growth of plants and flora around them. As a Standard Action, they may cause a plant around them to bloom, and potentially grow up to 1 meter in any direction. Sprouter may cause planted Berries to instantly give yield.
 
-- 🟢 **Stealth** — `likely` · P3 · themes: weather, swap, skill · code: EDGE_FX:139, CAPTURE_SKILLS:25479
+- 🟢 **Stealth** — `likely` · P3 · themes: weather, swap, skill · code: EDGE_FX:139, CAPTURE_SKILLS:25859
   - A Pokemon with the Stealth Capability are excellent at approaching the enemy for an up close assault. While Shifting, unless they purposely want to, Stealth Pokemon do not make any noise. Unless a Pokemon with Stealth has used a Ranged Move during the current round or the round previous, Ranged Moves may not target them if the line of sight drawn goes through Rough Terrain or if the Pokemon is on Rough Terrain.
 
-- 🟢 **Telekinetic** — `likely` · P3 · themes: position, damage, skill · code: POKE_EDGE_DEFS:17471, ABILITY_CAP_GRANTS:19206
+- 🟢 **Telekinetic** — `likely` · P3 · themes: position, damage, skill · code: POKE_EDGE_DEFS:17527, ABILITY_CAP_GRANTS:19262
   - Telekinetic Pokemon and Trainers can move objects with their mind. They can lift things with Telekinesis as if they were using a Power Capability equal to their Focus Rank. When lifting Staggering Weights with Telekinesis, they roll Focus instead of Athletics, and the DC is 10 instead of 4. They can target objects up to 8 meters away. Count the combined weight of all objects when determining whether they can lift all of them. Using this Capability to lift the user's Drag Weight or greater leaves discoverable psychic residue. Additionally, the user may use Struggle Attacks at a range of X, where X is the user's Focus Rank. These Struggle Attacks deal Normal-Type Damage as usual, but the user …
 
-- 🟢 **Telepath** — `likely` · P3 · themes: typing, skill · code: PE_CAP_ALIAS:17203
+- 🟢 **Telepath** — `likely` · P3 · themes: typing, skill · code: PE_CAP_ALIAS:17259
   - A Telepathic Pokemon can read the surface thoughts of people and other Pokemon X meters away where X is Focus Rank doubled. Pokemon with Telepathy can project their thoughts to the minds of other Trainers or Pokemon with Telepathy. Trainers with Telepathy can project their thoughts to the minds of any Trainer or Pokemon. Telepathy can be used to read only one target at a time but can project to on a number of separate targets at once equal to half the user's Focus Rank. Telepathy may be used to read minds with or without making the target aware of the attempt. Unwilling targets and targets that are unaware automatically resist the Telepathy attempt; the user and target roll opposed Focus Che …
 
-- 🟢 **Threaded** — `likely` · P3 · themes: position, damage, action · code: FEATURE_CAPS:11605, POKE_EDGE_DEFS:17466, capCanonName:19161
+- 🟢 **Threaded** — `likely` · P3 · themes: position, damage, action · code: FEATURE_CAPS:11661, POKE_EDGE_DEFS:17522, capCanonName:19217
   - Pokemon with the Threaded Capability may make a Threaded Shift as a Shift Action. A Threaded Shift is when a Pokemon targets an object and shoots a strong, thin line of silk, or extends a vine from themselves, and then quickly retracts that silk, or vine, pulling itself towards the object if the Pokemon is lighter than the object, or pulling the object towards the Pokemon if it is lighter than the user. Threaded has a range of 4 meters. If you target an unwilling Pokemon or Trainer with threaded, Threaded requires an AC 6 Status Attack to use.
 
-- 🟢 **Tracker** — `likely` · P3 · themes: action, skill · code: POKE_EDGE_DEFS:17474
+- 🟢 **Tracker** — `likely` · P3 · themes: action, skill · code: POKE_EDGE_DEFS:17530
   - Pokemon with the Tracker Capability have a strong sense of smell that they can use to follow other Pokemon or people. If the Pokemon has smelt whom they want to track in the past day, or one of their personal belongings, they can pursue that prey with a Perception check of 8 or better. To pick-up a random scent from nothing, a Perception check of 14 or better will allow the Pokemon to follow that scent. To pick-up a specific scent from nothing, a Perception check of 20 will allow the Pokemon to follow that scent. A Pokemon may only make these checks once per hour.
 
-- 🟢 **Tremorsense** — `likely` · P3 · themes: other · code: FEATURE_CAPS:11610, pokeEdgeCapGrants:17298, POKE_EDGE_DEFS:17468
+- 🟢 **Tremorsense** — `likely` · P3 · themes: other · code: FEATURE_CAPS:11666, pokeEdgeCapGrants:17354, POKE_EDGE_DEFS:17524
   - Pokemon with the Tremorsense Capability can sense the location, size, and shape of objects in the ground around them for up to 5 meters, almost as if they could see through the ground.
 
-- 🟢 **Underdog** — `likely` · P3 · themes: stat · code: evolveTo:1526, isUnderdogMon:17228, pokeEdgeBaseBonus:17313, pokeEdgeBlocksEvolution:17314, underdogLessonSpecies:17340, POKE_EDGE_DEFS:17394, openUnderdogLessonMove:17599
+- 🟢 **Underdog** — `likely` · P3 · themes: stat · code: evolveTo:1526, isUnderdogMon:17284, pokeEdgeBaseBonus:17369, pokeEdgeBlocksEvolution:17370, underdogLessonSpecies:17396, POKE_EDGE_DEFS:17450, openUnderdogLessonMove:17655
   - This capability denotes Pokemon who qualify for the Underdog Class's effects. They are Pokemon species with a Base Stat total of 45 or less. Some exceptions apply.
 
-- 🟢 **Wallclimber** — `likely` · P3 · themes: barrier, position · code: FEATURE_CAPS:11605
+- 🟢 **Wallclimber** — `likely` · P3 · themes: barrier, position · code: FEATURE_CAPS:11661
   - Wallclimber Pokemon often have suction cups, hooks, or other means of easily scaling walls or other vertical surfaces. They may travel along a wall or ceiling at a rate of half of their Overland Capability.
 
-- 🟢 **X-Ray Vision** — `likely` · P3 · themes: other · code: EQUIP_EFFECTS:11534
+- 🟢 **X-Ray Vision** — `likely` · P3 · themes: other · code: EQUIP_EFFECTS:11590
   - Pokemon and Trainers with the X-Ray Vision Capability can see through walls and solid objects up to a foot in thickness. Objects seen through X-Ray vision are seen as white shapes and outlines without much detailed definition. The effectiveness of X-Ray Vision depends on the object's material. Anything thin from paper to light wood to most residential drywall allows clear X-Ray Vision through it, while lead and tungsten would block X-Ray Vision entirely.
 
-- 🟢 **Zapper** — `likely` · P3 · themes: damage · code: PE_RANGED_CAPS:17200
+- 🟢 **Zapper** — `likely` · P3 · themes: damage · code: PE_RANGED_CAPS:17256
   - The user's struggle Attacks may be Electric-Typed if they wish. They may also add their Special Attack instead of their Attack and have the attack deal Special Damage, if they wish.
 
 ## Not in any batch

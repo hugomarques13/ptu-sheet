@@ -935,15 +935,15 @@ P3 · 7 open of 7 · open
 
 P9 · 25 open of 25 · open
 
-- 🟢 **Messiah** — `likely` · P1 (player:Lysgd) · themes: heal · code: giftFreqText:13159, MESSIAH_BRANCH_FEATURES:13344, blessingBranch:13353, blessingModeFor:13357, blessingNoteFor:13362, GIFT_KINDS:13374, giftRow:14019, openAddGift:14189
+- 🟢 **Messiah** — `likely` · P1 (player:Lysgd) · themes: heal · code: giftFreqText:13215, MESSIAH_BRANCH_FEATURES:13400, blessingBranch:13409, blessingModeFor:13413, blessingNoteFor:13418, GIFT_KINDS:13430, giftRow:14075, openAddGift:14245
   - _messiah · One Time Use/5 - Extended Action · Prereq: Touched, GM Permission_
   - Your connection with one of your Patrons has reached such a point that even you are capable of performing the miracles they are renowned and worshiped for. Expending a use of Messiah allows you to perform such a miracle — for example, in a Region where Shaymin is known to restore withered forests to their former glory, a Messiah of Shaymin might cause a forest to rapidly recover from a wildfire. Such acts are usually, but not always, noticeably supernatural and divine.
 
-- 🟢 **Signer** — `likely` · P1 (player:Handels) · themes: barrier, action, skill · code: INJURY_SOURCES:5051, giftFreqText:13159, blessingSide:13335, SIGNER_BRANCH_FEATURES:13343, blessingBranch:13352, blessingModeFor:13357, blessingNoteFor:13362, GIFT_KINDS:13375
+- 🟢 **Signer** — `likely` · P1 (player:Handels) · themes: barrier, action, skill · code: INJURY_SOURCES:5051, giftFreqText:13215, blessingSide:13391, SIGNER_BRANCH_FEATURES:13399, blessingBranch:13408, blessingModeFor:13413, blessingNoteFor:13418, GIFT_KINDS:13431
   - _signer · Static · Prereq: Touched, GM Permission_
   - Choose a Rank 1 Blessing. You gain this Blessing in the form of a Sign. Signs store the energy of the Divine and may be activated as a Swift Action. Signs can be used once per Scene, and cost 1 AP to activate.
 
-- 🟢 **Chosen of Victory** — `likely` · P3 · themes: damage, action, skill · code: trainerVitalsCard:9877
+- 🟢 **Chosen of Victory** — `likely` · P3 · themes: damage, action, skill · code: trainerVitalsCard:9933
   - _gift:Minor · Victini · Prereq: GM Permission_
   - Spending AP to raise an Accuracy Check gives +3 instead of +1.
 
@@ -951,57 +951,57 @@ P9 · 25 open of 25 · open
   - _gift:Major · The Golems (Regis) · Prereq: Minor Gift - Stoic Stature_
   - You gain the Clear Body Ability.
 
-- 🟢 **Crush Grip** — `likely` · P3 · themes: other · code: specialMoveInfo:21318
+- 🟢 **Crush Grip** — `likely` · P3 · themes: other · code: specialMoveInfo:21688
   - _gift:Pact · Regigigas · Prereq: All Regigigas Major Gifts_
   - You learn the Move Crush Grip.
 
-- 🟢 **Faller** — `likely` · P3 · themes: swap, skill · code: PATRON_STATS:12756
+- 🟢 **Faller** — `likely` · P3 · themes: swap, skill · code: PATRON_STATS:12812
   - _gift:Minor · Ultra Space (Fallers) · Prereq: GM Permission, exposure to Ultra Space or another similar phenomenon_
   - +2 to all Checks dealing with extradimensional creatures, objects and events, and −4 to Stealth Checks against them.
 
-- 🟢 **Giftsapper** — `likely` · P3 · themes: action, skill · code: hasGiftsapper:13880, openAddGift:14244
+- 🟢 **Giftsapper** — `likely` · P3 · themes: action, skill · code: hasGiftsapper:13936, openAddGift:14300
   - _general gift · Static · Prereq: GM Permission, No Gifts_
   - As long as Giftsapper's user is conscious, all Trainers within 10 meters must make a Focus Check with DC equal to three times the highest Skill Rank of Giftsapper's user between Focus, Intimidate, or Command in order to activate their Gifts. This Check is made each time a Trainer attempts to use an activated Gift, and a failure means neither any resources such as AP nor the frequency of the Gift is expended. For Gifts with Static or ongoing effects, the Check is made each turn, and a failure ends the effect for that turn.
     Giftsapper's user may NEVER gain Gifts.
 
-- 🟢 **God Crusher** — `likely` · P3 · themes: damage · code: FEATURE_ACTIONS:8212, hasGodslayer:13926, godCrusherOn:13929, GIFT_ACTIONS:14004
+- 🟢 **God Crusher** — `likely` · P3 · themes: damage · code: FEATURE_ACTIONS:8259, hasGodslayer:13982, godCrusherOn:13985, GIFT_ACTIONS:14060
   - _gift:Major · Zygarde · Prereq: Minor Gift - World Serpent's Embrace_
   - You gain the Godslayer Feature (or another Feature if you already have it); Godslayer's AC becomes 8 and no feedback.
 
-- 🟢 **Godslayer** — `likely` · P3 · themes: control, status, damage · code: FEATURE_ACTIONS:8209, giftsCard:13873, hasGodslayer:13926, godslayerGo:13982, GIFT_ACTIONS:14004
+- 🟢 **Godslayer** — `likely` · P3 · themes: control, status, damage · code: FEATURE_ACTIONS:8256, giftsCard:13929, hasGodslayer:13982, godslayerGo:14038, GIFT_ACTIONS:14060
   - _general gift · Standard Action — EOT · Target: A Legendary Pokémon · Prereq: GM Permission_
   - You may attempt to shatter one of the target's Legendary Auras. The AC of this action is 10. If you successfully disabled the Aura but rolled a 10-15, the feedback from the action gives you an Injury.
     Only the Higher Pantheon, some Outsiders, and Arceus himself can bestow this one.
 
-- 🟢 **Hammer Arm** — `likely` · P3 · themes: other · code: CS_PATTERNS:20522, IRON_FIST_MOVES:20731, RECKLESS_ERRATA_MOVES:20845
+- 🟢 **Hammer Arm** — `likely` · P3 · themes: other · code: CS_PATTERNS:20892, IRON_FIST_MOVES:21101, RECKLESS_ERRATA_MOVES:21215
   - _gift:Major · The Golems (Regis) · Prereq: Minor Gift - Stoic Stature_
   - You learn the Move Hammer Arm.
 
-- 🟢 **Levitate** — `likely` · P3 · themes: swap · code: TYPE_ABSORB_ABILITIES:6263, trainerDerivedGrid:9967, PE_MOBILITY:17199, capabilityHelp:19135, CAP_NUM_FIELDS:19141, CAP_FIELD_LABEL:19143, ABILITY_CAP_GRANTS:19196, monCapabilities:19293
+- 🟢 **Levitate** — `likely` · P3 · themes: swap · code: TYPE_ABSORB_ABILITIES:6263, trainerDerivedGrid:10023, PE_MOBILITY:17255, capabilityHelp:19191, CAP_NUM_FIELDS:19197, CAP_FIELD_LABEL:19199, ABILITY_CAP_GRANTS:19252, monCapabilities:19349
   - _gift:Major · Kami Trio · Prereq: Minor Gift - Cloud Reading_
   - You gain the Levitate Ability.
 
-- 🟢 **Life Force** — `likely` · P3 · themes: swap · code: FEATURE_ABILITY_CHOICES:8002
+- 🟢 **Life Force** — `likely` · P3 · themes: swap · code: FEATURE_ABILITY_CHOICES:8049
   - _gift:Major · Tower Duo (Lugia/Ho-Oh) · Prereq: Two Major Gifts from the Tower Duo_
   - You gain the Life Force Ability.
 
-- 🟢 **Magic Bounce** — `likely` · P3 · themes: swap · code: FEATURE_ABILITY_CHOICES:8007
+- 🟢 **Magic Bounce** — `likely` · P3 · themes: swap · code: FEATURE_ABILITY_CHOICES:8054
   - _gift:Major · Diancie · Prereq: Minor Gift - Royal Privilege_
   - You gain the Magic Bounce Ability.
 
-- 🟢 **Magic Guard** — `likely` · P3 · themes: swap · code: FEATURE_ABILITY_CHOICES:8007
+- 🟢 **Magic Guard** — `likely` · P3 · themes: swap · code: FEATURE_ABILITY_CHOICES:8054, hpRecoilImmunity:20689
   - _gift:Major · Magearna · Prereq: Minor Gift - Regal Aide_
   - You gain the Magic Guard Ability.
 
-- 🟢 **Mindlock** — `likely` · P3 · themes: other · code: FEATURE_CAPS:11613
+- 🟢 **Mindlock** — `likely` · P3 · themes: other · code: FEATURE_CAPS:11669
   - _gift:Major · Outsider — MissingNo (Cosmic Horror) · Prereq: Minor Gift - Alien Countenance_
   - You gain the Mindlock Capability.
 
-- 🟢 **Nature's Madness** — `likely` · P3 · themes: other · code: SPECIAL_FIXED_DAMAGE:21138
+- 🟢 **Nature's Madness** — `likely` · P3 · themes: other · code: SPECIAL_FIXED_DAMAGE:21508
   - _gift:Major · The Tapus · Prereq: One Tapu Major Gift_
   - You learn the Move Nature's Madness.
 
-- 🟢 **Phasing** — `likely` · P3 · themes: other · code: FEATURE_MODES:23534
+- 🟢 **Phasing** — `likely` · P3 · themes: other · code: FEATURE_MODES:23914
   - _gift:Major · Outsider — MissingNo (Cosmic Horror) · Prereq: Minor Gift - Alien Countenance_
   - You gain the Phasing Capability.
 
@@ -1009,11 +1009,11 @@ P9 · 25 open of 25 · open
   - _gift:Major · The Galarian Birds · Prereq: Minor Gift - Perpetual Spite_
   - You gain the Prime Fury Ability.
 
-- 🟢 **Serene Grace** — `likely` · P3 · themes: swap · code: openTrainerAttack:9439, openMoveRoll:21777, AUTOMATED_ABILITIES:38749
+- 🟢 **Serene Grace** — `likely` · P3 · themes: swap · code: openTrainerAttack:9491, openMoveRoll:22147, AUTOMATED_ABILITIES:39129
   - _gift:Major · Jirachi · Prereq: Minor Gift - Watchful Sleep_
   - You gain the Serene Grace Ability.
 
-- 🟢 **Soundproof** — `likely` · P3 · themes: swap · code: FEATURE_ABILITY_CHOICES:8006
+- 🟢 **Soundproof** — `likely` · P3 · themes: swap · code: FEATURE_ABILITY_CHOICES:8053
   - _gift:Major · Meloetta · Prereq: Minor Gift - Dazzling the Stage_
   - You gain the Soundproof Ability.
 
@@ -1022,20 +1022,20 @@ P9 · 25 open of 25 · open
   - Messiah (Daily x3 — Free Action): Choose one of the following: the Target is healed 50% of their HP, or the Target recovers two Injuries that do not count against the Daily Limit.
     Signer (Standard Action): The Target heals two ticks of HP, and recovers an Injury.
 
-- 🟢 **Tremorsense** — `likely` · P3 · themes: other · code: FEATURE_CAPS:11610, pokeEdgeCapGrants:17298, POKE_EDGE_DEFS:17468
+- 🟢 **Tremorsense** — `likely` · P3 · themes: other · code: FEATURE_CAPS:11666, pokeEdgeCapGrants:17354, POKE_EDGE_DEFS:17524
   - _gift:Major · Heatran · Prereq: Minor Gift - Vulcan's Intuition_
   - You gain the Tremorsense Capability.
 
-- 🟢 **Usurper** — `likely` · P3 · themes: swap, damage, action, stat · code: GIFT_KINDS:13376, usurpRows:13406, isUsurper:13407, giftRow:14143, openAddGift:14193
+- 🟢 **Usurper** — `likely` · P3 · themes: swap, damage, action, stat · code: GIFT_KINDS:13432, usurpRows:13462, isUsurper:13463, giftRow:14199, openAddGift:14249
   - _usurper · Static · Prereq: You have slain a God and through occult ritual or technology have absorbed its essence._
   - Your human form is now considered your Avatar, and you gain a second set of stats for your Pokémon form. This form is that of the Legendary you usurped, starts at Level 1 with the Nature and Abilities of your choice, and may gain Experience as if it were a Pokémon you owned. Switching between your human form and this one takes a Standard Action. Usurpers cannot receive Gifts or Blessings from other Legendaries, as they are divinity themselves now. Any Touched, Branded, Messiah and Signer Edges and Features you possessed up until this point are refunded.
     Damage is SHARED: when an Usurper takes damage in one form, both forms lose HP equal to the final amount dealt. Knocked Out in one form but …
 
-- 🟢 **V-Create** — `likely` · P3 · themes: other · code: RECKLESS_ERRATA_MOVES:20846
+- 🟢 **V-Create** — `likely` · P3 · themes: other · code: RECKLESS_ERRATA_MOVES:21216
   - _gift:Pact · Victini · Prereq: All Victini Major Gifts_
   - You learn the Move V-Create.
 
-- 🟢 **Water Absorb (Suicune)** — `likely` · P3 · themes: swap · code: giftLevelsForPatron:13501, giftHiddenFrom:13547, giftMaskPatron:13561
+- 🟢 **Water Absorb (Suicune)** — `likely` · P3 · themes: swap · code: giftLevelsForPatron:13557, giftHiddenFrom:13603, giftMaskPatron:13617
   - _gift:Major · Legendary Birds & Beasts · Prereq: Minor Gift - Elemental Soul_
   - You gain the Water Absorb Ability.
 

@@ -3659,7 +3659,7 @@ const HELD_FX = {
   "lifeorb":      { dmg:5, rollNote:"Life Orb: +5 damage is already in the roll — the holder then loses 1/16th of its Max HP (tap its token and press 💢 Life Orb)." },
   "kingsrock":    { rollNote:"King's Rock: the attack Flinches its target on an Accuracy roll of 19+. Does not stack with anything else that extends Flinch range." },
   "razorfang":    { rollNote:"Razor Fang: the attack causes an Injury on an Accuracy roll of 19+." },
-  "bigroot":      { rollNote:"Big Root: an HP-stealing Move restores DOUBLE the Hit Points." },
+  "bigroot":      { rollNote:"Big Root: an HP-stealing Move restores DOUBLE the Hit Points \u2014 the \u{1FA78} Hit Points card on the roll has already doubled the drain." },
   "metalpowder":  { cs:{def:2, spdef:2}, onlySpecies:["Ditto"],
                     note:"Metal Powder: +2 Defense and +2 Special Defense Combat Stages while this Ditto is untransformed." },
   /* ---- self-inflicted ---- */
@@ -6694,14 +6694,61 @@ const TRAINER_PLACEHOLDER = "data:image/svg+xml,"+encodeURIComponent(
    crops to a square/circle and zooms up to 300%, so the stored file has to carry far more pixels
    than the 56-120px it's drawn at — at the old 256px a landscape photo had ~140px of real height
    left for the square crop, and a 3× zoom was stretching ~50 source pixels across the whole
-   editor. Only when the file goes to the Storage bucket, though: offline, it's inlined as base64
-   into localStorage, where ten 720px photos would eat the 5 MB quota. */
-function framablePicDim(){ return (mode==="cloud" && cloud.client && cloud.campaign) ? 720 : 320; }
-/* Pick a local image file, downscale it so its SHORT side is at most maxDim px (long side at most
-   2×maxDim — a crop only ever keeps the short side), and hand back a compact data URL: WebP where
-   the browser can encode it (keeps transparency), otherwise PNG for a picture with transparency
-   and JPEG for one without. JPEG was used for everything before, which painted transparent art
-   onto black. */
+   editor. 720 fixed the crop but still short-changed the two things that ask for real pixels:
+   tapping a picture opens it FULL SCREEN (a 1440p monitor wants ~1300px of it), and a 3× crop on
+   a 2× phone screen wants 1080 of the short side on its own. 1440 covers both with nothing left
+   over — beyond it the extra pixels are never drawn.
+
+   Only when the file goes to the Storage bucket, though: offline the picture is inlined as base64
+   into localStorage, where the whole sheet shares a ~5 MB quota, so there it stays small. That's
+   the one place a size limit is still a real constraint rather than a habit — in a campaign the
+   image lives in the bucket behind a CDN and the synced row only carries its URL, so a bigger
+   file costs a one-off download per device (the service worker caches it forever after) and
+   nothing at all per edit. */
+function framablePicDim(){ return (mode==="cloud" && cloud.client && cloud.campaign) ? 1440 : 320; }
+/* A file at or under this size is stored EXACTLY as uploaded — see the pass-through in pickImage. */
+function picPassthroughMax(){ return (mode==="cloud" && cloud.client && cloud.campaign) ? 4*1024*1024 : 96*1024; }
+/* Does anything on this canvas show through? Transparency is what rules JPEG out. */
+function canvasHasAlpha(cx, w, h){
+  try{ const px = cx.getImageData(0, 0, w, h).data;
+       for(let i=3;i<px.length;i+=4) if(px[i]<255) return true; }catch(e){}
+  return false;
+}
+/* How much bigger an EXACT encode is allowed to be before we settle for a lossy one. */
+const EXACT_ENCODE_SLACK = 1.4;
+/* Encode a canvas as small as it can be without throwing away more than it has to. Two candidates
+   are weighed every time: PNG, which is exact — every pixel byte-for-byte what was drawn — and
+   WebP at `q`, which is not. On a photograph PNG comes out many times bigger and WebP wins easily.
+   On pixel art, a logo, flat cel-shaded art or a tile map, PNG compresses so well that it lands at
+   or under the lossy file, and then there is simply no reason to lose anything: those are exactly
+   the pictures where q=0.9 shows, because a lossy encoder spends its bits smearing the hard edges
+   that make them readable. The 1.4× slack buys exactness cheaply on the borderline cases.
+
+   Safari can't encode WebP at all (it quietly hands back a PNG), so it falls to JPEG for a photo
+   and keeps the PNG whenever there is transparency — JPEG would paint that onto black. */
+function encodeCanvas(cv, cx, q){
+  let png = ""; try{ png = cv.toDataURL("image/png"); }catch(e){}
+  let best = "";
+  try{ const u = cv.toDataURL("image/webp", q); if(u.indexOf("data:image/webp")===0) best = u; }catch(e){}
+  if(!best){
+    if(canvasHasAlpha(cx, cv.width, cv.height)) return png;
+    try{ best = cv.toDataURL("image/jpeg", q); }catch(e){}
+  }
+  if(!best) return png;
+  return (png && png.length <= best.length*EXACT_ENCODE_SLACK) ? png : best;
+}
+/* Pick a local image file and hand back a data URL.
+
+   The best case is that nothing happens to it at all: a file that already fits inside maxDim and
+   is small enough for where it is going is passed straight through, byte-for-byte as uploaded.
+   Every re-encode before this was pure loss on those — a 900×1200 portrait that needed no
+   resizing went through a lossy WebP pass for no gain whatsoever, and a source JPEG picked up a
+   second generation of artefacts stacked on its own. Nothing is "compressed to be safe" any more.
+
+   Only a file that is genuinely too big gets touched, and then only as much as it must: downscaled
+   so its SHORT side is at most maxDim px (long side at most 2×maxDim — a crop only ever keeps the
+   short side), then handed to encodeCanvas, which keeps the encode exact whenever exact is not
+   dearer than lossy. */
 function pickImage(maxDim, onData){
   const inp = el("input",{type:"file",accept:"image/*",style:"display:none"});
   inp.addEventListener("change",()=>{
@@ -6713,6 +6760,12 @@ function pickImage(maxDim, onData){
       img.onload = () => {
         const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
         const scale = Math.min(1, maxDim / Math.min(W, H), 2*maxDim / Math.max(W, H));
+        /* Already small enough, and cheap enough to carry as it is → the original bytes, untouched.
+           This is the whole point: no resample, no re-encode, no generation loss. The cap is what
+           the destination can actually afford (picPassthroughMax), not a guess at what looks fine. */
+        if(scale === 1 && f.size <= picPassthroughMax() && typeof reader.result === "string"){
+          onData(reader.result); inp.remove(); return;
+        }
         const w = Math.max(1, Math.round(W*scale)), h = Math.max(1, Math.round(H*scale));
         /* One big drawImage from a 4000px photo to a few hundred px samples only a handful of source
            pixels per output pixel and comes out jagged, so halve in steps first. */
@@ -6727,17 +6780,11 @@ function pickImage(maxDim, onData){
         const cv = el("canvas"); cv.width = w; cv.height = h;
         const cx = cv.getContext("2d"); cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = "high";
         cx.drawImage(src, 0, 0, sw, sh, 0, 0, w, h);
-        let out = "";
-        try{
-          out = cv.toDataURL("image/webp", 0.9);
-          if(out.indexOf("data:image/webp")!==0){        // Safari can't encode WebP and hands back PNG
-            let alpha = false;
-            try{ const px = cx.getImageData(0, 0, w, h).data;
-                 for(let i=3;i<px.length;i+=4) if(px[i]<255){ alpha = true; break; } }catch(e){}
-            out = alpha ? cv.toDataURL("image/png") : cv.toDataURL("image/jpeg", 0.9);
-          }
-        }catch(e){ out = reader.result; }
-        onData(out); inp.remove();
+        /* 0.95, not 0.9. A picture only reaches this line because it had to be resampled, and a
+           resample has already cost it detail — spending a few more KB so the encoder does not
+           take a second bite is the cheapest quality in the whole path. */
+        let out = ""; try{ out = encodeCanvas(cv, cx, 0.95); }catch(e){}
+        onData(out || reader.result); inp.remove();
       };
       img.onerror = () => { toast("⚠ Could not read that image"); inp.remove(); };
       img.src = reader.result;
@@ -9427,6 +9474,11 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
        parser, and the same two Abilities that bend it: Frostbite widens Freeze on an Ice Move,
        Serene Grace widens every Effect Range by +2. */
     let hitFx = null;                    // the target's Afflictions / CS, carried to the 💥 Apply below
+    let hpNode = null;                   // found-04: drain / Recoil / self-heal, appended after the damage
+    const missedRoll = dblStrike ? (connected === 0)
+      : (st.ac == null || st.ac === "") ? null
+      : acc === 20 ? false
+      : (acc === 1 || accTot < st.ac + targetEva);
     if(st.move){
       const trThr = buffEffectThresholds(sereneGraceThresholds(
         burnRangeThresholds(
@@ -9459,6 +9511,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       const tn = moveTypeNode(t, st.move, opts.rerender, opts.persist);
       if(tn) out.append(tn);
       const ok = ohkoNode(t, st.move); if(ok) out.append(ok);
+      hpNode = moveHPNode(t, st.move, { missed:missedRoll, redraw:opts.rerender, persist:opts.persist });
     }
     /* Demoralize (Edge, prereq Adept Intimidate): "Whenever you land a Critical Hit on a foe, that
        foe becomes Vulnerable. Status-Class Moves with an Accuracy Roll can Crit for the purposes of
@@ -9550,10 +9603,12 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         `\u2694 ${st.weapon && st.weapon.name ? st.weapon.name : "Deicide weapon"}: this damage is TYPELESS \u2014 no resistance, no immunity, no STAB \u2014 and lands Super-Effective (\u00d71.5) on any Legendary Pok\u00e9mon or Gift-carrying Trainer. Applied for you by the target picker below.`));
       if(tMold) out.append(el("div",{class:"small",style:"margin-top:4px;color:var(--accent);font-weight:600"},
         `\u{1F528} ${tMold.why}${tMold.tinted?", and a hit they would resist lands as neutral":""}. Applied for you by the target picker below.`));
+      if(hpNode && hpNode.setDealt) hpNode.setDealt(total);   // a rough figure until a target takes it
       const tw = attackTargetWidget({ dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce,
         atkTinted: ownerHasAbility(t,"Tinted Lens") || !!(tMold && tMold.tinted), atkMold: !!tMold,
         atkExploit: ownerHasAbility(t,"Exploit"), atkWar: ownerAuraActive(t,"War"), atkDeicide: !!st.deicide,
-        seFlat: heldSeFlatDamage(t), defCSMode, moveRule, critExtra, fx: hitFx });
+        seFlat: heldSeFlatDamage(t), defCSMode, moveRule, critExtra, fx: hitFx,
+        onDealt:(n)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n); } });
       if(tw) out.append(tw);
       feedLogged = true;
       logRoll({ kind:"move", label:st.name, who:t.name||"",
@@ -9565,6 +9620,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
                atkExploit: ownerHasAbility(t,"Exploit"), atkWar: ownerAuraActive(t,"War"), atkDeicide: !!st.deicide,
                seFlat: heldSeFlatDamage(t), defCSMode, fx: hitFx } });
     }
+    if(hpNode) out.append(hpNode);
     if(dblStrike){
       const ov = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center"});
       ov.append(el("span",{class:"small muted"},"Override hits:"));
@@ -20448,6 +20504,320 @@ function hitFxLine(fx){
           ...(fx.cs || []).map(e => `${e.n > 0 ? "+" : "−"}${Math.abs(e.n)} ${e.stats.map(k => CS_FX_LABEL[k]).join(" / ")} CS`)]
     .filter(Boolean).join(" · ");
 }
+/* ===================================================================
+   HIT POINT EFFECTS OF MOVES — drain, recoil, self-heal, sacrifice (found-04)
+   -------------------------------------------------------------------
+   ~75 Moves move the USER's own Hit Points and nothing was doing the arithmetic: Giga Drain gives
+   back half of what it dealt, the Recoil keyword takes a third of it away again, Recover is half of
+   Max HP, Synthesis is half — or two thirds, or a quarter — depending on the sky, Substitute and
+   Mind Blown cost a slice of Max HP just to use, Jump Kick charges a quarter for MISSING, Swallow
+   pays out by Stockpile, and Healing Wish spends the user entirely.
+
+   The rules text says all of it, so it is parsed rather than listed:
+     · the Recoil keyword off the RANGE line ("Melee, 1 Target, Dash, Recoil 1/3")
+     · "the user gains HP equal to half of the damage they dealt to the target"     → drain
+     · "The user regains HP equal to half of its full HP"                           → self-heal
+     · "If it is Sunny, the user gains 2/3 of its full HP"                          → the same heal
+       at a different fraction, and the one the weather ACTUALLY in play picks is the one offered
+     · "The user loses 1/4 of their maximum Hit Points" / "…are reduced by 50%…"    → a cost
+     · "If Jump Kick misses, the user loses Hit Points equal to 1/4th of their Max Hit Points"
+                                                                                    → a miss cost
+     · "The target regains HP equal to half of its full HP" / "Restores 50% of the
+       target's max Hit Points"                                                     → an ally heal
+     · Healing Wish / Lunar Dance                                                   → the sacrifice
+       dialog that already exists (openSacrificeHeal)
+   A sentence that opens with a condition keeps it: the button is still offered, labelled with the
+   condition, because the sheet can't know whether the user is a Ghost Type this time or how many
+   Stockpiles they have — but it can do the arithmetic the moment they say so.
+
+   Everything lands through ownerHPChange, which is damageHealRow's pipeline: Temporary HP first on
+   the way down, Injuries, Knocked Out / Death, Shields Down / Schooling, and an Usurper's mirror.
+   "This Hit Point loss cannot be prevented in any way" (Curse, Substitute, Mind Blown, Shed Tail,
+   Chloroblast, Steel Beam) is honoured by skipping the Temporary HP soak.
+
+   The two fractions of DAMAGE DEALT — drain and Recoil — need a number nothing knows when the dice
+   are rolled: what the target actually lost after its Defense, the type matchup and its DR. So the
+   row carries a box pre-filled with the rolled total, and the GM's 💥 Apply feeds the real figure
+   back into it (attackTargetWidget's onDealt) so the press is one tap with the right number in it.
+=================================================================== */
+const HP_PCT_RE  = /(\d{1,3})\s*%/;
+const HP_FRAC_RE = /(\d{1,2})\s*\/\s*(\d{1,3})\s*(?:st|nd|rd|th)?/;
+/* "half", "1/4th", "2/3", "50%" — the four ways the book writes a slice of Hit Points */
+function hpFracIn(s){
+  const t = String(s || "");
+  const p = HP_PCT_RE.exec(t);  if(p && +p[1] > 0) return { num:+p[1], den:100 };
+  const f = HP_FRAC_RE.exec(t); if(f && +f[2] > 0) return { num:+f[1], den:+f[2] };
+  if(/\bhalf\b/i.test(t))                 return { num:1, den:2 };
+  if(/\ba third\b/i.test(t))              return { num:1, den:3 };
+  if(/\ba (?:quarter|fourth)\b/i.test(t)) return { num:1, den:4 };
+  return null;
+}
+const hpFracLbl = f => f.den === 100 ? `${f.num}%` : `${f.num}⁄${f.den}`;
+/* a slice OF WHAT — the maximum, what is left right now, or the damage the hit just did */
+function hpOfWhat(s){
+  const t = String(s || "");
+  if(/\bcurrent\b/i.test(t)) return "current";
+  if(/\b(?:full|maximum|max)\b/i.test(t) || /Hit Points?\s+(?:total|value)/i.test(t)) return "max";
+  return null;
+}
+function hpWeatherKeysIn(s){
+  const t = String(s || "").toLowerCase(), out = [];
+  if(/\bsunny\b|\bsun\b/.test(t)) out.push("sunny");
+  if(/\brain/.test(t))            out.push("rainy");
+  if(/\bsand ?storm/.test(t))     out.push("sandstorm");
+  if(/\bhail|\bsnow/.test(t))     out.push("hail");
+  return out;
+}
+/* the three sentence shapes. `t` has had any leading "If …," taken off it and into `cond`. */
+function hpClausesCore(t, cond, weather, full){
+  const out = [];
+  const push = e => { out.push(Object.assign({ text: full || t, cond:cond || "", weather: weather || [] }, e)); return out; };
+
+  // drain — "the user gains HP equal to half of the damage they dealt to the target"
+  let m = /\buser\s+(?:gains?|regains?)\s+(?:HP|Hit Points)\s+equal to\s+([^.;]*?)\s+of the damage/i.exec(t);
+  if(m){ const f = hpFracIn(m[1]); if(f) return push({ kind:"drain", who:"user", num:f.num, den:f.den, of:"dealt" }); }
+
+  // healed outright — Rest, Swallow at 3 Stockpile
+  if(/\b(?:user|they|it)\b[^.;]{0,24}?(?:set to (?:their|its) full Hit Point|healed back to full Hit Points)/i.test(t))
+    return push({ kind:"full", who:"user" });
+
+  /* the user's own Hit Points, up or down. One sentence can do both with a single subject —
+     Belly Drum "gains +6 Attack CS and loses HP equal to 1/2 of their Max HP" — so the subject is
+     found once and then EVERY direction verb after it is read, each against its own stretch of
+     text. Reading only the first verb had Belly Drum healing for what it actually costs. */
+  const SUBJ_RE = /\b(?:the\s+)?(?:user|they|it)\b/ig;
+  let sg, any = false;
+  while((sg = SUBJ_RE.exec(t))){
+    const rest = t.slice(sg.index + sg[0].length);
+    const vi = rest.search(/\b(?:gains?|regains?|recovers?|healed|loses?|reduced by)\b/i);
+    if(vi < 0) continue;
+    /* the verb has to belong to THIS subject: "At the end of the user's next turn, the target
+       regains HP" names the user first and heals somebody else, and the comma is what says so. */
+    const gap = rest.slice(0, vi);
+    if(/[,;]/.test(gap) || gap.length > 44) continue;
+    const party = /\ballies\b/i.test(gap);               // "The user and any allies in the burst regain…"
+    const parts = rest.slice(vi).split(/\b(gains?|regains?|recovers?|healed|loses?|reduced by)\b/i);
+    for(let k = 1; k < parts.length; k += 2){
+      const f = hpFracIn(parts[k+1] || ""), of = hpOfWhat(parts[k+1] || "");
+      if(!f || !of) continue;
+      push({ kind: /^(?:loses?|reduced by)$/i.test(parts[k]) ? "cost" : "heal",
+             who: party ? "party" : "user", num:f.num, den:f.den, of });
+      any = true;
+    }
+    if(any) break;
+  }
+  if(any) return out;
+
+  // somebody else's Hit Points, up only — Heal Pulse, Milk Drink, Soft-Boiled, Floral Healing, Wish
+  m = /\b(?:the\s+)?targets?\s+(?:are\s+|is\s+)?(?:instead\s+|also\s+|then\s+|immediately\s+)?(?:gains?|regains?|recovers?|healed)\s+([^.;]*)/i.exec(t)
+   || /^Restores\s+([^.;]*?)\s+of the target/i.exec(t);
+  if(m){
+    const tail = m[1] || "";
+    // "Restores 50% of the target's max Hit Points" puts the "max" past the capture, so the whole
+    // sentence answers "of what" while the fraction still comes from the captured half
+    const f = hpFracIn(tail), of = hpOfWhat(tail) || hpOfWhat(t);
+    if(f && of) return push({ kind:"heal", who:"target", num:f.num, den:f.den, of });
+  }
+  return out;
+}
+function hpClauses(sentence){
+  let t = String(sentence || "").trim().replace(/\s+/g, " ");
+  if(!t) return [];
+  // sentences ABOUT healing rather than healing: "may not gain Hit Points", "does not restore…"
+  if(/\b(?:may not|cannot|can't|does not|do not|doesn't|never)\b[^.;]{0,40}\b(?:gains?|regains?|heals?|restores?|recovers?)\b/i.test(t)) return [];
+  let cond = "";
+  const c = /^(?:However,\s*)?(?:if|while|when|unless)\s+([^,]{2,80}),\s*/i.exec(t);
+  if(c){ cond = c[1]; t = t.slice(c[0].length); }
+  /* a cost paid for MISSING — Jump Kick, High Jump Kick, Supercell Slam, Axe Kick. The condition
+     isn't a rider on the button, it decides whether the button is offered at all. */
+  if(/\bmisses\b/i.test(cond) && /\b(?:user|they)\s+loses?\b/i.test(t)){
+    const f = hpFracIn(t);
+    if(f) return [{ kind:"cost", who:"user", num:f.num, den:f.den, of:"max", onMiss:true,
+                    cond:"", weather:[], text:String(sentence).trim() }];
+  }
+  return hpClausesCore(t, cond, cond ? hpWeatherKeysIn(sentence) : [], String(sentence).trim().replace(/\s+/g, " "));
+}
+const _mhpCache = new Map();
+function moveHPEffects(m){
+  const nm = String((m && m.name) || ""), text = String((m && m.effect) || ""), rng = String((m && m.range) || "");
+  const key = nm + "|" + rng + "|" + text;
+  if(_mhpCache.has(key)) return _mhpCache.get(key);
+  const out = [];
+  if(isSacrificeHealMove(nm)){
+    out.push({ kind:"sacrifice", who:"user", cond:"", weather:[],
+      text:`${nm}: the user Faints, and the target is cured of up to 3 Injuries, healed to full, and has every Move's Frequency restored.` });
+  } else {
+    const rec = /(?:^|,\s*)recoil\s+(\d+)\s*\/\s*(\d+)/i.exec(rng);
+    if(rec) out.push({ kind:"recoil", who:"user", num:+rec[1], den:+rec[2], of:"dealt", cond:"", weather:[],
+      text:`Recoil ${rec[1]}/${rec[2]} — total the damage the target took and the user loses that fraction of it.` });
+    text.split(/(?<=[.;])\s+|\n+/).forEach(s => hpClauses(s).forEach(e => {
+      if(!out.some(x => x.kind === e.kind && x.who === e.who && x.of === e.of
+                     && x.num === e.num && x.den === e.den && x.cond === e.cond)) out.push(e);
+    }));
+  }
+  if(/Hit Point loss[^.]{0,30}cannot be (?:prevented|reduced)/i.test(text))
+    out.forEach(e => { if(e.kind === "cost") e.unpreventable = true; });
+  _mhpCache.set(key, out);
+  return out;
+}
+/* One signed Hit Point change on any creature, through everything damageHealRow does: Temporary HP
+   is spent first on the way down, then Injuries, Knocked Out / Death, the Shields Down and
+   Schooling forme checks, and an Usurper's other form takes the same hit. Returns what moved.
+   `opts.raw` skips the Temporary HP soak — that is what "cannot be prevented in any way" means. */
+function ownerHPChange(o, n, opts){
+  opts = opts || {};
+  n = Math.round(n || 0);
+  if(!o || !n) return 0;
+  if(n > 0 && overgrowthIntercept(o, n, false)) return 0;     // Overgrowth: the Druid takes it instead
+  const max = ownerMaxHP(o) || 1;
+  const old = ownerHP(o);
+  let next = old + n;
+  if(n < 0 && !opts.raw) next = tempSoakSay(o, old, next);
+  next = Math.min(max, Math.round(next));
+  o.currentHP = next;
+  if(n < 0) applyAutoInjury(o, old, next);
+  applyAutoKO(o, old, next);
+  applyShieldsDown(o, next); applySchooling(o, next);
+  usurpMirrorHP(o, old, next);
+  return next - old;
+}
+const hpHasHeld = (o, key) => heldFxList(o).some(([nm]) => normItemName(nm) === key);
+/* "the user ignores the Recoil keyword" — and Magic Guard takes no indirect damage at all */
+function hpRecoilImmunity(o){
+  if(!o) return "";
+  if(ownerHasAbility(o, "Rock Head") || ownerHasAbility(o, "Rock Head [Errata]")) return "Rock Head";
+  if(ownerHasAbility(o, "Magic Guard")) return "Magic Guard";
+  return "";
+}
+const HP_KIND_ICON = { drain:"\u{1F9DB}", recoil:"\u{1F4A2}", heal:"\u{1F49A}", cost:"\u{1F494}",
+                       full:"✨", sacrifice:"✨" };
+/* The card the roll shows for a Move's Hit Point effects.
+   o = { missed:true|false|null, redraw, persist }. The returned node carries setDealt(n) so the
+   damage roll — and then the GM's 💥 Apply, with the real post-defence figure — can fill in the
+   number that drain and Recoil are a fraction OF. */
+function moveHPNode(actor, m, o){
+  o = o || {};
+  if(!actor || !m) return null;
+  const all = moveHPEffects(m);
+  if(!all.length) return null;
+  const persist = o.persist || save, redraw = o.redraw || (() => {});
+  const wx = (typeof ownerWeather === "function") ? ownerWeather(actor) : { key:"clear", name:"Clear skies" };
+  /* Synthesis / Moonlight / Morning Sun / Shore Up print three fractions and the sky picks one, so
+     only the one that is actually up is offered — and if none is, the plain sentence stands. */
+  const wxWin = all.find(e => e.kind === "heal" && e.weather.length && e.weather.includes(wx.key));
+  const rows = all.filter(e => {
+    if(e.onMiss && o.missed === false) return false;
+    if(e.kind !== "heal") return true;
+    if(e.weather.length) return e === wxWin;
+    return !(wxWin && wxWin.who === e.who);
+  });
+  if(!rows.length) return null;
+  const card = el("div", { class:"card", style:"background:var(--panel);border:1px solid var(--line);margin:10px 0 0" });
+  card.append(el("div", { class:"small", style:"font-weight:800;margin-bottom:4px" }, "\u{1FA78} Hit Points"));
+  const bigRoot = hpHasHeld(actor, "bigroot");
+  const rockHead = hpRecoilImmunity(actor);
+  const needDealt = rows.some(e => e.of === "dealt");
+  const dealtIn = el("input", { type:"number", min:"0", value:"0", style:"width:82px" });
+  const dealtOf = () => Math.max(0, parseInt(dealtIn.value, 10) || 0);
+  const refreshers = [];
+  const baseOf = e => e.of === "dealt" ? dealtOf() : e.of === "current" ? ownerHP(actor) : (ownerMaxHP(actor) || 1);
+  const amountOf = e => {
+    if(e.kind === "full" || e.kind === "sacrifice") return 0;
+    const base = baseOf(e);
+    let n = base > 0 ? hpFractionOf(base, e) : 0;
+    if(e.kind === "drain" && bigRoot) n *= 2;                  // Big Root: an HP-stealing Move gives back double
+    if(e.kind === "recoil" && rockHead) n = 0;
+    return n;
+  };
+  if(needDealt){
+    card.append(el("div", { class:"inline small", style:"gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap" },
+      el("span", { class:"muted", style:"font-weight:700" }, "Damage the target actually took:"), dealtIn,
+      el("span", { class:"muted" }, "— after its Defense, the type matchup and its Damage Reduction. The \u{1F4A5} Apply below fills this in for you.")));
+    dealtIn.addEventListener("input", () => refreshers.forEach(f => f()));
+  }
+  rows.forEach(e => {
+    const row = el("div", { style:"margin-top:6px;padding-top:6px;border-top:1px dotted var(--line)" });
+    const head = el("div", { class:"small", style:"font-weight:700" });
+    const note = el("div", { class:"small muted" }, e.text);
+    row.append(head);
+    if(e.kind === "sacrifice"){
+      head.textContent = `✨ ${m.name} — the user Faints to restore somebody else`;
+      row.append(note, el("button", { class:"btn-secondary", style:"margin-top:4px;padding:4px 10px",
+        onclick:() => openSacrificeHeal(actor, m.name, redraw) }, `✨ Open ${m.name}…`));
+      card.append(row); return;
+    }
+    if(e.kind === "full"){
+      head.textContent = `✨ ${ownerLabel(actor)} is restored to full Hit Points`;
+      const b = el("button", { class:"btn-secondary", style:"margin-top:4px;padding:4px 10px",
+        onclick:(ev) => {
+          const n = healToFull(actor);
+          persist(); redraw(); ev.currentTarget.disabled = true;
+          toast(`\u{1F49A} ${ownerLabel(actor)} — +${n} HP, back to full`);
+        } }, `✨ Heal ${ownerLabel(actor)} to full`);
+      row.append(note, e.cond ? el("div", { class:"small", style:"color:var(--accent);font-weight:600" }, `only if ${e.cond}`) : "", b);
+      card.append(row); return;
+    }
+    const up = e.kind === "drain" || e.kind === "heal";
+    const ofTxt = e.of === "dealt" ? "of the damage dealt" : e.of === "current" ? "of its current Hit Points" : "of Max HP";
+    const btn = el("button", { class:"btn-secondary", style:"margin-top:4px;padding:4px 10px" });
+    const paint = () => {
+      const n = amountOf(e);
+      const what = e.kind === "drain" ? "Drain" : e.kind === "recoil" ? "Recoil" : up ? "Heal" : "Cost";
+      /* a heal aimed at somebody else is a fraction of THEIR maximum, not the caster's — the
+         numbers only exist once a target is picked, so the row names the fraction and stops */
+      head.textContent = e.who === "target"
+        ? `${HP_KIND_ICON[e.kind]} ${what} — ${hpFracLbl(e)} of the target's ${e.of === "current" ? "current" : "Max"} HP`
+        : `${HP_KIND_ICON[e.kind]} ${what} — ${hpFracLbl(e)} ${ofTxt}${e.of === "dealt" ? "" : ` (${baseOf(e)})`} = ${n} HP`
+          + (e.kind === "drain" && bigRoot ? " (Big Root: doubled)" : "")
+          + (e.kind === "recoil" && rockHead ? ` — ignored, ${rockHead}` : "");
+      btn.textContent = `${up ? "➕" : "➖"}${n} HP → ${ownerLabel(actor)}`;
+      btn.disabled = !n;
+    };
+    refreshers.push(paint);
+    btn.addEventListener("click", (ev) => {
+      const n = amountOf(e); if(!n) return;
+      const moved = ownerHPChange(actor, up ? n : -n, { raw: !!e.unpreventable });
+      persist(); redraw(); ev.currentTarget.disabled = true;
+      toast(`${HP_KIND_ICON[e.kind]} ${ownerLabel(actor)} ${moved >= 0 ? "+" : ""}${moved} HP — ${ownerHP(actor)}/${ownerMaxHP(actor)}`);
+    });
+    row.append(note);
+    if(e.onMiss) row.append(el("div", { class:"small", style:`color:var(--${o.missed ? "bad" : "muted"});font-weight:600` },
+      o.missed ? "⚠ This roll MISSED — the user pays it." : "Only on a miss — a Shield doesn't count as one."));
+    if(e.cond) row.append(el("div", { class:"small", style:"color:var(--accent);font-weight:600" }, `only if ${e.cond}`));
+    if(e.weather.length) row.append(el("div", { class:"small muted" }, `${wx.icon || ""} ${wx.name} is in play, so this is the fraction that applies.`));
+    if(e.unpreventable) row.append(el("div", { class:"small muted" }, "Cannot be prevented in any way — Temporary HP doesn't soak it."));
+    if(e.of === "dealt"){
+      const hint = el("div", { class:"small muted" }, "Fill the box above in (or press \u{1F4A5} Apply) and this becomes a real number.");
+      refreshers.push(() => { hint.style.display = dealtOf() ? "none" : ""; });
+      row.append(hint);
+    }
+    if(e.who === "party" || e.who === "target"){
+      /* the ally half: the same board-token picker every Cheer and Restorative uses */
+      row.append(el("button", { class:"btn-secondary", style:"margin-top:4px;margin-left:6px;padding:4px 10px",
+        onclick:() => {
+          const list = allyTargets(isTrainerOwner(actor) ? actor : (ownerTrainerOf(actor) || actor), {})
+            .filter(x => e.who === "target" ? true : !x.self);
+          branchTargetDialog({
+            title:`\u{1F49A} ${m.name}`,
+            intro:`Each one picked regains ${hpFracLbl(e)} of ${e.of === "current" ? "their current" : "their Maximum"} Hit Points.`,
+            list, saveFn:persist, redraw,
+            apply:(x) => {
+              const base = e.of === "current" ? ownerHP(x.obj) : (ownerMaxHP(x.obj) || 1);
+              const n = base > 0 ? hpFractionOf(base, e) : 0;
+              const moved = ownerHPChange(x.obj, n);
+              return `${ownerLabel(x.obj)} +${moved} HP`;
+            },
+            after:(c, n) => `\u{1F49A} ${n.join(", ")}`,
+          });
+        } }, `\u{1F3AF} Heal ${e.who === "party" ? "allies" : "the target"}…`));
+    }
+    if(e.who !== "target") row.append(btn);
+    card.append(row);
+  });
+  refreshers.forEach(f => f());
+  card.setDealt = n => { dealtIn.value = String(Math.max(0, n | 0)); refreshers.forEach(f => f()); };
+  return card;
+}
 /* ---- the 1d100 one-hit knockouts (Fissure, Sheer Cold, Guillotine, Horn Drill) ---------------
    "Roll 1d100. This roll may not be modified in any way. If you roll X or lower, the target Faints.
    X is equal to 30 + The User's Level - The Target's Level." Nothing about that needed a human. */
@@ -22674,6 +23044,13 @@ function openMoveRoll(p, m, sp, opts={}){
     { const tn = moveTypeNode(p, m, opts.rerender || (()=>refreshMon(p)), opts.persist);
       if(tn) out.append(tn); }
     { const ok = ohkoNode(p, m); if(ok) out.append(ok); }
+    /* found-04: the Move's own Hit Point effects (drain, Recoil, self-heal, the cost of missing).
+       Built here so the damage roll below can hand it the number it needs; appended after it. */
+    const missedRoll = multi ? (connected === 0)
+      : cantMiss ? false
+      : (thresh == null ? null : (acc === 1 || accTot < thresh));
+    const hpNode = moveHPNode(p, m, { missed:missedRoll,
+      redraw: opts.rerender || (()=>refreshMon(p)), persist: opts.persist });
     if(multi && connected===0){
       out.append(el("div",{},
         el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"),
@@ -22767,11 +23144,13 @@ function openMoveRoll(p, m, sp, opts={}){
              : moveDefCS==="positive" ? ` and the target's positive Defense Combat Stages` : "")
           + `. Applied for you by the target picker below.`));
         // GM: drop this rolled hit straight onto a battle-map token (auto Def / type / abilities / DR).
+        if(hpNode && hpNode.setDealt) hpNode.setDealt(total);   // a rough figure until a target takes it
         if(isPhys || isSpec){
           const tw = attackTargetWidget({ dmg:total, type:mtype||"Typeless", physical:isPhys, atkMold: !!mold,
             pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens") || !!(mold && mold.tinted),
             atkExploit: ownerHasAbility(p,"Exploit"), atkMega: isMegaMon(p), atkWar: ownerAuraActive(p,"War"), seFlat: heldSeFlatDamage(p),
-            pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS, moveRule, critExtra, fx: hitFx });
+            pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS, moveRule, critExtra, fx: hitFx,
+            onDealt:(n)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n); } });
           if(tw) dmgLine.append(tw);
         }
         /* …and into the GM's feed, carrying the same numbers, so they can drop this hit on a token
@@ -22789,6 +23168,7 @@ function openMoveRoll(p, m, sp, opts={}){
       out.append(dmgLine);
       if(ancestral && (isPhys||isSpec)){ const an = ancestralStrikeNode(); if(an) out.append(an); }
     }
+    if(hpNode) out.append(hpNode);
     /* GM override: keep the same Attack Rolls but force a different hit count (e.g. the target's
        real Evasion turned out different, or an ability changed what connects). Damage is re-rolled. */
     if(multi){
@@ -46128,7 +46508,7 @@ function critImmunityOf(o){
   const have = new Set(ownerAbilityNames(o));
   return CRIT_IMMUNE_ABILITIES.find(a => have.has(a.toLowerCase())) || null;
 }
-function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, moveRule=null, seFlat=0, critExtra=0, fx=null }){
+function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, moveRule=null, seFlat=0, critExtra=0, fx=null, onDealt=null }){
   // a Move whose own rules bend the matchup (MOVE_TARGET_RULES) travels with the hit, and its
   // immunity clause folds into the same pierce switch every other source uses
   const chartOverride = moveRule?.chart || null, seBonus = moveRule?.seBonus || 0,
@@ -46253,12 +46633,16 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     // everything this press is about to change, captured first so ↩ can put it all back
     const snaps = chosen.map(it => snapHitTarget(it.t));
     pushHitUndo(`${dmg} ${typeName}`, snaps);
+    /* what the targets ACTUALLY lost, after Defense, the matchup and their DR — the number a
+       drain or a Recoil keyword is a fraction of (found-04). Handed back to the roll that made it. */
+    let dealtTotal = 0;
     for(const it of chosen){
       /* Shell Armor / Battle Armor: this target takes the hit without the crit's extra dice. */
       const shell = critExtra > 0 ? critImmunityOf(tokenHp(it.t).obj) : null;
       const useDmg = shell ? Math.max(0, dmg - critExtra) : dmg;
       const br = tokenDamageBreakdown(it.t, { dmg:useDmg, type:typeName, physical, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, atkMega, atkWar, atkMold, atkDeicide, defCSMode, chartOverride, seBonus, seFlat, formeStep, drBonus });
       const before = await applyTokenDamage(it.t, br);
+      dealtTotal += Math.max(0, br.final || 0);
       it.cb.checked = false;                                    // clear so a second Apply doesn't double-hit
       const line = el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"});
       line.append(el("div",{style:"font-weight:700"}, tokenHp(it.t).name),
@@ -46283,6 +46667,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
       }
       out.append(line);
     }
+    if(onDealt) onDealt(dealtTotal, chosen.length);              // drain / Recoil now have their real number
     undoBtn.style.display = "";                                 // …and offer to take it straight back
     draw();                                                     // refresh HP labels + select-all state
   };
@@ -47706,8 +48091,12 @@ function mapDropImageParts(im){
    single full-resolution decode this needs — which is the entire point, since a phone cannot.
    One decode, then every piece is a cheap canvas crop of it.
 
-   Tiles are WebP: it keeps the alpha channel a map PNG may be relying on (the Isles image is
-   RGBA), and is a fraction of PNG's size. Falls back to PNG if the browser won't encode WebP. */
+   The pieces go through encodeCanvas, so each one is kept EXACT (PNG) whenever exactness is not
+   dearer than a lossy WebP — which on a pixel-art or tile-drawn map is most of them, and those are
+   precisely the maps a lossy encoder ruins: it spends its bits blurring the hard 1px edges the art
+   is made of. A photographic or painted map still takes WebP, now at 0.94 rather than 0.85. The
+   background itself is never re-encoded at all (see prepMapBg); this is only the sliced copies,
+   which before this change quietly undid that promise the moment a GM sliced a map. */
 async function tileMapImage(map, im){
   if(!cloud.isGM || !map || !im) return;
   if(mode!=="cloud" || !cloud.client || !cloud.campaign)
@@ -47727,8 +48116,7 @@ async function tileMapImage(map, im){
     cx.clearRect(0, 0, dw, dh);
     cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = "high";
     cx.drawImage(bmp, sx, sy, sw, sh, 0, 0, dw, dh);
-    let u = ""; try{ u = cv.toDataURL("image/webp", 0.85); }catch(e){}
-    return (u && u.indexOf("data:image/webp")===0) ? u : cv.toDataURL("image/png");
+    return encodeCanvas(cv, cx, 0.94);
   };
   // storeImg hands the data-URL straight back when an upload fails. Letting one of those reach
   // im.tiles would put a quarter-megabyte of base64 into the hot map row, so treat it as fatal.

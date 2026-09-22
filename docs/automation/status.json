@@ -97,9 +97,17 @@
   "found-03": {
    "note": "app.js?v=548: STATUS_IMMUNE_ABILITIES (20 printings, exact-name like STATUS_VEILS, errata fallback) inside statusImmunityFor (trainer-only bail dropped; Features still Trainer-only); statusBlockFor(o,key,opts) adds TERRAIN_STATUS_IMMUNITY (Electric: Sleep, Rugged: Confused/Enraged/Infatuated — only surely-grounded creatures with a token); opts.mold (attacker Mold Breaker) skips Veils + Defensive rows, Neutralizing Gas skips Defensive rows; Vortex riders checked one by one (Ghost not Trapped). Routed through the funnel: Prime Fury, syncHeldStatuses (Flame/Toxic Orb), Big Mushroom, food inflict + disliked Taste, sweepMapAuras (Pressure's Suppressed), simInflict. statusChipImmunity marks ⃠ + reason on sheet / Encounter / Map chips; toggleStatus refuses Ability immunities like Feature ones. Hand chips on Encounter/Map stay the GM's (marked, not refused).",
    "status": "auto"
+  },
+  "found-04": {
+   "note": "app.js?v=553: moveHPEffects parses drain / Recoil keyword / self-heal / cost / miss-cost / target heal / sacrifice off the rules text — 59 Moves, 70 clauses. moveHPNode = the 🩸 Hit Points card on both roll modals (Pokémon + Trainer), appended after the damage roll. Every press goes through ownerHPChange = damageHealRow's pipeline (Temp HP soak, Injuries, KO/Death, Shields Down, Schooling, Usurper mirror); 'cannot be prevented in any way' passes raw so Temp HP doesn't soak it. Drain/Recoil are a fraction of the damage ACTUALLY dealt: the box is pre-filled with the rolled total and attackTargetWidget's new onDealt callback replaces it with the real post-defence figure. Big Root doubles a drain; Rock Head / Magic Guard zero the Recoil. The weather family (Synthesis, Moonlight, Morning Sun, Shore Up) offers only the fraction the sky in play calls for (ownerWeather). Conditional clauses keep their condition as a label rather than being dropped (Curse's Ghost half, Swallow's three Stockpile payouts, Floral Healing on Grassy Terrain). Ally heals use allyTargets + branchTargetDialog; Healing Wish / Lunar Dance open openSacrificeHeal. NOT parsed on purpose: a Tick of HP (Aqua Ring, Salt Cure — the ±Tick buttons already do it), 'equal to the amount the target lost' (Leech Seed) and 'the higher of the target's Attack' (Strength Sap), which need a number no sentence carries.",
+   "status": "auto"
   }
  },
  "moves": {
+  "Absorb": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt",
+   "status": "auto"
+  },
   "Acid Armor": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: weather, multiturn, status, typing",
    "status": "partial"
@@ -132,9 +140,21 @@
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: status",
    "status": "partial"
   },
+  "Axe Kick": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP on a miss only; the 15+ Confusion is found-02's. Left: the Gravity prohibition, and a Shield not counting as a miss",
+   "status": "partial"
+  },
   "Belly Drum": {
-   "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP paid (it reads as a COST, not a heal — the sentence gains a Combat Stage and loses the HP); the +6 Attack CS is found-01's",
    "status": "auto"
+  },
+  "Bitter Blade": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt",
+   "status": "auto"
+  },
+  "Brave Bird": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt. Left: the 2m push (found-07)",
+   "status": "partial"
   },
   "Brutal Beatdown": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
@@ -150,6 +170,14 @@
   },
   "Chilling Water": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Chloroblast": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 50% of Max HP, unpreventable (Temp HP doesn't soak it)",
+   "status": "auto"
+  },
+  "Clangorous Soul": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/3 of Max HP; the +1 Combat Stage to every stat is found-01's",
    "status": "auto"
   },
   "Coaching": {
@@ -169,16 +197,32 @@
    "status": "auto"
   },
   "Curse": {
-   "note": "found-01: CS clause now parsed (⬆ Apply); still open: heal, interrupt, status",
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the Ghost half's 1/3 Max HP, labelled 'only if the user is a Ghost Type' and unpreventable; the non-Ghost Combat Stages are found-01's. Left: Cursing a target within 8m, and the Frequency that changes with the user's Type",
    "status": "partial"
   },
   "Decorate": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Double-Edge": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt; Rock Head / Magic Guard zero it",
+   "status": "auto"
+  },
   "Dragon Ascent": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
+  },
+  "Drain Punch": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt",
+   "status": "auto"
+  },
+  "Draining Kiss": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt",
+   "status": "auto"
+  },
+  "Dream Eater": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt. Left: 'can only target Sleeping targets' and 'does not wake them' are the table's",
+   "status": "partial"
   },
   "Earth Power": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
@@ -204,8 +248,16 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Flare Blitz": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt; the 19+ Burn is found-02's",
+   "status": "auto"
+  },
   "Fleur Cannon": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Floral Healing": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): both printings — 1/2 of the target's Max HP, and a second button for the 2/3 on Grassy Terrain",
    "status": "auto"
   },
   "Flower Shield": {
@@ -218,6 +270,10 @@
   },
   "Gear Up [SS]": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Giga Drain": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt",
    "status": "auto"
   },
   "Glaciate": {
@@ -236,17 +292,61 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Head Charge": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt. Left: the 2m push (found-07)",
+   "status": "partial"
+  },
+  "Head Smash": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt. Left: the 2m push (found-07)",
+   "status": "partial"
+  },
   "Headlong Rush": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: position",
    "status": "partial"
+  },
+  "Heal Order": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, one press",
+   "status": "auto"
+  },
+  "Heal Pulse": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 🎯 Heal the target… for 50% of their Max HP. The 'may not target itself' restriction is the table's — the picker still lists you",
+   "status": "auto"
+  },
+  "Healing Wish": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the roll now opens openSacrificeHeal itself (3 Injuries healed against the day's cap, healed to full, Move Frequencies restored, the user Faints)",
+   "status": "auto"
+  },
+  "High Jump Kick": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP on a miss only. Left: the Gravity prohibition, and a Shield not counting as a miss",
+   "status": "partial"
+  },
+  "Horn Leech": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt",
+   "status": "auto"
   },
   "Howl [SS]": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Icebreaker": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt. Left: the first-round Priority/Pass option",
+   "status": "partial"
+  },
   "Icy Wind": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
+  },
+  "Ingrain": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the 1/10th Max HP it pays each turn (press it on the turn it ticks). Left: the Coat itself — no push/pull, no switching (found-10)",
+   "status": "partial"
+  },
+  "Jump Kick": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP, offered only when the roll missed (and flagged ⚠ when it did). Left: the Gravity prohibition, and a Shield not counting as a miss",
+   "status": "partial"
+  },
+  "Jungle Healing": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP to the user and every ally picked. Left: curing their Persistent / Volatile Status",
+   "status": "partial"
   },
   "King's Shield": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
@@ -254,6 +354,30 @@
   },
   "Leaf Storm": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Leech Life": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt",
+   "status": "auto"
+  },
+  "Leech Life [SM]": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt",
+   "status": "auto"
+  },
+  "Life Dew": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP to the user (one press) and to each ally picked from the board",
+   "status": "auto"
+  },
+  "Light of Ruin": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/2 of the damage dealt; Rock Head / Magic Guard zero it",
+   "status": "auto"
+  },
+  "Lunar Blessing": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the 50% heal. Left: curing every Status and the +2 Evasion",
+   "status": "partial"
+  },
+  "Lunar Dance": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the roll now opens openSacrificeHeal itself (3 Injuries healed against the day's cap, healed to full, Move Frequencies restored, the user Faints)",
    "status": "auto"
   },
   "Magnetic Flux": {
@@ -264,8 +388,16 @@
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: swap",
    "status": "partial"
   },
+  "Matcha Gotcha": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt to the chosen target (type that target's figure into the box); the 17+ Burn on all legal targets is found-02's",
+   "status": "auto"
+  },
   "Meditate": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Mega Drain": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt",
    "status": "auto"
   },
   "Memento": {
@@ -275,6 +407,22 @@
   "Meteor Beam": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: multiturn",
    "status": "partial"
+  },
+  "Milk Drink": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 🎯 Heal the target… picks from the board (yourself included) and hands over half of THEIR Max HP",
+   "status": "auto"
+  },
+  "Mind Blown": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 50% of Max HP, and it cannot be prevented — Temporary HP doesn't soak it",
+   "status": "auto"
+  },
+  "Moonlight": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, weather-adjusted (2/3 in Sun, 1/4 in Rain / Sandstorm / Hail)",
+   "status": "auto"
+  },
+  "Morning Sun": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, weather-adjusted (2/3 in Sun, 1/4 in Rain / Sandstorm / Hail)",
+   "status": "auto"
   },
   "Mud Shot": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
@@ -300,8 +448,16 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Pain Split": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the user's own half of current Hit Points, unpreventable. Left: the target's half and the averaging back out — it needs both creatures' numbers at once",
+   "status": "partial"
+  },
   "Parting Shot": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: position, status",
+   "status": "partial"
+  },
+  "Pollen Puff": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the ally printing (half their Max HP), labelled with its condition. Left: the once-per-Scene switch between the attack and the heal",
    "status": "partial"
   },
   "Psychic": {
@@ -316,12 +472,24 @@
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: status, cure",
    "status": "partial"
   },
+  "Recover": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, one press, through the Temp HP / Injury / KO pipeline",
+   "status": "auto"
+  },
   "Resonance Beam": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Rest": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): healed to full in one press. Left: curing Status, falling Asleep and the two-round wake-up",
+   "status": "partial"
+  },
   "Rock Smash": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Roost": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP; the lost Flying Type is the typemod engine's",
    "status": "auto"
   },
   "Rototiller": {
@@ -332,13 +500,29 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Shed Tail": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the 1/4 Max HP cost, unpreventable. Left: the Shield interrupt and the Disengage that follow it",
+   "status": "partial"
+  },
   "Shelter": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Shore Up": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, weather-adjusted (2/3 in a Sandstorm, 1/4 in Sun / Rain / Hail)",
    "status": "auto"
   },
   "Silk Trap": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: multiturn, status",
    "status": "partial"
+  },
+  "Slack Off": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, one press",
+   "status": "auto"
+  },
+  "Soft-Boiled": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 🎯 Heal the target… picks from the board (yourself included) and hands over half of THEIR Max HP",
+   "status": "auto"
   },
   "Solar Blade": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: weather, multiturn",
@@ -348,12 +532,40 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Steel Beam": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 50% of Max HP, unpreventable (Temp HP doesn't soak it)",
+   "status": "auto"
+  },
   "Stuff Cheeks": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: swap",
    "status": "partial"
   },
+  "Submission": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt; the 15+ Trip is found-02's",
+   "status": "auto"
+  },
+  "Substitute": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the 1/4 Max HP cost, unpreventable. Left: the Substitute Coat itself (found-10)",
+   "status": "partial"
+  },
   "Sugar Rush": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: weather",
+   "status": "partial"
+  },
+  "Supercell Slam": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP on a miss only. Left: the Gravity prohibition, and a Shield not counting as a miss",
+   "status": "partial"
+  },
+  "Swallow": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): all three Stockpile payouts offered as their own buttons (1 → 25%, 2 → half, 3 → full), each labelled with its condition. Left: the Stockpiled count itself and zeroing it",
+   "status": "partial"
+  },
+  "Synthesis": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, or 2/3 in Sun and 1/4 in Rain / Sandstorm / Hail — only the fraction the weather in play calls for is offered (ownerWeather)",
+   "status": "auto"
+  },
+  "Take Down": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt. Left: the free Trip Maneuver",
    "status": "partial"
   },
   "Take Heart": {
@@ -388,9 +600,29 @@
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: multiturn",
    "status": "partial"
   },
+  "Volt Tackle": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt; the 19+ Paralysis is found-02's",
+   "status": "auto"
+  },
   "Water Pledge": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: interrupt, multiturn, status",
    "status": "partial"
+  },
+  "Wave Crash": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/4 of the damage dealt; Rock Head / Magic Guard zero it",
+   "status": "auto"
+  },
+  "Wild Charge": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/4 of the damage dealt; Rock Head / Magic Guard zero it",
+   "status": "auto"
+  },
+  "Wish": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the target's Max HP, one press. Left: it lands at the end of the user's NEXT turn (found-08), and the switch-in clause",
+   "status": "partial"
+  },
+  "Wood Hammer": {
+   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt; Rock Head / Magic Guard zero it",
+   "status": "auto"
   }
  }
 }

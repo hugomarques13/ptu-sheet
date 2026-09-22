@@ -32,7 +32,7 @@ Effect-Range statuses are only announced (`statusHitFromText` banner, ~app.js:22
 <a id="found-04"></a>
 ## `found-04` — HP effects of Moves (drain, recoil, self-heal, sacrifice)
 
-**State:** open
+**State:** ✔ done — app.js?v=553: moveHPEffects parses drain / Recoil keyword / self-heal / cost / miss-cost / target heal / sacrifice off the rules text — 59 Moves, 70 clauses. moveHPNode = the 🩸 Hit Points card on both roll modals (Pokémon + Trainer), appended after the damage roll. Every press goes through ownerHPChange = damageHealRow's pipeline (Temp HP soak, Injuries, KO/Death, Shields Down, Schooling, Usurper mirror); 'cannot be prevented in any way' passes raw so Temp HP doesn't soak it. Drain/Recoil are a fraction of the damage ACTUALLY dealt: the box is pre-filled with the rolled total and attackTargetWidget's new onDealt callback replaces it with the real post-defence figure. Big Root doubles a drain; Rock Head / Magic Guard zero the Recoil. The weather family (Synthesis, Moonlight, Morning Sun, Shore Up) offers only the fraction the sky in play calls for (ownerWeather). Conditional clauses keep their condition as a label rather than being dropped (Curse's Ghost half, Swallow's three Stockpile payouts, Floral Healing on Grassy Terrain). Ally heals use allyTargets + branchTargetDialog; Healing Wish / Lunar Dance open openSacrificeHeal. NOT parsed on purpose: a Tick of HP (Aqua Ring, Salt Cure — the ±Tick buttons already do it), 'equal to the amount the target lost' (Leech Seed) and 'the higher of the target's Attack' (Strength Sap), which need a number no sentence carries.
 
 **Unlocks:** moves: Healing, drain, recoil & HP theme (~75); Abilities/Features that heal on a trigger
 

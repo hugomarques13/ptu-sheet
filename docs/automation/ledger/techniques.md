@@ -230,20 +230,20 @@ P3 · 8 open of 8 · open
 
 P9 · 4 open of 4 · open
 
-- 🟢 **Curve Ball** — `likely` · P1 (player:Lázaro) · themes: damage, skill, capture · code: captureCard:25518
+- 🟢 **Curve Ball** — `likely` · P1 (player:Lázaro) · themes: damage, skill, capture · code: captureCard:25898
   - _Static · Prereq: Capture Specialist_
   - Whenever you hit a target with a Poké Ball, you may deal damage as if you had hit them with a Struggle Attack. This damage triggers before any of the Poké Ball's functions (such as making a Capture Check, releasing a Pokémon, etc.).
 
-- 🟢 **Tools of the Trade** — `likely` · P1 (player:Lázaro) · themes: damage, skill · code: catchDCModal:15724, openThrowPokeball:15835, captureCard:25514
+- 🟢 **Tools of the Trade** — `likely` · P1 (player:Lázaro) · themes: damage, skill · code: catchDCModal:15780, openThrowPokeball:15891, captureCard:25894
   - _Static · Prereq: Capture Specialist_
   - Add +2 to all Accuracy Rolls made with Poké Balls, Hand Nets, Lassos, Weighted Nets, and Glue Cannons. Add +2 to Athletics Checks made when reeling in a Pokémon with a Fishing Rod, and add +4 to 1d20 rolls made to see if a Pokémon is attracted by Bait or a Fishing Lure.
     May Playtest Errata: Add +2 to all Accuracy Rolls made with Cap Cannons.
 
-- 🟢 **Capture Skills** — `likely` · P3 · themes: swap, skill, capture · code: featureByKey:10064, featuresForClass:10160, splitSkillEdges:10236, captureCard:25511
+- 🟢 **Capture Skills** — `likely` · P3 · themes: swap, skill, capture · code: featureByKey:10120, featuresForClass:10216, splitSkillEdges:10292, captureCard:25891
   - _Static · Prereq: Capture Specialist_
   - You gain a Skill Edge for which you qualify. It must be applied to Acrobatics, Athletics, Stealth, Survival, Guile, or Perception. You may take Capture Skills up to two times.
 
-- 🟢 **Snare** — `likely` · P3 · themes: status, capture · code: catchDCModal:15725, openThrowPokeball:15842, captureCard:25516
+- 🟢 **Snare** — `likely` · P3 · themes: status, capture · code: catchDCModal:15781, openThrowPokeball:15898, captureCard:25896
   - _Static · Prereq: Capture Specialist_
   - You subtract -10 from Capture Rolls made against Pokémon drawn into an encounter by Bait, that are currently distracted by Bait, or are in a Hand Net, Lasso, Weighted Net, or Stuck because of a Glue Cannon.
 

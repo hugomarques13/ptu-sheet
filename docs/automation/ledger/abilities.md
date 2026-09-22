@@ -1783,11 +1783,11 @@ P3 · 14 open of 15 · open
 
 P9 · 40 open of 40 · open
 
-- 🟢 **Analytic** — `likely` · P1 (enc, player:Lysgd) · themes: damage · code: abilityDamageMods:21020, openMoveRoll:21766, moveRollFactsHTML:38620
+- 🟢 **Analytic** — `likely` · P1 (enc, player:Lysgd) · themes: damage · code: abilityDamageMods:21390, openMoveRoll:22136, moveRollFactsHTML:39000
   - _Static_
   - Whenever the user targets uses a damaging Move on a Pokemon or Trainer that have acted before it during Initiative this Round, that Move deals an additional +5 Damage.
 
-- 🟢 **Battle Armor** — `likely` · P1 (enc, pc, player:Lázaro) · themes: typing, damage · engine: auto-note, remember-only · code: typeAbilityRow:3328, AUTOMATED_ABILITIES:38752, CRIT_IMMUNE_ABILITIES:46125
+- 🟢 **Battle Armor** — `likely` · P1 (enc, pc, player:Lázaro) · themes: typing, damage · engine: auto-note, remember-only · code: typeAbilityRow:3328, AUTOMATED_ABILITIES:39132, CRIT_IMMUNE_ABILITIES:46505
   - _Static_
   - The user is immune to Critical Hits; they are instead normal hits. Defensive.
 
@@ -1795,65 +1795,65 @@ P9 · 40 open of 40 · open
   - _Static · Last Chance_
   - The user gains Last Chance with Fire.
 
-- 🟢 **Bone Wielder** — `likely` · P1 (enc, player:Handels) · themes: swap, damage · code: typeMultAgainst:6231, boneWielderAcc:21057, boneWielderNeedsClub:21061, boneWielderPierces:21065, AUTOMATED_ABILITIES:38767, tokenDamageBreakdown:45833
+- 🟢 **Bone Wielder** — `likely` · P1 (enc, player:Handels) · themes: swap, damage · code: typeMultAgainst:6231, boneWielderAcc:21427, boneWielderNeedsClub:21431, boneWielderPierces:21435, AUTOMATED_ABILITIES:39147, tokenDamageBreakdown:46213
   - _Static_
   - This ability is only functional if the user is holding a Thick Club item. The user gains a +1 Accuracy Bonus to Bone Club, Bonemerang, and Bone Rush. Additionally, the user cannot be disarmed, or have their Thick Club forcefully removed by Trick, Switcheroo, Thief, or any other Moves or effects unless the user wishes it.
 
-- 🟢 **Cursed Body** — `likely` · P1 (enc, pc, player:Handels) · themes: interrupt, control, status · code: FEATURE_ABILITY_CHOICES:8008
+- 🟢 **Cursed Body** — `likely` · P1 (enc, pc, player:Handels) · themes: interrupt, control, status · code: FEATURE_ABILITY_CHOICES:8055
   - _Scene -  Free Action_
   - Trigger: The user is hit by a Damaging Move.
     The Move becomes Disabled.
 
-- 🟢 **Disguise** — `likely` · P1 (player:Lázaro) · themes: interrupt, cs, stat · code: damageHealRow:7243
+- 🟢 **Disguise** — `likely` · P1 (player:Lázaro) · themes: interrupt, cs, stat · code: damageHealRow:7290
   - _Daily - Free Action_
   - Trigger: The user is hit by a damaging Move.
     The triggering attack attack instead misses and has no effect. The user then gains +1 CS in a Stat of their choice. [Defensive]
 
-- 🟢 **Effect Spore** — `likely` · P1 (player:Handels) · themes: interrupt, status · code: FEATURE_ABILITY_CHOICES:8002
+- 🟢 **Effect Spore** — `likely` · P1 (player:Handels) · themes: interrupt, status · code: FEATURE_ABILITY_CHOICES:8049
   - _Scene -  Free Action_
   - Trigger: The user is hit by a Melee Attack
     Roll 1d6. On a result of 1 or 2, the attacker is Poisoned. On a result of 3 or 4, the attacker is Paralyzed. On a result of 5 or 6, the attacker falls asleep.
 
-- 🟢 **Filter** — `likely` · P1 (enc, player:Handels) · themes: interrupt, typing, damage · engine: auto-note · code: defenseTypeMods:6441, AUTOMATED_ABILITIES:38761
+- 🟢 **Filter** — `likely` · P1 (enc, player:Handels) · themes: interrupt, typing, damage · engine: auto-note · code: defenseTypeMods:6441, AUTOMATED_ABILITIES:39141
   - _Static_
   - When the user is hit by a Super-Effective attack, the attack deals x1.25 damage instead of x1.5 damage. If the user is hit by a Super-Super-Effective attack, the attack deals x1.5 damage instead of x2 damage. If you have both Solid Rock and Filter, you gain 5 Damage Reduction against Super-Effective Damage. Defensive.
 
-- 🟢 **Flash Fire** — `likely` · P1 (enc, pc, player:Handels, player:Lysgd) · themes: typing, damage · engine: auto-note · code: typeMultAgainst:6257, TYPE_ABSORB_ABILITIES:6284, PTU_BUFFS:16087, buffApplies:16108
+- 🟢 **Flash Fire** — `likely` · P1 (enc, pc, player:Handels, player:Lysgd) · themes: typing, damage · engine: auto-note · code: typeMultAgainst:6257, TYPE_ABSORB_ABILITIES:6284, PTU_BUFFS:16143, buffApplies:16164
   - _Static_
   - The user is immune to the damage and effects of Fire-Type attacks. If the user is hit by a Fire-Type attack, the user gains a +5 Bonus to their next Damage Roll with a Fire-Type Move. Defensive.
 
-- 🟢 **Friend Guard** — `likely` · P1 (player:Lysgd) · themes: interrupt, typing, damage · code: openCheerBrigade:25268
+- 🟢 **Friend Guard** — `likely` · P1 (player:Lysgd) · themes: interrupt, typing, damage · code: openCheerBrigade:25648
   - _Scene -  Free Action_
   - Trigger: An adjacent Ally takes Damage
     The damage is resisted one step further. Defensive.
 
-- 🟢 **Guts** — `likely` · P1 (enc, player:Lázaro) · themes: status, cs, skill · engine: auto-note, remember-only · code: abilityStatusCS:21102, AUTOMATED_ABILITIES:38739
+- 🟢 **Guts** — `likely` · P1 (enc, player:Lázaro) · themes: status, cs, skill · engine: auto-note, remember-only · code: abilityStatusCS:21472, AUTOMATED_ABILITIES:39119
   - _Static_
   - While suffering from Burn, Poison, Paralysis, Freezing, or while Asleep, the user's Attack is raised 2 Combat Stages. If suffering from none of these conditions, the user loses any Combat Stages gained this way.
 
-- 🟢 **Hustle** — `likely` · P1 (enc, pc, player:Lysgd) · themes: damage · engine: auto-note · code: abilityDamageMods:21005, abilityAccMods:21088, AUTOMATED_ABILITIES:38724
+- 🟢 **Hustle** — `likely` · P1 (enc, pc, player:Lysgd) · themes: damage · engine: auto-note · code: abilityDamageMods:21375, abilityAccMods:21458, AUTOMATED_ABILITIES:39104
   - _Static_
   - The user receives a -2 penalty to all Accuracy Rolls with Physical Attacks, and gains a +10 Bonus to all Physical Damage Rolls.
 
-- 🟢 **Ice Shield** — `likely` · P1 (enc, player:Handels) · themes: weather, barrier, heal, multiturn, damage · code: FEATURE_ABILITY_CHOICES:7992
+- 🟢 **Ice Shield** — `likely` · P1 (enc, player:Handels) · themes: weather, barrier, heal, multiturn, damage · code: FEATURE_ABILITY_CHOICES:8039
   - _Scene - Standard Action, Interrupt_
   - The user places up to 3 segments of Ice Wall; each segment must be continuous with another segment, and at least one must be adjacent to the user. These Ice Walls count as Blocking Terrain and last until the end of the encounter or until they are destroyed. Each Ice Wall segment is 2 meters tall, 1 meter wide, and 2 centimeters thick. Each segment has 10 Hit Points, 5 Damage Reduction, and takes damage as if it was Ice-Type.
 
-- 🟢 **Intimidate** — `likely` · P1 (enc, player:Lázaro) · themes: cs, skill · code: MELEE_SKILL_SUBS:7344, trainerStruggle:7399, GIFTSAPPER_SKILLS:13876, MENTOR_SKILL_OPTIONS:22936, MANIPULATE_EFFECTS:25153
+- 🟢 **Intimidate** — `likely` · P1 (enc, player:Lázaro) · themes: cs, skill · code: MELEE_SKILL_SUBS:7391, trainerStruggle:7446, GIFTSAPPER_SKILLS:13932, MENTOR_SKILL_OPTIONS:23316, MANIPULATE_EFFECTS:25533
   - _Scene - Swift Action_
   - Target: Pokemon or Trainer within 5 meters
     Lower the target's Attack 1 Combat Stage.
 
-- 🟢 **Iron Fist** — `likely` · P1 (enc, player:Lysgd) · themes: heal, damage, skill, stat · engine: auto-note · code: abilityDamageMods:20920, AUTOMATED_ABILITIES:38715
+- 🟢 **Iron Fist** — `likely` · P1 (enc, player:Lysgd) · themes: heal, damage, skill, stat · engine: auto-note · code: abilityDamageMods:21290, AUTOMATED_ABILITIES:39095
   - _Static_
   - The user increases the Damage Base of the following Moves by +2; Bullet Punch, Comet Punch, Dizzy Punch, Drain Punch, Dynamic Punch, Fire Punch, Meteor Mash, Shadow Punch, Ice Punch, Mach Punch, Mega Punch, Sky Uppercut, Thunder Punch, Focus Punch, Hammer Arm, and Power-Up Punch.
 
-- 🟡 **Keen Eye** — `partial` · P1 (enc, pc, player:Lysgd, player:Lázaro) · themes: swap, status, typing, damage, stat · code: STATUS_IMMUNE_ABILITIES:769, CS_LOWER_GUARDS:3009, ROTOM_POLTERGEIST:19850
+- 🟡 **Keen Eye** — `partial` · P1 (enc, pc, player:Lysgd, player:Lázaro) · themes: swap, status, typing, damage, stat · code: STATUS_IMMUNE_ABILITIES:769, CS_LOWER_GUARDS:3009, ROTOM_POLTERGEIST:19906
   - _Static_
   - note: found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off) (Blind, not Defensive); Accuracy-can't-be-lowered is CS_LOWER_GUARDS (not re-verified); left: ignore Accuracy Penalties + non-Stat Evasion
   - The user's Accuracy cannot be lowered, their attacks cannot have Accuracy Penalties (such as from Illuminate), the user is immune to the Blind condition (but not Total Blindness), and the user ignores any Evasion not directly derived from Stats (such as from the Instinct Ability, or from moves like Minimize).
 
-- 🟢 **Levitate** — `likely` · P1 (enc, pc, player:Lysgd, player:Lázaro) · themes: typing, damage · engine: auto-note · code: TYPE_ABSORB_ABILITIES:6263, trainerDerivedGrid:9967, PE_MOBILITY:17199, capabilityHelp:19135, CAP_NUM_FIELDS:19141, CAP_FIELD_LABEL:19143, ABILITY_CAP_GRANTS:19196, monCapabilities:19293
+- 🟢 **Levitate** — `likely` · P1 (enc, pc, player:Lysgd, player:Lázaro) · themes: typing, damage · engine: auto-note · code: TYPE_ABSORB_ABILITIES:6263, trainerDerivedGrid:10023, PE_MOBILITY:17255, capabilityHelp:19191, CAP_NUM_FIELDS:19197, CAP_FIELD_LABEL:19199, ABILITY_CAP_GRANTS:19252, monCapabilities:19349
   - _Static_
   - The Pokemon is immune to the damage and effects of Ground Type Moves, and gains a Levitate Speed of 4, or has existing Levitate Speeds increased by +2. Defensive.
 
@@ -1861,27 +1861,27 @@ P9 · 40 open of 40 · open
   - _Static_
   - The user ignores the effect of enemies' Defensive Abilities.
 
-- 🟢 **Omen** — `likely` · P1 (enc, player:Lázaro) · themes: damage · code: openOmen:3094, typeAbilityRow:3193, FEATURE_ABILITY_CHOICES:8008
+- 🟢 **Omen** — `likely` · P1 (enc, player:Lázaro) · themes: damage · code: openOmen:3094, typeAbilityRow:3193, FEATURE_ABILITY_CHOICES:8055
   - _Scene - Swift Action_
   - Choose a Pokemon or Trainer within 5 meters. The target's Accuracy is lowered by 2.
 
-- 🟢 **Pressure** — `likely` · P1 (enc, player:Lázaro) · themes: status · engine: remember-only · code: typeAbilityRow:3136, hasCorePressure:36314
+- 🟢 **Pressure** — `likely` · P1 (enc, player:Lázaro) · themes: status · engine: remember-only · code: typeAbilityRow:3136, hasCorePressure:36694
   - _Static_
   - While within 3 meters of the user, all foes are Suppressed. This effect ends when the user is Fainted.
 
-- 🟢 **Rivalry** — `likely` · P1 (player:Lysgd) · themes: damage · code: AURA_DEFS:18255, LEGENDARY_AURAS:18390
+- 🟢 **Rivalry** — `likely` · P1 (player:Lysgd) · themes: damage · code: AURA_DEFS:18311, LEGENDARY_AURAS:18446
   - _Static_
   - Whenever the user deals direct damage to a target of the same gender, increase the Damage dealt by +5.
 
-- 🟢 **Sand Veil** — `likely` · P1 (pc, player:Lázaro) · themes: weather, damage · code: WEATHER_DEFS:1214, FEATURE_ABILITY_CHOICES:7996
+- 🟢 **Sand Veil** — `likely` · P1 (pc, player:Lázaro) · themes: weather, damage · code: WEATHER_DEFS:1214, FEATURE_ABILITY_CHOICES:8043
   - _Static_
   - The user's Evasion is increased by +2 while in a Sandstorm. The user and allies adjacent to the user are not damaged by the Sandstorm.
 
-- 🟢 **Scrappy** — `likely` · P1 (enc, player:Handels) · themes: typing · engine: auto-note · code: scrappyPierces:21074, AUTOMATED_ABILITIES:38766
+- 🟢 **Scrappy** — `likely` · P1 (enc, player:Handels) · themes: typing · engine: auto-note · code: scrappyPierces:21444, AUTOMATED_ABILITIES:39146
   - _Static_
   - Ghosts are not immune to the user's Normal and Fighting-Type Moves.
 
-- 🟢 **Snow Cloak** — `likely` · P1 (enc, player:Lysgd) · themes: weather, damage · engine: auto-note, remember-auto · code: WEATHER_DEFS:1232, AUTOMATED_ABILITIES:38748
+- 🟢 **Snow Cloak** — `likely` · P1 (enc, player:Lysgd) · themes: weather, damage · engine: auto-note, remember-auto · code: WEATHER_DEFS:1232, AUTOMATED_ABILITIES:39128
   - _Static_
   - The user's Evasion is increased by +2 while in Hail. The user and allies adjacent to the user are not damaged by Hail.
 
@@ -1895,7 +1895,7 @@ P9 · 40 open of 40 · open
   - Trigger: The user uses Supersonic
     Connection - Supersonic. The target of Supersonic takes Special Normal-Type damage equal to the user's Special Attack score. This effect functions independently of whether Supersonic hits its target.
 
-- 🟢 **Soundproof** — `likely` · P1 (enc, pc, player:Handels, player:Hugo) · themes: typing · code: FEATURE_ABILITY_CHOICES:8006
+- 🟢 **Soundproof** — `likely` · P1 (enc, pc, player:Handels, player:Hugo) · themes: typing · code: FEATURE_ABILITY_CHOICES:8053
   - _Static_
   - The Pokemon is immune to Moves with the Sonic Keyword. Defensive.
 
@@ -1904,38 +1904,38 @@ P9 · 40 open of 40 · open
   - Trigger: The user is hit by a Damaging Attack
     The user receives +1 Defense Combat Stage. [Defensive]
 
-- 🟢 **Swift Swim** — `likely` · P1 (enc, pc, player:Lázaro) · themes: weather, cs, skill · engine: auto-note · code: WEATHER_DEFS:1195, AUTOMATED_ABILITIES:38745
+- 🟢 **Swift Swim** — `likely` · P1 (enc, pc, player:Lázaro) · themes: weather, cs, skill · engine: auto-note · code: WEATHER_DEFS:1195, AUTOMATED_ABILITIES:39125
   - _Static_
   - While in Rainy Weather, the user gains +4 Speed Combat Stages.
 
-- 🟢 **Technician** — `likely` · P1 (enc, player:Handels) · themes: damage, stat · engine: auto-note, remember-only · code: abilityDamageMods:20924, AUTOMATED_ABILITIES:38714
+- 🟢 **Technician** — `likely` · P1 (enc, player:Handels) · themes: damage, stat · engine: auto-note, remember-only · code: abilityDamageMods:21294, AUTOMATED_ABILITIES:39094
   - _Static_
   - Moves with a Damage Base of 6 or lower have their Damage Base increased by +2. This bonus always applies to Moves with the Double Strike or Fivestrike Keywords.
 
-- 🟢 **Thick Fat** — `likely` · P1 (enc, player:Handels) · themes: typing · engine: auto-note · code: defenseTypeMods:6420, AUTOMATED_ABILITIES:38755
+- 🟢 **Thick Fat** — `likely` · P1 (enc, player:Handels) · themes: typing · engine: auto-note · code: defenseTypeMods:6420, AUTOMATED_ABILITIES:39135
   - _Static_
   - The user resists Fire-Type and Ice-Type attacks one step further. Defensive.
 
-- 🟢 **Weird Power** — `likely` · P1 (enc, pc, player:Lázaro) · themes: damage, stat · code: crossStatDamage:7929, abilityDamageMods:20995
+- 🟢 **Weird Power** — `likely` · P1 (enc, pc, player:Lázaro) · themes: damage, stat · code: crossStatDamage:7976, abilityDamageMods:21365
   - _Static · 2-16 Errata_
   - If the user's Attack is higher than its Special Attack, the user may add its Attack Stat to its Special Damage Rolls. If their Special Attack is higher, they user may add its Special Attack Stat to its Physical Damage Rolls. This does not stack with Mixed Power.
 
-- 🟢 **White Flame** — `likely` · P1 (player:Handels) · themes: status, cure, damage · code: POWER_OF_RAGE_ABILITIES:7906, rageAbilityDamage:7907, berserkerCard:8262
+- 🟢 **White Flame** — `likely` · P1 (player:Handels) · themes: status, cure, damage · code: POWER_OF_RAGE_ABILITIES:7953, rageAbilityDamage:7954, berserkerCard:8309
   - _Static_
   - The user may not make rolls to cure themselves from the Enraged condition. However, while Enraged, the user gains a +5 Bonus to all Damage Rolls.
 
-- 🟢 **Aerilate** — `likely` · P2 (enc) · themes: interrupt · engine: auto-note · code: ATE_ABILITIES:19861, AUTOMATED_ABILITIES:38729
+- 🟢 **Aerilate** — `likely` · P2 (enc) · themes: interrupt · engine: auto-note · code: ATE_ABILITIES:19917, AUTOMATED_ABILITIES:39109
   - _At Will -  Free Action_
   - Trigger: The User uses a Normal Type Damaging Move.
     The Move is Changed to Flying Type.
 
-- 🟢 **Ancestral Connection** — `likely` · P2 (enc) · themes: interrupt, typing, damage, action · engine: auto-note · code: openMoveRoll:22403, AUTOMATED_ABILITIES:38737
+- 🟢 **Ancestral Connection** — `likely` · P2 (enc) · themes: interrupt, typing, damage, action · engine: auto-note · code: openMoveRoll:22773, AUTOMATED_ABILITIES:39117
   - _Static_
   - Trigger: The user hits a target with a damaging Move.
     Target: The triggering Move's target
     Whenever the user hits a target with a damaging Move, the spirit of its departed parent lashes out at that same target. The user immediately makes a Ghost-Type Struggle Attack against it as a Free Action, resolved with its own Accuracy Roll and Damage Roll; it may Critical Hit on its own. This bonus attack cannot trigger Ancestral Connection again.
 
-- 🟢 **Anchored** — `likely` · P2 (enc) · themes: position, damage, action · engine: auto-note · code: openMoveRoll:21625, moveRollFactsHTML:38619, AUTOMATED_ABILITIES:38736
+- 🟢 **Anchored** — `likely` · P2 (enc) · themes: position, damage, action · engine: auto-note · code: openMoveRoll:21995, moveRollFactsHTML:38999, AUTOMATED_ABILITIES:39116
   - _Static_
   - Dhelmise has an Anchor token on the field, which occupies one square as if it is Medium sized but is otherwise ignored for cover and targeting. Dhelmise cannot move or be moved more than 3 meters away from its Anchor, willingly or otherwise. The Anchor token itself cannot be pushed, pulled, or moved against Dhelmise's will in any way. Dhelmise may shift their Anchor Token as a Swift Action, moving it to any open space within 3 meters of itself.
     Bonus: When the user Shifts the Anchor, it may immediately afterwards originate a damaging attack from its
@@ -1949,7 +1949,7 @@ P9 · 40 open of 40 · open
   - _Static_
   - For each injury the user has, they gain a +3 Damage bonus to all Moves with the Aura keyword. Additionally, while the user is at or under ½ of their Max Hit Points, they gain a +3 Damage Bonus to all Moves with the Aura Keyword.
 
-- 🟢 **Chlorophyll** — `likely` · P2 (pc) · themes: weather, cs, skill · engine: auto-note · code: WEATHER_DEFS:1174, AUTOMATED_ABILITIES:38743
+- 🟢 **Chlorophyll** — `likely` · P2 (pc) · themes: weather, cs, skill · engine: auto-note · code: WEATHER_DEFS:1174, AUTOMATED_ABILITIES:39123
   - _Static_
   - While in Sunny Weather, the user gains +4 Speed Combat Stages.
 
@@ -1967,12 +1967,12 @@ P9 · 39 open of 40 · open
   - Trigger: The user is hit by a Move
     The User's Type changes to match the Type of the triggering Move.
 
-- 🟢 **Commander** — `likely` · P2 (enc) · themes: position, interrupt, swap, action, stat · engine: remember-only · code: hasCommander:8585, PTU_BUFFS:16025, BUFF_CATS:16102, commanderTriggerRow:19668, derivedMonMoves:19794, derivedTrainerAttacks:19816, openGiveOrder:24416, commanderCard:25118
+- 🟢 **Commander** — `likely` · P2 (enc) · themes: position, interrupt, swap, action, stat · engine: remember-only · code: hasCommander:8632, PTU_BUFFS:16081, BUFF_CATS:16158, commanderTriggerRow:19724, derivedMonMoves:19850, derivedTrainerAttacks:19872, openGiveOrder:24796, commanderCard:25498
   - _At-Will - Swift Action_
   - Target: An adjacent Ally
     The user Attaches to the target. While Attached, the user occupies the target's square and replaces their Movement capabilities with the target's. Once per Round, the user and target may Intercept attacks for each other as a Free Action. Bonus: If the user is at least Level 30, while Attached, the target may use Order Up as though it were on their Move List. Special: If the target has the Mouthful Ability, they and the user may Intercept attacks any number of times per round for each other, instead of once.
 
-- 🟢 **Compound Eyes** — `likely` · P2 (enc, pc) · themes: damage · engine: auto-note · code: FEATURE_ABILITY_CHOICES:7991, abilityAccMods:21086, AUTOMATED_ABILITIES:38726
+- 🟢 **Compound Eyes** — `likely` · P2 (enc, pc) · themes: damage · engine: auto-note · code: FEATURE_ABILITY_CHOICES:8038, abilityAccMods:21456, AUTOMATED_ABILITIES:39106
   - _Static_
   - The user gains a +3 Bonus to all Accuracy Rolls.
 
@@ -1992,11 +1992,11 @@ P9 · 39 open of 40 · open
   - _Scene -  Free Action_
   - If the user gains initiative and is Confused, Enraged, Infatuated, or Flinched, they may activate Discipline to cure themselves of any of these conditions.
 
-- 🟢 **Dry Skin** — `likely` · P2 (pc) · themes: weather, heal, typing, damage · engine: auto-note · code: WEATHER_DEFS:1176, TYPE_ABSORB_ABILITIES:6269, absorbEntriesFor:6315, applyTokenDamage:46044
+- 🟢 **Dry Skin** — `likely` · P2 (pc) · themes: weather, heal, typing, damage · engine: auto-note · code: WEATHER_DEFS:1176, TYPE_ABSORB_ABILITIES:6269, absorbEntriesFor:6315, applyTokenDamage:46424
   - _Static_
   - Whenever the user is hit by a damaging Fire-Type Move or ends their turn in Sunny Weather, they lose a Tick of Hit Points. The user is immune to the damage and effects of Water-Type Moves, and whenever the user is hit by a damaging Water-Type Move or ends their turn in Rainy Weather, they gain a Tick of Hit Points.
 
-- 🟢 **Fiery Crash** — `likely` · P2 (enc) · themes: status, damage, stat · engine: auto-note · code: fieryCrashInfo:20862, fieryCrashThresholds:20886, simProfile:37099, AUTOMATED_ABILITIES:38721
+- 🟢 **Fiery Crash** — `likely` · P2 (enc) · themes: status, damage, stat · engine: auto-note · code: fieryCrashInfo:21232, fieryCrashThresholds:21256, simProfile:37479, AUTOMATED_ABILITIES:39101
   - _Static_
   - Whenever the user uses a Move with the Dash keyword, they may either increase that Move's Damage Base by +2, or change the Move to be Fire-Type if it was not already. All Moves with the Dash keyword performed as Fire-Typed burn their target on 19+, or increase the effect range by +2 if they could already inflict Burn.
 
@@ -2008,12 +2008,12 @@ P9 · 39 open of 40 · open
   - _Static_
   - The user's Type changes depending on the weather. It changes to Fire Type if it is Sunny, Ice Type if it is Hailing, Water Type if it is Rainy, and Rock Type if there is a Sandstorm. It returns to Normal Type if it is in normal weather or foggy weather. If there are multiple Weather Effects on the field, choose one type for the user to be that corresponds with an existing Weather Effect.
 
-- 🟢 **Forewarn** — `likely` · P2 (player:Hugo) · themes: damage · code: researcherCard:30740
+- 🟢 **Forewarn** — `likely` · P2 (player:Hugo) · themes: damage · code: researcherCard:31120
   - _Scene -  Free Action_
   - Target: A Pokemon or Trainer
     The Move with the highest Damage Dice Roll known by the targeted foe is revealed. If there is a tie, all tied Moves are revealed. The Moves revealed gain a -2 Penalty during Accuracy Checks when used by the target for the rest of the encounter.
 
-- 🟢 **Fur Coat** — `likely` · P2 (enc) · themes: typing · engine: auto-note, remember-auto · code: defenseTypeMods:6412, AUTOMATED_ABILITIES:38764, tokenDamageBreakdown:45885
+- 🟢 **Fur Coat** — `likely` · P2 (enc) · themes: typing · engine: auto-note, remember-auto · code: defenseTypeMods:6412, AUTOMATED_ABILITIES:39144, tokenDamageBreakdown:46265
   - _Static_
   - The user resists all Physical Attacks one step further. Defensive.
 
@@ -2022,7 +2022,7 @@ P9 · 39 open of 40 · open
   - Connection - Present. After rolling to determine Present's Damage Base, you may choose to ignore the roll and act as if you had rolled a 1 or a 5.
     Bonus: The user may know any number of TM and Tutor Moves, instead of a maximum of three.
 
-- 🟢 **Grass Pelt** — `likely` · P2 (enc, pc) · themes: weather, damage · code: ROTOM_POLTERGEIST:19851
+- 🟢 **Grass Pelt** — `likely` · P2 (enc, pc) · themes: weather, damage · code: ROTOM_POLTERGEIST:19907
   - _Static_
   - When standing on any grassy or leafy terrain that is either Slow or Rough Terrain, the user gains +5 Damage Reduction. Defensive.
 
@@ -2031,7 +2031,7 @@ P9 · 39 open of 40 · open
   - Trigger: The user uses Stockpile, Surf, or Dive
     Connection - Stockpile. The next time the user is damaged, it rolls an AC 4 Physical Attack against the attacker, even if the user Faints. On a hit, the target loses 2 ticks of HP. In addition, if the hit roll was successful, on an even roll the target is Paralyzed; on an odd roll, the target instead loses 1 Defense CS.
 
-- 🟢 **Harvest** — `likely` · P2 (enc) · themes: weather, swap, action · code: tradeInDigestion:16795, digestionCard:16942, openSeedBag:29681
+- 🟢 **Harvest** — `likely` · P2 (enc) · themes: weather, swap, action · code: tradeInDigestion:16851, digestionCard:16998, openSeedBag:30061
   - _At Will - Free Action_
   - Whenever the user trades in a Digestion/Food Buff from a Berry, flip a coin. On heads, the user gains all the benefits of the Digestion/Food Buff, but the Buff is not used up. On tails, the Buff is consumed normally. While in Sunny Weather, the Buff is never consumed. The user may trade in a Digestion/Food Buff up to once per turn during an encounter, but only until they flip "Tails".
 
@@ -2047,11 +2047,11 @@ P9 · 39 open of 40 · open
   - _Scene x3 - Swift Action_
   - The Field becomes Icey, as if affected by the Move Icey Terrain, for one full round.
 
-- 🟢 **Illuminate** — `likely` · P2 (enc) · themes: status, damage · code: FEATURE_ABILITY_CHOICES:7994
+- 🟢 **Illuminate** — `likely` · P2 (enc) · themes: status, damage · code: FEATURE_ABILITY_CHOICES:8041
   - _Static_
   - Attacks that target the user have a -2 Accuracy Penalty against the user. Does not affect attackers with the Blindsense Capability. Defensive.
 
-- 🟢 **Illusion** — `likely` · P2 (enc) · themes: control, action, skill, capture · engine: remember-auto · code: illusionCard:21374, GROUP_KEYWORDS:24000
+- 🟢 **Illusion** — `likely` · P2 (enc) · themes: control, action, skill, capture · engine: remember-auto · code: illusionCard:21744, GROUP_KEYWORDS:24380
   - _Special_
   - As a Standard Action, the user may mark an object, Pokemon, or Trainer. The user may have a number of targets marked equal to their Focus Rank; to mark a new target, an old mark must be forfeited. Once per round as a Free Action, the user may use illusory powers to make itself look exactly like a marked target. This may be done as the user is being released from a Poke Ball. This change is aesthetic and does not affect typing or Moves. The illusion allows the user to vaguely mimic sounds made by its marked target, but it is not capable of intelligible speech. Whenever the user is hit by a damaging Move, the Illusion is destroyed. The user may also dismiss the Illusion as a Free Action.
 
@@ -2060,11 +2060,11 @@ P9 · 39 open of 40 · open
   - Trigger: Ditto enters the encounter
     When Ditto is sent out, it may use the Move Transform as a free action. If the target of Transform has any modified Combat Stages, apply these Combat Stages to Ditto. One of the target's Abilities is randomly assigned to Ditto until Ditto uses Transform again.
 
-- 🟢 **Last Chance** — `likely` · P2 (enc) · themes: other · engine: remember-auto · code: LAST_CHANCE_ABILITIES:4014, normPokemon:5847, namedLastChanceGrants:18648, typeAceAbilityText:18761, openTypeAceGrant:18771, grantExtraOrdinary:18791, abilityDamageMods:21012, rememberFeatures:27666
+- 🟢 **Last Chance** — `likely` · P2 (enc) · themes: other · engine: remember-auto · code: LAST_CHANCE_ABILITIES:4014, normPokemon:5847, namedLastChanceGrants:18704, typeAceAbilityText:18817, openTypeAceGrant:18827, grantExtraOrdinary:18847, abilityDamageMods:21382, rememberFeatures:28046
   - _Static · Last Chance_
   - The user gains Last Chance with Normal.
 
-- 🟢 **Life Force** — `likely` · P2 (enc) · themes: heal · code: FEATURE_ABILITY_CHOICES:8002
+- 🟢 **Life Force** — `likely` · P2 (enc) · themes: heal · code: FEATURE_ABILITY_CHOICES:8049
   - _Daily x5 - Swift Action_
   - The user gains a Tick of Hit Points.
 
@@ -2074,16 +2074,16 @@ P9 · 39 open of 40 · open
     The Move is turned into a 1-Target Move and is re-directed at the user without fail, and cannot miss. This negates Lock-On or Mind Reader. The user's Special Attack is then raised by +1 Combat Stage.
     Bonus: The user is immune to the damage and effects of Electric Type attacks. Defensive.
 
-- 🟢 **Lunchbox** — `likely` · P2 (pc) · themes: heal, interrupt · code: tradeInDigestion:16788, digestionCard:16943
+- 🟢 **Lunchbox** — `likely` · P2 (pc) · themes: heal, interrupt · code: tradeInDigestion:16844, digestionCard:16999
   - _Scene -  Free Action_
   - Trigger: The user trades in a Digestion/Food Buff
     The user gains 5 Temporary Hit Points. These Temporary Hit Points stack with any Temporary Hit Points granted by the triggering Buff.
 
-- 🟢 **Magic Guard** — `likely` · P2 (enc) · themes: weather, heal, typing, damage · engine: remember-only · code: FEATURE_ABILITY_CHOICES:8007
+- 🟢 **Magic Guard** — `likely` · P2 (enc) · themes: weather, heal, typing, damage · engine: remember-only · code: FEATURE_ABILITY_CHOICES:8054, hpRecoilImmunity:20689
   - _Static_
   - The user is immune to damage and Hit Point loss from Hazards, Weather, Status Afflictions, Vortexes, Recoil, Hay Fever, Iron Barbs, Rough Skin, and Leech Seed. Defensive.
 
-- 🟢 **Mentalize** — `likely` · P2 (enc) · themes: interrupt · engine: auto-note · code: ATE_ABILITIES:19863, AUTOMATED_ABILITIES:38734
+- 🟢 **Mentalize** — `likely` · P2 (enc) · themes: interrupt · engine: auto-note · code: ATE_ABILITIES:19919, AUTOMATED_ABILITIES:39114
   - _At-Will - Free Action_
   - Trigger: The user uses a Normal Type damaging Move.
     The Move is changed to be Psychic-Type.
@@ -2118,7 +2118,7 @@ P9 · 39 open of 40 · open
   - _Static_
   - The user is immune to the damage and effects of Electric Type attacks. Whenever an Electric Type attack hits the Pokemon, raise their Speed by +1 Combat Stage. Defensive.
 
-- 🟢 **Overcoat** — `likely` · P2 (enc, pc) · themes: weather, typing, damage · code: powderImmuneWhy:32226
+- 🟢 **Overcoat** — `likely` · P2 (enc, pc) · themes: weather, typing, damage · code: powderImmuneWhy:32606
   - _Static_
   - The user is immune to Moves with the Powder Keyword, and does not take damage from any Weather that would normally cause it to take damage. Defensive.
 
@@ -2126,12 +2126,12 @@ P9 · 39 open of 40 · open
   - _Static · Last Chance_
   - The user gains Last Chance with Grass.
 
-- 🟢 **Pixilate** — `likely` · P2 (enc) · themes: interrupt · engine: auto-note · code: ATE_ABILITIES:19861, AUTOMATED_ABILITIES:38730
+- 🟢 **Pixilate** — `likely` · P2 (enc) · themes: interrupt · engine: auto-note · code: ATE_ABILITIES:19917, AUTOMATED_ABILITIES:39110
   - _At-Will - Free Action_
   - Trigger: The user uses a Normal Type damaging Move.
     The Move is changed to be Fairy-Type.
 
-- 🟢 **Poltergeist** — `likely` · P2 (enc, pc) · themes: swap · code: derivedMonMoves:19793, poltergeistGrant:19854
+- 🟢 **Poltergeist** — `likely` · P2 (enc, pc) · themes: swap · code: derivedMonMoves:19849, poltergeistGrant:19910
   - _Static_
   - Rotom gains an Ability and a Move depending on what Form it has taken. This Move cannot be forgotten or replaced in any way.
     
@@ -2146,16 +2146,16 @@ P9 · 39 open of 40 · open
   - _Scene - Swift Action_
   - The user becomes Enraged, and gains +1 Attack Combat Stage.
 
-- ✅ **Purifying Salt** — `auto` · P2 (enc) · themes: status, typing · engine: auto-note · code: STATUS_IMMUNE_ABILITIES:763, defenseTypeMods:6423, AUTOMATED_ABILITIES:38759
+- ✅ **Purifying Salt** — `auto` · P2 (enc) · themes: status, typing · engine: auto-note · code: STATUS_IMMUNE_ABILITIES:763, defenseTypeMods:6423, AUTOMATED_ABILITIES:39139
   - _Static_
   - note: found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off); Ghost resist was already in defenseTypeMods
   - The user gains resistance to Ghost-type moves, and cannot be Burned, Frozen, Paralyzed, Poisoned, Cursed, or put to Sleep. Defensive. 15 Unofficial Homebrew
 
-- 🟢 **Rampaging Spirit** — `likely` · P2 (enc) · themes: heal, status · engine: auto-note · code: koFloor:7880, applyAutoKO:8322, AUTOMATED_ABILITIES:38738
+- 🟢 **Rampaging Spirit** — `likely` · P2 (enc) · themes: heal, status · engine: auto-note · code: koFloor:7927, applyAutoKO:8369, AUTOMATED_ABILITIES:39118
   - _Static_
   - While Enraged, this Pokémon Faints at -50% Hit Points instead of 0%.
 
-- 🟢 **Reckless** — `likely` · P2 (enc) · themes: position, heal, damage, stat · engine: auto-note · code: abilityDamageMods:20953, AUTOMATED_ABILITIES:38717
+- 🟢 **Reckless** — `likely` · P2 (enc) · themes: position, heal, damage, stat · engine: auto-note · code: abilityDamageMods:21323, AUTOMATED_ABILITIES:39097
   - _Static_
   - Increase the Damage Base of the moves Jump Kick, Hi Jump Kick, and moves with the Recoil Keyword by +2.
 
@@ -2164,7 +2164,7 @@ P9 · 39 open of 40 · open
 
 P9 · 39 open of 40 · open
 
-- 🟢 **Reckless [Errata]** — `likely` · P2 (enc) · themes: position, heal, multiturn, damage, skill, stat · code: abilityDamageMods:20958
+- 🟢 **Reckless [Errata]** — `likely` · P2 (enc) · themes: position, heal, multiturn, damage, skill, stat · code: abilityDamageMods:21328
   - _Static · 2-16 Errata_
   - Increases the Damage Base of Moves with the Exhaust, Recoil, or Reckless Keywords by +3.
     Reckless Moves: Jump Kick, Hi Jump Kick, Close Combat, Draco Meteor, Hammer Arm, Leaf Storm, Outrage, Overheat, Petal Dance, Psycho Boost, Superpower, Thrash, and V-Create.
@@ -2177,35 +2177,35 @@ P9 · 39 open of 40 · open
   - _Scene x3 - Swift Action_
   - The Field becomes Rugged, as if affected by the Move Rugged Terrain, for one full round.
 
-- 🟢 **Run Up** — `likely` · P2 (enc) · themes: damage · code: FEATURE_ABILITY_CHOICES:7996, RUNNING_START_ABILITIES:20784, runningStartFor:20796
+- 🟢 **Run Up** — `likely` · P2 (enc) · themes: damage · code: FEATURE_ABILITY_CHOICES:8043, RUNNING_START_ABILITIES:21154, runningStartFor:21166
   - _Static_
   - If the user moves in a straight line to a target and uses a damaging Melee Attack, it may add the number of meters traveled in a direct line as Bonus Damage to a Damage Roll.
 
-- 🟢 **Schooling** — `likely` · P2 (pc) · themes: heal, stat · code: schooling:8514, schoolingUseKey:8519, schoolingUsesLeft:8521, wishiwashiFormeControl:19558, makeStraggler:36507
+- 🟢 **Schooling** — `likely` · P2 (pc) · themes: heal, stat · code: schooling:8561, schoolingUseKey:8566, schoolingUsesLeft:8568, wishiwashiFormeControl:19614, makeStraggler:36887
   - _Daily - Swift Action_
   - The user changes to Schooling Forme, and gains Temporary Hit Points equal to half of its own maximum Hit Points. The user cannot gain Temporary Hit Points from other sources while in Schooling Forme. When the user is both below 50% of their maximum HP and has no Temporary Hit Points left, they change back into Solo Forme. Bonus: The user has two sets of base stats; Solo and Schooling. The HP of both forms must be the same.
 
-- 🟢 **Serene Grace** — `likely` · P2 (enc) · themes: other · engine: auto-note, remember-only · code: openTrainerAttack:9439, openMoveRoll:21777, AUTOMATED_ABILITIES:38749
+- 🟢 **Serene Grace** — `likely` · P2 (enc) · themes: other · engine: auto-note, remember-only · code: openTrainerAttack:9491, openMoveRoll:22147, AUTOMATED_ABILITIES:39129
   - _Static_
   - The users Effect Range is increased by +2.
 
-- 🟢 **Sheer Force** — `likely` · P2 (enc) · themes: interrupt, damage, stat · engine: auto-note · code: abilityDamageMods:20927, openMoveRoll:22644, simStrike:37281, AUTOMATED_ABILITIES:38722
+- 🟢 **Sheer Force** — `likely` · P2 (enc) · themes: interrupt, damage, stat · engine: auto-note · code: abilityDamageMods:21297, openMoveRoll:23014, simStrike:37661, AUTOMATED_ABILITIES:39102
   - _Static_
   - If a Pokemon with Sheer Force uses a Move with a secondary effect that triggers during Accuracy Roll, increase that Move's Base Damage by +2. However, the secondary effects of Move never trigger. This does not affect Critical Hits, or moves with increased Critical Hit ranges.
 
-- 🟢 **Shell Armor** — `likely` · P2 (enc, pc) · themes: typing, damage · engine: auto-note, remember-only · code: typeAbilityRow:3328, AUTOMATED_ABILITIES:38751, CRIT_IMMUNE_ABILITIES:46125
+- 🟢 **Shell Armor** — `likely` · P2 (enc, pc) · themes: typing, damage · engine: auto-note, remember-only · code: typeAbilityRow:3328, AUTOMATED_ABILITIES:39131, CRIT_IMMUNE_ABILITIES:46505
   - _Static_
   - The user is immune to Critical Hits; they are instead normal hits. Defensive.
 
-- 🟢 **Shield Dust** — `likely` · P2 (enc) · themes: interrupt, status, damage · code: FEATURE_ABILITY_CHOICES:7990
+- 🟢 **Shield Dust** — `likely` · P2 (enc) · themes: interrupt, status, damage · code: FEATURE_ABILITY_CHOICES:8037
   - _Static_
   - The user ignores the secondary effects that trigger during Accuracy Roll of damaging Moves that target the user. For example, Flamethrower can never inflict the Burn Condition. Defensive.
 
-- 🟢 **Shields Down** — `likely` · P2 (enc) · themes: skill, stat · code: shieldsDown:8490
+- 🟢 **Shields Down** — `likely` · P2 (enc) · themes: skill, stat · code: shieldsDown:8537
   - _Static_
   - The user has two sets of base stats; Meteor and Core. The HP of both forms must be the same. When the user is in Meteor Forme and becomes Bruised, they change to Core Forme. The userreturns to Meteor Forme while outside of combat if not Bruised.
 
-- 🟢 **Sniper** — `likely` · P2 (pc) · themes: interrupt, damage · code: openMoveRoll:22708, simStrike:37272
+- 🟢 **Sniper** — `likely` · P2 (pc) · themes: interrupt, damage · code: openMoveRoll:23085, simStrike:37652
   - _Static_
   - When the Pokemon gets a Critical Hit, add the value of the Damage Dice Roll an additional time to the total damage.
 
@@ -2213,7 +2213,7 @@ P9 · 39 open of 40 · open
   - _Scene -  Free Action_
   - The Weather changes to Hail for 5 rounds. As a static effect the user is not damaged by Hail.
 
-- 🟢 **Solid Rock** — `likely` · P2 (enc) · themes: interrupt, typing, damage · engine: auto-note · code: applyAbsorbToOwner:6393, defenseTypeMods:6441, AUTOMATED_ABILITIES:38762
+- 🟢 **Solid Rock** — `likely` · P2 (enc) · themes: interrupt, typing, damage · engine: auto-note · code: applyAbsorbToOwner:6393, defenseTypeMods:6441, AUTOMATED_ABILITIES:39142
   - _Static_
   - When the user is hit by a Super-Effective attack, the attack deals 1.25x damage instead of x1.5 damage. If the user is hit by a Super-Super-Effective attack, the attack deals x1.5 damage instead of x2 damage. If you have both Solid Rock and Filter, you gain 5 Damage eduction against Super-Effective Damage. Defensive.
 
@@ -2221,17 +2221,17 @@ P9 · 39 open of 40 · open
   - _Static · 2-16 Errata_
   - The user's Base Special Attack Stat is increased by +5, and by +1 more for every 10 Levels the user has. This Ability cannot be disabled in any way.
 
-- 🟢 **Sprint** — `likely` · P2 (enc) · themes: position, interrupt, cs, skill · code: typeAbilityRow:3277, ABILITY_CAP_GRANTS:19199, BATTLE_ACTIONS:23177
+- 🟢 **Sprint** — `likely` · P2 (enc) · themes: position, interrupt, cs, skill · code: typeAbilityRow:3277, ABILITY_CAP_GRANTS:19255, BATTLE_ACTIONS:23557
   - _Scene - Swift Action_
   - Trigger: The user uses the Sprint Action during Combat
     The user gains +2 Speed Combat Stages. Additionally, the user's Overland Speed is always increased by +2.
 
-- 🟢 **Static** — `likely` · P2 (enc, pc) · themes: interrupt, status · code: freqInfo:4638, fightOnToggle:7900, openTrainerAttack:9358, GIFT_FREQ_RE:13155, giftFreqText:13164, fieryCrashThresholds:20893, abilityDamageMods:21017, boneWielderPierces:21068
+- 🟢 **Static** — `likely` · P2 (enc, pc) · themes: interrupt, status · code: freqInfo:4638, fightOnToggle:7947, openTrainerAttack:9405, GIFT_FREQ_RE:13211, giftFreqText:13220, fieryCrashThresholds:21263, abilityDamageMods:21387, boneWielderPierces:21438
   - _Scene -  Free Action_
   - Trigger: The user is hit by a Melee Attack
     The attacking foe becomes Paralyzed.
 
-- 🟢 **Steelworker** — `likely` · P2 (enc) · themes: interrupt, damage · engine: auto-note · code: openMoveRoll:21649, AUTOMATED_ABILITIES:38735
+- 🟢 **Steelworker** — `likely` · P2 (enc) · themes: interrupt, damage · engine: auto-note · code: openMoveRoll:22019, AUTOMATED_ABILITIES:39115
   - _Scene - Free Action_
   - Trigger: The user takes damage while adjacent to its Anchor
     The user calculates damage as if it was only Steel-Typed.Bonus: The user gains STAB on Steel-Type Moves that originate from its Anchor.
@@ -2240,16 +2240,16 @@ P9 · 39 open of 40 · open
   - _Scene x3 - Swift Action_
   - The Field becomes Sticky, as if affected by the Move Sticky Terrain, for one full round.
 
-- 🟢 **Storm Drain** — `likely` · P2 (enc) · themes: interrupt, typing, cs, damage, skill · engine: auto-note · code: TYPE_ABSORB_ABILITIES:6277, absorbEntriesFor:6314, openOceanicFeeling:27428
+- 🟢 **Storm Drain** — `likely` · P2 (enc) · themes: interrupt, typing, cs, damage, skill · engine: auto-note · code: TYPE_ABSORB_ABILITIES:6277, absorbEntriesFor:6314, openOceanicFeeling:27808
   - _Scene -  Free Action_
   - Trigger: A ranged Water Type Move is used within 10 Meters of the user.
     The Move is turned into a Single-Target Move and is re-directed at the User without fail, and cannot miss. This negates Lock-On or Mind Reader. Additionally, the user is immune to the damage and effects of Water Type Moves, and each time they are hit by a Water-Type Move, the User's Special Attack is raised 1 Combat Stage. Defensive.
 
-- 🟢 **Strong Jaw** — `likely` · P2 (enc) · themes: status, damage, stat · engine: auto-note, remember-only · code: abilityDamageMods:20967, AUTOMATED_ABILITIES:38718
+- 🟢 **Strong Jaw** — `likely` · P2 (enc) · themes: status, damage, stat · engine: auto-note, remember-only · code: abilityDamageMods:21337, AUTOMATED_ABILITIES:39098
   - _Static_
   - The user has the Damage Base of the following Moves increased by +2; Bite, Bug Bite, Crunch, Fire Fang, Ice Fang, Thunder Fang, Poison Fang, and Hyper Fang.
 
-- 🟢 **Sturdy** — `likely` · P2 (enc, pc) · themes: heal, typing, damage · engine: remember-only · code: FEATURE_ABILITY_CHOICES:7996
+- 🟢 **Sturdy** — `likely` · P2 (enc, pc) · themes: heal, typing, damage · engine: remember-only · code: FEATURE_ABILITY_CHOICES:8043
   - _Static_
   - The Pokemon is immune to the Moves Sheer Cold, Guillotine, Horn Drill and Fissure. If any attack would lower this Pokemon to 0 Hit Points or less from full Hit Points, instead the Pokemon's Hit Point value is set to 1. This effect fails if the user's full Hit Point value is 1. Pokemon with Sturdy do not gain Injuries from Massive Damage. Defensive.
 
@@ -2257,7 +2257,7 @@ P9 · 39 open of 40 · open
   - _Static_
   - The user is one step more resistant to Fire-Type Attacks, and gains a Tick of Hit Points at the beginning of each turn in Sunny weather.
 
-- 🟢 **Super Luck** — `likely` · P2 (enc) · themes: damage · engine: auto-note, remember-auto · code: trainerCritThreshold:7853, critThreshold:20756, AUTOMATED_ABILITIES:38727
+- 🟢 **Super Luck** — `likely` · P2 (enc) · themes: damage · engine: auto-note, remember-auto · code: trainerCritThreshold:7900, critThreshold:21126, AUTOMATED_ABILITIES:39107
   - _Static_
   - The Pokemon's Moves are Critical Hits on 18-20. If a Move already has an extended Critical Hit range, Super Luck extends that range by 2.
 
@@ -2265,7 +2265,7 @@ P9 · 39 open of 40 · open
   - _Scene - Free Action_
   - Connection - Lock On. By activating this Ability the target may use Lock-On as a Swift Action.
 
-- 🟢 **Telepathy** — `likely` · P2 (enc) · themes: interrupt · code: PE_CAP_ALIAS:17203, POKE_EDGE_DEFS:17463
+- 🟢 **Telepathy** — `likely` · P2 (enc) · themes: interrupt · code: PE_CAP_ALIAS:17259, POKE_EDGE_DEFS:17519
   - _At-Will - Shift Action, Interrupt_
   - Trigger: An ally uses an area-of-effect attack that would hit you
     You may Shift to remove yourself from the area-of-effect.
@@ -2276,11 +2276,11 @@ P9 · 39 open of 40 · open
   - Trigger: The user is hit by a Fire-Type Move.
     The user receives +1 Attack Combat Stage. Bonus: The user is immune to Burns. Defensive.
 
-- 🟢 **Thermosensitive** — `likely` · P2 (enc) · themes: weather, position, cs, skill · engine: auto-note · code: WEATHER_DEFS:1174, AUTOMATED_ABILITIES:38753
+- 🟢 **Thermosensitive** — `likely` · P2 (enc) · themes: weather, position, cs, skill · engine: auto-note · code: WEATHER_DEFS:1174, AUTOMATED_ABILITIES:39133
   - _Static_
   - While Sunny, the user's Attack and Special Attack are raised by +2 combat stages each. While Hailing, the user's movement capabilities are reduced by half.
 
-- 🟢 **Tolerance** — `likely` · P2 (enc) · themes: typing · engine: auto-note, remember-auto · code: defenseTypeMods:6406, EFFECTIVE_METHODS_ABILITIES:26994, openTypeMethodology:27126, AUTOMATED_ABILITIES:38750
+- 🟢 **Tolerance** — `likely` · P2 (enc) · themes: typing · engine: auto-note, remember-auto · code: defenseTypeMods:6406, EFFECTIVE_METHODS_ABILITIES:27374, openTypeMethodology:27506, AUTOMATED_ABILITIES:39130
   - _Static_
   - Any Types resisted by the user are resisted one step further. Defensive.
 
@@ -2289,11 +2289,11 @@ P9 · 39 open of 40 · open
   - Target: A Trainer or Pokemon within 10 meters
     The Pokemon gains an Ability known by the Target for the remainder of the encounter, or until it is Fainted.
 
-- 🟢 **Treasure Hoard** — `likely` · P2 (enc) · themes: weather, position, swap, damage · code: typeAbilityRow:3288, hasTreasureHoard:16203, ABILITY_CAP_GRANTS:19204
+- 🟢 **Treasure Hoard** — `likely` · P2 (enc) · themes: weather, position, swap, damage · code: typeAbilityRow:3288, hasTreasureHoard:16259, ABILITY_CAP_GRANTS:19260
   - _At-Will - Swift Action_
   - The user leaves their chest behind in an adjacent square, changing from Chest Forme to Roaming Forme. The chest counts as Blocking Terrain, and may not be moved. When next to their chest, the user may activate this ability again to remove the chest from the field and revert to Chest Forme. When the user faints or is recalled, the chest disappears and they revert to Chest Forme. Bonus: While in Chest Forme, the user receives +5 Damage Reduction. While in Roaming Forme, the user does not provoke Attacks of Opportunity and gains +3 Overland.
 
-- 🟢 **Type Strategist** — `likely` · P2 (enc) · themes: heal, typing, damage · engine: remember-auto · code: normPokemon:5847, openTypeAceGrant:18771, grantExtraOrdinary:18791, openMoveRoll:22516
+- 🟢 **Type Strategist** — `likely` · P2 (enc) · themes: heal, typing, damage · engine: remember-auto · code: normPokemon:5847, openTypeAceGrant:18827, grantExtraOrdinary:18847, openMoveRoll:22886
   - _Static_
   - Whenever the user uses a Move of the Type associated with Type Strategist, they gain +5 Damage Reduction for one full round. If they are under 1/3rd of their Maximum Hit Points, they instead gain +10 Damage Reduction. Defensive.
 
@@ -2301,7 +2301,7 @@ P9 · 39 open of 40 · open
   - _Static_
   - The user is immune to the damage and effects of Electric-Type attacks, and whenever they are hit with an Electric Type attack, they gain Hit Points equal to a Tick of Hit Points. Defensive.
 
-- 🟢 **Water Absorb** — `likely` · P2 (enc, pc) · themes: heal, typing, damage · engine: auto-note · code: TYPE_ABSORB_ABILITIES:6267, giftMaskPatron:13561
+- 🟢 **Water Absorb** — `likely` · P2 (enc, pc) · themes: heal, typing, damage · engine: auto-note · code: TYPE_ABSORB_ABILITIES:6267, giftMaskPatron:13617
   - _Static_
   - The user is immune to the damage and effects of Water-Type attacks, and whenever they are hit with a Water Type attack, they gain a Tick of Hit Points. Defensive.
 
@@ -2314,7 +2314,7 @@ P9 · 39 open of 40 · open
   - Trigger: A foe or ally within 4m uses a Move with the Wind keyword
     Connection - Charge. The user may use Charge as a Free Action. Wind Moves: Air Cutter, Bleakwind Storm, Blizzard, Fairy Wind, Gust, Heat Wave, Hurricane, Icy Wind, Ominous Wind, Petal Blizzard, Sandsear Storm, Sandstorm, Silver Wind, Springtide Storm, Tailwind, Twister, Whirlwind, Wildbolt Storm
 
-- 🟢 **Winter's Kiss** — `likely` · P2 (enc) · themes: heal, damage · engine: auto-note · code: TYPE_ABSORB_ABILITIES:6271, FEATURE_ABILITY_CHOICES:7992
+- 🟢 **Winter's Kiss** — `likely` · P2 (enc) · themes: heal, damage · engine: auto-note · code: TYPE_ABSORB_ABILITIES:6271, FEATURE_ABILITY_CHOICES:8039
   - _Static_
   - The user does not take damage from Ice-Type Moves. Whenever the user uses or is hit by an Ice-Type Move, the user is healed by a Tick of Hit Points. Defensive.
 
@@ -2322,15 +2322,15 @@ P9 · 39 open of 40 · open
   - _Static_
   - Connection - Wish. Whenever the user uses Wish, the user may pick one of the following effects: the target is healed instantly instead of the following round; or the target gains +2 CS to the Stat of their choice upon being healed; or the target is cured of any Status Affliction.
 
-- 🟢 **Wonder Guard** — `likely` · P2 (enc) · themes: typing, damage · engine: auto-note, remember-auto · code: defenseTypeMods:6436, AUTOMATED_ABILITIES:38760
+- 🟢 **Wonder Guard** — `likely` · P2 (enc) · themes: typing, damage · engine: auto-note, remember-auto · code: defenseTypeMods:6436, AUTOMATED_ABILITIES:39140
   - _Static_
   - Only damaging attacks that are Super-Effective affect the Pokemon with Wonder Guard; all other damaging attacks cannot hit the user or deal damage. Wonder Guard loses its effect if the user has no weaknesses. Defensive.
 
-- 🟢 **Adaptability** — `likely` · P3 · themes: damage · engine: auto-note · code: openTrainerAttack:8912, abilityDamageMods:20934, simProfile:37093, AUTOMATED_ABILITIES:38713
+- 🟢 **Adaptability** — `likely` · P3 · themes: damage · engine: auto-note · code: openTrainerAttack:8959, abilityDamageMods:21304, simProfile:37473, AUTOMATED_ABILITIES:39093
   - _Static_
   - Increase the Damage of all Moves with which the user shares an Elemental Type by +1 Damage Base.
 
-- 🟢 **Aqua Boost** — `likely` · P3 · themes: interrupt, damage · code: ROTOM_POLTERGEIST:19848
+- 🟢 **Aqua Boost** — `likely` · P3 · themes: interrupt, damage · code: ROTOM_POLTERGEIST:19904
   - _At-Will - Free Action_
   - Trigger: An adjacent Ally uses a Water-Type Move
     The allied target gains a +5 Bonus to its damage roll with the triggering Move.  A target may not benefit from more than one instance of Aqua Boost at a time.
@@ -2340,16 +2340,16 @@ P9 · 39 open of 40 · open
 
 P9 · 40 open of 40 · open
 
-- 🟢 **Arena Trap** — `likely` · P3 · themes: position, status, action, capture · code: FEATURE_ABILITY_CHOICES:8011
+- 🟢 **Arena Trap** — `likely` · P3 · themes: position, status, action, capture · code: FEATURE_ABILITY_CHOICES:8058
   - _Scene -  Free Action_
   - Target: Pokemon or Trainers
     Once Arena trap is activated, all foes within 5 meters of the user are considered Slowed. This does not affect targets of the Flying Type, or with a Levitate, Sky, or Burrow Speed of 4 or higher. The user may end the effect as a Free Action, and the effect ends if the user is fainted or returned to a Poke Ball.
 
-- 🟢 **Aroma Veil** — `likely` · P3 · themes: status · code: normTrainer:5873, FEATURE_ABILITY_CHOICES:8002, STATUS_VEILS:36347
+- 🟢 **Aroma Veil** — `likely` · P3 · themes: status · code: normTrainer:5873, FEATURE_ABILITY_CHOICES:8049, STATUS_VEILS:36727
   - _Static_
   - The user and all Pokemon and Trainers within 3 meters cannot be Confused, Enraged, or Suppressed. Defensive.
 
-- 🟢 **Aroma Veil [Errata]** — `likely` · P3 · themes: status · code: normTrainer:5873, FEATURE_ABILITY_CHOICES:8002, STATUS_VEILS:36350
+- 🟢 **Aroma Veil [Errata]** — `likely` · P3 · themes: status · code: normTrainer:5873, FEATURE_ABILITY_CHOICES:8049, STATUS_VEILS:36730
   - _Static · 2-16 Errata_
   - The user and all adjacent Pokemon and Trainers cannot become Confused, Enraged, or Suppressed. Defensive.
 
@@ -2357,11 +2357,11 @@ P9 · 40 open of 40 · open
   - _Static_
   - Connection - Rollout. The user increases the Damage Base of Rollout, Steamroller, Steel Roller, and all Moves with "Ball" in the name by +2, and these Moves gain the Versatile Keyword for the user.
 
-- 🟢 **Beam Cannon** — `likely` · P3 · themes: damage · code: critThreshold:20758
+- 🟢 **Beam Cannon** — `likely` · P3 · themes: damage · code: critThreshold:21128
   - _Static_
   - The Effect Range and Critical Hit Range of the user's Ranged, 1-Target Moves are increased by 3.
 
-- 🟢 **Berry Storage** — `likely` · P3 · themes: interrupt · code: eatSnack:16648, digestionCard:16945
+- 🟢 **Berry Storage** — `likely` · P3 · themes: interrupt · code: eatSnack:16704, digestionCard:17001
   - _Daily - Extended Action_
   - Trigger: The user eats a Berry
     The user gains 3 instances of the Berry's Digestion/Food Buff instead of 1. It may only trade in one of these Digestion/Food Buffs each Scene. Neither storing nor trading in these Digestion/Food Buffs counts against the user's normal limits. All Digestion/Food Buffs gained from Berry Storage are lost after an Extended Rest.
@@ -2395,7 +2395,7 @@ P9 · 40 open of 40 · open
     - Bonemerang: Has a Range of Line 6 but loses the Double Strike keyword
     - Bone Rush: Bone Rush automatically 'hits' four times (as per the Five Strike keyword).
 
-- 🟢 **Bone Wielder [Errata]** — `likely` · P3 · themes: typing · engine: auto-note · code: typeMultAgainst:6231, boneWielderPierces:21065, AUTOMATED_ABILITIES:38767
+- 🟢 **Bone Wielder [Errata]** — `likely` · P3 · themes: typing · engine: auto-note · code: typeMultAgainst:6231, boneWielderPierces:21435, AUTOMATED_ABILITIES:39147
   - _Static · 2-16 Errata_
   - The user's Bone Club, Bonemerang, and Bone Rush Moves ignore immunity against Ground-Type Moves.
 
@@ -2408,7 +2408,7 @@ P9 · 40 open of 40 · open
   - _Static_
   - Connection - Sweet Scent. Whenever the user hits a male target with Poison Gas, Smog, Sweet Scent, Toxic, or Venom Drench, that target becomes Infatuated with the user.
 
-- 🟢 **Conqueror** — `likely` · P3 · themes: interrupt, cs, skill · code: edgeByName:10052
+- 🟢 **Conqueror** — `likely` · P3 · themes: interrupt, cs, skill · code: edgeByName:10108
   - _Scene - Free Action_
   - Trigger: The user causes a foe to Faint by using a damaging Physical or Special Attack
     The user's Attack, Special Attack, and Speed gain +1 Combat Stage.
@@ -2470,7 +2470,7 @@ P9 · 40 open of 40 · open
   - _Scene x3 - Swift Action · 2-16 Errata_
   - The Weather changes to be Sunny for 1 full round.
 
-- 🟢 **Drown Out** — `likely` · P3 · themes: interrupt, damage, skill · code: FEATURE_ABILITY_CHOICES:8006
+- 🟢 **Drown Out** — `likely` · P3 · themes: interrupt, damage, skill · code: FEATURE_ABILITY_CHOICES:8053
   - _Scene -  Free Action_
   - Trigger: A foe uses a Move with the Sonic keyword
     The user makes a Focus Check with a DC equal to the Move's Accuracy Roll. If the user succeeds, the triggering Move fails.
@@ -2500,11 +2500,11 @@ P9 · 40 open of 40 · open
   - Trigger: An adjacent foe hits the user with a damaging Move
     Connection - Charge. The user may use Charge as a Free Action. 11 Unofficial Homebrew
 
-- 🟢 **Elevate** — `likely` · P3 · themes: typing, cs, damage, skill, stat · engine: auto-note · code: TYPE_ABSORB_ABILITIES:6264, ABILITY_CAP_GRANTS:19200
+- 🟢 **Elevate** — `likely` · P3 · themes: typing, cs, damage, skill, stat · engine: auto-note · code: TYPE_ABSORB_ABILITIES:6264, ABILITY_CAP_GRANTS:19256
   - _Static_
   - The Pokemon is immune to the damage and effects of Ground Type Moves, and gains a Levitate Speed of 4, or has existing Levitate Speeds increased by +2. Bonus: Whenever the user's Move causes a target to faint, it may raise the Combat Stage of its highest Base Stat by +1. Defensive.
 
-- 🟢 **Enduring Rage** — `likely` · P3 · themes: status, cure, damage · code: POWER_OF_RAGE_ABILITIES:7906, rageAbilityDR:7939
+- 🟢 **Enduring Rage** — `likely` · P3 · themes: status, cure, damage · code: POWER_OF_RAGE_ABILITIES:7953, rageAbilityDR:7986
   - _Static_
   - The user may not make rolls to cure themselved of the Enraged condition.  However, while Enraged, the user gains 5 Damage Reduction.
 
@@ -2517,7 +2517,7 @@ P9 · 40 open of 40 · open
 
 P9 · 40 open of 40 · open
 
-- 🟢 **Exploit** — `likely` · P3 · themes: typing, damage · engine: remember-auto · code: openTrainerAttack:9555, openMoveRoll:22426, EFFECTIVE_METHODS_ABILITIES:26994, openTypeMethodology:27126, simProfile:37121
+- 🟢 **Exploit** — `likely` · P3 · themes: typing, damage · engine: remember-auto · code: openTrainerAttack:9609, openMoveRoll:22796, EFFECTIVE_METHODS_ABILITIES:27374, openTypeMethodology:27506, simProfile:37501
   - _Static_
   - Whenever you deal Super-Effective Damage to a target, that target treats your damage roll as if it were increased by +5.
 
@@ -2526,7 +2526,7 @@ P9 · 40 open of 40 · open
   - Trigger: The user hits a foe with Lick.
     Connection - Lick. The foe hit with Lick gains an Injury and becomes Burned.
 
-- 🟢 **Flare Boost** — `likely` · P3 · themes: status, cure, cs, skill · engine: auto-note · code: abilityStatusCS:21104, AUTOMATED_ABILITIES:38741
+- 🟢 **Flare Boost** — `likely` · P3 · themes: status, cure, cs, skill · engine: auto-note · code: abilityStatusCS:21474, AUTOMATED_ABILITIES:39121
   - _Static_
   - While Burned, the user's Special Attack is raised by 2 Combat Stages. If the user is cured of its Burn, its Special Attack is lowered by 2 Combat Stages.
 
@@ -2535,7 +2535,7 @@ P9 · 40 open of 40 · open
   - Trigger: The user uses Aromatic Mist
     Connection - Aromatic Mist. All allies affected by Aromatic Mist gain +1 to Accuracy Rolls and +5 to Damage Rolls for one full round.
 
-- 🟢 **Fluffy** — `likely` · P3 · themes: typing · engine: auto-note · code: defenseTypeMods:6425, AUTOMATED_ABILITIES:38758
+- 🟢 **Fluffy** — `likely` · P3 · themes: typing · engine: auto-note · code: defenseTypeMods:6425, AUTOMATED_ABILITIES:39138
   - _Static_
   - The user resists damaging Melee attacks one step further, but resists Fire-Type attacks one step less. [Defensive]
 
@@ -2543,7 +2543,7 @@ P9 · 40 open of 40 · open
   - _Static_
   - Connection - Charge.  Whenever the user uses Charge, they gain +1 CS to Defense.
 
-- 🟢 **Focus** — `likely` · P3 · themes: other · engine: remember-auto · code: illusionMarkCap:3926, LAST_CHANCE_ABILITIES:4013, MELEE_SKILL_SUBS:7346, EQUIP_EFFECTS:11547, GIFTSAPPER_SKILLS:13876, POKE_EDGE_DEFS:17459, openPowerChord:25052, ARTIFICER_RECIPES:30060
+- 🟢 **Focus** — `likely` · P3 · themes: other · engine: remember-auto · code: illusionMarkCap:3926, LAST_CHANCE_ABILITIES:4013, MELEE_SKILL_SUBS:7393, EQUIP_EFFECTS:11603, GIFTSAPPER_SKILLS:13932, POKE_EDGE_DEFS:17515, openPowerChord:25432, ARTIFICER_RECIPES:30440
   - _Static · Last Chance_
   - The user gains Last Chance with Fighting.
 
@@ -2559,7 +2559,7 @@ P9 · 40 open of 40 · open
   - _Trigger · Last Chance_
   - The user gains Last Chance with Ice.
 
-- 🟢 **Frostbite** — `likely` · P3 · themes: status · code: FEATURE_ABILITY_CHOICES:7993, openTrainerAttack:9434, ROTOM_POLTERGEIST:19849, moveStatusEffects:20341, openMoveRoll:21776, simProfile:37101
+- 🟢 **Frostbite** — `likely` · P3 · themes: status · code: FEATURE_ABILITY_CHOICES:8040, openTrainerAttack:9486, ROTOM_POLTERGEIST:19905, moveStatusEffects:20397, openMoveRoll:22146, simProfile:37481
   - _Static_
   - The user's damaging Ice Type attacks cause the target to become Slowed on 18+, and the Effect Range for Freeze on these Moves is increased by +1. If the Move does not cause Freezing, it now causes Freezing on a roll of 20.
 
@@ -2571,11 +2571,11 @@ P9 · 40 open of 40 · open
   - _Static · Sun/Moon Errata_
   - Connection - Quick Attack. The user may use Quick Attack as a Flying-Type Move.
 
-- 🟢 **Galvanize** — `likely` · P3 · themes: other · engine: auto-note · code: ATE_ABILITIES:19861, AUTOMATED_ABILITIES:38731
+- 🟢 **Galvanize** — `likely` · P3 · themes: other · engine: auto-note · code: ATE_ABILITIES:19917, AUTOMATED_ABILITIES:39111
   - _At-Will - Free Action_
   - If the user attacks with a Normal-Type Move, that Move is Electric-Type instead.
 
-- 🟢 **Gardener** — `likely` · P3 · themes: action · code: trainerCapGrants:11676, gardenCard:31842, gardenPlantRow:31945
+- 🟢 **Gardener** — `likely` · P3 · themes: action · code: trainerCapGrants:11732, gardenCard:32222, gardenPlantRow:32325
   - _Daily x3 - Extended Action_
   - Target: A yielding Plant
     Increase the Soil Quality of the plant by +1, as if Mulch has been applied.  This may target a Specific Plant only once per day.
@@ -2584,11 +2584,11 @@ P9 · 40 open of 40 · open
   - _Static_
   - The user is immune to Fairy-Type attacks. Defensive.Bonus: If the user is hit by a damaging Fairy-Type attack, they receive +1 Defense or Special DefenseCombat Stages.
 
-- 🟢 **Gluttony** — `likely` · P3 · themes: other · code: digestionCap:16559, drinkRefreshment:16836, digestionCard:16940, openCulinaryAppreciation:29565
+- 🟢 **Gluttony** — `likely` · P3 · themes: other · code: digestionCap:16615, drinkRefreshment:16892, digestionCard:16996, openCulinaryAppreciation:29945
   - _Static_
   - The user may have up to three Digestion/Food Buffs at once, and may eat up to two refreshments per half hour.
 
-- 🟢 **Gore** — `likely` · P3 · themes: position, damage · engine: move-rider · code: critThreshold:20759
+- 🟢 **Gore** — `likely` · P3 · themes: position, damage · engine: move-rider · code: critThreshold:21129
   - _Static_
   - Connection - Horn Attack. Whenever the user uses Horn Attack, they may push the target away 1 meter. Additionally, Horn Attack has a Critical Range of 18-20 for the user.
 
@@ -2609,7 +2609,7 @@ P9 · 40 open of 40 · open
   - _Static · Last Chance_
   - The user gains Last Chance with Ghost.
 
-- 🟢 **Heatproof** — `likely` · P3 · themes: typing · engine: auto-note · code: defenseTypeMods:6421, AUTOMATED_ABILITIES:38756
+- 🟢 **Heatproof** — `likely` · P3 · themes: typing · engine: auto-note · code: defenseTypeMods:6421, AUTOMATED_ABILITIES:39136
   - _Static_
   - The user resists Fire Type moves one step further (Super-Effective Becomes Neutral, Doubly-Super Effective becomes Super-Effective, Neutral becomes Resistant, Resistant becomes doubly Resistant).
 
@@ -2617,7 +2617,7 @@ P9 · 40 open of 40 · open
   - _Static_
   - Connection - Helping Hand. Whenever the user uses a Move that targets a single Ally, that Ally gains a +1 Bonus to Accuracy and Skill Checks until the end of the user's next turn.
 
-- 🟢 **Honey Paws** — `likely` · P3 · themes: swap · code: eatSnack:16645, digestionCard:16944
+- 🟢 **Honey Paws** — `likely` · P3 · themes: swap · code: eatSnack:16701, digestionCard:17000
   - _Static_
   - The user may consume Honey to gain a Digestion/Food Buff as if they had consumed Leftovers. This Digestion/Food Buff does not count against their normal limit.
 
@@ -2625,11 +2625,11 @@ P9 · 40 open of 40 · open
   - _Static_
   - Connection - Bug Bite. If the user uses Bug Bite to steal the effects of a Digestion/Food Buff, they gain a Tick of Temporary Hit Points.
 
-- 🟢 **Huge Power** — `likely` · P3 · themes: stat · engine: auto-note · code: pokeBaseStats:6154, AUTOMATED_ABILITIES:38711
+- 🟢 **Huge Power** — `likely` · P3 · themes: stat · engine: auto-note · code: pokeBaseStats:6154, AUTOMATED_ABILITIES:39091
   - _Static_
   - The Pokemon's Base Attack stat is doubled. This may double any bonuses from Nature or Vitamins, but not bonuses from Trainer Features.
 
-- 🟢 **Hustle [Errata]** — `likely` · P3 · themes: damage · engine: auto-note · code: abilityDamageMods:21008, abilityAccMods:21090, AUTOMATED_ABILITIES:38725
+- 🟢 **Hustle [Errata]** — `likely` · P3 · themes: damage · engine: auto-note · code: abilityDamageMods:21378, abilityAccMods:21460, AUTOMATED_ABILITIES:39105
   - _Static · 2-16 Errata_
   - The user receives a -2 penalty to all Accuracy Rolls and gains a +10 Bonus to All Damage Rolls.
 
@@ -2645,7 +2645,7 @@ P9 · 40 open of 40 · open
   - _Static_
   - Connection - Acrobatics. If the user is holding a Rare Leek, they may still use Acrobatics as if they were not holding an item. The user cannot be disarmed of their Stick, nor can be it be forcefully removed by Trick, Switcheroo, Thief, or any other Moves or effects unless the user wishes it.
 
-- 🟢 **Lightning Rod** — `likely` · P3 · themes: interrupt, typing, cs, damage, skill · engine: auto-note · code: TYPE_ABSORB_ABILITIES:6279, FEATURE_ABILITY_CHOICES:8011
+- 🟢 **Lightning Rod** — `likely` · P3 · themes: interrupt, typing, cs, damage, skill · engine: auto-note · code: TYPE_ABSORB_ABILITIES:6279, FEATURE_ABILITY_CHOICES:8058
   - _Scene -  Free Action_
   - Trigger: A ranged Electric Type Move is used within 10 Meters of the user.
     The Move is turned into a Single-Target Move and is re-directed at the user without fail, and cannot miss. This negates Lock-On or Mind Reader. Additionally, the user is immune to the damage and effects of Electric Type attacks, and each time they are hit by an Electric attack, the user's Special Attack is raised 1 Combat Stage. Defensive.
@@ -2658,16 +2658,16 @@ P9 · 40 open of 40 · open
   - _Static · Last Chance_
   - The user gains Last Chance with Flying.
 
-- 🟢 **Magic Bounce** — `likely` · P3 · themes: barrier, interrupt, swap · engine: remember-only · code: FEATURE_ABILITY_CHOICES:8007
+- 🟢 **Magic Bounce** — `likely` · P3 · themes: barrier, interrupt, swap · engine: remember-only · code: FEATURE_ABILITY_CHOICES:8054
   - _Scene -  Free Action_
   - Trigger: The user is hit by a Status Move
     The user may reflect the Move back to the attacker. This Ability may be used to change the placement and affiliation of any Hazards being set within 10 meters of the user as well. Defensive.
 
-- 🟢 **Marvel Scale** — `likely` · P3 · themes: status, cure, cs, skill · engine: auto-note · code: abilityStatusCS:21105, AUTOMATED_ABILITIES:38742
+- 🟢 **Marvel Scale** — `likely` · P3 · themes: status, cure, cs, skill · engine: auto-note · code: abilityStatusCS:21475, AUTOMATED_ABILITIES:39122
   - _Static_
   - When Asleep, Paralyzed, Burned, Frozen or Poisoned, Marvel Scale raises the user's Defense by +2 Combat Stages. The Combat Stages return to Normal if the user is cured of their status affliction.
 
-- 🟢 **Mega Launcher** — `likely` · P3 · themes: damage, stat · engine: auto-note · code: abilityDamageMods:20969, AUTOMATED_ABILITIES:38719
+- 🟢 **Mega Launcher** — `likely` · P3 · themes: damage, stat · engine: auto-note · code: abilityDamageMods:21339, AUTOMATED_ABILITIES:39099
   - _Static_
   - The user increases the Damage Base of Aura Sphere, Dark Pulse, Dragon Pulse, and Water Pulse by +2.
 
@@ -2675,7 +2675,7 @@ P9 · 40 open of 40 · open
   - _Scene - Free Action_
   - The Weather changes to be Sunny for 5 rounds. Bonus: While the Weather is Sunny, the user ignores the Set-Up turn of Moves with the Set-Up Keyword.
 
-- 🟢 **Migraine** — `likely` · P3 · themes: heal · engine: move-rider · code: ABILITY_CAP_GRANTS:19206
+- 🟢 **Migraine** — `likely` · P3 · themes: heal · engine: move-rider · code: ABILITY_CAP_GRANTS:19262
   - _Static_
   - Whenever the user is at 50% Hit Points or less, they gain the Telekinetic Capability and may add STAB to Psychic Type Moves.
 
@@ -2719,12 +2719,12 @@ P9 · 40 open of 40 · open
   - _Static · Last Chance_
   - The user gains Last Chance with Rock.
 
-- 🟢 **Mouthful** — `likely` · P3 · themes: interrupt, action, skill · engine: move-rider · code: commanderInterceptText:8699, openCommanderAttach:19754
+- 🟢 **Mouthful** — `likely` · P3 · themes: interrupt, action, skill · engine: move-rider · code: commanderInterceptText:8746, openCommanderAttach:19810
   - _Scene - Swift Action_
   - Trigger: The user hits a smaller foe with a Melee Move
     Connection - Order Up. The user may attempt a Grapple as a Free Action; this Grapple automatically hits, but still requires an opposed Skill Check. Bonus: While dominant in a Grapple, the user does not suffer the usual penalties for being in a Grapple.
 
-- 🟢 **Multitype** — `likely` · P3 · themes: control, status · code: typeShiftDamageBonus:2189, multitypeControl:2497, trainerStabTypes:18710
+- 🟢 **Multitype** — `likely` · P3 · themes: control, status · code: typeShiftDamageBonus:2189, multitypeControl:2497, trainerStabTypes:18766
   - _At Will - Free Action_
   - The user changes its Elemental Type to any of the Elemental Types. Multitype cannot be copied or disabled.
 
@@ -2736,11 +2736,11 @@ P9 · 40 open of 40 · open
   - _Static_
   - Connection - Poison Fang. Whenever the user inflicts Poisoned or Badly Poisoned with a damaging Poison-Type Attack, the target is also Paralyzed.
 
-- 🟢 **Neutralizing Gas** — `likely` · P3 · themes: interrupt, swap, status · engine: move-rider · code: inNeutralizingGas:36365
+- 🟢 **Neutralizing Gas** — `likely` · P3 · themes: interrupt, swap, status · engine: move-rider · code: inNeutralizingGas:36745
   - _Static_
   - Abilities may not be Triggered in a burst 1 around the user, and Defensive abilities do not function in that area (the user is unaffected by this). If the user uses Poison Gas, Smog, Clear Smog, or Strange Steam, targets hit by those Moves may not trigger Abilities or benefit from Defensive abilities for one full round.
 
-- 🟢 **Normalize** — `likely` · P3 · themes: other · engine: auto-note · code: ateInfo:19868, effectiveMoveType:19899, struggleFor:19913, openMoveRoll:21634, moveRollFactsHTML:38498, AUTOMATED_ABILITIES:38728
+- 🟢 **Normalize** — `likely` · P3 · themes: other · engine: auto-note · code: ateInfo:19924, effectiveMoveType:19955, struggleFor:19969, openMoveRoll:22004, moveRollFactsHTML:38878, AUTOMATED_ABILITIES:39108
   - _Static_
   - All Moves performed by the Pokemon are considered Normal Type instead of whatever Type they normally are.
 
@@ -2756,11 +2756,11 @@ P9 · 40 open of 40 · open
   - _Static · Last Chance_
   - The user gains Last Chance with Electric.
 
-- 🟢 **Pastel Veil** — `likely` · P3 · themes: status · code: STATUS_VEILS:36356
+- 🟢 **Pastel Veil** — `likely` · P3 · themes: status · code: STATUS_VEILS:36736
   - _Static_
   - The user and allies within 3 meters cannot be Poisoned or Badly Poisoned. Defensive.  Defensive.
 
-- 🟢 **Perception** — `likely` · P3 · themes: interrupt · code: pokeEdgeCapGrants:17298, POKE_EDGE_DEFS:17469, CAPTURE_SKILLS:25479
+- 🟢 **Perception** — `likely` · P3 · themes: interrupt · code: pokeEdgeCapGrants:17354, POKE_EDGE_DEFS:17525, CAPTURE_SKILLS:25859
   - _At-Will - Shift Action, Interrupt_
   - Trigger: An ally uses an area-of-effect attack that would hit you
     You may Shift to remove yourself from the area-of-effect.
@@ -2778,7 +2778,7 @@ P9 · 40 open of 40 · open
   - _Scene - Swift Action · 2-16 Errata_
   - All foes within 3 meters are Suppressed for 1 full round.
 
-- 🟢 **Prism Armor** — `likely` · P3 · themes: typing, damage · engine: auto-note · code: defenseTypeMods:6445, AUTOMATED_ABILITIES:38763
+- 🟢 **Prism Armor** — `likely` · P3 · themes: typing, damage · engine: auto-note · code: defenseTypeMods:6445, AUTOMATED_ABILITIES:39143
   - _Static_
   - The user gains +5 Damage Reduction against Super Effective-Damage. Defensive.
 
@@ -2791,7 +2791,7 @@ P9 · 40 open of 40 · open
   - _Scene x3 - Swift Action_
   - The Field becomes Weird, as if affected by the Move Psychic Terrain for one full round.
 
-- 🟢 **Punk Rock** — `likely` · P3 · themes: typing, damage · engine: auto-note · code: abilityDamageMods:20972, AUTOMATED_ABILITIES:38720
+- 🟢 **Punk Rock** — `likely` · P3 · themes: typing, damage · engine: auto-note · code: abilityDamageMods:21342, AUTOMATED_ABILITIES:39100
   - _Static_
   - The user gains +2 DB to moves that have the Sonic keyword. 
     Bonus: The user resists moves with the Sonic keyword one step further. Defensive.
@@ -2800,7 +2800,7 @@ P9 · 40 open of 40 · open
   - _Static · Last Chance_
   - The user gains Last Chance with Dragon.
 
-- 🟢 **Pure Power** — `likely` · P3 · themes: stat · engine: auto-note · code: HELD_FX:3653, pokeBaseStats:6154, AUTOMATED_ABILITIES:38712
+- 🟢 **Pure Power** — `likely` · P3 · themes: stat · engine: auto-note · code: HELD_FX:3653, pokeBaseStats:6154, AUTOMATED_ABILITIES:39092
   - _Static_
   - The Pokemon's base attack stat is doubled. This may double any bonuses from Nature or Vitamins, but not bonuses from Features.
 
@@ -2824,7 +2824,7 @@ P9 · 40 open of 40 · open
   - _Static_
   - While Rainy, the user gains a Tick of Hit Points at the beginning of each of their turns.
 
-- 🟢 **Razor Edge** — `likely` · P3 · themes: status, damage · engine: move-rider · code: critThreshold:20757
+- 🟢 **Razor Edge** — `likely` · P3 · themes: status, damage · engine: move-rider · code: critThreshold:21127
   - _Static_
   - Connection - Poison Tail. The user's Critical Hit Range on all Moves is increased by +2; any Moves with "Tail" in their name have their Critical Hit Range increased by +3 instead.
 
@@ -2832,25 +2832,25 @@ P9 · 40 open of 40 · open
   - _Scene - Free Action_
   - Connection - Aqua Ring. Whenever the user activates Aqua Ring, they may activate this Feature to cure themselves of all Persistent Status Effects.
 
-- 🟢 **Refridgerate** — `likely` · P3 · themes: interrupt · engine: auto-note · code: MEGA_ABILITY_NAME_FIX:4298, ATE_ABILITIES:19862, AUTOMATED_ABILITIES:38732
+- 🟢 **Refridgerate** — `likely` · P3 · themes: interrupt · engine: auto-note · code: MEGA_ABILITY_NAME_FIX:4298, ATE_ABILITIES:19918, AUTOMATED_ABILITIES:39112
   - _At-Will - Free Action_
   - Trigger: The user uses a Normal Type Damaging Move.
     The Move is changed to be Ice Type.
 
-- 🟢 **Regenerator** — `likely` · P3 · themes: position, heal, interrupt, action, capture · engine: remember-only · code: recallRegenerator:43663
+- 🟢 **Regenerator** — `likely` · P3 · themes: position, heal, interrupt, action, capture · engine: remember-only · code: recallRegenerator:44043
   - _Daily x2 - Free Action_
   - Trigger: The user is recalled into a Pokeball or Takes a Breather.
     The user gains Hit Points equal to 1/3rd of its maximum Hit Points. Regenerator may be activated only once per Scene.
 
-- 🟢 **Ripen** — `likely` · P3 · themes: heal, cure, cs, stat · code: ripenOn:16575, digestionCard:16941
+- 🟢 **Ripen** — `likely` · P3 · themes: heal, cure, cs, stat · code: ripenOn:16631, digestionCard:16997
   - _Static_
   - Any numeric benefits of Berry Food Buffs the user trades in are doubled. (Oran Berries restore 10 HP, Liechi increases Attack by +2 CS, Jaboca causes ¼ Hit Point loss, Occa Weakens a Move 2 stages, etc.). This does not increase the number of statuses cured, Scene Moves restored, stats lowered by suppressants, or allow triggering at double the usual HP one must be at.
 
-- 🟢 **Rock Head** — `likely` · P3 · themes: heal · code: FEATURE_ABILITY_CHOICES:7996, RUNNING_START_ABILITIES:20781, simStrike:37308
+- 🟢 **Rock Head** — `likely` · P3 · themes: heal · code: FEATURE_ABILITY_CHOICES:8043, hpRecoilImmunity:20688, RUNNING_START_ABILITIES:21151, simStrike:37688
   - _Static_
   - The user ignores the Recoil keyword when attacking.
 
-- 🟢 **Rock Head [Errata]** — `likely` · P3 · themes: heal, damage · code: RUNNING_START_ABILITIES:20781, simStrike:37308
+- 🟢 **Rock Head [Errata]** — `likely` · P3 · themes: heal, damage · code: hpRecoilImmunity:20688, RUNNING_START_ABILITIES:21151, simStrike:37688
   - _Static · 2-16 Errata_
   - The user ignores the Recoil keyword when attacking. If the user moves at least 4 meters in a straight line towards a foe before attacking that foe with a physical attack, they may add a +2d6 Bonus to the Damage Roll against that foe.
 
@@ -2871,11 +2871,11 @@ P9 · 40 open of 40 · open
   - _At-Will - Shift Action · 2-16 Errata_
   - Connection - Ingrain. While the user has the Ingrain Coat, they may activate this Ability to gain 5 Damage Reduction.
 
-- 🟢 **Sand Force** — `likely` · P3 · themes: weather, typing, damage · engine: auto-note · code: WEATHER_DEFS:1215, AUTOMATED_ABILITIES:38747
+- 🟢 **Sand Force** — `likely` · P3 · themes: weather, typing, damage · engine: auto-note · code: WEATHER_DEFS:1215, AUTOMATED_ABILITIES:39127
   - _Static_
   - While in a Sandstorm, the user's Ground, Rock, and Steel-Type Direct-Damage Moves deal +5 Damage. Additionally, the user is immune to damage from Sandstorms.
 
-- 🟢 **Sand Rush** — `likely` · P3 · themes: weather, typing, cs, damage, skill · engine: auto-note · code: WEATHER_DEFS:1213, AUTOMATED_ABILITIES:38746
+- 🟢 **Sand Rush** — `likely` · P3 · themes: weather, typing, cs, damage, skill · engine: auto-note · code: WEATHER_DEFS:1213, AUTOMATED_ABILITIES:39126
   - _Static_
   - While the Weather is a Sandstorm, the user gains +4 Speed Combat Stages. Additionally, the user is immune to damage from Sandstorms.
 
@@ -2906,7 +2906,7 @@ P9 · 40 open of 40 · open
   - Trigger: The user is damaged by a foe within 2m
     Connection - Leech Seed. The user may use Leech Seed as a Free Action on the triggering foe. This attack cannot miss. Bonus: The user counts as in Grassy Terrain when targeting foes affected by Leech Seed. 16 Unofficial Homebrew
 
-- 🟢 **Sheer Force [Errata]** — `likely` · P3 · themes: damage · engine: auto-note · code: abilityDamageMods:20929, openMoveRoll:22644, simStrike:37281, AUTOMATED_ABILITIES:38723
+- 🟢 **Sheer Force [Errata]** — `likely` · P3 · themes: damage · engine: auto-note · code: abilityDamageMods:21299, openMoveRoll:23014, simStrike:37661, AUTOMATED_ABILITIES:39103
   - _Static · 2-16 Errata_
   - Moves with an Effect Range gain a +10 Bonus to Damage, but Effect Ranges can never be triggered.
 
@@ -2930,15 +2930,15 @@ P9 · 40 open of 40 · open
   - _Static · 2-16 Errata_
   - Connection - String Shot. Whenever the user uses String Shot, all targets hit become Slowed and Vulnerable for 1 full round.
 
-- 🟢 **Simple** — `likely` · P3 · themes: cs, skill · engine: remember-only · code: LIVING_WEAPON_FORMS:7545
+- 🟢 **Simple** — `likely` · P3 · themes: cs, skill · engine: remember-only · code: LIVING_WEAPON_FORMS:7592
   - _Static_
   - When the Pokemon's Combat Stages are altered, double the amount of Combat Stages they are raised or lowered.
 
-- 🟢 **Sniper [Errata]** — `likely` · P3 · themes: interrupt, damage · code: openMoveRoll:22709
+- 🟢 **Sniper [Errata]** — `likely` · P3 · themes: interrupt, damage · code: openMoveRoll:23086
   - _Static · 2-16 Errata_
   - When the user gets a Critical Hit, the attack deals +3d10 additional damage.
 
-- 🟢 **Solar Power** — `likely` · P3 · themes: weather, cs, skill, stat · engine: auto-note · code: WEATHER_DEFS:1174, AUTOMATED_ABILITIES:38744
+- 🟢 **Solar Power** — `likely` · P3 · themes: weather, cs, skill, stat · engine: auto-note · code: WEATHER_DEFS:1174, AUTOMATED_ABILITIES:39124
   - _Static_
   - When Sunny, the Pokemon loses 1/16th of its Max HP at the beginning of its turn. When Sunny, its Special Attack Stat is increased by 2 Combat Stages.
 
@@ -2978,7 +2978,7 @@ P9 · 40 open of 40 · open
   - _Static_
   - In a round's queue, a Pokemon with Stall is always last. If a Pokemon goes to the end of the queue, the Pokemon with Stall is still the last to move. The user's actions taken on their Initiative Count (not Priority or Interrupt) cannot be Interrupted.
 
-- 🟢 **Starlight** — `likely` · P3 · themes: status, damage · code: typeAbilityRow:3204, FEATURE_ABILITY_CHOICES:7995
+- 🟢 **Starlight** — `likely` · P3 · themes: status, damage · code: typeAbilityRow:3204, FEATURE_ABILITY_CHOICES:8042
   - _Scene - Swift Action_
   - The user may activate Starlight while exposed to moonlight or starlight to become Luminous. While the user is Luminous, all foes suffer a -2 penalty to Accuracy Rolls against the user. The user may expend the Luminous condition upon hitting a foe with a damaging attack to cause that foe to become Confused.
 
@@ -2999,7 +2999,7 @@ P9 · 40 open of 40 · open
   - Trigger: The user is hit by a damaging Fire-Type or Water-Type Move, or begins their turn in Rainy Weather
     Connection - Smokescreen. The user may use Smokescreen as a Free Action, ignoring frequency, centered on the user.
 
-- 🟢 **Stellar Blast** — `likely` · P3 · themes: interrupt, multiturn, swap, typing, damage, stat · engine: move-rider · code: terastallize:2312, typeAbilityRow:3255, teraRollNotes:3390, teraMoveType:19890, moveTargetRules:43039
+- 🟢 **Stellar Blast** — `likely` · P3 · themes: interrupt, multiturn, swap, typing, damage, stat · engine: move-rider · code: terastallize:2312, typeAbilityRow:3255, teraRollNotes:3390, teraMoveType:19946, moveTargetRules:43419
   - _At-Will - Swift Action_
   - Trigger: The user hits a foe with a Move
     Connection - Tera Blast. Choose a Type of the triggering foe. The user then Radiates that Type until the end of the Encounter or they begin Radiating another Type. While Radiating, the user and all allies within a Burst 2 around them receive a +10 Damage Bonus when using Moves of that Type. Bonus: While Radiating a Type, the user may use Tera Blast as that Type. This does not change whether or not they gain STAB. Additionally, when using Tera Blast against a target that has changed Forme, it is one step more effective. This may not cause the Effectiveness to be raised above Doubly Super Effective. Note 1: Changing Forme includes any effect that switch …
@@ -3014,7 +3014,7 @@ P9 · 40 open of 40 · open
     The Move is turned into a 1-Target Move and is re-directed at the user without fail, and cannot miss. This negates Lock-On or Mind Reader. the user's Special Attack is then raised by +1 Combat Stage.
     Bonus: The user is immune to the damage and effects of Water Type attacks. Defensive.
 
-- 🟢 **Sunglow** — `likely` · P3 · themes: multiturn, status, damage · code: FEATURE_ABILITY_CHOICES:7995
+- 🟢 **Sunglow** — `likely` · P3 · themes: multiturn, status, damage · code: FEATURE_ABILITY_CHOICES:8042
   - _Scene - Swift Action_
   - The user may activate Sunglow while exposed to sunlight to become Radiant. While Radiant, the user gains a +5 bonus to all Damage Rolls. The user may expend the Radiant condition upon hitting a foe with a damaging attack to cause that foe to become Blinded until the end of their next turn.
 
@@ -3022,7 +3022,7 @@ P9 · 40 open of 40 · open
   - _Static · Last Chance_
   - The user gains Last Chance with Bug.
 
-- 🟢 **Sweet Veil** — `likely` · P3 · themes: status, typing · code: STATUS_VEILS:36353
+- 🟢 **Sweet Veil** — `likely` · P3 · themes: status, typing · code: STATUS_VEILS:36733
   - _Static_
   - The user and allies within 3 meters are immune to Sleep. Defensive.
 
@@ -3041,7 +3041,7 @@ P9 · 40 open of 40 · open
 
 P9 · 34 open of 34 · open
 
-- 🟢 **Teraform Zero** — `likely` · P3 · themes: weather, interrupt · engine: move-rider · code: openTeraformZero:2952, typeAbilityRow:3260, teraMoveType:19893
+- 🟢 **Teraform Zero** — `likely` · P3 · themes: weather, interrupt · engine: move-rider · code: openTeraformZero:2952, typeAbilityRow:3260, teraMoveType:19949
   - _Scene - Free Action_
   - Trigger: The user starts their turn while having changed Type, or Radiating a Type.
     Connection - Tera Starstorm. All Weather and Terrain effects currently on the Field end, and the user may choose any Weather Effect to replace them. The user may then change their Type to the one associated with the chosen Weather. Additionally, choose one and create the chosen Terrain anywhere within a Burst 4: » Three continuous squares of Blocking Terrain. » Two Blasts 3 of Slow Terrain » Two Blasts 3 of Rough Terrain Bonus: When using Tera Starstorm, it always changes to match the user's Type.
@@ -3060,7 +3060,7 @@ P9 · 34 open of 34 · open
   - Trigger: The user hits a target with Lick
     Connection - Lick. Lick's Damage Roll gains a +10 Bonus and automatically paralyses its target. On a roll of 15+, the target automatically fails its Paralysis Save Check on its next turn.
 
-- 🟢 **Tinted Lens** — `likely` · P3 · themes: typing · engine: remember-auto · code: FEATURE_ABILITY_CHOICES:7991, openTrainerAttack:9554, openMoveRoll:22425, simProfile:37119
+- 🟢 **Tinted Lens** — `likely` · P3 · themes: typing · engine: remember-auto · code: FEATURE_ABILITY_CHOICES:8038, openTrainerAttack:9608, openMoveRoll:22795, simProfile:37499
   - _Static_
   - The user's Resisted moves are instead Neutral. The user's Doubly Resisted moves are instead Resisted. The user's Triply Resisted Moves are instead Double Resisted.
 
@@ -3074,11 +3074,11 @@ P9 · 34 open of 34 · open
   - _Static_
   - The user gains Last Chance with Water.
 
-- 🟢 **Tough Claws** — `likely` · P3 · themes: damage, stat · engine: auto-note · code: abilityDamageMods:20950, AUTOMATED_ABILITIES:38716
+- 🟢 **Tough Claws** — `likely` · P3 · themes: damage, stat · engine: auto-note · code: abilityDamageMods:21320, AUTOMATED_ABILITIES:39096
   - _Static_
   - The user increases the Damage Base of all Melee Moves by +2.
 
-- 🟢 **Toxic Boost** — `likely` · P3 · themes: status, cure, cs, skill, stat · engine: auto-note · code: abilityStatusCS:21103, AUTOMATED_ABILITIES:38740
+- 🟢 **Toxic Boost** — `likely` · P3 · themes: status, cure, cs, skill, stat · engine: auto-note · code: abilityStatusCS:21473, AUTOMATED_ABILITIES:39120
   - _Static_
   - When Poisoned or Badly Poisoned, the user's Attack is raised by 2 Combat Stages. If the user is cured of its Poisoning, its Attack stat is lowered by 2 Combat Stages.
 
@@ -3110,11 +3110,11 @@ P9 · 34 open of 34 · open
   - _Static · 2-16 Errata_
   - The user's Fire-Type Attacks ignore the effect of enemies' Defensive Abilities, and if they would be resisted they deal neutral damage instead.
 
-- 🟢 **Twisted Power** — `likely` · P3 · themes: damage, stat · engine: remember-auto · code: crossStatDamage:7927, POKE_EDGE_DEFS:17482, abilityDamageMods:20986
+- 🟢 **Twisted Power** — `likely` · P3 · themes: damage, stat · engine: remember-auto · code: crossStatDamage:7974, POKE_EDGE_DEFS:17538, abilityDamageMods:21356
   - _Static_
   - The user adds half of their Attack Stat to the damage rolls of their Special Moves; and the user adds half of their Special Attack Stat to the damage of their Physical Moves. This does not change the Damage Class of any attack.
 
-- 🟢 **Type Aura** — `likely` · P3 · themes: damage · code: typeAbilityRow:3334, teraRollNotes:3380, abilityDamageMods:20939
+- 🟢 **Type Aura** — `likely` · P3 · themes: damage · code: typeAbilityRow:3334, teraRollNotes:3380, abilityDamageMods:21309
   - _Static · 2-16 Errata_
   - The user and all allies within 3 meters gain a +5 Bonus to Damage Rolls with Moves matching the user's Primary Type.
 
@@ -3122,7 +3122,7 @@ P9 · 34 open of 34 · open
   - _Static · Last Chance_
   - The user gains Last Chance with Steel.
 
-- 🟢 **Unnerve** — `likely` · P3 · themes: cs, skill · code: FEATURE_ABILITY_CHOICES:7990
+- 🟢 **Unnerve** — `likely` · P3 · themes: cs, skill · code: FEATURE_ABILITY_CHOICES:8037
   - _Static_
   - Foes within 3 meters of you cannot gain positive Combat Stages or trade in Digestion/Food Buffs. This does not affect any Combat Stages they already have.
 
@@ -3153,12 +3153,12 @@ P9 · 34 open of 34 · open
   - _Static_
   - Connection - Barrier. Whenever the user uses Barrier, they may choose to either gain +2 Defense Combat Stages, or place 2 additional segments of Barrier.
 
-- 🟢 **Wash Away** — `likely` · P3 · themes: interrupt, cs, skill · code: openOceanicFeeling:27428
+- 🟢 **Wash Away** — `likely` · P3 · themes: interrupt, cs, skill · code: openOceanicFeeling:27808
   - _Daily - Free Action_
   - Trigger: The user hits with a Water Type Move
     Before the Move "hits", all Combat Stages on targets hit by the Move are reset to their default (usually 0), and all coats on the targets, except ones placed by Water Sport, are destroyed.
 
-- 🟡 **Water Bubble** — `partial` · P3 · themes: weather, status, typing, damage · engine: auto-note · code: STATUS_IMMUNE_ABILITIES:761, defenseTypeMods:6422, AUTOMATED_ABILITIES:38757
+- 🟡 **Water Bubble** — `partial` · P3 · themes: weather, status, typing, damage · engine: auto-note · code: STATUS_IMMUNE_ABILITIES:761, defenseTypeMods:6422, AUTOMATED_ABILITIES:39137
   - _Static_
   - note: found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off); Fire resist was already in defenseTypeMods; left: 'always act as though in Rainy Weather' and the Melee Water-Move bonus
   - The user resists Fire-Type attacks one step further, is immune to being Burned, and may always act as though in Rainy Weather. [Defensive]Bonus: The user may attack with Water-Type Moves as if they had a range of "Melee, 1 target". If they do, that Move's Class is changed to Physical and it deals +1d6+2 damage.
@@ -3175,7 +3175,7 @@ P9 · 34 open of 34 · open
   - _Static · 2-16 Errata_
   - Connection - Triple Kick. When the user uses the Moves "Rapid Spin" or "Triple Kick", they have a range of "Burst 1".
 
-- 🟢 **Windveiled** — `likely` · P3 · themes: typing, damage, stat · engine: auto-note · code: TYPE_ABSORB_ABILITIES:6283, PTU_BUFFS:16090
+- 🟢 **Windveiled** — `likely` · P3 · themes: typing, damage, stat · engine: auto-note · code: TYPE_ABSORB_ABILITIES:6283, PTU_BUFFS:16146
   - _Static_
   - The user is immune to the damage and effects of Flying-Type attacks. If the user is hit by a Flying-Type attack, the user raises the Damage Base of their next Flying-Type Move by +1. Defensive.
 

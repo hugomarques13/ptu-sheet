@@ -235,13 +235,13 @@ P2 · 26 open of 26 · open
 
 P9 · 50 open of 50 · open
 
-- 🟢 **Adorable Fashion** — `likely` · P1 (player:Handels) · themes: swap, damage, action · code: GEAR_ACTIONS:11834
+- 🟢 **Adorable Fashion** — `likely` · P1 (player:Handels) · themes: swap, damage, action · code: GEAR_ACTIONS:11890
   - The holder may activate this item once a Scene as a Free Action to gain +2 Evasion for one full round.
 
-- 🟢 **Shell Bell** — `likely` · P1 (player:Lázaro) · themes: heal · code: EQUIP_EFFECTS:11549, GEAR_ACTIONS:11923
+- 🟢 **Shell Bell** — `likely` · P1 (player:Lázaro) · themes: heal · code: EQUIP_EFFECTS:11605, GEAR_ACTIONS:11979
   - Whenever the holder damages a foe, they gain a Tick of Temporary Hit Points.
 
-- 🟢 **Slick Fashion** — `likely` · P1 (player:Lysgd) · themes: swap, action · code: GEAR_ACTIONS:11875
+- 🟢 **Slick Fashion** — `likely` · P1 (player:Lysgd) · themes: swap, action · code: GEAR_ACTIONS:11931
   - The holder may activate this item once a Scene as a Free Action when provoking an Attack of Opportunity to instead not provoke one.
 
 - 🟢 **Winter Cloak** — `likely` · P1 (player:Lázaro) · themes: weather, damage · code: WEATHER_DEFS:1235
@@ -250,19 +250,19 @@ P9 · 50 open of 50 · open
 - 🟢 **Absolite Z** — `likely` · P3 · themes: other · code: megaToStoneMap:4287
   - Mega Evolves Absol when used in conjuction with a Mega Ring.
 
-- 🟢 **Accuracy Booster** — `likely` · P3 · themes: damage · code: STAT_BOOSTER_ITEMS:30044
+- 🟢 **Accuracy Booster** — `likely` · P3 · themes: damage · code: STAT_BOOSTER_ITEMS:30424
   - Accuracy +1
 
-- 🟢 **Air Balloon** — `likely` · P3 · themes: swap, typing · code: GEAR_ACTIONS:11915
+- 🟢 **Air Balloon** — `likely` · P3 · themes: swap, typing · code: GEAR_ACTIONS:11971
   - The holder is immune to Ground-Type Moves. This item breaks (and is destroyed) the first time the holder is hit by a Damaging Move.
 
-- 🟢 **Attack Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30044
+- 🟢 **Attack Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30424
   - The default state of the holder's Attack Stat is +1 Combat Stage.
 
-- 🟢 **Balm Mushroom** — `likely` · P3 · themes: status, cure, cs, skill, stat · code: GEAR_ACTIONS:11819, SNACK_DEFS:16472, tradeInDigestion:16711
+- 🟢 **Balm Mushroom** — `likely` · P3 · themes: status, cure, cs, skill, stat · code: GEAR_ACTIONS:11875, SNACK_DEFS:16528, tradeInDigestion:16767
   - The user is cured of Burn, Paralysis, or Poison. If they are, they lose 1 Combat Stage in a random Stat.
 
-- 🟢 **Big Mushroom** — `likely` · P3 · themes: status, cs, skill, stat · code: GEAR_ACTIONS:11805, SNACK_DEFS:16470
+- 🟢 **Big Mushroom** — `likely` · P3 · themes: status, cs, skill, stat · code: GEAR_ACTIONS:11861, SNACK_DEFS:16526
   - The user becomes Poisoned; if they do, they gain +1 Combat Stage in two random Stats.
 
 - 🟢 **Black Belt** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3487
@@ -280,7 +280,7 @@ P9 · 50 open of 50 · open
 - 🟢 **Darkinium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3428
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Dark-Type Move it uses becomes Black Hole Eclipse and gains a +3 Damage Base bonus. Unlike a Dark Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Defense Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30044
+- 🟢 **Defense Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30424
   - The default state of the holder's Defense Stat is +1 Combat Stage.
 
 - 🟢 **Draco Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3493
@@ -301,10 +301,10 @@ P9 · 50 open of 50 · open
 - 🟢 **Electrium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3424
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Electric-Type Move it uses becomes Gigavolt Havoc and gains a +3 Damage Base bonus. Unlike a Electric Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Elegant Fashion** — `likely` · P3 · themes: swap, cs, action, skill · code: GEAR_ACTIONS:11861
+- 🟢 **Elegant Fashion** — `likely` · P3 · themes: swap, cs, action, skill · code: GEAR_ACTIONS:11917
   - The holder may activate this item once a Scene as a Free Action when losing Combat Stages from a foe's effect to instead not lose those Combat Stages.
 
-- 🟢 **Evasion Booster** — `likely` · P3 · themes: damage · code: STAT_BOOSTER_ITEMS:30044
+- 🟢 **Evasion Booster** — `likely` · P3 · themes: damage · code: STAT_BOOSTER_ITEMS:30424
   - Evasion +1
 
 - 🟢 **Everstone** — `likely` · P3 · themes: other · code: HELD_FX:3673
@@ -337,10 +337,10 @@ P9 · 50 open of 50 · open
 - 🟢 **Flyinium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3426
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Flying-Type Move it uses becomes Supersonic Skystrike and gains a +3 Damage Base bonus. Unlike a Flying Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Focus Band** — `likely` · P3 · themes: action · code: GEAR_ACTIONS:11882
+- 🟢 **Focus Band** — `likely` · P3 · themes: action · code: GEAR_ACTIONS:11938
   - Whenever the holder would faint, roll 1d20. Once per Scene on a result of 16+, the holder does not faint and is left with 1 HP instead.
 
-- 🟢 **Focus Sash** — `likely` · P3 · themes: heal, damage, action · code: GEAR_ACTIONS:11781
+- 🟢 **Focus Sash** — `likely` · P3 · themes: heal, damage, action · code: GEAR_ACTIONS:11837
   - Once per Scene, if damage from a Move would take the holder's Hit Points from Max to 0 or less, the holder is set to 1 HP instead.
 
 - 🟢 **Ghostium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3427
@@ -373,7 +373,7 @@ P9 · 50 open of 50 · open
 - 🟢 **Iron Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3495
   - Acts as both a Steel Type Booster and a Steel Brace.
 
-- 🟢 **Life Orb** — `likely` · P3 · themes: heal, damage · code: GEAR_ACTIONS:11897
+- 🟢 **Life Orb** — `likely` · P3 · themes: heal, damage · code: GEAR_ACTIONS:11953
   - Whenever the holder deals direct damage, increase the damage by +5, and then the holder loses Hit Points equal to 1/16th of their Max Hit Points.
 
 - 🟢 **Magnet** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3486
@@ -423,28 +423,28 @@ P9 · 36 open of 36 · open
 - 🟢 **Quick Claw** — `likely` · P3 · themes: other · code: heldCritBonus:3775
   - The user adds +10 to their Initiative.
 
-- 🟢 **Rad Fashion** — `likely` · P3 · themes: swap, action, skill · code: GEAR_ACTIONS:11868
+- 🟢 **Rad Fashion** — `likely` · P3 · themes: swap, action, skill · code: GEAR_ACTIONS:11924
   - The holder may activate this item once a Scene as a Free Action to gain a +4 bonus to a single Save Check.
 
 - 🟢 **Rockium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3427
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Rock-Type Move it uses becomes Continental Crush and gains a +3 Damage Base bonus. Unlike a Rock Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Rough Fashion** — `likely` · P3 · themes: swap, action · code: GEAR_ACTIONS:11850
+- 🟢 **Rough Fashion** — `likely` · P3 · themes: swap, action · code: GEAR_ACTIONS:11906
   - The holder may activate this item once a Scene as a Free Action to cause a foe within 5 meters to take a -2 penalty to all rolls for one full round.
 
-- 🟢 **S Attack Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30044
+- 🟢 **S Attack Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30424
   - The default state of the holder's Special Attack Stat is +1 Combat Stage.
 
-- 🟢 **S Defense Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30044
+- 🟢 **S Defense Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30424
   - The default state of the holder's Special Defense Stat is +1 Combat Stage.
 
-- 🟢 **Safety Goggles** — `likely` · P3 · themes: typing · code: powderImmuneWhy:32228
+- 🟢 **Safety Goggles** — `likely` · P3 · themes: typing · code: powderImmuneWhy:32608
   - The holder is immune to Moves with the Powder Keyword.
 
 - 🟢 **Sharp Beak** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3488
   - Grants a +5 Damage Bonus to all direct-damage Flying Moves used by the holder.
 
-- 🟢 **Shock Collar** — `likely` · P3 · themes: heal, interrupt · code: GEAR_ACTIONS:11906
+- 🟢 **Shock Collar** — `likely` · P3 · themes: heal, interrupt · code: GEAR_ACTIONS:11962
   - Comes with a remote activator, which, when activated, causes the holder to lose Hit Points equal to 1/6th of their Max Hit Points. This may be used to activate the "Press" Feature.
 
 - 🟢 **Silk Scarf** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3485
@@ -459,7 +459,7 @@ P9 · 36 open of 36 · open
 - 🟢 **Soft Sand** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3487
   - Grants a +5 Damage Bonus to all direct-damage Ground Moves used by the holder.
 
-- 🟢 **Speed Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30044
+- 🟢 **Speed Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30424
   - The default state of the holder's Speed Stat is +1 Combat Stage.
 
 - 🟢 **Spell Tag** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3489
@@ -477,10 +477,10 @@ P9 · 36 open of 36 · open
 - 🟢 **Stone Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3497
   - Acts as both a Rock Type Booster and a Rock Brace.
 
-- 🟢 **Thick Club** — `likely` · P3 · themes: swap · code: holdsThickClub:21054, abilityAccMods:21085
+- 🟢 **Thick Club** — `likely` · P3 · themes: swap · code: holdsThickClub:21424, abilityAccMods:21455
   - When held by a Cubone or Marowak, grants the Pure Power Ability; Wielded.
 
-- 🟢 **Tiny Mushroom** — `likely` · P3 · themes: cs, skill, stat · code: GEAR_ACTIONS:11793, SNACK_DEFS:16469
+- 🟢 **Tiny Mushroom** — `likely` · P3 · themes: cs, skill, stat · code: GEAR_ACTIONS:11849, SNACK_DEFS:16525
   - The user loses 5 HP, and gains +1 Combat Stage in a random Stat.
 
 - 🟢 **Toxic Plate** — `likely` · P3 · themes: status · code: TYPE_PLATE_ITEMS:3498
