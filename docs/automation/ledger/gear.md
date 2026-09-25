@@ -1069,251 +1069,251 @@ P3 · 31 open of 31 · open
 
 P9 · 60 open of 60 · open
 
-- 🟢 **Adorable Fashion** — `likely` · P1 (player:Handels) · themes: swap, damage, action · code: GEAR_ACTIONS:11890
+- 🟢 **Adorable Fashion** — `likely` · P1 (player:Handels) · themes: swap, damage, action · code: GEAR_ACTIONS:12008
   - _Pokémon Item · $$500_
   - The holder may activate this item once a Scene as a Free Action to gain +2 Evasion for one full round.
 
-- 🟢 **Captain's Hat** — `likely` · P1 (player:Lázaro) · themes: skill, social · code: EQUIP_EFFECTS:11584
+- 🟢 **Captain's Hat** — `likely` · P1 (player:Lázaro) · themes: skill, social · code: EQUIP_EFFECTS:11702
   - _Equipment · Slot Head · $$2000_
   - A naval officer's cap, worn by someone used to being obeyed. The user gains a +2 bonus to Intimidate Checks while it is worn.
 
-- 🟢 **Energy Root** — `likely` · P1 (player:Handels) · themes: heal · code: FIELD_CLINIC_ITEMS:26009, STAY_WITH_US_ITEMS:26011
+- 🟢 **Energy Root** — `likely` · P1 (player:Handels) · themes: heal · code: FIELD_CLINIC_ITEMS:26394, STAY_WITH_US_ITEMS:26396
   - _Med Kit · $$500_
   - Heals 70 Hit Points - Repulsive
 
-- 🟢 **Full Heal** — `likely` · P1 (player:Lysgd, player:Lázaro) · themes: cure · code: trainerVitalsCard:9890, heroCard:15591, encounterMonCard:34242, encounterTrainerCard:34479
+- 🟢 **Full Heal** — `likely` · P1 (player:Lysgd, player:Lázaro) · themes: cure · code: trainerVitalsCard:10008, heroCard:15709, encounterMonCard:34628, encounterTrainerCard:34865
   - _Med Kit · $$450_
   - Cures all Persistent Status Afflictions
 
-- 🟢 **Full Restore** — `likely` · P1 (player:Handels, player:Lázaro) · themes: heal, cure · code: FIELD_CLINIC_ITEMS:26008
+- 🟢 **Full Restore** — `likely` · P1 (player:Handels, player:Lázaro) · themes: heal, cure · code: FIELD_CLINIC_ITEMS:26393
   - _Med Kit · $$1450_
   - Heals a Pokémon for 80 Hit Points and cures any Status Afflictions
 
-- 🟢 **Great Ball** — `likely` · P1 (player:Lázaro) · themes: capture · code: itemDescNode:35473
+- 🟢 **Great Ball** — `likely` · P1 (player:Lázaro) · themes: capture · code: itemDescNode:35859
   - _Poké Ball · Slot -10.0 · $$400_
   - A better Poké Ball with no special effects.
 
-- 🟢 **Hand Net** — `likely` · P1 (player:Handels) · themes: heal, swap, capture · code: ITEM_MOVES:24964
+- 🟢 **Hand Net** — `likely` · P1 (player:Handels) · themes: heal, swap, capture · code: ITEM_MOVES:25349
   - _Equipment · Slot Hands · $Varies_
   - A long net, usually on the end of a long stick, these pieces of two-handed Equipment are usually used for bug catching or fishing. As an AC6 Status Attack, you may attempt to net a Small Pokémon using this item. If you hit, you manage to scoop up the Pokémon, trapping them. You may move with the Pokémon, dragging them with you. Pokémon may still attack from the Hand Net using long-range attacks, or try to attack the net itself, potentially breaking it and freeing themselves. Capture Rolls against Pokémon in a net receive a -20 bonus.
     
     Hand Nets with 50 Hit Points cost $100; 100 Hit Points cost $600; and 200 Hit Points cost $1500. Nets aren’t broken until all of their Hit Points are depleted.
 
-- 🟢 **Heart Booster** — `likely` · P1 (player:Handels, player:Lysgd) · themes: other · code: VITAMIN_DEFS:17720
+- 🟢 **Heart Booster** — `likely` · P1 (player:Handels, player:Lysgd) · themes: other · code: VITAMIN_DEFS:17841
   - _Med Kit · $$9800_
   - The Pokémon gains 2 Tutor Points. Use only one per Pokémon.
 
-- 🟢 **Hyper Potion** — `likely` · P1 (player:Handels, player:Lysgd, player:Lázaro) · themes: heal · code: FIELD_CLINIC_ITEMS:26008, STAY_WITH_US_ITEMS:26011
+- 🟢 **Hyper Potion** — `likely` · P1 (player:Handels, player:Lysgd, player:Lázaro) · themes: heal · code: FIELD_CLINIC_ITEMS:26393, STAY_WITH_US_ITEMS:26396
   - _Med Kit · $$800_
   - Heals 70 Hit Points
 
-- 🟢 **Iron** — `likely` · P1 (player:Lázaro) · themes: stat · code: VITAMIN_DEFS:17716, STAT_VITAMIN:30599
+- 🟢 **Iron** — `likely` · P1 (player:Lázaro) · themes: stat · code: VITAMIN_DEFS:17837, STAT_VITAMIN:30984
   - _Med Kit · $$4900_
   - Raise the user’s Defense Base Stat 1.
 
-- 🟢 **Leftovers** — `likely` · P1 (player:Lysgd, player:Lázaro) · themes: heal · code: eatSnack:16709, chefDumplingIngredients:29459
+- 🟢 **Leftovers** — `likely` · P1 (player:Lysgd, player:Lázaro) · themes: heal · code: eatSnack:16830, chefDumplingIngredients:29844
   - _Food · $$350_
   - Snack. When their Digestion Buff is traded in, the user recovers 1/16th of their max Hit Points at the beginning of each turn for the rest of the encounter.
 
-- 🟢 **Light Armor** — `likely` · P1 (player:Lysgd) · themes: damage · code: EQUIP_EFFECTS:11569
+- 🟢 **Light Armor** — `likely` · P1 (player:Lysgd) · themes: damage · code: EQUIP_EFFECTS:11687
   - _Equipment · Slot Body · $$8000_
   - Grants 5 Damage Reduction.
 
-- 🟢 **Light Shield** — `likely` · P1 (player:Lázaro) · themes: multiturn, swap, status, damage, action · code: EQUIP_EFFECTS:11600
+- 🟢 **Light Shield** — `likely` · P1 (player:Lázaro) · themes: multiturn, swap, status, damage, action · code: EQUIP_EFFECTS:11718
   - _Equipment · Slot Off-Hand · $$3000_
   - A Shield is an Off-Hand defensive item held in one hand or braced to an arm. Light Shields grant +2 Evasion. They may be readied as a Standard Action to instead grant +4 Evasion and 10 Damage Reduction until the end of your next turn, but also cause you to become Slowed for that duration. If used Two-Handed, light shields can also function as a Small Melee Weapon.
 
-- 🟢 **Mega Ring** — `likely` · P1 (player:Handels, player:Lysgd, player:Lázaro) · themes: other · code: MEGA_RING_NAME:1794, MEGA_RING_ITEMS:1795
+- 🟢 **Mega Ring** — `likely` · P1 (player:Handels, player:Lysgd, player:Lázaro) · themes: other · code: MEGA_RING_NAME:1892, MEGA_RING_ITEMS:1893
   - _Equipment · Slot Accessory · $--_
   - Mega Rings are extraordinarily rare accessories that allow a Trainer’s Pokémon to Mega Evolve when used in conjunction with a Mega Stone. They cannot be bought in stores anywhere and must usually be earned through a trial of sorts, governed by a Gym Leader or other influential Pokémon Trainer. They can take the form of a bracelet, a necklace, or an actual ring.
 
-- 🟢 **Pokédex** — `likely` · P1 (player:Handels, player:Lysgd, player:Lázaro) · themes: action, stat · code: BATTLE_ACTIONS:23565, renderReference:38319
+- 🟢 **Pokédex** — `likely` · P1 (player:Handels, player:Lysgd, player:Lázaro) · themes: action, stat · code: BATTLE_ACTIONS:23958, renderReference:38705
   - _Key Item · $$12000_
   - A hand-held computer with an advanced camera and image recognition software given to trainers at the start of their journey.  A trainer can use a Standard Action to identify a Pokémon within 10m using the Pokédex's scanner.  Doing so reveals the average height/weight of the species, height/weight of the target, moves that the Species learns through Level Up, and some brief facts about the species' behavior.
     
     Pokédexes may also function as smartphones, and in most circumstances they should be made available for free to starting characters.
 
-- 🟢 **Potion** — `likely` · P1 (player:Lysgd, player:Lázaro) · themes: heal · code: invCategory:12553, restorativeDef:25989, FIELD_CLINIC_ITEMS:26008, STAY_WITH_US_ITEMS:26011
+- 🟢 **Potion** — `likely` · P1 (player:Lysgd, player:Lázaro) · themes: heal · code: invCategory:12671, restorativeDef:26374, FIELD_CLINIC_ITEMS:26393, STAY_WITH_US_ITEMS:26396
   - _Med Kit · $$200_
   - Heals 20 Hit Points
 
-- 🟢 **Protein** — `likely` · P1 (player:Lázaro) · themes: stat · code: VITAMIN_DEFS:17715, STAT_VITAMIN:30599
+- 🟢 **Protein** — `likely` · P1 (player:Lázaro) · themes: stat · code: VITAMIN_DEFS:17836, STAT_VITAMIN:30984
   - _Med Kit · $$4900_
   - Raise the user’s Attack Base Stat 1.
 
-- 🟢 **Revive** — `likely` · P1 (player:Handels, player:Lysgd, player:Lázaro) · themes: heal, status · code: invCategory:12553, FIELD_CLINIC_ITEMS:26009, openApplyRestorative:26146
+- 🟢 **Revive** — `likely` · P1 (player:Handels, player:Lysgd, player:Lázaro) · themes: heal, status · code: invCategory:12671, FIELD_CLINIC_ITEMS:26394, openApplyRestorative:26531
   - _Med Kit · $$300_
   - Revives fainted Pokémon and sets to 20 Hit Points
 
-- 🟢 **Running Shoes** — `likely` · P1 (player:Lysgd) · themes: position, skill · code: EQUIP_EFFECTS:11586
+- 🟢 **Running Shoes** — `likely` · P1 (player:Lysgd) · themes: position, skill · code: EQUIP_EFFECTS:11704
   - _Equipment · Slot Feet · $$2000_
   - Running Shoes grant a +2 bonus to Athletics Checks, to a maximum total modifier of +3, and increase your Overland Speed by +1.
 
-- 🟢 **Shell Bell** — `likely` · P1 (player:Lázaro) · themes: heal, swap · code: EQUIP_EFFECTS:11605, GEAR_ACTIONS:11979
+- 🟢 **Shell Bell** — `likely` · P1 (player:Lázaro) · themes: heal, swap · code: EQUIP_EFFECTS:11723, GEAR_ACTIONS:12097
   - _Pokémon Item · $$5200_
   - Whenever the user damages a foe, they gain a Tick of Temporary Hit Points. Accessory Item for Trainers.
 
-- 🟢 **Slick Fashion** — `likely` · P1 (player:Lysgd) · themes: swap, action · code: GEAR_ACTIONS:11931
+- 🟢 **Slick Fashion** — `likely` · P1 (player:Lysgd) · themes: swap, action · code: GEAR_ACTIONS:12049
   - _Pokémon Item · $$500_
   - The holder may activate this item once a Scene as a Free Action when provoking an Attack of Opportunity to instead not provoke one.
 
-- 🟢 **Sunglasses** — `likely` · P1 (player:Lázaro) · themes: skill · code: EQUIP_EFFECTS:11581
+- 🟢 **Sunglasses** — `likely` · P1 (player:Lázaro) · themes: skill · code: EQUIP_EFFECTS:11699
   - _Equipment · Slot Head · $$2000_
   - +1 to Charm, Guile, and Intimidate Checks, to a maximum total modifier of +3.
 
-- 🟢 **Super Potion** — `likely` · P1 (player:Lázaro) · themes: heal · code: FIELD_CLINIC_ITEMS:26008, STAY_WITH_US_ITEMS:26011
+- 🟢 **Super Potion** — `likely` · P1 (player:Lázaro) · themes: heal · code: FIELD_CLINIC_ITEMS:26393, STAY_WITH_US_ITEMS:26396
   - _Med Kit · $$380_
   - Heals 35 Hit Points
 
-- 🟢 **Water Stone** — `likely` · P1 (player:Handels, player:Lysgd) · themes: other · code: nextEvolutions:1478
+- 🟢 **Water Stone** — `likely` · P1 (player:Handels, player:Lysgd) · themes: other · code: nextEvolutions:1576
   - _Pokémon Item · $$3000_
   - Evolves Poliwhirl, Shellder, Staryu, Eevee, Lombre, Panpour
 
-- 🟢 **Winter Cloak** — `likely` · P1 (player:Lázaro) · themes: weather, swap, damage · code: WEATHER_DEFS:1235
+- 🟢 **Winter Cloak** — `likely` · P1 (player:Lázaro) · themes: weather, swap, damage · code: WEATHER_DEFS:1239
   - _Pokémon Item · $$1500_
   - The user does not take damage from Hail. Accessory Item for Trainers.
 
-- 🟢 **X Attack** — `likely` · P1 (player:Lázaro) · themes: cs, skill · code: X_ITEMS:30366
+- 🟢 **X Attack** — `likely` · P1 (player:Lázaro) · themes: cs, skill · code: X_ITEMS:30751
   - _Med Kit · $$350_
   - Increases the Pokémon’s Attack by two Combat Stages
 
-- 🟢 **X Defend** — `likely` · P1 (player:Handels, player:Lázaro) · themes: cs, skill · code: X_ITEMS:30366
+- 🟢 **X Defend** — `likely` · P1 (player:Handels, player:Lázaro) · themes: cs, skill · code: X_ITEMS:30751
   - _Med Kit · $$350_
   - Increases the Pokémon’s Defense by two Combat Stages
 
-- 🟢 **X Sp. Def.** — `likely` · P1 (player:Handels) · themes: cs, skill · code: X_ITEMS:30366
+- 🟢 **X Sp. Def.** — `likely` · P1 (player:Handels) · themes: cs, skill · code: X_ITEMS:30751
   - _Med Kit · $$350_
   - Increases the Pokémon’s Special Defense by two Combat Stages
 
-- 🟢 **X Special** — `likely` · P1 (player:Lysgd) · themes: cs, skill · code: X_ITEMS:30366
+- 🟢 **X Special** — `likely` · P1 (player:Lysgd) · themes: cs, skill · code: X_ITEMS:30751
   - _Med Kit · $$350_
   - Increases the Pokémon’s Special Attack by two Combat Stages
 
-- 🟢 **Ablative Heavy Armor** — `likely` · P3 · themes: cs, damage, skill · code: EQUIP_EFFECTS:11571
+- 🟢 **Ablative Heavy Armor** — `likely` · P3 · themes: cs, damage, skill · code: EQUIP_EFFECTS:11689
   - _Equipment · Slot Body · $$14500_
   - A weighty but brittle armor that is self-repairing. Grants 20 Damage Reduction, but each damaging attack removes 5 Damage Reduction from the armor. Every five minutes, the armor repairs 5 Damage Reduction. The user’s Speed Combat Stage defaults to -1.
 
-- 🟢 **Accuracy Booster** — `likely` · P3 · themes: swap, damage · code: STAT_BOOSTER_ITEMS:30424
+- 🟢 **Accuracy Booster** — `likely` · P3 · themes: swap, damage · code: STAT_BOOSTER_ITEMS:30809
   - _Pokémon Item · $$4000_
   - Grants the holder +1 Accuracy. Accessory Item for Trainers.
 
-- 🟢 **Attack Booster** — `likely` · P3 · themes: swap, cs, skill, stat · code: STAT_BOOSTER_ITEMS:30424
+- 🟢 **Attack Booster** — `likely` · P3 · themes: swap, cs, skill, stat · code: STAT_BOOSTER_ITEMS:30809
   - _Pokémon Item · $$4000_
   - The default state of the holder's Attack Stat is +1 Combat Stage. Accessory Item for Trainers.
 
-- 🟢 **Attack Suppressant** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17723
+- 🟢 **Attack Suppressant** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17844
   - _Med Kit · $$500_
   - Lowers Attack stat by 1 if trainer allows it.
 
-- 🟢 **Balm Mushroom** — `likely` · P3 · themes: status, cure, cs, skill, stat · code: GEAR_ACTIONS:11875, tradeInDigestion:16767
+- 🟢 **Balm Mushroom** — `likely` · P3 · themes: status, cure, cs, skill, stat · code: GEAR_ACTIONS:11993, tradeInDigestion:16888
   - _Food · $--_
   - The user is cured of Burn, Paralysis, or Poison. If they are, they lose 1 Combat Stage in a random Stat.
 
-- 🟢 **Bandages** — `likely` · P3 · themes: heal · code: resetInjuryDay:4819, INJURY_SOURCES:5018, BANDAGE_ITEMS:5505
+- 🟢 **Bandages** — `likely` · P3 · themes: heal · code: resetInjuryDay:4924, INJURY_SOURCES:5123, BANDAGE_ITEMS:5612
   - _Med Kit · $$300_
   - Bandages are applied as Extended Actions on Pokémon or Trainers. Bandages last for 6 hours; while applied, they double the Natural Healing Rate of Pokémon or Trainers, meaning a Pokémon or Trainer will heal 1/8th of their Hit Points per half hour. Bandages also immediately heal one Injury if they remain in place for their full duration.
     
     If a Pokémon is damaged or loses Hit Points in any way, the Bandages immediately stop working.
 
-- 🟢 **Big Mushroom** — `likely` · P3 · themes: status, cs, skill, stat · code: GEAR_ACTIONS:11861
+- 🟢 **Big Mushroom** — `likely` · P3 · themes: status, cs, skill, stat · code: GEAR_ACTIONS:11979
   - _Food · $--_
   - The user becomes Poisoned; if they do, they gain +1 Combat Stage in two random Stats.
 
-- 🟢 **Black Belt** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3487
+- 🟢 **Black Belt** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3585
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Fighting Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Black Glasses** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3490
+- 🟢 **Black Glasses** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3588
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Dark Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Calcium** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17717, STAT_VITAMIN:30599
+- 🟢 **Calcium** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17838, STAT_VITAMIN:30984
   - _Med Kit · $$4900_
   - Raise the user’s Special Attack Base Stat 1.
 
-- 🟢 **Carbos** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17719, STAT_VITAMIN:30599
+- 🟢 **Carbos** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17840, STAT_VITAMIN:30984
   - _Med Kit · $$4900_
   - Raise the user’s Speed Base Stat 1.
 
-- 🟢 **Charcoal** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3485
+- 🟢 **Charcoal** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3583
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Fire Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Chemistry Set** — `likely` · P3 · themes: other · code: openPlayingGod:30656, researcherCard:31144
+- 🟢 **Chemistry Set** — `likely` · P3 · themes: other · code: openPlayingGod:31041, researcherCard:31529
   - _Key Item · $$1000_
   - Used to create Repels, Potions, and other objects.
 
-- 🟢 **Dark Vision Goggles** — `likely` · P3 · themes: other · code: EQUIP_EFFECTS:11589
+- 🟢 **Dark Vision Goggles** — `likely` · P3 · themes: other · code: EQUIP_EFFECTS:11707
   - _Equipment · Slot Head · $$1000_
   - These Goggles simply grant the Darkvision Capability while worn.
 
-- 🟢 **Defense Booster** — `likely` · P3 · themes: swap, cs, skill, stat · code: STAT_BOOSTER_ITEMS:30424
+- 🟢 **Defense Booster** — `likely` · P3 · themes: swap, cs, skill, stat · code: STAT_BOOSTER_ITEMS:30809
   - _Pokémon Item · $$4000_
   - The default state of the holder's Defense Stat is +1 Combat Stage. Accessory Item for Trainers.
 
-- 🟢 **Defense Suppressant** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17724
+- 🟢 **Defense Suppressant** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17845
   - _Med Kit · $$500_
   - Lowers Defense stat by 1 if trainer allows it.
 
-- 🟢 **Dire Hit** — `likely` · P3 · themes: damage · code: X_ITEMS:30366
+- 🟢 **Dire Hit** — `likely` · P3 · themes: damage · code: X_ITEMS:30751
   - _Med Kit · $$600_
   - Increases Critical Hit Range of all moves by +2.
 
-- 🟢 **Dowsing Rod** — `likely` · P3 · themes: skill · code: canDowse:30463, openDowsing:30473
+- 🟢 **Dowsing Rod** — `likely` · P3 · themes: skill · code: canDowse:30848, openDowsing:30858
   - _Key Item · $$2000_
   - Dowsing Rods have been attuned to the energy resonance given off by Shards and may be used while in any route, cave, or outside area. They may be activated by spending 10 minutes searching an area, and may be activated a number of times per day equal to half of the trainer’s Occult Education Rank.
     
     Roll 1d6 per Occult Ed Rank. If the area being searched is a beach, cave, desert, or any other sandy/rocky area, roll +1d6. If you have Skill Stunt (Dowsing), roll an additional 1d6. For each die that results in 4 or higher, you find 1 Shard of a random color: Red, Orange, Yellow, Green, Blue, or Violet. You may reroll any die that result in 6, gaining that shard and potentially more.
 
-- 🟢 **Draco Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3493
+- 🟢 **Draco Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3591
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both a Dragon Type Booster and a Dragon Brace. Accessory Slot Item for Trainers.
 
-- 🟢 **Dragon Fang** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3489
+- 🟢 **Dragon Fang** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3587
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Dragon Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Dread Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3493
+- 🟢 **Dread Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3591
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both a Dark Type Booster and a Dark Brace. Accessory Slot Item for Trainers.
 
-- 🟢 **Earth Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3493
+- 🟢 **Earth Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3591
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both a Ground Type Booster and a Ground Brace. Accessory Slot Item for Trainers.
 
-- 🟢 **Elegant Fashion** — `likely` · P3 · themes: swap, cs, action, skill · code: GEAR_ACTIONS:11917
+- 🟢 **Elegant Fashion** — `likely` · P3 · themes: swap, cs, action, skill · code: GEAR_ACTIONS:12035
   - _Pokémon Item · $$500_
   - The holder may activate this item once a Scene as a Free Action when losing Combat Stages from a foe’s effect to instead not lose those Combat Stages.
 
-- 🟢 **Energy Powder** — `likely` · P3 · themes: heal · code: FIELD_CLINIC_ITEMS:26009, STAY_WITH_US_ITEMS:26011
+- 🟢 **Energy Powder** — `likely` · P3 · themes: heal · code: FIELD_CLINIC_ITEMS:26394, STAY_WITH_US_ITEMS:26396
   - _Med Kit · $$150_
   - Heals 25 Hit Points - Repulsive
 
-- 🟢 **Evasion Booster** — `likely` · P3 · themes: swap, damage · code: STAT_BOOSTER_ITEMS:30424
+- 🟢 **Evasion Booster** — `likely` · P3 · themes: swap, damage · code: STAT_BOOSTER_ITEMS:30809
   - _Pokémon Item · $$4000_
   - Grants the holder +1 Evasion. Accessory Item for Trainers.
 
-- 🟢 **Everstone** — `likely` · P3 · themes: other · code: HELD_FX:3673
+- 🟢 **Everstone** — `likely` · P3 · themes: other · code: HELD_FX:3771
   - _Pokémon Item · $$1500_
   - Evolution is prevented for the holder. Cannot be used by Trainers.
 
-- 🟢 **Eviolite** — `likely` · P3 · themes: cs, skill, stat · code: HELD_FX:3643, heldCSMods:3746
+- 🟢 **Eviolite** — `likely` · P3 · themes: cs, skill, stat · code: HELD_FX:3741, heldCSMods:3851
   - _Pokémon Item · $$4000_
   - Only affects not-fully-evolved Pokémon of a single family, decided when the Eviolite is made. Grants a +5 Bonus to two different Stats, after Combat Stages, decided when the Eviolite is made. Prevents Pokémon from evolving when held. Cannot be used by Trainers.
 
-- 🟢 **Fairy Feather** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3490
+- 🟢 **Fairy Feather** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3588
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Fairy Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Fancy Clothes** — `likely` · P3 · themes: damage, stat, social · code: EQUIP_EFFECTS:11580
+- 🟢 **Fancy Clothes** — `likely` · P3 · themes: damage, stat, social · code: EQUIP_EFFECTS:11698
   - _Equipment · Slot Body · $$5000_
   - Each set of Fancy Clothes is assigned a Contest Stat – either Beauty, Cool, Cute, Smart, or Tough. Trainers wearing these clothes may roll 2d6 during the Introduction Stage of a Contest to try to generate Contest Stat Dice for the assigned Stat.
 
-- 🟢 **Fire Gem** — `likely` · P3 · themes: swap, damage, action · code: zMoveName:3432
+- 🟢 **Fire Gem** — `likely` · P3 · themes: swap, damage, action · code: zMoveName:3530
   - _Pokémon Item · $--_
   - Can be consumed as a Free Action to give a +3 DB bonus to one Fire-Type attack. Off-hand or Accessory Slot Item for Trainers.
 
-- 🟢 **Fist Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3494
+- 🟢 **Fist Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3592
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both a Fighting Type Booster and a Fighting Brace. Accessory Slot Item for Trainers.
 
@@ -1322,245 +1322,245 @@ P9 · 60 open of 60 · open
 
 P9 · 60 open of 60 · open
 
-- 🟢 **Flame Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3494
+- 🟢 **Flame Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3592
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both a Fire Type Booster and a Fire Brace. Accessory Slot Item for Trainers.
 
-- 🟢 **Flame Retardant Armor** — `likely` · P3 · themes: damage · code: EQUIP_EFFECTS:11574
+- 🟢 **Flame Retardant Armor** — `likely` · P3 · themes: damage · code: EQUIP_EFFECTS:11692
   - _Equipment · Slot Body · $$5000_
   - You gain 10 Damage Reduction against Fire Type damage.
 
-- 🟢 **Flippers** — `likely` · P3 · themes: position · code: EQUIP_EFFECTS:11597
+- 🟢 **Flippers** — `likely` · P3 · themes: position · code: EQUIP_EFFECTS:11715
   - _Equipment · Slot Feet · $$2000_
   - Flippers grant a +2 bonus to your Swim speed when fully submerged, and decrease your Overland speed by the same amount.
 
-- 🟢 **Focus** — `likely` · P3 · themes: cs, skill, stat · code: illusionMarkCap:3926, LAST_CHANCE_ABILITIES:4013, MELEE_SKILL_SUBS:7393, EQUIP_EFFECTS:11603, GIFTSAPPER_SKILLS:13932, POKE_EDGE_DEFS:17515, openPowerChord:25432, shopOpenList:36123
+- 🟢 **Focus** — `likely` · P3 · themes: cs, skill, stat · code: illusionMarkCap:4031, LAST_CHANCE_ABILITIES:4118, MELEE_SKILL_SUBS:7505, EQUIP_EFFECTS:11721, GIFTSAPPER_SKILLS:14050, POKE_EDGE_DEFS:17636, openPowerChord:25817, shopOpenList:36509
   - _Equipment · Slot Accessory · $$6000_
   - A Focus grants +5 Bonus to a Stat, chosen when crafted. This Bonus is applied AFTER Combat Stages. Focuses are often Accessory-Slot Items, but may be crafted as Head-Slot, Hand or Off-Hand Slot Items as well; a Trainer may only benefit from one Focus at a time, regardless of the Equipment Slot. Focuses are not usually found in stores, but may sometimes be found for $6000 at your GM’s discretion.
 
-- 🟢 **Focus Band** — `likely` · P3 · themes: heal, swap · code: GEAR_ACTIONS:11938
+- 🟢 **Focus Band** — `likely` · P3 · themes: heal, swap · code: GEAR_ACTIONS:12056
   - _Pokémon Item · $$4700_
   - Whenever the user faints, roll 1d20. Once a Scene on a result of 16+, the holder does not faint, and is left with 1 Hit Point. Accessory Item for Trainers.
 
-- 🟢 **Focus Sash** — `likely` · P3 · themes: heal, swap, damage, skill · code: GEAR_ACTIONS:11837
+- 🟢 **Focus Sash** — `likely` · P3 · themes: heal, swap, damage, skill · code: GEAR_ACTIONS:11955
   - _Pokémon Item · $$4700_
   - Once a Scene, if damage from a Move would take Focus Sash’s holder’s Hit Points from Max to 0 or less, Focus Sash’s holder instead has 1 Hit Point remaining. Accessory Item for Trainers.
 
-- 🟢 **Gas Mask** — `likely` · P3 · themes: status, typing · code: EQUIP_EFFECTS:11593
+- 🟢 **Gas Mask** — `likely` · P3 · themes: status, typing · code: EQUIP_EFFECTS:11711
   - _Equipment · Slot Head · $$1500_
   - Gas Masks are invaluable equipment when trying to breathe in toxic environments or heavy smoke. They not only let you breathe through environmental toxins or smoke, but you become immune to the Moves Rage Powder, Poison Gas, Poisonpowder, Sleep Powder, Smog, Smokescreen, Spore, Stun Spore, and Sweet Scent.
 
-- 🟢 **Gimmighoul Coin** — `likely` · P3 · themes: other · code: EVO_ITEM_COSTS:1491
+- 🟢 **Gimmighoul Coin** — `likely` · P3 · themes: other · code: EVO_ITEM_COSTS:1589
   - _Key Item · $Varies_
   - A small, ancient coin of unknown minting, hoarded by Gimmighoul in chests and in ruins. The coins are worthless as currency — no shop will take them — but a Gimmighoul that is given 999 of them at once will evolve into Gholdengo, absorbing every coin in the process.
 
-- 🟢 **Glue Cannon** — `likely` · P3 · themes: multiturn, status, damage · code: ITEM_MOVES:24968
+- 🟢 **Glue Cannon** — `likely` · P3 · themes: multiturn, status, damage · code: ITEM_MOVES:25353
   - _Equipment · Slot Hands · $$3000_
   - Glue Cannons are exactly what you expect; This two-handed Equipment piece is a hand-held cannon that launches globs of glue. Attacking with a Glue Cannon expends a charge, which must be purchased. The attack is an AC8 Status Attack. If it hits, the target is Slowed. On a critical hit, the target is instead Stuck and Trapped. The Glue Cannon and three charge packets cost $3000, and additional charge packets costs $100.
 
-- 🟢 **Go-Goggles** — `likely` · P3 · themes: weather, swap, damage · code: WEATHER_DEFS:1218
+- 🟢 **Go-Goggles** — `likely` · P3 · themes: weather, swap, damage · code: WEATHER_DEFS:1222
   - _Pokémon Item · $$1500_
   - The user does not take damage from Sandstorm. Head Item for Trainers.
 
-- 🟢 **Gravity Modulation Suit** — `likely` · P3 · themes: action · code: EQUIP_EFFECTS:11608
+- 🟢 **Gravity Modulation Suit** — `likely` · P3 · themes: action · code: EQUIP_EFFECTS:11726
   - _Equipment · Slot Body · $$4000_
   - You may treat the local gravity as if it were 1 lower or 1 higher. Changing the setting on the suit is an At-Will Extended Action requiring time for the suit to adjust to the new settings.
 
-- 🟢 **Guard Spec** — `likely` · P3 · themes: cs, damage, skill · code: X_ITEMS:30366
+- 🟢 **Guard Spec** — `likely` · P3 · themes: cs, damage, skill · code: X_ITEMS:30751
   - _Med Kit · $$700_
   - Prevents reduction of Combat Stages or Accuracy on the Pokémon for 5 Turns
 
-- 🟢 **HP Suppressant** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17722
+- 🟢 **HP Suppressant** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17843
   - _Med Kit · $$500_
   - Lowers HP stat by 1 if trainer allows it.
 
-- 🟢 **HP Up** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17714, STAT_VITAMIN:30599
+- 🟢 **HP Up** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17835, STAT_VITAMIN:30984
   - _Med Kit · $$4900_
   - Raise the user’s HP Base Stat 1.
 
-- 🟢 **Handheld Propellor** — `likely` · P3 · themes: position · code: EQUIP_EFFECTS:11598
+- 🟢 **Handheld Propellor** — `likely` · P3 · themes: position · code: EQUIP_EFFECTS:11716
   - _Equipment · Slot Off-Hand · $$3500_
   - Increases Swim speed by +3.
 
-- 🟢 **Hard Stone** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3489
+- 🟢 **Hard Stone** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3587
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Rock Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Heavy Armor** — `likely` · P3 · themes: cs, damage, skill · code: luLevelBlock:11550, EQUIP_EFFECTS:11570
+- 🟢 **Heavy Armor** — `likely` · P3 · themes: cs, damage, skill · code: luLevelBlock:11668, EQUIP_EFFECTS:11688
   - _Equipment · Slot Body · $$12000_
   - Heavy Armor grants +10 Damage Reduction. Heavy Armor causes the wearer’s Speed’s Default Combat Stage to be -1.
 
-- 🟢 **Heavy Armor [9-15 Playtest]** — `likely` · P3 · themes: damage · code: EQUIP_EFFECTS:11576
+- 🟢 **Heavy Armor [9-15 Playtest]** — `likely` · P3 · themes: damage · code: EQUIP_EFFECTS:11694
   - _Equipment · Slot Body · $$12000_
   - +5 Damage Reduction against all Damage.
 
-- 🟢 **Heavy Shield** — `likely` · P3 · themes: multiturn, swap, status, damage, action · code: EQUIP_EFFECTS:11601
+- 🟢 **Heavy Shield** — `likely` · P3 · themes: multiturn, swap, status, damage, action · code: EQUIP_EFFECTS:11719
   - _Equipment · Slot Off-Hand · $$4500_
   - A Shield is an Off-Hand defensive item held in one hand or braced to an arm. Heavy Shields grant +2 Evasion and may be readied as a Standard Action to grant +6 Evasion and 15 Damage Reduction until the end of your next turn, but also cause you to become Slowed for that duration. If used Two-Handed, shields can also function as a Small Melee Weapon.
 
-- 🟢 **Helmet** — `likely` · P3 · themes: status, typing, damage · code: EQUIP_EFFECTS:11587
+- 🟢 **Helmet** — `likely` · P3 · themes: status, typing, damage · code: EQUIP_EFFECTS:11705
   - _Equipment · Slot Head · $$2250_
   - The user gains 15 Damage Reduction against Critical Hits. The user resists the Moves Headbutt and Zen Headbutt and can’t be flinched by these Moves.
 
-- 🟢 **Honey** — `likely` · P3 · themes: heal · code: eatSnack:16701
+- 🟢 **Honey** — `likely` · P3 · themes: heal · code: eatSnack:16822
   - _Food · $$100_
   - Snack. Grants a Digestion Buff that heals 5 Hit Points. May be used as Bait
 
-- 🟢 **Icicle Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3494
+- 🟢 **Icicle Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3592
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both an Ice Type Booster and an Ice Brace. Accessory Slot Item for Trainers.
 
-- 🟢 **Insect Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3495
+- 🟢 **Insect Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3593
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both a Bug Type Booster and a Bug Brace. Accessory Slot Item for Trainers.
 
-- 🟢 **Iron Charm** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3490
+- 🟢 **Iron Charm** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3588
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Steel Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Iron Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3495
+- 🟢 **Iron Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3593
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both a Steel Type Booster and a Steel Brace. Accessory Slot Item for Trainers.
 
-- 🟢 **Jungle Boots** — `likely` · P3 · themes: other · code: EQUIP_EFFECTS:11596
+- 🟢 **Jungle Boots** — `likely` · P3 · themes: other · code: EQUIP_EFFECTS:11714
   - _Equipment · Slot Feet · $$1500_
   - Jungle Boots grant you the Naturewalk (Forest) capability
 
-- 🟢 **Life Orb** — `likely` · P3 · themes: heal, swap, damage · code: GEAR_ACTIONS:11953
+- 🟢 **Life Orb** — `likely` · P3 · themes: heal, swap, damage · code: GEAR_ACTIONS:12071
   - _Pokémon Item · $$3700_
   - Whenever the holder deals direct damage, increase the damage by +5, and then the holder loses Hit Points equal to 1/16th of their Max Hit Points. Off-Hand Item for Trainers.
 
-- 🟢 **Light Armor [9-15 Playtest]** — `likely` · P3 · themes: damage · code: EQUIP_EFFECTS:11577
+- 🟢 **Light Armor [9-15 Playtest]** — `likely` · P3 · themes: damage · code: EQUIP_EFFECTS:11695
   - _Equipment · Slot Body · $$8000_
   - +5 Damage Reduction against Physical Damage.
 
-- 🟢 **Lum Berry** — `likely` · P3 · themes: cure · code: snackByKey:16540
+- 🟢 **Lum Berry** — `likely` · P3 · themes: cure · code: snackByKey:16661
   - _Food · $$250_
   - Cures any single status ailment. Tier 2.
 
-- 🟢 **Magnet** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3486
+- 🟢 **Magnet** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3584
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Electric Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Meadow Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3495
+- 🟢 **Meadow Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3593
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both a Grass Type Booster and a Grass Brace. Accessory Slot Item for Trainers.
 
-- 🟢 **Mesh Shielding** — `likely` · P3 · themes: damage · code: EQUIP_EFFECTS:11575
+- 🟢 **Mesh Shielding** — `likely` · P3 · themes: damage · code: EQUIP_EFFECTS:11693
   - _Equipment · Slot Body · $$8000_
   - An advanced anti-conductive fabric woven into a stiff jacket designed to shield sensitive electronics from damage and electrical shock. You gain 5 Damage Reduction against Electric Type damage. Whenever you would suffer Augmentation Shock, roll 1d2. On a 1, you suffer no ill effects.
 
-- 🟢 **Mind Aegis** — `likely` · P3 · themes: typing, skill · code: EQUIP_EFFECTS:11588
+- 🟢 **Mind Aegis** — `likely` · P3 · themes: typing, skill · code: EQUIP_EFFECTS:11706
   - _Equipment · Slot Head · $$4000_
   - Grants a +6 bonus to Focus checks to resist Telepathy. If the wearer has the Iron Mind Edge, Mind Aegis grants the Mindlock capability instead.
 
-- 🟢 **Mind Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3496
+- 🟢 **Mind Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3594
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both a Psychic Type Booster and a Psychic Brace. Accessory Slot Item for Trainers.
 
-- 🟢 **Miracle Seed** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3486
+- 🟢 **Miracle Seed** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3584
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Grass Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Mulch** — `likely` · P3 · themes: other · code: GARDEN_MULCH:31627, gardenPlantRow:32323
+- 🟢 **Mulch** — `likely` · P3 · themes: other · code: GARDEN_MULCH:32012, gardenPlantRow:32708
   - _Key Item · $$200_
   - Mulch may be used to temporarily increase soil Quality; it may be applied to a Plant to increase the Soil Quality of a plant by +1 for the following day. This cannot make a Soil Quality go above +2.
 
-- 🟢 **Mystic Water** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3485
+- 🟢 **Mystic Water** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3583
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Water Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Never-Melt Ice** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3486, TYPE_PLATE_ITEMS:3500
+- 🟢 **Never-Melt Ice** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3584, TYPE_PLATE_ITEMS:3598
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Ice Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Normal Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3498
+- 🟢 **Normal Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3596
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both a Normal Type Booster and a Normal Brace. Accessory Slot Item for Trainers.
 
-- 🟢 **Oran Berry** — `likely` · P3 · themes: heal · code: gardenGrowers:31678
+- 🟢 **Oran Berry** — `likely` · P3 · themes: heal · code: gardenGrowers:32063
   - _Food · $$150_
   - Restores 5 Hit Points. Tier 1.
 
-- 🟢 **PP Up** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17721, moveFreqWhy:17787, moveLineShort:23212
+- 🟢 **PP Up** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17842, moveFreqWhy:17908, moveLineShort:23605
   - _Med Kit · $$9800_
   - Raise one of the user’s Move’s Frequency one level. Use only one per Pokémon.
 
-- 🟢 **Pheromone Emitter** — `likely` · P3 · themes: action, skill · code: EQUIP_EFFECTS:11606
+- 🟢 **Pheromone Emitter** — `likely` · P3 · themes: action, skill · code: EQUIP_EFFECTS:11724
   - _Equipment · Slot Accessory · $$2000_
   - Emits pheromones as a Swift Action that give a +4 bonus to a Charm or Intimidate check against wild Pokémon. Requires a Pheromone Cartridge to use. Comes with 1 Cartridge. More can be bought for 250 apiece.
 
-- 🟢 **Pink Pearl** — `likely` · P3 · themes: stat · code: typeBoosterIndex:3509
+- 🟢 **Pink Pearl** — `likely` · P3 · themes: stat · code: typeBoosterIndex:3607
   - _Pokémon Item · $--_
   - Acts as a Psychic Type Booster. If held by a Spoink, it also acts as a Special Attack Stat Booster.
 
-- 🟢 **Pixie Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3496
+- 🟢 **Pixie Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3594
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both a Fairy Type Booster and a Fairy Brace. Accessory Slot Item for Trainers.
 
-- 🟢 **Poison Barb** — `likely` · P3 · themes: swap, status, damage · code: TYPE_BOOSTER_ITEMS:3487
+- 🟢 **Poison Barb** — `likely` · P3 · themes: swap, status, damage · code: TYPE_BOOSTER_ITEMS:3585
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Poison Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Poké Ball Tool Box** — `likely` · P3 · themes: other · code: POKEBALL_TOOL:31240
+- 🟢 **Poké Ball Tool Box** — `likely` · P3 · themes: other · code: POKEBALL_TOOL:31625
   - _Key Item · $$500_
   - These tool boxes let those with the know-how craft and repair Poké Balls.
 
-- 🟢 **Portable Grower** — `likely` · P3 · themes: weather, interrupt · code: gardenGrowers:31677, gardenSoil:31757
+- 🟢 **Portable Grower** — `likely` · P3 · themes: weather, interrupt · code: gardenGrowers:32062, gardenSoil:32142
   - _Key Item · $$2000_
   - Portable Growers can be used to grow berries and herbs. Portable Growers protect the plants within them from external weather, and never need to be fertilized. Each Grower holds one plant.
 
-- 🟢 **Poultices** — `likely` · P3 · themes: heal, social · code: INJURY_SOURCES:5021, BANDAGE_ITEMS:5505
+- 🟢 **Poultices** — `likely` · P3 · themes: heal, social · code: INJURY_SOURCES:5126, BANDAGE_ITEMS:5612
   - _Med Kit · $$225_
   - Poultices are applied as Extended Actions on Pokémon or Trainers. Poultices last for 6 hours; while applied, they double the Natural Healing Rate of Pokémon or Trainers, meaning a Pokémon or Trainer will heal 1/8th of their Hit Points per half hour. Poultices also immediately heal one Injury if they remain in place for their full duration.
     
     If a Pokémon is damaged or loses Hit Points in any way, the Poulticess immediately stop working.  Poultices are itchy and irritating to the skin and may cause loyalty loss.
 
-- 🟢 **Quick Claw** — `likely` · P3 · themes: swap · code: heldCritBonus:3775
+- 🟢 **Quick Claw** — `likely` · P3 · themes: swap · code: heldCritBonus:3880
   - _Pokémon Item · $$4200_
   - The user adds +10 to their Initiative. Accessory Item for Trainers.
 
-- 🟢 **Rad Fashion** — `likely` · P3 · themes: swap, action, skill · code: GEAR_ACTIONS:11924
+- 🟢 **Rad Fashion** — `likely` · P3 · themes: swap, action, skill · code: GEAR_ACTIONS:12042
   - _Pokémon Item · $$500_
   - The holder may activate this item once a Scene as a Free Action to gain a +4 bonus to a single Save Check.
 
-- 🟢 **Rare Candy** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17728
+- 🟢 **Rare Candy** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17849
   - _Med Kit · $$9800_
   - These very rare treats are created from Shuckles that have held a Berry for a long time. When ingested by a Pokémon, the eater gains enough experience to reach its next Level. Pokémon may benefit from up to five Rare Candies in their lifetime.
 
-- 🟢 **Re-Breather** — `likely` · P3 · themes: other · code: EQUIP_EFFECTS:11592
+- 🟢 **Re-Breather** — `likely` · P3 · themes: other · code: EQUIP_EFFECTS:11710
   - _Equipment · Slot Head · $$4000_
   - This small partial face mask allows Trainers and Pokémon to breathe underwater as if they had the Gilled Capability for up to an hour. The Re-Breather is refilled automatically in 5 minutes while in open air.
 
-- 🟢 **Reinforced Trenchcoat** — `likely` · P3 · themes: swap, damage, skill · code: EQUIP_EFFECTS:11572
+- 🟢 **Reinforced Trenchcoat** — `likely` · P3 · themes: swap, damage, skill · code: EQUIP_EFFECTS:11690
   - _Equipment · Slot Body · $$10000_
   - A stylish utility version of Light Armor. Grants 5 Damage Reduction and provides a +4 bonus to Stealth checks to conceal weapons and prevents their detection by metal detectors.
 
-- 🟢 **Rough Fashion** — `likely` · P3 · themes: swap, action · code: GEAR_ACTIONS:11906
+- 🟢 **Rough Fashion** — `likely` · P3 · themes: swap, action · code: GEAR_ACTIONS:12024
   - _Pokémon Item · $$500_
   - The holder may activate this item once a Scene as a Free Action to cause a foe within 5 meters to take a -2 penalty to all rolls for one full round.
 
-- 🟢 **S Attack Booster** — `likely` · P3 · themes: swap, cs, skill, stat · code: STAT_BOOSTER_ITEMS:30424
+- 🟢 **S Attack Booster** — `likely` · P3 · themes: swap, cs, skill, stat · code: STAT_BOOSTER_ITEMS:30809
   - _Pokémon Item · $$4000_
   - The default state of the holder's Special Attack Stat is +1 Combat Stage. Accessory Item for Trainers.
 
-- 🟢 **S Defense Booster** — `likely` · P3 · themes: swap, cs, skill, stat · code: STAT_BOOSTER_ITEMS:30424
+- 🟢 **S Defense Booster** — `likely` · P3 · themes: swap, cs, skill, stat · code: STAT_BOOSTER_ITEMS:30809
   - _Pokémon Item · $$4000_
   - The default state of the holder's Special Defense Stat is +1 Combat Stage. Accessory Item for Trainers.
 
-- 🟢 **Safety Goggles** — `likely` · P3 · themes: swap, typing · code: powderImmuneWhy:32608
+- 🟢 **Safety Goggles** — `likely` · P3 · themes: swap, typing · code: powderImmuneWhy:32993
   - _Pokémon Item · $$1500_
   - The holder is immune to Moves with the Powder Keyword. Accessory or Head Item for Trainers.
 
-- 🟢 **Sensor Disruption Vest** — `likely` · P3 · themes: damage · code: EQUIP_EFFECTS:11607
+- 🟢 **Sensor Disruption Vest** — `likely` · P3 · themes: damage · code: EQUIP_EFFECTS:11725
   - _Equipment · Slot Body · $$2000_
   - The specially designed material of this vest wreaks havoc with the sensors used on most Pokébot models and Eye Augmentations. Pokébots and any Trainers or Pokémon with an Eye Augmentation suffer a -2 penalty to their single target Accuracy Checks made against the wearer.
 
-- 🟢 **Sharp Beak** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3488
+- 🟢 **Sharp Beak** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3586
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Flying Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Shield [9-15 Playtest]** — `likely` · P3 · themes: multiturn, swap, status, damage, action · code: EQUIP_EFFECTS:11602
+- 🟢 **Shield [9-15 Playtest]** — `likely` · P3 · themes: multiturn, swap, status, damage, action · code: EQUIP_EFFECTS:11720
   - _Equipment · Slot Off-Hand · $$3000_
   - A Shield is an Off-Hand defensive item held in one hand or braced to an arm. Shields grant +1 Evasion. They may be readied as a Standard Action to instead grant +4 Evasion and 10 Damage Reduction until the end of your next turn, but also cause you to become Slowed for that duration. If used Two-Handed, shields can also function as a Small Melee Weapon.
 
@@ -1569,146 +1569,146 @@ P9 · 60 open of 60 · open
 
 P9 · 35 open of 35 · open
 
-- 🟢 **Shock Collar** — `likely` · P3 · themes: heal · code: GEAR_ACTIONS:11962
+- 🟢 **Shock Collar** — `likely` · P3 · themes: heal · code: GEAR_ACTIONS:12080
   - _Pokémon Item · $$3500_
   - Comes with a remote activator, which when pressed, causes the Pokémon or Trainer wearing the shock collar to lose Hit Points equal to 1/6th of their Max Hit Points. This may be used to activate the “Press” Feature. Collars that work on Ground Type Pokémon are available for an additional $500.
 
-- 🟢 **Silk Scarf** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3485
+- 🟢 **Silk Scarf** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3583
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Normal Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Silver Powder** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3488
+- 🟢 **Silver Powder** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3586
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Bug Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Sitrus Berry** — `likely` · P3 · themes: heal · code: inventoryRow:12621, snackByKey:16540, openFoodPicker:17024
+- 🟢 **Sitrus Berry** — `likely` · P3 · themes: heal · code: inventoryRow:12739, snackByKey:16661, openFoodPicker:17145
   - _Food · $$250_
   - Restores 15 Hit Points. Tier 2.
 
-- 🟢 **Sky Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3496
+- 🟢 **Sky Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3594
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both a Flying Type Booster and a Flying Brace. Accessory Slot Item for Trainers.
 
-- 🟢 **Slipstream Armor** — `likely` · P3 · themes: status, damage, action · code: EQUIP_EFFECTS:11573
+- 🟢 **Slipstream Armor** — `likely` · P3 · themes: status, damage, action · code: EQUIP_EFFECTS:11691
   - _Equipment · Slot Body · $$10000_
   - A flexible and smooth light armor that can momentarily become nearly frictionless. Grants 5 Damage Reduction. Once a battle, the wearer may use a Swift Action to escape from being Stuck.
 
-- 🟢 **Snow Boots** — `likely` · P3 · themes: weather, position · code: EQUIP_EFFECTS:11595
+- 🟢 **Snow Boots** — `likely` · P3 · themes: weather, position · code: EQUIP_EFFECTS:11713
   - _Equipment · Slot Feet · $$1500_
   - Snow Boots grant you the Naturewalk (Tundra) capability, but lower your Overland Speed by -1 while on ice or deep snow.
 
-- 🟢 **Soft Sand** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3487
+- 🟢 **Soft Sand** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3585
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Ground Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Soothing Flute** — `likely` · P3 · themes: status, cure, damage, action, skill · code: itemFreqForKey:4734, defenseTypeMods:6477, EQUIP_EFFECTS:11611, hasSoothingFlute:12101, openSoothingFlute:12112, soothingFluteActionRow:12159
+- 🟢 **Soothing Flute** — `likely` · P3 · themes: status, cure, damage, action, skill · code: itemFreqForKey:4839, defenseTypeMods:6589, EQUIP_EFFECTS:11729, hasSoothingFlute:12219, openSoothingFlute:12230, soothingFluteActionRow:12277
   - _Equipment · Slot Accessory · $$3000_
   - 1/Scene, as a Standard Action, play the Soothing Flute. This cures Enraged on all who hear it, and grants up to your Occult Education Rank allies affected by the Flute +5 Damage Reduction against Ghost-Type Attacks for the rest of the Scene.
 
-- 🟢 **Special Armor [9-15 Playtest]** — `likely` · P3 · themes: damage · code: EQUIP_EFFECTS:11578
+- 🟢 **Special Armor [9-15 Playtest]** — `likely` · P3 · themes: damage · code: EQUIP_EFFECTS:11696
   - _Equipment · Slot Body · $$8000_
   - +5 Damage Reduction against Special Damage.
 
-- 🟢 **Special Attack Suppressant** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17725
+- 🟢 **Special Attack Suppressant** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17846
   - _Med Kit · $$500_
   - Lowers Special Attack stat by 1 if trainer allows it.
 
-- 🟢 **Special Defense Suppressant** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17726
+- 🟢 **Special Defense Suppressant** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17847
   - _Med Kit · $$500_
   - Lowers Special Defense stat by 1 if trainer allows it.
 
-- 🟢 **Speed Booster** — `likely` · P3 · themes: swap, cs, skill, stat · code: STAT_BOOSTER_ITEMS:30424
+- 🟢 **Speed Booster** — `likely` · P3 · themes: swap, cs, skill, stat · code: STAT_BOOSTER_ITEMS:30809
   - _Pokémon Item · $$4000_
   - The default state of the holder's Speed Stat is +1 Combat Stage. Accessory Item for Trainers.
 
-- 🟢 **Speed Suppressant** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17727
+- 🟢 **Speed Suppressant** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17848
   - _Med Kit · $$500_
   - Lowers Speed stat by 1 if trainer allows it.
 
-- 🟢 **Spell Tag** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3489
+- 🟢 **Spell Tag** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3587
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Ghost Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Splash Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3497
+- 🟢 **Splash Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3595
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both a Water Type Booster and a Water Brace. Accessory Slot Item for Trainers.
 
-- 🟢 **Spooky Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3497
+- 🟢 **Spooky Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3595
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both a Ghost Type Booster and a Ghost Brace. Accessory Slot Item for Trainers.
 
-- 🟢 **Stealth Clothes** — `likely` · P3 · themes: swap, skill · code: EQUIP_EFFECTS:11579
+- 🟢 **Stealth Clothes** — `likely` · P3 · themes: swap, skill · code: EQUIP_EFFECTS:11697
   - _Equipment · Slot Body · $$2000_
   - Whether it’s a dark cloak and hood, a ninja suit, or spy gear, these clothes help you blend in. This body-slot equipment raises your modifier to Stealth Checks made to remain unseen by +4, to a maximum total modifier of +4.
 
-- 🟢 **Stone Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3497
+- 🟢 **Stone Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3595
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both a Rock Type Booster and a Rock Brace. Accessory Slot Item for Trainers.
 
-- 🟢 **Study Manual [5-15 Playtest]** — `likely` · P3 · themes: skill · code: isBookName:12230
+- 🟢 **Study Manual [5-15 Playtest]** — `likely` · P3 · themes: skill · code: isBookName:12348
   - _Key Item · $$1000_
   - A Study Manual is always assigned to a single Skill and covers a specific narrow field that can be taken as a Skill Stunt.
     
     Rank 1 - Novice General Education: You gain a Skill Stunt in the associated Skill of the Study Manual covering the narrow field specified by the Study Manual.
     Rank 2 - Expert General Education: You gain a general +2 Bonus to the associated Skill. This Bonus does not stack with other bonuses from Books or Equipment to the same Skill.
 
-- 🟢 **Surfboard** — `likely` · P3 · themes: position · code: EQUIP_EFFECTS:11599
+- 🟢 **Surfboard** — `likely` · P3 · themes: position · code: EQUIP_EFFECTS:11717
   - _Equipment · Slot Feet · $$3500_
   - A Surfboard grants a +3 bonus to your Swim Speed.
 
-- 🟢 **Tera Orb** — `likely` · P3 · themes: swap, typing, damage, action · code: TERA_ORB_NAME:1995, EQUIP_EFFECTS:11610
+- 🟢 **Tera Orb** — `likely` · P3 · themes: swap, typing, damage, action · code: TERA_ORB_NAME:2093, EQUIP_EFFECTS:11728
   - _Equipment · Slot Off-Hand · $$5000_
   - Off-Hand or Accessory Slot Item for Trainers. A Trainer in possession of a Tera Orb may, as a Daily Frequency Swift Action, Terastalize one of their Pokemon. A Terastalized Pokemon loses its regular Types and becomes its Tera Type. It keeps STAB from its original Typing and gains no STAB on its Tera Type; instead, all of its Moves of the Tera Type gain a +10 Damage Bonus, and it may activate Abilities (such as Accelerate) as if it gained STAB on that Type. Moves that would change a Pokemon's Type, or give it an additional one, have no effect while it is Terastalized. A Pokemon remains Terastalized until it Faints or the Scene ends. (Paldea Dex Appendix II - OPTIONAL: Terastalization. Unoffic …
 
-- 🟢 **Thermal Dampening Suit** — `likely` · P3 · themes: other · code: EQUIP_EFFECTS:11609
+- 🟢 **Thermal Dampening Suit** — `likely` · P3 · themes: other · code: EQUIP_EFFECTS:11727
   - _Equipment · Slot Body · $$2000_
   - The user is invisible to thermal imaging gear.
 
-- 🟢 **Thermal Goggles** — `likely` · P3 · themes: other · code: EQUIP_EFFECTS:11591
+- 🟢 **Thermal Goggles** — `likely` · P3 · themes: other · code: EQUIP_EFFECTS:11709
   - _Equipment · Slot Head · $$1000_
   - Allows you to see in the IR spectrum, enabling you to easily pick out a person or Pokémon in camouflage or to identify sources of heat.
 
-- 🟢 **Thick Club** — `likely` · P3 · themes: swap · code: holdsThickClub:21424, abilityAccMods:21455
+- 🟢 **Thick Club** — `likely` · P3 · themes: swap · code: holdsThickClub:21809, abilityAccMods:21840
   - _Pokémon Item · $--_
   - When held by a Cubone or Marowak, this rare, dense bone grants the Pure Power Ability. Thick Clubs are Wielded. Cannot be used by Trainers.
 
-- 🟢 **Tiny Mushroom** — `likely` · P3 · themes: cs, skill, stat · code: GEAR_ACTIONS:11849
+- 🟢 **Tiny Mushroom** — `likely` · P3 · themes: cs, skill, stat · code: GEAR_ACTIONS:11967
   - _Food · $--_
   - The user loses 5 HP, and gains +1 Combat Stage in a random Stat.
 
-- 🟢 **Toxic Plate** — `likely` · P3 · themes: swap, status · code: TYPE_PLATE_ITEMS:3498
+- 🟢 **Toxic Plate** — `likely` · P3 · themes: swap, status · code: TYPE_PLATE_ITEMS:3596
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both a Poison Type Booster and a Poison Brace. Accessory Slot Item for Trainers.
 
-- 🟢 **Twisted Spoon** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3488
+- 🟢 **Twisted Spoon** — `likely` · P3 · themes: swap, damage · code: TYPE_BOOSTER_ITEMS:3586
   - _Pokémon Item · Slot Accessory · $$1800_
   - Grants a +5 Damage Bonus to all direct-damage Psychic Moves used by the holder. Accessory Item for Trainers.
 
-- 🟢 **Type Gem** — `likely` · P3 · themes: swap, damage, action, stat · code: zMoveName:3432
+- 🟢 **Type Gem** — `likely` · P3 · themes: swap, damage, action, stat · code: zMoveName:3530
   - _Pokémon Item · $--_
   - These items come in a variety of each of the Elemental Types, and are consumed as a Free Action to give a +3 Damage Base bonus to one attack of their Type. Off-hand or Accessory Slot Item for Trainers.
 
-- 🟢 **Universal Translator** — `likely` · P3 · themes: other · code: EQUIP_EFFECTS:11594
+- 🟢 **Universal Translator** — `likely` · P3 · themes: other · code: EQUIP_EFFECTS:11712
   - _Equipment · Slot Head · $$10000_
   - You understand any spoken language recognized by the Universal Translator and can speak into it and have your words translated immediately. Usually programmed with all of the major human languages. Can be used to speak with Pokémon.
 
-- 🟢 **X Accuracy** — `likely` · P3 · themes: damage · code: X_ITEMS:30366
+- 🟢 **X Accuracy** — `likely` · P3 · themes: damage · code: X_ITEMS:30751
   - _Med Kit · $$600_
   - Increases Accuracy by +2
 
-- 🟢 **X Speed** — `likely` · P3 · themes: cs, skill · code: X_ITEMS:30366
+- 🟢 **X Speed** — `likely` · P3 · themes: cs, skill · code: X_ITEMS:30751
   - _Med Kit · $$350_
   - Increases the Pokémon’s Speed by two Combat Stages
 
-- 🟢 **X-Ray Goggles** — `likely` · P3 · themes: other · code: EQUIP_EFFECTS:11590
+- 🟢 **X-Ray Goggles** — `likely` · P3 · themes: other · code: EQUIP_EFFECTS:11708
   - _Equipment · Slot Head · $$8000_
   - Grants the user the X-Ray Vision Capability.
 
-- 🟢 **Zap Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3498
+- 🟢 **Zap Plate** — `likely` · P3 · themes: swap · code: TYPE_PLATE_ITEMS:3596
   - _Pokémon Item · Slot Accessory · $--_
   - Acts as both an Electric Type Booster and an Electric Brace. Accessory Slot Item for Trainers.
 
-- 🟢 **Zinc** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17718, STAT_VITAMIN:30599
+- 🟢 **Zinc** — `likely` · P3 · themes: stat · code: VITAMIN_DEFS:17839, STAT_VITAMIN:30984
   - _Med Kit · $$4900_
   - Raise the user’s Special Defense Base Stat 1.
 

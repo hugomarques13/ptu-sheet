@@ -7321,7 +7321,9 @@
   "Zephyr Shield": []
  },
  "moves": {
-  "Absorb": [],
+  "Absorb": [
+   "hp-fx"
+  ],
   "Accelerock": [],
   "Acid": [
    "cs",
@@ -7400,7 +7402,9 @@
   "Aromatic Mist": [
    "cs"
   ],
-  "Artillerolives": [],
+  "Artillerolives": [
+   "hazard-fx"
+  ],
   "Assist": [],
   "Assurance": [
    "special:conditionalDB"
@@ -7445,7 +7449,8 @@
   "Axe Kick": [
    "range",
    "range-status",
-   "status-fx"
+   "status-fx",
+   "hp-fx"
   ],
   "Baby-Doll Eyes": [
    "cs"
@@ -7462,7 +7467,9 @@
   "Barrage": [
    "five-strike"
   ],
-  "Barrier": [],
+  "Barrier": [
+   "hazard-fx"
+  ],
   "Bash!": [
    "range"
   ],
@@ -7480,7 +7487,8 @@
   "Behemoth Blade": [],
   "Belch": [],
   "Belly Drum": [
-   "cs"
+   "cs",
+   "hp-fx"
   ],
   "Bestow": [],
   "Bide": [
@@ -7493,7 +7501,9 @@
    "range-flinch",
    "status-fx"
   ],
-  "Bitter Blade": [],
+  "Bitter Blade": [
+   "hp-fx"
+  ],
   "Bitter Malice": [
    "range",
    "range-status",
@@ -7575,7 +7585,9 @@
    "status-always"
   ],
   "Branch Poke": [],
-  "Brave Bird": [],
+  "Brave Bird": [
+   "hp-fx"
+  ],
   "Breaking Swipe": [
    "cs"
   ],
@@ -7654,11 +7666,15 @@
   "Chilling Water": [
    "cs"
   ],
-  "Chilly Reception": [],
+  "Chilly Reception": [
+   "field-fx"
+  ],
   "Chip Away": [
    "def-pierce"
   ],
-  "Chloroblast": [],
+  "Chloroblast": [
+   "hp-fx"
+  ],
   "Circle Throw": [
    "range",
    "range-status",
@@ -7670,7 +7686,8 @@
    "cs"
   ],
   "Clangorous Soul": [
-   "cs"
+   "cs",
+   "hp-fx"
   ],
   "Clayball": [],
   "Clear Smog": [],
@@ -7735,7 +7752,9 @@
   "Counter": [
    "special:fixedDamage"
   ],
-  "Court Change": [],
+  "Court Change": [
+   "hazard-fx"
+  ],
   "Covet": [],
   "Crabhammer": [
    "range",
@@ -7768,7 +7787,8 @@
    "special:valueDB"
   ],
   "Curse": [
-   "cs"
+   "cs",
+   "hp-fx"
   ],
   "Cut": [
    "def-pierce"
@@ -7803,7 +7823,10 @@
   "Defense Curl": [
    "cs"
   ],
-  "Defog": [],
+  "Defog": [
+   "field-fx",
+   "hazard-fx"
+  ],
   "Destiny Bond": [],
   "Detect": [],
   "Diamond Storm": [
@@ -7865,7 +7888,9 @@
    "double-strike"
   ],
   "Double Team": [],
-  "Double-Edge": [],
+  "Double-Edge": [
+   "hp-fx"
+  ],
   "Draco Jet": [],
   "Draco Meteor": [
    "cs"
@@ -7909,9 +7934,15 @@
    "status-fx",
    "weight"
   ],
-  "Drain Punch": [],
-  "Draining Kiss": [],
-  "Dream Eater": [],
+  "Drain Punch": [
+   "hp-fx"
+  ],
+  "Draining Kiss": [
+   "hp-fx"
+  ],
+  "Dream Eater": [
+   "hp-fx"
+  ],
   "Drill Peck": [],
   "Drill Run": [
    "range",
@@ -7948,7 +7979,9 @@
   ],
   "Eerie Spell": [],
   "Egg Bomb": [],
-  "Electric Terrain": [],
+  "Electric Terrain": [
+   "field-fx"
+  ],
   "Electrify": [],
   "Electro Ball": [],
   "Electro Drift": [
@@ -7993,7 +8026,9 @@
    "range-crit"
   ],
   "Eternabeam": [],
-  "Expanding Force": [],
+  "Expanding Force": [
+   "field-fx"
+  ],
   "Explosion": [],
   "Extrasensory": [
    "range",
@@ -8061,7 +8096,9 @@
   "Fire Lash": [
    "cs"
   ],
-  "Fire Pledge": [],
+  "Fire Pledge": [
+   "hazard-fx"
+  ],
   "Fire Punch": [
    "range",
    "range-status",
@@ -8101,7 +8138,8 @@
   "Flare Blitz": [
    "range",
    "range-status",
-   "status-fx"
+   "status-fx",
+   "hp-fx"
   ],
   "Flash": [
    "cs"
@@ -8124,7 +8162,9 @@
   ],
   "Flip Turn": [],
   "Flirt": [],
-  "Floral Healing": [],
+  "Floral Healing": [
+   "hp-fx"
+  ],
   "Flower Shield": [
    "cs"
   ],
@@ -8207,7 +8247,9 @@
   "Geomancy": [
    "cs"
   ],
-  "Giga Drain": [],
+  "Giga Drain": [
+   "hp-fx"
+  ],
   "Giga Impact": [],
   "Gigaton Hammer": [
    "status-fx",
@@ -8241,18 +8283,25 @@
    "weight"
   ],
   "Grass Pledge": [
-   "cs"
+   "cs",
+   "hazard-fx"
   ],
   "Grass Whistle": [
    "status-fx",
    "status-always"
   ],
-  "Grassy Glide": [],
-  "Grassy Terrain": [],
+  "Grassy Glide": [
+   "field-fx"
+  ],
+  "Grassy Terrain": [
+   "field-fx"
+  ],
   "Grav Apple": [
    "cs"
   ],
-  "Gravity": [],
+  "Gravity": [
+   "field-fx"
+  ],
   "Growl": [
    "cs"
   ],
@@ -8274,7 +8323,9 @@
    "special:conditionalDB"
   ],
   "Gyro Ball": [],
-  "Hail": [],
+  "Hail": [
+   "field-fx"
+  ],
   "Hammer Arm": [
    "cs"
   ],
@@ -8285,8 +8336,12 @@
    "cs"
   ],
   "Haze": [],
-  "Head Charge": [],
-  "Head Smash": [],
+  "Head Charge": [
+   "hp-fx"
+  ],
+  "Head Smash": [
+   "hp-fx"
+  ],
   "Headbutt": [
    "range",
    "range-status",
@@ -8300,9 +8355,15 @@
   ],
   "Heal Bell": [],
   "Heal Block": [],
-  "Heal Order": [],
-  "Heal Pulse": [],
-  "Healing Wish": [],
+  "Heal Order": [
+   "hp-fx"
+  ],
+  "Heal Pulse": [
+   "hp-fx"
+  ],
+  "Healing Wish": [
+   "hp-fx"
+  ],
   "Heart Stamp": [
    "range",
    "range-status",
@@ -8344,7 +8405,9 @@
   "Hidden Power Steel": [],
   "Hidden Power Water": [],
   "High Horsepower": [],
-  "High Jump Kick": [],
+  "High Jump Kick": [
+   "hp-fx"
+  ],
   "Hinder": [],
   "Hold Hands": [],
   "Hone Claws": [
@@ -8354,7 +8417,9 @@
   "Horn Drill": [
    "ohko"
   ],
-  "Horn Leech": [],
+  "Horn Leech": [
+   "hp-fx"
+  ],
   "Howl": [
    "cs"
   ],
@@ -8416,9 +8481,12 @@
   "Ice Spinner": [
    "range",
    "range-status",
-   "status-fx"
+   "status-fx",
+   "field-fx"
   ],
-  "Icebreaker": [],
+  "Icebreaker": [
+   "hp-fx"
+  ],
   "Icicle Crash": [
    "range",
    "range-status",
@@ -8447,7 +8515,9 @@
    "status-fx",
    "status-always"
   ],
-  "Ingrain": [],
+  "Ingrain": [
+   "hp-fx"
+  ],
   "Instruct": [],
   "Intercept Melee": [
    "range"
@@ -8478,8 +8548,12 @@
   "Judgement": [
    "picks-type"
   ],
-  "Jump Kick": [],
-  "Jungle Healing": [],
+  "Jump Kick": [
+   "hp-fx"
+  ],
+  "Jungle Healing": [
+   "hp-fx"
+  ],
   "Karate Chop": [
    "range",
    "range-crit"
@@ -8516,8 +8590,12 @@
    "range"
   ],
   "Leafage": [],
-  "Leech Life": [],
-  "Leech Life [SM]": [],
+  "Leech Life": [
+   "hp-fx"
+  ],
+  "Leech Life [SM]": [
+   "hp-fx"
+  ],
   "Leech Seed": [],
   "Leer": [
    "cs"
@@ -8527,11 +8605,15 @@
    "range-status",
    "status-fx"
   ],
-  "Life Dew": [],
+  "Life Dew": [
+   "hp-fx"
+  ],
   "Light Screen": [
    "blessing"
   ],
-  "Light of Ruin": [],
+  "Light of Ruin": [
+   "hp-fx"
+  ],
   "Liquidation": [
    "cs",
    "range"
@@ -8554,8 +8636,12 @@
   "Lumina Crash": [
    "cs"
   ],
-  "Lunar Blessing": [],
-  "Lunar Dance": [],
+  "Lunar Blessing": [
+   "hp-fx"
+  ],
+  "Lunar Dance": [
+   "hp-fx"
+  ],
   "Lunge": [],
   "Luster Purge": [
    "cs"
@@ -8568,7 +8654,9 @@
   "Magic Powder": [
    "typemod"
   ],
-  "Magic Room": [],
+  "Magic Room": [
+   "field-fx"
+  ],
   "Magical Leaf": [],
   "Magical Torque": [
    "range",
@@ -8604,7 +8692,8 @@
   "Matcha Gotcha": [
    "range",
    "range-status",
-   "status-fx"
+   "status-fx",
+   "hp-fx"
   ],
   "Maul": [
    "status-fx",
@@ -8618,7 +8707,9 @@
   "Meditate": [
    "cs"
   ],
-  "Mega Drain": [],
+  "Mega Drain": [
+   "hp-fx"
+  ],
   "Mega Kick": [],
   "Mega Punch": [],
   "Megahorn": [],
@@ -8645,9 +8736,13 @@
   ],
   "Metronome": [],
   "Mighty Cleave": [],
-  "Milk Drink": [],
+  "Milk Drink": [
+   "hp-fx"
+  ],
   "Mimic": [],
-  "Mind Blown": [],
+  "Mind Blown": [
+   "hp-fx"
+  ],
   "Mind Reader": [],
   "Minimize": [],
   "Miracle Eye": [],
@@ -8665,18 +8760,27 @@
   "Mist Ball": [
    "cs"
   ],
-  "Misty Explosion": [],
-  "Misty Terrain": [],
+  "Misty Explosion": [
+   "field-fx"
+  ],
+  "Misty Terrain": [
+   "field-fx"
+  ],
   "Moonblast": [
    "cs",
    "range"
   ],
   "Moongeist Beam": [],
-  "Moonlight": [],
-  "Morning Sun": [],
+  "Moonlight": [
+   "hp-fx"
+  ],
+  "Morning Sun": [
+   "hp-fx"
+  ],
   "Mortal Spin": [
    "status-fx",
-   "status-always"
+   "status-always",
+   "hazard-fx"
   ],
   "Mould": [
    "special:conditionalDB"
@@ -8788,7 +8892,9 @@
   "Overheat": [
    "cs"
   ],
-  "Pain Split": [],
+  "Pain Split": [
+   "hp-fx"
+  ],
   "Parabolic Charge": [],
   "Parabolic Charge [SM]": [],
   "Parting Shot": [
@@ -8853,7 +8959,9 @@
    "range-crit",
    "status-fx"
   ],
-  "Pollen Puff": [],
+  "Pollen Puff": [
+   "hp-fx"
+  ],
   "Poltergeist": [],
   "Population Bomb": [],
   "Pounce": [
@@ -8901,7 +9009,9 @@
   ],
   "Psychic Fangs": [],
   "Psychic Noise": [],
-  "Psychic Terrain": [],
+  "Psychic Terrain": [
+   "field-fx"
+  ],
   "Psycho Boost": [
    "cs"
   ],
@@ -8956,10 +9066,15 @@
    "status-always",
    "status-self"
   ],
-  "Rain Dance": [],
-  "Rapid Spin": [],
+  "Rain Dance": [
+   "field-fx"
+  ],
+  "Rapid Spin": [
+   "hazard-fx"
+  ],
   "Rapid Spin [SS]": [
-   "cs"
+   "cs",
+   "hazard-fx"
   ],
   "Razor Leaf": [
    "range",
@@ -8970,9 +9085,12 @@
   ],
   "Razor Wind": [
    "range",
-   "range-crit"
+   "range-crit",
+   "hazard-fx"
   ],
-  "Recover": [],
+  "Recover": [
+   "hp-fx"
+  ],
   "Recycle": [],
   "Redline": [
    "versatile"
@@ -8998,7 +9116,8 @@
   "Rest": [
    "status-fx",
    "status-always",
-   "status-self"
+   "status-self",
+   "hp-fx"
   ],
   "Retaliate": [
    "special:conditionalDB"
@@ -9015,7 +9134,9 @@
   ],
   "Revival Blessing": [],
   "Riposte": [],
-  "Rising Voltage": [],
+  "Rising Voltage": [
+   "field-fx"
+  ],
   "Roar": [],
   "Roar of Time": [
    "status-fx",
@@ -9058,6 +9179,7 @@
    "special:valueDB"
   ],
   "Roost": [
+   "hp-fx",
    "typemod"
   ],
   "Rototiller": [
@@ -9087,7 +9209,9 @@
    "status-fx",
    "status-always"
   ],
-  "Sandstorm": [],
+  "Sandstorm": [
+   "field-fx"
+  ],
   "Sandstorm Sear": [
    "range",
    "range-status",
@@ -9150,7 +9274,9 @@
   "Sharpen": [
    "cs"
   ],
-  "Shed Tail": [],
+  "Shed Tail": [
+   "hp-fx"
+  ],
   "Sheer Cold": [
    "ohko"
   ],
@@ -9170,7 +9296,9 @@
    "cs"
   ],
   "Shock Wave": [],
-  "Shore Up": [],
+  "Shore Up": [
+   "hp-fx"
+  ],
   "Signal Beam": [
    "range",
    "range-status",
@@ -9206,7 +9334,9 @@
    "special:conditionalDB"
   ],
   "Sky Uppercut": [],
-  "Slack Off": [],
+  "Slack Off": [
+   "hp-fx"
+  ],
   "Slam": [],
   "Slash": [
    "range",
@@ -9261,11 +9391,15 @@
    "range-flinch",
    "status-fx"
   ],
-  "Snowscape": [],
+  "Snowscape": [
+   "field-fx"
+  ],
   "Soak": [
    "typemod"
   ],
-  "Soft-Boiled": [],
+  "Soft-Boiled": [
+   "hp-fx"
+  ],
   "Solar Beam": [
    "special:conditionalDB"
   ],
@@ -9293,7 +9427,9 @@
   "Spike Cannon": [
    "five-strike"
   ],
-  "Spikes": [],
+  "Spikes": [
+   "hazard-fx"
+  ],
   "Spiky Shield": [],
   "Spin Out": [
    "cs"
@@ -9329,7 +9465,9 @@
    "range"
   ],
   "Sprint": [],
-  "Stealth Rock": [],
+  "Stealth Rock": [
+   "hazard-fx"
+  ],
   "Steam Eruption": [
    "range",
    "range-status",
@@ -9342,17 +9480,23 @@
    "status-fx",
    "special:conditionalDB"
   ],
-  "Steel Beam": [],
+  "Steel Beam": [
+   "hp-fx"
+  ],
   "Steel Roller": [
    "range",
    "range-status",
-   "status-fx"
+   "status-fx",
+   "field-fx",
+   "hazard-fx"
   ],
   "Steel Wing": [
    "cs",
    "range"
   ],
-  "Sticky Web": [],
+  "Sticky Web": [
+   "hazard-fx"
+  ],
   "Stockpile": [
    "cs"
   ],
@@ -9403,20 +9547,27 @@
   "Submission": [
    "range",
    "range-status",
-   "status-fx"
+   "status-fx",
+   "hp-fx"
   ],
-  "Substitute": [],
+  "Substitute": [
+   "hp-fx"
+  ],
   "Sucker Punch": [],
   "Sucker Punch [SM]": [],
   "Sugar Rush": [
    "cs"
   ],
-  "Sunny Day": [],
+  "Sunny Day": [
+   "field-fx"
+  ],
   "Sunsteel Strike": [],
   "Super Fang": [
    "special:fixedDamage"
   ],
-  "Supercell Slam": [],
+  "Supercell Slam": [
+   "hp-fx"
+  ],
   "Superpower": [
    "cs"
   ],
@@ -9440,7 +9591,9 @@
    "status-fx",
    "status-always"
   ],
-  "Swallow": [],
+  "Swallow": [
+   "hp-fx"
+  ],
   "Sweeping Strike": [],
   "Sweet Kiss": [
    "status-fx",
@@ -9453,7 +9606,9 @@
    "cs"
   ],
   "Synchronoise": [],
-  "Synthesis": [],
+  "Synthesis": [
+   "hp-fx"
+  ],
   "Syrup Bomb": [
    "status-fx",
    "status-always"
@@ -9474,7 +9629,9 @@
    "blessing"
   ],
   "Take Aim": [],
-  "Take Down": [],
+  "Take Down": [
+   "hp-fx"
+  ],
   "Take Heart": [
    "cs"
   ],
@@ -9568,7 +9725,9 @@
    "cs"
   ],
   "Tidy Up": [
-   "cs"
+   "cs",
+   "field-fx",
+   "hazard-fx"
   ],
   "Titanic Slam": [
    "status-fx"
@@ -9583,7 +9742,9 @@
    "status-fx",
    "status-always"
   ],
-  "Toxic Spikes": [],
+  "Toxic Spikes": [
+   "hazard-fx"
+  ],
   "Toxic Threads": [
    "cs",
    "status-fx",
@@ -9598,7 +9759,9 @@
    "rand-status"
   ],
   "Trick": [],
-  "Trick Room": [],
+  "Trick Room": [
+   "field-fx"
+  ],
   "Trick-or-Treat": [
    "typemod"
   ],
@@ -9659,7 +9822,8 @@
   "Volt Tackle": [
    "range",
    "range-status",
-   "status-fx"
+   "status-fx",
+   "hp-fx"
   ],
   "Wake-Up Slap": [
    "special:conditionalDB"
@@ -9689,7 +9853,9 @@
    "range-flinch",
    "status-fx"
   ],
-  "Wave Crash": [],
+  "Wave Crash": [
+   "hp-fx"
+  ],
   "Wave Dash": [],
   "Wear Down": [
    "cs"
@@ -9702,6 +9868,7 @@
    "status-always"
   ],
   "Whirlwind": [
+   "hazard-fx",
    "weight"
   ],
   "Wicked Blow": [
@@ -9717,7 +9884,9 @@
    "status-fx"
   ],
   "Wide Guard": [],
-  "Wild Charge": [],
+  "Wild Charge": [
+   "hp-fx"
+  ],
   "Wildbolt Storm": [
    "range",
    "range-status",
@@ -9728,7 +9897,9 @@
    "status-always"
   ],
   "Wing Attack": [],
-  "Wish": [],
+  "Wish": [
+   "hp-fx"
+  ],
   "Withdraw": [
    "cs"
   ],
@@ -9737,8 +9908,12 @@
    "range-status",
    "status-fx"
   ],
-  "Wonder Room": [],
-  "Wood Hammer": [],
+  "Wonder Room": [
+   "field-fx"
+  ],
+  "Wood Hammer": [
+   "hp-fx"
+  ],
   "Work Up": [
    "cs"
   ],

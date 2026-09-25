@@ -343,7 +343,7 @@ const STATUS_DEFS = [
   {key:"enraged", name:"Enraged (Rage)", kind:"volatile",
    effect:"Must use a damaging Physical/Special Move or Struggle Attack. DC 15 Save at end of each turn to cure. Cannot choose to Take a Breather."},
   {key:"flinch", name:"Flinched", kind:"volatile",
-   effect:"(Feb 2016 errata) Lowers Initiative by 5 for the rest of the Scene and the user is Vulnerable for 1 full round. Multiple instances stack (this app tracks it as a single flag — apply the −5 by hand again for a 2nd+ stack). Switching out removes the Initiative penalty."},
+   effect:"(Feb 2016 errata) Lowers Initiative by 5 for the rest of the Scene and the user is Vulnerable for 1 full round. Both halves are automatic: the −5 is latched for the Scene the moment this goes on (and survives the chip being lifted), and Vulnerable is applied alongside it — take this chip off once the round has passed and the Vulnerable lifts with it. Multiple instances stack (this app tracks it as a single flag — use the Initiative card to add a 2nd −5). Switching out removes the Initiative penalty."},
   {key:"infatuation", name:"Infatuated", kind:"volatile",
    effect:"(Feb 2016 errata) −5 penalty on all Damage Rolls that don't target the user's Crush; against the Crush, Attack and Special Attack are halved for the Damage Roll instead. Cured with a Save of 16+ made at end of turn."},
   {key:"badSleep", name:"Bad Sleep", kind:"volatile",
@@ -356,6 +356,12 @@ const STATUS_DEFS = [
    effect:"Movement halved (min 1). Removed by switching or at end of Scene. (+5 to Capture Rate.)"},
   {key:"trapped", name:"Trapped", kind:"other", cap:0, immune:["Ghost"],
    effect:"Cannot be recalled into a Poké Ball. Ghost-types immune."},
+  /* Leech Seed. Not an Affliction in the book — it is a Move that stays stuck to its target — but
+     it behaves exactly like one: it sits on the creature, it fires on a clock, and the table has to
+     remember it every single round. So it gets a chip, and the chip carries the button that moves
+     the Hit Points (🌱 Leech Seed row, below the chips). */
+  {key:"seeded", name:"Leech Seed", kind:"other", cap:0, immune:["Grass"], immuneWord:"Leech Seeded",
+   effect:"At the beginning of each of its turns it loses 1/10th of its FULL Hit Points, and Leech Seed's user gains that much. Lasts until it Faints or is returned to a Poké Ball — not until the end of the Scene. Grass-Types are immune (so is anything else immune to Grass attacks — the sheet only checks the Type). Rapid Spin and Mortal Spin shake it off."},
   /* A Move keyword rather than an Affliction (Core p.341) — Whirlpool, Fire Spin, Sand Tomb,
      Infestation and Magma Storm all "put the target in a Vortex". It gets a chip because it is
      three effects at once plus a countdown nobody remembers: ticking it also ticks Slowed and
@@ -705,6 +711,32 @@ function latchFlinchInit(o){
   return true;
 }
 function flinchInitPenalty(o){ return 5 * Math.max(0, (o && o.flinchInit) || 0); }
+/* ---- ...and the OTHER half of the errata: "the user is Vulnerable for 1 full round" -------------
+   Nothing applied that, so a Flinched creature kept its Evasion and the table had to remember. The
+   Vulnerable window is exactly as long as the Flinched chip is up (the -5 Initiative is the part
+   that outlives it, and flinchInit already carries that), so the two are kept in step here: the
+   chip going ON puts Vulnerable on, the chip coming OFF takes it back off again.
+   `o.flinchVuln` marks that THIS Vulnerable came from the Flinch - a creature that was already
+   Vulnerable for its own reasons (Blinded, Tripped, a Boulder) keeps it when the Flinch lifts.
+   Called from both status writers (toggleStatus and inflictStatus) right beside latchFlinchInit. */
+function syncFlinchVulnerable(o, opts){
+  if(!o) return false;
+  if(!Array.isArray(o.statuses)) o.statuses = [];
+  if(hasStatus(o, "flinch")){
+    if(hasStatus(o, "vulnerable")) return false;
+    // Tangled Feet [Errata] says its holder can never be Vulnerable - the same guard every other
+    // writer goes through, so an immunity isn't walked around just because a Flinch carried it in.
+    if(!o.unlocked && statusBlockFor(o, "vulnerable", opts)) return false;
+    o.statuses.push("vulnerable");
+    o.flinchVuln = 1;
+    return true;
+  }
+  if(!o.flinchVuln) return false;
+  delete o.flinchVuln;
+  if(!hasStatus(o, "vulnerable")) return false;
+  o.statuses = o.statuses.filter(k => k !== "vulnerable");
+  return true;
+}
 /* another −5 for a SECOND Flinch in the same Scene (the errata stacks; the chip is one flag) */
 function addFlinchStack(o){ if(o) o.flinchInit = Math.max(0, (o.flinchInit||0)) + 1; }
 function clearFlinchInit(o){ if(o && o.flinchInit){ delete o.flinchInit; return true; } return false; }
@@ -723,6 +755,9 @@ function toggleStatus(p, key){ p.statuses = p.statuses||[];
   }
   if(key==="vortex") onVortexToggled(p, p.statuses.includes(key));
   latchFlinchInit(p);
+  if(key==="flinch" && syncFlinchVulnerable(p))
+    toast(hasStatus(p,"flinch") ? `\u{1F62C} Flinched — ${ownerLabel(p)} is also Vulnerable for 1 full round (the −5 Initiative stays all Scene).`
+                                : `\u{1F62C} Flinch lifted — ${ownerLabel(p)} is no longer Vulnerable (the −5 Initiative stays until the Scene ends).`);
   save(); }
 /* ---- Outright Status immunities a Feature (or a stance) hands a Trainer -------------------------
    Four Elementalist Features simply say "you are immune to X" - not a bonus to the Save, not a
@@ -807,6 +842,10 @@ const TERRAIN_STATUS_IMMUNITY = [
   { terrain:"rugged",   statuses:["confused","enraged","infatuation"] },
 ];
 function surelyGrounded(o){
+  /* Gravity (Warped): "Pokemon cannot use Sky or Levitate Capabilities to end their turn at an
+     altitude higher than 1 meter" - while the room is up nothing on the board is airborne, so
+     every grounded-Terrain rule reaches everybody. */
+  if(roomOn("gravity")) return true;
   if(isTrainerOwner(o)) return !(windRunnerLevitate(o) > 0);
   if((monTypes(o) || []).includes("Flying")) return false;
   const c = monCapabilities(o, getSpecies(o.species)) || {};
@@ -847,7 +886,9 @@ function statusTypeImmunity(o, key, sp){
   let types = [];
   try{ types = monTypes(o, sp) || []; }catch(e){ types = []; }
   const ty = types.find(t => def.immune.includes(t));
-  return ty ? `${ty}-Types can't be ${def.name}` : "";
+  /* `immuneWord` is for the few chips whose NAME isn't a past participle - "Grass-Types can't be
+     Leech Seed" reads like a typo, "can't be Leech Seeded" reads like English. */
+  return ty ? `${ty}-Types can't be ${def.immuneWord || def.name}` : "";
 }
 function statusBlockFor(o, key, opts){
   if(!o) return "";
@@ -883,6 +924,7 @@ function inflictStatus(o, key, opts){
     });
   }
   latchFlinchInit(o);
+  if(key === "flinch") syncFlinchVulnerable(o, opts);   // "...and the user is Vulnerable for 1 full round"
   return { ok:true, why:"" };
 }
 /* several at once \u2192 { on:["Burned"], held:["Frozen (Ice-Types can't be Frozen)"] } for the readout */
@@ -928,8 +970,9 @@ function clearSceneStatuses(o){
   const before = o.statuses.length;
   o.statuses = o.statuses.filter(k => !SCENE_STATUS_KEYS.has(k));
   if(!o.statuses.includes("vortex")) delete o.vortexTurn;
+  const fv = syncFlinchVulnerable(o);            // the Vulnerable the Flinch carried in goes with it
   const fl = clearFlinchInit(o);                 // "for the rest of the Scene" ends with the Scene
-  return o.statuses.length !== before || fl;
+  return o.statuses.length !== before || fl || fv;
 }
 /* Afflictions that survive a blanket "cure everything". Death is the only one, and it has to be:
    every full-heal path in the app (Extended Rest, a Pokémon Center, First Aid Expertise, Bounty of
@@ -941,6 +984,7 @@ function clearAllStatuses(o){
   if(!o) return [];
   o.statuses = Array.isArray(o.statuses) ? o.statuses.filter(k => PERMANENT_STATUS_KEYS.has(k)) : [];
   delete o.vortexTurn;
+  delete o.flinchVuln;                            // nothing left for the Flinch's Vulnerable to ride on
   clearFlinchInit(o);                             // a full cure ends the Scene-long Initiative drop too
   if(o.statuses.includes("dead") && !o.statuses.includes("knockedOut")) o.statuses.push("knockedOut");
   return o.statuses;
@@ -1024,6 +1068,84 @@ function vortexRow(o, onChange, applyLoss){
   }
   row.append(el("button",{class:"linkbtn",title:"free it — the Vortex ends and Slowed/Trapped lift",
     onclick:end},"end it"));
+  wrap.append(row, out);
+  return wrap;
+}
+/* ---------- Leech Seed --------------------------------------------------------------------------
+   "At the beginning of each of the target's turns, Leech Seed's target loses 1/10th of their full
+   HP. Leech Seed's user then gains HP equal to the amount the target lost. Leech Seed lasts until
+   the target faints or is returned to a Poke Ball. Grass Types and targets immune to Grass Attacks
+   are immune."
+
+   Two halves. The chip (`seeded`) says it is stuck on; `o.seed = {by}` remembers WHOSE seed it is,
+   because the Hit Points do not vanish - they move. leechSeedFeeder finds that creature again on
+   the board when the row fires, so one press both drains the target and feeds the seeder; off the
+   board (or when the seeder is out of reach) the row says who to hand the Hit Points to instead.
+
+   The drain is a share of FULL Max HP - the undamaged number, like every other Tick in the book -
+   so Injuries never shrink it. It is damage, so Temporary HP soaks it first, and it goes through
+   the same applyAutoInjury / applyAutoKO the status cards' other self-damage rows use.            */
+function leechSeedTick(o){ return Math.max(1, Math.floor((fullMaxOf(o) || 10) / 10)); }
+function leechSeedBy(o){ return String((o && o.seed && o.seed.by) || "").trim(); }
+function setLeechSeed(o, by){
+  if(!o) return;
+  o.seed = { by: String(by || "").trim() };
+}
+function clearLeechSeed(o){
+  if(!o) return false;
+  const had = hasStatus(o, "seeded") || !!o.seed;
+  if(Array.isArray(o.statuses)) o.statuses = o.statuses.filter(k => k !== "seeded");
+  delete o.seed;
+  return had;
+}
+/* Whoever planted it, found again on the board being viewed - so the Hit Points the target loses
+   can actually reach them. Matched on the printed label, which is what the seed recorded. */
+function leechSeedFeeder(o){
+  const nm = leechSeedBy(o).toLowerCase();
+  if(!nm) return null;
+  try{
+    if(typeof mode === "undefined" || mode !== "cloud") return null;
+    const map = (typeof currentMapForView === "function" && currentMapForView()) || activeMap();
+    if(!map) return null;
+    for(const t of mapTokensFor(map.id)){
+      const L = t.link ? tokenLinked(t) : null;
+      const obj = (L && !L.missing) ? L.obj : null;
+      if(!obj || obj === o) continue;
+      if(String(ownerLabel(obj)).trim().toLowerCase() === nm) return { obj, token:t };
+    }
+  }catch(e){}
+  return null;
+}
+/* the shared "🌱 Leech Seed" control, mounted wherever the status chips are. `applyLoss(n)`
+   takes the HP off this creature wherever its HP actually lives; `onChange()` saves + redraws. */
+function leechSeedRow(o, onChange, applyLoss){
+  const n = leechSeedTick(o), by = leechSeedBy(o);
+  const wrap = el("div",{style:"margin-top:10px"});
+  wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},
+    `\u{1F331} Leech Seed${by ? ` — planted by ${by}` : ""}`));
+  const out = el("div",{class:"small muted",style:"margin-top:5px"},
+    `At the beginning of each of its turns it loses ${n} HP (1/10th of its full Maximum), and ${by || "the user of Leech Seed"} gains the same.`
+    + " It lasts until this creature Faints or is recalled — the end of the Scene does not lift it.");
+  const row = el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:8px;align-items:center"});
+  row.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
+    title:"start of its turn: it loses a Tick of its full Max HP, and the seed's owner gains it",
+    onclick:async()=>{
+      const feeder = leechSeedFeeder(o);
+      let fed = "";
+      if(feeder){
+        try{
+          const before = tokenHp(feeder.token).cur;
+          await setTokenHP(feeder.token, before + n);
+          fed = ` · ${ownerLabel(feeder.obj)} +${tokenHp(feeder.token).cur - before} HP`;
+        }catch(e){ fed = ""; }
+      }
+      if(!fed) fed = by ? ` · hand ${n} HP to ${by}` : ` · the seed's owner gains ${n} HP`;
+      out.textContent = `\u{1F331} Start of turn — −${n} HP.${fed}`;
+      toast(`\u{1F331} Leech Seed — −${n} HP${fed}`);
+      applyLoss(n);
+    }}, `−${n} HP (and feed)`));
+  row.append(el("button",{class:"linkbtn",title:"the seed is shaken off — Rapid Spin, Mortal Spin, a recall into a Poké Ball, or a faint",
+    onclick:()=>{ clearLeechSeed(o); toast("\u{1F331} Leech Seed shaken off"); onChange(); }},"shake it off"));
   wrap.append(row, out);
   return wrap;
 }
@@ -1243,6 +1365,21 @@ const WEATHER_DEFS = [
       "Snow Cloak: Evasion increased by +2, and adjacent allies are not damaged.",
       "Thermosensitive: Movement Capabilities reduced by half.",
     ] },
+
+  /* Snowscape / Chilly Reception's sky. It is NOT Hail with another name: nothing on the board
+     chips, and Ice-Types are armoured instead. The printed line is "all Ice-Type Pokemon gain 5
+     Damage Reduction, or +2 to any existing Damage Reduction", so an Ice-Type that already has DR
+     from anywhere takes the smaller bump rather than both. `typeDR` is read by weatherDR(), which
+     buffDR folds in after armour and the one-shot charges. Deliberately no noMiss/ability rows:
+     Blizzard, Ice Body and Snow Cloak all print "Hailing", and Snowing is not Hailing. */
+  { key:"snowy", name:"Snowy", icon:"\u{1F328}",
+    blurb:"Ice-Types gain 5 Damage Reduction (+2 if they already have some)",
+    typeDR:{ types:["ice"], dr:5, bonus:2 },
+    rules:[
+      "All Ice-Type Pok\u00e9mon gain 5 Damage Reduction, or +2 to any Damage Reduction they already have.",
+      "Nothing on the field loses HP to the sky \u2014 Snow does not chip the board the way Hail does.",
+      "Moves and Abilities that print \"Hailing\" (Blizzard, Ice Body, Snow Cloak) do not read Snow.",
+    ] },
 ];
 const WEATHER_BY_KEY = Object.fromEntries(WEATHER_DEFS.map(w=>[w.key,w]));
 const weatherByKey = k => WEATHER_BY_KEY[k] || WEATHER_DEFS[0];
@@ -1284,6 +1421,24 @@ function weatherEvasion(p){
     for(const ab in w.abilityEvasion) if(monHasAbility(p, ab)) n += w.abilityEvasion[ab];
   });
   return n;
+}
+/* Flat Damage Reduction the sky hands a creature for its Type (Snowy: Ice-Types). `have` is the
+   Damage Reduction it already has from everywhere else, because the printed rule pays 5 only to a
+   creature with none and a smaller +2 to one that is already armoured. Returns null for nothing. */
+function weatherDR(o, have){
+  if(!o || isTrainerOwner(o)) return null;        // "all Ice-Type Pokemon" \u2014 a human has no Elemental Type
+  let best = null;
+  try{
+    const low = (monTypes(o) || []).map(t => String(t).toLowerCase());
+    ownerWeathers(o).forEach(w => {
+      const r = w.typeDR; if(!r) return;
+      if(!(r.types||[]).some(t => low.includes(t))) return;
+      const n = (have > 0 && r.bonus) ? r.bonus : r.dr;
+      const lbl = (r.types||[]).map(t => t.charAt(0).toUpperCase() + t.slice(1)).join("/");
+      if(!best || n > best.dr) best = { dr:n, why:`${w.name} \u2014 ${lbl}-Type${have > 0 ? ` (+${n} on the DR you already have)` : ""}` };
+    });
+  }catch(e){ return null; }
+  return best;
 }
 /* Damage / accuracy changes this weather makes to ONE move by ONE Pokémon. Shaped like buffMods
    so openMoveRoll can display and total it the same way it does Cheers/Orders/Songs. */
@@ -1440,6 +1595,67 @@ function terrainTickReport(p){
   }));
   return out;
 }
+/* ===================================================================
+   THE ROOMS - Trick Room, Gravity, Wonder Room, Magic Room
+   -------------------------------------------------------------------
+   The four Psychic Field Moves change a rule of the battle rather than the sky or the floor, so
+   they get their own map-meta list beside `weather` and `terrains`. Unlike those two they STACK:
+   Gravity and Trick Room are about different things and the book never has them cancel, so
+   `map.rooms` is a set of keys the GM toggles rather than a single select.
+
+   Each room is read by exactly one place, and that place is the funnel everything else already
+   goes through, so nothing downstream has to know a room exists:
+     trick    initiativeList's sort           - Initiative runs backwards
+     gravity  surelyGrounded / moveTargetRules - everyone is on the floor, Ground reaches Flying
+     wonder   pokeDerived's `eff`              - Defense and Special Defense swap
+     magic    heldFxList                       - held/worn Static items stop paying out
+   The book's five rounds are NOT timed: like the weather, a room stays until the GM turns it off
+   (this table's house rule, see setMapWeather).
+=================================================================== */
+const ROOM_DEFS = [
+  { key:"trick", name:"Trick Room", icon:"\u{1F503}", field:"Rewinding",
+    blurb:"Initiative runs backwards - the slowest acts first",
+    rules:[
+      "Starting at the beginning of the next round, for 5 rounds, the area is considered Rewinding.",
+      "While Rewinding, Initiative is reversed: participants go from lowest Initiative to highest.",
+    ] },
+  { key:"gravity", name:"Gravity", icon:"\u{1F311}", field:"Warped",
+    blurb:"Everyone is grounded - Flying and Levitate lose their Ground immunity - +2 to every Accuracy Roll",
+    acc:+2,
+    rules:[
+      "Moves that involve the user being airborne may not be used.",
+      "Pok\u00e9mon cannot use Sky or Levitate Capabilities to end their turn above 1 metre - so everything on the board counts as grounded, Terrain included.",
+      "Flying-Types and Pok\u00e9mon with the Ability Levitate are no longer immune to Ground-Type Moves.",
+      "All Accuracy Rolls receive a +2 Bonus.",
+    ] },
+  { key:"wonder", name:"Wonder Room", icon:"\u{1F500}", field:"Wondered",
+    blurb:"Every Pok\u00e9mon's Defense and Special Defense are switched",
+    rules:[
+      "For 5 rounds, the area is considered Wondered.",
+      "While Wondered, each individual Pok\u00e9mon's Defense and Special Defense are switched - Physical and Special Evasion follow the switched stats.",
+      "The printed rule names Pok\u00e9mon only, so a Trainer's own Defenses are left alone.",
+    ] },
+  { key:"magic", name:"Magic Room", icon:"\u{1F6AB}", field:"Useless",
+    blurb:"Held Items and Accessory-Slot equipment do nothing",
+    rules:[
+      "The area becomes Useless for 5 rounds.",
+      "Pok\u00e9mon may not benefit from the effects of any Held Items, and Trainers cannot benefit from any Accessory-Slot equipment.",
+      "This does not affect consumable or activated items, only Items with Static effects or Triggers - so eating a Berry still works.",
+    ] },
+];
+const ROOM_BY_KEY = Object.fromEntries(ROOM_DEFS.map(r => [r.key, r]));
+const NO_ROOMS = [];
+/* the room keys in play right now. Kept as the raw key list (no mapping, no allocation) because
+   roomOn() is asked on every stat recalculation - heldFxList and pokeDerived both read it. */
+function activeRoomKeys(){
+  if(mode!=="cloud" || !cloud.mapMeta?.data) return NO_ROOMS;
+  const map = currentMapForView();
+  return (map && Array.isArray(map.rooms)) ? map.rooms : NO_ROOMS;
+}
+const roomOn = key => { try{ return activeRoomKeys().indexOf(key) >= 0; }catch(e){ return false; } };
+function activeRooms(){ return activeRoomKeys().map(k => ROOM_BY_KEY[k]).filter(Boolean); }
+/* flat Accuracy every roll gains from the rooms in play (Gravity: +2) */
+function roomAcc(){ return activeRooms().reduce((n, r) => n + (r.acc || 0), 0); }
 /* how many evolution stages a species still has ahead of it (depth, so branches don't double-count) */
 function evolutionsRemaining(p){
   const sp=getSpecies(p.species); if(!sp?.evolution?.length) return 0;
@@ -3725,6 +3941,13 @@ const NO_HELD_FX = [];
 function heldFxList(owner){
   if(!owner) return NO_HELD_FX;
   if(owner.species !== undefined && !String(owner.heldItem||"").trim()) return NO_HELD_FX;
+  /* Magic Room (Useless): "Pokemon may not benefit from the effects of any Held Items, and Trainers
+     cannot benefit from any Accessory-Slot equipment. This does not affect consumable or activated
+     items, only Items with Static effects or Triggers." This list IS the Static/Trigger layer - the
+     Combat Stages, stat and Evasion bonuses, Type immunities and on-hit riders gear hands out - so
+     emptying it is exactly the room's rule. Eating a Berry goes through its own path and still works.
+     Asked after the bail above, so the common case (nothing held) never reaches the map. */
+  if(roomOn("magic")) return NO_HELD_FX;
   const out = [];
   wornOrHeldNames(owner).forEach(nm=>{
     const fx = heldFxFor(nm); if(!fx) return;
@@ -5264,6 +5487,7 @@ function applyEndScene(c){
   c.trainer.usedAP = 0; c.trainer.tempHP = 0; c.trainer.buffs = []; resetUses(c.trainer, "scene");
   delete c.trainer.tasteLog;                       // the Scene's trade-ins (Complex Aftertaste's triggers) go with it
   delete c.trainer.critMoment;                     // an Athlete's Trainings stop being tripled too
+  delete c.trainer.hazardHit;                      // Stealth Rock's once-per-Encounter memory (found-06)
   c.trainer.modes = {};                            // a Feature stance (Enchanting Transformation) lasts until the end of the Scene — and returns its Bound AP with it
   c.trainer.manualBoundAP = 0;                      // any manual GM AP Drain/Bind releases at End Scene too
   delete c.trainer.bottled;                        // "At the end of a Scene, all items lose their Charge" (Bottled Lightning)
@@ -5282,6 +5506,7 @@ function applyEndScene(c){
     delete p.perseveranceUsed;         // Perseverance is once per Scene per Pokemon
     delete p.typeRefreshed;            // Type Refresh is once per target per Scene
     delete p.deepCold; delete p.simpleImp;             // both are once per Scene per creature
+    delete p.hazardHit;                // Stealth Rock's once-per-Encounter memory (found-06)
     delete p.luminous;                 // Starlight's Luminous condition ends with the fight
     if(p.traced){ p.abilities = (p.abilities||[]).filter(a => a !== p.traced); delete p.traced; }
     delete p.pheromone; delete p.pheroRolled;          // Pheromone Stacks don't outlast the fight
@@ -6172,6 +6397,11 @@ function pokeDerived(p) {
   const heldStat = heldStatBonus(p);        // Eviolite: "+5 … after Combat Stages"
   const eff = {}; STATS.forEach(([k]) => eff[k] = k==="hp" ? total.hp
     : Math.floor(total[k] * csMult(cs[k])) + (heldStat[k]||0));
+  /* Wonder Room (Wondered): "each individual Pokemon's Defense and Special Defense are switched."
+     Switched here, at the very end of the stat pipeline, so the damage a hit does, Physical and
+     Special Evasion below, and the sheet's own stat grid all read the swapped pair without any of
+     them knowing the room is up. The printed rule names Pokemon only - trainerDerived is untouched. */
+  if(roomOn("wonder")){ const d0 = eff.def; eff.def = eff.spdef; eff.spdef = d0; }
   // Soulless (Shedinja): Max HP is always 1, no matter level/HP stat/Injuries (Core p.485).
   const soulless = isSoulless(p);
   /* Power Construct: "The user still uses the HP total and HP Maximum of the Forme that it was in
@@ -8353,6 +8583,7 @@ function applyAutoKO(owner, oldHP, newHP){
       return "fightOn";
     }
     owner.statuses.push("knockedOut");
+    clearLeechSeed(owner);          // "Leech Seed lasts until the target faints or is returned to a Poke Ball"
     treasureHoardRevert(owner);     // "When the user faints ... the chest disappears and they revert to Chest Forme"
     transformRevert(owner, true);   // "Transform lasts until the user is ... Fainted" (no-op for anyone else)
     megaRevert(owner, true);        // a Fainted Pokémon can't stay Mega Evolved (no-op if not Mega)
@@ -8968,7 +9199,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const tDmg = (tBoost ? tBoost.dmg : 0) + (oFlat ? oFlat.dmg : 0);
   const tDmgWhy = [tBoost ? `${tBoost.item} (${tBoost.type} Type Booster)` : "", oFlat ? oFlat.why : ""]
     .filter(Boolean).join(" + ");
-  const accCS = td.cs.acc||0;   // Accuracy Combat Stage: flat add to Accuracy Rolls (Core p.234)
+  const accCS = (td.cs.acc||0) + roomAcc();   // Accuracy Combat Stage (Core p.234), plus Gravity's flat +2 on every Accuracy Roll
   /* Multi-strike Weapon Moves (Core p.242) — the keywords live in the profile's range string, e.g.
      Furious Strikes "WR, 1 Target, Five Strike" / Gouge "WR, 1 Target, Double Strike". */
   const fiveStrike = isFiveStrike(st), dblStrike = isDoubleStrike(st);
@@ -9511,6 +9742,15 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       const tn = moveTypeNode(t, st.move, opts.rerender, opts.persist);
       if(tn) out.append(tn);
       const ok = ohkoNode(t, st.move); if(ok) out.append(ok);
+      // found-05: the Weather / Terrain / Room this Move sets, as one press on the roll
+      const fn = moveFieldNode(t, st.move, { redraw:opts.rerender, persist:opts.persist });
+      if(fn) out.append(fn);
+      // found-06: the Hazards this Move lays down, or sweeps off the board
+      const zn = moveHazardNode(t, st.move, { redraw:opts.rerender, persist:opts.persist });
+      if(zn) out.append(zn);
+      // Leech Seed: plant it on a target, or shake the user's own off
+      const sn2 = moveSeedNode(t, st.move, { redraw:opts.rerender, persist:opts.persist });
+      if(sn2) out.append(sn2);
       hpNode = moveHPNode(t, st.move, { missed:missedRoll, redraw:opts.rerender, persist:opts.persist });
     }
     /* Demoralize (Edge, prereq Adept Intimidate): "Whenever you land a Critical Hit on a foe, that
@@ -9608,7 +9848,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         atkTinted: ownerHasAbility(t,"Tinted Lens") || !!(tMold && tMold.tinted), atkMold: !!tMold,
         atkExploit: ownerHasAbility(t,"Exploit"), atkWar: ownerAuraActive(t,"War"), atkDeicide: !!st.deicide,
         seFlat: heldSeFlatDamage(t), defCSMode, moveRule, critExtra, fx: hitFx,
-        onDealt:(n)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n); } });
+        onDealt:(n)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n, true); } });
       if(tw) out.append(tw);
       feedLogged = true;
       logRoll({ kind:"move", label:st.name, who:t.name||"",
@@ -15469,8 +15709,13 @@ function monCard(p, opts={}){
   if(!isMomSpecies(p.species))
     card.append(el("button",{class:"pc-star"+(p.onTeam?" on":""), title:p.onTeam?"On team — tap to send to box":"In box — tap to add to team",
       onclick:e=>{e.stopPropagation(); setTeam(p, !p.onTeam);}}, p.onTeam?"★":"☆"));
-  card.append(el("button",{class:"pc-del",title:"remove",onclick:e=>{e.stopPropagation();
-    if(confirm(`Remove ${p.nickname||sp?.name||"this Pokémon"}?`)){ const c=activeChar(); c.pokemon=c.pokemon.filter(x=>x.id!==p.id); save(); renderPokemon(); render(); }}},"🗑"));
+  /* Deleting a Pokemon is irreversible and takes its levels, Moves, Tutor Points and history with
+     it - one mis-tap on a phone and a party member is simply gone. In a shared campaign that is the
+     GM's call: a player who is done with a Pokemon puts it in the 🖥 PC, where it can always be
+     fetched back. Solo/local play keeps the button, because there is nobody else to ask. */
+  if(mode !== "cloud" || isGM())
+    card.append(el("button",{class:"pc-del",title:"remove",onclick:e=>{e.stopPropagation();
+      if(confirm(`Remove ${p.nickname||sp?.name||"this Pokémon"}?`)){ const c=activeChar(); c.pokemon=c.pokemon.filter(x=>x.id!==p.id); save(); renderPokemon(); render(); }}},"🗑"));
   return card;
 }
 function addPokemon(){
@@ -15677,6 +15922,7 @@ function statusCard(p){
   };
   if(hasStatus(p,"confused")) card.append(confusionRow(p, monHpLoss));
   if(hasStatus(p,"vortex")) card.append(vortexRow(p, ()=>{ save(); refreshMon(p); }, monHpLoss));
+  if(hasStatus(p,"seeded")) card.append(leechSeedRow(p, ()=>{ save(); refreshMon(p); }, monHpLoss));
   const active = STATUS_DEFS.filter(s=>hasStatus(p,s.key));
   if(active.length){
     card.append(el("div",{class:"small muted",style:"margin-top:12px;font-weight:700"}, `Active effects (${active.length})`));
@@ -16247,6 +16493,9 @@ function buffDR(owner){
   // Treasure Hoard (Gimmighoul): +5 DR while it is still sitting in its chest. An Ability, so it
   // is never consumed — same shape as Enduring Rage above.
   const hoard = treasureHoardDR(owner); if(hoard){ dr+=hoard; from.push("Treasure Hoard (Chest Forme)"); }
+  /* the sky, last: Snowscape pays an Ice-Type 5 DR, or only +2 if it is armoured already, so it has
+     to see everything above it before it decides which number it is handing over */
+  const wdr = weatherDR(owner, dr); if(wdr){ dr += wdr.dr; from.push(wdr.why); }
   return { dr, from };
 }
 /* ---- Treasure Hoard (Gimmighoul) -----------------------------------------------------------
@@ -20729,11 +20978,24 @@ function moveHPNode(actor, m, o){
     if(e.kind === "recoil" && rockHead) n = 0;
     return n;
   };
+  /* A drain or a Recoil keyword is a fraction of what the target ACTUALLY LOST - after its Defense,
+     the type matchup and its Damage Reduction. Nothing knows that number at the moment the dice are
+     read, so the box is pre-filled with the raw Damage Roll to have something to show. That is a
+     GUESS, and usually a generous one: half the raw roll can be twice the real drain. It is flagged
+     as an estimate until the number is real - typed in by hand, or handed back by the \u{1F4A5} Apply
+     that actually put the hit on a token. */
+  let dealtReal = false;
+  const dealtWarn = el("div", { class:"small", style:"color:var(--warn);font-weight:600;margin-bottom:6px" });
   if(needDealt){
     card.append(el("div", { class:"inline small", style:"gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap" },
       el("span", { class:"muted", style:"font-weight:700" }, "Damage the target actually took:"), dealtIn,
-      el("span", { class:"muted" }, "— after its Defense, the type matchup and its Damage Reduction. The \u{1F4A5} Apply below fills this in for you.")));
-    dealtIn.addEventListener("input", () => refreshers.forEach(f => f()));
+      el("span", { class:"muted" }, "— after its Defense, the type matchup and its Damage Reduction. The \u{1F4A5} Apply below fills this in for you.")), dealtWarn);
+    dealtIn.addEventListener("input", () => { dealtReal = true; refreshers.forEach(f => f()); });
+    refreshers.push(() => {
+      dealtWarn.textContent = (dealtReal || !dealtOf())
+        ? "" : "⚠ That is the RAW Damage Roll, not what the target lost — subtract its Defense, "
+              + "the matchup and its Damage Reduction (or press \u{1F4A5} Apply) before taking the Hit Points.";
+    });
   }
   rows.forEach(e => {
     const row = el("div", { style:"margin-top:6px;padding-top:6px;border-top:1px dotted var(--line)" });
@@ -20765,12 +21027,14 @@ function moveHPNode(actor, m, o){
       const what = e.kind === "drain" ? "Drain" : e.kind === "recoil" ? "Recoil" : up ? "Heal" : "Cost";
       /* a heal aimed at somebody else is a fraction of THEIR maximum, not the caster's — the
          numbers only exist once a target is picked, so the row names the fraction and stops */
+      const est = e.of === "dealt" && !dealtReal && !!n;     // still working off the raw Damage Roll
       head.textContent = e.who === "target"
         ? `${HP_KIND_ICON[e.kind]} ${what} — ${hpFracLbl(e)} of the target's ${e.of === "current" ? "current" : "Max"} HP`
-        : `${HP_KIND_ICON[e.kind]} ${what} — ${hpFracLbl(e)} ${ofTxt}${e.of === "dealt" ? "" : ` (${baseOf(e)})`} = ${n} HP`
+        : `${HP_KIND_ICON[e.kind]} ${what} — ${hpFracLbl(e)} ${ofTxt}${e.of === "dealt" ? "" : ` (${baseOf(e)})`} = ${est ? "≈ " : ""}${n} HP`
+          + (est ? " (estimate)" : "")
           + (e.kind === "drain" && bigRoot ? " (Big Root: doubled)" : "")
           + (e.kind === "recoil" && rockHead ? ` — ignored, ${rockHead}` : "");
-      btn.textContent = `${up ? "➕" : "➖"}${n} HP → ${ownerLabel(actor)}`;
+      btn.textContent = `${up ? "➕" : "➖"}${est ? "≈" : ""}${n} HP → ${ownerLabel(actor)}`;
       btn.disabled = !n;
     };
     refreshers.push(paint);
@@ -20815,7 +21079,312 @@ function moveHPNode(actor, m, o){
     card.append(row);
   });
   refreshers.forEach(f => f());
-  card.setDealt = n => { dealtIn.value = String(Math.max(0, n | 0)); refreshers.forEach(f => f()); };
+  /* `real` is true only when the caller KNOWS what the target lost - the \u{1F4A5} Apply's onDealt.
+     A prefill from the raw damage roll leaves the row flagged as an estimate. */
+  card.setDealt = (n, real) => {
+    dealtIn.value = String(Math.max(0, n | 0));
+    dealtReal = !!real;
+    refreshers.forEach(f => f());
+  };
+  return card;
+}
+/* ===================================================================
+   found-05 - THE MOVES THAT SET THE FIELD
+   -------------------------------------------------------------------
+   Sunny Day, the four Terrains, the four Rooms and the handful of Moves that sweep them away. The
+   Map has owned Weather and Terrain for a long time (setMapWeather / setMapTerrain) and now owns
+   the Rooms too (toggleMapRoom), and every downstream reader - Chlorophyll's Speed, Blizzard not
+   missing, terrainRollMods' +10, reversed Initiative - is already wired to them. So all these
+   Moves ever needed was the one press on the roll window that flips the switch, which is exactly
+   the shape WEATHER_SETTER_ABILITIES already has on the Abilities card (typeAbilityRow).
+
+   Keyed by moveKey() so both data sources' spellings land on the same row. Each row is one or
+   more of:
+     weather      set the sky to this key ("clear" clears it)
+     terrain      set the floor to this key
+     room         turn this room on
+     clearTerrain the Terrain in play ends
+     area         the Move makes its Terrain in a patch rather than across the Field - the button
+                  still sets it, and the label says what the patch really is
+     opt          the Move says "you may" - the button is offered, not expected
+     also         the rest of the sentence, which is somebody else's job (Hazards are found-06)
+
+   Only the GM can move the board, so a player gets the announcement and the toast instead - the
+   same compromise the setter Abilities make.
+=================================================================== */
+const FIELD_SETTER_MOVES = {
+  "sunnyday":        { weather:"sunny" },
+  "raindance":       { weather:"rainy" },
+  "sandstorm":       { weather:"sandstorm" },
+  "hail":            { weather:"hail" },
+  "snowscape":       { weather:"snowy" },
+  "chillyreception": { weather:"snowy",
+                       also:"The user may be recalled immediately (even if it is Trapped) and a new Pok\u00e9mon sent out; if it is not recalled, its movement this turn provokes no Attacks of Opportunity." },
+  "defog":           { weather:"clear",
+                       also:"All Blessings and Coats are destroyed as well \u2014 take those off by hand. The Hazards are on the \u2620 card below." },
+  "electricterrain": { terrain:"electric" },
+  "grassyterrain":   { terrain:"grassy" },
+  "mistyterrain":    { terrain:"misty" },
+  "psychicterrain":  { terrain:"psychic" },
+  /* the four that lay a patch of Terrain after they resolve. The Map keeps one Terrain for the
+     whole board rather than per-square patches, so the button sets it board-wide and says so. */
+  "risingvoltage":   { terrain:"electric", opt:true, area:"a Blast 7 centred on the user" },
+  "expandingforce":  { terrain:"psychic",  opt:true, area:"a Blast 7 centred on the user" },
+  "mistyexplosion":  { terrain:"misty",                area:"a Blast 7 centred on the user" },
+  "grassyglide":     { terrain:"grassy",   opt:true, area:"the squares the user Passed over" },
+  "trickroom":       { room:"trick" },
+  "gravity":         { room:"gravity" },
+  "wonderroom":      { room:"wonder" },
+  "magicroom":       { room:"magic" },
+  "steelroller":     { clearTerrain:true,
+                       also:"The Hazards in or beside the squares Passed through are on the \u2620 card below." },
+  "icespinner":      { clearTerrain:true },
+  "tidyup":          { clearTerrain:true, opt:true,
+                       also:"Slow or Rough Terrain of your choice goes as well \u2014 that one is drawn on the Map by hand. The Burst 4 of Hazards is on the \u2620 card below." },
+};
+function moveFieldEffects(m){
+  const n = (m && (typeof m === "string" ? m : m.name)) || "";
+  return n ? (FIELD_SETTER_MOVES[moveKey(n)] || null) : null;
+}
+/* The card the roll shows for a Move that changes the field. One press per switch; the GM's press
+   moves the board for everybody, a player's announces it. */
+function moveFieldNode(actor, m, o){
+  o = o || {};
+  const fx = moveFieldEffects(m);
+  if(!fx || !actor) return null;
+  const redraw = o.redraw || (() => {}), persist = o.persist || save;
+  const canSetMap = (typeof mode !== "undefined" && mode === "cloud" && cloud && cloud.isGM);
+  const card = el("div", { class:"card", style:"background:var(--panel);border:1px solid var(--line);margin:10px 0 0" });
+  card.append(el("div", { class:"small", style:"font-weight:800;margin-bottom:4px" }, "\u{1F310} The field"));
+
+  /* one row = one switch: the icon+name it sets, the rules it brings with it, and the button */
+  const mk = (def, label, what, run, extraLines) => {
+    const row = el("div", { style:"margin-top:6px;padding-top:6px;border-top:1px dotted var(--line)" });
+    row.append(el("div", { class:"small", style:"font-weight:700" }, `${def.icon} ${label}`));
+    (extraLines || []).forEach(t => row.append(el("div", { class:"small muted" }, t)));
+    (def.rules || []).forEach(r => row.append(el("div", { class:"small" }, "\u2022 " + r)));
+    if(fx.opt) row.append(el("div", { class:"small", style:"color:var(--accent);font-weight:600" },
+      `${m.name} says "you may" \u2014 this only happens if the user wants it.`));
+    const btn = el("button", { class:"btn-secondary", style:"margin-top:4px;padding:4px 10px" }, what);
+    btn.addEventListener("click", (ev) => {
+      let said = "";
+      if(canSetMap){
+        const map = currentMapForView() || activeMap();
+        if(map){ run(map); said = " Set on the Map."; }
+      }
+      persist(); redraw(); ev.currentTarget.disabled = true;
+      toast(`${def.icon} ${m.name} \u2014 ${label}.${said}`);
+    });
+    row.append(btn);
+    card.append(row);
+    return row;
+  };
+
+  if(fx.weather){
+    const def = weatherByKey(fx.weather);
+    const clear = fx.weather === "clear";
+    mk(def, clear ? "the Weather becomes Clear" : `the Weather becomes ${def.name}`,
+      clear ? "\u{1F324} Clear the Weather" : `${def.icon} Set ${def.name}`,
+      map => setMapWeather(map, fx.weather));
+  }
+  if(fx.terrain){
+    const def = TERRAIN_BY_KEY[fx.terrain];
+    if(def) mk(def, `the Field becomes ${def.name}`, `${def.icon} Set ${def.name}`,
+      map => setMapTerrain(map, fx.terrain),
+      fx.area ? [`${m.name} lays it in ${fx.area}. The Map keeps one Terrain for the whole board, so this switch covers everyone \u2014 if only part of the board should be under it, say so at the table.`] : []);
+  }
+  if(fx.room){
+    const def = ROOM_BY_KEY[fx.room];
+    const already = roomOn(fx.room);
+    if(def){
+      const row = mk(def, `the area is ${def.field}`,
+        already ? `${def.icon} ${def.name} is already up` : `${def.icon} Start ${def.name}`,
+        map => { if(!(map.rooms||[]).includes(fx.room)) toggleMapRoom(map, fx.room); },
+        already ? [`${def.name} is already in play \u2014 using it again changes nothing.`] : []);
+      if(already) row.querySelector("button").disabled = true;
+    }
+  }
+  if(fx.clearTerrain){
+    const on = activeTerrains();
+    mk({ icon:"\u{1F331}", rules:[] },
+      on.length ? `${on.map(t=>t.name).join(" and ")} ends` : "any Field-range Terrain ends",
+      "\u{1F331} End the Terrain", map => setMapTerrain(map, ""),
+      on.length ? [] : ["No Terrain is in play right now, so there is nothing for this half of the Move to end."]);
+  }
+  if(fx.also) card.append(el("div", { class:"small muted", style:"margin-top:8px" }, fx.also));
+  if(!canSetMap) card.append(el("div", { class:"small muted", style:"margin-top:6px" },
+    "Only the GM can change the Map \u2014 this announces it for the table; ask the GM to flip the switch."));
+  return card;
+}
+/* ===================================================================
+   found-06 \u2014 HAZARD-SETTING (AND HAZARD-CLEARING) MOVES
+   -------------------------------------------------------------------
+   "Set 8 square meters of Spikes within the range" was eight trips through the GM's \u2620 Hazard menu,
+   and "destroys all Hazards within 5 meters" was a hunt around the board for the markers. One row
+   per Move here, and the roll grows a card that does it in one press.
+
+     set     the HAZARDS key the Move lays down          qty   how many squares the book asks for
+     clear   metres around the user that are swept       all   the whole board (Defog)
+     area    the shape the book prints, kept as words because the Map places squares, not blasts
+     opt     the Move says "you may" \u2014 offered, never expected
+     when    the condition the clause hangs on (a Pledge combination, a once-per-Scene)
+     also    the rest of the sentence, which belongs to somebody else
+
+   The board is the GM's, so a player's press announces the Move and a GM's press moves the markers \u2014
+   the same compromise FIELD_SETTER_MOVES makes.
+=================================================================== */
+const HAZARD_SETTER_MOVES = {
+  "spikes":         { set:"spikes", qty:8,
+                      area:"8 square metres within 6 metres, each one adjacent to another Spikes square",
+                      also:"Those squares also count as Slow Terrain \u2014 paint that in with the Map's \u26f0 zone tool if it matters." },
+  "toxicspikes":    { set:"toxicspikes", qty:8,
+                      area:"8 square metres within 6 metres, each one adjacent to another Toxic Spikes square",
+                      also:"Two layers on one square Badly Poison instead \u2014 set the second layer on the same squares and tick the two-layers box when somebody walks in. Poison-Types cross them harmlessly." },
+  "stickyweb":      { set:"stickyweb", qty:8,
+                      area:"8 square metres within 6 metres, each one adjacent to another Sticky Web square",
+                      also:"Bug-Types cross it harmlessly, destroying it as they go." },
+  "stealthrock":    { set:"stealthrock", qty:4,
+                      area:"4 square metres within 6 metres",
+                      also:"A foe moving within 2 metres pulls one Rock to itself \u2014 tap that Rock and press \u26a0 to spend it." },
+  "barrier":        { set:"barrier", qty:4,
+                      area:"up to 4 continuous segments, at least one of them adjacent to the user",
+                      also:"Each segment is Blocking Terrain with 20 Hit Points and 15 Damage Reduction, damaged as if it were Psychic-Typed, and lasts until the end of the encounter." },
+  "firepledge":     { set:"fire", qty:8, opt:true, area:"a Burst 1 around the target",
+                      when:"only when Fire Pledge is combined with Grass Pledge" },
+  "grasspledge":    { set:"fire", qty:8, opt:true, area:"a Burst 1 around the target",
+                      when:"only when Grass Pledge is combined with Fire Pledge" },
+  "artillerolives": { set:"slick", qty:18, opt:true, area:"two Blasts 3 anywhere within range \u2014 or one Blast 5 centred on the target, if only one target was chosen",
+                      when:"once per Scene",
+                      also:"The user ignores its own Slick Hazards: it never has to stop Shifting on one and never becomes Vulnerable from one." },
+  /* the sweepers */
+  "rapidspin":      { clear:5, area:"all Hazards within 5 metres",
+                      also:"Leech Seeds, and the user's own Trapped or Stuck, go with them." },
+  "rapidspinss":    { clear:5, area:"all Hazards within 5 metres",
+                      also:"Leech Seeds, and the user's own Trapped or Stuck, go with them. If it hits, the user's Speed rises 1 Combat Stage." },
+  "mortalspin":     { clear:5, area:"a Burst 5 \u2014 but only the Hazards the foes placed",
+                      also:"Leech Seeds and the user's Trapped or Stuck go too, and every target hit is Poisoned. The Map doesn't record who set a marker, so check the ones this clears are really theirs." },
+  "razorwind":      { clear:1, area:"the user's own squares and every square adjacent to them",
+                      also:"Any Smokescreen there is blown away as well, and the user gains +2 Evasion until the end of its next turn." },
+  "whirlwind":      { clear:6, area:"every square the Line passes through",
+                      also:"The Line is 6 metres long, so this sweeps 6 metres around the user \u2014 put back anything outside the Line. A Smokescreen in the Line is dispersed too." },
+  "defog":          { clear:0, all:true, area:"the whole field",
+                      also:"Blessings and Coats are destroyed with them \u2014 take those off by hand. The Weather card above turns the sky Clear." },
+  "steelroller":    { clear:1, area:"the squares Passed through and the squares adjacent to them",
+                      also:"They are removed BEFORE they can affect the user. The Terrain card above ends any Terrain the Move rolled over." },
+  "tidyup":         { clear:4, area:"a Burst 4 around the user",
+                      also:"Slow or Rough Terrain of your choice goes with them \u2014 that is drawn on the Map by hand. The user's Attack and Speed then rise 1 Combat Stage each." },
+  "courtchange":    { swap:true, area:"every Hazard and Blessing on the board swaps the side it belongs to" },
+};
+function moveHazardEffects(m){
+  const n = (m && (typeof m === "string" ? m : m.name)) || "";
+  return n ? (HAZARD_SETTER_MOVES[moveKey(n)] || null) : null;
+}
+/* ---- Leech Seed on the roll screen -------------------------------------------------------------
+   Two Moves' worth of press. Leech Seed itself plants the seed on a target (through the same
+   foeFxDialog every foe-targeting effect uses, so a player who cannot see enemy tokens just
+   declares it and the GM picks); the spinners shake the user's own seed off. */
+const SEED_PLANT_MOVES  = new Set(["leechseed"]);
+const SEED_SHAKE_MOVES  = new Set(["rapidspin", "rapidspinss", "mortalspin"]);
+function moveSeedNode(actor, m, o){
+  o = o || {};
+  const key = moveKey((m && m.name) || "");
+  const plant = SEED_PLANT_MOVES.has(key), shake = SEED_SHAKE_MOVES.has(key);
+  if(!actor || (!plant && !shake)) return null;
+  if(shake && !hasStatus(actor, "seeded")) return null;      // nothing on them to shake off
+  const redraw = o.redraw || (() => {}), persist = o.persist || save;
+  const card = el("div", { class:"card", style:"background:var(--panel);border:1px solid var(--line);margin:10px 0 0" });
+  card.append(el("div", { class:"small", style:"font-weight:800;margin-bottom:4px" }, "\u{1F331} Leech Seed"));
+  if(plant){
+    card.append(el("div", { class:"small muted" },
+      `The target loses ${leechSeedTick(actor)}-ish Hit Points (1/10th of ITS full Maximum) at the start of each of its turns, and ${ownerLabel(actor)} gains the same. `
+      + "It lasts until that target Faints or is recalled. Grass-Types, and anything immune to Grass attacks, shrug it off."));
+    card.append(el("button", { class:"btn-secondary", style:"margin-top:6px;padding:4px 10px",
+      onclick:() => foeFxDialog({ fx:"leechseed", caster:actor, icon:"\u{1F331}", name:"Leech Seed",
+        verb:"\u{1F331} Plant it", single:true, saveFn:persist, redraw,
+        intro:"The seed goes on one target. Its own status card then carries the \u{1F331} row that moves the Hit Points at the start of each of its turns.",
+        headline:() => `${ownerLabel(actor)} planted Leech Seed`,
+        lines:() => ["1/10th of the target's full Max HP at the start of each of its turns, fed back to the user."] }) },
+      "\u{1F331} Plant the seed on a target…"));
+  } else {
+    card.append(el("div", { class:"small muted" },
+      `${m.name} removes Leech Seeds — and ${ownerLabel(actor)} is carrying ${leechSeedBy(actor) ? leechSeedBy(actor) + "'s" : "one"}.`));
+    card.append(el("button", { class:"btn-secondary", style:"margin-top:6px;padding:4px 10px",
+      onclick:() => { clearLeechSeed(actor); persist(); toast("\u{1F331} Leech Seed shaken off"); redraw(); } },
+      "\u{1F331} Shake the seed off"));
+  }
+  return card;
+}
+/* The card the roll shows for a Move that lays Hazards down or sweeps them away. */
+function moveHazardNode(actor, m, o){
+  o = o || {};
+  const fx = moveHazardEffects(m);
+  if(!fx || !actor) return null;
+  const redraw = o.redraw || (() => {}), persist = o.persist || save;
+  const canSetMap = (typeof mode !== "undefined" && mode === "cloud" && cloud && cloud.isGM);
+  const def = fx.set ? (HAZARDS.find(h => h.key === fx.set) || null) : null;
+  const card = el("div", { class:"card", style:"background:var(--panel);border:1px solid var(--line);margin:10px 0 0" });
+  card.append(el("div", { class:"small", style:"font-weight:800;margin-bottom:4px" }, "\u2620 Hazards"));
+  const say = (t) => card.append(el("div", { class:"small muted" }, t));
+
+  if(fx.area) say(fx.area.charAt(0).toUpperCase() + fx.area.slice(1) + ".");
+  if(fx.when) card.append(el("div", { class:"small", style:"color:var(--accent);font-weight:600" },
+    fx.when.charAt(0).toUpperCase() + fx.when.slice(1) + "."));
+  if(fx.opt) card.append(el("div", { class:"small", style:"color:var(--accent);font-weight:600" },
+    `${m.name} says "you may" \u2014 this only happens if the user wants it.`));
+  if(def && def.note) say(def.note);
+
+  const out = el("div", { class:"small", style:"margin-top:6px;font-weight:600;color:var(--accent)" });
+
+  if(def){
+    const qty = el("input", { type:"number", min:1, max:60, value:fx.qty || 1, style:"width:64px" });
+    const btn = el("button", { class:"btn-secondary", style:"padding:4px 10px" }, `${def.icon} Set ${def.name}`);
+    btn.addEventListener("click", () => {
+      const n = Math.max(1, Math.min(60, parseInt(qty.value) || 1));
+      let said = "";
+      if(canSetMap){
+        const map = currentMapForView() || activeMap();
+        if(map){
+          const placed = dropHazardsAt(map, fx.set, n, ownerMapToken(actor));
+          said = ` ${placed} marker${placed === 1 ? "" : "s"} on the Map \u2014 drag them where the Move actually reaches.`;
+        }
+      }
+      out.textContent = `${def.icon} ${n} \u00d7 ${def.name}.${said}`;
+      persist(); redraw();
+      toast(`${def.icon} ${m.name} \u2014 ${n} \u00d7 ${def.name}.${said}`);
+    });
+    card.append(el("div", { style:"display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap" },
+      el("span", { class:"small" }, "How many squares?"), qty, btn));
+  }
+  if(fx.clear != null || fx.all){
+    const btn = el("button", { class:"btn-secondary", style:"padding:4px 10px;margin-top:6px" },
+      fx.all ? "\u{1F32C} Destroy every Hazard" : `\u{1F300} Destroy the Hazards within ${fx.clear} m`);
+    btn.addEventListener("click", () => {
+      if(!canSetMap){
+        out.textContent = `\u{1F300} ${m.name} destroys ${fx.area}. Ask the GM to take the markers off.`;
+        toast(`\u{1F300} ${m.name} \u2014 the Hazards are destroyed`);
+        return;
+      }
+      const map = currentMapForView() || activeMap();
+      const tok = ownerMapToken(actor);
+      if(!map || (!fx.all && !tok)){
+        out.textContent = "No token for the user on this board \u2014 take the markers off by hand.";
+        return;
+      }
+      const r = clearHazardsNear(map, tok, fx.clear || 0, { all:!!fx.all });
+      out.textContent = r.cleared
+        ? `\u{1F300} ${r.cleared} marker${r.cleared === 1 ? "" : "s"} destroyed (${r.names.join(", ")}).`
+        : "No Hazard markers were in reach \u2014 nothing to destroy.";
+      persist(); redraw();
+      toast(`\u{1F300} ${m.name} \u2014 ${r.cleared} Hazard${r.cleared === 1 ? "" : "s"} destroyed`);
+    });
+    card.append(btn);
+  }
+  if(fx.swap) card.append(el("div", { class:"small", style:"margin-top:6px;color:var(--accent);font-weight:600" },
+    "Called at the table \u2014 the Map doesn't record whose side a marker belongs to."));
+  if(fx.also) say(fx.also);
+  card.append(out);
+  if(!canSetMap && (def || fx.clear != null || fx.all)) card.append(el("div", { class:"small muted", style:"margin-top:6px" },
+    "Only the GM can place or clear markers \u2014 this announces it for the table."));
   return card;
 }
 /* ---- the 1d100 one-hit knockouts (Fissure, Sheer Cold, Guillotine, Horn Drill) ---------------
@@ -22121,7 +22690,7 @@ function openMoveRoll(p, m, sp, opts={}){
   const duelMom  = isDuelistMon(p) ? duelistMomentumBonus(p) : 0;
   const vsTagged = duelMom > 0 && !!opts.vsTagged;
   const wx = weatherRollMods(p, m, mtype);      // current Weather Condition(s) (Core p.342) — Climate Control can hold two
-  const accCS = (d.cs.acc||0) + abilAcc.acc + (hasStatus(p,"focused")?1*trainingMult(p):0) + (vsTagged?duelMom:0) + (wx.acc||0);      // Accuracy CS (Core p.234) + ability Accuracy mods + Focused Training + Duelist Momentum + Extreme Sandstorm
+  const accCS = (d.cs.acc||0) + abilAcc.acc + (hasStatus(p,"focused")?1*trainingMult(p):0) + (vsTagged?duelMom:0) + (wx.acc||0) + roomAcc();      // Accuracy CS (Core p.234) + ability Accuracy mods + Focused Training + Duelist Momentum + Extreme Sandstorm + Gravity's +2
   const tx = terrainRollMods(p, m, mtype);      // current Terrain(s) in play — any number can stack
   /* The AC this roll is checked against: the Move's printed AC, minus any Accuracy Training
      bought for it with Tutor Points ("permanently lowered by 1"), with the Weather's own
@@ -23044,6 +23613,17 @@ function openMoveRoll(p, m, sp, opts={}){
     { const tn = moveTypeNode(p, m, opts.rerender || (()=>refreshMon(p)), opts.persist);
       if(tn) out.append(tn); }
     { const ok = ohkoNode(p, m); if(ok) out.append(ok); }
+    /* found-05: the Weather, Terrain or Room this Move sets. The board is the GM's, so a player's
+       press announces it and the GM's flips the Map's own switch for everybody. */
+    { const fn = moveFieldNode(p, m, { redraw: opts.rerender || (()=>refreshMon(p)), persist: opts.persist });
+      if(fn) out.append(fn); }
+    /* found-06: the Hazards this Move sets or destroys — the GM's press moves the markers, a
+       player's announces it, the same way the field card works. */
+    { const zn = moveHazardNode(p, m, { redraw: opts.rerender || (()=>refreshMon(p)), persist: opts.persist });
+      if(zn) out.append(zn); }
+    /* Leech Seed: plant it on a target, or shake the user's own off. */
+    { const sn2 = moveSeedNode(p, m, { redraw: opts.rerender || (()=>refreshMon(p)), persist: opts.persist });
+      if(sn2) out.append(sn2); }
     /* found-04: the Move's own Hit Point effects (drain, Recoil, self-heal, the cost of missing).
        Built here so the damage roll below can hand it the number it needs; appended after it. */
     const missedRoll = multi ? (connected === 0)
@@ -23150,7 +23730,7 @@ function openMoveRoll(p, m, sp, opts={}){
             pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens") || !!(mold && mold.tinted),
             atkExploit: ownerHasAbility(p,"Exploit"), atkMega: isMegaMon(p), atkWar: ownerAuraActive(p,"War"), seFlat: heldSeFlatDamage(p),
             pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS, moveRule, critExtra, fx: hitFx,
-            onDealt:(n)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n); } });
+            onDealt:(n)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n, true); } });
           if(tw) dmgLine.append(tw);
         }
         /* …and into the GM's feed, carrying the same numbers, so they can drop this hit on a token
@@ -24233,16 +24813,8 @@ function flipOutBounceClear(t){
   const map = currentMapForView() || activeMap();
   const tok = ownerMapToken(t);
   if(!map || !tok) return { ok:false };
-  ensureMapTokens();
-  const arr = cloud.mapTokens.data.byMap[map.id] || [];
-  const span = Math.max(1, tok.size||1);
-  const hit = arr.filter(h => isHazardToken(h)
-    && h.x >= tok.x - 1 && h.x <= tok.x + span && h.y >= tok.y - 1 && h.y <= tok.y + span);
-  if(!hit.length) return { ok:true, cleared:0 };
-  const gone = new Set(hit.map(h=>h.id));
-  cloud.mapTokens.data.byMap[map.id] = arr.filter(h => !gone.has(h.id));
-  mapTokensSave(); renderMap();
-  return { ok:true, cleared:hit.length, names:[...new Set(hit.map(h=>hazardDef(h).name))] };
+  // found-06: one shared clearer for every "destroys all Hazards within N metres" rule
+  return Object.assign({ ok:true }, clearHazardsNear(map, tok, 1));
 }
 /* The box itself, one per Move, and only for a Trainer who actually holds the Feature. `ctx` is how
    the Aerial Ace tick reaches the roll — the crit test lives in openTrainerAttack's own closure. */
@@ -25192,6 +25764,17 @@ const FOE_FX = {
       nb.druid = P.druid || "";
     } },
   earthshifter: { apply:(x) => { fxStatus(x.obj, "tripped"); } },
+  /* Leech Seed - the chip plus WHO planted it, so the \u{1F331} row on the target's status card knows
+     where the Hit Points are supposed to go each turn. */
+  leechseed: {
+    skip:(x) => hasStatus(x.obj, "seeded")
+      ? `already carrying ${leechSeedBy(x.obj) ? leechSeedBy(x.obj) + "'s" : "a"} Leech Seed` : "",
+    apply:(x, P) => {
+      const why = fxStatus(x.obj, "seeded");
+      if(why) return `(${why})`;
+      setLeechSeed(x.obj, P.by || "");
+      return `— −${leechSeedTick(x.obj)} HP at the start of each of its turns`;
+    } },
   gaze: { apply:(x, P) => {
       const eff = MANIPULATE_EFFECTS.find(e => e.key === P.eff); if(!eff) return "";
       if(eff.status) fxStatus(x.obj, eff.status);
@@ -26178,6 +26761,11 @@ function openApplyRestorative(t, rerender, persist, opts){
         t.buffs = ownerBuffs(t).filter(b => b.key !== "front-line-healer");   // never stacks with itself
         addBuff(t, "front-line-healer");
       }
+      /* Applying a Restorative is a Standard Action - it IS this Trainer's turn for the round. EOT
+         means "Every Other Turn", so every other EOT thing they had spent comes back off cooldown
+         now, exactly as it would have if they had attacked instead. Before this, a round spent
+         healing somebody left an EOT Move stuck on cooldown until the end of the Scene. */
+      const eotBack = refreshOtherEotUses(t);
       (persist||save)(); closeModal();
       await commitTargets(chosen);
       const how = [def ? `${def.name} spent` : "by hand",
@@ -26185,6 +26773,7 @@ function openApplyRestorative(t, rerender, persist, opts){
                    bonus ? "+5 Field Clinic" : ""].filter(Boolean).join(" · ");
       toast(`🧪 ${ownerLabel(o)}: ${done.join(", ") || "no change"}  (${how})`
         + (hasFeatureLoose(t,"Front Line Healer") ? " · you gain 5 DR for a Round" : ""));
+      if(eotBack.length) toast(`↺ You took your turn — EOT back off cooldown: ${eotBack.join(", ")}`);
       (rerender||renderBattle)();
     }}, opts.stayWithUs ? "🚑 Save them" : "🧪 Apply it"),
   ]});
@@ -32927,12 +33516,13 @@ function encHealCreature(o, isT){
   resetUses(o, "all"); resetManualCS(o); clearStorageDigestion(o); clearAllStatuses(o);
   if(isT){
     o.usedAP = 0; o.modes = {}; o.manualBoundAP = 0;
-    delete o.fightOn; delete o.critMoment; delete o.bottled;
+    delete o.fightOn; delete o.critMoment; delete o.bottled; delete o.hazardHit;
     o.currentHP = trainerDerived(o).hp;
   } else {
     delete o.momentum; delete o.critMoment; delete o.perseveranceUsed; delete o.typeRefreshed;
     delete o.deepCold; delete o.simpleImp; delete o.pheromone; delete o.pheroRolled;
     delete o.luminous;                                 // Starlight ends with the encounter
+    delete o.hazardHit;                                // Stealth Rock's once-per-Encounter memory (found-06)
     if(o.traced){ o.abilities = (o.abilities||[]).filter(a => a !== o.traced); delete o.traced; }
     if(isSwarm(o)) swarmSetTotalHP(o, swarmMaxTotalHP(o));
     else if(isBoss(o)){ bossSetTotalHP(o, bossMaxTotalHP(o)); o.boss.halfInjuryGiven = false; }
@@ -34086,6 +34676,7 @@ function encStatusControl(p){
   };
   if(hasStatus(p,"confused")) body.append(confusionRow(p, encHpLoss));
   if(hasStatus(p,"vortex")) body.append(vortexRow(p, ()=>{ saveEnc(); renderEncounters(); }, encHpLoss));
+  if(hasStatus(p,"seeded")) body.append(leechSeedRow(p, ()=>{ saveEnc(); renderEncounters(); }, encHpLoss));
   det.append(body);
   return det;
 }
@@ -39575,6 +40166,22 @@ function refreshCharSelect(){
     .filter(c => c.id===state.activeId || !charArchived(c) || showArchivedChars)
     .forEach(c => sel.append(el("option",{value:c.id,selected:c.id===state.activeId}, charFlagPrefix(c) + (c.name || "(unnamed)"))));
 }
+/* You just archived the sheet you were looking at: step onto a live one so it really does leave
+   the picker. Falls back to your own first sheet, then anybody's, then leaves it alone. */
+function leaveArchivedActive(){
+  if(mode === "cloud"){
+    const cur = cloud.byId[cloud.activeId];
+    if(!cur || liveCharRow(cur)) return;
+    const rows = Object.values(cloud.byId).filter(r => r && r.data && liveCharRow(r));
+    const next = rows.find(ownsRow) || rows[0];
+    if(next && next.id !== cloud.activeId){ cloud.activeId = next.id; openMon = null; }
+    return;
+  }
+  const c = activeChar();
+  if(!c || !charArchived(c)) return;
+  const next = (state.characters || []).find(x => !charArchived(x));
+  if(next && next.id !== state.activeId){ state.activeId = next.id; openMon = null; save(); }
+}
 /* the manager: one row per character, with its two switches. Un-ticking is the Restore. */
 function openCharManager(){
   const body = el("div",{});
@@ -39625,7 +40232,11 @@ function openCharManager(){
         box.checked = !!it.data[field];
         box.addEventListener("change",()=>{
           if(box.checked) it.data[field] = true; else delete it.data[field];
-          it.commit(); refreshCharSelect(); draw();
+          it.commit();
+          /* Archiving the sheet you are currently ON has to move you off it, or the picker keeps
+             showing it (it never drops the active character) and the retirement looks ignored. */
+          if(field === "archived" && box.checked) leaveArchivedActive();
+          refreshCharSelect(); draw();
         });
         lab.append(box, el("span",{class:"small"},label));
         return lab;
@@ -40552,6 +41163,8 @@ function normMapMeta(data){
     if(m.weather2 && (!WEATHER_BY_KEY[m.weather2] || m.weather2 === "clear")) m.weather2 = "";   // Climate Control's second Weather
     if(!Array.isArray(m.terrains)) m.terrains = [];
     m.terrains = m.terrains.filter(k=>TERRAIN_BY_KEY[k]);
+    if(!Array.isArray(m.rooms)) m.rooms = [];          // Trick Room / Gravity / Wonder Room / Magic Room
+    m.rooms = m.rooms.filter(k=>ROOM_BY_KEY[k]);
     if(typeof m.shopId!=="string") m.shopId = "";      // the shop currently open on this map ("" = none)
   });
   // playerMapId = the map players see (seed from the old shared activeMapId for back-compat)
@@ -41193,8 +41806,14 @@ async function cloudConnect(campaign, name, gmCode, silent, viewer){
     if(cloud.isGM && encStatus!=="error") localStorage.setItem(encSeedKey, "1");   // don't seed again
     subscribeRealtime();
     mode = "cloud"; openMon = null;
-    const mine = Object.values(cloud.byId).find(r=>ownsRow(r));
-    cloud.activeId = mine ? mine.id : (Object.keys(cloud.byId)[0] || null);
+    /* An ARCHIVED sheet is retired: it is out of the picker for everyone, including its owner.
+       Picking one as the active character put it straight back on screen (charRowInPicker always
+       keeps whatever you are looking at), which is exactly the "archived characters still show up
+       for the player that owns them" complaint. So a live sheet wins every time, and an archived
+       one is only landed on when there is genuinely nothing else. */
+    const mineRows = Object.values(cloud.byId).filter(ownsRow);
+    const pick = mineRows.find(liveCharRow) || Object.values(cloud.byId).find(liveCharRow) || mineRows[0];
+    cloud.activeId = pick ? pick.id : (Object.keys(cloud.byId)[0] || null);
     updateCloudButton(); closeModal(); render();
     migrateMapBgsToStorage();   // fire-and-forget: lift any legacy base64 map backgrounds into Storage
     migrateEncImagesToStorage();   // and any legacy base64 avatars/sprites baked into the encounters row
@@ -41685,7 +42304,11 @@ async function withdrawFromPC(mon, targetId){
   const idx = cloud.pc.data.pokemon.findIndex(x=>x.id===mon.id);
   if(idx<0){ toast("Someone already took that one"); render(); return; }
   const m = normPokemon(JSON.parse(JSON.stringify(mon)));
-  m.id = uid(); m.currentHP = null; delete m._pcFrom; delete m._pcAt;
+  /* The PC is a BOX, not a Pokemon Center. A stored Pokemon comes back out exactly as damaged,
+     Injured and afflicted as it went in - so currentHP is carried across untouched. It used to be
+     blanked here, and `currentHP == null` reads as "full" everywhere in the app, which quietly
+     laundered every wound through a deposit-and-withdraw. */
+  m.id = uid(); delete m._pcFrom; delete m._pcAt;
   target.data.pokemon = target.data.pokemon || [];
   m.onTeam = target.data.pokemon.filter(p=>p.onTeam).length < partyCap(target.data.trainer);   // to party if there's room, else its box
   target.data.pokemon.push(m);
@@ -43416,8 +44039,24 @@ const TERA_BLAST_STELLAR_RULE = { formeStep:1,
 function moveTargetRules(m, p){
   const n = typeof m==="string" ? m : (m && m.name);
   if(!n) return null;
-  if(moveKey(n) === "terablast" && p && hasAbility(p,"Stellar Blast")) return TERA_BLAST_STELLAR_RULE;
-  return MOVE_TARGET_RULES[moveKey(n)] || null;
+  const own = (moveKey(n) === "terablast" && p && hasAbility(p,"Stellar Blast"))
+    ? TERA_BLAST_STELLAR_RULE : (MOVE_TARGET_RULES[moveKey(n)] || null);
+  return gravityGroundRule(m, n, own);
+}
+/* Gravity (Warped): "Flying-Types and Pokemon with the Ability Levitate are no longer immune to
+   Ground-Type Moves." That is word for word what Thousand Arrows already does, and Thousand Arrows
+   is expressed as a per-target rule - so while the room is up every Ground-Type Move borrows the
+   same one: Flying reads as a plain neutral matchup and the Ability immunities are pierced. A Move
+   that carries a rule of its own keeps every field of it; this only ever adds. */
+function gravityGroundRule(m, n, rule){
+  if(!roomOn("gravity")) return rule;
+  const ty = (m && typeof m === "object" && m.type) || (moveByName.get(n) || {}).type || "";
+  if(String(ty).toLowerCase() !== "ground") return rule;
+  const note = "Gravity \u2014 Flying-Types are not immune to Ground, and Levitate is ignored";
+  return Object.assign({}, rule || {}, {
+    chart: Object.assign({ Flying:1 }, (rule && rule.chart) || {}),
+    pierceImmune: true,
+    note: [(rule && rule.note) || "", note].filter(Boolean).join(" \u00b7 ") });
 }
 /* `defCSMode`: null = normal (CS-adjusted); "all" = the pre-CS ("real") stat, ignoring every CS
    shift on it (manual or automatic — a Burn's −2 Def counts as much as a hand-raised one); "positive"
@@ -43512,7 +44151,11 @@ function initiativeList(map){
         rows.push({ id: n===0 ? t.id : `${t.id}#${n}`, token:t, info, init: base - 5*n, act:n, acts, swarmMon: acts>1?mon:null });
     }
   });
-  return rows.sort((a,b)=> b.init-a.init || tokenSpeed(b.token)-tokenSpeed(a.token)
+  /* Trick Room (Rewinding): "Initiative is reversed, and participants instead go from lowest
+     Initiative to highest." The tie-break on Speed turns around with it - two creatures on the
+     same Initiative are separated by who is slower, not faster - so the whole order is a mirror. */
+  const rewind = roomOn("trick"), sgn = rewind ? -1 : 1;
+  return rows.sort((a,b)=> sgn*(b.init-a.init) || sgn*(tokenSpeed(b.token)-tokenSpeed(a.token))
                         || (a.info.name||"").localeCompare(b.info.name||"") || a.act-b.act);
 }
 /* ---- Leftovers & co.: "recovers 1/N of Max HP at the beginning of each turn" ----
@@ -44062,6 +44705,9 @@ function recallPokemon(o){
   // "…or is recalled, the chest disappears and they revert to Chest Forme"
   if(treasureHoardRevert(o)) lines.push("chest picked back up (Chest Forme)");
   if(momentumOf(o)){ lines.push(`${momentumOf(o)} Momentum lost`); setMomentum(o, 0); }
+  /* "A Pokemon who has been hit by a Stealth Rock Hazard cannot get hit by another in the same
+     encounter UNTIL IT IS RETURNED TO A POKE BALL AND THEN SENT BACK OUT" — this is that recall. */
+  if(o.hazardHit){ delete o.hazardHit; lines.push("Stealth Rock can catch it again"); }
   const regen = recallRegenerator(o);
   if(regen) lines.push(regen);
   return { ok:true, lines };
@@ -45174,15 +45820,36 @@ const isBoatToken = t => !!(t && t.boat);
    other token, but every combat/turn/HP path treats kind==='hazard' as scenery (like boats/shops). */
 const HAZARDS = [
   { key:'stealthrock', name:'Stealth Rock', icon:'🪨',
-    note:'A foe moving within 2 m of a Rock pulls it into their square and takes a Tick of damage; the Rock is then used up.' },
+    note:'A foe moving within 2 m of a Rock pulls it into their square and takes a Tick of damage; the Rock is then used up.',
+    entry:{ who:'A foe that moved within 2 metres', hp:'tick', hpType:'Rock', consume:true, once:'stealthrock',
+            say:'Stealth Rock is considered to be dealing damage: apply Weakness and Resistance, but no stats. A Pokémon already hit by one this Encounter can\'t be hit again until it is recalled and sent back out.' } },
   /* Hiela's own ice, kept apart from the ambient 'Ice' below so a board can carry both: the gym
      floor the players are already sliding on, and the six squares she just conjured. Placed for you
      by the ❄ Frozen Domain button on the Type Ace card. */
   { key:'frozendomain', name:'Frozen Domain', icon:'🧊',
-    note:'Acrobatics Check or be Tripped (the caster\'s own DC — 4 + twice their Survival Rank). Flying, levitating and Naturewalk (Tundra) are immune. Standing on it counts as Hail. A Fire-Type attack from or into a square melts that square — remove it here.' },
-  { key:'spikes',      name:'Spikes',       icon:'🔺' },
-  { key:'toxicspikes', name:'Toxic Spikes', icon:'☠️' },
-  { key:'stickyweb',   name:'Sticky Web',   icon:'🕸️' },
+    note:'Acrobatics Check or be Tripped (the caster\'s own DC — 4 + twice their Survival Rank). Flying, levitating and Naturewalk (Tundra) are immune. Standing on it counts as Hail. A Fire-Type attack from or into a square melts that square — remove it here.',
+    entry:{ who:'A grounded creature that failed the Acrobatics Check', grounded:true, status:['tripped'],
+            say:'Roll the Acrobatics Check first — the DC is 4 + twice the caster\'s Survival Rank. Only a failure is Tripped.' } },
+  { key:'spikes',      name:'Spikes',       icon:'🔺',
+    note:'Spikes make their squares Slow Terrain. A grounded foe that runs into them loses 1/10 of its full Hit Points and is Slowed until the end of its next turn.',
+    entry:{ who:'A grounded foe that ran into the Spikes', grounded:true, hp:'tick', status:['slowed'] } },
+  { key:'toxicspikes', name:'Toxic Spikes', icon:'☠️',
+    note:'Toxic Spikes make their squares Slow Terrain. A grounded foe that runs into them becomes Poisoned and Slowed until the end of its next turn — Badly Poisoned instead where two layers share a square. Poison-Types cross them harmlessly, destroying them as they go.',
+    entry:{ who:'A grounded foe that ran into the Toxic Spikes', grounded:true, status:['poisoned','slowed'], free:['Poison'],
+            layers:{ label:'Two layers of Toxic Spikes on this square', status:['badlyPoisoned','slowed'] } } },
+  { key:'stickyweb',   name:'Sticky Web',   icon:'🕸️',
+    note:'Sticky Web makes its squares Slow Terrain. A grounded foe that runs into it has its Speed lowered 1 Combat Stage and is Slowed until the end of its next turn. Flying-Types and anything with Levitate are unaffected; Bug-Types cross it harmlessly, destroying it as they go.',
+    entry:{ who:'A grounded foe that ran into the Sticky Web', grounded:true, cs:[['spd',1]], status:['slowed'], free:['Bug'] } },
+  /* The Slick Hazard keyword (see KEYWORDS) as a marker the board can actually carry — Artillerolives
+     and the Ice Moves that leave one behind now have something to drop. */
+  { key:'slick',       name:'Slick Hazard', icon:'\u{1F6DD}',
+    note:'Anyone moving into a Slick Hazard slides in a straight line, in the direction they entered, ignoring Movement Capabilities, until they leave it or hit a square they can\'t enter. Foes must then end their Shift and are Vulnerable for 1 full round, and can\'t Jump while standing on one.',
+    entry:{ who:'A foe that slid into the Slick Hazard', status:['vulnerable'],
+            say:'Slide them in a straight line, in the direction they entered, until they leave the Hazard or hit a square they can\'t enter — their Shift ends there.' } },
+  /* Barrier's psychic walls: Blocking Terrain that can be attacked down, so the segment carries its
+     own numbers rather than pretending to be a zone the Map can give no Hit Points to. */
+  { key:'barrier',     name:'Barrier segment', icon:'\u{1F9F1}',
+    note:'Blocking Terrain: 2 m tall, 1 m wide, 2 cm thick. 20 Hit Points, 15 Damage Reduction, damaged as if it were Psychic-Typed. Lasts until the end of the encounter or until it is destroyed.' },
   { key:'fire',        name:'Fire',         icon:'🔥' },
   { key:'lava',        name:'Lava',         icon:'🌋' },
   { key:'water',       name:'Water / Flood',icon:'🌊' },
@@ -45330,6 +45997,207 @@ async function addHazardBatch(map, key, qty){
   }
   mapTokensSave(); renderMap();
 }
+/* ===================================================================
+   found-06 — HAZARDS AS A REAL ENGINE
+   -------------------------------------------------------------------
+   Hazard markers were pure scenery: the GM dropped them, and everything the rules say about them
+   ("8 square metres of Spikes", "destroys all Hazards within 5 metres", "a grounded foe that runs
+   into the hazard") was remembered and applied by hand. Three pieces fix that, and every Move,
+   Feature and Ability that touches a Hazard goes through them:
+
+     dropHazardsAt(map, key, qty, anchor)   place N markers, fanned around a token or the view
+     clearHazardsNear(map, anchor, radius)  take them off again (Rapid Spin, Defog, Tidy Up…)
+     hazardEntryApply(def, token, opts)     what walking into one actually costs the walker
+
+   The markers stay ordinary tokens (`hazard:<key>`), so they sync, drag, persist and clear exactly
+   as a hand-placed one always did — the engine only stops the table doing the arithmetic.
+=================================================================== */
+const hazardArrFor = (map) => { ensureMapTokens();
+  return cloud.mapTokens.data.byMap[map.id] || (cloud.mapTokens.data.byMap[map.id] = []); };
+/* Where a Move's markers land: around the caster's token when it has one (Spikes are set "within
+   your range"), else the middle of whatever the GM is looking at, which is where addToken puts a
+   new token anyway. */
+function hazardAnchorCell(map, anchor){
+  if(anchor && anchor.x != null) return { x:Math.max(0, Math.round(anchor.x)), y:Math.max(0, Math.round(anchor.y)) };
+  return mapViewCenterCell(map, 1);
+}
+/* Places `qty` markers in the spiral, skipping squares that already hold one of the SAME kind so a
+   second casting widens the patch instead of stacking invisibly on it. Returns how many landed. */
+function dropHazardsAt(map, key, qty, anchor){
+  if(!map || !key) return 0;
+  const arr = hazardArrFor(map);
+  const base = hazardAnchorCell(map, anchor);
+  const taken = new Set(arr.filter(t => t.hazard === key).map(t => `${t.x},${t.y}`));
+  let placed = 0;
+  for(let i=0; i<HAZARD_SPIRAL.length && placed < qty; i++){
+    const off = HAZARD_SPIRAL[i];
+    const x = Math.max(0, base.x + off[0]), y = Math.max(0, base.y + off[1]);
+    if(taken.has(`${x},${y}`)) continue;
+    taken.add(`${x},${y}`);
+    arr.push({ id:uid(), hazard:key, size:1, x, y });
+    placed++;
+  }
+  /* a patch bigger than the spiral (Stealth Rock across a whole field) keeps going in rows below it
+     rather than silently placing fewer markers than the Move asked for */
+  let row = 3;
+  while(placed < qty){
+    for(let dx = -row; dx <= row && placed < qty; dx++){
+      const x = Math.max(0, base.x + dx), y = Math.max(0, base.y + row);
+      if(taken.has(`${x},${y}`)) continue;
+      taken.add(`${x},${y}`);
+      arr.push({ id:uid(), hazard:key, size:1, x, y });
+      placed++;
+    }
+    row++;
+    if(row > 40) break;                                  // never loop forever on a silly quantity
+  }
+  mapTokensSave(); renderMap();
+  return placed;
+}
+/* Every Hazard marker whose square is within `radius` metres of the footprint of `anchor` (a token,
+   or a {x,y} cell). radius 0 = the anchor's own squares only. */
+function hazardsNear(map, anchor, radius, filter){
+  if(!map || !anchor) return [];
+  const span = Math.max(1, anchor.size || 1), r = Math.max(0, radius | 0);
+  const x0 = anchor.x - r, x1 = anchor.x + span - 1 + r;
+  const y0 = anchor.y - r, y1 = anchor.y + span - 1 + r;
+  return hazardArrFor(map).filter(h => isHazardToken(h)
+    && h.x >= x0 && h.x <= x1 && h.y >= y0 && h.y <= y1
+    && (!filter || filter(h)));
+}
+/* Takes those markers off the board. `opts.all` ignores the anchor and clears the whole map (Defog).
+   Returns { cleared, names } — the readout every clearing Move prints. */
+function clearHazardsNear(map, anchor, radius, opts){
+  opts = opts || {};
+  if(!map) return { cleared:0, names:[] };
+  const arr = hazardArrFor(map);
+  const hit = opts.all ? arr.filter(h => isHazardToken(h) && (!opts.filter || opts.filter(h)))
+                       : hazardsNear(map, anchor, radius, opts.filter);
+  if(!hit.length) return { cleared:0, names:[] };
+  const gone = new Set(hit.map(h => h.id));
+  cloud.mapTokens.data.byMap[map.id] = arr.filter(h => !gone.has(h.id));
+  mapTokensSave(); renderMap();
+  return { cleared:hit.length, names:[...new Set(hit.map(h => hazardDef(h).name))] };
+}
+/* "Stealth Rock is considered to be dealing damage; apply Weakness and Resistance. Do not apply
+   stats." — the defender's own chart plus whatever its Abilities do to that Type, and nothing else. */
+function hazardEntryMult(o, type){
+  try{
+    const mods = defenseTypeMods(o) || {};
+    if(mods.immune && mods.immune.has(type)) return 0;
+    let m = typeMultAgainst(type, monTypes(o) || [], (mods.step && mods.step[type]) || 0);
+    if(mods.tolerance && m > 0 && m < 1) m = typeMultAgainst(type, monTypes(o) || [], ((mods.step && mods.step[type]) || 0) - 1);
+    return m;
+  }catch(e){ return 1; }
+}
+/* What one creature takes for walking into one Hazard. Every push goes through the same funnels the
+   rest of the sheet uses — ownerHPChange (Temp HP, Injuries, KO), inflictStatus (Type, Veil, Ability
+   and grounded-Terrain immunities) and lowerCS (Clear Body & co.) — so a Hazard can never do
+   something an attack couldn't. Doesn't save: the caller commits the token's source. */
+function hazardEntryApply(def, token, opts){
+  opts = opts || {};
+  const e = def && def.entry;
+  const o = token ? tokenHp(token).obj : null;
+  if(!e) return { ok:false, why:`${def ? def.name : "That marker"} has no printed effect on whoever walks into it.` };
+  if(!o)  return { ok:false, why:"That token isn't a creature." };
+  const lines = [], who = ownerLabel(o);
+  let types = [];
+  try{ types = monTypes(o) || []; }catch(err){ types = []; }
+  /* "Poison-Type Pokemon may move over Toxic Spikes harmlessly, destroying the Hazards as they do" */
+  const free = (e.free || []).find(t => types.includes(t));
+  if(free) return { ok:true, destroy:true, nothing:true,
+    lines:[`${who} is ${free}-Type — it crosses ${def.name} harmlessly, and the marker is destroyed as it goes.`] };
+  if(e.grounded && !surelyGrounded(o)) return { ok:true, nothing:true,
+    lines:[`${who} is not grounded (Flying, Levitate or a Sky Capability) — ${def.name} can't touch it.`] };
+  if(e.once){
+    const seen = o.hazardHit && o.hazardHit[e.once];
+    if(seen && !opts.force) return { ok:false,
+      why:`${who} has already been hit by ${def.name} this Encounter — it can't be hit again until it is recalled and sent back out.` };
+  }
+  const rule = (e.layers && opts.layers) ? e.layers : e;
+  let lost = 0;
+  if(e.hp === "tick"){
+    let n = hpTick(ownerMaxHP(o));
+    if(e.hpType){
+      const mult = hazardEntryMult(o, e.hpType);
+      n = Math.floor(n * mult);
+      lines.push(mult === 0 ? `${who} is immune to ${e.hpType} — the Tick does nothing.`
+        : `A Tick of Hit Points, ${e.hpType}-Typed: ×${mult} for Weakness and Resistance.`);
+    }
+    if(n > 0) lost = -ownerHPChange(o, -n);
+  }
+  if(lost) lines.push(`−${lost} Hit Points (now ${ownerHP(o)}/${ownerMaxHP(o)}).`);
+  const st = inflictStatuses(o, rule.status || [], opts);
+  if(st.on.length)   lines.push(`${st.on.join(", ")}.`);
+  if(st.held.length) lines.push(`Held off: ${st.held.join(", ")}.`);
+  (rule.cs || []).forEach(([stat, n]) => {
+    const nm = (CS_STATS.find(s => s[0] === stat) || [stat, stat])[1];
+    if(lowerCS(o, stat, n, { quiet:true })) lines.push(`${nm} −${n} Combat Stage.`);
+    else lines.push(`${nm} couldn't be lowered (${csLowerBlock(o, stat)}).`);
+  });
+  if(e.once){ o.hazardHit = o.hazardHit || {}; o.hazardHit[e.once] = true; }
+  if(e.say) lines.push(e.say);
+  return { ok:true, destroy:!!e.consume, lines: lines.length ? lines : ["Nothing stuck."] };
+}
+/* The GM's "somebody just walked into this" button, on the marker's own menu. Lists every creature
+   token on the board (the Map is the only place that knows who is standing where), applies the
+   Hazard's printed effect to the ones ticked, and takes the marker off when the rules say it is
+   used up. */
+function openHazardEntry(token, map){
+  const def = hazardDef(token);
+  if(!def.entry || !map) return;
+  const cands = mapTokensFor(map.id).filter(t => { const i = tokenHp(t);
+    return i.editable && !i.unlinked && i.kind !== "shop" && i.kind !== "hazard" && i.kind !== "zone"; });
+  const body = el("div", {});
+  body.append(el("div", { class:"small", style:"margin-bottom:8px" }, def.entry.who + ":"));
+  if(def.note) body.append(el("div", { class:"small muted", style:"margin-bottom:8px" }, def.note));
+  if(!cands.length){
+    body.append(el("div", { class:"small muted" }, "No creature tokens on this map to apply it to."));
+    modal({ title:`${def.icon} ${def.name}`, bodyNode:body,
+      footNodes:[el("button", { class:"btn-secondary", onclick:closeModal }, "Close")] });
+    return;
+  }
+  const items = cands.map(t => {
+    const cb = el("input", { type:"checkbox" });
+    return { t, cb, row:el("label", { class:"inline", style:"display:flex;gap:8px;align-items:center;padding:2px 0;cursor:pointer" },
+      cb, el("span", { class:"small" }, `${tokenHp(t).name} — ${tokenHp(t).cur}/${tokenHp(t).max} HP`)) };
+  });
+  const list = el("div", { style:"max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-bottom:8px" });
+  items.forEach(i => list.append(i.row));
+  body.append(list);
+  const layersCb = el("input", { type:"checkbox" });
+  if(def.entry.layers) body.append(el("label", { class:"inline", style:"display:flex;gap:8px;align-items:center;margin-bottom:8px;cursor:pointer" },
+    layersCb, el("span", { class:"small" }, def.entry.layers.label)));
+  const keepCb = el("input", { type:"checkbox" });
+  if(def.entry.consume) body.append(el("label", { class:"inline", style:"display:flex;gap:8px;align-items:center;margin-bottom:8px;cursor:pointer" },
+    keepCb, el("span", { class:"small muted" }, `Keep the marker on the board (${def.name} is normally used up)`)));
+  const out = el("div", { class:"small", style:"margin-top:6px" });
+  const go = async () => {
+    const chosen = items.filter(i => i.cb.checked);
+    if(!chosen.length){ out.textContent = "Tick at least one creature."; return; }
+    out.innerHTML = "";
+    let destroy = false;
+    for(const it of chosen){
+      const r = hazardEntryApply(def, it.t, { layers:layersCb.checked });
+      if(r.destroy) destroy = true;
+      const line = el("div", { style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)" });
+      line.append(el("div", { style:"font-weight:700" }, tokenHp(it.t).name));
+      (r.ok ? r.lines : [r.why]).forEach(t => line.append(el("div", { class:"small" + (r.ok ? "" : " muted") }, t)));
+      out.append(line);
+      if(r.ok && !r.nothing) await commitTokenSource(it.t);
+      it.cb.checked = false;
+    }
+    if(destroy && !keepCb.checked){
+      clearHazardsNear(map, null, 0, { all:true, filter:h => h.id === token.id });
+      out.append(el("div", { class:"small", style:"color:var(--accent);font-weight:600;margin-top:4px" },
+        `${def.name} is used up — the marker has been taken off the board.`));
+    } else renderMap();
+  };
+  modal({ title:`⚠ ${def.name} — somebody walked into it`, bodyNode:body, footNodes:[
+    el("button", { class:"btn-primary", onclick:go }, `${def.icon} Apply`),
+    el("button", { class:"btn-secondary", onclick:closeModal }, "Close")] });
+  body.append(out);
+}
 function openAddHazard(map){
   const body = el('div',{});
   body.append(el('div',{class:'small muted',style:'margin-bottom:8px'},
@@ -45352,9 +46220,16 @@ function openHazardMenu(token, map){
   const cur = hazardDef(token);
   const body = el('div',{});
   body.append(el('div',{style:'text-align:center;font-size:38px;margin-bottom:2px'}, cur.icon),
-    el('div',{class:'small muted',style:'text-align:center;margin-bottom:10px'}, 'Visual hazard -- drag to move. No automatic effect; narrate or apply it by hand.'));
+    el('div',{class:'small muted',style:'text-align:center;margin-bottom:10px'},
+      cur.entry ? 'Drag it to move it. When somebody walks into it, press the button below and the sheet applies what it costs them.'
+                : 'Visual hazard -- drag to move. No automatic effect; narrate or apply it by hand.'));
   // the ones with real printed rules carry them here, so the GM doesn't have to remember which
   if(cur.note) body.append(el('div',{class:'small',style:'margin-bottom:10px;color:var(--accent);font-weight:600'}, cur.note));
+  /* found-06: the Hazards with a printed on-entry effect apply it themselves — Hit Points through
+     ownerHPChange, Afflictions through inflictStatus, Combat Stages through lowerCS. */
+  if(cur.entry) body.append(el('button',{class:'btn-primary',style:'width:100%;margin-bottom:10px',
+    onclick:()=>{ closeModal(); openHazardEntry(token, map); }},
+    `⚠ Somebody walked into the ${cur.name}`));
   const grid = el('div',{style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:12px'});
   HAZARDS.forEach(h=> grid.append(el('button',{class:'btn-secondary'+(h.key===cur.key?' on':''),style:'display:flex;align-items:center;gap:8px;justify-content:flex-start',
     onclick:()=>{ token.hazard=h.key; mapTokensSave(); renderMap(); closeModal(); }}, el('span',{style:'font-size:18px'},h.icon), h.name)));
@@ -47176,6 +48051,8 @@ function openTokenMenu(token, map){
         statusWrap.append(confusionRow(LS.obj, tkHpLoss));
       if(info.editable && LS && LS.obj && tokenStatusKeys(token).includes("vortex"))
         statusWrap.append(vortexRow(LS.obj, async()=>{ await commitTokenSource(token); drawStatuses(); paintTokenStatus(token, LS.kind==="enc"||LS.kind==="enctrainer"); }, tkHpLoss));
+      if(info.editable && LS && LS.obj && tokenStatusKeys(token).includes("seeded"))
+        statusWrap.append(leechSeedRow(LS.obj, async()=>{ await commitTokenSource(token); drawStatuses(); paintTokenStatus(token, LS.kind==="enc"||LS.kind==="enctrainer"); }, tkHpLoss));
     };
     drawStatuses();
     wrap.append(statusWrap);
@@ -48374,6 +49251,44 @@ function setMapTerrain(map, key){
   mapMetaSave(); renderMap();
   toast(def ? `${def.icon} ${def.name} — terrain set` : "🌱 Terrain cleared");
 }
+/* Turn one of the four rooms on or off. They STACK (Gravity and Trick Room change different rules
+   and the book never has them cancel), so this is a toggle per room rather than Weather's single
+   select. Like the weather it has no round timer: it stays until the GM turns it off. */
+function toggleMapRoom(map, key){
+  const def = ROOM_BY_KEY[key]; if(!map || !def) return;
+  if(!Array.isArray(map.rooms)) map.rooms = [];
+  const i = map.rooms.indexOf(key);
+  const on = i < 0;
+  if(on) map.rooms.push(key); else map.rooms.splice(i, 1);
+  mapMetaSave(); renderMap();
+  toast(`${def.icon} ${def.name} ${on ? `\u2014 the area is ${def.field}` : "ended"}`);
+}
+/* Panel under the map toolbar: every room in play, what it is doing, and the one press that ends
+   it. Same shape as weatherPanel/terrainPanel, and like them it is only drawn when there is
+   something to say. The rooms change rules rather than numbers, so there is nothing to apply per
+   turn - the readers (Initiative, grounding, the stat swap, held items) run on their own. */
+function roomPanel(map){
+  const rooms = (map?.rooms||[]).map(k => ROOM_BY_KEY[k]).filter(Boolean);
+  if(!map || !rooms.length) return null;
+  const gm = (typeof cloud !== "undefined" && cloud && cloud.isGM);
+  const card = el("details",{class:"card map-weather"});
+  card.append(el("summary",{},
+    el("span",{style:"font-weight:800"}, rooms.map(r=>`${r.icon} ${r.name}`).join(" \u00b7 ")),
+    el("span",{class:"muted small",style:"margin-left:8px"}, rooms.map(r=>`the area is ${r.field}`).join(" \u00b7 "))));
+  const body = el("div",{style:"margin-top:8px"});
+  rooms.forEach(r => {
+    const head = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"});
+    head.append(el("span",{class:"small",style:"font-weight:700"}, `${r.icon} ${r.name} \u2014 the area is ${r.field}`));
+    if(gm) head.append(el("button",{class:"linkbtn",style:"padding:2px 8px",
+      title:`end ${r.name}`, onclick:()=>toggleMapRoom(map, r.key)}, "\u2716 end it"));
+    body.append(head);
+    r.rules.forEach(x => body.append(el("div",{class:"small"}, "\u2022 "+x)));
+  });
+  body.append(el("div",{class:"small muted",style:"margin-top:10px"},
+    "The sheet is already running these: Initiative is sorted backwards under Trick Room, everything on the board counts as grounded under Gravity (and Ground-Type Moves reach Flying-Types and Levitate), Defense and Special Defense are swapped on every Pok\u00e9mon under Wonder Room, and Held Items pay out nothing under Magic Room."));
+  card.append(body);
+  return card;
+}
 /* Panel under the map toolbar: the active condition's full rules, plus the per-turn HP ticks it
    would move on every Pokémon on the board. Ticks are LISTED rather than auto-applied, so the GM
    applies them deliberately; each row carries a button that does the arithmetic on one tap. */
@@ -48621,6 +49536,14 @@ function renderMap(){
       tsel.addEventListener("change", ()=>setMapTerrain(map, tsel.value));
       bar.append(el("span",{class:"map-sep"}),
         el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Terrain"), tsel));
+      /* - Rooms group: the four Psychic Field Moves. They stack, so each is its own toggle - */
+      bar.append(el("span",{class:"map-sep"}));
+      ROOM_DEFS.forEach(r => {
+        const on = (map.rooms||[]).includes(r.key);
+        bar.append(el("button",{class:"btn-secondary"+(on?" on":""),
+          title:`${r.name} \u2014 the area is ${r.field}. ${r.blurb}. Stays until you turn it off.`,
+          onclick:()=>toggleMapRoom(map, r.key)}, `${r.icon} ${r.name}${on?" on":""}`));
+      });
       // — Shop group: open one of the Shops tab's storefronts on this map, for everyone looking at it —
       const openShops = shopList().filter(s=>!s.archived);
       const shsel = el("select",{title:"Open a shop on this map — everyone looking at it gets the shopping popup"});
@@ -48640,6 +49563,8 @@ function renderMap(){
     if(map && !weatherIsClear(pw)) bar.append(el("span",{class:"battle-badge"}, `${pw.icon} ${pw.name}`));
     (map?.terrains||[]).map(k=>TERRAIN_BY_KEY[k]).filter(Boolean).forEach(t=>
       bar.append(el("span",{class:"battle-badge"}, `${t.icon} ${t.name}`)));
+    (map?.rooms||[]).map(k=>ROOM_BY_KEY[k]).filter(Boolean).forEach(r=>
+      bar.append(el("span",{class:"battle-badge",title:`${r.blurb} \u2014 the area is ${r.field}`}, `${r.icon} ${r.name}`)));
     const viewer = isMapHpViewer();
     if(map && viewer){
       // "Viewer" (a co-pilot/spectator device) can add ANY player's token and select the whole
@@ -48706,6 +49631,7 @@ function renderMap(){
   if(!barCollapsed){
     const wpanel = weatherPanel(map); if(wpanel) root.append(wpanel);
     const tpanel = terrainPanel(map); if(tpanel) root.append(tpanel);
+    const rpanel = roomPanel(map);    if(rpanel) root.append(rpanel);
   }
   if(meta.battleOn) root.append(initiativePanel(map, meta));
   healMissingShops(map);                                              // doors on the board but no shop data → refetch once

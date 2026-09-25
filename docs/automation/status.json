@@ -101,6 +101,14 @@
   "found-04": {
    "note": "app.js?v=553: moveHPEffects parses drain / Recoil keyword / self-heal / cost / miss-cost / target heal / sacrifice off the rules text — 59 Moves, 70 clauses. moveHPNode = the 🩸 Hit Points card on both roll modals (Pokémon + Trainer), appended after the damage roll. Every press goes through ownerHPChange = damageHealRow's pipeline (Temp HP soak, Injuries, KO/Death, Shields Down, Schooling, Usurper mirror); 'cannot be prevented in any way' passes raw so Temp HP doesn't soak it. Drain/Recoil are a fraction of the damage ACTUALLY dealt: the box is pre-filled with the rolled total and attackTargetWidget's new onDealt callback replaces it with the real post-defence figure. Big Root doubles a drain; Rock Head / Magic Guard zero the Recoil. The weather family (Synthesis, Moonlight, Morning Sun, Shore Up) offers only the fraction the sky in play calls for (ownerWeather). Conditional clauses keep their condition as a label rather than being dropped (Curse's Ghost half, Swallow's three Stockpile payouts, Floral Healing on Grassy Terrain). Ally heals use allyTargets + branchTargetDialog; Healing Wish / Lunar Dance open openSacrificeHeal. NOT parsed on purpose: a Tick of HP (Aqua Ring, Salt Cure — the ±Tick buttons already do it), 'equal to the amount the target lost' (Leech Seed) and 'the higher of the target's Attack' (Strength Sap), which need a number no sentence carries.",
    "status": "auto"
+  },
+  "found-05": {
+   "note": "app.js?v=554: FIELD_SETTER_MOVES (22 Moves) + moveFieldEffects/moveFieldNode = the 'The field' card on both roll modals; GM's press flips the Map's own switch (setMapWeather/setMapTerrain/toggleMapRoom), a player's announces it. New Snowy weather (typeDR -> weatherDR, folded into buffDR). The four Rooms are a real map-meta state (map.rooms, ROOM_DEFS, stackable GM toggles + roomPanel + player badges): Trick Room reverses initiativeList, Gravity grounds everyone (surelyGrounded) + gives Ground-Type Moves Thousand Arrows' rule (moveTargetRules) + a flat +2 Accuracy, Wonder Room swaps eff.def/eff.spdef in pokeDerived, Magic Room empties heldFxList.",
+   "status": "auto"
+  },
+  "found-06": {
+   "note": "app.js?v=555: dropHazardsAt / hazardsNear / clearHazardsNear / hazardEntryApply + HAZARD_SETTER_MOVES (17 Moves) and the hazard card on both roll modals; HAZARDS rows carry printed rules + on-entry effects; Slick Hazard and Barrier segment added; openHazardMenu gained the walked-into-it applier",
+   "status": "auto"
   }
  },
  "moves": {
@@ -132,6 +140,10 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Artillerolives": {
+   "note": "Offers the Slick Hazards (new HAZARDS row, with the keyword's slide/Vulnerable as an entry effect). The two-Blast shape and the Double Strike branch are called at the table.",
+   "status": "partial"
+  },
   "Aura Wheel": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
@@ -142,6 +154,10 @@
   },
   "Axe Kick": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP on a miss only; the 15+ Confusion is found-02's. Left: the Gravity prohibition, and a Shield not counting as a miss",
+   "status": "partial"
+  },
+  "Barrier": {
+   "note": "The roll places 4 Barrier-segment markers carrying their printed 20 HP / 15 DR / Psychic-Typed / Blocking Terrain note. The segments have no HP bar of their own - the Map gives Hit Points to creatures and boats, not to scenery.",
    "status": "partial"
   },
   "Belly Drum": {
@@ -172,6 +188,10 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Chilly Reception": {
+   "note": "found-05 sets Snowy from the roll. Still open: the immediate recall of a Trapped user and sending a new Pokemon out (switching, found-07)",
+   "status": "partial"
+  },
   "Chloroblast": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 50% of Max HP, unpreventable (Temp HP doesn't soak it)",
    "status": "auto"
@@ -196,12 +216,20 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Court Change": {
+   "note": "The Map stores no side on a Hazard or Blessing marker, so 'swap which side they belong to' has nothing to swap. The card states the rule and leaves it to the table.",
+   "status": "skip"
+  },
   "Curse": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the Ghost half's 1/3 Max HP, labelled 'only if the user is a Ghost Type' and unpreventable; the non-Ghost Combat Stages are found-01's. Left: Cursing a target within 8m, and the Frequency that changes with the user's Type",
    "status": "partial"
   },
   "Decorate": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Defog": {
+   "note": "The field card turns the sky Clear and the hazard card destroys every marker on the board. Blessings and Coats are named as the table's, which is what they are.",
    "status": "auto"
   },
   "Double-Edge": {
@@ -228,6 +256,10 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Electric Terrain": {
+   "note": "found-05: sets Electric Terrain on the Map; the +10 Electric damage (terrainRollMods) and the grounded Sleep immunity (TERRAIN_STATUS_IMMUNITY) were already wired to it",
+   "status": "auto"
+  },
   "Energy Ball": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
@@ -236,6 +268,10 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Expanding Force": {
+   "note": "found-05 offers the optional Psychic Terrain from the roll (board-wide rather than the printed Blast 7, said on the card). Still open: Spirit Surge and the once-per-Scene limit",
+   "status": "partial"
+  },
   "Feather Dance": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
@@ -243,6 +279,10 @@
   "Fey Wild": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
+  },
+  "Fire Pledge": {
+   "note": "The Pledge combination offers 8 Fire markers in the Burst 1. The Pledge keyword itself (the Priority follow-up, the Rainbow) is the Pledge batch.",
+   "status": "partial"
   },
   "Flame Charge": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
@@ -285,8 +325,24 @@
    "status": "auto"
   },
   "Grass Pledge": {
-   "note": "found-01: CS clause now parsed (⬆ Apply); still open: interrupt, status",
+   "note": "Same Fire-Hazard half; the Water Pledge branch's Slowed and -2 Speed CS belong to their own batches.",
    "status": "partial"
+  },
+  "Grassy Glide": {
+   "note": "found-05 offers the optional Grassy Terrain from the roll (board-wide rather than the squares Passed over, said on the card). Still open: the Priority the Move gains while the user is already on Grassy Terrain",
+   "status": "partial"
+  },
+  "Grassy Terrain": {
+   "note": "found-05: sets Grassy Terrain on the Map; the +10 Grass damage and the 1/10 Max HP per turn (terrainTickReport) were already wired to it",
+   "status": "auto"
+  },
+  "Gravity": {
+   "note": "found-05: map.rooms gains 'gravity' — surelyGrounded returns true for everything (so grounded-Terrain rules reach Flying-Types), every Ground-Type Move borrows Thousand Arrows' rule via moveTargetRules (Flying reads neutral, Levitate pierced), and roomAcc() adds the flat +2 to every Accuracy Roll on both roll modals. Left to the table: 'Moves that involve the user being airborne may not be used' (the Map does not model altitude) — the room panel says so",
+   "status": "auto"
+  },
+  "Hail": {
+   "note": "found-05: sets Hail on the Map; the non-Ice Tick, Ice Body, Snow Cloak and Blizzard-cannot-miss all follow from WEATHER_DEFS",
+   "status": "auto"
   },
   "Hammer Arm": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
@@ -327,6 +383,10 @@
   "Howl [SS]": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
+  },
+  "Ice Spinner": {
+   "note": "found-05 ends the Field Terrain from the roll; the Tripped-on-18+ range is found-02's. Still open: 'if the user moves through an area of Terrain' — the per-square Terrain zones the Map draws are not read by the roll",
+   "status": "partial"
   },
   "Icebreaker": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt. Left: the first-round Priority/Pass option",
@@ -380,6 +440,10 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the roll now opens openSacrificeHeal itself (3 Injuries healed against the day's cap, healed to full, Move Frequencies restored, the user Faints)",
    "status": "auto"
   },
+  "Magic Room": {
+   "note": "found-05: map.rooms gains 'magic' and heldFxList returns nothing, so every Static/Trigger held-item effect (Choice CS, Eviolite's +5, Type immunities, on-hit riders) stops paying out. Consumables are untouched, which is what the printed exception says",
+   "status": "auto"
+  },
   "Magnetic Flux": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: swap",
    "status": "partial"
@@ -416,6 +480,14 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 50% of Max HP, and it cannot be prevented — Temporary HP doesn't soak it",
    "status": "auto"
   },
+  "Misty Explosion": {
+   "note": "found-05 sets Misty Terrain from the roll (board-wide rather than the printed Blast 7, said on the card); the HP set to -50% is already found-04's Hit Points card. Still open: nothing mechanical beyond the Blast shape",
+   "status": "partial"
+  },
+  "Misty Terrain": {
+   "note": "found-05: sets Misty Terrain on the Map; the -10 Dragon damage was already wired to it",
+   "status": "auto"
+  },
   "Moonlight": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, weather-adjusted (2/3 in Sun, 1/4 in Rain / Sandstorm / Hail)",
    "status": "auto"
@@ -423,6 +495,10 @@
   "Morning Sun": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, weather-adjusted (2/3 in Sun, 1/4 in Rain / Sandstorm / Hail)",
    "status": "auto"
+  },
+  "Mortal Spin": {
+   "note": "Sweeps the Burst 5. Who placed a marker is not recorded on the Map, so 'only the foes' is called at the table; the targets' Poisoned rides the hit through found-02.",
+   "status": "partial"
   },
   "Mud Shot": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
@@ -464,12 +540,28 @@
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: position",
    "status": "partial"
   },
+  "Psychic Terrain": {
+   "note": "found-05: sets Psychic Terrain on the Map; the +10 Psychic damage was already wired to it",
+   "status": "auto"
+  },
   "Rage": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: multiturn, status",
    "status": "partial"
   },
+  "Rain Dance": {
+   "note": "found-05: sets Rainy on the Map; Water +5 / Fire -5, Swift Swim, Thunder & Hurricane cannot miss all follow from WEATHER_DEFS",
+   "status": "auto"
+  },
+  "Rapid Spin": {
+   "note": "clearHazardsNear sweeps the 5 m for real. Leech Seed and the user's Trapped/Stuck removal are status work, not hazard work.",
+   "status": "partial"
+  },
   "Rapid Spin [SS]": {
-   "note": "found-01: CS clause now parsed (⬆ Apply); still open: status, cure",
+   "note": "Same sweep; the +1 Speed CS on a hit belongs to the Combat Stages batch.",
+   "status": "partial"
+  },
+  "Razor Wind": {
+   "note": "Sweeps the user's squares and the ring around them. The Set-Up/Resolution split and the +2 Evasion are found-08.",
    "status": "partial"
   },
   "Recover": {
@@ -484,6 +576,10 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): healed to full in one press. Left: curing Status, falling Asleep and the two-round wake-up",
    "status": "partial"
   },
+  "Rising Voltage": {
+   "note": "found-05 offers the optional Electric Terrain from the roll (board-wide — the Map keeps one Terrain rather than the printed Blast 7, and the card says so). Still open: Groundsource/Spirit Surge and the once-per-Scene limit",
+   "status": "partial"
+  },
   "Rock Smash": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
@@ -494,6 +590,10 @@
   },
   "Rototiller": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Sandstorm": {
+   "note": "found-05: sets Sandstorm on the Map; the per-turn Tick, Sand Rush/Sand Force/Sand Veil all follow from WEATHER_DEFS",
    "status": "auto"
   },
   "Seed Flare": {
@@ -520,6 +620,10 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, one press",
    "status": "auto"
   },
+  "Snowscape": {
+   "note": "found-05: new Snowy weather in WEATHER_DEFS with typeDR -> weatherDR, folded into buffDR, so an Ice-Type really gets the 5 DR (or +2 if it already had some)",
+   "status": "auto"
+  },
   "Soft-Boiled": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 🎯 Heal the target… picks from the board (yourself included) and hands over half of THEIR Max HP",
    "status": "auto"
@@ -528,12 +632,28 @@
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: weather, multiturn",
    "status": "partial"
   },
+  "Spikes": {
+   "note": "HAZARD_SETTER_MOVES: the roll places 8 Spikes; the marker's entry effect takes a Tick of HP + Slowed off whoever walks in (grounded only). Slow Terrain stays the GM's zone tool, and the card says so.",
+   "status": "auto"
+  },
   "Spirit Break": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Stealth Rock": {
+   "note": "Places 4; entry deals a Tick with Rock Weakness/Resistance only (hazardEntryMult, no stats), spends the Rock, and latches o.hazardHit so it can't hit the same creature again until recalled.",
+   "status": "auto"
+  },
   "Steel Beam": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 50% of Max HP, unpreventable (Temp HP doesn't soak it)",
+   "status": "auto"
+  },
+  "Steel Roller": {
+   "note": "Clears the ring of Hazards and ends the Terrain (found-05). The Trip on 15+ and the Pass/Dash movement are their own batches.",
+   "status": "partial"
+  },
+  "Sticky Web": {
+   "note": "Places 8; entry lowers Speed 1 CS (through lowerCS) + Slowed on grounded foes, Bug-Types cross free and destroy it. The Threaded grant and Slow Terrain are the GM's.",
    "status": "auto"
   },
   "Stuff Cheeks": {
@@ -551,6 +671,10 @@
   "Sugar Rush": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: weather",
    "status": "partial"
+  },
+  "Sunny Day": {
+   "note": "found-05: 'The field' card on the roll sets Sunny on the Map (setMapWeather); every downstream reader (Fire +5 / Water -5, Chlorophyll, Thunder at AC 11) was already wired to it",
+   "status": "auto"
   },
   "Supercell Slam": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP on a miss only. Left: the Gravity prohibition, and a Shield not counting as a miss",
@@ -580,6 +704,14 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Tidy Up": {
+   "note": "Clears the Burst 4 of Hazards and ends the Terrain. Slow/Rough Terrain is drawn by hand; the +1 Attack and Speed are the Combat Stages batch.",
+   "status": "partial"
+  },
+  "Toxic Spikes": {
+   "note": "Places 8; entry applies Poisoned + Slowed, Badly Poisoned with the two-layers box ticked, and Poison-Types cross it free and destroy it.",
+   "status": "auto"
+  },
   "Toxic Threads": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: heal, status",
    "status": "partial"
@@ -587,6 +719,10 @@
   "Trailblaze": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: weather",
    "status": "partial"
+  },
+  "Trick Room": {
+   "note": "found-05: map.rooms gains 'trick' and initiativeList sorts backwards (Initiative AND the Speed tie-break mirror), so the turn order on the Map really is reversed",
+   "status": "auto"
   },
   "Triple Arrows": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: swap",
@@ -612,6 +748,10 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/4 of the damage dealt; Rock Head / Magic Guard zero it",
    "status": "auto"
   },
+  "Whirlwind": {
+   "note": "Sweeps 6 m around the user, with the card telling the GM to put back anything outside the Line. The push itself is found-07.",
+   "status": "partial"
+  },
   "Wild Charge": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/4 of the damage dealt; Rock Head / Magic Guard zero it",
    "status": "auto"
@@ -619,6 +759,10 @@
   "Wish": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the target's Max HP, one press. Left: it lands at the end of the user's NEXT turn (found-08), and the switch-in clause",
    "status": "partial"
+  },
+  "Wonder Room": {
+   "note": "found-05: map.rooms gains 'wonder' and pokeDerived swaps eff.def/eff.spdef at the end of the stat pipeline, so damage, Physical/Special Evasion and the stat grid all read the switched pair. Trainers are left alone — the printed rule names Pokemon only",
+   "status": "auto"
   },
   "Wood Hammer": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt; Rock Head / Magic Guard zero it",

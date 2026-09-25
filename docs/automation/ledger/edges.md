@@ -112,11 +112,11 @@ P1 · 24 open of 24 · open
 
 P9 · 40 open of 40 · open
 
-- 🟢 **Basic Balls** — `likely` · P1 (player:Lázaro) · themes: capture · code: POKEBALL_RECIPES:31259
+- 🟢 **Basic Balls** — `likely` · P1 (player:Lázaro) · themes: capture · code: POKEBALL_RECIPES:31644
   - _Crafting Edges · Prereq: Novice Technology Education_
   - You may craft Basic Balls for $100 and Great Balls for $175. Requires access to a Poke Ball Tool Box.
 
-- 🟢 **Basic Cooking** — `likely` · P1 (player:Handels) · themes: other · code: CHEF_RECIPES:29506
+- 🟢 **Basic Cooking** — `likely` · P1 (player:Handels) · themes: other · code: CHEF_RECIPES:29891
   - _Crafting Edges · Prereq: Novice Intuition_
   - You may create "Candy Bars" or "Baby Food" with cooking ingredients costing $50. You may fluff the food in any reasonable manner you like.
 
@@ -124,7 +124,7 @@ P9 · 40 open of 40 · open
   - _Combat Edges · Prereq: Novice Charm_
   - You learn the move Baby-Doll Eyes.
 
-- 🟢 **Demoralize** — `likely` · P1 (enc, player:Lysgd) · themes: status, damage · code: openTrainerAttack:9523, FEATURE_GIFTS:11096
+- 🟢 **Demoralize** — `likely` · P1 (enc, player:Lysgd) · themes: status, damage · code: openTrainerAttack:9641, FEATURE_GIFTS:11214
   - _Combat Edges · Prereq: Adept Intimidate_
   - Whenever you land a Critical Hit on a foe, that foe becomes Vulnerable. Status-Class Moves with an Accuracy Roll can "Crit" for the purposes of activating this effect on a natural roll of 19 or higher, and any effects that expand your Critical-Hit Range also expand this range.
 
@@ -140,7 +140,7 @@ P9 · 40 open of 40 · open
   - _Skill Edges · Prereq: Level 12_
   - You Rank Up a Skill from Expert to Master. You may take this Edge multiple times.
 
-- 🟢 **Medic Training** — `likely` · P1 (enc, player:Lysgd, player:Lázaro) · themes: heal, multiturn · code: EDGE_FX:143, FEATURE_GIFTS:11099, openApplyRestorative:26102
+- 🟢 **Medic Training** — `likely` · P1 (enc, player:Lysgd, player:Lázaro) · themes: heal, multiturn · code: EDGE_FX:143, FEATURE_GIFTS:11217, openApplyRestorative:26487
   - _Other Edges · Prereq: Novice Medicine Education_
   - When you use Restorative Items on others, they do not forfeit their next turn.
 
@@ -156,7 +156,7 @@ P9 · 40 open of 40 · open
   - _Combat Edges · Prereq: Adept Athletics_
   - You learn the move Agility.
 
-- 🟢 **Bad Mood** — `likely` · P2 (enc) · themes: damage · code: badMoodCrit:7883
+- 🟢 **Bad Mood** — `likely` · P2 (enc) · themes: damage · code: badMoodCrit:7995
   - _Combat Edges · Prereq: Expert Intimidate_
   - Your Critical Hit Range is increased by +1 if you are suffering from a Persistent Status Affliction. Your Critical Hit Range is increased by +1 if you are suffering from a Volatile Status Affliction. These stack with each other, giving a total of +2 to Critical Hit Range if you are suffering from both a Persistant and a Volatile Status Affliction.
 
@@ -168,7 +168,7 @@ P9 · 40 open of 40 · open
   - _Combat Edges · Prereq: Elemental Connection (Psychic)_
   - You learn the move Confusion.
 
-- 🟢 **Categoric Inclination** — `likely` · P2 (enc) · themes: skill · code: categoricBonus:89, renderTrainer:7130
+- 🟢 **Categoric Inclination** — `likely` · P2 (enc) · themes: skill · code: categoricBonus:89, renderTrainer:7242
   - _Skill Edges_
   - Choose Body, Mind, or Spirit. You gain a +1 Bonus to all Skill Checks of that Category.
 
@@ -204,7 +204,7 @@ P9 · 40 open of 40 · open
   - _Other Edges · Prereq: Novice Athletics or Survival_
   - You gain a +2 bonus to your Swim Speed. You may spend X minutes underwater before you begin to suffocate, where X is the higher of your Athletics or Survival Ranks.
 
-- 🟢 **Virtuoso** — `likely` · P2 (enc, player:Hugo) · themes: skill · code: rankAllowed:46, renderTrainer:7146, skillDiceHTML:10061, prereqStatus:10333
+- 🟢 **Virtuoso** — `likely` · P2 (enc, player:Hugo) · themes: skill · code: rankAllowed:46, renderTrainer:7258, skillDiceHTML:10179, prereqStatus:10451
   - _Skill Edges · Prereq: A skill at Master rank, Level 20_
   - Choose a Skill at Master Rank. Consider that Skill to be effectively "Rank 8" for any Features or effects that depend on Skill Rank. Virtuoso may be taken multiple times, but you must choose a different Skill each time.
 
@@ -220,7 +220,7 @@ P9 · 40 open of 40 · open
   - _Combat Edges · Prereq: Adept Focus_
   - You learn the move Work Up.
 
-- 🟢 **Apricorn Balls** — `likely` · P3 · themes: action, capture · code: POKEBALL_RECIPES:31252, pokeBallBenchCard:31292
+- 🟢 **Apricorn Balls** — `likely` · P3 · themes: action, capture · code: POKEBALL_RECIPES:31637, pokeBallBenchCard:31677
   - _Crafting Edges · Prereq: Novice Survival or Adept Technology Education_
   - As an Extended Action, you may craft Apricorns into their corresponding Poke Ball. Use of this Feature requires access to a Poke Ball Tool Box.
 
@@ -236,7 +236,7 @@ P9 · 40 open of 40 · open
   - _Combat Edges · Prereq: Novice Guile_
   - Your initiative is increased by your Guile Rank.
 
-- 🟢 **Field Clinic** — `likely` · P3 · themes: heal, action · code: FEATURE_GIFTS:11099, openApplyRestorative:26040
+- 🟢 **Field Clinic** — `likely` · P3 · themes: heal, action · code: FEATURE_GIFTS:11217, openApplyRestorative:26425
   - _Other Edges · Prereq: Adept Medicine Education_
   - Whenever your party Sets Up Camp, you may spend $200 worth of Medical Scrap to set up a Field Clinic. While using the Field Clinic, all members gain the following benefits: You may spend $300 of Medical Scrap to create and apply a Bandage or use a First Aid Kit. If you have the Nurse Feature, you may spend $300 to activate it without Draining AP. Potions, Super Potions, Hyper Potions, Full Restores, Revives, Energy Powders, and Energy Roots used in this area heal their target an additional 5 Hit Points. (Setting Up Camp is just as it sounds; any time you prepare a safe area to rest as an Extended Action, that counts for the purposes of Field Clinic.) [Sept 2015 Playtest]
 
@@ -248,11 +248,11 @@ P9 · 40 open of 40 · open
   - _Do Porygon Dream of Mareep · Prereq: Novice Athletics or Focus_
   - You gain the Gravitic Tolerance capability at a value of 1-3 or 2-4.
 
-- 🟢 **Green Thumb** — `likely` · P3 · themes: other · code: GARDEN_TIERS:31601, gardenCanGrow:31648, openGardenPlant:32114, gardenCanSee:32154
+- 🟢 **Green Thumb** — `likely` · P3 · themes: other · code: GARDEN_TIERS:31986, gardenCanGrow:32033, openGardenPlant:32499, gardenCanSee:32539
   - _Crafting Edges · Prereq: Novice General Education or Novice Survival_
   - You know how to grow Apricorns and Tier 1 Berries using a Portable Grower or Fertilized Soil.
 
-- 🟢 **Instinctive Aptitude** — `likely` · P3 · themes: damage, action, skill · code: EDGE_FX:141, trainerVitalsCard:9936
+- 🟢 **Instinctive Aptitude** — `likely` · P3 · themes: damage, action, skill · code: EDGE_FX:141, trainerVitalsCard:10054
   - _Other Edges · Prereq: Adept Intuition_
   - Whenever you spend AP to raise your roll on an Accuracy Roll or Skill Check, you get a +2 bonus instead of +1. This cannot be used on Rolls made by your Pokemon.
 
@@ -264,11 +264,11 @@ P9 · 40 open of 40 · open
   - _Other Edges · Prereq: Novice Acrobatics or Athletics_
   - You automatically succeed at Acrobatics and Athletics Checks made to mount a Pokemon, and you gain a +3 Bonus to all Acrobatics and Athletics Checks made to remain Mounted.
 
-- 🟢 **Poke Ball Repair** — `likely` · P3 · themes: skill, capture · code: pokeBallBenchCard:31298
+- 🟢 **Poke Ball Repair** — `likely` · P3 · themes: skill, capture · code: pokeBallBenchCard:31683
   - _Crafting Edges · Prereq: Basic Balls or Apricorn Balls_
   - You may attempt to fix any Poke Ball that has failed to capture a Pokemon and broke. Make a Technology Check with a DC of 15. If you succeed, the Poke Ball is fixed and is treated as if it had not broken. If you fail, the ball is permanently broken. Requires access to a Poke Ball Tool Box.
 
-- 🟢 **Poké Ball Repair** — `likely` · P3 · themes: skill, capture · code: pokeBallBenchCard:31298
+- 🟢 **Poké Ball Repair** — `likely` · P3 · themes: skill, capture · code: pokeBallBenchCard:31683
   - _Crafting Edges · Prereq: Basic Balls or Apricorn Balls_
   - You may attempt to fix any Poke Ball that has failed to capture a Pokemon and broke. Make a Technology Check with a DC of 15. If you succeed, the Poke Ball is fixed and is treated as if it had not broken. If you fail, the ball is permanently broken. Requires access to a Poke Ball Tool Box.
 
@@ -293,7 +293,7 @@ P9 · 9 open of 9 · open
   - _Do Porygon Dream of Mareep · Prereq: Novice Technology Education_
   - You don't suffer Augmentation Shock from Electric Type damage unless it is Massive Damage.
 
-- 🟢 **Skill Stunt** — `likely` · P3 · themes: damage, skill · code: categoricBonus:110, openDowsing:30467
+- 🟢 **Skill Stunt** — `likely` · P3 · themes: damage, skill · code: categoricBonus:110, openDowsing:30852
   - _Skill Edges · Prereq: A skill at Novice rank or higher_
   - Choose a Skill you have at Novice Rank or higher. Choose a specific use of that Skill; when rolling that skill under those circumstances, you may choose to roll one less dice, and instead add +6 to the result. You may take this Edge multiple times, choosing a different circumstance each time.
 
@@ -309,7 +309,7 @@ P9 · 9 open of 9 · open
   - _Combat Edges · Prereq: Adept Acrobatics_
   - Increase the Throwing Range of your Poke Balls, Ranged Weapons, and other small items by +2.
 
-- 🟢 **Touched** — `likely` · P3 · themes: other · code: refreshSwarmRounds:44906
+- 🟢 **Touched** — `likely` · P3 · themes: other · code: refreshSwarmRounds:45317
   - _The Blessed and the Damned · Prereq: GM Permission_
   - You have been blessed by a Legendary and gain their Minor Gift. This Legendary is considered one of your Patrons. You may take Touched multiple times, each time for a different Patron.
 

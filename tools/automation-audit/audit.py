@@ -175,6 +175,9 @@ MOVE_EXPLAINS = {
     "target-rules": {"damage"}, "five-strike": {"damage"}, "double-strike": {"damage"}, "ohko": {"damage"},
     "field-type": {"weather", "typing"}, "typemod": {"typing"}, "conversion": {"typing"}, "picks-type": {"typing"},
     "blessing": {"barrier"}, "powder": {"typing"}, "versatile": {"damage"}, "item-move": {"swap"},
+    "hp-fx": {"heal"},                       # found-04: the HP card on the roll
+    "field-fx": {"weather"},                 # found-05: sets/clears Weather, Terrain or a Room
+    "hazard-fx": {"hazard"},                 # found-06: sets or sweeps Hazard markers on the Map
 }
 FLAVOUR_ONLY = re.compile(r"^\s*(none\.?|—|-|n/?a)?\s*$", re.I)
 

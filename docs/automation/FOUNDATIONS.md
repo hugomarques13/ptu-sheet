@@ -41,7 +41,7 @@ After the damage roll, offer one-press buttons: drain (half of the damage actual
 <a id="found-05"></a>
 ## `found-05` — Field-setting Moves (weather, terrain, rooms)
 
-**State:** open
+**State:** ✔ done — app.js?v=554: FIELD_SETTER_MOVES (22 Moves) + moveFieldEffects/moveFieldNode = the 'The field' card on both roll modals; GM's press flips the Map's own switch (setMapWeather/setMapTerrain/toggleMapRoom), a player's announces it. New Snowy weather (typeDR -> weatherDR, folded into buffDR). The four Rooms are a real map-meta state (map.rooms, ROOM_DEFS, stackable GM toggles + roomPanel + player badges): Trick Room reverses initiativeList, Gravity grounds everyone (surelyGrounded) + gives Ground-Type Moves Thousand Arrows' rule (moveTargetRules) + a flat +2 Accuracy, Wonder Room swaps eff.def/eff.spdef in pokeDerived, Magic Room empties heldFxList.
 
 **Unlocks:** moves: Weather & Terrain theme; Trick Room / Gravity / Wonder Room / Magic Room if they get a field state
 
@@ -50,7 +50,7 @@ Copy the `WEATHER_SETTER_ABILITIES` → `setMapWeather` / `toggleMapTerrain` but
 <a id="found-06"></a>
 ## `found-06` — Hazard-setting Moves
 
-**State:** open
+**State:** ✔ done — app.js?v=555: dropHazardsAt / hazardsNear / clearHazardsNear / hazardEntryApply + HAZARD_SETTER_MOVES (17 Moves) and the hazard card on both roll modals; HAZARDS rows carry printed rules + on-entry effects; Slick Hazard and Barrier segment added; openHazardMenu gained the walked-into-it applier
 
 **Unlocks:** moves: Hazards & field markers theme (Spikes, Toxic Spikes, Stealth Rock, Sticky Web, …)
 

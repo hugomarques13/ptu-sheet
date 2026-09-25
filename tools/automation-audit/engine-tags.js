@@ -33,6 +33,12 @@ function auditEngineTags(){
       if(ms.some(e => e.range == null && !e.even)) tags.push("status-always");
       if(ms.some(e => e.who === "user")) tags.push("status-self");
     }
+    // found-04: drain / Recoil / self-heal / HP cost clauses (moveHPEffects -> the HP card)
+    const hp = safe(()=>moveHPEffects(m), []);
+    if(hp && hp.length) tags.push("hp-fx");
+    // found-05: this Move sets or clears the Weather, the Terrain or one of the Rooms
+    if(safe(()=>moveFieldEffects(m), null)) tags.push("field-fx");
+    if(safe(()=>moveHazardEffects(m), null)) tags.push("hazard-fx");
     if(safe(()=>isOHKOMove(m), false)) tags.push("ohko");
     const sp = safe(()=>specialMoveInfo(m, null), null);
     if(sp && sp.kind) tags.push("special:"+sp.kind);

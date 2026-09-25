@@ -235,154 +235,154 @@ P2 · 26 open of 26 · open
 
 P9 · 50 open of 50 · open
 
-- 🟢 **Adorable Fashion** — `likely` · P1 (player:Handels) · themes: swap, damage, action · code: GEAR_ACTIONS:11890
+- 🟢 **Adorable Fashion** — `likely` · P1 (player:Handels) · themes: swap, damage, action · code: GEAR_ACTIONS:12008
   - The holder may activate this item once a Scene as a Free Action to gain +2 Evasion for one full round.
 
-- 🟢 **Shell Bell** — `likely` · P1 (player:Lázaro) · themes: heal · code: EQUIP_EFFECTS:11605, GEAR_ACTIONS:11979
+- 🟢 **Shell Bell** — `likely` · P1 (player:Lázaro) · themes: heal · code: EQUIP_EFFECTS:11723, GEAR_ACTIONS:12097
   - Whenever the holder damages a foe, they gain a Tick of Temporary Hit Points.
 
-- 🟢 **Slick Fashion** — `likely` · P1 (player:Lysgd) · themes: swap, action · code: GEAR_ACTIONS:11931
+- 🟢 **Slick Fashion** — `likely` · P1 (player:Lysgd) · themes: swap, action · code: GEAR_ACTIONS:12049
   - The holder may activate this item once a Scene as a Free Action when provoking an Attack of Opportunity to instead not provoke one.
 
-- 🟢 **Winter Cloak** — `likely` · P1 (player:Lázaro) · themes: weather, damage · code: WEATHER_DEFS:1235
+- 🟢 **Winter Cloak** — `likely` · P1 (player:Lázaro) · themes: weather, damage · code: WEATHER_DEFS:1239
   - The holder does not take damage from Hail.
 
-- 🟢 **Absolite Z** — `likely` · P3 · themes: other · code: megaToStoneMap:4287
+- 🟢 **Absolite Z** — `likely` · P3 · themes: other · code: megaToStoneMap:4392
   - Mega Evolves Absol when used in conjuction with a Mega Ring.
 
-- 🟢 **Accuracy Booster** — `likely` · P3 · themes: damage · code: STAT_BOOSTER_ITEMS:30424
+- 🟢 **Accuracy Booster** — `likely` · P3 · themes: damage · code: STAT_BOOSTER_ITEMS:30809
   - Accuracy +1
 
-- 🟢 **Air Balloon** — `likely` · P3 · themes: swap, typing · code: GEAR_ACTIONS:11971
+- 🟢 **Air Balloon** — `likely` · P3 · themes: swap, typing · code: GEAR_ACTIONS:12089
   - The holder is immune to Ground-Type Moves. This item breaks (and is destroyed) the first time the holder is hit by a Damaging Move.
 
-- 🟢 **Attack Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30424
+- 🟢 **Attack Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30809
   - The default state of the holder's Attack Stat is +1 Combat Stage.
 
-- 🟢 **Balm Mushroom** — `likely` · P3 · themes: status, cure, cs, skill, stat · code: GEAR_ACTIONS:11875, SNACK_DEFS:16528, tradeInDigestion:16767
+- 🟢 **Balm Mushroom** — `likely` · P3 · themes: status, cure, cs, skill, stat · code: GEAR_ACTIONS:11993, SNACK_DEFS:16649, tradeInDigestion:16888
   - The user is cured of Burn, Paralysis, or Poison. If they are, they lose 1 Combat Stage in a random Stat.
 
-- 🟢 **Big Mushroom** — `likely` · P3 · themes: status, cs, skill, stat · code: GEAR_ACTIONS:11861, SNACK_DEFS:16526
+- 🟢 **Big Mushroom** — `likely` · P3 · themes: status, cs, skill, stat · code: GEAR_ACTIONS:11979, SNACK_DEFS:16647
   - The user becomes Poisoned; if they do, they gain +1 Combat Stage in two random Stats.
 
-- 🟢 **Black Belt** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3487
+- 🟢 **Black Belt** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3585
   - Grants a +5 Damage Bonus to all direct-damage Fighting Moves used by the holder.
 
-- 🟢 **Black Glasses** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3490
+- 🟢 **Black Glasses** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3588
   - Grants a +5 Damage Bonus to all direct-damage Dark Moves used by the holder.
 
-- 🟢 **Buginium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3426
+- 🟢 **Buginium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3524
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Bug-Type Move it uses becomes Savage Spin-Out and gains a +3 Damage Base bonus. Unlike a Bug Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Charcoal** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3485
+- 🟢 **Charcoal** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3583
   - Grants a +5 Damage Bonus to all direct-damage Fire Moves used by the holder.
 
-- 🟢 **Darkinium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3428
+- 🟢 **Darkinium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3526
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Dark-Type Move it uses becomes Black Hole Eclipse and gains a +3 Damage Base bonus. Unlike a Dark Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Defense Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30424
+- 🟢 **Defense Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30809
   - The default state of the holder's Defense Stat is +1 Combat Stage.
 
-- 🟢 **Draco Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3493
+- 🟢 **Draco Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3591
   - Acts as both a Dragon Type Booster and a Dragon Brace.
 
-- 🟢 **Dragon Fang** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3489
+- 🟢 **Dragon Fang** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3587
   - Grants a +5 Damage Bonus to all direct-damage Dragon Moves used by the holder.
 
-- 🟢 **Dragonium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3427
+- 🟢 **Dragonium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3525
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Dragon-Type Move it uses becomes Devastating Drake and gains a +3 Damage Base bonus. Unlike a Dragon Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Dread Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3493
+- 🟢 **Dread Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3591
   - Acts as both a Dark Type Booster and a Dark Brace.
 
-- 🟢 **Earth Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3493
+- 🟢 **Earth Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3591
   - Acts as both a Ground Type Booster and a Ground Brace.
 
-- 🟢 **Electrium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3424
+- 🟢 **Electrium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3522
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Electric-Type Move it uses becomes Gigavolt Havoc and gains a +3 Damage Base bonus. Unlike a Electric Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Elegant Fashion** — `likely` · P3 · themes: swap, cs, action, skill · code: GEAR_ACTIONS:11917
+- 🟢 **Elegant Fashion** — `likely` · P3 · themes: swap, cs, action, skill · code: GEAR_ACTIONS:12035
   - The holder may activate this item once a Scene as a Free Action when losing Combat Stages from a foe's effect to instead not lose those Combat Stages.
 
-- 🟢 **Evasion Booster** — `likely` · P3 · themes: damage · code: STAT_BOOSTER_ITEMS:30424
+- 🟢 **Evasion Booster** — `likely` · P3 · themes: damage · code: STAT_BOOSTER_ITEMS:30809
   - Evasion +1
 
-- 🟢 **Everstone** — `likely` · P3 · themes: other · code: HELD_FX:3673
+- 🟢 **Everstone** — `likely` · P3 · themes: other · code: HELD_FX:3771
   - Evolution is prevented for the holder.
 
-- 🟢 **Eviolite** — `likely` · P3 · themes: cs, skill, stat · code: HELD_FX:3643, heldCSMods:3746
+- 🟢 **Eviolite** — `likely` · P3 · themes: cs, skill, stat · code: HELD_FX:3741, heldCSMods:3851
   - Only affects not-fully-evolved Pokemon of a single family, decided when the Eviolite is made. Grants a +5 Bonus to two different Stats, after Combat Stages, decided when the Eviolite is made. Prevents Pokemon from evolving when held.
 
-- 🟢 **Fairium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3428
+- 🟢 **Fairium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3526
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Fairy-Type Move it uses becomes Twinkle Tackle and gains a +3 Damage Base bonus. Unlike a Fairy Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Fairy Feather** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3490
+- 🟢 **Fairy Feather** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3588
   - Grants a +5 Damage Bonus to all direct-damage Fairy Moves used by the holder.
 
-- 🟢 **Fightinium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3425
+- 🟢 **Fightinium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3523
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Fighting-Type Move it uses becomes All-Out Pummeling and gains a +3 Damage Base bonus. Unlike a Fighting Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Fire Gem** — `likely` · P3 · themes: swap, damage, action · code: zMoveName:3432
+- 🟢 **Fire Gem** — `likely` · P3 · themes: swap, damage, action · code: zMoveName:3530
   - Can be consumed as a Free Action to give a +3 DB bonus to one Fire-Type attack.
 
-- 🟢 **Firium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3423
+- 🟢 **Firium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3521
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Fire-Type Move it uses becomes Inferno Overdrive and gains a +3 Damage Base bonus. Unlike a Fire Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Fist Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3494
+- 🟢 **Fist Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3592
   - Acts as both a Fighting Type Booster and a Fighting Brace.
 
-- 🟢 **Flame Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3494
+- 🟢 **Flame Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3592
   - Acts as both a Fire Type Booster and a Fire Brace.
 
-- 🟢 **Flyinium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3426
+- 🟢 **Flyinium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3524
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Flying-Type Move it uses becomes Supersonic Skystrike and gains a +3 Damage Base bonus. Unlike a Flying Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Focus Band** — `likely` · P3 · themes: action · code: GEAR_ACTIONS:11938
+- 🟢 **Focus Band** — `likely` · P3 · themes: action · code: GEAR_ACTIONS:12056
   - Whenever the holder would faint, roll 1d20. Once per Scene on a result of 16+, the holder does not faint and is left with 1 HP instead.
 
-- 🟢 **Focus Sash** — `likely` · P3 · themes: heal, damage, action · code: GEAR_ACTIONS:11837
+- 🟢 **Focus Sash** — `likely` · P3 · themes: heal, damage, action · code: GEAR_ACTIONS:11955
   - Once per Scene, if damage from a Move would take the holder's Hit Points from Max to 0 or less, the holder is set to 1 HP instead.
 
-- 🟢 **Ghostium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3427
+- 🟢 **Ghostium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3525
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Ghost-Type Move it uses becomes Never-Ending Nightmare and gains a +3 Damage Base bonus. Unlike a Ghost Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Go-Goggles** — `likely` · P3 · themes: weather, damage · code: WEATHER_DEFS:1218
+- 🟢 **Go-Goggles** — `likely` · P3 · themes: weather, damage · code: WEATHER_DEFS:1222
   - The holder does not take damage from Sandstorm.
 
-- 🟢 **Grassium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3424
+- 🟢 **Grassium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3522
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Grass-Type Move it uses becomes Bloom Doom and gains a +3 Damage Base bonus. Unlike a Grass Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Groundium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3425
+- 🟢 **Groundium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3523
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Ground-Type Move it uses becomes Tectonic Rage and gains a +3 Damage Base bonus. Unlike a Ground Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Hard Stone** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3489
+- 🟢 **Hard Stone** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3587
   - Grants a +5 Damage Bonus to all direct-damage Rock Moves used by the holder.
 
-- 🟢 **Icicle Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3494
+- 🟢 **Icicle Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3592
   - Acts as both an Ice Type Booster and an Ice Brace.
 
-- 🟢 **Icium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3424
+- 🟢 **Icium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3522
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Ice-Type Move it uses becomes Subzero Slammer and gains a +3 Damage Base bonus. Unlike a Ice Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Insect Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3495
+- 🟢 **Insect Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3593
   - Acts as both a Bug Type Booster and a Bug Brace.
 
-- 🟢 **Iron Charm** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3490
+- 🟢 **Iron Charm** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3588
   - Grants a +5 Damage Bonus to all direct-damage Steel Moves used by the holder.
 
-- 🟢 **Iron Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3495
+- 🟢 **Iron Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3593
   - Acts as both a Steel Type Booster and a Steel Brace.
 
-- 🟢 **Life Orb** — `likely` · P3 · themes: heal, damage · code: GEAR_ACTIONS:11953
+- 🟢 **Life Orb** — `likely` · P3 · themes: heal, damage · code: GEAR_ACTIONS:12071
   - Whenever the holder deals direct damage, increase the damage by +5, and then the holder loses Hit Points equal to 1/16th of their Max Hit Points.
 
-- 🟢 **Magnet** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3486
+- 🟢 **Magnet** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3584
   - Grants a +5 Damage Bonus to all direct-damage Electric Moves used by the holder.
 
-- 🟢 **Meadow Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3495
+- 🟢 **Meadow Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3593
   - Acts as both a Grass Type Booster and a Grass Brace.
 
-- 🟢 **Mind Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3496
+- 🟢 **Mind Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3594
   - Acts as both a Psychic Type Booster and a Psychic Brace.
 
 <a id="verify-held-02"></a>
@@ -390,112 +390,112 @@ P9 · 50 open of 50 · open
 
 P9 · 36 open of 36 · open
 
-- 🟢 **Miracle Seed** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3486
+- 🟢 **Miracle Seed** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3584
   - Grants a +5 Damage Bonus to all direct-damage Grass Moves used by the holder.
 
-- 🟢 **Mystic Water** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3485
+- 🟢 **Mystic Water** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3583
   - Grants a +5 Damage Bonus to all direct-damage Water Moves used by the holder.
 
-- 🟢 **Never-Melt Ice** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3486, TYPE_PLATE_ITEMS:3500
+- 🟢 **Never-Melt Ice** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3584, TYPE_PLATE_ITEMS:3598
   - Grants a +5 Damage Bonus to all direct-damage Ice Moves used by the holder.
 
-- 🟢 **Normal Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3498
+- 🟢 **Normal Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3596
   - Acts as both a Normal Type Booster and a Normal Brace.
 
-- 🟢 **Normalium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3423
+- 🟢 **Normalium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3521
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Normal-Type Move it uses becomes Breakneck Blitz and gains a +3 Damage Base bonus. Unlike a Normal Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Pink Pearl** — `likely` · P3 · themes: other · code: typeBoosterIndex:3509
+- 🟢 **Pink Pearl** — `likely` · P3 · themes: other · code: typeBoosterIndex:3607
   - Acts as a Psychic Type Booster. If held by a Spoink, it also acts as a Special Attack Booster.
 
-- 🟢 **Pixie Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3496
+- 🟢 **Pixie Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3594
   - Acts as both a Fairy Type Booster and a Fairy Brace.
 
-- 🟢 **Poison Barb** — `likely` · P3 · themes: status, damage · code: TYPE_BOOSTER_ITEMS:3487
+- 🟢 **Poison Barb** — `likely` · P3 · themes: status, damage · code: TYPE_BOOSTER_ITEMS:3585
   - Grants a +5 Damage Bonus to all direct-damage Poison Moves used by the holder.
 
-- 🟢 **Poisonium Z** — `likely` · P3 · themes: swap, status, typing, damage, action, stat · code: Z_CRYSTALS:3425
+- 🟢 **Poisonium Z** — `likely` · P3 · themes: swap, status, typing, damage, action, stat · code: Z_CRYSTALS:3523
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Poison-Type Move it uses becomes Acid Downpour and gains a +3 Damage Base bonus. Unlike a Poison Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Psychium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3426
+- 🟢 **Psychium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3524
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Psychic-Type Move it uses becomes Shattered Psyche and gains a +3 Damage Base bonus. Unlike a Psychic Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Quick Claw** — `likely` · P3 · themes: other · code: heldCritBonus:3775
+- 🟢 **Quick Claw** — `likely` · P3 · themes: other · code: heldCritBonus:3880
   - The user adds +10 to their Initiative.
 
-- 🟢 **Rad Fashion** — `likely` · P3 · themes: swap, action, skill · code: GEAR_ACTIONS:11924
+- 🟢 **Rad Fashion** — `likely` · P3 · themes: swap, action, skill · code: GEAR_ACTIONS:12042
   - The holder may activate this item once a Scene as a Free Action to gain a +4 bonus to a single Save Check.
 
-- 🟢 **Rockium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3427
+- 🟢 **Rockium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3525
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Rock-Type Move it uses becomes Continental Crush and gains a +3 Damage Base bonus. Unlike a Rock Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Rough Fashion** — `likely` · P3 · themes: swap, action · code: GEAR_ACTIONS:11906
+- 🟢 **Rough Fashion** — `likely` · P3 · themes: swap, action · code: GEAR_ACTIONS:12024
   - The holder may activate this item once a Scene as a Free Action to cause a foe within 5 meters to take a -2 penalty to all rolls for one full round.
 
-- 🟢 **S Attack Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30424
+- 🟢 **S Attack Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30809
   - The default state of the holder's Special Attack Stat is +1 Combat Stage.
 
-- 🟢 **S Defense Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30424
+- 🟢 **S Defense Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30809
   - The default state of the holder's Special Defense Stat is +1 Combat Stage.
 
-- 🟢 **Safety Goggles** — `likely` · P3 · themes: typing · code: powderImmuneWhy:32608
+- 🟢 **Safety Goggles** — `likely` · P3 · themes: typing · code: powderImmuneWhy:32993
   - The holder is immune to Moves with the Powder Keyword.
 
-- 🟢 **Sharp Beak** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3488
+- 🟢 **Sharp Beak** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3586
   - Grants a +5 Damage Bonus to all direct-damage Flying Moves used by the holder.
 
-- 🟢 **Shock Collar** — `likely` · P3 · themes: heal, interrupt · code: GEAR_ACTIONS:11962
+- 🟢 **Shock Collar** — `likely` · P3 · themes: heal, interrupt · code: GEAR_ACTIONS:12080
   - Comes with a remote activator, which, when activated, causes the holder to lose Hit Points equal to 1/6th of their Max Hit Points. This may be used to activate the "Press" Feature.
 
-- 🟢 **Silk Scarf** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3485
+- 🟢 **Silk Scarf** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3583
   - Grants a +5 Damage Bonus to all direct-damage Normal Moves used by the holder.
 
-- 🟢 **Silver Powder** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3488
+- 🟢 **Silver Powder** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3586
   - Grants a +5 Damage Bonus to all direct-damage Bug Moves used by the holder.
 
-- 🟢 **Sky Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3496
+- 🟢 **Sky Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3594
   - Acts as both a Flying Type Booster and a Flying Brace.
 
-- 🟢 **Soft Sand** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3487
+- 🟢 **Soft Sand** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3585
   - Grants a +5 Damage Bonus to all direct-damage Ground Moves used by the holder.
 
-- 🟢 **Speed Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30424
+- 🟢 **Speed Booster** — `likely` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:30809
   - The default state of the holder's Speed Stat is +1 Combat Stage.
 
-- 🟢 **Spell Tag** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3489
+- 🟢 **Spell Tag** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3587
   - Grants a +5 Damage Bonus to all direct-damage Ghost Moves used by the holder.
 
-- 🟢 **Splash Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3497
+- 🟢 **Splash Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3595
   - Acts as both a Water Type Booster and a Water Brace.
 
-- 🟢 **Spooky Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3497
+- 🟢 **Spooky Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3595
   - Acts as both a Ghost Type Booster and a Ghost Brace.
 
-- 🟢 **Steelium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3428
+- 🟢 **Steelium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3526
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Steel-Type Move it uses becomes Corkscrew Crash and gains a +3 Damage Base bonus. Unlike a Steel Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Stone Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3497
+- 🟢 **Stone Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3595
   - Acts as both a Rock Type Booster and a Rock Brace.
 
-- 🟢 **Thick Club** — `likely` · P3 · themes: swap · code: holdsThickClub:21424, abilityAccMods:21455
+- 🟢 **Thick Club** — `likely` · P3 · themes: swap · code: holdsThickClub:21809, abilityAccMods:21840
   - When held by a Cubone or Marowak, grants the Pure Power Ability; Wielded.
 
-- 🟢 **Tiny Mushroom** — `likely` · P3 · themes: cs, skill, stat · code: GEAR_ACTIONS:11849, SNACK_DEFS:16525
+- 🟢 **Tiny Mushroom** — `likely` · P3 · themes: cs, skill, stat · code: GEAR_ACTIONS:11967, SNACK_DEFS:16646
   - The user loses 5 HP, and gains +1 Combat Stage in a random Stat.
 
-- 🟢 **Toxic Plate** — `likely` · P3 · themes: status · code: TYPE_PLATE_ITEMS:3498
+- 🟢 **Toxic Plate** — `likely` · P3 · themes: status · code: TYPE_PLATE_ITEMS:3596
   - Acts as both a Poison Type Booster and a Poison Brace.
 
-- 🟢 **Twisted Spoon** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3488
+- 🟢 **Twisted Spoon** — `likely` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:3586
   - Grants a +5 Damage Bonus to all direct-damage Psychic Moves used by the holder.
 
-- 🟢 **Type Gem** — `likely` · P3 · themes: swap, damage, action, stat · code: zMoveName:3432
+- 🟢 **Type Gem** — `likely` · P3 · themes: swap, damage, action, stat · code: zMoveName:3530
   - These items come in a variety of each of the Elemental Types, and can be consumed as a Free Action to give a +3 Damage Base bonus to one attack of that specific Type.
 
-- 🟢 **Waterium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3423
+- 🟢 **Waterium Z** — `likely` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:3521
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Water-Type Move it uses becomes Hydro Vortex and gains a +3 Damage Base bonus. Unlike a Water Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- 🟢 **Zap Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3498
+- 🟢 **Zap Plate** — `likely` · P3 · themes: other · code: TYPE_PLATE_ITEMS:3596
   - Acts as both an Electric Type Booster and an Electric Brace.
 
 ## Not in any batch
