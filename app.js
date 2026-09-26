@@ -32585,7 +32585,7 @@ function gardenTokenOf(pl){
   if(mode !== "cloud" || !pl || !pl.map) return null;
   return mapTokensFor(pl.map.mapId).find(tk => tk.id === pl.map.tokenId) || null;
 }
-function gardenMapName(mapId){ const m = activeMapMeta().maps.find(x => x.id === mapId); return (m && m.name) || "the Map"; }
+function gardenMapName(mapId){ const m = activeMapMeta().maps.find(x => x.id === mapId); return m ? mapDisplayName(m) : "the Map"; }
 /* drop the marker next to the Trainer's own token if they're on this map, else mid-view */
 function gardenPlaceToken(t, pl, map){
   if(mode !== "cloud" || !map || !pl) return false;
@@ -32759,7 +32759,7 @@ function openGardenPlant(t, c, commit){
     tokenCb = el("input",{type:"checkbox"}); tokenCb.checked = true;
     placeWrap.append(el("label",{style:"display:flex;gap:8px;align-items:center;margin-bottom:8px",
       title:"A marker on the shared Map, next to your Trainer's token if they're on it. Drag it to the exact spot; tapping it shows the plant, and the GM sets the Soil there."},
-      tokenCb, `\u{1F4CD} Put a token on the Map (${tokenMap.name || "current map"})`));
+      tokenCb, `\u{1F4CD} Put a token on the Map (${mapDisplayName(tokenMap)})`));
   }
   body.append(placeWrap);
   const seedWrap = el("div",{});
@@ -33053,8 +33053,8 @@ function gardenPlantRow(t, c, pl, gardeners, commit){
     } else if(target){
       mapLine.append(el("button",{class:"btn-secondary",style:"padding:3px 10px",
         title:"Drop a marker for this plot on the shared Map — next to your Trainer's token if they're on it",
-        onclick:()=>{ if(gardenPlaceToken(t, pl, target)){ commit(); toast(`\u{1F4CD} ${pl.crop} is on ${target.name || "the Map"}`); } }},
-        `\u{1F4CD} Put a token on ${target.name || "the Map"}`));
+        onclick:()=>{ if(gardenPlaceToken(t, pl, target)){ commit(); toast(`\u{1F4CD} ${pl.crop} is on ${mapDisplayName(target)}`); } }},
+        `\u{1F4CD} Put a token on ${mapDisplayName(target)}`));
     }
     if(mapLine.childNodes.length) box.append(mapLine);
   }
@@ -34236,6 +34236,249 @@ function openRandomEncounter(){
     body.append(det);
   });
   modal({title:"\u{1F3B2} Wild encounters", bodyNode:body,
+    footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+}
+/* ---- Gauntlets: one fight that arrives in waves ---------------------------------------------
+     A gym run as waves is not one encounter but several, and the arithmetic that matters is the
+     TOTAL. No single wave may be more than an everyday fight, because the party never gets to start
+     one fresh -- but the waves together come to well past Boss-tier, and that is where the teeth
+     are. The table below is balanced on exactly that shape, and every wave it builds prints what it
+     cost against the same everyday budget the ⚖ Difficulty tool uses (Core p.473: the party's
+     average Pokemon Level x 2 x players), so the GM can re-check the sums rather than trust them.
+
+     Each wave becomes its own encounter, so map tokens, initiative, EXP, ⚖ Difficulty, ⚗ Sim
+     and \u{1F49A} Heal fully all work on it unchanged. `ring` is the arena step it is fought at
+     (see paintArena) -- the notes say which, and the \u{1F300} Arena panel's "Close in" is the button.
+--------------------------------------------------------------------------------------------- */
+const GAUNTLETS = [
+  { id:"watergym", name:"Water Gym — the Abyssal Gauntlet", color:"#1f7a9c",
+    party:28, players:3, perPlayer:2, arenaSize:24,
+    brief:
+      "\u{1F30A} THE ABYSSAL GAUNTLET — run it like this\n"
+    + "• A new wave arrives at the top of every 3rd round, OR the moment the wave on the board is\n"
+    + "  down to half its bodies — whichever comes first. Clear fast and you meet the next one\n"
+    + "  sooner but fresher; stall and the two overlap.\n"
+    + "• Only the LAST wave has to be beaten. When a wave arrives, anything still alive from two\n"
+    + "  waves ago withdraws — the gym recalls it. Nobody has to mop up a 9 HP Relicanth.\n"
+    + "• The ring closes one step per wave: 24→20→16→12 playable. Tap \u{1F300} Close in before the\n"
+    + "  wave lands, so the board is already smaller when it does.\n"
+    + "• The beam: at the END of a round, paint the lane it will sweep; it fires at the TOP of the\n"
+    + "  next one. It belongs to the gym, not to a Pokemon, so it hits the waves too — let the\n"
+    + "  party learn to stand things in it. One lane from wave 2, two overlapping for the Leader.\n"
+    + "• Blackout is not a wipe: the current takes them up, the badge attempt fails, they can come\n"
+    + "  back after an Extended Rest. Surfacing on purpose is always on the table.",
+    waves:[
+      { name:"Wave 1 · The Shoal", ring:0, sig:1.5,
+        note:"The gym's chaff, and the round that teaches the room. Nothing here should kill anyone —\n"
+           + "it is here so the party finds out what the walls do and what the beam does while it is\n"
+           + "still cheap to find out. Clawitzer opens at range from behind Relicanth.",
+        mons:[ { s:"Relicanth", lv:22, ability:"Sturdy" },
+               { s:"Veluza",    lv:22 },
+               { s:"Overqwil",  lv:22, ability:"Swift Swim" },
+               { s:"Clawitzer", lv:22 },
+               { s:"Grapploct", lv:23 } ] },
+      { name:"Wave 2 · The Tide Wall", ring:1, sig:2,
+        note:"The wave that teaches them to walk away. Nothing here dies quickly: Milotic heals what\n"
+           + "the party chews through, Wishiwashi Solo flips to its School the moment it is hurt (a\n"
+           + "Daily — the sheet does it), and Dhelmise anchors a corner and refuses to leave it.\n"
+           + "The answer is not to kill them. It is to still be standing when they get recalled.",
+        mons:[ { s:"Milotic",           lv:27, ability:"Marvel Scale" },
+               { s:"Wishiwashi Solo",   lv:25, ability:"Schooling", nick:"Wishiwashi — Solo" },
+               { s:"Basculegion Male",  lv:25 },
+               { s:"Dhelmise",          lv:25, ability:"Anchored" },
+               { s:"Relicanth",         lv:24, ability:"Sturdy" } ] },
+      { name:"Wave 3 · The Gullet", ring:2, sig:2,
+        note:"The puzzle wave, on a 16×16 board — there is nowhere left to stand politely.\n"
+           + "Tatsugiri rides in Dondozo's mouth and Commands it; dislodge the fish and the wall\n"
+           + "stops hitting like a boss. Dragalge poisons the water it is standing in, so the\n"
+           + "shrinking board is working for the gym now, not against it.",
+        mons:[ { s:"Dondozo",   lv:32, ability:"Unaware" },
+               { s:"Dragalge",  lv:30 },
+               { s:"Tatsugiri", lv:26, ability:"Commander" },
+               { s:"Clawitzer", lv:26 },
+               { s:"Overqwil",  lv:25 } ] },
+      { name:"Wave 4 · Deep Pressure", ring:3, sig:4,
+        note:"Nobody's gym. Nobody's Pokemon. Two Megas that have been down here long enough to stop\n"
+           + "reverting, in a 12×12 pit, with two overlapping beams. Both are built ✨ already Mega\n"
+           + "Evolved — there is no Key Stone to wait on.\n"
+           + "TWO PHASES — hold Gyarados off the board until one of these happens:\n"
+           + "  1. Mega Sharpedo hunts first. It goes for the squishiest thing it can reach and is\n"
+           + "     not built to survive being answered. Milotic and Basculegion screen for it.\n"
+           + "  2. Gyarados is coiled in the trench. It rouses when Sharpedo drops, or at the top of\n"
+           + "     round 3 — whichever comes first. THAT is the phase change.\n"
+           + "⚡ ROGUE MEGA — Gyarados is wild, Mega and running the Boss Template, so it resists\n"
+           + "every attack ONE FURTHER STEP unless the attacker is itself a Mega, and none of them is.\n"
+           + "Super-effective lands as neutral; neutral lands as a resist. With 2 HP bars on top, this\n"
+           + "is the single hardest thing in the gauntlet and the Levels below do not price it.\n"
+           + "\u{1F53B} IF IT IS TOO MUCH, turn its \u{1F480} Boss Template OFF. That one switch takes away the\n"
+           + "second HP bar AND the ladder step in one go — it stops being a Rogue Mega and goes back\n"
+           + "to being a very large Gyarados. It is the only dial you should need mid-fight.",
+        mons:[ { s:"Sharpedo",           lv:32, ability:"Speed Boost", mega:"Mega Sharpedo" },
+               { s:"Gyarados",           lv:34, ability:"Intimidate",  mega:"Mega Gyarados", boss:2 },
+               { s:"Milotic",            lv:28, ability:"Marvel Scale" },
+               { s:"Basculegion Female", lv:26 } ] },
+    ] },
+];
+/* The everyday budget this gauntlet is priced against -- the same line ⚖ Difficulty draws. */
+const gauntletBudget = (party, players) => Math.round(Math.max(0,party) * 2 * Math.max(1,players));
+/* What the party actually leads with, read off the live sheets rather than guessed: each player's
+   top `perPlayer` on-team Pokemon, averaged. Falls back to the table's own figure when there are no
+   sheets to read (offline, or a GM looking at this before anyone has joined). */
+function gauntletPartyAvg(g){
+  try{
+    const lv = diffPartyChars().flatMap(c => diffTopLevels(c.data, g.perPlayer));
+    if(lv.length) return Math.round(diffAvg(lv));
+  }catch(err){}
+  return g.party;
+}
+function gauntletPartyCount(g){
+  try{ const n = diffPartyChars().length; if(n) return n; }catch(err){}
+  return g.players;
+}
+/* One combatant from its one-line spec. makeWildMon does the real work (level-up Moves, a rolled
+   Ability, tier Abilities, nature/gender/stats); this only pins the things the wave is built around
+   -- the Ability that IS the encounter (Commander, Schooling, Marvel Scale), the Boss bars, and a
+   Mega that is not a transform waiting on a Key Stone but simply what the thing is now.
+   `mega` goes through megaEvolve on the BASE species deliberately: the "Mega X" DB rows are stat
+   stubs with no Moves or Abilities of their own (see addEncounterMon), so building the base first
+   is what gives the Mega a learnset to fight with. The no-op rerender keeps it off save()/refreshMon,
+   which have no business running while an encounter is still being assembled. */
+function gauntletMon(spec){
+  const p = makeWildMon(spec.s, spec.lv);
+  if(spec.nick) p.nickname = spec.nick;
+  if(spec.ability && abilityByName.has(String(spec.ability).toLowerCase())){
+    p.abilities = [spec.ability, ...(p.abilities||[]).filter(a=>(a||"").toLowerCase()!==spec.ability.toLowerCase())];
+  }
+  if(spec.mega && getSpecies(spec.mega)) megaEvolve(p, spec.mega, ()=>{});
+  if(spec.boss){ toggleBoss(p); p.boss.actions = spec.boss; p.boss.curBar = spec.boss; normBoss(p); }
+  return p;
+}
+function gauntletWaveNotes(g, w, i, enc, party, players, arenaSize){
+  const everyday = gauntletBudget(party, players);
+  const base = encounterBaseXP(enc);
+  const ratio = everyday ? base/everyday : 0;
+  const band = diffBand(ratio);
+  const play = gauntletPlay(arenaSize || g.arenaSize, w);
+  const out = [];
+  if(i === 0 && g.brief) out.push(g.brief, "");
+  out.push(`\u{1F30A} ${g.name} — wave ${i+1} of ${g.waves.length}.`);
+  out.push(`\u{1F300} Arena: ring ${w.ring} — close it to ${play}×${play} playable before this wave arrives.`);
+  out.push(`⚖ ${base} Levels against an everyday ${everyday} (Lv ${party} × 2 × ${players} player`
+    + `${players===1?"":"s"}) = ×${Math.round(ratio*100)/100} — ${band.label}.`);
+  if(i === g.waves.length-1){
+    const total = g.waves.reduce((n,x)=>n+gauntletWaveBase(x),0);
+    out.push(`   All ${g.waves.length} waves together: ${total} Levels = ×${Math.round(total/everyday*100)/100} `
+      + `an everyday fight. On paper each wave is mild; it is the run of them, with no full heal in the `
+      + `middle, that is the gym. Read this last one as MUCH harder than its label: two Megas, a second `
+      + `HP bar, and a Rogue Mega's extra ladder step against a party that has no Mega to answer it `
+      + `with are worth far more than the Levels they cost.`);
+  }
+  if(w.note) out.push("", w.note);
+  return out.join("\n");
+}
+/* Base Experience Value of a wave straight off its spec, without building it -- what the picker
+   quotes before anything is created. Trainers count double (Core p.460). */
+function gauntletWaveBase(w){
+  let n = 0;
+  (w.mons||[]).forEach(s=> n += s.lv||0);
+  (w.trainers||[]).forEach(t=>{ n += (t.level||0)*2; (t.mons||[]).forEach(s=> n += s.lv||0); });
+  return n;
+}
+const gauntletBodies = w => (w.mons||[]).length
+  + (w.trainers||[]).reduce((n,t)=> n + 1 + (t.mons||[]).length, 0);
+/* Playable board for a wave, given the arena the GM actually framed. The ring step is the real
+   instruction -- this is the number that makes it concrete, so it has to follow the map and not
+   the table's own default (a 20x20 arena's ring 3 is 8x8, not 12x12). */
+const gauntletPlay = (size, w) => Math.max(1, size - 2*ARENA_STEP*(w.ring||0));
+/* What to offer as the arena side: whatever is already framed on the map players are looking at,
+   so the picker agrees with the board instead of repeating its own default at it. */
+function gauntletArenaDefault(g){
+  try{
+    const meta = activeMapMeta();
+    const map = (meta.maps||[]).find(m=>m.id===meta.playerMapId) || (meta.maps||[]).find(m=>!m.archived);
+    const a = map && arenaOf(map);
+    if(a) return a.size;
+  }catch(err){}
+  return g.arenaSize;
+}
+/* Build every wave as its own encounter, in order, and leave the first one active. */
+function buildGauntlet(g, party, players, arenaSize){
+  const arr = encList(), made = [];
+  g.waves.forEach((w,i)=>{
+    const enc = newEncounter(`${g.name} — ${w.name}`);
+    enc.hideTokens = true;                 // the deep is not a place you see things coming
+    enc.color = g.color || encDefaultColor();
+    enc.players = players;
+    enc.sig = w.sig || 2;
+    enc.diffPerPlayer = g.perPlayer;       // pre-set the ⚖ Difficulty boxes to the shape it was built for
+    enc.diffPerFoe = w.perFoe || 6;
+    (w.mons||[]).forEach(s=> enc.mons.push(gauntletMon(s)));
+    (w.trainers||[]).forEach(t=>{
+      const tr = newTrainer();
+      tr.name = t.name; tr.level = t.level||1; tr.classes = (t.classes||[]).slice();
+      enc.trainers.push({ id:uid(), trainer:tr, pokemon:(t.mons||[]).map(gauntletMon) });
+    });
+    normEncounter(enc);
+    enc.notes = gauntletWaveNotes(g, w, i, enc, party, players, arenaSize);
+    arr.push(enc); made.push(enc);
+  });
+  if(made.length) state.activeEncounterId = made[0].id;
+  saveEnc(); renderEncounters();
+  toast(`\u{1F30A} ${g.name} — ${made.length} waves built`);
+}
+/* The picker. The party figures default to what the live sheets say and are editable, because the
+   whole balance hangs off them -- a gauntlet priced for Lv 28 is a different fight at Lv 34. */
+function openGauntlets(){
+  if(!GAUNTLETS.length){ toast("No gauntlets defined"); return; }
+  const body = el("div",{});
+  GAUNTLETS.forEach((g,gi)=>{
+    const wrap = el("div",{style:gi?"margin-top:16px;padding-top:12px;border-top:1px solid var(--line)":""});
+    const pIn = el("input",{type:"number",min:1,max:100,value:gauntletPartyAvg(g),style:"width:64px",
+      title:"the average Level of the Pokemon each player leads with"});
+    const nIn = el("input",{type:"number",min:1,max:8,value:gauntletPartyCount(g),style:"width:56px"});
+    const aIn = el("input",{type:"number",min:ARENA_MIN,max:200,value:gauntletArenaDefault(g),style:"width:64px",
+      title:"the side of the arena you framed on the map — the wave notes quote the board each ring closes to"});
+    const total = g.waves.reduce((n,w)=>n+gauntletWaveBase(w),0);
+    const sum = el("div",{class:"small",style:"margin:6px 0"});
+    const rows = el("div",{style:"margin-top:6px"});
+    const paint = ()=>{
+      const party = Math.max(1,parseInt(pIn.value)||1), players = Math.max(1,parseInt(nIn.value)||1);
+      const everyday = gauntletBudget(party, players);
+      const band = diffBand(total/everyday);
+      sum.innerHTML = "";
+      sum.append(el("span",{}, `Everyday budget ${everyday} Levels · all ${g.waves.length} waves `),
+        el("b",{style:`color:${band.color}`}, `${total} Levels = ×${Math.round(total/everyday*100)/100}`),
+        el("span",{class:"muted"}, " — no single wave over an everyday fight, the run of them well past Boss-tier."));
+      rows.innerHTML = "";
+      g.waves.forEach((w,i)=>{
+        const base = gauntletWaveBase(w), r = base/everyday, b = diffBand(r);
+        const play = gauntletPlay(Math.max(ARENA_MIN, parseInt(aIn.value)||g.arenaSize), w);
+        rows.append(el("div",{class:"small",style:"display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;padding:2px 0"},
+          el("span",{}, `${i+1}. ${w.name}`,
+            el("span",{class:"muted"}, ` · ${gauntletBodies(w)} bodies · ${play}×${play} board`)),
+          el("span",{style:`color:${b.color};font-weight:700`}, `${base} Lv · ×${Math.round(r*100)/100} ${b.label}`)));
+      });
+    };
+    [pIn,nIn,aIn].forEach(inp=>inp.addEventListener("input",paint)); paint();
+    wrap.append(el("div",{class:"inline",style:"gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"},
+      el("span",{style:"font-weight:800"}, g.name),
+      el("button",{class:"btn-primary",onclick:()=>{
+        const party = Math.max(1,parseInt(pIn.value)||1), players = Math.max(1,parseInt(nIn.value)||1);
+        const side = Math.max(ARENA_MIN, parseInt(aIn.value)||g.arenaSize);
+        closeModal(); buildGauntlet(g, party, players, side);
+      }},"\u{1F30A} Build the waves")));
+    wrap.append(el("div",{class:"inline",style:"gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:6px"},
+      el("label",{class:"field"}, el("span",{},"Party leads with Lv"), pIn),
+      el("label",{class:"field"}, el("span",{},"Players"), nIn),
+      el("label",{class:"field"}, el("span",{},"Arena side"), aIn)));
+    wrap.append(sum, rows);
+    wrap.append(el("div",{class:"small muted",style:"margin-top:8px"},
+      `Builds ${g.waves.length} encounters, one per wave, each carrying its own instructions — `
+      + "including which arena step to close to. Frame the arena on the map first with "
+      + "\u{1F300} Arena; the side above follows whatever you framed there."));
+    body.append(wrap);
+  });
+  modal({title:"\u{1F30A} Wave gauntlets", bodyNode:body,
     footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
 }
 /* send an encounter Pokémon to the shared PC (i.e. it's been caught) and remove it from the field */
@@ -35877,6 +36120,7 @@ function renderEncounters(){
   leftc.append(sel);
   leftc.append(el("button",{class:"btn ghost",onclick:()=>{ const n=prompt("Encounter name:","New Encounter"); if(n===null)return; const e=newEncounter(n||"New Encounter"); arr.push(e); state.activeEncounterId=e.id; saveEnc(); renderEncounters(); }},"＋ New"));
   leftc.append(el("button",{class:"btn ghost",title:"roll a random wild encounter from an area table",onclick:openRandomEncounter},"🎲 Random"));
+  leftc.append(el("button",{class:"btn ghost",title:"build a fight that arrives in waves \u2014 one encounter per wave, priced against what the party actually leads with",onclick:openGauntlets},"\u{1F30A} Gauntlet"));
   leftc.append(el("button",{class:"btn ghost",title:"hand EXP to the players — any amount, to anyone you tick, no encounter or calculator needed",onclick:()=>openSendEXP()},"📤 Send EXP"));
   if(cur){
     leftc.append(el("button",{class:"btn ghost",title:"rename",onclick:()=>{ const n=prompt("Rename encounter:",cur.name); if(n===null)return; cur.name=n; saveEnc(); renderEncounters(); }},"✎"));
@@ -41282,6 +41526,8 @@ function normMapMeta(data){
     if(!Array.isArray(m.rooms)) m.rooms = [];          // Trick Room / Gravity / Wonder Room / Magic Room
     m.rooms = m.rooms.filter(k=>ROOM_BY_KEY[k]);
     if(typeof m.shopId!=="string") m.shopId = "";      // the shop currently open on this map ("" = none)
+    if(m.arena && !(m.arena.size > 0)) delete m.arena;   // the closing arena (see paintArena)
+    if(typeof m.hideName!=="boolean") m.hideName = false;   // 🙈 keep the name off every player device
   });
   // playerMapId = the map players see (seed from the old shared activeMapId for back-compat)
   const firstLive = data.maps.find(m=>!m.archived) || data.maps[0] || null;
@@ -43633,6 +43879,16 @@ function currentMapForView(){
   return meta.maps.find(m=>m.id===meta.playerMapId) || null;
 }
 function mapTokensFor(mapId){ return (cloud.mapTokens?.data?.byMap?.[mapId]) || []; }
+/* What a map is called *to whoever is looking at it*. The GM always sees the real name — it is how
+   they tell two maps apart in the Viewing list — but a name can give a scene away before the table
+   walks into it ("Rocket Warehouse — Basement"), so 🙈 Hide name swaps it for a neutral label on
+   every player and Viewer device. The flag rides on the map inside the shared meta row, so it
+   belongs to the map and not to a device: flipping it hides the name everywhere at once. Anything
+   that shows a map's name to a player goes through here. */
+function mapDisplayName(map){
+  if(!map) return "Battle map";
+  return (!cloud.isGM && map.hideName) ? "Battle map" : (map.name || "Map");
+}
 
 /* ── Fog storage: a packed BITMAP, not a list of "x,y" strings ───────────────────────────────
    A well-explored board holds tens of thousands of revealed cells. As a JSON array of "12,34"
@@ -46023,9 +46279,13 @@ function terrainAt(map, cx, cy){
 function zoneSprite(token){
   const z = zoneDef(token);
   const ghost = !!token.ghost;
-  return el("div",{class:"tk-zone"+(ghost?" ghost":""), title:z.name+(ghost?" \u2014 rules only, already drawn on the map":""),
+  /* An arena band is the same zone token doing the same job, but "\u2B1B Blocking Terrain" repeated
+     four times round the board says nothing -- it reads as the edge of the world instead. */
+  const arena = !!token.arena, name = arena ? "Out of bounds" : z.name;
+  return el("div",{class:"tk-zone"+(ghost?" ghost":"")+(arena?" arena":""),
+    title:(arena?"Outside the arena \u2014 ":"")+z.name+(ghost?" \u2014 rules only, already drawn on the map":""),
     style:`background:${ghost?"transparent":z.fill};border:2px ${ghost?"dashed":"solid"} ${z.line}`},
-    el("span",{class:"tk-zone-lbl"}, ghost ? z.icon : `${z.icon} ${z.name}`));
+    el("span",{class:"tk-zone-lbl"}, ghost ? z.icon : `${z.icon} ${name}`));
 }
 async function addTerrainZone(map, key, w, h){
   await addToken(map, { zone:key, size:1, w:Math.max(1,w|0), h:Math.max(1,h|0) });
@@ -46090,6 +46350,151 @@ function openZoneMenu(token, map){
   modal({title:"\u26F0 "+cur.name, bodyNode:body, guardMs:220, footNodes:[
     el("button",{class:"btn-secondary danger",onclick:()=>{ closeModal(); removeToken(token, map); }},"\u{1F5D1} Remove"),
     el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+}
+/* ---- The arena that closes in ---------------------------------------------------------------
+     A gauntlet fought on an open board loses its teeth. The party backs off from each wave, kites
+     it across ground nobody is contesting, and a fight that was meant to squeeze turns into a
+     chase. So the arena itself shrinks: the GM frames a square once, and every "Close in" step eats
+     ARENA_STEP cells off all four edges -- 24x24 becomes 20x20, then 16x16, then 12x12, which is
+     where the last wave gets fought.
+
+     The closed band is laid down as ordinary terrain-zone tokens (`arena` on top of `zone`), so it
+     syncs, persists, paints and BLOCKS through machinery that already exists -- terrainAt picks the
+     bands up like any other zone, which is what stops a player dragging out through the wall. They
+     are derived and never hand-edited: every step repaints the whole ring from `map.arena`, so a
+     band somebody nudged by accident is corrected by the next step.
+
+     The ring is only the enforcement. What closes it is the scene's own business -- the beam
+     sweeping the outer ring, the ceiling coming down, the water going black past the lights.
+--------------------------------------------------------------------------------------------- */
+const ARENA_STEP = 2;            // cells eaten off EVERY edge, per step
+const ARENA_MIN  = 6;            // never close past this much playable board
+const ARENA_DEFAULT_SIZE = 24;   // ~3-4x a Swim speed: everything worth reaching is two moves away
+function arenaOf(map){ const a = map && map.arena; return (a && a.size > 0) ? a : null; }
+const arenaSteps = a => Math.max(0, Math.floor((a.size - ARENA_MIN) / (2*ARENA_STEP)));
+function arenaPlayable(a){
+  const i = ARENA_STEP * Math.max(0, a.step|0);
+  return { x:a.x+i, y:a.y+i, size:Math.max(1, a.size - 2*i) };
+}
+/* The ladder of playable sizes, full arena first -- what the panel and the wave notes quote. */
+const arenaLadder = a => [...Array(arenaSteps(a)+1)].map((_,i)=> a.size - 2*ARENA_STEP*i);
+/* How many cells of board there are to frame an arena inside. mapStageSize's canonical origin can
+   sit above/left of the images, so measure the stage MINUS that origin. */
+function mapBoardCells(map){
+  const s = mapStageSize(map), px = map.gridSize || 32;
+  return { cols: Math.max(1, Math.floor((s.w - s.originX)/px)),
+           rows: Math.max(1, Math.floor((s.h - s.originY)/px)) };
+}
+/* Repaint the closed band from map.arena: four rectangles, thickness = the current inset. Every
+   arena band on the board is dropped first, so this is idempotent and self-correcting. */
+function paintArena(map){
+  ensureMapTokens();
+  const byMap = cloud.mapTokens.data.byMap;
+  const arr = byMap[map.id] || (byMap[map.id] = []);
+  for(let i=arr.length-1; i>=0; i--) if(arr[i] && arr[i].arena) arr.splice(i,1);
+  const a = arenaOf(map);
+  if(a){
+    const ins = ARENA_STEP * Math.max(0, a.step|0), key = a.zone || "blocking";
+    const band = (x,y,w,h)=>{ if(w>0 && h>0) arr.push({ id:uid(), arena:a.step, zone:key, size:1, x, y, w, h }); };
+    band(a.x,            a.y,              a.size,      ins);             // top
+    band(a.x,            a.y+a.size-ins,   a.size,      ins);             // bottom
+    band(a.x,            a.y+ins,          ins,         a.size-2*ins);    // left
+    band(a.x+a.size-ins, a.y+ins,          ins,         a.size-2*ins);    // right
+  }
+  mapTokensSave(); renderMap();
+}
+function setArena(map, patch){
+  const b = mapBoardCells(map);
+  const a = Object.assign({ x:0, y:0, size:ARENA_DEFAULT_SIZE, step:0, zone:"blocking" }, map.arena||{}, patch||{});
+  a.size = Math.max(ARENA_MIN, Math.min(200, a.size|0));
+  a.x = a.x|0; a.y = a.y|0;
+  if(!TERRAIN_ZONES.some(z=>z.key===a.zone)) a.zone = "blocking";
+  a.step = Math.max(0, Math.min(arenaSteps(a), a.step|0));
+  map.arena = a; mapMetaSave(); paintArena(map);
+  return a;
+}
+/* One step tighter (+1) or wider (-1). The wave notes say which step each wave is fought at, so
+   this is the button the GM taps between waves. */
+function arenaClose(map, delta){
+  const a = arenaOf(map); if(!a) return;
+  const steps = arenaSteps(a), next = Math.max(0, Math.min(steps, (a.step|0) + delta));
+  if(next === (a.step|0)){
+    toast(delta > 0 ? "\u{1F300} The arena is already as tight as it goes" : "\u{1F300} The arena is already wide open");
+    return;
+  }
+  const size = a.size - 2*ARENA_STEP*next;
+  setArena(map, { step:next });
+  toast(`\u{1F300} The arena ${delta>0?"closes":"opens"} to ${size}×${size} — ring ${next} of ${steps}`);
+}
+function clearArena(map){ delete map.arena; mapMetaSave(); paintArena(map); }
+/* The rule card under the toolbar: what the ring is doing now, and the two buttons that move it.
+   Players get the card too -- they can see the wall on the board, so hiding the number it closes to
+   next only means somebody asks. */
+function arenaPanel(map){
+  const a = arenaOf(map); if(!a) return null;
+  const p = arenaPlayable(a), steps = arenaSteps(a), z = zoneDef({ zone:a.zone });
+  const card = el("details",{class:"card map-weather"});
+  card.append(el("summary",{},
+    el("span",{style:"font-weight:800"}, `\u{1F300} Arena — ${p.size}×${p.size} playable`),
+    el("span",{class:"muted small",style:"margin-left:8px"},
+      a.step ? `ring ${a.step} of ${steps} closed · the edge is ${z.name}` : "wide open")));
+  const body = el("div",{style:"margin-top:8px"});
+  body.append(el("div",{class:"small"}, `• ${z.icon} ${z.name} outside the line — ${z.note}`));
+  body.append(el("div",{class:"small"},
+    `• ${a.size}×${a.size} full, ${ARENA_STEP} cells off every edge per step: `
+    + arenaLadder(a).join(" → ") + "."));
+  if(cloud.isGM) body.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;flex-wrap:wrap"},
+    el("button",{class:"btn-secondary",disabled:!a.step,
+      title:"give a step of board back",onclick:()=>arenaClose(map,-1)},"◀ Open out"),
+    el("button",{class:"btn-primary",disabled:a.step>=steps,
+      title:"eat another "+ARENA_STEP+" cells off every edge",onclick:()=>arenaClose(map,1)},"Close in ▶"),
+    el("button",{class:"btn-secondary",onclick:()=>openArenaDialog(map)},"⚙ Reframe"),
+    el("button",{class:"btn-secondary danger",
+      onclick:()=>{ if(confirm("Take the arena off this map? The out-of-bounds band comes off with it.")) clearArena(map); }},
+      "\u{1F5D1} Remove")));
+  card.append(body);
+  return card;
+}
+/* Framing it: a square, where its top-left corner sits, and what the ground outside it becomes.
+   Defaults to the biggest square that fits the board, capped at ARENA_DEFAULT_SIZE, centred. */
+function openArenaDialog(map){
+  const b = mapBoardCells(map);
+  const fit = Math.max(ARENA_MIN, Math.min(ARENA_DEFAULT_SIZE, b.cols, b.rows));
+  const cur = map.arena || { size:fit, x:Math.max(0,Math.floor((b.cols-fit)/2)),
+                             y:Math.max(0,Math.floor((b.rows-fit)/2)), step:0, zone:"blocking" };
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    `Mark a square of the board as the arena. Closing it in eats ${ARENA_STEP} cells off every edge `
+    + "and lays real terrain outside the line, so a wave can't be kited into the far corner. "
+    + `This board is about ${b.cols}×${b.rows} cells.`));
+  const szIn = el("input",{type:"number",min:ARENA_MIN,max:200,value:cur.size,style:"width:70px"});
+  const xIn  = el("input",{type:"number",value:cur.x,style:"width:70px"});
+  const yIn  = el("input",{type:"number",value:cur.y,style:"width:70px"});
+  const zSel = el("select",{style:"max-width:200px"});
+  TERRAIN_ZONES.forEach(z=>zSel.append(el("option",{value:z.key,selected:z.key===cur.zone,title:z.note},
+    `${z.icon} ${z.name}`)));
+  body.append(el("div",{class:"inline",style:"gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px"},
+    el("label",{class:"field"}, el("span",{},"Side (squares)"), szIn),
+    el("label",{class:"field"}, el("span",{},"Left edge at cell"), xIn),
+    el("label",{class:"field"}, el("span",{},"Top edge at cell"), yIn),
+    el("label",{class:"field"}, el("span",{},"Ground outside"), zSel)));
+  const out = el("div",{class:"small",style:"margin-bottom:10px"});
+  const paint = ()=>{
+    const a = { size:Math.max(ARENA_MIN,Math.min(200,parseInt(szIn.value)||ARENA_MIN)), step:0 };
+    out.textContent = `Closes ${arenaLadder(a).join(" → ")} — ${arenaSteps(a)} step`
+      + (arenaSteps(a)===1?"":"s") + " before it bottoms out.";
+  };
+  szIn.addEventListener("input", paint); paint();
+  body.append(out);
+  modal({title:"\u{1F300} Arena", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      const a = setArena(map, { size:parseInt(szIn.value)||fit, x:parseInt(xIn.value)||0,
+                                y:parseInt(yIn.value)||0, zone:zSel.value });
+      closeModal();
+      toast(`\u{1F300} Arena framed — ${a.size}×${a.size}, ${arenaSteps(a)} step`
+            + (arenaSteps(a)===1?"":"s") + " to close");
+    }},"Frame it")]});
 }
 const hazardDef = t => HAZARDS.find(h=>h.key===(t&&t.hazard)) || HAZARDS[0];
 function hazardSprite(token){ const h=hazardDef(token);
@@ -48815,12 +49220,22 @@ function openCustomToken(map){
 async function newMap(){
   const name = prompt("Map name:", "Map "+((cloud.mapMeta?.data?.maps?.length||0)+1)); if(name===null) return;
   ensureMapMeta();
-  const m = { id:uid(), name:name||"Map", images:[], gridSize:32, gridOn:true, fogOn:false, fogRadius:3, archived:false };
+  /* hideName starts true: a map is named while it is still a secret ("Rocket Warehouse — Basement"),
+     and the name only has to leak once. The GM opens it up with 🏷 in the drawer's Maps group when
+     the party has arrived. Maps that already existed keep whatever they had (see normMapMeta). */
+  const m = { id:uid(), name:name||"Map", images:[], gridSize:32, gridOn:true, fogOn:false, fogRadius:3, archived:false, hideName:true };
   cloud.mapMeta.data.maps.push(m); cloud.mapMeta.data.activeMapId = m.id; mapGmView = m.id;
   mapView = { scale:1, panX:0, panY:0 };
   mapMetaSave(); renderMap();
 }
 async function renameMap(map){ const n=prompt("Rename map:", map.name); if(n===null) return; map.name=n||map.name; mapMetaSave(); renderMap(); }
+/* 🙈 Hide name — see mapDisplayName. Per map, shared, and reversible at any moment; the GM's own
+   Viewing list marks a hidden map with 🙈 so they can see which scenes are still secret. */
+function toggleMapNameHidden(map){
+  map.hideName = !map.hideName;
+  mapMetaSave(); renderMap();
+  toast(map.hideName ? `🙈 Players see “Battle map”, not “${map.name}”` : `🏷 Players see “${map.name}”`);
+}
 /* archiving hides a map from the live list/tokens+fog stay intact, unlike delete which is permanent */
 async function archiveMap(map){
   const meta = cloud.mapMeta.data;
@@ -49561,7 +49976,7 @@ function renderMap(){
     if(liveMaps.length){
       const sel = el("select");
       liveMaps.forEach(m=>sel.append(el("option",{value:m.id,selected:m.id===mapGmView},
-        m.name + (m.id===meta.playerMapId ? " 👁" : ""))));
+        m.name + (m.id===meta.playerMapId ? " 👁" : "") + (m.hideName ? " 🙈" : ""))));
       sel.addEventListener("change", ()=>{ mapGmView=sel.value; mapView={scale:1,panX:0,panY:0}; renderMap(); });
       bar.append(el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Viewing (private)"), sel));
     }
@@ -49577,6 +49992,9 @@ function renderMap(){
         title:"Make this the map players see"}, shown?"👁 Players see this":"👁 Show to players"));
       mapsTools.push(
         el("button",{class:"btn-secondary",onclick:()=>renameMap(map)},"✎ Rename"),
+        el("button",{class:"btn-secondary"+(map.hideName?" on":""),onclick:()=>toggleMapNameHidden(map),
+          title:"Players see “🗺 Battle map” instead of what this map is called — useful when the name gives the scene away. Your own map list is unaffected."},
+          map.hideName?"🙈 Name hidden":"🏷 Name shown"),
         el("button",{class:"btn-secondary",onclick:()=>archiveMap(map),
           title:"Hide this map from the live list without deleting its tokens/fog"}, "🗄 Archive"),
       );
@@ -49648,6 +50066,8 @@ function renderMap(){
           title:"Drop a visual hazard marker (Stealth Rock, Spikes, fire...) on the board -- cosmetic only, no automatic effect."},"☠ Hazard"),
         el("button",{class:"btn-secondary",onclick:()=>openAddZone(map),
           title:"Mark ground as Rough, Slow or Blocking Terrain. Slow ground doubles the metres a drag across it costs; Blocking ground stops a player's drag. Tick \u{1F441} Invisible when the terrain is already painted into the map art and you only want the rule."},"\u26F0 Terrain"),
+        el("button",{class:"btn-secondary"+(arenaOf(map)?" on":""),onclick:()=>openArenaDialog(map),
+          title:"Frame a square arena and close it in a step at a time. The band outside the line becomes real terrain, so a wave can't be kited into the far corner of the board."},"\u{1F300} Arena"),
         mapWallDrawActive(map) ? null : wallBtn,
         mapWalls(map).length ? el("button",{class:"btn-secondary",onclick:()=>clearMapWalls(map)},"🗑 Clear walls") : null,
         el("button",{class:"btn-secondary",onclick:()=>clearMapTokens(map)},"Clear tokens"));
@@ -49702,7 +50122,7 @@ function renderMap(){
     }
     moreGroup("Maps", ...mapsTools);
   } else {
-    bar.append(el("div",{class:"map-mapname"}, map ? `🗺 ${map.name}` : "🗺 Battle map"));
+    bar.append(el("div",{class:"map-mapname"}, `🗺 ${mapDisplayName(map)}`));
     if(meta.battleOn) bar.append(el("span",{class:"battle-badge"},"⚔ Battle"));
     // players can't change the weather/terrain, but they must be able to see what's in play
     const pw = weatherByKey(map?.weather);
@@ -49804,6 +50224,7 @@ function renderMap(){
     const wpanel = weatherPanel(map); if(wpanel) root.append(wpanel);
     const tpanel = terrainPanel(map); if(tpanel) root.append(tpanel);
     const rpanel = roomPanel(map);    if(rpanel) root.append(rpanel);
+    const apanel = arenaPanel(map);   if(apanel) root.append(apanel);
   }
   if(meta.battleOn) root.append(initiativePanel(map, meta));
   healMissingShops(map);                                              // doors on the board but no shop data → refetch once
