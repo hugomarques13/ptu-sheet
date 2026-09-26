@@ -34271,52 +34271,69 @@ const GAUNTLETS = [
       { name:"Wave 1 · The Shoal", ring:0, sig:1.5,
         note:"The gym's chaff, and the round that teaches the room. Nothing here should kill anyone —\n"
            + "it is here so the party finds out what the walls do and what the beam does while it is\n"
-           + "still cheap to find out. Clawitzer opens at range from behind Relicanth.",
-        mons:[ { s:"Relicanth", lv:22, ability:"Sturdy" },
-               { s:"Veluza",    lv:22 },
-               { s:"Overqwil",  lv:22, ability:"Swift Swim" },
-               { s:"Clawitzer", lv:22 },
-               { s:"Grapploct", lv:23 } ] },
+           + "still cheap to find out. TWO Clawitzer open at range from behind Relicanth, on opposite\n"
+           + "sides: standing still in the open is the mistake this wave is built to punish, and it is\n"
+           + "the cheapest place in the gym to learn it.",
+mons:[
+               { s:"Relicanth", lv:22, abil:["Sturdy","Swift Swim"], nature:"Impish", moves:["Harden","Tackle","Mud Sport","Water Gun","Rock Tomb","Ancient Power"], stats:{hp:8,atk:8,def:10,spdef:6} },
+               { s:"Veluza", lv:22, abil:["Mold Breaker","Sharpness"], nature:"Adamant", moves:["Aqua Jet","Psycho Cut","Flash Step","Flip Turn","Bite","Focus Energy"], stats:{atk:10,spd:8,hp:6,def:4,spdef:4} },
+               { s:"Overqwil", lv:22, abil:["Swift Swim","Intimidate"], nature:"Jolly", moves:["Spikes","Pin Missile","Barb Barrage","Water Pulse"], stats:{atk:10,spd:10,hp:6,def:3,spdef:3} },
+               { s:"Clawitzer", lv:22, nick:"Clawitzer A", abil:["Shell Armor","Sniper"], nature:"Modest", moves:["Bubble Beam","Bubble","Water Gun","Water Sport","Flail","Vice Grip"], stats:{spatk:12,spdef:8,def:6,hp:6} },
+               { s:"Clawitzer", lv:22, nick:"Clawitzer B", abil:["Shell Armor","Swift Swim"], nature:"Modest", moves:["Bubble Beam","Bubble","Water Gun","Water Sport","Flail","Vice Grip"], stats:{spatk:12,spdef:8,spd:6,hp:6} },
+               { s:"Grapploct", lv:23, abil:["Limber","Technician"], nature:"Adamant", moves:["Octolock","Feint","Bind","Detect","Brick Break"], stats:{atk:11,def:8,hp:8,spdef:6} } ] },
       { name:"Wave 2 · The Tide Wall", ring:1, sig:2,
         note:"The wave that teaches them to walk away. Nothing here dies quickly: Milotic heals what\n"
            + "the party chews through, Wishiwashi Solo flips to its School the moment it is hurt (a\n"
            + "Daily — the sheet does it), and Dhelmise anchors a corner and refuses to leave it.\n"
-           + "The answer is not to kill them. It is to still be standing when they get recalled.",
-        mons:[ { s:"Milotic",           lv:27, ability:"Marvel Scale" },
-               { s:"Wishiwashi Solo",   lv:25, ability:"Schooling", nick:"Wishiwashi — Solo" },
-               { s:"Basculegion Male",  lv:25 },
-               { s:"Dhelmise",          lv:25, ability:"Anchored" },
-               { s:"Relicanth",         lv:24, ability:"Sturdy" } ] },
+           + "The answer is not to kill them. It is to still be standing when they get recalled.\n"
+           + "The two Basculegion hunt as a pair and are the only things here in a hurry — they are\n"
+           + "what stops the wave being a wall the party can simply ignore.",
+        mons:[
+               { s:"Milotic", lv:27, abil:["Marvel Scale","Cute Charm"], nature:"Calm", moves:["Aqua Ring","Water Pulse","Disarming Voice","Dragon Tail","Twister"], tutor:["Dragon Pulse"], stats:{spatk:10,spdef:12,hp:10,def:5} },
+               { s:"Wishiwashi Solo", lv:25, nick:"Wishiwashi \u2014 Solo", abil:["Schooling","Water Veil"], nature:"Modest", moves:["Brine","Water Gun","Aqua Ring","Helping Hand","Take Down"], tutor:["Icy Wind"], stats:{spatk:12,def:10,spdef:8,hp:5} },
+               { s:"Basculegion Male", lv:25, abil:["Aqua Bullet","Adaptability"], nature:"Adamant", moves:["Aqua Jet","Crunch","Zen Headbutt","Bite","Hex","Shadow Ball"], stats:{hp:10,atk:12,spd:8,def:5} },
+               { s:"Basculegion Female", lv:25, abil:["Aqua Bullet","Shackle"], nature:"Jolly", moves:["Aqua Jet","Crunch","Zen Headbutt","Bite","Hex","Shadow Ball"], stats:{hp:8,atk:10,spd:12,def:5} },
+               { s:"Dhelmise", lv:25, abil:["Anchored","Steelworker"], nature:"Brave", moves:["Gyro Ball","Giga Drain","Metal Sound","Wrap","Rapid Spin"], tutor:["Iron Head"], stats:{atk:12,hp:8,def:8,spdef:7} },
+               { s:"Relicanth", lv:24, abil:["Sturdy","Rock Head"], nature:"Adamant", moves:["Harden","Tackle","Water Gun","Rock Tomb","Ancient Power"], tutor:["Head Smash"], stats:{atk:10,def:10,hp:8,spdef:6} } ] },
       { name:"Wave 3 · The Gullet", ring:2, sig:2,
         note:"The puzzle wave, on a 16×16 board — there is nowhere left to stand politely.\n"
            + "Tatsugiri rides in Dondozo's mouth and Commands it; dislodge the fish and the wall\n"
            + "stops hitting like a boss. Dragalge poisons the water it is standing in, so the\n"
-           + "shrinking board is working for the gym now, not against it.",
-        mons:[ { s:"Dondozo",   lv:32, ability:"Unaware" },
-               { s:"Dragalge",  lv:30 },
-               { s:"Tatsugiri", lv:26, ability:"Commander" },
-               { s:"Clawitzer", lv:26 },
-               { s:"Overqwil",  lv:25 } ] },
-      { name:"Wave 4 · Deep Pressure", ring:3, sig:4,
-        note:"Nobody's gym. Nobody's Pokemon. Two Megas that have been down here long enough to stop\n"
-           + "reverting, in a 12×12 pit, with two overlapping beams. Both are built ✨ already Mega\n"
-           + "Evolved — there is no Key Stone to wait on.\n"
-           + "TWO PHASES — hold Gyarados off the board until one of these happens:\n"
-           + "  1. Mega Sharpedo hunts first. It goes for the squishiest thing it can reach and is\n"
-           + "     not built to survive being answered. Milotic and Basculegion screen for it.\n"
-           + "  2. Gyarados is coiled in the trench. It rouses when Sharpedo drops, or at the top of\n"
-           + "     round 3 — whichever comes first. THAT is the phase change.\n"
-           + "⚡ ROGUE MEGA — Gyarados is wild, Mega and running the Boss Template, so it resists\n"
-           + "every attack ONE FURTHER STEP unless the attacker is itself a Mega, and none of them is.\n"
-           + "Super-effective lands as neutral; neutral lands as a resist. With 2 HP bars on top, this\n"
-           + "is the single hardest thing in the gauntlet and the Levels below do not price it.\n"
-           + "\u{1F53B} IF IT IS TOO MUCH, turn its \u{1F480} Boss Template OFF. That one switch takes away the\n"
-           + "second HP bar AND the ladder step in one go — it stops being a Rogue Mega and goes back\n"
-           + "to being a very large Gyarados. It is the only dial you should need mid-fight.",
-        mons:[ { s:"Sharpedo",           lv:32, ability:"Speed Boost", mega:"Mega Sharpedo" },
-               { s:"Gyarados",           lv:34, ability:"Intimidate",  mega:"Mega Gyarados", boss:2 },
-               { s:"Milotic",            lv:28, ability:"Marvel Scale" },
-               { s:"Basculegion Female", lv:26 } ] },
+           + "shrinking board is working for the gym now, not against it.\n"
+           + "THERE ARE TWO FISH. Kill the curly one and the droopy one swims into the mouth on the\n"
+           + "Dondozo's next turn and Commands it again — the puzzle has to be solved twice, which is\n"
+           + "what makes it a puzzle instead of a single lucky knockout.",
+        mons:[
+               { s:"Dondozo", lv:32, abil:["Unaware","Big Swallow"], nature:"Relaxed", moves:["Wave Dash","Body Slam","Waterfall","Noble Roar","Stockpile","Rest"], stats:{hp:14,def:12,atk:10,spdef:6} },
+               { s:"Dragalge", lv:30, abil:["Poison Point","Adaptability"], nature:"Modest", moves:["Water Pulse","Acid","Poison Tail","Double Team"], tutor:["Draco Meteor","Shock Wave"], stats:{spatk:14,spdef:12,hp:8,def:6} },
+               { s:"Tatsugiri", lv:26, abil:["Commander","Storm Drain"], nature:"Modest", moves:["Dragon Breath","Water Pulse","Mud Bomb","Snarl","Brine","Twister"], stats:{spatk:14,spdef:8,spd:8,hp:6} },
+               { s:"Tatsugiri-Droopy", lv:25, abil:["Commander","Decoy"], nature:"Modest", moves:["Dragon Breath","Water Pulse","Mud Bomb","Snarl","Brine","Twister"], stats:{spatk:13,spdef:8,spd:8,hp:6} },
+               { s:"Clawitzer", lv:26, abil:["Shell Armor","Sniper"], nature:"Modest", moves:["Bubble Beam","Bubble","Water Gun","Water Sport"], tutor:["Aura Sphere","Dark Pulse"], stats:{spatk:14,spdef:8,def:8,hp:6} },
+               { s:"Overqwil", lv:25, abil:["Swift Swim","Bully"], nature:"Adamant", moves:["Spikes","Pin Missile","Barb Barrage","Water Pulse"], tutor:["Poison Jab","Aqua Tail"], stats:{atk:12,spd:10,hp:7,def:3,spdef:3} } ] },
+      { name:"Wave 4 · Deep Pressure", ring:3, sig:5,
+        note:"Nobody's gym. Nobody's Pokemon. Nobody's escorts either — TWO ROGUE MEGAS alone in a\n"
+           + "12-across pit, with two overlapping beams. Both have been down here long enough to stop\n"
+           + "reverting: they are built ✨ already Mega Evolved, and there is no Key Stone to wait on.\n"
+           + "Both are on the board from the start. No phase to hold back, no chaff to chew through\n"
+           + "first — the party drops into the trench and the trench is already looking at them.\n"
+           + "⚡ BOTH ARE ROGUE MEGAS. Wild + Mega + Boss Template, so each resists every attack ONE\n"
+           + "FURTHER STEP unless the attacker is itself a Mega, and nobody in the party is. Super-\n"
+           + "effective lands as neutral; neutral lands as a resist. That is the fight.\n"
+           + "  · Mega Sharpedo — 2 bars, and it spends them fast. It hunts the squishiest thing it\n"
+           + "    can reach, takes two turns a round doing it, and is the one that dies first.\n"
+           + "  · Mega Gyarados — 3 bars. Three turns a round and roughly three times the HP. This is\n"
+           + "    what the gauntlet has been wearing them down for.\n"
+           + "⚖ THE LEVELS BELOW LIE. 66 Levels reads Trivial, because Base Experience Value counts a\n"
+           + "body's Level and knows nothing about HP bars or a ladder step. Simmed against a party\n"
+           + "arriving worn, this runs about SIX ROUNDS and ends with them on a quarter of their HP.\n"
+           + "Significance is set to ×5 for the same reason — pay them for what they actually fought.\n"
+           + "\u{1F53B} IF IT IS TOO MUCH, drop Gyarados from 3 bars to 2 on its \u{1F480} Boss card. That one\n"
+           + "change takes it from a near-run thing to a comfortable win (simmed: ~6 rounds becomes\n"
+           + "~4). Don't switch the Template off — that also strips the Rogue Mega ladder step and\n"
+           + "collapses the whole fight.",
+        mons:[
+               { s:"Sharpedo", lv:32, abil:["Rough Skin","Bully"], nature:"Adamant", moves:["Ice Fang","Slash","Aqua Jet"], tutor:["Night Slash","Double-Edge","Super Fang"], stats:{atk:14,spd:12,hp:10,def:3,spdef:3}, mega:"Mega Sharpedo", boss:2 },
+               { s:"Gyarados", lv:34, abil:["Intimidate","Steadfast"], nature:"Adamant", moves:["Bite","Ice Fang","Twister"], tutor:["Aqua Tail","Outrage","Iron Head"], stats:{atk:14,hp:12,def:8,spdef:10}, mega:"Mega Gyarados", boss:3 } ] },
     ] },
 ];
 /* The everyday budget this gauntlet is priced against -- the same line ⚖ Difficulty draws. */
@@ -34335,19 +34352,46 @@ function gauntletPartyCount(g){
   try{ const n = diffPartyChars().length; if(n) return n; }catch(err){}
   return g.players;
 }
-/* One combatant from its one-line spec. makeWildMon does the real work (level-up Moves, a rolled
-   Ability, tier Abilities, nature/gender/stats); this only pins the things the wave is built around
-   -- the Ability that IS the encounter (Commander, Schooling, Marvel Scale), the Boss bars, and a
-   Mega that is not a transform waiting on a Key Stone but simply what the thing is now.
+/* One combatant from its one-line spec. makeWildMon lays the groundwork (a legal level-up moveset, a
+   rolled Ability, tier Abilities, nature/gender/stats) and then every part of it that matters is
+   OVERWRITTEN from the spec, because a gym is not a random encounter: a Clawitzer with its 32 points
+   sprinkled at random across six stats is a different creature from one that put twelve of them into
+   the Special Attack it actually fires with.
+
+     abil    the full Ability list, Basic first — exactly what the Level entitles it to (Basic, plus
+             an Advanced at 20+). Replaces rather than prepends: prepending is what quietly gave
+             several of these three Abilities.
+     moves   hand-picked from the species' own level-up list, not just the six most recent
+     tutor   Tutor Moves, appended — one on wave 2, two on wave 3, three on wave 4. PTU caps a
+             Pokémon at six Moves, so a Tutor pick costs a level-up slot; the spec lists both halves.
+     stats   the Level+10 budget, spent on the stats this build actually uses
+     nature  chosen to push the same stat the build does
+
    `mega` goes through megaEvolve on the BASE species deliberately: the "Mega X" DB rows are stat
-   stubs with no Moves or Abilities of their own (see addEncounterMon), so building the base first
-   is what gives the Mega a learnset to fight with. The no-op rerender keeps it off save()/refreshMon,
-   which have no business running while an encounter is still being assembled. */
+   stubs with no Moves or Abilities of their own (see addEncounterMon), so building the base first is
+   what gives the Mega a learnset to fight with — and it arrives AFTER the Moves are set so the Mega
+   Move swaps land on the right list, and BEFORE the Boss bars so those are sized to the Mega's HP.
+   The no-op rerender keeps megaEvolve off save()/refreshMon, which have no business running while an
+   encounter is still being assembled. */
 function gauntletMon(spec){
   const p = makeWildMon(spec.s, spec.lv);
+  const sp = getSpecies(spec.s);
   if(spec.nick) p.nickname = spec.nick;
-  if(spec.ability && abilityByName.has(String(spec.ability).toLowerCase())){
-    p.abilities = [spec.ability, ...(p.abilities||[]).filter(a=>(a||"").toLowerCase()!==spec.ability.toLowerCase())];
+  if(Array.isArray(spec.abil) && spec.abil.length){
+    p.abilities = spec.abil.filter(a => abilityByName.has(String(a).toLowerCase()));
+    /* Tell syncEncMonTierAbilities which of these IS the Advanced pick, so that levelling this
+       creature at the table neither rolls it a second Advanced nor strips the one we chose. */
+    const adv = (sp && sp.abilities && sp.abilities.advanced) || [];
+    const mine = p.abilities.find(a => adv.includes(a));
+    p.encTierAbil = mine ? { adv:mine } : {};
+  }
+  const moves = [...(spec.moves||[]), ...(spec.tutor||[])]
+    .filter(m => moveByName.get(String(m).toLowerCase())).slice(0, 6);
+  if(moves.length) p.moves = moves;
+  if(spec.nature && D.natures.some(n=>n.name===spec.nature)) p.nature = spec.nature;
+  if(spec.stats){
+    STATS.forEach(([k]) => { p.stats[k] = { added:0 }; });
+    Object.entries(spec.stats).forEach(([k,v])=>{ if(p.stats[k]) p.stats[k].added = Math.max(0, v|0); });
   }
   if(spec.mega && getSpecies(spec.mega)) megaEvolve(p, spec.mega, ()=>{});
   if(spec.boss){ toggleBoss(p); p.boss.actions = spec.boss; p.boss.curBar = spec.boss; normBoss(p); }
@@ -50484,11 +50528,16 @@ function renderMap(){
   // a grid whose cells are 5px apart is just moire — it goes with the rest of the fine detail
   if(map.gridOn && mapTokenDetail()>=1) stage.append(el("div",{class:"map-grid",style:`width:${stageW}px;height:${stageH}px;background-size:${map.gridSize}px ${map.gridSize}px`}));
 
-  // the arena: its out-of-bounds tiles, then the ring itself — above the grid, under the tokens
+  /* The arena. Everyone sees the out-of-bounds tiles — that is the board telling them where they
+     can't go, and it has to be true for the people it constrains. The RING is the GM's own working
+     line: it is where the edge sits to the square, it carries the handle that drags the arena and
+     the count of how wide it currently is, and none of that is the players' business. They get the
+     water going dark, which is the same information played straight. */
   if(arenaOf(map)){
     const arcv = el("canvas",{class:"map-arena"});
     drawArena(arcv, map, stageW, stageH, originX, originY);
-    stage.append(arcv, arenaOutlineNode(map, originX, originY));
+    stage.append(arcv);
+    if(cloud.isGM) stage.append(arenaOutlineNode(map, originX, originY));
   }
 
   // tokens + fog, with role-dependent stacking. In image-edit mode tokens are inert.
