@@ -46430,6 +46430,18 @@ function paintArena(map){
   }
   mapTokensSave(); renderMap();
 }
+/* The arena's live boundary line, drawn into the stage itself.
+   The closed band shows what is DEAD ground; this shows where the edge is right now — and at step 0
+   there is no band at all, so without this, framing an arena looks like it did nothing. It is drawn
+   as part of the stage rather than as a token on purpose: nothing stands on it, nothing drags it,
+   and it must never be mistaken for a piece of terrain. */
+function arenaOutlineNode(map, originX, originY){
+  const a = arenaOf(map); if(!a) return null;
+  const p = arenaPlayable(a), px = map.gridSize;
+  return el("div",{class:"map-arena-edge",
+    style:`left:${p.x*px+originX}px;top:${p.y*px+originY}px;width:${p.size*px}px;height:${p.size*px}px`},
+    el("span",{class:"map-arena-lbl"}, `\u{1F300} ${p.size}×${p.size}`));
+}
 function setArena(map, patch){
   const b = mapBoardCells(map);
   const a = Object.assign({ x:0, y:0, size:ARENA_DEFAULT_SIZE, step:0, zone:"blocking" }, map.arena||{}, patch||{});
@@ -50327,6 +50339,10 @@ function renderMap(){
 
   // a grid whose cells are 5px apart is just moire — it goes with the rest of the fine detail
   if(map.gridOn && mapTokenDetail()>=1) stage.append(el("div",{class:"map-grid",style:`width:${stageW}px;height:${stageH}px;background-size:${map.gridSize}px ${map.gridSize}px`}));
+
+  // where the arena's edge currently sits (see arenaOutlineNode) — above the grid, under the tokens
+  const arenaEdge = arenaOutlineNode(map, originX, originY);
+  if(arenaEdge) stage.append(arenaEdge);
 
   // tokens + fog, with role-dependent stacking. In image-edit mode tokens are inert.
   const fog = fogSet(map.id);
