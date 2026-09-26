@@ -13674,6 +13674,9 @@ const GIFT_KINDS = [
   { key:"brand",    label:"Brand",           head:"⛧ Brands",            blurb:"What the Branded Feature left on you (p.47). A Brand is a mark, not a Gift — it carries no Patron Stat." },
 ];
 function giftKind(g){ return (g && g.kind) || "gift"; }
+/* The three advancement branches — the kinds where "whose branch is this?" is the question
+   the section has to answer, because a sheet can walk one of them for more than one Legendary. */
+const BRANCH_KINDS = new Set(["messiah","signer","usurper"]);
 
 /* ===== The Legendary Form =========================================================================
    An Usurper has two stat blocks, and the app already knows how to run one of them: a Pokemon. So
@@ -13862,6 +13865,28 @@ function giftMaskPatron(g, text){
 function giftShownName(g){ return giftMaskPatron(g, (g && g.name) || "Gift"); }
 /* the rows this viewer may see, each with its real index in t.gifts so × still removes the right one */
 function giftsShown(t){ return ((t && t.gifts)||[]).map((g,i)=>({g,i})).filter(x => !giftHiddenFrom(x.g)); }
+/* ---- which Legendary a granted row answers to ----------------------------------------------
+   Every row but a Blessing or a Brand carries a Patron, and a sheet blessed by more than one god had
+   all of them pooled into one undivided list. These group the rows by patron so the tab can keep each
+   Legendary's Gifts apart, and so the Signer branch can say in one line whose Signs it is carrying.
+   🙈 patron-hidden rows all collapse into ONE "your Patron" bucket for the player, which
+   is the whole point of the flag: they learn the Gift, never the god — nor how many gods. */
+function giftPatronLabel(g){
+  if(!g || !g.patron) return "";
+  return giftPatronHiddenFrom(g) ? "your Patron" : g.patron;
+}
+/* [{label, rows}] in first-granted order, the patronless rows last. `rows` are the {g,i} pairs
+   giftsShown hands out, so × still removes the right row out of the real array. */
+function giftPatronGroups(rows){
+  const order = [], byLabel = new Map();
+  (rows||[]).forEach(x => {
+    const label = giftPatronLabel(x.g);
+    if(!byLabel.has(label)){ byLabel.set(label, []); order.push(label); }
+    byLabel.get(label).push(x);
+  });
+  order.sort((a,b) => (a?0:1) - (b?0:1));         // the patronless bucket sinks to the bottom
+  return order.map(label => ({ label, rows: byLabel.get(label) }));
+}
 /* the 🎁 breakdown a viewer is allowed to read — hidden rows keep their +1 in the total, not in the label */
 function giftStatBonusShown(t){ return giftStatBonus(t, giftsShown(t).map(x=>x.g)); }
 /* human label for a gift's patron-stat grant, incl. an unresolved-choice prompt */
@@ -14129,6 +14154,11 @@ function giftsCard(t, saveFn, rerender, opts){
   GIFT_KINDS.forEach(kind => {
     const rows = shown.filter(x => giftKind(x.g)===kind.key);
     if(!rows.length) return;
+    /* A Trainer blessed by two gods had both sets of Gifts in one undivided list, which reads as one
+       patron with an absurdly long list. Split the section per Legendary the moment there is more than
+       one of them — and only then, so the ordinary single-patron sheet reads as it always did. */
+    const groups = giftPatronGroups(rows);
+    const split  = groups.length > 1;
     const det = el("details",{class:"spoiler","data-key":"giftkind:"+kind.key,
       style:"margin:12px 0 4px;padding-top:10px;border-top:1px solid var(--line)"});
     det.open = rows.length <= 3;
@@ -14136,9 +14166,41 @@ function giftsCard(t, saveFn, rerender, opts){
       el("span",{style:"font-weight:700;color:var(--ink)"}, kind.head),
       el("span",{class:"muted small",style:"font-weight:400;margin-left:8px"}, `${rows.length}`),
       el("span",{class:"muted small",style:"font-weight:400;margin-left:8px"},
-        rows.map(x => giftShownName(x.g) || "?").join(" · ").slice(0, 90))));
+        ((split || BRANCH_KINDS.has(kind.key))
+           ? groups.map(grp => `${grp.label || "no Patron"} ${grp.rows.length}`)
+           : rows.map(x => giftShownName(x.g) || "?")).join(" · ").slice(0, 90))));
     det.append(el("div",{class:"muted small",style:"margin:4px 0 2px"}, kind.blurb));
-    rows.forEach(({g,i}) => det.append(giftRow(t, g, i, gm, saveFn, rerender)));
+    /* WHOSE branch is this? One line above the Features naming every Legendary the sheet walks this
+       branch for and how many of its Features it has taken — the question a sheet carrying two
+       gods' Signs could not previously be asked. */
+    if(BRANCH_KINDS.has(kind.key)){
+      const who = groups.filter(grp => grp.label);
+      det.append(who.length
+        ? el("div",{class:"small",style:"margin:2px 0 6px"},
+            el("b",{}, kind.key==="signer"  ? "✒ Signer of: "
+                     : kind.key==="messiah" ? "🙏 Messiah of: "
+                                            : "👑 Usurper of: "),
+            who.map(grp => `${grp.label} (${grp.rows.length} Feature${grp.rows.length===1?"":"s"})`).join(" · "))
+        : el("div",{class:"muted small",style:"margin:2px 0 6px"}, gm
+            ? "No Patron set on any of these rows — set one per row below and the branch will name whose it is."
+            : "The Legendary behind this is not named on your sheet."));
+    }
+    const put = (into, list) => list.forEach(({g,i}) => into.append(giftRow(t, g, i, gm, saveFn, rerender)));
+    if(!split) put(det, rows);
+    else groups.forEach(grp => {
+      /* one drop-down per Legendary, open by default — the split is there to keep them apart,
+         not to hide them, and `data-key` keeps whatever you closed closed across the next re-render. */
+      const sub = el("details",{class:"spoiler","data-key":"giftpatron:"+kind.key+":"+(grp.label||"-"),
+        style:"margin:6px 0 2px;padding-left:9px;border-left:2px solid var(--line)"});
+      sub.open = true;
+      sub.append(el("summary",{},
+        el("span",{style:"font-weight:700;color:var(--ink)"}, grp.label || "— no Patron —"),
+        el("span",{class:"muted small",style:"font-weight:400;margin-left:8px"}, `${grp.rows.length}`),
+        el("span",{class:"muted small",style:"font-weight:400;margin-left:8px"},
+          grp.rows.map(x => giftShownName(x.g) || "?").join(" · ").slice(0, 80))));
+      put(sub, grp.rows);
+      det.append(sub);
+    });
     card.append(det);
   });
 
@@ -14455,6 +14517,24 @@ function giftRow(t, g, i, gm, saveFn, rerender){
     (()=>{ const cb = el("input",{type:"checkbox"}); cb.checked = !!g.patronHidden;
            cb.addEventListener("change",()=>{ g.patronHidden = cb.checked || undefined; saveFn(); rerender(); }); return cb; })(),
     el("span",{},"🙈 hide the patron (show only the effect)")));
+  /* The Patron was settled when the Gift was granted and could never be changed afterwards, which
+     left a mis-picked row — or any row granted before its god was known — filed under
+     the wrong Legendary forever. Now that the tab files rows BY patron and the branches name them, the
+     GM needs to be able to move one. Changing it also moves the row's [PATRON STAT] (p.57). */
+  if(gm && kind!=="blessing" && kind!=="brand"){
+    const pSel = el("select",{class:"equip-focus",style:"max-width:280px",
+      title:"which Legendary handed this over — files the row under that god in this tab, names it in the Signer / Messiah / Usurper line, and grants that Patron's Stat"});
+    pSel.append(el("option",{value:""},"— no Patron —"));
+    PATRON_NAMES.forEach(p => pSel.append(el("option",{value:p, selected:g.patron===p},
+      `${p}  (${giftStatText({patron:p})})`)));
+    pSel.addEventListener("change",()=>{
+      g.patron = pSel.value || "";
+      if(!g.patron) g.patronHidden = undefined;          // nothing left to hide
+      saveFn(); rerender();
+    });
+    infoTop.append(el("div",{class:"inline small",style:"gap:6px;margin-top:5px;flex-wrap:wrap"},
+      el("span",{class:"muted"},"Patron"), pSel));
+  }
   row.append(infoTop);
   if(gm) row.append(el("button",{class:"linkbtn danger",title:"remove this",style:"align-self:flex-start",
     onclick:()=>{ if(confirm(`Remove “${g.name}”?`)){ t.gifts.splice(i,1); saveFn(); rerender(); } }}, "×"));
