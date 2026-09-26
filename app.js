@@ -34362,7 +34362,7 @@ function gauntletWaveNotes(g, w, i, enc, party, players, arenaSize){
   const out = [];
   if(i === 0 && g.brief) out.push(g.brief, "");
   out.push(`\u{1F30A} ${g.name} — wave ${i+1} of ${g.waves.length}.`);
-  out.push(`\u{1F300} Arena: ring ${w.ring} — close it to ${play}×${play} playable before this wave arrives.`);
+  out.push(`\u{1F300} Arena: ring ${w.ring} — close the circle to ${play} squares across before this wave arrives.`);
   out.push(`⚖ ${base} Levels against an everyday ${everyday} (Lv ${party} × 2 × ${players} player`
     + `${players===1?"":"s"}) = ×${Math.round(ratio*100)/100} — ${band.label}.`);
   if(i === g.waves.length-1){
@@ -34468,7 +34468,7 @@ function openGauntlets(){
         const play = gauntletPlay(Math.max(ARENA_MIN, parseInt(aIn.value)||g.arenaSize), w);
         rows.append(el("div",{class:"small",style:"display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;padding:2px 0"},
           el("span",{}, `${i+1}. ${w.name}`,
-            el("span",{class:"muted"}, ` · ${gauntletBodies(w)} bodies · ${play}×${play} board`)),
+            el("span",{class:"muted"}, ` · ${gauntletBodies(w)} bodies · circle ${play} across`)),
           el("span",{style:`color:${b.color};font-weight:700`}, `${base} Lv · ×${Math.round(r*100)/100} ${b.label}`)));
       });
     };
@@ -46291,6 +46291,15 @@ const zoneDef = t => TERRAIN_ZONES.find(z=>z.key===(t&&t.zone)) || TERRAIN_ZONES
 function terrainAt(map, cx, cy){
   const out = { slow:false, rough:false, block:false, names:[] };
   if(!map) return out;
+  /* Outside the arena circle. Not a zone token any more (see paintArena) — the arena rides the map
+     itself, so it is asked directly, and it carries whichever ground the GM picked for its edge. */
+  if(arenaBlocksAt(map, cx, cy)){
+    const z = zoneDef({ zone:(map.arena||{}).zone });
+    if(z.slow) out.slow = true;
+    if(z.rough) out.rough = true;
+    if(z.block) out.block = true;
+    out.names.push("Out of bounds");
+  }
   for(const t of mapTokensFor(map.id)){
     if(!isZoneToken(t)) continue;
     const f = tokenFootprint(t), x = Math.round(t.x), y = Math.round(t.y);
@@ -46412,42 +46421,69 @@ function mapBoardCells(map){
   return { cols: Math.max(1, Math.floor((s.w - s.originX)/px)),
            rows: Math.max(1, Math.floor((s.h - s.originY)/px)) };
 }
-/* Repaint the closed band from map.arena: four rectangles, thickness = the current inset. Every
-   arena band on the board is dropped first, so this is idempotent and self-correcting. */
+/* Is this cell still IN the arena? The circle is measured to the cell's CENTRE, and the canvas below
+   paints from this very function, so what a player sees and what the board blocks can never drift
+   apart — the tiled edge is the rule, not a picture of it. `size` is the circle's DIAMETER. */
+function arenaInside(a, cx, cy){
+  const p = arenaPlayable(a), r = p.size/2;
+  const dx = (cx + 0.5) - (p.x + r), dy = (cy + 0.5) - (p.y + r);
+  return dx*dx + dy*dy <= r*r;
+}
+const arenaBlocksAt = (map, cx, cy) => { const a = arenaOf(map); return !!a && !arenaInside(a, cx, cy); };
+/* The arena used to lay its out-of-bounds ground down as terrain-zone TOKENS. A circle can't be four
+   rectangles, and tiling one cell at a time would have put several hundred tokens on the board —
+   which is the one thing the map cannot afford (see the culling/LOD work). So the ground is no
+   longer tokens at all: `map.arena` rides the meta row on its own, terrainAt consults it directly,
+   and the blue is painted as one canvas. Nothing to sync, nothing to drag, nothing to cull.
+   This still runs to sweep up the band tokens any arena framed before that change left behind. */
 function paintArena(map){
   ensureMapTokens();
   const byMap = cloud.mapTokens.data.byMap;
   const arr = byMap[map.id] || (byMap[map.id] = []);
-  for(let i=arr.length-1; i>=0; i--) if(arr[i] && arr[i].arena) arr.splice(i,1);
-  const a = arenaOf(map);
-  if(a){
-    const ins = ARENA_STEP * Math.max(0, a.step|0), key = a.zone || "blocking";
-    const band = (x,y,w,h)=>{ if(w>0 && h>0) arr.push({ id:uid(), arena:a.step, zone:key, size:1, x, y, w, h }); };
-    band(a.x,            a.y,              a.size,      ins);             // top
-    band(a.x,            a.y+a.size-ins,   a.size,      ins);             // bottom
-    band(a.x,            a.y+ins,          ins,         a.size-2*ins);    // left
-    band(a.x+a.size-ins, a.y+ins,          ins,         a.size-2*ins);    // right
-  }
-  mapTokensSave(); renderMap();
+  let dropped = 0;
+  for(let i=arr.length-1; i>=0; i--) if(arr[i] && arr[i].arena){ arr.splice(i,1); dropped++; }
+  if(dropped) mapTokensSave();
+  renderMap();
 }
-/* The arena's live boundary line, drawn into the stage itself.
-   The closed band shows what is DEAD ground; this shows where the edge is right now — and at step 0
-   there is no band at all, so without this, framing an arena looks like it did nothing. It is drawn
-   as part of the stage rather than as a token on purpose: nothing stands on it, nothing drags it,
-   and it must never be mistaken for a piece of terrain. */
+/* The deep-blue ground outside the circle, one tile per cell, across the whole board — an arena is
+   the only place there is, so everything off it is out. Drawn on a canvas like the fog and the AoE
+   overlay rather than as board furniture. */
+const ARENA_FILL_DEFAULT = "#0b2f57";        // the deep the gauntlet is fought at the bottom of
+function drawArena(cv, map, stageW, stageH, originX=0, originY=0){
+  const a = arenaOf(map);
+  if(!a){ cv.width = cv.height = 0; return; }
+  const px = map.gridSize;
+  const cols = Math.ceil((stageW - originX)/px), rows = Math.ceil((stageH - originY)/px);
+  cv.width = stageW; cv.height = stageH;
+  const ctx = cv.getContext("2d");
+  const fill = isHexColor(a.color) ? a.color : ARENA_FILL_DEFAULT;
+  ctx.fillStyle = fill; ctx.globalAlpha = 0.82;
+  ctx.strokeStyle = "rgba(255,255,255,.07)"; ctx.lineWidth = 1;
+  for(let cy = -Math.ceil(originY/px); cy < rows; cy++){
+    for(let cx = -Math.ceil(originX/px); cx < cols; cx++){
+      if(arenaInside(a, cx, cy)) continue;
+      const x = cx*px + originX, y = cy*px + originY;
+      ctx.fillRect(x, y, px, px);
+      ctx.strokeRect(x+0.5, y+0.5, px-1, px-1);   // a faint seam, so it reads as tiles and not a wash
+    }
+  }
+}
+/* The boundary itself, as a ring over the tiles. Sized to the live circle, so it closes with it. */
 function arenaOutlineNode(map, originX, originY){
   const a = arenaOf(map); if(!a) return null;
   const p = arenaPlayable(a), px = map.gridSize;
   return el("div",{class:"map-arena-edge",
     style:`left:${p.x*px+originX}px;top:${p.y*px+originY}px;width:${p.size*px}px;height:${p.size*px}px`},
-    el("span",{class:"map-arena-lbl"}, `\u{1F300} ${p.size}×${p.size}`));
+    el("span",{class:"map-arena-lbl"}, `\u{1F300} ${p.size} across`));
 }
 function setArena(map, patch){
   const b = mapBoardCells(map);
-  const a = Object.assign({ x:0, y:0, size:ARENA_DEFAULT_SIZE, step:0, zone:"blocking" }, map.arena||{}, patch||{});
+  const a = Object.assign({ x:0, y:0, size:ARENA_DEFAULT_SIZE, step:0, zone:"blocking",
+                            color:ARENA_FILL_DEFAULT }, map.arena||{}, patch||{});
   a.size = Math.max(ARENA_MIN, Math.min(200, a.size|0));
   a.x = a.x|0; a.y = a.y|0;
   if(!TERRAIN_ZONES.some(z=>z.key===a.zone)) a.zone = "blocking";
+  if(!isHexColor(a.color)) a.color = ARENA_FILL_DEFAULT;
   a.step = Math.max(0, Math.min(arenaSteps(a), a.step|0));
   map.arena = a; mapMetaSave(); paintArena(map);
   return a;
@@ -46463,7 +46499,7 @@ function arenaClose(map, delta){
   }
   const size = a.size - 2*ARENA_STEP*next;
   setArena(map, { step:next });
-  toast(`\u{1F300} The arena ${delta>0?"closes":"opens"} to ${size}×${size} — ring ${next} of ${steps}`);
+  toast(`\u{1F300} The arena ${delta>0?"closes":"opens"} to ${size} squares across — ring ${next} of ${steps}`);
 }
 function clearArena(map){ delete map.arena; mapMetaSave(); paintArena(map); }
 /* The rule card under the toolbar: what the ring is doing now, and the two buttons that move it.
@@ -46474,14 +46510,16 @@ function arenaPanel(map){
   const p = arenaPlayable(a), steps = arenaSteps(a), z = zoneDef({ zone:a.zone });
   const card = el("details",{class:"card map-weather"});
   card.append(el("summary",{},
-    el("span",{style:"font-weight:800"}, `\u{1F300} Arena — ${p.size}×${p.size} playable`),
+    el("span",{style:"font-weight:800"}, `\u{1F300} Arena — a circle ${p.size} squares across`),
     el("span",{class:"muted small",style:"margin-left:8px"},
-      a.step ? `ring ${a.step} of ${steps} closed · the edge is ${z.name}` : "wide open")));
+      a.step ? `ring ${a.step} of ${steps} closed · outside it is ${z.name}` : "at its widest")));
   const body = el("div",{style:"margin-top:8px"});
-  body.append(el("div",{class:"small"}, `• ${z.icon} ${z.name} outside the line — ${z.note}`));
+  body.append(el("div",{class:"small"}, `• ${z.icon} ${z.name} outside the circle — ${z.note}`));
   body.append(el("div",{class:"small"},
-    `• ${a.size}×${a.size} full, ${ARENA_STEP} cells off every edge per step: `
+    `• ${a.size} across at its widest, ${ARENA_STEP} squares off the diameter per step: `
     + arenaLadder(a).join(" → ") + "."));
+  body.append(el("div",{class:"small muted"},
+    "• The corners are out of bounds from the start — a circle never fills its own square."));
   if(cloud.isGM) body.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;flex-wrap:wrap"},
     el("button",{class:"btn-secondary",disabled:!a.step,
       title:"give a step of board back",onclick:()=>arenaClose(map,-1)},"◀ Open out"),
@@ -46500,27 +46538,31 @@ function openArenaDialog(map){
   const b = mapBoardCells(map);
   const fit = Math.max(ARENA_MIN, Math.min(ARENA_DEFAULT_SIZE, b.cols, b.rows));
   const cur = map.arena || { size:fit, x:Math.max(0,Math.floor((b.cols-fit)/2)),
-                             y:Math.max(0,Math.floor((b.rows-fit)/2)), step:0, zone:"blocking" };
+                             y:Math.max(0,Math.floor((b.rows-fit)/2)), step:0, zone:"blocking",
+                             color:ARENA_FILL_DEFAULT };
   const body = el("div",{});
   body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
-    `Mark a square of the board as the arena. Closing it in eats ${ARENA_STEP} cells off every edge `
-    + "and lays real terrain outside the line, so a wave can't be kited into the far corner. "
-    + `This board is about ${b.cols}×${b.rows} cells.`));
+    `Mark a CIRCLE of the board as the arena. Everything outside it is tiled out of bounds — the `
+    + `corners included, from the start — and closing it in takes ${ARENA_STEP} squares off the `
+    + `diameter. This board is about ${b.cols}×${b.rows} cells.`));
   const szIn = el("input",{type:"number",min:ARENA_MIN,max:200,value:cur.size,style:"width:70px"});
   const xIn  = el("input",{type:"number",value:cur.x,style:"width:70px"});
   const yIn  = el("input",{type:"number",value:cur.y,style:"width:70px"});
   const zSel = el("select",{style:"max-width:200px"});
   TERRAIN_ZONES.forEach(z=>zSel.append(el("option",{value:z.key,selected:z.key===cur.zone,title:z.note},
     `${z.icon} ${z.name}`)));
+  const cIn = el("input",{type:"color",value:isHexColor(cur.color)?cur.color:ARENA_FILL_DEFAULT,
+    class:"enc-color",title:"the colour of the ground outside the circle"});
   body.append(el("div",{class:"inline",style:"gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px"},
-    el("label",{class:"field"}, el("span",{},"Side (squares)"), szIn),
+    el("label",{class:"field"}, el("span",{},"Across (squares)"), szIn),
     el("label",{class:"field"}, el("span",{},"Left edge at cell"), xIn),
     el("label",{class:"field"}, el("span",{},"Top edge at cell"), yIn),
-    el("label",{class:"field"}, el("span",{},"Ground outside"), zSel)));
+    el("label",{class:"field"}, el("span",{},"Rule outside"), zSel),
+    el("label",{class:"field"}, el("span",{},"Colour"), cIn)));
   const out = el("div",{class:"small",style:"margin-bottom:10px"});
   const paint = ()=>{
     const a = { size:Math.max(ARENA_MIN,Math.min(200,parseInt(szIn.value)||ARENA_MIN)), step:0 };
-    out.textContent = `Closes ${arenaLadder(a).join(" → ")} — ${arenaSteps(a)} step`
+    out.textContent = `Closes ${arenaLadder(a).join(" → ")} squares across — ${arenaSteps(a)} step`
       + (arenaSteps(a)===1?"":"s") + " before it bottoms out.";
   };
   szIn.addEventListener("input", paint); paint();
@@ -46529,9 +46571,9 @@ function openArenaDialog(map){
     el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
     el("button",{class:"btn-primary",onclick:()=>{
       const a = setArena(map, { size:parseInt(szIn.value)||fit, x:parseInt(xIn.value)||0,
-                                y:parseInt(yIn.value)||0, zone:zSel.value });
+                                y:parseInt(yIn.value)||0, zone:zSel.value, color:cIn.value });
       closeModal();
-      toast(`\u{1F300} Arena framed — ${a.size}×${a.size}, ${arenaSteps(a)} step`
+      toast(`\u{1F300} Arena framed — a circle ${a.size} across, ${arenaSteps(a)} step`
             + (arenaSteps(a)===1?"":"s") + " to close");
     }},"Frame it")]});
 }
@@ -50340,9 +50382,12 @@ function renderMap(){
   // a grid whose cells are 5px apart is just moire — it goes with the rest of the fine detail
   if(map.gridOn && mapTokenDetail()>=1) stage.append(el("div",{class:"map-grid",style:`width:${stageW}px;height:${stageH}px;background-size:${map.gridSize}px ${map.gridSize}px`}));
 
-  // where the arena's edge currently sits (see arenaOutlineNode) — above the grid, under the tokens
-  const arenaEdge = arenaOutlineNode(map, originX, originY);
-  if(arenaEdge) stage.append(arenaEdge);
+  // the arena: its out-of-bounds tiles, then the ring itself — above the grid, under the tokens
+  if(arenaOf(map)){
+    const arcv = el("canvas",{class:"map-arena"});
+    drawArena(arcv, map, stageW, stageH, originX, originY);
+    stage.append(arcv, arenaOutlineNode(map, originX, originY));
+  }
 
   // tokens + fog, with role-dependent stacking. In image-edit mode tokens are inert.
   const fog = fogSet(map.id);
