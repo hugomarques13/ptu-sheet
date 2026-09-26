@@ -34438,6 +34438,19 @@ function openGauntlets(){
     const nIn = el("input",{type:"number",min:1,max:8,value:gauntletPartyCount(g),style:"width:56px"});
     const aIn = el("input",{type:"number",min:ARENA_MIN,max:200,value:gauntletArenaDefault(g),style:"width:64px",
       title:"the side of the arena you framed on the map — the wave notes quote the board each ring closes to"});
+    /* WHO is actually in this fight. A campaign carries sheets for people who aren't at the table --
+       a retired character, a guest, someone between arcs -- and diffPartyChars() hands back every
+       one of them. Left alone that gets BOTH numbers wrong: the head count, and the average Level
+       the whole gauntlet is priced against, because an absent player's Pokemon drag it. So the same
+       tick list ⚖ Difficulty uses, and both boxes follow it. */
+    const chars = (()=>{ try{ return diffPartyChars(); }catch(err){ return []; } })();
+    const inFight = new Set(chars.map(c=>c.id));
+    const syncFromPicks = ()=>{
+      if(!inFight.size) return;                         // everyone un-ticked: leave the last numbers alone
+      const lv = chars.filter(c=>inFight.has(c.id)).flatMap(c=>diffTopLevels(c.data, g.perPlayer));
+      if(lv.length) pIn.value = Math.round(diffAvg(lv));
+      nIn.value = inFight.size;
+    };
     const total = g.waves.reduce((n,w)=>n+gauntletWaveBase(w),0);
     const sum = el("div",{class:"small",style:"margin:6px 0"});
     const rows = el("div",{style:"margin-top:6px"});
@@ -34459,7 +34472,20 @@ function openGauntlets(){
           el("span",{style:`color:${b.color};font-weight:700`}, `${base} Lv · ×${Math.round(r*100)/100} ${b.label}`)));
       });
     };
-    [pIn,nIn,aIn].forEach(inp=>inp.addEventListener("input",paint)); paint();
+    const who = el("div",{class:"inline",style:"gap:10px;flex-wrap:wrap;margin-top:6px"});
+    if(chars.length){
+      who.append(el("span",{class:"small muted"},"In this fight:"));
+      chars.forEach(c=>{
+        const cb = el("input",{type:"checkbox"}); cb.checked = true;
+        cb.addEventListener("change",()=>{
+          if(cb.checked) inFight.add(c.id); else inFight.delete(c.id);
+          syncFromPicks(); paint();
+        });
+        who.append(el("label",{class:"inline",style:"gap:4px;align-items:center;cursor:pointer"},
+          cb, el("span",{class:"small"}, c.name)));
+      });
+    }
+    [pIn,nIn,aIn].forEach(inp=>inp.addEventListener("input",paint)); syncFromPicks(); paint();
     wrap.append(el("div",{class:"inline",style:"gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"},
       el("span",{style:"font-weight:800"}, g.name),
       el("button",{class:"btn-primary",onclick:()=>{
@@ -34471,6 +34497,7 @@ function openGauntlets(){
       el("label",{class:"field"}, el("span",{},"Party leads with Lv"), pIn),
       el("label",{class:"field"}, el("span",{},"Players"), nIn),
       el("label",{class:"field"}, el("span",{},"Arena side"), aIn)));
+    if(chars.length) wrap.append(who);
     wrap.append(sum, rows);
     wrap.append(el("div",{class:"small muted",style:"margin-top:8px"},
       `Builds ${g.waves.length} encounters, one per wave, each carrying its own instructions — `
