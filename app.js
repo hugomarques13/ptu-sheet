@@ -8590,7 +8590,7 @@ function applyAutoKO(owner, oldHP, newHP){
     powerConstructRevert(owner, true);   // ...nor Complete, which the Ability ends at 0 HP with everything else
     endSceneTypeState(owner);       // "remains Terastalized until they are Fainted or the Scene ends"
     toast(`💀 ${ownerLabel(owner)} is Knocked Out at ${newHP} HP.`);
-    pyreOfGriefOnFaint(owner);      // anyone with Pyre of Grief standing within 5 m feeds on it
+    pyreOfGriefOnFaint(owner);      // anyone with Pyre of Grief standing within 3 m feeds on it
     return "ko";
   }
   /* Rampaging Spirit holds a Pokémon up past 0 the same way Fight On does for a Berserker, so it
@@ -8613,7 +8613,7 @@ function applyAutoKO(owner, oldHP, newHP){
 }
 
 /* ---------- Pyre of Grief (Vulpoxen, homebrew Ability) ----------
-   "Whenever a Pokémon or Trainer faints within 5 meters of the user, the user is healed one Tick of
+   "Whenever a Pokémon or Trainer faints within 3 meters of the user, the user is healed one Tick of
    Hit Points and gains a +5 Bonus to its next Damage Roll for the rest of the Scene. This bonus does
    not stack."
    Distance is a Map question, so the automatic half needs both bodies on the board. applyAutoKO calls
@@ -8623,10 +8623,43 @@ function applyAutoKO(owner, oldHP, newHP){
    (which writes the right store — sheet, encounter, Boss bar) and the buff through commitTokenSource.
    Deferred a tick, because applyAutoKO runs INSIDE an HP setter that hasn't written the fainted
    creature's own HP yet. Off the board, the 🔥 button on the Ability's row does the same by hand. */
-const PYRE_RANGE = 5;
+const PYRE_RANGE = 3;
+/* Lázaro's grief is shared. When HIS Pyre of Grief fires — his Vulpoxen's Ability, or his own copy
+   of it from the Emberwake Gift — "Mom?" takes the same +5 to her next Damage Roll, even though she
+   carries no Abilities at all (see the Mom? block near getSpecies). She rides the holder's trigger
+   rather than making her own: no second distance check, and she never takes the Tick of healing
+   because her Max HP is pinned at 1. It is the SAME buff key, so it refreshes instead of stacking and
+   her next Damage Roll spends it exactly like his. Both of them live on the one sheet row, so the
+   caller's save/commitTokenSource already persists her half.
+   charOwningOwner() is the "whose sheet is this creature on" lookup trainerRowOwnerOf() does for the
+   Trainer alone — Pyre needs the character record itself, to reach its other Pokémon. */
+function charOwningOwner(o){
+  if(!o) return null;
+  try{
+    const has = c => !!c && (c.trainer === o
+      || (Array.isArray(c.pokemon) && c.pokemon.some(x => x === o || (x.id && o.id && x.id === o.id))));
+    const act = activeChar(); if(has(act)) return act;
+    if(mode === "cloud"){ for(const r of Object.values(cloud.byId||{})) if(has(r && r.data)) return r.data; }
+    else for(const c of (state.characters||[])) if(has(c)) return c;
+  }catch(e){ return null; }
+  return null;
+}
+/* the "Mom?" mons that share `o`'s Pyre of Grief: none unless `o` is on Lázaro's own sheet. Local
+   play has no roles to hide behind, so it answers the same way isLazaro() does — yes. */
+function pyreShareTargets(o){
+  const c = charOwningOwner(o);
+  if(!c) return [];
+  if(mode === "cloud" && !isLazaroName(c.name) && !isLazaroName(c.trainer && c.trainer.name)) return [];
+  return (c.pokemon||[]).filter(p => p !== o && isMomSpecies(p.species) && pyreCanFire(p));
+}
 function pyreGrantBuff(o){
   if(Array.isArray(o.buffs)) o.buffs = o.buffs.filter(b => b.key !== "pyre-of-grief");   // refresh, never stack
   addBuff(o, "pyre-of-grief");
+  return pyreShareTargets(o).map(m => {                      // ...and Lázaro's "Mom?" alongside him
+    if(Array.isArray(m.buffs)) m.buffs = m.buffs.filter(b => b.key !== "pyre-of-grief");
+    addBuff(m, "pyre-of-grief");
+    return ownerLabel(m);
+  });
 }
 function pyreCanFire(o){
   return !!o && !hasStatus(o, "knockedOut") && !hasStatus(o, "dead") && ownerHP(o) > 0;
@@ -8639,7 +8672,7 @@ function pyreOfGriefOnFaint(owner){
   if(!toks.length || toks.length > 300) return;
   const objOf = t => { const L = t.link ? tokenLinked(t) : null; return (L && !L.missing) ? L.obj : null; };
   const fallen = toks.filter(t => objOf(t) === owner);
-  if(!fallen.length) return;                               // not on the board — nobody can be "within 5 m"
+  if(!fallen.length) return;                               // not on the board — nobody can be "within 3 m"
   const holders = toks.filter(t => {
     if(fallen.includes(t)) return false;
     const o = objOf(t);
@@ -8658,9 +8691,10 @@ function pyreOfGriefOnFaint(owner){
       }
       const gain = hpTick(ownerMaxHP(o));
       await setTokenHP(t, info.cur + gain);
-      pyreGrantBuff(o);
+      const shared = pyreGrantBuff(o);
       await commitTokenSource(t);
-      toast(`\u{1F525} Pyre of Grief — ${ownerLabel(o)} feeds on ${who} fainting: +${gain} HP and +5 to its next Damage Roll.`);
+      toast(`\u{1F525} Pyre of Grief — ${ownerLabel(o)} feeds on ${who} fainting: +${gain} HP and +5 to its next Damage Roll.`
+            + (shared.length ? ` ${shared.join(" and ")} share${shared.length>1?"":"s"} the +5.` : ""));
     }
   }, 0);
 }
@@ -8669,8 +8703,9 @@ function applyPyreToOwner(o){
   if(!pyreCanFire(o)) return `${ownerLabel(o)} is down — Pyre of Grief doesn't fire.`;
   const old = ownerHP(o);
   setOwnerHP(o, old + hpTick(ownerMaxHP(o)));
-  pyreGrantBuff(o);
-  return `Pyre of Grief — ${ownerLabel(o)} +${ownerHP(o) - old} HP and +5 to its next Damage Roll.`;
+  const shared = pyreGrantBuff(o);
+  return `Pyre of Grief — ${ownerLabel(o)} +${ownerHP(o) - old} HP and +5 to its next Damage Roll.`
+         + (shared.length ? ` ${shared.join(" and ")} also gain${shared.length>1?"":"s"} the +5.` : "");
 }
 function pyreTriggerRow(p, redraw, persist){
   const gain = hpTick(ownerMaxHP(p));
@@ -8678,9 +8713,10 @@ function pyreTriggerRow(p, redraw, persist){
   wrap.append(el("button",{class:"btn-secondary",style:"padding:4px 10px",
     title:`Pyre of Grief — +${gain} HP and +5 to the next Damage Roll`,
     onclick:()=>{ const msg = applyPyreToOwner(p); (persist || save)(); toast(`\u{1F525} ${msg}`); redraw && redraw(); }},
-    "\u{1F525} Something fainted within 5 m"));
+    "\u{1F525} Something fainted within 3 m"));
   wrap.append(el("span",{class:"muted"},
-    `Heals a Tick (+${gain} HP) and places a +5 next-Damage-Roll buff that doesn't stack. On the Map this fires by itself whenever a token faints within 5 m.`));
+    `Heals a Tick (+${gain} HP) and places a +5 next-Damage-Roll buff that doesn't stack. On the Map this fires by itself whenever a token faints within 3 m.`
+    + (pyreShareTargets(p).length ? " Lázaro's \u201cMom?\u201d gets the same +5." : "")));
   return wrap;
 }
 
@@ -13425,7 +13461,7 @@ const GIFT_GROUPS = [
   { group:"Vulpoxen (Symbiant)", patrons:["Vulpoxen"], gifts:[
     ["Minor","Grafted Soul","GM Permission","+3 bonus to Occult Education and Medicine Education Checks concerning souls, spirits, death, and the line between the living and the dead. You can sense whether a creature within 10m has died within the last hour. (Bond deepens at Vulpoxen Lv 5.)"],
     ["Major","Ashen Séance","Minor Gift - Grafted Soul","Daily Extended Action, targeting the remains, ashes, or a treasured possession of a creature that has died: you and Vulpoxen kindle a cold flame and commune with the departed spirit, asking questions it answers truthfully to the best of what it knew in life. A spirit gone longer than a year is faint and manages only one answer. (Vulpoxen Lv 20.)"],
-    ["Major","Emberwake","Minor Gift - Grafted Soul","You gain the Pyre of Grief Ability (heal a Tick of HP + a stacking-capped +5 to your next Damage Roll whenever anything faints within 5m). (Vulpoxen Lv 30 — Nightmare Aura wakes.)"],
+    ["Major","Emberwake","Minor Gift - Grafted Soul","You gain the Pyre of Grief Ability (heal a Tick of HP + a stacking-capped +5 to your next Damage Roll whenever anything faints within 3m). Your \u201cMom?\u201d gains the same +5 to her next Damage Roll. (Vulpoxen Lv 30 — Nightmare Aura wakes.)"],
     ["Major","Coma Light","Major Gift - Emberwake","Scene x2, Standard Action, AC 6, Range 4m 1 Target: the target falls Asleep and immediately gains Bad Sleep. (Vulpoxen Lv 50 — Death Aura opens.)"],
     ["Pact","Rekindling","All Vulpoxen Major Gifts","You learn the Move Rekindling — a Fire attack that, on a killing blow, revives a fainted ally as a Ghost-Type revenant. (Vulpoxen Lv 75 — full god.)"],
   ]},
@@ -16473,12 +16509,12 @@ const PTU_BUFFS = [
     self:true, onlyType:"Flying", mods:{ db:1 },
     note:"Windveiled soaked a Flying-Type hit: +1 Damage Base on your next Flying-Type Move. Remove it once you have spent it." },
   /* — Pyre of Grief (Vulpoxen, homebrew). Placed by pyreOfGriefOnFaint / the Ability's own button when
-       something faints within 5 m: +5 to the NEXT Damage Roll for the rest of the Scene (End Scene
+       something faints within 3 m: +5 to the NEXT Damage Roll for the rest of the Scene (End Scene
        already clears every buff). "This bonus does not stack" — a second faint refreshes the one
        charge instead of adding another +5. — */
   { key:"pyre-of-grief", cat:"Ability", name:"Pyre of Grief", dur:"next Damage Roll (this Scene)", once:true,
     self:true, mods:{ dmg:5 },
-    note:"Something fainted within 5 m: +5 to your next Damage Roll this Scene. Doesn't stack. Remove it once you have spent it." },
+    note:"Something fainted within 3 m: +5 to your next Damage Roll this Scene. Doesn't stack. Remove it once you have spent it." },
 ];
 const buffByKey = new Map(PTU_BUFFS.map(b=>[b.key,b]));
 const BUFF_CATS = ["Cheerleader","Commander","Musician","Berserker","Medic","Item","Ability","Field"];
@@ -49550,11 +49586,17 @@ function renderMap(){
         el("button",{class:"btn-secondary"+(map.fogOn?" on":""),onclick:()=>toggleFog(map),
           title:"Auto-reveals around player tokens; explored areas stay revealed"}, map.fogOn?"🌫 Fog on":"🌫 Fog off"),
       );
+      /* Fog: the switch and the auto-reveal radius stay on the bar, because they are read and
+         changed mid-scene. Painting fog by hand is a between-scenes job, so 🖌/🔦/Reset live in
+         the drawer — but painting is a board MODE, so whichever of the two is running promotes
+         itself back onto the bar with the other live modes below. */
+      const fogPaintBtns = [];
       if(map.fogOn){
         const fr = el("input",{type:"number",min:1,value:map.fogRadius,style:"width:56px",title:"reveal radius (cells) — no maximum"});
         fr.addEventListener("change", ()=>setFogRadius(map, fr.value));
         const hiding = mapFogPaintActive(map) && mapFogPaint.mode==="hide", revealing = mapFogPaintActive(map) && mapFogPaint.mode==="reveal";
-        bar.append(el("label",{class:"field",style:"max-width:110px"}, el("span",{},"Fog radius"), fr),
+        bar.append(el("label",{class:"field",style:"max-width:110px"}, el("span",{},"Fog radius"), fr));
+        fogPaintBtns.push(
           el("button",{class:"btn-secondary"+(hiding?" on":""),onclick:()=>toggleMapFogPaint(map, "hide"),
             title:"Drag a box on the map to put the fog back over it (tap = one cell). A player token standing close by will see it again the next time tokens move."},
             hiding?"\u{1F58C} Hiding… (drag)":"\u{1F58C} Hide area"),
@@ -49570,23 +49612,24 @@ function renderMap(){
           mapSelectActive(map)?`✓ Selecting (${mapSelect.ids.size})`:"☑ Select tokens"),
         el("button",{class:"btn-secondary",onclick:()=>selectMapTokens(map, PLAYER_TOKEN_KINDS, "player tokens"),
           title:"Select every trainer/Pokémon token on this map, to move the whole party at once"},"☑ All players"),
-        el("button",{class:"btn-secondary"+(mapMountActive(map)?" on":""),onclick:()=>toggleMapMount(map),
-          title:"Link tokens together: tap a rider, then tap what it climbs onto. A mounted stack always moves as one — several riders can share one mount."},
-          mapMountActive(map)?"🐎 Mounting…":"🐎 Mount"),
       );
+      const mountBtn = el("button",{class:"btn-secondary"+(mapMountActive(map)?" on":""),onclick:()=>toggleMapMount(map),
+        title:"Link tokens together: tap a rider, then tap what it climbs onto. A mounted stack always moves as one — several riders can share one mount."},
+        mapMountActive(map)?"🐎 Mounting…":"🐎 Mount");
       // — Battle group: track movement per token —
       bar.append(el("span",{class:"map-sep"}),
         el("button",{class:"btn-secondary"+(meta.battleOn?" on":""),onclick:()=>toggleBattle(map),
           title:"Track how far each token moves per round (diagonals cost 2)"}, meta.battleOn?"⚔ Battle on":"⚔ Battle off"));
       if(meta.battleOn) bar.append(el("button",{class:"btn-secondary",onclick:()=>newRound(map),title:"Reset every token's movement for a new round"},"↺ New round"));
-      /* The two board modes. Both are built here so the same node can sit either on the bar (while
-         its mode is live) or down in the drawer (while it isn't) — never in both places. */
+      /* The board modes. Each is built once so the same node can sit either on the bar (while its
+         mode is live) or down in the drawer (while it isn't) — never in both places. */
       const imgEditBtn = el("button",{class:"btn-secondary"+(mapImgEdit?" on":""),onclick:()=>{ mapImgEdit=!mapImgEdit; renderMap(); },
         title:"Move/resize/layer the map images"}, mapImgEdit?"🖼 Editing images":"🖼 Edit images");
       const wallBtn = el("button",{class:"btn-secondary"+(mapWallDrawActive(map)?" on":""),onclick:()=>toggleMapWallDraw(map),
         title:"Tap two points to draw a wall segment that blocks fog from spreading through it; tap an existing wall to remove it"},
         mapWallDrawActive(map)?"🧱 Drawing walls…":"🧱 Walls");
-      const liveModes = [mapImgEdit ? imgEditBtn : null, mapWallDrawActive(map) ? wallBtn : null].filter(Boolean);
+      const liveModes = [mapMountActive(map) ? mountBtn : null, mapImgEdit ? imgEditBtn : null,
+        mapWallDrawActive(map) ? wallBtn : null].concat(fogPaintBtns.filter(b=>b.classList.contains("on"))).filter(Boolean);
       if(liveModes.length) bar.append(el("span",{class:"map-sep"}), ...liveModes);
       // — Scene group (drawer): images, grid —
       const gs = el("input",{type:"number",min:12,max:200,value:map.gridSize,style:"width:64px",title:"grid cell size (px)"});
@@ -49598,6 +49641,7 @@ function renderMap(){
         el("label",{class:"field",style:"max-width:120px"}, el("span",{},"Cell px"), gs));
       // — Board group (drawer): everything dropped onto the board, plus the fog walls that shape it —
       moreGroup("Board",
+        mapMountActive(map) ? null : mountBtn,
         el("button",{class:"btn-secondary",onclick:()=>addBoat(map),
           title:"Drop a boat on the board. Steer it with the 🚤 arrows — it turns to face where it's going and everything standing on the deck sails with it."},"🚤 Boat"),
         el("button",{class:"btn-secondary",onclick:()=>openAddHazard(map),
@@ -49607,6 +49651,8 @@ function renderMap(){
         mapWallDrawActive(map) ? null : wallBtn,
         mapWalls(map).length ? el("button",{class:"btn-secondary",onclick:()=>clearMapWalls(map)},"🗑 Clear walls") : null,
         el("button",{class:"btn-secondary",onclick:()=>clearMapTokens(map)},"Clear tokens"));
+      // — Fog group (drawer): hand-painting fog, minus whichever brush is currently running —
+      moreGroup("Fog", ...fogPaintBtns.filter(b=>!b.classList.contains("on")));
       // — Field group (drawer): one Weather Condition at a time, shared with every player (Core p.342) —
       const fieldTools = [];
       const wsel = el("select",{title:"Weather Condition (Core p.342) — replaces any weather already in play"});
@@ -49691,9 +49737,8 @@ function renderMap(){
      world map out by hand is a lot of wheel. Sets the camera to the fitting scale (see mapZoomMin,
      which is what makes a scale this far out reachable at all) and centres the board in the view. */
   if(map){
-    bar.append(el("span",{class:"map-sep"}),
-      el("button",{class:"btn-secondary",title:"Zoom out until the whole map fits on screen",
-        onclick:()=>fitMapToView(map)}, "⤢ Fit map"));
+    const fitBtn = el("button",{class:"btn-secondary",title:"Zoom out until the whole map fits on screen",
+      onclick:()=>fitMapToView(map)}, "⤢ Fit map");
     /* Device-local quality switch (see mapLowDetail) — everyone gets it, because it describes the
        machine in front of you, not the campaign. Low keeps the background on its small overview
        and builds a much tighter ring of tokens; on a phone that is the difference between opening
@@ -49705,14 +49750,15 @@ function renderMap(){
       onclick:()=>setMapLowDetail(mapLowDetailPref==="auto" ? "on" : mapLowDetailPref==="on" ? "off" : "auto")},
       mapLowDetailPref==="auto" ? (mapLowDetail() ? "🪶 Detail: auto (low)" : "🖼 Detail: auto (full)")
         : mapLowDetailPref==="on" ? "🪶 Detail: low" : "🖼 Detail: full");
-    if(moreGroups.length) moreGroup("This device", detailBtn); else bar.append(detailBtn);
+    if(cloud.isGM) moreGroup("View", fitBtn, detailBtn);
+    else bar.append(el("span",{class:"map-sep"}), fitBtn, detailBtn);
   }
   /* ⚙ More tools — the drawer itself. One full-width row of labelled groups that wraps under
      the primary controls, so opening it never reflows the buttons above. It is appended to `bar`
      before the collapse wrapper below picks the children up, which is what makes ▾ Hide bar fold
      the drawer away too. The groups are rendered in a fixed order rather than the order they were
      collected in, so the drawer never shuffles as map state changes. */
-  const MORE_ORDER = ["Maps","Scene","Board","Field","Shop","This device"];
+  const MORE_ORDER = ["Maps","Scene","Board","Fog","Field","Shop","View"];
   if(moreGroups.length){
     const moreOpen = localStorage.getItem("ptu_mapmore_open")==="1";
     bar.append(el("span",{class:"map-sep"}),
