@@ -49505,6 +49505,19 @@ function renderMap(){
   if(map){ msFootCache = new Map(); try { sweepMapAuras(map); } finally { msFootCache = null; } }
 
   const bar = el("div",{class:"map-toolbar card"});
+  /* The GM's map controls split in two. What gets reached for while the table is playing — which
+     map, who sees it, tokens, fog, select, battle, mount — stays on the bar itself. The rest is
+     scene building: images, grid, props, walls, weather, terrain, rooms, the shop, renaming and
+     archiving maps. Those used to sit on the bar all session and wrapped it into four rows on a
+     laptop, so they moved into the "⚙ More tools" drawer — one full-width row under the bar,
+     grouped and labelled, remembering across renders whether it was open (ptu_mapmore_open).
+     Two of them put the BOARD into a mode (editing images, drawing walls); a mode you cannot see
+     is a mode you forget is on, so while one is live its button climbs back onto the bar. */
+  const moreGroups = [];
+  const moreGroup = (label, ...nodes) => {
+    nodes = nodes.filter(Boolean);
+    if(nodes.length) moreGroups.push({label, nodes});
+  };
   if(cloud.isGM){
     // — Maps group: private browsing + push to players —
     const liveMaps = meta.maps.filter(m=>!m.archived);
@@ -49516,43 +49529,28 @@ function renderMap(){
       sel.addEventListener("change", ()=>{ mapGmView=sel.value; mapView={scale:1,panX:0,panY:0}; renderMap(); });
       bar.append(el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Viewing (private)"), sel));
     }
-    bar.append(el("button",{class:"btn-secondary",onclick:newMap},"＋ New map"));
-    if(archivedMaps.length) bar.append(el("button",{class:"btn-secondary",onclick:openArchivedMaps},
+    const mapsTools = [el("button",{class:"btn-secondary",onclick:newMap},"＋ New map")];
+    if(archivedMaps.length) mapsTools.push(el("button",{class:"btn-secondary",onclick:openArchivedMaps},
       `🗄 Archived (${archivedMaps.length})`));
+    // with nothing on the board yet, "＋ New map" is the only thing worth tapping — it stays on the
+    // bar itself, because the empty-state card below sends the GM looking for it there
+    if(!map) bar.append(mapsTools.shift());
     if(map){
       const shown = map.id===meta.playerMapId;
       bar.append(el("button",{class:"btn-primary"+(shown?" on":""),onclick:()=>pushMapToPlayers(map),
         title:"Make this the map players see"}, shown?"👁 Players see this":"👁 Show to players"));
-      bar.append(
+      mapsTools.push(
         el("button",{class:"btn-secondary",onclick:()=>renameMap(map)},"✎ Rename"),
         el("button",{class:"btn-secondary",onclick:()=>archiveMap(map),
           title:"Hide this map from the live list without deleting its tokens/fog"}, "🗄 Archive"),
       );
-      // — Scene group: images, grid —
-      bar.append(el("span",{class:"map-sep"}),
-        el("button",{class:"btn-secondary",onclick:()=>addMapImage(map)},"＋ Add image"),
-        el("button",{class:"btn-secondary"+(mapImgEdit?" on":""),onclick:()=>{ mapImgEdit=!mapImgEdit; renderMap(); },
-          title:"Move/resize/layer the map images"}, mapImgEdit?"🖼 Editing images":"🖼 Edit images"),
-        el("button",{class:"btn-secondary"+(map.gridOn?" on":""),onclick:()=>toggleGrid(map)}, map.gridOn?"▦ Grid on":"▦ Grid off"),
-      );
-      const gs = el("input",{type:"number",min:12,max:200,value:map.gridSize,style:"width:64px",title:"grid cell size (px)"});
-      gs.addEventListener("change", async()=>{ map.gridSize=Math.max(12,Math.min(200,parseInt(gs.value)||32)); mapMetaSave(); renderMap(); });
-      bar.append(el("label",{class:"field",style:"max-width:120px"}, el("span",{},"Cell px"), gs));
-      // — Play group: tokens, fog —
+      // — Play group: tokens and fog, the two things touched every few minutes —
       bar.append(el("span",{class:"map-sep"}),
         el("button",{class:"btn-primary",onclick:()=>openAddToken(map)},"＋ Add token"),
-        el("button",{class:"btn-secondary",onclick:()=>addBoat(map),
-          title:"Drop a boat on the board. Steer it with the 🚤 arrows — it turns to face where it's going and everything standing on the deck sails with it."},"🚤 Boat"),
-        el("button",{class:"btn-secondary",onclick:()=>openAddHazard(map),
-          title:"Drop a visual hazard marker (Stealth Rock, Spikes, fire...) on the board -- cosmetic only, no automatic effect."},"☠ Hazard"),
-        el("button",{class:"btn-secondary",onclick:()=>openAddZone(map),
-          title:"Mark ground as Rough, Slow or Blocking Terrain. Slow ground doubles the metres a drag across it costs; Blocking ground stops a player's drag. Tick \u{1F441} Invisible when the terrain is already painted into the map art and you only want the rule."},"\u26F0 Terrain"),
-        el("button",{class:"btn-secondary",onclick:()=>clearMapTokens(map)},"Clear tokens"),
         el("button",{class:"btn-secondary"+(map.fogOn?" on":""),onclick:()=>toggleFog(map),
           title:"Auto-reveals around player tokens; explored areas stay revealed"}, map.fogOn?"🌫 Fog on":"🌫 Fog off"),
       );
       if(map.fogOn){
-
         const fr = el("input",{type:"number",min:1,value:map.fogRadius,style:"width:56px",title:"reveal radius (cells) — no maximum"});
         fr.addEventListener("change", ()=>setFogRadius(map, fr.value));
         const hiding = mapFogPaintActive(map) && mapFogPaint.mode==="hide", revealing = mapFogPaintActive(map) && mapFogPaint.mode==="reveal";
@@ -49565,11 +49563,6 @@ function renderMap(){
             revealing?"\u{1F526} Revealing… (drag)":"\u{1F526} Reveal area"),
           el("button",{class:"btn-secondary",onclick:()=>resetFog(map)},"Reset fog"));
       }
-      bar.append(
-        el("button",{class:"btn-secondary"+(mapWallDrawActive(map)?" on":""),onclick:()=>toggleMapWallDraw(map),
-          title:"Tap two points to draw a wall segment that blocks fog from spreading through it; tap an existing wall to remove it"},
-          mapWallDrawActive(map)?"🧱 Drawing walls…":"🧱 Walls"));
-      if(mapWalls(map).length) bar.append(el("button",{class:"btn-secondary",onclick:()=>clearMapWalls(map)},"🗑 Clear walls"));
       // — Select group: multi-token select, so several tokens can be dragged as one group —
       bar.append(el("span",{class:"map-sep"}),
         el("button",{class:"btn-secondary"+(mapSelectActive(map)?" on":""),onclick:()=>toggleMapSelect(map),
@@ -49586,13 +49579,41 @@ function renderMap(){
         el("button",{class:"btn-secondary"+(meta.battleOn?" on":""),onclick:()=>toggleBattle(map),
           title:"Track how far each token moves per round (diagonals cost 2)"}, meta.battleOn?"⚔ Battle on":"⚔ Battle off"));
       if(meta.battleOn) bar.append(el("button",{class:"btn-secondary",onclick:()=>newRound(map),title:"Reset every token's movement for a new round"},"↺ New round"));
-      // — Weather group: one Weather Condition at a time, shared with every player (Core p.342) —
+      /* The two board modes. Both are built here so the same node can sit either on the bar (while
+         its mode is live) or down in the drawer (while it isn't) — never in both places. */
+      const imgEditBtn = el("button",{class:"btn-secondary"+(mapImgEdit?" on":""),onclick:()=>{ mapImgEdit=!mapImgEdit; renderMap(); },
+        title:"Move/resize/layer the map images"}, mapImgEdit?"🖼 Editing images":"🖼 Edit images");
+      const wallBtn = el("button",{class:"btn-secondary"+(mapWallDrawActive(map)?" on":""),onclick:()=>toggleMapWallDraw(map),
+        title:"Tap two points to draw a wall segment that blocks fog from spreading through it; tap an existing wall to remove it"},
+        mapWallDrawActive(map)?"🧱 Drawing walls…":"🧱 Walls");
+      const liveModes = [mapImgEdit ? imgEditBtn : null, mapWallDrawActive(map) ? wallBtn : null].filter(Boolean);
+      if(liveModes.length) bar.append(el("span",{class:"map-sep"}), ...liveModes);
+      // — Scene group (drawer): images, grid —
+      const gs = el("input",{type:"number",min:12,max:200,value:map.gridSize,style:"width:64px",title:"grid cell size (px)"});
+      gs.addEventListener("change", async()=>{ map.gridSize=Math.max(12,Math.min(200,parseInt(gs.value)||32)); mapMetaSave(); renderMap(); });
+      moreGroup("Scene",
+        el("button",{class:"btn-secondary",onclick:()=>addMapImage(map)},"＋ Add image"),
+        mapImgEdit ? null : imgEditBtn,
+        el("button",{class:"btn-secondary"+(map.gridOn?" on":""),onclick:()=>toggleGrid(map)}, map.gridOn?"▦ Grid on":"▦ Grid off"),
+        el("label",{class:"field",style:"max-width:120px"}, el("span",{},"Cell px"), gs));
+      // — Board group (drawer): everything dropped onto the board, plus the fog walls that shape it —
+      moreGroup("Board",
+        el("button",{class:"btn-secondary",onclick:()=>addBoat(map),
+          title:"Drop a boat on the board. Steer it with the 🚤 arrows — it turns to face where it's going and everything standing on the deck sails with it."},"🚤 Boat"),
+        el("button",{class:"btn-secondary",onclick:()=>openAddHazard(map),
+          title:"Drop a visual hazard marker (Stealth Rock, Spikes, fire...) on the board -- cosmetic only, no automatic effect."},"☠ Hazard"),
+        el("button",{class:"btn-secondary",onclick:()=>openAddZone(map),
+          title:"Mark ground as Rough, Slow or Blocking Terrain. Slow ground doubles the metres a drag across it costs; Blocking ground stops a player's drag. Tick \u{1F441} Invisible when the terrain is already painted into the map art and you only want the rule."},"\u26F0 Terrain"),
+        mapWallDrawActive(map) ? null : wallBtn,
+        mapWalls(map).length ? el("button",{class:"btn-secondary",onclick:()=>clearMapWalls(map)},"🗑 Clear walls") : null,
+        el("button",{class:"btn-secondary",onclick:()=>clearMapTokens(map)},"Clear tokens"));
+      // — Field group (drawer): one Weather Condition at a time, shared with every player (Core p.342) —
+      const fieldTools = [];
       const wsel = el("select",{title:"Weather Condition (Core p.342) — replaces any weather already in play"});
       WEATHER_DEFS.forEach(w=>wsel.append(el("option",{value:w.key,selected:w.key===(map.weather||"clear")},
         `${w.icon} ${w.name}`)));
       wsel.addEventListener("change", ()=>setMapWeather(map, wsel.value));
-      bar.append(el("span",{class:"map-sep"}),
-        el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Weather"), wsel));
+      fieldTools.push(el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Weather"), wsel));
       /* Climatology's two controls — a second Weather (Climate Control) and Extreme Weather — only
          once a Climatologist is on the board or one of them is already in play */
       if(map.weather2 || map.extremeWeather || climatologistOnMap(map)){
@@ -49600,31 +49621,30 @@ function renderMap(){
         w2sel.append(el("option",{value:"",selected:!map.weather2},"— none —"));
         WEATHER_DEFS.filter(w=>w.key!=="clear").forEach(w=>w2sel.append(el("option",{value:w.key,selected:w.key===map.weather2}, `${w.icon} ${w.name}`)));
         w2sel.addEventListener("change", ()=>{ map.weather2 = w2sel.value; mapMetaSave(); renderMap(); });
-        bar.append(el("label",{class:"field",style:"max-width:170px"}, el("span",{},"2nd Weather"), w2sel),
+        fieldTools.push(el("label",{class:"field",style:"max-width:170px"}, el("span",{},"2nd Weather"), w2sel),
           el("button",{class:"btn-secondary"+(map.extremeWeather?" on":""),
             title:"Extreme Weather (Climatology): Hail −5 damage, Rain Slows, Sandstorm −2 Accuracy, Sun Suppresses",
             onclick:()=>{ map.extremeWeather = !map.extremeWeather; mapMetaSave(); renderMap(); }},
             map.extremeWeather ? "\u{1F32A} Extreme on" : "\u{1F32A} Extreme"));
       }
-      // — Terrain group: like Weather, only one Terrain can be active at a time (they cancel
-      //   each other out) — Weather and Terrain are independent, so both selects sit side by side —
+      // — Terrain: like Weather, only one Terrain can be active at a time (they cancel each other
+      //   out) — Weather and Terrain are independent, so both selects sit side by side —
       const curTerrain = (map.terrains||[])[0] || "";
       const tsel = el("select",{title:"Terrain (Core p.343) — replaces any Terrain already in play; independent of Weather"});
       tsel.append(el("option",{value:"",selected:!curTerrain},"— No Terrain —"));
       TERRAIN_DEFS.forEach(t=>tsel.append(el("option",{value:t.key,selected:t.key===curTerrain,title:t.blurb},
         `${t.icon} ${t.name}`)));
       tsel.addEventListener("change", ()=>setMapTerrain(map, tsel.value));
-      bar.append(el("span",{class:"map-sep"}),
-        el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Terrain"), tsel));
-      /* - Rooms group: the four Psychic Field Moves. They stack, so each is its own toggle - */
-      bar.append(el("span",{class:"map-sep"}));
+      fieldTools.push(el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Terrain"), tsel));
+      /* - Rooms: the four Psychic Field Moves. They stack, so each is its own toggle - */
       ROOM_DEFS.forEach(r => {
         const on = (map.rooms||[]).includes(r.key);
-        bar.append(el("button",{class:"btn-secondary"+(on?" on":""),
+        fieldTools.push(el("button",{class:"btn-secondary"+(on?" on":""),
           title:`${r.name} \u2014 the area is ${r.field}. ${r.blurb}. Stays until you turn it off.`,
           onclick:()=>toggleMapRoom(map, r.key)}, `${r.icon} ${r.name}${on?" on":""}`));
       });
-      // — Shop group: open one of the Shops tab's storefronts on this map, for everyone looking at it —
+      moreGroup("Field", ...fieldTools);
+      // — Shop group (drawer): open one of the Shops tab's storefronts on this map, for everyone looking at it —
       const openShops = shopList().filter(s=>!s.archived);
       const shsel = el("select",{title:"Open a shop on this map — everyone looking at it gets the shopping popup"});
       shsel.append(el("option",{value:"",selected:!map.shopId},"— No shop —"));
@@ -49632,9 +49652,9 @@ function renderMap(){
       if(map.shopId && !openShops.some(s=>s.id===map.shopId))          // shop was deleted/archived while open
         shsel.append(el("option",{value:map.shopId,selected:true},"🛒 (missing shop)"));
       shsel.addEventListener("change", ()=>setMapShop(map, shsel.value));
-      bar.append(el("span",{class:"map-sep"}),
-        el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Shop"), shsel));
+      moreGroup("Shop", el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Shop"), shsel));
     }
+    moreGroup("Maps", ...mapsTools);
   } else {
     bar.append(el("div",{class:"map-mapname"}, map ? `🗺 ${map.name}` : "🗺 Battle map"));
     if(meta.battleOn) bar.append(el("span",{class:"battle-badge"},"⚔ Battle"));
@@ -49670,18 +49690,44 @@ function renderMap(){
   /* "show me the whole island" in one tap — everyone gets this, not just the GM, since zooming a
      world map out by hand is a lot of wheel. Sets the camera to the fitting scale (see mapZoomMin,
      which is what makes a scale this far out reachable at all) and centres the board in the view. */
-  if(map) bar.append(el("span",{class:"map-sep"}),
-    el("button",{class:"btn-secondary",title:"Zoom out until the whole map fits on screen",
-      onclick:()=>fitMapToView(map)}, "⤢ Fit map"),
+  if(map){
+    bar.append(el("span",{class:"map-sep"}),
+      el("button",{class:"btn-secondary",title:"Zoom out until the whole map fits on screen",
+        onclick:()=>fitMapToView(map)}, "⤢ Fit map"));
     /* Device-local quality switch (see mapLowDetail) — everyone gets it, because it describes the
        machine in front of you, not the campaign. Low keeps the background on its small overview
        and builds a much tighter ring of tokens; on a phone that is the difference between opening
-       the Isles and having the tab killed. Auto guesses, and the label says which way it guessed. */
-    el("button",{class:"btn-secondary"+(mapLowDetail()?" on":""),
+       the Isles and having the tab killed. Auto guesses, and the label says which way it guessed.
+       Set once per device and then left alone, so on the GM's crowded bar it lives in the drawer;
+       a player's bar has room to keep it out in the open. */
+    const detailBtn = el("button",{class:"btn-secondary"+(mapLowDetail()?" on":""),
       title:"How much detail this device draws. Auto picks by device — force Low if the map still struggles here, Full if it looks softer than it should.",
       onclick:()=>setMapLowDetail(mapLowDetailPref==="auto" ? "on" : mapLowDetailPref==="on" ? "off" : "auto")},
       mapLowDetailPref==="auto" ? (mapLowDetail() ? "🪶 Detail: auto (low)" : "🖼 Detail: auto (full)")
-        : mapLowDetailPref==="on" ? "🪶 Detail: low" : "🖼 Detail: full"));
+        : mapLowDetailPref==="on" ? "🪶 Detail: low" : "🖼 Detail: full");
+    if(moreGroups.length) moreGroup("This device", detailBtn); else bar.append(detailBtn);
+  }
+  /* ⚙ More tools — the drawer itself. One full-width row of labelled groups that wraps under
+     the primary controls, so opening it never reflows the buttons above. It is appended to `bar`
+     before the collapse wrapper below picks the children up, which is what makes ▾ Hide bar fold
+     the drawer away too. The groups are rendered in a fixed order rather than the order they were
+     collected in, so the drawer never shuffles as map state changes. */
+  const MORE_ORDER = ["Maps","Scene","Board","Field","Shop","This device"];
+  if(moreGroups.length){
+    const moreOpen = localStorage.getItem("ptu_mapmore_open")==="1";
+    bar.append(el("span",{class:"map-sep"}),
+      el("button",{class:"btn-secondary"+(moreOpen?" on":""),
+        title:"Maps, scene, board props, weather/terrain, shop — the tools you set up once",
+        onclick:()=>{ localStorage.setItem("ptu_mapmore_open", moreOpen?"0":"1"); renderMap(); }},
+        moreOpen?"\u2699 Hide tools":"\u2699 More tools"));
+    moreGroups.sort((a,b)=>MORE_ORDER.indexOf(a.label)-MORE_ORDER.indexOf(b.label));
+    const drawer = el("div",{class:"map-more"});
+    moreGroups.forEach(g=>drawer.append(el("div",{class:"map-more-group"},
+      el("div",{class:"map-more-lbl"}, g.label),
+      el("div",{class:"map-more-row"}, ...g.nodes))));
+    drawer.hidden = !moreOpen;
+    bar.append(drawer);
+  }
   // The toolbar grows a lot of buttons once weather/terrain/GM tools are all in play — let it collapse
   // so it doesn't eat half the screen on a phone. Collapsed state persists across map visits.
   const barCollapsed = localStorage.getItem("ptu_mapbar_collapsed")==="1";

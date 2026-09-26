@@ -479,6 +479,18 @@ details.spoiler summary{cursor:pointer; font-weight:700; color:var(--muted)}
 .map-toolbar-body{display:contents}
 .map-toolbar-body[hidden]{display:none}
 .map-toolbar .field{max-width:200px}
+/* "⚙ More tools" drawer: the set-up-once half of the GM's map controls. flex:1 0 100% makes it
+   its own full-width row at the bottom of the bar (it is a child of .map-toolbar-body, which is
+   display:contents, so it is a direct flex item of .map-toolbar) - opening it therefore pushes
+   nothing around above it. It lives inside .map-toolbar-body on purpose, so the bar's own
+   collapse toggle folds the drawer away with everything else. */
+.map-more{flex:1 0 100%; display:flex; flex-wrap:wrap; gap:8px 18px; align-items:flex-end;
+  margin-top:4px; padding-top:8px; border-top:1px solid var(--line)}
+.map-more[hidden]{display:none}
+.map-more-group{display:flex; flex-direction:column; gap:4px; min-width:0}
+.map-more-lbl{font-size:11px; font-weight:800; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--muted)}
+.map-more-row{display:flex; flex-wrap:wrap; gap:6px; align-items:flex-end}
 .map-toolbar .btn-secondary.on{background:var(--accent); color:#fff; border-color:var(--accent)}
 .map-mapname{font-weight:800; font-size:16px; color:var(--ink); padding:4px 2px}
 .map-viewport{position:relative; overflow:hidden; height:70vh; min-height:360px;
