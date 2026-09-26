@@ -34353,12 +34353,13 @@ function gauntletMon(spec){
   if(spec.boss){ toggleBoss(p); p.boss.actions = spec.boss; p.boss.curBar = spec.boss; normBoss(p); }
   return p;
 }
-function gauntletWaveNotes(g, w, i, enc, party, players, arenaSize){
+function gauntletWaveNotes(g, w, i, enc, party, players, arena){
   const everyday = gauntletBudget(party, players);
   const base = encounterBaseXP(enc);
   const ratio = everyday ? base/everyday : 0;
   const band = diffBand(ratio);
-  const play = gauntletPlay(arenaSize || g.arenaSize, w);
+  const play = gauntletPlay((arena && arena.size) || g.arenaSize,
+                            (arena && arena.shrink) || ARENA_SHRINK, w);
   const out = [];
   if(i === 0 && g.brief) out.push(g.brief, "");
   out.push(`\u{1F30A} ${g.name} — wave ${i+1} of ${g.waves.length}.`);
@@ -34386,23 +34387,24 @@ function gauntletWaveBase(w){
 }
 const gauntletBodies = w => (w.mons||[]).length
   + (w.trainers||[]).reduce((n,t)=> n + 1 + (t.mons||[]).length, 0);
-/* Playable board for a wave, given the arena the GM actually framed. The ring step is the real
-   instruction -- this is the number that makes it concrete, so it has to follow the map and not
-   the table's own default (a 20x20 arena's ring 3 is 8x8, not 12x12). */
-const gauntletPlay = (size, w) => Math.max(1, size - 2*ARENA_STEP*(w.ring||0));
-/* What to offer as the arena side: whatever is already framed on the map players are looking at,
-   so the picker agrees with the board instead of repeating its own default at it. */
+/* Playable circle for a wave, given the arena the GM actually framed. The ring step is the real
+   instruction -- this is the number that makes it concrete, so it has to follow the map's own
+   ladder and not the table's default (an arena that starts at 20 and closes by 4 is 8 across at
+   ring 3, not 12). */
+const gauntletPlay = (size, shrink, w) => Math.max(1, size - Math.max(1,shrink)*(w.ring||0));
+/* What to offer as the arena's ladder: whatever is already framed on the map players are looking
+   at, so the picker agrees with the board instead of repeating its own default at it. */
 function gauntletArenaDefault(g){
   try{
     const meta = activeMapMeta();
     const map = (meta.maps||[]).find(m=>m.id===meta.playerMapId) || (meta.maps||[]).find(m=>!m.archived);
     const a = map && arenaOf(map);
-    if(a) return a.size;
+    if(a) return { size:a.size, shrink:arenaShrinkOf(a) };
   }catch(err){}
-  return g.arenaSize;
+  return { size:g.arenaSize, shrink:ARENA_SHRINK };
 }
 /* Build every wave as its own encounter, in order, and leave the first one active. */
-function buildGauntlet(g, party, players, arenaSize){
+function buildGauntlet(g, party, players, arena){
   const arr = encList(), made = [];
   g.waves.forEach((w,i)=>{
     const enc = newEncounter(`${g.name} — ${w.name}`);
@@ -34419,7 +34421,7 @@ function buildGauntlet(g, party, players, arenaSize){
       enc.trainers.push({ id:uid(), trainer:tr, pokemon:(t.mons||[]).map(gauntletMon) });
     });
     normEncounter(enc);
-    enc.notes = gauntletWaveNotes(g, w, i, enc, party, players, arenaSize);
+    enc.notes = gauntletWaveNotes(g, w, i, enc, party, players, arena);
     arr.push(enc); made.push(enc);
   });
   if(made.length) state.activeEncounterId = made[0].id;
@@ -34436,8 +34438,11 @@ function openGauntlets(){
     const pIn = el("input",{type:"number",min:1,max:100,value:gauntletPartyAvg(g),style:"width:64px",
       title:"the average Level of the Pokemon each player leads with"});
     const nIn = el("input",{type:"number",min:1,max:8,value:gauntletPartyCount(g),style:"width:56px"});
-    const aIn = el("input",{type:"number",min:ARENA_MIN,max:200,value:gauntletArenaDefault(g),style:"width:64px",
-      title:"the side of the arena you framed on the map — the wave notes quote the board each ring closes to"});
+    const aDef = gauntletArenaDefault(g);
+    const aIn = el("input",{type:"number",min:2,max:200,value:aDef.size,style:"width:64px",
+      title:"how wide the arena you framed starts — the wave notes quote the circle each ring closes to"});
+    const shIn = el("input",{type:"number",min:1,max:100,value:aDef.shrink,style:"width:56px",
+      title:"how much that arena takes off its diameter per step"});
     /* WHO is actually in this fight. A campaign carries sheets for people who aren't at the table --
        a retired character, a guest, someone between arcs -- and diffPartyChars() hands back every
        one of them. Left alone that gets BOTH numbers wrong: the head count, and the average Level
@@ -34465,7 +34470,8 @@ function openGauntlets(){
       rows.innerHTML = "";
       g.waves.forEach((w,i)=>{
         const base = gauntletWaveBase(w), r = base/everyday, b = diffBand(r);
-        const play = gauntletPlay(Math.max(ARENA_MIN, parseInt(aIn.value)||g.arenaSize), w);
+        const play = gauntletPlay(Math.max(2, parseInt(aIn.value)||g.arenaSize),
+                                  Math.max(1, parseInt(shIn.value)||ARENA_SHRINK), w);
         rows.append(el("div",{class:"small",style:"display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;padding:2px 0"},
           el("span",{}, `${i+1}. ${w.name}`,
             el("span",{class:"muted"}, ` · ${gauntletBodies(w)} bodies · circle ${play} across`)),
@@ -34485,24 +34491,26 @@ function openGauntlets(){
           cb, el("span",{class:"small"}, c.name)));
       });
     }
-    [pIn,nIn,aIn].forEach(inp=>inp.addEventListener("input",paint)); syncFromPicks(); paint();
+    [pIn,nIn,aIn,shIn].forEach(inp=>inp.addEventListener("input",paint)); syncFromPicks(); paint();
     wrap.append(el("div",{class:"inline",style:"gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"},
       el("span",{style:"font-weight:800"}, g.name),
       el("button",{class:"btn-primary",onclick:()=>{
         const party = Math.max(1,parseInt(pIn.value)||1), players = Math.max(1,parseInt(nIn.value)||1);
-        const side = Math.max(ARENA_MIN, parseInt(aIn.value)||g.arenaSize);
-        closeModal(); buildGauntlet(g, party, players, side);
+        const arena = { size:Math.max(2, parseInt(aIn.value)||g.arenaSize),
+                        shrink:Math.max(1, parseInt(shIn.value)||ARENA_SHRINK) };
+        closeModal(); buildGauntlet(g, party, players, arena);
       }},"\u{1F30A} Build the waves")));
     wrap.append(el("div",{class:"inline",style:"gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:6px"},
       el("label",{class:"field"}, el("span",{},"Party leads with Lv"), pIn),
       el("label",{class:"field"}, el("span",{},"Players"), nIn),
-      el("label",{class:"field"}, el("span",{},"Arena side"), aIn)));
+      el("label",{class:"field"}, el("span",{},"Arena starts"), aIn),
+      el("label",{class:"field"}, el("span",{},"closes by"), shIn)));
     if(chars.length) wrap.append(who);
     wrap.append(sum, rows);
     wrap.append(el("div",{class:"small muted",style:"margin-top:8px"},
       `Builds ${g.waves.length} encounters, one per wave, each carrying its own instructions — `
       + "including which arena step to close to. Frame the arena on the map first with "
-      + "\u{1F300} Arena; the side above follows whatever you framed there."));
+      + "\u{1F300} Arena; the two numbers above follow whatever ladder you gave it there."));
     body.append(wrap);
   });
   modal({title:"\u{1F30A} Wave gauntlets", bodyNode:body,
@@ -46390,30 +46398,37 @@ function openZoneMenu(token, map){
 /* ---- The arena that closes in ---------------------------------------------------------------
      A gauntlet fought on an open board loses its teeth. The party backs off from each wave, kites
      it across ground nobody is contesting, and a fight that was meant to squeeze turns into a
-     chase. So the arena itself shrinks: the GM frames a square once, and every "Close in" step eats
-     ARENA_STEP cells off all four edges -- 24x24 becomes 20x20, then 16x16, then 12x12, which is
-     where the last wave gets fought.
+     chase. So the arena itself shrinks: the GM frames a CIRCLE once, and every "Close in" step takes
+     `shrink` squares off its diameter -- 24 across becomes 20, then 16, then 12, which is where the
+     last wave gets fought.
 
-     The closed band is laid down as ordinary terrain-zone tokens (`arena` on top of `zone`), so it
-     syncs, persists, paints and BLOCKS through machinery that already exists -- terrainAt picks the
-     bands up like any other zone, which is what stops a player dragging out through the wall. They
-     are derived and never hand-edited: every step repaints the whole ring from `map.arena`, so a
-     band somebody nudged by accident is corrected by the next step.
+     Three numbers make that ladder and all three belong to the arena, not to the code: `size` (how
+     wide it starts), `shrink` (how much comes off per step) and `min` (where it stops). The
+     constants below are only what a fresh one is born with.
 
-     The ring is only the enforcement. What closes it is the scene's own business -- the beam
+     Everything outside the circle is out of bounds, painted as one canvas and enforced by terrainAt
+     reading `arenaInside` directly -- see paintArena for why it stopped being tokens.
+
+     The circle is only the enforcement. What closes it is the scene's own business -- the beam
      sweeping the outer ring, the ceiling coming down, the water going black past the lights.
 --------------------------------------------------------------------------------------------- */
-const ARENA_STEP = 2;            // cells eaten off EVERY edge, per step
-const ARENA_MIN  = 6;            // never close past this much playable board
+const ARENA_SHRINK = 4;          // squares off the DIAMETER per step (so 2 off the radius all round)
+const ARENA_MIN  = 6;            // a fresh arena won't close past this many squares across
 const ARENA_DEFAULT_SIZE = 24;   // ~3-4x a Swim speed: everything worth reaching is two moves away
 function arenaOf(map){ const a = map && map.arena; return (a && a.size > 0) ? a : null; }
-const arenaSteps = a => Math.max(0, Math.floor((a.size - ARENA_MIN) / (2*ARENA_STEP)));
+const arenaShrinkOf = a => Math.max(1, (a && a.shrink) || ARENA_SHRINK);
+const arenaMinOf    = a => Math.max(2, (a && a.min)    || ARENA_MIN);
+const arenaSteps = a => Math.max(0, Math.floor((a.size - arenaMinOf(a)) / arenaShrinkOf(a)));
+/* The live circle. The CENTRE never moves as it closes -- the inset is derived from the diameter
+   lost, which is why `shrink` may be odd (a half-square inset is fine; arenaInside works in floats
+   and the centre comes out identical either way). */
 function arenaPlayable(a){
-  const i = ARENA_STEP * Math.max(0, a.step|0);
-  return { x:a.x+i, y:a.y+i, size:Math.max(1, a.size - 2*i) };
+  const size = Math.max(1, a.size - arenaShrinkOf(a) * Math.max(0, a.step|0));
+  const off = (a.size - size)/2;
+  return { x:a.x+off, y:a.y+off, size };
 }
-/* The ladder of playable sizes, full arena first -- what the panel and the wave notes quote. */
-const arenaLadder = a => [...Array(arenaSteps(a)+1)].map((_,i)=> a.size - 2*ARENA_STEP*i);
+/* The ladder of diameters, widest first -- what the panel and the wave notes quote. */
+const arenaLadder = a => [...Array(arenaSteps(a)+1)].map((_,i)=> a.size - arenaShrinkOf(a)*i);
 /* How many cells of board there are to frame an arena inside. mapStageSize's canonical origin can
    sit above/left of the images, so measure the stage MINUS that origin. */
 function mapBoardCells(map){
@@ -46534,10 +46549,16 @@ function toggleArenaLock(map){
 function setArena(map, patch){
   const b = mapBoardCells(map);
   const a = Object.assign({ x:0, y:0, size:ARENA_DEFAULT_SIZE, step:0, zone:"blocking",
-                            color:ARENA_FILL_DEFAULT, locked:false }, map.arena||{}, patch||{});
-  a.size = Math.max(ARENA_MIN, Math.min(200, a.size|0));
+                            color:ARENA_FILL_DEFAULT, locked:false,
+                            shrink:ARENA_SHRINK, min:ARENA_MIN }, map.arena||{}, patch||{});
+  a.size = Math.max(2, Math.min(200, a.size|0));
   a.x = a.x|0; a.y = a.y|0;
   a.locked = !!a.locked;
+  /* The ladder's own three numbers. `min` can't reach the full diameter (that would leave no room
+     to close at all) and `shrink` can't exceed the distance between them, or one step would jump
+     straight past the floor. */
+  a.min    = Math.max(2, Math.min(a.size, a.min|0 || ARENA_MIN));
+  a.shrink = Math.max(1, Math.min(Math.max(1, a.size - a.min), a.shrink|0 || ARENA_SHRINK));
   if(!TERRAIN_ZONES.some(z=>z.key===a.zone)) a.zone = "blocking";
   if(!isHexColor(a.color)) a.color = ARENA_FILL_DEFAULT;
   a.step = Math.max(0, Math.min(arenaSteps(a), a.step|0));
@@ -46553,7 +46574,7 @@ function arenaClose(map, delta){
     toast(delta > 0 ? "\u{1F300} The arena is already as tight as it goes" : "\u{1F300} The arena is already wide open");
     return;
   }
-  const size = a.size - 2*ARENA_STEP*next;
+  const size = a.size - arenaShrinkOf(a)*next;
   setArena(map, { step:next });
   toast(`\u{1F300} The arena ${delta>0?"closes":"opens"} to ${size} squares across — ring ${next} of ${steps}`);
 }
@@ -46572,8 +46593,8 @@ function arenaPanel(map){
   const body = el("div",{style:"margin-top:8px"});
   body.append(el("div",{class:"small"}, `• ${z.icon} ${z.name} outside the circle — ${z.note}`));
   body.append(el("div",{class:"small"},
-    `• ${a.size} across at its widest, ${ARENA_STEP} squares off the diameter per step: `
-    + arenaLadder(a).join(" → ") + "."));
+    `• ${a.size} across at its widest, −${arenaShrinkOf(a)} per step down to ${arenaMinOf(a)}: `
+    + arenaLadder(a).join(" → ") + ". Change any of that in ⚙ Reframe."));
   body.append(el("div",{class:"small muted"},
     "• The corners are out of bounds from the start — a circle never fills its own square."));
   if(cloud.isGM) body.append(el("div",{class:"small"+(a.locked?" muted":"")},
@@ -46583,7 +46604,7 @@ function arenaPanel(map){
     el("button",{class:"btn-secondary",disabled:!a.step,
       title:"give a step of board back",onclick:()=>arenaClose(map,-1)},"◀ Open out"),
     el("button",{class:"btn-primary",disabled:a.step>=steps,
-      title:"eat another "+ARENA_STEP+" squares off the diameter",onclick:()=>arenaClose(map,1)},"Close in ▶"),
+      title:"take another "+arenaShrinkOf(a)+" squares off the diameter",onclick:()=>arenaClose(map,1)},"Close in ▶"),
     el("button",{class:"btn-secondary"+(a.locked?"":" on"),onclick:()=>toggleArenaLock(map),
       title:a.locked ? "Unlock it and the ring becomes a handle you can drag the arena around by"
                      : "Lock it where it is, so reaching for a token underneath can't nudge it"},
@@ -46602,13 +46623,18 @@ function openArenaDialog(map){
   const fit = Math.max(ARENA_MIN, Math.min(ARENA_DEFAULT_SIZE, b.cols, b.rows));
   const cur = map.arena || { size:fit, x:Math.max(0,Math.floor((b.cols-fit)/2)),
                              y:Math.max(0,Math.floor((b.rows-fit)/2)), step:0, zone:"blocking",
-                             color:ARENA_FILL_DEFAULT };
+                             color:ARENA_FILL_DEFAULT, shrink:ARENA_SHRINK, min:ARENA_MIN };
   const body = el("div",{});
   body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
-    `Mark a CIRCLE of the board as the arena. Everything outside it is tiled out of bounds — the `
-    + `corners included, from the start — and closing it in takes ${ARENA_STEP} squares off the `
-    + `diameter. This board is about ${b.cols}×${b.rows} cells.`));
-  const szIn = el("input",{type:"number",min:ARENA_MIN,max:200,value:cur.size,style:"width:70px"});
+    "Mark a CIRCLE of the board as the arena. Everything outside it is tiled out of bounds — the "
+    + "corners included, from the start. The three numbers on the left are the whole ladder: how "
+    + `wide it starts, how much comes off each step, and where it stops. This board is about `
+    + `${b.cols}×${b.rows} cells.`));
+  const szIn = el("input",{type:"number",min:2,max:200,value:cur.size,style:"width:70px"});
+  const shIn = el("input",{type:"number",min:1,max:100,value:cur.shrink||ARENA_SHRINK,style:"width:70px",
+    title:"squares off the DIAMETER each time you tap Close in — 4 turns 24 into 20, then 16, then 12"});
+  const mnIn = el("input",{type:"number",min:2,max:200,value:cur.min||ARENA_MIN,style:"width:70px",
+    title:"the arena will not close past this — it's what decides how many steps you get"});
   const xIn  = el("input",{type:"number",value:cur.x,style:"width:70px"});
   const yIn  = el("input",{type:"number",value:cur.y,style:"width:70px"});
   const zSel = el("select",{style:"max-width:200px"});
@@ -46617,26 +46643,39 @@ function openArenaDialog(map){
   const cIn = el("input",{type:"color",value:isHexColor(cur.color)?cur.color:ARENA_FILL_DEFAULT,
     class:"enc-color",title:"the colour of the ground outside the circle"});
   body.append(el("div",{class:"inline",style:"gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px"},
-    el("label",{class:"field"}, el("span",{},"Across (squares)"), szIn),
+    el("label",{class:"field"}, el("span",{},"Starts across"), szIn),
+    el("label",{class:"field"}, el("span",{},"Closes by"), shIn),
+    el("label",{class:"field"}, el("span",{},"Stops at"), mnIn),
     el("label",{class:"field"}, el("span",{},"Left edge at cell"), xIn),
     el("label",{class:"field"}, el("span",{},"Top edge at cell"), yIn),
     el("label",{class:"field"}, el("span",{},"Rule outside"), zSel),
     el("label",{class:"field"}, el("span",{},"Colour"), cIn)));
   const out = el("div",{class:"small",style:"margin-bottom:10px"});
-  const paint = ()=>{
-    const a = { size:Math.max(ARENA_MIN,Math.min(200,parseInt(szIn.value)||ARENA_MIN)), step:0 };
-    out.textContent = `Closes ${arenaLadder(a).join(" → ")} squares across — ${arenaSteps(a)} step`
-      + (arenaSteps(a)===1?"":"s") + " before it bottoms out.";
+  /* Show the ladder those three numbers actually produce, live — the arithmetic is the thing being
+     edited, so it should never have to be done in the GM's head. */
+  const readLadder = ()=>{
+    const size = Math.max(2, Math.min(200, parseInt(szIn.value)||ARENA_DEFAULT_SIZE));
+    const min  = Math.max(2, Math.min(size, parseInt(mnIn.value)||ARENA_MIN));
+    const shrink = Math.max(1, Math.min(Math.max(1,size-min), parseInt(shIn.value)||ARENA_SHRINK));
+    return { size, min, shrink, step:0 };
   };
-  szIn.addEventListener("input", paint); paint();
+  const paint = ()=>{
+    const a = readLadder(), n = arenaSteps(a);
+    out.textContent = `${arenaLadder(a).join(" → ")} — ${n} step${n===1?"":"s"} to close`
+      + (n ? `, so it covers ${n+1} waves.` : ". It can't close at all — raise how wide it starts, "
+             + "or lower where it stops.");
+  };
+  [szIn, shIn, mnIn].forEach(i=>i.addEventListener("input", paint)); paint();
   body.append(out);
   modal({title:"\u{1F300} Arena", bodyNode:body, footNodes:[
     el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
     el("button",{class:"btn-primary",onclick:()=>{
-      const a = setArena(map, { size:parseInt(szIn.value)||fit, x:parseInt(xIn.value)||0,
-                                y:parseInt(yIn.value)||0, zone:zSel.value, color:cIn.value });
+      const L = readLadder();
+      const a = setArena(map, { size:L.size, shrink:L.shrink, min:L.min,
+                                x:parseInt(xIn.value)||0, y:parseInt(yIn.value)||0,
+                                zone:zSel.value, color:cIn.value });
       closeModal();
-      toast(`\u{1F300} Arena framed — a circle ${a.size} across, ${arenaSteps(a)} step`
+      toast(`\u{1F300} Arena framed — ${arenaLadder(a).join(" → ")}, ${arenaSteps(a)} step`
             + (arenaSteps(a)===1?"":"s") + " to close");
     }},"Frame it")]});
 }
