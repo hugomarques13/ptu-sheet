@@ -46468,20 +46468,76 @@ function drawArena(cv, map, stageW, stageH, originX=0, originY=0){
     }
   }
 }
-/* The boundary itself, as a ring over the tiles. Sized to the live circle, so it closes with it. */
+/* The boundary itself, as a ring over the tiles. Sized to the live circle, so it closes with it.
+   While the arena is UNLOCKED the ring is the handle you drag it by; locked, it goes back to being
+   scenery that takes no pointer, so nobody nudges the arena reaching for a token underneath it. */
 function arenaOutlineNode(map, originX, originY){
   const a = arenaOf(map); if(!a) return null;
-  const p = arenaPlayable(a), px = map.gridSize;
-  return el("div",{class:"map-arena-edge",
-    style:`left:${p.x*px+originX}px;top:${p.y*px+originY}px;width:${p.size*px}px;height:${p.size*px}px`},
-    el("span",{class:"map-arena-lbl"}, `\u{1F300} ${p.size} across`));
+  const p = arenaPlayable(a), px = map.gridSize, movable = cloud.isGM && !a.locked;
+  /* The ring NEVER takes a pointer, even unlocked. It is a full circle, not a hoop -- giving it
+     pointer-events would make the whole disc swallow every click on the tokens standing inside it.
+     So the little label chip at the top of the circle is the handle instead. */
+  const lbl = el("span",{class:"map-arena-lbl"+(movable?" movable":""),
+    title: movable ? "Drag to move the whole arena. Lock it when it's where you want it." : ""},
+    `\u{1F300} ${p.size} across` + (movable ? " · ✣ drag" : ""));
+  const node = el("div",{class:"map-arena-edge"+(movable?" movable":""),
+    style:`left:${p.x*px+originX}px;top:${p.y*px+originY}px;width:${p.size*px}px;height:${p.size*px}px`}, lbl);
+  if(movable) attachArenaDrag(lbl, node, map, originX, originY);
+  return node;
+}
+/* Drag the whole arena by whole cells. Deliberately its own handler and not attachTokenDrag: the
+   arena is not a token, so none of that function's business -- movement tallies, fog reveal, riding
+   stacks, multi-select -- applies to it. Only the ring and the blue are repainted per frame; the
+   board is re-rendered and the move saved once, on drop. */
+function attachArenaDrag(handle, ring, map, originX, originY){
+  handle.addEventListener("pointerdown", ev=>{
+    if(ev.button != null && ev.button > 0) return;
+    const a = arenaOf(map); if(!a || a.locked || !cloud.isGM) return;
+    ev.stopPropagation(); ev.preventDefault();          // don't pan the board out from under the drag
+    const px = map.gridSize, scale = mapView.scale || 1;
+    const sx = ev.clientX, sy = ev.clientY, x0 = a.x, y0 = a.y;
+    const stage = mapStageSize(map);
+    const cv = document.querySelector("#view-map canvas.map-arena");
+    let moved = false;
+    try{ handle.setPointerCapture(ev.pointerId); }catch(err){}
+    const move = e=>{
+      const dx = Math.round((e.clientX - sx)/scale/px), dy = Math.round((e.clientY - sy)/scale/px);
+      if(a.x === x0+dx && a.y === y0+dy) return;         // same cell: nothing to redraw
+      a.x = x0+dx; a.y = y0+dy; moved = true;
+      const p = arenaPlayable(a);
+      ring.style.left = (p.x*px+originX)+"px";
+      ring.style.top  = (p.y*px+originY)+"px";
+      if(cv) drawArena(cv, map, stage.w, stage.h, originX, originY);
+    };
+    const up = ()=>{
+      try{ handle.releasePointerCapture(ev.pointerId); }catch(err){}
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      if(!moved) return;
+      const p = arenaPlayable(a);
+      setArena(map, { x:a.x, y:a.y });                   // normalise, save and repaint properly, once
+      toast(`\u{1F300} Arena centred on ${Math.round(p.x+p.size/2)}, ${Math.round(p.y+p.size/2)}`);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
+  });
+}
+function toggleArenaLock(map){
+  const a = arenaOf(map); if(!a) return;
+  const next = !a.locked;
+  setArena(map, { locked: next });
+  toast(next ? "\u{1F512} Arena locked in place"
+             : "\u{1F513} Arena unlocked — drag the ring to place it");
 }
 function setArena(map, patch){
   const b = mapBoardCells(map);
   const a = Object.assign({ x:0, y:0, size:ARENA_DEFAULT_SIZE, step:0, zone:"blocking",
-                            color:ARENA_FILL_DEFAULT }, map.arena||{}, patch||{});
+                            color:ARENA_FILL_DEFAULT, locked:false }, map.arena||{}, patch||{});
   a.size = Math.max(ARENA_MIN, Math.min(200, a.size|0));
   a.x = a.x|0; a.y = a.y|0;
+  a.locked = !!a.locked;
   if(!TERRAIN_ZONES.some(z=>z.key===a.zone)) a.zone = "blocking";
   if(!isHexColor(a.color)) a.color = ARENA_FILL_DEFAULT;
   a.step = Math.max(0, Math.min(arenaSteps(a), a.step|0));
@@ -46520,11 +46576,18 @@ function arenaPanel(map){
     + arenaLadder(a).join(" → ") + "."));
   body.append(el("div",{class:"small muted"},
     "• The corners are out of bounds from the start — a circle never fills its own square."));
+  if(cloud.isGM) body.append(el("div",{class:"small"+(a.locked?" muted":"")},
+    a.locked ? "• \u{1F512} Locked — tap \u{1F512} Locked below to move it again."
+             : "• \u{1F513} Unlocked — drag the \u{1F300} chip at the top of the circle to reposition it, then lock it."));
   if(cloud.isGM) body.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;flex-wrap:wrap"},
     el("button",{class:"btn-secondary",disabled:!a.step,
       title:"give a step of board back",onclick:()=>arenaClose(map,-1)},"◀ Open out"),
     el("button",{class:"btn-primary",disabled:a.step>=steps,
-      title:"eat another "+ARENA_STEP+" cells off every edge",onclick:()=>arenaClose(map,1)},"Close in ▶"),
+      title:"eat another "+ARENA_STEP+" squares off the diameter",onclick:()=>arenaClose(map,1)},"Close in ▶"),
+    el("button",{class:"btn-secondary"+(a.locked?"":" on"),onclick:()=>toggleArenaLock(map),
+      title:a.locked ? "Unlock it and the ring becomes a handle you can drag the arena around by"
+                     : "Lock it where it is, so reaching for a token underneath can't nudge it"},
+      a.locked ? "\u{1F512} Locked" : "\u{1F513} Drag to place"),
     el("button",{class:"btn-secondary",onclick:()=>openArenaDialog(map)},"⚙ Reframe"),
     el("button",{class:"btn-secondary danger",
       onclick:()=>{ if(confirm("Take the arena off this map? The out-of-bounds band comes off with it.")) clearArena(map); }},
