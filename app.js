@@ -16117,6 +16117,7 @@ function catchDCModal(p, opts={}){
   redraw();
   if(!showRoll){
     if(isGM()) wrap.append(catchResolveSection(p));      // which Ball, whose bag, and the salvage Scrap
+    if(isGM()) wrap.append(catchNerfSection(p));         // ...and hand it over at a Level worth giving
     modal({title:`🎯 Catch DC — ${p.nickname||getSpecies(p.species)?.name||"Pokémon"}`, bodyNode:wrap,
       footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Close")]});
     return;
@@ -34560,6 +34561,181 @@ function openGauntlets(){
   modal({title:"\u{1F30A} Wave gauntlets", bodyNode:body,
     footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
 }
+/* ---- Handing a caught Pokemon over weakened -------------------------------------------------
+     A gym's Lv 30 Dragalge is built to fight a party, not to join one. A table that doesn't want a
+     catch to hand over a fully-grown ace has had to rebuild it by hand every time: re-spend the stat
+     points, take back the Moves it hasn't grown into, hand back the Advanced Ability it no longer
+     qualifies for, fix the Tutor Points. This does all of it from one number.
+
+     Stats are SCALED, not re-rolled. The shape of a build is the interesting part of it -- a Special
+     Attacker that put twelve points into Special Attack should still be a Special Attacker at half
+     the Level, just a smaller one -- so the spread is shrunk proportionally and the rounding
+     remainder goes to whichever stats the build leaned on hardest.
+
+     Moves are taken back only if they are LEVEL-UP Moves above the new Level. A Tutor or TM Move was
+     taught, not grown into, so it stays: that is the difference between levelling down and rebuilding
+     from scratch, and it is what keeps a caught gym Pokemon interesting instead of generic.
+
+     It never de-evolves. Dropping a Dragalge below Skrelp's evolution Level would change its species,
+     stats, learnset and Abilities all at once, which is a different decision from "make it weaker" --
+     so it is reported and left to the GM.
+--------------------------------------------------------------------------------------------- */
+function nerfMonToLevel(p, lv, opts){
+  opts = opts || {};
+  const sp = getSpecies(p.species);
+  const from = p.level || 1;
+  lv = Math.max(1, Math.min(from, lv|0));
+  const report = { from, to:lv, movesLost:[], movesGained:[], abilitiesLost:[], deEvolve:null };
+  if(lv === from) return report;
+  const beforeAb = [...(p.abilities||[])];
+  p.level = lv; p.xp = xpForLevel(lv);
+
+  // --- stats: same shape, smaller budget
+  const keys = STATS.map(s=>s[0]);
+  const old = keys.map(k => Math.max(0, (p.stats && p.stats[k] && p.stats[k].added) || 0));
+  const oldTotal = old.reduce((a,b)=>a+b, 0), budget = lv + 10;
+  const next = {};
+  if(oldTotal > 0){
+    keys.forEach((k,i)=>{ next[k] = Math.floor(old[i] * budget / oldTotal); });
+    let left = budget - keys.reduce((n,k)=>n+next[k], 0);
+    keys.map((k,i)=>[k, old[i]]).sort((a,b)=>b[1]-a[1])
+        .forEach(([k])=>{ if(left > 0){ next[k]++; left--; } });
+  } else keys.forEach(k=>{ next[k] = 0; });
+  if(!p.stats) p.stats = {};
+  keys.forEach(k=>{ p.stats[k] = { added: next[k] }; });
+
+  // --- Moves it has not grown into yet
+  if(sp){
+    const atLv = speciesLevelupNames(sp, lv);
+    const knownNow = new Set(atLv.map(canonMoveName));
+    const everLearned = new Set(speciesLevelupNames(sp, MAX_LEVEL).map(canonMoveName));
+    p.moves = (p.moves||[]).filter(m=>{
+      const k = canonMoveName(m);
+      if(!everLearned.has(k)) return !opts.stripTaught;   // Tutor / TM / egg — taught, not grown into
+      if(knownNow.has(k)) return true;
+      report.movesLost.push(m);
+      return false;
+    });
+    /* Stripping a gym build can leave almost nothing behind — that Dragalge was carrying four Moves
+       it only learns in its twenties. Fill the empty slots back up with what it WOULD know at this
+       Level, most recent first, so what comes out of the ball is a real Pokémon and not a stub. */
+    const have = new Set((p.moves||[]).map(canonMoveName));
+    for(let i = atLv.length - 1; i >= 0 && p.moves.length < 6; i--){
+      const k = canonMoveName(atLv[i]);
+      if(have.has(k)) continue;
+      have.add(k); p.moves.push(atLv[i]); report.movesGained.push(atLv[i]);
+    }
+  }
+
+  // --- tier Abilities. syncEncMonTierAbilities hands back whatever IT rolled on the way down; a
+  //     hand-made encounter Pokemon may carry an Advanced/High Ability that was never marked, so
+  //     anything provably off the species' own Advanced/High list goes too.
+  syncEncMonTierAbilities(p, sp);
+  if(sp){
+    const adv = (sp.abilities && sp.abilities.advanced) || [];
+    const high = (sp.abilities && sp.abilities.high) || [];
+    p.abilities = (p.abilities||[]).filter(a=>{
+      if(high.includes(a) && lv < 40) return false;
+      if(adv.includes(a)  && lv < 20) return false;
+      return true;
+    });
+  }
+  report.abilitiesLost = beforeAb.filter(a => !(p.abilities||[]).includes(a));
+
+  tpSync(p);                                        // Tutor Points follow the Level, both ways
+  const max = pokeDerived(p).maxHP;
+  if(p.currentHP != null && p.currentHP > max) p.currentHP = max;
+
+  const stage = ((sp && sp.evolution) || []).find(e => e && e.name === (sp && sp.name));
+  if(stage && stage.min && lv < stage.min) report.deEvolve = `${sp.name} evolves at Lv ${stage.min}`;
+  return report;
+}
+/* Which encounter (and which list inside it) a Pokemon actually lives in — so the Catch DC dialog
+   can hand it to the PC from anywhere it is opened, including the Map. */
+function encMonHome(p){
+  try{
+    for(const e of (encList()||[])){
+      if((e.mons||[]).some(x => x === p || (x && x.id && p.id && x.id === p.id))) return { enc:e, list:e.mons };
+      for(const tr of (e.trainers||[]))
+        if((tr.pokemon||[]).some(x => x === p || (x && x.id && p.id && x.id === p.id)))
+          return { enc:e, list:tr.pokemon };
+    }
+  }catch(err){}
+  return null;
+}
+const CATCH_NERF_KEY = "ptu_catch_nerf_level";
+/* What to offer as the hand-over Level: whatever was used last, else the Level the party actually
+   plays at, so the first use of it is already in the right region. */
+function catchNerfDefault(p){
+  const saved = parseInt(localStorage.getItem(CATCH_NERF_KEY)||"", 10);
+  if(saved > 0) return Math.min(saved, p.level||1);
+  try{
+    const lv = diffPartyChars().flatMap(c => diffTopLevels(c.data, 2));
+    if(lv.length) return Math.max(1, Math.min(p.level||1, Math.round(diffAvg(lv))));
+  }catch(err){}
+  return Math.max(1, Math.round((p.level||1) / 2));
+}
+/* The GM half of the Catch DC dialog: hand it over, but not at gym strength. */
+function catchNerfSection(p){
+  const sec = el("div",{style:"margin-top:16px;border-top:1px solid var(--line);padding-top:12px"});
+  sec.append(el("div",{style:"font-weight:800;margin-bottom:4px"},"\u{1F4C9} Hand it over weakened"));
+  sec.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    "Drops it to a Level the party can be given, and rebuilds it to match — the stat spread keeps its "
+    + "shape on the smaller budget, level-up Moves above the new Level are taken back, and an "
+    + "Advanced Ability it no longer qualifies for goes with them. Tutor and TM Moves stay: it was "
+    + "taught those. It is never de-evolved."));
+  const lvIn = el("input",{type:"number",min:1,max:Math.max(1,p.level||1),value:catchNerfDefault(p),style:"width:74px"});
+  const stripCb = el("input",{type:"checkbox"});
+  const out = el("div",{class:"small",style:"margin:8px 0"});
+  const home = encMonHome(p);
+  const optsNow = ()=>({ stripTaught: stripCb.checked });
+  const paint = ()=>{
+    const lv = Math.max(1, Math.min(p.level||1, parseInt(lvIn.value)||1));
+    const clone = normPokemon(JSON.parse(JSON.stringify(p)));
+    const r = nerfMonToLevel(clone, lv, optsNow());
+    out.innerHTML = "";
+    if(r.to === r.from){ out.append(el("span",{class:"muted"},"Same Level — nothing would change.")); return; }
+    const d = pokeDerived(clone), e = d.eff;
+    out.append(el("div",{}, el("b",{}, `Lv ${r.from} → ${r.to}`),
+      ` · ${r.from + 10} stat points → ${r.to + 10} · HP ${pokeDerived(p).maxHP} → ${d.maxHP}`));
+    out.append(el("div",{class:"muted"},
+      `Atk ${e.atk} · Def ${e.def} · SpAtk ${e.spatk} · SpDef ${e.spdef} · Spd ${e.spd}`));
+    if(r.movesLost.length) out.append(el("div",{style:"color:var(--bad)"},
+      `− Moves: ${r.movesLost.join(", ")}`));
+    if(r.movesGained.length) out.append(el("div",{style:"color:var(--good)"},
+      `+ back to its own Lv ${r.to} moveset: ${r.movesGained.join(", ")}`));
+    if(r.abilitiesLost.length) out.append(el("div",{style:"color:var(--bad)"},
+      `− Ability: ${r.abilitiesLost.join(", ")}`));
+    if(!r.movesLost.length && !r.abilitiesLost.length && !r.movesGained.length)
+      out.append(el("div",{class:"muted"},"Keeps every Move and Ability — only the stats shrink."));
+    if(r.deEvolve) out.append(el("div",{style:"color:var(--warn,#c8a32b)"},
+      `⚠ Below its evolution Level (${r.deEvolve}). It is handed over evolved anyway — de-evolve it by hand if you'd rather.`));
+  };
+  lvIn.addEventListener("input", paint);
+  stripCb.addEventListener("change", paint);
+  paint();
+  sec.append(el("label",{class:"field",style:"margin-bottom:4px"}, el("span",{},"Hand it over at Level"), lvIn));
+  sec.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin-bottom:4px"},
+    stripCb, el("span",{class:"small"},
+      "Take back Tutor / TM Moves too — tick this when a taught Move would be absurd at the new Level "
+      + "(a Lv 10 with Draco Meteor)")));
+  sec.append(out);
+  const apply = ()=> Math.max(1, Math.min(p.level||1, parseInt(lvIn.value)||1));
+  const remember = lv => { try{ localStorage.setItem(CATCH_NERF_KEY, String(lv)); }catch(err){} };
+  const row = el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap"});
+  row.append(el("button",{class:"btn-secondary",style:"padding:6px 12px",
+    title:"rebuild it at this Level but leave it in the encounter, so you can look it over first",
+    onclick:()=>{ const lv = apply(); const r = nerfMonToLevel(p, lv); remember(lv);
+      saveEnc(); renderEncounters(); closeModal();
+      toast(`\u{1F4C9} ${encMonName(p)} rebuilt at Lv ${r.to}`); }},"\u{1F4C9} Rebuild here"));
+  if(home) row.append(el("button",{class:"btn-primary",style:"padding:6px 12px",
+    title:"rebuild it at this Level and send it straight to the shared PC",
+    onclick:async()=>{ const lv = apply(); nerfMonToLevel(p, lv); remember(lv);
+      closeModal(); await sendEncMonToPC(home.enc, p, home.list); }},"\u{1F3A3} Catch at this Level → PC"));
+  else row.append(el("span",{class:"small muted"},"Not in an encounter — send it to the PC from its own card."));
+  sec.append(row);
+  return sec;
+}
 /* send an encounter Pokémon to the shared PC (i.e. it's been caught) and remove it from the field */
 async function sendEncMonToPC(enc, p, list){
   if(mode!=="cloud"){ toast("Join the campaign (☁ cloud) to send Pokémon to the shared PC"); return; }
@@ -34567,6 +34743,11 @@ async function sendEncMonToPC(enc, p, list){
   const m = normPokemon(JSON.parse(JSON.stringify(p)));
   m.id = uid(); m.onTeam = false; m.currentHP = null; delete m.encFav;
   delete m.swarm;   // "catching" a Swarm means pulling ONE individual out of it — not boxing the horde
+  /* ...and neither template survives the ball. A Boss's several HP bars and a Mega's borrowed form
+     are things an ENCOUNTER gives a creature, not things the creature is: a caught Rogue Mega goes
+     into the PC as the Gyarados it reverts to, with one HP bar like everything else. */
+  delete m.boss;
+  megaRevert(m, true);
   m._pcFrom = "Encounter"+(enc.name?": "+enc.name:""); m._pcAt = Date.now();
   cloud.pc.data.pokemon.push(m);
   const i = list.indexOf(p); if(i>=0) list.splice(i,1);   // caught → leaves the encounter
