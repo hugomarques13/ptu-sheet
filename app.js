@@ -36888,6 +36888,7 @@ function encSpreadStats(p){
   for(let i=0;i<budget;i++){ p.stats[keys[Math.floor(Math.random()*keys.length)]].added++; }
 }
 const ENC_GENDERS = ["Male","Female"];
+const ENC_ID_OPEN = new Set();   // encounter Pokémon whose ✎ Nature & Gender editor is unfolded
 /* roll a Pokémon's random identity: nature, gender, shiny (1d100, Shiny on a 1 — 1 in 100, houserule override of Core p.212's 1-or-100), stats */
 function encRandomize(p){
   p.nature = D.natures[Math.floor(Math.random()*D.natures.length)].name;
@@ -38300,6 +38301,16 @@ function encounterMonCard(enc, p, list, trainer){
       onclick:()=>{ if(isSwarm(p)){ toast("Disable Swarm Template first"); return; } toggleBoss(p); saveEnc(); renderEncounters(); }},
       isBoss(p)?`👑 Boss ×${p.boss.actions}`:"👑 Boss"));
   card.append(actRow);
+  /* Nature & Gender are rolled for you; fixing one by hand is occasional, so the pickers stay folded away
+     (and remember they were open across the re-render that every change triggers). */
+  const idDet = el("details",{style:"margin-top:6px"}, el("summary",{class:"small muted",style:"cursor:pointer"},
+    `✎ Edit Nature & Gender (${p.nature||"—"} · ${p.gender||"—"})`));
+  idDet.open = ENC_ID_OPEN.has(p.id);
+  idDet.addEventListener("toggle", ()=>{ if(idDet.open) ENC_ID_OPEN.add(p.id); else ENC_ID_OPEN.delete(p.id); });
+  idDet.append(el("div",{class:"fieldrow",style:"margin-top:6px"},
+    field("Nature","",{opts:D.natures.map(n=>n.name), value:p.nature, onchange:v=>{ p.nature=v; saveEnc(); renderEncounters(); }}),
+    field("Gender","",{opts:["","Male","Female","Genderless"], value:p.gender, onchange:v=>{ p.gender=v; saveEnc(); renderEncounters(); }})));
+  card.append(idDet);
   const encMonDead = deathBanner(p, ()=>{ saveEnc(); renderEncounters(); }); if(encMonDead) card.append(encMonDead);
   card.append(encStatSpread(p));
   card.append(encCombatStages(p));
