@@ -5,188 +5,224 @@
 <a id="features-01"></a>
 ## `features-01` — Other, Pokémon Raising & Battling, Capture Specialist, Provocateur
 
-P1 · 16 open of 16 · open
+P1 · 0 open of 16 · ✔ done
 
-- 🔴 **Skill Monkey** — `todo` · P1 (player:Lázaro) · themes: interrupt, skill · engine: action-surfaced
+- ✅ **Skill Monkey** — `auto` · P1 (player:Lázaro) · themes: interrupt, skill · engine: action-surfaced · code: openSkillReroll:23171, speciesSavantPick:23267
   - _Other · Daily x3 - Free Action · Prereq: Three Skills at Adept Rank or higher_
+  - note: FEATURE_ACTIONS row (features-01 batch, app.js?v=584)
   - Trigger: You make a Skill Check
     Effect: You may re-roll the triggering Skill Check with a +2 Bonus, taking the new result. This Feature may be used to re-roll a specific roll only once.
 
-- 🔴 **Let Me Help You With That** — `todo` · P3 · themes: interrupt, skill · engine: action-surfaced
+- ✅ **Let Me Help You With That** — `auto` · P3 · themes: interrupt, skill · engine: action-surfaced · code: speciesSavantPick:23269
   - _Other · Daily x3 - Full Action, Interrupt_
+  - note: FEATURE_ACTIONS row (features-01 batch, app.js?v=584)
   - Trigger: An allied Trainer fails a Skill Check in a Skill you have Ranked at Novice or higher.
     Effect: The ally may re-roll the Skill Check with a Bonus equal to your Skill Rank.
 
-- 🔴 **Poke Ball Crafter** — `todo` · P3 · themes: heal, capture
+- ⚪ **Poke Ball Crafter** — `manual` · P3 · themes: heal, capture
   - _Other · Static · Prereq: Basic Balls, Poke Ball Repair, Expert Technology Education_
+  - note: a crafting permission; the 🔨 bench already lists the balls — allow them by hand
   - You may craft Dusk, Dive, Heal, Luxury, Net, Nest, Quick, Repeat, or Timer Balls for $700. Requires access to a Poke Ball Tool Box.
 
-- 🔴 **PokeManiac** — `todo` · P3 · themes: swap, skill, stat · engine: action-surfaced
+- ⚪ **PokeManiac** — `manual` · P3 · themes: swap, skill, stat · engine: action-surfaced
   - _Other · At-Will - Standard Action · Prereq: Adept Pokemon Education_
+  - note: a DC 10 Check whose payoff is the GM telling the player the target's stats
   - Target: A Pokemon
     Effect: Make a Pokemon Education Check with a DC of 10. If you succeed, you determine the target's Level, Types, Nature, and Abilities.
 
-- 🔴 **PokéManiac** — `todo` · P3 · themes: swap, skill, stat · engine: action-surfaced
+- ⚪ **PokéManiac** — `manual` · P3 · themes: swap, skill, stat · engine: action-surfaced
   - _Other · At-Will - Standard Action · Prereq: Adept Pokemon Education_
+  - note: same as PokeManiac (accented duplicate)
   - Target: A Pokemon
     Effect: Make a Pokemon Education Check with a DC of 10. If you succeed, you determine the target's Level, Types, Nature, and Abilities.
 
-- 🔴 **Psionic Sight** — `todo` · P3 · themes: swap · engine: stat-tag
+- ⚪ **Psionic Sight** — `manual` · P3 · themes: swap · engine: stat-tag
   - _Other · [+Special Defense] · Static · Prereq: Elemental Connection (Psychic)_
+  - note: perception flavour
   - You are able to visibly see any Psychic Residue left on Humans or Pokemon due to the effects of Psionic abilities. Each Human or Pokemon leaves distinct Psychic Residue on their targets; you are easily able to distinguish which targets have been affected by the same Psionic, though to identify that Psionic you need to have a way of knowing their signature (such as simply seeing them do it, and seeing the resulting signature).
 
-- 🔴 **Quick Switch** — `todo` · P1 (enc, player:Lázaro) · themes: interrupt, swap, action · engine: action-surfaced
+- ✅ **Quick Switch** — `auto` · P1 (enc, player:Lázaro) · themes: interrupt, swap, action · engine: action-surfaced · code: speciesSavantPick:23271
   - _Pokémon Raising & Battling · 2 AP - Free Action · Prereq: Novice Acrobatics or Guile_
+  - note: FEATURE_ACTIONS row (features-01 batch, app.js?v=584)
   - Trigger: Your Pokemon Faints; or an opponent sends out a Pokemon
     Effect: You may return and send out a Pokemon as a Free Action. You may perform this Feature on your turn without a Trigger. Pokemon sent out by Quick Switch cannot trigger another trainer's Quick Switch. When you swap Pokemon using Quick Switch, you do not lose a Pokemon turn.
 
-- 🔴 **Command Versatility** — `todo` · P3 · themes: heal, interrupt, action, skill · engine: action-surfaced
+- ✅ **Command Versatility** — `auto` · P3 · themes: heal, interrupt, action, skill · engine: action-surfaced · code: speciesSavantPick:23273
   - _Pokémon Raising & Battling · 1 AP - Free Action · Prereq: Adept Command, Guile, or Pokemon Education_
+  - note: FEATURE_ACTIONS row (features-01 batch, app.js?v=584)
   - Trigger: Your Pokemon takes its turn.
     Effect: Your Pokemon may give up use of a Scene or Daily Move to regain use of a Scene or Daily Move which it has already used. Your Pokemon may give up use of a Daily Move to regain use of a Scene Move, but not vice-versa. You may use Command Versatility only once per Scene per Pokemon.
 
-- 🔴 **Press** — `todo` · P3 · themes: heal, status, cure, cs, skill, stat, social · engine: action-surfaced
+- ✅ **Press** — `auto` · P3 · themes: heal, status, cure, cs, skill, stat, social · engine: action-surfaced · code: classTechniqueRow:11129, speciesSavantPick:23275
   - _Pokémon Raising & Battling · At-Will - Standard Action · Prereq: Adept Intimidate_
+  - note: FEATURE_ACTIONS row (features-01 batch, app.js?v=584)
   - Target: Your own Pokemon.
     Effect: You hit your Pokemon, and they lose 1/6th of their Max Hit Points and are cured of Sleep. Raise any two of their Stats by +1 CS each, and you may add half of your Intimidate Rank to any Skill Checks made this round to make this Pokemon obey orders. Using Press on a Pokemon may make them dislike you.
 
-- 🔴 **Species Savant** — `todo` · P3 · themes: stat
+- ✅ **Species Savant** — `auto` · P3 · themes: stat · code: speciesSavantBonus:23250, speciesSavantPick:23277
   - _Pokémon Raising & Battling · Static · Prereq: 3 different individual Pokemon of the same evolutionary line_
+  - note: FEATURE_ACTIONS row (features-01 batch, app.js?v=584)
   - When you take Species Savant, choose a single Evolutionary Family. Your Pokemon of your Chosen Evolutionary Family have each of their Base Stats increased by +1.
 
-- 🔴 **Tutoring** — `todo` · P3 · themes: action, stat
+- ⚪ **Tutoring** — `manual` · P3 · themes: action, stat
   - _Pokémon Raising & Battling · One Time Use x3 - Extended Action · Prereq: Novice General Education, Special (See Effect)_
+  - note: Extended Action with Mastered-Move bookkeeping; Tutor Points are spent on the Pokémon's sheet
   - When activating this Feature, select a Move known either by yourself or by 3 Pokemon you own. This Move is Mastered. As an Extended Action, you may have Pokemon spend 2 Tutor Points to learn a Move you have Mastered. Pokemon targeted this way can only learn Moves that they could learn by Level Up, TM, Egg Move, or Move Tutor. You may take Tutoring multiple times, each time gaining 3 uses of the Feature.
 
-- 🔴 **Advanced Capture Techniques Rank 1** — `todo` · P1 (player:Lázaro) · themes: swap, skill, capture · engine: stat-tag · class: Capture Specialist
+- ⚪ **Advanced Capture Techniques Rank 1** — `manual` · P1 (player:Lázaro) · themes: swap, skill, capture · engine: stat-tag · class: Capture Specialist
   - _Trainer Classes · [Ranked 4][+Speed] · Static · Prereq: Capture Specialist_
+  - note: grants two Capture Techniques of the player's choice — picked on the Techniques list
   - You gain two Capture Techniques of your choice. You must meet any prerequisites of the Technique. You may qualify for Advanced Capture Techniques' prerequisites with the Acrobatics, Athletics, Stealth, Survival, Guile, or Perception Skills only.
 
-- 🔴 **Advanced Capture Techniques Rank 2** — `todo` · P3 · themes: swap, skill, capture · engine: stat-tag · class: Capture Specialist
+- ⚪ **Advanced Capture Techniques Rank 2** — `manual` · P3 · themes: swap, skill, capture · engine: stat-tag · class: Capture Specialist
   - _Trainer Classes · [Ranked 4][+Speed] · Static · Prereq: Capture Specialist, any 2 Skills at Adept Rank_
+  - note: grants two Capture Techniques of the player's choice — picked on the Techniques list
   - You gain two Capture Techniques of your choice. You must meet any prerequisites of the Technique. You may qualify for Advanced Capture Techniques' prerequisites with the Acrobatics, Athletics, Stealth, Survival, Guile, or Perception Skills only.
 
-- 🔴 **Advanced Capture Techniques Rank 3** — `todo` · P3 · themes: swap, skill, capture · engine: stat-tag · class: Capture Specialist
+- ⚪ **Advanced Capture Techniques Rank 3** — `manual` · P3 · themes: swap, skill, capture · engine: stat-tag · class: Capture Specialist
   - _Trainer Classes · [Ranked 4][+Speed] · Static · Prereq: Capture Specialist, any 2 Skills at Expert Rank_
+  - note: grants two Capture Techniques of the player's choice — picked on the Techniques list
   - You gain two Capture Techniques of your choice. You must meet any prerequisites of the Technique. You may qualify for Advanced Capture Techniques' prerequisites with the Acrobatics, Athletics, Stealth, Survival, Guile, or Perception Skills only.
 
-- 🔴 **Advanced Capture Techniques Rank 4** — `todo` · P3 · themes: swap, skill, capture · engine: stat-tag · class: Capture Specialist
+- ⚪ **Advanced Capture Techniques Rank 4** — `manual` · P3 · themes: swap, skill, capture · engine: stat-tag · class: Capture Specialist
   - _Trainer Classes · [Ranked 4][+Speed] · Static · Prereq: Capture Specialist, any 3 Skills at Expert Rank_
+  - note: grants two Capture Techniques of the player's choice — picked on the Techniques list
   - You gain two Capture Techniques of your choice. You must meet any prerequisites of the Technique. You may qualify for Advanced Capture Techniques' prerequisites with the Acrobatics, Athletics, Stealth, Survival, Guile, or Perception Skills only.
 
-- 🔴 **Mixed Messages** — `todo` · P1 (player:Lysgd) · themes: control · engine: stat-tag · class: Provocateur
+- ✅ **Mixed Messages** — `auto` · P1 (player:Lysgd) · themes: control · engine: stat-tag · class: Provocateur
   - _Trainer Classes · [+Speed] · Static · Prereq: Provocateur, two Provocateur Skills at Adept Rank_
+  - note: syncFeatureMoves reads 'You learn the Moves X and Y' (v594 sweep)
   - You learn the Moves Lovely Kiss and Torment.
 
 <a id="features-02"></a>
 ## `features-02` — Type Ace (1/3)
 
-P2 · 18 open of 18 · open
+P2 · 16 open of 18 · open
 
-- 🔴 **Brawler** — `todo` · P2 (enc) · themes: interrupt, damage · engine: action-surfaced · class: Type Ace
+- 🟡 **Brawler** — `partial` · P2 (enc) · themes: interrupt, damage · engine: action-surfaced · code: trigRow:23675 · class: Type Ace
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Close Quarters Mastery, Type-Linked Skill at Adept_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon makes a Struggle Attack
     Effect: This Struggle Attack has a range of Burst 1, Friendly instead of the usual range, and deals Fighting-Type Damage.
 
-- 🔴 **Chain Lightning** — `todo` · P2 (enc) · themes: interrupt, damage · engine: action-surfaced · class: Type Ace
+- 🟡 **Chain Lightning** — `partial` · P2 (enc) · themes: interrupt, damage · engine: action-surfaced · code: trigRow:23676 · class: Type Ace
   - _Trainer Classes · Daily x3 - Free Action · Prereq: Lockdown, Type-Linked Skill at Master_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon hits with a damaging 1-target Electric Attack
     Effect: Pick another Pokemon or Trainer within 3 meters of the target of the attack. You may repeat the triggering attack against the target, with a -5 Damage penalty. If you hit, you may repeat the attack a third time against a foe within 3 meters of the second target, this time with a -10 Damage penalty. The third target cannot be the same as the original target.
 
-- 🔴 **Close Quarters Mastery** — `todo` · P2 (enc) · themes: position, typing · engine: action-surfaced · class: Type Ace
+- 🟡 **Close Quarters Mastery** — `partial` · P2 (enc) · themes: position, typing · engine: action-surfaced · code: FEATURE_MODES:27216 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Type Ace, Fighting as Chosen Type_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - Target: Your Pokemon
     Effect: While this Feature is Bound, the target's Fighting-Type Moves cause foes to become Marked by the target for 1 full round. If the target is a Fighting- Type Pokemon, they may also Mark the Foe for one full round when hitting with a Grapple, Trip, or Push Maneuver.
     
     Note: Marked Foes provoke an attack of Opportunity from the Pokemon that marked them if they Shift out of an adjacent square into a square that is not adjacent, even if they use a Disengage Maneuver. Targets cannot be Marked by more than one Pokemon at a time.
 
-- 🔴 **Face Me Whelp** — `todo` · P2 (enc) · themes: damage, skill · class: Type Ace
+- 🟡 **Face Me Whelp** — `partial` · P2 (enc) · themes: damage, skill · code: trigRow:23756 · class: Type Ace
   - _Trainer Classes · Static · Prereq: Close Quarters Mastery, Type-Linked Skill at Expert_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - While your Pokemon is adjacent to a foe they Marked, that foe gains a -X penalty to Accuracy Rolls and a -10 penalty to Damage Rolls on attacks that do not target the Pokemon that Marked them. X is equal to half your Type-Linked Skill Rank.
 
-- 🔴 **Lockdown** — `todo` · P2 (enc) · themes: interrupt, status · engine: action-surfaced · class: Type Ace
+- ✅ **Lockdown** — `auto` · P2 (enc) · themes: interrupt, status · engine: action-surfaced · code: STAT_TRAINING_MOVES:23864 · class: Type Ace
   - _Trainer Classes · At-Will - Free Action · Prereq: Type Ace, Electric as Chosen Type_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Trigger: Your Pokemon's Damaging Electric Attack would inflict Paralysis on an already Paralyzed foe
     Effect: For 1 full round, that foe is instead Stuck and may only use At-Will Frequency Moves.
 
-- 🔴 **Shocking Speed** — `todo` · P2 (enc) · themes: interrupt · engine: action-surfaced · class: Type Ace
+- 🟡 **Shocking Speed** — `partial` · P2 (enc) · themes: interrupt · engine: action-surfaced · code: trigRow:23677 · class: Type Ace
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Lockdown, Type-Linked Skill at Expert_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - You may activate this Feature to have your Electric-Type Pokemon may use an Electric-Type Move with a Frequency of At-Will as if it had Priority (Advanced).
 
-- 🔴 **Smashing Punishment** — `todo` · P2 (enc) · themes: interrupt, damage · engine: action-surfaced · class: Type Ace
+- 🟡 **Smashing Punishment** — `partial` · P2 (enc) · themes: interrupt, damage · engine: action-surfaced · code: trigRow:23678 · class: Type Ace
   - _Trainer Classes · Daily x3 - Free Action · Prereq: Close Quarters Mastery, Type-Linked Skill at Master_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: A Marked Foe provokes an Attack of Opportunity from your Fighting-Type Pokemon
     Effect: The Attack of Opportunity automatically hits, deals Fighting-Type Damage, and is a Critical Hit.
 
-- 🔴 **Aqua Vortex** — `todo` · P3 · themes: interrupt, damage, skill · engine: action-surfaced · class: Type Ace
+- 🟡 **Aqua Vortex** — `partial` · P3 · themes: interrupt, damage, skill · engine: action-surfaced · code: trigRow:23679 · class: Type Ace
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Flood!, Type-Linked Skill at Master_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon hits with a damaging Water- Type attack
     Effect: All targets of the attack are put in a Vortex, and take a penalty to all Damage Rolls equal to your Type-Linked Skill Rank while in the Vortex.
 
-- 🔴 **Arcane Favor** — `todo` · P3 · themes: interrupt · engine: action-surfaced · class: Type Ace
+- ✅ **Arcane Favor** — `auto` · P3 · themes: interrupt · engine: action-surfaced · code: STAT_TRAINING_MOVES:23822 · class: Type Ace
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Fairy Lights, Type-Linked Skill at Adept_
+  - note: FEATURE_ACTIONS / FEATURE_MODES row (v595)
   - Trigger: Your Pokemon uses a Fairy-Type Move
     Effect: Your Pokemon and all allies on the Field gain a +1 Bonus to all rolls for one full round.
 
-- 🔴 **Assault Armor** — `todo` · P3 · themes: interrupt, damage, stat · engine: action-surfaced · class: Type Ace
+- 🟡 **Assault Armor** — `partial` · P3 · themes: interrupt, damage, stat · engine: action-surfaced · code: trigRow:23680 · class: Type Ace
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Polished Shine, Type-Linked Skill at Expert_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon hits with a Steel-Type attack
     Effect: Your Pokemon may add its Defense Stat to their Damage Roll in place of the attack's normal offensive stat.
 
-- 🔴 **Black-Out Strike** — `todo` · P3 · themes: heal, interrupt, status, action · engine: action-surfaced · class: Type Ace
+- 🟡 **Black-Out Strike** — `partial` · P3 · themes: heal, interrupt, status, action · engine: action-surfaced · code: trigRow:23682 · class: Type Ace
   - _Trainer Classes · Daily x3 - Free Action · Prereq: Clever Ruse, Type-Linked Skill at Master_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon hits with a damaging Dark- Type Move
     Effect: After the triggering attack is resolved, the target of the attack gains an Injury and falls asleep. If this attack would put them are 3 or more injuries or at or under 25% of their maximum Hit Points, the target instead becomes Fainted. Black-Out Strike may be used only once per Scene.
 
-- 🔴 **Boo!** — `todo` · P3 · themes: interrupt, multiturn · engine: action-surfaced · class: Type Ace
+- 🟡 **Boo!** — `partial` · P3 · themes: interrupt, multiturn · engine: action-surfaced · code: trigRow:23683 · class: Type Ace
   - _Trainer Classes · Daily x3 - Free Action · Prereq: Ghost Step, Type-Linked Skill at Master_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon reappears after using Ghost Step, or the set-up phase of Phantom Force or Shadow Force
     Effect: The next Ghost-Type attack the target makes that turn gains the Smite keyword and can't be Intercepted or avoided in any way (Dodge, Parry, Shield Moves, etc).
 
-- 🔴 **Brightest Flame** — `todo` · P3 · themes: status, typing, damage, skill · class: Type Ace
+- 🟡 **Brightest Flame** — `partial` · P3 · themes: status, typing, damage, skill · code: trigRow:23759 · class: Type Ace
   - _Trainer Classes · Static · Prereq: Type Ace, Fire as Chosen Type_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Your Pokemon's damaging Fire-Type Moves Burn their target on a roll of 18+. If a Move already has a chance to Burn a target, this Effect Range is instead increased by +3. Additionally, your Pokemon's damaging Fire-Type Moves deal additional damage equal to your Type-Linked Skill Rank against Burned targets.
 
-- 🔴 **Celerity** — `todo` · P3 · themes: position, status, skill · engine: action-surfaced · class: Type Ace
+- 🟡 **Celerity** — `partial` · P3 · themes: position, status, skill · engine: action-surfaced · code: FEATURE_MODES:27218 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Type Ace, Flying as Chosen Type_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - Target: A Flying-Type Pokemon, or a Pokemon with a Sky or Levitate Speed
     Effect: While this Feature is Bound, add your Type-Linked Skill to the target's Initiative. Additionally, if the Target uses a Disengage Maneuver, they may Shift as if Slowed instead of shifting only 1 Meter.
 
-- 🔴 **Clever Ruse** — `todo` · P3 · themes: interrupt, multiturn, damage, action, stat · engine: action-surfaced · class: Type Ace
+- 🟡 **Clever Ruse** — `partial` · P3 · themes: interrupt, multiturn, damage, action, stat · engine: action-surfaced · code: trigRow:23684 · class: Type Ace
   - _Trainer Classes · At-Will - Free Action · Prereq: Type Ace, Dark as Chosen Type_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon misses all targets with a Dark-Type attack on their turn
     Effect: Your Pokemon may apply two of the effects below after the triggering attack is resolved. Your Pokemon may also take a Standard Action to trigger this Feature. This Feature may be triggered only once per round.
     »» They gain +4 Evasion for one full round.
     »» Their attacks ignore Evasion from Stats until the end of their next turn.
     »» They may immediately Disengage as a Free Action.
 
-- 🔴 **Corrosive Blight** — `todo` · P3 · themes: heal, interrupt, status · engine: action-surfaced · class: Type Ace
+- 🟡 **Corrosive Blight** — `partial` · P3 · themes: heal, interrupt, status · engine: action-surfaced · code: trigRow:23685 · class: Type Ace
   - _Trainer Classes · Daily x3 - Free Action · Prereq: Potent Venom, Type-Linked Skill at Master_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon hits a foe with a Poison-Type Attack
     Effect: The target gains the Blight Condition for one full round. Blighted targets lose a Tick of Hit Points upon being hit by any attack. If the attack is Poison-Typed, the Blight effect's duration is refreshed.
 
-- 🔴 **Cross-Pollinate** — `todo` · P3 · themes: interrupt, action · engine: action-surfaced · class: Type Ace
+- 🟡 **Cross-Pollinate** — `partial` · P3 · themes: interrupt, action · engine: action-surfaced · code: trigRow:23686 · class: Type Ace
   - _Trainer Classes · Daily x3 - Free Action · Prereq: Foiling Foliage, Type-Linked Skill at Master_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Grass-Type Pokemon uses a damaging Grass-Type Move
     Effect: Your Pokemon may immediately use a Grass-Type Status-Class move as a Free Action.
 
-- 🔴 **Debilitate** — `todo` · P3 · themes: status, typing, damage · engine: action-surfaced · class: Type Ace
+- 🟡 **Debilitate** — `partial` · P3 · themes: status, typing, damage · engine: action-surfaced · code: FEATURE_MODES:27220 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Potent Venom, Type-Linked Skill at Adept_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - Target: Your Poison-Type Pokemon
     Effect: While this Feature is Bound, when the target sucessfully hits a Poisoned or Blighted foe with a Poison- Type Move, the foe gains a -2 penalty to Accuracy Rolls and Evasion for one full round.
 
 <a id="features-05"></a>
 ## `features-05` — Athlete, Juggler, Martial Artist
 
-P2 · 18 open of 18 · open
+P2 · 7 open of 18 · open
 
-- 🔴 **Adrenaline Rush** — `todo` · P2 (enc) · themes: heal, interrupt, cure, cs, action, skill, stat · engine: action-surfaced, stat-tag · class: Athlete
+- ✅ **Adrenaline Rush** — `auto` · P2 (enc) · themes: heal, interrupt, cure, cs, action, skill, stat · engine: action-surfaced, stat-tag · code: STAT_TRAINING_MOVES:23831 · class: Athlete
   - _Trainer Classes · [+HP] · Daily x3 - Free Action · Prereq: Athlete, Expert Athletics_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Trigger: You are lowered to half or your Maximum Hit Points or less
     Effect: You gain +1 Combat Stage in each of your Trained Stats, are cured of up to two Status Afflictions, and gain a Tick of Temporary Hit Points. Adrenaline Rush may be used only once per Scene
 
-- 🔴 **Coaching** — `todo` · P2 (enc) · themes: position, interrupt, swap, action, skill, social · engine: action-surfaced, stat-tag · class: Athlete
+- 🟡 **Coaching** — `partial` · P2 (enc) · themes: position, interrupt, swap, action, skill, social · engine: action-surfaced, stat-tag · code: trigRow:23778 · class: Athlete
   - _Trainer Classes · [+HP] · 1 AP - Free Action · Prereq: Training Regime_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon makes a Combat Maneuver
     Effect: Your Pokemon gains a bonus based on the type of Combat maneuver they are making. This Feature may be triggered once per Scene per Pokemon.
     »» Your Pokemon gains a +1d6 bonus to Opposed Acrobatics, Athletics, Combat, or Stealth Skill Checks.
@@ -203,86 +239,102 @@ P2 · 18 open of 18 · open
     »» Special Defense: You gain a +2 Bonus to Opposed Checks to resist Combat Maneuvers.
     »» Speed: When you Sprint, you double your Movement Capability instead of increasing by 50%.
 
-- 🔴 **Athletic Moves Rank 1** — `todo` · P3 · themes: skill · engine: stat-tag · class: Athlete
+- ✅ **Athletic Moves Rank 1** — `auto` · P3 · themes: skill · engine: stat-tag · class: Athlete
   - _Trainer Classes · [+HP] [Ranked 3] · Static · Prereq: Athlete_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - You learn two Rank 1 Athlete Moves.
     Rank 1: Bind, Block, Slam, Strength
 
-- 🔴 **Athletic Moves Rank 2** — `todo` · P3 · themes: skill · engine: stat-tag · class: Athlete
+- ✅ **Athletic Moves Rank 2** — `auto` · P3 · themes: skill · engine: stat-tag · class: Athlete
   - _Trainer Classes · [+HP] [Ranked 3] · Static · Prereq: Athlete, Expert Athletics_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - You learn two Athlete Moves marked Rank 2 or lower.
     Rank 2: Body Slam, Take Down, Extreme Speed
 
-- 🔴 **Athletic Moves Rank 3** — `todo` · P3 · themes: skill · engine: stat-tag · class: Athlete
+- ✅ **Athletic Moves Rank 3** — `auto` · P3 · themes: skill · engine: stat-tag · class: Athlete
   - _Trainer Classes · [+HP] [Ranked 3] · Static · Prereq: Athlete, Master Athletics_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - You learn two Athlete Moves marked Rank 3 or lower.
     Rank 3: Mega Kick, Facade, Retaliate
 
-- 🔴 **Bounce Shot** — `todo` · P2 (enc) · themes: interrupt, capture · engine: action-surfaced, stat-tag · class: Juggler
+- 🟡 **Bounce Shot** — `partial` · P2 (enc) · themes: interrupt, capture · engine: action-surfaced, stat-tag · code: trigRow:23701 · class: Juggler
   - _Trainer Classes · [+Speed] · At-Will - Free Action · Prereq: Juggler_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You throw a Poke Ball
     Effect: After hitting its mark or landing, your Poke Ball bounces 3 meters in any direction. You may have your Poke Ball trigger captures or releases before or after the bounce.
 
-- 🔴 **Emergency Release** — `todo` · P2 (enc) · themes: interrupt · engine: action-surfaced, stat-tag · class: Juggler
+- ✅ **Emergency Release** — `auto` · P2 (enc) · themes: interrupt · engine: action-surfaced, stat-tag · code: STAT_TRAINING_MOVES:23845 · class: Juggler
   - _Trainer Classes · [+Speed] · 2 AP - Shift Action · Prereq: Juggler, Expert Acrobatics or Guile_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - You may Release a Pokemon as an Interrupt.
 
-- 🔴 **Juggling Show** — `todo` · P2 (enc) · themes: damage, skill, stat, social · engine: stat-tag · class: Juggler
+- ⚪ **Juggling Show** — `manual` · P2 (enc) · themes: damage, skill, stat, social · engine: stat-tag · class: Juggler
   - _Trainer Classes · [+Speed] · Static · Prereq: Juggler_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - You may roll an additional Xd6 during the Introduction Stage of a Contest, where X is half of your Acrobatics Rank. You may choose any Contest Stat to attempt to gain Dice for with this roll.
 
-- 🔴 **Round Trip** — `todo` · P2 (enc) · themes: position, interrupt, status · engine: action-surfaced, stat-tag · class: Juggler
+- ✅ **Round Trip** — `auto` · P2 (enc) · themes: position, interrupt, status · engine: action-surfaced, stat-tag · code: STAT_TRAINING_MOVES:23843 · class: Juggler
   - _Trainer Classes · [+Speed] · 1 AP - Free Action · Prereq: Juggler, Adept Acrobatics or Guile_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Trigger: Your Pokemon uses a Move
     Effect: You may immediately switch your Pokemon that just performed a Move for another of your Pokemon. This effect lets Pokemon with the Trapped condition switch out.
 
-- 🔴 **Tag In** — `todo` · P2 (enc) · themes: position, interrupt · engine: action-surfaced, stat-tag · class: Juggler
+- ✅ **Tag In** — `auto` · P2 (enc) · themes: position, interrupt · engine: action-surfaced, stat-tag · code: STAT_TRAINING_MOVES:23844 · class: Juggler
   - _Trainer Classes · [+Speed] · 1 AP - Free Action · Prereq: Round Trip, Expert Acrobatics or Guile_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Trigger: You recall a Pokemon
     Effect: The next Pokemon you send out is treated as if the recalled Pokemon had used Baton Pass on it.
 
-- 🔴 **First Blood** — `todo` · P3 · themes: interrupt, swap, capture · engine: action-surfaced, stat-tag · class: Juggler
+- 🟡 **First Blood** — `partial` · P3 · themes: interrupt, swap, capture · engine: action-surfaced, stat-tag · code: trigRow:23702 · class: Juggler
   - _Trainer Classes · [+Speed] · Scene - Free Action · Prereq: Tag In, Master Acrobatics or Guile_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You release a Pokemon from its Poke Ball
     Effect: If you have a Pokemon turn available this round or next, your Pokemon may use a Move as an Interrupt as soon as it is sent out. This consumes your Pokemon turn for the round (or the following round) as normal.
 
-- 🔴 **Martial Training Rank 1** — `todo` · P2 (enc) · themes: swap, skill · class: Martial Artist
+- ✅ **Martial Training Rank 1** — `auto` · P2 (enc) · themes: swap, skill · class: Martial Artist
   - _Trainer Classes · [Ranked 3] [Special] · Static · Prereq: Martial Artist_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - Learn two Martial Artist Moves. You may choose any Move marked with the Martial Training Rank you are taking or lower. Moves marked with an Ability require that Ability to be chosen.
     Rank 1 Moves: Acupressure(Limber), Arm Thrust(Technician), Double Kick, Focus Energy, Karate Chop(inner Focus), Low Sweep, Mach Punch(Iron Fist), Rolling Kick(Reckless), Vital Throw(Guts)
 
-- 🔴 **Martial Training Rank 2** — `todo` · P2 (enc) · themes: position, swap, skill · class: Martial Artist
+- ✅ **Martial Training Rank 2** — `auto` · P2 (enc) · themes: position, swap, skill · class: Martial Artist
   - _Trainer Classes · [Ranked 3] [Special] · Static · Prereq: Martial Artist, Expert Combat_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - Learn two Martial Artist Moves. You may choose any Move marked with the Martial Training Rank you are taking or lower. Moves marked with an Ability require that Ability to be chosen.
     Rank 2 Moves: Brick Break, Circle Throw(Guts), Comet Punch(Iron Fist), Counter(Limber), Low Kick(Inner Focus), Jump Kick(Reckless), Power Trick(Limber), Quick Guard(Technician)
 
-- 🔴 **My Kung-Fu is Stronger** — `todo` · P2 (enc) · themes: interrupt · engine: action-surfaced · class: Martial Artist
+- 🟡 **My Kung-Fu is Stronger** — `partial` · P2 (enc) · themes: interrupt · engine: action-surfaced · code: trigRow:23696 · class: Martial Artist
   - _Trainer Classes · [Special] · At-Will - Free Action · Prereq: Martial Training Rank 1_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: A foe provokes an Attack of Opportunity
     Effect: You may use Rock Smash instead of an unarmed Struggle Attack. If you do, Rock Smash's Effect Range is increased by +2.
 
-- 🔴 **Pummeling Momentum** — `todo` · P2 (enc) · themes: interrupt, damage, skill · engine: action-surfaced · class: Martial Artist
+- 🟡 **Pummeling Momentum** — `partial` · P2 (enc) · themes: interrupt, damage, skill · engine: action-surfaced · code: TECH_PRESS:168, trigRow:23697 · class: Martial Artist
   - _Trainer Classes · [Special] · 1 AP - Free Action · Prereq: Martial Artist, Iron Fist Ability_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You hit a foe with a Move affected by Iron Fist
     Effect: You Tag the triggering foe and gain a +1 bonus to your Accuracy Rolls and Evasion against that foe. Each subsequent time that you hit the Tagged foe with a Move affected by Iron Fist, this bonus increases by +1, to a maximum of your Combat Rank. If you ever spend a turn without successfully hitting your Tagged foe, the foe loses their Tag and the bonus is lost.
 
-- 🔴 **Martial Training Rank 3** — `todo` · P3 · themes: position, swap, skill · class: Martial Artist
+- ✅ **Martial Training Rank 3** — `auto` · P3 · themes: position, swap, skill · class: Martial Artist
   - _Trainer Classes · [Ranked 3] [Special] · Static · Prereq: Martial Artist, Master Combat_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - Learn two Martial Artist Moves. You may choose any Move marked with the Martial Training Rank you are taking or lower. Moves marked with an Ability require that Ability to be chosen.
     Rank 3 Moves: Cross Chop(Inner Focus), Close Combat, Triple Kick(Technician), High Jump Kick(Reckless), Sky Uppercut(Iron Fist), Storm Throw(Guts)
 
-- 🔴 **Second Strike** — `todo` · P3 · themes: position, interrupt, action, skill · engine: action-surfaced · class: Martial Artist
+- 🟡 **Second Strike** — `partial` · P3 · themes: position, interrupt, action, skill · engine: action-surfaced · code: trigRow:23698 · class: Martial Artist
   - _Trainer Classes · [Special] · At-Will - Free Action · Prereq: Martial Training Rank 1, Expert Combat_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You attempt to use a Grapple, Push, Trip, or Disarm Combat Maneuver but fail the Opposed Roll
     Effect: You may immediately use Rock Smash or a Struggle Attack against your target as a Free Action.
 
 <a id="features-06"></a>
 ## `features-06` — Skirmisher, Aura Guardian, Oracle
 
-P2 · 16 open of 16 · open
+P2 · 11 open of 16 · open
 
-- 🔴 **Counter Stance** — `todo` · P2 (enc) · themes: interrupt · engine: action-surfaced, stat-tag · class: Skirmisher
+- 🟡 **Counter Stance** — `partial` · P2 (enc) · themes: interrupt · engine: action-surfaced, stat-tag · code: trigRow:23694 · class: Skirmisher
   - _Game of Throhs · [+Speed] · At-Will - Free Action - Interrupt · Prereq: Skirmisher_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: An adjacent foe misses you with an attack
     Effect: You perform an Attack of Opportunity against them.
 
@@ -290,66 +342,78 @@ P2 · 16 open of 16 · open
   - _Game of Throhs · [+Speed] · Static · Prereq: Skirmisher_
   - You may perform the Disengage Maneuver as a Swift Action.
 
-- 🔴 **Outmaneuver** — `todo` · P2 (enc) · themes: interrupt, damage · engine: action-surfaced, stat-tag · class: Skirmisher
+- ✅ **Outmaneuver** — `auto` · P2 (enc) · themes: interrupt, damage · engine: action-surfaced, stat-tag · code: STAT_TRAINING_MOVES:23859 · class: Skirmisher
   - _Game of Throhs · [+Speed] · Scene x3 - Free Action · Prereq: Harrier, Adept Combat or Acrobatics_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Trigger: You use a damaging Attack
     Effect: Add half your Evasion to your Accuracy Roll for the attack, and all foes hit by the attack have their Initiative reduced by your full Evasion value.
 
-- 🔴 **Weapon Finesse** — `todo` · P2 (enc) · themes: position, interrupt, action · engine: action-surfaced, stat-tag · class: Skirmisher
+- 🟡 **Weapon Finesse** — `partial` · P2 (enc) · themes: position, interrupt, action · engine: action-surfaced, stat-tag · code: trigRow:23695 · class: Skirmisher
   - _Game of Throhs · [+Speed] [Weapon] · 2 AP - Swift Action · Prereq: Counter Stance, Adept Combat or Acrobatics_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You hit a foe with a Weapon Attack.
     Effect: After the attack is resolved, you may immediately use a Disarm, Trip, or Push Maneuver against that foe as a Free Action. The Maneuver automatically hits, but you must still make an Opposed Roll.
 
-- 🔴 **Harrier** — `todo` · P3 · themes: interrupt, multiturn, status, action · engine: action-surfaced, stat-tag · class: Skirmisher
+- 🟡 **Harrier** — `partial` · P3 · themes: interrupt, multiturn, status, action · engine: action-surfaced, stat-tag · code: trigRow:23699 · class: Skirmisher
   - _Game of Throhs · [+Speed] · At-Will - Free Action · Prereq: Skirmisher_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You hit a foe with a damaging Attack
     Effect: Until the end of your next turn, that foe is considered Flanked, is Slowed, and cannot take actions as Priority or Interrupt. Harrier may only be used on a foe once per Scene.
 
-- 🔴 **Swift Strikes** — `todo` · P3 · themes: interrupt · engine: action-surfaced, stat-tag · class: Skirmisher
+- 🟡 **Swift Strikes** — `partial` · P3 · themes: interrupt · engine: action-surfaced, stat-tag · code: trigRow:23700 · class: Skirmisher
   - _Game of Throhs · [+Speed] [Weapon] · 1 AP - Standard Action · Prereq: 4 Skirmisher Features, Master Combat or Acrobatics_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Use a Weapon Attack as if it had the Priority Keyword. If the Move already had the Priority Keyword, use it as if it had the Priority (Advanced) Keyword instead.
 
-- 🔴 **Ambient Aura** — `todo` · P2 (enc) · themes: barrier, interrupt, multiturn, status, cure, damage, action, skill · engine: action-surfaced, stat-tag · class: Aura Guardian
+- 🟡 **Ambient Aura** — `partial` · P2 (enc) · themes: barrier, interrupt, multiturn, status, cure, damage, action, skill · engine: action-surfaced, stat-tag · code: trigRow:23773 · class: Aura Guardian
   - _Trainer Classes · [+Attack or Special Attack] · Scene x2 - Swift Action · Prereq: Aura Reader, Expert Intuition_
+  - note: v621: trigRow button — spends uses/AP, posts to Rolls feed; effect resolved at the table
   - Trigger: You use a Move with the Aura keyword
     Effect: You gain an Aura Blessing that can be spent any time as a Free Action Interrupt. When you spend an Aura Blessing, you choose one of the effects below. You may only have one Aura Blessing at a time, and you must have the Aura Pulse Capability to use Ambient Aura.
     »» You create an energy barrier around you or an ally within 5 meters granting Damage Reduction equal to your Intuition Rank tripled until the end of your next turn.
     »» You cure yourself of a Volatile Status Affliction.
     »» Gain the Blindsense Capability until the end of the Scene.
 
-- 🔴 **Sword of Body and Soul** — `todo` · P2 (enc) · themes: interrupt, damage, stat · engine: action-surfaced, stat-tag · class: Aura Guardian
+- 🟡 **Sword of Body and Soul** — `partial` · P2 (enc) · themes: interrupt, damage, stat · engine: action-surfaced, stat-tag · code: trigRow:23774 · class: Aura Guardian
   - _Trainer Classes · [+Attack or Special Attack] · 2 AP - Swift Action · Prereq: Aura Guardian, Adept Intuition_
+  - note: v621: trigRow button — spends uses/AP, posts to Rolls feed; effect resolved at the table
   - Trigger: You use a damaging Aura Guardian Move against an adjacent foe
     Effect: You may have the triggering Move deal damage as if it was your choice of Physical or Special Classes. Regardless, add both your Attack and Special Attack Stats to the Damage Roll, and this attack ignores Damage Reduction. This does not stack with Twisted Power.
 
-- 🔴 **The Power of Aura Rank 1** — `todo` · P2 (enc) · themes: swap · engine: stat-tag · class: Aura Guardian
+- ✅ **The Power of Aura Rank 1** — `auto` · P2 (enc) · themes: swap · engine: stat-tag · class: Aura Guardian
   - _Trainer Classes · [+Attack or Special Attack] [Ranked 2] · Static · Prereq: Aura Guardian_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Scrappy or Aura Storm. You gain the Chosen Ability.
 
-- 🔴 **Aura Mastery** — `todo` · P3 · themes: heal, skill · engine: stat-tag · class: Aura Guardian
+- ✅ **Aura Mastery** — `auto` · P3 · themes: heal, skill · engine: stat-tag · class: Aura Guardian
   - _Trainer Classes · [+Attack or Special Attack] · Static · Prereq: Aura Guardian, Expert Intuition_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - Choose two of Aura Sphere, Focus Blast, Drain Punch, or Focus Punch. You learn the chosen Moves.
 
 - 🔴 **The Power of Aura Rank 2** — `todo` · P3 · themes: swap, skill · engine: stat-tag · class: Aura Guardian
   - _Trainer Classes · [+Attack or Special Attack] [Ranked 2] · Static · Prereq: Aura Guardian, Expert Intuition_
   - You gain whichever Ability you did not choose for Rank 1.
 
-- 🔴 **Prescience** — `todo` · P2 (enc) · themes: interrupt · engine: action-surfaced, stat-tag · class: Oracle
+- 🟡 **Prescience** — `partial` · P2 (enc) · themes: interrupt · engine: action-surfaced, stat-tag · code: trigRow:23706 · class: Oracle
   - _Trainer Classes · [+Special Defense] · Scene - Free Action · Prereq: Unveiled Sight, Master Perception_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You are hit by an attack
     Effect: The attack instead misses.
 
-- 🔴 **Small Prophecies** — `todo` · P2 (enc) · themes: multiturn, damage · engine: action-surfaced, stat-tag · class: Oracle
+- ✅ **Small Prophecies** — `auto` · P2 (enc) · themes: multiturn, damage · engine: action-surfaced, stat-tag · code: STAT_TRAINING_MOVES:23846 · class: Oracle
   - _Trainer Classes · [+Special Defense] · 1 AP - Swift Action · Prereq: Divination, Adept Perception_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Roll 1d20 and note the result. Until the end of your next turn, you may choose to replace a single d20 roll you or a willing ally makes with the noted result.
 
-- 🔴 **Mark of Vision** — `todo` · P3 · themes: swap, skill · engine: stat-tag · class: Oracle
+- 🟡 **Mark of Vision** — `partial` · P3 · themes: swap, skill · engine: stat-tag · code: FEATURE_MODES:27246 · class: Oracle
   - _Trainer Classes · [+Special Defense] · Bind 1 AP - Extended Action · Prereq: Oracle, Adept Perception_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - Target: A willing Trainer
     Effect: You mark the target with a mystical power which allows you to close your eyes and focus to perceive the world with their senses from their perspective. You may Bind this Ability multiple times, each time on a different target, but you may only concentrate on one Mark of Vision at a time, and you may only have a number of Marks at one time equal to half your Perception Rank. A target may choose to end this effect at any time, or to deny you access to their senses temporarily without ending the effect entirely. You have a rough sense of how far away and in what direction marked targets are.
 
-- 🔴 **Two-Second Preview** — `todo` · P3 · themes: swap · engine: stat-tag · class: Oracle
+- ✅ **Two-Second Preview** — `auto` · P3 · themes: swap · engine: stat-tag · class: Oracle
   - _Trainer Classes · [+Special Defense] · Static · Prereq: 3 Oracle Features, Expert Perception_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - You gain the Instinct Ability.
 
 - 🔴 **Unveiled Sight** — `todo` · P3 · themes: swap, typing, action · engine: stat-tag · class: Oracle
@@ -359,66 +423,79 @@ P2 · 16 open of 16 · open
 <a id="features-07"></a>
 ## `features-07` — Rider, Warper, Maelstrom, Rogue +1 more, Shade Caller
 
-P2 · 19 open of 19 · open
+P2 · 7 open of 19 · open
 
-- 🔴 **Cavalier's Reprisal** — `todo` · P2 (enc) · themes: interrupt · engine: action-surfaced, stat-tag · class: Rider
+- 🟡 **Cavalier's Reprisal** — `partial` · P2 (enc) · themes: interrupt · engine: action-surfaced, stat-tag · code: trigRow:23703 · class: Rider
   - _Trainer Classes · [+Speed] · 1 AP - Free Action · Prereq: Ride as One, Expert Acrobatics or Athletics_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: An adjacent foe hits your Mount with an attack
     Effect: You may make a Struggle Attack against the triggering foe.
 
-- 🔴 **Lean In** — `todo` · P2 (enc) · themes: interrupt, typing, damage · engine: action-surfaced, stat-tag · class: Rider
+- 🟡 **Lean In** — `partial` · P2 (enc) · themes: interrupt, typing, damage · engine: action-surfaced, stat-tag · code: trigRow:23704 · class: Rider
   - _Trainer Classes · [+Speed] · Scene x2 - Free Action · Prereq: Ride as One_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You and your Mount both take Damage from a Burst, Blast, Cone, or Line
     Effect: Both you and your Mount Resist the attack one step further.
 
-- 🔴 **Ride as One** — `todo` · P2 (enc, player:Hugo) · themes: damage · engine: stat-tag · class: Rider
+- 🟡 **Ride as One** — `partial` · P2 (enc, player:Hugo) · themes: damage · engine: stat-tag · code: rideAsOneSpd:47307 · class: Rider
   - _Trainer Classes · [+Speed] · Static · Prereq: Rider_
+  - note: v602 rideAsOneSpd in tokenEvasions: shared Speed Evasion (+1 on a tie); the alternating-turn Initiative rule is not automated
   - While you are Mounted, you and your Mount each use the highest of each other's Speed Evasion. If both you and your Mount have the same Speed Evasion, you instead each receive a +1 bonus to Speed Evasion. Whenever one of you receives Initiative, either of you may take your turn. When the next person would receive initiative, the person that did not take their turn then takes it.
 
-- 🔴 **Overrun** — `todo` · P3 · themes: interrupt, damage, stat · engine: action-surfaced, stat-tag · class: Rider
+- 🟡 **Overrun** — `partial` · P3 · themes: interrupt, damage, stat · engine: action-surfaced, stat-tag · code: trigRow:23705 · class: Rider
   - _Trainer Classes · [+Speed] · Scene x2 - Free Action · Prereq: Conqueror's March, Expert Acrobatics or Athletics_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Mount with Run Up makes a Damage Roll for a Dash or Pass Move
     Effect: Your Pokemon adds their Speed Stat in addition to their normal attacking Stat to their Damage Roll. The target gains Damage Reduction against this attack equal to their own Speed Stat.
 
-- 🔴 **Ramming Speed** — `todo` · P3 · themes: swap · engine: stat-tag · class: Rider
+- ✅ **Ramming Speed** — `auto` · P3 · themes: swap · engine: stat-tag · code: STAT_TRAINING_MOVES:23892 · class: Rider
   - _Trainer Classes · [+Speed] · At-Will - Extended Action · Prereq: Rider_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Target: Your Pokemon with at least 2 Tutor Points
     Effect: The target loses 2 Tutor Points and gains the Run Up Ability.
 
-- 🔴 **Farcast** — `todo` · P2 (enc) · themes: position, interrupt, control · engine: action-surfaced, stat-tag · class: Warper
+- ⚪ **Farcast** — `manual` · P2 (enc) · themes: position, interrupt, control · engine: action-surfaced, stat-tag · class: Warper
   - _Trainer Classes · [+Speed] · Daily x3 - Free Action · Prereq: Space Distortion, Expert Guile_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Trigger: You use the Move Teleport or activate the Teleporter Capability 
     Choose One Effect: You activate Teleporter as if your Teleporter value were three times its normal value or you may take one willing Pokemon or Trainer along with you as you teleport so long as you are touching them when you activate Farcast. You may expend two uses of Farcast at once to choose both effects.
 
-- 🔴 **Reality Bender** — `todo` · P2 (enc) · themes: heal, swap, capture · engine: action-surfaced, stat-tag · class: Warper
+- ⚪ **Reality Bender** — `manual` · P2 (enc) · themes: heal, swap, capture · engine: action-surfaced, stat-tag · class: Warper
   - _Trainer Classes · [+Speed] · Daily - Free Action · Prereq: Warper, Expert Guile_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - You are able to subconsciously alter the fabric of reality to change small facts or circumstances. If your character is confronting a "random" event such as a die roll, coin flip, or cards being dealt, the character may activate this Feature to influence the event. In this scenario, the GM provides you with two possible outcomes, and you pick one of them to actually occur. This means you always decide the outcome of binary events such as a coin flip; cheating cards or slot machines is much harder, as there are multiple outcomes and you only get to pick between two. This Feature can also be used to generate common items worth $250 or less that the character might normally possess, such as a P …
 
-- 🔴 **Space Distortion** — `todo` · P2 (enc) · themes: position · engine: stat-tag · class: Warper
+- ✅ **Space Distortion** — `auto` · P2 (enc) · themes: position · engine: stat-tag · class: Warper
   - _Trainer Classes · [+Speed] · Static · Prereq: Warper_
+  - note: syncFeatureMoves reads 'You learn the Moves X and Y' (v594 sweep)
   - You learn the Moves Teleport and Ally Switch.
 
-- 🔴 **Strange Energy** — `todo` · P3 · themes: barrier, heal · engine: stat-tag · class: Warper
+- ✅ **Strange Energy** — `auto` · P3 · themes: barrier, heal · engine: stat-tag · class: Warper
   - _Trainer Classes · [+Speed] · Static · Prereq: Warping Ground, Space Distortion_
+  - note: syncFeatureMoves reads 'You learn the Moves X and Y' (v594 sweep)
   - You learn the Moves Heal Block and Magic Coat.
 
-- 🔴 **Warped Transmission** — `todo` · P3 · themes: position, interrupt, multiturn, control, damage · engine: action-surfaced, stat-tag · class: Warper
+- ⚪ **Warped Transmission** — `manual` · P3 · themes: position, interrupt, multiturn, control, damage · engine: action-surfaced, stat-tag · class: Warper
   - _Trainer Classes · [+Speed] · 2 AP - Swift Action · Prereq: Farcast, Master Guile_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Trigger: You activate the Teleporter Capability or use the Move Ally Switch
     Effect: All adjacent foes to the square you end in after teleporting or using Ally Switch have their Evasion lowered by 3 for one full round and cannot trigger Attacks of Opportunity against you for Shifting until the end of your next turn.
 
-- 🔴 **Call the Current Rank 1** — `todo` · P2 (enc) · themes: skill · engine: stat-tag · class: Maelstrom
+- ✅ **Call the Current Rank 1** — `auto` · P2 (enc) · themes: skill · engine: stat-tag · class: Maelstrom
   - _Game of Throhs · [Ranked 3] [+Speed] · Static · Prereq: Maelstrom_
+  - note: FEATURE_MOVE_LISTS picker / syncFeatureMoves already hand out these Moves
   - You learn 2 Moves chosen from the list below.
     Rank 1 Moves: Aqua Jet, Aqua Ring, Water Pulse
 
-- 🔴 **Call the Current Rank 2** — `todo` · P2 (enc) · themes: skill · engine: stat-tag · class: Maelstrom
+- ✅ **Call the Current Rank 2** — `auto` · P2 (enc) · themes: skill · engine: stat-tag · class: Maelstrom
   - _Game of Throhs · [Ranked 3] [+Speed] · Static · Prereq: Adept Athletics or Acrobatics_
+  - note: FEATURE_MOVE_LISTS picker / syncFeatureMoves already hand out these Moves
   - You learn 2 Moves chosen from the list below, marked with the Rank of this Feature you are gaining or lower.
     Rank 2 Moves: Bubblebeam, Waterfall, Whirlpool
 
-- 🔴 **Call the Current Rank 3** — `todo` · P2 (enc) · themes: weather, skill · engine: stat-tag · class: Maelstrom
+- ✅ **Call the Current Rank 3** — `auto` · P2 (enc) · themes: weather, skill · engine: stat-tag · class: Maelstrom
   - _Game of Throhs · [Ranked 3] [+Speed] · Static · Prereq: Expert Athletics or Acrobatics_
+  - note: FEATURE_MOVE_LISTS picker / syncFeatureMoves already hand out these Moves
   - You learn 2 Moves chosen from the list below, marked with the Rank of this Feature you are gaining or lower.
     Rank 3 Moves: Aqua Tail, Rain Dance, Surf
 
@@ -426,98 +503,116 @@ P2 · 19 open of 19 · open
   - _Trainer Classes · [+Attack] [Weapon] · Static · Prereq: Rogue_
   - You may use Rogue Moves as Weapon Moves when wielding Small Melee Weapons or Short Ranged Weapons. If you do, Rogue Moves instead have the same Range as your Weapon. Additionally, you may qualify for Weapon Moves for Small Melee or Short Ranged Weapons and resist Disarm Maneuvers when wielding such Weapons using any Rogue Skill.
 
-- 🔴 **Dirty Fighting** — `todo` · P2 (enc) · themes: interrupt · engine: action-surfaced, stat-tag · class: Rogue
+- 🟡 **Dirty Fighting** — `partial` · P2 (enc) · themes: interrupt · engine: action-surfaced, stat-tag · code: trigRow:23707 · class: Rogue
   - _Trainer Classes · [+Attack] · 1 AP - Swift Action · Prereq: Rogue, a Rogue Skill at Adept Rank_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You hit a foe with Weapon Attack
     Effect: After the attack is Resolved, you may immediately use the Dirty Trick Maneuver if the target is within range. You automatically hit with Dirty Trick, but must still make an Opposed Roll.
 
-- 🔴 **Scoundrel's Strike** — `todo` · P3 · themes: heal, interrupt, swap, status, action, skill · engine: action-surfaced, stat-tag · class: Rogue
+- 🟡 **Scoundrel's Strike** — `partial` · P3 · themes: heal, interrupt, swap, status, action, skill · engine: action-surfaced, stat-tag · code: trigRow:23708 · class: Rogue
   - _Trainer Classes · [+Attack] · Daily x3 - Swift Action · Prereq: Underhanded Tactics, Street Fighter_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You hit with a Rogue Move
     Effect: The target loses Hit Points equal to your highest Rogue Skill Rank doubled, and an additional effect based on whether you have the Ambush or Cruelty Ability. You may use Scoundrel's Strike only once per Scene per target.
     »» Ambush: For 1 Full Round, the target is Slowed, cannot make Attacks of Opportunity, and takes a -2 penalty to all rolls.
     »» Cruelty: For 1 Full Round, the target loses 5 Hit Points upon being hit by any damaging attack.
 
-- 🔴 **Menace** — `todo` · P2 (enc) · themes: interrupt, multiturn, status · engine: action-surfaced, stat-tag · class: Roughneck
+- ✅ **Menace** — `auto` · P2 (enc) · themes: interrupt, multiturn, status · engine: action-surfaced, stat-tag · code: STAT_TRAINING_MOVES:23855 · class: Roughneck
   - _Trainer Classes · [+Defense] · At-Will - Swift Action · Prereq: Roughneck_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Trigger: You hit a foe with the Terrorize Manipulation
     Effect: Until their next turn, the target has their Initiative lowered to 0. For one full round, attacks against them cause them to Flinch on 17+ or have their existing Flinch Range increased by +4.
 
-- 🔴 **Mettle** — `todo` · P2 (enc) · themes: interrupt, typing, cs, damage, skill, stat · engine: action-surfaced, stat-tag · class: Roughneck
+- ✅ **Mettle** — `auto` · P2 (enc) · themes: interrupt, typing, cs, damage, skill, stat · engine: action-surfaced, stat-tag · code: STAT_TRAINING_MOVES:23850 · class: Roughneck
   - _Trainer Classes · [+Defense] · Scene x2 - Free Action · Prereq: Roughneck_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Target: You take Massive Damage or Intercept a Damaging Attack.
     Effect: Resolve Damage as if the triggering attack was resisted one step. The triggering foe then loses 2 Combat Stages in the Attack Stat used by the triggering Attack.
 
-- 🔴 **Twisted Soul** — `todo` · P2 (enc) · themes: swap · engine: stat-tag · class: Shade Caller
+- ✅ **Twisted Soul** — `auto` · P2 (enc) · themes: swap · engine: stat-tag · class: Shade Caller
   - _Game of Throhs · [+Attack or Special Attack] · Static · Prereq: Shade Caller_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - You gain the Twisted Power Ability.
 
 <a id="features-03"></a>
 ## `features-03` — Type Ace (2/3)
 
-P3 · 18 open of 18 · open
+P3 · 17 open of 18 · open
 
-- 🔴 **Desert Heart** — `todo` · P3 · themes: weather, swap · engine: action-surfaced · class: Type Ace
+- ✅ **Desert Heart** — `auto` · P3 · themes: weather, swap · engine: action-surfaced · code: FEATURE_MODES:27166 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Mold the Earth, Type-Linked Skill at Adept_
+  - note: FEATURE_ACTIONS / FEATURE_MODES row (v595)
   - Target: Your Pokemon
     Effect: While this Stratagem is bound, your Pokemon may activate Moves and Abilities as if they were in a Sandstorm.
 
-- 🔴 **Devious** — `todo` · P3 · themes: interrupt, action · engine: action-surfaced · class: Type Ace
+- 🟡 **Devious** — `partial` · P3 · themes: interrupt, action · engine: action-surfaced · code: trigRow:23687 · class: Type Ace
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Clever Ruse, Type-Linked Skill at Expert_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Dark-Type Pokemon uses a Move with the Social keyword.
     Effect: Your Pokemon may immediately use a naturally Dark-Typed Status-Class Move or a Move with the Social keyword as a Free Action. This must be a different Move than the triggering Move, and must follow all Frequency limitations. Devious may be used only once per Scene per Pokemon.
 
-- 🔴 **Earthroil** — `todo` · P3 · themes: damage, action · engine: action-surfaced · class: Type Ace
+- 🟡 **Earthroil** — `partial` · P3 · themes: damage, action · engine: action-surfaced · code: trigRow:23757 · class: Type Ace
   - _Trainer Classes · At-Will - Free Action · Prereq: Mold the Earth, Type-Linked Skill at Expert_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Your Ground-Type Pokemon may activate Earthroil as a Shift Action to use a damaging Ground-Type Move as it had a range of Line 4 or Burst 1 instead of its usual range, and as if it had the Groundsource keyword. 1-Target Moves performed this way take a -5 penalty to their Damage Rolls.
 
-- 🔴 **Enduring Bloom** — `todo` · P3 · themes: weather, heal, interrupt, status, typing, cs, damage, action, skill, stat · engine: action-surfaced · class: Type Ace
+- 🟡 **Enduring Bloom** — `partial` · P3 · themes: weather, heal, interrupt, status, typing, cs, damage, action, skill, stat · engine: action-surfaced · code: trigRow:23715 · class: Type Ace
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Foiling Foliage, Type-Linked Skill at Expert_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Grass-Type Pokemon is hit by a damaging Bug, Fire, Flying, Ice, or Poison attack that deals Super-Effective Damage
     Effect: Your Pokemon gains Temporary Hit Points equal to twice your Type-Linked Skill Rank, and gains +1 Combat Stage in the Stat of your choice. If it is Sunny, they may gain +1 Combat Stage in a second, different Stat. You may activate Enduring Bloom only once per Scene per Pokemon.
 
-- 🔴 **Fairy Lights** — `todo` · P3 · themes: heal, control, action · class: Type Ace
+- 🟡 **Fairy Lights** — `partial` · P3 · themes: heal, control, action · code: trigRow:23716 · class: Type Ace
   - _Trainer Classes · At-Will - Special · Prereq: Type Ace, Fairy as Chosen Type_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Your Fairy-Type Pokemon may activate Fairy Lights as a Standard Action to create 3 Fairy Lights that hover around themselves. Whenever the target is attacked by a foe within 6 meters, they may expend a Fairy Light to either immediately gain a Tick of Temporary Hit Points, or to use the Move Fairy Wind as a Free Action.
     
     Special: Fairy Lights also provide mild lighting, comparable to a candle. As an extended action your Pokemon can control the lights individually, but they must stay within 6 meters of the Pokemon that created them.
 
-- 🔴 **Fairy Rite** — `todo` · P3 · themes: heal, interrupt, action, stat · class: Type Ace
+- 🟡 **Fairy Rite** — `partial` · P3 · themes: heal, interrupt, action, stat · code: trigRow:23717 · class: Type Ace
   - _Trainer Classes · Daily x3 - Special · Prereq: Fairy Lights, Type-Linked Skill at Master_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon creates Fairy Lights as a Standard Action
     Effect: Your Fairy-Type Pokemon may activate Fairy Rite as a Standard Action to lose any number of Hit Points, up to a maximum equal to your Pokemon's Level, and heal an adjacent Ally by that many Hit Points. Then, if your Fairy-Type Pokemon has any Fairy Lights, they may immediately expend any Fairy Lights to gain a Tick of Hit Points, or cause an ally within 6 meters to gain a Tick of Hit Points.
 
-- 🔴 **Fan The Flames** — `todo` · P3 · themes: interrupt · engine: action-surfaced · class: Type Ace
+- 🟡 **Fan The Flames** — `partial` · P3 · themes: interrupt · engine: action-surfaced · code: trigRow:23688 · class: Type Ace
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Brightest Flame, Type-Linked Skill at Master_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon uses a 1-Target Fire-Type Move
     Effect: Instead of its usual range, the attack may be performed as if it had a range of Burst 1 if melee, or Cone 2 if ranged.
 
-- 🔴 **Fey Trance** — `todo` · P3 · themes: status, action · engine: action-surfaced · class: Type Ace
+- 🟡 **Fey Trance** — `partial` · P3 · themes: status, action · engine: action-surfaced · code: FEATURE_MODES:27222 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Fairy Lights, Type-Linked Skill at Expert_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - Target: Your Pokemon
     Effect: While this Feature is bound, whenever the target uses a 1-Target Move with the Social Keyword or a Fairy-Type Status Move, the foe hit by the triggering Move becomes Infatuated with your Pokemon, and immediately Shifts towards your Pokemon, forfeiting their next Shift Action. This may affect a specific foe only once per Scene.
 
-- 🔴 **Force of Will** — `todo` · P3 · themes: hazard, barrier, interrupt · engine: action-surfaced · class: Type Ace
+- 🟡 **Force of Will** — `partial` · P3 · themes: hazard, barrier, interrupt · engine: action-surfaced · code: trigRow:23718 · class: Type Ace
   - _Trainer Classes · Daily x3 - Free Action · Prereq: Psionic Sponge, Type-Linked Skill at Master_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon uses a Psychic-Type Status Move with a range of Blessing, Field, Hazard, or Self.
     Effect: Your Pokemon may immediately use another Psychic-Type Status Move from its Move List with a range of Blessing, Field, Hazard, or Self.
 
-- 🔴 **Fountain of Life** — `todo` · P3 · themes: heal, interrupt, cure, damage, action, skill · engine: action-surfaced · class: Type Ace
+- 🟡 **Fountain of Life** — `partial` · P3 · themes: heal, interrupt, cure, damage, action, skill · engine: action-surfaced · code: trigRow:23719 · class: Type Ace
   - _Trainer Classes · Daily x3 - Free Action · Prereq: Flood!, Type-Linked Skill at Expert_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Water-Type Pokemon hits with a damaging Water-Type attack
     Effect: You may choose to take a penalty to the Damage Roll for the attack up to triple your Type-Linked Skill Rank or up to half the rolled damage for the triggering attack, whichever is lower. Your Pokemon gains twice that value in Temporary Hit Points and may cure themselves of one Status Affliction. Fountain of Life may only be used once per Scene per Pokemon.
 
-- 🔴 **Gale Strike** — `todo` · P3 · themes: interrupt, damage, skill · engine: action-surfaced · class: Type Ace
+- 🟡 **Gale Strike** — `partial` · P3 · themes: interrupt, damage, skill · engine: action-surfaced · code: trigRow:23689 · class: Type Ace
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Celerity, Type-Linked Skill at Adept_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon uses a Flying-Type Move with an Accuracy Check
     Effect: You may roll the Accuracy Check twice, and resolve using either result. If both results would hit and you resolve the attack using the lower result, Gale Strike's Frequency is not expended.
 
-- 🔴 **Ghost Step** — `todo` · P3 · themes: multiturn, action · engine: action-surfaced · class: Type Ace
+- 🟡 **Ghost Step** — `partial` · P3 · themes: multiturn, action · engine: action-surfaced · code: trigRow:23690 · class: Type Ace
   - _Trainer Classes · At-Will - Free Action · Prereq: Type Ace, Ghost as Chosen Type_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Your Ghost-Type Pokemon may activate this Feature by spending a Shift Action to remove themselves from the field. They may not be targeted in any way during this time. At the beginning of their next turn, they reappear in any square of their choice that they could have Shifted to from their previous location. Each Pokemon may activate Ghost Step only once per Scene.
 
-- 🔴 **Haunting Curse** — `todo` · P3 · themes: multiturn, status, cs, action, skill · engine: action-surfaced · class: Type Ace
+- 🟡 **Haunting Curse** — `partial` · P3 · themes: multiturn, status, cs, action, skill · engine: action-surfaced · code: FEATURE_MODES:27224 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Ghost Step, Type-Linked Skill at Adept_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - Target: Your Pokemon
     Effect: While this Feature is bound, the target gains a Curse Token each time they use a Ghost-Type Move or Ghost Step. Ghost-Type Moves with a Set-Up and Resolution Phase give a Curse Token for each Phase. As a Standard Action during their turn, or as Free Action upon Fainting, the target may spend their Curse Tokens to apply conditions to a foe within 6 meters.
     »» 1 Curse Token: The target loses a Combat Stage of your choice.
@@ -525,239 +620,285 @@ P3 · 18 open of 18 · open
     »» 3 Curse Tokens: The target becomes Suppressed.
     »» 4 Curse Tokens: The target falls Asleep and gains Bad Sleep.
 
-- 🔴 **Highlander** — `todo` · P3 · themes: typing, damage, skill · engine: action-surfaced · class: Type Ace
+- 🟡 **Highlander** — `partial` · P3 · themes: typing, damage, skill · engine: action-surfaced · code: FEATURE_MODES:27226 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Tyrant's Roar, Type-Linked Skill at Adept_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - Target: Your Dragon-Type Pokemon
     Effect: While this Feature is Bound, the target gains X Damage Reduction against Dragon-Type attacks, and gain a +X Bonus to Damage Rolls with Dragon-Typed attacks against other Dragon-Typed targets. X is equal to your Type-Linked Skill Rank.
 
-- 🔴 **Incandescence** — `todo` · P3 · themes: interrupt, stat · engine: action-surfaced · class: Type Ace
+- 🟡 **Incandescence** — `partial` · P3 · themes: interrupt, stat · engine: action-surfaced · code: FEATURE_MODES:27228 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Brightest Flame, Type-Linked Skill at Expert_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - Trigger: Your Fire-Type Pokemon
     Effect: While this Feature is Bound, the target adds both their Attack and Special Attack Stat to all damaging Fire-Type Attacks, instead of one or the other. This does not stack with Twisted Power.
 
-- 🔴 **Incandescence [Playtest]** — `todo` · P3 · themes: interrupt, stat · engine: action-surfaced · class: Type Ace
+- 🟡 **Incandescence [Playtest]** — `partial` · P3 · themes: interrupt, stat · engine: action-surfaced · code: FEATURE_MODES:27230 · class: Type Ace
   - _Here Thar Be Playtests · [Orders] [Stratagem] [9-15 Playtest] · Bind 2 AP - Standard Action · Prereq: Brightest Flame, Type-Linked Skill at Expert_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - Trigger: Your Fire-Type Pokemon
     Effect: While this Feature is Bound, the target gains the Mixed Power Poke Edge effect when using damaging Fire-Type Attacks. If the target already has Mixed Power, they instead add their entire Attack and Special Attack Stats to all damaging Fire-Type Attacks, instead of one or the other. This does not stack with Twisted Power.
 
-- 🔴 **Iron Grit** — `todo` · P3 · themes: cs, skill, stat · engine: action-surfaced · class: Type Ace
+- 🟡 **Iron Grit** — `partial` · P3 · themes: cs, skill, stat · engine: action-surfaced · code: FEATURE_MODES:27232 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Polished Shine, Type-Linked Skill at Adept_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - When this Feature becomes Bound, the target gains +1 Defense Combat Stage. While the Feature remains bound, the target's Defense Stat cannot be lowered, and its Defense Combat Stages cannot be lowered.
 
-- 🔴 **Miasma** — `todo` · P3 · themes: interrupt, status, action · engine: action-surfaced · class: Type Ace
+- 🟡 **Miasma** — `partial` · P3 · themes: interrupt, status, action · engine: action-surfaced · code: trigRow:23691 · class: Type Ace
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Potent Venom, Type-Linked Skill at Expert_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon misses with a Poison-Type Move
     Effect: Your Pokemon may use either Smokescreen or Poison Gas as if they were on their Move List. When used this way, these Moves ignore Frequency Limitations, and are used as a Ranged Blast 3, with the blast centered on the square targeted by the triggering attack. Poison-Type Pokemon are not negatively affected by Smoke Screens created this way. Your Pokemon may also trigger Miasma deliberately as a Standard Action.
 
 <a id="features-04"></a>
 ## `features-04` — Type Ace (3/3)
 
-P3 · 17 open of 17 · open
+P3 · 13 open of 17 · open
 
-- 🔴 **Mindbreak** — `todo` · P3 · themes: control, status, typing, damage · engine: action-surfaced · class: Type Ace
+- 🟡 **Mindbreak** — `partial` · P3 · themes: control, status, typing, damage · engine: action-surfaced · code: FEATURE_MODES:27234 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Psionic Sponge, Type-Linked Skill at Adept_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - Target: Your Psychic-Type Pokemon
     Effect: While this Feature is Bound, the target's damaging Psychic-Type Moves gain a +1 Bonus to Effect Range and a +3 Bonus to Damage Rolls for each of the following conditions that the target is suffering: Bad Sleep, Confusion, Curse, Disabled, Flinch, Infatuation, Rage, or Suppression.
 
-- 🔴 **Mold the Earth** — `todo` · P3 · themes: weather, interrupt, action · engine: action-surfaced · class: Type Ace
+- 🟡 **Mold the Earth** — `partial` · P3 · themes: weather, interrupt, action · engine: action-surfaced · code: trigRow:23720 · class: Type Ace
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Type Ace, Ground as Chosen Type_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon with the Groundshaper Capability uses a Ground-Type Move
     Effect: Your Pokemon may use the Groundshaper Capability as a Free Action. When used this way, Groundshaper creates Spike Hazards in each square turned into Rough or Slow Terrain. If you wish, instead of Groundshaper's normal range, you may choose to affect the square targeted by the attack and all cardinally adjacent squares. If the triggering Move is a Burst, Blast, Line, or Cone, you may choose to affect all squares in the targeted area instead.
 
-- 🔴 **Overload** — `todo` · P3 · themes: heal, skill · engine: action-surfaced · class: Type Ace
+- 🟡 **Overload** — `partial` · P3 · themes: heal, skill · engine: action-surfaced · code: FEATURE_MODES:27236 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Lockdown, Type-Linked Skill at Adept_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - Target: Your Pokemon
     Effect: While this Feature is Bound, whenever the target hits a foe with an Electric Attack, they may choose to have the foe lose Hit Points equal to the target's Tick value plus your Type-Linked Skill Rank. If they do, the target loses a Tick of Hit Points after the attack is resolved.
 
-- 🔴 **Potent Venom** — `todo` · P3 · themes: heal, interrupt, status, cs, skill, stat · engine: action-surfaced · class: Type Ace
+- 🟡 **Potent Venom** — `partial` · P3 · themes: heal, interrupt, status, cs, skill, stat · engine: action-surfaced · code: trigRow:23721 · class: Type Ace
   - _Trainer Classes · At-Will - Free Action · Prereq: Type Ace, Poison as Chosen Type_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Poison-Type Pokemon inflicts Poison on a foe
     Effect: The foe does not necessarily lose Special Defense Combat Stages from Poison; instead, they lose Combat Stages in the Combat Stat of your choice. Whenever the target loses Hit Points from Poison, they lose additional Hit Points equal to your Type-Linked Skill Rank.
 
-- 🔴 **Psionic Sponge** — `todo` · P3 · themes: multiturn, action, skill · class: Type Ace
+- 🟡 **Psionic Sponge** — `partial` · P3 · themes: multiturn, action, skill · code: trigRow:23758 · class: Type Ace
   - _Trainer Classes · At-Will - Special · Prereq: Type Ace, Psychic as Chosen Type_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Your Psychic-Type Pokemon may activate Psychic Sponge as a Shift Action to add a Psychic Type Move known by an ally within X meters to their Move List until the end of their turn. This does not allow them to have duplicate Moves in their Move List. This Feature may only be used once per Pokemon per Scene, and X is equal to your Type-Linked Skill Rank.
 
-- 🔴 **Psychic Resonance** — `todo` · P3 · themes: interrupt, control · engine: action-surfaced · class: Type Ace
+- 🟡 **Psychic Resonance** — `partial` · P3 · themes: interrupt, control · engine: action-surfaced · code: trigRow:23722 · class: Type Ace
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Psionic Sponge, Type-Linked Skill at Expert_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon hits a foe with a Psychic-Type Status Move
     Effect: Your Pokemon may use the Move Encore against the triggering foe, as if it was on their Move List.
 
-- 🔴 **Sneak Attack** — `todo` · P3 · themes: status, damage, skill · engine: action-surfaced · class: Type Ace
+- 🟡 **Sneak Attack** — `partial` · P3 · themes: status, damage, skill · engine: action-surfaced · code: FEATURE_MODES:27238 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Clever Ruse, Type-Linked Skill at Adept_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - Target: Your Dark-Type Pokemon
     Effect: While this Feature is bound, when attacking foes that are Fainted, Flanked, Flinched, Sleeping, Stuck, Tripped, unaware of your Pokemon's presence, or otherwise do not expect an attack, the target gains a +2 bonus to Accuracy Rolls and a bonus to Damage Rolls equal to your Type-Linked Skill Rank.
 
-- 🔴 **Sunlight Within** — `todo` · P3 · themes: weather, swap · engine: action-surfaced · class: Type Ace
+- ✅ **Sunlight Within** — `auto` · P3 · themes: weather, swap · engine: action-surfaced · code: FEATURE_MODES:27163 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Foiling Foliage, Type-Linked Skill at Adept_
+  - note: FEATURE_ACTIONS / FEATURE_MODES row (v595)
   - Target: Your Pokemon
     Effect: While this Stratagem is bound, your Pokemon may activate Moves and Abilities as if they were in Sunny Weather.
 
-- 🔴 **This Will Not Stand** — `todo` · P3 · themes: interrupt, cs, damage, action, skill · engine: action-surfaced · class: Type Ace
+- ✅ **This Will Not Stand** — `auto` · P3 · themes: interrupt, cs, damage, action, skill · engine: action-surfaced · code: STAT_TRAINING_MOVES:23818 · class: Type Ace
   - _Trainer Classes · At-Will - Free Action · Prereq: Tyrant's Roar, Type-Linked Skill at Master_
+  - note: FEATURE_ACTIONS / FEATURE_MODES row (v595)
   - Trigger: Your Dragon-Type Pokemon takes a Critical Hit or Massive Damage
     Effect: Your Pokemon gains +1 Combat Stage in each of Attack, Special Attack, and Speed. This Will Not Stand may trigger only once per Scene per Pokemon.
 
-- 🔴 **Tornado Charge** — `todo` · P3 · themes: position, interrupt, multiturn, action · class: Type Ace
+- 🟡 **Tornado Charge** — `partial` · P3 · themes: position, interrupt, multiturn, action · code: trigRow:23723 · class: Type Ace
   - _Trainer Classes · Daily x3 - Special · Prereq: Celerity, Type-Linked Skill at Master_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon gains Initiative
     Effect: Your Pokemon gains 2 additional Standard Actions this turn. Your Pokemon may also Shift between taking each action, so long as their total Movement does not exceed their Movement Capabilities. All three of your Pokemon's Standard Actions this turn must be used to perform Zephyr Shield, or Flying-Type Moves with a Frequency of At-Will or EOT. Tornado Charge may be used only once per day per Pokemon.
 
-- 🔴 **Trail Blazer** — `todo` · P3 · themes: hazard, heal, interrupt, status, action · engine: action-surfaced · class: Type Ace
+- 🟡 **Trail Blazer** — `partial` · P3 · themes: hazard, heal, interrupt, status, action · engine: action-surfaced · code: trigRow:23724 · class: Type Ace
   - _Trainer Classes · Daily x3 - Free Action · Prereq: Brightest Flame, Type-Linked Skill at Adept_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Fire-Type Pokemon Shifts
     Effect: Your Pokemon sets the ground aflame and leaves a Fire Hazard in each square it shifts through this round, up to a maximum of 8 squares. Anyone who begins or ends their turn on a Fire Hazard are Burned. Anyone that passes through a Fire Hazard loses a Tick of Hit Points. If a Ground, Rock, or Water-Type Move targets a square (or a target in a square) with Fire Hazard in them, the Fire Hazards are destroyed. All effects that destroy Hazards extinguish Fire Hazards. Trail Blazer may only be used once per Scene.
 
-- 🔴 **True Steel** — `todo` · P3 · themes: interrupt, damage, skill · engine: action-surfaced · class: Type Ace
+- 🟡 **True Steel** — `partial` · P3 · themes: interrupt, damage, skill · engine: action-surfaced · code: trigRow:23681 · class: Type Ace
   - _Trainer Classes · Daily x3 - Free Action · Prereq: Polished Shine, Type-Linked Skill at Master_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Steel-Type Pokemon is hit by a damaging attack
     Effect: Your Pokemon gains Damage Reduction against the attack equal to your Type-Linked Skill Rank. Additionally, calculate Type Effectiveness with this attack as if your Pokemon has no Typings besides Steel.
 
-- 🔴 **Tyrant’s Roar** — `todo` · P3 · themes: interrupt, cs, skill, stat · engine: action-surfaced · class: Type Ace
+- ✅ **Tyrant’s Roar** — `auto` · P3 · themes: interrupt, cs, skill, stat · engine: action-surfaced · class: Type Ace
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Type Ace, Dragon as Chosen Type_
+  - note: already automated as FEATURE_ACTIONS 'Tyrants Roar' (foeFxDialog Burst 2 Slow + positive-CS drop)
   - Trigger: Your Pokemon hits with a Dragon-Type Move
     Effect: Your Pokemon creates a Burst 2, Slowing all Foes in the area and causing those foes to lose 1 Combat Stage in any Stat in which they have positive Combat Stages.
 
-- 🔴 **Unconquerable** — `todo` · P3 · themes: interrupt, cure · engine: action-surfaced · class: Type Ace
+- ✅ **Unconquerable** — `auto` · P3 · themes: interrupt, cure · engine: action-surfaced · code: STAT_TRAINING_MOVES:23812 · class: Type Ace
   - _Trainer Classes · Daily x3 - Free Action · Prereq: Tyrant's Roar, Type-Linked Skill at Expert_
+  - note: FEATURE_ACTIONS / FEATURE_MODES row (v595)
   - Trigger: Your Pokemon uses a Dragon-Type Move while they have 3 or more Status Afflictions
     Effect: Your Pokemon is cured of up to three Status Afflictions.
 
-- 🔴 **Upheaval** — `todo` · P3 · themes: interrupt, action, skill · engine: action-surfaced · class: Type Ace
+- 🟡 **Upheaval** — `partial` · P3 · themes: interrupt, action, skill · engine: action-surfaced · code: trigRow:23692 · class: Type Ace
   - _Trainer Classes · Daily x3 - Free Action · Prereq: Mold the Earth, Type-Linked Skill at Master_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon uses the Groundshaper Capability, or a Move with the Groundsource keyword
     Effect: Your Pokemon may make a Trip Attempt as a Free Action against any Pokemon targeted by the Move, or standing on a square changed by the Groundshaper capability. Your Pokemon gains a bonus to their Combat Roll equal to half of your Type-Linked Skill Rank.
 
-- 🔴 **Vampirism** — `todo` · P3 · themes: heal, interrupt, cs, skill, stat · engine: action-surfaced · class: Type Ace
+- 🟡 **Vampirism** — `partial` · P3 · themes: heal, interrupt, cs, skill, stat · engine: action-surfaced · code: trigRow:23693 · class: Type Ace
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Ghost Step, Type-Linked Skill at Expert_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon hits an adjacent foe with a Ghost-Type Move
     Effect: Choose a Stat. The triggering foe loses a Tick of Hit Points and a Combat Stage in that Stat. Your Pokemon gains 1 Combat Stage in the chosen Stat, and a Tick of Temporary Hit Points.
 
-- 🔴 **Zephyr Shield** — `todo` · P3 · themes: weather, heal, interrupt, multiturn, typing, damage, action · class: Type Ace
+- 🟡 **Zephyr Shield** — `partial` · P3 · themes: weather, heal, interrupt, multiturn, typing, damage, action · code: trigRow:23725 · class: Type Ace
   - _Trainer Classes · At-Will - Special · Prereq: Celerity, Type-Linked Skill at Expert_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Your Flying-Type Pokemon may activate Zephyr Shield as a Standard Action Interrupt, or as a Shift Action during their turn. If they do, until the end of the user's next turn, all ranged attacks targetting them take a -1 penalty to Accuracy and -10 penalty to damage, they become immune to the effects of Moves with the Powder keyword, and they do not lose Hit Points from Weather effects. Additionally, if Zephyr Shield is used as a Standard Action, that Pokemon may use the Resolution Effect of a Flying-Type Move with the Set-Up keyword on their next turn, skipping the Set-Up phase.
 
 <a id="features-08"></a>
 ## `features-08` — Stat Ace (1/2)
 
-P3 · 18 open of 18 · open
+P3 · 6 open of 18 · open
 
-- 🔴 **Attack Embodiment** — `todo` · P3 · themes: swap, stat · engine: action-surfaced · class: Stat Ace
+- ✅ **Attack Embodiment** — `auto` · P3 · themes: swap, stat · engine: action-surfaced · class: Stat Ace
   - _Trainer Classes · [Branch] · 1 AP - Swift Action · Prereq: 4 Stat Ace Features, Expert Command or Focus_
+  - note: STAT_FAMILY Embodiment button on the Ace Trainer card
   - Target: Your Pokemon
     Effect: Your Pokemon gains Sheer Force or Defiant for the remainder of the Scene. Switching does not end this effect. Stat Embodiment may only grant one Ability to a Pokemon at a time. If it is used a second time on the same target, it replaces the first granted Ability.
 
-- 🔴 **Attack Link** — `todo` · P3 · themes: interrupt, cs, skill · engine: action-surfaced · class: Stat Ace
+- ✅ **Attack Link** — `auto` · P3 · themes: interrupt, cs, skill · engine: action-surfaced · class: Stat Ace
   - _Trainer Classes · [Branch] · 1 AP - Free Action · Prereq: Stat Ace_
+  - note: STAT_FAMILY Link button on the Ace Trainer card
   - Trigger: At the end of your Pokemon's turn, their Attack is at its default number of Combat Stages or less
     Effect: The triggering Pokemon gains +1 Combat Stage in Attack. (Note: The "Default" number of Combat Stages is usually 0)
 
-- 🔴 **Attack Mastery** — `todo` · P3 · themes: position, heal, skill · class: Stat Ace
+- 🟡 **Attack Mastery** — `partial` · P3 · themes: position, heal, skill · class: Stat Ace
   - _Trainer Classes · [Branch] · Static · Prereq: Stat Maneuver_
+  - note: printed on the Ace card; effect resolved at the table
   - When your Pokemon successfully uses a Push, Disarm, or Dirty Trick Combat Maneuver, the target of the Maneuver loses a Tick of Hit Points.
 
-- 🔴 **Attack Stratagem** — `todo` · P3 · themes: cs, damage, skill · engine: action-surfaced · class: Stat Ace
+- ✅ **Attack Stratagem** — `auto` · P3 · themes: cs, damage, skill · engine: action-surfaced · code: FEATURE_MODES:27206 · class: Stat Ace
   - _Trainer Classes · [Branch] [Orders] [Stratagem] · 2 AP - Standard Action · Prereq: Stat Link, Stat Training, Master Focus or Command_
+  - note: stance + roll bonus (statStratagemBonus)
   - Target: Your Pokemon
     Effect: While this Feature is Bound, the target's damaging Melee Attacks have their Critical Hit Range increased by 1 for each positive Combat Stage they have in Attack, up to a maximum of +3.
 
-- 🔴 **Defense Embodiment** — `todo` · P3 · themes: swap, stat · engine: action-surfaced · class: Stat Ace
+- ✅ **Defense Embodiment** — `auto` · P3 · themes: swap, stat · engine: action-surfaced · class: Stat Ace
   - _Trainer Classes · [Branch] · 1 AP - Swift Action · Prereq: 4 Stat Ace Features, Expert Command or Focus_
+  - note: STAT_FAMILY Embodiment button on the Ace Trainer card
   - Target: Your Pokemon
     Effect: Your Pokemon gains Filter or Battle Armor for the remainder of the Scene. Switching does not end this effect. Stat Embodiment may only grant one Ability to a Pokemon at a time. If it is used a second time on the same target, it replaces the first granted Ability.
 
-- 🔴 **Defense Link** — `todo` · P3 · themes: interrupt, cs, skill · engine: action-surfaced · class: Stat Ace
+- ✅ **Defense Link** — `auto` · P3 · themes: interrupt, cs, skill · engine: action-surfaced · class: Stat Ace
   - _Trainer Classes · [Branch] · 1 AP - Free Action · Prereq: Stat Ace_
+  - note: STAT_FAMILY Link button on the Ace Trainer card
   - Trigger: At the end of your Pokemon's turn, their Defense is at its default number of Combat Stages or less
     Effect: The triggering Pokemon gains +1 Combat Stage in Defense. (Note: The "Default" number of Combat Stages is usually 0)
 
-- 🔴 **Defense Maneuver** — `todo` · P3 · themes: cs, skill · engine: action-surfaced · class: Stat Ace
+- 🟡 **Defense Maneuver** — `partial` · P3 · themes: cs, skill · engine: action-surfaced · code: trigRow:23726 · class: Stat Ace
   - _Trainer Classes · [Branch] · Scene - Free Action · Prereq: Stat Ace, Adept Command or Focus_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - You may activate this feature whenever your Pokemon is hit by a Physical Attack to receive the blow as if your Pokemon's Defense Combat Stages were at +6 instead of their current value.
 
-- 🔴 **Defense Mastery** — `todo` · P3 · themes: damage, action · class: Stat Ace
+- ✅ **Defense Mastery** — `auto` · P3 · themes: damage, action · class: Stat Ace
   - _Trainer Classes · [Branch] · Static · Prereq: Stat Maneuver_
+  - note: button: +5 DR for a round
   - Whenever your Pokemon do not spend their Shift Action to Shift during a turn, they gain +5 Damage Reduction for one full round.
 
-- 🔴 **Defense Stratagem** — `todo` · P3 · themes: status, cs, skill · engine: action-surfaced · class: Stat Ace
+- 🟡 **Defense Stratagem** — `partial` · P3 · themes: status, cs, skill · engine: action-surfaced · code: FEATURE_MODES:27208 · class: Stat Ace
   - _Trainer Classes · [Branch] [Orders] [Stratagem] · 2 AP - Standard Action · Prereq: Stat Link, Stat Training, Master Focus or Command_
+  - note: stance + live numbers on the card; the Save / Movement bonus is added at the table
   - Target: Your Pokemon
     Effect: While this Feature is Bound, the target gains a +2 bonus to Save Checks against Paralysis, Sleep, and Freeze for each positive Combat Stage they have in Defense, up to a maximum of +6.
 
-- 🔴 **Defense Training** — `todo` · P3 · themes: barrier · class: Stat Ace
+- ✅ **Defense Training** — `auto` · P3 · themes: barrier · code: STAT_TRAINING_MOVES:23896 · class: Stat Ace
   - _Trainer Classes · [Branch] · At-Will - Extended Action · Prereq: Stat Ace_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Target: Your Pokemon with at least 1 Tutor Point
     Effect: Your Pokemon loses 1 Tutor Point and learns Iron Defense or Reflect, even if your Pokemon cannot normally learn this Move.
 
-- 🔴 **Special Attack Embodiment** — `todo` · P3 · themes: swap, stat · engine: action-surfaced · class: Stat Ace
+- ✅ **Special Attack Embodiment** — `auto` · P3 · themes: swap, stat · engine: action-surfaced · class: Stat Ace
   - _Trainer Classes · [Branch] · 1 AP - Swift Action · Prereq: 4 Stat Ace Features, Expert Command or Focus_
+  - note: STAT_FAMILY Embodiment button on the Ace Trainer card
   - Target: Your Pokemon
     Effect: Your Pokemon gains Tinted Lens or Competitive for the remainder of the Scene. Switching does not end this effect. Stat Embodiment may only grant one Ability to a Pokemon at a time. If it is used a second time on the same target, it replaces the first granted Ability.
 
-- 🔴 **Special Attack Link** — `todo` · P3 · themes: interrupt, cs, skill · engine: action-surfaced · class: Stat Ace
+- ✅ **Special Attack Link** — `auto` · P3 · themes: interrupt, cs, skill · engine: action-surfaced · class: Stat Ace
   - _Trainer Classes · [Branch] · 1 AP - Free Action · Prereq: Stat Ace_
+  - note: STAT_FAMILY Link button on the Ace Trainer card
   - Trigger: At the end of your Pokemon's turn, their Special Attack is at its default number of Combat Stages or less
     Effect: The triggering Pokemon gains +1 Combat Stage in Special Attack. (Note: The "Default" number of Combat Stages is usually 0)
 
-- 🔴 **Special Attack Stratagem** — `todo` · P3 · themes: cs, skill · engine: action-surfaced · class: Stat Ace
+- ✅ **Special Attack Stratagem** — `auto` · P3 · themes: cs, skill · engine: action-surfaced · code: FEATURE_MODES:27210 · class: Stat Ace
   - _Trainer Classes · [Branch] [Orders] [Stratagem] · 2 AP - Standard Action · Prereq: Stat Link, Stat Training, Master Focus or Command_
+  - note: stance + roll bonus (statStratagemBonus)
   - Target: Your Pokemon
     Effect: While this Feature is Bound, the target's damaging Ranged Attacks have their Effect Range increased by 1 for each positive Combat Stage they have in Special Attack, up to a maximum of +3.
 
-- 🔴 **Special Defense Embodiment** — `todo` · P3 · themes: swap, stat · engine: action-surfaced · class: Stat Ace
+- ✅ **Special Defense Embodiment** — `auto` · P3 · themes: swap, stat · engine: action-surfaced · class: Stat Ace
   - _Trainer Classes · [Branch] · 1 AP - Swift Action · Prereq: 4 Stat Ace Features, Expert Command or Focus_
+  - note: STAT_FAMILY Embodiment button on the Ace Trainer card
   - Target: Your Pokemon
     Effect: Your Pokemon gains Multiscale or Tolerance for the remainder of the Scene. Switching does not end this effect. Stat Embodiment may only grant one Ability to a Pokemon at a time. If it is used a second time on the same target, it replaces the first granted Ability.
 
-- 🔴 **Special Defense Link** — `todo` · P3 · themes: interrupt, cs, skill · engine: action-surfaced · class: Stat Ace
+- ✅ **Special Defense Link** — `auto` · P3 · themes: interrupt, cs, skill · engine: action-surfaced · class: Stat Ace
   - _Trainer Classes · [Branch] · 1 AP - Free Action · Prereq: Stat Ace_
+  - note: STAT_FAMILY Link button on the Ace Trainer card
   - Trigger: At the end of your Pokemon's turn, their Special Defense is at its default number of Combat Stages or less
     Effect: The triggering Pokemon  gains +1 Combat Stage in Special Defense. (Note: The "Default" number of Combat Stages is usually 0)
 
-- 🔴 **Special Defense Maneuver** — `todo` · P3 · themes: cs, skill · engine: action-surfaced · class: Stat Ace
+- 🟡 **Special Defense Maneuver** — `partial` · P3 · themes: cs, skill · engine: action-surfaced · code: trigRow:23727 · class: Stat Ace
   - _Trainer Classes · [Branch] · Scene - Free Action · Prereq: Stat Ace, Adept Command or Focus_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - You may activate this feature whenever your Pokemon is hit by a Special Attack to receive the blow as if your Pokemon's Special Defense Combat Stages were at +6 instead of their current value.
 
-- 🔴 **Special Defense Mastery** — `todo` · P3 · themes: weather, heal · class: Stat Ace
+- 🟡 **Special Defense Mastery** — `partial` · P3 · themes: weather, heal · class: Stat Ace
   - _Trainer Classes · [Branch] · Static · Prereq: Stat Maneuver_
+  - note: printed on the Ace card; effect resolved at the table
   - Whenever your Pokemon would lose a Tick of Hit Points from Status Afflictions, Weather, or other effects, they lose 5 fewer Hit Points, to a minimum of 1.
 
-- 🔴 **Special Defense Stratagem** — `todo` · P3 · themes: status, cs, skill · engine: action-surfaced · class: Stat Ace
+- 🟡 **Special Defense Stratagem** — `partial` · P3 · themes: status, cs, skill · engine: action-surfaced · code: FEATURE_MODES:27212 · class: Stat Ace
   - _Trainer Classes · [Branch] [Orders] [Stratagem] · 2 AP - Standard Action · Prereq: Stat Link, Stat Training, Master Focus or Command_
+  - note: stance + live numbers on the card; the Save / Movement bonus is added at the table
   - Target: Your Pokemon
     Effect: While this Feature is Bound, the target gains a +2 bonus to Save Checks against Confusion, Rage, and Infatuation for each positive Combat Stage they have in Special Defense, up to a maximum of +6.
 
 <a id="features-09"></a>
 ## `features-09` — Stat Ace (2/2)
 
-P3 · 11 open of 11 · open
+P3 · 5 open of 11 · open
 
-- 🔴 **Special Defense Training** — `todo` · P3 · themes: barrier · class: Stat Ace
+- ✅ **Special Defense Training** — `auto` · P3 · themes: barrier · code: STAT_TRAINING_MOVES:23898 · class: Stat Ace
   - _Trainer Classes · [Branch] · At-Will - Extended Action · Prereq: Stat Ace_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Target: Your Pokemon with at least 1 Tutor Point
     Effect: Your Pokemon loses 1 Tutor Point and learns Amnesia or Light Screen, even if your Pokemon cannot normally learn this Move.
 
-- 🔴 **Speed Embodiment** — `todo` · P3 · themes: swap, stat · engine: action-surfaced · class: Stat Ace
+- ✅ **Speed Embodiment** — `auto` · P3 · themes: swap, stat · engine: action-surfaced · class: Stat Ace
   - _Trainer Classes · [Branch] · 1 AP - Swift Action · Prereq: 4 Stat Ace Features, Expert Command or Focus_
+  - note: STAT_FAMILY Embodiment button on the Ace Trainer card
   - Target: Your Pokemon
     Effect: Your Pokemon gains Speed Boost or Vanguard for the remainder of the Scene. Switching does not end this effect. Stat Embodiment may only grant one Ability to a Pokemon at a time. If it is used a second time on the same target, it replaces the first granted Ability.
 
-- 🔴 **Speed Link** — `todo` · P3 · themes: interrupt, cs, skill · engine: action-surfaced · class: Stat Ace
+- ✅ **Speed Link** — `auto` · P3 · themes: interrupt, cs, skill · engine: action-surfaced · class: Stat Ace
   - _Trainer Classes · [Branch] · 1 AP - Free Action · Prereq: Stat Ace_
+  - note: STAT_FAMILY Link button on the Ace Trainer card
   - Trigger: At the end of your Pokemon's turn, their Speed is at its default number of Combat Stages or less
     Effect: The triggering Pokemon gains +1 Combat Stage in Speed. (Note: The "Default" number of Combat Stages is usually 0)
 
-- 🔴 **Speed Maneuver** — `todo` · P3 · themes: interrupt · engine: action-surfaced · class: Stat Ace
+- 🟡 **Speed Maneuver** — `partial` · P3 · themes: interrupt · engine: action-surfaced · code: trigRow:23728 · class: Stat Ace
   - _Trainer Classes · [Branch] · Scene - Free Action · Prereq: Stat Ace, Adept Command or Focus_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - You may activate this Feature at any time to cause your Pokemon to use a Move as Priority or a Priority Move as Priority (Advanced).
 
-- 🔴 **Speed Stratagem** — `todo` · P3 · themes: position, cs, skill · engine: action-surfaced · class: Stat Ace
+- 🟡 **Speed Stratagem** — `partial` · P3 · themes: position, cs, skill · engine: action-surfaced · code: FEATURE_MODES:27214 · class: Stat Ace
   - _Trainer Classes · [Branch] [Orders] [Stratagem] · 2 AP - Standard Action · Prereq: Stat Link, Stat Training, Master Focus or Command_
+  - note: stance + live numbers on the card; the Save / Movement bonus is added at the table
   - Target: Your Pokemon
     Effect: While this Feature is Bound, the target's Movement Capabilities are increased by 1 for each positive Combat Stage they have in Speed, up to a maximum of +3.
 
-- 🔴 **Stat Embodiment** — `todo` · P3 · themes: swap, stat · engine: action-surfaced · class: Stat Ace
+- ✅ **Stat Embodiment** — `auto` · P3 · themes: swap, stat · engine: action-surfaced · class: Stat Ace
   - _Trainer Classes · [Branch] · 1 AP - Swift Action · Prereq: 4 Stat Ace Features, Expert Command or Focus_
+  - note: STAT_FAMILY Embodiment button on the Ace Trainer card
   - Target: Your Pokemon
     Effect: Your Pokemon gains an Ability, based on your Chosen Stat, for the remainder of the Scene. Switching does not end this effect. Stat Embodiment may only grant one Ability to a Pokemon at a time. If it is used a second time on the same target, it replaces the first granted Ability.
     »» Attack Aces give Sheer Force or Defiant
@@ -766,29 +907,33 @@ P3 · 11 open of 11 · open
     »» Special Defense Aces give Multiscale or Tolerance
     »» Speed Aces give Speed Boost or Vanguard
 
-- 🔴 **Stat Link** — `todo` · P3 · themes: interrupt, cs, skill, stat · engine: action-surfaced · class: Stat Ace
+- ✅ **Stat Link** — `auto` · P3 · themes: interrupt, cs, skill, stat · engine: action-surfaced · class: Stat Ace
   - _Trainer Classes · [Branch] · 1 AP - Free Action · Prereq: Stat Ace_
+  - note: STAT_FAMILY Link button on the Ace Trainer card
   - Trigger: At the end of your Pokemon's turn, their Chosen Stat is at its default number of Combat Stages or less
     Effect: The triggering Pokemon gains +1 Combat Stage in your Chosen Stat. (Note: The "Default" number of Combat Stages is usually 0)
 
-- 🔴 **Stat Maneuver** — `todo` · P3 · themes: interrupt, cs, skill, stat · engine: action-surfaced · class: Stat Ace
+- 🟡 **Stat Maneuver** — `partial` · P3 · themes: interrupt, cs, skill, stat · engine: action-surfaced · code: trigRow:23729 · class: Stat Ace
   - _Trainer Classes · [Branch] · Scene - Free Action · Prereq: Stat Ace, Adept Command or Focus_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Stat Maneuver's Effect depends on your Chosen Stat:
     Attack Effect: You may activate this Feature to cause one of your Pokemon to use a Physical "Melee, 1-Target" Move as if its range was "Melee, Pass" or "Melee, 3-Targets" instead.
     Defense Effect: You may activate this feature whenever your Pokemon is hit by a Physical Attack to receive the blow as if your Pokemon's Defense Combat Stages were at +6 instead of their current value.
     Special Attack Effect: You may activate this Feature to allow your Pokemon to use a Special Burst, Cone, Close Blast, Ranged Blast, or Line of any size as a Burst 1, Cone 2, Close Blast 2, or Line 4 instead.
     Special Defense Effect: You may activate this feature when …
 
-- 🔴 **Stat Mastery** — `todo` · P3 · themes: weather, position, heal, damage, action, skill, stat · class: Stat Ace
+- 🟡 **Stat Mastery** — `partial` · P3 · themes: weather, position, heal, damage, action, skill, stat · class: Stat Ace
   - _Trainer Classes · [Branch] · Static · Prereq: Stat Maneuver_
+  - note: printed on the Ace card; effect resolved at the table
   - Stat Mastery's Effect depends on your Chosen Stat:
     Attack Effect: When your Pokemon successfully uses a Push, Disarm, or Dirty Trick Combat Maneuver, the target of the Maneuver loses a Tick of Hit Points.
     Defense Effect: Whenever your Pokemon do not spend their Shift Action to Shift during a turn, they gain +5 Damage Reduction for one full round.
     Special Attack Effect: The Range of your Pokemon's Special Non-Melee Moves is increased by +2. This does not affect the size of Area-Of-Effect moves (But does affect the range at which you can place Ranged Blasts).
     Special Defense Effect: Whenever your Pokemon would lose a Tick of Hit Points from Status Afflictions, Weather, or other effects, they l …
 
-- 🔴 **Stat Stratagem** — `todo` · P3 · themes: position, status, cs, damage, skill, stat · engine: action-surfaced · class: Stat Ace
+- 🟡 **Stat Stratagem** — `partial` · P3 · themes: position, status, cs, damage, skill, stat · engine: action-surfaced · code: STAT_FAMILY_STRAT_ROWS:23022, statStratagemBonus:23046, FEATURE_MODES:27200 · class: Stat Ace
   - _Trainer Classes · [Branch] [Orders] [Stratagem] · 2 AP - Standard Action · Prereq: Stat Link, Stat Training, Master Focus or Command_
+  - note: stance + live numbers on the card; the Save / Movement bonus is added at the table
   - Target: Your Pokemon
     Effect: While this Feature is Bound, the target has the following bonuses based on your Chosen Stat:
     Attack Effect: The target's damaging Melee Attacks have their Critical Hit Range increased by 1 for each positive Combat Stage they have in Attack, up to a maximum of +3.
@@ -796,8 +941,9 @@ P3 · 11 open of 11 · open
     Special Attack Effect: The target's damaging Ranged Attacks have their Effect Range increased by 1 for each positive Combat Stage they have in Special Attack, up to a maximum of +3.
     Special Defense Effect: The target gains a +2 bonus t …
 
-- 🔴 **Stat Training** — `todo` · P3 · themes: barrier, stat · class: Stat Ace
+- ✅ **Stat Training** — `auto` · P3 · themes: barrier, stat · code: STAT_TRAINING_MOVES:23900 · class: Stat Ace
   - _Trainer Classes · [Branch] · At-Will - Extended Action · Prereq: Stat Ace_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Target: Your Pokemon with at least 1 Tutor Point
     Effect: Your Pokemon loses 1 Tutor Point, and learns a Move based on your Chosen Stat, even if your Pokemon cannot normally learn this Move:
     »» Attack: Swords Dance or Rage
@@ -809,105 +955,124 @@ P3 · 11 open of 11 · open
 <a id="features-10"></a>
 ## `features-10` — Style Expert
 
-P3 · 21 open of 21 · open
+P3 · 0 open of 21 · ✔ done
 
-- 🔴 **Action Hero Stunt** — `todo` · P3 · themes: interrupt, multiturn, swap, damage, skill, stat · engine: action-surfaced · class: Style Expert
+- ⚪ **Action Hero Stunt** — `manual` · P3 · themes: interrupt, multiturn, swap, damage, skill, stat · engine: action-surfaced · class: Style Expert
   - _Trainer Classes · Daily/10 - Free Action · Prereq: Cool Conduct Rank 1_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Trigger: Your Pokemon makes a Skill Check for a dramatic, high risk action:  
     Instead of using a Skill for this Check, your Pokemon rolls their Cool Dice from Poffins and adds their number of Cool Dice from Stats as a modifier. For example, a Pokemon with 5d6 Cool from Poffins and 2d6 from Attack rolls 5d6+2. An example trigger is charging into a burning building for a heroic rescue. Skill Checks invoked by Intercepting attacks, Combat Maneuvers, Moves, and Abilities don't trigger this Feature.
 
-- 🔴 **Beautiful Ballet Rank 1** — `todo` · P3 · themes: barrier, action, skill, stat · class: Style Expert
+- ⚪ **Beautiful Ballet Rank 1** — `manual` · P3 · themes: barrier, action, skill, stat · class: Style Expert
   - _Trainer Classes · [Ranked 2] · X AP - Special · Prereq: Style Expert, Beauty as Chosen Stat, Novice Intuition_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Your Pokemon with at least 3d6 in their Beauty Stat from Poffins may activate Beautiful Ballet as a Standard Action to perform one of the following Moves. They must still follow frequency limits as usual for these Moves. X is the Rank of the chosen Move.
     Rank 1: Captivate, Mist
 
-- 🔴 **Beautiful Ballet Rank 2** — `todo` · P3 · themes: action, skill, stat · class: Style Expert
+- ⚪ **Beautiful Ballet Rank 2** — `manual` · P3 · themes: action, skill, stat · class: Style Expert
   - _Trainer Classes · [Ranked 2] · X AP - Special · Prereq: Expert Intuition_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Your Pokemon with at least 3d6 in their Beauty Stat from Poffins may activate Beautiful Ballet as a Standard Action to perform one of the following Moves. They must still follow frequency limits as usual for these Moves. X is the Rank of the chosen Move.
     Rank 2: Lovely Kiss, Mean Look
 
-- 🔴 **Calculated Assault** — `todo` · P3 · themes: interrupt, multiturn, damage, action, social · engine: action-surfaced · class: Style Expert
+- ⚪ **Calculated Assault** — `manual` · P3 · themes: interrupt, multiturn, damage, action, social · engine: action-surfaced · class: Style Expert
   - _Trainer Classes · At-Will - Free Action · Prereq: Smart Scheme Rank 1_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Trigger: Your Pokemon uses a Smart-Type Move
     Contest Effect: Treat the Move as if it were one step more aligned with the Contest Type. If the Move would be opposing the Contest Type, it is instead neutral. If it is neutral, it is instead matching. You may activate this effect only once per Contest.
     Battle Effect: Choose one: The triggering Pokemon gains a +1 bonus on its Accuracy Roll for each ally that hit a target of its Move this round, or all allies get a +1 bonus to their Accuracy Rolls against targets of the triggering Pokemon's Move until the end of your Pokemon's next turn. You may activate Calculated Assault only once per Pokemon per Scene.
 
-- 🔴 **Cool Conduct Rank 1** — `todo` · P3 · themes: action, skill, stat · class: Style Expert
+- ⚪ **Cool Conduct Rank 1** — `manual` · P3 · themes: action, skill, stat · class: Style Expert
   - _Trainer Classes · [Ranked 2] · X AP - Special · Prereq: Style Expert, Cool as Chosen Stat, Novice Command_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Your Pokemon with at least 3d6 in their Cool Stat from Poffins may activate Cool Conduct as a Standard Action to perform one of the following Moves. They must still follow frequency limits as usual for these Moves. X is the Rank of the chosen Move.
     Rank 1: Focus Energy, Noble Roar
 
-- 🔴 **Cool Conduct Rank 2** — `todo` · P3 · themes: action, skill, stat · class: Style Expert
+- ⚪ **Cool Conduct Rank 2** — `manual` · P3 · themes: action, skill, stat · class: Style Expert
   - _Trainer Classes · [Ranked 2] · X AP - Special · Prereq: Expert Command_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Your Pokemon with at least 3d6 in their Cool Stat from Poffins may activate Cool Conduct as a Standard Action to perform one of the following Moves. They must still follow frequency limits as usual for these Moves. X is the Rank of the chosen Move.
     Rank 2: Roar, Double Team
 
-- 🔴 **Cute Cuddle Rank 1** — `todo` · P3 · themes: action, skill, stat · class: Style Expert
+- ⚪ **Cute Cuddle Rank 1** — `manual` · P3 · themes: action, skill, stat · class: Style Expert
   - _Trainer Classes · [Ranked 2] · X AP - Special · Prereq: Style Expert, Cute as Chosen Stat, Novice Charm_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Your Pokemon with at least 3d6 in their Cute Stat from Poffins may activate Cute Cuddle as a Standard Action to perform one of the following Moves. They must still follow frequency limits as usual for these Moves. X is the Rank of the chosen Move.
     Rank 1: Charm, Block
 
-- 🔴 **Cute Cuddle Rank 2** — `todo` · P3 · themes: action, skill, stat · class: Style Expert
+- ⚪ **Cute Cuddle Rank 2** — `manual` · P3 · themes: action, skill, stat · class: Style Expert
   - _Trainer Classes · [Ranked 2] · X AP - Special · Prereq: Expert Charm_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Your Pokemon with at least 3d6 in their Cute Stat from Poffins may activate Cute Cuddle as a Standard Action to perform one of the following Moves. They must still follow frequency limits as usual for these Moves. X is the Rank of the chosen Move.
     Rank 2: Teeter Dance, Attract
 
-- 🔴 **Endurance** — `todo` · P3 · themes: heal, interrupt, damage · engine: action-surfaced · class: Style Expert
+- ⚪ **Endurance** — `manual` · P3 · themes: heal, interrupt, damage · engine: action-surfaced · class: Style Expert
   - _Trainer Classes · Daily/10 - Free Action · Prereq: Tough Tumble Rank 1_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Trigger: Your Pokemon takes falling damage, begins to suffocate, or is Heavily Injured:  
     Your Pokemon can ignore up to X meters of falling when calculating falling damage, act without beginning to suffocate for X additional rounds, or ignore the Hit Point loss effects from acting while Heavily Injured for X rounds. X is equal to half its number of Tough Dice from Poffins.
 
-- 🔴 **Enticing Beauty** — `todo` · P3 · themes: swap, damage · engine: action-surfaced · class: Style Expert
+- ⚪ **Enticing Beauty** — `manual` · P3 · themes: swap, damage · engine: action-surfaced · class: Style Expert
   - _Trainer Classes · Daily/10 - Free Action · Prereq: Beautiful Ballet Rank 1_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Target: Your Pokemon
     The target acts as a Bait item as if it had the Alluring Capability. Add its number of Beauty Dice from Poffins as a Bonus to all d20 lure rolls.
 
-- 🔴 **Fabulous Max** — `todo` · P3 · themes: interrupt, action, social · engine: action-surfaced · class: Style Expert
+- ⚪ **Fabulous Max** — `manual` · P3 · themes: interrupt, action, social · engine: action-surfaced · class: Style Expert
   - _Trainer Classes · At-Will - Free Action · Prereq: Beautiful Ballet Rank 1_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Trigger: Your Pokemon uses a Beauty-Type Move
     Contest Effect: Treat the Move as if it were one step more aligned with the Contest Type. If the Move would be opposing the Contest Type, it is instead neutral. If it is neutral, it is instead matching. You may activate this effect only once per Contest.
     Battle Effect: The move gains the keyword Burst 1 if Melee, or Blast 2 if ranged. If the move is already a Burst, Blast, or Cone, increase the size of the Move's Range by 1. This does not cause a target to be hit multiple times. You may activate Fabulous Max only once per Pokemon per Scene.
 
-- 🔴 **Gleeful Steps** — `todo` · P3 · themes: interrupt, action, social · engine: action-surfaced · class: Style Expert
+- ⚪ **Gleeful Steps** — `manual` · P3 · themes: interrupt, action, social · engine: action-surfaced · class: Style Expert
   - _Trainer Classes · At-Will - Free Action · Prereq: Cute Cuddle Rank 1_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Trigger: Your Pokemon uses a Cute-Type Move
     Contest Effect: Treat the Move as if it were one step more aligned with the Contest Type. If the Move would be opposing the Contest Type, it is instead neutral. If it is neutral, it is instead matching. You may activate this effect only once per Contest.
     Battle Effect: The triggering Pokemon may immediately shift up to half their Movement speed in meters in any direction after their attack is resolved. You may activate Gleeful Steps only once per Pokemon per Scene.
 
-- 🔴 **Learn From Your Mistakes** — `todo` · P3 · themes: interrupt, damage, skill · engine: action-surfaced · class: Style Expert
+- ⚪ **Learn From Your Mistakes** — `manual` · P3 · themes: interrupt, damage, skill · engine: action-surfaced · class: Style Expert
   - _Trainer Classes · Daily/5 - Free Action · Prereq: Smart Scheme Rank 1_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Trigger: Your Pokemon fails a Skill Check:
       Your Pokemon may re-roll the Skill Check with a Bonus equal to its number of Smart Dice from Poffins.
 
-- 🔴 **Let's Be Friends!** — `todo` · P3 · themes: damage, skill, stat, social · engine: action-surfaced · class: Style Expert
+- ⚪ **Let's Be Friends!** — `manual` · P3 · themes: damage, skill, stat, social · engine: action-surfaced · class: Style Expert
   - _Trainer Classes · Daily/5 - Free Action · Prereq: Cute Cuddle Rank 1_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Target: Your Pokemon:
     The target may attempt to improve the disposition of a Wild Pokemon as if making a Charm Check. They roll their Cute Dice from Poffins and add their number of Cute Dice from Stats as a modifier. For example, a Pokemon with 4d6 Cute from Poffins and 3d6 Cute from Speed rolls 4d6+3 in place of a Charm Check.
 
-- 🔴 **Macho Charge** — `todo` · P3 · themes: position, interrupt, multiturn, action, social · engine: action-surfaced · class: Style Expert
+- ⚪ **Macho Charge** — `manual` · P3 · themes: position, interrupt, multiturn, action, social · engine: action-surfaced · class: Style Expert
   - _Trainer Classes · At-Will - Free Action · Prereq: Tough Tumble Rank 1_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Trigger: Your Pokemon uses a Tough-Type Move
     Contest Effect: Treat the Move as if it were one step more aligned with the Contest Type. If the Move would be opposing the Contest Type, it is instead neutral. If it is neutral, it is instead matching. You may activate this effect only once per Contest.
     Battle Effect: All targets hit by the Move are pushed away from the triggering Pokemon by 3 meters. You may activate Macho Charge only once per Pokemon per Scene.
 
-- 🔴 **Rule of Cool** — `todo` · P3 · themes: interrupt, action, social · engine: action-surfaced · class: Style Expert
+- ⚪ **Rule of Cool** — `manual` · P3 · themes: interrupt, action, social · engine: action-surfaced · class: Style Expert
   - _Trainer Classes · At-Will - Free Action · Prereq: Cool Conduct Rank 1_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Trigger: Your Pokemon uses a Cool-Type Move
     Contest Effect: Treat the Move as if it were one step more aligned with the Contest Type. If the Move would be opposing the Contest Type, it is instead neutral. If it is neutral, it is instead matching. You may activate this effect only once per Contest.
     Battle Effect: The triggering Move's Crit Range is increased by 3, and the Moves with the Priority or Interrupt Keywords may not be activated in reaction to this Move. You may activate Rule of Cool only once per Pokemon per Scene.
 
-- 🔴 **Smart Scheme Rank 1** — `todo` · P3 · themes: action, skill, stat · class: Style Expert
+- ⚪ **Smart Scheme Rank 1** — `manual` · P3 · themes: action, skill, stat · class: Style Expert
   - _Trainer Classes · [Ranked 2] · X AP - Special · Prereq: Style Expert, Smart as Chosen Stat, Novice Guile_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Your Pokemon with at least 3d6 in their Smart Stat from Poffins may activate Smart Scheme as a Standard Action to perform one of the following Moves. They must still follow frequency limits as usual for these Moves. X is the Rank of the chosen Move.
     Rank 1: Fake Tears, Calm Mind
 
-- 🔴 **Smart Scheme Rank 2** — `todo` · P3 · themes: control, action, skill, stat · class: Style Expert
+- ⚪ **Smart Scheme Rank 2** — `manual` · P3 · themes: control, action, skill, stat · class: Style Expert
   - _Trainer Classes · [Ranked 2] · X AP - Special · Prereq: Expert Guile_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Your Pokemon with at least 3d6 in their Smart Stat from Poffins may activate Smart Scheme as a Standard Action to perform one of the following Moves. They must still follow frequency limits as usual for these Moves. X is the Rank of the chosen Move.
     Rank 2: Taunt, Flatter
 
-- 🔴 **Style Entrainment** — `todo` · P3 · themes: position, swap, skill, stat, social · engine: action-surfaced · class: Style Expert
+- ⚪ **Style Entrainment** — `manual` · P3 · themes: position, swap, skill, stat, social · engine: action-surfaced · class: Style Expert
   - _Trainer Classes · [Branch] · 1 AP - Swift Action, Priority (Limited) · Prereq: 4 Style Expert Features_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Target: Your Pokemon
     Effect: Your Pokemon gains one of the following Abilities corresponding to your chosen Contest Stat for the rest of the Scene, even if it is switched out. Style Entrainment may only grant one Ability to a Pokemon at a time. If it is used a second time on the same target, it replaces the first granted Ability.
     »» Beauty gives Gentle Vibe or Serene Grace
@@ -916,108 +1081,127 @@ P3 · 21 open of 21 · open
     »» Smart gives Analytic or Anticipation
     »» Tough gives Sturdy or Intimidate
 
-- 🔴 **Style Flourish** — `todo` · P3 · themes: interrupt, cs, damage, action, stat, social · engine: action-surfaced · class: Style Expert
+- ⚪ **Style Flourish** — `manual` · P3 · themes: interrupt, cs, damage, action, stat, social · engine: action-surfaced · class: Style Expert
   - _Trainer Classes · [Branch] · 1 AP - Free Action: · Prereq: 3 Style Expert Features_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Trigger: Your Pokemon uses a Move of your Chosen Type
     Contest Effect: Re-Roll all dice that result in 1s. This effect may only be used once per Contest.
     Battle Effect: The target gains +1 CS in the Stat corresponding to your chosen Contest Type, after the Move and all effects have been resolved. This may only affect a target once per Scene.
 
-- 🔴 **Tough Tumble Rank 1** — `todo` · P3 · themes: action, skill, stat · class: Style Expert
+- ⚪ **Tough Tumble Rank 1** — `manual` · P3 · themes: action, skill, stat · class: Style Expert
   - _Trainer Classes · [Ranked 2] · X AP - Special · Prereq: Style Expert, Tough as Chosen Stat, Novice Intimidate_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Your Pokemon with at least 3d6 in their Tough Stat from Poffins may activate Tough Tumble as a Standard Action to perform one of the following Moves. They must still follow frequency limits as usual for these Moves. X is the Rank of the chosen Move.
     Rank 1: Scary Face, Spite
 
 <a id="features-11"></a>
 ## `features-11` — Trainer Classes
 
-P3 · 19 open of 19 · open
+P3 · 5 open of 19 · open
 
-- 🔴 **Archive Tutor** — `todo` · P3 · themes: stat
+- ⚪ **Archive Tutor** — `manual` · P3 · themes: stat
   - _Trainer Classes · Daily - Extended Action · Prereq: Technique Album, Expert Perception_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Target: A Pokemon with 2 Tutor Points
     Effect: Select a Record in your Technique Archive that is of a Move that the target can learn by Level Up, TM or by Move Tutor. The target learns the Move and loses 2 Tutor Points. You can target someone else's Pokemon only once with Archive Tutor; you may target your own Pokemon any number of times with Archive Tutor, but they must still abide by any Move Pool Limitations (i.e.: no more than 3 of the target's Move Pool can come from TMs or Tutor Moves).
 
-- 🔴 **Chronicler** — `todo` · P3 · themes: action · engine: action-surfaced
+- ⚪ **Chronicler** — `manual` · P3 · themes: action · engine: action-surfaced
   - _Trainer Classes · [Class] · 1 AP - Swift Action, Interrupt · Prereq: Novice Perception_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Target: A Pokemon, Trainer, Move, or Location.
     Effect: You make Record of the target. Records can be placed in an Archive as an Extended Action.
     When you take Chronicler, you gain one Archive.  See Extras - Class Mechanics for Archive details.
 
-- 🔴 **Coordinator** — `todo` · P3 · themes: swap, damage, action, social · engine: action-surfaced
+- 🟢 **Coordinator** — `likely` · P3 · themes: swap, damage, action, social · engine: action-surfaced · code: STAT_TRAINING_MOVES:23877
   - _Trainer Classes · [Class] · At-Will - Free Action · Prereq: Grace, Novice Charm, Command, Guile, Intimidate, or Intuition_
   - Your Pokemon may reroll a single Appeal Roll or Damage Roll. This Ability may be used only once per Contest, and once per Pokemon per Scene.
 
-- 🔴 **Dancer** — `todo` · P3 · themes: swap · engine: stat-tag
+- ✅ **Dancer** — `auto` · P3 · themes: swap · engine: stat-tag · code: ABILITY_ACTION_ROWS:3642
   - _Trainer Classes · [Class] [+Speed] · Static · Prereq: Novice Acrobatics; Novice Athletics or Charm_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Spinning Dance or Own Tempo. You gain the chosen Ability.
 
 - 🔴 **Enduring Soul** — `todo` · P3 · themes: stat
   - _Trainer Classes · [Class] · Static · Prereq: Novice Athletics and Focus_
   - You may add to your Pokemon's HP stat when they level up, ignoring Base Relation, and you do not need to "correct" Stats due to this inflated HP.
 
-- 🔴 **Fashionista** — `todo` · P3 · themes: skill, social
+- ⚪ **Fashionista** — `manual` · P3 · themes: skill, social
   - _Trainer Classes · [Class] · At-Will - Extended Action · Prereq: Two of Charm, Command, Guile, Intuition, or Intimidate at Novice_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - You may craft any Fashionista Recipe for which you qualify. 
     Special: When you take Fashionista, choose two of Charm, Command, Guile, Intimidate, or Intuition to become your Fashionista Skills. The Skills you choose must be at Novice Rank or higher.
     Recipes - Contest Trends, Adorable Fashion(Charm), Elegant Fashion(Intuition), Rad Fashion(Command), Rough Fashion(Intimidate), Slick Fashion(Guile)
 
-- 🔴 **Hobbyist** — `todo` · P3 · themes: skill
+- ⚪ **Hobbyist** — `manual` · P3 · themes: skill
   - _Trainer Classes · [Class] · Static · Prereq: Novice General Education, Novice Perception_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Effect: You gain three Skill Edges for which you qualify.
     Special: You may count Hobbyist Features as "General Features" for the purposes of any effect that would grant you a General Feature.
     May Playtest Errata: These Skill Edges must Rank Up a Skill.
 
-- 🔴 **Hunter** — `todo` · P3 · themes: swap · engine: stat-tag
+- ✅ **Hunter** — `auto` · P3 · themes: swap · engine: stat-tag · code: attackTargetWidget:51215
   - _Trainer Classes · [Class][+Speed] · Static · Prereq: Novice Survival, Novice Stealth_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Teamwork or Pack Hunt. You gain the Chosen Ability.
 
-- 🔴 **Juggler** — `todo` · P3 · themes: action, capture · engine: stat-tag
+- 🟡 **Juggler** — `partial` · P3 · themes: action, capture · engine: stat-tag · code: quickSwitchCost:23181
   - _Trainer Classes · [Class] [+Speed] · Static · Prereq: Quick Switch, Novice Acrobatics, Novice Guile_
+  - note: v624: Quick Switch costs 1 AP with Juggler; +10 Initiative for the sent-out mon said in the toast
   - Using Quick Switch costs only 1 AP. Whenever you send a Pokemon into an encounter from a Poke Ball, they receive a +10 bonus to their Initiative during that round.
 
-- 🔴 **Ninja** — `todo` · P3 · themes: status · engine: stat-tag
+- ✅ **Ninja** — `auto` · P3 · themes: status · engine: stat-tag
   - _Trainer Classes · [Class] [+Speed] · Static · Prereq: Novice Stealth, Novice Combat_
+  - note: syncFeatureMoves reads 'You learn the Moves X and Y' (v594 sweep)
   - You learn the Moves Double Team and Poison Powder.
 
-- 🔴 **Observation Party** — `todo` · P3 · themes: swap, skill
+- ⚪ **Observation Party** — `manual` · P3 · themes: swap, skill
   - _Trainer Classes · Static · Prereq: Travel Album, Adept Perception_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - While they are in a Location in your Travel Archive, your Pokemon have the Ability you chose when gaining Travel Archive and gain a +2 bonus to Perception Checks to notice the environment.
 
-- 🔴 **Oracle** — `todo` · P3 · themes: swap · engine: stat-tag
+- ✅ **Oracle** — `auto` · P3 · themes: swap · engine: stat-tag
   - _Trainer Classes · [Class][+Special Defense] · Static · Prereq: Mystic Senses, Novice Perception_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - You gain the Pickup Ability.
 
-- 🔴 **Rogue** — `todo` · P3 · themes: swap, skill · engine: stat-tag
+- ✅ **Rogue** — `auto` · P3 · themes: swap, skill · engine: stat-tag
   - _Trainer Classes · [Class] [+Attack] · Static · Prereq: Two of Acrobatics, Athletics, or Stealth at Novice Rank_
+  - note: syncFeatureMoves reads 'You learn the Moves X and Y' (v594 sweep)
   - You learn the Moves Feint Attack and Thief.
     Note: Rogue Skills are Acrobatics, Athletics, and Stealth.
 
-- 🔴 **Survivalist** — `todo` · P3 · themes: weather, swap, skill · engine: stat-tag
+- ⚪ **Survivalist** — `manual` · P3 · themes: weather, swap, skill · engine: stat-tag
   - _Trainer Classes · [Class][+HP] · One Time Use - Extended Action · Prereq: Novice Survival_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Choose a Terrain in which you have spent at least three nights. You gain Naturewalk for that terrain and a +2 bonus to Athletics, Acrobatics, Stealth, Perception, and Survival Checks in that terrain. When you have 2 Survivalist Features, you may choose a second Terrain. When you have 4 Survivalist Features, you may choose a third terrain. When you have 6 Survivalist Features, you may choose a fourth terrain. The terrains are: Grassland, Forest, Wetlands, Ocean, Tundra, Mountain, Cave, Urban, Desert
 
-- 🔴 **Targeted Profiling** — `todo` · P3 · themes: multiturn, swap, damage · engine: action-surfaced
+- ⚪ **Targeted Profiling** — `manual` · P3 · themes: multiturn, swap, damage · engine: action-surfaced
   - _Trainer Classes · [Orders] · 2 AP - Standard Action · Prereq: Profile Album, Expert Perception_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Target: Your Pokemon
     Effect: Until the end of your next turn, the target acts as if they had the Mold Breaker Ability against all Pokemon and Trainers in your Profile Archive and gains a +2 bonus to Accuracy Rolls against these targets.
 
-- 🔴 **Taskmaster** — `todo` · P3 · themes: interrupt · engine: action-surfaced
+- 🟡 **Taskmaster** — `partial` · P3 · themes: interrupt · engine: action-surfaced · code: trigRow:23777
   - _Trainer Classes · [Class] · At-Will - Free Action · Prereq: Brutal Training, Novice Intimidate_
+  - note: v621: trigRow button — spends uses/AP, posts to Rolls feed; effect resolved at the table
   - Trigger: You apply Brutal Training as a Training action
     Effect: You may grant your Pokemon up to three injuries. If your Pokemon has at least one Injury, it becomes Hardened.  See Extras - Class Mechanics for Hardened details.
 
-- 🔴 **Tough Tumble Tank 2** — `todo` · P3 · themes: action, skill, stat
+- ⚪ **Tough Tumble Tank 2** — `manual` · P3 · themes: action, skill, stat
   - _Trainer Classes · [Ranked 2] · X AP - Special · Prereq: Expert Intimidate_
+  - note: Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine
   - Your Pokemon with at least 3d6 in their Tough Stat from Poffins may activate Tough Tumble as a Standard Action to perform one of the following Moves. They must still follow frequency limits as usual for these Moves. X is the Rank of the chosen Move.
     Rank 2: Glare, Bide
 
-- 🔴 **Trickster** — `todo` · P3 · themes: hazard, interrupt, action, skill · engine: action-surfaced
+- 🟡 **Trickster** — `partial` · P3 · themes: hazard, interrupt, action, skill · engine: action-surfaced · code: trigRow:23709
   - _Trainer Classes · [Class] · 1 AP - Free Action · Prereq: Novice Guile_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon hits a foe with a Status-Class Move or a foe triggers your Pokemon's Hazard
     Effect: After the Move is resolved, your Pokemon may perform a Dirty Trick or Manipulate Maneuver on that foe as a Free Action. The Maneuver automatically hits, but the target must be in range for the chosen Maneuver. Use your own Guile to resolve Manipulate Rolls.
 
-- 🔴 **Warper** — `todo` · P3 · themes: swap · engine: stat-tag
+- ✅ **Warper** — `auto` · P3 · themes: swap · engine: stat-tag
   - _Trainer Classes · [Class] [+Speed] · Static · Prereq: Elemental Connection (Psychic), Novice Guile_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - You gain the Probability Control Ability.
 
 <a id="features-12"></a>
@@ -1038,8 +1222,9 @@ P3 · 14 open of 14 · open
     »» Nets Caps: Targets affected by your Net Caps gain a -X penalty to all Damage Rolls, where X is your Technology Education Rank.
     »» Wonder Launcher: Whenever you apply an item to a target using the Wonder Launcher, they gain Temporary Hit Points equal to your Technology Education Rank.
 
-- 🔴 **Case Specialist** — `todo` · P3 · themes: heal, interrupt, multiturn, control, action, capture · engine: action-surfaced · class: Researcher
+- 🟡 **Case Specialist** — `partial` · P3 · themes: heal, interrupt, multiturn, control, action, capture · engine: action-surfaced · code: trigRow:23760 · class: Researcher
   - _Do Porygon Dream of Mareep · [Jailbreaker Research Field] · 1 AP - Swift Action · Prereq: Jailbreaker, Adept Technology Education_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You hit a target with a Poke Ball with a Spray, Flash, Bounce, or Zap Case applied to it.
     Effect: The Case has additional effects according to its type(s).
     »» Spray Case: After resolving the effects of the Case, the target loses a Tick of Health Points for each Persistent or Volatile Status Affliction they have. This may only affect a target once per Scene.
@@ -1048,13 +1233,15 @@ P3 · 14 open of 14 · open
     »» Zap Case: The target can only use At-Will actions until the end of their next turn. This may only affect a target once per Scene.
     Recipe - …
 
-- 🔴 **Echoes of the Future [Playtest]** — `todo` · P3 · themes: interrupt · engine: action-surfaced · class: Researcher
+- 🟡 **Echoes of the Future [Playtest]** — `partial` · P3 · themes: interrupt · engine: action-surfaced · code: trigRow:23730 · class: Researcher
   - _Here Thar Be Playtests · [General Research Field] [Branch] [5-15 Playtest] · Daily x2 - Free Action · Prereq: Breadth of Knowledge, Master General Education_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You or your Pokemon make a roll
     Effect: You may roll twice and keep the best result.
 
-- 🔴 **Emergency Reactivation** — `todo` · P3 · themes: interrupt, control, status, action · engine: action-surfaced · class: Researcher
+- 🟡 **Emergency Reactivation** — `partial` · P3 · themes: interrupt, control, status, action · engine: action-surfaced · code: trigRow:23731 · class: Researcher
   - _Do Porygon Dream of Mareep · [Upgrader Research Field] · 1 AP - Free Action · Prereq: Upgrader, Adept Technology Education_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You or your Pokemon suffer Augmentation Shock
     Effect: The triggering user does not suffer Augmentation Shock and their Augmentations are not disabled. This Feature may affect a target only once per Scene.
     Recipe - Limb Augments
@@ -1084,8 +1271,9 @@ P3 · 14 open of 14 · open
     Effect: You combine the two Poke Ball Cases into a single Fusion Case with both effects and types. Fusion Cases may not be used as Ingredients for this Feature.
     Recipe - Advanced Cases
 
-- 🔴 **I Meant to Do That** — `todo` · P3 · themes: interrupt, swap, status, damage, action · class: Researcher
+- 🟡 **I Meant to Do That** — `partial` · P3 · themes: interrupt, swap, status, damage, action · code: trigRow:23761 · class: Researcher
   - _Here Thar Be Playtests · [Gadgeteer Research Field] [Branch] [5-15 Playtest] · At-Will - Special · Prereq: Improvised Gadgets, Adept Technology Education_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Condition: You must have at least one Equipment Item you created with Improvised Gadgets equipped to use this Feature.
     Effect: Choose one of your equipped items you created with Improved Gadgets. It is destroyed and cannot be repaired, and that instance of Improvised Gadgets is immediately Unbound. Use the effect below corresponding to the Capability granted by the chosen item.
     
@@ -1117,19 +1305,22 @@ P3 · 14 open of 14 · open
 <a id="features-13"></a>
 ## `features-13` — Blessed & The Damned
 
-P3 · 13 open of 13 · open
+P3 · 9 open of 13 · open
 
-- 🔴 **Branded** — `todo` · P3 · themes: stat
+- ⚪ **Branded** — `manual` · P3 · themes: stat
   - _Blessed & The Damned · [Patron Stat] · Static · Prereq: GM Permission_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - You have made a contract with a deity or other supernatural being and have been Branded for it. This Brand may or may not be of your choosing. The other party will uphold their side of the deal and expects you to do the same. Other Legendaries may be wary to grant you Gifts in the future based on the contents of this contract. Your Patron Stats for this feature are those of the being you made
 
-- 🔴 **Gift of Command** — `todo` · P3 · themes: control, status, action · engine: action-surfaced
+- ⚪ **Gift of Command** — `manual` · P3 · themes: control, status, action · engine: action-surfaced
   - _Blessed & The Damned · [Patron Stat] · Static | 2 AP - Standard Action, Interrupt · Prereq: One Major Gift from Your Patron Legendary_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Static Effect: You sense the presence of and can identify those with Gifts coming from your patron's subservient Pokemon. You know which Gifts someone has from your patron's subservient Pokemon by looking at them.
     2 AP Effect: Target Trainer within 8 meters with a Gift from your patron's subservient Pokemon has the Gift of your choice from that subservient Pokemon disabled for the next ten minutes.
 
-- 🔴 **Gift of Power** — `todo` · P3 · themes: barrier
+- ⚪ **Gift of Power** — `manual` · P3 · themes: barrier
   - _Blessed & The Damned · [Patron Stat] · One Time Use · Prereq: Pokemon Form Level 60_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Target: A Trainer
     Effect: You gift your target with a Blessing of your own. Whether this makes them Touched, a Signer, or Branded is at your digression. The actual Blessings may not need be the one listed here for your Legendary Form, but ones of your own creation at your GM's discretion.
 
@@ -1181,18 +1372,20 @@ All your Patron's Major Gifts, GM Permission (if no Pact Gift)_
   - You gain two Blessings in the form of Signs, marked Rank 3 or lower. You must additionally meet any Prerequisites of the Blessing.
     Rank 3 Blessings: Blessed Resilience, Insight of the Great Ones
 
-- 🔴 **Symbolsight** — `todo` · P3 · themes: action · engine: action-surfaced
+- ⚪ **Symbolsight** — `manual` · P3 · themes: action · engine: action-surfaced
   - _Blessed & The Damned · [Patron Stat] · Static | 1 AP - Standard Action · Prereq: GM Permission_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Static: You know when there are people, Pokemon, or objects that would appear differently to you through Symbolsight within an area of you about the size of a small town. You do not know their location, number, or distance from you, only that there is at least one within the range of your sense.
     1 AP Effect: For the next ten minutes, you see the world through the lens of Symbolsight. You may end this effect early as a Free Action.
 
 <a id="features-14"></a>
 ## `features-14` — Cheerleader [Playtest], Coordinator, Fashionista
 
-P3 · 18 open of 18 · open
+P3 · 7 open of 18 · open
 
-- 🔴 **Bring It On! [Playtest]** — `todo` · P3 · themes: heal, interrupt, damage, action, skill · engine: action-surfaced · class: Cheerleader [Playtest]
+- 🟡 **Bring It On! [Playtest]** — `partial` · P3 · themes: heal, interrupt, damage, action, skill · engine: action-surfaced · code: trigRow:23732 · class: Cheerleader [Playtest]
   - _Here Thar Be Playtests · [9-15 Playtest] · 1 AP - Free Action · Prereq: Cheers [Playtest], Adept Charm_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Effect: You may trigger Bring It On! whenever...
     »» A Cheered Ally takes Damage, to grant them 5
      Damage Reduction agains the triggering Damage.
@@ -1203,13 +1396,15 @@ P3 · 18 open of 18 · open
     A target may benefit from each "Bring It On!" effect
      only once per Scene.
 
-- 🔴 **Cheers [Playtest]** — `todo` · P3 · themes: interrupt, swap, cs, action, skill · engine: action-surfaced · class: Cheerleader [Playtest]
+- 🟡 **Cheers [Playtest]** — `partial` · P3 · themes: interrupt, swap, cs, action, skill · engine: action-surfaced · code: trigRow:23712 · class: Cheerleader [Playtest]
   - _Here Thar Be Playtests · [9-15 Playtest] · X AP - Swift Action · Prereq: Cheerleader [Playtest]_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - Trigger: You use [Orders]
     Effect: The target or targets of the triggering [Orders] are Cheered for 1 full round. While Cheered, the target's Combat Stages cannot be lowered by foe's attacks, features, or abilities. This Feature costs 0 AP if the triggering effect affects only one ally, and costs 1 AP if it affects two or more.
 
-- 🔴 **Go, Fight, Win! [Playtest]** — `todo` · P3 · themes: heal, cs, damage, action, skill, stat · engine: action-surfaced · class: Cheerleader [Playtest]
+- 🟡 **Go, Fight, Win! [Playtest]** — `partial` · P3 · themes: heal, cs, damage, action, skill, stat · engine: action-surfaced · code: trigRow:23733 · class: Cheerleader [Playtest]
   - _Here Thar Be Playtests · [Orders] [9-15 Playtest] · Scene x3 - Standard Action · Prereq: Moment of Action [Playtest], Expert Charm_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Effect: Choose and perform one of the cheers below. You may perform each Cheer only once per Scene.
     »» Show Your Best!: Choose Def or Sp.Def, all allies on the Field gain +1 CS in the chosen Stat.
     »» Don't Stop Now!: All allies on the Field gain Temporary Hit Points equal to your Charm Rank.
@@ -1222,39 +1417,46 @@ P3 · 18 open of 18 · open
      targets an Ally with an Ability or Status Move, the
      targeted Ally becomes Cheered.
 
-- 🔴 **Keep Fighting! [Playtest]** — `todo` · P3 · themes: heal, interrupt, skill · engine: action-surfaced · class: Cheerleader [Playtest]
+- 🟡 **Keep Fighting! [Playtest]** — `partial` · P3 · themes: heal, interrupt, skill · engine: action-surfaced · code: trigRow:23734 · class: Cheerleader [Playtest]
   - _Here Thar Be Playtests · [9-15 Playtest] · Daily x2 - Free Action · Prereq: 5 Cheerleader [Playtest] Features, Master Charm_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon or an Ally Trainer with over 1 Hit Point is reduced to 0 Hit Points or lower
     Effect: That Ally's Hit Point count is reduced to 1 instead, and then gains Temporary Hit Points equal to your Charm Rank doubled.
 
-- 🔴 **Moment of Action [Playtest]** — `todo` · P3 · themes: action · engine: action-surfaced · class: Cheerleader [Playtest]
+- ✅ **Moment of Action [Playtest]** — `auto` · P3 · themes: action · engine: action-surfaced · code: STAT_TRAINING_MOVES:23868 · class: Cheerleader [Playtest]
   - _Here Thar Be Playtests · [Orders] [9-15 Playtest] · At-Will - Standard Action · Prereq: Cheerleader [Playtest]_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Target: Up to two Allied Trainers
     Effect: Each target gains 1 Temporary Action Point.
      These Action Points disappear after one full Round.
 
-- 🔴 **Adaptable Performance** — `todo` · P3 · themes: interrupt, action, social · engine: action-surfaced · class: Coordinator
+- ⚪ **Adaptable Performance** — `manual` · P3 · themes: interrupt, action, social · engine: action-surfaced · class: Coordinator
   - _Trainer Classes · Scene - Free Action · Prereq: Coordinator_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Trigger: Your Pokemon's Turn to use a Move in a Contest
     Effect: Choose two of your Pokemon's Moves. Your Pokemon may perform your Contest Move as if had the Contest Typing of one of your chosen Moves, and had the effects of the other. You may not use either move on the next round of the contest. This effect may be used once per Contest.
 
-- 🔴 **Decisive Director** — `todo` · P3 · themes: multiturn, skill · engine: action-surfaced · class: Coordinator
+- ✅ **Decisive Director** — `auto` · P3 · themes: multiturn, skill · engine: action-surfaced · code: STAT_TRAINING_MOVES:23872 · class: Coordinator
   - _Trainer Classes · [Orders] · At-Will - Standard Action · Prereq: Coordinator_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Target: A Pokemon
     Effect: Add or subtract X from the target's Initiative until the end of your next turn. X is equal to your Charm Rank doubled.
 
-- 🔴 **Flexible Preparations** — `todo` · P3 · themes: multiturn, stat, social · class: Coordinator
+- ⚪ **Flexible Preparations** — `manual` · P3 · themes: multiturn, stat, social · class: Coordinator
   - _Trainer Classes · Daily - Extended Action · Prereq: Adaptable Performance, Adept Charm, Command, Guile, Intimidate, or Intuition_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Target: A Pokemon that has Contest Stats from Poffins
     Effect: The target may reallocate up to 2d6 of Poffin-Derived Contest Stats from one Contest Stat to another. This effect lasts until the end of the day.
 
-- 🔴 **Nuanced Performance** — `todo` · P3 · themes: interrupt · engine: action-surfaced · class: Coordinator
+- ✅ **Nuanced Performance** — `auto` · P3 · themes: interrupt · engine: action-surfaced · code: STAT_TRAINING_MOVES:23886 · class: Coordinator
   - _Trainer Classes · 1 AP - Free Action · Prereq: Coordinator, Expert Charm, Command, Guile, Intimidate, or Intuition_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Trigger: Your Pokemon miss all targets with a Move
     Effect: That Move's Frequency is not expended. This does not work with Moves that may fail to activate, such as moves with the Execute keyword.
 
-- 🔴 **Reliable Performance** — `todo` · P3 · themes: interrupt, damage, skill, social · engine: action-surfaced · class: Coordinator
+- ⚪ **Reliable Performance** — `manual` · P3 · themes: interrupt, damage, skill, social · engine: action-surfaced · class: Coordinator
   - _Trainer Classes · 2 AP - Free Action · Prereq: Nuanced Performance, Master Charm, Command, Guile, Intimidate, or Intuition_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Trigger: Your Pokemon makes an Appeal Roll, Accuracy Check, or Skill Check
     Effect: For appeal rolls, instead of making the Appeal Roll, you gain 1 Appeal Point for each Dice you would have rolled. For Accuracy Checks, act as if you had rolled a 10. For Skill Checks, multiply 3.5 by your Pokemon's Skill Rank, and use the resulting number as the result of your roll, rounded down. For all rolls, add or subtract any modifiers as normal.
 
@@ -1266,41 +1468,47 @@ Coordinator, 1 Pokemon with 3d6 in a specific certain Constat Stat from Poffins_
     
     Note: When you take Style Expert, choose from Beauty, Cool, Cute, Smart, or Tough. This becomes your Chosen Contest Stat. You may take Style Expert multiple times, each time choosing a different Contest Stat
 
-- 🔴 **Accessorize** — `todo` · P3 · themes: stat · class: Fashionista
+- ⚪ **Accessorize** — `manual` · P3 · themes: stat · class: Fashionista
   - _Trainer Classes · Static · Prereq: Dashing Makeover, one Fashionista Skill at Adept_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - You may wear and benefit from two Accessory Slot Items at once. The two items must be of different types and must not share an effect. For example, a Fire Brace cannot be paired with another Fire Brace or a Fire Plate, but it could be paired with an Ice Brace, a Fire Booster, or a Stat Booster.
 
-- 🔴 **Dashing Makeover** — `todo` · P3 · themes: swap · class: Fashionista
+- ⚪ **Dashing Makeover** — `manual` · P3 · themes: swap · class: Fashionista
   - _Trainer Classes · Bind 2 AP - Extended Action · Prereq: Fashionista_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Target: A Trainer or Pokemon
     Effect: When you activate Dashing Makeover, choose one Equipment or Held Item you can create. While this Feature is Bound, the target gains the effects of the chosen item, as long as they would normally be able to equip it (e.g.: Trainers cannot equip Incense Items).They do not need to take up an Equipment or Held Item slot to gain this benefit. A target may only be affected by one instance of Dashing Makeover at a time.
     Recipe - Practical Fashion
 
-- 🔴 **Dress to Impress** — `todo` · P3 · themes: action · engine: action-surfaced · class: Fashionista
+- ⚪ **Dress to Impress** — `manual` · P3 · themes: action · engine: action-surfaced · class: Fashionista
   - _Trainer Classes · Scene x2 - Standard Action · Prereq: Versatile Wardrobe, two Fashionista Skills at Expert_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Target: Your Chic Pokemon
     Effect: Your Pokemon gains the effect of all items in extra slots granted by Versatile Wardrobe for one full round. Dress to Impress may only target a Pokemon once per Scene.
 
-- 🔴 **Parfumier** — `todo` · P3 · themes: barrier, swap · class: Fashionista
+- ⚪ **Parfumier** — `manual` · P3 · themes: barrier, swap · class: Fashionista
   - _Trainer Classes · Static · Prereq: Fashionista, one Fashionista Skill at Expert_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Whenever you create an Incense Held Item, choose Sweet Scent or Aromatic Mist. While your Pokemon is holding that Incense Item in an active Held Item slot, they add the chosen Move to their Move List.
     Recipe - Incense Maker
 
-- 🔴 **Style is Eternal** — `todo` · P3 · themes: interrupt, swap, action · engine: action-surfaced · class: Fashionista
+- 🟡 **Style is Eternal** — `partial` · P3 · themes: interrupt, swap, action · engine: action-surfaced · code: trigRow:23710 · class: Fashionista
   - _Trainer Classes · 1 AP - Free Action · Prereq: Fashionista_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon is Disarmed or would have their Held Item removed by another effect such as Thief or Covet
     Effect: Your Pokemon instead retains their Held Item. Style is Eternal may only be used once per Scene per Pokemon.
     Recipe - Focused Fashion
 
-- 🔴 **Versatile Wardrobe** — `todo` · P3 · themes: swap, action · class: Fashionista
+- ⚪ **Versatile Wardrobe** — `manual` · P3 · themes: swap, action · class: Fashionista
   - _Trainer Classes · At-Will - Extended Action · Prereq: Fashionista, two Fashionista Skills at Adept_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Target: Your Pokemon with at least 2 Tutor Points remaining
     Effect: The target loses 2 Tutor Points and then becomes Chic. Chic Pokemon gain two extra Held Item slots with which they can carry Held Items. However, the items in these slots have no effect and are not treated as equipped. As a Swift Action on their turn, Chic Pokemon may swap a currently active Held Item with an item stored in these slots. Chic Pokemon may not carry multiple items of the same type or with repeated effects.
 
 <a id="features-15"></a>
 ## `features-15` — Game of Throhs, Hobbyist, Hunter
 
-P3 · 18 open of 18 · open
+P3 · 7 open of 18 · open
 
 - 🔴 **Arcanist** — `todo` · P3 · themes: damage, action, skill, stat · engine: stat-tag
   - _Game of Throhs · [Class][+Special Attack] · At-Will - Extended Action · Prereq: Arcane Training_
@@ -1309,75 +1517,89 @@ P3 · 18 open of 18 · open
     »» Increase the Damage Base and Effect Range of Struggle Attacks and Arcane Weapon Moves made with your Soul Bonded Weapon by +1 for each Occult Education Rank you have above Novice, up to a maximum of +3 at Master Rank.
     »» As a Shift Action, you may beckon your Soul Bonded Weapon to your hands if it is within 10 meters. If it is being held by someone else who does not want to let go of the weapon, make an Occult vs Athletics Opposed …
 
-- 🔴 **Fortress** — `todo` · P3 · themes: interrupt, multiturn, skill · engine: action-surfaced, stat-tag
+- 🟡 **Fortress** — `partial` · P3 · themes: interrupt, multiturn, skill · engine: action-surfaced, stat-tag · code: trigRow:23711
   - _Game of Throhs · [Class] [+Defense] [Weapon] · At-Will - Free Action · Prereq: Novice Combat, Novice Focus_
+  - note: trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You target an enemy with a Struggle attack or Weapon Attack and end your turn adjacent to the target.
     Effect: You Mark all targets of the attack until the end of your next turn. Marked foes take a penalty to Attack Rolls against any targets besides you equal to your Focus Rank. A Mark from a different source (such as a second Fortress or a Fighting Type Ace's Pokemon) will overwrite your Mark.
 
-- 🔴 **Marksman** — `todo` · P3 · themes: swap · engine: stat-tag
+- ✅ **Marksman** — `auto` · P3 · themes: swap · engine: stat-tag
   - _Game of Throhs · [Class][+Attack][Weapon] · Static · Prereq: Novice Combat, Novice Perception_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - You gain the Sniper Ability.
 
 - 🔴 **Rune Master** — `todo` · P3 · themes: stat · engine: stat-tag
   - _Game of Throhs · [Class] [+Attack or Special Attack] · Static · Prereq: Own 2 Unown, Novice Occult Education_
   - You gain the Gather Unown capability, and your Unown gain the Letter Press Capability. When using Gather Unown, you are treated as a level 20 Pokemon.
 
-- 🔴 **Skirmisher** — `todo` · P3 · themes: swap · engine: stat-tag
+- ✅ **Skirmisher** — `auto` · P3 · themes: swap · engine: stat-tag
   - _Game of Throhs · [Class] [+Speed] [Weapon] · Static · Prereq: Novice Combat, Novice Acrobatics_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Flutter or Vanguard. You gain the Chosen Ability.
 
-- 🔴 **Unstoppable Will** — `todo` · P3 · themes: swap · engine: stat-tag
+- ✅ **Unstoppable Will** — `auto` · P3 · themes: swap · engine: stat-tag
   - _Game of Throhs · [+Defense] · Static · Prereq: Slow or Steady, Expert Combat or Focus_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - You gain the Discipline Ability.
 
-- 🔴 **Dabbler** — `todo` · P3 · themes: stat · class: Hobbyist
+- ⚪ **Dabbler** — `manual` · P3 · themes: stat · class: Hobbyist
   - _Trainer Classes · Static · Prereq: Hobbyist, Expert General Education or Perception_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - At the Level 5, 10, 20, 30, and 40 Character Advancement Level Milestones, if you choose to gain Bonus Stats, you also gain an Edge for which you qualify. If you choose Bonus Edges or Features, you also gain +2 to your choice of Attack or Special Attack. This applies retroactively.
 
-- 🔴 **Dilettante Rank 1** — `todo` · P3 · themes: skill · class: Hobbyist
+- ⚪ **Dilettante Rank 1** — `manual` · P3 · themes: skill · class: Hobbyist
   - _Trainer Classes · [Ranked 4] · Static · Prereq: Hobbyist_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - You gain both an Edge and a General Feature from the lists on page 86 of the Core handbook. You may gain the chosen Edge and Feature even if you do not meet the Skill prerequisites. You must meet any other Prerequisites.  Whenever you gain a Feature or Edge this way, change any Skill Rank applications or Skill Checks mandated directly by the Edge or Feature into your choice of General Education or Perception Skill Checks or Rank applications instead.
 
-- 🔴 **Dilettante Rank 2** — `todo` · P3 · themes: skill · class: Hobbyist
+- ⚪ **Dilettante Rank 2** — `manual` · P3 · themes: skill · class: Hobbyist
   - _Trainer Classes · [Ranked 4] · Static · Prereq: Hobbyist_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - You gain both an Edge and a General Feature from the lists on page 86 of the Core handbook. You may gain the chosen Edge and Feature even if you do not meet the Skill prerequisites. You must meet any other Prerequisites.  Whenever you gain a Feature or Edge this way, change any Skill Rank applications or Skill Checks mandated directly by the Edge or Feature into your choice of General Education or Perception Skill Checks or Rank applications instead.
 
-- 🔴 **Dilettante Rank 3** — `todo` · P3 · themes: skill · class: Hobbyist
+- ⚪ **Dilettante Rank 3** — `manual` · P3 · themes: skill · class: Hobbyist
   - _Trainer Classes · [Ranked 4] · Static · Prereq: Hobbyist_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - You gain both an Edge and a General Feature from the lists on page 86 of the Core handbook. You may gain the chosen Edge and Feature even if you do not meet the Skill prerequisites. You must meet any other Prerequisites.  Whenever you gain a Feature or Edge this way, change any Skill Rank applications or Skill Checks mandated directly by the Edge or Feature into your choice of General Education or Perception Skill Checks or Rank applications instead.
 
-- 🔴 **Dilettante Rank 4** — `todo` · P3 · themes: skill · class: Hobbyist
+- ⚪ **Dilettante Rank 4** — `manual` · P3 · themes: skill · class: Hobbyist
   - _Trainer Classes · [Ranked 4] · Static · Prereq: Hobbyist_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - You gain both an Edge and a General Feature from the lists on page 86 of the Core handbook. You may gain the chosen Edge and Feature even if you do not meet the Skill prerequisites. You must meet any other Prerequisites.  Whenever you gain a Feature or Edge this way, change any Skill Rank applications or Skill Checks mandated directly by the Edge or Feature into your choice of General Education or Perception Skill Checks or Rank applications instead.
 
-- 🔴 **Look and Learn** — `todo` · P3 · themes: action · class: Hobbyist
+- ⚪ **Look and Learn** — `manual` · P3 · themes: action · class: Hobbyist
   - _Trainer Classes · x2 Uses - Extended Action · Prereq: Hobbyist, Expert General Education or Perception_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - When you activate Look and Learn, you may gain any of the Features listed on page 86 of the Core handbook even though they are Features from other Classes. You do not need to meet their normal prerequisites, but you must meet the Prerequisites listed. Look and Learn can be used two times; once to learn a Feature from the Scene Features List, and once to learn a Feature from the Action Point Features List.
 
-- 🔴 **Don't Look Away** — `todo` · P3 · themes: heal, interrupt, status, action · engine: action-surfaced, stat-tag · class: Hunter
+- 🟡 **Don't Look Away** — `partial` · P3 · themes: heal, interrupt, status, action · engine: action-surfaced, stat-tag · code: trigRow:23735 · class: Hunter
   - _Trainer Classes · [+Speed] · 1 AP - Free Action · Prereq: Pack Tactics, Adept Stealth, Adept Survival_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You or your Pokemon with Pack Hunt or Teamwork hits with an Attack of Opportunity
     Effect: The hit foe loses a Tick of Hit Points, and is Slowed for 1 round. Don't Look Away may be triggered once per round.
 
-- 🔴 **Finisher** — `todo` · P3 · themes: status, damage · engine: stat-tag · class: Hunter
+- ✅ **Finisher** — `auto` · P3 · themes: status, damage · engine: stat-tag · code: attackTargetWidget:51220 · class: Hunter
   - _Trainer Classes · [+Speed] · Static · Prereq: Hunter, Adept Stealth, Adept Survival_
+  - note: v621: attackTargetWidget +5 per target that is Fainted/Flinched/Asleep/Stuck/Slowed/Trapped/Tripped (Trainer or their Pokémon)
   - You and your Pokemon gain a +5 bonus to Damage Rolls against Fainted, Flinched, Sleeping, Stuck, Slowed, Trapped, or Tripped targets.
 
 - 🔴 **Hunter's Reflexes** — `todo` · P3 · themes: swap · engine: stat-tag · class: Hunter
   - _Trainer Classes · [+Speed] · Static · Prereq: Hunter, Adept Stealth or Survival_
   - You and your Pokemon may make up to three Attacks of Opportunity each round, instead of only one. Additionally, your attacks always consider you to be adjacent to your target for the purposes of benefiting from your Pokemon's Teamwork Ability, and count as Melee attacks for the purposes of triggering their Pack Hunt Ability.
 
-- 🔴 **Pack Master** — `todo` · P3 · themes: multiturn, damage · engine: stat-tag · class: Hunter
+- 🟢 **Pack Master** — `likely` · P3 · themes: multiturn, damage · engine: stat-tag · code: teamworkAllies:24551 · class: Hunter
   - _Trainer Classes · [+Speed] · Static · Prereq: Pack Tactics, Expert Stealth, Expert Survival_
   - For you and your Pokemon with Teamwork, Teamwork's effect now reads "While you are adjacent to an opponent, allies targeting that opponent receive a +2 bonus to Accuracy Checks". Whenever you or your Pokemon successfully hit a foe with Pack Hunt, they gain a +2 Bonus to Accuracy Rolls and a +5 Bonus to Damage Rolls against that foe until the end of their next turn.
 
-- 🔴 **Pack Tactics** — `todo` · P3 · themes: swap · engine: stat-tag · class: Hunter
+- ✅ **Pack Tactics** — `auto` · P3 · themes: swap · engine: stat-tag · code: STAT_TRAINING_MOVES:23894 · class: Hunter
   - _Trainer Classes · [+Speed] · At-Will - Extended Action · Prereq: Hunter_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Target: Your Pokemon with at least 2 Tutor Points
     Effect: The target loses 2 Tutor Points and gains the Pack Hunt or Teamwork Ability. You may only target a Pokemon with Pack Tactics only once.
 
-- 🔴 **Surprise!** — `todo` · P3 · themes: interrupt, status, action, capture · engine: action-surfaced, stat-tag · class: Hunter
+- 🟡 **Surprise!** — `partial` · P3 · themes: interrupt, status, action, capture · engine: action-surfaced, stat-tag · code: trigRow:23736 · class: Hunter
   - _Trainer Classes · [+Speed] · X AP - Swift Action · Prereq: Hunter, Adept Stealth or Survival_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You make an attack against a foe that does not anticipate an attack or is adjacent to your Pokemon with Pack Hunt or Teamwork
     Effect: Make two attack rolls for the triggering action, and use the better result to finalize the attack. If both attacks would hit, the target is Flinched. Surprise! may be used only once per Scene per target. If the triggering attack was a Poke Ball, Hand Net, Weighted Net, Glue Cannon, or Struggle Attack, Surprise! costs 1 AP to activate; otherwise, it costs 2 AP.
     May Playtest Errata: If the triggering attack was a Cap Cannon, Surprise! costs 1 AP to activate.
@@ -1385,40 +1607,48 @@ P3 · 18 open of 18 · open
 <a id="features-16"></a>
 ## `features-16` — Marksman, Rune Master, Survivalist
 
-P3 · 18 open of 18 · open
+P3 · 7 open of 18 · open
 
-- 🔴 **Aiming Down The Sights** — `todo` · P3 · themes: multiturn, damage · engine: action-surfaced, stat-tag · class: Marksman
+- ⚪ **Aiming Down The Sights** — `manual` · P3 · themes: multiturn, damage · engine: action-surfaced, stat-tag · class: Marksman
   - _Game of Throhs · [+Attack][Weapon] · At Will - Shift Action · Prereq: Marksman_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Your next Weapon Attack with a long-range Weapon gains +2 to its Accuracy Roll and Critical Hit Range. This effect lasts until used or until the start of your next turn.
 
-- 🔴 **Clear Shot** — `todo` · P3 · themes: weather, interrupt, status, damage · engine: action-surfaced, stat-tag · class: Marksman
+- ⚪ **Clear Shot** — `manual` · P3 · themes: weather, interrupt, status, damage · engine: action-surfaced, stat-tag · class: Marksman
   - _Game of Throhs · [+Attack][Weapon] · Scene x2 - Swift Action · Prereq: Marksman, Expert Perception or Combat_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Trigger: You make a ranged Weapon Attack against a target with no other combatants or Rough or Blocking Terrain within 2 meters
     Effect: The target is considered Vulnerable against this attack, and you increase your Critical Hit range by +4 for this attack.
 
-- 🔴 **Crippling Shot** — `todo` · P3 · themes: status, typing, cs, damage, skill · engine: action-surfaced, stat-tag · class: Marksman
+- ⚪ **Crippling Shot** — `manual` · P3 · themes: status, typing, cs, damage, skill · engine: action-surfaced, stat-tag · class: Marksman
   - _Game of Throhs · [+Attack][Weapon] · 2 AP - Full Action · Prereq: Marksman, Expert Perception or Combat_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Make a Ranged Struggle Attack attack with a -2 penalty to Accuracy. If you hit, the attack deals Damage as if it was resisted one step, but the target becomes Slowed, loses 1 Speed Combat Stage, and you initiate a Trip Maneuver against the target. You may use your Perception Skill to resolve the Opposed Check if you wish.
 
-- 🔴 **Dead-Eye Shot** — `todo` · P3 · themes: damage, action · engine: stat-tag · class: Marksman
+- ⚪ **Dead-Eye Shot** — `manual` · P3 · themes: damage, action · engine: stat-tag · class: Marksman
   - _Game of Throhs · [+Attack][Weapon] · Scene x2 - Standard, Priority · Prereq: Marksman, Master Combat or Perception_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Use of Dead-Eye Shot must be declared at the start of the round. Nothings happens at this time. At the end of the round, the user may use their Shift Action, and then make a Ranged Weapon Attack and roll twice for Accuracy. You may resolve the attack using either result, but if you choose to use the lower result and the attack hits, it is automatically a Critical Hit.
 
-- 🔴 **Double Shot** — `todo` · P3 · themes: damage · engine: action-surfaced, stat-tag · class: Marksman
+- ⚪ **Double Shot** — `manual` · P3 · themes: damage · engine: action-surfaced, stat-tag · class: Marksman
   - _Game of Throhs · [+Attack][Weapon] · 1 AP - Standard Action · Prereq: Marksman, Adept Combat_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - You may make two Struggle Attacks with a -2 penalty to Accuracy, each targeting the same foe. If the first attack gains the benefit of Aiming Down the Sights or Clear Shot, the second attack also gains the same benefits for free.
 
-- 🔴 **Overwatch** — `todo` · P3 · themes: action · engine: action-surfaced, stat-tag · class: Marksman
+- ⚪ **Overwatch** — `manual` · P3 · themes: action · engine: action-surfaced, stat-tag · class: Marksman
   - _Game of Throhs · [+Attack][Weapon] · At-Will - Standard Action · Prereq: Marksman, Adept Perception or Combat_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Create a Line X, and place a Blast 3 with at least three meters overlapping the Line's area. X is equal to your Weapon's Range. For one full round, if a foe moves in or out of that area, you may make a Ranged Weapon attack, Frequency allowing, against that foe as a Free Action. You may not attack a specific foe more than once per round this way. While this is in effect, if you Move from your current location, Overwatch's effect is lost.
 
-- 🔴 **Alarm Runes** — `todo` · P3 · themes: interrupt, action · engine: action-surfaced, stat-tag · class: Rune Master
+- 🟡 **Alarm Runes** — `partial` · P3 · themes: interrupt, action · engine: action-surfaced, stat-tag · code: trigRow:23762 · class: Rune Master
   - _Game of Throhs · [+Attack or Special Attack] · Bind 1 AP - Standard Action · Prereq: Glyph_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Target: A Glyph you have put down, regardless of distance
     Effect: You give the Glyph a Trigger, which may be as vague or as precise as you like (i.e.: "If anyone enters the room", "if James peeks in my diary", "If a Torkoal uses Surf while I scream the word 'Gelato'"). If the trigger is met within the Rune's 30 meters, the Rune will become visible, and will begin screeching loudly, alerting anyone nearby. You are capable of hearing this screeching noise in your head, regardless of your current distance. Glyphs will remember their Triggers as long as the AP spent on the Feature is Bound. If you have the Explosive Runes or Sentry Runes Features, you may instruct this Glyph to automatically use …
 
-- 🔴 **Explosive Runes** — `todo` · P3 · themes: damage, stat · engine: action-surfaced, stat-tag · class: Rune Master
+- 🟡 **Explosive Runes** — `partial` · P3 · themes: damage, stat · engine: action-surfaced, stat-tag · code: trigRow:23763 · class: Rune Master
   - _Game of Throhs · [+Attack or Special Attack] · 1 AP - Standard Action · Prereq: Adept Occult Education, Glyph, Hidden Power_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Target: A Glyph you have put down, regardless of distance
     Effect: You may use Hidden Power, originating the attack from the location of the targeted Glyph. Use your own Stats and Hidden Power values to calculate damage. Using this Feature causes the Glyph to become visible and glow for a minute afterwards.
 
@@ -1427,28 +1657,33 @@ P3 · 18 open of 18 · open
   - Target: Your Unown that is not part of a Prime Unown
     Effect: You may set the target Unown against any flat surface, and turn the Unown into a glyph. Glyphs have HP equal to your Level, and no other stats. Glyphs last until they are destroyed or intentionally de-activated, at which time the Unown returns to Unown Space, disappearing forever. You may have a number of active Glyphs equal to your Occult Education Rank. When setting a Glyph, you may have the Glyphs be either visible or invisible, as you prefer. At any time, as a Standard Action, you may Channel any Glyph you have set down. This causes the Glyph's eye to open and become visible if it was not. While you are channeling a Glyph, you …
 
-- 🔴 **Hidden Power** — `todo` · P3 · themes: stat · engine: stat-tag · class: Rune Master
+- ✅ **Hidden Power** — `auto` · P3 · themes: stat · engine: stat-tag · class: Rune Master
   - _Game of Throhs · [+Attack or Special Attack] · Static · Prereq: Rune Master_
+  - note: syncFeatureMoves reads 'You learn the Moves X and Y' (v594 sweep)
   - You learn the Move Hidden Power. Whenever you use Hidden Power, it may be either Physical or Special, adding the appropriate Attack Stat.
 
-- 🔴 **Sentry Runes** — `todo` · P3 · themes: interrupt, skill, stat · engine: action-surfaced, stat-tag · class: Rune Master
+- 🟡 **Sentry Runes** — `partial` · P3 · themes: interrupt, skill, stat · engine: action-surfaced, stat-tag · code: trigRow:23764 · class: Rune Master
   - _Game of Throhs · [+Attack or Special Attack] · 1 AP - Standard Action · Prereq: Expert Occult Education, Explosive Runes, Hidden Power_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Target: A Glyph you have put down, regardless of distance
     Effect: The target Glyph becomes an Unown of your Trainer Level, its Stats allocated as you wish. This Unown knows a single instance of Hidden Power, identical to your own. The Glyph can fight on its own without needing you to command it. At the end of the encounter, or after 5 minutes, the Unown returns to Unown Space forever, destroying the Glyph. You may only have one Glyph active in this way at a time; if various Alarm Glyphs are triggered to become Sentries at the same time, only one does so; the others will do so once the previous one has been destroyed if the Trigger condition is still being met.
 
-- 🔴 **Words of Power** — `todo` · P3 · themes: interrupt · engine: stat-tag · class: Rune Master
+- 🟡 **Words of Power** — `partial` · P3 · themes: interrupt · engine: stat-tag · code: trigRow:23765 · class: Rune Master
   - _Game of Throhs · [+Attack or Special Attack] · Static · Prereq: Adept Occult Education, Hidden Power_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You or your Pokemon use Hidden Power
     Effect: Instead of a Burst, you may choose to have Hidden Power be a 1 Target Melee, 1 Target 6m, or Cone 2. Additionally, you and your Prime Unown always have STAB on Hidden Power as if you or they were of the same Type.
 
-- 🔴 **Adaptive Geography** — `todo` · P3 · themes: weather, interrupt · engine: action-surfaced, stat-tag · class: Survivalist
+- ⚪ **Adaptive Geography** — `manual` · P3 · themes: weather, interrupt · engine: action-surfaced, stat-tag · class: Survivalist
   - _Trainer Classes · [+HP] · Scene x2 - Free Action · Prereq: 4 Survivalist Features, Master Survival_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Trigger: You or your Pokemon gains Initiative
     Effect: The triggering target takes their turn as if they were in a terrain adjacent to the terrain they are in on the following list. For example, if you are standing in Wetlands terrain, you may act as if you are standing in Forest or Ocean Terrain. This affects Survivalist Features, Naturewalk Capabilities, Moves with the Environ Keyword, etc.
     Grassland - Forest - Wetlands - Ocean - Tundra - Mountain - Cave - Urban - Desert - Grassland
 
-- 🔴 **Natural Fighter** — `todo` · P3 · themes: weather, hazard, control, action · engine: stat-tag · class: Survivalist
+- ⚪ **Natural Fighter** — `manual` · P3 · themes: weather, hazard, control, action · engine: stat-tag · class: Survivalist
   - _Trainer Classes · [+HP] · 1 AP - Special · Prereq: Survivalist_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - You and your Pokemon become adept at using the environment to your advantage in battle. You or your Pokemon may activate Natural Fighter as a Standard Action to use the Move below corresponding to the current terrain. You and your Pokemon must still follow all Frequency limitations for the Move.
     »» Grassland: Cotton Spore
     »» Forest: Grass Whistle
@@ -1461,8 +1696,9 @@ P3 · 18 open of 18 · open
     »» Desert: Sand Attack
     May Playtest Errata: Urban terrains allow you and your Pokemon to use the Move Spikes instead of Fling.
 
-- 🔴 **Terrain Talent Rank 1** — `todo` · P3 · themes: weather · engine: stat-tag · class: Survivalist
+- 🟡 **Terrain Talent Rank 1** — `partial` · P3 · themes: weather · engine: stat-tag · class: Survivalist
   - _Trainer Classes · [Ranked 2][+HP] · Static · Prereq: Survivalist, 2 Mastered Terrains_
+  - note: The Technique picker (＋ Learn Technique on the class card) lists them; each Technique has its TECH_FX note / TECH_PRESS button (v600-611). The per-Rank pick count is not enforced.
   - You gain two Terrain Talents, chosen from the Terrains for which you gained Naturewalk from Survivalist.
     »» Grassland: Plains Runner
     »» Forest: Forest Ranger
@@ -1474,17 +1710,20 @@ P3 · 18 open of 18 · open
     »» Urban: Traceur
     »» Desert: Dune Walker
 
-- 🔴 **Terrain Talent Rank 2** — `todo` · P3 · themes: weather · engine: stat-tag · class: Survivalist
+- 🟡 **Terrain Talent Rank 2** — `partial` · P3 · themes: weather · engine: stat-tag · class: Survivalist
   - _Trainer Classes · [Ranked 2][+HP] · Static · Prereq: Survivalist, Master Survival, 4 Mastered Terrains_
+  - note: The Technique picker (＋ Learn Technique on the class card) lists them; each Technique has its TECH_FX note / TECH_PRESS button (v600-611). The per-Rank pick count is not enforced.
   - You gain two Terrain Talents, chosen from the Terrains for which you gained Naturewalk from Survivalist.
 
-- 🔴 **Trapper** — `todo` · P3 · themes: weather, hazard, multiturn, swap, status, typing, cs, skill · engine: stat-tag · class: Survivalist
+- ⚪ **Trapper** — `manual` · P3 · themes: weather, hazard, multiturn, swap, status, typing, cs, skill · engine: stat-tag · class: Survivalist
   - _Trainer Classes · [+HP] · Daily x2 - Extended Action · Prereq: Survivalist, Adept Survival_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - You create a consumable item that creates 8 meters of Hazard within 6 meters. All 8 meters must be adjacent with at least one other space of the Hazard. These Hazards cause foes that run into them to become Slowed until the end of their next turn and have an additional effect based on the terrain in which the item was made. When foes run into these Hazards, they are destroyed after their effects resolve. Pokemon and Trainers with Naturewalk for the terrains associated with a Hazard are immune to its effects. These items must be used the same day they are created or they lose all effect.
     »» Dust Trap - Grassland or Desert: A foe that runs into this Hazard is Blinded until the end of their nex …
 
-- 🔴 **Wilderness Guide** — `todo` · P3 · themes: weather, position, heal, interrupt, swap, status, damage, skill · engine: action-surfaced, stat-tag · class: Survivalist
+- ⚪ **Wilderness Guide** — `manual` · P3 · themes: weather, position, heal, interrupt, swap, status, damage, skill · engine: action-surfaced, stat-tag · class: Survivalist
   - _Trainer Classes · [+HP][Orders] · Scene x3 - Standard Action · Prereq: Survivalist, Expert Survival_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Wilderness Guide's effect depends on your current terrain.
     »» Grassland or Forest: All allies gain the Stealth Capability and a +2 bonus to their Overland Speed for one full round.
     »» Ocean or Wetlands: All allies gain 5 Damage Reduction and a +2 bonus to their Swim Speed for one full round.
@@ -1495,20 +1734,23 @@ P3 · 18 open of 18 · open
 <a id="features-17"></a>
 ## `features-17` — Taskmaster, Arcanist, Backpacker
 
-P3 · 16 open of 16 · open
+P3 · 13 open of 16 · open
 
-- 🔴 **Deadly Gambit** — `todo` · P3 · themes: interrupt, damage · engine: action-surfaced · class: Taskmaster
+- 🟡 **Deadly Gambit** — `partial` · P3 · themes: interrupt, damage · engine: action-surfaced · code: trigRow:23737 · class: Taskmaster
   - _Trainer Classes · Scene - Free Action · Prereq: 5 Taskmaster Features, Master Intimidate_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon is the target of a foe's damaging melee attack
     Effect: The triggering attack automatically hits as if it was a Critical Hit. Before damage resolves, your Pokemon may use a 1-Target damaging attack on the foe making the triggering attack as an Interrupt, Frequency allowing, and also automatically hits as a Critical Hit. Damage for both attacks then resolve at the same time.
 
-- 🔴 **Desperate Strike** — `todo` · P3 · themes: interrupt, damage, action · engine: action-surfaced · class: Taskmaster
+- 🟡 **Desperate Strike** — `partial` · P3 · themes: interrupt, damage, action · engine: action-surfaced · code: trigRow:23738 · class: Taskmaster
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Savage Strike, Expert Intimidate_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon triggers Cruelty, or scores a Critical Hit with damaging attack.
     Effect: Your Pokemon may apply the effects of Cruelty to the attack without expending Cruelty's Frequency. Cruelty's effects may be purchased as if the foe had additional injuries equal to the number of injuries on the user. Desperate Strike may be used once per Scene per Pokemon.
 
-- 🔴 **Pain Resistance** — `todo` · P3 · themes: interrupt, damage, action · engine: action-surfaced · class: Taskmaster
+- ✅ **Pain Resistance** — `auto` · P3 · themes: interrupt, damage, action · engine: action-surfaced · code: STAT_TRAINING_MOVES:23879 · class: Taskmaster
   - _Trainer Classes · 1 AP - Free Action · Prereq: Taskmaster, Adept Intimidate_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Trigger: Your Pokemon with 1 or more injuries takes Damage
     Effect: Your Pokemon gains X Damage Reduction against the triggering attack, where X is its Tick Value multiplied by the number of Injuries it has. This may be triggered once per Scene per Pokemon.
 
@@ -1518,125 +1760,150 @@ P3 · 16 open of 16 · open
     »» Expert: When your Pokemon Faints, you may pay 1 AP. If you do, your Pokemon Faints at -30% Hit Points instead.
     »» Master: While acting at 0 Hit Points or less, your Pokemon's Critical Hit, Effect Range, Evasion, Initiative, Damage Reduction, and Resistance Bonuses from being Hardened are doubled.
 
-- 🔴 **Savage Strike** — `todo` · P3 · themes: swap · class: Taskmaster
+- ✅ **Savage Strike** — `auto` · P3 · themes: swap · code: STAT_TRAINING_MOVES:23890 · class: Taskmaster
   - _Trainer Classes · At-Will - Extended Action · Prereq: Taskmaster_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Target: Your Pokemon with at least 2 Tutor Points
     Effect: The target loses 2 Tutor Points, and gains the Cruelty Ability.
 
-- 🔴 **Strike of the Whip** — `todo` · P3 · themes: heal, interrupt, status, cure, action · engine: action-surfaced · class: Taskmaster
+- 🟡 **Strike of the Whip** — `partial` · P3 · themes: heal, interrupt, status, cure, action · engine: action-surfaced · code: trigRow:23713 · class: Taskmaster
   - _Trainer Classes · At-Will - Swift Action · Prereq: Taskmaster, Press_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - Trigger: You use Press
     Effect: You may apply 1 or more of the following effects to the Pokemon hit by Press:
     »» Give the target 1 Injury and a Tick of Temporary Hit Points.
     »» Spend 1 AP and cure the target of Confusion, Infatuation, Rage, and Suppression.
     »» Use an [Orders] with targets you have on the target as a Free Action.
 
-- 🔴 **Authentic Thaumaturgy** — `todo` · P3 · themes: interrupt, skill · engine: action-surfaced, stat-tag · class: Arcanist
+- 🟡 **Authentic Thaumaturgy** — `partial` · P3 · themes: interrupt, skill · engine: action-surfaced, stat-tag · class: Arcanist
   - _Game of Throhs · [+Special Attack] · Scene x2 - Swift Action · Prereq: Arcanist, Expert Occult Education_
+  - note: The Technique picker (＋ Learn Technique on the class card) lists them; each Technique has its TECH_FX note / TECH_PRESS button (v600-611). The per-Rank pick count is not enforced.
   - Trigger: You use a Special Move 
     Effect: You may apply a Rank 2 Power Manipulation to your attack.
     Rank 2 Power Manipulations are: Berserk Blow, Energy Link, Enlarged Power, Lock of Fate
 
-- 🔴 **Metamagic** — `todo` · P3 · themes: barrier, interrupt, skill · engine: action-surfaced, stat-tag · class: Arcanist
+- 🟡 **Metamagic** — `partial` · P3 · themes: barrier, interrupt, skill · engine: action-surfaced, stat-tag · class: Arcanist
   - _Game of Throhs · [+Special Attack] · 1 AP - Swift Action · Prereq: Arcanist, Adept Occult Education_
+  - note: The Technique picker (＋ Learn Technique on the class card) lists them; each Technique has its TECH_FX note / TECH_PRESS button (v600-611). The per-Rank pick count is not enforced.
   - Trigger: You use a Special Move
     Effect: You may apply a Rank 1 Power Manipulation to your attack.
     Rank 1 Power Manipulations are: Energy Finesse, Warp Energy, Directed Barrier, Power Overdrive
 
-- 🔴 **Recoup Energy** — `todo` · P3 · themes: interrupt, action · engine: action-surfaced, stat-tag · class: Arcanist
+- ✅ **Recoup Energy** — `auto` · P3 · themes: interrupt, action · engine: action-surfaced, stat-tag · code: STAT_TRAINING_MOVES:23888 · class: Arcanist
   - _Game of Throhs · [+Special Attack] · Scene x2 - Free Action · Prereq: Arcanist, Expert Occult Education_
+  - note: FEATURE_ACTIONS row (v594 features round 2)
   - Trigger: Your Special Move misses all targets
     Effect: You do not expend the Frequency of the triggering Move. If you applied a Power Manipulation to the triggering Move, you are refunded the AP for the Manipulation or do not expend the Frequency for it.
 
-- 🔴 **Signature Manipulations Rank 1** — `todo` · P3 · themes: action, skill · engine: stat-tag · class: Arcanist
+- 🟡 **Signature Manipulations Rank 1** — `partial` · P3 · themes: action, skill · engine: stat-tag · class: Arcanist
   - _Game of Throhs · [Ranked 2][+Special Attack] · Static · Prereq: Metamagic_
+  - note: The Technique picker (＋ Learn Technique on the class card) lists them; each Technique has its TECH_FX note / TECH_PRESS button (v600-611). The per-Rank pick count is not enforced.
   - Select a Rank 1 Power Manipulation. This Manipulation may be used twice per Scene without spending AP to activate.
 
-- 🔴 **Signature Manipulations Rank 2** — `todo` · P3 · themes: action, skill · engine: stat-tag · class: Arcanist
+- 🟡 **Signature Manipulations Rank 2** — `partial` · P3 · themes: action, skill · engine: stat-tag · class: Arcanist
   - _Game of Throhs · [Ranked 2][+Special Attack] · Static · Prereq: Authentic Thaumaturgy_
+  - note: The Technique picker (＋ Learn Technique on the class card) lists them; each Technique has its TECH_FX note / TECH_PRESS button (v600-611). The per-Rank pick count is not enforced.
   - Select a Power Manipulation marked Rank 2 or lower. For Rank 1 Manipulations, this Manipulation may be used twice per Scene without spending AP to activate. For Rank 2 Manipulations, this Manipulation may be used once per Scene without activating Authentic Thaumaturgy's Frequency.
 
-- 🔴 **Equipment Savant** — `todo` · P3 · themes: swap, action · engine: action-surfaced, stat-tag · class: Backpacker
+- 🟡 **Equipment Savant** — `partial` · P3 · themes: swap, action · engine: action-surfaced, stat-tag · code: trigRow:23755 · class: Backpacker
   - _Here Thar Be Playtests · [+Speed] [5-15 Playtest] · 2 AP - Swift Action · Prereq: Backpacker, Expert Survival_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Use or Equip an Item or piece of Equipment which would normally require a Standard Action to use or equip. You may not make an Attack with a Weapon this way - using other Items or Equipment that requires "Attacks" (such as Cap Cannons or Poke Balls) is acceptable.
 
-- 🔴 **Hero's Journey Rank 1** — `todo` · P3 · themes: skill · engine: stat-tag · class: Backpacker
+- 🟡 **Hero's Journey Rank 1** — `partial` · P3 · themes: skill · engine: stat-tag · class: Backpacker
   - _Here Thar Be Playtests · [Ranked 4] [+Speed] [5-15 Playtest] · Static · Prereq: Backpacker_
+  - note: The Technique picker (＋ Learn Technique on the class card) lists them; each Technique has its TECH_FX note / TECH_PRESS button (v600-611). The per-Rank pick count is not enforced.
   - Each Rank, you may gain two Backpacker Talents for which you qualify.
     Talents: Call to Adventure, Hat Trick, Frisk, Handyman, Movement Mastery, Sole Power, Wayfarer, Wear It Better
 
-- 🔴 **Hero's Journey Rank 2** — `todo` · P3 · themes: skill · engine: stat-tag · class: Backpacker
+- 🟡 **Hero's Journey Rank 2** — `partial` · P3 · themes: skill · engine: stat-tag · class: Backpacker
   - _Here Thar Be Playtests · [Ranked 4] [+Speed] [5-15 Playtest] · Static · Prereq: Backpacker, Adept Survival_
+  - note: The Technique picker (＋ Learn Technique on the class card) lists them; each Technique has its TECH_FX note / TECH_PRESS button (v600-611). The per-Rank pick count is not enforced.
   - Each Rank, you may gain two Backpacker Talents for which you qualify.
 
-- 🔴 **Hero's Journey Rank 3** — `todo` · P3 · themes: skill · engine: stat-tag · class: Backpacker
+- 🟡 **Hero's Journey Rank 3** — `partial` · P3 · themes: skill · engine: stat-tag · class: Backpacker
   - _Here Thar Be Playtests · [Ranked 4] [+Speed] [5-15 Playtest] · Static · Prereq: Backpacker, Expert Survival_
+  - note: The Technique picker (＋ Learn Technique on the class card) lists them; each Technique has its TECH_FX note / TECH_PRESS button (v600-611). The per-Rank pick count is not enforced.
   - Each Rank, you may gain two Backpacker Talents for which you qualify.
 
-- 🔴 **Hero's Journey Rank 4** — `todo` · P3 · themes: skill · engine: stat-tag · class: Backpacker
+- 🟡 **Hero's Journey Rank 4** — `partial` · P3 · themes: skill · engine: stat-tag · class: Backpacker
   - _Here Thar Be Playtests · [Ranked 4] [+Speed] [5-15 Playtest] · Static · Prereq: Backpacker, Expert Survival_
+  - note: The Technique picker (＋ Learn Technique on the class card) lists them; each Technique has its TECH_FX note / TECH_PRESS button (v600-611). The per-Rank pick count is not enforced.
   - Each Rank, you may gain two Backpacker Talents for which you qualify.
 
 <a id="features-18"></a>
 ## `features-18` — Fortress, Ninja, Do Porygon Dream of Mareep, Enduring Soul
 
-P3 · 18 open of 18 · open
+P3 · 11 open of 18 · open
 
-- 🔴 **Guardian's Punishment** — `todo` · P3 · themes: interrupt, damage, skill, stat · engine: action-surfaced, stat-tag · class: Fortress
+- 🟡 **Guardian's Punishment** — `partial` · P3 · themes: interrupt, damage, skill, stat · engine: action-surfaced, stat-tag · code: trigRow:23751 · class: Fortress
   - _Game of Throhs · [+Defense] · Scene x2 - Swift Action · Prereq: Fortress, Expert Combat or Focus_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You hit a Marked Foe with a Damaging Weapon attack
     Effect: Add your Defense Stat to the Damage Roll. The Marked Foe takes a penalty to Damage Rolls equal to your Combat or Focus Rank for 1 full round.
 
-- 🔴 **Shield Bearer** — `todo` · P3 · themes: interrupt, status, damage, action · engine: action-surfaced, stat-tag · class: Fortress
+- 🟡 **Shield Bearer** — `partial` · P3 · themes: interrupt, status, damage, action · engine: action-surfaced, stat-tag · code: trigRow:23754 · class: Fortress
   - _Game of Throhs · [+Defense] · 1 AP - Swift Action · Prereq: Stalwart Bastion_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - You may immediately ready a Shield, and do not become Slowed as a result. You may choose to grant an adjacent Ally the Evasion and Damage Reduction bonuses from your shield instead of gaining them yourself, but these bonuses only apply as long as the ally remains adjacent to you. If you do and the ally Shifts, you may Shift alongside your ally as a Shift Action Interrupt. This cannot cause you to shift more than your normal Movement.
 
-- 🔴 **Slow or Steady** — `todo` · P3 · themes: swap · engine: stat-tag · class: Fortress
+- ✅ **Slow or Steady** — `auto` · P3 · themes: swap · engine: stat-tag · class: Fortress
   - _Game of Throhs · [+Defense] · Static · Prereq: Fortress_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Analytic or Battle Armor. You gain the chosen ability.
 
-- 🔴 **Stalwart Bastion** — `todo` · P3 · themes: damage, skill · engine: action-surfaced, stat-tag · class: Fortress
+- 🟡 **Stalwart Bastion** — `partial` · P3 · themes: damage, skill · engine: action-surfaced, stat-tag · code: FEATURE_MODES:27240 · class: Fortress
   - _Game of Throhs · [+Defense] · Bind 2 AP - Standard Action · Prereq: Fortress_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - While this Feature is Bound, you and all cardinally adjacent allies gain Damage Reduction equal to your Combat or Focus Rank.
 
-- 🔴 **Wall of Iron** — `todo` · P3 · themes: interrupt · engine: stat-tag · class: Fortress
+- ✅ **Wall of Iron** — `auto` · P3 · themes: interrupt · engine: stat-tag · class: Fortress
   - _Game of Throhs · [+Defense] · Static · Prereq: Fortress, Adept Combat or Focus_
+  - note: syncFeatureMoves reads 'You learn the Moves X and Y' (v594 sweep)
   - You learn the moves Iron Defense and Protect.
 
-- 🔴 **Genjutsu** — `todo` · P3 · themes: swap, skill · engine: action-surfaced, stat-tag · class: Ninja
+- ⚪ **Genjutsu** — `manual` · P3 · themes: swap, skill · engine: action-surfaced, stat-tag · class: Ninja
   - _Trainer Classes · [+Speed] · At-Will - Standard Action · Prereq: Ninja, Adept Stealth_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - You form an Illusion around yourself. This Illusion may be used to hide yourself in a shroud of darkness if in darkness, or to make yourself look like a mundane object (such as a crate, potted plant, or similar). The Illusion can even fool Aura, concealing you from Aura Sight for its duration. However, the Illusion requires complete concentration, and is broken if you take any actions at all. Anyone that interacts with the Illusion directly may make an Occult Education or Intuition Check with a DC equal to 10 plus your Stealth Rank; if they succeed, the Illusion is broken.
 
-- 🔴 **Kinjutsu** — `todo` · P3 · themes: barrier · engine: stat-tag · class: Ninja
+- ✅ **Kinjutsu** — `auto` · P3 · themes: barrier · engine: stat-tag · class: Ninja
   - _Trainer Classes · [+Speed] · Static · Prereq: Poison Weapon, Master Stealth_
+  - note: syncFeatureMoves reads 'You learn the Moves X and Y' (v594 sweep)
   - You learn the Moves Substitute and Toxic.
 
-- 🔴 **Poison Weapon** — `todo` · P3 · themes: interrupt, status, damage · engine: action-surfaced, stat-tag · class: Ninja
+- 🟡 **Poison Weapon** — `partial` · P3 · themes: interrupt, status, damage · engine: action-surfaced, stat-tag · code: trigRow:23752 · class: Ninja
   - _Trainer Classes · [+Speed] [Weapon] · 1 AP - Free Action · Prereq: Ninja, Adept Stealth_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You make a Weapon Attack.
     Effect: The attack or Move Poisons its targets on 16+, and you may have it deal Poison-Type Damage if you wish.
 
-- 🔴 **Utility Drop** — `todo` · P3 · themes: hazard, interrupt, action · engine: action-surfaced, stat-tag · class: Ninja
+- ⚪ **Utility Drop** — `manual` · P3 · themes: hazard, interrupt, action · engine: action-surfaced, stat-tag · class: Ninja
   - _Trainer Classes · [+Speed] · At-Will - Swift Action · Prereq: Ninja's Arsenal, Expert Stealth_
+  - note: positional, Contest-only or crafting rule the sheet does not model
   - Trigger: You Shift
     Effect: You may use a Smoke Ball, Caltrops, or Toxic Caltrops as a Free action during your Shift. Instead of the Move's usual area of effect, you leave one square of Smokescreen, Spikes, or Toxic Spikes on each square you leave as you Shift. Once you place 8 meters of Smoke, Spikes, or Toxic Spikes you may not place any more.
 
-- 🔴 **Weightless Step** — `todo` · P3 · themes: swap · engine: stat-tag · class: Ninja
+- ✅ **Weightless Step** — `auto` · P3 · themes: swap · engine: stat-tag · class: Ninja
   - _Trainer Classes · [+Speed] · Static · Prereq: Ninja, Expert Stealth_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - You gain the Infiltrator Ability.
 
-- 🔴 **Glitch Bender** — `todo` · P3 · themes: swap · engine: stat-tag
+- ✅ **Glitch Bender** — `auto` · P3 · themes: swap · engine: stat-tag
   - _Do Porygon Dream of Mareep · [Class] [+Special Defense] · Static · Prereq: Glitched Existence, Novice Focus, Occult Education, or Perception_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - You gain the Synchronize Ability.
 
-- 🔴 **Overclock** — `todo` · P3 · themes: heal, cure, cs, damage, skill · engine: action-surfaced
+- 🟡 **Overclock** — `partial` · P3 · themes: heal, cure, cs, damage, skill · engine: action-surfaced · code: trigRow:23753
   - _Do Porygon Dream of Mareep · [Engineer Researcher Field] · Scene - Swift Action · Prereq: Engineer, Expert Technology Education_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Target: Your Pokebot
     Effect: The target is cured of all Persistent Statuses, resets all negative Combat Stages to default, and gains two Ticks of Temporary Hit Points. For the rest of the Scene, it deals and takes additional damage with all attacks equal to your Technology Education Rank.
     Recipe - Kitbash King
 
-- 🔴 **Robofighter** — `todo` · P3 · themes: action, skill · engine: action-surfaced
+- 🟡 **Robofighter** — `partial` · P3 · themes: action, skill · engine: action-surfaced · code: FEATURE_MODES:27242
   - _Do Porygon Dream of Mareep · [Engineer Researcher Field] · Bind 2 AP - Standard Action · Prereq: Engineer, Adept Technology Education_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - As long as this feature is Bound, you can command your Pokebot using a Standard Action rather than a Pokemon turn. Your Pokebots may still only act once a round.
     Recipe - Firmware Update
 
@@ -1646,49 +1913,58 @@ P3 · 18 open of 18 · open
     
     *Type-Linked Classes include Type Ace and all Elementalist Classes, all of which are linked to their respective Types. Additionally, Aura Guardian is linked to Fighting; and Telekinetic, Telepath, and Warper are linked to Psychic. Obviously, your Type Linked Class mu …
 
-- 🔴 **Not Yet!** — `todo` · P3 · themes: heal, interrupt, swap, status, skill · engine: action-surfaced · class: Enduring Soul
+- 🟡 **Not Yet!** — `partial` · P3 · themes: heal, interrupt, swap, status, skill · engine: action-surfaced · code: trigRow:23739 · class: Enduring Soul
   - _Trainer Classes · Scene - Free Action · Prereq: Enduring Soul, Expert Athletics or Focus_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon is Fainted, but is not at less than -100% Hit Points
     Effect: Before fainting, the targeted Pokemon gains an Injury, and may then use a Move as an Interrupt. When the Move is resolved, the Pokemon then immediately faints. This consumes a Command as normal. This cannot be used with the Move Explosion, Flail, Pain Split, Reversal or Selfdestruct.
 
-- 🔴 **Resilience** — `todo` · P3 · themes: interrupt, damage, action · engine: action-surfaced · class: Enduring Soul
+- 🟡 **Resilience** — `partial` · P3 · themes: interrupt, damage, action · engine: action-surfaced · code: trigRow:23740 · class: Enduring Soul
   - _Trainer Classes · 2 AP - Free Action · Prereq: Awareness, Expert Athletics or Focus_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon is hit by a Critical Hit or gains a Status Affliction (or both)
     Effect: Your Pokemon does not gain a Status Affliction, and the triggering attack does damage as if it was not a Critical Hit. Resilience may only be used once per target per Scene.
 
-- 🔴 **Staying Power** — `todo` · P3 · themes: interrupt, status, cs, skill · engine: action-surfaced · class: Enduring Soul
+- 🟡 **Staying Power** — `partial` · P3 · themes: interrupt, status, cs, skill · engine: action-surfaced · code: trigRow:23741 · class: Enduring Soul
   - _Trainer Classes · Scene - Free Action · Prereq: Enduring Soul_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon Takes a Breather
     Effect: Your Pokemon may "Take a Breather" even if it is Confused or Enraged, and it does not Trip or have to Shift away from enemies as part of the action. You may choose whether or not your Pokemon resets their Combat Stages to default.
 
-- 🔴 **Vim and Vigor** — `todo` · P3 · themes: swap · class: Enduring Soul
+- 🟡 **Vim and Vigor** — `partial` · P3 · themes: swap · code: trigRow:23770 · class: Enduring Soul
   - _Trainer Classes · At-Will - Extended Action · Prereq: Shrug Off, Master Athletics or Focus_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Target: Your Pokemon with at least 2 Tutor Points
     Effect: You spend an hour with the target. The target loses 2 Tutor Points, and gains the Vigor Ability. Vim and Vigor may target a Pokemon only once
 
 <a id="features-19"></a>
 ## `features-19` — Telekinetic, Trickster, Tumbler, Combat +1 more
 
-P3 · 18 open of 18 · open
+P3 · 14 open of 18 · open
 
-- 🔴 **PK Alpha** — `todo` · P3 · themes: barrier · engine: stat-tag · class: Telekinetic
+- ✅ **PK Alpha** — `auto` · P3 · themes: barrier · engine: stat-tag · class: Telekinetic
   - _Trainer Classes · [+Special Attack] · Static · Prereq: Telekinetic_
+  - note: FEATURE_MOVE_LISTS picker / syncFeatureMoves already hand out these Moves
   - You learn the Moves Kinesis and Barrier.
 
-- 🔴 **PK Combat** — `todo` · P3 · themes: skill, stat · engine: action-surfaced, stat-tag · class: Telekinetic
+- 🟡 **PK Combat** — `partial` · P3 · themes: skill, stat · engine: action-surfaced, stat-tag · code: FEATURE_MODES:27244 · class: Telekinetic
   - _Trainer Classes · [+Special Attack][Weapon] · Bind 1 AP - Standard Action · Prereq: Telekinetic, Adept Focus_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - You may also wield weapons and items with your Telekinesis capability, as long as you are able to lift them. This means you may use Items and Melee Weapons that normally require you to be adjacent to your target at a range limited only by your Telekinesis. When wielding Weapons with your Telekinesis, you qualify for Moves using Focus instead of Combat and may add your Special Attack instead of your Attack Stat. The Attacks remain Physical, however.
 
-- 🔴 **Power of the Mind** — `todo` · P3 · themes: swap · engine: stat-tag · class: Telekinetic
+- ✅ **Power of the Mind** — `auto` · P3 · themes: swap · engine: stat-tag · class: Telekinetic
   - _Trainer Classes · [+Special Attack] · Static · Prereq: Telekinetic_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Interference or Levitate. You gain the chosen Ability.
 
-- 🔴 **Telekinetic Burst** — `todo` · P3 · themes: position · engine: action-surfaced, stat-tag · class: Telekinetic
+- 🟡 **Telekinetic Burst** — `partial` · P3 · themes: position · engine: action-surfaced, stat-tag · code: trigRow:23776 · class: Telekinetic
   - _Trainer Classes · [+Special Attack] · 2 AP - Swift Action · Prereq: PK Omega, Master Focus_
+  - note: v621: trigRow button — spends uses/AP, posts to Rolls feed; effect resolved at the table
   - You perform a Disarm, Trip, or Push Maneuver using your Telekinetic Capability.
 
-- 🔴 **Encore Performance** — `todo` · P3 · themes: weather, barrier, interrupt, multiturn, control, cs, action, skill, stat · engine: action-surfaced · class: Trickster
+- 🟡 **Encore Performance** — `partial` · P3 · themes: weather, barrier, interrupt, multiturn, control, cs, action, skill, stat · engine: action-surfaced · code: trigRow:23742 · class: Trickster
   - _Trainer Classes · Daily x3 - Free Action · Prereq: 3 Trickster Features, Expert Guile_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon uses a Status-Class move that does not target foes.
     Effect: Choose one of the following.
     »» Your Pokemon gains +1 Combat Stage in any Stat in which they haven't gained a Combat Stage this turn.
@@ -1704,31 +1980,37 @@ P3 · 18 open of 18 · open
     »» If the Move lowers Combat Stages, then pick a Stat that the Move lowers and lower it by 1 additional Combat Stage.
     »» Your Pokemon gains a Tick of Temporary Hit Points.
 
-- 🔴 **Sleight** — `todo` · P3 · themes: barrier, interrupt, swap, action · engine: action-surfaced · class: Trickster
+- 🟡 **Sleight** — `partial` · P3 · themes: barrier, interrupt, swap, action · engine: action-surfaced · code: trigRow:23743 · class: Trickster
   - _Trainer Classes · Scene x2 - Free Action · Prereq: 4 Trickster Features, Master Guile_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Your Pokemon may activate Sleight as an Interrupt to immediately take their turn and use a Status-Class Move as a Standard Action. If this Move targets a foe, it ignores Substitute and Defensive Abilities, and Blessings may not be activated against the Move.
 
-- 🔴 **Stacked Deck** — `todo` · P3 · themes: interrupt, action · engine: action-surfaced · class: Trickster
+- 🟡 **Stacked Deck** — `partial` · P3 · themes: interrupt, action · engine: action-surfaced · code: trigRow:23744 · class: Trickster
   - _Trainer Classes · 1 AP - Free Action · Prereq: Trickster, Adept Guile_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: Your Pokemon hits a foe suffering from a Status Affliction or one of the other conditions in the table on page 108 of the Core handbook
     Effect: Choose a Status Affliction or condition the triggering target is suffering from; the target suffers an additional effect according to the table. Stacked Deck may only affect a foe once per Scene.
 
-- 🔴 **Burst of Speed** — `todo` · P3 · themes: interrupt · engine: action-surfaced, stat-tag · class: Tumbler
+- 🟡 **Burst of Speed** — `partial` · P3 · themes: interrupt · engine: action-surfaced, stat-tag · code: trigRow:23745 · class: Tumbler
   - _Trainer Classes · [+Speed] · Scene - Free Action · Prereq: 5 Tumbler Features, Master Acrobatics_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You end your turn
     Effect: Select an Initiative Count equal to half of your own Initiative or less; you may take an extra turn at that point in the round.
 
-- 🔴 **Death From Above** — `todo` · P3 · themes: skill · engine: stat-tag · class: Tumbler
+- ✅ **Death From Above** — `auto` · P3 · themes: skill · engine: stat-tag · class: Tumbler
   - _Trainer Classes · [+Speed] · Static · Prereq: Aerialist, Expert Acrobatics_
+  - note: FEATURE_MOVE_LISTS picker / syncFeatureMoves already hand out these Moves
   - You learn the Moves Acrobatics and Bounce.
 
-- 🔴 **Quick Gymnastics** — `todo` · P3 · themes: position, interrupt, multiturn, status · engine: action-surfaced, stat-tag · class: Tumbler
+- 🟡 **Quick Gymnastics** — `partial` · P3 · themes: position, interrupt, multiturn, status · engine: action-surfaced, stat-tag · code: trigRow:23746 · class: Tumbler
   - _Trainer Classes · [+Speed] · 1 AP - Free Action · Prereq: Tumbler_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You hit with an Attack; you make a Jump; or you stand up from being Tripped
     Effect: You may may Shift 2 Meters. You don't count as Flanked or trigger Attacks of Opportunity until the end of your next turn. Additionally, if you activate this Feature, the triggering action does not provoke Attacks of Opportunity.
 
-- 🔴 **Quick Reflexes** — `todo` · P3 · themes: swap · engine: stat-tag · class: Tumbler
+- ✅ **Quick Reflexes** — `auto` · P3 · themes: swap · engine: stat-tag · class: Tumbler
   - _Trainer Classes · [+Speed] · Static · Prereq: Tumbler, Expert Acrobatics_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - You gain the Dodge Ability.
 
 - 🔴 **Blur** — `todo` · P3 · themes: damage, skill · engine: stat-tag
@@ -1739,8 +2021,9 @@ P3 · 18 open of 18 · open
   - _Combat · [+HP] · Static · Prereq: Adept Athletics_
   - Using the Intercept Maneuvers requires only a Shift Action Interrupt.
 
-- 🔴 **Fighter's Versatility** — `todo` · P3 · themes: heal, interrupt · engine: action-surfaced, stat-tag
+- 🟡 **Fighter's Versatility** — `partial` · P3 · themes: heal, interrupt · engine: action-surfaced, stat-tag · code: trigRow:23747
   - _Combat · [+Any] · Scene - Free Action · Prereq: Learned two Scene or Daily Moves_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You gain Initiative.
     Effect: You may give up use of a Scene or Daily Move to regain use of a Scene or Daily Move which you have already used. You may give up use of a Daily Move to regain use of a Scene Move, but not vice-versa.
 
@@ -1748,13 +2031,15 @@ P3 · 18 open of 18 · open
   - _Trainer Classes · [+Speed] · Static · Prereq: Dance Form_
   - When creating Dance Moves, you can choose to create a Dance Move that has Range: 4, 1 Target, AC 3, and lowers a Combat Stat (chosen at creation) by -2 Combat Stages. This Move is otherwise the same as other Dance Moves you could create except that Dance Moves created with this template have the Contest Effect Excitement instead of Get Ready!.
 
-- 🔴 **Passing Waltz** — `todo` · P3 · themes: interrupt, cs, skill · engine: action-surfaced, stat-tag · class: Dancer
+- 🟡 **Passing Waltz** — `partial` · P3 · themes: interrupt, cs, skill · engine: action-surfaced, stat-tag · code: trigRow:23748 · class: Dancer
   - _Trainer Classes · [+Speed] · 1 AP - Free Action · Prereq: Dance Practice, Master Acrobatics, Athletics, or Charm_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You or one of your Pokemon with Own Tempo or Spinning Dance uses a Dance Move
     Effect: Choose an ally within 3 meters of the triggering target. That ally gains Combat Stages from the triggering Move instead of the user.
 
-- 🔴 **Power Pirouette** — `todo` · P3 · themes: interrupt, status, cs, skill, stat · engine: action-surfaced, stat-tag · class: Dancer
+- 🟡 **Power Pirouette** — `partial` · P3 · themes: interrupt, status, cs, skill, stat · engine: action-surfaced, stat-tag · code: trigRow:23749 · class: Dancer
   - _Trainer Classes · [+Speed] · Scene x2 - Swift Action · Prereq: Dance Form; Expert Acrobatics, Athletics, or Charm_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You perform a Dance Move
     Effect: Choose one effect:
     »» All adjacent targets are Confused.
@@ -1764,120 +2049,142 @@ P3 · 18 open of 18 · open
 <a id="features-20"></a>
 ## `features-20` — Druid, Glitch Bender, Spark Master, Swarmlord +2 more
 
-P3 · 18 open of 18 · open
+P3 · 4 open of 18 · open
 
-- 🔴 **Nature's Embrace Rank 1** — `todo` · P3 · themes: heal, skill · class: Druid
+- ✅ **Nature's Embrace Rank 1** — `auto` · P3 · themes: heal, skill · class: Druid
   - _Game of Throhs · [Special] [Ranked 3] · Static · Prereq: Druid_
+  - note: FEATURE_MOVE_LISTS picker / syncFeatureMoves already hand out these Moves
   - You learn 2 Moves chosen from the list below.  Moves marked with an Oath require that Oath to be chosen.
     Rank 1 Moves: Cotton Spore, Ingrain(Wood), Mega Drain, Razor Leaf, Stun Spore(Fungal), Sweet Scent(Flower)
 
-- 🔴 **Nature's Embrace Rank 2** — `todo` · P3 · themes: heal, skill · class: Druid
+- ✅ **Nature's Embrace Rank 2** — `auto` · P3 · themes: heal, skill · class: Druid
   - _Game of Throhs · [Special] [Ranked 3] · Static · Prereq: Adept Survival or General Education_
+  - note: FEATURE_MOVE_LISTS picker / syncFeatureMoves already hand out these Moves
   - You learn 2 Moves chosen from the list below, marked with the Rank of this Feature you are gaining or lower.  Moves marked with an Oath require that Oath to be chosen.
     Rank 2 Moves: Aromatherapy(Flower), Energy Ball, Giga Drain(Fungal), Magical Leaf, Seed Bomb, Spiky Shield(Wood)
 
-- 🔴 **Nature's Embrace Rank 3** — `todo` · P3 · themes: skill · class: Druid
+- ✅ **Nature's Embrace Rank 3** — `auto` · P3 · themes: skill · class: Druid
   - _Game of Throhs · [Special] [Ranked 3] · Static · Prereq: Expert Survival or General Education_
+  - note: FEATURE_MOVE_LISTS picker / syncFeatureMoves already hand out these Moves
   - You learn 2 Moves chosen from the list below, marked with the Rank of this Feature you are gaining or lower.  Moves marked with an Oath require that Oath to be chosen.
     Rank 3 Moves: Leech Seed, Petal Blizzard(Wood), Petal Dance(Flower), Power Whip, Solar Beam, Spore(Fungal)
 
-- 🔴 **Code Injection** — `todo` · P3 · themes: swap, status, damage, action · engine: action-surfaced, stat-tag · class: Glitch Bender
+- 🟡 **Code Injection** — `partial` · P3 · themes: swap, status, damage, action · engine: action-surfaced, stat-tag · code: trigRow:23766 · class: Glitch Bender
   - _Do Porygon Dream of Mareep · [+Special Defense] · 1 AP - Standard Action · Prereq: Corrupt Reality_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Target: A Pokemon or Trainer within 5 meters
     Effect: You may use any of the Glitches below. They are treated as a Status-Class attack with an AC of 2. You may only use each Glitch once per Scene, and each target may only be affected by Code Injection once per Scene.
     »» Object Not Found: The target may not benefit from Equipment, Held Items, and consumable Items for one full round.
     »» Access Denied: The target is Slowed and may only take At-Will actions for one full round.
     »» Blue Screen: The target is Blinded and Vulnerable for one full round.
 
-- 🔴 **I Am Error** — `todo` · P3 · themes: interrupt · engine: action-surfaced, stat-tag · class: Glitch Bender
+- 🟡 **I Am Error** — `partial` · P3 · themes: interrupt · engine: action-surfaced, stat-tag · code: trigRow:23767 · class: Glitch Bender
   - _Do Porygon Dream of Mareep · [+Special Defense] · 2 AP - Free Action · Prereq: Glitch Bender_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You gain a Status Affliction:  
     Roll 1d10 and change which Status Affliction is gained according to page 86 of the Do Porygon Dream of Mareep? splatbook. If the target already has that Status Affliction, roll again.
 
-- 🔴 **Null Error** — `todo` · P3 · themes: control · engine: stat-tag · class: Glitch Bender
+- ✅ **Null Error** — `auto` · P3 · themes: control · engine: stat-tag · class: Glitch Bender
   - _Do Porygon Dream of Mareep · [+Special Defense] · Static · Prereq: Glitch Bender_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - You learn the Moves Snatch and Disable.
 
-- 🔴 **Storm Wizard Rank 1** — `todo` · P3 · themes: multiturn, skill · engine: stat-tag · class: Spark Master
+- ✅ **Storm Wizard Rank 1** — `auto` · P3 · themes: multiturn, skill · engine: stat-tag · class: Spark Master
   - _Game of Throhs · [+Speed] · Static · Prereq: Spark Master_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - You may learn two Moves from the list below.
     Rank 1 Moves: Charge Beam, Eerie Impulse, Shock Wave, Spark
 
-- 🔴 **Storm Wizard Rank 2** — `todo` · P3 · themes: multiturn, skill · engine: stat-tag · class: Spark Master
+- ✅ **Storm Wizard Rank 2** — `auto` · P3 · themes: multiturn, skill · engine: stat-tag · class: Spark Master
   - _Game of Throhs · [+Speed] · Static · Prereq: Expert Acrobatics or Focus_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - You may learn two Moves from the list below, marked with the Storm Wizard Rank you are gaining or lower.
     Rank 2 Moves: Charge, Thunder Punch, Thunderbolt
 
-- 🔴 **Storm Wizard Rank 3** — `todo` · P3 · themes: skill · engine: stat-tag · class: Spark Master
+- ✅ **Storm Wizard Rank 3** — `auto` · P3 · themes: skill · engine: stat-tag · class: Spark Master
   - _Game of Throhs · [+Speed] · Static · Prereq: Master Acrobatics or Focus_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - You may learn two Moves from the list below, marked with the Storm Wizard Rank you are gaining or lower.
     Rank 3 Moves: Discharge, Thunder, Thunder Wave, Volt Tackle
 
-- 🔴 **Enhanced Embrace Rank 1** — `todo` · P3 · themes: hazard, skill · class: Swarmlord
+- ✅ **Enhanced Embrace Rank 1** — `auto` · P3 · themes: hazard, skill · class: Swarmlord
   - _Game of Throhs · [Ranked 3] · Static · Prereq: Swarmlord_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - Learn two Moves from the list below. Moves marked with an Embrace require that Embrace to be chosen.
     Rank 1 Moves: Defend Order, Fury Cutter, Fell Needle, Struggle Bug(Monarch), Sticky Web(Arachnid)
 
-- 🔴 **Enhanced Embrace Rank 2** — `todo` · P3 · themes: skill · class: Swarmlord
+- ✅ **Enhanced Embrace Rank 2** — `auto` · P3 · themes: skill · class: Swarmlord
   - _Game of Throhs · [Ranked 3] · Static · Prereq: Adept Command or Survival_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - Learn two Moves from the list below at the Rank of Enhanced Embrace you are taking or lower. Moves marked with an Embrace require that Embrace to be chosen.
     Rank 2 Moves: Attack Order(Arachnid), Infestation, Powder(Monarch), Signal Beam, Steamroller
 
-- 🔴 **Enhanced Embrace Rank 3** — `todo` · P3 · themes: skill · class: Swarmlord
+- ✅ **Enhanced Embrace Rank 3** — `auto` · P3 · themes: skill · class: Swarmlord
   - _Game of Throhs · [Ranked 3] · Static · Prereq: Expert Command or Survival_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - Learn two Moves from the list below at the Rank of Enhanced Embrace you are taking or lower. Moves marked with an Embrace require that Embrace to be chosen.
     Rank 3 Moves: Bug Buzz, Mega Horn, Quiver Dance(Monarch), Spider Web(Arachnid)
 
-- 🔴 **Telepathic Awareness** — `todo` · P3 · themes: swap · engine: stat-tag · class: Telepath
+- ✅ **Telepathic Awareness** — `auto` · P3 · themes: swap · engine: stat-tag · class: Telepath
   - _Trainer Classes · [+Special Defense] · Static · Prereq: Telepath_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Gentle Vibe or Telepathy. You gain the chosen Ability.
 
-- 🔴 **Telepathic Warning** — `todo` · P3 · themes: interrupt, action · engine: action-surfaced, stat-tag · class: Telepath
+- 🟡 **Telepathic Warning** — `partial` · P3 · themes: interrupt, action · engine: action-surfaced, stat-tag · code: trigRow:23750 · class: Telepath
   - _Trainer Classes · [+Special Defense] · 1 AP - Free Action · Prereq: Telepathic Awareness, Expert Focus or Intuition_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Trigger: You or an Ally use an Attack 
     Effect: You're able to give your allies heed of attacks. All allies that would be hit by the attack may take a Shift Action as an Interrupt to move out of the area of effect of the attack. Using this leaves discoverable Psychic Residue on each affected ally. You may only use Telepathic Warning as long as you have the Telepath Capability.
 
-- 🔴 **Thought Detection** — `todo` · P3 · themes: swap, skill · engine: action-surfaced, stat-tag · class: Telepath
+- 🟡 **Thought Detection** — `partial` · P3 · themes: swap, skill · engine: action-surfaced, stat-tag · code: trigRow:23775 · class: Telepath
   - _Trainer Classes · [+Special Defense] · Scene - Standard Action · Prereq: Telepathic Awareness_
+  - note: v621: trigRow button — spends uses/AP, posts to Rolls feed; effect resolved at the table
   - You become aware of the number of living Humans or Pokemon within X meters of yourself; X is equal to your Focus Rank tripled. Pokemon or Trainers with the Mindlock Capability are not detected by this Ability. You may only use Thought Detection as long as you have the Telepathy Capability.
 
-- 🔴 **Raging Winds Rank 1** — `todo` · P3 · themes: skill · engine: stat-tag · class: Wind Runner
+- ✅ **Raging Winds Rank 1** — `auto` · P3 · themes: skill · engine: stat-tag · class: Wind Runner
   - _Game of Throhs · [Ranked 3][+Speed] · Static · Prereq: Wind Runner_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - You may learn two Moves from the list below.
     Rank 1 Moves: Aerial Ace, Air Cutter, Gust, Tailwind
 
-- 🔴 **Raging Winds Rank 2** — `todo` · P3 · themes: skill · engine: stat-tag · class: Wind Runner
+- ✅ **Raging Winds Rank 2** — `auto` · P3 · themes: skill · engine: stat-tag · class: Wind Runner
   - _Game of Throhs · [Ranked 3] [+Speed] · Static · Prereq: Expert Acrobatics or Perception_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - You may learn two Moves from the list below, marked with the Raging Winds Rank you are gaining or lower.
     Rank 2 Moves: Air Slash, Bounce, Defog, Feather Dance
 
-- 🔴 **Raging Winds Rank 3** — `todo` · P3 · themes: skill · engine: stat-tag · class: Wind Runner
+- ✅ **Raging Winds Rank 3** — `auto` · P3 · themes: skill · engine: stat-tag · class: Wind Runner
   - _Game of Throhs · [Ranked 3] [+Speed] · Static · Prereq: Master Acrobatics or Perception_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - You may learn two Moves from the list below, marked with the Raging Winds Rank you are gaining or lower.
     Rank 3 Moves: Brave Bird, Hurricane, Mirror Move, Sky Attack
 
 <a id="features-21"></a>
 ## `features-21` — Fire Bringer, Frost Touched, Here Thar Be Playtests, Chronicler +4 more
 
-P3 · 11 open of 11 · open
+P3 · 5 open of 11 · open
 
-- 🔴 **Fire Breather Rank 1** — `todo` · P3 · themes: weather, skill · engine: stat-tag · class: Fire Bringer
+- ✅ **Fire Breather Rank 1** — `auto` · P3 · themes: weather, skill · engine: stat-tag · class: Fire Bringer
   - _Game of Throhs · [+Special Attack or Attack] · Static · Prereq: Expert Focus or Combat_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - Learn two Fire Breather Moves from the list below.
     Rank 1 Moves: Flamethrower, Fire Punch, Fire Spin, Sunny Day
 
-- 🔴 **Fire Breather Rank 2** — `todo` · P3 · themes: skill · engine: stat-tag · class: Fire Bringer
+- ✅ **Fire Breather Rank 2** — `auto` · P3 · themes: skill · engine: stat-tag · class: Fire Bringer
   - _Game of Throhs · [+Special Attack or Attack] · Static · Prereq: Master Focus or Combat_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - Learn two Fire Breather Moves from the list below. You may choose any Move marked with the Fire Breather Rank you are taking or lower.
     Rank 2 Moves: Blaze Kick, Fiery Dance, Flare Blitz, Heat Wave
 
-- 🔴 **Winter’s Herald Rank 1** — `todo` · P3 · themes: status, skill · engine: stat-tag · class: Frost Touched
+- ✅ **Winter’s Herald Rank 1** — `auto` · P3 · themes: status, skill · engine: stat-tag · class: Frost Touched
   - _Game of Throhs · [Ranked 2] [+Attack or Special Attack] · Static · Prereq: Expert Athletics or Survival_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - You may learn two Moves from the list below.
     Rank 1 Moves: Freeze-Dry, Ice Punch, Ice Beam, Icicle Crash
 
-- 🔴 **Winter’s Herald Rank 2** — `todo` · P3 · themes: skill · engine: stat-tag · class: Frost Touched
+- ✅ **Winter’s Herald Rank 2** — `auto` · P3 · themes: skill · engine: stat-tag · class: Frost Touched
   - _Game of Throhs · [Ranked 2] [+Attack or Special Attack] · Static · Prereq: Master Athletics or Survival_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - You may learn two Moves from the list below, marked with the Rank of Winter's Herald you are gaining or lower.
     Rank 2 Moves: Avalanche, Blizzard, Frost Breath, Icicle Spear
 
@@ -1885,83 +2192,89 @@ P3 · 11 open of 11 · open
   - _Here Thar Be Playtests · [Class] [+Speed] [5-15 Playtest] · Static · Prereq: Traveler_
   - You gain the Skill Enhancement Edge. You then gain an instance of the Skill Stunt Edge for each of the two Skills you chose with Skill Enhancement.
 
-- 🔴 **Cheerleader [Playtest]** — `todo` · P3 · themes: swap
+- 🟡 **Cheerleader [Playtest]** — `partial` · P3 · themes: swap · code: trigRow:23771
   - _Here Thar Be Playtests · [Class] [9-15 Playtest] · At-Will - Extended Action · Prereq: Inspired Training, Novice Charm_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Target: Your Pokemon with at least 2 Tutor Points remaining
     Effect: Your Pokemon loses 2 Tutor Points and gains the Friend Guard Ability.
 
-- 🔴 **Cinematic Analysis** — `todo` · P3 · themes: barrier, interrupt, action, skill, stat · engine: action-surfaced · class: Chronicler
+- 🟡 **Cinematic Analysis** — `partial` · P3 · themes: barrier, interrupt, action, skill, stat · engine: action-surfaced · code: trigRow:23768 · class: Chronicler
   - _Trainer Classes · Daily x3 - Free Action · Prereq: 4 Chronicler Features, Master Perception_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - You analyze a Record in one of your Archives. Cinematic Analysis's effect depends on the Archive the Record is in. Each of these effects may only be used once per Scene.
     Character Study - Profile Archive: You may trigger Character Study when you or an ally makes a Charm, Command, Guile, Intimidate, or Intuition Check targeting the subject of your Record. Make a Perception Check and substitute the triggering Skill Check with the result.
     Recreation - Technique Archive: Recreation may be triggered as your Pokemon gains Initiative. Select a Record of a Move in your Technique Archive that your Pokemon can learn by Level Up, TM, or Move Tutor. Your Pokemon may perform that Move as if it was on its …
 
-- 🔴 **Duelist's Manual** — `todo` · P3 · themes: multiturn, swap, status, action · engine: action-surfaced · class: Duelist
+- 🟡 **Duelist's Manual** — `partial` · P3 · themes: multiturn, swap, status, action · engine: action-surfaced · code: trigRow:23769 · class: Duelist
   - _Trainer Classes · [Orders] · 2 AP - Standard Action · Prereq: Expend Momentum, Effective Methods, Expert Focus_
+  - note: trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table
   - Target: Your Pokemon under the effects of Focused Training
     Effect: Apply one of the following effects. To choose an effect, your Pokemon must have a certain amount of Momentum. (Duelist's Manual does not spend Momentum).
     »» 1 Momentum: Your Pokemon doubles their bonuses from Tolerance or Exploit until the end of their next turn and may change their Tolerance Ability into Exploit, or vice versa, until the end of their next turn.
     »» 2 Momentum: Your Pokemon's next Pass, Cone, Close Blast, or Burst attack becomes a single target Melee attack, or their next Line or Ranged Blast attack becomes a single target Ranged attack. If this attack hits, the target becomes Vulnerable for one full round and …
 
-- 🔴 **Focused Command** — `todo` · P3 · themes: damage, action · engine: action-surfaced
+- 🟡 **Focused Command** — `partial` · P3 · themes: damage, action · engine: action-surfaced · code: trigRow:23714
   - _Pokémon Training & Orders · [Orders] · At-Will - Standard Action + Swift Action · Prereq: Master Command, one of Focus, Guile, Intimidate, or Pokemon Education at Expert_
+  - note: v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table
   - You may have a second Pokemon take a turn this round, but both Pokemon can only take At-Will actions that round. Additionally, both Pokemon receive a -5 Penalty on all Damage Rolls. You may pay 1 AP at the beginning of the round to lift the Frequency Restriction OR the Damage Penalty for the remainder of the round, or pay 2 AP to lift both.
 
-- 🔴 **Sparkle** — `todo` · P3 · themes: weather · engine: stat-tag · class: Prism
+- ✅ **Sparkle** — `auto` · P3 · themes: weather · engine: stat-tag · class: Prism
   - _Game of Throhs · [+Special Attack] · Static · Prereq: Prism, Expert Charm or General Education_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - You learn the Moves Tri-Attack and Weather Ball.
 
-- 🔴 **Shards of Stone** — `todo` · P3 · themes: hazard, swap, skill · engine: stat-tag · class: Stone Warrior
+- ✅ **Shards of Stone** — `auto` · P3 · themes: hazard, swap, skill · engine: stat-tag · class: Stone Warrior
   - _Game of Throhs · [+Defense] · Static · Prereq: Expert Combat or Survival_
+  - note: Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)
   - You learn the Moves Rock Slide and Stealth Rock
 
 <a id="verify-features-01"></a>
 ## `verify-features-01` — Verify features the scan thinks are handled
 
-P9 · 36 open of 36 · open
+P9 · 34 open of 36 · open
 
-- 🟢 **Apparition** — `likely` · P1 (player:Lázaro) · themes: interrupt, typing, damage, skill, stat · engine: stat-tag · code: MELEE_SKILL_SUBS:7504, trainerStruggle:7571, apparitionCard:29314
+- 🟢 **Apparition** — `likely` · P1 (player:Lázaro) · themes: interrupt, typing, damage, skill, stat · engine: stat-tag · code: MELEE_SKILL_SUBS:8052, trainerStruggle:8119, apparitionCard:32325
   - _Game of Throhs · [Class] [+Attack] [Weapon] · Static · Prereq: Elemental Connection (Ghost), Novice Intimidate, Novice Occult Education_
   - When wielding Melee Weapons, you may use Occult Education or Intimidate instead of Combat to determine the Damage Base of your Struggle Attacks, to resist Disarm Maneuvers, and to qualify for a Weapon's Moves. Your Weapon Attacks always treat you as having the Reach Capability, and foes may not activate Reaction effects against them that specify being hit by a Melee Attack.
 
-- 🟢 **Battle Conductor** — `likely` · P1 (player:Lysgd) · themes: interrupt · engine: action-surfaced, auto-note · code: orderBoosters:25119, openGiveOrder:25141, commanderCard:25891, FEATURE_AUTO_NOTES:39146 · class: Commander
+- 🟢 **Battle Conductor** — `likely` · P1 (player:Lysgd) · themes: interrupt · engine: action-surfaced, auto-note · code: orderBoosters:28050, openGiveOrder:28072, commanderCard:28878, FEATURE_AUTO_NOTES:42662 · class: Commander
   - _Trainer Classes · At-Will - Swift Action · Prereq: Leadership_
   - Trigger: You give [Orders] with a Frequency of At-Will that have targets
     Effect: You may target up to two additional Allies with the [Orders].
 
-- 🟢 **Berserker** — `likely` · P1 (player:Handels, player:Hugo) · themes: other · engine: stat-tag · code: berserkerCard:8396, openTrainerAttack:9464, PTU_BUFFS:16227, BUFF_CATS:16276, derivedMonMoves:19984
+- 🟢 **Berserker** — `likely` · P1 (player:Handels, player:Hugo) · themes: other · engine: stat-tag · code: berserkerCard:8944, openTrainerAttack:10060, PTU_BUFFS:17096, BUFF_CATS:17145, derivedMonMoves:20854
   - _Game of Throhs · [Class] [+HP] [Weapon] · Static · Prereq: Novice Combat, Novice Intimidate_
   - You learn the Moves Rage and Flail. You may use these moves as a Weapon Attack when wielding Melee Weapons.
 
-- 🟢 **Cacophony** — `likely` · P1 (player:Handels) · themes: other · engine: stat-tag · code: musicianCard:25863 · class: Musician
+- 🟢 **Cacophony** — `likely` · P1 (player:Handels) · themes: other · engine: stat-tag · code: musicianCard:28850 · class: Musician
   - _Trainer Classes · [+Special Attack] · Static · Prereq: Mt. Moon Blues, Adept Charm or Focus_
   - You learn the Moves Screech and Metal Sound.
 
-- 🟢 **Capture Specialist** — `likely` · P1 (player:Lázaro) · themes: capture · engine: stat-tag · code: featureByKey:10239, featuresForClass:10334, captureCard:26276
+- 🟢 **Capture Specialist** — `likely` · P1 (player:Lázaro) · themes: capture · engine: stat-tag · code: featureByKey:10853, featuresForClass:10948, captureCard:29263
   - _Trainer Classes · [Class][+Speed] · Static · Prereq: Acrobatics, Athletics, Stealth, or Survival at Novice; Guile, or Perception at Novice_
   - You gain two Capture Techniques of your choice. You must meet any prerequisites of the Technique.
     Capture Techniques: Capture Skills, Curve Ball, Devitalizing Throw, Fast Pitch, Snare, Tools of the Trade, Catch Combo, False Strike, Relentless Pursuit
 
-- 🟢 **Cheer Brigade** — `likely` · P1 (player:Lysgd) · themes: swap · engine: auto-note · code: cheerleaderCard:26149, FEATURE_AUTO_NOTES:39162 · class: Cheerleader
+- 🟢 **Cheer Brigade** — `likely` · P1 (player:Lysgd) · themes: swap · engine: auto-note · code: cheerleaderCard:29136, FEATURE_AUTO_NOTES:42678 · class: Cheerleader
   - _Trainer Classes · At-Will - Extended Action · Prereq: Cheerleader_
   - Target: Your Pokemon with at least 2 Tutor Points remaining
     Effect: Your Pokemon loses 2 Tutor Points and gains the Friend Guard Ability.
 
-- 🟢 **Cheerleader** — `likely` · P1 (player:Lysgd) · themes: interrupt, action · engine: action-surfaced · code: PTU_BUFFS:16192, BUFF_CATS:16276, buffMove:16314, buffEffectThresholds:16334, grantedFeatureObjs:25032, cheerleaderCard:26135
+- 🟢 **Cheerleader** — `likely` · P1 (player:Lysgd) · themes: interrupt, action · engine: action-surfaced · code: PTU_BUFFS:17061, BUFF_CATS:17145, buffMove:17184, buffEffectThresholds:17204, trigRow:23771, STAT_TRAINING_MOVES:23870, grantedFeatureObjs:27963, cheerleaderCard:29122
   - _Trainer Classes · [Class] · X AP - Free Action · Prereq: Inspired Training, Novice Charm_
   - Trigger: You use [Orders]
     Effect: Choose Cheered, Excited, or Motivated. All allies affected by the triggering effect gain the chosen condition.  This Feature costs 0 AP if the triggering effect affects only one ally, and costs 1 AP if it affects two or more.  See Extras - Class Mechanics for details.
 
-- 🟢 **Commander** — `likely` · P1 (player:Lysgd) · themes: other · code: hasCommander:8744, PTU_BUFFS:16199, BUFF_CATS:16276, commanderTriggerRow:19845, derivedMonMoves:19971, derivedTrainerAttacks:19993, openGiveOrder:25181, commanderCard:25883
+- 🟢 **Commander** — `likely` · P1 (player:Lysgd) · themes: other · code: hasCommander:9329, PTU_BUFFS:17068, BUFF_CATS:17145, commanderTriggerRow:20715, derivedMonMoves:20841, derivedTrainerAttacks:20863, openGiveOrder:28112, commanderCard:28870
   - _Trainer Classes · [Class] · Static · Prereq: Novice Command_
   - Choose one of Ravager Orders, Marksman Orders, Trickster Orders, Guardian Orders, or Precision Orders. You gain the chosen Feature, even if you do not meet its prerequisites.
 
-- 🟢 **Commander's Voice** — `likely` · P1 (player:Lysgd) · themes: action, skill · code: openGiveOrder:25181, commanderCard:25899
+- 🟢 **Commander's Voice** — `likely` · P1 (player:Lysgd) · themes: action, skill · code: openGiveOrder:28112, commanderCard:28886
   - _Pokémon Training & Orders · Static · Prereq: Two Features with the [Orders] tag_
   - You may give two different [Orders] as a single Standard Action, or you may give one set of [Orders] as a Swift Action.
     Special: If this is used to use Focused Command and another [Order] that has targets, the second Order applies to both Pokemon you are commanding that turn. Commander's Voice doesn't allow you to use Focused Command as a Swift Action.
 
-- 🟢 **Enchanting Transformation** — `likely` · P1 (player:Lysgd) · themes: barrier, heal, interrupt, typing, damage, skill · engine: move-rider, mode, action-surfaced, stat-tag, auto-note · code: applyEndScene:5373, normTrainer:6008, defenseTypeMods:6558, damageHealRow:7409, bookDrain:12438, RIDER_ICONS:24209, FEATURE_MODES:24247, featureActionRow:25224 · class: Glamour Weaver
+- 🟢 **Enchanting Transformation** — `likely` · P1 (player:Lysgd) · themes: barrier, heal, interrupt, typing, damage, skill · engine: move-rider, mode, action-surfaced, stat-tag, auto-note · code: applyEndScene:5891, normTrainer:6526, defenseTypeMods:7106, damageHealRow:7957, bookDrain:13077, RIDER_ICONS:27086, FEATURE_MODES:27124, featureActionRow:28155 · class: Glamour Weaver
   - _Game of Throhs · [+Special Attack] · Bind 2 AP - Shift Action · Prereq: Glamour Weaver_
   - You perform a magical transformation on yourself. While this Feature is Bound, you gain +5 Damage Resistance against Dragon, Fighting, Dark, and Bug-Typed attacks and your Glamour Weaver Moves have the additional effects below.
     
@@ -1972,114 +2285,116 @@ P9 · 36 open of 36 · open
     »» Moonblast: Whenever Moonblast misses a target, they lose a Tick of Hit Points.
     »» Aromatic Mist: All allies affected by Ar …
 
-- 🟢 **Expand Horizons** — `likely` · P1 (enc, player:Handels) · themes: other · engine: auto-note · code: tpGrantBonus:17223, POKE_EDGE_DEFS:17653, mentorCard:23921, FEATURE_AUTO_NOTES:39220 · class: Mentor
+- 🟢 **Expand Horizons** — `likely` · P1 (enc, player:Handels) · themes: other · engine: auto-note · code: tpGrantBonus:18093, POKE_EDGE_DEFS:18523, mentorCard:26798, FEATURE_AUTO_NOTES:42736 · class: Mentor
   - _Trainer Classes · At-Will - Extended Action · Prereq: Mentor_
   - Target: Your Pokemon
     Effect: Your Pokemon gains 3 Tutor Points. A Pokemon may be targeted by Expand Horizons only once.
 
-- 🟢 **Focused Training** — `likely` · P1 (enc, player:Handels, player:Lysgd, player:Lázaro) · themes: multiturn, damage, skill · code: TRAINING_DEFS:431, duelistCard:27748, SIG_TECH_MODS:33536
+- 🟢 **Focused Training** — `likely` · P1 (enc, player:Handels, player:Lysgd, player:Lázaro) · themes: multiturn, damage, skill · code: TRAINING_DEFS:509, duelistCard:30749, SIG_TECH_MODS:36547
   - _Pokémon Training & Orders · [Training][Orders] · At-Will - Special · Prereq: Novice Command_
   - The target becomes Focused until the end of the effect duration. Focused Pokemon gain a +1 bonus to Accuracy Rolls and +2 to Skill Checks.
 
-- 🟢 **Frenzy** — `likely` · P1 (enc, player:Handels) · themes: interrupt, status, cure, damage, skill · engine: action-surfaced, stat-tag · code: BERSERKER_FRENZY:80, trainerDerived:6182, renderTrainer:7254, frenzyGo:8131, PTU_BUFFS:16227, buffMods:16311, autoGrantFeatureMoves:25080 · class: Berserker
+- 🟢 **Frenzy** — `likely` · P1 (enc, player:Handels) · themes: interrupt, status, cure, damage, skill · engine: action-surfaced, stat-tag · code: BERSERKER_FRENZY:80, trainerDerived:6700, renderTrainer:7802, frenzyGo:8679, PTU_BUFFS:17096, buffMods:17181, autoGrantFeatureMoves:28011 · class: Berserker
   - _Game of Throhs · [+HP] · Scene x2 - Free Action · Prereq: Berserker, Adept Combat_
   - Condition: You must be Enraged to use this Feature
     Effect: You may immediately take your turn with Priority. If you do, you are instantly cured of Slowed and Stuck, and for the rest of this turn gain a +2 Bonus to Critical Hit Range, +2 Bonus to Movement Speed, and +2 Bonus to Acrobatics, Athletics, Combat, and Intimidate Checks.
 
-- 🟢 **Glamour Weaver** — `likely` · P1 (player:Lysgd) · themes: other · engine: stat-tag · code: glamourCard:26219
+- 🟢 **Glamour Weaver** — `likely` · P1 (player:Lysgd) · themes: other · engine: stat-tag · code: glamourCard:29206
   - _Game of Throhs · [Class][+Special Attack] · Static · Prereq: Elemental Connection (Fairy), Novice Charm, Novice Occult Education_
   - You learn the Moves Sweet Kiss and Disarming Voice.
 
-- 🟢 **Guidance** — `likely` · P1 (enc, player:Handels) · themes: stat · engine: auto-note · code: effectiveMoveLimit:19535, mentorCard:23919, FEATURE_AUTO_NOTES:39216 · class: Mentor
+- 🟢 **Guidance** — `likely` · P1 (enc, player:Handels) · themes: stat · engine: auto-note · code: effectiveMoveLimit:20405, mentorCard:26796, FEATURE_AUTO_NOTES:42732 · class: Mentor
   - _Trainer Classes · Static · Prereq: Mentor_
   - Your Pokemon's base Move List limit is increased by +1 (Reminder: The default Move List Limit is 6).
 
-- 🟢 **Hex Maniac** — `likely` · P1 (player:Lázaro) · themes: swap, status · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8167, hexCard:26766, openTokenMenu:47950
+- ✅ **Hex Maniac** — `auto` · P1 (player:Lázaro) · themes: swap, status · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8715, hexCard:29765, openTokenMenu:51904
   - _Trainer Classes · [Class][+HP] · Static · Prereq: Novice Occult Education_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Cursed Body or Omen. You gain the Chosen Ability.
 
-- 🟢 **Hex Maniac Studies Rank 1** — `likely` · P1 (player:Lázaro) · themes: status, skill · engine: stat-tag, auto-note · code: FEATURE_AUTO_NOTES:39198 · class: Hex Maniac
+- 🟢 **Hex Maniac Studies Rank 1** — `likely` · P1 (player:Lázaro) · themes: status, skill · engine: stat-tag, auto-note · code: FEATURE_AUTO_NOTES:42714 · class: Hex Maniac
   - _Trainer Classes · [+HP][Ranked 3] · Static · Prereq: Hex Maniac_
   - Learn two Hex Maniac Moves. You may choose any Move marked with the Hex Maniac Studies Rank you are taking or lower.  Use Curse as if you were a Ghost-type Pokemon.
     Rank 1 Moves: Confuse Ray, Curse, Hypnosis, Spite, Will-O-Wisp
 
-- 🟢 **Hex Maniac Studies Rank 2** — `likely` · P1 (player:Lázaro) · themes: skill · engine: stat-tag, auto-note · code: FEATURE_AUTO_NOTES:39200 · class: Hex Maniac
+- 🟢 **Hex Maniac Studies Rank 2** — `likely` · P1 (player:Lázaro) · themes: skill · engine: stat-tag, auto-note · code: FEATURE_AUTO_NOTES:42716 · class: Hex Maniac
   - _Trainer Classes · [+HP][Ranked 3] · Static · Prereq: Hex Maniac_
   - Learn two Hex Maniac Moves. You may choose any Move marked with the Hex Maniac Studies Rank you are taking or lower.
 
-- 🟢 **Hex Maniac Studies Rank 3** — `likely` · P1 (player:Lázaro) · themes: skill · engine: stat-tag, auto-note · code: FEATURE_AUTO_NOTES:39202 · class: Hex Maniac
+- 🟢 **Hex Maniac Studies Rank 3** — `likely` · P1 (player:Lázaro) · themes: skill · engine: stat-tag, auto-note · code: FEATURE_AUTO_NOTES:42718 · class: Hex Maniac
   - _Trainer Classes · [+HP][Ranked 3] · Static · Prereq: Hex Maniac, Expert Occult Education_
   - Learn two Hex Maniac Moves. You may choose any Move marked with the Hex Maniac Studies Rank you are taking or lower.
     Rank 3 Move: Hex
 
-- 🟢 **Inspired Training** — `likely` · P1 (enc, player:Lysgd) · themes: multiturn, damage · code: statusPickable:420, TRAINING_DEFS:433, duelistCard:27748, addEncTrainerMove:33521, SIG_TECH_MODS:33527
+- 🟢 **Inspired Training** — `likely` · P1 (enc, player:Lysgd) · themes: multiturn, damage · code: statusPickable:498, TRAINING_DEFS:511, duelistCard:30749, addEncTrainerMove:36532, SIG_TECH_MODS:36538
   - _Pokémon Training & Orders · [Training][Orders] · At-Will - Special · Prereq: Novice Charm, Untrained Command_
   - The target becomes Inspired until the end of the effect duration. Inspired Pokemon gain a +1 bonus to Evasion and +2 to Save Checks.
 
-- 🟢 **Leadership** — `likely` · P1 (player:Lysgd) · themes: other · engine: auto-note · code: openGiveOrder:25175, commanderCard:25889, FEATURE_AUTO_NOTES:39144 · class: Commander
+- 🟢 **Leadership** — `likely` · P1 (player:Lysgd) · themes: other · engine: auto-note · code: openGiveOrder:28106, commanderCard:28876, FEATURE_AUTO_NOTES:42660 · class: Commander
   - _Trainer Classes · Static · Prereq: Commander_
   - You may use [Orders] that have targets to target any Ally, even if normally those [Orders] would only let you apply the effect to your own Pokemon. Any other conditions still apply.
 
-- 🟢 **Lessons In Rage & Pain** — `likely` · P1 (enc, player:Handels) · themes: heal, damage, skill · engine: stat-tag · code: BERSERKER_LESSONS:77, edgeByName:10226 · class: Berserker
+- 🟢 **Lessons In Rage & Pain** — `likely` · P1 (enc, player:Handels) · themes: heal, damage, skill · engine: stat-tag · code: BERSERKER_LESSONS:77, edgeByName:10840 · class: Berserker
   - _Game of Throhs · [+HP] · Static · Prereq: Berserker, Adept Intimidate_
   - While you have at least 1 Injury, add +X to your Damage Rolls with Rage, Flail, Fury Swipes, Thrash, and Weapon Attacks. X is equal to your Intimidate Rank plus the number of Injuries you have. You do not lose Hit Points from being Heavily Injured, and Injuries beyond the 5th do not lower your Maximum Hit Points.
 
-- 🟢 **Malediction** — `likely` · P1 (player:Lázaro) · themes: interrupt, action · engine: action-surfaced, stat-tag, auto-note · code: hexCard:26773, FEATURE_AUTO_NOTES:39206 · class: Hex Maniac
+- 🟢 **Malediction** — `likely` · P1 (player:Lázaro) · themes: interrupt, action · engine: action-surfaced, stat-tag, auto-note · code: hexCard:29772, FEATURE_AUTO_NOTES:42722 · class: Hex Maniac
   - _Trainer Classes · [+HP] · Scene x2 - Free Action · Prereq: Hex Maniac Studies Rank 1, Expert Occult Education_
   - Trigger: A foe within 5 meters misses all targets with an attack
     Effect: Use a Status-Class Move gained from Hex Maniac Studies targeting the triggering foe as a Free Action, Frequency-permitting.
 
-- 🟢 **Medic** — `likely` · P1 (player:Hugo, player:Lázaro) · themes: action, skill · code: medicBookNames:12361, booksCard:12633, PTU_BUFFS:16247, BUFF_CATS:16276, openApplyRestorative:26491, medicCard:26683
+- 🟢 **Medic** — `likely` · P1 (player:Hugo, player:Lázaro) · themes: action, skill · code: medicBookNames:13000, booksCard:13272, PTU_BUFFS:17116, BUFF_CATS:17145, openApplyRestorative:29484, medicCard:29682
   - _Here Thar Be Playtests · [Class] [9-15 Playtest] · Static · Prereq: Novice Medicine Education_
   - You are always considered to have access to a First Aid Manual and a Combat Medic's Primer, and are
      always considered to be Binding their Rank 1 Effects without actually using any AP.
 
-- 🟢 **Medical Techniques [Medic]** — `likely` · P1 (player:Lázaro) · themes: heal, interrupt, swap, skill · engine: action-surfaced, auto-note · code: featUses:25422, openApplyRestorative:26424, researcherCard:31613, FEATURE_AUTO_NOTES:39188 · class: Medic
+- 🟢 **Medical Techniques [Medic]** — `likely` · P1 (player:Lázaro) · themes: heal, interrupt, swap, skill · engine: action-surfaced, auto-note · code: featUses:28353, openApplyRestorative:29417, researcherCard:34624, FEATURE_AUTO_NOTES:42704 · class: Medic
   - _Here Thar Be Playtests · [9-15 Playtest] · 1 AP - Free Action · Prereq: Medic, Adept Medicine Education_
   - Trigger: You apply a Restorative Item
     Effect: The target of the triggering action gains a Tick of Hit Points, plus an additional amount of Hit Points equal to your Medicine Education Rank.
 
-- 🟢 **Mentor** — `likely` · P1 (enc, player:Handels) · themes: skill, stat · code: openMentorPicker:23718, mentorCard:23877, speciesModal:39674
+- 🟢 **Mentor** — `likely` · P1 (enc, player:Handels) · themes: skill, stat · code: openMentorPicker:26595, mentorCard:26754, speciesModal:43190
   - _Trainer Classes · [Class] · Daily x3 - Extended Action · Prereq: Two of Charm, Intimidate, Intuition, or Pokemon Education at Novice Rank_
   - Target: A Pokemon with at least 1 Tutor Point remaining
     Effect: The target loses 1 Tutor Point, and then learns a move from its tutor list marked with a (N), or any move on its level-up list learned at X Level or lower, where X is the target's current Level plus the sum of your Mentor Skill Ranks. Note that despite being Tutored, these Moves count as if they were "natural" for organizational purposes.
     Special: When you take Mentor, choose two of Charm, Intimidate, Intuition, and Pokemon Education to become your Mentor Skills. The Skills you choose must be at Novice Rank or higher.
 
-- 🟢 **Move Tutor** — `likely` · P1 (enc, player:Handels) · themes: other · engine: auto-note · code: openMentorTutorFeature:23845, mentorCard:23907, FEATURE_AUTO_NOTES:39212 · class: Mentor
+- 🟢 **Move Tutor** — `likely` · P1 (enc, player:Handels) · themes: other · engine: auto-note · code: openMentorTutorFeature:26722, mentorCard:26784, FEATURE_AUTO_NOTES:42728 · class: Mentor
   - _Trainer Classes · Daily - Extended Action · Prereq: Mentor, one Mentor Skill at Expert Rank_
   - Target: A Pokemon with at least 2 Tutor Points.
     Effect: The target loses 2 Tutor Points, and learns any move from its Tutor List.
 
-- 🟢 **Mt. Moon Blues** — `likely` · P1 (player:Handels) · themes: other · engine: stat-tag · code: musicianCard:25863 · class: Musician
+- 🟢 **Mt. Moon Blues** — `likely` · P1 (player:Handels) · themes: other · engine: stat-tag · code: musicianCard:28850 · class: Musician
   - _Trainer Classes · [+Special Attack] · Static · Prereq: Musician_
   - You learn the Moves Sing and Supersonic
 
-- 🟢 **Musical Ability** — `likely` · P1 (player:Handels) · themes: swap · engine: stat-tag, auto-note · code: FEATURE_ABILITY_CHOICES:8165, FEATURE_AUTO_NOTES:39138 · class: Musician
+- ✅ **Musical Ability** — `auto` · P1 (player:Handels) · themes: swap · engine: stat-tag, auto-note · code: FEATURE_ABILITY_CHOICES:8713, FEATURE_AUTO_NOTES:42654 · class: Musician
   - _Trainer Classes · [+Special Attack] · Static · Prereq: Musician_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Drown Out or Soundproof. You gain the chosen Ability.
 
-- 🟢 **Musician** — `likely` · P1 (player:Handels) · themes: other · engine: stat-tag · code: PTU_BUFFS:16220, BUFF_CATS:16276, musicianCard:25855, openTokenMenu:48066
+- 🟢 **Musician** — `likely` · P1 (player:Handels) · themes: other · engine: stat-tag · code: PTU_BUFFS:17089, BUFF_CATS:17145, musicianCard:28842, openTokenMenu:52020
   - _Trainer Classes · [Class] [+Special Attack] · Static · Prereq: Novice Charm, Novice Focus_
   - You may use Musician Songs. See Extras - Class Mechanics for details.
 
-- 🟢 **Noise Complaint** — `likely` · P1 (player:Handels) · themes: other · engine: stat-tag · code: musicianCard:25863 · class: Musician
+- 🟢 **Noise Complaint** — `likely` · P1 (player:Handels) · themes: other · engine: stat-tag · code: musicianCard:28850 · class: Musician
   - _Trainer Classes · [+Special Attack] · Static · Prereq: Cacophony, Expert Charm or Focus_
   - You learn the Moves Uproar and Hyper Voice.
 
-- 🟢 **Passionato Harmony** — `likely` · P1 (player:Lysgd) · themes: heal · engine: stat-tag · code: glamourCard:26226 · class: Glamour Weaver
+- 🟢 **Passionato Harmony** — `likely` · P1 (player:Lysgd) · themes: heal · engine: stat-tag · code: glamourCard:29213 · class: Glamour Weaver
   - _Game of Throhs · [+Special Attack] · Static · Prereq: Glamour Weaver, Expert Charm or Occult Education_
   - You learn the Moves Dazzling Gleam and Draining Kiss.
 
-- 🟢 **Power Chord** — `likely` · P1 (player:Handels) · themes: interrupt, damage, skill · engine: action-surfaced, auto-note · code: openPowerChord:25816, musicianCard:25871, FEATURE_AUTO_NOTES:39140 · class: Musician
+- 🟢 **Power Chord** — `likely` · P1 (player:Handels) · themes: interrupt, damage, skill · engine: action-surfaced, auto-note · code: openPowerChord:28803, musicianCard:28858, FEATURE_AUTO_NOTES:42656 · class: Musician
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Noise Complaint, Master Charm or Focus_
   - Trigger: You play a Song
     Effect: Make a Charm or Focus Check, and add your Special Attack. Foes in the area of effect take Special Normal-Type Damage equal to the result.
 
-- 🟢 **Power of Rage** — `likely` · P1 (player:Handels) · themes: swap · engine: stat-tag · code: FEATURE_ACTIONS:8358, buffDR:16362, abilityDamageMods:21729 · class: Berserker
+- 🟢 **Power of Rage** — `likely` · P1 (player:Handels) · themes: swap · engine: stat-tag · code: FEATURE_ACTIONS:8906, buffDR:17232, abilityDamageMods:24485 · class: Berserker
   - _Game of Throhs · [+HP] · Static · Prereq: Berserker_
   - Choose Enduring Rage or White Flame. You gain the chosen Ability.
 
-- 🟢 **Powerful Motivator** — `likely` · P1 (player:Lysgd) · themes: interrupt, control, status, damage · engine: move-rider, stat-tag, auto-note · code: RIDER_ICONS:24209, provocateurCard:25965, FEATURE_AUTO_NOTES:39131 · class: Provocateur
+- 🟢 **Powerful Motivator** — `likely` · P1 (player:Lysgd) · themes: interrupt, control, status, damage · engine: move-rider, stat-tag, auto-note · code: RIDER_ICONS:27086, provocateurCard:28952, FEATURE_AUTO_NOTES:42647 · class: Provocateur
   - _Trainer Classes · [+Speed] · Static · Prereq: Provocateur, two Provocateur Skills at Adept Rank_
   - Baby-Doll Eyes, Confide, Leer, and your Provocateur Moves gain additional effects. These effects occur whether the Move hits or misses.
     »» Baby-Doll Eyes: The target cannot Critically Strike for 1 full round.
@@ -2090,7 +2405,7 @@ P9 · 36 open of 36 · open
     »» Torment: The target gains a -10 penalty to Damage Rolls against your allies for 1 full round.
     »» Lovely Kiss: The target gains a -3 penalty to Save Checks for 1 full round.
 
-- 🟢 **Provocateur** — `likely` · P1 (player:Lysgd) · themes: control, skill · engine: stat-tag · code: openTrainerAttack:9638, provocateurCard:25959
+- 🟢 **Provocateur** — `likely` · P1 (player:Lysgd) · themes: control, skill · engine: stat-tag · code: openTrainerAttack:10251, provocateurCard:28946
   - _Trainer Classes · [Class][+Speed] · Prereq: One of Confidence Artist, Intimidating Presence, or Charmer_
   - Static Effect: You learn the Moves Sweet Kiss and Taunt.
     Note: Provocateur Skills are Charm, Guile, and Intimidate.
@@ -2098,40 +2413,41 @@ P9 · 36 open of 36 · open
 <a id="verify-features-02"></a>
 ## `verify-features-02` — Verify features the scan thinks are handled
 
-P9 · 36 open of 36 · open
+P9 · 33 open of 36 · open
 
 - 🟢 **Ravager Orders** — `likely` · P1 (player:Lysgd) · themes: other · engine: grants-feature
   - _Pokémon Training & Orders · Static · Prereq: Expert Command or Intimidate_
   - You gain the Reckless Advance and Strike Again! Orders.
 
-- 🟢 **Scheme Twist** — `likely` · P1 (player:Lysgd) · themes: interrupt · engine: action-surfaced, auto-note · code: orderBoosters:25120, openGiveOrder:25141, commanderCard:25893, FEATURE_AUTO_NOTES:39148 · class: Commander
+- 🟢 **Scheme Twist** — `likely` · P1 (player:Lysgd) · themes: interrupt · engine: action-surfaced, auto-note · code: orderBoosters:28051, openGiveOrder:28072, commanderCard:28880, FEATURE_AUTO_NOTES:42664 · class: Commander
   - _Trainer Classes · Scene x2 - Swift Action · Prereq: Commander, Master Command_
   - Trigger: You give [Orders] with a Daily or Scene Frequency that have Targets.
     Effect: You may target up to two additional Allies with the [Orders].
 
-- 🟢 **Too Spooky** — `likely` · P1 (player:Lázaro) · themes: swap · engine: stat-tag · code: apparitionCard:29325 · class: Apparition
+- ✅ **Too Spooky** — `auto` · P1 (player:Lázaro) · themes: swap · engine: stat-tag · code: apparitionCard:32336 · class: Apparition
   - _Game of Throhs · [+Attack] · Static · Prereq: Apparition_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Pressure or Frighten. You gain the chosen Ability.
 
-- 🟢 **Type Expertise** — `likely` · P1 (enc, player:Lysgd) · themes: skill · engine: stat-tag, remember-only · code: typeExpertiseEligible:18875
+- 🟢 **Type Expertise** — `likely` · P1 (enc, player:Lysgd) · themes: skill · engine: stat-tag, remember-only · code: typeExpertiseEligible:19745
   - _Combat · [Ranked 2][+Any] · Static · Prereq: Level 9, 3 Moves of the Chosen Type in your Move List_
   - Each Rank, choose a Type of which you know at least 3 Moves. You gain STAB for the chosen Type. STAB is never applied to Struggle Attacks.
 
-- 🟢 **Ace Trainer** — `likely` · P2 (enc) · themes: heal, interrupt, cs, action, skill, stat · code: trainedStatCap:558, setTopPercent:8300, aceTrainerCard:27549
+- 🟢 **Ace Trainer** — `likely` · P2 (enc) · themes: heal, interrupt, cs, action, skill, stat · code: trainedStatCap:636, setTopPercent:8848, aceTrainerCard:30548
   - _Trainer Classes · [Class] · Drain 1 AP - Extended Action · Prereq: Novice Command_
   - Trigger: You spend at least half an hour training your Pokemon
     Effect: For each Pokemon that has been trained during this time, choose a Stat besides HP; that Stat becomes Trained until an Extended Rest is taken. The default State of Trained Stats is +1 Combat Stages instead of 0. A Pokemon may have only one Trained Stat at a time.
     Note: Just to clarify, this Feature Drains 1 AP per training session, not per Pokemon. So train as many as you can to get the most out of this Feature!
 
-- 🟢 **Agility Training** — `likely` · P2 (enc) · themes: position, multiturn · code: TRAINING_DEFS:427, duelistCard:27748, SIG_TECH_MODS:33525
+- 🟢 **Agility Training** — `likely` · P2 (enc) · themes: position, multiturn · code: TRAINING_DEFS:505, duelistCard:30749, SIG_TECH_MODS:36536
   - _Pokémon Training & Orders · [Training][Orders] · At-Will - Special · Prereq: Novice Athletics, Untrained Command_
   - The target becomes Agile until the end of the effect duration. Agile Pokemon gain a +1 bonus to Movement Capabilities and +4 to Initiative.
 
-- 🟢 **Arcane Training** — `likely` · P2 (enc) · themes: typing, damage, skill · engine: stat-tag · code: shadeCallerCard:28249
+- 🟢 **Arcane Training** — `likely` · P2 (enc) · themes: typing, damage, skill · engine: stat-tag · code: shadeCallerCard:31250
   - _Game of Throhs · [+Special Attack][Weapon] · Static · Prereq: Novice Occult Education, Elemental Connection or Mystic Senses_
   - You may use Arcane Weapons. Attacks made with your Arcane Weapons share the Type of your Elemental Connection. If you have Mystic Senses, these Attacks deal Normal Type Damage. Arcane Weapon users that qualified through Mystic Senses or Elemental Connection (Normal) gain a +5 Bonus to Damage Rolls and a +2 Bonus to Effect Range when using Arcane Weapon Attacks. When wielding an Arcane Weapon, you may resist Disarm Maneuvers with your Occult Education.
 
-- 🟢 **Arctic Zeal** — `likely` · P2 (enc) · themes: barrier, interrupt, control, status, typing, cs, damage, action, skill · engine: action-surfaced · code: openArcticZeal:28800, TYPE_ACE_BRANCH:28928 · class: Type Ace
+- 🟢 **Arctic Zeal** — `likely` · P2 (enc) · themes: barrier, interrupt, control, status, typing, cs, damage, action, skill · engine: action-surfaced · code: openArcticZeal:31801, TYPE_ACE_BRANCH:31929 · class: Type Ace
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Glacial Ice, Type-Linked Skill at Expert_
   - Trigger: Your Ice-Type Pokemon uses an Ice-Type Move
     Effect: Your Pokemon uses the Move Mist as if it were on their Move List. When used this way, in addition to its normal effects, your Ice-Type Pokemon may expend uses of the Mist Blessing to do the following:
@@ -2139,7 +2455,7 @@ P9 · 36 open of 36 · open
     »» As a Free Action when being hit by a Fighting, Fire, Rock, or Steel-Typed attack dealing Super-Effective Damage to add their Tick Value to their Damage Reduction gained from Glacial Ice.
     »» As a Swift Action on their turn to increase their Defense or Special Defense by 1 Combat Stage.
 
-- 🟢 **Attack Ace** — `likely` · P2 (enc) · themes: stat, social · code: STAT_ACE_FEATURES:540 · class: Ace Trainer, Style Expert
+- 🟢 **Attack Ace** — `likely` · P2 (enc) · themes: stat, social · code: STAT_ACE_FEATURES:618 · class: Ace Trainer, Style Expert
   - _Trainer Classes · [Class] [Branch] · Static · Prereq: Ace Trainer or Style Expert, 1 Pokemon with Attack of 15 or more, Novice Command or Focus
 Or
 3 Pokemon with Attack at 20 or higher, Novice Command or Focus_
@@ -2147,82 +2463,83 @@ Or
     
     Note: You may take Stat Ace multiple times, choosing different Stats each time. If using Style Expert to qualify for Stat Ace, your Chosen Stat must be the Stat that correlates to your Chosen Contest Stat. Beauty is Special Attack, Cool is Attack, Cute is Speed, Smart is Special Defense, and Tough is Defense.  You may use the Stat in place of "Stat" in all …
 
-- 🟢 **Aura Reader** — `likely` · P2 (enc) · themes: skill · engine: action-surfaced, stat-tag · code: PE_CAP_ALIAS:17380 · class: Aura Guardian
+- 🟢 **Aura Reader** — `likely` · P2 (enc) · themes: skill · engine: action-surfaced, stat-tag · code: PE_CAP_ALIAS:18250 · class: Aura Guardian
   - _Trainer Classes · [+Attack or Special Attack] · 2 AP - Swift Action · Prereq: Aura Guardian_
   - You gain the Aura Reader Capability for the rest of the scene. If your Intuition is Adept Rank or higher, you also gain the Aura Pulse Capability.
 
-- 🟢 **Battle Synchronization** — `likely` · P2 (enc) · themes: damage · engine: action-surfaced, remember-only · code: channelSyncStart:27130, channelerCard:27494 · class: Channeler
+- 🟢 **Battle Synchronization** — `likely` · P2 (enc) · themes: damage · engine: action-surfaced, remember-only · code: channelSyncStart:30129, channelerCard:30493 · class: Channeler
   - _Trainer Classes · Scene x3 - Standard Action · Prereq: Channeler_
   - For one full round, whenever a Channeled Pokemon successfully hits a foe, all Channeled Pokemon gain +1 Accuracy and +1 Evasion against that foe for the duration of this Feature.
 
-- 🟢 **Bigger and Boulder** — `likely` · P2 (enc) · themes: hazard, position, interrupt, swap, status, skill · engine: action-surfaced · code: openBiggerAndBoulder:28658, TYPE_ACE_BRANCH:28866 · class: Type Ace
+- 🟢 **Bigger and Boulder** — `likely` · P2 (enc) · themes: hazard, position, interrupt, swap, status, skill · engine: action-surfaced · code: openBiggerAndBoulder:31659, TYPE_ACE_BRANCH:31867 · class: Type Ace
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Gravel Before Me, Type-Linked Skill at Adept_
   - Trigger: Your Pokemon hits with a damaging Rock-Type Move
     Effect: All targets hit by the triggering Move are pushed a number of meters equal to half your Type-Linked Skill Rank or less, and they become Vulnerable for one full round. Create a Stealth Rock Hazard adjacent to each foe hit this way.
 
-- 🟢 **Bottled Lightning** — `likely` · P2 (enc) · themes: interrupt, multiturn, control, swap, action, skill · engine: action-surfaced, stat-tag, remember-only · code: applyEndScene:5375, sparkMasterCard:29237 · class: Spark Master
+- 🟢 **Bottled Lightning** — `likely` · P2 (enc) · themes: interrupt, multiturn, control, swap, action, skill · engine: action-surfaced, stat-tag, remember-only · code: applyEndScene:5893, sparkMasterCard:32248 · class: Spark Master
   - _Game of Throhs · [+Speed] · 2 AP - Standard Action · Prereq: Storm Wizard, Adept Focus_
   - Target: An item made of conductive material
     Effect: Choose one of your Electric Type Moves with a target. You Charge the target item with this Move. Bottled Lightning counts as using the Move for frequency purposes. You may expend this Charge as a Swift Action on your turn to use the Move the item was charged with, originating from the item. If a Pokemon or Trainer touches a Charged item, you may instead activate this Swift Action as if it had the Priority keyword. At the end of a Scene, all items lose their Charge, and you may only have X items Charged at a time where X is half your Focus Rank.
 
-- 🟢 **Brutal Training** — `likely` · P2 (enc) · themes: multiturn, damage · code: TRAINING_DEFS:429, SIG_TECH_MODS:33529
+- 🟢 **Brutal Training** — `likely` · P2 (enc) · themes: multiturn, damage · code: TRAINING_DEFS:507, SIG_TECH_MODS:36540
   - _Pokémon Training & Orders · [Training][Orders] · At-Will - Special · Prereq: Novice Intimidate, Untrained Command_
   - The target becomes Brutal until the end of the effect duration. Brutal Pokemon increase the Critical-Hit and Effect Range of all attacks by +1.
 
-- 🟢 **Channel the Dragon's Spirit** — `likely` · P2 (enc) · themes: interrupt, damage · engine: action-surfaced, stat-tag · code: WEAPON_RETYPE_FEATS:7857, heraldCard:27959 · class: Herald of Pride
+- 🟢 **Channel the Dragon's Spirit** — `likely` · P2 (enc) · themes: interrupt, damage · engine: action-surfaced, stat-tag · code: WEAPON_RETYPE_FEATS:8405, heraldCard:30960 · class: Herald of Pride
   - _Game of Throhs · [+Attack] · 1 AP - Free Action · Prereq: Herald of Pride_
   - Trigger: You use a Weapon Attack 
     Effect: You may have the triggering attack deal Dragon- Type Damage if you wish. On 18+, all targets can only use At-Will Frequency Moves for one full round
 
-- 🟢 **Channeler** — `likely` · P2 (enc) · themes: action, skill · engine: action-surfaced, remember-only · code: openSpiritBoost:27109, openSyncHit:27157, channelerCard:27431
+- 🟢 **Channeler** — `likely` · P2 (enc) · themes: action, skill · engine: action-surfaced, remember-only · code: openSpiritBoost:30108, openSyncHit:30156, channelerCard:30430
   - _Trainer Classes · [Class] · At-Will - Swift Action · Prereq: Mystic Senses_
   - Target: A Pokemon.
     Effect: You Channel the target Pokemon. If you attempt to Channel a Hostile Pokemon, you must make an Intuition Check with a DC of 15 to Channel the target. You may stop Channeling a Pokemon as a Free Action at any time. You may Channel a number of Pokemon at a time up to your Intuition Rank. If a Channeled Pokemon goes further than 20 meters from you, they stop being Channeled.  See Extras - Class Mechanics for Channel details.
 
-- 🟢 **Chitin Shield** — `likely` · P2 (enc) · themes: interrupt, typing, action · engine: action-surfaced, remember-only · code: TYPE_ACE_BRANCH:28907 · class: Type Ace
+- 🟢 **Chitin Shield** — `likely` · P2 (enc) · themes: interrupt, typing, action · engine: action-surfaced, remember-only · code: TYPE_ACE_BRANCH:31908 · class: Type Ace
   - _Trainer Classes · Daily x3 - Free Action · Prereq: Insectoid Utility, Type Linked Skill at Expert_
   - Trigger: Your Bug-Type Pokemon is hit by a Status-Class Move
     Effect: The effect misses, and your Pokemon becomes immune to that Move for the rest of the Scene. Chitin Shield may be triggered once per Scene per Pokemon.
 
-- 🟢 **Conqueror’s March** — `likely` · P2 (enc) · themes: other · engine: action-surfaced, stat-tag · code: edgeByName:10226 · class: Rider
+- 🟢 **Conqueror’s March** — `likely` · P2 (enc) · themes: other · engine: action-surfaced, stat-tag · code: edgeByName:10840 · class: Rider
   - _Trainer Classes · [Orders] [+Speed] · At-Will - Standard Action · Prereq: Ramming Speed, Adept Acrobatics or Athletics_
   - Target: Your Pokemon with Run Up
     Effect: This round, if being used as a Mount, the target may use Dash, Burst, Blast, Cone, or Line range Moves with a range of Pass instead of their usual range.
 
-- 🟢 **Dark Soul** — `likely` · P2 (enc) · themes: swap · engine: stat-tag · code: shadeCallerCard:28252 · class: Shade Caller
+- ✅ **Dark Soul** — `auto` · P2 (enc) · themes: swap · engine: stat-tag · code: shadeCallerCard:31253 · class: Shade Caller
   - _Game of Throhs · [+Attack or Special Attack] · Static · Prereq: Shade Caller, Master Guile or Stealth_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Shadow Tag or Super Luck. You gain the chosen Ability.
 
-- 🟢 **Deep Cold** — `likely` · P2 (enc) · themes: interrupt, status, cure, cs, action, skill · engine: action-surfaced, remember-only · code: openDeepCold:28766, TYPE_ACE_BRANCH:28932 · class: Type Ace
+- 🟢 **Deep Cold** — `likely` · P2 (enc) · themes: interrupt, status, cure, cs, action, skill · engine: action-surfaced, remember-only · code: openDeepCold:31767, TYPE_ACE_BRANCH:31933 · class: Type Ace
   - _Trainer Classes · Daily x3 - Free Action · Prereq: Glacial Ice, Type-Linked Skill at Master_
   - Trigger: Your Pokemon hits with a damaging Ice-Type Move
     Effect: The target is Frozen, and has their Attack, Special Attack, and Speed Combat Stages lowered by 1 each. The target is automatically cured of the Frozen Condition after 1 full round. A foe may be affected by Deep Cold only once per Scene.
 
-- 🟢 **Disruption Order** — `likely` · P2 (enc) · themes: interrupt, multiturn, status, damage · engine: action-surfaced · code: FOE_FX:25599, openDisruptionOrder:28708, TYPE_ACE_BRANCH:28912 · class: Type Ace
+- 🟢 **Disruption Order** — `likely` · P2 (enc) · themes: interrupt, multiturn, status, damage · engine: action-surfaced · code: FOE_FX:28586, openDisruptionOrder:31709, TYPE_ACE_BRANCH:31913 · class: Type Ace
   - _Trainer Classes · Daily x3 - Free Action · Prereq: Insectoid Utility, Type-Linked Skill at Master_
   - Trigger: Your Pokemon hits with a Bug-Type Move
     Effect: Until the end of user's next turn, all targets hit by the Move are Slowed, suffer a -X to Accuracy Rolls, and are Flinched by Damaging Attacks on 16+.
 
-- 🟢 **Dive** — `likely` · P2 (enc) · themes: position, interrupt, status · engine: action-surfaced, stat-tag · code: researcherCard:31622
+- 🟢 **Dive** — `likely` · P2 (enc) · themes: position, interrupt, status · engine: action-surfaced, stat-tag · code: researcherCard:34633
   - _Combat · [+Speed] · Scene x2 - Shift Action, Interrupt · Prereq: Adept Acrobatics_
   - Trigger: You are targeted by a Ranged 1-Target Attack, or are in a Cone, Burst, Blast, or Line.
     Effect: You may immediately Shift 1 Meter, and then become Tripped. This Feature cannot be used if you are Stuck, Grappled, or otherwise impaired from Shifting. This Feature causes you to dodge Ranged attacks aimed at you, and may let you avoid Cones, Bursts, Blasts, or Lines if the shift removes you from the area of effect.
 
-- 🟢 **Divine Wind** — `likely` · P2 (enc) · themes: barrier, typing, action · engine: action-surfaced, stat-tag · code: sageCard:32941 · class: Sage
+- 🟢 **Divine Wind** — `likely` · P2 (enc) · themes: barrier, typing, action · engine: action-surfaced, stat-tag · code: sageCard:35952 · class: Sage
   - _Trainer Classes · [+HP] · 2 AP - Free Action - Interrupt · Prereq: Sage's Benediction, Master Occult Education_
   - Target: Blessings you generated with a Sage Move
     Effect: Choose a type of Blessing you can generate with a Sage Move. All Blessings you generated of another type become Blessings of the chosen type. This may not be used to generate more uses of a Blessing than the original Move creates. For example, three Lucky Chant Blessings would become two Reflect or Light Screen Blessings, not three. You may only choose a Blessing type once per Scene.
 
-- 🟢 **Elite Trainer** — `likely` · P2 (enc) · themes: other · code: statusPickable:420, aceTrainerCard:27592 · class: Ace Trainer
+- 🟢 **Elite Trainer** — `likely` · P2 (enc) · themes: other · code: statusPickable:498, aceTrainerCard:30593 · class: Ace Trainer
   - _Trainer Classes · Static · Prereq: Ace Trainer_
   - Choose Agility Training, Brutal Training, Focused Training, or Inspired Training. You gain the chosen Feature, even if you do not meet the prerequisites. When training, you may apply up to two different [Training] Features on each of your Pokemon. If you already have all of these Features, instead pick another Feature for which you qualify.
 
-- 🟢 **Extra Ordinary** — `likely` · P2 (enc) · themes: swap · code: extraOrdinaryEligible:18814 · class: Type Ace
+- 🟢 **Extra Ordinary** — `likely` · P2 (enc) · themes: swap · code: extraOrdinaryEligible:19684 · class: Type Ace
   - _Trainer Classes · At-Will - Extended Action · Prereq: Type Ace, Normal as Chosen Type_
   - Target: Your Normal-Type Pokemon with Last Chance or Normal Strategist
     Effect: Your Pokemon gains the Last Chance or Normal Strategist Ability, whichever one they do not already have. Extra Ordinary can target a Pokemon only once.
 
-- 🟢 **Fearsome Display** — `likely` · P2 (enc) · themes: heal, interrupt, multiturn, status, cure, cs, damage, skill · engine: move-rider, action-surfaced, stat-tag, auto-note · code: RIDER_ICONS:24210, riderBoxes:24525 · class: Roughneck
+- 🟢 **Fearsome Display** — `likely` · P2 (enc) · themes: heal, interrupt, multiturn, status, cure, cs, damage, skill · engine: move-rider, action-surfaced, stat-tag, auto-note · code: RIDER_ICONS:27087, riderBoxes:27456 · class: Roughneck
   - _Trainer Classes · [+Defense] · 2 AP - Swift Action · Prereq: Malice_
   - Trigger: You use Leer or a Roughneck Move
     Effect: The Move gains additional effects.
@@ -2239,29 +2556,29 @@ Or
   - Trigger: Your Hit Points are lowered to or below 0 while Enraged.
     Effect: You are not Fainted; you instead Faint upon reaching -50% of your Max Hit Points. If you have 5 or more injuries, you may use this Feature regardless of Frequency.
 
-- 🟢 **Frozen Domain** — `likely` · P2 (enc) · themes: weather, hazard, status, typing, skill · engine: action-surfaced, stat-tag · code: castFrozenDomain:28850, frostTouchedCard:29425, HAZARDS:45594 · class: Frost Touched
+- 🟢 **Frozen Domain** — `likely` · P2 (enc) · themes: weather, hazard, status, typing, skill · engine: action-surfaced, stat-tag · code: castFrozenDomain:31851, frostTouchedCard:32436, HAZARDS:49205 · class: Frost Touched
   - _Game of Throhs · [+Attack or Special Attack] · 2 AP - Standard Action · Prereq: Expert Athletics or Survival_
   - Set 6 square meters of Frozen Domain within range 6. All 6 meters must be adjacent with at least one other space of Frozen Domain. All legal targets passing through these squares must make an Acrobatics check with a DC equal to 4 + twice your Survival Rank. On failure, the target is Tripped. Pokemon who are flying, levitating, or have the Naturewalk (Tundra) Capability are immune to this effect. When standing on a square affected by Frozen Domain, you may act as if you were in Hail weather. When a Fire-Type attack originates from or targets a square of Frozen Domain, that square of Frozen Domain melts and is cleared. Frozen Domain is considered a Hazard.
 
-- 🟢 **Glacial Ice** — `likely` · P2 (enc) · themes: typing, damage, skill · code: trainerBarren:14911, glacialIceDR:18851, TYPE_ACE_BRANCH:28918, damageResultHTML:47110 · class: Type Ace
+- 🟢 **Glacial Ice** — `likely` · P2 (enc) · themes: typing, damage, skill · code: trainerBarren:15668, glacialIceDR:19721, TYPE_ACE_BRANCH:31919, damageResultHTML:51033 · class: Type Ace
   - _Trainer Classes · Static · Prereq: Type Ace, Ice as Chosen Type_
   - Your Ice-Type Pokemon gain Damage Reduction equal to your Type-Linked Skill Rank against Fighting, Fire, Rock, and Steel-Typed Attacks from which they would take Super-Effective Damage.
 
-- 🟢 **Gneiss Aim** — `likely` · P2 (enc) · themes: interrupt · engine: action-surfaced · code: TYPE_ACE_BRANCH:28875 · class: Type Ace
+- 🟢 **Gneiss Aim** — `likely` · P2 (enc) · themes: interrupt · engine: action-surfaced · code: TYPE_ACE_BRANCH:31876 · class: Type Ace
   - _Trainer Classes · Daily x3 - Free Action · Prereq: Gravel Before Me, Type-Linked Skill at Master_
   - Trigger: Your Pokemon misses with a Damaging Rock- Type Move
     Effect: The Move gains the Smite keyword for that use.
 
-- 🟢 **Gravel Before Me** — `likely` · P2 (enc) · themes: hazard, interrupt, swap, damage, skill · engine: action-surfaced, remember-only · code: TYPE_ACE_BRANCH:28861 · class: Type Ace
+- 🟢 **Gravel Before Me** — `likely` · P2 (enc) · themes: hazard, interrupt, swap, damage, skill · engine: action-surfaced, remember-only · code: TYPE_ACE_BRANCH:31862 · class: Type Ace
   - _Trainer Classes · At-Will - Free Action · Prereq: Type Ace, Rock as Chosen Type_
   - Trigger: Your Rock-Type Pokemon misses all targets with a Rock-Type attack, receives an Injury, suffers a Critical Hit, or Faints.
     Effect: Create a Stealth Rock Hazard adjacent to your Pokemon.
 
-- 🟢 **Herald of Pride** — `likely` · P2 (enc) · themes: typing, damage, skill, stat · engine: stat-tag · code: MELEE_SKILL_SUBS:7503, attackDRPierce:7875, heraldCard:27951, tokenDamageBreakdown:46955
+- 🟢 **Herald of Pride** — `likely` · P2 (enc) · themes: typing, damage, skill, stat · engine: stat-tag · code: MELEE_SKILL_SUBS:8051, attackDRPierce:8423, heraldCard:30952, tokenDamageBreakdown:50874
   - _Game of Throhs · [Class][+Attack][Weapon] · Static · Prereq: Elemental Connection (Dragon), Novice Command, Novice Intimidate_
   - Static Effect: When wielding Melee Weapons, you may use Command or Intimidate instead of Combat to determine the Damage Base of your Struggle Attacks, to resist Disarm Maneuvers, and to qualify for a Weapon's Moves. Your Weapon Attacks ignore Damage Reduction up to your Command or Intimidate Rank.
 
-- 🟢 **Hydro Jet** — `likely` · P2 (enc) · themes: interrupt · engine: action-surfaced, stat-tag · code: maelstromCard:28125 · class: Maelstrom
+- 🟢 **Hydro Jet** — `likely` · P2 (enc) · themes: interrupt · engine: action-surfaced, stat-tag · code: maelstromCard:31126 · class: Maelstrom
   - _Game of Throhs · [+Speed] · 1 AP - Free Action · Prereq: Call the Current Rank 1_
   - Trigger: You use a damaging single target Water-Type Move
     Effect: Hydro Jet's effect depends on if the triggering Move was Melee or Ranged.
@@ -2269,7 +2586,7 @@ Or
     »» If Melee, the Move gains the Pass keyword and you may change direction during the four meters of Pass (but may still only target any given Pokemon or Trainer once).
     »» If Ranged, the Move becomes a Line 4 instead of its usual range.
 
-- 🟢 **Insectoid Utility** — `likely` · P2 (enc) · themes: position, status, typing, damage, skill · code: insectoidSpdEva:18862, TYPE_ACE_BRANCH:28897 · class: Type Ace
+- 🟢 **Insectoid Utility** — `likely` · P2 (enc) · themes: position, status, typing, damage, skill · code: insectoidSpdEva:19732, TYPE_ACE_BRANCH:31898 · class: Type Ace
   - _Trainer Classes · Static · Prereq: Type Ace, Bug as Chosen Type_
   - Your Pokemon with the following Capabilities have the upgrades below applied to them.
     »» Threaded: Your Pokemon may use its Threaded attack to perform Combat Maneuvers, including Grapple and Push.
@@ -2277,21 +2594,22 @@ Or
     »» Naturewalk: Your Pokemon cannot be Slowed or Stuck in its appropriate Terrains.
     »» Sky: Your Pokemon has a +1 bonus to its Speed Evasion.
 
-- 🟢 **Iterative Evolution** — `likely` · P2 (enc) · themes: interrupt, swap, typing, damage, skill · engine: mode, action-surfaced · code: FEATURE_MODES:24289, TYPE_ACE_BRANCH:28902 · class: Type Ace
+- 🟢 **Iterative Evolution** — `likely` · P2 (enc) · themes: interrupt, swap, typing, damage, skill · engine: mode, action-surfaced · code: FEATURE_MODES:27172, TYPE_ACE_BRANCH:31903 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Insectoid Utility, Type-Linked Skill at Adept_
   - Trigger: Your Pokemon hits with a damaging Bug-Type attack
     Effect: While this Feature is bound, if the triggering attack would deal Super-Effective Damage, it gains a +2 Bonus to Accuracy Check. If it would deal Neutral Damage, it gains a Bonus to its Damage Roll equal to your Type-Linked Skill Rank. If it would be resisted, it is resisted one step less. This is calculated after applying any other effects that would modify effectiveness before the Accuracy Roll is made, such as the Tinted Lens Ability.
 
-- 🟢 **Lay on Hands** — `likely` · P2 (enc) · themes: heal, swap · engine: stat-tag · code: sageCard:32933 · class: Sage
+- ✅ **Lay on Hands** — `auto` · P2 (enc) · themes: heal, swap · engine: stat-tag · code: sageCard:35944 · class: Sage
   - _Trainer Classes · [+HP] · Static · Prereq: Sage, Expert Occult Education_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Blessed Touch or Healer. You gain the Chosen Ability.
 
 <a id="verify-features-03"></a>
 ## `verify-features-03` — Verify features the scan thinks are handled
 
-P9 · 36 open of 36 · open
+P9 · 31 open of 36 · open
 
-- 🟢 **Lessons** — `likely` · P2 (enc) · themes: skill · engine: auto-note · code: openMentorLessons:23767, runMentorLesson:23796, mentorCard:23902, featureActionTypes:24171, FEATURE_AUTO_NOTES:39210 · class: Mentor
+- 🟢 **Lessons** — `likely` · P2 (enc) · themes: skill · engine: auto-note · code: openMentorLessons:26644, runMentorLesson:26673, mentorCard:26779, featureActionTypes:27048, FEATURE_AUTO_NOTES:42726 · class: Mentor
   - _Trainer Classes · Daily x3 - Extended Action · Prereq: Mentor_
   - You may perform any Mentor Lesson for which you qualify.
     »» Charm: Empowered Development
@@ -2299,23 +2617,23 @@ P9 · 36 open of 36 · open
     »» Intuition: Changing Viewpoints
     »» Pokemon Education: Versatile Teachings
 
-- 🟢 **Lifelong Learning** — `likely` · P2 (enc) · themes: other · engine: auto-note · code: mentorCard:23923, FEATURE_AUTO_NOTES:39218 · class: Mentor
+- 🟢 **Lifelong Learning** — `likely` · P2 (enc) · themes: other · engine: auto-note · code: mentorCard:26800, FEATURE_AUTO_NOTES:42734 · class: Mentor
   - _Trainer Classes · Static · Prereq: Move Tutor, one Mentor Skill at Master Rank_
   - Your Pokemon may have up to 4 Moves from their Move List come from TMs or Move Tutors.
 
-- 🟢 **Living Shadow** — `likely` · P2 (enc) · themes: interrupt, swap, skill · engine: group-rider, stat-tag · code: shadeCallerCard:28236 · class: Shade Caller
+- 🟢 **Living Shadow** — `likely` · P2 (enc) · themes: interrupt, swap, skill · engine: group-rider, stat-tag · code: shadeCallerCard:31237 · class: Shade Caller
   - _Game of Throhs · [+Attack or Special Attack] · Static · Prereq: Shade Caller_
   - Your own Shadow can attack others; you may have your Dark Type Moves originate from any Square adjacent to you. If you are fighting among complete darkness, you may have your Dark Type Moves originate from any square within X meters that is completely dark, where X is the higher of your Guile or Stealth Rank. Attacks originating from Living Shadow do not trigger effects that rely on being hit with a melee attack.
 
-- 🟢 **Maelstrom** — `likely` · P2 (enc) · themes: position, heal · engine: group-rider, stat-tag · code: openTrainerAttack:9027, FEATURE_CAPS:11777, FEATURE_MODES:24276, maelstromCard:28102
+- 🟢 **Maelstrom** — `likely` · P2 (enc) · themes: position, heal · engine: group-rider, stat-tag · code: openTrainerAttack:9623, FEATURE_CAPS:12416, FEATURE_MODES:27153, maelstromCard:31103
   - _Game of Throhs · [Class] [+Speed] · Static · Prereq: Elemental Connection (Water), Novice Athletics, Novice Acrobatics_
   - You gain the Gilled Capability, and a +2 bonus to your Swim speed. Whenever your Water-Type Moves miss all targets, you gain a Tick of Temporary Hit Points.
 
-- 🟢 **Magnetize** — `likely` · P2 (enc) · themes: barrier, position · engine: stat-tag · code: FEATURE_CAPS:11782, sparkMasterCard:29234 · class: Spark Master
+- 🟢 **Magnetize** — `likely` · P2 (enc) · themes: barrier, position · engine: stat-tag · code: FEATURE_CAPS:12421, sparkMasterCard:32245 · class: Spark Master
   - _Game of Throhs · [+Speed] · Static · Prereq: Storm Wizard Rank 1, Adept Acrobatics_
   - You gain the Magnetic Capability and may use this magnetism to stick to surfaces with significant metal content (ex: metal walls obviously, concrete with metal I-beams inside, etc). You may use your Overland to traverse any such surfaces, even if that means walking vertically up a wall or upside down on a ceiling. You may choose not to be Pushed when on such a surface.
 
-- 🟢 **Martial Achievement** — `likely` · P2 (enc) · themes: swap, skill · code: techniquesForClass:10431 · class: Martial Artist
+- 🟢 **Martial Achievement** — `likely` · P2 (enc) · themes: swap, skill · code: techniquesForClass:11045 · class: Martial Artist
   - _Trainer Classes · [Special] · Static · Prereq: Martial Artist_
   - You gain a Martial Achievement based on your chosen Ability.
     »» Guts: Wrestlemania
@@ -2325,49 +2643,51 @@ P9 · 36 open of 36 · open
     »» Reckless: Soft Landing
     »» Technician: Whirlwind Strikes
 
-- 🟢 **Move Sync** — `likely` · P2 (enc) · themes: typing · code: moveSyncEligible:20138, openMoveSync:20150, moveRollFactsHTML:39353 · class: Type Ace
+- 🟢 **Move Sync** — `likely` · P2 (enc) · themes: typing · code: moveSyncEligible:21008, openMoveSync:21020, moveRollFactsHTML:42869 · class: Type Ace
   - _Trainer Classes · [Branch] · At-Will - Extended Action · Prereq: 3 Type Ace Features_
   - Target: Your Pokemon with at least 1 Tutor Point.
     Effect: The target loses 1 Tutor Point. Pick a Move in the target's Move List. The picked move is now permanently of your Chosen Type, and may have different effects. See the Types Changes section on page 468 of the Core handbook for more information and suggestions. A Pokemon may have only one Move-Sync'd Move in their Move List at a time; to Sync a new Move, the old Move must be forgotten.
 
-- 🟢 **Mystic Defense** — `likely` · P2 (enc) · themes: barrier · engine: stat-tag · code: sageCard:32932 · class: Sage
+- ✅ **Mystic Defense** — `auto` · P2 (enc) · themes: barrier · engine: stat-tag · code: sageCard:35943 · class: Sage
   - _Trainer Classes · [+HP] · Static · Prereq: Sage_
+  - note: syncFeatureMoves reads 'You learn the Moves X and Y' (v594 sweep)
   - You learn the Moves Light Screen and Safeguard.
 
-- 🟢 **New Normal** — `likely` · P2 (enc) · themes: heal, interrupt, damage, action, stat · engine: action-surfaced, remember-only · code: TYPE_ACE_BRANCH:28886 · class: Type Ace
+- 🟢 **New Normal** — `likely` · P2 (enc) · themes: heal, interrupt, damage, action, stat · engine: action-surfaced, remember-only · code: TYPE_ACE_BRANCH:31887 · class: Type Ace
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Extra Ordinary, Type-Linked Skill at Expert_
   - Trigger: Your Pokemon hits with a Normal-Type Move with conditional modifiers which increase or decrease its damage
     Effect: You use the highest damage value for the triggering Move. New Normal may only be used once per Scene per Pokemon. New Normal may not raise a Move's Damage Base above 14; if a Move would have its Damage Base raised above that value, it is instead raised to 14. (Examples: Return is DB 9, Wring Out never has its damage decreased due to the target's Hit Points, Retaliate is DB 14.)
 
-- 🟢 **Noblesse Oblige** — `likely` · P2 (enc) · themes: swap · engine: stat-tag · code: heraldCard:27973 · class: Herald of Pride
+- ✅ **Noblesse Oblige** — `auto` · P2 (enc) · themes: swap · engine: stat-tag · code: heraldCard:30974 · class: Herald of Pride
   - _Game of Throhs · [+Attack] · Static · Prereq: Herald of Pride_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - You gain the Regal Challenge Ability
 
-- 🟢 **Oceanic Feeling** — `likely` · P2 (enc) · themes: heal, interrupt, swap, action · engine: action-surfaced, stat-tag · code: maelstromCard:28118, openOceanicFeeling:28209 · class: Maelstrom
+- 🟢 **Oceanic Feeling** — `likely` · P2 (enc) · themes: heal, interrupt, swap, action · engine: action-surfaced, stat-tag · code: maelstromCard:31119, openOceanicFeeling:31210 · class: Maelstrom
   - _Game of Throhs · [+Speed] · Scene x2 - Free Action · Prereq: Water's Shroud, Master Athletics or Acrobatics_
   - You may activate Oceanic Feeling when either Wash Away or Storm Drain would be triggered to gain that Ability for 1 full round, if you do not already have it, and immediately Trigger it. Activating an Ability this way ignores its usual Frequency. You may use each Ability once per Scene this way.
 
-- 🟢 **Perseverance** — `likely` · P2 (enc) · themes: interrupt, action · engine: action-surfaced · code: aceTrainerCard:27573 · class: Ace Trainer
+- 🟢 **Perseverance** — `likely` · P2 (enc) · themes: interrupt, action · engine: action-surfaced · code: aceTrainerCard:30572 · class: Ace Trainer
   - _Trainer Classes · 1 AP - Free Action · Prereq: Ace Trainer_
   - Trigger: Your Pokemon gains an Injury
     Effect: The target instead does not gain an Injury. Perseverance may activate only once per Scene per target.
 
-- 🟢 **Pheromone Markers** — `likely` · P2 (enc) · themes: interrupt, status, typing, damage, action · engine: action-surfaced, remember-only · code: openPheromoneMarkers:28722, swarmlordCard:29168 · class: Swarmlord
+- 🟢 **Pheromone Markers** — `likely` · P2 (enc) · themes: interrupt, status, typing, damage, action · engine: action-surfaced, remember-only · code: openPheromoneMarkers:31723, swarmlordCard:32179 · class: Swarmlord
   - _Game of Throhs · 1 AP - Free Action · Prereq: Enhanced Embrace Rank 1_
   - Trigger: You hit a foe with a damaging Bug-Type attack
     Effect: The triggering foe gains 1 Pheromone Stack. Your Bug-Type attacks gain a +2 bonus to Accuracy Rolls and +1 Critical Hit range against foes for each Pheromone Stack they have. Once per Scene per foe, when they gain their third or higher Pheromone Stack, you may choose to roll 1d6. On a result of 1 or 2, the foe becomes Confused; on a result of 3 or 4 the foe becomes Suppressed; on a result of 5 or 6 the foe becomes Enraged.
 
-- 🟢 **Plainly Perfect** — `likely` · P2 (enc) · themes: damage · engine: mode, action-surfaced, remember-only · code: FEATURE_MODES:24286, plainlyPerfectMax:28186, TYPE_ACE_BRANCH:28881 · class: Type Ace
+- 🟢 **Plainly Perfect** — `likely` · P2 (enc) · themes: damage · engine: mode, action-surfaced, remember-only · code: FEATURE_MODES:27169, plainlyPerfectMax:31187, TYPE_ACE_BRANCH:31882 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Extra Ordinary, Type-Linked Skill at Adept_
   - Target: Your Pokemon
     Effect: While this Feature is bound, instead of rolling for damage with Normal-Type Moves, your Pokemon acts as if they rolled the maximum value on their Damage Dice Roll. Plainly Perfect only works for the first instance of the Damage Dice Roll on Critical Hits.
 
-- 🟢 **Polar Vortex** — `likely` · P2 (enc) · themes: weather, swap · engine: mode, action-surfaced, remember-only · code: FEATURE_MODES:24283, TYPE_ACE_BRANCH:28923 · class: Type Ace
+- 🟢 **Polar Vortex** — `likely` · P2 (enc) · themes: weather, swap · engine: mode, action-surfaced, remember-only · code: FEATURE_MODES:27160, TYPE_ACE_BRANCH:31924 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Glacial Ice, Type-Linked Skill at Adept_
   - Target: Your Pokemon
     Effect: While this Stratagem is bound, your Pokemon may activate Moves and Abilities as if they were in Hail.
 
-- 🟢 **Power Conduit** — `likely` · P2 (enc) · themes: barrier, heal, cs, action, skill, stat · engine: action-surfaced · code: channelerCard:27506 · class: Channeler
+- 🟢 **Power Conduit** — `likely` · P2 (enc) · themes: barrier, heal, cs, action, skill, stat · engine: action-surfaced · code: channelerCard:30505 · class: Channeler
   - _Trainer Classes · 2 AP - Swift Action · Prereq: Channeler, Adept Intuition_
   - Target: Channeled Pokemon 
     Choose One Effect:
@@ -2375,7 +2695,7 @@ P9 · 36 open of 36 · open
     »» Transfer a Coat from one Channeled Pokemon to another.
     »» Give up a use of Scene or Daily Move from one willing Channeled Pokemon to regain use of a Scene Move which another Channeled Pokemon has used. This effect may only refresh a Move for each Pokemon once per Scene.
 
-- 🟢 **Prismatic Alignment** — `likely` · P2 (enc) · themes: weather, interrupt, multiturn, status, cure, damage, action · engine: move-rider, action-surfaced, stat-tag, auto-note, remember-only · code: RIDER_ICONS:24211, prismCard:29447 · class: Prism
+- 🟢 **Prismatic Alignment** — `likely` · P2 (enc) · themes: weather, interrupt, multiturn, status, cure, damage, action · engine: move-rider, action-surfaced, stat-tag, auto-note, remember-only · code: RIDER_ICONS:27088, prismCard:32458 · class: Prism
   - _Game of Throhs · [+Special Attack] · 2 AP - Swift Action · Prereq: 4 Prism Features, Master Charm or General Education_
   - Trigger: You use a Prism Move
     Effect: The effect of this Feature depends on the Triggering Move. You may only use Prismatic Alignment with each Move once per Scene.
@@ -2392,16 +2712,17 @@ P9 · 36 open of 36 · open
   - Trigger: You hit with a Berserker Move or Weapon Attack
     Effect: Immediately gain one Injury before resolving the triggering attack. You gain a Tick of Temporary Hit Points and may cure yourself of a Persistent Status Affliction. The triggering attack doubles your damage bonus from Lessons in Rage and Pain.
 
-- 🟢 **Rouse the Dragon's Blood** — `likely` · P2 (enc) · themes: interrupt, damage · engine: action-surfaced, stat-tag, remember-only · code: heraldCard:27962, rouseDragonsBlood:27982 · class: Herald of Pride
+- 🟢 **Rouse the Dragon's Blood** — `likely` · P2 (enc) · themes: interrupt, damage · engine: action-surfaced, stat-tag, remember-only · code: heraldCard:30963, rouseDragonsBlood:30983 · class: Herald of Pride
   - _Game of Throhs · [+Attack] · Scene x2 - Free Action · Prereq: Herald of Pride, Expert Command or Intimidate_
   - Trigger: You suffer a Critical Hit or gain an Injury from a foe's attack
     Effect: For 1 full round, the next Herald of Pride Move you use against the triggering foe cannot miss, cannot be Intercepted, and effects that would cause it to miss cannot be activated against it.
 
-- 🟢 **Sacred Shield** — `likely` · P2 (enc) · themes: barrier · engine: stat-tag · code: sageCard:32932 · class: Sage
+- ✅ **Sacred Shield** — `auto` · P2 (enc) · themes: barrier · engine: stat-tag · code: sageCard:35943 · class: Sage
   - _Trainer Classes · [+HP] · Static · Prereq: Sage_
+  - note: syncFeatureMoves reads 'You learn the Moves X and Y' (v594 sweep)
   - You learn the Moves Reflect and Lucky Chant.
 
-- 🟢 **Sage's Benediction** — `likely` · P2 (enc) · themes: barrier, interrupt, cs, damage, skill · engine: move-rider, action-surfaced, stat-tag, auto-note · code: RIDER_ICONS:24210, openBenediction:32878 · class: Sage
+- 🟢 **Sage's Benediction** — `likely` · P2 (enc) · themes: barrier, interrupt, cs, damage, skill · engine: move-rider, action-surfaced, stat-tag, auto-note · code: RIDER_ICONS:27087, openBenediction:35889 · class: Sage
   - _Trainer Classes · [+HP] · 1 AP - Free Action · Prereq: Sacred Shield or Mystic Defense, Adept Occult Education_
   - Trigger: An ally activates one of your Moves with the Blessing Keyword.
     Effect: The triggering ally gains an additional benefit as follows, depending on the Move used. The benefit takes effect after the Blessing and the attack that triggered it are resolved.
@@ -2410,30 +2731,31 @@ P9 · 36 open of 36 · open
     »» Safeguard: +1 Evasion
     »» Lucky Chant: +1 Accuracy
 
-- 🟢 **Shade Caller** — `likely` · P2 (enc) · themes: other · engine: stat-tag · code: trainerCritThreshold:8011, shadeCallerCard:28232
+- ✅ **Shade Caller** — `auto` · P2 (enc) · themes: other · engine: stat-tag · code: trainerCritThreshold:8559, shadeCallerCard:31233
   - _Game of Throhs · [Class] [+Attack or Special Attack] · Static · Prereq: Elemental Connection (Dark), Novice Guile, Novice Stealth_
+  - note: syncFeatureMoves reads 'You learn the Moves X and Y' (v594 sweep)
   - You learn Faint Attack and Snarl.
 
-- 🟢 **Shared Senses** — `likely` · P2 (enc) · themes: other · engine: action-surfaced · code: channelerCard:27448 · class: Channeler
+- 🟢 **Shared Senses** — `likely` · P2 (enc) · themes: other · engine: action-surfaced · code: channelerCard:30447 · class: Channeler
   - _Trainer Classes · Bind 1 AP - Swift Action · Prereq: Channeler_
   - Target: A Channeled Pokemon
     Effect: You Imprint the target for the duration of this Feature. You receive all sensory information being sensed by Imprinted Pokemon, and Imprinted Pokemon are not subject to the distance limit on Channeling. If you have Imprinted more than one Pokemon, you may only concentrate on the senses of one Pokemon at a time, and only choose one such Pokemon per round. If you stop Channeling a Pokemon, they are no longer Imprinted as well.
 
-- 🟢 **Signature Move** — `likely` · P2 (enc) · themes: other · engine: stat-tag, remember-only · code: FEATURE_ACTIONS:8372, moveFreqWhy:17909
+- 🟢 **Signature Move** — `likely` · P2 (enc) · themes: other · engine: stat-tag, remember-only · code: FEATURE_ACTIONS:8920, moveFreqWhy:18779
   - _Combat · [+Any] · Static · Prereq: Learned four Moves_
   - Choose a Move you know. Increase the Move's Frequency one step, as if you had used a PP Up. This choice cannot be changed once made. This Feature may not select Moves known through temporary means, nor can these Moves be used to qualify for this Feature.
 
-- 🟢 **Signature Technique** — `likely` · P2 (enc) · themes: other · code: encounterMoveRow:33670 · class: Ace Trainer
+- 🟢 **Signature Technique** — `likely` · P2 (enc) · themes: other · code: encounterMoveRow:36681 · class: Ace Trainer
   - _Trainer Classes · At-Will - Extended Action · Prereq: Elite Trainer, Expert Command_
   - Target: Your Pokemon with at least 2 Tutor Points remaining
     Effect: The target loses 2 Tutor Points. Choose one Move on the Target's Move List. That Move becomes the target's Signature Technique, and you may apply one of the modifications listed below to the Move. The Move being modified must fit the category of the modification, and you must have the associated Training Feature to apply a modification. A Pokemon may only have one Signature Technique at a time. If you choose to teach a Pokemon a different Signature Technique, the old one is lost, and 1 Tutor Point is refunded. 1 Tutor Point is also refunded if the Pokemon ever forgets a Signature Technique Move.  See Extras - Techniques / Ta …
 
-- 🟢 **Simple Improvements** — `likely` · P2 (enc) · themes: heal, interrupt, typing, action, skill · engine: action-surfaced, remember-only · code: openSimpleImprovements:28685, TYPE_ACE_BRANCH:28891 · class: Type Ace
+- 🟢 **Simple Improvements** — `likely` · P2 (enc) · themes: heal, interrupt, typing, action, skill · engine: action-surfaced, remember-only · code: openSimpleImprovements:31686, TYPE_ACE_BRANCH:31892 · class: Type Ace
   - _Trainer Classes · Daily x3 - Free Action · Prereq: Extra Ordinary, Type-Linked Skill at Master_
   - Trigger: Your Normal-Type Pokemon gains Initiative
     Effect: Add your Type-Linked Skill Rank to all of your Pokemon's rolls this turn. Your Pokemon gains Temporary Hit Points equal to twice your Type-Linked Skill Rank. Simple Improvements may only be used once per Scene per Pokemon.
 
-- 🟢 **Special Attack Ace** — `likely` · P2 (enc) · themes: stat, social · code: STAT_ACE_FEATURES:540 · class: Ace Trainer, Style Expert
+- 🟢 **Special Attack Ace** — `likely` · P2 (enc) · themes: stat, social · code: STAT_ACE_FEATURES:618 · class: Ace Trainer, Style Expert
   - _Trainer Classes · [Class] [Branch] · Static · Prereq: Ace Trainer or Style Expert, 1 Pokemon with Special Attack of 15 or more, Novice Command or Focus
 Or
 3 Pokemon with Special Attack at 20 or higher, Novice Command or Focus_
@@ -2441,7 +2763,7 @@ Or
     
     Note: You may take Stat Ace multiple times, choosing different Stats each time. If using Style Expert to qualify for Stat Ace, your Chosen Stat must be the Stat that correlates to your Chosen Contest Stat. Beauty is Special Attack, Cool is Attack, Cute is Speed, Smart is Special Defense, and Tough is Defense.  You may use th …
 
-- 🟢 **Stone Stance** — `likely` · P2 (enc) · themes: weather, position, heal, interrupt, typing, damage, action · engine: mode, action-surfaced, stat-tag · code: FEATURE_MODES:24262, stoneStanceDef:24321, stoneStanceDR:24332, stoneStanceDamage:24334, stoneWarriorCard:29474 · class: Stone Warrior
+- 🟢 **Stone Stance** — `likely` · P2 (enc) · themes: weather, position, heal, interrupt, typing, damage, action · engine: mode, action-surfaced, stat-tag · code: FEATURE_MODES:27139, stoneStanceDef:27252, stoneStanceDR:27263, stoneStanceDamage:27265, stoneWarriorCard:32485 · class: Stone Warrior
   - _Game of Throhs · [+Defense] · Bind 2 AP - Standard Action · Prereq: Stone Warrior_
   - You adopt one of the stances below, gaining the effects of the stance while this Feature remains bound. You may switch your active Stance as a Standard Action without rebinding your AP. The benefits from this Feature do not apply if you are not standing on a solid surface, such as deep mud or snow, or if you are outright swimming or even flying.
     
@@ -2449,20 +2771,21 @@ Or
     - Moon Mountain Stance: Your initiative is lowered by -5, but you gain 5 Damage Reduction and are immune to Push or Pull effects.
     - Roiling Earth Stance: After a successful Intercept action, you may make a Struggle Attack aga …
 
-- 🟢 **Tough as Schist** — `likely` · P2 (enc) · themes: hazard, swap, typing, damage, skill · engine: mode, action-surfaced, remember-only · code: FEATURE_MODES:24292, TYPE_ACE_BRANCH:28870 · class: Type Ace
+- 🟢 **Tough as Schist** — `likely` · P2 (enc) · themes: hazard, swap, typing, damage, skill · engine: mode, action-surfaced, remember-only · code: FEATURE_MODES:27175, TYPE_ACE_BRANCH:31871 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Gravel Before Me, Type-Linked Skill at Expert_
   - Target: Your Rock-Type Pokemon
     Effect: While this Feature is Bound, allied Stealth Rock Hazards within 4 meters of your Pokemon are not used when a foe triggers them unless you want them to be. Whenever the target takes Super-Effective Damage from a Water, Grass, Ground, Fighting, or Steel Type Attack, they may consume an allied Stealth Rock Hazard within 4 meters to create temporary armor that grants them Damage Reduction equal to your Type-Linked Skill Rank for one full round.
 
-- 🟢 **Water's Shroud** — `likely` · P2 (enc) · themes: heal, swap · engine: stat-tag · code: maelstromCard:28137 · class: Maelstrom
+- ✅ **Water's Shroud** — `auto` · P2 (enc) · themes: heal, swap · engine: stat-tag · code: maelstromCard:31138 · class: Maelstrom
   - _Game of Throhs · [+Speed] · Static · Prereq: Call the Current Rank 2_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Wash Away or Storm Drain. You gain the Chosen Ability.
 
-- 🟢 **World of Darkness** — `likely` · P2 (enc) · themes: multiturn, damage · engine: action-surfaced, stat-tag · code: FEATURE_CAPS:11778, shadeCallerCard:28243, castWorldOfDarkness:28266 · class: Shade Caller
+- 🟢 **World of Darkness** — `likely` · P2 (enc) · themes: multiturn, damage · engine: action-surfaced, stat-tag · code: FEATURE_CAPS:12417, shadeCallerCard:31244, castWorldOfDarkness:31267 · class: Shade Caller
   - _Game of Throhs · [+Attack or Special Attack] · 2 AP - Standard Action · Prereq: Shade Caller, Adept Guile or Stealth_
   - You create a zone of Shifting Darkness in a Burst 2 around you, which persists until the end of the encounter. All targets without Darkvision attacking from or i nto the Shifting Darkness receive a -3 penalty to Accuracy. You may count Shifting Darkness as complete darkness for the purposes of activating your Living Shadow. As a Static effect, you also gain the Darkvision Capability.
 
-- 🟢 **Accentuated Taste** — `likely` · P3 · themes: heal, swap, damage, action · code: openFoodPicker:17180, chefCanTaste:29829, CHEF_RECIPES:29920 · class: Chef
+- 🟢 **Accentuated Taste** — `likely` · P3 · themes: heal, swap, damage, action · code: openFoodPicker:18050, chefCanTaste:32840, CHEF_RECIPES:32931 · class: Chef
   - _Trainer Classes · Static · Prereq: Chef, Adept Intuition_
   - Whenever you create a Snack with a Chef Feature, you may assign it a Taste chosen from Salty, Sour, Spicy, Dry, and Sweet. Tasty Snacks must be assigned their corresponding Taste. Whenever a Pokemon trades in a Digestion/Food Buff from a Snack with an assigned Taste they do not dislike, they gain one of the following bonuses based on the assigned Taste:
     »» Salty: The user gains 5 Temporary Hit Points. This stacks with any Temporary Hit Points gained through Chef Features, the Lunchbox Ability, and the Digestion/Food Buff.
@@ -2470,7 +2793,7 @@ Or
     »» Sour: Increase the user's Evasion against damaging attacks by 1.
     »» Dry: Increase the user's Effect Range of all a …
 
-- 🟢 **Affliction Techniques** — `likely` · P3 · themes: heal, interrupt, swap, status, cure, cs, skill · engine: action-surfaced · code: openApplyRestorative:26430, researcherCard:31511 · class: Researcher
+- 🟢 **Affliction Techniques** — `likely` · P3 · themes: heal, interrupt, swap, status, cure, cs, skill · engine: action-surfaced · code: openApplyRestorative:29423, researcherCard:34522 · class: Researcher
   - _Here Thar Be Playtests · [Apothecary Research Field] [Branch] [9-15 Playtest] · 1 AP - Free Action · Prereq: Patch Cure, Expert Medicine Education_
   - Trigger: You use a Antidote, Burn Heal, Ice Heal, or Paralyze Heal
     Effect: If the target successfully cures the target of its linked Status Affliction, the item has additional effects.
@@ -2479,66 +2802,69 @@ Or
     »» Ice Heal: The target gains +1 Attack or Special Attack Combat Stage
     »» Paralyze Heal: The target gains +1 Speed Combat Stage.
 
-- 🟢 **Ancient Heritage** — `likely` · P3 · themes: damage, stat · code: ancientHeritageFor:31243, researcherCard:31585 · class: Researcher
+- 🟢 **Ancient Heritage** — `likely` · P3 · themes: damage, stat · code: ancientHeritageFor:34254, researcherCard:34596 · class: Researcher
   - _Trainer Classes · [Paleontology Research Field] [Branch] · At-Will - Extended Action · Prereq: Fossil Restoration_
   - Target: Your Fossil Pokemon with at least 2 Tutor Points remaining
     Effect: The target loses 2 Tutor Points and learns Ancient Power. If the target has Ancient Power in its Level-Up List, Ancient Heritage costs no Tutor Points. As a static effect, whenever your Pokemon use Ancient Power, its activated effect occurs on 18+ and you may always choose whether it deals Physical or Special Damage, using the appropriate attack Stat.
 
-- 🟢 **Apothecary** — `likely` · P3 · themes: heal · code: APOTHECARY_RECIPES:30753, researcherCard:31508 · class: Researcher
+- 🟢 **Apothecary** — `likely` · P3 · themes: heal · code: APOTHECARY_RECIPES:33764, researcherCard:34519 · class: Researcher
   - _Trainer Classes · [Apothecary Research Field] [Branch] · At-Will - Extended Action · Prereq: Novice Medicine Education_
   - You may use any Apothecary Recipe for which you qualify.
     Recipe - Restorative Science
 
-- 🟢 **Athlete** — `likely` · P3 · themes: cs, skill, stat · engine: stat-tag · code: trainedStatCap:556, openTrainedStats:27615
+- 🟢 **Athlete** — `likely` · P3 · themes: cs, skill, stat · engine: stat-tag · code: trainedStatCap:634, openTrainedStats:30616
   - _Trainer Classes · [Class] [+HP] · At-Will - Extended Action · Prereq: Novice Athletics, One of Athletic Prowess, Mounted Prowess, Power Boost, Stamina, or Swimmer_
   - After an hour of exercise, an Athlete may choose two different Stats besides HP; both of those stats become Trained Stats. The default State of Trained Stats is +1 Combat Stages instead of 0. An Athlete may have two Trained Stats at a time.
 
 <a id="verify-features-04"></a>
 ## `verify-features-04` — Verify features the scan thinks are handled
 
-P9 · 36 open of 36 · open
+P9 · 32 open of 36 · open
 
-- 🟢 **Blazing Inferno** — `likely` · P3 · themes: heal, interrupt, status, cs, skill · engine: group-rider, action-surfaced, stat-tag, remember-only · code: fireBringerCard:29265 · class: Fire Bringer
+- 🟢 **Blazing Inferno** — `likely` · P3 · themes: heal, interrupt, status, cs, skill · engine: group-rider, action-surfaced, stat-tag, remember-only · code: fireBringerCard:32276 · class: Fire Bringer
   - _Game of Throhs · [+Special Attack or Attack] · 2 AP - Swift Action · Prereq: Fire Breather Rank 2, Master Focus or Combat_
   - Effect: You becoming Blazing. While you are Blazing, whenever your Fire-Type Moves Inflict Burn, the Burned target immediately loses a Tick of Hit Points, and loses an additional Combat Stage in Defense. While Blazing, when you hit a foe with a damaging Fire-Type Move, you may choose to automatically burn one target of the Move. If you do, you lose the Blazing Condition after the Move's effects are resolved.
 
-- 🟢 **Blinding Brightness** — `likely` · P3 · themes: swap · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8153, prismCard:29445 · class: Prism
+- ✅ **Blinding Brightness** — `auto` · P3 · themes: swap · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8701, prismCard:32456 · class: Prism
   - _Game of Throhs · [+Special Attack] · Static · Prereq: Prism_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - You gain the Illuminate Ability.
 
-- 🟢 **Body of Lightning** — `likely` · P3 · themes: swap · engine: stat-tag · code: sparkMasterCard:29235 · class: Spark Master
+- ✅ **Body of Lightning** — `auto` · P3 · themes: swap · engine: stat-tag · code: sparkMasterCard:32246 · class: Spark Master
   - _Game of Throhs · [+Speed] · Static · Prereq: Master Acrobatics or Focus_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Volt Absorb or Motor Drive. You gain the Chosen Ability.
 
-- 🟢 **Bookworm [Playtest]** — `likely` · P3 · themes: heal, action · code: featureShortName:12352 · class: Researcher
+- 🟢 **Bookworm [Playtest]** — `likely` · P3 · themes: heal, action · code: featureShortName:12991 · class: Researcher
   - _Here Thar Be Playtests · [General Research Field] [Branch] [5-15 Playtest] · Static · Prereq: Breadth of Knowledge_
   - You gain X Study Points, where X is equal to 2 plus one more for every other General Research Feature you have. You may Drain Study Points to benefit from studying Books, instead of Draining your Action Points. Study Points are restored to your maximum after an Extended Rest, just like Action Points.
 
-- 🟢 **Brace for Impact** — `likely` · P3 · themes: multiturn, damage, action · engine: action-surfaced · code: PTU_BUFFS:16211
+- 🟢 **Brace for Impact** — `likely` · P3 · themes: multiturn, damage, action · engine: action-surfaced · code: PTU_BUFFS:17080
   - _Pokémon Training & Orders · [Orders][Stratagem] · Bind 2 AP - Standard Action · Prereq: Guardian Orders_
   - Target: Your Pokemon
     Effect: While this Feature is Bound, once a round, when the target uses a self-targeting Status Move, they may gain 5 Damage Reduction until the end of their next turn. They may also activate this effect as a Standard Action.
 
-- 🟢 **Breadth of Knowledge** — `likely` · P3 · themes: skill · code: GENERAL_RESEARCH_FEATURES:12366, researcherCard:31500 · class: Researcher
+- 🟢 **Breadth of Knowledge** — `likely` · P3 · themes: skill · code: GENERAL_RESEARCH_FEATURES:13005, researcherCard:34511 · class: Researcher
   - _Trainer Classes · [General Research Field] [Branch] · Static · Prereq: Novice General Education_
   - You gain three Skill Edges for which you qualify. These Edges must be used to gain a Skill Edge with an Education Skill, or to gain an Edge that has an Education Skill as a Prerequisite that you meet.
 
-- 🟢 **Broodlord** — `likely` · P3 · themes: swap · code: FEATURE_ABILITY_CHOICES:8150, swarmlordCard:29166 · class: Swarmlord
+- 🟢 **Broodlord** — `likely` · P3 · themes: swap · code: FEATURE_ABILITY_CHOICES:8698, swarmlordCard:32177 · class: Swarmlord
   - _Game of Throhs · Static · Prereq: Enhanced Embrace Rank 2, Expert Command or Survival_
   - You gain the following Ability based on your Embrace.
     Arachnid's Embrace: Tinted Lens
     Monarch's Embrace: Compound Eyes
 
-- 🟢 **Burning Passion** — `likely` · P3 · themes: swap · engine: stat-tag · code: fireBringerCard:29262 · class: Fire Bringer
+- ✅ **Burning Passion** — `auto` · P3 · themes: swap · engine: stat-tag · code: fireBringerCard:32273 · class: Fire Bringer
   - _Game of Throhs · [+Special Attack or Attack] · Static · Prereq: Fire Bringer, Expert Focus or Combat_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Flash Fire or Flame Body. You gain the chosen Ability.
 
-- 🟢 **Capricious Whirl** — `likely` · P3 · themes: damage · engine: action-surfaced · code: PTU_BUFFS:16207
+- 🟢 **Capricious Whirl** — `likely` · P3 · themes: damage · engine: action-surfaced · code: PTU_BUFFS:17076
   - _Pokémon Training & Orders · [Orders][Stratagem] · Bind 2 AP - Standard Action · Prereq: Trickster Orders_
   - Target: Your Pokemon
     Effect: While this Feature is Bound, the target has a +3 bonus to its Evasion but deals 5 less damage with all damaging attacks.
 
-- 🟢 **Captured Momentum** — `likely` · P3 · themes: interrupt, swap, damage, action, skill, capture · engine: action-surfaced, stat-tag, auto-note · code: openThrowPokeball:16005, captureCard:26313, FEATURE_AUTO_NOTES:39184 · class: Capture Specialist
+- 🟢 **Captured Momentum** — `likely` · P3 · themes: interrupt, swap, damage, action, skill, capture · engine: action-surfaced, stat-tag, auto-note · code: openThrowPokeball:16847, captureCard:29306, FEATURE_AUTO_NOTES:42700 · class: Capture Specialist
   - _Trainer Classes · [+Speed] · At-Will - Free Action · Prereq: Advanced Capture Techniques Rank 2_
   - Trigger: You successfully Capture a Pokemon
     Choose One Effect:
@@ -2546,89 +2872,90 @@ P9 · 36 open of 36 · open
     »You subtract your highest Skill Rank out of Acrobatics, Athletics, Stealth, Survival, Guile, or Perception from your next Capture Roll during this combat.
     »You gain 1 Temporary Action Point that disappears after one full round.
 
-- 🟢 **Caustic Chemistry** — `likely` · P3 · themes: heal, interrupt, action, skill · engine: action-surfaced · code: foeFxDeclare:25681, CHEMISTRY_RECIPES:30960, openCausticChemistry:30968, researcherCard:31534 · class: Researcher
+- 🟢 **Caustic Chemistry** — `likely` · P3 · themes: heal, interrupt, action, skill · engine: action-surfaced · code: foeFxDeclare:28668, CHEMISTRY_RECIPES:33971, openCausticChemistry:33979, researcherCard:34545 · class: Researcher
   - _Trainer Classes · [Chemistry Research Field] [Branch] · 1 AP - Swift Action · Prereq: Chemist, Expert Technology Education_
   - Trigger: You hit with a Pester Ball or apply a Repel to a Pokemon
     Effect: Make a Technology Education Roll. All targets affected by this Feature's trigger lose Hit Points equal to your roll. This may only affect a target once per Scene.
     Recipe - Pester Balls: Shut Down
 
-- 🟢 **Champ in the Making** — `likely` · P3 · themes: interrupt, stat · engine: action-surfaced · code: trainedStatCap:559 · class: Ace Trainer
+- 🟢 **Champ in the Making** — `likely` · P3 · themes: interrupt, stat · engine: action-surfaced · code: trainedStatCap:637 · class: Ace Trainer
   - _Trainer Classes · Drain 1 AP - Free Action · Prereq: 4 Ace Trainer Features, Master Command_
   - Trigger: You use Ace Trainer to give Pokemon Trained Stats
     Effect: Choose two Trained Stats for each Pokemon instead of one. A Pokemon may only have two Trained Stats this way.
 
-- 🟢 **Champion of Steel** — `likely` · P3 · themes: interrupt, cs, damage, skill · engine: action-surfaced, stat-tag · code: WEAPON_RETYPE_FEATS:7859, steelheartCard:29498 · class: Steelheart
+- 🟢 **Champion of Steel** — `likely` · P3 · themes: interrupt, cs, damage, skill · engine: action-surfaced, stat-tag · code: WEAPON_RETYPE_FEATS:8407, steelheartCard:32509 · class: Steelheart
   - _Game of Throhs · [+Defense] [Weapon] · 1 AP - Free Action · Prereq: Steelheart_
   - Trigger: You make a Weapon Attack.
     Effect: The attack or Move increases your Defense by 1 Combat Stage on 16+ and you may have it deal Steel-Type Damage if you wish.
 
-- 🟢 **Chef** — `likely` · P3 · themes: other · code: trainerIsChef:29819, CHEF_RECIPES:29894, MEAL_PLANNER:29946, chefRecipesFor:29952, openChefCook:30116, chefCard:30197, openComplexAftertaste:30270
+- 🟢 **Chef** — `likely` · P3 · themes: other · code: trainerIsChef:32830, CHEF_RECIPES:32905, MEAL_PLANNER:32957, chefRecipesFor:32963, openChefCook:33127, chefCard:33208, openComplexAftertaste:33281
   - _Trainer Classes · [Class] · At-Will - Extended Action · Prereq: Basic Cooking, Novice Intuition_
   - You may use any Chef Recipe for which you qualify.
     Recipes - Meal Planner, Salty Surprise, Spicy Wrap, Sour Candy, Dry Wafer, Bitter Treat, Sweet Confection
 
-- 🟢 **Chemical Warfare** — `likely` · P3 · themes: interrupt · engine: action-surfaced · code: CHEMISTRY_RECIPES:30957, researcherCard:31530 · class: Researcher
+- 🟢 **Chemical Warfare** — `likely` · P3 · themes: interrupt · engine: action-surfaced · code: CHEMISTRY_RECIPES:33968, researcherCard:34541 · class: Researcher
   - _Trainer Classes · [Chemistry Research Field] [Branch] · Scene x2 - Free Action · Prereq: Chemist, Adept Technology Education_
   - Trigger: You throw a Pester Ball
     Effect: The Pester Ball creates a Blast 2, affecting all targets in the area.
     Recipes - Pester Ball: Pain
 
-- 🟢 **Chemist** — `likely` · P3 · themes: other · code: CHEMISTRY_RECIPES:30951 · class: Researcher
+- 🟢 **Chemist** — `likely` · P3 · themes: other · code: CHEMISTRY_RECIPES:33962 · class: Researcher
   - _Trainer Classes · [Chemistry Research Field] [Branch] · At-Will - Extended Action · Prereq: Repel Crafter_
   - You may craft any Chemistry Recipe for which you qualify.
     Recipes - Enhancers, Pester Balls: Disorient
 
-- 🟢 **Climate Control** — `likely` · P3 · themes: weather, interrupt, swap · engine: action-surfaced · code: weatherRollMods:1330, climatologistOnMap:31124, openClimateControl:31146, researcherCard:31545, renderMap:49279 · class: Researcher
+- 🟢 **Climate Control** — `likely` · P3 · themes: weather, interrupt, swap · engine: action-surfaced · code: weatherRollMods:1542, climatologistOnMap:34135, openClimateControl:34157, researcherCard:34556, renderMap:53279 · class: Researcher
   - _Trainer Classes · [Climatology Research Field] [Branch] · 1 AP - Free Action · Prereq: Climatology_
   - Trigger: A Move or Ability creates a Weather Effect while non-standard Weather is already in effect
     Effect: The triggering Weather Effect does not replace the already extant Weather in effect; both exist simultaneously on the field. If a new Weather effect is placed on the field after the two that are out, both are replaced by the third, unless you activate this Feature again to replace only one.
 
-- 🟢 **Climatology** — `likely` · P3 · themes: swap · code: researcherCard:31538, renderMap:49288 · class: Researcher
+- ✅ **Climatology** — `auto` · P3 · themes: swap · code: researcherCard:34549, renderMap:53288 · class: Researcher
   - _Trainer Classes · [Climatology Research Field] [Branch] · Static · Prereq: Novice Survival_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - You gain the Overcoat Ability.
 
-- 🟢 **Complex Aftertaste** — `likely` · P3 · themes: interrupt, swap · engine: action-surfaced · code: applyEndScene:5370, CHEF_RECIPES:29926, chefCard:30208 · class: Chef
+- 🟢 **Complex Aftertaste** — `likely` · P3 · themes: interrupt, swap · engine: action-surfaced · code: applyEndScene:5888, CHEF_RECIPES:32937, chefCard:33219 · class: Chef
   - _Trainer Classes · 1 AP - Free Action · Prereq: Accentuated Taste_
   - Trigger: You or an ally trades in a Digestion/Food Buff from an item with a Taste
     Effect: The target gains a Digestion/Food Buff according to the Taste of the Snack granting the Buff. This Digestion/Food Buff matches that of the corresponding basic Tasty Snack recipe.
     Recipe - Leftovers
 
-- 🟢 **Complex Orders** — `likely` · P3 · themes: interrupt, action · engine: action-surfaced, auto-note · code: openGiveOrder:25178, commanderCard:25904, FEATURE_AUTO_NOTES:39152 · class: Commander
+- 🟢 **Complex Orders** — `likely` · P3 · themes: interrupt, action · engine: action-surfaced, auto-note · code: openGiveOrder:28109, commanderCard:28891, FEATURE_AUTO_NOTES:42668 · class: Commander
   - _Trainer Classes · At-Will - Shift Action · Prereq: Commander, at least two Features with the [Orders] Tag that have targets_
   - Trigger: You give [Orders] that have targets.
     Effect: You may choose a different Order to give to each Target. You must pay all AP costs and follow Frequency restrictions for all Orders used in this way.
 
-- 🟢 **Corrupt Blood** — `likely` · P3 · themes: status, typing · engine: stat-tag · code: FEATURE_STATUS_IMMUNITY:737, defenseTypeMods:6576, miasmicCard:29458 · class: Miasmic
+- 🟢 **Corrupt Blood** — `likely` · P3 · themes: status, typing · engine: stat-tag · code: FEATURE_STATUS_IMMUNITY:844, defenseTypeMods:7124, miasmicCard:32469 · class: Miasmic
   - _Game of Throhs · [+Defense] · Static · Prereq: Miasmic_
   - You are immune to the Poisoned and Badly Poisoned statuses and resist Poison-type attacks one step further.
 
-- 🟢 **Critical Moment** — `likely` · P3 · themes: multiturn · engine: action-surfaced · code: aceTrainerCard:27576, openCriticalMoment:27678 · class: Ace Trainer
+- 🟢 **Critical Moment** — `likely` · P3 · themes: multiturn · engine: action-surfaced · code: aceTrainerCard:30575, openCriticalMoment:30679 · class: Ace Trainer
   - _Trainer Classes · [Orders] · Scene x2 - Standard Action · Prereq: Elite Trainer, Adept Command_
   - Target: Your Pokemon with [Training] Features applied
     Effect: The bonuses from your Pokemon's [Training] are tripled until the end of your next turn.
 
-- 🟢 **Crystal Artificer** — `likely` · P3 · themes: other · code: ARTIFICER_RECIPES:30812, canDowse:30848 · class: Researcher
+- 🟢 **Crystal Artificer** — `likely` · P3 · themes: other · code: ARTIFICER_RECIPES:33823, canDowse:33859 · class: Researcher
   - _Trainer Classes · [Artificer Research Field] [Branch] · At-Will - Extended Action · Prereq: Gem Lore_
   - You may use any Crystal Artificer Recipe for which you qualify.
     Recipes - Type Booster, Type Brace
 
-- 🟢 **Crystal Resonance** — `likely` · P3 · themes: skill · code: ARTIFICER_RECIPES:30824, openDowsing:30853, researcherCard:31520 · class: Researcher
+- 🟢 **Crystal Resonance** — `likely` · P3 · themes: skill · code: ARTIFICER_RECIPES:33835, openDowsing:33864, researcherCard:34531 · class: Researcher
   - _Trainer Classes · [Artificer Research Field] [Branch] · Static · Prereq: Crystal Artificer, Skill Stunt (Dowsing)_
   - You roll an additional 3d6 when determining how many Shards you find when Dowsing.
     Recipes - Focus Gem, Chakra Crystal
 
-- 🟢 **Culinary Appreciation** — `likely` · P3 · themes: swap · code: CHEF_RECIPES:29915, chefCard:30215 · class: Chef
+- 🟢 **Culinary Appreciation** — `likely` · P3 · themes: swap · code: CHEF_RECIPES:32926, chefCard:33226 · class: Chef
   - _Trainer Classes · At-Will - Extended Action · Prereq: Chef_
   - Target: Your Pokemon with at least 2 Tutor Points remaining
     Effect: The target loses 2 Tutor Points and gains the Gluttony Ability.
     Recipe - Bait Mixer
 
-- 🟢 **Dazzling Dervish** — `likely` · P3 · themes: position, multiturn, damage, action, stat · engine: action-surfaced · code: PTU_BUFFS:16209
+- 🟢 **Dazzling Dervish** — `likely` · P3 · themes: position, multiturn, damage, action, stat · engine: action-surfaced · code: PTU_BUFFS:17078
   - _Pokémon Training & Orders · [Orders] · Scene x2 - Standard Action · Prereq: Trickster Orders_
   - Target: Your Pokemon
     Effect: Until the end of their next turn, the target adds their non-stat Evasion to their Movement Capabilities and whenever they attack a foe or Shift through a square occupied by a foe, that foe suffers a -3 penalty to all rolls until the end of their next turn. This effect may only affect a foe once per round.
 
-- 🟢 **Defense Ace** — `likely` · P3 · themes: stat, social · code: STAT_ACE_FEATURES:540 · class: Ace Trainer, Style Expert
+- 🟢 **Defense Ace** — `likely` · P3 · themes: stat, social · code: STAT_ACE_FEATURES:618 · class: Ace Trainer, Style Expert
   - _Trainer Classes · [Class] [Branch] · Static · Prereq: Ace Trainer or Style Expert, 1 Pokemon with Defense of 15 or more, Novice Command or Focus
 Or
 3 Pokemon with Defense at 20 or higher, Novice Command or Focus_
@@ -2636,89 +2963,89 @@ Or
     
     Note: You may take Stat Ace multiple times, choosing different Stats each time. If using Style Expert to qualify for Stat Ace, your Chosen Stat must be the Stat that correlates to your Chosen Contest Stat. Beauty is Special Attack, Cool is Attack, Cute is Speed, Smart is Special Defense, and Tough is Defense.  You may use the Stat in place of "Stat" in …
 
-- 🟢 **Dietician** — `likely` · P3 · themes: other · code: vitaminCap:17860, CHEF_RECIPES:29930, chefCard:30201 · class: Chef
+- 🟢 **Dietician** — `likely` · P3 · themes: other · code: vitaminCap:18730, CHEF_RECIPES:32941, chefCard:33212 · class: Chef
   - _Trainer Classes · Static · Prereq: Chef, Expert Intuition_
   - Your Pokemon can benefit from a maximum of 7 Vitamins.
     Recipe - Vitamins
 
-- 🟢 **Diffuse Pain** — `likely` · P3 · themes: interrupt · engine: action-surfaced, stat-tag, auto-note · code: hexCard:26771, FEATURE_AUTO_NOTES:39204 · class: Hex Maniac
+- 🟢 **Diffuse Pain** — `likely` · P3 · themes: interrupt · engine: action-surfaced, stat-tag, auto-note · code: hexCard:29770, FEATURE_AUTO_NOTES:42720 · class: Hex Maniac
   - _Trainer Classes · [+HP] · 2 AP - Swift Action · Prereq: Hex Maniac Studies Rank 1_
   - Trigger: You use a Status-Class Move gained from Hex Maniac Studies
     Effect: Choose an additional target for the Move.
 
-- 🟢 **Directed Focus** — `likely` · P3 · themes: swap, typing, damage · code: duelistCard:27745 · class: Duelist
+- 🟢 **Directed Focus** — `likely` · P3 · themes: swap, typing, damage · code: duelistCard:30746 · class: Duelist
   - _Trainer Classes · Static · Prereq: Effective Methods_
   - Whenever your Pokemon with the Exploit or Tolerance Ability are targeted by [Orders], deal Super- Effective Damage, or take Super-Effective Damage, they gain +1 Momentum after all effects of the Move or Order are resolved.
 
-- 🟢 **Druid** — `likely` · P3 · themes: swap, stat · code: FEATURE_ABILITY_CHOICES:8161, FOE_FX:25573, embraceBit:29115, druidCard:29347, embraceOathSelect:32976, druidCallPlants:33041, setTokenHP:44266
+- 🟢 **Druid** — `likely` · P3 · themes: swap, stat · code: FEATURE_ABILITY_CHOICES:8709, FOE_FX:28505, embraceBit:32126, druidCard:32358, embraceOathSelect:35987, druidCallPlants:36052, setTokenHP:47877
   - _Game of Throhs · [Class] [Special] · Static · Prereq: Elemental Connection (Grass), Novice Survival, Novice General Education_
   - Your powers begin to take after either Flowers, Fungi, or Trees. Depending on your oath, you gain an Ability and Stat Tags. Whenever you gain a Druid Feature, you gain the same Stat Tags.
     Flower Oath: Aroma Veil [+Special Attack]
     Fungal Oath: Effect Spore [+Special Defense]
     Wood Oath: Life Force [+Attack]
 
-- 🟢 **Druid's Call** — `likely` · P3 · themes: weather, multiturn · engine: action-surfaced · code: druidCard:29357 · class: Druid
+- 🟢 **Druid's Call** — `likely` · P3 · themes: weather, multiturn · engine: action-surfaced · code: druidCard:32368 · class: Druid
   - _Game of Throhs · [Special] · Scene x2 - Standard Action · Prereq: Green Path_
   - 6 small saplings, flowery bushes, or mushroom patches (depending on your oath) suddenly grow within 6 meters of you, occupying 1 square each. This vegetation lasts until the end of the encounter, and acts as rough terrain that blocks line of sight for Pokemon and Trainers without the Naturewalk (Forest) Capability. Whenever you use a Move learned through Nature's Embrace, you may have it originate from these Plants as if they were the user. This Feature must be used on soil, or terrain under which soil is hidden by only a few inches (such as most sidewalks, parking lots, gravel or woodchip lots, etc.)
 
-- 🟢 **Duelist** — `likely` · P3 · themes: damage · engine: action-surfaced · code: isDuelistMon:679, duelistCard:27711
+- 🟢 **Duelist** — `likely` · P3 · themes: damage · engine: action-surfaced · code: isDuelistMon:757, trigRow:23769, duelistCard:30712
   - _Trainer Classes · [Class] · At-Will - Swift Action · Prereq: Focused Training, Novice Focus_
   - Target: A Pokemon or Trainer
     Effect: The Foe becomes Tagged; or if the foe is already Tagged, the foe loses the Tag. Only one foe can be Tagged this way at a time. If a new Foe is Tagged, all other Tags are lost. Your Pokemon under the effects of Focused Training gain half their Momentum (rounded up) as a Bonus to Accuracy and Evasion against Tagged Foes, but as long as a Foe is Tagged, they do not benefit from Focused Training's Accuracy Bonus against other foes.  See Extras - Class Mechanics for Momentum details.
 
-- 🟢 **Dumplings** — `likely` · P3 · themes: other · code: CHEF_RECIPES:29935 · class: Chef
+- 🟢 **Dumplings** — `likely` · P3 · themes: other · code: CHEF_RECIPES:32946 · class: Chef
   - _Trainer Classes · At-Will - Extended Action · Prereq: 4 Chef Features, Master Intuition_
   - Ingredient 1: Leftovers, Preserves, or a Snack made with Chef
     Ingredient 2: Leftovers or Preserves
     Effect: You mix the two ingredients into one Snack that has the same effect as its ingredients. The two ingredients must be different items.
     May Playtest Errata: Dumplings cannot be used to make other Dumpling items.
 
-- 🟢 **Earth Mother's Blessing Rank 1** — `likely` · P3 · themes: swap, skill · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8170, earthShakerCard:29392 · class: Earth Shaker
+- 🟢 **Earth Mother's Blessing Rank 1** — `likely` · P3 · themes: swap, skill · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8718, earthShakerCard:32403 · class: Earth Shaker
   - _Game of Throhs · [Ranked 2] [+Defense] · Static · Prereq: Adept Focus or Intuition_
   - Each Rank, choose one of Arena Trap or Lightningrod. You gain the chosen Ability.
 
-- 🟢 **Earth Mother's Blessing Rank 2** — `likely` · P3 · themes: swap, skill · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8171 · class: Earth Shaker
+- 🟢 **Earth Mother's Blessing Rank 2** — `likely` · P3 · themes: swap, skill · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8719 · class: Earth Shaker
   - _Game of Throhs · [Ranked 2] [+Defense] · Static · Prereq: Ground Out, Master Focus or Intuition_
   - Each Rank, choose one of Arena Trap or Lightningrod. You gain the chosen Ability.
 
 <a id="verify-features-05"></a>
 ## `verify-features-05` — Verify features the scan thinks are handled
 
-P9 · 36 open of 36 · open
+P9 · 33 open of 36 · open
 
-- 🟢 **Earth Shaker** — `likely` · P3 · themes: other · engine: stat-tag · code: earthShakerCard:29387
+- 🟢 **Earth Shaker** — `likely` · P3 · themes: other · engine: stat-tag · code: earthShakerCard:32398
   - _Game of Throhs · [Class] [+Defense] · Static · Prereq: Elemental Connection (Ground), Novice Intuition, Novice Focus_
   - Pick two of Bulldoze, Mud Shot, or Sand-Attack. You learn the chosen Moves.
 
-- 🟢 **Earthen Bond** — `likely` · P3 · themes: other · engine: stat-tag · code: FEATURE_CAPS:11784, earthShakerCard:29391 · class: Earth Shaker
+- 🟢 **Earthen Bond** — `likely` · P3 · themes: other · engine: stat-tag · code: FEATURE_CAPS:12423, earthShakerCard:32402 · class: Earth Shaker
   - _Game of Throhs · [+Defense] · Static · Prereq: Earth Shaker_
   - You gain the Tremorsense Capability, and you gain Naturewalk for Cave, Mountain and Desert.
 
-- 🟢 **Earthshifter** — `likely` · P3 · themes: interrupt, skill · engine: action-surfaced, stat-tag · code: earthShakerCard:29394, openEarthshifter:29407 · class: Earth Shaker
+- 🟢 **Earthshifter** — `likely` · P3 · themes: interrupt, skill · engine: action-surfaced, stat-tag · code: earthShakerCard:32405, openEarthshifter:32418 · class: Earth Shaker
   - _Game of Throhs · [+Defense] · 2 AP - Swift Action · Prereq: Ground Out_
   - Trigger: You hit with a damaging Ground Type Move
     Effect: You initiate a Trip Maneuver against 1 target of the Move. The Maneuver automatically hits, and you may use your Focus or Intuition for the opposed check.
 
-- 🟢 **Echoes of the Future** — `likely` · P3 · themes: interrupt · engine: action-surfaced · code: GENERAL_RESEARCH_FEATURES:12366, openEchoesOfTheFuture:30661, researcherCard:31504 · class: Researcher
+- 🟢 **Echoes of the Future** — `likely` · P3 · themes: interrupt · engine: action-surfaced · code: GENERAL_RESEARCH_FEATURES:13005, trigRow:23730, openEchoesOfTheFuture:33672, researcherCard:34515 · class: Researcher
   - _Trainer Classes · [General Research Field] [Branch] · Daily x2 - Free Action · Prereq: Master General Education_
   - Trigger: You or your Pokemon make a roll
     Effect: You may roll twice and keep the best result.
 
-- 🟢 **Effective Methods** — `likely` · P3 · themes: swap · engine: remember-only · code: duelistCard:27724 · class: Duelist
+- 🟢 **Effective Methods** — `likely` · P3 · themes: swap · engine: remember-only · code: duelistCard:30725 · class: Duelist
   - _Trainer Classes · At-Will - Extended Action · Prereq: Duelist_
   - Target: Your Pokemon with at least 2 Tutor Points remaining
     Effect: Your Pokemon loses 2 Tutor Points and gains your choice of the Exploit or Tolerance Ability. You may only target a Pokemon once with Effective Methods.
 
-- 🟢 **Egg Tutor** — `likely` · P3 · themes: other · engine: auto-note · code: openMentorTutorFeature:23845, mentorCard:23912, FEATURE_AUTO_NOTES:39214 · class: Mentor
+- 🟢 **Egg Tutor** — `likely` · P3 · themes: other · engine: auto-note · code: openMentorTutorFeature:26722, mentorCard:26789, FEATURE_AUTO_NOTES:42730 · class: Mentor
   - _Trainer Classes · Daily - Extended Action · Prereq: Move Tutor_
   - Target: A Pokemon with at least 2 Tutor Points.
     Effect: The target loses 2 Tutor Points, and learns any Move from its Egg Move List. A Pokemon may be targeted by Egg Tutor only one time.
 
-- 🟢 **Enchanting Gaze** — `likely` · P3 · themes: other · engine: action-surfaced, stat-tag, auto-note · code: openEnchantingGaze:25949, provocateurCard:25975, FEATURE_AUTO_NOTES:39160 · class: Provocateur
+- 🟢 **Enchanting Gaze** — `likely` · P3 · themes: other · engine: action-surfaced, stat-tag, auto-note · code: openEnchantingGaze:28936, provocateurCard:28962, FEATURE_AUTO_NOTES:42676 · class: Provocateur
   - _Trainer Classes · [+Speed] · 2 AP - Standard Action · Prereq: Quick Wit, two Provocateur Skills at Expert Rank_
   - Choose a Manipulate Maneuver effect; apply that Effect to all foes in a Cone 2. This ignores Frequency Limitations with that Maneuver and automatically succeeds against all targets without an opposed roll.
 
-- 🟢 **Expend Momentum** — `likely` · P3 · themes: heal, multiturn, damage, action · engine: action-surfaced, remember-only · code: duelistCard:27727 · class: Duelist
+- 🟢 **Expend Momentum** — `likely` · P3 · themes: heal, multiturn, damage, action · engine: action-surfaced, remember-only · code: duelistCard:30728 · class: Duelist
   - _Trainer Classes · [Orders] · At-Will - Standard Action · Prereq: Duelist_
   - Target: Your Pokemon under the effects of Focused Training
     Effect: Apply one of the following effects on the target by spending that much Momentum.
@@ -2726,7 +3053,7 @@ P9 · 36 open of 36 · open
     »» Spend 2 Momentum: Your Pokemon automatically rolls an 11 on one d20 Roll of your choice on their next turn.
     »» Spend 3 Momentum: Your Pokemon regains a use of Scene Frequency Move. May be chosen only once per Scene per Pokemon.
 
-- 🟢 **Extreme Weather** — `likely` · P3 · themes: weather, interrupt, status, damage · engine: action-surfaced · code: featureActionTypes:24173, climatologistOnMap:31124, openExtremeWeather:31157, researcherCard:31546 · class: Researcher
+- 🟢 **Extreme Weather** — `likely` · P3 · themes: weather, interrupt, status, damage · engine: action-surfaced · code: featureActionTypes:27050, climatologistOnMap:34135, openExtremeWeather:34168, researcherCard:34557 · class: Researcher
   - _Trainer Classes · [Climatology Research Field] [Branch] · Daily x3 - Free Action · Prereq: Climate Control, Master Survival_
   - Trigger: You or your Pokemon create a Weather Condition
     Effect: The Weather is particularly intense and has additional effects.
@@ -2735,47 +3062,47 @@ P9 · 36 open of 36 · open
     »» Sandstorm: All Trainers and Pokemon that take Sandstorm damage take a -2 Penalty to Accuracy Rolls.
     »» Sun: Trainers and Pokemon that are not Fire or Grass Typed are Suppressed.
 
-- 🟢 **Fey Law** — `likely` · P3 · themes: interrupt, multiturn, damage, action, skill, stat · engine: action-surfaced, stat-tag, auto-note · code: openFeyLaw:26171, glamourCard:26231, FEATURE_AUTO_NOTES:39174 · class: Glamour Weaver
+- 🟢 **Fey Law** — `likely` · P3 · themes: interrupt, multiturn, damage, action, skill, stat · engine: action-surfaced, stat-tag, auto-note · code: openFeyLaw:29158, glamourCard:29218, FEATURE_AUTO_NOTES:42690 · class: Glamour Weaver
   - _Game of Throhs · [+Special Attack] · 1 AP - Swift Action · Prereq: Glamour Weaver_
   - Trigger: You hit a foe with a damaging Fairy attack
     Effect: Choose one of the following: Status-Class, Combat Maneuver, attacks with an unmodified Damage Base 10 or higher, or an Elemental Type. The triggering foe is Bound; they suffer a -X penalty to all rolls made to use attacks with the chosen trait. X is equal to half your Charm or Occult Education Rank. The Bound condition lasts until the end of a Scene. You may unbind someone as a Free Action at any time. A target may not have multiple instances of Bound applied at once.
 
-- 🟢 **Fiery Soul** — `likely` · P3 · themes: status, typing · engine: stat-tag · code: FEATURE_STATUS_IMMUNITY:733, FEATURE_CAPS:11783, fireBringerCard:29260 · class: Fire Bringer
+- 🟢 **Fiery Soul** — `likely` · P3 · themes: status, typing · engine: stat-tag · code: FEATURE_STATUS_IMMUNITY:840, FEATURE_CAPS:12422, fireBringerCard:32271 · class: Fire Bringer
   - _Game of Throhs · [+Special Attack or Attack] · Static · Prereq: Fire Bringer_
   - You gain the Heater Capability, and are immune to the Burn condition.
 
-- 🟢 **Fire Bringer** — `likely` · P3 · themes: multiturn · engine: stat-tag · code: FEATURE_STATUS_IMMUNITY:734, fireBringerCard:29256
+- 🟢 **Fire Bringer** — `likely` · P3 · themes: multiturn · engine: stat-tag · code: FEATURE_STATUS_IMMUNITY:841, fireBringerCard:32267
   - _Game of Throhs · [Class][+Special Attack or Attack] · Static · Prereq: Elemental Connection (Fire), Novice Combat_
   - Choose two of Flame Burst, Flame Wheel, Flame Charge, or Will-O-Wisp. You learn the chosen Moves
 
-- 🟢 **Firebrand** — `likely` · P3 · themes: status · engine: group-rider, stat-tag · code: openTrainerAttack:9601, fireBringerCard:29261 · class: Fire Bringer
+- 🟢 **Firebrand** — `likely` · P3 · themes: status · engine: group-rider, stat-tag · code: openTrainerAttack:10197, fireBringerCard:32272 · class: Fire Bringer
   - _Game of Throhs · [+Special Attack or Attack] · Static · Prereq: Fire Bringer, Adept Focus or Combat_
   - Your Fire-Type Moves Burn Targets on a roll of 19+. If a move already has a chance of Burning foes, Firebrand increases the effect range by +2.
 
-- 🟢 **First Aid Expertise** — `likely` · P3 · themes: heal, cure, action · code: resetInjuryDay:4924, INJURY_SOURCES:5108, FEATURE_GIFTS:11218
+- 🟢 **First Aid Expertise** — `likely` · P3 · themes: heal, cure, action · code: resetInjuryDay:5442, INJURY_SOURCES:5626, FEATURE_GIFTS:11857
   - _Other · Daily x3 - Extended Action · Prereq: Medic Training, Expert Medicine Education_
   - Target: Pokemon or Trainers
     Effect: The target may remove one Injury, has all Hit Points restored, and is cured of all Status Afflictions. You may use First Aid Expertise only once per day per target. First Aid Expertise requires access to a First Aid Kit.
 
-- 🟢 **Fishbowl Technique** — `likely` · P3 · themes: weather, swap · engine: mode, action-surfaced, remember-only · code: FEATURE_MODES:24275, maelstromCard:28111, fishbowlDef:28148, ownerWeathers:31081 · class: Type Ace
+- 🟢 **Fishbowl Technique** — `likely` · P3 · themes: weather, swap · engine: mode, action-surfaced, remember-only · code: FEATURE_MODES:27152, maelstromCard:31112, fishbowlDef:31149, ownerWeathers:34092 · class: Type Ace
   - _Trainer Classes · [Orders] [Stratagem] · Bind 2 AP - Standard Action · Prereq: Flood!, Type-Linked Skill at Adept_
   - Target: Your Pokemon
     Effect: While this Stratagem is bound, your Pokemon may activate Moves and Abilities as if they were in Rainy Weather.
 
-- 🟢 **Fistful of Force** — `likely` · P3 · themes: control, skill · engine: action-surfaced · code: openFistfulOfForce:30927, researcherCard:31524 · class: Researcher
+- 🟢 **Fistful of Force** — `likely` · P3 · themes: control, skill · engine: action-surfaced · code: openFistfulOfForce:33938, researcherCard:34535 · class: Researcher
   - _Trainer Classes · [Artificer Research Field] [Branch] · Scene - Standard Action · Prereq: Crystal Artificer, Master Occult Education_
   - Condition: You must have a Shard in your Main Hand or Off-Hand to use Fistful of Force.
     Effect: You may destroy the Shard to use the Move Judgment. Judgment's Type must be one of the Types associated with the used Shard. Instead of adding your Special Attack when using this attack, you may choose to add your Occult Education Rank tripled.
 
-- 🟢 **Flexible Form** — `likely` · P3 · themes: damage, skill · engine: stat-tag, remember-only · code: applyAutoInjury:7321, miasmicCard:29459 · class: Miasmic
+- 🟢 **Flexible Form** — `likely` · P3 · themes: damage, skill · engine: stat-tag, remember-only · code: applyAutoInjury:7869, miasmicCard:32470 · class: Miasmic
   - _Game of Throhs · [+Defense] · Static · Prereq: Miasmic_
   - Your body becomes more malleable, and even your bones are able to flex when required. You do not gain Wounds from taking Massive damage, and you gain a +2 Bonus to any Acrobatics or Athletics Check made to bend, squeeze, or otherwise contort your body - including those to avoid Trip or Grapple maneuvers.
 
-- 🟢 **Flight** — `likely` · P3 · themes: position, skill · engine: action-surfaced, stat-tag · code: windRunnerCard:29298 · class: Wind Runner
+- 🟢 **Flight** — `likely` · P3 · themes: position, skill · engine: action-surfaced, stat-tag · code: windRunnerCard:32309 · class: Wind Runner
   - _Game of Throhs · [+Speed] · 1 AP - Swift Action · Prereq: One With the Winds, Adept Acrobatics_
   - You gain a Sky Speed equal to your Levitate Speed plus your Acrobatics or Perception Rank for the remainder of the round.
 
-- 🟢 **Flip Out** — `likely` · P3 · themes: interrupt, swap, damage, skill · engine: move-rider, stat-tag, auto-note · code: RIDER_ICONS:24210, FLIP_OUT:24594, FEATURE_AUTO_NOTES:39124 · class: Tumbler
+- 🟢 **Flip Out** — `likely` · P3 · themes: interrupt, swap, damage, skill · engine: move-rider, stat-tag, auto-note · code: RIDER_ICONS:27087, FLIP_OUT:27525, FEATURE_AUTO_NOTES:42640 · class: Tumbler
   - _Trainer Classes · [+Speed] · Static · Prereq: Aerialist, Adept Acrobatics_
   - Your Tumbler Moves gain additional effects.
     »» Aerial Ace: If you choose not to test for a Critical Hit, Aerial Ace gains the Pass Keyword.
@@ -2783,16 +3110,16 @@ P9 · 36 open of 36 · open
     »» Acrobatics: You may activate Acrobatics's extra damage even while holding an Item.
     »» Bounce: When you use Bounce, you don't trigger Hazards that turn and may choose to destroy all Hazards in your landing square and adjacent squares.
 
-- 🟢 **Flood!** — `likely` · P3 · themes: action · engine: action-surfaced · code: typeAceCard:28007 · class: Type Ace
+- 🟢 **Flood!** — `likely` · P3 · themes: action · engine: action-surfaced · code: typeAceCard:31008 · class: Type Ace
   - _Trainer Classes · At-Will - Free Action · Prereq: Type Ace, Water as Chosen Type_
   - Your Water-Type Pokemon may activate Flood! as a Shift Action to use a damaging Water-Type Move as if had a range of Line 4 or Close Blast 2 instead of its usual range.
 
-- 🟢 **Fossil Restoration** — `likely` · P3 · themes: swap · code: researcherCard:31588 · class: Researcher
+- 🟢 **Fossil Restoration** — `likely` · P3 · themes: swap · code: researcherCard:34599 · class: Researcher
   - _Trainer Classes · [Paleontology Research Field] [Branch] · At-Will - Extended Action · Prereq: Paleontologist, Novice Pokemon Education_
   - Target: A Fossil you are reviving
     Effect: The resulting Pokemon is born with 2 fewer Tutor Points, and gains its second Basic Ability. If it has only has one Basic Ability, it gains one of its Advanced Abilities, chosen by the GM. This Feature does not affect how the Pokemon continues to gain Abilities.
 
-- 🟢 **Front Line Healer** — `likely` · P3 · themes: heal, damage, skill · engine: auto-note · code: PTU_BUFFS:16247, openApplyRestorative:26485, FEATURE_AUTO_NOTES:39186 · class: Medic
+- 🟢 **Front Line Healer** — `likely` · P3 · themes: heal, damage, skill · engine: auto-note · code: PTU_BUFFS:17116, openApplyRestorative:29478, FEATURE_AUTO_NOTES:42702 · class: Medic
   - _Here Thar Be Playtests · [9-15 Playtest] · Static · Prereq: Medic_
   - When you apply a Restorative, you gain +5
      Damage Reduction for 1 full round. Whenever you use
@@ -2800,37 +3127,40 @@ P9 · 36 open of 36 · open
      the same effect on yourself. Damage Reduction from
      this Feature does not stack with itself.
 
-- 🟢 **Frost Touched** — `likely` · P3 · themes: weather, barrier · engine: stat-tag · code: FEATURE_STATUS_IMMUNITY:736, frostTouchedCard:29417
+- 🟢 **Frost Touched** — `likely` · P3 · themes: weather, barrier · engine: stat-tag · code: FEATURE_STATUS_IMMUNITY:843, frostTouchedCard:32428
   - _Game of Throhs · [Class] [+Attack or Special Attack] · Static · Prereq: Elemental Connection (Ice), Novice Athletics, Novice Survival_
   - Choose two out of Haze, Ice Shard, Mist, and Powder Snow. You learn the Chosen Moves.
 
-- 🟢 **Gale Speed** — `likely` · P3 · themes: swap · engine: stat-tag · code: windRunnerCard:29306 · class: Wind Runner
+- ✅ **Gale Speed** — `auto` · P3 · themes: swap · engine: stat-tag · code: windRunnerCard:32317 · class: Wind Runner
   - _Game of Throhs · [+Speed] · Static · Prereq: Raging Winds Rank 1, Master Acrobatics or Perception_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Celebrate or Gale Wings. You gain the chosen Ability.
 
-- 🟢 **Genetic Memory** — `likely` · P3 · themes: other · code: openGeneticMemory:31284, researcherCard:31590 · class: Researcher
+- 🟢 **Genetic Memory** — `likely` · P3 · themes: other · code: openGeneticMemory:34295, researcherCard:34601 · class: Researcher
   - _Trainer Classes · [Paleontology Research Field] [Branch] · Daily x2 - Extended Action · Prereq: Ancient Heritage, Expert Pokemon Education_
   - Target: Your Fossil Pokemon with at least 2 Tutor Points remaining
     Effect: The target loses 2 Tutor Points and learns any Move from its Egg Move or Tutor Move List. Genetic Memory may target a Pokemon only twice: once with a Tutor Move and once with an Egg Move. Egg Moves tutored this way do not count against the limit of 3 for TM and Tutor Moves.
 
-- 🟢 **Giftsapper** — `likely` · P3 · themes: action, skill · engine: stat-tag · code: hasGiftsapper:14054, openAddGift:14418
+- 🟢 **Giftsapper** — `likely` · P3 · themes: action, skill · engine: stat-tag · code: hasGiftsapper:14755, openAddGift:15174
   - _Blessed & The Damned · [+Any] · Static · Prereq: GM Permission, No Gifts_
   - As long as Giftsapper's user is conscious, all Trainers within 10 meters must make a Focus Check with DC equal to three times the highest Skill Rank of Giftsapper's user between Focus, Intimidate, or Command in order to activate their Gifts. This Check is made each time a Trainer attempts to use an activated Gift, and a failure means neither any resources such as AP nor the frequency of the Gift is expended. For Gifts with Static or ongoing effects, the Check is made each turn, and a failure ends the effect for that turn. Giftsapper's user may never gain Gifts.
 
-- 🟢 **Glacial Defense** — `likely` · P3 · themes: swap · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8151, frostTouchedCard:29422 · class: Frost Touched
+- ✅ **Glacial Defense** — `auto` · P3 · themes: swap · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8699, frostTouchedCard:32433 · class: Frost Touched
   - _Game of Throhs · [+Attack or Special Attack] · Static · Prereq: Frost Touched_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Ice Shield or Winter's Kiss. You gain the Chosen Ability.
 
-- 🟢 **Glamour Mastery** — `likely` · P3 · themes: swap · engine: stat-tag, auto-note · code: FEATURE_ABILITY_CHOICES:8166, glamourCard:26228, FEATURE_AUTO_NOTES:39178 · class: Glamour Weaver
+- ✅ **Glamour Mastery** — `auto` · P3 · themes: swap · engine: stat-tag, auto-note · code: FEATURE_ABILITY_CHOICES:8714, glamourCard:29215, FEATURE_AUTO_NOTES:42694 · class: Glamour Weaver
   - _Game of Throhs · [+Special Attack] · Static · Prereq: 4 Glamour Weaver Features_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Magic Guard or Magic Bounce. You gain the Chosen Ability.
 
-- 🟢 **Gleeful Interference** — `likely` · P3 · themes: interrupt, swap, damage · engine: action-surfaced, auto-note · code: cheerleaderCard:26142, FEATURE_AUTO_NOTES:39172 · class: Cheerleader
+- 🟢 **Gleeful Interference** — `likely` · P3 · themes: interrupt, swap, damage · engine: action-surfaced, auto-note · code: cheerleaderCard:29129, FEATURE_AUTO_NOTES:42688 · class: Cheerleader
   - _Trainer Classes · 1 AP - Free Action · Prereq: Cheer Brigade, Adept Charm_
   - Trigger: Your Pokemon with the Friend Guard Ability hits a foe with a damaging attack
     Effect: The triggering foe gains a -2 penalty to Accuracy for one full Round.
 
-- 🟢 **Glitch Burst** — `likely` · P3 · themes: heal, interrupt, multiturn, control, status, cure, action · engine: move-rider, action-surfaced, stat-tag, auto-note · code: RIDER_ICONS:24211 · class: Glitch Bender
+- 🟢 **Glitch Burst** — `likely` · P3 · themes: heal, interrupt, multiturn, control, status, cure, action · engine: move-rider, action-surfaced, stat-tag, auto-note · code: RIDER_ICONS:27088 · class: Glitch Bender
   - _Do Porygon Dream of Mareep · [+Special Defense] · 2 AP - Swift Action · Prereq: Glitch Shuffle, Master Focus, Occult Education, or Perception_
   - Trigger: You hit with Topsy-Turvy or use another Glitch Bender Move
     Effect: Glitch Burst's effect depends on the triggering Move.
@@ -2839,130 +3169,132 @@ P9 · 36 open of 36 · open
     »» Metronome: Generate three random Moves instead of one, and choose which Move to use.
     »» Topsy-Turvy: The target of Topsy-Turvy becomes Confused. They are automatically cured The Glitch Pokemon of this Confusion at the end of their next turn.
 
-- 🟢 **Go, Fight, Win!** — `likely` · P3 · themes: heal, cs, damage, action, skill, stat · engine: action-surfaced, auto-note · code: cheerleaderCard:26151, FEATURE_AUTO_NOTES:39164 · class: Cheerleader
+- 🟢 **Go, Fight, Win!** — `likely` · P3 · themes: heal, cs, damage, action, skill, stat · engine: action-surfaced, auto-note · code: trigRow:23733, cheerleaderCard:29138, FEATURE_AUTO_NOTES:42680 · class: Cheerleader
   - _Trainer Classes · [Orders] · At-Will - Standard Action + Swift Action · Prereq: Moment of Action, Expert Charm_
   - Choose and perform one of the cheers below. You may perform each Cheer only once per Scene.
     »» Show Your Best!: Choose Defense or Special Defense. All allies on the field gain +1 Combat Stage in the Chosen Stat and become Motivated. 
     »» Don't Stop Now!: All allies on the field gain Temporary Hit Points equal to your Charm Rank and become Excited. 
     »» I Believe In You!: All allies on the field gain a +2 bonus to Evasion for one full Round, and become Cheered.
 
-- 🟢 **Godslayer** — `likely` · P3 · themes: control, status, damage · engine: action-surfaced · code: FEATURE_ACTIONS:8368, giftsCard:14047, hasGodslayer:14100, godslayerGo:14156, GIFT_ACTIONS:14178
+- 🟢 **Godslayer** — `likely` · P3 · themes: control, status, damage · engine: action-surfaced · code: FEATURE_ACTIONS:8916, giftsCard:14748, hasGodslayer:14801, godslayerGo:14857, GIFT_ACTIONS:14888
   - _Blessed & The Damned · [Patron Stat] · EOT - Standard Action · Prereq: Gm Permission_
   - You may attempt to shatter one of the target's Legendary Auras. The AC of this action is 10. If you successfully disabled the Aura, but rolled a 10-15, the feedback from the action gives you an Injury.
 
-- 🟢 **Gotta Catch 'Em All** — `likely` · P3 · themes: interrupt, capture · engine: action-surfaced, stat-tag, auto-note · code: catchDCModal:15900, openThrowPokeball:16017, captureCard:26285, FEATURE_AUTO_NOTES:39180 · class: Capture Specialist
+- 🟢 **Gotta Catch 'Em All** — `likely` · P3 · themes: interrupt, capture · engine: action-surfaced, stat-tag, auto-note · code: catchDCModal:16665, openThrowPokeball:16859, captureCard:29278, FEATURE_AUTO_NOTES:42696 · class: Capture Specialist
   - _Trainer Classes · [+Speed] · Daily x3 - Swift Action · Prereq: Advanced Capture Techniques Rank 3_
   - Trigger: Your make a Capture Roll.
     Effect: You may switch the rolled digits on your 1d100 roll. For example, if you roll a 91, that can be switched to a 19. This does not turn a roll of 1 into a "Natural" roll of 100.
 
-- 🟢 **Gotta Catch 'Em All [Playtest]** — `likely` · P3 · themes: capture · engine: stat-tag, auto-note · code: catchDCModal:15901, openThrowPokeball:16018, captureCard:26287, FEATURE_AUTO_NOTES:39182 · class: Capture Specialist
+- 🟢 **Gotta Catch 'Em All [Playtest]** — `likely` · P3 · themes: capture · engine: stat-tag, auto-note · code: catchDCModal:16666, openThrowPokeball:16860, captureCard:29280, FEATURE_AUTO_NOTES:42698 · class: Capture Specialist
   - _Here Thar Be Playtests · [+Speed] [9-15 Playtest] · Static · Prereq: Advanced Capture Techniques Rank 3_
   - Every time you Capture a Wild Pokemon that is a member of an evolutionary family of which you own no other Pokemon, you gain 1 Collector Stack. Whenever you make a Capture Roll, you may spend up to three Collector Stacks to gain an equal bonus to your Capture Roll, or you may spend three Collector Stacks to re-roll entirely.
 
-- 🟢 **Grand Hex** — `likely` · P3 · themes: heal, interrupt, damage, action · engine: action-surfaced, stat-tag, auto-note · code: hexCard:26777, FEATURE_AUTO_NOTES:39208 · class: Hex Maniac
+- 🟢 **Grand Hex** — `likely` · P3 · themes: heal, interrupt, damage, action · engine: action-surfaced, stat-tag, auto-note · code: hexCard:29776, FEATURE_AUTO_NOTES:42724 · class: Hex Maniac
   - _Trainer Classes · [+HP] · 1 AP - Swift Action · Prereq: Hex Maniac Studies Rank 3, Master Occult Education_
   - Trigger: You hit a foe with Hex
     Effect: Regain one use of a Move gained from Hex Maniac Studies that can inflict a Status Affliction that the triggering target has. If you activated the conditional damage boost for Hex, its Frequency is not expended. You may only activate Grand Hex once per target per Scene.
 
-- 🟢 **Green Path** — `likely` · P3 · themes: typing · code: FEATURE_CAPS:11786, druidCard:29352, powderImmuneWhy:32990 · class: Druid
+- 🟢 **Green Path** — `likely` · P3 · themes: typing · code: FEATURE_CAPS:12425, druidCard:32363, powderImmuneWhy:36001 · class: Druid
   - _Game of Throhs · [Special] · Static · Prereq: Druid_
   - You gain the Naturewalk (Grassland) and Naturewalk (Forest) capabilities, and you are immune to Moves with the Powder keyword.
 
 <a id="verify-features-06"></a>
 ## `verify-features-06` — Verify features the scan thinks are handled
 
-P9 · 36 open of 36 · open
+P9 · 34 open of 36 · open
 
 - 🟢 **Guardian Orders** — `likely` · P3 · themes: other · engine: grants-feature
   - _Pokémon Training & Orders · Static · Prereq: Expert Charm or Intimidate_
   - You gain the Brace for Impact and Sentinel Stance Orders.
 
-- 🟢 **Haunted Wounds** — `likely` · P3 · themes: interrupt, typing, damage, action · engine: action-surfaced, stat-tag, remember-only · code: apparitionCard:29329 · class: Apparition
+- 🟢 **Haunted Wounds** — `likely` · P3 · themes: interrupt, typing, damage, action · engine: action-surfaced, stat-tag, remember-only · code: apparitionCard:32340 · class: Apparition
   - _Game of Throhs · [+Attack] [Weapon] · Scene x2 - Free Action · Prereq: Shadow Arms, Master Intimidate or Occult Education_
   - Trigger: You hit with an Apparition Move or Ghost- Typed Weapon Attack
     Effect: After one full round, repeat the triggering attack against one target as a Free Action, regardless of range. If this attack hits, it deals damage as if it were resisted one step further. Haunted Wounds may only affect a target once per Scene.
 
-- 🟢 **Herb Lore** — `likely` · P3 · themes: heal · code: BOTANY_RECIPES:30411 · class: Researcher
+- 🟢 **Herb Lore** — `likely` · P3 · themes: heal · code: BOTANY_RECIPES:33422 · class: Researcher
   - _Trainer Classes · [Botany Research Field] [Branch] · Static · Prereq: Seed Bag Rank 1_
   - You may create Energy Powder, Heal Powder, or Poultices from ingredients, as listed below.
     »» Energy Powder: A Sitrus Berry or Tiny Mushroom creates x2 Energy Powders. An Energy Root creates x3 Energy Powders.
     »» Heal Powder: A Lum Berry or Big Mushroom creates x2 Heal Powders. A Revival Herb creates x3 Heal Powders
     »» Poultice: x1 Energy Powder and x1 Heal Powder create x3 Poultices.
 
-- 🟢 **Highly Responsive to Prayers** — `likely` · P3 · themes: heal, interrupt, swap, action · engine: action-surfaced, stat-tag · code: openSageWard:32810, sageCard:32939 · class: Sage
+- 🟢 **Highly Responsive to Prayers** — `likely` · P3 · themes: heal, interrupt, swap, action · engine: action-surfaced, stat-tag · code: openSageWard:35821, sageCard:35950 · class: Sage
   - _Trainer Classes · [+HP] · Scene x3 - Free Action · Prereq: Lay on Hands_
   - Trigger: You use the Blessed Touch or Healer Ability on an ally, or an ally receives an Injury
     Effect: You may use the Sage Feature as a Free Action targeting the triggering ally. Multiple instances of Sage's effect that you use may stack when used this way.
 
-- 🟢 **Hits the Spot** — `likely` · P3 · themes: heal, interrupt, swap, skill · engine: action-surfaced · code: digestionCard:17125, CHEF_RECIPES:29903, chefCard:30205 · class: Chef
+- 🟢 **Hits the Spot** — `likely` · P3 · themes: heal, interrupt, swap, skill · engine: action-surfaced · code: digestionCard:17995, CHEF_RECIPES:32914, chefCard:33216 · class: Chef
   - _Trainer Classes · 1 AP - Free Action · Prereq: Chef_
   - Trigger: You or your Pokemon trade in a Digestion/Food Buff
     Effect: The target gains Temporary Hit Points equal to your Intuition Rank doubled. These Temporary Hit Points stack from any Temporary Hit Points granted by Accentuated Taste, the Digestion/Food Buff or by the Lunchbox Ability.
     Recipe - Hearty Meal
 
-- 🟢 **How To Shoot Web** — `likely` · P3 · themes: other · code: FEATURE_CAPS:11779, swarmlordCard:29165 · class: Swarmlord
+- 🟢 **How To Shoot Web** — `likely` · P3 · themes: other · code: FEATURE_CAPS:12418, swarmlordCard:32176 · class: Swarmlord
   - _Game of Throhs · Static · Prereq: Swarmlord_
   - You gain the Threaded and Wallclimber Capabilities.
 
-- 🟢 **I'm A Doctor Rank 1** — `likely` · P3 · themes: skill · engine: auto-note · code: FEATURE_GIFTS:11216, medicCard:26689, FEATURE_AUTO_NOTES:39194 · class: Medic
+- 🟢 **I'm A Doctor Rank 1** — `likely` · P3 · themes: skill · engine: auto-note · code: FEATURE_GIFTS:11855, medicCard:29688, FEATURE_AUTO_NOTES:42710 · class: Medic
   - _Here Thar Be Playtests · [Ranked 2] [Gift] [9-15 Playtest] · Static · Prereq: Medic_
   - Each Rank, you gain one of Field Clinic or Medic Training and one of Nurse or First Aid Expertise.
 
-- 🟢 **I'm A Doctor Rank 2** — `likely` · P3 · themes: skill · engine: auto-note · code: FEATURE_GIFTS:11219, FEATURE_AUTO_NOTES:39196 · class: Medic
+- 🟢 **I'm A Doctor Rank 2** — `likely` · P3 · themes: skill · engine: auto-note · code: FEATURE_GIFTS:11858, FEATURE_AUTO_NOTES:42712 · class: Medic
   - _Here Thar Be Playtests · [Ranked 2] [Gift] [9-15 Playtest] · Static · Prereq: Medic, Adept Medicine Education_
   - Each Rank, you gain one of Field Clinic or Medic Training and one of Nurse or First Aid Expertise.
 
-- 🟢 **Immutable Mind** — `likely` · P3 · themes: interrupt, typing · engine: action-surfaced · code: researcherCard:31577 · class: Researcher
+- 🟢 **Immutable Mind** — `likely` · P3 · themes: interrupt, typing · engine: action-surfaced · code: researcherCard:34588 · class: Researcher
   - _Trainer Classes · [Occultism Research Field] [Branch] · Scene - Free Action · Prereq: Mental Resistance, Expert Occult Education_
   - Trigger: You're hit by a Psychic-, Ghost-, or Dark-Type Move
     Effect: If the triggering Move was a Status-Class Move, the Move fails. If the Triggering Move was a Damaging Move with a Secondary Effect that triggers on a certain roll, you are immune to the secondary effect.
 
-- 🟢 **Impenetrable** — `likely` · P3 · themes: swap · engine: stat-tag · code: steelheartCard:29500 · class: Steelheart
+- ✅ **Impenetrable** — `auto` · P3 · themes: swap · engine: stat-tag · code: steelheartCard:32511 · class: Steelheart
   - _Game of Throhs · [+Defense] · Static · Prereq: Steelheart, Expert Athletics or Focus_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - You gain the Bulletproof Ability.
 
-- 🟢 **Inspirational Support** — `likely` · P3 · themes: interrupt, swap, action · engine: auto-note · code: cheerleaderCard:26140, FEATURE_AUTO_NOTES:39170 · class: Cheerleader
+- 🟢 **Inspirational Support** — `likely` · P3 · themes: interrupt, swap, action · engine: auto-note · code: cheerleaderCard:29127, FEATURE_AUTO_NOTES:42686 · class: Cheerleader
   - _Trainer Classes · Static · Prereq: Cheer Brigade, Adept Charm_
   - You may trigger Cheerleader as a Free Action when your Pokemon with Friend Guard activate an Ability or Status Move that affects only allies.
 
-- 🟢 **Instant Analysis** — `likely` · P3 · themes: swap · code: researcherCard:31505 · class: Researcher
+- 🟢 **Instant Analysis** — `likely` · P3 · themes: swap · code: researcherCard:34516 · class: Researcher
   - _Trainer Classes · [General Research Field] [Branch] · At-Will - Extended Action · Prereq: Expert General Education_
   - Target: Your Pokemon with at least 2 Tutor Points remaining
     Effect: Your Pokemon loses 2 Tutor Points and gains the Forewarn Ability.
 
-- 🟢 **Keep Fighting!** — `likely` · P3 · themes: heal, interrupt, skill · engine: action-surfaced, auto-note · code: featUses:25421, openKeepFighting:26107, cheerleaderCard:26153, FEATURE_AUTO_NOTES:39166 · class: Cheerleader
+- 🟢 **Keep Fighting!** — `likely` · P3 · themes: heal, interrupt, skill · engine: action-surfaced, auto-note · code: trigRow:23734, featUses:28352, openKeepFighting:29094, cheerleaderCard:29140, FEATURE_AUTO_NOTES:42682 · class: Cheerleader
   - _Trainer Classes · Daily x2 - Free Action · Prereq: 5 Cheerleader Features, Master Charm_
   - Trigger: Your Pokemon or an Ally Trainer with over 1 Hit Point is reduced to 0 Hit Points or lower: 
     Effect: That Ally's Hit Point count is reduced to 1 instead, and then gains Temporary Hit Points equal to your charm rank doubled.
 
-- 🟢 **Live and Learn** — `likely` · P3 · themes: interrupt, skill · engine: action-surfaced · code: openLiveAndLearn:30625, researcherCard:31503 · class: Researcher
+- 🟢 **Live and Learn** — `likely` · P3 · themes: interrupt, skill · engine: action-surfaced · code: openLiveAndLearn:33636, researcherCard:34514 · class: Researcher
   - _Trainer Classes · [General Research Field] [Branch] · Daily x3 - Free Action · Prereq: Adept General Education_
   - Trigger: You or your Pokemon miss with an attack, fail a Skill Check, or fail a Save Check
     Effect: Add half of your General Education Rank to the next roll of the same type that the triggering user makes.
 
-- 🟢 **Long Shot** — `likely` · P3 · themes: multiturn, damage · engine: action-surfaced · code: PTU_BUFFS:16205
+- 🟢 **Long Shot** — `likely` · P3 · themes: multiturn, damage · engine: action-surfaced · code: PTU_BUFFS:17074
   - _Pokémon Training & Orders · [Orders] · Scene x2 - Standard Action · Prereq: Marksman Orders_
   - Target: Your Pokemon
     Effect: The target's damaging ranged attacks have their range doubled until the end of their next turn, and deal X additional damage. X is equal to the distance in meters that the attack traveled. Long Shot does not increase the size of area of effect attacks. If attacks altered by Long Shot are Critical Hits, add the value of the Damage Dice Roll an additional time to the total damage.
 
-- 🟢 **Lucent Mirage** — `likely` · P3 · themes: other · engine: stat-tag · code: FEATURE_CAPS:11781, prismCard:29446 · class: Prism
+- 🟢 **Lucent Mirage** — `likely` · P3 · themes: other · engine: stat-tag · code: FEATURE_CAPS:12420, prismCard:32457 · class: Prism
   - _Game of Throhs · [+Special Attack] · Static · Prereq: Prism_
   - You gain the Illusionist Capability.
 
-- 🟢 **Lucky Clover Grand Finale** — `likely` · P3 · themes: barrier · engine: stat-tag · code: glamourCard:26226 · class: Glamour Weaver
+- 🟢 **Lucky Clover Grand Finale** — `likely` · P3 · themes: barrier · engine: stat-tag · code: glamourCard:29213 · class: Glamour Weaver
   - _Game of Throhs · [+Special Attack] · Static · Prereq: Passionato Harmony, Master Charm or Occult Education_
   - You learn the Moves Moonblast and Aromatic Mist.
 
-- 🟢 **Luminous Aura** — `likely` · P3 · themes: swap · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8154 · class: Prism
+- ✅ **Luminous Aura** — `auto` · P3 · themes: swap · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8702 · class: Prism
   - _Game of Throhs · [+Special Attack] · Static · Prereq: Blinding Brightness, Adept Charm or General Education_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Starlight or Sunglow. You gain the Chosen Ability.
 
-- 🟢 **Magical Burst** — `likely` · P3 · themes: heal, multiturn, cure, action · engine: action-surfaced, stat-tag, auto-note · code: openMagicalBurst:26189, glamourCard:26233, FEATURE_AUTO_NOTES:39176 · class: Glamour Weaver
+- 🟢 **Magical Burst** — `likely` · P3 · themes: heal, multiturn, cure, action · engine: action-surfaced, stat-tag, auto-note · code: openMagicalBurst:29176, glamourCard:29220, FEATURE_AUTO_NOTES:42692 · class: Glamour Weaver
   - _Game of Throhs · [+Special Attack] · Scene - Standard Action · Prereq: Enchanting Transformation, Passionato Harmony_
   - Condition: You must have Enchanting Transformation Bound to use Magical Burst
     Effect: Use a Glamour Weaver Move as if it had the range Burst 3, Friendly, Exhaust, Smite. All allies within the area-of-effect gain a Tick of Temporary Hit Points or cure themselves of one Volatile Affliction. Enchanting Transformation immediately becomes Unbound, and the AP used to bind it becomes spent instead of becoming available again.
 
-- 🟢 **Man of Steel** — `likely` · P3 · themes: other · engine: stat-tag · code: steelheartCard:29499 · class: Steelheart
+- 🟢 **Man of Steel** — `likely` · P3 · themes: other · engine: stat-tag · code: steelheartCard:32510 · class: Steelheart
   - _Game of Throhs · [+Defense] [Weapon] · Static · Prereq: Steelheart, Master Athletics or Focus_
   - You learn the Moves Meteor Mash and King's Shield. You may use these Moves as Weapon Attacks when wielding Melee Weapons.
 
@@ -2970,39 +3302,39 @@ P9 · 36 open of 36 · open
   - _Pokémon Training & Orders · Static · Prereq: Expert Perception or Guile_
   - You gain the Trick Shot and Long Shot Orders.
 
-- 🟢 **Martial Artist** — `likely` · P3 · themes: swap, skill · code: openTokenMenu:47942
+- 🟢 **Martial Artist** — `likely` · P3 · themes: swap, skill · code: openTokenMenu:51896
   - _Trainer Classes · [Class] [Special] · Static · Prereq: Basic Martial Arts, Novice Combat_
   - Choose one of the following abilities: Guts [+HP], Inner Focus [+Speed], Iron Fist [+Defense], Limber [+Speed], Reckless [+Attack], Technician [+Speed]. You gain the chosen Ability and its associated tag. Whenever you gain any Martial Artist Feature, you also gain the associated tag.
 
-- 🟢 **Master of Arms** — `likely` · P3 · themes: other · engine: stat-tag · code: steelheartCard:29508 · class: Steelheart
+- 🟢 **Master of Arms** — `likely` · P3 · themes: other · engine: stat-tag · code: steelheartCard:32519 · class: Steelheart
   - _Game of Throhs · [+Defense] [Weapon] · Static · Prereq: Steelheart, Expert Athletics or Focus_
   - You learn the Call to Arms and Unlimited Steel Works Talents.
 
-- 🟢 **Medical Techniques** — `likely` · P3 · themes: heal, interrupt, swap, cure, skill · engine: action-surfaced, auto-note · code: featUses:25422, openApplyRestorative:26424, APOTHECARY_RECIPES:30759, researcherCard:31512, FEATURE_AUTO_NOTES:39188 · class: Researcher
+- 🟢 **Medical Techniques** — `likely` · P3 · themes: heal, interrupt, swap, cure, skill · engine: action-surfaced, auto-note · code: featUses:28353, openApplyRestorative:29417, APOTHECARY_RECIPES:33770, researcherCard:34523, FEATURE_AUTO_NOTES:42704 · class: Researcher
   - _Trainer Classes · [Apothecary Research Field] [Branch] · 1 AP - Swift Action · Prereq: Apothecary, Expert Medicine Education_
   - Trigger: You apply a Restorative Item
     Effect: The target gains a Tick of Hit Points, plus an additional amount of Hit Points equal to your Medicine Education Rank.
     Recipe - Hyper Cures
 
-- 🟢 **Medicinal Blend** — `likely` · P3 · themes: heal, swap, action · code: kitchenItemEffect:29767, openChefCook:29999, APOTHECARY_RECIPES:30763 · class: Researcher
+- 🟢 **Medicinal Blend** — `likely` · P3 · themes: heal, swap, action · code: kitchenItemEffect:32778, openChefCook:33010, APOTHECARY_RECIPES:33774 · class: Researcher
   - _Trainer Classes · [Apothecary Research Field] [Branch] · At-Will - Extended Action · Prereq: Apothecary, Master Medicine Education_
   - Ingredients: Two Restoratives, or a Restorative and an X-Item
     Effect: You fuse the two Ingredients, creating an Item that has the properties of both. If you choose two Restoratives, they cannot be Restoratives with the same effect (you could not for example, mix a Potion and a Super Potion). If a Restorative Patch is used as an Ingredient, the resulting item can only be used as an Extended Action.
     Recipe - Performance Enhancers
 
-- 🟢 **Mental Resistance** — `likely` · P3 · themes: damage · code: defenseTypeMods:6585, FEATURE_CAPS:11787, researcherCard:31571 · class: Researcher
+- 🟢 **Mental Resistance** — `likely` · P3 · themes: damage · code: defenseTypeMods:7133, FEATURE_CAPS:12426, researcherCard:34582 · class: Researcher
   - _Trainer Classes · [Occultism Research Field] [Branch] · Static · Prereq: Witch Hunter_
   - You gain the Mindlock Capability and 10 Damage Reduction against Special Psychic, Ghost, and Dark-Type damage.
 
-- 🟢 **Messiah** — `likely` · P3 · themes: heal · code: giftFreqText:13333, MESSIAH_BRANCH_FEATURES:13518, blessingBranch:13527, blessingModeFor:13531, blessingNoteFor:13536, GIFT_KINDS:13548, giftRow:14193, openAddGift:14363
+- 🟢 **Messiah** — `likely` · P3 · themes: heal · code: giftFreqText:13972, MESSIAH_BRANCH_FEATURES:14157, blessingBranch:14166, blessingModeFor:14170, blessingNoteFor:14175, GIFT_KINDS:14187, BRANCH_KINDS:14196, giftsCard:14698
   - _Blessed & The Damned · [Patron Stat] · One Time Use/5 · Prereq: Touched, GM Permission_
   - Your Connection with one of your Patrons has reached such a point that even you are capable of performing the miracles they are renowned and worshiped for. Expending a use of Messiah allows you to perform such a miracle. For example, in a region where Shaymin is known to restore withered forests to their former glory, a Touched who is a Messiah of Shaymin might be able to cause a forest to start to rapidly recover from the aftermath of a wildfire. Such acts are usually, but not always, noticeably supernatural and divine.
 
-- 🟢 **Miasmic** — `likely` · P3 · themes: other · engine: stat-tag · code: FEATURE_STATUS_IMMUNITY:738, injuriesFromHit:7289, miasmicCard:29454
+- 🟢 **Miasmic** — `likely` · P3 · themes: other · engine: stat-tag · code: FEATURE_STATUS_IMMUNITY:845, injuriesFromHit:7837, miasmicCard:32465
   - _Game of Throhs · [Class] [+Defense] · Static · Prereq: Elemental Connection (Poison), Novice Stealth, Novice Guile_
   - You learn the Moves Acid and Clear Smog.
 
-- 🟢 **Miasmic Spray** — `likely` · P3 · themes: heal, interrupt, multiturn, status, typing, cs, damage, skill · engine: move-rider, action-surfaced, stat-tag, auto-note, remember-only · code: RIDER_ICONS:24212, miasmicCard:29461 · class: Miasmic
+- 🟢 **Miasmic Spray** — `likely` · P3 · themes: heal, interrupt, multiturn, status, typing, cs, damage, skill · engine: move-rider, action-surfaced, stat-tag, auto-note, remember-only · code: RIDER_ICONS:27089, miasmicCard:32472 · class: Miasmic
   - _Game of Throhs · [+Defense] · 2 AP - Swift Action · Prereq: Miasma's Call, Master Stealth or Guile_
   - Trigger: You hit with Acid, Clear Smog, Sludge Bomb, Sludge Wave, or Toxic; or use Acid Armor:  
     The Effect of this feature depends on the triggering move.
@@ -3013,38 +3345,38 @@ P9 · 36 open of 36 · open
     Toxic:  The target's Badly Poison Hit Point Loss begins at 10 instead of 5.
     Acid Armor:  You are not slowed while liquefied and resist all special damage one step.
 
-- 🟢 **Mobilize** — `likely` · P3 · themes: multiturn, action · engine: action-surfaced, auto-note · code: PTU_BUFFS:16236, commanderCard:25906, FEATURE_AUTO_NOTES:39154 · class: Commander
+- 🟢 **Mobilize** — `likely` · P3 · themes: multiturn, action · engine: action-surfaced, auto-note · code: PTU_BUFFS:17105, commanderCard:28893, FEATURE_AUTO_NOTES:42670 · class: Commander
   - _Trainer Classes · [Orders] · At-Will - Free Action · Prereq: Commander_
   - Target: Any Ally
     Effect: The target cannot provoke Attacks of Opportunity on their next turn. Mobilize may target an Ally only once per encounter.
 
-- 🟢 **Moment of Action** — `likely` · P3 · themes: action · engine: action-surfaced, auto-note · code: PTU_BUFFS:16239, cheerleaderCard:26144, FEATURE_AUTO_NOTES:39168 · class: Cheerleader
+- 🟢 **Moment of Action** — `likely` · P3 · themes: action · engine: action-surfaced, auto-note · code: PTU_BUFFS:17108, STAT_TRAINING_MOVES:23868, cheerleaderCard:29131, FEATURE_AUTO_NOTES:42684 · class: Cheerleader
   - _Trainer Classes · [Orders] · At-Will - Standard Action · Prereq: Cheer Brigade, Adept Charm_
   - Target: Up to two Allied Trainers
     Effect: Each target gains 1 Temporary Action Point. These Action Points disappear after one full Round.
 
-- 🟢 **Nurse** — `likely` · P3 · themes: heal, interrupt, action · engine: action-surfaced · code: restMedics:5560, openRestPlanner:5775, FEATURE_GIFTS:11218
+- 🟢 **Nurse** — `likely` · P3 · themes: heal, interrupt, action · engine: action-surfaced · code: restMedics:6078, openRestPlanner:6293, FEATURE_GIFTS:11857
   - _Here Thar Be Playtests · [9-15 Playtest] · Drain 2 AP - Free Action · Prereq: Expert Medicine Education_
   - Trigger: You take an Extended Rest
     Effect: During this Extended Rest, Pokemon and Trainers in your care gain the benefits listed below. The AP Drain cost from triggering this Feature is applied after the Extended Rest is completed and AP Drain has otherwise been restored.
     »» They heal 1/8th of their Max Hit Points per half hour of rest instead of 1/16th (does not stack with Bandages).
     »» If the Extended Rest lasts at least 6 hours, they may remove 1 Injury.
 
-- 🟢 **One With the Winds** — `likely` · P3 · themes: skill · engine: mode, action-surfaced, stat-tag · code: FEATURE_MODES:24311, windRunnerCard:29297 · class: Wind Runner
+- 🟢 **One With the Winds** — `likely` · P3 · themes: skill · engine: mode, action-surfaced, stat-tag · code: FEATURE_MODES:27194, windRunnerCard:32308 · class: Wind Runner
   - _Game of Throhs · [+Speed] · Bind 2 AP - Standard Action · Prereq: Adept Perception_
   - Effect: You summon a windy breeze that follows you around. Your sense of touch is extended through this wind, and you can guide it by thought, using it to perceive the shape and texture of objects as long as the wind can reach, even through very small cracks and holes. The range of this effect is equal to your Acrobatics Rank plus Perception Rank in meters.
 
-- 🟢 **Overgrowth** — `likely` · P3 · themes: heal, interrupt, status, typing, damage, action · engine: action-surfaced, remember-only · code: defenseTypeMods:6592, FOE_FX:25571, druidCard:29354, openOvergrowth:29375, overgrowthIntercept:33014, applyTokenDamage:47052 · class: Druid
+- 🟢 **Overgrowth** — `likely` · P3 · themes: heal, interrupt, status, typing, damage, action · engine: action-surfaced, remember-only · code: defenseTypeMods:7140, FOE_FX:28503, druidCard:32365, openOvergrowth:32386, overgrowthIntercept:36025, applyTokenDamage:50975 · class: Druid
   - _Game of Throhs · [Special] · 2 AP - Swift Action · Prereq: Nature's Embrace Rank 3_
   - Trigger: You hit with a Druid Move
     Effect: One target of the triggering Move is afflicted with Overgrowth. As long as the target is afflicted, they are one step less Resistant to Grass-Type attacks, to a maximum of neutral damage, and they cannot recover Hit Points or gain Temporary Hit Points. Whenever they would do so, you gain those Hit Points or Temporary Hit Points instead. Overgrowth is removed when the target Takes a Breather or is hit by a damaging Fire, Ice, Poison, Flying, or Bug-Type attack. Overgrowth may only affect a target once per Scene.
 
-- 🟢 **Pain Dampening** — `likely` · P3 · themes: heal, interrupt, status, typing, damage, skill · engine: action-surfaced · code: openPainDampening:27306, channelerCard:27509 · class: Channeler
+- 🟢 **Pain Dampening** — `likely` · P3 · themes: heal, interrupt, status, typing, damage, skill · engine: action-surfaced · code: openPainDampening:30305, channelerCard:30508 · class: Channeler
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Channeler, Expert Intuition_
   - Trigger: A Channeled Pokemon would be Fainted by a damaging attack
     Effect: Choose any number of Channeled Pokemon, which must include the triggering Pokemon. Instead\ of resolving the attack normally, divide the damage from the attack by the number of chosen Pokemon. Each chosen Pokemon then loses that many Hit Points. For each chosen Pokemon that Resists or is Immune to the Type of the triggering attack, subtract your Intuition Rank from the damage of the attack before all calculations.
 
-- 🟢 **Patch Cure** — `likely` · P3 · themes: heal, swap, cure, action · code: APOTHECARY_RECIPES:30756 · class: Researcher
+- 🟢 **Patch Cure** — `likely` · P3 · themes: heal, swap, cure, action · code: APOTHECARY_RECIPES:33767 · class: Researcher
   - _Trainer Classes · [Apothecary Research Field] [Branch] · At-Will - Extended Action · Prereq: Apothecary, Adept Medicine Education_
   - Target: A Restorative Item
     Effect: You distill the target, gaining 3 Restorative Patches. Restorative Patches have the same effect as the items from which they were created, but can only be applied as an Extended Action.
@@ -3053,23 +3385,23 @@ P9 · 36 open of 36 · open
 <a id="verify-features-07"></a>
 ## `verify-features-07` — Verify features the scan thinks are handled
 
-P9 · 36 open of 36 · open
+P9 · 34 open of 36 · open
 
-- 🟢 **Perfect Aim** — `likely` · P3 · themes: interrupt, multiturn, swap, typing, damage · engine: action-surfaced · code: PTU_BUFFS:16217
+- 🟢 **Perfect Aim** — `likely` · P3 · themes: interrupt, multiturn, swap, typing, damage · engine: action-surfaced · code: PTU_BUFFS:17086
   - _Pokémon Training & Orders · [Orders] · Scene x2 - Standard Action · Prereq: Precision Orders_
   - Target: Your Pokemon
     Effect: The next damaging attack the target performs before the end of your next turn automatically hits and ignores Defensive Abilities but deals damage as if it were resisted one step further than normal. You may still roll to trigger any Effect Ranges or Critical Hits. All targets of the attack may not activate any Blessings in response, and the attack may not be Intercepted or avoided in any way (ex: with Dodge, Shield Moves, etc).
 
-- 🟢 **Phantom Menace** — `likely` · P3 · themes: other · engine: stat-tag · code: apparitionCard:29323 · class: Apparition
+- 🟢 **Phantom Menace** — `likely` · P3 · themes: other · engine: stat-tag · code: apparitionCard:32334 · class: Apparition
   - _Game of Throhs · [+Attack] [Weapon] · Static · Prereq: Shadow Arms, Expert Intimidate or Occult Education_
   - You gain the Moves Shadow Claw and Phantom Force. You may use these Moves as Weapon Attacks when wielding Melee Weapons.
 
-- 🟢 **Pinpoint Strike** — `likely` · P3 · themes: typing, damage · engine: action-surfaced · code: PTU_BUFFS:16215
+- 🟢 **Pinpoint Strike** — `likely` · P3 · themes: typing, damage · engine: action-surfaced · code: PTU_BUFFS:17084
   - _Pokémon Training & Orders · [Orders][Stratagem] · Bind 2 AP - Standard Action · Prereq: Precision Orders_
   - Target: Your Pokemon
     Effect: Increase the Accuracy and Effect Range of the target's damaging attacks by +2. These attacks deal 5 less damage, before applying weakness and resistance.
 
-- 🟢 **Play Them Like a Fiddle** — `likely` · P3 · themes: interrupt, multiturn, control, swap, status, cure, typing, cs, damage, action, skill · engine: move-rider, action-surfaced, stat-tag, auto-note · code: itemFreqForKey:4834, RIDER_ICONS:24209, riderBoxes:24525, provocateurCard:25967, FEATURE_AUTO_NOTES:39133 · class: Provocateur
+- 🟢 **Play Them Like a Fiddle** — `likely` · P3 · themes: interrupt, multiturn, control, swap, status, cure, typing, cs, damage, action, skill · engine: move-rider, action-surfaced, stat-tag, auto-note · code: itemFreqForKey:5352, RIDER_ICONS:27086, riderBoxes:27456, provocateurCard:28954, FEATURE_AUTO_NOTES:42649 · class: Provocateur
   - _Trainer Classes · [+Speed] · Scene x3 - Swift Action · Prereq: Powerful Motivator, a Provocateur Skill at Expert Rank_
   - Trigger: You hit with Leer, Confide, Baby-Doll Eyes, or a Provocateur Move
     Effect: The Move gains additional effects as listed below. You may use the effects of each Move only once per Scene.
@@ -3078,14 +3410,14 @@ P9 · 36 open of 36 · open
     »» Leer: The target's Defense is lowered an additional Combat Stage, and their Special Defense is lowered by 2 Combat Stages.
     »» Sweet Kiss: While the target is Confused, they may not perform …
 
-- 🟢 **Playing God** — `likely` · P3 · themes: swap, skill, stat, social · code: openPlayingGod:31050, researcherCard:31535 · class: Researcher
+- 🟢 **Playing God** — `likely` · P3 · themes: swap, skill, stat, social · code: openPlayingGod:34061, researcherCard:34546 · class: Researcher
   - _Trainer Classes · [Chemistry Research Field] [Branch] · At-Will - Extended Action · Prereq: Chemist, Expert Technology Education_
   - Cost: $3500
     Effect: Choose Castform, Grimer, Koffing, Magnemite, Porygon, Solosis, Trubbish, or Voltorb. Using your chemistry set, you create an artificial Egg of the Chosen Pokemon, that hatches within a day. The resulting Pokemon is born at level 5, with the Nature and Ability of your choice (Abilities chosen from its species' Basic Abilities). Additionally, you may enhance the Pokemon in several ways. Choose a number of upgrades below equal to your Technology Education Rank.
     »» The Pokemon is of an unusual coloration, gaining a +2d6 Bonus to the Introduction Stage of a Contest toward a single Contest Stat.
     »» The Pokemon adds a Move from its Egg Move or Move Tutor List to its Inheritance …
 
-- 🟢 **Poké Ball Crafter** — `likely` · P3 · themes: heal, capture · code: POKEBALL_RECIPES:31650
+- 🟢 **Poké Ball Crafter** — `likely` · P3 · themes: heal, capture · code: POKEBALL_RECIPES:34661
   - _Other · Static · Prereq: Basic Balls, Poke Ball Repair, Expert Technology Education_
   - You may craft Dusk, Dive, Heal, Luxury, Net, Nest, Quick, Repeat, or Timer Balls for $700. Requires access to a Poke Ball Tool Box.
 
@@ -3093,7 +3425,7 @@ P9 · 36 open of 36 · open
   - _Pokémon Training & Orders · Static · Prereq: Expert Command or Perception_
   - You gain the Pinpoint Strike and Perfect Aim Orders.
 
-- 🟢 **Prehistoric Bond** — `likely` · P3 · themes: heal, interrupt, swap, damage, stat · code: researcherCard:31586 · class: Researcher
+- 🟢 **Prehistoric Bond** — `likely` · P3 · themes: heal, interrupt, swap, damage, stat · code: researcherCard:34597 · class: Researcher
   - _Trainer Classes · [Paleontology Research Field] [Branch] · At-Will - Extended Action · Prereq: Fossil Restoration, Expert Pokemon Education_
   - Target: The remains of a Fossil you revived
     Effect: You also produce a Held Item from the remnants of the Fossil. The effect of this Held Item is based on the highest Base Stat of the individual Pokemon being Revived, counting the effects of Nature but no other effects that alter Base Stats. If there is a tie, the GM decides which Base Stat is used. This Held Item may only be used by Pokemon revived from Fossils.
@@ -3101,25 +3433,25 @@ P9 · 36 open of 36 · open
     Attack - Primal Frame: The holder's damaging attacks have their Critical Hit Range extended by +1.
     Defense - Prehistoric Razors: When a foe hits the holder with a damaging Melee Attack, the holder may cause them to lo …
 
-- 🟢 **Prism** — `likely` · P3 · themes: other · engine: stat-tag · code: prismCard:29441
+- 🟢 **Prism** — `likely` · P3 · themes: other · engine: stat-tag · code: prismCard:32452
   - _Game of Throhs · [Class] [+Special Attack] · Static · Prereq: Elemental Connection (Normal), Novice General Education, Novice Charm_
   - You learn the Moves Flash and Swift.
 
-- 🟢 **Proper Care** — `likely` · P3 · themes: heal, interrupt, cure · code: INJURY_SOURCES:5111, restMedics:5562 · class: Medic
+- 🟢 **Proper Care** — `likely` · P3 · themes: heal, interrupt, cure · code: INJURY_SOURCES:5629, restMedics:6080 · class: Medic
   - _Here Thar Be Playtests · [9-15 Playtest] · Static · Prereq: I'm a Doctor, Field Clinic, Expert Medicine Education_
   - You gain additional bonuses to using Restoratives and Features while in a Field Clinic, Poke Center, Hospital, or other dedicated healing space that lets you access supplies.
     »» When you trigger First Aid Expertise here, the injury that is Removed does not count towards the total number of Injuries that may be removed each day.
     »» When you trigger Nurse here, Bandages cure 1 Injury after three hours, in addition the injury healed after 6 hours.
     »» All Restoratives heal an additional 5 Hit Points. This stacks with the bonus granted by Field Clinic.
 
-- 🟢 **Psionic Analysis** — `likely` · P3 · themes: other · code: researcherCard:31573 · class: Researcher
+- 🟢 **Psionic Analysis** — `likely` · P3 · themes: other · code: researcherCard:34584 · class: Researcher
   - _Trainer Classes · [Occultism Research Field] [Branch] · Scene - Extended Action · Prereq: Witch Hunter, Master Occult Education_
   - You are able to analyze Psychic Residue and can determine the following information about the Trainer or Pokemon that left the residue:
     »» Whether they are a Human or a Pokemon
     »» Which Psychic-Type Moves they know
     »» If they're Human, which of the following Class Features they have: Telepath, Telekinetic, Warper
 
-- 🟢 **Psionic Overload** — `likely` · P3 · themes: barrier, heal, interrupt, status · engine: move-rider, action-surfaced, stat-tag, auto-note · code: RIDER_ICONS:24211 · class: Telekinetic
+- 🟢 **Psionic Overload** — `likely` · P3 · themes: barrier, heal, interrupt, status · engine: move-rider, action-surfaced, stat-tag, auto-note · code: RIDER_ICONS:27088 · class: Telekinetic
   - _Trainer Classes · [+Special Attack] · 1 AP - Swift Action · Prereq: PK Combat, Expert Focus_
   - Trigger: You hit with Psychic or use another Telekinetic Move 
     Effect: The effect of this Feature depends on the Triggering Move.
@@ -3128,110 +3460,112 @@ P9 · 36 open of 36 · open
     »» Psychic: The target becomes Vulnerable for one full round.
     »» Telekinesis: At the end of each turn that the target remains Lifted, they lose a Tick of Hit Points.
 
-- 🟢 **Push Buttons** — `likely` · P3 · themes: heal, interrupt · engine: group-rider, stat-tag, auto-note · code: openTrainerAttack:9642, FEATURE_GIFTS:11213, provocateurCard:25961, FEATURE_AUTO_NOTES:39156 · class: Provocateur
+- 🟢 **Push Buttons** — `likely` · P3 · themes: heal, interrupt · engine: group-rider, stat-tag, auto-note · code: openTrainerAttack:10255, FEATURE_GIFTS:11852, provocateurCard:28948, FEATURE_AUTO_NOTES:42672 · class: Provocateur
   - _Trainer Classes · [+Speed] · Static · Prereq: Provocateur_
   - Your Social Moves' Frequency is not Expended if they miss. You gain the Demoralize Edge, even if you do not meet the prerequisites. Its effects for Status Moves now trigger on 18+, and Social Moves that activate this "Crit" Range cause their targets to lose a tick of Hit Points. If you already have Demoralize, you may gain another Edge for which you meet the prerequisites.
 
-- 🟢 **Pusher** — `likely` · P3 · themes: other · code: pusherEdgesFor:31434, researcherCard:31596 · class: Researcher
+- 🟢 **Pusher** — `likely` · P3 · themes: other · code: pusherEdgesFor:34445, researcherCard:34607 · class: Researcher
   - _Trainer Classes · [Pokemon Caretaking Research Field] [Branch] · Static · Prereq: Novice Pokemon Education_
   - Your Pokemon gain the Basic Ranged Attacks, Aura Pulse, Enticing Bait, Extended Invisibility, Far Reading, Precise Threadings, Seismometer, TK Mastery, and Trail Sniffer Poke Edges automatically if they qualify for them, without having to invest any Tutor Points.
 
-- 🟢 **Quick Healing** — `likely` · P3 · themes: heal · code: INJURY_SOURCES:5117 · class: Taskmaster
+- 🟢 **Quick Healing** — `likely` · P3 · themes: heal · code: INJURY_SOURCES:5635 · class: Taskmaster
   - _Trainer Classes · At-Will - Extended Action · Prereq: Taskmaster_
   - Your Hardened Pokemon may use Quick Healing to remove up to three injuries, and gains two Ticks of Hit Points for each Injury removed this way.
 
-- 🟢 **Quick Wit** — `likely` · P3 · themes: other · engine: action-surfaced, stat-tag, auto-note · code: openQuickWit:25922, provocateurCard:25970, FEATURE_AUTO_NOTES:39158 · class: Provocateur
+- 🟢 **Quick Wit** — `likely` · P3 · themes: other · engine: action-surfaced, stat-tag, auto-note · code: openQuickWit:28909, provocateurCard:28957, FEATURE_AUTO_NOTES:42674 · class: Provocateur
   - _Trainer Classes · [+Speed] · Scene x3 - Swift Action · Prereq: Provocateur, a Provocateur Skill at Adept Rank_
   - You may make a Manipulate Maneuver or use a Social Move you know, Frequency allowing.
 
-- 🟢 **Rainbow Light** — `likely` · P3 · themes: other · engine: action-surfaced · code: autoAllocMom:4371, ARTIFICER_RECIPES:30832, openRainbowLight:30906, researcherCard:31523 · class: Researcher
+- 🟢 **Rainbow Light** — `likely` · P3 · themes: other · engine: action-surfaced · code: autoAllocMom:4889, ARTIFICER_RECIPES:33843, openRainbowLight:33917, researcherCard:34534 · class: Researcher
   - _Trainer Classes · [Artificer Research Field] [Branch] · 2 AP - Standard Action · Prereq: Crystal Artificer, Expert Occult Education_
   - Condition: You are wearing a Rainbow Gem
     Effects: You create a Rainbow lasting one full round. While this Rainbow persists, the Effect Range of all Allies is increased by +3.
     Recipes - Rainbow Gem, Plate Crafter
 
-- 🟢 **Re-Balancing** — `likely` · P3 · themes: stat · code: openReBalancing:31391, researcherCard:31602 · class: Researcher
+- 🟢 **Re-Balancing** — `likely` · P3 · themes: stat · code: openReBalancing:34402, researcherCard:34613 · class: Researcher
   - _Trainer Classes · [Pokemon Caretaking Research Field] [Branch] · At-Will - Extended Action · Prereq: Pusher, Master Pokemon Education_
   - Target: A Pokemon with 2 Tutor Points
     Effect: The target loses 2 Tutor Points, and gains one of the following: +1 to all Base Stats, +2 to two different Base Stats, or +3 to a single Base Stat. The target then redistributes their Stat Points. A Pokemon may be targeted by Re-Balancing only once.
 
-- 🟢 **Reactive Armour** — `likely` · P3 · themes: heal, interrupt, damage, skill · engine: action-surfaced, stat-tag, remember-only · code: steelheartCard:29502, openReactiveArmour:29527 · class: Steelheart
+- 🟢 **Reactive Armour** — `likely` · P3 · themes: heal, interrupt, damage, skill · engine: action-surfaced, stat-tag, remember-only · code: steelheartCard:32513, openReactiveArmour:32538 · class: Steelheart
   - _Game of Throhs · [+Defense] · Scene x2 - Free Action · Prereq: Steelheart, Adept Athletics or Focus_
   - Trigger: You gain an Injury or take a Critical Hit while wearing metallic Armor
     Effect: All foes within a Burst 1 lose Hit Points equal to double your Athletics or Focus Rank, and you gain Damage Reduction equal to double your Athletics or Focus Rank for one full round.
 
-- 🟢 **Reckless Advance** — `likely` · P3 · themes: status, damage · engine: action-surfaced · code: PTU_BUFFS:16199
+- 🟢 **Reckless Advance** — `likely` · P3 · themes: status, damage · engine: action-surfaced · code: PTU_BUFFS:17068
   - _Pokémon Training & Orders · [Orders][Stratagem] · Bind 2 AP - Standard Action · Prereq: Ravager Orders_
   - Target: Your Pokemon
     Effect: While this Feature is Bound, increase the damage rolls of the target's damaging melee attacks by +8, and these attacks Trip targets on Accuracy Rolls of 18+. When the target of Reckless Advance hits with a damaging melee attack, they become Vulnerable for one full round.
 
-- 🟢 **Researcher** — `likely` · P3 · themes: stat · code: openClassFeaturePicker:10483, classesCard:10606, FOE_FX:25617, openCulinaryAppreciation:30354, openLiveAndLearn:30639, openRainbowLight:30906, researcherCard:31489
+- 🟢 **Researcher** — `likely` · P3 · themes: stat · code: openClassFeaturePicker:11097, classesCard:11235, FOE_FX:28604, openCulinaryAppreciation:33365, openLiveAndLearn:33650, openRainbowLight:33917, researcherCard:34500
   - _Trainer Classes · [Class][Branch] · Static · Prereq: An Education Skill at Novice Rank_
   - Choose two Researcher Fields of Study. You may take Features from those Fields with this instance of Researcher. Gain one Feature from a chosen Researcher Field for which you qualify. Note: Researcher is broken up into multiple Fields of Study. You may not take Features from a Field of Study you haven't chosen with the base Researcher Feature. You may take Researcher any number of times, each time choosing two different Fields of Study.
 
-- 🟢 **Rider** — `likely` · P3 · themes: other · engine: stat-tag · code: itemFreqForKey:4836, FORM_SUFFIXES:18676, setFeatureMode:24451, riderUseKey:24453, riderBoxes:24559, flipOutBox:24672, monRiderBoxes:24931, mountBase:45410
+- 🟢 **Rider** — `likely` · P3 · themes: other · engine: stat-tag · code: itemFreqForKey:5354, FORM_SUFFIXES:19546, setFeatureMode:27382, riderUseKey:27384, riderBoxes:27490, flipOutBox:27603, monRiderBoxes:27862, tokenEvasions:47296
   - _Trainer Classes · [Class] [+Speed] · Static · Prereq: Mounted Prowess, Agility Training, Novice Acrobatics or Athletics_
   - While you are Mounted on a Pokemon under the effects of Agility Training, the bonuses from Agility Training are doubled.
 
-- 🟢 **Rock Power Rank 1** — `likely` · P3 · themes: swap, skill · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8155, stoneWarriorCard:29481 · class: Stone Warrior
+- ✅ **Rock Power Rank 1** — `auto` · P3 · themes: swap, skill · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8703, stoneWarriorCard:32492 · class: Stone Warrior
   - _Game of Throhs · [Ranked 2] [+Defense] · Static · Prereq: Adept Combat or Survival_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Each Rank, choose one of Sturdy, Rock Head, Run Up, or Sand Veil. You gain the chosen Ability. If you choose Sand Veil, you may consider sand a "solid surface" for the purposes of Stone Stance.
 
-- 🟢 **Rock Power Rank 2** — `likely` · P3 · themes: swap, skill · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8156 · class: Stone Warrior
+- ✅ **Rock Power Rank 2** — `auto` · P3 · themes: swap, skill · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8704 · class: Stone Warrior
   - _Game of Throhs · [Ranked 2] [+Defense] · Static · Prereq: Expert Combat or Survival_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Each Rank, choose one of Sturdy, Rock Head, Run Up, or Sand Veil. You gain the chosen Ability. If you choose Sand Veil, you may consider sand a "solid surface" for the purposes of Stone Stance.
 
-- 🟢 **Roughneck** — `likely` · P3 · themes: interrupt, cs, skill, stat · engine: action-surfaced, stat-tag · code: openTrainerAttack:9432, roughneckBox:24717
+- 🟢 **Roughneck** — `likely` · P3 · themes: interrupt, cs, skill, stat · engine: action-surfaced, stat-tag · code: openTrainerAttack:10028, roughneckBox:27648
   - _Trainer Classes · [Class][+Defense] · 1 AP - Swift Action · Prereq: Novice Athletics, Intimidating Presence_
   - Trigger: You hit a foe with an Attack
     Effect: The foe loses a Combat Stage in the Stat of your choice.
 
-- 🟢 **Sage** — `likely` · P3 · themes: damage, skill · engine: action-surfaced, stat-tag · code: RIDER_ICONS:24210, SAGE_BLESSINGS:32796, openSageWard:32828, openBenediction:32878, sageCard:32926
+- 🟢 **Sage** — `likely` · P3 · themes: damage, skill · engine: action-surfaced, stat-tag · code: RIDER_ICONS:27087, SAGE_BLESSINGS:35807, openSageWard:35839, openBenediction:35889, sageCard:35937
   - _Trainer Classes · [Class] [+HP] · At-Will - Standard Action · Prereq: Novice Occult Education_
   - Target: An ally within 5 meters
     Effect: The target gains Damage Reduction equal to your Occult Education Rank doubled or their Tick Value, whichever is higher, for one full round.
 
-- 🟢 **Seed Bag Rank 1** — `likely` · P3 · themes: status, skill · code: seedBagRank:30375, openSeedBag:30452 · class: Researcher
+- 🟢 **Seed Bag Rank 1** — `likely` · P3 · themes: status, skill · code: seedBagRank:33386, openSeedBag:33463 · class: Researcher
   - _Trainer Classes · [Botany Research Field] [Branch] [Ranked 2] · X Daily - Extended Action · Prereq: Green Thumb, Adept General Education or Survival_
   - Target: A Willing Pokemon
     Effect: You become adept at harvesting Seeds and Spores from Pokemon. You may target a willing Grass-Type Pokemon that knows Sleep Powder, Stun Spore, or Poison Powder. Add this move to your Move list for the remainder of the day. You may not use Seed Bag to have multiple instances of the same move in your Move list. Seed Bag may be used twice per day per Rank.
 
-- 🟢 **Seed Bag Rank 2** — `likely` · P3 · themes: other · code: seedBagRank:30375, openSeedBag:30452 · class: Researcher
+- 🟢 **Seed Bag Rank 2** — `likely` · P3 · themes: other · code: seedBagRank:33386, openSeedBag:33463 · class: Researcher
   - _Trainer Classes · [Botany Research Field] [Branch] [Ranked 2] · Static · Prereq: Master General Education or Survival_
   - You may also harvest Cotton Spore, Leech Seed, Spore, or Worry Seed.
 
-- 🟢 **Seize The Moment** — `likely` · P3 · themes: heal, interrupt, damage, action · engine: action-surfaced, remember-only · code: duelistCard:27737, openSeizeTheMoment:27935 · class: Duelist
+- 🟢 **Seize The Moment** — `likely` · P3 · themes: heal, interrupt, damage, action · engine: action-surfaced, remember-only · code: duelistCard:30738, openSeizeTheMoment:30936 · class: Duelist
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Duelist, Master Focus_
   - Trigger: Your Pokemon would gain Momentum while already at 6 Momentum
     Effect: Your Pokemon loses 6 Momentum, and then gains +1 Momentum. Your Pokemon may immediately make an attack as an Interrupt, but this attack must target only a Tagged Foe. If the attack misses, it still deals damage as if it had the Smite keyword. If the attack hits, it's automatically a Critical Hit. If it would have already been a Critical Hit, your Pokemon gains Hit Points equal to half of its maximum Hit Points. May be used only once per Scene per Pokemon .
 
-- 🟢 **Sentinel Stance** — `likely` · P3 · themes: interrupt, multiturn, damage, action · engine: action-surfaced · code: PTU_BUFFS:16213
+- 🟢 **Sentinel Stance** — `likely` · P3 · themes: interrupt, multiturn, damage, action · engine: action-surfaced · code: PTU_BUFFS:17082
   - _Pokémon Training & Orders · [Orders] · Scene x2 - Standard Action · Prereq: Guardian Orders_
   - Target: Your Pokemon
     Effect: Until the end of your next turn, the target may attempt to Intercept attacks for allies as a Shift Action. If they do so, they gain 10 Damage Reduction against the attack. If the target is also under the effect of Brace for Impact, they may gain 5 Damage Reduction from it as if they had used a self-targeting Status Move.
 
-- 🟢 **Shadow Arms** — `likely` · P3 · themes: other · engine: stat-tag · code: apparitionCard:29323 · class: Apparition
+- 🟢 **Shadow Arms** — `likely` · P3 · themes: other · engine: stat-tag · code: apparitionCard:32334 · class: Apparition
   - _Game of Throhs · [+Attack] [Weapon] · Static · Prereq: Apparition_
   - You learn the Moves Shadow Punch and Shadow Sneak. You may use these as Weapon Attacks when wielding Melee Weapons.
 
-- 🟢 **Shadow Form** — `likely` · P3 · themes: status, cure, typing, action · engine: mode, action-surfaced, stat-tag, remember-only · code: toggleStatus:730, FEATURE_MODES:24305, apparitionCard:29328 · class: Apparition
+- 🟢 **Shadow Form** — `likely` · P3 · themes: status, cure, typing, action · engine: mode, action-surfaced, stat-tag, remember-only · code: toggleStatus:837, FEATURE_MODES:27188, apparitionCard:32339 · class: Apparition
   - _Game of Throhs · [+Attack] · Bind 2 AP - Swift Action · Prereq: Silent Assassin, Expert Intimidate or Occult Education_
   - While this Feature is Bound, your appearance becomes wan and obviously otherworldly. Your natural Weaknesses, Resistances, and Immunities change to match that of the Ghost Type. Additionally, while in Shadow Form, you are immune to the Cursed Status (if you were previously Cursed, you are instantly cured upon going into Shadow Form) and gain the Phasing Capability. You may unbind this Feature as a Swift Action, returning to your normal appearance.
 
-- 🟢 **Shrug Off** — `likely` · P3 · themes: action · code: INJURY_SOURCES:5114 · class: Enduring Soul
+- 🟢 **Shrug Off** — `likely` · P3 · themes: action · code: INJURY_SOURCES:5632 · class: Enduring Soul
   - _Trainer Classes · Static · Prereq: Staying Power_
   - Once per day, each of your Pokemon may spend Shift Action to remove 1 Injury from themselves; this may also be activated as a Free Action whenever your Pokemon Take a Breather.
 
-- 🟢 **Signer** — `likely` · P3 · themes: barrier, action, skill · code: INJURY_SOURCES:5156, giftFreqText:13333, blessingSide:13509, SIGNER_BRANCH_FEATURES:13517, blessingBranch:13526, blessingModeFor:13531, blessingNoteFor:13536, GIFT_KINDS:13549
+- 🟢 **Signer** — `likely` · P3 · themes: barrier, action, skill · code: INJURY_SOURCES:5674, giftFreqText:13972, blessingSide:14148, SIGNER_BRANCH_FEATURES:14156, blessingBranch:14165, blessingModeFor:14170, blessingNoteFor:14175, GIFT_KINDS:14188
   - _Blessed & The Damned · [Patron Stat] · Static · Prereq: Touched, GM Permission_
   - Choose a Rank 1 Blessing. You gain this Blessing in the form of a Sign. Signs store the energy of the Divine, and may be activated as a Swift Action. Signs can be used once per Scene, and cost 1 AP to activate.
     Rank 1 Blessings: Ancient Wisdom, Blessed Strike, Paragon, Spirit Mending
 
-- 🟢 **Silent Assassin** — `likely` · P3 · themes: typing, damage · engine: mode, action-surfaced, stat-tag, remember-only · code: trainerCapGrants:11831, FEATURE_MODES:24301, apparitionCard:29327 · class: Apparition
+- 🟢 **Silent Assassin** — `likely` · P3 · themes: typing, damage · engine: mode, action-surfaced, stat-tag, remember-only · code: trainerCapGrants:12470, FEATURE_MODES:27184, apparitionCard:32338 · class: Apparition
   - _Game of Throhs · [+Attack] [Weapon] · Bind 2 AP - Standard Action · Prereq: Apparition, Adept Intimidate or Occult Education_
   - While this Feature is Bound, your Struggle Attacks and Weapon Attacks deal Ghost-Type Damage, and you gain the Dead Silent Capability.
 
-- 🟢 **Skill Trainer** — `likely` · P3 · themes: position, interrupt, skill · engine: action-surfaced · code: monSkills:17449, researcherCard:31601 · class: Researcher
+- 🟢 **Skill Trainer** — `likely` · P3 · themes: position, interrupt, skill · engine: action-surfaced · code: monSkills:18319, researcherCard:34612 · class: Researcher
   - _Trainer Classes · [Pokemon Caretaking Research Field] [Branch] · At-Will - Free Action · Prereq: Pusher_
   - Trigger: You Train your Pokemon
     Effect: For each of your Pokemon that has been Trained during this time, choose a Skill; that Skill becomes Pushed until an Extended Rest is taken. Pokemon rolls +1d6 with Pushed Skills, unless that would cause you to roll more than 6d6; if so, that Pokemon rolls with a +3 Bonus instead. A Pokemon may have only one Pushed Skill at a time.
@@ -3239,22 +3573,23 @@ P9 · 36 open of 36 · open
 <a id="verify-features-08"></a>
 ## `verify-features-08` — Verify features the scan thinks are handled
 
-P9 · 36 open of 36 · open
+P9 · 31 open of 36 · open
 
-- 🟢 **Soothing Connection** — `likely` · P3 · themes: heal · engine: action-surfaced · code: openSoothingConnection:27378, channelerCard:27516 · class: Channeler
+- 🟢 **Soothing Connection** — `likely` · P3 · themes: heal · engine: action-surfaced · code: openSoothingConnection:30377, channelerCard:30515 · class: Channeler
   - _Trainer Classes · Daily x2 - Standard Action · Prereq: Pain Dampening, Master Intuition_
   - Target: Channeled Pokemon
     Effect: Distribute 5 points in any way among Pokemon you are Channeling. For each point you assign to a Channeled Pokemon, they gain a Tick of Hit Points.
 
-- 🟢 **Sovereignty** — `likely` · P3 · themes: position, status · engine: mode, action-surfaced, stat-tag · code: FEATURE_MODES:24314, heraldCard:27975 · class: Herald of Pride
+- 🟢 **Sovereignty** — `likely` · P3 · themes: position, status · engine: mode, action-surfaced, stat-tag · code: FEATURE_MODES:27197, heraldCard:30976 · class: Herald of Pride
   - _Game of Throhs · [+Attack] · Bind 2 AP - Standard Action · Prereq: Herald of Pride, Expert Command or Intimidate_
   - Effect: While this Feature is bound, you gain a +2 Bonus to Save Checks against Volatile Status Afflictions, and a +2 Bonus to Opposed Checks when defending against being Disarmed, Grappled, Pushed, or Tripped.
 
-- 🟢 **Spark Master** — `likely` · P3 · themes: swap · engine: stat-tag · code: sparkMasterCard:29229
+- ✅ **Spark Master** — `auto` · P3 · themes: swap · engine: stat-tag · code: sparkMasterCard:32240
   - _Game of Throhs · [Class][+Speed] · Static · Prereq: Elemental Connection (Electric), Novice Focus, Novice Acrobatics_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Static or Electrodash. You gain the Chosen Ability.
 
-- 🟢 **Special Defense Ace** — `likely` · P3 · themes: stat, social · code: STAT_ACE_FEATURES:541 · class: Ace Trainer, Style Expert
+- 🟢 **Special Defense Ace** — `likely` · P3 · themes: stat, social · code: STAT_ACE_FEATURES:619 · class: Ace Trainer, Style Expert
   - _Trainer Classes · [Class] [Branch] · Static · Prereq: Ace Trainer or Style Expert, 1 Pokemon with Special Defense of 15 or more, Novice Command or Focus
 Or
 3 Pokemon with Special Defense at 20 or higher, Novice Command or Focus_
@@ -3262,7 +3597,7 @@ Or
     
     Note: You may take Stat Ace multiple times, choosing different Stats each time. If using Style Expert to qualify for Stat Ace, your Chosen Stat must be the Stat that correlates to your Chosen Contest Stat. Beauty is Special Attack, Cool is Attack, Cute is Speed, Smart is Special Defense, and Tough is Defense.  You may us …
 
-- 🟢 **Speed Ace** — `likely` · P3 · themes: stat, social · code: STAT_ACE_FEATURES:541 · class: Ace Trainer, Style Expert
+- 🟢 **Speed Ace** — `likely` · P3 · themes: stat, social · code: STAT_ACE_FEATURES:619 · class: Ace Trainer, Style Expert
   - _Trainer Classes · [Class] [Branch] · Static · Prereq: Ace Trainer or Style Expert, 1 Pokemon with Speed of 15 or more, Novice Command or Focus
 Or
 3 Pokemon with Speed at 20 or higher, Novice Command or Focus_
@@ -3270,7 +3605,7 @@ Or
     
     Note: You may take Stat Ace multiple times, choosing different Stats each time. If using Style Expert to qualify for Stat Ace, your Chosen Stat must be the Stat that correlates to your Chosen Contest Stat. Beauty is Special Attack, Cool is Attack, Cute is Speed, Smart is Special Defense, and Tough is Defense.  You may use the Stat in place of "Stat" in all Sta …
 
-- 🟢 **Spirit Boost** — `likely` · P3 · themes: damage, skill, stat · engine: action-surfaced, remember-only · code: channelerCard:27491 · class: Channeler
+- 🟢 **Spirit Boost** — `likely` · P3 · themes: damage, skill, stat · engine: action-surfaced, remember-only · code: channelerCard:30490 · class: Channeler
   - _Trainer Classes · Bind 2 AP - Standard Action · Prereq: Channeler_
   - Target: A Channeled Pokemon
     Effect: When you use Spirit Boost, choose a Channeled Pokemon. You may choose the target of Spirit Boost if you wish. While Spirit Boost is Bound, the target has one of the following effects, depending on the highest Combat Stat of the chosen Pokemon. (In the event of a tie, you choose which Stat to use)
@@ -3279,7 +3614,7 @@ Or
     »» Special Attack: The target gains gain Bonus Damage when using Special attacks equal to your Intuition Rank.
     »» Special Defense: The target gains Damage Reduction a …
 
-- 🟢 **Stat Ace** — `likely` · P3 · themes: stat, social · code: trainerDerived:6223 · class: Ace Trainer, Style Expert
+- 🟢 **Stat Ace** — `likely` · P3 · themes: stat, social · code: trainerDerived:6743 · class: Ace Trainer, Style Expert
   - _Trainer Classes · [Class] [Branch] · Static · Prereq: Ace Trainer or Style Expert, 1 Pokemon with the chosen stat at 15 or more, Novice Command or Focus
 Or
 3 Pokemon with the chosen stat at 20 or higher, Novice Command or Focus_
@@ -3287,66 +3622,66 @@ Or
     
     Note: When you take Stat Ace, choose Attack, Defense, Special Attack, Special Defense, or Speed. This becomes your Pokemon's Chosen Stat. You may take Stat Ace multiple times, choosing different Stats each time. If using Style Expert to qualify for Stat Ace, your Chosen Stat must be the Stat that correlates to your C …
 
-- 🟢 **Stay With Us!** — `likely` · P3 · themes: heal, interrupt, status, damage · engine: action-surfaced, auto-note · code: openApplyRestorative:26493, medicCard:26699, FEATURE_AUTO_NOTES:39192 · class: Medic
+- 🟢 **Stay With Us!** — `likely` · P3 · themes: heal, interrupt, status, damage · engine: action-surfaced, auto-note · code: openApplyRestorative:29486, medicCard:29698, FEATURE_AUTO_NOTES:42708 · class: Medic
   - _Here Thar Be Playtests · [9-15 Playtest] · Daily x3 - Full Action, Reaction · Prereq: Front Line Healer, Master Medicine Education_
   - Trigger: An Ally is hit by an attack
     Effect: You must be able to Shift to your target to use this Feature. If you can, you immediately do so, and may apply a Potion, Super Potion, Hyper Potion, Energy Powder, or Energy Root. Though damage, injuries, and all other effects of the triggering attack are finalized before this Feature is applied, do not determine if the target has been Fainted, Killed, or gained Injuries from Hit Point Markers until after the effects of the action chosen through use of this Feature has been resolved.
 
-- 🟢 **Steel Wind** — `likely` · P3 · themes: other · engine: stat-tag · code: steelheartCard:29499 · class: Steelheart
+- 🟢 **Steel Wind** — `likely` · P3 · themes: other · engine: stat-tag · code: steelheartCard:32510 · class: Steelheart
   - _Game of Throhs · [+Defense] [Weapon] · Static · Prereq: Steelheart_
   - Static Effect: You learn the Moves Bullet Punch and Metal Claw. You may use these Moves as Weapon Attacks when wielding Melee Weapons.
 
-- 🟢 **Steelheart** — `likely` · P3 · themes: heal, typing, damage, skill, stat · engine: stat-tag · code: MELEE_SKILL_SUBS:7505, steelheartCard:29488
+- 🟢 **Steelheart** — `likely` · P3 · themes: heal, typing, damage, skill, stat · engine: stat-tag · code: MELEE_SKILL_SUBS:8053, steelheartCard:32499
   - _Game of Throhs · [Class] [+Defense] [Weapon] · Static · Prereq: Elemental Connection (Steel), Novice Athletics, Novice Focus_
   - When wielding metal Melee Weapons, you may use Athletics or Focus instead of Combat to determine the Damage Base of your Struggle Attacks, to qualify for a Weapon's Moves, and to resist Disarm Checks. Whenever your Weapon Attacks hit a foe who has previously hit you with a Melee attack in the same round, the foe loses a Tick of Hit Points.
 
-- 🟢 **Stone Stance Mastery** — `likely` · P3 · themes: other · engine: stat-tag, remember-only · code: stoneStanceMax:24331, stoneWarriorCard:29479 · class: Stone Warrior
+- 🟢 **Stone Stance Mastery** — `likely` · P3 · themes: other · engine: stat-tag, remember-only · code: stoneStanceMax:27262, stoneWarriorCard:32490 · class: Stone Warrior
   - _Game of Throhs · [+Defense] · Static · Prereq: Stone Stance, Master Combat or Survival_
   - Whenever you bind Stone Stance, you may choose two Stances and apply the effects of both.
 
-- 🟢 **Stone Warrior** — `likely` · P3 · themes: other · engine: stat-tag · code: openTrainerAttack:9159, stoneWarriorCard:29468
+- 🟢 **Stone Warrior** — `likely` · P3 · themes: other · engine: stat-tag · code: openTrainerAttack:9755, stoneWarriorCard:32479
   - _Game of Throhs · [Class] [+Defense] · Static · Prereq: Elemental Connection (Rock), Novice Combat, Novice Survival_
   - You learn the Moves Rock Tomb and Wide Guard.
 
-- 🟢 **Strike Again!** — `likely` · P3 · themes: action · engine: action-surfaced · code: PTU_BUFFS:16201
+- 🟢 **Strike Again!** — `likely` · P3 · themes: action · engine: action-surfaced · code: PTU_BUFFS:17070
   - _Pokémon Training & Orders · [Orders] · Scene - Standard Action · Prereq: Ravager Orders_
   - Target: Your Pokemon
     Effect: The target may immediately take an additional Standard Action to use an At-Will attack.
 
-- 🟢 **Swarmlord** — `likely` · P3 · themes: swap, stat · code: FEATURE_ABILITY_CHOICES:8149, swarmlordCard:29160
+- 🟢 **Swarmlord** — `likely` · P3 · themes: swap, stat · code: FEATURE_ABILITY_CHOICES:8697, swarmlordCard:32171
   - _Game of Throhs · [Class] [Special] · Static · Prereq: Elemental Connection (Bug), Novice Survival, Novice Command_
   - Your powers begin to take after either Arachnid's Embrace or Monarch's Embrace. Depending on your Embrace, you gain an Ability and Stat Tags. Whenever you gain a Swarmlord Feature, you gain the same Stat Tags.
     Arachnid's Embrace: Unnerve [+Attack]
     Monarch's Embrace: Shield Dust [+Special Attack]
 
-- 🟢 **Telekinetic** — `likely` · P3 · themes: other · engine: stat-tag · code: POKE_EDGE_DEFS:17648, ABILITY_CAP_GRANTS:19383
+- 🟢 **Telekinetic** — `likely` · P3 · themes: other · engine: stat-tag · code: POKE_EDGE_DEFS:18518, ABILITY_CAP_GRANTS:20253
   - _Trainer Classes · [Class][+Special Attack] · Static · Prereq: Elemental Connection (Psychic), Iron Mind_
   - You gain the Telekinetic Capability.
 
-- 🟢 **Telepath** — `likely` · P3 · themes: other · engine: action-surfaced, stat-tag · code: PE_CAP_ALIAS:17380
+- 🟢 **Telepath** — `likely` · P3 · themes: other · engine: action-surfaced, stat-tag · code: PE_CAP_ALIAS:18250
   - _Trainer Classes · [Class][+Special Defense] · 2 AP - Swift Action · Prereq: Elemental Connection (Psychic), Iron Mind, Novice Intuition_
   - You gain the Telepathy Capability for the rest of the scene.
 
-- 🟢 **The Cold Never Bothered Me Anyway** — `likely` · P3 · themes: weather, heal, status, typing · engine: stat-tag · code: FEATURE_STATUS_IMMUNITY:735, FEATURE_CAPS:11780, frostTouchedCard:29421 · class: Frost Touched
+- 🟢 **The Cold Never Bothered Me Anyway** — `likely` · P3 · themes: weather, heal, status, typing · engine: stat-tag · code: FEATURE_STATUS_IMMUNITY:842, FEATURE_CAPS:12419, frostTouchedCard:32432 · class: Frost Touched
   - _Game of Throhs · [+Attack or Special Attack] · Static · Prereq: Frost Touched_
   - You gain the Naturewalk (Tundra) Capability, are immune to being Frozen, and do not lose Hit Points from Hail.
 
-- 🟢 **This One's Special, I Know It** — `likely` · P3 · themes: skill · engine: action-surfaced · code: openThisOneSpecial:31329, researcherCard:31600 · class: Researcher
+- 🟢 **This One's Special, I Know It** — `likely` · P3 · themes: skill · engine: action-surfaced · code: openThisOneSpecial:34340, researcherCard:34611 · class: Researcher
   - _Trainer Classes · [Pokemon Caretaking Research Field] [Branch] · Special - Free Action · Prereq: Pusher_
   - Target: A hatching egg.
     Effect: The Pokemon is born with special qualities, determined by the GM. This Feature may be activated one time per Pokemon Education Rank above Untrained.
 
-- 🟢 **Tip the Scales** — `likely` · P3 · themes: interrupt · engine: action-surfaced, auto-note · code: orderBoosters:25121, openGiveOrder:25140, commanderCard:25897, FEATURE_AUTO_NOTES:39150 · class: Commander
+- 🟢 **Tip the Scales** — `likely` · P3 · themes: interrupt · engine: action-surfaced, auto-note · code: orderBoosters:28052, openGiveOrder:28071, commanderCard:28884, FEATURE_AUTO_NOTES:42666 · class: Commander
   - _Trainer Classes · 2 AP - Swift Action · Prereq: Commander, Expert Command_
   - Trigger: You give [Orders] that have targets.
     Effect: Your [Orders] with an At-Will Frequency instead target all allies within 10 Meters.
 
-- 🟢 **Top Percentage** — `likely` · P3 · themes: interrupt, stat · engine: action-surfaced · code: FEATURE_ACTIONS:8365, aceTrainerCard:27583 · class: Ace Trainer
+- 🟢 **Top Percentage** — `likely` · P3 · themes: interrupt, stat · engine: action-surfaced · code: FEATURE_ACTIONS:8913, aceTrainerCard:30582 · class: Ace Trainer
   - _Trainer Classes · At-Will - Free Action · Prereq: Ace Trainer, Expert Command_
   - Trigger: Your Pokemon levels up to a Level evenly divisible by 5
     Effect: Your Pokemon gains an extra Tutor Point. Top Percentage may be used on a single Pokemon a maximum of 4 times. Once a Pokemon has gained 4 Tutor Points in this way, increase each of that Pokemon's Base Stats by +1.
 
-- 🟢 **Top Tier Berries** — `likely` · P3 · themes: skill · code: researcherCard:31552, gardenMaster:32028, gardenCanGrow:32035, gardenCanSee:32539 · class: Researcher
+- 🟢 **Top Tier Berries** — `likely` · P3 · themes: skill · code: researcherCard:34563, gardenMaster:35039, gardenCanGrow:35046, gardenCanSee:35550 · class: Researcher
   - _Trainer Classes · [Botany Research Field] [Branch] · Static · Prereq: Green Thumb_
   - You may grow additional Berries and Herbs, depending on the higher of your General Education or Survival Rank.
     »» Novice: You may grow Tier 2 Berries
@@ -3354,7 +3689,7 @@ Or
     »» Expert: You may grow Revival Herbs, Energy Roots, Big Mushrooms, and Tier 3 Berries
     »» Master: Increase the Soil Quality of all your plants by +1.
 
-- 🟢 **Trick Shot** — `likely` · P3 · themes: damage · engine: action-surfaced · code: PTU_BUFFS:16203
+- 🟢 **Trick Shot** — `likely` · P3 · themes: damage · engine: action-surfaced · code: PTU_BUFFS:17072
   - _Pokémon Training & Orders · [Orders][Stratagem] · Bind 2 AP - Standard Action · Prereq: Marksman Orders_
   - Target: Your Pokemon
     Effect: While this Feature is Bound, decrease the Accuracy Roll of the target's damaging ranged attacks by -2. The Critical Hit range of those attacks is increased by +3. This Feature does not affect Moves without an AC value.
@@ -3363,15 +3698,16 @@ Or
   - _Pokémon Training & Orders · Static · Prereq: Expert Charm or Guile_
   - You gain the Capricious Whirl and Dazzling Dervish Orders.
 
-- 🟢 **True Power** — `likely` · P3 · themes: stat · code: auraCSMods:18517
+- 🟢 **True Power** — `likely` · P3 · themes: stat · code: auraCSMods:19387
   - _Blessed & The Damned · [Patron Stat] · Static · Prereq: Shared Strengths Rank 2, Pokemon Form Level 40_
   - You gain one of the Domains and its corresponding Legendary Aura associated with your Legendary Form. This Feature may be taken multiple times, but with the second time at Pokemon Form Level 60, and the third at Pokemon Form level 75.
 
-- 🟢 **Tumbler** — `likely` · P3 · themes: swap · engine: stat-tag · code: openTrainerAttack:9047, MOVE_CONDITIONS:21957
+- ✅ **Tumbler** — `auto` · P3 · themes: swap · engine: stat-tag · code: openTrainerAttack:9643, MOVE_CONDITIONS:24771
   - _Trainer Classes · [Class] [+Speed] · Static · Prereq: Acrobat_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - You gain the Run Away Ability.
 
-- 🟢 **Type Ace** — `likely` · P3 · themes: swap · code: classesCard:10556, typeAceEligible:18810, FEATURE_MODES:24284, typeAceCard:27997, encounterTrainerCard:34880
+- 🟢 **Type Ace** — `likely` · P3 · themes: swap · code: classesCard:11185, typeAceEligible:19680, FEATURE_MODES:27161, typeAceCard:30998, encounterTrainerCard:38395
   - _Trainer Classes · [Class] [Branch] · At-Will - Extended Action · Prereq: 2 Different Pokemon of the chosen Type, Type-Linked Skill* at Novice
 OR
 Elemental Connection (of the chosen Type), 1 Pokemon of the chosen Type, Type-Linked Skill* at Novice
@@ -3379,57 +3715,96 @@ Elemental Connection (of the chosen Type), 1 Pokemon of the chosen Type, Type-Li
   - Target: Your Pokemon with at least 2 Tutor Points remaining.
     Effect: The target loses 2 Tutor Points and learns the Last Chance or Type Strategist Ability for your Chosen Type. You may target a Pokemon only once with Type Ace.
 
-- 🟢 **Type Methodology** — `likely` · P3 · themes: swap, typing, damage · engine: action-surfaced · code: duelistCard:27730, openTypeMethodology:27907 · class: Duelist
+- 🟢 **Type Methodology** — `likely` · P3 · themes: swap, typing, damage · engine: action-surfaced · code: duelistCard:30731, openTypeMethodology:30908 · class: Duelist
   - _Trainer Classes · Scene x2 - Free Action · Prereq: Effective Methods, Adept Focus_
   - Effects depend on whether your Pokemon has the Tolerance or Exploit ability.
     »» Whenever your Pokemon with Tolerance takes Super-Effective damage from a Tagged foe, your Pokemon may lose 2 Momentum to Resist that attack one step.
     »» Whenever your Pokemon with Exploit deals Resisted damage to a Tagged foe, your Pokemon may lose 2 Momentum to increase the effectiveness of the attack one step.
 
-- 🟢 **Type Refresh** — `likely` · P3 · themes: heal, action · engine: remember-only · code: normTrainer:6000, typeAceCard:28003 · class: Type Ace
+- 🟢 **Type Refresh** — `likely` · P3 · themes: heal, action · engine: remember-only · code: normTrainer:6518, typeAceCard:31004 · class: Type Ace
   - _Trainer Classes · [Branch] [Orders] · 2 AP - Standard Acrion · Prereq: Type Ace_
   - Target: Your Pokemon
     Effect: The target regains one use of a Scene-Frequency Move of your Chosen Type, and refreshes the Frequency of all EOT-Frequency Moves of your chosen Type. A Target can be affected by Type Refresh only once per Scene.
 
-- 🟢 **Usurper** — `likely` · P3 · themes: swap, action, stat · code: GIFT_KINDS:13550, usurpRows:13580, isUsurper:13581, giftRow:14317, openAddGift:14367
+- 🟢 **Usurper** — `likely` · P3 · themes: swap, action, stat · code: GIFT_KINDS:14189, BRANCH_KINDS:14196, usurpRows:14222, isUsurper:14223, giftRow:15055, openAddGift:15123
   - _Blessed & The Damned · [Patron Stat] · Static · Prereq: You have slain a God and through occult ritual or technology have absorbed its essence._
   - Your human form is now considered your Avatar, and you gain a second set of stats for your Pokemon form. This form is that of the Legendary you usurped, starts at level 1 with the nature and abilities of your choice, and may gain experience as if it were a Pokemon you owned. Switching between your human form and this one takes a Standard Action. Usurpers cannot receive Gifts or Blessings from other Legendaries, as they are divinity themselves now. Any Touched, Branded, Messiah, and Signer Edges and Features you possessed up until this point are refunded. The Patron Stats for this Feature and all other Usurper Features matches the stats of the Legendary you Usurped.
 
-- 🟢 **Vile Body** — `likely` · P3 · themes: swap, status · engine: stat-tag · code: miasmicCard:29460 · class: Miasmic
+- ✅ **Vile Body** — `auto` · P3 · themes: swap, status · engine: stat-tag · code: miasmicCard:32471 · class: Miasmic
   - _Game of Throhs · [+Defense] · Static · Prereq: Adept Guile or Stealth_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - Choose Absorb Force, Poison Point, or Poison Touch. You gain the chosen Ability.
 
-- 🟢 **Voice Lessons** — `likely` · P3 · themes: social · engine: stat-tag, auto-note · code: musicianCard:25861, FEATURE_AUTO_NOTES:39142 · class: Musician
+- 🟢 **Voice Lessons** — `likely` · P3 · themes: social · engine: stat-tag, auto-note · code: musicianCard:28848, FEATURE_AUTO_NOTES:42658 · class: Musician
   - _Trainer Classes · [+Special Attack] · Static · Prereq: Noise Complaint_
   - You and your Pokemon's Moves with the Sonic keyword gain the Friendly keyword. Voice Lessons may not affect the Move Perish Song. Additionally, whenever your Pokemon use a Move with the Sonic Keyword in a Contest, they may roll +1d6.
 
-- 🟢 **Walk It Off** — `likely` · P3 · themes: heal · engine: stat-tag · code: INJURY_SOURCES:5104
+- 🟢 **Walk It Off** — `likely` · P3 · themes: heal · engine: stat-tag · code: INJURY_SOURCES:5622
   - _Combat · [+HP] · Daily - Extended Action · Prereq: Adept Athletics, Novice Focus_
   - Remove one Injury from yourself and regain 1/4th of your maximum Hit Points. This Injury removal doesn't count against the natural healing limit on Injuries each day.
 
-- 🟢 **Weather Systems** — `likely` · P3 · themes: weather, stat · code: researcherCard:31547 · class: Researcher
+- 🟢 **Weather Systems** — `likely` · P3 · themes: weather, stat · code: researcherCard:34558 · class: Researcher
   - _Trainer Classes · [Climatology Research Field] [Branch] · At-Will - Extended Action · Prereq: Climatology, Expert Survival_
   - Target: Your Pokemon with at least 2 Tutor Point
     Effect: Your Pokemon loses 2 Tutor Points, and learns your choice of Hail, Rain Dance, Sandstorm, or Sunny Day. The target must be able to learn the chosen Move through Level-Up, TM, or Tutor Moves. If the target has the chosen Move in their Level-Up List, Weather Systems costs no Tutor Points.
 
-- 🟢 **Wind Runner** — `likely` · P3 · themes: swap, skill · engine: stat-tag · code: windRunnerLevitate:6147, windRunnerCard:29288
+- ✅ **Wind Runner** — `auto` · P3 · themes: swap, skill · engine: stat-tag · code: windRunnerLevitate:6665, windRunnerCard:32299
   - _Game of Throhs · [Class][+Speed] · Static · Prereq: Elemental Connection (Flying), Novice Acrobatics, Novice Perception_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - You gain the Levitate Ability. You have a total Levitate Speed equal to 4 plus half of the higher of your Acrobatics or Perception Rank.
 
-- 🟢 **Winter is Coming** — `likely` · P3 · themes: swap · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8152, fieryCrashThresholds:21644, frostTouchedCard:29423 · class: Frost Touched
+- ✅ **Winter is Coming** — `auto` · P3 · themes: swap · engine: stat-tag · code: FEATURE_ABILITY_CHOICES:8700, fieryCrashThresholds:24347, frostTouchedCard:32434 · class: Frost Touched
   - _Game of Throhs · [+Attack or Special Attack] · Static · Prereq: Master Athletics or Survival_
+  - note: featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities
   - You gain the Frostbite Ability
 
-- 🟢 **Witch Hunter** — `likely` · P3 · themes: other · engine: grants-feature · code: researcherCard:31570 · class: Researcher
+- 🟢 **Witch Hunter** — `likely` · P3 · themes: other · engine: grants-feature · code: researcherCard:34581 · class: Researcher
   - _Trainer Classes · [Occultism Research Field] [Branch] · Static · Prereq: Novice Occult Education_
   - You gain the Psionic Sight Feature, even if you do not meet the prerequisites. If you already had the Psionic Sight Feature, you instead gain another Feature for which you qualify.
+
+<a id="late-features-01"></a>
+## `late-features-01` — Stat Ace
+
+P3 · 2 open of 2 · open
+
+- 🟡 **Special Attack Mastery** — `partial` · P3 · themes: other · class: Stat Ace
+  - _Trainer Classes · [Branch] · Static · Prereq: Stat Maneuver_
+  - note: printed on the Ace card; effect resolved at the table
+  - The Range of your Pokemon's Special Non-Melee Moves is increased by +2. This does not affect the size of Area-Of-Effect moves (But does affect the range at which you can place Ranged Blasts).
+
+- 🟡 **Speed Mastery** — `partial` · P3 · themes: other · class: Stat Ace
+  - _Trainer Classes · [Branch] · Static · Prereq: Stat Maneuver_
+  - note: printed on the Ace card; effect resolved at the table
+  - Your Pokemon may take Disengage Maneuvers as Swift Actions.
 
 ## Not in any batch
 
 Confirmed, flavour-only or skipped. Spot-check the ⚪ manual ones — they are a heuristic guess that the text has no mechanics.
 
-- ⚪ **Aerialist** — `manual` · P3 · themes: other · engine: stat-tag · class: Tumbler
+- ✅ **Aerialist** — `auto` · P3 · themes: other · engine: stat-tag · class: Tumbler
   - _Trainer Classes · [+Speed] · Static · Prereq: Tumbler_
+  - note: FEATURE_MOVE_LISTS picker / syncFeatureMoves already hand out these Moves
   - You learn the Moves Aerial Ace and Splash.
+
+- ✅ **Honed Mind** — `auto` · P3 · themes: other · engine: stat-tag · class: Telepath
+  - _Trainer Classes · [+Special Defense] · Static · Prereq: Telepath_
+  - note: FEATURE_MOVE_LISTS picker / syncFeatureMoves already hand out these Moves
+  - You learn the Moves Mind Reader and Calm Mind.
+
+- ✅ **Mental Assault** — `auto` · P3 · themes: other · engine: stat-tag · class: Telepath
+  - _Trainer Classes · [+Special Defense] · Static · Prereq: Telepath, Expert Focus or Intuition_
+  - note: FEATURE_MOVE_LISTS picker / syncFeatureMoves already hand out these Moves
+  - You learn the Moves Extrasensory and Psyshock.
+
+- ✅ **PK Omega** — `auto` · P3 · themes: other · engine: stat-tag · class: Telekinetic
+  - _Trainer Classes · [+Special Attack] · Static · Prereq: PK Alpha, Expert Focus_
+  - note: FEATURE_MOVE_LISTS picker / syncFeatureMoves already hand out these Moves
+  - You learn the Moves Telekinesis and Psychic.
+
+- ✅ **Warping Ground** — `auto` · P2 (enc) · themes: other · engine: stat-tag · class: Warper
+  - _Trainer Classes · [+Speed] · Static · Prereq: Warper_
+  - note: syncFeatureMoves reads 'You learn the Moves X and Y' (v594 sweep)
+  - You learn the Moves Gravity and Trick.
 
 - ⚪ **Archival Training Rank 1** — `manual` · P3 · themes: other · class: Chronicler
   - _Trainer Classes · [Ranked 2] · Static · Prereq: Chronicler_
@@ -3538,10 +3913,6 @@ Defensive Ability*_
   - _Game of Throhs · [+Attack or Special Attack] · Static · Prereq: Sharpen Shadows, Master Guile or Stealth_
   - You learn Night Daze and Punishment
 
-- ⚪ **Honed Mind** — `manual` · P3 · themes: other · engine: stat-tag · class: Telepath
-  - _Trainer Classes · [+Special Defense] · Static · Prereq: Telepath_
-  - You learn the Moves Mind Reader and Calm Mind.
-
 - ⚪ **Innovation** — `manual` · P3 · themes: other · class: Coordinator
   - _Trainer Classes · Daily - Extended Action · Prereq: Adaptable Performance_
   - Target: A Pokemon with at least 1 Tutor Point.
@@ -3559,10 +3930,6 @@ Defensive Ability*_
   - _Trainer Classes · [+Defense] · Static · Prereq: Roughneck, Adept Intimidate_
   - You learn the Moves Mean Look and Chip Away.
 
-- ⚪ **Mental Assault** — `manual` · P3 · themes: other · engine: stat-tag · class: Telepath
-  - _Trainer Classes · [+Special Defense] · Static · Prereq: Telepath, Expert Focus or Intuition_
-  - You learn the Moves Extrasensory and Psyshock.
-
 - ⚪ **Miasma Unleashed** — `manual` · P3 · themes: other · engine: stat-tag · class: Miasmic
   - _Game of Throhs · [+Defense] · Static · Prereq: Miasma's Call, Master Stealth or Guile_
   - You learn the moves Sludge Wave and Toxic.
@@ -3578,10 +3945,6 @@ Defensive Ability*_
 - ⚪ **Ninja's Arsenal** — `manual` · P3 · themes: other · class: Ninja
   - _Trainer Classes · At-Will - Extended Action · Prereq: Ninja_
   - You may craft an Antidote, Smoke Ball, Caltrops, or Toxic Caltrops for $100.
-
-- ⚪ **PK Omega** — `manual` · P3 · themes: other · engine: stat-tag · class: Telekinetic
-  - _Trainer Classes · [+Special Attack] · Static · Prereq: PK Alpha, Expert Focus_
-  - You learn the Moves Telekinesis and Psychic.
 
 - ⚪ **Pact Gift** — `manual` · P3 · themes: other
   - _Blessed & The Damned · [Patron Stat] · Static · Prereq: All of your Patrons Major Gifts, GM Permission_
@@ -3629,18 +3992,10 @@ Defensive Ability*_
   - _Trainer Classes · [Branch] · Scene - Free Action · Prereq: Stat Ace, Adept Command or Focus_
   - You may activate this Feature to allow your Pokemon to use a Special Burst, Cone, Close Blast, Ranged Blast, or Line of any size as a Burst 1, Cone 2, Close Blast 2, or Line 4 instead.
 
-- ⚪ **Special Attack Mastery** — `manual` · P3 · themes: other · class: Stat Ace
-  - _Trainer Classes · [Branch] · Static · Prereq: Stat Maneuver_
-  - The Range of your Pokemon's Special Non-Melee Moves is increased by +2. This does not affect the size of Area-Of-Effect moves (But does affect the range at which you can place Ranged Blasts).
-
 - ⚪ **Special Attack Training** — `manual` · P3 · themes: other · class: Stat Ace
   - _Trainer Classes · [Branch] · At-Will - Extended Action · Prereq: Stat Ace_
   - Target: Your Pokemon with at least 1 Tutor Point
     Effect: Your Pokemon loses 1 Tutor Point and learns Nasty Plot ot Hidden Power, even if your Pokemon cannot normally learn this Move.
-
-- ⚪ **Speed Mastery** — `manual` · P3 · themes: other · class: Stat Ace
-  - _Trainer Classes · [Branch] · Static · Prereq: Stat Maneuver_
-  - Your Pokemon may take Disengage Maneuvers as Swift Actions.
 
 - ⚪ **Speed Training** — `manual` · P3 · themes: other · class: Stat Ace
   - _Trainer Classes · [Branch] · At-Will - Extended Action · Prereq: Stat Ace_
@@ -3680,8 +4035,4 @@ Defensive Ability*_
   - _Do Porygon Dream of Mareep · [Upgrader Research Field] · At-Will - Extended Action · Prereq: Novice Medicine Education, Novice Technology Education_
   - You may craft any Augmentation Recipe for which you qualify and install them on yourself and willing Pokemon and Trainers.
     Recipes - Datajack, Eye Augments
-
-- ⚪ **Warping Ground** — `manual` · P2 (enc) · themes: other · engine: stat-tag · class: Warper
-  - _Trainer Classes · [+Speed] · Static · Prereq: Warper_
-  - You learn the Moves Gravity and Trick.
 

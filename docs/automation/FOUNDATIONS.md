@@ -59,7 +59,7 @@ Reuse `dropStealthRockBy(token,map)` / `HAZARDS` (~app.js:44305) so the roll pla
 <a id="found-07"></a>
 ## `found-07` — Push / pull / shift / swap tokens on the Map
 
-**State:** open
+**State:** ✔ done — app.js?v=578: forcedMove(map,token,dir,metres) walks a token square by square (diagonals 1/2/1/2), stops at Blocking Terrain, walls, arena edge, creatures and reports why; pushImmunityFor (Suction Cups, Sumo Stance, Guard Dog, Ingrain); weightClassOf (+Heavy Metal/Sumo Stance); movePushEffects parses 22 Moves (X m, minus Weight Class, any/chosen direction, may push up to, Blast edge, Beckon/Roar shifts); movePushNode = the Forced movement card on both roll modals (GM moves the token, player announces). Not done: Ability pushes (Bully, Gore, Poison Puppeteer, Lingering Aroma, Magnet Pull), Push Maneuver Features, Stuck/Trapped interplay, Sky Drop/Teleport
 
 **Unlocks:** moves: Movement, push & switching theme (~70); Push Maneuver Features (Attack Mastery …); Abilities like Suction Cups
 
@@ -68,7 +68,7 @@ One `forcedMove(token, dir, metres, {ignoreStuck})` on the Map with a target + d
 <a id="found-08"></a>
 ## `found-08` — Timed & multi-turn effects
 
-**State:** open
+**State:** ✔ done — app.js?v=579: o.pending list ticked by the Map's ▶ (tickPendingTurns beside tickTypeModTurns): setup Moves (parsed 'Set-Up Effect … Resolution Effect', 16 Moves) come due at the START of the owner's next turn, delayed hits (Future Sight, Doom Desire, Wish) at the END; moveTimedNode card on both roll modals, pendingControl rows + ⏳ chips (teraTag), semi-invulnerable label (Dig/Fly/Dive/Shadow/Phantom Force/Sky Attack/Sky Drop), Solar Beam/Blade skip when Sunny, manual ▶ Due now off-board, cleared by endSceneTypeState. Not done: Recharge/Exhaust (no such Moves in data), 'until end of next turn' clauses outside statuses/buffs, semi-invulnerability blocking targeting, Sky Drop's carried target, Acid Armor Liquefied state
 
 **Unlocks:** moves: Set-Up, charge & multi-turn theme; 'until the end of your next turn' clauses everywhere
 
@@ -77,7 +77,7 @@ Buffs already expire on turns (`isTurnDurBuff` / `expireTurnBuffs` ~app.js:16047
 <a id="found-09"></a>
 ## `found-09` — Ability trigger hooks
 
-**State:** open
+**State:** ✔ done — app.js?v=580: ABILITY_TURN_HOOKS registry + fireAbilityHooks/runAbilityTurnHooks called by the Map's ▶ (turnEnd for the creature that just finished, turnStart for the one starting). Rows: Speed Boost, Deep Sleep, Hydration, Truant, Bad Dreams, Hunger Switch (announce). Regenerator/Moody/Leftovers stay on their existing paths. Not done: switch-in / on-hit / on-KO points (add fireAbilityHooks call sites at recall/attackTargetWidget/applyAutoKO), Poison Heal (needs its Daily activation), reaction/Interrupt Abilities
 
 **Unlocks:** abilities: Interrupts, reactions & priority theme; switch-in / turn-start / on-hit / on-KO Abilities
 
@@ -86,7 +86,7 @@ One `ABILITY_HOOKS` dispatch called from the turn engine (`applyTurnStartRegen` 
 <a id="found-10"></a>
 ## `found-10` — Coats, screens & protection as buffs
 
-**State:** open
+**State:** ✔ done — app.js?v=581: o.coats state (MOVE_COATS, 17 Moves) — resist/vuln Type steps folded into defenseTypeMods and spent by the first hit of that Type; heal coats (Aqua Ring, Ingrain) tick at turn start via fireAbilityHooks; Substitute pool absorbs hits; Endure; Shields (Protect, Detect, Obstruct, Spiky Shield, King's Shield, Baneful Bunker, Burning Bulwark, Silk Trap, Mat Block, Wide Guard) void the next 💥 Apply hit + name the riposte; applyTokenDamage→coatsOnHit, undo snapshots coats, moveCoatNode card, ⏳/🧥 rows, foeFxDialog fx 'coat'. Blessings stay the shared table counters (not coats). Not done: Double Team activations, Magic Coat, Powder, Quick/Crafty Shield (priority/Status-only triggers), Shed Tail, riposte auto-apply (needs the attacker), Blessing effects on damage
 
 **Unlocks:** moves: Coats, barriers & Blessings theme (Light Screen, Reflect, Safeguard, Mist, Aqua Ring, Protect family)
 
@@ -95,7 +95,7 @@ Model them as PTU_BUFFS entries (~app.js:15828) with DR / immunity / regen mods 
 <a id="found-11"></a>
 ## `found-11` — Move-lock statuses (Disable, Encore, Taunt, Torment, Imprison)
 
-**State:** open
+**State:** ✔ done — app.js?v=582: o.locks (MOVE_LOCKS) — Disable/Spite/Eerie Spell name a Move, Throat Chop = no Sonic Moves for 2 turns (counted down on ▶), Imprison captures the caster's known Moves, Embargo empties heldFxList, Heal Block zeroes ownerHeal/ownerHPChange gains; openMoveRoll refuses (GM 🔓 waives), move list shows 🔒 Locked, 🔒 chips + ✖ rows, moveLockNode + FOE_FX.lock, cleared by endSceneTypeState. Taunt/Torment/Encore/Confuse Ray were already statuses (found-02). Not done: Heal Block ending on Take a Breather/switch-out, Cursed Body / Mummy-style Ability triggers, Temp HP from non-heal sources, Trainer-side move locks
 
 **Unlocks:** moves: Move control & copying theme; Cursed Body, Mummy-style Abilities
 
@@ -104,7 +104,7 @@ Store the locked Move on the creature, grey it out in ⚔ Battle move lists and 
 <a id="found-12"></a>
 ## `found-12` — Parameterised Feature families
 
-**State:** open
+**State:** ✔ done — app.js?v=583: STAT_FAMILY table + statFamilyStats/statFamilyRow on the Ace Trainer card — [Stat] Link (+1 CS if at default or lower, 1 AP), [Stat] Embodiment (one of two Abilities for the Scene via embodyAbility/clearEmbodiment, replaced by the next, removed on rest), Defense Mastery (+5 DR buff), six Stratagem stances in FEATURE_MODES (Bind 2 AP): statStratagemBonus folds Attack crit range (melee) and Special Attack Effect Range (ranged) into the roll, +CS max 3; Defense/SpDef Save bonuses and Speed Movement are shown on the card. Type Ace per-type chains were already done (TYPE_ACE_BRANCH); Style Expert (one Feature) left. Not done: Speed Stratagem Movement on the Map budget, Attack/SpAtk/SpDef/Speed Mastery effects (printed), Save-check auto bonus
 
 **Unlocks:** features: Stat Ace ([Stat] Link / Embodiment / Mastery / Stratagem ×5), Type Ace per-type chains, Style Expert per-Contest-stat Features
 

@@ -4332,5 +4332,100 @@
   ],
   "prio": 9,
   "title": "Verify abilities the scan thinks are handled"
+ },
+ {
+  "cat": "moves",
+  "id": "late-verify-moves-01",
+  "items": [
+   "Aqua Jet",
+   "Disarming Voice",
+   "Water Gun",
+   "Aqua Tail",
+   "Shock Wave"
+  ],
+  "prio": 9,
+  "title": "Verify moves the scan thinks are handled"
+ },
+ {
+  "cat": "abilities",
+  "id": "late-verify-abilities-01",
+  "items": [
+   "Heavy Metal"
+  ],
+  "prio": 9,
+  "title": "Verify abilities the scan thinks are handled"
+ },
+ {
+  "cat": "features",
+  "id": "late-features-01",
+  "items": [
+   "Special Attack Mastery",
+   "Speed Mastery"
+  ],
+  "prio": 3,
+  "title": "Stat Ace"
+ },
+ {
+  "cat": "abilities",
+  "id": "late-verify-abilities-01",
+  "items": [
+   "Light Metal"
+  ],
+  "prio": 9,
+  "title": "Verify abilities the scan thinks are handled"
+ },
+ {
+  "cat": "gifts",
+  "id": "late-verify-gifts-01",
+  "items": [
+   "Psystrike"
+  ],
+  "prio": 9,
+  "title": "Verify gifts the scan thinks are handled"
+ },
+ {
+  "cat": "gear",
+  "id": "late-verify-gear-01",
+  "items": [
+   "Love Ball",
+   "Quick Ball",
+   "Timer Ball",
+   "Air Ball",
+   "Dive Ball",
+   "Dusk Ball",
+   "Earth Ball",
+   "Gossamer Ball",
+   "Haunt Ball",
+   "Heat Ball",
+   "Heavy Ball",
+   "Lure Ball",
+   "Master Ball",
+   "Moon Ball",
+   "Mystic Ball",
+   "Net Ball",
+   "Repeat Ball",
+   "Solid Ball"
+  ],
+  "prio": 9,
+  "title": "Verify gear the scan thinks are handled"
+ },
+ {
+  "cat": "gifts",
+  "id": "late-verify-gifts-01",
+  "items": [
+   "Dynamax Cannon",
+   "Plasma Fists"
+  ],
+  "prio": 9,
+  "title": "Verify gifts the scan thinks are handled"
+ },
+ {
+  "cat": "moves",
+  "id": "late-verify-moves-01",
+  "items": [
+   "Slice"
+  ],
+  "prio": 9,
+  "title": "Verify moves the scan thinks are handled"
  }
 ]
