@@ -4712,6 +4712,7 @@ const COSMETIC_FORMS = {
   "Polteageist": { id:855, label:"Form",     dims:[["Phony","Antique"]] },
   "Poltchageist":{ id:1012, label:"Form",    dims:[["Counterfeit","Artisan"]] },
   "Sinistcha":   { id:1013, label:"Form",    dims:[["Unremarkable","Masterpiece"]] },
+  "Morpeko":     { id:877, label:"Hunger Switch", dims:[["Full Belly","Hangry"]], ids:{ Hangry:10187 }, fixedDefault:true },
   "Pichu":       { id:172, label:"Ears",     dims:[["Normal","Spiky-eared"]] },
   "Squawkabilly":{ id:931, label:"Plumage",  dims:[["Green","Blue","Yellow","White"]], ids:{ Blue:10260, Yellow:10261, White:10262 } },
   "Maushold":    { id:925, label:"Family",   dims:[["Family of Four","Family of Three"]], ids:{ "Family of Three":10257 } },
@@ -4744,6 +4745,7 @@ function cosmeticPicks(p, cf){
   const key = String((p && (p.id || p.nickname || p.species)) || "form");
   return cf.dims.map((opts, i) => {
     if(opts.includes(stored[i])) return stored[i];
+    if(cf.fixedDefault) return opts[0];
     let h = i * 7919;
     for(let k=0;k<key.length;k++) h = (h*31 + key.charCodeAt(k)) >>> 0;
     return opts[h % opts.length];
@@ -21002,7 +21004,7 @@ function cosmeticFormControl(p, sp, onChanged){
   if(!cf) return el("span",{style:"display:none"});
   const wrap = el("div",{class:"inline small",style:"margin:2px 0 8px;flex-wrap:wrap;gap:8px;align-items:center"});
   const picks = cosmeticPicks(p, cf), sels = [];
-  const commit = () => { p.variant = sels.map(x => x.value).join("|"); onChanged(); };
+  const commit = () => { p.variant = sels.map(x => x.value).join("|"); if(p.species==="Morpeko") syncHungerBuff(p); onChanged(); };
   cf.dims.forEach((opts, i) => {
     const lbl = (cf.dimLabels && cf.dimLabels[i]) || cf.label;
     wrap.append(el("span",{class:"muted",style:"font-weight:700"}, lbl+":"));
@@ -22816,9 +22818,29 @@ const ABILITY_TURN_HOOKS = [
         commitTokenSource(t); hit.push(ownerLabel(v));
       });
       return hit.length ? `Bad Dreams \u2014 ${hit.join(", ")} lose a Tick` : null; } },
+  /* Hunger Switch: Morpeko flips Mode at the start of every turn (the way the games do it). The Mode is
+     o.variant, so the picker on the sheet / encounter card can override it, and the Accuracy / Damage
+     bonus is a buff that is swapped each time. */
   { ab:["Hunger Switch"], when:"turnStart",
-    run:() => "Hunger Switch \u2014 choose Full Belly (+2 Accuracy) or Hangry (+5 Damage) until its next turn" },
+    run:(o) => {
+      const next = hungerMode(o) === "Full Belly" && o.hungerSet ? "Hangry" : "Full Belly";
+      o.variant = next; o.hungerSet = true; syncHungerBuff(o);
+      return next === "Full Belly" ? "Hunger Switch " + "\u2014 Full Belly Mode: +2 Accuracy until its next turn (pick Hangry on the card to switch)"
+                                   : "Hunger Switch " + "\u2014 Hangry Mode: +5 Damage until its next turn (pick Full Belly on the card to switch)"; } },
 ];
+/* the Mode Morpeko is in: its pick, else whatever its dex row says, else Full Belly */
+function hungerMode(o){
+  if(o.variant === "Hangry" || o.variant === "Full Belly") return o.variant;
+  return /hangry$/i.test(o.species || "") ? "Hangry" : "Full Belly";
+}
+function syncHungerBuff(o){
+  if(!Array.isArray(o.buffs)) o.buffs = [];
+  o.buffs = o.buffs.filter(b => b.key !== "hunger-switch");
+  const full = hungerMode(o) === "Full Belly";
+  researchBuff(o, { key:"hunger-switch", name: full ? "Full Belly Mode" : "Hangry Mode", cat:"Ability",
+    dur:"until its next turn", mods: full ? { acc:2 } : { dmg:5 },
+    note: full ? "+2 to Accuracy Rolls." : "+5 to Damage Rolls." });
+}
 /* Fire every row for `when` on one creature. Returns the lines (already prefixed with the creature). */
 function fireAbilityHooks(when, o, ctx){
   if(!o || isTrainerOwner(o) || hasStatus(o, "knockedOut") || hasStatus(o, "dead")) return [];
