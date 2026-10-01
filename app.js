@@ -47667,7 +47667,9 @@ function initiativeList(map){
     const L = t.link ? tokenLinked(t) : null;
     const mon = (L && !L.missing && L.kind==="enc") ? L.obj : null;
     // Boss Template applies to encounter Trainers too, not just wild Pokémon — enctrainer counts here too.
-    const bossOwner = (L && !L.missing && (L.kind==="enc"||L.kind==="enctrainer")) ? L.obj : null;
+    // Any linked creature wearing the template counts (a Boss on a player/GM sheet too), not only encounter ones —
+    // otherwise it fell through to the Swarm "base − 5·n" path below and ran past 1 into the negatives.
+    const bossOwner = (L && !L.missing) ? L.obj : null;
     // A swarm still standing gets 1 free act + one per Swarm Point it could possibly spend. The
     // COUNT is deliberately derived from maxMult (a per-round constant) rather than the points it
     // has left right now — a list that reshuffled every time the GM spent a point would move
