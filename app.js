@@ -47683,9 +47683,11 @@ function initiativeList(map){
       counts.forEach((initVal,n)=> rows.push({ id: n===0 ? t.id : `${t.id}#${n}`, token:t, info, init:initVal, act:n, acts:counts.length, swarmMon:null }));
     } else {
       const acts = (mon && isSwarm(mon) && mon.swarm.mult>0) ? swarmActs(mon) : 1;
+      // Swarm extra acts follow the same schedule as a Boss's (−5 while it stays ≥1, then +5 from base)
+      const sc = acts>1 ? bossInitiativeCounts(base, acts) : [base];
       for(let n=0; n<acts; n++)
         // swarmMon = the Pokémon object (so its .swarm block is e.swarmMon.swarm, not a confusing e.swarm.swarm)
-        rows.push({ id: n===0 ? t.id : `${t.id}#${n}`, token:t, info, init: base - 5*n, act:n, acts, swarmMon: acts>1?mon:null });
+        rows.push({ id: n===0 ? t.id : `${t.id}#${n}`, token:t, info, init: sc[n], act:n, acts, swarmMon: acts>1?mon:null });
     }
   });
   /* Trick Room (Rewinding): "Initiative is reversed, and participants instead go from lowest
@@ -47885,7 +47887,7 @@ function initiativePanel(map, meta){
     const label = name + (e.acts>1 ? ` · act ${e.act+1}/${e.acts}` : "");
     row.append(el("span",{style:`flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:${cur?800:600};${enemy?"color:"+tokenEncColor(e.token):""}${broke?";opacity:.45":""}`,
       title: e.acts>1 ? (e.swarmMon
-        ? `${name} — Swarm act ${e.act+1} of ${e.acts}${e.act>0?" (Initiative −"+(5*e.act)+")":" (free Standard Action)"}`
+        ? `${name} — Swarm act ${e.act+1} of ${e.acts}${e.act>0?" (Initiative "+e.init+")":" (free Standard Action)"}`
         : `${name} — Boss Template act ${e.act+1} of ${e.acts} (Initiative ${e.init})`) : name},
       (cur?"▶ ":"")+label));
     row.append(el("span",{class:"muted",style:"font-size:10px",title:"Speed + bonus"}, String(e.init)));
