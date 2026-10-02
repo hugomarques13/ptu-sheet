@@ -1607,8 +1607,8 @@
    "status": "manual"
   },
   "Blender": {
-   "note": "a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)",
-   "status": "manual"
+   "note": "+2 Evasion applied; the +4 vs Ranged is by hand",
+   "status": "partial"
   },
   "Blindsense": {
    "note": "a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)",
@@ -1631,16 +1631,16 @@
    "status": "manual"
   },
   "Dream Mist": {
-   "note": "a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand",
-   "status": "manual"
+   "note": "Capability actions card: stance buff / daily-weekly pip + item to bag (v636)",
+   "status": "auto"
   },
   "Dream Reader": {
    "note": "a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)",
    "status": "manual"
   },
   "Egg Warmer": {
-   "note": "a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand",
-   "status": "manual"
+   "note": "Capability actions card: stance buff / daily-weekly pip + item to bag (v636)",
+   "status": "auto"
   },
   "Firestarter": {
    "note": "the Struggle-Attack Type/Special swap is applied by the Struggle engine (Trainer Capabilities, v595 notes)",
@@ -1651,8 +1651,8 @@
    "status": "manual"
   },
   "Fortune": {
-   "note": "a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand",
-   "status": "manual"
+   "note": "Capability actions card: stance buff / daily-weekly pip + item to bag (v636)",
+   "status": "auto"
   },
   "Fountain": {
    "note": "the Struggle-Attack Type/Special swap is applied by the Struggle engine (Trainer Capabilities, v595 notes)",
@@ -1667,8 +1667,8 @@
    "status": "manual"
   },
   "Gather Unown": {
-   "note": "a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand",
-   "status": "manual"
+   "note": "Capability actions card: stance buff / daily-weekly pip + item to bag (v636)",
+   "status": "auto"
   },
   "Gilled": {
    "note": "a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)",
@@ -1687,28 +1687,32 @@
    "status": "auto"
   },
   "Heart Gift": {
-   "note": "a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand",
-   "status": "manual"
+   "note": "Capability actions card: stance buff / daily-weekly pip + item to bag (v636)",
+   "status": "auto"
   },
   "Heater": {
    "note": "a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)",
    "status": "manual"
   },
   "Herb Growth": {
-   "note": "a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand",
-   "status": "manual"
+   "note": "Capability actions card: stance buff / daily-weekly pip + item to bag (v636)",
+   "status": "auto"
   },
   "Honey Gather": {
-   "note": "a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand",
-   "status": "manual"
+   "note": "Capability actions card: stance buff / daily-weekly pip + item to bag (v636)",
+   "status": "auto"
   },
   "Illusionist": {
    "note": "a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)",
    "status": "manual"
   },
   "Inflatable": {
-   "note": "a species-specific Forme/size change resolved as a Move, Ability or Extended Action (Transform/Forme systems handle the ones that matter)",
-   "status": "manual"
+   "note": "Capability actions card: stance buff / daily-weekly pip + item to bag (v636)",
+   "status": "auto"
+  },
+  "Intoxicator": {
+   "note": "Capability actions card: stance buff / daily-weekly pip + item to bag (v636)",
+   "status": "auto"
   },
   "Invisibility": {
    "note": "a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)",
@@ -1747,16 +1751,16 @@
    "status": "auto"
   },
   "Milk Collection": {
-   "note": "a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand",
-   "status": "manual"
+   "note": "Capability actions card: stance buff / daily-weekly pip + item to bag (v636)",
+   "status": "auto"
   },
   "Mindlock": {
    "note": "a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)",
    "status": "manual"
   },
   "Mushroom Harvest": {
-   "note": "a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand",
-   "status": "manual"
+   "note": "Capability actions card: stance buff / daily-weekly pip + item to bag (v636)",
+   "status": "auto"
   },
   "Naturewalk": {
    "note": "a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)",
@@ -1771,8 +1775,8 @@
    "status": "manual"
   },
   "Phasing": {
-   "note": "a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)",
-   "status": "manual"
+   "note": "stance buff only; the Tick of HP lost each round is by hand",
+   "status": "partial"
   },
   "Planter": {
    "note": "a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand",
@@ -1783,16 +1787,16 @@
    "status": "manual"
   },
   "Shadow Meld": {
-   "note": "a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)",
-   "status": "manual"
+   "note": "Capability actions card: stance buff / daily-weekly pip + item to bag (v636)",
+   "status": "auto"
   },
   "Shapeshifter": {
    "note": "a species-specific Forme/size change resolved as a Move, Ability or Extended Action (Transform/Forme systems handle the ones that matter)",
    "status": "manual"
   },
   "Shrinkable": {
-   "note": "a species-specific Forme/size change resolved as a Move, Ability or Extended Action (Transform/Forme systems handle the ones that matter)",
-   "status": "manual"
+   "note": "Capability actions card: stance buff / daily-weekly pip + item to bag (v636)",
+   "status": "auto"
   },
   "Soulless": {
    "note": "Soulless Shedinja (Max HP 1, Wonder Guard) is automated — see project-furcoat-soulless-encmove",

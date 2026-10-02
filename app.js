@@ -5049,7 +5049,7 @@ function megaAbilityFor(baseSp, megaName){
 
 /* Capabilities that let a Pokémon change its Struggle Attack's type (PTU 1.05).
    Each also lets the attack use Sp.Atk / deal Special damage at the user's option. */
-const STRUGGLE_TYPE_CAPS = { Firestarter:"Fire", Fountain:"Water", Freezer:"Ice",
+const STRUGGLE_TYPE_CAPS = { Intoxicator:"Poison", Firestarter:"Fire", Fountain:"Water", Freezer:"Ice",
   Guster:"Flying", Materializer:"Rock", Zapper:"Electric" };
 const classNameSet = new Set(D.classes.map(c => c.name));
 
@@ -19109,6 +19109,8 @@ function renderMonPlay(root, p, sp){
   if(ilc) root.append(ilc);
   const tkc = tinkerCard(p, sp, ()=>refreshMon(p));
   if(tkc) root.append(tkc);
+  const cac = capActionsCard(p, sp, ()=>refreshMon(p));
+  if(cac) root.append(cac);
 
   /* moves */
   root.append(movesCard(p, sp));
@@ -20312,6 +20314,12 @@ const CAP_MOVE_HELP = {
    Teleport grants it, but it never made it into the sheet's capability tab — so it'd otherwise be an
    unknown token and get thrown away by the grant parser below. */
 const CAP_EXTRA_HELP = {
+  Intoxicator: "The Pok\u00e9mon's Struggle Attacks may be Poison-Typed if they wish. They may also add their Special Attack instead of their Attack and have the attack deal Special Damage, if they wish. If a Pok\u00e9mon learns Acid Spray, Barb Barrage, Dire Claw, Poison Fang, Poison Jab, Poison Sting, Poison Tail, Shell Side Arm, Sludge, Sludge Bomb, or Smog and does not have the Intoxicator Capability, they gain Intoxicator.",
+  Breathless: "This Pok\u00e9mon has no need to breathe, generally due to being inanimate in some way. It has no risk of suffocation in water, space, or other airless environments, though this does not render it resistant or immune to any Moves or Abilities.",
+  Lifesense: "Pok\u00e9mon with the Lifesense Capability can sense the location of living creatures within up to 5 meters. This Capability does not apply against Ghost-Type Pok\u00e9mon or those with the Dead Silent Capability.",
+  Scavenger: "Once per day during an Extended Rest or as an Extended Action, the user may roll 1d20 and consult the Pickup Table to see what item they gain.",
+  "Tera Shift": "The user is generally in Terastal form. The user may exit this form outside of Combat. When Combat starts, they automatically return to Terastal form as a Free Action.",
+  "Split Evolution": "This Pok\u00e9mon has more than one Evolution. When it evolves, it may choose which of its immediate evolutions it wants to evolve into, provided it meets any other requirements.",
   Tinker: "The user carries a ramshackle weapon made from metal scraps. This weapon does not take up the user's Held Item slot, and in all ways is considered an extension of themselves: it cannot be removed unwillingly by any means, such as Knock Off or Trick. Once per day as an Extended Action, the user may modify their weapon. The user gains access to an Adept Weapon Move of their choice, as long as it has no limitation against Large Melee Weapons (for example, Salvo may only be used on Ranged Weapons). If the user is level 30 or higher, they may select both an Adept and Master Weapon Move when modifying their weapon, but they may not equip a Held Item if they do so. If the user modifies their weapon, they replace any existing modifications gained this way. Weapon Moves made with a Tinker's weapon may be Steel-Typed if the user wishes.",
   Teleporter: "Teleporter X — the user may teleport up to X meters as part of a Shift Action, ignoring intervening terrain and obstacles as long as they can see (or clearly picture) the destination.",
 };
@@ -20415,11 +20423,15 @@ function speciesPrintsAbility(sp, name){
   return ["basic","advanced","high"].some(k => (a[k]||[]).some(x => norm(x) === want));
 }
 /* every grant a specific Pokémon currently has, tagged with where it came from */
+const INTOXICATOR_MOVES = new Set(["acid spray","barb barrage","dire claw","poison fang","poison jab","poison sting","poison tail","shell side arm","sludge","sludge bomb","smog"]);
 function capabilityGrants(p){
   const out = [];
   (p?.moves||[]).forEach(mn=>{
     const nm = canonMoveName(mn);
     moveCapGrants(nm).forEach(g=>out.push({...g, src:nm}));
+    // "If a Pokemon learns [these Moves] and does not have Intoxicator, they gain it" / Minimize -> Shrinkable
+    if(INTOXICATOR_MOVES.has(String(nm).toLowerCase())) out.push({ name:"Intoxicator", field:null, value:null, mode:null, src:nm });
+    if(String(nm).toLowerCase() === "minimize") out.push({ name:"Shrinkable", field:null, value:null, mode:null, src:nm });
   });
   activeAbilityList(p).forEach(an=>{
     abilityCapGrants(an).forEach(g=>{ if(!g.cond || g.cond(p)) out.push({...g, src:an}); });
@@ -23835,7 +23847,76 @@ Object.assign(MOVE_FX_ROWS, {
   hiddenpower:  { icon:"\u{1F3B2}", solo:true, label:"Roll its Type (1d20)", run:o => { const T = ["Bug","Dark","Dragon","Electric","Fairy","Fighting","Fire","Flying","Ghost","Grass","Ground","Ice","Normal","Poison","Psychic","Rock","Steel","Water"];
                     let n = 20, rolls = []; while(n > 18){ n = 1 + Math.floor(Math.random() * 20); rolls.push(n); } return `1d20 = ${rolls.join(" → re-roll ")} → ${T[n - 1]}. Set it as this Move's Type; it stays that way for good.`; } },
   highhorsepower:{ icon:"\u{1F40E}", alert:"High Horsepower — as a Free Action at the end of a Standard-Action Sprint that Shifted 3+ m straight at the target, it gains Smite." },
+  /* the Pledges: the keyword card (moveFxNode's `pledge` branch) — Priority follow-up, Rainbow, Slowed + Speed drop;
+     the Fire Hazards of Fire + Grass are the ⚠ Hazard card (HAZARD_SETTER_MOVES) */
+  firepledge:   { icon:"\u{1F525}", pledge:"fire" },
+  grasspledge:  { icon:"\u{1F33F}", pledge:"grass" },
+  waterpledge:  { icon:"\u{1F4A7}", pledge:"water" },
 });
+const PLEDGE_NAMES = { fire:"Fire Pledge", grass:"Grass Pledge", water:"Water Pledge" };
+/* "If used in conjunction with Water Pledge, a Rainbow is created that lasts for 5 rounds" (Fire + Water): every ally's
+   Effect Range +3, as a buff on each chosen ally. The Map's initiative ticks it off after the user's 5th turn. */
+function openPledgeRainbow(t, rerender, persist){
+  const list = allyTargets(t).filter(x => !x.enemy);
+  const pick = targetPicker(list, list.map(x => x.id));
+  const body = el("div", {},
+    el("div", { class:"small", style:"margin-bottom:10px" },
+      "Fire Pledge + Water Pledge: a Rainbow for 5 rounds. While it lasts the Effect Range of every Ally is +3 — placed as a buff, so every Move roll they make shows the lower thresholds."),
+    pick.node);
+  modal({ title:"\u{1F308} Pledge Rainbow", bodyNode:body, footNodes:[
+    el("button", { class:"btn-secondary", onclick:closeModal }, "Cancel"),
+    el("button", { class:"btn-primary", onclick:async () => {
+      const chosen = pick.chosen();
+      if(!chosen.length){ toast("Pick your Allies"); return; }
+      chosen.forEach(x => {
+        x.obj.buffs = ownerBuffs(x.obj).filter(b => b.key !== "rainbow-pledge");
+        const nb = researchBuff(x.obj, { key:"rainbow-pledge", name:"Rainbow (Pledge)", cat:"Move", dur:"5 rounds (ends after the user's next turn ×5)",
+          mods:{ eff:3 }, note:"A Rainbow from combined Pledges: +3 to the Effect Range of every attack for 5 rounds." });
+        if(nb.turnStamp != null) nb.life = 5;
+      });
+      (persist || save)(); closeModal();
+      await commitTargets(chosen);
+      toast(`\u{1F308} Rainbow → ${chosen.length} All${chosen.length === 1 ? "y" : "ies"} · +3 Effect Range for 5 rounds`);
+      (rerender || renderBattle)();
+    } }, "\u{1F308} Raise it"),
+  ]});
+}
+/* the card on a Pledge Move's roll */
+function pledgeFxNode(actor, m, row, o){
+  const redraw = o.redraw || (() => {}), persist = o.persist || save;
+  const me = row.pledge, card = el("div", { class:"card", style:"background:var(--panel);border:1px solid var(--line);margin:10px 0 0" });
+  card.append(el("div", { class:"small", style:"font-weight:800;margin-bottom:4px" }, `${row.icon} ${m.name} — Pledge`),
+    el("div", { class:"small muted" }, "If an ally used one of the other two Pledges, use this as Priority (Advanced) right after their turn on the same foe. Say which one it combines with:"));
+  const others = Object.keys(PLEDGE_NAMES).filter(k => k !== me);
+  const sel = el("select", { style:"padding:6px;margin-top:6px" }, el("option", { value:"" }, "On its own"),
+    others.map(k => el("option", { value:k }, `Combined with ${PLEDGE_NAMES[k]}`)));
+  const box = el("div", { style:"margin-top:6px" });
+  const draw = () => {
+    box.innerHTML = "";
+    const other = sel.value, combo = other ? [me, other].sort().join("+") : "";
+    if(!other) return;
+    box.append(el("button", { class:"btn-secondary", style:"padding:4px 10px;margin-right:6px", onclick:() => {
+      logRoll({ kind:"skill", label:m.name, who:ownerLabel(actor), headline:`${row.icon} ${m.name} + ${PLEDGE_NAMES[other]}`,
+        lines:[`${ownerLabel(actor)} follows ${PLEDGE_NAMES[other]} with ${m.name} as Priority (Advanced) on the same foe — ${ownerLabel(actor)} gives up its turn next round.`] });
+      toast(`\u{1F4E3} ${m.name} as Priority (Advanced) after ${PLEDGE_NAMES[other]}`); } }, "\u{1F4E3} Priority follow-up"));
+    if(combo === "fire+grass"){
+      box.append(el("div", { class:"small muted", style:"margin-top:6px" }, "\u{1F525} Fire Hazards in a Burst 1 around the target — use the ⚠ Hazard card on this roll."));
+    } else if(combo === "fire+water"){
+      box.append(el("button", { class:"btn-secondary", style:"padding:4px 10px", onclick:() => openPledgeRainbow(actor, redraw, persist) }, "\u{1F308} Raise the Rainbow…"));
+    } else if(combo === "grass+water"){
+      box.append(el("button", { class:"btn-secondary", style:"padding:4px 10px", onclick:() => {
+        const by = actor.name || ownerLabel(actor); FX_CASTERS[by] = actor;
+        const intro = "Grass + Water: the target and every foe adjacent to it are Slowed and lose 2 Speed Combat Stages.";
+        foeFxDialog({ fx:"abfx", caster:actor, icon:"\u{1F40C}", name:`${m.name} + ${PLEDGE_NAMES[other]}`, verb:"\u{1F40C} Slow them", saveFn:persist, redraw,
+          params:() => ({ status:["slowed"], cs:[["spd", -2]] }), intro,
+          headline:() => `${ownerLabel(actor)} used ${m.name} + ${PLEDGE_NAMES[other]}`, lines:() => [intro] });
+      } }, "\u{1F40C} Slow them…"));
+    }
+  };
+  sel.addEventListener("change", draw);
+  card.append(sel, box);
+  return card;
+}
 function fxCasterOf(P){
   if(P && P.by && FX_CASTERS[P.by]) return FX_CASTERS[P.by];
   try{ const a = reactionAttacker({ by:P && P.by }); return a && a.obj; }catch(e){ return null; }
@@ -23845,6 +23926,7 @@ function moveFxNode(actor, m, o){
   o = o || {};
   const key = moveKey((m && m.name) || ""), row = MOVE_FX_ROWS[key];
   if(!actor || !row) return null;
+  if(row.pledge) return pledgeFxNode(actor, m, row, o);
   const redraw = o.redraw || (() => {}), persist = o.persist || save;
   const card = el("div", { class:"card", style:"background:var(--panel);border:1px solid var(--line);margin:10px 0 0" });
   card.append(el("div", { class:"small", style:"font-weight:800;margin-bottom:4px" }, `${row.icon} ${m.name}`));
@@ -25179,6 +25261,92 @@ function openIllusionMark(p, sp, done){
     }},"Mark it"),
     el("button",{class:"btn-secondary",onclick:closeModal},"Cancel")]});
 }
+/* ---- Capability actions: stances and daily producers --------------------------------------------
+   STANCES are a buff that is on until the Pok\u00e9mon ends it (Inflatable, Shrinkable, Shadow Meld,
+   Phasing) or for a turn (Blender), so they ride the ordinary buffs list: the Evasion shows on the
+   sheet and the \u00d7 on the Buffs card ends it.
+   PRODUCERS are "once a day / week, as an Extended Action" Capabilities. The clock is the normal
+   cap:<name> pip (capabilityFreq reads it off the rules text); the item lands in the Trainer's bag. */
+const CAP_STANCES = {
+  "inflatable":  { name:"Inflatable",  on:"\u{1F388} Inflate \u2014 Standard Action", off:"Deflate \u2014 Shift Action", dur:"until ended", mods:{ eva:-1 },
+                   note:"Inflated (125% size): \u22121 Evasion, and the user is Blocking Terrain \u2014 nobody may target through it. Returning to normal size is a Shift Action." },
+  "shrinkable":  { name:"Shrinkable",  on:"\u{1F52C} Shrink \u2014 Standard Action", off:"Return to size \u2014 Standard Action", dur:"until ended", mods:{ eva:4 },
+                   note:"Shrunken (25% size, same weight): +4 Evasion; no Standard Actions except returning to normal size." },
+  "shadow meld": { name:"Shadow Meld", on:"\u{1F311} Meld into shadow \u2014 Standard Action", off:"Reform \u2014 Shift Action", dur:"until ended", mods:{ eva:1 },
+                   note:"Melded: +1 Evasion, +4 to Stealth rolls, travels along surfaces as if flat, may ride a creature's shadow; no Standard Actions." },
+  "blender":     { name:"Blender",     on:"\u{1F98E} Blend in \u2014 Shift Action", off:"Drop the camouflage", dur:"until end of next turn", mods:{ eva:2 },
+                   note:"+2 Evasion against Melee attacks and +4 against Ranged attacks (only the +2 is applied automatically \u2014 add the extra +2 for Ranged by hand)." },
+  "phasing":     { name:"Phasing",     on:"\u{1F47B} Go Intangible \u2014 Standard Action", off:"Become Tangible \u2014 Shift Action", dur:"until ended", mods:{},
+                   note:"Intangible: can't be targeted by Moves or attacks, can't take Standard Actions, loses a Tick of Hit Points at the end of each round (by hand); passes through walls and blocking terrain on its Shift." },
+};
+const CAP_PRODUCERS = {
+  "heart gift":      { min:30, item:"Heart Scale" },
+  "honey gather":    { min:0,  item:"Honey" },
+  "milk collection": { min:20, item:"MooMoo Milk" },
+  "dream mist":      { min:20, item:"Dream Mist" },
+  "herb growth":     { min:20, item:"Revival Herb" },
+  "mushroom harvest":{ min:20, roll:20, pick:r => r <= 12 ? "Tiny Mushroom" : r <= 18 ? "Big Mushroom" : "Balm Mushroom" },
+  "fortune":         { min:20, money:true },
+  "egg warmer":      { min:0,  eggs:true },
+  "gather unown":    { min:20, unown:true },
+};
+function capActionsCard(p, sp, rerender, persist){
+  const have = new Set(monCaps(sp, p).map(c => c.toLowerCase()));
+  const stances = Object.keys(CAP_STANCES).filter(k => have.has(k));
+  const prods = Object.keys(CAP_PRODUCERS).filter(k => have.has(k));
+  if(!stances.length && !prods.length) return null;
+  const commit = () => { (persist||save)(); (rerender||(()=>refreshMon(p)))(); };
+  const card = el("div",{class:"card"});
+  card.append(el("h3",{},"\u{1F9EC} Capability actions"));
+  const lvl = parseInt(p.level)||1;
+  stances.forEach(k => {
+    const d = CAP_STANCES[k], key = "cap-" + k;
+    const cur = ownerBuffs(p).find(b => b.key === key);
+    const row = el("div",{class:"inline",style:"gap:8px;margin:6px 0;flex-wrap:wrap;align-items:center"});
+    row.append(el("b",{}, d.name),
+      el("button",{class:"btn-secondary"+(cur?" on":""),style:"padding:5px 10px", title:d.note, onclick:()=>{
+        if(cur){ removeBuff(p, cur.id); toast(`${d.name} ended`); }
+        else { researchBuff(p, { key, name:d.name, cat:"Capability", dur:d.dur, mods:d.mods, note:d.note }); toast(d.note); }
+        commit(); }}, cur ? d.off : d.on),
+      cur ? el("span",{class:"small muted"}, d.note) : "");
+    card.append(row);
+  });
+  prods.forEach(k => {
+    const d = CAP_PRODUCERS[k], name = capCanonName(k) || k;
+    const fq = capabilityFreq(name), uc = usesControl(p, "cap", name, fq, rerender, persist);
+    const row = el("div",{class:"inline",style:"gap:8px;margin:6px 0;flex-wrap:wrap;align-items:center"});
+    row.append(el("b",{}, name), uc || "");
+    const label = d.money ? "\u{1F4B0} Roam the town \u2014 Extended" : d.eggs ? "\u{1F95A} Warm an egg" : d.unown ? "\u{1F52E} Summon an Unown \u2014 Standard"
+                : `\u{1F381} Produce ${d.item || "an item"} \u2014 Extended`;
+    row.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",onclick:()=>{
+      if(lvl < d.min){ toast(`${name} needs Level ${d.min} (this one is Level ${lvl}).`); return; }
+      const key = useKey("cap", name), max = freqInfo(fq).max || 1;
+      if(fq && usesLeft(p, key, max) <= 0){ toast(`${name} is spent \u2014 tap the pip back to override.`); return; }
+      const t = (typeof ownerTrainerOf === "function" && ownerTrainerOf(p)) || null;
+      let msg = "";
+      if(d.money){
+        if((parseInt(p.loyalty)||0) <= 1){ msg = `${p.nickname||p.species} has Loyalty ${p.loyalty||0} \u2014 it runs away instead of coming back!`; }
+        else { const r = 1 + Math.floor(Math.random()*10), got = lvl * r;
+          if(t) moneyChange(t, got, `${p.nickname||p.species}'s Fortune`);
+          msg = `Fortune: Level ${lvl} \u00d7 d10 (${r}) = $${got}${t ? " \u2014 added to the Trainer" : " \u2014 no Trainer on this sheet, add it by hand"}`; }
+      } else if(d.eggs){
+        const r = 1 + Math.floor(Math.random()*10);
+        msg = r === 1 ? "Egg Warmer rolled 1 \u2014 nothing happens." : `Egg Warmer rolled ${r} \u2014 reduce the egg's hatch time by ${r} hours.`;
+      } else if(d.unown){
+        const r = Math.min(lvl, 2 + Math.floor(Math.random()*8) + Math.floor(Math.random()*8) + 0);
+        msg = `A wild Unown appears \u2014 Level ${r} (2d8, capped at ${lvl}). It isn't hostile.`;
+      } else {
+        const r = d.roll ? 1 + Math.floor(Math.random()*d.roll) : 0;
+        const item = d.pick ? d.pick(r) : d.item;
+        if(t) benchBagAdd(t, item, 1, `${name} \u2014 ${p.nickname||p.species}`);
+        msg = `${name}${r ? ` (d${d.roll}: ${r})` : ""}: ${item}${t ? " added to the bag" : " \u2014 no Trainer on this sheet, add it by hand"}`;
+      }
+      if(fq){ p.uses = p.uses || {}; p.uses[key] = (p.uses[key]||0) + 1; }
+      toast(msg); commit(); }}, label));
+    card.append(row);
+  });
+  return card;
+}
 /* ---- Tinker (Capability, Pokedex): a scrap weapon that grants Weapon Moves ---------------------
    "Once per day as an Extended Action, the user may modify their weapon. The user gains access to an
    Adept Weapon Move of their choice, as long as it has no limitation against Large Melee Weapons.
@@ -25220,7 +25388,12 @@ function openTinkerModify(p, onDone){
     sel.append(el("option",{value:""}, "\u2014 none \u2014"));
     list.forEach(n => { const m = moveByName.get(n.toLowerCase());
       sel.append(el("option",{value:n,selected:cur===n}, m ? `${n} \u00b7 ${m.frequency||""}` : n)); });
-    body.append(el("div",{class:"inline",style:"margin:6px 0;align-items:center"}, el("b",{}, label), sel));
+    const info = el("div",{class:"small",style:"margin:2px 0 10px;padding:8px 10px;border-radius:8px;background:var(--bg-soft,rgba(128,128,128,.12))"});
+    const show = () => { const m = sel.value && moveByName.get(sel.value.toLowerCase());
+      info.style.display = m ? "" : "none";
+      info.innerHTML = m ? moveDetailHTML(m, m.name) : ""; };
+    sel.addEventListener("change", show); show();
+    body.append(el("div",{class:"inline",style:"margin:6px 0;align-items:center"}, el("b",{}, label), sel), info);
     return sel;
   };
   const adept = mk("Adept Move", TINKER_ADEPT(), p.tinker?.adept || "");
@@ -27327,6 +27500,8 @@ function renderPokemonMoves(root, team){
   if(ilc) root.append(ilc);
   const tkc = tinkerCard(p, sp, renderBattle);
   if(tkc) root.append(tkc);
+  const cac = capActionsCard(p, sp, renderBattle);
+  if(cac) root.append(cac);
   root.append(el("div",{class:"small muted",style:"padding:0 4px"},"Other action types are in the tabs above — Standard, Shift, Swift, Free, Full."));
 }
 /* A Feature's frequency encodes its action type after the "-" (e.g. "1 AP - Free Action",
@@ -38606,6 +38781,8 @@ function encounterMonCard(enc, p, list, trainer){
   if(encIll) card.append(encIll);
   const encTk = tinkerCard(p, sp, renderEncounters, saveEnc);
   if(encTk) card.append(encTk);
+  const encCa = capActionsCard(p, sp, renderEncounters, saveEnc);
+  if(encCa) card.append(encCa);
   // …and a GM-run Ditto shows what it copied, with the Free Action that drops it
   if(p.transform) card.append(el("div",{class:"inline",style:"margin-top:8px;gap:8px;align-items:center;flex-wrap:wrap"},
     el("span",{class:"statuschip on",style:"padding:2px 8px;font-size:11px;cursor:default"},
@@ -52347,6 +52524,8 @@ function openTokenMenu(token, map){
         if(ilc) wrap.append(ilc);
         const tkc = tinkerCard(p, sp, redraw, ()=>{});
         if(tkc) wrap.append(tkc);
+        const cac = capActionsCard(p, sp, redraw, ()=>{});
+        if(cac) wrap.append(cac);
         if(p.transform) wrap.append(el("div",{class:"inline",style:"margin-top:12px;gap:8px;align-items:center;flex-wrap:wrap"},
           el("span",{class:"statuschip on",style:"padding:2px 8px;font-size:11px;cursor:default"},
             `🌀 TRANSFORMED — ${p.transform.label}`),

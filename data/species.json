@@ -43246,7 +43246,7 @@
     "Grassland"
    ],
    "other": [
-    "Mind Lock",
+    "Mindlock",
     "Mind Reader",
     "Underdog"
    ]
@@ -57971,7 +57971,7 @@
     "Darkvision",
     "Dead Silent",
     "Fountain",
-    "Invisiblity",
+    "Invisibility",
     "Underdog"
    ]
   },
@@ -80918,7 +80918,7 @@
    "naturewalk": [],
    "other": [
     "Blindsense",
-    "Mind Lock",
+    "Mindlock",
     "Mountable 1"
    ]
   },
@@ -81205,7 +81205,7 @@
     "Grassland"
    ],
    "other": [
-    "Mind Lock",
+    "Mindlock",
     "Dream Reader"
    ]
   },
@@ -91713,7 +91713,7 @@
     "Phasing",
     "Glow",
     "Invisibility",
-    "Firestarter/Heater",
+    "Firestarter",
     "Heater",
     "Shrinkable"
    ]
@@ -104292,7 +104292,7 @@
    "other": [
     "Gilled",
     "Glow",
-    "Mind Lock",
+    "Mindlock",
     "Telekinetic",
     "Telepath"
    ]
@@ -209084,7 +209084,7 @@
    "naturewalk": [],
    "other": [
     "Darkvision",
-    "Steath",
+    "Stealth",
     "Underdog"
    ]
   },
@@ -209362,7 +209362,7 @@
    "naturewalk": [],
    "other": [
     "Darkvision",
-    "Steath",
+    "Stealth",
     "Underdog"
    ]
   },
@@ -225095,7 +225095,7 @@
    "naturewalk": [],
    "other": [
     "Gilled",
-    "Telekinesis"
+    "Telekinetic"
    ]
   },
   "size": "Small",
@@ -257128,7 +257128,7 @@
     "Dead Silent",
     "Magnetic",
     "Materializer",
-    "Stiicky Hold",
+    "Sticky Hold",
     "Wallclimber",
     "Zapper"
    ]
@@ -281574,16 +281574,15 @@
    "overland": 3,
    "sky": 0,
    "swim": 3,
-   "levitate": 0,
+   "levitate": 4,
    "burrow": 0,
    "highJump": 1,
    "longJump": 1,
-   "power": 0,
+   "power": 1,
    "naturewalk": [
     "Wetlands"
    ],
    "other": [
-    "Levitate 4 Power 1",
     "Glow",
     "Zapper",
     "Underdog"
@@ -285878,14 +285877,13 @@
    "overland": 3,
    "sky": 0,
    "swim": 3,
-   "levitate": 0,
+   "levitate": 5,
    "burrow": 0,
-   "highJump": 0,
-   "longJump": 0,
+   "highJump": 1,
+   "longJump": 1,
    "power": 1,
    "naturewalk": [],
    "other": [
-    "Levitate 5 Jump 1/1",
     "Telekinetic",
     "Underdog"
    ]
@@ -290221,7 +290219,7 @@
     "Glow",
     "Phasing",
     "Shrinkable",
-    "Pack mon",
+    "Pack Mon",
     "Underdog"
    ]
   },
@@ -290478,7 +290476,7 @@
     "Tracker",
     "Phasing",
     "Shrinkable",
-    "Pack mon"
+    "Pack Mon"
    ]
   },
   "size": "Large",
@@ -293768,7 +293766,7 @@
     "Mountable 1",
     "Reach",
     "Telekinetic",
-    "Telepathy"
+    "Telepath"
    ]
   },
   "size": "Large",
@@ -294069,7 +294067,7 @@
    "power": 9,
    "naturewalk": [],
    "other": [
-    "Darkvison",
+    "Darkvision",
     "Mountable 2"
    ]
   },
@@ -299434,7 +299432,7 @@
    "naturewalk": [],
    "other": [
     "Mountable 1",
-    "Darkvison",
+    "Darkvision",
     "Groundshaper",
     "Tracker"
    ]
@@ -326448,7 +326446,7 @@
    "other": [
     "Gilled",
     "Glow",
-    "Mind Lock",
+    "Mindlock",
     "Telekinetic",
     "Telepath"
    ]
