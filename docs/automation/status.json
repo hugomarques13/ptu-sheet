@@ -1818,6 +1818,10 @@
    "note": "a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)",
    "status": "manual"
   },
+  "Tinker": {
+   "note": "Tinker card on the Pokémon sheet/Encounters/Map: once-a-day pip, Adept (+Master at Lv30) Weapon Move picker filtered by Large Melee limits, derived Moves, Steel toggle, Master = no Held Item",
+   "status": "auto"
+  },
   "Tracker": {
    "note": "a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)",
    "status": "manual"

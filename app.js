@@ -488,7 +488,7 @@ const STATUS_DEFS = [
      is where you are STANDING — but it belongs on the chip row for the same reason Tagged does: the
      whole table needs to see who is inside it. On the 🗺 Map it is applied and lifted automatically
      as tokens move (see sweepMapAuras), and only ever to a Trainer who actually has Gifts. */
-  {key:"giftsapped", name:"Gift-Sapped", kind:"other", cap:0,
+  {key:"giftsapped", name:"Gift-Sapped", kind:"other", cap:0, gm:true,
    effect:"Standing inside a Giftsapper's 10-metre field. Every Gift you try to activate needs a Focus Check first, at a DC of three times the Giftsapper's best Rank in Focus, Intimidate or Command. A failure costs you nothing — not the AP, not the Frequency — it just doesn't happen. A Static or ongoing Gift is checked each turn, and a failed check switches it off for that turn. On the 🗺 Map this is applied and lifted automatically as tokens move; the Gifts tab prints the exact DC."},
   {key:"tagged", name:"Tagged", kind:"other", cap:0,
    effect:"Marked by a Duelist. Their Pokemon under Focused Training add half their Momentum (rounded up) to Accuracy and Evasion against this foe — and give up Focused Training's Accuracy bonus against everyone else. Only one foe can be Tagged at a time; Tagging a new one clears the old."},
@@ -4340,6 +4340,7 @@ const NO_HELD_FX = [];
 function heldFxList(owner){
   if(!owner) return NO_HELD_FX;
   if(owner.species !== undefined && !String(owner.heldItem||"").trim()) return NO_HELD_FX;
+  if(owner.tinker && owner.tinker.master && (parseInt(owner.level)||1) >= 30) return NO_HELD_FX;   // Tinker: Adept + Master modification = no Held Item
   /* Magic Room (Useless): "Pokemon may not benefit from the effects of any Held Items, and Trainers
      cannot benefit from any Accessory-Slot equipment. This does not affect consumable or activated
      items, only Items with Static effects or Triggers." This list IS the Static/Trigger layer - the
@@ -4782,7 +4783,10 @@ function cosmeticArtChain(name, shiny){
   if(id && picks[0]==="Female"){
     const files = FEMALE_OFFICIAL_ART.has(id) ? [`${oa}${sh}${id}-female.png`, `${home}${sh}female/${id}.png`]
                                               : [`${home}${sh}female/${id}.png`];
-    return [...interleave(files), ...speciesArtChain(base, shiny)];
+    /* the usual artwork first — the PokeAPI female render is a 3D cut-out with no background that
+       clashes with every other picture on the sheet, so it is only the fallback when the usual
+       source has nothing */
+    return [...speciesArtChain(base, shiny), ...interleave(files)];
   }
   return null;
 }
@@ -6051,7 +6055,12 @@ function applyEndDay(c, plan){
      the plan-less legacy path. */
   const noHP = left => !!plan && !plan.center && left >= 5;
   const t = c.trainer; normTrainer(t);
-  t.usedAP = 0; t.tempHP = 0; t.buffs = []; resetUses(t, "all"); resetManualCS(t); t.modes = {}; t.manualBoundAP = 0;
+  /* A plain ☀ Rest in the field is not a new day: Scene and every-turn uses come back, but a Daily
+     pip stays spent until 🌙 End the Day. A Pokémon Center (Daily Moves refreshed) and the plan-less
+     legacy callers keep the full refresh. */
+  const dayKeeps = !!plan && plan.endsDay === false && !plan.center;
+  const refreshUses = o => resetUses(o, dayKeeps ? "scene" : "all");
+  t.usedAP = 0; t.tempHP = 0; t.buffs = []; refreshUses(t); resetManualCS(t); t.modes = {}; t.manualBoundAP = 0;
   delete t.tasteLog;
   channelerEndScene(t, true);                      // a night's rest ends the Channeling too — nobody sleeps inside a 20 m leash
   delete t.fightOn;
@@ -6067,7 +6076,7 @@ function applyEndDay(c, plan){
     endSceneTypeState(p);                 // ...and a night's rest ends any Terastallization too
     transformRevert(p,true);              // "lasts until ... the end of the encounter"
     schoolingRevertNow(p);                // a night's rest scatters the school - and hands its Daily use back below
-    p.tempHP = 0; p.buffs = []; resetUses(p, "all"); resetManualCS(p); clearStorageDigestion(p); delete p.tasteLog;
+    p.tempHP = 0; p.buffs = []; refreshUses(p); resetManualCS(p); clearStorageDigestion(p); delete p.tasteLog;
     clearAllStatuses(p);                  // cure all Status afflictions on the whole party too (Death excepted)
 
     treat(p, p.id);
@@ -6261,9 +6270,9 @@ function openRestPlanner(){
 
   const body = el("div");
   const summary = el("div",{style:"margin-left:auto;text-align:right;line-height:1.4"});
-  const goBtn = el("button",{class:"btn", title:"Take the rest, but the day carries on — Hit Points, AP, statuses and uses all come back, and every individual's Injuries-treated-today count keeps running.",
+  const goBtn = el("button",{class:"btn", title:"Take the rest, but the day carries on — Hit Points, AP, statuses and Scene uses come back; Daily uses stay spent, and every individual's Injuries-treated-today count keeps running. (A Pokémon Center refreshes Daily Moves too.)",
     onclick:()=>{ closeModal(); restApply(sheets, plan, false); }}, "☀ Rest");
-  const dayBtn = el("button",{class:"btn-primary", title:"Take the rest AND roll the day over — everyone's \"treated today\" count resets, so tomorrow they each get a fresh 3. Garden plants age a day too, and Mature ones get their Yield Roll.",
+  const dayBtn = el("button",{class:"btn-primary", title:"Take the rest AND roll the day over — Daily uses refresh, everyone's \"treated today\" count resets, so tomorrow they each get a fresh 3. Garden plants age a day too, and Mature ones get their Yield Roll.",
     onclick:()=>{ closeModal(); restApply(sheets, plan, true); }}, "🌙 End the Day");
 
   /* the whole plan for one sheet, recomputed from scratch every draw */
@@ -6481,7 +6490,7 @@ async function restApply(sheets, plan, endsDay){
       // a Bandage the planner leaned on is a real item out of the bag (a Medic's Nurse needs none)
       if(n && st.band[ind.key] && !med.nurse && spendBandage(c.trainer)) bandagesUsed++;
     });
-    const res = applyEndDay(c, { center:plan.center, heals, pc:!!plan.pc,
+    const res = applyEndDay(c, { center:plan.center, heals, pc:!!plan.pc, endsDay:!!endsDay,
                                  src: plan.center ? "Pokémon Center" : "Extended Rest" });
     healedN += res.healed; blockedN += res.blocked;
     // the rest happens DURING today, so its heals count against today -- then the day rolls over
@@ -6503,7 +6512,8 @@ async function restApply(sheets, plan, endsDay){
   if(healedN) bits.push(healedN + " Injur" + (healedN===1?"y":"ies") + " treated");
   if(bandagesUsed) bits.push(bandagesUsed + " Bandage" + (bandagesUsed===1?"":"s") + " used");
   if(blockedN) bits.push("⚠ " + blockedN + " past the daily cap");
-  if(endsDay) bits.push("new day — Injury counts reset");
+  if(endsDay) bits.push("new day — Daily uses and Injury counts reset");
+  else if(!plan.center) bits.push("Daily uses not refreshed — 🌙 End the Day does that");
   if(yieldsN) bits.push(`\u{1F331} ${yieldsN} Yield Roll${yieldsN===1?"":"s"} ready in the Garden`);
   toast((plan.center ? "🏥 Pokémon Center" : "🏕 Extended Rest") + " — " + bits.join(" · "));
 }
@@ -6943,7 +6953,9 @@ function pokeDerived(p) {
   /* Core p.234: "Negative Evasion can erase Evasion from other sources, but does not increase the
      Accuracy of an enemy's Moves" — so the total floors at 0, however far Flanked/Blinded/a
      Lagging Item push it down. */
-  const eva0 = n => Math.max(0, n);
+  /* Boss Template (Running the Game p.488): Drowsy and Chilled leave the Boss with HALF its Evasion */
+  const bossHalf = hasStatus(p, "drowsy") || hasStatus(p, "chilled");
+  const eva0 = n => { n = Math.max(0, n); return bossHalf ? Math.floor(n / 2) : n; };
   return {
     base, total, cs, eff, maxHP, fullMaxHP, injuries, budget, spent, remaining: budget - spent, edgePts,
     physEva: eva0(cap6(eff.def)+cs.eva+wEva+inspiredEva+bEva+hEva.all), specEva: eva0(cap6(eff.spdef)+cs.eva+wEva+inspiredEva+bEva+hEva.all), spdEva: eva0(cap6(eff.spd)+cs.eva+wEva+inspiredEva+bugSkyEva+bEva+hEva.all+hEva.spd),   // evasion uses CS-adjusted stats (+ buffs, + gear)
@@ -7384,6 +7396,12 @@ const ART_RESOLVED = new Map();          // "<species>|<shiny>" -> the src that 
 function artChainFor(key, chain){
   const good = key ? ART_RESOLVED.get(key) : null;
   if(!good || good === chain[0]) return chain;
+  /* Only jump straight to a remembered URL that lives on the SAME host as the preferred one
+     (pokemondb main → pokemondb staging). A remembered URL on a DIFFERENT host means the original
+     failed once — a blip, a rate-limit — and the fallback (a 3D render with no background) would then
+     latch on for the whole session. The original is always tried first instead. */
+  const host = u => { try{ return new URL(u, location.href).host; }catch(e){ return u; } };
+  if(host(good) !== host(chain[0])) return chain;
   return [good, ...chain.filter(u => u !== good)];
 }
 /* try each candidate in turn as the image fails to load, ending at the pokéball placeholder */
@@ -9129,7 +9147,7 @@ function applyAutoKO(owner, oldHP, newHP){
     powerConstructRevert(owner, true);   // ...nor Complete, which the Ability ends at 0 HP with everything else
     endSceneTypeState(owner);       // "remains Terastalized until they are Fainted or the Scene ends"
     toast(`💀 ${ownerLabel(owner)} is Knocked Out at ${newHP} HP.`);
-    pyreOfGriefOnFaint(owner);      // anyone with Pyre of Grief standing within 3 m feeds on it
+    pyreOfGriefOnFaint(owner);      // a FOE of anyone with Pyre of Grief, within 3 m of them, feeds it (Scene x2)
     return "ko";
   }
   /* Rampaging Spirit holds a Pokémon up past 0 the same way Fight On does for a Berserker, so it
@@ -9163,6 +9181,16 @@ function applyAutoKO(owner, oldHP, newHP){
    Deferred a tick, because applyAutoKO runs INSIDE an HP setter that hasn't written the fainted
    creature's own HP yet. Off the board, the 🔥 button on the Ability's row does the same by hand. */
 const PYRE_RANGE = 3;
+/* "within 3 meters" the way the rulebook measures: a diagonal step alternates 1 m / 2 m, so a creature
+   three squares away on BOTH axes is 4 m off, not 3 (tokenTileGap is the plain Chebyshev gap, which
+   counts every diagonal as one). Edge-to-edge between the two footprints, like tokenTileGap. */
+function tokenMetreGap(a, b){
+  const ax=Math.round(a.x), ay=Math.round(a.y), bx=Math.round(b.x), by=Math.round(b.y);
+  const af=tokenFootprint(a), bf=tokenFootprint(b);
+  const dx = Math.max(0, ax-(bx+bf.w-1), bx-(ax+af.w-1));
+  const dy = Math.max(0, ay-(by+bf.h-1), by-(ay+af.h-1));
+  return Math.max(dx, dy) + Math.floor(Math.min(dx, dy) / 2);
+}
 /* Lázaro's grief is shared. When HIS Pyre of Grief fires — his Vulpoxen's Ability, or his own copy
    of it from the Emberwake Gift — "Mom?" takes the same +5 to her next Damage Roll, even though she
    carries no Abilities at all (see the Mom? block near getSpecies). She rides the holder's trigger
@@ -9212,11 +9240,12 @@ function pyreOfGriefOnFaint(owner){
   const objOf = t => { const L = t.link ? tokenLinked(t) : null; return (L && !L.missing) ? L.obj : null; };
   const fallen = toks.filter(t => objOf(t) === owner);
   if(!fallen.length) return;                               // not on the board — nobody can be "within 3 m"
+  // (a standalone token with no side — a prop, a marker — is nobody's foe, so it never feeds anyone)
   const holders = toks.filter(t => {
     if(fallen.includes(t)) return false;
     const o = objOf(t);
     if(!o || o === owner || !ownerHasAbility(o, "Pyre of Grief") || !pyreCanFire(o)) return false;
-    return fallen.some(f => tokenTileGap(t, f) <= PYRE_RANGE);
+    return fallen.some(f => tokensAreFoes(t, f) && tokenMetreGap(t, f) <= PYRE_RANGE);   // a FOE fell, not an ally
   });
   if(!holders.length) return;
   const who = ownerLabel(owner);
@@ -9228,11 +9257,16 @@ function pyreOfGriefOnFaint(owner){
         toast(`\u{1F525} Pyre of Grief — ${ownerLabel(o)} heals a Tick and gains +5 to its next Damage Roll (its owner can press 🔥 on the Ability).`);
         continue;
       }
+      const use = abilityUse(o, "Pyre of Grief");            // Scene x2 — spent like any other Scene Ability
+      if(!use.spend()){
+        toast(`\u{1F525} Pyre of Grief — ${ownerLabel(o)} has no uses left this Scene (${use.max} per Scene).`);
+        continue;
+      }
       const gain = hpTick(ownerMaxHP(o));
       await setTokenHP(t, info.cur + gain);
       const shared = pyreGrantBuff(o);
       await commitTokenSource(t);
-      toast(`\u{1F525} Pyre of Grief — ${ownerLabel(o)} feeds on ${who} fainting: +${gain} HP and +5 to its next Damage Roll.`
+      toast(`\u{1F525} Pyre of Grief — ${ownerLabel(o)} feeds on ${who} (a foe) fainting: +${gain} HP and +5 to its next Damage Roll.`
             + (shared.length ? ` ${shared.join(" and ")} share${shared.length>1?"":"s"} the +5.` : ""));
     }
   }, 0);
@@ -9240,6 +9274,8 @@ function pyreOfGriefOnFaint(owner){
 /* the by-hand half, for a faint the Map didn't see */
 function applyPyreToOwner(o){
   if(!pyreCanFire(o)) return `${ownerLabel(o)} is down — Pyre of Grief doesn't fire.`;
+  const use = abilityUse(o, "Pyre of Grief");
+  if(!use.spend()) return `${ownerLabel(o)} has no Pyre of Grief uses left this Scene (${use.max} per Scene).`;
   const old = ownerHP(o);
   setOwnerHP(o, old + hpTick(ownerMaxHP(o)));
   const shared = pyreGrantBuff(o);
@@ -9252,9 +9288,9 @@ function pyreTriggerRow(p, redraw, persist){
   wrap.append(el("button",{class:"btn-secondary",style:"padding:4px 10px",
     title:`Pyre of Grief — +${gain} HP and +5 to the next Damage Roll`,
     onclick:()=>{ const msg = applyPyreToOwner(p); (persist || save)(); toast(`\u{1F525} ${msg}`); redraw && redraw(); }},
-    "\u{1F525} Something fainted within 3 m"));
+    "\u{1F525} A foe fainted within 3 m"));
   wrap.append(el("span",{class:"muted"},
-    `Heals a Tick (+${gain} HP) and places a +5 next-Damage-Roll buff that doesn't stack. On the Map this fires by itself whenever a token faints within 3 m.`
+    `Scene x2, Free Action. Heals a Tick (+${gain} HP) and places a +5 next-Damage-Roll buff that doesn't stack. On the Map this fires by itself whenever a FOE faints within 3 m (allies don't count) — the sheet spends one of the two uses each time.`
     + (pyreShareTargets(p).length ? " Lázaro's \u201cMom?\u201d gets the same +5." : "")));
   return wrap;
 }
@@ -10273,7 +10309,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     if(dblStrike){
       out.append(el("div",{style:"margin-bottom:10px"}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLLS"),
         el("div",{style:`font-size:24px;font-weight:800;color:var(--${connected?"good":"bad"})`}, `🎯 ${connected} / 2 strikes connected`),
-        el("div",{class:"small muted",style:"margin-top:2px"}, `vs AC ${st.ac} + Evasion ${targetEva} = ${st.ac+targetEva} → ${strikeReadout(strikes)}`),
+        el("div",{class:"small muted",style:"margin-top:2px"}, `vs AC + Evasion → ${strikeReadout(strikes)}`),
         accBits.length?el("div",{class:"small muted"}, `Each roll includes ${accBits.join(" ")}.`):"",
         forced?el("div",{class:"small muted"}, `Hit count manually overridden to ${connected}.`):""));
     } else {
@@ -10449,7 +10485,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         atkExploit: exploitAbilityBonus(t), atkWar: ownerAuraActive(t,"War"), atkDeicide: !!st.deicide,
         seFlat: heldSeFlatDamage(t), defCSMode: defCSMode || unawareMode(t), moveRule, critExtra, fx: hitFx,
         ctx:{ attacker:t, by:rollerName(t), melee:/melee/i.test(String((st.move && st.move.range) || "")), move:(st.move && st.move.name) || "" },
-        onDealt:(n)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n, true); } });
+        onDealt:(n, c, d)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n, true, d); } });
       if(tw) out.append(tw);
       feedLogged = true;
       logRoll({ kind:"move", label:st.name, who:t.name||"",
@@ -14051,7 +14087,7 @@ const GIFT_GROUPS = [
   { group:"Vulpoxen (Symbiant)", patrons:["Vulpoxen"], gifts:[
     ["Minor","Grafted Soul","GM Permission","+3 bonus to Occult Education and Medicine Education Checks concerning souls, spirits, death, and the line between the living and the dead. You can sense whether a creature within 10m has died within the last hour. (Bond deepens at Vulpoxen Lv 5.)"],
     ["Major","Ashen Séance","Minor Gift - Grafted Soul","Daily Extended Action, targeting the remains, ashes, or a treasured possession of a creature that has died: you and Vulpoxen kindle a cold flame and commune with the departed spirit, asking questions it answers truthfully to the best of what it knew in life. A spirit gone longer than a year is faint and manages only one answer. (Vulpoxen Lv 20.)"],
-    ["Major","Emberwake","Minor Gift - Grafted Soul","You gain the Pyre of Grief Ability (heal a Tick of HP + a stacking-capped +5 to your next Damage Roll whenever anything faints within 3m). Your \u201cMom?\u201d gains the same +5 to her next Damage Roll. (Vulpoxen Lv 30 — Nightmare Aura wakes.)"],
+    ["Major","Emberwake","Minor Gift - Grafted Soul","You gain the Pyre of Grief Ability (heal a Tick of HP + a stacking-capped +5 to your next Damage Roll whenever a foe faints within 3m \u2014 Scene x2, Free Action). Your \u201cMom?\u201d gains the same +5 to her next Damage Roll. (Vulpoxen Lv 30 — Nightmare Aura wakes.)"],
     ["Major","Coma Light","Major Gift - Emberwake","Scene x2, Standard Action, AC 6, Range 4m 1 Target: the target falls Asleep and immediately gains Bad Sleep. (Vulpoxen Lv 50 — Death Aura opens.)"],
     ["Pact","Rekindling","All Vulpoxen Major Gifts","You learn the Move Rekindling — a Fire attack that, on a killing blow, revives a fainted ally as a Ghost-Type revenant. (Vulpoxen Lv 75 — full god.)"],
   ]},
@@ -17243,12 +17279,12 @@ const PTU_BUFFS = [
     self:true, onlyType:"Flying", mods:{ db:1 },
     note:"Windveiled soaked a Flying-Type hit: +1 Damage Base on your next Flying-Type Move. Remove it once you have spent it." },
   /* — Pyre of Grief (Vulpoxen, homebrew). Placed by pyreOfGriefOnFaint / the Ability's own button when
-       something faints within 3 m: +5 to the NEXT Damage Roll for the rest of the Scene (End Scene
+       a foe faints within 3 m: +5 to the NEXT Damage Roll for the rest of the Scene (End Scene
        already clears every buff). "This bonus does not stack" — a second faint refreshes the one
        charge instead of adding another +5. — */
   { key:"pyre-of-grief", cat:"Ability", name:"Pyre of Grief", dur:"next Damage Roll (this Scene)", once:true,
     self:true, mods:{ dmg:5 },
-    note:"Something fainted within 3 m: +5 to your next Damage Roll this Scene. Doesn't stack. Remove it once you have spent it." },
+    note:"A foe fainted within 3 m: +5 to your next Damage Roll this Scene. Doesn't stack. Remove it once you have spent it." },
 ];
 const buffByKey = new Map(PTU_BUFFS.map(b=>[b.key,b]));
 const BUFF_CATS = ["Cheerleader","Commander","Musician","Berserker","Medic","Item","Ability","Field"];
@@ -19071,6 +19107,8 @@ function renderMonPlay(root, p, sp){
   root.append(abilitiesCard(p, sp));
   const ilc = illusionCard(p, sp, ()=>refreshMon(p));
   if(ilc) root.append(ilc);
+  const tkc = tinkerCard(p, sp, ()=>refreshMon(p));
+  if(tkc) root.append(tkc);
 
   /* moves */
   root.append(movesCard(p, sp));
@@ -20274,6 +20312,7 @@ const CAP_MOVE_HELP = {
    Teleport grants it, but it never made it into the sheet's capability tab — so it'd otherwise be an
    unknown token and get thrown away by the grant parser below. */
 const CAP_EXTRA_HELP = {
+  Tinker: "The user carries a ramshackle weapon made from metal scraps. This weapon does not take up the user's Held Item slot, and in all ways is considered an extension of themselves: it cannot be removed unwillingly by any means, such as Knock Off or Trick. Once per day as an Extended Action, the user may modify their weapon. The user gains access to an Adept Weapon Move of their choice, as long as it has no limitation against Large Melee Weapons (for example, Salvo may only be used on Ranged Weapons). If the user is level 30 or higher, they may select both an Adept and Master Weapon Move when modifying their weapon, but they may not equip a Held Item if they do so. If the user modifies their weapon, they replace any existing modifications gained this way. Weapon Moves made with a Tinker's weapon may be Steel-Typed if the user wishes.",
   Teleporter: "Teleporter X — the user may teleport up to X meters as part of a Shift Action, ignoring intervening terrain and obstacles as long as they can see (or clearly picture) the destination.",
 };
 /* hover/expand text for a named capability (Naturewalk, Amorphous, Levitate the ability, …) —
@@ -20958,6 +20997,13 @@ function derivedMonMoves(p, sp){
       if(lw[f] && wt && weaponMoveRankOk(wt, tier, lw)) add(lw[f], "living weapon");
     });
   }
+  /* Tinker: the scrap weapon is a Large Melee Weapon, so a Weapon Move's "WR" reads as Melee */
+  tinkerMoves(p).forEach(mn => {
+    const m = moveByName.get(String(mn).toLowerCase());
+    if(!m || seen.has(m.name)) return;
+    seen.add(m.name);
+    out.push({ move:Object.assign({}, m, { range:weaponizeRange(m.range, {range:"Melee"}) }), tag:"Tinker weapon" });
+  });
   return out;
 }
 /* the Trainer half: Order Up, each weapon's Adept/Master Technique, and the Moves a [Weapon]
@@ -21076,6 +21122,7 @@ function teraMoveType(p, m){
 function effectiveMoveType(p, m, opts={}){
   if(hasAbility(p, "Normalize")) return "Normal";
   const sync = moveSyncType(p, m); if(sync) return sync;               // permanent retype wins over −ate
+  if(tinkerSteel(p, m)) return "Steel";                                // Tinker: its scrap weapon's Moves may be Steel
   const tera = teraMoveType(p, m); if(tera) return tera;               // Tera Blast / Tera Starstorm
   if(!opts.noAte){ const a = ateInfo(p, m); if(a) return a.type; }   // −ate re-types Normal moves (togglable in openMoveRoll)
   return (m && m.type) || "Normal";
@@ -21948,7 +21995,7 @@ function moveHPNode(actor, m, o){
      GUESS, and usually a generous one: half the raw roll can be twice the real drain. It is flagged
      as an estimate until the number is real - typed in by hand, or handed back by the \u{1F4A5} Apply
      that actually put the hit on a token. */
-  let dealtReal = false;
+  let dealtReal = false, drainedAuto = false;     // drainedAuto: the Apply already paid the drain
   const dealtWarn = el("div", { class:"small", style:"color:var(--warn);font-weight:600;margin-bottom:6px" });
   if(needDealt){
     card.append(el("div", { class:"inline small", style:"gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap" },
@@ -22000,6 +22047,7 @@ function moveHPNode(actor, m, o){
           + (e.kind === "recoil" && rockHead ? ` — ignored, ${rockHead}` : "");
       btn.textContent = `${up ? "➕" : "➖"}${est ? "≈" : ""}${n} HP → ${ownerLabel(actor)}`;
       btn.disabled = !n;
+      if(drainedAuto && e.kind === "drain"){ btn.textContent = "✓ drained automatically"; btn.disabled = true; }
     };
     refreshers.push(paint);
     btn.addEventListener("click", (ev) => {
@@ -22045,9 +22093,10 @@ function moveHPNode(actor, m, o){
   refreshers.forEach(f => f());
   /* `real` is true only when the caller KNOWS what the target lost - the \u{1F4A5} Apply's onDealt.
      A prefill from the raw damage roll leaves the row flagged as an estimate. */
-  card.setDealt = (n, real) => {
+  card.setDealt = (n, real, drained) => {
     dealtIn.value = String(Math.max(0, n | 0));
     dealtReal = !!real;
+    drainedAuto = !!drained;
     refreshers.forEach(f => f());
   };
   return card;
@@ -22841,6 +22890,37 @@ function syncHungerBuff(o){
     dur:"until its next turn", mods: full ? { acc:2 } : { dmg:5 },
     note: full ? "+2 to Accuracy Rolls." : "+5 to Damage Rolls." });
 }
+/* ---- Boss Template: Drowsy / Chilled (Running the Game p.488) ---------------------------------
+   The Boss's version of Asleep / Frozen. It loses half its Evasion (pokeDerived), and at the END of each
+   of its turns it makes the same Save the plain condition would: Drowsy DC 16; Chilled DC 16 (DC 11 for a
+   Fire-Type, +4 in Sun, -2 in Hail). A pass cures it; a FAIL costs it -10 on its next Damage Roll.
+   Rolled by the Map's play button, so the table sees the die. Taking damage never cures Drowsy. */
+function bossStatusTurnLines(o){
+  const out = [];
+  ["drowsy", "chilled"].forEach(k => {
+    if(!hasStatus(o, k)) return;
+    let dc = 16, mod = 0; const why = [];
+    if(k === "chilled"){
+      let fire = false; try{ fire = monTypes(o).includes("Fire"); }catch(e){}
+      if(fire){ dc = 11; why.push("Fire-Type"); }
+      let wk = ""; try{ wk = ownerWeather(o).key; }catch(e){}
+      if(wk === "sunny"){ mod += 4; why.push("+4 Sun"); }
+      else if(wk === "hail" || wk === "snowy"){ mod -= 2; why.push("\u22122 Hail"); }
+    }
+    const nat = 1 + Math.floor(Math.random() * 20), tot = nat + mod;
+    const name = statusName(k), tag = `Save ${nat}${mod ? ` (${tot})` : ""} vs DC ${dc}${why.length ? ` [${why.join(", ")}]` : ""}`;
+    if(tot >= dc){
+      o.statuses = (o.statuses || []).filter(x => x !== k);
+      out.push(`${name} \u2014 ${tag}: cured.`);
+    } else {
+      o.buffs = (o.buffs || []).filter(b => b.key !== "boss-" + k);       // one slump at a time
+      researchBuff(o, { key:"boss-" + k, name:`${name} (failed Save)`, cat:"Field", dur:"next Damage Roll", once:true,
+        mods:{ dmg:-10 }, note:`Failed the ${name} Save: -10 to its next Damage Roll.` });
+      out.push(`${name} \u2014 ${tag}: failed, -10 to its next Damage Roll.`);
+    }
+  });
+  return out;
+}
 /* Fire every row for `when` on one creature. Returns the lines (already prefixed with the creature). */
 function fireAbilityHooks(when, o, ctx){
   if(!o || isTrainerOwner(o) || hasStatus(o, "knockedOut") || hasStatus(o, "dead")) return [];
@@ -22852,6 +22932,7 @@ function fireAbilityHooks(when, o, ctx){
   });
   if(when === "turnStart") coatTurnLines(o).forEach(l => out.push(`${ownerLabel(o)}: ${l}`));
   if(when === "turnEnd") lockTurnLines(o).forEach(l => out.push(`${ownerLabel(o)}: ${l}`));
+  if(when === "turnEnd") bossStatusTurnLines(o).forEach(l => out.push(`${ownerLabel(o)}: ${l}`));
   return out;
 }
 /* what the Map's \u25b6 calls: the creature whose turn just ended, then the one whose turn is starting */
@@ -24844,7 +24925,11 @@ function resolveStrikes(nats, accMod, threshold, critT){
 }
 /* one-line read-out of a resolveStrikes() result, e.g. "#1: 17 (15) ✓ hit · #2: 4 ✗ miss" */
 function strikeReadout(strikes){
-  return strikes.map((s,i)=>`#${i+1}: ${s.tot}${s.nat!==s.tot?` (${s.nat})`:""} ${s.crit?"💥 CRIT":s.hit?"✓ hit":"✗ miss"}`).join(" · ");
+  /* the rolls and any crit — but NOT which ones connected and never the AC + Evasion they were
+     measured against: two hit/miss marks beside two totals would let the table back out the target's
+     Evasion, which a single-hit roll never gives away. The "n / N strikes connected" line above carries
+     the result. */
+  return strikes.map((s,i)=>`#${i+1}: ${s.tot}${s.nat!==s.tot?` (${s.nat})`:""}${s.crit?" 💥 CRIT":""}`).join(" · ");
 }
 /* Special-case damage moves (PTU 1.05): these bypass the Damage-Base dice entirely and instead
    make the target lose an exact number of Hit Points. compute(ctx) → HP loss, where
@@ -25094,6 +25179,86 @@ function openIllusionMark(p, sp, done){
     }},"Mark it"),
     el("button",{class:"btn-secondary",onclick:closeModal},"Cancel")]});
 }
+/* ---- Tinker (Capability, Pokedex): a scrap weapon that grants Weapon Moves ---------------------
+   "Once per day as an Extended Action, the user may modify their weapon. The user gains access to an
+   Adept Weapon Move of their choice, as long as it has no limitation against Large Melee Weapons.
+   If the user is level 30 or higher, they may select both an Adept and Master Weapon Move ... but
+   they may not equip a Held Item if they do so. ... they replace any existing modifications."
+   `p.tinker` = { adept, master, steel }. The Moves are derived (derivedMonMoves) so they never cost a
+   Move slot; the Held Item lockout lives in heldFxList; Steel is read by effectiveMoveType. The
+   once-a-day clock is the ordinary "cap:tinker" pip, which capabilityFreq reads off the rules text. */
+function hasTinker(p){ return !!p && monCaps(getSpecies(p.species), p).some(c => c.toLowerCase() === "tinker"); }
+function tinkerMoves(p){
+  const tk = p && p.tinker; if(!tk || !hasTinker(p)) return [];
+  const out = [];
+  if(tk.adept) out.push(tk.adept);
+  if(tk.master && (parseInt(p.level)||1) >= 30) out.push(tk.master);
+  return out;
+}
+function tinkerSteel(p, m){
+  const tk = p && p.tinker;
+  return !!(tk && tk.steel && m && tinkerMoves(p).some(n => String(n).toLowerCase() === String(m.name||"").toLowerCase()));
+}
+/* a Weapon Move may be chosen when its Limitation (if any) leaves room for a Large Melee Weapon */
+function tinkerMoveOk(mn){
+  const m = moveByName.get(String(mn).toLowerCase()); if(!m) return false;
+  const lim = (/limitations?:\s*(.*)$/i.exec(String(m.effect||"")) || [])[1];
+  if(!lim) return true;
+  if(/not usable by large melee/i.test(lim)) return false;
+  return /large melee/i.test(lim) || /(?<!small )melee/i.test(lim);
+}
+const TINKER_ADEPT = () => WEAPON_MOVES_ADEPT.filter(tinkerMoveOk);
+const TINKER_MASTER = () => WEAPON_MOVES_MASTER.filter(tinkerMoveOk);
+function openTinkerModify(p, onDone){
+  const lvl = parseInt(p.level)||1, canMaster = lvl >= 30;
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    "Extended Action, once a day. Pick the Weapon Move(s) the scrap weapon now grants — the new pick REPLACES the old one."
+    + (canMaster ? " At Level 30+ you may take an Adept and a Master Move, but then it can't hold an item." : " A Master Move needs Level 30.")));
+  const mk = (label, list, cur) => {
+    const sel = el("select",{style:"padding:4px 6px;margin-left:6px"});
+    sel.append(el("option",{value:""}, "\u2014 none \u2014"));
+    list.forEach(n => { const m = moveByName.get(n.toLowerCase());
+      sel.append(el("option",{value:n,selected:cur===n}, m ? `${n} \u00b7 ${m.frequency||""}` : n)); });
+    body.append(el("div",{class:"inline",style:"margin:6px 0;align-items:center"}, el("b",{}, label), sel));
+    return sel;
+  };
+  const adept = mk("Adept Move", TINKER_ADEPT(), p.tinker?.adept || "");
+  const master = canMaster ? mk("Master Move", TINKER_MASTER(), p.tinker?.master || "") : null;
+  modal({title:`\u{1F527} ${p.nickname||p.species} \u2014 Modify the Tinker weapon`, bodyNode:body, footNodes:[
+    el("button",{onclick:()=>{
+      if(!adept.value){ toast("Pick an Adept Weapon Move first."); return; }
+      const key = useKey("cap","Tinker"), fq = capabilityFreq("Tinker"), max = freqInfo(fq).max || 1;
+      if(usesLeft(p, key, max) <= 0){ toast("Already modified today \u2014 End the Day first (or tap the pip back to override)."); return; }
+      p.uses = p.uses || {}; p.uses[key] = (p.uses[key]||0) + 1;
+      p.tinker = { adept:adept.value, master: master && master.value || "", steel: !!(p.tinker && p.tinker.steel) };
+      closeModal(); toast(`\u{1F527} Weapon modified: ${[p.tinker.adept, p.tinker.master].filter(Boolean).join(" + ")}`);
+      onDone();
+    }},"Modify (Extended Action)"),
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel")]});
+}
+function tinkerCard(p, sp, rerender, persist){
+  if(!hasTinker(p)) return null;
+  const commit = () => { (persist||save)(); (rerender||(()=>refreshMon(p)))(); };
+  const tk = p.tinker || {};
+  const card = el("div",{class:"card"});
+  const uc = usesControl(p, "cap", "Tinker", capabilityFreq("Tinker"), rerender, persist);
+  card.append(el("h3",{},"\u{1F527} Tinker", uc ? el("span",{style:"margin-left:8px"}, uc) : ""));
+  card.append(el("div",{class:"small muted"},
+    "A scrap weapon that is part of the user (can't be Knocked Off or Tricked, takes no Held Item slot). Once a day, as an Extended Action, modify it to grant Weapon Moves."));
+  const mv = tinkerMoves(p);
+  if(mv.length) card.append(el("div",{class:"small",style:"margin-top:6px"},
+    "Grants: ", ...mv.map(n => el("b",{style:"margin-right:8px"}, n))));
+  else card.append(el("div",{class:"small muted",style:"margin-top:6px"}, "Not modified yet."));
+  if(tk.master && (parseInt(p.level)||1) >= 30)
+    card.append(el("div",{class:"small",style:"margin-top:4px;color:var(--accent)"}, "\u26A0 Master modification \u2014 no Held Item effects while it lasts."));
+  const cb = el("input",{type:"checkbox"}); cb.checked = !!tk.steel;
+  cb.addEventListener("change",()=>{ p.tinker = Object.assign({adept:"",master:""}, p.tinker||{}, {steel:cb.checked}); commit(); });
+  card.append(el("label",{class:"inline small",style:"gap:6px;margin-top:6px;align-items:center"}, cb, "Make its Weapon Moves Steel-Type"));
+  card.append(el("button",{class:"btn-secondary",style:"margin-top:8px",
+    onclick:()=>openTinkerModify(p, commit)}, "\u{1F527} Modify the weapon \u2014 Extended Action"));
+  return card;
+}
 function illusionCard(p, sp, rerender, persist){
   if(!hasAbility(p,"Illusion")) return null;
   const commit = () => { (persist||save)(); (rerender||(()=>refreshMon(p)))(); };
@@ -25154,8 +25319,11 @@ function transformTargets(p){
   };
   // the Map is cloud-only and may not be up at all — never let a missing board break the Move
   try{
-    const map = activeMap();
+    /* the map the viewer is actually LOOKING at — a player sees only the pushed map, so listing the
+       GM's most-recently-opened map would name creatures from a scene they haven't reached */
+    const map = currentMapForView();
     if(map) mapTokensFor(map.id).forEach(t=>{
+      if(!cloud.isGM && t.gmHidden) return;          // a hidden token is not "standing there" to a player
       const info = tokenHp(t);
       if(info && info.obj && info.obj.species) push(info.obj, "on the map");
     });
@@ -26387,7 +26555,7 @@ function openMoveRoll(p, m, sp, opts={}){
       accLine.append(el("div",{style:`font-size:24px;font-weight:800;color:var(--${connected?"good":"bad"})`},
         `🎯 ${connected} / ${nAcc} strike${connected===1?"":"s"} connected`));
       accLine.append(el("div",{class:"small muted",style:"margin-top:2px"},
-        `vs AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote} ${targetEva} = ${thresh} → ${strikeReadout(strikes)}`));
+        `vs AC${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote} → ${strikeReadout(strikes)}`));
       if(accBits.length) accLine.append(el("div",{class:"small muted"}, `Each roll includes ${accBits.join(" ")}.`));
       if(forced) accLine.append(el("div",{class:"small muted"}, `Hit count manually overridden to ${connected}.`));
       if(isCrit) accLine.append(el("div",{style:"font-size:20px;font-weight:800;color:var(--bad);margin-top:2px"},
@@ -26570,7 +26738,7 @@ function openMoveRoll(p, m, sp, opts={}){
             atkExploit: exploitAbilityBonus(p), atkMega: isMegaMon(p), atkWar: ownerAuraActive(p,"War"), seFlat: heldSeFlatDamage(p),
             pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS || unawareMode(p), moveRule, critExtra, fx: hitFx,
             ctx:{ attacker:p, by:rollerName(p), melee:/melee/i.test(String((m && m.range) || "")), move:m.name, crit:!!isCrit },
-            onDealt:(n)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n, true); } });
+            onDealt:(n, c, d)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n, true, d); } });
           if(tw) dmgLine.append(tw);
         }
         /* …and into the GM's feed, carrying the same numbers, so they can drop this hit on a token
@@ -26584,7 +26752,7 @@ function openMoveRoll(p, m, sp, opts={}){
                  pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens") || !!(mold && mold.tinted),
                  atkExploit: exploitAbilityBonus(p), atkMega: isMegaMon(p), atkWar: ownerAuraActive(p,"War"), seFlat: heldSeFlatDamage(p),
                  pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS || unawareMode(p), moveRule, critExtra, fx: hitFx,
-                 ctx:{ by:rollerName(p), melee:/melee/i.test(String((m && m.range) || "")), move:m.name, crit:!!isCrit } } : null });
+                 ctx:{ by:rollerName(p), aid:p.id || null, melee:/melee/i.test(String((m && m.range) || "")), move:m.name, crit:!!isCrit } } : null });
       }
       out.append(dmgLine);
       if(ancestral && (isPhys||isSpec)){ const an = ancestralStrikeNode(); if(an) out.append(an); }
@@ -27157,6 +27325,8 @@ function renderPokemonMoves(root, team){
   }
   const ilc = illusionCard(p, sp, renderBattle);
   if(ilc) root.append(ilc);
+  const tkc = tinkerCard(p, sp, renderBattle);
+  if(tkc) root.append(tkc);
   root.append(el("div",{class:"small muted",style:"padding:0 4px"},"Other action types are in the tabs above — Standard, Shift, Swift, Free, Full."));
 }
 /* A Feature's frequency encodes its action type after the "-" (e.g. "1 AP - Free Action",
@@ -38434,6 +38604,8 @@ function encounterMonCard(enc, p, list, trainer){
   // a GM-run Zorua disguises itself from here, exactly as a player's does from the Play tab
   const encIll = illusionCard(p, sp, renderEncounters, saveEnc);
   if(encIll) card.append(encIll);
+  const encTk = tinkerCard(p, sp, renderEncounters, saveEnc);
+  if(encTk) card.append(encTk);
   // …and a GM-run Ditto shows what it copied, with the Free Action that drops it
   if(p.transform) card.append(el("div",{class:"inline",style:"margin-top:8px;gap:8px;align-items:center;flex-wrap:wrap"},
     el("span",{class:"statuschip on",style:"padding:2px 8px;font-size:11px;cursor:default"},
@@ -51238,6 +51410,39 @@ function critImmunityOf(o){
   const have = new Set(ownerAbilityNames(o));
   return CRIT_IMMUNE_ABILITIES.find(a => have.has(a.toLowerCase())) || null;
 }
+/* ===================================================================
+   LIFE-STEAL MOVES PAY OUT WHEN THE HIT LANDS
+   -------------------------------------------------------------------
+   Draining Kiss, Giga Drain, Drain Punch, Leech Life, Horn Leech, Oblivion Wing...: "the user gains HP
+   equal to half of the damage dealt". The 💥 Apply already knows exactly what each target lost (after
+   Defense, the matchup and DR), so the user's share is handed back in the SAME press instead of waiting
+   for a second tap on the Hit Points card. Works from the roll window (ctx.attacker is the live
+   creature) and from the GM's feed (the logged ctx only carries `aid`, the creature's id, so the
+   attacker is found on the board). Clauses with an "only if..." condition stay manual.
+=================================================================== */
+async function autoDrainAttacker(ctx, dealt){
+  if(!ctx || !ctx.move || !(dealt > 0)) return null;
+  const m = moveByName.get(String(ctx.move).toLowerCase());
+  if(!m) return null;
+  const rows = moveHPEffects(m).filter(e => e.kind === "drain" && e.who === "user" && e.of === "dealt" && !e.cond);
+  if(!rows.length) return null;
+  const map = currentMapForView() || activeMap();
+  const toks = map ? mapTokensFor(map.id) : [];
+  const objOf = t => { try{ const L = t.link ? tokenLinked(t) : null; return (L && !L.missing) ? L.obj : null; }catch(e){ return null; } };
+  let obj = ctx.attacker || null, tok = null;
+  if(obj) tok = toks.find(t => objOf(t) === obj) || null;
+  else if(ctx.aid){
+    tok = toks.find(t => { const o = objOf(t); return !!o && o.id === ctx.aid; }) || null;
+    obj = tok ? objOf(tok) : null;
+  }
+  if(!obj || hasStatus(obj, "knockedOut") || hasStatus(obj, "dead")) return null;
+  let n = rows.reduce((sum, e) => sum + hpFractionOf(dealt, e), 0);
+  const bigRoot = hpHasHeld(obj, "bigroot");
+  if(bigRoot) n *= 2;                                         // Big Root: an HP-stealing Move gives back double
+  const moved = ownerHPChange(obj, n);
+  if(tok) await commitTokenSource(tok); else save();
+  return { who: ownerLabel(obj), n, moved, bigRoot };
+}
 function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, moveRule=null, seFlat=0, critExtra=0, fx=null, onDealt=null, ctx=null }){
   // a Move whose own rules bend the matchup (MOVE_TARGET_RULES) travels with the hit, and its
   // immunity clause folds into the same pierce switch every other source uses
@@ -51426,7 +51631,16 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
         const rx = reactionsNode(it.t, br, ctx, felled); if(rx) line.append(rx); }
       out.append(line);
     }
-    if(onDealt) onDealt(dealtTotal, chosen.length);              // drain / Recoil now have their real number
+    /* life-steal Moves: the user's share comes back in this same press */
+    let drained = null;
+    try{ drained = await autoDrainAttacker(ctx, dealtTotal); }catch(e){ console.error("auto drain", e); }
+    if(drained){
+      out.append(el("div",{class:"small",style:"color:var(--good);font-weight:700;margin:4px 0"},
+        `\u{1F9DB} ${drained.who} drains ${drained.moved >= 0 ? "+" : ""}${drained.moved} HP from the ${dealtTotal} dealt`
+        + (drained.bigRoot ? " (Big Root: doubled)" : "") + (drained.moved < drained.n ? " \u2014 already at full" : "") + "."));
+      toast(`\u{1F9DB} ${drained.who} +${drained.moved} HP (drained)`);
+    }
+    if(onDealt) onDealt(dealtTotal, chosen.length, !!drained);   // drain / Recoil now have their real number
     undoBtn.style.display = "";                                 // …and offer to take it straight back
     draw();                                                     // refresh HP labels + select-all state
   };
@@ -52131,6 +52345,8 @@ function openTokenMenu(token, map){
         const redraw = async()=>{ await commitTokenSource(token); reopenTokenMenu(token, map); };
         const ilc = illusionCard(p, sp, redraw, ()=>{});
         if(ilc) wrap.append(ilc);
+        const tkc = tinkerCard(p, sp, redraw, ()=>{});
+        if(tkc) wrap.append(tkc);
         if(p.transform) wrap.append(el("div",{class:"inline",style:"margin-top:12px;gap:8px;align-items:center;flex-wrap:wrap"},
           el("span",{class:"statuschip on",style:"padding:2px 8px;font-size:11px;cursor:default"},
             `🌀 TRANSFORMED — ${p.transform.label}`),
