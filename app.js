@@ -25363,6 +25363,10 @@ function tinkerMoves(p){
   if(tk.master && (parseInt(p.level)||1) >= 30) out.push(tk.master);
   return out;
 }
+/* "Weapon Moves never gain STAB" (Core p.286 / the Tinker note) */
+function isTinkerWeaponMove(p, m){
+  return !!(m && tinkerMoves(p).some(n => String(n).toLowerCase() === String(m.name||"").toLowerCase()));
+}
 function tinkerSteel(p, m){
   const tk = p && p.tinker;
   return !!(tk && tk.steel && m && tinkerMoves(p).some(n => String(n).toLowerCase() === String(m.name||"").toLowerCase()));
@@ -25398,13 +25402,16 @@ function openTinkerModify(p, onDone){
   };
   const adept = mk("Adept Move", TINKER_ADEPT(), p.tinker?.adept || "");
   const master = canMaster ? mk("Master Move", TINKER_MASTER(), p.tinker?.master || "") : null;
+  const steelCb = el("input",{type:"checkbox"}); steelCb.checked = !!(p.tinker && p.tinker.steel);
+  body.append(el("label",{class:"inline",style:"gap:6px;margin-top:8px;align-items:center"}, steelCb,
+    "Make its Weapon Moves Steel-Type (Weapon Moves never gain STAB either way)"));
   modal({title:`\u{1F527} ${p.nickname||p.species} \u2014 Modify the Tinker weapon`, bodyNode:body, footNodes:[
-    el("button",{onclick:()=>{
+    el("button",{class:"btn-primary",onclick:()=>{
       if(!adept.value){ toast("Pick an Adept Weapon Move first."); return; }
       const key = useKey("cap","Tinker"), fq = capabilityFreq("Tinker"), max = freqInfo(fq).max || 1;
       if(usesLeft(p, key, max) <= 0){ toast("Already modified today \u2014 End the Day first (or tap the pip back to override)."); return; }
       p.uses = p.uses || {}; p.uses[key] = (p.uses[key]||0) + 1;
-      p.tinker = { adept:adept.value, master: master && master.value || "", steel: !!(p.tinker && p.tinker.steel) };
+      p.tinker = { adept:adept.value, master: master && master.value || "", steel: steelCb.checked };
       closeModal(); toast(`\u{1F527} Weapon modified: ${[p.tinker.adept, p.tinker.master].filter(Boolean).join(" + ")}`);
       onDone();
     }},"Modify (Extended Action)"),
@@ -25425,9 +25432,7 @@ function tinkerCard(p, sp, rerender, persist){
   else card.append(el("div",{class:"small muted",style:"margin-top:6px"}, "Not modified yet."));
   if(tk.master && (parseInt(p.level)||1) >= 30)
     card.append(el("div",{class:"small",style:"margin-top:4px;color:var(--accent)"}, "\u26A0 Master modification \u2014 no Held Item effects while it lasts."));
-  const cb = el("input",{type:"checkbox"}); cb.checked = !!tk.steel;
-  cb.addEventListener("change",()=>{ p.tinker = Object.assign({adept:"",master:""}, p.tinker||{}, {steel:cb.checked}); commit(); });
-  card.append(el("label",{class:"inline small",style:"gap:6px;margin-top:6px;align-items:center"}, cb, "Make its Weapon Moves Steel-Type"));
+  if(tk.steel && mv.length) card.append(el("div",{class:"small muted",style:"margin-top:4px"}, "Its Weapon Moves are Steel-Type. Weapon Moves never gain STAB."));
   card.append(el("button",{class:"btn-secondary",style:"margin-top:8px",
     onclick:()=>openTinkerModify(p, commit)}, "\u{1F527} Modify the weapon \u2014 Extended Action"));
   return card;
@@ -25712,7 +25717,8 @@ function openMoveRoll(p, m, sp, opts={}){
   /* Steelworker (Dhelmise): "calculates damage as if it was only Steel-Typed" — but its own Bonus
      clause restricts that to Steel-Type Moves originating from the Anchor, so it only fires
      alongside the Anchored toggle below (it does nothing for a Steel move thrown normally). */
-  const stab = (mtype && types.includes(mtype)) || (mtype==="Steel" && anchorOn && hasAbility(p, "Steelworker"));
+  const noStab = isTinkerWeaponMove(p, m);          // a Tinker's Weapon Moves never gain STAB
+  const stab = !noStab && ((mtype && types.includes(mtype)) || (mtype==="Steel" && anchorOn && hasAbility(p, "Steelworker")));
   /* Versatile (Tera Blast, Order Up, Redline): Physical or Special at the user's choice. It opens on
      whichever stat is bigger and is flipped from the roll window. */
   // Ancient Heritage (Researcher, Paleontology) makes every Ancient Power this Trainer's Pokémon uses Versatile
@@ -25840,7 +25846,7 @@ function openMoveRoll(p, m, sp, opts={}){
   const vanCtx = hasVanguard ? analyticContext(p) : null;
   const vanguardOn = opts.vanguard!=null ? !!opts.vanguard
                    : !!(vanCtx && vanCtx.readable && vanCtx.notActed);
-  const abilMods = abilityDamageMods(p, m, baseDB(), thresholds, {stab, abilStab:stab || abilityStabFor(p, mtype),
+  const abilMods = abilityDamageMods(p, m, baseDB(), thresholds, {stab, abilStab:stab || (!noStab && abilityStabFor(p, mtype)),
                                                                   mtype, isPhys, isSpec, fieryCrash:fcMode, analytic:analyticOn, vanguard:vanguardOn});
   // Effect Ranges as this roll actually resolves them — Fiery Crash adds/widens Burn on a Dash Move
   // that ends up Fire-Typed. Kept separate from `thresholds` so its own rider can't feed Sheer Force.
@@ -41866,7 +41872,7 @@ function simProfile(A, atk, cfg){
   const mtype  = fcMode==="fire" ? "Fire" : rawType;
   // Pokémon get STAB from their own Types; a Trainer only through Type Expertise (never on Struggle)
   const stab   = A.isT ? trainerStab(p, mtype, atk.struggle)
-                       : (!!mtype && monStabTypes(p).includes(mtype));
+                       : (!!mtype && !isTinkerWeaponMove(p, atk.m) && monStabTypes(p).includes(mtype));
   // Both add the Attack / Sp.Attack that matches the Move's class — a Trainer swinging a weapon
   // uses Attack (Core p.286), but a Special Move a Feature granted them uses Sp.Attack. Combat
   // Stages are applied on both sides here (`totals`/`eff`), same as the Defense they're measured
@@ -43295,7 +43301,7 @@ function moveRollFactsHTML(p, m, sp){
     // Fiery Crash opens on its +2 Damage Base, not on the Fire retype, so the Type is unaffected
     const mtype = typePick || fieldType || naturalType;
     const fc    = fieryCrashInfo(p, m, mtype);
-    const stab  = !!(mtype && types.includes(mtype));
+    const stab  = !!(mtype && types.includes(mtype)) && !isTinkerWeaponMove(p, m);
     const versatile = isVersatileMove(m);
     const versSpec  = versatile ? versatileDefaultSpec(d.eff.atk, d.eff.spatk) : false;
     const isPhys = versatile ? !versSpec : /phys/i.test(m.class||"");
