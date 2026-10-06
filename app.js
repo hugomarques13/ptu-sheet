@@ -7880,6 +7880,31 @@ function getByPath(path){ if(!path) return ""; return path.split(".").reduce((o,
    Router / tabs
 =================================================================== */
 let currentTab = "trainer";
+/* Remember where you were across a reload: tab, open Pokémon, which cloud sheet, scroll. Device-local.
+   Saving is held off (navReady) until the boot restore has run, otherwise the pre-connect local render —
+   which bounces cloud-only tabs like the Map to Pokémon — would overwrite what we are about to restore. */
+const NAV_KEY = "ptu_nav";
+let navReady = false;
+function saveNav(){
+  if(!navReady) return;
+  try{
+    localStorage.setItem(NAV_KEY, JSON.stringify({ tab:currentTab, mon:openMon||null,
+      char: mode==="cloud" ? cloud.activeId : null, campaign: mode==="cloud" ? cloud.campaign : null,
+      y: Math.round(window.scrollY||0) }));
+  }catch(e){}
+}
+function loadNav(){ try{ return JSON.parse(localStorage.getItem(NAV_KEY)||"null"); }catch(e){ return null; } }
+function restoreNav(nav){
+  navReady = true;
+  if(!nav || !nav.tab || !document.getElementById("view-"+nav.tab)) { render(); return; }
+  if(nav.mon) openMon = nav.mon;     // renderPokemon drops it again if that Pokémon is gone
+  switchTab(nav.tab);
+  if(nav.y && nav.tab!=="map") setTimeout(()=>window.scrollTo(0, nav.y), 150);
+}
+window.addEventListener("pagehide", saveNav);
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="hidden") saveNav(); });
+let navScrollT = null;
+window.addEventListener("scroll", ()=>{ clearTimeout(navScrollT); navScrollT = setTimeout(saveNav, 400); }, {passive:true});
 function switchTab(name){
   currentTab = name;
   $$(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab===name));
@@ -7930,6 +7955,7 @@ function render(){
   renderRollFeed();               // GM-only float, pinned over whichever tab is showing
   renderBlessingPops();           // everyone's float: the Blessings on the field and their uses left
   applyReadonlyLock();
+  saveNav();
 }
 /* lock the SHEET views when viewing a cloud character you can't edit. Reference, Battle, Map and PC
    are excluded: they aren't the active character's sheet and run their own permission models — the
@@ -46248,13 +46274,16 @@ async function cloudConnect(campaign, name, gmCode, silent, viewer){
     const mineRows = Object.values(cloud.byId).filter(ownsRow);
     const pick = mineRows.find(liveCharRow) || Object.values(cloud.byId).find(liveCharRow) || mineRows[0];
     cloud.activeId = pick ? pick.id : (Object.keys(cloud.byId)[0] || null);
-    updateCloudButton(); closeModal(); render();
+    const nav = !navReady ? bootNav : null;       // first connect after a reload: go back to where we were
+    if(nav && nav.campaign===cloud.campaign && nav.char && cloud.byId[nav.char] && liveCharRow(cloud.byId[nav.char])) cloud.activeId = nav.char;
+    updateCloudButton(); closeModal();
+    if(nav && nav.campaign===cloud.campaign) restoreNav(nav); else { navReady = true; render(); }
     migrateMapBgsToStorage();   // fire-and-forget: lift any legacy base64 map backgrounds into Storage
     migrateEncImagesToStorage();   // and any legacy base64 avatars/sprites baked into the encounters row
     migrateInlineImagesToStorage();   // …and the stragglers on the tokens row, the PC box and the sheets
     if(!silent) toast(`Connected to “${campaign}”${cloud.isGM?" as GM":""} ✓`);
   }catch(e){
-    console.error(e); mode="local";
+    console.error(e); mode="local"; navReady = true;
     // the `rev` column powers conflict-safe sync; if the one-time DB update wasn't applied, say so clearly
     if(e && (e.code==="42703" || /column .*rev.* does not exist/i.test(e.message||""))){
       toast("⚠ Database needs the one-time sync update — see SETUP-CLOUD.md (add the rev column + trigger)");
@@ -50539,10 +50568,50 @@ function noteSprite(token){
   return wrap;
 }
 function notePins(map){ return mapTokensFor(map.id).filter(isNoteToken); }
+/* A pin dropped at the middle of the view lands on the SAME square every time, so a second and third
+   pin used to sit exactly under the first and only the top one could be tapped. Every new pin now
+   takes the nearest square that has no pin on it. */
+function noteFreeCell(taken, x0, y0){
+  for(let r=0; r<40; r++) for(let dy=-r; dy<=r; dy++) for(let dx=-r; dx<=r; dx++){
+    if(Math.max(Math.abs(dx),Math.abs(dy))!==r) continue;
+    const x=x0+dx, y=y0+dy; if(x<0 || y<0) continue;
+    if(!taken.has(x+","+y)) return { x, y };
+  }
+  return { x:x0, y:y0 };
+}
+const noteCell = p => Math.round(p.x)+","+Math.round(p.y);
+function noteOverlaps(map){
+  const seen = new Set(); let n = 0;
+  notePins(map).forEach(p=>{ const k = noteCell(p); if(seen.has(k)) n++; else seen.add(k); });
+  return n;
+}
+/* Spread pins that share a square onto their own squares (the first one on a square stays put). */
+function tidyNotePins(map){
+  const taken = new Set();
+  notePins(map).forEach(p=>{
+    if(taken.has(noteCell(p))){ const c = noteFreeCell(taken, Math.round(p.x), Math.round(p.y)); p.x = c.x; p.y = c.y; }
+    taken.add(noteCell(p));
+  });
+  mapTokensSave(); renderMap();
+}
 async function addNotePin(map){
   await addToken(map, { note:true, size:1, glyph:"\u{1F4DD}", title:"", text:"", color:NOTE_COLORS[0] });
   const mine = notePins(map), t = mine[mine.length-1];
-  if(t) openNoteMenu(t, map);
+  if(t){
+    const taken = new Set(mine.filter(p=>p!==t).map(noteCell));
+    const c = noteFreeCell(taken, Math.round(t.x), Math.round(t.y)); t.x = c.x; t.y = c.y;
+    mapTokensSave(); renderMap();
+    openNotesPanel(map, t.id);
+  }
+}
+/* Pan the board so a pin is in the middle of the screen, and pulse it so it can be found. */
+function locateNote(map, p){
+  const vp = mapViewportSize(), st = mapStageSize(map), px = map.gridSize, sc = mapView.scale || 1;
+  mapView.panX = vp.w/2 - ((p.x+0.5)*px + st.originX)*sc;
+  mapView.panY = vp.h/2 - ((p.y+0.5)*px + st.originY)*sc;
+  renderMap();
+  setTimeout(()=>{ const n = document.querySelector(`.map-token[data-tid="${p.id}"]`);
+    if(n){ n.classList.add("note-ping"); setTimeout(()=>n.classList.remove("note-ping"), 2600); } }, 80);
 }
 /* Dashed lines between linked pins. GM-only and under the tokens, so a pin stays tappable. */
 function noteLinksOverlay(map, stageW, stageH, originX, originY){
@@ -50556,40 +50625,76 @@ function noteLinksOverlay(map, stageW, stageH, originX, originY){
   if(!lines.length) return null;
   return el("div",{class:"map-note-links", html:`<svg width="${stageW}" height="${stageH}" xmlns="http://www.w3.org/2000/svg">${lines.join("")}</svg>`});
 }
-function openNoteMenu(token, map){
+/* Tapping a pin, or the toolbar's Notes button, opens the same panel: EVERY note on this board as a
+   list, and the selected one open for editing underneath. */
+function openNoteMenu(token, map){ openNotesPanel(map, token && token.id); }
+function openNotesPanel(map, selId){
   if(!cloud.isGM) return;
+  const pins = notePins(map);
+  const token = pins.find(p=>p.id===selId) || null;
+  const reopen = id => { if(document.activeElement && document.activeElement.blur) document.activeElement.blur();
+                         closeModal(); openNotesPanel(map, id); };
   const body = el("div",{});
   body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
-    "GM-only \u2014 players never see this pin. Drag it to move it; tap it to come back here."));
-  const glyph = el("input",{type:"text",maxlength:4,value:token.glyph||"",style:"width:64px;text-align:center;font-size:18px",placeholder:"\u{1F4DD}"});
-  const title = el("input",{type:"text",value:token.title||"",placeholder:"e.g. Stairs 1F \u2192 2F",style:"flex:1;min-width:140px"});
-  glyph.addEventListener("change",()=>{ token.glyph=glyph.value.trim(); if(!token.glyph) delete token.glyph; mapTokensSave(); renderMap(); });
-  title.addEventListener("change",()=>{ token.title=title.value.trim(); if(!token.title) delete token.title; mapTokensSave(); renderMap(); });
-  body.append(el("div",{class:"inline",style:"gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap"},
-    el("span",{class:"small"},"Pin"), glyph, title));
-  const text = el("textarea",{rows:6,placeholder:"What is this? What does it do? Who can see it?",style:"width:100%;box-sizing:border-box;margin-bottom:8px"});
-  text.value = token.text||"";
-  text.addEventListener("change",()=>{ token.text=text.value; if(!token.text) delete token.text; mapTokensSave(); renderMap(); });
-  body.append(text);
-  const sw = el("div",{class:"inline",style:"gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center"}, el("span",{class:"small"},"Colour"));
-  NOTE_COLORS.forEach(c=>sw.append(el("button",{class:"note-swatch"+((token.color||NOTE_COLORS[0])===c?" on":""),style:`background:${c}`,
-    onclick:()=>{ token.color=c; mapTokensSave(); renderMap(); closeModal(); openNoteMenu(token,map); }})));
-  body.append(sw);
-  const others = notePins(map).filter(p=>p.id!==token.id);
-  const sel = el("select",{style:"max-width:100%"});
-  sel.append(el("option",{value:""},"\u2014 not linked \u2014"));
-  others.forEach(p=>sel.append(el("option",{value:p.id,selected:p.id===token.noteTo},
-    `${p.glyph||"\u{1F4DD}"} ${p.title||"(untitled)"}`)));
-  sel.addEventListener("change",()=>{
-    const prev = notePins(map).find(p=>p.id===token.noteTo);
-    if(prev && prev.noteTo===token.id) delete prev.noteTo;           // un-link the old partner too
-    if(sel.value){ token.noteTo = sel.value; const q = others.find(p=>p.id===sel.value); if(q) q.noteTo = token.id; }
-    else delete token.noteTo;
-    mapTokensSave(); renderMap(); });
-  body.append(el("label",{class:"field"}, el("span",{},"\u{1F517} Linked to (draws a dashed line \u2014 stairs, switch \u2192 gate)"), sel));
-  modal({title:`${token.glyph||"\u{1F4DD}"} ${token.title||"GM note"}`, bodyNode:body, guardMs:220, footNodes:[
-    el("button",{class:"btn-secondary danger",onclick:()=>{ closeModal();
-      notePins(map).forEach(p=>{ if(p.noteTo===token.id) delete p.noteTo; }); removeToken(token, map); }},"\u{1F5D1} Remove"),
+    "GM-only \u2014 players never see these. Tap a note to edit it, \u{1F4CD} to find it on the board, and drag a pin to move it."));
+  const list = el("div",{class:"note-list"});
+  if(!pins.length) list.append(el("div",{class:"small muted",style:"padding:8px"},
+    "No notes on this map yet. Press \uFF0B New note, then drag the pin to where it belongs."));
+  pins.forEach(p=>{
+    const c = p.color || NOTE_COLORS[0];
+    list.append(el("div",{class:"note-row"+(token && p.id===token.id ? " on" : "")},
+      el("button",{class:"note-row-main", onclick:()=>reopen(p.id)},
+        el("span",{class:"note-badge", style:`background:${c}`}, p.glyph || "\u{1F4DD}"),
+        el("span",{class:"note-row-txt"},
+          el("b",{}, p.title || "(untitled)"),
+          el("span",{class:"small muted"}, (p.text||"").replace(/\s+/g," ").slice(0,70)))),
+      el("button",{class:"btn-secondary", title:"Show this note on the board",
+        onclick:()=>{ closeModal(); locateNote(map, p); }}, "\u{1F4CD}")));
+  });
+  body.append(list);
+  const bar = el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;margin:8px 0 10px"});
+  bar.append(el("button",{class:"btn-secondary",onclick:async()=>{ closeModal(); await addNotePin(map); }},"\uFF0B New note"));
+  const ov = noteOverlaps(map);
+  if(ov) bar.append(el("button",{class:"btn-secondary",
+    title:"Some pins are sitting on top of each other \u2014 this gives each its own square.",
+    onclick:()=>{ tidyNotePins(map); reopen(selId); }}, `\u2728 Spread ${ov} stacked pin${ov>1?"s":""}`));
+  body.append(bar);
+
+  if(token){
+    const ed = el("div",{style:"border-top:1px dashed var(--line);padding-top:10px"});
+    const glyph = el("input",{type:"text",maxlength:4,value:token.glyph||"",style:"width:64px;text-align:center;font-size:18px",placeholder:"\u{1F4DD}"});
+    const title = el("input",{type:"text",value:token.title||"",placeholder:"e.g. Stairs 1F \u2192 2F",style:"flex:1;min-width:140px"});
+    glyph.addEventListener("change",()=>{ token.glyph=glyph.value.trim(); if(!token.glyph) delete token.glyph; mapTokensSave(); renderMap(); });
+    title.addEventListener("change",()=>{ token.title=title.value.trim(); if(!token.title) delete token.title; mapTokensSave(); renderMap(); });
+    ed.append(el("div",{class:"inline",style:"gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap"},
+      el("span",{class:"small"},"Pin"), glyph, title));
+    const text = el("textarea",{rows:5,placeholder:"What is this? What does it do?",style:"width:100%;box-sizing:border-box;margin-bottom:8px"});
+    text.value = token.text||"";
+    text.addEventListener("change",()=>{ token.text=text.value; if(!token.text) delete token.text; mapTokensSave(); renderMap(); });
+    ed.append(text);
+    const sw = el("div",{class:"inline",style:"gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center"}, el("span",{class:"small"},"Colour"));
+    NOTE_COLORS.forEach(c=>sw.append(el("button",{class:"note-swatch"+((token.color||NOTE_COLORS[0])===c?" on":""),style:`background:${c}`,
+      onclick:()=>{ token.color=c; mapTokensSave(); renderMap(); reopen(token.id); }})));
+    ed.append(sw);
+    const others = pins.filter(p=>p.id!==token.id);
+    const link = el("select",{style:"max-width:100%"});
+    link.append(el("option",{value:""},"\u2014 not linked \u2014"));
+    others.forEach(p=>link.append(el("option",{value:p.id,selected:p.id===token.noteTo}, `${p.glyph||"\u{1F4DD}"} ${p.title||"(untitled)"}`)));
+    link.addEventListener("change",()=>{
+      const prev = pins.find(p=>p.id===token.noteTo);
+      if(prev && prev.noteTo===token.id) delete prev.noteTo;           // un-link the old partner too
+      if(link.value){ token.noteTo = link.value; const q = others.find(p=>p.id===link.value); if(q) q.noteTo = token.id; }
+      else delete token.noteTo;
+      mapTokensSave(); renderMap(); });
+    ed.append(el("label",{class:"field"}, el("span",{},"\u{1F517} Linked to (draws a dashed line \u2014 stairs, switch \u2192 gate)"), link));
+    ed.append(el("div",{class:"inline",style:"gap:8px;margin-top:10px"},
+      el("button",{class:"btn-secondary",onclick:()=>{ closeModal(); locateNote(map, token); }},"\u{1F4CD} Show on board"),
+      el("button",{class:"btn-secondary danger",onclick:async()=>{
+        pins.forEach(p=>{ if(p.noteTo===token.id) delete p.noteTo; });
+        closeModal(); await removeToken(token, map); openNotesPanel(map); }},"\u{1F5D1} Remove this note")));
+    body.append(ed);
+  }
+  modal({title:`\u{1F4DD} GM notes (${pins.length})`, bodyNode:body, guardMs:220, footNodes:[
     el("button",{class:"btn-secondary",onclick:()=>{ if(document.activeElement && document.activeElement.blur) document.activeElement.blur(); closeModal(); }},"Close")]});
 }
 /* ---- The arena that closes in ---------------------------------------------------------------
@@ -54684,8 +54789,8 @@ function renderMap(){
           title:"Drop a visual hazard marker (Stealth Rock, Spikes, fire...) on the board -- cosmetic only, no automatic effect."},"☠ Hazard"),
         el("button",{class:"btn-secondary",onclick:()=>openAddZone(map),
           title:"Mark ground as Rough, Slow or Blocking Terrain. Slow ground doubles the metres a drag across it costs; Blocking ground stops a player's drag. Tick \u{1F441} Invisible when the terrain is already painted into the map art and you only want the rule."},"\u26F0 Terrain"),
-        el("button",{class:"btn-secondary",onclick:()=>addNotePin(map),
-          title:"Drop a GM-only note pin on the board \u2014 players never see it. Name it, write what it does, colour it, and link two pins (stairs, switch and gate) to draw a line between them."},"\u{1F4DD} Note"),
+        el("button",{class:"btn-secondary",onclick:()=>openNotesPanel(map),
+          title:"Drop a GM-only note pin on the board \u2014 players never see it. Name it, write what it does, colour it, and link two pins (stairs, switch and gate) to draw a line between them."},"\u{1F4DD} Notes"),
         el("button",{class:"btn-secondary"+(arenaOf(map)?" on":""),onclick:()=>openArenaDialog(map),
           title:"Frame a square arena and close it in a step at a time. The band outside the line becomes real terrain, so a wave can't be kited into the far corner of the board."},"\u{1F300} Arena"),
         mapWallDrawActive(map) ? null : wallBtn,
@@ -55061,7 +55166,11 @@ function openCloudPanel(){
    boot
 =================================================================== */
 applyTheme();
-render();
+const bootNav = loadNav();
+let bootHasCloud = false;
+try{ const cs = JSON.parse(localStorage.getItem("ptu_cloud_session")||"null"); bootHasCloud = !!(cs && cs.campaign && cs.name); }catch(e){}
+if(bootHasCloud){ render(); }          // cloud restore happens once the connection lands (cloudConnect)
+else restoreNav(bootNav);
 initCloud();
 
 /* Resync from the server whenever a cloud tab is resumed. A tab left open (desktop idle overnight,
