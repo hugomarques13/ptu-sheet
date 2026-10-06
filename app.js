@@ -49320,7 +49320,11 @@ function mapViewCenterCell(map, size){
   const r = vp.getBoundingClientRect(), px = map.gridSize, sz = size||1;
   const cbx = (r.width/2  - mapView.panX)/mapView.scale;      // viewport centre → stage base coords
   const cby = (r.height/2 - mapView.panY)/mapView.scale;
-  return { x: Math.max(0, Math.round(cbx/px - sz/2)), y: Math.max(0, Math.round(cby/px - sz/2)) };
+  /* A token's cell is measured from the board's ORIGIN, not from the stage's top-left corner: when a
+     map image reaches up or left of the corner the whole stage is shifted by (originX, originY), and
+     leaving that out dropped every new token that far down and right of where the GM was looking. */
+  const st = mapStageSize(map);
+  return { x: Math.round((cbx-st.originX)/px - sz/2), y: Math.round((cby-st.originY)/px - sz/2) };
 }
 /* Pokémon token footprint from species Size category (Core): Small/Medium = 1×1, Large = 2×2,
    Huge = 3×3, Gigantic = 4×4. Trainers, enemy trainers, and custom tokens have no Size category
@@ -50574,7 +50578,7 @@ function notePins(map){ return mapTokensFor(map.id).filter(isNoteToken); }
 function noteFreeCell(taken, x0, y0){
   for(let r=0; r<40; r++) for(let dy=-r; dy<=r; dy++) for(let dx=-r; dx<=r; dx++){
     if(Math.max(Math.abs(dx),Math.abs(dy))!==r) continue;
-    const x=x0+dx, y=y0+dy; if(x<0 || y<0) continue;
+    const x=x0+dx, y=y0+dy;
     if(!taken.has(x+","+y)) return { x, y };
   }
   return { x:x0, y:y0 };
@@ -50592,6 +50596,13 @@ function tidyNotePins(map){
     if(taken.has(noteCell(p))){ const c = noteFreeCell(taken, Math.round(p.x), Math.round(p.y)); p.x = c.x; p.y = c.y; }
     taken.add(noteCell(p));
   });
+  mapTokensSave(); renderMap();
+}
+/* Gather every pin around the middle of the current view -- for pins that were dropped somewhere off
+   the board, or just scattered. Linked pins keep their link; only positions change. */
+function gatherNotePins(map){
+  const pins = notePins(map), c = mapViewCenterCell(map, 1), taken = new Set();
+  pins.forEach(p=>{ const f = noteFreeCell(taken, c.x, c.y); p.x = f.x; p.y = f.y; taken.add(noteCell(p)); });
   mapTokensSave(); renderMap();
 }
 async function addNotePin(map){
@@ -50654,6 +50665,9 @@ function openNotesPanel(map, selId){
   body.append(list);
   const bar = el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;margin:8px 0 10px"});
   bar.append(el("button",{class:"btn-secondary",onclick:async()=>{ closeModal(); await addNotePin(map); }},"\uFF0B New note"));
+  if(pins.length) bar.append(el("button",{class:"btn-secondary",
+    title:"Move every note to the middle of what you're looking at right now \u2014 for notes that ended up off the board.",
+    onclick:()=>{ gatherNotePins(map); reopen(selId); }}, "\u{1F3AF} Bring all here"));
   const ov = noteOverlaps(map);
   if(ov) bar.append(el("button",{class:"btn-secondary",
     title:"Some pins are sitting on top of each other \u2014 this gives each its own square.",
