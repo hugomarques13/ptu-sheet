@@ -22778,7 +22778,7 @@ function forcedMove(map, token, dir, metres, opts){
   const im = !opts.ignoreImmune && pushImmunityFor(o);
   if(im){ out.stoppedBy = "immune"; out.why = im; return out; }
   if(!map || !dir || !wanted) return out;
-  const f = tokenFootprint(token), walls = mapWalls(map);
+  const f = tokenFootprint(token), walls = activeWalls(map);
   const others = mapTokensFor(map.id).filter(t => t.id !== token.id && tokenIsObstacle(t)
     && !(opts.skipIds && opts.skipIds.includes(t.id))
     && t.riding !== token.id && token.riding !== t.id);
@@ -49396,7 +49396,7 @@ function revealFootprint(set, cx, cy, span, r, map, spanY){
      sightline tested here starts at the footprint centre and ends at a cell centre, so all of them
      live inside the reveal box — a wall whose own bounding box misses that box cannot cross any of
      them. Filtering on that first is exact, not an approximation. */
-  const allWalls = map ? mapWalls(map) : null;
+  const allWalls = map ? activeWalls(map) : null;
   let walls = allWalls;
   if(allWalls && allWalls.length){
     const bx0 = cx-ri-0.5, bx1 = x1+ri+0.5, by0 = cy-ri-0.5, by1 = y1+ri+0.5;
@@ -49456,8 +49456,8 @@ function nearestWall(map, gx, gy, maxDist){
 let mapWallDraw = { on:false, mapId:null, pending:null };
 function mapWallDrawActive(map){ return !!(mapWallDraw.on && map && mapWallDraw.mapId===map.id); }
 function toggleMapWallDraw(map){
-  mapWallDraw = mapWallDrawActive(map) ? { on:false, mapId:map.id, pending:null }
-                                        : { on:true,  mapId:map.id, pending:null };
+  mapWallDraw = mapWallDrawActive(map) ? { on:false, mapId:map.id, pending:null, gate:null }
+                                        : { on:true,  mapId:map.id, pending:null, gate:null };
   if(mapWallDraw.on){ mapSelect = { on:false, mapId:map.id, ids:new Set() };   // tap-modes are exclusive
                        mapMount  = { on:false, mapId:map.id, riderId:null };
                        mapFogPaint.on = false; }
@@ -49466,7 +49466,7 @@ function toggleMapWallDraw(map){
 async function clearMapWalls(map){
   if(!mapWalls(map).length) return;
   if(!confirm("Remove every wall on this map?")) return;
-  map.walls = []; mapWallDraw.pending = null;
+  map.walls = []; map.gates = {}; mapWallDraw.pending = null;
   mapMetaSave(); renderMap();
 }
 /* intercepts clicks on the stage background while wall-draw mode is on, before they reach
@@ -49489,7 +49489,7 @@ function attachWallDraw(stage, viewport, map, originX, originY){
     const gx = Math.round(gx0), gy = Math.round(gy0);
     if(!mapWallDraw.pending){ mapWallDraw.pending = {x:gx,y:gy}; renderMap(); return; }
     const p = mapWallDraw.pending; mapWallDraw.pending = null;
-    if(p.x!==gx || p.y!==gy){ mapWalls(map).push({id:uid(), x1:p.x, y1:p.y, x2:gx, y2:gy}); mapMetaSave(); }
+    if(p.x!==gx || p.y!==gy){ mapWalls(map).push({id:uid(), x1:p.x, y1:p.y, x2:gx, y2:gy, ...(mapWallDraw.gate ? { gate:mapWallDraw.gate } : {})}); mapMetaSave(); }
     renderMap();
   });
 }
@@ -49498,10 +49498,95 @@ function wallsOverlay(map, stageW, stageH, originX, originY){
   const walls = mapWalls(map), pending = mapWallDrawActive(map) ? mapWallDraw.pending : null;
   if(!walls.length && !pending) return null;
   const px = map.gridSize;
-  const lines = walls.map(w=>`<line x1="${w.x1*px+originX}" y1="${w.y1*px+originY}" x2="${w.x2*px+originX}" y2="${w.y2*px+originY}" stroke="#ff3b3b" stroke-width="3" stroke-linecap="round" opacity="0.85"/>`).join("");
+  /* plain walls are red; a gate is orange while SHUT (it blocks) and a faint dashed green while OPEN */
+  const lines = walls.map(w=>{
+    const g = w.gate, open = !!g && gateOpen(map, g);
+    const stroke = !g ? "#ff3b3b" : open ? "#2fa36b" : "#ff9f1c";
+    const x1 = w.x1*px+originX, y1 = w.y1*px+originY, x2 = w.x2*px+originX, y2 = w.y2*px+originY;
+    let out = `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${g&&!open?5:3}" stroke-linecap="round"${open?' stroke-dasharray="4 7"':""} opacity="${open?0.6:0.88}"/>`;
+    if(g) out += `<text x="${(x1+x2)/2}" y="${(y1+y2)/2-7}" text-anchor="middle" font-size="13" font-weight="800" fill="${stroke}" stroke="#000" stroke-width="3" paint-order="stroke">${String(g).replace(/[<>&]/g,"")}</text>`;
+    return out;
+  }).join("");
   const dot = pending ? `<circle cx="${pending.x*px+originX}" cy="${pending.y*px+originY}" r="5" fill="#ff3b3b"/>` : "";
   return el("div",{class:"map-walls",style:`position:absolute;left:0;top:0;width:${stageW}px;height:${stageH}px;pointer-events:none`,
     html:`<svg width="100%" height="100%" style="overflow:visible">${lines}${dot}</svg>`});
+}
+
+/* ---- Gates: walls the GM can open and shut with one button ---------------------------------------
+     A gate is an ordinary wall carrying `gate:"<group name>"`. Every wall in a group is open or shut
+     together, and the state lives on the map as `map.gates = { "<group>": true when OPEN }`, so it
+     rides the same meta row the walls do. activeWalls() is the ONE list the rules read -- fog sight,
+     a player's drag and forced movement all use it, so a shut gate stops all three and an open one
+     is simply not there. mapWalls() is still every wall, for drawing and deleting.
+     "⇄ Flip all gates" swaps every group at once, which is the Pokémon Mansion's statue puzzle: draw
+     one group that starts shut and one that starts open, and each switch press flips the building. */
+function gateOpen(map, name){ return !!(map && map.gates && map.gates[name]); }
+function activeWalls(map){
+  const all = mapWalls(map);
+  return all.some(w=>w.gate) ? all.filter(w=>!w.gate || !gateOpen(map, w.gate)) : all;
+}
+function gateGroups(map){
+  const names = new Set(Object.keys(map.gates || {}));
+  mapWalls(map).forEach(w=>{ if(w.gate) names.add(w.gate); });
+  return [...names].sort();
+}
+function flipGates(map){
+  const names = gateGroups(map); if(!names.length) return;
+  if(!map.gates) map.gates = {};
+  names.forEach(n=>{ map.gates[n] = !gateOpen(map, n); });
+  mapMetaSave(); renderMap();
+  toast("\u{1F6AA} Gates flipped \u2014 " + names.map(n=>`${n}: ${gateOpen(map,n)?"open":"shut"}`).join(", "));
+}
+function setGate(map, name, open){
+  if(!map.gates) map.gates = {};
+  map.gates[name] = !!open; mapMetaSave(); renderMap();
+}
+function startGateDraw(map, name){
+  mapWallDraw = { on:true, mapId:map.id, pending:null, gate:name };
+  mapSelect = { on:false, mapId:map.id, ids:new Set() };      // tap-modes are exclusive
+  mapMount  = { on:false, mapId:map.id, riderId:null };
+  mapFogPaint.on = false;
+  renderMap();
+}
+function openGatesPanel(map){
+  if(!cloud.isGM) return;
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    "A gate is a wall that can be opened and shut. Each group opens and shuts together. While a gate is shut it blocks "
+    + "players' dragging, fog sight and pushes, just like a wall; open, it does nothing. Gates are only drawn for you."));
+  const names = gateGroups(map);
+  const list = el("div",{class:"note-list"});
+  if(!names.length) list.append(el("div",{class:"small muted",style:"padding:8px"},"No gate groups yet. Name one below and start drawing."));
+  names.forEach(n=>{
+    const open = gateOpen(map, n), count = mapWalls(map).filter(w=>w.gate===n).length;
+    list.append(el("div",{class:"note-row",style:"align-items:center;gap:6px;padding:4px 6px;flex-wrap:wrap"},
+      el("b",{style:"min-width:56px"}, n),
+      el("span",{class:"small muted",style:"flex:1"}, `${count} wall${count===1?"":"s"}`),
+      el("button",{class:"btn-secondary"+(open?"":" on"),title:"Open or shut just this group",
+        onclick:()=>{ setGate(map, n, !open); closeModal(); openGatesPanel(map); }}, open ? "\u{1F7E2} Open" : "\u{1F512} Shut"),
+      el("button",{class:"btn-secondary",title:"Tap two points on the board to add a wall to this group",
+        onclick:()=>{ closeModal(); startGateDraw(map, n); }}, "\u270F Draw"),
+      el("button",{class:"btn-secondary danger",title:"Delete this group and all its walls",
+        onclick:()=>{ if(!confirm(`Delete gate group "${n}" and its ${count} wall(s)?`)) return;
+          map.walls = mapWalls(map).filter(w=>w.gate!==n); if(map.gates) delete map.gates[n];
+          mapMetaSave(); renderMap(); closeModal(); openGatesPanel(map); }}, "\u{1F5D1}")));
+  });
+  body.append(list);
+  const nameIn = el("input",{type:"text",maxlength:12,placeholder:"name, e.g. A",value:names.length ? "" : "A",style:"width:110px"});
+  const startOpen = el("input",{type:"checkbox"});
+  body.append(el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0"},
+    nameIn,
+    el("label",{class:"inline",style:"display:flex;gap:6px;align-items:center;cursor:pointer"}, startOpen, el("span",{class:"small"},"starts open")),
+    el("button",{class:"btn-secondary",onclick:()=>{
+      const n = nameIn.value.trim(); if(!n) return nameIn.focus();
+      setGate(map, n, startOpen.checked); closeModal(); startGateDraw(map, n); }}, "\uFF0B New group & draw")));
+  if(names.length) body.append(el("div",{style:"margin-bottom:6px"},
+    el("button",{class:"btn-secondary",title:"Swap every group: shut ones open, open ones shut",
+      onclick:()=>{ flipGates(map); closeModal(); openGatesPanel(map); }}, "\u21C4 Flip all gates")));
+  body.append(el("div",{class:"small muted"},
+    "Pok\u00e9mon Mansion: make group A (starts shut) and group B (starts open). Every statue switch is then one press of \u21C4 Flip all gates. "
+    + "The same button is on the toolbar while the board has any gate."));
+  modal({title:"\u{1F6AA} Gates", bodyNode:body, guardMs:220, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
 }
 
 function mapFogData(){ ensureMapFog(); return cloud.mapFog.data.fog || (cloud.mapFog.data.fog={}); }
@@ -51939,7 +52024,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
         if(map.gridOn){ nx = Math.round(nx/px)*px; ny = Math.round(ny/px)*px; }   // snap to cells live
         let cx = Math.round((nx-originX)/px), cy = Math.round((ny-originY)/px);
         const stepped = (cx!==c.pathX || cy!==c.pathY);
-        if(stepped && ((wallGated && wallsBlockLOS(mapWalls(map), c.pathX+0.5, c.pathY+0.5, cx+0.5, cy+0.5))
+        if(stepped && ((wallGated && wallsBlockLOS(activeWalls(map), c.pathX+0.5, c.pathY+0.5, cx+0.5, cy+0.5))
                        || (zoneGated && terrainAt(map, cx, cy).block))){
           // stuck at the wall (or against Blocking Terrain) — hold at the last reachable cell
           cx = c.pathX; cy = c.pathY; nx = cx*px+originX; ny = cy*px+originY;
@@ -54776,13 +54861,15 @@ function renderMap(){
         el("button",{class:"btn-secondary"+(meta.battleOn?" on":""),onclick:()=>toggleBattle(map),
           title:"Track how far each token moves per round (diagonals cost 2)"}, meta.battleOn?"⚔ Battle on":"⚔ Battle off"));
       if(meta.battleOn) bar.append(el("button",{class:"btn-secondary",onclick:()=>newRound(map),title:"Reset every token's movement for a new round"},"↺ New round"));
+      if(mapWalls(map).some(w=>w.gate)) bar.append(el("button",{class:"btn-secondary",onclick:()=>flipGates(map),
+        title:"Open every shut gate and shut every open one (a statue switch)"}, "\u{1F6AA} Flip gates"));
       /* The board modes. Each is built once so the same node can sit either on the bar (while its
          mode is live) or down in the drawer (while it isn't) — never in both places. */
       const imgEditBtn = el("button",{class:"btn-secondary"+(mapImgEdit?" on":""),onclick:()=>{ mapImgEdit=!mapImgEdit; renderMap(); },
         title:"Move/resize/layer the map images"}, mapImgEdit?"🖼 Editing images":"🖼 Edit images");
       const wallBtn = el("button",{class:"btn-secondary"+(mapWallDrawActive(map)?" on":""),onclick:()=>toggleMapWallDraw(map),
         title:"Tap two points to draw a wall segment that blocks fog from spreading through it; tap an existing wall to remove it"},
-        mapWallDrawActive(map)?"🧱 Drawing walls…":"🧱 Walls");
+        mapWallDrawActive(map)?(mapWallDraw.gate?`\u{1F6AA} Drawing gate ${mapWallDraw.gate}\u2026`:"🧱 Drawing walls…"):"🧱 Walls");
       const liveModes = [mapMountActive(map) ? mountBtn : null, mapImgEdit ? imgEditBtn : null,
         mapWallDrawActive(map) ? wallBtn : null].concat(fogPaintBtns.filter(b=>b.classList.contains("on"))).filter(Boolean);
       if(liveModes.length) bar.append(el("span",{class:"map-sep"}), ...liveModes);
@@ -54808,6 +54895,8 @@ function renderMap(){
         el("button",{class:"btn-secondary"+(arenaOf(map)?" on":""),onclick:()=>openArenaDialog(map),
           title:"Frame a square arena and close it in a step at a time. The band outside the line becomes real terrain, so a wave can't be kited into the far corner of the board."},"\u{1F300} Arena"),
         mapWallDrawActive(map) ? null : wallBtn,
+        el("button",{class:"btn-secondary",onclick:()=>openGatesPanel(map),
+          title:"Walls that open and shut on a button \u2014 doors, laser barriers, a puzzle's gates."}, "\u{1F6AA} Gates"),
         mapWalls(map).length ? el("button",{class:"btn-secondary",onclick:()=>clearMapWalls(map)},"🗑 Clear walls") : null,
         el("button",{class:"btn-secondary",onclick:()=>clearMapTokens(map)},"Clear tokens"));
       // — Fog group (drawer): hand-painting fog, minus whichever brush is currently running —
