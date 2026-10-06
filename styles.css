@@ -302,8 +302,8 @@ textarea{resize:vertical; min-height:64px}
 .gender-icon.gender-f{color:#ec4899}
 .gender-icon.gender-n{color:var(--muted)}
 /* Flanked marker on a map token (see tokenFlanking) */
-.map-token .tk-flank{position:absolute; left:-2px; top:-2px; font-size:11px; line-height:1;
-  background:var(--bad); color:#fff; border-radius:4px; padding:1px 3px; font-weight:800; pointer-events:none; z-index:4}
+.map-token .tk-flank{position:absolute; left:calc(-2px * var(--tku,1)); top:calc(-2px * var(--tku,1)); font-size:calc(11px * var(--tku,1)); line-height:1;
+  background:var(--bad); color:#fff; border-radius:calc(4px * var(--tku,1)); padding:calc(1px * var(--tku,1)) calc(3px * var(--tku,1)); font-weight:800; pointer-events:none; z-index:4}
 .hero-hp{margin-top:8px}
 .pcard .pc-body{display:flex; gap:10px; align-items:center}
 .pcard .pc-body .pc-main{flex:1; min-width:0}
@@ -523,7 +523,7 @@ body.map-mode .map-viewport{flex:1 1 auto; height:auto; min-height:0; border-rad
   background-image:linear-gradient(to right,rgba(128,128,128,.35) 1px,transparent 1px),
     linear-gradient(to bottom,rgba(128,128,128,.35) 1px,transparent 1px)}
 .map-token{position:absolute; box-sizing:border-box; border-radius:50%; overflow:visible;
-  border:2.5px solid var(--accent); background:var(--panel);
+  border:calc(2.5px * var(--tku,1)) solid var(--accent); background:var(--panel);
   box-shadow:0 2px 6px rgba(0,0,0,.4); touch-action:none; cursor:pointer}
 .map-token.editable{cursor:grab}
 .map-token.editable:active{cursor:grabbing}
@@ -597,8 +597,8 @@ body.map-mode .map-viewport{flex:1 1 auto; height:auto; min-height:0; border-rad
   font-size:min(2.2vmin,15px); line-height:1; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.6); overflow:hidden}
 .map-token.note-token .tk-notewrap{position:absolute; inset:0; overflow:visible; pointer-events:none}
 .map-token.note-token .tk-notecard{position:absolute; left:calc(100% - 4px); top:8%; width:max-content; max-width:190px;
-  padding:4px 7px; border-radius:6px; border-left:4px solid #888; background:rgba(16,16,22,.88); color:#fff;
-  font-size:11px; line-height:1.25; text-align:left; box-shadow:0 1px 5px rgba(0,0,0,.5)}
+  padding:calc(4px * var(--tku,1)) calc(7px * var(--tku,1)); border-radius:calc(6px * var(--tku,1)); border-left:calc(4px * var(--tku,1)) solid #888; background:rgba(16,16,22,.88); color:#fff;
+  font-size:calc(11px * var(--tku,1)); line-height:1.25; text-align:left; box-shadow:0 1px 5px rgba(0,0,0,.5)}
 .map-token.note-token .tk-notecard-t{font-weight:800; margin-bottom:1px}
 .map-token.note-token .tk-notecard-b{white-space:pre-wrap; display:-webkit-box; -webkit-line-clamp:6; -webkit-box-orient:vertical; overflow:hidden}
 .map-note-links{position:absolute; left:0; top:0; pointer-events:none; z-index:0}
@@ -619,11 +619,11 @@ body.map-mode .map-viewport{flex:1 1 auto; height:auto; min-height:0; border-rad
    against, so the <img> gets a round wrapper; an unframed token keeps the bare <img> it always had. */
 .map-token .tk-imgbox{position:absolute; inset:0; border-radius:50%; overflow:hidden}
 .map-token .tk-imgbox .tk-img{width:100%; height:100%; border-radius:0}
-.map-token .tk-hpwrap{position:absolute; left:6%; right:6%; bottom:-7px; height:6px; display:flex;
-  background:var(--panel-2); border:1px solid var(--line); border-radius:5px; overflow:hidden}
+.map-token .tk-hpwrap{position:absolute; left:6%; right:6%; bottom:calc(-7px * var(--tku,1)); height:calc(6px * var(--tku,1)); display:flex;
+  background:var(--panel-2); border:calc(1px * var(--tku,1)) solid var(--line); border-radius:calc(5px * var(--tku,1)); overflow:hidden}
 /* player-side tokens drop the numeric HP; the bar sits low, just above the name label
    (name stays in its default spot just under the token) */
-.map-token.player-side .tk-hpwrap{bottom:-7px}
+.map-token.player-side .tk-hpwrap{bottom:calc(-7px * var(--tku,1))}
 .map-token .tk-hp{height:100%; background:var(--good); min-width:0}
 .map-token .tk-hp.mid{background:var(--warn)}
 .map-token .tk-hp.low{background:var(--bad)}
@@ -631,59 +631,59 @@ body.map-mode .map-viewport{flex:1 1 auto; height:auto; min-height:0; border-rad
 .map-token .tk-hp.temp{background:var(--temp);
   background-image:linear-gradient(135deg,rgba(255,255,255,.32) 25%,transparent 25%,transparent 50%,
                    rgba(255,255,255,.32) 50%,rgba(255,255,255,.32) 75%,transparent 75%);
-  background-size:5px 5px; box-shadow:inset 1px 0 0 rgba(0,0,0,.35)}
+  background-size:calc(5px * var(--tku,1)) calc(5px * var(--tku,1)); box-shadow:inset 1px 0 0 rgba(0,0,0,.35)}
 .map-token .tk-hpnum.has-temp{color:var(--temp)}
-.map-token .tk-name{position:absolute; top:calc(100% + 3px); left:50%; transform:translateX(-50%);
-  white-space:nowrap; font-size:7px; font-weight:700; color:var(--ink); opacity:.72;
-  background:var(--panel); border:1px solid var(--line); border-radius:7px; padding:0 4px; pointer-events:none}
-.map-token .tk-hpnum{position:absolute; top:-8px; left:50%; transform:translateX(-50%);
-  font-size:6.5px; font-weight:700; color:var(--muted); background:var(--panel); opacity:.72;
-  border-radius:5px; padding:0 3px; pointer-events:none}
+.map-token .tk-name{position:absolute; top:calc(100% + calc(3px * var(--tku,1))); left:50%; transform:translateX(-50%);
+  white-space:nowrap; font-size:calc(7px * var(--tku,1)); font-weight:700; color:var(--ink); opacity:.72;
+  background:var(--panel); border:calc(1px * var(--tku,1)) solid var(--line); border-radius:calc(7px * var(--tku,1)); padding:0 calc(4px * var(--tku,1)); pointer-events:none}
+.map-token .tk-hpnum{position:absolute; top:calc(-8px * var(--tku,1)); left:50%; transform:translateX(-50%);
+  font-size:calc(6.5px * var(--tku,1)); font-weight:700; color:var(--muted); background:var(--panel); opacity:.72;
+  border-radius:calc(5px * var(--tku,1)); padding:0 calc(3px * var(--tku,1)); pointer-events:none}
 /* height off the ground, shown as a small badge above the token */
-.map-token .tk-altitude{position:absolute; top:-20px; left:50%; transform:translateX(-50%);
-  font-size:9px; font-weight:800; color:#fff; background:rgba(46,46,54,.92); white-space:nowrap;
-  border-radius:6px; padding:1px 5px; pointer-events:none; box-shadow:0 1px 3px rgba(0,0,0,.5)}
+.map-token .tk-altitude{position:absolute; top:calc(-20px * var(--tku,1)); left:50%; transform:translateX(-50%);
+  font-size:calc(9px * var(--tku,1)); font-weight:800; color:#fff; background:rgba(46,46,54,.92); white-space:nowrap;
+  border-radius:calc(6px * var(--tku,1)); padding:calc(1px * var(--tku,1)) calc(5px * var(--tku,1)); pointer-events:none; box-shadow:0 1px 3px rgba(0,0,0,.5)}
 /* whose turn it is (battle-mode initiative) — yellow glowing outline */
 .map-token.current-turn{border-color:#f5c518 !important;
-  outline:3px solid #f5c518; outline-offset:2px;
-  box-shadow:0 0 0 2px rgba(245,197,24,.35), 0 0 14px 3px rgba(245,197,24,.65)}
+  outline:calc(3px * var(--tku,1)) solid #f5c518; outline-offset:calc(2px * var(--tku,1));
+  box-shadow:0 0 0 calc(2px * var(--tku,1)) rgba(245,197,24,.35), 0 0 calc(14px * var(--tku,1)) calc(3px * var(--tku,1)) rgba(245,197,24,.65)}
 .map-token.current-turn.selected{outline-color:#f5c518}
 .map-token .tk-status-ring{position:absolute; left:50%; top:50%; width:0; height:0;
   display:flex; align-items:center; justify-content:center; overflow:visible; pointer-events:none}
 .map-token .tk-move{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-  font-size:14px; font-weight:900; color:#fff; background:var(--accent); white-space:nowrap;
-  border-radius:8px; padding:2px 8px; pointer-events:none; box-shadow:0 1px 4px rgba(0,0,0,.5)}
+  font-size:calc(14px * var(--tku,1)); font-weight:900; color:#fff; background:var(--accent); white-space:nowrap;
+  border-radius:calc(8px * var(--tku,1)); padding:calc(2px * var(--tku,1)) calc(8px * var(--tku,1)); pointer-events:none; box-shadow:0 1px 4px rgba(0,0,0,.5)}
 .map-token .tk-move.over{background:var(--bad)}
 /* battle-mode: movement used this round (badge under the token) */
-.map-token .tk-moved{position:absolute; top:calc(100% + 22px); left:50%; transform:translateX(-50%);
-  font-size:10px; font-weight:800; color:#fff; background:rgba(46,46,54,.92); white-space:nowrap;
-  border-radius:6px; padding:1px 6px; pointer-events:none}
+.map-token .tk-moved{position:absolute; top:calc(100% + calc(22px * var(--tku,1))); left:50%; transform:translateX(-50%);
+  font-size:calc(10px * var(--tku,1)); font-weight:800; color:#fff; background:rgba(46,46,54,.92); white-space:nowrap;
+  border-radius:calc(6px * var(--tku,1)); padding:calc(1px * var(--tku,1)) calc(6px * var(--tku,1)); pointer-events:none}
 .map-token .tk-moved.over{background:var(--bad)}
-.map-token.selected{outline:3px solid var(--accent); outline-offset:3px}
-.map-token .tk-selected{position:absolute; top:-6px; right:-6px; width:18px; height:18px; border-radius:50%;
-  background:var(--accent); color:#fff; font-size:11px; font-weight:900; line-height:18px; text-align:center;
+.map-token.selected{outline:calc(3px * var(--tku,1)) solid var(--accent); outline-offset:calc(3px * var(--tku,1))}
+.map-token .tk-selected{position:absolute; top:calc(-6px * var(--tku,1)); right:calc(-6px * var(--tku,1)); width:calc(18px * var(--tku,1)); height:calc(18px * var(--tku,1)); border-radius:50%;
+  background:var(--accent); color:#fff; font-size:calc(11px * var(--tku,1)); font-weight:900; line-height:calc(18px * var(--tku,1)); text-align:center;
   box-shadow:0 1px 3px rgba(0,0,0,.5); pointer-events:none}
 /* ---- mounting: a rider is drawn small, perched on the top edge of its mount ---- */
-.map-token.riding{border-width:2px; box-shadow:0 1px 5px rgba(0,0,0,.55)}
-.map-token.riding .tk-name{font-size:6px; top:calc(100% + 1px)}
-.map-token.riding .tk-hpwrap{bottom:-5px; height:4px}
+.map-token.riding{border-width:calc(2px * var(--tku,1)); box-shadow:0 1px 5px rgba(0,0,0,.55)}
+.map-token.riding .tk-name{font-size:calc(6px * var(--tku,1)); top:calc(100% + calc(1px * var(--tku,1)))}
+.map-token.riding .tk-hpwrap{bottom:calc(-5px * var(--tku,1)); height:calc(4px * var(--tku,1))}
 .map-token.riding .tk-hpnum{display:none}            /* no room for numbers up on the saddle */
-.map-token.carrying{border-style:double; border-width:4px}
+.map-token.carrying{border-style:double; border-width:calc(4px * var(--tku,1))}
 /* the Pokedex "we've caught one of these" mark: a small Poke Ball on the free bottom-left corner */
-.map-token .tk-dexball{position:absolute; bottom:-2px; left:-2px; width:14px; height:14px;
-  border-radius:50%; background:#fff; border:1.5px solid #111; overflow:hidden; z-index:3;
+.map-token .tk-dexball{position:absolute; bottom:calc(-2px * var(--tku,1)); left:calc(-2px * var(--tku,1)); width:calc(14px * var(--tku,1)); height:calc(14px * var(--tku,1));
+  border-radius:50%; background:#fff; border:calc(1.5px * var(--tku,1)) solid #111; overflow:hidden; z-index:3;
   box-shadow:0 1px 3px rgba(0,0,0,.55); pointer-events:none}
 .map-token .tk-dexball::before{content:""; position:absolute; inset:0 0 50% 0; background:#e74c3c}
 .map-token .tk-dexball::after{content:""; position:absolute; inset:0;
   background:
-    radial-gradient(circle at 50% 50%, #fff 0 2.3px, #111 2.3px 3.3px, transparent 3.3px),
-    linear-gradient(transparent calc(50% - 1px), #111 calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px))}
+    radial-gradient(circle at 50% 50%, #fff 0 calc(2.3px * var(--tku,1)), #111 calc(2.3px * var(--tku,1)) calc(3.3px * var(--tku,1)), transparent calc(3.3px * var(--tku,1))),
+    linear-gradient(transparent calc(50% - calc(1px * var(--tku,1))), #111 calc(50% - calc(1px * var(--tku,1))) calc(50% + calc(1px * var(--tku,1))), transparent calc(50% + calc(1px * var(--tku,1))))}
 .map-token.riding .tk-dexball{display:none}      /* no room for it up on the saddle */
-.map-token .tk-carry{position:absolute; bottom:-4px; right:-4px; font-size:9px; line-height:1;
-  font-weight:800; color:#fff; background:rgba(46,46,54,.92); border-radius:6px; padding:2px 3px;
+.map-token .tk-carry{position:absolute; bottom:calc(-4px * var(--tku,1)); right:calc(-4px * var(--tku,1)); font-size:calc(9px * var(--tku,1)); line-height:1;
+  font-weight:800; color:#fff; background:rgba(46,46,54,.92); border-radius:calc(6px * var(--tku,1)); padding:calc(2px * var(--tku,1)) calc(3px * var(--tku,1));
   pointer-events:none}
 /* the token picked as "the rider" while 🐎 Mount mode waits for you to tap its mount */
-.map-token.mount-pending{outline:3px dashed #f5c518; outline-offset:3px}
+.map-token.mount-pending{outline:calc(3px * var(--tku,1)) dashed #f5c518; outline-offset:calc(3px * var(--tku,1))}
 .map-paths{position:absolute; left:0; top:0; pointer-events:none}
 .map-select-bar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 12px; margin:-8px 0 10px;
   background:var(--field); border:1px solid var(--field-line); border-radius:8px; font-size:13px}

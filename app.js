@@ -51894,6 +51894,7 @@ function mapTokenNode(token, map, originX=0, originY=0){
   const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":"")+(isBoat?" boat-token":"")+(isHaz?" hazard-token":"")+(isZone?" zone-token":"")+(isNoteToken(token)?" note-token":"")+(shinyTok?" shiny":""),
     // a hull sits at z-index 0, below every creature, so the crew is drawn standing on the deck
     style:`left:${box.left}px;top:${box.top}px;width:${box.w}px;height:${box.h}px;z-index:${isNoteToken(token)?6:riding?4:isTrainerTok?2:isZone?0:(isBoat||isHaz||isShoal)?0:1}`
+      +`;--tku:${Math.round(Math.max(0.5, Math.min(1.6, map.gridSize/32))*100)/100}`
       +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")
       +(factionColor?`;border-color:${factionColor}`:"")});
   node.dataset.tid = token.id;
