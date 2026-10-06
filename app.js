@@ -49494,7 +49494,17 @@ function attachWallDraw(stage, viewport, map, originX, originY){
   });
 }
 /* thin red lines for the GM only — players never see wall geometry, just its effect on fog */
-function wallsOverlay(map, stageW, stageH, originX, originY){
+function wallsOverlay(map, stageW, stageH, originX, originY, playerView){
+  /* playerView: what a PLAYER may see of the walls -- only the gates that are shut right now, as one plain
+     red line each. Ordinary walls, open gates and gate names stay the GM's. */
+  if(playerView){
+    const px = map.gridSize;
+    const shut = mapWalls(map).filter(w=>w.gate && !gateOpen(map, w.gate));
+    if(!shut.length) return null;
+    const ls = shut.map(w=>`<line x1="${w.x1*px+originX}" y1="${w.y1*px+originY}" x2="${w.x2*px+originX}" y2="${w.y2*px+originY}" stroke="#ff3b3b" stroke-width="4" stroke-linecap="round" opacity="0.92"/>`).join("");
+    return el("div",{class:"map-walls",style:`position:absolute;left:0;top:0;width:${stageW}px;height:${stageH}px;pointer-events:none`,
+      html:`<svg width="100%" height="100%" style="overflow:visible">${ls}</svg>`});
+  }
   const walls = mapWalls(map), pending = mapWallDrawActive(map) ? mapWallDraw.pending : null;
   if(!walls.length && !pending) return null;
   const px = map.gridSize;
@@ -50643,15 +50653,24 @@ function openZoneMenu(token, map){
      (`link` is taken: it is how a token points at a sheet.) */
 const NOTE_COLORS = ["#3884de","#d6453d","#2fa36b","#e0a21b","#8a5cd6","#e0709a","#6b7280"];
 const isNoteToken = t => !!(t && t.note);
+/* How much of a note is printed on the board. Per DEVICE (it is a view preference, not map data):
+   "off" = pins only, "title" = pins + their title, "full" = title + text. The text is always one tap
+   away in the Notes panel, so the board can stay clear. */
+const NOTE_LABEL_MODES = ["off","title","full"];
+function noteLabelMode(){
+  let v = null; try{ v = localStorage.getItem("ptu_notelabels"); }catch(e){}
+  return NOTE_LABEL_MODES.includes(v) ? v : "title";
+}
+function setNoteLabelMode(v){ try{ localStorage.setItem("ptu_notelabels", v); }catch(e){} renderMap(); }
 function noteSprite(token){
   const c = token.color || NOTE_COLORS[0];
   const wrap = el("div",{class:"tk-notewrap"},
     el("div",{class:"tk-note", style:`background:${c}`}, token.glyph || "\u{1F4DD}"));
-  // the note itself is printed beside the pin, so it can be read without opening anything
-  if((token.title || token.text) && mapTokenDetail()>=1){
+  const mode = noteLabelMode();
+  if(mode!=="off" && (token.title || (mode==="full" && token.text)) && mapTokenDetail()>=1){
     const card = el("div",{class:"tk-notecard", style:`border-left-color:${c}`});
     if(token.title) card.append(el("div",{class:"tk-notecard-t"}, token.title));
-    if(token.text) card.append(el("div",{class:"tk-notecard-b"}, token.text));
+    if(mode==="full" && token.text) card.append(el("div",{class:"tk-notecard-b"}, token.text));
     wrap.append(card);
   }
   return wrap;
@@ -50753,6 +50772,11 @@ function openNotesPanel(map, selId){
   if(pins.length) bar.append(el("button",{class:"btn-secondary",
     title:"Move every note to the middle of what you're looking at right now \u2014 for notes that ended up off the board.",
     onclick:()=>{ gatherNotePins(map); reopen(selId); }}, "\u{1F3AF} Bring all here"));
+  const lm = noteLabelMode(), LM = { off:"pins only", title:"titles", full:"titles + text" };
+  bar.append(el("button",{class:"btn-secondary",
+    title:"What is printed next to each pin on the board. The full text is always in this panel.",
+    onclick:()=>{ setNoteLabelMode(NOTE_LABEL_MODES[(NOTE_LABEL_MODES.indexOf(lm)+1)%3]); reopen(selId); }},
+    `\u{1F3F7} Board labels: ${LM[lm]}`));
   const ov = noteOverlaps(map);
   if(ov) bar.append(el("button",{class:"btn-secondary",
     title:"Some pins are sitting on top of each other \u2014 this gives each its own square.",
@@ -55179,6 +55203,8 @@ function renderMap(){
     const nl = noteLinksOverlay(map, stageW, stageH, originX, originY); if(nl) stage.append(nl);
     mapDrawOrder(mapTokensFor(map.id)).forEach(t=>{ if(nearView(t)) stage.append(mkToken(t)); });
   } else {
+    // shut gates go UNDER the fog, so a gate in ground the party has not uncovered yet stays secret
+    const gl = wallsOverlay(map, stageW, stageH, originX, originY, true); if(gl) stage.append(gl);
     mapDrawOrder(mapTokensFor(map.id)).forEach(t=>{ if(visibleToken(t) && nearView(t)) stage.append(mkToken(t)); });
     const f = drawFogInto(); if(f) stage.append(f);                 // players: opaque fog over hidden tokens
   }
