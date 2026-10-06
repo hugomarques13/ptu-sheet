@@ -48307,7 +48307,7 @@ function tokenHp(token){
     // cluttering the board (the BOATS section owns everything about it)
     if(isNoteToken(token))
       return { cur:1, max:1, editable:cloud.isGM, name:token.title||"Note", sprite:noteSprite(token),
-               unlinked:false, kind:"zone", hideName:!token.title };
+               unlinked:false, kind:"zone", hideName:true };
     if(isZoneToken(token)){ const z=zoneDef(token);
       return { cur:1, max:1, editable:cloud.isGM, name:z.name, sprite:zoneSprite(token),
                unlinked:false, kind:"zone", hideName:true }; }
@@ -50527,8 +50527,16 @@ const NOTE_COLORS = ["#3884de","#d6453d","#2fa36b","#e0a21b","#8a5cd6","#e0709a"
 const isNoteToken = t => !!(t && t.note);
 function noteSprite(token){
   const c = token.color || NOTE_COLORS[0];
-  return el("div",{class:"tk-note", title:(token.title?token.title+" \u2014 ":"")+(token.text||"(no text yet)"),
-    style:`background:${c}`}, token.glyph || "\u{1F4DD}");
+  const wrap = el("div",{class:"tk-notewrap"},
+    el("div",{class:"tk-note", style:`background:${c}`}, token.glyph || "\u{1F4DD}"));
+  // the note itself is printed beside the pin, so it can be read without opening anything
+  if((token.title || token.text) && mapTokenDetail()>=1){
+    const card = el("div",{class:"tk-notecard", style:`border-left-color:${c}`});
+    if(token.title) card.append(el("div",{class:"tk-notecard-t"}, token.title));
+    if(token.text) card.append(el("div",{class:"tk-notecard-b"}, token.text));
+    wrap.append(card);
+  }
+  return wrap;
 }
 function notePins(map){ return mapTokensFor(map.id).filter(isNoteToken); }
 async function addNotePin(map){
