@@ -463,6 +463,15 @@ const STATUS_DEFS = [
    effect:"Cannot apply Evasion of any sort against attacks. (Blinded, Sleeping, Fainted, Frozen, and Tripped targets are always considered Vulnerable too.)"},
   {key:"blinded", name:"Blinded", kind:"other", cap:0,
    effect:"−6 to Accuracy Rolls; must pass a DC 10 Acrobatics Check over Rough/Slow Terrain or become Tripped. Always considered Vulnerable."},
+  /* Defense Curl. Not an Affliction either, but it is a state the whole table has to remember: immune to
+     Critical Hits, +10 Damage Reduction, Slowed, -4 Accuracy. The riders ride in with the chip (see
+     onCurledToggled) and every number is read live off the chip, so un-curling hands them all back. */
+  {key:"curledUp", name:"Curled Up", kind:"other", cap:0,
+   effect:"Immune to Critical Hits and +10 Damage Reduction \u2014 but Slowed and \u22124 to Accuracy. May stop being Curled Up as a Swift Action. With Rollout or Ice Ball in the Move List the user is not Slowed and takes no Accuracy penalty, and those two Moves get +10 to their damage rolls while Curled Up."},
+  /* Withdraw: the shell version of Curled Up - immune to Critical Hits and +15 DR, but it cannot Shift and may
+     only use self-targeting Moves. Read live off the chip by buffDR / critImmunityOf. */
+  {key:"withdrawn", name:"Withdrawn", kind:"other", cap:0,
+   effect:"Immune to Critical Hits and +15 Damage Reduction \u2014 but it cannot Shift and may only use self-targeting Moves. May stop being Withdrawn as a Shift Action."},
   {key:"petrified", name:"Petrified", kind:"other", cap:0,
    effect:"Is stone, irreversible."},
   /* GM bookkeeping flag rather than a book Affliction — PTU calls this "Fainted" (Core p.249: at 0 HP
@@ -573,6 +582,8 @@ const STATUS_KEYWORDS = [
   ["tripped",       /\btrip(?:s|ped|ping)?\b/i],
   ["vulnerable",    /\bvulnerable\b/i],
   ["blinded",       /\bblind(?:s|ed|ing)?\b/i],
+  ["curledUp",      /\bcurled\s+up\b/i],
+  ["withdrawn",     /\bwithdrawn\b/i],
 ];
 /* does a triggered move-effect sentence name a known status condition? (for a big "Poisoned!"-style
    banner on the roll result) */
@@ -605,10 +616,10 @@ function moveWithCS(base, shift){
 /* Status Afflictions that impose Combat Stages (Core p.245-246). Paralysis is NOT here — the Feb
    2016 errata replaced its −4 Speed CS with an Initiative-halving effect instead (see tokenInitiative). */
 const CONDITION_CS = { burned:{def:-2}, poisoned:{spdef:-2}, badlyPoisoned:{spdef:-2}, blinded:{acc:-6},
-                       flanked:{eva:-2} };   // Flanking (Core p.232): "a -2 penalty to their Evasion" 
+                       flanked:{eva:-2}, curledUp:{acc:-4} };   // Flanking (Core p.232): "a -2 penalty to their Evasion" 
 function conditionCSMods(p){
   const m = {atk:0,def:0,spatk:0,spdef:0,spd:0,acc:0,eva:0};
-  (p.statuses||[]).forEach(k=>{ const c=CONDITION_CS[k]; if(c) for(const s in c) m[s]+=c[s]; });
+  (p.statuses||[]).forEach(k=>{ const c=CONDITION_CS[k]; if(c && !(k==="curledUp" && curlRollers(p))) for(const s in c) m[s]+=c[s]; });
   return m;
 }
 /* Stat Ace and its five named branches (Core p.60): the Feature name → the Base Stat it raises.
@@ -826,6 +837,7 @@ function toggleStatus(p, key){ p.statuses = p.statuses||[];
     p.statuses.push(key);
   }
   if(key==="vortex") onVortexToggled(p, p.statuses.includes(key));
+  if(key==="curledUp") onCurledToggled(p, p.statuses.includes(key));
   latchFlinchInit(p);
   if(key==="flinch" && syncFlinchVulnerable(p))
     toast(hasStatus(p,"flinch") ? `\u{1F62C} Flinched — ${ownerLabel(p)} is also Vulnerable for 1 full round (the −5 Initiative stays all Scene).`
@@ -965,7 +977,12 @@ function statusTypeImmunity(o, key, sp){
 }
 function statusBlockFor(o, key, opts){
   if(!o) return "";
-  const ty = statusTypeImmunity(o, key);
+  /* Thunder Wave: "Pokemon immune to Electric Attacks are immune to Thunder Wave's effects" \u2014 opts.immuneType is the Move's Type */
+  if(opts && opts.immuneType && !isTrainerOwner(o)){
+    try{ const ts = monTypes(o) || []; if(ts.length && typeMultAgainst(opts.immuneType, ts) === 0) return `${ts.join("/")} is immune to ${opts.immuneType}-Type Moves`; }catch(e){}
+  }
+  /* Corrosion: "The user may Poison and Badly Poison Steel and Poison-Type Pokemon" */
+  const ty = (opts && opts.corrosion && (key === "poisoned" || key === "badlyPoisoned")) ? "" : statusTypeImmunity(o, key);
   if(ty) return ty;
   if(!(opts && opts.mold)) try{
     const v = statusVeiledBy(o, key)[0];
@@ -996,6 +1013,8 @@ function inflictStatus(o, key, opts){
       if(!had.has(k) && o.statuses.includes(k) && statusBlockFor(o, k, opts)) o.statuses = o.statuses.filter(x => x !== k);
     });
   }
+  if(key === "curledUp"){ const had = o.statuses.includes("slowed"); onCurledToggled(o, true);
+    if(!had && !o.unlocked && o.statuses.includes("slowed") && statusBlockFor(o, "slowed", opts)) o.statuses = o.statuses.filter(x => x !== "slowed"); }
   latchFlinchInit(o);
   if(key === "flinch") syncFlinchVulnerable(o, opts);   // "...and the user is Vulnerable for 1 full round"
   try{ onStatusGained(o, key); }catch(e){}
@@ -1020,6 +1039,21 @@ function inflictStatuses(o, keys, opts){
     const r = inflictStatus(o, k, opts);
     if(r.ok) on.push(statusName(k));
     else if(r.why) held.push(`${statusName(k)} (${r.why})`);
+  });
+  return { on, held };
+}
+/* "falls Asleep at the end of its next turn" (Yawn): the Status is not put on now - it becomes a delayed o.pending entry
+   on the target that the Map's \u25B6 turns into the real Status when its next turn ends (tickPendingTurns). Immunity is
+   checked at the moment of casting AND again when it lands. Any other duration goes straight to inflictStatuses. */
+const DELAYED_STATUS_RE = /\bat the end of (?:its|their) next turn\b/i;
+function inflictStatusesDelayed(o, keys, dur, opts){
+  if(!DELAYED_STATUS_RE.test(String(dur || ""))) return inflictStatuses(o, keys, opts);
+  const on = [], held = [];
+  uniqStatusKeys(keys).forEach(k => {
+    const why = (!o || o.unlocked) ? "" : statusBlockFor(o, k, opts);
+    if(why){ held.push(`${statusName(k)} (${why})`); return; }
+    addPending(o, { key:"delay-status-" + k, kind:"delay", name:`${statusName(k)} (delayed)`, note:`falls ${statusName(k)}`, thenStatus:k });
+    on.push(`${statusName(k)} at the end of its next turn`);
   });
   return { on, held };
 }
@@ -1105,6 +1139,18 @@ function syncVortexRiders(list, on){
     if(!on && i>=0) list.splice(i,1);
   });
   return list;
+}
+/* Curled Up (Defense Curl): a Pok\u00e9mon with Rollout or Ice Ball in its Move List is not Slowed by it and pays no
+   Accuracy penalty; everyone else is Slowed for as long as the chip is on. */
+function curlRollers(o){
+  return !!o && (o.moves||[]).some(x => /^(rollout|ice ball)$/i.test(String(x||"").trim()));
+}
+function onCurledToggled(o, on){
+  if(!o) return;
+  const list = o.statuses || (o.statuses = []);
+  const i = list.indexOf("slowed");
+  if(on && i < 0 && !curlRollers(o)) list.push("slowed");
+  if(!on && i >= 0 && !curlRollers(o)) list.splice(i, 1);
 }
 /* Called by every status-chip handler (sheet, Encounters card, map token) right after the Vortex
    chip flips, so the riders and the counter stay in step wherever it was toggled from. */
@@ -3437,7 +3483,8 @@ const ABILITY_ACTION_ROWS = {};
         intro:spec.intro,
         params:() => ({ cs:spec.chooseStat ? [[stat.value, spec.n]] : spec.cs, heal:spec.heal || 0, buff:spec.buff || null,
           resetCS:!!spec.resetCS, cureVolatile:!!spec.cureVolatile, temp:spec.temp || 0, tickLoss:spec.tickLoss || 0,
-          onlyIf:spec.onlyIf || "", cureStatus:spec.cureStatus || null, status:spec.status || null, cureAll:!!spec.cureAll, copyCS:!!spec.copyCS }),
+          onlyIf:spec.onlyIf || "", cureStatus:spec.cureStatus || null, status:spec.status || null, cureAll:!!spec.cureAll, copyCS:!!spec.copyCS,
+          ...(spec.dyn ? spec.dyn(p) : {}) }),
         headline:() => spec.intro,
         pay:() => { if(!u.spend()){ toast(`${an} is already spent.`); return false; }
                     if(spec.self) spec.self(p); return true; } });
@@ -3512,6 +3559,57 @@ const ABILITY_ACTION_ROWS = {};
   addSelf(["heliovolt"], { icon:"\u26A1", label:"Heliovolt", title:"At-Will, Swift after an Electric-Type Move \u2014 +1 Evasion and counts as Sunny for a full round",
     run:(p, done) => { researchBuff(p, { key:"heliovolt", name:"Heliovolt", cat:"Ability", dur:"until end of next turn", mods:{ eva:1, weather:"sunny" },
       note:"+1 Evasion, and this Pokemon acts as though it were Sunny." }); done("+1 Evasion and acts as if Sunny for a round"); } });
+  /* ---- Abilities sweep v644: stances and area presses ---- */
+  /* Beads / Sword / Tablets / Vessel of Ruin: Scene Swift Blessings \u2014 "may be activated 2 times, then disappears". The same
+     shared uses-left squares a Blessing Move gets (tableLayBlessing), so the whole table counts them down together. */
+  [["beads of ruin", "Beads of Ruin", "Special damage dealt: one step more effective against one target of the attack"],
+   ["sword of ruin", "Sword of Ruin", "Physical damage dealt: one step more effective against one target of the attack"],
+   ["tablets of ruin", "Tablets of Ruin", "Physical damage received: resist it one step"],
+   ["vessel of ruin", "Vessel of Ruin", "Special damage received: resist it one step"]].forEach(([k, nm, txt]) =>
+    addSelf([k], { icon:"\u{1F4FF}", label:nm, title:`Scene, Swift \u2014 lay ${nm} on the field: whoever it covers may activate it twice (${txt})`,
+      run:(p, done) => { const b = tableLayBlessing(nm, 2, ownerLabel(p));
+        done(b ? "laid on the field \u2014 2 activations for the whole table" : "needs the cloud table for the shared square \u2014 count its 2 activations by hand"); } }));
+  addSelf(["discipline"], { icon:"\u{1F9D8}", label:"Discipline", title:"Scene, Free \u2014 on gaining initiative: cure Confused, Enraged, Infatuated or Flinched",
+    gate:p => ["confused","enraged","infatuation","flinch"].some(k => hasStatus(p, k)) ? "" : "nothing to cure",
+    run:(p, done) => cureOne(p, ["confused","enraged","infatuation","flinch"], done) });
+  addSelf(["sound lance"], { icon:"\u{1F50A}", label:"Sound Lance", title:"Scene x2, Swift \u2014 on Supersonic: the target takes Special Normal-Type damage equal to your Special Attack, hit or miss",
+    run:(p, done) => {
+      const n = (pokeDerived(p).eff || {}).spatk || 0;
+      const w = attackTargetWidget({ dmg:n, type:"Normal", physical:false, ctx:{ attacker:p, by:ownerLabel(p), move:"Sound Lance" } });
+      if(w){ modal({ title:"\u{1F50A} Sound Lance \u2014 " + n + " Special Normal damage", bodyNode:w, footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Done")] }); done(`${n} Special Normal damage \u2014 pick the Supersonic target`); }
+      else done(`the Supersonic target takes ${n} Special Normal-Type damage (only the GM applies damage to tokens)`); } });
+  add(["sound lance [errata]"], { icon:"\u{1F50A}", label:"Sound Lance", verb:"Pierce", single:true, dyn:p => ({ loseHP:(pokeDerived(p).eff || {}).spatk || 0 }),
+    title:"Scene x2, Swift \u2014 on Supersonic: the target loses Hit Points equal to your Special Attack, hit or miss",
+    intro:"The target loses Hit Points equal to the user's Special Attack, even if Supersonic missed." });
+  addSelf(["decoy"], { icon:"\u{1F3AD}", label:"Decoy", title:"Daily, Free \u2014 use Follow Me as if it were on your Move List and gain +2 Evasion until the end of your next turn",
+    run:(p, done) => { researchBuff(p, { key:"decoy", name:"Decoy", cat:"Ability", dur:"until end of next turn", mods:{ eva:2 },
+      note:"Follow Me: foes must target this Pokemon with Moves and attacks that could (Follow Me's own text). +2 Evasion until the end of its next turn." });
+      done("+2 Evasion until the end of your next turn (Follow Me: redirect foes by hand)"); } });
+  addSelf(["lancer"], { icon:"\u{1F3C7}", label:"Lancer", title:"Static, on your turn \u2014 Shifted 3+ m: +3 Critical Hit Range; held still: +5 Damage Reduction (until your next turn)",
+    run:(p, done) => openPicker("Lancer \u2014 what did you do this turn?", ["Shifted at least 3 m", "Did not Shift or Disengage"], lbl => {
+      if(lbl === "Shifted at least 3 m"){ researchBuff(p, { key:"lancer-crit", name:"Lancer (Shifted)", cat:"Ability", dur:"until start of next turn", mods:{ crit:3 }, note:"Shifted 3+ m this turn: +3 Critical Hit Range." }); done("+3 Critical Hit Range until your next turn"); }
+      else { researchBuff(p, { key:"lancer-dr", name:"Lancer (Held still)", cat:"Ability", dur:"until start of next turn", mods:{ dr:5 }, note:"Did not Shift or Disengage: +5 Damage Reduction." }); done("+5 Damage Reduction until your next turn"); } }) });
+  addSelf(["showdown mode"], { icon:"\u{1F920}", label:"Showdown Mode", title:"Scene, Swift (Priority, Limited) \u2014 Melee Moves get +2 Crit Range and bonus damage equal to your Tick; you lose a Tick after dealing it",
+    run:(p, done) => { researchBuff(p, { key:"showdown-mode", name:"Showdown Mode", cat:"Ability", dur:"until you leave it", mods:{},
+      note:"Melee Moves: +2 Critical Hit Range and + Tick Value damage (both applied to the roll). After dealing damage with one, lose a Tick of Hit Points. Exit as a Free Action by removing this chip." });
+      done("Showdown Mode on \u2014 Melee Moves get +2 Crit Range and +Tick damage"); } });
+  addSelf(["slow start"], { icon:"\u{1F40C}", label:"Slow Start", title:"Static \u2014 for 3 rounds after joining an encounter: 10 Damage Reduction (Speed and Attack are halved at the table)",
+    run:(p, done) => { researchBuff(p, { key:"slow-start", name:"Slow Start", cat:"Ability", dur:"3 rounds", mods:{ dr:10 },
+      note:"Speed and Attack halved for 3 rounds after joining the encounter (halve them by hand); +10 Damage Reduction while it lasts." });
+      done("Slow Start on \u2014 +10 Damage Reduction (halve Speed and Attack by hand) for 3 rounds"); } });
+  addSelf(["download [errata]"], { icon:"\u{1F4BE}", label:"Download", title:"Scene, Swift \u2014 the target reveals whether its Defense or Special Defense is lower; +1 Attack / Special Attack accordingly",
+    run:(p, done) => openPicker("Download \u2014 which of the target's Defenses is lower?", ["Defense is lower", "Special Defense is lower", "Tied (your choice)"], lbl => {
+      if(lbl === "Defense is lower"){ changeCS(p, "atk", 1); done("+1 Attack"); }
+      else if(lbl === "Special Defense is lower"){ changeCS(p, "spatk", 1); done("+1 Special Attack"); }
+      else openPicker("Download \u2014 tied: pick a Stat", CS_STATS.map(([, l]) => l), l2 => { const k = CS_STATS.find(([, l]) => l === l2)[0]; changeCS(p, k, 1); done(`+1 ${l2}`); }); }) });
+  add(["arena trap [errata]"], { icon:"\u{1FAA4}", label:"Arena Trap", verb:"Trap", status:["slowed", "trapped"],
+    title:"Scene, Free \u2014 foes within 5 m are Slowed and Trapped (not Flying-Types or anything with Levitate, Sky or Burrow 4+)",
+    intro:"Every foe you tick becomes Slowed and Trapped until the user ends it, faints or is recalled. Skip Flying-Types and anything with a Levitate, Sky or Burrow Speed of 4 or higher." });
+  add(["beautiful"], { icon:"\u{1F338}", label:"Beautiful", verb:"Soothe", cureStatus:["enraged"], anyone:true,
+    title:"Scene, Swift \u2014 cure an adjacent target of Enraged (or take +2 Beauty Dice in a Contest by hand)", intro:"Every adjacent target you tick is cured of Enraged." });
+  add(["beautiful [errata]"], { icon:"\u{1F338}", label:"Beautiful", verb:"Soothe", cureStatus:["enraged"], anyone:true,
+    title:"Scene, Standard \u2014 +1 Special Attack Combat Stage for you and every ally within 5 m cured of Enraged (or +2 Beauty Dice in a Contest)",
+    self:p => { changeCS(p, "spatk", 1); }, intro:"The user gains +1 Special Attack Combat Stage; every ally within 5 m you tick is cured of Enraged." });
   /* ---- more targeted presses ---- */
   const accBuff = { name:"Interference", cat:"Ability", dur:"until end of next turn", mods:{ acc:-2 }, note:"-2 to Accuracy Rolls." };
   add(["interference", "interference [errata]"], { icon:"\u{1F4E1}", label:"Interference", verb:"Jam", buff:accBuff,
@@ -3650,7 +3748,24 @@ const ABILITY_ACTION_ROWS = {};
   say(["forewarn"], "\u{1F441}", "Forewarn", "Scene, Free — the target's Move with the highest Damage Dice Roll is revealed; those Moves take −2 Accuracy for the rest of the encounter", "reveal the foe's highest-damage Move(s); they take −2 Accuracy for the encounter");
   say(["discipline"], "\u{1F9D8}", "Discipline", "Scene, Free on gaining Initiative — cure Confusion, Rage, Infatuation or Flinch", "cure one of Confusion, Rage, Infatuation or Flinch");
   say(["friend guard"], "\u{1F6E1}", "Friend Guard", "Scene, Free — an ally is hit: the damage is resisted one step further", "resolve the ally's hit one step further resisted");
-  say(["ice shield"], "\u{1F9CA}", "Ice Shield", "Scene, Standard/Interrupt — up to 3 continuous segments of Ice Wall (2 m tall, 1 m wide, Blocking Terrain) until the end of the encounter", "place up to 3 Ice Wall segments on the Map (Blocking Terrain)");
+  ABILITY_ACTION_ROWS["ice shield"] = (p, an, mk, redraw, persist) => {
+    const u = abilityUse(p, an);
+    return mk("\u{1F9CA} Ice Shield", "Scene, Standard/Interrupt \u2014 up to 3 continuous segments of Ice Wall (2 m tall, 1 m wide, Blocking Terrain, 10 HP, 5 DR) until the end of the encounter",
+      () => {
+        if(!u.spend()){ toast("Ice Shield is already spent."); return; }
+        let said = "";
+        try{
+          if(typeof mode !== "undefined" && mode === "cloud" && cloud && cloud.isGM){
+            const map = currentMapForView() || activeMap();
+            if(map) said = ` ${dropHazardsAt(map, "icewall", 3, ownerMapToken(p))} Ice Wall markers on the Map \u2014 drag them into place.`;
+          }
+        }catch(e){}
+        const line = `Ice Shield \u2014 up to 3 continuous Ice Wall segments, at least one adjacent to the user (10 HP, 5 DR, Ice-Type damage).${said}`;
+        logRoll({ kind:"skill", label:"Ice Shield", who:ownerLabel(p), headline:"\u{1F9CA} Ice Shield", lines:[line] });
+        (persist || save)(); redraw && redraw();
+        toast("\u{1F9CA} " + line);
+      }, u.max ? `${u.left} of ${u.max} left` : null);
+  };
   say(["empower"],"\u{1F4AA}", "Empower", "Use a self-targeting Status Move as a Free Action", "use a self-targeting Status Move as a Free Action");
   say(["dragonize"], "\u{1F409}", "Dragonize", "A Normal damaging Move becomes Dragon-Type with +1 Damage Base", "the Normal Move is Dragon-Type with +1 DB — set it in the roll's Type box");
   say(["psionic screech"], "\u{1F4E2}", "Psionic Screech", "A Flying Move becomes Psychic-Type and Flinches every target hit", "the Flying Move is Psychic-Type and Flinches its targets");
@@ -4949,6 +5064,32 @@ Object.entries(MOVE_ALIASES).forEach(([k, real]) => addMoveKey(k, moveByName.get
 const canonMoveName = n => (moveByName.get(n) || {}).name || n;
 const abilityByName  = new Map(D.abilities.map(a => [a.name.toLowerCase(), a]));
 const natureByName   = new Map(D.natures.map(n => [n.name.toLowerCase(), n]));
+/* ---- Errata Abilities are the default ------------------------------------------------------
+   Where an Ability has an "[Errata]" printing, a Pokémon gets THAT one. The species tables are
+   rewritten once here (so every default, tier roll and swap that copies from a species list is
+   already errata), stored sheets are migrated by normPokemon, and only the GM can hand out the
+   regular printing — a plain pick is remembered in p.regularAbil so the migration leaves it be.
+   `var`/function declarations on purpose: normPokemon runs from load(), above later consts. */
+var _errataMap = null;
+function errataAbilityMap(){
+  if(_errataMap) return _errataMap;
+  const m = new Map();
+  D.abilities.forEach(a => {
+    const mm = /^(.*) \[Errata\]$/.exec(a.name); if(!mm) return;
+    mm[1].split(" / ").forEach(b => m.set(b.trim().toLowerCase(), a.name));   // "Huge Power / Pure Power [Errata]" covers both
+  });
+  const fe = abilityByName.get("frisk [feb errata]"); if(fe) m.set("frisk", fe.name);
+  return (_errataMap = m);
+}
+function errataAbility(name){ return errataAbilityMap().get(String(name||"").toLowerCase()) || name; }
+/* the regular printing(s) an errata Ability replaces — what only the GM may give */
+function regularAbilitiesOf(errName){
+  const out = [];
+  errataAbilityMap().forEach((v, k) => { if(v === errName){ const a = abilityByName.get(k); if(a) out.push(a.name); } });
+  return out;
+}
+D.species.forEach(sp => { const ab = sp && sp.abilities; if(!ab) return;
+  ["basic","advanced","high"].forEach(k => { if(Array.isArray(ab[k])) ab[k] = [...new Set(ab[k].map(errataAbility))]; }); });
 /* Poké Edges as printed. The table holds both the family ("Skill Improvement") and one
    pre-expanded row per choice ("Skill Improvement (Athletics)"); the sheet only ever offers the
    family and asks for the choice itself, so the variants are here purely for the Reference tab. */
@@ -5737,7 +5878,13 @@ const INJURY_SOURCES = [
     extra:(o)=>`+${healHP(o, Math.floor(fullMaxOf(o)/4))} HP` },
   { name:"First Aid Expertise", kind:"feature", targets:"party", n:1,
     freq:"Daily x3 — Extended Action", needs:"a First Aid Kit", book:"Core, Medic",
-    note:"Only once per day per target. Under Proper Care in a Field Clinic / Poké Center / hospital the Injury it removes is exempt from the daily cap.",
+    needsKit:true, oncePerTarget:true, hpAnyway:true,
+    /* First Aid Manual [5-15 Playtest] Rank 2: "You may use the First Aid Expertise Feature once per
+       day" — so a Trainer with that Rank has it even without the Feature, at its once-a-day rate. */
+    via:(t)=>bookRankNamed(t, "First Aid Manual") >= 2,
+    variant:(t)=> hasFeatureLoose(t, "First Aid Expertise") ? null
+      : { freq:"Daily — Extended Action", book:"First Aid Manual, Rank 2" },
+    note:"Needs a First Aid Kit (in the bag, or $300 of Medical Scrap in a Field Clinic). Only once per day per target — and it still restores every Hit Point and cures every Status when no Injury is left to remove or the 3-a-day cap is spent. Under Proper Care in a Field Clinic / Poké Center / hospital the Injury it removes is exempt from the daily cap.",
     freeIf:(t)=>hasFeatureLoose(t,"Proper Care"),
     freeLabel:"You have Proper Care — treat this as happening in a clinic and it's exempt",
     extra:(o)=>{ const g = healToFull(o); clearAllStatuses(o); return `+${g} HP, every Status cured`; } },
@@ -5798,7 +5945,7 @@ function giftMode(t, name){ return blessingModeFor(t, giftRowNamed(t, name)); }
 /* does this sheet actually have the source? */
 function hasInjurySource(def, t, mon){
   if(def.kind==="core")    return true;
-  if(def.kind==="feature") return hasFeatureLoose(t, def.name);
+  if(def.kind==="feature") return hasFeatureLoose(t, def.name) || !!(def.via && def.via(t));
   if(def.kind==="item")    return ((t && t.inventory)||[]).some(it =>
                                     String((it && it.name)||"").toLowerCase()===def.name.toLowerCase()
                                     && (parseInt(it.qty)||0) > 0);
@@ -5835,6 +5982,7 @@ function injurySourcesFor(t, target){
 /* ---- the modal ---- */
 function openInjuryTreat(t, target, rerender, persist){
   const doSave = persist || save;
+  let clinicUp = false;           // "a Field Clinic is set up here" — only matters when there is no Kit in the bag
   function build(){
     const body = el("div");
     const inj = Math.max(0, target.injuries||0);
@@ -5846,26 +5994,39 @@ function openInjuryTreat(t, target, rerender, persist){
           : "No Injuries to treat right now."));
 
     const defs = injurySourcesFor(t, target);
+    if(defs.some(d => d.needsKit) && !inventoryQty(t, FIRST_AID_KIT) && trainerHasEdge(t, "Field Clinic")){
+      const cb = el("input",{type:"checkbox"}); cb.checked = clinicUp;
+      cb.addEventListener("change", () => { clinicUp = cb.checked; redraw(); });
+      body.append(el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin-bottom:10px"}, cb,
+        `A Field Clinic is set up here — $${FIELD_CLINIC_KIT_COST} of Medical Scrap stands in for the First Aid Kit (you have ${fmtMoney(scrapOf(t, "medical"))})`));
+    }
     if(!defs.length){
       body.append(el("div",{class:"muted small"},
         "Nothing on this sheet can treat an Injury yet. Bandages and Poultices come from the Inventory catalog; First Aid Expertise, Walk It Off, Shrug Off and Quick Healing are Medic / Hardened Features; Spirit Mending and Bounty of Life are Legendary Gifts."));
     }
     defs.forEach(def => {
       const free = !!def.free || !!(def.freeIf && def.freeIf(t));
-      const blocked = !free && injuryDayLeft(target) <= 0;
+      const capped = !free && injuryDayLeft(target) <= 0;
+      /* First Aid Expertise still restores Hit Points and Statuses with no Injury to remove or the cap
+         spent, so for it only the Kit and the once-per-target rule can switch the button off. */
+      const kit = def.needsKit ? firstAidKitAccess(t, clinicUp) : null;
+      const doneToday = !!def.oncePerTarget && !!normInjDay(target).injDay.fae;
+      const blocked = (def.hpAnyway ? false : capped) || (kit && !kit.ok) || doneToday;
       const holder = injuryUseHolder(def, t, target);
       const d = el("details",{class:"spoiler"});
       const uc = def.item ? null
         : usesControl(holder, injuryUseKind(def), def.name, injuryUseFreq(def), redraw, doSave);
       const stock = def.item ? bandageStock(t) : 0;
       const go = el("button",{class:"linkbtn",style:"margin-left:8px",
-        title: blocked
+        title: (kit && !kit.ok) ? `Can't use it: ${kit.why}`
+          : doneToday ? `${ownerLabel(target)} has already had First Aid Expertise today — once per day per target`
+          : blocked
           ? `${ownerLabel(target)} has already had ${injuryDayUsed(target)} Injuries treated today — it clears on ☀ End Day → 🌙 End the Day`
           : (def.needs ? "Needs "+def.needs : "apply it"),
         onclick:e=>{ e.preventDefault(); e.stopPropagation();
-                     runInjurySource(def, t, target, free, doSave, rerender, redraw); }},
-        blocked ? "⚠ capped" : "🩹 Treat");
-      go.disabled = blocked || !inj;
+                     runInjurySource(def, t, target, free, doSave, rerender, redraw, { clinicUp }); }},
+        (kit && !kit.ok) ? "⚠ needs a Kit" : doneToday ? "✓ used today" : blocked ? "⚠ capped" : "🩹 Treat");
+      go.disabled = blocked || (!inj && !def.hpAnyway);
       d.append(el("summary",{},
         el("span",{style:"font-weight:700;color:var(--ink)"}, def.name),
         el("span",{class:"muted small",style:"margin-left:8px"},
@@ -5891,11 +6052,20 @@ function openInjuryTreat(t, target, rerender, persist){
           footNodes:[ el("button",{class:"btn ghost",onclick:closeModal},"Done") ] });
 }
 /* press one source: spend its use, heal through the ledger, run its extra, then say what happened */
-function runInjurySource(def, t, target, free, doSave, rerender, redraw){
-  // never burn a Daily use (or a Bandage) on a heal the cap would swallow whole
-  if(!Math.max(0, target.injuries||0)){ toast(ownerLabel(target)+" has no Injuries to treat"); return; }
-  if(!free && injuryDayLeft(target) <= 0){
+function runInjurySource(def, t, target, free, doSave, rerender, redraw, ctx){
+  // never burn a Daily use (or a Bandage) on a heal the cap would swallow whole — except where the
+  // source does more than remove Injuries (First Aid Expertise restores HP and Statuses regardless)
+  if(!Math.max(0, target.injuries||0) && !def.hpAnyway){ toast(ownerLabel(target)+" has no Injuries to treat"); return; }
+  if(!free && injuryDayLeft(target) <= 0 && !def.hpAnyway){
     toast(ownerLabel(target)+" has already had "+injuryDayUsed(target)+" Injuries treated today (Core p.252)"); return;
+  }
+  let kit = null;
+  if(def.needsKit){
+    kit = firstAidKitAccess(t, ctx && ctx.clinicUp);
+    if(!kit.ok){ toast(`${def.name} needs a First Aid Kit — ${kit.why}`); return; }
+  }
+  if(def.oncePerTarget && normInjDay(target).injDay.fae){
+    toast(`${ownerLabel(target)} has already had ${def.name} today — once per day per target`); return;
   }
   if(def.item){
     if(!spendBandage(t)){ toast(`No ${def.name} left in the bag`); return; }
@@ -5911,12 +6081,15 @@ function runInjurySource(def, t, target, free, doSave, rerender, redraw){
       holder.uses[k] = Math.min(info.max, (holder.uses[k]||0) + 1);
     }
   }
+  const kitNote = kit ? spendKitAccess(t, kit) : "";
   const r = healInjuries(target, def.n, def.name, { free });
+  if(def.oncePerTarget) normInjDay(target).injDay.fae = true;      // resetInjuryDay (🌙 End the Day) clears it
   const bits = [];
   if(r.healed) bits.push(`−${r.healed} Injur${r.healed===1?"y":"ies"}`);
   if(def.extra){ const x = def.extra(target, r); if(x) bits.push(x); }
   if(r.blocked) bits.push(`⚠ ${r.blocked} blocked by the ${injuryDayCap(target)}/day cap`);
-  if(!r.healed && !r.blocked) bits.push("nothing to heal");
+  if(kitNote) bits.push(kitNote);
+  if(!r.healed && !r.blocked && !bits.length) bits.push("nothing to heal");
   doSave();
   toast(`🩹 ${def.name} on ${ownerLabel(target)} — ${bits.join(", ")}`);
   if(redraw) redraw();
@@ -6569,6 +6742,21 @@ function normPokemon(p){
     p.abilities = p.ability ? [p.ability] : [];
   }
   delete p.ability;
+  {
+    /* errata first: migrate stored plain printings, except ones the GM gave on purpose and the ones
+       other fields track by exact name (Mega / Tera / Trace grants) */
+    const lc = x => String(x||"").toLowerCase();
+    const skip = new Set([...(p.regularAbil||[]), p.megaAddedAbility, p.teraAbility, p.traced].filter(Boolean).map(lc));
+    p.abilities = [...new Set(p.abilities.map(a => skip.has(lc(a)) ? a : errataAbility(a)))];
+    if(p.encTierAbil) Object.keys(p.encTierAbil).forEach(k => { p.encTierAbil[k] = errataAbility(p.encTierAbil[k]); });
+    if(p.uses) Object.keys(p.uses).forEach(k => {
+      if(!k.startsWith("ability:")) return;
+      const nm = errataAbilityMap().get(k.slice(8)); if(!nm) return;
+      const nk = "ability:" + nm.toLowerCase();
+      if(!(nk in p.uses)) p.uses[nk] = p.uses[k];
+      delete p.uses[k];
+    });
+  }
   if(typeof p.onTeam !== "boolean") p.onTeam = true;
   if(typeof p.unlocked !== "boolean") p.unlocked = false;
   if(!("struggleType" in p)) p.struggleType = null;
@@ -6993,7 +7181,10 @@ function typeMultAgainst(atkType, defTypes, stepAdj=0, opts){
     else if(v > 1) steps++;
     else if(v < 1) steps--;
   });
-  if(immune) return 0;                          // immunity is absolute — a swarm can't undo it
+  if(immune){                                   // immunity is absolute — a swarm can't undo it...
+    if(opts?.immuneAs != null) return ptuEffMult(opts.immuneAs + stepAdj);   // ...unless an Ability reads it as a resist (Transistor, Corrosion)
+    return 0;
+  }
   return ptuEffMult(steps + stepAdj);
 }
 /* ===================================================================
@@ -8081,6 +8272,11 @@ function damageHealRow(getHP, setHP, owner){
     if(dr > 0) wrap.append(el("label",{class:"small muted",style:"display:inline-flex;align-items:center;gap:4px;margin-left:6px",
       title:"Damage Reduction from active buffs auto-applies to damage. Tick to ignore it (indirect damage)."},
       raw, `ignore DR ${dr}`));
+    if(isTrainerOwner(owner)){
+      const ca = [["Physical",true],["Special",false]].map(([k,p]) => ({ k, c:equipClassDR(owner,p) })).filter(x => x.c.dr);
+      if(ca.length) wrap.append(el("span",{class:"small muted",style:"flex-basis:100%"},
+        `🛡 ${ca.map(x => `${x.c.dr} DR vs ${x.k} (${x.c.from.map(f => f.split(" — ")[0]).join(", ")})`).join(" · ")} — only soaks that class of hit: subtract it by hand here; the Map's attack tool applies it for you.`));
+    }
     /* Per-TYPE Damage Reduction (Enchanting Transformation) can't be applied here — this box only
        knows a number of HP, not what Type hit you. Name it so it isn't silently forgotten; the Map's
        "apply an attack" tool, which does know the Type, subtracts it automatically. */
@@ -12456,7 +12652,9 @@ function luLevelBlock(t, L, future){
 const EQUIP_SLOTS = ["Head","Body","Hands","Off-Hand","Feet","Accessory"];
 /* Auto-applied effects keyed by lowercased item name. Fields:
      dr        flat Damage Reduction vs ALL damage → feeds buffDR → damage input
-     drTyped   {Type:N} DR vs one damage type — shown as a note (the input isn't typed)
+     drTyped   {Type:N} DR vs one damage type — shown as a note (the input isn't typed). The keys
+               "Physical" / "Special" are damage CLASSES instead (Light / Special Armor): the Map's attack
+               tool, which knows the class of the hit, applies them through equipClassDR
      drCrit    DR vs Critical Hits only — shown as a note
      evasion   flat bonus to Physical/Special/Speed Evasion
      speedCS   Speed Combat-Stage default shift (e.g. Heavy Armor −1)
@@ -12468,8 +12666,11 @@ const EQUIP_SLOTS = ["Head","Body","Hands","Off-Hand","Feet","Accessory"];
      capabilities  Capabilities granted (display only)
      note      extra rules text worth surfacing                                       */
 const EQUIP_EFFECTS = {
-  "light armor":            { dr:5 },
-  "heavy armor":            { dr:10, speedCS:-1 },
+  /* Sept 2015 Playtest p.4: "Light Armor is split into two varieties" — +5 DR against Physical damage,
+     or (Special Armor) +5 DR against Special damage. Heavy Armor is +5 DR vs all; Heavy Shields are gone and the Light Shield is just "Shield" (+1 Evasion). */
+  "light armor":            { drTyped:{Physical:5} },
+  "special armor":          { drTyped:{Special:5} },
+  "heavy armor":            { dr:5 },   // Sept 2015 Playtest p.4: +5 DR against all Damage, no Speed penalty
   "ablative heavy armor":   { dr:20, speedCS:-1, note:"Brittle: −5 DR each damaging hit, repairs +5 DR every 5 minutes." },
   "reinforced trenchcoat":  { dr:5, skills:{stealth:4}, note:"+4 Stealth to conceal weapons; beats metal detectors." },
   "slipstream armor":       { dr:5, note:"Once per battle, a Swift Action to escape being Stuck." },
@@ -12499,7 +12700,8 @@ const EQUIP_EFFECTS = {
   "flippers":               { note:"+2 Swim when fully submerged, −2 Overland." },
   "handheld propellor":     { swim:3 },
   "surfboard":              { swim:3 },
-  "light shield":           { evasion:2, note:"Ready (Standard): instead +4 Evasion & 10 DR until end of next turn, but Slowed. Two-handed = Small Melee Weapon." },
+  "shield":                 { evasion:1, note:"Ready (Standard): instead +4 Evasion & 10 DR until end of next turn, but Slowed. Two-handed = Small Melee Weapon." },
+  "light shield":           { evasion:1, note:"Ready (Standard): instead +4 Evasion & 10 DR until end of next turn, but Slowed. Two-handed = Small Melee Weapon." },
   "heavy shield":           { evasion:2, note:"Ready (Standard): instead +6 Evasion & 15 DR until end of next turn, but Slowed. Two-handed = Small Melee Weapon." },
   "shield [9-15 playtest]": { evasion:1, note:"Ready (Standard): instead +4 Evasion & 10 DR until end of next turn, but Slowed." },
   "focus":                  { focus:true },
@@ -12547,6 +12749,20 @@ function equipDR(t){
   let dr=0; const from=[];
   equippedList(t).forEach(({name,eff})=>{ if(eff && eff.dr){ dr+=eff.dr; from.push(name); } });
   return { dr, from };
+}
+/* Armor that soaks one damage CLASS — Light Armor (Physical) and Special Armor (Special). `isPhys` is
+   true/false when the hit's class is known; with null/undefined nothing is counted, because a plain
+   HP box has no idea what hit you (it says so instead — see damageHealRow). The Map's attack tool and
+   the Simulator know the class and pass it through buffDR. */
+function equipClassDR(t, isPhys){
+  const out = { dr:0, from:[] };
+  if(isPhys == null) return out;
+  const key = isPhys ? "Physical" : "Special";
+  equippedList(t).forEach(({name,eff})=>{
+    const n = eff && eff.drTyped && eff.drTyped[key];
+    if(n){ out.dr += n; out.from.push(`${name} — ${key} only`); }
+  });
+  return out;
 }
 function equipEvasion(t){ return equippedList(t).reduce((s,{eff})=>s+((eff&&eff.evasion)||0),0); }
 function equipSpeedCS(t){ return equippedList(t).reduce((s,{eff})=>s+((eff&&eff.speedCS)||0),0); }
@@ -17360,7 +17576,7 @@ const buffChargeKey = b => `${b.key||""}|${b.name||""}`;
 const isDRCharge    = b => !!(b.once && b.mods && b.mods.dr);
 /* Damage Reduction an owner's active buffs grant against ONE incoming attack, and which buffs
    supply it (defender side). consumeDamageBuffs spends exactly the charges counted here. */
-function buffDR(owner){
+function buffDR(owner, ctx){
   let dr = 0; const from = [], charged = new Set();
   // a class-restricted DR (a Sour Candy is Physical-only) still totals up here — the Damage/Heal box
   // has no idea what class the incoming hit was — but it says so, so it's obvious when it shouldn't count
@@ -17373,7 +17589,14 @@ function buffDR(owner){
     }
     dr+=d; from.push(b.name + (b.only?` — ${b.only==="phys"?"Physical":"Special"} only`:"")); });
   // worn armor adds flat Damage Reduction too (permanent — never consumed like one-shot buffs)
-  if(isTrainerOwner(owner)){ const e=equipDR(owner); if(e.dr){ dr+=e.dr; e.from.forEach(n=>from.push(n)); } }
+  if(isTrainerOwner(owner)){
+    const e=equipDR(owner); if(e.dr){ dr+=e.dr; e.from.forEach(n=>from.push(n)); }
+    // Light / Special Armor: only the class of the hit being resolved (ctx.isPhys), when the caller knows it
+    const ce=equipClassDR(owner, ctx && ctx.isPhys); if(ce.dr){ dr+=ce.dr; ce.from.forEach(n=>from.push(n)); }
+  }
+  // Curled Up (Defense Curl): +10 DR while the chip is on
+  if(hasStatus(owner,"curledUp")){ dr+=10; from.push("Curled Up"); }
+  if(hasStatus(owner,"withdrawn")){ dr+=15; from.push("Withdrawn"); }
   // Enduring Rage (Power of Rage): 5 DR while Enraged — an Ability, so it's never consumed either
   const rage = rageAbilityDR(owner); if(rage){ dr+=rage; from.push("Enduring Rage (Enraged)"); }
   const stone = stoneStanceDR(owner); if(stone){ dr+=stone; from.push("Moon Mountain Stance"); }
@@ -20090,6 +20313,9 @@ function addAbility(p, sp){
     names = abilitiesAtLevel(sp, p.level);                 // only tiers obtainable at this level
     title = `Add ability — ${sp.name} (Lv ${p.level})`;
   }
+  /* errata first: everyone is offered the errata printing; the GM alone also sees the regular one */
+  names = [...new Set(names.map(errataAbility))];
+  if(isGM()) names = [...new Set(names.flatMap(n => [n, ...regularAbilitiesOf(n)]))];
   names = names.filter(n=>!p.abilities.includes(n));
   if(!names.length){
     // distinguish "none left" from "higher tiers are still locked by level"
@@ -20099,8 +20325,15 @@ function addAbility(p, sp){
     return;
   }
   openPicker(title, names, name=>{
-    if(!p.abilities.includes(name)){ p.abilities.push(name); save(); refreshMon(p); }
-  }, "ability", n=>speciesSet.has(n.toLowerCase()));
+    if(!p.abilities.includes(name)){
+      p.abilities.push(name);
+      if(errataAbility(name) !== name){                          // a regular printing: only the GM can get here
+        p.regularAbil = [...new Set([...(p.regularAbil||[]), name])];
+        toast(`${name}: the regular printing, given by the GM (the errata one is the default)`);
+      }
+      save(); refreshMon(p);
+    }
+  }, "ability", n=>speciesSet.has(n.toLowerCase()) || speciesSet.has(errataAbility(n).toLowerCase()));
 }
 function refreshMon(p){ const root=$("#view-pokemon"); root.innerHTML=""; renderMonEditor(root,p);
   $("#partyCount").textContent=activeChar().pokemon.length||""; }
@@ -21071,6 +21304,8 @@ function cosmeticFormControl(p, sp, onChanged){
     sel.addEventListener("change", commit);
     sels.push(sel); wrap.append(sel);
   });
+  if(p.species==="Morpeko") wrap.append(el("button",{class:"linkbtn",title:"switch Mode by hand (roleplay) \u2014 Hunger Switch also flips it every turn in combat",
+    onclick:()=>{ sels[0].selectedIndex = sels[0].selectedIndex ? 0 : 1; commit(); }},"\u21C4 Switch Mode"));
   wrap.append(el("button",{class:"linkbtn",title:"pick one at random",onclick:()=>{
     sels.forEach(x => { x.selectedIndex = Math.floor(Math.random()*x.options.length); }); commit(); }},"\u{1F3B2}"));
   return wrap;
@@ -21533,6 +21768,17 @@ const CONNECTION_STATUS = [
   { ab:"Silk Threads",            move:"string shot", keys:["slowed"] },
   { ab:"Silk Threads [Errata]",   move:"string shot", keys:["slowed","vulnerable"] },
   { ab:"Flame Tongue",            move:"lick",       keys:["burned"] },
+  { ab:"Tonguelash",              move:"lick",       keys:["paralysis","flinch"] },
+  { ab:"Tingly Tongue",           move:"lick",       keys:["paralysis"] },
+  { ab:"Migraine [Errata]",       move:"confusion",  keys:["confused"] },
+  { ab:"Odious Spray",            move:"poison gas", keys:["flinch"] },
+  { ab:"Odious Spray [Errata]",   move:"poison gas", keys:["flinch"] },
+  { ab:"Danger Syrup [Errata]",   move:"sweet scent", keys:["blinded"] },
+  { ab:"Chemical Romance",        move:"poison gas", keys:["infatuation"] },
+  { ab:"Chemical Romance",        move:"smog",       keys:["infatuation"] },
+  { ab:"Chemical Romance",        move:"sweet scent", keys:["infatuation"] },
+  { ab:"Chemical Romance",        move:"toxic",      keys:["infatuation"] },
+  { ab:"Chemical Romance",        move:"venom drench", keys:["infatuation"] },
 ];
 function connectionRiderKeys(p, m){
   const k = String((m && m.name) || "").toLowerCase();
@@ -21601,7 +21847,7 @@ const MS_SUBJ_RE  = new RegExp("\\b(the\\s+user|(?:the\\s+|its\\s+|a\\s+|each\\s
   + "(?:\\s+(?:hit\\s+by|of)\\s+[^,.;]{1,40}?|\\s+that\\s+are\\s+hit|\\s+adjacent\\s+to\\s+\\w+|\\s+on\\s+the\\s+ground)?)"
   + "\\s+(?:(?:also|additionally|then|now)\\s+)?(?:is|are|becomes?|falls?|gains?)\\s+(?:(?:also|additionally|then|now)\\s+)?"
   + "((?:put|trapped)\\s+in\\s+a\\s+vortex|badly\\s+poisoned|bad\\s+sleep|poisoned|burned|frozen|paralyzed|asleep|confused|cursed"
-  + "|enraged|flinched|infatuated|suppressed|stuck|slowed|trapped|tripped|vulnerable|blinded|knocked\\s+over)\\b([^;]*)", "i");
+  + "|enraged|flinched|infatuated|suppressed|stuck|slowed|trapped|tripped|vulnerable|blinded|curled\\s+up|withdrawn|knocked\\s+over)\\b([^;]*)", "i");
 /* every Affliction a stretch of text names, each once — "badly poisoned" is not also "poisoned",
    "Bad Sleep" is not also "Sleep", "trapped in a Vortex" is the Vortex (which brings Trapped itself) */
 function statusKeysIn(text){
@@ -21732,6 +21978,7 @@ function moveStatusNode(actor, m, thresholds, acc, o){
     const what = msKeysLine(theirs);
     /* Mold Breaker ignores the targets' Defensive immunity Abilities and Veils (found-03) */
     const mold = !!attackerMoldBreak(actor, m && m.type);
+    const immuneType = /^thunder wave(\s*\[sm\])?$/i.test(String((m && m.name) || "").trim()) ? "Electric" : null;
     if(o.rideHit) card.append(el("div", { class:"small muted", style:"margin-top:4px" },
       `\u{1F3AF} ${what} rides with the hit — the GM's \u{1F4A5} Apply puts it on every target it damages (Type & Ability immunities checked).`));
     else if(isGM() && allyTargets(actor, { foes:true }).some(x => x.enemy))
@@ -21740,7 +21987,7 @@ function moveStatusNode(actor, m, thresholds, acc, o){
           title:`\u{1F4AB} ${m.name || "Status"}`,
           intro:`Everyone this Move caught becomes ${what}${dur ? ` (${dur})` : ""}. Type and Ability immunities are checked per target${mold ? " — Mold Breaker ignores the Defensive ones" : ""}.`,
           list:allyTargets(actor, { foes:true }), saveFn:persist, redraw:o.redraw,
-          apply:(x) => { const r = inflictStatuses(x.obj, theirs, { mold });
+          apply:(x) => { const r = inflictStatusesDelayed(x.obj, theirs, dur, { mold, corrosion: hasAbility(actor, "Corrosion"), immuneType });
             return `${ownerLabel(x.obj)}${r.on.length ? ` → ${r.on.join(", ")}` : ""}${r.held.length ? ` (held: ${r.held.join(", ")})` : ""}`; },
           after:(c, n) => `\u{1F4AB} ${n.join(", ")}`,
         }) }, `\u{1F3AF} Apply ${what} to targets…`));
@@ -21748,7 +21995,7 @@ function moveStatusNode(actor, m, thresholds, acc, o){
       title:"the GM picks who this Move caught, from the 🎲 Rolls feed",
       onclick:(ev) => {
         foeFxDeclare({ fx:"statusfx", caster:actor, icon:"\u{1F4AB}", name:m.name || "Status",
-          P:{ keys:theirs, dur, mold }, headline:`${what}${dur ? ` · ${dur}` : ""}` });
+          P:{ keys:theirs, dur, mold, immuneType }, headline:`${what}${dur ? ` · ${dur}` : ""}` });
         ev.currentTarget.disabled = true; ev.currentTarget.textContent = "\u{1F4E8} Sent to the GM";
         toast(`\u{1F4AB} Sent to the GM — they pick who ${what} lands on`);
       } }, `\u{1F4E8} Send ${what} to the GM…`));
@@ -21763,7 +22010,7 @@ function moveHitFx(m, thresholds, acc, extraKeys){
   const keys = uniqStatusKeys(moveStatusLive(m, thresholds, acc).live
     .filter(e => e.who === "target").flatMap(e => e.keys).concat(extraKeys || []));
   const cs = moveCSEffects(m).filter(e => e.who === "target" && (e.range == null || acc >= e.range))
-    .map(e => ({ who:"target", stats:e.stats, n:e.n }));
+    .map(e => ({ who:"target", stats:e.stats, n:e.n, stuckFloor:e.stuckFloor || undefined, needs:e.needs || undefined }));
   return (keys.length || cs.length) ? { name:(m && m.name) || "", status:keys, cs } : null;
 }
 function hitFxLine(fx){
@@ -21913,6 +22160,7 @@ function moveHPEffects(m){
   const key = nm + "|" + rng + "|" + text;
   if(_mhpCache.has(key)) return _mhpCache.get(key);
   const out = [];
+  if(/^pain split$/i.test(nm)){ _mhpCache.set(key, out); return out; }      // both halves at once: the MOVE_FX_ROWS painsplit card (it needs the target's HP)
   if(isSacrificeHealMove(nm)){
     out.push({ kind:"sacrifice", who:"user", cond:"", weather:[],
       text:`${nm}: the user Faints, and the target is cured of up to 3 Injuries, healed to full, and has every Move's Frequency restored.` });
@@ -22281,6 +22529,8 @@ const HAZARD_SETTER_MOVES = {
   "artillerolives": { set:"slick", qty:18, opt:true, area:"two Blasts 3 anywhere within range \u2014 or one Blast 5 centred on the target, if only one target was chosen",
                       when:"once per Scene",
                       also:"The user ignores its own Slick Hazards: it never has to stop Shifting on one and never becomes Vulnerable from one." },
+  "smokescreen":    { set:"smoke", qty:9, area:"a Ranged Blast 3 \u2014 nine squares \u2014 centred within 5 metres",
+                      also:"Defog and Whirlwind blow it away; the \u22123 Accuracy applies to everyone attacking from or into it." },
   /* the sweepers */
   "rapidspin":      { clear:5, area:"all Hazards within 5 metres",
                       also:"Leech Seeds, and the user's own Trapped or Stuck, go with them." },
@@ -22315,7 +22565,8 @@ function moveSeedNode(actor, m, o){
   const key = moveKey((m && m.name) || "");
   const plant = SEED_PLANT_MOVES.has(key), shake = SEED_SHAKE_MOVES.has(key);
   if(!actor || (!plant && !shake)) return null;
-  if(shake && !hasStatus(actor, "seeded")) return null;      // nothing on them to shake off
+  const holdsFast = hasStatus(actor, "stuck") || hasStatus(actor, "trapped");
+  if(shake && !hasStatus(actor, "seeded") && !holdsFast) return null;      // nothing on them to shake off
   const redraw = o.redraw || (() => {}), persist = o.persist || save;
   const card = el("div", { class:"card", style:"background:var(--panel);border:1px solid var(--line);margin:10px 0 0" });
   card.append(el("div", { class:"small", style:"font-weight:800;margin-bottom:4px" }, "\u{1F331} Leech Seed"));
@@ -22332,10 +22583,15 @@ function moveSeedNode(actor, m, o){
       "\u{1F331} Plant the seed on a target…"));
   } else {
     card.append(el("div", { class:"small muted" },
-      `${m.name} removes Leech Seeds — and ${ownerLabel(actor)} is carrying ${leechSeedBy(actor) ? leechSeedBy(actor) + "'s" : "one"}.`));
+      `${m.name} removes Leech Seeds and the user's Trapped or Stuck status` + (hasStatus(actor, "seeded") ? ` — and ${ownerLabel(actor)} is carrying ${leechSeedBy(actor) ? leechSeedBy(actor) + "'s" : "one"}.` : ".")
+      + (holdsFast ? ` ${ownerLabel(actor)} is ${["stuck","trapped"].filter(k => hasStatus(actor, k)).map(statusName).join(" and ")}.` : "")));
     card.append(el("button", { class:"btn-secondary", style:"margin-top:6px;padding:4px 10px",
-      onclick:() => { clearLeechSeed(actor); persist(); toast("\u{1F331} Leech Seed shaken off"); redraw(); } },
-      "\u{1F331} Shake the seed off"));
+      onclick:() => {
+        const bits = [];
+        if(hasStatus(actor, "seeded")){ clearLeechSeed(actor); bits.push("Leech Seed"); }
+        if(Array.isArray(actor.statuses) && holdsFast){ actor.statuses = actor.statuses.filter(k => k !== "stuck" && k !== "trapped"); bits.push("Trapped / Stuck"); }
+        persist(); toast(`\u{1F331} ${bits.join(" and ") || "nothing"} shaken off`); redraw(); } },
+      "\u{1F331} Shake it off"));
   }
   return card;
 }
@@ -22480,7 +22736,7 @@ function tokenCentre(t){ const f = tokenFootprint(t); return { x:Math.round(t.x)
 /* every creature-ish token that stops a shove: linked creatures, boats, unlinked props with a body.
    Zones and Hazard/Garden markers are ground, not obstacles. */
 function tokenIsObstacle(t){
-  return !!t && !isZoneToken(t) && !isHazardToken(t) && !isGardenToken(t) && !t.ghost;
+  return !!t && !isZoneToken(t) && !isHazardToken(t) && !isGardenToken(t) && !isNoteToken(t) && !t.ghost;
 }
 /* Moves `token` up to `metres` in a straight line. `dir` is a PUSH_DIRS row. Returns
      { moved, wanted, from, to, stoppedBy, blocker, path }
@@ -22575,7 +22831,15 @@ function movePushClauses(m){
 function movePushNode(actor, m, o){
   o = o || {};
   if(!actor || !m) return null;
-  const clauses = movePushClauses(m);
+  let clauses = movePushClauses(m);
+  /* Thrust: "All moves used by this Pokemon which consult the Attack stat now have the Push keyword. The default push is 1 meter.
+     If a move already has the Push Keyword, it may push 1 additional meter." */
+  if(m.class === "Physical" && hasAbility(actor, "Thrust")){
+    const i = clauses.findIndex(c => c.dir === "away" && !c.blast && !c.free);
+    clauses = i >= 0
+      ? clauses.map((c, k) => k === i ? Object.assign({}, c, { dist:(c.dist || 0) + 1, text:c.text + " (+1 m, Thrust)" }) : c)
+      : clauses.concat([{ dist:1, dir:"away", text:"pushed 1 metre (Thrust — every Move that uses Attack has the Push keyword)" }]);
+  }
   if(!clauses.length) return null;
   const redraw = o.redraw || (() => {}), persist = o.persist || save;
   const canMove = (typeof mode !== "undefined" && mode === "cloud" && cloud && cloud.isGM);
@@ -22726,9 +22990,15 @@ function tickPendingTurns(map, endingId, endingSeq, startingId, newSeq){
         ? (startingId === tok.id && newSeq > x.seq)
         : (endingId === tok.id && endingSeq > x.seq);
       if(hit){ x.due = true; changed = true;
+        if(x.thenStatus){                                   // Yawn & co.: the Status lands by itself, the entry is spent
+          const why = fxStatus(o, x.thenStatus);
+          x.spent = true;
+          out.push(`${ownerLabel(o)} — ${x.name}: ${why ? "(" + why + ")" : "now " + statusName(x.thenStatus)}`);
+        } else
         out.push(x.kind === "setup" ? `${ownerLabel(o)} — resolve ${x.name} now`
                                     : `${ownerLabel(o)} — ${x.name}: ${x.note}`); }
     });
+    if(pendingList(o).some(x => x.spent)){ o.pending = o.pending.filter(x => !x.spent); if(!o.pending.length) delete o.pending; }
     if(changed) commitTokenSource(tok);
   });
   return out;
@@ -22737,11 +23007,21 @@ function tickPendingTurns(map, endingId, endingSeq, startingId, newSeq){
 function pendingControl(o, onChanged, opts){
   const list = pendingList(o);
   const abShields = abilityShieldsFor(o);
-  if(!list.length && !ownerCoats(o).length && !ownerLocks(o).length && !abShields.length) return el("span", { style:"display:none" });
+  if(!list.length && !ownerCoats(o).length && !ownerLocks(o).length && !abShields.length && !(o && o.pendCS > 0)) return el("span", { style:"display:none" });
   opts = opts || {};
   const persist = opts.persist || save;
   const wrap = el("div", { class:"small", style:"margin:4px 0 8px" });
   wrap.append(el("div", { class:"muted", style:"font-weight:700;margin-bottom:2px" }, "\u23f3 Pending \u00b7 \u{1F9E5} Coats"));
+  /* Disguise held (coatsOnHit): "the user then gains +1 CS in a Stat of their choice" - one button per Stat */
+  if(o && o.pendCS > 0){
+    const pick = el("div", { class:"inline", style:"gap:6px;flex-wrap:wrap;align-items:center;margin:2px 0" },
+      el("span", { style:"font-weight:800;color:var(--accent)" }, `\u{1F3AD} Disguise held \u2014 +1 Combat Stage in a Stat of your choice${o.pendCS > 1 ? ` (\u00d7${o.pendCS})` : ""}:`));
+    CS_STATS.forEach(([k, lbl]) => pick.append(el("button", { class:"btn-secondary", style:"padding:2px 8px",
+      onclick:() => { changeCS(o, k, 1); o.pendCS = Math.max(0, (o.pendCS || 0) - 1); if(!o.pendCS) delete o.pendCS;
+        persist(); onChanged && onChanged(); toast(`\u{1F3AD} Disguise \u2014 ${ownerLabel(o)} +1 ${lbl} Combat Stage`); } }, "+1 " + lbl)));
+    pick.append(el("button", { class:"linkbtn", onclick:() => { delete o.pendCS; persist(); onChanged && onChanged(); } }, "\u2716 skip"));
+    wrap.append(pick);
+  }
   coatsControlRows(o, onChanged, persist).forEach(r => wrap.append(r));
   locksControlRows(o, onChanged, persist).forEach(r => wrap.append(r));
   abShields.forEach(x => {
@@ -22765,7 +23045,8 @@ function pendingControl(o, onChanged, opts){
     if(!x.due) row.append(el("button", { class:"linkbtn", title:"the turn tracker does this by itself in Battle — press it when playing without one",
       onclick:() => { x.due = true; persist(); onChanged && onChanged(); } }, "▶ Due now"));
     row.append(el("button", { class:"btn-secondary", style:"padding:2px 8px",
-      onclick:() => { resolvePending(o, x.id); persist(); onChanged && onChanged(); } },
+      onclick:() => { if(x.due && x.thenStatus) toast(fxStatus(o, x.thenStatus) || `${ownerLabel(o)} is now ${statusName(x.thenStatus)}`);
+                      resolvePending(o, x.id); persist(); onChanged && onChanged(); } },
       x.due ? "✔ Resolved" : "✖ Cancel"));
     wrap.append(row);
   });
@@ -22879,15 +23160,18 @@ const ABILITY_TURN_HOOKS = [
         commitTokenSource(t); hit.push(ownerLabel(v));
       });
       return hit.length ? `Bad Dreams \u2014 ${hit.join(", ")} lose a Tick` : null; } },
-  /* Hunger Switch: Morpeko flips Mode at the start of every turn (the way the games do it). The Mode is
-     o.variant, so the picker on the sheet / encounter card can override it, and the Accuracy / Damage
-     bonus is a buff that is swapped each time. */
+  /* Hunger Switch (homebrew): Morpeko is FORCED to flip Mode at the start of every turn, the way the games
+     do it (Full Belly, Hangry, Full Belly...). Full Belly: +3 Accuracy, +2 Evasion. Hangry: +10 Damage,
+     +2 Crit Range, Aura Wheel turns Dark. The Mode is o.variant; the bonus is a buff swapped each turn. */
   { ab:["Hunger Switch"], when:"turnStart",
     run:(o) => {
       const next = hungerMode(o) === "Full Belly" && o.hungerSet ? "Hangry" : "Full Belly";
       o.variant = next; o.hungerSet = true; syncHungerBuff(o);
-      return next === "Full Belly" ? "Hunger Switch " + "\u2014 Full Belly Mode: +2 Accuracy until its next turn (pick Hangry on the card to switch)"
-                                   : "Hunger Switch " + "\u2014 Hangry Mode: +5 Damage until its next turn (pick Full Belly on the card to switch)"; } },
+      let feast = "";
+      if(next === "Full Belly" && hasAbility(o, "Ravenous Cycle")){ const n = hpTick(ownerMaxHP(o)); gainTempHP(o, n); feast = ` + Ravenous Cycle: ${n} Temp HP`; }
+      else if(next === "Hangry" && hasAbility(o, "Ravenous Cycle")) feast = " + Ravenous Cycle: +3 Movement";
+      return (next === "Full Belly" ? "Hunger Switch \u2014 Full Belly Mode: +3 Accuracy, +2 Evasion until its next turn"
+                                    : "Hunger Switch \u2014 Hangry Mode: +10 Damage, +2 Crit Range until its next turn (Aura Wheel is Dark)") + feast; } },
 ];
 /* the Mode Morpeko is in: its pick, else whatever its dex row says, else Full Belly */
 function hungerMode(o){
@@ -22897,10 +23181,14 @@ function hungerMode(o){
 function syncHungerBuff(o){
   if(!Array.isArray(o.buffs)) o.buffs = [];
   o.buffs = o.buffs.filter(b => b.key !== "hunger-switch");
-  const full = hungerMode(o) === "Full Belly";
+  const full = hungerMode(o) === "Full Belly", cyc = hasAbility(o, "Ravenous Cycle");
+  /* Ravenous Cycle (High Ability): Full Belly pays a Tick of Temp HP (see the hook); Hangry adds +3 Movement */
+  const mods = full ? { acc:3, eva:2 } : { dmg:10, crit:2 };
+  if(cyc && !full) mods.move = 3;
   researchBuff(o, { key:"hunger-switch", name: full ? "Full Belly Mode" : "Hangry Mode", cat:"Ability",
-    dur:"until its next turn", mods: full ? { acc:2 } : { dmg:5 },
-    note: full ? "+2 to Accuracy Rolls." : "+5 to Damage Rolls." });
+    dur:"until its next turn", mods,
+    note: (full ? "+3 to Accuracy Rolls and +2 Evasion." : "+10 to Damage Rolls and +2 Crit Range; Aura Wheel is Dark-Typed.")
+      + (cyc && !full ? " Ravenous Cycle: also +3 Movement." : "") });
 }
 /* ---- Boss Template: Drowsy / Chilled (Running the Game p.488) ---------------------------------
    The Boss's version of Asleep / Frozen. It loses half its Evasion (pokeDerived), and at the END of each
@@ -23004,7 +23292,7 @@ const ownerCoats = o => (o && Array.isArray(o.coats)) ? o.coats : [];
 const ABILITY_SHIELDS = [
   { ab:"Parry",    note:"the next Melee hit instead misses" },
   { ab:"Dodge",    note:"the next damaging hit instead misses" },
-  { ab:"Disguise", note:"the next damaging hit misses and has no effect; then +1 CS in a Stat of its choice (raise it by hand)" },
+  { ab:"Disguise", note:"the next damaging hit misses and has no effect; then +1 CS in a Stat of its choice (a picker appears under Pending)" },
 ];
 function abilityShieldsFor(o){
   if(!o || isTrainerOwner(o)) return [];
@@ -23042,6 +23330,8 @@ function coatsOnHit(owner, br, curHP){
     br.final = 0; br.shielded = true;
     br.coatNotes.push(`\u{1F6E1} ${shield.name}: the hit does not land — no damage, no effects.${shield.riposte ? " " + shield.riposte + " (the sheet doesn't know if it was Melee)." : ""}`);
     removeCoat(owner, shield.id);
+    if(shield.key === "ab-disguise"){ owner.pendCS = (owner.pendCS || 0) + 1;
+      br.coatNotes.push("\u{1F3AD} Disguise: the owner now gains +1 Combat Stage in a Stat of its choice \u2014 pick it under \u23f3 Pending on its sheet / token menu."); }
     return true;
   }
   const sub = coats.find(c => c.kind === "sub");
@@ -23175,6 +23465,9 @@ const moveNameOf = x => String((x && x.name) || x || "").trim();
 /* "" when the Move may be used, else the reason */
 function moveLockReason(p, m){
   const ls = ownerLocks(p);
+  if(m && moveKey(m.name) === "rest"){
+    for(const an of ["Insomnia", "Vital Spirit"]) if(hasAbility(p, an)) return `${an} \u2014 it cannot use Rest`;
+  }
   if(!ls.length || !m) return "";
   const nm = moveKey(m.name);
   for(const l of ls){
@@ -23566,9 +23859,12 @@ const ABILITY_REACTIONS = [
   { ab:"Cruelty",      trig:"deal", vic:{ injury:1 }, exact:true },
   { ab:"Bully",        trig:"deal", melee:true, se:true, vic:{ injury:1, status:"tripped", note:"pushed 2 m" }, exact:true },
   { ab:"Tingle",       trig:"deal", melee:true, vic:{ tick:true }, exact:true },
+  { ab:"Needles",      trig:"deal", melee:true, phys:true, vic:{ tick:true }, exact:true },
+  { ab:"Neurotoxin",   trig:"deal", types:["Poison"], vic:{ status:"paralysis" }, label:"if it Poisoned the target", exact:true },
   { ab:"Innards Out",  trig:"hit", att:{ loseDealt:2 } },
   { ab:"Cotton Down",  trig:"hit", burst:{ r:1, cs:[["spd", -1]], status:"slowed" } },
   { ab:"Aftermath [Errata]", trig:"faintself", burst:{ r:1, ticks:3 }, exact:true },
+  { ab:"Aftermath",    trig:"faintself", burst:{ r:1, frac:4 }, exact:true },
   { ab:"Pickpocket",   trig:"hit", melee:true, item:"steal" },
   { ab:"Magician",     trig:"deal", item:"take", exact:true },
   { ab:"Anger Point",  trig:"hit", crit:true, self:{ status:"enraged", cs:[["atk", 6]] } },
@@ -23658,13 +23954,16 @@ function reactionEffectLines(x, victim, att, ctx, br){
   }
   if(r.burst){
     const map = currentMapForView() || activeMap(), me = tokenForOwner(x.owner);
-    if(!map || !me) lines.push("no token on this board \u2014 apply it to everyone in the Burst by hand");
+    const dampers = /^aftermath/i.test(r.ab) ? dampBlockers(x.owner) : [];       // Damp: Aftermath may not be activated within 10 m
+    if(dampers.length) lines.push(`Damp (${dampers.join(", ")}) is within 10 m \u2014 Aftermath fails and does nothing`);
+    else if(!map || !me) lines.push("no token on this board \u2014 apply it to everyone in the Burst by hand");
     else {
       const hit = [];
       mapTokensFor(map.id).forEach(t => {
         if(t.id === me.id || !t.link || tokenTileGap(me, t) > r.burst.r) return;
         const o = (tokenLinked(t) || {}).obj; if(!o || hasStatus(o, "knockedOut")) return;
         if(r.burst.ticks) ownerHPChange(o, -r.burst.ticks * hpTick(ownerMaxHP(o)));
+        if(r.burst.frac) ownerHPChange(o, -Math.floor((ownerMaxHP(o) || 0) / r.burst.frac));   // Aftermath: a quarter of Max HP
         (r.burst.cs || []).forEach(([k, n]) => changeCS(o, k, n));
         if(r.burst.status) fxStatus(o, r.burst.status);
         commitTokenSource(t); hit.push(ownerLabel(o));
@@ -23741,7 +24040,20 @@ function reactionsNode(victimTok, br, ctx, felled){
 /* Explosion / Self-Destruct: "The user's HP is set to -50% of their full HP. This HP loss cannot be prevented or
    reduced in any way." — straight through ownerHPChange with the Temporary HP soak skipped, so Injuries and the KO
    / Death checks fire exactly as they would for any other loss. */
+/* Damp: "The Moves Self-Destruct and Explosion may not be used when a Pokemon with Damp is within 10 metres" — the Map knows who is standing where.
+   Returns the names of every Damp holder within 10 m of the creature's token. */
+function dampBlockers(o){
+  try{
+    const map = currentMapForView() || activeMap(); if(!map) return [];
+    const toks = mapTokensFor(map.id);
+    const me = toks.find(t => t.link && ((tokenLinked(t) || {}).obj === o)); if(!me) return [];
+    return toks.filter(t => t !== me && t.link && !tokenIsDown(t) && tokenTileGap(t, me) <= 10 && (() => { const ob = tokenHp(t).obj; return !!ob && ownerHasAbility(ob, "Damp"); })())
+      .map(t => tokenHp(t).name);
+  }catch(e){ return []; }
+}
 function selfDestructHP(o){
+  const dm = dampBlockers(o);
+  if(dm.length) return `Damp (${dm.join(", ")}) is within 10 m \u2014 the Move fails and does nothing, so its HP is untouched`;
   const mx = ownerMaxHP(o) || 1, target = -Math.floor(mx / 2), cur = ownerHP(o);
   if(cur <= target) return `already at ${cur} HP`;
   ownerHPChange(o, target - cur, { raw:true });
@@ -23767,6 +24079,14 @@ const MOVE_FX_ROWS = {
   flameburst:   { icon:"\u{1F4A5}", verb:"Burn them", anyone:true, fx:{ loseHP:5 }, intro:"Everyone cardinally adjacent to the target loses 5 HP." },
   thief:        { icon:"\u{1F9E4}", verb:"Take it", single:true, fx:{ itemTake:true }, intro:"The user takes the target's Held Item if it is holding nothing." },
   covet:        { icon:"\u{1F9E4}", verb:"Take it", single:true, fx:{ itemTake:true }, intro:"The user takes the target's Held Item if it is holding nothing." },
+  stockpile:    { icon:"\u{1F4E6}", solo:true, label:"Stockpiled count +1 (max 3)", run:o => { const n = Math.min(3, (o.stockpile || 0) + 1); const was = o.stockpile || 0; o.stockpile = n;
+                    return was >= 3 ? "already at a Stockpiled count of 3" : `Stockpiled count ${n} \u2014 the +1 Defense / Sp.Def is the \u2B06 Apply card above (Spit Up and Swallow read the count)`; } },
+  spitup:       { icon:"\u{1F4E6}", solo:true, label:"Spit Up: set the count to 0 and drop its Combat Stages", run:o => stockpileSpend(o) },
+  swallow:      { icon:"\u{1F4E6}", solo:true, label:"Swallow: set the count to 0 and drop its Combat Stages", run:o => stockpileSpend(o) },
+  painsplit:    { icon:"\u{1F91D}", verb:"Split", single:true, fx:{ painSplit:true }, intro:"The user and the target each lose half their current Hit Points, then each gains half of the total that was lost (no Massive Damage, no Injury until it is all done)." },
+  switcheroo:   { icon:"\u{1F500}", verb:"Swap", single:true, fx:{ itemSwap:true }, intro:"The user and the target exchange held items." },
+  splash:       { icon:"\u{1F4A6}", solo:true, label:"+2 Evasion", run:o => { researchBuff(o, { key:"splash", name:"Splash", cat:"Move", dur:"until end of next turn", mods:{ eva:2 }, note:"+2 Evasion until the end of its next turn; the +1 Long / High Jump Jump is a Shift Action." }); return "+2 Evasion until the end of the next turn"; } },
+  flipturn:     { icon:"\u{1F501}", alert:"Flip Turn \u2014 if it hit, the user is recalled to its Poké Ball after the damage and a new Pokémon may be sent out (a Trapped user may still be recalled). Nothing is switched for you." },
   pluck:        { icon:"\u{1F9E4}", verb:"Take it", single:true, fx:{ itemTake:true }, intro:"The user takes the target's Held Item if it is holding nothing." },
   bestow:       { icon:"\u{1F381}", verb:"Give it", anyone:true, single:true, fx:{ itemGive:true }, intro:"The user gives its Held Item to a target that holds nothing." },
   psychicnoise: { icon:"\u{1F4A2}", verb:"Silence", single:true, lock:"healblock", intro:"The chosen target may not gain HP or Temporary HP until it is switched out." },
@@ -23778,6 +24098,16 @@ const MOVE_FX_ROWS = {
                     const top = ["atk","def","spatk","spdef","spd"].reduce((m, k) => ((b[k] || 0) > (b[m] || 0) ? k : m), "atk"); changeCS(o, top, 1); return `+1 ${statLbl(top)}`; } },
   magnetrise:   { icon:"\u{1F9F2}", solo:true, label:"Levitate for 5 turns", run:o => { researchBuff(o, { key:"magnet-rise", name:"Magnet Rise", cat:"Field", dur:"5 turns", mods:{}, note:"Levitate Ability for 5 turns (not on the Ability list — Ground Moves miss it)." }); return "Levitate for 5 turns"; } },
 };
+/* Stockpile: o.stockpile is the running count (0-3). Spit Up / Swallow zero it, and "any Combat Stages gained from the
+   Stockpiled count are removed" \u2014 one Defense and one Sp.Def stage per count, never past what was gained. */
+function stockpileSpend(o){
+  const n = o.stockpile || 0;
+  if(!n) return "no Stockpiled count \u2014 Spit Up can't be used and Swallow does nothing";
+  o.stockpile = 0;
+  if(!o.cs) o.cs = {};
+  ["def","spdef"].forEach(k => { o.cs[k] = Math.max(-6, Math.min(6, (o.cs[k] || 0) - n)); });
+  return `Stockpiled count ${n} \u2192 0, \u2212${n} Defense and \u2212${n} Sp.Def Combat Stages removed`;
+}
 const _mvBuff = (name, dur, note, mods) => ({ name, cat:"Move", dur, mods:mods || {}, note });
 Object.assign(MOVE_FX_ROWS, {
   uturn:        { icon:"\u{1F501}", alert:"U-Turn — after the damage the user is recalled to its Poké Ball and a new Pokémon may be sent out (a Trapped user may still be recalled). Nothing is switched for you." },
@@ -23800,10 +24130,12 @@ Object.assign(MOVE_FX_ROWS, {
   foresight:    { icon:"\u{1F441}", solo:true, label:"See the Ghosts", run:o => { researchBuff(o, { key:"foresight", name:"Foresight", cat:"Move", dur:"this turn", mods:{}, note:"Normal and Fighting Moves hit Ghosts; sees through Illusion." }); return "Normal & Fighting Moves now hit Ghost-Types this turn"; } },
   odorsleuth:   { icon:"\u{1F443}", solo:true, label:"Sniff out the Ghosts", run:o => { researchBuff(o, { key:"foresight", name:"Odor Sleuth", cat:"Move", dur:"this turn", mods:{}, note:"Normal and Fighting Moves hit Ghosts; sees through Illusion." }); return "Normal & Fighting Moves now hit Ghost-Types this turn"; } },
   miracleeye:   { icon:"\u{1F52E}", solo:true, label:"See the Dark-Types", run:o => { researchBuff(o, { key:"miracle-eye", name:"Miracle Eye", cat:"Move", dur:"this turn", mods:{}, note:"Psychic Moves hit Dark-Types; sees through Illusion." }); return "Psychic Moves now hit Dark-Types this turn"; } },
-  explosion:    { icon:"\u{1F4A5}", solo:true, label:"Set the user's HP to −50%", run:o => selfDestructHP(o) },
-  selfdestruct: { icon:"\u{1F4A5}", solo:true, label:"Set the user's HP to −50%", run:o => selfDestructHP(o) },
+  explosion:    { icon:"\u{1F4A5}", solo:true, damp:true, label:"Set the user's HP to −50%", run:o => selfDestructHP(o) },
+  selfdestruct: { icon:"\u{1F4A5}", solo:true, damp:true, label:"Set the user's HP to −50%", run:o => selfDestructHP(o) },
   sweetscent:   { icon:"\u{1F338}", verb:"Waft", anyone:true, fx:{ buff:_mvBuff("Sweet Scent", "until removed", "−2 to Evasion (Total Evasion can't go below 0).", { eva:-2 }) }, intro:"Every target hit gets −2 Evasion." },
   lockon:       { icon:"\u{1F3AF}", verb:"Lock on", single:true, fx:{ buff:_mvBuff("Locked-On", "next Move", "The next Move the user uses against it that needs an Accuracy Check cannot miss (Baton Pass can carry it).") }, intro:"The target is Locked-On to the user." },
+  focusenergy:  { icon:"\u{1F4AA}", solo:true, label:"Become Pumped", run:o => { researchBuff(o, { key:"pumped", name:"Pumped", cat:"Move", dur:"until switched out", mods:{ crit:2 }, note:"Critical Hit Range extended by 2 (18+ if it was not otherwise extended). Ends when the user is switched." }); return "Pumped \u2014 +2 Critical Hit Range until it is switched out"; } },
+  wavedash:     { icon:"\u{1F30A}", alert:"Wave Dash \u2014 the user may make the Disengage Maneuver as a Free Action right before or after using this Move." },
   laserfocus:   { icon:"\u{1F3AF}", solo:true, label:"Next hit is a Critical", run:o => { researchBuff(o, { key:"laser-focus", name:"Laser Focus", cat:"Move", dur:"next damaging hit", mods:{}, note:"The next successful damaging attack is automatically a Critical Hit." }); return "the next successful damaging attack is an automatic Critical Hit"; } },
   tropkick:     { icon:"\u{1F34C}", verb:"Sap", single:true, fx:{ buff:_mvBuff("Trop Kick", "1 round", "−5 to Damage Rolls for 1 round.", { dmg:-5 }) }, intro:"The target takes −5 to Damage Rolls for a round." },
   octazooka:    { icon:"\u{1F419}", verb:"Ink", single:true, fx:{ cs:[["acc", -1]] }, intro:"On an Even-Numbered Roll the target's Accuracy drops by 1 Combat Stage." },
@@ -23814,7 +24146,9 @@ Object.assign(MOVE_FX_ROWS, {
   tripledive:   { icon:"\u{1F30A}", alert:"Triple Dive — after attacking, hit or miss, the user may Disengage 2 m and attack a different target with this Move; it can repeat a second time on a third creature." },
   payday:       { icon:"\u{1FA99}", alert:"Pay Day — scatters coins worth 1d8 × the user's level; in a trainer battle the winner picks them up." },
   spiritlance:  { icon:"\u{1F531}", alert:"Spirit Lance — +3 damage to every target for each target beyond the first that it successfully hits." },
-  smokescreen:  { icon:"\u{1F32B}", alert:"Smokescreen — the blast of smoke lasts until the end of the encounter (or Defog / Whirlwind). Everyone attacking from or into it takes −3 to Accuracy. Draw the area on the Map." },
+  doubleteam:   { icon:"\u{1F465}", solo:true, label:"3 Double Team activations", run:o => { o.buffs = (o.buffs || []).filter(b => b.key !== "double-team");
+                    researchBuff(o, { key:"double-team", name:"Double Team \u00d73", cat:"Move", dur:"this Scene", mods:{}, note:"3 activations. Spend one when targeted by an attack for +2 Evasion against that attack, or when attacking for +2 Accuracy on that attack. Remove this buff when all three are used." });
+                    return "3 activations \u2014 +2 Evasion against an attack, or +2 Accuracy on your own (add the bonus by hand, tick them off the buff)"; } },
   teleport:     { icon:"\u{1F300}", alert:"Teleport (Interrupt) — the user Teleports up to its Teleporter Capability in metres; any Move that targeted it continues through its square, and single-target Moves simply miss." },
   smackdown:    { icon:"\u{1FAA8}", verb:"Smack down", single:true, fx:{ buff:_mvBuff("Smacked Down", "3 turns", "Knocked to ground level: loses all Sky and Levitate Speeds and can be hit by Ground Moves even if normally immune.") }, intro:"The target is grounded for 3 turns." },
   incinerate:   { icon:"\u{1F525}", alert:"Incinerate — each target holding a Held Item, Main-hand or Off-hand item must drop it or lose a Tick of HP (at most one Tick however many items). Ask each target." },
@@ -23931,6 +24265,8 @@ function moveFxNode(actor, m, o){
   const card = el("div", { class:"card", style:"background:var(--panel);border:1px solid var(--line);margin:10px 0 0" });
   card.append(el("div", { class:"small", style:"font-weight:800;margin-bottom:4px" }, `${row.icon} ${m.name}`));
   card.append(el("div", { class:"small muted" }, row.intro || row.label || ""));
+  if(row.damp){ const dm = dampBlockers(actor); if(dm.length) card.append(el("div", { class:"warnbox", style:"margin-top:6px" },
+    `\u{1F4A7} Damp (${dm.join(", ")}) is within 10 m \u2014 ${m.name} fails and does nothing.`)); }
   const out = el("div", { class:"small", style:"margin-top:6px;font-weight:600;color:var(--accent)" });
   if(row.alert){                                 // U-Turn / Volt Switch: nothing is switched for you, the table is told
     card.append(el("div", { class:"warnbox", style:"margin-top:6px" }, `\u{1F501} ${row.alert}`),
@@ -24386,6 +24722,18 @@ function moveCSEffects(m){
       }
     });
   });
+  /* "All Poisoned targets have their Attack ... lowered" (Venom Drench): the clause only reaches targets in that Status \u2014
+     the entry carries it as `needs`, and applyCSFx skips a target that is not in it */
+  const CS_NEEDS = { poisoned:["poisoned","badlyPoisoned"], burned:["burned"], paralyzed:["paralysis"], frozen:["frozen"],
+                     asleep:["sleep"], sleeping:["sleep"], confused:["confused"] };
+  out.forEach(e => {
+    const nm = e.who === "target" && /\b(?:all|every|each)\s+(poisoned|burned|paralyzed|frozen|asleep|sleeping|confused)\s+(?:targets?|foes|pok[e\u00e9]mon)/i.exec(e.text || "");
+    if(nm) e.needs = CS_NEEDS[nm[1].toLowerCase()];
+  });
+  /* "If this lowers their Speed CS to -6, or if their Speed CS was already at -6, they are instead Stuck" (String Shot):
+     the 'instead' sentence is skipped above, so the lowering entries carry a flag applyCSFx reads */
+  if(/\bto\s*[-\u2212\u2013]\s*6\b[\s\S]{0,80}\balready\b[\s\S]{0,40}[-\u2212\u2013]\s*6[\s\S]{0,40}\binstead\b[^.]*\bStuck\b/i.test(text))
+    out.forEach(e => { if(e.who === "target" && e.n < 0) e.stuckFloor = true; });
   _csFxCache.set(text, out);
   return out;
 }
@@ -24394,7 +24742,9 @@ const CS_FX_LABEL = { atk:"Attack", def:"Defense", spatk:"Sp.Attack", spdef:"Sp.
 function csFxLine(e){
   return `${e.n > 0 ? "+" : "\u2212"}${Math.abs(e.n)} ${e.stats.map(k => CS_FX_LABEL[k]).join(" / ")} `
        + `Combat Stage${Math.abs(e.n) === 1 && e.stats.length === 1 ? "" : "s"} to the ${e.who}`
-       + (e.range != null ? ` (on ${e.range}+)` : "");
+       + (e.range != null ? ` (on ${e.range}+)` : "")
+       + (e.stuckFloor ? " \u2014 Stuck once it reaches \u22126" : "")
+       + (e.needs ? ` \u2014 only if ${statusName(e.needs[0])}` : "");
 }
 /* One Combat Stage change, in whichever direction - lowering goes through lowerCS so Hyper Cutter,
    Clear Body and the rest still get their say. Returns true if the stage actually moved. */
@@ -24406,19 +24756,49 @@ function changeCS(o, stat, n){
   o.cs[stat] = Math.max(-6, Math.min(6, (o.cs[stat] || 0) + n));
   return true;
 }
-function applyCSFx(o, entries){
+function applyCSFx(o, entries, opts){
   const moved = [], held = [];
+  let dropped = false;
+  entries = entries.filter(e => {                       // Venom Drench: only the Poisoned ones are reached
+    if(!e.needs || !o || e.needs.some(k => hasStatus(o, k))) return true;
+    held.push(`${e.stats.map(k => CS_FX_LABEL[k]).join(" / ")} (not ${statusName(e.needs[0])})`);
+    return false;
+  });
   entries.forEach(e => e.stats.forEach(k => {
-    if(changeCS(o, k, e.n)) moved.push(`${e.n > 0 ? "+" : "\u2212"}${Math.abs(e.n)} ${CS_FX_LABEL[k]}`);
+    if(changeCS(o, k, e.n)){ moved.push(`${e.n > 0 ? "+" : "\u2212"}${Math.abs(e.n)} ${CS_FX_LABEL[k]}`); if(e.n < 0) dropped = true; }
     else held.push(`${CS_FX_LABEL[k]} (${csLowerBlock(o, k)})`);
+    if(e.stuckFloor && e.n < 0 && o && ((o.cs || {})[k] || 0) <= -6){          // String Shot: at -6 (or already there) \u2192 Stuck instead
+      const why = fxStatus(o, "stuck");
+      moved.push(why ? `(${why})` : `Stuck (${CS_FX_LABEL[k]} at \u22126)`);
+    }
   }));
+  /* Defiant / Competitive: a Combat Stage drop caused by a FOE (opts.foe) is answered with +2 Attack / Sp.Attack */
+  if(dropped && opts && opts.foe && o && !isTrainerOwner(o) && !ownerHasAbility(o, "Contrary")){
+    [["Defiant", "atk"], ["Competitive", "spatk"]].forEach(([ab, st]) => {
+      if(ownerHasAbility(o, ab) && changeCS(o, st, 2)) moved.push(`${ab}: +2 ${CS_FX_LABEL[st]}`);
+    });
+  }
   return { moved, held };
 }
 /* The block the roll shows once the d20 is known: everything this Move does to Combat Stages, with
    a button that writes it. The user's own half needs no target at all, so it is one press; the
    foes' half opens the same picker the Type Ace branches use, and only a GM sees enemy tokens. */
+/* "Connection - <Move>" Abilities whose payload is a Combat Stage change when the Move is used (Static ones only; a
+   Scene / Daily one stays a button under the 🔗 rider box, because it has a use to spend). */
+const CONNECTION_CS = [
+  { ab:"Fluffy Charge", move:"charge", who:"user", stats:["def"], n:1 },
+  { ab:"Wistful Melody", move:"sing", who:"target", stats:["atk","spatk"], n:-2 },          // Scene use: hit or miss (not Soundproof — checked at the target's end)
+  { ab:"Bone Lord [Errata]", move:"bone club", who:"target", stats:["def","spatk"], n:-1 },  // once per Scene per Move
+];
+function connectionCS(p, m){
+  const k = String((m && m.name) || "").toLowerCase();
+  try{
+    return CONNECTION_CS.filter(r => r.move === k && hasAbility(p, r.ab))
+      .map(r => ({ who:r.who, stats:r.stats.slice(), n:r.n, range:null, text:`${r.ab} (Connection - ${m.name})` }));
+  }catch(e){ return []; }
+}
 function moveCSNode(actor, m, acc, redraw, persist, rideHit){
-  const fx = moveCSEffects(m);
+  const fx = moveCSEffects(m).concat(connectionCS(actor, m));
   if(!fx.length) return null;
   const live = fx.filter(e => e.range == null || acc >= e.range);
   const dead = fx.filter(e => e.range != null && acc < e.range);
@@ -24448,7 +24828,7 @@ function moveCSNode(actor, m, acc, redraw, persist, rideHit){
         title:"\u{1F53A} " + (m.name || "Combat Stages"),
         intro:`Everyone this Move caught takes ${theirs.map(csFxLine).join(" \u00b7 ")}.`,
         list:foes, saveFn:persist || save, redraw,
-        apply:(x) => { const r = applyCSFx(x.obj, theirs);
+        apply:(x) => { const r = applyCSFx(x.obj, theirs, { foe:true });
           return `${ownerLabel(x.obj)}${r.held.length ? ` (held: ${r.held.join(", ")})` : ""}`; },
         after:(c, n) => `\u{1F53A} ${n.join(", ")}`,
       }) }, "\u{1F3AF} Apply to targets\u2026"));
@@ -24530,6 +24910,7 @@ function critThreshold(p, m){
   if(ownerHasAbility(p,"Beam Cannon") && !/^melee/i.test(m?.range||"") && /1 target/i.test(m?.range||"")) t -= 3;
   if(ownerHasAbility(p,"Gore") && /^horn attack$/i.test(m?.name||"")) t = Math.min(t, 18);
   if(hasStatus(p,"brutal")) t -= 1*trainingMult(p);   // Brutal Training: +1 Crit Range (×3 under Critical Moment)
+  if(ownerBuffs(p).some(b => b.key === "showdown-mode") && /^melee/i.test(String(m?.range||""))) t -= 2;   // Showdown Mode: Melee Moves +2 Crit Range
   t -= heldCritBonus(p);                             // Razor Claw, a Farfetch'd's Rare Leek
   return Math.max(2, t);
 }
@@ -24675,14 +25056,15 @@ function sereneGraceThresholds(list, active){
 /* Stench / Ugly (Flinch), Poison Touch (Poison), Ragelope — "Flinches on 19+; if the Move already has a chance to,
    its Effect Range is widened by +2 instead". One helper: find the Move's own range for that status and
    widen it, else add the ability's own. */
-function statusRangeAbility(list, p, isDmg){
+function statusRangeAbility(list, p, isDmg, isPhys){
   if(!isDmg) return list;
   const rules = [
     { ab:"Stench",            re:/flinch/i, n:19, w:2,  txt:"Stench — this Move Flinches the target on 19+." },
     { ab:"Stench [Errata]",   re:/flinch/i, n:18, w:3,  txt:"Stench [Errata] — this Move Flinches the target on 18+ (and the Flinched foe takes −2 Accuracy for a round)." },
     { ab:"Ugly",              re:/flinch/i, n:19, w:2,  txt:"Ugly — this Move Flinches the target on 19+." },
     { ab:"Poison Touch",      re:/poison/i, n:19, w:2,  txt:"Poison Touch — this Move Poisons the target on 19+." },
-  ].filter(r => hasAbility(p, r.ab));
+    { ab:"Ragelope",          re:/enrage/i, n:18, w:0,  phys:true, txt:"Ragelope \u2014 on 18+ the user becomes Enraged (and gains +1 Speed Combat Stage; if it was already Enraged, +1 Attack Combat Stage instead)." },
+  ].filter(r => hasAbility(p, r.ab) && (!r.phys || isPhys));
   if(!rules.length) return list;
   let out = (list || []).slice();
   rules.forEach(r => {
@@ -24778,6 +25160,7 @@ function abilityDamageMods(p, m, baseDBVal, thresholds, opts={}){
     let sandy = false; try{ sandy = ownerWeather(p).key === "sandstorm"; }catch(e){}
     if(sandy){ mods.flat += 5; mods.why.push("Sand Force +5 damage (Sandstorm)"); } }
   if(hasAbility(p,"Fire Mane") && opts.mtype === "Fire"){ mods.db += 2; mods.why.push("Fire Mane +2 DB"); }
+  if(hasAbility(p,"Damp [Errata]") && opts.mtype === "Water" && (opts.isPhys || opts.isSpec)){ mods.dice.push("1d10"); mods.why.push("Damp +1d10 (Water)"); }
   if(hasAbility(p,"Dark Aura") && opts.mtype === "Dark"){ mods.db += 1; mods.why.push("Dark Aura +1 DB"); }
   if(hasAbility(p,"Fairy Aura") && opts.mtype === "Fairy"){ mods.db += 1; mods.why.push("Fairy Aura +1 DB"); }
   if(hasAbility(p,"Mega Launcher [Errata]") && ["aurasphere","darkpulse","dragonpulse","waterpulse"].includes(moveKey(m.name))){
@@ -24790,6 +25173,14 @@ function abilityDamageMods(p, m, baseDBVal, thresholds, opts={}){
   if(hasAbility(p,"Courage") && (opts.isPhys || opts.isSpec)){
     const mx = ownerMaxHP(p) || 1, cur = p.currentHP == null ? mx : p.currentHP;
     if(cur * 3 <= mx){ mods.flat += 5; mods.why.push("Courage +5 damage (at or under 1/3 HP)"); } }
+  // Showdown Mode: Melee Moves deal bonus damage equal to the user's Tick Value (the Tick it then loses is the table's)
+  if(ownerBuffs(p).some(b => b.key === "showdown-mode") && /^melee/i.test(String((m && m.range) || ""))){
+    const tk = hpTick(ownerMaxHP(p)); mods.flat += tk; mods.why.push(`Showdown Mode +${tk} damage (Tick Value; lose a Tick of HP after dealing it)`); }
+  // Curled Up + Rollout / Ice Ball: +10 to the damage roll
+  if(hasStatus(p,"curledUp") && ["rollout","ice ball"].includes(mname)){ mods.flat += 10; mods.why.push("Curled Up +10 damage (Rollout / Ice Ball)"); }
+  // Ballistic (Connection - Rollout, Static): +2 DB on Rollout, Steamroller, Steel Roller and every Move with "Ball" in the name
+  if(hasAbility(p,"Ballistic") && (/ball/i.test(String(m.name||"")) || ["rollout","steamroller","steel roller"].includes(mname))){
+    mods.db += 2; mods.why.push("Ballistic +2 DB"); }
   // Punk Rock: +2 DB on Sonic Moves
   if(hasAbility(p,"Punk Rock") && moveHasKeyword(m,"sonic")){
     mods.db += 2; mods.why.push("Punk Rock +2 DB (Sonic)"); }
@@ -25187,7 +25578,7 @@ function specialMoveInfo(m, p){
     "Frustration":  {label:"Loyalty (0–6)",            def:0, min:0, max:6, toDB:v=>9-v,               hint:"DB = 9 − Loyalty"},
     "Return":       {label:"Loyalty (0–6)",            def:0, min:0, max:6, toDB:v=>3+v,               hint:"DB = 3 + Loyalty"},
     "Round":        {label:"Prior uses this round",    def:0, min:0,        toDB:v=>Math.min(12,6+2*v),hint:"DB = 6 +2 per prior use (max 12)"},
-    "Spit Up":      {label:"Stockpile Count (1–3)",    def:1, min:1, max:3, toDB:v=>8*v,               hint:"DB = 8 × Stockpile Count"},
+    "Spit Up":      {label:"Stockpile Count (1–3)",    def:Math.max(1, Math.min(3, (p && p.stockpile) || 1)), min:1, max:3, toDB:v=>8*v,               hint:"DB = 8 × Stockpile Count"},
     "Trump Card":   {label:"Trump Count",             def:0, min:0,        toDB:v=>6+2*v,             hint:"DB = 6 +2 per Trump Count"},
     "Fury Cutter":  {label:"Consecutive hits so far",  def:0, min:0, max:3, toDB:v=>Math.min(16,4+4*v),hint:"DB 4/8/12/16 as it connects consecutively"},
     /* Surging Strikes is up to THREE attacks, each on a different target, with a free 2 m shift
@@ -25718,7 +26109,9 @@ function openMoveRoll(p, m, sp, opts={}){
      clause restricts that to Steel-Type Moves originating from the Anchor, so it only fires
      alongside the Anchored toggle below (it does nothing for a Steel move thrown normally). */
   const noStab = isTinkerWeaponMove(p, m);          // a Tinker's Weapon Moves never gain STAB
-  const stab = !noStab && ((mtype && types.includes(mtype)) || (mtype==="Steel" && anchorOn && hasAbility(p, "Steelworker")));
+  const stab = !noStab && ((mtype && types.includes(mtype)) || (mtype==="Steel" && anchorOn && hasAbility(p, "Steelworker"))
+    || (hasAbility(p, "Eggscellence") && /^(barrage|egg bomb)$/i.test(String(m.name || "")))   // Eggscellence: STAB on Barrage and Egg Bomb
+    || (hasAbility(p, "Rocky Payload") && mtype === "Rock"));                                   // Rocky Payload (Bonus): STAB on Rock-Type Moves
   /* Versatile (Tera Blast, Order Up, Redline): Physical or Special at the user's choice. It opens on
      whichever stat is bigger and is flipped from the roll window. */
   // Ancient Heritage (Researcher, Paleontology) makes every Ancient Power this Trainer's Pokémon uses Versatile
@@ -25807,7 +26200,9 @@ function openMoveRoll(p, m, sp, opts={}){
     if(sp2) switch(sp2.kind){
       case "conditionalDB": { const cx = condMods();
         return (cx.db!=null ? cx.db : sp2.base) + cx.dbDelta; }
-      case "valueDB":       return sp2.toDB(Math.max(sp2.min??0, Math.min(sp2.max??1e9, val)));
+      case "valueDB":       { /* Big Swallow: Spit Up reads the Stockpile Count as one higher (never past 3) */
+        const bump = (/^spit up$/i.test(String(m.name||"")) && hasAbility(p,"Big Swallow") && val < 3) ? 1 : 0;
+        return sp2.toDB(Math.max(sp2.min??0, Math.min(sp2.max??1e9, val + bump))); }
       case "dieDB":         return dieVal!=null ? sp2.toDB(dieVal) : null;
       case "doubleStrike":  return (sp2.base??0) * (hitsConnect>=2 ? 2 : 1);
       case "tripleKick":    return ({1:1,2:3,3:6})[hitsConnect] ?? 1;
@@ -25852,7 +26247,7 @@ function openMoveRoll(p, m, sp, opts={}){
   // that ends up Fire-Typed. Kept separate from `thresholds` so its own rider can't feed Sheer Force.
   const rollThresholds = buffEffectThresholds(sereneGraceThresholds(
     statusRangeAbility(frostbiteThresholds(fieryCrashThresholds(ancientHeritageThresholds(thresholds, p, m), !!fc && mtype==="Fire"),
-      hasAbility(p,"Frostbite") && mtype==="Ice" && (isPhys||isSpec)), p, isPhys||isSpec),
+      hasAbility(p,"Frostbite") && mtype==="Ice" && (isPhys||isSpec)), p, isPhys||isSpec, isPhys),
     ownerHasAbility(p,"Serene Grace")), buffEffectRange(p) + heldEffectRangeBonus(p) + (/melee/i.test(String((m && m.range) || "")) ? 0 : statStratagemBonus(p).eff));
   const fiveStrike = isFiveStrike(m);
   /* Rock Head [Errata] / Run Up - ticked on the roll, read back when the damage is rolled */
@@ -26203,7 +26598,8 @@ function openMoveRoll(p, m, sp, opts={}){
   // 50% HP), so this box is rebuilt by renderDamage alongside the damage read-out.
   const accBox = el("div",{style:"margin-bottom:10px"});
   // does this Move skip its Accuracy Check right now? (weather, or a ticked condition)
-  const noMissNow = () => wx.autoHit || condMods().noMiss;
+  const noMissNow = () => wx.autoHit || condMods().noMiss
+    || (hasAbility(p, "Hypnotic") && /^hypnosis$/i.test(String(m.name || "")));     // Hypnotic (Connection - Hypnosis): it cannot miss
   function renderAccGuide(){
     const cxNoMiss = !wx.autoHit && condMods().noMiss;
     /* the same modifiers the 🎲 result applies, said out loud before rolling: buffs (Songs,
@@ -26707,7 +27103,8 @@ function openMoveRoll(p, m, sp, opts={}){
        entered above, count the connecting strikes automatically, and size the Damage Base from them. */
     const multi   = nAcc > 1;
     const cantMiss = noMissNow();          // weather, or a ticked condition (Rage Fist under 50% HP)
-    const thresh  = (cantMiss || effAC==null) ? null : effAC + targetEva;
+    const noGuardEva = (hasAbility(p, "No Guard") && (moveHasKeyword(m, "melee") || /^melee/i.test(String((m && m.range) || "")))) ? 0 : targetEva;   // No Guard: "the user ignores all forms of evasion when making Melee attack rolls"
+    const thresh  = (cantMiss || effAC==null) ? null : effAC + noGuardEva;
     const strikes = multi ? resolveStrikes(accs, accMod, thresh, effCritT) : null;
     const forced  = multi && redo?.forceHits!=null;
     const connected = !multi ? 1 : (forced ? redo.forceHits : strikes.filter(s=>s.hit).length);
@@ -26909,6 +27306,10 @@ function openMoveRoll(p, m, sp, opts={}){
           + (moveDefCS==="all" ? ` and any Armor or Combat-Stage changes to the target's ${isPhys?"Defense":"Sp.Def"}`
              : moveDefCS==="positive" ? ` and the target's positive Defense Combat Stages` : "")
           + `. Applied for you by the target picker below.`));
+        /* Merciless: "Any attacks by the user against Poisoned targets are Critical Hits." Whether the target is Poisoned is
+           per-target, so pre-roll what the crit WOULD add and let the picker apply it to each Poisoned target. */
+        let mercCrit = 0;
+        if(hasAbility(p, "Merciless") && !critExtra){ try{ mercCrit = rollDiceString(critDS).total; }catch(e){} }
         // GM: drop this rolled hit straight onto a battle-map token (auto Def / type / abilities / DR).
         if(hpNode && hpNode.setDealt) hpNode.setDealt(total);   // a rough figure until a target takes it
         if(isPhys || isSpec){
@@ -26916,7 +27317,7 @@ function openMoveRoll(p, m, sp, opts={}){
             pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens") || !!(mold && mold.tinted),
             atkExploit: exploitAbilityBonus(p), atkMega: isMegaMon(p), atkWar: ownerAuraActive(p,"War"), seFlat: heldSeFlatDamage(p),
             pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS || unawareMode(p), moveRule, critExtra, fx: hitFx,
-            ctx:{ attacker:p, by:rollerName(p), melee:/melee/i.test(String((m && m.range) || "")), move:m.name, crit:!!isCrit },
+            ctx:{ attacker:p, by:rollerName(p), melee:/melee/i.test(String((m && m.range) || "")), move:m.name, crit:!!isCrit, range:String((m && m.range) || ""), forceCrit:mercCrit },
             onDealt:(n, c, d)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n, true, d); } });
           if(tw) dmgLine.append(tw);
         }
@@ -26931,7 +27332,7 @@ function openMoveRoll(p, m, sp, opts={}){
                  pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens") || !!(mold && mold.tinted),
                  atkExploit: exploitAbilityBonus(p), atkMega: isMegaMon(p), atkWar: ownerAuraActive(p,"War"), seFlat: heldSeFlatDamage(p),
                  pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS || unawareMode(p), moveRule, critExtra, fx: hitFx,
-                 ctx:{ by:rollerName(p), aid:p.id || null, melee:/melee/i.test(String((m && m.range) || "")), move:m.name, crit:!!isCrit } } : null });
+                 ctx:{ by:rollerName(p), aid:p.id || null, melee:/melee/i.test(String((m && m.range) || "")), move:m.name, crit:!!isCrit, range:String((m && m.range) || ""), forceCrit:mercCrit } } : null });
       }
       out.append(dmgLine);
       if(ancestral && (isPhys||isSpec)){ const an = ancestralStrikeNode(); if(an) out.append(an); }
@@ -27375,6 +27776,28 @@ const BATTLE_ACTIONS = [
   {id:"intercept-ranged", name:"Intercept (Ranged)", type:"Full", cls:"Interrupt",
    effect:"When a ranged attack passes within your movement range, pick a square between attacker and target, make an Acrobatics/Athletics check and Shift toward it. On success you take the attack instead. Same Loyalty rules as Intercept (Melee)."},
 ];
+/* Features that REWRITE a maneuver: Defender turns Intercept into a Shift Action Interrupt, Nimble Steps makes Disengage a
+   Swift Action, Hunter's Reflexes triples Attacks of Opportunity, Training Regime pays a bonus per Trained Stat. The row still
+   lives on its printed tab, and `also` lists it on a second tab too, with the Feature's own sentence printed under it. */
+const ACTION_FEATURE_NOTES = [
+  { ids:["intercept-melee","intercept-ranged"], feat:"Defender", also:"shift",
+    note:"Defender: Intercept (both kinds) needs only a Shift Action Interrupt \u2014 not a Full Action." },
+  { ids:["intercept-melee","intercept-ranged"], feat:"Training Regime", stat:"def", note:"Training Regime (Defense): you gain 5 Damage Reduction when Intercepting an attack." },
+  { ids:["disengage"], feat:"Nimble Steps", also:"swift", note:"Nimble Steps: you may take the Disengage Maneuver as a Swift Action." },
+  { ids:["attack-opportunity"], feat:"Hunter's Reflexes",
+    note:"Hunter's Reflexes: you and your Pokemon may make up to THREE Attacks of Opportunity each round. Your attacks count as adjacent for Teamwork and as Melee for Pack Hunt." },
+  { ids:["sprint"], feat:"Training Regime", stat:"spd", note:"Training Regime (Speed): when you Sprint you DOUBLE your Movement Capability instead of +50%." },
+  { ids:["dirty-trick","disarm","push","trip","grapple"], feat:"Training Regime", stat:"atk", note:"Training Regime (Attack): +2 to Accuracy Checks made to hit with a Combat Maneuver." },
+  { ids:["dirty-trick","disarm","push","trip","grapple"], feat:"Training Regime", stat:"spdef", note:"Training Regime (Special Defense): +2 to Opposed Checks made to RESIST a Combat Maneuver." },
+  { ids:["disarm"], feat:"Cutthroat", note:"Cutthroat: with a Small Melee or Short Ranged Weapon you may resist Disarm Maneuvers using any Rogue Skill." },
+];
+function actionFeatureNotes(a, t){
+  if(!t || !a) return [];
+  try{
+    const ts = trainedStatsOf(t);
+    return ACTION_FEATURE_NOTES.filter(r => r.ids.includes(a.id) && hasFeatureLoose(t, r.feat) && (!r.stat || ts.includes(r.stat)));
+  }catch(e){ return []; }
+}
 function getFavActions(){ try{ return new Set(JSON.parse(localStorage.getItem("ptu_fav_actions")||"[]")); }catch(e){ return new Set(); } }
 function toggleFavAction(id){ const s=getFavActions(); s.has(id)?s.delete(id):s.add(id); localStorage.setItem("ptu_fav_actions", JSON.stringify([...s])); }
 const featFavId = name => "feat:"+name;   // Features share the favourites store, keyed by name
@@ -27414,7 +27837,8 @@ function renderBattle(){
   // maneuver lists, filtered to what this actor may do
   const favs=getFavActions();
   const okActor = a => { const act=a.actor||"both"; return act==="both" || act===(isTrainer?"trainer":"pokemon"); };
-  let list=BATTLE_ACTIONS.filter(a => (battleFilter==="fav" ? favs.has(a.id) : a.type.toLowerCase()===battleFilter) && okActor(a));
+  let list=BATTLE_ACTIONS.filter(a => (battleFilter==="fav" ? favs.has(a.id) : (a.type.toLowerCase()===battleFilter
+    || (isTrainer && actionFeatureNotes(a, c.trainer).some(r => r.also === battleFilter)))) && okActor(a));
   list.sort((a,b)=> (favs.has(b.id)-favs.has(a.id)) || ((b.common?1:0)-(a.common?1:0)) || a.name.localeCompare(b.name));
   // the trainer's own action Features: on a type tab, those firing on this action type; on ★ Fav, any favourited one
   const featRows = (isTrainer && (isTypeFilter(battleFilter) || battleFilter==="fav"))
@@ -27436,7 +27860,7 @@ function renderBattle(){
     wrap.append(el("div",{class:"section-head"}, "★ Favourite Features"));
     favFeat.forEach(f=>wrap.append(featureActionRow(f, c.trainer, renderBattle)));
   }
-  list.forEach(a=>wrap.append(battleActionRow(a,favs)));
+  list.forEach(a=>wrap.append(battleActionRow(a,favs, isTrainer ? c.trainer : null)));
   if(restFeat.length){
     wrap.append(el("div",{class:"section-head",style:"margin-top:14px"}, "From your Features"));
     restFeat.forEach(f=>wrap.append(featureActionRow(f, c.trainer, renderBattle)));
@@ -27448,6 +27872,7 @@ function renderBattle(){
   if(isTrainer && battleFilter==="standard"){
     wrap.append(el("div",{class:"section-head",style:"margin-top:14px"}, "Items"));
     wrap.append(restorativeActionRow(c.trainer, renderBattle));
+    if(firstAidKitUsable(c.trainer)) wrap.append(firstAidKitActionRow(c.trainer, renderBattle));
   }
   if(isTrainer && battleFilter==="standard" && hasSoothingFlute(c.trainer)){
     wrap.append(el("div",{class:"section-head",style:"margin-top:14px"}, "Equipment"));
@@ -28337,6 +28762,27 @@ function monRidersForMove(p, moveName){
   });
   return out;
 }
+/* What pressing "🔗 Use it on this Move" actually DOES, for the Connection Abilities whose payload is a number the sheet can
+   write on the user: a buff, Temporary HP, a Tick, a cure, a Combat Stage. fn(user, done) \u2014 `done(message)` finishes it (a
+   picker calls it later). Anything not listed stays a use-spender with the rule printed above it. */
+const CONNECTION_USE_FX = {
+  "quick curl [errata]":  (p, done) => { researchBuff(p, { key:"conn-dr10", name:"Quick Curl", cat:"Ability", dur:"1 full round", mods:{ dr:10 }, note:"+10 Damage Reduction for 1 full round." }); done("+10 Damage Reduction for a full round"); },
+  "shell shield [errata]":(p, done) => { researchBuff(p, { key:"conn-dr10", name:"Shell Shield", cat:"Ability", dur:"1 full round", mods:{ dr:10 }, note:"+10 Damage Reduction for 1 full round." }); done("+10 Damage Reduction for a full round"); },
+  "root down [errata]":   (p, done) => { researchBuff(p, { key:"conn-dr5", name:"Root Down", cat:"Ability", dur:"while Ingrained", mods:{ dr:5 }, note:"+5 Damage Reduction while it has the Ingrain Coat." }); done("+5 Damage Reduction while Ingrained"); },
+  "root down":            (p, done) => { const n = Math.floor((ownerMaxHP(p) || 0) / 16); gainTempHP(p, n); done(`+${n} Temporary HP (1/16th of Max HP)`); },
+  "honey thief":          (p, done) => { const n = hpTick(ownerMaxHP(p)); gainTempHP(p, n); done(`+${n} Temporary HP (a Tick)`); },
+  "vigor":                (p, done) => { const g = ownerHeal(p, hpTick(ownerMaxHP(p))); done(`+${g} HP (a Tick) after being set to 1 HP`); },
+  "refreshing veil":      (p, done) => { const had = (p.statuses || []).filter(k => ["burned","frozen","paralysis","poisoned","badlyPoisoned","sleep"].includes(k));
+                              if(Array.isArray(p.statuses)) p.statuses = p.statuses.filter(k => !had.includes(k));
+                              done(had.length ? `cured ${had.map(statusName).join(", ")}` : "no Persistent Status to cure"); },
+  "shell cannon":         (p, done) => { researchBuff(p, { key:"shell-cannon", name:"Shell Cannon", cat:"Ability", dur:"next attack", once:true, mods:{ acc:2, dmg:4 }, note:"+2 to the Accuracy Roll and +4 Bonus Damage on this attack (Aqua Jet / Dive / Tackle / Waterfall need a straight-line Shift, +2 Overland and Swim)." }); done("+2 Accuracy and +4 damage on this attack"); },
+  "copy master":          (p, done) => openPicker("Copy Master \u2014 +1 Combat Stage in which Stat?", CS_STATS.map(([, l]) => l), l => { const k = CS_STATS.find(([, x]) => x === l)[0]; changeCS(p, k, 1); done(`+1 ${l}`); }),
+  "vicious":              (p, done) => openPicker("Vicious \u2014 pick one", ["Another Standard Action this round", "+2 Critical Hit Range for the encounter"], l => {
+                              if(/Critical/.test(l)){ researchBuff(p, { key:"vicious-crit", name:"Vicious", cat:"Ability", dur:"rest of the encounter", mods:{ crit:2 }, note:"+2 Critical Hit Range on all attacks for the rest of the encounter." }); done("+2 Critical Hit Range for the encounter"); }
+                              else done("another Standard Action this round \u2014 take it at the table"); }),
+  "wallmaster":           (p, done) => openPicker("Wallmaster \u2014 pick one", ["+2 Defense Combat Stages", "2 extra Barrier segments (place them by hand)"], l => {
+                              if(/Defense/.test(l)){ changeCS(p, "def", 2); done("+2 Defense Combat Stages"); } else done("2 extra Barrier segments \u2014 place them by hand"); }),
+};
 /* The Ability rider boxes inside a Pokémon's move roll. Same shape as the Trainer's: an Ability
    with a real Frequency (or its own per-Move limit) gets a button that spends it; a Static one just
    states what also happens. */
@@ -28362,7 +28808,7 @@ function monRiderBoxes(p, moveName, rerenderAll, persist){
       const left = freqTrackable(info) ? usesLeft(p, ak, info.max) : null;
       const mk = `${a.name}|${canon}`;
       const usedHere = perMove && usesLeft(p, useKey("rider", mk), 1) <= 0;
-      if(perMove || left != null){
+      if(perMove || left != null || CONNECTION_USE_FX[String(a.name).toLowerCase()]){
         const canFire = !usedHere && (left==null || left>0);
         const btn = el("button",{class: canFire?"btn-primary":"btn-secondary",style:"padding:6px 10px",
           onclick:()=>{
@@ -28371,6 +28817,8 @@ function monRiderBoxes(p, moveName, rerenderAll, persist){
             if(left!=null) p.uses[ak] = Math.min(info.max, (p.uses[ak]||0)+1);
             if(perMove) p.uses[useKey("rider", mk)] = 1;
             commit(); toast(`🔗 ${a.name} → ${canon} ✓`); redraw();
+            const cf = CONNECTION_USE_FX[String(a.name).toLowerCase()];
+            if(cf){ try{ cf(p, msg => { commit(); toast(`🔗 ${a.name} \u2014 ${msg}`); redraw(); }); }catch(e){ console.error("connection fx", e); } }
           }}, usedHere ? "✓ used on this Move this Scene"
              : canFire ? "🔗 Use it on this Move" : "no uses left this Scene");
         if(!canFire) btn.disabled = true;
@@ -29030,12 +29478,21 @@ const FOE_FX = {
         if(c){ const g = ownerHeal(c, n); bits.push(`${ownerLabel(c)} +${g} HP`); } else bits.push(`(the user isn't on this board — they gain ${n} HP by hand)`);
         changeCS(x.obj, k, -1); bits.push(`\u2212 1 ${statLbl(k)}`); }
       if(P.loseHP){ ownerHPChange(x.obj, -P.loseHP); bits.push(`\u2212${P.loseHP} HP`); }
+      if(P.painSplit){                                    // both lose half their CURRENT HP, then each gains half of what the two lost together
+        const c = fxCasterOf(P);
+        if(!c) bits.push("(the user isn't on this board \u2014 split the Hit Points by hand)");
+        else {
+          const a = ownerHP(c), b = ownerHP(x.obj), la = Math.floor(a / 2), lb = Math.floor(b / 2), pool = Math.floor((la + lb) / 2);
+          ownerHPChange(c, pool - la, { raw:true }); ownerHPChange(x.obj, pool - lb, { raw:true });   // one net change each: no Injury until the whole effect has resolved, and the loss ignores Temp HP
+          bits.push(`${ownerLabel(c)} ${a} \u2192 ${ownerHP(c)}, ${ownerLabel(x.obj)} ${b} \u2192 ${ownerHP(x.obj)}`);
+        }
+      }
       if(P.d6){ const k = P.d6[Math.floor(Math.random() * P.d6.length)]; const why = fxStatus(x.obj, k); bits.push(why ? `d6 \u2192 ${statusName(k)} (${why})` : `d6 \u2192 ${statusName(k)}`); }
       if(P.clearCoats){ const n = ownerCoats(x.obj).length; clearCoats(x.obj); bits.push(n ? `${n} Coat${n === 1 ? "" : "s"} destroyed` : "no Coats"); }
       if(P.invertCS){ const cs = x.obj.cs || {}; Object.keys(cs).forEach(k => { cs[k] = -cs[k]; }); bits.push("Combat Stages inverted"); }
       if(P.cureAll){ const cure = k => k !== "knockedOut" && k !== "dead" && (statusKind(k) === "volatile" || PERMANENT_STATUS_KEYS.has(k));
         const had = (x.obj.statuses || []).filter(cure); x.obj.statuses = (x.obj.statuses || []).filter(k => !cure(k)); bits.push(had.length ? `cured ${had.map(statusName).join(", ")}` : "nothing to purify"); }
-      if(P.copyCS || P.stealCS || P.swapCS || P.itemTake || P.itemGive){
+      if(P.copyCS || P.stealCS || P.swapCS || P.itemTake || P.itemGive || P.itemSwap){
         const c = fxCasterOf(P);
         if(!c) bits.push("(the user isn't on this board \u2014 do the trade by hand)");
         else {
@@ -29046,6 +29503,8 @@ const FOE_FX = {
           const held = o => String((o && o.heldItem) || "").trim();
           if(P.itemTake){ if(held(c)) bits.push(`${ownerLabel(c)} already holds an item`); else if(!held(x.obj)) bits.push(`${ownerLabel(x.obj)} holds nothing`);
             else { c.heldItem = x.obj.heldItem; x.obj.heldItem = ""; bits.push(`${ownerLabel(c)} takes ${c.heldItem}`); } }
+          if(P.itemSwap){ const a = held(c), b = held(x.obj); c.heldItem = b; x.obj.heldItem = a;
+            bits.push(a || b ? `${ownerLabel(c)} \u2194 ${ownerLabel(x.obj)}: ${ownerLabel(c)} now holds ${b || "nothing"}, ${ownerLabel(x.obj)} holds ${a || "nothing"}` : "neither holds anything"); }
           if(P.itemGive){ if(!held(c)) bits.push(`${ownerLabel(c)} holds nothing to give`); else if(held(x.obj)) bits.push(`${ownerLabel(x.obj)} already holds an item`);
             else { x.obj.heldItem = c.heldItem; c.heldItem = ""; bits.push(`${ownerLabel(x.obj)} is handed ${x.obj.heldItem}`); } }
         }
@@ -29125,12 +29584,12 @@ const FOE_FX = {
       return `is on ${now} stack${now === 1 ? "" : "s"} — +${now * 2} Accuracy, +${now} Crit Range for Bug attacks${extra}`;
     } },
   csfx: { apply:(x, P) => {
-      const r = applyCSFx(x.obj, Array.isArray(P.fx) ? P.fx : []);
+      const r = applyCSFx(x.obj, Array.isArray(P.fx) ? P.fx : [], { foe:true });
       return r.held.length ? `(held: ${r.held.join(", ")})` : "";
     } },
   /* a Move's Afflictions (moveStatusNode) — P.keys are STATUS_DEFS keys */
   statusfx: { apply:(x, P) => {
-      const r = inflictStatuses(x.obj, Array.isArray(P.keys) ? P.keys : [], { mold: !!P.mold });
+      const r = inflictStatusesDelayed(x.obj, Array.isArray(P.keys) ? P.keys : [], P.dur, { mold: !!P.mold, immuneType: P.immuneType || null });
       return [r.on.length ? `→ ${r.on.join(", ")}` : "", r.held.length ? `(held: ${r.held.join(", ")})` : ""]
         .filter(Boolean).join(" ");
     } },
@@ -30167,6 +30626,7 @@ function restorativeCard(t, rerender, persist){
   slot.append(el("button",{class:"btn-secondary rollbtn",style:"padding:6px 10px",
     onclick:()=>openApplyRestorative(t, rerender, persist)},"\u{1F9EA} Apply"));
   card.append(slot);
+  if(firstAidKitUsable(t)) card.append(firstAidKitRow(t, rerender, persist));
   return card;
 }
 function restorativeActionRow(t, rerender){
@@ -30178,6 +30638,141 @@ function restorativeActionRow(t, rerender){
       onclick:e=>{ e.preventDefault(); e.stopPropagation(); openApplyRestorative(t, rerender); }},"\u{1F9EA} Apply")));
   d.append(el("div",{class:"small",style:"margin-top:6px"},
     "Pick who you're treating and a Restorative from your bag: its healing and cures are applied and one copy leaves the bag. Herbal Restoratives also count toward that creature's daily limit."));
+  return d;
+}
+/* ---------------------------------------------------------------- FIRST AID KIT
+   Key Item, $500: "Required to use the First Aid Expertise Feature. By Draining 1 AP, any Trainer can
+   make a Medicine Education Check on a target as an Extended Action. The target gains Hit Points
+   equal to the result, and is cured of Burn, Poison, and Paralysis."
+   What reaches the roll, all read live off the sheet:
+     · First Aid Manual [5-15 Playtest] Rank 1 — "+10 Bonus to Medicine Education Checks made to use
+       a First Aid Kit". The Medic Feature binds that Rank for free, and bookRankNamed already sees it.
+     · the whole Skill stack the Skills table prints (Edges, Books, gear, Arcana, buffs, Gifts…).
+     · Field Clinic (Sept 2015 Playtest): "spend $300 of Medical Scrap to … use a First Aid Kit". That
+       is a Kit you don't own, so it is only offered when none is in the bag, and it comes out of the
+       Medical Scrap ledger (the GM hands that out on the ⚙ Scrap card).
+   The Kit is a Key Item you keep, so nothing leaves the bag. First Aid Expertise needs the very same
+   access (see the Treat Injuries sources), and the Manual's Rank 2 hands that Feature out once a day. */
+const FIRST_AID_KIT = "First Aid Kit";
+const FIELD_CLINIC_KIT_COST = 300;
+const KIT_CURES = ["burned","poisoned","badlyPoisoned","paralysis"];
+/* can this Trainer make use of a Kit right now? `clinicUp` = the player says a Field Clinic is set up */
+function firstAidKitAccess(t, clinicUp){
+  if(inventoryQty(t, FIRST_AID_KIT) > 0) return { ok:true, via:"kit", why:"" };
+  if(clinicUp && trainerHasEdge(t, "Field Clinic")){
+    if(t.unlocked || scrapOf(t, "medical") >= FIELD_CLINIC_KIT_COST) return { ok:true, via:"clinic", why:"" };
+    return { ok:false, via:"clinic", why:`a Field Clinic needs $${FIELD_CLINIC_KIT_COST} of Medical Scrap and you have ${fmtMoney(scrapOf(t, "medical"))}` };
+  }
+  return { ok:false, via:"", why:"there is no First Aid Kit in your bag"
+    + (trainerHasEdge(t, "Field Clinic") ? " (set up a Field Clinic to use $" + FIELD_CLINIC_KIT_COST + " of Medical Scrap instead)" : "") };
+}
+/* pay for a Field Clinic's stand-in Kit; a Kit from the bag costs nothing */
+function spendKitAccess(t, acc){
+  if(!acc || acc.via !== "clinic" || t.unlocked) return "";
+  const d = scrapChange(t, "medical", -FIELD_CLINIC_KIT_COST, "Field Clinic — stood in for a First Aid Kit", {kind:"spend"});
+  return `${fmtMoney(Math.abs(d))} Medical Scrap spent`;
+}
+/* is there any way at all this Trainer could reach for a Kit — what decides whether the button shows */
+function firstAidKitUsable(t){
+  return !!t && (inventoryQty(t, FIRST_AID_KIT) > 0 || trainerHasEdge(t, "Field Clinic"));
+}
+/* the modifiers behind a Medicine Education Check made to use a Kit */
+function kitCheckMods(t){
+  const k = "medicineEd", parts = [];
+  const add = (n, label) => { if(n) parts.push({ n, label }); };
+  add(categoricBonus(t, k), "Categoric Inclination");
+  add(edgeSkillBonus(t, k), "Edges");
+  add(gearSkillBonus(t, k), "gear / Books");
+  add(cardSkillBonus(t, k), "Arcana");
+  add(buffSkillBonus(t, k), "buffs");
+  add(auraRollBonus(t), "Fate Aura");
+  add(giftSkillBonus(t, k), "Gifts");
+  add(bookRankNamed(t, "First Aid Manual") >= 1 ? 10 : 0, "First Aid Manual Rank 1");
+  return { parts, mod: parts.reduce((n, p) => n + p.n, 0) };
+}
+function openFirstAidKit(t, rerender, persist){
+  const doSave = persist || save;
+  const targets = allyTargets(t);
+  let redraw = () => {};
+  const pick = targetPicker(targets, selfTargetId(targets), () => redraw());
+  const dice = rankDice(t.skills.medicineEd), mods = kitCheckMods(t);
+  const hasClinic = trainerHasEdge(t, "Field Clinic");
+  const clinicCb = el("input",{type:"checkbox"});
+  const info = el("div",{class:"small",style:"margin:8px 0;min-height:36px"});
+  const modTxt = mods.parts.length ? " " + mods.parts.map(p => `${p.n > 0 ? "+" : ""}${p.n} ${p.label}`).join(", ") : "";
+  redraw = () => {
+    const acc = firstAidKitAccess(t, clinicCb.checked);
+    const free = trainerDerived(t).ap - trainerAPUsed(t);
+    info.innerHTML = "";
+    info.append(el("div",{}, el("b",{}, `Medicine Education: ${dice}d6${mods.mod ? (mods.mod > 0 ? "+" : "") + mods.mod : ""}`),
+      el("span",{class:"muted"}, modTxt ? ` (${modTxt.trim()})` : "")));
+    info.append(el("div",{class:"muted"}, "The target regains Hit Points equal to the result and is cured of Burn, Poison and Paralysis. Extended Action — Drains 1 AP until your next Extended Rest."));
+    if(!acc.ok) info.append(el("div",{style:"color:var(--bad);font-weight:600;margin-top:4px"}, `Can't use it: ${acc.why}.`));
+    else if(acc.via === "clinic") info.append(el("div",{style:"color:var(--accent);font-weight:600;margin-top:4px"}, `A Field Clinic stands in for the Kit: $${FIELD_CLINIC_KIT_COST} of Medical Scrap is spent.`));
+    if(!t.unlocked && free < 1) info.append(el("div",{style:"color:var(--bad);font-weight:600;margin-top:4px"}, "You have no free AP to Drain."));
+  };
+  clinicCb.addEventListener("change", () => redraw());
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"Who are you treating"));
+  body.append(pick.node);
+  if(hasClinic && !inventoryQty(t, FIRST_AID_KIT))
+    body.append(el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin-top:8px"}, clinicCb,
+      `A Field Clinic is set up here — $${FIELD_CLINIC_KIT_COST} of Medical Scrap in place of a Kit`));
+  body.append(info);
+  const sit = giftSkillSituational(t, "medicineEd");
+  if(sit.length) body.append(el("div",{class:"small muted"}, "Not included, because they depend on the situation: " + sit.map(r => r.gift).join(", ") + "."));
+  redraw();
+  modal({ title:"🩹 First Aid Kit", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:async()=>{
+      const chosen = pick.chosen();
+      if(chosen.length !== 1){ toast("Treat one target at a time"); return; }
+      const acc = firstAidKitAccess(t, clinicCb.checked);
+      if(!acc.ok){ toast(`First Aid Kit — ${acc.why}`); return; }
+      if(!t.unlocked && trainerDerived(t).ap - trainerAPUsed(t) < 1){ toast("Needs 1 AP to Drain — none is free"); return; }
+      const o = chosen[0].obj;
+      const rolls = Array.from({length:dice}, () => 1 + Math.floor(Math.random() * 6));
+      const sum = rolls.reduce((a, b) => a + b, 0), total = sum + mods.mod;
+      const paid = spendKitAccess(t, acc);
+      t.manualBoundAP = (t.manualBoundAP||0) + 1;               // "By Draining 1 AP"
+      const moved = ownerHeal(o, total);
+      const before = (o.statuses||[]).slice();
+      o.statuses = before.filter(k => !KIT_CURES.includes(k));
+      const gone = before.filter(k => !o.statuses.includes(k)).map(k => (STATUS_DEFS.find(x=>x.key===k)||{}).name || k);
+      const bits = [`+${moved} HP`];
+      if(gone.length) bits.push(`cured ${gone.join(", ")}`);
+      if(moved < total) bits.push(`${total - moved} of the ${total} didn't fit`);
+      logRoll({ kind:"skill", label:"Medicine Education check — First Aid Kit", who:t.name || "",
+        headline:`🎲 ${total}`, lines:[`${dice}d6${mods.mod ? (mods.mod > 0 ? "+" : "") + mods.mod : ""} → [${rolls.join(", ")}] = ${total}`,
+          `${ownerLabel(o)}: ${bits.join(", ")}`] });
+      doSave(); closeModal();
+      await commitTargets(chosen);
+      toast(`🩹 First Aid Kit on ${ownerLabel(o)} — rolled ${dice}d6${mods.mod ? (mods.mod > 0 ? "+" : "") + mods.mod : ""} = ${total}: ${bits.join(", ")} (1 AP Drained${paid ? `, ${paid}` : ""})`);
+      (rerender||renderBattle)();
+    }}, "🩹 Use the Kit"),
+  ]});
+}
+/* the button on the Restoratives card, the Battle "Items" list and the Medic card */
+function firstAidKitRow(t, rerender, persist){
+  const have = inventoryQty(t, FIRST_AID_KIT);
+  const slot = el("div",{class:"moveslot"});
+  slot.append(el("div",{style:"flex:1"},
+    el("div",{style:"font-weight:700"}, "First Aid Kit" + (have ? ` · ${have} in the bag` : " · Field Clinic")),
+    el("div",{class:"ms-info"}, "Extended Action · Drain 1 AP · Medicine Education Check: heals that many HP and cures Burn, Poison and Paralysis"
+      + (bookRankNamed(t, "First Aid Manual") >= 1 ? " · +10 from your First Aid Manual" : ""))));
+  slot.append(el("button",{class:"btn-secondary rollbtn",style:"padding:6px 10px",
+    onclick:()=>openFirstAidKit(t, rerender, persist)}, "🩹 Use"));
+  return slot;
+}
+function firstAidKitActionRow(t, rerender){
+  const d = el("details",{class:"spoiler"});
+  d.append(el("summary",{},
+    el("span",{style:"font-weight:700;color:var(--ink)"}, "🩹 First Aid Kit"),
+    el("span",{class:"muted small",style:"margin-left:8px"}, `Extended · Drain 1 AP${inventoryQty(t, FIRST_AID_KIT) ? ` · ${inventoryQty(t, FIRST_AID_KIT)} in the bag` : ""}`),
+    el("button",{class:"linkbtn",style:"margin-left:8px",
+      onclick:e=>{ e.preventDefault(); e.stopPropagation(); openFirstAidKit(t, rerender); }},"🩹 Use")));
+  d.append(el("div",{class:"small",style:"margin-top:6px"},
+    "Roll Medicine Education on a target: they regain that many Hit Points and are cured of Burn, Poison and Paralysis. First Aid Manual Rank 1 adds +10 (the Medic gets it free). Needs a Kit in the bag, or a Field Clinic and $300 of Medical Scrap."));
   return d;
 }
 function medicCard(t, rerender, persist){
@@ -30202,6 +30797,8 @@ function medicCard(t, rerender, persist){
     row.append(el("button",{class:"btn-secondary",onclick:()=>openApplyRestorative(t, rerender, persist, {stayWithUs:true})},"🚑 Stay With Us!"),
       el("span",{class:"small muted"}, `${u.left} of ${u.max}`));
   }
+  if(firstAidKitUsable(t)) row.append(el("button",{class:"btn-secondary",onclick:()=>openFirstAidKit(t, rerender, persist)},
+    "🩹 First Aid Kit" + (inventoryQty(t, FIRST_AID_KIT) ? ` · ${inventoryQty(t, FIRST_AID_KIT)} in the bag` : "")));
   card.append(row);
   classFeatureRows(card, t, "Medic", rerender, persist);
   return card;
@@ -35213,7 +35810,8 @@ function pokeBallBenchCard(t, commit){
    (Food Scrap pays for the Food a Chef cooks — never for shop purchases; see payFoodPrice). Without
    `first` a Scrap is the ONLY way to pay (Poké Ball Scrap, the table's crafting ruling). */
 const SCRAP_CATS = [ { key:"pokeballs", name:"Poké Ball", icon:"⚙" },
-                     { key:"food", name:"Food", icon:"\u{1F34E}", first:true } ];
+                     { key:"food", name:"Food", icon:"\u{1F34E}", first:true },
+                     { key:"medical", name:"Medical", icon:"\u{1FA7A}" } ];   // Field Clinic: $300 of it stands in for a First Aid Kit
 const SCRAP_LOG_MAX = 120;
 const SCRAP_FAILED_CATCH = 0.25;
 const SCRAP_KIND_ICON = { loot:"\u{1F381}", salvage:"♻", craft:"\u{1F528}", gm:"\u{1F3A9}", spend:"\u{1F6D2}" };
@@ -36759,16 +37357,18 @@ function renderTrainerCombatRest(root, t){
   root.append(pc);
   root.append(customActionsCard(t, renderBattle));
 }
-function battleActionRow(a, favs){
+function battleActionRow(a, favs, trainer){
   const fav=favs.has(a.id);
   const d=el("details",{class:"spoiler"});
-  const meta=[a.type]; if(a.ac!=null)meta.push("AC "+a.ac); if(a.cls)meta.push(a.cls); if(a.range)meta.push(a.range); if(a.who)meta.push(a.who);
+  const fnotes = actionFeatureNotes(a, trainer);
+  const meta=[a.type]; fnotes.forEach(r => { if(r.also) meta.push("also " + r.also + " (" + r.feat + ")"); }); if(a.ac!=null)meta.push("AC "+a.ac); if(a.cls)meta.push(a.cls); if(a.range)meta.push(a.range); if(a.who)meta.push(a.who);
   d.append(el("summary",{},
     el("button",{class:"actstar"+(fav?" on":""),title:fav?"unfavourite":"favourite",
       onclick:e=>{ e.preventDefault(); toggleFavAction(a.id); renderBattle(); }}, fav?"★":"☆"),
     el("span",{style:"font-weight:700;color:var(--ink)"}, a.name),
     el("span",{class:"muted small",style:"margin-left:8px"}, meta.join(" · "))));
   d.append(el("div",{class:"small",style:"margin-top:6px;white-space:pre-line"}, a.effect));
+  fnotes.forEach(r => d.append(el("div",{class:"small",style:"margin-top:4px;color:var(--accent);font-weight:600"}, "\u{1F527} " + r.note)));
   return d;
 }
 
@@ -38473,6 +39073,7 @@ function encStatusControl(p){
           if(i>=0){ const w = statusCureBlock(p, s.key); p.statuses = p.statuses.filter(k=>k!==s.key); if(w) toast(w); }
           else if(!p.statuses.includes(s.key)){ p.statuses.push(s.key); if(s.key==="tagged" && clearOtherTags(p)) toast("The previous Tag is lost — only one foe at a time"); }
           if(s.key==="vortex") onVortexToggled(p, p.statuses.includes(s.key));
+          if(s.key==="curledUp") onCurledToggled(p, p.statuses.includes(s.key));
           saveEnc(); renderEncounters(); }},
         s.name+(immune?" ⃠":"")+(block&&on?" 🔒":"")+(!on && statusVeiledBy(p, s.key, veils).length ? " \u{1F6E1}" : "")));
     });
@@ -41976,13 +42577,13 @@ function simMitigate(D, raw, type, isPhys, pierceImmune, pierceDR, atkTinted, at
   if(mult > 1 && rule?.seBonus) raw += rule.seBonus;              // Electro Drift / Collision Course
   /* Pierce!'s "+10 against targets with Damage Reduction" — judged before the roll is finalised,
      exactly as tokenDamageBreakdown does it. */
-  if(rule?.drBonus && buffDR(D.obj).dr > 0) raw += rule.drBonus;
+  if(rule?.drBonus && buffDR(D.obj, { isPhys }).dr > 0) raw += rule.drBonus;
   const afterDef = Math.max(0, raw - simDefStat(D, isPhys));
   const mods = atkMold ? D.dmodsMold() : D.dmods();
   const seDR = (mods && mods.seFlatDR && mult>1) ? mods.seFlatDR : 0;
   const glacialDR = (mods && mods.glacial && mult>1 && mods.glacial.types.has(type)) ? mods.glacial.dr : 0;
   // same pool-then-pierce order tokenDamageBreakdown runs, so the Sim and the table agree
-  const pool = buffDR(D.obj).dr + seDR + glacialDR;
+  const pool = buffDR(D.obj, { isPhys }).dr + seDR + glacialDR;
   return Math.max(0, Math.floor(afterDef * mult) - Math.max(0, pool - Math.max(0, pierceDR||0)));
 }
 /* average damage this attack would do to this target — what the AI ranks its options by */
@@ -45525,7 +46126,8 @@ function logRoll({ kind, label, who, headline, lines, atk, area, foe }){
 =================================================================== */
 /* (a literal inside the function, not a top-level const: render() reaches here at boot — see bug-local-load TDZ) */
 function blessingIcon(move){
-  return ({ "reflect":"🛡", "light screen":"🔷", "safeguard":"💚", "lucky chant":"🍀", "mist":"🌫" })[String(move||"").toLowerCase()] || "✨";
+  return ({ "reflect":"🛡", "light screen":"🔷", "safeguard":"💚", "lucky chant":"🍀", "mist":"🌫",
+            "beads of ruin":"📿", "sword of ruin":"🗡", "tablets of ruin":"📜", "vessel of ruin":"🏺" })[String(move||"").toLowerCase()] || "✨";
 }
 function tableBlessings(){
   const d = cloud.rolls && cloud.rolls.data;
@@ -45565,10 +46167,11 @@ function clearTableBlessings(){
 /* what a Blessing on the field actually does — the Move's own text, from tapping its square */
 function openBlessingInfo(b){
   const m = moveByName.get(String(b.move||"").toLowerCase());
+  const abl = m ? null : abilityByName.get(String(b.move||"").toLowerCase());     // a Ruin Blessing is an Ability, not a Move
   const body = el("div",{});
   body.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
     `Laid by ${b.who || b.by || "someone"} \u00b7 ${b.left} of ${b.max || b.left} activation${(b.max||b.left)===1?"":"s"} left. Any ally may activate it; Use counts it down for the whole table.`));
-  body.append(el("div",{class:"small", html: m ? moveDetailHTML(m, m.name) : "<span class='muted'>This Move isn't in the database.</span>"}));
+  body.append(el("div",{class:"small", html: m ? moveDetailHTML(m, m.name) : abl ? abilityText(abl) : "<span class='muted'>This Move isn't in the database.</span>"}));
   modal({ title:`${blessingIcon(b.move)} ${b.move}`, bodyNode:body, footNodes:[
     el("button",{class:"btn-secondary",onclick:closeModal},"Close"),
     el("button",{class:"btn-primary",onclick:()=>{ closeModal(); tableUseBlessing(b.id); }},"Use"),
@@ -47584,7 +48187,7 @@ function applyImgFocus(img, f){
 /* The uploaded picture a token is drawn with, and how to read/write its framing. null when the
    token is drawn from dex artwork (nothing uploaded to frame) or is scenery. */
 function tokenImageRef(token){
-  if(!token || isShopToken(token) || isBoatToken(token) || isHazardToken(token) || isZoneToken(token)) return null;
+  if(!token || isShopToken(token) || isBoatToken(token) || isHazardToken(token) || isZoneToken(token) || isNoteToken(token)) return null;
   if(!token.link){
     if(!token.img) return null;
     return { url: token.img, get:()=>token.imgFocus,
@@ -47702,6 +48305,9 @@ function tokenHp(token){
   if(!token.link){
     // a boat is a hull, not a creature — no HP bar, no statuses, no turn, and no name plate
     // cluttering the board (the BOATS section owns everything about it)
+    if(isNoteToken(token))
+      return { cur:1, max:1, editable:cloud.isGM, name:token.title||"Note", sprite:noteSprite(token),
+               unlinked:false, kind:"zone", hideName:!token.title };
     if(isZoneToken(token)){ const z=zoneDef(token);
       return { cur:1, max:1, editable:cloud.isGM, name:z.name, sprite:zoneSprite(token),
                unlinked:false, kind:"zone", hideName:true }; }
@@ -47782,7 +48388,7 @@ function tokenStatusVisible(info){ return !info.unlinked && info.kind!=="shop" &
    and scenery (boats, shop doors, hazards) are never shiny. */
 function tokenIsShiny(token){
   if(!token.link){
-    if(isBoatToken(token) || isShopToken(token) || isHazardToken(token) || isZoneToken(token)) return false;
+    if(isBoatToken(token) || isShopToken(token) || isHazardToken(token) || isZoneToken(token) || isNoteToken(token)) return false;
     return !!token.shiny;
   }
   const L = tokenLinked(token);
@@ -47894,9 +48500,14 @@ const MOVE_TARGET_RULES = {
   "multiattackss":  { note:"its Type is the held Memory Disc, Plate or Drive — pick it in the Type box" },
   "electroball":    { defPlusSpd:true,
                        note:"the user adds its Speed to its Special Attack, and the target subtracts its Speed as well as its Special Defense" },
+  "gyroball":        { gyro:true,
+                       note:"if the target's Speed (with Combat Stages) is higher than the user's, the difference is Bonus Damage \u2014 added per target" },
+  "dreameater":      { sleepOnly:true,
+                       note:"can only target Sleeping Pok\u00e9mon or Trainers \u2014 an awake target is skipped" },
   "falseswipe":      { spare:true,
                        note:"False Swipe can't take a target below 1 HP" },
-  "foulplay":        { note:"the target reveals its Attack stat — add THAT to the Damage Roll instead of yours (swap the stat by hand)" },
+  "foulplay":        { foulPlay:true,
+                       note:"the target's Attack stat is added to the Damage Roll instead of yours \u2014 the difference is applied per target" },
   "psyshock":        { defAs:"phys", note:"the target subtracts its DEFENSE, not its Special Defense (the Move is still Special)" },
   "psystrike":       { defAs:"phys", note:"the target subtracts its DEFENSE, not its Special Defense (the Move is still Special)" },
   "secretsword":     { defAs:"phys", note:"the target subtracts its DEFENSE, not its Special Defense (the Move is still Special)" },
@@ -47954,6 +48565,15 @@ function tokenDefenseStat(token, physical, defCSMode){
   return 0;   // standalone token has no defense data
 }
 /* ---- initiative: Speed stat + an editable per-token bonus (amulets, effects…) ---- */
+/* one effective stat (Combat Stages and all) of whatever a token is linked to; 0 for a bare token */
+function tokenStatOf(token, k){
+  const L = token && token.link ? tokenLinked(token) : null;
+  if(L && L.obj){
+    if(L.kind==="trainer"||L.kind==="enctrainer") return trainerDerived(L.obj).totals[k]||0;
+    return pokeDerived(L.obj).eff[k]||0;
+  }
+  return 0;
+}
 function tokenSpeed(token){
   const L = token.link ? tokenLinked(token) : null;
   if(L && L.obj){
@@ -47976,6 +48596,7 @@ function abilityInitiative(o, v, token){
        || dbl("Swift Swim [Errata]", wk === "rainy") || dbl("Slush Rush", wk === "hail" || wk === "snowy")
        || dbl("Surge Surfer", activeTerrains().some(t => t.key === "electric"))) v *= 2;
     if(hasAbility(o, "Early Bird [Errata]")) v += Math.floor(tokenSpeed(token) / 2);
+    if(hasAbility(o, "Steadfast [Errata]")) v += 5;       // its Bonus: "The user's Initiative is increased by +5"
   }catch(e){}
   return v;
 }
@@ -47997,7 +48618,7 @@ function tokenInitiative(token){
   return v;
 }
 function tokenInInit(token){
-  if(isShopToken(token) || isBoatToken(token) || isHazardToken(token) || isZoneToken(token)) return false; // scenery doesn't take turns
+  if(isShopToken(token) || isBoatToken(token) || isHazardToken(token) || isZoneToken(token) || isNoteToken(token)) return false; // scenery doesn't take turns
   const info=tokenHp(token); if(info.unlinked) return false;
   /* A Knocked Out or Dead enemy is not taking turns, so it takes ITSELF off the order rather than
      leaving the GM to untick every body between rounds. The ⚔ tick below is untouched, so bringing
@@ -49571,7 +50192,7 @@ function freeCellNear(map, mount, skipId){
   return { x: mount.x + f.w, y: mount.y };
 }
 /* a token that can't ride / be ridden (shop doors are scenery, not creatures) */
-function canMountToken(token){ return !!token && !isShopToken(token) && !isBoatToken(token) && !isHazardToken(token) && !isZoneToken(token); }
+function canMountToken(token){ return !!token && !isShopToken(token) && !isBoatToken(token) && !isHazardToken(token) && !isZoneToken(token) && !isNoteToken(token); }
 function mountToken(map, rider, mount){
   if(!rider || !mount || rider.id===mount.id) return false;
   if(!canMountToken(rider) || !canMountToken(mount)){ toast("A shop door can't ride or be ridden"); return false; }
@@ -49744,6 +50365,10 @@ const HAZARDS = [
     note:'Anyone moving into a Slick Hazard slides in a straight line, in the direction they entered, ignoring Movement Capabilities, until they leave it or hit a square they can\'t enter. Foes must then end their Shift and are Vulnerable for 1 full round, and can\'t Jump while standing on one.',
     entry:{ who:'A foe that slid into the Slick Hazard', status:['vulnerable'],
             say:'Slide them in a straight line, in the direction they entered, until they leave the Hazard or hit a square they can\'t enter — their Shift ends there.' } },
+  { key:'smoke',       name:'Smoke',        icon:'\u{1F32B}',
+    note:'The Smoke persists until the end of the encounter, or until Defog or Whirlwind are used. Everyone attacking from or into a Smoke square takes a \u22123 penalty to Accuracy (the roll does not read the Map \u2014 apply it by hand).' },
+  { key:'icewall',     name:'Ice Wall segment', icon:'\u{1F9CA}',
+    note:'Blocking Terrain: 2 m tall, 1 m wide, 2 cm thick. 10 Hit Points, 5 Damage Reduction, damaged as if it were Ice-Type. Lasts until the end of the encounter or until it is destroyed.' },
   /* Barrier's psychic walls: Blocking Terrain that can be attacked down, so the segment carries its
      own numbers rather than pretending to be a zone the Map can give no Hit Points to. */
   { key:'barrier',     name:'Barrier segment', icon:'\u{1F9F1}',
@@ -49885,6 +50510,79 @@ function openZoneMenu(token, map){
   modal({title:"\u26F0 "+cur.name, bodyNode:body, guardMs:220, footNodes:[
     el("button",{class:"btn-secondary danger",onclick:()=>{ closeModal(); removeToken(token, map); }},"\u{1F5D1} Remove"),
     el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+}
+/* ---- GM note pins ----------------------------------------------------------------------------
+     A pin the GM drops on the board to remember what something IS: which staircase leads where, which
+     statue opens which gate, where the trap is. It is an ordinary map token carrying `note:true`, so
+     it drags, syncs, persists and is removed like all the other furniture -- but renderMap's
+     visibleToken refuses it to everyone who is not the GM, and it reuses the "zone" kind in tokenHp
+     so every HP / status / target / turn filter that already skips terrain skips it too.
+       glyph  -- the 1-4 characters printed on the pin ("A", "S2", an emoji)
+       title  -- the plate under the pin (hidden when empty)
+       text   -- the body, shown in the menu and as the hover tooltip
+       color  -- pin colour
+       noteTo -- id of ANOTHER pin on this board; the pair is joined by a dashed line, both ways
+     (`link` is taken: it is how a token points at a sheet.) */
+const NOTE_COLORS = ["#3884de","#d6453d","#2fa36b","#e0a21b","#8a5cd6","#e0709a","#6b7280"];
+const isNoteToken = t => !!(t && t.note);
+function noteSprite(token){
+  const c = token.color || NOTE_COLORS[0];
+  return el("div",{class:"tk-note", title:(token.title?token.title+" \u2014 ":"")+(token.text||"(no text yet)"),
+    style:`background:${c}`}, token.glyph || "\u{1F4DD}");
+}
+function notePins(map){ return mapTokensFor(map.id).filter(isNoteToken); }
+async function addNotePin(map){
+  await addToken(map, { note:true, size:1, glyph:"\u{1F4DD}", title:"", text:"", color:NOTE_COLORS[0] });
+  const mine = notePins(map), t = mine[mine.length-1];
+  if(t) openNoteMenu(t, map);
+}
+/* Dashed lines between linked pins. GM-only and under the tokens, so a pin stays tappable. */
+function noteLinksOverlay(map, stageW, stageH, originX, originY){
+  const pins = notePins(map), byId = new Map(pins.map(p=>[p.id,p]));
+  const px = map.gridSize, seen = new Set(), lines = [];
+  pins.forEach(a=>{
+    const b = a.noteTo && byId.get(a.noteTo); if(!b) return;
+    const key = [a.id,b.id].sort().join("|"); if(seen.has(key)) return; seen.add(key);
+    lines.push(`<line x1="${(a.x+0.5)*px+originX}" y1="${(a.y+0.5)*px+originY}" x2="${(b.x+0.5)*px+originX}" y2="${(b.y+0.5)*px+originY}" stroke="${a.color||NOTE_COLORS[0]}" stroke-width="3" stroke-dasharray="9 6" stroke-linecap="round" opacity=".85"/>`);
+  });
+  if(!lines.length) return null;
+  return el("div",{class:"map-note-links", html:`<svg width="${stageW}" height="${stageH}" xmlns="http://www.w3.org/2000/svg">${lines.join("")}</svg>`});
+}
+function openNoteMenu(token, map){
+  if(!cloud.isGM) return;
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    "GM-only \u2014 players never see this pin. Drag it to move it; tap it to come back here."));
+  const glyph = el("input",{type:"text",maxlength:4,value:token.glyph||"",style:"width:64px;text-align:center;font-size:18px",placeholder:"\u{1F4DD}"});
+  const title = el("input",{type:"text",value:token.title||"",placeholder:"e.g. Stairs 1F \u2192 2F",style:"flex:1;min-width:140px"});
+  glyph.addEventListener("change",()=>{ token.glyph=glyph.value.trim(); if(!token.glyph) delete token.glyph; mapTokensSave(); renderMap(); });
+  title.addEventListener("change",()=>{ token.title=title.value.trim(); if(!token.title) delete token.title; mapTokensSave(); renderMap(); });
+  body.append(el("div",{class:"inline",style:"gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap"},
+    el("span",{class:"small"},"Pin"), glyph, title));
+  const text = el("textarea",{rows:6,placeholder:"What is this? What does it do? Who can see it?",style:"width:100%;box-sizing:border-box;margin-bottom:8px"});
+  text.value = token.text||"";
+  text.addEventListener("change",()=>{ token.text=text.value; if(!token.text) delete token.text; mapTokensSave(); renderMap(); });
+  body.append(text);
+  const sw = el("div",{class:"inline",style:"gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center"}, el("span",{class:"small"},"Colour"));
+  NOTE_COLORS.forEach(c=>sw.append(el("button",{class:"note-swatch"+((token.color||NOTE_COLORS[0])===c?" on":""),style:`background:${c}`,
+    onclick:()=>{ token.color=c; mapTokensSave(); renderMap(); closeModal(); openNoteMenu(token,map); }})));
+  body.append(sw);
+  const others = notePins(map).filter(p=>p.id!==token.id);
+  const sel = el("select",{style:"max-width:100%"});
+  sel.append(el("option",{value:""},"\u2014 not linked \u2014"));
+  others.forEach(p=>sel.append(el("option",{value:p.id,selected:p.id===token.noteTo},
+    `${p.glyph||"\u{1F4DD}"} ${p.title||"(untitled)"}`)));
+  sel.addEventListener("change",()=>{
+    const prev = notePins(map).find(p=>p.id===token.noteTo);
+    if(prev && prev.noteTo===token.id) delete prev.noteTo;           // un-link the old partner too
+    if(sel.value){ token.noteTo = sel.value; const q = others.find(p=>p.id===sel.value); if(q) q.noteTo = token.id; }
+    else delete token.noteTo;
+    mapTokensSave(); renderMap(); });
+  body.append(el("label",{class:"field"}, el("span",{},"\u{1F517} Linked to (draws a dashed line \u2014 stairs, switch \u2192 gate)"), sel));
+  modal({title:`${token.glyph||"\u{1F4DD}"} ${token.title||"GM note"}`, bodyNode:body, guardMs:220, footNodes:[
+    el("button",{class:"btn-secondary danger",onclick:()=>{ closeModal();
+      notePins(map).forEach(p=>{ if(p.noteTo===token.id) delete p.noteTo; }); removeToken(token, map); }},"\u{1F5D1} Remove"),
+    el("button",{class:"btn-secondary",onclick:()=>{ if(document.activeElement && document.activeElement.blur) document.activeElement.blur(); closeModal(); }},"Close")]});
 }
 /* ---- The arena that closes in ---------------------------------------------------------------
      A gauntlet fought on an open board loses its teeth. The party backs off from each wave, kites
@@ -50957,9 +51655,9 @@ function mapTokenNode(token, map, originX=0, originY=0){
   const isTrainerTok = info.kind==="trainer" || info.kind==="enctrainer";
   const playerSide = info.kind==="trainer" || info.kind==="pokemon";
   // a rider is drawn perched on its mount (see tokenRenderBox) and always stacks above it
-  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":"")+(isBoat?" boat-token":"")+(isHaz?" hazard-token":"")+(isZone?" zone-token":"")+(shinyTok?" shiny":""),
+  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":"")+(isBoat?" boat-token":"")+(isHaz?" hazard-token":"")+(isZone?" zone-token":"")+(isNoteToken(token)?" note-token":"")+(shinyTok?" shiny":""),
     // a hull sits at z-index 0, below every creature, so the crew is drawn standing on the deck
-    style:`left:${box.left}px;top:${box.top}px;width:${box.w}px;height:${box.h}px;z-index:${riding?4:isTrainerTok?2:isZone?0:(isBoat||isHaz||isShoal)?0:1}`
+    style:`left:${box.left}px;top:${box.top}px;width:${box.w}px;height:${box.h}px;z-index:${isNoteToken(token)?6:riding?4:isTrainerTok?2:isZone?0:(isBoat||isHaz||isShoal)?0:1}`
       +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")
       +(factionColor?`;border-color:${factionColor}`:"")});
   node.dataset.tid = token.id;
@@ -51057,7 +51755,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
     // not a combatant taking a Shift, so dragging its door never spends anyone's movement
     // A BOAT is the exception that counts OUT of combat as well: a hull has a cruising budget on
     // top of its combat one (boatMoveSpeed), so its tally runs whether or not Battle mode is on.
-    const trackMove = map.gridOn && !isShopToken(token) && !isHazardToken(token) && !isZoneToken(token)
+    const trackMove = map.gridOn && !isShopToken(token) && !isHazardToken(token) && !isZoneToken(token) && !isNoteToken(token)
                       && (battleOn() || isBoatToken(token));
     const liveFog = !!map.fogOn;
     const stageSize = mapStageSize(map);                      // origin needed regardless of fog, for DOM<->cell math
@@ -51273,7 +51971,8 @@ function attachImageDrag(node, img, map, overlay, originX=0, originY=0){
    Levitate, Wonder Guard, Filter, …) and any Swarm/manual effectiveness nudge, then Damage
    Reduction (active DR buffs + flat DR vs Super-Effective). Used by BOTH the token menu's manual
    "Apply an attack" box and the roll-result "Apply to target" picker, so the two never diverge. */
-function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, sonic=false, defAsPhys=null, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, chartOverride=null, seBonus=0, seFlat=0, formeStep=0, drBonus=0 }){
+function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, sonic=false, defAsPhys=null, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, chartOverride=null, seBonus=0, seFlat=0, formeStep=0, drBonus=0, vulnStep=0, corrosion=false, atkNeutral=false, defExtraStep=0, execute=false }){
+  const abNotes = [];
   const def = tokenDefenseStat(token, defAsPhys == null ? !!physical : !!defAsPhys, defCSMode)   // Psyshock: the other Defense
             + (defPlusSpd ? tokenSpeed(token) : 0);                                              // Electro Ball: Speed comes off too
   const swarmTgt = (()=>{ const LL = token.link ? tokenLinked(token) : null;
@@ -51284,7 +51983,7 @@ function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, so
   const formeTgt = (() => { const L = token && token.link ? tokenLinked(token) : null;
                             return !!(formeStep && L && L.obj && hasChangedForme(L.obj)); })();
   const formeAdj = formeTgt ? formeStep : 0;
-  const stepAdj = swarmStep + extraStep + formeAdj;         // Swarm + the GM's manual effectiveness nudge + Forme
+  const stepAdj = swarmStep + extraStep + formeAdj + vulnStep + defExtraStep;         // Swarm + the GM's manual effectiveness nudge + Forme
   const typeless = !type || type==="Typeless";
   const owner = token.link ? (tokenLinked(token)||{}).obj : null;
   const soundproof = !!(sonic && owner && ownerHasAbility(owner, "Soundproof"));
@@ -51310,7 +52009,13 @@ function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, so
   // Typeless (Struggle) has no chart to walk, so read the ladder directly - it eats both steps
   if(soundproof) mult = 0;                                   // Soundproof: immune to Sonic Moves
   else if(typeless) mult = ptuEffMult(deiStep + (furActive ? -1 : 0) + (rogueActive ? -1 : 0));
-  else if(defMods && defMods.immune.has(type) && !pierced) mult = 0;
+  else if(defMods && defMods.immune.has(type) && !pierced){
+    /* Transistor / Dragon's Maw: an immune target is treated as initially double-resisted, then one step more vulnerable.
+       Corrosion: Poison damage reaches an immune target as if it were doubly resisted. */
+    if(vulnStep > 0){ mult = ptuEffMult(-2 + vulnStep); abNotes.push("immunity ignored: doubly resisted, then one step more vulnerable"); }
+    else if(corrosion && type === "Poison"){ mult = 0.25; abNotes.push("Corrosion: immune target takes damage as if doubly resisted"); }
+    else mult = 0;
+  }
   else if(isBoatToken(token)){
     // Vehicles (house rule): always Super-Effective vs Fire/Electric/Ground, but a Levitate/Sky
     // vehicle is exempt from the Ground part. No other Type interaction — a boat carries no other
@@ -51322,7 +52027,11 @@ function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, so
     const defStep = stepAdj + deiStep + (defMods?.step?.[type] || 0);
     if(furActive) furStep = -1;
     if(rogueActive) rogueStep = -1;
-    const mOpts = { pierceImmune: pierced, chart: chartOv };
+    const mOptsPlain = { pierceImmune: pierced, chart: chartOv };
+    const corrosionOn = !!corrosion && type === "Poison";
+    const chartImm = (vulnStep > 0 || corrosionOn) && !pierced && typeMultAgainst(type, tokenDefTypes(token), 0, { chart: chartOv }) === 0;
+    const mOpts = (vulnStep > 0 || corrosionOn) ? { pierceImmune: pierced, chart: chartOv, immuneAs: -2 } : mOptsPlain;
+    if(chartImm) abNotes.push(vulnStep > 0 ? "immunity ignored: doubly resisted, then one step more vulnerable" : "Corrosion: immune target takes damage as if doubly resisted");
     chartUsed = !!chartOv && tokenDefTypes(token).some(dt => chartOv[dt] != null);
     mult = typeMultAgainst(type, tokenDefTypes(token), defStep + furStep + rogueStep, mOpts);
     /* "This may not cause the Effectiveness to be raised above Doubly Super Effective" — the
@@ -51344,7 +52053,7 @@ function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, so
     // Wonder Guard keys off raw Type super-effectiveness, so judge it on the pre-Fur-Coat Type mult
     // (Fur Coat's flat step must never turn a genuinely Super-Effective hit into a blocked one).
     if(defMods?.wonderGuard){
-      const typeMult = typeMultAgainst(type, tokenDefTypes(token), defStep, mOpts);
+      const typeMult = typeMultAgainst(type, tokenDefTypes(token), defStep, mOptsPlain);
       if(typeMult > 0 && typeMult <= 1) mult = 0;
     }
     if(defMods?.seReduce && mult > 1) mult = seReducedMult(mult);   // Filter / Solid Rock
@@ -51358,7 +52067,21 @@ function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, so
       const up = Math.min(1, bumped);
       if(up !== mult){ mult = up; tinted = true; }
     }
+    /* Corrosion: the user's Poison attacks are resisted one step less (an Immune target was handled above). */
+    if(corrosionOn && !chartImm && mult > 0 && mult < 1){
+      const up2 = Math.min(1, typeMultAgainst(type, tokenDefTypes(token), defStep + furStep + rogueStep + tolStep + 1, mOpts));
+      if(up2 !== mult){ mult = up2; abNotes.push("Corrosion: resisted one step less"); }
+    }
   }
+  /* Normalize [Errata]: the user's attacks cannot be Super-Effective or Resisted, and the user takes neutral damage from
+     everything it isn't immune to. Immunities are untouched. */
+  { const normDef = !!(owner && !atkMold && ownerAbilityNames(owner).some(n => String(n).toLowerCase() === "normalize [errata]"));
+    if((atkNeutral || normDef) && !typeless && !isBoatToken(token) && mult > 0 && mult !== 1){
+      mult = 1; abNotes.push(normDef && !atkNeutral ? "Normalize: the defender takes neutral damage" : "Normalize: neutral damage"); } }
+  /* Sturdy [Errata] (Defensive): immune to Moves with the Execute keyword, and a single source of damage can't take more than
+     50% of Max Hit Points. */
+  const sturdyE = !!(owner && !atkMold && ownerAbilityNames(owner).some(n => String(n).toLowerCase() === "sturdy [errata]"));
+  if(sturdyE && execute && mult > 0){ mult = 0; abNotes.push("Sturdy: immune to Moves with the Execute keyword"); }
   /* Exploit (attacker Static): "Whenever you deal Super-Effective Damage to a target, that target
      treats your damage roll as if it were increased by +5." It is the DAMAGE ROLL that grows, so the
      +5 goes on before Defense comes off — and it can only be judged once effectiveness is known,
@@ -51368,7 +52091,7 @@ function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, so
   /* The defender's Damage Reduction has to be known BEFORE the damage roll is finalised, because
      Pierce! pays +10 for the mere fact that they have some. Everything conditional on effectiveness
      (Filter+Solid Rock's flat 5, Glacial Ice) is folded in below; this is the unconditional pool. */
-  const { dr, from } = owner ? buffDR(owner) : { dr:0, from:[] };
+  const { dr, from } = owner ? buffDR(owner, { isPhys:!!physical }) : { dr:0, from:[] };
   /* ...and the same reasoning covers a Move that pays for its own Super-Effective hit
      (Electro Drift / Collision Course: "+10 to the Damage Roll"). Judged on the same `mult`. */
   const seExtra  = mult > 1 ? Math.round(seBonus || 0) : 0;
@@ -51398,12 +52121,14 @@ function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, so
      Capped at the pool, so it can never turn into bonus damage. */
   const drPool  = dr + seDR + typeDR + glacialDR;
   const drGone  = Math.max(0, Math.min(drPool, Math.round(pierceDR||0)));
-  const final = Math.max(0, afterMult + seFlatAdd - (drPool - drGone));
+  let final = Math.max(0, afterMult + seFlatAdd - (drPool - drGone));
+  if(sturdyE){ const capHP = Math.floor((ownerMaxHP(owner) || 0) * 0.5);
+    if(capHP > 0 && final > capHP){ abNotes.push(`Sturdy: one source of damage can't take more than 50% of Max HP \u2014 ${final} \u2192 ${capHP}`); final = capHP; } }
   return { def, physical:!!physical, typeless, mult, afterDef, afterMult, dr, from, seDR, glacialDR, deicide,
            typeDR, typeDRFrom, final, drPool, drGone, exploit, drPaid, dmgUsed, seExtra, seFlat, seFlatAdd, chartUsed,
            atkMold:!!atkMold, drBonus,
            owner, defMods, swarmTgt, swarmStep, extraStep, formeAdj, formeTgt, pierced, tinted, tolerance: tolStep<0, furCoat: furActive,
-           rogueMega: rogueActive, overgrown,
+           rogueMega: rogueActive, overgrown, abNotes,
            // kept only so applyTokenDamage can re-run this same hit against a breached boat's passengers
            dmg, type:(typeless?"Typeless":type), aoe:!!aoe, pierceImmune:!!pierceImmune, pierceDR, atkTinted:!!atkTinted, atkExploit:!!atkExploit, atkMega:!!atkMega, atkDeicide:!!atkDeicide, defCSMode,
            /* War Aura (attacker): "they inflict Injuries at 25% HP Markers, and Massive Damage is
@@ -51590,6 +52315,8 @@ function damageResultHTML(dmg, typeName, br, before){
 const CRIT_IMMUNE_ABILITIES = ["Shell Armor", "Battle Armor"];
 function critImmunityOf(o){
   if(!o) return null;
+  if(hasStatus(o,"curledUp")) return "Curled Up";
+  if(hasStatus(o,"withdrawn")) return "Withdrawn";
   const have = new Set(ownerAbilityNames(o));
   return CRIT_IMMUNE_ABILITIES.find(a => have.has(a.toLowerCase())) || null;
 }
@@ -51743,6 +52470,57 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     fxCb, el("span",{class:"small",style:"font-weight:700;color:var(--accent)"},
       `\u{1F4AB} Also apply ${fx.name ? fx.name + "'s " : "the Move's "}effects: ${hitFxLine(fx)}`)));
 
+  /* Attacker-side Ability statics that need a TARGET (or the board) to resolve: found by the Abilities sweep (v644).
+     Transistor / Dragon's Maw (Scene x2), Stakeout, Sequence [Errata], Merciless, Corrosion, Normalize [Errata]. */
+  const atkInfo = (() => { try{ return reactionAttacker(ctx) || {}; }catch(e){ return {}; } })();
+  const A0 = atkInfo.obj || null, atkTok0 = atkInfo.token || null;
+  const abNames0 = A0 ? (() => { try{ return ownerAbilityNames(A0).map(n => String(n).toLowerCase().replace(/\u2019/g, "'")); }catch(e){ return []; } })() : [];
+  const hasAB = n => abNames0.includes(n);
+  const vulnName = !A0 ? null : (typeName === "Electric" && hasAB("transistor")) ? "Transistor"
+                 : (typeName === "Dragon" && hasAB("dragon's maw")) ? "Dragon's Maw" : null;
+  const vulnUse = vulnName ? abilityUse(A0, vulnName) : null;
+  const vulnCb = el("input",{type:"checkbox"});
+  if(vulnName){
+    if(vulnUse.left <= 0){ vulnCb.disabled = true; }
+    wrap.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;margin-bottom:6px;cursor:pointer"},
+      vulnCb, el("span",{class:"small",style:"font-weight:700;color:var(--accent)"},
+        `\u26A1 ${vulnName} (${vulnUse.max ? `${vulnUse.left} of ${vulnUse.max} left` : "Scene x2"}): the FIRST ticked target is one step more vulnerable (an immune target counts as doubly resisted first)`)));
+  }
+  const stakeCb = el("input",{type:"checkbox"});
+  if(A0 && hasAB("stakeout"))
+    wrap.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;margin-bottom:6px;cursor:pointer"},
+      stakeCb, el("span",{class:"small",style:"font-weight:700;color:var(--accent)"},
+        "\u{1F3AF} Stakeout: the ticked targets were released from a Poke Ball or entered the encounter since my last turn (+2d6+4 damage each)")));
+  /* Sequence [Errata]: +3 damage per ADJACENT allied Electric-Type Pokemon \u2014 the board knows who is standing where */
+  let seqN = 0;
+  if(A0 && atkTok0 && hasAB("sequence [errata]") && typeName === "Electric"){
+    try{
+      const map0 = currentMapForView() || activeMap();
+      mapTokensFor(map0.id).forEach(t => {
+        if(t === atkTok0 || tokenIsDown(t) || tokenSide(t) !== tokenSide(atkTok0) || tokenTileGap(t, atkTok0) > 1) return;
+        const o = tokenHp(t).obj; if(!o || isTrainerOwner(o)) return;
+        if((monTypes(o) || []).map(x => String(x).toLowerCase()).includes("electric")) seqN++;
+      });
+    }catch(e){}
+  }
+
+  /* Friend Guard (Scene, Free): "An adjacent Ally takes Damage \u2014 the damage is resisted one step further." The board knows who
+     stands next to whom, so every living holder with a use left gets a tick; ticked, it covers each target next to it. */
+  const guards = [];
+  try{
+    const mapG = currentMapForView() || activeMap();
+    if(mapG && !atkMold) mapTokensFor(mapG.id).forEach(g => {
+      if(tokenIsDown(g)) return;
+      const go = tokenHp(g).obj; if(!go || isTrainerOwner(go) || !ownerHasAbility(go, "Friend Guard")) return;
+      const u = abilityUse(go, "Friend Guard"); if(u.max && u.left <= 0) return;
+      const cb = el("input",{type:"checkbox"});
+      wrap.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;margin-bottom:6px;cursor:pointer"},
+        cb, el("span",{class:"small",style:"font-weight:700;color:var(--accent)"},
+          `\u{1F6E1} ${tokenHp(g).name}'s Friend Guard (${u.max ? `${u.left}/${u.max}` : "free"}): every ticked ALLY adjacent to it resists the hit one step further`)));
+      guards.push({ g, go, u, cb });
+    });
+  }catch(e){}
+
   const out = el("div",{class:"small",style:"margin-top:8px"});
   const apply = async ()=>{
     const chosen = items.filter(i=>i.cb.checked);
@@ -51754,6 +52532,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     /* what the targets ACTUALLY lost, after Defense, the matchup and their DR — the number a
        drain or a Recoil keyword is a fraction of (found-04). Handed back to the roll that made it. */
     let dealtTotal = 0;
+    const gSpent = new Set();                                   // each Friend Guard spends ONE use per press, however many allies it covers
     for(const it of chosen){
       /* Shell Armor / Battle Armor: this target takes the hit without the crit's extra dice. */
       const shell = critExtra > 0 ? critImmunityOf(tokenHp(it.t).obj) : null;
@@ -51777,7 +52556,55 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
           if(hit.length){ useDmg += 5; rivalryTxt += (rivalryTxt ? " " : "") + `Finisher: target is ${hit.map(statusName).join(" / ")} \u2014 +5 damage.`; }
         }
       }catch(e){}
-      const br = tokenDamageBreakdown(it.t, { dmg:useDmg, type:typeName, physical, defPlusSpd:!!(moveRule && moveRule.defPlusSpd), sonic:!!(moveRule && moveRule.sonic), defAsPhys:(moveRule && moveRule.defAs) ? moveRule.defAs === "phys" : null, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, atkMega, atkWar, atkMold, atkDeicide, defCSMode, chartOverride, seBonus, seFlat, formeStep, drBonus });
+      /* Gyro Ball: the Speed gap is a fact about this target; Dream Eater: only a Sleeping target can be hit */
+      try{
+        if(moveRule && moveRule.sleepOnly){
+          const Vs = tokenHp(it.t).obj;
+          if(Vs && !hasStatus(Vs, "sleep") && !hasStatus(Vs, "badSleep")){
+            it.cb.checked = false;
+            out.append(el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"},
+              el("div",{style:"font-weight:700"}, tokenHp(it.t).name),
+              el("div",{class:"small",style:"color:var(--accent);font-weight:600"}, "\u{1F634} not Sleeping \u2014 Dream Eater can't target it (skipped).")));
+            continue;
+          }
+        }
+        if(moveRule && moveRule.gyro && atkTok0){
+          const gap = tokenSpeed(it.t) - tokenSpeed(atkTok0);
+          if(gap > 0){ useDmg += gap; rivalryTxt += (rivalryTxt ? " " : "") + `Gyro Ball: target Speed ${tokenSpeed(it.t)} vs ${tokenSpeed(atkTok0)} \u2014 +${gap} damage.`; }
+          else rivalryTxt += (rivalryTxt ? " " : "") + "Gyro Ball: the target is not faster \u2014 no Bonus Damage.";
+        }
+        if(moveRule && moveRule.foulPlay && atkTok0){          // Foul Play: THEIR Attack stat goes in the Damage Roll instead of yours
+          const tA = tokenStatOf(it.t, "atk"), uA = tokenStatOf(atkTok0, "atk"), d = tA - uA;
+          useDmg += d; rivalryTxt += (rivalryTxt ? " " : "") + `Foul Play: target Attack ${tA} replaces ${uA} \u2014 ${d >= 0 ? "+" : "\u2212"}${Math.abs(d)} damage.`;
+        }
+      }catch(e){ console.error("gyro/dream eater", e); }
+      /* per-target Ability statics (v644) */
+      let vulnHere = 0, defExtra = 0;
+      try{
+        const V0 = tokenHp(it.t).obj;
+        if(A0 && V0 && hasAB("merciless") && ctx && ctx.forceCrit > 0 && !critExtra
+           && (hasStatus(V0, "poisoned") || hasStatus(V0, "badlyPoisoned"))){
+          if(critImmunityOf(V0)) rivalryTxt += (rivalryTxt ? " " : "") + `Merciless: target is Poisoned, but ${critImmunityOf(V0)} stops the Critical Hit.`;
+          else { useDmg += ctx.forceCrit; rivalryTxt += (rivalryTxt ? " " : "") + `Merciless: target is Poisoned \u2014 a Critical Hit (+${ctx.forceCrit}); it must still hit.`; }
+        }
+        if(stakeCb.checked){ const sr = rollDiceString("2d6"); const sx = (sr ? sr.total : 0) + 4; useDmg += sx;
+          rivalryTxt += (rivalryTxt ? " " : "") + `Stakeout: +2d6+4 = +${sx} damage.`; }
+        if(seqN > 0){ useDmg += 3 * seqN; rivalryTxt += (rivalryTxt ? " " : "") + `Sequence: ${seqN} adjacent allied Electric-Type${seqN === 1 ? "" : "s"} \u2014 +${3 * seqN} damage.`; }
+        if(vulnName && vulnCb.checked && !vulnCb.dataset.spent){
+          vulnHere = 1; vulnCb.dataset.spent = "1";
+          if(vulnUse.spend()){ try{ if(atkTok0 && atkTok0.link) await commitTokenSource(atkTok0); else save(); }catch(e){} }
+          rivalryTxt += (rivalryTxt ? " " : "") + `${vulnName}: this target is one step more vulnerable.`;
+        }
+        for(const G of guards){
+          if(!G.cb.checked || G.g === it.t || tokenSide(G.g) !== tokenSide(it.t) || tokenTileGap(G.g, it.t) > 1) continue;
+          defExtra -= 1; rivalryTxt += (rivalryTxt ? " " : "") + `Friend Guard (${tokenHp(G.g).name}): the damage is resisted one step further.`;
+          if(!gSpent.has(G)){ gSpent.add(G); if(G.u.spend()){ try{ await commitTokenSource(G.g); }catch(e){} } }
+        }
+        if(V0 && ctx && /^\s*(\d+|WR)\s*,\s*1 Target/i.test(String(ctx.range || "")) && !atkMold && ownerHasAbility(V0, "Bulletproof")){
+          defExtra -= 1; rivalryTxt += (rivalryTxt ? " " : "") + "Bulletproof: a ranged single-target attack is resisted one step further.";
+        }
+      }catch(e){ console.error("ability statics", e); }
+      const br = tokenDamageBreakdown(it.t, { vulnStep:vulnHere, defExtraStep:defExtra, execute:/execute/i.test(String((ctx && ctx.range) || "")), corrosion:hasAB("corrosion"), atkNeutral:hasAB("normalize [errata]"), dmg:useDmg, type:typeName, physical, defPlusSpd:!!(moveRule && moveRule.defPlusSpd), sonic:!!(moveRule && moveRule.sonic), defAsPhys:(moveRule && moveRule.defAs) ? moveRule.defAs === "phys" : null, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, atkMega, atkWar, atkMold, atkDeicide, defCSMode, chartOverride, seBonus, seFlat, formeStep, drBonus });
       if(moveRule && moveRule.spare){                    // False Swipe: leaves the target on 1 HP
         const cur = tokenHp(it.t).cur;
         if(cur > 0 && br.final >= cur){ br.final = cur - 1; rivalryTxt += (rivalryTxt ? " " : "") + "False Swipe \u2014 it leaves the target on 1 HP."; }
@@ -51789,9 +52616,11 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
       line.append(el("div",{style:"font-weight:700"}, tokenHp(it.t).name),
         el("div",{html: damageResultHTML(useDmg, typeName, br, before)}));
       (br.coatNotes || []).forEach(t => line.append(el("div",{class:"small",style:"color:var(--accent);font-weight:600"}, t)));
+      (br.abNotes || []).forEach(t => line.append(el("div",{class:"small",style:"color:var(--accent);font-weight:600"}, "\u2699 " + t)));
       if(rivalryTxt) line.append(el("div",{class:"small",style:"color:var(--accent);font-weight:600"}, "⚔ " + rivalryTxt));
       if(shell) line.append(el("div",{class:"small",style:"color:var(--accent);font-weight:600"},
         `\u{1F6E1} ${shell}: immune to Critical Hits \u2014 the crit's extra ${critExtra} came back off (${dmg} \u2192 ${useDmg}).`));
+      let syncKeys = [];
       if(hasFx && fxCb.checked){
         const o = tokenHp(it.t).obj;
         let fxTxt;
@@ -51801,14 +52630,30 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
         else if(tokenHp(it.t).cur <= 0) fxTxt = "down \u2014 nothing to stick";
         else if(ownerHasAbility(o, "Shield Dust") && !atkMold && !defensiveAbilitiesGassed(o)) fxTxt = "Shield Dust — secondary effects of damaging Moves don't land";
         else {
-          const s = inflictStatuses(o, fx.status || [], { mold: atkMold });   // Mold Breaker: Defensive immunities off
-          const c = applyCSFx(o, fx.cs || []);
+          const hadSt = new Set(Array.isArray(o.statuses) ? o.statuses : []);
+          const s = inflictStatuses(o, fx.status || [], { mold: atkMold, corrosion: hasAB("corrosion") });   // Mold Breaker: Defensive immunities off; Corrosion: Poison reaches Steel / Poison
+          syncKeys = (Array.isArray(o.statuses) ? o.statuses : []).filter(k => !hadSt.has(k) && ["burned","frozen","paralysis","poisoned","badlyPoisoned","sleep"].includes(k));
+          const c = applyCSFx(o, fx.cs || [], { foe:true });
           if(s.on.length || c.moved.length) await commitTokenSource(it.t);
           const held = [...s.held, ...c.held];
           fxTxt = [[...s.on, ...c.moved].join(", "), held.length ? `held: ${held.join(", ")}` : ""]
             .filter(Boolean).join(" \u2014 ") || "nothing new";
         }
         line.append(el("div",{class:"small",style:"color:var(--accent);font-weight:600"}, `\u{1F4AB} ${fxTxt}`));
+        /* Synchronize: "The foe which caused the Status Condition is given the same Status they inflicted" \u2014 the picker knows both
+           sides, so the ability the sheet could only announce becomes a button that finishes the job. */
+        if(o && A0 && syncKeys.length && ownerHasAbility(o, "Synchronize")){
+          const uS = abilityUse(o, "Synchronize"), keys = syncKeys.slice();
+          const sb = el("button",{class:"btn-secondary",style:"padding:2px 8px;margin-top:3px",onclick:async()=>{
+            if(!uS.spend()){ toast("Synchronize: no uses left"); return; }
+            const r = inflictStatuses(A0, keys, {});
+            try{ if(atkTok0 && atkTok0.link) await commitTokenSource(atkTok0); else save(); }catch(e){}
+            try{ if(it.t && it.t.link) await commitTokenSource(it.t); }catch(e){}
+            mapTokensSave(); renderMap();
+            sb.disabled = true; sb.textContent = `\u2714 Synchronize \u2192 ${r.on.join(", ") || "nothing new"}${r.held.length ? ` (held: ${r.held.join(", ")})` : ""}`;
+          }}, `\u26A1 Synchronize (${uS.max ? `${uS.left}/${uS.max}` : "free"}) \u2014 give the attacker ${keys.map(statusName).join(" & ")}`);
+          line.append(sb);
+        }
       }
       { const felled = tokenHp(it.t).cur <= 0;
         const rx = reactionsNode(it.t, br, ctx, felled); if(rx) line.append(rx); }
@@ -52061,6 +52906,7 @@ function openTokenMenu(token, map){
   if(isGardenToken(token)) return openGardenTokenMenu(token, map);   // before hazards — it rides that path
   if(isHazardToken(token)) return openHazardMenu(token, map);
   if(isZoneToken(token)) return openZoneMenu(token, map);
+  if(isNoteToken(token)) return openNoteMenu(token, map);
   const info = tokenHp(token);
   const wrap = el("div",{});
   if(!info.unlinked){
@@ -53830,6 +54676,8 @@ function renderMap(){
           title:"Drop a visual hazard marker (Stealth Rock, Spikes, fire...) on the board -- cosmetic only, no automatic effect."},"☠ Hazard"),
         el("button",{class:"btn-secondary",onclick:()=>openAddZone(map),
           title:"Mark ground as Rough, Slow or Blocking Terrain. Slow ground doubles the metres a drag across it costs; Blocking ground stops a player's drag. Tick \u{1F441} Invisible when the terrain is already painted into the map art and you only want the rule."},"\u26F0 Terrain"),
+        el("button",{class:"btn-secondary",onclick:()=>addNotePin(map),
+          title:"Drop a GM-only note pin on the board \u2014 players never see it. Name it, write what it does, colour it, and link two pins (stairs, switch and gate) to draw a line between them."},"\u{1F4DD} Note"),
         el("button",{class:"btn-secondary"+(arenaOf(map)?" on":""),onclick:()=>openArenaDialog(map),
           title:"Frame a square arena and close it in a step at a time. The band outside the line becomes real terrain, so a wave can't be kited into the far corner of the board."},"\u{1F300} Arena"),
         mapWallDrawActive(map) ? null : wallBtn,
@@ -54082,6 +54930,7 @@ function renderMap(){
   const mkToken = t => { const node=mapTokenNode(t,map,originX,originY); if(!mapImgEdit) attachTokenDrag(node,t,map,originX,originY); else node.style.pointerEvents="none"; return node; };
   const visibleToken = t => {
     if(isZoneToken(t) && t.ghost) return false;                     // rules-only ground: nothing to draw
+    if(isNoteToken(t)) return false;                                // GM notes never leave the GM's screen
     if(t.gmHidden) return false;                                    // GM has hidden this token from players entirely
     if(cloud.isGM || !map.fogOn) return true;
     if(t.link && ownsRow(cloud.byId[t.link.sheetId])) return true;   // always see your own
@@ -54111,6 +54960,7 @@ function renderMap(){
 
   if(cloud.isGM){
     const f = drawFogInto(); if(f) stage.append(f);                 // GM: dim fog under tokens
+    const nl = noteLinksOverlay(map, stageW, stageH, originX, originY); if(nl) stage.append(nl);
     mapDrawOrder(mapTokensFor(map.id)).forEach(t=>{ if(nearView(t)) stage.append(mkToken(t)); });
   } else {
     mapDrawOrder(mapTokensFor(map.id)).forEach(t=>{ if(visibleToken(t) && nearView(t)) stage.append(mkToken(t)); });

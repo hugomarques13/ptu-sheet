@@ -7,13 +7,13 @@
 
 P1 · 11 open of 17 · open
 
-- ✅ **Devitalizing Throw** — `auto` · P1 (player:Lázaro) · themes: interrupt, status, cs, skill, capture, stat · code: openThrowPokeball:16954, captureCard:29273
+- ✅ **Devitalizing Throw** — `auto` · P1 (player:Lázaro) · themes: interrupt, status, cs, skill, capture, stat · code: openThrowPokeball:17315, captureCard:30234
   - _1 AP – Free Action · Prereq: Capture Specialist_
   - note: Throw modal: 1 AP button under the Capture Roll, choice of Slowed / -1 CS / -3 Save, announced in the Rolls feed (v600)
   - Trigger: A Pokémon escapes from a Poké Ball you threw
     Choose One Effect: The triggering target becomes Slowed; the triggering target loses one Combat Stage in a Stat of your choice; or the triggering target suffers a -3 penalty to their next Save Roll.
 
-- 🟡 **Catch Combo** — `partial` · P3 · themes: interrupt, capture · code: captureCard:29274
+- 🟡 **Catch Combo** — `partial` · P3 · themes: interrupt, capture · code: captureCard:30235
   - _Daily – Free Action · Prereq: Capture Specialist, 3 of Acrobatics, Athletics, Stealth, Survival, Guile, or Perception Skills at Expert Rank_
   - note: Listed on the Capture Specialist card; GM holds the 1 HP Capture Rate
   - Trigger: Your Pokémon's attack faints a Wild Pokémon.
@@ -36,13 +36,13 @@ P1 · 11 open of 17 · open
   - Trigger: Your Pokémon hits a foe with a Move with the Social keyword
     Effect: The foe becomes Vulnerable for one full round. If the foe is afflicted with Rage, Suppression, Infatuation, or Confusion you may change one of the listed Volatile Status to another listed Volatile Status. Mind Games may only be activated once per Scene per foe. When inflicting Infatuation this way, the object of Infatuation is your Pokémon, regardless of gender.
 
-- 🟡 **Pummeling Momentum** — `partial` · P3 · themes: interrupt, damage, skill · code: TECH_PRESS:168, trigRow:23697
+- 🟡 **Pummeling Momentum** — `partial` · P3 · themes: interrupt, damage, skill · code: TECH_PRESS:168, trigRow:24347
   - _1 AP - Free Action · Prereq: Iron Fist Ability_
   - note: v611 TECH_PRESS button on the Technique row: spends the AP, posts the rider to the Rolls feed; effect resolved at the table
   - Trigger: You hit a foe with a Move affected by Iron Fist
     Effect: You Tag the triggering foe and gain a +1 bonus to your Accuracy Rolls and Evasion against that foe. Each subsequent time that you hit the Tagged foe with a Move affected by Iron Fist, this bonus increases by +1, to a maximum of your Combat Rank. If you ever spend a turn without successfully hitting your Tagged foe, the foe loses their Tag and the bonus is lost.
 
-- 🟡 **Relentless Pursuit** — `partial` · P3 · themes: interrupt, status · code: captureCard:29276
+- 🟡 **Relentless Pursuit** — `partial` · P3 · themes: interrupt, status · code: captureCard:30237
   - _2 AP – Free Action, Interrupt · Prereq: Capture Specialist, 3 of Acrobatics, Athletics, Stealth, Survival, Guile, or Perception Skills at Expert Rank_
   - note: Listed on the Capture Specialist card
   - Trigger: A foe attempts to run away
@@ -54,7 +54,7 @@ P1 · 11 open of 17 · open
   - Trigger: You begin your turn with Dominance in a Grapple
     Effect: This turn, you may perform two different Grappling Effects as a Full Action instead of just one.
 
-- ✅ **Fast Pitch** — `auto` · P1 (player:Lázaro) · themes: capture · code: openThrowPokeball:16944, captureCard:29272
+- ✅ **Fast Pitch** — `auto` · P1 (player:Lázaro) · themes: capture · code: openThrowPokeball:17305, captureCard:30233
   - _1 AP – Standard Action, Priority (Advanced) · Prereq: Capture Specialist_
   - note: Throw modal: 1 AP button, announces the Priority throw (v600)
   - You immediately throw a Poké Ball.
@@ -112,7 +112,7 @@ P3 · 17 open of 20 · open
   - note: TECH_FX: Stealth Capability via trainerCapGrants (v600)
   - You're used to navigating the dense plant life of large forests. You gain the Stealth Capability
 
-- 🟡 **Frisk** — `partial` · P3 · themes: swap · code: TECH_FX:192
+- 🟡 **Frisk** — `partial` · P3 · themes: swap · code: TECH_FX:192, errataAbilityMap:5081
   - _Static · Prereq: Hero's Journey [5-15 Playtest]_
   - note: TECH_FX note; Trainers hold no Abilities
   - You gain the Frisk Ability.
@@ -159,7 +159,7 @@ P3 · 17 open of 20 · open
     • Bloodied Speed – Agility Training: This Move may be used as Priority (Advanced) if the user has less than half of their maximum Hit Points.
     • Double Down – Brutal Training: The Move gains the Double Strike keyword. Effects and Effect-Ranges may be triggered only once (but either roll may trigger the effect). This may only be applied to Moves with a Damage Base of 4 or less, and may not be applied to Moves whose Damage Base change upon certain conditions (such as Fury Cutter or Ice Ball) or moves with Special-Case Damage (such as Night Shade).
 
-- 🟡 **False Strike** — `partial` · P3 · themes: heal, interrupt · code: captureCard:29275
+- 🟡 **False Strike** — `partial` · P3 · themes: heal, interrupt · code: captureCard:30236
   - _Scene x2 – Free Action · Prereq: Capture Specialist, 3 of Acrobatics, Athletics, Stealth, Survival, Guile, or Perception Skills at Expert Rank_
   - note: Listed on the Capture Specialist card; tell the GM
   - Trigger: You or your Pokémon's attack faints a Wild Pokémon.
@@ -275,20 +275,20 @@ P3 · 7 open of 8 · open
 
 P9 · 4 open of 4 · open
 
-- 🟢 **Curve Ball** — `likely` · P1 (player:Lázaro) · themes: damage, skill, capture · code: captureCard:29270
+- 🟢 **Curve Ball** — `likely` · P1 (player:Lázaro) · themes: damage, skill, capture · code: captureCard:30231
   - _Static · Prereq: Capture Specialist_
   - Whenever you hit a target with a Poké Ball, you may deal damage as if you had hit them with a Struggle Attack. This damage triggers before any of the Poké Ball's functions (such as making a Capture Check, releasing a Pokémon, etc.).
 
-- 🟢 **Tools of the Trade** — `likely` · P1 (player:Lázaro) · themes: damage, skill · code: catchDCModal:16663, openThrowPokeball:16851, captureCard:29266
+- 🟢 **Tools of the Trade** — `likely` · P1 (player:Lázaro) · themes: damage, skill · code: catchDCModal:17024, openThrowPokeball:17212, captureCard:30227
   - _Static · Prereq: Capture Specialist_
   - Add +2 to all Accuracy Rolls made with Poké Balls, Hand Nets, Lassos, Weighted Nets, and Glue Cannons. Add +2 to Athletics Checks made when reeling in a Pokémon with a Fishing Rod, and add +4 to 1d20 rolls made to see if a Pokémon is attracted by Bait or a Fishing Lure.
     May Playtest Errata: Add +2 to all Accuracy Rolls made with Cap Cannons.
 
-- 🟢 **Capture Skills** — `likely` · P3 · themes: swap, skill, capture · code: featureByKey:10852, featuresForClass:10948, splitSkillEdges:11024, captureCard:29263
+- 🟢 **Capture Skills** — `likely` · P3 · themes: swap, skill, capture · code: featureByKey:11193, featuresForClass:11289, splitSkillEdges:11365, captureCard:30224
   - _Static · Prereq: Capture Specialist_
   - You gain a Skill Edge for which you qualify. It must be applied to Acrobatics, Athletics, Stealth, Survival, Guile, or Perception. You may take Capture Skills up to two times.
 
-- 🟢 **Snare** — `likely` · P3 · themes: status, capture · code: catchDCModal:16664, openThrowPokeball:16858, captureCard:29268
+- 🟢 **Snare** — `likely` · P3 · themes: status, capture · code: catchDCModal:17025, openThrowPokeball:17219, captureCard:30229
   - _Static · Prereq: Capture Specialist_
   - You subtract -10 from Capture Rolls made against Pokémon drawn into an encounter by Bait, that are currently distracted by Bait, or are in a Hand Net, Lasso, Weighted Net, or Stuck because of a Glue Cannon.
 

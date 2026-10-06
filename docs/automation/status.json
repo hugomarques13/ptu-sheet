@@ -21,11 +21,11 @@
    "status": "auto"
   },
   "Aftermath": {
-   "note": "v617 verify sweep: found unhandled, added STATIC_ABILITY_EVASION / ABILITY_ACTION_ROWS / MOVE_FX_ROWS",
-   "status": "partial"
+   "note": "v645 ABILITY_REACTIONS faintself row: a quarter of Max HP to everything within 1 m; Damp within 10 m stops it",
+   "status": "auto"
   },
   "Aftermath [Errata]": {
-   "note": "v592: ABILITY_REACTIONS / ABILITY_ACTION_ROWS / abilityStatusCS / defenseTypeMods / abilityInitiative / pokeBaseStats",
+   "note": "v645: Damp within 10 m now stops it too",
    "status": "auto"
   },
   "Air Lock": {
@@ -52,9 +52,25 @@
    "note": "reveals information to the player — nothing to compute",
    "status": "manual"
   },
+  "Aqua Bullet": {
+   "note": "Full-Action Sky 10 shift in a straight line - movement is the table's",
+   "status": "manual"
+  },
+  "Arena Trap [Errata]": {
+   "note": "v644: press puts Slowed + Trapped on the foes the GM ticks; the Flying / Levitate / Sky / Burrow exemption is read at the table",
+   "status": "partial"
+  },
   "Armor Tail": {
    "note": "v607 ABILITY_ACTION_ROWS press: records/announces; the rest is resolved at the table",
    "status": "partial"
+  },
+  "Aura Break": {
+   "note": "Negates OTHER creatures' Ability bonuses - needs a cross-creature Ability suppression layer the sheet doesn't have",
+   "status": "manual"
+  },
+  "Aura Break [Errata]": {
+   "note": "Reveal an Ability and invert its Damage Bonuses into Penalties - GM-adjudicated",
+   "status": "manual"
   },
   "Aura Storm [Errata]": {
    "note": "v587: abilityDamageMods / STATIC_ABILITY_EVASION row",
@@ -73,20 +89,36 @@
    "status": "partial"
   },
   "Ballistic": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
+   "note": "v644 abilityDamageMods: +2 DB on Rollout / Steamroller / Steel Roller / every 'Ball' Move; the Versatile keyword is by hand",
    "status": "partial"
   },
   "Battery": {
    "note": "v607 ABILITY_ACTION_ROWS press: records/announces; the rest is resolved at the table",
    "status": "partial"
   },
+  "Beads of Ruin": {
+   "note": "v644: press lays a shared 2-use Blessing square for the whole table (tableLayBlessing); the one-step effect is applied with the Effectiveness +/- buttons",
+   "status": "partial"
+  },
   "Beast Boost": {
    "note": "ABILITY_REACTIONS row — ⚡ button under the 💥 Apply result (v585)",
    "status": "auto"
   },
+  "Beautiful": {
+   "note": "v644: press cures Enraged on ticked targets; the +2 Beauty Dice are a Contest roll, by hand",
+   "status": "partial"
+  },
+  "Beautiful [Errata]": {
+   "note": "v644: press gives +1 Special Attack CS and cures Enraged on ticked allies; Contest dice by hand",
+   "status": "partial"
+  },
   "Berserk": {
    "note": "v592: ABILITY_REACTIONS / ABILITY_ACTION_ROWS / abilityStatusCS / defenseTypeMods / abilityInitiative / pokeBaseStats",
    "status": "auto"
+  },
+  "Big Swallow": {
+   "note": "v644 openMoveRoll: Spit Up reads the Stockpile Count one higher (max 3); Swallow's healing is not bumped",
+   "status": "partial"
   },
   "Blessed Touch": {
    "note": "v588-589: abilityStatusCS / lowerCS+changeCS / unawareMode / ABILITY_ACTION_ROWS / ABILITY_TURN_HOOKS",
@@ -99,6 +131,10 @@
   "Blow Away [Errata]": {
    "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
    "status": "partial"
+  },
+  "Blur": {
+   "note": "Evasion halving against no-AC Moves - table rule on the defender's Evasion",
+   "status": "manual"
   },
   "Bodyguard": {
    "note": "v606 ABILITY_ACTION_ROWS press (uses tracked); the rest is resolved at the table",
@@ -113,7 +149,7 @@
    "status": "partial"
   },
   "Bone Lord [Errata]": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
+   "note": "v647 CONNECTION_CS: Bone Club -1 Def/Sp.Atk on the 🔺 card; the other two Moves by hand",
    "status": "partial"
   },
   "Box Step": {
@@ -126,6 +162,10 @@
   },
   "Brimstone [Errata]": {
    "note": "v591: abilityStatusCS / weatherEvasion / abilityDamageMods / ABILITY_REACTIONS deal / ABILITY_TURN_HOOKS / addSelf row",
+   "status": "auto"
+  },
+  "Bulletproof": {
+   "note": "v644: attackTargetWidget reads ctx.range - a ranged '<N|WR>, 1 Target' Move is resisted one step further (Defensive: off under Mold Breaker)",
    "status": "auto"
   },
   "Bully": {
@@ -144,9 +184,13 @@
    "note": "ABILITY_REACTIONS row — ⚡ button under the 💥 Apply result (v585)",
    "status": "auto"
   },
+  "Celebrate [Errata]": {
+   "note": "Free Disengage after a hit and a 2 m Disengage - no action-economy engine to hang it on",
+   "status": "manual"
+  },
   "Chemical Romance": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v647 CONNECTION_STATUS: Poison Gas/Smog/Sweet Scent/Toxic/Venom Drench Infatuate (apply to male targets only)",
+   "status": "auto"
   },
   "Cherry Power": {
    "note": "v588-589: abilityStatusCS / lowerCS+changeCS / unawareMode / ABILITY_ACTION_ROWS / ABILITY_TURN_HOOKS",
@@ -185,8 +229,8 @@
    "status": "partial"
   },
   "Competitive": {
-   "note": "v622: ABILITY_ACTION_ROWS press (+2 Sp.Atk CS); trigger judged at the table",
-   "status": "partial"
+   "note": "v647 applyCSFx opts.foe: a foe-caused CS drop raises Sp.Attack +2",
+   "status": "auto"
   },
   "Confidence": {
    "note": "v588-589: abilityStatusCS / lowerCS+changeCS / unawareMode / ABILITY_ACTION_ROWS / ABILITY_TURN_HOOKS",
@@ -201,8 +245,12 @@
    "status": "auto"
   },
   "Copy Master": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v646 CONNECTION_USE_FX: the 🔗 box's 'Use it on this Move' button now writes the effect (+1 CS picker)",
+   "status": "auto"
+  },
+  "Corrosion": {
+   "note": "v644: Poison attacks resisted one step less, immune targets take x0.25 (attackTargetWidget corrosion flag), and Poison / Badly Poisoned reach Steel and Poison-Types through statusBlockFor opts.corrosion",
+   "status": "auto"
   },
   "Corrosive Toxins": {
    "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
@@ -219,6 +267,10 @@
   "Courage": {
    "note": "+5 damage at or under 1/3 HP applied; the +5 DR half is not",
    "status": "partial"
+  },
+  "Covert": {
+   "note": "+2 Evasion on a terrain 'related to its natural habitat' - no habitat/terrain mapping",
+   "status": "manual"
   },
   "Cruelty": {
    "note": "v592 main effect automated; Bonus clause by hand (Sunny/Rainy activation, Injury purchases, -5 damage penalty, resist part, burn/weather HP loss, Weight Class, Save bonus, DR in Sun, sandstorm HP)",
@@ -248,6 +300,14 @@
    "note": "ABILITY_REACTIONS row — ⚡ button under the 💥 Apply result (v585)",
    "status": "auto"
   },
+  "Damp": {
+   "note": "v644: dampBlockers() reads the Map - Explosion / Self-Destruct warn and refuse to set the HP when a Damp holder is within 10 m",
+   "status": "auto"
+  },
+  "Damp [Errata]": {
+   "note": "v644: Explosion / Self-Destruct refusal + the +1d10 Water Bonus are automatic; Aftermath failing near it is not wired",
+   "status": "partial"
+  },
   "Dancer": {
    "note": "v607 ABILITY_ACTION_ROWS press: records/announces; the rest is resolved at the table",
    "status": "partial"
@@ -257,7 +317,7 @@
    "status": "partial"
   },
   "Danger Syrup [Errata]": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
+   "note": "v647 CONNECTION_STATUS: Sweet Scent Blinds; the free-action use is by hand",
    "status": "partial"
   },
   "Dark Aura": {
@@ -280,6 +340,10 @@
    "note": "v592: ABILITY_REACTIONS / ABILITY_ACTION_ROWS / abilityStatusCS / defenseTypeMods / abilityInitiative / pokeBaseStats",
    "status": "auto"
   },
+  "Decoy": {
+   "note": "v644 ABILITY_ACTION_ROWS press: +2 Evasion until the end of the next turn; Follow Me's redirect is by hand",
+   "status": "partial"
+  },
   "Deep Sleep": {
    "note": "ABILITY_TURN_HOOKS row; fires from the Map ▶",
    "status": "auto"
@@ -293,8 +357,8 @@
    "status": "partial"
   },
   "Defiant": {
-   "note": "v617 verify sweep: found unhandled, added STATIC_ABILITY_EVASION / ABILITY_ACTION_ROWS / MOVE_FX_ROWS",
-   "status": "partial"
+   "note": "v647 applyCSFx opts.foe: a foe-caused CS drop raises Attack +2 (button kept for other sources)",
+   "status": "auto"
   },
   "Delayed Reaction": {
    "note": "v607 ABILITY_ACTION_ROWS press: records/announces; the rest is resolved at the table",
@@ -325,12 +389,12 @@
    "status": "auto"
   },
   "Discipline": {
-   "note": "v617 verify sweep: found unhandled, added STATIC_ABILITY_EVASION / ABILITY_ACTION_ROWS / MOVE_FX_ROWS",
-   "status": "partial"
+   "note": "v645 ABILITY_ACTION_ROWS press: cures Confused / Enraged / Infatuated / Flinched",
+   "status": "auto"
   },
   "Disguise": {
-   "note": "arms as a one-hit Shield; the +1 CS afterwards is by hand",
-   "status": "partial"
+   "note": "v651: arms as a one-hit Shield; when the hit is voided coatsOnHit sets o.pendCS and pendingControl shows a +1 CS picker (one button per Stat)",
+   "status": "auto"
   },
   "Dodge": {
    "note": "v586: defenseTypeMods / exploitAbilityBonus / onStatusGained / ABILITY_SHIELDS / ABILITY_REACTIONS",
@@ -339,6 +403,14 @@
   "Download": {
    "note": "reveals information to the player — nothing to compute",
    "status": "manual"
+  },
+  "Download [Errata]": {
+   "note": "v644: ABILITY_ACTION_ROWS press - picks which Defense is lower (or a free stat on a tie) and raises the CS",
+   "status": "auto"
+  },
+  "Dragon's Maw": {
+   "note": "v644: same toggle as Transistor, Dragon-Type",
+   "status": "auto"
   },
   "Dragonize": {
    "note": "v607 ABILITY_ACTION_ROWS press: records/announces; the rest is resolved at the table",
@@ -351,6 +423,14 @@
   "Dreamspinner [Errata]": {
    "note": "v592: ABILITY_REACTIONS / ABILITY_ACTION_ROWS / abilityStatusCS / defenseTypeMods / abilityInitiative / pokeBaseStats",
    "status": "auto"
+  },
+  "Drown Out": {
+   "note": "Focus Check vs the Move's Accuracy Roll to make a Sonic Move fail - table roll",
+   "status": "manual"
+  },
+  "Drown Out [Errata]": {
+   "note": "Makes a foe's Sonic Move fail - a reaction on the foe's Move, not on a hit",
+   "status": "manual"
   },
   "Dust Cloud": {
    "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
@@ -369,7 +449,7 @@
    "status": "auto"
   },
   "Eggscellence": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
+   "note": "v644: STAB on Barrage and Egg Bomb; the one-step-more-effective on 16+ is by hand",
    "status": "partial"
   },
   "Electrodash": {
@@ -465,8 +545,8 @@
    "status": "partial"
   },
   "Fluffy Charge": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v644 CONNECTION_CS: Charge gets a +1 Defense Combat Stage clause on the roll's Combat Stages card",
+   "status": "auto"
   },
   "Flutter": {
    "note": "v592: ABILITY_REACTIONS / ABILITY_ACTION_ROWS / abilityStatusCS / defenseTypeMods / abilityInitiative / pokeBaseStats",
@@ -493,8 +573,8 @@
    "status": "partial"
   },
   "Friend Guard": {
-   "note": "v616 ABILITY_ACTION_ROWS say() row",
-   "status": "partial"
+   "note": "v645: attackTargetWidget lists every living Friend Guard holder with a use left; ticked, each ticked ALLY adjacent to it (tokenTileGap) resists the hit one step further",
+   "status": "auto"
   },
   "Frighten": {
    "note": "v588-589: abilityStatusCS / lowerCS+changeCS / unawareMode / ABILITY_ACTION_ROWS / ABILITY_TURN_HOOKS",
@@ -506,6 +586,14 @@
   },
   "Frisk [Feb Errata]": {
    "note": "reveals information to the player — nothing to compute",
+   "status": "manual"
+  },
+  "Frisk [SuMo Errata]": {
+   "note": "+2 Accuracy vs adjacent targets - target adjacency isn't visible to the roll",
+   "status": "manual"
+  },
+  "Full Guard": {
+   "note": "Conditional one-step resist on a hit while holding Temp HP - applied with the Effectiveness - button",
    "status": "manual"
   },
   "Fungus Lord": {
@@ -588,9 +676,13 @@
    "note": "v591 main effect automated (see code); side clauses (sustain as Swift, allies in range, start-of-battle Temp HP, Initiative protection, Electric-Move trigger) stay by hand",
    "status": "partial"
   },
+  "Honey Paws [Errata]": {
+   "note": "Honey as a free Food Buff - no Honey item in the food registry",
+   "status": "manual"
+  },
   "Honey Thief": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v646 CONNECTION_USE_FX: the 🔗 box's 'Use it on this Move' button now writes the effect (a Tick of Temp HP)",
+   "status": "auto"
   },
   "Horde Break": {
    "note": "v607 ABILITY_ACTION_ROWS press: applied for you",
@@ -617,8 +709,8 @@
    "status": "auto"
   },
   "Hypnotic": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v644 openMoveRoll noMissNow: Hypnosis cannot miss",
+   "status": "auto"
   },
   "Ice Body [Errata]": {
    "note": "v591: abilityStatusCS / weatherEvasion / abilityDamageMods / ABILITY_REACTIONS deal / ABILITY_TURN_HOOKS / addSelf row",
@@ -637,8 +729,8 @@
    "status": "auto"
   },
   "Ice Shield": {
-   "note": "v616 ABILITY_ACTION_ROWS say() row",
-   "status": "partial"
+   "note": "v653: ABILITY_ACTION_ROWS press spends the Scene use and drops 3 Ice Wall markers (HAZARDS icewall: 10 HP, 5 DR, Ice) when the GM has the Map up",
+   "status": "auto"
   },
   "Ignition Boost": {
    "note": "v607 ABILITY_ACTION_ROWS press: records/announces; the rest is resolved at the table",
@@ -651,6 +743,10 @@
   "Immunity": {
    "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off)",
    "status": "auto"
+  },
+  "Imposter [Errata]": {
+   "note": "Transform as a Free Interrupt - Transform exists as a Move; the interrupt timing is the table's",
+   "status": "manual"
   },
   "Infiltrator": {
    "note": "positional or item-slot rule the Map does not model",
@@ -669,8 +765,8 @@
    "status": "partial"
   },
   "Insomnia": {
-   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off); left: 'cannot use the move Rest' is not enforced",
-   "status": "partial"
+   "note": "v647 moveLockReason: cannot use Rest",
+   "status": "auto"
   },
   "Instinct": {
    "note": "v587: abilityDamageMods / STATIC_ABILITY_EVASION row",
@@ -708,12 +804,20 @@
    "note": "ABILITY_REACTIONS row — ⚡ button under the 💥 Apply result (v585)",
    "status": "auto"
   },
+  "Kampfgeist [Errata]": {
+   "note": "One-step resist on a Bug/Dark/Rock hit chosen after seeing it - applied with the Effectiveness - button",
+   "status": "manual"
+  },
   "Keen Eye": {
    "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off) (Blind, not Defensive); Accuracy-can't-be-lowered is CS_LOWER_GUARDS (not re-verified); left: ignore Accuracy Penalties + non-Stat Evasion",
    "status": "partial"
   },
   "Klutz [SwSh]": {
    "note": "v606 ABILITY_ACTION_ROWS press (uses tracked); the rest is resolved at the table",
+   "status": "partial"
+  },
+  "Lancer": {
+   "note": "v644: ABILITY_ACTION_ROWS picker drops the +3 Crit Range or +5 DR buff for the turn; whether you Shifted is the table's call",
    "status": "partial"
   },
   "Leaf Gift": {
@@ -756,6 +860,10 @@
    "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off)",
    "status": "auto"
   },
+  "Lingering Aroma": {
+   "note": "Homebrew: a 1 m pull and handing the Ability to allies",
+   "status": "manual"
+  },
   "Liquid Ooze [Errata]": {
    "note": "v592 main effect automated; Bonus clause by hand (Sunny/Rainy activation, Injury purchases, -5 damage penalty, resist part, burn/weather HP loss, Weight Class, Save bonus, DR in Sun, sandstorm HP)",
    "status": "partial"
@@ -775,6 +883,10 @@
   "Maestrom Pulse": {
    "note": "Priority is declared at the table; the initiative tracker has no priority lane to put it in",
    "status": "skip"
+  },
+  "Magic Bounce": {
+   "note": "Reflect a Status Move back at the attacker - needs a reaction hook on Status Moves",
+   "status": "manual"
   },
   "Magician": {
    "note": "v592: ABILITY_REACTIONS / ABILITY_ACTION_ROWS / abilityStatusCS / defenseTypeMods / abilityInitiative / pokeBaseStats",
@@ -808,8 +920,12 @@
    "note": "v620: ABILITY_ACTION_ROWS press; effect resolved at the table",
    "status": "partial"
   },
+  "Merciless": {
+   "note": "v644: openMoveRoll pre-rolls the crit's extra dice (ctx.forceCrit); the target picker adds them to every Poisoned / Badly Poisoned target, Shell Armor aware",
+   "status": "auto"
+  },
   "Migraine [Errata]": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
+   "note": "v647 CONNECTION_STATUS: Confusion Confuses; the auto-crit is by hand",
    "status": "partial"
   },
   "Mimitree": {
@@ -831,6 +947,10 @@
   "Minus [SwSh]": {
    "note": "v607 ABILITY_ACTION_ROWS press: records/announces; the rest is resolved at the table",
    "status": "partial"
+  },
+  "Mirror Armor": {
+   "note": "Reflects CS drops back at the foe - needs a hook on every CS-lowering effect",
+   "status": "manual"
   },
   "Missile Launch": {
    "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
@@ -877,35 +997,43 @@
    "status": "auto"
   },
   "Needles": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v644 ABILITY_REACTIONS (trig deal, Physical Melee): the ⚡ button under 💥 Apply takes a Tick",
+   "status": "auto"
   },
   "Neuroforce": {
    "note": "v586: defenseTypeMods / exploitAbilityBonus / onStatusGained / ABILITY_SHIELDS / ABILITY_REACTIONS",
    "status": "auto"
   },
   "Neurotoxin": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v644 ABILITY_REACTIONS (trig deal, Poison-Type): the ⚡ button adds Paralysis",
+   "status": "auto"
   },
   "Nimble Strikes": {
    "note": "v587: abilityDamageMods / STATIC_ABILITY_EVASION row",
    "status": "auto"
   },
+  "No Guard": {
+   "note": "v644: the user's own Melee rolls ignore the target's Evasion; the 'cannot apply Evasion vs Melee' half sits on the defender, whom the attacker's roll never reads",
+   "status": "partial"
+  },
   "Noble Steed": {
    "note": "positional or item-slot rule the Map does not model",
    "status": "manual"
+  },
+  "Normalize [Errata]": {
+   "note": "v644: tokenDamageBreakdown atkNeutral / defender check - SE and Resisted both land neutral, immunities untouched",
+   "status": "auto"
   },
   "Oblivious": {
    "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off)",
    "status": "auto"
   },
   "Odious Spray": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
+   "note": "v647 CONNECTION_STATUS: Poison Gas Flinches; the range 8 / AC 2 change is by hand",
    "status": "partial"
   },
   "Odious Spray [Errata]": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
+   "note": "v647 CONNECTION_STATUS: Poison Gas Flinches; the range 8 / AC 2 change is by hand",
    "status": "partial"
   },
   "Opportunist": {
@@ -944,12 +1072,20 @@
    "note": "v592 main effect automated; Bonus clause by hand (Sunny/Rainy activation, Injury purchases, -5 damage penalty, resist part, burn/weather HP loss, Weight Class, Save bonus, DR in Sun, sandstorm HP)",
    "status": "partial"
   },
+  "Permafrost [Errata]": {
+   "note": "Immunity to every passive HP loss - needs a source tag on every HP write",
+   "status": "manual"
+  },
   "Pickpocket": {
    "note": "v592: ABILITY_REACTIONS / ABILITY_ACTION_ROWS / abilityStatusCS / defenseTypeMods / abilityInitiative / pokeBaseStats",
    "status": "auto"
   },
   "Pickup": {
    "note": "reveals information to the player — nothing to compute",
+   "status": "manual"
+  },
+  "Piercing Drill": {
+   "note": "Reactions / Interrupts may not be used against its Melee Attacks; a quarter damage through a shield - GM-adjudicated",
    "status": "manual"
   },
   "Plus": {
@@ -978,6 +1114,10 @@
   },
   "Poltergeist [Errata]": {
    "note": "roleplay, crafting or Forme/Ability-by-appearance rules resolved between sessions",
+   "status": "manual"
+  },
+  "Polycephaly": {
+   "note": "Struggle Attacks as a Swift Action and resisted further - Struggle action economy",
    "status": "manual"
   },
   "Power Spot": {
@@ -1012,6 +1152,10 @@
    "note": "v607 ABILITY_ACTION_ROWS press: records/announces; the rest is resolved at the table",
    "status": "partial"
   },
+  "Pumpkingrab": {
+   "note": "+4 Struggle Accuracy / +3 Skill only when initiating a Grapple",
+   "status": "manual"
+  },
   "Purifying Salt": {
    "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off); Ghost resist was already in defenseTypeMods",
    "status": "auto"
@@ -1020,13 +1164,17 @@
    "note": "v591: abilityStatusCS / weatherEvasion / abilityDamageMods / ABILITY_REACTIONS deal / ABILITY_TURN_HOOKS / addSelf row",
    "status": "auto"
   },
+  "Queenly Majesty": {
+   "note": "Stomp interrupt + immunity to Interrupts - interrupt timing is the table's",
+   "status": "manual"
+  },
   "Quick Curl": {
    "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
    "status": "partial"
   },
   "Quick Curl [Errata]": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v646 CONNECTION_USE_FX: the 🔗 box's 'Use it on this Move' button now writes the effect (+10 DR buff for a round)",
+   "status": "auto"
   },
   "Quick Draw": {
    "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off) (the Bonus); left: the Interrupt Move and its -2 attack penalty",
@@ -1044,6 +1192,10 @@
    "note": "roleplay, crafting or Forme/Ability-by-appearance rules resolved between sessions",
    "status": "manual"
   },
+  "Ragelope": {
+   "note": "v644: Effect Range row (18+: Enraged lands on the user) added through statusRangeAbility; the +1 Speed / Attack CS half is read off the text",
+   "status": "partial"
+  },
   "Rain Dish [Errata]": {
    "note": "v592: ABILITY_REACTIONS / ABILITY_ACTION_ROWS / abilityStatusCS / defenseTypeMods / abilityInitiative / pokeBaseStats",
    "status": "auto"
@@ -1060,9 +1212,13 @@
    "note": "ABILITY_REACTIONS row — ⚡ button under the 💥 Apply result (v585)",
    "status": "auto"
   },
+  "Receiver": {
+   "note": "Copies an ally's Ability on faint - cross-creature Ability grant",
+   "status": "manual"
+  },
   "Refreshing Veil": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v646 CONNECTION_USE_FX: the 🔗 box's 'Use it on this Move' button now writes the effect (cures every Persistent Status)",
+   "status": "auto"
   },
   "Regal Challenge": {
    "note": "v607 ABILITY_ACTION_ROWS press: records/announces; the rest is resolved at the table",
@@ -1089,16 +1245,16 @@
    "status": "skip"
   },
   "Rocky Payload": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
+   "note": "v647 STAB on Rock-Type Moves; Fling as Flying/Rock is by hand",
    "status": "partial"
   },
   "Root Down": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v646 CONNECTION_USE_FX: the 🔗 box's 'Use it on this Move' button now writes the effect (1/16 Max HP as Temp HP)",
+   "status": "auto"
   },
   "Root Down [Errata]": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v646 CONNECTION_USE_FX: the 🔗 box's 'Use it on this Move' button now writes the effect (+5 DR buff)",
+   "status": "auto"
   },
   "Rough Skin": {
    "note": "ABILITY_REACTIONS row — ⚡ button under the 💥 Apply result (v585)",
@@ -1144,6 +1300,14 @@
    "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
    "status": "partial"
   },
+  "Sequence": {
+   "note": "Scene Free Action that raises Atk/SpAtk before damage and strips them after - a Combat Stage spike scoped to one attack; resolved at the table",
+   "status": "manual"
+  },
+  "Sequence [Errata]": {
+   "note": "v644: +3 damage per ADJACENT allied Electric-Type read from the Map (tokenTileGap) on every ticked target",
+   "status": "auto"
+  },
   "Serpent's Mark": {
    "note": "roleplay, crafting or Forme/Ability-by-appearance rules resolved between sessions",
    "status": "manual"
@@ -1173,20 +1337,24 @@
    "status": "auto"
   },
   "Shell Cannon": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v646 CONNECTION_USE_FX: the 🔗 box's 'Use it on this Move' button now writes the effect (next-attack +2 Accuracy / +4 damage buff)",
+   "status": "auto"
   },
   "Shell Shield": {
    "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
    "status": "partial"
   },
   "Shell Shield [Errata]": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v646 CONNECTION_USE_FX: the 🔗 box's 'Use it on this Move' button now writes the effect (+10 DR buff for a round)",
+   "status": "auto"
   },
   "Shield Dust": {
    "note": "v619: attackTargetWidget skips a Shield Dust target's status/CS riders (Mold Breaker / Gas respected)",
    "status": "auto"
+  },
+  "Showdown Mode": {
+   "note": "v644: press drops a showdown-mode buff - Melee Moves get +2 Crit Range (critThreshold) and +Tick damage (abilityDamageMods); the Tick lost after dealing it is by hand",
+   "status": "partial"
   },
   "Silk Threads": {
    "note": "v626 CONNECTION_STATUS: String Shot Slows",
@@ -1208,6 +1376,10 @@
    "note": "v607 ABILITY_ACTION_ROWS press: records/announces; the rest is resolved at the table",
    "status": "partial"
   },
+  "Slow Start": {
+   "note": "v644: press drops a 3-round +10 DR buff; halving Speed and Attack is by hand (no stat-multiplier layer)",
+   "status": "partial"
+  },
   "Slush Rush": {
    "note": "v592: ABILITY_REACTIONS / ABILITY_ACTION_ROWS / abilityStatusCS / defenseTypeMods / abilityInitiative / pokeBaseStats",
    "status": "auto"
@@ -1223,6 +1395,10 @@
   "Sol Veil": {
    "note": "v592 main effect automated; Bonus clause by hand (Sunny/Rainy activation, Injury purchases, -5 damage penalty, resist part, burn/weather HP loss, Weight Class, Save bonus, DR in Sun, sandstorm HP)",
    "status": "partial"
+  },
+  "Solar Power [Errata]": {
+   "note": "Lose a Tick to add 5 + Tick to a damage roll - applied by hand on the roll",
+   "status": "manual"
   },
   "Solid Rock [Errata]": {
    "note": "v586: defenseTypeMods / exploitAbilityBonus / onStatusGained / ABILITY_SHIELDS / ABILITY_REACTIONS",
@@ -1249,12 +1425,12 @@
    "status": "auto"
   },
   "Sound Lance": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v645 ABILITY_ACTION_ROWS press opens the target picker pre-filled with the user's Special Attack as Special Normal damage",
+   "status": "auto"
   },
   "Sound Lance [Errata]": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v645 ABILITY_ACTION_ROWS press: the target loses HP equal to the user's Special Attack (abfx loseHP, dynamic params)",
+   "status": "auto"
   },
   "Soundproof": {
    "note": "v615: Sonic Moves carry moveRule.sonic; tokenDamageBreakdown zeroes damage vs Soundproof",
@@ -1292,6 +1468,10 @@
    "note": "v592 main effect automated; Bonus clause by hand (Sunny/Rainy activation, Injury purchases, -5 damage penalty, resist part, burn/weather HP loss, Weight Class, Save bonus, DR in Sun, sandstorm HP)",
    "status": "partial"
   },
+  "Stakeout": {
+   "note": "v644: attackTargetWidget checkbox 'targets arrived since my last turn' adds 2d6+4 per ticked target (whether they arrived is the table's call - nothing records it)",
+   "status": "auto"
+  },
   "Stalwart": {
    "note": "v592 main effect automated; Bonus clause by hand (Sunny/Rainy activation, Injury purchases, -5 damage penalty, resist part, burn/weather HP loss, Weight Class, Save bonus, DR in Sun, sandstorm HP)",
    "status": "partial"
@@ -1299,6 +1479,10 @@
   "Stamina": {
    "note": "ABILITY_REACTIONS row — ⚡ button under the 💥 Apply result (v585)",
    "status": "auto"
+  },
+  "Stance Change": {
+   "note": "Aegislash's Stance swap of Attack/Defense stats - a forme system the sheet doesn't model",
+   "status": "manual"
   },
   "Starswirl": {
    "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
@@ -1317,8 +1501,8 @@
    "status": "auto"
   },
   "Steadfast [Errata]": {
-   "note": "+1 Speed CS on Flinch automated; the +5 Initiative is not",
-   "status": "partial"
+   "note": "v645 abilityInitiative: +5 Initiative; the +1 Speed on Flinch was already automatic",
+   "status": "auto"
   },
   "Steam Engine": {
    "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
@@ -1338,6 +1522,10 @@
   },
   "Strange Tempo": {
    "note": "v607 ABILITY_ACTION_ROWS press: applied for you",
+   "status": "auto"
+  },
+  "Sturdy [Errata]": {
+   "note": "v644 tokenDamageBreakdown: 50% Max HP cap per source + Execute-keyword immunity (Defensive, off under Mold Breaker)",
    "status": "auto"
   },
   "Sun Blanket [Errata]": {
@@ -1372,6 +1560,10 @@
    "note": "v592: ABILITY_REACTIONS / ABILITY_ACTION_ROWS / abilityStatusCS / defenseTypeMods / abilityInitiative / pokeBaseStats",
    "status": "auto"
   },
+  "Sword of Ruin": {
+   "note": "v644: same shared 2-use Blessing square",
+   "status": "partial"
+  },
   "Symbiosis": {
    "note": "positional or item-slot rule the Map does not model",
    "status": "manual"
@@ -1381,7 +1573,11 @@
    "status": "manual"
   },
   "Synchronize": {
-   "note": "announced when a persistent Status lands; the foe that caused it isn't known to inflictStatus",
+   "note": "v645: the 💥 Apply picker knows attacker and victim - a ⚡ Synchronize button gives the attacker the same persistent Status the Move just landed (Scene use spent)",
+   "status": "auto"
+  },
+  "Tablets of Ruin": {
+   "note": "v644: same shared 2-use Blessing square",
    "status": "partial"
   },
   "Tangled Feet [Errata]": {
@@ -1412,6 +1608,10 @@
    "note": "ABILITY_REACTIONS row — ⚡ button under the 💥 Apply result (v585)",
    "status": "auto"
   },
+  "Thrust": {
+   "note": "v644: movePushNode adds a 1 m Push clause to every Physical Move, +1 m when the Move already pushes",
+   "status": "auto"
+  },
   "Thunder Boost": {
    "note": "v607 ABILITY_ACTION_ROWS press: records/announces; the rest is resolved at the table",
    "status": "partial"
@@ -1421,7 +1621,7 @@
    "status": "partial"
   },
   "Tingly Tongue": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
+   "note": "v647 CONNECTION_STATUS: Lick Paralyzes; +10 DB and the 15+ Save rider by hand",
    "status": "partial"
   },
   "Tochukaso": {
@@ -1429,7 +1629,7 @@
    "status": "auto"
   },
   "Tonguelash": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
+   "note": "v647 CONNECTION_STATUS: Lick Paralyzes + Flinches on the 🩺 card; the Normal-Type option is by hand",
    "status": "partial"
   },
   "Tower Shield": {
@@ -1450,6 +1650,10 @@
   },
   "Toxic Nourishment": {
    "note": "v592: ABILITY_REACTIONS / ABILITY_ACTION_ROWS / abilityStatusCS / defenseTypeMods / abilityInitiative / pokeBaseStats",
+   "status": "auto"
+  },
+  "Transistor": {
+   "note": "v644: attackTargetWidget toggle spends the Scene x2 use; first ticked target is one step more vulnerable, an immune one counts as doubly resisted first (typeMultAgainst immuneAs)",
    "status": "auto"
   },
   "Transporter": {
@@ -1500,29 +1704,37 @@
    "note": "roleplay, crafting or Forme/Ability-by-appearance rules resolved between sessions",
    "status": "manual"
   },
-  "Vicious": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
+  "Vessel of Ruin": {
+   "note": "v644: same shared 2-use Blessing square",
    "status": "partial"
+  },
+  "Vicious": {
+   "note": "v647 CONNECTION_USE_FX: pick extra Standard Action or +2 Crit Range buff",
+   "status": "auto"
   },
   "Victory Star": {
    "note": "v607 ABILITY_ACTION_ROWS press: applied for you",
    "status": "auto"
   },
   "Vigor": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v646 CONNECTION_USE_FX: the 🔗 box's 'Use it on this Move' button now writes the effect (a Tick of HP)",
+   "status": "auto"
   },
   "Vital Spirit": {
-   "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off); left: 'cannot use the move Rest' is not enforced",
-   "status": "partial"
+   "note": "v647 moveLockReason: cannot use Rest",
+   "status": "auto"
   },
   "Voodoo Doll": {
    "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
    "status": "partial"
   },
   "Wallmaster": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v646 CONNECTION_USE_FX: the 🔗 box's 'Use it on this Move' button now writes the effect (+2 Defense CS or a Barrier reminder)",
+   "status": "auto"
+  },
+  "Wandering Spirit": {
+   "note": "Ability swap with the attacker - Skill Swap isn't an engine yet",
+   "status": "manual"
   },
   "Water Bubble": {
    "note": "found-03 STATUS_IMMUNE_ABILITIES (inflictStatus funnel + ⃠ chips; Mold Breaker/Neutralizing Gas switch Defensive rows off); Fire resist was already in defenseTypeMods; left: 'always act as though in Rainy Weather' and the Melee Water-Move bonus",
@@ -1573,12 +1785,16 @@
    "status": "partial"
   },
   "Wistful Melody": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
+   "note": "v647 CONNECTION_CS: Sing -2 Attack/Sp.Attack on the 🔺 card (Soundproof judged by the GM)",
    "status": "partial"
   },
   "Wobble": {
    "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
    "status": "partial"
+  },
+  "Wonder Skin": {
+   "note": "+6 Evasion vs Status Moves - the Evasion total is read by the GM at the roll and the sheet's Evasion doesn't know the Move class",
+   "status": "manual"
   },
   "Zen Mode": {
    "note": "roleplay, crafting or Forme/Ability-by-appearance rules resolved between sessions",
@@ -2230,6 +2446,10 @@
    "note": "FEATURE_ACTIONS / FEATURE_MODES row (v595)",
    "status": "auto"
   },
+  "Arcanist": {
+   "note": "Soul Bond with an Arcane Weapon - weapon subsystem rule",
+   "status": "manual"
+  },
   "Archive Tutor": {
    "note": "positional, Contest-only or crafting rule the sheet does not model",
    "status": "manual"
@@ -2274,12 +2494,20 @@
    "note": "The Technique picker (＋ Learn Technique on the class card) lists them; each Technique has its TECH_FX note / TECH_PRESS button (v600-611). The per-Rank pick count is not enforced.",
    "status": "partial"
   },
+  "Backpacker": {
+   "note": "Grants Skill Enhancement and two Skill Stunts - picked on the Level-Up tab",
+   "status": "manual"
+  },
   "Beautiful Ballet Rank 1": {
    "note": "Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine",
    "status": "manual"
   },
   "Beautiful Ballet Rank 2": {
    "note": "Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine",
+   "status": "manual"
+  },
+  "Beguiling Dance": {
+   "note": "Dance Move template creation",
    "status": "manual"
   },
   "Black-Out Strike": {
@@ -2289,6 +2517,10 @@
   "Blinding Brightness": {
    "note": "featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities",
    "status": "auto"
+  },
+  "Blur": {
+   "note": "Same rule as the Ability: Evasion halving against no-AC Moves",
+   "status": "manual"
   },
   "Body of Lightning": {
    "note": "featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities",
@@ -2309,6 +2541,10 @@
   "Brawler": {
    "note": "trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table",
    "status": "partial"
+  },
+  "Breadth of Knowledge [Playtest]": {
+   "note": "Grants three Edges - picked on the Level-Up tab",
+   "status": "manual"
   },
   "Brightest Flame": {
    "note": "trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table",
@@ -2341,6 +2577,10 @@
   "Call the Current Rank 3": {
    "note": "FEATURE_MOVE_LISTS picker / syncFeatureMoves already hand out these Moves",
    "status": "auto"
+  },
+  "Capsule Science": {
+   "note": "Gadgeteer Cap Cannon recipes - the Poke Ball Case / Cap subsystem isn't modelled (see researcherCard supplement note)",
+   "status": "manual"
   },
   "Case Specialist": {
    "note": "trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table",
@@ -2434,6 +2674,10 @@
    "note": "Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine",
    "status": "manual"
   },
+  "Cutthroat": {
+   "note": "v644 prints the Disarm-resist rule on Disarm; the Rogue-Moves-as-Weapon-Moves range swap is by hand",
+   "status": "partial"
+  },
   "Dabbler": {
    "note": "positional, Contest-only or crafting rule the sheet does not model",
    "status": "manual"
@@ -2468,6 +2712,10 @@
   },
   "Decisive Director": {
    "note": "FEATURE_ACTIONS row (v594 features round 2)",
+   "status": "auto"
+  },
+  "Defender": {
+   "note": "v644 ACTION_FEATURE_NOTES: Intercept (both) is also listed on the Shift tab with the Feature's sentence",
    "status": "auto"
   },
   "Defense Embodiment": {
@@ -2542,6 +2790,10 @@
    "note": "trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table",
    "status": "partial"
   },
+  "Earth Mother's Blessing Rank 2": {
+   "note": "FEATURE_ABILITY_CHOICES grants Arena Trap or Lightningrod per Rank; both Abilities are read everywhere ownerHasAbility is asked",
+   "status": "auto"
+  },
   "Earthroil": {
    "note": "trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table",
    "status": "partial"
@@ -2570,6 +2822,14 @@
    "note": "trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table",
    "status": "partial"
   },
+  "Enduring Soul": {
+   "note": "A Level-Up ledger rule: HP stat added ignoring Base Relation",
+   "status": "manual"
+  },
+  "Enhanced Capsules": {
+   "note": "Gadgeteer consumables - subsystem not modelled",
+   "status": "manual"
+  },
   "Enhanced Embrace Rank 1": {
    "note": "Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)",
    "status": "auto"
@@ -2589,6 +2849,10 @@
   "Equipment Savant": {
    "note": "trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table",
    "status": "partial"
+  },
+  "Experimental Designs": {
+   "note": "Upgrader Augmentations - subsystem not modelled",
+   "status": "manual"
   },
   "Explosive Runes": {
    "note": "trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table",
@@ -2650,6 +2914,10 @@
    "note": "positional, Contest-only or crafting rule the sheet does not model",
    "status": "manual"
   },
+  "Flourish": {
+   "note": "Status Moves crit on 20 with one rider - GM-adjudicated",
+   "status": "manual"
+  },
   "Focused Command": {
    "note": "v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table",
    "status": "partial"
@@ -2665,6 +2933,10 @@
   "Fountain of Life": {
    "note": "trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table",
    "status": "partial"
+  },
+  "Fusion Cases": {
+   "note": "Poke Ball Case fusion - subsystem not modelled",
+   "status": "manual"
   },
   "Gale Speed": {
    "note": "featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities",
@@ -2705,6 +2977,14 @@
   "Glitch Bender": {
    "note": "featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities",
    "status": "auto"
+  },
+  "Glitch Burst": {
+   "note": "Effect depends on the triggering Glitch Bender Move; RIDER_ICONS only labels it",
+   "status": "manual"
+  },
+  "Glyph": {
+   "note": "Unown glyph objects - Unown subsystem",
+   "status": "manual"
   },
   "Go, Fight, Win! [Playtest]": {
    "note": "trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table",
@@ -2762,6 +3042,10 @@
    "note": "featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities",
    "status": "auto"
   },
+  "Hunter's Reflexes": {
+   "note": "v644 ACTION_FEATURE_NOTES prints the three-AoO rule on Attack of Opportunity; counting AoOs per round is the table's",
+   "status": "partial"
+  },
   "I Am Error": {
    "note": "trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table",
    "status": "partial"
@@ -2772,6 +3056,26 @@
   },
   "Impenetrable": {
    "note": "featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities",
+   "status": "auto"
+  },
+  "Improvised Gadgets": {
+   "note": "Gadgeteer equipment crafting - subsystem not modelled",
+   "status": "manual"
+  },
+  "In My Name Rank 1": {
+   "note": "Implemented as the Gifts-tab Messiah branch 'In My Name (Rank 1)' with the Blessing picker (BLESSINGS) - the ledger reads it as missing only because the sheet spells the Rank in brackets",
+   "status": "auto"
+  },
+  "In My Name Rank 2": {
+   "note": "Gifts-tab Messiah branch 'In My Name (Rank 2)' + Blessing picker",
+   "status": "auto"
+  },
+  "In My Name Rank 3": {
+   "note": "Gifts-tab Messiah branch 'In My Name (Rank 3)' + Blessing picker",
+   "status": "auto"
+  },
+  "In My Name Rank 4": {
+   "note": "Gifts-tab Messiah branch 'In My Name (Rank 4)'",
    "status": "auto"
   },
   "Incandescence": {
@@ -2785,6 +3089,10 @@
   "Iron Grit": {
    "note": "v609-610 FEATURE_MODES stance (Bind AP tracked, released with the Scene) / trigRow button; the effect is applied at the table",
    "status": "partial"
+  },
+  "Jailbreaker": {
+   "note": "Poke Ball Case recipes - subsystem not modelled (tracked as a supplement Field)",
+   "status": "manual"
   },
   "Juggler": {
    "note": "v624: Quick Switch costs 1 AP with Juggler; +10 Initiative for the sent-out mon said in the toast",
@@ -2922,6 +3230,10 @@
    "note": "FEATURE_MOVE_LISTS picker / syncFeatureMoves already hand out these Moves",
    "status": "auto"
   },
+  "Nimble Steps": {
+   "note": "v644 ACTION_FEATURE_NOTES: Disengage is also listed on the Swift tab",
+   "status": "auto"
+  },
   "Ninja": {
    "note": "syncFeatureMoves reads 'You learn the Moves X and Y' (v594 sweep)",
    "status": "auto"
@@ -3006,8 +3318,16 @@
    "note": "a crafting permission; the 🔨 bench already lists the balls — allow them by hand",
    "status": "manual"
   },
+  "Poke Ball Mods": {
+   "note": "Ball Modifications - subsystem not modelled (tracked as a supplement Field)",
+   "status": "manual"
+  },
   "PokeManiac": {
    "note": "a DC 10 Check whose payoff is the GM telling the player the target's stats",
+   "status": "manual"
+  },
+  "Poké Ball Mods": {
+   "note": "Ball Modifications - subsystem not modelled (tracked as a supplement Field)",
    "status": "manual"
   },
   "PokéManiac": {
@@ -3033,6 +3353,14 @@
   "Press": {
    "note": "FEATURE_ACTIONS row (features-01 batch, app.js?v=584)",
    "status": "auto"
+  },
+  "Press On!": {
+   "note": "Hardened Pokemon at 0 HP - needs sub-zero acting rules",
+   "status": "manual"
+  },
+  "Psionic Overload": {
+   "note": "Effect depends on the triggering Telekinetic Move; RIDER_ICONS only labels it",
+   "status": "manual"
   },
   "Psionic Sight": {
    "note": "perception flavour",
@@ -3122,6 +3450,10 @@
    "note": "Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine",
    "status": "manual"
   },
+  "Rune Master": {
+   "note": "Grants Gather Unown; Unown Letter Press - Unown subsystem",
+   "status": "manual"
+  },
   "Sacred Shield": {
    "note": "syncFeatureMoves reads 'You learn the Moves X and Y' (v594 sweep)",
    "status": "auto"
@@ -3150,6 +3482,10 @@
    "note": "Move picker: FEATURE_MOVE_LISTS / featureLearnedMoveNames (v612 added Athletic Moves, Martial Training, Aura Mastery)",
    "status": "auto"
   },
+  "Shared Strengths Rank 1": {
+   "note": "usurpSharedAbilities: the Usurper's Avatar form reads the Legendary Form's Abilities everywhere ownerHasAbility is asked",
+   "status": "auto"
+  },
   "Shield Bearer": {
    "note": "trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table",
    "status": "partial"
@@ -3157,6 +3493,22 @@
   "Shocking Speed": {
    "note": "trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table",
    "status": "partial"
+  },
+  "Sign Mastery Rank 1": {
+   "note": "Gifts-tab Signer branch 'Sign Mastery (Rank 1)' + Blessing picker",
+   "status": "auto"
+  },
+  "Sign Mastery Rank 2": {
+   "note": "Gifts-tab Signer branch 'Sign Mastery (Rank 2)' + Blessing picker",
+   "status": "auto"
+  },
+  "Sign Mastery Rank 3": {
+   "note": "Gifts-tab Signer branch 'Sign Mastery (Rank 3)' + Blessing picker",
+   "status": "auto"
+  },
+  "Sign Mastery Rank 4": {
+   "note": "Gifts-tab Signer branch 'Sign Mastery (Rank 4)'",
+   "status": "auto"
   },
   "Signature Manipulations Rank 1": {
    "note": "The Technique picker (＋ Learn Technique on the class card) lists them; each Technique has its TECH_FX note / TECH_PRESS button (v600-611). The per-Rank pick count is not enforced.",
@@ -3338,6 +3690,10 @@
    "note": "Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine",
    "status": "manual"
   },
+  "Style Expert": {
+   "note": "Contest-stat Feature family - Contests aren't modelled",
+   "status": "manual"
+  },
   "Style Flourish": {
    "note": "Contest mechanics (Poffin Stat dice, Appeals) — the sheet has no Contest engine",
    "status": "manual"
@@ -3406,6 +3762,10 @@
    "note": "featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities",
    "status": "auto"
   },
+  "The Power of Aura Rank 2": {
+   "note": "Grants the Ability not chosen at Rank 1 - picked with Choose Ability",
+   "status": "manual"
+  },
   "This Will Not Stand": {
    "note": "FEATURE_ACTIONS / FEATURE_MODES row (v595)",
    "status": "auto"
@@ -3438,6 +3798,10 @@
    "note": "trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table",
    "status": "partial"
   },
+  "Training Regime": {
+   "note": "v644 ACTION_FEATURE_NOTES prints the Trained-Stat bonus on Intercept / Sprint / Combat Maneuvers; the Sp.Atk half-stat damage and the +2s are by hand",
+   "status": "partial"
+  },
   "Trapper": {
    "note": "positional, Contest-only or crafting rule the sheet does not model",
    "status": "manual"
@@ -3466,6 +3830,10 @@
    "note": "featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities",
    "status": "auto"
   },
+  "Type Sync": {
+   "note": "Gives a target a Type - applied with the Type-change controls",
+   "status": "manual"
+  },
   "Tyrants Roar": {
    "note": "FEATURE_ACTIONS / FEATURE_MODES row (v595)",
    "status": "auto"
@@ -3481,6 +3849,10 @@
   "Unstoppable Will": {
    "note": "featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities",
    "status": "auto"
+  },
+  "Unveiled Sight": {
+   "note": "Illusion immunity / Substitute bypass - no Illusion-keyword engine for Trainers",
+   "status": "manual"
   },
   "Upheaval": {
    "note": "trigRow FEATURE_ACTIONS button (v601): checks/spends the use or AP, posts the rider to the Rolls feed; the effect is resolved at the table",
@@ -3533,6 +3905,10 @@
   "Weightless Step": {
    "note": "featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities",
    "status": "auto"
+  },
+  "Well Read [Playtest]": {
+   "note": "Lets an Education Rank qualify for Books - a prerequisite rule",
+   "status": "manual"
   },
   "Wilderness Guide": {
    "note": "positional, Contest-only or crafting rule the sheet does not model",
@@ -7126,9 +7502,17 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt",
    "status": "auto"
   },
+  "Acid": {
+   "note": "moveCSEffects: -1 Special Defense on 18+",
+   "status": "auto"
+  },
   "Acid Armor": {
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
    "status": "partial"
+  },
+  "Acrobatics": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
   },
   "After You": {
    "note": "v617 verify sweep: found unhandled, added STATIC_ABILITY_EVASION / ABILITY_ACTION_ROWS / MOVE_FX_ROWS",
@@ -7150,12 +7534,20 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Aqua Jet": {
+   "note": "Priority keyword; no effect text",
+   "status": "auto"
+  },
   "Aqua Ring": {
-   "note": "found-10 coat/shield state + card; riposte/side effects noted for the GM",
-   "status": "partial"
+   "note": "verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶",
+   "status": "auto"
   },
   "Aqua Step": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Aqua Tail": {
+   "note": "damage roll; no effect text",
    "status": "auto"
   },
   "Armor Cannon": {
@@ -7173,6 +7565,10 @@
   "Artillerolives": {
    "note": "Offers the Slick Hazards (new HAZARDS row, with the keyword's slide/Vulnerable as an entry effect). The two-Blast shape and the Double Strike branch are called at the table.",
    "status": "partial"
+  },
+  "Assurance": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
   },
   "Aura Wheel": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
@@ -7230,20 +7626,56 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt",
    "status": "auto"
   },
+  "Bitter Malice": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
   "Blind": {
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
   },
+  "Blizzard": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB); WEATHER_RULES noMiss in Hail",
+   "status": "auto"
+  },
+  "Block": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
+  "Blood Moon": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
   "Body Press": {
    "note": "v627 moveStatExtra: Defense replaces Attack in the roll",
+   "status": "auto"
+  },
+  "Body Slam": {
+   "note": "moveStatusEffects: Paralysis on 15+",
+   "status": "auto"
+  },
+  "Bounce": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
    "status": "auto"
   },
   "Brave Bird": {
    "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
    "status": "auto"
   },
+  "Brine": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
   "Brutal Beatdown": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Bubble": {
+   "note": "moveCSEffects parses 'lowers Speed on 16+'",
+   "status": "auto"
+  },
+  "Bubblebeam": {
+   "note": "moveCSEffects parses 'lowers Speed on 18+'",
    "status": "auto"
   },
   "Bug Bite": {
@@ -7252,6 +7684,10 @@
   },
   "Bulldoze": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Burn Up": {
+   "note": "o.typeMods burnup",
    "status": "auto"
   },
   "Burning Bulwark": {
@@ -7266,6 +7702,10 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Charge Beam": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
   "Chilling Water": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
@@ -7273,6 +7713,10 @@
   "Chilly Reception": {
    "note": "found-05 sets Snowy from the roll. Still open: the immediate recall of a Trapped user and sending a new Pokemon out (switching, found-07)",
    "status": "partial"
+  },
+  "Chip Away": {
+   "note": "def-pierce parser (ignores Armor/DR/Defense CS)",
+   "status": "auto"
   },
   "Chloroblast": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 50% of Max HP, unpreventable (Temp HP doesn't soak it)",
@@ -7296,6 +7740,10 @@
   },
   "Coaching": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Collision Course": {
+   "note": "target-rules +10 vs super-effective; the Slow Terrain is drawn by hand",
    "status": "auto"
   },
   "Cone of Force": {
@@ -7334,12 +7782,24 @@
    "note": "an Interrupt/Reaction declared in response to somebody else's action; the initiative tracker never pauses for it",
    "status": "skip"
   },
+  "Crush Grip": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
   "Curse": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the Ghost half's 1/3 Max HP, labelled 'only if the user is a Ghost Type' and unpreventable; the non-Ghost Combat Stages are found-01's. Left: Cursing a target within 8m, and the Frequency that changes with the user's Type",
    "status": "partial"
   },
+  "Darkest Lariat": {
+   "note": "def-pierce parser",
+   "status": "auto"
+  },
   "Decorate": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Defense Curl": {
+   "note": "v649 Curled Up status: Slowed rider, -4 Accuracy, +10 DR, crit immunity, Rollout/Ice Ball exemption + 10 damage (STATUS_DEFS curledUp, onCurledToggled, buffDR, critImmunityOf)",
    "status": "auto"
   },
   "Defog": {
@@ -7351,8 +7811,8 @@
    "status": "skip"
   },
   "Detect": {
-   "note": "found-10 coat/shield state + card; riposte/side effects noted for the GM",
-   "status": "partial"
+   "note": "verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶",
+   "status": "auto"
   },
   "Dig": {
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
@@ -7360,6 +7820,10 @@
   },
   "Disable": {
    "note": "found-11 lock card + enforcement",
+   "status": "auto"
+  },
+  "Disarming Voice": {
+   "note": "'--' accuracy: the roll has no Accuracy Check, it cannot miss",
    "status": "auto"
   },
   "Dive": {
@@ -7374,6 +7838,10 @@
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
    "status": "partial"
   },
+  "Double Shock": {
+   "note": "o.typeMods burnup-style loss",
+   "status": "auto"
+  },
   "Double-Edge": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt; Rock Head / Magic Guard zero it",
    "status": "auto"
@@ -7382,13 +7850,21 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Dragon Breath": {
+   "note": "moveStatusEffects: Paralysis on 15+",
+   "status": "auto"
+  },
+  "Dragon Rage": {
+   "note": "SPECIAL_FIXED_DAMAGE",
+   "status": "auto"
+  },
   "Dragon Rush": {
-   "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
-   "status": "partial"
+   "note": "v656 verified in the preview: push on the ↔ card, Flinch on 17+ via moveStatusEffects",
+   "status": "auto"
   },
   "Dragon Tail": {
-   "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
-   "status": "partial"
+   "note": "v656 verified in the preview: push (6 - Weight Class) on the ↔ card, Tripped on 15+",
+   "status": "auto"
   },
   "Drain Punch": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt",
@@ -7399,8 +7875,8 @@
    "status": "auto"
   },
   "Dream Eater": {
-   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt. Left: 'can only target Sleeping targets' and 'does not wake them' are the table's",
-   "status": "partial"
+   "note": "v647 MOVE_TARGET_RULES.sleepOnly: an awake target is skipped in 💥 Apply; drain was found-04",
+   "status": "auto"
   },
   "Dynamax Cannon": {
    "note": "v604 MOVE_FX_ROWS row: applied for you",
@@ -7426,6 +7902,10 @@
    "note": "v603: moveStatExtra adds Speed to the roll; MOVE_TARGET_RULES.electroball defPlusSpd subtracts the target's Speed too (map picker path; Simulator path not)",
    "status": "auto"
   },
+  "Electro Drift": {
+   "note": "target-rules +10 vs super-effective",
+   "status": "auto"
+  },
   "Electro Shot": {
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
    "status": "partial"
@@ -7438,9 +7918,13 @@
    "note": "v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods",
    "status": "auto"
   },
+  "Endeavor": {
+   "note": "SPECIAL_FIXED_DAMAGE",
+   "status": "auto"
+  },
   "Endure": {
-   "note": "found-10 coat/shield state + card; riposte/side effects noted for the GM",
-   "status": "partial"
+   "note": "verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶",
+   "status": "auto"
   },
   "Energy Ball": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
@@ -7460,6 +7944,10 @@
   },
   "Explosion": {
    "note": "v628 MOVE_FX_ROWS solo: sets HP to −50% via ownerHPChange raw (Injuries/KO fire)",
+   "status": "auto"
+  },
+  "Fake Out": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB) (Flinch on the roll; the join-the-encounter gate is the initiative tracker)",
    "status": "auto"
   },
   "False Swipe": {
@@ -7486,9 +7974,17 @@
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
    "status": "partial"
   },
+  "Final Gambit": {
+   "note": "SPECIAL_FIXED_DAMAGE",
+   "status": "auto"
+  },
   "Fire Pledge": {
    "note": "The Pledge combination offers 8 Fire markers in the Burst 1. The Pledge keyword itself (the Priority follow-up, the Rainbow) is the Pledge batch.",
    "status": "partial"
+  },
+  "First Impression": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB) (Flinch on the roll)",
+   "status": "auto"
   },
   "Flame Burst": {
    "note": "v593 main effect automated; the neighbours are picked by the GM (cardinal adjacency isn't computed)",
@@ -7518,6 +8014,10 @@
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
    "status": "partial"
   },
+  "Focus Energy": {
+   "note": "v644 MOVE_FX_ROWS: press drops a Pumped buff (+2 Critical Hit Range until switched out)",
+   "status": "auto"
+  },
   "Follow Me": {
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
@@ -7527,12 +8027,28 @@
    "status": "auto"
   },
   "Foul Play": {
-   "note": "v627 MOVE_FX_ROWS / MOVE_TARGET_RULES card or alert; the rider is applied at the table",
-   "status": "partial"
+   "note": "v654: MOVE_TARGET_RULES.foulPlay — attackTargetWidget swaps the user's Attack stat for the target's (tokenStatOf difference) per target",
+   "status": "auto"
   },
   "Freeze Shock": {
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
    "status": "partial"
+  },
+  "Freeze-Dry": {
+   "note": "MOVE_TARGET_RULES / typeMultAgainst (Water weak to Ice)",
+   "status": "auto"
+  },
+  "Frost Breath": {
+   "note": "alwaysCrits parser",
+   "status": "auto"
+  },
+  "Fusion Bolt": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
+  "Fusion Flare": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
   },
   "Future Sight": {
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
@@ -7556,6 +8072,14 @@
   },
   "Giga Drain": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt",
+   "status": "auto"
+  },
+  "Gigaton Hammer": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
+  "Glacial Lance": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
    "status": "auto"
   },
   "Glaciate": {
@@ -7598,12 +8122,24 @@
    "note": "v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods",
    "status": "auto"
   },
+  "Gyro Ball": {
+   "note": "v647 MOVE_TARGET_RULES.gyro: per-target Speed gap added in attackTargetWidget",
+   "status": "auto"
+  },
   "Hail": {
    "note": "found-05: sets Hail on the Map; the non-Ice Tick, Ice Body, Snow Cloak and Blizzard-cannot-miss all follow from WEATHER_DEFS",
    "status": "auto"
   },
   "Hammer Arm": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Hard Press": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
+  "Harden": {
+   "note": "moveCSEffects: +1 Defense to the user",
    "status": "auto"
   },
   "Haze": {
@@ -7678,13 +8214,21 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Hurricane": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB); WEATHER_RULES AC/noMiss",
+   "status": "auto"
+  },
   "Hydro Pump": {
    "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
    "status": "auto"
   },
+  "Hydro Steam": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
   "Hyper Voice": {
-   "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
-   "status": "partial"
+   "note": "v656 verified in the preview: the push is the ↔ forcedMove card",
+   "status": "auto"
   },
   "Hyperspace Hole": {
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
@@ -7714,13 +8258,21 @@
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
   },
+  "Inferno": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
   "Ingrain": {
-   "note": "found-10 coat/shield state + card; riposte/side effects noted for the GM",
-   "status": "partial"
+   "note": "verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶",
+   "status": "auto"
   },
   "Instruct": {
    "note": "copies or replays another Move — the GM decides what it becomes at the table",
    "status": "manual"
+  },
+  "Iron Head": {
+   "note": "moveStatusEffects: Flinch on 15+",
+   "status": "auto"
   },
   "Jaw Lock": {
    "note": "v627 MOVE_FX_ROWS / MOVE_TARGET_RULES card or alert; the rider is applied at the table",
@@ -7766,6 +8318,10 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt",
    "status": "auto"
   },
+  "Leech Seed": {
+   "note": "seeded status chip (Grass immune) + the 🌱 Leech Seed row moves the HP each turn (found-04/found-09)",
+   "status": "auto"
+  },
   "Life Dew": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP to the user (one press) and to each ally picked from the board",
    "status": "auto"
@@ -7803,8 +8359,8 @@
    "status": "auto"
   },
   "Magnet Rise": {
-   "note": "v593 main effect automated; Levitate is a buff note, not an Ability on the list",
-   "status": "partial"
+   "note": "v593 MOVE_FX_ROWS magnetrise: 5-turn Levitate buff",
+   "status": "auto"
   },
   "Magnetic Flux": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: swap",
@@ -7817,6 +8373,10 @@
   "Magnetic Flux [SS]": {
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
    "status": "partial"
+  },
+  "Manipulate": {
+   "note": "Trainer-only Manipulation actions (Bon Mot / Flirt / Terrorize) - Skill checks at the table",
+   "status": "manual"
   },
   "Mat Block": {
    "note": "found-10 coat/shield state + card; riposte/side effects noted for the GM",
@@ -7847,8 +8407,12 @@
    "status": "auto"
   },
   "Memento": {
-   "note": "found-01: CS clause now parsed (⬆ Apply); still open: swap, status",
-   "status": "partial"
+   "note": "v656 verified: the -2 CS to every stat parses (⬆ Apply); the Free Action on Faint is the table's",
+   "status": "auto"
+  },
+  "Metal Sound": {
+   "note": "moveCSEffects: -2 Special Defense to every legal target",
+   "status": "auto"
   },
   "Meteor Beam": {
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
@@ -7882,6 +8446,10 @@
    "note": "copies or replays another Move — the GM decides what it becomes at the table",
    "status": "manual"
   },
+  "Mist Ball": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
   "Misty Explosion": {
    "note": "found-05 sets Misty Terrain from the roll (board-wide rather than the printed Blast 7, said on the card); the HP set to -50% is already found-04's Hit Points card. Still open: nothing mechanical beyond the Blast shape",
    "status": "partial"
@@ -7906,13 +8474,17 @@
    "note": "Sweeps the Burst 5. Who placed a marker is not recorded on the Map, so 'only the foes' is called at the table; the targets' Poisoned rides the hit through found-02.",
    "status": "partial"
   },
+  "Mud Bomb": {
+   "note": "moveCSEffects: -1 Accuracy on 16+",
+   "status": "auto"
+  },
   "Mud Shot": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
   "Mud Sport": {
-   "note": "found-10 coat/shield state + card; riposte/side effects noted for the GM",
-   "status": "partial"
+   "note": "ABILITY/MOVE coat engine (found-10): resist coat, burst",
+   "status": "auto"
   },
   "Mudslide": {
    "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
@@ -7929,6 +8501,22 @@
   "Mystical Power": {
    "note": "v593 main effect automated; the damage roll is separate; the +1 stage is a press on the card",
    "status": "partial"
+  },
+  "Nature's Madness": {
+   "note": "SPECIAL_FIXED_DAMAGE",
+   "status": "auto"
+  },
+  "Night Shade": {
+   "note": "SPECIAL_FIXED_DAMAGE",
+   "status": "auto"
+  },
+  "Night Slash": {
+   "note": "critThreshold: Critical Hit on 18+",
+   "status": "auto"
+  },
+  "Nihil Light": {
+   "note": "def-pierce + target-rules",
+   "status": "auto"
   },
   "No Retreat": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: position, multiturn, status",
@@ -7963,8 +8551,8 @@
    "status": "auto"
   },
   "Pain Split": {
-   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the user's own half of current Hit Points, unpreventable. Left: the target's half and the averaging back out — it needs both creatures' numbers at once",
-   "status": "partial"
+   "note": "v657: MOVE_FX_ROWS painsplit + abfx painSplit — both lose half their CURRENT HP, each gains half the pooled loss, as one net HP change each (no Injury mid-way, ignores Temp HP); the user-only HP card is suppressed",
+   "status": "auto"
   },
   "Parabolic Charge": {
    "note": "v627 moveHPEffects: drain of half the total dealt",
@@ -7994,6 +8582,10 @@
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
   },
+  "Pin Missile": {
+   "note": "Five Strike keyword - the roll's Five Strike path",
+   "status": "auto"
+  },
   "Plasma Fists": {
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
@@ -8009,6 +8601,14 @@
   "Population Bomb": {
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
    "status": "partial"
+  },
+  "Pounce": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
+  "Powder Snow": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
   },
   "Power Shift": {
    "note": "swaps or lends Abilities/stats between creatures — done at the table",
@@ -8031,11 +8631,15 @@
    "status": "auto"
   },
   "Protect": {
-   "note": "found-10 coat/shield state + card; riposte/side effects noted for the GM",
-   "status": "partial"
+   "note": "verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶",
+   "status": "auto"
   },
   "Psy Kick": {
    "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
+   "status": "auto"
+  },
+  "Psyblade": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
    "status": "auto"
   },
   "Psych Up": {
@@ -8043,8 +8647,8 @@
    "status": "auto"
   },
   "Psychic": {
-   "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
-   "status": "partial"
+   "note": "v656 verified in the preview: push on the ↔ card, Sp.Def -1 on 17+ via moveCSEffects",
+   "status": "auto"
   },
   "Psychic Noise": {
    "note": "v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods",
@@ -8052,6 +8656,10 @@
   },
   "Psychic Terrain": {
    "note": "found-05: sets Psychic Terrain on the Map; the +10 Psychic damage was already wired to it",
+   "status": "auto"
+  },
+  "Psycho Cut": {
+   "note": "critThreshold: Critical Hit on 18+",
    "status": "auto"
   },
   "Psycho Shift": {
@@ -8066,6 +8674,14 @@
    "note": "v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods",
    "status": "auto"
   },
+  "Psywave": {
+   "note": "SPECIAL_FIXED_DAMAGE (1d4 table)",
+   "status": "auto"
+  },
+  "Punishment": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
   "Purify": {
    "note": "v593 main effect automated; the Tick regained per status is by hand",
    "status": "partial"
@@ -8078,13 +8694,17 @@
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: multiturn, status",
    "status": "partial"
   },
+  "Rage Powder": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
   "Rain Dance": {
    "note": "found-05: sets Rainy on the Map; Water +5 / Fire -5, Swift Swim, Thunder & Hurricane cannot miss all follow from WEATHER_DEFS",
    "status": "auto"
   },
   "Rapid Spin": {
-   "note": "clearHazardsNear sweeps the 5 m for real. Leech Seed and the user's Trapped/Stuck removal are status work, not hazard work.",
-   "status": "partial"
+   "note": "moveHazardNode sweeps the Hazards; v645 moveSeedNode also removes the user's Trapped / Stuck along with Leech Seed",
+   "status": "auto"
   },
   "Rapid Spin [SS]": {
    "note": "Same sweep; the +1 Speed CS on a hit belongs to the Combat Stages batch.",
@@ -8114,6 +8734,10 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): healed to full in one press. Left: curing Status, falling Asleep and the two-round wake-up",
    "status": "partial"
   },
+  "Retaliate": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
   "Revival Blessing": {
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
    "status": "partial"
@@ -8134,6 +8758,10 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Rock Tomb": {
+   "note": "moveCSEffects: -1 Speed; the *Grants Materializer marker feeds the Capabilities (CAP_GRANT_RE)",
+   "status": "auto"
+  },
   "Role Play": {
    "note": "swaps or lends Abilities/stats between creatures — done at the table",
    "status": "manual"
@@ -8146,9 +8774,17 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Ruination": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
   "Salt Cure": {
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
+  },
+  "Sand Attack": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
   },
   "Sandstorm": {
    "note": "found-05: sets Sandstorm on the Map; the per-turn Tick, Sand Rush/Sand Force/Sand Veil all follow from WEATHER_DEFS",
@@ -8162,8 +8798,20 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Seismic Toss": {
+   "note": "SPECIAL_FIXED_DAMAGE",
+   "status": "auto"
+  },
   "Self-Destruct": {
    "note": "v628 same row as Explosion",
+   "status": "auto"
+  },
+  "Shadow Ball": {
+   "note": "moveCSEffects: -1 Special Defense on 17+",
+   "status": "auto"
+  },
+  "Shadow Bone": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
    "status": "auto"
   },
   "Shadow Force": {
@@ -8180,6 +8828,10 @@
   },
   "Shelter": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Shock Wave": {
+   "note": "no Accuracy Check; *Grants Zapper feeds Capabilities",
    "status": "auto"
   },
   "Shore Up": {
@@ -8222,6 +8874,10 @@
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
   },
+  "Slash": {
+   "note": "critThreshold reads 'Critical Hit on 18+' off the Move",
+   "status": "auto"
+  },
   "Sleep Talk": {
    "note": "copies or replays another Move — the GM decides what it becomes at the table",
    "status": "manual"
@@ -8231,12 +8887,20 @@
    "status": "partial"
   },
   "Smokescreen": {
-   "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
-   "status": "partial"
+   "note": "v653: Smoke hazard marker (HAZARDS smoke, 9 squares via the ☠ Hazards card); Defog/Whirlwind clear it; the -3 Accuracy is applied by hand",
+   "status": "auto"
+  },
+  "Snarl": {
+   "note": "moveCSEffects: -1 Special Attack to every legal target",
+   "status": "auto"
   },
   "Snatch": {
    "note": "an Interrupt/Reaction declared in response to somebody else's action; the initiative tracker never pauses for it",
    "status": "skip"
+  },
+  "Snipe Shot": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
   },
   "Snowscape": {
    "note": "found-05: new Snowy weather in WEATHER_DEFS with typeDR -> weatherDR, folded into buffDR, so an Ice-Type really gets the 5 DR (or +2 if it already had some)",
@@ -8253,6 +8917,10 @@
   "Solar Blade": {
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
    "status": "partial"
+  },
+  "Sonic Boom": {
+   "note": "SPECIAL_FIXED_DAMAGE",
+   "status": "auto"
   },
   "Sparkling Aria": {
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
@@ -8286,6 +8954,10 @@
    "note": "found-11 lock card + enforcement",
    "status": "auto"
   },
+  "Spotlight": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
   "Stealth Rock": {
    "note": "Places 4; entry deals a Tick with Rock Weakness/Resistance only (hazardEntryMult, no stats), spends the Rock, and latches o.hazardHit so it can't hit the same creature again until recalled.",
    "status": "auto"
@@ -8300,6 +8972,14 @@
   },
   "Sticky Web": {
    "note": "Places 8; entry lowers Speed 1 CS (through lowerCS) + Slowed on grounded foes, Bug-Types cross free and destroy it. The Threaded grant and Slow Terrain are the GM's.",
+   "status": "auto"
+  },
+  "Stockpile": {
+   "note": "v655: MOVE_FX_ROWS stockpile adds to o.stockpile (max 3); the +1 Def/SpDef is the CS card; Spit Up reads the count as its default",
+   "status": "auto"
+  },
+  "Stored Power": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
    "status": "auto"
   },
   "Strength": {
@@ -8319,8 +8999,8 @@
    "status": "auto"
   },
   "Substitute": {
-   "note": "found-10 coat/shield state + card; riposte/side effects noted for the GM",
-   "status": "partial"
+   "note": "verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶",
+   "status": "auto"
   },
   "Sucker Punch": {
    "note": "an Interrupt/Reaction declared in response to somebody else's action; the initiative tracker never pauses for it",
@@ -8346,9 +9026,13 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP on a miss only. Left: the Gravity prohibition, and a Shield not counting as a miss",
    "status": "partial"
   },
+  "Swagger": {
+   "note": "moveCSEffects (+2 Attack to the target) + moveStatusEffects (Confused) both ride the roll",
+   "status": "auto"
+  },
   "Swallow": {
-   "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): all three Stockpile payouts offered as their own buttons (1 → 25%, 2 → half, 3 → full), each labelled with its condition. Left: the Stockpiled count itself and zeroing it",
-   "status": "partial"
+   "note": "v655: MOVE_FX_ROWS swallow zeroes o.stockpile and removes the Combat Stages; the 🩸 card offers the three payouts",
+   "status": "auto"
   },
   "Sweeping Strike": {
    "note": "v627 MOVE_FX_ROWS / MOVE_TARGET_RULES card or alert; the rider is applied at the table",
@@ -8402,12 +9086,32 @@
    "note": "v627 MOVE_FX_ROWS / MOVE_TARGET_RULES card or alert; the rider is applied at the table",
    "status": "partial"
   },
+  "Terrain Pulse": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
   "Thief": {
    "note": "v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods",
    "status": "auto"
   },
+  "Thousand Arrows": {
+   "note": "target-rules + the 3-turn grounded buff (Smack Down row)",
+   "status": "auto"
+  },
   "Throat Chop": {
    "note": "found-11 lock card + enforcement",
+   "status": "auto"
+  },
+  "Thunder": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB); WEATHER_RULES AC/noMiss",
+   "status": "auto"
+  },
+  "Thunder Wave": {
+   "note": "v647 statusBlockFor opts.immuneType: Electric-immune targets (Ground) refuse the Paralysis",
+   "status": "auto"
+  },
+  "Thunder Wave [SM]": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB) + statusBlockFor immuneType",
    "status": "auto"
   },
   "Thunderclap": {
@@ -8466,6 +9170,10 @@
    "note": "v627 MOVE_FX_ROWS: −5 damage buff on the target",
    "status": "auto"
   },
+  "Twister": {
+   "note": "v656 verified in the preview: Flinch on 18+ parses; the central-square exemption and airborne clause are table geometry",
+   "status": "auto"
+  },
   "U-Turn": {
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
@@ -8475,8 +9183,12 @@
    "status": "auto"
   },
   "Venom Drench": {
-   "note": "found-01: CS clause now parsed (⬆ Apply); still open: status",
-   "status": "partial"
+   "note": "v656: moveCSEffects tags \"All Poisoned targets\" entries `needs`; applyCSFx skips a target that is not Poisoned (held: \"not Poisoned\")",
+   "status": "auto"
+  },
+  "Venoshock": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
   },
   "Victory Dance": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: multiturn",
@@ -8494,17 +9206,29 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt; the 19+ Paralysis is found-02's",
    "status": "auto"
   },
+  "Water Gun": {
+   "note": "damage roll; *Grants Fountain feeds Capabilities",
+   "status": "auto"
+  },
   "Water Pledge": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: interrupt, multiturn, status",
    "status": "partial"
   },
   "Water Sport": {
-   "note": "found-10 coat/shield state + card; riposte/side effects noted for the GM",
-   "status": "partial"
+   "note": "found-10 resist coat, burst",
+   "status": "auto"
+  },
+  "Waterfall": {
+   "note": "moveStatusEffects: Flinch on 17+",
+   "status": "auto"
   },
   "Wave Crash": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/4 of the damage dealt; Rock Head / Magic Guard zero it",
    "status": "auto"
+  },
+  "Wave Dash": {
+   "note": "v644 MOVE_FX_ROWS alert: Disengage as a Free Action before or after - not performed for you",
+   "status": "partial"
   },
   "Whirlwind": {
    "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
@@ -8515,8 +9239,8 @@
    "status": "partial"
   },
   "Wide Guard": {
-   "note": "found-10 coat/shield state + card; riposte/side effects noted for the GM",
-   "status": "partial"
+   "note": "verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶",
+   "status": "auto"
   },
   "Wild Charge": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/4 of the damage dealt; Rock Head / Magic Guard zero it",
@@ -8526,12 +9250,96 @@
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
    "status": "partial"
   },
+  "Withdraw": {
+   "note": "v650 Withdrawn status: +15 DR and crit immunity read live off the chip (cannot-Shift / self-only is the table)",
+   "status": "auto"
+  },
   "Wonder Room": {
    "note": "found-05: map.rooms gains 'wonder' and pokeDerived swaps eff.def/eff.spdef at the end of the stat pipeline, so damage, Physical/Special Evasion and the stat grid all read the switched pair. Trainers are left alone — the printed rule names Pokemon only",
    "status": "auto"
   },
   "Wood Hammer": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt; Rock Head / Magic Guard zero it",
+   "status": "auto"
+  },
+  "Zantetsuken": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
+  "Zap Cannon": {
+   "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
+  "Zen Headbutt": {
+   "note": "moveStatusEffects: Flinch on 15+",
+   "status": "auto"
+  },
+  "String Shot": {
+   "note": "v653 verified in the preview: moveCSEffects tags the Speed entry stuckFloor; applyCSFx makes the target Stuck once Speed CS reaches (or already sits at) -6",
+   "status": "auto"
+  },
+  "Yawn": {
+   "note": "v653: a status with \"at the end of its next turn\" becomes a delayed o.pending entry on the target (inflictStatusesDelayed); the Map ▶ lands the Sleep by itself",
+   "status": "auto"
+  },
+  "Switcheroo": {
+   "note": "v653: MOVE_FX_ROWS switcheroo — abfx itemSwap exchanges held items between user and target",
+   "status": "auto"
+  },
+  "Splash": {
+   "note": "v653: MOVE_FX_ROWS splash — +2 Evasion buff until the end of the next turn (the Jump is a Shift)",
+   "status": "auto"
+  },
+  "Flip Turn": {
+   "note": "v653: MOVE_FX_ROWS alert like U-Turn (nothing is switched for you, by standing decision)",
+   "status": "auto"
+  },
+  "Double Team": {
+   "note": "v653: MOVE_FX_ROWS doubleteam — 3-activation buff with the +2 Evasion / +2 Accuracy rule; the bonus is added by hand",
+   "status": "partial"
+  },
+  "Weather Ball": {
+   "note": "verified: WEATHER_BALL_TYPES + the weatherball conditional DB read the Map weather",
+   "status": "auto"
+  },
+  "Techno Blast": {
+   "note": "verified: the Judgment/Techno Blast Type picker (Drive / Plate)",
+   "status": "auto"
+  },
+  "Conversion": {
+   "note": "verified: Conversion / Conversion 2 type-shift card (typeShift)",
+   "status": "auto"
+  },
+  "Mist": {
+   "note": "verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)",
+   "status": "auto"
+  },
+  "Safeguard": {
+   "note": "verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)",
+   "status": "auto"
+  },
+  "Lucky Chant": {
+   "note": "verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)",
+   "status": "auto"
+  },
+  "Light Screen": {
+   "note": "verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)",
+   "status": "auto"
+  },
+  "Reflect": {
+   "note": "verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)",
+   "status": "auto"
+  },
+  "Sheer Cold": {
+   "note": "verified: the 1d100 one-hit-KO block (30 + user Level - target Level)",
+   "status": "auto"
+  },
+  "Skitter Smack": {
+   "note": "v653 verified: the Special Attack drop parses (moveCSEffects); the pre-attack Shift is a Movement choice",
+   "status": "auto"
+  },
+  "Spit Up": {
+   "note": "v655: the count input defaults to o.stockpile; MOVE_FX_ROWS spitup zeroes it and removes the Combat Stages",
    "status": "auto"
   }
  },

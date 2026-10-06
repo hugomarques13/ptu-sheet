@@ -4427,5 +4427,44 @@
   ],
   "prio": 9,
   "title": "Verify moves the scan thinks are handled"
+ },
+ {
+  "cat": "abilities",
+  "id": "late-verify-abilities-01",
+  "items": [
+   "Ravenous Cycle"
+  ],
+  "prio": 9,
+  "title": "Verify abilities the scan thinks are handled"
+ },
+ {
+  "cat": "capabilities",
+  "id": "late-verify-capabilities-01",
+  "items": [
+   "Split Evolution"
+  ],
+  "prio": 9,
+  "title": "Verify capabilities the scan thinks are handled"
+ },
+ {
+  "cat": "gear",
+  "id": "late-verify-gear-01",
+  "items": [
+   "Egg Warmer",
+   "Heart Scale",
+   "Shield",
+   "Special Armor"
+  ],
+  "prio": 9,
+  "title": "Verify gear the scan thinks are handled"
+ },
+ {
+  "cat": "moves",
+  "id": "late-verify-moves-01",
+  "items": [
+   "Egg Bomb"
+  ],
+  "prio": 9,
+  "title": "Verify moves the scan thinks are handled"
  }
 ]

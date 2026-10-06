@@ -11,32 +11,32 @@ P3 · 0 open of 25 · ✔ done
   - note: a species-specific Forme/size change resolved as a Move, Ability or Extended Action (Transform/Forme systems handle the ones that matter)
   - The user is capable of changing formes through a Move, Ability, or other effect. Keep a set of Base Stats for each of the user's forme. All Formes must have the same total HP Stat value. If anything (such as an Ability, Nature, Vitamin, etc.) alters the user's base stats, all forms are affected in the same way.
 
-- ⚪ **Heart Gift** — `manual` · P3 · themes: swap, action, stat
-  - note: a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand
+- ✅ **Heart Gift** — `auto` · P3 · themes: swap, action, stat · code: CAP_PRODUCERS:25674
+  - note: Capability actions card: stance buff / daily-weekly pip + item to bag (v636)
   - Pokemon of at least Level 30 with this Capability can produce a Heart Scale item once a week as an Extended Action.
 
-- ⚪ **Honey Gather** — `manual` · P3 · themes: swap, action
-  - note: a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand
+- ✅ **Honey Gather** — `auto` · P3 · themes: swap, action · code: CAP_PRODUCERS:25675
+  - note: Capability actions card: stance buff / daily-weekly pip + item to bag (v636)
   - Once a day, Pokemon with this Capability can find a Honey item as an Extended Action if they are allowed time in an environment with abundant plant life. Honey may be collected with a Collection Jar.
 
 - ⚪ **Juicer** — `manual` · P3 · themes: swap
   - note: a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand
   - When Shuckle is holding a berry, after 24 hours of that Berry going unused, it will be turned into Berry Juice and stored in the Shuckle's shell. Shuckle may use Berry Juice as a Snack Item; if the juice is bottled, other Pokemon and Trainers may drink the Berry Juice as a Refreshment. If a Berry Juice item is left in the Shuckle's shell unused for two weeks it solidifies and turns into a Rare Candy.
 
-- ⚪ **Milk Collection** — `manual` · P3 · themes: swap, action, stat
-  - note: a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand
+- ✅ **Milk Collection** — `auto` · P3 · themes: swap, action, stat · code: CAP_PRODUCERS:25676
+  - note: Capability actions card: stance buff / daily-weekly pip + item to bag (v636)
   - The user may produce a MooMoo Milk Item once a day as an Extended Action as long as they are at least Level 20. MooMoo Milk may be collected with a Collection Jar.
 
-- ⚪ **Mushroom Harvest** — `manual` · P3 · themes: swap, action, stat
-  - note: a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand
+- ✅ **Mushroom Harvest** — `auto` · P3 · themes: swap, action, stat · code: CAP_PRODUCERS:25679
+  - note: Capability actions card: stance buff / daily-weekly pip + item to bag (v636)
   - Pokemon of at least Level 20 with this Capability can produce a mushroom item once a day as an Extended Action. Roll 1d20 when this Capability is used. On a roll of 1-12, a Tiny Mushroom is produced. On a roll of 13-18, a Big Mushroom is produced. On a roll of 19-20, a Balm Mushroom is produced.
 
 - ⚪ **Pearl Creation** — `manual` · P3 · themes: swap
   - note: a species-specific Forme/size change resolved as a Move, Ability or Extended Action (Transform/Forme systems handle the ones that matter)
   - When a Pokemon with this Capability Evolves, it loses this Capability and creates a Pink Pearl Held Item.
 
-- ⚪ **Shadow Meld** — `manual` · P3 · themes: swap, damage, action, skill
-  - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
+- ✅ **Shadow Meld** — `auto` · P3 · themes: swap, damage, action, skill · code: CAP_STANCES:25666
+  - note: Capability actions card: stance buff / daily-weekly pip + item to bag (v636)
   - Gengar can melt into shadows to remain unseen as a Standard Action. While doing so, Gengar receives a +4 bonus to Stealth rolls, gains +1 to its evasion, and can travel along a surface as if completely flat. Gengar may also "ride" along on a living creature's shadow, moving along with it as the creature moves. Gengar may not use Standard Actions while melded into shadow. Reforming is a Shift Action.
 
 - ⚪ **Viral Fusion** — `manual` · P3 · themes: swap, action, skill, stat
@@ -63,20 +63,20 @@ P3 · 0 open of 25 · ✔ done
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - A Pokemon with the Groundshaper Capability can transform the terrain around them to create Rough Terrain or Slow Terrain or Terrain that is both, or flatten out Rough Terrain to create Basic Terrain. Using this Capability is an At-Will Standard Action that affects all cardinally adjacent squares. All squares need not be affected in the same way, and the user may choose not to affect certain squares at all if they wish.
 
-- ⚪ **Inflatable** — `manual` · P3 · themes: weather, damage, action
-  - note: a species-specific Forme/size change resolved as a Move, Ability or Extended Action (Transform/Forme systems handle the ones that matter)
+- ✅ **Inflatable** — `auto` · P3 · themes: weather, damage, action · code: CAP_STANCES:25662
+  - note: Capability actions card: stance buff / daily-weekly pip + item to bag (v636)
   - A Pokemon with the capability Inflatable can expand its size up to 125% of its normal size as a Standard Action. While Inflated, a Pokemon does not change its weight. When Inflated, Pokemon gain a -1 Penalty to Evasion, but become Blocking Terrain; you may not target through an Inflated Pokemon. Returning to normal size is a Shift Action.
 
 - ⚪ **Weathershape** — `manual` · P3 · themes: weather
   - note: a species-specific Forme/size change resolved as a Move, Ability or Extended Action (Transform/Forme systems handle the ones that matter)
   - Castform's appearance changes with the weather around it. It changes to its orange form in Sunny weather, its blue and grey form in Raining weather, its light blue form when it's Hailing, a rocky brown form in a Sandstorm.
 
-- ⚪ **Egg Warmer** — `manual` · P3 · themes: action
-  - note: a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand
+- ✅ **Egg Warmer** — `auto` · P3 · themes: action · code: CAP_PRODUCERS:25681
+  - note: Capability actions card: stance buff / daily-weekly pip + item to bag (v636)
   - A Pokemon with Egg Warmer may heat up an egg once per 24 hours. Roll 1d10; on a result of 1, nothing happens; on a result of 2-10, the egg's hatch time is reduced, in hours, by the number rolled.
 
-- ⚪ **Gather Unown** — `manual` · P3 · themes: action, stat
-  - note: a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand
+- ✅ **Gather Unown** — `auto` · P3 · themes: action, stat · code: CAP_PRODUCERS:25682
+  - note: Capability actions card: stance buff / daily-weekly pip + item to bag (v636)
   - Pokemon of at least Level 20 with the Gather Unown Capability can summon a random Unown once a week as a Standard Action. The Unown has a Level of 2d8, but it cannot exceed the user's Level. They are not immediately hostile.
 
 - ⚪ **Leaf Crafter** — `manual` · P3 · themes: action
@@ -99,8 +99,8 @@ P3 · 0 open of 25 · ✔ done
   - note: a species-specific Forme/size change resolved as a Move, Ability or Extended Action (Transform/Forme systems handle the ones that matter)
   - Pokemon with this Capability can change their shape at will, taking on different forms as a Standard Action. When using this Capability, the user cannot increase or decrease its total mass by more than 50%, and they cannot replicate complex machines such as computers or phones. They may take on the appearance of these devices, but they will appear simplified in comparison. They can, however, transform into other moving forms such as acting as someone's prosthetic limb, a living lever or pulley system, or a Pokemon comparable in size. Note in this last case that the Shapeshifter doesn't gain any qualities of that Pokemon without actually using the Move Transform! Anyone closely examining a Sh …
 
-- ⚪ **Dream Mist** — `manual` · P3 · themes: barrier, action, stat
-  - note: a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand
+- ✅ **Dream Mist** — `auto` · P3 · themes: barrier, action, stat · code: CAP_PRODUCERS:25677
+  - note: Capability actions card: stance buff / daily-weekly pip + item to bag (v636)
   - A Pokemon of at least Level 20 who has the Dream Mist Capability can produce Dream Mist once a day as an Extended Action. Dream Mist may be collected with a Collection Jar.
 
 - ⚪ **Dream Reader** — `manual` · P3 · themes: barrier, swap, status
@@ -118,7 +118,7 @@ P3 · 0 open of 25 · ✔ done
 <a id="capabilities-02"></a>
 ## `capabilities-02` — Status afflictions, Capture & Poké Balls, Damage, accuracy & crits, Healing, drain, recoil & HP +4 more
 
-P3 · 0 open of 9 · ✔ done
+P3 · 1 open of 9 · open
 
 - ⚪ **Blindsense** — `manual` · P3 · themes: status
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
@@ -134,8 +134,8 @@ P3 · 0 open of 9 · ✔ done
   - note: a species-specific Forme/size change resolved as a Move, Ability or Extended Action (Transform/Forme systems handle the ones that matter)
   - Unown with the Letter Press capability may be combined with other Unown, creating a Prime Unown, or adding to an existing Prime Unown. The first four times you add an Unown to a Prime Unown, including the creation of the Prime Unown, add 5 points to any one of the Prime Unown's Base stats. Combined Unown may retain different instances of Hidden Power from each individual Unown, up the normal Move List limit. When combining Unown with the Letter Press capability, for each instance of Hidden Power, choose whether it will operate on Attack stat or Special Attack stat. This choice is permanent. Unowns combined with Letter Press can be kept in a single Poke Ball, essentially becoming a single Pok …
 
-- ⚪ **Shrinkable** — `manual` · P3 · themes: damage, action · code: _mvBuff:23599
-  - note: a species-specific Forme/size change resolved as a Move, Ability or Extended Action (Transform/Forme systems handle the ones that matter)
+- ✅ **Shrinkable** — `auto` · P3 · themes: damage, action · code: capabilityGrants:20667, _mvBuff:24177, CAP_STANCES:25664
+  - note: Capability actions card: stance buff / daily-weekly pip + item to bag (v636)
   - A Pokemon with the capability Shrinkable can shrink its size up to 25% of its normal size as a Standard Action, but this does not change its weight. While Shrunken, a Pokemon may not perform Standard Actions except to return to normal size, and gains a +4 bonus to Evasion. Using Shrinkable is not the same as using the Move Minimize, but if a Pokemon learns the Move Minimize and does not have the Shrinkable Capability, they gain Shrinkable.
 
 - ✅ **Soulless** — `auto` · P3 · themes: heal, swap, stat
@@ -146,164 +146,172 @@ P3 · 0 open of 9 · ✔ done
   - note: a species-specific Forme/size change resolved as a Move, Ability or Extended Action (Transform/Forme systems handle the ones that matter)
   - Kangaskhan is always born with the Baby Template (see Optional Rules), subtracting 5 from each of its Base Stats. While Kangaskhan have the Baby Template, they live in their mother's pouch and will not willingly leave it for long; their bond is so strong, that both Pokemon are able to be captured in a single Pokeball during this time. While Kangaskhan has the Baby Template, it cannot be Commanded to fight or take any action. Mother Kangaskhan with a Baby in their pouch are exceptional at protecting their babies; attacks cannot target Kangaskhan inside their mother's pouch while she is conscious. Trainers raising a Kangaskhan may choose to have their Mother Kangaskhan gain 20% less experience …
 
-- ⚪ **Blender** — `manual` · P3 · themes: multiturn, damage, action
-  - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
+- 🟡 **Blender** — `partial` · P3 · themes: multiturn, damage, action · code: openIllusionMark:25657, CAP_STANCES:25668
+  - note: +2 Evasion applied; the +4 vs Ranged is by hand
   - Pokemon with Blender are capable of changing their color to match their surroundings. As a Shift Action, they may increase their Evasion by +2 against Melee attacks and by +4 against Ranged attacks until the end of their next turn. This Capability may be performed At-Will.
 
-- ⚪ **Fortune** — `manual` · P3 · themes: stat, social
-  - note: a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand
+- ✅ **Fortune** — `auto` · P3 · themes: stat, social · code: CAP_PRODUCERS:25680
+  - note: Capability actions card: stance buff / daily-weekly pip + item to bag (v636)
   - Once a day, a Pokemon of at least Level 20 with this Capability may be allowed to roam freely in a City or Town for at least one hour. The user then returns with an amount of money equal to its Level multiplied by 1d10. If the user is a Pokemon with a Loyalty of 1 or 0, it may not return and instead run away.
 
-- ✅ **Hazard Immunity** — `auto` · P3 · themes: typing · code: hazardEntryApply:49778
+- ✅ **Hazard Immunity** — `auto` · P3 · themes: typing · code: hazardEntryApply:50998
   - note: hazardEntryApply skips a holder (v599)
   - Confers immunity to all negative effects from toxic environments.
 
 <a id="verify-capabilities-01"></a>
 ## `verify-capabilities-01` — Verify capabilities the scan thinks are handled
 
-P9 · 0 open of 35 · ✔ done
+P9 · 1 open of 35 · open
 
-- ⚪ **Alluring** — `manual` · P3 · themes: swap, action · code: POKE_EDGE_DEFS:18505
+- ⚪ **Alluring** — `manual` · P3 · themes: swap, action · code: POKE_EDGE_DEFS:18873
   - note: a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand
   - Pokemon who are Alluring smell very pleasant. Once per day, they may act as if they were a Bait Item.
 
-- ⚪ **Aura Pulse** — `manual` · P3 · themes: other · code: pokeEdgeCapGrants:18342, POKE_EDGE_DEFS:18503, isPusherEdgeName:34422, pusherEdgeListAll:34463
+- ⚪ **Aura Pulse** — `manual` · P3 · themes: other · code: pokeEdgeCapGrants:18710, POKE_EDGE_DEFS:18871, isPusherEdgeName:35521, pusherEdgeListAll:35562
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - Pokemon and Trainers with Aura Pulse are blessed by a great power. They can project their thoughts using Aura, straight into the minds of those they wish to communicate with. They can read the surface thoughts of minds in return, but only minds that open up to them willingly.
 
-- ⚪ **Aura Reader** — `manual` · P3 · themes: barrier · code: PE_CAP_ALIAS:18250
+- ⚪ **Aura Reader** — `manual` · P3 · themes: barrier · code: PE_CAP_ALIAS:18618
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - These Trainers and Pokemon can read the Auras of other living beings. Each Aura conveys two pieces of information. First, its hue or color reveals something about the personality of the target. The hue of an Aura may change over time if an individual undergoes significant changes in personality or worldview. Second, Auras also appear brightened or darkened at times. Brightened auras can reflect good moods and intentions, whereas darkened auras can reflect a sour mood or deceptive and negative intentions.
 
-- ⚪ **Chilled** — `manual` · P3 · themes: other · code: STATUS_DEFS:397, FEATURE_STATUS_IMMUNITY:842, STATUS_IMMUNE_ABILITIES:864, SNACK_DEFS:17461, RESTORATIVE_CURE_RULES:29329, openApplyRestorative:29422
+- ⚪ **Chilled** — `manual` · P3 · themes: other · code: STATUS_DEFS:397, FEATURE_STATUS_IMMUNITY:854, STATUS_IMMUNE_ABILITIES:876, pokeDerived:7145, SNACK_DEFS:17829, bossStatusTurnLines:23200, RESTORATIVE_CURE_RULES:30290, openApplyRestorative:30383
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - Pokemon with the Chilled Capability are always cold.
 
-- ⚪ **Darkvision** — `manual` · P3 · themes: status · code: EQUIP_EFFECTS:12346, FEATURE_CAPS:12417
+- ⚪ **Darkvision** — `manual` · P3 · themes: status · code: EQUIP_EFFECTS:12692, FEATURE_CAPS:12778
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - A Pokemon with the Darkvision Capability never has their vision hampered by a loss of light. They can even see in total darkness and are never Blind or affected by Total Blindness due to low-light conditions.
 
-- ⚪ **Dead Silent** — `manual` · P3 · themes: other · code: FEATURE_MODES:27186
+- ⚪ **Dead Silent** — `manual` · P3 · themes: other · code: FEATURE_MODES:28113
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - A Pokemon with the Dead Silent capability does not breathe or have a heartbeat, and does not shuffle or make noise as they walk unless they wish to.
 
-- ✅ **Firestarter** — `auto` · P3 · themes: damage · code: PE_RANGED_CAPS:18247, monCapabilities:20312
+- ✅ **Firestarter** — `auto` · P3 · themes: damage · code: PE_RANGED_CAPS:18615, monCapabilities:20706
   - note: the Struggle-Attack Type/Special swap is applied by the Struggle engine (Trainer Capabilities, v595 notes)
   - The Pokemon's Struggle Attacks may be Fire-Typed if they wish. They may also add their Special Attack instead of their Attack and have the attack deal Special Damage, if they wish.
 
-- ✅ **Fountain** — `auto` · P3 · themes: damage · code: PE_RANGED_CAPS:18247
+- ✅ **Fountain** — `auto` · P3 · themes: damage · code: PE_RANGED_CAPS:18615
   - note: the Struggle-Attack Type/Special swap is applied by the Struggle engine (Trainer Capabilities, v595 notes)
   - The Pokemon's Struggle Attacks may be Water-Typed if they wish. They may also add their Special Attack instead of their Attack and have the attack deal Special Damage, if they wish.
 
-- ✅ **Freezer** — `auto` · P3 · themes: damage · code: PE_RANGED_CAPS:18247
+- ✅ **Freezer** — `auto` · P3 · themes: damage · code: PE_RANGED_CAPS:18615
   - note: the Struggle-Attack Type/Special swap is applied by the Struggle engine (Trainer Capabilities, v595 notes)
   - The Pokemon's struggle Attacks may be Ice-Typed if they wish. They may also add their Special Attack instead of their Attack and have the attack deal Special Damage, if they wish.
 
-- ⚪ **Gardener** — `manual` · P3 · themes: action · code: trainerCapGrants:12489, gardenCard:35618, gardenPlantRow:35721
+- ⚪ **Gardener** — `manual` · P3 · themes: action · code: trainerCapGrants:12850, gardenCard:36718, gardenPlantRow:36821
   - note: a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand
   - Up to three times per day as an Extended Action, the user may apply Mulch to a yielding plant.
 
-- ⚪ **Gilled** — `manual` · P3 · themes: other · code: FEATURE_CAPS:12416
+- ⚪ **Gilled** — `manual` · P3 · themes: other · code: FEATURE_CAPS:12777
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - A Gilled Pokemon can breathe underwater. It never needs to come up for air and can remain underwater for as long as it wants to.
 
-- ✅ **Guster** — `auto` · P3 · themes: damage · code: PE_RANGED_CAPS:18247
+- ✅ **Guster** — `auto` · P3 · themes: damage · code: PE_RANGED_CAPS:18615
   - note: the Struggle-Attack Type/Special swap is applied by the Struggle engine (Trainer Capabilities, v595 notes)
   - The Pokemon's Struggle Attacks may be Flying-Typed if they wish. They may also add their Special Attack instead of their Attack and have the attack deal Special Damage, if they wish.
 
-- ⚪ **Heater** — `manual` · P3 · themes: other · code: FEATURE_CAPS:12422
+- ⚪ **Heater** — `manual` · P3 · themes: other · code: FEATURE_CAPS:12783
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - A Pokemon with the Heater Capability is always warm.
 
-- ⚪ **Herb Growth** — `manual` · P3 · themes: action, stat · code: trainerCapGrants:12488
-  - note: a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand
+- ✅ **Herb Growth** — `auto` · P3 · themes: action, stat · code: trainerCapGrants:12849, CAP_PRODUCERS:25678
+  - note: Capability actions card: stance buff / daily-weekly pip + item to bag (v636)
   - Pokemon of at least Level 20 with this Capability may produce a Revival Herb once a day as an Extended Action. This Herb may be harvested by a Trainer.
 
-- ⚪ **Illusionist** — `manual` · P3 · themes: action, skill · code: FEATURE_CAPS:12420
+- ⚪ **Illusionist** — `manual` · P3 · themes: action, skill · code: FEATURE_CAPS:12781
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - Pokemon with the Illusionist Capability can create minor visual Illusions as a Standard Action. These may be no more than half a meter in any dimension and produce no sensory sensations outside of sight. Any physical contact noticeably disrupts an Illusion, and all other effects that see through Illusions can do so. Otherwise, the Illusion appears life-like and can be made to move, though it cannot move further than the user's Focus Rank in meters away from the user. Actively manipulating the Illusion requires constant attention from the user. For minor effects such as making an illusionary flame dance, this requires the user to constantly spend its Swift Actions. For more major effects such …
 
-- ⚪ **Invisibility** — `manual` · P3 · themes: damage, action · code: PE_CAP_ALIAS:18250, POKE_EDGE_DEFS:18508
+- ⚪ **Invisibility** — `manual` · P3 · themes: damage, action · code: PE_CAP_ALIAS:18618, POKE_EDGE_DEFS:18876
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - Pokemon who have the Invisibility Capability can turn invisible as a Shift Action. Pokemon may not perform Moves while invisible. While invisible, you must roll +4 during Accuracy Checks to hit the Pokemon. When a Pokemon turns invisible, they can only remain invisible for up to 4 minutes or can turn visible again as a Free Action. After becoming visible, they must wait two plus the number of minutes they spent invisible before turning invisible again.
 
-- ⚪ **Living Weapon** — `manual` · P3 · themes: swap, status, damage, action, skill · code: LIVING_WEAPON_FORMS:8263, livingWeaponOf:8287, derivedMonMoves:20848, renderPokemonMoves:26975, renderTrainerCombat:36130
+- ⚪ **Living Weapon** — `manual` · P3 · themes: swap, status, damage, action, skill · code: LIVING_WEAPON_FORMS:8586, livingWeaponOf:8610, derivedMonMoves:21242, renderPokemonMoves:27898, renderTrainerCombat:37230
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - In addition to being a Pokemon, Honedge and its evolutionary relatives also count as equipment and may be used as such if the Pokemon is willing. Honedge may be used as a Small Melee Weapon. Doublade may be used as two Small Melee Weapons; when one is held in each hand, the user gains +2 to Evasion. Aegislash may be used as a Small Melee Weapon and a Light Shield. When Fainted, these Pokemon may still be used as inanimate pieces of equipment, but all rolls made with them take a -2 penalty.
     
     If the Living Weapon is also being used as an active Pokemon, the Wielder and the Living Weapon use the Wielder's Movement Speed to shift during each of their turns, and the total amount Shifted during th …
 
-- ⚪ **Magnetic** — `manual` · P3 · themes: position · code: FEATURE_CAPS:12421
+- ⚪ **Magnetic** — `manual` · P3 · themes: position · code: FEATURE_CAPS:12782
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - Magnetic Pokemon can lightly manipulate magnetic fields. With this, they can repel or attract iron and/or steel, holding it to their body or pushing it away. Through this magnetic manipulation, they can also feel magnetic fields and discern magnetic north.
 
-- ✅ **Materializer** — `auto` · P3 · themes: damage · code: PE_RANGED_CAPS:18247
+- ✅ **Materializer** — `auto` · P3 · themes: damage · code: PE_RANGED_CAPS:18615
   - note: the Struggle-Attack Type/Special swap is applied by the Struggle engine (Trainer Capabilities, v595 notes)
   - The Pokemon's struggle Attacks may be Rock-Typed if they wish. They may also add their Special Attack instead of their Attack and have the attack deal Special Damage, if they wish.
 
-- ⚪ **Mindlock** — `manual` · P3 · themes: interrupt, typing · code: FEATURE_CAPS:12426
+- ⚪ **Mindlock** — `manual` · P3 · themes: interrupt, typing · code: FEATURE_CAPS:12787
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - Pokemon who have the Capability Mindlock cannot have their minds read by Telepathy, are immune to the Move Mind Reader, cannot have their emotions calmed with Gentle Vibe, and Telepathic Warning cannot trigger on their attacks. The Dream Reader Capability cannot read their dreams.
 
-- ⚪ **Naturewalk** — `manual` · P3 · themes: weather · code: trainerHasCapability:12508, CAP_FIELD_LABEL:20192, capsSkillsCard:20374, encounterCapsRow:38296
+- ⚪ **Naturewalk** — `manual` · P3 · themes: weather · code: trainerHasCapability:12869, CAP_FIELD_LABEL:20582, capsSkillsCard:20768, encounterCapsRow:39415
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - Naturewalk is always listed with Terrain types in parentheses, such as Naturewalk (Forest and Grassland). Pokemon with Naturewalk treat all listed terrains as Basic Terrain.
 
-- ⚪ **Phasing** — `manual` · P3 · themes: weather, heal, action · code: FEATURE_MODES:27190
-  - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
+- 🟡 **Phasing** — `partial` · P3 · themes: weather, heal, action · code: CAP_STANCES:25670, FEATURE_MODES:28117
+  - note: stance buff only; the Tick of HP lost each round is by hand
   - A Pokemon with Phasing may Shift through Slow Terrain without their Speed Capabilities being affected. As a Standard action, they may turn completely Intangible. While Intangible, they cannot be targeted by Moves or attacks, cannot perform Standard Actions, and lose a Tick of Hit Points at the end of each round. While Intangible, they may pass through solid walls and all other blocking terrain during their Shift Action. Becoming Tangible again is a Shift Action.
 
-- ⚪ **Planter** — `manual` · P3 · themes: other · code: gardenPlanterHolding:35128, gardenSoil:35153, openGardenPlant:35529, gardenPlantRow:35658
+- ⚪ **Planter** — `manual` · P3 · themes: other · code: gardenPlanterHolding:36228, gardenSoil:36253, openGardenPlant:36629, gardenPlantRow:36758
   - note: a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand
   - Pokemon with the Planter Capability can act as a Portable Grower, holding one plant at a time. Pokemon with this Capability may be limited in what they can grow. In these cases, they will have parentheses on their Planter Capability denoting what they can grow. For example, Planter (Berries) would allow the Pokemon to grow Berry plants only.
 
-- ⚪ **Reach** — `manual` · P3 · themes: other · code: ITEM_MOVES:28280
+- ⚪ **Reach** — `manual` · P3 · themes: other · code: ITEM_MOVES:29230
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - A Pokemon with Reach has the Range of their Melee attacks increased based on their size category; Small and Medium Pokemon may make Melee attacks from up to 2 meters away, and Large and bigger Pokemon may make Melee attacks from up to 3 meters away. Pokemon with Reach are either really large or have a stretchy limb with which they can strike foes from a distance.
 
-- ⚪ **Sprouter** — `manual` · P3 · themes: action · code: resetUses:5378, trainerCapGrants:12488
+- ⚪ **Sprouter** — `manual` · P3 · themes: action · code: resetUses:5631, trainerCapGrants:12849
   - note: a once-a-day/week item-producing or crafting Capability; the Capability card tracks its use clock, the item goes in the bag by hand
   - Once per week, Pokemon with the Sprouter capability can rapidly influence the growth of plants and flora around them. As a Standard Action, they may cause a plant around them to bloom, and potentially grow up to 1 meter in any direction. Sprouter may cause planted Berries to instantly give yield.
 
-- ⚪ **Stealth** — `manual` · P3 · themes: weather, swap, skill · code: EDGE_FX:139, TECH_FX:179, SKILL_WORDS:21195, CAPTURE_SKILLS:29231
+- ⚪ **Stealth** — `manual` · P3 · themes: weather, swap, skill · code: EDGE_FX:139, TECH_FX:179, SKILL_WORDS:21620, CAPTURE_SKILLS:30192
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - A Pokemon with the Stealth Capability are excellent at approaching the enemy for an up close assault. While Shifting, unless they purposely want to, Stealth Pokemon do not make any noise. Unless a Pokemon with Stealth has used a Ranged Move during the current round or the round previous, Ranged Moves may not target them if the line of sight drawn goes through Rough Terrain or if the Pokemon is on Rough Terrain.
 
-- ⚪ **Telekinetic** — `manual` · P3 · themes: position, damage, skill · code: POKE_EDGE_DEFS:18518, ABILITY_CAP_GRANTS:20253
+- ⚪ **Telekinetic** — `manual` · P3 · themes: position, damage, skill · code: POKE_EDGE_DEFS:18886, ABILITY_CAP_GRANTS:20643
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - Telekinetic Pokemon and Trainers can move objects with their mind. They can lift things with Telekinesis as if they were using a Power Capability equal to their Focus Rank. When lifting Staggering Weights with Telekinesis, they roll Focus instead of Athletics, and the DC is 10 instead of 4. They can target objects up to 8 meters away. Count the combined weight of all objects when determining whether they can lift all of them. Using this Capability to lift the user's Drag Weight or greater leaves discoverable psychic residue. Additionally, the user may use Struggle Attacks at a range of X, where X is the user's Focus Rank. These Struggle Attacks deal Normal-Type Damage as usual, but the user …
 
-- ⚪ **Telepath** — `manual` · P3 · themes: typing, skill · code: PE_CAP_ALIAS:18250
+- ⚪ **Telepath** — `manual` · P3 · themes: typing, skill · code: PE_CAP_ALIAS:18618
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - A Telepathic Pokemon can read the surface thoughts of people and other Pokemon X meters away where X is Focus Rank doubled. Pokemon with Telepathy can project their thoughts to the minds of other Trainers or Pokemon with Telepathy. Trainers with Telepathy can project their thoughts to the minds of any Trainer or Pokemon. Telepathy can be used to read only one target at a time but can project to on a number of separate targets at once equal to half the user's Focus Rank. Telepathy may be used to read minds with or without making the target aware of the attempt. Unwilling targets and targets that are unaware automatically resist the Telepathy attempt; the user and target roll opposed Focus Che …
 
-- ⚪ **Threaded** — `manual` · P3 · themes: position, damage, action · code: FEATURE_CAPS:12418, POKE_EDGE_DEFS:18513, capCanonName:20208
+- ⚪ **Threaded** — `manual` · P3 · themes: position, damage, action · code: FEATURE_CAPS:12779, POKE_EDGE_DEFS:18881, capCanonName:20598
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - Pokemon with the Threaded Capability may make a Threaded Shift as a Shift Action. A Threaded Shift is when a Pokemon targets an object and shoots a strong, thin line of silk, or extends a vine from themselves, and then quickly retracts that silk, or vine, pulling itself towards the object if the Pokemon is lighter than the object, or pulling the object towards the Pokemon if it is lighter than the user. Threaded has a range of 4 meters. If you target an unwilling Pokemon or Trainer with threaded, Threaded requires an AC 6 Status Attack to use.
 
-- ⚪ **Tracker** — `manual` · P3 · themes: action, skill · code: POKE_EDGE_DEFS:18521
+- ⚪ **Tracker** — `manual` · P3 · themes: action, skill · code: POKE_EDGE_DEFS:18889
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - Pokemon with the Tracker Capability have a strong sense of smell that they can use to follow other Pokemon or people. If the Pokemon has smelt whom they want to track in the past day, or one of their personal belongings, they can pursue that prey with a Perception check of 8 or better. To pick-up a random scent from nothing, a Perception check of 14 or better will allow the Pokemon to follow that scent. To pick-up a specific scent from nothing, a Perception check of 20 will allow the Pokemon to follow that scent. A Pokemon may only make these checks once per hour.
 
-- ⚪ **Tremorsense** — `manual` · P3 · themes: other · code: FEATURE_CAPS:12423, pokeEdgeCapGrants:18345, POKE_EDGE_DEFS:18515
+- ⚪ **Tremorsense** — `manual` · P3 · themes: other · code: FEATURE_CAPS:12784, pokeEdgeCapGrants:18713, POKE_EDGE_DEFS:18883
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - Pokemon with the Tremorsense Capability can sense the location, size, and shape of objects in the ground around them for up to 5 meters, almost as if they could see through the ground.
 
-- ✅ **Underdog** — `auto` · P3 · themes: stat · code: evolveTo:1836, isUnderdogMon:18275, pokeEdgeBaseBonus:18360, pokeEdgeBlocksEvolution:18361, underdogLessonSpecies:18387, POKE_EDGE_DEFS:18441, openUnderdogLessonMove:18646
+- ✅ **Underdog** — `auto` · P3 · themes: stat · code: evolveTo:1882, isUnderdogMon:18643, pokeEdgeBaseBonus:18728, pokeEdgeBlocksEvolution:18729, underdogLessonSpecies:18755, POKE_EDGE_DEFS:18809, openUnderdogLessonMove:19014
   - note: the Underdog Poké Edges read it (isUnderdogMon)
   - This capability denotes Pokemon who qualify for the Underdog Class's effects. They are Pokemon species with a Base Stat total of 45 or less. Some exceptions apply.
 
-- ⚪ **Wallclimber** — `manual` · P3 · themes: barrier, position · code: FEATURE_CAPS:12418
+- ⚪ **Wallclimber** — `manual` · P3 · themes: barrier, position · code: FEATURE_CAPS:12779
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - Wallclimber Pokemon often have suction cups, hooks, or other means of easily scaling walls or other vertical surfaces. They may travel along a wall or ceiling at a rate of half of their Overland Capability.
 
-- ⚪ **X-Ray Vision** — `manual` · P3 · themes: other · code: EQUIP_EFFECTS:12347
+- ⚪ **X-Ray Vision** — `manual` · P3 · themes: other · code: EQUIP_EFFECTS:12693
   - note: a senses/movement/perception Capability read at the table (listed on the sheet and in the roll notes; the Map has no sight/terrain-shaping model)
   - Pokemon and Trainers with the X-Ray Vision Capability can see through walls and solid objects up to a foot in thickness. Objects seen through X-Ray vision are seen as white shapes and outlines without much detailed definition. The effectiveness of X-Ray Vision depends on the object's material. Anything thin from paper to light wood to most residential drywall allows clear X-Ray Vision through it, while lead and tungsten would block X-Ray Vision entirely.
 
-- ✅ **Zapper** — `auto` · P3 · themes: damage · code: PE_RANGED_CAPS:18247
+- ✅ **Zapper** — `auto` · P3 · themes: damage · code: PE_RANGED_CAPS:18615
   - note: the Struggle-Attack Type/Special swap is applied by the Struggle engine (Trainer Capabilities, v595 notes)
   - The user's struggle Attacks may be Electric-Typed if they wish. They may also add their Special Attack instead of their Attack and have the attack deal Special Damage, if they wish.
+
+<a id="late-verify-capabilities-01"></a>
+## `late-verify-capabilities-01` — Verify capabilities the scan thinks are handled
+
+P9 · 1 open of 1 · open
+
+- 🟢 **Split Evolution** — `likely` · P3 · themes: other · code: CAP_EXTRA_HELP:20555
+  - Wurmple evolves based on its Nature; if it has a Nature that raises Attack, Special Attack, or Speed, it evolves into Silcoon. If it has a Nature that raises HP, Defense, or Special Defense, it evolves into Cascoon.
 
 ## Not in any batch
 
@@ -346,9 +354,6 @@ Confirmed, flavour-only or skipped. Spot-check the ⚪ manual ones — they are 
 
 - ⚪ **Smart Vision** — `manual` · P3 · themes: other
   - Eyes
-
-- ⚪ **Split Evolution** — `manual` · P3 · themes: other
-  - Wurmple evolves based on its Nature; if it has a Nature that raises Attack, Special Attack, or Speed, it evolves into Silcoon. If it has a Nature that raises HP, Defense, or Special Defense, it evolves into Cascoon.
 
 - ⚪ **Synthetic Muscle** — `manual` · P3 · themes: other
   - Limbs

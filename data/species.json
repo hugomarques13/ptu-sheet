@@ -248431,7 +248431,7 @@
     "Gluttony"
    ],
    "high": [
-    "Aura Storm"
+    "Ravenous Cycle"
    ]
   },
   "evolution": [
@@ -248452,6 +248452,11 @@
      "level": 1,
      "name": "Tail Whip",
      "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Aura Wheel",
+     "type": "Electric"
     },
     {
      "level": 5,
@@ -248502,11 +248507,6 @@
      "level": 50,
      "name": "Crunch",
      "type": "Dark"
-    },
-    {
-     "level": 55,
-     "name": "Aura Wheel",
-     "type": "Electric"
     },
     {
      "level": 60,
@@ -318184,7 +318184,7 @@
     "Gluttony"
    ],
    "high": [
-    "Aura Storm"
+    "Ravenous Cycle"
    ]
   },
   "evolution": [
@@ -318205,6 +318205,11 @@
      "level": 1,
      "name": "Tail Whip",
      "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Aura Wheel",
+     "type": "Electric"
     },
     {
      "level": 5,
@@ -318255,11 +318260,6 @@
      "level": 50,
      "name": "Crunch",
      "type": "Dark"
-    },
-    {
-     "level": 55,
-     "name": "Aura Wheel",
-     "type": "Electric"
     },
     {
      "level": 60,
@@ -318415,7 +318415,7 @@
     "Gluttony"
    ],
    "high": [
-    "Aura Storm"
+    "Ravenous Cycle"
    ]
   },
   "evolution": [
@@ -318436,6 +318436,11 @@
      "level": 1,
      "name": "Tail Whip",
      "type": "Normal"
+    },
+    {
+     "level": 1,
+     "name": "Aura Wheel",
+     "type": "Electric"
     },
     {
      "level": 5,
@@ -318486,11 +318491,6 @@
      "level": 50,
      "name": "Crunch",
      "type": "Dark"
-    },
-    {
-     "level": 55,
-     "name": "Aura Wheel",
-     "type": "Electric"
     },
     {
      "level": 60,

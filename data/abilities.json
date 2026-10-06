@@ -4738,7 +4738,15 @@
  {
   "name": "Hunger Switch",
   "frequency": "Static",
-  "effect": "At the beginning of each of the user's turns, the user must choose whether it's in Full Belly Mode or Hangry Mode until the beginning of its next turn. In Full Belly Mode, it gains a +2 bonus to Accuracy. In Hangry Mode, it gains a +5 Bonus to Damage Rolls.",
+  "effect": "At the beginning of each of the user's turns, the user switches between Full Belly Mode and Hangry Mode until the beginning of its next turn, starting in Full Belly Mode. In Full Belly Mode, it gains a +3 bonus to Accuracy Rolls and +2 Evasion. In Hangry Mode, it gains a +10 Bonus to Damage Rolls and +2 to its Critical Hit Range.",
+  "trigger": null,
+  "target": null,
+  "keywords": null
+ },
+ {
+  "name": "Ravenous Cycle",
+  "frequency": "Static",
+  "effect": "Static. Connection - Hunger Switch. Each Mode the user switches into feeds it: whenever the user switches into Full Belly Mode, it gains Temporary Hit Points equal to a Tick of its Maximum Hit Points; whenever it switches into Hangry Mode, all of its Movement Capabilities are increased by +3 until the beginning of its next turn.",
   "trigger": null,
   "target": null,
   "keywords": null

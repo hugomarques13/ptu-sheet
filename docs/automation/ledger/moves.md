@@ -5,7 +5,7 @@
 <a id="moves-01"></a>
 ## `moves-01` — Status afflictions (1/3)
 
-P1 · 22 open of 25 · open
+P1 · 17 open of 25 · open
 
 - 🟢 **Confuse Ray** — `likely` · P1 (enc, pc, player:Handels, player:Lysgd) · themes: status · engine: status-fx, status-always
   - _Ghost Status · DB — · AC 2 · Scene x2 · 6, 1 Target_
@@ -19,20 +19,21 @@ P1 · 22 open of 25 · open
   - _Normal Status · DB — · AC 6 · Scene x2 · 6, 1 Target, Social_
   - The target fall Asleep.
 
-- 🟡 **Rapid Spin** — `partial` · P1 (enc, pc, player:Handels, player:Lysgd) · themes: status, cure · engine: hazard-fx · code: CS_PATTERNS:23957, GAUNTLETS:36987
+- ✅ **Rapid Spin** — `auto` · P1 (enc, pc, player:Handels, player:Lysgd) · themes: status, cure · engine: hazard-fx · code: CS_PATTERNS:24607, GAUNTLETS:38090
   - _Normal Physical · DB 2 · AC 2 · At-Will · Melee, 1 Target, Spirit Surge_
-  - note: clearHazardsNear sweeps the 5 m for real. Leech Seed and the user's Trapped/Stuck removal are status work, not hazard work.
+  - note: moveHazardNode sweeps the Hazards; v645 moveSeedNode also removes the user's Trapped / Stuck along with Leech Seed
   - Rapid Spin destroys all Hazards within 5 meters, removes Leech Seeds, and removes the user's Trapped or Stuck status.
 
-- 🟢 **Smog** — `likely` · P1 (enc, pc, player:Handels) · themes: status · engine: status-fx
+- 🟢 **Smog** — `likely` · P1 (enc, pc, player:Handels) · themes: status · engine: status-fx · code: INTOXICATOR_MOVES:20659, CONNECTION_STATUS:21778
   - _Poison Special · DB 3 · AC 7 · At-Will · Line 2_
   - Smog Poisons all legal targets on an Even-Numbered Roll.
 
-- 🟡 **String Shot** — `partial` · P1 (enc, pc, player:Lysgd) · themes: status · engine: cs · code: CONNECTION_STATUS:21343
+- ✅ **String Shot** — `auto` · P1 (enc, pc, player:Lysgd) · themes: status · engine: cs · code: CONNECTION_STATUS:21768, moveCSEffects:24733
   - _Bug Status · DB — · AC 3 · At-Will · Cone 2_
+  - note: v653 verified in the preview: moveCSEffects tags the Speed entry stuckFloor; applyCSFx makes the target Stuck once Speed CS reaches (or already sits at) -6
   - Lower the Speed of all legal targets by -1 CS. If this lowers their Speed CS to -6, or if their Speed CS was already at -6, they are instead Stuck. *Grants Threaded
 
-- 🟢 **Stun Spore** — `likely` · P1 (enc, pc, player:Handels) · themes: status · engine: status-fx, status-always, powder · code: SEED_BAG_MOVES:33382
+- 🟢 **Stun Spore** — `likely` · P1 (enc, pc, player:Handels) · themes: status · engine: status-fx, status-always, powder · code: SEED_BAG_MOVES:34481
   - _Grass Status · DB — · AC 6 · Scene x2 · 6, 1 Target, Powder_
   - The target is Paralyzed.
 
@@ -40,16 +41,17 @@ P1 · 22 open of 25 · open
   - _Normal Status · DB — · AC 6 · Scene x2 · 4, 1 Target, Sonic_
   - The target becomes Confused. On miss, the target suffers a -2 penalty to Accuracy Rolls for one full round.
 
-- 🟢 **Sweet Kiss** — `likely` · P1 (player:Lysgd) · themes: status, damage · engine: status-fx, status-always · code: itemFreqForKey:5352, featureActionTypes:27040
+- 🟢 **Sweet Kiss** — `likely` · P1 (player:Lysgd) · themes: status, damage · engine: status-fx, status-always · code: itemFreqForKey:5605, featureActionTypes:27967
   - _Fairy Status · DB — · AC 6 · Scene x2 · 6, 1 Target, Social_
   - The target is Confused. On miss, the target suffers a -2 penalty to Accuracy Rolls for one full round.
 
-- 🟢 **Taunt** — `likely` · P1 (enc, pc, player:Lysgd) · themes: status · engine: status-fx, status-always · code: TERRAIN_DEFS:1639
+- 🟢 **Taunt** — `likely` · P1 (enc, pc, player:Lysgd) · themes: status · engine: status-fx, status-always · code: TERRAIN_DEFS:1685
   - _Dark Status · DB — · AC 3 · EOT · 6, 1 Target, Social_
   - The target becomes Enraged.
 
-- 🟡 **Thunder Wave** — `partial` · P1 (enc, pc, player:Handels) · themes: typing · engine: status-fx, status-always
+- ✅ **Thunder Wave** — `auto` · P1 (enc, pc, player:Handels) · themes: typing · engine: status-fx, status-always
   - _Electric Status · DB — · AC — · Scene x2 · 6, 1 Target_
+  - note: v647 statusBlockFor opts.immuneType: Electric-immune targets (Ground) refuse the Paralysis
   - Thunder Wave cannot miss. Thunder Wave Paralyzes the target. Pokemon immune to Electric Attacks are immune to Thunder Wave's effects.
 
 - 🟢 **Torment** — `likely` · P1 (enc, pc, player:Lysgd) · themes: status · engine: status-fx, status-always
@@ -78,7 +80,7 @@ P1 · 22 open of 25 · open
   - note: copies or replays another Move — the GM decides what it becomes at the table
   - The user is replaced with another Pokemon from their trainer's roster. All Combat Stage, Coats, and [Stratagems] on Baton Pass' user are transferred to the replacement. Baton Pass may be used to switch even if the user is Trapped.
 
-- 🟢 **Dynamic Punch** — `likely` · P2 (enc) · themes: status, damage · engine: status-fx, status-always · code: IRON_FIST_MOVES:24187
+- 🟢 **Dynamic Punch** — `likely` · P2 (enc) · themes: status, damage · engine: status-fx, status-always · code: IRON_FIST_MOVES:24881
   - _Fighting Physical · DB 10 · AC 9 · At-Will · Melee, 1 Target_
   - Dynamic Punch Confuses the target. Dynamic Punch ignores the target's Evasion if they are Flanked.
 
@@ -87,12 +89,14 @@ P1 · 22 open of 25 · open
   - note: v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods
   - Roll 1d6. On a result of 1 or 2, the target becomes Confused; on a result of 3 or 4 the target becomes Suppressed; on a result of 5 or 6 the target becomes Enraged.
 
-- 🟡 **Freeze-Dry** — `partial` · P2 (enc) · themes: status, typing · engine: target-rules · code: logRoll:44968, moveDefPierce:47345
+- ✅ **Freeze-Dry** — `auto` · P2 (enc) · themes: status, typing · engine: target-rules · code: logRoll:46087, moveDefPierce:48469
   - _Ice Special · DB 7 · AC 2 · EOT · 6, 1 Target_
+  - note: MOVE_TARGET_RULES / typeMultAgainst (Water weak to Ice)
   - When calculating Weakness and Resistance for Freeze-Dry, Water-Typed targets calculate damage as if Water was weak to Ice.
 
-- 🟡 **Frost Breath** — `partial` · P2 (enc) · themes: status · engine: always-crit
+- ✅ **Frost Breath** — `auto` · P2 (enc) · themes: status · engine: always-crit
   - _Ice Special · DB 6 · AC 3 · EOT · 4, 1 Target_
+  - note: alwaysCrits parser
   - If Frost Breath hits, it is a Critical Hit. *Grants: Freezer
 
 - 🟢 **Glare** — `likely` · P2 (enc) · themes: status · engine: status-fx, status-always
@@ -115,9 +119,9 @@ P1 · 22 open of 25 · open
 <a id="moves-04"></a>
 ## `moves-04` — Combat Stages (1/3)
 
-P1 · 3 open of 25 · open
+P1 · 0 open of 25 · ✔ done
 
-- ✅ **Bulldoze** — `auto` · P1 (enc, pc, player:Handels) · themes: cs, skill · engine: cs · code: CS_PATTERNS:23967
+- ✅ **Bulldoze** — `auto` · P1 (enc, pc, player:Handels) · themes: cs, skill · engine: cs · code: CS_PATTERNS:24617
   - _Ground Physical · DB 6 · AC 2 · EOT · Burst 1_
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - All Legal Targets are lowered 1 Speed Combat Stage.
@@ -132,11 +136,12 @@ P1 · 3 open of 25 · open
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - Raise the user's Speed 1 Combat Stage.
 
-- 🟡 **Gyro Ball** — `partial` · P1 (enc, player:Lysgd) · themes: cs · code: GAUNTLETS:36987
+- ✅ **Gyro Ball** — `auto` · P1 (enc, player:Lysgd) · themes: cs · code: GAUNTLETS:38090
   - _Steel Physical · DB 6 · AC 2 · Scene x2 · 6, 1 Target_
+  - note: v647 MOVE_TARGET_RULES.gyro: per-target Speed gap added in attackTargetWidget
   - The target reveals their Speed Stat (including Combat Stages). If it is higher than the user's (including Combat Stages), subtract the user's Speed Stat from the target's and apply the difference as Bonus Damage.
 
-- ✅ **Icy Wind** — `auto` · P1 (enc, pc, player:Handels, player:Lysgd) · themes: cs, skill · engine: cs · code: GAUNTLETS:36984
+- ✅ **Icy Wind** — `auto` · P1 (enc, pc, player:Handels, player:Lysgd) · themes: cs, skill · engine: cs · code: GAUNTLETS:38087
   - _Ice Special · DB 6 · AC 3 · EOT · Cone 2_
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - All Legal Targets have their Speed lowered 1 Combat Stage.
@@ -151,17 +156,17 @@ P1 · 3 open of 25 · open
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - Rock Smash lowers the target's Defense 1 Combat Stage on 17+.
 
-- ✅ **Rototiller** — `auto` · P1 (enc, player:Handels) · themes: cs, skill · engine: cs · code: CS_PATTERNS:23984
+- ✅ **Rototiller** — `auto` · P1 (enc, player:Handels) · themes: cs, skill · engine: cs · code: CS_PATTERNS:24634
   - _Ground Status · DB — · AC — · Scene · Burst 2_
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - All Grass-type Pokemon in the area raise their Attack and Special Attack 1 Combat Stage.
 
-- ✅ **Agility** — `auto` · P2 (enc, pc) · themes: cs, skill · engine: cs · code: EDGE_FX:116, STAT_TRAINING_MOVES:23810, CS_PATTERNS:23947, addEncTrainerMove:36532, openSigTechPicker:36648
+- ✅ **Agility** — `auto` · P2 (enc, pc) · themes: cs, skill · engine: cs · code: EDGE_FX:116, STAT_TRAINING_MOVES:24460, CS_PATTERNS:24597, addEncTrainerMove:37634, openSigTechPicker:37750
   - _Psychic Status · DB — · AC — · EOT · Self_
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - Raise the user's Speed 2 Combat Stages.
 
-- ✅ **Amnesia** — `auto` · P2 (pc) · themes: cs, skill · engine: cs · code: STAT_TRAINING_MOVES:23810
+- ✅ **Amnesia** — `auto` · P2 (pc) · themes: cs, skill · engine: cs · code: STAT_TRAINING_MOVES:24460
   - _Psychic Status · DB — · AC — · EOT · Self_
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - Raise the user's Special Defense 2 Combat Stages.
@@ -171,7 +176,7 @@ P1 · 3 open of 25 · open
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - Raise the Special Defense of all allied legal targets by +1 CS.
 
-- ✅ **Calm Mind** — `auto` · P2 (enc) · themes: cs, skill · engine: cs · code: STAT_TRAINING_MOVES:23810
+- ✅ **Calm Mind** — `auto` · P2 (enc) · themes: cs, skill · engine: cs · code: STAT_TRAINING_MOVES:24460
   - _Psychic Status · DB — · AC — · EOT · Self_
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - Raise the user's Special Attack 1 Combat Stage and raise the user's Special Defense 1 Combat Stage.
@@ -181,8 +186,9 @@ P1 · 3 open of 25 · open
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - The target cannot make Attacks of Opportunity for 1 full round and their Attack is lowered by -1 Combat Stage.
 
-- 🟡 **Chip Away** — `partial` · P2 (enc) · themes: cs · engine: def-pierce · code: MOVE_DEF_PIERCE:47325
+- ✅ **Chip Away** — `auto` · P2 (enc) · themes: cs · engine: def-pierce · code: MOVE_DEF_PIERCE:48449
   - _Normal Physical · DB 7 · AC 2 · EOT · Melee, 1 Target_
+  - note: def-pierce parser (ignores Armor/DR/Defense CS)
   - Ignore any Armor, Damage Reduction, or changes in the target's Defense or Special Defense (such as from Combat Stages) when calculating damage.
 
 - ✅ **Earth Power** — `auto` · P2 (enc) · themes: cs, skill · engine: cs, range
@@ -205,7 +211,7 @@ P1 · 3 open of 25 · open
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - Lower the user's Special Attack 2 Combat Stages after damage.
 
-- ✅ **Haze** — `auto` · P2 (enc, pc) · themes: cs · code: MOVE_FX_ROWS:23511
+- ✅ **Haze** — `auto` · P2 (enc, pc) · themes: cs · code: MOVE_FX_ROWS:24067
   - _Ice Status · DB — · AC — · Scene x2 · Field_
   - note: v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods
   - The Combat Stages of the user and all Pokemon and Trainers in the encounter are set to their default state (usually 0).
@@ -220,8 +226,9 @@ P1 · 3 open of 25 · open
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - Raise the user's Attack 1 Combat Stage.
 
-- 🟡 **Mist** — `partial` · P2 (enc, pc) · themes: cs · engine: blessing · code: blessingIcon:45010
+- ✅ **Mist** — `auto` · P2 (enc, pc) · themes: cs · engine: blessing · code: blessingIcon:46129
   - _Ice Status · DB — · AC — · Scene x2 · Blessing_
+  - note: verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)
   - Any user affected by Mist may activate it when having Combat Stages lowered by any effect; if they do, those Combat Stages are instead not lowered. Mist may be activated 3 times and then disappears.
 
 - ✅ **Mud Shot** — `auto` · P2 (enc, pc) · themes: cs, skill · engine: cs
@@ -229,7 +236,7 @@ P1 · 3 open of 25 · open
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - The target's Speed is lowed by -1 Combat Stage.
 
-- ✅ **Overheat** — `auto` · P2 (enc) · themes: cs, damage, skill · engine: cs · code: ROTOM_POLTERGEIST:20894, RECKLESS_ERRATA_MOVES:24303
+- ✅ **Overheat** — `auto` · P2 (enc) · themes: cs, damage, skill · engine: cs · code: ROTOM_POLTERGEIST:21318, RECKLESS_ERRATA_MOVES:24998
   - _Fire Special · DB 13 · AC 4 · Scene · 8, Ranged Blast 3, Smite_
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - Lower the user's Special Attack 2 Combat Stages after damage.
@@ -242,32 +249,34 @@ P1 · 3 open of 25 · open
 <a id="moves-07"></a>
 ## `moves-07` — Movement, push & switching (1/3)
 
-P1 · 16 open of 25 · open
+P1 · 7 open of 25 · open
 
-- 🟡 **Defense Curl** — `partial` · P1 (enc, pc, player:Lysgd) · themes: position, multiturn, status, typing · engine: cs
+- ✅ **Defense Curl** — `auto` · P1 (enc, pc, player:Lysgd) · themes: position, multiturn, status, typing · engine: cs · code: syncVortexRiders:1143, buffDR:17597
   - _Normal Status · DB — · AC — · At-Will · Self_
+  - note: v649 Curled Up status: Slowed rider, -4 Accuracy, +10 DR, crit immunity, Rollout/Ice Ball exemption + 10 damage (STATUS_DEFS curledUp, onCurledToggled, buffDR, critImmunityOf)
   - The user becomes Curled Up. While Curled Up, the user becomes immune to Critical Hits and gains 10 Damage Reduction. However, while Curled Up, the user is Slowed and their Accuracy is lowered by -4. The user may stop being Curled Up as a Swift Action. If the user has Rollout or Ice Ball in their Move List, they do not become Slowed while Curled Up. Furthermore, when using the Moves Rollout or Ice Ball while Curled Up, the user gains a +10 bonus to the damage rolls of those Moves and does not suffer Accuracy Penalties from being Curled Up.
     September Playtest: The user's Defense is raised 1 Combat Stage and they become Curled Up until the end of the Scene or they are Recalled or Take a Breathe …
 
-- 🟡 **Fake Out** — `partial` · P1 (pc, player:Handels, player:Lázaro) · themes: position, interrupt · engine: status-fx, status-always
+- ✅ **Fake Out** — `auto` · P1 (pc, player:Handels, player:Lázaro) · themes: position, interrupt · engine: status-fx, status-always
   - _Normal Physical · DB 4 · AC 2 · At-Will · Melee, 1 Target, Priority_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB) (Flinch on the roll; the join-the-encounter gate is the initiative tracker)
   - You may only use Fake Out with Priority upon joining an encounter; if you do, Fake Out Flinches the target. Switching out resets the requirement of joining an encounter.
 
-- 🟡 **Hyper Voice** — `partial` · P1 (player:Handels) · themes: position
+- ✅ **Hyper Voice** — `auto` · P1 (player:Handels) · themes: position
   - _Normal Special · DB 9 · AC 2 · Scene x2 · Close Blast 3, Sonic, Smite_
-  - note: found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere
+  - note: v656 verified in the preview: the push is the ↔ forcedMove card
   - All legal targets are pushed back to the squares immediately outside the blast, away from the user.
 
-- 🟡 **Psychic** — `partial` · P1 (enc, player:Lázaro) · themes: position · engine: cs, range · code: TYPES:276, TERRAIN_DEFS:1622, monStabTypes:2377, TYPE_MOD_MOVES:2479, TERRAIN_SETTER_ABILITIES:3314, Z_CRYSTALS:4041, TYPE_PLATE_ITEMS:4111, typeBoosterIndex:4124
+- ✅ **Psychic** — `auto` · P1 (enc, player:Lázaro) · themes: position · engine: cs, range · code: TYPES:276, TERRAIN_DEFS:1668, monStabTypes:2423, TYPE_MOD_MOVES:2525, TERRAIN_SETTER_ABILITIES:3360, Z_CRYSTALS:4156, TYPE_PLATE_ITEMS:4226, typeBoosterIndex:4239
   - _Psychic Special · DB 9 · AC 2 · EOT · 5, 1 Target, Push_
-  - note: found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere
+  - note: v656 verified in the preview: push on the ↔ card, Sp.Def -1 on 17+ via moveCSEffects
   - The target is Pushed 1 meter in any direction. Psychic lowers the target's Special Defense 1 Combat Stage on 17+.  Grants Telekinetic.
 
 - 🟡 **Pursuit** — `partial` · P1 (enc, pc, player:Lázaro) · themes: position, interrupt · engine: special:conditionalDB
   - _Dark Physical · DB 4 · AC 2 · At-Will · Melee, 1 Target_
   - If the foe is fleeing or being switched out, Pursuit may be used as an Interrupt, targeting the triggering foe. When used as an Interrupt, Pursuit grants the user a +5 bonus to all Movement Speeds, and has a Damage Base of 8 (2d8+10/19).
 
-- ✅ **Tackle** — `auto` · P1 (enc, pc, player:Handels, player:Lysgd) · themes: position · code: _mvBuff:23597, GAUNTLETS:36969
+- ✅ **Tackle** — `auto` · P1 (enc, pc, player:Handels, player:Lysgd) · themes: position · code: _mvBuff:24175, GAUNTLETS:38072
   - _Normal Physical · DB 5 · AC 2 · At-Will · Melee, 1 Target, Dash, Push_
   - note: found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere
   - The target is Pushed 2 Meters.
@@ -292,25 +301,27 @@ P1 · 16 open of 25 · open
   - note: found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards
   - Set-Up Effect: The user shifts 25 meters underground and their turn ends. Resolution Effect: The user may shift horizontally using their burrow or overland speed, and then shifts 25 meters straight up. Upon reaching the surface, the user attacks with Dig, creating a Burst 1. *Grants: Burrow +3
 
-- 🟡 **Dragon Rush** — `partial` · P2 (enc) · themes: position · engine: range, range-status, range-flinch, status-fx
+- ✅ **Dragon Rush** — `auto` · P2 (enc) · themes: position · engine: range, range-status, range-flinch, status-fx
   - _Dragon Physical · DB 10 · AC 4 · Scene x2 · Melee, 1 Target, Dash, Push, Smite_
-  - note: found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere
+  - note: v656 verified in the preview: push on the ↔ card, Flinch on 17+ via moveStatusEffects
   - The target is Pushed 3 Meters. Dragon Rush Flinches the target on 17+.
 
-- 🟡 **Dragon Tail** — `partial` · P2 (enc) · themes: position · engine: range, range-status, status-fx, weight · code: GAUNTLETS:36983
+- ✅ **Dragon Tail** — `auto` · P2 (enc) · themes: position · engine: range, range-status, status-fx, weight · code: GAUNTLETS:38086
   - _Dragon Physical · DB 6 · AC 3 · At-Will · Melee, 1 Target, Push_
-  - note: found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere
+  - note: v656 verified in the preview: push (6 - Weight Class) on the ↔ card, Tripped on 15+
   - The target is Pushed 6 meters minus their Weight Class. The target is also Tripped on 15+.
 
-- 🟡 **First Impression** — `partial` · P2 (enc) · themes: position, interrupt · engine: status-fx, status-always
+- ✅ **First Impression** — `auto` · P2 (enc) · themes: position, interrupt · engine: status-fx, status-always
   - _Bug Physical · DB 9 · AC 2 · EOT · Melee, 1 Target, Priority_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB) (Flinch on the roll)
   - You may only use First Impression with Priority upon joining an encounter; if you do, First Impression Flinches the target. Switching out resets the requirement of joining an encounter. .
 
-- 🟡 **Flip Turn** — `partial` · P2 (enc) · themes: position, status, capture · code: GAUNTLETS:36970
+- ✅ **Flip Turn** — `auto` · P2 (enc) · themes: position, status, capture · code: GAUNTLETS:38073
   - _Water Physical · DB 6 · AC 2 · At-Will · Melee, 1 Target, Dash_
+  - note: v653: MOVE_FX_ROWS alert like U-Turn (nothing is switched for you, by standing decision)
   - If Flip Turn successfully hits its target, the user deals damage and then immediately is returned to its Poke Ball in the same turn. A New Pokemon may immediately be sent out. Using Flip Turn lets a Trapped user be recalled.
 
-- ✅ **Head Smash** — `auto` · P2 (enc) · themes: position · engine: hp-fx · code: GAUNTLETS:36988
+- ✅ **Head Smash** — `auto` · P2 (enc) · themes: position · engine: hp-fx · code: GAUNTLETS:38091
   - _Rock Physical · DB 15 · AC 5 · Scene · Melee, 1 Target, Dash, Push, Recoil 1/3_
   - note: found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere
   - The target is pushed 2 meters.
@@ -320,12 +331,12 @@ P1 · 16 open of 25 · open
   - note: found-11 lock card + enforcement
   - Until the end of the encounter, the target may not gain HP or Temporary HP from any source. This effect ends if the target is switched out or Takes a Breather.
 
-- 🟡 **High Jump Kick** — `partial` · P2 (enc) · themes: position · engine: hp-fx · code: RECKLESS_MOVES:24297, RECKLESS_ERRATA_MOVES:24302
+- 🟡 **High Jump Kick** — `partial` · P2 (enc) · themes: position · engine: hp-fx · code: RECKLESS_MOVES:24992, RECKLESS_ERRATA_MOVES:24997
   - _Fighting Physical · DB 13 · AC 3 · EOT · Melee, Dash, 1 Target_
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP on a miss only. Left: the Gravity prohibition, and a Shield not counting as a miss
   - If High Jump Kick misses, the user loses Hit Points equal to 1/4th of their Max Hit Points. A failure to hit due to a Move with the Shield keyword does not count as a miss. This cannot be used if Gravity is in effect.
 
-- ✅ **Hydro Pump** — `auto` · P2 (enc) · themes: position · code: ROTOM_POLTERGEIST:20895
+- ✅ **Hydro Pump** — `auto` · P2 (enc) · themes: position · code: ROTOM_POLTERGEIST:21319
   - _Water Special · DB 11 · AC 4 · Scene x2 · 6, 1 Target, Push_
   - note: found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere
   - The target is pushed away from the user 3 meters.
@@ -350,11 +361,12 @@ P1 · 16 open of 25 · open
   - note: found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards
   - Set-Up Effect: The user is removed from the field, and their turn ends. Resolution Effect: Phantom Force's user appears adjacent to any legal target on the field, ignoring Movement Capabilities, and then uses Phantom Force's attack. Phantom Force cannot be avoided by Moves with the Shield Keyword, the Dodge Ability, or similar effects, and Intercepts may not be attempted in response.
 
-- 🟡 **Pounce** — `partial` · P2 (enc, pc) · themes: position · engine: status-fx, status-always
+- ✅ **Pounce** — `auto` · P2 (enc, pc) · themes: position · engine: status-fx, status-always
   - _Bug Physical · DB 5 · AC 2 · At-Will · Melee, 1 Target, Dash_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - After dealing damage, the target is Slowed for 1 round. A target may only be Slowed by this Move once per Scene. Special: Grants Overland and Long Jump +1
 
-- 🟡 **Roar** — `partial` · P2 (enc, pc) · themes: position, capture · code: MOVE_PUSH_EXTRA:22376
+- 🟡 **Roar** — `partial` · P2 (enc, pc) · themes: position, capture · code: MOVE_PUSH_EXTRA:22824
   - _Normal Status · DB — · AC 2 · Scene · Burst 1, Sonic, Social_
   - note: found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere
   - When declaring Roar, the user does nothing. At the end of the round, the user Shifts and uses Roar. Targets hit by Roar immediately Shift away from the user using their highest useable movement capability, towards their Trainer if possible. If the target is an owned Pokemon and ends this shift within 6 meters of their Poke Ball, they are immediately recalled to their Poke Ball. If that Trainer sends out a replacement, they do not lose their Command action.
@@ -367,20 +379,20 @@ P1 · 16 open of 25 · open
 <a id="moves-10"></a>
 ## `moves-10` — Healing, drain, recoil & HP (1/3)
 
-P1 · 18 open of 25 · open
+P1 · 12 open of 25 · open
 
-- 🟡 **Counter** — `partial` · P1 (enc, player:Lázaro) · themes: heal, interrupt, status, typing · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:24711
+- 🟡 **Counter** — `partial` · P1 (enc, player:Lázaro) · themes: heal, interrupt, status, typing · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:25420
   - _Fighting Physical · DB — · AC — · Scene x2 · Melee, 1 Target, Reaction, Trigger_
   - Counter may be used as a Reaction when the user is hit by a damaging Physical Attack. Resolve the Triggering Attack, with Counter's user resisting the attack one step further. After the attack is resolved, if Counter's user was not Fainted, the triggering foe then loses Hit Points equal to twice the amount of Hit Points lost by the user from the triggering attack. Note that Counter is Physical, and while it cannot miss, it cannot hit targets immune to Fighting-Type Moves.
 
-- 🟡 **Curse** — `partial` · P1 (enc, pc, player:Lázaro) · themes: interrupt, status · engine: cs, hp-fx · code: _mvBuff:23541, openHexStudies:29743, hexCard:29769
+- 🟡 **Curse** — `partial` · P1 (enc, pc, player:Lázaro) · themes: interrupt, status · engine: cs, hp-fx · code: _mvBuff:24115, openHexStudies:30842, hexCard:30868
   - _Ghost Status · DB — · AC — · See Text · Self_
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the Ghost half's 1/3 Max HP, labelled 'only if the user is a Ghost Type' and unpreventable; the non-Ghost Combat Stages are found-01's. Left: Cursing a target within 8m, and the Frequency that changes with the user's Type
   - If the user is not a Ghost Type, Curse has a Frequency of EOT, and when used the user lowers its Speed by -1 Combat Stage, but raises Attack and Defense by +1 Combat Stage each. If the user is a Ghost Type, Curse has a Frequency of Scene, and when used the user loses 1/3 of their Max Hit Points and a target Pokemon or Trainer within 8 meters of the user becomes Cursed. This Hit Point loss cannot be prevented in any way.
 
-- 🟡 **Dream Eater** — `partial` · P1 (enc, player:Lázaro) · themes: heal, damage · engine: hp-fx
+- ✅ **Dream Eater** — `auto` · P1 (enc, player:Lázaro) · themes: heal, damage · engine: hp-fx · code: attackTargetWidget:52580
   - _Psychic Special · DB 10 · AC 2 · EOT · Melee, 1 Target_
-  - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt. Left: 'can only target Sleeping targets' and 'does not wake them' are the table's
+  - note: v647 MOVE_TARGET_RULES.sleepOnly: an awake target is skipped in 💥 Apply; drain was found-04
   - Dream Eater can only target Sleeping Pokemon or Trainers. After the target takes damage, the user gains Hit Points equal to half of the damage they dealt to the target. Dream Eater does not wake up sleeping targets.
 
 - 🟡 **Flame Burst** — `partial` · P1 (enc, pc, player:Handels, player:Lázaro) · themes: heal
@@ -388,7 +400,7 @@ P1 · 18 open of 25 · open
   - note: v593 main effect automated; the neighbours are picked by the GM (cardinal adjacency isn't computed)
   - Any Trainers or Pokemon cardinally adjacent to the target lose 5 Hit Points
 
-- ✅ **Heal Pulse** — `auto` · P1 (player:Lázaro) · themes: heal · engine: hp-fx · code: MEGA_LAUNCHER_MOVES:24308, openTokenMenu:51592
+- ✅ **Heal Pulse** — `auto` · P1 (player:Lázaro) · themes: heal · engine: hp-fx · code: MEGA_LAUNCHER_MOVES:25003, openTokenMenu:53002
   - _Psychic Status · DB — · AC — · Daily x2 · 6, 1 Target, Aura, Healing_
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 🎯 Heal the target… for 50% of their Max HP. The 'may not target itself' restriction is the table's — the picker still lists you
   - Restores 50% of the target's max Hit Points. Heal Pulse's user may not target itself with Heal Pulse.
@@ -413,30 +425,32 @@ P1 · 18 open of 25 · open
   - note: found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards
   - At the end of the user's next turn, the target regains HP equal to half of its full HP. If the user targets itself and is replaced in battle, the replacement is healed by half of its own HP.
 
-- 🟡 **Bind** — `partial` · P2 (enc, pc) · themes: heal · code: freqInfo:5272, trainerVitalsCard:10690, booksCard:13246, isMetronomeMove:25090, GAUNTLETS:36974
+- 🟡 **Bind** — `partial` · P2 (enc, pc) · themes: heal · code: freqInfo:5525, trainerVitalsCard:11031, booksCard:13607, isMetronomeMove:25978, GAUNTLETS:38077
   - _Normal Static · DB — · AC — · Static · --_
   - The user gains a +1 Bonus to Accuracy Rolls made to initiate Grapple Maneuvers, and +2 to Skill Checks made to initiate Grapple Maneuvers or gain Dominance. Whenever the user gains Dominance in a Grapple, the target of the Grapple loses a Tick of Hit Points.
 
-- 🟡 **Brine** — `partial` · P2 (enc) · themes: heal · engine: special:conditionalDB · code: GAUNTLETS:36984
+- ✅ **Brine** — `auto` · P2 (enc) · themes: heal · engine: special:conditionalDB · code: GAUNTLETS:38087
   - _Water Special · DB 7 · AC 2 · Scene x2 · 6,  1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - If the target's Hit Points are under 50%, Brine's Damage Base is increased to Damage Base 13 (4d10+10 / 35).
 
-- 🟡 **Clamp** — `partial` · P2 (enc) · themes: heal · code: isMetronomeMove:25090
+- 🟡 **Clamp** — `partial` · P2 (enc) · themes: heal · code: isMetronomeMove:25978
   - _Water Static · DB — · AC — · Static · --_
   - The user gains a +1 Bonus to Accuracy Rolls made to initiate Grapple Maneuvers, and +2 to Skill Checks made to initiate Grapple Maneuvers or gain Dominance. Whenever the user gains Dominance in a Grapple, the target of the Grapple loses a Tick of Hit Points.
 
-- ✅ **Healing Wish** — `auto` · P2 (enc) · themes: cure, capture · engine: hp-fx · code: SACRIFICE_HEAL_MOVES:5842
+- ✅ **Healing Wish** — `auto` · P2 (enc) · themes: cure, capture · engine: hp-fx · code: SACRIFICE_HEAL_MOVES:6127
   - _Psychic Status · DB — · AC — · Daily · 6, 1 Target, Healing_
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the roll now opens openSacrificeHeal itself (3 Injuries healed against the day's cap, healed to full, Move Frequencies restored, the user Faints)
   - The user immediately Faints, lowering its HP to 0. The user takes no Injuries from HP Markers when using Healing Wish. The target is immediately cured of up to 3 injuries, healed to their Maximum Hit Points, and has the Frequency of all Moves restored. Healing Wish may target a Pokemon in a Poke Ball. Healing Wish does not restore the Frequency of Healing Wish or Lunar Dance. Injuries healed through Healing Wish count toward the total number of Injuries that can be healed each day, and this healing is limited by the same.
 
-- 🟡 **Nature's Madness** — `partial` · P2 (enc) · themes: heal · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:24707
+- ✅ **Nature's Madness** — `auto` · P2 (enc) · themes: heal · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:25416
   - _Fairy Special · DB — · AC 4 · Scene · 4, 1 Target, HP Loss_
+  - note: SPECIAL_FIXED_DAMAGE
   - The target loses half of their current Hit Points.
 
-- 🟡 **Pain Split** — `partial` · P2 (enc) · themes: heal, damage · engine: hp-fx
+- ✅ **Pain Split** — `auto` · P2 (enc) · themes: heal, damage · engine: hp-fx
   - _Normal Status · DB — · AC — · Daily x2 · 4, 1 Target_
-  - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the user's own half of current Hit Points, unpreventable. Left: the target's half and the averaging back out — it needs both creatures' numbers at once
+  - note: v657: MOVE_FX_ROWS painsplit + abfx painSplit — both lose half their CURRENT HP, each gains half the pooled loss, as one net HP change each (no Injury mid-way, ignores Temp HP); the user-only HP card is suppressed
   - The user and the target both lose 1/2 of their current Hit Points. Add the amount of Hit Points the user and the target lost together, and divide the value by 2. Both the target and the user gain Hit Points equal to this value. Do not add Injuries from Pain Split from Hit Point Markers until the full effect of the Move has been resolved. Pain Split never causes Massive Damage. Hit Point loss from Pain Split cannot be prevented in any way.
 
 - ✅ **Slack Off** — `auto` · P2 (enc, pc) · themes: heal · engine: hp-fx
@@ -444,12 +458,12 @@ P1 · 18 open of 25 · open
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, one press
   - The user regains HP equal to half of its full HP.
 
-- 🟡 **Swallow** — `partial` · P2 (enc, pc) · themes: heal · engine: hp-fx
+- ✅ **Swallow** — `auto` · P2 (enc, pc) · themes: heal · engine: hp-fx
   - _Normal Status · DB — · AC — · Daily x2 · Self_
-  - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): all three Stockpile payouts offered as their own buttons (1 → 25%, 2 → half, 3 → full), each labelled with its condition. Left: the Stockpiled count itself and zeroing it
+  - note: v655: MOVE_FX_ROWS swallow zeroes o.stockpile and removes the Combat Stages; the 🩸 card offers the three payouts
   - If the user's Stockpiled count is 1, they are healed 25% of their full Hit Point value; if their Stockpiled count is 2, they are healed half of their full Hit Point value; if their Stockpiled count is 3, they are healed back to full Hit Points. After using Swallow, the user's Stockpiled count is set to 0. If the user has no Stockpiled count, Swallow does nothing.
 
-- 🟡 **Wrap** — `partial` · P2 (enc, pc) · themes: heal · code: ABILITY_ACTION_ROWS:3587, isMetronomeMove:25090, renderBattle:26958, openChefCook:32975, GAUNTLETS:36987, openGauntlets:37249, encTrainerSkills:37851, renderMap:53455
+- 🟡 **Wrap** — `partial` · P2 (enc, pc) · themes: heal · code: ABILITY_ACTION_ROWS:3685, isMetronomeMove:25978, renderBattle:27881, openChefCook:34074, GAUNTLETS:38090, openGauntlets:38352, encTrainerSkills:38954, renderMap:54871
   - _Normal Static · DB — · AC — · Static · --_
   - The user gains a +1 Bonus to Accuracy Rolls made to initiate Grapple Maneuvers, and +2 to Skill Checks made to initiate Grapple Maneuvers or gain Dominance. Whenever the user gains Dominance in a Grapple, the target of the Grapple loses a Tick of Hit Points.
 
@@ -458,12 +472,12 @@ P1 · 18 open of 25 · open
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP on a miss only; the 15+ Confusion is found-02's. Left: the Gravity prohibition, and a Shield not counting as a miss
   - Confuses the target on 15+. If this Move misses, the user loses Hit Points equal to 1/4th of their Max Hit Points. A failure to hit due to a Move with the Shield keyword does not count as a miss. This Move cannot be used if Gravity is in effect.
 
-- 🟡 **Bane** — `partial` · P3 · themes: heal · code: _mvBuff:23541
+- 🟡 **Bane** — `partial` · P3 · themes: heal · code: _mvBuff:24115
   - _Normal Special · DB 4 · AC 2 · Scene x2 · WR, 1 Target_
   - note: v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table
   - The target loses a Tick of Hit Points at the start of their next three turns and suffers a -2 penalty to all Save Checks on those turns.
 
-- 🟡 **Bleed!** — `partial` · P3 · themes: heal · code: LIVING_WEAPON_FORMS:8260
+- 🟡 **Bleed!** — `partial` · P3 · themes: heal · code: LIVING_WEAPON_FORMS:8583
   - _Normal Physical · DB 9 · AC 2 · Scene x2 · WR, 1 Target_
   - The target loses a Tick of Hit Points at the start of their next three turns.
 
@@ -477,34 +491,36 @@ P1 · 18 open of 25 · open
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/3 of Max HP; the +1 Combat Stage to every stat is found-01's
   - The user loses 1/3rd of their Max Hit Points and has each of its stats raised by +1 Combat Stage.
 
-- 🟡 **Comeuppance** — `partial` · P3 · themes: heal, interrupt, status, typing · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:24713
+- 🟡 **Comeuppance** — `partial` · P3 · themes: heal, interrupt, status, typing · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:25422
   - _Dark Physical · DB — · AC — · Scene · Any, 1 Target, Reaction, Trigger_
   - This Move may be used as a Reaction when the user is hit by a damaging attack. Resolve the triggering attack, with the user resisting the attack one step further. After the attack is resolved, if the user was not Fainted, the triggering foe then loses Hit Points equal to the amount of Hit Points lost by the user from the triggering attack. The triggering foe then becomes Tripped and you may choose 2 allies. The chosen allies may Disengage 2 meters towards the triggering foe as a Free Action.
 
-- 🟡 **Crush Grip** — `partial` · P3 · themes: heal · engine: special:valueDB · code: specialMoveInfo:24887
+- ✅ **Crush Grip** — `auto` · P3 · themes: heal · engine: special:valueDB · code: specialMoveInfo:25596
   - _Normal Physical · DB 12 · AC 2 · Scene · Melee, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - For every 10% the target is below their full Hit Points, Crush Grip's Damage Base is reduced by 1.
 
 <a id="moves-13"></a>
 ## `moves-13` — Set-Up, charge & multi-turn (1/2)
 
-P1 · 22 open of 25 · open
+P1 · 11 open of 25 · open
 
 - ⚪ **Copycat** — `manual` · P1 (enc, pc, player:Lázaro) · themes: multiturn, control
   - _Normal Status · DB — · AC — · Scene x2 · 4, 1 Target_
   - note: copies or replays another Move — the GM decides what it becomes at the table
   - Use the Move the target has used on their last turn. You may choose new targets for the Move. Copycat cannot miss.
 
-- 🟡 **Rage** — `partial` · P1 (enc, pc, player:Handels, player:Hugo) · themes: multiturn · engine: cs, status-fx, status-always, status-self · code: STATUS_DEFS:415, weaponizeRange:8364, buffDR:17233, statStratagemLine:23125, STAT_TRAINING_MOVES:23810, FEATURE_MODES:27205
+- 🟡 **Rage** — `partial` · P1 (enc, pc, player:Handels, player:Hugo) · themes: multiturn · engine: cs, status-fx, status-always, status-self · code: STATUS_DEFS:415, weaponizeRange:8687, buffDR:17601, statStratagemLine:23662, STAT_TRAINING_MOVES:24460, FEATURE_MODES:28132
   - _Normal Physical · DB 2 · AC 2 · At-Will · Melee, 1 Target, Spirit Surge_
   - note: found-01: CS clause now parsed (⬆ Apply); still open: multiturn, status
   - The user becomes Enraged. Until the end of the user's next turn, if the user is Enraged, the user gains +1 Attack Combat Stage whenever they are damaged by an Damaging Move or Attack.
 
-- 🟡 **Sand Attack** — `partial` · P1 (enc, pc, player:Lázaro) · themes: multiturn · engine: status-fx, status-always
+- ✅ **Sand Attack** — `auto` · P1 (enc, pc, player:Lázaro) · themes: multiturn · engine: status-fx, status-always
   - _Ground Status · DB — · AC 2 · EOT · 2, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - The target is Blinded until the end of their next turn.
 
-- 🟡 **Sing** — `partial` · P1 (enc, pc, player:Handels) · themes: multiturn · engine: status-fx, status-always · code: MOVE_FX_ROWS:23521, _mvBuff:23550
+- 🟡 **Sing** — `partial` · P1 (enc, pc, player:Handels) · themes: multiturn · engine: status-fx, status-always · code: MOVE_FX_ROWS:24077, _mvBuff:24124, CONNECTION_CS:24790
   - _Normal Status · DB — · AC 10 · Scene · Burst 2, Friendly, Sonic_
   - All legal Targets fall Asleep. On a miss, Sing instead causes targets to become Slowed and suffer a -2 penalty to their Evasion until the end of the user's next turn.
 
@@ -513,31 +529,35 @@ P1 · 22 open of 25 · open
   - note: found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards
   - Set-Up Effect: The user is moved up 25 meters into the air. Resolution Effect: The user may shift until they are next to a legal target in the encounter. They may then shift again and pass through legal targets to attack with Sky Attack. Sky Attack Flinches a target on 17+.
 
-- 🟡 **Smokescreen** — `partial` · P1 (enc, pc, player:Lysgd) · themes: multiturn
+- ✅ **Smokescreen** — `auto` · P1 (enc, pc, player:Lysgd) · themes: multiturn · code: HAZARD_SETTER_MOVES:22532
   - _Normal Status · DB — · AC — · EOT · 5, Ranged Blast 3_
-  - note: v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table
+  - note: v653: Smoke hazard marker (HAZARDS smoke, 9 squares via the ☠ Hazards card); Defog/Whirlwind clear it; the -3 Accuracy is applied by hand
   - Smokescreen creates a blast of Smoke that covers the target area; the Smoke persists until the end of the encounter, or until Defog or Whirlwind are used. All targets attacking from or into the Smoke receive a -3 penalty to Accuracy.
 
-- 🟡 **Bitter Malice** — `partial` · P2 (enc) · themes: multiturn · engine: range, range-status, status-fx, special:conditionalDB
+- ✅ **Bitter Malice** — `auto` · P2 (enc) · themes: multiturn · engine: range, range-status, status-fx, special:conditionalDB
   - _Ghost Special · DB 6 · AC 2 · At-Will · 6, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - : Legal targets hit by Bitter Malice are Stuck and Trapped until the end of their next turn on a 19+. 
     
     Once a Scene, if Bitter Malice's target has a Status Condition, you may have Bitter Malice's Damage Base be 12 instead (3d12+10 / 30).
 
-- 🟡 **Block** — `partial` · P2 (enc) · themes: multiturn · engine: status-fx, status-always · code: lowerCS:3351, classesCard:11266, openPokeEdgePicker:18583
+- ✅ **Block** — `auto` · P2 (enc) · themes: multiturn · engine: status-fx, status-always · code: lowerCS:3397, classesCard:11607, openPokeEdgePicker:18951
   - _Normal Status · DB — · AC 2 · At-Will · Melee, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - The target is Stuck and Trapped until the beginning of your next turn.
 
-- 🟡 **Charge** — `partial` · P2 (enc, pc) · themes: multiturn · engine: cs · code: ABILITY_ACTION_ROWS:3454, _mvBuff:23544
+- 🟡 **Charge** — `partial` · P2 (enc, pc) · themes: multiturn · engine: cs · code: ABILITY_ACTION_ROWS:3501, _mvBuff:24118, CONNECTION_CS:24789
   - _Electric Status · DB — · AC — · EOT · Self_
   - If the user performs an Electric Attack on its next turn, add its Damage Dice Roll an extra time to the damage. Raise the user's Special Defense by +1 CS.
 
-- 🟡 **Charge Beam** — `partial` · P2 (enc, pc) · themes: multiturn · engine: cs, range
+- ✅ **Charge Beam** — `auto` · P2 (enc, pc) · themes: multiturn · engine: cs, range
   - _Electric Special · DB 5 · AC 4 · At-Will · 6, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - If Charge Beam successfully hits a target, roll 1d20. On a roll of 7+, the user's Special Attack is raised by +1 Combat Stage.
 
-- 🟡 **Conversion** — `partial` · P2 (enc) · themes: multiturn · engine: conversion · code: conversionKind:2843
+- ✅ **Conversion** — `auto` · P2 (enc) · themes: multiturn · engine: conversion · code: conversionKind:2889
   - _Normal Status · DB — · AC — · At-Will · Self_
+  - note: verified: Conversion / Conversion 2 type-shift card (typeShift)
   - The user becomes the elemental Type of their choice as long as they have a Move that is the same elemental Type until the end of the encounter. Replace all other Types.
 
 - 🟡 **Doom Desire** — `partial` · P2 (enc) · themes: multiturn
@@ -560,12 +580,14 @@ P1 · 22 open of 25 · open
   - note: found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards
   - Set-Up Effect: The user may not shift this round. The user whips up a whirlwind around themselves, granting +2 Evasion until the end of their next turn and destroying any Smokescreen or Hazards on any squares it is standing on and in all squares adjacent to it. Resolution Effect: The user attacks with Razor Wind. Razor Wind is a Critical Hit on 18+.
 
-- 🟡 **Retaliate** — `partial` · P2 (enc) · themes: multiturn, status · engine: special:conditionalDB
+- ✅ **Retaliate** — `auto` · P2 (enc) · themes: multiturn, status · engine: special:conditionalDB
   - _Normal Physical · DB 7 · AC 2 · Scene x2 · Melee, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - Retaliate's DB is doubled to DB 14 (4d10+15 / 40) if an ally has been Fainted by a Damaging Move used by the Target in the last 2 rounds of Combat.
 
-- 🟡 **Safeguard** — `partial` · P2 (enc, pc) · themes: multiturn · engine: blessing · code: SAGE_BLESSINGS:35807, blessingIcon:45010
+- ✅ **Safeguard** — `auto` · P2 (enc, pc) · themes: multiturn · engine: blessing · code: SAGE_BLESSINGS:36907, blessingIcon:46129
   - _Normal Status · DB — · AC — · Scene · Blessing_
+  - note: verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)
   - Blessing - Any user affected by Safeguard may activate it when receiving a Status Affliction to ignore the effects of that Status Affliction on their next turn. Safeguard may be activated 3 times, and then disappears.
 
 - 🟡 **Sky Drop** — `partial` · P2 (enc) · themes: multiturn, status · engine: special:conditionalDB
@@ -573,23 +595,26 @@ P1 · 22 open of 25 · open
   - note: found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards
   - Set-Up Effect: Make Sky Drop's Accuracy Check. If the user hits, the user and target are moved 25 meters into the air. The target forfeits their next turn and cannot Shift or take actions until Sky Drop is resolved. Resolution Effect: Shift while in the air and lower both the user and the target heights back to the ground. Then apply Sky Drop's damage. If the target has a Sky or Levitate Speed, Sky Drop fails to deal damage. If the user is Fainted after the Set-Up but before the Resolution, the target falls to the ground and takes damage as if Sky Drop had a Damage Base of 3 (1d6+5/8) unless they have a Sky or Levitate Speed, in which case they take no damage.
 
-- 🟡 **Yawn** — `partial` · P2 (enc, pc) · themes: multiturn · engine: status-fx, status-always
+- ✅ **Yawn** — `auto` · P2 (enc, pc) · themes: multiturn · engine: status-fx, status-always · code: inflictStatuses:1045
   - _Normal Status · DB — · AC — · Scene x2 · 2, 1 Target, Social_
+  - note: v653: a status with "at the end of its next turn" becomes a delayed o.pending entry on the target (inflictStatusesDelayed); the Map ▶ lands the Sleep by itself
   - The target falls Asleep at the end of its next turn. Yawn cannot miss.
 
-- 🟡 **Blood Moon** — `partial` · P3 · themes: multiturn · engine: status-fx, status-always, status-self
+- ✅ **Blood Moon** — `auto` · P3 · themes: multiturn · engine: status-fx, status-always, status-self
   - _Normal Special · DB 14 · AC 2 · Scene x2 · Line 4, Smite, Reckless_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - After dealing damage, the user becomes Slowed and Vulnerable until the end of their next turn.
 
-- 🟡 **Burn Up** — `partial` · P3 · themes: multiturn · engine: typemod
+- ✅ **Burn Up** — `auto` · P3 · themes: multiturn · engine: typemod
   - _Fire Special · DB 13 · AC 2 · Daily x2 · Burst 1, Smite_
+  - note: o.typeMods burnup
   - Until the end of the encounter, the user loses its Fire-Type (pure Fire-Types become Normal-Type).
 
-- 🟡 **Conversion2** — `partial` · P3 · themes: multiturn · engine: conversion · code: conversionKind:2843
+- 🟡 **Conversion2** — `partial` · P3 · themes: multiturn · engine: conversion · code: conversionKind:2889
   - _Normal Status · DB — · AC — · At-Will · Self_
   - The user becomes the elemental Type of their choice as long as the Type resists the elemental Type of the Move it last took damage from until the end of the encounter. Replace all other Types.
 
-- 🟡 **Core Enforcer** — `partial` · P3 · themes: multiturn, control, swap, status · code: MEGA_MOVE_SWAPS:2135
+- 🟡 **Core Enforcer** — `partial` · P3 · themes: multiturn, control, swap, status · code: MEGA_MOVE_SWAPS:2181
   - _Dragon Special · DB 10 · AC 2 · Daily x2 · 6, Ranged Blast 3, Spirit Surge_
   - Each Target has its Ability disabled until the end of the encounter. If a target has more than one Ability, you choose one of them to disable.
 
@@ -598,7 +623,7 @@ P1 · 22 open of 25 · open
   - note: an Interrupt/Reaction declared in response to somebody else's action; the initiative tracker never pauses for it
   - All enemy targets in the burst become Bound to the user until the end of your next turn. If a Bound target causes the user to Faint through a Damaging Attack, the Bound target immediately faints after their attack is resolved.
 
-- 🟡 **Dive** — `partial` · P3 · themes: multiturn · code: researcherCard:34633
+- 🟡 **Dive** — `partial` · P3 · themes: multiturn · code: researcherCard:35732
   - _Water Physical · DB 8 · AC 2 · Scene x2 · Burst 1, Set Up, Full Action_
   - note: found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards
   - Set-Up Effect: The user moves underwater and its turn ends. The user must be in water at least 10 meters deep to use Dive. While underwater, the user may not be targeted by Moves. Resolution Effect: The user may shift horizontally using their underwater speed, and then may shift straight up until reaching a target. The user then attacks with Dive, creating a Burst 1. *Grants Swim +3
@@ -606,14 +631,14 @@ P1 · 22 open of 25 · open
 <a id="moves-15"></a>
 ## `moves-15` — Weather & Terrain (1/2)
 
-P1 · 16 open of 25 · open
+P1 · 9 open of 25 · open
 
 - 🟡 **Acid Armor** — `partial` · P1 (player:Lázaro) · themes: weather, multiturn, status, typing · engine: cs
   - _Poison Status · DB — · AC — · Scene · Self, Set-Up_
   - note: found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards
   - Set-Up Effect: The user becomes Liquefied. While Liquefied, the user is Slowed and cannot take Standard Actions except to Resolve the effect of Acid Armor, the user's Movement is never obstructed by rough or slow terrain, and the user can shift even through the smallest openings. Furthermore, while Liquefied, the user is completely immune to all Physical damage and becomes completely invisible if fully submerged in any liquid. Resolution Effect: The user gains +1 Defense CS, then stops being liquified.
 
-- 🟡 **Camouflage** — `partial` · P1 (pc, player:Lysgd) · themes: weather, status · code: ENDABLE_TYPE_SHIFTS:2790, isCamouflage:2912, camouflageCard:2922
+- 🟡 **Camouflage** — `partial` · P1 (pc, player:Lysgd) · themes: weather, status · code: ENDABLE_TYPE_SHIFTS:2836, isCamouflage:2958, camouflageCard:2968
   - _Normal Status · DB — · AC — · EOT · Self_
   - The user changes their Type to match the field. Pick one type from the following table. If two or more rows are relevant (such as because of Weather), pick one:
     -Beach: Ground or Water
@@ -639,30 +664,33 @@ P1 · 16 open of 25 · open
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, weather-adjusted (2/3 in Sun, 1/4 in Rain / Sandstorm / Hail)
   - The user regains HP equal to half of its full HP. If it is Sunny, the user gains 2/3 of its full HP. If it is Rainy, Sand Storming, or Hailing, the user gains 1/4 of its full HP.
 
-- 🟡 **Powder Snow** — `partial` · P1 (enc, pc, player:Handels, player:Lysgd) · themes: weather · engine: range, range-status, status-fx
+- ✅ **Powder Snow** — `auto` · P1 (enc, pc, player:Handels, player:Lysgd) · themes: weather · engine: range, range-status, status-fx
   - _Ice Special · DB 4 · AC 2 · At-Will · Line 4_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - Powder Snow Freezes all Legal Targets on 19+. *Grants: Freezer
 
-- ✅ **Sandstorm** — `auto` · P1 (player:Lázaro) · themes: heal, typing · engine: field-fx · code: WEATHER_DEFS:1419, weatherEvasion:1509, CAMOUFLAGE_FIELDS:2910, WEATHER_SETTER_ABILITIES:3309, BALL_WEATHER:16775, hpWeatherKeysIn:21644, FIELD_SETTER_MOVES:21951, abilityDamageMods:24464
+- ✅ **Sandstorm** — `auto` · P1 (player:Lázaro) · themes: heal, typing · engine: field-fx · code: WEATHER_DEFS:1465, weatherEvasion:1555, CAMOUFLAGE_FIELDS:2956, WEATHER_SETTER_ABILITIES:3355, COSMETIC_FORMS:4818, BALL_WEATHER:17136, hpWeatherKeysIn:22081, FIELD_SETTER_MOVES:22391
   - _Rock Status · DB — · AC — · Daily x2 · Field, Weather_
   - note: found-05: sets Sandstorm on the Map; the per-turn Tick, Sand Rush/Sand Force/Sand Veil all follow from WEATHER_DEFS
   - The weather changes to a Sandstorm for 5 rounds. While it is Sandstorming, all non-Ground, Rock, or Steel Type Pokemon lose a Tick of Hit Points at the beginning of their turn.
 
-- 🟡 **Barrier** — `partial` · P2 (enc, pc) · themes: weather, barrier, heal, multiturn · engine: hazard-fx · code: HAZARD_SETTER_MOVES:22082, HAZARDS:49227
+- 🟡 **Barrier** — `partial` · P2 (enc, pc) · themes: weather, barrier, heal, multiturn · engine: hazard-fx · code: HAZARD_SETTER_MOVES:22522, HAZARDS:50374
   - _Psychic Status · DB — · AC — · Scene x2 · Hazard_
   - note: The roll places 4 Barrier-segment markers carrying their printed 20 HP / 15 DR / Psychic-Typed / Blocking Terrain note. The segments have no HP bar of their own - the Map gives Hit Points to creatures and boats, not to scenery.
   - The user creates a Barrier of psychic energy. The user places up to 4 segments of Barrier; each segment must be continuous with another segment, and at least one must be adjacent to the user. These barriers count as blocking terrain and last until the end of the encounter or until they are destroyed. Each Barrier segment is 2 meters tall, 1 meter wide, and 2 centimeters thick. Each segment has 20 Hit Points, 15 Damage Reduction, and takes damage as if it was Psychic Typed.
 
-- 🟡 **Blizzard** — `partial` · P2 (enc) · themes: weather · engine: range, range-status, status-fx · code: WEATHER_DEFS:1439, ROTOM_POLTERGEIST:20896
+- ✅ **Blizzard** — `auto` · P2 (enc) · themes: weather · engine: range, range-status, status-fx · code: WEATHER_DEFS:1485, ROTOM_POLTERGEIST:21320
   - _Ice Special · DB 11 · AC 7 · Scene x2 · 4, Ranged Blast 2, Smite_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB); WEATHER_RULES noMiss in Hail
   - Blizzard Freezes all legal target on 15+. If the target is in Hailing Weather, Blizzard cannot miss.
 
 - 🟡 **Growth** — `partial` · P2 (enc, pc) · themes: weather · engine: cs
   - _Normal Status · DB — · AC — · EOT · Self_
   - Raise the user's Attack and Special Attack by +1 CS each. If it is Sunny, double the amount of Combat Stages gained. *Grants Inflatable
 
-- 🟡 **Hurricane** — `partial` · P2 (enc) · themes: weather · engine: range, range-status, status-fx · code: WEATHER_DEFS:1402
+- ✅ **Hurricane** — `auto` · P2 (enc) · themes: weather · engine: range, range-status, status-fx · code: WEATHER_DEFS:1448
   - _Flying Special · DB 11 · AC 7 · Scene x2 · Burst 1, Smite_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB); WEATHER_RULES AC/noMiss
   - Hurricane Confuses its target on 15+. If the target is in Sunny Weather, Hurricane's Accuracy Check is 11. If the target is in Rainy Weather, Hurricane cannot miss. If the target is airborne as a result of Bounce, Fly, or Sky Drop, Hurricane cannot miss.
 
 - ✅ **Morning Sun** — `auto` · P2 (enc) · themes: weather · engine: hp-fx
@@ -670,17 +698,17 @@ P1 · 16 open of 25 · open
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, weather-adjusted (2/3 in Sun, 1/4 in Rain / Sandstorm / Hail)
   - The user regains Hit Points equal to half of its full Hit Point value. If it is Sunny, the user gains 2/3 of its full Hit Point value. If it is Rainy, Sand Storming or Hailing the user gains 1/4 of their full Hit Point value.
 
-- ✅ **Rain Dance** — `auto` · P2 (enc, pc) · themes: typing · engine: field-fx · code: WEATHER_SYSTEM_MOVES:34191
+- ✅ **Rain Dance** — `auto` · P2 (enc, pc) · themes: typing · engine: field-fx · code: WEATHER_SYSTEM_MOVES:35290
   - _Water Status · DB — · AC — · Daily x2 · Field, Weather_
   - note: found-05: sets Rainy on the Map; Water +5 / Fire -5, Swift Swim, Thunder & Hurricane cannot miss all follow from WEATHER_DEFS
   - The weather becomes Rainy for 5 rounds. While Rainy, Water-Type Attacks gain a +5 bonus to Damage Rolls, and Fire-Type Attacks suffer a -5 Damage penalty.
 
-- ✅ **Spikes** — `auto` · P2 (pc) · themes: weather, multiturn, status · engine: hazard-fx · code: HAZARD_SETTER_MOVES:22070, GAUNTLETS:36971, HAZARDS:49209
+- ✅ **Spikes** — `auto` · P2 (pc) · themes: weather, multiturn, status · engine: hazard-fx · code: HAZARD_SETTER_MOVES:22510, GAUNTLETS:38074, HAZARDS:50352
   - _Ground Status · DB — · AC — · At-Will · 6, Hazard_
   - note: HAZARD_SETTER_MOVES: the roll places 8 Spikes; the marker's entry effect takes a Tick of HP + Slowed off whoever walks in (grounded only). Slow Terrain stays the GM's zone tool, and the card says so.
   - Set 8 square meters of Spikes within the range such that all 8 meters are adjacent with at least one other space of Spikes. Spikes cause terrain to count as Slow Terrain, and a grounded foe that runs into the hazards will lose 1/10th of their full HP and become Slowed until the end of their next turn.
 
-- ✅ **Sticky Web** — `auto` · P2 (enc) · themes: weather, multiturn, status, cs · engine: hazard-fx · code: HAZARDS:49216
+- ✅ **Sticky Web** — `auto` · P2 (enc) · themes: weather, multiturn, status, cs · engine: hazard-fx · code: HAZARDS:50359
   - _Bug Status · DB — · AC — · EOT · 6, Hazard_
   - note: Places 8; entry lowers Speed 1 CS (through lowerCS) + Slowed on grounded foes, Bug-Types cross free and destroy it. The Threaded grant and Slow Terrain are the GM's.
   - Set 8 square meters of Sticky Web hazards within your range such that all 8 meters are adjacent with at least one other space of Sticky Web. Sticky Web causes Terrain to become Slow Terrain, and a grounded foe that runs into the hazard has its Speed lowered by -1 CS and becomes Slowed until the end of their next turn. Flying-type Pokemon and Pokemon and Trainers with Levitate are not affected by Sticky Web. Bug-type Pokemon may move over Sticky Web harmlessly, destroying theHazards as they do so. *Grants Threaded
@@ -690,11 +718,12 @@ P1 · 16 open of 25 · open
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, or 2/3 in Sun and 1/4 in Rain / Sandstorm / Hail — only the fraction the weather in play calls for is offered (ownerWeather)
   - The user regains Hit Points equal to half of its full Hit Point value. If it is Sunny, the user gains 2/3 of its full Hit Point value. If it is Rainy, Sand Storming, or Hailing, the user gains 1/4 of its full Hit Point value.
 
-- 🟡 **Thunder** — `partial` · P2 (enc) · themes: weather · engine: range, range-status, status-fx · code: WEATHER_DEFS:1402, openMoveRoll:25704
+- ✅ **Thunder** — `auto` · P2 (enc) · themes: weather · engine: range, range-status, status-fx · code: WEATHER_DEFS:1448, openMoveRoll:26597
   - _Electric Special · DB 11 · AC 7 · Scene x2 · 12, 1 Target, Smite_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB); WEATHER_RULES AC/noMiss
   - Thunder Paralyzes the target on 15+. If the target is in Sunny Weather, Thunder's Accuracy Check is 11. If the target is in Rainy Weather, Thunder cannot miss. If the target is airborne as a result of Bounce, Fly, or Sky Drop, Thunder cannot miss.
 
-- ✅ **Toxic Spikes** — `auto` · P2 (enc, pc) · themes: weather, multiturn, status · engine: hazard-fx · code: HAZARDS:49212
+- ✅ **Toxic Spikes** — `auto` · P2 (enc, pc) · themes: weather, multiturn, status · engine: hazard-fx · code: HAZARDS:50355
   - _Poison Status · DB — · AC — · EOT · 6, Hazard_
   - note: Places 8; entry applies Poisoned + Slowed, Badly Poisoned with the two-layers box ticked, and Poison-Types cross it free and destroy it.
   - Set 8 square meters of Toxic Spikes within the range such that all 8 meters are adjacent with at least one other space of Toxic Spikes. Toxic Spikes cause Terrain to become Slow Terrain, and a grounded foe that runs into the hazard becomes Poisoned and Slowed until the end of their next turn. If there are 2 layers of Toxic Spikes on the same space, it Badly Poisons the foes instead. Poison-Type Pokemon may move over Toxic Spikes harmlessly, destroying the Hazards as they do so.
@@ -704,12 +733,14 @@ P1 · 16 open of 25 · open
   - note: found-01: CS clause now parsed (⬆ Apply); still open: weather
   - The user Shifts before or after attacking, ignoring Slow Terrain. If the user did not move through Slow Terrain during this Shift, raise the user's Speed 1 Combat Stage.
 
-- 🟡 **Weather Ball** — `partial` · P2 (enc) · themes: weather · engine: special:conditionalDB
+- ✅ **Weather Ball** — `auto` · P2 (enc) · themes: weather · engine: special:conditionalDB
   - _Normal Special · DB 5 · AC 2 · EOT · 8, 1 Target_
+  - note: verified: WEATHER_BALL_TYPES + the weatherball conditional DB read the Map weather
   - If it is Sunny, Weather Ball is Fire-Type. If it is Rainy, Weather Ball is Water-Type. If it is Hailing, Weather Ball is Ice-Type. If it is Sandstorming, Weather Ball is Rock-Type. When a weather effect is on the field, Weather Ball has a Damage Base of 10 (3d8+10 / 24). If there are multiple Weather Effects on the field, choose one type for Weather Ball to be that corresponds with an existing Weather Effect.
 
-- 🟡 **Zap Cannon** — `partial` · P2 (enc) · themes: weather · engine: status-fx, status-always
+- ✅ **Zap Cannon** — `auto` · P2 (enc) · themes: weather · engine: status-fx, status-always
   - _Electric Special · DB 12 · AC 9 · At-Will · 12, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - Zap Cannon Paralyzes the target. Zap Cannon ignores the target's Evasion if their are no other combatants or Rough or Blocking Terrain within 2 meters of the target.
 
 - 🟡 **Aurora Veil** — `partial` · P3 · themes: weather, typing · engine: blessing
@@ -721,11 +752,12 @@ P1 · 16 open of 25 · open
   - note: found-05 sets Snowy from the roll. Still open: the immediate recall of a Trapped user and sending a new Pokemon out (switching, found-07)
   - The weather changes to Snowy for 5 rounds and the user may immediately be recalled in the same turn. A new Pokemon may immediately be sent out. Using this Move lets a Trapped user be recalled. If the user is not recalled, their movement this turn does not provoke Attacks of Opportunity instead.
 
-- 🟡 **Collision Course** — `partial` · P3 · themes: weather, typing · engine: target-rules
+- ✅ **Collision Course** — `auto` · P3 · themes: weather, typing · engine: target-rules
   - _Fighting Physical · DB 10 · AC 2 · Scene x2 · Melee, Dash, Pass_
+  - note: target-rules +10 vs super-effective; the Slow Terrain is drawn by hand
   - Create Slow Terrain in all squares the user Shifted through during Pass, and in a Burst 1 around the user after finishing movement. The user may ignore this Slow Terrain. Whenever this Move deals Super-Effective Damage to a target, that target treats your Damage Roll as if it was increased by +10.
 
-- ✅ **Defog** — `auto` · P3 · themes: weather · engine: field-fx, hazard-fx · code: FIELD_SETTER_MOVES:21956, moveFieldNode:22060, HAZARD_SETTER_MOVES:22103, hazardsNear:49741
+- ✅ **Defog** — `auto` · P3 · themes: weather · engine: field-fx, hazard-fx · code: FIELD_SETTER_MOVES:22396, moveFieldNode:22500, HAZARD_SETTER_MOVES:22545, hazardsNear:50961
   - _Flying Status · DB — · AC — · Daily x2 · Field, Weather_
   - note: The field card turns the sky Clear and the hazard card destroys every marker on the board. Blessings and Coats are named as the table's, which is what they are.
   - The Weather becomes Clear, and all Blessings, Coats, and Hazards are destroyed. Clear Weather is the default weather, conferring no bonuses or penalties of any sort.
@@ -743,9 +775,9 @@ P1 · 16 open of 25 · open
 <a id="moves-17"></a>
 ## `moves-17` — Ability / item / stat swaps (1/2)
 
-P1 · 14 open of 25 · open
+P1 · 9 open of 25 · open
 
-- ✅ **Foresight** — `auto` · P1 (enc, pc, player:Handels) · themes: swap · code: _mvBuff:23556, ignoresTypeImmunity:24613
+- ✅ **Foresight** — `auto` · P1 (enc, pc, player:Handels) · themes: swap · code: _mvBuff:24130, ignoresTypeImmunity:25318
   - _Normal Status · DB — · AC — · Scene x2 · Self, Swift Action_
   - note: v604 MOVE_FX_ROWS row: applied for you
   - Foresight may be activated as a Swift Action on the user's turn. For the rest of the turn, the user's Normal-Type and Fighting-Type Moves can hit and affect Ghost-Type targets, and the user can see through the Illusion Ability, Moves with the Illusion keyword, and effects created by the Illusionist Capability, ignoring all effects from those.
@@ -755,26 +787,26 @@ P1 · 14 open of 25 · open
   - note: v593 main effect automated; Accessory-slot items by hand
   - Pluck takes the target's Held Item or Accessory Slot Item and attaches it to Pluck's user, if the user is not holding anything.
 
-- 🟡 **Fling** — `partial` · P2 (enc) · themes: swap · engine: special:valueDB · code: specialMoveInfo:24901
+- 🟡 **Fling** — `partial` · P2 (enc) · themes: swap · engine: special:valueDB · code: specialMoveInfo:25610
   - _Dark Physical · DB — · AC 2 · Scene x2 · 6, 1 Target, Fling_
   - The user throws a held item, determining the effect of Fling.
 
-- ✅ **Gravity** — `auto` · P2 (enc) · themes: swap, typing · engine: field-fx · code: surelyGrounded:921, ROOM_DEFS:1716, FIELD_SETTER_MOVES:21969, gravityGroundRule:47408
+- ✅ **Gravity** — `auto` · P2 (enc) · themes: swap, typing · engine: field-fx · code: surelyGrounded:933, ROOM_DEFS:1762, FIELD_SETTER_MOVES:22409, gravityGroundRule:48537
   - _Psychic Status · DB — · AC — · Daily x2 · Field_
   - note: found-05: map.rooms gains 'gravity' — surelyGrounded returns true for everything (so grounded-Terrain rules reach Flying-Types), every Ground-Type Move borrows Thousand Arrows' rule via moveTargetRules (Flying reads neutral, Levitate pierced), and roomAcc() adds the flat +2 to every Accuracy Roll on both roll modals. Left to the table: 'Moves that involve the user being airborne may not be used' (the Map does not model altitude) — the room panel says so
   - For 5 rounds, the area is considered Warped. While Warped, Moves that involve the user being airborne may not be used. Pokemon cannot use Sky or Levitate Capabilities to end their turn at an altitude higher than 1 meter. Flying-Types and Pokemon with the Ability Levitate are no longer immune to Ground-Type Moves. All Accuracy Rolls receive a +2 Bonus.
 
-- 🟡 **Magnet Rise** — `partial` · P2 (enc) · themes: swap · code: MOVE_FX_ROWS:23535
+- ✅ **Magnet Rise** — `auto` · P2 (enc) · themes: swap · code: MOVE_FX_ROWS:24099
   - _Electric Status · DB — · AC — · Daily x2 · Self, Swift Action_
-  - note: v593 main effect automated; Levitate is a buff note, not an Ability on the list
+  - note: v593 MOVE_FX_ROWS magnetrise: 5-turn Levitate buff
   - The user gains the Levitate Ability for 5 turns. Magnet Rise may be activated as a Swift Action if the user is otherwise given an action that consumes a Command.
 
-- 🟡 **Memento** — `partial` · P2 (enc, pc) · themes: swap, status · engine: cs · code: CS_CHAIN_RE:24012
+- ✅ **Memento** — `auto` · P2 (enc, pc) · themes: swap, status · engine: cs · code: CS_CHAIN_RE:24662
   - _Dark Status · DB — · AC — · Scene · 8, 1 Target, Trigger, Free Action_
-  - note: found-01: CS clause now parsed (⬆ Apply); still open: swap, status
+  - note: v656 verified: the -2 CS to every stat parses (⬆ Apply); the Free Action on Faint is the table's
   - Memento may be used as a Free Action that does not consume a Command action when the user becomes Fainted. Lower each of the target's stats by -2 CS.
 
-- ✅ **Odor Sleuth** — `auto` · P2 (enc, pc) · themes: swap · code: _mvBuff:23557
+- ✅ **Odor Sleuth** — `auto` · P2 (enc, pc) · themes: swap · code: _mvBuff:24131
   - _Normal Status · DB — · AC — · Scene x2 · Self, Swift Action_
   - note: v604 MOVE_FX_ROWS row: applied for you
   - Odor Sleuth may be activated as a Swift Action on the user's turn. For the rest of the turn, the user's Normal-Type and Fighting-Type Moves can hit and affect Ghost-Type targets, and the user can see through the Illusion Ability, Moves with the Illusion keyword, and effects created by the Illusionist Capability, ignoring all effects from those.
@@ -784,12 +816,14 @@ P1 · 14 open of 25 · open
   - note: swaps or lends Abilities/stats between creatures — done at the table
   - You choose one of the target's Abilities. Simple Beam changes that Ability to Simple for the remainder of the encounter.
 
-- 🟡 **Switcheroo** — `partial` · P2 (pc) · themes: swap · code: analyticContext:24578
+- ✅ **Switcheroo** — `auto` · P2 (pc) · themes: swap · code: analyticContext:25283
   - _Dark Status · DB — · AC 2 · At-Will · Melee, 1 Target_
+  - note: v653: MOVE_FX_ROWS switcheroo — abfx itemSwap exchanges held items between user and target
   - The user and the target exchange held items.
 
-- 🟡 **Techno Blast** — `partial` · P2 (enc) · themes: swap · engine: picks-type
+- ✅ **Techno Blast** — `auto` · P2 (enc) · themes: swap · engine: picks-type
   - _Normal Special · DB 12 · AC 2 · Scene · 6, Ranged Blast 2_
+  - note: verified: the Judgment/Techno Blast Type picker (Drive / Plate)
   - Techno Blast's Type can be any Type while holding the appropriate Drive item or Plate item.
 
 - ✅ **Thief** — `auto` · P2 (enc, pc) · themes: swap
@@ -797,16 +831,17 @@ P1 · 14 open of 25 · open
   - note: v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods
   - Thief takes the target's held item and attaches it to Thief's user if the user is not holding anything.
 
-- 🟡 **Trick** — `partial` · P2 (enc) · themes: swap · code: ROOM_DEFS:1710, FIELD_SETTER_MOVES:21968, initiativeList:47529
+- 🟡 **Trick** — `partial` · P2 (enc) · themes: swap · code: ROOM_DEFS:1756, FIELD_SETTER_MOVES:22408, initiativeList:48672
   - _Psychic Status · DB — · AC 2 · Scene · 5, 2 Targets_
   - Both targets must be hit for Trick to succeed. The user may target itself or willing allies with Trick; you do not need to roll for Accuracy Check in these cases. Both targets lose their Held Item and gain the other target's Held Item. If a target has no Held Item, they still can gain the other target's Held Item.
 
-- 🟡 **Worry Seed** — `partial` · P2 (enc) · themes: swap · code: SEED_BAG_MOVES:33383
+- 🟡 **Worry Seed** — `partial` · P2 (enc) · themes: swap · code: SEED_BAG_MOVES:34482
   - _Grass Status · DB — · AC 2 · Scene · 8, 1 Target_
   - You choose one of the target's Abilities. Worry Seed changes that Ability to Insomnia for the remainder of the encounter.
 
-- 🟡 **Acrobatics** — `partial` · P3 · themes: swap · engine: special:conditionalDB · code: trainerDerivedGrid:10769, SKILL_WORDS:21195, FLIP_OUT_MOVES:27526, flipOutBox:27614, CAPTURE_SKILLS:29231
+- ✅ **Acrobatics** — `auto` · P3 · themes: swap · engine: special:conditionalDB · code: trainerDerivedGrid:11110, SKILL_WORDS:21620, FLIP_OUT_MOVES:28453, flipOutBox:28541, CAPTURE_SKILLS:30192
   - _Flying Physical · DB 6 · AC 2 · EOT · Melee, Dash, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - If the user is not holding an item, Acrobatics instead has a Damage Base of 11 (3d10+10/27)
 
 - ✅ **Bestow** — `auto` · P3 · themes: swap
@@ -814,7 +849,7 @@ P1 · 14 open of 25 · open
   - note: v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods
   - The user gives its held item to the target, unless the target is already holding an item. Using Bestow is a Swift Action.
 
-- 🟡 **Blind** — `partial` · P3 · themes: swap, status · code: _mvBuff:23551
+- 🟡 **Blind** — `partial` · P3 · themes: swap, status · code: _mvBuff:24125
   - _None Status · DB — · AC 2 · Standard · Melee, 1 Target_
   - note: v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table
   - You and the target make Opposed Stealth Checks. If you win, the target is Blinded for one full round.
@@ -834,7 +869,7 @@ P1 · 14 open of 25 · open
   - note: v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods
   - Covet takes the target's Held Item or Accessory Slot Item and attaches it to Covet's user, if the user is not holding anything.
 
-- 🟡 **Disarm** — `partial` · P3 · themes: swap · code: BATTLE_ACTIONS:26819
+- 🟡 **Disarm** — `partial` · P3 · themes: swap · code: BATTLE_ACTIONS:27718, ACTION_FEATURE_NOTES:27790
   - _None Status · DB — · AC 6 · Standard · Melee, 1 Target_
   - You and the target each make opposed Combat or Stealth Checks. If you win, the target's Held Item (Main Hand or Off-Hand for humans) falls to the ground.
 
@@ -853,7 +888,7 @@ P1 · 14 open of 25 · open
   - note: found-01: CS clause now parsed (⬆ Apply); still open: swap
   - All targets with the Plus or Minus Abilities receive +1 Attack and Special Attack Combat Stages.
 
-- ✅ **Magic Room** — `auto` · P3 · themes: swap · engine: field-fx · code: ROOM_DEFS:1732
+- ✅ **Magic Room** — `auto` · P3 · themes: swap · engine: field-fx · code: ROOM_DEFS:1778
   - _Psychic Status · DB — · AC — · Daily x2 · Field_
   - note: found-05: map.rooms gains 'magic' and heldFxList returns nothing, so every Static/Trigger held-item effect (Choice CS, Eviolite's +5, Type immunities, on-hit riders) stops paying out. Consumables are untouched, which is what the printed exception says
   - The area becomes Useless for 5 rounds. While Useless, Pokemon may not benefit from the effects of any Held Items, and Trainers cannot benefit from any Accessory-Slot equipment. This does not affect consumable or activated items, only Items with Static effects or Triggers.
@@ -866,26 +901,28 @@ P1 · 14 open of 25 · open
 <a id="moves-19"></a>
 ## `moves-19` — Interrupts, reactions & priority
 
-P1 · 17 open of 32 · open
+P1 · 12 open of 32 · open
 
-- 🟡 **Bide** — `partial` · P1 (enc, pc, player:Handels, player:Lysgd) · themes: interrupt, status · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:24715
+- 🟡 **Bide** — `partial` · P1 (enc, pc, player:Handels, player:Lysgd) · themes: interrupt, status · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:25424
   - _Normal Physical · DB — · AC — · Scene · Burst 1, Friendly_
   - The user may use Bide as a Reaction Move upon being Hit by a Damaging Move. During their next available turn, the user may Shift and then use Bide, causing all Adjacent foes to lose X HP, where X is the amount of Damage taken since declaring use of Bide (Loss of life through effects such as Poison is not 'Damage').
 
-- 🟡 **Double Team** — `partial` · P1 (enc, pc, player:Lázaro) · themes: interrupt · code: GAUNTLETS:36999
+- 🟡 **Double Team** — `partial` · P1 (enc, pc, player:Lázaro) · themes: interrupt · code: GAUNTLETS:38102
   - _Normal Status · DB — · AC — · Scene · Self, Illusion, Coat_
+  - note: v653: MOVE_FX_ROWS doubleteam — 3-activation buff with the +2 Evasion / +2 Accuracy rule; the bonus is added by hand
   - The user gains 3 activations of Double Team. The user may either activate Double Team when being targeted by an attack to increase their Evasion by +2 against that attack or when making an attack to increase their Accuracy by +2 for that attack.
 
-- 🟡 **Protect** — `partial` · P1 (enc, pc, player:Lázaro) · themes: interrupt
+- ✅ **Protect** — `auto` · P1 (enc, pc, player:Lázaro) · themes: interrupt
   - _Normal Status · DB — · AC — · Scene · Self, Interrupt, Shield, Trigger_
-  - note: found-10 coat/shield state + card; riposte/side effects noted for the GM
+  - note: verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶
   - If the user is hit by a Move, the user may use Protect. The user is instead not hit by the Move. The user does not take any damage nor is affected by any of the Move's effects.
 
-- 🟡 **Assurance** — `partial` · P2 (enc) · themes: interrupt · engine: special:conditionalDB
+- ✅ **Assurance** — `auto` · P2 (enc) · themes: interrupt · engine: special:conditionalDB
   - _Dark Physical · DB 6 · AC 2 · At-Will · Melee, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - If Assurance's target has already been damaged by a Move on the same round Assurance is being used, Assurance has a Damage Base of 12 (3d12+10 / 30) instead. This effect may trigger only once per Scene per Target.
 
-- 🟡 **Beat Up** — `partial` · P2 (enc) · themes: interrupt · engine: special:noteOnly · code: specialMoveInfo:24913
+- 🟡 **Beat Up** — `partial` · P2 (enc) · themes: interrupt · engine: special:noteOnly · code: specialMoveInfo:25622
   - _Dark Physical · DB — · AC — · EOT · Melee, 1 Target_
   - The user and up to two allies adjacent to the target may each make a Struggle Attack against the target. These Struggle Attacks hit for Dark-Type Damage instead of their usual Type. Beat Up may trigger Pack Hunt only once, no matter the number of attacks.
 
@@ -899,8 +936,9 @@ P1 · 17 open of 32 · open
   - note: an Interrupt/Reaction declared in response to somebody else's action; the initiative tracker never pauses for it
   - If the user or an Ally within 6 meters is about to be hit by an attack, the user may use Kinesis as an interrupt. The triggering Accuracy Roll receives a -4 penalty. This may cause Moves to miss.
 
-- 🟡 **Lucky Chant** — `partial` · P2 (enc) · themes: interrupt · engine: blessing · code: SAGE_BLESSINGS:35808, blessingIcon:45010
+- ✅ **Lucky Chant** — `auto` · P2 (enc) · themes: interrupt · engine: blessing · code: SAGE_BLESSINGS:36908, blessingIcon:46129
   - _Normal Status · DB — · AC — · Scene · Blessing_
+  - note: verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)
   - Any user affected by Lucky Chant may activate it when receiving a Critical Hit to cause the attack to instead deal damage as if it was not a Critical Hit. Lucky Chant may be activated 3 times and then disappears.
 
 - ⛔ **Me First** — `skip` · P2 (enc) · themes: interrupt
@@ -923,9 +961,9 @@ P1 · 17 open of 32 · open
   - note: an Interrupt/Reaction declared in response to somebody else's action; the initiative tracker never pauses for it
   - If the user is targeted by a Melee attack and has not yet taken a turn this round, the user may declare Vital Throw. After the triggering attack is resolved, the user may use Vital Throw against the triggering foe as a Reaction. Vital Throw cannot miss.
 
-- 🟡 **Wide Guard** — `partial` · P2 (enc) · themes: interrupt
+- ✅ **Wide Guard** — `auto` · P2 (enc) · themes: interrupt
   - _Rock Status · DB — · AC — · Scene · Burst 1, Interrupt, Shield, Trigger_
-  - note: found-10 coat/shield state + card; riposte/side effects noted for the GM
+  - note: verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶
   - If an Ally adjacent to Wide Guard's user is hit by a Move, you may use Wide Guard as an Interrupt. All targets adjacent to Wide Guard's user, including the user, are instead not hit by the triggering Move and do not suffer any of its effects.
 
 - 🟡 **Alluring Voice** — `partial` · P3 · themes: interrupt, multiturn, status, cs
@@ -938,12 +976,12 @@ P1 · 17 open of 32 · open
   - note: v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest
   - After Burning Jealousy has resolved, the user may choose to Burn foes within 5m that have had any CS raised since the beginning of that foe's last turn. This Effect may trigger only once per Scene.
 
-- 🟡 **Fire Pledge** — `partial` · P3 · themes: interrupt · engine: hazard-fx
+- 🟡 **Fire Pledge** — `partial` · P3 · themes: interrupt · engine: hazard-fx · code: PLEDGE_NAMES:24190
   - _Fire Special · DB 8 · AC 2 · Scene · 6, 1 Target, Pledge_
   - note: The Pledge combination offers 8 Fire markers in the Burst 1. The Pledge keyword itself (the Priority follow-up, the Rainbow) is the Pledge batch.
   - If an ally uses Grass Pledge or Water Pledge, you may use Fire Pledge as Priority (Advanced) immediately after their turn to target the same foe. If used in conjunction with Grass Pledge, Fire Hazards are created in a Brust 1 around the target. If used in conjucntion with Water Pledge, a Rainbow is created that lasts for 5 rouns. Counsult the Pledge keyword for additional details.
 
-- 🟡 **Grass Pledge** — `partial` · P3 · themes: interrupt, status · engine: cs, hazard-fx
+- 🟡 **Grass Pledge** — `partial` · P3 · themes: interrupt, status · engine: cs, hazard-fx · code: PLEDGE_NAMES:24190
   - _Grass Special · DB 8 · AC 2 · Scene · 6, 1 Target, Pledge_
   - note: Same Fire-Hazard half; the Water Pledge branch's Slowed and -2 Speed CS belong to their own batches.
   - If an ally uses Fire Pledge or Water Pledge, you may use Grass Pledge as Priority (Advanced) immediately after their turn to target the same foe. If used in conjunction with Fire Pledge, Fire Hazards are created in a Burst 1 around the target. If used in conjunction with Water Pledge, the target and all foes adjacent to the the target are slowed and have their Speed reduced by 2 Combat Stages. Consult the Pledge keyword for additional details.
@@ -958,11 +996,11 @@ P1 · 17 open of 32 · open
   - note: copies or replays another Move — the GM decides what it becomes at the table
   - The target immediately reuses the attack it performed last, ignoring frequency, as a Free Action. They may choose new targets for the copied attack. Instruct may not be used if the Target's last Move was a Set-Up Move, a Trigger Move, or Instruct, or if the Target is currently affected by Exhaust.
 
-- 🟡 **Order Up** — `partial` · P3 · themes: interrupt, swap, cs · engine: versatile · code: commanderOrderUp:9452, openTrainerAttack:9820, openMoveRoll:25562
+- 🟡 **Order Up** — `partial` · P3 · themes: interrupt, swap, cs · engine: versatile · code: commanderOrderUp:9793, openTrainerAttack:10161, openMoveRoll:26455
   - _Dragon Versatile · DB 8 · AC 2 · EOT · Melee, 1 Target, Versatile, Spirit Surge_
   - If the user, target, an Attached Commander or a pokemon Grappled by the user has a Food Buff, you may consume one of those Buffs (ignoring its normal trigger condition), gain its effects, and this attack is one step more effective. The target cannot activate Food Buffs in response to this Move. If a Tatsugiri is Attached to the user and this Move hits, the user gains +1 Combat Stage depending on that Tatsugiri's Form: Curly Form raises Attack, Droopy Form raises Defense, and Stretchy Form raises Speed.
 
-- ✅ **Psychic Terrain** — `auto` · P3 · themes: interrupt · engine: field-fx · code: weatherTickReport:1594, TERRAIN_DEFS:1622
+- ✅ **Psychic Terrain** — `auto` · P3 · themes: interrupt · engine: field-fx · code: weatherTickReport:1640, TERRAIN_DEFS:1668
   - _Psychic Status · DB — · AC — · Daily x2 · Field_
   - note: found-05: sets Psychic Terrain on the Map; the +10 Psychic damage was already wired to it
   - The Field becomes Weird for five rounds. While the Field is Weird, non-Flying and non- Levitating Pokemon cannot declare Priority or Interrupt Moves outside their own Initiatives. Damaging Psychic-Type attacks deal an additional 10 damage.
@@ -988,12 +1026,13 @@ P1 · 17 open of 32 · open
   - note: copies or replays another Move — the GM decides what it becomes at the table
   - Sketch cannot miss. Once Sketch has been used, remove Sketch from the user's Move list. The last Move that the target used is added to the user's Move list permanently. Sketch may not be Interrupted or Intercepted.
 
-- 🟡 **Sky Uppercut** — `partial` · P3 · themes: interrupt, multiturn · code: IRON_FIST_MOVES:24188
+- 🟡 **Sky Uppercut** — `partial` · P3 · themes: interrupt, multiturn · code: IRON_FIST_MOVES:24882
   - _Fighting Physical · DB 9 · AC 4 · At-Will · Melee, 1 Target, Interrupt_
   - Sky Uppercut may be used as an Interrupt when against a target initiating Bounce, Fly, or Sky Drop. If Sky Uppercut successfully hits its target, the Triggering Move fails (though the target may take their next turn normally.)
 
-- 🟡 **Snipe Shot** — `partial` · P3 · themes: interrupt, swap · engine: range, range-crit
+- ✅ **Snipe Shot** — `auto` · P3 · themes: interrupt, swap · engine: range, range-crit
   - _Water Special · DB 8 · AC 2 · EOT · 8, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - Snipe Shot is a Critical Hit on 18+. This Move may not be Intercepted, nor may any Abilities, Moves, or Features be activated to change this Move's target. Any of those existing effects (such as Follow Me) fail.
 
 - 🟡 **Sparkling Aria** — `partial` · P3 · themes: interrupt, status, cure
@@ -1015,7 +1054,7 @@ P1 · 17 open of 32 · open
   - _Fighting Physical · DB 7 · AC 2 · At-Will · Melee, 1 Target_
   - If an adjacent foe declares Priority or an Interrupt, this Move may be used as an Interrupt against the triggering foe. If used this way, this Move Flinches the target. If the triggering Interrupt was itself triggered by the user's Standard Action, that Action is relinquished, in favor of giving up the Action on the following round, to use this Move.
 
-- 🟡 **Water Pledge** — `partial` · P3 · themes: interrupt, multiturn, status · engine: cs
+- 🟡 **Water Pledge** — `partial` · P3 · themes: interrupt, multiturn, status · engine: cs · code: PLEDGE_NAMES:24190
   - _Water Special · DB 8 · AC 2 · Scene x2 · 6, 1 Target, Pledge_
   - note: found-01: CS clause now parsed (⬆ Apply); still open: interrupt, multiturn, status
   - If an ally uses Fire Pledge or Grass Pledge, you may use Water Pledge as Priority (Advanced) immediately after their turn to target the same foe. If used in conjunction with Fire Pledge, a Rainbow is created that lasts for 5 rounds. If used in conjunction with Grass Pledge, the target and all foes adjacent to the target are slowed and have their Speed reduced by 2 Combat Stages. Consult the Pledge keyword for additional details.
@@ -1023,34 +1062,35 @@ P1 · 17 open of 32 · open
 <a id="moves-20"></a>
 ## `moves-20` — Coats, barriers & Blessings
 
-P1 · 15 open of 19 · open
+P1 · 7 open of 19 · open
 
-- 🟡 **Dragon Rage** — `partial` · P1 (enc, player:Lázaro) · themes: barrier · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:24704
+- ✅ **Dragon Rage** — `auto` · P1 (enc, player:Lázaro) · themes: barrier · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:25413
   - _Dragon Special · DB — · AC 2 · At-Will · 4, 1 Target_
+  - note: SPECIAL_FIXED_DAMAGE
   - Dragon Rage causes the target to lose 15 HP. Dragon Rage is Special and interacts with other moves and effects as such (Special Evasion may be applied to avoid it, Mirror Coat can reflect it, etc.).
 
-- 🟡 **Mud Sport** — `partial` · P1 (enc, pc, player:Handels) · themes: barrier, typing · code: GAUNTLETS:36969
+- ✅ **Mud Sport** — `auto` · P1 (enc, pc, player:Handels) · themes: barrier, typing · code: GAUNTLETS:38072
   - _Ground Status · DB — · AC — · EOT · Burst 2_
-  - note: found-10 coat/shield state + card; riposte/side effects noted for the GM
+  - note: ABILITY/MOVE coat engine (found-10): resist coat, burst
   - All targets in the burst, including the user, gain a Coat which grants them 1 Step of Resistance to Electric Type Moves. After a target has been hit by a damaging Electric Type Move, the coat is removed.
 
-- 🟡 **Water Sport** — `partial` · P1 (enc, pc, player:Lázaro) · themes: barrier, typing · code: GAUNTLETS:36972
+- ✅ **Water Sport** — `auto` · P1 (enc, pc, player:Lázaro) · themes: barrier, typing · code: GAUNTLETS:38075
   - _Water Status · DB — · AC — · EOT · Burst 2, Coat_
-  - note: found-10 coat/shield state + card; riposte/side effects noted for the GM
+  - note: found-10 resist coat, burst
   - All targets in the burst, including the user, gain a Coat which grants them 1 Step of Resistance to Fire Type Moves. After a target has been hit by a damaging Fire Type Move, the coat is removed. *Grants Fountain
 
-- 🟡 **Aqua Ring** — `partial` · P2 (enc, pc) · themes: barrier, heal · code: GAUNTLETS:36983
+- ✅ **Aqua Ring** — `auto` · P2 (enc, pc) · themes: barrier, heal · code: GAUNTLETS:38086
   - _Water Status · DB — · AC — · Scene · Self, Coat_
-  - note: found-10 coat/shield state + card; riposte/side effects noted for the GM
+  - note: verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶
   - Aqua Ring covers the user in a Coat that heals the user at the beginning of their turn. The user is healed a Tick of Hit Points each turn.
 
-- 🟡 **Brick Break** — `partial` · P2 (enc) · themes: barrier · code: GAUNTLETS:36974
+- 🟡 **Brick Break** — `partial` · P2 (enc) · themes: barrier · code: GAUNTLETS:38077
   - _Fighting Physical · DB 8 · AC 2 · At-Will · Melee, 1 Target_
   - Light Screen and Reflect may not be activated in response to Brick Break.
 
-- 🟡 **Ingrain** — `partial` · P2 (enc, pc) · themes: barrier, position · engine: hp-fx · code: pushImmunityFor:22251
+- ✅ **Ingrain** — `auto` · P2 (enc, pc) · themes: barrier, position · engine: hp-fx · code: pushImmunityFor:22699
   - _Grass Status · DB — · AC — · Scene · Self, Coat_
-  - note: found-10 coat/shield state + card; riposte/side effects noted for the GM
+  - note: verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶
   - Ingrain applies a Coat to the user, which has the following effect; the user cannot be pushed or pulled, and cannot be switched out. At the beginning of each of the user's turn, the user gains HP equal to 1/10th of its max HP.
 
 - ⛔ **Magic Coat** — `skip` · P2 (enc) · themes: barrier, interrupt
@@ -1058,46 +1098,48 @@ P1 · 15 open of 19 · open
   - note: an Interrupt/Reaction declared in response to somebody else's action; the initiative tracker never pauses for it
   - If the user is about to get a hit by a Move that does not have a Damage Dice Roll, they may use Magic Coat as an Interrupt. The Interrupted Move's user is treated as if they were the target of their own Move, with the user of Magic Coat as the user.
 
-- 🟡 **Metronome** — `partial` · P2 (enc) · themes: barrier, interrupt, control, status · code: openTrainerAttack:9582, isMetronomeMove:25087, openMetronome:25151
+- 🟡 **Metronome** — `partial` · P2 (enc) · themes: barrier, interrupt, control, status · code: openTrainerAttack:9923, isMetronomeMove:25975, openMetronome:26039
   - _Normal Status · DB — · AC — · Scene x2 · Self_
   - Metronome randomly uses any other Move except for After You, Assist, Bestow, Copycat, Counter, Covet, Crafty Shield, Destiny Bond, Detect, Endure, Feint, Focus Punch, Follow Me, Helping Hand, King's Shield, Metronome, Me First, Mimic, Mirror Coat, Mirror Move, Protect, Quash, Quick Guard, Rage Powder, Sketch, Sleep Talk, Snatch, Snore, Spiky Shield, Switcheroo, Thief, Transform, Trick, and Wide Guard. The GM helps to pick the random Move.
 
-- ✅ **Psyshock** — `auto` · P2 (enc) · themes: barrier · code: MOVE_TARGET_RULES:47382
+- ✅ **Psyshock** — `auto` · P2 (enc) · themes: barrier · code: MOVE_TARGET_RULES:48511
   - _Psychic Special · DB 8 · AC 2 · At-Will · 4, 1 Target_
   - note: v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods
   - When calculating damage, the target subtracts their Defense from Psyshock's damage instead of their Special Defense. Psyshock is still otherwise Special (Special Evasion is used to avoid it, Mirror Coat can reflect it, etc.)
 
-- ✅ **Psystrike** — `auto` · P2 (enc) · themes: barrier · code: MOVE_TARGET_RULES:47383
+- ✅ **Psystrike** — `auto` · P2 (enc) · themes: barrier · code: MOVE_TARGET_RULES:48512
   - _Psychic Special · DB 10 · AC 2 · EOT · 4, 1 Target_
   - note: v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods
   - When calculating damage, the target subtracts their Defense from Psystrike's damage instead of their Special Defense. Psystrike is still otherwise Special (Special Evasion is used to avoid it, Mirror Coat can reflect it, etc.)
 
-- 🟡 **Sonic Boom** — `partial` · P2 (pc) · themes: barrier · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:24705
+- ✅ **Sonic Boom** — `auto` · P2 (pc) · themes: barrier · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:25414
   - _Normal Special · DB — · AC 6 · EOT · 8, 1 Target_
+  - note: SPECIAL_FIXED_DAMAGE
   - Sonicboom causes the target to lose 15 HP. Sonicboom is Special and interacts with other moves and effects as such (Special Evasion may be applied to avoid it, Mirror Coat can reflect it, etc.)
 
-- 🟡 **Substitute** — `partial` · P2 (enc) · themes: barrier, typing · engine: hp-fx
+- ✅ **Substitute** — `auto` · P2 (enc) · themes: barrier, typing · engine: hp-fx
   - _Normal Status · DB — · AC — · Scene · Self, Illusion, Coat_
-  - note: found-10 coat/shield state + card; riposte/side effects noted for the GM
+  - note: verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶
   - The user loses 1/4 of their maximum Hit Points. This Hit Point loss cannot be prevented in any way. The user creates an Illusory Substitute Coat, which has Hit Points equal to 1/4th of the user's full Hit Points +1. If the user would be hit by a Move or attack, instead the Substitute gets hit. Apply weakness, resistance and stats to the Substitute. The Substitute is immune to Status Afflictions and Status Moves. Moves with the Social or Sonic keywords completely ignore and bypass the Substitute. Once the Substitute has been destroyed, the user may be hit as normal. Substitute cannot be used if the user has less than 1/4 of their full Hit Points.
 
-- 🟡 **Mirror Coat** — `partial` · P3 · themes: barrier, heal, interrupt, status, typing · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:24712
+- 🟡 **Mirror Coat** — `partial` · P3 · themes: barrier, heal, interrupt, status, typing · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:25421
   - _Psychic Status · DB — · AC — · Scene x2 · Any, 1 Target, Reaction_
   - Mirror Coat may be used as a Reaction when the user is hit by a damaging Special Attack. Resolve the Triggering Attack, with Mirror Coat's user resisting the attack one step further. After the attack is resolved, if Mirror Coat's user was not Fainted, the triggering foe then loses Hit Points equal to twice the amount of Hit Points lost by the user from the triggering attack. Note that Mirror Coat is Special, and while it cannot miss, it cannot hit targets immune to Psychic-Type Moves.
 
-- 🟡 **Mist Ball** — `partial` · P3 · themes: barrier · engine: cs
+- ✅ **Mist Ball** — `auto` · P3 · themes: barrier · engine: cs
   - _Psychic Special · DB 7 · AC 2 · Scene x2 · 12, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - Mist Ball lowers the target's Special Attack by 1 Combat Stage on an Even-Numbered Roll.
 
-- 🟡 **Powder** — `partial` · P3 · themes: barrier · engine: powder · code: powderImmuneNote:36008
+- 🟡 **Powder** — `partial` · P3 · themes: barrier · engine: powder · code: powderImmuneNote:37108
   - _Bug Status · DB — · AC — · Scene x2 · 6, 1 Target, Interrupt, Powder_
   - The target is dusted with a Coat of flammable powder. If the affected target uses a damaging Fire-Type attack, the attack is negated and instead creates a Blast 3 centered on itself as the powder explodes, and the Coat is removed. All legal targets within the Blast take damage equal to what the user of the Fire-Type attack would roll for the damage of their attack. This damage is Typeless or Fire-Type, whichever would be more effective.
 
-- 🟡 **Psychic Fangs** — `partial` · P3 · themes: barrier · code: STRONG_JAW_MOVES:24306
+- 🟡 **Psychic Fangs** — `partial` · P3 · themes: barrier · code: STRONG_JAW_MOVES:25001
   - _Psychic Physical · DB 9 · AC 2 · EOT · Melee, 1 Target_
   - Light Screen, Reflect and Aurora Veil cannot be declared in response to Psychic Fangs.
 
-- 🟡 **Reflect Type** — `partial` · P3 · themes: barrier, typing · code: reflectTypeCard:3099
+- 🟡 **Reflect Type** — `partial` · P3 · themes: barrier, typing · code: reflectTypeCard:3145
   - _Normal Status · DB — · AC 2 · Scene · Melee, 1 Target_
   - Reflect Type changes one of the user's Types into one Type of your choice that the target has for the rest of the scene.
 
@@ -1114,52 +1156,60 @@ P1 · 15 open of 19 · open
 <a id="moves-21"></a>
 ## `moves-21` — Type changes & immunities, Move control & copying, Curing, Hazards & field markers
 
-P1 · 15 open of 21 · open
+P1 · 7 open of 21 · open
 
-- 🟡 **Night Shade** — `partial` · P1 (enc, pc, player:Handels) · themes: typing · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:24703
+- ✅ **Night Shade** — `auto` · P1 (enc, pc, player:Handels) · themes: typing · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:25412
   - _Ghost Special · DB — · AC 2 · Scene x2 · 8, 1 Target_
+  - note: SPECIAL_FIXED_DAMAGE
   - The target loses HP equal to the level of Night Shade's user. Do not apply weakness or resistance. Do not apply stats.
 
-- 🟡 **Psywave** — `partial` · P1 (enc, pc, player:Lysgd) · themes: typing · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:24708
+- ✅ **Psywave** — `auto` · P1 (enc, pc, player:Lysgd) · themes: typing · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:25417
   - _Psychic Special · DB — · AC 5 · Scene · 6, 1 Target_
+  - note: SPECIAL_FIXED_DAMAGE (1d4 table)
   - Roll 1d4; on 1 the target loses HP equal to half the user's Level; on 2 the target loses HP equal to the user's Level; on 3 the target loses HP equal to 1.5x the user's level; on 4 the target loses HP equal to the user's Level doubled. Do not apply weakness or resistance, and do not apply Stats. Do apply Immunity.
 
-- 🟡 **Seismic Toss** — `partial` · P1 (enc, player:Lázaro) · themes: typing · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:24702
+- ✅ **Seismic Toss** — `auto` · P1 (enc, player:Lázaro) · themes: typing · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:25411
   - _Fighting Physical · DB — · AC 2 · Scene x2 · Melee, 1 Target_
+  - note: SPECIAL_FIXED_DAMAGE
   - The target loses HP equal to the level of Seismic Toss's user. Do not apply weakness or resistance. Do not apply stats.
 
-- 🟡 **Leech Seed** — `partial` · P2 (enc) · themes: typing, capture · code: STATUS_DEFS:435, moveSeedNode:22135, SEED_BAG_MOVES:33383
+- ✅ **Leech Seed** — `auto` · P2 (enc) · themes: typing, capture · code: STATUS_DEFS:435, moveSeedNode:22578, SEED_BAG_MOVES:34482
   - _Grass Status · DB — · AC 4 · Daily x2 · 6, 1 Target_
+  - note: seeded status chip (Grass immune) + the 🌱 Leech Seed row moves the HP each turn (found-04/found-09)
   - At the beginning of each of the target's turns, Leech Seed's target loses 1/10th of their full HP. Leech Seed's user then gains HP equal to the amount the target lost. Leech Seed lasts until the target faints or is returned to a Poke Ball. Grass Types and targets immune to Grass Attacks are immune to Leech Seed
 
-- 🟡 **Light Screen** — `partial` · P2 (enc) · themes: typing · engine: blessing · code: STAT_TRAINING_MOVES:23810, SAGE_BLESSINGS:35806, blessingIcon:45010
+- ✅ **Light Screen** — `auto` · P2 (enc) · themes: typing · engine: blessing · code: STAT_TRAINING_MOVES:24460, SAGE_BLESSINGS:36906, blessingIcon:46129
   - _Psychic Status · DB — · AC — · Scene · Blessing_
+  - note: verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)
   - Blessing - Any user affected by Light Screen may activate it when receiving Special Damage to resist the Damage one step. Light Screen may be activated 2 times, and then disappears.
 
-- 🟡 **Reflect** — `partial` · P2 (enc, pc) · themes: typing · engine: blessing · code: reflectTypeCard:3117, STAT_TRAINING_MOVES:23810, SAGE_BLESSINGS:35805, blessingIcon:45010
+- ✅ **Reflect** — `auto` · P2 (enc, pc) · themes: typing · engine: blessing · code: reflectTypeCard:3163, STAT_TRAINING_MOVES:24460, SAGE_BLESSINGS:36905, blessingIcon:46129
   - _Psychic Status · DB — · AC — · Scene · Blessing_
+  - note: verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)
   - Blessing - Any user affected by Reflect may activate it when receiving Physical Damage to resist the Damage one step. Reflect may be activated 2 times, and then disappears.
 
-- 🟡 **Smack Down** — `partial` · P2 (enc, pc) · themes: typing · code: _mvBuff:23575
+- 🟡 **Smack Down** — `partial` · P2 (enc, pc) · themes: typing · code: _mvBuff:24153
   - _Rock Physical · DB 5 · AC 2 · Scene x2 · 8, 1 Target_
   - note: v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table
   - The target is knocked down to ground level, and loses all Sky or Levitate Speeds for 3 turns. During this time, they may be hit by Ground-Type Moves even if normally immune.
 
-- 🟡 **Withdraw** — `partial` · P2 (enc, pc) · themes: typing · engine: cs
+- ✅ **Withdraw** — `auto` · P2 (enc, pc) · themes: typing · engine: cs
   - _Water Status · DB — · AC — · At-Will · Self_
+  - note: v650 Withdrawn status: +15 DR and crit immunity read live off the chip (cannot-Shift / self-only is the table)
   - The user becomes Withdrawn. While Withdrawn, the user becomes immune to Critical Hits and gain 15 Damage Reduction. However, while Withdrawn, the user cannot Shift, and may only use self-targeting Moves. The user may stop being Withdrawn as a Shift Action.
     September Playtest: The user's Defense is raised 1 Combat Stage.
 
-- 🟡 **Electro Drift** — `partial` · P3 · themes: typing · engine: target-rules
+- ✅ **Electro Drift** — `auto` · P3 · themes: typing · engine: target-rules
   - _Electric Special · DB 10 · AC 2 · Scene x2 · Melee, Dash, Pass_
+  - note: target-rules +10 vs super-effective
   - After dealing damage, the user may Disengage 4 meters in a straight line. Whenever this Move deals Super-Effective Damage to a target, that target treats your Damage Roll as if it was increased by +10.
 
-- 🟡 **Plasma Fists** — `partial` · P3 · themes: typing · code: _mvBuff:23544
+- 🟡 **Plasma Fists** — `partial` · P3 · themes: typing · code: _mvBuff:24118
   - _Electric Physical · DB 10 · AC 5 · Scene · Melee, 1 Target, Smite_
   - note: v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table
   - The Target's next damaging Normal Type Move instead becomes Electric Type.
 
-- 🟡 **Tera Blast** — `partial` · P3 · themes: typing · engine: versatile · code: teraMoveType:20935
+- 🟡 **Tera Blast** — `partial` · P3 · themes: typing · engine: versatile · code: teraMoveType:21359
   - _Normal Versatile · DB 8 · AC 2 · EOT · 8, 1 Target, Versatile_
   - If the user is Terastalized, this move's Type becomes the user's Tera Type. 40
 
@@ -1168,17 +1218,17 @@ P1 · 15 open of 21 · open
   - note: found-11 lock card + enforcement
   - Spite may be used as a Free Action that does not take up a Command whenever the user is hit by a Move. That Move becomes Disabled for the attacker.
 
-- ✅ **Disable** — `auto` · P2 (enc, pc) · themes: control, status · code: reactionEffectLines:23396
+- ✅ **Disable** — `auto` · P2 (enc, pc) · themes: control, status · code: reactionEffectLines:23936
   - _Normal Status · DB — · AC — · Scene · 1 Target, Trigger_
   - note: found-11 lock card + enforcement
   - Disable may be used as a Free Action that does not take up a Command whenever the user is hit by a Move. That Move becomes Disabled for the attacker.
 
-- ✅ **Imprison** — `auto` · P2 (enc) · themes: control · code: MOVE_LOCKS:22910, moveLockReason:22939, locksControlRows:22953, moveLockNode:22984
+- ✅ **Imprison** — `auto` · P2 (enc) · themes: control · code: MOVE_LOCKS:23444, moveLockReason:23476, locksControlRows:23490, moveLockNode:23521
   - _Psychic Status · DB — · AC — · Scene x2 · 10, 1 Target_
   - note: found-11 lock card + enforcement
   - The target is Locked for the rest of the Scene. A Locked target may not use any Moves the user knows. Imprison cannot miss.
 
-- 🟡 **Mimic** — `partial` · P2 (enc, pc) · themes: control · code: typeModsControl:3003
+- 🟡 **Mimic** — `partial` · P2 (enc, pc) · themes: control · code: typeModsControl:3049
   - _Normal Status · DB — · AC — · Scene · 6, 1 Target_
   - Choose a Move that the target has used during the encounter. For the remainder of the encounter, that Move replaces Mimic on the user's Move List. Mimic cannot miss.
 
@@ -1202,12 +1252,12 @@ P1 · 15 open of 21 · open
   - note: v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest
   - The user is cured of a Status ailment and the target is given that Status ailment. Psycho Shift cannot miss. Psycho Shift can only be used if the user has a Status ailment and the target does not have the status ailment that is being transferred.
 
-- 🟡 **Take Heart** — `partial` · P3 · themes: cure · engine: cs · code: CS_ALL_TARGET_RE:24014
+- 🟡 **Take Heart** — `partial` · P3 · themes: cure · engine: cs · code: CS_ALL_TARGET_RE:24664
   - _Psychic Status · DB — · AC — · Daily x2 · Self_
   - note: found-01: CS clause now parsed (⬆ Apply); still open: cure
   - The user gains +1 CS in all its stats and cures all of its Status conditions.
 
-- ✅ **Stealth Rock** — `auto` · P2 (enc) · themes: heal, swap, typing, capture · engine: hazard-fx · code: HAZARDS:49198
+- ✅ **Stealth Rock** — `auto` · P2 (enc) · themes: heal, swap, typing, capture · engine: hazard-fx · code: HAZARDS:50341
   - _Rock Status · DB — · AC — · Scene · Field, Hazard_
   - note: Places 4; entry deals a Tick with Rock Weakness/Resistance only (hazardEntryMult, no stats), spends the Rock, and latches o.hazardHit so it can't hit the same creature again until recalled.
   - Set 4 square meters of Stealth Rock hazards within 6 meters. If a foe moves within 2 meters of a space occupied by Rocks, move at most one Rock to the offender, then destroy the Rock. When that happens, the Stealth Rock causes a foe to lose a Tick of Hit Points. Stealth Rock is considered to be dealing damage; Apply Weakness and Resistance. Do not apply stats. A Pokemon who has been hit by a Stealth Rock Hazard cannot get hit by another in the same encounter until it is returned to a Poke Ball and then sent back out. *Grants Materializer
@@ -1215,29 +1265,30 @@ P1 · 15 open of 21 · open
 <a id="moves-02"></a>
 ## `moves-02` — Status afflictions (2/3)
 
-P2 · 23 open of 25 · open
+P2 · 19 open of 25 · open
 
 - 🟢 **Nuzzle** — `likely` · P2 (enc, pc) · themes: status · engine: status-fx, status-always
   - _Electric Physical · DB 2 · AC 2 · Scene · Melee, 1 Target_
   - Nuzzle Paralyzes the target.
 
-- 🟢 **Outrage** — `likely` · P2 (enc) · themes: status, damage · engine: status-fx, status-always, status-self · code: RECKLESS_ERRATA_MOVES:24303, GAUNTLETS:37027, simStrike:41559
+- 🟢 **Outrage** — `likely` · P2 (enc) · themes: status, damage · engine: status-fx, status-always, status-self · code: RECKLESS_ERRATA_MOVES:24998, GAUNTLETS:38130, simStrike:42678
   - _Dragon Physical · DB 12 · AC 3 · Scene x2 · Melee, All Adjacent Foes, Smite_
   - Outrage makes the user becomes Enraged and Confused after damage is dealt.
 
-- 🟢 **Poison Gas** — `likely` · P2 (enc, pc) · themes: status · engine: status-fx, status-always
+- 🟢 **Poison Gas** — `likely` · P2 (enc, pc) · themes: status · engine: status-fx, status-always · code: CONNECTION_STATUS:21774
   - _Poison Status · DB — · AC 6 · Scene · Burst 1 or Cone 2_
   - Poison Gas Poisons all legal targets.
 
-- 🟢 **Poison Powder** — `likely` · P2 (enc, pc) · themes: status · engine: status-fx, status-always, powder · code: SEED_BAG_MOVES:33382
+- 🟢 **Poison Powder** — `likely` · P2 (enc, pc) · themes: status · engine: status-fx, status-always, powder · code: SEED_BAG_MOVES:34481
   - _Poison Status · DB — · AC 6 · EOT · 4, 1 Target, Powder_
   - The target is Poisoned.
 
-- 🟡 **Sheer Cold** — `partial` · P2 (enc) · themes: status · engine: ohko
+- ✅ **Sheer Cold** — `auto` · P2 (enc) · themes: status · engine: ohko
   - _Ice Status · DB — · AC — · Daily · 4, 1 Target, Execute_
+  - note: verified: the 1d100 one-hit-KO block (30 + user Level - target Level)
   - Roll 1d100. This roll may not be modified in any way. If you roll X or lower, the target Faints. X is equal to 30 + The User's Level - The Target's Level. *Grants: Freezer
 
-- 🟢 **Sleep Powder** — `likely` · P2 (enc, pc) · themes: status · engine: status-fx, status-always, powder · code: SEED_BAG_MOVES:33382
+- 🟢 **Sleep Powder** — `likely` · P2 (enc, pc) · themes: status · engine: status-fx, status-always, powder · code: SEED_BAG_MOVES:34481
   - _Grass Status · DB — · AC 6 · Scene x2 · 4, 1 Target, Powder_
   - The target falls Asleep.
 
@@ -1245,21 +1296,23 @@ P2 · 23 open of 25 · open
   - _Bug Status · DB — · AC — · Scene x2 · 5, 1 Target_
   - Spider Web cannot miss. The target is Stuck and Trapped. If the target is freed of the Stuck condition, it is freed of Trapped as well. *Grants Threaded
 
-- 🟢 **Swagger** — `likely` · P2 (enc, pc) · themes: status, cs · engine: cs, status-fx, status-always · code: addMoveKey:4835
+- ✅ **Swagger** — `auto` · P2 (enc, pc) · themes: status, cs · engine: cs, status-fx, status-always · code: addMoveKey:5062
   - _Normal Status · DB — · AC 4 · EOT · 6, 1 Target, Social_
+  - note: moveCSEffects (+2 Attack to the target) + moveStatusEffects (Confused) both ride the roll
   - Raise the target's Attack by +2 CS. The target is Confused.
 
-- 🟢 **Thrash** — `likely` · P2 (enc) · themes: status, damage · engine: status-fx, status-always, status-self · code: RECKLESS_ERRATA_MOVES:24304
+- 🟢 **Thrash** — `likely` · P2 (enc) · themes: status, damage · engine: status-fx, status-always, status-self · code: RECKLESS_ERRATA_MOVES:24999
   - _Normal Physical · DB 12 · AC 3 · Scene x2 · Melee, all adjacent foes, Smite_
   - After damage is dealt, the user becomes Enraged and Confused.
 
-- 🟡 **Venom Drench** — `partial` · P2 (enc) · themes: status · engine: cs
+- ✅ **Venom Drench** — `auto` · P2 (enc) · themes: status · engine: cs · code: CONNECTION_STATUS:21781, moveCSEffects:24725
   - _Poison Status · DB — · AC — · EOT · Cone 2_
-  - note: found-01: CS clause now parsed (⬆ Apply); still open: status
+  - note: v656: moveCSEffects tags "All Poisoned targets" entries `needs`; applyCSFx skips a target that is not Poisoned (held: "not Poisoned")
   - All Poisoned targets have their Attack, Special Attack, and Speed lowered by -1 CS. Venom Drench cannot miss.
 
-- 🟡 **Venoshock** — `partial` · P2 (enc) · themes: status · engine: special:conditionalDB
+- ✅ **Venoshock** — `auto` · P2 (enc) · themes: status · engine: special:conditionalDB
   - _Poison Special · DB 7 · AC 2 · Scene x2 · 6, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - If the target is Poisoned, Venoshock has a Damage Base of 13 (4d10+10 / 35) instead.
 
 - 🟢 **Arcane Storm** — `likely` · P3 · themes: status · engine: status-fx, status-always
@@ -1267,7 +1320,7 @@ P2 · 23 open of 25 · open
   - All targets of Arcane Storm are Slowed and Vulnerable for 1 Full Round.
     Limitation: Ranged Weapons only
 
-- 🟡 **Artillerolives** — `partial` · P3 · themes: status · engine: hazard-fx · code: HAZARD_SETTER_MOVES:22089
+- 🟡 **Artillerolives** — `partial` · P3 · themes: status · engine: hazard-fx · code: HAZARD_SETTER_MOVES:22529
   - _Grass Special · DB 5 · AC 3 · EOT · 4, 2 Targets; or 4, 1 Target (see text)_
   - note: Offers the Slick Hazards (new HAZARDS row, with the keyword's slide/Vulnerable as an entry effect). The two-Blast shape and the Double Strike branch are called at the table.
   - Once per Scene, you may create Slick Hazards in two Blasts 3, anywhere within range. If used on only 1 target, this Move gains the Double Strike keyword, and if Slick Hazards are created, you may create them in a single Blast 5, centered on the target. Special: The user may ignore Slick Hazards and does not have to stop shifting or become Vulnerable from them.
@@ -1291,7 +1344,7 @@ P2 · 23 open of 25 · open
   - note: an Interrupt/Reaction declared in response to somebody else's action; the initiative tracker never pauses for it
   - Beak Blast must be declared at the start of the round. If the user is hit by a Melee attack this round, the triggering attacker is Burned. At the end of the round, the user Shifts and attacks with Beak Blast.
 
-- 🟡 **Bon Mot** — `partial` · P3 · themes: status · code: MANIPULATE_EFFECTS:28901
+- 🟡 **Bon Mot** — `partial` · P3 · themes: status · code: MANIPULATE_EFFECTS:29862
   - _None Status · DB — · AC 2 · Standard · 6, 1 Target_
   - Make a Guile Check, opposed by the target's Guile or Focus. If you win, the target is Enraged and cannot spend AP for one full round. The target does not gain a Save Check against this effect.
 
@@ -1308,11 +1361,11 @@ P2 · 23 open of 25 · open
   - _Dark Status · DB — · AC 10 · EOT · Melee, 1 Target_
   - The target falls Asleep. Once per Scene, Dark Void may be used as if its range were "Burst 5, Friendly" instead.
 
-- 🟡 **Dirty Trick** — `partial` · P3 · themes: status · code: BATTLE_ACTIONS:26815
+- 🟡 **Dirty Trick** — `partial` · P3 · themes: status · code: BATTLE_ACTIONS:27714
   - _None Status · DB — · AC 2 · Standard · Melee, 1 Target_
   - You may perform any of the following Dirty Tricks: Hinder, Blind, or Low Blow. You may use each trick only once each Scene per target. Input each Dirty Trick for details.
 
-- ✅ **Electric Terrain** — `auto` · P3 · themes: status, typing · engine: field-fx · code: TERRAIN_DEFS:1600
+- ✅ **Electric Terrain** — `auto` · P3 · themes: status, typing · engine: field-fx · code: TERRAIN_DEFS:1646
   - _Electric Status · DB — · AC — · Daily x2 · Field_
   - note: found-05: sets Electric Terrain on the Map; the +10 Electric damage (terrainRollMods) and the grounded Sleep immunity (TERRAIN_STATUS_IMMUNITY) were already wired to it
   - The field becomes Electrified for 5 rounds. While the field is Electrified, Pokemon and Trainers touching the ground are immune to Sleep, and Electric-Type attacks used by Pokemon and Trainers touching the ground gain a +10 Bonus to Damage Rolls.
@@ -1328,10 +1381,11 @@ P2 · 23 open of 25 · open
 <a id="moves-05"></a>
 ## `moves-05` — Combat Stages (2/3)
 
-P2 · 4 open of 25 · open
+P2 · 1 open of 25 · open
 
-- 🟡 **Punishment** — `partial` · P2 (enc) · themes: cs · engine: special:valueDB · code: specialMoveInfo:24893
+- ✅ **Punishment** — `auto` · P2 (enc) · themes: cs · engine: special:valueDB · code: specialMoveInfo:25602
   - _Dark Physical · DB 6 · AC 2 · EOT · Melee, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - Punishment's Damage Base is raised by +1 for each Combat Stage the target has, to a maximum of DB 12.
 
 - 🟡 **Spectral Thief** — `partial` · P2 (enc) · themes: cs
@@ -1344,8 +1398,9 @@ P2 · 4 open of 25 · open
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - The target's Special Attack stat is lowered 1 CS.
 
-- 🟡 **Stored Power** — `partial` · P2 (pc) · themes: cs · engine: special:valueDB · code: specialMoveInfo:24883
+- ✅ **Stored Power** — `auto` · P2 (pc) · themes: cs · engine: special:valueDB · code: specialMoveInfo:25592
   - _Psychic Special · DB 2 · AC 2 · EOT · 10, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - For every Combat Stage the user has above 0, add +2 to Stored Power's Damage Base, up to a maximum of Damage Base 20.
 
 - ✅ **Topsy-Turvy** — `auto` · P2 (enc) · themes: cs
@@ -1369,17 +1424,17 @@ P2 · 4 open of 25 · open
   - The user's Speed is increased 1 CS. 
     Special: If the user is in Hangry Mode, Aura Wheel is Dark-Typed.
 
-- ✅ **Behemoth Bash** — `auto` · P3 · themes: cs · code: specialMoveInfo:24889
+- ✅ **Behemoth Bash** — `auto` · P3 · themes: cs · code: specialMoveInfo:25598
   - _Steel Physical · DB 10 · AC 2 · Scene x2 · Melee, 1 Target_
   - note: v604 MOVE_FX_ROWS row: applied for you
   - The DB of Behemoth Bash increases by +2 for each positive CS the target has, to a maximum of DB 20.
 
-- ✅ **Behemoth Blade** — `auto` · P3 · themes: cs · code: specialMoveInfo:24890
+- ✅ **Behemoth Blade** — `auto` · P3 · themes: cs · code: specialMoveInfo:25599
   - _Steel Physical · DB 10 · AC 2 · Scene x2 · Melee, 1 Target_
   - note: v604 MOVE_FX_ROWS row: applied for you
   - The DB of Behemoth Blade increases by +2 for each positive CS the target has, to a maximum of DB 20.
 
-- ✅ **Belly Drum** — `auto` · P3 · themes: cs · engine: cs, hp-fx · code: CS_PATTERNS:23991
+- ✅ **Belly Drum** — `auto` · P3 · themes: cs · engine: cs, hp-fx · code: CS_PATTERNS:24641
   - _Normal Status · DB — · AC — · Scene · Self_
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP paid (it reads as a COST, not a heal — the sentence gains a Combat Stage and loses the HP); the +6 Attack CS is found-01's
   - The user gains +6 Attack CS and loses HP equal to 1/2 of their Max HP.
@@ -1389,7 +1444,7 @@ P2 · 4 open of 25 · open
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - The user's Defense and Special Defense are each lowered by -1 Combat Stage.
 
-- ✅ **Coaching** — `auto` · P3 · themes: cs · engine: cs · code: trigRow:23778
+- ✅ **Coaching** — `auto` · P3 · themes: cs · engine: cs · code: trigRow:24428
   - _Fighting Status · DB — · AC — · EOT · Burst 1_
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - The user and any allies in the Burst have their Attack and Defense raised by 1 CS.
@@ -1404,16 +1459,17 @@ P2 · 4 open of 25 · open
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - Raise the user's Defense 3 Combat Stages.
 
-- ✅ **Cotton Spore** — `auto` · P3 · themes: cs, skill · engine: cs, powder · code: SEED_BAG_MOVES:33383
+- ✅ **Cotton Spore** — `auto` · P3 · themes: cs, skill · engine: cs, powder · code: SEED_BAG_MOVES:34482
   - _Grass Status · DB — · AC 2 · EOT · Burst 1, Powder_
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - All legal targets have their Speed lowered 2 Combat Stages.
 
-- 🟡 **Darkest Lariat** — `partial` · P3 · themes: cs · engine: def-pierce · code: MOVE_DEF_PIERCE:47326
+- ✅ **Darkest Lariat** — `auto` · P3 · themes: cs · engine: def-pierce · code: MOVE_DEF_PIERCE:48450
   - _Dark Physical · DB 9 · AC 2 · EOT · Melee, 1 Target_
+  - note: def-pierce parser
   - This Move ignores the target's positive Defense Combat Stages and all Damage Reduction.
 
-- ✅ **Decorate** — `auto` · P3 · themes: cs · engine: cs · code: CS_PATTERNS:23987
+- ✅ **Decorate** — `auto` · P3 · themes: cs · engine: cs · code: CS_PATTERNS:24637
   - _Fairy Status · DB — · AC — · Scene · Melee, 1 Target_
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - The target gains +2 CS in both Attack and Special Attack.
@@ -1423,7 +1479,7 @@ P2 · 4 open of 25 · open
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - The user's Defense and Special Defense are each lowered by -1 Combat Stage.
 
-- ✅ **Dynamax Cannon** — `auto` · P3 · themes: cs · code: specialMoveInfo:24891
+- ✅ **Dynamax Cannon** — `auto` · P3 · themes: cs · code: specialMoveInfo:25600
   - _Dragon Special · DB 10 · AC 2 · Scene x2 · 6, 1 Target_
   - note: v604 MOVE_FX_ROWS row: applied for you
   - The DB of Dynamax Cannon increases by +2 for each positive CS the target has, to a maximum of DB 20.
@@ -1456,10 +1512,11 @@ P2 · 4 open of 25 · open
 <a id="moves-08"></a>
 ## `moves-08` — Movement, push & switching (2/3)
 
-P2 · 22 open of 25 · open
+P2 · 19 open of 25 · open
 
-- 🟡 **Skitter Smack** — `partial` · P2 (enc) · themes: position · engine: cs
+- ✅ **Skitter Smack** — `auto` · P2 (enc) · themes: position · engine: cs
   - _Bug Physical · DB 7 · AC 2 · EOT · Melee, 1 Target, Dash, Full Action_
+  - note: v653 verified: the Special Attack drop parses (moveCSEffects); the pre-attack Shift is a Movement choice
   - The user Shifts up to its Overland Capability, ignoring Attacks of Opportunity, before attacking with Skitter Smack. On a hit, the target's Special Attack is lowered 1 CS.
 
 - 🟡 **Slam** — `partial` · P2 (enc, pc) · themes: position
@@ -1467,11 +1524,12 @@ P2 · 22 open of 25 · open
   - note: v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table
   - Slam may be used as a Free Action at the end of a Sprint Maneuver taken as a Standard Action, as long as the user Shifted at least 3 meters in a straight line towards the target. When used this way, Slam gains the Smite keyword.
 
-- 🟡 **Splash** — `partial` · P2 (enc, pc) · themes: position, multiturn · code: FLIP_OUT_MOVES:27526, flipOutSplash:27547, flipOutBox:27590
+- ✅ **Splash** — `auto` · P2 (enc, pc) · themes: position, multiturn · code: MOVE_FX_ROWS:24088, FLIP_OUT_MOVES:28453, flipOutSplash:28474, flipOutBox:28517
   - _Normal Status · DB — · AC — · At-Will · Self_
+  - note: v653: MOVE_FX_ROWS splash — +2 Evasion buff until the end of the next turn (the Jump is a Shift)
   - Shift Action - The user may make a single Jump, adding +1 to their Long Jump and High Jump values, and gains +2 Evasion until the end of their next turn. *Grants +1 Long Jump
 
-- 🟡 **Transform** — `partial` · P2 (enc) · themes: position, heal, multiturn, control, swap, status · code: openMoveRoll:25642, FEATURE_MODES:27125, attachPanZoom:52845
+- 🟡 **Transform** — `partial` · P2 (enc) · themes: position, heal, multiturn, control, swap, status · code: openMoveRoll:26535, FEATURE_MODES:28052, attachPanZoom:54259
   - _Normal Status · DB — · AC — · At-Will · 10, 1 Target_
   - The user targets a Pokemon within 10 meters and assumes the form of the target. It gains all of the target's Moves, Abilities, and Capabilities; and copies its weight and height. Transform lasts until the user is switched out, Fainted, or until the end of the encounter. The user may choose to end the Transformation on its turn as a free action, regaining its previous Move List. The user's Stats do not change from using Transform. Transform cannot miss.
 
@@ -1480,12 +1538,12 @@ P2 · 22 open of 25 · open
   - note: v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table
   - If Volt Switch successfully hits its target, the user deals damage and then immediately is returned to its Poke Ball in the same turn. A New Pokemon may immediately be sent out. Using Volt Switch lets a Trapped user be recalled
 
-- 🟡 **Whirlwind** — `partial` · P2 (enc, pc) · themes: position · engine: hazard-fx, weight · code: HAZARD_SETTER_MOVES:22101
+- 🟡 **Whirlwind** — `partial` · P2 (enc, pc) · themes: position · engine: hazard-fx, weight · code: HAZARD_SETTER_MOVES:22543
   - _Normal Status · DB — · AC 2 · Scene x2 · Line 6_
   - note: found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere
   - All targets are pushed X meters, where X is 8 minus their weight class. If the Line targets into a Smokescreen, the smoke is dispersed. All hazards in the Whirlwind are destroyed.
 
-- 🟡 **Attack of Opportunity** — `partial` · P3 · themes: position, interrupt, swap, status · code: BATTLE_ACTIONS:26860
+- 🟡 **Attack of Opportunity** — `partial` · P3 · themes: position, interrupt, swap, status · code: BATTLE_ACTIONS:27759
   - _None -- · DB — · AC — · Free · --_
   - You may make a Struggle Attack against the triggering foe as an Interrupt. You may use Attack of Opportunity only once per round. Attacks of Opportunity cannot be made by Sleeping, Flinched, or Paralyzed targets. Attacks of Opportunity can be triggered in multiple ways:
     »» An adjacent foe uses a Push, Grapple, Disarm, Trip, or Dirty Trick Maneuver that does not target you.
@@ -1494,8 +1552,9 @@ P2 · 22 open of 25 · open
     »» An adjacent foe uses a Standard Action to pick up or retrieve an item.
     »» An adjacent foe Shifts out of a Square adjacent to you.
 
-- 🟡 **Bounce** — `partial` · P3 · themes: position · engine: range, range-status, status-fx, status-always · code: trigRow:23760, FLIP_OUT_MOVES:27526
+- ✅ **Bounce** — `auto` · P3 · themes: position · engine: range, range-status, status-fx, status-always · code: trigRow:24410, FLIP_OUT_MOVES:28453
   - _Flying Physical · DB 9 · AC 4 · Scene x2 · Melee, 1 Target, Dash, Full Action_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - The user first Shifts, gaining a +1 Bonus to Movement Speed and to their Jump Capabilities. After the user Shifts, they may attack with Bounce. The target becomes Vulnerable, and is Paralyzed on 16+. Grants High Jump +1
 
 - ✅ **Brave Bird** — `auto` · P3 · themes: position · engine: hp-fx
@@ -1508,17 +1567,17 @@ P2 · 22 open of 25 · open
   - note: found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere
   - The user may push the target up to 2 meters away.
 
-- 🟡 **Cone of Force** — `partial` · P3 · themes: position · code: _mvBuff:23581
+- 🟡 **Cone of Force** — `partial` · P3 · themes: position · code: _mvBuff:24159
   - _Normal Special · DB 6 · AC 2 · Scene x2 · Cone 2, Push_
   - note: v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest
   - Cone of Force Pushes all targets 2 meters, and lowers their Evasion by -2 for 1 full round..
     Limitation: Melee Weapons Only
 
-- 🟡 **Disengage** — `partial` · P3 · themes: position · code: BATTLE_ACTIONS:26844
+- 🟡 **Disengage** — `partial` · P3 · themes: position · code: BATTLE_ACTIONS:27743, ACTION_FEATURE_NOTES:27786
   - _None -- · DB — · AC — · Shift · --_
   - You may Shift 1 Meter. Shifting this way does not provoke an Attack of Opportunity.
 
-- 🟡 **Flash Step** — `partial` · P3 · themes: position · code: GAUNTLETS:36970
+- 🟡 **Flash Step** — `partial` · P3 · themes: position · code: GAUNTLETS:38073
   - _Psychic Physical · DB 6 · AC — · EOT · Melee, 1 Target_
   - This Move cannot miss. Before attacking, the user may Teleport 4 into a square adjacent to a foe as a Shift Action.
 
@@ -1527,12 +1586,12 @@ P2 · 22 open of 25 · open
   - note: found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards
   - Set-Up Effect: The user is moved up 25 meters into the air. Resolution Effect: The user may shift twice while in the air, using their overland or sky speed, and then comes down next to a legal target, and attacks with Fly. *Grants: Sky +3
 
-- 🟡 **Follow Me** — `partial` · P3 · themes: position, multiturn, status · code: _mvBuff:23554
+- 🟡 **Follow Me** — `partial` · P3 · themes: position, multiturn, status · code: ABILITY_ACTION_ROWS:3586, _mvBuff:24128
   - _Normal Status · DB — · AC — · Scene · Burst 5, Social_
   - note: v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table
   - Until the end of the user's next turn, all Foes must target the user when using a Move that targets their opponents. This effect ends if the user is Fainted or Switched out.
 
-- 🟡 **Grapple** — `partial` · P3 · themes: position, status · engine: weight · code: TECH_PRESS:164, BATTLE_ACTIONS:26825
+- 🟡 **Grapple** — `partial` · P3 · themes: position, status · engine: weight · code: TECH_PRESS:164, BATTLE_ACTIONS:27724, ACTION_FEATURE_NOTES:27790
   - _None Status · DB — · AC 4 · Standard · Melee, 1 Target_
   - You and the target each make opposed Combat or Athletics Checks. If you win, you and the target each become Grappled, and you gain Dominance in the Grapple.
     
@@ -1588,7 +1647,7 @@ P2 · 22 open of 25 · open
     Additional Rules
     »» …
 
-- 🟡 **Jump Kick** — `partial` · P3 · themes: position · engine: hp-fx · code: RECKLESS_MOVES:24297, RECKLESS_ERRATA_MOVES:24302
+- 🟡 **Jump Kick** — `partial` · P3 · themes: position · engine: hp-fx · code: RECKLESS_MOVES:24992, RECKLESS_ERRATA_MOVES:24997
   - _Fighting Physical · DB 10 · AC 3 · At-Will · Melee, Dash, 1 Target_
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP, offered only when the roll missed (and flagged ⚠ when it did). Left: the Gravity prohibition, and a Shield not counting as a miss
   - If Jump Kick misses, the user loses Hit Points equal to 1/4th of their Max Hit Points. A failure to hit due to a Move with the Shield keyword does not count as a miss. This cannot be used if Gravity is in effect.
@@ -1601,9 +1660,9 @@ P2 · 22 open of 25 · open
 <a id="moves-03"></a>
 ## `moves-03` — Status afflictions (3/3)
 
-P3 · 26 open of 28 · open
+P3 · 25 open of 28 · open
 
-- 🟡 **Flirt** — `partial` · P3 · themes: status · code: MANIPULATE_EFFECTS:28903
+- 🟡 **Flirt** — `partial` · P3 · themes: status · code: MANIPULATE_EFFECTS:29864
   - _None Status · DB — · AC 2 · Standard · 6, 1 Target_
   - Make a Charm Check, opposed by the target's Charm or Focus. If you win, the target is Infatuated with you for one full round. The target automatically fails their Save Check.
 
@@ -1617,7 +1676,7 @@ P3 · 26 open of 28 · open
   - note: v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table
   - On hit, you may choose to become Vulnerable for 1 full round. If you do, this attack is one step more effective. Additionally, the next successful damaging attack against you while Vulnerable this way is automatically a Critical Hit.
 
-- 🟡 **Hinder** — `partial` · P3 · themes: status · code: _mvBuff:23552
+- 🟡 **Hinder** — `partial` · P3 · themes: status · code: _mvBuff:24126
   - _None Status · DB — · AC 2 · Standard · Melee, 1 Target_
   - note: v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table
   - You and the target make Opposed Athletics Checks. If you win, the target is Slowed and takes a -2 penalty to all Skill Checks for one full round.
@@ -1632,20 +1691,20 @@ P3 · 26 open of 28 · open
   - note: Sweeps the Burst 5. Who placed a marker is not recorded on the Map, so 'only the foes' is called at the table; the targets' Poisoned rides the hit through found-02.
   - This Move destroys all Hazards within a Burst 5 that were placed by foes, removes Leech Seeds, and removes the user's Trapped or Stuck conditions. All targets that are hit are Poisoned.
 
-- 🟢 **Nightmare** — `likely` · P3 · themes: status · engine: status-fx, status-always · code: AURA_DEFS:19295, LEGENDARY_AURAS:19443
+- 🟢 **Nightmare** — `likely` · P3 · themes: status · engine: status-fx, status-always · code: AURA_DEFS:19668, LEGENDARY_AURAS:19816
   - _Ghost Status · DB — · AC 2 · Scene x2 · Melee, 1 Target_
   - Nightmare can only hit Legal Targets that are Asleep. The target gains Bad Sleep.
 
-- 🟡 **Octolock** — `partial` · P3 · themes: status · engine: cs · code: GAUNTLETS:36974
+- 🟡 **Octolock** — `partial` · P3 · themes: status · engine: cs · code: GAUNTLETS:38077
   - _Fighting Status · DB — · AC 2 · Scene · Melee, 1 Target_
   - note: found-01: CS clause now parsed (⬆ Apply); still open: status
   - The user initiates a Grapple Maneuver with the target, which automatically hits. If successful, until the user no longer has Dominance in the grapple, the target is Trapped and loses 1 CS in Defense and Special Defense at the end of each of their turns.
 
-- 🟢 **Petal Dance** — `likely` · P3 · themes: status, damage · engine: status-fx, status-always, status-self · code: RECKLESS_ERRATA_MOVES:24303
+- 🟢 **Petal Dance** — `likely` · P3 · themes: status, damage · engine: status-fx, status-always, status-self · code: RECKLESS_ERRATA_MOVES:24998
   - _Grass Special · DB 12 · AC 3 · Scene x2 · Melee, All Adjacent Foes, Smite_
   - After damage is dealt, the user becomes Enraged and Confused.
 
-- 🟡 **Rapid Spin [SS]** — `partial` · P3 · themes: status, cure · engine: cs, hazard-fx · code: CS_PATTERNS:23957
+- 🟡 **Rapid Spin [SS]** — `partial` · P3 · themes: status, cure · engine: cs, hazard-fx · code: CS_PATTERNS:24607
   - _Normal Physical · DB 5 · AC 2 · At-Will · Melee, 1 Target, Spirit Surge_
   - note: Same sweep; the +1 Speed CS on a hit belongs to the Combat Stages batch.
   - Rapid Spin destroys all Hazards within 5 meters, removes Leech Seeds, and removes the user's Trapped or Stuck status. If Rapid Spin hits, the user's speed raises 1 CS.
@@ -1681,7 +1740,7 @@ P3 · 26 open of 28 · open
   - _Ghost Physical · DB 8 · AC 2 · EOT · 8, 1 Target_
   - The Target is Trapped for 2 rounds.
 
-- 🟢 **Spore** — `likely` · P3 · themes: status · engine: status-fx, status-always, powder · code: CONNECTION_STATUS:21342, SEED_BAG_MOVES:33383
+- 🟢 **Spore** — `likely` · P3 · themes: status · engine: status-fx, status-always, powder · code: CONNECTION_STATUS:21767, SEED_BAG_MOVES:34482
   - _Grass Status · DB — · AC — · Scene · 4, 1 Target, Powder_
   - The target falls Asleep.
 
@@ -1705,8 +1764,9 @@ P3 · 26 open of 28 · open
   - _Electric Special · DB 8 · AC 4 · Daily x2 · 8, Ranged Blast 2, Spirit Surge_
   - The targets are trapped in a Vortex. The DC to escape the Vortex is increased by 3.
 
-- 🟡 **Thunder Wave [SM]** — `partial` · P3 · themes: typing · engine: status-fx, status-always
+- ✅ **Thunder Wave [SM]** — `auto` · P3 · themes: typing · engine: status-fx, status-always
   - _Electric Status · DB — · AC 4 · Scene x2 · 6, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB) + statusBlockFor immuneType
   - Thunder Wave Paralyzes the target. Pokemon immune to Electric Attacks are immune to Thunder Wave's effects.
 
 - 🟢 **Titanic Slam** — `likely` · P3 · themes: status · engine: status-fx
@@ -1714,11 +1774,11 @@ P3 · 26 open of 28 · open
   - On Even-Numbered Rolls, the target is Slowed for one full round.
     Limitation: Melee Weapons Only
 
-- 🟢 **Toxic** — `likely` · P3 · themes: status · engine: status-fx, status-always
+- 🟢 **Toxic** — `likely` · P3 · themes: status · engine: status-fx, status-always · code: CONNECTION_STATUS:21780
   - _Poison Status · DB — · AC 4 · Scene x2 · 4, 1 Target_
   - The target is Badly Poisoned. If the user is Poison Type, Toxic cannot miss.
 
-- 🟡 **Trip** — `partial` · P3 · themes: status · code: trigRow:23698, BATTLE_ACTIONS:26823
+- 🟡 **Trip** — `partial` · P3 · themes: status · code: trigRow:24348, BATTLE_ACTIONS:27722, ACTION_FEATURE_NOTES:27790
   - _None Status · DB — · AC 6 · Standard · Melee, 1 Target_
   - You and the target each make opposed Combat or Acrobatics Checks. If you win, the target is knocked over and Tripped.
 
@@ -1729,9 +1789,9 @@ P3 · 26 open of 28 · open
 <a id="moves-06"></a>
 ## `moves-06` — Combat Stages (3/3)
 
-P3 · 6 open of 19 · open
+P3 · 5 open of 19 · open
 
-- ✅ **Glint** — `auto` · P3 · themes: cs, skill · engine: cs · code: CS_PATTERNS:23958
+- ✅ **Glint** — `auto` · P3 · themes: cs, skill · engine: cs · code: CS_PATTERNS:24608
   - _Steel Special · DB 5 · AC 2 · At-Will · 5, 1 Target_
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - The target cannot make Attacks of Opportunity for 1 full round and their Attack is lowered by -1 Combat Stage.
@@ -1741,7 +1801,7 @@ P3 · 6 open of 19 · open
   - note: v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods
   - The user and the target trade Combat Stage values for the Defense Stat, and then for the Special Defense Stat.
 
-- ✅ **Hammer Arm** — `auto` · P3 · themes: cs · engine: cs · code: CS_PATTERNS:23979, IRON_FIST_MOVES:24189, RECKLESS_ERRATA_MOVES:24303
+- ✅ **Hammer Arm** — `auto` · P3 · themes: cs · engine: cs · code: CS_PATTERNS:24629, IRON_FIST_MOVES:24883, RECKLESS_ERRATA_MOVES:24998
   - _Fighting Physical · DB 10 · AC 3 · EOT · Melee, 1 Target_
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - The user lowers their Speed by -1 CS.
@@ -1756,7 +1816,7 @@ P3 · 6 open of 19 · open
   - note: found-10 coat/shield state + card; riposte/side effects noted for the GM
   - If the user is hit by an attack, the user may use King's Shield. The user is instead not hit by the Move. You do not take any damage nor are you affected by any of the Move's effects. In addition, if the triggering attack was Melee ranged, the attacker's Attack is lowered by -2 CS.
 
-- ✅ **Leaf Storm** — `auto` · P3 · themes: cs, damage, skill · engine: cs · code: ROTOM_POLTERGEIST:20898, RECKLESS_ERRATA_MOVES:24303
+- ✅ **Leaf Storm** — `auto` · P3 · themes: cs, damage, skill · engine: cs · code: ROTOM_POLTERGEIST:21322, RECKLESS_ERRATA_MOVES:24998
   - _Grass Special · DB 13 · AC 4 · Scene · 8, Ranged Blast 3, Smite_
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - Lower the user's Special Attack 2 Combat Stages after damage.
@@ -1771,12 +1831,13 @@ P3 · 6 open of 19 · open
   - note: v593 main effect automated; the damage roll is separate; the +1 stage is a press on the card
   - The user receives +1 Combat Stage in their highest non-HP stat.
 
-- 🟡 **Nihil Light** — `partial` · P3 · themes: cs · engine: def-pierce, target-rules · code: MEGA_MOVE_SWAPS:2135, MOVE_DEF_PIERCE:47330
+- ✅ **Nihil Light** — `auto` · P3 · themes: cs · engine: def-pierce, target-rules · code: MEGA_MOVE_SWAPS:2181, MOVE_DEF_PIERCE:48454
   - _Dragon Special · DB 20 · AC 2 · Daily · Close Blast 3, Smite_
+  - note: def-pierce + target-rules
   - Nihil Light ignores the targets' Combat Stage changes to Defense and Special Defense, in both directions. Fairy-Type targets are not immune to it: they take it as a neutral hit, and a dual-Type target with Fairy counts only its OTHER Type for effectiveness.
     Nihil Light is exclusive to Mega Zygarde. A Complete Forme Zygarde that knows Core Enforcer has that Move replaced by Nihil Light for as long as it stays Mega Evolved.
 
-- ✅ **Noble Roar** — `auto` · P3 · themes: cs · engine: cs · code: GAUNTLETS:36998
+- ✅ **Noble Roar** — `auto` · P3 · themes: cs · engine: cs · code: GAUNTLETS:38101
   - _Normal Status · DB — · AC 2 · EOT · Burst 1, Sonic, Friendly, Social_
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - Noble Roar lowers all legal targets' Attack and Special Attack by +1 CS.
@@ -1811,7 +1872,7 @@ P3 · 6 open of 19 · open
   - note: v593 main effect automated; once-per-choice limit by hand
   - Choose either Attack or Special Attack. Raise the chosen Stat of the user or an ally within range by +3 Combat Stages. You cannot make the same choice twice in the same Scene.
 
-- ✅ **Tearful Look** — `auto` · P3 · themes: cs · engine: cs · code: CS_PATTERNS:23992
+- ✅ **Tearful Look** — `auto` · P3 · themes: cs · engine: cs · code: CS_PATTERNS:24642
   - _Normal Status · DB — · AC 2 · EOT · Burst 1, Social, Friendly_
   - note: found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll
   - All legal targets lose -1 Attack and Special Attack CS each.
@@ -1829,14 +1890,14 @@ P3 · 6 open of 19 · open
 <a id="moves-09"></a>
 ## `moves-09` — Movement, push & switching (3/3)
 
-P3 · 13 open of 19 · open
+P3 · 11 open of 19 · open
 
 - ✅ **Mudslide** — `auto` · P3 · themes: position
   - _Ground Special · DB 8 · AC 4 · Scene x2 · 6, Ranged Blast 3, Groundsource, Push_
   - note: found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere
   - Choose a direction. All legal targets are Pushed 2 meters in that direction. Ice Moves
 
-- 🟡 **No Retreat** — `partial` · P3 · themes: position, multiturn, status · engine: cs · code: CS_ALL_TARGET_RE:24014
+- 🟡 **No Retreat** — `partial` · P3 · themes: position, multiturn, status · engine: cs · code: CS_ALL_TARGET_RE:24664
   - _Fighting Status · DB — · AC — · Scene · Self_
   - note: found-01: CS clause now parsed (⬆ Apply); still open: position, multiturn, status
   - The user gains +1 CS in each stat. In addition, the user may not be recalled or switched out until the end of the Scene, and counts as Slowed for the purposes of any movement that would end further away from the nearest enemy than the user started.
@@ -1866,16 +1927,18 @@ P3 · 13 open of 19 · open
   - note: v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods
   - Choose a legal target. The chosen target may not gain Hit Points or Temporary Hit Points from any source, until it is switched out. This counts as a Volatile Affliction.
 
-- 🟡 **Push** — `partial` · P3 · themes: position · code: TECH_PRESS:164, TECH_FX:182, openTrainerAttack:9909, trigRow:23698, BATTLE_ACTIONS:26821, enemyTokenRows:52265
+- 🟡 **Push** — `partial` · P3 · themes: position · code: TECH_PRESS:164, TECH_FX:182, openTrainerAttack:10250, trigRow:24348, BATTLE_ACTIONS:27720, ACTION_FEATURE_NOTES:27790, enemyTokenRows:53679
   - _None Status · DB — · AC 4 · Standard · Melee, 1 Target_
   - You and the target each make opposed Combat or Athletics Checks. If you win, the target is Pushed back 1 Meter directly away from you. If you have Movement remaining this round, you may then Move into the newly occupied Space, and Push the target again. This continues until you choose to stop, or have no Movement remaining for the round. Push may only be used against a target whose weight is no heavier than your Heavy Lifting rating.
 
-- 🟡 **Rage Powder** — `partial` · P3 · themes: position · engine: status-fx, status-always
+- ✅ **Rage Powder** — `auto` · P3 · themes: position · engine: status-fx, status-always
   - _Bug Status · DB — · AC — · Scene x2 · Burst 1 or Line 6; Powder_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - All legal targets hit by Rage Powder are Enraged. While enraged, they must shift to target the user when using a Move or Attack if the user is within reach. If the user is Fainted or Switched out, all legal targets hit by Rage Powder are no longer Enraged.
 
-- 🟡 **Ruination** — `partial` · P3 · themes: position · engine: status-fx, status-always
+- ✅ **Ruination** — `auto` · P3 · themes: position · engine: status-fx, status-always
   - _Dark Status · DB — · AC 4 · Scene x2 · 4, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - The target becomes Cursed and Vulnerable until it is switched out.
 
 - 🟡 **Shadow Force** — `partial` · P3 · themes: position, interrupt, multiturn, swap
@@ -1924,10 +1987,11 @@ P3 · 13 open of 19 · open
 <a id="moves-11"></a>
 ## `moves-11` — Healing, drain, recoil & HP (2/3)
 
-P3 · 18 open of 25 · open
+P3 · 15 open of 25 · open
 
-- 🟡 **Endeavor** — `partial` · P3 · themes: heal · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:24709
+- ✅ **Endeavor** — `auto` · P3 · themes: heal · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:25418
   - _Normal Physical · DB — · AC 2 · Scene · Melee, 1 Target, Dash_
+  - note: SPECIAL_FIXED_DAMAGE
   - The target loses a Tick of Hit Points for each Injury the user has.
 
 - 🟡 **Fillet Away** — `partial` · P3 · themes: heal
@@ -1935,21 +1999,23 @@ P3 · 18 open of 25 · open
   - note: v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest
   - The next successful damaging Psychic attack made by the user is automatically a Critical Hit. The user may sacrifice three Ticks of Hit Points. If they do so, choose one: » Fillet Away becomes a Swift Action. » An adjacent Ally gains 3 Ticks of Temporary Hit Points. 39
 
-- 🟡 **Final Gambit** — `partial` · P3 · themes: heal · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:24710
+- ✅ **Final Gambit** — `auto` · P3 · themes: heal · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:25419
   - _Fighting Special · DB — · AC 2 · Scene · Melee, 1 Target_
+  - note: SPECIAL_FIXED_DAMAGE
   - Final Gambit lowers the user to 0 Hit Points and causes them to Faint. Final Gambit then deals 1 point of damage to the target for every Hit Point lost by the user. Final Gambit does not cause items to activate.
 
-- 🟡 **Focus Punch** — `partial` · P3 · themes: heal, interrupt · code: IRON_FIST_MOVES:24189
+- 🟡 **Focus Punch** — `partial` · P3 · themes: heal, interrupt · code: IRON_FIST_MOVES:24883
   - _Fighting Physical · DB 15 · AC 2 · Scene x2 · Melee, 1 Target, Priority (Limited), Aura_
   - Use of Focus Punch must be declared as a Priority (Limited) action at the beginning of the round. Nothing happens at this time. At the end of the round, if the target hasn't been hit by an attack dealing damage equal to at least 25% of the user's Maximum Hit Points, the user may Shift and use Focus Punch. Focus Punch's Frequency is not expended if it is negated by an attack.
 
-- ✅ **Grassy Terrain** — `auto` · P3 · themes: heal · engine: field-fx · code: TERRAIN_DEFS:1607
+- ✅ **Grassy Terrain** — `auto` · P3 · themes: heal · engine: field-fx · code: TERRAIN_DEFS:1653
   - _Grass Status · DB — · AC — · Daily x2 · Field_
   - note: found-05: sets Grassy Terrain on the Map; the +10 Grass damage and the 1/10 Max HP per turn (terrainTickReport) were already wired to it
   - The area becomes Grassy for 5 rounds. While Grassy, all Pokemon and Trainers standing on the ground recover 1/10th of their maximum Hit Points at the start of every turn, and Grass-Type attacks performed by grounded Pokemon and Trainers gain a +10 bonus to Damage Rolls.
 
-- 🟡 **Hard Press** — `partial` · P3 · themes: heal · engine: special:conditionalDB
+- ✅ **Hard Press** — `auto` · P3 · themes: heal · engine: special:conditionalDB
   - _Steel Physical · DB 6 · AC 2 · Scene x2 · Melee, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - If the target's Hit Points are above 50%, this Move's Damage Base is doubled to Damage Base 12 (3d12+10 / 30).
 
 - ✅ **Heal Order** — `auto` · P3 · themes: heal · engine: hp-fx
@@ -1957,7 +2023,7 @@ P3 · 18 open of 25 · open
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, one press
   - The user regains HP equal to half of its full HP.
 
-- 🟡 **Hold Hands** — `partial` · P3 · themes: heal · code: _mvBuff:23549
+- 🟡 **Hold Hands** — `partial` · P3 · themes: heal · code: _mvBuff:24123
   - _Normal Status · DB — · AC — · Scene x2 · Melee, 1 Target_
   - note: v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table
   - Both the user and the target become Cheered. They may give up the Cheered condition when making a Save Check to roll twice and take the best result.
@@ -1978,7 +2044,7 @@ P3 · 18 open of 25 · open
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the 50% heal. Left: curing every Status and the +2 Evasion
   - The user regains hit points equal to 50% of its Hit Point total, cures all of its Status conditions, and gains +2 Evasion.
 
-- ✅ **Lunar Dance** — `auto` · P3 · themes: cure, capture · engine: hp-fx · code: SACRIFICE_HEAL_MOVES:5842
+- ✅ **Lunar Dance** — `auto` · P3 · themes: cure, capture · engine: hp-fx · code: SACRIFICE_HEAL_MOVES:6127
   - _Psychic Status · DB — · AC — · Daily · 8.0_
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the roll now opens openSacrificeHeal itself (3 Injuries healed against the day's cap, healed to full, Move Frequencies restored, the user Faints)
   - The user immediately Faints, lowering its Hit Points to 0. The user takes no Injuries from Hit Point Markers when using Lunar Dance. The target is immediately cured of up to 3 injuries, healed to their Maximum Hit Points, and has the Frequency of all Moves restored. Lunar Dance may target a Pokemon in a Poke Ball. Lunar Dance does not restore the Frequency of Healing Wish or Lunar Dance. Injuries healed through Lunar Dance count toward the total number of Injuries that can be healed each day, and this healing is limited by the same.
@@ -2011,11 +2077,11 @@ P3 · 18 open of 25 · open
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the ally printing (half their Max HP), labelled with its condition. Left: the once-per-Scene switch between the attack and the heal
   - Once per Scene, Pollen Puff may instead be used on an ally; when used this way, the target recovers 1/2 of their maximum Hit Points and the Move has the Healing keyword.
 
-- 🟡 **Poltergeist** — `partial` · P3 · themes: heal, swap · code: derivedMonMoves:20840, poltergeistGrant:20901
+- 🟡 **Poltergeist** — `partial` · P3 · themes: heal, swap · code: derivedMonMoves:21234, poltergeistGrant:21325
   - _Ghost Physical · DB 11 · AC 4 · Scene · 8, Ranged Blast 3, Smite_
   - If a target is holding a Held Item or Main or OffHand item, they must either drop it immediately or lose a Tick of Hit Points. This may only cause a target to lose at most one Tick of Hit Points, no matter how many items they were holding. On each of the target's subsequent turns, if it is still holding the item(s) in question it loses a Tick of Hit Points.
 
-- 🟡 **Purify** — `partial` · P3 · themes: heal, cure · code: MOVE_FX_ROWS:23516
+- 🟡 **Purify** — `partial` · P3 · themes: heal, cure · code: MOVE_FX_ROWS:24072
   - _Poison Status · DB — · AC — · Scene · Melee, 1 Target_
   - note: v593 main effect automated; the Tick regained per status is by hand
   - The target is cured of all Permanent and Volatile Statuses. For every status removed, the user recovers a Tick of Hit Points.
@@ -2024,7 +2090,7 @@ P3 · 18 open of 25 · open
   - _Normal Special · DB 3 · AC 2 · EOT · WR, 1 Target_
   - The target loses a Tick of Hit Points on 16+.
 
-- 🟡 **Rest** — `partial` · P3 · themes: cure · engine: status-fx, status-always, status-self, hp-fx · code: trainerXpCard:10593, cardApply:15871, cardFxText:15971, giftSkillRiders:21219, moveCSEffects:24069, GAUNTLETS:36998, restUpsertKeepalive:45397
+- 🟡 **Rest** — `partial` · P3 · themes: cure · engine: status-fx, status-always, status-self, hp-fx · code: trainerXpCard:10934, cardApply:16232, cardFxText:16332, giftSkillRiders:21644, moveLockReason:23468, moveCSEffects:24719, GAUNTLETS:38101, restUpsertKeepalive:46518
   - _Psychic Status · DB — · AC — · Scene · Self, Healing_
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): healed to full in one press. Left: curing Status, falling Asleep and the two-round wake-up
   - The user is set to their full Hit Point value. The user is cured of any Status ailments. Then, the user falls Asleep. The user cannot make Sleep Checks at the beginning of their turn. They are cured of the Sleep at the end of their turn in 2 rounds.
@@ -2047,7 +2113,7 @@ P3 · 18 open of 25 · open
 <a id="moves-12"></a>
 ## `moves-12` — Healing, drain, recoil & HP (3/3)
 
-P3 · 6 open of 8 · open
+P3 · 5 open of 8 · open
 
 - ✅ **Steel Beam** — `auto` · P3 · themes: heal · engine: hp-fx
   - _Steel Special · DB 14 · AC 3 · Daily · Cone 3, Smite_
@@ -2064,11 +2130,11 @@ P3 · 6 open of 8 · open
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP on a miss only. Left: the Gravity prohibition, and a Shield not counting as a miss
   - If this Move misses, the user loses Hit Points equal to 1/4th of their Max Hit Points. A failure to hit due to a Move with the Shield keyword does not count as a miss. This Move cannot be used if Gravity is in effect.
 
-- 🟡 **Terrorize** — `partial` · P3 · themes: heal · code: FOE_FX:28570, MANIPULATE_EFFECTS:28905
+- 🟡 **Terrorize** — `partial` · P3 · themes: heal · code: FOE_FX:29531, MANIPULATE_EFFECTS:29866
   - _None Status · DB — · AC 2 · Standard · 6, 1 Target_
   - Make an Intimidate Check, opposed by the target's Intimidate or Focus. If you win, the target loses all Temporary Hit Points and can only use At-Will Frequency Moves for one full round.
 
-- 🟡 **Toxic Threads** — `partial` · P3 · themes: heal · engine: cs, status-fx, status-always · code: CS_PATTERNS:23991
+- 🟡 **Toxic Threads** — `partial` · P3 · themes: heal · engine: cs, status-fx, status-always · code: CS_PATTERNS:24641
   - _Poison Status · DB — · AC 2 · Scene x2 · 6, 1 Target_
   - note: found-01: CS clause now parsed (⬆ Apply); still open: heal, status
   - The target is Poisoned and receives -1 Speed Combat Stage. If the target is already Poisoned, they instead lose a Tick of Hit Points and receive -2 Speed Combat Stages.
@@ -2077,24 +2143,26 @@ P3 · 6 open of 8 · open
   - _Dark Special · DB 11 · AC 7 · Scene x2 · 6, 1 Target, Smite, Spirit Surge_
   - Suppresses all legal targets on 15+. Any foes adjacent to the target lose 10 Hit Points.
 
-- 🟡 **Wounding Strike** — `partial` · P3 · themes: heal · code: LIVING_WEAPON_FORMS:8254
+- 🟡 **Wounding Strike** — `partial` · P3 · themes: heal · code: LIVING_WEAPON_FORMS:8577
   - _Normal Physical · DB 6 · AC 2 · EOT · WR, 1 Target_
   - The target loses a Tick of Hit Points.
 
-- 🟡 **Zantetsuken** — `partial` · P3 · themes: heal · engine: status-fx, status-always
+- ✅ **Zantetsuken** — `auto` · P3 · themes: heal · engine: status-fx, status-always
   - _Steel Physical · DB 11 · AC 5 · Scene · Melee, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - This Move automatically Critically Hits targets at or below half of their Max Hit Points. After dealing damage, the target becomes Vulnerable for one full round. 44
 
 <a id="moves-14"></a>
 ## `moves-14` — Set-Up, charge & multi-turn (2/2)
 
-P3 · 20 open of 23 · open
+P3 · 14 open of 23 · open
 
-- 🟡 **Double Shock** — `partial` · P3 · themes: multiturn · engine: typemod · code: isCombatDurBuff:48838
+- ✅ **Double Shock** — `auto` · P3 · themes: multiturn · engine: typemod · code: isCombatDurBuff:49981
   - _Electric Physical · DB 12 · AC 2 · Daily x2 · Close Blast 2, Smite, Spirit Surge_
+  - note: o.typeMods burnup-style loss
   - If the user is an Electric Type, they lose the Electric Type until the start of their next turn.
 
-- 🟡 **Electrify** — `partial` · P3 · themes: multiturn · code: _mvBuff:23543
+- 🟡 **Electrify** — `partial` · P3 · themes: multiturn · code: _mvBuff:24117
   - _Electric Status · DB — · AC — · EOT · 6, 1 Target._
   - note: v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table
   - Until the end of the user's next turn, the target's damaging Water-Type attacks and Melee attacks of any Type deal Electric-Type Damage instead of their usual Type.
@@ -2109,12 +2177,14 @@ P3 · 20 open of 23 · open
   - note: found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards
   - Set-Up Effect: The user may shift, then ends their turn. Resolution Effect: The user attacks with Freeze Shock. Freeze Shock paralyzes on 15+.
 
-- 🟡 **Fusion Bolt** — `partial` · P3 · themes: multiturn · engine: special:conditionalDB
+- ✅ **Fusion Bolt** — `auto` · P3 · themes: multiturn · engine: special:conditionalDB
   - _Electric Physical · DB 10 · AC 2 · Scene x2 · 8, 1 Target, Smite_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - Fusion Bolt has its Damage Base increased by +3 if Fusion Flare was used this round or last round by any participant of the encounter.
 
-- 🟡 **Fusion Flare** — `partial` · P3 · themes: multiturn · engine: special:conditionalDB
+- ✅ **Fusion Flare** — `auto` · P3 · themes: multiturn · engine: special:conditionalDB
   - _Fire Special · DB 10 · AC 2 · Scene x2 · 8, 1 Target, Smite_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - If Fusion Bolt was used this round or last round by any participant of the encounter, Fusion Flare has its Damage Base increased by +3.
 
 - ⚪ **Gastro Acid** — `manual` · P3 · themes: multiturn, control, swap, status
@@ -2122,15 +2192,17 @@ P3 · 20 open of 23 · open
   - note: swaps or lends Abilities/stats between creatures — done at the table
   - The target's Ability is disabled until the end of the encounter. If the target has more than one ability, you choose one of them to disable.
 
-- 🟡 **Gigaton Hammer** — `partial` · P3 · themes: multiturn · engine: status-fx, status-always, status-self
-  - _Steel Physical · DB 16 · AC 2 · Scene x2 · Melee, 1 Target, Smite, Reckless_
+- ✅ **Gigaton Hammer** — `auto` · P3 · themes: multiturn · engine: status-fx, status-always, status-self
+  - _Steel Physical · DB 16 · AC 2 · Daily x1 · Melee, 1 Target, Smite, Reckless_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - After dealing damage, the user becomes Slowed and Vulnerable until the end of their next turn.
 
-- 🟡 **Glacial Lance** — `partial` · P3 · themes: multiturn · engine: status-fx, status-always
+- ✅ **Glacial Lance** — `auto` · P3 · themes: multiturn · engine: status-fx, status-always
   - _Ice Physical · DB 13 · AC 2 · Daily · Line 8, Smite_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - Legal targets hit by Glacial Lance are Stuck and Trapped until the end of their next turn.
 
-- 🟡 **Guard Split** — `partial` · P3 · themes: multiturn · code: _mvBuff:23547
+- 🟡 **Guard Split** — `partial` · P3 · themes: multiturn · code: _mvBuff:24121
   - _Psychic Status · DB — · AC — · Scene · Melee, 1 Target_
   - note: v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table
   - The target loses 5 Defense and 5 Special Defense. If they do, the user gains 5 Damage Reduction. These effects last until the end of the Scene.
@@ -2140,12 +2212,12 @@ P3 · 20 open of 23 · open
   - note: found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards
   - Set-Up Effect: The user may shift, then ends their turn. Resolution Effect: The user attacks with Ice Burn. Ice Burn Burns on 15+.
 
-- 🟡 **Lash Out** — `partial` · P3 · themes: multiturn, cs · code: specialMoveInfo:24892
+- 🟡 **Lash Out** — `partial` · P3 · themes: multiturn, cs · code: specialMoveInfo:25601
   - _Dark Physical · DB 8 · AC 2 · EOT · Melee, 1 Target_
   - note: v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table
   - If the user has lost CS from a source other than itself since the end of its last turn, Lash Out is instead DB 15 (4d10 + 20 / 45). Any given foe may be the target of this increased damage only once per Scene.
 
-- 🟡 **Low Blow** — `partial` · P3 · themes: multiturn, status · code: _mvBuff:23553
+- 🟡 **Low Blow** — `partial` · P3 · themes: multiturn, status · code: _mvBuff:24127
   - _None Status · DB — · AC 2 · Standard · Melee, 1 Target_
   - note: v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table
   - You and the target make Opposed Acrobatics Checks. If you win, the target is Vulnerable and has their Initiative set to 0 until the end of your next turn.
@@ -2166,7 +2238,7 @@ P3 · 20 open of 23 · open
   - note: v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest
   - Roll Accuracy for this Move 3 times. If one of these rolls succeeds, this Move hits. For each successful roll after the first, choose one of the following additional effects: » The target is Vulnerable until the end of their next turn. » The target's Moves are resisted 1 step further until the end of their next turn. » This Move's damage cannot be resisted. If one or more of the rolls crit, this Move is a Critical Hit, and you may choose an additional effect.
 
-- 🟡 **Power Split** — `partial` · P3 · themes: multiturn · code: _mvBuff:23548
+- 🟡 **Power Split** — `partial` · P3 · themes: multiturn · code: _mvBuff:24122
   - _Psychic Status · DB — · AC — · Scene · Melee, 1 Target_
   - note: v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table
   - The target has their Attack and Special Attack lowered by 5. If they do, the user gains a +5 bonus to Damage Rolls. These effects last until the end of the scene.
@@ -2180,8 +2252,9 @@ P3 · 20 open of 23 · open
   - note: found-10 coat/shield state + card; riposte/side effects noted for the GM
   - If the user is hit by a Move, the user may use this Move. The user is instead not hit by the triggering Move. You do not take any damage nor are you affected by any of the Move's effects. In addition, if the triggering Move was Melee ranged, the attacker's Speed is lowered by -2 Combat Stages and they are Slowed until the end of the user's next turn. If the target already has negative Speed Combat Stages, the target is Stuck and Trapped instead of Slowed.
 
-- 🟡 **Spotlight** — `partial` · P3 · themes: multiturn · engine: status-fx, status-always
+- ✅ **Spotlight** — `auto` · P3 · themes: multiturn · engine: status-fx, status-always
   - _Normal Status · DB — · AC — · Daily · 6, 1 Target, Priority_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - Until the end of the user's next turn, the target is Blinded and Vulnerable.
 
 - 🟡 **Take Aim** — `partial` · P3 · themes: multiturn
@@ -2202,7 +2275,7 @@ P3 · 20 open of 23 · open
 <a id="moves-16"></a>
 ## `moves-16` — Weather & Terrain (2/2)
 
-P3 · 15 open of 20 · open
+P3 · 11 open of 20 · open
 
 - ✅ **Floral Healing** — `auto` · P3 · themes: weather · engine: hp-fx
   - _Fairy Status · DB — · AC — · Daily x2 · Melee, 1 Target, Healing_
@@ -2219,13 +2292,14 @@ P3 · 15 open of 20 · open
   - note: found-05 offers the optional Grassy Terrain from the roll (board-wide rather than the squares Passed over, said on the card). Still open: the Priority the Move gains while the user is already on Grassy Terrain
   - If the user is on Grassy Terrain, Grassy Glide may be used with Priority. After Grassy Glide has been resolved, the user may choose to create Grassy Terrain in the spaces Passed over (including those it started and ended in), that lasts for 5 turns. Any creatures in those spaces are affected as if by the Field Move Grassy Terrain, rather than any other Field Move.
 
-- ✅ **Hail** — `auto` · P3 · themes: heal, typing · engine: field-fx · code: WEATHER_DEFS:1437, weatherEvasion:1509, CAMOUFLAGE_FIELDS:2909, WEATHER_SETTER_ABILITIES:3310, ABILITY_ACTION_ROWS:3486, BALL_WEATHER:16775, hpWeatherKeysIn:21645, FIELD_SETTER_MOVES:21952
+- ✅ **Hail** — `auto` · P3 · themes: heal, typing · engine: field-fx · code: WEATHER_DEFS:1483, weatherEvasion:1555, CAMOUFLAGE_FIELDS:2955, WEATHER_SETTER_ABILITIES:3356, ABILITY_ACTION_ROWS:3533, BALL_WEATHER:17136, hpWeatherKeysIn:22082, FIELD_SETTER_MOVES:22392
   - _Ice Status · DB — · AC — · Daily x2 · Field, Weather_
   - note: found-05: sets Hail on the Map; the non-Ice Tick, Ice Body, Snow Cloak and Blizzard-cannot-miss all follow from WEATHER_DEFS
   - The weather changes to Hail for 5 rounds. While it is Hailing, all non-Ice Type Pokemon lose a Tick of Hit Points at the beginning of their turn.
 
-- 🟡 **Hydro Steam** — `partial` · P3 · themes: weather, barrier · engine: special:conditionalDB
+- ✅ **Hydro Steam** — `auto` · P3 · themes: weather, barrier · engine: special:conditionalDB
   - _Water Special · DB 8 · AC 2 · EOT · 6, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - This Move does not deal reduced damage in Sunny Weather. It instead deals +10 damage in Sunny Weather. NOTE: If you are using the Weathers from Domovoi's Rework, the [Sun Shining] Blessing may not be activated against this Move.
 
 - 🟡 **Ice Spinner** — `partial` · P3 · themes: weather, status · engine: range, range-status, status-fx, field-fx
@@ -2233,8 +2307,9 @@ P3 · 15 open of 20 · open
   - note: found-05 ends the Field Terrain from the roll; the Tripped-on-18+ range is found-02's. Still open: 'if the user moves through an area of Terrain' — the per-square Terrain zones the Map draws are not read by the roll
   - All targets are Tripped on a roll of 18+. If the user moves through an area of Terrain, or a Field-range Terrain is active, those effects immediately end.
 
-- 🟡 **Inferno** — `partial` · P3 · themes: weather · engine: status-fx, status-always
+- ✅ **Inferno** — `auto` · P3 · themes: weather · engine: status-fx, status-always
   - _Fire Special · DB 10 · AC 9 · At-Will · 6, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - Inferno Burns the target. Inferno ignores the target's Evasion if there are no other combatants or Rough or Blocking Terrain within 2 meters of the target.
 
 - 🟡 **Misty Explosion** — `partial` · P3 · themes: heal, multiturn · engine: field-fx
@@ -2242,8 +2317,9 @@ P3 · 15 open of 20 · open
   - note: found-05 sets Misty Terrain from the roll (board-wide rather than the printed Blast 7, said on the card); the HP set to -50% is already found-04's Hit Points card. Still open: nothing mechanical beyond the Blast shape
   - The user's Hit Points are set to -50% of their full Hit Point value. This Hit Point loss cannot be prevented or reduced in any way. After Misty Explosion  is resolved, create Misty Terrain in a Blast 7, centered on the user, that lasts for 5 turns. Any creatures in those spaces are affected as if by the Field Move Misty Terrain, rather than any other Field Move.
 
-- 🟡 **Psyblade** — `partial` · P3 · themes: weather · engine: special:conditionalDB
+- ✅ **Psyblade** — `auto` · P3 · themes: weather · engine: special:conditionalDB
   - _Psychic Physical · DB 8 · AC 2 · EOT · Melee, 1 Target, Slice_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - This Move deals +10 damage if the user or target are in Electric Terrain.
 
 - 🟡 **Rising Voltage** — `partial` · P3 · themes: interrupt, multiturn · engine: field-fx
@@ -2261,22 +2337,22 @@ P3 · 15 open of 20 · open
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, weather-adjusted (2/3 in a Sandstorm, 1/4 in Sun / Rain / Hail)
   - The user regains Hit Points equal to half of its full Hit Point value. If it is Sand Storming, the user gains 2/3 of its full Hit Point value. If it is Sunny, Rainy, or Hailing, the user gains 1/4 of its full Hit Point value.
 
-- ✅ **Snowscape** — `auto` · P3 · themes: typing · engine: field-fx · code: FIELD_SETTER_MOVES:21953
+- ✅ **Snowscape** — `auto` · P3 · themes: typing · engine: field-fx · code: FIELD_SETTER_MOVES:22393
   - _Ice Status · DB — · AC — · Daily x2 · Field, Weather_
   - note: found-05: new Snowy weather in WEATHER_DEFS with typeDR -> weatherDR, folded into buffDR, so an Ice-Type really gets the 5 DR (or +2 if it already had some)
   - The weather changes to Snowy for 5 rounds. While it is Snowing, all Ice-Type Pokemon gain 5 Damage Reduction, or +2 to any existing Damage Reduction.
 
-- 🟡 **Solar Beam** — `partial` · P3 · themes: weather, multiturn · engine: special:conditionalDB · code: addSpeciesKey:4794
+- 🟡 **Solar Beam** — `partial` · P3 · themes: weather, multiturn · engine: special:conditionalDB · code: addSpeciesKey:5021
   - _Grass Special · DB 12 · AC 2 · Scene x2 · Line 6, Set-Up_
   - note: found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards
   - Set-Up Effect: If the weather is not Sunny, the user's turn ends. If the weather is Sunny, immediately proceed to the Resolution Effect instead and this Move loses the Set-Up keyword. Resolution Effect: The user attacks with Solar Beam. If the weather is Rainy, Sandstorming, or Hailing, Solar Beam's Damage Base is lowered to 6 (2d6+8 / 15).
 
-- 🟡 **Solar Blade** — `partial` · P3 · themes: weather, multiturn · engine: cs, special:conditionalDB · code: SPECIAL_FIXED_DAMAGE:24730, openMoveRoll:26362
+- 🟡 **Solar Blade** — `partial` · P3 · themes: weather, multiturn · engine: cs, special:conditionalDB · code: SPECIAL_FIXED_DAMAGE:25439, openMoveRoll:27257
   - _Grass Physical · DB 13 · AC 2 · Scene x2 · Melee, 1 Target, Set-Up_
   - note: found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards
   - Set-Up Effect: If the weather is not Sunny, the user's gains +1 Attack CS and +1 Special Defense CS. If it is Sunny, immediately Resolve. Resolution Effect: Attack with Solar Blade. Half damage in Sandstorm, Hail, or Rain.
 
-- 🟡 **Steel Roller** — `partial` · P3 · themes: weather, status · engine: range, range-status, status-fx, field-fx, hazard-fx
+- 🟡 **Steel Roller** — `partial` · P3 · themes: weather, status · engine: range, range-status, status-fx, field-fx, hazard-fx · code: abilityDamageMods:25182
   - _Steel Physical · DB 13 · AC 2 · Daily · Melee, Pass, Dash, Smite, Spirit Surge_
   - note: Clears the ring of Hazards and ends the Terrain (found-05). The Trip on 15+ and the Pass/Dash movement are their own batches.
   - Legal targets hit by Steel Roller are Tripped on a roll of 15+. Any Hazards in spaces Passed through or adjacent to those spaces are removed (they are removed before they can affect the user). If the user moves through an area of Terrain, or a Field-range Terrain is active, those effects immediately end.
@@ -2286,13 +2362,14 @@ P3 · 15 open of 20 · open
   - note: found-01: CS clause now parsed (⬆ Apply); still open: weather
   - The user Shifts before or after attacking, ignoring Slow Terrain. If the user did not move through Slow Terrain during this Shift, raise the user's Speed 1 Combat Stage.
 
-- ✅ **Sunny Day** — `auto` · P3 · themes: typing · engine: field-fx · code: WEATHER_SYSTEM_MOVES:34191
+- ✅ **Sunny Day** — `auto` · P3 · themes: typing · engine: field-fx · code: WEATHER_SYSTEM_MOVES:35290
   - _Fire Status · DB — · AC — · Daily x2 · Field, Weather_
   - note: found-05: 'The field' card on the roll sets Sunny on the Map (setMapWeather); every downstream reader (Fire +5 / Water -5, Chlorophyll, Thunder at AC 11) was already wired to it
   - The weather becomes Sunny for 5 rounds. While Sunny, Fire-Type Attacks gain a +5 bonus to Damage Rolls, and Water-Type Attacks suffer a -5 Damage penalty.
 
-- 🟡 **Terrain Pulse** — `partial` · P3 · themes: weather · engine: special:conditionalDB · code: MEGA_LAUNCHER_MOVES:24308
+- ✅ **Terrain Pulse** — `auto` · P3 · themes: weather · engine: special:conditionalDB · code: MEGA_LAUNCHER_MOVES:25003
   - _Normal Special · DB 5 · AC 2 · EOT · Close Blast 3_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - If the user is under the effects of a Terrain, Terrain Pulse has a Damage Base of 10 (3d8+10 / 24). In addition, Terrain Pulse becomes the Type that corresponds with the Move that creates that Terrain. (For example, if in Misty Terrain, it would become Fairy Type.) If the user is under the effects of multiple Terrains, choose one to affect this Move.
 
 - 🟡 **Tidy Up** — `partial` · P3 · themes: status · engine: cs, field-fx, hazard-fx
@@ -2303,14 +2380,14 @@ P3 · 15 open of 20 · open
 <a id="moves-18"></a>
 ## `moves-18` — Ability / item / stat swaps (2/2)
 
-P3 · 15 open of 16 · open
+P3 · 13 open of 16 · open
 
 - 🟡 **Magnetic Flux [SM]** — `partial` · P3 · themes: swap · engine: cs
   - _Electric Status · DB — · AC — · Scene x2 · Burst 4_
   - note: found-01: CS clause now parsed (⬆ Apply); still open: swap
   - Raise the Defense and Special Defense of all legal targets with the Minus or Plus Abilities by +1 CS.
 
-- ✅ **Miracle Eye** — `auto` · P3 · themes: swap · code: _mvBuff:23558
+- ✅ **Miracle Eye** — `auto` · P3 · themes: swap · code: _mvBuff:24132
   - _Psychic Status · DB — · AC — · Scene x2 · Self, Swift Action_
   - note: v604 MOVE_FX_ROWS row: applied for you
   - Miracle Eye may be activated as a Swift Action on the user's turn. For the rest of the turn, the user's Psychic-Type Moves can hit and affect Dark-Type targets, and the user can see through the Illusion Ability, Moves with the Illusion keyword, and effects created by the Illusionist Capability, ignoring all effects from those.
@@ -2335,16 +2412,17 @@ P3 · 15 open of 16 · open
   - note: v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table
   - This attack uses the highest of the user's Attack or Special Attack Stat, though it remains a Special Move. This Move ignores any Abilities that would cause it to fail or miss, such as Dodge or Wonder Guard; those Abilities cannot be activated in response to Photon Geyser.
 
-- 🟡 **Recycle** — `partial` · P3 · themes: swap · code: ABILITY_ACTION_ROWS:3639
+- 🟡 **Recycle** — `partial` · P3 · themes: swap · code: ABILITY_ACTION_ROWS:3737
   - _Normal Status · DB — · AC — · Scene · Self_
   - note: v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest
   - The effect of a consumable item used earlier in the encounter is used again as if it had not been destroyed. The item is still gone.
 
-- 🟡 **Shadow Bone** — `partial` · P3 · themes: swap · engine: cs, range
+- ✅ **Shadow Bone** — `auto` · P3 · themes: swap · engine: cs, range
   - _Ghost Physical · DB 9 · AC 2 · EOT · Melee, 1 Target_
+  - note: v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)
   - Lower the target's Defense by -1 CS on a 17+. Counts as a Bone Move for Cubone/Marowak's Abilities, etc.
 
-- 🟡 **Stuff Cheeks** — `partial` · P3 · themes: swap · engine: cs · code: CS_PATTERNS:23961
+- 🟡 **Stuff Cheeks** — `partial` · P3 · themes: swap · engine: cs · code: CS_PATTERNS:24611
   - _Normal Status · DB — · AC — · Scene · Self_
   - note: found-01: CS clause now parsed (⬆ Apply); still open: swap
   - The user immediately consumes one of its Food Buffs, regardless of any conditions that need to be met, gaining its benefit if applicable. If a Buff is consumed, the user's Defense CS is raised by 2.
@@ -2359,12 +2437,13 @@ P3 · 15 open of 16 · open
   - note: v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest
   - All participants in the battle may choose to immediately consume one of their Food Buffs, regardless of if the conditions to do so are met.
 
-- 🟡 **Tera Starstorm** — `partial` · P3 · themes: swap, typing · engine: target-rules · code: teraMoveType:20940
+- 🟡 **Tera Starstorm** — `partial` · P3 · themes: swap, typing · engine: target-rules · code: teraMoveType:21364
   - _Normal Special · DB 12 · AC 2 · Scene · 6, Ranged Blast 3, Smite_
   - Place a Star Shard in any square of the Area of Effect. Any ally entering that square, or starting their turn on it, may consume the Shard to gain a +10 Damage Bonus on their next successful damaging attack. If a target has changed Forme, this attack is one step more effective against that target. This may not cause the Effectiveness to be raised above Doubly Super Effective. Note: Changing Forme includes any effect that switches Base Stat Sets, such as the Abilities like Stance Change or Schooling; Mega Evolution; Dynamax; Terastilization; or being in any Altered, Origin, or Primal Forme; even if they started the encounter that way.
 
-- 🟡 **Thousand Arrows** — `partial` · P3 · themes: swap, typing · engine: target-rules
+- ✅ **Thousand Arrows** — `auto` · P3 · themes: swap, typing · engine: target-rules
   - _Ground Physical · DB 9 · AC 2 · Scene · 6, 1 Target_
+  - note: target-rules + the 3-turn grounded buff (Smack Down row)
   - When calculating Weakness and Resistance for Thousand Arrows, Flying-Typed targets calculate damage as if Ground was neutral to Ice. Thousand Arrows ignores the Levitate Ability, The target is knocked down to ground level, and loses all Sky or Levitate Speeds for 3 turns. During this time, they may be hit by Ground-Type Moves even if normally immune.
 
 - 🟡 **Triple Arrows** — `partial` · P3 · themes: swap · engine: cs, range, range-crit
@@ -2389,14 +2468,14 @@ P3 · 15 open of 16 · open
 <a id="verify-moves-01"></a>
 ## `verify-moves-01` — Verify moves the scan thinks are handled
 
-P9 · 46 open of 50 · open
+P9 · 40 open of 50 · open
 
 - ✅ **Absorb** — `auto` · P1 (enc, pc, player:Handels, player:Lázaro) · themes: damage · engine: hp-fx
   - _Grass Special · DB 2 · AC 2 · At-Will · 4, 1 Target_
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt
   - After the target takes damage, the user gains HP equal to half of the damage they dealt to the target.
 
-- 🟢 **Acid Spray** — `likely` · P1 (pc, player:Lázaro) · themes: cs · engine: cs
+- 🟢 **Acid Spray** — `likely` · P1 (pc, player:Lázaro) · themes: cs · engine: cs · code: INTOXICATOR_MOVES:20659
   - _Poison Special · DB 4 · AC 2 · EOT · 4, 1 Target_
   - Acid Spray lowers the target's Special Defense by -2 CS.
 
@@ -2404,7 +2483,7 @@ P9 · 46 open of 50 · open
   - _Flying Special · DB 6 · AC 2 · At-Will · Cone 2_
   - Air Cutter is a Critical Hit on 18+.
 
-- 🟢 **Air Slash** — `likely` · P1 (player:Lysgd) · themes: status · engine: range, range-status, range-flinch, status-fx · code: ROTOM_POLTERGEIST:20897
+- 🟢 **Air Slash** — `likely` · P1 (player:Lysgd) · themes: status · engine: range, range-status, range-flinch, status-fx · code: ROTOM_POLTERGEIST:21321
   - _Flying Special · DB 8 · AC 3 · EOT · 6, 1 Target_
   - Air Slash Flinches the target on 15+.
 
@@ -2416,31 +2495,33 @@ P9 · 46 open of 50 · open
   - _Fairy Status · DB — · AC 2 · EOT · 4, 1 Target, Priority, Social_
   - Lower the target's Attack by -1 CS.
 
-- 🟢 **Bite** — `likely` · P1 (enc, pc, player:Handels, player:Lysgd) · themes: status · engine: range, range-status, range-flinch, status-fx · code: STRONG_JAW_MOVES:24305, GAUNTLETS:36970
+- 🟢 **Bite** — `likely` · P1 (enc, pc, player:Handels, player:Lysgd) · themes: status · engine: range, range-status, range-flinch, status-fx · code: STRONG_JAW_MOVES:25000, GAUNTLETS:38073
   - _Dark Physical · DB 6 · AC 2 · At-Will · Melee, 1 Target_
   - Bite Flinches the target on 15+.
 
-- 🟢 **Bone Club** — `likely` · P1 (player:Handels) · themes: status · engine: range, range-status, range-flinch, status-fx · code: BONE_WIELDER_MOVES:24583
+- 🟢 **Bone Club** — `likely` · P1 (player:Handels) · themes: status · engine: range, range-status, range-flinch, status-fx · code: CONNECTION_CS:24791, BONE_WIELDER_MOVES:25288
   - _Ground Physical · DB 7 · AC 5 · At-Will · Melee, 1 Target_
   - Bone Club Flinches the target on 18+.
 
-- 🟢 **Bonemerang** — `likely` · P1 (player:Handels) · themes: plain · engine: special:doubleStrike, double-strike · code: BONE_WIELDER_MOVES:24583
+- 🟢 **Bonemerang** — `likely` · P1 (player:Handels) · themes: plain · engine: special:doubleStrike, double-strike · code: BONE_WIELDER_MOVES:25288
   - _Ground Physical · DB 5 · AC 3 · EOT · 6, 1 Target, Doublestrike_
   - --
 
-- 🟢 **Bubble** — `likely` · P1 (enc, pc, player:Handels, player:Lázaro) · themes: cs · engine: cs, range · code: GAUNTLETS:36972
+- ✅ **Bubble** — `auto` · P1 (enc, pc, player:Handels, player:Lázaro) · themes: cs · engine: cs, range · code: GAUNTLETS:38075
   - _Water Special · DB 4 · AC 2 · At-Will · Burst 1_
+  - note: moveCSEffects parses 'lowers Speed on 16+'
   - Bubble lowers the target's Speed by -1 CS on 16+..
 
-- 🟢 **Bubblebeam** — `likely` · P1 (enc, pc, player:Lysgd) · themes: cs · engine: cs, range · code: addSpeciesKey:4793
+- ✅ **Bubblebeam** — `auto` · P1 (enc, pc, player:Lysgd) · themes: cs · engine: cs, range · code: addSpeciesKey:5020
   - _Water Special · DB 8 · AC 2 · At-Will · 4, 1 Target_
+  - note: moveCSEffects parses 'lowers Speed on 18+'
   - Bubblebeam lowers the target's Speed by -1 CS on 18+.
 
-- 🟢 **Comet Punch** — `likely` · P1 (enc, player:Handels) · themes: plain · engine: five-strike · code: IRON_FIST_MOVES:24187
+- 🟢 **Comet Punch** — `likely` · P1 (enc, player:Handels) · themes: plain · engine: five-strike · code: IRON_FIST_MOVES:24881
   - _Normal Physical · DB 2 · AC 4 · At-Will · Melee, 1 Target, Five Strike_
   - --
 
-- 🟢 **Dark Pulse** — `likely` · P1 (enc, player:Lysgd) · themes: status · engine: range, range-status, range-flinch, status-fx · code: MEGA_LAUNCHER_MOVES:24307, GAUNTLETS:37002
+- 🟢 **Dark Pulse** — `likely` · P1 (enc, player:Lysgd) · themes: status · engine: range, range-status, range-flinch, status-fx · code: MEGA_LAUNCHER_MOVES:25002, GAUNTLETS:38105
   - _Dark Special · DB 8 · AC 2 · EOT · 8, 1 Target, Aura_
   - Dark Pulse Flinches the target on 17+.
 
@@ -2456,11 +2537,12 @@ P9 · 46 open of 50 · open
   - _Normal Physical · DB 2 · AC 4 · At-Will · Melee, 1 Target, Five Strike_
   - --
 
-- 🟢 **Dragon Breath** — `likely` · P1 (player:Lázaro) · themes: status · engine: range, range-status, status-fx · code: GAUNTLETS:37000
+- ✅ **Dragon Breath** — `auto` · P1 (player:Lázaro) · themes: status · engine: range, range-status, status-fx · code: GAUNTLETS:38103
   - _Dragon Special · DB 6 · AC 2 · EOT · 6, 1 Target_
+  - note: moveStatusEffects: Paralysis on 15+
   - Dragon Breath Paralyzes the target on 15+.
 
-- 🟢 **Dragon Pulse** — `likely` · P1 (player:Handels) · themes: plain · code: MEGA_LAUNCHER_MOVES:24307, GAUNTLETS:36983
+- 🟢 **Dragon Pulse** — `likely` · P1 (player:Handels) · themes: plain · code: MEGA_LAUNCHER_MOVES:25002, GAUNTLETS:38086
   - _Dragon Special · DB 9 · AC 2 · EOT · 8, 1 Target, Aura_
   - --
 
@@ -2473,7 +2555,7 @@ P9 · 46 open of 50 · open
   - _Dragon Physical · DB 5 · AC 3 · EOT · Melee, 1 Target, Doublestrike_
   - --
 
-- 🟢 **Echoed Voice** — `likely` · P1 (enc, pc, player:Handels) · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:24880
+- 🟢 **Echoed Voice** — `likely` · P1 (enc, pc, player:Handels) · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:25589
   - _Normal Special · DB 4 · AC 2 · EOT · 3, 1 Target, Sonic_
   - If Echoed Voice was used by any Pokemon or Trainer in the Encounter on the previous round, increase its Damage Base by +4. If Echoed Voice was used by any Pokemon or Trainers during both the previous two rounds, increase its Damage Base by +8.
 
@@ -2485,11 +2567,11 @@ P9 · 46 open of 50 · open
   - _Psychic Special · DB 8 · AC 4 · Scene x2 · Melee, Pass, Priority_
   - Esper Wing is a Critical Hit on an 18+.
 
-- 🟢 **Fire Fang** — `likely` · P1 (enc, player:Lysgd) · themes: status, damage, skill · engine: rand-status · code: STRONG_JAW_MOVES:24305
+- 🟢 **Fire Fang** — `likely` · P1 (enc, player:Lysgd) · themes: status, damage, skill · engine: rand-status · code: STRONG_JAW_MOVES:25000
   - _Fire Physical · DB 7 · AC 3 · At-Will · Melee, 1 Target_
   - Fire Fang Burns or Flinches on 18-19 during Accuracy Check; flip a coin to determine whether the foe becomes Burned or Flinched. On 20 during Accuracy Check, the foe is both Burned and Flinched.
 
-- 🟢 **Flail** — `likely` · P1 (enc, pc, player:Handels, player:Hugo) · themes: damage, stat · engine: special:valueDB · code: weaponizeRange:8364, openTrainerAttack:9861, specialMoveInfo:24885, moveLineShort:26484, GAUNTLETS:36972
+- 🟢 **Flail** — `likely` · P1 (enc, pc, player:Handels, player:Hugo) · themes: damage, stat · engine: special:valueDB · code: weaponizeRange:8687, openTrainerAttack:10202, specialMoveInfo:25594, moveLineShort:27383, GAUNTLETS:38075
   - _Normal Physical · DB 7 · AC 2 · EOT · Melee, 1 Target_
   - For each Injury the user has, Flail's Damage Base is increased by +1.
 
@@ -2501,15 +2583,16 @@ P9 · 46 open of 50 · open
   - _Fire Special · DB 9 · AC 2 · EOT · 4, 1 Target_
   - Flamethrower Burns the target on 19+.
 
-- 🟢 **Focus Energy** — `likely` · P1 (enc, pc, player:Lázaro) · themes: damage · engine: range, range-crit · code: GAUNTLETS:36970
+- ✅ **Focus Energy** — `auto` · P1 (enc, pc, player:Lázaro) · themes: damage · engine: range, range-crit · code: GAUNTLETS:38073
   - _Normal Status · DB — · AC — · At-Will · Self_
+  - note: v644 MOVE_FX_ROWS: press drops a Pumped buff (+2 Critical Hit Range until switched out)
   - The user becomes Pumped. While Pumped, the user's Critical Range is extended by 2, or 18+ if the Critical Range is not otherwise extended. Being switched will cause this effect to end.
 
 - 🟢 **Fury Attack** — `likely` · P1 (enc, pc, player:Handels, player:Lázaro) · themes: plain · engine: five-strike
   - _Normal Physical · DB 2 · AC 4 · At-Will · Melee, 1 Target, Five Strike_
   - --
 
-- 🟢 **Fury Cutter** — `likely` · P1 (enc, pc, player:Lysgd, player:Lázaro) · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:24874
+- 🟢 **Fury Cutter** — `likely` · P1 (enc, pc, player:Lysgd, player:Lázaro) · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:25583
   - _Bug Physical · DB 4 · AC 3 · At-Will · Melee, 1 Target_
   - If Fury Cutter is used successfully and consecutively on the same target, the Damage Base is increased by +4; the first hit has a DB of 4; the second hit a DB of 8, the third hit a DB of 12, and the fourth and all further hits have a DB of 16. If Fury Cutter misses or fails to damage its target, its Damage Base resets.
 
@@ -2525,15 +2608,16 @@ P9 · 46 open of 50 · open
   - _Flying Special · DB 4 · AC 2 · At-Will · 4, 1 Target_
   - If the target is airborne as a result of Bounce, Fly, or Sky Drop, Gust can hit them, ignoring Range and has a Damage Base of 8 instead. *Grants: Guster
 
-- 🟢 **Harden** — `likely` · P1 (enc, pc, player:Lysgd) · themes: cs · engine: cs · code: GAUNTLETS:36969
+- ✅ **Harden** — `auto` · P1 (enc, pc, player:Lysgd) · themes: cs · engine: cs · code: GAUNTLETS:38072
   - _Normal Status · DB — · AC — · At-Will · Self_
+  - note: moveCSEffects: +1 Defense to the user
   - Raise the user's Defense by +1 CS.
 
 - 🟢 **Headbutt** — `likely` · P1 (enc, pc, player:Lysgd) · themes: status · engine: range, range-status, range-flinch, status-fx
   - _Normal Physical · DB 7 · AC 2 · EOT · Melee, 1 Target_
   - Headbutt Flinches the target on 15+.
 
-- 🟢 **Hex** — `likely` · P1 (enc, player:Handels, player:Lysgd, player:Lázaro) · themes: damage, stat · engine: special:conditionalDB · code: openTrainerAttack:9693, GAUNTLETS:36985
+- 🟢 **Hex** — `likely` · P1 (enc, player:Handels, player:Lysgd, player:Lázaro) · themes: damage, stat · engine: special:conditionalDB · code: openTrainerAttack:10034, GAUNTLETS:38088
   - _Ghost Special · DB 7 · AC 2 · EOT · 6, 1 Target_
   - Once a Scene, if Hex's target has a Status Affliction, you may have Hex's Damage Base be 13 instead (4d10+10 / 35)
 
@@ -2541,7 +2625,7 @@ P9 · 46 open of 50 · open
   - _Dark Status · DB — · AC — · At-Will · Self_
   - Raise the user's Attack by +1 CS and Accuracy by +1.
 
-- 🟢 **Ice Ball** — `likely` · P1 (enc, player:Lysgd) · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:24882
+- 🟢 **Ice Ball** — `likely` · P1 (enc, player:Lysgd) · themes: damage, stat · engine: special:valueDB · code: curlRollers:1146, abilityDamageMods:25180, specialMoveInfo:25591
   - _Ice Physical · DB 3 · AC 4 · At-Will · Melee, 1 Target_
   - The user continues to use Ice Ball on each of its turns until they miss any target with Ice Ball or are not able to hit any target with Ice Ball during their turn. Each successive use of Ice Ball increases Ice Ball's Damage Base by +3 to a maximum of DB 15.
 
@@ -2562,7 +2646,7 @@ P9 · 46 open of 50 · open
   - _Normal Status · DB — · AC 2 · At-Will · Cone 2, Friendly, Social_
   - All legal targets have their Defense lowered by -1 CS.
 
-- 🟢 **Lick** — `likely` · P1 (enc, pc, player:Lázaro) · themes: status · engine: range, range-status, status-fx · code: CONNECTION_STATUS:21345
+- 🟢 **Lick** — `likely` · P1 (enc, pc, player:Lázaro) · themes: status · engine: range, range-status, status-fx · code: CONNECTION_STATUS:21770
   - _Ghost Physical · DB 3 · AC 2 · At-Will · Melee, 1 Target_
   - Lick Paralyzes the target on 15+.
 
@@ -2583,8 +2667,9 @@ P9 · 46 open of 50 · open
   - _Steel Physical · DB 5 · AC 3 · At-Will · Melee, 1 Target, Spirit Surge_
   - Raise the user's Attack by +1 CS on 18+.
 
-- 🟢 **Metal Sound** — `likely` · P1 (enc, player:Handels, player:Lázaro) · themes: cs · engine: cs · code: GAUNTLETS:36987
+- ✅ **Metal Sound** — `auto` · P1 (enc, player:Handels, player:Lázaro) · themes: cs · engine: cs · code: GAUNTLETS:38090
   - _Steel Status · DB — · AC 4 · EOT · Burst 2, Friendly, Sonic_
+  - note: moveCSEffects: -2 Special Defense to every legal target
   - All Legal Targets have their Special Defense lowered by -2 CS.
 
 - 🟢 **Moonblast** — `likely` · P1 (enc, player:Hugo, player:Lázaro) · themes: cs · engine: cs, range
@@ -2598,13 +2683,13 @@ P9 · 46 open of 50 · open
 <a id="verify-moves-02"></a>
 ## `verify-moves-02` — Verify moves the scan thinks are handled
 
-P9 · 48 open of 50 · open
+P9 · 43 open of 50 · open
 
 - 🟢 **Mystical Fire** — `likely` · P1 (player:Lysgd, player:Lázaro) · themes: cs, skill · engine: cs
   - _Fire Special · DB 7 · AC 2 · EOT · 6, 1 Target_
   - Mystical Fire lowers the target's Special Attack by 1 Combat Stage.
 
-- 🟢 **Nasty Plot** — `likely` · P1 (enc, player:Lysgd) · themes: cs · engine: cs · code: STAT_TRAINING_MOVES:23810
+- 🟢 **Nasty Plot** — `likely` · P1 (enc, player:Lysgd) · themes: cs · engine: cs · code: STAT_TRAINING_MOVES:24460
   - _Dark Status · DB — · AC — · EOT · Self_
   - Raise the user's Special Attack by +2 CS.
 
@@ -2616,7 +2701,7 @@ P9 · 48 open of 50 · open
   - _Normal Status · DB — · AC 2 · At-Will · 6, 1 Target, Social_
   - Play Nice lowers the target's Attack by -1 CS.
 
-- 🟢 **Poison Sting** — `likely` · P1 (enc, pc, player:Lysgd) · themes: status · engine: range, range-status, status-fx
+- 🟢 **Poison Sting** — `likely` · P1 (enc, pc, player:Lysgd) · themes: status · engine: range, range-status, status-fx · code: INTOXICATOR_MOVES:20659
   - _Poison Physical · DB 2 · AC 2 · At-Will · 6, 1 Target_
   - Poison Sting Poisons the target on 17+.
 
@@ -2628,7 +2713,7 @@ P9 · 48 open of 50 · open
   - _Rock Physical · DB 8 · AC 4 · Scene x2 · 6, Ranged Blast 3_
   - Rock Slide Flinches all legal targets on 17+.
 
-- 🟢 **Rollout** — `likely` · P1 (enc, pc, player:Lysgd) · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:24881, openMoveRoll:26083
+- 🟢 **Rollout** — `likely` · P1 (enc, pc, player:Lysgd) · themes: damage, stat · engine: special:valueDB · code: curlRollers:1146, abilityDamageMods:25180, specialMoveInfo:25590, openMoveRoll:26977
   - _Rock Physical · DB 3 · AC 4 · At-Will · Melee, Pass_
   - The user continues to use Rollout on each of its turns until they miss any target with Rollout, or are not able to hit any target with Rollout during their turn. Each successive use of Rollout increases Rollout's Damage Base by +4 to a maximum of DB 15.
 
@@ -2636,12 +2721,13 @@ P9 · 48 open of 50 · open
   - _Normal Status · DB — · AC 4 · EOT · Burst 2, Friendly, Sonic_
   - Lower the Defense of all legal targets by -2 CS.
 
-- 🟢 **Shadow Punch** — `likely` · P1 (enc, player:Lysgd) · themes: plain · code: IRON_FIST_MOVES:24188
+- 🟢 **Shadow Punch** — `likely` · P1 (enc, player:Lysgd) · themes: plain · code: IRON_FIST_MOVES:24882
   - _Ghost Physical · DB 6 · AC — · EOT · 6, 1 Target_
   - Shadow Punch cannot miss.
 
-- 🟢 **Slash** — `likely` · P1 (enc, player:Lysgd, player:Lázaro) · themes: damage · engine: range, range-crit · code: GAUNTLETS:37026
+- ✅ **Slash** — `auto` · P1 (enc, player:Lysgd, player:Lázaro) · themes: damage · engine: range, range-crit · code: GAUNTLETS:38129
   - _Normal Physical · DB 7 · AC 2 · EOT · Melee, Pass_
+  - note: critThreshold reads 'Critical Hit on 18+' off the Move
   - Slash is a Critical Hit on 18+.
 
 - 🟢 **Spook** — `likely` · P1 (player:Handels) · themes: cs, skill · engine: cs, range
@@ -2652,16 +2738,16 @@ P9 · 48 open of 50 · open
   - _Normal Physical · DB 7 · AC 2 · EOT · Melee, 1 Target_
   - Stomp Flinches the target on 15+. If the target is at least one size category smaller than the user, Stomp deals an additional 10 damage.
 
-- ✅ **Sweet Scent** — `auto` · P1 (enc, pc, player:Lysgd) · themes: damage · code: _mvBuff:23561
+- ✅ **Sweet Scent** — `auto` · P1 (enc, pc, player:Lysgd) · themes: damage · code: CONNECTION_STATUS:21776, _mvBuff:24135
   - _Normal Status · DB — · AC 2 · Scene · Burst 2, Friendly_
   - note: v627 MOVE_FX_ROWS: −2 Evasion buff on each target
   - Targets hit by Sweet Scent gain a -2 Penalty to Evasion. (Total Evasion may not be lowered to a negative value.) *Grants Alluring
 
-- 🟢 **Swift** — `likely` · P1 (enc, pc, player:Lysgd) · themes: plain · code: capabilityFreq:12502, _mvBuff:23600, BATTLE_ACTIONS:26853, renderBattle:26908, isTypeFilter:26960, featureActionTypes:27018, CUSTOM_ACTION_TYPES:28193, openArcticZeal:31785
+- 🟢 **Swift** — `likely` · P1 (enc, pc, player:Lysgd) · themes: plain · code: capabilityFreq:12863, _mvBuff:24178, BATTLE_ACTIONS:27752, ACTION_FEATURE_NOTES:27786, renderBattle:27829, isTypeFilter:27883, featureActionTypes:27945, CUSTOM_ACTION_TYPES:29143
   - _Normal Special · DB 6 · AC — · EOT · 8, Ranged Blast 2, Friendly_
   - Swift cannot Miss.
 
-- 🟢 **Swords Dance** — `likely` · P1 (enc, player:Lázaro) · themes: cs · engine: cs · code: STAT_TRAINING_MOVES:23810
+- 🟢 **Swords Dance** — `likely` · P1 (enc, player:Lázaro) · themes: cs · engine: cs · code: STAT_TRAINING_MOVES:24460
   - _Normal Status · DB — · AC — · EOT · Self_
   - Raise the user's Attack by +2 CS.
 
@@ -2669,23 +2755,25 @@ P9 · 48 open of 50 · open
   - _Normal Status · DB — · AC 2 · At-Will · Burst 1, Friendly_
   - All legal targets have their Defense lowered by -1 CS.
 
-- 🟢 **Twister** — `likely` · P1 (enc, player:Lysgd) · themes: status, damage, stat · engine: range, range-status, range-flinch, status-fx · code: GAUNTLETS:36983
+- ✅ **Twister** — `auto` · P1 (enc, player:Lysgd) · themes: status, damage, stat · engine: range, range-status, range-flinch, status-fx · code: GAUNTLETS:38086
   - _Dragon Special · DB 4 · AC 2 · At-Will · 6, Ranged Blast 3_
+  - note: v656 verified in the preview: Flinch on 18+ parses; the central-square exemption and airborne clause are table geometry
   - Twister Flinches the target on 18+. Small or Medium targets in the central square of the blast are not hit. Any Pokemon Airborne as a result of Bounce, Fly, or Sky Drop above the Blast are hit, ignoring range, and Twister has a Damage Base of 8 against those targets instead.
 
-- 🟢 **Water Pulse** — `likely` · P1 (enc, pc, player:Lázaro) · themes: status · engine: range, range-status, status-fx · code: MEGA_LAUNCHER_MOVES:24307, GAUNTLETS:36971
+- 🟢 **Water Pulse** — `likely` · P1 (enc, pc, player:Lázaro) · themes: status · engine: range, range-status, status-fx · code: MEGA_LAUNCHER_MOVES:25002, GAUNTLETS:38074
   - _Water Special · DB 6 · AC 2 · At-Will · 8, 1 Target, Aura_
   - Water Pulse Confuses the target on 17+.
 
-- 🟢 **Acid** — `likely` · P2 (enc, pc) · themes: cs, skill · engine: cs, range · code: GAUNTLETS:36999
+- ✅ **Acid** — `auto` · P2 (enc, pc) · themes: cs, skill · engine: cs, range · code: GAUNTLETS:38102
   - _Poison Special · DB 4 · AC 2 · At-Will · Cone 2_
+  - note: moveCSEffects: -1 Special Defense on 18+
   - Acid lowers the target's Special Defense by -1 Combat Stage on 18+.
 
 - 🟢 **Acupressure** — `likely` · P2 (pc) · themes: cs, damage · engine: cs
   - _Normal Status · DB — · AC 2 · EOT · Melee, 1 Target or Self_
   - Roll 1d6. On a result of 1, raise the target's Attack by +2 CS. On a result of 2, raise the target's Defense by +2 CS. On a result of 3, raise the target's Special Attack by +2 CS. On a result of 4, raise the target's Special Defense by +2 CS. On a result of 5, raise the target's Speed by +2 CS. On a result of 6, raise the target's Accuracy by +2.
 
-- 🟢 **Aerial Ace** — `likely` · P2 (enc, pc) · themes: plain · code: FLIP_OUT_MOVES:27526, flipOutBox:27576
+- 🟢 **Aerial Ace** — `likely` · P2 (enc, pc) · themes: plain · code: FLIP_OUT_MOVES:28453, flipOutBox:28503
   - _Flying Physical · DB 6 · AC — · EOT · Melee, 1 Target_
   - Aerial Ace cannot miss.
 
@@ -2694,7 +2782,7 @@ P9 · 48 open of 50 · open
   - note: v617 verify sweep: found unhandled, added STATIC_ABILITY_EVASION / ABILITY_ACTION_ROWS / MOVE_FX_ROWS
   - After You is a Swift Action. The target takes their turn for the round immediately after the user finishes their turn, ignoring Initiative. After You may only affect a target that has not yet acted that round and can only affect willing targets.
 
-- 🟢 **Ancient Power** — `likely` · P2 (enc) · themes: cs, stat · engine: cs, range · code: researchTeachMove:33611, openAncientHeritage:34261, GAUNTLETS:36969
+- 🟢 **Ancient Power** — `likely` · P2 (enc) · themes: cs, stat · engine: cs, range · code: researchTeachMove:34710, openAncientHeritage:35360, GAUNTLETS:38072
   - _Rock Special · DB 6 · AC 2 · EOT · 6, 1 Target, Spirit Surge_
   - The user has each of its stats raised by +1 CS on 19+.
 
@@ -2706,7 +2794,7 @@ P9 · 48 open of 50 · open
   - _Bug Physical · DB 9 · AC 2 · EOT · 6, 1 Target_
   - Attack Order is a Critical Hit on 18+.
 
-- 🟢 **Aura Sphere** — `likely` · P2 (enc) · themes: plain · code: MEGA_LAUNCHER_MOVES:24307, GAUNTLETS:37002
+- 🟢 **Aura Sphere** — `likely` · P2 (enc) · themes: plain · code: MEGA_LAUNCHER_MOVES:25002, GAUNTLETS:38105
   - _Fighting Special · DB 8 · AC — · EOT · 8, 1 Target, Aura_
   - Aura Sphere cannot miss.
 
@@ -2714,19 +2802,20 @@ P9 · 48 open of 50 · open
   - _Ice Physical · DB 6 · AC 2 · EOT · Melee, 1 Target_
   - When declaring Avalanche, the user does nothing and may not Shift. At the end of the round, the user may Shift and use Avalanche. If the target damaged the user this round, Avalanche has a Damage Base of 12 (4d10+15 / 40).
 
-- 🟢 **Barrage** — `likely` · P2 (enc) · themes: plain · engine: five-strike
+- 🟢 **Barrage** — `likely` · P2 (enc) · themes: plain · engine: five-strike · code: openMoveRoll:26113
   - _Normal Physical · DB 2 · AC 4 · At-Will · 6, 1 Target, Five Strike_
   - --
 
-- 🟢 **Body Slam** — `likely` · P2 (enc) · themes: status · engine: range, range-status, status-fx · code: GAUNTLETS:36998
+- ✅ **Body Slam** — `auto` · P2 (enc) · themes: status · engine: range, range-status, status-fx · code: GAUNTLETS:38101
   - _Normal Physical · DB 9 · AC 2 · Scene x2 · Melee, 1 Target_
+  - note: moveStatusEffects: Paralysis on 15+
   - Body Slam Paralyzes the target on 15+.
 
-- 🟢 **Bolt Beak** — `likely` · P2 (enc) · themes: damage · engine: special:conditionalDB · code: openMoveRoll:26361
+- 🟢 **Bolt Beak** — `likely` · P2 (enc) · themes: damage · engine: special:conditionalDB · code: openMoveRoll:27256
   - _Electric Physical · DB 9 · AC 2 · Scene x2 · Melee, 1 Target_
   - Against targets with a lower initiative that have not yet acted this round, Bolt Beak deals +10 damage.
 
-- 🟢 **Bone Rush** — `likely` · P2 (enc) · themes: plain · engine: five-strike · code: BONE_WIELDER_MOVES:24583
+- 🟢 **Bone Rush** — `likely` · P2 (enc) · themes: plain · engine: five-strike · code: BONE_WIELDER_MOVES:25288
   - _Ground Physical · DB 3 · AC 4 · EOT · Melee, 1 Target, Five Strike_
   - --
 
@@ -2734,7 +2823,7 @@ P9 · 48 open of 50 · open
   - _Dragon Physical · DB 6 · AC 2 · EOT · Close Blast 2_
   - The target's Attack is lowered 1 CS.
 
-- 🟡 **Bug Bite** — `partial` · P2 (enc, pc) · themes: plain · code: STRONG_JAW_MOVES:24305
+- 🟡 **Bug Bite** — `partial` · P2 (enc, pc) · themes: plain · code: STRONG_JAW_MOVES:25000
   - _Bug Physical · DB 6 · AC 2 · At-Will · Melee, 1 Target_
   - note: v617 verify sweep: found unhandled, added STATIC_ABILITY_EVASION / ABILITY_ACTION_ROWS / MOVE_FX_ROWS
   - If the target has a stored Digestion/Food Buff or has traded in a Digestion/Food Buff this Scene, the user may gain the effects of the Digestion/Food Buff. This does no count towards the Usual limit on the user's Digestion/Food Buffs.
@@ -2743,7 +2832,7 @@ P9 · 48 open of 50 · open
   - _Grass Physical · DB 3 · AC 4 · EOT · 6, 1 Target, Five Strike_
   - --
 
-- 🟢 **Charm** — `likely` · P2 (enc) · themes: cs · engine: cs · code: openAddGift:15286, SKILL_WORDS:21196, MENTOR_SKILL_OPTIONS:26586, featureActionTypes:27049, openPowerChord:28804, MANIPULATE_EFFECTS:28903
+- 🟢 **Charm** — `likely` · P2 (enc) · themes: cs · engine: cs · code: openAddGift:15647, SKILL_WORDS:21621, MENTOR_SKILL_OPTIONS:27485, featureActionTypes:27976, openPowerChord:29765, MANIPULATE_EFFECTS:29864
   - _Fairy Status · DB — · AC 2 · EOT · 6, 1 Target, Social_
   - Lower the target's Attack by -2 CS.
 
@@ -2751,7 +2840,7 @@ P9 · 48 open of 50 · open
   - _Flying Special · DB 7 · AC 2 · At-Will · 4, 1 Target, Sonic_
   - Chatter confuses all targets on 16+.
 
-- 🟢 **Close Combat** — `likely` · P2 (enc) · themes: cs, damage · engine: cs · code: RECKLESS_ERRATA_MOVES:24302
+- 🟢 **Close Combat** — `likely` · P2 (enc) · themes: cs, damage · engine: cs · code: RECKLESS_ERRATA_MOVES:24997
   - _Fighting Physical · DB 12 · AC 2 · Scene x2 · Melee, 1 Target, Dash_
   - Lower the user's Defense and Special Defense by -1 CS each after damage.
 
@@ -2759,7 +2848,7 @@ P9 · 48 open of 50 · open
   - _Normal Status · DB — · AC 2 · At-Will · 4, 1 Target, Social_
   - Lower the target's Special Attack by -1 CS.
 
-- 🟢 **Confusion** — `likely` · P2 (enc, pc) · themes: status · engine: range, range-status, status-fx · code: EDGE_FX:118, TERRAIN_DEFS:1639
+- 🟢 **Confusion** — `likely` · P2 (enc, pc) · themes: status · engine: range, range-status, status-fx · code: EDGE_FX:118, TERRAIN_DEFS:1685, CONNECTION_STATUS:21773
   - _Psychic Special · DB 5 · AC 2 · At-Will · 6, 1 Target_
   - Confusion Confuses the target on 19+.
 
@@ -2771,7 +2860,7 @@ P9 · 48 open of 50 · open
   - _Water Physical · DB 10 · AC 4 · EOT · Melee, 1 Target_
   - Crabhammer is a Critical Hit on 18+.
 
-- 🟢 **Crunch** — `likely` · P2 (enc) · themes: cs · engine: cs, range · code: STRONG_JAW_MOVES:24305, GAUNTLETS:36985
+- 🟢 **Crunch** — `likely` · P2 (enc) · themes: cs · engine: cs, range · code: STRONG_JAW_MOVES:25000, GAUNTLETS:38088
   - _Dark Physical · DB 8 · AC 2 · EOT · Melee, 1 Target_
   - Crunch lowers the target's Defense by -1 CS on 17+.
 
@@ -2783,9 +2872,9 @@ P9 · 48 open of 50 · open
   - _Bug Status · DB — · AC — · EOT · Self_
   - Raise the user's Defense and Special Defense by +1 CS each.
 
-- 🟡 **Detect** — `partial` · P2 (enc, pc) · themes: damage · code: GAUNTLETS:36974
+- ✅ **Detect** — `auto` · P2 (enc, pc) · themes: damage · code: GAUNTLETS:38077
   - _Fighting Status · DB — · AC — · Scene · Self, Trigger, Interrupt, Shield_
-  - note: found-10 coat/shield state + card; riposte/side effects noted for the GM
+  - note: verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶
   - If the user is hit by a Move, the user may use Detect. The user is instead not hit by the Move. You do not take any damage nor are you affected by anty of the Move's effects
 
 - 🟢 **Diamond Storm** — `likely` · P2 (enc) · themes: cs · engine: cs
@@ -2796,7 +2885,7 @@ P9 · 48 open of 50 · open
   - _Electric Special · DB 8 · AC 2 · EOT · All Cardinally Adjacent Targets_
   - Discharge Paralyzes all legal targets on 15+.
 
-- ✅ **Double-Edge** — `auto` · P2 (enc) · themes: plain · engine: hp-fx · code: featureGrantsMoveNames:27999, GAUNTLETS:37026
+- ✅ **Double-Edge** — `auto` · P2 (enc) · themes: plain · engine: hp-fx · code: featureGrantsMoveNames:28949, GAUNTLETS:38129
   - _Normal Physical · DB 12 · AC 2 · Scene x2 · Melee, 1 Target, Dash, Recoil 1/3_
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt; Rock Head / Magic Guard zero it
   - --
@@ -2808,9 +2897,9 @@ P9 · 48 open of 50 · open
 <a id="verify-moves-03"></a>
 ## `verify-moves-03` — Verify moves the scan thinks are handled
 
-P9 · 42 open of 50 · open
+P9 · 36 open of 50 · open
 
-- ✅ **Drain Punch** — `auto` · P2 (enc) · themes: damage · engine: hp-fx · code: IRON_FIST_MOVES:24187
+- ✅ **Drain Punch** — `auto` · P2 (enc) · themes: damage · engine: hp-fx · code: IRON_FIST_MOVES:24881
   - _Fighting Physical · DB 8 · AC 2 · Scene x2 · Melee, 1 Target, Aura_
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt
   - After the target takes damage, the user gains HP equal to half of the damage it dealt to the target.
@@ -2831,9 +2920,9 @@ P9 · 42 open of 50 · open
   - _Electric Special · DB 6 · AC 3 · EOT · 4, Ranged Blast 2_
   - Lower the Speed of all legal targets by -1 CS.
 
-- 🟡 **Endure** — `partial` · P2 (enc, pc) · themes: action · code: MOVE_COATS:22744, coatsOnHit:22811
+- ✅ **Endure** — `auto` · P2 (enc, pc) · themes: action · code: MOVE_COATS:23276, coatsOnHit:23345
   - _Normal Status · DB — · AC — · Daily · Self, Reaction, Trigger_
-  - note: found-10 coat/shield state + card; riposte/side effects noted for the GM
+  - note: verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶
   - If the user is hit by a damaging Move, you may use Endure as a Free Action. If the Move would bring Endure's user down to 0 HP or less, Endure's user instead is set to 1 HP.
 
 - ✅ **Explosion** — `auto` · P2 (enc) · themes: social
@@ -2845,7 +2934,7 @@ P9 · 42 open of 50 · open
   - _Psychic Special · DB 8 · AC 2 · EOT · 5, 1 Target_
   - Extrasensory Flinches the target on 19+.
 
-- 🟢 **Facade** — `likely` · P2 (enc) · themes: damage, stat · engine: special:conditionalDB · code: SPECIAL_FIXED_DAMAGE:24736
+- 🟢 **Facade** — `likely` · P2 (enc) · themes: damage, stat · engine: special:conditionalDB · code: SPECIAL_FIXED_DAMAGE:25445
   - _Normal Physical · DB 7 · AC 2 · EOT · Melee, 1 Target_
   - If the user is afflicted with a Persistent Status Affliction, Facade's Damage Base is doubled to DB 14 (4d10+15 / 40).
 
@@ -2858,12 +2947,12 @@ P9 · 42 open of 50 · open
   - note: v627 MOVE_TARGET_RULES.spare: the 💥 Apply leaves the target on 1 HP
   - False Swipe's damage cannot bring a target lower than 1 HP.
 
-- 🟡 **Feint** — `partial` · P2 (enc, pc) · themes: action · code: GAUNTLETS:36974
+- 🟡 **Feint** — `partial` · P2 (enc, pc) · themes: action · code: GAUNTLETS:38077
   - _Normal Status · DB — · AC — · Scene · Trigger_
   - note: v617 verify sweep: found unhandled, added STATIC_ABILITY_EVASION / ABILITY_ACTION_ROWS / MOVE_FX_ROWS
   - If a foe uses a Move with the Shield Keyword in response to one of your actions, you may activate Feint to cause the triggering Move to Fail. Feint is activated as a Free Action.
 
-- 🟢 **Fire Punch** — `likely` · P2 (enc) · themes: status · engine: range, range-status, status-fx · code: IRON_FIST_MOVES:24188
+- 🟢 **Fire Punch** — `likely` · P2 (enc) · themes: status · engine: range, range-status, status-fx · code: IRON_FIST_MOVES:24882
   - _Fire Physical · DB 8 · AC 2 · At-Will · Melee, 1 Target_
   - Fire Punch Burns the target on 19+.
 
@@ -2872,7 +2961,7 @@ P9 · 42 open of 50 · open
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt; the 19+ Burn is found-02's
   - Flare Blitz Burns the target on 19+.
 
-- 🟢 **Flash** — `likely` · P2 (enc) · themes: damage · engine: cs · code: playEvolutionFX:2039, trigRow:23760
+- 🟢 **Flash** — `likely` · P2 (enc) · themes: damage · engine: cs · code: playEvolutionFX:2085, trigRow:24410
   - _Normal Status · DB — · AC 2 · EOT · Cone 2_
   - Lower the Accuracy of all legal targets by -1. *Grants Glow
 
@@ -2892,12 +2981,12 @@ P9 · 42 open of 50 · open
   - _Fighting Physical · DB 6 · AC 2 · At-Will · Melee, 1 Target_
   - Force Palm Paralyzes the target on 18+.
 
-- 🟡 **Foul Play** — `partial` · P2 (enc) · themes: damage, stat
+- ✅ **Foul Play** — `auto` · P2 (enc) · themes: damage, stat
   - _Dark Physical · DB 10 · AC 2 · Scene x2 · Melee, 1 Target_
-  - note: v627 MOVE_FX_ROWS / MOVE_TARGET_RULES card or alert; the rider is applied at the table
+  - note: v654: MOVE_TARGET_RULES.foulPlay — attackTargetWidget swaps the user's Attack stat for the target's (tokenStatOf difference) per target
   - The target reveals its Attack stat. When calculating damage, add the target's Attack stat instead of the user's Attack stat.
 
-- ✅ **Giga Drain** — `auto` · P2 (enc) · themes: damage · engine: hp-fx · code: GAUNTLETS:36987
+- ✅ **Giga Drain** — `auto` · P2 (enc) · themes: damage · engine: hp-fx · code: GAUNTLETS:38090
   - _Grass Special · DB 8 · AC 2 · Scene x2 · 6, 1 Target_
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt
   - After the target takes damage, the user gains HP equal to half of the damage they dealt to the target.
@@ -2906,7 +2995,7 @@ P9 · 42 open of 50 · open
   - _Normal Status · DB — · AC — · Daily · Melee, 1 Target, Execute_
   - Roll 1d100. This roll may not be modified in any way. If you roll X or lower, the target Faints. X is equal to 30 + The User's Level - The Target's Level.
 
-- ✅ **Helping Hand** — `auto` · P2 (enc, pc) · themes: damage · code: _mvBuff:23598, GAUNTLETS:36984
+- ✅ **Helping Hand** — `auto` · P2 (enc, pc) · themes: damage · code: _mvBuff:24176, GAUNTLETS:38087
   - _Normal Status · DB — · AC — · EOT · 4, 1 Target, Priority_
   - note: v617 verify sweep: found unhandled, added STATIC_ABILITY_EVASION / ABILITY_ACTION_ROWS / MOVE_FX_ROWS
   - Helping Hand grants the target +2 on its next Accuracy Roll this round, and +10 to its next Damage Roll this round.
@@ -2920,15 +3009,15 @@ P9 · 42 open of 50 · open
   - _Normal Status · DB — · AC — · At-Will · Self_
   - Raise the user's Attack by +1 CS.
 
-- 🟢 **Hyper Fang** — `likely` · P2 (enc) · themes: status · engine: range, range-status, range-flinch, status-fx · code: STRONG_JAW_MOVES:24306
+- 🟢 **Hyper Fang** — `likely` · P2 (enc) · themes: status · engine: range, range-status, range-flinch, status-fx · code: STRONG_JAW_MOVES:25001
   - _Normal Physical · DB 8 · AC 4 · At-Will · Melee, 1 Target_
   - Hyper Fang Flinches the target on 19+.
 
-- 🟢 **Ice Fang** — `likely` · P2 (enc) · themes: status, damage, skill · engine: rand-status · code: STRONG_JAW_MOVES:24305, GAUNTLETS:37026
+- 🟢 **Ice Fang** — `likely` · P2 (enc) · themes: status, damage, skill · engine: rand-status · code: STRONG_JAW_MOVES:25000, GAUNTLETS:38129
   - _Ice Physical · DB 7 · AC 3 · At-Will · Melee, 1 Target_
   - Ice Fang Freezes or Flinches on 18-19 during Accuracy Check; flip a coin to determine whether the foe becomes Frozen or Flinched. On 20 during Accuracy Check, the foe is both Frozen and Flinched.
 
-- 🟢 **Ice Punch** — `likely` · P2 (enc) · themes: status · engine: range, range-status, status-fx · code: IRON_FIST_MOVES:24188
+- 🟢 **Ice Punch** — `likely` · P2 (enc) · themes: status · engine: range, range-status, status-fx · code: IRON_FIST_MOVES:24882
   - _Ice Physical · DB 8 · AC 2 · At-Will · Melee, 1 Target_
   - Ice Punch Freezes the target on 19+.
 
@@ -2936,19 +3025,20 @@ P9 · 42 open of 50 · open
   - _Ice Physical · DB 3 · AC 4 · EOT · 6, 1 Target, Five Strike_
   - --
 
-- 🟢 **Iron Defense** — `likely` · P2 (enc) · themes: cs · engine: cs · code: STAT_TRAINING_MOVES:23810
+- 🟢 **Iron Defense** — `likely` · P2 (enc) · themes: cs · engine: cs · code: STAT_TRAINING_MOVES:24460
   - _Steel Status · DB — · AC — · EOT · Self_
   - Raise the user's Defense by +2 CS.
 
-- 🟢 **Iron Head** — `likely` · P2 (enc) · themes: status · engine: range, range-status, range-flinch, status-fx · code: GAUNTLETS:36987
+- ✅ **Iron Head** — `auto` · P2 (enc) · themes: status · engine: range, range-status, range-flinch, status-fx · code: GAUNTLETS:38090
   - _Steel Physical · DB 8 · AC 2 · EOT · Melee, 1 Target, Dash_
+  - note: moveStatusEffects: Flinch on 15+
   - Iron Head Flinches the target on 15+.
 
 - 🟢 **Iron Tail** — `likely` · P2 (enc) · themes: cs · engine: cs, range
   - _Steel Physical · DB 10 · AC 6 · Scene x2 · Melee, 1 Target, Smite_
   - Iron Tail lowers the target's Defense by -1 CS on 19+.
 
-- 🟡 **Laser Focus** — `partial` · P2 (enc) · themes: damage · code: _mvBuff:23563
+- 🟡 **Laser Focus** — `partial` · P2 (enc) · themes: damage · code: _mvBuff:24139
   - _Normal Status · DB — · AC — · Scene x2 · Self_
   - note: v627 MOVE_FX_ROWS / MOVE_TARGET_RULES card or alert; the rider is applied at the table
   - The next succesful damaging attack made by the user is automatically a Critical Hit.
@@ -2962,11 +3052,11 @@ P9 · 42 open of 50 · open
   - note: v627 MOVE_FX_ROWS / MOVE_TARGET_RULES card or alert; the rider is applied at the table
   - The target is Locked-On. The next Move that the user uses against the Target that requires an Accuracy Check cannot miss. Lock-On's effect, on both the User and Target, can be passed by Baton Pass.
 
-- 🟢 **Magnitude** — `likely` · P2 (enc, pc) · themes: damage, stat · engine: special:dieDB · code: specialMoveInfo:24856
+- 🟢 **Magnitude** — `likely` · P2 (enc, pc) · themes: damage, stat · engine: special:dieDB · code: specialMoveInfo:25565
   - _Ground Physical · DB — · AC 2 · EOT · Burst 2, Groundsource_
   - When you use Magnitude, roll 1d6. Magnitude's Damage Base is equal to 5+X, where X is the value of the d6. Magnitude can hit targets that are underground, including those using the Move Dig. *Grants: Groundshaper
 
-- ✅ **Minimize** — `auto` · P2 (enc) · themes: damage · code: _mvBuff:23599, encounterMonCard:38092, encounterTrainerCard:38349
+- ✅ **Minimize** — `auto` · P2 (enc) · themes: damage · code: capabilityGrants:20667, _mvBuff:24177, encounterMonCard:39197, encounterTrainerCard:39468
   - _Normal Status · DB — · AC — · Scene · Self_
   - note: v617 verify sweep: found unhandled, added STATIC_ABILITY_EVASION / ABILITY_ACTION_ROWS / MOVE_FX_ROWS
   - The user gains +4 Evasion, and the user's size is lowered to Small for the remainder of the encounter. *Grants Shrinkable
@@ -2975,11 +3065,12 @@ P9 · 42 open of 50 · open
   - _Steel Special · DB 7 · AC 5 · EOT · 6, Ranged Blast 2_
   - All Legal Targets have their Accuracy lowered by -2 on 16+.
 
-- 🟢 **Mud Bomb** — `likely` · P2 (enc, pc) · themes: damage · engine: cs, range · code: GAUNTLETS:37000
+- ✅ **Mud Bomb** — `auto` · P2 (enc, pc) · themes: damage · engine: cs, range · code: GAUNTLETS:38103
   - _Ground Special · DB 7 · AC 4 · At-Will · 6, 1 Target_
+  - note: moveCSEffects: -1 Accuracy on 16+
   - The target's Accuracy is lowered by -1 on 16+.
 
-- 🟢 **Natural Gift** — `likely` · P2 (enc, pc) · themes: damage · engine: special:valueDB · code: specialMoveInfo:24900
+- 🟢 **Natural Gift** — `likely` · P2 (enc, pc) · themes: damage · engine: special:valueDB · code: specialMoveInfo:25609
   - _Normal Special · DB — · AC 2 · Scene · 6, 1 Target, Berry_
   - Refer to the Move Keywords Berry list. Natural Gift deals damage according to the Berry list and Natural Gift's Type is also defined there. The Berry's Digestion/Food Buff is nullified and is not used.
 
@@ -2991,8 +3082,9 @@ P9 · 42 open of 50 · open
   - _Dark Special · DB 9 · AC 3 · EOT · 4, 1 Target_
   - Night Daze lowers the target's Accuracy by -1 on 13+.
 
-- 🟢 **Night Slash** — `likely` · P2 (enc) · themes: damage · engine: range, range-crit · code: GAUNTLETS:37026
+- ✅ **Night Slash** — `auto` · P2 (enc) · themes: damage · engine: range, range-crit · code: GAUNTLETS:38129
   - _Dark Physical · DB 7 · AC 2 · EOT · Melee, Pass_
+  - note: critThreshold: Critical Hit on 18+
   - Night Slash is a Critical Hit on 18+.
 
 - 🟢 **Payback** — `likely` · P2 (enc) · themes: damage, stat · engine: special:conditionalDB
@@ -3003,32 +3095,33 @@ P9 · 42 open of 50 · open
   - _Normal Physical · DB 7 · AC 2 · EOT · WR, 1 Target_
   - Pierce deals an additional +10 damage against targets with Damage Reduction.
 
-- 🟢 **Pin Missile** — `likely` · P2 (enc, pc) · themes: plain · engine: five-strike · code: GAUNTLETS:36971
+- ✅ **Pin Missile** — `auto` · P2 (enc, pc) · themes: plain · engine: five-strike · code: GAUNTLETS:38074
   - _Bug Physical · DB 3 · AC 4 · EOT · 6, 1 Target, Five Strike_
+  - note: Five Strike keyword - the roll's Five Strike path
   - --
 
-- 🟢 **Poison Fang** — `likely` · P2 (enc, pc) · themes: status · engine: range, range-status, status-fx · code: STRONG_JAW_MOVES:24306
+- 🟢 **Poison Fang** — `likely` · P2 (enc, pc) · themes: status · engine: range, range-status, status-fx · code: INTOXICATOR_MOVES:20659, STRONG_JAW_MOVES:25001
   - _Poison Physical · DB 5 · AC 2 · EOT · Melee, 1 Target_
   - Poison Fang Badly Poisons the target on 17+.
 
-- 🟢 **Poison Jab** — `likely` · P2 (enc) · themes: status · engine: range, range-status, status-fx · code: GAUNTLETS:37003
+- 🟢 **Poison Jab** — `likely` · P2 (enc) · themes: status · engine: range, range-status, status-fx · code: INTOXICATOR_MOVES:20659, GAUNTLETS:38106
   - _Poison Physical · DB 8 · AC 2 · EOT · Melee, 1 Target_
   - Poison Jab Poisons the target on 15+.
 
-- 🟢 **Poison Tail** — `likely` · P2 (enc, pc) · themes: status, damage · engine: range, range-status, range-crit, status-fx · code: GAUNTLETS:36999
+- 🟢 **Poison Tail** — `likely` · P2 (enc, pc) · themes: status, damage · engine: range, range-status, range-crit, status-fx · code: INTOXICATOR_MOVES:20659, GAUNTLETS:38102
   - _Poison Physical · DB 5 · AC 2 · At-Will · Melee, 1 Target_
   - Poison Tail is a Critical Hit on 18+ and Poisons the target on 19+.
 
-- 🟢 **Power-Up Punch** — `likely` · P2 (enc) · themes: cs, skill · engine: cs · code: IRON_FIST_MOVES:24189
+- 🟢 **Power-Up Punch** — `likely` · P2 (enc) · themes: cs, skill · engine: cs · code: IRON_FIST_MOVES:24883
   - _Fighting Physical · DB 4 · AC 2 · EOT · Melee, 1 Target_
   - If Power-Up Punch successfully hits a target, the user's Attack is raised by +1 Combat Stage
 
 <a id="verify-moves-04"></a>
 ## `verify-moves-04` — Verify moves the scan thinks are handled
 
-P9 · 49 open of 50 · open
+P9 · 42 open of 50 · open
 
-- 🟢 **Present** — `likely` · P2 (enc) · themes: damage · engine: special:dieDB · code: specialMoveInfo:24857
+- 🟢 **Present** — `likely` · P2 (enc) · themes: damage · engine: special:dieDB · code: specialMoveInfo:25566
   - _Normal Physical · DB — · AC 3 · EOT · 4, 1 Target_
   - Roll 1d6; Present has a DB equal to twice the result. On a result of 1, instead of taking damage the target gains 20 HP.
 
@@ -3036,7 +3129,7 @@ P9 · 49 open of 50 · open
   - _Psychic Special · DB 7 · AC 2 · At-Will · 6, 1 Target_
   - Psybeam Confuses the target on 19+.
 
-- 🟢 **Rage Fist** — `likely` · P2 (enc) · themes: damage, stat · engine: special:conditionalDB · code: openTrainerAttack:9702, openMoveRoll:25259
+- 🟢 **Rage Fist** — `likely` · P2 (enc) · themes: damage, stat · engine: special:conditionalDB · code: openTrainerAttack:10043, openMoveRoll:26150
   - _Ghost Physical · DB 5 · AC 2 · Scene x2 · Melee, 1 Target_
   - If the user has at least 1 Injury when using this Move, its Damage Base gets doubled to DB 10 (3d8+10 / 24). Additionally, if the user is under 50% Max HP, this Move instead becomes DB 12 (3d12+10 / 30) and cannot miss.
 
@@ -3052,19 +3145,20 @@ P9 · 49 open of 50 · open
   - _Water Physical · DB 8 · AC 3 · EOT · Melee, 1 Target, Dash_
   - Razor Shell lowers the target's Defense by -1 CS on an Even-Numbered Roll.
 
-- 🟢 **Return** — `likely` · P2 (enc) · themes: damage, social · engine: special:valueDB · code: specialMoveInfo:24870
+- 🟢 **Return** — `likely` · P2 (enc) · themes: damage, social · engine: special:valueDB · code: specialMoveInfo:25579
   - _Normal Physical · DB — · AC 2 · At-Will · Melee, 1 Target_
   - Return's DB is equal to 3 plus the user's Loyalty Value.
 
-- 🟢 **Rock Polish** — `likely` · P2 (enc, pc) · themes: cs · engine: cs · code: STAT_TRAINING_MOVES:23810
+- 🟢 **Rock Polish** — `likely` · P2 (enc, pc) · themes: cs · engine: cs · code: STAT_TRAINING_MOVES:24460
   - _Rock Status · DB — · AC — · EOT · Self_
   - Raise the user's Speed by +2 CS.
 
-- 🟢 **Rock Tomb** — `likely` · P2 (enc, pc) · themes: cs · engine: cs · code: GAUNTLETS:36969
+- ✅ **Rock Tomb** — `auto` · P2 (enc, pc) · themes: cs · engine: cs · code: GAUNTLETS:38072
   - _Rock Physical · DB 6 · AC 5 · At-Will · 6, 1 Target_
+  - note: moveCSEffects: -1 Speed; the *Grants Materializer marker feeds the Capabilities (CAP_GRANT_RE)
   - Rock Tomb lowers the target's Speed by -1 CS. *Grants Materializer
 
-- 🟢 **Round** — `likely` · P2 (enc, pc) · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:24871, featureGrantsMoveNames:27989, mapTokensSave:44780, wallsOverlay:48325, isCombatDurBuff:48830, attachTokenDrag:50658
+- 🟢 **Round** — `likely` · P2 (enc, pc) · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:25580, featureGrantsMoveNames:28939, mapTokensSave:45899, wallsOverlay:49468, isCombatDurBuff:49973, noteLinksOverlay:50546, attachTokenDrag:51878
   - _Normal Special · DB — · AC 2 · EOT · Burst 1, Sonic_
   - Round's Damage Base is equal to 6, plus +2 more for each use of Round by any Trainer or Pokemon this round, up to a maximum of DB 12 (3d12+10 / 30).
 
@@ -3077,8 +3171,9 @@ P9 · 49 open of 50 · open
   - note: v628 same row as Explosion
   - The user's HP is set to -50% of its full HP. This HP loss may not be prevented or reduced in any way. The user's loyalty may be lowered.
 
-- 🟢 **Shadow Ball** — `likely` · P2 (enc) · themes: cs · engine: cs, range · code: GAUNTLETS:36985
+- ✅ **Shadow Ball** — `auto` · P2 (enc) · themes: cs · engine: cs, range · code: GAUNTLETS:38088
   - _Ghost Special · DB 8 · AC 2 · EOT · 8, 1 Target_
+  - note: moveCSEffects: -1 Special Defense on 17+
   - Shadow Ball lowers the target's Special Defense by -1 CS on 17+.
 
 - 🟢 **Shadow Claw** — `likely` · P2 (enc) · themes: damage · engine: range, range-crit
@@ -3097,36 +3192,39 @@ P9 · 49 open of 50 · open
   - _Bug Special · DB 8 · AC 2 · EOT · 6, 1 Target_
   - Signal Beam Confuses the target on 19+.
 
-- 🟢 **Sludge** — `likely` · P2 (pc) · themes: status · engine: range, range-status, status-fx
+- 🟢 **Sludge** — `likely` · P2 (pc) · themes: status · engine: range, range-status, status-fx · code: INTOXICATOR_MOVES:20659
   - _Poison Special · DB 7 · AC 2 · EOT · 6, 1 Target_
   - Sludge Poisons the target on 15+.
 
-- 🟢 **Sludge Bomb** — `likely` · P2 (enc) · themes: status · engine: range, range-status, status-fx
+- 🟢 **Sludge Bomb** — `likely` · P2 (enc) · themes: status · engine: range, range-status, status-fx · code: INTOXICATOR_MOVES:20659
   - _Poison Special · DB 9 · AC 2 · EOT · 8, 1 Target_
   - Sludge Bomb Poisons the target on 15+.
 
-- 🟢 **Snarl** — `likely` · P2 (enc) · themes: cs · engine: cs · code: GAUNTLETS:37000
+- ✅ **Snarl** — `auto` · P2 (enc) · themes: cs · engine: cs · code: GAUNTLETS:38103
   - _Dark Special · DB 6 · AC 3 · EOT · Cone 2, Sonic_
+  - note: moveCSEffects: -1 Special Attack to every legal target
   - Lower the Special Attack of all legal targets by -1 CS.
 
 - 🟢 **Spark** — `likely` · P2 (enc, pc) · themes: status · engine: range, range-status, status-fx
   - _Electric Physical · DB 6 · AC 2 · EOT · Melee, 1 Target, Dash_
   - Spark Paralyzes the target on 15+.
 
-- 🟢 **Spit Up** — `likely` · P2 (enc, pc) · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:24872
+- ✅ **Spit Up** — `auto` · P2 (enc, pc) · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:25581
   - _Normal Special · DB — · AC 2 · Scene · 4, 1 Target_
+  - note: v655: the count input defaults to o.stockpile; MOVE_FX_ROWS spitup zeroes it and removes the Combat Stages
   - For each Stockpiled Count the user has, Spit Up's Damage Base is increased by +8. If the user has no Stockpiled count, Spit Up cannot be used.
 
 - 🟢 **Steam Eruption** — `likely` · P2 (enc) · themes: status · engine: range, range-status, status-fx
   - _Water Special · DB 11 · AC 3 · Scene · Close Blast 3, Smite_
   - Steam Eruption Burns all legal targets on a 15+.
 
-- 🟢 **Steamroller** — `likely` · P2 (enc) · themes: status, damage · engine: range, range-status, range-flinch, status-fx, special:conditionalDB
+- 🟢 **Steamroller** — `likely` · P2 (enc) · themes: status, damage · engine: range, range-status, range-flinch, status-fx, special:conditionalDB · code: abilityDamageMods:25182
   - _Bug Physical · DB 7 · AC 2 · EOT · Melee, Pass_
   - Steamroller Flinches the target on 15+. If the target is Small, Steamroller deals an additional +5 Damage.
 
-- 🟢 **Stockpile** — `likely` · P2 (enc, pc) · themes: cs, skill · engine: cs · code: GAUNTLETS:36998
+- ✅ **Stockpile** — `auto` · P2 (enc, pc) · themes: cs, skill · engine: cs · code: GAUNTLETS:38101
   - _Normal Status · DB — · AC — · EOT · Self_
+  - note: v655: MOVE_FX_ROWS stockpile adds to o.stockpile (max 3); the +1 Def/SpDef is the CS card; Spit Up reads the count as its default
   - The user adds 1 to their Stockpiled count to a maximum of 3. For each number a Stockpiled count is above 0, raise the user's Defense and Special Defense by +1 CS each. If a Stockpiled count is set to 0, any Combat Stages gained from the Stockpiled count are removed.
 
 - 🟢 **Stone Axe** — `likely` · P2 (enc) · themes: damage, action · engine: range, range-crit
@@ -3145,32 +3243,32 @@ P9 · 49 open of 50 · open
   - _Bug Special · DB 5 · AC 2 · At-Will · Cone 2_
   - Lower the Special Attack of all legal targets by -1 CS.
 
-- 🟢 **Super Fang** — `likely` · P2 (enc) · themes: plain · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:24706, GAUNTLETS:37026
+- 🟢 **Super Fang** — `likely` · P2 (enc) · themes: plain · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:25415, GAUNTLETS:38129
   - _Normal Physical · DB — · AC 4 · Scene · Melee, 1 Target_
   - The target loses 1/2 of its current HP.
 
-- 🟢 **Superpower** — `likely` · P2 (enc) · themes: cs, skill · engine: cs · code: RECKLESS_ERRATA_MOVES:24304
+- 🟢 **Superpower** — `likely` · P2 (enc) · themes: cs, skill · engine: cs · code: RECKLESS_ERRATA_MOVES:24999
   - _Fighting Physical · DB 12 · AC 2 · Scene x2 · Melee, 1 Target, Dash_
   - Superpower lowers the user's Attack and Defense by 1 Combat Stage each.
 
-- 🟢 **Surf** — `likely` · P2 (enc, pc) · themes: action · code: researchTeachMove:33611
+- 🟢 **Surf** — `likely` · P2 (enc, pc) · themes: action · code: researchTeachMove:34710
   - _Water Special · DB 9 · AC 2 · EOT · Line 6_
   - As a Shift Action, the user may Move to any open square in Surf 's area of effect without provoking any Attacks of Opportunity.
 
-- 🟡 **Take Down** — `partial` · P2 (enc, pc) · themes: action · engine: hp-fx · code: GAUNTLETS:36984
+- 🟡 **Take Down** — `partial` · P2 (enc, pc) · themes: action · engine: hp-fx · code: GAUNTLETS:38087
   - _Normal Physical · DB 9 · AC 5 · EOT · Melee, 1 Target, Dash, Recoil 1/3_
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt. Left: the free Trip Maneuver
   - You may perform a Trip Maneuver against the target as a Free Action.
 
-- 🟢 **Thunder Fang** — `likely` · P2 (enc) · themes: status · engine: rand-status · code: STRONG_JAW_MOVES:24305
+- 🟢 **Thunder Fang** — `likely` · P2 (enc) · themes: status · engine: rand-status · code: STRONG_JAW_MOVES:25000
   - _Electric Physical · DB 7 · AC 3 · At-Will · Melee, 1 Target_
   - Thunder Fang Paralyzes or Flinches on 18-19; flip a coin to determine whether the foe becomes Paralyzed or Flinched. On 20, the foe is both Paralyzed and Flinched.
 
-- 🟢 **Thunder Punch** — `likely` · P2 (enc) · themes: status · engine: range, range-status, status-fx · code: IRON_FIST_MOVES:24189
+- 🟢 **Thunder Punch** — `likely` · P2 (enc) · themes: status · engine: range, range-status, status-fx · code: IRON_FIST_MOVES:24883
   - _Electric Physical · DB 8 · AC 2 · At-Will · Melee, 1 Target_
   - Thunder Punch Paralyzes the target on 19+.
 
-- 🟢 **Thunder Shock** — `likely` · P2 (enc, pc) · themes: status · engine: range, range-status, status-fx · code: ROTOM_POLTERGEIST:20893
+- 🟢 **Thunder Shock** — `likely` · P2 (enc, pc) · themes: status · engine: range, range-status, status-fx · code: ROTOM_POLTERGEIST:21317
   - _Electric Special · DB 4 · AC 2 · At-Will · 4, 1 Target_
   - Thunder Shock Paralyzes the target on 17+. *Grants Zapper
 
@@ -3190,16 +3288,18 @@ P9 · 49 open of 50 · open
   - _Ghost Status · DB — · AC 2 · Daily · 6, 1 Target_
   - The target gains the Ghost Type in addition to its other Types for 5 turns.
 
-- 🟢 **Waterfall** — `likely` · P2 (enc) · themes: status · engine: range, range-status, range-flinch, status-fx · code: GAUNTLETS:36998
+- ✅ **Waterfall** — `auto` · P2 (enc) · themes: status · engine: range, range-status, range-flinch, status-fx · code: GAUNTLETS:38101
   - _Water Physical · DB 8 · AC 2 · EOT · Melee, 1 Target_
+  - note: moveStatusEffects: Flinch on 17+
   - Waterfall Flinches the target on 17+.
 
 - 🟢 **Work Up** — `likely` · P2 (enc, pc) · themes: cs · engine: cs · code: EDGE_FX:125
   - _Normal Status · DB — · AC — · EOT · Self_
   - Raise the user's Attack and Special Attack by +1 CS each.
 
-- 🟢 **Zen Headbutt** — `likely` · P2 (enc) · themes: status · engine: range, range-status, range-flinch, status-fx · code: GAUNTLETS:36985
+- ✅ **Zen Headbutt** — `auto` · P2 (enc) · themes: status · engine: range, range-status, range-flinch, status-fx · code: GAUNTLETS:38088
   - _Psychic Physical · DB 8 · AC 4 · EOT · Melee, 1 Target, Dash_
+  - note: moveStatusEffects: Flinch on 15+
   - Zen Headbutt Flinches the target on 15+.
 
 - 🟢 **Aeroblast** — `likely` · P3 · themes: damage
@@ -3222,7 +3322,7 @@ P9 · 49 open of 50 · open
   - _Steel Status · DB — · AC — · EOT · Self_
   - For the remainder of the Encounter, the user's Weight Class is one value lower, to a minimum of 1. If the user can, the user's Speed is raised by +2 Combat Stages.
 
-- 🟢 **Barb Barrage** — `likely` · P3 · themes: status · engine: range, range-status, status-fx, five-strike · code: GAUNTLETS:36971
+- 🟢 **Barb Barrage** — `likely` · P3 · themes: status · engine: range, range-status, status-fx, five-strike · code: INTOXICATOR_MOVES:20659, GAUNTLETS:38074
   - _Poison Physical · DB 2 · AC 2 · EOT · 6, 1 Target, Five Strike_
   - The target is Poisoned on a 17+. Once a Scene, if Barb Barrage's target has a Status Condition, you may choose to not roll for Five Strike. Instead, treat Barb Barrage as though it automatically rolled an 8 for Five Strike.
 
@@ -3278,7 +3378,7 @@ P9 · 48 open of 50 · open
   - _Fighting Status · DB — · AC — · EOT · Self_
   - Raise the user's Attack and Defense by +1 CS each.
 
-- 🟢 **Bullet Punch** — `likely` · P3 · themes: plain · code: IRON_FIST_MOVES:24187
+- 🟢 **Bullet Punch** — `likely` · P3 · themes: plain · code: IRON_FIST_MOVES:24881
   - _Steel Physical · DB 4 · AC 2 · At-Will · Melee, 1 Target, Priority_
   - --
 
@@ -3287,7 +3387,7 @@ P9 · 48 open of 50 · open
   - Bullseye is a Critical Hit on 16+.
     Limitation: Ranged Weapons Only
 
-- 🟢 **Butterfly Knife** — `likely` · P3 · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:24888
+- 🟢 **Butterfly Knife** — `likely` · P3 · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:25597
   - _Fairy Physical · DB 4 · AC 3 · At-Will · Melee, 1 Target, Dash, Slice_
   - If this Move is used successfully and consecutively on the same target, the Damage Base is increased by +4 to a maximum of 16. For example, the first hit would have a DB of 4; the second hit a DB of 8; the third hit a DB of 12; the fourth and further hits a DB of 16. If this Move misses or fails to damage its target, its Damage Base resets.
 
@@ -3323,7 +3423,7 @@ P9 · 48 open of 50 · open
   - _Normal Physical · DB 7 · AC 3 · EOT · Melee, 1 Target, Dash_
   - Crush Claw lowers the target's Defense by -1 CS on Even-Numbered Rolls.
 
-- 🟢 **Cut** — `likely` · P3 · themes: damage · engine: def-pierce · code: openEncDifficulty:38958, MOVE_DEF_PIERCE:47327
+- 🟢 **Cut** — `likely` · P3 · themes: damage · engine: def-pierce · code: openEncDifficulty:40077, MOVE_DEF_PIERCE:48451
   - _Normal Physical · DB 5 · AC 3 · At-Will · Melee, Pass_
   - Cut ignores up to 5 Damage Reduction (Defenses are not Damage Reduction.)
 
@@ -3332,7 +3432,7 @@ P9 · 48 open of 50 · open
   - If Deadly Strike Hits, it is a Critical Hit.
     Limitation: Not usable by Large Melee Weapons.
 
-- 🟢 **Dire Claw** — `likely` · P3 · themes: status, damage · engine: range, range-crit, rand-status
+- 🟢 **Dire Claw** — `likely` · P3 · themes: status, damage · engine: range, range-crit, rand-status · code: INTOXICATOR_MOVES:20659
   - _Poison Physical · DB 6 · AC 2 · EOT · Melee, 1 Target_
   - Dire Claw is a Critical Hit on a 19+. Dire Claw gives the target a Status ailment on a 15+. If this is triggered, roll 1d3; on 1 the target is Poisoned; on 2 the target is Paralyzed; on 3 the target is Flinched.
 
@@ -3340,7 +3440,7 @@ P9 · 48 open of 50 · open
   - _Dark Special · DB 5 · AC 2 · At-Will · 6, 1 Target_
   - Confuses the target on 19+.
 
-- 🟢 **Dizzy Punch** — `likely` · P3 · themes: status · engine: range, range-status, status-fx · code: IRON_FIST_MOVES:24187
+- 🟢 **Dizzy Punch** — `likely` · P3 · themes: status · engine: range, range-status, status-fx · code: IRON_FIST_MOVES:24881
   - _Normal Physical · DB 7 · AC 2 · At-Will · Melee, 1 Target_
   - Dizzy Punch Confuses the target on 17+.
 
@@ -3348,11 +3448,11 @@ P9 · 48 open of 50 · open
   - _Steel Physical · DB 6 · AC 2 · Scene x2 · Melee, 1 Target, Double Strike_
   - Double Iron Bash Flinches the targets on 15+.
 
-- 🟢 **Double Swipe** — `likely` · P3 · themes: plain · engine: special:doubleStrike, double-strike · code: LIVING_WEAPON_FORMS:8257
+- 🟢 **Double Swipe** — `likely` · P3 · themes: plain · engine: special:doubleStrike, double-strike · code: LIVING_WEAPON_FORMS:8580
   - _Normal Physical · DB 4 · AC 2 · EOT · WR, 2 Targets; or WR, 1 Target, Double Strike_
   - --
 
-- 🟢 **Draco Meteor** — `likely` · P3 · themes: cs, damage · engine: cs · code: RECKLESS_ERRATA_MOVES:24303, GAUNTLETS:36999
+- 🟢 **Draco Meteor** — `likely` · P3 · themes: cs, damage · engine: cs · code: RECKLESS_ERRATA_MOVES:24998, GAUNTLETS:38102
   - _Dragon Special · DB 13 · AC 4 · Scene · 8, Ranged Blast 3, Smite_
   - Lower the user's Special Attack by -2 CS after damage.
 
@@ -3364,7 +3464,7 @@ P9 · 48 open of 50 · open
   - _Dragon Physical · DB 5 · AC 2 · EOT · 6, 1 Target, Double Strike; or 6, 2 Targets_
   - --
 
-- 🟢 **Dragon Energy** — `likely` · P3 · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:24898
+- 🟢 **Dragon Energy** — `likely` · P3 · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:25607
   - _Dragon Special · DB 15 · AC 2 · Daily x2 · Cone 3 or Line 8_
   - For each 10% of HP the user is missing, Dragon Energy's Damage Base is reduced by 1.
 
@@ -3376,11 +3476,11 @@ P9 · 48 open of 50 · open
   - _Normal Special · DB 4 · AC 3 · EOT · WR, Blast 2_
   - You gain +1 Special Attack on 19+.
 
-- 🟢 **Eruption** — `likely` · P3 · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:24896
+- 🟢 **Eruption** — `likely` · P3 · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:25605
   - _Fire Special · DB 15 · AC 4 · Daily · Burst 1*_
   - For each 10% of HP the user is missing, Eruption's Damage Base is reduced by 1. Eruption creates a 1 meter burst, but also affects an area 10 meters tall straight up.
 
-- 🟢 **Façade** — `likely` · P3 · themes: damage, stat · engine: special:conditionalDB · code: SPECIAL_FIXED_DAMAGE:24736
+- 🟢 **Façade** — `likely` · P3 · themes: damage, stat · engine: special:conditionalDB · code: SPECIAL_FIXED_DAMAGE:25445
   - _Normal Physical · DB 7 · AC 2 · EOT · Melee, 1 Target_
   - If the user is afflicted with a Persistent Status Affliction, Façade's Damage Base is doubled to DB 14 (4d10+15 / 40).
 
@@ -3408,7 +3508,7 @@ P9 · 48 open of 50 · open
   - _Fire Physical · DB 8 · AC 2 · EOT · 2, 1 Target_
   - The target's Defense is lowered by -1 CS.
 
-- 🟢 **Fishious Rend** — `likely` · P3 · themes: damage · engine: special:conditionalDB · code: STRONG_JAW_MOVES:24306
+- 🟢 **Fishious Rend** — `likely` · P3 · themes: damage · engine: special:conditionalDB · code: STRONG_JAW_MOVES:25001
   - _Water Physical · DB 9 · AC 2 · Scene x2 · Melee, 1 Target_
   - Against targets with a lower initiative that have not yet acted this round, Fishious Rend deals +10 damage.
 
@@ -3416,7 +3516,7 @@ P9 · 48 open of 50 · open
   - _Ground Status · DB — · AC — · Daily · 5, 1 Target, Execute, Groundsource_
   - Roll 1d100. This roll may not be modified in any way. If you roll X or lower, the target Faints. X is equal to 30 + The User's Level - The Target's Level. *Grants: Groundshaper
 
-- 🟢 **Flower Trick** — `likely` · P3 · themes: damage · engine: always-crit · code: openMoveRoll:26221
+- 🟢 **Flower Trick** — `likely` · P3 · themes: damage · engine: always-crit · code: openMoveRoll:27116
   - _Grass Physical · DB 7 · AC — · Scene x2 · 4, 1 Target_
   - This Move cannot miss. If this Move hits, it is a Critical Hit.
 
@@ -3432,7 +3532,7 @@ P9 · 48 open of 50 · open
   - _Psychic Special · DB 9 · AC 2 · EOT · 6, 1 Target_
   - Freezing Glare Freezes the target on a 19+. Once per Scene, Freezing Glare may instead be used as an Ice-Type Move.
 
-- 🟢 **Frustration** — `likely` · P3 · themes: damage, stat, social · engine: special:valueDB · code: specialMoveInfo:24869
+- 🟢 **Frustration** — `likely` · P3 · themes: damage, stat, social · engine: special:valueDB · code: specialMoveInfo:25578
   - _Normal Physical · DB — · AC 2 · At-Will · Melee, 1 Target_
   - Frustration's Damage Base is equal to 9 minus the user's Loyalty Value. Using Frustration may make your Pokemon dislike you.
 
@@ -3444,7 +3544,7 @@ P9 · 48 open of 50 · open
 <a id="verify-moves-06"></a>
 ## `verify-moves-06` — Verify moves the scan thinks are handled
 
-P9 · 44 open of 50 · open
+P9 · 42 open of 50 · open
 
 - 🟢 **Gear Grind** — `likely` · P3 · themes: plain · engine: special:doubleStrike, double-strike
   - _Steel Physical · DB 5 · AC 3 · EOT · Melee, 1 Target, Double Strike_
@@ -3547,7 +3647,7 @@ P9 · 44 open of 50 · open
   - _Psychic Special · DB 7 · AC 2 · Scene x2 · 8, 1 Target_
   - Luster Purge lowers the target's Special Defense by -1 CS on an Even-Numbered Roll.
 
-- 🟢 **Mach Punch** — `likely` · P3 · themes: plain · code: IRON_FIST_MOVES:24188
+- 🟢 **Mach Punch** — `likely` · P3 · themes: plain · code: IRON_FIST_MOVES:24882
   - _Fighting Physical · DB 4 · AC 2 · At-Will · Melee, 1 Target, Priority_
   - --
 
@@ -3563,12 +3663,13 @@ P9 · 44 open of 50 · open
   - _Steel Special · DB 12 · AC 2 · Scene · Cone 3_
   - The user's Special Attack is lowered by -1 Combat Stage. Once per Day, this Move scatters metal coins equal in value to 1d8 times the user's Level. If it is a trainer battle, the winner gets to pick up the coins.
 
-- 🟢 **Maneuver** — `likely` · P3 · themes: plain · code: openEnchantingGaze:28942
+- 🟢 **Maneuver** — `likely` · P3 · themes: plain · code: openEnchantingGaze:29903
   - _None Category · DB — · AC — · Action · Range_
   - Effects
 
-- 🟢 **Manipulate** — `likely` · P3 · themes: plain · code: BATTLE_ACTIONS:26817
+- ⚪ **Manipulate** — `manual` · P3 · themes: plain · code: BATTLE_ACTIONS:27716
   - _None Status · DB — · AC 2 · Standard · 6, 1 Target_
+  - note: Trainer-only Manipulation actions (Bon Mot / Flirt / Terrorize) - Skill checks at the table
   - You may perform any of the following Manipulations: Bon Mot, Flirt, or Terrorize. You may use each Manipulation only once each Scene per target. Manipulate can only be performed by Trainers. Input each Manipulation for details.
 
 - 🟡 **Mat Block** — `partial` · P3 · themes: damage
@@ -3581,24 +3682,24 @@ P9 · 44 open of 50 · open
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt to the chosen target (type that target's figure into the box); the 17+ Burn on all legal targets is found-02's
   - After the targets take damage, choose one of the targets, the user gains HP equal to half of the damage they dealt to that target. Matcha Gotcha Burns all Legal Targets on 17+.
 
-- 🟢 **Mega Punch** — `likely` · P3 · themes: plain · code: IRON_FIST_MOVES:24188
+- 🟢 **Mega Punch** — `likely` · P3 · themes: plain · code: IRON_FIST_MOVES:24882
   - _Normal Physical · DB 8 · AC 4 · At-Will · Melee, 1 Target_
   - --
 
-- 🟢 **Metal Burst** — `likely` · P3 · themes: damage · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:24714
+- 🟢 **Metal Burst** — `likely` · P3 · themes: damage · engine: special:fixedDamage · code: SPECIAL_FIXED_DAMAGE:25423
   - _Steel Physical · DB — · AC — · Scene · Burst 1_
   - Metal Burst causes all legal targets in the burst to lose HP equal to the total amount of direct Damage the user has taken since the beginning of this Round. Metal Burst cannot miss.
 
-- 🟢 **Meteor Mash** — `likely` · P3 · themes: cs · engine: cs, range · code: IRON_FIST_MOVES:24188
+- 🟢 **Meteor Mash** — `likely` · P3 · themes: cs · engine: cs, range · code: IRON_FIST_MOVES:24882
   - _Steel Physical · DB 9 · AC 4 · EOT · Melee, 1 Target, Dash, Spirit Surge_
   - Raise the user's Attack by +1 CS on 15+.
 
-- 🟡 **Mighty Cleave** — `partial` · P3 · themes: damage · code: _mvBuff:23566
+- 🟡 **Mighty Cleave** — `partial` · P3 · themes: damage · code: _mvBuff:24142
   - _Rock Physical · DB 10 · AC 2 · EOT · Melee, 1 Target, Spirit Surge, Slice_
   - note: v627 MOVE_FX_ROWS / MOVE_TARGET_RULES card or alert; the rider is applied at the table
   - The user gains +10 Damage Reduction for 1 full round. Interrupts may not be activated in response to this Move. Steel Moves
 
-- ✅ **Misty Terrain** — `auto` · P3 · themes: damage · engine: field-fx · code: TERRAIN_DEFS:1615
+- ✅ **Misty Terrain** — `auto` · P3 · themes: damage · engine: field-fx · code: TERRAIN_DEFS:1661
   - _Fairy Status · DB — · AC — · Daily x2 · Field_
   - note: found-05: sets Misty Terrain on the Map; the -10 Dragon damage was already wired to it
   - The area becomes Misty for 5 turns, While Misty, all Pokemon and Traners standing on the ground ignore the first turn of all Status Afflictions, and Dragon-type attacks targeting or origination from a grounded Pokemon or Trainer take a -10 Penalty to Damage Rolls.
@@ -3629,7 +3730,7 @@ P9 · 44 open of 50 · open
   - note: v627 MOVE_FX_ROWS / MOVE_TARGET_RULES card or alert; the rider is applied at the table
   - Octazooka lowers the target's Accuracy by -1 on an Even-Numbered Roll.
 
-- 🟢 **Origin Pulse** — `likely` · P3 · themes: plain · code: MEGA_LAUNCHER_MOVES:24308
+- 🟢 **Origin Pulse** — `likely` · P3 · themes: plain · code: MEGA_LAUNCHER_MOVES:25003
   - _Water Special · DB 12 · AC 5 · Scene x2 · Close Blast 3, Smite_
   - --
 
@@ -3652,12 +3753,13 @@ P9 · 44 open of 50 · open
   - _Fairy Physical · DB 9 · AC 4 · EOT · Melee, 1 Target_
   - Play Rough lowers the target's Attack by -1 CS on 17+.
 
-- 🟢 **Psycho Boost** — `likely` · P3 · themes: cs, damage, skill · engine: cs · code: RECKLESS_ERRATA_MOVES:24303
+- 🟢 **Psycho Boost** — `likely` · P3 · themes: cs, damage, skill · engine: cs · code: RECKLESS_ERRATA_MOVES:24998
   - _Psychic Special · DB 14 · AC 4 · Scene · 8, Ranged Blast 3, Smite_
   - Lower the user's Special Attack by -2 Combat Stages after damage is resolved.
 
-- 🟢 **Psycho Cut** — `likely` · P3 · themes: damage · engine: range, range-crit · code: GAUNTLETS:36970
+- ✅ **Psycho Cut** — `auto` · P3 · themes: damage · engine: range, range-crit · code: GAUNTLETS:38073
   - _Psychic Physical · DB 7 · AC 2 · EOT · 6, 1 Target_
+  - note: critThreshold: Critical Hit on 18+
   - Psycho Cut is a Critical Hit on 18+.
 
 <a id="verify-moves-07"></a>
@@ -3685,7 +3787,7 @@ P9 · 47 open of 50 · open
   - _Normal Special · DB 9 · AC 2 · EOT · 6, 1 Target_
   - Revelation Dance is the same Type as the user's primary Type (aka the first one in its Pokedex listing). Revelation Dance deals +5 Bonus Damage for every other Dance Move used by the user this round, to a maximum of +15.
 
-- 🟢 **Reversal** — `likely` · P3 · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:24884
+- 🟢 **Reversal** — `likely` · P3 · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:25593
   - _Fighting Physical · DB 7 · AC 2 · EOT · Melee, 1 Target_
   - For each Injury the user has, Reversal's Damage Base is increased by +1.
 
@@ -3730,7 +3832,7 @@ P9 · 47 open of 50 · open
   - _Normal Special · DB 7 · AC 2 · At-Will · 4, 1 Target, Environ_
   - Secret Power's effect depends on Environ. Secret Power's effect activates on 17+.
 
-- 🟢 **Shell Side Arm** — `likely` · P3 · themes: status, stat · engine: range, range-status, status-fx
+- 🟢 **Shell Side Arm** — `likely` · P3 · themes: status, stat · engine: range, range-status, status-fx · code: INTOXICATOR_MOVES:20659
   - _Poison Special · DB 9 · AC 2 · EOT · 6, 1 Target_
   - This attack uses the highest of the user's Attack or Special Attack Stat, though this does not change the Class of the Move. In addition, if the target's Defense is lower than its Special Defense, this attack targets Defense, becoming a Physical Move. The target is poisoned on a 17+.
 
@@ -3771,7 +3873,7 @@ P9 · 47 open of 50 · open
   - _Fairy Special · DB 10 · AC 5 · Scene · 6, Ranged Blast 3, Smite_
   - If the user is not in Therian Forme, the user has each of its stats raised by +1 CS on a 16+. If the user is in Therian Form, the target has each of its stats lowered by -1 CS on a 16+.
 
-- 🟢 **Sprint** — `likely` · P3 · themes: plain · code: ABILITY_ACTION_ROWS:3560, typeAbilityRow:3892, ABILITY_CAP_GRANTS:20246, BATTLE_ACTIONS:26827
+- 🟢 **Sprint** — `likely` · P3 · themes: plain · code: ABILITY_ACTION_ROWS:3658, typeAbilityRow:4007, ABILITY_CAP_GRANTS:20636, BATTLE_ACTIONS:27726, ACTION_FEATURE_NOTES:27789
   - _None Status · DB — · AC — · Standard · Self_
   - Increase your Movement Speeds by 50% for the rest of your turn.
 
@@ -3783,11 +3885,11 @@ P9 · 47 open of 50 · open
   - _Fairy Special · DB 9 · AC 3 · Scene x2 · Burst 1_
   - The target is confused on 17+.
 
-- 🟢 **Struggle** — `likely` · P3 · themes: plain · code: addSpeciesKey:4799, bossOnLastBar:5206, defenseTypeMods:7049, struggleMove:20511, BATTLE_ACTIONS:26813, simAttacks:41239, tokenDamageBreakdown:50788, openTokenMenu:51875
+- 🟢 **Struggle** — `likely` · P3 · themes: plain · code: addSpeciesKey:5026, bossOnLastBar:5459, defenseTypeMods:7360, struggleMove:20905, BATTLE_ACTIONS:27712, simAttacks:42358, tokenDamageBreakdown:52009, openTokenMenu:53285
   - _Normal Physical · DB 4 · AC 4 · At-Will · Melee, 1 Target_
   - --
 
-- 🟢 **Struggle+** — `likely` · P3 · themes: plain · code: addSpeciesKey:4799, struggleMove:20511
+- 🟢 **Struggle+** — `likely` · P3 · themes: plain · code: addSpeciesKey:5026, struggleMove:20905
   - _Normal Physical · DB 5 · AC 3 · At-Will · Melee, 1 Target_
   - --
 
@@ -3796,7 +3898,7 @@ P9 · 47 open of 50 · open
   - note: found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt; the 15+ Trip is found-02's
   - On an accuracy roll of 15+, the target is Tripped.
 
-- 🟢 **Surging Strikes** — `likely` · P3 · themes: damage · engine: special:valueDB, always-crit · code: specialMoveInfo:24879
+- 🟢 **Surging Strikes** — `likely` · P3 · themes: damage · engine: special:valueDB, always-crit · code: specialMoveInfo:25588
   - _Water Physical · DB 3 · AC 2 · EOT · Melee, 1 Target_
   - If Surging Strikes hits, it is a Critical Hit. After attacking with Surging Strikes, hit or miss, the user may Shift 2m, ignoring Attacks of Opportunity from their target. It may then make an additional attack with this Move on a different target. This effect may be repeated a second time, the third attack targeting a creature that has not yet been targeted by either prior attack. Before making each attack roll, the user can elect to give up triggering all remaining additional shifts and attacks. Surging Strikes gains +3 DB for each attack that is given up.
 
@@ -3828,16 +3930,16 @@ P9 · 47 open of 50 · open
   - note: v627 MOVE_FX_ROWS / MOVE_TARGET_RULES card or alert; the rider is applied at the table
   - After attacking, hit or miss, the user may Disengage 2 meters and attack a different target with this Move. This effect may be repeated a second time, targeting a creature that has not been targeted by either prior attack. Before making each Accuracy Check, the user can elect to give up triggering all remaining additional Shifts and attacks. This Move gains +5 to its damage roll for each attack that is given up. 45
 
-- 🟢 **Triple Kick** — `likely` · P3 · themes: damage · engine: special:tripleKick · code: _mvBuff:23590, specialMoveInfo:24852
+- 🟢 **Triple Kick** — `likely` · P3 · themes: damage · engine: special:tripleKick · code: _mvBuff:24168, specialMoveInfo:25561
   - _Fighting Physical · DB — · AC 3 · At-Will · Melee, 1 Target_
   - Make three attacks with Triple Kick. If you hit once, Triple Kick has a DB of 1. If you hit two times, Triple Kick has a DB of 3. If you hit three times, Triple Kick has a DB of 6.
 
-- ✅ **Trop Kick** — `auto` · P3 · themes: damage · code: _mvBuff:23564
+- ✅ **Trop Kick** — `auto` · P3 · themes: damage · code: _mvBuff:24140
   - _Grass Physical · DB 7 · AC 2 · EOT · Melee, 1 Target_
   - note: v627 MOVE_FX_ROWS: −5 damage buff on the target
   - The target receives a -5 penalty to damage rolls for 1 round.
 
-- 🟢 **Trump Card** — `likely` · P3 · themes: damage · engine: special:valueDB · code: specialMoveInfo:24873
+- 🟢 **Trump Card** — `likely` · P3 · themes: damage · engine: special:valueDB · code: specialMoveInfo:25582
   - _Normal Special · DB 6 · AC 2 · EOT · 6, 1 Target_
   - Whenever the user uses Trump Card, the user gains a Trump Count after the attack is resolved. Trump Card's DB is increased by +2 for each Trump Count.
 
@@ -3845,7 +3947,7 @@ P9 · 47 open of 50 · open
   - _Bug Physical · DB 3 · AC 3 · At-Will · Melee, 1 Target, Doublestrike_
   - Twineedle Poisons the target on 18+.
 
-- 🟢 **V-Create** — `likely` · P3 · themes: cs · engine: cs · code: RECKLESS_ERRATA_MOVES:24304
+- 🟢 **V-Create** — `likely` · P3 · themes: cs · engine: cs · code: RECKLESS_ERRATA_MOVES:24999
   - _Fire Physical · DB 18 · AC 5 · Daily · Melee, 1 Target, Smite_
   - Lowers the user's Defense, Special Defense, and Speed by -1 CS each.
 
@@ -3862,12 +3964,13 @@ P9 · 47 open of 50 · open
   - _Water Special · DB 2 · AC 2 · EOT · 6, 1 Target, Five Strike, Priority_
   - --
 
-- 🟢 **Water Spout** — `likely` · P3 · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:24897
+- 🟢 **Water Spout** — `likely` · P3 · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:25606
   - _Water Special · DB 15 · AC 4 · Daily · Burst 1*_
   - For each 10% of HP the user is missing, Water Spout's Damage Base is reduced by -1. Water Spout creates a 1 meter burst, but also affects an area 10 meters tall straight up.
 
-- 🟢 **Wave Dash** — `likely` · P3 · themes: action · code: GAUNTLETS:36998
+- 🟡 **Wave Dash** — `partial` · P3 · themes: action · code: GAUNTLETS:38101
   - _Water Physical · DB 5 · AC 2 · At-Will · Melee, 1 Target, Dash_
+  - note: v644 MOVE_FX_ROWS alert: Disengage as a Free Action before or after - not performed for you
   - The user may make the Disengage Maneuver as a Free Action either right before or after using this Move.
 
 - 🟢 **Wear Down** — `likely` · P3 · themes: cs, skill · engine: cs
@@ -3887,7 +3990,7 @@ P9 · 4 open of 4 · open
   - _Electric Special · DB 10 · AC 5 · Scene · 6, Ranged Blast 3, Smite_
   - The Target is Paralyzed on a 15+
 
-- 🟢 **Wring Out** — `likely` · P3 · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:24886
+- 🟢 **Wring Out** — `likely` · P3 · themes: damage, stat · engine: special:valueDB · code: specialMoveInfo:25595
   - _Normal Special · DB 12 · AC 2 · Scene x2 · Melee, 1 Target_
   - For every 10% the target is below their full HP, Wring Out's Damage Base is reduced by -1.
 
@@ -3931,26 +4034,31 @@ P9 · 7 open of 7 · open
 <a id="late-verify-moves-01"></a>
 ## `late-verify-moves-01` — Verify moves the scan thinks are handled
 
-P9 · 5 open of 5 · open
+P9 · 0 open of 5 · ✔ done
 
-- 🟢 **Aqua Jet** — `likely` · P1 (enc, pc, player:Handels) · themes: plain · code: GAUNTLETS:36970
+- ✅ **Aqua Jet** — `auto` · P1 (enc, pc, player:Handels) · themes: plain · code: GAUNTLETS:38073
   - _Water Physical · DB 4 · AC 2 · At-Will · Melee, 1 Target, Priority_
+  - note: Priority keyword; no effect text
   - --
 
-- 🟢 **Disarming Voice** — `likely` · P1 (enc, pc, player:Lysgd) · themes: plain · code: GAUNTLETS:36983
+- ✅ **Disarming Voice** — `auto` · P1 (enc, pc, player:Lysgd) · themes: plain · code: GAUNTLETS:38086
   - _Fairy Special · DB 4 · AC — · At-Will · Burst 1_
+  - note: '--' accuracy: the roll has no Accuracy Check, it cannot miss
   - Disarming Voice cannot miss.
 
-- 🟢 **Water Gun** — `likely` · P1 (enc, pc, player:Handels, player:Lázaro) · themes: plain · code: GAUNTLETS:36969
+- ✅ **Water Gun** — `auto` · P1 (enc, pc, player:Handels, player:Lázaro) · themes: plain · code: GAUNTLETS:38072
   - _Water Special · DB 4 · AC 2 · At-Will · 4, 1 Target_
+  - note: damage roll; *Grants Fountain feeds Capabilities
   - *Grants Fountain
 
-- 🟢 **Aqua Tail** — `likely` · P2 (enc) · themes: plain · code: GAUNTLETS:37003
+- ✅ **Aqua Tail** — `auto` · P2 (enc) · themes: plain · code: GAUNTLETS:38106
   - _Water Physical · DB 9 · AC 4 · EOT · Melee, Pass_
+  - note: damage roll; no effect text
   - --
 
-- 🟢 **Shock Wave** — `likely` · P2 (enc) · themes: plain · code: GAUNTLETS:36999
+- ✅ **Shock Wave** — `auto` · P2 (enc) · themes: plain · code: GAUNTLETS:38102
   - _Electric Special · DB 6 · AC — · At-Will · 6, 1 Target_
+  - note: no Accuracy Check; *Grants Zapper feeds Capabilities
   - Shock Wave cannot miss. *Grants Zapper
 
 <a id="late-verify-moves-01"></a>
@@ -3958,9 +4066,18 @@ P9 · 5 open of 5 · open
 
 P9 · 1 open of 1 · open
 
-- 🟢 **Slice** — `likely` · P3 · themes: plain · code: abilityDamageMods:24483
+- 🟢 **Slice** — `likely` · P3 · themes: plain · code: abilityDamageMods:25188
   - _Normal Physical · DB 10 · AC 2 · Scene x2 · Melee, Pass_
   - Limitation: Melee Weapons Only
+
+<a id="late-verify-moves-01"></a>
+## `late-verify-moves-01` — Verify moves the scan thinks are handled
+
+P9 · 1 open of 1 · open
+
+- 🟢 **Egg Bomb** — `likely` · P3 · themes: plain · code: openMoveRoll:26113
+  - _Normal Physical · DB 10 · AC 6 · Scene x2 · 5, Blast 2_
+  - --
 
 ## Not in any batch
 
@@ -4035,11 +4152,7 @@ Confirmed, flavour-only or skipped. Spot-check the ⚪ manual ones — they are 
   - _Ground Physical · DB 10 · AC 2 · Scene · Burst 3, Groundsource_
   - Earthquake can hit targets that are underground, including those using the Move Dig. *Grants Groundshaper
 
-- ✅ **Egg Bomb** — `auto` · P3 · themes: plain
-  - _Normal Physical · DB 10 · AC 6 · Scene x2 · 5, Blast 2_
-  - --
-
-- ✅ **Embargo** — `auto` · P3 · themes: plain · code: heldFxList:4350, MOVE_LOCKS:22911, moveLockNode:22982, MOVE_FX_ROWS:23529
+- ✅ **Embargo** — `auto` · P3 · themes: plain · code: heldFxList:4466, MOVE_LOCKS:23445, moveLockNode:23519, MOVE_FX_ROWS:24093
   - _Dark Status · DB — · AC 2 · At-Will · 6, 1 Target_
   - note: found-11 lock card + enforcement
   - The target cannot use or benefit from held items for the remainder of the encounter. Embargo may only affect one target at a time; if Embargo is used on a new target, the previous target is freed from the effect.
@@ -4318,7 +4431,7 @@ Confirmed, flavour-only or skipped. Spot-check the ⚪ manual ones — they are 
   - _Steel Special · DB 5 · AC 2 · EOT · 6, 2 Targets, Slice_
   - If the targets are not adjacent to each other, this Move cannot miss.
 
-- ✅ **Trick Room** — `auto` · P3 · themes: plain · engine: field-fx · code: ROOM_DEFS:1710
+- ✅ **Trick Room** — `auto` · P3 · themes: plain · engine: field-fx · code: ROOM_DEFS:1756
   - _Psychic Status · DB — · AC — · Daily x2 · Field_
   - note: found-05: map.rooms gains 'trick' and initiativeList sorts backwards (Initiative AND the Speed tie-break mirror), so the turn order on the Map really is reversed
   - Starting at the beginning of the next round, for 5 rounds, the area is considered Rewinding. While Rewinding, Initiative is reversed, and participants instead go from lowest Initiative to highest.
@@ -4357,7 +4470,7 @@ Confirmed, flavour-only or skipped. Spot-check the ⚪ manual ones — they are 
   - _Flying Physical · DB 6 · AC 2 · At-Will · Melee, 1 Target_
   - --
 
-- ✅ **Wonder Room** — `auto` · P3 · themes: plain · engine: field-fx · code: ROOM_DEFS:1725
+- ✅ **Wonder Room** — `auto` · P3 · themes: plain · engine: field-fx · code: ROOM_DEFS:1771
   - _Psychic Status · DB — · AC — · Daily x2 · Field_
   - note: found-05: map.rooms gains 'wonder' and pokeDerived swaps eff.def/eff.spdef at the end of the stat pipeline, so damage, Physical/Special Evasion and the stat grid all read the switched pair. Trainers are left alone — the printed rule names Pokemon only
   - For 5 rounds, the area is considered Wondered. While Wondered, each individual Pokemon's Defense and Special Defense are switched.

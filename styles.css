@@ -589,6 +589,16 @@ body.map-mode .map-viewport{flex:1 1 auto; height:auto; min-height:0; border-rad
 .map-token.zone-token .tk-zone-lbl{font-size:10px; font-weight:800; line-height:1.1; padding:2px 5px;
   border-radius:0 0 6px 0; background:rgba(0,0,0,.45); color:#fff; white-space:nowrap;
   max-width:100%; overflow:hidden; text-overflow:ellipsis}
+/* GM note pins: a round coloured badge with 1-4 characters on it, tapped to read the note. Never drawn
+   for players (see visibleToken) so there is no player-facing styling to worry about. */
+.map-token.note-token{border:none !important; background:transparent; box-shadow:none; overflow:visible}
+.map-token.note-token .tk-note{position:absolute; left:50%; top:50%; width:62%; height:62%; transform:translate(-50%,-50%);
+  border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:800;
+  font-size:min(2.2vmin,15px); line-height:1; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.6); overflow:hidden}
+.map-note-links{position:absolute; left:0; top:0; pointer-events:none; z-index:0}
+.map-note-links svg{display:block}
+.note-swatch{width:26px; height:26px; border-radius:50%; border:2px solid transparent; padding:0; cursor:pointer}
+.note-swatch.on{border-color:var(--text,#fff); box-shadow:0 0 0 2px var(--accent,#888)}
 /* A token whose picture has been framed (see openTokenImageFocus) needs something to clip its zoom
    against, so the <img> gets a round wrapper; an unframed token keeps the bare <img> it always had. */
 .map-token .tk-imgbox{position:absolute; inset:0; border-radius:50%; overflow:hidden}
