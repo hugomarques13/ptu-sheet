@@ -1003,3 +1003,5 @@ body.map-mode .view{animation:none}
 @media (max-width:560px){
   .dex-grid{grid-template-columns:repeat(auto-fill, minmax(94px, 1fr))}
 }
+
+.map-night{position:absolute; left:0; top:0; pointer-events:none; background:#5f7ccf; mix-blend-mode:multiply}

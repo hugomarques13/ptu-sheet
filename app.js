@@ -30986,7 +30986,7 @@ function channelCandidates(t){
   const map = (typeof currentMapForView === "function" ? currentMapForView() : null)
            || (typeof activeMap === "function" ? activeMap() : null);
   if(map){
-    const fog = (map.fogOn && !isGM()) ? fogSet(map.id) : null;
+    const fog = (map.fogOn && !isGM()) ? fogViewSet(map) : null;
     mapTokensFor(map.id).forEach(tok => {
       if(!tok.link) return;
       const info = tokenHp(tok);
@@ -45615,6 +45615,8 @@ function normMapMeta(data){
     m.images.forEach(im=>{ ["x","y","w","h"].forEach(k=>{ if(typeof im[k]!=="number") im[k]=0; }); if(!im.id) im.id=uid(); });
     if(typeof m.fogOn!=="boolean") m.fogOn = false;
     if(typeof m.fogRadius!=="number" || m.fogRadius<1) m.fogRadius = 3;
+    if(m.fogMode!=="dynamic") m.fogMode = "persist";          // "dynamic" = sight-only fog (nothing stays explored)
+    if(typeof m.night!=="boolean") m.night = false;           // night-time tint over the map art
     if(typeof m.weather!=="string" || !WEATHER_BY_KEY[m.weather]) m.weather = "clear";   // Core p.342
     if(m.weather2 && (!WEATHER_BY_KEY[m.weather2] || m.weather2 === "clear")) m.weather2 = "";   // Climate Control's second Weather
     if(!Array.isArray(m.terrains)) m.terrains = [];
@@ -47907,6 +47909,27 @@ function bulkToggleHidden(map){
   mapTokensSave(); renderMap();
   toast(`${hide?"🙈 Hid":"👁 Unhid"} ${sel.length} token${sel.length===1?"":"s"}`);
 }
+/* mass-select: flip whether every selected token lights up the fog */
+function bulkToggleReveals(map){
+  const sel = selectedTokens(map); if(!sel.length) return;
+  const on = !sel.every(t=>tokenReveals(t));
+  sel.forEach(t=>t.reveal = on);
+  if(map.fogOn) revealAroundTokens(map);
+  mapTokensSave(); renderMap();
+  toast(`${on?"\u{1F526} Lit":"\u{1F32B} Unlit"} ${sel.length} token${sel.length===1?"":"s"}`);
+}
+/* mass-select: give every selected token its own sight radius (empty/0 = back to the map's) */
+function bulkSetFogRadius(map){
+  const sel = selectedTokens(map); if(!sel.length) return;
+  const cur = sel.every(t=>t.fogR===sel[0].fogR) && sel[0].fogR>0 ? sel[0].fogR : "";
+  const ans = prompt(`Sight radius (cells) for ${sel.length} token${sel.length===1?"":"s"}.\nLeave empty to use the map's (${map.fogRadius||3}).`, cur);
+  if(ans===null) return;
+  const v = parseInt(ans);
+  sel.forEach(t=>{ if(v>0) t.fogR = v; else delete t.fogR; });
+  if(map.fogOn) revealAroundTokens(map);
+  mapTokensSave(); renderMap();
+  toast(v>0 ? `\u{1F526} Sight radius ${v} on ${sel.length} token${sel.length===1?"":"s"}` : `\u{1F526} ${sel.length} token${sel.length===1?"":"s"} back to the map's radius`);
+}
 function bulkToggleInInit(map){
   const sel = selectedTokens(map); if(!sel.length) return;
   const addIn = !sel.every(t=>tokenInInit(t));
@@ -47960,6 +47983,14 @@ function mapSelectBar(map){
         onclick:()=>bulkToggleHidden(map)}, allHidden?"👁 Unhide":"🙈 Hide"),
       el("button",{class:"btn-secondary",title:"toggle whether the selected tokens are in the initiative order",
         onclick:()=>bulkToggleInInit(map)}, allIn?"✕ Remove from initiative":"⚔ Add to initiative"));
+    if(cloud.isGM && map.fogOn){
+      const allLit = sel.every(t=>tokenReveals(t));
+      row.append(
+        el("button",{class:"btn-secondary",title:"toggle whether the selected tokens light up the fog of war around them",
+          onclick:()=>bulkToggleReveals(map)}, allLit?"\u{1F32B} Stop lighting fog":"\u{1F526} Light fog"),
+        el("button",{class:"btn-secondary",title:"set a sight radius on the selected tokens, overriding the map's",
+          onclick:()=>bulkSetFogRadius(map)}, "\u{1F526} Radius\u2026"));
+    }
     if(sel.some(canRemoveToken))
       row.append(el("button",{class:"btn-secondary danger",
         title:"take the selected tokens off this map — the creatures themselves are not deleted",
@@ -48173,7 +48204,7 @@ function tokenForOwner(o){
    from the Trainer Combat tab can only target something the player could actually see & aim at. */
 function visibleWildMonTokens(){
   const map = currentMapForView(); if(!map) return [];
-  const fog = fogSet(map.id);
+  const fog = fogViewSet(map);
   return mapTokensFor(map.id)
     .filter(t=>{
       if(t.link?.kind!=="enc" || t.gmHidden) return false;
@@ -49630,18 +49661,87 @@ function fogBoxUnion(a, b){
   if(!a || !b) return a || b;
   return { x0:Math.min(a.x0,b.x0), y0:Math.min(a.y0,b.y0), x1:Math.max(a.x1,b.x1), y1:Math.max(a.y1,b.y1) };
 }
+/* ---- Sight-only fog (map.fogMode === "dynamic") ----------------------------------------------
+   The usual fog is a memory: ground a token has seen stays open. In sight-only mode nothing is
+   remembered — the board is dark except for the discs around tokens that reveal fog, recomputed from
+   where the tokens stand right now. Nothing is stored or synced for it (every client derives the same
+   set from the same token + wall rows), so the persistent bitmap is left untouched and comes back if
+   the GM flips the mode back. A token's own radius (token.fogR) beats the map-wide one. */
+const FOG_ALL_BOX = { x0:-1e9, y0:-1e9, x1:1e9, y1:1e9 };
+const fogDyn = new Map();         // mapId -> { sig, set }
+const fogDynTok = new Map();      // tokenId -> { key, cells } — one token's disc, reused until it changes
+const fogDynLive = new Map();     // tokenId -> {x,y}: where a token being dragged is right now
+function fogDynamic(map){ return !!(map && map.fogOn && map.fogMode==="dynamic"); }
+function tokenFogRadius(token, map){ const r = +token.fogR; return r>0 ? r : Math.max(1, map.fogRadius||3); }
+function fogDynSet(map){
+  const walls = activeWalls(map) || [];
+  const wsig = walls.map(w=>w.x1+","+w.y1+","+w.x2+","+w.y2).join(";");
+  const toks = mapTokensFor(map.id).filter(t=>tokenReveals(t));
+  const items = toks.map(t=>{
+    const f = tokenFootprint(t), lv = mapDragging ? fogDynLive.get(t.id) : null;
+    const cx = lv ? lv.x : Math.round(t.x), cy = lv ? lv.y : Math.round(t.y);
+    return { t, f, cx, cy, key: cx+","+cy+","+f.w+","+f.h+","+tokenFogRadius(t,map) };
+  });
+  const sig = wsig+"#"+items.map(i=>i.t.id+":"+i.key).join("|");
+  const had = fogDyn.get(map.id);
+  if(had && had.sig===sig) return had.set;
+  const set = new Set(), live = new Set();
+  items.forEach(i=>{
+    live.add(i.t.id);
+    const key = i.key+"|"+wsig;
+    let e = fogDynTok.get(i.t.id);
+    if(!e || e.key!==key){
+      const cells = new Set();
+      revealFootprint(cells, i.cx, i.cy, i.f.w-1, tokenFogRadius(i.t,map), map, i.f.h-1);
+      e = { key, cells }; fogDynTok.set(i.t.id, e);
+    }
+    e.cells.forEach(c=>set.add(c));
+  });
+  for(const id of [...fogDynTok.keys()]) if(!live.has(id)) fogDynTok.delete(id);
+  fogDyn.set(map.id, { sig, set });
+  fogLayer.drawn = -1;                      // the lit cells moved: the retained canvas must repaint
+  return set;
+}
+/* the cells that are open for whoever is looking, in either fog mode */
+function fogViewSet(map){ return fogDynamic(map) ? fogDynSet(map) : fogSet(map.id); }
 function revealAroundTokens(map){
-  const r = Math.max(1, map.fogRadius||3), cells = new Set();
+  if(fogDynamic(map)){
+    const before = fogDyn.get(map.id)?.sig;
+    fogDynSet(map);
+    return fogDyn.get(map.id).sig===before ? null : FOG_ALL_BOX;
+  }
+  const cells = new Set();
   mapTokensFor(map.id).forEach(t=>{ if(!tokenReveals(t)) return;
     const f = tokenFootprint(t);
-    revealFootprint(cells, Math.round(t.x), Math.round(t.y), f.w-1, r, map, f.h-1); });
+    revealFootprint(cells, Math.round(t.x), Math.round(t.y), f.w-1, tokenFogRadius(t,map), map, f.h-1); });
   return fogReveal(map, cells);
 }
 /* live reveal around a specific cell (used while dragging a token, before it's committed) */
-function revealAtCell(map, cx, cy, span, spanY){
+function revealAtCell(map, cx, cy, span, spanY, token){
+  if(fogDynamic(map)){
+    if(token) fogDynLive.set(token.id, { x:cx, y:cy });
+    const before = fogDyn.get(map.id)?.sig;
+    fogDynSet(map);
+    return fogDyn.get(map.id).sig===before ? null : FOG_ALL_BOX;
+  }
   const cells = new Set();
-  revealFootprint(cells, cx, cy, span, Math.max(1, map.fogRadius||3), map, spanY);
+  revealFootprint(cells, cx, cy, span, token ? tokenFogRadius(token,map) : Math.max(1, map.fogRadius||3), map, spanY);
   return fogReveal(map, cells);
+}
+async function toggleFogMode(map){
+  map.fogMode = map.fogMode==="dynamic" ? "persist" : "dynamic";
+  if(mapFogPaint.on) mapFogPaint = { on:false, mapId:map.id, mode:"hide" };
+  fogLayer.drawn = -1;
+  if(map.fogOn) revealAroundTokens(map);
+  mapMetaSave();
+  if(map.fogOn && map.fogMode!=="dynamic") mapTokensSave();
+  renderMap();
+  toast(map.fogMode==="dynamic" ? "\u{1F526} Sight-only fog \u2014 only the ground around tokens is lit" : "\u{1F32B} Explored ground stays revealed");
+}
+function toggleNight(map){
+  map.night = !map.night;
+  mapMetaSave(); renderMap();
+  toast(map.night ? "\u{1F319} Night falls over the map" : "\u2600 Daylight");
 }
 async function toggleFog(map){
   map.fogOn = !map.fogOn;
@@ -49657,6 +49757,7 @@ async function setFogRadius(map, v){
   mapMetaSave(); renderMap();
 }
 async function resetFog(map){
+  if(fogDynamic(map)){ toast("Sight-only fog remembers nothing \u2014 there is nothing to reset"); return; }
   if(!confirm("Re-hide the whole map? Explored areas will be covered again.")) return;
   const set = fogSet(map.id);
   if(set.size){ const del = fogPendSet(fogPendDel, map.id); set.forEach(c=>del.add(c)); }   // defend the clear against a peer's in-flight reveal
@@ -49692,6 +49793,7 @@ function fogHide(map, cells){
 let mapFogPaint = { on:false, mapId:null, mode:"hide" };
 function mapFogPaintActive(map){ return !!(mapFogPaint.on && map && map.fogOn && mapFogPaint.mapId===map.id); }
 function toggleMapFogPaint(map, mode){
+  if(fogDynamic(map)){ toast("Sight-only fog has nothing to paint \u2014 switch back to explored fog first"); return; }
   const same = mapFogPaintActive(map) && mapFogPaint.mode===mode;
   mapFogPaint = { on:!same, mapId:map.id, mode };
   if(mapFogPaint.on){ mapWallDraw = { on:false, mapId:map.id, pending:null };      // tap-modes are exclusive
@@ -49775,7 +49877,7 @@ function drawFog(cv, map, stageW, stageH, originX=0, originY=0, box=null){
   if(cx1<=cx0 || cy1<=cy0) return;
   ctx.clearRect(cx0, cy0, cx1-cx0, cy1-cy0);
   ctx.fillStyle = cloud.isGM ? "rgba(8,10,14,0.5)" : "#0a0c10";
-  const set = fogSet(map.id);
+  const set = fogViewSet(map);
   const area = (cx1-cx0)*(cy1-cy0);
   if(area <= set.size){
     // small region (the usual case — one reveal box): ask about each cell directly
@@ -49824,9 +49926,9 @@ function drawFog(cv, map, stageW, stageH, originX=0, originY=0, box=null){
 let fogLayer = { sig:"", cv:null, drawn:-1 };
 function fogCanvasFor(map, stageW, stageH, originX, originY){
   const cols = Math.ceil(stageW/map.gridSize), rows = Math.ceil(stageH/map.gridSize);
-  const sig = [map.id, cols, rows, map.gridSize, cloud.isGM?1:0].join("|");
+  const sig = [map.id, cols, rows, map.gridSize, cloud.isGM?1:0, map.fogMode||"persist"].join("|");
   if(fogLayer.sig!==sig || !fogLayer.cv) fogLayer = { sig, cv: el("canvas",{class:"map-fog"}), drawn:-1 };
-  if(fogLayer.drawn !== fogSet(map.id).size) drawFog(fogLayer.cv, map, stageW, stageH, originX, originY);
+  if(fogLayer.drawn !== fogViewSet(map).size) drawFog(fogLayer.cv, map, stageW, stageH, originX, originY);
   return fogLayer.cv;
 }
 /* repaint only the cells a reveal just opened up, on the retained layer */
@@ -52079,7 +52181,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
         if(liveFog && tokenReveals(c.t) && (cx!==c.lastRevealX || cy!==c.lastRevealY)){
           c.lastRevealX=cx; c.lastRevealY=cy;
           const df = tokenFootprint(c.t);
-          fogBox = fogBoxUnion(fogBox, revealAtCell(map, cx, cy, df.w-1, df.h-1));
+          fogBox = fogBoxUnion(fogBox, revealAtCell(map, cx, cy, df.w-1, df.h-1, c.t));
         }
       });
 
@@ -52159,6 +52261,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
 
       group.forEach(t=>{ if(!t.riding) snapRidersTo(map, t); });                     // keep passengers pinned
       // moving reveals new ground — repaint just that, so the renderMap below has nothing to redraw
+      fogDynLive.clear();
       if(map.fogOn) fogRepaint(map, revealAroundTokens(map));
       mapDragging = false;
       mapTokensSave(); renderMap();
@@ -53828,6 +53931,18 @@ function openTokenMenu(token, map){
       rv.addEventListener("change", async()=>{ token.reveal = rv.checked; if(map.fogOn) revealAroundTokens(map); mapTokensSave(); renderMap(); });
       wrap.append(el("label",{class:"inline",style:"margin-top:10px;gap:6px;display:flex;align-items:center"},
         rv, el("span",{class:"small"},"👁 This token reveals fog of war")));
+      const fri = el("input",{type:"number",min:1,placeholder:String(map.fogRadius||3),style:"width:72px",
+        title:"Leave empty to use the map's fog radius"});
+      fri.value = token.fogR>0 ? token.fogR : "";
+      fri.addEventListener("change", ()=>{
+        const v = parseInt(fri.value);
+        if(v>0) token.fogR = v; else { delete token.fogR; fri.value = ""; }
+        if(map.fogOn) revealAroundTokens(map);
+        mapTokensSave(); renderMap();
+      });
+      wrap.append(el("label",{class:"inline",style:"margin-top:6px;gap:6px;display:flex;align-items:center"},
+        el("span",{class:"small"},"\u{1F526} Sight radius"), fri,
+        el("span",{class:"small muted"},`cells (empty = map's ${map.fogRadius||3})`)));
       const hd = el("input",{type:"checkbox"}); hd.checked = !!token.gmHidden;
       hd.addEventListener("change", async()=>{ token.gmHidden = hd.checked; mapTokensSave(); renderMap(); toast(token.gmHidden?"🙈 Hidden from players":"👁 Visible to players"); });
       wrap.append(el("label",{class:"inline",style:"margin-top:10px;gap:6px;display:flex;align-items:center"},
@@ -54850,6 +54965,8 @@ function renderMap(){
         el("button",{class:"btn-primary",onclick:()=>openAddToken(map)},"＋ Add token"),
         el("button",{class:"btn-secondary"+(map.fogOn?" on":""),onclick:()=>toggleFog(map),
           title:"Auto-reveals around player tokens; explored areas stay revealed"}, map.fogOn?"🌫 Fog on":"🌫 Fog off"),
+        el("button",{class:"btn-secondary"+(map.night?" on":""),onclick:()=>toggleNight(map),
+          title:"Night time: tints the whole map darker and bluer for everyone"}, map.night?"\u{1F319} Night":"\u{1F319} Day"),
       );
       /* Fog: the switch and the auto-reveal radius stay on the bar, because they are read and
          changed mid-scene. Painting fog by hand is a between-scenes job, so 🖌/🔦/Reset live in
@@ -54860,8 +54977,11 @@ function renderMap(){
         const fr = el("input",{type:"number",min:1,value:map.fogRadius,style:"width:56px",title:"reveal radius (cells) — no maximum"});
         fr.addEventListener("change", ()=>setFogRadius(map, fr.value));
         const hiding = mapFogPaintActive(map) && mapFogPaint.mode==="hide", revealing = mapFogPaintActive(map) && mapFogPaint.mode==="reveal";
-        bar.append(el("label",{class:"field",style:"max-width:110px"}, el("span",{},"Fog radius"), fr));
-        fogPaintBtns.push(
+        bar.append(el("label",{class:"field",style:"max-width:110px"}, el("span",{},"Fog radius"), fr),
+          el("button",{class:"btn-secondary"+(map.fogMode==="dynamic"?" on":""),onclick:()=>toggleFogMode(map),
+            title:"Sight-only: nothing stays explored \u2014 only the ground around tokens that reveal fog is lit, and it goes dark again when they leave"},
+            map.fogMode==="dynamic"?"\u{1F526} Sight only":"\u{1F5FA} Explored stays"));
+        if(map.fogMode!=="dynamic") fogPaintBtns.push(
           el("button",{class:"btn-secondary"+(hiding?" on":""),onclick:()=>toggleMapFogPaint(map, "hide"),
             title:"Drag a box on the map to put the fog back over it (tap = one cell). A player token standing close by will see it again the next time tokens move."},
             hiding?"\u{1F58C} Hiding… (drag)":"\u{1F58C} Hide area"),
@@ -55166,8 +55286,12 @@ function renderMap(){
     if(cloud.isGM) stage.append(arenaOutlineNode(map, originX, originY));
   }
 
+  /* Night: a multiplied blue wash over the art (and the grid), under the tokens and the fog, so the
+     board reads as dark and cold while the creatures stay legible. Off while the GM is editing images. */
+  if(map.night && !mapImgEdit) stage.append(el("div",{class:"map-night",style:`width:${stageW}px;height:${stageH}px`}));
+
   // tokens + fog, with role-dependent stacking. In image-edit mode tokens are inert.
-  const fog = fogSet(map.id);
+  const fog = fogViewSet(map);
   const mkToken = t => { const node=mapTokenNode(t,map,originX,originY); if(!mapImgEdit) attachTokenDrag(node,t,map,originX,originY); else node.style.pointerEvents="none"; return node; };
   const visibleToken = t => {
     if(isZoneToken(t) && t.ghost) return false;                     // rules-only ground: nothing to draw
