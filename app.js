@@ -41305,8 +41305,32 @@ function openShopFromToken(token){
   announceShopView(shop.id);
   renderMap();
 }
+/* Floating panels (shop / initiative / roll feed) remember a left/top per device. A saved spot that
+   is off-screen (window shrunk, or an old bad drag) made the header unreachable, so every loader
+   passes through here: keep at least the header's left chunk and top edge inside the viewport. */
+function clampFloatPos(p){
+  if(!p || typeof p.left!=="number" || typeof p.top!=="number") return null;
+  const w = window.innerWidth || 800, h = window.innerHeight || 600;
+  return { left:Math.max(0, Math.min(w - 120, p.left)), top:Math.max(0, Math.min(h - 40, p.top)) };
+}
+/* Alt+Shift+0 puts the shop, initiative and roll-feed windows back in their home corners. */
+function resetFloatPositions(){
+  ["ptu_shop_pos","ptu_init_pos","ptu_rollfeed_pos"].forEach(k=>{ try{ localStorage.removeItem(k); }catch(e){} });
+  try{ renderRollFeed(); }catch(e){}
+  try{ if(typeof renderMap==="function") renderMap(); }catch(e){}
+  try{ refreshShopPanel(); }catch(e){}
+  toast("Windows put back in their corners");
+}
+document.addEventListener("keydown", e=>{
+  if(e.altKey && e.shiftKey && (e.code==="Digit0" || e.code==="Numpad0")){ e.preventDefault(); resetFloatPositions(); }
+});
+window.addEventListener("resize", ()=>{
+  const b = document.getElementById("rollFeed");
+  if(b && b.style.left){ const c = clampFloatPos({left:parseFloat(b.style.left), top:parseFloat(b.style.top)});
+    if(c){ b.style.left = c.left+"px"; b.style.top = c.top+"px"; } }
+});
 let shopCollapsed = localStorage.getItem("ptu_shop_collapsed")==="1";
-function loadShopPos(){ try{ return JSON.parse(localStorage.getItem("ptu_shop_pos")||"null"); }catch(e){ return null; } }
+function loadShopPos(){ try{ return clampFloatPos(JSON.parse(localStorage.getItem("ptu_shop_pos")||"null")); }catch(e){ return null; } }
 function saveShopPos(p){ try{ localStorage.setItem("ptu_shop_pos", JSON.stringify(p)); }catch(e){} }
 function shopActiveBuyer(){
   const rows = shopBuyerRows();
@@ -48876,7 +48900,7 @@ function resetRounds(map, meta){
 }
 /* small floating initiative widget: draggable by its header, position + collapsed state remembered
    per-device (it's a display preference, not shared game state) */
-function loadInitPos(){ try{ return JSON.parse(localStorage.getItem("ptu_init_pos")||"null"); }catch(e){ return null; } }
+function loadInitPos(){ try{ return clampFloatPos(JSON.parse(localStorage.getItem("ptu_init_pos")||"null")); }catch(e){ return null; } }
 function saveInitPos(p){ try{ localStorage.setItem("ptu_init_pos", JSON.stringify(p)); }catch(e){} }
 let initCollapsed = localStorage.getItem("ptu_init_collapsed")==="1";
 function initMiniBtn(label, title, fn){
@@ -53061,7 +53085,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
 =================================================================== */
 let rollFeedCollapsed = localStorage.getItem("ptu_rollfeed_collapsed")==="1";
 let rollFeedSeen = 0;                            // newest `at` the GM has actually had open
-function loadRollFeedPos(){ try{ return JSON.parse(localStorage.getItem("ptu_rollfeed_pos")||"null"); }catch(e){ return null; } }
+function loadRollFeedPos(){ try{ return clampFloatPos(JSON.parse(localStorage.getItem("ptu_rollfeed_pos")||"null")); }catch(e){ return null; } }
 function saveRollFeedPos(p){ try{ localStorage.setItem("ptu_rollfeed_pos", JSON.stringify(p)); }catch(e){} }
 /* newest first — the row's array order is merge order, not roll order, so sort on the stamp */
 function rollFeedEntries(){
@@ -53089,7 +53113,7 @@ function renderRollFeed(){
 
   const head = el("div",{style:"display:flex;align-items:center;gap:5px;padding:5px 7px;cursor:move;"
     + "background:var(--panel-2);border-bottom:1px solid var(--line);user-select:none;touch-action:none",
-    title:"drag to move · double-click to snap back to the corner"});
+    title:"drag to move · double-click to snap back to the corner · Alt+Shift+0 resets every window"});
   head.append(el("span",{style:"font-weight:800;font-size:12px;white-space:nowrap"}, "🎲 Rolls"));
   if(fresh && rollFeedCollapsed)
     head.append(el("span",{style:"background:var(--accent);color:#fff;border-radius:9px;font-size:10px;"
@@ -53227,13 +53251,13 @@ function attachRollFeedDrag(handle, box){
     if(ev.target.closest("button,input,select")) return;
     ev.preventDefault(); ev.stopPropagation();
     const r = box.getBoundingClientRect();
-    const baseX = r.left - (parseFloat(box.style.left)||0), baseY = r.top - (parseFloat(box.style.top)||0);
     const offX = ev.clientX - r.left, offY = ev.clientY - r.top;
+    box.style.left = r.left+"px"; box.style.top = r.top+"px";
     box.style.right = "auto"; box.style.bottom = "auto";
     try{ handle.setPointerCapture(ev.pointerId); }catch(e){}
     const move = e=>{
-      box.style.left = (Math.max(0, Math.min(window.innerWidth  - 80, e.clientX-offX)) - baseX)+"px";
-      box.style.top  = (Math.max(0, Math.min(window.innerHeight - 36, e.clientY-offY)) - baseY)+"px";
+      box.style.left = Math.max(0, Math.min(window.innerWidth  - 80, e.clientX-offX))+"px";
+      box.style.top  = Math.max(0, Math.min(window.innerHeight - 36, e.clientY-offY))+"px";
     };
     const up = ()=>{
       handle.removeEventListener("pointermove",move); handle.removeEventListener("pointerup",up);
