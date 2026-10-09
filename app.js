@@ -15415,6 +15415,19 @@ function giftRow(t, g, i, gm, saveFn, rerender){
   if(kind==="blessing"){
     if(bless){
       info.append(el("div",{class:"muted small",style:"margin-top:3px"}, bSide.text));
+      if(/^paragon$/i.test(String(g.name||"")) && bMode!=="signer"){
+        const pRow = el("div",{class:"small",style:"margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"});
+        const pSel = el("select",{class:"equip-focus", title:"the Skill Group Paragon boosts"});
+        pSel.append(el("option",{value:""},"choose a Skill Group…"));
+        PARAGON_GROUPS.forEach(k => pSel.append(el("option",{value:k, selected:g.paragonGroup===k}, k)));
+        pSel.disabled = !gm && !canEditActive();
+        pSel.addEventListener("change",()=>{ g.paragonGroup = pSel.value||undefined; saveFn(); rerender(); });
+        pRow.append(pSel);
+        pRow.append(g.paragonGroup
+          ? el("span",{class:"badge-auto"}, "✔ +3 to every "+g.paragonGroup+" Skill Check")
+          : el("span",{class:"muted"}, "pick a group to apply the +3"));
+        info.append(pRow);
+      }
       if(branch){
         // the sheet's branch settles it — no switch, just say which reading this is
         info.append(el("div",{class:"muted small",style:"margin-top:3px;font-style:italic"},
@@ -21671,11 +21684,22 @@ function skillsInText(txt){
   return out;
 }
 /* [{ gift, skills:[keys], n, when, reroll }] for one Trainer, every Skill */
+const PARAGON_GROUPS = ["Body","Mind","Spirit"];
 function giftSkillRiders(t){
   const out = [];
   if(!t || !Array.isArray(t.gifts)) return out;
   t.gifts.forEach(g => {
-    if(!g || giftKind(g) === "blessing") return;
+    if(g && giftKind(g) === "blessing"){
+      /* Paragon (Messiah): the chosen Skill Group's every Skill Check gets +3, for good. The pick lives on
+         the Blessing row (g.paragonGroup); a Signer's Paragon is a per-Scene +1 Sign and stays text. */
+      if(/^paragon$/i.test(String(g.name||"")) && PARAGON_GROUPS.includes(g.paragonGroup)){
+        let messiah = true; try{ messiah = blessingModeFor(t, g) !== "signer"; }catch(e){}
+        if(messiah) out.push({ gift:"Paragon ("+g.paragonGroup+")",
+          skills:Object.keys(SKILL_CATEGORY).filter(k => SKILL_CATEGORY[k]===g.paragonGroup), n:3, when:"", reroll:false });
+      }
+      return;
+    }
+    if(!g) return;
     const cat = (typeof giftByName === "function") ? giftByName(g.name) : null;
     const text = String(g.effect || (cat && cat.effect) || "");
     if(!text) return;
