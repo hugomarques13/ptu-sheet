@@ -951,6 +951,8 @@ function statusImmunityFor(o, key, opts){
   const ab = abilityStatusImmunity(o, key, opts);
   if(ab) return ab;
   if(!isTrainerOwner(o)) return "";
+  if(opts && opts.move && /^(hypnosis|nightmare|dream eater)(\s*\[sm\])?$/i.test(String(opts.move).trim()) && hasGiftNamed(o, "Dream Mastery"))
+    return "Dream Mastery \u2014 immune to Hypnosis, Nightmare and Dream Eater";
   const f = FEATURE_STATUS_IMMUNITY.find(d => (d.statuses||[]).includes(key) && hasFeatureLoose(o, d.feat));
   if(f) return f.why;
   const md = activeFeatureModes(o).find(d => (d.immune||[]).includes(key));
@@ -15298,6 +15300,11 @@ const GIFT_ACTIONS = [
     run:(t, rerender, saveFn) => { if(!giftSpend(t, "Frigid Armor (Glastrier)")) return;
       researchBuff(t, { key:"frigid-armor", name:"Frigid Armor", cat:"Gift", dur:"this Scene", mods:{ dr:5 }, note:"5 Damage Reduction; Overland rises to 8 if lower." });
       (saveFn || save)(); (rerender || renderTrainer)(); toast("\u{1F9CA} Frigid Armor — 5 Damage Reduction for the Scene"); } },
+  { names:["Dream Augury"], label:() => "\u{1F52E} Dream Augury",
+    title:() => "2 AP Extended Action \u2014 sleep and dream of things to come (favourable via Cresselia, dangerous via Darkrai). Spends 2 AP and puts you to sleep.",
+    run:(t, rerender, saveFn) => { if(!apSpend(t, 2)) return;
+      try{ inflictStatus(t, "sleep"); }catch(e){}
+      (saveFn || save)(); (rerender || renderTrainer)(); toast("\u{1F52E} Dream Augury \u2014 2 AP spent, asleep; the GM shows the vision (wake it with the Sleep chip)"); } },
   { names:["Trial Through Adversity"], label:() => "\u{1F4AA} Trial Through Adversity",
     title:() => "Scene, Free — you or an ally missed every target: +2 Accuracy for the Scene (a failed Skill Check or Massive Damage pay other bonuses — by hand)",
     run:(t, rerender, saveFn) => { if(!giftSpend(t, "Trial Through Adversity")) return;
@@ -20931,7 +20938,18 @@ function struggleMove(p){
   return moveByName.get(combatDice >= 5 ? "struggle+" : "struggle") || moveByName.get("struggle");
 }
 /* ---------- ability / capability type effects ---------- */
-function hasAbility(p, name){ return activeAbilityList(p).some(a => String(a).toLowerCase() === name.toLowerCase()); }
+function hasAbility(p, name){
+  const w = name.toLowerCase();
+  if(activeAbilityList(p).some(a => String(a).toLowerCase() === w)) return true;
+  /* a Trainer's Abilities come from Features, Gifts ("You gain the Bad Dreams Ability") and the encounter
+     card's own list, none of which sit in p.abilities - ownerAbilityNames reads all of them (exact printing). */
+  return !!p && isTrainerOwner(p) && ownerAbilityNames(p).includes(w);
+}
+/* a granted Gift by name (rows are {name,...}; old saves kept plain strings) */
+function hasGiftNamed(t, name){
+  const w = String(name).toLowerCase();
+  return !!t && Array.isArray(t.gifts) && t.gifts.some(g => String((g && g.name) || g || "").toLowerCase() === w);
+}
 /* the named ("other") Capabilities, base-named. Takes the Pokémon when there is one so Move/Ability
    grants count — knowing Ember really does hand a Pokémon Firestarter, and with it a Fire Struggle. */
 function monCaps(sp, p){ return (monCapabilities(p, sp).other || []).map(o => capBaseName(o)); }
@@ -22013,7 +22031,7 @@ function moveStatusNode(actor, m, thresholds, acc, o){
           title:`\u{1F4AB} ${m.name || "Status"}`,
           intro:`Everyone this Move caught becomes ${what}${dur ? ` (${dur})` : ""}. Type and Ability immunities are checked per target${mold ? " — Mold Breaker ignores the Defensive ones" : ""}.`,
           list:allyTargets(actor, { foes:true }), saveFn:persist, redraw:o.redraw,
-          apply:(x) => { const r = inflictStatusesDelayed(x.obj, theirs, dur, { mold, corrosion: hasAbility(actor, "Corrosion"), immuneType });
+          apply:(x) => { const r = inflictStatusesDelayed(x.obj, theirs, dur, { mold, corrosion: hasAbility(actor, "Corrosion"), immuneType, move:m.name });
             return `${ownerLabel(x.obj)}${r.on.length ? ` → ${r.on.join(", ")}` : ""}${r.held.length ? ` (held: ${r.held.join(", ")})` : ""}`; },
           after:(c, n) => `\u{1F4AB} ${n.join(", ")}`,
         }) }, `\u{1F3AF} Apply ${what} to targets…`));
@@ -22021,7 +22039,7 @@ function moveStatusNode(actor, m, thresholds, acc, o){
       title:"the GM picks who this Move caught, from the 🎲 Rolls feed",
       onclick:(ev) => {
         foeFxDeclare({ fx:"statusfx", caster:actor, icon:"\u{1F4AB}", name:m.name || "Status",
-          P:{ keys:theirs, dur, mold, immuneType }, headline:`${what}${dur ? ` · ${dur}` : ""}` });
+          P:{ keys:theirs, dur, mold, immuneType, move:m.name }, headline:`${what}${dur ? ` · ${dur}` : ""}` });
         ev.currentTarget.disabled = true; ev.currentTarget.textContent = "\u{1F4E8} Sent to the GM";
         toast(`\u{1F4AB} Sent to the GM — they pick who ${what} lands on`);
       } }, `\u{1F4E8} Send ${what} to the GM…`));
@@ -23174,14 +23192,14 @@ const ABILITY_TURN_HOOKS = [
       if(d > 7) return `Truant \u2014 rolled ${d}: it acts`;
       const g = ownerHeal(o, hpTick(ownerMaxHP(o)));
       return `Truant \u2014 rolled ${d}: LOAFING, no Standard Action this turn (+${g} HP)`; } },
-  { ab:["Bad Dreams"], when:"turnStart",
+  { ab:["Bad Dreams"], when:"turnStart", trainer:true,
     run:(o, ctx) => {
       if(!ctx.map || !ctx.token) return null;
       const hit = [];
       mapTokensFor(ctx.map.id).forEach(t => {
         if(t.id === ctx.token.id || !t.link || tokenTileGap(ctx.token, t) > 5) return;
         const v = (tokenLinked(t) || {}).obj;
-        if(!v || !hasStatus(v, "sleep") || hasStatus(v, "knockedOut") || hasStatus(v, "dead")) return;
+        if(!v || !(hasStatus(v, "sleep") || hasStatus(v, "badSleep")) || hasStatus(v, "knockedOut") || hasStatus(v, "dead")) return;
         ownerHPChange(v, -hpTick(ownerMaxHP(v)));
         commitTokenSource(t); hit.push(ownerLabel(v));
       });
@@ -23249,13 +23267,16 @@ function bossStatusTurnLines(o){
 }
 /* Fire every row for `when` on one creature. Returns the lines (already prefixed with the creature). */
 function fireAbilityHooks(when, o, ctx){
-  if(!o || isTrainerOwner(o) || hasStatus(o, "knockedOut") || hasStatus(o, "dead")) return [];
+  if(!o || hasStatus(o, "knockedOut") || hasStatus(o, "dead")) return [];
+  const tr = isTrainerOwner(o);          // Trainers only run the hooks that opt in with trainer:true (Bad Dreams from a Gift)
   const out = [];
   ABILITY_TURN_HOOKS.forEach(h => {
-    if(h.when !== when || !h.ab.some(n => h.exact ? hasAbility(o, n) : monHasAbility(o, n))) return;
+    if(tr && !h.trainer) return;
+    if(h.when !== when || !h.ab.some(n => tr ? ownerHasAbility(o, n) : (h.exact ? hasAbility(o, n) : monHasAbility(o, n)))) return;
     try{ const line = h.run(o, ctx || {}); if(line) out.push(`${ownerLabel(o)}: ${line}`); }
     catch(e){ console.error("ability hook", h.ab, e); }
   });
+  if(tr) return out;
   if(when === "turnStart") coatTurnLines(o).forEach(l => out.push(`${ownerLabel(o)}: ${l}`));
   if(when === "turnEnd") lockTurnLines(o).forEach(l => out.push(`${ownerLabel(o)}: ${l}`));
   if(when === "turnEnd") bossStatusTurnLines(o).forEach(l => out.push(`${ownerLabel(o)}: ${l}`));
@@ -29615,7 +29636,7 @@ const FOE_FX = {
     } },
   /* a Move's Afflictions (moveStatusNode) — P.keys are STATUS_DEFS keys */
   statusfx: { apply:(x, P) => {
-      const r = inflictStatusesDelayed(x.obj, Array.isArray(P.keys) ? P.keys : [], P.dur, { mold: !!P.mold, immuneType: P.immuneType || null });
+      const r = inflictStatusesDelayed(x.obj, Array.isArray(P.keys) ? P.keys : [], P.dur, { mold: !!P.mold, immuneType: P.immuneType || null, move: P.move || null });
       return [r.on.length ? `→ ${r.on.join(", ")}` : "", r.held.length ? `(held: ${r.held.join(", ")})` : ""]
         .filter(Boolean).join(" ");
     } },
@@ -47782,6 +47803,7 @@ function renderPC(){
    or be STANDALONE (encounter monster / custom) with its own HP.
 =================================================================== */
 let mapView = { scale:1, panX:0, panY:0 };   // each viewer's own camera (not synced)
+let mapViewMapId = null;                       // which map that camera was last framed for
 
 let mapDragging = false;                      // suppresses realtime re-render mid-drag
 /* the same, for dragging the BOARD rather than a token — see attachPanZoom. Declared here beside
@@ -52900,6 +52922,13 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
       try{
         if(moveRule && moveRule.sleepOnly){
           const Vs = tokenHp(it.t).obj;
+          if(Vs && isTrainerOwner(Vs) && hasGiftNamed(Vs, "Dream Mastery")){
+            it.cb.checked = false;
+            out.append(el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"},
+              el("div",{style:"font-weight:700"}, tokenHp(it.t).name),
+              el("div",{class:"small",style:"color:var(--accent);font-weight:600"}, "\u{1F4A4} Dream Mastery \u2014 immune to Dream Eater (skipped).")));
+            continue;
+          }
           if(Vs && !hasStatus(Vs, "sleep") && !hasStatus(Vs, "badSleep")){
             it.cb.checked = false;
             out.append(el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"},
@@ -54908,6 +54937,20 @@ function renderMap(){
   const meta = activeMapMeta();
   const map  = currentMapForView();
   if(cloud.isGM && map) mapGmView = map.id;
+  /* The camera belongs to the viewer, not the map. When the GM pushes a different map, a player
+     still carries the old map's pan/zoom, which can sit entirely off the new (differently sized)
+     board — a black screen until they refresh. Re-frame whenever the map being shown changes. */
+  if(map && map.id!==mapViewMapId){
+    const firstDraw = mapViewMapId===null;
+    mapViewMapId = map.id;
+    if(!firstDraw){
+      try{
+        const st = mapStageSize(map), vp = mapViewportSize();
+        const sc = Math.max(MAP_ZOOM_FLOOR, Math.min(MAP_ZOOM_MAX, mapFitScale(map)*0.96));
+        mapView = { scale:sc, panX:(vp.w - st.w*sc)/2, panY:(vp.h - st.h*sc)/2 };
+      }catch(e){ mapView = { scale:1, panX:0, panY:0 }; }
+    }
+  }
   // Flanking and Pressure are read straight off where everyone is standing — refresh both before
   // the tokens are painted so the chips on the board are never a move behind (see sweepMapAuras).
   // a broken bar sheds its fish and shrinks the shoal BEFORE anything is measured or drawn
