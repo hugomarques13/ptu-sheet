@@ -2113,8 +2113,8 @@
    "status": "auto"
   },
   "Bad Mood": {
-   "note": "a prerequisite, crafting/recipe unlock or roleplay Edge — the recipe and skill checks live in their own cards (Kitchen, Crafting bench, Garden), nothing per-hit to compute",
-   "status": "manual"
+   "note": "badMoodCrit: +1 Crit per Persistent / Volatile kind on the Trainer roll (trainerCritThreshold), named in the crit note",
+   "status": "auto"
   },
   "Basic Balls": {
    "note": "a prerequisite, crafting/recipe unlock or roleplay Edge — the recipe and skill checks live in their own cards (Kitchen, Crafting bench, Garden), nothing per-hit to compute",
@@ -2161,7 +2161,7 @@
    "status": "auto"
   },
   "Demoralize": {
-   "note": "EDGE_FX row (verified in the running app, v597)",
+   "note": "v675: Vulnerable lands — Status Moves via the 🎯 Apply card (statusMoveApplyNode, Push Buttons Tick incl.), crits ride hitFx to the 💥 Apply",
    "status": "auto"
   },
   "Dynamism": {
@@ -7510,8 +7510,24 @@
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
    "status": "partial"
   },
+  "Acid Spray": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
   "Acrobatics": {
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
+  "Acupressure": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Aerial Ace": {
+   "note": "v673 verified: plain damage roll (no rider text); \"cannot miss\" now honoured by noMissNow",
+   "status": "auto"
+  },
+  "Aeroblast": {
+   "note": "v673: openMoveRoll evenCrit - crit on an Even-Numbered Roll that connects",
    "status": "auto"
   },
   "After You": {
@@ -7520,6 +7536,14 @@
   },
   "Agility": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Air Cutter": {
+   "note": "v673 verified: engine tags range, range-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Air Slash": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   },
   "Alluring Voice": {
@@ -7532,6 +7556,22 @@
   },
   "Amnesia": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Anchor Shot": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Ancient Power": {
+   "note": "v673 verified: engine tags cs, range (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Apple Acid": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Aqua Cutter": {
+   "note": "v673 verified: engine tags range, range-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Aqua Jet": {
@@ -7548,6 +7588,18 @@
   },
   "Aqua Tail": {
    "note": "damage roll; no effect text",
+   "status": "auto"
+  },
+  "Arcane Fury": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Arcane Storm": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Arm Thrust": {
+   "note": "v673 verified: engine tags five-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Armor Cannon": {
@@ -7570,6 +7622,26 @@
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
    "status": "auto"
   },
+  "Astonish": {
+   "note": "v673 verified: engine tags range, range-status, range-flinch, status-fx (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Astral Barrage": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Attack Order": {
+   "note": "v673 verified: engine tags range, range-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Attract": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Aura Sphere": {
+   "note": "v673 verified: plain damage roll (no rider text); \"cannot miss\" now honoured by noMissNow",
+   "status": "auto"
+  },
   "Aura Wheel": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
@@ -7582,6 +7654,10 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP on a miss only; the 15+ Confusion is found-02's. Left: the Gravity prohibition, and a Shield not counting as a miss",
    "status": "partial"
   },
+  "Baby-Doll Eyes": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
   "Bane": {
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
@@ -7590,9 +7666,21 @@
    "note": "found-10 coat/shield state + card; riposte/side effects noted for the GM",
    "status": "partial"
   },
+  "Barb Barrage": {
+   "note": "v672 verified: Poison on 17+ parses; the once-per-Scene 'skip the Five Strike roll vs a Statused target' option is table-resolved",
+   "status": "partial"
+  },
+  "Barrage": {
+   "note": "v673 verified: engine tags five-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Barrier": {
    "note": "The roll places 4 Barrier-segment markers carrying their printed 20 HP / 15 DR / Psychic-Typed / Blocking Terrain note. The segments have no HP bar of their own - the Map gives Hit Points to creatures and boats, not to scenery.",
    "status": "partial"
+  },
+  "Bash!": {
+   "note": "v673 verified: engine tags range (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
   },
   "Baton Pass": {
    "note": "copies or replays another Move — the GM decides what it becomes at the table",
@@ -7622,12 +7710,28 @@
    "note": "v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods",
    "status": "auto"
   },
+  "Bite": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Bitter Blade": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt",
    "status": "auto"
   },
   "Bitter Malice": {
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
+  "Blaze Kick": {
+   "note": "v673 verified: engine tags range, range-status, range-crit, status-fx (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Blazing Torque": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Bleakwind Storm": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   },
   "Blind": {
@@ -7646,6 +7750,10 @@
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
    "status": "auto"
   },
+  "Blue Flare": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Body Press": {
    "note": "v627 moveStatExtra: Defense replaces Attack in the roll",
    "status": "auto"
@@ -7654,12 +7762,32 @@
    "note": "moveStatusEffects: Paralysis on 15+",
    "status": "auto"
   },
+  "Bolt Strike": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Bone Club": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Bone Rush": {
+   "note": "v673 verified: engine tags five-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Bonemerang": {
+   "note": "v673 verified: engine tags special:doubleStrike, double-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Bounce": {
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
    "status": "auto"
   },
   "Brave Bird": {
    "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
+   "status": "auto"
+  },
+  "Breaking Swipe": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
    "status": "auto"
   },
   "Brine": {
@@ -7682,8 +7810,28 @@
    "note": "v617 verify sweep: found unhandled, added STATIC_ABILITY_EVASION / ABILITY_ACTION_ROWS / MOVE_FX_ROWS",
    "status": "partial"
   },
+  "Bug Buzz": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Bulk Up": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
   "Bulldoze": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Bullet Punch": {
+   "note": "v673 verified: plain damage roll (no rider text); \"cannot miss\" now honoured by noMissNow",
+   "status": "auto"
+  },
+  "Bullet Seed": {
+   "note": "v673 verified: engine tags five-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Bullseye": {
+   "note": "v673 verified: engine tags range, range-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Burn Up": {
@@ -7702,8 +7850,24 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Captivate": {
+   "note": "v672 verified: Special Attack -2 parses; the same-gender / genderless exclusion is table-resolved",
+   "status": "partial"
+  },
+  "Ceaseless Edge": {
+   "note": "v673 verified: engine tags range, range-crit, status-fx, status-always (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Charge Beam": {
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
+  "Charm": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Chatter": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   },
   "Chilling Water": {
@@ -7726,6 +7890,10 @@
    "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
    "status": "auto"
   },
+  "Clanging Scales": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Clangorous Soul": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/3 of Max HP; the +1 Combat Stage to every stat is found-01's",
    "status": "auto"
@@ -7738,17 +7906,53 @@
    "note": "v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods",
    "status": "auto"
   },
+  "Close Combat": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Coaching": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Coil": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Collision Course": {
    "note": "target-rules +10 vs super-effective; the Slow Terrain is drawn by hand",
    "status": "auto"
   },
+  "Combat Torque": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Comet Punch": {
+   "note": "v673 verified: engine tags five-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Cone of Force": {
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
    "status": "partial"
+  },
+  "Confide": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Confuse Ray": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Confusion": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Constrict": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Conversion": {
+   "note": "verified: Conversion / Conversion 2 type-shift card (typeShift)",
+   "status": "auto"
   },
   "Copycat": {
    "note": "copies or replays another Move — the GM decides what it becomes at the table",
@@ -7778,9 +7982,33 @@
    "note": "v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods",
    "status": "auto"
   },
+  "Crabhammer": {
+   "note": "v673 verified: engine tags range, range-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Crafty Shield": {
    "note": "an Interrupt/Reaction declared in response to somebody else's action; the initiative tracker never pauses for it",
    "status": "skip"
+  },
+  "Cross Chop": {
+   "note": "v673 verified: engine tags range, range-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Cross Poison": {
+   "note": "v673 verified: engine tags range, range-status, range-crit, status-fx (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Crunch": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Crush": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Crush Claw": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
   },
   "Crush Grip": {
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
@@ -7790,12 +8018,32 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the Ghost half's 1/3 Max HP, labelled 'only if the user is a Ghost Type' and unpreventable; the non-Ghost Combat Stages are found-01's. Left: Cursing a target within 8m, and the Frequency that changes with the user's Type",
    "status": "partial"
   },
+  "Dark Pulse": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Dark Void": {
+   "note": "v673 verified: engine tags status-fx, status-always (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Dark Void [SM]": {
+   "note": "v673 verified: engine tags status-fx, status-always (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Darkest Lariat": {
    "note": "def-pierce parser",
    "status": "auto"
   },
+  "Deadly Strike": {
+   "note": "v673 verified: engine tags always-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Decorate": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Defend Order": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
    "status": "auto"
   },
   "Defense Curl": {
@@ -7814,9 +8062,17 @@
    "note": "verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶",
    "status": "auto"
   },
+  "Diamond Storm": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
   "Dig": {
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
    "status": "partial"
+  },
+  "Dire Claw": {
+   "note": "v673 verified: engine tags range, range-crit, rand-status (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
   },
   "Disable": {
    "note": "found-11 lock card + enforcement",
@@ -7826,9 +8082,21 @@
    "note": "'--' accuracy: the roll has no Accuracy Check, it cannot miss",
    "status": "auto"
   },
+  "Discharge": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Disorient": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Dive": {
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
    "status": "partial"
+  },
+  "Dizzy Punch": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
   },
   "Doodle": {
    "note": "swaps or lends Abilities/stats between creatures — done at the table",
@@ -7838,12 +8106,40 @@
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
    "status": "partial"
   },
+  "Double Hit": {
+   "note": "v673 verified: engine tags special:doubleStrike, double-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Double Iron Bash": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Double Kick": {
+   "note": "v673 verified: engine tags special:doubleStrike, double-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Double Shock": {
    "note": "o.typeMods burnup-style loss",
    "status": "auto"
   },
+  "Double Slap": {
+   "note": "v673 verified: engine tags five-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Double Swipe": {
+   "note": "v673 verified: engine tags special:doubleStrike, double-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Double Team": {
+   "note": "v653: MOVE_FX_ROWS doubleteam — 3-activation buff with the +2 Evasion / +2 Accuracy rule; the bonus is added by hand",
+   "status": "partial"
+  },
   "Double-Edge": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt; Rock Head / Magic Guard zero it",
+   "status": "auto"
+  },
+  "Draco Meteor": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Dragon Ascent": {
@@ -7852,6 +8148,18 @@
   },
   "Dragon Breath": {
    "note": "moveStatusEffects: Paralysis on 15+",
+   "status": "auto"
+  },
+  "Dragon Dance": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Dragon Darts": {
+   "note": "v673 verified: engine tags special:doubleStrike, double-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Dragon Pulse": {
+   "note": "v673 verified: plain damage roll (no rider text); \"cannot miss\" now honoured by noMissNow",
    "status": "auto"
   },
   "Dragon Rage": {
@@ -7878,16 +8186,44 @@
    "note": "v647 MOVE_TARGET_RULES.sleepOnly: an awake target is skipped in 💥 Apply; drain was found-04",
    "status": "auto"
   },
+  "Drill Run": {
+   "note": "v673 verified: engine tags range, range-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Drum Beating": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Dual Chop": {
+   "note": "v673 verified: engine tags special:doubleStrike, double-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Dual Wingbeat": {
+   "note": "v673 verified: engine tags special:doubleStrike, double-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Dynamax Cannon": {
    "note": "v604 MOVE_FX_ROWS row: applied for you",
+   "status": "auto"
+  },
+  "Dynamic Punch": {
+   "note": "v673 verified: engine tags status-fx, status-always (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Earth Power": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Eerie Impulse": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
   "Eerie Spell": {
    "note": "found-11 lock card + enforcement",
+   "status": "auto"
+  },
+  "Egg Bomb": {
+   "note": "v673 verified: plain damage roll (no rider text); \"cannot miss\" now honoured by noMissNow",
    "status": "auto"
   },
   "Electric Terrain": {
@@ -7910,8 +8246,16 @@
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
    "status": "partial"
   },
+  "Electroweb": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
   "Embargo": {
    "note": "found-11 lock card + enforcement",
+   "status": "auto"
+  },
+  "Ember": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   },
   "Encore": {
@@ -7930,13 +8274,25 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Energy Blast": {
+   "note": "v673 verified: engine tags range (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Energy Sphere": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Energy Vortex": {
+   "note": "v673 verified: engine tags status-fx, status-always (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Entrainment": {
    "note": "swaps or lends Abilities/stats between creatures — done at the table",
    "status": "manual"
+  },
+  "Esper Wing": {
+   "note": "v673 verified: engine tags range, range-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
   },
   "Expanding Force": {
    "note": "found-05 offers the optional Psychic Terrain from the roll (board-wide rather than the printed Blast 7, said on the card). Still open: Spirit Surge and the once-per-Scene limit",
@@ -7946,8 +8302,20 @@
    "note": "v628 MOVE_FX_ROWS solo: sets HP to −50% via ownerHPChange raw (Injuries/KO fire)",
    "status": "auto"
   },
+  "Extrasensory": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Fairy Lock": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Fake Out": {
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB) (Flinch on the roll; the join-the-encounter gate is the initiative tracker)",
+   "status": "auto"
+  },
+  "Fake Tears": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
    "status": "auto"
   },
   "False Swipe": {
@@ -7962,6 +8330,14 @@
    "note": "v617 verify sweep: found unhandled, added STATIC_ABILITY_EVASION / ABILITY_ACTION_ROWS / MOVE_FX_ROWS",
    "status": "partial"
   },
+  "Fell Stinger": {
+   "note": "v672 verified: +2 Attack parses as a user-side CS the player presses; the 'only if it KOs the target' gate is on the player",
+   "status": "partial"
+  },
+  "Fell Stinger [SM]": {
+   "note": "v672 verified: +2 Attack parses as a user-side CS the player presses; the 'only if it KOs the target' gate is on the player",
+   "status": "partial"
+  },
   "Fey Wild": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
@@ -7969,6 +8345,14 @@
   "Fickle Beam": {
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
    "status": "partial"
+  },
+  "Fiery Dance": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Fiery Wrath": {
+   "note": "v673 verified: engine tags range, range-status, range-flinch, status-fx (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
   },
   "Fillet Away": {
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
@@ -7978,9 +8362,25 @@
    "note": "SPECIAL_FIXED_DAMAGE",
    "status": "auto"
   },
+  "Fire Blast": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Fire Lash": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
   "Fire Pledge": {
    "note": "The Pledge combination offers 8 Fire markers in the Burst 1. The Pledge keyword itself (the Priority follow-up, the Rainbow) is the Pledge batch.",
    "status": "partial"
+  },
+  "Fire Punch": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Fire Spin": {
+   "note": "v673 verified: engine tags status-fx, status-always (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
   },
   "First Impression": {
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB) (Flinch on the roll)",
@@ -7994,12 +8394,36 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Flame Wheel": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Flamethrower": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Flare Blitz": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt; the 19+ Burn is found-02's",
    "status": "auto"
   },
+  "Flash": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Flash Cannon": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Flatter": {
+   "note": "v673 verified: engine tags cs, status-fx, status-always (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Fleur Cannon": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Flip Turn": {
+   "note": "v653: MOVE_FX_ROWS alert like U-Turn (nothing is switched for you, by standing decision)",
    "status": "auto"
   },
   "Floral Healing": {
@@ -8010,9 +8434,25 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Flower Trick": {
+   "note": "v673 verified: engine tags always-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Fly": {
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
    "status": "partial"
+  },
+  "Flying Press": {
+   "note": "v673 verified: Fighting damage rolls normally; the 'may deal Flying Type instead' choice is the Type box on the roll",
+   "status": "partial"
+  },
+  "Flying Press [SM]": {
+   "note": "v673 verified: Fighting damage rolls normally; the 'may deal Flying Type instead' choice is the Type box on the roll",
+   "status": "partial"
+  },
+  "Focus Blast": {
+   "note": "v673 verified: engine tags cs, range (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
   },
   "Focus Energy": {
    "note": "v644 MOVE_FX_ROWS: press drops a Pumped buff (+2 Critical Hit Range until switched out)",
@@ -8021,6 +8461,10 @@
   "Follow Me": {
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
+  },
+  "Force Palm": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
   },
   "Foresight": {
    "note": "v604 MOVE_FX_ROWS row: applied for you",
@@ -8038,8 +8482,24 @@
    "note": "MOVE_TARGET_RULES / typeMultAgainst (Water weak to Ice)",
    "status": "auto"
   },
+  "Freezing Glare": {
+   "note": "v673 verified: engine tags range, range-status, status-fx (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Frost Breath": {
    "note": "alwaysCrits parser",
+   "status": "auto"
+  },
+  "Furious Strikes": {
+   "note": "v673 verified: engine tags five-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Fury Attack": {
+   "note": "v673 verified: engine tags five-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Fury Swipes": {
+   "note": "v673 verified: engine tags five-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Fusion Bolt": {
@@ -8057,6 +8517,10 @@
   "Gastro Acid": {
    "note": "swaps or lends Abilities/stats between creatures — done at the table",
    "status": "manual"
+  },
+  "Gear Grind": {
+   "note": "v673 verified: engine tags special:doubleStrike, double-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
   },
   "Gear Up": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: swap",
@@ -8090,13 +8554,25 @@
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
   },
+  "Glare": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Glint": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Gouge": {
+   "note": "v673 verified: engine tags special:doubleStrike, double-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Grass Pledge": {
    "note": "Same Fire-Hazard half; the Water Pledge branch's Slowed and -2 Speed CS belong to their own batches.",
    "status": "partial"
+  },
+  "Grass Whistle": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
   },
   "Grassy Glide": {
    "note": "found-05 offers the optional Grassy Terrain from the roll (board-wide rather than the squares Passed over, said on the card). Still open: the Priority the Move gains while the user is already on Grassy Terrain",
@@ -8106,8 +8582,16 @@
    "note": "found-05: sets Grassy Terrain on the Map; the +10 Grass damage and the 1/10 Max HP per turn (terrainTickReport) were already wired to it",
    "status": "auto"
   },
+  "Grav Apple": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
   "Gravity": {
    "note": "found-05: map.rooms gains 'gravity' — surelyGrounded returns true for everything (so grounded-Terrain rules reach Flying-Types), every Ground-Type Move borrows Thousand Arrows' rule via moveTargetRules (Flying reads neutral, Levitate pierced), and roomAcc() adds the flat +2 to every Accuracy Roll on both roll modals. Left to the table: 'Moves that involve the user being airborne may not be used' (the Map does not model altitude) — the room panel says so",
+   "status": "auto"
+  },
+  "Growl": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
    "status": "auto"
   },
   "Grudge": {
@@ -8120,6 +8604,10 @@
   },
   "Guard Swap": {
    "note": "v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods",
+   "status": "auto"
+  },
+  "Gunk Shot": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   },
   "Gyro Ball": {
@@ -8154,6 +8642,10 @@
    "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
    "status": "auto"
   },
+  "Headbutt": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Headlong Rush": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: position",
    "status": "partial"
@@ -8178,9 +8670,17 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the roll now opens openSacrificeHeal itself (3 Injuries healed against the day's cap, healed to full, Move Frequencies restored, the user Faints)",
    "status": "auto"
   },
+  "Heart Stamp": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Heart Swap": {
    "note": "swaps or lends Abilities/stats between creatures — done at the table",
    "status": "manual"
+  },
+  "Heat Wave": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
   },
   "Helping Hand": {
    "note": "v617 verify sweep: found unhandled, added STATIC_ABILITY_EVASION / ABILITY_ACTION_ROWS / MOVE_FX_ROWS",
@@ -8206,8 +8706,16 @@
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
   },
+  "Hone Claws": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Horn Leech": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt; the amount rides on the damage the GM's 💥 Apply actually dealt",
+   "status": "auto"
+  },
+  "Howl": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
    "status": "auto"
   },
   "Howl [SS]": {
@@ -8226,17 +8734,41 @@
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
    "status": "auto"
   },
+  "Hyper Fang": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Hyper Voice": {
    "note": "v656 verified in the preview: the push is the ↔ forcedMove card",
+   "status": "auto"
+  },
+  "Hyperspace Fury": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Hyperspace Hole": {
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
    "status": "partial"
   },
+  "Hypnosis": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Ice Beam": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Ice Burn": {
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
    "status": "partial"
+  },
+  "Ice Hammer": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Ice Punch": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
   },
   "Ice Spinner": {
    "note": "found-05 ends the Field Terrain from the roll; the Tripped-on-18+ range is found-02's. Still open: 'if the user moves through an area of Terrain' — the per-square Terrain zones the Map draws are not read by the roll",
@@ -8245,6 +8777,14 @@
   "Icebreaker": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt. Left: the first-round Priority/Pass option",
    "status": "partial"
+  },
+  "Icicle Crash": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Icicle Spear": {
+   "note": "v673 verified: engine tags five-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
   },
   "Icy Wind": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
@@ -8262,6 +8802,10 @@
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
    "status": "auto"
   },
+  "Infestation": {
+   "note": "v673 verified: engine tags status-fx, status-always (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Ingrain": {
    "note": "verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶",
    "status": "auto"
@@ -8270,8 +8814,20 @@
    "note": "copies or replays another Move — the GM decides what it becomes at the table",
    "status": "manual"
   },
+  "Iron Defense": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
   "Iron Head": {
    "note": "moveStatusEffects: Flinch on 15+",
+   "status": "auto"
+  },
+  "Iron Tail": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Ivy Cudgel": {
+   "note": "v673 verified: engine tags range, range-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Jaw Lock": {
@@ -8285,6 +8841,10 @@
   "Jungle Healing": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP to the user and every ally picked. Left: curing their Persistent / Volatile Status",
    "status": "partial"
+  },
+  "Karate Chop": {
+   "note": "v673 verified: engine tags range, range-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
   },
   "Kinesis": {
    "note": "an Interrupt/Reaction declared in response to somebody else's action; the initiative tracker never pauses for it",
@@ -8306,8 +8866,24 @@
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
    "status": "partial"
   },
+  "Last Respects": {
+   "note": "v673 verified: engine tags range, range-status, range-flinch (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Lava Plume": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Leaf Blade": {
+   "note": "v673 verified: engine tags range, range-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Leaf Storm": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Leaf Tornado": {
+   "note": "v673 verified: engine tags cs, range (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Leech Life": {
@@ -8322,21 +8898,53 @@
    "note": "seeded status chip (Grass immune) + the 🌱 Leech Seed row moves the HP each turn (found-04/found-09)",
    "status": "auto"
   },
+  "Leer": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Lick": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Life Dew": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP to the user (one press) and to each ally picked from the board",
+   "status": "auto"
+  },
+  "Light Screen": {
+   "note": "verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)",
    "status": "auto"
   },
   "Light of Ruin": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/2 of the damage dealt; Rock Head / Magic Guard zero it",
    "status": "auto"
   },
+  "Liquidation": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
   "Lock-On": {
    "note": "v627 MOVE_FX_ROWS / MOVE_TARGET_RULES card or alert; the rider is applied at the table",
    "status": "partial"
   },
+  "Lovely Kiss": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Low Blow": {
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
+  },
+  "Low Sweep": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Lucky Chant": {
+   "note": "verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)",
+   "status": "auto"
+  },
+  "Lumina Crash": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
   },
   "Lunar Blessing": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the 50% heal. Left: curing every Status and the +2 Evasion",
@@ -8350,12 +8958,28 @@
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
   },
+  "Luster Purge": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Mach Punch": {
+   "note": "v673 verified: plain damage roll (no rider text); \"cannot miss\" now honoured by noMissNow",
+   "status": "auto"
+  },
   "Magic Coat": {
    "note": "an Interrupt/Reaction declared in response to somebody else's action; the initiative tracker never pauses for it",
    "status": "skip"
   },
   "Magic Room": {
    "note": "found-05: map.rooms gains 'magic' and heldFxList returns nothing, so every Static/Trigger held-item effect (Choice CS, Eviolite's +5, Type immunities, on-hit riders) stops paying out. Consumables are untouched, which is what the printed exception says",
+   "status": "auto"
+  },
+  "Magical Torque": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Magma Storm": {
+   "note": "v673 verified: engine tags status-fx, status-always (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Magnet Rise": {
@@ -8374,6 +8998,10 @@
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
    "status": "partial"
   },
+  "Make It Rain": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Manipulate": {
    "note": "Trainer-only Manipulation actions (Bon Mot / Flirt / Terrorize) - Skill checks at the table",
    "status": "manual"
@@ -8386,9 +9014,17 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half the damage dealt to the chosen target (type that target's figure into the box); the 17+ Burn on all legal targets is found-02's",
    "status": "auto"
   },
+  "Maul": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Me First": {
    "note": "an Interrupt/Reaction declared in response to somebody else's action; the initiative tracker never pauses for it",
    "status": "skip"
+  },
+  "Mean Look": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
   },
   "Meditate": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
@@ -8402,12 +9038,20 @@
    "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
    "status": "auto"
   },
+  "Mega Punch": {
+   "note": "v673 verified: plain damage roll (no rider text); \"cannot miss\" now honoured by noMissNow",
+   "status": "auto"
+  },
   "Megahorn": {
    "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
    "status": "auto"
   },
   "Memento": {
    "note": "v656 verified: the -2 CS to every stat parses (⬆ Apply); the Free Action on Faint is the table's",
+   "status": "auto"
+  },
+  "Metal Claw": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
    "status": "auto"
   },
   "Metal Sound": {
@@ -8417,6 +9061,10 @@
   "Meteor Beam": {
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
    "status": "partial"
+  },
+  "Meteor Mash": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
   },
   "Mighty Cleave": {
    "note": "v627 MOVE_FX_ROWS / MOVE_TARGET_RULES card or alert; the rider is applied at the table",
@@ -8446,6 +9094,14 @@
    "note": "copies or replays another Move — the GM decides what it becomes at the table",
    "status": "manual"
   },
+  "Mirror Shot": {
+   "note": "v673 verified: engine tags cs, range (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Mist": {
+   "note": "verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)",
+   "status": "auto"
+  },
   "Mist Ball": {
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
    "status": "auto"
@@ -8456,6 +9112,10 @@
   },
   "Misty Terrain": {
    "note": "found-05: sets Misty Terrain on the Map; the -10 Dragon damage was already wired to it",
+   "status": "auto"
+  },
+  "Moonblast": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
    "status": "auto"
   },
   "Moongeist Beam": {
@@ -8474,6 +9134,10 @@
    "note": "Sweeps the Burst 5. Who placed a marker is not recorded on the Map, so 'only the foes' is called at the table; the targets' Poisoned rides the hit through found-02.",
    "status": "partial"
   },
+  "Mountain Gale": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Mud Bomb": {
    "note": "moveCSEffects: -1 Accuracy on 16+",
    "status": "auto"
@@ -8484,6 +9148,14 @@
   },
   "Mud Sport": {
    "note": "ABILITY/MOVE coat engine (found-10): resist coat, burst",
+   "status": "auto"
+  },
+  "Mud-Slap": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Muddy Water": {
+   "note": "v673 verified: engine tags range (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Mudslide": {
@@ -8498,12 +9170,28 @@
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
   },
+  "Mystical Fire": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Mystical Power": {
    "note": "v593 main effect automated; the damage roll is separate; the +1 stage is a press on the card",
    "status": "partial"
   },
+  "Nasty Plot": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
   "Nature's Madness": {
    "note": "SPECIAL_FIXED_DAMAGE",
+   "status": "auto"
+  },
+  "Needle Arm": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Night Daze": {
+   "note": "v673 verified: engine tags range (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Night Shade": {
@@ -8512,6 +9200,10 @@
   },
   "Night Slash": {
    "note": "critThreshold: Critical Hit on 18+",
+   "status": "auto"
+  },
+  "Nightmare": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   },
   "Nihil Light": {
@@ -8524,6 +9216,14 @@
   },
   "Noble Roar": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Noxious Torque": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Nuzzle": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   },
   "Oblivion Wing": {
@@ -8544,6 +9244,18 @@
   },
   "Odor Sleuth": {
    "note": "v604 MOVE_FX_ROWS row: applied for you",
+   "status": "auto"
+  },
+  "Ominous Wind": {
+   "note": "v673 verified: engine tags cs, range (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Origin Pulse": {
+   "note": "v673 verified: plain damage roll (no rider text); \"cannot miss\" now honoured by noMissNow",
+   "status": "auto"
+  },
+  "Outrage": {
+   "note": "v673 verified: engine tags status-fx, status-always, status-self (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Overheat": {
@@ -8574,6 +9286,10 @@
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
   },
+  "Petal Dance": {
+   "note": "v673 verified: engine tags status-fx, status-always, status-self (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Phantom Force": {
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
    "status": "partial"
@@ -8590,9 +9306,41 @@
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
   },
+  "Play Nice": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Play Rough": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
   "Pluck": {
    "note": "v593 main effect automated; Accessory-slot items by hand",
    "status": "partial"
+  },
+  "Poison Fang": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Poison Gas": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Poison Jab": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Poison Powder": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Poison Sting": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Poison Tail": {
+   "note": "v673 verified: engine tags range, range-status, range-crit, status-fx (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
   },
   "Pollen Puff": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the ally printing (half their Max HP), labelled with its condition. Left: the once-per-Scene switch between the attack and the heal",
@@ -8630,12 +9378,20 @@
    "note": "v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods",
    "status": "auto"
   },
+  "Power-Up Punch": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Protect": {
    "note": "verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶",
    "status": "auto"
   },
   "Psy Kick": {
    "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
+   "status": "auto"
+  },
+  "Psybeam": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   },
   "Psyblade": {
@@ -8656,6 +9412,10 @@
   },
   "Psychic Terrain": {
    "note": "found-05: sets Psychic Terrain on the Map; the +10 Psychic damage was already wired to it",
+   "status": "auto"
+  },
+  "Psycho Boost": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Psycho Cut": {
@@ -8686,9 +9446,17 @@
    "note": "v593 main effect automated; the Tick regained per status is by hand",
    "status": "partial"
   },
+  "Pyro Ball": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Quick Guard": {
    "note": "an Interrupt/Reaction declared in response to somebody else's action; the initiative tracker never pauses for it",
    "status": "skip"
+  },
+  "Quiver Dance": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
   },
   "Rage": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: multiturn, status",
@@ -8696,6 +9464,10 @@
   },
   "Rage Powder": {
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
+  "Raging Fury": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   },
   "Rain Dance": {
@@ -8710,6 +9482,14 @@
    "note": "Same sweep; the +1 Speed CS on a hit belongs to the Combat Stages batch.",
    "status": "partial"
   },
+  "Razor Leaf": {
+   "note": "v673 verified: engine tags range, range-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Razor Shell": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
   "Razor Wind": {
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
    "status": "partial"
@@ -8722,8 +9502,16 @@
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
    "status": "partial"
   },
+  "Reflect": {
+   "note": "verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)",
+   "status": "auto"
+  },
   "Refresh": {
    "note": "v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods",
+   "status": "auto"
+  },
+  "Relic Song": {
+   "note": "v673 verified: engine tags range, range-status, status-fx (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Resonance Beam": {
@@ -8737,6 +9525,10 @@
   "Retaliate": {
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
    "status": "auto"
+  },
+  "Revelation Dance": {
+   "note": "v673 verified: the +5 per other Dance Move this round (max +15) is typed into Bonus Damage by hand",
+   "status": "partial"
   },
   "Revival Blessing": {
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
@@ -8754,6 +9546,26 @@
    "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
    "status": "partial"
   },
+  "Roar of Time": {
+   "note": "v673 verified: engine tags status-fx, status-always (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Rock Blast": {
+   "note": "v673 verified: engine tags five-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Rock Climb": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Rock Polish": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Rock Slide": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Rock Smash": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
@@ -8765,6 +9577,10 @@
   "Role Play": {
    "note": "swaps or lends Abilities/stats between creatures — done at the table",
    "status": "manual"
+  },
+  "Rolling Kick": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
   },
   "Roost": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP; the lost Flying Type is the typemod engine's",
@@ -8778,6 +9594,14 @@
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
    "status": "auto"
   },
+  "Sacred Fire": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Safeguard": {
+   "note": "verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)",
+   "status": "auto"
+  },
   "Salt Cure": {
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
@@ -8786,8 +9610,48 @@
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
    "status": "auto"
   },
+  "Sand Tomb": {
+   "note": "v673 verified: engine tags status-fx, status-always (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Sandstorm": {
    "note": "found-05: sets Sandstorm on the Map; the per-turn Tick, Sand Rush/Sand Force/Sand Veil all follow from WEATHER_DEFS",
+   "status": "auto"
+  },
+  "Sandstorm Sear": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Scald": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Scale Shot": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Scary Face": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Scorching Sands": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Screech": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Searing Shot": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Secret Force": {
+   "note": "v673: MOVE_TARGET_RULES.secretforce defAs phys (target subtracts Defense)",
+   "status": "auto"
+  },
+  "Secret Power": {
+   "note": "v673 verified: engine tags range (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Secret Sword": {
@@ -8814,13 +9678,37 @@
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
    "status": "auto"
   },
+  "Shadow Claw": {
+   "note": "v673 verified: engine tags range, range-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Shadow Force": {
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
    "status": "partial"
   },
+  "Shadow Punch": {
+   "note": "v673 verified: plain damage roll (no rider text); \"cannot miss\" now honoured by noMissNow",
+   "status": "auto"
+  },
+  "Sharpen": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
   "Shed Tail": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): the 1/4 Max HP cost, unpreventable. Left: the Shield interrupt and the Disengage that follow it",
    "status": "partial"
+  },
+  "Sheer Cold": {
+   "note": "verified: the 1d100 one-hit-KO block (30 + user Level - target Level)",
+   "status": "auto"
+  },
+  "Shell Side Arm": {
+   "note": "v673 verified: engine tags range, range-status, status-fx (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Shell Smash": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
   },
   "Shell Trap": {
    "note": "an Interrupt/Reaction declared in response to somebody else's action; the initiative tracker never pauses for it",
@@ -8828,6 +9716,10 @@
   },
   "Shelter": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
+   "status": "auto"
+  },
+  "Shift Gear": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
    "status": "auto"
   },
   "Shock Wave": {
@@ -8838,9 +9730,17 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, weather-adjusted (2/3 in a Sandstorm, 1/4 in Sun / Rain / Hail)",
    "status": "auto"
   },
+  "Signal Beam": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Silk Trap": {
    "note": "found-10 coat/shield state + card; riposte/side effects noted for the GM",
    "status": "partial"
+  },
+  "Silver Wind": {
+   "note": "v673 verified: engine tags cs, range (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
   },
   "Simple Beam": {
    "note": "swaps or lends Abilities/stats between creatures — done at the table",
@@ -8853,6 +9753,10 @@
   "Skill Swap": {
    "note": "swaps or lends Abilities/stats between creatures — done at the table",
    "status": "manual"
+  },
+  "Skitter Smack": {
+   "note": "v653 verified: the Special Attack drop parses (moveCSEffects); the pre-attack Shift is a Movement choice",
+   "status": "auto"
   },
   "Skull Bash": {
    "note": "found-08 pending card: Set-Up/Resolution timing tracked; the Resolution's own effects are rolled/applied by the other cards",
@@ -8878,16 +9782,44 @@
    "note": "critThreshold reads 'Critical Hit on 18+' off the Move",
    "status": "auto"
   },
+  "Sleep Powder": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Sleep Talk": {
    "note": "copies or replays another Move — the GM decides what it becomes at the table",
    "status": "manual"
+  },
+  "Slice": {
+   "note": "v673 verified: plain damage roll (no rider text); \"cannot miss\" now honoured by noMissNow",
+   "status": "auto"
+  },
+  "Sludge": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Sludge Bomb": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Sludge Wave": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
   },
   "Smack Down": {
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
   },
+  "Smog": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Smokescreen": {
    "note": "v653: Smoke hazard marker (HAZARDS smoke, 9 squares via the ☠ Hazards card); Defog/Whirlwind clear it; the -3 Accuracy is applied by hand",
+   "status": "auto"
+  },
+  "Snap Trap": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   },
   "Snarl": {
@@ -8900,6 +9832,10 @@
   },
   "Snipe Shot": {
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
+  "Snore": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   },
   "Snowscape": {
@@ -8922,6 +9858,14 @@
    "note": "SPECIAL_FIXED_DAMAGE",
    "status": "auto"
   },
+  "Spacial Rend": {
+   "note": "v673: openMoveRoll evenCrit - crit on an Even-Numbered Roll that connects",
+   "status": "auto"
+  },
+  "Spark": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Sparkling Aria": {
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
    "status": "partial"
@@ -8933,6 +9877,14 @@
   "Spicy Extract": {
    "note": "v593 main effect automated; once-per-choice limit by hand",
    "status": "partial"
+  },
+  "Spider Web": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Spike Cannon": {
+   "note": "v673 verified: engine tags five-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
   },
   "Spikes": {
    "note": "HAZARD_SETTER_MOVES: the roll places 8 Spikes; the marker's entry effect takes a Tick of HP + Slowed off whoever walks in (grounded only). Slow Terrain stays the GM's zone tool, and the card says so.",
@@ -8950,16 +9902,44 @@
    "note": "v627 MOVE_FX_ROWS / MOVE_TARGET_RULES card or alert; the rider is applied at the table",
    "status": "partial"
   },
+  "Spirit Shackle": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Spit Up": {
+   "note": "v655: the count input defaults to o.stockpile; MOVE_FX_ROWS spitup zeroes it and removes the Combat Stages",
+   "status": "auto"
+  },
   "Spite": {
    "note": "found-11 lock card + enforcement",
+   "status": "auto"
+  },
+  "Splash": {
+   "note": "v653: MOVE_FX_ROWS splash — +2 Evasion buff until the end of the next turn (the Jump is a Shift)",
+   "status": "auto"
+  },
+  "Spook": {
+   "note": "v673 verified: engine tags cs, range (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Spore": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   },
   "Spotlight": {
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
    "status": "auto"
   },
+  "Springtide Storm": {
+   "note": "v673 verified: engine tags cs, range (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Stealth Rock": {
    "note": "Places 4; entry deals a Tick with Rock Weakness/Resistance only (hazardEntryMult, no stats), spends the Rock, and latches o.hazardHit so it can't hit the same creature again until recalled.",
+   "status": "auto"
+  },
+  "Steam Eruption": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   },
   "Steel Beam": {
@@ -8970,6 +9950,10 @@
    "note": "Clears the ring of Hazards and ends the Terrain (found-05). The Trip on 15+ and the Pass/Dash movement are their own batches.",
    "status": "partial"
   },
+  "Steel Wing": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
   "Sticky Web": {
    "note": "Places 8; entry lowers Speed 1 CS (through lowerCS) + Slowed on grounded foes, Bug-Types cross free and destroy it. The Threaded grant and Slow Terrain are the GM's.",
    "status": "auto"
@@ -8978,8 +9962,28 @@
    "note": "v655: MOVE_FX_ROWS stockpile adds to o.stockpile (max 3); the +1 Def/SpDef is the CS card; Spit Up reads the count as its default",
    "status": "auto"
   },
+  "Stomp": {
+   "note": "v673 verified: engine tags range, range-status, range-flinch, status-fx (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Stone Axe": {
+   "note": "v673 verified: engine tags range, range-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Stone Edge": {
+   "note": "v673 verified: engine tags range, range-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Stored Power": {
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
+   "status": "auto"
+  },
+  "Storm Throw": {
+   "note": "v673 verified: engine tags always-crit (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Strange Steam": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   },
   "Strength": {
@@ -8990,9 +9994,29 @@
    "note": "v604 MOVE_FX_ROWS row: applied for you",
    "status": "auto"
   },
+  "String Shot": {
+   "note": "v653 verified in the preview: moveCSEffects tags the Speed entry stuckFloor; applyCSFx makes the target Stuck once Speed CS reaches (or already sits at) -6",
+   "status": "auto"
+  },
+  "Struggle": {
+   "note": "v673 verified: plain damage roll (no rider text); \"cannot miss\" now honoured by noMissNow",
+   "status": "auto"
+  },
+  "Struggle Bug": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Struggle+": {
+   "note": "v673 verified: plain damage roll (no rider text); \"cannot miss\" now honoured by noMissNow",
+   "status": "auto"
+  },
   "Stuff Cheeks": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: swap",
    "status": "partial"
+  },
+  "Stun Spore": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
   },
   "Submission": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt; the 15+ Trip is found-02's",
@@ -9026,8 +10050,20 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): 1/4 of Max HP on a miss only. Left: the Gravity prohibition, and a Shield not counting as a miss",
    "status": "partial"
   },
+  "Superpower": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Supersonic": {
+   "note": "v673 verified: engine tags status-fx, status-always (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Swagger": {
    "note": "moveCSEffects (+2 Attack to the target) + moveStatusEffects (Confused) both ride the roll",
+   "status": "auto"
+  },
+  "Swagger [SM]": {
+   "note": "v673 verified: engine tags cs, status-fx, status-always (five/double strike, crit range, status/CS parsers) cover the whole text",
    "status": "auto"
   },
   "Swallow": {
@@ -9038,13 +10074,33 @@
    "note": "v627 MOVE_FX_ROWS / MOVE_TARGET_RULES card or alert; the rider is applied at the table",
    "status": "partial"
   },
+  "Sweet Kiss": {
+   "note": "v673 verified: engine tags status-fx, status-always (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Sweet Scent": {
    "note": "v627 MOVE_FX_ROWS: −2 Evasion buff on each target",
+   "status": "auto"
+  },
+  "Swift": {
+   "note": "v673 verified: plain damage roll (no rider text); \"cannot miss\" now honoured by noMissNow",
+   "status": "auto"
+  },
+  "Switcheroo": {
+   "note": "v653: MOVE_FX_ROWS switcheroo — abfx itemSwap exchanges held items between user and target",
+   "status": "auto"
+  },
+  "Swords Dance": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
    "status": "auto"
   },
   "Synthesis": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): half of Max HP, or 2/3 in Sun and 1/4 in Rain / Sandstorm / Hail — only the fraction the weather in play calls for is offered (ownerWeather)",
    "status": "auto"
+  },
+  "Syrup Bomb": {
+   "note": "v672 verified: status parses Slowed; the 'already Slowed/Stuck becomes Stuck' upgrade and the adjacent foes are table-resolved",
+   "status": "partial"
   },
   "Tackle": {
    "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
@@ -9053,6 +10109,18 @@
   "Tackle [SM]": {
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
    "status": "partial"
+  },
+  "Tail Glow": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Tail Slap": {
+   "note": "v673 verified: engine tags five-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Tail Whip": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
   },
   "Take Aim": {
    "note": "v593 main effect automated; next-turn Weapon dice by hand",
@@ -9070,6 +10138,10 @@
    "note": "found-10 coat/shield state + card; riposte/side effects noted for the GM",
    "status": "partial"
   },
+  "Taunt": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Tearful Look": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
@@ -9077,6 +10149,14 @@
   "Teatime": {
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
    "status": "partial"
+  },
+  "Techno Blast": {
+   "note": "verified: the Judgment/Techno Blast Type picker (Drive / Plate)",
+   "status": "auto"
+  },
+  "Teeter Dance": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
   },
   "Teleport": {
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
@@ -9098,12 +10178,36 @@
    "note": "target-rules + the 3-turn grounded buff (Smack Down row)",
    "status": "auto"
   },
+  "Thousand Waves": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Thrash": {
+   "note": "v673 verified: engine tags status-fx, status-always, status-self (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Throat Chop": {
    "note": "found-11 lock card + enforcement",
    "status": "auto"
   },
   "Thunder": {
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB); WEATHER_RULES AC/noMiss",
+   "status": "auto"
+  },
+  "Thunder Cage": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Thunder Fang": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Thunder Punch": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Thunder Shock": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   },
   "Thunder Wave": {
@@ -9114,6 +10218,10 @@
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB) + statusBlockFor immuneType",
    "status": "auto"
   },
+  "Thunderbolt": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Thunderclap": {
    "note": "an Interrupt/Reaction declared in response to somebody else's action; the initiative tracker never pauses for it",
    "status": "skip"
@@ -9122,9 +10230,17 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Tickle": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
   "Tidy Up": {
    "note": "Clears the Burst 4 of Hazards and ends the Terrain. Slow/Rough Terrain is drawn by hand; the +1 Attack and Speed are the Combat Stages batch.",
    "status": "partial"
+  },
+  "Titanic Slam": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
   },
   "Topsy-Turvy": {
    "note": "v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods",
@@ -9132,6 +10248,14 @@
   },
   "Torch Song": {
    "note": "v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods",
+   "status": "auto"
+  },
+  "Torment": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Toxic": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   },
   "Toxic Spikes": {
@@ -9145,6 +10269,10 @@
   "Trailblaze": {
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: weather",
    "status": "partial"
+  },
+  "Tri Attack": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
   },
   "Trick Room": {
    "note": "found-05: map.rooms gains 'trick' and initiativeList sorts backwards (Initiative AND the Speed tie-break mirror), so the turn order on the Map really is reversed",
@@ -9170,6 +10298,10 @@
    "note": "v627 MOVE_FX_ROWS: −5 damage buff on the target",
    "status": "auto"
   },
+  "Twineedle": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Twister": {
    "note": "v656 verified in the preview: Flinch on 18+ parses; the central-square exemption and airborne clause are table geometry",
    "status": "auto"
@@ -9180,6 +10312,10 @@
   },
   "Uproar": {
    "note": "v593: MOVE_FX_ROWS card + FOE_FX.abfx / MOVE_TARGET_RULES defAs / abilityDamageMods",
+   "status": "auto"
+  },
+  "V-Create": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
    "status": "auto"
   },
   "Venom Drench": {
@@ -9214,6 +10350,18 @@
    "note": "found-01: CS clause now parsed (⬆ Apply); still open: interrupt, multiturn, status",
    "status": "partial"
   },
+  "Water Pulse": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Water Shuriken": {
+   "note": "v673 verified: engine tags five-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Water Shuriken [SM]": {
+   "note": "v673 verified: engine tags five-strike (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Water Sport": {
    "note": "found-10 resist coat, burst",
    "status": "auto"
@@ -9230,6 +10378,18 @@
    "note": "v644 MOVE_FX_ROWS alert: Disengage as a Free Action before or after - not performed for you",
    "status": "partial"
   },
+  "Wear Down": {
+   "note": "v673 verified: engine tags cs (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
+  "Weather Ball": {
+   "note": "verified: WEATHER_BALL_TYPES + the weatherball conditional DB read the Map weather",
+   "status": "auto"
+  },
+  "Whirlpool": {
+   "note": "v673 verified: engine tags status-fx, status-always (five/double strike, crit range, status/CS parsers) cover the whole text",
+   "status": "auto"
+  },
   "Whirlwind": {
    "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
    "status": "partial"
@@ -9238,12 +10398,24 @@
    "note": "found-07 forcedMove card: push/pull parsed off the text; other clauses tracked elsewhere",
    "status": "partial"
   },
+  "Wicked Torque": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
   "Wide Guard": {
    "note": "verified: MOVE_COATS / o.coats (found-10) — the roll raises the coat, the 💥 Apply voids / reduces the hit, heal coats tick on ▶",
    "status": "auto"
   },
   "Wild Charge": {
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/4 of the damage dealt; Rock Head / Magic Guard zero it",
+   "status": "auto"
+  },
+  "Wildbolt Storm": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Will-O-Wisp": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   },
   "Wish": {
@@ -9262,6 +10434,14 @@
    "note": "found-04 moveHPEffects + moveHPNode (the 🩸 Hit Points card on the roll): Recoil 1/3 of the damage dealt; Rock Head / Magic Guard zero it",
    "status": "auto"
   },
+  "Work Up": {
+   "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
+   "status": "auto"
+  },
+  "Yawn": {
+   "note": "v653: a status with \"at the end of its next turn\" becomes a delayed o.pending entry on the target (inflictStatusesDelayed); the Map ▶ lands the Sleep by itself",
+   "status": "auto"
+  },
   "Zantetsuken": {
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
    "status": "auto"
@@ -9274,72 +10454,8 @@
    "note": "moveStatusEffects: Flinch on 15+",
    "status": "auto"
   },
-  "String Shot": {
-   "note": "v653 verified in the preview: moveCSEffects tags the Speed entry stuckFloor; applyCSFx makes the target Stuck once Speed CS reaches (or already sits at) -6",
-   "status": "auto"
-  },
-  "Yawn": {
-   "note": "v653: a status with \"at the end of its next turn\" becomes a delayed o.pending entry on the target (inflictStatusesDelayed); the Map ▶ lands the Sleep by itself",
-   "status": "auto"
-  },
-  "Switcheroo": {
-   "note": "v653: MOVE_FX_ROWS switcheroo — abfx itemSwap exchanges held items between user and target",
-   "status": "auto"
-  },
-  "Splash": {
-   "note": "v653: MOVE_FX_ROWS splash — +2 Evasion buff until the end of the next turn (the Jump is a Shift)",
-   "status": "auto"
-  },
-  "Flip Turn": {
-   "note": "v653: MOVE_FX_ROWS alert like U-Turn (nothing is switched for you, by standing decision)",
-   "status": "auto"
-  },
-  "Double Team": {
-   "note": "v653: MOVE_FX_ROWS doubleteam — 3-activation buff with the +2 Evasion / +2 Accuracy rule; the bonus is added by hand",
-   "status": "partial"
-  },
-  "Weather Ball": {
-   "note": "verified: WEATHER_BALL_TYPES + the weatherball conditional DB read the Map weather",
-   "status": "auto"
-  },
-  "Techno Blast": {
-   "note": "verified: the Judgment/Techno Blast Type picker (Drive / Plate)",
-   "status": "auto"
-  },
-  "Conversion": {
-   "note": "verified: Conversion / Conversion 2 type-shift card (typeShift)",
-   "status": "auto"
-  },
-  "Mist": {
-   "note": "verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)",
-   "status": "auto"
-  },
-  "Safeguard": {
-   "note": "verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)",
-   "status": "auto"
-  },
-  "Lucky Chant": {
-   "note": "verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)",
-   "status": "auto"
-  },
-  "Light Screen": {
-   "note": "verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)",
-   "status": "auto"
-  },
-  "Reflect": {
-   "note": "verified: Blessing Moves go up as shared uses-left squares (tableLayBlessing, project-blessing-pops)",
-   "status": "auto"
-  },
-  "Sheer Cold": {
-   "note": "verified: the 1d100 one-hit-KO block (30 + user Level - target Level)",
-   "status": "auto"
-  },
-  "Skitter Smack": {
-   "note": "v653 verified: the Special Attack drop parses (moveCSEffects); the pre-attack Shift is a Movement choice",
-   "status": "auto"
-  },
-  "Spit Up": {
-   "note": "v655: the count input defaults to o.stockpile; MOVE_FX_ROWS spitup zeroes it and removes the Combat Stages",
+  "Zing Zap": {
+   "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
    "status": "auto"
   }
  },

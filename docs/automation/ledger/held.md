@@ -306,203 +306,203 @@ P2 · 0 open of 26 · ✔ done
 
 P9 · 0 open of 50 · ✔ done
 
-- ✅ **Adorable Fashion** — `auto` · P1 (player:Handels) · themes: swap, damage, action · code: GEAR_ACTIONS:13008
+- ✅ **Adorable Fashion** — `auto` · P1 (player:Handels) · themes: swap, damage, action · code: GEAR_ACTIONS:13080
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The holder may activate this item once a Scene as a Free Action to gain +2 Evasion for one full round.
 
-- ✅ **Shell Bell** — `auto` · P1 (player:Lázaro) · themes: heal · code: EQUIP_EFFECTS:12709, GEAR_ACTIONS:13097
+- ✅ **Shell Bell** — `auto` · P1 (player:Lázaro) · themes: heal · code: EQUIP_EFFECTS:12781, GEAR_ACTIONS:13169
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Whenever the holder damages a foe, they gain a Tick of Temporary Hit Points.
 
-- ✅ **Slick Fashion** — `auto` · P1 (player:Lysgd) · themes: swap, action · code: GEAR_ACTIONS:13049
+- ✅ **Slick Fashion** — `auto` · P1 (player:Lysgd) · themes: swap, action · code: GEAR_ACTIONS:13121
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The holder may activate this item once a Scene as a Free Action when provoking an Attack of Opportunity to instead not provoke one.
 
-- ✅ **Winter Cloak** — `auto` · P1 (player:Lázaro) · themes: weather, damage · code: WEATHER_DEFS:1489
+- ✅ **Winter Cloak** — `auto` · P1 (player:Lázaro) · themes: weather, damage · code: WEATHER_DEFS:1491
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The holder does not take damage from Hail.
 
-- ✅ **Absolite Z** — `auto` · P3 · themes: other · code: megaToStoneMap:5163
+- ✅ **Absolite Z** — `auto` · P3 · themes: other · code: megaToStoneMap:5165
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Mega Evolves Absol when used in conjuction with a Mega Ring.
 
-- ✅ **Accuracy Booster** — `auto` · P3 · themes: damage · code: STAT_BOOSTER_ITEMS:34919
+- ✅ **Accuracy Booster** — `auto` · P3 · themes: damage · code: STAT_BOOSTER_ITEMS:35101
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Accuracy +1
 
-- ✅ **Air Balloon** — `auto` · P3 · themes: swap, typing · code: GEAR_ACTIONS:13089
+- ✅ **Air Balloon** — `auto` · P3 · themes: swap, typing · code: GEAR_ACTIONS:13161
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The holder is immune to Ground-Type Moves. This item breaks (and is destroyed) the first time the holder is hit by a Damaging Move.
 
-- ✅ **Attack Booster** — `auto` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:34919
+- ✅ **Attack Booster** — `auto` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:35101
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The default state of the holder's Attack Stat is +1 Combat Stage.
 
-- ✅ **Balm Mushroom** — `auto` · P3 · themes: status, cure, cs, skill, stat · code: GEAR_ACTIONS:12993, SNACK_DEFS:17887, tradeInDigestion:18126, CAP_PRODUCERS:25679
+- ✅ **Balm Mushroom** — `auto` · P3 · themes: status, cure, cs, skill, stat · code: GEAR_ACTIONS:13065, SNACK_DEFS:18022, tradeInDigestion:18261, CAP_PRODUCERS:25844
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The user is cured of Burn, Paralysis, or Poison. If they are, they lose 1 Combat Stage in a random Stat.
 
-- ✅ **Big Mushroom** — `auto` · P3 · themes: status, cs, skill, stat · code: GEAR_ACTIONS:12979, SNACK_DEFS:17885, CAP_PRODUCERS:25679
+- ✅ **Big Mushroom** — `auto` · P3 · themes: status, cs, skill, stat · code: GEAR_ACTIONS:13051, SNACK_DEFS:18020, CAP_PRODUCERS:25844
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The user becomes Poisoned; if they do, they gain +1 Combat Stage in two random Stats.
 
-- ✅ **Black Belt** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4217
+- ✅ **Black Belt** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4219
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Fighting Moves used by the holder.
 
-- ✅ **Black Glasses** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4220
+- ✅ **Black Glasses** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4222
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Dark Moves used by the holder.
 
-- ✅ **Buginium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4156
+- ✅ **Buginium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4158
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Bug-Type Move it uses becomes Savage Spin-Out and gains a +3 Damage Base bonus. Unlike a Bug Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Charcoal** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4215
+- ✅ **Charcoal** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4217
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Fire Moves used by the holder.
 
-- ✅ **Darkinium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4158
+- ✅ **Darkinium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4160
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Dark-Type Move it uses becomes Black Hole Eclipse and gains a +3 Damage Base bonus. Unlike a Dark Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Defense Booster** — `auto` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:34919
+- ✅ **Defense Booster** — `auto` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:35101
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The default state of the holder's Defense Stat is +1 Combat Stage.
 
-- ✅ **Draco Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4223
+- ✅ **Draco Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4225
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both a Dragon Type Booster and a Dragon Brace.
 
-- ✅ **Dragon Fang** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4219
+- ✅ **Dragon Fang** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4221
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Dragon Moves used by the holder.
 
-- ✅ **Dragonium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4157
+- ✅ **Dragonium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4159
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Dragon-Type Move it uses becomes Devastating Drake and gains a +3 Damage Base bonus. Unlike a Dragon Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Dread Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4223
+- ✅ **Dread Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4225
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both a Dark Type Booster and a Dark Brace.
 
-- ✅ **Earth Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4223
+- ✅ **Earth Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4225
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both a Ground Type Booster and a Ground Brace.
 
-- ✅ **Electrium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4154
+- ✅ **Electrium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4156
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Electric-Type Move it uses becomes Gigavolt Havoc and gains a +3 Damage Base bonus. Unlike a Electric Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Elegant Fashion** — `auto` · P3 · themes: swap, cs, action, skill · code: GEAR_ACTIONS:13035
+- ✅ **Elegant Fashion** — `auto` · P3 · themes: swap, cs, action, skill · code: GEAR_ACTIONS:13107
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The holder may activate this item once a Scene as a Free Action when losing Combat Stages from a foe's effect to instead not lose those Combat Stages.
 
-- ✅ **Evasion Booster** — `auto` · P3 · themes: damage · code: STAT_BOOSTER_ITEMS:34919
+- ✅ **Evasion Booster** — `auto` · P3 · themes: damage · code: STAT_BOOSTER_ITEMS:35101
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Evasion +1
 
-- ✅ **Everstone** — `auto` · P3 · themes: other · code: HELD_FX:4403
+- ✅ **Everstone** — `auto` · P3 · themes: other · code: HELD_FX:4405
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Evolution is prevented for the holder.
 
-- ✅ **Eviolite** — `auto` · P3 · themes: cs, skill, stat · code: HELD_FX:4373, heldCSMods:4485
+- ✅ **Eviolite** — `auto` · P3 · themes: cs, skill, stat · code: HELD_FX:4375, heldCSMods:4487
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Only affects not-fully-evolved Pokemon of a single family, decided when the Eviolite is made. Grants a +5 Bonus to two different Stats, after Combat Stages, decided when the Eviolite is made. Prevents Pokemon from evolving when held.
 
-- ✅ **Fairium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4158
+- ✅ **Fairium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4160
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Fairy-Type Move it uses becomes Twinkle Tackle and gains a +3 Damage Base bonus. Unlike a Fairy Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Fairy Feather** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4220
+- ✅ **Fairy Feather** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4222
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Fairy Moves used by the holder.
 
-- ✅ **Fightinium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4155
+- ✅ **Fightinium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4157
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Fighting-Type Move it uses becomes All-Out Pummeling and gains a +3 Damage Base bonus. Unlike a Fighting Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Fire Gem** — `auto` · P3 · themes: swap, damage, action · code: zMoveName:4162
+- ✅ **Fire Gem** — `auto` · P3 · themes: swap, damage, action · code: zMoveName:4164
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Can be consumed as a Free Action to give a +3 DB bonus to one Fire-Type attack.
 
-- ✅ **Firium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4153
+- ✅ **Firium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4155
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Fire-Type Move it uses becomes Inferno Overdrive and gains a +3 Damage Base bonus. Unlike a Fire Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Fist Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4224
+- ✅ **Fist Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4226
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both a Fighting Type Booster and a Fighting Brace.
 
-- ✅ **Flame Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4224
+- ✅ **Flame Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4226
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both a Fire Type Booster and a Fire Brace.
 
-- ✅ **Flyinium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4156
+- ✅ **Flyinium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4158
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Flying-Type Move it uses becomes Supersonic Skystrike and gains a +3 Damage Base bonus. Unlike a Flying Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Focus Band** — `auto` · P3 · themes: action · code: GEAR_ACTIONS:13056
+- ✅ **Focus Band** — `auto` · P3 · themes: action · code: GEAR_ACTIONS:13128
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Whenever the holder would faint, roll 1d20. Once per Scene on a result of 16+, the holder does not faint and is left with 1 HP instead.
 
-- ✅ **Focus Sash** — `auto` · P3 · themes: heal, damage, action · code: GEAR_ACTIONS:12955
+- ✅ **Focus Sash** — `auto` · P3 · themes: heal, damage, action · code: GEAR_ACTIONS:13027
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Once per Scene, if damage from a Move would take the holder's Hit Points from Max to 0 or less, the holder is set to 1 HP instead.
 
-- ✅ **Ghostium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4157
+- ✅ **Ghostium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4159
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Ghost-Type Move it uses becomes Never-Ending Nightmare and gains a +3 Damage Base bonus. Unlike a Ghost Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Go-Goggles** — `auto` · P3 · themes: weather, damage · code: WEATHER_DEFS:1472
+- ✅ **Go-Goggles** — `auto` · P3 · themes: weather, damage · code: WEATHER_DEFS:1474
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The holder does not take damage from Sandstorm.
 
-- ✅ **Grassium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4154
+- ✅ **Grassium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4156
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Grass-Type Move it uses becomes Bloom Doom and gains a +3 Damage Base bonus. Unlike a Grass Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Groundium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4155
+- ✅ **Groundium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4157
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Ground-Type Move it uses becomes Tectonic Rage and gains a +3 Damage Base bonus. Unlike a Ground Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Hard Stone** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4219
+- ✅ **Hard Stone** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4221
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Rock Moves used by the holder.
 
-- ✅ **Icicle Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4224
+- ✅ **Icicle Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4226
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both an Ice Type Booster and an Ice Brace.
 
-- ✅ **Icium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4154
+- ✅ **Icium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4156
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Ice-Type Move it uses becomes Subzero Slammer and gains a +3 Damage Base bonus. Unlike a Ice Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Insect Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4225
+- ✅ **Insect Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4227
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both a Bug Type Booster and a Bug Brace.
 
-- ✅ **Iron Charm** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4220
+- ✅ **Iron Charm** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4222
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Steel Moves used by the holder.
 
-- ✅ **Iron Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4225
+- ✅ **Iron Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4227
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both a Steel Type Booster and a Steel Brace.
 
-- ✅ **Life Orb** — `auto` · P3 · themes: heal, damage · code: GEAR_ACTIONS:13071
+- ✅ **Life Orb** — `auto` · P3 · themes: heal, damage · code: GEAR_ACTIONS:13143
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Whenever the holder deals direct damage, increase the damage by +5, and then the holder loses Hit Points equal to 1/16th of their Max Hit Points.
 
-- ✅ **Magnet** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4216
+- ✅ **Magnet** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4218
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Electric Moves used by the holder.
 
-- ✅ **Meadow Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4225
+- ✅ **Meadow Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4227
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both a Grass Type Booster and a Grass Brace.
 
-- ✅ **Mind Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4226
+- ✅ **Mind Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4228
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both a Psychic Type Booster and a Psychic Brace.
 
@@ -511,147 +511,147 @@ P9 · 0 open of 50 · ✔ done
 
 P9 · 0 open of 36 · ✔ done
 
-- ✅ **Miracle Seed** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4216
+- ✅ **Miracle Seed** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4218
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Grass Moves used by the holder.
 
-- ✅ **Mystic Water** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4215
+- ✅ **Mystic Water** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4217
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Water Moves used by the holder.
 
-- ✅ **Never-Melt Ice** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4216, TYPE_PLATE_ITEMS:4230
+- ✅ **Never-Melt Ice** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4218, TYPE_PLATE_ITEMS:4232
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Ice Moves used by the holder.
 
-- ✅ **Normal Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4228
+- ✅ **Normal Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4230
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both a Normal Type Booster and a Normal Brace.
 
-- ✅ **Normalium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4153
+- ✅ **Normalium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4155
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Normal-Type Move it uses becomes Breakneck Blitz and gains a +3 Damage Base bonus. Unlike a Normal Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Pink Pearl** — `auto` · P3 · themes: other · code: typeBoosterIndex:4239
+- ✅ **Pink Pearl** — `auto` · P3 · themes: other · code: typeBoosterIndex:4241
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as a Psychic Type Booster. If held by a Spoink, it also acts as a Special Attack Booster.
 
-- ✅ **Pixie Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4226
+- ✅ **Pixie Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4228
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both a Fairy Type Booster and a Fairy Brace.
 
-- ✅ **Poison Barb** — `auto` · P3 · themes: status, damage · code: TYPE_BOOSTER_ITEMS:4217
+- ✅ **Poison Barb** — `auto` · P3 · themes: status, damage · code: TYPE_BOOSTER_ITEMS:4219
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Poison Moves used by the holder.
 
-- ✅ **Poisonium Z** — `auto` · P3 · themes: swap, status, typing, damage, action, stat · code: Z_CRYSTALS:4155
+- ✅ **Poisonium Z** — `auto` · P3 · themes: swap, status, typing, damage, action, stat · code: Z_CRYSTALS:4157
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Poison-Type Move it uses becomes Acid Downpour and gains a +3 Damage Base bonus. Unlike a Poison Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Psychium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4156
+- ✅ **Psychium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4158
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Psychic-Type Move it uses becomes Shattered Psyche and gains a +3 Damage Base bonus. Unlike a Psychic Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Quick Claw** — `auto` · P3 · themes: other · code: heldCritBonus:4514
+- ✅ **Quick Claw** — `auto` · P3 · themes: other · code: heldCritBonus:4516
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The user adds +10 to their Initiative.
 
-- ✅ **Rad Fashion** — `auto` · P3 · themes: swap, action, skill · code: GEAR_ACTIONS:13042
+- ✅ **Rad Fashion** — `auto` · P3 · themes: swap, action, skill · code: GEAR_ACTIONS:13114
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The holder may activate this item once a Scene as a Free Action to gain a +4 bonus to a single Save Check.
 
-- ✅ **Rockium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4157
+- ✅ **Rockium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4159
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Rock-Type Move it uses becomes Continental Crush and gains a +3 Damage Base bonus. Unlike a Rock Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Rough Fashion** — `auto` · P3 · themes: swap, action · code: GEAR_ACTIONS:13024
+- ✅ **Rough Fashion** — `auto` · P3 · themes: swap, action · code: GEAR_ACTIONS:13096
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The holder may activate this item once a Scene as a Free Action to cause a foe within 5 meters to take a -2 penalty to all rolls for one full round.
 
-- ✅ **S Attack Booster** — `auto` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:34919
+- ✅ **S Attack Booster** — `auto` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:35101
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The default state of the holder's Special Attack Stat is +1 Combat Stage.
 
-- ✅ **S Defense Booster** — `auto` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:34919
+- ✅ **S Defense Booster** — `auto` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:35101
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The default state of the holder's Special Defense Stat is +1 Combat Stage.
 
-- ✅ **Safety Goggles** — `auto` · P3 · themes: typing · code: powderImmuneWhy:37104
+- ✅ **Safety Goggles** — `auto` · P3 · themes: typing · code: powderImmuneWhy:37286
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The holder is immune to Moves with the Powder Keyword.
 
-- ✅ **Sharp Beak** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4218
+- ✅ **Sharp Beak** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4220
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Flying Moves used by the holder.
 
-- ✅ **Shock Collar** — `auto` · P3 · themes: heal, interrupt · code: GEAR_ACTIONS:13080
+- ✅ **Shock Collar** — `auto` · P3 · themes: heal, interrupt · code: GEAR_ACTIONS:13152
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Comes with a remote activator, which, when activated, causes the holder to lose Hit Points equal to 1/6th of their Max Hit Points. This may be used to activate the "Press" Feature.
 
-- ✅ **Silk Scarf** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4215
+- ✅ **Silk Scarf** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4217
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Normal Moves used by the holder.
 
-- ✅ **Silver Powder** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4218
+- ✅ **Silver Powder** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4220
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Bug Moves used by the holder.
 
-- ✅ **Sky Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4226
+- ✅ **Sky Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4228
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both a Flying Type Booster and a Flying Brace.
 
-- ✅ **Soft Sand** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4217
+- ✅ **Soft Sand** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4219
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Ground Moves used by the holder.
 
-- ✅ **Speed Booster** — `auto` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:34919
+- ✅ **Speed Booster** — `auto` · P3 · themes: cs, skill, stat · code: STAT_BOOSTER_ITEMS:35101
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The default state of the holder's Speed Stat is +1 Combat Stage.
 
-- ✅ **Spell Tag** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4219
+- ✅ **Spell Tag** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4221
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Ghost Moves used by the holder.
 
-- ✅ **Splash Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4227
+- ✅ **Splash Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4229
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both a Water Type Booster and a Water Brace.
 
-- ✅ **Spooky Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4227
+- ✅ **Spooky Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4229
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both a Ghost Type Booster and a Ghost Brace.
 
-- ✅ **Steelium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4158
+- ✅ **Steelium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4160
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Steel-Type Move it uses becomes Corkscrew Crash and gains a +3 Damage Base bonus. Unlike a Steel Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Stone Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4227
+- ✅ **Stone Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4229
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both a Rock Type Booster and a Rock Brace.
 
-- ✅ **Thick Club** — `auto` · P3 · themes: swap · code: holdsThickClub:25290, abilityAccMods:25329
+- ✅ **Thick Club** — `auto` · P3 · themes: swap · code: holdsThickClub:25455, abilityAccMods:25494
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - When held by a Cubone or Marowak, grants the Pure Power Ability; Wielded.
 
-- ✅ **Tiny Mushroom** — `auto` · P3 · themes: cs, skill, stat · code: GEAR_ACTIONS:12967, SNACK_DEFS:17884, CAP_PRODUCERS:25679
+- ✅ **Tiny Mushroom** — `auto` · P3 · themes: cs, skill, stat · code: GEAR_ACTIONS:13039, SNACK_DEFS:18019, CAP_PRODUCERS:25844
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - The user loses 5 HP, and gains +1 Combat Stage in a random Stat.
 
-- ✅ **Toxic Plate** — `auto` · P3 · themes: status · code: TYPE_PLATE_ITEMS:4228
+- ✅ **Toxic Plate** — `auto` · P3 · themes: status · code: TYPE_PLATE_ITEMS:4230
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both a Poison Type Booster and a Poison Brace.
 
-- ✅ **Twisted Spoon** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4218
+- ✅ **Twisted Spoon** — `auto` · P3 · themes: damage · code: TYPE_BOOSTER_ITEMS:4220
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Grants a +5 Damage Bonus to all direct-damage Psychic Moves used by the holder.
 
-- ✅ **Type Gem** — `auto` · P3 · themes: swap, damage, action, stat · code: zMoveName:4162
+- ✅ **Type Gem** — `auto` · P3 · themes: swap, damage, action, stat · code: zMoveName:4164
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - These items come in a variety of each of the Elemental Types, and can be consumed as a Free Action to give a +3 Damage Base bonus to one attack of that specific Type.
 
-- ✅ **Waterium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4153
+- ✅ **Waterium Z** — `auto` · P3 · themes: swap, typing, damage, action, stat · code: Z_CRYSTALS:4155
   - note: Gems / Z-Crystals / Type Boosters / Mega Stones / Stat Boosters / Lagging / Choice items are implemented (heldTypeBoost, Z_CRYSTALS, TYPE_BOOSTER_ITEMS, HELD_FX); verified by code read
   - Once per Scene as a Free Action, the holder may unleash a Z-Move: one damaging Water-Type Move it uses becomes Hydro Vortex and gains a +3 Damage Base bonus. Unlike a Water Gem the crystal is not consumed — it recharges at the end of every Scene.
 
-- ✅ **Zap Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4228
+- ✅ **Zap Plate** — `auto` · P3 · themes: other · code: TYPE_PLATE_ITEMS:4230
   - note: HELD_FX / EQUIP_EFFECTS / GEAR_ACTIONS / heldDefenseMods already implement it (verified in the running app, v595)
   - Acts as both an Electric Type Booster and an Electric Brace.
 

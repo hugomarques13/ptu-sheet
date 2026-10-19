@@ -716,6 +716,20 @@ function hasStatus(p, key){ return Array.isArray(p.statuses) && p.statuses.inclu
    same key in the list twice - and every renderer draws one chip per ENTRY, so the affliction
    shows up two or three times. One key can only ever be on or off, so the list is deduped
    wherever it is normalised, written or read for display. */
+/* Buffs, Digestion and the like are lists of {id,...}. The "append" op that syncs them is not idempotent:
+   a retried or echoed write added the SAME buff (same id) again, so one Drowsy / custom buff showed two or
+   three times and removing one - removal is by id - removed them all. One id is one entry. */
+function dedupeById(arr){
+  if(!Array.isArray(arr)) return false;
+  const seen = new Set(), out = [];
+  for(const x of arr){
+    if(x && typeof x === "object" && x.id != null){ if(seen.has(x.id)) continue; seen.add(x.id); }
+    out.push(x);
+  }
+  if(out.length === arr.length) return false;
+  arr.length = 0; arr.push(...out);
+  return true;
+}
 function dedupeStatuses(o){
   if(!o || !Array.isArray(o.statuses)) return false;
   const seen = new Set(), out = [];
@@ -1074,6 +1088,7 @@ function statusCureBlock(o, key){
     return why ? `⚠ ${ownerLabel(o)} still meets the condition that killed them (${why}) — lifting the chip only holds until the next HP or Injury change puts it straight back. Heal them past it first.` : "";
   }
   if(key !== "enraged") return "";
+  if(hasGiftNamed(o, "Cold Resolve")) return "";               // Chien-Pao's Cold Resolve: the rage lifts whenever its owner says
   const ab = (typeof POWER_OF_RAGE_ABILITIES !== "undefined" ? POWER_OF_RAGE_ABILITIES : [])
     .filter(a => ownerHasAbility(o, a));
   if(!ab.length) return "";
@@ -4389,7 +4404,7 @@ const HELD_FX = {
   "rareleek":     { crit:2, onlySpecies:["Farfetch'd","Farfetch'D","Sirfetch'd","Sirfetch'D"],
                     note:"Rare Leek: +2 Critical Hit range (Farfetch'd family only). Wielded." },
   "lifeorb":      { dmg:5, rollNote:"Life Orb: +5 damage is already in the roll — the holder then loses 1/16th of its Max HP (tap its token and press 💢 Life Orb)." },
-  "kingsrock":    { rollNote:"King's Rock: the attack Flinches its target on an Accuracy roll of 19+. Does not stack with anything else that extends Flinch range." },
+  "kingsrock":    { rollNote:"King's Rock: the attack Flinches its target on an Accuracy roll of 19+ — added to the Effect Ranges below and landed by the \u{1F4A5} Apply. Does not stack with anything else that extends Flinch range." },
   "razorfang":    { rollNote:"Razor Fang: the attack causes an Injury on an Accuracy roll of 19+." },
   "bigroot":      { rollNote:"Big Root: an HP-stealing Move restores DOUBLE the Hit Points \u2014 the \u{1FA78} Hit Points card on the roll has already doubled the drain." },
   "metalpowder":  { cs:{def:2, spdef:2}, onlySpecies:["Ditto"],
@@ -6772,6 +6787,7 @@ function normPokemon(p){
   normInjDay(p);                              // today's Injury-healing ledger (see healInjuries)
   if(!Array.isArray(p.auras)) p.auras = [];   // Legendary Auras (encounter-only; seeded when added to an encounter)
   if(!Array.isArray(p.buffs)) p.buffs = [];        // active Cheers / Orders / Songs (#2)
+  dedupeById(p.buffs);
   if(!Array.isArray(p.digestion)) p.digestion = [];       // stored Digestion Buffs from eaten Snacks (Core p.278)
   if(!Array.isArray(p.moves)) p.moves = [];
   dedupeNameList(p.moves);                    // a duplicate Move draws twice and shares its use pips
@@ -6863,6 +6879,7 @@ function normTrainer(t){
   dedupeNameList(t.moves);                                        // see dedupeNameList — one Move, one row
   if(Array.isArray(t.encMoves)) dedupeNameList(t.encMoves);
   if(!Array.isArray(t.buffs)) t.buffs = [];                       // active Cheers / Orders / Songs (#2)
+  dedupeById(t.buffs);
   if(!Array.isArray(t.customActions)) t.customActions = [];       // freeform actions/notes not in any DB/Feature
   if(!t.msStats || typeof t.msStats!=="object") t.msStats = { atk:0, spatk:0 };  // Level-Up milestone Bonus-Stats already baked into combat.added
   if(!t.statTagPick || typeof t.statTagPick!=="object") t.statTagPick = {};   // chosen stat per [+Any]/[+X or Y] Feature tag
@@ -7009,9 +7026,13 @@ function trainerDerived(t) {
   const bEva  = buffEva(t);                                // a buff that raises Evasion (I Believe In You!, Capricious Whirl)
   const hEva  = heldEvaBonus(t);                           // worn Lax Incense / Bright Powder
   const ovlBase = 3 + Math.floor(ovlRanks/2) + equipOverland(t) + featureOverland(t) + edgeFxSum(t, "overland") + arc.caps.move + bMove;
+  /* Swim is half of Overland - the Overland that gear and Edges have already raised, so Running Shoes,
+     Pathfinder-style +Overland Features and Edges carry into it. Chariot / Frenzy raise EVERY movement
+     Capability in full, so they are added after the halving, not inside it. */
+  const ovlGear = equipOverland(t) + featureOverland(t) + edgeFxSum(t, "overland");
   const swimBase = trainerEdgeFx(t).some(d => d.fx.swimEqOverland)     // Deep Diver: Swim = Overland, not half
     ? ovlBase + equipSwim(t) + featureSwim(t) + edgeFxSum(t, "swim")
-    : Math.floor((3 + Math.floor(ovlRanks/2))/2) + equipSwim(t) + featureSwim(t) + edgeFxSum(t, "swim") + arc.caps.move + bMove;
+    : Math.floor((3 + Math.floor(ovlRanks/2) + ovlGear)/2) + equipSwim(t) + featureSwim(t) + edgeFxSum(t, "swim") + arc.caps.move + bMove;
   const fullHP = t.level*2 + raw("hp")*3 + 10 + arc.hp;    // undamaged maximum (Nine of Wands ±5)
   const injuries = Math.max(0, t.injuries||0);
   // Injuries cap max HP −10% each (Core p.249). injuryHPCount is where Lessons In Rage & Pain stops
@@ -7546,14 +7567,38 @@ function spriteUrl(name, shiny, tmp){
    vs p.image) — otherwise a photo taken while Mega'd would stick around after reverting, and vice
    versa, since p.species (and so the sprite lookup) toggles but a single shared field wouldn't. */
 function monImage(p){
-  // While wearing someone else's form its own photo is exactly what you would NOT see — fall through
-  // to the dex artwork of whatever monLookName says it looks like.
-  if(p && p.transform) return "";
+  /* While wearing someone else's form its own photo is exactly what you would NOT see: it shows the
+     picture saved for THAT form (p.formArt, keyed by the copied species), or - with none - falls
+     through to the dex artwork of whatever monLookName says it looks like. */
+  if(p && p.transform){ const a = formArtOf(p); return (a && a.image) || ""; }
   return p.mega ? (p.megaImage||"") : (p.image||"");
 }
+/* A Transformed creature's pictures, one per form it has taken: { "<species>": {image, focus} }.
+   Kept after the Transformation ends so the next Pikachu a Ditto becomes is already dressed. */
+function formArtOf(p, make){
+  if(!p || !p.transform || !p.transform.species) return null;
+  if(!p.formArt || typeof p.formArt!=="object" || Array.isArray(p.formArt)){ if(!make) return null; p.formArt = {}; }
+  const k = p.transform.species;
+  if(!p.formArt[k] && make) p.formArt[k] = { image:"" };
+  return p.formArt[k] || null;
+}
 function setMonImage(p, url){
+  if(p.transform){
+    const a = formArtOf(p, !!url);
+    if(a){ a.image = url; delete a.focus; if(!url) delete p.formArt[p.transform.species]; }   // a new photo needs a new crop
+    return;
+  }
   if(p.mega) p.megaImage = url; else p.image = url;
   delete p[p.mega ? "megaImageFocus" : "imageFocus"];   // a new photo needs a new crop (openMonImageFocus)
+}
+/* the crop of whichever picture monImage is showing */
+function monFocusGet(p){
+  if(p && p.transform){ const a = formArtOf(p); return a ? a.focus : undefined; }
+  return p[monFocusKey(p)];
+}
+function monFocusSet(p, f){
+  if(p && p.transform){ const a = formArtOf(p); if(a){ if(f) a.focus = f; else delete a.focus; } return; }
+  const k = monFocusKey(p); if(f) p[k] = f; else delete p[k];
 }
 /* ---------- custom species artwork (homebrew Megas, Vulpoxen, "Mom?", …) ----------
    spriteUrl hotlinks pokemondb, which has no artwork for homebrew species, so those requests 404 and
@@ -8757,7 +8802,34 @@ const WEAPON_RETYPE_FEATS = [
     note:"This attack deals Dragon-Type damage. On an Accuracy Roll of 18+, all targets can only use At-Will Frequency Moves for one full round — apply that part by hand." },
   { feat:"Champion of Steel", type:"Steel", ap:1, icon:"🛡",
     note:"This attack deals Steel-Type damage. On an Accuracy Roll of 16+ it also raises your Defense by 1 Combat Stage — shift it on the Combat Stages pad." },
+  /* Chien-Pao's Blade of Hate ("Scene x2 - Trigger: You make a Struggle Attack with an equipped weapon.
+     Effect: ... deals Dark Type damage and gains +3 to its Damage Base"), table-ruled wider and
+     weaker: it works on ANY Normal-Type melee attack - Struggle, a weapon swing, a Weapon Move, a
+     Normal Move with a Melee range - and gives NO extra Damage Base. `gift` swaps the Feature gate
+     for a Gift gate (bladeRetypeOk) and each use is spent from the Gift's own Scene x2 pips. */
+  { feat:"Blade of Hate", gift:true, type:"Dark", ap:0, icon:"\u{1F5E1}",
+    note:"This melee attack deals Dark-Type damage (Blade of Hate). Nothing else about it changes - no extra Damage Base." },
 ];
+/* Is this attack one Blade of Hate can turn Dark: the Trainer holds the Gift, the attack is
+   Normal-Type (so it never overrides a Type something else chose, and Silent Assassin / Deicide
+   leave it out), it has a Melee range and it actually deals damage. */
+function bladeRetypeOk(t, st){
+  return !!st && hasGiftNamed(t, "Blade of Hate") && st.type === "Normal"
+    && /melee/i.test(String(st.range || "")) && typeof st.damageBase === "number" && st.damageBase > 0;
+}
+/* uses of Blade of Hate left this Scene (Infinity if the Gift's frequency isn't trackable) */
+function bladeUsesLeft(t){
+  const info = freqInfo(giftFreqForName("Blade of Hate"));
+  return freqTrackable(info) ? usesLeft(t, useKey("gift", "Blade of Hate"), info.max) : Infinity;
+}
+/* take one use back (the roll's toggle was switched off again before swinging) */
+function bladeRefund(t){
+  const key = useKey("gift", "Blade of Hate");
+  if(t.uses && t.uses[key] > 0) t.uses[key]--;
+}
+/* The "Use" press on an attack row spends a use and arms this for the very next openTrainerAttack,
+   which then opens with the Dark retype already on. One-shot, so a plain Roll afterwards is plain. */
+let _pendingRetype = "";
 /* "when wielding Melee Weapons" — a bow can't swing Rage */
 function weaponFitsRestrict(w, restrict){
   if(!restrict) return true;
@@ -9951,6 +10023,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     const metro = moveByName.get("metronome");
     if(metro) return openMetronome(t, metro, null, opts);
   }
+  if(_pendingRetype){ opts = Object.assign({}, opts, { retype: opts.retype || _pendingRetype }); _pendingRetype = ""; }
   const st = trainerAttackProfile(t, weaponMoveName, w, opts.weaponAttack);
   /* Two classes print the same Free Action on a Weapon Attack: Herald of Pride's Channel the
      Dragon's Spirit ("You may have the triggering attack deal Dragon-Type Damage if you wish") and
@@ -9959,7 +10032,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
      Steelheart's +1 Defense Combat Stage on 16+) is a reminder in the box. The profile is a
      throwaway object built per call, so overwriting its Type never touches the Move DB.
      `opts.retype` names which one is switched on, so the two can never both be. */
-  const retypeOpts = WEAPON_RETYPE_FEATS.filter(d => !!st.weapon && hasFeatureLoose(t, d.feat));
+  const retypeOpts = WEAPON_RETYPE_FEATS.filter(d => d.gift ? bladeRetypeOk(t, st)
+                                                      : (!!st.weapon && hasFeatureLoose(t, d.feat)));
   const retypeOn = retypeOpts.find(d => featKey(d.feat) === featKey(opts.retype || "")) || null;
   if(retypeOn) st.type = retypeOn.type;
   /* Judgement / Techno Blast: "its Type can be whatever Elemental Type the user wants it to be." The
@@ -10051,6 +10125,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const fiveStrike = isFiveStrike(st), dblStrike = isDoubleStrike(st);
   const nAcc = dblStrike ? 2 : 1;
   let targetEva = 0;                      // target's Evasion — auto-counts the Double Strike hits
+  let evaPick = null;                     // …read off the picked Map token (strikeTargetPicker)
   /* A Move whose Damage Base is a number read off the sheet — Flail and Reversal count the user's
      Injuries, Return counts Loyalty, Stored Power counts Combat Stages — uses the SAME table the
      Pokémon roll does (specialMoveInfo), so the two paths can't drift apart. The weapon's own +DB
@@ -10326,11 +10401,14 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     const on = retypeOn === d;
     const dc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
     dc.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},
-      `${d.icon} ${d.feat} — ${d.ap} AP, Free Action`));
-    dc.append(el("button",{class:"btn-secondary"+(on?" on":""),style:"padding:6px 10px",
-      onclick:()=>{ closeModal();
+      d.gift ? `${d.icon} ${d.feat} — Gift, Scene x2 (spends a use)` : `${d.icon} ${d.feat} — ${d.ap} AP, Free Action`));
+    const gLeft = d.gift ? bladeUsesLeft(t) : Infinity;
+    dc.append(el("button",{class:"btn-secondary"+(on?" on":""),style:"padding:6px 10px",disabled:(d.gift && !on && gLeft<=0),
+      onclick:()=>{
+        if(d.gift){ if(on) bladeRefund(t); else if(!giftSpend(t, d.feat)) return; (opts.persist||save)(); }
+        closeModal();
         openTrainerAttack(t, weaponMoveName, w, Object.assign({}, opts, {retype: on ? "" : d.feat})); }},
-      on ? `⏹ Back to ${(w && w.type) || "Normal"}-Type` : `${d.icon} Deal ${d.type}-Type damage`));
+      on ? `⏹ Back to ${d.gift ? "Normal" : ((w && w.type) || "Normal")}-Type` : `${d.icon} Deal ${d.type}-Type damage`));
     dc.append(el("div",{class:"small muted",style:"margin-top:4px"}, on ? d.note
       : `Retypes this Weapon Attack to ${d.type}, which is what the target's resistances are then measured against.`));
     body.append(dc);
@@ -10382,7 +10460,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
      Play Them Like a Fiddle, Enchanting Transformation). Always-on ones just state what also
      happens; a triggered one gets its own box with a button that spends the use. --- */
   { const rsCard = runningStartCard(runStart, runStartState); if(rsCard) body.append(rsCard); }
-  body.append(riderBoxes(t, st.name, opts.rerender, opts.persist));
+  let riderFireHook = null;           // the 🎯 Apply card ticks a triggered rider's row when its button is pressed
+  body.append(riderBoxes(t, st.name, opts.rerender, opts.persist, n => { if(riderFireHook) riderFireHook(n); }));
   { const pn = powderImmuneNote(st.move && typeof st.move === "object" ? st.move : moveByName.get(String(st.name||"").toLowerCase()));
     if(pn) body.append(el("div",{class:"small muted",style:"margin-top:4px"}, "\u{1F33F} " + pn)); }
   /* …and the one rider whose bullets are more than a sentence apiece: each of Flip Out's four Moves
@@ -10402,15 +10481,12 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     wc.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},
       fiveStrike ? "🎯 Five Strike — 1d8 hit count" : "⚔ Double Strike — 2 separate Attack Rolls"));
     if(dblStrike){
-      const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap"});
-      const inp = el("input",{type:"number",min:0,value:targetEva,style:"width:90px"});
-      inp.addEventListener("input",()=>{ targetEva = Math.max(0, parseInt(inp.value)||0); });
-      row.append(el("span",{class:"small"},"Target's Evasion"), inp);
-      wc.append(row);
+      evaPick = strikeTargetPicker(t, ()=>isSpecAtk, "Target's Evasion");
+      wc.append(evaPick.node);
     }
     wc.append(el("div",{class:"small muted",style:"margin-top:4px"},
       fiveStrike ? `Rolling 🎲 also rolls 1d8 for the hit count (1 / 2-3 / 4-6 / 7 / 8 → 1 / 2 / 3 / 4 / 5 hits); the Move's own Damage Base ${rawDB} is multiplied by it${stabDB||bm.db?`, and the${stabWhy}${bm.db?` ${bm.db>0?"+":"−"}${Math.abs(bm.db)} DB from buffs`:""} is added only after that`:""} (Core p.242).`
-                 : `Both Attack Rolls are checked against AC ${st.ac} + this Evasion when you press 🎲 (nat 20 always hits, nat 1 always misses). 1 hit → DB ${baseDBv} · both hit → DB ${baseDBv*2}.`));
+                 : `Both Attack Rolls are checked against AC ${st.ac} + the target's Evasion when you press 🎲 (nat 20 always hits, nat 1 always misses). 1 hit → DB ${baseDBv} · both hit → DB ${baseDBv*2}.`));
     body.append(wc);
   }
 
@@ -10527,6 +10603,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     const accBits = []; if(bm.acc) accBits.push(`${bm.acc>0?"+":"−"}${Math.abs(bm.acc)} buffs`); if(accCS) accBits.push(`${accCS>0?"+":"−"}${Math.abs(accCS)} Accuracy CS`);
     if(wAcc) accBits.push(`${wAcc>0?"+":"−"}${Math.abs(wAcc)} Fainted Living Weapon`);
     // Double Strike: resolve every Attack Roll against AC + Evasion and count what connects
+    if(evaPick) targetEva = evaPick.eva();
     const strikes = dblStrike ? resolveStrikes(nats, accMod, st.ac + targetEva, critT) : null;
     const forced  = dblStrike && redo?.forceHits!=null;
     const connected = !dblStrike ? 1 : (forced ? redo.forceHits : strikes.filter(s=>s.hit).length);
@@ -10552,19 +10629,20 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
        Serene Grace widens every Effect Range by +2. */
     let hitFx = null;                    // the target's Afflictions / CS, carried to the 💥 Apply below
     let hpNode = null;                   // found-04: drain / Recoil / self-heal, appended after the damage
+    let trThrOut = null, rsnPicked = null;   // for the 🎯 Apply card below the Demoralize box
     const missedRoll = dblStrike ? (connected === 0)
       : (st.ac == null || st.ac === "") ? null
       : acc === 20 ? false
       : (acc === 1 || accTot < st.ac + targetEva);
     if(st.move){
       const trThr = buffEffectThresholds(sereneGraceThresholds(
-        burnRangeThresholds(
+        kingsRockThresholds(burnRangeThresholds(
           frostbiteThresholds(effectThresholds(st.move.effect),
             ownerHasAbility(t,"Frostbite") && st.type==="Ice" && !isStatusAtk),
           /* Firebrand says "your Fire-Type Moves", with no damaging-only clause — so Will-O-Wisp
              counts too, and only the Type is checked. */
           hasFeatureLoose(t,"Firebrand") && st.type==="Fire", "Firebrand",
-          "this Fire-Type Move Burns the target on 19+."),
+          "this Fire-Type Move Burns the target on 19+."), t, !isStatusAtk),
         ownerHasAbility(t,"Serene Grace")), buffEffectRange(t));
       if(trThr.length){
         const tl = el("div",{style:"margin:2px 0 10px"});
@@ -10578,7 +10656,9 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         out.append(tl);
       }
       const rsn = randomStatusNode(st.move, acc); if(rsn) out.append(rsn);
-      const rideHit = mode==="cloud" && !isStatusAtk && connected > 0;
+      trThrOut = trThr; rsnPicked = rsn && rsn.picked;
+      // a Status Move's target half goes on the one 🎯 Apply card (statusMoveApplyNode) instead
+      const rideHit = isStatusAtk ? "bundle" : (mode==="cloud" && connected > 0);
       const sn = moveStatusNode(t, st.move, trThr, acc, { redraw:opts.rerender, persist:opts.persist,
         extra: rsn && rsn.picked, rideHit });
       if(sn) out.append(sn);
@@ -10620,6 +10700,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
        Buttons (Provocateur) pulls it one further to 18+ and adds the Tick on a Social Move.
        ANNOUNCED, never applied: Vulnerable belongs on the foe's sheet, and only the GM knows which
        foe was hit. */
+    let demor = null;
     if(trainerHasEdge(t, "Demoralize")){
       const pushB = hasFeatureLoose(t, "Push Buttons");
       const statusT = Math.max(2, critT - (pushB ? 2 : 1));       // 19+ normally, 18+ with Push Buttons
@@ -10629,13 +10710,34 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
                                 : acc >= critT;
       if(fired){
         const social = st.move && moveHasKeyword(st.move, "Social");
+        demor = { vuln:true, tick: !!(isStatusAtk && social && pushB) };
         const bits = [`The target becomes <b>Vulnerable</b>.`];
         if(isStatusAtk) bits.push(`Status-Class "Crit" on ${acc} \u2265 ${statusT}${pushB?" (Push Buttons)":""}.`);
         if(social && pushB) bits.push(`Push Buttons: a Social Move at this range also costs them a <b>Tick of Hit Points</b>.`);
-        bits.push(`Apply it from their token\u2019s Status Conditions \u2014 the sheet won\u2019t guess who you hit.`);
+        bits.push((isStatusAtk || !(mode==="cloud")) ? `Ticked on the \u{1F3AF} Apply card below \u2014 one press puts it on whoever it hit.`
+          : `It rides with the hit \u2014 the GM\u2019s \u{1F4A5} Apply makes every target it damages Vulnerable.`);
         out.append(el("div",{class:"warnbox",style:"margin:0 0 10px;line-height:1.5;border-color:var(--accent);color:var(--accent)",
           html:`\uD83D\uDCA2 <b>Demoralize!</b> ` + bits.join(" ")}));
       }
+    }
+    /* Everything this roll does to its targets in one press (statusMoveFx / statusMoveApplyNode). A
+       Status Move puts all of it on the card; a damaging Move hands the hit-side rows (Demoralize on a
+       crit, Dazzling Gleam under Enchanting Transformation) to the 💥 Apply below through hitFx, and
+       keeps only the miss-side rows (Moonblast under Enchanting Transformation) on the card. */
+    if(st.move){
+      const rows = statusMoveFx(t, st.move, { thresholds:trThrOut, acc, extra:rsnPicked, status:isStatusAtk, demor, trainer:true });
+      const rides = !isStatusAtk && mode==="cloud" && connected > 0;
+      if(rides) rows.filter(r => r.when === "hit" && (r.keys || r.cs)).forEach(r => {
+        hitFx = hitFx || { name:st.name, status:[], cs:[] };
+        if(r.keys) hitFx.status = uniqStatusKeys((hitFx.status || []).concat(r.keys));
+        if(r.cs) hitFx.cs = (hitFx.cs || []).concat(r.cs);
+      });
+      const cardRows = isStatusAtk ? rows
+        : rows.filter(r => r.when !== "hit" || (!rides && connected > 0) || (rides && !r.keys && !r.cs));
+      const smn = statusMoveApplyNode(t, st.move, cardRows, { persist:opts.persist, redraw:opts.rerender,
+        accLine:`\u{1F3AF} Accuracy ${accTot} (d20 ${acc})${st.ac!=null?` vs AC ${st.ac}`:""}`,
+        onRiderFire: fn => { riderFireHook = fn; } });
+      if(smn) out.append(smn);
     }
     // size the Damage Base from the strikes that landed (Core p.242)
     let db = baseDBv, strikeNote = null;
@@ -10719,7 +10821,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         atk: isStatusAtk ? null : { dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce, critExtra,
                atkTinted: ownerHasAbility(t,"Tinted Lens") || !!(tMold && tMold.tinted), atkMold: !!tMold, moveRule,
                atkExploit: exploitAbilityBonus(t), atkWar: ownerAuraActive(t,"War"), atkDeicide: !!st.deicide,
-               seFlat: heldSeFlatDamage(t), defCSMode, fx: hitFx } });
+               seFlat: heldSeFlatDamage(t), defCSMode, fx: hitFx,
+               ctx:{ by:rollerName(t), aid:t.id || null, move:(st.move && st.move.name) || "", melee:/melee/i.test(String((st.move && st.move.range) || "")) } } });
     }
     if(hpNode) out.append(hpNode);
     if(dblStrike){
@@ -10746,8 +10849,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
 /* Trainer portrait — upload / replace / remove a photo (stored as a compact data URL) */
 function trainerAvatar(t){
   const wrap = el("div",{class:"avatar-wrap"});
-  wrap.append(framedPic(zoomImg(el("img",{class:"avatar", alt:"Trainer portrait", src: t.avatar || TRAINER_PLACEHOLDER}),
-    t.name || "Trainer"), t.avatar ? t.avatarFocus : null));
+  wrap.append(framedPic(zoomImg(el("img",{class:"avatar", alt:"Trainer portrait", src: avatarUrl(t) || TRAINER_PLACEHOLDER}),
+    t.name || "Trainer"), avatarUrl(t) ? avatarFocusOf(t) : null));
   const acts = el("div",{class:"avatar-acts"});
   acts.append(el("button",{class:"linkbtn",onclick:()=>pickImage(framablePicDim(), async d=>{ setAvatar(t, await storeImg(d,"avatar")); save(); renderTrainer(); })},
     t.avatar ? "📷 Change" : "📷 Photo"));
@@ -10755,6 +10858,31 @@ function trainerAvatar(t){
     onclick:()=>openAvatarFocus(t, ()=>{ save(); renderTrainer(); })},"🖼 Frame"));
   if(t.avatar) acts.append(el("button",{class:"linkbtn",onclick:()=>{ setAvatar(t, ""); save(); renderTrainer(); }},"remove"));
   wrap.append(acts);
+  // a stance this Trainer owns that has its own look: its picture is set here whether or not the stance is up
+  avatarFormModes(t).forEach(m => {
+    const f = avatarFormOf(t, m.key), on = m.custom ? !!m.custom.on : modeIsOn(t, m.key);
+    const row = el("div",{class:"avatar-acts",title:`the portrait shown while ${m.feat} is up`});
+    row.append(el("button",{class:"linkbtn",onclick:()=>pickImage(framablePicDim(), async d=>{ setAvatar(t, await storeImg(d,"avatar"), m.key); save(); renderTrainer(); })},
+      `${m.icon} ${f && f.image ? "Change" : "Add"} ${m.feat} picture`));
+    if(f && f.image) row.append(el("button",{class:"linkbtn",title:"choose which part of the picture is shown",
+      onclick:()=>openAvatarFocus(t, ()=>{ save(); renderTrainer(); }, m.key)},"\u{1F5BC} Frame"));
+    if(f && f.image) row.append(el("button",{class:"linkbtn",onclick:()=>{ setAvatar(t, "", m.key); save(); renderTrainer(); }},"remove"));
+    if(m.custom){
+      row.append(el("button",{class:"linkbtn",style:on ? "font-weight:800" : "",
+        title:"wear this form: its picture replaces the portrait on the sheet and on the Map until you switch it off",
+        onclick:()=>{ t.altForms.forEach(a => { if(a !== m.custom) a.on = false; }); m.custom.on = !m.custom.on; save(); renderTrainer(); }},
+        on ? "● showing — switch off" : "○ wear this form"));
+      row.append(el("button",{class:"linkbtn",title:"delete this form",
+        onclick:()=>{ t.altForms = t.altForms.filter(a => a !== m.custom); if(t.formAvatar) delete t.formAvatar[m.key]; save(); renderTrainer(); }},"×"));
+    } else if(f && f.image) row.append(el("span",{class:"small muted"}, on ? "showing now" : "shown while transformed"));
+    wrap.append(row);
+  });
+  wrap.append(el("div",{class:"avatar-acts"}, el("button",{class:"linkbtn",
+    title:"a picture for any transformation: a rage, a Gift's form, a costume. Name it, add its picture, then wear it.",
+    onclick:()=>{ const n = prompt("Name of the form (e.g. Rage, Wolf Form):", ""); if(!n || !n.trim()) return;
+      if(!Array.isArray(t.altForms)) t.altForms = [];
+      t.altForms.push({ id:uid(), name:n.trim(), on:false }); save(); renderTrainer(); }},
+    "\u{1F3AD} + Alternate form picture")));
   return wrap;
 }
 /* ═══════════════════════ MONEY & THE LEDGER ═══════════════════════
@@ -10771,7 +10899,7 @@ function trainerAvatar(t){
    the shape the field-level cloud sync can send as a single append op (see diffOps):
    a purchase uploads one new line, not the whole history. The UI reverses them. */
 const MONEY_LOG_MAX = 120;                       // keep a session's worth; the oldest fall off the front
-const MONEY_KIND_ICON = { shop:"🛒", payday:"💰", gm:"🎩", hand:"✎", set:"🖉" };
+const MONEY_KIND_ICON = { shop:"🛒", payday:"💰", gm:"🎩", hand:"✎", set:"🖉", send:"💸" };
 function moneyOf(t){ const n = parseFloat(t && t.money); return (isFinite(n) && n>0) ? n : 0; }
 function fmtMoney(n){ return "$" + (Math.round((Number(n)||0)*100)/100).toLocaleString(); }
 function moneyLogOf(t){ return Array.isArray(t.moneyLog) ? t.moneyLog : (t.moneyLog = []); }
@@ -10887,6 +11015,10 @@ function moneyField(t){
     title:"every payment in and out of this sheet",
     onclick:e=>{ e.preventDefault(); openMoneyLedger(t); }},
     `📜 Ledger (${moneyLogOf(t).length})`));
+  const fromChar = charOfTrainer(t);
+  if(fromChar && canSendItems(fromChar)) wrap.append(el("button",{class:"linkbtn",style:"margin-top:4px;text-align:left",
+    title:"hand some of this money to another character - it leaves this sheet and lands on theirs",
+    onclick:e=>{ e.preventDefault(); openSendMoney(fromChar); }},"💸 Send money…"));
   const fs = scrapOf(t, "food");
   if(fs > 0 || isGM()){
     const line = el("div",{class:"inline small",style:"gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap",
@@ -13884,6 +14016,51 @@ function sendInventoryItem(fromChar, it, target, n){
   toast(`🎁 Sent ${n}× ${label} to ${target.char.name||tt.name||"them"} ✓`);
   return true;
 }
+/* the character (sheet) a Trainer object belongs to - cloud rows first, then this device's characters */
+function charOfTrainer(t){
+  if(!t) return null;
+  if(mode==="cloud"){ const r = Object.values(cloud.byId).find(r => r && r.data && r.data.trainer===t); return r ? r.data : null; }
+  return (state?.characters||[]).find(c => c && c.trainer===t) || null;
+}
+/* Move `amount` from one sheet to another, written into BOTH ledgers. Same targets as item sending:
+   a player gives out of their own purse to anyone at the table, no GM needed. */
+function sendMoney(fromChar, target, amount, note){
+  const t = fromChar.trainer, tt = target.char.trainer;
+  amount = Math.floor(Number(amount)||0);
+  if(amount < 1){ toast("Enter an amount of at least $1"); return false; }
+  if(amount > moneyOf(t)){ toast(`Only ${fmtMoney(moneyOf(t))} on hand`); return false; }
+  const toName = target.char.name || tt.name || "them", fromName = fromChar.name || t.name || "someone";
+  const tail = note ? ` - ${note}` : "";
+  moneyChange(t,  -amount, `Sent to ${toName}${tail}`,   {kind:"send"});
+  moneyChange(tt, +amount, `From ${fromName}${tail}`, {kind:"send"});
+  target.commit();
+  save();                                   // the sheet being viewed - the one the money left
+  toast(`\u{1F4B8} Sent ${fmtMoney(amount)} to ${toName} \u2713`);
+  return true;
+}
+function openSendMoney(fromChar){
+  const targets = itemSendTargets(fromChar);
+  if(!targets.length){ toast("Nobody to send money to"); return; }
+  const t = fromChar.trainer, have = Math.floor(moneyOf(t));
+  if(have < 1){ toast("No money to send"); return; }
+  const wrap = el("div",{});
+  wrap.append(el("div",{class:"money-balance"}, fmtMoney(moneyOf(t)), el("span",{class:"small muted"}," on hand")));
+  const sel = el("select");
+  targets.forEach((x,i) => sel.append(el("option",{value:i}, x.label)));
+  wrap.append(el("label",{class:"field"}, el("span",{},"Send to"), sel));
+  const amt = el("input",{type:"number",min:1,max:have,placeholder:"amount",style:"width:120px"});
+  const all = el("button",{class:"btn-secondary",style:"padding:4px 10px",onclick:()=>{ amt.value = have; }},`All (${fmtMoney(have)})`);
+  wrap.append(el("label",{class:"field",style:"margin-top:8px"}, el("span",{},"How much ($)"),
+    el("div",{class:"inline",style:"gap:8px;align-items:center"}, amt, all)));
+  const why = el("input",{type:"text",placeholder:"what for? (optional)",maxlength:60});
+  wrap.append(el("label",{class:"field",style:"margin-top:8px"}, el("span",{},"Note"), why));
+  modal({title:"\u{1F4B8} Send money", bodyNode:wrap, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      if(sendMoney(fromChar, targets[parseInt(sel.value)||0], amt.value, why.value.trim())){ closeModal(); renderTrainer(); }
+    }},"\u{1F4B8} Send"),
+  ]});
+}
 function openSendItem(fromChar, it){
   const targets = itemSendTargets(fromChar);
   if(!targets.length){ toast(mode==="cloud" ? "Nobody to send it to — you can only give items out of your own bag" : "No other character to send to"); return; }
@@ -14339,7 +14516,8 @@ const GIFT_GROUPS = [
     ["Minor","Sense of Ruin","GM Permission","By observing a Pokémon, Trainer, structure, or object, you intuitively know its frailest points, and you can always tell when a living thing bears you or your allies genuine hostility. +3 to any Check made to break, damage, or exploit a weakness in a creature's defenses."],
     ["Major","Reviled","Minor Gift - Sense of Ruin","Whenever a foe hits you with a Move, you gain +1 Attack Combat Stage (once per round, lasting until end of Scene). You are also immune to Infatuation."],
     ["Major","Spiteful Frost","Minor Gift - Sense of Ruin","You are immune to the ambient cold of frozen and high-altitude regions, never slip on or sink into snow and ice, and gain the Freezer and Naturewalk (Tundra) Capabilities."],
-    ["Major","Blade of Hate","Major Gift - Reviled","Scene x2 - Trigger: You make a Struggle Attack with an equipped weapon. Effect: That Struggle Attack deals Dark Type damage and gains +3 to its Damage Base."],
+    ["Major","Cold Resolve","Minor Gift - Sense of Ruin","At-Will, Free Action: while you are Enraged you may let the fury go whenever you choose — the Enraged condition ends at once, with no Save Check, and Power of Rage (Enduring Rage / White Flame) no longer stops you from curing it. The hate is only banked, not spent: nothing stops it from boiling over again."],
+    ["Major","Blade of Hate","Major Gift - Reviled","Scene x2 - Trigger: You make a Normal-Type melee attack. Effect: That attack deals Dark Type damage instead. (Table ruling: it works on any Normal-Type melee attack, not only a Struggle with a weapon, and gives no extra Damage Base.)"],
     ["Major","Sword of Ruin","Major Gift - Blade of Hate","You gain the Sword of Ruin Ability."],
     ["Pact","Ruination","All Chien-Pao Major Gifts","You learn the Move Ruination."],
   ]},
@@ -15274,6 +15452,13 @@ function giftSpend(t, name){
   return true;
 }
 const GIFT_ACTIONS = [
+  { names:["Cold Resolve"], label:() => "❄ Cool the rage",
+    title:() => "At-Will, Free Action — end the Enraged condition on yourself, even with Enduring Rage / White Flame",
+    run:(t, rerender, saveFn) => {
+      if(!hasStatus(t, "enraged")){ toast("Cold Resolve: you aren't Enraged"); return; }
+      t.statuses = (t.statuses || []).filter(k => k !== "enraged");
+      (saveFn || save)(); (rerender || renderTrainer)();
+      toast("❄ Cold Resolve — the rage lets go (Enraged lifted)"); } },
   { names:["Godslayer","God Crusher"], run:godslayerGo,
     label:() => "⚔ Godslayer",
     title:t => `Standard Action, EOT: shatter one of a Legendary's Auras. AC ${godslayerAC(t)}.` },
@@ -16841,7 +17026,7 @@ function heroCard(p, sp){
   const hero = el("div",{class:"monhero"});
   const spriteBox = el("div",{class:"sprite-box"});
   spriteBox.append(monPic(p, sp, "s-lg", p.nickname || sp?.name || p.species));
-  spriteBox.append(el("button",{class:"photo-btn",title:p.mega?"upload a photo for this Mega form":"upload a photo",
+  spriteBox.append(el("button",{class:"photo-btn",title:p.transform?`upload a picture for the ${p.transform.label} form`:p.mega?"upload a photo for this Mega form":"upload a photo",
     onclick:()=>pickImage(framablePicDim(), async d=>{ setMonImage(p, await storeImg(d,"mon")); save(); refreshMon(p); })},"📷"));
   if(monImage(p)) spriteBox.append(el("button",{class:"photo-btn photo-frame",title:"frame the photo — choose which part is shown",
     onclick:()=>openMonImageFocus(p, ()=>{ save(); refreshMon(p); })},"🖼"));
@@ -22047,7 +22232,9 @@ function moveStatusNode(actor, m, thresholds, acc, o){
     /* Mold Breaker ignores the targets' Defensive immunity Abilities and Veils (found-03) */
     const mold = !!attackerMoldBreak(actor, m && m.type);
     const immuneType = /^thunder wave(\s*\[sm\])?$/i.test(String((m && m.name) || "").trim()) ? "Electric" : null;
-    if(o.rideHit) card.append(el("div", { class:"small muted", style:"margin-top:4px" },
+    if(o.rideHit === "bundle") card.append(el("div", { class:"small muted", style:"margin-top:4px" },
+      `\u{1F3AF} ${what} is on the \u{1F3AF} Apply card below, with everything else this Move does to its targets.`));
+    else if(o.rideHit) card.append(el("div", { class:"small muted", style:"margin-top:4px" },
       `\u{1F3AF} ${what} rides with the hit — the GM's \u{1F4A5} Apply puts it on every target it damages (Type & Ability immunities checked).`));
     else if(isGM() && allyTargets(actor, { foes:true }).some(x => x.enemy))
       card.append(el("button", { class:"btn-secondary", style:"margin-top:4px;padding:4px 10px",
@@ -22077,7 +22264,7 @@ function moveHitFx(m, thresholds, acc, extraKeys){
   if(acc === 1) return null;
   const keys = uniqStatusKeys(moveStatusLive(m, thresholds, acc).live
     .filter(e => e.who === "target").flatMap(e => e.keys).concat(extraKeys || []));
-  const cs = moveCSEffects(m).filter(e => e.who === "target" && (e.range == null || acc >= e.range))
+  const cs = moveCSEffects(m).filter(e => e.who === "target" && (e.range == null || acc >= e.range) && (!e.even || acc % 2 === 0))
     .map(e => ({ who:"target", stats:e.stats, n:e.n, stuckFloor:e.stuckFloor || undefined, needs:e.needs || undefined }));
   return (keys.length || cs.length) ? { name:(m && m.name) || "", status:keys, cs } : null;
 }
@@ -22085,6 +22272,217 @@ function hitFxLine(fx){
   return [fx.status && fx.status.length ? msKeysLine(fx.status) : "",
           ...(fx.cs || []).map(e => `${e.n > 0 ? "+" : "−"}${Math.abs(e.n)} ${e.stats.map(k => CS_FX_LABEL[k]).join(" / ")} CS`)]
     .filter(Boolean).join(" · ");
+}
+/* ===================================================================
+   STATUS MOVES APPLIED IN ONE PRESS
+   -------------------------------------------------------------------
+   A Status Move rolls no damage, so it never reached attackTargetWidget: its Afflictions and its
+   Combat Stages each had their own "Apply to targets…" button, and everything a Trainer's Edges and
+   Features bolt onto it (Demoralize's Vulnerable, Push Buttons' Tick, Powerful Motivator, Play Them
+   Like a Fiddle, Enchanting Transformation) was printed and left to the table.
+
+   statusMoveFx() gathers all of it into one list of effect rows; statusMoveApplyNode() is the card
+   with one target picker and two presses: "it hit" lands every row that needs a hit (and the
+   hit-or-miss ones), "it missed" lands only what happens either way (Powerful Motivator) or only on
+   a miss (Sweet Kiss's own -2 Accuracy, Moonblast under Enchanting Transformation). A player's press
+   sends the same bundle to the GM's roll feed (FOE_FX.statusmove), where the GM picks the targets.
+
+   A row: { label, when:"hit"|"any"|"miss", keys?, dur?, round?, cs?, buff?, tick?, abOff?, note?, on, trig? }
+     keys  Status keys (inflictStatusesDelayed: Type / Ability immunities checked)
+     round the Status lasts 1 full round: an o.pending entry lifts it when the target's next turn ends
+     cs    Combat Stage entries (applyCSFx: Clear Body, Defiant & co.)
+     buff  { name, mods, note, scene } - a debuff on the target; "1 full round" ones are turn-stamped
+           to the caster like a Song, Scene ones are wiped by End Scene with every other buff
+     tick  Ticks of Hit Points lost;  abOff  switch off its Ability (or name them when it has several)
+     note  what is left to the table, said in the result line
+=================================================================== */
+/* The rider bullets that DO something to the target, per Feature and Move (moveKey). Which rider is
+   live, and whether it needs a hit, is read off the Feature exactly as riderBoxes reads it: a Static
+   one always applies, a stance only while it is up, a triggered one once its button has been pressed
+   for this Move; "whether the Move hits or misses" in the preamble makes every bullet hit-or-miss. */
+const RIDER_FX = {
+  "powerful motivator": {
+    babydolleyes: { buff:{ name:"Can't Critically Strike", note:"Powerful Motivator (Baby-Doll Eyes): cannot Critically Strike for 1 full round." } },
+    confide:      { buff:{ name:"Can't trigger Effect Ranges", note:"Powerful Motivator (Confide): cannot trigger Effect Ranges for 1 full round." } },
+    leer:         { keys:["slowed"], round:true },
+    sweetkiss:    { buff:{ name:"\u22123 Evasion (Sweet Kiss)", mods:{ eva:-3 } } },
+    taunt:        { buff:{ name:"\u22123 Accuracy (Taunt)", mods:{ acc:-3 } } },
+    torment:      { buff:{ name:"\u221210 Damage (Torment)", mods:{ dmg:-10 },
+                    note:"Powerful Motivator (Torment): \u221210 to Damage Rolls against the Provocateur's allies for 1 full round." } },
+    lovelykiss:   { buff:{ name:"\u22123 Save Checks (Lovely Kiss)", note:"Powerful Motivator (Lovely Kiss): \u22123 to Save Checks for 1 full round." } },
+  },
+  "play them like a fiddle": {
+    babydolleyes: { keys:["infatuation"], note:"Infatuated with the Provocateur for the Scene \u2014 no cure, not even Taking a Breather" },
+    confide:      { note:"Disable one Move it used this Scene (its \u{1F512} locks)" },
+    leer:         { cs:[{ who:"target", stats:["def"], n:-1 }, { who:"target", stats:["spdef"], n:-2 }] },
+    sweetkiss:    { buff:{ name:"Fiddled (Sweet Kiss)", scene:true,
+                    note:"While Confused it can't Disengage, and hitting itself in Confusion provokes an Attack of Opportunity from every adjacent foe." } },
+    taunt:        { buff:{ name:"Next hit +3d8+10 (Taunt)", note:"For 1 full round, the next damaging attack to hit it deals +3d8+10 Damage." } },
+    torment:      { abOff:true },
+    lovelykiss:   { buff:{ name:"\u22122 Evasion (Lovely Kiss)", scene:true, mods:{ eva:-2 } } },
+  },
+  "enchanting transformation": {
+    dazzlinggleam: { even:true, cs:[{ who:"target", stats:["acc"], n:-1 }] },
+    moonblast:     { when:"miss", tick:1 },
+  },
+};
+/* A Move's OWN on-a-miss clause ("On miss, the target suffers a -2 penalty to Accuracy Rolls for one full round") */
+const MOVE_MISS_FX = {
+  sweetkiss: { buff:{ name:"\u22122 Accuracy (Sweet Kiss missed)", mods:{ acc:-2 } } },
+};
+function riderFxRows(t, m, acc){
+  if(!t || !m) return [];
+  const mk = moveKey(m.name), canon = canonMoveName(m.name), out = [];
+  ridersForMove(t, m.name).forEach(({ r, f }) => {
+    const spec = (RIDER_FX[featKey(f.name)] || {})[mk]; if(!spec) return;
+    if(spec.even && acc % 2 !== 0) return;
+    const when = spec.when || (/whether the Move hits or misses/i.test(featureRiderScan(f).preamble) ? "any" : "hit");
+    const fired = r.kind !== "trigger" || (r.perMove && usesLeft(t, riderUseKey(f.name, canon), 1) <= 0);
+    const row = Object.assign({ label:`${r.icon} ${f.name}`, when, on:!!fired, trig: r.kind === "trigger" ? f.name : "" }, spec);
+    delete row.even;
+    out.push(row);
+  });
+  return out;
+}
+/* o: { thresholds, acc, extra (extra Status keys), status (a Status-class Move), demor:{ vuln, tick }, trainer } */
+function statusMoveFx(actor, m, o){
+  o = o || {};
+  const acc = o.acc, rows = [];
+  if(!m || acc == null) return rows;
+  if(o.status){
+    const live = moveStatusLive(m, o.thresholds, acc).live.filter(e => e.who === "target");
+    const keys = uniqStatusKeys(live.flatMap(e => e.keys).concat(acc !== 1 ? (o.extra || []) : []));
+    const dur = [...new Set(live.filter(e => e.dur).map(e => e.dur))].join("; ");
+    if(keys.length) rows.push({ label:`\u{1F4AB} ${m.name}`, when:"hit", keys, dur, on:true });
+    const cs = moveCSEffects(m).concat(connectionCS(actor, m))
+      .filter(e => e.who === "target" && (e.range == null || acc >= e.range) && (!e.even || acc % 2 === 0))
+      .map(e => ({ who:"target", stats:e.stats, n:e.n, stuckFloor:e.stuckFloor || undefined, needs:e.needs || undefined }));
+    if(cs.length) rows.push({ label:`\u{1F53A} ${m.name}`, when:"hit", cs, on:true });
+    const miss = MOVE_MISS_FX[moveKey(m.name)];
+    if(miss) rows.push(Object.assign({ label:`\u{1F4A8} ${m.name}'s own miss clause`, when:"miss", on:true }, miss));
+  }
+  if(o.demor && o.demor.vuln) rows.push({ label:"\u{1F4A2} Demoralize: Vulnerable", when:"hit", keys:["vulnerable"], on:true });
+  if(o.demor && o.demor.tick) rows.push({ label:"\u{1F4A2} Push Buttons: loses a Tick of Hit Points", when:"hit", tick:1, on:true });
+  if(o.trainer) riderFxRows(actor, m, acc).forEach(r => rows.push(r));
+  return rows;
+}
+function rowFxLine(r){
+  const b = [];
+  if(r.keys && r.keys.length) b.push(msKeysLine(r.keys) + (r.round ? " (1 full round)" : r.dur ? ` (${r.dur})` : ""));
+  if(r.cs && r.cs.length) b.push(r.cs.map(csFxLine).join(" \u00b7 "));
+  if(r.buff) b.push(r.buff.name + (r.buff.scene ? " (Scene)" : " (1 full round)"));
+  if(r.tick) b.push(`\u2212${r.tick} Tick of Hit Points`);
+  if(r.abOff) b.push("its Ability switched off");
+  if(r.note && !b.length) b.push(r.note);
+  return b.join(" \u00b7 ");
+}
+/* a debuff a Move put on its target. A second cast refreshes it rather than stacking. */
+function addRiderBuff(o, b){
+  if(!o || !b) return;
+  if(!Array.isArray(o.buffs)) o.buffs = [];
+  o.buffs = o.buffs.filter(x => x.name !== b.name);
+  const nb = { id:uid(), key:"custom", name:b.name, cat:"Custom",
+               dur: b.scene ? "until the end of the Scene" : "until the end of the caster's next turn",
+               note:b.note || "", once:false, mods:Object.assign({}, b.mods || {}) };
+  stampTurnBuff(nb);
+  o.buffs.push(nb);
+}
+/* one target, one bundle. `missed` = land only the hit-or-miss / on-a-miss rows. */
+function statusMoveApply(o, P, missed){
+  if(!o) return "(not a creature)";
+  const on = [], held = [];
+  (P.fx || []).filter(e => missed ? e.when !== "hit" : e.when !== "miss").forEach(e => {
+    if(e.keys && e.keys.length){
+      const had = new Set(Array.isArray(o.statuses) ? o.statuses : []);
+      const r = inflictStatusesDelayed(o, e.keys, e.dur || "", { mold:!!P.mold, immuneType:P.immuneType || null, corrosion:!!P.corrosion, move:P.move || null });
+      on.push(...r.on); held.push(...r.held);
+      if(e.round) e.keys.forEach(k => { if(!had.has(k) && hasStatus(o, k))
+        addPending(o, { key:"round-" + k, kind:"delay", name:`${statusName(k)} (1 full round)`, note:`${statusName(k)} wears off`, thenClear:k }); });
+    }
+    if(e.cs && e.cs.length){ const c = applyCSFx(o, e.cs, { foe:true }); on.push(...c.moved); held.push(...c.held); }
+    if(e.buff){ addRiderBuff(o, e.buff); on.push(e.buff.name); }
+    if(e.tick){ const n = leechSeedTick(o) * e.tick, d = ownerHPChange(o, -n);
+      on.push(`\u2212${Math.abs(d) || n} HP (${e.tick} Tick${e.tick === 1 ? "" : "s"})`); }
+    if(e.abOff){ const abs = activeAbilityList(o);
+      if(abs.length === 1){ setAbilityDisabled(o, abs[0], true); on.push(`${abs[0]} switched off`); }
+      else if(abs.length) held.push(`switch off one of ${abs.join(" / ")} by hand`); }
+    if(e.note) held.push(e.note);
+  });
+  return [on.length ? `\u2192 ${on.join(", ")}` : "\u2192 nothing new", held.length ? `(${held.join("; ")})` : ""].filter(Boolean).join(" ");
+}
+/* The card on the roll. `o.onRiderFire(fn)` hands the roll a hook: pressing a triggered rider's own
+   button above (Play Them Like a Fiddle) ticks its row here. */
+function statusMoveApplyNode(actor, m, rows, o){
+  o = o || {};
+  if(!m || !rows || !rows.length) return null;
+  const persist = o.persist || save;
+  const card = el("div", { class:"card", style:"background:var(--panel);border:1px solid var(--accent);margin:10px 0 0" });
+  card.append(el("div", { class:"small", style:"font-weight:800;margin-bottom:4px" }, `\u{1F3AF} Apply ${m.name || "this Move"} to its target(s)`));
+  const tag = { hit:"if it hits", any:"hit or miss", miss:"only if it misses" };
+  const cbs = rows.map(r => {
+    const cb = el("input", { type:"checkbox" }); cb.checked = r.on !== false;
+    const what = rowFxLine(r);
+    card.append(el("label", { class:"small", style:"display:flex;gap:8px;align-items:flex-start;cursor:pointer;padding:1px 0" }, cb,
+      el("span", {}, el("b", {}, r.label), what && what !== r.label ? ` \u2014 ${what}` : "",
+        el("span", { class:"muted" }, ` \u00b7 ${tag[r.when] || ""}${r.trig && !r.on ? " \u00b7 fire it with its button above first" : ""}`))));
+    return cb;
+  });
+  if(o.onRiderFire) o.onRiderFire(name => rows.forEach((r, i) => { if(r.trig && featKey(r.trig) === featKey(name)) cbs[i].checked = true; }));
+  const bundle = () => {
+    const fx = rows.filter((r, i) => cbs[i].checked).map(r => {
+      const x = {}; ["when","keys","dur","round","cs","buff","tick","abOff","note"].forEach(k => { if(r[k] != null && r[k] !== "") x[k] = r[k]; });
+      return x; });
+    return { move:m.name || "", by:ownerLabel(actor), fx,
+      mold: !!attackerMoldBreak(actor, m.type), corrosion: !!ownerHasAbility(actor, "Corrosion"),
+      immuneType: /^thunder wave(\s*\[sm\])?$/i.test(String(m.name || "").trim()) ? "Electric" : null };
+  };
+  const labels = () => rows.filter((r, i) => cbs[i].checked).map(r => rowFxLine(r) || r.label);
+  const hasHit = rows.some(r => r.when !== "miss"), hasMiss = rows.some(r => r.when !== "hit");
+  const res = el("div", { class:"small", style:"margin-top:6px;color:var(--accent);font-weight:600" });
+  const list = isGM() ? allyTargets(actor, { foes:true }) : [];
+  if(isGM() && list.some(x => !x.self)){
+    list.sort((a, b) => (b.enemy ? 1 : 0) - (a.enemy ? 1 : 0));
+    const tp = targetPicker(list, []);
+    card.append(el("div", { class:"small muted", style:"font-weight:700;margin:6px 0 4px" }, "Who did it target?"));
+    card.append(tp.node);
+    let goBusy = false;       // one press lands the bundle once - a double tap must not stack the Combat Stages and debuffs twice
+    const go = async (missed) => {
+      if(goBusy) return;
+      const chosen = tp.chosen();
+      if(!chosen.length){ toast("Pick a target"); return; }
+      const P = bundle();
+      if(!P.fx.length){ toast("Nothing is ticked"); return; }
+      P.missed = missed;
+      goBusy = true;
+      let r;
+      try{ r = await runFoeFx("statusmove", chosen, P); persist();
+        await commitTargets(r.hit); }
+      finally{ goBusy = false; }
+      res.textContent = `${missed ? "\u{1F4A8}" : "\u{1F3AF}"} ${r.done.join(" \u00b7 ") || "nobody"}`;
+      logRoll({ kind:"foefx", label:`\u{1F3AF} ${m.name}`, who:ownerLabel(actor),
+        headline:`${ownerLabel(actor)}'s ${m.name} ${missed ? "missed" : "hit"}`, lines:[`\u2192 ${r.done.join(", ")}`] });
+      toast(`\u{1F3AF} ${m.name}${missed ? " (missed)" : ""} \u2192 ${r.done.join(", ") || "nobody"}`);
+      o.redraw && o.redraw();
+    };
+    const row = el("div", { class:"inline", style:"gap:8px;flex-wrap:wrap;margin-top:6px" });
+    if(hasHit) row.append(el("button", { class:"btn-primary", style:"padding:4px 12px", onclick:() => go(false) }, "\u{1F3AF} It hit \u2014 apply"));
+    if(hasMiss) row.append(el("button", { class:"btn-secondary", style:"padding:4px 12px", onclick:() => go(true) },
+      "\u{1F4A8} It missed \u2014 apply the hit-or-miss effects"));
+    card.append(row, res);
+  } else if(foeFxDeferred()){
+    card.append(el("button", { class:"btn-secondary", style:"margin-top:6px;padding:4px 10px",
+      title:"the GM picks who this Move caught, and whether it hit, from the \u{1F3B2} Rolls feed",
+      onclick:(ev) => {
+        const P = bundle();
+        if(!P.fx.length){ toast("Nothing is ticked"); return; }
+        foeFxDeclare({ fx:"statusmove", caster:actor, icon:"\u{1F3AF}", name:m.name || "Status Move", P,
+          headline:labels().join(" \u00b7 "), lines: o.accLine ? [o.accLine] : [] });
+        ev.currentTarget.disabled = true; ev.currentTarget.textContent = "\u{1F4E8} Sent to the GM";
+        toast(`\u{1F3AF} ${m.name} sent to the GM \u2014 they pick who it caught`);
+      } }, "\u{1F4E8} Send it all to the GM\u2026"));
+  } else card.append(el("div", { class:"small muted", style:"margin-top:4px" },
+    "No targets on a Map \u2014 put these on the target's own sheet by hand."));
+  return card;
 }
 /* ===================================================================
    HIT POINT EFFECTS OF MOVES — drain, recoil, self-heal, sacrifice (found-04)
@@ -22323,7 +22721,7 @@ function moveHPNode(actor, m, o){
      GUESS, and usually a generous one: half the raw roll can be twice the real drain. It is flagged
      as an estimate until the number is real - typed in by hand, or handed back by the \u{1F4A5} Apply
      that actually put the hit on a token. */
-  let dealtReal = false, drainedAuto = false;     // drainedAuto: the Apply already paid the drain
+  let dealtReal = false, paidAuto = [];     // paidAuto: the kinds (drain / recoil) the Apply already paid
   const dealtWarn = el("div", { class:"small", style:"color:var(--warn);font-weight:600;margin-bottom:6px" });
   if(needDealt){
     card.append(el("div", { class:"inline small", style:"gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap" },
@@ -22375,7 +22773,7 @@ function moveHPNode(actor, m, o){
           + (e.kind === "recoil" && rockHead ? ` — ignored, ${rockHead}` : "");
       btn.textContent = `${up ? "➕" : "➖"}${est ? "≈" : ""}${n} HP → ${ownerLabel(actor)}`;
       btn.disabled = !n;
-      if(drainedAuto && e.kind === "drain"){ btn.textContent = "✓ drained automatically"; btn.disabled = true; }
+      if(paidAuto.includes(e.kind) && !e.cond){ btn.textContent = e.kind === "drain" ? "✓ drained automatically" : "✓ recoil taken automatically"; btn.disabled = true; }
     };
     refreshers.push(paint);
     btn.addEventListener("click", (ev) => {
@@ -22424,7 +22822,7 @@ function moveHPNode(actor, m, o){
   card.setDealt = (n, real, drained) => {
     dealtIn.value = String(Math.max(0, n | 0));
     dealtReal = !!real;
-    drainedAuto = !!drained;
+    paidAuto = Array.isArray(drained) ? drained : [];
     refreshers.forEach(f => f());
   };
   return card;
@@ -23038,7 +23436,7 @@ function resolvePending(o, id){
 /* the little chips beside a creature's Type badges */
 function pendingTag(o){
   return pendingList(o).map(x => {
-    const state = x.due ? "DUE NOW" : x.kind === "setup" ? "resolves next turn" : "hits at the end of its next turn";
+    const state = x.due ? "DUE NOW" : x.kind === "setup" ? "resolves next turn" : x.thenClear ? "ends at the end of its next turn" : "hits at the end of its next turn";
     const off = x.off ? ` — ${esc(x.off)}` : "";
     return ` <span class="kv" title="${esc(x.name)}: ${esc(x.note || "")}">⏳ ${esc(x.name)} · ${state}${off}</span>`;
   }).join("");
@@ -23058,6 +23456,11 @@ function tickPendingTurns(map, endingId, endingSeq, startingId, newSeq){
         ? (startingId === tok.id && newSeq > x.seq)
         : (endingId === tok.id && endingSeq > x.seq);
       if(hit){ x.due = true; changed = true;
+        if(x.thenClear){                                    // a "for 1 full round" Status wears off by itself
+          if(Array.isArray(o.statuses)) o.statuses = o.statuses.filter(k => k !== x.thenClear);
+          x.spent = true;
+          out.push(`${ownerLabel(o)} — ${x.name}: over`);
+        } else
         if(x.thenStatus){                                   // Yawn & co.: the Status lands by itself, the entry is spent
           const why = fxStatus(o, x.thenStatus);
           x.spent = true;
@@ -23108,7 +23511,7 @@ function pendingControl(o, onChanged, opts){
   list.forEach(x => {
     const row = el("div", { class:"inline", style:"gap:8px;flex-wrap:wrap;align-items:center;margin:2px 0" });
     row.append(el("span", { style:x.due ? "font-weight:800;color:var(--accent)" : "" },
-      `${x.due ? "‼ " : ""}${x.name} — ${x.due ? (x.kind === "setup" ? "resolve it this turn" : "it hits now") : (x.kind === "setup" ? "resolves at the start of its next turn" : "hits at the end of its next turn")}`));
+      `${x.due ? "‼ " : ""}${x.name} — ${x.due ? (x.kind === "setup" ? "resolve it this turn" : "it hits now") : (x.kind === "setup" ? "resolves at the start of its next turn" : x.thenClear ? "ends at the end of its next turn" : "hits at the end of its next turn")}`));
     if(x.note) row.append(el("span", { class:"muted" }, x.note));
     if(!x.due) row.append(el("button", { class:"linkbtn", title:"the turn tracker does this by itself in Battle — press it when playing without one",
       onclick:() => { x.due = true; persist(); onChanged && onChanged(); } }, "▶ Due now"));
@@ -23262,7 +23665,9 @@ function syncHungerBuff(o){
    The Boss's version of Asleep / Frozen. It loses half its Evasion (pokeDerived), and at the END of each
    of its turns it makes the same Save the plain condition would: Drowsy DC 16; Chilled DC 16 (DC 11 for a
    Fire-Type, +4 in Sun, -2 in Hail). A pass cures it; a FAIL costs it -10 on its next Damage Roll.
-   Rolled by the Map's play button, so the table sees the die. Taking damage never cures Drowsy. */
+   The Save itself is rolled at the table - the Map's play button only reminds the GM of the DC and the
+   modifiers (it used to roll and place the -10 buff itself, and did so on every one of the Boss's turns).
+   Taking damage never cures Drowsy. */
 function bossStatusTurnLines(o){
   const out = [];
   ["drowsy", "chilled"].forEach(k => {
@@ -23273,19 +23678,10 @@ function bossStatusTurnLines(o){
       if(fire){ dc = 11; why.push("Fire-Type"); }
       let wk = ""; try{ wk = ownerWeather(o).key; }catch(e){}
       if(wk === "sunny"){ mod += 4; why.push("+4 Sun"); }
-      else if(wk === "hail" || wk === "snowy"){ mod -= 2; why.push("\u22122 Hail"); }
+      else if(wk === "hail" || wk === "snowy"){ mod -= 2; why.push("−2 Hail"); }
     }
-    const nat = 1 + Math.floor(Math.random() * 20), tot = nat + mod;
-    const name = statusName(k), tag = `Save ${nat}${mod ? ` (${tot})` : ""} vs DC ${dc}${why.length ? ` [${why.join(", ")}]` : ""}`;
-    if(tot >= dc){
-      o.statuses = (o.statuses || []).filter(x => x !== k);
-      out.push(`${name} \u2014 ${tag}: cured.`);
-    } else {
-      o.buffs = (o.buffs || []).filter(b => b.key !== "boss-" + k);       // one slump at a time
-      researchBuff(o, { key:"boss-" + k, name:`${name} (failed Save)`, cat:"Field", dur:"next Damage Roll", once:true,
-        mods:{ dmg:-10 }, note:`Failed the ${name} Save: -10 to its next Damage Roll.` });
-      out.push(`${name} \u2014 ${tag}: failed, -10 to its next Damage Roll.`);
-    }
+    /* Save Checks stay the table's roll: say the DC, the modifiers that apply and the price of a miss, and touch nothing */
+    out.push(`${statusName(k)} — end-of-turn Save vs DC ${dc}${why.length ? ` [${why.join(", ")}]` : ""}: a pass cures it, a fail costs it −10 on its next Damage Roll (add that as a buff yourself).`);
   });
   return out;
 }
@@ -24729,6 +25125,7 @@ function csNormalize(s){
     .replace(/\buser's\s+(gains?)\b/gi, "user $1");
 }
 /* "+1 Attack CS and +1 Special Defense CS" — the stats after the first gain/lose keep its subject and verb */
+const CS_AND_RE = new RegExp(`^\\s*(?:,\\s*)?and\\s+(${CS_LIST_RE})\\s+(?:by\\s+)?([+-]?\\d)\\s*${CS_CUE}`, "i");
 const CS_CHAIN_RE = new RegExp(`^\\s*(?:,\\s*)?and\\s+([+-]?\\d)\\s+(${CS_LIST_RE})\\s+${CS_CUE}`, "i");
 /* "Lower each of the target's stats by -2 CS" (Memento) — the target-side twin of CS_ALL_STATS_RE */
 const CS_ALL_TARGET_RE = /\b(rais\w*|lower\w*)\s+each\s+of\s+the\s+target'?s\s+stats\s+by\s+([+-]?\d)/i;
@@ -24753,7 +25150,7 @@ function moveCSEffects(m){
     const key = `${who}|${stats.join(",")}|${n}|${range}`;
     if(seen.has(key)) return;
     seen.add(key);
-    out.push({ who, stats, n, range, text: sentence.trim() });
+    out.push({ who, stats, n, range, even: /\beven[- ]numbered\s+rolls?/i.test(sentence) || undefined, text: sentence.trim() });
   };
   // Direction comes from the VERB. "receive" is the one neutral verb, so only there does the printed sign decide.
   const signed = (verb, num) => Math.abs(parseInt(num, 10) || 1)
@@ -24786,6 +25183,9 @@ function moveCSEffects(m){
         const who = pat.whoFixed || (pat.who ? (/user|you/i.test(mm[pat.who]) ? "user" : "target") : "target");
         push(who, stats, n, range, sentence);
         if(pat.both) push("user", stats, n, range, sentence);
+        // "Raise the user's Attack by +1 CS and Speed by +2 CS" (Shift Gear): a second stat with its own number
+        const c2 = CS_AND_RE.exec(s.slice(mm.index + mm[0].length));
+        if(c2){ const st3 = csStatKeys(c2[1]); if(st3.length) push(who, st3, signed(mm[pat.verb], c2[2]), range, sentence); }
         if(pat.chain){
           const rest = s.slice(mm.index + mm[0].length), ch = CS_CHAIN_RE.exec(rest);
           if(ch){ const st2 = csStatKeys(ch[2]); if(st2.length) push(who, st2, signed(mm[pat.verb], ch[1]), range, sentence); }
@@ -24871,12 +25271,13 @@ function connectionCS(p, m){
 function moveCSNode(actor, m, acc, redraw, persist, rideHit){
   const fx = moveCSEffects(m).concat(connectionCS(actor, m));
   if(!fx.length) return null;
-  const live = fx.filter(e => e.range == null || acc >= e.range);
-  const dead = fx.filter(e => e.range != null && acc < e.range);
+  const csOk = e => (e.range == null || acc >= e.range) && (!e.even || acc % 2 === 0);
+  const live = fx.filter(csOk);
+  const dead = fx.filter(e => !csOk(e));
   const card = el("div", { class:"card", style:"background:var(--panel);border:1px solid var(--line);margin:10px 0 0" });
   card.append(el("div", { class:"small", style:"font-weight:800;margin-bottom:4px" }, "\u{1F53A} Combat Stages"));
   dead.forEach(e => card.append(el("div", { class:"small muted" },
-    `\u25AB ${acc} < ${e.range} \u2014 doesn't trigger: ${csFxLine(e)}`)));
+    (e.range != null && acc < e.range ? `\u25AB ${acc} < ${e.range}` : `\u25AB ${acc} is odd`) + ` \u2014 doesn't trigger: ${csFxLine(e)}`)));
   const mine = live.filter(e => e.who === "user"), theirs = live.filter(e => e.who === "target");
   if(mine.length){
     card.append(el("div", { class:"small", style:"margin-top:4px" }, mine.map(csFxLine).join(" \u00b7 ")));
@@ -24892,7 +25293,9 @@ function moveCSNode(actor, m, acc, redraw, persist, rideHit){
     card.append(el("div", { class:"small", style:"margin-top:6px" }, theirs.map(csFxLine).join(" \u00b7 ")));
     const foes = (isGM() && !rideHit) ? allyTargets(actor, { foes:true }).filter(x => x.enemy) : [];
     // a damaging roll carries these to the GM's \ud83d\udca5 Apply (moveHitFx) \u2014 one press lands hit and drop together
-    if(rideHit) card.append(el("div", { class:"small muted", style:"margin-top:4px" },
+    if(rideHit === "bundle") card.append(el("div", { class:"small muted", style:"margin-top:4px" },
+      "\u{1F3AF} On the \u{1F3AF} Apply card below, with everything else this Move does to its targets."));
+    else if(rideHit) card.append(el("div", { class:"small muted", style:"margin-top:4px" },
       "\u{1F3AF} Rides with the hit \u2014 the GM's \u{1F4A5} Apply puts it on every target it damages."));
     else if(foes.length) card.append(el("button", { class:"btn-secondary", style:"margin-top:6px;padding:4px 10px",
       onclick:() => branchTargetDialog({
@@ -25145,6 +25548,14 @@ function statusRangeAbility(list, p, isDmg, isPhys){
   });
   return out.sort((a, b) => a.n - b.n);
 }
+/* King's Rock (held, or worn by a Trainer): "the attack Flinches its target on an Accuracy roll of 19+". It never
+   stacks with another Flinch range the roll already has (the Move's own, Stench, Ugly...), and Serene Grace
+   widens it like any other range because this runs before it in the chain. */
+function kingsRockThresholds(list, owner, isDmg){
+  if(!isDmg || !owner || !heldFxList(owner).some(([nm]) => normItemName(nm) === "kingsrock")) return list;
+  if((list || []).some(t => /flinch/i.test(t.text || ""))) return list;
+  return (list || []).concat([{ n:19, text:"King's Rock — this attack Flinches the target on 19+." }]).sort((a, b) => a.n - b.n);
+}
 function frostbiteThresholds(list, active){
   if(!active) return list;
   const arr = (list||[]).slice();
@@ -25322,11 +25733,27 @@ function abilityDamageMods(p, m, baseDBVal, thresholds, opts={}){
 function teamworkAllies(p, m){
   try{
     const T = isTrainerOwner(p) ? p : trainerRowOwnerOf(p);
-    if(!T) return { names:[], any:false };
-    const mons = researchMons(T).filter(x => x && x !== p && x.id !== p.id && x.onTeam !== false && hasAbility(x, "Teamwork"));
-    const wide = hasFeatureLoose(T, "Pack Master");
-    if(!mons.length || !(wide || moveHasKeyword(m, "melee") || /melee/i.test(String((m && m.range) || "")))) return { names:[], any:false };
-    return { names: mons.map(x => ownerLabel(x)), any:true, wide };
+    const wide = !!(T && hasFeatureLoose(T, "Pack Master"));
+    const melee = moveHasKeyword(m, "melee") || /melee/i.test(String((m && m.range) || ""));
+    if(!(wide || melee)) return { names:[], any:false };
+    const names = new Set();
+    if(T) researchMons(T).filter(x => x && x !== p && x.id !== p.id && x.onTeam !== false && hasAbility(x, "Teamwork"))
+      .forEach(x => names.add(ownerLabel(x)));
+    /* On the Map: every Teamwork holder on the attacker's side (other players' Pokemon count too -
+       "allies") that is up and not the attacker itself, so adjacency to the picked foe can be read */
+    const map = currentMapForView() || activeMap();
+    const me = map ? tokenForOwner(p) : null;
+    const holders = [];
+    if(map && me) mapTokensFor(map.id).forEach(t => {
+      if(t.id === me.id || !t.link || t.gmHidden || tokenIsDown(t) || tokenSide(t) !== tokenSide(me)) return;
+      const L = tokenLinked(t); if(!L || !L.obj || L.missing || L.obj === p) return;
+      if(!ownerHasAbility(L.obj, "Teamwork")) return;
+      holders.push(t); names.add(ownerLabel(L.obj));
+    });
+    if(!names.size) return { names:[], any:false };
+    const targets = (me && holders.length) ? strikeTargetTokens(p).filter(t => tokensAreFoes(t, me)) : [];
+    return { names:[...names], any:true, wide, holders, targets,
+             adjacentTo: tok => holders.some(h => tokenTileGap(h, tok) <= 1) };
   }catch(e){ return { names:[], any:false }; }
 }
 function analyticContext(obj){
@@ -25474,6 +25901,52 @@ function strikeReadout(strikes){
      Evasion, which a single-hit roll never gives away. The "n / N strikes connected" line above carries
      the result. */
   return strikes.map((s,i)=>`#${i+1}: ${s.tot}${s.nat!==s.tot?` (${s.nat})`:""}${s.crit?" 💥 CRIT":""}`).join(" · ");
+}
+/* Counting Double Strike / Triple Kick hits needs the target's Evasion, and asking the GM for it on
+   every swing was slow. Instead the attacker picks the token they're swinging at and the number is
+   read straight off it (tokenEvasions — the same Evasions the GM sees, Flanked and Ride as One
+   included) at the moment 🎲 is pressed. It is never printed: strikeReadout already keeps the
+   comparison hidden, so a player learns no more than the "n / N connected" line tells them.
+   Defenders add the better of their Physical/Special and Speed Evasion (Core p.234). Tokens the
+   viewer can't see (gmHidden, under fog) aren't offered; a manual number is still there for an
+   attack with no Map behind it. The last pick is remembered for the next swing. */
+let lastStrikeTargetId = null;
+function strikeTargetTokens(self){
+  const map = currentMapForView() || activeMap(); if(!map) return [];
+  const fog = (!cloud.isGM && map.fogOn) ? fogViewSet(map) : null;
+  return mapTokensFor(map.id).filter(tok => {
+    if(!tok.link || (tok.gmHidden && !cloud.isGM)) return false;
+    if(fog && !fog.has(Math.round(tok.x)+","+Math.round(tok.y))) return false;
+    const L = tokenLinked(tok);
+    if(!L || !L.obj || (self && L.obj === self)) return false;
+    return !!tokenEvasions(tok);
+  });
+}
+function strikeTargetPicker(self, isSpec, label){
+  const toks = strikeTargetTokens(self);
+  let manual = 0;
+  const wrap = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap"});
+  const inp = el("input",{type:"number",min:0,value:0,style:"width:90px"});
+  inp.addEventListener("input",()=>{ manual = Math.max(0, parseInt(inp.value)||0); });
+  if(!toks.length){
+    wrap.append(el("span",{class:"small"}, label), inp);
+    return { node:wrap, eva:()=>manual };
+  }
+  const sel = el("select",{style:"max-width:240px"});
+  sel.append(el("option",{value:""},"— pick the target —"));
+  toks.forEach(tok => sel.append(el("option",{value:tok.id}, tokenHp(tok).name || "Token")));
+  sel.append(el("option",{value:"__manual"},"Type an Evasion instead…"));
+  if(lastStrikeTargetId && toks.some(tok=>tok.id===lastStrikeTargetId)) sel.value = lastStrikeTargetId;
+  const sync = () => { inp.style.display = sel.value==="__manual" ? "" : "none"; };
+  sel.addEventListener("change",()=>{ if(sel.value && sel.value!=="__manual") lastStrikeTargetId = sel.value; sync(); });
+  sync();
+  wrap.append(el("span",{class:"small"},"Target"), sel, inp);
+  return { node:wrap, eva:()=>{
+    if(sel.value==="__manual") return manual;
+    const tok = toks.find(x=>x.id===sel.value); if(!tok) return 0;
+    const ev = tokenEvasions(tok); if(!ev) return 0;
+    return Math.max(isSpec() ? ev.spec : ev.phys, ev.spd||0);
+  }};
 }
 /* Special-case damage moves (PTU 1.05): these bypass the Damage-Base dice entirely and instead
    make the target lose an exact number of Hit Points. compute(ctx) → HP loss, where
@@ -25979,6 +26452,19 @@ function transformCard(p, opts){
       `🌀 Currently transformed into ${p.transform.label}`));
     card.append(el("div",{class:"small muted"},
       "Its Moves, Abilities and Capabilities are on this sheet now, and it has that form's weight and height. Stats and Types are still your own. Transforming again copies someone else instead."));
+    const pic = el("div",{class:"inline",style:"gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"});
+    const redrawPic = () => { (opts.persist||save)(); if(opts.rerender) opts.rerender(); else refreshMon(p); };
+    pic.append(el("button",{class:"btn-secondary",title:"a picture of this form - drawn on the sheet and the Map until the Transformation ends",
+      onclick:()=>pickImage(framablePicDim(), async d=>{ setMonImage(p, await storeImg(d,"mon")); redrawPic(); closeModal(); })},
+      monImage(p) ? "\u{1F4F7} Change the picture" : "\u{1F4F7} Add a picture of this form"));
+    if(monImage(p)){
+      pic.append(el("button",{class:"btn-secondary",title:"choose which part of the picture is shown",
+        onclick:()=>openMonImageFocus(p, redrawPic)},"\u{1F5BC} Frame it"));
+      pic.append(el("button",{class:"linkbtn",onclick:()=>{ setMonImage(p, ""); redrawPic(); closeModal(); }},"remove"));
+    }
+    card.append(pic);
+    card.append(el("div",{class:"small muted",style:"margin-top:4px"},
+      "The picture is remembered for this form, so the next time you become it you are already dressed for it."));
     card.append(el("button",{class:"btn-secondary",style:"margin-top:8px",
       onclick:()=>{ transformRevert(p, false, commit); closeModal(); }},
       "\u21a9 End the Transformation — Free Action, take your own Moves back"));
@@ -26239,6 +26725,7 @@ function openMoveRoll(p, m, sp, opts={}){
   let dieVal = null;                                    // dieDB — rolled on 🎲
   let hitsConnect = sp2?.kind==="doubleStrike" ? 2 : sp2?.kind==="tripleKick" ? 3 : 1;
   let targetEva  = 0;   // target's Evasion — lets the roll count multi-strike hits automatically
+  let evaPick    = null; // …read off the picked Map token (strikeTargetPicker)
   // fixedDamage: current values of its inputs + a context for compute()
   const fdVals = {}; if(sp2?.kind==="fixedDamage") (sp2.inputs||[]).forEach(i=>{ fdVals[i.key]=i.def; });
   const fdCtx  = (die)=>({ level:p.level||1, curHP:p.currentHP??0, vals:fdVals, die });
@@ -26289,7 +26776,12 @@ function openMoveRoll(p, m, sp, opts={}){
   const duelMom  = isDuelistMon(p) ? duelistMomentumBonus(p) : 0;
   const vsTagged = duelMom > 0 && !!opts.vsTagged;
   const twCtx = teamworkAllies(p, m);
-  const teamworkOn = twCtx.any && !!opts.teamwork;
+  /* Teamwork: the picked foe decides it (a holder stands adjacent to it); a hand-ticked box overrides, and with no
+     Map behind the roll the tick is all there is. */
+  const twTargetId = opts.twTarget || ((twCtx.targets || []).some(t => t.id === lastStrikeTargetId) ? lastStrikeTargetId : "");
+  const twTok = twCtx.any && twTargetId ? (twCtx.targets || []).find(t => t.id === twTargetId) : null;
+  const twAuto = !!(twTok && twCtx.adjacentTo(twTok));
+  const teamworkOn = twCtx.any && (opts.teamwork !== undefined ? !!opts.teamwork : twAuto);
   const wx = weatherRollMods(p, m, mtype);      // current Weather Condition(s) (Core p.342) — Climate Control can hold two
   const accCS = (d.cs.acc||0) + abilAcc.acc + (hasStatus(p,"focused")?1*trainingMult(p):0) + (vsTagged?duelMom:0) + (teamworkOn?2:0) + (wx.acc||0) + roomAcc();      // Accuracy CS (Core p.234) + ability Accuracy mods + Focused Training + Duelist Momentum + Extreme Sandstorm + Gravity's +2
   const tx = terrainRollMods(p, m, mtype);      // current Terrain(s) in play — any number can stack
@@ -26317,8 +26809,8 @@ function openMoveRoll(p, m, sp, opts={}){
   // Effect Ranges as this roll actually resolves them — Fiery Crash adds/widens Burn on a Dash Move
   // that ends up Fire-Typed. Kept separate from `thresholds` so its own rider can't feed Sheer Force.
   const rollThresholds = buffEffectThresholds(sereneGraceThresholds(
-    statusRangeAbility(frostbiteThresholds(fieryCrashThresholds(ancientHeritageThresholds(thresholds, p, m), !!fc && mtype==="Fire"),
-      hasAbility(p,"Frostbite") && mtype==="Ice" && (isPhys||isSpec)), p, isPhys||isSpec, isPhys),
+    kingsRockThresholds(statusRangeAbility(frostbiteThresholds(fieryCrashThresholds(ancientHeritageThresholds(thresholds, p, m), !!fc && mtype==="Fire"),
+      hasAbility(p,"Frostbite") && mtype==="Ice" && (isPhys||isSpec)), p, isPhys||isSpec, isPhys), p, isPhys||isSpec),
     ownerHasAbility(p,"Serene Grace")), buffEffectRange(p) + heldEffectRangeBonus(p) + (/melee/i.test(String((m && m.range) || "")) ? 0 : statStratagemBonus(p).eff));
   const fiveStrike = isFiveStrike(m);
   /* Rock Head [Errata] / Run Up - ticked on the roll, read back when the damage is rolled */
@@ -26326,6 +26818,7 @@ function openMoveRoll(p, m, sp, opts={}){
   const runStartState = { on:new Set(), metres:0 };
   const critT = critThreshold(p, m);
   const alwaysCrit = alwaysCrits(m);   // "if it hits, it is a Critical Hit" — see critThreshold()
+  const evenCrit = !alwaysCrit && /critical\s+hit\s+on\s+(?:an?\s+)?even[- ]numbered\s+rolls?/i.test(String(m?.effect || ""));   // Aeroblast, Spacial Rend
   /* the crit range as this roll will actually resolve it — buffs (Trick Shot, Pinpoint Strike…)
      widen it, and the guide above should say the same number the 🎲 result checks against */
   const critNow = () => Math.max(2, critT - (bm.crit||0));
@@ -26425,13 +26918,26 @@ function openMoveRoll(p, m, sp, opts={}){
   }
   if(twCtx.any){
     const card = el("div",{class:"card",style:`background:var(--panel);border:1px solid ${teamworkOn?"var(--accent)":"var(--line)"};margin:0 0 12px`});
+    if((twCtx.targets || []).length){
+      const sel = el("select",{style:"max-width:240px;margin:0 8px 6px 0"});
+      sel.append(el("option",{value:""},"— pick the target —"));
+      twCtx.targets.forEach(t => sel.append(el("option",{value:t.id}, tokenHp(t).name || "Token")));
+      sel.value = twTok ? twTok.id : "";
+      sel.addEventListener("change",()=>{ if(sel.value) lastStrikeTargetId = sel.value;
+        closeModal(); openMoveRoll(p, m, sp, Object.assign({}, opts, {twTarget: sel.value, teamwork: undefined})); });
+      card.append(el("div",{class:"inline",style:"gap:6px;align-items:center;flex-wrap:wrap"},
+        el("span",{class:"small",style:"font-weight:700"}, "\u{1F91D} Teamwork — target"), sel));
+    }
     const lbl = el("label",{style:"display:flex;gap:8px;align-items:flex-start;cursor:pointer"});
     const cb = el("input",{type:"checkbox"}); cb.checked = teamworkOn;
     cb.addEventListener("change",()=>{ closeModal(); openMoveRoll(p, m, sp, Object.assign({}, opts, {teamwork: cb.checked})); });
     lbl.append(cb, el("div",{},
-      el("div",{class:"small",style:"font-weight:700"}, `\u{1F91D} Teamwork \u2014 is ${twCtx.names.join(" / ")} adjacent to the target?`),
-      el("div",{class:"small muted"}, teamworkOn
-        ? "Yes \u2014 +2 Accuracy on this roll."
+      el("div",{class:"small",style:"font-weight:700"}, `\u{1F91D} Teamwork — is ${twCtx.names.join(" / ")} adjacent to the target?`),
+      el("div",{class:"small muted"}, twTok && opts.teamwork === undefined
+        ? (twAuto ? `Yes — a Teamwork ally stands next to ${tokenHp(twTok).name}: +2 Accuracy on this roll (read off the Map).`
+                  : `No Teamwork ally stands next to ${tokenHp(twTok).name} on the Map, so no bonus.`)
+        : teamworkOn
+        ? "Yes — +2 Accuracy on this roll."
         : `Tick this if your Teamwork ally stands adjacent to the foe you are attacking for +2 Accuracy${twCtx.wide ? " (Pack Master: any attack, not only Melee)" : " (Melee attacks)"}.`)));
     card.append(lbl); body.append(card);
   }
@@ -26670,7 +27176,8 @@ function openMoveRoll(p, m, sp, opts={}){
   const accBox = el("div",{style:"margin-bottom:10px"});
   // does this Move skip its Accuracy Check right now? (weather, or a ticked condition)
   const noMissNow = () => wx.autoHit || condMods().noMiss
-    || (hasAbility(p, "Hypnotic") && /^hypnosis$/i.test(String(m.name || "")));     // Hypnotic (Connection - Hypnosis): it cannot miss
+    || (hasAbility(p, "Hypnotic") && /^hypnosis$/i.test(String(m.name || "")))     // Hypnotic (Connection - Hypnosis): it cannot miss
+    || /(?:^|[.!]\s+)[A-Za-z'’ -]{2,30}\s+cannot\s+miss\s*\.(?=\s|$)/i.test(String(m.effect || ""));   // Smart Strike, Cheap Shot: printed with an AC and a flat "cannot miss"
   function renderAccGuide(){
     const cxNoMiss = !wx.autoHit && condMods().noMiss;
     /* the same modifiers the 🎲 result applies, said out loud before rolling: buffs (Songs,
@@ -26752,13 +27259,10 @@ function openMoveRoll(p, m, sp, opts={}){
       const wc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin:0 0 12px"});
       wc.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},
         sp2.kind==="tripleKick" ? "👣 Triple Kick — 3 separate Attack Rolls" : "⚔ Double Strike — 2 separate Attack Rolls"));
-      const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap"});
-      const inp = el("input",{type:"number",min:0,value:targetEva,style:"width:90px"});
-      inp.addEventListener("input",()=>{ targetEva = Math.max(0, parseInt(inp.value)||0); });
-      row.append(el("span",{class:"small"}, `Target's ${isSpec?"Special":"Physical"} Evasion`), inp);
-      wc.append(row);
+      evaPick = strikeTargetPicker(p, ()=>isSpec, `Target's ${isSpec?"Special":"Physical"} Evasion`);
+      wc.append(evaPick.node);
       wc.append(el("div",{class:"small muted",style:"margin-top:4px"},
-        `All ${nStrikes} Attack Rolls are checked against AC ${effAC??"—"} + this Evasion when you press 🎲 — the connecting hits are counted for you (nat 20 always hits, nat 1 always misses), and the Damage Base is sized from them. `
+        `All ${nStrikes} Attack Rolls are checked against AC ${effAC??"—"} + the target's Evasion when you press 🎲 — the connecting hits are counted for you (nat 20 always hits, nat 1 always misses), and the Damage Base is sized from them. `
         + (sp2.kind==="tripleKick" ? "1 hit → DB 1 · 2 hits → DB 3 · 3 hits → DB 6"
                                    : `1 hit → DB ${sp2.base} · both hit → DB ${(sp2.base??0)*2} (doubled)`)));
       body.append(wc);
@@ -26859,6 +27363,8 @@ function openMoveRoll(p, m, sp, opts={}){
                           : `💎 The ${zBoost.item} shatters — +${zBoost.db} Damage Base on this attack.`));
       if(alwaysCrit) dmgBox.append(el("div",{class:"small",style:"margin-top:2px;font-weight:700;color:var(--bad)"},
         `💥 ${m.name} is a Critical Hit whenever it connects — no Crit Range to beat.`));
+      else if(evenCrit) dmgBox.append(el("div",{class:"small",style:"margin-top:2px;font-weight:700;color:var(--bad)"},
+        `💥 ${m.name} is a Critical Hit on any Even-Numbered Roll that connects (plus the usual natural ${critNow()}+).`));
       else if(critNow()<20) dmgBox.append(el("div",{class:"small muted",style:"margin-top:2px"},
         `Critical Hit Range: ${critNow()}–20 for this Pokémon/move`
         + (bm.crit ? ` — ${critT===20?"normally a natural 20":`normally ${critT}–20`}, widened +${bm.crit} by ${buffSources(p,"crit")}.` : ".")));
@@ -27174,6 +27680,7 @@ function openMoveRoll(p, m, sp, opts={}){
        entered above, count the connecting strikes automatically, and size the Damage Base from them. */
     const multi   = nAcc > 1;
     const cantMiss = noMissNow();          // weather, or a ticked condition (Rage Fist under 50% HP)
+    if(evaPick) targetEva = evaPick.eva();
     const noGuardEva = (hasAbility(p, "No Guard") && (moveHasKeyword(m, "melee") || /^melee/i.test(String((m && m.range) || "")))) ? 0 : targetEva;   // No Guard: "the user ignores all forms of evasion when making Melee attack rolls"
     const thresh  = (cantMiss || effAC==null) ? null : effAC + noGuardEva;
     const strikes = multi ? resolveStrikes(accs, accMod, thresh, effCritT) : null;
@@ -27188,7 +27695,7 @@ function openMoveRoll(p, m, sp, opts={}){
        its d20 only to read Effect Ranges off it. */
     const nCrit  = multi ? Math.min(strikes.filter(s=>s.crit).length, connected)
                          : (alwaysCrit ? ((cantMiss || effAC==null || acc!==1) ? 1 : 0)
-                                       : ((!cantMiss && acc>=effCritT) ? 1 : 0));
+                                       : ((!cantMiss && (acc>=effCritT || (evenCrit && acc%2===0 && (thresh==null || accTot>=thresh)))) ? 1 : 0));
     const isCrit = nCrit > 0;
     const accLine = el("div",{style:fDB!=null?"margin-bottom:10px":""});
     accLine.append(el("div",{class:"lbl",style:"color:var(--muted)  ;font-weight:800"}, multi?"ACCURACY ROLLS":"ACCURACY ROLL"));
@@ -27239,7 +27746,8 @@ function openMoveRoll(p, m, sp, opts={}){
     }
     /* a damaging roll in a cloud game hands the target's Afflictions / Combat Stages to the 💥 Apply
        (attackTargetWidget + the feed) rather than asking for a second press on the same creatures */
-    const rideHit = mode==="cloud" && (isPhys||isSpec) && fDB!=null && !(multi && connected===0);
+    const statusMv = !isPhys && !isSpec;
+    const rideHit = statusMv ? "bundle" : (mode==="cloud" && (isPhys||isSpec) && fDB!=null && !(multi && connected===0));
     const rsn = randomStatusNode(m, acc); if(rsn) out.append(rsn);
     const xtraKeys = [...((rsn && rsn.picked) || []), ...connectionRiderKeys(p, m)];
     { const sn = moveStatusNode(p, m, liveThresholds, acc, { redraw: opts.rerender || (()=>refreshMon(p)),
@@ -27248,6 +27756,10 @@ function openMoveRoll(p, m, sp, opts={}){
     const hitFx = moveHitFx(m, liveThresholds, acc, xtraKeys);
     { const csn = moveCSNode(p, m, acc, opts.rerender || (()=>refreshMon(p)), opts.persist, rideHit);
       if(csn) out.append(csn); }
+    /* A Status Move: its Afflictions and Combat Stages as ONE press on its targets (statusMoveApplyNode) */
+    if(statusMv){ const smn = statusMoveApplyNode(p, m, statusMoveFx(p, m, { thresholds:liveThresholds, acc, extra:xtraKeys, status:true }),
+        { persist:opts.persist, redraw: opts.rerender || (()=>refreshMon(p)), accLine:`\u{1F3AF} Accuracy ${accTot} (d20 ${acc})` });
+      if(smn) out.append(smn); }
     { const tn = moveTypeNode(p, m, opts.rerender || (()=>refreshMon(p)), opts.persist);
       if(tn) out.append(tn); }
     { const ok = ohkoNode(p, m); if(ok) out.append(ok); }
@@ -28434,7 +28946,7 @@ function riderDetailHTML(moveName){
    button that spends the use, because that's a decision the player makes at the table — the
    always-on ones just state what also happens. Redraws itself in place so the counts move without
    reopening the roll. */
-function riderBoxes(t, moveName, rerenderAll, persist){
+function riderBoxes(t, moveName, rerenderAll, persist, onFire){
   const saveFn = persist || save;          // an encounter NPC's spent uses belong in the encounter row
   const wrap = el("div",{});
   const draw = () => {
@@ -28472,6 +28984,7 @@ function riderBoxes(t, moveName, rerenderAll, persist){
           if(r.ap) t.usedAP = (t.usedAP||0) + r.ap;
           saveFn();
           toast(`${r.icon} ${f.name} → ${canon} ✓` + (r.ap?` · ${r.ap} AP spent`:""));
+          if(onFire) onFire(f.name);
           redraw();
         }}, usedHere  ? "✓ used on this Move this Scene"
           : apShort   ? `needs ${r.ap} AP — only ${Math.max(0,apFree)} free`
@@ -29281,6 +29794,15 @@ function trainerAttackSlot(t, profile, rollFn, opts={}){
   slot.append(main);
   const acts = el("div",{class:"inline"});
   if(opts.uc) acts.append(opts.uc);
+  /* Blade of Hate: a Normal-Type melee attack can go out as Dark. Offered on exactly the rows it fits. */
+  if(bladeRetypeOk(t, profile)){
+    const left = bladeUsesLeft(t);
+    acts.append(el("button",{class:"btn-secondary",style:"padding:6px 10px",disabled:left<=0,
+      title:"Blade of Hate (Scene x2) \u2014 use it on this attack: it deals Dark-Type damage instead of Normal, with no extra Damage Base. Spends a use and opens the roll with the Dark retype already on."
+        + (left===Infinity ? "" : ` ${left} use${left===1?"":"s"} left this Scene.`),
+      onclick:()=>{ if(!giftSpend(t, "Blade of Hate")) return; save(); _pendingRetype = "Blade of Hate"; rollFn(); }},
+      "\u{1F5E1} Use" + (left===Infinity ? "" : ` (${left})`)));
+  }
   acts.append(el("button",{class:"btn-secondary rollbtn",style:"padding:6px 10px",onclick:rollFn},"🎲 Roll"));
   if(opts.move) acts.append(el("button",{class:"linkbtn",onclick:()=>openRefDetail("move",profile.name)},"info"));
   slot.append(acts);
@@ -29664,6 +30186,8 @@ const FOE_FX = {
       return [r.on.length ? `→ ${r.on.join(", ")}` : "", r.held.length ? `(held: ${r.held.join(", ")})` : ""]
         .filter(Boolean).join(" ");
     } },
+  /* a whole Status Move's bundle (statusMoveApplyNode); P.missed = only the hit-or-miss / on-a-miss rows */
+  statusmove: { apply:(x, P) => statusMoveApply(x.obj, P, !!P.missed), missable:P => (P.fx || []).some(e => e.when !== "hit") },
   typemod: { apply:(x, P) => {
       const why = addTypeMod(x.obj, { kind:P.kind, type:P.type, src:P.src, dur:P.dur, turns:P.turns });
       return why ? `(${why})` : `→ ${monTypes(x.obj).join("/")}`;
@@ -32726,12 +33250,15 @@ function branchTargetDialog({ title, intro, list, preselect, foot, apply, after,
   body.append(el("div", { class:"small", style:"margin-bottom:10px" }, intro));
   body.append(pick.node);
   if(foot) body.append(el("div", { class:"small muted", style:"margin-top:8px" }, foot));
+  let applied = false;       // a double tap must not land the buff / Combat Stages / Status twice
   modal({ title, bodyNode:body, footNodes:[
     el("button", { class:"btn-secondary", onclick:closeModal }, "Cancel"),
     el("button", { class:"btn-primary", onclick:async () => {
+      if(applied) return;
       const chosen = pick.chosen();
       if(!chosen.length){ toast("Nobody chosen"); return; }
       if(gate && !gate(chosen)) return;
+      applied = true;
       const notes = [];
       chosen.forEach(x => { const n = apply(x); if(n) notes.push(n); });
       (saveFn || save)(); closeModal();
@@ -39503,9 +40030,9 @@ function encounterTrainerCard(enc, tr){
     const pct0=Math.max(0,Math.min(100,Math.round(t.currentHP/maxHP0*100)));
     const mini=el("div",{style:`border:1px solid var(--accent);border-radius:var(--radius-sm);padding:6px 10px;margin-top:8px;background:var(--panel-2);${fainted0?"opacity:.5;":""}`});
     const row=el("div",{class:"inline",style:"gap:8px;align-items:center"});
-    row.append(framedPic(el("img",{src:t.avatar||TRAINER_PLACEHOLDER,alt:"",
+    row.append(framedPic(el("img",{src:avatarUrl(t)||TRAINER_PLACEHOLDER,alt:"",
       style:"width:24px;height:24px;border-radius:50%;object-fit:cover;border:1px solid var(--line);background:var(--panel)"}),
-      t.avatar ? t.avatarFocus : null));
+      avatarUrl(t) ? avatarFocusOf(t) : null));
     row.append(el("span",{style:"font-weight:800;white-space:nowrap"}, (fainted0?"💀 ":"")+(t.name||"Trainer")));
     row.append(el("span",{class:"small muted",style:"white-space:nowrap"}, `Lv ${t.level}`));
     row.append(hpBarEl(t.currentHP, maxHP0, tempHPOf(t), {style:"flex:1;min-width:70px"}));
@@ -39524,9 +40051,9 @@ function encounterTrainerCard(enc, tr){
   nameIn.addEventListener("change",()=>{ t.name=nameIn.value; saveEnc(); renderEncounters(); });
   const lvIn=el("input",{type:"number",min:1,max:100,value:t.level,style:"width:58px",title:"trainer level"});
   lvIn.addEventListener("change",()=>{ t.level=Math.max(1,parseInt(lvIn.value)||1); saveEnc(); });
-  const av = framedPic(el("img",{src:t.avatar||TRAINER_PLACEHOLDER,alt:"",
+  const av = framedPic(el("img",{src:avatarUrl(t)||TRAINER_PLACEHOLDER,alt:"",
     style:"width:32px;height:32px;border-radius:50%;object-fit:cover;border:1px solid var(--line);background:var(--panel-2)"}),
-    t.avatar ? t.avatarFocus : null);
+    avatarUrl(t) ? avatarFocusOf(t) : null);
   info.append(av, nameIn, el("span",{class:"small muted"},"Lv"), lvIn,
     el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"picture used for this trainer's map token",
       onclick:()=>pickImage(framablePicDim(), async d=>{ setAvatar(t, await storeImg(d,"avatar")); saveEnc(); renderEncounters(); })}, t.avatar?"📷 Change":"📷 Image"));
@@ -45135,7 +45662,9 @@ function applyOps(target, ops){
       return;
     }
     if(op.d) delete node[last];
-    else if(op.a){ if(!Array.isArray(node[last])) node[last] = []; node[last].push(...op.a); }
+    else if(op.a){ if(!Array.isArray(node[last])) node[last] = [];
+      const have = new Set(node[last].filter(x => x && typeof x === "object" && x.id != null).map(x => x.id));   // idempotent: a replayed append must not add the same id twice
+      node[last].push(...op.a.filter(x => !(x && typeof x === "object" && x.id != null && have.has(x.id)))); }
     else node[last] = op.v;
   });
   return target;
@@ -48284,7 +48813,7 @@ function visibleWildMonTokens(){
     .map(t=>({ token:t, mon:tokenLinked(t)?.obj }))
     .filter(x=>x.mon);
 }
-const TRAINER_TOKEN = (t)=>el("img",{class:"sprite s-sm",src:(t&&t.avatar)||TRAINER_PLACEHOLDER,alt:"trainer",loading:"lazy"});
+const TRAINER_TOKEN = (t)=>el("img",{class:"sprite s-sm",src:avatarUrl(t)||TRAINER_PLACEHOLDER,alt:"trainer",loading:"lazy"});
 /* a linked Pokémon's token uses the picture uploaded on its sheet, falling back to the dex artwork */
 function pokeTokenSprite(mon){
   const own = monImage(mon);   // monImage, not mon.image: a Mega has its own picture while it's Mega'd
@@ -48327,15 +48856,15 @@ function tokenImageRef(token){
   const L = tokenLinked(token); if(!L || L.missing || !L.obj) return null;
   const o = L.obj;
   if(L.kind==="trainer" || L.kind==="enctrainer"){
-    if(!o.avatar) return null;
-    return { url:o.avatar, get:()=>o.avatarFocus,
-             set:f=>{ if(f) o.avatarFocus = f; else delete o.avatarFocus; },
+    const shown = avatarUrl(o);
+    if(!shown) return null;
+    return { url:shown, get:()=>avatarFocusOf(o),
+             set:f=>setAvatarFocusShown(o, f),
              commit: async()=>{ await commitTokenSource(token); } };
   }
   const url = monImage(o); if(!url) return null;
-  // a Mega keeps its own photo (monImage), so its framing is stored separately too
-  const key = o.mega ? "megaImageFocus" : "imageFocus";
-  return { url, get:()=>o[key], set:f=>{ if(f) o[key] = f; else delete o[key]; },
+  // a Mega (or a Transformed form) keeps its own photo (monImage), so its framing is stored separately too
+  return { url, get:()=>monFocusGet(o), set:f=>monFocusSet(o, f),
            commit: async()=>{ await commitTokenSource(token); } };
 }
 /* Drag the picture behind a circular window to choose the crop; the slider zooms in. */
@@ -48395,7 +48924,7 @@ function openImageFocus(ref, after){
    drawn `cover` inside a clipping wrapper (the zoom is a transform, which would spill out of an
    unwrapped <img>); an unframed one is returned untouched, so every sheet looks as it did. */
 function monFocusKey(p){ return p && p.mega ? "megaImageFocus" : "imageFocus"; }
-function monImageFocus(p){ return monImage(p) ? p[monFocusKey(p)] : null; }
+function monImageFocus(p){ return monImage(p) ? monFocusGet(p) : null; }
 function framedPic(img, focus){
   if(!img || !applyImgFocus(img, focus)) return img;
   img.style.objectFit = "cover";
@@ -48413,18 +48942,72 @@ function monPic(p, sp, cls, zoomTitle){
 /* the 🖼 editor for a sheet's own picture; `after` saves + re-renders the view it lives in */
 function openMonImageFocus(p, after){
   if(!monImage(p)){ toast("Upload a photo first — dex artwork has nothing to frame"); return; }
-  const key = monFocusKey(p);
-  openImageFocus({ url:monImage(p), get:()=>p[key], set:f=>{ if(f) p[key] = f; else delete p[key]; },
+  openImageFocus({ url:monImage(p), get:()=>monFocusGet(p), set:f=>monFocusSet(p, f),
                    commit: async()=>{} }, after);
 }
-function openAvatarFocus(t, after){
-  if(!t.avatar){ toast("Upload a picture first"); return; }
-  openImageFocus({ url:t.avatar, get:()=>t.avatarFocus,
-                   set:f=>{ if(f) t.avatarFocus = f; else delete t.avatarFocus; },
+/* ---- stance portraits ----
+   A Feature stance that changes how the Trainer LOOKS (Enchanting Transformation) can carry its own
+   portrait: t.formAvatar = { "<mode key>": {image, focus} }. While the stance is up, every place that
+   draws the Trainer (sheet, encounter row, Map token) shows it instead of the ordinary portrait;
+   with no picture saved for the stance the ordinary portrait stays. */
+/* Every Feature stance the Trainer owns can carry a portrait (Enchanting Transformation, Shadow Form, Stone
+   Stance...), and so can any number of free-form "alternate forms" the player makes up (t.altForms =
+   [{id, name, on}], key "alt:<id>") for a transformation that is not a Feature stance: a rage, a Gift's
+   form, a costume. A free-form one is worn with its own switch. */
+function avatarFormModes(t){
+  const out = [];
+  (typeof FEATURE_MODES !== "undefined" ? FEATURE_MODES : []).forEach(m => {
+    if(hasFeatureLoose(t, m.feat)) out.push({ key:m.key, feat:m.feat, icon:m.icon || "✨" });
+  });
+  (Array.isArray(t.altForms) ? t.altForms : []).forEach(f => out.push({ key:"alt:" + f.id, feat:f.name || "Alternate form", icon:"\u{1F3AD}", custom:f }));
+  return out;
+}
+/* hot path (every token repaint): a Trainer with no stance portrait saved answers at once */
+function avatarFormKey(t){
+  if(!t || !t.formAvatar || typeof t.formAvatar !== "object") return "";
+  for(const k of Object.keys(t.formAvatar)){
+    const f = t.formAvatar[k]; if(!f || !f.image) continue;
+    if(k.startsWith("alt:") ? (t.altForms || []).some(a => "alt:" + a.id === k && a.on) : modeIsOn(t, k)) return k;
+  }
+  return "";
+}
+function avatarFormOf(t, key, make){
+  if(!t || !key) return null;
+  if(!t.formAvatar || typeof t.formAvatar!=="object" || Array.isArray(t.formAvatar)){ if(!make) return null; t.formAvatar = {}; }
+  if(!t.formAvatar[key] && make) t.formAvatar[key] = { image:"" };
+  return t.formAvatar[key] || null;
+}
+/* the portrait being shown right now, and the crop that goes with it */
+function avatarUrl(t){
+  const f = avatarFormOf(t, avatarFormKey(t));
+  return (f && f.image) || (t && t.avatar) || "";
+}
+function avatarFocusOf(t){
+  const f = avatarFormOf(t, avatarFormKey(t));
+  return (f && f.image) ? f.focus : (t && t.avatar ? t.avatarFocus : undefined);
+}
+function setAvatarFocusShown(t, fo){
+  const f = avatarFormOf(t, avatarFormKey(t));
+  if(f && f.image){ if(fo) f.focus = fo; else delete f.focus; }
+  else { if(fo) t.avatarFocus = fo; else delete t.avatarFocus; }
+}
+function openAvatarFocus(t, after, formKey){
+  const f = formKey ? avatarFormOf(t, formKey) : null;
+  const url = formKey ? (f && f.image) : t.avatar;
+  if(!url){ toast("Upload a picture first"); return; }
+  openImageFocus({ url, get:()=> formKey ? f.focus : t.avatarFocus,
+                   set:fo=>{ const o = formKey ? f : t, k = formKey ? "focus" : "avatarFocus"; if(fo) o[k] = fo; else delete o[k]; },
                    commit: async()=>{} }, after);
 }
 /* a new picture needs a new crop — the old one was chosen for a different photo */
-function setAvatar(t, url){ t.avatar = url; delete t.avatarFocus; }
+function setAvatar(t, url, formKey){
+  if(formKey){
+    const f = avatarFormOf(t, formKey, !!url);
+    if(f){ f.image = url; delete f.focus; if(!url) delete t.formAvatar[formKey]; }
+    return;
+  }
+  t.avatar = url; delete t.avatarFocus;
+}
 function standaloneSprite(token){
   if(token.img) return el("img",{class:"sprite s-sm",src:token.img,alt:token.label||"",loading:"eager"});
   if(token.species) return monSprite(token.species, token.shiny, "s-sm", undefined, true);
@@ -48640,6 +49223,7 @@ const MOVE_TARGET_RULES = {
                        note:"the target's Attack stat is added to the Damage Roll instead of yours \u2014 the difference is applied per target" },
   "psyshock":        { defAs:"phys", note:"the target subtracts its DEFENSE, not its Special Defense (the Move is still Special)" },
   "psystrike":       { defAs:"phys", note:"the target subtracts its DEFENSE, not its Special Defense (the Move is still Special)" },
+  "secretforce":     { defAs:"phys", note:"the target subtracts its DEFENSE, not its Special Defense (the Move is still Special)" },
   "secretsword":     { defAs:"phys", note:"the target subtracts its DEFENSE, not its Special Defense (the Move is still Special)" },
   "terastarstorm":   { formeStep:1,
                        note:"one step more effective against a target that has changed Forme (Mega, Terastalized, Transformed, Schooling, an Origin/Altered/Primal Forme…)" },
@@ -51879,7 +52463,7 @@ function openBoatMenu(token, map){
 
   // ---- HP: same +/-/tick/set controls as any other token, so the hull can actually be sunk ----
   const readout = el("div",{class:"tk-menu-hp"});
-  const drawHp = ()=>{ const i=tokenHp(token); const p=Math.max(0,Math.min(100,Math.round(i.cur/i.max*100)));
+  const drawHp = ()=>{ const i=tokenHp(token); const p=Math.min(100,Math.round(i.cur/i.max*100));
     readout.innerHTML = `<b>${i.cur}</b> / ${i.max} HP &nbsp;<span class="muted small">${p}%</span>`; };
   drawHp();
   const mkHp = (d,l)=>el("button",{class:"btn-secondary",
@@ -52744,24 +53328,41 @@ async function autoDrainAttacker(ctx, dealt){
   if(!ctx || !ctx.move || !(dealt > 0)) return null;
   const m = moveByName.get(String(ctx.move).toLowerCase());
   if(!m) return null;
-  const rows = moveHPEffects(m).filter(e => e.kind === "drain" && e.who === "user" && e.of === "dealt" && !e.cond);
-  if(!rows.length) return null;
+  const all = moveHPEffects(m).filter(e => e.who === "user" && e.of === "dealt" && !e.cond);
+  const drainRows = all.filter(e => e.kind === "drain"), recoilRows = all.filter(e => e.kind === "recoil");
+  if(!drainRows.length && !recoilRows.length) return null;
   const map = currentMapForView() || activeMap();
   const toks = map ? mapTokensFor(map.id) : [];
   const objOf = t => { try{ const L = t.link ? tokenLinked(t) : null; return (L && !L.missing) ? L.obj : null; }catch(e){ return null; } };
   let obj = ctx.attacker || null, tok = null;
   if(obj) tok = toks.find(t => objOf(t) === obj) || null;
-  else if(ctx.aid){
-    tok = toks.find(t => { const o = objOf(t); return !!o && o.id === ctx.aid; }) || null;
+  else {
+    if(ctx.aid) tok = toks.find(t => { const o = objOf(t); return !!o && o.id === ctx.aid; }) || null;
+    /* a Trainer's own Moves are logged without an id - fall back to the name the roll was made under */
+    if(!tok && ctx.by){
+      const nm = String(ctx.by).trim().toLowerCase();
+      tok = toks.find(t => { const o = objOf(t); return !!o && (String(ownerLabel(o)).trim().toLowerCase() === nm
+        || String(tokenHp(t).name || "").trim().toLowerCase() === nm); }) || null;
+    }
     obj = tok ? objOf(tok) : null;
   }
   if(!obj || hasStatus(obj, "knockedOut") || hasStatus(obj, "dead")) return null;
-  let n = rows.reduce((sum, e) => sum + hpFractionOf(dealt, e), 0);
-  const bigRoot = hpHasHeld(obj, "bigroot");
-  if(bigRoot) n *= 2;                                         // Big Root: an HP-stealing Move gives back double
-  const moved = ownerHPChange(obj, n);
+  const out = { who: ownerLabel(obj), paid: [] };
+  if(drainRows.length){
+    let n = drainRows.reduce((sum, e) => sum + hpFractionOf(dealt, e), 0);
+    const bigRoot = hpHasHeld(obj, "bigroot");
+    if(bigRoot) n *= 2;                                       // Big Root: an HP-stealing Move gives back double
+    out.drain = { n, moved: ownerHPChange(obj, n), bigRoot };
+    out.paid.push("drain");
+  }
+  if(recoilRows.length){
+    const immune = hpRecoilImmunity(obj);
+    const n = immune ? 0 : recoilRows.reduce((sum, e) => sum + hpFractionOf(dealt, e), 0);
+    out.recoil = { n, moved: n ? ownerHPChange(obj, -n) : 0, immune };
+    out.paid.push("recoil");
+  }
   if(tok) await commitTokenSource(tok); else save();
-  return { who: ownerLabel(obj), n, moved, bigRoot };
+  return out;
 }
 function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, moveRule=null, seFlat=0, critExtra=0, fx=null, onDealt=null, ctx=null }){
   // a Move whose own rules bend the matchup (MOVE_TARGET_RULES) travels with the hit, and its
@@ -52932,7 +53533,13 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
   }catch(e){}
 
   const out = el("div",{class:"small",style:"margin-top:8px"});
+  let applyBusy = false;      // a second tap while the first is still writing would land the whole hit (and every buff / CS on it) again
   const apply = async ()=>{
+    if(applyBusy) return;
+    applyBusy = true;
+    try{ await applyHit(); } finally{ applyBusy = false; }
+  };
+  const applyHit = async ()=>{
     const chosen = items.filter(i=>i.cb.checked);
     if(!chosen.length){ out.textContent = "Tick at least one target (in either tab)."; return; }
     out.innerHTML = "";
@@ -53079,13 +53686,21 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     /* life-steal Moves: the user's share comes back in this same press */
     let drained = null;
     try{ drained = await autoDrainAttacker(ctx, dealtTotal); }catch(e){ console.error("auto drain", e); }
-    if(drained){
+    if(drained && drained.drain){
+      const d = drained.drain;
       out.append(el("div",{class:"small",style:"color:var(--good);font-weight:700;margin:4px 0"},
-        `\u{1F9DB} ${drained.who} drains ${drained.moved >= 0 ? "+" : ""}${drained.moved} HP from the ${dealtTotal} dealt`
-        + (drained.bigRoot ? " (Big Root: doubled)" : "") + (drained.moved < drained.n ? " \u2014 already at full" : "") + "."));
-      toast(`\u{1F9DB} ${drained.who} +${drained.moved} HP (drained)`);
+        `\u{1F9DB} ${drained.who} drains ${d.moved >= 0 ? "+" : ""}${d.moved} HP from the ${dealtTotal} dealt`
+        + (d.bigRoot ? " (Big Root: doubled)" : "") + (d.moved < d.n ? " — already at full" : "") + "."));
+      toast(`\u{1F9DB} ${drained.who} +${d.moved} HP (drained)`);
     }
-    if(onDealt) onDealt(dealtTotal, chosen.length, !!drained);   // drain / Recoil now have their real number
+    if(drained && drained.recoil){
+      const r = drained.recoil;
+      out.append(el("div",{class:"small",style:`color:var(--${r.immune ? "muted" : "bad"});font-weight:700;margin:4px 0`},
+        r.immune ? `\u{1F4A2} ${drained.who} takes no recoil — ${r.immune}.`
+                 : `\u{1F4A2} ${drained.who} takes ${Math.abs(r.moved)} recoil from the ${dealtTotal} dealt.`));
+      if(!r.immune) toast(`\u{1F4A2} ${drained.who} −${Math.abs(r.moved)} HP (recoil)`);
+    }
+    if(onDealt) onDealt(dealtTotal, chosen.length, drained ? drained.paid : null);   // drain / Recoil now have their real number
     undoBtn.style.display = "";                                 // …and offer to take it straight back
     draw();                                                     // refresh HP labels + select-all state
   };
@@ -53218,13 +53833,19 @@ function openFoeFxApply(e){
     f.single ? "Who does it land on? (one target)" : "Who does it land on?"));
   body.append(map ? pick.node : el("div",{class:"small",style:"color:var(--bad)"},
     "No map open — open the 🗺 Map with the tokens on it and try again."));
+  let missCb = null;
+  if(def.missable && def.missable(f.P || {})){
+    missCb = el("input",{type:"checkbox"});
+    body.append(el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;margin-top:8px"},
+      missCb, el("span",{}, "It MISSED these targets — land only the hit-or-miss / on-a-miss effects")));
+  }
   modal({ title:`🎯 ${e.label || f.name || "Apply"}`, bodyNode:body, footNodes:[
     el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
     el("button",{class:"btn-primary",onclick:async () => {
       const chosen = pick.chosen();
       if(!chosen.length){ toast("Pick a target"); return; }
       if(f.single && chosen.length > 1){ toast(`${f.name || "It"} affects one target`); return; }
-      const r = await runFoeFx(f.fx, chosen, f.P || {});
+      const r = await runFoeFx(f.fx, chosen, Object.assign({}, f.P || {}, missCb && missCb.checked ? { missed:true } : {}));
       await commitTargets(r.hit);
       if(r.done.length){
         const live = ((ensureRolls().data.entries)||[]).find(x => x.id === e.id);
@@ -53391,7 +54012,7 @@ function openTokenMenu(token, map){
     let fracsRefresh = null;                  // the HP-fraction buttons, once they exist
     const readout = el("div",{class:"tk-menu-hp"});
     const hpBarBox = el("div",{});
-    const draw = ()=>{ const i=tokenHp(token); const p=Math.max(0,Math.min(100,Math.round(i.cur/i.max*100)));
+    const draw = ()=>{ const i=tokenHp(token); const p=Math.min(100,Math.round(i.cur/i.max*100));
       const th=tempHPOf(i.obj);
       readout.innerHTML = `<b>${i.cur}</b> / ${i.max} HP &nbsp;<span class="muted small">${p}%</span>`
         + (th?` &nbsp;<span class="temphp-tag">\u{1F6E1}\u{FE0F} +${th} temp</span>`:"");
@@ -54611,7 +55232,8 @@ async function tileMapImage(map, im){
 }
 
 function applyMapCamera(stage){ stage.style.transformOrigin="0 0";
-  stage.style.transform = `translate(${mapView.panX}px,${mapView.panY}px) scale(${mapView.scale})`; }
+  stage.style.transform = `translate(${mapView.panX}px,${mapView.panY}px) scale(${mapView.scale})`;
+  stage.style.setProperty("--mapzoom", mapView.scale); }
 /* Zoom limits. 0.2 is the right floor for a battle map, but a world map like the Isles is
    12800x9600px of stage — at 0.2 you still only see a fifth of it, and "show me the whole island"
    was impossible. So the floor is now worked out from the board itself: you can always zoom out to
@@ -54972,6 +55594,102 @@ function terrainPanel(map){
   card.append(body);
   return card;
 }
+/* ===================================================================
+   FIND A TOKEN  (\u{1F4CD})
+   -------------------------------------------------------------------
+   Tokens get lost: a Pokemon dragged to the edge of a huge map, a trainer under a zoomed-out view.
+   \u{1F4CD} Find token lists the creatures this viewer can see on the board; picking one slides the camera to
+   it and plants a bouncing arrow (and a pulse ring) on it for a few seconds. Everyone has the button -
+   a player lists their own party (and whatever the fog lets them see); the GM lists everything.
+   The GM's \u{1F4E3} button sends the same arrow to every device: meta.ping = {id, tokenId, mapId, at}
+   rides the shared map-meta row, and each client reacts once per id (consumeSharedPing).
+   The arrows are per-device and temporary (mapPings) - they are never written into the map.
+=================================================================== */
+let mapPings = [];            // [{ tokenId, until }] - arrows drawn on THIS device
+let lastPingSeen = null;      // the shared ping this device has already reacted to
+const PING_MS = 9000;
+function pingableTokens(map){
+  const fog = (!cloud.isGM && map.fogOn) ? fogViewSet(map) : null;
+  const rows = mapTokensFor(map.id).filter(t => {
+    if(!t.link || t.gmHidden || isNoteToken(t)) return false;
+    const info = tokenHp(t);
+    if(info.unlinked || info.kind === "shop" || info.kind === "hazard" || info.kind === "zone") return false;
+    if(cloud.isGM) return true;
+    if(tokenSide(t) !== "player") return false;
+    const own = !!(t.link.sheetId && ownsRow(cloud.byId[t.link.sheetId]));
+    return own || !fog || fog.has(Math.round(t.x) + "," + Math.round(t.y));
+  });
+  const mine = t => (t.link.sheetId && ownsRow(cloud.byId[t.link.sheetId])) ? 0 : 1;
+  return rows.sort((a, b) => mine(a) - mine(b) || String(tokenHp(a).name).localeCompare(String(tokenHp(b).name)));
+}
+function centerMapOnToken(map, token){
+  const vp = mapViewportSize(), st = mapStageSize(map), px = map.gridSize, sc = mapView.scale || 1;
+  const f = tokenFootprint(token);
+  mapView.panX = vp.w/2 - ((token.x + f.w/2)*px + st.originX)*sc;
+  mapView.panY = vp.h/2 - ((token.y + f.h/2)*px + st.originY)*sc;
+}
+function startPing(map, token){
+  centerMapOnToken(map, token);
+  mapPings = mapPings.filter(p => p.tokenId !== token.id && p.until > Date.now())
+    .concat([{ tokenId:token.id, until:Date.now() + PING_MS }]);
+  setTimeout(() => {
+    mapPings = mapPings.filter(p => p.until > Date.now());
+    document.querySelectorAll(".map-ping").forEach(n => { if(+n.dataset.until <= Date.now()) n.remove(); });
+  }, PING_MS + 150);
+}
+function pingToken(map, token, shared){
+  startPing(map, token);
+  if(shared && cloud.isGM){
+    const meta = activeMapMeta();
+    meta.ping = { id:uid(), tokenId:token.id, mapId:map.id, at:Date.now() };
+    lastPingSeen = meta.ping.id;
+    mapMetaSave();
+  }
+  renderMap();
+}
+/* the GM pointed at a token for the whole table: react once, inside renderMap, before the camera is applied */
+function consumeSharedPing(map, meta){
+  const pg = meta && meta.ping;
+  if(!pg || pg.id === lastPingSeen) return;
+  lastPingSeen = pg.id;
+  if(!map || pg.mapId !== map.id || Math.abs(Date.now() - (pg.at || 0)) > 60000) return;   // stale (a page load long after) or another map
+  const tk = mapTokensFor(map.id).find(t => t.id === pg.tokenId);
+  if(tk) startPing(map, tk);
+}
+function pingArrowNodes(map, token, p, originX, originY){
+  const box = tokenRenderBox(map, token, originX, originY);
+  const name = tokenHp(token).name || "";
+  const ring = el("div",{class:"map-ping-ring", "data-until":String(p.until),
+    style:`left:${box.left - 8}px;top:${box.top - 8}px;width:${box.w + 16}px;height:${box.h + 16}px`});
+  const arrow = el("div",{class:"map-ping map-ping-pin", "data-until":String(p.until),
+    style:`left:${box.left + box.w/2}px;top:${box.top}px`},
+    el("div",{class:"map-ping-bob"},
+      el("div",{class:"map-ping-name"}, name),
+      el("div",{class:"map-ping-head", html:`<svg viewBox="0 0 40 46" width="44" height="50" xmlns="http://www.w3.org/2000/svg"><path d="M20 44 L3 18 H13 V2 H27 V18 H37 Z" fill="#ffd400" stroke="#111" stroke-width="3" stroke-linejoin="round"/></svg>`})));
+  return [ring, arrow];
+}
+function openFindToken(map){
+  const list = pingableTokens(map);
+  if(!list.length){ toast("No token to find on this map"); return; }
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    cloud.isGM ? "Pick a token: your view jumps to it with an arrow. \u{1F4E3} points it out on every player's screen too."
+               : "Pick a token: the map jumps to it and an arrow points at it for a few seconds."));
+  const box = el("div",{class:"note-list",style:"max-height:340px"});
+  list.forEach(t => {
+    const info = tokenHp(t);
+    const row = el("div",{class:"note-row"});
+    row.append(el("button",{class:"note-row-main",onclick:()=>{ closeModal(); pingToken(map, t, false); }},
+      el("span",{style:"width:30px;height:30px;display:inline-flex;flex:none;align-items:center;justify-content:center"}, info.sprite ? info.sprite.cloneNode(true) : "\u{1F4CD}"),
+      el("span",{class:"note-row-txt"}, el("b",{}, info.name || "Token"),
+        el("span",{class:"small muted"}, info.kind === "trainer" ? "Trainer" : info.kind === "pokemon" ? "Pok\u00e9mon" : "")))) ;
+    if(cloud.isGM) row.append(el("button",{class:"btn-secondary",title:"Show this token to every player",
+      onclick:()=>{ closeModal(); pingToken(map, t, true); toast(`\u{1F4E3} Pointing out ${info.name || "the token"} to everyone`); }},"\u{1F4E3}"));
+    box.append(row);
+  });
+  body.append(box);
+  modal({ title:"\u{1F4CD} Find a token", bodyNode:body, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")] });
+}
 function renderMap(){
   const root = $("#view-map");
   mapViewportSize();                    // measure the board BEFORE this tears it down (culling)
@@ -54999,6 +55717,7 @@ function renderMap(){
       }catch(e){ mapView = { scale:1, panX:0, panY:0 }; }
     }
   }
+  consumeSharedPing(map, meta);          // the GM pointed at a token: slide to it and plant the arrow
   // Flanking and Pressure are read straight off where everyone is standing — refresh both before
   // the tokens are painted so the chips on the board are never a move behind (see sweepMapAuras).
   // a broken bar sheds its fish and shrinks the shoal BEFORE anything is measured or drawn
@@ -55234,6 +55953,9 @@ function renderMap(){
       onclick:()=>setMapLowDetail(mapLowDetailPref==="auto" ? "on" : mapLowDetailPref==="on" ? "off" : "auto")},
       mapLowDetailPref==="auto" ? (mapLowDetail() ? "🪶 Detail: auto (low)" : "🖼 Detail: auto (full)")
         : mapLowDetailPref==="on" ? "🪶 Detail: low" : "🖼 Detail: full");
+    bar.append(el("span",{class:"map-sep"}), el("button",{class:"btn-secondary",
+      title:"Lost a token? Pick it from the list: the map jumps to it and an arrow points at it."+(cloud.isGM ? " \u{1F4E3} in the list shows it to every player too." : ""),
+      onclick:()=>openFindToken(map)}, "\u{1F4CD} Find token"));
     if(cloud.isGM) moreGroup("View", fitBtn, detailBtn);
     else bar.append(el("span",{class:"map-sep"}), fitBtn, detailBtn);
   }
@@ -55424,6 +56146,10 @@ function renderMap(){
     mapDrawOrder(mapTokensFor(map.id)).forEach(t=>{ if(visibleToken(t) && nearView(t)) stage.append(mkToken(t)); });
     const f = drawFogInto(); if(f) stage.append(f);                 // players: opaque fog over hidden tokens
   }
+
+  mapPings = mapPings.filter(p => p.until > Date.now());
+  mapPings.forEach(p => { const tk = mapTokensFor(map.id).find(t => t.id === p.tokenId);
+    if(tk) pingArrowNodes(map, tk, p, originX, originY).forEach(n => stage.append(n)); });
 
   // walls (block fog vision) — GM-only, drawn above tokens/fog so they stay visible while editing
   if(cloud.isGM){

@@ -97,7 +97,9 @@ begin
       if jsonb_typeof(coalesce(cur #> path, 'null'::jsonb)) <> 'array' then
         cur := jsonb_set(cur, path, '[]'::jsonb, true);
       end if;
-      cur := jsonb_set(cur, path, (cur #> path) || (op->'a'), true);
+      cur := jsonb_set(cur, path, (cur #> path) || coalesce((select jsonb_agg(e) from jsonb_array_elements(op->'a') e
+          where not (jsonb_typeof(e) = 'object' and e ? 'id')
+             or not exists (select 1 from jsonb_array_elements(cur #> path) c where jsonb_typeof(c) = 'object' and c->'id' = e->'id')), '[]'::jsonb), true);
     else
       cur := jsonb_set(cur, path, op->'v', true);
     end if;
