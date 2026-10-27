@@ -682,6 +682,7 @@ function effectiveCS(p){
   const hb = herbalCSMods(p);                              // a third Herbal Restorative in one day
   CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + wx[k] + (ab[k]||0) + aura[k] + (tr[k]||0) + (hi[k]||0) + (hb[k]||0) + (k==="spd"?eqSpd:0))));
   ACC_EVA_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + (ab[k]||0) + aura[k] + (hi[k]||0))));
+  if(out.acc < 0 && augLive(p, "Smart Vision")) out.acc = 0;   // Smart Vision: "cannot have their Accuracy lowered"
   return out;
 }
 /* the part of effectiveCS that is applied AUTOMATICALLY — status conditions, weather abilities,
@@ -964,6 +965,9 @@ function statusImmunityFor(o, key, opts){
   if(!o) return "";
   const ab = abilityStatusImmunity(o, key, opts);
   if(ab) return ab;
+  const pb = pokebotStatusImmune(o, key);
+  if(pb) return pb;
+  if(key === "blinded" && augLive(o, "Smart Vision")) return "Smart Vision \u2014 immune to Blinded";
   if(!isTrainerOwner(o)) return "";
   if(opts && opts.move && /^(hypnosis|nightmare|dream eater)(\s*\[sm\])?$/i.test(String(opts.move).trim()) && hasGiftNamed(o, "Dream Mastery"))
     return "Dream Mastery \u2014 immune to Hypnosis, Nightmare and Dream Eater";
@@ -1056,6 +1060,10 @@ function inflictStatuses(o, keys, opts){
     if(r.ok) on.push(statusName(k));
     else if(r.why) held.push(`${statusName(k)} (${r.why})`);
   });
+  /* Augmentation Shock: "suffers the effects of Thunder Wave" (Do Porygon Dream of Mareep p.58) */
+  if(opts && opts.move && /^thunder wave/i.test(String(opts.move).trim()) && hasAugs(o)){
+    const m = augShock(o, "Thunder Wave"); if(m) toast(m);
+  }
   return { on, held };
 }
 /* "falls Asleep at the end of its next turn" (Yawn): the Status is not put on now - it becomes a delayed o.pending entry
@@ -5626,6 +5634,9 @@ function itemFreqForKey(key){
   if(kind==="zpower") return "Scene";
   // a worn Accessory's own active use (Soothing Flute) — every one added so far is Scene-frequency
   if(kind==="item") return "Scene";
+  // Augmentations: Reflex Points, Dermal Plating, Camouflage, Emergency Reactivation are Scene; Medical Nanobots daily
+  if(kind==="aug") return "Scene";
+  if(kind==="augday") return "Daily";
   // ...and its Daily cousin (the Tera Orb's one Terastallization a day)
   if(kind==="dayitem") return "Daily";
   // a Legendary / General Gift's own Frequency, so End Scene and End Day hand its pips back
@@ -7017,8 +7028,11 @@ function trainerDerived(t) {
   let power = 4;  if (athlCap >= 3) power++; if (combat >= 4) power++;
   power += arc.caps.power;                                 // Ten of Wands moves Power either way
   power += edgeFxSum(t, "power");                          // Power Boost (+2)
+  const augB = augCapBonus(t);                             // Synthetic Muscle: +2 Power, +1 both Jumps
+  power += augB.power;
   let hj = 0;     if (acroCap >= 4) hj++; if (acroCap >= 6) hj++;
   hj   += edgeFxSum(t, "highJump");                        // Acrobat (+1 each)
+  hj   += augB.highJump;
   const mvCS = speedCSMove(cs);                            // Speed CS shifts every Movement Speed (Core p.234)
   const wrLev = windRunnerLevitate(t);                     // Wind Runner's hover, 0 for everyone else
   // The Chariot raises EVERY movement Capability, so it lands on both Overland and Swim
@@ -7042,7 +7056,7 @@ function trainerDerived(t) {
     hp, fullHP, injuries, cs,
     physEva: Math.max(0, cap6(tot("def"))+cs.eva+eqEva+bEva+hEva.all), specEva: Math.max(0, cap6(tot("spdef"))+cs.eva+eqEva+bEva+hEva.all), spdEva: Math.max(0, cap6(tot("spd"))+cs.eva+eqEva+bEva+hEva.all+hEva.spd),   // CS-adjusted evasion (+ shields, + buffs, + gear); never below 0 (Core p.234)
     ap: Math.max(0, 5 + Math.floor(t.level/5) + arc.ap + buffTempAP(t)),     // Ace of Wands, Justice, The Devil… move the AP ceiling; Moment of Action lends a Temporary point
-    power, highJump: hj, longJump: Math.floor(acroCap/2) + edgeFxSum(t, "longJump"),
+    power, highJump: hj, longJump: Math.floor(acroCap/2) + edgeFxSum(t, "longJump") + augB.longJump,
     traveler,                                  // so the Derived Stats card can say where the numbers came from
     dr: equipDR(t).dr + arc.dr + techBodyDR(t),                              // worn-armor Damage Reduction (also flows through buffDR on the damage input) + Ten of Swords
     overland: moveWithCS(ovlBase, mvCS), swim: moveWithCS(swimBase, mvCS), moveCS: mvCS,
@@ -7365,6 +7379,316 @@ function applyAbsorbToOwner(o, e){
    steps, the immunities, Wonder Guard, Filter/Solid Rock/Prism Armor, Tolerance and Fur Coat. What
    is NOT an Ability stays: worn/held gear, a Trainer Feature's stance DR, Glacial Ice, and the
    Rogue Mega Boss template, none of which "the effect of enemies' Defensive Abilities" covers. */
+/* ===================================================================
+   CYBERNETIC AUGMENTATIONS (Do Porygon Dream of Mareep pp.56-58) and POKÉBOTS (p.52)
+   -------------------------------------------------------------------
+   o.augs = [{ name, ed?, opt?, move? }] on a Trainer or a Pokémon. `ed` = upgraded by an Upgrader's
+   Experimental Designs; `opt`/`move` = Embedded Weaponry's weapon category and Adept Move.
+   Capacity is 10, +2 under Efficient Installation (the Upgrader's Feature covers "you and your
+   Pokémon", so a Pokémon reads its Trainer's Feature list).
+
+   Augmentation Shock is a buff (key "augShock") carrying the penalty, so every roll, Evasion and
+   Skill Check already reads it, and it rides the turn tracker for its 2 rounds (life 2, stamped on
+   the shocked creature's own token). While it is on, augLive() answers null for every
+   Augmentation - that is the one switch that turns them all off. It is put on by:
+     • Electric damage over 25% of Max HP landing through the Map (augAfterHit), Doubly-Resisted maths
+       for an Electric-immune target, Massive Damage only with the Shock Resistance Edge;
+     • Thunder Wave (inflictStatuses, whether or not the Paralysis sticks);
+     • an EMP (empHit, the 📴 buttons on the card / token menu);
+     • the card's own ⚡ button, for anything else the GM rules counts.
+   Emergency Reactivation (1 AP, once a Scene per target) and worn Mesh Shielding (1d2) are rolled in
+   automatically on the way.
+
+   All the helpers are function declarations (no consts) because trainerDerived / monCapabilities
+   reach them, and those can run from load() before a const below `let state` would exist.
+=================================================================== */
+function augDefs(){
+  return augDefs.list || (augDefs.list = [
+    { name:"Datajack", slot:"", cap:0, cost:500,
+      fx:"Interfaces directly with computers and networks; wireless communication.", ed:"" },
+    { name:"Enhanced Sight", slot:"Eyes", cap:1, cost:2000,
+      fx:"Sees in infrared: the Darkvision Capability.", ed:"X-Ray Vision Capability too." },
+    { name:"Smart Vision", slot:"Eyes", cap:2, cost:3000,
+      fx:"Accuracy can't be lowered and its attacks take no Accuracy penalties; immune to Blinded.", ed:"Knows Feint without a Move slot." },
+    { name:"Synthetic Muscle", slot:"Limbs", cap:2, cost:2000,
+      fx:"+2 Power, +1 High Jump and Long Jump.", ed:"Recovers from Injuries twice as fast and heals one more Injury per day." },
+    { name:"Embedded Weaponry", slot:"Limbs", cap:3, cost:4000,
+      fx:"A Small Melee or Short Range weapon, always equipped, can't be disarmed. Adept Move: Bash!, Cheap Shot or Pierce!.", ed:"The weapon is Fine and gains Deadly Strike as its Master Move." },
+    { name:"Medical Nanobots", slot:"Body", cap:2, cost:2000,
+      fx:"3 times a day (Extended): a Leftovers Digestion Buff that doesn't use a Digestion slot — one at a time.", ed:"Once a Scene (Standard): cure every Persistent Status Affliction." },
+    { name:"Wired Reflexes", slot:"Body", cap:3, cost:3000,
+      fx:"2 Reflex Points a Scene. Swift: +2 Accuracy or +2 Evasion for one full round.", ed:"+1 Reflex Point; a point may buy +2 Critical Range for a round instead." },
+    { name:"Dermal Plating", slot:"Dermal", cap:3, cost:4000,
+      fx:"Once a Scene, take Physical damage as if resisted one step further.", ed:"Works on Special damage too." },
+    { name:"Thermal-Optical Camouflage", slot:"Dermal", cap:4, cost:8000,
+      fx:"Once a Scene, become Invisible — thermal imaging can't see it either.", ed:"Also invisible to Aura Reading and Thought Detection." },
+  ]);
+}
+function augDef(name){ const n = String(name||"").toLowerCase(); return augDefs().find(d => d.name.toLowerCase() === n) || null; }
+function ownerAugs(o){ return (o && Array.isArray(o.augs)) ? o.augs.filter(a => a && augDef(a.name)) : []; }
+function hasAugs(o){ return ownerAugs(o).length > 0; }
+function augOf(o, name){ const n = String(name).toLowerCase(); return ownerAugs(o).find(a => a.name.toLowerCase() === n) || null; }
+function augShocked(o){ return ownerBuffs(o).some(b => b.key === "augShock"); }
+/* the Augmentation if it is installed AND working right now */
+function augLive(o, name){ const a = augOf(o, name); return (a && !augShocked(o)) ? a : null; }
+/* whose Upgrader Features count: your own, or your Trainer's ("You and your Pokémon…") */
+function augUpgrader(o){ if(!o) return null; if(isTrainerOwner(o)) return o; try{ return ownerTrainerOf(o) || null; }catch(e){ return null; } }
+function augHasFeat(o, feat){ const t = augUpgrader(o); try{ return !!t && hasFeatureLoose(t, feat); }catch(e){ return false; } }
+function augCapacity(o){ return 10 + (augHasFeat(o, "Efficient Installation") ? 2 : 0); }
+function augUsed(o){ return ownerAugs(o).reduce((n,a) => n + (augDef(a.name).cap||0), 0); }
+/* "a penalty … equal to half of their used Augmentation Capacity"; Efficient Installation counts it 2 lower */
+function augShockPenalty(o){ return Math.floor(Math.max(0, augUsed(o) - (augHasFeat(o, "Efficient Installation") ? 2 : 0)) / 2); }
+function augUse(o, key, max){
+  if(!o.uses || typeof o.uses !== "object") o.uses = {};
+  const n = o.uses[key] || 0; if(n >= max) return false;
+  o.uses[key] = n + 1; return true;
+}
+function augUsesLeft(o, key, max){ return Math.max(0, max - ((o.uses && o.uses[key]) || 0)); }
+const AUG_REFLEX_KEY = "aug:wired reflexes";
+
+/* ---- Pokébots ---- */
+function isPokebot(o){ return !!o && !isTrainerOwner(o) && !!(getSpecies(o.species) || {}).pokebot; }
+/* "immune to all Status Effects except for Burn, Frozen, Paralysis, Disabled, Suppressed, Trapped,
+   Slowed and Flinch" — Chilled is the Boss Template's Frozen, so it goes through with it */
+function pokebotStatusImmune(o, key){
+  if(!isPokebot(o)) return "";
+  if(["burned","frozen","chilled","paralysis","disabled","suppressed","trapped","slowed","flinch"].includes(key)) return "";
+  const k = statusKind(key);
+  if(k === "persistent" || k === "volatile" || key === "stuck" || key === "blinded")
+    return "Pokébot — immune to every Status but Burn, Frozen, Paralysis, Disabled, Suppressed, Trapped, Slowed and Flinch";
+  return "";
+}
+
+/* ---- the passive numbers ---- */
+function augCapBonus(o){
+  const out = { power:0, highJump:0, longJump:0, caps:[] };
+  if(!hasAugs(o)) return out;
+  if(augLive(o, "Synthetic Muscle")){ out.power += 2; out.highJump += 1; out.longJump += 1; }
+  const es = augLive(o, "Enhanced Sight");
+  if(es){ out.caps.push("Darkvision"); if(es.ed) out.caps.push("X-Ray Vision"); }
+  return out;
+}
+/* Embedded Weaponry is a real row on the Weapons card (flagged augWeapon), kept in step with the
+   Augmentation: installed → there and equipped if nothing else is; removed → gone. */
+function syncAugWeapon(t){
+  if(!t || !isTrainerOwner(t)) return;
+  if(!Array.isArray(t.weapons)) t.weapons = [];
+  const a = augOf(t, "Embedded Weaponry");
+  const i = t.weapons.findIndex(w => w && w.augWeapon);
+  if(!a){ if(i >= 0) t.weapons.splice(i, 1); return; }
+  const cat = a.opt === "Short Range" ? "Short Range" : "Small Melee";
+  const pre = WEAPON_PRESETS[cat];
+  const w = i >= 0 ? t.weapons[i]
+    : { id:uid(), type:"Normal", weaponMove:"", equipped: !t.weapons.some(x => x && x.equipped) };
+  Object.assign(w, { name:`Embedded ${cat === "Short Range" ? "Launcher" : "Blade"} (augmentation)`, category:cat,
+    dbMod:pre.dbMod, acMod:pre.acMod, range:pre.range, twoHanded:false, augWeapon:true,
+    weaponMoveAdept: a.move || "Pierce!", weaponMoveMaster: a.ed ? "Deadly Strike" : "",
+    notes:"Embedded Weaponry — always equipped, can't be disarmed." + (a.ed ? " Experimental Designs: Fine, with Deadly Strike." : "") });
+  if(i < 0) t.weapons.push(w);
+}
+
+/* ---- Augmentation Shock ---- */
+function augShock(o, why){
+  if(!o || !hasAugs(o)) return "";
+  if(augShocked(o)) return `${ownerLabel(o)} is already in Augmentation Shock.`;
+  if(isTrainerOwner(o) && Object.values(o.equipment || {}).some(e => e && /^mesh shielding$/i.test(String(e.name || "").trim()))
+     && Math.random() < 0.5)
+    return `\u{1F9F6} Mesh Shielding rolled a 1 — ${ownerLabel(o)} shrugs off the ${why}.`;
+  const t = augUpgrader(o), erKey = "aug:emergency reactivation";
+  if(t && augHasFeat(o, "Emergency Reactivation") && !(o.uses && o.uses[erKey])){
+    let ok = false;
+    try{ ok = trainerAPUsed(t) < trainerDerived(t).ap; }catch(e){}
+    if(ok){
+      t.usedAP = (t.usedAP || 0) + 1; augUse(o, erKey, 1);
+      return `\u{1F504} Emergency Reactivation (1 AP from ${ownerLabel(t)}) — ${ownerLabel(o)} stays online through the ${why}. Once a Scene per target; the next one lands.`;
+    }
+  }
+  const n = augShockPenalty(o);
+  const sk = {}; SKILLS.forEach(([k]) => sk[k] = -n);
+  const b = { id:uid(), key:"augShock", name:"Augmentation Shock", cat:"Augmentation", dur:"2 rounds", once:false,
+              mods:{ acc:-n, dmg:-n, eva:-n, skills:sk },
+              note:`From the ${why}. Every Augmentation is offline; −${n} to all rolls and Evasion.` };
+  let tok = null; try{ tok = tokenForOwner(o); }catch(e){}
+  const seq = curTurnSeq();
+  if(tok && seq != null){ b.turnStamp = seq; b.life = 2; b.src = tok.id; b.srcName = ownerLabel(o); }
+  if(!Array.isArray(o.buffs)) o.buffs = [];
+  o.buffs.push(b);
+  return `⚡ Augmentation Shock — ${ownerLabel(o)}'s Augmentations are offline for 2 rounds, −${n} to all rolls and Evasion (${why}).`;
+}
+/* the Map's damage tool, after the HP has moved */
+async function augAfterHit(token, br){
+  const o = br && br.owner;
+  if(!o || !hasAugs(o) || br.typeless || br.type !== "Electric") return;
+  const max = ownerMaxHP(o) || 1;
+  // "For targets with Electric-Type Immunity, calculate the damage they would take if they were Doubly Resistant"
+  const dmg = br.mult === 0 ? Math.max(0, Math.floor((br.afterDef || 0) * ptuEffMult(-2)) - (br.dr || 0)) : (br.final || 0);
+  const shockRes = isTrainerOwner(o) && trainerHasEdge(o, "Shock Resistance");
+  if(!(shockRes ? dmg >= max / 2 : dmg > max / 4)) return;
+  const msg = augShock(o, `${dmg} Electric damage`);
+  if(!msg) return;
+  br.coatNotes = br.coatNotes || []; br.coatNotes.push(msg);
+  await commitTokenSource(token);
+}
+/* an EMP Grenade landing on one target (Do Porygon Dream of Mareep p.50) */
+function empHit(o, flinch){
+  const out = [];
+  if(isPokebot(o)){
+    const turns = 1 + Math.floor(Math.random() * 2);
+    const b = { id:uid(), key:"empDown", name:"EMP — offline", cat:"Augmentation", dur:`${turns} turn${turns > 1 ? "s" : ""}`, once:false, mods:{},
+                note:"Knocked out by an EMP: it can't act until this wears off." };
+    let tok = null; try{ tok = tokenForOwner(o); }catch(e){}
+    const seq = curTurnSeq();
+    if(tok && seq != null){ b.turnStamp = seq; b.life = turns; b.src = tok.id; b.srcName = ownerLabel(o); }
+    o.buffs = ownerBuffs(o).filter(x => x.key !== "empDown"); o.buffs.push(b);
+    out.push(`\u{1F4F4} ${ownerLabel(o)} is offline for ${turns} turn${turns > 1 ? "s" : ""} (1d2).`);
+  }
+  if(hasAugs(o)){
+    out.push(augShock(o, "EMP Grenade"));
+    if(flinch && inflictStatus(o, "flinch").ok) out.push(`${ownerLabel(o)} Flinches (Accuracy 18+).`);
+  }
+  return out.filter(Boolean).join(" ") || `${ownerLabel(o)} has no Augmentations and isn't a Pokébot — the EMP does nothing to it.`;
+}
+
+/* ---- the card: Trainer sheet, Pokémon sheet, encounter cards and the token menu ---- */
+function augmentsCard(owner, commit, opts={}){
+  if(!owner) return null;
+  if(!Array.isArray(owner.augs)) owner.augs = [];
+  const augs = ownerAugs(owner), bot = isPokebot(owner);
+  if(opts.onlyIfAny && !augs.length && !bot) return null;
+  const say = m => { if(m) toast(m); commit(); };
+  const used = augUsed(owner), cap = augCapacity(owner), shocked = augShocked(owner);
+  const body = el("div",{});
+  if(bot) body.append(el("div",{class:"small muted",style:"margin-bottom:6px"},
+    "\u{1F916} Pokébot (Do Porygon Dream of Mareep p.52) — the sheet applies it: a Typeless chassis takes Super-Effective damage from Fire, Electric and Ground, gets no STAB, and is immune to every Status but Burn, Frozen, Paralysis, Disabled, Suppressed, Trapped, Slowed and Flinch. An EMP knocks it offline for 1d2 turns; at −200% HP it is scrap."));
+  if(used > cap) body.append(el("div",{class:"small",style:"color:var(--danger);font-weight:700"},
+    `Over Capacity: ${used} used of ${cap}.`));
+  if(augs.filter(a => a.ed).length > 2) body.append(el("div",{class:"small",style:"color:var(--danger)"},
+    "Experimental Designs may affect a target only twice."));
+  if(shocked){
+    const b = ownerBuffs(owner).find(x => x.key === "augShock");
+    body.append(el("div",{class:"small",style:"color:var(--danger);font-weight:700;margin:4px 0"},
+      `⚡ AUGMENTATION SHOCK — everything below is offline; −${(b && -b.mods.acc) || 0} to all rolls and Evasion. `,
+      el("button",{class:"linkbtn",onclick:()=>{ owner.buffs = ownerBuffs(owner).filter(x => x.key !== "augShock"); commit(); }},"end it")));
+  }
+  augs.forEach(a => {
+    const d = augDef(a.name);
+    const row = el("div",{class:"buff-row",style:"align-items:flex-start"});
+    const info = el("div",{style:"flex:1;min-width:0"},
+      el("div",{class:"buff-name"}, `${a.name}`, el("span",{class:"muted small"}, `  ·  ${d.slot || "no slot"} · Capacity ${d.cap}`)),
+      el("div",{class:"small muted"}, d.fx),
+      (a.ed && d.ed) ? el("div",{class:"small",style:"color:var(--accent)"}, `⚗ ${d.ed}`) : "");
+    const acts = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-top:4px"});
+    const live = !shocked;
+    const btn = (label, title, fn, on = true) => el("button",{class:"btn-secondary",style:"padding:3px 8px",title, disabled: !(live && on), onclick:fn}, label);
+    if(a.name === "Wired Reflexes"){
+      const max = a.ed ? 3 : 2, left = augUsesLeft(owner, AUG_REFLEX_KEY, max);
+      acts.append(el("span",{class:"small muted"}, `Reflex Points ${left}/${max}`));
+      const spend = (kind) => () => {
+        if(!augUse(owner, AUG_REFLEX_KEY, max)) return;
+        const mods = kind === "acc" ? { acc:2 } : kind === "eva" ? { eva:2 } : { crit:2 };
+        const nb = { id:uid(), key:"reflex", name:`Wired Reflexes +2 ${kind === "acc" ? "Accuracy" : kind === "eva" ? "Evasion" : "Critical Range"}`,
+                     cat:"Augmentation", dur:"until end of next turn", once:false, mods, note:"One full round (Swift Action)." };
+        stampTurnBuff(nb); if(!Array.isArray(owner.buffs)) owner.buffs = []; owner.buffs.push(nb);
+        say(`⚡ ${nb.name} for one full round`);
+      };
+      acts.append(btn("+2 Acc", "Swift: +2 Accuracy for one full round", spend("acc"), left > 0),
+                  btn("+2 Eva", "Swift: +2 Evasion for one full round", spend("eva"), left > 0));
+      if(a.ed) acts.append(btn("+2 Crit", "Swift: +2 Critical Range for one full round", spend("crit"), left > 0));
+    }
+    if(a.name === "Dermal Plating"){
+      const k = "aug:dermal plating", left = augUsesLeft(owner, k, 1);
+      const armed = ownerCoats(owner).some(c => c.kind === "dermal");
+      acts.append(armed ? el("span",{class:"small",style:"color:var(--accent);font-weight:700"},"\u{1F6E1} armed — the next qualifying hit is resisted one step further")
+        : btn("\u{1F6E1} Arm for the next hit", "Once a Scene: the next " + (a.ed ? "" : "Physical ") + "hit that lands is resisted one step further", () => {
+            if(!augUse(owner, k, 1)) return;
+            if(!Array.isArray(owner.coats)) owner.coats = [];
+            owner.coats.push({ id:uid(), key:"aug-dermal", name:"Dermal Plating", kind:"dermal", cls: a.ed ? "any" : "phys",
+                               note:`the next ${a.ed ? "" : "Physical "}hit is resisted one step further` });
+            say("\u{1F6E1} Dermal Plating armed");
+          }, left > 0));
+    }
+    if(a.name === "Thermal-Optical Camouflage"){
+      const k = "aug:thermal-optical camouflage", left = augUsesLeft(owner, k, 1);
+      acts.append(btn("\u{1F47B} Go Invisible", "Once a Scene: the Invisible condition", () => {
+        if(!augUse(owner, k, 1)) return;
+        const r = inflictStatus(owner, "invisible");
+        say(r.ok ? `\u{1F47B} ${ownerLabel(owner)} is Invisible` : `Not Invisible${r.why ? ` — ${r.why}` : ""}`);
+      }, left > 0));
+    }
+    if(a.name === "Medical Nanobots"){
+      const k = "augday:medical nanobots", left = augUsesLeft(owner, k, 3);
+      const has = digestionList(owner).some(b => b.nanobot);
+      acts.append(btn(`\u{1F343} Leftovers buff (${left}/3 today)`, "Extended Action: a Leftovers Digestion Buff outside your Digestion limit, one at a time", () => {
+        if(digestionList(owner).some(b => b.nanobot) || !augUse(owner, k, 3)) return;
+        digestionList(owner).push({ id:uid(), item:"Leftovers", from:"Medical Nanobots", exempt:true, storage:false,
+          note:"Medical Nanobots — not counted against the Digestion limit", taste:"", accTaste:"", nanobot:true });
+        say("\u{1F343} Medical Nanobots — a Leftovers Digestion Buff is stored");
+      }, left > 0 && !has));
+      if(a.ed){
+        const k2 = "aug:medical nanobots cure", left2 = augUsesLeft(owner, k2, 1);
+        acts.append(btn("\u{1F48A} Cure Persistent", "Once a Scene, Standard Action: cure every Persistent Status Affliction", () => {
+          if(!augUse(owner, k2, 1)) return;
+          owner.statuses = (owner.statuses || []).filter(s => statusKind(s) !== "persistent");
+          say(`\u{1F48A} ${ownerLabel(owner)} is cured of every Persistent Status`);
+        }, left2 > 0));
+      }
+    }
+    if(a.name === "Embedded Weaponry" && isTrainerOwner(owner)){
+      const cat = el("select",{style:"width:auto"}, ...["Small Melee","Short Range"].map(v => el("option",{value:v, selected: (a.opt || "Small Melee") === v}, v)));
+      const mv = el("select",{style:"width:auto"}, ...["Bash!","Cheap Shot","Pierce!"].map(v => el("option",{value:v, selected: (a.move || "Pierce!") === v}, v)));
+      cat.addEventListener("change", () => { a.opt = cat.value; syncAugWeapon(owner); commit(); });
+      mv.addEventListener("change", () => { a.move = mv.value; syncAugWeapon(owner); commit(); });
+      acts.append(cat, mv, el("span",{class:"small muted"}, "— on the Weapons card"));
+    }
+    if(d.ed){
+      const cb = el("input",{type:"checkbox"}); cb.checked = !!a.ed;
+      cb.addEventListener("change", () => { a.ed = cb.checked; if(a.name === "Embedded Weaponry") syncAugWeapon(owner); commit(); });
+      acts.append(el("label",{class:"inline small",style:"gap:4px;cursor:pointer",title:"Upgraded by an Upgrader's Experimental Designs"}, cb, "⚗ Experimental"));
+    }
+    info.append(acts);
+    row.append(info, el("button",{class:"linkbtn danger",onclick:()=>{
+      owner.augs = owner.augs.filter(x => x !== a);
+      if(a.name === "Embedded Weaponry") syncAugWeapon(owner);
+      if(a.name === "Dermal Plating" && owner.coats) owner.coats = owner.coats.filter(c => c.kind !== "dermal");
+      commit(); }},"remove"));
+    body.append(row);
+  });
+  // install
+  const taken = new Set(augs.map(a => augDef(a.name).slot).filter(Boolean));
+  const stack = augHasFeat(owner, "Efficient Installation");          // "can install multiple Augmentations in the same Slot"
+  const sel = el("select",{}, el("option",{value:""},"+ Install an Augmentation…"),
+    ...augDefs().filter(d => !augOf(owner, d.name)).map(d => el("option",{value:d.name, disabled: !stack && d.slot && taken.has(d.slot)},
+      `${d.name} — ${d.slot || "no slot"}, Capacity ${d.cap}${!stack && d.slot && taken.has(d.slot) ? " (slot taken)" : ""}`)));
+  sel.addEventListener("change", () => {
+    if(!sel.value) return;
+    owner.augs.push({ name:sel.value });
+    if(sel.value === "Embedded Weaponry") syncAugWeapon(owner);
+    commit();
+  });
+  const tools = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-top:8px"});
+  if(!bot || augs.length) tools.append(sel);
+  if(augs.length) tools.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",disabled:shocked,
+    title:"Augmentation Shock by hand — Electric damage over 25% of Max HP, Thunder Wave and EMPs through the Map already do this on their own",
+    onclick:()=> say(augShock(owner, "shock"))},"⚡ Augmentation Shock"));
+  if(augs.length || bot){
+    tools.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"Hit by an EMP Grenade: Pokébots offline 1d2 turns, Augmentations shocked",
+      onclick:()=> say(empHit(owner, false))},"\u{1F4F4} EMP hit"));
+    if(augs.length) tools.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",title:"EMP Grenade whose Accuracy roll was 18+: also Flinches an augmented target",
+      onclick:()=> say(empHit(owner, true))},"\u{1F4F4} EMP hit (18+)"));
+  }
+  body.append(tools);
+  const title = el("h3",{}, "\u{1F9BE} Augmentations",
+    el("span",{class:"muted small"}, bot && !augs.length ? "Pokébot" : `Capacity ${used} / ${cap}`));
+  if(!augs.length && !bot){
+    // nothing installed: a closed fold, so every Pokémon sheet doesn't grow a card it doesn't use
+    const det = el("details",{class:"card"}, el("summary",{class:"small",style:"cursor:pointer;font-weight:700"}, "\u{1F9BE} Augmentations — none installed"));
+    det.append(body);
+    return det;
+  }
+  const card = el("div",{class:"card"}, title);
+  card.append(body);
+  return card;
+}
 function defenseTypeMods(p, opts){
   const mold = !!(opts && opts.moldBreaker);
   const step = {}, immune = new Set(), why = [];
@@ -7401,7 +7725,18 @@ function defenseTypeMods(p, opts){
   if(A("Cave Crasher")){ add("Ground",-1); add("Rock",-1); why.push("Cave Crasher: resists Ground & Rock one step further"); }
   if(A("Sacred Bell")){ add("Dark",-1); add("Ghost",-1); why.push("Sacred Bell: resists Dark & Ghost one step further"); }
   // resists a Type one step LESS (extra vulnerability)
+  const dermalCoat = ownerCoats(p).find(c => c.kind === "dermal");
+  const dermal = dermalCoat ? (dermalCoat.cls || "phys") : null;
+  if(dermal) why.push(`Dermal Plating: the next ${dermal === "any" ? "" : "Physical "}hit is resisted one step further`);
   if(A("Fluffy")){ add("Fire",+1); why.push("Fluffy: weaker to Fire (also resists Melee further — not shown on the Type chart)"); }
+  /* Pokébots (Do Porygon Dream of Mareep p.52): "take Super-Effective damage from Fire, Electric, and
+     Ground Moves". A Typeless chassis only - a Metal Coat Pokébot "ignores its base Pokébot type
+     relations" and is simply a Steel-Type, so it reads the real chart instead. Not an Ability, so
+     Mold Breaker has nothing to switch off here. */
+  if(getSpecies(p.species)?.pokebot && !monNaturalTypes(p).length){
+    add("Fire",+1); add("Electric",+1); add("Ground",+1);
+    why.push("Pokébot: weak to Fire, Electric & Ground");
+  }
   // Coats (Water Sport, Mud Sport, Tar Shot): a Type step until the first hit of that Type spends it
   ownerCoats(p).forEach(c => { if((c.kind === "resist" || c.kind === "vuln") && c.type){
     add(c.type, c.step || 0); why.push(`${c.name}: ${c.step < 0 ? "resists" : "weaker to"} ${c.type} one step (until hit by one)`); } });
@@ -7474,7 +7809,7 @@ function defenseTypeMods(p, opts){
   const overgrowth = ownerBuffs(p).some(b => b.key === "overgrowth");
   if(overgrowth) why.push("Overgrowth: one step less resistant to Grass (never past neutral)");
   if(mold) why.unshift(MOLD_BREAKER_WHY);
-  return { step, immune, wonderGuard, seReduce, seFlatDR, tolerance, furCoat, iceScales, allResist, rogueMega, mold, overgrowth,
+  return { dermal, step, immune, wonderGuard, seReduce, seFlatDR, tolerance, furCoat, iceScales, allResist, rogueMega, mold, overgrowth,
            typeDR: mergeTypeDR(mergeTypeDR(modeTypeDR(p), buffTypeDR(p)), gear.typeDR), specTypeDR, glacial, why };
 }
 /* ---- Mold Breaker and its two Type-limited cousins (attacker side) ------------------------
@@ -7571,6 +7906,8 @@ function monImage(p){
      picture saved for THAT form (p.formArt, keyed by the copied species), or - with none - falls
      through to the dex artwork of whatever monLookName says it looks like. */
   if(p && p.transform){ const a = formArtOf(p); return (a && a.image) || ""; }
+  // a worn alternate form (avatarFormModes) - an encounter enemy's "phase two" - beats its own photo
+  const alt = avatarFormOf(p, avatarFormKey(p)); if(alt) return alt.image;
   return p.mega ? (p.megaImage||"") : (p.image||"");
 }
 /* A Transformed creature's pictures, one per form it has taken: { "<species>": {image, focus} }.
@@ -7588,16 +7925,19 @@ function setMonImage(p, url){
     if(a){ a.image = url; delete a.focus; if(!url) delete p.formArt[p.transform.species]; }   // a new photo needs a new crop
     return;
   }
+  const ak = avatarFormKey(p); if(ak){ setAvatar(p, url, ak); return; }   // a worn alternate form's picture is the one on show
   if(p.mega) p.megaImage = url; else p.image = url;
   delete p[p.mega ? "megaImageFocus" : "imageFocus"];   // a new photo needs a new crop (openMonImageFocus)
 }
 /* the crop of whichever picture monImage is showing */
 function monFocusGet(p){
   if(p && p.transform){ const a = formArtOf(p); return a ? a.focus : undefined; }
+  const alt = avatarFormOf(p, avatarFormKey(p)); if(alt) return alt.focus;
   return p[monFocusKey(p)];
 }
 function monFocusSet(p, f){
   if(p && p.transform){ const a = formArtOf(p); if(a){ if(f) a.focus = f; else delete a.focus; } return; }
+  const alt = avatarFormOf(p, avatarFormKey(p)); if(alt){ if(f) alt.focus = f; else delete alt.focus; return; }
   const k = monFocusKey(p); if(f) p[k] = f; else delete p[k];
 }
 /* ---------- custom species artwork (homebrew Megas, Vulpoxen, "Mom?", …) ----------
@@ -7663,7 +8003,8 @@ function attachArtFallback(img, srcs, key){
 /* Homebrew species whose artwork ships in the repo itself (assets/species/<slug>.webp), so they
    render with no Storage-bucket upload needed. Bundled art is same-origin, costs no egress, and
    still lets the bucket + DB URLs trail behind as fallbacks. Drop a file in and add its slug here. */
-const LOCAL_SPECIES_ART = new Set(["dracosaur","arctosaur","dunklevish","raptozolt","iron-mach"]);
+const LOCAL_SPECIES_ART = new Set(["dracosaur","arctosaur","dunklevish","raptozolt","iron-mach",
+  "patrol-bot","security-bot","sentry-bot","enforcer","bulwark","arcjet","reboot"]);
 function localSpeciesArt(name){
   const slug = slugify(name);
   return LOCAL_SPECIES_ART.has(slug) ? [`assets/species/${slug}.webp?v=1`] : [];
@@ -8167,6 +8508,7 @@ function renderTrainer(){
 
   /* buffs & orders (Cheers / Commander Orders / Musician Songs) */
   root.append(buffsCard(t, ()=>preserveScroll(()=>{ save(); renderTrainer(); })));
+  root.append(augmentsCard(t, ()=>preserveScroll(()=>{ save(); renderTrainer(); })));
 
   /* food: Snacks out of the bag → Digestion Buffs, plus Refreshments (Core p.278-279) */
   root.append(digestionCard(t, ()=>preserveScroll(()=>{ save(); renderTrainer(); })));
@@ -10859,32 +11201,42 @@ function trainerAvatar(t){
   if(t.avatar) acts.append(el("button",{class:"linkbtn",onclick:()=>{ setAvatar(t, ""); save(); renderTrainer(); }},"remove"));
   wrap.append(acts);
   // a stance this Trainer owns that has its own look: its picture is set here whether or not the stance is up
-  avatarFormModes(t).forEach(m => {
-    const f = avatarFormOf(t, m.key), on = m.custom ? !!m.custom.on : modeIsOn(t, m.key);
+  wrap.append(...formPicRows(t, ()=>{ save(); renderTrainer(); }, "avatar"));
+  return wrap;
+}
+/* One row per form that can carry its own picture (avatarFormModes): add / frame / remove it, and wear a
+   free-form one. The Trainer sheet draws these, and so do the encounter cards for enemy Trainers and wild
+   Pokémon; `after` saves + re-renders whichever view they sit in, `subdir` is storeImg's folder. */
+function formPicRows(o, after, subdir){
+  const out = [];
+  avatarFormModes(o).forEach(m => {
+    const f = avatarFormOf(o, m.key), on = m.custom ? !!m.custom.on : modeIsOn(o, m.key);
     const row = el("div",{class:"avatar-acts",title:`the portrait shown while ${m.feat} is up`});
-    row.append(el("button",{class:"linkbtn",onclick:()=>pickImage(framablePicDim(), async d=>{ setAvatar(t, await storeImg(d,"avatar"), m.key); save(); renderTrainer(); })},
+    row.append(el("button",{class:"linkbtn",onclick:()=>pickImage(framablePicDim(), async d=>{ setAvatar(o, await storeImg(d,subdir), m.key); after(); })},
       `${m.icon} ${f && f.image ? "Change" : "Add"} ${m.feat} picture`));
     if(f && f.image) row.append(el("button",{class:"linkbtn",title:"choose which part of the picture is shown",
-      onclick:()=>openAvatarFocus(t, ()=>{ save(); renderTrainer(); }, m.key)},"\u{1F5BC} Frame"));
-    if(f && f.image) row.append(el("button",{class:"linkbtn",onclick:()=>{ setAvatar(t, "", m.key); save(); renderTrainer(); }},"remove"));
+      onclick:()=>openAvatarFocus(o, after, m.key)},"\u{1F5BC} Frame"));
+    if(f && f.image) row.append(el("button",{class:"linkbtn",onclick:()=>{ setAvatar(o, "", m.key); after(); }},"remove"));
     if(m.custom){
       row.append(el("button",{class:"linkbtn",style:on ? "font-weight:800" : "",
         title:"wear this form: its picture replaces the portrait on the sheet and on the Map until you switch it off",
-        onclick:()=>{ t.altForms.forEach(a => { if(a !== m.custom) a.on = false; }); m.custom.on = !m.custom.on; save(); renderTrainer(); }},
+        onclick:()=>{ wearAltForm(o, m.custom); after(); }},
         on ? "● showing — switch off" : "○ wear this form"));
       row.append(el("button",{class:"linkbtn",title:"delete this form",
-        onclick:()=>{ t.altForms = t.altForms.filter(a => a !== m.custom); if(t.formAvatar) delete t.formAvatar[m.key]; save(); renderTrainer(); }},"×"));
+        onclick:()=>{ o.altForms = o.altForms.filter(a => a !== m.custom); if(o.formAvatar) delete o.formAvatar[m.key]; after(); }},"×"));
     } else if(f && f.image) row.append(el("span",{class:"small muted"}, on ? "showing now" : "shown while transformed"));
-    wrap.append(row);
+    out.push(row);
   });
-  wrap.append(el("div",{class:"avatar-acts"}, el("button",{class:"linkbtn",
-    title:"a picture for any transformation: a rage, a Gift's form, a costume. Name it, add its picture, then wear it.",
+  out.push(el("div",{class:"avatar-acts"}, el("button",{class:"linkbtn",
+    title:"a picture for any transformation: a rage, a Gift's form, a costume, a Boss's second phase. Name it, add its picture, then wear it.",
     onclick:()=>{ const n = prompt("Name of the form (e.g. Rage, Wolf Form):", ""); if(!n || !n.trim()) return;
-      if(!Array.isArray(t.altForms)) t.altForms = [];
-      t.altForms.push({ id:uid(), name:n.trim(), on:false }); save(); renderTrainer(); }},
+      if(!Array.isArray(o.altForms)) o.altForms = [];
+      o.altForms.push({ id:uid(), name:n.trim(), on:false }); after(); }},
     "\u{1F3AD} + Alternate form picture")));
-  return wrap;
+  return out;
 }
+/* only one free-form look is worn at a time; wearing the one already on takes it off */
+function wearAltForm(o, form){ (o.altForms || []).forEach(a => { if(a !== form) a.on = false; }); form.on = !form.on; }
 /* ═══════════════════════ MONEY & THE LEDGER ═══════════════════════
    Money never just changes. Every movement is written down on the sheet itself
    (`t.moneyLog`): when, how much, what the balance became, why, and who did it. So
@@ -12872,7 +13224,7 @@ const EQUIP_EFFECTS = {
   "gravity modulation suit":{ note:"Treat local gravity as 1 higher or lower." },
   "thermal dampening suit": { note:"Invisible to thermal imaging gear." },
   "tera orb":               { note:"Daily, Swift Action — Terastalize one of your Pokémon: press \u{1F48E} Terastallize on its card. It loses its regular Types and becomes its Tera Type until it Faints or the Scene ends, keeps STAB from its ORIGINAL Types, gains none on the Tera Type, and gets +10 damage on every Move of that Type instead." },
-  "soothing flute":         { note:"1/Scene Standard Action: cures Enraged on all who hear it, and grants up to your Occult Ed. Rank allies +5 Damage Reduction against Ghost-Type Attacks for the rest of the Scene — use ⚔ Battle → Standard → 🎵 Soothing Flute." },
+  "soothing flute":         { note:"1/Scene Standard Action: cures Sleep on all who hear it, and grants up to your Occult Ed. Rank allies +5 Damage Reduction against Ghost-Type Attacks for the rest of the Scene — use ⚔ Battle → Standard → 🎵 Soothing Flute." },
 };
 /* mojibake cleanup for the catalog effect strings (é/apostrophes/dashes got double-encoded on import) */
 function cleanupText(s){
@@ -13367,7 +13719,7 @@ function equipmentCard(t){
 
 /* ===================================================================
    SOOTHING FLUTE (Trainer Accessory) — 1/Scene Standard Action: cures
-   Enraged on everyone who hears it, and grants up to Occult Ed. Rank
+   Sleep on everyone who hears it, and grants up to Occult Ed. Rank
    allies +5 Damage Reduction against Ghost-Type Attacks for the rest of
    the Scene. The DR is one PTU_BUFFS row (soothing-flute-dr) so it flows
    through the same buffDR / defenseTypeMods plumbing every other buff
@@ -13386,6 +13738,13 @@ function cureEnraged(o){
   o.statuses = o.statuses.filter(k=>k!=="enraged");
   return true;
 }
+/* wake from Sleep: Sleep, a Boss's Drowsy, and the Bad Sleep that only rides on a sleeper */
+const FLUTE_WAKE_KEYS = ["sleep", "drowsy", "badSleep"];
+function cureSleep(o){
+  if(!o || !FLUTE_WAKE_KEYS.some(k => hasStatus(o, k))) return false;
+  o.statuses = o.statuses.filter(k => !FLUTE_WAKE_KEYS.includes(k));
+  return true;
+}
 function openSoothingFlute(t, rerender){
   const key = useKey("item","Soothing Flute");
   const team = (activeChar()?.pokemon||[]).filter(p=>p.onTeam);
@@ -13396,11 +13755,11 @@ function openSoothingFlute(t, rerender){
   ];
   const body = el("div",{});
   body.append(el("div",{class:"small",style:"margin-bottom:10px"},
-    `Cures Enraged on everyone who hears it — no limit. Up to your Occult Ed. Rank (${cap}) among them may also gain +5 Damage Reduction against Ghost-Type Attacks for the rest of the Scene.`));
+    `Wakes everyone who hears it from Sleep — no limit. Up to your Occult Ed. Rank (${cap}) among them may also gain +5 Damage Reduction against Ghost-Type Attacks for the rest of the Scene.`));
   const drCount = el("span",{style:"font-weight:700"}, `0 / ${cap}`);
   const refreshCount = () => { drCount.textContent = `${entries.filter(en=>en.drBox.checked).length} / ${cap}`; };
   entries.forEach(en=>{
-    const cureBox = el("input",{type:"checkbox", checked: hasStatus(en.obj,"enraged")});
+    const cureBox = el("input",{type:"checkbox", checked: FLUTE_WAKE_KEYS.some(k => hasStatus(en.obj,k))});
     const drBox = el("input",{type:"checkbox"});
     en.cureBox = cureBox; en.drBox = drBox;
     drBox.addEventListener("change",()=>{
@@ -13411,7 +13770,7 @@ function openSoothingFlute(t, rerender){
     });
     body.append(el("div",{style:"margin-top:8px"},
       el("div",{style:"font-weight:700"}, en.label),
-      el("label",{class:"inline",style:"gap:6px"}, cureBox, "cures Enraged" + (hasStatus(en.obj,"enraged")?" (currently Enraged)":"")),
+      el("label",{class:"inline",style:"gap:6px"}, cureBox, "cures Sleep" + (FLUTE_WAKE_KEYS.some(k => hasStatus(en.obj,k))?" (currently asleep)":"")),
       el("label",{class:"inline",style:"gap:6px;margin-left:16px"}, drBox, "+5 DR vs Ghost")));
   });
   body.append(el("div",{class:"small muted",style:"margin-top:10px"}, "Getting the DR: ", drCount, "."));
@@ -13421,12 +13780,12 @@ function openSoothingFlute(t, rerender){
       if(usesLeft(t, key, 1)<=0 && !t.unlocked){ toast("No Soothing Flute uses left this Scene"); return; }
       let curedN=0, buffedN=0;
       entries.forEach(en=>{
-        if(en.cureBox.checked && cureEnraged(en.obj)) curedN++;
+        if(en.cureBox.checked && cureSleep(en.obj)) curedN++;
         if(en.drBox.checked){ addBuff(en.obj, "soothing-flute-dr"); buffedN++; }
       });
       t.uses = t.uses||{}; t.uses[key] = Math.min(1, (t.uses[key]||0)+1);
       save(); closeModal();
-      toast(`🎵 Soothing Flute — cured Enraged on ${curedN}, granted Ghost DR to ${buffedN}`);
+      toast(`🎵 Soothing Flute — woke ${curedN}, granted Ghost DR to ${buffedN}`);
       (rerender||renderBattle)();
     }},"🎵 Play"),
   ]});
@@ -13442,7 +13801,7 @@ function soothingFluteActionRow(t, rerender){
     el("button",{class:"linkbtn",style:"margin-left:8px",
       onclick:e=>{ e.preventDefault(); e.stopPropagation(); openSoothingFlute(t, rerender); }},"🎵 Play")));
   d.append(el("div",{class:"small",style:"margin-top:6px"},
-    "Cures Enraged on all who hear it, and grants up to your Occult Ed. Rank allies +5 Damage Reduction against Ghost-Type Attacks for the rest of the Scene."));
+    "Wakes all who hear it from Sleep, and grants up to your Occult Ed. Rank allies +5 Damage Reduction against Ghost-Type Attacks for the rest of the Scene."));
   return d;
 }
 
@@ -17762,6 +18121,9 @@ function buffMods(owner, ctx){
   const s = { acc:0, dmg:0, crit:0, db:0, dr:0 };
   ownerBuffs(owner).forEach(b=>{ if(!buffApplies(b,ctx)) return;
     const m=b.mods||{}; s.acc+=m.acc||0; s.dmg+=m.dmg||0; s.crit+=m.crit||0; s.db+=m.db||0; s.dr+=m.dr||0; });
+  /* Smart Vision: "their attacks cannot have Accuracy Penalties" - the minus half of every buff is dropped */
+  if(augLive(owner, "Smart Vision"))
+    ownerBuffs(owner).forEach(b => { if(buffApplies(b, ctx)) s.acc -= Math.min(0, (b.mods && b.mods.acc) || 0); });
   if(ctx && ctx.melee) s.crit += statStratagemBonus(owner).crit;      // Attack Stratagem (found-12)
   /* The Fate Aura's +3 to Attack Rolls. Every accuracy roll in the app reads `bm.acc`, so this is
      the one place it has to go in — the roll modal, the Trainer's weapon swing and the Simulator
@@ -17946,7 +18308,7 @@ function buffModText(m){
   if(m.typeDR) for(const k in m.typeDR) p.push(`+${m.typeDR[k]} DR vs ${k}`);
   if(m.move) p.push(`${m.move>0?"+":""}${m.move} Movement`);
   if(m.skills){ const n = Object.values(m.skills)[0];
-    p.push(`${n>0?"+":""}${n} ${Object.keys(m.skills).map(k=>(SKILLS.find(([s])=>s===k)||[,k])[1]).join("/")}`); }
+    p.push(`${n>0?"+":""}${n} ${Object.keys(m.skills).length >= SKILLS.length ? "all Skills" : Object.keys(m.skills).map(k=>(SKILLS.find(([s])=>s===k)||[,k])[1]).join("/")}`); }
   return p.join(" · ");
 }
 /* buff manager card. `commit` persists + re-renders the surrounding view after any change. */
@@ -19575,6 +19937,7 @@ function renderMonPlay(root, p, sp){
 
   /* buffs & orders (Cheers / Commander Orders / Musician Songs) — kept at the bottom of the page */
   root.append(buffsCard(p, ()=>preserveScroll(()=>{ save(); refreshMon(p); })));
+  root.append(augmentsCard(p, ()=>preserveScroll(()=>{ save(); refreshMon(p); })));
   /* food: eat a Snack from the Trainer's bag, spend the Digestion Buff it stores */
   root.append(digestionCard(p, ()=>preserveScroll(()=>{ save(); refreshMon(p); })));
 }
@@ -20966,6 +21329,13 @@ function monCapabilities(p, sp, opts){
         .forEach(([k,label])=>{ cap[k] = hc[k] || 0; cap.grantedBy[capBaseName(label)] = via.src; });
     }
   }
+  /* Augmentations: Synthetic Muscle (+2 Power, +1 both Jumps), Enhanced Sight (Darkvision / X-Ray Vision) */
+  const augB = augCapBonus(p);
+  if(augB.power || augB.highJump || augB.longJump){
+    cap.power = (cap.power||0) + augB.power; cap.highJump = (cap.highJump||0) + augB.highJump; cap.longJump = (cap.longJump||0) + augB.longJump;
+    note("Power", { src:"Synthetic Muscle", condText:"" });
+  }
+  augB.caps.forEach(c => { if(!cap.other.some(x => capBaseName(x).toLowerCase() === c.toLowerCase())){ cap.other.push(c); note(c, { src:"Enhanced Sight", condText:"" }); } });
   return cap;
 }
 /* "✨ granted by Teleport" suffix for a capability chip's hover text */
@@ -23800,6 +24170,11 @@ function coatsOnHit(owner, br, curHP){
     if(shield.key === "ab-disguise"){ owner.pendCS = (owner.pendCS || 0) + 1;
       br.coatNotes.push("\u{1F3AD} Disguise: the owner now gains +1 Combat Stage in a Stat of its choice \u2014 pick it under \u23f3 Pending on its sheet / token menu."); }
     return true;
+  }
+  const dermal = coats.find(c => c.kind === "dermal");
+  if(dermal && (br.mult > 0 || br.typeless) && (dermal.cls === "any" || br.physical)){
+    removeCoat(owner, dermal.id); changed = true;
+    br.coatNotes.push("\u{1F6E1} Dermal Plating took this hit one step further resisted (its once a Scene).");
   }
   const sub = coats.find(c => c.kind === "sub");
   if(sub && br.final > 0){
@@ -26796,6 +27171,9 @@ function openMoveRoll(p, m, sp, opts={}){
      initiative order (any opponent ahead of the attacker has acted); a manual tick overrides it,
      which matters when the specific target hasn't acted (or there's no live tracker to read). */
   const hasAnalytic = (isPhys || isSpec) && hasAbility(p,"Analytic");
+  /* Grand Hex is the player's choice, never automatic: a tick-box on the Hex roll, off by default. */
+  const hasGrandHex = /^hex$/i.test(String((m && m.name) || "")) && isTrainerOwner(p) && hasFeatureLoose(p, "Grand Hex");
+  let grandHexOn = !!opts.grandHex;
   const analCtx = hasAnalytic ? analyticContext(p) : null;
   const analyticOn = opts.analytic!=null ? !!opts.analytic
                    : !!(analCtx && analCtx.readable && analCtx.actedBefore);
@@ -26939,6 +27317,17 @@ function openMoveRoll(p, m, sp, opts={}){
         : teamworkOn
         ? "Yes — +2 Accuracy on this roll."
         : `Tick this if your Teamwork ally stands adjacent to the foe you are attacking for +2 Accuracy${twCtx.wide ? " (Pack Master: any attack, not only Melee)" : " (Melee attacks)"}.`)));
+    card.append(lbl); body.append(card);
+  }
+  if(hasGrandHex){
+    const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin:0 0 12px"});
+    const lbl = el("label",{style:"display:flex;gap:8px;align-items:flex-start;cursor:pointer"});
+    const cb = el("input",{type:"checkbox"}); cb.checked = grandHexOn;
+    cb.addEventListener("change",()=>{ grandHexOn = cb.checked; opts.grandHex = grandHexOn; });
+    lbl.append(cb, el("div",{},
+      el("div",{class:"small",style:"font-weight:700"}, "\u{1F52E} Grand Hex \u2014 use it if Hex hits? (1 AP, Swift)"),
+      el("div",{class:"small muted"}, "Off unless you tick it. If Hex hits, the roll offers to hand a use back to a Hex Maniac Move that can inflict a Status the target has "
+        + "(and if you ticked Hex's conditional damage boost, its Frequency is not expended). Once per target per Scene.")));
     card.append(lbl); body.append(card);
   }
   /* --- Analytic: +5 vs a target that already acted this Round. Auto-read from the initiative order,
@@ -27921,6 +28310,11 @@ function openMoveRoll(p, m, sp, opts={}){
       if(ancestral && (isPhys||isSpec)){ const an = ancestralStrikeNode(); if(an) out.append(an); }
     }
     if(hpNode) out.append(hpNode);
+    if(grandHexOn && hasGrandHex && feedLogged){
+      out.append(el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin-top:10px"},
+        el("div",{class:"small",style:"font-weight:700"}, "\u{1F52E} Grand Hex \u2014 Hex hit, so you can regain a use"),
+        el("button",{class:"btn-secondary",style:"margin-top:4px",onclick:()=>openGrandHex(p, null, save)}, "\u{1F52E} Pick the Move \u00B7 1 AP")));
+    }
     /* GM override: keep the same Attack Rolls but force a different hit count (e.g. the target's
        real Evasion turned out different, or an ability changed what connects). Damage is re-rolled. */
     if(multi){
@@ -31468,7 +31862,7 @@ function hexCard(t, rerender, persist){
     classBit(card, `Malediction: ${u.left} of ${u.max} left. When a foe within 5 metres misses everything, fire a Status-Class Hex Maniac Move at them as a Free Action — its own Frequency still has to allow it.`);
   }
   if(hasFeatureLoose(t, "Grand Hex"))
-    classBit(card, "Grand Hex: 1 AP, Swift, on hitting a foe with Hex — hand a use back to a Hex Maniac Move that inflicts a Status they are suffering. Once per target per Scene.");
+    classBit(card, "Grand Hex: 1 AP, Swift, on hitting a foe with Hex — hand a use back to a Hex Maniac Move that inflicts a Status they are suffering. Once per target per Scene. Tick it on the Hex roll, or use the button below.");
   const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
   if(r) row.append(el("button",{class:"btn-primary",onclick:()=>openHexStudies(t, rerender, persist)},"🔮 Learn a Hex Maniac Move"));
   if(hasFeatureLoose(t, "Diffuse Pain"))
@@ -38642,6 +39036,19 @@ function openRandomEncounter(){
      and \u{1F49A} Heal fully all work on it unchanged. `ring` is the arena step it is fought at
      (see paintArena) -- the notes say which, and the \u{1F300} Arena panel's "Close in" is the button.
 --------------------------------------------------------------------------------------------- */
+/* The Pokébot roster (data/custom_species.json) as gauntlet specs: Level, Moves and the stat points spent on
+   top of each chassis' base. A Pokébot's stats are its Size's base total plus its Level, so these are
+   already the whole build - spec lines only add a nickname, a Swarm size, and so on. */
+const GAUNTLET_BOTS = {
+  "Patrol Bot":   { lv:12, moves:["Tackle","Take Down"], stats:{atk:4,def:2,spdef:2,spd:4} },
+  "Security Bot": { lv:18, moves:["Tackle","Take Down","Body Slam","Slash","Lock-On","Screech"], stats:{atk:8,def:5,spd:5} },
+  "Sentry Bot":   { lv:20, moves:["Tackle","Lock-On","Tri Attack","Thunder Wave","Conversion"], stats:{spatk:10,spdef:5,spd:5} },
+  "Enforcer":     { lv:28, moves:["Body Slam","Slash","Iron Head","Flash Cannon","Lock-On","Iron Defense"], stats:{hp:6,atk:8,def:6,spdef:4,spd:4} },
+  "Bulwark":      { lv:30, moves:["Iron Head","Body Slam","Slash","Iron Defense","Lock-On"], stats:{hp:8,atk:6,def:10,spdef:6} },
+  "Arcjet":       { lv:28, moves:["Discharge","Thunder Punch","Magnet Rise","Lock-On","Tackle","Take Down"], stats:{hp:3,def:3,spatk:12,spd:10} },
+  "Reboot":       { lv:26, abil:["Regenerator"], moves:["Tackle","Take Down","Screech","Lock-On","Defense Curl","Scratch"], stats:{hp:6,def:4,spdef:8,spd:8} },
+};
+const gbot = (s, extra) => Object.assign({ s, nature:"Hardy" }, GAUNTLET_BOTS[s], extra||{});
 const GAUNTLETS = [
   { id:"watergym", name:"Water Gym — the Abyssal Gauntlet", color:"#1f7a9c",
     party:28, players:3, perPlayer:2, arenaSize:24,
@@ -38727,6 +39134,101 @@ mons:[
                { s:"Sharpedo", lv:32, abil:["Rough Skin","Bully"], nature:"Adamant", moves:["Ice Fang","Slash","Aqua Jet"], tutor:["Night Slash","Double-Edge","Super Fang"], stats:{atk:14,spd:12,hp:10,def:3,spdef:3}, mega:"Mega Sharpedo", boss:2 },
                { s:"Gyarados", lv:34, abil:["Intimidate","Steadfast"], nature:"Adamant", moves:["Bite","Ice Fang","Twister"], tutor:["Aqua Tail","Outrage","Iron Head"], stats:{atk:14,hp:12,def:8,spdef:10}, mega:"Mega Gyarados", boss:3 } ] },
     ] },
+  { id:"botoccupation", name:"Robot Occupation — Run Through Town", icon:"\u{1F916}", color:"#6b7a8f",
+    party:26, players:3, perPlayer:2, arenaSize:24, noArena:true, hideTokens:false,
+    sumNote:" — two quick street fights, the Prison, then the Rivals fight beside you for the last two.",
+    finalNote:"Base Experience Value still prices the Foreman's Augmentations and the Bulwark's second HP bar at nothing. Read it as a full-strength fight against a party the first four have already worn down.",
+    brief:
+      "\u{1F916} THE ROBOT OCCUPATION — run it like this\n"
+    + "• Five fights through town: the Entrance, the Market, the PRISON (where the Rivals are locked up), the Barricade,\n"
+    + "  then the Foundry. The first two are SPEED BUMPS — aim for 2-3 rounds each. There is no full heal between fights.\n"
+    + "• THE RIVALS: Sylvia, Nyx and Phia are in the Prison's cells. Once freed they fight beside the party for the\n"
+    + "  Barricade and the Foundry — put the \"New Rivals\" encounter on the Map and flag each of their tokens as an ALLY.\n"
+    + "  The last two fights are priced for the party AND the Rivals, so they are much bigger on purpose.\n"
+    + "• THE ALARM: if a street fight is still going at the top of round 4, call in 2 more Patrol Bots from the nearest side\n"
+    + "  street, and 2 more every 2 rounds after that. Clear it fast and nothing else arrives.\n"
+    + "• Pokébots: the sheet runs the rules (Do Porygon Dream of Mareep p.52) — Typeless chassis take Super-Effective\n"
+    + "  damage from Fire, Electric and Ground, get no STAB, and shrug off every Status but Burn, Frozen, Paralysis,\n"
+    + "  Disabled, Suppressed, Trapped, Slowed and Flinch. The two Steel frames (Enforcer, Bulwark) use the Steel chart.\n"
+    + "• A Patrol Bot Swarm is ONE token. Single-target hits are resisted a step, area hits land a step harder, and every\n"
+    + "  bar broken makes it slower. Bursts, Blasts, Lines and Cones are the answer.\n"
+    + "• Electric is the answer to the Foreman: Electric damage over 25% of his Max HP, or a Thunder Wave, shocks his\n"
+    + "  Augmentations offline (the sheet does it on its own).",
+    waves:[
+      { name:"The Entrance", ring:0, sig:1, perFoe:6,
+        note:"First contact: a roadblock across the town gate. Four Patrol Bots in a line behind a Security Bot. The bots\n"
+           + "advance and hit the nearest target. The Security Bot opens with Lock-On on the party's best hitter, then Take\n"
+           + "Down / Body Slam. Nothing here should hurt — it shows how many of them there are, and that Fire / Electric /\n"
+           + "Ground hits are worth the turn.",
+        mons:[ gbot("Patrol Bot",{nick:"Patrol Bot A"}), gbot("Patrol Bot",{nick:"Patrol Bot B"}),
+               gbot("Patrol Bot",{nick:"Patrol Bot C"}), gbot("Patrol Bot",{nick:"Patrol Bot D"}),
+               gbot("Security Bot") ] },
+      { name:"The Market", ring:0, sig:1, perFoe:6,
+        note:"A ×3 Patrol Bot Swarm (111 HP across three bars) sweeps the stalls, with a Sentry Bot on a rooftop and a\n"
+           + "Security Bot walking point. This is the swarm lesson: single hits barely dent it; one Burst or Blast knocks a\n"
+           + "whole bar off. The Sentry opens with Thunder Wave on whoever bunches up, then Tri Attack. Kill the Sentry and\n"
+           + "the Swarm is the only real problem left. Someone in the market whispers where the prisoners were taken.",
+        mons:[ gbot("Patrol Bot",{nick:"Patrol Swarm", swarm:3}), gbot("Sentry Bot"), gbot("Security Bot") ] },
+      { name:"The Prison", ring:0, sig:2, perFoe:6,
+        note:"Decently hard — the party's last fight on its own. The town lock-up, run by a WARDEN (an Enforcer) with two\n"
+           + "Security Bots on the cell block, two Sentry Bots in the guard towers, two Patrol Bots and a ×2 Swarm in the yard.\n"
+           + "THE CELLS: Sylvia, Nyx and Phia are each in a cell along the far wall. Opening one is a Standard Action while\n"
+           + "adjacent and a DC 13 Technology Education or Athletics check — or kill the Warden and take its keycard, which\n"
+           + "opens every cell at once. THE EVIDENCE LOCKER (by the towers) holds the Rivals' Poké Balls: until somebody\n"
+           + "opens it (same check), a freed Rival fights with their own Trainer attacks only.\n"
+           + "A freed Rival acts from the next round, on the party's side — place their token from the \"New Rivals\" encounter\n"
+           + "and flag it as an ally. The Warden's first move is Lock-On on whoever is at a cell door.",
+        mons:[ gbot("Enforcer",{nick:"The Warden"}), gbot("Security Bot",{nick:"Security Bot A"}), gbot("Security Bot",{nick:"Security Bot B"}),
+               gbot("Sentry Bot",{nick:"Tower Sentry A"}), gbot("Sentry Bot",{nick:"Tower Sentry B"}),
+               gbot("Patrol Bot",{nick:"Patrol Bot A"}), gbot("Patrol Bot",{nick:"Patrol Bot B"}),
+               gbot("Patrol Bot",{nick:"Yard Swarm", swarm:2}) ] },
+      { name:"The Barricade", ring:0, sig:3, perFoe:6, allies:{ enc:"New Rivals", n:3, lv:30 },
+        note:"WITH THE RIVALS. The wall of scrap in front of the Foundry gate, and the occupation's main garrison. Two Enforcers\n"
+           + "command it: each Locks-On a target and the bots near it pile onto that target, so kill the Enforcers and the rest\n"
+           + "stop coordinating. Three Security Bots hold the gap, two Sentry Bots fire from the top of the wall, two ×3\n"
+           + "Swarms pour through the side streets and two Patrol Bots run messages.\n"
+           + "The Enforcers are Metal Coat Steel frames: they read the Steel chart (weak to Fire, Fighting, Ground), NOT the\n"
+           + "Pokébot one. Nyx's Dark and Phia's Water do little to them; Sylvia's Dragons are the hammer here.",
+        mons:[ gbot("Enforcer",{nick:"Enforcer A"}), gbot("Enforcer",{nick:"Enforcer B"}),
+               gbot("Security Bot",{nick:"Security Bot A"}), gbot("Security Bot",{nick:"Security Bot B"}), gbot("Security Bot",{nick:"Security Bot C"}),
+               gbot("Sentry Bot",{nick:"Wall Sentry A"}), gbot("Sentry Bot",{nick:"Wall Sentry B"}),
+               gbot("Patrol Bot",{nick:"Patrol Swarm A", swarm:3}), gbot("Patrol Bot",{nick:"Patrol Swarm B", swarm:3}),
+               gbot("Patrol Bot",{nick:"Runner A"}), gbot("Patrol Bot",{nick:"Runner B"}) ] },
+      { name:"The Foundry — the Foreman", ring:0, sig:5, perFoe:6, allies:{ enc:"New Rivals", n:3, lv:30 },
+        note:"WITH THE RIVALS. The Foreman — an Engineer / Upgrader — runs the occupation from the Foundry floor.\n"
+           + "HIS KIT (all on his Trainer card): Level 35. Robofighter: he commands a Pokébot on a Standard Action. Overclock\n"
+           + "(Scene, Swift): one Pokébot is cured of Persistent Statuses, resets negative Combat Stages, gains 2 Ticks of Temp HP\n"
+           + "and deals / takes +6 damage for the Scene. Experimental AI lets him run Pokébots up to Complexity 8.\n"
+           + "HIS AUGMENTATIONS (\u{1F9BE} card, 11 of 12 Capacity): Wired Reflexes (2 Reflex Points: +2 Accuracy or Evasion for a\n"
+           + "round), Dermal Plating (Experimental: arm it and the next hit is resisted one step further), Smart Vision (his\n"
+           + "Accuracy can't be lowered), Embedded Weaponry (a Fine blade with Pierce! / Deadly Strike, on his Weapons card).\n"
+           + "THE WEAKNESS: Augmentation Shock — Electric damage over 25% of his max HP or a Thunder Wave shocks him\n"
+           + "automatically: everything goes offline for 2 rounds and he takes -4 to all rolls and Evasion. Emergency\n"
+           + "Reactivation spends 1 of his AP to cancel the FIRST shock each Scene (also automatic) — the party has to land two.\n"
+           + "HIS BOTS: the Bulwark (Large, Steel, Boss Template ×2 — two HP bars and two turns a round; it leads), the Arcjet\n"
+           + "(Discharge / Thunder Punch from range; Paralysis-immune), Reboot (Regenerator, Screech + Lock-On — kill it first or\n"
+           + "the others never stay down) and a Foundry Enforcer guarding him. Two Sentry Bots sit on the catwalks.\n"
+           + "REINFORCEMENTS: a ×3 Patrol Bot Swarm is on this card too — keep its token hidden and bring it in at the top of\n"
+           + "round 3. If it goes badly: leave the Swarm out, or take the Bulwark down to one bar. If it goes too easily:\n"
+           + "Overclock the Bulwark on round 1.",
+        trainers:[ { name:"The Foreman", level:35, classes:["Researcher"],
+          avatar:"assets/npc/foreman.webp", avatarFocus:{x:50, y:9, z:300},
+          stats:{hp:9, atk:4, def:8, spatk:4, spdef:8, spd:8},
+          skills:{technologyEd:"Master", combat:"Adept", command:"Expert", perception:"Adept", intuition:"Adept", athletics:"Novice", acrobatics:"Novice"},
+          edges:["Pokébot Training","Basic Skills","Adept Skills","Expert Skills","Master Skills"],
+          features:["Engineer","Robofighter","Overclock","Experimental AI","Upgrader","Emergency Reactivation","Efficient Installation","Experimental Designs"],
+          augs:[ { name:"Wired Reflexes" }, { name:"Dermal Plating", ed:true }, { name:"Smart Vision" },
+                 { name:"Embedded Weaponry", opt:"Small Melee", move:"Pierce!", ed:true } ],
+          notes:"Engineer / Upgrader. Everything he can do is on this card: the \u{1F9BE} Augmentations card (Reflex Points, Dermal Plating, the shock),\n"
+              + "the Weapons card (the Embedded Blade), and his Features (Robofighter, Overclock).\n"
+              + "Pokébots: Bulwark, Arcjet, Reboot, Foundry Enforcer — Complexity 6 / 5 / 6 / 5, all inside his limit of 8 (Master Tech 6 + Experimental AI 2).",
+          mons:[ gbot("Bulwark",{lv:34, stats:{hp:9,atk:7,def:11,spdef:7}, boss:2}),
+                 gbot("Arcjet",{lv:32, stats:{hp:4,def:4,spatk:13,spd:11}}),
+                 gbot("Reboot",{lv:30, stats:{hp:7,def:5,spdef:9,spd:9}}),
+                 gbot("Enforcer",{nick:"Foundry Enforcer", lv:32, stats:{hp:7,atk:9,def:7,spdef:5,spd:4}}) ] } ],
+        mons:[ gbot("Sentry Bot",{nick:"Catwalk Sentry A"}), gbot("Sentry Bot",{nick:"Catwalk Sentry B"}),
+               gbot("Patrol Bot",{nick:"Patrol Swarm (reinforcement)", swarm:3}) ] },
+    ] },
 ];
 /* The everyday budget this gauntlet is priced against -- the same line ⚖ Difficulty draws. */
 const gauntletBudget = (party, players) => Math.round(Math.max(0,party) * 2 * Math.max(1,players));
@@ -38787,22 +39289,52 @@ function gauntletMon(spec){
   }
   if(spec.mega && getSpecies(spec.mega)) megaEvolve(p, spec.mega, ()=>{});
   if(spec.boss){ toggleBoss(p); p.boss.actions = spec.boss; p.boss.curBar = spec.boss; normBoss(p); }
+  if(spec.augs) p.augs = spec.augs.map(a => Object.assign({}, a));
+  /* `swarm: n` builds the creature as ONE Swarm token of Multiplier n (Core p.478), at full HP. */
+  if(spec.swarm){
+    const n = Math.max(1, Math.min(SWARM_MAX_MULT, spec.swarm|0));
+    p.swarm = { on:true, maxMult:n, mult:n, sp:n, freeUsed:false }; normSwarm(p);
+    swarmSetTotalHP(p, swarmMaxTotalHP(p));
+  }
   return p;
+}
+/* One NPC Trainer from its spec: Level, classes, the stat points on top of the base, Skill Ranks,
+   Edges, Features and weapons, plus a notes block for whatever the sheet does not model (a
+   cyberpunk Trainer's augmentations, say). */
+function gauntletTrainer(t){
+  const tr = newTrainer();
+  tr.name = t.name; tr.level = t.level||1; tr.classes = (t.classes||[]).slice();
+  if(t.stats) Object.entries(t.stats).forEach(([k,v])=>{ if(tr.combat[k]) tr.combat[k].added = Math.max(0, v|0); });
+  if(t.skills) Object.entries(t.skills).forEach(([k,v])=>{ if(k in tr.skills && RANKS.includes(v)) tr.skills[k] = v; });
+  if(t.edges) tr.edges = t.edges.slice();
+  if(t.features) tr.features = t.features.slice();
+  if(t.weapons) tr.weapons = t.weapons.map(w=>Object.assign({ id:uid(), name:"", type:"Normal", acMod:0, dbMod:0, notes:"",
+    range:"Melee", category:"Small Melee", equipped:false, twoHanded:false, weaponMove:"", weaponMoveAdept:"", weaponMoveMaster:"" }, w));
+  if(t.notes) tr.notes = t.notes;
+  if(t.avatar){ tr.avatar = t.avatar; if(t.avatarFocus) tr.avatarFocus = Object.assign({}, t.avatarFocus); }   // bundled portrait (assets/npc)
+  if(t.augs){ tr.augs = t.augs.map(a => Object.assign({}, a)); syncAugWeapon(tr); }
+  normTrainer(tr);
+  tr.currentHP = trainerDerived(tr).hp;
+  return tr;
 }
 function gauntletWaveNotes(g, w, i, enc, party, players, arena){
   const everyday = gauntletBudget(party, players);
   const base = encounterBaseXP(enc);
-  const ratio = everyday ? base/everyday : 0;
+  const ally = gauntletAllyBudget(w);
+  const ratio = (everyday + ally) ? base/(everyday + ally) : 0;
   const band = diffBand(ratio);
   const play = gauntletPlay((arena && arena.size) || g.arenaSize,
                             (arena && arena.shrink) || ARENA_SHRINK, w);
   const out = [];
   if(i === 0 && g.brief) out.push(g.brief, "");
-  out.push(`\u{1F30A} ${g.name} — wave ${i+1} of ${g.waves.length}.`);
-  out.push(`\u{1F300} Arena: ring ${w.ring} — close the circle to ${play} squares across before this wave arrives.`);
-  out.push(`⚖ ${base} Levels against an everyday ${everyday} (Lv ${party} × 2 × ${players} player`
-    + `${players===1?"":"s"}) = ×${Math.round(ratio*100)/100} — ${band.label}.`);
-  if(i === g.waves.length-1){
+  out.push(`${g.icon||"\u{1F30A}"} ${g.name} — ${g.noArena?"fight":"wave"} ${i+1} of ${g.waves.length}.`);
+  if(!g.noArena) out.push(`\u{1F300} Arena: ring ${w.ring} — close the circle to ${play} squares across before this wave arrives.`);
+  out.push(`⚖ ${base} Levels against an everyday ${everyday + ally} (Lv ${party} × 2 × ${players} player`
+    + `${players===1?"":"s"}${ally ? ` + ${ally} for the ${w.allies.n} fighting with you` : ""}) = ×${Math.round(ratio*100)/100} — ${band.label}.`);
+  if(i === g.waves.length-1 && g.finalNote){
+    const total = g.waves.reduce((n,x)=>n+gauntletWaveBase(x),0);
+    out.push(`   All ${g.waves.length} fights together: ${total} Levels = ×${Math.round(total/everyday*100)/100} an everyday fight.`, `   ${g.finalNote}`);
+  } else if(i === g.waves.length-1){
     const total = g.waves.reduce((n,x)=>n+gauntletWaveBase(x),0);
     out.push(`   All ${g.waves.length} waves together: ${total} Levels = ×${Math.round(total/everyday*100)/100} `
       + `an everyday fight. On paper each wave is mild; it is the run of them, with no full heal in the `
@@ -38817,10 +39349,24 @@ function gauntletWaveNotes(g, w, i, enc, party, players, arena){
    quotes before anything is created. Trainers count double (Core p.460). */
 function gauntletWaveBase(w){
   let n = 0;
-  (w.mons||[]).forEach(s=> n += s.lv||0);
-  (w.trainers||[]).forEach(t=>{ n += (t.level||0)*2; (t.mons||[]).forEach(s=> n += s.lv||0); });
+  /* a Swarm counts its whole Multiplier, exactly as encounterBaseXP does once it is built */
+  const lv = s => (s.lv||0) * Math.max(1, s.swarm|0);
+  (w.mons||[]).forEach(s=> n += lv(s));
+  (w.trainers||[]).forEach(t=>{ n += (t.level||0)*2; (t.mons||[]).forEach(s=> n += lv(s)); });
   return n;
 }
+/* NPCs fighting on the party's side for a wave (`allies:{enc, n, lv}`): their share of the everyday
+   budget, n × Level × 2 like any player. The Level is read off the named encounter's Trainers when it
+   exists (the average of each one's two best Pokémon, the same shape perPlayer reads), else `lv`. */
+function gauntletAllyLevel(a){
+  try{
+    const e = encList().find(x => x && x.name === a.enc);
+    const lv = e ? e.trainers.flatMap(tr => (tr.pokemon||[]).map(p => p.level||0).sort((x,y)=>y-x).slice(0,2)) : [];
+    if(lv.length) return Math.round(lv.reduce((n,x)=>n+x,0) / lv.length);
+  }catch(err){}
+  return a.lv || 0;
+}
+function gauntletAllyBudget(w){ return w && w.allies ? Math.round(gauntletAllyLevel(w.allies) * 2 * (w.allies.n||0)) : 0; }
 const gauntletBodies = w => (w.mons||[]).length
   + (w.trainers||[]).reduce((n,t)=> n + 1 + (t.mons||[]).length, 0);
 /* Playable circle for a wave, given the arena the GM actually framed. The ring step is the real
@@ -38844,7 +39390,7 @@ function buildGauntlet(g, party, players, arena){
   const arr = encList(), made = [];
   g.waves.forEach((w,i)=>{
     const enc = newEncounter(`${g.name} — ${w.name}`);
-    enc.hideTokens = true;                 // the deep is not a place you see things coming
+    enc.hideTokens = g.hideTokens !== false;   // the deep is not a place you see things coming (a town patrol is)
     enc.color = g.color || encDefaultColor();
     enc.players = players;
     enc.sig = w.sig || 2;
@@ -38852,9 +39398,7 @@ function buildGauntlet(g, party, players, arena){
     enc.diffPerFoe = w.perFoe || 6;
     (w.mons||[]).forEach(s=> enc.mons.push(gauntletMon(s)));
     (w.trainers||[]).forEach(t=>{
-      const tr = newTrainer();
-      tr.name = t.name; tr.level = t.level||1; tr.classes = (t.classes||[]).slice();
-      enc.trainers.push({ id:uid(), trainer:tr, pokemon:(t.mons||[]).map(gauntletMon) });
+      enc.trainers.push({ id:uid(), trainer:gauntletTrainer(t), pokemon:(t.mons||[]).map(gauntletMon) });
     });
     normEncounter(enc);
     enc.notes = gauntletWaveNotes(g, w, i, enc, party, players, arena);
@@ -38862,7 +39406,7 @@ function buildGauntlet(g, party, players, arena){
   });
   if(made.length) state.activeEncounterId = made[0].id;
   saveEnc(); renderEncounters();
-  toast(`\u{1F30A} ${g.name} — ${made.length} waves built`);
+  toast(`${g.icon||"\u{1F30A}"} ${g.name} — ${made.length} waves built`);
 }
 /* The picker. The party figures default to what the live sheets say and are editable, because the
    whole balance hangs off them -- a gauntlet priced for Lv 28 is a different fight at Lv 34. */
@@ -38902,15 +39446,15 @@ function openGauntlets(){
       sum.innerHTML = "";
       sum.append(el("span",{}, `Everyday budget ${everyday} Levels · all ${g.waves.length} waves `),
         el("b",{style:`color:${band.color}`}, `${total} Levels = ×${Math.round(total/everyday*100)/100}`),
-        el("span",{class:"muted"}, " — no single wave over an everyday fight, the run of them well past Boss-tier."));
+        el("span",{class:"muted"}, g.sumNote || " — no single wave over an everyday fight, the run of them well past Boss-tier."));
       rows.innerHTML = "";
       g.waves.forEach((w,i)=>{
-        const base = gauntletWaveBase(w), r = base/everyday, b = diffBand(r);
+        const base = gauntletWaveBase(w), r = base/(everyday + gauntletAllyBudget(w)), b = diffBand(r);
         const play = gauntletPlay(Math.max(2, parseInt(aIn.value)||g.arenaSize),
                                   Math.max(1, parseInt(shIn.value)||ARENA_SHRINK), w);
         rows.append(el("div",{class:"small",style:"display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;padding:2px 0"},
           el("span",{}, `${i+1}. ${w.name}`,
-            el("span",{class:"muted"}, ` · ${gauntletBodies(w)} bodies · circle ${play} across`)),
+            el("span",{class:"muted"}, ` · ${gauntletBodies(w)} bodies${w.allies ? " · Rivals fight with you" : ""}${g.noArena ? "" : ` · circle ${play} across`}`)),
           el("span",{style:`color:${b.color};font-weight:700`}, `${base} Lv · ×${Math.round(r*100)/100} ${b.label}`)));
       });
     };
@@ -38935,18 +39479,21 @@ function openGauntlets(){
         const arena = { size:Math.max(2, parseInt(aIn.value)||g.arenaSize),
                         shrink:Math.max(1, parseInt(shIn.value)||ARENA_SHRINK) };
         closeModal(); buildGauntlet(g, party, players, arena);
-      }},"\u{1F30A} Build the waves")));
+      }},(g.icon||"\u{1F30A}")+" Build the "+(g.noArena?"fights":"waves"))));
     wrap.append(el("div",{class:"inline",style:"gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:6px"},
       el("label",{class:"field"}, el("span",{},"Party leads with Lv"), pIn),
       el("label",{class:"field"}, el("span",{},"Players"), nIn),
-      el("label",{class:"field"}, el("span",{},"Arena starts"), aIn),
-      el("label",{class:"field"}, el("span",{},"closes by"), shIn)));
+      ...(g.noArena ? [] : [
+        el("label",{class:"field"}, el("span",{},"Arena starts"), aIn),
+        el("label",{class:"field"}, el("span",{},"closes by"), shIn) ])));
     if(chars.length) wrap.append(who);
     wrap.append(sum, rows);
     wrap.append(el("div",{class:"small muted",style:"margin-top:8px"},
-      `Builds ${g.waves.length} encounters, one per wave, each carrying its own instructions — `
+      g.noArena
+        ? `Builds ${g.waves.length} encounters, in the order the party meets them, each carrying its own notes (the first one also carries the run-it-like-this brief).`
+        : (`Builds ${g.waves.length} encounters, one per wave, each carrying its own instructions — `
       + "including which arena step to close to. Frame the arena on the map first with "
-      + "\u{1F300} Arena; the two numbers above follow whatever ladder you gave it there."));
+      + "\u{1F300} Arena; the two numbers above follow whatever ladder you gave it there.")));
     body.append(wrap);
   });
   modal({title:"\u{1F30A} Wave gauntlets", bodyNode:body,
@@ -39139,6 +39686,7 @@ async function sendEncMonToPC(enc, p, list){
      into the PC as the Gyarados it reverts to, with one HP bar like everything else. */
   delete m.boss;
   megaRevert(m, true);
+  (m.altForms || []).forEach(a => { a.on = false; });   // ...nor does a worn alternate-form picture
   m._pcFrom = "Encounter"+(enc.name?": "+enc.name:""); m._pcAt = Date.now();
   cloud.pc.data.pokemon.push(m);
   const i = list.indexOf(p); if(i>=0) list.splice(i,1);   // caught → leaves the encounter
@@ -39758,6 +40306,8 @@ function encounterMonCard(enc, p, list, trainer){
   lvIn.addEventListener("change",()=>{ const l=Math.max(1,Math.min(100,parseInt(lvIn.value)||1)); p.level=l; p.xp=xpForLevel(l); encSpreadStats(p); p.currentHP=pokeDerived(p).maxHP; syncEncMonLevelupMoves(p,sp); syncEncMonTierAbilities(p,sp); tpSync(p); saveEnc(); renderEncounters(); });
   nw.append(el("div",{class:"small muted",style:"margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"},
     "Lv", lvIn, `· ${p.nature||"—"} · ${p.gender||"—"}${p.shiny?" · ✨Shiny":""}`));
+  // alternate-form pictures (a Boss's second phase, an enraged look) - worn here or from its token
+  nw.append(el("div",{class:"small",style:"margin-top:3px"}, ...formPicRows(p, ()=>{ saveEnc(); renderEncounters(); }, "mon")));
 
   nw.append(rotomFormControl(p, sp, ()=>{ saveEnc(); renderEncounters(); }));
   nw.append(terapagosFormControl(p, sp, ()=>{ renderEncounters(); }, saveEnc));
@@ -40000,6 +40550,7 @@ function encounterMonCard(enc, p, list, trainer){
   // Pokémon a standing effect (e.g. a custom "+15 Damage Reduction" prop/hazard) without needing
   // to open the Map first — damageHealRow already auto-applies any active DR buff on this card.
   card.append(buffsCard(p, ()=>{ saveEnc(); renderEncounters(); }));
+  card.append(augmentsCard(p, ()=>{ saveEnc(); renderEncounters(); }));
   // Food: a wild/enemy Pokémon has no Trainer's bag, so `free` opens the whole Snack catalog
   card.append(digestionCard(p, ()=>{ saveEnc(); renderEncounters(); }, {free:true}));
   return card;
@@ -40075,6 +40626,8 @@ function encounterTrainerCard(enc, tr){
     onclick:()=>{ enc.trainers=enc.trainers.filter(x=>x.id!==tr.id); saveEnc(); renderEncounters(); }},"×"));
   head.append(actions);
   card.append(head);
+  // a picture per form it can take (a Feature stance, or a look the GM names) - worn here or from its token
+  card.append(el("div",{class:"small",style:"margin-top:4px"}, ...formPicRows(t, ()=>{ saveEnc(); renderEncounters(); }, "avatar")));
   // trainer HP + Struggle roll
   const td=trainerDerived(t), maxHP=td.hp; if(t.currentHP==null) t.currentHP=maxHP;
   card.append(el("div",{class:"small muted",style:"margin-top:4px"},
@@ -40306,6 +40859,7 @@ function encounterTrainerCard(enc, tr){
   if(modesC){ modesC.style.margin = "8px 0 0"; card.append(modesC); }
   // Food: an encounter Trainer has no tracked bag, so `free` opens the whole Snack catalog
   card.append(digestionCard(t, ()=>{ saveEnc(); renderEncounters(); }, {free:true}));
+  { const ac = augmentsCard(t, ()=>{ saveEnc(); renderEncounters(); }); ac.style.margin = "8px 0 0"; card.append(ac); }
   // trainer's Pokémon
   const tmonFainted=tr.pokemon.some(p=>(p.currentHP??1)<=0 && !p.encMin);
   card.append(el("div",{class:"inline",style:"justify-content:space-between;margin-top:10px;gap:8px;flex-wrap:wrap"},
@@ -44463,7 +45017,7 @@ const FEATURE_AUTO_NOTES = {
   "malediction":
     "🔮 Malediction spends one of the Scene x2 and reminds you which Status-Class Hex Maniac Moves you may fire as the Free Action.",
   "grand hex":
-    "🔮 Grand Hex spends the 1 AP and hands a use back to whichever Hex Maniac Move you pick — the counter on that Move goes down by one.",
+    "🔮 Grand Hex is your call: tick it on the Hex roll (off by default) and, if Hex hits, pick the Hex Maniac Move to hand a use back to — that spends the 1 AP and lowers the counter on that Move by one.",
   "lessons":
     "📚 Lessons on the Mentor card offers only the Lessons your two Mentor Skills qualify you for, spends the Tutor Point and the Daily use, and carries out Changing Viewpoints (the legal Natures) and Versatile Teachings (the species' own Ability lists) itself.",
   "move tutor":
@@ -46721,6 +47275,20 @@ function logRoll({ kind, label, who, headline, lines, atk, area, foe }){
                                                note: String(atk.moveRule.note||"").slice(0,160) } : null,
                     seFlat: Math.max(0, Math.round(atk.seFlat||0)),
                     defCSMode: (atk.defCSMode==="all" || atk.defCSMode==="positive") ? atk.defCSMode : null };
+  /* The attacker's context (which Move, who threw it) and the Afflictions / Combat Stages the hit carries.
+     Without them a hit applied later from the feed knew nothing about the Move: no drain, no Recoil,
+     no on-hit Status. Whitelisted field by field like the rest. */
+  if(atk && atk.ctx){
+    const c = atk.ctx;
+    e.atk.ctx = { by: String(c.by||"").slice(0,60), aid: c.aid ? String(c.aid).slice(0,60) : null,
+                  move: String(c.move||"").slice(0,60), melee: !!c.melee, crit: !!c.crit,
+                  range: String(c.range||"").slice(0,80), forceCrit: Math.max(0, Math.round(c.forceCrit||0)) };
+  }
+  if(atk && atk.fx){
+    try{ e.atk.fx = JSON.parse(JSON.stringify({ name: String(atk.fx.name||"").slice(0,60),
+                                                status: (atk.fx.status||[]).map(String).slice(0,12),
+                                                cs: (atk.fx.cs||[]).slice(0,8) })); }catch(err){}
+  }
   /* An "area" entry is a declaration, not a hit: the player says what they did and the GM decides
      where it lands. It carries the caster's sheet (so the shape can be anchored on their token),
      the shape to open with, and the buffs the area panel should offer — nothing else, because the
@@ -48934,10 +49502,23 @@ function framedPic(img, focus){
   return el("div",{class:"img-frame", style:`border-radius:${radius}`}, img);
 }
 /* a Pokémon's picture as the sheets draw it: uploaded photo (framed) or dex artwork */
+/* A species can ship a default framing for its own artwork (`artFocus` in the DB, same {x,y,z} shape as an
+   uploaded picture's) — full-body art where the head is a small part of a tall picture, like the
+   Pokébots. Used only while the creature is drawn from that dex artwork: an uploaded photo brings (or
+   lacks) its own framing and is never cropped by the species'. */
+function speciesArtFocus(p){
+  if(!p || p.species === undefined || monImage(p)) return null;
+  let sp = null; try{ sp = getSpecies(monLookName(p, getSpecies(p.species))); }catch(e){}
+  return (sp && sp.artFocus) || null;
+}
+function tokenSpeciesArtFocus(token){
+  const L = token && token.link ? tokenLinked(token) : null;
+  return (L && !L.missing && L.obj && !isTrainerOwner(L.obj)) ? speciesArtFocus(L.obj) : null;
+}
 function monPic(p, sp, cls, zoomTitle){
   const img = monSprite(monLookName(p, sp), p.shiny, cls, monImage(p)||undefined);
   if(zoomTitle) zoomImg(img, zoomTitle);
-  return framedPic(img, monImageFocus(p));
+  return framedPic(img, monImageFocus(p) || speciesArtFocus(p));
 }
 /* the 🖼 editor for a sheet's own picture; `after` saves + re-renders the view it lives in */
 function openMonImageFocus(p, after){
@@ -48953,10 +49534,12 @@ function openMonImageFocus(p, after){
 /* Every Feature stance the Trainer owns can carry a portrait (Enchanting Transformation, Shadow Form, Stone
    Stance...), and so can any number of free-form "alternate forms" the player makes up (t.altForms =
    [{id, name, on}], key "alt:<id>") for a transformation that is not a Feature stance: a rage, a Gift's
-   form, a costume. A free-form one is worn with its own switch. */
+   form, a costume. A free-form one is worn with its own switch.
+   Encounter enemies get the same: an enemy Trainer exactly as above, a wild Pokémon the free-form ones
+   only (it has no Feature stances) - a Boss's "phase two", an enraged look. monImage reads the worn one. */
 function avatarFormModes(t){
   const out = [];
-  (typeof FEATURE_MODES !== "undefined" ? FEATURE_MODES : []).forEach(m => {
+  if(t && t.species === undefined) (typeof FEATURE_MODES !== "undefined" ? FEATURE_MODES : []).forEach(m => {
     if(hasFeatureLoose(t, m.feat)) out.push({ key:m.key, feat:m.feat, icon:m.icon || "✨" });
   });
   (Array.isArray(t.altForms) ? t.altForms : []).forEach(f => out.push({ key:"alt:" + f.id, feat:f.name || "Alternate form", icon:"\u{1F3AD}", custom:f }));
@@ -52658,7 +53241,7 @@ function mapTokenNode(token, map, originX=0, originY=0){
   /* A framed picture needs something to clip the zoom against, so it gets a round wrapper; an
      unframed one is appended bare exactly as before. */
   const focusRef = tokenImageRef(token);
-  if(focusRef && applyImgFocus(info.sprite, focusRef.get()))
+  if(applyImgFocus(info.sprite, focusRef ? focusRef.get() : tokenSpeciesArtFocus(token)))
     node.append(el("div",{class:"tk-imgbox"}, info.sprite));
   else node.append(info.sprite);
   // pure decoration, so it is the first thing dropped when the board is zoomed right out
@@ -52990,7 +53573,8 @@ function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, so
   const chartOv = (!typeless && chartOverride) ? chartOverride : null;
   let mult, tinted = false, tolStep = 0, furStep = 0, rogueStep = 0, chartUsed = false, overgrown = false;
   // Fur Coat (defender Static): Physical hits are resisted one step further, whatever the Type.
-  const furActive = !!((defMods?.furCoat && physical) || (defMods?.iceScales && !physical));
+  const furActive = !!((defMods?.furCoat && physical) || (defMods?.iceScales && !physical)
+                      || (defMods?.dermal && (defMods.dermal === "any" || physical)));   // + an armed Dermal Plating
   /* Rogue Mega (defender, homebrew Boss variant): a Mega Evolved Pokemon running the Boss Template
      resists EVERY attack one further step unless the attacker is a Mega Evolved Pokemon itself. */
   const rogueActive = !!((defMods?.rogueMega && !atkMega) || defMods?.allResist);
@@ -53211,6 +53795,7 @@ async function applyTokenDamage(token, br){
   br.tempSoaked = Math.max(0, tempBefore - tempHPOf(tokenHp(token).obj));
   br.afterHP = tokenHp(token).cur;
   if(br.dr > 0 && br.owner && consumeDamageBuffs(br.owner)) await commitTokenSource(token);
+  await augAfterHit(token, br);                // Electric damage over 25% of Max HP: Augmentation Shock
   // Overgrowth burns off when "hit by a damaging Fire, Ice, Poison, Flying, or Bug-Type attack"
   if(br.owner && br.mult > 0 && !br.typeless && OVERGROWTH_BREAKERS.includes(br.type)
      && ownerBuffs(br.owner).some(b => b.key === "overgrowth")){
@@ -54310,6 +54895,21 @@ function openTokenMenu(token, map){
       wrap.append(csw);
     }
 
+    // ---- Form: wear an alternate-form picture from the board (an enemy's "phase two") ----
+    const altPics = L && L.obj && info.editable
+      ? (L.obj.altForms || []).filter(a => (avatarFormOf(L.obj, "alt:" + a.id) || {}).image) : [];
+    if(altPics.length){
+      const fw = el("div",{style:"margin-top:16px"});
+      fw.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"\u{1F3AD} Form"));
+      const row = el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px"});
+      altPics.forEach(a => row.append(el("button",{class:"btn-secondary"+(a.on?" on":""),style:"padding:5px 10px",
+        title:a.on ? "switch back to its usual picture" : "show this form's picture on the board and on its sheet",
+        onclick:async()=>{ wearAltForm(L.obj, a); await commitTokenSource(token); renderMap(); reopenTokenMenu(token, map); }},
+        (a.on ? "● " : "○ ") + (a.name || "Alternate form"))));
+      fw.append(row);
+      wrap.append(fw);
+    }
+
     // ---- Actions: roll this creature's moves/attacks straight from its token (#2) ----
     if(L && L.obj){
       const aw = el("div",{style:"margin-top:16px"});
@@ -54442,6 +55042,9 @@ function openTokenMenu(token, map){
     if(L && L.obj && info.editable){
       if(!Array.isArray(L.obj.buffs)) L.obj.buffs = [];
       wrap.append(buffsCard(L.obj, async()=>{ await commitTokenSource(token); reopenTokenMenu(token, map); }));
+      // Augmentations / Pokébot: the Reflex Points, Dermal Plating, the shock and the EMP buttons belong in battle
+      const augC = augmentsCard(L.obj, async()=>{ await commitTokenSource(token); reopenTokenMenu(token, map); }, { onlyIfAny:true });
+      if(augC) wrap.append(augC);
     } else if(L && L.obj && ownerBuffs(L.obj).length){
       const bl = el("div",{style:"margin-top:16px"});
       bl.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"✨ Active buffs"));

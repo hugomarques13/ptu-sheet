@@ -9415,5 +9415,1146 @@
     "habitat": "Cave, Desert, Mountain",
     "height": "6' 3\" / 1.9m (Large)",
     "customArt": true
+  },
+  {
+    "name": "Patrol Bot",
+    "order": 16100,
+    "baseStats": {
+      "hp": 5,
+      "atk": 6,
+      "def": 5,
+      "spatk": 5,
+      "spdef": 5,
+      "spd": 6
+    },
+    "types": [
+      "None",
+      "None"
+    ],
+    "capabilities": {
+      "overland": 6,
+      "sky": 0,
+      "swim": 0,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 0,
+      "longJump": 0,
+      "power": 1,
+      "naturewalk": [],
+      "other": [
+        "Hazard Immunity",
+        "Vacuum Immunity",
+        "Mindlock"
+      ]
+    },
+    "size": "Small",
+    "weightClass": 1,
+    "eggGroups": [
+      "None"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "stealth": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 1,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [],
+      "advanced": [],
+      "high": []
+    },
+    "evolution": [
+      {
+        "stage": 1,
+        "name": "Patrol Bot",
+        "min": null
+      }
+    ],
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Tackle",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Take Down",
+          "type": "Normal"
+        }
+      ],
+      "tmhm": [],
+      "egg": [],
+      "tutor": []
+    },
+    "gender": "Genderless",
+    "diet": "Ergovore",
+    "habitat": "Urban",
+    "height": "2' 4\" / 0.7m (Small)",
+    "pokebot": true,
+    "customArt": true,
+    "artFocus": {
+      "x": 72,
+      "y": 21,
+      "z": 150
+    }
+  },
+  {
+    "name": "Security Bot",
+    "order": 16101,
+    "baseStats": {
+      "hp": 7,
+      "atk": 7,
+      "def": 6,
+      "spatk": 7,
+      "spdef": 6,
+      "spd": 7
+    },
+    "types": [
+      "None",
+      "None"
+    ],
+    "capabilities": {
+      "overland": 5,
+      "sky": 0,
+      "swim": 0,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 1,
+      "longJump": 1,
+      "power": 3,
+      "naturewalk": [],
+      "other": [
+        "Hazard Immunity",
+        "Vacuum Immunity",
+        "Mindlock"
+      ]
+    },
+    "size": "Medium",
+    "weightClass": 3,
+    "eggGroups": [
+      "None"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "stealth": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 1,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [],
+      "advanced": [],
+      "high": []
+    },
+    "evolution": [
+      {
+        "stage": 1,
+        "name": "Security Bot",
+        "min": null
+      }
+    ],
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Tackle",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Take Down",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Body Slam",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Slash",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Lock-On",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Screech",
+          "type": "Normal"
+        }
+      ],
+      "tmhm": [],
+      "egg": [],
+      "tutor": []
+    },
+    "gender": "Genderless",
+    "diet": "Ergovore",
+    "habitat": "Urban",
+    "height": "5' 0\" / 1.5m (Medium)",
+    "pokebot": true,
+    "customArt": true,
+    "artFocus": {
+      "x": 52,
+      "y": 8,
+      "z": 300
+    }
+  },
+  {
+    "name": "Sentry Bot",
+    "order": 16102,
+    "baseStats": {
+      "hp": 6,
+      "atk": 4,
+      "def": 6,
+      "spatk": 8,
+      "spdef": 8,
+      "spd": 8
+    },
+    "types": [
+      "None",
+      "None"
+    ],
+    "capabilities": {
+      "overland": 5,
+      "sky": 0,
+      "swim": 0,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 1,
+      "longJump": 1,
+      "power": 3,
+      "naturewalk": [],
+      "other": [
+        "Hazard Immunity",
+        "Vacuum Immunity",
+        "Mindlock"
+      ]
+    },
+    "size": "Medium",
+    "weightClass": 3,
+    "eggGroups": [
+      "None"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "stealth": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 1,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [],
+      "advanced": [],
+      "high": []
+    },
+    "evolution": [
+      {
+        "stage": 1,
+        "name": "Sentry Bot",
+        "min": null
+      }
+    ],
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Tackle",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Lock-On",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Tri Attack",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Thunder Wave",
+          "type": "Electric"
+        },
+        {
+          "level": 1,
+          "name": "Conversion",
+          "type": "Normal"
+        }
+      ],
+      "tmhm": [],
+      "egg": [],
+      "tutor": []
+    },
+    "gender": "Genderless",
+    "diet": "Ergovore",
+    "habitat": "Urban",
+    "height": "5' 0\" / 1.5m (Medium)",
+    "pokebot": true,
+    "customArt": true,
+    "artFocus": {
+      "x": 52,
+      "y": 17,
+      "z": 260
+    }
+  },
+  {
+    "name": "Enforcer",
+    "order": 16103,
+    "baseStats": {
+      "hp": 9,
+      "atk": 10,
+      "def": 10,
+      "spatk": 6,
+      "spdef": 7,
+      "spd": 6
+    },
+    "types": [
+      "Steel",
+      "None"
+    ],
+    "capabilities": {
+      "overland": 4,
+      "sky": 0,
+      "swim": 0,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 1,
+      "longJump": 1,
+      "power": 5,
+      "naturewalk": [],
+      "other": [
+        "Hazard Immunity",
+        "Vacuum Immunity",
+        "Mindlock"
+      ]
+    },
+    "size": "Large",
+    "weightClass": 5,
+    "eggGroups": [
+      "None"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "stealth": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 1,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [],
+      "advanced": [],
+      "high": []
+    },
+    "evolution": [
+      {
+        "stage": 1,
+        "name": "Enforcer",
+        "min": null
+      }
+    ],
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Body Slam",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Slash",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Iron Head",
+          "type": "Steel"
+        },
+        {
+          "level": 1,
+          "name": "Flash Cannon",
+          "type": "Steel"
+        },
+        {
+          "level": 1,
+          "name": "Lock-On",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Iron Defense",
+          "type": "Steel"
+        }
+      ],
+      "tmhm": [],
+      "egg": [],
+      "tutor": []
+    },
+    "gender": "Genderless",
+    "diet": "Ergovore",
+    "habitat": "Urban",
+    "height": "7' 3\" / 2.2m (Large)",
+    "pokebot": true,
+    "customArt": true,
+    "artFocus": {
+      "x": 62,
+      "y": 21,
+      "z": 240
+    }
+  },
+  {
+    "name": "Bulwark",
+    "order": 16104,
+    "baseStats": {
+      "hp": 10,
+      "atk": 8,
+      "def": 10,
+      "spatk": 4,
+      "spdef": 10,
+      "spd": 6
+    },
+    "types": [
+      "Steel",
+      "None"
+    ],
+    "capabilities": {
+      "overland": 4,
+      "sky": 0,
+      "swim": 0,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 1,
+      "longJump": 1,
+      "power": 5,
+      "naturewalk": [],
+      "other": [
+        "Hazard Immunity",
+        "Vacuum Immunity",
+        "Mindlock"
+      ]
+    },
+    "size": "Large",
+    "weightClass": 5,
+    "eggGroups": [
+      "None"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "stealth": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 1,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [],
+      "advanced": [],
+      "high": []
+    },
+    "evolution": [
+      {
+        "stage": 1,
+        "name": "Bulwark",
+        "min": null
+      }
+    ],
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Iron Head",
+          "type": "Steel"
+        },
+        {
+          "level": 1,
+          "name": "Body Slam",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Slash",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Iron Defense",
+          "type": "Steel"
+        },
+        {
+          "level": 1,
+          "name": "Lock-On",
+          "type": "Normal"
+        }
+      ],
+      "tmhm": [],
+      "egg": [],
+      "tutor": []
+    },
+    "gender": "Genderless",
+    "diet": "Ergovore",
+    "habitat": "Urban",
+    "height": "7' 3\" / 2.2m (Large)",
+    "pokebot": true,
+    "customArt": true,
+    "artFocus": {
+      "x": 52,
+      "y": 34,
+      "z": 200
+    }
+  },
+  {
+    "name": "Arcjet",
+    "order": 16105,
+    "baseStats": {
+      "hp": 7,
+      "atk": 4,
+      "def": 6,
+      "spatk": 8,
+      "spdef": 7,
+      "spd": 8
+    },
+    "types": [
+      "None",
+      "None"
+    ],
+    "capabilities": {
+      "overland": 5,
+      "sky": 0,
+      "swim": 0,
+      "levitate": 3,
+      "burrow": 0,
+      "highJump": 1,
+      "longJump": 1,
+      "power": 3,
+      "naturewalk": [],
+      "other": [
+        "Hazard Immunity",
+        "Vacuum Immunity",
+        "Mindlock"
+      ]
+    },
+    "size": "Medium",
+    "weightClass": 3,
+    "eggGroups": [
+      "None"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "stealth": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 1,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [],
+      "advanced": [],
+      "high": []
+    },
+    "evolution": [
+      {
+        "stage": 1,
+        "name": "Arcjet",
+        "min": null
+      }
+    ],
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Discharge",
+          "type": "Electric"
+        },
+        {
+          "level": 1,
+          "name": "Thunder Punch",
+          "type": "Electric"
+        },
+        {
+          "level": 1,
+          "name": "Magnet Rise",
+          "type": "Electric"
+        },
+        {
+          "level": 1,
+          "name": "Lock-On",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Tackle",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Take Down",
+          "type": "Normal"
+        }
+      ],
+      "tmhm": [],
+      "egg": [],
+      "tutor": []
+    },
+    "gender": "Genderless",
+    "diet": "Ergovore",
+    "habitat": "Urban",
+    "height": "5' 0\" / 1.5m (Medium)",
+    "pokebot": true,
+    "customArt": true,
+    "artFocus": {
+      "x": 51,
+      "y": 27,
+      "z": 160
+    }
+  },
+  {
+    "name": "Reboot",
+    "order": 16106,
+    "baseStats": {
+      "hp": 6,
+      "atk": 4,
+      "def": 6,
+      "spatk": 4,
+      "spdef": 6,
+      "spd": 6
+    },
+    "types": [
+      "None",
+      "None"
+    ],
+    "capabilities": {
+      "overland": 6,
+      "sky": 0,
+      "swim": 0,
+      "levitate": 0,
+      "burrow": 0,
+      "highJump": 0,
+      "longJump": 0,
+      "power": 1,
+      "naturewalk": [],
+      "other": [
+        "Hazard Immunity",
+        "Vacuum Immunity",
+        "Mindlock"
+      ]
+    },
+    "size": "Small",
+    "weightClass": 1,
+    "eggGroups": [
+      "None"
+    ],
+    "skills": {
+      "acrobatics": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "athletics": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "charm": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "combat": {
+        "dice": 2,
+        "mod": "+0"
+      },
+      "command": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "generalEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "medicineEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "occultEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "pokemonEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "technologyEd": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "focus": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "guile": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intimidate": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "intuition": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "perception": {
+        "dice": 1,
+        "mod": "+0"
+      },
+      "stealth": {
+        "dice": 3,
+        "mod": "+0"
+      },
+      "survival": {
+        "dice": 1,
+        "mod": "+0"
+      }
+    },
+    "abilities": {
+      "basic": [
+        "Regenerator"
+      ],
+      "advanced": [],
+      "high": []
+    },
+    "evolution": [
+      {
+        "stage": 1,
+        "name": "Reboot",
+        "min": null
+      }
+    ],
+    "moves": {
+      "levelup": [
+        {
+          "level": 1,
+          "name": "Tackle",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Take Down",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Screech",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Lock-On",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Defense Curl",
+          "type": "Normal"
+        },
+        {
+          "level": 1,
+          "name": "Scratch",
+          "type": "Normal"
+        }
+      ],
+      "tmhm": [],
+      "egg": [],
+      "tutor": []
+    },
+    "gender": "Genderless",
+    "diet": "Ergovore",
+    "habitat": "Urban",
+    "height": "2' 4\" / 0.7m (Small)",
+    "pokebot": true,
+    "customArt": true,
+    "artFocus": {
+      "x": 60,
+      "y": 37,
+      "z": 210
+    }
   }
 ]
