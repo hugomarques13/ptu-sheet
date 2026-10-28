@@ -51557,17 +51557,23 @@ function addMapImage(map){
   inp.addEventListener("change", async ()=>{
     const f = inp.files && inp.files[0]; if(!f){ inp.remove(); return; }
     try{ const dataUrl = await fileToDataURL(f);
+      const anim = await blobAnimated(f);           // a moving picture must never be sliced (see imageBytesAnimated)
       prepMapBg(dataUrl, out=>{
         const probe = new Image();
         probe.onload = async ()=>{
           const w = probe.naturalWidth||map.gridSize*10, h = probe.naturalHeight||map.gridSize*10;
+          const big = w*h >= MAP_TILE_MIN_MP*1e6;
           const src = await storeImg(out, "map");   // upload to Storage; keeps the row tiny (URL, not 6 MB of base64)
           const im = { id:uid(), src, x:0, y:0, w, h };
+          if(anim) im.anim = true;
           map.images.push(im);
-          mapMetaSave(); renderMap(); toast("Image added ✓");
+          mapMetaSave(); renderMap();
+          toast(!anim ? "Image added ✓"
+            : big ? "🎞 Animated image added ✓ — left unsliced so it keeps moving, but this size may be slow on phones"
+            : "🎞 Animated image added ✓");
           // A background this size decodes to hundreds of MB in EVERY player's browser, so slice it
           // now — while the GM is standing here to watch — instead of finding out when a phone dies.
-          if(w*h >= MAP_TILE_MIN_MP*1e6) await tileMapImage(map, im);
+          if(big && !anim) await tileMapImage(map, im);
         };
         probe.onerror = ()=>toast("⚠ Could not read that image");
         probe.src = out;
@@ -55757,6 +55763,64 @@ function mapDropImageParts(im){
   gone.forEach(src => { if(typeof src==="string" && src && !mapImgInUse(src, im)) removeStoredImg(src); });
 }
 
+/* Does this picture MOVE? An animated GIF, APNG, animated WebP or AVIF sequence needs no help to
+   play on the board: it is stored byte-for-byte (prepMapBg) and drawn as a plain <img>, which
+   animates it by itself. Slicing is what kills it — createImageBitmap hands back the FIRST frame
+   only, and the overview + tiles cut from that frame then sit over the original, so a sliced
+   animation is a still picture. No browser API says "this is animated" short of decoding every
+   frame, so read the container's own bytes instead. */
+function imageBytesAnimated(b){
+  const n = b.length;
+  const tag = (i, s) => { for(let k=0; k<s.length; k++) if(b[i+k]!==s.charCodeAt(k)) return false; return true; };
+  const u32 = i => ((b[i]<<24)>>>0) + (b[i+1]<<16) + (b[i+2]<<8) + b[i+3];
+  // GIF — walk the blocks and count frames; a second image descriptor is an animation
+  if(tag(0, "GIF8")){
+    let i = 13, frames = 0;
+    if(b[10] & 0x80) i += 3 << ((b[10] & 7) + 1);           // global colour table
+    const skipSubBlocks = () => { while(i < n && b[i]) i += b[i] + 1; i++; };
+    while(i < n){
+      const k = b[i++];
+      if(k === 0x21){ i++; skipSubBlocks(); }                // extension: its label, then data sub-blocks
+      else if(k === 0x2C){                                   // image descriptor = one frame
+        if(++frames > 1) return true;
+        const f = b[i+8]; i += 9;
+        if(f & 0x80) i += 3 << ((f & 7) + 1);                // local colour table
+        i++; skipSubBlocks();                                // LZW code size, then the pixel data
+      }
+      else break;                                            // 0x3B trailer (or a truncated file)
+    }
+    return false;
+  }
+  // PNG — an APNG announces itself with an acTL chunk ahead of the first IDAT
+  if(tag(0, "\x89PNG")){
+    for(let i = 8; i + 8 <= n; i += 12 + u32(i)){
+      if(tag(i+4, "acTL")) return u32(i+8) > 1;              // num_frames
+      if(tag(i+4, "IDAT")) return false;
+    }
+    return false;
+  }
+  // WebP — the Animation flag in the extended (VP8X) header
+  if(tag(0, "RIFF") && tag(8, "WEBP")) return tag(12, "VP8X") && !!(b[20] & 0x02);
+  // AVIF — an image sequence lists the "avis" brand in its ftyp box
+  if(tag(4, "ftyp")){
+    for(let i = 8, end = Math.min(n, u32(0)); i + 4 <= end; i += 4) if(tag(i, "avis")) return true;
+  }
+  return false;
+}
+async function blobAnimated(blob){
+  try{ return imageBytesAnimated(new Uint8Array(await blob.arrayBuffer())); }catch(e){ return false; }
+}
+function mapAnimToast(){ toast("🎞 Animated — kept whole so it keeps moving (slicing would freeze it on one frame)"); }
+/* Flag a background as animated so nothing slices it again. One sliced before this check existed is
+   frozen under its own overview, so those pieces go — the original underneath moves again. */
+function keepMapImageAnimated(im){
+  const frozen = !!(im.lod || im.tiles);
+  im.anim = true;
+  if(frozen) mapDropImageParts(im);
+  mapMetaSave(); renderMap();
+  if(frozen) toast("🎞 Animated — removed the old slices so it moves again"); else mapAnimToast();
+}
+
 /* Slice one background into an overview + native tiles. Runs in the GM's browser because that is
    where the credentials and the source image already are, and because a desktop can afford the
    single full-resolution decode this needs — which is the entire point, since a phone cannot.
@@ -55772,12 +55836,16 @@ async function tileMapImage(map, im){
   if(!cloud.isGM || !map || !im) return;
   if(mode!=="cloud" || !cloud.client || !cloud.campaign)
     return toast("⚠ Slicing needs a cloud campaign — the pieces are uploaded to Storage");
+  if(im.anim) return mapAnimToast();
   let bmp = null;
   toast("🧩 Reading the image…");
   try{
     const res = await fetch(im.src, { mode:"cors" });
     if(!res.ok) throw new Error("HTTP "+res.status);
-    bmp = await createImageBitmap(await res.blob());
+    const blob = await res.blob();
+    // Added before uploads were checked for animation — find out now, before a slice freezes it.
+    if(await blobAnimated(blob)) return keepMapImageAnimated(im);
+    bmp = await createImageBitmap(blob);
   }catch(e){ console.error("slice: could not read source", e); return toast("⚠ Could not read that image"); }
 
   const natW = bmp.width, natH = bmp.height;
@@ -56657,12 +56725,15 @@ function renderMap(){
       overlay.append(el("div",{class:"map-img-ctrls",style:`top:${6+imIdx*34}px`},
         el("button",{title:"bring forward",onclick:e=>{e.stopPropagation();moveMapImageLayer(map,im,1);}},"⬆"),
         el("button",{title:"send back",onclick:e=>{e.stopPropagation();moveMapImageLayer(map,im,-1);}},"⬇"),
-        el("button",{title: im.tiles
-            ? "Already sliced — click to redo it (after resizing or replacing the art)"
-            : "Slice into a small overview + sharp tiles, so phones can open this map at all",
-          onclick:e=>{ e.stopPropagation();
-            if(im.tiles && !confirm("Slice this image again? The old pieces are deleted and rebuilt.")) return;
-            tileMapImage(map, im); }}, im.tiles?"🧩✓":"🧩"),
+        im.anim
+          ? el("button",{title:"Animated — kept whole, because slicing would freeze it on its first frame",
+              onclick:e=>{ e.stopPropagation(); mapAnimToast(); }},"🎞")
+          : el("button",{title: im.tiles
+              ? "Already sliced — click to redo it (after resizing or replacing the art)"
+              : "Slice into a small overview + sharp tiles, so phones can open this map at all",
+            onclick:e=>{ e.stopPropagation();
+              if(im.tiles && !confirm("Slice this image again? The old pieces are deleted and rebuilt.")) return;
+              tileMapImage(map, im); }}, im.tiles?"🧩✓":"🧩"),
         el("button",{title:"delete",class:"danger",onclick:e=>{e.stopPropagation();if(confirm("Remove this image?"))deleteMapImage(map,im);}},"🗑")));
       overlay.append(el("div",{class:"map-img-handle",title:"drag to resize"}));
       const handle = overlay.querySelector(".map-img-handle");
