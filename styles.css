@@ -569,8 +569,45 @@ body.map-mode .map-viewport{flex:1 1 auto; height:auto; min-height:0; border-rad
 }
 .map-token.ko .tk-sparkles,.map-token.dead .tk-sparkles{display:none}
 .map-token.riding .tk-sparkles i{max-width:8px; max-height:8px}   /* no room for full-size stars up on the saddle */
+/* ---- Enchanting Transformation: a magical-girl shimmer, deliberately NOT the shiny's look — pastel
+   pink / lilac / aqua glitter (dots and diamonds) drifting UP the token's flanks and fading, over a
+   soft halo that breathes between pink and violet. The shiny's gold stars twinkle in place; these rise. */
+.map-token .tk-glitter{position:absolute; inset:-18%; pointer-events:none; z-index:3}
+.map-token .tk-glitter::before{content:""; position:absolute; inset:13%; border-radius:50%;
+  animation:tk-enchant-halo 3.2s ease-in-out infinite}
+.map-token .tk-glitter i{position:absolute; bottom:10%; width:14%; height:14%;
+  min-width:4px; min-height:4px; max-width:11px; max-height:11px; opacity:0; border-radius:50%;
+  background:radial-gradient(circle, #fff 0 30%, var(--g) 34% 100%); box-shadow:0 0 6px 2px var(--g);
+  animation:tk-glitter-rise 2.6s ease-in infinite; animation-delay:var(--d)}
+.map-token .tk-glitter i:nth-child(even){border-radius:0; box-shadow:none; filter:drop-shadow(0 0 3px var(--g)) drop-shadow(0 0 1px #fff);
+  clip-path:polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)}
+.map-token .tk-glitter i:nth-child(1){left:4%;  --g:#ff9be0; --d:0s;    --x:-4px}
+.map-token .tk-glitter i:nth-child(2){left:88%; --g:#b9a4ff; --d:.35s;  --x:4px}
+.map-token .tk-glitter i:nth-child(3){left:14%; --g:#8ee9ff; --d:.7s;   --x:3px}
+.map-token .tk-glitter i:nth-child(4){left:78%; --g:#fff2fb; --d:1.05s; --x:-3px}
+.map-token .tk-glitter i:nth-child(5){left:-2%; --g:#c9a2ff; --d:1.4s;  --x:5px}
+.map-token .tk-glitter i:nth-child(6){left:94%; --g:#ff9be0; --d:1.75s; --x:-5px}
+.map-token .tk-glitter i:nth-child(7){left:24%; --g:#fff2fb; --d:2.1s;  --x:-2px}
+.map-token .tk-glitter i:nth-child(8){left:68%; --g:#8ee9ff; --d:2.45s; --x:2px}
+.map-token .tk-glitter i:nth-child(9){left:40%; --g:#ffb8ec; --d:.9s;   --x:-6px}
+.map-token .tk-glitter i:nth-child(10){left:56%; --g:#c9a2ff; --d:1.9s; --x:6px}
+@keyframes tk-glitter-rise{
+  0%  {opacity:0; bottom:8%;  transform:translateX(0) scale(.35) rotate(0deg)}
+  18% {opacity:1}
+  65% {opacity:.9}
+  100%{opacity:0; bottom:86%; transform:translateX(var(--x)) scale(1) rotate(180deg)}
+}
+@keyframes tk-enchant-halo{
+  0%,100%{box-shadow:0 0 6px 1px rgba(255,140,220,.55), inset 0 0 5px rgba(255,190,240,.35)}
+  50%    {box-shadow:0 0 12px 3px rgba(176,140,255,.6),  inset 0 0 7px rgba(200,170,255,.4)}
+}
+.map-token.ko .tk-glitter,.map-token.dead .tk-glitter{display:none}
+.map-token.riding .tk-glitter i{max-width:4px; max-height:4px}
 @media (prefers-reduced-motion: reduce){
   .map-token .tk-sparkles i{animation:none; opacity:.95}
+  .map-token .tk-glitter i{animation:none; opacity:.8}
+  .map-token .tk-glitter i:nth-child(odd){bottom:70%}
+  .map-token .tk-glitter::before{animation:none; box-shadow:0 0 8px 2px rgba(255,140,220,.5)}
 }
 /* Cosmetic hazard markers: just the emoji, no token chrome (no ring/background/shadow). The icon
    scales to the token box via container units so it stays crisp at any grid size. */

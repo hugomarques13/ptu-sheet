@@ -1212,9 +1212,10 @@ function vortexRow(o, onChange, applyLoss){
     el("span",{class:"kv"}, dc ? `Break out on ${dc}+` : "wears off this turn"));
   if(dc) row.append(el("button",{class:"btn-secondary",style:"padding:5px 10px",
     title:`roll the end-of-turn 1d20 against DC ${dc}`,
-    onclick:()=>{ const r = 1 + Math.floor(Math.random()*20);
-      if(r >= dc){ out.textContent = `🎲 1d20 = ${r} ≥ ${dc} — it breaks out!`; end(); }
-      else { out.textContent = `🎲 1d20 = ${r} — not enough (needed ${dc}). Advance the turn.`; toast(`🌀 1d20 = ${r} — still caught`); }
+    onclick:()=>{ const d = 1 + Math.floor(Math.random()*20), sv = buffSave(o), r = d + sv;   // Save Check buffs (Lovely Kiss −3, Aromatic Mist +2)
+      const how = sv ? `${d} ${sv > 0 ? "+" : "−"} ${Math.abs(sv)} = ${r}` : `${r}`;
+      if(r >= dc){ out.textContent = `🎲 1d20 = ${how} ≥ ${dc} — it breaks out!`; end(); }
+      else { out.textContent = `🎲 1d20 = ${how} — not enough (needed ${dc}). Advance the turn.`; toast(`🌀 1d20 = ${how} — still caught`); }
     }},`🎲 1d20 vs ${dc}`));
   if(applyLoss){
     const tick = hpTick(ownerMaxHP(o));
@@ -5632,6 +5633,8 @@ function itemFreqForKey(key){
   if(kind==="rider") return "Scene";
   // a Z-Crystal's once-per-Scene charge (see heldTypeBoost) — recharges at End Scene like a Move
   if(kind==="zpower") return "Scene";
+  // a Move's own once-a-Scene conditional boost (Hex's Damage Base 13 — see spendCondBoosts)
+  if(kind==="boost") return "Scene";
   // a worn Accessory's own active use (Soothing Flute) — every one added so far is Scene-frequency
   if(kind==="item") return "Scene";
   // Augmentations: Reflex Points, Dermal Plating, Camouflage, Emergency Reactivation are Scene; Medical Nanobots daily
@@ -7979,7 +7982,11 @@ function artChainFor(key, chain){
      failed once — a blip, a rate-limit — and the fallback (a 3D render with no background) would then
      latch on for the whole session. The original is always tried first instead. */
   const host = u => { try{ return new URL(u, location.href).host; }catch(e){ return u; } };
-  if(host(good) !== host(chain[0])) return chain;
+  /* …except the campaign's own Storage bucket (art someone uploaded on purpose for that species) and the
+     pokéball a chain that died everywhere ended on: those are answers, not blips, and re-walking the dead
+     pokemondb links first is what blinked a homebrew Mega's token on every zoom. */
+  const ours = good === POKEBALL_SVG || /\/storage\/v1\/object\/public\//.test(good);
+  if(!ours && host(good) !== host(chain[0])) return chain;
   return [good, ...chain.filter(u => u !== good)];
 }
 /* try each candidate in turn as the image fails to load, ending at the pokéball placeholder */
@@ -7992,6 +7999,7 @@ function attachArtFallback(img, srcs, key){
   img.addEventListener("error", function(){
     const next = queue.shift();
     if(next){ this.src = next; return; }
+    if(key && this.src !== POKEBALL_SVG) ART_RESOLVED.set(key, POKEBALL_SVG);   // every candidate is dead: start there next render
     this.src = POKEBALL_SVG; this.classList.add("fallback");
   });
 }
@@ -8050,7 +8058,7 @@ function monSprite(speciesName, shiny, sizeCls="s-sm", override, eager){
   // `eager` is for the map board: its tokens sit inside a pan/zoom container whose CSS transform
   // confuses native lazy-loading's viewport check, so a token can be judged "off-screen" and left
   // unloaded until a later pan recomputes it — the image blinking in and out that this fixes.
-  const img = el("img",{class:`sprite ${sizeCls}`, alt:speciesName||"", loading: eager?"eager":"lazy", src: chain[0]});
+  const img = el("img",{class:`sprite ${sizeCls}${chain[0] === POKEBALL_SVG ? " fallback" : ""}`, alt:speciesName||"", loading: eager?"eager":"lazy", src: chain[0]});
   attachArtFallback(img, chain.slice(1), artKey);
   return img;
 }
@@ -8649,17 +8657,25 @@ function damageHealRow(getHP, setHP, owner){
        pool is spent HERE, before Injuries / Knocked Out / Shields Down, every one of which reads
        the real Hit Points that are actually left. */
     const newHP = owner ? tempSoakSay(owner, oldHP, oldHP+n) : oldHP+n;
-    if(owner){ applyAutoInjury(owner, oldHP, newHP); applyAutoKO(owner, oldHP, newHP); applyShieldsDown(owner, newHP); applySchooling(owner, newHP); }
+    if(owner){ applyAutoInjury(owner, oldHP, newHP); applyAutoKO(owner, poolHP(oldHP), poolHP(newHP)); applyShieldsDown(owner, newHP); applySchooling(owner, newHP); }
     usurpMirrorHP(owner, oldHP, newHP);   // an Usurper's other form loses the same HP (B&D p.51)
     setHP(newHP);
   };
+  /* A Boss's (or a Swarm's) box edits ONE bar of a pool: emptying it breaks a bar, it doesn't Knock the
+     creature Out. The KO check reads the whole pool the setter will cascade into — the Map's setTokenHP
+     already did; this box handed it the bar's own HP and floored every Boss on its first broken bar. */
+  function poolHP(v){
+    if(isBoss(owner)) return Math.max(0, (owner.boss.curBar||1)-1) * bossBarMax(owner) + v;
+    if(owner && owner.species !== undefined && isSwarm(owner)) return Math.max(0, (owner.swarm.mult||1)-1) * pokeDerived(owner).maxHP + v;
+    return v;
+  }
   let fracsRefresh = null;              // the Move-fraction buttons, once they exist
   /* A flat, signed HP change that skips the DR box above — Ticks and the Move fractions are fixed
      chunks of the Hit Point total, not incoming damage to be reduced. */
   const flatApply = n => {
     const oldHP = getHP();
     const newHP = owner ? tempSoakSay(owner, oldHP, oldHP+n) : oldHP+n;
-    if(owner){ applyAutoInjury(owner, oldHP, newHP); applyAutoKO(owner, oldHP, newHP); applyShieldsDown(owner, newHP); applySchooling(owner, newHP); }
+    if(owner){ applyAutoInjury(owner, oldHP, newHP); applyAutoKO(owner, poolHP(oldHP), poolHP(newHP)); applyShieldsDown(owner, newHP); applySchooling(owner, newHP); }
     usurpMirrorHP(owner, oldHP, newHP);   // an Usurper's other form loses the same HP (B&D p.51)
     setHP(newHP);
     if(fracsRefresh) fracsRefresh();      // the "of current HP" pair moves with the HP
@@ -10422,12 +10438,16 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const atk = isStatusAtk ? 0 : (opts.atkOverride ? opts.atkOverride.value : (isSpecAtk ? td.totals.spatk : td.totals.atk));
   const atkLbl = opts.atkOverride ? opts.atkOverride.label : (isSpecAtk ? "Sp.Attack" : "Attack");
   const defNote = isSpecAtk ? "Special Defense" : "Defense";
-  const evaNote = isSpecAtk ? "Special Evasion" : "Physical Evasion";
-  const bm = buffMods(t, {isPhys: isPhysAtk, type: st.type});
+  /* Enchanting Transformation: "Sweet Kiss ignores Speed Evasion" — the target can't pick its Speed Evasion */
+  const etSweet = moveKey(st.name || "") === "sweetkiss" && modeIsOn(t, "enchanting-transformation") && hasFeatureLoose(t, "Enchanting Transformation");
+  const evaNote = (isSpecAtk ? "Special Evasion" : "Physical Evasion") + (etSweet ? " (never its Speed Evasion — Enchanting Transformation)" : "");
+  const bm = buffMods(t, {isPhys: isPhysAtk, type: st.type, isStatus: isStatusAtk, rawDB: parseInt((st.move && st.move.db) ?? st.db) || 0});
   /* Crit Range for this attack — Bad Mood, Frenzy & co., and the Move's own printed range. */
   /* Flip Out (Tumbler) lets an Aerial Ace decline the Critical Hit test in exchange for the Pass
      Keyword, so the threshold is a `let`: ticking it pushes the range to 21, which no d20 reaches. */
-  const critTBase = trainerCritThreshold(t, st, bm.crit);
+  /* Powerful Motivator's Baby-Doll Eyes ("cannot Critically Strike for 1 full round"): the range goes past 20 */
+  const noCritBuff = buffNoCrit(t);
+  const critTBase = noCritBuff ? 21 : trainerCritThreshold(t, st, bm.crit);
   let critT = critTBase;
   const critNote = [badMoodWhy(t), bm.crit ? `+${bm.crit} buffs` : ""].filter(Boolean).join(" · ");
   /* Struggle Attacks (unarmed and plain weapon strikes) have no Move behind them and never get
@@ -10654,7 +10674,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     el("div",{class:"small muted",style:"margin-top:2px"},
       (condMods().noMiss
         ? `${st.name} cannot miss while that condition holds — no Accuracy Check needed.`
-        : `Roll ${dblStrike?"2 separate Attack Rolls — each ":"1d20 — "}hits if it's ≥ AC ${st.ac} + the target's ${evaNote}. ${critT>20 ? "Nat 20 auto-hits but cannot Crit (you declined the Critical Hit test)" : `${critT===20?"Nat 20":`Roll ${critT}+`} auto-hits/crits`}, nat 1 auto-misses.`)
+        : `Roll ${dblStrike?"2 separate Attack Rolls — each ":"1d20 — "}hits if it's ≥ AC ${st.ac} + the target's ${evaNote}. ${critT>20 ? (noCritBuff ? `Nat 20 auto-hits but cannot Crit (${noCritBuff})` : "Nat 20 auto-hits but cannot Crit (you declined the Critical Hit test)") : `${critT===20?"Nat 20":`Roll ${critT}+`} auto-hits/crits`}, nat 1 auto-misses.`)
       + (accWhyPre.length?` Includes ${accWhyPre.join(" ")}.`:""))));
   if(dn){
     const terms = [`${dn}d${dfaces}`]; if(dflat) terms.push(String(dflat)); if(atk) terms.push(String(atk));
@@ -10777,7 +10797,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         el("div",{class:"small",style:"font-weight:700"}, c.label),
         el("div",{class:"small muted"}, eff.join(" · ") + (c.note ? ` — ${c.note}` : "")),
         condAuto[i] ? el("div",{class:"small",style:"color:var(--good);font-weight:700"},
-          (c.autoWhy && c.autoWhy(t)) || "✓ detected from this sheet — untick if that's not the case") : ""));
+          (c.autoWhy && c.autoWhy(t)) || "✓ detected from this sheet — untick if that's not the case") : "",
+        condOncePerScene(c) ? condBoostStatus(t, st.move || st.name, opts.persist) : ""));
       wc.append(lbl);
     });
     body.append(wc);
@@ -10823,8 +10844,9 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     wc.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},
       fiveStrike ? "🎯 Five Strike — 1d8 hit count" : "⚔ Double Strike — 2 separate Attack Rolls"));
     if(dblStrike){
-      evaPick = strikeTargetPicker(t, ()=>isSpecAtk, "Target's Evasion");
-      wc.append(evaPick.node);
+      if(strikeGmPicks()) wc.append(strikeGmPicksNote());
+      else { evaPick = strikeTargetPicker(t, ()=>isSpecAtk, "Target's Evasion");
+        wc.append(evaPick.node); }
     }
     wc.append(el("div",{class:"small muted",style:"margin-top:4px"},
       fiveStrike ? `Rolling 🎲 also rolls 1d8 for the hit count (1 / 2-3 / 4-6 / 7 / 8 → 1 / 2 / 3 / 4 / 5 hits); the Move's own Damage Base ${rawDB} is multiplied by it${stabDB||bm.db?`, and the${stabWhy}${bm.db?` ${bm.db>0?"+":"−"}${Math.abs(bm.db)} DB from buffs`:""} is added only after that`:""} (Core p.242).`
@@ -10837,7 +10859,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   if(tbuffs.length){
     const bcard = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
     bcard.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},"✨ Buffs & Orders active"));
-    const bctx = {isPhys:isPhysAtk, type: st.type};
+    const bctx = {isPhys:isPhysAtk, type: st.type, isStatus: isStatusAtk, rawDB: parseInt((st.move && st.move.db) ?? st.db) || 0};
     tbuffs.forEach(b=>{ const mt=buffModText(b.mods); const offTxt = buffOffText(b, bctx);
       bcard.append(el("div",{class:"small"+(offTxt?" muted":"")}, `• ${b.name}` + (mt?` — ${mt}`:"") + offTxt,
         b.note?el("span",{class:"muted"},"  "+b.note):"")); });
@@ -10904,6 +10926,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   /* redo = {nats, forceHits} — re-resolve a Double Strike with the SAME Attack Rolls */
   let eotRefreshed = false;            // once per modal, not once per re-roll of the same attack
   let blessingLaid = false;            // …and a Blessing Move is laid on the field once per modal too
+  const hpAuto = { paid:{} };          // …and so is a self-heal / self-cost (moveHPNode's auto)
+  const boostSpend = { done:false };   // …and Hex's once-a-Scene boost (spendCondBoosts)
   const doRoll = (redo) => {
     out.innerHTML=""; out.style.borderStyle="solid";
     let feedLogged = false;              // the GM's roll feed gets exactly one line per press of 🎲
@@ -10938,6 +10962,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       (opts.persist||save)(); if(opts.rerender) opts.rerender();
     }
     const berN = berserkBonus(pushOn);
+    { const bs = spendCondBoosts(t, st.move || st.name, condList, condOn, boostSpend, opts.persist);
+      if(bs) out.append(el("div",{class:"small",style:"margin-bottom:6px;font-weight:600;color:var(--accent)"}, bs)); }
     const wAcc = st.weapon?.accMod || 0;      // a Fainted Living Weapon is −2 on every roll (Core p.305)
     const accMod = (bm.acc||0) + accCS + wAcc;
     const nats = redo?.nats || Array.from({length:nAcc}, ()=>1+Math.floor(Math.random()*20));
@@ -10959,7 +10985,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       out.append(el("div",{style:"margin-bottom:10px"}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLL"),
         el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`, el("span",{class:"muted",style:"font-size:13px;font-weight:600"}, accBits.length?`  (${acc} ${accBits.join(" ")})`:" (1d20)")),
         el("div",{class:"small muted"}, `Hits if ${accTot} ≥ AC ${st.ac} + target's ${evaNote}.`
-          + (acc===20 ? (critT>20 ? " Natural 20 — auto-hit. The Critical Hit test was declined, so it can't Crit; Aerial Ace has Pass instead."
+          + (acc===20 ? (critT>20 ? (noCritBuff ? ` Natural 20 — auto-hit, but it can't Crit (${noCritBuff}).` : " Natural 20 — auto-hit. The Critical Hit test was declined, so it can't Crit; Aerial Ace has Pass instead.")
                                    : " Natural 20 — auto-hit/crit!")
              : acc===1 ? " Natural 1 — auto-miss."
              : acc>=critT ? ` Roll ${acc} ≥ crit range ${critT} — Critical Hit!${critNote?` (${critNote})`:""}` : ""))));
@@ -10977,7 +11003,11 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       : acc === 20 ? false
       : (acc === 1 || accTot < st.ac + targetEva);
     if(st.move){
-      const trThr = buffEffectThresholds(sereneGraceThresholds(
+      const noEffT = buffNoEff(t);       // Confide under Powerful Motivator: no Effect Ranges this round
+      if(noEffT && effectThresholds(st.move.effect).length)
+        out.append(el("div",{class:"small",style:"margin:2px 0 10px;color:var(--bad);font-weight:600"},
+          `\u{1F6AB} ${noEffT} — none of this Move's Effect Ranges can trigger this round.`));
+      const trThr = noEffT ? [] : buffEffectThresholds(sereneGraceThresholds(
         kingsRockThresholds(burnRangeThresholds(
           frostbiteThresholds(effectThresholds(st.move.effect),
             ownerHasAbility(t,"Frostbite") && st.type==="Ice" && !isStatusAtk),
@@ -11033,8 +11063,17 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       // Leech Seed: plant it on a target, or shake the user's own off
       const sn2 = moveSeedNode(t, st.move, { redraw:opts.rerender, persist:opts.persist });
       if(sn2) out.append(sn2);
-      hpNode = moveHPNode(t, st.move, { missed:missedRoll, redraw:opts.rerender, persist:opts.persist });
+      hpNode = moveHPNode(t, st.move, { missed:missedRoll, redraw:opts.rerender, persist:opts.persist, auto:hpAuto });
     }
+    /* King's Rock, said the way Demoralize is. With a Move the Flinch is already in hitFx / on the Apply card
+       (the Effect Range above); a Struggle or bare weapon strike has no Move to carry it, so it's added here. */
+    { const kr = !missedRoll && kingsRockFired(t, st.move ? trThrOut : null, acc, !isStatusAtk);
+      if(kr){
+        const rides = mode==="cloud" && connected > 0;
+        if(!st.move && rides){ hitFx = hitFx || { name:st.name, status:[], cs:[] }; hitFx.status = uniqStatusKeys((hitFx.status || []).concat(["flinch"])); }
+        out.append(kingsRockBanner(kr, acc, rides ? `It rides with the hit — the GM’s \u{1F4A5} Apply Flinches every target it damages (Inner Focus & co. checked).`
+          : st.move ? `It’s on the \u{1F4AB} Status Afflictions card below.` : `Put Flinched on the target from its own Status Conditions.`));
+      } }
     /* Demoralize (Edge, prereq Adept Intimidate): "Whenever you land a Critical Hit on a foe, that
        foe becomes Vulnerable. Status-Class Moves with an Accuracy Roll can Crit for the purposes of
        activating this effect on a natural roll of 19 or higher, and any effects that expand your
@@ -11089,7 +11128,9 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     if(fiveStrike){ const hi = fiveStrikeRoll(); db = Math.min(28, rawDB*hi.hits + stabDB + (bm.db||0));
       strikeNote = `🎯 Five Strike: 1d8 → ${hi.d8} = ${hi.hits} hit${hi.hits===1?"":"s"} — DB ${rawDB} ×${hi.hits} = ${rawDB*hi.hits}`
         + `${stabWhy}${bm.db?` +${bm.db} buffs`:""} → DB ${db}`; }
-    else if(dblStrike && connected) strikeNote = `⚔ Double Strike: ${connected} of 2 connected — Damage Base ${db}`;
+    else if(dblStrike && connected) strikeNote = strikeGmPicks()
+      ? `⚔ Double Strike: ${connected} of 2 would connect against no Evasion — Damage Base ${db}. Your GM's pick of the target decides the real count.`
+      : `⚔ Double Strike: ${connected} of 2 connected — Damage Base ${db}`;
     const r = connected>0 ? rollDiceString(diceFor(db)) : null;
     /* Critical Hit (Core p.235): a crit adds the whole Damage Base value — dice AND its flat part —
        a second time ("a DB6 Move Crit would be 4d6+16+Stat"); only the Attack bonus isn't doubled.
@@ -11109,6 +11150,15 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       const runX = runningStartBonus(runStart, runStartState);
       let total = Math.max(0, r.total + im.atk + (bm.dmg||0) + berN + wFlame + sStance + twisted + tDmg + cx.dmg + im.delta + wAcc + critExtra + runX.flat);   // wAcc: Fainted Living Weapon is −2 on EVERY roll
       if(cx.mult !== 1) total = Math.max(0, Math.floor(total * cx.mult));
+      /* a player's Double Strike: the GM's pick of the target counts the hits (multiStrikeResolve), so every hit
+         count's dice and a crit roll per strike go to the feed with the d20s */
+      let multiP = null;
+      if(dblStrike && strikeGmPicks()){
+        const flat = im.atk + (bm.dmg||0) + berN + wFlame + sStance + twisted + tDmg + cx.dmg + im.delta + wAcc + runX.flat;
+        multiP = { nats: nats.slice(), accMod, ac: (st.ac == null || st.ac === "") ? null : +st.ac, critT, flat, mult: cx.mult,
+          dice: [1, 2].map(k => k === connected ? r.total : ((rollDiceString(diceFor(baseDBv * (k >= 2 ? 2 : 1))) || {}).total || 0)),
+          crits: [0, 1].map(() => (rollDiceString(diceFor(critDBv)) || {}).total || 0) };
+      }
       const parts = [`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`, `+ ${im.atk} ${atkLbl}${im.halved?" (halved — Infatuated)":""}`];
       if(bm.dmg) parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs (${buffSources(t,"dmg")})`);
       if(berN) parts.push(`+${berN} ${BERSERKER_LESSONS} (Intimidate ${rankNum(t.skills?.intimidate)} + ${t.injuries||0} Injur${(t.injuries||0)===1?"y":"ies"}${pushOn?", doubled by "+BERSERKER_PUSH:""})`);
@@ -11163,7 +11213,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         atk: isStatusAtk ? null : { dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce, critExtra,
                atkTinted: ownerHasAbility(t,"Tinted Lens") || !!(tMold && tMold.tinted), atkMold: !!tMold, moveRule,
                atkExploit: exploitAbilityBonus(t), atkWar: ownerAuraActive(t,"War"), atkDeicide: !!st.deicide,
-               seFlat: heldSeFlatDamage(t), defCSMode, fx: hitFx,
+               seFlat: heldSeFlatDamage(t), defCSMode, fx: hitFx, multi: multiP,
                ctx:{ by:rollerName(t), aid:t.id || null, move:(st.move && st.move.name) || "", melee:/melee/i.test(String((st.move && st.move.range) || "")) } } });
     }
     if(hpNode) out.append(hpNode);
@@ -14237,6 +14287,12 @@ function inventoryRow(t, char, it, i){
   const info = el("div",{style:"flex:1;min-width:0"});
   const name = el("input",{type:"text",placeholder:"Item",style:"width:100%",list:"itemlist"}); name.value=it.name;
   name.addEventListener("input",()=>{ it.name=name.value; save(); });
+  /* a "+ custom" row typed into the name of something already in the bag joins that stack instead of
+     sitting beside it as a second one */
+  name.addEventListener("change",()=>{
+    const into = mergeInventoryRow(t, it);
+    if(into){ save(); renderTrainer(); toast(`\u{1F392} Added to your ${into.name} stack — ${into.qty} now`); }
+  });
   info.append(name);
   const cat = itemByName.get((it.name||"").toLowerCase());
   if(cat){
@@ -14301,8 +14357,9 @@ function openInventoryPicker(t){
   const list = catalogItems();
   const names = list.map(x=>x.name);
   openPicker("Add from catalog", names, name=>{
-    const ex = t.inventory.find(it=>it.name.toLowerCase()===name.toLowerCase());
-    if(ex){ ex.qty=(parseInt(ex.qty)||0)+1; } else { t.inventory.push({name, qty:1, notes:""}); }
+    // the same stack-match the 🎁 send uses: spelling/case don't split it, a Chef's Taste or Joy row does
+    const ex = t.inventory.find(it => it && sameItemStack(it, { name }));
+    if(ex){ ex.qty=(parseInt(ex.qty)||0)+1; toast(`\u{1F392} ${ex.name} ×${ex.qty}`); } else { t.inventory.push({name, qty:1, notes:""}); }
     save(); renderTrainer();
   }, "held");
 }
@@ -14334,14 +14391,29 @@ function canSendItems(fromChar){ return !!fromChar && itemSendTargets(fromChar).
    (a row carrying its own notes, shop art or a Chef's taste stays its own row) */
 function sameItemStack(a, b){
   if(normItemName(a.name)!==normItemName(b.name)) return false;
-  const skip = new Set(["name","qty","fav"]);
+  /* the picture a shop shelf handed over (`img`) is cosmetic and never splits a stack, and neither does a note
+     only ONE side has written. What a Chef stamped on (Taste, Joy) and two different notes still do. */
+  const skip = new Set(["name","qty","fav","img"]);
   const keys = new Set([...Object.keys(a), ...Object.keys(b)].filter(k=>!skip.has(k)));
   const blank = v => v==null || v==="";
   for(const k of keys){
     if(blank(a[k]) && blank(b[k])) continue;
+    if(k === "notes" && (blank(a[k]) || blank(b[k]))) continue;
     if(JSON.stringify(a[k])!==JSON.stringify(b[k])) return false;
   }
   return true;
+}
+/* fold row `it` into another row of the same item in the bag, if there is one — the stack grows, `it` goes.
+   Returns the row it went into (null = nothing to merge with). */
+function mergeInventoryRow(t, it){
+  if(!t || !Array.isArray(t.inventory) || !it || !String(it.name || "").trim()) return null;
+  const into = t.inventory.find(x => x && x !== it && sameItemStack(x, it));
+  if(!into) return null;
+  into.qty = (Math.max(0, parseInt(into.qty)||0)) + (Math.max(0, parseInt(it.qty)||0));
+  if(!into.notes && it.notes) into.notes = it.notes;
+  if(!into.img && it.img) into.img = it.img;
+  const i = t.inventory.indexOf(it); if(i >= 0) t.inventory.splice(i, 1);
+  return into;
 }
 /* move `n` of inventory row `it` from fromChar's bag to target.char's; false when cancelled */
 function sendInventoryItem(fromChar, it, target, n){
@@ -18104,6 +18176,14 @@ function buffApplies(b, ctx){
      OUT rather than quietly handing the bonus to every Move — better a missing +5 the player can
      see listed than a silent one on the wrong attack. */
   if(b.onlyType && (!ctx || b.onlyType !== ctx.type)) return false;
+  /* `b.onlyTrait` (Fey Law's "attacks with the chosen trait"): {cls:"Status"} or {db:10} — same rule, a
+     roll that can't say leaves it out. Combat Maneuvers are rolled at the table, so {maneuver} never matches. */
+  if(b.onlyTrait){
+    const T = b.onlyTrait;
+    if(!ctx || T.maneuver) return false;
+    if(T.cls === "Status" && !ctx.isStatus) return false;
+    if(T.db && !((ctx.rawDB || 0) >= T.db)) return false;
+  }
   if(!b.only || !ctx || ctx.isPhys==null) return true;
   return b.only === (ctx.isPhys ? "phys" : "spec");
 }
@@ -18111,6 +18191,8 @@ function buffApplies(b, ctx){
 function buffOffText(b, ctx){
   if(!buffApplies(b, ctx)){
     if(b.onlyType) return ` — ${b.onlyType}-Type Moves only, not counted here`;
+    if(b.onlyTrait) return b.onlyTrait.maneuver ? " — Combat Maneuvers only (take it off that roll at the table)"
+      : b.onlyTrait.cls ? " — Status-Class attacks only, not counted here" : ` — Damage Base ${b.onlyTrait.db}+ attacks only, not counted here`;
     if(b.only)     return ` — ${b.only==="phys"?"Physical":"Special"} attacks only, not counted here`;
     return " — not counted on this roll";
   }
@@ -18139,6 +18221,13 @@ function buffMove(owner){ return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods&&
    AFTER the ⌊stat/5⌋ cap in both derived layers, the way an Ability's flat Evasion already is —
    it is a bonus on top of the stat, not part of it. */
 function buffEva(owner){ return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods&&b.mods.eva)||0), 0); }
+/* Debuffs a Provocateur hangs on a foe for 1 full round (RIDER_FX): `mods.noCrit` — Baby-Doll Eyes, it
+   cannot Critically Strike; `mods.noEff` — Confide, its Moves trigger no Effect Ranges. Each returns the
+   buff's name (truthy) so a roll can say why. `mods.save` is a flat bonus/penalty on Save Checks (Lovely
+   Kiss −3, Aromatic Mist +2), which are rolled at the table — shown wherever the sheet names a Save. */
+function buffNoCrit(owner){ const b = ownerBuffs(owner).find(x => x.mods && x.mods.noCrit); return b ? b.name : ""; }
+function buffNoEff(owner){ const b = ownerBuffs(owner).find(x => x.mods && x.mods.noEff); return b ? b.name : ""; }
+function buffSave(owner){ return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods&&b.mods.save)||0), 0); }
 /* Flat Initiative from a buff (a Channeler's Spirit Boost on a Speed-heavy Pokémon). Read by
    tokenInitiative, so placing the Boost reorders the Map's turn tracker straight away. */
 function buffInit(owner){ return ownerBuffs(owner).reduce((n,b)=> n + ((b.mods&&b.mods.init)||0), 0); }
@@ -22672,14 +22761,14 @@ function hitFxLine(fx){
    for this Move; "whether the Move hits or misses" in the preamble makes every bullet hit-or-miss. */
 const RIDER_FX = {
   "powerful motivator": {
-    babydolleyes: { buff:{ name:"Can't Critically Strike", note:"Powerful Motivator (Baby-Doll Eyes): cannot Critically Strike for 1 full round." } },
-    confide:      { buff:{ name:"Can't trigger Effect Ranges", note:"Powerful Motivator (Confide): cannot trigger Effect Ranges for 1 full round." } },
+    babydolleyes: { buff:{ name:"Can't Critically Strike", mods:{ noCrit:true }, note:"Powerful Motivator (Baby-Doll Eyes): cannot Critically Strike for 1 full round." } },
+    confide:      { buff:{ name:"Can't trigger Effect Ranges", mods:{ noEff:true }, note:"Powerful Motivator (Confide): cannot trigger Effect Ranges for 1 full round." } },
     leer:         { keys:["slowed"], round:true },
     sweetkiss:    { buff:{ name:"\u22123 Evasion (Sweet Kiss)", mods:{ eva:-3 } } },
     taunt:        { buff:{ name:"\u22123 Accuracy (Taunt)", mods:{ acc:-3 } } },
     torment:      { buff:{ name:"\u221210 Damage (Torment)", mods:{ dmg:-10 },
                     note:"Powerful Motivator (Torment): \u221210 to Damage Rolls against the Provocateur's allies for 1 full round." } },
-    lovelykiss:   { buff:{ name:"\u22123 Save Checks (Lovely Kiss)", note:"Powerful Motivator (Lovely Kiss): \u22123 to Save Checks for 1 full round." } },
+    lovelykiss:   { buff:{ name:"\u22123 Save Checks (Lovely Kiss)", mods:{ save:-3 }, note:"Powerful Motivator (Lovely Kiss): \u22123 to Save Checks for 1 full round." } },
   },
   "play them like a fiddle": {
     babydolleyes: { keys:["infatuation"], note:"Infatuated with the Provocateur for the Scene \u2014 no cure, not even Taking a Breather" },
@@ -22687,13 +22776,16 @@ const RIDER_FX = {
     leer:         { cs:[{ who:"target", stats:["def"], n:-1 }, { who:"target", stats:["spdef"], n:-2 }] },
     sweetkiss:    { buff:{ name:"Fiddled (Sweet Kiss)", scene:true,
                     note:"While Confused it can't Disengage, and hitting itself in Confusion provokes an Attack of Opportunity from every adjacent foe." } },
-    taunt:        { buff:{ name:"Next hit +3d8+10 (Taunt)", note:"For 1 full round, the next damaging attack to hit it deals +3d8+10 Damage." } },
+    taunt:        { buff:{ name:"Next hit +3d8+10 (Taunt)", mods:{ takeExtra:"3d8+10" },
+                    note:"For 1 full round, the next damaging attack to hit it deals +3d8+10 Damage — the \u{1F4A5} Apply rolls it in and spends this." } },
     torment:      { abOff:true },
     lovelykiss:   { buff:{ name:"\u22122 Evasion (Lovely Kiss)", scene:true, mods:{ eva:-2 } } },
   },
   "enchanting transformation": {
     dazzlinggleam: { even:true, cs:[{ who:"target", stats:["acc"], n:-1 }] },
     moonblast:     { when:"miss", tick:1 },
+    aromaticmist:  { buff:{ name:"+2 next Save Check (Aromatic Mist)", scene:true, mods:{ save:2 },
+                     note:"Enchanting Transformation (Aromatic Mist): +2 to its next Save Check — remove this once it's used." } },
   },
 };
 /* A Move's OWN on-a-miss clause ("On miss, the target suffers a -2 penalty to Accuracy Rolls for one full round") */
@@ -23037,6 +23129,13 @@ function ownerHPChange(o, n, opts){
   return next - old;
 }
 const hpHasHeld = (o, key) => heldFxList(o).some(([nm]) => normItemName(nm) === key);
+/* Enchanting Transformation (Glamour Weaver): "Draining Kiss: You gain an additional Tick of Hit Points when
+   gaining Hit Points from Draining Kiss." — the Tick, while the stance is up; 0 otherwise. */
+function enchantedDrainTick(o, m){
+  if(!o || !m || !isTrainerOwner(o) || moveKey(m.name) !== "drainingkiss") return 0;
+  if(!modeIsOn(o, "enchanting-transformation") || !hasFeatureLoose(o, "Enchanting Transformation")) return 0;
+  return hpTick(ownerMaxHP(o));
+}
 /* "the user ignores the Recoil keyword" — and Magic Guard takes no indirect damage at all */
 function hpRecoilImmunity(o){
   if(!o) return "";
@@ -23082,6 +23181,7 @@ function moveHPNode(actor, m, o){
     const base = baseOf(e);
     let n = base > 0 ? hpFractionOf(base, e) : 0;
     if(e.kind === "drain" && bigRoot) n *= 2;                  // Big Root: an HP-stealing Move gives back double
+    if(e.kind === "drain" && n > 0) n += enchantedDrainTick(actor, m);   // Enchanting Transformation: Draining Kiss +1 Tick
     if(e.kind === "recoil" && rockHead) n = 0;
     return n;
   };
@@ -23092,6 +23192,35 @@ function moveHPNode(actor, m, o){
      as an estimate until the number is real - typed in by hand, or handed back by the \u{1F4A5} Apply
      that actually put the hit on a token. */
   let dealtReal = false, paidAuto = [];     // paidAuto: the kinds (drain / recoil) the Apply already paid
+  /* Self-heals and self-costs the Move simply DOES — Recover, Roost, Rest, Belly Drum, Mind Blown, a missed
+     Jump Kick — land the moment it's rolled. `o.auto` is the roll window's holder ({paid:{}}), so a re-roll or an
+     "override hits" redo of the same use never pays twice. A condition ("If the user is a Ghost Type"), a per-turn
+     heal (Ingrain) and anything aimed at somebody else stay buttons. */
+  const autoOK = e => !!o.auto && e.who === "user" && ["heal","cost","full"].includes(e.kind) && e.of !== "dealt" && !e.cond
+    && (e.onMiss ? o.missed === true : true)
+    && !/\b(?:each|every)\b[^.;]*\bturns?\b|\bat the (?:beginning|start|end) of\b/i.test(e.text || "");
+  const autoKey = e => `${e.kind}|${e.text}`;
+  const autoPay = (e, fn) => {
+    if(!autoOK(e)) return null;
+    const P = o.auto.paid || (o.auto.paid = {}), k = autoKey(e);
+    if(!(k in P)){
+      P[k] = fn();
+      persist(); setTimeout(redraw, 0);
+      toast(`${HP_KIND_ICON[e.kind]} ${m.name}: ${ownerLabel(actor)} ${P[k] >= 0 ? "+" : ""}${P[k]} HP — ${ownerHP(actor)}/${ownerMaxHP(actor)}`);
+    }
+    return P[k];
+  };
+  const undoAuto = (e, row) => row.append(el("button", { class:"linkbtn", style:"margin-left:8px;font-size:12px",
+    title:"put the Hit Points back the way they were before this Move",
+    onclick:(ev) => { const P = o.auto.paid || {}, k = autoKey(e), n = P[k];
+      if(!n) return;
+      /* straight back to where it was — NOT through ownerHPChange, whose Injury markers would read taking a heal
+         back as a hit (Recover's +44 undone cost two Injuries) */
+      const old = ownerHP(actor), next = Math.min(ownerMaxHP(actor) || old, old - n);
+      actor.currentHP = next; applyAutoKO(actor, old, next);
+      P[k] = 0;
+      persist(); redraw(); ev.currentTarget.disabled = true; ev.currentTarget.textContent = "↩ taken back";
+      toast(`↩ ${ownerLabel(actor)} ${-n >= 0 ? "+" : ""}${-n} HP — ${ownerHP(actor)}/${ownerMaxHP(actor)}`); } }, "↩ undo"));
   const dealtWarn = el("div", { class:"small", style:"color:var(--warn);font-weight:600;margin-bottom:6px" });
   if(needDealt){
     card.append(el("div", { class:"inline small", style:"gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap" },
@@ -23124,11 +23253,14 @@ function moveHPNode(actor, m, o){
           toast(`\u{1F49A} ${ownerLabel(actor)} — +${n} HP, back to full`);
         } }, `✨ Heal ${ownerLabel(actor)} to full`);
       row.append(note, e.cond ? el("div", { class:"small", style:"color:var(--accent);font-weight:600" }, `only if ${e.cond}`) : "", b);
+      const paid = autoPay(e, () => healToFull(actor));
+      if(paid != null){ b.disabled = true; b.textContent = paid ? `✓ +${paid} HP — healed to full automatically` : "✓ already at full"; if(paid) undoAuto(e, row); }
       card.append(row); return;
     }
     const up = e.kind === "drain" || e.kind === "heal";
     const ofTxt = e.of === "dealt" ? "of the damage dealt" : e.of === "current" ? "of its current Hit Points" : "of Max HP";
     const btn = el("button", { class:"btn-secondary", style:"margin-top:4px;padding:4px 10px" });
+    let autoN = null;                      // what autoPay already moved for this row (null = it's a button)
     const paint = () => {
       const n = amountOf(e);
       const what = e.kind === "drain" ? "Drain" : e.kind === "recoil" ? "Recoil" : up ? "Heal" : "Cost";
@@ -23144,8 +23276,10 @@ function moveHPNode(actor, m, o){
       btn.textContent = `${up ? "➕" : "➖"}${est ? "≈" : ""}${n} HP → ${ownerLabel(actor)}`;
       btn.disabled = !n;
       if(paidAuto.includes(e.kind) && !e.cond){ btn.textContent = e.kind === "drain" ? "✓ drained automatically" : "✓ recoil taken automatically"; btn.disabled = true; }
+      if(autoN != null){ btn.textContent = autoN ? `✓ ${autoN >= 0 ? "+" : ""}${autoN} HP — applied automatically` : "✓ nothing to change"; btn.disabled = true; }
     };
     refreshers.push(paint);
+    autoN = autoPay(e, () => { const n = amountOf(e); return n ? ownerHPChange(actor, up ? n : -n, { raw: !!e.unpreventable }) : 0; });
     btn.addEventListener("click", (ev) => {
       const n = amountOf(e); if(!n) return;
       const moved = ownerHPChange(actor, up ? n : -n, { raw: !!e.unpreventable });
@@ -23158,7 +23292,12 @@ function moveHPNode(actor, m, o){
     if(e.cond) row.append(el("div", { class:"small", style:"color:var(--accent);font-weight:600" }, `only if ${e.cond}`));
     if(e.weather.length) row.append(el("div", { class:"small muted" }, `${wx.icon || ""} ${wx.name} is in play, so this is the fraction that applies.`));
     if(e.unpreventable) row.append(el("div", { class:"small muted" }, "Cannot be prevented in any way — Temporary HP doesn't soak it."));
-    if(e.of === "dealt"){
+    /* a player can't see the target's Defense, so their drain / Recoil is the GM's 💥 Apply's to pay — said
+       here so the button isn't pressed on top of it */
+    if(e.of === "dealt" && e.who === "user" && !e.cond && mode === "cloud" && !isGM())
+      row.append(el("div", { class:"small", style:"color:var(--good);font-weight:600" },
+        `⏳ Paid for you when the GM presses \u{1F4A5} Apply on this hit — press the button only if they put the damage on by hand.`));
+    else if(e.of === "dealt"){
       const hint = el("div", { class:"small muted" }, "Fill the box above in (or press \u{1F4A5} Apply) and this becomes a real number.");
       refreshers.push(() => { hint.style.display = dealtOf() ? "none" : ""; });
       row.append(hint);
@@ -23184,6 +23323,7 @@ function moveHPNode(actor, m, o){
         } }, `\u{1F3AF} Heal ${e.who === "party" ? "allies" : "the target"}…`));
     }
     if(e.who !== "target") row.append(btn);
+    if(autoN) undoAuto(e, row);
     card.append(row);
   });
   refreshers.forEach(f => f());
@@ -24050,6 +24190,7 @@ function bossStatusTurnLines(o){
       if(wk === "sunny"){ mod += 4; why.push("+4 Sun"); }
       else if(wk === "hail" || wk === "snowy"){ mod -= 2; why.push("−2 Hail"); }
     }
+    { const sv = buffSave(o); if(sv) why.push(`${sv > 0 ? "+" : "−"}${Math.abs(sv)} Save Check buffs`); }
     /* Save Checks stay the table's roll: say the DC, the modifiers that apply and the price of a miss, and touch nothing */
     out.push(`${statusName(k)} — end-of-turn Save vs DC ${dc}${why.length ? ` [${why.join(", ")}]` : ""}: a pass cures it, a fail costs it −10 on its next Damage Roll (add that as a buff yourself).`);
   });
@@ -24287,8 +24428,11 @@ const MOVE_LOCKS = {
   embargo:    { kind:"embargo", note:"cannot use or benefit from held items for the rest of the encounter" },
   healblock:  { kind:"healblock", note:"cannot gain HP or Temporary HP from any source for the rest of the encounter" },
 };
-const ownerLocks = o => (o && Array.isArray(o.locks)) ? o.locks : [];
-const lockOn = (o, kind) => ownerLocks(o).some(l => l.kind === kind);
+/* function declarations, not arrow consts: heldFxList asks lockOn(…, "embargo"), and load() reaches it
+   (normPokemon → syncHeldStatuses) for any saved Pokémon holding an item — as a const below
+   `let state = load()` that threw "Cannot access 'lockOn' before initialization" and the save was dropped */
+function ownerLocks(o){ return (o && Array.isArray(o.locks)) ? o.locks : []; }
+function lockOn(o, kind){ return ownerLocks(o).some(l => l.kind === kind); }
 function clearLocks(o){ if(o && o.locks) delete o.locks; }
 function lockMove(m){ const k = moveKey((m && m.name) || ""); return MOVE_LOCKS[k] ? Object.assign({ key:k }, MOVE_LOCKS[k]) : null; }
 function addLock(o, spec, extra){
@@ -25931,6 +26075,19 @@ function kingsRockThresholds(list, owner, isDmg){
   if((list || []).some(t => /flinch/i.test(t.text || ""))) return list;
   return (list || []).concat([{ n:19, text:"King's Rock — this attack Flinches the target on 19+." }]).sort((a, b) => a.n - b.n);
 }
+/* Did King's Rock go off on this roll? Read off the roll's own Effect Ranges, so Serene Grace's +2 counts and a
+   Move with its own Flinch range keeps it (null). `thresholds` null = an attack with no Move behind it (a
+   Trainer's Struggle or weapon strike): "Attacks cause Flinch" still covers it, on a plain 19+. */
+function kingsRockFired(owner, thresholds, acc, isDmg){
+  if(!isDmg || acc === 1 || !owner || buffNoEff(owner) || !heldFxList(owner).some(([nm]) => normItemName(nm) === "kingsrock")) return null;
+  const own = (thresholds || []).find(t => /^King's Rock/.test(t.text || ""));
+  const n = own ? own.n : thresholds ? null : 19;
+  return (n != null && acc >= n) ? { n } : null;
+}
+function kingsRockBanner(kr, acc, how){
+  return el("div",{class:"warnbox",style:"margin:0 0 10px;line-height:1.5;border-color:var(--accent);color:var(--accent)",
+    html:`\u{1F451} <b>King's Rock!</b> ${acc} ≥ ${kr.n} — the target <b>Flinches</b>. ${how}`});
+}
 function frostbiteThresholds(list, active){
   if(!active) return list;
   const arr = (list||[]).slice();
@@ -26286,6 +26443,28 @@ function strikeReadout(strikes){
    viewer can't see (gmHidden, under fog) aren't offered; a manual number is still there for an
    attack with no Map behind it. The last pick is remembered for the next swing. */
 let lastStrikeTargetId = null;
+/* …and since v688 a PLAYER doesn't pick at all: the GM does, from the 🎲 feed. The player's roll can't count
+   its hits without the target, so it hands the feed everything needed to count them later — the d20s, the
+   flat Accuracy modifier, AC, the crit range — plus a pre-rolled dice total for EVERY possible hit count and
+   a crit roll per strike (`atk.multi`). multiStrikeResolve() turns the picked target's Evasion into the real
+   hits, damage and crit dice. The GM's own rolls keep the picker below: there it already is the GM picking. */
+const strikeGmPicks = () => mode === "cloud" && !cloud.isGM;
+function multiStrikeResolve(ms, eva){
+  const thr = ms.ac == null ? null : ms.ac + (ms.ignoreEva ? 0 : Math.max(0, eva || 0));
+  const strikes = resolveStrikes(ms.nats || [], ms.accMod || 0, thr, ms.critT || 20);
+  const hits = strikes.filter(s => s.hit).length;
+  const nCrit = Math.min(strikes.filter(s => s.crit).length, hits);
+  const critExtra = (ms.crits || []).slice(0, nCrit).reduce((a, b) => a + (b || 0), 0);
+  const pre = hits ? ((ms.dice || [])[hits - 1] || 0) + (ms.flat || 0) + critExtra : 0;
+  const dmg = hits ? Math.max(0, (ms.mult && ms.mult !== 1) ? Math.floor(pre * ms.mult) : pre) : 0;
+  return { strikes, hits, nCrit, critExtra, dmg };
+}
+/* the "the GM picks" line a player's Double Strike / Triple Kick card shows instead of the target picker */
+function strikeGmPicksNote(){
+  return el("div",{class:"small",style:"font-weight:600;color:var(--accent)"},
+    "\u{1F3AF} Your GM picks the target — the hits are counted against its Evasion when they apply this from their \u{1F3B2} feed, "
+    + "and the Damage Base follows. This window counts them as if it had no Evasion.");
+}
 function strikeTargetTokens(self){
   const map = currentMapForView() || activeMap(); if(!map) return [];
   const fog = (!cloud.isGM && map.fogOn) ? fogViewSet(map) : null;
@@ -26365,6 +26544,39 @@ const SPECIAL_FIXED_DAMAGE = {
 function moveCondKey(n){
   return String(n||"").normalize("NFD").replace(/[̀-ͯ]/g,"")
     .replace(/[^a-z0-9]/gi,"").toLowerCase();
+}
+/* "Once a Scene, if Hex's target has a Status Affliction, you may have Hex's Damage Base be 13 instead" —
+   Hex, Bitter Malice, Infernal Parade and Mould print a boost the user gets ONCE a Scene, and nothing was
+   counting it. It lives on the user under the "boost" use kind (itemFreqForKey → Scene, so End Scene hands
+   it back), is spent the first time a roll goes out with the condition ticked, and the tick-box says
+   whether it's still there. Assurance's "once per Scene per target" is per target and stays the table's. */
+const condOncePerScene = c => /once (?:per|a) scene(?! per target)/i.test(`${(c && c.note) || ""} ${(c && c.label) || ""}`);
+const condBoostKey = m => useKey("boost", canonMoveName(String((m && m.name) || m || "")));
+function spendCondBoosts(owner, m, conds, on, state, persist){
+  if(!owner || !state || state.done || !(conds || []).some((c, i) => on[i] && condOncePerScene(c))) return null;
+  state.done = true;
+  const k = condBoostKey(m), had = !!(owner.uses && owner.uses[k] >= 1);
+  owner.uses = owner.uses || {};
+  owner.uses[k] = 1;
+  (persist || save)();
+  const nm = canonMoveName(String((m && m.name) || m || "")) || "This Move";
+  return had ? `⚠ ${nm}'s boosted Damage Base had already been used this Scene — that's a second time.`
+             : `\u{1F501} ${nm}'s once-a-Scene boost is now spent — End Scene gives it back.`;
+}
+/* the line under a once-a-Scene condition's tick-box: still there, or spent (with a way to hand it back) */
+function condBoostStatus(owner, m, persist){
+  const k = condBoostKey(m);
+  const box = el("div",{class:"small",style:"font-weight:700"});
+  const paint = () => {
+    box.innerHTML = "";
+    const spent = !!(owner && owner.uses && owner.uses[k] >= 1);
+    box.style.color = spent ? "var(--bad)" : "var(--good)";
+    box.append(spent ? "⛔ Already used this Scene — End Scene gives it back. " : "\u{1F501} Unused this Scene — spent when you roll with it ticked.");
+    if(spent) box.append(el("button",{class:"linkbtn",style:"font-size:12px",title:"it wasn't really used — give the boost back",
+      onclick:(ev)=>{ ev.preventDefault(); ev.stopPropagation(); if(owner.uses) delete owner.uses[k]; (persist || save)(); paint(); }}, "↩ give it back"));
+  };
+  paint();
+  return box;
 }
 /* --- auto-detection helpers: only ever read state this sheet actually tracks --- */
 function userHasPersistentStatus(p){
@@ -27143,7 +27355,8 @@ function openMoveRoll(p, m, sp, opts={}){
     return m.damageBase;                  // generic weight moves & normal moves use the printed DB
   }
   const spPending = () => !!sp2 && sp2.kind==="dieDB" && dieVal==null;   // DB unknown until 🎲
-  const bm = buffMods(p, {isPhys, type: mtype, melee: /melee/i.test(String((m && m.range) || ""))});   // active Cheers / Orders / Songs / Food Buffs (#2)
+  const bm = buffMods(p, {isPhys, type: mtype, melee: /melee/i.test(String((m && m.range) || "")),
+    isStatus: !/physical|special/i.test(String((m && m.class) || "")), rawDB: parseInt(m && m.db) || 0});   // active Cheers / Orders / Songs / Food Buffs (#2)
   const abilAcc = abilityAccMods(p, m, isPhys);   // always-on Accuracy abilities (Compound Eyes, Hustle)
   /* Duelist: half this Pokemon's Momentum (rounded up) is Accuracy AND Evasion, but only against a
      Tagged foe — the roll has no idea who is being shot at, so it asks. Off by default; ticking it
@@ -27186,7 +27399,8 @@ function openMoveRoll(p, m, sp, opts={}){
                                                                   mtype, isPhys, isSpec, fieryCrash:fcMode, analytic:analyticOn, vanguard:vanguardOn});
   // Effect Ranges as this roll actually resolves them — Fiery Crash adds/widens Burn on a Dash Move
   // that ends up Fire-Typed. Kept separate from `thresholds` so its own rider can't feed Sheer Force.
-  const rollThresholds = buffEffectThresholds(sereneGraceThresholds(
+  const noEffBuff = buffNoEff(p);       // Confide under Powerful Motivator: no Effect Ranges at all this round
+  const rollThresholds = noEffBuff ? [] : buffEffectThresholds(sereneGraceThresholds(
     kingsRockThresholds(statusRangeAbility(frostbiteThresholds(fieryCrashThresholds(ancientHeritageThresholds(thresholds, p, m), !!fc && mtype==="Fire"),
       hasAbility(p,"Frostbite") && mtype==="Ice" && (isPhys||isSpec)), p, isPhys||isSpec, isPhys), p, isPhys||isSpec),
     ownerHasAbility(p,"Serene Grace")), buffEffectRange(p) + heldEffectRangeBonus(p) + (/melee/i.test(String((m && m.range) || "")) ? 0 : statStratagemBonus(p).eff));
@@ -27625,7 +27839,8 @@ function openMoveRoll(p, m, sp, opts={}){
           el("div",{class:"small",style:"font-weight:700"}, c.label),
           el("div",{class:"small muted"}, eff.join(" · ") + (c.note ? ` — ${c.note}` : "")),
           condAuto[i] ? el("div",{class:"small",style:"color:var(--good);font-weight:700"},
-            "✓ detected from this sheet — untick if that's not the case") : ""));
+            "✓ detected from this sheet — untick if that's not the case") : "",
+          condOncePerScene(c) ? condBoostStatus(p, m, opts.persist) : ""));
         wc.append(lbl);
       });
       body.append(wc);
@@ -27648,8 +27863,9 @@ function openMoveRoll(p, m, sp, opts={}){
       const wc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin:0 0 12px"});
       wc.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},
         sp2.kind==="tripleKick" ? "👣 Triple Kick — 3 separate Attack Rolls" : "⚔ Double Strike — 2 separate Attack Rolls"));
-      evaPick = strikeTargetPicker(p, ()=>isSpec, `Target's ${isSpec?"Special":"Physical"} Evasion`);
-      wc.append(evaPick.node);
+      if(strikeGmPicks()) wc.append(strikeGmPicksNote());
+      else { evaPick = strikeTargetPicker(p, ()=>isSpec, `Target's ${isSpec?"Special":"Physical"} Evasion`);
+        wc.append(evaPick.node); }
       wc.append(el("div",{class:"small muted",style:"margin-top:4px"},
         `All ${nStrikes} Attack Rolls are checked against AC ${effAC??"—"} + the target's Evasion when you press 🎲 — the connecting hits are counted for you (nat 20 always hits, nat 1 always misses), and the Damage Base is sized from them. `
         + (sp2.kind==="tripleKick" ? "1 hit → DB 1 · 2 hits → DB 3 · 3 hits → DB 6"
@@ -27774,7 +27990,7 @@ function openMoveRoll(p, m, sp, opts={}){
     buffs.forEach(b=>{ const mt=buffModText(b.mods);
       // a class-restricted buff (a Spicy Wrap is Physical-only) is listed but greyed when this
       // move isn't the class it applies to — it's still active, it just isn't in these numbers
-      const offTxt = buffOffText(b, {isPhys, type: mtype});
+      const offTxt = buffOffText(b, {isPhys, type: mtype, isStatus: !/physical|special/i.test(String((m && m.class) || "")), rawDB: parseInt(m && m.db) || 0});
       bcard.append(el("div",{class:"small"+(offTxt?" muted":"")}, `• ${b.name}` + (mt?` — ${mt}`:"")
           + offTxt + (b.note?`  `:""),
         b.note?el("span",{class:"muted"}, b.note):"")); });
@@ -27944,6 +28160,8 @@ function openMoveRoll(p, m, sp, opts={}){
   out.append(el("div",{class:"muted small"}, "Press 🎲 Roll dice to simulate."));
   /* redo = {nats, forceHits} — re-resolves a multi-strike attack with the SAME Attack Rolls
      (used by the "override hits" buttons, so the GM can correct the auto hit count). */
+  const hpAuto = { paid:{} };  // a self-heal / self-cost lands once per modal too (moveHPNode's auto)
+  const boostSpend = { done:false };   // …and so does Hex's once-a-Scene boost (spendCondBoosts)
   let usedThisRoll = false;   // mark the move's Frequency spent once per modal, on the FIRST roll —
   // "override hits" redo's and the one-shot-buff re-roll below both call doRoll() again to recompute
   // the SAME attack, not a new use of the move.
@@ -27993,6 +28211,8 @@ function openMoveRoll(p, m, sp, opts={}){
         (opts.persist||save)(); if(opts.rerender) opts.rerender();
       }
     }
+    { const bs = spendCondBoosts(p, m, condList, condOn, boostSpend, opts.persist);
+      if(bs) out.append(el("div",{class:"small",style:"margin-bottom:6px;font-weight:600;color:var(--accent)"}, bs)); }
 
     /* --- special-case damage (exact HP loss) & note-only moves --- */
     if(sp2?.kind==="noteOnly"){
@@ -28082,7 +28302,8 @@ function openMoveRoll(p, m, sp, opts={}){
        doesn't — except where there was never an Accuracy Check to fail: an automatic hit (weather,
        a ticked condition) throws no die, and a Move printed with no AC at all (Flower Trick) rolls
        its d20 only to read Effect Ranges off it. */
-    const nCrit  = multi ? Math.min(strikes.filter(s=>s.crit).length, connected)
+    const nCrit  = buffNoCrit(p) ? 0          // Powerful Motivator (Baby-Doll Eyes): "cannot Critically Strike for 1 full round"
+                 : multi ? Math.min(strikes.filter(s=>s.crit).length, connected)
                          : (alwaysCrit ? ((cantMiss || effAC==null || acc!==1) ? 1 : 0)
                                        : ((!cantMiss && (acc>=effCritT || (evenCrit && acc%2===0 && (thresh==null || accTot>=thresh)))) ? 1 : 0));
     const isCrit = nCrit > 0;
@@ -28122,6 +28343,9 @@ function openMoveRoll(p, m, sp, opts={}){
         "Sheer Force suppresses this move's secondary effect (traded for the damage bonus above)."));
     }
     const liveThresholds = sfSuppressed.length ? rollThresholds.filter(t=>!sfSuppressed.includes(t)) : rollThresholds;
+    if(noEffBuff && effectThresholds(m && m.effect).length)
+      out.append(el("div",{class:"small",style:"margin:2px 0 10px;color:var(--bad);font-weight:600"},
+        `\u{1F6AB} ${noEffBuff} — none of this Move's Effect Ranges can trigger this round.`));
     if(liveThresholds.length){
       const hit = liveThresholds.filter(t=>acc>=t.n), miss = liveThresholds.filter(t=>acc<t.n);
       const tl = el("div",{style:"margin:2px 0 10px"});
@@ -28137,6 +28361,9 @@ function openMoveRoll(p, m, sp, opts={}){
        (attackTargetWidget + the feed) rather than asking for a second press on the same creatures */
     const statusMv = !isPhys && !isSpec;
     const rideHit = statusMv ? "bundle" : (mode==="cloud" && (isPhys||isSpec) && fDB!=null && !(multi && connected===0));
+    { const kr = !(multi && connected===0) && kingsRockFired(p, liveThresholds, acc, isPhys||isSpec);
+      if(kr) out.append(kingsRockBanner(kr, acc, rideHit ? `It rides with the hit — the GM’s \u{1F4A5} Apply Flinches every target it damages (Inner Focus & co. checked).`
+        : `It’s on the \u{1F4AB} Status Afflictions card below.`)); }
     const rsn = randomStatusNode(m, acc); if(rsn) out.append(rsn);
     const xtraKeys = [...((rsn && rsn.picked) || []), ...connectionRiderKeys(p, m)];
     { const sn = moveStatusNode(p, m, liveThresholds, acc, { redraw: opts.rerender || (()=>refreshMon(p)),
@@ -28182,7 +28409,7 @@ function openMoveRoll(p, m, sp, opts={}){
     const missedRoll = multi ? (connected === 0)
       : cantMiss ? false
       : (thresh == null ? null : (acc === 1 || accTot < thresh));
-    const hpNode = moveHPNode(p, m, { missed:missedRoll,
+    const hpNode = moveHPNode(p, m, { missed:missedRoll, auto:hpAuto,
       redraw: opts.rerender || (()=>refreshMon(p)), persist: opts.persist });
     if(multi && connected===0){
       out.append(el("div",{},
@@ -28230,6 +28457,29 @@ function openMoveRoll(p, m, sp, opts={}){
         const abDice = (abilMods.dice || []).map(d => rollDiceString(d)), abDiceExtra = abDice.reduce((n, x) => n + x.total, 0);
         const preMult = r.total + im.atk + (bm.dmg||0) + wxd + (tx.dmg||0) + abilMods.flat + abDiceExtra + tDmg + critExtra + anchorExtra + runX.flat + im.delta + cx.dmg;
         const total = Math.max(0, cx.mult!==1 ? Math.floor(preMult * cx.mult) : preMult);
+        /* a player's Double Strike / Triple Kick: the GM's pick of the target counts the hits (multiStrikeResolve),
+           so the dice for EVERY hit count, and a crit roll per strike, go to the feed with the d20s */
+        let multiP = null;
+        if(multi && strikeGmPicks() && !hitsInfo){
+          const keep = hitsConnect, dice = [];
+          for(let k = 1; k <= nAcc; k++){
+            if(k === connected){ dice.push(r.total); continue; }
+            hitsConnect = k;
+            const fk = finalDB(1), dsk = fk != null ? (DB_TABLE[fk]||"").split("/")[0].trim() : "";
+            dice.push((rollDiceString(dsk, ppMax) || {}).total || 0);
+          }
+          hitsConnect = keep;
+          const crits = Array.from({ length:nAcc }, () => {
+            let c = (rollDiceString(critDS) || {}).total || 0;
+            if(hasAbility(p,"Sniper")) c += (rollDiceString(critDS) || {}).total || 0;
+            if(hasAbility(p,"Sniper [Errata]")) c += (rollDiceString("3d10") || {}).total || 0;
+            return c; });
+          multiP = { nats: accs.slice(), accMod, ac: (cantMiss || effAC == null) ? null : effAC, critT: effCritT,
+            ignoreEva: hasAbility(p, "No Guard") && (moveHasKeyword(m, "melee") || /^melee/i.test(String((m && m.range) || ""))),   // No Guard: Melee ignores Evasion
+            flat: preMult - r.total - critExtra, mult: cx.mult, dice, crits };
+          dmgLine.append(el("div",{class:"small",style:"margin-top:2px;color:var(--accent);font-weight:600"},
+            `\u{1F3AF} ${connected} of ${nAcc} would connect against no Evasion — your GM's pick of the target decides the real count, and the damage with it.`));
+        }
         dmgLine.append(el("div",{style:`font-size:26px;font-weight:800;color:${isCrit?"var(--bad)":"var(--accent)"}`},
           `${isCrit?"💥 CRIT! ":"💥 "}${total}`));
         const parts=[`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`];
@@ -28303,7 +28553,7 @@ function openMoveRoll(p, m, sp, opts={}){
           atk: (isPhys||isSpec) ? { dmg:total, type:mtype||"Typeless", physical:isPhys, atkMold: !!mold,
                  pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens") || !!(mold && mold.tinted),
                  atkExploit: exploitAbilityBonus(p), atkMega: isMegaMon(p), atkWar: ownerAuraActive(p,"War"), seFlat: heldSeFlatDamage(p),
-                 pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS || unawareMode(p), moveRule, critExtra, fx: hitFx,
+                 pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS || unawareMode(p), moveRule, critExtra, fx: hitFx, multi: multiP,
                  ctx:{ by:rollerName(p), aid:p.id || null, melee:/melee/i.test(String((m && m.range) || "")), move:m.name, crit:!!isCrit, range:String((m && m.range) || ""), forceCrit:mercCrit } } : null });
       }
       out.append(dmgLine);
@@ -30522,7 +30772,13 @@ const FOE_FX = {
       o.buffs = ownerBuffs(o).filter(b => b.key !== "fey-law");         // never two instances of Bound
       addCustomBuff(o, `Bound — Fey Law (${P.trait})`, { acc:-X },
         `Bound by ${P.by || "a Glamour Weaver"}: −${X} to every roll made to use ${P.trait}. Lasts until the end of the Scene.`);
-      ownerBuffs(o).slice(-1).forEach(b => b.key = "fey-law");
+      /* the −X only rides rolls WITH that trait (buffApplies reads the filter): a Type, Status-Class, DB 10+ */
+      const tr = String(P.trait || "");
+      ownerBuffs(o).slice(-1).forEach(b => { b.key = "fey-law";
+        if(TYPES.includes(tr)) b.onlyType = tr;
+        else if(/^Status/i.test(tr)) b.onlyTrait = { cls:"Status" };
+        else if(/Damage Base 10/i.test(tr)) b.onlyTrait = { db:10 };
+        else if(/Maneuver/i.test(tr)) b.onlyTrait = { maneuver:true }; });
     } },
   omen: { apply:(x) => lowerCS(x.obj, "acc", 2, { quiet:true }) ? "" : `(held by ${csLowerBlock(x.obj, "acc")})` },
   pressure: { apply:(x) => { fxStatus(x.obj, "suppressed"); } },
@@ -38101,12 +38357,20 @@ function powderImmuneNote(m){
   try{
     const map = currentMapForView() || activeMap();
     if(!map) return "Powder: Grass-Types, Overcoat, Safety Goggles and a Druid's Green Path are immune.";
-    const imm = [];
+    /* a player only hears about what they can see: a gmHidden or fogged token stays a secret, and a
+       visible foe is named only for what anyone can see (its Grass Type) — an Overcoat or a pair of
+       Safety Goggles is the foe's to reveal when the Powder bounces off */
+    const gm = mode !== "cloud" || !!cloud.isGM, imm = [];
+    const fog = (!gm && map.fogOn) ? fogViewSet(map) : null;
     mapTokensFor(map.id).forEach(tok => {
       const L = tok.link ? tokenLinked(tok) : null; if(!L || !L.obj) return;
-      const why = powderImmuneWhy(L.obj); if(why) imm.push(`${tokenHp(tok).name} (${why})`);
+      if(!gm && (tok.gmHidden || (fog && !fog.has(Math.round(tok.x)+","+Math.round(tok.y))))) return;
+      const why = powderImmuneWhy(L.obj); if(!why) return;
+      if(!gm && tokenSide(tok) === "enemy" && why !== "Grass-Type") return;
+      imm.push(`${tokenHp(tok).name} (${why})`);
     });
-    return imm.length ? `Powder: immune on this board — ${imm.join(", ")}.` : "Powder: nobody on this board is immune.";
+    return imm.length ? `Powder: immune ${gm ? "on this board" : "that you can see"} — ${imm.join(", ")}.`
+      : `Powder: nobody ${gm ? "on this board" : "you can see"} is immune.`;
   }catch(e){ return null; }
 }
 /* Overgrowth: "they cannot recover Hit Points or gain Temporary Hit Points. Whenever they would do so,
@@ -44983,7 +45247,7 @@ const FEATURE_AUTO_NOTES = {
   "gleeful interference":
     "Stated, not applied: 1 AP for −2 Accuracy on the foe for a full Round. Drop it on them from their token's Buffs & Orders → ✎ Custom.",
   "fey law":
-    "🧚 Fey Law spends the 1 AP and Binds the foe with a real −X buff (half your better of Charm and Occult Ed.), so the penalty shows wherever they roll. Removing that buff unbinds them, and they can never carry two.",
+    "🧚 Fey Law spends the 1 AP and Binds the foe with a real −X buff (half your better of Charm and Occult Ed.) that only rides rolls WITH the chosen trait — that Type, Status-Class Moves, or Damage Base 10+ (Combat Maneuvers are rolled at the table). Removing that buff unbinds them, and they can never carry two.",
   "magical burst":
     "💥 Magical Burst checks that Enchanting Transformation is Bound, hands every Ally you tick a Tick of Temporary Hit Points, ends the Transformation and turns its 2 Bound AP into spent AP.",
   "glamour mastery":
@@ -47283,6 +47547,15 @@ function logRoll({ kind, label, who, headline, lines, atk, area, foe }){
     e.atk.ctx = { by: String(c.by||"").slice(0,60), aid: c.aid ? String(c.aid).slice(0,60) : null,
                   move: String(c.move||"").slice(0,60), melee: !!c.melee, crit: !!c.crit,
                   range: String(c.range||"").slice(0,80), forceCrit: Math.max(0, Math.round(c.forceCrit||0)) };
+  }
+  /* A player's Double Strike / Triple Kick: the GM picks the target, so the hits are counted on their side
+     (multiStrikeResolve) from the d20s and the pre-rolled dice for every hit count. Numbers only. */
+  if(atk && atk.multi && Array.isArray(atk.multi.nats)){
+    const M = atk.multi, nums = (a, n) => (Array.isArray(a) ? a : []).slice(0, n).map(x => Math.round(+x || 0));
+    e.atk.multi = { nats: nums(M.nats, 5), accMod: Math.round(+M.accMod || 0),
+                    ac: M.ac == null ? null : Math.round(+M.ac || 0), critT: Math.round(+M.critT || 20),
+                    ignoreEva: !!M.ignoreEva, flat: Math.round(+M.flat || 0),
+                    mult: (+M.mult > 0 ? +M.mult : 1), dice: nums(M.dice, 5), crits: nums(M.crits, 5) };
   }
   if(atk && atk.fx){
     try{ e.atk.fx = JSON.parse(JSON.stringify({ name: String(atk.fx.name||"").slice(0,60),
@@ -53253,6 +53526,9 @@ function mapTokenNode(token, map, originX=0, originY=0){
   // pure decoration, so it is the first thing dropped when the board is zoomed right out
   if(shinyTok && detail>=1)
     node.append(el("div",{class:"tk-sparkles",title:"Shiny",html:"<i></i><i></i><i></i><i></i>"}));
+  // ✨ Enchanting Transformation is up: pastel glitter drifting up round a soft halo (styles.css .tk-glitter)
+  if(isTrainerTok && detail>=1 && info.obj && modeIsOn(info.obj, "enchanting-transformation") && hasFeatureLoose(info.obj, "Enchanting Transformation"))
+    node.append(el("div",{class:"tk-glitter",title:"Enchanting Transformation",html:"<i></i>".repeat(10)}));
   if(selected) node.append(el("div",{class:"tk-selected"},"✓"));
   const hpVisible = info.unlinked || tokenHpVisible(info);   // "unlinked" warning always shows; real HP is gated
   if(hpVisible){
@@ -53937,13 +54213,28 @@ async function autoDrainAttacker(ctx, dealt){
     }
     obj = tok ? objOf(tok) : null;
   }
+  /* No token for the attacker on this board (a player's Pokémon fighting off-map, a sheet the GM never placed):
+     the drain / Recoil still belongs on its sheet, so it is found in the roster by id — or a Trainer by name —
+     and that sheet is saved. Without this the press silently paid nothing and the player's card sat there. */
+  let sheetRow = null;
+  if(!obj && mode === "cloud" && cloud.byId){
+    const nm = String(ctx.by || "").trim().toLowerCase();
+    for(const row of Object.values(cloud.byId)){
+      const d = row && row.data; if(!d) continue;
+      const mon = ctx.aid ? (d.pokemon || []).find(p => p && p.id === ctx.aid) : null;
+      const tr = !mon && nm && d.trainer && String(d.trainer.name || "").trim().toLowerCase() === nm ? d.trainer : null;
+      if(mon || tr){ obj = mon || tr; sheetRow = row; break; }
+    }
+  }
   if(!obj || hasStatus(obj, "knockedOut") || hasStatus(obj, "dead")) return null;
   const out = { who: ownerLabel(obj), paid: [] };
   if(drainRows.length){
     let n = drainRows.reduce((sum, e) => sum + hpFractionOf(dealt, e), 0);
     const bigRoot = hpHasHeld(obj, "bigroot");
     if(bigRoot) n *= 2;                                       // Big Root: an HP-stealing Move gives back double
-    out.drain = { n, moved: ownerHPChange(obj, n), bigRoot };
+    const etTick = enchantedDrainTick(obj, m);                // Enchanting Transformation: Draining Kiss +1 Tick
+    n += etTick;
+    out.drain = { n, moved: ownerHPChange(obj, n), bigRoot, etTick };
     out.paid.push("drain");
   }
   if(recoilRows.length){
@@ -53952,10 +54243,12 @@ async function autoDrainAttacker(ctx, dealt){
     out.recoil = { n, moved: n ? ownerHPChange(obj, -n) : 0, immune };
     out.paid.push("recoil");
   }
-  if(tok) await commitTokenSource(tok); else save();
+  if(tok) await commitTokenSource(tok);
+  else if(sheetRow){ if(canEditPlayerHP(sheetRow)) cloudSaveRow(sheetRow); }
+  else save();
   return out;
 }
-function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, moveRule=null, seFlat=0, critExtra=0, fx=null, onDealt=null, ctx=null }){
+function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, moveRule=null, seFlat=0, critExtra=0, fx=null, onDealt=null, ctx=null, preselect=null }){
   // a Move whose own rules bend the matchup (MOVE_TARGET_RULES) travels with the hit, and its
   // immunity clause folds into the same pierce switch every other source uses
   const chartOverride = moveRule?.chart || null, seBonus = moveRule?.seBonus || 0,
@@ -53997,6 +54290,8 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     return { t, cb, txt, row, faction };
   });
   let tab = items.some(i=>i.faction==="players") ? "players" : "enemies";
+  // a target already chosen upstream (the GM's Double Strike pick) starts ticked, on its own tab
+  { const pre = preselect && items.find(i => i.t.id === preselect); if(pre){ pre.cb.checked = true; tab = pre.faction; } }
   const tabsBar = el("div",{class:"subtabs",style:"margin-bottom:6px"});
   const bP = el("button",{class:"subtab",onclick:()=>{ tab="players"; draw(); }});
   const bE = el("button",{class:"subtab",onclick:()=>{ tab="enemies"; draw(); }});
@@ -54164,6 +54459,18 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
           if(hit.length){ useDmg += 5; rivalryTxt += (rivalryTxt ? " " : "") + `Finisher: target is ${hit.map(statusName).join(" / ")} \u2014 +5 damage.`; }
         }
       }catch(e){}
+      /* Play Them Like a Fiddle (Taunt): "the next damaging attack to hit the target deals +3d8+10 Damage" \u2014
+         the buff sits on the TARGET (mods.takeExtra), so the first hit that reaches it rolls the dice in and
+         spends it. The undo snapshot above was taken first, so \u21a9 puts the buff back too. */
+      try{
+        const V = tokenHp(it.t).obj, b = V && ownerBuffs(V).find(x => x.mods && x.mods.takeExtra);
+        if(b){
+          const r = (rollDiceString(String(b.mods.takeExtra)) || {}).total || 0;
+          useDmg += r;
+          V.buffs = (V.buffs || []).filter(x => x !== b);
+          rivalryTxt += (rivalryTxt ? " " : "") + `${b.name}: +${b.mods.takeExtra} = +${r} damage (spent).`;
+        }
+      }catch(e){ console.error("takeExtra", e); }
       /* Gyro Ball: the Speed gap is a fact about this target; Dream Eater: only a Sleeping target can be hit */
       try{
         if(moveRule && moveRule.sleepOnly){
@@ -54281,7 +54588,8 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
       const d = drained.drain;
       out.append(el("div",{class:"small",style:"color:var(--good);font-weight:700;margin:4px 0"},
         `\u{1F9DB} ${drained.who} drains ${d.moved >= 0 ? "+" : ""}${d.moved} HP from the ${dealtTotal} dealt`
-        + (d.bigRoot ? " (Big Root: doubled)" : "") + (d.moved < d.n ? " — already at full" : "") + "."));
+        + (d.bigRoot ? " (Big Root: doubled)" : "") + (d.etTick ? ` (Enchanting Transformation: +${d.etTick}, a Tick)` : "")
+        + (d.moved < d.n ? " — already at full" : "") + "."));
       toast(`\u{1F9DB} ${drained.who} +${d.moved} HP (drained)`);
     }
     if(drained && drained.recoil){
@@ -54470,14 +54778,49 @@ function openRollApply(e){
   body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
     `${e.by||"?"}${e.who && e.who!==e.by ? ` — ${e.who}` : ""} rolled ${e.label||"an attack"}`
     + (e.headline ? `: ${e.headline}` : "") + ` at ${rollFeedTime(e.at)}.`));
-  const w = attackTargetWidget({ dmg:e.atk.dmg, type:e.atk.type, physical:e.atk.physical,
+  const widget = (dmg, critExtra, preselect) => attackTargetWidget({ dmg, type:e.atk.type, physical:e.atk.physical,
                                  pierceImmune:e.atk.pierceImmune, pierceDR:e.atk.pierceDR, atkTinted:e.atk.atkTinted,
                                  atkExploit:e.atk.atkExploit, atkMega:e.atk.atkMega, atkWar:e.atk.atkWar,
                                  atkMold:e.atk.atkMold, atkDeicide:e.atk.atkDeicide, seFlat:e.atk.seFlat,
-                                 defCSMode:e.atk.defCSMode, moveRule:e.atk.moveRule, critExtra:e.atk.critExtra||0,
-                                 fx:e.atk.fx||null, ctx:e.atk.ctx||null });
-  body.append(w || el("div",{class:"small"},
-    "No damageable token on the current map — open the 🗺 Map (or add a token) and try again."));
+                                 defCSMode:e.atk.defCSMode, moveRule:e.atk.moveRule, critExtra,
+                                 fx:e.atk.fx||null, ctx:e.atk.ctx||null, preselect });
+  const noBoard = () => el("div",{class:"small"},
+    "No damageable token on the current map — open the 🗺 Map (or add a token) and try again.");
+  /* A player's Double Strike / Triple Kick: the GM picks who it was aimed at FIRST — that token's Evasion
+     counts the hits (multiStrikeResolve), which sizes the Damage Base — and the hit then lands on it. */
+  const M = e.atk.multi;
+  if(M && Array.isArray(M.nats) && M.nats.length){
+    const toks = strikeTargetTokens(null).filter(tok => { const o = (tokenLinked(tok) || {}).obj;
+      return !(o && e.atk.ctx && e.atk.ctx.aid && o.id === e.atk.ctx.aid); });
+    const sel = el("select",{style:"max-width:260px"});
+    sel.append(el("option",{value:""},"— who was it aimed at? —"));
+    toks.slice().sort((a, b) => (tokenSide(b) === "enemy") - (tokenSide(a) === "enemy"))
+      .forEach(tok => sel.append(el("option",{value:tok.id}, tokenHp(tok).name || "Token")));
+    if(lastStrikeTargetId && toks.some(tok => tok.id === lastStrikeTargetId)) sel.value = lastStrikeTargetId;
+    const res = el("div",{class:"small",style:"margin:6px 0;font-weight:600"});
+    const holder = el("div",{});
+    const draw = () => {
+      holder.innerHTML = ""; res.textContent = "";
+      const tok = toks.find(x => x.id === sel.value);
+      if(!tok){ res.textContent = "Pick the target — its Evasion counts the hits."; return; }
+      lastStrikeTargetId = tok.id;
+      const ev = tokenEvasions(tok) || {};
+      const eva = Math.max(e.atk.physical ? (ev.phys || 0) : (ev.spec || 0), ev.spd || 0);
+      const R = multiStrikeResolve(M, eva);
+      res.style.color = R.hits ? "var(--accent)" : "var(--bad)";
+      res.textContent = `⚔ ${R.hits} of ${M.nats.length} strikes hit ${tokenHp(tok).name}`
+        + (M.ac != null ? ` (AC ${M.ac} + Evasion ${M.ignoreEva ? "0 — No Guard" : eva})` : " (it can't miss)")
+        + ` · ${strikeReadout(R.strikes)}` + (R.hits ? ` → ${R.dmg} damage${R.nCrit ? ` (${R.nCrit} crit${R.nCrit === 1 ? "" : "s"})` : ""}` : " — no damage.");
+      if(R.hits) holder.append(widget(R.dmg, R.critExtra, tok.id) || noBoard());
+    };
+    sel.addEventListener("change", draw);
+    if(toks.length){
+      body.append(el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap"},
+        el("span",{class:"small",style:"font-weight:700"},"\u{1F3AF} Target"), sel), res, holder);
+      draw();
+    } else body.append(el("div",{class:"small muted"},
+      `No target tokens on this board — the logged ${e.atk.dmg} assumes every strike that beat AC alone connected.`), widget(e.atk.dmg, e.atk.critExtra||0) || noBoard());
+  } else body.append(widget(e.atk.dmg, e.atk.critExtra||0) || noBoard());
   modal({title:`🎯 ${e.label||"Apply this hit"}`, bodyNode:body,
          footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Done")]});
 }

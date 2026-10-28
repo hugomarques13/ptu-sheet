@@ -328207,7 +328207,8 @@
   "diet": "Carnivore",
   "habitat": "Grassland, Mountain",
   "height": "6' 3\" / 1.9m (Large)",
-  "order": 1310
+  "order": 1310,
+  "customArt": true
  },
  {
   "name": "Mega Machamp",
@@ -328328,7 +328329,8 @@
   "diet": "Omnivore",
   "habitat": "Mountain",
   "height": "5' 3\" / 1.6m (Medium)",
-  "order": 1311
+  "order": 1311,
+  "customArt": true
  },
  {
   "name": "Mega Marowak",
@@ -328453,7 +328455,8 @@
   "diet": "Herbivore",
   "habitat": "Cave, Mountain, Urban",
   "height": "3' 3\" / 1m (Medium)",
-  "order": 1312
+  "order": 1312,
+  "customArt": true
  },
  {
   "name": "Mega Annihilape",
