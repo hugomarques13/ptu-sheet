@@ -47893,9 +47893,115 @@ function sayOnCall(id, text){
   saveRolls(); renderCallOverlay();
 }
 function saveContactRec(c){
-  const d = phoneData(), i = d.contacts.findIndex(x => x.id === c.id);
-  if(i >= 0) d.contacts[i] = c; else d.contacts.push(c);
+  const d = phoneData(), live = d.contacts.find(x => x.id === c.id);
+  /* the editor hands back a COPY made when it opened: copy across only the fields it edits, so a note
+     somebody added to this contact in the meantime (c.notes) survives the GM pressing Save */
+  if(live){ if(live !== c) ["name","img","desc","freq","hidden","only"].forEach(k => { live[k] = c[k]; }); }
+  else d.contacts.push(c);
   saveRolls();
+}
+/* ---------- notes on a contact ----------
+   The writer picks, note by note. 🌐 SHARED notes live on the contact itself (`c.notes`, rolls row), so
+   everyone who has that number — and the GM — reads them; the author may edit or delete their own and
+   the GM may delete any. 🔒 PERSONAL notes live on the player's own sheet (`data.phoneNotes`, tagged
+   with the contact's id): they follow the player to any device, and no other screen draws them. The GM
+   has no sheet of their own, so they only write shared ones. */
+function contactSharedNotes(c){ return Array.isArray(c && c.notes) ? c.notes : []; }
+function myPhoneNotes(cid){
+  const r = phoneMyRow(), list = (r && r.data && Array.isArray(r.data.phoneNotes)) ? r.data.phoneNotes : [];
+  return list.filter(n => n && n.cid === cid);
+}
+function phoneNoteMine(n){ return !!n && normName(cloud.name) !== "" && normName(n.by) === normName(cloud.name); }
+function addContactNote(cid, text, personal){
+  text = String(text || "").trim().slice(0, 2000);
+  if(!text){ toast("Write something first"); return false; }
+  if(personal){
+    const r = phoneMyRow();
+    if(!r){ toast("\u{1F4F5} Personal notes need a Trainer sheet of your own"); return false; }
+    if(!Array.isArray(r.data.phoneNotes)) r.data.phoneNotes = [];
+    r.data.phoneNotes.push({ id:uid(), cid, text, at:Date.now() });
+    cloudSaveRow(r);
+    return true;
+  }
+  const c = phoneContactById(cid); if(!c) return false;
+  const me = phoneMyRow();
+  if(!Array.isArray(c.notes)) c.notes = [];
+  c.notes.push({ id:uid(), text, by:(cloud.name || "").trim(),
+                 who: cloud.isGM ? "GM" : me ? phonePartyEnd(me.id).name : (cloud.name || "").trim(), at:Date.now() });
+  saveRolls();
+  return true;
+}
+/* an empty text deletes the note */
+function editContactNote(cid, nid, text, personal){
+  text = String(text || "").trim().slice(0, 2000);
+  if(personal){
+    const r = phoneMyRow(), n = r && Array.isArray(r.data.phoneNotes) ? r.data.phoneNotes.find(x => x.id === nid) : null;
+    if(!n) return;
+    if(text){ n.text = text; n.edited = Date.now(); } else r.data.phoneNotes = r.data.phoneNotes.filter(x => x.id !== nid);
+    cloudSaveRow(r);
+    return;
+  }
+  const c = phoneContactById(cid), n = contactSharedNotes(c).find(x => x.id === nid);
+  if(!n) return;
+  if(text){ n.text = text; n.edited = Date.now(); } else c.notes = c.notes.filter(x => x.id !== nid);
+  saveRolls();
+}
+function contactNotesNode(c){
+  const gm = !!cloud.isGM, mine = phoneMyRow();
+  const wrap = el("div",{class:"phone-notes"});
+  wrap.append(el("div",{class:"phone-notes-head"}, "\u{1F4DD} Notes"));
+  const byTime = (a, b) => (a.at || 0) - (b.at || 0);
+  const shared = contactSharedNotes(c).slice().sort(byTime);
+  const personal = mine ? myPhoneNotes(c.id).slice().sort(byTime) : [];
+  const drawNote = (n, own) => {
+    const box = el("div",{class:"phone-note" + (own ? " personal" : "")});
+    const meta = el("div",{class:"phone-note-meta"},
+      own ? "\u{1F512} Only you" : `\u{1F310} ${n.who || n.by || "Someone"}`,
+      el("span",{class:"muted",style:"font-weight:400"}, ` \u00b7 ${new Date(n.at || Date.now()).toLocaleDateString()}${n.edited ? " (edited)" : ""}`));
+    const txt = el("div",{class:"phone-note-text"}, n.text);
+    box.append(meta, txt);
+    const canEdit = own || phoneNoteMine(n), canDel = canEdit || gm;
+    if(canDel){
+      const acts = el("span",{class:"phone-note-acts"});
+      if(canEdit) acts.append(el("button",{class:"linkbtn",title:"Edit this note",onclick:()=>{
+        const ta = el("textarea",{rows:"3"}); ta.value = n.text;
+        txt.replaceWith(ta); ta.focus();
+        acts.innerHTML = "";
+        acts.append(el("button",{class:"linkbtn",onclick:()=>{ editContactNote(c.id, n.id, ta.value, own); openContact(c.id); }},"Save"),
+                    el("button",{class:"linkbtn",onclick:()=>openContact(c.id)},"Cancel"));
+      }}, "\u270E"));
+      acts.append(el("button",{class:"linkbtn",title:"Delete this note",onclick:()=>{
+        if(!confirm("Delete this note?")) return;
+        editContactNote(c.id, n.id, "", own); openContact(c.id); }}, "\u{1F5D1}"));
+      meta.append(acts);
+    }
+    return box;
+  };
+  if(!shared.length && !personal.length) wrap.append(el("div",{class:"small muted",style:"margin-bottom:6px"}, "No notes yet."));
+  shared.forEach(n => wrap.append(drawNote(n, false)));
+  personal.forEach(n => wrap.append(drawNote(n, true)));
+  /* the composer: a player picks Shared or Only me (remembered on this device, Only me until they say
+     otherwise — a private thought posted to the party by accident is the worse mistake) */
+  const ta = el("textarea",{rows:"3",placeholder:"Write a note about them\u2026"});
+  const compose = el("div",{class:"phone-compose"});
+  let mePick = !!mine && localStorage.getItem("ptu_note_scope") !== "shared";
+  const hint = el("div",{class:"small muted"});
+  let paint = () => {};
+  if(mine){
+    const bShared = el("button",{type:"button",onclick:()=>{ mePick = false; localStorage.setItem("ptu_note_scope","shared"); paint(); }}, "\u{1F310} Shared");
+    const bMe = el("button",{type:"button",onclick:()=>{ mePick = true; localStorage.setItem("ptu_note_scope","me"); paint(); }}, "\u{1F512} Only me");
+    paint = () => {
+      bShared.classList.toggle("on", !mePick); bMe.classList.toggle("on", mePick);
+      hint.textContent = mePick ? "Kept on your own sheet \u2014 only you see it."
+                                : "Everyone who has this number, and the GM, can read it.";
+    };
+    compose.append(el("div",{class:"phone-scope"}, bShared, bMe));
+    paint();
+  } else hint.textContent = gm ? "Shared \u2014 everyone who has this number can read it." : "";
+  compose.append(ta, hint, el("button",{class:"btn-secondary",style:"margin-top:6px",
+    onclick:()=>{ if(addContactNote(c.id, ta.value, mePick)) openContact(c.id); }}, "\uFF0B Add note"));
+  wrap.append(compose);
+  return wrap;
 }
 function deleteContactRec(id){
   const d = phoneData(), c = d.contacts.find(x => x.id === id);
@@ -47955,7 +48061,9 @@ function contactRow(c){
   const row = el("div",{class:"phone-row" + (gm && c.hidden ? " is-hidden" : "")});
   row.append(contactAvatar(c.img, c.name, "phone-av"));
   const mid = el("div",{class:"phone-mid", title:"Open the contact", onclick:()=>openContact(c.id)});
-  mid.append(el("div",{class:"phone-name"}, c.name || "Unnamed", gm && c.hidden ? el("span",{class:"phone-tag"},"\u{1F648} hidden") : ""));
+  const nNotes = contactSharedNotes(c).length + (phoneMyRow() ? myPhoneNotes(c.id).length : 0);
+  mid.append(el("div",{class:"phone-name"}, c.name || "Unnamed", gm && c.hidden ? el("span",{class:"phone-tag"},"\u{1F648} hidden") : "",
+    nNotes ? el("span",{class:"phone-tag",title:"Notes on this contact"}, `\u{1F4DD} ${nNotes}`) : ""));
   if(c.desc) mid.append(el("div",{class:"phone-desc"}, c.desc));
   if(gm && knownByNames(c)) mid.append(el("div",{class:"small muted"}, "Known by " + knownByNames(c)));
   row.append(mid);
@@ -47981,6 +48089,7 @@ function openContact(id){
   body.append(el("div",{class:"small muted"}, `\u{1F4E1} ${contactFreq(c)}`
     + (gm && c.hidden ? " \u00b7 \u{1F648} hidden from players" : "") + (gm && knownByNames(c) ? ` \u00b7 Known by ${knownByNames(c)}` : "")));
   if(c.desc) body.append(el("div",{class:"phone-desc full"}, c.desc));
+  body.append(contactNotesNode(c));
   const priv = el("input",{type:"checkbox"});
   body.append(el("label",{class:"inline small",style:"gap:8px;margin-top:14px;justify-content:center;cursor:pointer"}, priv,
     gm ? "\u{1F512} Private \u2014 only that player and you see the call" : "\u{1F512} Private call \u2014 only you and the GM see it"));

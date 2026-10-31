@@ -1083,6 +1083,18 @@ body.map-mode .view{animation:none}
 .phone-pick{display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:8px; margin-bottom:6px; font:inherit;
   border-radius:12px; border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; font-weight:700}
 .phone-pick:hover{border-color:var(--accent)}
+.phone-notes{margin-top:16px; padding-top:10px; border-top:1px solid var(--line); text-align:left}
+.phone-notes-head{font-weight:800; margin-bottom:6px}
+.phone-note{border:1px solid var(--line); border-radius:10px; padding:6px 9px; margin-bottom:6px; background:var(--panel)}
+.phone-note.personal{border-style:dashed; background:var(--panel-2)}
+.phone-note-meta{font-size:11px; font-weight:700; display:flex; gap:4px; align-items:center; flex-wrap:wrap}
+.phone-note-acts{margin-left:auto; display:inline-flex; gap:8px}
+.phone-note-text{font-size:13px; line-height:1.4; white-space:pre-wrap; overflow-wrap:anywhere; margin-top:2px}
+.phone-note textarea,.phone-compose textarea{width:100%; box-sizing:border-box; margin-top:4px}
+.phone-compose{margin-top:8px}
+.phone-scope{display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; margin:2px 0 2px}
+.phone-scope button{border:0; background:var(--panel); color:var(--muted); padding:5px 11px; font:inherit; font-size:12px; font-weight:700; cursor:pointer}
+.phone-scope button.on{background:var(--accent); color:var(--accent-ink)}
 #btnPhone.phone-ringing{animation:phoneShake .5s ease-in-out infinite; color:#2ecc71}
 @keyframes phoneShake{0%,100%{transform:rotate(0)} 25%{transform:rotate(-14deg)} 75%{transform:rotate(14deg)}}
 
@@ -1103,7 +1115,7 @@ body.map-mode .view{animation:none}
 .codec.min .codec-pill{display:block}
 .codec.min.ringing .codec-pill{animation:codecBlink .7s steps(2) infinite}
 .codec-screen{display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:14px; align-items:center}
-.codec-side{display:flex; flex-direction:column; align-items:center; gap:6px; min-width:0}
+.codec-side{display:flex; flex-direction:column; align-items:center; gap:6px; min-width:0; align-self:start}   /* portraits level, however many lines a name wraps to */
 .codec-pic{position:relative; width:clamp(76px, 21vw, 150px); aspect-ratio:4/5; border:2px solid var(--cg); background:#03190b;
   overflow:hidden; box-shadow:inset 0 0 18px rgba(0,0,0,.8)}
 .codec-pic img{width:100%; height:100%; object-fit:cover; object-position:50% 18%; display:block;
@@ -1111,8 +1123,10 @@ body.map-mode .view{animation:none}
 .codec-pic::after{content:""; position:absolute; inset:0; pointer-events:none;
   background:repeating-linear-gradient(0deg, rgba(0,30,10,.35) 0 1px, transparent 1px 3px)}
 .codec-initial{width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:48px; font-weight:900}
-.codec-name{font-weight:900; letter-spacing:.12em; text-transform:uppercase; font-size:12px; max-width:150px;
-  text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+/* the full name, always — it wraps onto more lines under the portrait instead of being cut to "…", and
+   is held to the portrait's width so a long one can't push the screen out of shape */
+.codec-name{font-weight:900; letter-spacing:.12em; text-transform:uppercase; font-size:12px; line-height:1.25;
+  width:clamp(76px, 21vw, 150px); text-align:center; white-space:normal; overflow-wrap:break-word}
 .codec-mid{display:flex; flex-direction:column; align-items:center; gap:8px; min-width:0}
 .codec-status{font-size:11px; font-weight:900; letter-spacing:.2em; text-align:center}
 .codec.ringing .codec-status{animation:codecBlink .7s steps(2) infinite}
@@ -1145,6 +1159,6 @@ body.map-mode .view{animation:none}
 @media (max-width:520px){
   .codec{top:56px; left:8px; right:8px}
   .codec-screen{gap:8px}
-  .codec-name{font-size:10px; max-width:90px}
+  .codec-name{font-size:10px; letter-spacing:.06em}
   .codec-ptt{display:none}
 }
