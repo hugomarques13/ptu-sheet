@@ -1067,6 +1067,9 @@ body.map-mode .view{animation:none}
 .phone-row.is-hidden{opacity:.62; border-style:dashed}
 .phone-av{width:48px; height:48px; border-radius:50%; object-fit:cover; object-position:50% 20%; flex:none; background:var(--panel-2)}
 .phone-av.big{width:84px; height:84px}
+.phone-framed{display:block; overflow:hidden; flex:none}
+.phone-framed img{width:100%; height:100%; object-fit:cover; display:block}
+.phone-portrait{width:min(220px, 60vw); aspect-ratio:4/5; margin:0 auto; border-radius:14px; cursor:zoom-in; background:var(--panel-2)}
 .phone-noimg{display:flex; align-items:center; justify-content:center; font-weight:900; font-size:20px; color:var(--muted)}
 .phone-av.big.phone-noimg{font-size:32px}
 .phone-mid{flex:1; min-width:0; cursor:pointer}

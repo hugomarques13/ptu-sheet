@@ -47840,10 +47840,10 @@ function phoneEndLook(end){
   if(!end) return { name:"\u2014", img:"" };
   if(end.kind === "contact"){
     const c = phoneContactById(end.cid);
-    return { name:(c && c.name) || end.name || "Unknown", img:(c && c.img) || "" };
+    return { name:(c && c.name) || end.name || "Unknown", img:(c && c.img) || "", focus:(c && c.imgFocus) || null };
   }
   const r = cloud.byId && cloud.byId[end.sheetId], t = r && r.data && r.data.trainer;
-  return { name:(t && t.name) || end.name || "Trainer", img:(t && avatarUrl(t)) || "" };
+  return { name:(t && t.name) || end.name || "Trainer", img:(t && avatarUrl(t)) || "", focus:(t && avatarFocusOf(t)) || null };
 }
 function phoneEndIsMine(end){ return !!end && end.kind === "player" && ownsRow(cloud.byId[end.sheetId]); }
 function callMine(call){
@@ -47896,7 +47896,9 @@ function saveContactRec(c){
   const d = phoneData(), live = d.contacts.find(x => x.id === c.id);
   /* the editor hands back a COPY made when it opened: copy across only the fields it edits, so a note
      somebody added to this contact in the meantime (c.notes) survives the GM pressing Save */
-  if(live){ if(live !== c) ["name","img","desc","freq","hidden","only"].forEach(k => { live[k] = c[k]; }); }
+  if(live){ if(live !== c) ["name","img","imgFocus","desc","freq","hidden","only"].forEach(k => {
+    if(c[k] === undefined) delete live[k]; else live[k] = c[k];      // a real delete, so the sync sends one
+  }); }
   else d.contacts.push(c);
   saveRolls();
 }
@@ -48024,9 +48026,14 @@ function phoneStopRing(){
   if(phoneRingTimer) clearInterval(phoneRingTimer);
   phoneRingTimer = null; phoneRingCall = null;
 }
-function contactAvatar(img, name, cls){
-  return img ? el("img",{class:cls, src:img, alt:"", loading:"lazy"})
-             : el("div",{class:cls + " phone-noimg"}, String(name || "?").trim().charAt(0).toUpperCase() || "?");
+/* a contact's (or a Trainer's) picture at one of the phone's sizes. A framed one is drawn `cover` inside
+   a clipping box — its zoom is a transform that would spill out of a bare <img> — and an unframed one
+   is the plain <img> it always was. */
+function contactAvatar(img, name, cls, focus){
+  if(!img) return el("div",{class:cls + " phone-noimg"}, String(name || "?").trim().charAt(0).toUpperCase() || "?");
+  const pic = el("img",{src:img, alt:"", loading:"lazy"});
+  if(!applyImgFocus(pic, focus)){ pic.className = cls; return pic; }
+  return el("div",{class:cls + " phone-framed"}, pic);
 }
 /* ---------- the phone itself: the contact list ---------- */
 function openPhone(){
@@ -48059,7 +48066,7 @@ function openPhone(){
 function contactRow(c){
   const gm = !!cloud.isGM;
   const row = el("div",{class:"phone-row" + (gm && c.hidden ? " is-hidden" : "")});
-  row.append(contactAvatar(c.img, c.name, "phone-av"));
+  row.append(contactAvatar(c.img, c.name, "phone-av", c.imgFocus));
   const mid = el("div",{class:"phone-mid", title:"Open the contact", onclick:()=>openContact(c.id)});
   const nNotes = contactSharedNotes(c).length + (phoneMyRow() ? myPhoneNotes(c.id).length : 0);
   mid.append(el("div",{class:"phone-name"}, c.name || "Unnamed", gm && c.hidden ? el("span",{class:"phone-tag"},"\u{1F648} hidden") : "",
@@ -48083,8 +48090,14 @@ function openContact(id){
   if(!c || !contactVisible(c)){ openPhone(); return; }
   const gm = !!cloud.isGM;
   const body = el("div",{class:"phone-card"});
-  body.append(c.img ? el("img",{class:"phone-big", src:c.img, alt:"", title:"Tap to see it full size", onclick:()=>openImageViewer(c.img, c.name)})
-                    : contactAvatar("", c.name, "phone-big"));
+  /* a framed picture shows as its portrait crop; an unframed one whole, as before. Either way a tap opens all of it. */
+  if(c.img && normFocus(c.imgFocus)){
+    const port = contactAvatar(c.img, c.name, "phone-portrait", c.imgFocus);
+    port.title = "Tap to see the whole picture";
+    port.addEventListener("click", ()=>openImageViewer(c.img, c.name));
+    body.append(port);
+  } else body.append(c.img ? el("img",{class:"phone-big", src:c.img, alt:"", title:"Tap to see it full size", onclick:()=>openImageViewer(c.img, c.name)})
+                           : contactAvatar("", c.name, "phone-big"));
   body.append(el("div",{class:"phone-name",style:"justify-content:center;font-size:20px;margin-top:10px"}, c.name || "Unnamed"));
   body.append(el("div",{class:"small muted"}, `\u{1F4E1} ${contactFreq(c)}`
     + (gm && c.hidden ? " \u00b7 \u{1F648} hidden from players" : "") + (gm && knownByNames(c) ? ` \u00b7 Known by ${knownByNames(c)}` : "")));
@@ -48119,35 +48132,44 @@ function ringPlayerFrom(cid, privDefault){
   rows.forEach(r => {
     const look = phoneEndLook(phonePartyEnd(r.id));
     body.append(el("button",{class:"phone-pick",onclick:()=>{ if(placeCall(phoneContactEnd(c), phonePartyEnd(r.id), priv.checked)) closeModal(); }},
-      contactAvatar(look.img, look.name, "phone-av"),
+      contactAvatar(look.img, look.name, "phone-av", look.focus),
       el("span",{}, look.name, r.owner_name ? el("span",{class:"muted",style:"font-weight:400"}, ` \u00b7 ${r.owner_name}`) : "")));
   });
   modal({ title:`\u{1F4DE} ${c.name || "Contact"} calls\u2026`, bodyNode:body,
     footNodes:[el("button",{class:"btn-secondary",onclick:()=>openContact(c.id)},"\u2039 Back")] });
 }
-/* GM: add or edit one contact. Works on a copy; nothing reaches the table until Save. */
-function editContact(id){
+/* GM: add or edit one contact. Works on a copy; nothing reaches the table until Save. `draft` is that
+   copy coming back from the 🖼 framing window, so a half-done edit survives the trip. */
+function editContact(id, draft){
   if(!cloud.isGM) return;
   const orig = id ? phoneContactById(id) : null;
-  const d = orig ? JSON.parse(JSON.stringify(orig))
-                 : { id:uid(), name:"", img:"", desc:"", freq:"", hidden:true, only:[], at:Date.now() };
+  const d = draft || (orig ? JSON.parse(JSON.stringify(orig))
+                           : { id:uid(), name:"", img:"", desc:"", freq:"", hidden:true, only:[], at:Date.now() });
   const origImg = (orig && orig.img) || "";
   const body = el("div",{});
   const picWrap = el("div",{class:"inline",style:"gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px"});
   const drawPic = () => {
     picWrap.innerHTML = "";
-    picWrap.append(contactAvatar(d.img, d.name, "phone-av big"));
+    picWrap.append(contactAvatar(d.img, d.name, "phone-av big", d.imgFocus));
     picWrap.append(el("button",{class:"btn-secondary",onclick:()=>pickImage(framablePicDim(), async u => {
       const prev = d.img;
       d.img = await storeImg(u, "contact");
+      delete d.imgFocus;                                                          // a new picture needs a new crop
       if(prev && prev !== d.img && prev !== origImg) removeStoredImg(prev);    // picked twice in one edit
       drawPic(); })}, d.img ? "\u{1F4F7} Change picture" : "\u{1F4F7} Add picture"));
-    if(d.img) picWrap.append(el("button",{class:"linkbtn",onclick:()=>{
-      if(d.img !== origImg) removeStoredImg(d.img);
-      d.img = ""; drawPic(); }},"remove"));
+    if(d.img){
+      picWrap.append(el("button",{class:"btn-secondary",title:"Choose what the portrait shows",onclick:()=>{
+        d.name = name.value; d.desc = desc.value; d.freq = freq.value.trim();    // keep what was typed for the trip back
+        openImageFocus({ url:d.img, aspect:0.8, back:()=>editContact(id, d),
+          hint:"Drag the picture to choose what it shows, and zoom in for a closer crop. The tall frame is their portrait "
+            + "on the call screen and the contact card, the circle their face in the contact list. Tapping the card's picture still shows all of it.",
+          get:()=>d.imgFocus, set:fo=>{ if(fo) d.imgFocus = fo; else delete d.imgFocus; }, commit:async()=>{} },
+          ()=>editContact(id, d)); }}, "\u{1F5BC} Frame"));
+      picWrap.append(el("button",{class:"linkbtn",onclick:()=>{
+        if(d.img !== origImg) removeStoredImg(d.img);
+        d.img = ""; delete d.imgFocus; drawPic(); }},"remove"));
+    }
   };
-  drawPic();
-  body.append(picWrap);
   const name = el("input",{type:"text",placeholder:"Name, as it shows on the phone"}); name.value = d.name || "";
   name.addEventListener("input",()=>{ d.name = name.value; });
   body.append(el("label",{class:"field"}, el("span",{},"Name"), name));
@@ -48157,6 +48179,8 @@ function editContact(id){
   body.append(el("label",{class:"field",style:"margin-top:10px"}, el("span",{},"Summary"), desc));
   const freq = el("input",{type:"text",placeholder:contactFreq({ id:d.id })}); freq.value = d.freq || "";
   freq.addEventListener("input",()=>{ d.freq = freq.value.trim(); });
+  drawPic();
+  body.prepend(picWrap);
   body.append(el("label",{class:"field",style:"margin-top:10px"}, el("span",{},"Codec frequency (optional \u2014 shown on the call screen)"), freq));
   const hid = el("input",{type:"checkbox"}); hid.checked = !!d.hidden;
   hid.addEventListener("change",()=>{ d.hidden = hid.checked; });
@@ -48242,11 +48266,13 @@ function buildCodec(call){
   const pill = el("button",{class:"codec-pill", title:"Open the Codec again", onclick:toggleMin});
   box.append(el("div",{class:"codec-frame"}, minBtn, el("div",{class:"codec-screen"}, L.s, mid, R.s), subs, ctrl), pill);
   const paintPic = (slot, look) => {
-    const key = look.img || ("#" + look.name);
+    const key = look.img ? look.img + "|" + JSON.stringify(normFocus(look.focus)) : ("#" + look.name);
     if(slot.pic.dataset.key === key) return;          // no reloading the picture on every sync
     slot.pic.dataset.key = key; slot.pic.innerHTML = "";
-    slot.pic.append(look.img ? el("img",{src:look.img, alt:""})
-      : el("div",{class:"codec-initial"}, String(look.name || "?").trim().charAt(0).toUpperCase() || "?"));
+    if(!look.img){ slot.pic.append(el("div",{class:"codec-initial"}, String(look.name || "?").trim().charAt(0).toUpperCase() || "?")); return; }
+    const img = el("img",{src:look.img, alt:""});
+    applyImgFocus(img, look.focus);                   // the contact's own framing (or the Trainer's portrait framing)
+    slot.pic.append(img);
   };
   const show = (n, on) => { n.style.display = on ? "" : "none"; };
   box._update = c => {
@@ -50320,14 +50346,21 @@ function openTokenImageFocus(token, map){
 /* The same framing is read by the sheets (framedPic) as by the map token, so this one editor serves
    both: the square stage IS the sheet portrait's crop, the circle inside it the token's. `after`
    runs once the choice is committed — save + re-render whatever view opened it. */
+/* `ref.aspect` (width ÷ height) gives a picture that is drawn portrait-shaped — a phone contact's Codec
+   portrait — a stage of that shape, with the round crop it also gets marked inside it rather than
+   masked; `ref.hint` replaces the help line; `ref.back` runs on Cancel (an editor that opened this
+   one gets its window back instead of losing it). */
 function openImageFocus(ref, after){
   let f = normFocus(ref.get()) || { x:50, y:50, z:100 };
-  const SIZE = 240;
+  const SIZE = 240, W = Math.round(SIZE * (ref.aspect || 1));
   const img = el("img",{src:ref.url, alt:"",
     style:`width:100%;height:100%;object-fit:cover;display:block;user-select:none;-webkit-user-drag:none`});
-  const ring = el("div",{style:`position:absolute;inset:0;border-radius:50%;`
-    + `box-shadow:0 0 0 9999px rgba(0,0,0,.55);pointer-events:none;border:2px solid var(--accent)`});
-  const stage = el("div",{style:`position:relative;width:${SIZE}px;height:${SIZE}px;margin:0 auto;`
+  const ring = ref.aspect
+    ? el("div",{style:`position:absolute;left:0;top:${Math.round((SIZE-W)/2)}px;width:${W}px;height:${W}px;border-radius:50%;`
+        + `pointer-events:none;border:2px dashed var(--accent)`})
+    : el("div",{style:`position:absolute;inset:0;border-radius:50%;`
+        + `box-shadow:0 0 0 9999px rgba(0,0,0,.55);pointer-events:none;border:2px solid var(--accent)`});
+  const stage = el("div",{style:`position:relative;width:${W}px;height:${SIZE}px;margin:0 auto;`
     + `overflow:hidden;border-radius:10px;background:var(--panel-2);touch-action:none;cursor:grab`}, img, ring);
   const paint = ()=>{ img.style.objectPosition = `${f.x}% ${f.y}%`;
     img.style.transform = f.z!==100 ? `scale(${f.z/100})` : "";
@@ -50340,7 +50373,7 @@ function openImageFocus(ref, after){
     drag = { x:ev.clientX, y:ev.clientY, fx:f.x, fy:f.y };
     try{ stage.setPointerCapture(ev.pointerId); }catch(e){} stage.style.cursor="grabbing"; });
   stage.addEventListener("pointermove", ev=>{ if(!drag) return;
-    f.x = Math.max(0, Math.min(100, drag.fx - (ev.clientX-drag.x)/SIZE*100));
+    f.x = Math.max(0, Math.min(100, drag.fx - (ev.clientX-drag.x)/W*100));
     f.y = Math.max(0, Math.min(100, drag.fy - (ev.clientY-drag.y)/SIZE*100));
     paint(); });
   const endDrag = ()=>{ drag = null; stage.style.cursor="grab"; };
@@ -50349,15 +50382,15 @@ function openImageFocus(ref, after){
   const zoom = el("input",{type:"range",min:100,max:300,step:5,value:f.z,style:"width:100%"});
   zoom.addEventListener("input", ()=>{ f.z = parseInt(zoom.value)||100; paint(); });
   const body = el("div",{});
-  body.append(el("div",{class:"small muted",style:"margin-bottom:8px;text-align:center"},
-    "Drag the picture to choose what it shows, and zoom in for a closer crop. The square is the "
-    + "portrait on the sheet, the circle the map token. Tapping the picture still shows all of it."));
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px;text-align:center"}, ref.hint ||
+    ("Drag the picture to choose what it shows, and zoom in for a closer crop. The square is the "
+    + "portrait on the sheet, the circle the map token. Tapping the picture still shows all of it.")));
   body.append(stage);
   body.append(el("label",{class:"field",style:"margin-top:12px"}, el("span",{},"Zoom"), zoom));
   modal({title:"🖼 Picture framing", bodyNode:body, footNodes:[
     el("button",{class:"btn-secondary",onclick:async()=>{ ref.set(null); await ref.commit();
       closeModal(); if(after) after(); toast("🖼 Framing reset"); }},"↺ Reset"),
-    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-secondary",onclick:()=>{ closeModal(); if(ref.back) ref.back(); }},"Cancel"),
     el("button",{class:"btn-primary",onclick:async()=>{ ref.set(normFocus(f)); await ref.commit();
       closeModal(); if(after) after(); toast("🖼 Framing saved"); }},"✓ Save"),
   ]});
