@@ -687,6 +687,11 @@ body.map-mode .map-viewport{flex:1 1 auto; height:auto; min-height:0; border-rad
 .map-token.current-turn.selected{outline-color:#f5c518}
 .map-token .tk-status-ring{position:absolute; left:50%; top:50%; width:0; height:0;
   display:flex; align-items:center; justify-content:center; overflow:visible; pointer-events:none}
+/* …but on the board the ring is lifted OUT of its token into the stage (liftStatusRing): z-index 0 and
+   appended after the tokens, so it sits over the floor layer (hulls, zones, shoals) and UNDER every
+   creature instead of painting across its neighbours. left/top = the token's centre. */
+.tk-ring-float{position:absolute; width:0; height:0; z-index:0;
+  display:flex; align-items:center; justify-content:center; overflow:visible; pointer-events:none}
 .map-token .tk-move{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
   font-size:calc(14px * var(--tku,1)); font-weight:900; color:#fff; background:var(--accent); white-space:nowrap;
   border-radius:calc(8px * var(--tku,1)); padding:calc(2px * var(--tku,1)) calc(8px * var(--tku,1)); pointer-events:none; box-shadow:0 1px 4px rgba(0,0,0,.5)}
@@ -1052,3 +1057,94 @@ body.map-mode .view{animation:none}
 @keyframes ping-bob{0%,100%{transform:translate(-50%,6px)} 50%{transform:translate(-50%,-10px)}}
 .map-ping-ring{position:absolute; z-index:39; pointer-events:none; border-radius:50%; border:4px solid #ffd400; box-shadow:0 0 0 2px #111, 0 0 18px 4px rgba(255,212,0,.8); animation:ping-ring 1s ease-out infinite}
 @keyframes ping-ring{0%{transform:scale(.8); opacity:1} 100%{transform:scale(1.7); opacity:0}}
+
+/* ── 📱 Phone: the contact list (openPhone / openContact / editContact) ── */
+.phone-bar{display:flex; align-items:center; gap:10px; margin:-4px 0 10px; padding:6px 10px; border-radius:10px;
+  background:var(--panel-2); border:1px solid var(--line)}
+.phone-clock{font-weight:800; font-variant-numeric:tabular-nums; margin-right:auto}
+.phone-row{display:flex; align-items:center; gap:10px; padding:8px; border-radius:12px; border:1px solid var(--line);
+  background:var(--panel); margin-bottom:8px}
+.phone-row.is-hidden{opacity:.62; border-style:dashed}
+.phone-av{width:48px; height:48px; border-radius:50%; object-fit:cover; object-position:50% 20%; flex:none; background:var(--panel-2)}
+.phone-av.big{width:84px; height:84px}
+.phone-noimg{display:flex; align-items:center; justify-content:center; font-weight:900; font-size:20px; color:var(--muted)}
+.phone-av.big.phone-noimg{font-size:32px}
+.phone-mid{flex:1; min-width:0; cursor:pointer}
+.phone-name{font-weight:800; display:flex; gap:6px; align-items:center; flex-wrap:wrap}
+.phone-tag{font-size:10px; font-weight:700; color:var(--muted); border:1px solid var(--line); border-radius:6px; padding:0 5px}
+.phone-desc{font-size:12px; color:var(--muted); white-space:pre-wrap; overflow:hidden;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical}
+.phone-desc.full{display:block; -webkit-line-clamp:unset; color:var(--ink); font-size:14px; line-height:1.45; margin-top:12px; text-align:left}
+.phone-acts{display:flex; gap:6px; flex:none}
+.phone-acts button{padding:6px 10px}
+.phone-card{text-align:center}
+.phone-big{display:block; margin:0 auto; max-width:100%; max-height:46vh; border-radius:14px; object-fit:contain; cursor:zoom-in}
+.phone-big.phone-noimg{width:140px; height:140px; border-radius:50%; background:var(--panel-2); font-size:56px; cursor:default}
+.phone-pick{display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:8px; margin-bottom:6px; font:inherit;
+  border-radius:12px; border:1px solid var(--line); background:var(--panel); color:var(--ink); cursor:pointer; font-weight:700}
+.phone-pick:hover{border-color:var(--accent)}
+#btnPhone.phone-ringing{animation:phoneShake .5s ease-in-out infinite; color:#2ecc71}
+@keyframes phoneShake{0%,100%{transform:rotate(0)} 25%{transform:rotate(-14deg)} 75%{transform:rotate(14deg)}}
+
+/* ── 📞 The Codec (renderCallOverlay): Metal Gear Solid's call screen — the caller on the left, whoever
+   they rang on the right, the frequency between them, subtitles underneath. Its own palette in both
+   themes; under modals (100) and toasts, over the roll feed and Blessing squares. ── */
+.codec{position:fixed; z-index:90; left:12px; right:12px; top:64px; margin:0 auto; max-width:780px; pointer-events:none;
+  --cg:#7dffa8; --cg-dim:#2f8f55; --cg-bg:#020d06; font-family:"Courier New",ui-monospace,monospace}
+.codec-frame{pointer-events:auto; position:relative; background:var(--cg-bg); color:var(--cg); border:2px solid var(--cg-dim);
+  border-radius:6px; padding:16px 14px 10px; transform-origin:50% 50%; animation:codecOpen .28s cubic-bezier(.2,.9,.3,1);
+  box-shadow:0 0 0 1px #000, 0 0 26px rgba(80,255,140,.22), 0 14px 40px rgba(0,0,0,.6)}
+.codec-frame::after{content:""; position:absolute; inset:0; pointer-events:none; border-radius:6px;
+  background:repeating-linear-gradient(0deg, rgba(0,0,0,.26) 0 1px, transparent 1px 3px)}
+@keyframes codecOpen{from{transform:scaleY(.02); opacity:.4} 60%{transform:scaleY(1.03); opacity:1} to{transform:scaleY(1)}}
+.codec.min .codec-frame{display:none}
+.codec-pill{display:none; pointer-events:auto; margin:0 auto; background:var(--cg-bg); color:var(--cg); border:1px solid var(--cg-dim);
+  border-radius:20px; padding:6px 14px; font:inherit; font-size:12px; font-weight:800; cursor:pointer; box-shadow:0 6px 18px rgba(0,0,0,.45)}
+.codec.min .codec-pill{display:block}
+.codec.min.ringing .codec-pill{animation:codecBlink .7s steps(2) infinite}
+.codec-screen{display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:14px; align-items:center}
+.codec-side{display:flex; flex-direction:column; align-items:center; gap:6px; min-width:0}
+.codec-pic{position:relative; width:clamp(76px, 21vw, 150px); aspect-ratio:4/5; border:2px solid var(--cg); background:#03190b;
+  overflow:hidden; box-shadow:inset 0 0 18px rgba(0,0,0,.8)}
+.codec-pic img{width:100%; height:100%; object-fit:cover; object-position:50% 18%; display:block;
+  filter:grayscale(.35) sepia(.55) hue-rotate(68deg) saturate(1.7) brightness(.95) contrast(1.08)}
+.codec-pic::after{content:""; position:absolute; inset:0; pointer-events:none;
+  background:repeating-linear-gradient(0deg, rgba(0,30,10,.35) 0 1px, transparent 1px 3px)}
+.codec-initial{width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:48px; font-weight:900}
+.codec-name{font-weight:900; letter-spacing:.12em; text-transform:uppercase; font-size:12px; max-width:150px;
+  text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.codec-mid{display:flex; flex-direction:column; align-items:center; gap:8px; min-width:0}
+.codec-status{font-size:11px; font-weight:900; letter-spacing:.2em; text-align:center}
+.codec.ringing .codec-status{animation:codecBlink .7s steps(2) infinite}
+@keyframes codecBlink{50%{opacity:.15}}
+.codec-tune{display:flex; align-items:center; gap:10px; font-size:14px}
+.codec-freq{font-size:clamp(24px, 6vw, 44px); font-weight:900; letter-spacing:.06em; font-variant-numeric:tabular-nums;
+  text-shadow:0 0 10px rgba(110,255,160,.55)}
+.codec-bars{display:flex; gap:3px; align-items:flex-end; height:22px}
+.codec-bars i{display:block; width:6px; height:calc(5px + var(--i) * 2px); background:var(--cg-dim)}
+.codec:not(.ringing) .codec-bars i{background:var(--cg); animation:codecBar .9s ease-in-out infinite; animation-delay:calc(var(--i) * -.11s)}
+@keyframes codecBar{50%{opacity:.25}}
+.codec-ptt{font-size:10px; font-weight:900; letter-spacing:.3em; border:1px solid var(--cg-dim); padding:1px 8px}
+.codec-subs,.codec-ctrl{position:relative; z-index:1}
+.codec-subs{margin-top:12px; border-top:1px solid var(--cg-dim); padding-top:8px; min-height:44px; font-size:14px; line-height:1.35}
+.codec-line b{letter-spacing:.06em; text-transform:uppercase}
+.codec-line.r{color:#c9ffd9}
+.codec-line.muted{opacity:.55}
+.codec-ctrl{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; align-items:center}
+.codec-input{flex:1; min-width:140px; background:#01160a; color:var(--cg); border:1px solid var(--cg-dim); border-radius:4px;
+  padding:7px 10px; font:inherit}
+.codec-input::placeholder{color:var(--cg-dim)}
+.codec-btn{background:transparent; color:var(--cg); border:1px solid var(--cg); border-radius:4px; padding:6px 12px; font:inherit;
+  font-weight:900; letter-spacing:.1em; cursor:pointer}
+.codec-btn:hover{background:rgba(125,255,168,.12)}
+.codec-btn.go{background:var(--cg); color:#02140a}
+.codec-btn.stop{border-color:#ff6b6b; color:#ff8a8a}
+.codec-wait{font-size:12px; opacity:.75; letter-spacing:.08em; margin-right:auto}
+.codec-min{position:absolute; top:2px; right:6px; z-index:2; background:transparent; border:0; color:var(--cg); cursor:pointer;
+  font:inherit; font-weight:900; padding:2px 6px}
+@media (max-width:520px){
+  .codec{top:56px; left:8px; right:8px}
+  .codec-screen{gap:8px}
+  .codec-name{font-size:10px; max-width:90px}
+  .codec-ptt{display:none}
+}

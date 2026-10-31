@@ -3593,7 +3593,7 @@ const ABILITY_ACTION_ROWS = {};
    ["tablets of ruin", "Tablets of Ruin", "Physical damage received: resist it one step"],
    ["vessel of ruin", "Vessel of Ruin", "Special damage received: resist it one step"]].forEach(([k, nm, txt]) =>
     addSelf([k], { icon:"\u{1F4FF}", label:nm, title:`Scene, Swift \u2014 lay ${nm} on the field: whoever it covers may activate it twice (${txt})`,
-      run:(p, done) => { const b = tableLayBlessing(nm, 2, ownerLabel(p));
+      run:(p, done) => { const b = tableLayBlessing(nm, 2, ownerLabel(p), null, blessingSideOf(p));
         done(b ? "laid on the field \u2014 2 activations for the whole table" : "needs the cloud table for the shared square \u2014 count its 2 activations by hand"); } }));
   addSelf(["discipline"], { icon:"\u{1F9D8}", label:"Discipline", title:"Scene, Free \u2014 on gaining initiative: cure Confused, Enraged, Infatuated or Flinched",
     gate:p => ["confused","enraged","infatuation","flinch"].some(k => hasStatus(p, k)) ? "" : "nothing to cure",
@@ -8350,6 +8350,7 @@ function render(){
   if (currentTab==="reference")  renderReference();
   renderRollFeed();               // GM-only float, pinned over whichever tab is showing
   renderBlessingPops();           // everyone's float: the Blessings on the field and their uses left
+  renderCallOverlay();            // the 📱 Codec while a call is on the line (and the top-bar 📱 itself)
   applyReadonlyLock();
   saveNav();
 }
@@ -9885,6 +9886,10 @@ function pyreGrantBuff(o){
 function pyreCanFire(o){
   return !!o && !hasStatus(o, "knockedOut") && !hasStatus(o, "dead") && ownerHP(o) > 0;
 }
+/* Pyre of Grief only works while its holder is hurt (house ruling, 2026-10-31): at full Hit Points a
+   foe's faint gives it nothing — no Tick, no +5, and no Scene use spent. This gates the HOLDER only;
+   Mom? rides the holder's trigger and her Max HP is pinned at 1, so she would always read as full. */
+function pyreHurt(o){ return !!o && ownerHP(o) < ownerMaxHP(o); }
 function pyreOfGriefOnFaint(owner){
   if(mode !== "cloud" || !owner) return;
   const map = currentMapForView() || activeMap();
@@ -9898,7 +9903,7 @@ function pyreOfGriefOnFaint(owner){
   const holders = toks.filter(t => {
     if(fallen.includes(t)) return false;
     const o = objOf(t);
-    if(!o || o === owner || !ownerHasAbility(o, "Pyre of Grief") || !pyreCanFire(o)) return false;
+    if(!o || o === owner || !ownerHasAbility(o, "Pyre of Grief") || !pyreCanFire(o) || !pyreHurt(o)) return false;
     return fallen.some(f => tokensAreFoes(t, f) && tokenMetreGap(t, f) <= PYRE_RANGE);   // a FOE fell, not an ally
   });
   if(!holders.length) return;
@@ -9906,7 +9911,7 @@ function pyreOfGriefOnFaint(owner){
   setTimeout(async () => {
     for(const t of holders){
       const info = tokenHp(t), o = info.obj;
-      if(!pyreCanFire(o)) continue;
+      if(!pyreCanFire(o) || !pyreHurt(o)) continue;
       if(!info.editable){
         toast(`\u{1F525} Pyre of Grief — ${ownerLabel(o)} heals a Tick and gains +5 to its next Damage Roll (its owner can press 🔥 on the Ability).`);
         continue;
@@ -9928,6 +9933,7 @@ function pyreOfGriefOnFaint(owner){
 /* the by-hand half, for a faint the Map didn't see */
 function applyPyreToOwner(o){
   if(!pyreCanFire(o)) return `${ownerLabel(o)} is down — Pyre of Grief doesn't fire.`;
+  if(!pyreHurt(o)) return `${ownerLabel(o)} is at full health — Pyre of Grief only works below full HP, so nothing fired and no use was spent.`;
   const use = abilityUse(o, "Pyre of Grief");
   if(!use.spend()) return `${ownerLabel(o)} has no Pyre of Grief uses left this Scene (${use.max} per Scene).`;
   const old = ownerHP(o);
@@ -9944,7 +9950,7 @@ function pyreTriggerRow(p, redraw, persist){
     onclick:()=>{ const msg = applyPyreToOwner(p); (persist || save)(); toast(`\u{1F525} ${msg}`); redraw && redraw(); }},
     "\u{1F525} A foe fainted within 3 m"));
   wrap.append(el("span",{class:"muted"},
-    `Scene x2, Free Action. Heals a Tick (+${gain} HP) and places a +5 next-Damage-Roll buff that doesn't stack. On the Map this fires by itself whenever a FOE faints within 3 m (allies don't count) — the sheet spends one of the two uses each time.`
+    `Scene x2, Free Action. Heals a Tick (+${gain} HP) and places a +5 next-Damage-Roll buff that doesn't stack. On the Map this fires by itself whenever a FOE faints within 3 m (allies don't count) — the sheet spends one of the two uses each time. It only works while the holder is below full HP.`
     + (pyreShareTargets(p).length ? " Lázaro's \u201cMom?\u201d gets the same +5." : "")));
   return wrap;
 }
@@ -10442,6 +10448,10 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const etSweet = moveKey(st.name || "") === "sweetkiss" && modeIsOn(t, "enchanting-transformation") && hasFeatureLoose(t, "Enchanting Transformation");
   const evaNote = (isSpecAtk ? "Special Evasion" : "Physical Evasion") + (etSweet ? " (never its Speed Evasion — Enchanting Transformation)" : "");
   const bm = buffMods(t, {isPhys: isPhysAtk, type: st.type, isStatus: isStatusAtk, rawDB: parseInt((st.move && st.move.db) ?? st.db) || 0});
+  /* Pyre of Grief (the Emberwake Gift's copy): ticked before the roll, exactly as openMoveRoll does it */
+  const pyreBuff = !isStatusAtk ? ownerBuffs(t).find(b => b.key === "pyre-of-grief") : null;
+  const pyreOn = !!pyreBuff && opts.pyre !== false;
+  if(pyreBuff && !pyreOn) bm.dmg -= (pyreBuff.mods && pyreBuff.mods.dmg) || 0;
   /* Crit Range for this attack — Bad Mood, Frenzy & co., and the Move's own printed range. */
   /* Flip Out (Tumbler) lets an Aerial Ace decline the Critical Hit test in exchange for the Pass
      Keyword, so the threshold is a `let`: ticking it pushes the range to 21, which no d20 reaches. */
@@ -10854,13 +10864,29 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     body.append(wc);
   }
 
+  /* --- Pyre of Grief: put the banked +5 on this roll, or keep it for a later one --- */
+  if(pyreBuff){
+    const add = (pyreBuff.mods && pyreBuff.mods.dmg) || 5;
+    const card = el("div",{class:"card",style:`background:var(--panel);border:1px solid ${pyreOn?"var(--accent)":"var(--line)"};margin:0 0 12px`});
+    const lbl = el("label",{style:"display:flex;gap:8px;align-items:flex-start;cursor:pointer"});
+    const cb = el("input",{type:"checkbox"}); cb.checked = pyreOn;
+    cb.addEventListener("change",()=>{ closeModal(); openTrainerAttack(t, weaponMoveName, w, Object.assign({}, opts, {pyre: cb.checked})); });
+    lbl.append(cb, el("div",{},
+      el("div",{class:"small",style:"font-weight:700"}, `\u{1F525} Pyre of Grief \u2014 +${add} to this Damage Roll`),
+      el("div",{class:"small muted"}, pyreOn
+        ? `On \u2014 the +${add} is already in the damage below and is spent when you roll. Untick it to save it for a later attack this Scene.`
+        : `Saved for later \u2014 this roll leaves it out. Tick it to add +${add} and spend it.`)));
+    card.append(lbl); body.append(card);
+  }
+
   /* --- active buffs (Cheers / Orders / Songs) applied to this roll (#2) --- */
   const tbuffs = ownerBuffs(t);
   if(tbuffs.length){
     const bcard = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
     bcard.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},"✨ Buffs & Orders active"));
     const bctx = {isPhys:isPhysAtk, type: st.type, isStatus: isStatusAtk, rawDB: parseInt((st.move && st.move.db) ?? st.db) || 0};
-    tbuffs.forEach(b=>{ const mt=buffModText(b.mods); const offTxt = buffOffText(b, bctx);
+    tbuffs.forEach(b=>{ const mt=buffModText(b.mods);
+      const offTxt = (b.key === "pyre-of-grief" && pyreBuff && !pyreOn) ? " — saved for a later roll (ticked off above)" : buffOffText(b, bctx);
       bcard.append(el("div",{class:"small"+(offTxt?" muted":"")}, `• ${b.name}` + (mt?` — ${mt}`:"") + offTxt,
         b.note?el("span",{class:"muted"},"  "+b.note):"")); });
     body.append(bcard);
@@ -10933,6 +10959,10 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     let feedLogged = false;              // the GM's roll feed gets exactly one line per press of 🎲
     if(!eotRefreshed){
       eotRefreshed = true;
+      if(pyreOn && pyreBuff){        // the ticked Pyre of Grief +5 is in this roll — spend the charge once
+        removeBuff(t, pyreBuff.id); (opts.persist||save)(); if(opts.rerender) opts.rerender();
+        toast(`\u{1F525} Pyre of Grief spent \u2014 +${(pyreBuff.mods && pyreBuff.mods.dmg) || 5} on this Damage Roll`);
+      }
       const eotBack = refreshOtherEotUses(t, fqName);
       /* Rolling it IS using it: a Scene / Daily / EOT Move's use comes off on the first roll of this
          window (re-rolls and hit overrides recompute the same attack). Metronome spends Metronome's. */
@@ -14939,7 +14969,7 @@ const GIFT_GROUPS = [
   { group:"Vulpoxen (Symbiant)", patrons:["Vulpoxen"], gifts:[
     ["Minor","Grafted Soul","GM Permission","+3 bonus to Occult Education and Medicine Education Checks concerning souls, spirits, death, and the line between the living and the dead. You can sense whether a creature within 10m has died within the last hour. (Bond deepens at Vulpoxen Lv 5.)"],
     ["Major","Ashen Séance","Minor Gift - Grafted Soul","Daily Extended Action, targeting the remains, ashes, or a treasured possession of a creature that has died: you and Vulpoxen kindle a cold flame and commune with the departed spirit, asking questions it answers truthfully to the best of what it knew in life. A spirit gone longer than a year is faint and manages only one answer. (Vulpoxen Lv 20.)"],
-    ["Major","Emberwake","Minor Gift - Grafted Soul","You gain the Pyre of Grief Ability (heal a Tick of HP + a stacking-capped +5 to your next Damage Roll whenever a foe faints within 3m \u2014 Scene x2, Free Action). Your \u201cMom?\u201d gains the same +5 to her next Damage Roll. (Vulpoxen Lv 30 — Nightmare Aura wakes.)"],
+    ["Major","Emberwake","Minor Gift - Grafted Soul","You gain the Pyre of Grief Ability (heal a Tick of HP + a stacking-capped +5 to your next Damage Roll whenever a foe faints within 3m while you're below full HP \u2014 Scene x2, Free Action). Your \u201cMom?\u201d gains the same +5 to her next Damage Roll. (Vulpoxen Lv 30 — Nightmare Aura wakes.)"],
     ["Major","Coma Light","Major Gift - Emberwake","Scene x2, Standard Action, AC 6, Range 4m 1 Target: the target falls Asleep and immediately gains Bad Sleep. (Vulpoxen Lv 50 — Death Aura opens.)"],
     ["Pact","Rekindling","All Vulpoxen Major Gifts","You learn the Move Rekindling — a Fire attack that, on a killing blow, revives a fainted ally as a Ghost-Type revenant. (Vulpoxen Lv 75 — full god.)"],
   ]},
@@ -22067,9 +22097,18 @@ function teraMoveType(p, m){
   }
   return null;
 }
+/* Aura Wheel: "If the user is in Hangry Mode, Aura Wheel is Dark-Typed." Hunger Switch flips the Mode at
+   the start of each of its turns (o.variant, see hungerMode), and picking Hangry as Morpeko's form on
+   the sheet counts the same. Only the Hunger Switch Pokémon has a Mode at all — anyone else's Aura Wheel
+   stays the Electric it's printed as. */
+function auraWheelDark(p, m){
+  return !!(p && m && /^aura wheel$/i.test(String(m.name || "").trim())
+    && (hasAbility(p, "Hunger Switch") || /morpeko/i.test(String(p.species || ""))) && hungerMode(p) === "Hangry");
+}
 function effectiveMoveType(p, m, opts={}){
   if(hasAbility(p, "Normalize")) return "Normal";
   const sync = moveSyncType(p, m); if(sync) return sync;               // permanent retype wins over −ate
+  if(auraWheelDark(p, m)) return "Dark";                               // Aura Wheel in Hangry Mode
   if(tinkerSteel(p, m)) return "Steel";                                // Tinker: its scrap weapon's Moves may be Steel
   const tera = teraMoveType(p, m); if(tera) return tera;               // Tera Blast / Tera Starstorm
   if(!opts.noAte){ const a = ateInfo(p, m); if(a) return a.type; }   // −ate re-types Normal moves (togglable in openMoveRoll)
@@ -27357,6 +27396,13 @@ function openMoveRoll(p, m, sp, opts={}){
   const spPending = () => !!sp2 && sp2.kind==="dieDB" && dieVal==null;   // DB unknown until 🎲
   const bm = buffMods(p, {isPhys, type: mtype, melee: /melee/i.test(String((m && m.range) || "")),
     isStatus: !/physical|special/i.test(String((m && m.class) || "")), rawDB: parseInt(m && m.db) || 0});   // active Cheers / Orders / Songs / Food Buffs (#2)
+  /* Pyre of Grief's +5 is a choice made BEFORE the dice go: a tick-box on the roll, on by default (it is
+     "the next Damage Roll"), spent the moment a damaging roll is made with it on. Unticked, it comes off
+     these numbers and waits for a later attack this Scene. It used to be counted in silently and only
+     offered as a "spend" button once the roll was already on the table. */
+  const pyreBuff = (isPhys || isSpec) ? ownerBuffs(p).find(b => b.key === "pyre-of-grief") : null;
+  const pyreOn = !!pyreBuff && opts.pyre !== false;
+  if(pyreBuff && !pyreOn) bm.dmg -= (pyreBuff.mods && pyreBuff.mods.dmg) || 0;
   const abilAcc = abilityAccMods(p, m, isPhys);   // always-on Accuracy abilities (Compound Eyes, Hustle)
   /* Duelist: half this Pokemon's Momentum (rounded up) is Accuracy AND Evasion, but only against a
      Tagged foe — the roll has no idea who is being shot at, so it asks. Off by default; ticking it
@@ -27531,6 +27577,20 @@ function openMoveRoll(p, m, sp, opts={}){
         : teamworkOn
         ? "Yes — +2 Accuracy on this roll."
         : `Tick this if your Teamwork ally stands adjacent to the foe you are attacking for +2 Accuracy${twCtx.wide ? " (Pack Master: any attack, not only Melee)" : " (Melee attacks)"}.`)));
+    card.append(lbl); body.append(card);
+  }
+  /* --- Pyre of Grief: put the banked +5 on this roll, or keep it for a later one --- */
+  if(pyreBuff){
+    const add = (pyreBuff.mods && pyreBuff.mods.dmg) || 5;
+    const card = el("div",{class:"card",style:`background:var(--panel);border:1px solid ${pyreOn?"var(--accent)":"var(--line)"};margin:0 0 12px`});
+    const lbl = el("label",{style:"display:flex;gap:8px;align-items:flex-start;cursor:pointer"});
+    const cb = el("input",{type:"checkbox"}); cb.checked = pyreOn;
+    cb.addEventListener("change",()=>{ closeModal(); openMoveRoll(p, m, sp, Object.assign({}, opts, {pyre: cb.checked})); });
+    lbl.append(cb, el("div",{},
+      el("div",{class:"small",style:"font-weight:700"}, `\u{1F525} Pyre of Grief \u2014 +${add} to this Damage Roll`),
+      el("div",{class:"small muted"}, pyreOn
+        ? `On \u2014 the +${add} is already in the damage below and is spent when you roll. Untick it to save it for a later attack this Scene.`
+        : `Saved for later \u2014 this roll leaves it out. Tick it to add +${add} and spend it.`)));
     card.append(lbl); body.append(card);
   }
   if(hasGrandHex){
@@ -27990,7 +28050,8 @@ function openMoveRoll(p, m, sp, opts={}){
     buffs.forEach(b=>{ const mt=buffModText(b.mods);
       // a class-restricted buff (a Spicy Wrap is Physical-only) is listed but greyed when this
       // move isn't the class it applies to — it's still active, it just isn't in these numbers
-      const offTxt = buffOffText(b, {isPhys, type: mtype, isStatus: !/physical|special/i.test(String((m && m.class) || "")), rawDB: parseInt(m && m.db) || 0});
+      const offTxt = (b.key === "pyre-of-grief" && pyreBuff && !pyreOn) ? " — saved for a later roll (ticked off above)"
+        : buffOffText(b, {isPhys, type: mtype, isStatus: !/physical|special/i.test(String((m && m.class) || "")), rawDB: parseInt(m && m.db) || 0});
       bcard.append(el("div",{class:"small"+(offTxt?" muted":"")}, `• ${b.name}` + (mt?` — ${mt}`:"")
           + offTxt + (b.note?`  `:""),
         b.note?el("span",{class:"muted"}, b.note):"")); });
@@ -28173,6 +28234,12 @@ function openMoveRoll(p, m, sp, opts={}){
       zBoost.kind==="z" ? `⚡ ${zBoost.zName}!` : `💎 ${zBoost.item} — +${zBoost.db} Damage Base`));
     if(!usedThisRoll){
       usedThisRoll = true;
+      /* the ticked Pyre of Grief +5 is in this roll's numbers, so the charge is gone now (a re-roll or a
+         hit override in this same window keeps the +5 — it is still the same attack) */
+      if(pyreOn && pyreBuff){
+        removeBuff(p, pyreBuff.id); (opts.persist||save)(); if(opts.rerender) opts.rerender();
+        toast(`\u{1F525} Pyre of Grief spent \u2014 +${(pyreBuff.mods && pyreBuff.mods.dmg) || 5} on this Damage Roll`);
+      }
       // taking a turn hands back every OTHER EOT Move that was on cooldown (see refreshOtherEotUses)
       const eotBack = refreshOtherEotUses(p, freqMove && freqMove.name);
       const effFreq = monMoveFreq(p, freqMove);
@@ -28186,7 +28253,7 @@ function openMoveRoll(p, m, sp, opts={}){
          spend (the GM's \uD83D\uDD13 unlock waives that), so a mis-press can't conjure a free extra Reflect. */
       if(isBlessingMove(m) && (spent || p.unlocked || !freqTrackable(freqInfo(effFreq)))){
         const n = blessingActivations(m.name);
-        if(tableLayBlessing(m.name, n, ownerLabel(p)))
+        if(tableLayBlessing(m.name, n, ownerLabel(p), null, blessingSideOf(p)))
           toast(`${blessingIcon(m.name)} ${m.name} is on the field \u2014 ${n} activation${n === 1 ? "" : "s"}`);
       }
       /* The Gem shatters / the Z-Crystal burns its Scene use only once the dice actually go — a
@@ -28576,7 +28643,7 @@ function openMoveRoll(p, m, sp, opts={}){
       out.append(ov);
     }
     // spend one-shot buffs (Cheers / Strike Again! / Perfect Aim …)
-    const oneShots = ownerBuffs(p).filter(b=>b.once);
+    const oneShots = ownerBuffs(p).filter(b=>b.once && b.key !== "pyre-of-grief");   // Pyre of Grief is ticked BEFORE the roll (pyreOn)
     if(oneShots.length){
       const sp = el("div",{style:"margin-top:10px"});
       sp.append(el("div",{class:"small muted",style:"font-weight:700"},"Spend a one-shot buff:"));
@@ -38198,7 +38265,7 @@ function sageBlessingList(t){ return Array.isArray(t && t.sageBlessings) ? t.sag
 function sageKnownBlessings(t){ return SAGE_BLESSINGS.filter(b => moveInList(t.moves||[], b.move)); }
 function sageLayBlessing(t, move){
   const rec = { id:uid(), move, left:blessingActivations(move) };
-  if(tableLayBlessing(move, rec.left, (t && t.name) || "", rec.id)) rec.shared = true;   // the table's floating square
+  if(tableLayBlessing(move, rec.left, (t && t.name) || "", rec.id, blessingSideOf(t))) rec.shared = true;   // the table's floating square
   t.sageBlessings = [...sageBlessingList(t), rec];
 }
 /* the Sage's laid Blessings as the table currently has them: a shared one reads its uses from the
@@ -46181,6 +46248,7 @@ $("#btnTheme").addEventListener("click", ()=>{
 });
 $("#btnChars") && $("#btnChars").addEventListener("click", openCharManager);
 $("#btnSettings").addEventListener("click", openSettings);
+$("#btnPhone").addEventListener("click", () => openPhone());
 $("#btnRefresh").addEventListener("click", forceRefresh);
 
 /* persistent Rest bar (always visible, any tab) */
@@ -47468,6 +47536,9 @@ function normRolls(data){
   /* the Blessings on the field ride the same row (see renderBlessingPops) — one used up is deleted */
   data.blessings = Array.isArray(data.blessings)
     ? data.blessings.filter(b => b && typeof b==="object" && b.id && (b.left||0) > 0) : [];
+  /* …and so does the 📱 phone: the GM's contact list and the call on the line (see renderCallOverlay) */
+  data.contacts = Array.isArray(data.contacts) ? data.contacts.filter(c => c && typeof c==="object" && c.id) : [];
+  data.calls = Array.isArray(data.calls) ? data.calls.filter(c => c && typeof c==="object" && c.id) : [];
   return data;
 }
 async function fetchRolls(pre){
@@ -47601,12 +47672,29 @@ function tableBlessings(){
   return (d && Array.isArray(d.blessings)) ? d.blessings : [];
 }
 function tableBlessingById(id){ return tableBlessings().find(b => b.id === id) || null; }
-/* put a Blessing on the field for the whole table; returns the entry, or null offline */
-function tableLayBlessing(move, left, who, id){
+/* Whose side laid a Blessing. Anything the GM runs out of an encounter — a wild Pokémon, an encounter
+   NPC or one of its Pokémon — lays a FOE Blessing, which only the GM's screen shows; a player's sheet
+   lays a party one. When the creature stands on the board, the board's own side rule (tokenSide) wins,
+   so an NPC flipped 🤝 ally shows its Reflect to the table like the party's own. */
+function blessingSideOf(o){
+  if(!o) return "ally";
+  try{
+    const tok = tokenForOwner(o);
+    if(tok && tok.link) return tokenSide(tok) === "enemy" ? "foe" : "ally";
+    if(charOwningOwner(o)) return "ally";
+    const same = x => !!x && (x === o || (x.id && o.id && x.id === o.id));
+    return (encList() || []).some(e => (e.mons || []).some(same)
+      || (e.trainers || []).some(tr => tr && (same(tr.trainer) || (tr.pokemon || []).some(same)))) ? "foe" : "ally";
+  }catch(err){ return "ally"; }
+}
+/* put a Blessing on the field for the whole table; returns the entry, or null offline. `side` is
+   blessingSideOf's answer — a "foe" one is drawn on the GM's screen only. */
+function tableLayBlessing(move, left, who, id, side){
   if(mode!=="cloud") return null;
   const row = ensureRolls();
   const n = Math.max(1, Math.round(left||0));
   const b = { id: id || uid(), move: String(move||"Blessing"), left:n, max:n, who: who || "",
+              side: side === "foe" ? "foe" : "ally",
               by: (cloud.name||"").trim() || "Someone", at: Date.now() };
   row.data.blessings = [...tableBlessings().filter(x => x.id !== b.id), b];
   saveRolls(); renderBlessingPops();
@@ -47637,7 +47725,7 @@ function openBlessingInfo(b){
   const abl = m ? null : abilityByName.get(String(b.move||"").toLowerCase());     // a Ruin Blessing is an Ability, not a Move
   const body = el("div",{});
   body.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
-    `Laid by ${b.who || b.by || "someone"} \u00b7 ${b.left} of ${b.max || b.left} activation${(b.max||b.left)===1?"":"s"} left. Any ally may activate it; Use counts it down for the whole table.`));
+    `Laid by ${b.who || b.by || "someone"}${b.side === "foe" ? " (a FOE \u2014 only you can see this one)" : ""} \u00b7 ${b.left} of ${b.max || b.left} activation${(b.max||b.left)===1?"":"s"} left. Any ally may activate it; Use counts it down for the whole table.`));
   body.append(el("div",{class:"small", html: m ? moveDetailHTML(m, m.name) : abl ? abilityText(abl) : "<span class='muted'>This Move isn't in the database.</span>"}));
   modal({ title:`${blessingIcon(b.move)} ${b.move}`, bodyNode:body, footNodes:[
     el("button",{class:"btn-secondary",onclick:closeModal},"Close"),
@@ -47646,17 +47734,22 @@ function openBlessingInfo(b){
 }
 function renderBlessingPops(){
   const old = document.getElementById("blessingPops");
-  const list = mode==="cloud" ? tableBlessings().filter(b => (b.left||0) > 0) : [];
+  /* a FOE's Blessing (blessingSideOf) is the GM's business alone — players never get its square */
+  const list = mode==="cloud" ? tableBlessings().filter(b => (b.left||0) > 0 && (cloud.isGM || b.side !== "foe")) : [];
   if(!list.length){ if(old) old.remove(); return; }
   const box = el("div",{id:"blessingPops"});
   box.style.cssText = "position:fixed;z-index:71;left:14px;bottom:14px;display:flex;flex-wrap:wrap-reverse;"
     + "gap:10px;max-width:calc(100vw - 28px);pointer-events:none";
-  list.slice().sort((a,b)=>(a.at||0)-(b.at||0)).forEach(b => {
+  list.slice().sort((a,b)=>((a.side==="foe")-(b.side==="foe")) || (a.at||0)-(b.at||0)).forEach(b => {
+    /* the GM can have both sides' Blessings up at once: party squares go green, foe squares red, each
+       tagged. Players only ever have party ones, so theirs keep the plain accent look. */
+    const foe = b.side === "foe";
+    const edge = !cloud.isGM ? "var(--accent)" : foe ? "var(--bad)" : "var(--good)";
     const sq = el("div",{style:"pointer-events:auto;position:relative;width:86px;height:80px;box-sizing:border-box;"
       + "display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:4px;"
-      + "background:var(--panel);border:2px solid var(--accent);border-radius:10px;"
+      + `background:${foe ? "color-mix(in srgb, var(--bad) 16%, var(--panel))" : "var(--panel)"};border:2px solid ${edge};border-radius:10px;`
       + "box-shadow:0 6px 18px rgba(0,0,0,.35);text-align:center",
-      title:`${b.move} — laid by ${b.who || b.by || "someone"}. ${b.left} of ${b.max || b.left} activations left. `
+      title:`${foe ? "FOE Blessing (only you can see it) \u2014 " : ""}${b.move} — laid by ${b.who || b.by || "someone"}. ${b.left} of ${b.max || b.left} activations left. `
         + "Tap to read what it does; pressing Use counts it down for the whole table."});
     sq.style.cursor = "pointer";
     sq.addEventListener("click", e => { if(e.target.closest("button")) return; openBlessingInfo(b); });
@@ -47666,6 +47759,8 @@ function renderBlessingPops(){
       el("div",{style:"font-size:24px;font-weight:900;line-height:1"}, String(b.left)),
       el("button",{class:"btn-primary",style:"padding:1px 10px;font-size:10px;line-height:1.4",
         title:`activate ${b.move} — one use off for everyone`, onclick:() => tableUseBlessing(b.id)}, "Use"));
+    if(cloud.isGM) sq.append(el("div",{style:"position:absolute;top:-9px;left:6px;padding:0 5px;border-radius:6px;"
+      + `font-size:8px;font-weight:900;letter-spacing:.06em;line-height:14px;color:#fff;background:${edge}`}, foe ? "FOE" : "PARTY"));
     if(cloud.isGM) sq.append(el("button",{title:"take this Blessing off the field for everyone",
       style:"position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;padding:0;"
         + "border:1px solid var(--line);background:var(--panel-2);color:var(--muted);font-size:12px;line-height:1;cursor:pointer",
@@ -47673,6 +47768,404 @@ function renderBlessingPops(){
     box.append(sq);
   });
   if(old) old.replaceWith(box); else document.body.append(box);
+}
+/* ===================================================================
+   📱 PHONE — the party's in-lore contact list, and the Codec screen for a call
+   The GM files everyone the party can ring: a picture, a name, a summary, an optional Codec
+   frequency, and who has the number. A new contact starts 🙈 hidden so it can be set up in peace,
+   and only lands on the players' phones once the GM switches it on; "Known by" narrows it to some
+   of the party (nobody ticked = all of them).
+   Calling opens a Metal Gear Solid–style Codec: the caller's portrait on the left, whoever is being
+   called on the right, the frequency between them and the conversation as subtitles underneath. A
+   player rings a contact (the GM picks up and voices them); the GM can have a contact ring a player.
+   An open call plays on every screen at the table; a 🔒 private one only on its two ends and the GM's.
+   Both ride the shared rolls row the way the Blessing squares do — `data.contacts` and `data.calls`
+   (one call on the line at a time; hanging up deletes it) — so there is no new row to sync. Cloud
+   only: offline there is nobody to call.
+=================================================================== */
+/* var, not let: render() reaches renderCallOverlay at boot, before this part of the file has run (TDZ) */
+var phoneRingTimer = null, phoneRingCall = null;
+var phoneMinimised = {};          // call id → this screen tucked the Codec away
+var phoneNoticed = {};            // call id → this screen already toasted "incoming call"
+function phoneSoundOn(){ return localStorage.getItem("ptu_phone_sound") !== "0"; }
+function phoneContacts(){
+  const d = cloud.rolls && cloud.rolls.data;
+  return (d && Array.isArray(d.contacts)) ? d.contacts : [];
+}
+function phoneContactById(id){ return phoneContacts().find(c => c.id === id) || null; }
+function phoneCalls(){
+  const d = cloud.rolls && cloud.rolls.data;
+  return (d && Array.isArray(d.calls)) ? d.calls : [];
+}
+function phoneCallById(id){ return phoneCalls().find(c => c.id === id) || null; }
+/* the shared lists, created on first write */
+function phoneData(){
+  const d = ensureRolls().data;
+  if(!Array.isArray(d.contacts)) d.contacts = [];
+  if(!Array.isArray(d.calls)) d.calls = [];
+  return d;
+}
+/* the GM sees every contact; a player sees one once it's switched on, and only if one of their sheets
+   is among those it's "Known by" (none ticked = the whole party has the number) */
+function contactVisible(c){
+  if(!c) return false;
+  if(cloud.isGM) return true;
+  if(c.hidden) return false;
+  const only = Array.isArray(c.only) ? c.only : [];
+  return !only.length || only.some(id => ownsRow(cloud.byId[id]));
+}
+/* a contact's Codec frequency: the GM's own if they set one, else a fixed 140.00–149.99 off its id */
+function contactFreq(c){
+  if(c && String(c.freq || "").trim()) return String(c.freq).trim();
+  let h = 0; for(const ch of String((c && c.id) || "codec")) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return (140 + (h % 1000) / 100).toFixed(2);
+}
+function knownByNames(c){
+  const only = Array.isArray(c && c.only) ? c.only : [];
+  return only.map(id => phonePartyEnd(id).name).join(", ");
+}
+/* the player's own end of a call: the sheet they're on if it's theirs, else their first live one */
+function phoneMyRow(){
+  const act = cloud.byId && cloud.byId[cloud.activeId];
+  if(act && ownsRow(act) && liveCharRow(act)) return act;
+  return Object.values(cloud.byId || {}).find(r => ownsRow(r) && liveCharRow(r)) || null;
+}
+function phonePartyEnd(sheetId){
+  const r = cloud.byId && cloud.byId[sheetId], t = r && r.data && r.data.trainer;
+  return { kind:"player", sheetId, name: (t && t.name) || (r && r.data && r.data.name) || (r && r.owner_name) || "Trainer" };
+}
+function phoneContactEnd(c){ return { kind:"contact", cid:c.id, name:c.name || "Unknown caller" }; }
+/* an end's picture and name as they are NOW, so a portrait swapped mid-call shows straight away */
+function phoneEndLook(end){
+  if(!end) return { name:"\u2014", img:"" };
+  if(end.kind === "contact"){
+    const c = phoneContactById(end.cid);
+    return { name:(c && c.name) || end.name || "Unknown", img:(c && c.img) || "" };
+  }
+  const r = cloud.byId && cloud.byId[end.sheetId], t = r && r.data && r.data.trainer;
+  return { name:(t && t.name) || end.name || "Trainer", img:(t && avatarUrl(t)) || "" };
+}
+function phoneEndIsMine(end){ return !!end && end.kind === "player" && ownsRow(cloud.byId[end.sheetId]); }
+function callMine(call){
+  return !!call && (phoneEndIsMine(call.from) || phoneEndIsMine(call.to) || normName(call.by) === normName(cloud.name));
+}
+function callVisible(call){ return !!call && (cloud.isGM || !call.private || callMine(call)); }
+/* who picks up: a contact is voiced by the GM; a Trainer by their own player (the GM may answer for them) */
+function callCanAnswer(call){
+  if(!call || call.state !== "ringing") return false;
+  return !!cloud.isGM || phoneEndIsMine(call.to);
+}
+/* whose screen rings: the callee's — the GM for a contact, the player for their Trainer */
+function callRingsHere(call){
+  if(!call || call.state !== "ringing") return false;
+  return call.to && call.to.kind === "contact" ? !!cloud.isGM : phoneEndIsMine(call.to);
+}
+function callCanTalk(call){ return !!call && (!!cloud.isGM || callMine(call)); }
+/* which side a line typed on THIS screen belongs to: the player's own end, or — for the GM — the contact's */
+function callMySide(call){
+  if(!cloud.isGM) return (phoneEndIsMine(call.to) && !phoneEndIsMine(call.from)) ? "R" : "L";
+  return call.to && call.to.kind === "contact" ? "R" : "L";
+}
+function placeCall(from, to, priv){
+  if(mode !== "cloud"){ toast("\u{1F4F5} The phone needs the cloud table"); return false; }
+  if(phoneCalls().length){ toast("\u{1F4F5} The line is busy \u2014 someone is already on a call"); return false; }
+  phoneData().calls = [{ id:uid(), from, to, state:"ringing", private:!!priv,
+                         by:(cloud.name||"").trim(), at:Date.now(), lines:[] }];
+  saveRolls(); renderCallOverlay();
+  return true;
+}
+function answerCall(id){
+  const c = phoneCallById(id); if(!c) return;
+  c.state = "live"; c.liveAt = Date.now();
+  saveRolls(); renderCallOverlay();
+}
+function hangUpCall(id){
+  if(!cloud.rolls) return;
+  cloud.rolls.data.calls = phoneCalls().filter(c => c.id !== id);
+  saveRolls(); renderCallOverlay();
+}
+function sayOnCall(id, text){
+  const c = phoneCallById(id); text = String(text || "").trim();
+  if(!c || !text) return;
+  const side = callMySide(c);
+  const who = phoneEndLook(side === "L" ? c.from : c.to).name;
+  c.lines = [...(Array.isArray(c.lines) ? c.lines : []), { id:uid(), side, who, text:text.slice(0, 400), at:Date.now() }].slice(-40);
+  saveRolls(); renderCallOverlay();
+}
+function saveContactRec(c){
+  const d = phoneData(), i = d.contacts.findIndex(x => x.id === c.id);
+  if(i >= 0) d.contacts[i] = c; else d.contacts.push(c);
+  saveRolls();
+}
+function deleteContactRec(id){
+  const d = phoneData(), c = d.contacts.find(x => x.id === id);
+  d.contacts = d.contacts.filter(x => x.id !== id);
+  saveRolls();
+  if(c && c.img) removeStoredImg(c.img);
+}
+/* the Codec ring — two bursts of three high beeps, MGS-style; rings out after ~14 rounds */
+function codecRingOnce(){
+  [0, 0.13, 0.26, 0.55, 0.68, 0.81].forEach(t => beep(1567.98, t, 0.08, {type:"square", vol:0.06}));
+}
+function phoneStartRing(id){
+  if(phoneRingCall === id) return;                    // already ringing (or rung out) for this call
+  phoneStopRing(); phoneRingCall = id;
+  const ring = () => { try{ codecRingOnce(); }catch(e){} };
+  let n = 0; ring();
+  phoneRingTimer = setInterval(() => { if(++n >= 14){ clearInterval(phoneRingTimer); phoneRingTimer = null; return; } ring(); }, 2600);
+}
+function phoneStopRing(){
+  if(phoneRingTimer) clearInterval(phoneRingTimer);
+  phoneRingTimer = null; phoneRingCall = null;
+}
+function contactAvatar(img, name, cls){
+  return img ? el("img",{class:cls, src:img, alt:"", loading:"lazy"})
+             : el("div",{class:cls + " phone-noimg"}, String(name || "?").trim().charAt(0).toUpperCase() || "?");
+}
+/* ---------- the phone itself: the contact list ---------- */
+function openPhone(){
+  if(mode !== "cloud"){
+    modal({ title:"\u{1F4F1} Phone", bodyNode: el("div",{class:"small muted"},
+      "The phone works at the cloud table \u2014 connect to your campaign (\u2601 Cloud) to see your contacts and make calls."),
+      footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"OK")] });
+    return;
+  }
+  const gm = !!cloud.isGM;
+  const list = phoneContacts().filter(contactVisible).slice()
+    .sort((a,b) => String(a.name || "").localeCompare(String(b.name || "")));
+  const body = el("div",{class:"phone"});
+  body.append(el("div",{class:"phone-bar"},
+    el("span",{class:"phone-clock"}, new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})),
+    el("span",{class:"small muted"}, `${list.length} contact${list.length === 1 ? "" : "s"}`
+      + (gm ? ` \u00b7 ${list.filter(c => c.hidden).length} hidden` : "")),
+    el("button",{class:"linkbtn", title: phoneSoundOn() ? "Ring sound is on for this device \u2014 tap to mute it" : "Ring sound is muted on this device \u2014 tap to turn it on",
+      onclick:()=>{ localStorage.setItem("ptu_phone_sound", phoneSoundOn() ? "0" : "1"); openPhone(); }}, phoneSoundOn() ? "\u{1F514}" : "\u{1F515}")));
+  if(gm) body.append(el("div",{class:"small muted",style:"margin:0 0 10px"},
+    "New contacts start \u{1F648} hidden so you can set them up \u2014 flip one to \u{1F441} when the party gets the number. "
+    + "Players only ever see the ones that are on (and only those whose \u201cKnown by\u201d includes them). \u{1F4DE} has a contact ring a player."));
+  if(!list.length) body.append(el("div",{class:"small muted",style:"padding:18px 4px;text-align:center"},
+    gm ? "No contacts yet \u2014 add the first one below." : "No contacts yet. People land in your phone as you meet them."));
+  list.forEach(c => body.append(contactRow(c)));
+  modal({ title:"\u{1F4F1} Phone", bodyNode:body, footNodes:[
+    gm ? el("button",{class:"btn-secondary",onclick:()=>editContact(null)},"\uFF0B New contact") : "",
+    el("button",{class:"btn-primary",onclick:closeModal},"Close") ]});
+}
+function contactRow(c){
+  const gm = !!cloud.isGM;
+  const row = el("div",{class:"phone-row" + (gm && c.hidden ? " is-hidden" : "")});
+  row.append(contactAvatar(c.img, c.name, "phone-av"));
+  const mid = el("div",{class:"phone-mid", title:"Open the contact", onclick:()=>openContact(c.id)});
+  mid.append(el("div",{class:"phone-name"}, c.name || "Unnamed", gm && c.hidden ? el("span",{class:"phone-tag"},"\u{1F648} hidden") : ""));
+  if(c.desc) mid.append(el("div",{class:"phone-desc"}, c.desc));
+  if(gm && knownByNames(c)) mid.append(el("div",{class:"small muted"}, "Known by " + knownByNames(c)));
+  row.append(mid);
+  const acts = el("div",{class:"phone-acts"});
+  if(gm){
+    acts.append(el("button",{class:"btn-secondary", title: c.hidden ? "Show this contact on the players' phones" : "Hide it from the players again",
+      onclick:()=>{ c.hidden = !c.hidden; saveContactRec(c); openPhone(); }}, c.hidden ? "\u{1F441}" : "\u{1F648}"));
+    acts.append(el("button",{class:"btn-secondary",title:"Edit",onclick:()=>editContact(c.id)},"\u270E"));
+  }
+  acts.append(el("button",{class:"btn-primary", title: gm ? `Have ${c.name || "this contact"} ring a player` : `Call ${c.name || "them"}`,
+    onclick:()=> gm ? ringPlayerFrom(c.id) : callContact(c.id, false)}, "\u{1F4DE}"));
+  row.append(acts);
+  return row;
+}
+function openContact(id){
+  const c = phoneContactById(id);
+  if(!c || !contactVisible(c)){ openPhone(); return; }
+  const gm = !!cloud.isGM;
+  const body = el("div",{class:"phone-card"});
+  body.append(c.img ? el("img",{class:"phone-big", src:c.img, alt:"", title:"Tap to see it full size", onclick:()=>openImageViewer(c.img, c.name)})
+                    : contactAvatar("", c.name, "phone-big"));
+  body.append(el("div",{class:"phone-name",style:"justify-content:center;font-size:20px;margin-top:10px"}, c.name || "Unnamed"));
+  body.append(el("div",{class:"small muted"}, `\u{1F4E1} ${contactFreq(c)}`
+    + (gm && c.hidden ? " \u00b7 \u{1F648} hidden from players" : "") + (gm && knownByNames(c) ? ` \u00b7 Known by ${knownByNames(c)}` : "")));
+  if(c.desc) body.append(el("div",{class:"phone-desc full"}, c.desc));
+  const priv = el("input",{type:"checkbox"});
+  body.append(el("label",{class:"inline small",style:"gap:8px;margin-top:14px;justify-content:center;cursor:pointer"}, priv,
+    gm ? "\u{1F512} Private \u2014 only that player and you see the call" : "\u{1F512} Private call \u2014 only you and the GM see it"));
+  modal({ title:`\u{1F4F1} ${c.name || "Contact"}`, bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:openPhone},"\u2039 Contacts"),
+    gm ? el("button",{class:"btn-secondary",onclick:()=>editContact(c.id)},"\u270E Edit") : "",
+    gm ? el("button",{class:"btn-primary",onclick:()=>ringPlayerFrom(c.id, priv.checked)},"\u{1F4DE} Ring a player")
+       : el("button",{class:"btn-primary",onclick:()=>callContact(c.id, priv.checked)},"\u{1F4DE} Call") ]});
+}
+function callContact(id, priv){
+  const c = phoneContactById(id), me = phoneMyRow();
+  if(!c || !contactVisible(c)) return;
+  if(!me){ toast("\u{1F4F5} You need a Trainer sheet of your own to make a call"); return; }
+  if(placeCall(phonePartyEnd(me.id), phoneContactEnd(c), priv)) closeModal();
+}
+/* GM: the contact rings one of the party — their Codec opens with the contact on the left */
+function ringPlayerFrom(cid, privDefault){
+  const c = phoneContactById(cid); if(!c || !cloud.isGM) return;
+  const rows = Object.values(cloud.byId || {}).filter(liveCharRow);
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
+    `${c.name || "This contact"} rings one of the party. The Codec opens with ${c.name || "the contact"} on the left and the player on the right; they pick up from their own screen.`));
+  const priv = el("input",{type:"checkbox"}); priv.checked = !!privDefault;
+  body.append(el("label",{class:"inline small",style:"gap:8px;margin-bottom:10px;cursor:pointer"}, priv,
+    "\u{1F512} Private \u2014 only that player and you see the call"));
+  if(!rows.length) body.append(el("div",{class:"small muted"},"No player sheets in this campaign yet."));
+  rows.forEach(r => {
+    const look = phoneEndLook(phonePartyEnd(r.id));
+    body.append(el("button",{class:"phone-pick",onclick:()=>{ if(placeCall(phoneContactEnd(c), phonePartyEnd(r.id), priv.checked)) closeModal(); }},
+      contactAvatar(look.img, look.name, "phone-av"),
+      el("span",{}, look.name, r.owner_name ? el("span",{class:"muted",style:"font-weight:400"}, ` \u00b7 ${r.owner_name}`) : "")));
+  });
+  modal({ title:`\u{1F4DE} ${c.name || "Contact"} calls\u2026`, bodyNode:body,
+    footNodes:[el("button",{class:"btn-secondary",onclick:()=>openContact(c.id)},"\u2039 Back")] });
+}
+/* GM: add or edit one contact. Works on a copy; nothing reaches the table until Save. */
+function editContact(id){
+  if(!cloud.isGM) return;
+  const orig = id ? phoneContactById(id) : null;
+  const d = orig ? JSON.parse(JSON.stringify(orig))
+                 : { id:uid(), name:"", img:"", desc:"", freq:"", hidden:true, only:[], at:Date.now() };
+  const origImg = (orig && orig.img) || "";
+  const body = el("div",{});
+  const picWrap = el("div",{class:"inline",style:"gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px"});
+  const drawPic = () => {
+    picWrap.innerHTML = "";
+    picWrap.append(contactAvatar(d.img, d.name, "phone-av big"));
+    picWrap.append(el("button",{class:"btn-secondary",onclick:()=>pickImage(framablePicDim(), async u => {
+      const prev = d.img;
+      d.img = await storeImg(u, "contact");
+      if(prev && prev !== d.img && prev !== origImg) removeStoredImg(prev);    // picked twice in one edit
+      drawPic(); })}, d.img ? "\u{1F4F7} Change picture" : "\u{1F4F7} Add picture"));
+    if(d.img) picWrap.append(el("button",{class:"linkbtn",onclick:()=>{
+      if(d.img !== origImg) removeStoredImg(d.img);
+      d.img = ""; drawPic(); }},"remove"));
+  };
+  drawPic();
+  body.append(picWrap);
+  const name = el("input",{type:"text",placeholder:"Name, as it shows on the phone"}); name.value = d.name || "";
+  name.addEventListener("input",()=>{ d.name = name.value; });
+  body.append(el("label",{class:"field"}, el("span",{},"Name"), name));
+  const desc = el("textarea",{rows:"6",placeholder:"Who they are, how the party knows them, what they're good for\u2026"});
+  desc.value = d.desc || "";
+  desc.addEventListener("input",()=>{ d.desc = desc.value; });
+  body.append(el("label",{class:"field",style:"margin-top:10px"}, el("span",{},"Summary"), desc));
+  const freq = el("input",{type:"text",placeholder:contactFreq({ id:d.id })}); freq.value = d.freq || "";
+  freq.addEventListener("input",()=>{ d.freq = freq.value.trim(); });
+  body.append(el("label",{class:"field",style:"margin-top:10px"}, el("span",{},"Codec frequency (optional \u2014 shown on the call screen)"), freq));
+  const hid = el("input",{type:"checkbox"}); hid.checked = !!d.hidden;
+  hid.addEventListener("change",()=>{ d.hidden = hid.checked; });
+  body.append(el("label",{class:"inline small",style:"gap:8px;margin-top:14px;cursor:pointer;align-items:flex-start"}, hid,
+    el("div",{}, el("b",{},"\u{1F648} Hidden from the players"),
+      el("div",{class:"muted"},"Leave it ticked while you set the contact up; untick it when the party gets the number."))));
+  const rows = Object.values(cloud.byId || {}).filter(liveCharRow);
+  if(rows.length){
+    const kb = el("div",{style:"margin-top:14px"});
+    kb.append(el("div",{class:"small",style:"font-weight:700"},"Known by"),
+      el("div",{class:"small muted",style:"margin-bottom:4px"},"Tick who has this number. Nobody ticked = the whole party."));
+    const boxes = el("div",{class:"inline",style:"flex-wrap:wrap;gap:4px 14px"});
+    rows.forEach(r => {
+      const cb = el("input",{type:"checkbox"}); cb.checked = (d.only || []).includes(r.id);
+      cb.addEventListener("change",()=>{ const set = new Set(d.only || []); if(cb.checked) set.add(r.id); else set.delete(r.id); d.only = [...set]; });
+      boxes.append(el("label",{class:"inline small",style:"gap:6px;cursor:pointer"}, cb,
+        phonePartyEnd(r.id).name + (r.owner_name ? ` (${r.owner_name})` : "")));
+    });
+    kb.append(boxes); body.append(kb);
+  }
+  modal({ title: orig ? `\u270E ${orig.name || "Contact"}` : "\uFF0B New contact", bodyNode:body, footNodes:[
+    orig ? el("button",{class:"btn-secondary danger",onclick:()=>{
+      if(!confirm(`Delete ${orig.name || "this contact"} from everyone's phone?`)) return;
+      if(d.img && d.img !== origImg) removeStoredImg(d.img);
+      deleteContactRec(orig.id); openPhone(); }},"\u{1F5D1} Delete") : "",
+    el("button",{class:"btn-secondary",onclick:()=>{ if(d.img && d.img !== origImg) removeStoredImg(d.img); openPhone(); }},"Cancel"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      d.name = String(d.name || "").trim();
+      if(!d.name){ toast("Give the contact a name"); name.focus(); return; }
+      if(origImg && origImg !== d.img) removeStoredImg(origImg);
+      saveContactRec(d); openPhone();
+      toast(`\u{1F4F1} ${d.name} saved${d.hidden ? " \u2014 still hidden from the players" : ""}`); }},"Save") ]});
+}
+/* ---------- the Codec: the call on the line, floated over every tab ---------- */
+function renderCallOverlay(){
+  const btn = document.getElementById("btnPhone");
+  if(btn) btn.hidden = mode !== "cloud";
+  const old = document.getElementById("callOverlay");
+  const call = mode === "cloud" ? (phoneCalls().filter(callVisible).slice(-1)[0] || null) : null;
+  const ringHere = callRingsHere(call);
+  if(btn) btn.classList.toggle("phone-ringing", ringHere);
+  if(ringHere && phoneSoundOn()) phoneStartRing(call.id); else phoneStopRing();
+  if(ringHere && !phoneNoticed[call.id]){
+    phoneNoticed[call.id] = true;
+    toast(`\u{1F4DE} Incoming call \u2014 ${phoneEndLook(call.from).name}`);
+  }
+  if(!call){ if(old) old.remove(); return; }
+  // same call → update in place, so a half-typed line (and its focus) survives every sync of the row
+  if(old && old.dataset.cid === call.id && old._update){ old._update(call); return; }
+  if(old) old.remove();
+  const box = buildCodec(call);
+  document.body.append(box);
+  box._update(call);
+}
+function buildCodec(call){
+  const id = call.id;
+  const box = el("div",{id:"callOverlay", class:"codec"});
+  box.dataset.cid = id;
+  const side = cls => {
+    const s = el("div",{class:"codec-side " + cls}), pic = el("div",{class:"codec-pic"}), nm = el("div",{class:"codec-name"});
+    s.append(pic, nm);
+    return { s, pic, nm };
+  };
+  const L = side("left"), R = side("right");
+  const status = el("div",{class:"codec-status"});
+  const freq = el("div",{class:"codec-freq"});
+  const bars = el("div",{class:"codec-bars"});
+  for(let i = 0; i < 8; i++) bars.append(el("i",{style:`--i:${i}`}));
+  const mid = el("div",{class:"codec-mid"}, status,
+    el("div",{class:"codec-tune"}, el("span",{},"\u25C0"), freq, el("span",{},"\u25B6")), bars, el("div",{class:"codec-ptt"},"PTT"));
+  const subs = el("div",{class:"codec-subs"});
+  const input = el("input",{type:"text", class:"codec-input", placeholder:"Say something\u2026", maxlength:"400"});
+  const say = () => { if(input.value.trim()){ sayOnCall(id, input.value); input.value = ""; input.focus(); } };
+  input.addEventListener("keydown", e => { if(e.key === "Enter") say(); });
+  const send   = el("button",{class:"codec-btn", onclick:say}, "SEND");
+  const answer = el("button",{class:"codec-btn go", onclick:()=>answerCall(id)}, "\u{1F4DE} ANSWER");
+  const decline= el("button",{class:"codec-btn stop", onclick:()=>hangUpCall(id)}, "DECLINE");
+  const hang   = el("button",{class:"codec-btn stop", onclick:()=>hangUpCall(id)}, "HANG UP");
+  const wait   = el("span",{class:"codec-wait"});
+  const ctrl = el("div",{class:"codec-ctrl"}, wait, input, send, answer, decline, hang);
+  const toggleMin = () => { phoneMinimised[id] = !phoneMinimised[id]; const c = phoneCallById(id); if(c) box._update(c); };
+  const minBtn = el("button",{class:"codec-min", title:"Tuck the Codec away (on this screen only)", onclick:toggleMin}, "\u2581");
+  const pill = el("button",{class:"codec-pill", title:"Open the Codec again", onclick:toggleMin});
+  box.append(el("div",{class:"codec-frame"}, minBtn, el("div",{class:"codec-screen"}, L.s, mid, R.s), subs, ctrl), pill);
+  const paintPic = (slot, look) => {
+    const key = look.img || ("#" + look.name);
+    if(slot.pic.dataset.key === key) return;          // no reloading the picture on every sync
+    slot.pic.dataset.key = key; slot.pic.innerHTML = "";
+    slot.pic.append(look.img ? el("img",{src:look.img, alt:""})
+      : el("div",{class:"codec-initial"}, String(look.name || "?").trim().charAt(0).toUpperCase() || "?"));
+  };
+  const show = (n, on) => { n.style.display = on ? "" : "none"; };
+  box._update = c => {
+    const fl = phoneEndLook(c.from), tl = phoneEndLook(c.to);
+    paintPic(L, fl); paintPic(R, tl);
+    L.nm.textContent = fl.name; R.nm.textContent = tl.name;
+    const ringing = c.state === "ringing";
+    box.classList.toggle("ringing", ringing);
+    const cEnd = (c.to && c.to.kind === "contact") ? c.to : (c.from && c.from.kind === "contact") ? c.from : null;
+    freq.textContent = cEnd ? contactFreq(phoneContactById(cEnd.cid) || { id:cEnd.cid }) : contactFreq({ id:c.id });
+    status.textContent = ringing ? (callRingsHere(c) ? "INCOMING CALL" : "CALLING\u2026") : (c.private ? "PRIVATE LINE" : "CONNECTED");
+    subs.innerHTML = "";
+    const lines = (Array.isArray(c.lines) ? c.lines : []).slice(-4);
+    if(!lines.length) subs.append(el("div",{class:"codec-line muted"}, ringing ? "\u2026" : "\u2014 the line is open \u2014"));
+    lines.forEach(ln => subs.append(el("div",{class:"codec-line " + (ln.side === "R" ? "r" : "l")},
+      el("b",{}, `${ln.who || "?"}: `), ln.text)));
+    const canAns = callCanAnswer(c), talk = callCanTalk(c);
+    show(answer, ringing && canAns); show(decline, ringing && canAns);
+    show(input, !ringing && talk); show(send, !ringing && talk);
+    show(hang, talk && !(ringing && canAns));
+    wait.textContent = ringing ? (canAns ? "" : talk ? "Ringing\u2026" : `${fl.name} is calling ${tl.name}\u2026`)
+                               : (talk ? "" : "Listening in");
+    show(wait, !!wait.textContent);
+    const min = !!phoneMinimised[c.id];
+    box.classList.toggle("min", min);
+    pill.textContent = `\u{1F4DE} ${fl.name} \u21C4 ${tl.name}${ringing ? " \u00b7 ringing" : ""}  \u25B2`;
+  };
+  return box;
 }
 async function cloudConnect(campaign, name, gmCode, silent, viewer){
   campaign = (campaign||"").trim().toLowerCase(); name = (name||"").trim();
@@ -47806,7 +48299,7 @@ function flushUiRefresh(){
   if(kinds.includes("map") && currentTab==="dex") renderDex();     // "Sheets counted" rides the map-meta row
   if(kinds.includes("pc")  && currentTab==="pc")  renderPC();
   if(kinds.includes("enc") && (currentTab==="encounters" || currentTab==="map")) render();
-  if(kinds.includes("rolls")){ renderRollFeed(); renderBlessingPops(); }   // both float over every tab, so no tab check
+  if(kinds.includes("rolls")){ renderRollFeed(); renderBlessingPops(); renderCallOverlay(); }   // all float over every tab, so no tab check
   // a cart tick shouldn't rebuild the whole board — swap just the floating shop panel when we're on it
   if(kinds.includes("shops")){
     if(currentTab==="shops") renderShops();
@@ -49287,6 +49780,7 @@ function onDragBroadcast(msg){
     // same arithmetic the dragger's own screen uses, so a rider stays perched on its mount
     node.style.left = (g.visX0 + (x-g.x0)*px)+"px";
     node.style.top  = (g.visY0 + (y-g.y0)*px)+"px";
+    placeRingFloat(node);
   });
   if(dragGhostTimer) clearTimeout(dragGhostTimer);
   // on release the real position is already on its way over postgres_changes — just stop ghosting
@@ -50522,6 +51016,28 @@ function paintDeadMark(node, token, boxPx){
 }
 function xmlEscape(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function polarPt(cx,cy,r,angleDeg){ const a=(angleDeg-90)*Math.PI/180; return [(cx+r*Math.cos(a)).toFixed(2), (cy+r*Math.sin(a)).toFixed(2)]; }
+/* A token is its own stacking context (its z-index is what puts trainers over Pokémon and riders over
+   mounts), so a ring drawn INSIDE it painted straight across every neighbour it overlapped. The ring
+   is lifted out into a sibling node on the stage instead (.tk-ring-float, z-index 0, appended after the
+   tokens): that draws it over the floor layer — hulls, zones, shoals, all z 0 and earlier in the DOM —
+   and under every creature token (z 1+). It follows its token by position alone, so anything that
+   moves a token node by hand (a drag, a peer's drag ghost) calls placeRingFloat after it. */
+function placeRingFloat(node){
+  const r = node && node._ringFloat; if(!r) return;
+  r.style.left = ((parseFloat(node.style.left)||0) + (parseFloat(node.style.width)||0)/2) + "px";
+  r.style.top  = ((parseFloat(node.style.top)||0) + (parseFloat(node.style.height)||0)/2) + "px";
+}
+function liftStatusRing(node){
+  const ring = node && node.querySelector(":scope > .tk-status-ring");
+  if(!ring) return null;
+  ring.remove();
+  ring.className = "tk-ring-float";
+  ring.dataset.ringOf = node.dataset.tid || "";
+  if(node.classList.contains("gm-hidden")) ring.style.opacity = ".55";
+  node._ringFloat = ring;
+  placeRingFloat(node);
+  return ring;
+}
 /* builds one full concentric ring per active status (innermost = first status), each with its name curving around it */
 function tokenStatusRingSVG(keys, boxPx, uid){
   const defs = keys.map(k=>statusByKey.get(k)).filter(Boolean);
@@ -50681,13 +51197,17 @@ function updateTokenStatusDom(token){
   const info = tokenHp(token);
   node.classList.toggle("ko", tokenKO(token));       // Knocked Out greys the token out, live
   paintDeadMark(node, token, parseFloat(node.style.width) || 48);   // … Dead blacks it out and marks it
-  const old = node.querySelector(".tk-status-ring");
+  // the ring lives beside the token on the stage (liftStatusRing), so the new one takes the old one's place
+  const old = (node._ringFloat && node._ringFloat.isConnected) ? node._ringFloat : node.querySelector(".tk-status-ring");
+  node._ringFloat = null;
   if(!tokenStatusVisible(info) || mapTokenDetail()<1){ if(old) old.remove(); return true; }
   const boxPx = parseFloat(node.style.width) || 48;
   const keys = tokenStatusKeys(token).filter(k=>statusByKey.has(k));
   const ringHtml = tokenStatusRingSVG(keys, boxPx, token.id);
-  if(old) old.remove();
-  if(ringHtml) node.append(el("div",{class:"tk-status-ring", html:ringHtml}));
+  let fresh = null;
+  if(ringHtml){ node.append(el("div",{class:"tk-status-ring", html:ringHtml})); fresh = liftStatusRing(node); }
+  if(old && old.parentNode){ if(fresh) old.replaceWith(fresh); else old.remove(); }
+  else if(fresh) node.after(fresh);
   return true;
 }
 function paintTokenStatus(token, encTab){
@@ -53675,7 +54195,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
           // stuck at the wall (or against Blocking Terrain) — hold at the last reachable cell
           cx = c.pathX; cy = c.pathY; nx = cx*px+originX; ny = cy*px+originY;
         }
-        if(c.n){ c.n.style.left = (c.visX0 + (nx-c.baseX0))+"px"; c.n.style.top = (c.visY0 + (ny-c.baseY0))+"px"; }
+        if(c.n){ c.n.style.left = (c.visX0 + (nx-c.baseX0))+"px"; c.n.style.top = (c.visY0 + (ny-c.baseY0))+"px"; placeRingFloat(c.n); }
         if(map.gridOn && (cx!==c.pathX || cy!==c.pathY)){
           /* Slow Terrain (Core p.231): "treat every square metre as two square metres instead" —
              charged on the square being ENTERED, so crossing a marsh costs what it should. */
@@ -57122,7 +57642,11 @@ function renderMap(){
 
   // tokens + fog, with role-dependent stacking. In image-edit mode tokens are inert.
   const fog = fogViewSet(map);
-  const mkToken = t => { const node=mapTokenNode(t,map,originX,originY); if(!mapImgEdit) attachTokenDrag(node,t,map,originX,originY); else node.style.pointerEvents="none"; return node; };
+  /* each token's status ring is lifted out into its own node (liftStatusRing) and appended after the
+     tokens, so it draws over the floor layer and UNDER every creature instead of across its neighbours */
+  const ringFloats = [];
+  const mkToken = t => { const node=mapTokenNode(t,map,originX,originY); if(!mapImgEdit) attachTokenDrag(node,t,map,originX,originY); else node.style.pointerEvents="none";
+    const ring = liftStatusRing(node); if(ring) ringFloats.push(ring); return node; };
   const visibleToken = t => {
     if(isZoneToken(t) && t.ghost) return false;                     // rules-only ground: nothing to draw
     if(isNoteToken(t)) return false;                                // GM notes never leave the GM's screen
@@ -57157,10 +57681,12 @@ function renderMap(){
     const f = drawFogInto(); if(f) stage.append(f);                 // GM: dim fog under tokens
     const nl = noteLinksOverlay(map, stageW, stageH, originX, originY); if(nl) stage.append(nl);
     mapDrawOrder(mapTokensFor(map.id)).forEach(t=>{ if(nearView(t)) stage.append(mkToken(t)); });
+    ringFloats.forEach(r => stage.append(r));
   } else {
     // shut gates go UNDER the fog, so a gate in ground the party has not uncovered yet stays secret
     const gl = wallsOverlay(map, stageW, stageH, originX, originY, true); if(gl) stage.append(gl);
     mapDrawOrder(mapTokensFor(map.id)).forEach(t=>{ if(visibleToken(t) && nearView(t)) stage.append(mkToken(t)); });
+    ringFloats.forEach(r => stage.append(r));                       // before the fog, like the tokens they belong to
     const f = drawFogInto(); if(f) stage.append(f);                 // players: opaque fog over hidden tokens
   }
 
