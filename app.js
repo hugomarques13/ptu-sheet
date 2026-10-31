@@ -47539,6 +47539,7 @@ function normRolls(data){
   /* …and so does the 📱 phone: the GM's contact list and the call on the line (see renderCallOverlay) */
   data.contacts = Array.isArray(data.contacts) ? data.contacts.filter(c => c && typeof c==="object" && c.id) : [];
   data.calls = Array.isArray(data.calls) ? data.calls.filter(c => c && typeof c==="object" && c.id) : [];
+  if("clock" in data && !(data.clock && typeof data.clock==="object")) delete data.clock;   // the in-lore clock (loreClock)
   return data;
 }
 async function fetchRolls(pre){
@@ -48035,6 +48036,127 @@ function contactAvatar(img, name, cls, focus){
   if(!applyImgFocus(pic, focus)){ pic.className = cls; return pic; }
   return el("div",{class:cls + " phone-framed"}, pic);
 }
+/* ---------- the in-lore clock: the hour and day the phone's lock screen shows ----------
+   The GM's to set and wind on; it rides the rolls row too (`data.clock`) so every phone shows the same
+   moment. Kept as a day number and minutes past midnight, so winding it on is plain arithmetic and
+   midnight rolls the day over by itself. The day can be named two ways: a calendar date (`date0` = the
+   date of Day 1, so Day 12 is eleven days later) or just a weekday (`wd0` = the weekday of Day 1) —
+   or neither, and it is simply "Day 12". `hidden` keeps it off the players' phones. */
+function loreClock(){
+  const d = cloud.rolls && cloud.rolls.data, c = d && d.clock;
+  return (c && typeof c === "object" && isFinite(+c.day)) ? c : null;
+}
+function loreClockEnsure(){
+  const d = ensureRolls().data;
+  if(!d.clock || typeof d.clock !== "object") d.clock = { day:1, min:8*60, date0:"", wd0:null };
+  return d.clock;
+}
+function isoAddDays(iso, n){
+  const [y, m, d] = String(iso).split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+/* what a clock reads as: {time:"14:30", day:"Friday 3 April" | "Tuesday · Day 12", icon, iso?, wd} */
+function loreClockText(c){
+  const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];   // a literal in here, not a top-level const: render() reaches this at boot
+  const mm = (((Math.round(+c.min || 0)) % 1440) + 1440) % 1440, day = Math.max(1, Math.round(+c.day || 1));
+  const time = String(Math.floor(mm / 60)).padStart(2, "0") + ":" + String(mm % 60).padStart(2, "0");
+  const icon = mm < 300 ? "\u{1F319}" : mm < 420 ? "\u{1F305}" : mm < 1080 ? "\u2600\uFE0F" : mm < 1230 ? "\u{1F307}" : "\u{1F319}";
+  if(/^\d{4}-\d{2}-\d{2}$/.test(c.date0 || "")){
+    const iso = isoAddDays(c.date0, day - 1), [y, m, d] = iso.split("-").map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return { time, icon, iso, wd: dt.getUTCDay(),
+             day: dt.toLocaleDateString("en-GB", { weekday:"long", day:"numeric", month:"long", timeZone:"UTC" }) };
+  }
+  const hasWd = c.wd0 === 0 || (c.wd0 != null && c.wd0 !== "" && isFinite(+c.wd0));
+  const wd = hasWd ? (((+c.wd0 + day - 1) % 7) + 7) % 7 : null;
+  return { time, icon, wd, day: (wd != null ? days[wd] + " \u00b7 " : "") + `Day ${day}` };
+}
+function loreClockAdvance(mins){
+  const c = loreClockEnsure();
+  const total = Math.max(0, (Math.max(1, Math.round(+c.day || 1)) - 1) * 1440 + (Math.round(+c.min) || 0) + mins);
+  c.day = Math.floor(total / 1440) + 1; c.min = total % 1440;
+  saveRolls(); paintPhoneClock();
+}
+/* the lock screen at the top of the phone. Players see nothing until the GM has set a time (or while
+   it is hidden from them); the GM gets the wind-on buttons right on it. */
+function phoneClockNode(){
+  const gm = !!cloud.isGM, c = loreClock();
+  if(!c){
+    return gm ? el("div",{class:"phone-time is-hidden"},
+      el("div",{class:"small muted"}, "No in-lore time yet \u2014 set one and every phone shows it."),
+      el("div",{class:"phone-time-gm"}, el("button",{class:"btn-secondary",onclick:openLoreClock}, "\u{1F552} Set the time"))) : "";
+  }
+  if(c.hidden && !gm) return "";
+  const t = loreClockText(c);
+  const box = el("div",{class:"phone-time" + (c.hidden ? " is-hidden" : "")},
+    el("div",{class:"phone-time-big", id:"phoneClockTime"}, t.time),
+    el("div",{class:"phone-time-day", id:"phoneClockDay"}, `${t.icon} ${t.day}`));
+  if(gm){
+    if(c.hidden) box.append(el("div",{class:"small muted",style:"margin-top:4px"}, "\u{1F648} hidden from the players"));
+    const row = el("div",{class:"phone-time-gm"});
+    [[15,"+15 min"],[60,"+1 h"],[360,"+6 h"],[1440,"+1 day"]].forEach(([n, lbl]) =>
+      row.append(el("button",{class:"btn-secondary", title:`Wind the in-lore clock on ${lbl.slice(1)}`,
+        onclick:()=>{ loreClockAdvance(n); openPhone(); }}, lbl)));
+    row.append(el("button",{class:"btn-secondary", title:"Set the exact hour, day and date", onclick:openLoreClock}, "\u270E Set\u2026"));
+    box.append(row);
+  }
+  return box;
+}
+/* an open phone follows the GM's changes without being reopened (called on every rolls-row refresh) */
+function paintPhoneClock(){
+  const tEl = document.getElementById("phoneClockTime"), dEl = document.getElementById("phoneClockDay");
+  if(!tEl && !dEl) return;
+  const c = loreClock(); if(!c) return;
+  const t = loreClockText(c);
+  if(tEl) tEl.textContent = t.time;
+  if(dEl) dEl.textContent = `${t.icon} ${t.day}`;
+}
+/* GM: set the clock exactly — the hour, which day it is, and (optionally) what that day is called */
+function openLoreClock(){
+  if(!cloud.isGM) return;
+  const cur = loreClock() || { day:1, min:8*60, date0:"", wd0:null };
+  const t = loreClockText(cur);
+  const body = el("div",{});
+  body.append(el("div",{class:"phone-time"},
+    el("div",{class:"phone-time-big"}, t.time), el("div",{class:"phone-time-day"}, `${t.icon} ${t.day}`)));
+  const quick = el("div",{class:"phone-time-gm",style:"margin:-2px 0 14px"});
+  [[-60,"\u22121 h"],[15,"+15 min"],[60,"+1 h"],[360,"+6 h"],[1440,"+1 day"]].forEach(([n, lbl]) =>
+    quick.append(el("button",{class:"btn-secondary", onclick:()=>{ loreClockAdvance(n); openLoreClock(); }}, lbl)));
+  body.append(quick);
+  const timeIn = el("input",{type:"time"}); timeIn.value = t.time;
+  const dayIn = el("input",{type:"number",min:"1",step:"1"}); dayIn.value = String(Math.max(1, Math.round(+cur.day || 1)));
+  body.append(el("div",{class:"inline",style:"gap:10px;flex-wrap:wrap"},
+    el("label",{class:"field",style:"flex:1;min-width:120px"}, el("span",{},"Time"), timeIn),
+    el("label",{class:"field",style:"flex:1;min-width:120px"}, el("span",{},"Day number"), dayIn)));
+  const dateIn = el("input",{type:"date"}); dateIn.value = t.iso || "";
+  const wdSel = el("select",{});
+  wdSel.append(el("option",{value:""}, "\u2014 not named \u2014"));
+  [1,2,3,4,5,6,0].forEach(i => wdSel.append(el("option",{value:String(i)},
+    ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][i])));
+  wdSel.value = t.wd != null && !t.iso ? String(t.wd) : "";
+  const sync = () => { wdSel.disabled = !!dateIn.value; };
+  dateIn.addEventListener("input", sync); sync();
+  body.append(el("div",{class:"inline",style:"gap:10px;flex-wrap:wrap;margin-top:10px"},
+    el("label",{class:"field",style:"flex:1;min-width:150px"}, el("span",{},"Today's date (optional)"), dateIn),
+    el("label",{class:"field",style:"flex:1;min-width:150px"}, el("span",{},"\u2026or just the weekday"), wdSel)));
+  body.append(el("div",{class:"small muted",style:"margin-top:6px"},
+    "With a date, the phone shows it (\u201cFriday 3 April\u201d) and it moves on with the clock; with only a weekday it reads \u201cFriday \u00b7 Day 12\u201d; with neither, just the day number. Winding past midnight turns the day over."));
+  const show = el("input",{type:"checkbox"}); show.checked = !cur.hidden;
+  body.append(el("label",{class:"inline small",style:"gap:8px;margin-top:12px;cursor:pointer"}, show, "Show it on the players' phones"));
+  modal({ title:"\u{1F552} In-lore time", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:openPhone},"\u2039 Phone"),
+    el("button",{class:"btn-primary",onclick:()=>{
+      const day = Math.max(1, parseInt(dayIn.value) || 1);
+      const [h, m] = String(timeIn.value || "08:00").split(":").map(n => parseInt(n) || 0);
+      const c = loreClockEnsure();
+      c.day = day; c.min = Math.max(0, Math.min(1439, h * 60 + m));
+      if(dateIn.value){ c.date0 = isoAddDays(dateIn.value, -(day - 1)); c.wd0 = null; }
+      else { c.date0 = ""; c.wd0 = wdSel.value === "" ? null : (((+wdSel.value - (day - 1)) % 7) + 7) % 7; }
+      c.hidden = !show.checked;
+      saveRolls(); openPhone();
+      const now = loreClockText(c);
+      toast(`\u{1F552} It is now ${now.time} \u2014 ${now.day}`); }},"Set the time") ]});
+}
 /* ---------- the phone itself: the contact list ---------- */
 function openPhone(){
   if(mode !== "cloud"){
@@ -48047,9 +48169,9 @@ function openPhone(){
   const list = phoneContacts().filter(contactVisible).slice()
     .sort((a,b) => String(a.name || "").localeCompare(String(b.name || "")));
   const body = el("div",{class:"phone"});
+  body.append(phoneClockNode());
   body.append(el("div",{class:"phone-bar"},
-    el("span",{class:"phone-clock"}, new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})),
-    el("span",{class:"small muted"}, `${list.length} contact${list.length === 1 ? "" : "s"}`
+    el("span",{class:"small muted",style:"margin-right:auto"}, `${list.length} contact${list.length === 1 ? "" : "s"}`
       + (gm ? ` \u00b7 ${list.filter(c => c.hidden).length} hidden` : "")),
     el("button",{class:"linkbtn", title: phoneSoundOn() ? "Ring sound is on for this device \u2014 tap to mute it" : "Ring sound is muted on this device \u2014 tap to turn it on",
       onclick:()=>{ localStorage.setItem("ptu_phone_sound", phoneSoundOn() ? "0" : "1"); openPhone(); }}, phoneSoundOn() ? "\u{1F514}" : "\u{1F515}")));
@@ -48216,6 +48338,7 @@ function editContact(id, draft){
 }
 /* ---------- the Codec: the call on the line, floated over every tab ---------- */
 function renderCallOverlay(){
+  paintPhoneClock();                // an open phone keeps up with the GM winding the in-lore clock
   const btn = document.getElementById("btnPhone");
   if(btn) btn.hidden = mode !== "cloud";
   const old = document.getElementById("callOverlay");
