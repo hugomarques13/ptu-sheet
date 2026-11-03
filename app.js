@@ -47861,7 +47861,14 @@ function callRingsHere(call){
   if(!call || call.state !== "ringing") return false;
   return call.to && call.to.kind === "contact" ? !!cloud.isGM : phoneEndIsMine(call.to);
 }
-function callCanTalk(call){ return !!call && (!!cloud.isGM || callMine(call)); }
+/* who may speak: a call's own ends, and the GM only where a contact is on the line (they voice it). A
+   call between two players has no part for the GM, so the GM listens in — and can still hang it up. */
+function phoneCallHasContact(call){ return !!call && ((call.to && call.to.kind === "contact") || (call.from && call.from.kind === "contact")); }
+function callCanTalk(call){
+  if(!call) return false;
+  return cloud.isGM ? phoneCallHasContact(call) : callMine(call);
+}
+function callCanHangUp(call){ return !!call && (!!cloud.isGM || callMine(call)); }
 /* which side a line typed on THIS screen belongs to: the player's own end, or — for the GM — the contact's */
 function callMySide(call){
   if(!cloud.isGM) return (phoneEndIsMine(call.to) && !phoneEndIsMine(call.from)) ? "R" : "L";
@@ -48181,6 +48188,12 @@ function openPhone(){
   if(!list.length) body.append(el("div",{class:"small muted",style:"padding:18px 4px;text-align:center"},
     gm ? "No contacts yet \u2014 add the first one below." : "No contacts yet. People land in your phone as you meet them."));
   list.forEach(c => body.append(contactRow(c)));
+  /* every other Trainer at the table is in a player's phone already — no GM setup needed */
+  const party = gm ? [] : phonePartyRows();
+  if(party.length){
+    body.append(el("div",{class:"phone-section"}, "\u{1F465} Party"));
+    party.forEach(r => body.append(partyRow(r)));
+  }
   modal({ title:"\u{1F4F1} Phone", bodyNode:body, footNodes:[
     gm ? el("button",{class:"btn-secondary",onclick:()=>editContact(null)},"\uFF0B New contact") : "",
     el("button",{class:"btn-primary",onclick:closeModal},"Close") ]});
@@ -48239,6 +48252,52 @@ function callContact(id, priv){
   if(!c || !contactVisible(c)) return;
   if(!me){ toast("\u{1F4F5} You need a Trainer sheet of your own to make a call"); return; }
   if(placeCall(phonePartyEnd(me.id), phoneContactEnd(c), priv)) closeModal();
+}
+/* ---------- calling each other ----------
+   A player's phone also lists the rest of the party: every live Trainer sheet at the table that isn't
+   theirs. Ringing one is the same call as ringing a contact, only with a Trainer on both ends — the
+   callee's screen rings and they pick up themselves. Each Trainer's frequency is fixed off their sheet. */
+function phonePartyRows(){
+  return Object.values(cloud.byId || {}).filter(r => liveCharRow(r) && !ownsRow(r))
+    .sort((a, b) => phonePartyEnd(a.id).name.localeCompare(phonePartyEnd(b.id).name));
+}
+function partyRow(r){
+  const look = phoneEndLook(phonePartyEnd(r.id));
+  const row = el("div",{class:"phone-row"});
+  row.append(contactAvatar(look.img, look.name, "phone-av", look.focus));
+  row.append(el("div",{class:"phone-mid", title:"Open their card", onclick:()=>openPartyMember(r.id)},
+    el("div",{class:"phone-name"}, look.name),
+    el("div",{class:"small muted"}, (r.owner_name ? `Played by ${r.owner_name} \u00b7 ` : "") + `\u{1F4E1} ${contactFreq({ id:r.id })}`)));
+  row.append(el("div",{class:"phone-acts"},
+    el("button",{class:"btn-primary", title:`Call ${look.name}`, onclick:()=>callPartyMember(r.id, false)}, "\u{1F4DE}")));
+  return row;
+}
+function openPartyMember(sheetId){
+  const r = cloud.byId && cloud.byId[sheetId];
+  if(!r || !liveCharRow(r) || ownsRow(r)){ openPhone(); return; }
+  const look = phoneEndLook(phonePartyEnd(sheetId));
+  const body = el("div",{class:"phone-card"});
+  if(look.img && normFocus(look.focus)){
+    const port = contactAvatar(look.img, look.name, "phone-portrait", look.focus);
+    port.title = "Tap to see the whole picture";
+    port.addEventListener("click", ()=>openImageViewer(look.img, look.name));
+    body.append(port);
+  } else body.append(look.img ? el("img",{class:"phone-big", src:look.img, alt:"", title:"Tap to see it full size", onclick:()=>openImageViewer(look.img, look.name)})
+                              : contactAvatar("", look.name, "phone-big"));
+  body.append(el("div",{class:"phone-name",style:"justify-content:center;font-size:20px;margin-top:10px"}, look.name));
+  body.append(el("div",{class:"small muted"}, (r.owner_name ? `Played by ${r.owner_name} \u00b7 ` : "") + `\u{1F4E1} ${contactFreq({ id:r.id })}`));
+  const priv = el("input",{type:"checkbox"});
+  body.append(el("label",{class:"inline small",style:"gap:8px;margin-top:14px;justify-content:center;cursor:pointer"}, priv,
+    "\u{1F512} Private call \u2014 only the two of you and the GM see it"));
+  modal({ title:`\u{1F4F1} ${look.name}`, bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:openPhone},"\u2039 Contacts"),
+    el("button",{class:"btn-primary",onclick:()=>callPartyMember(sheetId, priv.checked)},"\u{1F4DE} Call") ]});
+}
+function callPartyMember(sheetId, priv){
+  const me = phoneMyRow(), r = cloud.byId && cloud.byId[sheetId];
+  if(!me){ toast("\u{1F4F5} You need a Trainer sheet of your own to make a call"); return; }
+  if(!r || !liveCharRow(r) || ownsRow(r)) return;
+  if(placeCall(phonePartyEnd(me.id), phonePartyEnd(sheetId), priv)) closeModal();
 }
 /* GM: the contact rings one of the party — their Codec opens with the contact on the left */
 function ringPlayerFrom(cid, privDefault){
@@ -48405,18 +48464,19 @@ function buildCodec(call){
     const ringing = c.state === "ringing";
     box.classList.toggle("ringing", ringing);
     const cEnd = (c.to && c.to.kind === "contact") ? c.to : (c.from && c.from.kind === "contact") ? c.from : null;
-    freq.textContent = cEnd ? contactFreq(phoneContactById(cEnd.cid) || { id:cEnd.cid }) : contactFreq({ id:c.id });
+    // with no contact on the line, the frequency is the number of the Trainer being rung — fixed per sheet
+    freq.textContent = cEnd ? contactFreq(phoneContactById(cEnd.cid) || { id:cEnd.cid }) : contactFreq({ id:(c.to && c.to.sheetId) || c.id });
     status.textContent = ringing ? (callRingsHere(c) ? "INCOMING CALL" : "CALLING\u2026") : (c.private ? "PRIVATE LINE" : "CONNECTED");
     subs.innerHTML = "";
     const lines = (Array.isArray(c.lines) ? c.lines : []).slice(-4);
     if(!lines.length) subs.append(el("div",{class:"codec-line muted"}, ringing ? "\u2026" : "\u2014 the line is open \u2014"));
     lines.forEach(ln => subs.append(el("div",{class:"codec-line " + (ln.side === "R" ? "r" : "l")},
       el("b",{}, `${ln.who || "?"}: `), ln.text)));
-    const canAns = callCanAnswer(c), talk = callCanTalk(c);
+    const canAns = callCanAnswer(c), talk = callCanTalk(c), canHang = callCanHangUp(c);
     show(answer, ringing && canAns); show(decline, ringing && canAns);
     show(input, !ringing && talk); show(send, !ringing && talk);
-    show(hang, talk && !(ringing && canAns));
-    wait.textContent = ringing ? (canAns ? "" : talk ? "Ringing\u2026" : `${fl.name} is calling ${tl.name}\u2026`)
+    show(hang, canHang && !(ringing && canAns));
+    wait.textContent = ringing ? (canAns ? "" : canHang ? "Ringing\u2026" : `${fl.name} is calling ${tl.name}\u2026`)
                                : (talk ? "" : "Listening in");
     show(wait, !!wait.textContent);
     const min = !!phoneMinimised[c.id];
