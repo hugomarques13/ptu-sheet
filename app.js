@@ -8221,7 +8221,9 @@ async function removeStoredImg(url){
 function mapImgInUse(src, exceptImg){
   const meta = cloud.mapMeta?.data;
   if(!meta || !Array.isArray(meta.maps)) return true;    // can't prove it's unused → keep the file
-  return meta.maps.some(m => (m.images||[]).some(im => im!==exceptImg && im.src===src));
+  if(meta.maps.some(m => (m.images||[]).some(im => im!==exceptImg && im.src===src))) return true;
+  const byMap = cloud.mapTokens?.data?.byMap || {};
+  return Object.keys(byMap).some(k => (byMap[k]||[]).some(t => t && t.door && t.doorImg===src));
 }
 
 /* ---------- reusable sub-tab bar ---------- */
@@ -23751,7 +23753,8 @@ function tokenCentre(t){ const f = tokenFootprint(t); return { x:Math.round(t.x)
 /* every creature-ish token that stops a shove: linked creatures, boats, unlinked props with a body.
    Zones and Hazard/Garden markers are ground, not obstacles. */
 function tokenIsObstacle(t){
-  return !!t && !isZoneToken(t) && !isHazardToken(t) && !isGardenToken(t) && !isNoteToken(t) && !t.ghost;
+  return !!t && !isZoneToken(t) && !isHazardToken(t) && !isGardenToken(t) && !isNoteToken(t) && !t.ghost
+      && !(isDoorToken(t) && !doorBlocks(t));
 }
 /* Moves `token` up to `metres` in a straight line. `dir` is a PUSH_DIRS row. Returns
      { moved, wanted, from, to, stoppedBy, blocker, path }
@@ -23767,7 +23770,7 @@ function forcedMove(map, token, dir, metres, opts){
   const im = !opts.ignoreImmune && pushImmunityFor(o);
   if(im){ out.stoppedBy = "immune"; out.why = im; return out; }
   if(!map || !dir || !wanted) return out;
-  const f = tokenFootprint(token), walls = activeWalls(map);
+  const f = tokenFootprint(token), walls = activeWalls(map, true);
   const others = mapTokensFor(map.id).filter(t => t.id !== token.id && tokenIsObstacle(t)
     && !(opts.skipIds && opts.skipIds.includes(t.id))
     && t.riding !== token.id && token.riding !== t.id);
@@ -43061,6 +43064,7 @@ function tokenFootprint(t){
   if(!t) return { w:1, h:1 };
   if(isZoneToken(t)) return { w: Math.max(1, t.w||1), h: Math.max(1, t.h||1) };
   if(isBoatToken(t)) return boatDims(t);
+  if(isDoorToken(t)) return doorFootprint(t);
   const ms = massiveSchoolTokenFoot(t);
   if(ms) return ms;
   const s = t.size || 1;
@@ -47779,7 +47783,9 @@ function renderBlessingPops(){
    Calling opens a Metal Gear Solid–style Codec: the caller's portrait on the left, whoever is being
    called on the right, the frequency between them and the conversation as subtitles underneath. A
    player rings a contact (the GM picks up and voices them); the GM can have a contact ring a player.
-   An open call plays on every screen at the table; a 🔒 private one only on its two ends and the GM's.
+   Every call is one of two kinds, picked at the moment of calling (callKindTiles / pickCallKind):
+   🌐 PUBLIC plays on every screen at the table; 🔒 PRIVATE only on its two ends and the GM's — every
+   other screen shows nothing at all: no Codec, no ring, no pill (callVisible).
    Both ride the shared rolls row the way the Blessing squares do — `data.contacts` and `data.calls`
    (one call on the line at a time; hanging up deletes it) — so there is no new row to sync. Cloud
    only: offline there is nobody to call.
@@ -47851,6 +47857,28 @@ function callMine(call){
   return !!call && (phoneEndIsMine(call.from) || phoneEndIsMine(call.to) || normName(call.by) === normName(cloud.name));
 }
 function callVisible(call){ return !!call && (cloud.isGM || !call.private || callMine(call)); }
+/* ---------- the two kinds of call ----------
+   The caller picks one every time — no quick button quietly places a public call. `privWho` names who
+   a private call is for, the way the sentence reads ("you and the GM", "you, Nyx and the GM"). */
+function callKindBlurb(priv, privWho){
+  return priv ? `Only ${privWho} see it \u2014 nobody else's screen shows the call at all.`
+              : "It opens on every screen at the table, and everyone reads along.";
+}
+function callKindTiles(privWho, onPick){
+  const tile = priv => el("button",{type:"button", class:"phone-pick call-kind" + (priv ? " priv" : ""), onclick:()=>onPick(priv)},
+    el("span",{class:"call-kind-ico"}, priv ? "\u{1F512}" : "\u{1F310}"),
+    el("span",{class:"call-kind-txt"}, priv ? "Private call" : "Public call",
+      el("span",{class:"small muted"}, callKindBlurb(priv, privWho))));
+  return el("div",{class:"call-kinds"}, tile(false), tile(true));
+}
+/* the quick 📞 on a phone row: which kind first, then the call */
+function pickCallKind(name, privWho, onPick, back){
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:10px"}, `How do you want to call ${name}?`));
+  body.append(callKindTiles(privWho, onPick));
+  modal({ title:`\u{1F4DE} Call ${name}`, bodyNode:body,
+    footNodes:[el("button",{class:"btn-secondary",onclick:back || openPhone},"\u2039 Back")] });
+}
 /* who picks up: a contact is voiced by the GM; a Trainer by their own player (the GM may answer for them) */
 function callCanAnswer(call){
   if(!call || call.state !== "ringing") return false;
@@ -48216,7 +48244,7 @@ function contactRow(c){
     acts.append(el("button",{class:"btn-secondary",title:"Edit",onclick:()=>editContact(c.id)},"\u270E"));
   }
   acts.append(el("button",{class:"btn-primary", title: gm ? `Have ${c.name || "this contact"} ring a player` : `Call ${c.name || "them"}`,
-    onclick:()=> gm ? ringPlayerFrom(c.id) : callContact(c.id, false)}, "\u{1F4DE}"));
+    onclick:()=> gm ? ringPlayerFrom(c.id) : pickCallKind(c.name || "them", "you and the GM", priv => callContact(c.id, priv))}, "\u{1F4DE}"));
   row.append(acts);
   return row;
 }
@@ -48237,15 +48265,13 @@ function openContact(id){
   body.append(el("div",{class:"small muted"}, `\u{1F4E1} ${contactFreq(c)}`
     + (gm && c.hidden ? " \u00b7 \u{1F648} hidden from players" : "") + (gm && knownByNames(c) ? ` \u00b7 Known by ${knownByNames(c)}` : "")));
   if(c.desc) body.append(el("div",{class:"phone-desc full"}, c.desc));
+  // the call, as one of its two kinds — above the notes, so it's never scrolled out of reach (the GM picks in ringPlayerFrom)
+  if(!gm) body.append(el("div",{class:"phone-call-pick"}, callKindTiles("you and the GM", priv => callContact(c.id, priv))));
   body.append(contactNotesNode(c));
-  const priv = el("input",{type:"checkbox"});
-  body.append(el("label",{class:"inline small",style:"gap:8px;margin-top:14px;justify-content:center;cursor:pointer"}, priv,
-    gm ? "\u{1F512} Private \u2014 only that player and you see the call" : "\u{1F512} Private call \u2014 only you and the GM see it"));
   modal({ title:`\u{1F4F1} ${c.name || "Contact"}`, bodyNode:body, footNodes:[
     el("button",{class:"btn-secondary",onclick:openPhone},"\u2039 Contacts"),
     gm ? el("button",{class:"btn-secondary",onclick:()=>editContact(c.id)},"\u270E Edit") : "",
-    gm ? el("button",{class:"btn-primary",onclick:()=>ringPlayerFrom(c.id, priv.checked)},"\u{1F4DE} Ring a player")
-       : el("button",{class:"btn-primary",onclick:()=>callContact(c.id, priv.checked)},"\u{1F4DE} Call") ]});
+    gm ? el("button",{class:"btn-primary",onclick:()=>ringPlayerFrom(c.id)},"\u{1F4DE} Ring a player") : "" ]});
 }
 function callContact(id, priv){
   const c = phoneContactById(id), me = phoneMyRow();
@@ -48269,7 +48295,8 @@ function partyRow(r){
     el("div",{class:"phone-name"}, look.name),
     el("div",{class:"small muted"}, (r.owner_name ? `Played by ${r.owner_name} \u00b7 ` : "") + `\u{1F4E1} ${contactFreq({ id:r.id })}`)));
   row.append(el("div",{class:"phone-acts"},
-    el("button",{class:"btn-primary", title:`Call ${look.name}`, onclick:()=>callPartyMember(r.id, false)}, "\u{1F4DE}")));
+    el("button",{class:"btn-primary", title:`Call ${look.name}`,
+      onclick:()=>pickCallKind(look.name, `you, ${look.name} and the GM`, priv => callPartyMember(r.id, priv))}, "\u{1F4DE}")));
   return row;
 }
 function openPartyMember(sheetId){
@@ -48286,12 +48313,9 @@ function openPartyMember(sheetId){
                               : contactAvatar("", look.name, "phone-big"));
   body.append(el("div",{class:"phone-name",style:"justify-content:center;font-size:20px;margin-top:10px"}, look.name));
   body.append(el("div",{class:"small muted"}, (r.owner_name ? `Played by ${r.owner_name} \u00b7 ` : "") + `\u{1F4E1} ${contactFreq({ id:r.id })}`));
-  const priv = el("input",{type:"checkbox"});
-  body.append(el("label",{class:"inline small",style:"gap:8px;margin-top:14px;justify-content:center;cursor:pointer"}, priv,
-    "\u{1F512} Private call \u2014 only the two of you and the GM see it"));
+  body.append(el("div",{class:"phone-call-pick"}, callKindTiles(`you, ${look.name} and the GM`, priv => callPartyMember(sheetId, priv))));
   modal({ title:`\u{1F4F1} ${look.name}`, bodyNode:body, footNodes:[
-    el("button",{class:"btn-secondary",onclick:openPhone},"\u2039 Contacts"),
-    el("button",{class:"btn-primary",onclick:()=>callPartyMember(sheetId, priv.checked)},"\u{1F4DE} Call") ]});
+    el("button",{class:"btn-secondary",onclick:openPhone},"\u2039 Contacts") ]});
 }
 function callPartyMember(sheetId, priv){
   const me = phoneMyRow(), r = cloud.byId && cloud.byId[sheetId];
@@ -48300,19 +48324,27 @@ function callPartyMember(sheetId, priv){
   if(placeCall(phonePartyEnd(me.id), phonePartyEnd(sheetId), priv)) closeModal();
 }
 /* GM: the contact rings one of the party — their Codec opens with the contact on the left */
-function ringPlayerFrom(cid, privDefault){
+function ringPlayerFrom(cid){
   const c = phoneContactById(cid); if(!c || !cloud.isGM) return;
   const rows = Object.values(cloud.byId || {}).filter(liveCharRow);
   const body = el("div",{});
   body.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
     `${c.name || "This contact"} rings one of the party. The Codec opens with ${c.name || "the contact"} on the left and the player on the right; they pick up from their own screen.`));
-  const priv = el("input",{type:"checkbox"}); priv.checked = !!privDefault;
-  body.append(el("label",{class:"inline small",style:"gap:8px;margin-bottom:10px;cursor:pointer"}, priv,
-    "\u{1F512} Private \u2014 only that player and you see the call"));
+  // which kind of call, before who. Starts 🌐 Public every time, so a private call is always picked on purpose.
+  let priv = false;
+  const blurb = el("div",{class:"small muted"});
+  const bPub  = el("button",{type:"button",onclick:()=>{ priv = false; paintKind(); }}, "\u{1F310} Public call");
+  const bPriv = el("button",{type:"button",onclick:()=>{ priv = true;  paintKind(); }}, "\u{1F512} Private call");
+  const paintKind = () => {
+    bPub.classList.toggle("on", !priv); bPriv.classList.toggle("on", priv);
+    blurb.textContent = callKindBlurb(priv, "the player you ring and you");
+  };
+  paintKind();
+  body.append(el("div",{class:"call-kind-bar"}, el("div",{class:"phone-scope"}, bPub, bPriv), blurb));
   if(!rows.length) body.append(el("div",{class:"small muted"},"No player sheets in this campaign yet."));
   rows.forEach(r => {
     const look = phoneEndLook(phonePartyEnd(r.id));
-    body.append(el("button",{class:"phone-pick",onclick:()=>{ if(placeCall(phoneContactEnd(c), phonePartyEnd(r.id), priv.checked)) closeModal(); }},
+    body.append(el("button",{class:"phone-pick",onclick:()=>{ if(placeCall(phoneContactEnd(c), phonePartyEnd(r.id), priv)) closeModal(); }},
       contactAvatar(look.img, look.name, "phone-av", look.focus),
       el("span",{}, look.name, r.owner_name ? el("span",{class:"muted",style:"font-weight:400"}, ` \u00b7 ${r.owner_name}`) : "")));
   });
@@ -48407,7 +48439,7 @@ function renderCallOverlay(){
   if(ringHere && phoneSoundOn()) phoneStartRing(call.id); else phoneStopRing();
   if(ringHere && !phoneNoticed[call.id]){
     phoneNoticed[call.id] = true;
-    toast(`\u{1F4DE} Incoming call \u2014 ${phoneEndLook(call.from).name}`);
+    toast(`\u{1F4DE} Incoming ${call.private ? "private " : ""}call \u2014 ${phoneEndLook(call.from).name}`);
   }
   if(!call){ if(old) old.remove(); return; }
   // same call → update in place, so a half-typed line (and its focus) survives every sync of the row
@@ -48428,10 +48460,11 @@ function buildCodec(call){
   };
   const L = side("left"), R = side("right");
   const status = el("div",{class:"codec-status"});
+  const kind = el("div",{class:"codec-kind"});
   const freq = el("div",{class:"codec-freq"});
   const bars = el("div",{class:"codec-bars"});
   for(let i = 0; i < 8; i++) bars.append(el("i",{style:`--i:${i}`}));
-  const mid = el("div",{class:"codec-mid"}, status,
+  const mid = el("div",{class:"codec-mid"}, kind, status,
     el("div",{class:"codec-tune"}, el("span",{},"\u25C0"), freq, el("span",{},"\u25B6")), bars, el("div",{class:"codec-ptt"},"PTT"));
   const subs = el("div",{class:"codec-subs"});
   const input = el("input",{type:"text", class:"codec-input", placeholder:"Say something\u2026", maxlength:"400"});
@@ -48466,7 +48499,13 @@ function buildCodec(call){
     const cEnd = (c.to && c.to.kind === "contact") ? c.to : (c.from && c.from.kind === "contact") ? c.from : null;
     // with no contact on the line, the frequency is the number of the Trainer being rung — fixed per sheet
     freq.textContent = cEnd ? contactFreq(phoneContactById(cEnd.cid) || { id:cEnd.cid }) : contactFreq({ id:(c.to && c.to.sheetId) || c.id });
-    status.textContent = ringing ? (callRingsHere(c) ? "INCOMING CALL" : "CALLING\u2026") : (c.private ? "PRIVATE LINE" : "CONNECTED");
+    status.textContent = ringing ? (callRingsHere(c) ? "INCOMING CALL" : "CALLING\u2026") : "CONNECTED";
+    // which kind of call it is, on every screen showing it, from the first ring — nobody mistakes one for the other
+    const ends = [c.from, c.to].filter(e => e && e.kind === "player").map(e => phoneEndLook(e).name);
+    kind.textContent = c.private ? "\u{1F512} PRIVATE" : "\u{1F310} PUBLIC";
+    kind.classList.toggle("priv", !!c.private);
+    kind.title = c.private ? `Private call \u2014 only ${ends.join(", ")} and the GM can see it`
+                           : "Public call \u2014 everyone at the table can see it";
     subs.innerHTML = "";
     const lines = (Array.isArray(c.lines) ? c.lines : []).slice(-4);
     if(!lines.length) subs.append(el("div",{class:"codec-line muted"}, ringing ? "\u2026" : "\u2014 the line is open \u2014"));
@@ -48481,7 +48520,7 @@ function buildCodec(call){
     show(wait, !!wait.textContent);
     const min = !!phoneMinimised[c.id];
     box.classList.toggle("min", min);
-    pill.textContent = `\u{1F4DE} ${fl.name} \u21C4 ${tl.name}${ringing ? " \u00b7 ringing" : ""}  \u25B2`;
+    pill.textContent = `${c.private ? "\u{1F512} " : ""}\u{1F4DE} ${fl.name} \u21C4 ${tl.name}${ringing ? " \u00b7 ringing" : ""}  \u25B2`;
   };
   return box;
 }
@@ -50499,7 +50538,7 @@ function applyImgFocus(img, f){
 /* The uploaded picture a token is drawn with, and how to read/write its framing. null when the
    token is drawn from dex artwork (nothing uploaded to frame) or is scenery. */
 function tokenImageRef(token){
-  if(!token || isShopToken(token) || isBoatToken(token) || isHazardToken(token) || isZoneToken(token) || isNoteToken(token)) return null;
+  if(!token || isShopToken(token) || isBoatToken(token) || isHazardToken(token) || isZoneToken(token) || isNoteToken(token) || isDoorToken(token)) return null;
   if(!token.link){
     if(!token.img) return null;
     return { url: token.img, get:()=>token.imgFocus,
@@ -50706,6 +50745,12 @@ function tokenHp(token){
     if(isHazardToken(token)){ const h=hazardDef(token);
       return { cur:1, max:1, editable:cloud.isGM, name:h.name, sprite:hazardSprite(token),
                unlinked:false, kind:"hazard", hideName:false }; }
+    // a door: real HP / Def / DR for the damage tools, but scenery everywhere else (see DOORS)
+    if(isDoorToken(token)){
+      const max = doorMaxHP(token); let cur = token.hp; if(cur==null) cur = max;
+      return { cur, max, editable:cloud.isGM, name:token.label||"Door", sprite:doorSprite(token),
+               unlinked:false, kind:"door", hideName:true };
+    }
     if(isBoatToken(token)){
       // editable stays canDriveBoat (a passenger may still drag/steer the hull); HP is only ever
       // edited through the GM-gated box in openBoatMenu, same restriction as the shop/attack tools.
@@ -50762,12 +50807,13 @@ function tokenHp(token){
 function tokenHpVisible(info){
   if(info.kind==="shop" || info.kind==="hazard" || info.kind==="zone") return false; // scenery has no HP bar to show
   if(info.kind==="boat") return info.cur < info.max;   // stays clean scenery until it's actually taken a hit
+  if(info.kind==="door") return cloud.isGM && info.cur < info.max && info.cur > 0;
   return cloud.isGM || info.kind==="trainer" || info.kind==="pokemon";
 }
 /* Status conditions (Burned, Paralyzed, …) are visible in an actual battle even when a creature's
    exact HP isn't — unlike tokenHpVisible, this doesn't gate on GM/kind, only on the token actually
    pointing to something real. Fixes enemy statuses being invisible to players (HANDOFF-2026-07-25). */
-function tokenStatusVisible(info){ return !info.unlinked && info.kind!=="shop" && info.kind!=="boat" && info.kind!=="hazard" && info.kind!=="zone"; }
+function tokenStatusVisible(info){ return !info.unlinked && info.kind!=="shop" && info.kind!=="boat" && info.kind!=="hazard" && info.kind!=="zone" && info.kind!=="door"; }
 /* Shiny is a LOOK, not a stat. The sprite already swaps to the shiny artwork, but at map zoom a
    shiny Gyarados and a normal one are a handful of pixels apart, so a shiny token also gets a small
    ring of twinkling sparkles around it (.tk-sparkles, drawn in mapTokenNode). Read the flag off the
@@ -50776,7 +50822,7 @@ function tokenStatusVisible(info){ return !info.unlinked && info.kind!=="shop" &
    and scenery (boats, shop doors, hazards) are never shiny. */
 function tokenIsShiny(token){
   if(!token.link){
-    if(isBoatToken(token) || isShopToken(token) || isHazardToken(token) || isZoneToken(token) || isNoteToken(token)) return false;
+    if(isBoatToken(token) || isShopToken(token) || isHazardToken(token) || isZoneToken(token) || isNoteToken(token) || isDoorToken(token)) return false;
     return !!token.shiny;
   }
   const L = tokenLinked(token);
@@ -50794,6 +50840,7 @@ function tokenDefTypes(token){
     if(L.kind==="trainer"||L.kind==="enctrainer") return trainerBodyTypes(L.obj);
     return monTypes(L.obj);
   }
+  if(isDoorToken(token)) return (token.types || []).filter(ty => TYPES.includes(ty));
   return token.species ? (getSpecies(token.species)?.types || []) : [];
 }
 /* a token's three Evasions (Core p.233) — what an attacker needs to beat. Standalone tokens carry
@@ -50951,6 +50998,7 @@ function tokenDefenseStat(token, physical, defCSMode){
     return Math.floor(d.total[k] * csMult(csv));
   }
   if(isBoatToken(token)) return physical ? (token.def||BOAT_DEF_DEFAULT) : (token.spdef||BOAT_SPDEF_DEFAULT);
+  if(isDoorToken(token)) return Math.max(0, physical ? (token.def ?? 15) : (token.spdef ?? 15));
   return 0;   // standalone token has no defense data
 }
 /* ---- initiative: Speed stat + an editable per-token bonus (amulets, effects…) ---- */
@@ -51007,7 +51055,7 @@ function tokenInitiative(token){
   return v;
 }
 function tokenInInit(token){
-  if(isShopToken(token) || isBoatToken(token) || isHazardToken(token) || isZoneToken(token) || isNoteToken(token)) return false; // scenery doesn't take turns
+  if(isShopToken(token) || isBoatToken(token) || isHazardToken(token) || isZoneToken(token) || isNoteToken(token) || isDoorToken(token)) return false; // scenery doesn't take turns
   const info=tokenHp(token); if(info.unlinked) return false;
   /* A Knocked Out or Dead enemy is not taking turns, so it takes ITSELF off the order rather than
      leaving the GM to untick every body between rounds. The ⚔ tick below is untouched, so bringing
@@ -51447,6 +51495,11 @@ async function setTokenHP(token, val, opts){
     if(isBoatToken(token) && newHp < oldHp){
       const br = breachesFromHit(info.max, oldHp, newHp, oldHp - newHp);
       if(br > 0){ token.breaches = (token.breaches||0) + br; toast(`+${br} Breach${br===1?"":"es"}!`); }
+    }
+    if(isDoorToken(token) && token.hp < 0) token.hp = 0;           // rubble has no HP below zero
+    if(isDoorToken(token) && (oldHp > 0) !== (newHp > 0)){
+      toast(newHp <= 0 ? `\u{1F4A5} ${info.name} is smashed open!` : `\u{1F6AA} ${info.name} stands again`);
+      mapTokensSave(); doorAfterChange(); return;
     }
     paintTokenHP(token); mapTokensSave(); return;   // optimistic: paint now, write catches up
   }
@@ -51917,9 +51970,13 @@ function wallsOverlay(map, stageW, stageH, originX, originY, playerView){
      "⇄ Flip all gates" swaps every group at once, which is the Pokémon Mansion's statue puzzle: draw
      one group that starts shut and one that starts open, and each switch press flips the building. */
 function gateOpen(map, name){ return !!(map && map.gates && map.gates[name]); }
-function activeWalls(map){
+/* `forMove`: the list a step is tested against (a shut door is a box round its square) rather than
+   a line of sight (an opaque shut door is a cross through it; bars aren't there at all). See DOORS. */
+function activeWalls(map, forMove){
   const all = mapWalls(map);
-  return all.some(w=>w.gate) ? all.filter(w=>!w.gate || !gateOpen(map, w.gate)) : all;
+  const base = all.some(w=>w.gate) ? all.filter(w=>!w.gate || !gateOpen(map, w.gate)) : all;
+  const doors = doorWallSegs(map, !!forMove);
+  return doors.length ? base.concat(doors) : base;
 }
 function gateGroups(map){
   const names = new Set(Object.keys(map.gates || {}));
@@ -52783,7 +52840,7 @@ function freeCellNear(map, mount, skipId){
   return { x: mount.x + f.w, y: mount.y };
 }
 /* a token that can't ride / be ridden (shop doors are scenery, not creatures) */
-function canMountToken(token){ return !!token && !isShopToken(token) && !isBoatToken(token) && !isHazardToken(token) && !isZoneToken(token) && !isNoteToken(token); }
+function canMountToken(token){ return !!token && !isShopToken(token) && !isBoatToken(token) && !isHazardToken(token) && !isZoneToken(token) && !isNoteToken(token) && !isDoorToken(token); }
 function mountToken(map, rider, mount){
   if(!rider || !mount || rider.id===mount.id) return false;
   if(!canMountToken(rider) || !canMountToken(mount)){ toast("A shop door can't ride or be ridden"); return false; }
@@ -53838,6 +53895,478 @@ function openHazardMenu(token, map){
     el('button',{class:'btn-secondary danger',onclick:()=>{ closeModal(); removeToken(token, map); }},'🗑 Remove'),
     el('button',{class:'btn-secondary',onclick:closeModal},'Close')]});
 }
+/* ===================================================================
+   DOORS — cell doors the party can open, pick, or smash (v695, the Bosque Prison)
+   -------------------------------------------------------------------
+   A door is a scenery token (`door:true`), built like a boat: no link, no turn, no status ring,
+   but real Hit Points, Defense / Sp.Def, flat Damage Reduction and a Type, so a hit applied to it
+   through 🎯 Apply runs the same Core damage steps as any creature (Defense off, Type chart, DR
+   off). PTU prints no rules for breaking objects; DOOR_PRESETS are house defaults the GM edits per
+   door, and `resist` overrides single matchups ({Fire:1} weak, {Poison:"immune"}, {Psychic:-2}).
+
+   ART & ALIGNMENT. Map images snap to whole grid squares, but door art cut from a 32px tileset is
+   one square wide and 1½ tall: it stands on the BOTTOM edge of its doorway square and the top half
+   overhangs the square above (the RPG-Maker character convention). A grid-snapped image can only
+   ever sit half a square off — that is why the art never fitted the gaps in the prison bars. So
+   the door's picture is anchored to the bottom of its own square, and `doorOX` / `doorOY` (in
+   squares, nudged 1px at a time from the menu) shift it from there for art cut differently. The
+   token itself still lives on whole squares, so dragging it snaps square to square and the art
+   arrives already aligned.
+
+   LOCKS. Picking a lock is a Stealth Check (Core p.39; an electronic lock is Technology Education,
+   p.45) against a DC only the GM sees (default: the "Adept check" 13 of Core p.465). In Battle mode
+   it is a Precision Skill Check (Core "Precision Skill Checks", which names lock-picking): attacked
+   this round or last → Focus DC 16 first, −1 on a fail and −1 more per 4 it missed by; hit by a
+   damaging attack → −2; −2 per Injury taken in that time.
+
+   BLOCKING. A closed, intact door is a wall round its own square for movement (a player's drag,
+   pushes) and — unless it is see-through, like bars — for sight. Open or broken, it blocks nothing.
+   Broken is "0 HP", derived rather than stored, so ↩ undo of the hit that smashed it rebuilds it.
+=================================================================== */
+function isDoorToken(t){ return !!(t && t.door); }
+/* the bundled art, served from our own origin (never inlined into the synced row) */
+const DOOR_ART = [
+  { key:"bars",  name:"Barred cell door", src:"assets/door-bars.png?v=1",  w:1, h:1.5, see:true  },
+  { key:"metal", name:"Solid metal door", src:"assets/door-metal.png?v=1", w:1, h:1.5, see:false },
+];
+const DOOR_PRESETS = [
+  { key:"cell",  name:"Iron cell door",   types:["Steel"], hp:50, def:15, spdef:15, dr:5,  resist:{} },
+  { key:"heavy", name:"Heavy metal door", types:["Steel"], hp:80, def:20, spdef:20, dr:10, resist:{} },
+  { key:"wood",  name:"Wooden door",      types:[],        hp:30, def:5,  spdef:5,  dr:0,  resist:{ Fire:1 } },
+];
+const DOOR_LOCK_DCS = [["Novice",10],["Adept",13],["Expert",17],["Master",21]];   // Core p.465, "easy breakdown"
+const DOOR_RESIST_OPTS = [["","—"],["immune","Immune"],["-2","Resist ×2"],["-1","Resist"],["1","Weak"],["2","Weak ×2"]];
+/* what a new door copies from the last one placed on the map — so the second cell door onward is
+   one click and a drag, already the right art, fit, toughness and lock */
+const DOOR_COPY_KEYS = ["doorArt","doorImg","doorW","doorH","doorOX","doorOY","doorSee","types","def","spdef","dr","maxHp","resist","lockDC","pickSkill"];
+function mapDoors(map){ return map ? mapTokensFor(map.id).filter(isDoorToken) : []; }
+function doorArt(t){ return DOOR_ART.find(a => a.key === (t && t.doorArt)) || null; }
+function doorImgSrc(t){ return t.doorImg || (doorArt(t) || DOOR_ART[0]).src; }
+/* picture size and nudge, in squares */
+function doorDims(t){
+  const a = doorArt(t) || DOOR_ART[0];
+  return { w: +t.doorW > 0 ? +t.doorW : a.w, h: +t.doorH > 0 ? +t.doorH : a.h,
+           ox: +t.doorOX || 0, oy: +t.doorOY || 0 };
+}
+/* the squares the door actually stands in (its overhang above is only picture) */
+function doorFootprint(t){
+  const d = doorDims(t);
+  return { w: Math.max(1, Math.round(d.w)), h: Math.max(1, Math.floor(d.h + 1e-6)) };
+}
+function doorMaxHP(t){ return Math.max(1, Math.round(+t.maxHp || DOOR_PRESETS[0].hp)); }
+function doorBroken(t){ return isDoorToken(t) && t.hp != null && t.hp <= 0; }
+function doorBlocks(t){ return isDoorToken(t) && !t.open && !doorBroken(t); }
+function doorSeeThrough(t){ return t.doorSee != null ? !!t.doorSee : !!(doorArt(t) || {}).see; }
+function doorSkillLabel(t){ const k = (t && t.pickSkill) || "stealth"; return (SKILLS.find(s => s[0] === k) || [k, k])[1]; }
+/* one Type's override on this door: "immune", a step on the ladder (+1 weak … −2 doubly resisted), or 0 */
+function doorResist(t, type){
+  const v = ((t && t.resist) || {})[type];
+  return v === "immune" ? "immune" : (Math.max(-3, Math.min(3, Math.round(+v || 0))));
+}
+function doorResistStep(t, type){ if(!isDoorToken(t)) return 0; const v = doorResist(t, type); return typeof v === "number" ? v : 0; }
+/* the door's flat Damage Reduction, in the shape buffDR hands tokenDamageBreakdown */
+function doorDR(t){
+  if(!isDoorToken(t)) return { dr:0, from:[] };
+  const n = Math.max(0, Math.round(+t.dr || 0));
+  return { dr:n, from: n ? ["door"] : [] };
+}
+/* what a hit of this Type does to this door before Defense and DR: the chart for its Types, then its overrides */
+function doorMultFor(t, type){
+  if(doorResist(t, type) === "immune") return 0;
+  return typeMultAgainst(type, tokenDefTypes(t), doorResistStep(t, type));
+}
+function doorSprite(t){ return el("img",{class:"sprite s-sm",src:doorImgSrc(t),draggable:false,alt:t.label||"Door"}); }
+/* Wall segments for every closed, intact door on the map.
+   Movement: a box hugging the door's own squares (inset a hair, so a diagonal step past its corner
+   is not mistaken for walking into it) — you can't step into a shut doorway or through it.
+   Sight: a cross through each square's centre instead. Sightlines are tested centre to centre and
+   are open at their ends, so a line that ENDS on the door (looking at it) is never blocked, while
+   one passing THROUGH it is — the door itself stays visible to someone walking up to it. */
+function doorWallSegs(map, forMove){
+  const out = [];
+  if(!map) return out;
+  mapTokensFor(map.id).forEach(t => {
+    if(!doorBlocks(t) || (!forMove && doorSeeThrough(t))) return;
+    const f = doorFootprint(t), x = Math.round(t.x), y = Math.round(t.y), e = 0.02;
+    if(forMove){
+      const x0 = x+e, y0 = y+e, x1 = x+f.w-e, y1 = y+f.h-e;
+      out.push({ x1:x0, y1:y0, x2:x1, y2:y0, door:t.id }, { x1:x1, y1:y0, x2:x1, y2:y1, door:t.id },
+               { x1:x0, y1:y1, x2:x1, y2:y1, door:t.id }, { x1:x0, y1:y0, x2:x0, y2:y1, door:t.id });
+    } else {
+      for(let i = 0; i < f.w; i++) for(let j = 0; j < f.h; j++){
+        const cx = x+i+0.5, cy = y+j+0.5;
+        out.push({ x1:cx, y1:y+j+e, x2:cx, y2:y+j+1-e, door:t.id }, { x1:x+i+e, y1:cy, x2:x+i+1-e, y2:cy, door:t.id });
+      }
+    }
+  });
+  return out;
+}
+/* how the door looks to a player who can't see its numbers */
+function doorCondition(t){
+  const i = tokenHp(t), p = i.cur / i.max;
+  return p <= 0 ? "Smashed" : p >= 1 ? "Undamaged" : p > 0.75 ? "Scratched" : p > 0.5 ? "Dented" : p > 0.25 ? "Battered" : "About to give way";
+}
+function doorStateLine(t){
+  if(doorBroken(t)) return "\u{1F4A5} Smashed open";
+  return (t.open ? "\u{1F6AA} Open" : "\u{1F6AA} Closed") + (t.locked && !t.open ? " · \u{1F512} Locked" : "");
+}
+function doorPresetFields(p){
+  return { types:(p.types || []).slice(), def:p.def, spdef:p.spdef, dr:p.dr, maxHp:p.hp, resist:Object.assign({}, p.resist || {}) };
+}
+function doorCopyFields(src){
+  const o = {};
+  DOOR_COPY_KEYS.forEach(k => { if(src && src[k] !== undefined) o[k] = deepClone(src[k]); });
+  return o;
+}
+/* after a door opens, shuts, breaks or is rebuilt: new sightlines may reveal ground, then repaint */
+function doorAfterChange(map){
+  map = map || currentMapForView() || activeMap();
+  if(map && map.fogOn){ try{ fogRepaint(map, revealAroundTokens(map)); }catch(e){ console.error("door fog", e); } }
+  renderMap();
+}
+/* GM: drop a door on a free square near the middle of the view. The first is an iron cell door
+   with barred art; every later one copies the last door on this map. */
+function addDoor(map){
+  if(!cloud.isGM || !map) return;
+  const last = mapDoors(map).slice(-1)[0];
+  const base = last ? doorCopyFields(last)
+                    : Object.assign({ doorArt:"bars", doorSee:true, lockDC:13, pickSkill:"stealth" }, doorPresetFields(DOOR_PRESETS[0]));
+  const c = mapViewCenterCell(map, 1);
+  const taken = new Set(mapTokensFor(map.id).map(t => Math.round(t.x) + "," + Math.round(t.y)));
+  const at = noteFreeCell(taken, c.x, c.y);
+  ensureMapTokens();
+  const byMap = cloud.mapTokens.data.byMap, arr = byMap[map.id] || (byMap[map.id] = []);
+  const tok = Object.assign({ id:uid(), size:1, x:at.x, y:at.y }, base,
+    { door:true, label:"Door " + (mapDoors(map).length + 1), open:false, locked:true });
+  tok.hp = doorMaxHP(tok);
+  arr.push(tok);
+  mapTokensSave(); renderMap();
+  toast(last ? "\u{1F6AA} Door placed, copied from the last one — drag it into its doorway"
+             : "\u{1F6AA} Door placed — drag it into its doorway, tap it for its stats and lock");
+}
+/* GM, image-edit mode: turn a small picture already on the map into a door. It lands on the square
+   the picture covers most (a tie goes to the lower square — the doorway, with the overhang above
+   it) at the standard bottom anchor, which is what snaps a half-square-off picture into its gap. */
+function imageToDoor(map, im){
+  if(!cloud.isGM || !map || !im) return;
+  const px = map.gridSize;
+  const best = (a, len) => {
+    const c0 = Math.floor(a/px), c1 = Math.floor((a + Math.max(1, len) - 1)/px);
+    let bc = c0, bo = -1;
+    for(let c = c0; c <= c1; c++){ const o = Math.min(a+len, (c+1)*px) - Math.max(a, c*px); if(o >= bo){ bo = o; bc = c; } }
+    return bc;
+  };
+  const w = im.w || px, h = im.h || px;
+  const last = mapDoors(map).slice(-1)[0];
+  const base = last ? doorCopyFields(last)
+                    : Object.assign({ lockDC:13, pickSkill:"stealth", doorSee:true }, doorPresetFields(DOOR_PRESETS[0]));
+  ensureMapTokens();
+  const byMap = cloud.mapTokens.data.byMap, arr = byMap[map.id] || (byMap[map.id] = []);
+  const tok = Object.assign({ id:uid(), size:1 }, base, {
+    door:true, label:"Door " + (mapDoors(map).length + 1), open:false, locked:true,
+    doorImg:im.src, doorW:w/px, doorH:h/px, doorOX:0, doorOY:0,
+    x:best(im.x || 0, w), y:best(im.y || 0, h) });
+  delete tok.doorArt;
+  tok.hp = doorMaxHP(tok);
+  arr.push(tok);
+  // off the image list, but NOT out of the bucket — the door is drawn from that very file now
+  const i = (map.images || []).indexOf(im);
+  if(i >= 0){ map.images.splice(i, 1); try{ mapDropImageParts(im); }catch(e){} }
+  mapMetaSave(); mapTokensSave(); renderMap();
+  toast("\u{1F6AA} Picture turned into a door — tap it (outside image editing) for HP, lock and fit");
+}
+/* open or shut it. Players can't open a locked door (pick it, or break it); the GM can, which
+   also undoes the lock. Nobody can shut a door on someone standing in the doorway. */
+function doorToggle(token, map){
+  if(doorBroken(token)){ toast("It's smashed — there's nothing left to close"); return false; }
+  if(!token.open && token.locked && !cloud.isGM){ toast("\u{1F512} It's locked"); return false; }
+  if(token.open && map){
+    const f = doorFootprint(token), x = Math.round(token.x), y = Math.round(token.y);
+    const inWay = mapTokensFor(map.id).find(t => {
+      if(t === token || isDoorToken(t) || !tokenIsObstacle(t)) return false;
+      const g = tokenFootprint(t), tx = Math.round(t.x), ty = Math.round(t.y);
+      return tx < x+f.w && tx+g.w > x && ty < y+f.h && ty+g.h > y;
+    });
+    if(inWay){ toast(`${tokenHp(inWay).name} is standing in the doorway`); return false; }
+  }
+  token.open = !token.open;
+  if(token.open && token.locked) token.locked = false;
+  mapTokensSave(); doorAfterChange(map);
+  return true;
+}
+/* a Trainer's whole bonus to one Skill Check — the same stack the Skills table prints */
+function doorSkillMod(t, k){
+  let n = 0;
+  [categoricBonus, edgeSkillBonus, gearSkillBonus, cardSkillBonus, buffSkillBonus, giftSkillBonus]
+    .forEach(f => { try{ n += f(t, k) || 0; }catch(e){} });
+  try{ n += auraRollBonus(t) || 0; }catch(e){}
+  return n;
+}
+const doorD6 = () => 1 + Math.floor(Math.random()*6);
+/* 🗝 Pick the lock: a Trainer on the board (nearest first) rolls the door's Skill against its DC.
+   The DC never reaches a player's screen — they learn whether the lock gave, nothing else. */
+function openDoorPick(token, map){
+  if(!doorBlocks(token) || !token.locked){ toast("It isn't locked"); return; }
+  const k = token.pickSkill || "stealth", sLbl = doorSkillLabel(token);
+  const cands = [];
+  mapTokensFor(map.id).forEach(t => {
+    if(isDoorToken(t)) return;
+    const i = tokenHp(t);
+    if((i.kind === "trainer" || i.kind === "enctrainer") && i.obj && i.editable)
+      cands.push({ t, o:i.obj, name:i.name, gap:tokenTileGap(t, token) });
+  });
+  cands.sort((a, b) => a.gap - b.gap);
+  if(!cands.length){ toast("Put your Trainer's token on the map first — they're the one picking it"); return; }
+  const rankOf = (o, key) => ((o.skills || {})[key]) || "Untrained";
+  const modTxt = m => m ? (m > 0 ? "+" + m : String(m)) : "";
+  const who = el("select",{style:"width:100%"});
+  cands.forEach((c, i) => who.append(el("option",{value:String(i)}, c.name + (c.gap > 1 ? ` — ${c.gap} squares away` : ""))));
+  const info = el("div",{class:"small",style:"margin:6px 0 2px"});
+  const drawInfo = () => {
+    const c = cands[+who.value] || cands[0], r = rankOf(c.o, k), m = doorSkillMod(c.o, k);
+    info.innerHTML = "";
+    info.append(el("b",{}, `${sLbl}: ${r} — ${rankDice(r)}d6${modTxt(m)}`),
+      c.gap > 1 ? el("div",{style:"color:var(--bad);font-weight:700;margin-top:2px"}, `⚠ ${c.name} isn't next to the door (${c.gap} squares).`) : "");
+  };
+  who.addEventListener("change", drawInfo); drawInfo();
+  const body = el("div",{},
+    el("div",{class:"small muted",style:"margin-bottom:6px"},
+      `${token.label || "This door"} is locked. Picking it is a ${sLbl} Check` + (k === "stealth" ? " (Core p.39)." : ".")),
+    el("label",{class:"field"}, el("span",{},"Who's picking it?"), who), info);
+  const atkCb = el("input",{type:"checkbox"}), hitCb = el("input",{type:"checkbox"});
+  const injIn = el("input",{type:"number",min:0,max:9,value:0,style:"width:56px"});
+  const cbRow = (cb, txt) => el("label",{style:"display:flex;gap:8px;align-items:flex-start;cursor:pointer;margin:4px 0"}, cb, el("span",{class:"small"}, txt));
+  if(battleOn()) body.append(el("div",{style:"margin-top:10px;padding:8px;border:1px dashed var(--line);border-radius:8px"},
+    el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"}, "⚔ Mid-fight: a Precision Skill Check"),
+    cbRow(atkCb, "Attacked this round or last — roll Focus DC 16 first (−1 on a fail, −1 more per 4 it misses by)"),
+    cbRow(hitCb, "Hit by a damaging attack this round or last (−2)"),
+    el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;margin:4px 0"}, "Injuries taken this round or last:", injIn, "(−2 each)")));
+  const roll = () => {
+    const c = cands[+who.value] || cands[0], o = c.o, r = rankOf(o, k), n = rankDice(r), m = doorSkillMod(o, k);
+    const dice = Array.from({ length:Math.max(1, n) }, doorD6), sum = dice.reduce((a, b) => a + b, 0);
+    let pen = 0; const notes = [];
+    if(battleOn()){
+      if(atkCb.checked){
+        const fr = rankOf(o, "focus"), fd = Array.from({ length:Math.max(1, rankDice(fr)) }, doorD6);
+        const ft = fd.reduce((a, b) => a + b, 0) + doorSkillMod(o, "focus");
+        if(ft >= 16) notes.push(`Focus ${ft} vs DC 16 — steady hands`);
+        else { const p = 1 + Math.floor((16 - ft)/4); pen += p; notes.push(`Focus ${ft} vs DC 16 — shaking (−${p})`); }
+      }
+      if(hitCb.checked){ pen += 2; notes.push("hit by a damaging attack (−2)"); }
+      const inj = Math.max(0, parseInt(injIn.value) || 0);
+      if(inj){ pen += 2*inj; notes.push(`${inj} Injur${inj === 1 ? "y" : "ies"} (−${2*inj})`); }
+    }
+    const total = sum + m - pen, dc = Math.max(0, Math.round(+token.lockDC || 13)), ok = total >= dc;
+    if(ok){ token.locked = false; mapTokensSave(); renderMap(); }
+    logRoll({ kind:"skill", label:`${sLbl} — pick the lock on ${token.label || "a door"}`, who:c.name,
+      headline:`\u{1F3B2} ${total} ${ok ? "\u{1F513} picked" : "\u{1F512} held"}`,
+      lines:[`${n}d6${modTxt(m)} → [${dice.join(", ")}] = ${sum + m}`, notes.join(" · "), pen ? `−${pen} → ${total}` : ""] });
+    const res = el("div",{},
+      el("div",{style:"font-size:30px;font-weight:800;text-align:center;margin:4px 0"}, String(total)),
+      el("div",{class:"small muted",style:"text-align:center"}, `${n}d6${modTxt(m)}` + (pen ? ` −${pen}` : "")),
+      el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;justify-content:center;margin-top:10px"},
+        ...dice.map(d => el("span",{class:"kv",style:"font-weight:800"}, String(d)))),
+      ...notes.map(t => el("div",{class:"small muted",style:"text-align:center;margin-top:4px"}, t)),
+      el("div",{style:"text-align:center;font-weight:800;margin-top:12px;font-size:16px;color:" + (ok ? "var(--good,#3ecf5f)" : "var(--bad)")},
+        ok ? "\u{1F513} Click — the lock gives." : "\u{1F512} The lock holds."),
+      cloud.isGM ? el("div",{class:"small muted",style:"text-align:center;margin-top:2px"}, `vs DC ${dc}`) : "");
+    modal({ title:`\u{1F5DD} ${sLbl}`, bodyNode:res, footNodes:[
+      ok ? el("button",{class:"btn-secondary",onclick:() => { closeModal(); doorToggle(token, map); }}, "\u{1F6AA} Open it")
+         : el("button",{class:"btn-secondary",onclick:() => { closeModal(); openDoorPick(token, map); }}, "\u{1F501} Try again"),
+      el("button",{class:"btn-primary",onclick:closeModal}, "OK") ]});
+  };
+  modal({ title:`\u{1F5DD} Pick the lock`, bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal}, "Cancel"),
+    el("button",{class:"btn-primary",onclick:roll}, `\u{1F3B2} Roll ${sLbl}`) ]});
+}
+/* Tap a door. Everyone gets its state and Open / Close / Pick; the GM also gets the whole build:
+   art and fit, toughness, the Type chart, the lock, and a manual damage box. */
+function openDoorMenu(token, map){
+  const gm = cloud.isGM, px = map.gridSize;
+  const wrap = el("div",{});
+  const top = el("div",{});
+  wrap.append(top);
+  const save = () => { mapTokensSave(); renderMap(); drawTop(); };
+  const drawTop = () => {
+    top.innerHTML = "";
+    const i = tokenHp(token);
+    top.append(
+      el("div",{style:"display:flex;justify-content:center;margin-bottom:8px"},
+        el("img",{src:doorImgSrc(token),alt:"",style:"height:96px;image-rendering:pixelated"
+          + (doorBroken(token) ? ";filter:grayscale(1);opacity:.5" : token.open ? ";opacity:.45" : "")})),
+      el("div",{style:"text-align:center;font-weight:800;margin-bottom:2px"}, doorStateLine(token)),
+      el("div",{class:"small muted",style:"text-align:center;margin-bottom:10px"},
+        gm ? `${i.cur} / ${i.max} HP · Def ${token.def ?? 15} · Sp.Def ${token.spdef ?? 15} · DR ${token.dr || 0}`
+             + ((token.types || []).length ? ` · ${token.types.join("/")}` : " · Typeless")
+           : doorCondition(token)));
+    const acts = el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:6px"});
+    if(!doorBroken(token)){
+      if(!token.locked || token.open || gm)
+        acts.append(el("button",{class:"btn-primary",onclick:() => { if(doorToggle(token, map)) drawTop(); }},
+          token.open ? "\u{1F6AA} Close" : "\u{1F6AA} Open"));
+      if(token.locked && !token.open)
+        acts.append(el("button",{class:gm ? "btn-secondary" : "btn-primary",onclick:() => { closeModal(); openDoorPick(token, map); }},
+          `\u{1F5DD} Pick the lock (${doorSkillLabel(token)})`));
+      if(gm) acts.append(el("button",{class:"btn-secondary" + (token.locked ? " on" : ""),
+        onclick:() => { token.locked = !token.locked; if(token.locked) token.open = false; mapTokensSave(); doorAfterChange(map); drawTop(); }},
+        token.locked ? "\u{1F513} Unlock" : "\u{1F512} Lock"));
+    }
+    if(gm && i.cur < i.max) acts.append(el("button",{class:"btn-secondary",
+      onclick:async () => { await setTokenHP(token, i.max, { raw:true }); drawTop(); }}, doorBroken(token) ? "\u{1F527} Rebuild" : "\u{1F527} Repair"));
+    top.append(acts);
+    if(!gm) top.append(el("div",{class:"small muted",style:"text-align:center;margin-top:6px"},
+      doorBroken(token) ? "Nothing left but a bent frame — walk right through."
+      : "\u{1F4A5} Rather smash it? Attack it like any target — roll a Move or a Struggle, and the GM applies the hit to this door."));
+  };
+  drawTop();
+  if(!gm){
+    modal({ title:token.label || "Door", bodyNode:wrap, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")] });
+    return;
+  }
+  const sec = txt => el("div",{class:"small muted",style:"font-weight:700;margin-top:16px;margin-bottom:4px"}, txt);
+  const numIn = (val, w) => el("input",{type:"number",value:val,style:`width:${w || 64}px`});
+  const lbl = (txt, node) => el("label",{class:"small",style:"display:inline-flex;gap:4px;align-items:center;margin-right:10px"}, txt, node);
+
+  const nm = el("input",{type:"text",value:token.label || "Door"});
+  nm.addEventListener("change", () => { token.label = nm.value.trim() || "Door"; save(); });
+  wrap.append(el("label",{class:"field",style:"margin-top:10px"}, el("span",{},"Name"), nm));
+
+  // ---- art & fit ----
+  wrap.append(sec("\u{1F3A8} Picture & fit"));
+  const artRow = el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"});
+  const artBtn = (src, title, on, pick) => el("button",{class:"btn-secondary" + (on ? " on" : ""),title,
+    style:"padding:4px;display:flex;align-items:center;gap:6px", onclick:pick},
+    el("img",{src,alt:"",style:"height:36px;image-rendering:pixelated"}), el("span",{class:"small"}, title));
+  const drawArt = () => {
+    artRow.innerHTML = "";
+    DOOR_ART.forEach(a => artRow.append(artBtn(a.src, a.name, !token.doorImg && (token.doorArt || "bars") === a.key, () => {
+      token.doorArt = a.key; delete token.doorImg; token.doorW = a.w; token.doorH = a.h; token.doorSee = a.see;
+      seeCb.checked = a.see; drawArt(); drawFit(); save(); })));
+    // small pictures already on this map (the GM's own door art, uploaded with ＋ Add image)
+    const seen = new Set();
+    (map.images || []).filter(im => im.src && (im.w || 0) <= px*4 && (im.h || 0) <= px*4).forEach(im => {
+      if(seen.has(im.src)) return; seen.add(im.src);
+      artRow.append(artBtn(im.src, "From this map", token.doorImg === im.src, () => {
+        token.doorImg = im.src; token.doorW = (im.w || px)/px; token.doorH = (im.h || px)/px; drawArt(); drawFit(); save(); }));
+    });
+    if(token.doorImg && !seen.has(token.doorImg)) artRow.append(artBtn(token.doorImg, "Its own picture", true, () => {}));
+  };
+  const fit = el("div",{});
+  const drawFit = () => {
+    fit.innerHTML = "";
+    const d = doorDims(token);
+    const wIn = numIn(Math.round(d.w*px), 60), hIn = numIn(Math.round(d.h*px), 60);
+    wIn.addEventListener("change", () => { const v = parseInt(wIn.value); if(v > 0){ token.doorW = v/px; save(); drawFit(); } });
+    hIn.addEventListener("change", () => { const v = parseInt(hIn.value); if(v > 0){ token.doorH = v/px; save(); drawFit(); } });
+    const nudge = (dx, dy) => () => { token.doorOX = Math.round(((+token.doorOX || 0) + dx/px)*px)/px;
+      token.doorOY = Math.round(((+token.doorOY || 0) + dy/px)*px)/px; save(); drawFit(); };
+    fit.append(
+      el("div",{style:"margin-bottom:6px"}, lbl("Width", wIn), lbl("Height", hIn), el("span",{class:"small muted"},"px")),
+      el("div",{class:"tk-menu-row",style:"gap:4px;align-items:center;flex-wrap:wrap"},
+        el("span",{class:"small muted"},"Nudge 1px:"),
+        el("button",{class:"btn-secondary",style:"padding:2px 10px",onclick:nudge(-1,0)},"←"),
+        el("button",{class:"btn-secondary",style:"padding:2px 10px",onclick:nudge(0,-1)},"↑"),
+        el("button",{class:"btn-secondary",style:"padding:2px 10px",onclick:nudge(0,1)},"↓"),
+        el("button",{class:"btn-secondary",style:"padding:2px 10px",onclick:nudge(1,0)},"→"),
+        el("span",{class:"small",style:"min-width:110px"}, `x ${Math.round(d.ox*px)}px, y ${Math.round(d.oy*px)}px`),
+        el("button",{class:"btn-secondary",style:"padding:2px 10px",title:"back to standing on the bottom of its square",
+          onclick:() => { token.doorOX = 0; token.doorOY = 0; save(); drawFit(); }},"↺")),
+      el("div",{class:"small muted",style:"margin-top:4px"},
+        "The picture stands on the bottom edge of the door's square and overhangs upward — that's how 32×48 door art sits in a one-square doorway. Drag the door square by square; nudge only if your art is cut differently."));
+  };
+  const seeCb = el("input",{type:"checkbox"}); seeCb.checked = doorSeeThrough(token);
+  seeCb.addEventListener("change", () => { token.doorSee = seeCb.checked; mapTokensSave(); doorAfterChange(map); });
+  drawArt(); drawFit();
+  wrap.append(artRow, fit,
+    el("label",{style:"display:flex;gap:8px;align-items:center;margin-top:8px;cursor:pointer"}, seeCb,
+      el("span",{class:"small"},"See-through (bars) — shut, it still stops a step but not a line of sight")),
+    el("button",{class:"btn-secondary",style:"margin-top:8px",onclick:() => {
+      const others = mapDoors(map).filter(t => t !== token);
+      others.forEach(t => ["doorArt","doorImg","doorW","doorH","doorOX","doorOY","doorSee"].forEach(k => {
+        if(token[k] === undefined) delete t[k]; else t[k] = deepClone(token[k]); }));
+      mapTokensSave(); doorAfterChange(map);
+      toast(`\u{1F6AA} Picture & fit copied to ${others.length} other door${others.length === 1 ? "" : "s"}`); }},
+      "Copy this picture & fit to every door on this map"));
+
+  // ---- toughness ----
+  wrap.append(sec("\u{1F6E1} Toughness"));
+  const tough = el("div",{});
+  const drawTough = () => {
+    tough.innerHTML = "";
+    const presets = el("div",{style:"display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"});
+    DOOR_PRESETS.forEach(p => presets.append(el("button",{class:"btn-secondary",
+      title:`${p.hp} HP, Def ${p.def}, Sp.Def ${p.spdef}, DR ${p.dr}` + (p.types.length ? `, ${p.types.join("/")}` : ", Typeless"),
+      onclick:() => { const wasFull = tokenHp(token).cur >= tokenHp(token).max;
+        Object.assign(token, doorPresetFields(p)); if(wasFull || token.hp > token.maxHp) token.hp = token.maxHp;
+        save(); drawTough(); }}, p.name)));
+    const hpIn = numIn(doorMaxHP(token)), defIn = numIn(token.def ?? 15), sdIn = numIn(token.spdef ?? 15), drIn = numIn(token.dr || 0);
+    hpIn.addEventListener("change", () => { const v = parseInt(hpIn.value); if(v > 0){ const full = tokenHp(token).cur >= tokenHp(token).max;
+      token.maxHp = v; if(full || token.hp > v) token.hp = v; save(); } });
+    defIn.addEventListener("change", () => { token.def = Math.max(0, parseInt(defIn.value) || 0); save(); });
+    sdIn.addEventListener("change", () => { token.spdef = Math.max(0, parseInt(sdIn.value) || 0); save(); });
+    drIn.addEventListener("change", () => { token.dr = Math.max(0, parseInt(drIn.value) || 0); save(); });
+    const typeSel = idx => { const s = el("select");
+      s.append(el("option",{value:"",selected:!(token.types || [])[idx]}, idx ? "— no 2nd Type —" : "— Typeless —"));
+      TYPES.forEach(ty => s.append(el("option",{value:ty,selected:(token.types || [])[idx] === ty}, ty)));
+      s.addEventListener("change", () => { const t2 = (token.types || []).slice(); t2[idx] = s.value;
+        token.types = t2.filter(Boolean); save(); drawTough(); });
+      return s; };
+    tough.append(presets,
+      el("div",{style:"margin-bottom:6px"}, lbl("Max HP", hpIn), lbl("Def", defIn), lbl("Sp.Def", sdIn), lbl("DR", drIn)),
+      el("div",{style:"margin-bottom:6px"}, lbl("Type", typeSel(0)), typeSel(1)),
+      el("div",{class:"small muted",style:"margin-bottom:6px"},
+        "A door has no Evasion — any attack that meets its AC hits. Defense/Sp.Def and DR come off every hit, and its Type(s) read the normal chart (Steel resists most things and is immune to Poison)."));
+    const grid = el("div",{style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 10px;margin-top:6px"});
+    TYPES.forEach(ty => {
+      const cur = doorResist(token, ty), s = el("select",{style:"font-size:12px"});
+      DOOR_RESIST_OPTS.forEach(([v, t]) => s.append(el("option",{value:v,selected:String(cur === "immune" ? "immune" : (cur || "")) === v}, t)));
+      const mult = el("span",{class:"small muted",style:"min-width:34px;text-align:right"}, "×" + doorMultFor(token, ty));
+      s.addEventListener("change", () => { token.resist = Object.assign({}, token.resist || {});
+        if(!s.value) delete token.resist[ty]; else token.resist[ty] = s.value === "immune" ? "immune" : +s.value;
+        mult.textContent = "×" + doorMultFor(token, ty); mapTokensSave(); });
+      grid.append(el("label",{style:"display:flex;gap:4px;align-items:center"}, el("span",{html:typeBadge(ty),style:"flex:1"}), s, mult));
+    });
+    tough.append(el("details",{}, el("summary",{class:"small",style:"cursor:pointer;font-weight:700"},"Type matchups — override any single Type"), grid));
+  };
+  drawTough();
+  wrap.append(tough);
+
+  // ---- the lock ----
+  wrap.append(sec("\u{1F512} Lock"));
+  const dcIn = numIn(Math.round(+token.lockDC || 13));
+  dcIn.addEventListener("change", () => { token.lockDC = Math.max(0, parseInt(dcIn.value) || 0); mapTokensSave(); });
+  const skSel = el("select");
+  SKILLS.forEach(([k, l]) => skSel.append(el("option",{value:k,selected:(token.pickSkill || "stealth") === k}, l)));
+  skSel.addEventListener("change", () => { token.pickSkill = skSel.value; save(); });
+  const dcChips = el("span",{style:"display:inline-flex;gap:4px;flex-wrap:wrap"});
+  DOOR_LOCK_DCS.forEach(([n, v]) => dcChips.append(el("button",{class:"btn-secondary",style:"padding:2px 8px",title:`Core p.465: an ${n} check`,
+    onclick:() => { token.lockDC = v; dcIn.value = v; mapTokensSave(); }}, `${n} ${v}`)));
+  wrap.append(el("div",{style:"margin-bottom:6px"}, lbl("DC", dcIn), dcChips),
+    el("div",{}, lbl("Picked with", skSel)),
+    el("div",{class:"small muted",style:"margin-top:4px"},
+      "Stealth picks a lock (Core p.39); use Technology Ed. for an electronic one (p.45). Players never see the DC — only whether it gave."));
+
+  // ---- a quick manual hit, same Core steps as 🎯 Apply ----
+  wrap.append(sec("⚔ Apply an attack to the door"));
+  const dmgIn = el("input",{type:"number",placeholder:"Damage",style:"width:88px"});
+  const tSel = el("select");
+  tSel.append(el("option",{value:"Typeless"},"Typeless"));
+  TYPES.forEach(ty => tSel.append(el("option",{value:ty}, ty)));
+  const cSel = el("select"); cSel.append(el("option",{value:"phys"},"Physical"), el("option",{value:"spec"},"Special"));
+  const atkOut = el("div",{class:"small",style:"margin-top:6px"});
+  wrap.append(el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;align-items:center"},
+    dmgIn, tSel, cSel, el("button",{class:"btn-primary",onclick:async () => {
+      const dmg = parseInt(dmgIn.value);
+      if(isNaN(dmg)){ atkOut.textContent = "Enter a damage number."; return; }
+      const br = tokenDamageBreakdown(token, { dmg, type:tSel.value, physical:cSel.value === "phys" });
+      pushHitUndo(`${dmg} ${tSel.value}`, [snapHitTarget(token)]);
+      const before = await applyTokenDamage(token, br);
+      atkOut.innerHTML = damageResultHTML(dmg, tSel.value, br, before); drawTop(); }}, "Apply")), atkOut);
+
+  modal({ title:"\u{1F6AA} " + (token.label || "Door"), bodyNode:wrap, footNodes:[
+    el("button",{class:"btn-secondary danger",onclick:() => { closeModal(); removeToken(token, map); }}, "\u{1F5D1} Remove"),
+    el("button",{class:"btn-secondary",onclick:closeModal}, "Close") ]});
+}
 /* quarter-turns clockwise from East — the whole rotation math is differences of these */
 const BOAT_ANGLE = { E:0, S:1, W:2, N:3 };
 const BOAT_STEP  = { N:[0,-1], E:[1,0], S:[0,1], W:[-1,0] };
@@ -54310,6 +54839,11 @@ function mapDrawOrder(tokens){
 }
 function tokenRenderBox(map, token, originX=0, originY=0, depth=0){
   const px = map.gridSize;
+  if(isDoorToken(token)){
+    const d = doorDims(token), f = doorFootprint(token);
+    return { left:(token.x + (f.w - d.w)/2 + d.ox)*px + originX, top:(token.y + f.h - d.h + d.oy)*px + originY,
+             size:Math.min(f.w, f.h)*px, w:d.w*px, h:d.h*px, rider:false };
+  }
   // A boat is the one token that isn't square, so the box carries w/h as well as size; for
   // everything else w===h===size, and callers can just read w/h without caring which it is.
   const bd = isBoatToken(token) ? boatDims(token) : null;
@@ -54341,6 +54875,7 @@ function mapTokenNode(token, map, originX=0, originY=0){
   const isBoat = isBoatToken(token);
   const isHaz = isHazardToken(token);
   const isZone = isZoneToken(token);
+  const isDoor = isDoorToken(token);
   // A Massive School is water, not a creature: the shoal is the floor everything else stands on,
   // so it drops to the hull layer and is drawn before the hulls (see mapDrawOrder) to sit under
   // those too. Nothing on the board is ever painted underneath it.
@@ -54354,9 +54889,9 @@ function mapTokenNode(token, map, originX=0, originY=0){
   const isTrainerTok = info.kind==="trainer" || info.kind==="enctrainer";
   const playerSide = info.kind==="trainer" || info.kind==="pokemon";
   // a rider is drawn perched on its mount (see tokenRenderBox) and always stacks above it
-  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":"")+(isBoat?" boat-token":"")+(isHaz?" hazard-token":"")+(isZone?" zone-token":"")+(isNoteToken(token)?" note-token":"")+(shinyTok?" shiny":""),
+  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":"")+(isBoat?" boat-token":"")+(isHaz?" hazard-token":"")+(isZone?" zone-token":"")+(isDoor?" door-token"+(token.open?" door-open":"")+(doorBroken(token)?" door-broken":""):"")+(isNoteToken(token)?" note-token":"")+(shinyTok?" shiny":""),
     // a hull sits at z-index 0, below every creature, so the crew is drawn standing on the deck
-    style:`left:${box.left}px;top:${box.top}px;width:${box.w}px;height:${box.h}px;z-index:${isNoteToken(token)?6:riding?4:isTrainerTok?2:isZone?0:(isBoat||isHaz||isShoal)?0:1}`
+    style:`left:${box.left}px;top:${box.top}px;width:${box.w}px;height:${box.h}px;z-index:${isNoteToken(token)?6:riding?4:isTrainerTok?2:isZone?0:(isBoat||isHaz||isShoal||isDoor)?0:1}`
       +`;--tku:${Math.round(Math.max(0.5, Math.min(1.6, map.gridSize/32))*100)/100}`
       +(token.gmHidden?";opacity:0.55;outline:2px dashed #f5a623;outline-offset:2px":"")
       +(factionColor?`;border-color:${factionColor}`:"")});
@@ -54393,7 +54928,7 @@ function mapTokenNode(token, map, originX=0, originY=0){
     node.append(el("div",{class:"tk-name"}, (token.gmHidden?"🙈 ":"") + info.name
       + (info.unlinked?" ⚠":"")));
   // Player-side tokens (and the boat) rely on the HP bar alone, no numeric readout; enemies/standalone still show it.
-  if(hpVisible && !playerSide && info.kind!=="boat" && info.kind!=="zone" && detail>=2){
+  if(hpVisible && !playerSide && info.kind!=="boat" && info.kind!=="zone" && info.kind!=="door" && detail>=2){
     const thp = tempHPOf(info.obj);
     node.append(el("div",{class:"tk-hpnum"+(thp?" has-temp":"")},
       info.unlinked ? "⚠ unlinked" : `${info.cur}/${info.max}` + (thp?` +${thp}`:"")));
@@ -54429,6 +54964,9 @@ function mapTokenNode(token, map, originX=0, originY=0){
       carrying>1?`🐎${carrying}`:"🐎"));
   if(token.altitude && !isShopToken(token) && detail>=2)
     node.append(el("div",{class:"tk-altitude",title:"height off the ground"}, `▲ ${token.altitude}m`));
+  // the GM's reminder of which shut doors are locked (players find out by trying the handle)
+  if(isDoor && cloud.isGM && token.locked && doorBlocks(token) && detail>=1)
+    node.append(el("div",{class:"tk-doorlock",title:"Locked"},"\u{1F512}"));
   paintDeadMark(node, token, boxPx);        // Dead: blacked-out token + skull (see .map-token.dead)
   return node;
 }
@@ -54458,7 +54996,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
     // not a combatant taking a Shift, so dragging its door never spends anyone's movement
     // A BOAT is the exception that counts OUT of combat as well: a hull has a cruising budget on
     // top of its combat one (boatMoveSpeed), so its tally runs whether or not Battle mode is on.
-    const trackMove = map.gridOn && !isShopToken(token) && !isHazardToken(token) && !isZoneToken(token) && !isNoteToken(token)
+    const trackMove = map.gridOn && !isShopToken(token) && !isHazardToken(token) && !isZoneToken(token) && !isNoteToken(token) && !isDoorToken(token)
                       && (battleOn() || isBoatToken(token));
     const liveFog = !!map.fogOn;
     const stageSize = mapStageSize(map);                      // origin needed regardless of fog, for DOM<->cell math
@@ -54499,7 +55037,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
     // just drew — e.g. to set up an ambush behind it). A wall crossing is tested as one segment from
     // the token's last valid cell to the candidate cell, so a fast drag that jumps several cells in
     // one frame still can't leap clean over a wall in between.
-    const wallGated = !cloud.isGM && map.gridOn && mapWalls(map).length;
+    const wallGated = !cloud.isGM && map.gridOn && (mapWalls(map).length || mapDoors(map).some(doorBlocks));
     /* Blocking Terrain "cannot be Shifted through" — same gate as a wall, and equally the GM's to
        ignore. Only armed when the board actually carries a zone, so an ordinary map pays nothing. */
     const zoneGated = !cloud.isGM && map.gridOn && mapTokensFor(map.id).some(isZoneToken);
@@ -54515,7 +55053,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
         if(map.gridOn){ nx = Math.round(nx/px)*px; ny = Math.round(ny/px)*px; }   // snap to cells live
         let cx = Math.round((nx-originX)/px), cy = Math.round((ny-originY)/px);
         const stepped = (cx!==c.pathX || cy!==c.pathY);
-        if(stepped && ((wallGated && wallsBlockLOS(activeWalls(map), c.pathX+0.5, c.pathY+0.5, cx+0.5, cy+0.5))
+        if(stepped && ((wallGated && wallsBlockLOS(activeWalls(map, true), c.pathX+0.5, c.pathY+0.5, cx+0.5, cy+0.5))
                        || (zoneGated && terrainAt(map, cx, cy).block))){
           // stuck at the wall (or against Blocking Terrain) — hold at the last reachable cell
           cx = c.pathX; cy = c.pathY; nx = cx*px+originX; ny = cy*px+originY;
@@ -54573,7 +55111,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
       const p = pendingPt; pendingPt = null;
       if(!p) return;
       applyDelta((p.x-startX)/scale, (p.y-startY)/scale, false);
-      if(map.gridOn && !isShopToken(token)){   // no distance readout for a shop door being repositioned
+      if(map.gridOn && !isShopToken(token) && !isDoorToken(token)){   // no distance readout for a shop door being repositioned
         if(!badge){ badge = el("div",{class:"tk-move"}); node.append(badge); }
         const n = ctx.length>1 ? `${ctx.length} tokens · ` : "";
         if(trackMove){
@@ -54721,6 +55259,7 @@ function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, so
     else if(corrosion && type === "Poison"){ mult = 0.25; abNotes.push("Corrosion: immune target takes damage as if doubly resisted"); }
     else mult = 0;
   }
+  else if(isDoorToken(token) && doorResist(token, type) === "immune" && !pierced) mult = 0;   // a door's own override
   else if(isBoatToken(token)){
     // Vehicles (house rule): always Super-Effective vs Fire/Electric/Ground, but a Levitate/Sky
     // vehicle is exempt from the Ground part. No other Type interaction — a boat carries no other
@@ -54729,7 +55268,7 @@ function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, so
     mult = (!groundExempt && VEHICLE_WEAK_TYPES.has(type)) ? 2 : 1;
   }
   else {
-    const defStep = stepAdj + deiStep + (defMods?.step?.[type] || 0);
+    const defStep = stepAdj + deiStep + (defMods?.step?.[type] || 0) + doorResistStep(token, type);
     if(furActive) furStep = -1;
     if(rogueActive) rogueStep = -1;
     const mOptsPlain = { pierceImmune: pierced, chart: chartOv };
@@ -54796,7 +55335,7 @@ function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, so
   /* The defender's Damage Reduction has to be known BEFORE the damage roll is finalised, because
      Pierce! pays +10 for the mere fact that they have some. Everything conditional on effectiveness
      (Filter+Solid Rock's flat 5, Glacial Ice) is folded in below; this is the unconditional pool. */
-  const { dr, from } = owner ? buffDR(owner, { isPhys:!!physical }) : { dr:0, from:[] };
+  const { dr, from } = owner ? buffDR(owner, { isPhys:!!physical }) : doorDR(token);   // a door brings its own flat DR
   /* ...and the same reasoning covers a Move that pays for its own Super-Effective hit
      (Electro Drift / Collision Course: "+10 to the Damage Roll"). Judged on the same `mult`. */
   const seExtra  = mult > 1 ? Math.round(seBonus || 0) : 0;
@@ -55105,7 +55644,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
   // onto — it would otherwise sit in the Enemies column offering a 1/1 HP bar to hit. A boat hull
   // is the one piece of scenery that DOES take damage, so it stays in the list.
   const tokens = mapTokensFor(map.id).filter(t=>{ const i=tokenHp(t);
-    return i.editable && !i.unlinked && i.kind!=="shop" && i.kind!=="hazard" && i.kind!=="zone"; });
+    return i.editable && !i.unlinked && i.kind!=="shop" && i.kind!=="hazard" && i.kind!=="zone" && !doorBroken(t); });
   if(!tokens.length) return null;
   const typeName = type || "Typeless";
   const wrap = el("div",{style:"margin-top:12px;border-top:1px dashed var(--line);padding-top:10px"});
@@ -55720,6 +56259,7 @@ function nameHideToggle(token){
 function openTokenMenu(token, map){
   if(isShopToken(token)) return openShopTokenMenu(token, map);
   if(isBoatToken(token)) return openBoatMenu(token, map);
+  if(isDoorToken(token)) return openDoorMenu(token, map);
   if(isGardenToken(token)) return openGardenTokenMenu(token, map);   // before hazards — it rides that path
   if(isHazardToken(token)) return openHazardMenu(token, map);
   if(isZoneToken(token)) return openZoneMenu(token, map);
@@ -57700,6 +58240,8 @@ function renderMap(){
         mapMountActive(map) ? null : mountBtn,
         el("button",{class:"btn-secondary",onclick:()=>addBoat(map),
           title:"Drop a boat on the board. Steer it with the 🚤 arrows — it turns to face where it's going and everything standing on the deck sails with it."},"🚤 Boat"),
+        el("button",{class:"btn-secondary",onclick:()=>addDoor(map),
+          title:"Drop a door: HP, Defense, DR and a lock players can pick (Stealth) or smash. Its picture stands in its doorway square, so it lines up with the gaps in the art. Each new door copies the last one."},"\u{1F6AA} Door"),
         el("button",{class:"btn-secondary",onclick:()=>openAddHazard(map),
           title:"Drop a visual hazard marker (Stealth Rock, Spikes, fire...) on the board -- cosmetic only, no automatic effect."},"☠ Hazard"),
         el("button",{class:"btn-secondary",onclick:()=>openAddZone(map),
@@ -57922,6 +58464,9 @@ function renderMap(){
             onclick:e=>{ e.stopPropagation();
               if(im.tiles && !confirm("Slice this image again? The old pieces are deleted and rebuilt.")) return;
               tileMapImage(map, im); }}, im.tiles?"🧩✓":"🧩"),
+        ((im.w||0) <= map.gridSize*4 && (im.h||0) <= map.gridSize*4)
+          ? el("button",{title:"Turn this picture into a door — HP, a lock, and it snaps into its doorway",
+              onclick:e=>{ e.stopPropagation(); imageToDoor(map, im); }},"\u{1F6AA}") : null,
         el("button",{title:"delete",class:"danger",onclick:e=>{e.stopPropagation();if(confirm("Remove this image?"))deleteMapImage(map,im);}},"🗑")));
       overlay.append(el("div",{class:"map-img-handle",title:"drag to resize"}));
       const handle = overlay.querySelector(".map-img-handle");

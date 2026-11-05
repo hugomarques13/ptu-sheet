@@ -856,6 +856,15 @@ body.map-mode .view{animation:none}
 .map-token.boat-token .tk-img{border:none; background:none; border-radius:0; object-fit:fill;
   image-rendering:pixelated; filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}
 .map-token.boat-token.selected{outline:3px solid var(--accent); outline-offset:0}
+/* ---- doors: bare tile art standing in its doorway square (overhanging the one above), drawn under
+   whoever walks through it. Open = a faint ghost you can still tap to shut; smashed = grey rubble. ---- */
+.map-token.door-token{border:none !important; background:none; box-shadow:none; border-radius:0; overflow:visible}
+.map-token.door-token .tk-img{border:none; background:none; border-radius:0; object-fit:fill; image-rendering:pixelated}
+.map-token.door-token.selected{outline:3px solid var(--accent); outline-offset:0}
+.map-token.door-token.door-open .tk-img{opacity:.28}
+.map-token.door-token.door-broken .tk-img{opacity:.4; filter:grayscale(1) brightness(.7); transform:translateY(30%) scaleY(.4) rotate(-6deg)}
+.map-token.door-token .tk-doorlock{position:absolute; right:-7px; top:-7px; font-size:calc(10px * var(--tku,1)); line-height:1;
+  background:var(--panel); border:1px solid var(--line); border-radius:50%; padding:2px; pointer-events:none}
 /* the floating helm — arrow controls that sail the selected boat (bottom-left, opposite the AoE panel) */
 .boat-panel{position:absolute; left:12px; bottom:12px; z-index:6; background:var(--panel); border:1px solid var(--line);
   border-radius:10px; padding:10px; box-shadow:0 3px 12px rgba(0,0,0,.4); width:168px}
@@ -1106,6 +1115,14 @@ body.map-mode .view{animation:none}
 .phone-scope{display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; margin:2px 0 2px}
 .phone-scope button{border:0; background:var(--panel); color:var(--muted); padding:5px 11px; font:inherit; font-size:12px; font-weight:700; cursor:pointer}
 .phone-scope button.on{background:var(--accent); color:var(--accent-ink)}
+/* the two kinds of call: 🌐 Public / 🔒 Private (callKindTiles, ringPlayerFrom) */
+.phone-call-pick{margin-top:14px; text-align:left}
+.call-kind{align-items:flex-start}
+.call-kind.priv{border-style:dashed}
+.call-kind-ico{font-size:22px; line-height:1.15; flex:none; width:30px; text-align:center}
+.call-kind-txt{display:flex; flex-direction:column; gap:2px; min-width:0}
+.call-kind-txt .small{font-weight:400}
+.call-kind-bar{display:flex; flex-direction:column; align-items:flex-start; gap:4px; margin-bottom:12px}
 #btnPhone.phone-ringing{animation:phoneShake .5s ease-in-out infinite; color:#2ecc71}
 @keyframes phoneShake{0%,100%{transform:rotate(0)} 25%{transform:rotate(-14deg)} 75%{transform:rotate(14deg)}}
 
@@ -1140,6 +1157,8 @@ body.map-mode .view{animation:none}
   width:clamp(76px, 21vw, 150px); text-align:center; white-space:normal; overflow-wrap:break-word}
 .codec-mid{display:flex; flex-direction:column; align-items:center; gap:8px; min-width:0}
 .codec-status{font-size:11px; font-weight:900; letter-spacing:.2em; text-align:center}
+.codec-kind{font-size:10px; font-weight:900; letter-spacing:.2em; border:1px solid var(--cg-dim); border-radius:3px; padding:1px 8px; white-space:nowrap}
+.codec-kind.priv{color:#ffd27a; border-color:#a8843a; text-shadow:0 0 8px rgba(255,200,90,.35)}
 .codec.ringing .codec-status{animation:codecBlink .7s steps(2) infinite}
 @keyframes codecBlink{50%{opacity:.15}}
 .codec-tune{display:flex; align-items:center; gap:10px; font-size:14px}
