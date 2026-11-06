@@ -2516,7 +2516,7 @@ function clearTypeMods(o){ removeTypeMod(o, x => x.dur !== "manual"); }
    turn" ones. Returns what ended, for the toast. */
 function tickTypeModTurns(map, endingId, endingSeq, startingId, newSeq){
   const out = [];
-  const toks = mapTokensFor(map.id);
+  const toks = combatTokens(map);
   const find = id => { const tok = toks.find(t => t.id === id); const L = tok && tok.link ? tokenLinked(tok) : null;
                        return (L && L.obj && Array.isArray(L.obj.typeMods) && L.obj.typeMods.length) ? { tok, o:L.obj } : null; };
   const end = find(endingId);
@@ -17865,36 +17865,6 @@ function ballModifier(name, c){
   }
   return no("no Capture Modifier printed");
 }
-/* the little form inside the throw: pick the Ball and what is known about the target, fill the bonus box */
-function ballAssistNode(t, ballIn){
-  const balls = (typeof bagPokeBalls === "function" ? bagPokeBalls(t) : []).map(b => b.name);
-  const all = [...new Set([...(D.items?.gear || []), ...(D.items?.held || [])].map(i => i.name).filter(n => /\bBall$/.test(n) && !/^(Iron|Smoke|Fabulous|Learning|Cherish|Park|Sport|Safari)/.test(n)))];
-  const names = balls.length ? balls : all;
-  const sel = el("select", { style:"padding:4px" }, [...new Set([...names, ...all])].map(n => el("option", { value:n }, n)));
-  const spIn = el("input", { type:"text", list:"ball-species-list", placeholder:"target species", style:"width:130px" });
-  const lvIn = el("input", { type:"number", min:1, placeholder:"Lv", style:"width:56px" });
-  const rdIn = el("input", { type:"number", min:0, value:0, style:"width:50px", title:"rounds since the encounter began" });
-  const flag = (label) => { const cb = el("input", { type:"checkbox" }); return { cb, node:el("label", { class:"small", style:"display:flex;gap:4px;align-items:center;cursor:pointer" }, cb, label) }; };
-  const baited = flag("baited"), water = flag("underwater/ground"), dark = flag("dark"), owned = flag("own species"), love = flag("Love Ball match");
-  const out = el("div", { class:"small", style:"margin-top:4px" });
-  let dl = document.getElementById("ball-species-list");
-  if(!dl){ dl = el("datalist", { id:"ball-species-list" }); (D.species || []).slice(0, 2000).forEach(s => dl.append(el("option", { value:s.name }))); document.body.append(dl); }
-  const active = (typeof researchMons === "function" ? researchMons(t) : []).filter(p => p.onTeam !== false)[0];
-  const run = () => {
-    const sp = spIn.value.trim() ? getSpecies(spIn.value.trim()) : null;
-    let wx = ""; try{ wx = activeWeather().key; }catch(e){}
-    const r = ballModifier(sel.value, { sp, level:parseInt(lvIn.value) || 0, activeLevel:active ? active.level : 0, weather:wx,
-      rounds:parseInt(rdIn.value) || 0, baited:baited.cb.checked, water:water.cb.checked, dark:dark.cb.checked, owned:owned.cb.checked, love:love.cb.checked });
-    ballIn.value = r.mod; out.textContent = `${sel.value}: ${r.mod > 0 ? "−" + r.mod : r.mod < 0 ? "+" + Math.abs(r.mod) : "no bonus"} — ${r.why}`;
-  };
-  [sel, spIn, lvIn, rdIn].forEach(n => n.addEventListener("input", run));
-  [baited, water, dark, owned, love].forEach(f => f.cb.addEventListener("change", run));
-  run();
-  return el("div", { style:"margin:6px 0;padding:6px 8px;border:1px dashed var(--line);border-radius:8px" },
-    el("div", { class:"small muted", style:"font-weight:700;margin-bottom:4px" }, "\u{1F3AF} Which Ball? (fills the bonus below)"),
-    el("div", { style:"display:flex;gap:6px;flex-wrap:wrap;align-items:center" }, sel, spIn, lvIn, el("span", { class:"small" }, "rounds"), rdIn),
-    el("div", { style:"display:flex;gap:10px;flex-wrap:wrap;margin-top:4px" }, baited.node, water.node, dark.node, owned.node, love.node), out);
-}
 function openThrowPokeball(t){
   t = t || activeChar()?.trainer;
   if(!t){ toast("No Trainer on this sheet"); return; }
@@ -17980,8 +17950,9 @@ function openThrowPokeball(t){
     save();
     showCap(d100, c, false);
   };
+  /* No "which Ball / target species / Level" form here any more: the throw is just the roll. The
+     thrower types a Ball bonus if they have one; everything that depends on the target is the GM's. */
   cap.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:6px"},"🎲 It hit? Roll to catch"),
-    ballAssistNode(t, ballIn),
     el("div",{class:"tk-menu-row",style:"gap:8px;align-items:center;flex-wrap:wrap"},
       el("span",{class:"small"},`Trainer Lv ${t.level || 1} · Ball bonus`), ballIn,
       el("button",{class:"btn-primary",onclick:doCapture},"🎲 Capture Roll")),
@@ -23997,7 +23968,7 @@ function pendingTag(o){
 function tickPendingTurns(map, endingId, endingSeq, startingId, newSeq){
   const out = [];
   const seen = new Set();
-  mapTokensFor(map.id).forEach(tok => {
+  combatTokens(map).forEach(tok => {
     const L = tok.link ? tokenLinked(tok) : null, o = L && L.obj;
     if(!o || seen.has(o) || !pendingList(o).length) return;
     seen.add(o);
@@ -24258,7 +24229,7 @@ function fireAbilityHooks(when, o, ctx){
 /* what the Map's \u25b6 calls: the creature whose turn just ended, then the one whose turn is starting */
 function runAbilityTurnHooks(map, endingId, startingTok){
   const out = [];
-  const endTok = mapTokensFor(map.id).find(t => t.id === endingId);
+  const endTok = combatTokens(map).find(t => t.id === endingId);
   [[ "turnEnd", endTok ], [ "turnStart", startingTok ]].forEach(([when, tok]) => {
     const o = tok && tok.link ? (tokenLinked(tok) || {}).obj : null;
     const lines = fireAbilityHooks(when, o, { map, token:tok });
@@ -39505,17 +39476,17 @@ mons:[
         mons:[ gbot("Patrol Bot",{nick:"Patrol Swarm", swarm:3}), gbot("Sentry Bot"), gbot("Security Bot") ] },
       { name:"The Prison", ring:0, sig:2, perFoe:6,
         note:"Decently hard — the party's last fight on its own. The town lock-up, run by a WARDEN (an Enforcer) with two\n"
-           + "Security Bots on the cell block, two Sentry Bots in the guard towers, two Patrol Bots and a ×2 Swarm in the yard.\n"
+           + "Security Bots on the cell block, two Sentry Bots watching the corridors, two Patrol Bots and a ×2 Swarm in the main hall.\n"
            + "THE CELLS: Sylvia, Nyx and Phia are each in a cell along the far wall. Opening one is a Standard Action while\n"
            + "adjacent and a DC 13 Technology Education or Athletics check — or kill the Warden and take its keycard, which\n"
-           + "opens every cell at once. THE EVIDENCE LOCKER (by the towers) holds the Rivals' Poké Balls: until somebody\n"
+           + "opens every cell at once. THE EVIDENCE LOCKER holds the Rivals' Poké Balls: until somebody\n"
            + "opens it (same check), a freed Rival fights with their own Trainer attacks only.\n"
            + "A freed Rival acts from the next round, on the party's side — place their token from the \"New Rivals\" encounter\n"
            + "and flag it as an ally. The Warden's first move is Lock-On on whoever is at a cell door.",
         mons:[ gbot("Enforcer",{nick:"The Warden"}), gbot("Security Bot",{nick:"Security Bot A"}), gbot("Security Bot",{nick:"Security Bot B"}),
-               gbot("Sentry Bot",{nick:"Tower Sentry A"}), gbot("Sentry Bot",{nick:"Tower Sentry B"}),
+               gbot("Sentry Bot",{nick:"Corridor Sentry A"}), gbot("Sentry Bot",{nick:"Corridor Sentry B"}),
                gbot("Patrol Bot",{nick:"Patrol Bot A"}), gbot("Patrol Bot",{nick:"Patrol Bot B"}),
-               gbot("Patrol Bot",{nick:"Yard Swarm", swarm:2}) ] },
+               gbot("Patrol Bot",{nick:"Cellblock Swarm", swarm:2}) ] },
       { name:"The Barricade", ring:0, sig:3, perFoe:6, allies:{ enc:"New Rivals", n:3, lv:30 },
         note:"WITH THE RIVALS. The wall of scrap in front of the Foundry gate, and the occupation's main garrison. Two Enforcers\n"
            + "command it: each Locks-On a target and the bots near it pile onto that target, so kill the Enforcers and the rest\n"
@@ -44893,11 +44864,16 @@ function allItems(){
     ...D.items.weather.map(x=>({...x,cat:"Weather"})),
   ];
 }
+/* The National Dex number in front of a Reference Pokédex name ("#0876 "), or nothing for homebrew.
+   It used to print `s.order`, which is only the species table's ALPHABETICAL index — so Indeedee
+   Female and Indeedee Male read as two different Pokémon one number apart. dexNumOfSpecies gives a
+   form, a gender split or a Mega the number its base species has. */
+function refDexNum(s){ const n = dexNumOfSpecies(s && s.name); return n ? dexNumLabel(n) + " " : ""; }
 function refSpecies(s){
   const it = el("div",{class:"refitem",style:"display:flex;gap:10px;align-items:center",onclick:()=>openRefDetail("species",s.name)});
   it.append(monSprite(s.name,false,"s-sm"));
   it.append(el("div",{style:"flex:1;min-width:0",html:
-    `<div class="r-title">#${s.order} ${esc(s.name)} ${(s.types||[]).map(typeBadge).join(" ")}</div>
+    `<div class="r-title">${refDexNum(s)}${esc(s.name)} ${(s.types||[]).map(typeBadge).join(" ")}</div>
      <div class="r-meta">HP ${s.baseStats.hp} · Atk ${s.baseStats.atk} · Def ${s.baseStats.def} · SpA ${s.baseStats.spatk} · SpD ${s.baseStats.spdef} · Spe ${s.baseStats.spd}</div>`}));
   return it;
 }
@@ -45852,7 +45828,7 @@ function speciesModal(s, mon){
   if(giftLvls.length) html += `<div class="r-meta" style="margin-top:10px">🎁 ${esc(s.giftPatron)} Gift Levels</div>
     <table class="movetable" style="margin-top:4px"><tr><th>Lv</th><th>Gift</th><th>Tier</th></tr>
     ${giftLvls.map(g=>`<tr><td>${g.level}</td><td>${esc(g.name)}</td><td>${esc(g.tier)}</td></tr>`).join("")}</table>`;
-  infoModal(`#${s.order} ${s.name}`, html);
+  infoModal(`${refDexNum(s)}${s.name}`, html);
 }
 
 /* ===================================================================
@@ -47101,6 +47077,9 @@ function normMapMeta(data){
     if(!Array.isArray(m.images)) m.images = (typeof m.bg==="string" && m.bg) ? [{id:uid(),src:m.bg,x:0,y:0,w:0,h:0}] : [];
     delete m.bg;
     m.images.forEach(im=>{ ["x","y","w","h"].forEach(k=>{ if(typeof im[k]!=="number") im[k]=0; }); if(!im.id) im.id=uid(); });
+    // 🎭 a picture can be a curtain: "shut" = shown while the curtains are closed, "open" = while they're open
+    m.images.forEach(im=>{ if("curtain" in im && im.curtain!=="shut" && im.curtain!=="open") delete im.curtain; });
+    if("curtainsOpen" in m && typeof m.curtainsOpen!=="boolean") delete m.curtainsOpen;
     if(typeof m.fogOn!=="boolean") m.fogOn = false;
     if(typeof m.fogRadius!=="number" || m.fogRadius<1) m.fogRadius = 3;
     if(m.fogMode!=="dynamic") m.fogMode = "persist";          // "dynamic" = sight-only fog (nothing stays explored)
@@ -47114,6 +47093,8 @@ function normMapMeta(data){
     if(typeof m.shopId!=="string") m.shopId = "";      // the shop currently open on this map ("" = none)
     if(m.arena && !(m.arena.size > 0)) delete m.arena;   // the closing arena (see paintArena)
     if(typeof m.hideName!=="boolean") m.hideName = false;   // 🙈 keep the name off every player device
+    // 🏢 the map this one stands on (FLOORS) — drop the link if that map is gone
+    if("below" in m && (typeof m.below!=="string" || !m.below || m.below===m.id || !data.maps.some(x=>x.id===m.below))) delete m.below;
   });
   // playerMapId = the map players see (seed from the old shared activeMapId for back-compat)
   const firstLive = data.maps.find(m=>!m.archived) || data.maps[0] || null;
@@ -50299,7 +50280,8 @@ function activeMap(){ const meta=activeMapMeta(); return meta.maps.find(m=>m.id=
 function currentMapForView(){
   const meta = activeMapMeta();
   if(cloud.isGM) return meta.maps.find(m=>m.id===mapGmView) || meta.maps.find(m=>m.id===meta.playerMapId) || meta.maps.find(m=>!m.archived) || null;
-  return meta.maps.find(m=>m.id===meta.playerMapId) || null;
+  const base = meta.maps.find(m=>m.id===meta.playerMapId) || null;
+  return base ? playerFloorView(base) : null;           // a building: the floor your token is on (see FLOORS)
 }
 function mapTokensFor(mapId){ return (cloud.mapTokens?.data?.byMap?.[mapId]) || []; }
 /* What a map is called *to whoever is looking at it*. The GM always sees the real name — it is how
@@ -50311,6 +50293,241 @@ function mapTokensFor(mapId){ return (cloud.mapTokens?.data?.byMap?.[mapId]) || 
 function mapDisplayName(map){
   if(!map) return "Battle map";
   return (!cloud.isGM && map.hideName) ? "Battle map" : (map.name || "Map");
+}
+
+/* ── FLOORS: maps stacked into one building ────────────────────────────────────────────────────
+   A map can name the map directly beneath it (map.below). Maps linked that way are one stack — a
+   building's floors — and three things follow from it:
+   1. Looking at an upper floor, the floor below is drawn UNDER its picture, dimmed. Upper-floor art
+      leaves its open parts see-through (the drop past a balcony rail, a stairwell), so the floor
+      below and the tokens standing on it show exactly there and nowhere else (floorUnderLayer).
+   2. Looking at a lower floor, the creatures upstairs are drawn as faint ⬆ ghosts so nobody forgets
+      who is up on the balcony (floorOverLayer; 👻 is a per-device switch).
+   3. Initiative, rounds and the turn ticks run over EVERY floor of the stack (combatTokens), so a
+      fight that spills up the stairs stays one fight.
+   A token changes floor from its menu (⬆/⬇ To …, moveTokenToFloor): it keeps its square, shifted by
+   the floors' offset, and whoever moved it follows it. A player looks at the floor their own token
+   stands on (their trainer's, first) and the floor buttons let anyone peek at the others. The links
+   ride on the maps in the shared meta row; which floor a player is looking at is theirs alone. */
+const FLOOR_MAX = 8, FLOOR_DIM = 0.35;
+function mapById(id){ return id ? (activeMapMeta().maps||[]).find(m=>m.id===id) || null : null; }
+function floorBelow(map){ const b = (map && map.below) ? mapById(map.below) : null; return (b && b.id!==map.id) ? b : null; }
+function floorAbove(map){ return map ? (activeMapMeta().maps||[]).find(m=>m.below===map.id && m.id!==map.id) || null : null; }
+/* bottom → top. Walk down to the ground floor, then back up; a loop (A on B on A) just stops. */
+function floorStack(map){
+  if(!map) return [];
+  const seen = new Set([map.id]); let bottom = map;
+  for(let i=0; i<FLOOR_MAX; i++){ const b = floorBelow(bottom); if(!b || seen.has(b.id)) break; seen.add(b.id); bottom = b; }
+  const out = [bottom], ids = new Set([bottom.id]);
+  for(let i=0; i<FLOOR_MAX; i++){ const a = floorAbove(out[out.length-1]); if(!a || ids.has(a.id)) break; ids.add(a.id); out.push(a); }
+  return out.some(m=>m.id===map.id) ? out : [map];
+}
+function inFloorStack(map){ return floorStack(map).length > 1; }
+function floorLabel(m){ return (m && m.floorName) ? m.floorName : mapDisplayName(m); }
+function floorDim(map){ return (map && typeof map.belowDim==="number") ? map.belowDim : FLOOR_DIM; }
+/* where a floor's squares sit relative to the ground floor's: an upper floor whose picture puts the
+   floor below's square (bx,by) at its own (bx+dx, by+dy) is shifted dx,dy along the stack */
+function floorShift(map){
+  let sx = 0, sy = 0, m = map; const seen = new Set();
+  while(m && !seen.has(m.id)){ seen.add(m.id); const b = floorBelow(m); if(!b) break;
+    sx += (m.belowDx|0); sy += (m.belowDy|0); m = b; }
+  return { x:sx, y:sy };
+}
+/* the square offset that carries a spot on `from` to the same spot on `to` */
+function floorDelta(from, to){ const a = floorShift(from), b = floorShift(to); return { x:b.x-a.x, y:b.y-a.y }; }
+/* everyone on every floor of the building — the combat roster. A lone map is just its own tokens. */
+function combatTokens(map){
+  if(!map) return [];
+  const st = floorStack(map);
+  return st.length > 1 ? st.flatMap(m=>mapTokensFor(m.id)) : mapTokensFor(map.id);
+}
+/* token id → the floor it stands on, for one building (the initiative list labels other floors) */
+function floorIndexOf(map){
+  const idx = new Map();
+  floorStack(map).forEach(m=>mapTokensFor(m.id).forEach(t=>idx.set(t.id, m)));
+  return idx;
+}
+/* Which floor a player is looking at. Their own token decides (their trainer's first); tapping a
+   floor button peeks at another one until that token next changes floor, then the view follows
+   it again. Per device, never synced. */
+let mapFloorPick = { base:null, id:null, tok:null };
+function ownTokenFloor(stack){
+  let best = null;
+  for(const m of stack) for(const t of mapTokensFor(m.id)){
+    if(!t.link || !t.link.sheetId || !ownsRow(cloud.byId[t.link.sheetId])) continue;
+    if(t.link.kind==="trainer") return m.id;
+    if(!best) best = m.id;
+  }
+  return best;
+}
+function playerFloorView(base){
+  const stack = floorStack(base); if(stack.length < 2) return base;
+  const tokFloor = ownTokenFloor(stack);
+  if(mapFloorPick.base !== base.id) mapFloorPick = { base:base.id, id:null, tok:tokFloor };
+  else if(mapFloorPick.tok !== tokFloor){ mapFloorPick.tok = tokFloor; mapFloorPick.id = null; }   // your token took the stairs
+  const want = mapFloorPick.id || tokFloor || base.id;
+  return stack.find(m=>m.id===want) || base;
+}
+function viewFloor(m){
+  if(!m) return;
+  if(cloud.isGM) mapGmView = m.id;
+  else {
+    const base = mapById(activeMapMeta().playerMapId);
+    if(base){ if(mapFloorPick.base !== base.id) mapFloorPick = { base:base.id, id:null, tok:ownTokenFloor(floorStack(base)) };
+              mapFloorPick.id = m.id; }
+  }
+  renderMap();
+}
+function floorGhostsOn(){ try{ return localStorage.getItem("ptu_floor_ghosts")!=="0"; }catch(e){ return true; } }
+function setFloorGhosts(on){ try{ localStorage.setItem("ptu_floor_ghosts", on?"1":"0"); }catch(e){} }
+/* the 🏢 floor buttons — top floor first, the way a lift panel reads */
+function floorSwitch(map){
+  const st = floorStack(map); if(st.length < 2) return null;
+  const here = st.findIndex(m=>m.id===map.id);
+  const box = el("div",{class:"floor-switch",
+    title:"This building's floors. Tap one to look at it — upstairs, the floor below shows through the open parts."},
+    el("span",{class:"floor-switch-lbl"},"🏢"));
+  st.slice().reverse().forEach(m=>{
+    const i = st.indexOf(m), on = i===here;
+    box.append(el("button",{class:"btn-secondary"+(on?" on":""), onclick:()=>{ if(!on) viewFloor(m); }},
+      `${on ? "●" : i>here ? "⬆" : "⬇"} ${floorLabel(m)}`));
+  });
+  if(here < st.length-1){
+    const g = floorGhostsOn();
+    box.append(el("button",{class:"btn-secondary"+(g?" on":""),
+      title: g ? "Showing who is on the floor above as faint ⬆ ghosts — tap to hide them" : "Show who is on the floor above as faint ⬆ ghosts",
+      onclick:()=>{ setFloorGhosts(!g); renderMap(); }}, "👻"));
+  }
+  return box;
+}
+/* would this viewer see token t on floor m? (visibleToken's rules, for a floor that isn't the one in view) */
+function floorTokenVisible(t, m){
+  if(isNoteToken(t) || (isZoneToken(t) && t.ghost)) return false;
+  if(t.gmHidden) return !!cloud.isGM;
+  if(cloud.isGM || !m.fogOn) return true;
+  if(t.link && ownsRow(cloud.byId[t.link.sheetId])) return true;
+  if(t.garden && ownsRow(cloud.byId[t.garden.sheetId])) return true;
+  return fogViewSet(m).has(Math.round(t.x)+","+Math.round(t.y));
+}
+/* a token from another floor, drawn as scenery: no taps, no drags, and no data-tid — the live drag
+   echo looks tokens up by that id and must keep finding the real one */
+function floorInertToken(t, m, ox, oy){
+  const node = mapTokenNode(t, m, ox, oy);
+  node.classList.add("floor-inert");
+  node.dataset.floorTid = node.dataset.tid || "";
+  delete node.dataset.tid;
+  node.style.pointerEvents = "none";
+  return node;
+}
+/* lay floor `other`'s board over this one: `d` is the square shift from other's squares to ours */
+function floorLayerBox(map, other, d, originX, originY, cls){
+  const g = map.gridSize || 32, go = other.gridSize || 32, s = g/go;
+  const os = mapStageSize(other);
+  const tx = d.x*g + originX - s*os.originX, ty = d.y*g + originY - s*os.originY;
+  return { os, wrap: el("div",{class:cls, style:`width:${os.w}px;height:${os.h}px;transform:translate(${tx}px,${ty}px) scale(${s})`}) };
+}
+/* The floor below, under this map's picture — everything on it dimmed, so it reads as further away */
+function floorUnderLayer(map, originX, originY){
+  const b = floorBelow(map); if(!b || mapImgEdit) return null;
+  const { os, wrap } = floorLayerBox(map, b, { x:map.belowDx|0, y:map.belowDy|0 }, originX, originY, "map-floor-under");
+  (b.images||[]).forEach(im=>{
+    const src = (im.lod && im.lod.src) ? im.lod.src : im.src; if(!src || !mapImageShown(b, im)) return;
+    const node = el("img",{class:"map-img", src, draggable:false, alt:"", decoding:"sync",
+      style:`left:${im.x+os.originX}px;top:${im.y+os.originY}px;`+(im.w?`width:${im.w}px;`:"")+(im.h?`height:${im.h}px;`:"")});
+    // same as the map's own art (bug #6): the stage is rasterised as one layer, so a picture that
+    // decodes after the build stays blank until something repaints — repaint once when it lands
+    if(im.id && !decodedBgIds.has(im.id) && node.decode){
+      const mark = ()=>decodedBgIds.add(im.id);
+      node.decode().then(()=>{ mark(); if(currentTab==="map" && !mapDragging && !mapPanning && !mapImgEdit) renderMap(); }).catch(mark);
+    }
+    wrap.append(node);
+  });
+  if(b.night) wrap.append(el("div",{class:"map-night",style:`width:${os.w}px;height:${os.h}px`}));
+  mapDrawOrder(mapTokensFor(b.id)).forEach(t=>{ if(floorTokenVisible(t, b)) wrap.append(floorInertToken(t, b, os.originX, os.originY)); });
+  if(b.fogOn && !cloud.isGM){ const cv = el("canvas",{class:"map-fog"}); drawFog(cv, b, os.w, os.h, os.originX, os.originY); wrap.append(cv); }
+  wrap.append(el("div",{class:"map-floor-dim", style:`width:${os.w}px;height:${os.h}px;opacity:${floorDim(map)}`}));
+  return wrap;
+}
+/* The creatures on the floor above, as faint ghosts over this one (scenery up there is left out) */
+function floorOverLayer(map, originX, originY){
+  const a = floorAbove(map); if(!a || mapImgEdit || !floorGhostsOn()) return null;
+  const toks = mapDrawOrder(mapTokensFor(a.id)).filter(t=>floorTokenVisible(t, a)
+    && !isZoneToken(t) && !isHazardToken(t) && !isDoorToken(t) && !isShopToken(t) && !isBoatToken(t));
+  if(!toks.length) return null;
+  const { os, wrap } = floorLayerBox(map, a, { x:-(a.belowDx|0), y:-(a.belowDy|0) }, originX, originY, "map-floor-over");
+  toks.forEach(t=>{ const n = floorInertToken(t, a, os.originX, os.originY);
+    n.append(el("span",{class:"tk-floor-badge", title:`Upstairs — on ${floorLabel(a)}`},"⬆"));
+    wrap.append(n); });
+  return wrap;
+}
+/* ⬆/⬇ To …: the token (and anyone riding it) takes the stairs, keeping its square */
+function moveTokenToFloor(token, from, to){
+  ensureMapTokens();
+  const byMap = cloud.mapTokens.data.byMap;
+  const src = byMap[from.id]; if(!src || !src.includes(token)) return;
+  const d = floorDelta(from, to);
+  const group = [token, ...src.filter(t=>t.riding===token.id)];     // riders go up the stairs with it…
+  if(token.riding) delete token.riding;                               // …but it steps off whatever it rode
+  const ids = new Set(group.map(t=>t.id));
+  byMap[from.id] = src.filter(t=>!ids.has(t.id));
+  const dst = byMap[to.id] || (byMap[to.id] = []);
+  group.forEach(t=>{ t.x += d.x; t.y += d.y; delete t.path; dst.push(t); mapSelect.ids.delete(t.id); });
+  if(mapAoE && ids.has(mapAoE.tokenId)) mapAoE = null;
+  if(mapMount.riderId && ids.has(mapMount.riderId)) mapMount.riderId = null;
+  if(to.fogOn) revealAroundTokens(to);
+  mapTokensSave();
+  if(cloud.isGM) mapGmView = to.id;                                   // follow it
+  else { const base = mapById(activeMapMeta().playerMapId);
+         if(base) mapFloorPick = { base:base.id, id:to.id, tok:ownTokenFloor(floorStack(base)) }; }
+  renderMap();
+  const up = floorStack(to).indexOf(to) > floorStack(to).findIndex(m=>m.id===from.id);
+  toast(`${up?"⬆":"⬇"} ${tokenHp(token).name||"Token"} → ${floorLabel(to)}`);
+}
+/* 🏢 Floors… (GM, ⚙ More tools → Maps): which map this one stands on, and how they line up */
+function openFloorsPanel(map){
+  const meta = activeMapMeta();
+  const loops = c => { let m = c; const seen = new Set();
+    while(m && !seen.has(m.id)){ if(m.id===map.id) return true; seen.add(m.id); m = floorBelow(m); }
+    return false; };
+  const cands = meta.maps.filter(m=>m.id!==map.id && !loops(m));
+  const st = floorStack(map);
+  const wrap = el("div",{});
+  wrap.append(el("div",{class:"r-body",style:"margin-bottom:10px"},
+    "Stack maps into one building. Pick the map this one stands on top of. Looking at an upper floor, the floor below is drawn under its picture: wherever the picture is see-through (past a balcony rail, down a stairwell) you look straight down at it and at the tokens on it. Tokens take the stairs from their own menu (⬆/⬇ To …), players see whichever floor their token is on, and initiative runs across every floor."));
+  if(st.length > 1) wrap.append(el("div",{class:"small",style:"margin-bottom:10px;font-weight:700"},
+    "This building, top to bottom: " + st.slice().reverse().map(m=>(m.id===map.id?"▶ ":"")+floorLabel(m)).join("  ·  ")));
+  const nm = el("input",{type:"text", value:map.floorName||"", placeholder:map.name||"Map", maxlength:40});
+  wrap.append(el("label",{class:"field"}, el("span",{},"Floor name (what the floor buttons say)"), nm));
+  const sel = el("select");
+  sel.append(el("option",{value:"", selected:!map.below},"— nothing: this is the ground floor —"));
+  cands.forEach(m=>sel.append(el("option",{value:m.id, selected:m.id===map.below},
+    (m.floorName ? `${m.floorName} (${m.name})` : m.name) + (m.archived ? " — archived" : ""))));
+  wrap.append(el("label",{class:"field",style:"margin-top:8px"}, el("span",{},"Stands on top of"), sel));
+  const dx = el("input",{type:"number", value:map.belowDx|0, style:"width:72px"});
+  const dy = el("input",{type:"number", value:map.belowDy|0, style:"width:72px"});
+  wrap.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;align-items:flex-end"},
+    el("label",{class:"field",style:"max-width:130px"}, el("span",{},"Nudge floor below →"), dx),
+    el("label",{class:"field",style:"max-width:130px"}, el("span",{},"Nudge floor below ↓"), dy)));
+  wrap.append(el("div",{class:"small muted",style:"margin-top:2px"},
+    "In squares. Leave both at 0 when the two pictures were drawn on the same grid — otherwise slide the floor below until its walls sit under this floor's walls."));
+  const dim = el("input",{type:"range", min:0, max:85, value:Math.round(floorDim(map)*100)});
+  wrap.append(el("label",{class:"field",style:"margin-top:8px"}, el("span",{},"How dark the floor below looks from up here"), dim));
+  wrap.append(el("div",{class:"small muted",style:"margin-top:8px"},
+    "The upper floor's picture needs see-through holes (a PNG with transparency) where you can look down — opaque art covers the floor below completely."));
+  const save = ()=>{
+    const v = nm.value.trim(); if(v) map.floorName = v; else delete map.floorName;
+    if(sel.value) map.below = sel.value; else delete map.below;
+    const ix = parseInt(dx.value)||0, iy = parseInt(dy.value)||0;
+    if(map.below && ix) map.belowDx = ix; else delete map.belowDx;
+    if(map.below && iy) map.belowDy = iy; else delete map.belowDy;
+    const dv = Math.max(0, Math.min(85, parseInt(dim.value)||0))/100;
+    if(map.below && Math.abs(dv-FLOOR_DIM) > 0.001) map.belowDim = dv; else delete map.belowDim;
+    mapMetaSave(); closeModal(); renderMap();
+    toast(map.below ? `🏢 ${floorLabel(map)} now stands on ${floorLabel(floorBelow(map))}` : `🏢 ${floorLabel(map)} is a ground floor`);
+  };
+  modal({title:"🏢 Floors", bodyNode:wrap, footNodes:[
+    el("button",{class:"btn-secondary", onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary", onclick:save},"Save")]});
 }
 
 /* ── Fog storage: a packed BITMAP, not a list of "x,y" strings ───────────────────────────────
@@ -51075,7 +51292,7 @@ function tokenInInit(token){
 const initEntryToken = id => String(id||"").split("#")[0];
 function initiativeList(map){
   const rows = [];
-  mapTokensFor(map.id).filter(tokenInInit).forEach(t=>{
+  combatTokens(map).filter(tokenInInit).forEach(t=>{          // every floor of a building (FLOORS)
     const info = tokenHp(t), base = tokenInitiative(t);
     const L = t.link ? tokenLinked(t) : null;
     const mon = (L && !L.missing && L.kind==="enc") ? L.obj : null;
@@ -51146,7 +51363,7 @@ function advanceInitiative(map, meta, dir){
     const tok = initEntryToken(meta.initTurnId);
     idx = list.findIndex(e=>initEntryToken(e.id)===tok);
     if(idx<0){
-      const still = mapTokensFor(map.id).find(t=>t.id===tok);
+      const still = combatTokens(map).find(t=>t.id===tok);
       /* Still on the map AND still belongs in the order → its link is mid-reconcile, not gone.
          Stepping from here would restart the round at the top, so hold the turn and re-render; the
          entry reappears when the link resolves. */
@@ -51176,7 +51393,7 @@ function advanceInitiative(map, meta, dir){
   if(dir>0){
     meta.initSeq = endingSeq + 1;
     const seen = new Set();
-    mapTokensFor(map.id).forEach(tok=>{
+    combatTokens(map).forEach(tok=>{
       const L = tok.link ? tokenLinked(tok) : null; const owner = L && L.obj;
       if(!owner || seen.has(owner)) return; seen.add(owner);       // one creature may back several tokens
       const gone = expireTurnBuffs(owner, endingId, endingSeq);
@@ -51240,6 +51457,7 @@ function initMiniBtn(label, title, fn){
 }
 function initiativePanel(map, meta){
   const list = initiativeList(map).filter(e=> cloud.isGM || !e.token.gmHidden);   // players never see hidden tokens
+  const floorOf = inFloorStack(map) ? floorIndexOf(map) : null;      // a building: who is on which floor
   const box = el("div",{class:"init-float"});
   box.style.cssText = "position:fixed;z-index:60;width:196px;max-height:72vh;display:flex;flex-direction:column;"+
     "background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 22px rgba(0,0,0,.35);overflow:hidden";
@@ -51303,6 +51521,11 @@ function initiativePanel(map, meta){
         ? `${name} — Swarm act ${e.act+1} of ${e.acts}${e.act>0?" (Initiative "+e.init+")":" (free Standard Action)"}`
         : `${name} — Boss Template act ${e.act+1} of ${e.acts} (Initiative ${e.init})`) : name},
       (cur?"▶ ":"")+label));
+    const fl = floorOf && floorOf.get(e.token.id);
+    if(fl && fl.id!==map.id){
+      const st = floorStack(map), up = st.indexOf(fl) > st.findIndex(m=>m.id===map.id);
+      row.append(el("span",{class:"init-floor",title:`On ${floorLabel(fl)}`}, up?"⬆":"⬇"));
+    }
     row.append(el("span",{class:"muted",style:"font-size:10px",title:"Speed + bonus"}, String(e.init)));
     if(cloud.isGM){
       // the bonus/remove controls belong to the TOKEN, so only the swarm's first entry shows them
@@ -51983,6 +52206,41 @@ function gateGroups(map){
   mapWalls(map).forEach(w=>{ if(w.gate) names.add(w.gate); });
   return [...names].sort();
 }
+/* ---- Curtains: pictures that swap when the GM opens or shuts the curtains --------------------------
+     Any map picture can be tagged in 🖼 Edit images (🎭): a CLOSED curtain is drawn while the map's
+     curtains are shut, an OPEN one (drapes pulled to the sides) while they're open — so a stage is
+     one picture without its curtain plus one picture per curtain state, all at the same spot. The
+     state is `map.curtainsOpen` in the shared meta row, so every player sees the curtain move. A gate
+     group whose name contains "curtain" follows the same button, which is how a shut curtain also
+     blocks sight and movement (draw that group along it). The button works on the whole building
+     (FLOORS): looking down from a balcony, 🎭 still opens the stage's curtain on the floor below. */
+function mapImageShown(map, im){
+  if(!im || !im.curtain) return true;
+  const open = !!(map && map.curtainsOpen);
+  return im.curtain==="open" ? open : !open;
+}
+function curtainGateNames(map){ return gateGroups(map).filter(n=>/curtain/i.test(n)); }
+function curtainMaps(map){
+  return floorStack(map).filter(m=>(m.images||[]).some(im=>im.curtain) || curtainGateNames(m).length);
+}
+function toggleCurtains(map){
+  const ms = curtainMaps(map); if(!ms.length) return;
+  const open = !ms.every(m=>m.curtainsOpen);           // anything still shut → open them all
+  ms.forEach(m=>{
+    m.curtainsOpen = open;
+    curtainGateNames(m).forEach(n=>{ if(!m.gates) m.gates = {}; m.gates[n] = open; });
+  });
+  mapMetaSave(); renderMap();
+  toast(open ? "\u{1F3AD} Curtains open" : "\u{1F3AD} Curtains closed");
+}
+function cycleImageCurtain(map, im){
+  im.curtain = !im.curtain ? "shut" : im.curtain==="shut" ? "open" : null;
+  if(!im.curtain) delete im.curtain;
+  mapMetaSave(); renderMap();
+  toast(im.curtain==="shut" ? "\u{1F3AD} Closed curtain — shown while the curtains are shut"
+      : im.curtain==="open" ? "\u{1F3AD} Open curtain — shown while the curtains are open"
+      : "\u{1F3AD} An ordinary picture again");
+}
 function flipGates(map){
   const names = gateGroups(map); if(!names.length) return;
   if(!map.gates) map.gates = {};
@@ -52595,9 +52853,10 @@ function tokenMoveSpeed(token){
 function tileCost(ax, ay, bx, by){ return Math.abs(Math.round(ax)-Math.round(bx)) + Math.abs(Math.round(ay)-Math.round(by)); }
 function resetMapMovement(map){
   ensureMapTokens();
-  mapTokensFor(map.id).forEach(t=>{ t.moved=0; delete t.path; });
+  combatTokens(map).forEach(t=>{ t.moved=0; delete t.path; });
   // a new round wipes the parked movement too, or a token added later would arrive pre-spent
-  const memo = tokenMoveMemo(); if(memo[map.id]) delete memo[map.id];
+  const memo = tokenMoveMemo();
+  floorStack(map).forEach(m=>{ if(memo[m.id]) delete memo[m.id]; });
 }
 /* Turn-duration buffs ("this turn" / "until end of next turn" — Songs, most short Orders) only
    expire via advanceInitiative while a fight is running (Core p.234-ish "duration" — expireTurnBuffs
@@ -52653,7 +52912,7 @@ async function endCombatEffects(map){
   const rows = new Set(), encToks = [], seen = new Set();
   let n = 0, encTouched = false;
   const sweep = o => { if(!o || seen.has(o)) return false; seen.add(o); if(endCombatCreature(o)){ n++; return true; } return false; };
-  for(const t of mapTokensFor(map.id)){
+  for(const t of combatTokens(map)){
     const L = t.link ? tokenLinked(t) : null; if(!L || L.missing || !L.obj) continue;
     if(L.enc){
       if(sweep(L.obj)){ encTouched = true; encToks.push([t.link, L.obj]); }
@@ -52683,7 +52942,7 @@ async function toggleBattle(map){
     // tokens) drop back out of initiative — they opt in per-encounter via the token menu, so a
     // previous fight's monsters shouldn't linger into a new one. Allies auto-rejoin as usual.
     meta.initRound = 1; meta.initSeq = 0; meta.initTurnId = null;
-    mapTokensFor(map.id).forEach(t=>{ const k=tokenHp(t).kind; if(k!=="trainer" && k!=="pokemon") t.inInit = false; });
+    combatTokens(map).forEach(t=>{ const k=tokenHp(t).kind; if(k!=="trainer" && k!=="pokemon") t.inInit = false; });
   } else {
     // the fight is over → everyone's turns have ended: turn & combat-long buffs, hand-set Combat
     // Stages, Volatile statuses, EOT cooldowns and the rest of endCombatCreature's list all go
@@ -52705,7 +52964,7 @@ async function newRound(map){
    and re-arms the free first Standard Action. */
 function refreshSwarmRounds(map){
   let touched = false;
-  mapTokensFor(map.id).forEach(t=>{
+  combatTokens(map).forEach(t=>{
     const L = t.link ? tokenLinked(t) : null;
     const mon = (L && !L.missing && L.kind==="enc") ? L.obj : null;
     if(mon && isSwarm(mon)){ swarmNewRound(mon); touched = true; }
@@ -56265,6 +56524,10 @@ function openTokenMenu(token, map){
   if(isZoneToken(token)) return openZoneMenu(token, map);
   if(isNoteToken(token)) return openNoteMenu(token, map);
   const info = tokenHp(token);
+  /* 🏷 a hidden name plate keeps the name off a player's or viewer's menu too — the title bar and
+     the full-screen picture's caption — or tapping the token would just read the label back out.
+     The GM still sees the real name. */
+  const shownName = (!cloud.isGM && token.hideName) ? "" : info.name;
   const wrap = el("div",{});
   if(!info.unlinked){
     // Portrait at the top so players can see WHO they just tapped (the token on the board is tiny)
@@ -56275,12 +56538,12 @@ function openTokenMenu(token, map){
     const menuImg = tokenImageRef(token);
     if(menuImg)
       wrap.append(el("div",{style:"display:flex;justify-content:center;margin-bottom:10px"},
-        zoomImg(el("img",{src:menuImg.url, alt:info.name||"",
+        zoomImg(el("img",{src:menuImg.url, alt:shownName||"",
           style:"max-width:100%;max-height:220px;object-fit:contain;border-radius:10px;background:var(--panel-2)"}),
-          info.name)));
+          shownName)));
     else if(!cloud.isGM && info.sprite)
       wrap.append(el("div",{style:"display:flex;justify-content:center;margin-bottom:10px"},
-        zoomImg(info.sprite, info.name)));
+        zoomImg(info.sprite, shownName)));
     // Its Type(s) — GM-only info now; players shouldn't see a token's Type just by tapping it.
     if(cloud.isGM){
       const tkTypes = tokenDefTypes(token).filter(ty=>ty && ty!=="None");
@@ -56942,6 +57205,15 @@ function openTokenMenu(token, map){
     }
   }
   const foot = [];
+  /* ⬆/⬇ To …: a building's other floors (see FLOORS) — whoever may move the token may take it upstairs */
+  if(!info.unlinked && (cloud.isGM || info.editable) && inFloorStack(map)){
+    const st = floorStack(map), here = st.findIndex(m=>m.id===map.id);
+    st.forEach((m,j)=>{ if(j===here) return;
+      foot.push(el("button",{class:"btn-secondary",
+        title:`Take the stairs: it keeps its square and moves to ${floorLabel(m)}`,
+        onclick:()=>{ closeModal(); moveTokenToFloor(token, map, m); }}, `${j>here?"⬆":"⬇"} To ${floorLabel(m)}`));
+    });
+  }
   if(canRemoveToken(token)){
     if(cloud.isGM){
       const msFoot = massiveSchoolTokenFoot(token);
@@ -57038,7 +57310,7 @@ function openTokenMenu(token, map){
     foot.push(el("button",{class:"btn-secondary danger",onclick:async()=>{ await removeToken(token,map); closeModal(); }},"🗑 Remove"));
   }
   foot.push(el("button",{class:"btn-primary",onclick:closeModal},"Done"));
-  modal({title:info.name||"Token", bodyNode:wrap, footNodes:foot, guardMs:TOKEN_MENU_GUARD_MS});
+  modal({title:shownName||"Token", bodyNode:wrap, footNodes:foot, guardMs:TOKEN_MENU_GUARD_MS});
 }
 
 /* "Players" tab grouped by trainer: each character sheet → the trainer + their PARTY Pokémon */
@@ -58107,8 +58379,10 @@ function renderMap(){
      board — a black screen until they refresh. Re-frame whenever the map being shown changes. */
   if(map && map.id!==mapViewMapId){
     const firstDraw = mapViewMapId===null;
+    // another floor of the same building is the same place: keep the camera where it is
+    const sameBuilding = !firstDraw && floorStack(map).some(m=>m.id===mapViewMapId);
     mapViewMapId = map.id;
-    if(!firstDraw){
+    if(!firstDraw && !sameBuilding){
       try{
         const st = mapStageSize(map), vp = mapViewportSize();
         const sc = Math.max(MAP_ZOOM_FLOOR, Math.min(MAP_ZOOM_MAX, mapFitScale(map)*0.96));
@@ -58161,6 +58435,7 @@ function renderMap(){
       const shown = map.id===meta.playerMapId;
       bar.append(el("button",{class:"btn-primary"+(shown?" on":""),onclick:()=>pushMapToPlayers(map),
         title:"Make this the map players see"}, shown?"👁 Players see this":"👁 Show to players"));
+      const fsw = floorSwitch(map); if(fsw) bar.append(fsw);          // 🏢 the building's floors (FLOORS)
       mapsTools.push(
         el("button",{class:"btn-secondary",onclick:()=>renameMap(map)},"✎ Rename"),
         el("button",{class:"btn-secondary"+(map.hideName?" on":""),onclick:()=>toggleMapNameHidden(map),
@@ -58168,6 +58443,9 @@ function renderMap(){
           map.hideName?"🙈 Name hidden":"🏷 Name shown"),
         el("button",{class:"btn-secondary",onclick:()=>archiveMap(map),
           title:"Hide this map from the live list without deleting its tokens/fog"}, "🗄 Archive"),
+        el("button",{class:"btn-secondary"+(inFloorStack(map)?" on":""),onclick:()=>openFloorsPanel(map),
+          title:"Stack maps into one building — a balcony over a hall, a house's upstairs. Looking at an upper floor shows the floor below through its open parts, tokens take the stairs from their menu, and initiative covers every floor."},
+          "🏢 Floors…"),
       );
       // — Play group: tokens and fog, the two things touched every few minutes —
       bar.append(el("span",{class:"map-sep"}),
@@ -58217,6 +58495,12 @@ function renderMap(){
       if(meta.battleOn) bar.append(el("button",{class:"btn-secondary",onclick:()=>newRound(map),title:"Reset every token's movement for a new round"},"↺ New round"));
       if(mapWalls(map).some(w=>w.gate)) bar.append(el("button",{class:"btn-secondary",onclick:()=>flipGates(map),
         title:"Open every shut gate and shut every open one (a statue switch)"}, "\u{1F6AA} Flip gates"));
+      const curtainMs = curtainMaps(map);                  // 🎭 any curtain in this building (CURTAINS)
+      if(curtainMs.length){
+        const allOpen = curtainMs.every(m=>m.curtainsOpen);
+        bar.append(el("button",{class:"btn-secondary"+(allOpen?" on":""),onclick:()=>toggleCurtains(map),
+          title:"Open or shut every curtain in this building for everyone"}, allOpen ? "\u{1F3AD} Close curtains" : "\u{1F3AD} Open curtains"));
+      }
       /* The board modes. Each is built once so the same node can sit either on the bar (while its
          mode is live) or down in the drawer (while it isn't) — never in both places. */
       const imgEditBtn = el("button",{class:"btn-secondary"+(mapImgEdit?" on":""),onclick:()=>{ mapImgEdit=!mapImgEdit; renderMap(); },
@@ -58307,6 +58591,7 @@ function renderMap(){
     moreGroup("Maps", ...mapsTools);
   } else {
     bar.append(el("div",{class:"map-mapname"}, `🗺 ${mapDisplayName(map)}`));
+    if(map){ const fsw = floorSwitch(map); if(fsw) bar.append(fsw); }   // 🏢 the building's floors (FLOORS)
     if(meta.battleOn) bar.append(el("span",{class:"battle-badge"},"⚔ Battle"));
     // players can't change the weather/terrain, but they must be able to see what's in play
     const pw = weatherByKey(map?.weather);
@@ -58422,16 +58707,21 @@ function renderMap(){
   const viewport = el("div",{class:"map-viewport"});
   const stage = el("div",{class:"map-stage",style:`width:${stageW}px;height:${stageH}px`});
 
+  // a building's floor below, under this floor's picture (see FLOORS)
+  const floorUnder = floorUnderLayer(map, originX, originY); if(floorUnder) stage.append(floorUnder);
   // layered images (back → front)
   if(!map.images.length) stage.append(el("div",{class:"map-nobg",style:`width:${stageW}px;height:${stageH}px`}));
   const editOverlays = [];   // controls/handle for each image, appended AFTER every image wrap (see below)
   mapTilesRect = null;       // re-set below by mapImageTiles if any sharp tile actually gets built
   map.images.forEach((im,imIdx)=>{
+    const imgShown = mapImageShown(map, im);            // 🎭 a curtain in the other state stays off the board…
+    if(!imgShown && !mapImgEdit) return;
     // Base layer: the small overview whenever this image has been sliced, so a huge background is
     // never decoded at full resolution again (see the tiling block above); the original otherwise.
     const baseSrc = (im.lod && im.lod.src) ? im.lod.src : im.src;
     const node = el("img",{class:"map-img"+(mapImgEdit?" editing":""),src:baseSrc,draggable:false,alt:"",decoding:"sync",
       style:`left:${im.x+originX}px;top:${im.y+originY}px;`+(im.w?`width:${im.w}px;`:"")+(im.h?`height:${im.h}px;`:"")});
+    if(!imgShown) node.style.opacity = "0.4";          // …except while editing images, faded so it can be found
     // The scaled stage is a GPU layer rasterized at build time; if a background isn't decoded yet it
     // composites a blurry raster until the next full re-render (moving a token "fixed" it — bug #6).
     // Re-render ONCE per background after it decodes, keyed by id so cached data-URLs can't loop.
@@ -58455,6 +58745,12 @@ function renderMap(){
       overlay.append(el("div",{class:"map-img-ctrls",style:`top:${6+imIdx*34}px`},
         el("button",{title:"bring forward",onclick:e=>{e.stopPropagation();moveMapImageLayer(map,im,1);}},"⬆"),
         el("button",{title:"send back",onclick:e=>{e.stopPropagation();moveMapImageLayer(map,im,-1);}},"⬇"),
+        el("button",{class:im.curtain?"on":"",
+          title: im.curtain==="shut" ? "Closed curtain: drawn while the curtains are shut. Tap to make it the OPEN curtain."
+               : im.curtain==="open" ? "Open curtain: drawn while the curtains are open. Tap to make it an ordinary picture."
+               : "Make this picture a curtain (drawn while the curtains are shut). Then 🎭 on the toolbar opens and shuts it.",
+          onclick:e=>{ e.stopPropagation(); cycleImageCurtain(map, im); }},
+          im.curtain==="shut" ? "\u{1F3AD} shut" : im.curtain==="open" ? "\u{1F3AD} open" : "\u{1F3AD}"),
         im.anim
           ? el("button",{title:"Animated — kept whole, because slicing would freeze it on its first frame",
               onclick:e=>{ e.stopPropagation(); mapAnimToast(); }},"🎞")
@@ -58552,11 +58848,13 @@ function renderMap(){
     const nl = noteLinksOverlay(map, stageW, stageH, originX, originY); if(nl) stage.append(nl);
     mapDrawOrder(mapTokensFor(map.id)).forEach(t=>{ if(nearView(t)) stage.append(mkToken(t)); });
     ringFloats.forEach(r => stage.append(r));
+    const fo = floorOverLayer(map, originX, originY); if(fo) stage.append(fo);   // who is upstairs (FLOORS)
   } else {
     // shut gates go UNDER the fog, so a gate in ground the party has not uncovered yet stays secret
     const gl = wallsOverlay(map, stageW, stageH, originX, originY, true); if(gl) stage.append(gl);
     mapDrawOrder(mapTokensFor(map.id)).forEach(t=>{ if(visibleToken(t) && nearView(t)) stage.append(mkToken(t)); });
     ringFloats.forEach(r => stage.append(r));                       // before the fog, like the tokens they belong to
+    const fo = floorOverLayer(map, originX, originY); if(fo) stage.append(fo);   // who is upstairs (FLOORS)
     const f = drawFogInto(); if(f) stage.append(f);                 // players: opaque fog over hidden tokens
   }
 

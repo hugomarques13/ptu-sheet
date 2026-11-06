@@ -1192,3 +1192,15 @@ body.map-mode .view{animation:none}
   .codec-name{font-size:10px; letter-spacing:.06em}
   .codec-ptt{display:none}
 }
+/* FLOORS — a building's floors stacked on one board (see FLOORS in app.js) */
+.map-floor-under,.map-floor-over{position:absolute; left:0; top:0; transform-origin:0 0; pointer-events:none}
+.map-floor-under .map-token,.map-floor-over .map-token{pointer-events:none; cursor:default}
+.map-floor-dim{position:absolute; left:0; top:0; background:#0a0816; pointer-events:none}
+.map-floor-over{opacity:.5}
+.map-floor-over .map-token{filter:grayscale(.35)}
+.tk-floor-badge{position:absolute; right:-5px; top:-7px; z-index:3; font-size:11px; line-height:1; padding:1px 3px;
+  background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:8px}
+.floor-switch{display:flex; align-items:center; gap:4px; flex-wrap:wrap}
+.floor-switch-lbl{font-size:16px; line-height:1}
+.floor-switch .btn-secondary{padding:5px 9px}
+.init-floor{font-size:10px; color:var(--muted); white-space:nowrap}
