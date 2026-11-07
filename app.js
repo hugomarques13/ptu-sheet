@@ -16048,6 +16048,12 @@ function giftRow(t, g, i, gm, saveFn, rerender){
     }
     info.append(cRow);
   });
+  /* Touch of the Flayed One rides the GM's 💥 Apply (flayedOffer) — say so beside the pips it spends */
+  if(/^touch of the flayed one\b/i.test(String(g.name || "")))
+    info.append(el("div",{class:"small",style:"margin-top:3px"},
+      el("span",{class:"badge-auto",
+        title:"When a hit you threw Injures a target, the GM's 💥 Apply pops up a Yes / No for the extra Injury and ticks a pip off here on Yes (↩ Undo on that hit gives it back)"},
+        "✔ the GM is asked on \u{1F4A5} Apply whenever your hit Injures")));
   /* Everything past this point is the rules text, which is what makes this tab enormous. It goes in
      its own drop-down, keyed so it survives the re-render an edit on the card causes. `info` is
      rebound to it, so every append below lands inside without any of them knowing. */
@@ -21566,7 +21572,7 @@ function teachTM(p, mn){
   showTMEligibility(mn);   // refresh the open modal
 }
 /* modal: which of my Pokémon can learn this TM move, with a Teach button */
-function showTMEligibility(moveName){
+function showTMEligibility(moveName, ret){   // `ret`: opened from a Dex entry — offer the way back to it
   const mn = tmMoveName(moveName);
   const m = moveByName.get(mn.toLowerCase());
   const elig = partyEligibleForTM(mn);
@@ -21588,7 +21594,8 @@ function showTMEligibility(moveName){
       onclick:()=>teachTM(p,mn)},"Teach"));
     wrap.append(row);
   });
-  modal({title:`TM/HM: ${mn}`, bodyNode:wrap, footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Close")]});
+  modal({title:`TM/HM: ${mn}`, bodyNode:wrap,
+    footNodes:[backToEntryBtn(ret), el("button",{class:"btn-primary",onclick:closeModal},"Close")].filter(Boolean)});
 }
 /* Struggle (auto-upgrades to Struggle+ for Combat Expert+ species) */
 function struggleMove(p){
@@ -45234,7 +45241,10 @@ document.addEventListener("click", e=>{
   const kw = e.target.closest?.(".kw-hint");
   if(kw) toast(KEYWORD_DEFS[kw.dataset.kw] || "");
   const tm = e.target.closest?.(".tm-chip,[data-tmmove]");
-  if(tm && tm.dataset.tmmove) showTMEligibility(tm.dataset.tmmove);
+  if(tm && tm.dataset.tmmove) showTMEligibility(tm.dataset.tmmove, speciesModalReturn());
+  // a Move named in a Dex entry → its info, with a way back to the entry (a keyword tap only toasts)
+  const rm = !kw && !tm && e.target.closest?.("[data-refmove]");
+  if(rm) openDexMove(rm.dataset.refmove, speciesModalReturn());
 });
 
 /* ===================================================================
@@ -45723,6 +45733,36 @@ function openSettings(){
       caption:"Preview — this is what evolving looks like."})},"▶ preview the evolution scene")));
   modal({title:"⚙ Settings", bodyNode:wrap, footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Done")]});
 }
+/* ---- Moves inside a Dex entry open their own info ----
+   Every Move speciesModal names (Level-Up, Egg, Tutor) carries `data-refmove`; the page-wide click
+   handler opens it with openDexMove. modal() replaces whatever is open, so the entry would be lost —
+   speciesModalReturn() snapshots it first (which species, which sections were open, how far down it
+   was scrolled) and the Move's popup gets a "← Back" button that puts it back exactly so. The TM/HM
+   chips keep their own popup (details + who can learn it) and get the same button. */
+let speciesModalCtx = null;
+function speciesModalReturn(){
+  const m = document.querySelector("#modalRoot .modal.species-modal");
+  if(!m || !speciesModalCtx) return null;
+  const ctx = speciesModalCtx;
+  const body = m.querySelector(".modal-body");
+  const st = body ? body.scrollTop : 0;
+  const open = [...m.querySelectorAll("details")].map(d => d.open);
+  return { label:ctx.s.name, go(){
+    speciesModal(ctx.s, ctx.mon);
+    const m2 = document.querySelector("#modalRoot .modal.species-modal");
+    if(!m2) return;
+    m2.querySelectorAll("details").forEach((d, i) => { if(i < open.length) d.open = open[i]; });
+    const b2 = m2.querySelector(".modal-body"); if(b2) b2.scrollTop = st;
+  }};
+}
+function backToEntryBtn(ret){
+  return ret ? el("button",{class:"btn-secondary",onclick:()=>ret.go()}, `← Back to ${ret.label}`) : null;
+}
+function openDexMove(name, ret){
+  const nm = canonMoveName(name);
+  modal({title:nm, bodyHTML:refDetailHTML("move", nm),
+    footNodes:[backToEntryBtn(ret), el("button",{class:"btn-primary",onclick:closeModal},"Close")].filter(Boolean)});
+}
 /* `mon` (optional) = the Pokémon whose "Dex entry" button opened this, so the Tutor list can answer
    "can I teach this one to THIS Pokémon right now?" rather than only stating the rule. */
 function speciesModal(s, mon){
@@ -45755,11 +45795,13 @@ function speciesModal(s, mon){
   if(s.moves){
     if(s.moves.levelup.length){
       html += `<details class="spoiler" open><summary>Level-Up Moves (${s.moves.levelup.length})${
-          hideMoves?` <span class="small muted">— levels only; what it learns is still unwritten</span>`:""}</summary>
+          hideMoves?` <span class="small muted">— levels only; what it learns is still unwritten</span>`
+                   :` <span class="small muted">— tap a move for its details</span>`}</summary>
         <table class="movetable" style="margin-top:6px"><tr><th>Lv</th><th>Move</th>${hideMoves?"":"<th>Type</th>"}</tr>
         ${s.moves.levelup.map(m=>hideMoves
             ? `<tr><td>${m.level}</td><td class="muted">???</td></tr>`
-            : `<tr><td>${m.level}</td><td>${esc(canonMoveName(m.name))}</td><td>${typeBadge(m.type)}</td></tr>`).join("")}</table></details>`;
+            : `<tr class="ref-move-row" data-refmove="${escAttr(canonMoveName(m.name))}" title="Show ${escAttr(canonMoveName(m.name))}'s details">`
+              + `<td>${m.level}</td><td><span class="ref-move">${esc(canonMoveName(m.name))}</span></td><td>${typeBadge(m.type)}</td></tr>`).join("")}</table></details>`;
     }
     if(!hideMoves && s.moves.tmhm?.length){
       // each TM/HM is clickable → shows which of your Pokémon can learn it
@@ -45771,8 +45813,9 @@ function speciesModal(s, mon){
     }
     // Tutor entries carry a "(N)" cost marker that isn't part of the name — keep it, clean the name
     if(!hideMoves && s.moves.egg?.length) html+=`<details class="spoiler"><summary>Egg Moves (${s.moves.egg.length})</summary><div class="r-body">${
-      s.moves.egg.map(raw=>{ const bare=String(raw).replace(/\s*\(N\)\s*$/i,"").trim();
-                     return esc(canonMoveName(bare) + (bare===String(raw).trim() ? "" : " (N)")); }).join(", ")
+      s.moves.egg.map(raw=>{ const bare=String(raw).replace(/\s*\(N\)\s*$/i,"").trim(), nm=canonMoveName(bare);
+                     return `<span class="ref-move" data-refmove="${escAttr(nm)}" title="Show ${escAttr(nm)}'s details">${esc(nm)}</span>`
+                       + esc(bare===String(raw).trim() ? "" : " (N)"); }).join(", ")
     }</div></details>`;
     if(!hideMoves && s.moves.tutor?.length){
       // Full stat line per Tutor move, with the level the Tutor/Inheritance restriction gates it behind.
@@ -45813,7 +45856,7 @@ function speciesModal(s, mon){
                      : monLv>=min           ? `<td class="small">✅ yes</td>`
                      : `<td class="small" style="color:var(--bad)">🔒 at Lv ${min}</td>`;
           return `<tr>${can}<td>${lv}</td>
-            <td>${esc(nm)}${mark}<div class="small muted">${meta}</div></td>
+            <td><span class="ref-move" data-refmove="${escAttr(nm)}" title="Show ${escAttr(nm)}'s details">${esc(nm)}</span>${mark}<div class="small muted">${meta}</div></td>
             <td>${m?typeBadge(m.type):""}</td><td>${dmg}</td>
             <td class="small">${m?annotateKeywords(esc(m.effect||"—")):"—"}</td></tr>`;
         }).join("")}</table></details>`;
@@ -45829,6 +45872,9 @@ function speciesModal(s, mon){
     <table class="movetable" style="margin-top:4px"><tr><th>Lv</th><th>Gift</th><th>Tier</th></tr>
     ${giftLvls.map(g=>`<tr><td>${g.level}</td><td>${esc(g.name)}</td><td>${esc(g.tier)}</td></tr>`).join("")}</table>`;
   infoModal(`${refDexNum(s)}${s.name}`, html);
+  // tagged so a Move tapped inside it knows there is an entry to come back to (speciesModalReturn)
+  speciesModalCtx = { s, mon };
+  document.querySelector("#modalRoot .modal")?.classList.add("species-modal");
 }
 
 /* ===================================================================
@@ -55701,8 +55747,11 @@ function lastHitUndoLabel(){
 async function undoLastHit(){
   const rec = hitUndoStack.pop();
   if(!rec){ toast("Nothing to take back"); return false; }
+  rec.undone = true;
+  try{ flayedDropFor(rec); }catch(e){}                   // a Touch of the Flayed One question still open about this hit
   const map = currentMapForView() || activeMap();
   for(const snap of rec.snaps){ try{ await restoreHitTarget(map, snap); }catch(e){} }
+  for(const f of (rec.refunds || [])){ try{ await f(); }catch(e){} }   // pips spent on it (Touch of the Flayed One) come back
   mapTokensSave();
   renderMap(); renderRollFeed();
   const n = rec.snaps.length;
@@ -55841,34 +55890,8 @@ async function autoDrainAttacker(ctx, dealt){
   const all = moveHPEffects(m).filter(e => e.who === "user" && e.of === "dealt" && !e.cond);
   const drainRows = all.filter(e => e.kind === "drain"), recoilRows = all.filter(e => e.kind === "recoil");
   if(!drainRows.length && !recoilRows.length) return null;
-  const map = currentMapForView() || activeMap();
-  const toks = map ? mapTokensFor(map.id) : [];
-  const objOf = t => { try{ const L = t.link ? tokenLinked(t) : null; return (L && !L.missing) ? L.obj : null; }catch(e){ return null; } };
-  let obj = ctx.attacker || null, tok = null;
-  if(obj) tok = toks.find(t => objOf(t) === obj) || null;
-  else {
-    if(ctx.aid) tok = toks.find(t => { const o = objOf(t); return !!o && o.id === ctx.aid; }) || null;
-    /* a Trainer's own Moves are logged without an id - fall back to the name the roll was made under */
-    if(!tok && ctx.by){
-      const nm = String(ctx.by).trim().toLowerCase();
-      tok = toks.find(t => { const o = objOf(t); return !!o && (String(ownerLabel(o)).trim().toLowerCase() === nm
-        || String(tokenHp(t).name || "").trim().toLowerCase() === nm); }) || null;
-    }
-    obj = tok ? objOf(tok) : null;
-  }
-  /* No token for the attacker on this board (a player's Pokémon fighting off-map, a sheet the GM never placed):
-     the drain / Recoil still belongs on its sheet, so it is found in the roster by id — or a Trainer by name —
-     and that sheet is saved. Without this the press silently paid nothing and the player's card sat there. */
-  let sheetRow = null;
-  if(!obj && mode === "cloud" && cloud.byId){
-    const nm = String(ctx.by || "").trim().toLowerCase();
-    for(const row of Object.values(cloud.byId)){
-      const d = row && row.data; if(!d) continue;
-      const mon = ctx.aid ? (d.pokemon || []).find(p => p && p.id === ctx.aid) : null;
-      const tr = !mon && nm && d.trainer && String(d.trainer.name || "").trim().toLowerCase() === nm ? d.trainer : null;
-      if(mon || tr){ obj = mon || tr; sheetRow = row; break; }
-    }
-  }
+  const found = findAttackerSheet(ctx) || {};
+  const obj = found.obj || null, tok = found.tok || null, sheetRow = found.sheetRow || null;
   if(!obj || hasStatus(obj, "knockedOut") || hasStatus(obj, "dead")) return null;
   const out = { who: ownerLabel(obj), paid: [] };
   if(drainRows.length){
@@ -55886,10 +55909,215 @@ async function autoDrainAttacker(ctx, dealt){
     out.recoil = { n, moved: n ? ownerHPChange(obj, -n) : 0, immune };
     out.paid.push("recoil");
   }
-  if(tok) await commitTokenSource(tok);
-  else if(sheetRow){ if(canEditPlayerHP(sheetRow)) cloudSaveRow(sheetRow); }
-  else save();
+  await saveAttackerSheet({ tok, sheetRow });
   return out;
+}
+/* Who threw this hit — the attacker's LIVE sheet, for anything the 💥 Apply pays back to them (drain, Recoil,
+   Touch of the Flayed One). From the roll window ctx.attacker IS the live creature; from the GM's feed the logged
+   ctx only carries `aid` (a Pokémon's id) and `by` (the name it rolled under), so the board is searched first and
+   then the roster. Returns { obj, tok, sheetRow } or null; saveAttackerSheet writes back through the same door. */
+function findAttackerSheet(ctx){
+  if(!ctx) return null;
+  const map = currentMapForView() || activeMap();
+  const toks = map ? mapTokensFor(map.id) : [];
+  const objOf = t => { try{ const L = t.link ? tokenLinked(t) : null; return (L && !L.missing) ? L.obj : null; }catch(e){ return null; } };
+  let obj = ctx.attacker || null, tok = null;
+  if(obj) tok = toks.find(t => objOf(t) === obj) || null;
+  else {
+    if(ctx.aid) tok = toks.find(t => { const o = objOf(t); return !!o && o.id === ctx.aid; }) || null;
+    /* a Trainer's own Moves are logged without an id - fall back to the name the roll was made under */
+    if(!tok && ctx.by){
+      const nm = String(ctx.by).trim().toLowerCase();
+      tok = toks.find(t => { const o = objOf(t); return !!o && (String(ownerLabel(o)).trim().toLowerCase() === nm
+        || String(tokenHp(t).name || "").trim().toLowerCase() === nm); }) || null;
+    }
+    obj = tok ? objOf(tok) : null;
+  }
+  /* No token for the attacker on this board (a player's Pokémon fighting off-map, a sheet the GM never placed):
+     it still belongs on its sheet, so it is found in the roster by id — or a Trainer by name — and that sheet is
+     saved. Without this the press silently paid nothing and the player's card sat there. */
+  let sheetRow = null;
+  if(!obj && mode === "cloud" && cloud.byId){
+    const nm = String(ctx.by || "").trim().toLowerCase();
+    for(const row of Object.values(cloud.byId)){
+      const d = row && row.data; if(!d) continue;
+      const mon = ctx.aid ? (d.pokemon || []).find(p => p && p.id === ctx.aid) : null;
+      const tr = !mon && nm && d.trainer && String(d.trainer.name || "").trim().toLowerCase() === nm ? d.trainer : null;
+      if(mon || tr){ obj = mon || tr; sheetRow = row; break; }
+    }
+  }
+  return obj ? { obj, tok, sheetRow } : null;
+}
+async function saveAttackerSheet(f){
+  if(!f) return;
+  if(f.tok) await commitTokenSource(f.tok);
+  else if(f.sheetRow){ if(canEditPlayerHP(f.sheetRow)) cloudSaveRow(f.sheetRow); }
+  else save();
+}
+/* ===================================================================
+   TOUCH OF THE FLAYED ONE  (Yveltal Major Gift — The Blessed and the Damned)
+   -------------------------------------------------------------------
+   "Daily x3 Free Action when you inflict Injuries: inflict one additional Injury."
+   The 💥 Apply is the one place that knows a hit has just handed out Injuries (it diffs every target's
+   count before and after), so when the Trainer who threw it holds the Gift, the GM — the only one who ever
+   presses Apply — gets a Yes / No pop-up over whatever window is open. Yes lands the extra Injury (Death
+   checked), spends one of the Gift's Daily pips — the SAME pips the Gifts tab draws, useKey("gift", <row
+   name>), so ☀ End Day hands them back — and saves the Trainer's sheet so the player watches it tick.
+   ↩ Undo on that hit puts the Injury back (its snapshot predates it) and refunds the pip.
+   Trainer attacks only: the Gift says "you", and Gifts sit on the Trainer, not their Pokémon.
+=================================================================== */
+function flayedGiftRow(t){
+  if(!t || !isTrainerOwner(t) || !Array.isArray(t.gifts)) return null;
+  return t.gifts.find(g => /^touch of the flayed one\b/i.test(String((g && g.name) || g || "").trim())) || null;
+}
+function flayedUses(t){
+  const g = flayedGiftRow(t); if(!g) return null;
+  const name = String((g && g.name) || g);
+  const info = freqInfo(giftFreqForName(name) || "Daily x3");
+  const max = freqTrackable(info) ? info.max : 3;
+  const key = useKey("gift", name);
+  return { name, key, max, left: usesLeft(t, key, max), free: !!t.unlocked };
+}
+let flayedQueue = [];          // one pop-up at a time; a second Apply while it is open waits its turn
+/* called at the end of a 💥 Apply press with every target whose Injury count went up */
+function flayedOffer(ctx, injured, undoRec, out){
+  if(!ctx || !injured || !injured.length) return;
+  let found = null;
+  try{ found = findAttackerSheet(ctx); }catch(e){ return; }
+  const T = found && found.obj;
+  const u = T ? flayedUses(T) : null;
+  if(!u) return;
+  const note = el("div",{class:"small",style:"color:var(--accent);font-weight:700;margin:4px 0"});
+  if(out) out.append(note);
+  if(u.left <= 0 && !u.free){
+    note.style.color = "var(--muted)";
+    note.textContent = `\u{1FA78} Touch of the Flayed One — ${ownerLabel(T)} has no uses left today (${u.max}/${u.max} spent).`;
+    return;
+  }
+  note.textContent = "\u{1FA78} Touch of the Flayed One — waiting on the GM's Yes / No…";
+  flayedQueue.push({ found, T, injured, undoRec, note, move: String(ctx.move || "") });
+  if(flayedQueue.length === 1) flayedShow();
+}
+function flayedNext(){
+  flayedQueue.shift();
+  const old = document.getElementById("flayedPop"); if(old) old.remove();
+  if(flayedQueue.length) flayedShow();
+}
+/* ↩ Undo took a hit back: any question still pending about it no longer has a hit to add to */
+function flayedDropFor(rec){
+  if(!rec || !flayedQueue.length) return;
+  const head = flayedQueue[0];
+  flayedQueue = flayedQueue.filter(j => {
+    if(j.undoRec !== rec) return true;
+    j.note.style.color = "var(--muted)";
+    j.note.textContent = "\u{1FA78} Touch of the Flayed One — that hit was taken back, nothing asked.";
+    return false;
+  });
+  if(head && head.undoRec === rec){
+    const old = document.getElementById("flayedPop"); if(old) old.remove();
+    if(flayedQueue.length) flayedShow();
+  }
+}
+function flayedShow(){
+  const old = document.getElementById("flayedPop"); if(old) old.remove();
+  const job = flayedQueue[0]; if(!job) return;
+  const { T, injured } = job;
+  const u = flayedUses(T);
+  if(!u || (u.left <= 0 && !u.free)){
+    job.note.style.color = "var(--muted)";
+    job.note.textContent = `\u{1FA78} Touch of the Flayed One — ${ownerLabel(T)} has no uses left today.`;
+    flayedNext(); return;
+  }
+  const multi = injured.length > 1;
+  // sits above .modal-bg (z 100) and the evolution overlay (z 120): the roll window stays open underneath
+  const bg = el("div",{id:"flayedPop"});
+  bg.style.cssText = "position:fixed;inset:0;z-index:130;background:rgba(0,0,0,.45);display:flex;"
+    + "align-items:flex-start;justify-content:center;padding:64px 16px 16px;overflow:auto";
+  const card = el("div",{role:"dialog","aria-label":"Touch of the Flayed One"});
+  card.style.cssText = "width:100%;max-width:380px;background:var(--panel);border:2px solid var(--bad);"
+    + "border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.45);padding:14px 16px";
+  card.append(el("div",{style:"font-weight:800;font-size:16px;margin-bottom:4px"}, "\u{1FA78} Touch of the Flayed One"));
+  card.append(el("div",{class:"small",style:"margin-bottom:8px"},
+    `${ownerLabel(T)}'s ${job.move || "attack"} just inflicted Injur${injured.length === 1 && injured[0].n === 1 ? "y" : "ies"}. `
+    + "Use the Gift (Free Action) to inflict one additional Injury?"));
+  const rows = injured.map((x, i) => {
+    const cb = el("input",{type:"checkbox"}); cb.checked = i === 0;
+    const now = (x.obj.injuries || 0);
+    const txt = el("span",{}, el("b",{}, x.name),
+      el("span",{class:"muted"}, ` — took ${x.n} from the hit (${now} now) → ${now + 1} with the extra`));
+    const line = el(multi ? "label" : "div",{style:"display:flex;gap:8px;align-items:center;padding:3px 0;" + (multi ? "cursor:pointer" : "")},
+      multi ? cb : "", txt);
+    return { x, cb, line };
+  });
+  const list = el("div",{class:"small",style:"border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-bottom:8px"});
+  rows.forEach(r => list.append(r.line));
+  card.append(list);
+  const usesTxt = u.free ? `\u{1F513} unlocked — no daily limit (${u.left} of ${u.max} pips left)`
+                         : `Daily x${u.max} — ${u.left} of ${u.max} left today`;
+  card.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
+    usesTxt + (multi ? " · each ticked target spends one use" : "")));
+  const warn = el("div",{class:"small",style:"color:var(--bad);font-weight:700;margin-bottom:8px;display:none"});
+  card.append(warn);
+  let busy = false;
+  const yesBtn = el("button",{class:"btn-primary",onclick:async () => {
+    if(busy) return;
+    if(job.undoRec && job.undoRec.undone){ toast("That hit was taken back — nothing to add an Injury to"); flayedNext(); return; }
+    const pick = multi ? rows.filter(r => r.cb.checked) : rows;
+    const uNow = flayedUses(T);
+    if(!pick.length){ toast("Tick a target, or press No"); return; }
+    if(!uNow || (!uNow.free && pick.length > uNow.left)){ toast("Not enough uses left for that many targets"); return; }
+    busy = true;
+    try{
+      const names = [];
+      for(const r of pick){
+        const o = r.x.obj;
+        o.injuries = (o.injuries || 0) + 1;
+        try{ applyAutoDeath(o); }catch(e){}
+        try{ if(r.x.t && r.x.t.link) await commitTokenSource(r.x.t); }catch(e){}
+        names.push(`${r.x.name} (${o.injuries})`);
+      }
+      T.uses = T.uses || {};
+      const was = T.uses[uNow.key] || 0;
+      T.uses[uNow.key] = Math.min(uNow.max, was + pick.length);
+      const spent = T.uses[uNow.key] - was;
+      await saveAttackerSheet(job.found);
+      if(job.undoRec && spent > 0){
+        (job.undoRec.refunds = job.undoRec.refunds || []).push(async () => {
+          T.uses = T.uses || {};
+          T.uses[uNow.key] = Math.max(0, (T.uses[uNow.key] || 0) - spent);
+          if(!T.uses[uNow.key]) delete T.uses[uNow.key];
+          await saveAttackerSheet(job.found);
+        });
+      }
+      try{ mapTokensSave(); renderMap(); }catch(e){}
+      const left = flayedUses(T);
+      const leftTxt = left ? `${left.left} of ${left.max} left today` : "";
+      job.note.style.color = "var(--bad)";
+      job.note.textContent = `\u{1FA78} Touch of the Flayed One — +1 Injury on ${names.join(", ")} · ${leftTxt}`;
+      toast(`\u{1FA78} Touch of the Flayed One — +1 Injury on ${names.join(", ")} (${leftTxt})`);
+    } finally { busy = false; }
+    flayedNext();
+  }}, multi ? "Yes — +1 Injury on each ticked" : "Yes — +1 Injury");
+  const noBtn = el("button",{class:"btn-secondary",onclick:() => {
+    job.note.style.color = "var(--muted)";
+    job.note.textContent = `\u{1FA78} Touch of the Flayed One — not used (${u.left} of ${u.max} still left today).`;
+    flayedNext();
+  }}, "No");
+  const sync = () => {
+    if(!multi) return;
+    const n = rows.filter(r => r.cb.checked).length;
+    const over = !u.free && n > u.left;
+    warn.style.display = over ? "" : "none";
+    warn.textContent = over ? `Only ${u.left} use${u.left === 1 ? "" : "s"} left — untick ${n - u.left}.` : "";
+    yesBtn.disabled = over || !n;
+    yesBtn.textContent = n > 1 ? `Yes — +1 Injury on ${n} targets` : "Yes — +1 Injury";
+  };
+  rows.forEach(r => r.cb.addEventListener("change", sync));
+  sync();
+  card.append(el("div",{style:"display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"}, noBtn, yesBtn));
+  bg.append(card);
+  document.body.append(bg);
+  try{ yesBtn.focus(); }catch(e){}
 }
 function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, moveRule=null, seFlat=0, critExtra=0, fx=null, onDealt=null, ctx=null, preselect=null }){
   // a Move whose own rules bend the matchup (MOVE_TARGET_RULES) travels with the hit, and its
@@ -56075,9 +56303,11 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     // everything this press is about to change, captured first so ↩ can put it all back
     const snaps = chosen.map(it => snapHitTarget(it.t));
     pushHitUndo(`${dmg} ${typeName}`, snaps);
+    const undoRec = hitUndoStack[hitUndoStack.length - 1] || null;   // Touch of the Flayed One refunds its pip through this
     /* what the targets ACTUALLY lost, after Defense, the matchup and their DR — the number a
        drain or a Recoil keyword is a fraction of (found-04). Handed back to the roll that made it. */
     let dealtTotal = 0;
+    const injured = [];                                         // targets whose Injury count went up this press
     const gSpent = new Set();                                   // each Friend Guard spends ONE use per press, however many allies it covers
     for(const it of chosen){
       /* Shell Armor / Battle Armor: this target takes the hit without the crit's extra dice. */
@@ -56174,8 +56404,11 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
         const cur = tokenHp(it.t).cur;
         if(cur > 0 && br.final >= cur){ br.final = cur - 1; rivalryTxt += (rivalryTxt ? " " : "") + "False Swipe \u2014 it leaves the target on 1 HP."; }
       }
+      const injV = tokenHp(it.t).obj, inj0 = injV ? (injV.injuries || 0) : 0;
       const before = await applyTokenDamage(it.t, br);
       dealtTotal += Math.max(0, br.final || 0);
+      if(injV && (injV.injuries || 0) > inj0)
+        injured.push({ t: it.t, obj: injV, n: (injV.injuries || 0) - inj0, name: tokenHp(it.t).name });
       it.cb.checked = false;                                    // clear so a second Apply doesn't double-hit
       const line = el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"});
       line.append(el("div",{style:"font-weight:700"}, tokenHp(it.t).name),
@@ -56242,6 +56475,8 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
                  : `\u{1F4A2} ${drained.who} takes ${Math.abs(r.moved)} recoil from the ${dealtTotal} dealt.`));
       if(!r.immune) toast(`\u{1F4A2} ${drained.who} −${Math.abs(r.moved)} HP (recoil)`);
     }
+    /* Touch of the Flayed One: the hit Injured someone and the Trainer who threw it holds the Gift → ask the GM */
+    try{ flayedOffer(ctx, injured, undoRec, out); }catch(e){ console.error("Touch of the Flayed One", e); }
     if(onDealt) onDealt(dealtTotal, chosen.length, drained ? drained.paid : null);   // drain / Recoil now have their real number
     undoBtn.style.display = "";                                 // …and offer to take it straight back
     draw();                                                     // refresh HP labels + select-all state

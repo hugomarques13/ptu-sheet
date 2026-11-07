@@ -6743,8 +6743,8 @@
    "status": "manual"
   },
   "Touch of the Flayed One (Yveltal)": {
-   "note": "a narrated, positional or world-changing Gift (portals, illusions, time, extended rituals); the Gifts card tracks its frequency pips and the rules text — nothing per-roll to compute",
-   "status": "manual"
+   "note": "v701: the GM's 💥 Apply diffs each target's Injuries; when the attacking Trainer holds the Gift a Yes/No pop-up (flayedOffer/flayedShow) lands +1 Injury, spends a Daily x3 gift pip, and Undo refunds it",
+   "status": "auto"
   },
   "Tower's Blessing": {
    "note": "a narrated, positional or world-changing Gift (portals, illusions, time, extended rituals); the Gifts card tracks its frequency pips and the rules text — nothing per-roll to compute",

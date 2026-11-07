@@ -235,6 +235,11 @@ textarea{resize:vertical; min-height:64px}
 .tm-chip{display:inline-block; font-size:12px; background:var(--panel-2); border:1px solid var(--line);
   border-radius:6px; padding:2px 8px; margin:3px 4px 0 0; font-weight:600; cursor:pointer; transition:all .1s}
 .tm-chip:hover{background:var(--accent); color:#fff; border-color:var(--accent)}
+/* a Move named in a Dex entry — tap it for its details (openDexMove) */
+.ref-move{cursor:pointer; font-weight:600; text-decoration:underline dotted; text-underline-offset:3px}
+.ref-move:hover, .ref-move-row:hover .ref-move{color:var(--accent)}
+.ref-move-row{cursor:pointer}
+.ref-move-row:hover td{background:var(--panel-2)}
 /* party reorder ▲▼ controls on a team card */
 .pc-reorder{display:flex; gap:6px; margin-top:8px; justify-content:flex-end}
 .pc-reorder button{padding:4px 12px; line-height:1; font-size:13px}
