@@ -8353,6 +8353,7 @@ function render(){
   renderRollFeed();               // GM-only float, pinned over whichever tab is showing
   renderBlessingPops();           // everyone's float: the Blessings on the field and their uses left
   renderCallOverlay();            // the 📱 Codec while a call is on the line (and the top-bar 📱 itself)
+  if(typeof contestRender==="function") try{ contestRender(); }catch(e){ console.error(e); }   // 🎀 contest dock + stage (contest.js)
   applyReadonlyLock();
   saveNav();
 }
@@ -9805,6 +9806,7 @@ function applyAutoKO(owner, oldHP, newHP){
     endSceneTypeState(owner);       // "remains Terastalized until they are Fainted or the Scene ends"
     toast(`💀 ${ownerLabel(owner)} is Knocked Out at ${newHP} HP.`);
     pyreOfGriefOnFaint(owner);      // a FOE of anyone with Pyre of Grief, within 3 m of them, feeds it (Scene x2)
+    if(typeof contestOnKO==="function") try{ contestOnKO(owner); }catch(e){ console.error(e); }   // 🎀 Battle Contest: +2 Voltage to the other side
     return "ko";
   }
   /* Rampaging Spirit holds a Pokémon up past 0 the same way Fight On does for a Berserker, so it
@@ -20219,6 +20221,7 @@ function renderMonBuild(root, p, sp){
 
 function renderMonInfo(root, p, sp){
   if(sp) root.append(capsSkillsCard(sp, p));
+  if(typeof contestStatsCard==="function"){ const cc = contestStatsCard(p, sp); if(cc) root.append(cc); }   // 🎀 Poffins + Contest dice
   const nc = el("div",{class:"card"}, el("h3",{},"Notes"));
   nc.append(field("Notes","",{type:"textarea",value:p.notes,onchange:v=>{p.notes=v;save();}}));
   root.append(nc);
@@ -27234,6 +27237,8 @@ function openMetronome(p, metro, sp, opts={}){
   roll();
 }
 function openMoveRoll(p, m, sp, opts={}){
+  /* 🎀 Contest Mode: the Move performs its Contest Effect instead (contest.js) */
+  if(typeof contestInterceptMove==="function" && contestInterceptMove(p, m, sp, opts)) return;
   { const lk = moveLockReason(p, m); if(lk && !p.unlocked){ toast(`\u{1F512} ${ownerLabel(p)} can't use ${m.name} \u2014 ${lk}`); return; } }
   /* Metronome does not resolve as itself: roll the dex first, then come back through here
      with whatever came up (opts.viaMetronome) and roll THAT for real. */
@@ -28645,12 +28650,14 @@ function openMoveRoll(p, m, sp, opts={}){
 
   modal({title: opts.viaMetronome ? `🎰 Metronome → ${m.name}` : `${m.name}`, bodyNode:body, footNodes:[
     m.effect? el("button",{class:"btn-secondary",onclick:()=>openRefDetail("move",m.name)},"Full text") : "",
+    (typeof contestBattleAppealBtn==="function" ? contestBattleAppealBtn(p, m, sp) : ""),   // 🎀 Battle Contest: every Move also rolls Appeal
     el("button",{class:"btn-primary",onclick:doRoll},"🎲 Roll dice"),
   ]});
 }
 /* `p` is optional: pass the Pokémon whose row this is and the AC shown is the one it actually
    hits at — Accuracy Training (Poké Edge) lowers a Move's AC permanently. */
 function moveLineShort(m, p){
+  { const cl = typeof contestMoveLine==="function" ? contestMoveLine(m, p) : null; if(cl) return cl; }   // 🎀 Contest Mode
   const bits=[];
   const freq = p ? monMoveFreq(p, m) : m.frequency;
   if(freq) bits.push(freq + (freq!==m.frequency ? ` (${moveFreqWhy(p, m) || "PP Up"})` : ""));
@@ -41654,6 +41661,8 @@ function renderEncounters(){
   leftc.append(sel);
   leftc.append(el("button",{class:"btn ghost",onclick:()=>{ const n=prompt("Encounter name:","New Encounter"); if(n===null)return; const e=newEncounter(n||"New Encounter"); arr.push(e); state.activeEncounterId=e.id; saveEnc(); renderEncounters(); }},"＋ New"));
   leftc.append(el("button",{class:"btn ghost",title:"roll a random wild encounter from an area table",onclick:openRandomEncounter},"🎲 Random"));
+  if(typeof ctNewContestEncounter==="function") leftc.append(el("button",{class:"btn ghost",
+    title:"a Pokémon Contest — Standard, Supercontest, Festival or Battle Contest (contest.js)",onclick:ctNewContestEncounter},"🎀 New Contest"));
   leftc.append(el("button",{class:"btn ghost",title:"build a fight that arrives in waves \u2014 one encounter per wave, priced against what the party actually leads with",onclick:openGauntlets},"\u{1F30A} Gauntlet"));
   leftc.append(el("button",{class:"btn ghost",title:"hand EXP to the players — any amount, to anyone you tick, no encounter or calculator needed",onclick:()=>openSendEXP()},"📤 Send EXP"));
   if(cur){
@@ -41700,13 +41709,15 @@ function renderEncounters(){
   bar.append(top); root.append(bar);
   if(!cur){ root.append(el("div",{class:"card"}, el("span",{class:"muted"},"No encounter yet — tap ＋ New to build one, then add Trainers and wild Pokémon."))); return; }
   // settings + EXP
+  /* 🎀 a Contest encounter swaps the battle EXP/difficulty tools and the wild Pokémon for its own cards (contest.js) */
+  const isContestEnc = cur.kind==="contest" && typeof contestEncounterCards==="function";
   const setc=el("div",{class:"card"});
   setc.append(el("h3",{}, cur.name,
-    el("button",{class:"btn-secondary",style:"padding:6px 12px",
+    isContestEnc ? "" : el("button",{class:"btn-secondary",style:"padding:6px 12px",
       title:"weigh this encounter against the party using the Core p.473 encounter-building guidelines",
       onclick:()=>openEncDifficulty(cur)},"⚖ Difficulty"),
-    el("button",{class:"btn-primary",style:"padding:6px 12px",onclick:()=>openExpCalc(cur)},"🧮 Calculate EXP")));
-  setc.append(el("div",{class:"small muted",style:"margin-top:4px"}, `Base XP so far: `, el("b",{}, String(encounterBaseXP(cur))), ` (sum of enemy levels; Trainers count double, a Swarm counts its whole Multiplier). Significance ×${cur.sig}, ${cur.players} player${cur.players===1?"":"s"} — edit in Calculate EXP.`));
+    isContestEnc ? "" : el("button",{class:"btn-primary",style:"padding:6px 12px",onclick:()=>openExpCalc(cur)},"🧮 Calculate EXP")));
+  if(!isContestEnc) setc.append(el("div",{class:"small muted",style:"margin-top:4px"}, `Base XP so far: `, el("b",{}, String(encounterBaseXP(cur))), ` (sum of enemy levels; Trainers count double, a Swarm counts its whole Multiplier). Significance ×${cur.sig}, ${cur.players} player${cur.players===1?"":"s"} — edit in Calculate EXP.`));
   const hideCb = el("input",{type:"checkbox"}); hideCb.checked = !!cur.hideTokens;
   hideCb.addEventListener("change",()=>{ cur.hideTokens=hideCb.checked; saveEnc(); });
   setc.append(el("label",{class:"inline",style:"gap:8px;margin-top:8px;cursor:pointer",
@@ -41717,6 +41728,7 @@ function renderEncounters(){
   notesArea.addEventListener("input",()=>{ cur.notes=notesArea.value; saveEnc(); });
   setc.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:10px"},"Notes"), notesArea);
   root.append(setc);
+  if(isContestEnc) contestEncounterCards(cur, root);
   // wild Pokémon
   const wildFainted=cur.mons.some(p=>(p.currentHP??1)<=0 && !p.encMin);
   const mc=el("div",{class:"card"}, el("h3",{},`Wild Pokémon (${cur.mons.length})`,
@@ -41724,7 +41736,7 @@ function renderEncounters(){
     el("button",{class:"linkbtn h-act",onclick:()=>addEncounterMon(cur)},"+ add Pokémon")));
   if(!cur.mons.length) mc.append(el("span",{class:"muted small"},"none — add a wild Pokémon; it comes pre-loaded with level-up moves."));
   cur.mons.forEach(p=> mc.append(encounterMonCard(cur, p, cur.mons)));
-  root.append(mc);
+  if(!isContestEnc) root.append(mc);
   // trainers
   const tc=el("div",{class:"card"}, el("h3",{},`Trainers (${cur.trainers.length})`,
     el("button",{class:"linkbtn h-act",onclick:()=>addEncounterTrainer(cur)},"+ add Trainer")));
@@ -45701,7 +45713,7 @@ function moveDetailHTML(m, name, opts){
   return `<div style="margin-bottom:6px">${typeBadge(m.type||"Normal")} <span class="kv">${esc(m.class||"")}</span></div>
     ${kv("Frequency",m.frequency)}${kv("AC",m.ac)}${m.damageBase?`<span class="kv">DB ${m.damageBase} (${DB_TABLE[m.damageBase]||"?"})</span>`:""}${kv("Range",m.range)}
     <div class="r-body" style="margin-top:8px">${annotateKeywords(esc(m.effect||""))}</div>
-    ${(m.contest && showContest())?`<div class="r-meta" style="margin-top:6px">Contest: ${esc(m.contest)}</div>`:""}
+    ${typeof contestDetailHTML==="function" ? contestDetailHTML(m) : ((m.contest && showContest())?`<div class="r-meta" style="margin-top:6px">Contest: ${esc(m.contest)}</div>`:"")}
     ${opts?.tm?`<div style="margin-top:8px"><span class="tm-chip" data-tmmove="${escAttr(m.name)}" title="See which of your Pokémon can learn this via TM/HM">🔍 Which of my Pokémon can learn this? (TM/HM)</span></div>`:""}`;
 }
 /* device-level display prefs */
@@ -48683,7 +48695,8 @@ function flushUiRefresh(){
   if(kinds.includes("map") && currentTab==="dex") renderDex();     // "Sheets counted" rides the map-meta row
   if(kinds.includes("pc")  && currentTab==="pc")  renderPC();
   if(kinds.includes("enc") && (currentTab==="encounters" || currentTab==="map")) render();
-  if(kinds.includes("rolls")){ renderRollFeed(); renderBlessingPops(); renderCallOverlay(); }   // all float over every tab, so no tab check
+  if(kinds.includes("rolls")){ renderRollFeed(); renderBlessingPops(); renderCallOverlay();
+    if(typeof contestRender==="function") try{ contestRender(); }catch(e){ console.error(e); } }   // all float over every tab, so no tab check
   // a cart tick shouldn't rebuild the whole board — swap just the floating shop panel when we're on it
   if(kinds.includes("shops")){
     if(currentTab==="shops") renderShops();
@@ -51433,6 +51446,7 @@ function advanceInitiative(map, meta, dir){
   else if(idx<0){ idx=list.length-1; }                // stepping back before the first (not a round change)
   meta.initTurnId = list[idx].id;
   if(wrapped){ meta.initRound=(meta.initRound||1)+1; resetMapMovement(map); refreshSwarmRounds(map); }   // round ends → reset movement (like ↺ New round)
+  if(wrapped && typeof contestOnRoundWrap==="function") try{ contestOnRoundWrap(meta.initRound); }catch(e){ console.error(e); }   // 🎀 Battle Contest round count
   // A forward step ends the previous combatant's turn → expire the buffs THEY cast (on any creature,
   // e.g. a Musician's Songs on allies), at the end of their next turn. Stepping back = correction, no expiry.
   let expired = [];
@@ -51966,6 +51980,7 @@ function recallPokemon(o){
   if(o.hazardHit){ delete o.hazardHit; lines.push("Stealth Rock can catch it again"); }
   const regen = recallRegenerator(o);
   if(regen) lines.push(regen);
+  if(typeof contestOnRecall==="function") try{ contestOnRecall(o); }catch(e){ console.error(e); }   // 🎀 Battle Contest: −2 Voltage
   return { ok:true, lines };
 }
 function canRemoveToken(token){
@@ -52980,6 +52995,8 @@ async function endCombatEffects(map){
   return n;
 }
 async function toggleBattle(map){
+  /* 🎀 Contest Mode: "Battle" runs a contest instead (a Battle Contest still fights) — contest.js */
+  if(typeof contestBattleHook==="function" && await contestBattleHook(map)) return;
   const meta = activeMapMeta(); meta.battleOn = !meta.battleOn;
   let battleEndedN = 0;
   if(meta.battleOn){
@@ -58726,8 +58743,10 @@ function renderMap(){
       // — Battle group: track movement per token —
       bar.append(el("span",{class:"map-sep"}),
         el("button",{class:"btn-secondary"+(meta.battleOn?" on":""),onclick:()=>toggleBattle(map),
-          title:"Track how far each token moves per round (diagonals cost 2)"}, meta.battleOn?"⚔ Battle on":"⚔ Battle off"));
+          title:"Track how far each token moves per round (diagonals cost 2)"},
+          (typeof contestBattleLabel==="function" && contestBattleLabel(meta)) || (meta.battleOn?"⚔ Battle on":"⚔ Battle off")));
       if(meta.battleOn) bar.append(el("button",{class:"btn-secondary",onclick:()=>newRound(map),title:"Reset every token's movement for a new round"},"↺ New round"));
+      if(typeof contestToggleBtn==="function") bar.append(contestToggleBtn(map));   // 🎀 Contest Mode (contest.js)
       if(mapWalls(map).some(w=>w.gate)) bar.append(el("button",{class:"btn-secondary",onclick:()=>flipGates(map),
         title:"Open every shut gate and shut every open one (a statue switch)"}, "\u{1F6AA} Flip gates"));
       const curtainMs = curtainMaps(map);                  // 🎭 any curtain in this building (CURTAINS)
