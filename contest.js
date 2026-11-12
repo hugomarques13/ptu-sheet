@@ -80,7 +80,7 @@ const CT_VARIANTS = {
   standard: { name:"Standard Contest", icon:"🎀", blurb:"One Contest Type the whole time (a “Cool Contest”, a “Cute Contest”…)." },
   super:    { name:"Supercontest",     icon:"🎲", blurb:"The Contest Type is rolled at the start of every round (1d6: Cool, Tough, Beauty, Smart, Cute, re-roll 6)." },
   festival: { name:"Festival",         icon:"🎪", blurb:"Contest after contest: the lowest Appeal is eliminated each time (Appeal carries over) until three are left — the best of the final three wins." },
-  battle:   { name:"Battle Contest",   icon:"⚔",  blurb:"A real 1-on-1 battle where every Move also rolls Appeal. 3–6 Pokémon each, 2 rounds per Pokémon; most Appeal wins, not the last one standing." },
+  battle:   { name:"Battle Contest",   icon:"⚔",  blurb:"A real battle where every Move also rolls Appeal — 1-on-1, every Trainer for themselves, or teams. 3–6 Pokémon each, 2 rounds per Pokémon; most Appeal wins, not the last one standing." },
 };
 
 /* ---------- small helpers ---------- */
@@ -282,9 +282,19 @@ function ctNormEnc(enc){
   if(!Array.isArray(k.entrants)) k.entrants = [];
   k.entrants = k.entrants.filter(x=>x && typeof x==="object" && Array.isArray(x.monIds));
   k.entrants.forEach(x=>{ if(!x.id) x.id = uid(); });
+  /* Battle Contest format (p.270 allows double and triple battles): "ffa" = every Trainer for
+     themselves; "teams" = Trainers grouped into sides whose Appeal is pooled (x.team = "1".."4"). */
+  if(k.battleFormat!=="teams") k.battleFormat = "ffa";
+  k.entrants.forEach(x=>{ x.team = CT_TEAM_KEYS.includes(String(x.team)) ? String(x.team) : "1"; });
+  if(!k.teamNames || typeof k.teamNames!=="object" || Array.isArray(k.teamNames)) k.teamNames = {};
   return k;
 }
+const CT_TEAM_KEYS = ["1","2","3","4"];
 function ctIsTeam(k){ return k.variant==="battle" || !!k.rotation; }
+function ctTeamLabel(names, key){ const n = String((names||{})[key]||"").trim(); return n || `Team ${key}`; }
+/* which side a contestant is on — in a free-for-all every Trainer is their own side */
+function ctSideOf(run, e){ return run && run.teams ? "t" + (e.team || "1") : "e" + e.id; }
+function ctSideName(run, e){ return run && run.teams ? ctTeamLabel(run.teamNames, e.team || "1") : (e.trainer || "Trainer"); }
 function ctNewContestEncounter(){
   const n = prompt("Contest name:", "Pokémon Contest"); if(n===null) return;
   const e = newEncounter(n || "Pokémon Contest");
@@ -333,6 +343,13 @@ function contestEncounterCards(enc, root){
     const bc = el("input",{type:"number",min:3,max:6,value:k.battleCount,style:"width:70px"});
     bc.addEventListener("change",()=>{ k.battleCount = Math.max(3,Math.min(6,parseInt(bc.value)||3)); save(); });
     row.append(el("label",{class:"field",style:"max-width:170px"}, el("span",{},"Pokémon each (3–6)"), bc));
+    const fSel = el("select",{});
+    fSel.append(el("option",{value:"ffa",selected:k.battleFormat==="ffa"},"Every Trainer for themselves"),
+                el("option",{value:"teams",selected:k.battleFormat==="teams"},"Teams (Appeal pooled per side)"));
+    fSel.addEventListener("change",()=>{ k.battleFormat = fSel.value; save(); });
+    row.append(el("label",{class:"field",style:"max-width:240px",
+      title:"p.270: Battle Contests can be double or triple battles. Every opposing Pokémon on the field counts as adjacent."},
+      el("span",{},"Format"), fSel));
   } else {
     const rot = el("input",{type:"checkbox"}); rot.checked = k.rotation;
     rot.addEventListener("change",()=>{ k.rotation = rot.checked; save(); });
@@ -373,8 +390,11 @@ function contestEncounterCards(enc, root){
   cc.append(el("h3",{}, `Contestants (${nEnt})`,
     el("button",{class:"linkbtn h-act",onclick:()=>ctPickPlayerMons(enc)},"+ player Pokémon"),
     el("button",{class:"linkbtn h-act",onclick:()=>ctPickNpcMons(enc)},"+ NPC Pokémon")));
+  const teamsOn = k.variant==="battle" && k.battleFormat==="teams";
   cc.append(el("div",{class:"small muted",style:"margin:-4px 0 8px"},
-    k.variant==="battle" ? `Exactly two Trainers face off. Give each one ${k.battleCount} Pokémon (the first ${k.battleCount} ticked are used).`
+    k.variant==="battle" ? (teamsOn
+        ? `Put each Trainer on a team; a team's Appeal is added together and the best team wins. Give each Trainer ${k.battleCount} Pokémon (the first ${k.battleCount} ticked are used).`
+        : `Two or more Trainers, each for themselves — the most Appeal wins. Give each one ${k.battleCount} Pokémon (the first ${k.battleCount} ticked are used).`)
     : team ? "One row per Trainer (or team) with the Pokémon they'll rotate through."
     : "One row per performing Pokémon. NPC coordinators are built in the Trainers card below — give them Pokémon there, then add them here."));
   if(!nEnt) cc.append(el("span",{class:"muted small"},"nobody yet."));
@@ -384,8 +404,15 @@ function contestEncounterCards(enc, root){
     const mid = el("div",{style:"flex:1;min-width:0"});
     const tName = en.src==="sheet" ? (((ctSheetChar(en.sheetId)||{}).trainer||{}).name || (ctSheetChar(en.sheetId)||{}).name || "Player")
                                    : ((((enc.trainers||[]).find(t=>t.id===en.trId)||{}).trainer||{}).name || "NPC");
-    mid.append(el("div",{style:"font-weight:800"}, `${k.variant==="battle" ? (i===0?"Side A · ":i===1?"Side B · ":"(extra) ") : ""}${tName}`,
-      el("span",{class:"small muted",style:"margin-left:6px;font-weight:600"}, en.src==="sheet" ? "player" : "NPC")));
+    const head = el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap"}, el("b",{}, tName),
+      el("span",{class:"small muted",style:"font-weight:600"}, en.src==="sheet" ? "player" : "NPC"));
+    if(teamsOn){
+      const ts = el("select",{style:"padding:2px 6px;width:auto;max-width:180px",title:"which team this Trainer is on"});
+      CT_TEAM_KEYS.forEach(key=>ts.append(el("option",{value:key,selected:en.team===key}, ctTeamLabel(k.teamNames, key))));
+      ts.addEventListener("change",()=>{ en.team = ts.value; save(); });
+      head.append(ts);
+    }
+    mid.append(head);
     refs.forEach(ref=>{
       const R = ctResolveRef(ref), p = R.mon;
       if(!p){ mid.append(el("div",{class:"small",style:"color:var(--bad)"},"⚠ a Pokémon here can't be found (deleted or moved?)")); return; }
@@ -401,7 +428,15 @@ function contestEncounterCards(enc, root){
         onclick:()=>{ k.entrants.splice(k.entrants.indexOf(en),1); save(); }},"✕")));
     cc.append(line);
   });
-  if(k.variant==="battle" && nEnt!==2 && nEnt) cc.append(el("div",{class:"small",style:"color:var(--bad);margin-top:6px"},"⚠ A Battle Contest needs exactly two Trainers."));
+  if(teamsOn && nEnt){
+    const used = [...new Set(k.entrants.map(en=>en.team))].sort();
+    const names = el("div",{class:"ct-row",style:"margin-top:8px"}, el("span",{class:"small",style:"font-weight:700"},"Team names:"));
+    used.forEach(key=>{ const inp = el("input",{type:"text",value:(k.teamNames||{})[key]||"",placeholder:`Team ${key}`,style:"width:150px"});
+      inp.addEventListener("change",()=>{ k.teamNames[key] = inp.value.trim(); save(); }); names.append(inp); });
+    cc.append(names);
+    if(used.length<2) cc.append(el("div",{class:"small",style:"color:var(--bad);margin-top:6px"},"⚠ Everyone is on the same team — put the other side on a different team."));
+  }
+  if(k.variant==="battle" && nEnt===1) cc.append(el("div",{class:"small",style:"color:var(--bad);margin-top:6px"},"⚠ A Battle Contest needs at least two Trainers."));
   if(k.variant!=="battle" && nEnt && nEnt<2) cc.append(el("div",{class:"small",style:"color:var(--bad);margin-top:6px"},"⚠ A contest needs at least two contestants."));
   root.append(cc);
 }
@@ -468,7 +503,8 @@ function ctAddPicks(k, list, team){
   if(team){
     list.forEach(x=>{
       let en = k.entrants.find(e=>owner(e.src==="sheet"?{src:"sheet",sheetId:e.sheetId}:{src:"enc",trId:e.trId})===owner(x));
-      if(!en){ en = { id:uid(), src:x.src, sheetId:x.sheetId||null, trId:x.trId||null, monIds:[] }; k.entrants.push(en); }
+      // a new Battle Contest Trainer starts on the obvious team: players together, NPCs on the other side
+      if(!en){ en = { id:uid(), src:x.src, sheetId:x.sheetId||null, trId:x.trId||null, monIds:[], team: x.src==="sheet" ? "1" : "2" }; k.entrants.push(en); }
       en.monIds.push(x.monId);
     });
   } else list.forEach(x=>k.entrants.push({ id:uid(), src:x.src, sheetId:x.sheetId||null, trId:x.trId||null, monIds:[x.monId] }));
@@ -481,7 +517,8 @@ function ctBuildRun(enc){
   const k = ctNormEnc(enc), variant = k.variant;
   const superMode = variant==="super" || ((variant==="festival"||variant==="battle") && k.superRounds);
   const ents = [];
-  k.entrants.slice(0, variant==="battle" ? 2 : 99).forEach(en=>{
+  const teams = variant==="battle" && k.battleFormat==="teams";
+  k.entrants.forEach(en=>{
     const refs = ctEntrantRefs(enc, en).slice(0, variant==="battle" ? k.battleCount : 99);
     let trainerName = "";
     const mons = refs.map(ref=>{
@@ -495,9 +532,10 @@ function ctBuildRun(enc){
     ents.push({ id:uid(), src:en.src, sheetId:en.sheetId||null, encId:en.src==="enc"?enc.id:null, trId:en.trId||null,
       trainer: trainerName || (en.src==="sheet" ? "Player" : "NPC"), mons,
       letter:null, appeal:0, fumble:0, voltage:0, intro:null, introDice:{}, introUsed:{}, spent:0, flags:{},
-      eliminated:false, activeKey:null, centerNext:false });
+      eliminated:false, activeKey:null, centerNext:false, team: teams ? (en.team || "1") : null });
   });
   return { id:uid(), encId:enc.id, name:enc.name, variant, ctype:k.ctype, superMode,
+           teams, teamNames: teams ? Object.assign({}, k.teamNames) : {},
            rotation: variant!=="battle" && !!k.rotation, stage:"intro", leg:1, round:1, turn:0,
            rounds: variant==="battle" ? 2*k.battleCount : ents.length, battleCount:k.battleCount,
            roundType: superMode ? null : k.ctype, typeRolls:[], entrants:ents, log:[], moveFix:{},
@@ -511,8 +549,10 @@ function ctStartRun(enc, opts){
   if(c.run && c.run.stage!=="results" && !confirm(`“${c.run.name}” is still on stage. Replace it with “${enc.name}”?`)) return false;
   const k = ctNormEnc(enc);
   const run = ctBuildRun(enc);
-  if(k.variant==="battle" ? run.entrants.length!==2 : run.entrants.length<2){
-    toast(k.variant==="battle" ? "A Battle Contest needs exactly two Trainers with Pokémon" : "Add at least two contestants first"); return false; }
+  const sides = new Set(run.entrants.map(e=>ctSideOf(run, e))).size;
+  if(run.entrants.length<2 || sides<2){
+    toast(k.variant==="battle" ? (run.teams ? "A team Battle Contest needs at least two teams with Pokémon" : "A Battle Contest needs at least two Trainers with Pokémon")
+                               : "Add at least two contestants first"); return false; }
   c.on = true; c.run = run;
   run.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`🎀 ${CT_VARIANTS[run.variant].name} “${run.name}” begins — ${run.entrants.length} contestant${run.entrants.length===1?"":"s"}${run.superMode?" · Contest Type rolled each round":` · ${run.ctype} Contest`}.` });
   contestSave(); render(); ctOpenStage();
@@ -545,7 +585,10 @@ function ctCurrent(run){ return run.stage==="perform" && run.variant!=="battle" 
 function ctStatusText(run){
   if(!run) return "";
   if(run.stage==="intro") return `Introduction Stage${run.variant==="festival"?` · Contest ${run.leg}`:""}`;
-  if(run.stage==="results"){ const w = (run.entrants||[]).filter(e=>e.place===1); return `🏆 ${w.map(ctEntName).join(" & ") || "Results"}`; }
+  if(run.stage==="results"){
+    const w = (run.entrants||[]).filter(e=>e.place===1);
+    if(run.teams && w.length) return `🏆 ${ctSideName(run, w[0])}`;
+    return `🏆 ${w.map(ctEntName).join(" & ") || "Results"}`; }
   const RT = ctRoundType(run);
   if(run.variant==="battle") return `Battle Contest · Round ${run.round}/${run.rounds}${RT?` · ${RT}`:""}`;
   const cur = ctCurrent(run);
@@ -557,15 +600,18 @@ function ctMonOnField(m){
   try{ const p = ctResolveRef(m).mon; return !!(p && tokenForOwner(p)); }catch(e){ return false; }
 }
 /* who an Effect can reach: the stage neighbours this round — in a Battle Contest every opposing
-   Pokémon on the field (p.270), falling back to the one that last performed */
+   Pokémon on the field (p.270), falling back to the one that last performed. "Opposing" is every
+   other Trainer in a free-for-all, every Trainer on another team in a team Battle Contest. */
+function ctOpponents(run, ent){ const mine = ctSideOf(run, ent); return run.entrants.filter(e=>ctSideOf(run, e)!==mine); }
+function ctActiveMons(o){
+  let on = o.mons.filter(m=>!m.ko && ctMonOnField(m));
+  if(!on.length){ const a = o.mons.find(m=>m.key===o.activeKey && !m.ko); if(a) on = [a]; }
+  return on;
+}
 function ctAdjacent(run, ent, mon){
   if(run.variant==="battle"){
     const out = [];
-    run.entrants.filter(e=>e!==ent).forEach(o=>{
-      let on = o.mons.filter(m=>!m.ko && ctMonOnField(m));
-      if(!on.length){ const a = o.mons.find(m=>m.key===o.activeKey && !m.ko); if(a) on = [a]; }
-      on.forEach(m=>out.push({ ent:o, mon:m, H:m }));
-    });
+    ctOpponents(run, ent).forEach(o=>ctActiveMons(o).forEach(m=>out.push({ ent:o, mon:m, H:m })));
     return out;
   }
   const st = ctStageLine(run), i = st.indexOf(ent);
@@ -867,8 +913,24 @@ function ctFinish(run){
   alive.forEach((e,i)=>{ if(last===null || e.final!==last){ place = i+1; last = e.final; } e.place = place; });
   gone.forEach((e,i)=>{ e.place = alive.length + i + 1; });
   run.stage = "results"; run.endedAt = Date.now();
-  const win = alive.filter(e=>e.place===1);
-  run.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`🏆 ${win.map(ctEntFull).join(" & ")} win${win.length===1?"s":""} with ${win[0] ? win[0].final : 0} Appeal (after Fumbles) — a Ribbon!` });
+  if(run.teams){
+    /* a team Battle Contest is won by the side with the most Appeal between them. Each Trainer keeps
+       their own score (indPlace, for bragging rights) but places where their team placed. */
+    alive.forEach(e=>{ e.indPlace = e.place; });
+    const byTeam = {};
+    run.entrants.forEach(e=>{ const key = e.team || "1"; const t = byTeam[key] || (byTeam[key] = { key, name:ctTeamLabel(run.teamNames, key), appeal:0, fumble:0, total:0 });
+      t.appeal += e.appeal||0; t.fumble += e.fumble||0; t.total += e.final||0; });
+    const list = Object.values(byTeam).sort((a,b)=>b.total-a.total);
+    let tp = 0, tl = null;
+    list.forEach((t,i)=>{ if(tl===null || t.total!==tl){ tp = i+1; tl = t.total; } t.place = tp; });
+    run.teamResults = list;
+    run.entrants.forEach(e=>{ e.place = (byTeam[e.team||"1"]||{}).place || 1; });
+    const win = list.filter(t=>t.place===1);
+    run.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`🏆 ${win.map(t=>t.name).join(" & ")} win${win.length===1?"s":""} with ${win[0] ? win[0].total : 0} Appeal between them (after Fumbles) — a Ribbon each!` });
+  } else {
+    const win = alive.filter(e=>e.place===1);
+    run.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`🏆 ${win.map(ctEntFull).join(" & ")} win${win.length===1?"s":""} with ${win[0] ? win[0].final : 0} Appeal (after Fumbles) — a Ribbon!` });
+  }
   if(isGM()) ctStoreResults(run);
 }
 /* the result is copied onto the encounter, so the EXP calculator still has it after the stage is cleared */
@@ -876,8 +938,9 @@ function ctStoreResults(run){
   const enc = ctEncById(run.encId); if(!enc) return;
   const k = ctNormEnc(enc);
   if(k.last && k.last.runId===run.id) return;
-  k.last = { runId:run.id, at:run.endedAt || Date.now(), variant:run.variant, rotation:!!run.rotation,
+  k.last = { runId:run.id, at:run.endedAt || Date.now(), variant:run.variant, rotation:!!run.rotation, teams:!!run.teams,
     rows: run.entrants.map(e=>({ eid:e.id, src:e.src, sheetId:e.sheetId, trId:e.trId, name:ctEntName(e), trainer:e.trainer,
+      team: run.teams ? ctSideName(run, e) : null,
       place:e.place||0, final:e.final||0, appeal:e.appeal||0, fumble:e.fumble||0,
       mons: e.mons.map(m=>({ monId:m.monId, name:m.name, level:m.level, performed:!!m.performed || run.variant!=="battle" && !run.rotation })) })) };
   saveEnc();
@@ -981,21 +1044,45 @@ function ctOpenStartPicker(map){
     el("button",{class:"btn-secondary",onclick:closeModal},"Cancel") ]});
 }
 /* applyAutoKO: a contest Pokémon just Fainted (Battle Contest, p.270) */
+/* whose turn it is on the Initiative tracker — the creature that just attacked, when a hit is what
+   knocked something out */
+function ctTurnCreature(){
+  try{
+    const meta = activeMapMeta(), map = currentMapForView();
+    if(!map || !meta || !meta.battleOn || !meta.initTurnId) return null;
+    const tid = initEntryToken(meta.initTurnId);
+    const tok = mapTokensFor(map.id).find(t=>t.id===tid);
+    const L = tok && tok.link ? tokenLinked(tok) : null;
+    return (L && !L.missing && L.obj) || null;
+  }catch(e){ return null; }
+}
 function contestOnKO(owner){
   const run = contestRunLive(); if(!run || run.variant!=="battle" || run.stage!=="perform") return;
   const hit = ctFindMon(run, owner); if(!hit || hit.mon.ko) return;
+  const attacker = ctTurnCreature();          // read now: the turn may move on before the deferred write
   setTimeout(()=>{ try{
     contestWrite(r=>{
       const h = ctFindMon(r, owner); if(!h || h.mon.ko) return;
       h.mon.ko = true; h.ent.centerNext = true; if(h.ent.activeKey===h.mon.key) h.ent.activeKey = null;
-      const notes = [];
-      r.entrants.filter(e=>e!==h.ent).forEach(o=>{
-        let on = o.mons.filter(m=>!m.ko && ctMonOnField(m));
-        if(!on.length){ const a = o.mons.find(m=>m.key===o.activeKey && !m.ko); if(a) on = [a]; }
-        on.slice(0,1).forEach(m=>{ const b = m.voltage||0; m.voltage = ctClampV(b+2); notes.push(`${m.name} +${m.voltage-b} Voltage for the knockout`); });
-      });
-      r.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`💥 ${h.mon.name} is knocked out. ${notes.join("; ") || "No opposing Pokémon on the field to take the +2 Voltage."} Its replacement will be the Center of Attention on its first turn.` });
-      if(h.ent.mons.every(m=>m.ko)){ ctFinish(r); toast("🏁 Battle Contest over — every Pokémon on one side is down"); }
+      /* +2 Voltage: to the Pokémon that knocked it out with an attack — the one whose turn it is, when
+         it stands on another side. Anything else (Poison, Burn, Hail on the victim's own turn) gives
+         it to the opposing Trainer's active Pokémon instead. */
+      const a = attacker && ctFindMon(r, attacker);
+      let target = null, why = "";
+      if(a && !a.mon.ko && ctSideOf(r, a.ent)!==ctSideOf(r, h.ent)){ target = a.mon; why = "for the knockout"; }
+      else {
+        const opp = ctOpponents(r, h.ent).flatMap(o=>ctActiveMons(o));
+        if(opp.length){ target = opp[0];
+          why = opp.length>1 ? "(not an attack on its turn, so it went to the first opposing Pokémon on the field — move it with the GM tools if another one earned it)"
+                             : "(the opposing active Pokémon — it wasn't knocked out by an attack on its turn)"; }
+      }
+      let note = "No opposing Pokémon on the field to take the +2 Voltage.";
+      if(target){ const b = target.voltage||0; target.voltage = ctClampV(b+2); note = `${target.name} +${target.voltage-b} Voltage ${why}.`; }
+      r.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`💥 ${h.mon.name} is knocked out. ${note} Its replacement will be the Center of Attention on its first turn.` });
+      if(h.ent.mons.every(m=>m.ko)) r.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`🏳 ${h.ent.trainer} has no Pokémon left standing — out of the fight (their Appeal still counts).` });
+      /* it ends when only one side still has a Pokémon standing (two Trainers: when one is wiped out) */
+      const standing = new Set(r.entrants.filter(e=>e.mons.some(m=>!m.ko)).map(e=>ctSideOf(r, e)));
+      if(standing.size<=1){ ctFinish(r); toast("🏁 Battle Contest over — only one side has Pokémon left standing"); }
     });
   }catch(e){ console.error(e); } }, 0);
 }
@@ -1154,7 +1241,9 @@ function ctStageNode(run){
   const RT = run ? ctRoundType(run) : null;
   head.append(el("div",{},
     el("div",{style:"font-weight:900;font-size:16px"}, run ? `${CT_VARIANTS[run.variant].icon} ${run.name}` : "🎀 Contest Mode"),
-    el("div",{class:"small muted"}, run ? `${CT_VARIANTS[run.variant].name}${run.rotation?" · Rotation":""} · ${ctStatusText(run)}` : "every Pokémon Move performs its Contest Effect")),
+    el("div",{class:"small muted"}, !run ? "every Pokémon Move performs its Contest Effect"
+      : run.variant==="battle" && run.stage==="perform" ? `${ctStatusText(run)}${run.teams ? " · Teams" : run.entrants.length>2 ? " · Every Trainer for themselves" : ""}`
+      : `${CT_VARIANTS[run.variant].name}${run.rotation?" · Rotation":""} · ${ctStatusText(run)}`)),
     el("div",{class:"inline",style:"gap:6px"},
       run && run.stage!=="intro" && RT ? ctTypeChip(RT, run.superMode ? "round" : "Contest") : "",
       el("button",{class:"btn-secondary",onclick:ctOpenHelp},"📖 Rules"),
@@ -1339,11 +1428,21 @@ function ctBattlePanel(run){
   const box = el("div",{});
   box.append(el("div",{class:"small muted",style:"margin-bottom:6px"},
     `Fight it out on the Map as normal (Initiative decides turns). Every Move a contest Pokémon rolls has a 🎀 Appeal button in its roll window — Struggle and Combat Maneuvers don't Appeal. `
-    + `All opposing Pokémon on the field count as adjacent. A knockout gives the opposing active Pokémon +2 Voltage; recalling costs 2; a replacement sent out after a knockout is the Center of Attention on its first turn. `
-    + `Ends after round ${run.rounds} or when one side is all knocked out — most Appeal (after Fumbles) wins.`));
+    + `All opposing Pokémon on the field count as adjacent${run.teams ? " (your own team never does)" : run.entrants.length>2 ? " — every other Trainer is opposing" : ""}. `
+    + `A knockout gives +2 Voltage to the Pokémon that landed it; recalling costs 2; a replacement sent out after a knockout is the Center of Attention on its first turn. `
+    + `Ends after round ${run.rounds} or when only one side has Pokémon standing — ${run.teams ? "the team with the most Appeal between them (after Fumbles) wins" : "most Appeal (after Fumbles) wins"}.`));
+  if(run.teams){
+    const tot = {};
+    run.entrants.forEach(e=>{ const key = e.team||"1"; const t = tot[key] || (tot[key] = { name:ctTeamLabel(run.teamNames, key), net:0 }); t.net += (e.appeal||0) - (e.fumble||0); });
+    box.append(el("div",{class:"ct-row",style:"justify-content:center;gap:18px;margin:4px 0 8px"},
+      ...Object.values(tot).sort((a,b)=>b.net-a.net).map(t=>el("div",{style:"text-align:center"},
+        el("div",{class:"ct-num"}, String(t.net)), el("div",{class:"small",style:"font-weight:800"}, t.name)))));
+  }
   const sides = el("div",{class:"ct-sides"});
-  run.entrants.forEach(e=>{
+  const ordered = run.teams ? run.entrants.slice().sort((a,b)=>String(a.team).localeCompare(String(b.team))) : run.entrants;
+  ordered.forEach(e=>{
     const s = el("div",{class:"ct-box"});
+    if(run.teams) s.append(el("div",{class:"small",style:"font-weight:900;color:#d6337a;letter-spacing:.04em"}, ctSideName(run, e).toUpperCase()));
     s.append(el("div",{class:"ct-row"}, el("b",{style:"font-size:15px"}, e.trainer),
       el("span",{style:"margin-left:auto"}, el("span",{class:"ct-num"}, String(e.appeal)), el("span",{class:"small muted"}," Appeal  "),
         el("span",{class:"ct-num",style:"color:var(--bad)"}, String(e.fumble)), el("span",{class:"small muted"}," Fumble"))));
@@ -1369,15 +1468,31 @@ function ctBattlePanel(run){
 /* ---------- Results ---------- */
 function ctResultsPanel(run){
   const box = el("div",{});
-  const rows = run.entrants.slice().sort((a,b)=>(a.place||99)-(b.place||99));
-  box.append(el("div",{style:"text-align:center;font-size:20px;font-weight:900;margin:6px 0"}, `🏆 ${rows.filter(e=>e.place===1).map(ctEntFull).join(" & ")}`));
-  box.append(el("div",{class:"small muted",style:"text-align:center;margin-bottom:8px"},"Final score = Appeal − Fumble. The winner earns a Ribbon (add it to their Inventory)."));
+  const medal = p => p===1?"🥇":p===2?"🥈":p===3?"🥉":`#${p}`;
+  if(run.teams && Array.isArray(run.teamResults)){
+    const win = run.teamResults.filter(t=>t.place===1);
+    box.append(el("div",{style:"text-align:center;font-size:20px;font-weight:900;margin:6px 0"}, `🏆 ${win.map(t=>t.name).join(" & ")}`));
+    box.append(el("div",{class:"small muted",style:"text-align:center;margin-bottom:8px"},"A team's score is everyone's Appeal − Fumble added together. Each Trainer on the winning team earns a Ribbon (add them to their Inventories)."));
+    run.teamResults.forEach(t=>box.append(el("div",{class:"moveslot",style:"align-items:center"},
+      el("div",{style:"font-size:22px;font-weight:900;width:44px;text-align:center"}, medal(t.place)),
+      el("div",{style:"flex:1"}, el("div",{style:"font-weight:900"}, t.name),
+        el("div",{class:"small muted"}, `${t.appeal} Appeal − ${t.fumble} Fumble · ${run.entrants.filter(e=>ctSideName(run, e)===t.name).map(e=>e.trainer).join(", ")}`)),
+      el("div",{class:"ct-num"}, String(t.total)))));
+    box.append(el("div",{style:"font-weight:800;margin:10px 0 2px"},"Individual scores"));
+  } else {
+    const rows0 = run.entrants.filter(e=>e.place===1);
+    box.append(el("div",{style:"text-align:center;font-size:20px;font-weight:900;margin:6px 0"}, `🏆 ${rows0.map(ctEntFull).join(" & ")}`));
+    box.append(el("div",{class:"small muted",style:"text-align:center;margin-bottom:8px"},"Final score = Appeal − Fumble. The winner earns a Ribbon (add it to their Inventory)."));
+  }
+  const rows = run.teams ? run.entrants.slice().sort((a,b)=>(b.final||0)-(a.final||0)) : run.entrants.slice().sort((a,b)=>(a.place||99)-(b.place||99));
   rows.forEach(e=>{
+    const p = run.teams ? (e.indPlace||e.place) : e.place;
     box.append(el("div",{class:"moveslot",style:"align-items:center"},
-      el("div",{style:"font-size:22px;font-weight:900;width:44px;text-align:center"}, e.place===1?"🥇":e.place===2?"🥈":e.place===3?"🥉":`#${e.place}`),
+      el("div",{style:"font-size:22px;font-weight:900;width:44px;text-align:center"}, run.teams ? `#${p}` : medal(p)),
       ...e.mons.slice(0,3).map(m=>ctMonPic(m)),
       el("div",{style:"flex:1"}, el("div",{style:"font-weight:800"}, ctEntFull(e)),
-        el("div",{class:"small muted"}, e.eliminated ? `eliminated after Contest ${e.elimLeg}` : `${e.appeal} Appeal − ${e.fumble} Fumble`)),
+        el("div",{class:"small muted"}, e.eliminated ? `eliminated after Contest ${e.elimLeg}`
+          : `${e.appeal} Appeal − ${e.fumble} Fumble${run.teams ? ` · ${ctSideName(run, e)}` : ""}`)),
       el("div",{class:"ct-num"}, String(e.final))));
   });
   if(isGM()){
@@ -1405,7 +1520,7 @@ function ctGmTools(run){
   if(run.superMode && run.stage==="perform") top.append(el("button",{class:"btn-secondary",onclick:W(r=>{ ctRollRoundType(r); r.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`🎲 GM re-rolled the round Type → ${r.roundType}` }); })},"🎲 Re-roll round Type"));
   if(run.stage==="perform") top.append(el("button",{class:"btn-secondary",onclick:()=>{ if(confirm("End the contest now and tally the scores?")) contestWrite(r=>ctFinish(r)); }},"🏁 End & tally now"));
   if(run.stage==="results" && run.variant==="battle") top.append(el("button",{class:"btn-secondary",title:"the tally came too early — go back to the fight",
-    onclick:W(r=>{ r.stage = "perform"; r.entrants.forEach(e=>{ delete e.place; delete e.final; }); })},"↩ Back to the battle"));
+    onclick:W(r=>{ r.stage = "perform"; delete r.teamResults; r.entrants.forEach(e=>{ delete e.place; delete e.final; delete e.indPlace; }); })},"↩ Back to the battle"));
   top.append(el("button",{class:"btn-secondary danger",onclick:()=>{ if(confirm("Cancel this contest and clear the stage? Nothing is scored.")){ const c = contestData(); c.run = null; contestSave(); } }},"✕ Cancel contest"));
   d.append(top);
   d.append(el("div",{class:"small muted"},"Hand adjustments (a Feature the sheet doesn't automate, a ruling, a mistake):"));
@@ -1732,7 +1847,7 @@ function ctOpenExp(enc){
   const team = ctIsTeam(k) || (k.last && (k.last.variant==="battle" || k.last.rotation));
   let rows;
   if(k.last && Array.isArray(k.last.rows) && k.last.rows.length){
-    rows = k.last.rows.map(r=>({ name:r.name, trainer:r.trainer, src:r.src, sheetId:r.sheetId, place:r.place||1,
+    rows = k.last.rows.map(r=>({ name: r.team ? `${r.name} (${r.team})` : r.name, trainer:r.trainer, src:r.src, sheetId:r.sheetId, place:r.place||1,
       mons:(r.mons||[]).filter(m=>team ? m.performed!==false : true).map(m=>({ name:m.name, level:m.level||1 })) }));
   } else {
     rows = k.entrants.map((en,i)=>{
@@ -1829,7 +1944,8 @@ function ctOpenHelp(){
     P("Rotation: pick who performs each round (each Pokémon once); at most 2 × contestants dice per contestant. Supercontest: the Type is rolled at the start of each round. Festival: after each contest Fumbles come off, the lowest Appeal is eliminated and the rest go again from the Introduction until three are left."),
     P("Automated Features/items: Coordinator (re-roll one Appeal), Adaptable Performance, Reliable Performance (2 AP), Rule of Cool / Fabulous Max / Gleeful Steps / Calculated Assault / Macho Charge (one step more aligned), Style Flourish (1 AP, re-roll 1s), the Fashion held items (re-roll 1s), Voice Lessons (+1d6 Sonic), Decorative Twine (+2d6)."),
     H("6 · Battle Contest (automated)"),
-    P("A normal battle on the Map. Each Move a contest Pokémon rolls gets a 🎀 Appeal button; all opposing Pokémon on the field are adjacent; Voltage is per Pokémon. A knockout gives the opposing active Pokémon +2 Voltage and makes the replacement the Center of Attention for its first turn; ↩ Recall costs 2 Voltage. It ends after 2 rounds per Pokémon (counted off the Map's Initiative) or when one side is all knocked out."),
+    P("A normal battle on the Map. Each Move a contest Pokémon rolls gets a 🎀 Appeal button; all opposing Pokémon on the field are adjacent; Voltage is per Pokémon. A knockout gives +2 Voltage to the Pokémon whose turn it is (the attacker) — or, for a knockout that wasn't an attack, to the opposing active Pokémon — and makes the replacement the Center of Attention for its first turn; ↩ Recall costs 2 Voltage. It ends after 2 rounds per Pokémon (counted off the Map's Initiative) or when only one side has Pokémon standing."),
+    P("Formats (p.270 allows double and triple battles): two Trainers, every Trainer for themselves (each one's opponents are all the others), or Teams — a team's Appeal is added together and the best team wins, and teammates are never adjacent to each other."),
     H("7 · EXP"),
     P("🧮 Contest EXP: X = half the Pokémon beaten, rounded up, × the Pokémon's Level × Significance (×1.5-2). The book's example only works if a Pokémon counts itself, so that's the default; the literal reading is one click away. Sends into the players' EXP pools."),
     H("8 · Still done by hand"),
@@ -1880,7 +1996,7 @@ body.ct-docked{padding-bottom:72px}
 .ct-move{display:flex;gap:8px;align-items:flex-start;padding:6px 8px;border:1px solid var(--line);border-radius:8px;margin:4px 0;cursor:pointer}
 .ct-move.sel{border-color:#d6337a;background:rgba(214,51,122,.08)}
 .ct-move.off{opacity:.5;cursor:not-allowed}
-.ct-sides{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ct-sides{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
 @media(max-width:700px){.ct-sides{grid-template-columns:1fr}.ct-spot{font-size:8px;padding:1px 4px}.ct-stage-body{padding:10px}}`;
   document.head.append(s);
 }

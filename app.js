@@ -5176,6 +5176,17 @@ function autoAllocMom(p){
 })();
 const itemByName = new Map([...(D.items?.held||[]), ...(D.items?.food||[]), ...(D.items?.capabilities||[]),
   ...(D.items?.weather||[]), ...(D.items?.equipment||[]), ...(D.items?.gear||[])].map(i => [i.name.toLowerCase(), i]));
+/* catalog rows that were renamed: the old name still finds the row, so a copy already sitting in an
+   Inventory, an Equipment slot or a Shop keeps its slot, price and rules text. Not offered in pickers
+   (those read D.items directly), so new purchases use the new name. */
+const LEGACY_ITEM_NAMES = {
+  "light armor":   "Light Armor (Physical)",   // Sept 2015 errata split Light Armor in two
+  "special armor": "Light Armor (Special)",
+};
+Object.entries(LEGACY_ITEM_NAMES).forEach(([old, now]) => {
+  const it = itemByName.get(now.toLowerCase());
+  if(it && !itemByName.has(old)) itemByName.set(old, it);
+});
 
 /* Mega Evolution: derive stoneName <-> "Mega X"/"Mega X Y" species pairs from the loaded item
    effect text ("Mega Evolves <target> when used...") instead of hand-listing all ~47 of them.
@@ -13263,7 +13274,13 @@ const EQUIP_SLOTS = ["Head","Body","Hands","Off-Hand","Feet","Accessory"];
      note      extra rules text worth surfacing                                       */
 const EQUIP_EFFECTS = {
   /* Sept 2015 Playtest p.4: "Light Armor is split into two varieties" — +5 DR against Physical damage,
-     or (Special Armor) +5 DR against Special damage. Heavy Armor is +5 DR vs all; Heavy Shields are gone and the Light Shield is just "Shield" (+1 Evasion). */
+     or +5 DR against Special damage. They are two separate catalog items, "Light Armor (Physical)" and
+     "Light Armor (Special)" — the kind is fixed when you buy it, there is no switching. The book's own
+     names ("Light Armor" = Physical, "Special Armor" = Special) stay keyed so copies bought before the
+     rename keep working (itemByName aliases them too — see LEGACY_ITEM_NAMES).
+     Heavy Armor is +5 DR vs all; Heavy Shields are gone and the Light Shield is just "Shield" (+1 Evasion). */
+  "light armor (physical)": { drTyped:{Physical:5} },
+  "light armor (special)":  { drTyped:{Special:5} },
   "light armor":            { drTyped:{Physical:5} },
   "special armor":          { drTyped:{Special:5} },
   "heavy armor":            { dr:5 },   // Sept 2015 Playtest p.4: +5 DR against all Damage, no Speed penalty
@@ -13346,7 +13363,7 @@ function equipDR(t){
   equippedList(t).forEach(({name,eff})=>{ if(eff && eff.dr){ dr+=eff.dr; from.push(name); } });
   return { dr, from };
 }
-/* Armor that soaks one damage CLASS — Light Armor (Physical) and Special Armor (Special). `isPhys` is
+/* Armor that soaks one damage CLASS — Light Armor (Physical) and Light Armor (Special). `isPhys` is
    true/false when the hit's class is known; with null/undefined nothing is counted, because a plain
    HP box has no idea what hit you (it says so instead — see damageHealRow). The Map's attack tool and
    the Simulator know the class and pass it through buffDR. */
@@ -13500,6 +13517,7 @@ function equipEffBadges(eff){
 function equipSummary(t){
   const parts=[]; const dr=equipDR(t).dr, eva=equipEvasion(t), scs=equipSpeedCS(t), ovl=equipOverland(t);
   if(dr)  parts.push(`Damage Reduction +${dr}`);
+  [["Physical",true],["Special",false]].forEach(([k,p])=>{ const c=equipClassDR(t,p).dr; if(c) parts.push(`+${c} DR vs ${k}`); });
   if(eva) parts.push(`Evasion +${eva}`);
   if(scs) parts.push(`Speed CS ${scs>0?"+":""}${scs}`);
   if(ovl) parts.push(`Overland +${ovl}`);
@@ -17128,6 +17146,15 @@ function arcanaRow(t, c, gm){
   const chips = el("div",{class:"arcana-chips"});
   chips.append(el("span",{class:"arcana-suit"}, `${(ARCANA_SUITS[d?.s]||{}).icon||""} ${d?.s==="Major"?"Major Arcana":d?.s||""}`));
   if(tag) chips.append(el("span",{class:"arcana-tag t-"+face.t, title:tag[1]}, `[${tag[0]}]`));
+  /* the same card drawn again: each copy is its own row (own Apply, notes, removal), listed in the
+     order dealt — this chip says which draw it was so the twins can be told apart */
+  const twins = (t.cards || []).filter(x => x.key === c.key);
+  if(twins.length > 1){
+    const n = twins.indexOf(c) + 1, ord = n===1 ? "1st" : n===2 ? "2nd" : n===3 ? "3rd" : `${n}th`;
+    const when = c.dealtAt ? new Date(c.dealtAt).toLocaleString([], {dateStyle:"medium", timeStyle:"short"}) : "";
+    chips.append(el("span",{class:"arcana-tag t-copy",
+      title:`drawn ${twins.length} times — this is the ${ord} copy${when ? ", dealt " + when : ""}`}, `${ord} draw`));
+  }
   if(c.arcExpiry) chips.append(el("span",{class:"arcana-tag t-arc",title:"wears off the moment the badge is won"},"⏳ this arc"));
   if(c.hidden) chips.append(el("span",{class:"arcana-tag t-hidden",title:gm?"players can't read this card's effect":"hidden"},"👁 hidden"));
   if(c.applied) chips.append(el("span",{class:"arcana-tag t-done"}, face && face.t==="held" ? "spent" : "applied"));
@@ -18222,6 +18249,7 @@ function buffMods(owner, ctx){
      the one place it has to go in — the roll modal, the Trainer's weapon swing and the Simulator
      all pick it up from here. `.acc` is only ever read attacker-side. */
   s.acc += auraRollBonus(owner);
+  s.acc += darknessAccPenalty(owner);   // 🌑 attacking from inside Shifting Darkness without Darkvision
   return s;
 }
 /* Buffs that move something other than a roll: `mods.move` raises every Movement Capability
@@ -18392,6 +18420,7 @@ function buffSources(owner, key){
   /* The Fate Aura is not a buff, but its +3 rides the same `acc` term (see auraRollBonus), so it has
      to name itself here or the roll guide credits the whole bonus to "buffs". */
   if(key === "acc" && auraRollBonus(owner)) names.push("Fate Aura +" + AURA_ROLL_BONUS);
+  if(key === "acc" && darknessAccPenalty(owner)) names.push("Shifting Darkness \u22123");
   return names.join(", ") || "buffs";
 }
 function buffModText(m){
@@ -28239,7 +28268,8 @@ function openMoveRoll(p, m, sp, opts={}){
          spend (the GM's \uD83D\uDD13 unlock waives that), so a mis-press can't conjure a free extra Reflect. */
       if(isBlessingMove(m) && (spent || p.unlocked || !freqTrackable(freqInfo(effFreq)))){
         const n = blessingActivations(m.name);
-        if(tableLayBlessing(m.name, n, ownerLabel(p), null, blessingSideOf(p)))
+        if(isTailwindMove(m)) toast(layTailwind(p).msg);
+        else if(tableLayBlessing(m.name, n, ownerLabel(p), null, blessingSideOf(p)))
           toast(`${blessingIcon(m.name)} ${m.name} is on the field \u2014 ${n} activation${n === 1 ? "" : "s"}`);
       }
       /* The Gem shatters / the Z-Crystal burns its Scene use only once the dice actually go — a
@@ -28358,7 +28388,7 @@ function openMoveRoll(p, m, sp, opts={}){
     const nCrit  = buffNoCrit(p) ? 0          // Powerful Motivator (Baby-Doll Eyes): "cannot Critically Strike for 1 full round"
                  : multi ? Math.min(strikes.filter(s=>s.crit).length, connected)
                          : (alwaysCrit ? ((cantMiss || effAC==null || acc!==1) ? 1 : 0)
-                                       : ((!cantMiss && (acc>=effCritT || (evenCrit && acc%2===0 && (thresh==null || accTot>=thresh)))) ? 1 : 0));
+                                       : ((acc>=effCritT || (evenCrit && acc%2===0 && (cantMiss || thresh==null || accTot>=thresh))) ? 1 : 0));   // an auto-hit still rolls its d20 for Crits (Core: Perfect Aim "may still roll to trigger any Effect Ranges or Critical Hits")
     const isCrit = nCrit > 0;
     const accLine = el("div",{style:fDB!=null?"margin-bottom:10px":""});
     accLine.append(el("div",{class:"lbl",style:"color:var(--muted)  ;font-weight:800"}, multi?"ACCURACY ROLLS":"ACCURACY ROLL"));
@@ -28367,6 +28397,8 @@ function openMoveRoll(p, m, sp, opts={}){
       accLine.append(el("div",{class:"small muted"}, wx.autoHit
         ? `${m.name} cannot miss in ${wx.weather.name} — no Accuracy Check.`
         : `${m.name} cannot miss while that condition holds — no Accuracy Check.`));
+      accLine.append(el("div",{class:"small muted"},
+        `The d20 still rolls for Critical Hits and Effect Ranges: ${acc}${isCrit ? " \u2014 Critical Hit!" : ` (crits on ${effCritT}+)`}.`));
       if(isCrit) accLine.append(el("div",{style:"font-size:20px;font-weight:800;color:var(--bad);margin-top:2px"}, "💥 CRITICAL HIT!"));
     } else if(multi){
       accLine.append(el("div",{style:`font-size:24px;font-weight:800;color:var(--${connected?"good":"bad"})`},
@@ -33657,6 +33689,18 @@ function shadeCallerCard(t, rerender, persist){
 function castWorldOfDarkness(t, rerender, persist){
   if(!apSpend(t, 2)) return;
   (persist || save)();
+  /* standing on the board: the darkness goes straight down around them, for everyone to see */
+  const zmap = mode === "cloud" ? (currentMapForView() || activeMap()) : null, ztok = zmap ? tokenForOwner(t) : null;
+  const zone = ztok ? dropShiftingDarkness(zmap, ztok, "wod:" + (cloud.activeId || t.name || "")) : null;
+  if(zone){
+    logRoll({ kind:"song", label:"\u{1F311} Shifting Darkness", who:t.name || "",
+      headline:`${t.name || "The Shade Caller"} drowned the field in Shifting Darkness`,
+      lines:["Burst 2 around them, on the Map for everyone \u00b7 lasts until Battle is turned off",
+             "\u22123 Accuracy for anyone WITHOUT Darkvision attacking from it (taken off their rolls) or into it (call it)"] });
+    toast("\u{1F311} World of Darkness \u00b7 2 AP \u2014 Shifting Darkness is on the Map");
+    (rerender || renderBattle)();
+    return;
+  }
   logRoll({ kind:"song", label:"🌑 Shifting Darkness", who:t.name || "",
     headline:`${t.name || "The Shade Caller"} drowned the field in Shifting Darkness`,
     lines:["Burst 2, centred on them · lasts until the end of the encounter",
@@ -38280,6 +38324,7 @@ function layBlessingFromRoll(t, m){
     t.uses = t.uses || {};
     t.uses[key] = Math.min(info.max, (t.uses[key]||0) + 1);
   }
+  if(isTailwindMove(m)) return { laid:true, msg: layTailwind(t).msg + (freqTrackable(info) ? " \u00b7 Scene use spent" : "") };
   sageLayBlessing(t, m.name);
   const n = blessingActivations(m.name);
   return { laid:true, msg:`✨ ${m.name} is on the field — ${n} activation${n === 1 ? "" : "s"}${freqTrackable(info) ? " · Scene use spent" : ""}` };
@@ -42745,6 +42790,7 @@ function clampFloatPos(p){
 /* Alt+Shift+0 puts the shop, initiative and roll-feed windows back in their home corners. */
 function resetFloatPositions(){
   ["ptu_shop_pos","ptu_init_pos","ptu_rollfeed_pos"].forEach(k=>{ try{ localStorage.removeItem(k); }catch(e){} });
+  codecPosSave(null); { const cb = document.getElementById("callOverlay"); if(cb) cb.style.transform = ""; }   // the Codec too
   try{ renderRollFeed(); }catch(e){}
   try{ if(typeof renderMap==="function") renderMap(); }catch(e){}
   try{ refreshShopPanel(); }catch(e){}
@@ -43113,6 +43159,19 @@ function tokenSide(t){
      initiative auto-join, HP visibility, the faction ring, the attack tool's two tabs), so the
      one tick moves all of them together. */
   return (ENEMY_LINKS.has(t.link.kind) && !t.ally) ? "enemy" : "player";
+}
+/* Who may DRAG a token around — not the same as editing it (HP and the sheet stay with whoever owns them).
+   Anything you can edit, and for a player anything fighting on the party's side too: another player's
+   Trainer or Pokémon, a 🤝 ally the GM flipped over. attachTokenDrag widens it for riding stacks: a stack
+   moves when ANY token in it is yours to move, so a player on an NPC's Pokémon (or an NPC on a player's)
+   can still ride it around the board. */
+function tokenMovable(t){
+  if(!t) return false;
+  const i = tokenHp(t);
+  if(i.editable) return true;
+  if(cloud.isGM || !t.link || i.unlinked) return false;
+  if(isShopToken(t) || isBoatToken(t) || isHazardToken(t) || isZoneToken(t) || isNoteToken(t) || isDoorToken(t)) return false;
+  return tokenSide(t) === "player";
 }
 function tokensAreFoes(a, b){
   const sa = tokenSide(a), sb = tokenSide(b);
@@ -45257,6 +45316,9 @@ document.addEventListener("click", e=>{
   // a Move named in a Dex entry → its info, with a way back to the entry (a keyword tap only toasts)
   const rm = !kw && !tm && e.target.closest?.("[data-refmove]");
   if(rm) openDexMove(rm.dataset.refmove, speciesModalReturn());
+  // …and an Ability named in one (its hover card goes with it)
+  const ra = !kw && !tm && !rm && e.target.closest?.("[data-refab]");
+  if(ra){ hideDexAbTip(); openDexAbility(ra.dataset.refab, speciesModalReturn()); }
 });
 
 /* ===================================================================
@@ -45770,6 +45832,39 @@ function speciesModalReturn(){
 function backToEntryBtn(ret){
   return ret ? el("button",{class:"btn-secondary",onclick:()=>ret.go()}, `← Back to ${ret.label}`) : null;
 }
+/* An Ability named in a Dex entry: hovering it (a mouse) floats its text beside the chip; tapping it opens
+   the full entry with a "← Back" to the Dex entry, the same round trip a Move in the entry gets. */
+function dexAbilityChip(name, tier){
+  const nm = String(name || "").trim();
+  const known = abilityByName.has(nm.toLowerCase());
+  return `<span class="chip dex-ab"${known ? ` data-refab="${escAttr(nm)}"` : ` title="not in the Ability database"`}>${esc(nm)} <span class="small muted">${tier}</span></span>`;
+}
+function openDexAbility(name, ret){
+  modal({title:name, bodyHTML:refDetailHTML("ability", name),
+    footNodes:[backToEntryBtn(ret), el("button",{class:"btn-primary",onclick:closeModal},"Close")].filter(Boolean)});
+}
+var dexAbTipEl = null;      // var: nothing here may sit in the TDZ when render() runs at boot
+function hideDexAbTip(){ if(dexAbTipEl){ dexAbTipEl.remove(); dexAbTipEl = null; } }
+function showDexAbTip(chip){
+  const a = abilityByName.get(String(chip.dataset.refab || "").toLowerCase());
+  if(!a){ hideDexAbTip(); return; }
+  if(dexAbTipEl && dexAbTipEl._for === chip) return;
+  hideDexAbTip();
+  const tip = el("div",{class:"dex-ab-tip", html:`<div class="dex-ab-tip-name">${esc(a.name)}</div>${abilityText(a)}`});
+  tip._for = chip;
+  document.body.append(tip);
+  const r = chip.getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
+  const vw = window.innerWidth || 800, vh = window.innerHeight || 600;
+  tip.style.left = Math.max(8, Math.min(r.left, vw - tw - 8)) + "px";
+  tip.style.top = ((r.bottom + 6 + th > vh - 8) ? Math.max(8, r.top - th - 6) : r.bottom + 6) + "px";
+  dexAbTipEl = tip;
+}
+document.addEventListener("pointerover", e => {
+  if(e.pointerType && e.pointerType !== "mouse") return;      // a tap opens the full text instead
+  const c = e.target.closest?.("[data-refab]");
+  if(c) showDexAbTip(c); else hideDexAbTip();
+});
+document.addEventListener("scroll", hideDexAbTip, true);
 function openDexMove(name, ret){
   const nm = canonMoveName(name);
   modal({title:nm, bodyHTML:refDetailHTML("move", nm),
@@ -45797,10 +45892,10 @@ function speciesModal(s, mon){
   if(c.naturewalk?.length)caps.push(`Naturewalk (${c.naturewalk.join(", ")})`);
   (c.other||[]).forEach(o=>caps.push(o));
   html += `<div class="chips" style="margin-bottom:10px">${caps.map(x=>`<span class="chip">${esc(x)}</span>`).join("")}</div>`;
-  html += `<div class="r-meta">Abilities</div><div class="chips" style="margin-bottom:10px">
-    ${s.abilities.basic.map(a=>`<span class="chip">${esc(a)} <span class="small muted">basic</span></span>`).join("")}
-    ${s.abilities.advanced.map(a=>`<span class="chip">${esc(a)} <span class="small muted">adv</span></span>`).join("")}
-    ${s.abilities.high.map(a=>`<span class="chip">${esc(a)} <span class="small muted">high</span></span>`).join("")}</div>`;
+  html += `<div class="r-meta">Abilities <span class="small muted">— hover one to read it, tap for the full text</span></div><div class="chips" style="margin-bottom:10px">
+    ${s.abilities.basic.map(a=>dexAbilityChip(a,"basic")).join("")}
+    ${s.abilities.advanced.map(a=>dexAbilityChip(a,"adv")).join("")}
+    ${s.abilities.high.map(a=>dexAbilityChip(a,"high")).join("")}</div>`;
   if(s.evolution?.length>1) html += `<div class="r-meta">Evolution</div><div class="r-body" style="margin-bottom:10px">${s.evolution.map(e=>`${e.stage}. ${esc(e.name)}${e.min?` (Lv ${e.min})`:""}`).join("  →  ")}</div>`;
   // move lists
   const hideMoves = momDexRedacted(s);   // "Mom?" read by a player: levels only, never the Moves
@@ -47141,7 +47236,7 @@ function normMapMeta(data){
     if(typeof m.fogOn!=="boolean") m.fogOn = false;
     if(typeof m.fogRadius!=="number" || m.fogRadius<1) m.fogRadius = 3;
     if(m.fogMode!=="dynamic") m.fogMode = "persist";          // "dynamic" = sight-only fog (nothing stays explored)
-    if(typeof m.night!=="boolean") m.night = false;           // night-time tint over the map art
+    if(typeof m.night!=="boolean") m.night = false;  if("timeStop" in m && typeof m.timeStop!=="boolean") delete m.timeStop;           // night-time tint over the map art
     if(typeof m.weather!=="string" || !WEATHER_BY_KEY[m.weather]) m.weather = "clear";   // Core p.342
     if(m.weather2 && (!WEATHER_BY_KEY[m.weather2] || m.weather2 === "clear")) m.weather2 = "";   // Climate Control's second Weather
     if(!Array.isArray(m.terrains)) m.terrains = [];
@@ -47709,7 +47804,7 @@ function logRoll({ kind, label, who, headline, lines, atk, area, foe }){
 /* (a literal inside the function, not a top-level const: render() reaches here at boot — see bug-local-load TDZ) */
 function blessingIcon(move){
   return ({ "reflect":"🛡", "light screen":"🔷", "safeguard":"💚", "lucky chant":"🍀", "mist":"🌫",
-            "beads of ruin":"📿", "sword of ruin":"🗡", "tablets of ruin":"📜", "vessel of ruin":"🏺" })[String(move||"").toLowerCase()] || "✨";
+            "beads of ruin":"📿", "sword of ruin":"🗡", "tablets of ruin":"📜", "vessel of ruin":"🏺", "tailwind":"🌬" })[String(move||"").toLowerCase()] || "✨";
 }
 function tableBlessings(){
   const d = cloud.rolls && cloud.rolls.data;
@@ -47733,16 +47828,46 @@ function blessingSideOf(o){
 }
 /* put a Blessing on the field for the whole table; returns the entry, or null offline. `side` is
    blessingSideOf's answer — a "foe" one is drawn on the GM's screen only. */
-function tableLayBlessing(move, left, who, id, side){
+function tableLayBlessing(move, left, who, id, side, extra){
   if(mode!=="cloud") return null;
   const row = ensureRolls();
   const n = Math.max(1, Math.round(left||0));
   const b = { id: id || uid(), move: String(move||"Blessing"), left:n, max:n, who: who || "",
               side: side === "foe" ? "foe" : "ally",
               by: (cloud.name||"").trim() || "Someone", at: Date.now() };
+  if(extra) Object.assign(b, extra);      // e.g. kind:"field" for Tailwind (no activations, see layTailwind)
   row.data.blessings = [...tableBlessings().filter(x => x.id !== b.id), b];
   saveRolls(); renderBlessingPops();
   return b;
+}
+/* 🌬 TAILWIND — Blessing range, but nothing to activate: "For the remainder of the encounter, all allied
+   trainers and Pokemon gain +5 to their Initiative. Multiple instances of Tailwind cannot stack." It goes
+   up as a Blessing square with kind:"field" (no Use button, "+5 Init" instead of a count) so the table can
+   see it is blowing — a foe's only on the GM's screen, like any foe Blessing — and tokenInitiative adds the
+   +5 to every token on that side. It ends with the encounter: Battle off, or 🌙 End Scene with the rest. */
+const TAILWIND_INIT = 5;
+function isTailwindMove(m){ return /^tailwind$/i.test(String((m && typeof m === "object" ? m.name : m) || "").trim()); }
+function tableTailwind(side){
+  return tableBlessings().find(b => b.kind === "field" && isTailwindMove(b.move) && (b.side || "ally") === side) || null;
+}
+function layTailwind(o){
+  const side = blessingSideOf(o), who = side === "foe" ? "foe" : "ally";
+  if(mode !== "cloud") return { laid:false, msg:`\u{1F32C} Tailwind \u2014 +${TAILWIND_INIT} Initiative for every ${who} for the rest of the encounter (offline: add it by hand)` };
+  if(tableTailwind(side)) return { laid:false, msg:"\u{1F32C} Tailwind is already blowing for that side \u2014 it doesn't stack" };
+  tableLayBlessing("Tailwind", 1, ownerLabel(o), null, side, { kind:"field" });
+  try{ if(currentTab === "map") renderMap(); }catch(e){}
+  return { laid:true, msg:`\u{1F32C} Tailwind \u2014 every ${who} gets +${TAILWIND_INIT} Initiative for the rest of the encounter` };
+}
+function tailwindInit(token){
+  if(mode !== "cloud" || !token || !token.link) return 0;
+  const s = tokenSide(token); if(!s) return 0;
+  return tableTailwind(s === "enemy" ? "foe" : "ally") ? TAILWIND_INIT : 0;
+}
+function clearTableTailwind(){
+  if(mode !== "cloud" || !cloud.rolls) return;
+  const all = tableBlessings(), keep = all.filter(b => b.kind !== "field");
+  if(keep.length === all.length) return;
+  cloud.rolls.data.blessings = keep; saveRolls(); renderBlessingPops();
 }
 /* set one Blessing's activations left (and its Move, for Divine Wind); 0 takes it off for everyone */
 function tableSetBlessing(id, left, move){
@@ -47773,7 +47898,7 @@ function openBlessingInfo(b){
   body.append(el("div",{class:"small", html: m ? moveDetailHTML(m, m.name) : abl ? abilityText(abl) : "<span class='muted'>This Move isn't in the database.</span>"}));
   modal({ title:`${blessingIcon(b.move)} ${b.move}`, bodyNode:body, footNodes:[
     el("button",{class:"btn-secondary",onclick:closeModal},"Close"),
-    el("button",{class:"btn-primary",onclick:()=>{ closeModal(); tableUseBlessing(b.id); }},"Use"),
+    b.kind === "field" ? el("span",{}) : el("button",{class:"btn-primary",onclick:()=>{ closeModal(); tableUseBlessing(b.id); }},"Use"),
   ]});
 }
 function renderBlessingPops(){
@@ -47800,7 +47925,9 @@ function renderBlessingPops(){
     sq.append(
       el("div",{style:"font-size:10px;font-weight:800;line-height:1.1;max-width:100%;overflow:hidden;"
         + "text-overflow:ellipsis;white-space:nowrap"}, `${blessingIcon(b.move)} ${b.move}`),
-      el("div",{style:"font-size:24px;font-weight:900;line-height:1"}, String(b.left)),
+      b.kind === "field" ? el("div",{style:"font-size:15px;font-weight:900;line-height:1.1"}, `+${TAILWIND_INIT} Init`)
+                         : el("div",{style:"font-size:24px;font-weight:900;line-height:1"}, String(b.left)),
+      b.kind === "field" ? el("div",{style:"font-size:9px;line-height:1.2;opacity:.75"}, "rest of the fight") :
       el("button",{class:"btn-primary",style:"padding:1px 10px;font-size:10px;line-height:1.4",
         title:`activate ${b.move} — one use off for everyone`, onclick:() => tableUseBlessing(b.id)}, "Use"));
     if(cloud.isGM) sq.append(el("div",{style:"position:absolute;top:-9px;left:6px;padding:0 5px;border-radius:6px;"
@@ -48488,6 +48615,52 @@ function renderCallOverlay(){
   document.body.append(box);
   box._update(call);
 }
+/* The Codec can be dragged anywhere on this screen: grab the frame (the portraits, the subtitles — anything
+   that isn't a button or the text box). Where it was left is remembered per device; a double-click on the
+   frame, or Alt+Shift+0 with the other floating windows, puts it back home. The offset rides the outer box
+   as a translate, so the open animation on .codec-frame is untouched. */
+var codecPos;              // var: render() reaches the Codec at boot (TDZ, see bug-local-load-tdz)
+function codecPosNow(){
+  if(codecPos === undefined){ try{ codecPos = JSON.parse(localStorage.getItem("ptu_codec_pos") || "null"); }catch(e){ codecPos = null; } }
+  if(codecPos && (typeof codecPos.x !== "number" || typeof codecPos.y !== "number")) codecPos = null;
+  return codecPos;
+}
+function codecPosSave(p){
+  codecPos = p || null;
+  try{ if(p) localStorage.setItem("ptu_codec_pos", JSON.stringify(p)); else localStorage.removeItem("ptu_codec_pos"); }catch(e){}
+}
+function codecPlace(box){
+  const p = codecPosNow();
+  if(!p){ box.style.transform = ""; return; }
+  const w = window.innerWidth || 800, h = window.innerHeight || 600;
+  // never far enough that the frame can't be grabbed again
+  const x = Math.max(-w + 100, Math.min(w - 100, p.x)), y = Math.max(-50, Math.min(h - 110, p.y));
+  box.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+}
+function codecDraggable(box, frame){
+  codecPlace(box);
+  const skip = t => !!(t && t.closest && t.closest("button,input,textarea,select,a"));
+  frame.addEventListener("pointerdown", ev => {
+    if((ev.button != null && ev.button > 0) || skip(ev.target)) return;
+    ev.preventDefault();
+    const sx = ev.clientX, sy = ev.clientY, p0 = codecPosNow() || { x:0, y:0 };
+    let cur = p0, moved = false;
+    try{ frame.setPointerCapture(ev.pointerId); }catch(e){}
+    const mv = e => {
+      if(!moved && Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy) < 4) return;
+      moved = true; box.classList.add("dragging");
+      cur = { x: p0.x + e.clientX - sx, y: p0.y + e.clientY - sy };
+      codecPos = cur; codecPlace(box);
+    };
+    const up = () => {
+      frame.removeEventListener("pointermove", mv); frame.removeEventListener("pointerup", up); frame.removeEventListener("pointercancel", up);
+      box.classList.remove("dragging");
+      if(moved) codecPosSave(cur);
+    };
+    frame.addEventListener("pointermove", mv); frame.addEventListener("pointerup", up); frame.addEventListener("pointercancel", up);
+  });
+  frame.addEventListener("dblclick", ev => { if(skip(ev.target)) return; codecPosSave(null); codecPlace(box); });
+}
 function buildCodec(call){
   const id = call.id;
   const box = el("div",{id:"callOverlay", class:"codec"});
@@ -48518,7 +48691,9 @@ function buildCodec(call){
   const toggleMin = () => { phoneMinimised[id] = !phoneMinimised[id]; const c = phoneCallById(id); if(c) box._update(c); };
   const minBtn = el("button",{class:"codec-min", title:"Tuck the Codec away (on this screen only)", onclick:toggleMin}, "\u2581");
   const pill = el("button",{class:"codec-pill", title:"Open the Codec again", onclick:toggleMin});
-  box.append(el("div",{class:"codec-frame"}, minBtn, el("div",{class:"codec-screen"}, L.s, mid, R.s), subs, ctrl), pill);
+  const frame = el("div",{class:"codec-frame"}, minBtn, el("div",{class:"codec-screen"}, L.s, mid, R.s), subs, ctrl);
+  box.append(frame, pill);
+  codecDraggable(box, frame);
   const paintPic = (slot, look) => {
     const key = look.img ? look.img + "|" + JSON.stringify(normFocus(look.focus)) : ("#" + look.name);
     if(slot.pic.dataset.key === key) return;          // no reloading the picture on every sync
@@ -48706,6 +48881,10 @@ function flushUiRefresh(){
 function refreshUI(kind){
   uiRefreshWanted.add(kind);
   if(!uiBusy()){ flushUiRefresh(); return; }
+  /* the Codec updates IN PLACE (box._update keeps a half-typed line and its focus), so a call never waits on the
+     typing guard: SEND puts the cursor back in the Codec box, which used to hold every reply back until that
+     person clicked away - to them the other end simply could not write */
+  if(kind === "rolls"){ try{ renderCallOverlay(); renderBlessingPops(); }catch(e){ console.error(e); } }
   if(!uiRefreshTimer) uiRefreshTimer = setInterval(()=>{ if(!uiBusy()) flushUiRefresh(); }, 400);
 }
 
@@ -50502,6 +50681,7 @@ function floorUnderLayer(map, originX, originY){
     wrap.append(node);
   });
   if(b.night) wrap.append(el("div",{class:"map-night",style:`width:${os.w}px;height:${os.h}px`}));
+  if(b.timeStop) wrap.append(el("div",{class:"map-timestop",style:`width:${os.w}px;height:${os.h}px`}));
   mapDrawOrder(mapTokensFor(b.id)).forEach(t=>{ if(floorTokenVisible(t, b)) wrap.append(floorInertToken(t, b, os.originX, os.originY)); });
   if(b.fogOn && !cloud.isGM){ const cv = el("canvas",{class:"map-fog"}); drawFog(cv, b, os.w, os.h, os.originX, os.originY); wrap.append(cv); }
   wrap.append(el("div",{class:"map-floor-dim", style:`width:${os.w}px;height:${os.h}px;opacity:${floorDim(map)}`}));
@@ -51327,6 +51507,7 @@ function tokenInitiative(token){
     v += buffInit(obj);                  // a Channeler's Spirit Boost (Speed): +their Intuition Rank
     v += heldInitBonus(obj);             // a held Quick Claw: +10
     v = abilityInitiative(obj, v, token);  // the "Initiative is doubled" Abilities and Early Bird
+    v += tailwindInit(token);              // 🌬 Tailwind on its side: +5 for the rest of the encounter
   }
   return v;
 }
@@ -52469,6 +52650,11 @@ async function toggleFogMode(map){
   renderMap();
   toast(map.fogMode==="dynamic" ? "\u{1F526} Sight-only fog \u2014 only the ground around tokens is lit" : "\u{1F32B} Explored ground stays revealed");
 }
+function toggleTimeStop(map){
+  if(map.timeStop) delete map.timeStop; else map.timeStop = true;
+  mapMetaSave(); renderMap();
+  toast(map.timeStop ? "\u23F3 Time stops \u2014 the world turns to negative" : "\u23F3 Time flows again");
+}
 function toggleNight(map){
   map.night = !map.night;
   mapMetaSave(); renderMap();
@@ -53010,6 +53196,7 @@ async function toggleBattle(map){
     // the fight is over → everyone's turns have ended: turn & combat-long buffs, hand-set Combat
     // Stages, Volatile statuses, EOT cooldowns and the rest of endCombatCreature's list all go
     battleEndedN = await endCombatEffects(map);
+    clearTableTailwind(); clearEncounterZones();                 // 🌬 "for the remainder of the encounter" — it was
     resetMapMovement(map);                // ...and a boat's tally now runs against its Travel speed instead
   }
   mapMetaSave();
@@ -53303,6 +53490,11 @@ function mapMountBar(map){
    thing (see attachTokenDrag), just without the turn.
 =================================================================== */
 const isBoatToken = t => !!(t && t.boat);
+/* A hot-air BALLOON is a boat that flies: the same hull machinery (HP, helm, crew carried along,
+   movement budget, Breaches) with `balloon:true` on top. It has no bow, so it never turns -- the
+   footprint stays upright (boatBeam wide x boatLen tall) and the 🎈 arrows just drift it a square. */
+const isBalloonToken = t => !!(t && t.boat && t.balloon);
+function boatNoun(t){ return isBalloonToken(t) ? "Balloon" : "Boat"; }
 /* ---- Cosmetic map hazards (Stealth Rock, Spikes, fire, ...). Pure scenery: a labelled icon dropped
    on a square with no HP, no turn and no automatic damage -- a visual reminder the GM drags around or
    clears by hand. Stored as a token with `hazard:<key>`, so it syncs, drags and persists like any
@@ -53377,13 +53569,15 @@ const TERRAIN_ZONES = [
     note:"\u201cMost Rough Terrain is also Slow Terrain\u201d \u2014 double movement cost (applied for you) AND \u22122 to Accuracy Rolls through it." },
   { key:"blocking", name:"Blocking Terrain", icon:"\u2B1B", fill:"rgba(24,24,28,.5)", line:"#8a8a93", block:true,
     note:"Cannot be Shifted or Targeted through. A player can't drag a token into it; the GM still can." },
+  { key:"darkness", name:"Shifting Darkness", icon:"\u{1F311}", fill:"rgba(16,8,34,.64)", line:"#7a5cd6", dark:true,
+    note:"World of Darkness: anyone WITHOUT Darkvision attacking from inside it takes \u22123 to Accuracy (the sheet takes it off their rolls for them); attacking INTO it from outside is the same \u22123, called at the table. It lasts the encounter \u2014 turning Battle off clears it." },
 ];
 const isZoneToken = t => !!(t && t.zone);
 const zoneDef = t => TERRAIN_ZONES.find(z=>z.key===(t&&t.zone)) || TERRAIN_ZONES[0];
 /* What kind of ground a cell is, from every zone covering it. Called once per cell a drag ENTERS
    (not per frame), so a straight scan over the board's zone tokens is plenty. */
 function terrainAt(map, cx, cy){
-  const out = { slow:false, rough:false, block:false, names:[] };
+  const out = { slow:false, rough:false, block:false, dark:false, names:[] };
   if(!map) return out;
   /* Outside the arena circle. Not a zone token any more (see paintArena) — the arena rides the map
      itself, so it is asked directly, and it carries whichever ground the GM picked for its edge. */
@@ -53402,9 +53596,55 @@ function terrainAt(map, cx, cy){
     if(z.slow) out.slow = true;
     if(z.rough) out.rough = true;
     if(z.block) out.block = true;
+    if(z.dark) out.dark = true;
     if(!out.names.includes(z.name)) out.names.push(z.name);
   }
   return out;
+}
+/* 🌑 SHIFTING DARKNESS (Shade Caller's World of Darkness): "a zone of Shifting Darkness in a Burst 2 around
+   you, which persists until the end of the encounter. All targets without Darkvision attacking from or into
+   the Shifting Darkness receive a -3 penalty to Accuracy." On the board it is a "darkness" terrain zone, so
+   everyone sees it, the GM can drag / resize / remove it like any zone, and it carries `untilBattleEnd`, so
+   turning Battle off takes it away (clearEncounterZones). The "from inside" half of the −3 is read off the
+   attacker's own square in buffMods (darknessAccPenalty); "into" needs the target, so that half stays a call. */
+function ownerHasDarkvision(o){
+  try{ return isTrainerOwner(o) ? trainerHasCapability(o, "Darkvision") : monHasCapability(o, null, "Darkvision"); }catch(e){ return false; }
+}
+function tokenInDarkness(map, tok){ return tokenSquares(tok).some(([x, y]) => terrainAt(map, x, y).dark); }
+function darknessAccPenalty(owner){
+  try{
+    if(!owner || mode !== "cloud") return 0;
+    const map = currentMapForView() || activeMap(); if(!map) return 0;
+    if(!mapTokensFor(map.id).some(t => t && t.zone === "darkness")) return 0;      // cheap: no darkness, no lookup
+    if(ownerBuffs(owner).some(b => b.key === "shifting-darkness")) return 0;          // the old area buff already has it
+    if(augLive(owner, "Smart Vision") || ownerHasDarkvision(owner)) return 0;
+    const tok = tokenForOwner(owner);
+    return tok && tokenInDarkness(map, tok) ? -3 : 0;
+  }catch(e){ return 0; }
+}
+/* a Burst 2 of darkness centred on `tok` (5×5 for a Medium creature). One per caster: casting again moves it. */
+function dropShiftingDarkness(map, tok, by){
+  if(!map || !tok || mode !== "cloud") return null;
+  ensureMapTokens();
+  const byMap = cloud.mapTokens.data.byMap, arr = byMap[map.id] || (byMap[map.id] = []);
+  const f = tokenFootprint(tok), R = 2;
+  const old = by ? arr.find(t => isZoneToken(t) && t.zone === "darkness" && t.darkBy === by) : null;
+  const z = old || { id:uid(), zone:"darkness", size:1 };
+  Object.assign(z, { x:Math.round(tok.x) - R, y:Math.round(tok.y) - R, w:f.w + 2*R, h:f.h + 2*R, untilBattleEnd:true });
+  if(by) z.darkBy = by;
+  if(!old) arr.push(z);
+  mapTokensSave();
+  try{ if(currentTab === "map") renderMap(); }catch(e){}
+  return z;
+}
+/* Battle off = the encounter is over: every zone that only lasts the encounter goes */
+function clearEncounterZones(){
+  const byMap = cloud.mapTokens && cloud.mapTokens.data && cloud.mapTokens.data.byMap;
+  if(!byMap) return 0;
+  let n = 0;
+  Object.keys(byMap).forEach(k => { const arr = byMap[k]; if(!Array.isArray(arr)) return;
+    for(let i = arr.length - 1; i >= 0; i--) if(arr[i] && isZoneToken(arr[i]) && arr[i].untilBattleEnd){ arr.splice(i, 1); n++; } });
+  return n;
 }
 function zoneSprite(token){
   const z = zoneDef(token);
@@ -54716,14 +54956,22 @@ const BOAT_WEAPON_AC = 2;   // no Accuracy stat to roll with, so it's a flat d20
    the campaign row is exactly what blew the egress budget once already) */
 const BOAT_SPRITE_SIDE = "assets/boat-side.png?v=1";   // 224×96, bow pointing East
 const BOAT_SPRITE_TOP  = "assets/boat-top.png?v=1";    // 96×224, bow pointing North
+const BALLOON_SPRITE   = "assets/balloon.png?v=1";     // 160×256, side view, one picture for every direction
+const BALLOON_W_DEFAULT = 3, BALLOON_H_DEFAULT = 5;     // ~ the sprite's 160:256 (5:8) proportions
+const BALLOON_HP_DEFAULT = 80, BALLOON_DEF_DEFAULT = 8, BALLOON_SPDEF_DEFAULT = 8;
+const BALLOON_SKY_DEFAULT = 5, BALLOON_TRAVEL_DEFAULT = 20;   // Sky speed in combat / a leg of a flight
 function boatFacing(t){ return BOAT_ANGLE[t && t.facing]!=null ? t.facing : "E"; }
 /* footprint in squares for a given facing (defaults to the boat's own) */
 function boatDims(t, facing){
+  if(isBalloonToken(t))        // no bow to point: always upright, boatBeam wide x boatLen tall
+    return { w:Math.max(1, t.boatBeam||BALLOON_W_DEFAULT), h:Math.max(1, t.boatLen||BALLOON_H_DEFAULT) };
   const f = facing || boatFacing(t);
   const len = Math.max(1, t.boatLen||BOAT_LEN_DEFAULT), beam = Math.max(1, t.boatBeam||BOAT_BEAM_DEFAULT);
   return (f==="E"||f==="W") ? { w:len, h:beam } : { w:beam, h:len };
 }
 function boatSprite(token){
+  if(isBalloonToken(token))
+    return el("img",{class:"sprite s-sm",src:BALLOON_SPRITE,draggable:false,alt:token.label||"Balloon"});
   const f = boatFacing(token);
   const side = (f==="E"||f==="W");
   const flip = f==="W" ? "scaleX(-1)" : f==="S" ? "scaleY(-1)" : "";
@@ -54785,7 +55033,8 @@ function canDriveBoat(token){
 function boatSteer(map, boat, dir, step){
   if(!BOAT_STEP[dir]) return false;
   const from = boatFacing(boat);
-  const turns = ((BOAT_ANGLE[dir] - BOAT_ANGLE[from]) + 4) % 4;
+  // a balloon has no bow, so it never turns -- an arrow only drifts it a square that way
+  const turns = isBalloonToken(boat) ? 0 : ((BOAT_ANGLE[dir] - BOAT_ANGLE[from]) + 4) % 4;
   if(!turns && !step) return false;
   // where everything sat before the manoeuvre, so the live broadcast below can ship just the deltas
   const before = new Map(mapTokensFor(map.id).map(t=>[t.id, [t.x, t.y]]));
@@ -54873,21 +55122,36 @@ async function addBoat(map){
   const b = mapBoats(map).slice(-1)[0]; if(b) mapBoat.id = b.id;
   renderMap();
 }
+/* the GM's 🎈 Balloon button: a boat with `balloon:true`, upright, flying (vehicleLevitate on, so
+   Ground isn't Super-Effective against it) and a little flimsier than a hull */
+async function addBalloon(map){
+  mapBoat = { id:null, hidden:false };
+  await addToken(map, { boat:true, balloon:true, label:"Balloon", facing:"N", playerHelm:false,
+                        boatLen:BALLOON_H_DEFAULT, boatBeam:BALLOON_W_DEFAULT, size:1,
+                        hp:BALLOON_HP_DEFAULT, maxHp:BALLOON_HP_DEFAULT,
+                        def:BALLOON_DEF_DEFAULT, spdef:BALLOON_SPDEF_DEFAULT,
+                        overland:BALLOON_SKY_DEFAULT, travel:BALLOON_TRAVEL_DEFAULT,
+                        breachSecurity:BOAT_BREACH_SECURITY_DEFAULT, breachCapacity:BOAT_BREACH_CAPACITY_DEFAULT,
+                        vehicleLevitate:true });
+  const b = mapBoats(map).slice(-1)[0]; if(b) mapBoat.id = b.id;
+  renderMap();
+}
 /* ---- the floating helm: arrow controls that sail the boat and turn it to face where it's going ---- */
 function boatPanel(map){
   const boats = mapBoats(map).filter(canDriveBoat);
   if(!boats.length) return null;
   const boat = boats.find(b=>b.id===mapBoat.id) || boats[0];
   mapBoat.id = boat.id;
+  const bl = isBalloonToken(boat), ico = bl ? "🎈" : "🚤";
   if(mapBoat.hidden)
     return el("div",{class:"boat-panel collapsed"},
-      el("button",{class:"btn-secondary",title:"show the boat controls",
-        onclick:()=>{ mapBoat.hidden=false; renderMap(); }},"🚤"));
+      el("button",{class:"btn-secondary",title:"show the "+boatNoun(boat).toLowerCase()+" controls",
+        onclick:()=>{ mapBoat.hidden=false; renderMap(); }},ico));
 
   const p = el("div",{class:"boat-panel"});
   const pax = boatPassengers(map, boat).length;
   p.append(el("div",{class:"boat-title"},
-    el("span",{style:"flex:1;min-width:0"}, "🚤 " + (boat.label||"Boat")),
+    el("span",{style:"flex:1;min-width:0"}, ico + " " + (boat.label||boatNoun(boat))),
     // the GM's one-click handover, right where they are already steering from
     cloud.isGM ? el("button",{class:"boat-x",
       title: boatHelmGiven(boat) ? "The crew can steer this boat — click to take the helm back"
@@ -54898,19 +55162,21 @@ function boatPanel(map){
       onclick:()=>{ mapBoat.hidden=true; renderMap(); }},"✕")));
   if(boats.length>1){
     const sel = el("select",{style:"width:100%;margin-bottom:8px"});
-    boats.forEach(b=>sel.append(el("option",{value:b.id,selected:b.id===boat.id}, b.label||"Boat")));
+    boats.forEach(b=>sel.append(el("option",{value:b.id,selected:b.id===boat.id},
+      (isBalloonToken(b)?"🎈 ":"🚤 ") + (b.label||boatNoun(b)))));
     sel.addEventListener("change", ()=>{ mapBoat.id=sel.value; renderMap(); });
     p.append(sel);
   }
   // the d-pad: each arrow turns the bow that way AND sails one square
   const pad = el("div",{class:"boat-dpad"});
   const NAMES = { N:"north", S:"south", E:"east", W:"west" };
-  const dirBtn = (dir, glyph) => el("button",{class:"boat-dir"+(boatFacing(boat)===dir?" on":""),
-    title:"Face "+NAMES[dir]+" and sail one square",
+  const dirBtn = (dir, glyph) => el("button",{class:"boat-dir"+(!bl&&boatFacing(boat)===dir?" on":""),
+    title: bl ? "Drift one square "+NAMES[dir] : "Face "+NAMES[dir]+" and sail one square",
     onclick:()=>boatSteer(map, boat, dir, true)}, glyph);
   pad.append(el("div",{}), dirBtn("N","↑"), el("div",{}),
              dirBtn("W","←"),
-             el("div",{class:"boat-face",title:"which way the bow is pointing"},
+             bl ? el("div",{class:"boat-face"},"🎈")
+                : el("div",{class:"boat-face",title:"which way the bow is pointing"},
                ({N:"⬆",E:"➡",S:"⬇",W:"⬅"})[boatFacing(boat)]),
              dirBtn("E","→"),
              el("div",{}), dirBtn("S","↓"), el("div",{}));
@@ -54918,7 +55184,7 @@ function boatPanel(map){
   // turning on the spot, for lining the hull up without leaving the square you're on
   const cw = ["E","S","W","N"];
   const turn = off => boatSteer(map, boat, cw[(cw.indexOf(boatFacing(boat))+off)%4], false);
-  p.append(el("div",{class:"boat-row"},
+  if(!bl) p.append(el("div",{class:"boat-row"},        // a balloon has no bow to turn
     el("button",{class:"btn-secondary",style:"flex:1",title:"turn to port without moving",
       onclick:()=>turn(3)},"↺ Turn"),
     el("button",{class:"btn-secondary",style:"flex:1",title:"turn to starboard without moving",
@@ -54929,11 +55195,11 @@ function boatPanel(map){
     el("span",{class:"small"+(overCap?" over":""),style:"flex:1;font-weight:700",
       title: battleOn() ? "squares sailed this round — refilled by ↺ New round"
                         : "squares sailed on this leg — out of combat only this ↺ clears it"},
-      `⛵ ${sailed}/${cap}m${battleOn()?" this round":" cruising"}${overCap?" — over!":""}`),
+      `${bl?"🎈":"⛵"} ${sailed}/${cap}m${battleOn()?" this round":(bl?" drifting":" cruising")}${overCap?" — over!":""}`),
     el("button",{class:"boat-x",title:"start the count again from zero",
       onclick:()=>{ boat.moved=0; delete boat.path; mapTokensSave(); renderMap(); }},"↺")));
   p.append(el("div",{class:"small muted",style:"margin-top:6px"},
-    pax ? (pax+" aboard — they sail with it") : "Nobody aboard"));
+    pax ? (pax+(bl?" aboard — they fly with it":" aboard — they sail with it")) : "Nobody aboard"));
   return p;
 }
 /* Roll one of the boat's mounted weapons (DB dice + its flat bonus, since a hull has no Attack stat
@@ -54967,21 +55233,24 @@ function fireBoatWeapon(map, boat, w){
 /* GM-only: rename / resize / remove the hull, plus HP so the hull can be attacked. A boat has no
    statuses or turn order, so it gets this short menu instead of the full token one. */
 function openBoatMenu(token, map){
+  const bl = isBalloonToken(token), noun = boatNoun(token);
   const wrap = el("div",{});
   wrap.append(el("div",{style:"display:flex;justify-content:center;margin-bottom:10px"},
-    el("img",{src:BOAT_SPRITE_SIDE,alt:"",style:"width:168px;image-rendering:pixelated"})));
+    el("img",{src:bl?BALLOON_SPRITE:BOAT_SPRITE_SIDE,alt:"",
+      style:(bl?"height:168px":"width:168px")+";image-rendering:pixelated"})));
   const info0 = tokenHp(token);
   wrap.append(el("div",{class:"small",style:"text-align:center;margin-bottom:10px;font-weight:800"},
     `${info0.cur} / ${info0.max} HP`));
   if(!cloud.isGM){
     wrap.append(el("div",{class:"r-body"}, boatHelmGiven(token)
-      ? "Walk a token onto the deck, then steer with the 🚤 controls on the board."
-      : "The GM has the helm of this boat. They can hand it over, and the 🚤 controls will appear."));
+      ? (bl ? "Walk a token onto the balloon, then steer with the 🎈 controls on the board."
+            : "Walk a token onto the deck, then steer with the 🚤 controls on the board.")
+      : `The GM has the helm of this ${noun.toLowerCase()}. They can hand it over, and the ${bl?"🎈":"🚤"} controls will appear.`));
     modal({title:token.label||"Boat", bodyNode:wrap, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
     return;
   }
-  const nm = el("input",{type:"text",value:token.label||"Boat"});
-  nm.addEventListener("change", ()=>{ token.label = nm.value.trim()||"Boat"; mapTokensSave(); renderMap(); });
+  const nm = el("input",{type:"text",value:token.label||noun});
+  nm.addEventListener("change", ()=>{ token.label = nm.value.trim()||noun; mapTokensSave(); renderMap(); });
   wrap.append(el("label",{class:"field"}, el("span",{},"Name"), nm));
 
   // ---- who may steer: players see this hull's 🚤 arrows only once you hand the helm over ----
@@ -54992,12 +55261,12 @@ function openBoatMenu(token, map){
     helmBtn.textContent = on ? "🔒 Take the helm back" : "🔓 Give the crew the helm";
     helmBtn.className   = on ? "btn-secondary on" : "btn-primary";
     helmNote.textContent = on
-      ? "Players with a token aboard can steer this boat and drag the hull. You keep the helm either way."
-      : "Only you can steer this boat — players get no 🚤 controls for it, even standing on the deck.";
+      ? `Players with a token aboard can steer this ${noun.toLowerCase()} and drag it. You keep the helm either way.`
+      : `Only you can steer this ${noun.toLowerCase()} — players get no ${bl?"🎈":"🚤"} controls for it, even standing on it.`;
   };
   drawHelm();
   helmBtn.addEventListener("click", ()=>{ setBoatHelm(map, token, !boatHelmGiven(token)); drawHelm(); });
-  wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:12px;margin-bottom:4px"},"🚤 Helm"),
+  wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:12px;margin-bottom:4px"},(bl?"🎈":"🚤")+" Helm"),
     helmBtn, helmNote);
 
   // ---- distance sailed: the same tally the 🚤 panel shows, against the budget in force ----
@@ -55007,12 +55276,12 @@ function openBoatMenu(token, map){
     mvRow.innerHTML = "";
     mvRow.append(
       el("div",{class:"small"+(over?" over":""),style:"font-weight:800;flex:1"},
-        `⛵ ${used} / ${cap}m ${battleOn()?"this round":"on this leg"}`+(over?" — over speed!":"")),
+        `${bl?"🎈":"⛵"} ${used} / ${cap}m ${battleOn()?"this round":"on this leg"}`+(over?" — over speed!":"")),
       el("button",{class:"btn-secondary",
         onclick:()=>{ token.moved=0; delete token.path; mapTokensSave(); renderMap(); drawMv(); }},"↺ Reset"));
   };
   drawMv();
-  wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:12px;margin-bottom:4px"},"⛵ Distance sailed"),
+  wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:12px;margin-bottom:4px"},bl?"🎈 Distance flown":"⛵ Distance sailed"),
     mvRow,
     el("div",{class:"small muted",style:"margin-top:4px"},
       "In Battle mode the hull spends its Overland speed each round and ↺ New round refills it. Out of "
@@ -55123,7 +55392,7 @@ function openBoatMenu(token, map){
   };
   wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:16px;margin-bottom:2px"},"Defenses & vehicle stats"),
     mkStat("def","Defense",BOAT_DEF_DEFAULT,99), mkStat("spdef","Special Defense",BOAT_SPDEF_DEFAULT,99),
-    mkStat("overland","Overland — combat speed (squares per round)",BOAT_OVERLAND_DEFAULT,99),
+    mkStat("overland",(bl?"Sky":"Overland")+" — combat speed (squares per round)",bl?BALLOON_SKY_DEFAULT:BOAT_OVERLAND_DEFAULT,99),
     mkStat("travel","Travel speed — out of combat (squares)",BOAT_TRAVEL_DEFAULT,99),
     mkStat("breachSecurity","Breach Security",BOAT_BREACH_SECURITY_DEFAULT,99),
     mkStat("breachCapacity","Breach Capacity",BOAT_BREACH_CAPACITY_DEFAULT,99));
@@ -55135,6 +55404,15 @@ function openBoatMenu(token, map){
       if(map.fogOn) revealAroundTokens(map); mapTokensSave(); renderMap(); });
     return el("label",{class:"field",style:"margin-top:10px"}, el("span",{},label), inp);
   };
+  if(bl){
+    // no bow, so no Facing: just how big the balloon is drawn (and how many squares ride along)
+    wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:16px;margin-bottom:2px"},"Size"),
+      mkNum("boatLen","Height (squares)",BALLOON_H_DEFAULT),
+      mkNum("boatBeam","Width (squares)",BALLOON_W_DEFAULT));
+    wrap.append(el("div",{class:"small muted",style:"margin-top:10px"},
+      "Drag the balloon to reposition it — everyone standing on it comes along. The 🎈 panel on the "
+      + "board drifts it a square at a time; it has no front, so it never turns."));
+  } else {
   wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin-top:16px;margin-bottom:2px"},"Hull shape"),
     mkNum("boatLen","Length (squares, bow to stern)",BOAT_LEN_DEFAULT),
               mkNum("boatBeam","Width (squares, beam)",BOAT_BEAM_DEFAULT));
@@ -55146,8 +55424,9 @@ function openBoatMenu(token, map){
   wrap.append(el("div",{class:"small muted",style:"margin-top:10px"},
     "Drag the hull to reposition it — everyone standing on the deck comes along. The 🚤 panel on the "
     + "board sails it a square at a time and turns the bow to match."));
-  modal({title:token.label||"Boat", bodyNode:wrap, footNodes:[
-    el("button",{class:"btn-secondary danger",onclick:()=>{ if(confirm("Remove this boat?")){ closeModal(); removeToken(token, map); } }},"🗑 Remove"),
+  }
+  modal({title:token.label||noun, bodyNode:wrap, footNodes:[
+    el("button",{class:"btn-secondary danger",onclick:()=>{ if(confirm("Remove this "+noun.toLowerCase()+"?")){ closeModal(); removeToken(token, map); } }},"🗑 Remove"),
     el("button",{class:"btn-secondary",onclick:closeModal},"Close"),
   ]});
 }
@@ -55211,7 +55490,7 @@ function mapTokenNode(token, map, originX=0, originY=0){
   const isTrainerTok = info.kind==="trainer" || info.kind==="enctrainer";
   const playerSide = info.kind==="trainer" || info.kind==="pokemon";
   // a rider is drawn perched on its mount (see tokenRenderBox) and always stacks above it
-  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+(info.editable?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":"")+(isBoat?" boat-token":"")+(isHaz?" hazard-token":"")+(isZone?" zone-token":"")+(isDoor?" door-token"+(token.open?" door-open":"")+(doorBroken(token)?" door-broken":""):"")+(isNoteToken(token)?" note-token":"")+(shinyTok?" shiny":""),
+  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+((info.editable || tokenMovable(token))?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":"")+(isBoat?" boat-token":"")+(isHaz?" hazard-token":"")+(isZone?" zone-token":"")+(isDoor?" door-token"+(token.open?" door-open":"")+(doorBroken(token)?" door-broken":""):"")+(isNoteToken(token)?" note-token":"")+(shinyTok?" shiny":""),
     // a hull sits at z-index 0, below every creature, so the crew is drawn standing on the deck
     style:`left:${box.left}px;top:${box.top}px;width:${box.w}px;height:${box.h}px;z-index:${isNoteToken(token)?6:riding?4:isTrainerTok?2:isZone?0:(isBoat||isHaz||isShoal||isDoor)?0:1}`
       +`;--tku:${Math.round(Math.max(0.5, Math.min(1.6, map.gridSize/32))*100)/100}`
@@ -55312,7 +55591,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
     let moved = false, badge = null, lockWarned = false;
     // a stack only moves if this viewer may move EVERY token in it — otherwise a player could drag
     // their own trainer and haul the GM's Gyarados along with them
-    const stackOK = t => mountGroup(map.id, t).every(m=>tokenHp(m).editable);
+    const stackOK = t => mountGroup(map.id, t).some(tokenMovable);   // any one of the stack being yours is enough (tokenMovable)
     const stackLocked = !stackOK(token);
     // accumulate every tile entered, diagonals cost 2 — but a shop is scenery being repositioned,
     // not a combatant taking a Shift, so dragging its door never spends anyone's movement
@@ -55325,7 +55604,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
     const fogCanvas = liveFog ? document.querySelector("#view-map .map-fog") : null;
     // one drag-context per token being moved (just `token` unless dragging a multi-selected group),
     // then widened to the whole riding stack of everything in it
-    const picked = grouped ? mapTokensFor(map.id).filter(t=>mapSelect.ids.has(t.id) && tokenHp(t).editable && stackOK(t)) : [token];
+    const picked = grouped ? mapTokensFor(map.id).filter(t=>mapSelect.ids.has(t.id) && stackOK(t)) : [token];
     const seenIds = new Set(); const group = [];
     picked.forEach(t=> mountGroup(map.id, t).forEach(m=>{ if(!seenIds.has(m.id)){ seenIds.add(m.id); group.push(m); } }));
     // ...and a boat drags its whole deck: whoever is standing on it as the drag starts (plus their
@@ -55445,9 +55724,9 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
     };
     const move = e=>{
       if(Math.abs(e.clientX-startX)>4 || Math.abs(e.clientY-startY)>4) moved = true;
-      if(!moved || !info.editable) return;
+      if(!moved) return;
       if(stackLocked){
-        if(!lockWarned){ lockWarned = true; toast("🐎 Riding a token you can't move — ask the GM"); }
+        if(!lockWarned){ lockWarned = true; if(mountGroup(map.id, token).length > 1) toast("🐎 Nobody in that riding stack is yours to move — ask the GM"); }
         return;
       }
 
@@ -55470,7 +55749,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
       if(!moved){
         mapDragging=false;
         if(mounting) mountTapToken(token, map);
-        else if(selecting && info.editable){ mapSelect.ids.has(token.id)?mapSelect.ids.delete(token.id):mapSelect.ids.add(token.id); renderMap(); }
+        else if(selecting && !stackLocked){ mapSelect.ids.has(token.id)?mapSelect.ids.delete(token.id):mapSelect.ids.add(token.id); renderMap(); }
         // a shop token is a door: players walk up and tap it to shop. The GM gets its management
         // menu instead (which has an "open it here" button, so they can still see the player's view).
         else if(isShopToken(token) && !cloud.isGM) openShopFromToken(token);
@@ -55480,7 +55759,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
         else openTokenMenu(token, map);
         return;
       }
-      if(!info.editable || stackLocked){ mapDragging=false; return; }
+      if(stackLocked){ mapDragging=false; return; }
       applyDelta((e.clientX-startX)/scale, (e.clientY-startY)/scale, true);
 
       group.forEach(t=>{ if(!t.riding) snapRidersTo(map, t); });                     // keep passengers pinned
@@ -56136,6 +56415,86 @@ function flayedShow(){
   document.body.append(bg);
   try{ yesBtn.focus(); }catch(e){}
 }
+/* 🐎 STAYING MOUNTED (Core p.218): "If either you or your Pokémon who is being used as a Mount are hit by a
+   damaging attack that deals damage equal or greater to 1/4th of the target's Max Hit Points, or are hit by a
+   move with a Push Effect, you must make an Acrobatics or Athletics Check with a DC of 10 to remain mounted."
+   Mounted Prowess (Edge): +3 to Checks made to remain Mounted. Regal Right (Gift): Command may be used instead.
+   💥 Apply runs this per target. When the hit shakes somebody's seat — the target is riding, or the target IS
+   the mount — the result gets a box saying who rolls what, a 🎲 that rolls it, and ⬇ to take them off; the
+   roll feed gets a line too, so the table hears it. */
+const MOUNT_CHECK_DC = 10;
+function mountCheckPairs(map, tok){
+  if(!map || !tok) return [];
+  const out = [], mount = tokenMount(map.id, tok);
+  if(mount && !isBoatToken(mount)) out.push({ rider:tok, mount });
+  if(!isBoatToken(tok)) tokenRiders(map.id, tok).forEach(r => out.push({ rider:r, mount:tok }));
+  return out;
+}
+/* the rider's best Skill for it, as { key, label, dice, mod, prowess } — null when there's nothing to roll */
+function mountCheckSkill(o){
+  if(!o) return null;
+  const keys = ["acrobatics", "athletics"], label = k => (SKILLS.find(s => s[0] === k) || [k, k])[1];
+  let best = null;
+  const offer = (k, dice, mod, prowess) => {
+    const avg = dice * 3.5 + mod;
+    if(!best || avg > best.avg) best = { key:k, label:label(k), dice:Math.max(1, dice), mod, prowess, avg };
+  };
+  if(isTrainerOwner(o)){
+    if(typeof hasGiftNamed === "function" && hasGiftNamed(o, "Regal Right")) keys.push("command");
+    const prow = trainerHasEdge(o, "Mounted Prowess") ? 3 : 0;
+    keys.forEach(k => offer(k, rankDice((o.skills || {})[k]),
+      trainerSkillMod(o, k) + (typeof edgeSkillBonus === "function" ? edgeSkillBonus(o, k) : 0) + prow, prow));
+  } else {
+    const sk = monSkills(o);
+    keys.forEach(k => { if(sk[k]) offer(k, sk[k].dice, sk[k].mod || 0, 0); });
+  }
+  return best;
+}
+function dismountCheckNode(map, tok, br, ctx){
+  try{
+    const pairs = mountCheckPairs(map, tok); if(!pairs.length) return null;
+    const info = tokenHp(tok), final = Math.max(0, (br && br.final) || 0);
+    const quarter = final > 0 && final * 4 >= (info.max || 1);
+    const mv = ctx && ctx.move ? moveByName.get(String(ctx.move).toLowerCase()) : null;
+    const pushed = !!mv && (moveHasKeyword(mv, "push") || /\bpush\b/i.test(String(mv.range || "")));
+    if(!quarter && !pushed) return null;
+    const why = quarter ? `${info.name} took ${final} \u2014 at least \u00bc of ${info.max} Max HP`
+                        : `${mv.name} has the Push keyword`;
+    const box = el("div",{class:"mount-check"});
+    box.append(el("div",{style:"font-weight:800"}, `\u{1F40E} DISMOUNT CHECK \u2014 ${why}`));
+    pairs.forEach(({ rider, mount }) => {
+      const rInfo = tokenHp(rider), mName = tokenHp(mount).name, o = rInfo.obj, sk = mountCheckSkill(o);
+      const regal = !!(o && isTrainerOwner(o) && typeof hasGiftNamed === "function" && hasGiftNamed(o, "Regal Right"));
+      const row = el("div",{style:"margin-top:4px"});
+      row.append(el("div",{class:"small"},
+        `${rInfo.name} rolls Acrobatics or Athletics${regal ? " (or Command \u2014 Regal Right)" : ""}, DC ${MOUNT_CHECK_DC}, to stay on ${mName}`
+        + (sk ? ` \u2014 best is ${sk.label} ${sk.dice}d6${sk.mod ? (sk.mod > 0 ? "+" : "") + sk.mod : ""}${sk.prowess ? " (incl. +3 Mounted Prowess)" : ""}` : "") + "."));
+      const res = el("span",{class:"small",style:"font-weight:700"});
+      const offBtn = el("button",{class:"btn-secondary",style:"padding:2px 8px",title:`take ${rInfo.name} off ${mName} onto a free square`,
+        onclick:() => { if(rider.riding) dismountToken(map, rider); offBtn.disabled = true; offBtn.textContent = "\u2B07 Off"; }}, "\u2B07 Fell off");
+      const rollBtn = sk ? el("button",{class:"btn-secondary",style:"padding:2px 8px",onclick:() => {
+        const rolls = []; for(let i = 0; i < sk.dice; i++) rolls.push(1 + Math.floor(Math.random() * 6));
+        const total = rolls.reduce((a, b) => a + b, 0) + sk.mod, ok = total >= MOUNT_CHECK_DC;
+        const dice = `${sk.dice}d6${sk.mod ? (sk.mod > 0 ? "+" : "") + sk.mod : ""}`;
+        res.textContent = `\u{1F3B2} ${sk.label} ${dice} \u2192 [${rolls.join(", ")}] = ${total} \u2014 ${ok ? "stays on \u2714" : "falls off \u2716"}`;
+        res.style.color = ok ? "var(--good)" : "var(--bad)";
+        rollBtn.disabled = true;
+        if(!ok) offBtn.classList.add("btn-primary");
+        logRoll({ kind:"skill", label:`\u{1F40E} Stay mounted (DC ${MOUNT_CHECK_DC})`, who:rInfo.name,
+          headline:`\u{1F3B2} ${total} \u2014 ${ok ? "stays on" : "falls off"}`,
+          lines:[`${sk.label} ${dice} \u2192 [${rolls.join(", ")}] = ${total} vs DC ${MOUNT_CHECK_DC}`, `on ${mName}`] });
+      }}, `\u{1F3B2} Roll ${sk.label}`) : "";
+      row.append(el("div",{class:"tk-menu-row",style:"gap:6px;flex-wrap:wrap;align-items:center;margin-top:3px"}, rollBtn, offBtn, res));
+      box.append(row);
+    });
+    const who = pairs.map(p => tokenHp(p.rider).name).join(", ");
+    logRoll({ kind:"skill", label:"\u{1F40E} Dismount check", who,
+      headline:`Acrobatics or Athletics DC ${MOUNT_CHECK_DC} to stay mounted`,
+      lines:[why, ...pairs.map(p => `${tokenHp(p.rider).name} on ${tokenHp(p.mount).name}`)] });
+    toast(`\u{1F40E} Dismount check \u2014 ${who}: Acrobatics or Athletics DC ${MOUNT_CHECK_DC}`);
+    return box;
+  }catch(e){ console.error("dismount check", e); return null; }
+}
 function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, moveRule=null, seFlat=0, critExtra=0, fx=null, onDealt=null, ctx=null, preselect=null }){
   // a Move whose own rules bend the matchup (MOVE_TARGET_RULES) travels with the hit, and its
   // immunity clause folds into the same pierce switch every other source uses
@@ -56472,6 +56831,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
       }
       { const felled = tokenHp(it.t).cur <= 0;
         const rx = reactionsNode(it.t, br, ctx, felled); if(rx) line.append(rx); }
+      { const dm = dismountCheckNode(map, it.t, br, ctx); if(dm) line.append(dm); }   // 🐎 ¼ Max HP / Push shakes a rider's seat
       out.append(line);
     }
     /* life-steal Moves: the user's share comes back in this same press */
@@ -57412,7 +57772,7 @@ function openTokenMenu(token, map){
           onclick:()=>{ dismountToken(map, token); closeModal(); }},"⬇ Dismount")));
     } else {
       const opts = mapTokensFor(map.id).filter(t=>t.id!==token.id && canMountToken(t)
-        && tokenHp(t).editable && !mountWouldLoop(map.id, token, t));
+        && tokenMovable(t) && !mountWouldLoop(map.id, token, t));
       if(opts.length){
         const sel = el("select"); opts.forEach(t=>sel.append(el("option",{value:t.id}, tokenHp(t).name)));
         rw.append(el("div",{class:"tk-menu-row",style:"align-items:flex-end;gap:6px;flex-wrap:wrap"},
@@ -57522,6 +57882,11 @@ function openTokenMenu(token, map){
           al, el("span",{class:"small"},"🤝 Counts as an ally (party side)")));
       }
       wrap.append(nameHideToggle(token));
+      if(token.link) wrap.append(el("div",{style:"margin-top:10px"},
+        el("button",{class:"btn-secondary",style:"padding:5px 10px",
+          title:"Drop a Burst 2 of Shifting Darkness (World of Darkness) centred on this token. Everyone sees it; anyone without Darkvision attacking from inside gets \u22123 Accuracy; it clears when Battle is turned off.",
+          onclick:()=>{ closeModal(); dropShiftingDarkness(map, token, "gm:" + token.id); toast(`\u{1F311} Shifting Darkness around ${tokenHp(token).name}`); }},
+          "\u{1F311} Shifting Darkness around them")));
       if(tokenImageRef(token)) wrap.append(el("div",{style:"margin-top:10px"},
         el("button",{class:"btn-secondary",style:"padding:5px 10px",
           title:"Choose which part of this token's picture sits inside its circle on the board.",
@@ -58706,6 +59071,8 @@ function renderMap(){
           title:"Auto-reveals around player tokens; explored areas stay revealed"}, map.fogOn?"🌫 Fog on":"🌫 Fog off"),
         el("button",{class:"btn-secondary"+(map.night?" on":""),onclick:()=>toggleNight(map),
           title:"Night time: tints the whole map darker and bluer for everyone"}, map.night?"\u{1F319} Night":"\u{1F319} Day"),
+        el("button",{class:"btn-secondary"+(map.timeStop?" on":""),onclick:()=>toggleTimeStop(map),
+          title:"Time Stop: inverts the map's colours for everyone while time is frozen (the tokens keep theirs)"}, map.timeStop?"\u23F3 Time stopped":"\u23F3 Time"),
       );
       /* Fog: the switch and the auto-reveal radius stay on the bar, because they are read and
          changed mid-scene. Painting fog by hand is a between-scenes job, so 🖌/🔦/Reset live in
@@ -58778,6 +59145,8 @@ function renderMap(){
         mapMountActive(map) ? null : mountBtn,
         el("button",{class:"btn-secondary",onclick:()=>addBoat(map),
           title:"Drop a boat on the board. Steer it with the 🚤 arrows — it turns to face where it's going and everything standing on the deck sails with it."},"🚤 Boat"),
+        el("button",{class:"btn-secondary",onclick:()=>addBalloon(map),
+          title:"Drop a hot-air balloon on the board: a flying boat with HP and a Sky speed. Steer it with the 🎈 arrows and everyone standing on it drifts along."},"🎈 Balloon"),
         el("button",{class:"btn-secondary",onclick:()=>addDoor(map),
           title:"Drop a door: HP, Defense, DR and a lock players can pick (Stealth) or smash. Its picture stands in its doorway square, so it lines up with the gaps in the art. Each new door copies the last one."},"\u{1F6AA} Door"),
         el("button",{class:"btn-secondary",onclick:()=>openAddHazard(map),
@@ -59059,6 +59428,9 @@ function renderMap(){
   /* Night: a multiplied blue wash over the art (and the grid), under the tokens and the fog, so the
      board reads as dark and cold while the creatures stay legible. Off while the GM is editing images. */
   if(map.night && !mapImgEdit) stage.append(el("div",{class:"map-night",style:`width:${stageW}px;height:${stageH}px`}));
+  /* Time Stop: the same kind of wash, but a difference-blend in white — the art and the grid come out in
+     inverted colours while the creatures on top stay as they are, frozen in a negative world. */
+  if(map.timeStop && !mapImgEdit) stage.append(el("div",{class:"map-timestop",style:`width:${stageW}px;height:${stageH}px`}));
 
   // tokens + fog, with role-dependent stacking. In image-edit mode tokens are inert.
   const fog = fogViewSet(map);

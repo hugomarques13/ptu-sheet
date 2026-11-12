@@ -715,7 +715,7 @@ body.map-mode .map-viewport{flex:1 1 auto; height:auto; min-height:0; border-rad
 .map-token.riding .tk-name{font-size:calc(6px * var(--tku,1)); top:calc(100% + calc(1px * var(--tku,1)))}
 .map-token.riding .tk-hpwrap{bottom:calc(-5px * var(--tku,1)); height:calc(4px * var(--tku,1))}
 .map-token.riding .tk-hpnum{display:none}            /* no room for numbers up on the saddle */
-.map-token.carrying{border-style:double; border-width:calc(4px * var(--tku,1))}
+/* a mount carrying riders keeps its ordinary single ring - the 🐎 badge already says it is carrying */
 /* the Pokedex "we've caught one of these" mark: a small Poke Ball on the free bottom-left corner */
 .map-token .tk-dexball{position:absolute; bottom:calc(-2px * var(--tku,1)); left:calc(-2px * var(--tku,1)); width:calc(14px * var(--tku,1)); height:calc(14px * var(--tku,1));
   border-radius:50%; background:#fff; border:calc(1.5px * var(--tku,1)) solid #111; overflow:hidden; z-index:3;
@@ -1013,7 +1013,7 @@ body.map-mode .view{animation:none}
 .arcana-tag.t-now{color:var(--good)}
 .arcana-tag.t-held{color:#5b8def}
 .arcana-tag.t-fated{color:var(--bad)}
-.arcana-tag.t-arc, .arcana-tag.t-hidden, .arcana-tag.t-done{color:var(--muted)}
+.arcana-tag.t-arc, .arcana-tag.t-hidden, .arcana-tag.t-done, .arcana-tag.t-copy{color:var(--muted)}
 .arcana-flavour{font-size:12px; font-style:italic; color:var(--muted); margin-top:5px}
 .arcana-text{font-size:13px; margin-top:4px; overflow-wrap:anywhere}
 /* a card the GM is keeping to themselves — the player sees that it exists, not what it does */
@@ -1209,3 +1209,19 @@ body.map-mode .view{animation:none}
 .floor-switch-lbl{font-size:16px; line-height:1}
 .floor-switch .btn-secondary{padding:5px 9px}
 .init-floor{font-size:10px; color:var(--muted); white-space:nowrap}
+/* Dex entry Abilities: hover card (dexAbilityChip / showDexAbTip in app.js) */
+.chip.dex-ab[data-refab]{cursor:help}
+.chip.dex-ab[data-refab]:hover{border-color:var(--accent); color:var(--accent)}
+.dex-ab-tip{position:fixed; z-index:300; max-width:min(380px, calc(100vw - 16px)); box-sizing:border-box; pointer-events:none;
+  background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:10px 12px;
+  box-shadow:0 10px 30px rgba(0,0,0,.35); font-size:13px; line-height:1.4}
+.dex-ab-tip-name{font-weight:800; margin-bottom:4px}
+/* ⏳ Time Stop (toggleTimeStop): white difference-blend = inverted art + grid, under the tokens like Night */
+.map-timestop{position:absolute; left:0; top:0; pointer-events:none; background:#fff; mix-blend-mode:difference}
+/* the Codec drags by its frame (codecDraggable) */
+.codec-frame{touch-action:none}
+.codec-screen,.codec-subs{cursor:move}
+.codec.dragging .codec-frame{box-shadow:0 0 0 1px #000, 0 0 34px rgba(80,255,140,.35), 0 20px 50px rgba(0,0,0,.7); user-select:none}
+/* 🐎 the dismount check under a 💥 Apply line (dismountCheckNode) */
+.mount-check{margin-top:6px; padding:6px 8px; border:1px solid var(--accent); border-radius:8px;
+  background:color-mix(in srgb, var(--accent) 10%, var(--panel)); font-size:12px}
