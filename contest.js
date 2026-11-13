@@ -313,14 +313,17 @@ function ctDiceLine(dice){
   if(!box.childNodes.length) box.append(el("span",{class:"small muted"},"no Contest dice"));
   return box;
 }
+var ctGuideOpen = {};
 function contestEncounterCards(enc, root){
   const k = ctNormEnc(enc), gm = isGM();
   const live = contestRunLive();
   const save = ()=>{ saveEnc(); renderEncounters(); };
+  /* who's performing changed: also follow it onto the stage while the contest is still introducing */
+  const saveLineup = ()=>{ saveEnc(); ctResyncIntro(enc); renderEncounters(); };
   /* — settings — */
   const sc = el("div",{class:"card ct-enc"});
   sc.append(el("h3",{}, "🎀 Contest",
-    el("button",{class:"btn-secondary",style:"padding:6px 12px",onclick:ctOpenHelp},"📖 How it works"),
+    el("button",{class:"btn-secondary",style:"padding:6px 12px",onclick:()=>ctOpenHelp(k)},"📖 How it works"),
     el("button",{class:"btn-secondary",style:"padding:6px 12px",onclick:()=>ctOpenExp(enc)},"🧮 Contest EXP")));
   const vSel = el("select",{});
   Object.entries(CT_VARIANTS).forEach(([key,v])=>vSel.append(el("option",{value:key,selected:k.variant===key}, `${v.icon} ${v.name}`)));
@@ -382,6 +385,14 @@ function contestEncounterCards(enc, root){
     el("label",{class:"field",style:"max-width:200px",title:"Contests use a low Significance Multiplier — the book suggests ×1.5 or ×2, more if this Contest really matters"},
       el("span",{},"EXP significance ×"), sig),
     k.last ? el("span",{class:"small muted"}, `Last result: ${(k.last.rows||[]).filter(r=>r.place===1).map(r=>r.name).join(" & ") || "?"} won (${new Date(k.last.at||Date.now()).toLocaleDateString()})`) : ""));
+  /* 📋 the GM's checklist for exactly this setup — open until the contest has been run once */
+  const gd = el("details",{class:"ct-guide"});
+  if(ctGuideOpen[enc.id]!==undefined ? ctGuideOpen[enc.id] : !k.last) gd.open = true;
+  gd.addEventListener("toggle",()=>{ ctGuideOpen[enc.id] = gd.open; });
+  gd.append(el("summary",{}, `📋 How to run this ${CT_VARIANTS[k.variant].name}`
+      + (k.variant==="battle" ? (k.battleFormat==="teams" ? " (teams)" : " (every Trainer for themselves)") : k.rotation ? " (Rotation)" : "")),
+    ctGuideNode(k));
+  sc.append(gd);
   root.append(sc);
 
   /* — contestants — */
@@ -393,13 +404,13 @@ function contestEncounterCards(enc, root){
   const teamsOn = k.variant==="battle" && k.battleFormat==="teams";
   cc.append(el("div",{class:"small muted",style:"margin:-4px 0 8px"},
     k.variant==="battle" ? (teamsOn
-        ? `Put each Trainer on a team; a team's Appeal is added together and the best team wins. Give each Trainer ${k.battleCount} Pokémon (the first ${k.battleCount} ticked are used).`
-        : `Two or more Trainers, each for themselves — the most Appeal wins. Give each one ${k.battleCount} Pokémon (the first ${k.battleCount} ticked are used).`)
-    : team ? "One row per Trainer (or team) with the Pokémon they'll rotate through."
-    : "One row per performing Pokémon. NPC coordinators are built in the Trainers card below — give them Pokémon there, then add them here."));
+        ? `Put each Trainer on a team; a team's Appeal is added together and the best team wins. Give each Trainer ${k.battleCount} Pokémon — the first ${k.battleCount} in their list fight, any below are bench.`
+        : `Two or more Trainers, each for themselves — the most Appeal wins. Give each one ${k.battleCount} Pokémon — the first ${k.battleCount} in their list fight, any below are bench.`)
+      + " Swap a Pokémon with its dropdown, ↑ to move a bench Pokémon in, or the ⭐ Level / most-dice buttons to fill the lineup in one click."
+    : team ? "One row per Trainer (or team) with the Pokémon they'll rotate through. Swap a Pokémon with its dropdown."
+    : "One row per performing Pokémon — swap it for another of that Trainer's Pokémon with its dropdown. NPC coordinators are built in the Trainers card below — give them Pokémon there, then add them here."));
   if(!nEnt) cc.append(el("span",{class:"muted small"},"nobody yet."));
   k.entrants.forEach((en, i)=>{
-    const refs = ctEntrantRefs(enc, en);
     const line = el("div",{class:"moveslot",style:"align-items:flex-start"});
     const mid = el("div",{style:"flex:1;min-width:0"});
     const tName = en.src==="sheet" ? (((ctSheetChar(en.sheetId)||{}).trainer||{}).name || (ctSheetChar(en.sheetId)||{}).name || "Player")
@@ -409,25 +420,24 @@ function contestEncounterCards(enc, root){
     if(teamsOn){
       const ts = el("select",{style:"padding:2px 6px;width:auto;max-width:180px",title:"which team this Trainer is on"});
       CT_TEAM_KEYS.forEach(key=>ts.append(el("option",{value:key,selected:en.team===key}, ctTeamLabel(k.teamNames, key))));
-      ts.addEventListener("change",()=>{ en.team = ts.value; save(); });
+      ts.addEventListener("change",()=>{ en.team = ts.value; saveLineup(); });
       head.append(ts);
     }
     mid.append(head);
-    refs.forEach(ref=>{
-      const R = ctResolveRef(ref), p = R.mon;
-      if(!p){ mid.append(el("div",{class:"small",style:"color:var(--bad)"},"⚠ a Pokémon here can't be found (deleted or moved?)")); return; }
-      const dd = ctMonDice(p, R.trainer);
-      mid.append(el("div",{class:"inline",style:"gap:6px;margin-top:4px;flex-wrap:wrap"},
-        monSprite(p.species, p.shiny, "s-sm", ctImgOf(p)||undefined),
-        el("span",{style:"font-weight:700"}, `${p.nickname || p.species} · Lv ${p.level||1}`),
-        ctDiceLine(dd.dice)));
-    });
+    /* every Pokémon is a dropdown of that Trainer's whole roster — swap one in place */
+    mid.append(ctLineupEditor(enc, en, saveLineup));
     line.append(mid, el("div",{class:"inline",style:"gap:2px"},
       encOrderBtns(k.entrants, en),
       el("button",{class:"btn-secondary",style:"padding:3px 8px",title:"remove from the contest",
-        onclick:()=>{ k.entrants.splice(k.entrants.indexOf(en),1); save(); }},"✕")));
+        onclick:()=>{ k.entrants.splice(k.entrants.indexOf(en),1); saveLineup(); }},"✕")));
     cc.append(line);
   });
+  if(live && live.encId===enc.id && nEnt){
+    const early = live.stage==="intro" && (live.leg||1)===1;
+    cc.append(el("div",{class:"small",style:`margin-top:6px;font-weight:700;color:${early?"var(--good)":"var(--warn)"}`},
+      early ? "🎭 This contest is in its Introduction Stage — a swap here updates the stage too (everyone keeps their Introduction roll)."
+            : "🎭 This contest is already past its Introduction — lineup changes here are used the next time it starts (↺ Run it again)."));
+  }
   if(teamsOn && nEnt){
     const used = [...new Set(k.entrants.map(en=>en.team))].sort();
     const names = el("div",{class:"ct-row",style:"margin-top:8px"}, el("span",{class:"small",style:"font-weight:700"},"Team names:"));
@@ -467,7 +477,7 @@ function ctPickPlayerMons(enc){
     el("button",{class:"btn-primary",onclick:()=>{
       const on = picks.filter(x=>x.cb.checked); if(!on.length){ toast("Tick at least one Pokémon"); return; }
       ctAddPicks(k, on.map(x=>({ src:"sheet", sheetId:x.sheetId, monId:x.monId })), team);
-      closeModal(); saveEnc(); renderEncounters();
+      closeModal(); saveEnc(); ctResyncIntro(enc); renderEncounters();
     }},"Add") ]});
 }
 function ctPickNpcMons(enc){
@@ -493,7 +503,7 @@ function ctPickNpcMons(enc){
     el("button",{class:"btn-primary",onclick:()=>{
       const on = picks.filter(x=>x.cb.checked); if(!on.length){ toast("Tick at least one Pokémon"); return; }
       ctAddPicks(k, on.map(x=>({ src:"enc", trId:x.trId, monId:x.monId })), team);
-      closeModal(); saveEnc(); renderEncounters();
+      closeModal(); saveEnc(); ctResyncIntro(enc); renderEncounters();
     }},"Add") ]});
 }
 function ctAddPicks(k, list, team){
@@ -508,6 +518,129 @@ function ctAddPicks(k, list, team){
       en.monIds.push(x.monId);
     });
   } else list.forEach(x=>k.entrants.push({ id:uid(), src:x.src, sheetId:x.sheetId||null, trId:x.trId||null, monIds:[x.monId] }));
+}
+
+/* ---------- swapping Pokémon in and out (the GM's lineup editor) ---------- */
+/* one Contest Type the whole way (vs rolled every round) */
+function ctFixedType(k){ return k.variant==="standard" || ((k.variant==="festival"||k.variant==="battle") && !k.superRounds); }
+/* the Trainer behind a contestant row and their whole roster, party first */
+function ctOwnerRoster(enc, en){
+  if(en.src==="sheet"){
+    const c = ctSheetChar(en.sheetId);
+    return { t:(c && c.trainer) || null, sheet:true,
+      mons:((c && c.pokemon)||[]).filter(Boolean).slice().sort((a,b)=>(b.onTeam?1:0)-(a.onTeam?1:0)) };
+  }
+  const tr = (enc.trainers||[]).find(x=>x && x.id===en.trId);
+  return { t:(tr && tr.trainer) || null, sheet:false, mons:((tr && tr.pokemon)||[]).filter(Boolean) };
+}
+/* "Vodka (Arcanine) · Lv 40 · 😎5" — the dice that matter for THIS contest, so the pick is informed */
+function ctMonOptLabel(p, R, k){
+  const d = ctMonDice(p, R.t).dice;
+  const dz = ctFixedType(k) ? `${CT_ICON[k.ctype]}${d[k.ctype]||0}` : (CT_STATS.filter(s=>d[s]).map(s=>CT_ICON[s]+d[s]).join(" ") || "no dice");
+  return `${p.nickname ? `${p.nickname} (${p.species})` : p.species} · Lv ${p.level||1}${R.sheet && !p.onTeam ? " · PC" : ""} · ${dz}`;
+}
+/* fill a Trainer's lineup in one click: party before PC, then by Level or by Contest dice */
+function ctAutoPick(enc, en, by){
+  const k = ctNormEnc(enc), R = ctOwnerRoster(enc, en);
+  const others = new Set(k.entrants.filter(x=>x!==en).flatMap(x=>x.monIds));
+  const n = k.variant==="battle" ? k.battleCount : Math.max(1, en.monIds.length);
+  const party = p => (!R.sheet || p.onTeam) ? 1 : 0;              // NPC Pokémon are all "with them"
+  const score = p => { const d = ctMonDice(p, R.t).dice;
+    return by==="dice" ? (ctFixedType(k) ? (d[k.ctype]||0) : CT_STATS.reduce((a,s)=>a+(d[s]||0),0)) : (p.level||1); };
+  const pool = R.mons.filter(p=>!others.has(p.id))
+    .sort((a,b)=>(party(b)-party(a)) || (score(b)-score(a)) || ((b.level||1)-(a.level||1)));
+  if(!pool.length){ toast("No free Pokémon on that Trainer"); return false; }
+  en.monIds = pool.slice(0, n).map(p=>p.id);
+  return true;
+}
+function ctLineupEditor(enc, en, onChange){
+  const k = ctNormEnc(enc), team = ctIsTeam(k), battle = k.variant==="battle";
+  const R = ctOwnerRoster(enc, en);
+  const box = el("div",{class:"ct-lineup-ed"});
+  const taken = new Set(k.entrants.flatMap(x=>x.monIds));          // a Pokémon is only ever in a contest once
+  const byId = id => R.mons.find(p=>p.id===id) || null;
+  const picker = cur => {
+    const s = el("select",{class:"ct-monsel",title:"swap this Pokémon for another of the Trainer's"});
+    if(!byId(cur)) s.append(el("option",{value:cur,selected:true},"⚠ can't be found (deleted or moved?)"));
+    R.mons.forEach(p=>{ const busy = p.id!==cur && taken.has(p.id);
+      s.append(el("option",{value:p.id,selected:p.id===cur,disabled:busy}, ctMonOptLabel(p, R, k) + (busy ? " — already in" : ""))); });
+    return s;
+  };
+  en.monIds.forEach((mid, i)=>{
+    const p = byId(mid), bench = battle && i >= k.battleCount;
+    const row = el("div",{class:"ct-slot"+(bench?" bench":"")});
+    row.append(p ? monSprite(p.species, p.shiny, "s-sm", ctImgOf(p)||undefined) : el("span",{style:"color:var(--bad)"},"⚠"));
+    if(team) row.append(el("b",{class:"small",style:"min-width:16px"}, bench ? "–" : `${i+1}.`));
+    const sel = picker(mid);
+    sel.addEventListener("change",()=>{ if(sel.value && sel.value!==mid){ en.monIds[i] = sel.value; onChange(); } });
+    row.append(sel);
+    if(p) row.append(ctDiceLine(ctMonDice(p, R.t).dice));
+    if(bench) row.append(el("span",{class:"small muted"},"bench — not used"));
+    if(team && i>0) row.append(el("button",{class:"linkbtn",title:bench && i===k.battleCount ? "bring this one into the lineup (swaps with the one above)" : "move up",
+      onclick:()=>{ [en.monIds[i-1], en.monIds[i]] = [en.monIds[i], en.monIds[i-1]]; onChange(); }},"↑"));
+    if(team && en.monIds.length>1) row.append(el("button",{class:"linkbtn",title:"take this Pokémon out of the lineup",
+      onclick:()=>{ en.monIds.splice(i,1); onChange(); }},"✕"));
+    box.append(row);
+  });
+  if(team){
+    const foot = el("div",{class:"ct-row",style:"margin-top:4px;gap:6px"});
+    const free = R.mons.filter(p=>!taken.has(p.id));
+    if(free.length){
+      const add = el("select",{class:"ct-monsel"});
+      add.append(el("option",{value:""}, battle && en.monIds.length>=k.battleCount ? "＋ add to the bench…" : "＋ add a Pokémon…"));
+      free.forEach(p=>add.append(el("option",{value:p.id}, ctMonOptLabel(p, R, k))));
+      add.addEventListener("change",()=>{ if(!add.value) return; en.monIds.push(add.value); onChange(); });
+      foot.append(add);
+    }
+    const n = battle ? k.battleCount : Math.max(1, en.monIds.length);
+    const lbl = ctFixedType(k) ? `${CT_ICON[k.ctype]} most ${k.ctype} dice` : "🎀 most Contest dice";
+    foot.append(el("button",{class:"linkbtn",title:`replace this lineup with the ${n} highest-Level Pokémon (party first)`,
+        onclick:()=>{ if(ctAutoPick(enc, en, "level")) onChange(); }},`⭐ top ${n} by Level`),
+      el("button",{class:"linkbtn",title:`replace this lineup with the ${n} Pokémon with the most Contest dice for this contest (party first)`,
+        onclick:()=>{ if(ctAutoPick(enc, en, "dice")) onChange(); }}, lbl));
+    box.append(foot);
+  }
+  return box;
+}
+/* The GM changed a lineup while the contest is still in its (first) Introduction: rebuild the
+   stage's contestants from the encounter. Everyone keeps their contestant id, Introduction roll and
+   Appeal; a Pokémon that stayed keeps its place, a new one comes in fresh. */
+function ctEncEntrantFor(run, ent){
+  const enc = ctEncById(run.encId); if(!enc) return null;
+  const k = ctNormEnc(enc);
+  return k.entrants.find(x=>x.id===ent.encEntId)
+      || k.entrants.find(x=>x.src===ent.src && (x.src==="sheet" ? x.sheetId===ent.sheetId : x.trId===ent.trId)
+                            && ent.mons.some(m=>x.monIds.includes(m.monId))) || null;
+}
+function ctResyncIntro(enc){
+  const c = contestPeek(), live = c && c.run;
+  if(!live || live.encId!==enc.id || live.stage!=="intro" || (live.leg||1)!==1 || !isGM()) return;
+  const r = contestData().run;
+  const fresh = ctBuildRun(enc).entrants;
+  const owner = e => e.src==="sheet" ? "s:"+e.sheetId : "t:"+e.trId;
+  const used = new Set(), changed = [];
+  const next = fresh.map(f=>{
+    let o = r.entrants.find(e=>!used.has(e) && e.encEntId && e.encEntId===f.encEntId);
+    if(!o){                                             // a stage started before contestants remembered their row
+      const cands = r.entrants.filter(e=>!used.has(e) && !e.encEntId && owner(e)===owner(f));
+      o = cands.find(e=>e.mons.some(m=>f.mons.some(fm=>fm.monId===m.monId))) || (cands.length===1 ? cands[0] : null);
+    }
+    if(!o){ changed.push(`${f.trainer} joins with ${f.mons.map(m=>m.name).join(", ")}`); return f; }
+    used.add(o);
+    const before = o.mons.map(m=>m.monId).join(",");
+    const keep = new Map(o.mons.map(m=>[m.monId, m]));
+    o.mons = f.mons.map(fm=>{ const m = keep.get(fm.monId); return m ? Object.assign(m, { dice:fm.dice, level:fm.level, name:fm.name, img:fm.img }) : fm; });
+    o.encEntId = f.encEntId; o.team = f.team; o.trainer = f.trainer || o.trainer;
+    if(o.mons.map(m=>m.monId).join(",")!==before)
+      changed.push(`${o.trainer}: ${o.mons.map(m=>m.name).join(", ")}${o.intro ? " (Introduction kept — ↺ redo it if it came from the old Pokémon)" : ""}`);
+    return o;
+  });
+  r.entrants.filter(e=>!used.has(e) && !next.includes(e)).forEach(e=>changed.push(`${e.trainer} (${e.mons.map(m=>m.name).join(", ")}) leaves the contest`));
+  if(!changed.length && next.length===r.entrants.length) return;
+  r.entrants = next;
+  if(r.variant!=="battle") r.rounds = next.length;
+  r.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`🔁 The GM changed the lineup — ${changed.join(" · ")}` });
+  contestSave();
 }
 
 /* ===================================================================
@@ -529,7 +662,7 @@ function ctBuildRun(enc){
         lastMove:null, ko:false, performed:false, fashionUsed:false }, ref);
     }).filter(Boolean);
     if(!mons.length) return;
-    ents.push({ id:uid(), src:en.src, sheetId:en.sheetId||null, encId:en.src==="enc"?enc.id:null, trId:en.trId||null,
+    ents.push({ id:uid(), encEntId:en.id, src:en.src, sheetId:en.sheetId||null, encId:en.src==="enc"?enc.id:null, trId:en.trId||null,
       trainer: trainerName || (en.src==="sheet" ? "Player" : "NPC"), mons,
       letter:null, appeal:0, fumble:0, voltage:0, intro:null, introDice:{}, introUsed:{}, spent:0, flags:{},
       eliminated:false, activeKey:null, centerNext:false, team: teams ? (en.team || "1") : null });
@@ -1246,7 +1379,7 @@ function ctStageNode(run){
       : `${CT_VARIANTS[run.variant].name}${run.rotation?" · Rotation":""} · ${ctStatusText(run)}`)),
     el("div",{class:"inline",style:"gap:6px"},
       run && run.stage!=="intro" && RT ? ctTypeChip(RT, run.superMode ? "round" : "Contest") : "",
-      el("button",{class:"btn-secondary",onclick:ctOpenHelp},"📖 Rules"),
+      el("button",{class:"btn-secondary",onclick:()=>ctOpenHelp(run ? ctRunAsSettings(run) : null)},"📖 Rules"),
       el("button",{class:"close",title:"hide the stage (the 🎭 button brings it back)",onclick:()=>{ ctStageIsOpen = false; contestRender(); }},"×")));
   box.append(head);
   const body = el("div",{class:"ct-stage-body"});
@@ -1280,6 +1413,18 @@ function ctIdlePanel(){
 }
 
 /* ---------- Introduction panel ---------- */
+/* GM: change a contestant's Pokémon right on the stage, before the Performance starts */
+var ctSwapOpen = {};
+function ctIntroSwap(run, ent){
+  if(!isGM() || run.stage!=="intro" || (run.leg||1)!==1) return "";
+  const enc = ctEncById(run.encId), en = enc && ctEncEntrantFor(run, ent);
+  if(!enc || !en) return "";
+  const d = el("details",{class:"ct-swap"}); if(ctSwapOpen[ent.id]) d.open = true;
+  d.addEventListener("toggle",()=>{ ctSwapOpen[ent.id] = d.open; });
+  d.append(el("summary",{class:"small",style:"cursor:pointer;font-weight:700;color:#d6337a"}, ent.mons.length>1 ? "🔁 Swap Pokémon" : "🔁 Swap this Pokémon"),
+    ctLineupEditor(enc, en, ()=>{ saveEnc(); ctResyncIntro(enc); try{ renderEncounters(); }catch(e){} contestRender(); }));
+  return d;
+}
 function ctIntroPanel(run){
   const box = el("div",{}), gm = isGM();
   const std = !run.superMode && run.ctype;
@@ -1312,6 +1457,7 @@ function ctIntroRow(run, ent){
     el("div",{}, el("div",{style:"font-weight:800"}, ctEntFull(ent)),
       el("div",{class:"small muted"}, ent.mons.length>1 ? ent.mons.map(m=>m.name).join(", ") : `Lv ${ent.mons[0].level}`)),
     el("span",{style:"margin-left:auto"}, ctDiceLine(ent.mons.length===1 ? ent.mons[0].dice : {}))));
+  row.append(ctIntroSwap(run, ent));
   if(ent.intro){
     const I = ent.intro;
     const dieRow = (rolls, stat) => el("span",{}, ...rolls.map(d=>{ const g = d>=3 && !(I.ugly && d===6);
@@ -1326,8 +1472,9 @@ function ctIntroRow(run, ent){
   }
   if(!ctCanActEnt(ent)){ row.append(el("div",{class:"small muted",style:"margin-top:6px"},"⏳ waiting for their Introduction…")); return row; }
   const o = ctIntroOptions(run, ent);
-  /* kept per contestant across re-renders: someone else's roll redraws the stage mid-choice */
-  const sKey = `${run.id}|${run.leg}|${ent.id}`;
+  /* kept per contestant across re-renders: someone else's roll redraws the stage mid-choice
+     (and per lineup — a swapped-in Pokémon brings its own Contest Accessory / coloration bonuses) */
+  const sKey = `${run.id}|${run.leg}|${ent.id}|${ent.mons.map(m=>m.key).join(",")}`;
   const spec = ctIntroSpecs[sKey] || (ctIntroSpecs[sKey] = { skill:ctDefaultSkill(run, o), stat:null, groomed:o.groomer, beautiful:o.beautiful, contestCase:false,
                  bon:o.bonuses.map(b=>({ on:true, stat:b.stat || run.ctype || "Cute", b })), extra:[] });
   const form = el("div",{style:"margin-top:8px"});
@@ -1922,12 +2069,75 @@ function ctOpenExp(enc){
 }
 
 /* ===================================================================
+   📋 HOW TO RUN IT — the GM's checklist, written for THIS contest's settings (variant, Type or
+   rolled Types, Rotation, Battle format). Shown on the encounter card and at the top of 📖 Rules.
+=================================================================== */
+function ctGuideSteps(k){
+  const v = k.variant, battle = v==="battle", fest = v==="festival", rot = !battle && !!k.rotation;
+  const fixed = ctFixedType(k), teams = battle && k.battleFormat==="teams", N = k.battleCount || 3;
+  const skill = { Cool:"Command", Cute:"Charm", Smart:"Guile", Tough:"Intimidate", Beauty:"Intuition" }[k.ctype];
+  const intro = fixed
+    ? `${skill} matches this ${k.ctype} Contest: +2 Appeal (and a better shot at going first).`
+    : "The Type is rolled each round, so no Skill gives the +2 — players just roll their best one.";
+  const S = [];
+  if(battle){
+    S.push(["Set it up", `Give every Trainer ${N}+ Pokémon in Contestants — the first ${N} in each list fight, the rest are bench. Swap with the dropdowns, or use the ⭐ Level / most-dice buttons to fill a lineup in one click.`
+      + (teams ? " Put each Trainer on a team and name the teams." : "")
+      + " NPCs: build them in the Trainers card, then ＋ NPC Pokémon."]);
+    S.push(["Start", "Open the arena on the Map. 🎀 Contest Mode on, then ⚔ Battle on the Map → this contest (or ▶ Start this contest here — it turns ⚔ Battle on too)."]);
+    S.push(["Introduction", `Each Trainer rolls ONE Introduction on the 🎭 stage; those Contest dice are shared by all their Pokémon. ${intro} 🎲 Roll for every NPC does yours. A last-minute swap? 🔁 under the contestant. Then ▶ Start the battle.`]);
+    S.push(["Fight", `Each Trainer drops their first Pokémon on the Map (NPCs from the Trainers card)${teams ? "" : " — one per Trainer, so everyone is on the field at once"}. Initiative as normal; you apply hits on tokens a player doesn't own from the roll feed (🎯 Apply), like any fight.`]);
+    S.push(["Every Move appeals", "After a Move's roll, press 🎀 Appeal in its roll window (NPCs too). Struggle and Combat Maneuvers don't Appeal."
+      + (fixed ? "" : " The Contest Type is re-rolled every round — it's on the stage.")]);
+    S.push(["Runs itself", `${teams ? "Every opposing Pokémon on the field is adjacent (teammates never are)" : "Every other Trainer's Pokémon on the field is adjacent"}. A knockout gives the attacker +2 Voltage and the replacement is the Center of Attention; ↩ Recall costs 2 Voltage; rounds come off the Initiative tracker.`]);
+    S.push(["By hand", "A Baton Pass / U-Turn / Volt Switch switch costs no Voltage — if you used ↩ Recall for it, give the 2 back in 🛠 GM tools. Same tools for any ruling (± Appeal / Fumble / Voltage, ↩ undo)."]);
+    S.push(["The end", `After round ${2*N}, or when only one ${teams ? "team" : "Trainer"} has Pokémon standing. Most Appeal − Fumble wins${teams ? " (pooled per team)" : ""} — not the last one standing. 🧮 Contest EXP, and a Ribbon by hand.`]);
+    return S;
+  }
+  S.push(["Set it up", rot
+    ? "One row per Trainer with the Pokémon they'll rotate through — each one performs once, so give them as many as there are contestants. Swap with the dropdowns."
+    : `One row per performing Pokémon — 3 to 5 is ideal (the book's position charts). Swap any Pokémon with its dropdown.${fest ? " A Festival needs 4+: it eliminates one per contest until three are left." : ""}`]);
+  S.push(["Start", "▶ Start this contest (Contest Mode turns on by itself). Everyone gets the 🎭 stage and the bottom dock."]);
+  S.push(["Introduction", `Each player picks a Skill on the stage and rolls: every 3–6 is a Contest die. ${intro} 🎲 Roll for every NPC does yours. A last-minute swap? 🔁 under the contestant. When everyone has rolled: ▶ Start the Performance Stage.`]);
+  S.push(["Performance", "One round per contestant. Whoever has 🎤 presses 🎤 Perform (it pops up on their dock) and picks a Move — dice, Voltage and the Effects on their neighbours are all done for them. NPC turns: you press 🎤 Perform a Move. The middle spot is the Center of Attention. No Move twice in a row (Reliable excepted)."
+    + (rot ? " Rotation: on their turn they choose which Pokémon goes; at most 2 × contestants Contest dice for the whole contest." : "")
+    + (fixed ? "" : " The Type is re-rolled at the start of every round — remind them to re-check: matching +1d6, opposed −1d6.")]);
+  if(fest) S.push(["Between contests", "When a contest ends, Fumbles come off and the lowest Appeal is eliminated by itself. Appeal carries over; everyone left rolls a new Introduction and you press ▶ Start the Performance Stage again — until three are left."]);
+  S.push(["Fixing things", "🛠 GM tools on the stage: ↩ Undo the last performance, ⏭ Skip a turn, ± Appeal / Fumble / Voltage, ↺ give dice back, 🏁 End & tally early."]);
+  S.push(["The end", `It tallies itself after the last round: Appeal − Fumble, highest wins${fest ? " (of the final three)" : ""}. 🧮 Contest EXP → 📤 Send to the EXP pools; put the Ribbon in the winner's Inventory.`]);
+  return S;
+}
+function ctGuideNode(k){
+  const ol = el("ol",{class:"ct-guide-steps"});
+  ctGuideSteps(k).forEach(([t, txt])=>ol.append(el("li",{}, el("b",{}, t + ": "), txt)));
+  return ol;
+}
+/* a run's settings in encounter-card shape, for the guide */
+function ctRunAsSettings(run){
+  return { variant:run.variant, ctype:run.ctype || "Cute", superRounds:!!run.superMode && run.variant!=="super", rotation:!!run.rotation,
+           battleCount:run.battleCount || 3, battleFormat:run.teams ? "teams" : "ffa" };
+}
+
+/* ===================================================================
    📖 RULES & WHAT'S MANUAL
 =================================================================== */
-function ctOpenHelp(){
+function ctOpenHelp(settings){
   const H = (t)=>el("div",{style:"font-weight:900;margin:12px 0 4px;color:#d6337a"}, t);
   const P = (t)=>el("div",{class:"small",style:"margin:3px 0"}, t);
   const body = el("div",{});
+  /* 📋 the GM's checklist first — for this contest when opened from one, else pick a kind */
+  let gk = (settings && typeof settings==="object" && CT_VARIANTS[settings.variant]) ? Object.assign({}, settings)
+         : { variant:"standard", ctype:"Cool", superRounds:false, rotation:false, battleCount:3, battleFormat:"ffa" };
+  const guide = el("div",{class:"ct-box"});
+  const drawGuide = ()=>{
+    guide.innerHTML = "";
+    const tabs = el("div",{class:"ct-row",style:"gap:4px"}, el("b",{class:"small"},"📋 How to run a"));
+    Object.entries(CT_VARIANTS).forEach(([key,v])=>tabs.append(el("button",{class:"btn-secondary"+(gk.variant===key?" on":""),style:"padding:2px 8px;font-size:12px",
+      onclick:()=>{ gk = Object.assign({}, gk, { variant:key }); drawGuide(); }}, `${v.icon} ${v.name}`)));
+    guide.append(tabs, ctGuideNode(gk));
+  };
+  drawGuide();
+  body.append(guide);
   body.append(
     H("1 · Contest Mode"),
     P("The GM switches it on (🎀 on the Map's toolbar, the contest encounter, or the dock). From then until it's switched off, every Move a Pokémon uses opens an Appeal — its Contest Type and Contest Effect — instead of attacking, and Move rows show the Contest Effect. Outside a running contest (or out of turn) the roll is a practice Appeal and scores nothing."),
@@ -1997,6 +2207,14 @@ body.ct-docked{padding-bottom:72px}
 .ct-move.sel{border-color:#d6337a;background:rgba(214,51,122,.08)}
 .ct-move.off{opacity:.5;cursor:not-allowed}
 .ct-sides{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
+.ct-guide{margin-top:10px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel-2)}
+.ct-guide>summary{cursor:pointer;font-weight:800;color:#d6337a}
+.ct-guide-steps{margin:6px 0 0;padding-left:20px;font-size:12px}
+.ct-guide-steps li{margin:5px 0;line-height:1.45}
+.ct-slot{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px}
+.ct-slot.bench{opacity:.6}
+.ct-monsel{width:auto;max-width:100%;padding:2px 6px;font-size:12px}
+.ct-swap{margin-top:6px}
 @media(max-width:700px){.ct-sides{grid-template-columns:1fr}.ct-spot{font-size:8px;padding:1px 4px}.ct-stage-body{padding:10px}}`;
   document.head.append(s);
 }

@@ -4466,5 +4466,90 @@
   ],
   "prio": 9,
   "title": "Verify moves the scan thinks are handled"
+ },
+ {
+  "cat": "features",
+  "id": "late-verify-features-01",
+  "items": [
+   "Choreographer",
+   "Dance Form",
+   "Dance Practice",
+   "Efficient Installation",
+   "Engineer",
+   "Experimental AI",
+   "Upgrader"
+  ],
+  "prio": 9,
+  "title": "Verify features the scan thinks are handled"
+ },
+ {
+  "cat": "abilities",
+  "id": "late-verify-abilities-01",
+  "items": [
+   "Probability Control"
+  ],
+  "prio": 9,
+  "title": "Verify abilities the scan thinks are handled"
+ },
+ {
+  "cat": "moves",
+  "id": "late-verify-moves-01",
+  "items": [
+   "Dazzling Gleam",
+   "Scratch",
+   "Boomburst",
+   "Dragon Claw",
+   "Knock Off",
+   "X-Scissor",
+   "Cheap Shot",
+   "Overdrive"
+  ],
+  "prio": 9,
+  "title": "Verify moves the scan thinks are handled"
+ },
+ {
+  "cat": "held",
+  "id": "late-verify-held-01",
+  "items": [
+   "Delphoxite"
+  ],
+  "prio": 9,
+  "title": "Verify held the scan thinks are handled"
+ },
+ {
+  "cat": "gifts",
+  "id": "late-verify-gifts-01",
+  "items": [
+   "Future Sight"
+  ],
+  "prio": 9,
+  "title": "Verify gifts the scan thinks are handled"
+ },
+ {
+  "cat": "capabilities",
+  "id": "late-verify-capabilities-01",
+  "items": [
+   "Datajack",
+   "Dermal Plating",
+   "Embedded Weaponry",
+   "Enhanced Sight",
+   "Medical Nanobots",
+   "Smart Vision",
+   "Synthetic Muscle",
+   "Thermal-Optical Camouflage",
+   "Wired Reflexes"
+  ],
+  "prio": 9,
+  "title": "Verify capabilities the scan thinks are handled"
+ },
+ {
+  "cat": "gear",
+  "id": "late-verify-gear-01",
+  "items": [
+   "Light Armor (Physical)",
+   "Light Armor (Special)"
+  ],
+  "prio": 9,
+  "title": "Verify gear the scan thinks are handled"
  }
 ]

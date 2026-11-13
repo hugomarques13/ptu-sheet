@@ -157,7 +157,7 @@ P1 · 0 open of 19 · ✔ done
   - note: a narrated, positional or world-changing Gift (portals, illusions, time, extended rituals); the Gifts card tracks its frequency pips and the rules text — nothing per-roll to compute
   - Daily Standard Action: remove a target within 8m from the encounter for 1d2+1 rounds.
 
-- ✅ **Cells of the World** — `auto` · P3 · themes: action · code: GIFT_ACTIONS:15375
+- ✅ **Cells of the World** — `auto` · P3 · themes: action · code: GIFT_ACTIONS:16089
   - _gift:Major · Zygarde · Prereq: Minor Gift - World's Guardian_
   - note: GIFT_ACTIONS button (v599)
   - Daily Free Action when you fall to 0 or fewer HP: you are instead set to 1 HP (and to 9 Injuries if the triggering effect brought you to 10 or more). Gain Temporary HP equal to half your Maximum HP, and ignore the effects of being Heavily Injured until you no longer have Temporary HP.
@@ -223,9 +223,9 @@ P1 · 0 open of 19 · ✔ done
   - Static: You know when there are people, Pokémon, or objects that would appear differently to you through Symbolsight within an area about the size of a small town. You do not know their location, number, or distance from you, only that there is at least one within range of your sense. 1 AP: For the next ten minutes, you see the world through the lens of Symbolsight. You may end this effect early as a Free Action.
     Symbolsight shows the symbolic ties between mortal and divine — a Trainer Gifted by Cobalion might appear carrying three swords under a hanging scale of justice. It is a good Feature for a PC otherwise uninvolved in the Gift plot-line.
 
-- ⚪ **Touch of the Flayed One (Yveltal)** — `manual` · P3 · themes: action
+- ✅ **Touch of the Flayed One (Yveltal)** — `auto` · P3 · themes: action
   - _gift:Major · Mortality Duo (Xerneas/Yveltal) · Prereq: Minor Gift - Death Dealer_
-  - note: a narrated, positional or world-changing Gift (portals, illusions, time, extended rituals); the Gifts card tracks its frequency pips and the rules text — nothing per-roll to compute
+  - note: v701: the GM's 💥 Apply diffs each target's Injuries; when the attacking Trainer holds the Gift a Yes/No pop-up (flayedOffer/flayedShow) lands +1 Injury, spends a Daily x3 gift pip, and Undo refunds it
   - Daily x3 Free Action when you inflict Injuries: inflict one additional Injury.
 
 - ⚪ **World Serpent's Embrace** — `manual` · P3 · themes: action
@@ -253,7 +253,7 @@ P1 · 1 open of 15 · open
   - note: a narrated, positional or world-changing Gift (portals, illusions, time, extended rituals); the Gifts card tracks its frequency pips and the rules text — nothing per-roll to compute
   - Drain 1 AP Extended Action, in a non-artificial area: ask a question of your immediate surroundings (up to 100m in every direction). The spirit of the area answers in a sentence or two, to the best of its ability — it only knows what has happened there, and is not all-knowing.
 
-- ✅ **Defiance to the End** — `auto` · P3 · themes: heal, interrupt, action · code: GIFT_ACTIONS:15369
+- ✅ **Defiance to the End** — `auto` · P3 · themes: heal, interrupt, action · code: GIFT_ACTIONS:16083
   - _gift:Major · The Galarian Birds · Prereq: Minor Gift - Perpetual Spite_
   - note: GIFT_ACTIONS button (v599)
   - Daily Free Action when you would Faint: you do not Faint, and regain HP equal to 25% of your Maximum HP. You may immediately make an At-Will attack as a Free Action Reaction.
@@ -304,7 +304,7 @@ P1 · 1 open of 15 · open
   - note: a narrated, positional or world-changing Gift (portals, illusions, time, extended rituals); the Gifts card tracks its frequency pips and the rules text — nothing per-roll to compute
   - Resting recovers 1/10 max HP per half hour instead of 1/16.
 
-- 🟡 **Trial Through Adversity** — `partial` · P3 · themes: heal, damage, action, skill · code: GIFT_ACTIONS:15397
+- 🟡 **Trial Through Adversity** — `partial` · P3 · themes: heal, damage, action, skill · code: GIFT_ACTIONS:16111
   - _gift:Major · Urshifu · Prereq: Minor Gift - Guiding Tutelage_
   - note: the +2 Accuracy for the Scene is a button; the failed-Skill-Check and Massive Damage clauses are by hand
   - Scene Free Action when you or an ally miss all targets with an attack, fail a Skill Check, or take Massive Damage. Missed attack: the character gains +2 accuracy for the Scene. Failed Skill Check: their next Skill Check treats the lowest die as a 6. Massive Damage: they gain 2 ticks of Temporary Hit Points and may clear one Injury or Status condition.
@@ -389,7 +389,7 @@ P1 · 1 open of 16 · open
   - note: a narrated, positional or world-changing Gift (portals, illusions, time, extended rituals); the Gifts card tracks its frequency pips and the rules text — nothing per-roll to compute
   - By observing a Pokémon, Trainer, structure, or object, you intuitively know its frailest points, and you can always tell when a living thing bears you or your allies genuine hostility. +3 to any Check made to break, damage, or exploit a weakness in a creature's defenses.
 
-- ✅ **Dream Mastery** — `auto` · P3 · themes: typing · code: statusImmunityFor:954, attackTargetWidget:53120
+- ✅ **Dream Mastery** — `auto` · P3 · themes: typing · code: statusImmunityFor:977, attackTargetWidget:57630
   - _gift:Minor · Lunar Duo (Cresselia/Darkrai) · Prereq: GM Permission_
   - note: the Blessings / Usurper / Giftsapper systems already implement it (BLESSINGS registry, usurpSharedAbilities, GIFT_ACTIONS)
   - Immune to Hypnosis, Nightmare, and Dream Eater.
@@ -410,7 +410,7 @@ P2 · 0 open of 20 · ✔ done
   - note: syncFeatureMoves now reads "You learn the Move X" from a held Gift too (v599)
   - You learn the Move Heart Swap.
 
-- ✅ **Hydration** — `auto` · P2 (enc) · themes: swap · code: ABILITY_ACTION_ROWS:3531, ABILITY_TURN_HOOKS:23294
+- ✅ **Hydration** — `auto` · P2 (enc) · themes: swap · code: ABILITY_ACTION_ROWS:3561, ABILITY_TURN_HOOKS:24329, GAUNTLETS:40021
   - _gift:Major · Sea Guardians (Manaphy) · Prereq: Minor Gift - Sailors' Guardian_
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Hydration Ability.
@@ -430,7 +430,7 @@ P2 · 0 open of 20 · ✔ done
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Bad Dreams Ability.
 
-- ✅ **Beast Boost** — `auto` · P3 · themes: swap · code: ABILITY_REACTIONS:24032
+- ✅ **Beast Boost** — `auto` · P3 · themes: swap · code: ABILITY_REACTIONS:25069
   - _gift:Major · Ultra Space (Fallers) · Prereq: Major Gift - Dimension Sense, Major Gift - Dimensional Adaptation_
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Beast Boost Ability.
@@ -450,7 +450,7 @@ P2 · 0 open of 20 · ✔ done
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Poison Touch Ability.
 
-- ✅ **Courage** — `auto` · P3 · themes: swap · code: abilityDamageMods:25338
+- ✅ **Courage** — `auto` · P3 · themes: swap · code: abilityDamageMods:26405
   - _gift:Major · Swords of Justice · Prereq: Minor Gift - Spirit of Justice_
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Courage Ability.
@@ -525,7 +525,7 @@ P2 · 0 open of 10 · ✔ done
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Turboblaze Ability.
 
-- ✅ **Victory Star** — `auto` · P3 · themes: swap · code: ABILITY_ACTION_ROWS:3809
+- ✅ **Victory Star** — `auto` · P3 · themes: swap · code: ABILITY_ACTION_ROWS:3839
   - _gift:Major · Victini · Prereq: Minor Gift - Chosen of Victory_
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Victory Star Ability.
@@ -565,7 +565,7 @@ P2 · 0 open of 10 · ✔ done
 
 P3 · 0 open of 20 · ✔ done
 
-- ✅ **Gentle Vibe** — `auto` · P3 · themes: swap · code: ABILITY_ACTION_ROWS:3627
+- ✅ **Gentle Vibe** — `auto` · P3 · themes: swap · code: ABILITY_ACTION_ROWS:3657, GAUNTLETS:40022
   - _gift:Major · Mew · Prereq: Minor Gift - Motherly Compassion_
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Gentle Vibe Ability.
@@ -600,7 +600,7 @@ P3 · 0 open of 20 · ✔ done
   - note: the Blessings / Usurper / Giftsapper systems already implement it (BLESSINGS registry, usurpSharedAbilities, GIFT_ACTIONS)
   - You gain the Lightningrod Ability.
 
-- ✅ **Magma Armor** — `auto` · P3 · themes: swap · code: STATUS_IMMUNE_ABILITIES:876
+- ✅ **Magma Armor** — `auto` · P3 · themes: swap · code: STATUS_IMMUNE_ABILITIES:896
   - _gift:Major · Heatran · Prereq: Minor Gift - Vulcan's Intuition_
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Magma Armor Ability.
@@ -615,7 +615,7 @@ P3 · 0 open of 20 · ✔ done
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Pressure Ability.
 
-- ✅ **Probability Control** — `auto` · P3 · themes: swap
+- ✅ **Probability Control** — `auto` · P3 · themes: swap · code: GAUNTLETS:40174
   - _gift:Major · Celebi · Prereq: Minor Gift - Catastrophe Sense_
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Probability Control Ability.
@@ -660,7 +660,7 @@ P3 · 0 open of 20 · ✔ done
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Sun Blanket Ability.
 
-- ✅ **Sword of Ruin** — `auto` · P3 · themes: swap · code: ABILITY_ACTION_ROWS:3568, blessingIcon:46338
+- ✅ **Sword of Ruin** — `auto` · P3 · themes: swap · code: ABILITY_ACTION_ROWS:3598, blessingIcon:48427
   - _gift:Major · Chien-Pao · Prereq: Major Gift - Blade of Hate_
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Sword of Ruin Ability.
@@ -670,7 +670,7 @@ P3 · 0 open of 20 · ✔ done
 
 P3 · 0 open of 20 · ✔ done
 
-- ✅ **Champion of Nature** — `auto` · P3 · themes: position, multiturn, damage, action · code: GIFT_ACTIONS:15382
+- ✅ **Champion of Nature** — `auto` · P3 · themes: position, multiturn, damage, action · code: GIFT_ACTIONS:16096
   - _gift:Major · The Tapus · Prereq: One Tapu Major Gift_
   - note: GIFT_ACTIONS button (v599)
   - Daily Standard Action: until the end of the Scene you gain +2 to your Overland, Swim, Jump and Power Capabilities, and your Struggle Attacks and Weapon Moves deal +5 damage and may become a Type of your choosing — Electric for Tapu Koko, Psychic for Tapu Lele, Grass for Tapu Bulu, Water for Tapu Fini, and Fairy for any of them.
@@ -690,7 +690,7 @@ P3 · 0 open of 20 · ✔ done
   - note: a narrated, positional or world-changing Gift (portals, illusions, time, extended rituals); the Gifts card tracks its frequency pips and the rules text — nothing per-roll to compute
   - Daily Swift Action: take X Injuries, where X is 1 to 9. Your size grows into a Burst 1 around you if there is room, pushing creatures to the nearest unoccupied space. Until the end of the Scene you gain +2X to all Damage Rolls and 5X Temporary Hit Points.
 
-- ✅ **Frigid Armor (Glastrier)** — `auto` · P3 · themes: position, interrupt, multiturn, status, action · code: GIFT_ACTIONS:15387
+- ✅ **Frigid Armor (Glastrier)** — `auto` · P3 · themes: position, interrupt, multiturn, status, action · code: GIFT_ACTIONS:16101
   - _gift:Major · Glastrier & Spectrier · Prereq: Minor Gift - Eye of Judgement_
   - note: GIFT_ACTIONS button (v599)
   - Daily Swift Action: until the end of the Scene you gain 5 DR and your Overland rises to 8 if lower. You may end it early as a Free Action Reaction when hit by an attack, Freezing the attacker for one full round.
@@ -715,7 +715,7 @@ P3 · 0 open of 20 · ✔ done
   - note: a narrated, positional or world-changing Gift (portals, illusions, time, extended rituals); the Gifts card tracks its frequency pips and the rules text — nothing per-roll to compute
   - Daily Swift Action on a foe within 10m: you and the target may each teleport adjacent to the other as a Shift Action, and each take −3 accuracy against any character besides the other. Lasts until the end of the Scene or until either of you Faints; the first of you to Faint grants the other +2 CS in a stat of their choice.
 
-- ⚪ **Regal Right** — `manual` · P3 · themes: position, skill
+- ⚪ **Regal Right** — `manual` · P3 · themes: position, skill · code: mountCheckSkill:57344, dismountCheckNode:57368
   - _gift:Minor · Calyrex · Prereq: GM Permission_
   - note: a narrated, positional or world-changing Gift (portals, illusions, time, extended rituals); the Gifts card tracks its frequency pips and the rules text — nothing per-roll to compute
   - You may use Command instead of the usual Skill for Grapple, Push and Disarm Maneuvers, and for any check to mount or remain mounted.
@@ -780,7 +780,7 @@ P3 · 1 open of 16 · open
   - note: a narrated, positional or world-changing Gift (portals, illusions, time, extended rituals); the Gifts card tracks its frequency pips and the rules text — nothing per-roll to compute
   - Scene x2, Standard Action, AC 6, Range 4m 1 Target: the target falls Asleep and immediately gains Bad Sleep. (Vulpoxen Lv 50 — Death Aura opens.)
 
-- ⚪ **Dream Augury** — `manual` · P3 · themes: status, action · code: GIFT_ACTIONS:15392
+- ⚪ **Dream Augury** — `manual` · P3 · themes: status, action · code: GIFT_ACTIONS:16106
   - _gift:Major · Lunar Duo (Cresselia/Darkrai) · Prereq: Minor Gift - Dream Mastery_
   - note: a narrated, positional or world-changing Gift (portals, illusions, time, extended rituals); the Gifts card tracks its frequency pips and the rules text — nothing per-roll to compute
   - 2 AP Extended Action: sleep and dream of things to come (favorable via Cresselia, dangerous via Darkrai).
@@ -865,7 +865,7 @@ P3 · 1 open of 13 · open
   - note: a narrated, positional or world-changing Gift (portals, illusions, time, extended rituals); the Gifts card tracks its frequency pips and the rules text — nothing per-roll to compute
   - Scene Free Action, Interrupt, when a Trainer or Pokémon within 3m is hit by an attack: for one full round the triggering creature, and every other ally hit by that attack, resists all damage one step further.
 
-- ⚪ **Blade of Hate** — `manual` · P3 · themes: interrupt, typing, damage
+- ⚪ **Blade of Hate** — `manual` · P3 · themes: interrupt, typing, damage · code: WEAPON_RETYPE_FEATS:9190, bladeRetypeOk:9197, bladeUsesLeft:9202, bladeRefund:9207, trainerAttackSlot:30718
   - _gift:Major · Chien-Pao · Prereq: Major Gift - Reviled_
   - note: a narrated, positional or world-changing Gift (portals, illusions, time, extended rituals); the Gifts card tracks its frequency pips and the rules text — nothing per-roll to compute
   - Scene x2 - Trigger: You make a Struggle Attack with an equipped weapon. Effect: That Struggle Attack deals Dark Type damage and gains +3 to its Damage Base.
@@ -930,7 +930,7 @@ P3 · 1 open of 13 · open
 
 P3 · 0 open of 12 · ✔ done
 
-- ✅ **Barrier** — `auto` · P3 · themes: barrier · code: HAZARD_SETTER_MOVES:22679, HAZARDS:50821
+- ✅ **Barrier** — `auto` · P3 · themes: barrier · code: HAZARD_SETTER_MOVES:23708, HAZARDS:54260
   - _gift:Major · Mew · Prereq: Minor Gift - Motherly Compassion_
   - note: syncFeatureMoves now reads "You learn the Move X" from a held Gift too (v599)
   - You learn the Move Barrier.
@@ -1148,131 +1148,131 @@ P3 · 0 open of 7 · ✔ done
 
 P9 · 0 open of 25 · ✔ done
 
-- ✅ **Messiah** — `auto` · P1 (player:Lysgd) · themes: heal · code: giftFreqText:14450, MESSIAH_BRANCH_FEATURES:14635, blessingBranch:14644, blessingModeFor:14648, blessingNoteFor:14653, GIFT_KINDS:14665, BRANCH_KINDS:14674, giftsCard:15176
+- ✅ **Messiah** — `auto` · P1 (player:Lysgd) · themes: heal · code: giftFreqText:15033, MESSIAH_BRANCH_FEATURES:15227, blessingBranch:15236, blessingModeFor:15240, blessingNoteFor:15245, GIFT_KINDS:15257, BRANCH_KINDS:15266, giftsCard:15785
   - _messiah · One Time Use/5 - Extended Action · Prereq: Touched, GM Permission_
   - note: the Blessings / Usurper / Giftsapper systems already implement it (BLESSINGS registry, usurpSharedAbilities, GIFT_ACTIONS)
   - Your connection with one of your Patrons has reached such a point that even you are capable of performing the miracles they are renowned and worshiped for. Expending a use of Messiah allows you to perform such a miracle — for example, in a Region where Shaymin is known to restore withered forests to their former glory, a Messiah of Shaymin might cause a forest to rapidly recover from a wildfire. Such acts are usually, but not always, noticeably supernatural and divine.
 
-- ✅ **Signer** — `auto` · P1 (player:Handels) · themes: barrier, action, skill · code: INJURY_SOURCES:5935, giftFreqText:14450, blessingSide:14626, SIGNER_BRANCH_FEATURES:14634, blessingBranch:14643, blessingModeFor:14648, blessingNoteFor:14653, GIFT_KINDS:14666
+- ✅ **Signer** — `auto` · P1 (player:Handels) · themes: barrier, action, skill · code: INJURY_SOURCES:5981, giftFreqText:15033, blessingSide:15218, SIGNER_BRANCH_FEATURES:15226, blessingBranch:15235, blessingModeFor:15240, blessingNoteFor:15245, GIFT_KINDS:15258
   - _signer · Static · Prereq: Touched, GM Permission_
   - note: the Blessings / Usurper / Giftsapper systems already implement it (BLESSINGS registry, usurpSharedAbilities, GIFT_ACTIONS)
   - Choose a Rank 1 Blessing. You gain this Blessing in the form of a Sign. Signs store the energy of the Divine and may be activated as a Swift Action. Signs can be used once per Scene, and cost 1 AP to activate.
 
-- ✅ **Chosen of Victory** — `auto` · P3 · themes: damage, action, skill · code: trainerVitalsCard:11078
+- ✅ **Chosen of Victory** — `auto` · P3 · themes: damage, action, skill · code: trainerVitalsCard:11622
   - _gift:Minor · Victini · Prereq: GM Permission_
   - note: the Blessings / Usurper / Giftsapper systems already implement it (BLESSINGS registry, usurpSharedAbilities, GIFT_ACTIONS)
   - Spending AP to raise an Accuracy Check gives +3 instead of +1.
 
-- ✅ **Clear Body** — `auto` · P3 · themes: swap · code: CS_LOWER_GUARDS:3368
+- ✅ **Clear Body** — `auto` · P3 · themes: swap · code: CS_LOWER_GUARDS:3398
   - _gift:Major · The Golems (Regis) · Prereq: Minor Gift - Stoic Stature_
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Clear Body Ability.
 
-- ✅ **Crush Grip** — `auto` · P3 · themes: other · code: specialMoveInfo:25761
+- ✅ **Crush Grip** — `auto` · P3 · themes: other · code: specialMoveInfo:26946
   - _gift:Pact · Regigigas · Prereq: All Regigigas Major Gifts_
   - note: syncFeatureMoves now reads "You learn the Move X" from a held Gift too (v599)
   - You learn the Move Crush Grip.
 
-- ✅ **Faller** — `auto` · P3 · themes: swap, skill · code: PATRON_STATS:14047
+- ✅ **Faller** — `auto` · P3 · themes: swap, skill · code: PATRON_STATS:14627
   - _gift:Minor · Ultra Space (Fallers) · Prereq: GM Permission, exposure to Ultra Space or another similar phenomenon_
   - note: the Blessings / Usurper / Giftsapper systems already implement it (BLESSINGS registry, usurpSharedAbilities, GIFT_ACTIONS)
   - +2 to all Checks dealing with extradimensional creatures, objects and events, and −4 to Stealth Checks against them.
 
-- ✅ **Giftsapper** — `auto` · P3 · themes: action, skill · code: hasGiftsapper:15233, openAddGift:15670
+- ✅ **Giftsapper** — `auto` · P3 · themes: action, skill · code: giftsCard:15728, hasGiftsapper:15842, openAddGift:16402
   - _general gift · Static · Prereq: GM Permission, No Gifts_
   - note: the Blessings / Usurper / Giftsapper systems already implement it (BLESSINGS registry, usurpSharedAbilities, GIFT_ACTIONS)
   - As long as Giftsapper's user is conscious, all Trainers within 10 meters must make a Focus Check with DC equal to three times the highest Skill Rank of Giftsapper's user between Focus, Intimidate, or Command in order to activate their Gifts. This Check is made each time a Trainer attempts to use an activated Gift, and a failure means neither any resources such as AP nor the frequency of the Gift is expended. For Gifts with Static or ongoing effects, the Check is made each turn, and a failure ends the effect for that turn.
     Giftsapper's user may NEVER gain Gifts.
 
-- ✅ **God Crusher** — `auto` · P3 · themes: damage · code: FEATURE_ACTIONS:9298, hasGodslayer:15279, godCrusherOn:15282, GIFT_ACTIONS:15366
+- ✅ **God Crusher** — `auto` · P3 · themes: damage · code: FEATURE_ACTIONS:9722, hasGodslayer:15984, godCrusherOn:15987, GIFT_ACTIONS:16078
   - _gift:Major · Zygarde · Prereq: Minor Gift - World Serpent's Embrace_
   - note: the Blessings / Usurper / Giftsapper systems already implement it (BLESSINGS registry, usurpSharedAbilities, GIFT_ACTIONS)
   - You gain the Godslayer Feature (or another Feature if you already have it); Godslayer's AC becomes 8 and no feedback.
 
-- ✅ **Godslayer** — `auto` · P3 · themes: control, status, damage · code: FEATURE_ACTIONS:9295, giftsCard:15226, hasGodslayer:15279, godslayerGo:15335, GIFT_ACTIONS:15366
+- ✅ **Godslayer** — `auto` · P3 · themes: control, status, damage · code: FEATURE_ACTIONS:9719, giftsCard:15835, hasGodslayer:15984, godslayerGo:16040, GIFT_ACTIONS:16078
   - _general gift · Standard Action — EOT · Target: A Legendary Pokémon · Prereq: GM Permission_
   - note: the Blessings / Usurper / Giftsapper systems already implement it (BLESSINGS registry, usurpSharedAbilities, GIFT_ACTIONS)
   - You may attempt to shatter one of the target's Legendary Auras. The AC of this action is 10. If you successfully disabled the Aura but rolled a 10-15, the feedback from the action gives you an Injury.
     Only the Higher Pantheon, some Outsiders, and Arceus himself can bestow this one.
 
-- ✅ **Hammer Arm** — `auto` · P3 · themes: other · code: CS_PATTERNS:24789, IRON_FIST_MOVES:25048, RECKLESS_ERRATA_MOVES:25163
+- ✅ **Hammer Arm** — `auto` · P3 · themes: other · code: CS_PATTERNS:25831, IRON_FIST_MOVES:26092, RECKLESS_ERRATA_MOVES:26207
   - _gift:Major · The Golems (Regis) · Prereq: Minor Gift - Stoic Stature_
   - note: syncFeatureMoves now reads "You learn the Move X" from a held Gift too (v599)
   - You learn the Move Hammer Arm.
 
-- ✅ **Levitate** — `auto` · P3 · themes: swap · code: TYPE_ABSORB_ABILITIES:7218, trainerDerivedGrid:11168, PE_MOBILITY:18749, capabilityHelp:20707, CAP_NUM_FIELDS:20713, CAP_FIELD_LABEL:20715, ABILITY_CAP_GRANTS:20768, monCapabilities:20869
+- ✅ **Levitate** — `auto` · P3 · themes: swap · code: TYPE_ABSORB_ABILITIES:7269, trainerDerivedGrid:11712, PE_MOBILITY:19483, capabilityHelp:21443, CAP_NUM_FIELDS:21449, CAP_FIELD_LABEL:21451, ABILITY_CAP_GRANTS:21504, monCapabilities:21605
   - _gift:Major · Kami Trio · Prereq: Minor Gift - Cloud Reading_
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Levitate Ability.
 
-- ✅ **Life Force** — `auto` · P3 · themes: swap · code: ABILITY_ACTION_ROWS:3643, FEATURE_ABILITY_CHOICES:9088
+- ✅ **Life Force** — `auto` · P3 · themes: swap · code: ABILITY_ACTION_ROWS:3673, FEATURE_ABILITY_CHOICES:9512, GAUNTLETS:40184
   - _gift:Major · Tower Duo (Lugia/Ho-Oh) · Prereq: Two Major Gifts from the Tower Duo_
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Life Force Ability.
 
-- ✅ **Magic Bounce** — `auto` · P3 · themes: swap · code: FEATURE_ABILITY_CHOICES:9093
+- ✅ **Magic Bounce** — `auto` · P3 · themes: swap · code: FEATURE_ABILITY_CHOICES:9517, magicBounceFx:31150, GAUNTLETS:40174
   - _gift:Major · Diancie · Prereq: Minor Gift - Royal Privilege_
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Magic Bounce Ability.
 
-- ✅ **Magic Guard** — `auto` · P3 · themes: swap · code: FEATURE_ABILITY_CHOICES:9093, hpRecoilImmunity:22365
+- ✅ **Magic Guard** — `auto` · P3 · themes: swap · code: FEATURE_ABILITY_CHOICES:9517, hpRecoilImmunity:23353, GAUNTLETS:40184
   - _gift:Major · Magearna · Prereq: Minor Gift - Regal Aide_
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Magic Guard Ability.
 
-- ✅ **Mindlock** — `auto` · P3 · themes: other · code: FEATURE_CAPS:12859
+- ✅ **Mindlock** — `auto` · P3 · themes: other · code: FEATURE_CAPS:13409
   - _gift:Major · Outsider — MissingNo (Cosmic Horror) · Prereq: Minor Gift - Alien Countenance_
   - note: trainerCapGrants parses "gain the X Capability" off the Gift text
   - You gain the Mindlock Capability.
 
-- ✅ **Nature's Madness** — `auto` · P3 · themes: other · code: SPECIAL_FIXED_DAMAGE:25581
+- ✅ **Nature's Madness** — `auto` · P3 · themes: other · code: SPECIAL_FIXED_DAMAGE:26733
   - _gift:Major · The Tapus · Prereq: One Tapu Major Gift_
   - note: syncFeatureMoves now reads "You learn the Move X" from a held Gift too (v599)
   - You learn the Move Nature's Madness.
 
-- ✅ **Phasing** — `auto` · P3 · themes: other · code: CAP_STANCES:25835, FEATURE_MODES:28299
+- ✅ **Phasing** — `auto` · P3 · themes: other · code: CAP_STANCES:27020, FEATURE_MODES:29615
   - _gift:Major · Outsider — MissingNo (Cosmic Horror) · Prereq: Minor Gift - Alien Countenance_
   - note: trainerCapGrants parses "gain the X Capability" off the Gift text
   - You gain the Phasing Capability.
 
-- ✅ **Prime Fury** — `auto` · P3 · themes: swap · code: ABILITY_ACTION_ROWS:3652, typeAbilityRow:3997
+- ✅ **Prime Fury** — `auto` · P3 · themes: swap · code: ABILITY_ACTION_ROWS:3682, typeAbilityRow:4027, GAUNTLETS:40108
   - _gift:Major · The Galarian Birds · Prereq: Minor Gift - Perpetual Spite_
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Prime Fury Ability.
 
-- ✅ **Serene Grace** — `auto` · P3 · themes: swap · code: openTrainerAttack:10596, openMoveRoll:26429, AUTOMATED_ABILITIES:44356
+- ✅ **Serene Grace** — `auto` · P3 · themes: swap · code: openTrainerAttack:11072, openMoveRoll:27637, GAUNTLETS:40021, AUTOMATED_ABILITIES:46341
   - _gift:Major · Jirachi · Prereq: Minor Gift - Watchful Sleep_
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Serene Grace Ability.
 
-- ✅ **Soundproof** — `auto` · P3 · themes: swap · code: FEATURE_ABILITY_CHOICES:9092, tokenDamageBreakdown:52546
+- ✅ **Soundproof** — `auto` · P3 · themes: swap · code: FEATURE_ABILITY_CHOICES:9516, soundproofHears:31123, GAUNTLETS:40086, tokenDamageBreakdown:56556
   - _gift:Major · Meloetta · Prereq: Minor Gift - Dazzling the Stage_
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Soundproof Ability.
 
-- ✅ **Spirit Mending** — `auto` · P3 · themes: heal, action · code: INJURY_SOURCES:5932
+- ✅ **Spirit Mending** — `auto` · P3 · themes: heal, action · code: INJURY_SOURCES:5978
   - _blessing_
   - note: the Blessings / Usurper / Giftsapper systems already implement it (BLESSINGS registry, usurpSharedAbilities, GIFT_ACTIONS)
   - Messiah (Daily x3 — Free Action): Choose one of the following: the Target is healed 50% of their HP, or the Target recovers two Injuries that do not count against the Daily Limit.
     Signer (Standard Action): The Target heals two ticks of HP, and recovers an Injury.
 
-- ✅ **Tremorsense** — `auto` · P3 · themes: other · code: FEATURE_CAPS:12856, pokeEdgeCapGrants:18848, POKE_EDGE_DEFS:19018
+- ✅ **Tremorsense** — `auto` · P3 · themes: other · code: FEATURE_CAPS:13406, pokeEdgeCapGrants:19582, POKE_EDGE_DEFS:19752
   - _gift:Major · Heatran · Prereq: Minor Gift - Vulcan's Intuition_
   - note: trainerCapGrants parses "gain the X Capability" off the Gift text
   - You gain the Tremorsense Capability.
 
-- ✅ **Usurper** — `auto` · P3 · themes: swap, damage, action, stat · code: GIFT_KINDS:14667, BRANCH_KINDS:14674, usurpRows:14700, isUsurper:14701, giftRow:15551, openAddGift:15619
+- ✅ **Usurper** — `auto` · P3 · themes: swap, damage, action, stat · code: GIFT_KINDS:15259, BRANCH_KINDS:15266, usurpRows:15292, isUsurper:15293, giftRow:16283, openAddGift:16351
   - _usurper · Static · Prereq: You have slain a God and through occult ritual or technology have absorbed its essence._
   - note: the Blessings / Usurper / Giftsapper systems already implement it (BLESSINGS registry, usurpSharedAbilities, GIFT_ACTIONS)
   - Your human form is now considered your Avatar, and you gain a second set of stats for your Pokémon form. This form is that of the Legendary you usurped, starts at Level 1 with the Nature and Abilities of your choice, and may gain Experience as if it were a Pokémon you owned. Switching between your human form and this one takes a Standard Action. Usurpers cannot receive Gifts or Blessings from other Legendaries, as they are divinity themselves now. Any Touched, Branded, Messiah and Signer Edges and Features you possessed up until this point are refunded.
     Damage is SHARED: when an Usurper takes damage in one form, both forms lose HP equal to the final amount dealt. Knocked Out in one form but …
 
-- ✅ **V-Create** — `auto` · P3 · themes: other · code: RECKLESS_ERRATA_MOVES:25164
+- ✅ **V-Create** — `auto` · P3 · themes: other · code: RECKLESS_ERRATA_MOVES:26208
   - _gift:Pact · Victini · Prereq: All Victini Major Gifts_
   - note: syncFeatureMoves now reads "You learn the Move X" from a held Gift too (v599)
   - You learn the Move V-Create.
 
-- ✅ **Water Absorb (Suicune)** — `auto` · P3 · themes: swap · code: giftLevelsForPatron:14795, giftHiddenFrom:14841, giftMaskPatron:14855
+- ✅ **Water Absorb (Suicune)** — `auto` · P3 · themes: swap · code: giftLevelsForPatron:15387, giftHiddenFrom:15433, giftMaskPatron:15447
   - _gift:Major · Legendary Birds & Beasts · Prereq: Minor Gift - Elemental Soul_
   - note: giftAbilityGrants reads "You gain the X Ability" off the Gift row (verified in the running app, v599); the Ability's own automation is tracked under abilities
   - You gain the Water Absorb Ability.
@@ -1282,7 +1282,7 @@ P9 · 0 open of 25 · ✔ done
 
 P9 · 0 open of 1 · ✔ done
 
-- ✅ **Psystrike** — `auto` · P3 · themes: other · code: MOVE_TARGET_RULES:48788
+- ✅ **Psystrike** — `auto` · P3 · themes: other · code: MOVE_TARGET_RULES:52026
   - _gift:Pact · Outsider — Mewtwo Symbiant · Prereq: Twin Souls, Expanded Horizons, Mental Suggestion_
   - note: syncFeatureMoves now reads "You learn the Move X" from a held Gift too (v599)
   - You learn the Move Psystrike.
@@ -1292,13 +1292,22 @@ P9 · 0 open of 1 · ✔ done
 
 P9 · 2 open of 2 · open
 
-- 🟢 **Dynamax Cannon** — `likely` · P3 · themes: other · code: specialMoveInfo:25765
+- 🟢 **Dynamax Cannon** — `likely` · P3 · themes: other · code: specialMoveInfo:26950
   - _gift:Pact · Eternatus · Prereq: All Eternatus Major Gifts_
   - You learn the Move Dynamax Cannon.
 
-- 🟢 **Plasma Fists** — `likely` · P3 · themes: other · code: _mvBuff:24278
+- 🟢 **Plasma Fists** — `likely` · P3 · themes: other · code: _mvBuff:25320
   - _gift:Major · Zeraora · Prereq: Major Gift - Volt Absorb (Zeraora)_
   - You learn the Move Plasma Fists.
+
+<a id="late-verify-gifts-01"></a>
+## `late-verify-gifts-01` — Verify gifts the scan thinks are handled
+
+P9 · 1 open of 1 · open
+
+- 🟢 **Future Sight** — `likely` · P3 · themes: other · code: GAUNTLETS:40171
+  - _gift:Major · Lake Guardians · Prereq: One Lake Guardian Major Gift_
+  - You learn the Move Future Sight.
 
 ## Not in any batch
 
@@ -1403,10 +1412,6 @@ Confirmed, flavour-only or skipped. Spot-check the ⚪ manual ones — they are 
 - ⚪ **Fleur Cannon** — `manual` · P3 · themes: other
   - _gift:Major · Magearna · Prereq: Major Gift - Magic Guard_
   - You learn the Move Fleur Cannon.
-
-- ⚪ **Future Sight** — `manual` · P3 · themes: other
-  - _gift:Major · Lake Guardians · Prereq: One Lake Guardian Major Gift_
-  - You learn the Move Future Sight.
 
 - ⚪ **Geomancy (Xerneas)** — `manual` · P3 · themes: other
   - _gift:Pact · Mortality Duo (Xerneas/Yveltal) · Prereq: All Xerneas Major Gifts & shared Mortality Duo Gifts_

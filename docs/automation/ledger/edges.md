@@ -7,17 +7,17 @@
 
 P1 · 0 open of 24 · ✔ done
 
-- ✅ **Adept Skills** — `auto` · P1 (enc, player:Handels, player:Lysgd, player:Lázaro) · themes: skill
+- ✅ **Adept Skills** — `auto` · P1 (enc, player:Handels, player:Lysgd, player:Lázaro) · themes: skill · code: GAUNTLETS:39911
   - _Skill Edges · Prereq: Level 2_
   - note: Skill ranks come from the Level-Up ledger (luLedger) — the Skill ladder is derived, not hand-set
   - You Rank Up a Skill from Novice to Adept. You may take this Edge multiple times.
 
-- ✅ **Basic Skills** — `auto` · P1 (enc, player:Handels, player:Hugo, player:Lysgd) · themes: skill
+- ✅ **Basic Skills** — `auto` · P1 (enc, player:Handels, player:Hugo, player:Lysgd) · themes: skill · code: GAUNTLETS:39911
   - _Skill Edges_
   - note: Skill ranks come from the Level-Up ledger (luLedger) — the Skill ladder is derived, not hand-set
   - You Rank Up a Skill from Pathetic to Untrained, or Untrained to Novice. You may take this Edge multiple times.
 
-- ✅ **Expert Skills** — `auto` · P1 (enc, player:Handels, player:Lysgd, player:Lázaro) · themes: skill
+- ✅ **Expert Skills** — `auto` · P1 (enc, player:Handels, player:Lysgd, player:Lázaro) · themes: skill · code: GAUNTLETS:39911
   - _Skill Edges · Prereq: Level 6_
   - note: Skill ranks come from the Level-Up ledger (luLedger) — the Skill ladder is derived, not hand-set
   - You Rank Up a Skill from Adept to Expert. You may take this Edge multiple times.
@@ -73,7 +73,7 @@ P1 · 0 open of 24 · ✔ done
   - note: a prerequisite, crafting/recipe unlock or roleplay Edge — the recipe and skill checks live in their own cards (Kitchen, Crafting bench, Garden), nothing per-hit to compute
   - You may use your Pokemon Education Skill instead of Charm, Guile, Intimidate, or Intuition when making general Skill checks to interact with Pokemon or to raise or lower disposition.
 
-- ⚪ **Pokébot Training** — `manual` · P3 · themes: skill
+- ⚪ **Pokébot Training** — `manual` · P3 · themes: skill · code: GAUNTLETS:39911
   - _Do Porygon Dream of Mareep · Prereq: Novice Technology Education_
   - note: a prerequisite, crafting/recipe unlock or roleplay Edge — the recipe and skill checks live in their own cards (Kitchen, Crafting bench, Garden), nothing per-hit to compute
   - You may control a Pokebot with Complexity up to your Technology Rank by using a Pokemon turn.
@@ -83,7 +83,7 @@ P1 · 0 open of 24 · ✔ done
   - note: a prerequisite, crafting/recipe unlock or roleplay Edge — the recipe and skill checks live in their own cards (Kitchen, Crafting bench, Garden), nothing per-hit to compute
   - You create a Cleanse Tag. This may be used a number of times each day equal to half your Occult Education Rank.
 
-- ⚪ **Elemental Connection** — `manual` · P1 (enc, player:Lysgd, player:Lázaro) · themes: typing, skill
+- ⚪ **Elemental Connection** — `manual` · P1 (enc, player:Lysgd, player:Lázaro) · themes: typing, skill · code: GAUNTLETS:40163
   - _Other Edges_
   - note: a prerequisite, crafting/recipe unlock or roleplay Edge — the recipe and skill checks live in their own cards (Kitchen, Crafting bench, Garden), nothing per-hit to compute
   - Choose an Elemental Type. You gain a +2 bonus to Charm, Command, Guile, Intimidate, and Intuition Checks targeting Pokemon of that Type. You may not take Elemental Connection if you have the Mystic Senses Edge, and you may not take Mystic Senses if you have Elemental Connection.
@@ -136,12 +136,12 @@ P1 · 0 open of 24 · ✔ done
 
 P9 · 0 open of 40 · ✔ done
 
-- ⚪ **Basic Balls** — `manual` · P1 (player:Lázaro) · themes: capture · code: POKEBALL_RECIPES:35936
+- ⚪ **Basic Balls** — `manual` · P1 (player:Lázaro) · themes: capture · code: POKEBALL_RECIPES:37430
   - _Crafting Edges · Prereq: Novice Technology Education_
   - note: a prerequisite, crafting/recipe unlock or roleplay Edge — the recipe and skill checks live in their own cards (Kitchen, Crafting bench, Garden), nothing per-hit to compute
   - You may craft Basic Balls for $100 and Great Balls for $175. Requires access to a Poke Ball Tool Box.
 
-- ⚪ **Basic Cooking** — `manual` · P1 (player:Handels) · themes: other · code: CHEF_RECIPES:34183
+- ⚪ **Basic Cooking** — `manual` · P1 (player:Handels) · themes: other · code: CHEF_RECIPES:35677
   - _Crafting Edges · Prereq: Novice Intuition_
   - note: a prerequisite, crafting/recipe unlock or roleplay Edge — the recipe and skill checks live in their own cards (Kitchen, Crafting bench, Garden), nothing per-hit to compute
   - You may create "Candy Bars" or "Baby Food" with cooking ingredients costing $50. You may fluff the food in any reasonable manner you like.
@@ -151,9 +151,9 @@ P9 · 0 open of 40 · ✔ done
   - note: EDGE_FX row (verified in the running app, v597)
   - You learn the move Baby-Doll Eyes.
 
-- ✅ **Demoralize** — `auto` · P1 (enc, player:Lysgd) · themes: status, damage · code: openTrainerAttack:10651, FEATURE_GIFTS:12266
+- ✅ **Demoralize** — `auto` · P1 (enc, player:Lysgd) · themes: status, damage · code: openTrainerAttack:11139, FEATURE_GIFTS:12810, hitFxLine:22950
   - _Combat Edges · Prereq: Adept Intimidate_
-  - note: EDGE_FX row (verified in the running app, v597)
+  - note: v675: Vulnerable lands — Status Moves via the 🎯 Apply card (statusMoveApplyNode, Push Buttons Tick incl.), crits ride hitFx to the 💥 Apply
   - Whenever you land a Critical Hit on a foe, that foe becomes Vulnerable. Status-Class Moves with an Accuracy Roll can "Crit" for the purposes of activating this effect on a natural roll of 19 or higher, and any effects that expand your Critical-Hit Range also expand this range.
 
 - ✅ **Flustering Charisma** — `auto` · P1 (player:Lysgd) · themes: interrupt · code: EDGE_FX:131
@@ -166,12 +166,12 @@ P9 · 0 open of 40 · ✔ done
   - note: EDGE_FX row (verified in the running app, v597)
   - You learn the move Leer.
 
-- ✅ **Master Skills** — `auto` · P1 (enc, player:Handels, player:Lysgd, player:Lázaro) · themes: skill · code: VIRTUOSO_EDGE:36
+- ✅ **Master Skills** — `auto` · P1 (enc, player:Handels, player:Lysgd, player:Lázaro) · themes: skill · code: VIRTUOSO_EDGE:36, GAUNTLETS:39911
   - _Skill Edges · Prereq: Level 12_
   - note: Skill ranks come from the Level-Up ledger (luLedger) — the Skill ladder is derived, not hand-set
   - You Rank Up a Skill from Expert to Master. You may take this Edge multiple times.
 
-- ✅ **Medic Training** — `auto` · P1 (enc, player:Lysgd, player:Lázaro) · themes: heal, multiturn · code: EDGE_FX:143, FEATURE_GIFTS:12269, openApplyRestorative:30623
+- ✅ **Medic Training** — `auto` · P1 (enc, player:Lysgd, player:Lázaro) · themes: heal, multiturn · code: EDGE_FX:143, FEATURE_GIFTS:12813, openApplyRestorative:32102
   - _Other Edges · Prereq: Novice Medicine Education_
   - note: EDGE_FX row (verified in the running app, v597)
   - When you use Restorative Items on others, they do not forfeit their next turn.
@@ -191,9 +191,9 @@ P9 · 0 open of 40 · ✔ done
   - note: EDGE_FX row (verified in the running app, v597)
   - You learn the move Agility.
 
-- ⚪ **Bad Mood** — `manual` · P2 (enc) · themes: damage · code: badMoodCrit:8922
+- ✅ **Bad Mood** — `auto` · P2 (enc) · themes: damage · code: badMoodCrit:9346
   - _Combat Edges · Prereq: Expert Intimidate_
-  - note: a prerequisite, crafting/recipe unlock or roleplay Edge — the recipe and skill checks live in their own cards (Kitchen, Crafting bench, Garden), nothing per-hit to compute
+  - note: badMoodCrit: +1 Crit per Persistent / Volatile kind on the Trainer roll (trainerCritThreshold), named in the crit note
   - Your Critical Hit Range is increased by +1 if you are suffering from a Persistent Status Affliction. Your Critical Hit Range is increased by +1 if you are suffering from a Volatile Status Affliction. These stack with each other, giving a total of +2 to Critical Hit Range if you are suffering from both a Persistant and a Volatile Status Affliction.
 
 - ✅ **Basic Martial Arts** — `auto` · P2 (enc) · themes: other · code: EDGE_FX:117
@@ -206,7 +206,7 @@ P9 · 0 open of 40 · ✔ done
   - note: EDGE_FX row (verified in the running app, v597)
   - You learn the move Confusion.
 
-- ⚪ **Categoric Inclination** — `manual` · P2 (enc) · themes: skill · code: categoricBonus:89, renderTrainer:8164, kitCheckMods:30865
+- ⚪ **Categoric Inclination** — `manual` · P2 (enc) · themes: skill · code: categoricBonus:89, renderTrainer:8553, kitCheckMods:32344
   - _Skill Edges_
   - note: a prerequisite, crafting/recipe unlock or roleplay Edge — the recipe and skill checks live in their own cards (Kitchen, Crafting bench, Garden), nothing per-hit to compute
   - Choose Body, Mind, or Spirit. You gain a +1 Bonus to all Skill Checks of that Category.
@@ -241,7 +241,7 @@ P9 · 0 open of 40 · ✔ done
   - note: EDGE_FX row (verified in the running app, v597)
   - Whenever you Disengage, you Shift 2 meters instead of 1.
 
-- ✅ **Stamina** — `auto` · P2 (enc) · themes: heal, damage, skill · code: EDGE_FX:130, ABILITY_REACTIONS:24012
+- ✅ **Stamina** — `auto` · P2 (enc) · themes: heal, damage, skill · code: EDGE_FX:130, ABILITY_REACTIONS:25049
   - _Combat Edges · Prereq: Expert Athletics or Combat_
   - note: EDGE_FX row (verified in the running app, v597)
   - Whenever you Take a Breather or take Massive Damage or a Critical Hit, you gain Temporary Hit Points equal to your Athletics or Combat Rank after the triggering action has resolved.
@@ -251,7 +251,7 @@ P9 · 0 open of 40 · ✔ done
   - note: EDGE_FX row (verified in the running app, v597)
   - You gain a +2 bonus to your Swim Speed. You may spend X minutes underwater before you begin to suffocate, where X is the higher of your Athletics or Survival Ranks.
 
-- ✅ **Virtuoso** — `auto` · P2 (enc, player:Hugo) · themes: skill · code: rankAllowed:46, renderTrainer:8180, skillDiceHTML:11206, prereqStatus:11478
+- ✅ **Virtuoso** — `auto` · P2 (enc, player:Hugo) · themes: skill · code: rankAllowed:46, renderTrainer:8569, skillDiceHTML:11750, prereqStatus:12022
   - _Skill Edges · Prereq: A skill at Master rank, Level 20_
   - note: Skill ranks come from the Level-Up ledger (luLedger) — the Skill ladder is derived, not hand-set
   - Choose a Skill at Master Rank. Consider that Skill to be effectively "Rank 8" for any Features or effects that depend on Skill Rank. Virtuoso may be taken multiple times, but you must choose a different Skill each time.
@@ -266,12 +266,12 @@ P9 · 0 open of 40 · ✔ done
   - note: EDGE_FX row (verified in the running app, v597)
   - Choose a specific weapon type. You gain a +2 Bonus on Opposed Rolls to prevent being disarmed while wielding weapons of your chosen type. If you would be disarmed anyway, you may pay 1 AP to prevent yourself from being Disarmed.
 
-- ✅ **Work Up** — `auto` · P2 (enc) · themes: other · code: EDGE_FX:125
+- ✅ **Work Up** — `auto` · P2 (enc) · themes: other · code: EDGE_FX:125, GAUNTLETS:40109
   - _Combat Edges · Prereq: Adept Focus_
   - note: EDGE_FX row (verified in the running app, v597)
   - You learn the move Work Up.
 
-- ⚪ **Apricorn Balls** — `manual` · P3 · themes: action, capture · code: POKEBALL_RECIPES:35929, pokeBallBenchCard:35969
+- ⚪ **Apricorn Balls** — `manual` · P3 · themes: action, capture · code: POKEBALL_RECIPES:37423, pokeBallBenchCard:37463
   - _Crafting Edges · Prereq: Novice Survival or Adept Technology Education_
   - note: a prerequisite, crafting/recipe unlock or roleplay Edge — the recipe and skill checks live in their own cards (Kitchen, Crafting bench, Garden), nothing per-hit to compute
   - As an Extended Action, you may craft Apricorns into their corresponding Poke Ball. Use of this Feature requires access to a Poke Ball Tool Box.
@@ -291,7 +291,7 @@ P9 · 0 open of 40 · ✔ done
   - note: EDGE_FX row (verified in the running app, v597)
   - Your initiative is increased by your Guile Rank.
 
-- ⚪ **Field Clinic** — `manual` · P3 · themes: heal, action · code: openInjuryTreat:5999, FEATURE_GIFTS:12269, openApplyRestorative:30561, firstAidKitAccess:30844, firstAidKitUsable:30859, openFirstAidKit:30881
+- ⚪ **Field Clinic** — `manual` · P3 · themes: heal, action · code: openInjuryTreat:6045, FEATURE_GIFTS:12813, openApplyRestorative:32040, firstAidKitAccess:32323, firstAidKitUsable:32338, openFirstAidKit:32360
   - _Other Edges · Prereq: Adept Medicine Education_
   - note: a prerequisite, crafting/recipe unlock or roleplay Edge — the recipe and skill checks live in their own cards (Kitchen, Crafting bench, Garden), nothing per-hit to compute
   - Whenever your party Sets Up Camp, you may spend $200 worth of Medical Scrap to set up a Field Clinic. While using the Field Clinic, all members gain the following benefits: You may spend $300 of Medical Scrap to create and apply a Bandage or use a First Aid Kit. If you have the Nurse Feature, you may spend $300 to activate it without Draining AP. Potions, Super Potions, Hyper Potions, Full Restores, Revives, Energy Powders, and Energy Roots used in this area heal their target an additional 5 Hit Points. (Setting Up Camp is just as it sounds; any time you prepare a safe area to rest as an Extended Action, that counts for the purposes of Field Clinic.) [Sept 2015 Playtest]
@@ -306,12 +306,12 @@ P9 · 0 open of 40 · ✔ done
   - note: EDGE_FX row (verified in the running app, v597)
   - You gain the Gravitic Tolerance capability at a value of 1-3 or 2-4.
 
-- ⚪ **Green Thumb** — `manual` · P3 · themes: other · code: GARDEN_TIERS:36279, gardenCanGrow:36326, openGardenPlant:36792, gardenCanSee:36832
+- ⚪ **Green Thumb** — `manual` · P3 · themes: other · code: GARDEN_TIERS:37773, gardenCanGrow:37820, openGardenPlant:38286, gardenCanSee:38326
   - _Crafting Edges · Prereq: Novice General Education or Novice Survival_
   - note: a prerequisite, crafting/recipe unlock or roleplay Edge — the recipe and skill checks live in their own cards (Kitchen, Crafting bench, Garden), nothing per-hit to compute
   - You know how to grow Apricorns and Tier 1 Berries using a Portable Grower or Fertilized Soil.
 
-- ✅ **Instinctive Aptitude** — `auto` · P3 · themes: damage, action, skill · code: EDGE_FX:141, trainerVitalsCard:11081
+- ✅ **Instinctive Aptitude** — `auto` · P3 · themes: damage, action, skill · code: EDGE_FX:141, trainerVitalsCard:11625
   - _Other Edges · Prereq: Adept Intuition_
   - note: EDGE_FX row (verified in the running app, v597)
   - Whenever you spend AP to raise your roll on an Accuracy Roll or Skill Check, you get a +2 bonus instead of +1. This cannot be used on Rolls made by your Pokemon.
@@ -321,17 +321,17 @@ P9 · 0 open of 40 · ✔ done
   - note: EDGE_FX row (verified in the running app, v597)
   - Whenever you aid an ally in an Assisted Skill Check using an Education Skill you have at Novice Rank or higher, add your full Rank value as a bonus to their roll instead of half.
 
-- ✅ **Mounted Prowess** — `auto` · P3 · themes: skill · code: EDGE_FX:144
+- ✅ **Mounted Prowess** — `auto` · P3 · themes: skill · code: EDGE_FX:144, mountCheckSkill:57345
   - _Other Edges · Prereq: Novice Acrobatics or Athletics_
   - note: EDGE_FX row (verified in the running app, v597)
   - You automatically succeed at Acrobatics and Athletics Checks made to mount a Pokemon, and you gain a +3 Bonus to all Acrobatics and Athletics Checks made to remain Mounted.
 
-- ⚪ **Poke Ball Repair** — `manual` · P3 · themes: skill, capture · code: pokeBallBenchCard:35975
+- ⚪ **Poke Ball Repair** — `manual` · P3 · themes: skill, capture · code: pokeBallBenchCard:37469
   - _Crafting Edges · Prereq: Basic Balls or Apricorn Balls_
   - note: a prerequisite, crafting/recipe unlock or roleplay Edge — the recipe and skill checks live in their own cards (Kitchen, Crafting bench, Garden), nothing per-hit to compute
   - You may attempt to fix any Poke Ball that has failed to capture a Pokemon and broke. Make a Technology Check with a DC of 15. If you succeed, the Poke Ball is fixed and is treated as if it had not broken. If you fail, the ball is permanently broken. Requires access to a Poke Ball Tool Box.
 
-- ⚪ **Poké Ball Repair** — `manual` · P3 · themes: skill, capture · code: pokeBallBenchCard:35975
+- ⚪ **Poké Ball Repair** — `manual` · P3 · themes: skill, capture · code: pokeBallBenchCard:37469
   - _Crafting Edges · Prereq: Basic Balls or Apricorn Balls_
   - note: a prerequisite, crafting/recipe unlock or roleplay Edge — the recipe and skill checks live in their own cards (Kitchen, Crafting bench, Garden), nothing per-hit to compute
   - You may attempt to fix any Poke Ball that has failed to capture a Pokemon and broke. Make a Technology Check with a DC of 15. If you succeed, the Poke Ball is fixed and is treated as if it had not broken. If you fail, the ball is permanently broken. Requires access to a Poke Ball Tool Box.
@@ -356,12 +356,12 @@ P9 · 0 open of 9 · ✔ done
   - note: EDGE_FX row (verified in the running app, v597)
   - You gain a +1 Bonus to Skill Checks with General Education, Medicine Education, Occult Education, Pokemon Education, Technology Education, and Survival.
 
-- ✅ **Shock Resistance** — `auto` · P3 · themes: damage · code: EDGE_FX:149
+- ✅ **Shock Resistance** — `auto` · P3 · themes: damage · code: EDGE_FX:149, augAfterHit:7545
   - _Do Porygon Dream of Mareep · Prereq: Novice Technology Education_
   - note: EDGE_FX row (verified in the running app, v597)
   - You don't suffer Augmentation Shock from Electric Type damage unless it is Massive Damage.
 
-- ⚪ **Skill Stunt** — `manual` · P3 · themes: damage, skill · code: categoricBonus:110, openDowsing:35144
+- ⚪ **Skill Stunt** — `manual` · P3 · themes: damage, skill · code: categoricBonus:110, openDowsing:36638
   - _Skill Edges · Prereq: A skill at Novice rank or higher_
   - note: a prerequisite, crafting/recipe unlock or roleplay Edge — the recipe and skill checks live in their own cards (Kitchen, Crafting bench, Garden), nothing per-hit to compute
   - Choose a Skill you have at Novice Rank or higher. Choose a specific use of that Skill; when rolling that skill under those circumstances, you may choose to roll one less dice, and instead add +6 to the result. You may take this Edge multiple times, choosing a different circumstance each time.
@@ -381,7 +381,7 @@ P9 · 0 open of 9 · ✔ done
   - note: EDGE_FX row (verified in the running app, v597)
   - Increase the Throwing Range of your Poke Balls, Ranged Weapons, and other small items by +2.
 
-- ⚪ **Touched** — `manual` · P3 · themes: other · code: refreshSwarmRounds:50518
+- ⚪ **Touched** — `manual` · P3 · themes: other · code: refreshSwarmRounds:53946
   - _The Blessed and the Damned · Prereq: GM Permission_
   - note: a prerequisite, crafting/recipe unlock or roleplay Edge — the recipe and skill checks live in their own cards (Kitchen, Crafting bench, Garden), nothing per-hit to compute
   - You have been blessed by a Legendary and gain their Minor Gift. This Legendary is considered one of your Patrons. You may take Touched multiple times, each time for a different Patron.

@@ -309,7 +309,7 @@
    "status": "partial"
   },
   "Dancer": {
-   "note": "v607 ABILITY_ACTION_ROWS press: records/announces; the rest is resolved at the table",
+   "note": "v710 stage.js: during a stage act the GM gets one follow button per Dancer in 10 m (spends the use, opens the roll); outside an act it announces",
    "status": "partial"
   },
   "Danger Syrup": {
@@ -565,8 +565,8 @@
    "status": "partial"
   },
   "Fox Fire": {
-   "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v710 ABILITY_ACTION_ROWS fox fire: 3 firewisp markers beside the user (wispOf); tap a wisp -> spend it, opens the Ember roll",
+   "status": "auto"
   },
   "Fox Fire [Errata]": {
    "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
@@ -653,7 +653,7 @@
    "status": "manual"
   },
   "Haunting Elegy": {
-   "note": "v607 ABILITY_ACTION_ROWS press: records/announces; the rest is resolved at the table",
+   "note": "v710 per-Move toggle saved on the Pokémon (p.voiceMoves) listing the Ghost retype + 3 m origin; Burst/Blast/Cone placement from the new origin is by hand",
    "status": "partial"
   },
   "Hay Fever": {
@@ -869,8 +869,8 @@
    "status": "partial"
   },
   "Liquid Voice": {
-   "note": "v607 ABILITY_ACTION_ROWS press: records/announces; the rest is resolved at the table",
-   "status": "partial"
+   "note": "v710 sonicVoiceFor: roll-window toggle retypes a Sonic Move to Water (default on)",
+   "status": "auto"
   },
   "Lullaby": {
    "note": "verify sweep v626: Connection rider box (🔗) shows the rule and spends the use on the Move roll; the effect is resolved at the table",
@@ -885,8 +885,8 @@
    "status": "skip"
   },
   "Magic Bounce": {
-   "note": "Reflect a Status Move back at the attacker - needs a reaction hook on Status Moves",
-   "status": "manual"
+   "note": "v710 magicBounceFx in runFoeFx: a hostile Status Move (statusmove / Move FX row / lock) lands on the caster instead; Scene use spent; Mold Breaker/Gas respected",
+   "status": "auto"
   },
   "Magician": {
    "note": "v592: ABILITY_REACTIONS / ABILITY_ACTION_ROWS / abilityStatusCS / defenseTypeMods / abilityInitiative / pokeBaseStats",
@@ -1229,7 +1229,7 @@
    "status": "partial"
   },
   "Revelation": {
-   "note": "v607 ABILITY_ACTION_ROWS press: records/announces; the rest is resolved at the table",
+   "note": "v710 stage.js follow buttons for damaging Dance Moves during a stage act; the +2 Accuracy Bonus is by hand",
    "status": "partial"
   },
   "Rivalry": {
@@ -1433,7 +1433,7 @@
    "status": "auto"
   },
   "Soundproof": {
-   "note": "v615: Sonic Moves carry moveRule.sonic; tokenDamageBreakdown zeroes damage vs Soundproof",
+   "note": "v710 also blocks Perish Song's count (abfx P.sonic); moveHasKeyword now reads ';'-separated keywords (Bug Buzz)",
    "status": "auto"
   },
   "Speed Boost": {
@@ -3339,8 +3339,8 @@
    "status": "partial"
   },
   "Power Pirouette": {
-   "note": "trigRow FEATURE_ACTIONS button (v601/618): spends the use/AP, posts the rider to the Rolls feed; the effect is resolved at the table",
-   "status": "partial"
+   "note": "v710 powerPirouetteBox on a Dance Move's roll: Confuse adjacent / +1 CS (any of 7 stats) / destroy Hazards within 5 m + shed Leech Seed, Trapped, Stuck; spends the Scene x2 use",
+   "status": "auto"
   },
   "Power of the Mind": {
    "note": "featureAbilityGrants reads 'You gain the X Ability' (v594 sweep); the Ability's own automation is tracked under abilities",
@@ -7551,8 +7551,8 @@
    "status": "partial"
   },
   "Ally Switch": {
-   "note": "an Interrupt/Reaction declared in response to somebody else's action; the initiative tracker never pauses for it",
-   "status": "skip"
+   "note": "v710 MOVE_FX_ROWS allyswitch: swapPlacesFx trades the user's and the ally's squares (warns past 6 m)",
+   "status": "auto"
   },
   "Amnesia": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
@@ -7974,6 +7974,10 @@
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
   },
+  "Counter": {
+   "note": "v710 moveReactionsNode under the 💥 Apply result: refunds one extra resist step, attacker loses 2x (Fighting immunity checked)",
+   "status": "auto"
+  },
   "Court Change": {
    "note": "The Map stores no side on a Hazard or Blessing marker, so 'swap which side they belong to' has nothing to swap. The card states the rule and leaves it to the table.",
    "status": "skip"
@@ -8213,6 +8217,10 @@
   "Earth Power": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
+  },
+  "Echoed Voice": {
+   "note": "v710 value box pre-filled from stage.js's round history during a stage act; typed by hand otherwise",
+   "status": "partial"
   },
   "Eerie Impulse": {
    "note": "v672 verified in preview: moveCSEffects parses the stat, number, target and range/even gate",
@@ -8855,8 +8863,8 @@
    "status": "partial"
   },
   "Laser Focus": {
-   "note": "v627 MOVE_FX_ROWS / MOVE_TARGET_RULES card or alert; the rider is applied at the table",
-   "status": "partial"
+   "note": "v710 laser-focus buff forces the Critical Hit on the next damaging hit that connects, then is spent",
+   "status": "auto"
   },
   "Lash Out": {
    "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
@@ -9090,6 +9098,10 @@
    "note": "v604 MOVE_FX_ROWS row: applied for you",
    "status": "auto"
   },
+  "Mirror Coat": {
+   "note": "v710 moveReactionsNode: same as Counter for Special hits (Psychic immunity checked)",
+   "status": "auto"
+  },
   "Mirror Move": {
    "note": "copies or replays another Move — the GM decides what it becomes at the table",
    "status": "manual"
@@ -9283,8 +9295,8 @@
    "status": "partial"
   },
   "Perish Song": {
-   "note": "v604 MOVE_FX_ROWS row/alert: the sheet records it or tells the table; the remainder is resolved at the table",
-   "status": "partial"
+   "note": "v710 Perish Count buff ticks at the start of the creature's turn (tickPerishCount in advanceInitiative), HP to 0 at 0; Soundproof skipped (abfx P.sonic)",
+   "status": "auto"
   },
   "Petal Dance": {
    "note": "v673 verified: engine tags status-fx, status-always, status-self (five/double strike, crit range, status/CS parsers) cover the whole text",
@@ -9527,8 +9539,8 @@
    "status": "auto"
   },
   "Revelation Dance": {
-   "note": "v673 verified: the +5 per other Dance Move this round (max +15) is typed into Bonus Damage by hand",
-   "status": "partial"
+   "note": "v710 revelationDanceType (Oricorio style Type) + stage.js stageDamageMods: +5 per other Dance by the user this round (needs a stage act running; by hand otherwise)",
+   "status": "auto"
   },
   "Revival Blessing": {
    "note": "v605 MOVE_FX_ROWS row/alert: the sheet rolls or applies what it can, tells the table the rest",
@@ -9589,6 +9601,10 @@
   "Rototiller": {
    "note": "found-01: Combat Stage clause parsed by moveCSEffects; ⬆ Apply on the roll",
    "status": "auto"
+  },
+  "Round": {
+   "note": "v710 value box pre-filled from stage.js's round history during a stage act; typed by hand otherwise",
+   "status": "partial"
   },
   "Ruination": {
    "note": "v650 verified: the status / CS / range / conditional-DB / type parsers already cover every clause (checked in the preview against moveStatusEffects, moveCSEffects, conditionalDB)",
@@ -10272,6 +10288,10 @@
   },
   "Tri Attack": {
    "note": "v672 verified in preview: moveStatusEffects/moveStatusLive parse the printed status + Effect Range",
+   "status": "auto"
+  },
+  "Trick": {
+   "note": "v710 swaps (user<->target, or two targets) until End Scene: trickHeld remembers the original item, applyEndScene / the Curtain restores it",
    "status": "auto"
   },
   "Trick Room": {

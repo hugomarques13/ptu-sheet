@@ -499,6 +499,11 @@ const STATUS_DEFS = [
      as tokens move (see sweepMapAuras), and only ever to a Trainer who actually has Gifts. */
   {key:"giftsapped", name:"Gift-Sapped", kind:"other", cap:0, gm:true,
    effect:"Standing inside a Giftsapper's 10-metre field. Every Gift you try to activate needs a Focus Check first, at a DC of three times the Giftsapper's best Rank in Focus, Intimidate or Command. A failure costs you nothing — not the AP, not the Frequency — it just doesn't happen. A Static or ongoing Gift is checked each turn, and a failed check switches it off for that turn. On the 🗺 Map this is applied and lifted automatically as tokens move; the Gifts tab prints the exact DC."},
+  /* The Hush (homebrew General Gift, this table): Giftsapper aimed at ONE Trainer for one Scene.
+     The 🤫 button on the user's Gifts row puts it on; End Scene clears it (SCENE_STATUS_KEYS), and
+     the Map sweep lifts it early the moment the user is knocked out. The DC rides on o.hush. */
+  {key:"hushed", name:"Hushed", kind:"other", cap:0, gm:true,
+   effect:"Silenced by The Hush until the end of the Scene. Every Gift you try to activate needs a Focus Check first, at a DC of three times the Hush user's Command Rank (your 🎁 Gifts tab shows the number). A failure costs you nothing — not the AP, not the Frequency. A Static or ongoing Gift is checked each turn, and a failure switches it off for that turn. It ends early if the user is knocked out."},
   {key:"tagged", name:"Tagged", kind:"other", cap:0,
    effect:"Marked by a Duelist. Their Pokemon under Focused Training add half their Momentum (rounded up) to Accuracy and Evasion against this foe — and give up Focused Training's Accuracy bonus against everyone else. Only one foe can be Tagged at a time; Tagging a new one clears the old."},
 ];
@@ -1108,13 +1113,14 @@ function statusCureBlock(o, key){
    Poison, Sleep, Paralysis, Freeze) deliberately stay — those need an Extended Rest or a healing
    item, and End Day already clears them. */
 const SCENE_STATUS_KEYS = new Set([
-  ...STATUS_DEFS.filter(s=>s.kind==="volatile").map(s=>s.key), "stuck", "slowed", "vortex", "invisible",
+  ...STATUS_DEFS.filter(s=>s.kind==="volatile").map(s=>s.key), "stuck", "slowed", "vortex", "invisible", "hushed",
 ]);
 function clearSceneStatuses(o){
   if(!o || !Array.isArray(o.statuses)) return false;
   const before = o.statuses.length;
   o.statuses = o.statuses.filter(k => !SCENE_STATUS_KEYS.has(k));
   if(!o.statuses.includes("vortex")) delete o.vortexTurn;
+  if(!o.statuses.includes("hushed")) delete o.hush;          // The Hush's DC goes with its chip
   const fv = syncFlinchVulnerable(o);            // the Vulnerable the Flinch carried in goes with it
   const fl = clearFlinchInit(o);                 // "for the rest of the Scene" ends with the Scene
   return o.statuses.length !== before || fl || fv;
@@ -3774,6 +3780,26 @@ const ABILITY_ACTION_ROWS = {};
   say(["forewarn"], "\u{1F441}", "Forewarn", "Scene, Free — the target's Move with the highest Damage Dice Roll is revealed; those Moves take −2 Accuracy for the rest of the encounter", "reveal the foe's highest-damage Move(s); they take −2 Accuracy for the encounter");
   say(["discipline"], "\u{1F9D8}", "Discipline", "Scene, Free on gaining Initiative — cure Confusion, Rage, Infatuation or Flinch", "cure one of Confusion, Rage, Infatuation or Flinch");
   say(["friend guard"], "\u{1F6E1}", "Friend Guard", "Scene, Free — an ally is hit: the damage is resisted one step further", "resolve the ally's hit one step further resisted");
+  /* Fox Fire: "The user creates 3 Fire Wisps" — three 🏮 markers next to the user, each tied to it; a wisp's own menu
+     spends it on Ember. */
+  ABILITY_ACTION_ROWS["fox fire"] = ABILITY_ACTION_ROWS["fox fire [errata]"] = (p, an, mk, redraw, persist) => {
+    const u = abilityUse(p, an);
+    return mk("\u{1F3EE} Fox Fire", "Scene, Standard \u2014 3 Fire Wisps; when a foe within 6 m targets the user, spend one to use Ember against it as a Free Action",
+      () => {
+        if(!u.spend()){ toast("Fox Fire is already spent."); return; }
+        let said = "";
+        try{
+          if(typeof mode !== "undefined" && mode === "cloud" && cloud && cloud.isGM){
+            const map = currentMapForView() || activeMap(), me = ownerMapToken(p);
+            if(map && me) said = ` ${dropHazardsAt(map, "firewisp", 3, me, { wispOf:me.id })} wisps on the Map \u2014 tap one to spend it on Ember.`;
+          }
+        }catch(e){ console.error("Fox Fire", e); }
+        const line = `Fox Fire \u2014 3 Fire Wisps. When a foe within 6 m targets ${ownerLabel(p)}, spend one: Ember at that foe as a Free Action.${said}`;
+        logRoll({ kind:"skill", label:"Fox Fire", who:ownerLabel(p), headline:"\u{1F3EE} Fox Fire", lines:[line] });
+        (persist || save)(); redraw && redraw();
+        toast("\u{1F3EE} " + line);
+      }, u.max ? `${u.left} of ${u.max} left` : null);
+  };
   ABILITY_ACTION_ROWS["ice shield"] = (p, an, mk, redraw, persist) => {
     const u = abilityUse(p, an);
     return mk("\u{1F9CA} Ice Shield", "Scene, Standard/Interrupt \u2014 up to 3 continuous segments of Ice Wall (2 m tall, 1 m wide, Blocking Terrain, 10 HP, 5 DR) until the end of the encounter",
@@ -6210,6 +6236,7 @@ function openSacrificeHeal(caster, moveName, rerender){
 /* apply End of Scene to one character object (AP restored, Temp HP lost, Scene/EOT uses refreshed) */
 function applyEndScene(c){
   if(!c) return;
+  try{ restoreTrickItem(c.trainer); (c.pokemon || []).forEach(p => restoreTrickItem(p)); }catch(e){}   // Trick's trade ends with the Scene
   normTrainer(c.trainer);
   c.trainer.usedAP = 0; c.trainer.tempHP = 0; c.trainer.buffs = []; resetUses(c.trainer, "scene");
   delete c.trainer.tasteLog;                       // the Scene's trade-ins (Complex Aftertaste's triggers) go with it
@@ -6322,6 +6349,7 @@ async function endScene(){
     const rows = playerRestRows();
     rows.forEach(r => applyEndScene(r.data));
     rows.forEach(r => cloudUpsert(r));
+    if(restoreTrickItemsInEncounters()) saveEnc();   // the encounter side of a Trick trade goes home too
     clearTableBlessings();             // the Blessings on the field end with the Scene, like a Sage's own list
     render(); toast(`Scene ended for ${rows.length} player sheet${rows.length===1?"":"s"}`); return;
   }
@@ -8365,6 +8393,7 @@ function render(){
   renderBlessingPops();           // everyone's float: the Blessings on the field and their uses left
   renderCallOverlay();            // the 📱 Codec while a call is on the line (and the top-bar 📱 itself)
   if(typeof contestRender==="function") try{ contestRender(); }catch(e){ console.error(e); }   // 🎀 contest dock + stage (contest.js)
+  if(typeof stageRender==="function") try{ stageRender(); }catch(e){ console.error(e); }       // 🎭 the stage engine's dock (stage.js)
   applyReadonlyLock();
   saveNav();
 }
@@ -9818,6 +9847,7 @@ function applyAutoKO(owner, oldHP, newHP){
     toast(`💀 ${ownerLabel(owner)} is Knocked Out at ${newHP} HP.`);
     pyreOfGriefOnFaint(owner);      // a FOE of anyone with Pyre of Grief, within 3 m of them, feeds it (Scene x2)
     if(typeof contestOnKO==="function") try{ contestOnKO(owner); }catch(e){ console.error(e); }   // 🎀 Battle Contest: +2 Voltage to the other side
+    if(typeof stageOnKO==="function") try{ stageOnKO(owner); }catch(e){ console.error(e); }       // 🎭 Ovation, reserves, Plot Twists (stage.js)
     return "ko";
   }
   /* Rampaging Spirit holds a Pokémon up past 0 the same way Fight On does for a Berserker, so it
@@ -10850,6 +10880,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   { const rsCard = runningStartCard(runStart, runStartState); if(rsCard) body.append(rsCard); }
   let riderFireHook = null;           // the 🎯 Apply card ticks a triggered rider's row when its button is pressed
   body.append(riderBoxes(t, st.name, opts.rerender, opts.persist, n => { if(riderFireHook) riderFireHook(n); }));
+  { const pp = powerPirouetteBox(t, st, opts); if(pp) body.append(pp); }   // 🩰 Power Pirouette rides on a Dance Move
   { const pn = powderImmuneNote(st.move && typeof st.move === "object" ? st.move : moveByName.get(String(st.name||"").toLowerCase()));
     if(pn) body.append(el("div",{class:"small muted",style:"margin-top:4px"}, "\u{1F33F} " + pn)); }
   /* …and the one rider whose bullets are more than a sentence apiece: each of Flip Out's four Moves
@@ -10974,6 +11005,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     let feedLogged = false;              // the GM's roll feed gets exactly one line per press of 🎲
     if(!eotRefreshed){
       eotRefreshed = true;
+      if(typeof stageOnMoveUsed==="function") try{ stageOnMoveUsed(t, st.move || moveByName.get(String(st.name||"").toLowerCase()) || { name:st.name }, opts); }catch(e){ console.error(e); }   // 🎭 stage.js
       if(pyreOn && pyreBuff){        // the ticked Pyre of Grief +5 is in this roll — spend the charge once
         removeBuff(t, pyreBuff.id); (opts.persist||save)(); if(opts.rerender) opts.rerender();
         toast(`\u{1F525} Pyre of Grief spent \u2014 +${(pyreBuff.mods && pyreBuff.mods.dmg) || 5} on this Damage Roll`);
@@ -14894,6 +14926,8 @@ const GIFT_GROUPS = [
     ["Major","Serpent's Prey","Minor Gift - World's Guardian","Daily Standard Action on a target within 10m: you gain +2 accuracy and +5 damage against it, and while it is more than 5m away at the start of your turn you may Teleport to any space adjacent to it as a Shift Action. Lasts until the end of the Scene."],
     ["Major","Cells of the World","Minor Gift - World's Guardian","Daily Free Action when you fall to 0 or fewer HP: you are instead set to 1 HP (and to 9 Injuries if the triggering effect brought you to 10 or more). Gain Temporary HP equal to half your Maximum HP, and ignore the effects of being Heavily Injured until you no longer have Temporary HP."],
     ["Major","Aura Break","Minor Gift - World Serpent's Embrace","You gain the Aura Break Ability."],
+    ["Minor","Hollow Mark","GM Permission; you once held a Patron's Gifts and lost them","Static: Giftsapper has no effect on your Gifts. Symbolsight, Gift of Command and Insight of the Great Ones read you as unclaimed unless you allow it. You always feel it when a Touched of the Patron you lost is within Symbolsight range. [Homebrew — this table]"],
+    ["Major","Equilibrium's Due","Minor Gift - World's Guardian","Daily x3 Free Action, Interrupt, when you or an ally within 6m loses HP to an attack: the attacker loses HP equal to half of what was lost, and nothing can reduce or prevent it. [Homebrew — this table]"],
     ["Pact","Land's Wrath","All Zygarde Major Gifts","You learn the Move Land's Wrath."],
   ]},
   { group:"Zacian & Zamazenta", patrons:["Zacian","Zamazenta"], gifts:[
@@ -15037,6 +15071,9 @@ function giftFreqForName(name){
   const bl = (typeof BLESSINGS !== "undefined" && Array.isArray(BLESSINGS))
     ? BLESSINGS.find(x => String(x.name).toLowerCase() === n) : null;
   if(bl) return giftFreqText({ freq: (bl.messiah||{}).freq, effect: (bl.messiah||{}).text });
+  const gen = (typeof GENERAL_GIFTS !== "undefined" && Array.isArray(GENERAL_GIFTS))
+    ? GENERAL_GIFTS.find(x => String(x.name).toLowerCase() === n) : null;
+  if(gen) return giftFreqText(gen);
   return null;
 }
 
@@ -15062,6 +15099,12 @@ const GENERAL_GIFTS = [
     freq:"Static",
     effect:"As long as Giftsapper's user is conscious, all Trainers within 10 meters must make a Focus Check with DC equal to three times the highest Skill Rank of Giftsapper's user between Focus, Intimidate, or Command in order to activate their Gifts. This Check is made each time a Trainer attempts to use an activated Gift, and a failure means neither any resources such as AP nor the frequency of the Gift is expended. For Gifts with Static or ongoing effects, the Check is made each turn, and a failure ends the effect for that turn.",
     note:"Giftsapper's user may NEVER gain Gifts." },
+  /* Homebrew (this table): Giftsapper aimed at one person — taught by a Giftsapper, who can never
+     hand out a Gift himself. Runs on Command, and never touches the user's own allies. */
+  { name:"The Hush", prereq:"GM Permission, trained by a Giftsapper, one Major Gift",
+    freq:"Daily - Standard Action · Target: one Trainer with Gifts within 8m",
+    effect:"Until the end of the Scene, the target must pass a Focus Check with DC equal to three times your Command Rank in order to activate any Gift. As with Giftsapper, a failure means neither AP nor the Gift's Frequency is spent, and a Static or ongoing Gift is checked each turn — a failure ends its effect for that turn. The Hush ends early if you are knocked out.",
+    note:"Homebrew (this table) — Giftsapper aimed at one person. It never touches your allies." },
 ];
 
 /* ---------- Messiah (book pp.47-48) --------------------------------------------------------------
@@ -15694,12 +15737,29 @@ function giftsCard(t, saveFn, rerender, opts){
   /* Standing in somebody's Giftsapper field is the single most important thing this tab can tell
      you, so it goes above everything — with the DC already worked out. Read off the chip the Map
      sweep set, so it is true for a player who cannot see the board. */
-  if(hasStatus(t, "giftsapped")){
+  const banStyle = "margin:0 0 10px;padding:8px 10px;border:1px solid var(--bad);border-radius:var(--radius-sm);color:var(--bad);font-weight:600";
+  const focusBtn = (dc, why) => el("div",{style:"margin-top:6px"},
+    el("button",{class:"btn-secondary",style:"padding:3px 10px",onclick:()=>giftFocusCheck(t, dc, why)},
+      dc ? `\u{1F3B2} Focus check vs DC ${dc}` : "\u{1F3B2} Focus check"));
+  /* Hollow Mark: "Giftsapper has no effect on your Gifts" — a chip ticked by hand changes nothing either */
+  if(hasStatus(t, "giftsapped") && !hollowMarked(t)){
     const map = currentMapForView() || activeMap();
     const src = map ? tokenGiftsapSources(map, tokenForOwner(t)) : [];
-    card.append(el("div",{class:"small",style:"margin:0 0 10px;padding:8px 10px;border:1px solid var(--bad);border-radius:var(--radius-sm);color:var(--bad);font-weight:600"},
+    const ban = el("div",{class:"small",style:banStyle},
       "\u26D3 GIFT-SAPPED \u2014 " + (giftsapNote(src) ||
-        "you are inside a Giftsapper's field: every Gift you activate needs a Focus Check first, and a failure spends neither AP nor its Frequency.")));
+        "you are inside a Giftsapper's field: every Gift you activate needs a Focus Check first, and a failure spends neither AP nor its Frequency."));
+    ban.append(focusBtn(src.length ? src[0].dc : 0, "Giftsapper"));
+    card.append(ban);
+  }
+  /* The Hush: one Trainer, one Scene — the DC was written onto the victim when the chip went on */
+  if(hasStatus(t, "hushed")){
+    const h = t.hush || {};
+    const ban = el("div",{class:"small",style:banStyle},
+      `\u{1F92B} HUSHED${h.by ? " by " + h.by : ""} \u2014 until the end of the Scene, every Gift you activate needs a `
+      + `${h.dc ? "DC " + h.dc + " " : ""}Focus Check first. A failure spends nothing: no AP, no Frequency. `
+      + "A Static or ongoing Gift is checked each turn, and a failure switches it off for that turn.");
+    ban.append(focusBtn(h.dc || 0, "The Hush"));
+    card.append(ban);
   }
   /* 👁 hidden rows are dropped here for everyone but the GM — a sheet whose only Gifts are hidden
      reads exactly like a sheet with none. */
@@ -15824,7 +15884,7 @@ function carriesGifts(o){ return isTrainerOwner(o) && ((o.gifts)||[]).length > 0
 function tokenGiftsapSources(map, token){
   if(!map || !token) return [];
   const L = token.link ? tokenLinked(token) : null;
-  if(!L || !L.obj || L.missing || !carriesGifts(L.obj)) return [];
+  if(!L || !L.obj || L.missing || !carriesGifts(L.obj) || hollowMarked(L.obj)) return [];
   return mapTokensFor(map.id).filter(x => {
     if(x.id === token.id || x.gmHidden || tokenIsDown(x)) return false;
     if(tokenTileGap(x, token) > GIFTSAPPER_RANGE) return false;
@@ -15842,6 +15902,102 @@ function giftsapNote(src){
        + `needs a DC ${top.dc} Focus Check first${top.why?` (3 × ${top.why})`:""}. `
        + `A failure spends nothing: no AP, no Frequency. A Static or ongoing Gift is checked each turn, `
        + `and a failure switches it off for that turn.`;
+}
+/* ---- Hollow Mark (homebrew Zygarde Minor Gift, this table) -------------------------------------
+   "Giftsapper has no effect on your Gifts." Someone already emptied of one god has nothing left for
+   the sap to bite, so the field never projects onto her: tokenGiftsapSources answers "nobody" and
+   the Map sweep never sets (or lifts) the ⛓ chip. The rest of the Gift is narrative. */
+function hollowMarked(o){ return !!o && isTrainerOwner(o) && hasGiftNamed(o, "Hollow Mark"); }
+
+/* ---- The Hush (homebrew General Gift, this table) ----------------------------------------------
+   Giftsapper aimed: "Daily, Standard Action, one Trainer with Gifts within 8m. Until the end of the
+   Scene, the target must pass a Focus Check (DC 3 × your Command Rank) to activate any Gift … The
+   Hush ends early if you are knocked out." The button lands the 🤫 Hushed chip on the target with
+   the DC on o.hush, so the victim's Gifts tab can print the number without hunting for the user.
+   End Scene / Battle off clear both (SCENE_STATUS_KEYS); sweepMapAuras lifts them early when the
+   user's token goes down. */
+const HUSH_RANGE = 8;
+function hushDC(t){ return (t && t.skills) ? 3 * rankNum(t.skills.command) : 0; }
+function hushTargets(t){
+  const map = currentMapForView() || activeMap(); if(!map) return { list:[], me:null };
+  const me = tokenForOwner(t);
+  const list = mapTokensFor(map.id).map(tok => {
+    if(me && tok.id === me.id) return null;
+    if(tok.gmHidden && !isGM()) return null;
+    const L = tok.link ? tokenLinked(tok) : null;
+    if(!L || !L.obj || L.missing || L.obj === t || !carriesGifts(L.obj)) return null;
+    const gap = me ? tokenTileGap(me, tok) : null;
+    if(me && gap > HUSH_RANGE) return null;
+    return { tok, obj:L.obj, name: tokenHp(tok).name, gap };
+  }).filter(Boolean).sort((a, b) => (a.gap || 0) - (b.gap || 0));
+  return { list, me };
+}
+function hushGo(t, rerender, persist){
+  const dc = hushDC(t), cmd = (t.skills && t.skills.command) || "?";
+  const { list, me } = hushTargets(t);
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    `Daily, Standard Action. Until the end of the Scene, the target needs a DC ${dc} Focus Check`
+    + ` (3 \u00d7 Command ${cmd}) to activate any Gift; a failure spends nothing. It ends early if you are knocked out. `
+    + (me ? `Listing Trainers carrying Gifts within ${HUSH_RANGE}m of your token.`
+          : "You have no token on this Map, so range can't be checked \u2014 every Trainer carrying Gifts on it is listed.")));
+  if(!list.length){
+    body.append(el("div",{class:"small"}, `Nobody carrying a Gift is within ${HUSH_RANGE}m on the current Map.`));
+    modal({title:"\u{1F92B} The Hush", bodyNode:body, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+    return;
+  }
+  list.forEach(tg => {
+    const already = hasStatus(tg.obj, "hushed");
+    const row = el("div",{class:"moveslot"});
+    row.append(el("div",{style:"flex:1"}, el("div",{style:"font-weight:700"}, tg.name),
+      el("div",{class:"small muted"}, [tg.gap != null ? `${tg.gap}m away` : "",
+        already ? `already Hushed${tg.obj.hush && tg.obj.hush.by ? " by " + tg.obj.hush.by : ""}` : ""].filter(Boolean).join(" \u00b7 "))));
+    row.append(el("button",{class:"btn-primary",style:"padding:6px 10px",
+      onclick: async () => {
+        if(!giftSpend(t, "The Hush")) return;
+        if(!Array.isArray(tg.obj.statuses)) tg.obj.statuses = [];
+        if(!tg.obj.statuses.includes("hushed")) tg.obj.statuses.push("hushed");
+        tg.obj.hush = { by: t.name || "", dc, tok: me ? me.id : null, at: Date.now() };
+        try{ await commitTokenSource(tg.tok, { ally:true }); }catch(e){}
+        (persist || save)();
+        logRoll({ kind:"feature", label:"The Hush", who:t.name || "",
+          headline:`\u{1F92B} ${tg.name} is Hushed`,
+          lines:[`Until the end of the Scene: a DC ${dc} Focus Check (3 \u00d7 Command ${cmd}) to activate any Gift`,
+                 `A failure spends nothing. Ends early if ${t.name || "the user"} is knocked out.`] });
+        toast(`\u{1F92B} ${tg.name} is Hushed \u2014 DC ${dc} Focus to use a Gift until the end of the Scene`);
+        closeModal();
+        try{ renderMap(); }catch(e){}
+        (rerender || renderTrainer)();
+      }}, already ? "\u{1F92B} Hush again" : "\u{1F92B} Hush"));
+    body.append(row);
+  });
+  modal({title:"\u{1F92B} The Hush \u2014 silence one Trainer's Gifts", bodyNode:body,
+         footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Cancel")]});
+}
+/* The Focus Check a Gift-Sapped or Hushed Trainer makes before activating a Gift: rolled with the
+   same modifier stack the Skills table prints, judged against the DC, and posted to the roll feed. */
+function giftFocusCheck(t, dc, why){
+  if(!t) return;
+  const k = "focus";
+  const nDice = Math.max(1, rankDice(t.skills && t.skills[k]));
+  const mod = categoricBonus(t, k) + edgeSkillBonus(t, k) + gearSkillBonus(t, k) + cardSkillBonus(t, k)
+            + buffSkillBonus(t, k) + auraRollBonus(t) + giftSkillBonus(t, k);
+  const rolls = []; for(let i = 0; i < nDice; i++) rolls.push(1 + Math.floor(Math.random() * 6));
+  const sum = rolls.reduce((a, b) => a + b, 0), total = sum + mod;
+  const pass = dc ? total >= dc : null;
+  const dice = `${nDice}d6${mod ? (mod > 0 ? "+" + mod : mod) : ""}`;
+  const verdict = pass == null ? "" : pass ? "\u2714 the Gift goes off" : "\u2716 the Gift fizzles \u2014 nothing is spent: no AP, no Frequency";
+  logRoll({ kind:"skill", label:`Focus check${why ? " \u2014 " + why : ""}`, who:t.name || "",
+    headline: pass == null ? `\u{1F3B2} ${total}` : `${pass ? "\u2714" : "\u2716"} ${total} vs DC ${dc}`,
+    lines:[`${dice} \u2192 [${rolls.join(", ")}]${mod ? ` (dice ${sum})` : ""} = ${total}`, verdict].filter(Boolean) });
+  const body = el("div",{},
+    el("div",{style:"font-size:30px;font-weight:800;text-align:center;margin:4px 0"}, String(total)),
+    el("div",{class:"small muted",style:"text-align:center"}, dice + (dc ? ` vs DC ${dc}` : "")),
+    el("div",{class:"tk-menu-row",style:"flex-wrap:wrap;gap:6px;justify-content:center;margin-top:10px"},
+      ...rolls.map(r => el("span",{class:"kv",style:"font-weight:800"}, String(r)))),
+    verdict ? el("div",{class:"small",style:`text-align:center;margin-top:8px;font-weight:700;color:var(--${pass ? "good" : "bad"})`}, verdict) : "");
+  modal({title:`\u{1F3B2} Focus check${why ? " \u2014 " + why : ""}`, bodyNode:body,
+         footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"OK")]});
 }
 
 /* ---- Godslayer -------------------------------------------------------------------------------- */
@@ -15945,6 +16101,8 @@ const GIFT_ACTIONS = [
   { names:["Godslayer","God Crusher"], run:godslayerGo,
     label:() => "⚔ Godslayer",
     title:t => `Standard Action, EOT: shatter one of a Legendary's Auras. AC ${godslayerAC(t)}.` },
+  { names:["The Hush"], run:hushGo, label:() => "\u{1F92B} The Hush",
+    title:t => `Daily, Standard Action: one Trainer with Gifts within ${HUSH_RANGE}m needs a DC ${hushDC(t)} Focus Check to activate any Gift until the end of the Scene.` },
   { names:["Defiance to the End"], label:() => "\u{1F6E1} Defiance",
     title:() => "Daily, Free — when you would Faint: you don't, and regain 25% of your Max HP; then a free At-Will attack as a Reaction",
     run:(t, rerender, saveFn) => { if(!giftSpend(t, "Defiance to the End")) return;
@@ -16028,6 +16186,18 @@ function giftRow(t, g, i, gm, saveFn, rerender){
     info.append(el("div",{class:"small",style:"margin-top:3px;color:var(--accent);font-weight:700"},
       `\u26D3 Field: DC ${giftsapperDC(t)} Focus Check to activate any Gift within ${GIFTSAPPER_RANGE}m`
       + (giftsapperSkill(t) ? ` \u2014 3 \u00d7 ${giftsapperSkill(t)}` : "")));
+  }
+  if(/^hollow mark$/i.test(String(g.name||""))){
+    info.append(el("div",{class:"small",style:"margin-top:3px;color:var(--accent);font-weight:700"},
+      "\u{1F573} Giftsapper can't reach your Gifts \u2014 the Map never puts \u26D3 Gift-Sapped on you."));
+  }
+  if(/^the hush$/i.test(String(g.name||""))){
+    info.append(el("div",{class:"small",style:"margin-top:3px;color:var(--accent);font-weight:700"},
+      `\u{1F92B} DC ${hushDC(t)} Focus Check (3 \u00d7 Command ${(t.skills && t.skills.command) || "?"}) \u2014 one Trainer within ${HUSH_RANGE}m, until the end of the Scene`));
+  }
+  if(/^equilibrium's due$/i.test(String(g.name||"").replace(/\u2019/g, "'"))){
+    info.append(el("div",{class:"small",style:"margin-top:3px;color:var(--accent);font-weight:700"},
+      `\u2696 The GM's \u{1F4A5} Apply asks Yes / No whenever you or an ally within ${DUE_RANGE}m loses HP to an attack.`));
   }
   /* ...and a Gift the sheet can actually carry out gets its button here, the way a Feature gets one
      on the Battle tab. The Gifts card is mounted on the Encounters tab too, so this is the only
@@ -22123,8 +22293,20 @@ function effectiveMoveType(p, m, opts={}){
   if(auraWheelDark(p, m)) return "Dark";                               // Aura Wheel in Hangry Mode
   if(tinkerSteel(p, m)) return "Steel";                                // Tinker: its scrap weapon's Moves may be Steel
   const tera = teraMoveType(p, m); if(tera) return tera;               // Tera Blast / Tera Starstorm
+  const rev = revelationDanceType(p, m); if(rev) return rev;           // Revelation Dance: the user's primary Type
   if(!opts.noAte){ const a = ateInfo(p, m); if(a) return a.type; }   // −ate re-types Normal moves (togglable in openMoveRoll)
   return (m && m.type) || "Normal";
+}
+/* Revelation Dance "is the same Type as the user's primary Type (aka the first one in its Pokedex
+   listing)". Oricorio is the reason the Move exists, and this data lists every one of its styles
+   Flying-first, which would make all four dance Flying -- so for an Oricorio the style's own Type
+   (Fire / Electric / Psychic / Ghost) is the primary one, as in the games. */
+function revelationDanceType(p, m){
+  if(!p || !m || moveKey(m.name) !== "revelationdance") return null;
+  const ty = (monTypes(p) || []).filter(t => t && t !== "None");
+  if(!ty.length) return null;
+  if(/^oricorio/i.test(p.species || "") && ty[0] === "Flying" && ty[1]) return ty[1];
+  return ty[0];
 }
 /* Struggle as it should actually resolve: base move + chosen type/class (Normalize forces Normal) */
 function struggleFor(p, sp){
@@ -25123,6 +25305,11 @@ const MOVE_FX_ROWS = {
   swallow:      { icon:"\u{1F4E6}", solo:true, label:"Swallow: set the count to 0 and drop its Combat Stages", run:o => stockpileSpend(o) },
   painsplit:    { icon:"\u{1F91D}", verb:"Split", single:true, fx:{ painSplit:true }, intro:"The user and the target each lose half their current Hit Points, then each gains half of the total that was lost (no Massive Damage, no Injury until it is all done)." },
   switcheroo:   { icon:"\u{1F500}", verb:"Swap", single:true, fx:{ itemSwap:true }, intro:"The user and the target exchange held items." },
+  /* Trick: "5, 2 Targets … Both targets lose their Held Item and gain the other target's Held Item. The user may target
+     itself or willing allies". One pick = the user trades with it; two picks = those two trade with each other (runFoeFx). */
+  trick:        { icon:"\u{1F3A9}", verb:"Trick", fx:{ itemSwap:true, itemTrick:true }, intro:"Pick ONE target to trade Held Items with the user, or TWO (a willing ally and a foe) to trade theirs with each other, until the end of the Scene \u2014 End Scene hands every item back to its owner. A target holding nothing still takes the other's item, and a Flame or Toxic Orb starts working on its new holder at once." },
+  /* Ally Switch: "The user chooses one willing ally within 6 meters; the target and the user switch places." */
+  allyswitch:   { icon:"\u21C4", verb:"Switch places", anyone:true, single:true, fx:{ swapPlaces:true }, intro:"The user and one willing ally within 6 m swap places on the board. A Move aimed at either now lands on the other." },
   splash:       { icon:"\u{1F4A6}", solo:true, label:"+2 Evasion", run:o => { researchBuff(o, { key:"splash", name:"Splash", cat:"Move", dur:"until end of next turn", mods:{ eva:2 }, note:"+2 Evasion until the end of its next turn; the +1 Long / High Jump Jump is a Shift Action." }); return "+2 Evasion until the end of the next turn"; } },
   flipturn:     { icon:"\u{1F501}", alert:"Flip Turn \u2014 if it hit, the user is recalled to its Poké Ball after the damage and a new Pokémon may be sent out (a Trapped user may still be recalled). Nothing is switched for you." },
   pluck:        { icon:"\u{1F9E4}", verb:"Take it", single:true, fx:{ itemTake:true }, intro:"The user takes the target's Held Item if it is holding nothing." },
@@ -25159,7 +25346,7 @@ Object.assign(MOVE_FX_ROWS, {
   guardsplit:   { icon:"\u{1F6E1}", verb:"Split", single:true, fx:{ buff:_mvBuff("Guard Split", "this Scene", "−5 Defense and −5 Special Defense until the end of the Scene (subtract by hand).") }, self:o => { researchBuff(o, _mvBuff("Guard Split", "this Scene", "+5 Damage Reduction until the end of the Scene.", { dr:5 })); }, intro:"The target loses 5 Def and 5 Sp.Def; if it does, the user gains 5 DR — both until the Scene ends." },
   powersplit:   { icon:"\u{1F5E1}", verb:"Split", single:true, fx:{ buff:_mvBuff("Power Split", "this Scene", "−5 Attack and −5 Special Attack until the end of the Scene (subtract by hand).") }, self:o => { researchBuff(o, _mvBuff("Power Split", "this Scene", "+5 to Damage Rolls until the end of the Scene.", { dmg:5 })); }, intro:"The target loses 5 Atk and 5 Sp.Atk; if it does, the user gets +5 to Damage Rolls — both until the Scene ends." },
   holdhands:    { icon:"\u{1F91D}", verb:"Hold hands", anyone:true, single:true, fx:{ buff:_mvBuff("Cheered", "until spent", "Give it up on a Save Check to roll twice and take the better result.") }, self:o => { researchBuff(o, _mvBuff("Cheered", "until spent", "Give it up on a Save Check to roll twice and take the better result.")); }, intro:"The user and the target are both Cheered." },
-  perishsong:   { icon:"\u{1F3B5}", verb:"Sing", anyone:true, fx:{ buff:_mvBuff("Perish Count 3", "3 turns", "Count down at the start of each of its turns; at 0 its HP is set to 0. Leaving the field ends it.") }, self:o => { researchBuff(o, _mvBuff("Perish Count 3", "3 turns", "Count down at the start of each of your turns; at 0 your HP is set to 0. Leaving the field ends it.")); }, intro:"Everyone in the Burst — the user too — gets a Perish Count of 3. It cannot miss." },
+  perishsong:   { icon:"\u{1F3B5}", verb:"Sing", anyone:true, fx:{ sonic:true, buff:_mvBuff("Perish Count 3", "3 turns", "Count down at the start of each of its turns; at 0 its HP is set to 0. Leaving the field ends it.") }, self:o => { researchBuff(o, _mvBuff("Perish Count 3", "3 turns", "Count down at the start of each of your turns; at 0 your HP is set to 0. Leaving the field ends it.")); }, intro:"Everyone in the Burst — the user too — gets a Perish Count of 3. It cannot miss." },
   blind:        { icon:"\u{1F576}", verb:"Blind", single:true, fx:{ status:["blinded"] }, intro:"After you win the Opposed Stealth Check, the target is Blinded for a full round." },
   hinder:       { icon:"\u{1F6A7}", verb:"Hinder", single:true, fx:{ status:["slowed"], buff:_mvBuff("Hindered", "one full round", "−2 to all Skill Checks for a full round.") }, intro:"After you win the Opposed Athletics Check, the target is Slowed and takes −2 to Skill Checks for a round." },
   lowblow:      { icon:"\u{1F44A}", verb:"Low blow", single:true, fx:{ status:["vulnerable"], buff:_mvBuff("Low Blow", "until end of next turn", "Initiative set to 0.", { init:-100 }) }, intro:"After you win the Opposed Acrobatics Check, the target is Vulnerable with Initiative 0 until the end of your next turn." },
@@ -25330,7 +25517,7 @@ function moveFxNode(actor, m, o){
         params:() => ({ lock:row.lock, lockName:m.name, move:"", moves:[] }), intro:row.intro, headline:() => `${ownerLabel(actor)} used ${m.name}`, lines:() => [row.intro] });
     }
     foeFxDialog({ fx:"abfx", caster:actor, icon:row.icon, name:m.name, verb:`${row.icon} ${row.verb}`, anyone:!!row.anyone, single:!!row.single, saveFn:persist, redraw, controls,
-      params:() => Object.assign({}, row.fx || {}, row.chooseStat ? { cs:[[stat.value, row.n]] } : {}),
+      params:() => Object.assign({ fxMove:m.name }, row.fx || {}, row.chooseStat ? { cs:[[stat.value, row.n]] } : {}),
       intro:row.intro, headline:() => `${ownerLabel(actor)} used ${m.name}`, lines:() => [row.intro],
       pay:() => { if(row.self) row.self(actor); return true; } });
   } }, `${row.icon} ${row.verb}…`), out);
@@ -26048,7 +26235,9 @@ const MEGA_LAUNCHER_MOVES= new Set(["Aura Sphere","Dark Pulse","Dragon Pulse","W
   "Origin Pulse","Terrain Pulse","Heal Pulse"].map(s=>s.toLowerCase()));
 /* range-token (keyword) test — PTU stores a Move's keywords inside its `range` string, e.g.
    "Melee, 1 Target, Dash, Recoil 1/3" or "Burst 1, Sonic". */
-function moveHasKeyword(m, kw){ return new RegExp("(?:^|,\\s*)"+kw+"\\b","i").test(String(m?.range||"")); }
+/* a range keyword ("Burst 1, Sonic"). The book sometimes separates them with a semicolon - Bug Buzz is "Cone 2 or Close
+   Blast 2; Sonic, Smite" - and a comma-only reader never saw its Sonic (Soundproof, Punk Rock, the Opera's Crescendo). */
+function moveHasKeyword(m, kw){ return new RegExp("(?:^|[,;]\\s*)"+kw+"\\b","i").test(String(m?.range||"")); }
 /* Fiery Crash (Advanced Ability): "Whenever the user uses a Move with the Dash keyword, they may
    either increase that Move's Damage Base by +2, or change the Move to be Fire-Type if it was not
    already. All Moves with the Dash keyword performed as Fire-Typed burn their target on 19+, or
@@ -26304,6 +26493,7 @@ function abilityDamageMods(p, m, baseDBVal, thresholds, opts={}){
   // Vanguard: +5 to ALL Damage Rolls vs a target with lower initiative that hasn't acted yet this round.
   if(hasAbility(p,"Vanguard") && opts.vanguard){
     mods.flat += 5; mods.why.push("Vanguard +5 damage (target has lower initiative and hasn't acted this round)"); }
+  if(typeof stageDamageMods==="function") try{ stageDamageMods(p, m, mods); }catch(e){ console.error(e); }   // 🎭 Forte, Revelation Dance (stage.js)
   return mods;
 }
 /* Analytic reads the Map's live initiative order: any opponent sitting BEFORE the attacker in the
@@ -26519,7 +26709,7 @@ function strikeGmPicksNote(){
 }
 function strikeTargetTokens(self){
   const map = currentMapForView() || activeMap(); if(!map) return [];
-  const fog = (!cloud.isGM && map.fogOn) ? fogViewSet(map) : null;
+  const fog = (!cloud.isGM && mapFogShown(map)) ? fogViewSet(map) : null;
   return mapTokensFor(map.id).filter(tok => {
     if(!tok.link || (tok.gmHidden && !cloud.isGM)) return false;
     if(fog && !fog.has(Math.round(tok.x)+","+Math.round(tok.y))) return false;
@@ -26760,7 +26950,7 @@ function specialMoveInfo(m, p){
   const vDB = ({
     "Frustration":  {label:"Loyalty (0–6)",            def:0, min:0, max:6, toDB:v=>9-v,               hint:"DB = 9 − Loyalty"},
     "Return":       {label:"Loyalty (0–6)",            def:0, min:0, max:6, toDB:v=>3+v,               hint:"DB = 3 + Loyalty"},
-    "Round":        {label:"Prior uses this round",    def:0, min:0,        toDB:v=>Math.min(12,6+2*v),hint:"DB = 6 +2 per prior use (max 12)"},
+    "Round":        {label:"Prior uses this round",    def:()=>(typeof stageMoveUses==="function" ? stageMoveUses("Round") : 0), min:0,        toDB:v=>Math.min(12,6+2*v),hint:"DB = 6 +2 per prior use (max 12)"},
     "Spit Up":      {label:"Stockpile Count (1–3)",    def:Math.max(1, Math.min(3, (p && p.stockpile) || 1)), min:1, max:3, toDB:v=>8*v,               hint:"DB = 8 × Stockpile Count"},
     "Trump Card":   {label:"Trump Count",             def:0, min:0,        toDB:v=>6+2*v,             hint:"DB = 6 +2 per Trump Count"},
     "Fury Cutter":  {label:"Consecutive hits so far",  def:0, min:0, max:3, toDB:v=>Math.min(16,4+4*v),hint:"DB 4/8/12/16 as it connects consecutively"},
@@ -26769,7 +26959,7 @@ function specialMoveInfo(m, p){
        remaining additional shifts and attacks. Surging Strikes gains +3 DB for each attack that is
        given up." Roll it once per attack; this dial is how many of the three you are giving up. */
     "Surging Strikes":{label:"Attacks given up (0–2)", def:0, min:0, max:2, toDB:v=>3+3*v,          hint:"DB 3, +3 for each of the three attacks you give up"},
-    "Echoed Voice": {label:"Prior consecutive rounds", def:0, min:0, max:2, toDB:v=>4+4*v,             hint:"DB = 4 +4 per prior round (max +8)"},
+    "Echoed Voice": {label:"Prior consecutive rounds", def:()=>(typeof stageEchoRounds==="function" ? stageEchoRounds() : 0), min:0, max:2, toDB:v=>4+4*v,             hint:"DB = 4 +4 per prior round (max +8)"},
     "Rollout":      {label:"Consecutive uses so far",  def:0, min:0,        toDB:v=>Math.min(15,3+4*v),hint:"DB = 3 +4 each consecutive use (max 15)"},
     "Ice Ball":     {label:"Consecutive uses so far",  def:0, min:0,        toDB:v=>Math.min(15,3+3*v),hint:"DB = 3 +3 each consecutive use (max 15)"},
     "Stored Power": {label:"Positive Combat Stages",   def:0, min:0,        toDB:v=>Math.min(20,2+2*v),hint:"DB = 2 +2 per positive CS (max 20)"},
@@ -27298,7 +27488,10 @@ function openMoveRoll(p, m, sp, opts={}){
   const typePick = movePicksOwnType(m)
     ? ((opts.pickType && TYPES.includes(opts.pickType)) ? opts.pickType : chosenMoveTypeDefault(p, m))
     : null;
-  const baseType = typePick || fieldType || naturalType;
+  /* Liquid Voice / Haunting Elegy (v710): a Sonic Move may go out Water- / Ghost-Typed, ticked per roll */
+  const voiceAb = sonicVoiceFor(p, m);
+  const voiceOn = !!voiceAb && voiceMoveOn(p, m, voiceAb, opts);
+  const baseType = typePick || (voiceOn ? voiceAb.type : null) || fieldType || naturalType;
   // Fiery Crash on a Dash Move: +2 Damage Base (the default) or use it as Fire-Type — picked below.
   const fc = fieryCrashInfo(p, m, baseType);
   const fcMode = fieryCrashMode(fc, opts.fcMode);
@@ -27746,6 +27939,23 @@ function openMoveRoll(p, m, sp, opts={}){
     }
   }
 
+  if(voiceAb){
+    const vcard = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+    const vcb = el("input",{type:"checkbox"}); vcb.checked = voiceOn;
+    /* the switch lives ON the Move (p.voiceMoves), so Baritono's Hyper Voice stays a Haunting Elegy until it is turned off */
+    vcb.addEventListener("change",()=>{
+      p.voiceMoves = (p.voiceMoves && typeof p.voiceMoves === "object") ? p.voiceMoves : {};
+      p.voiceMoves[moveKey(m.name)] = vcb.checked;
+      (opts.persist || save)();
+      closeModal(); openMoveRoll(p, m, sp, Object.assign({}, opts, {voiceOn: vcb.checked}));
+    });
+    vcard.append(el("label",{class:"small",style:"display:flex;gap:8px;align-items:center;cursor:pointer;font-weight:700"}, vcb,
+      el("span",{}, `${voiceAb.icon} ${voiceAb.ab} on ${m.name}`, el("span",{class:"muted",style:"font-weight:600"}, voiceOn ? " — ON for this Move" : " — off"))));
+    const vlist = el("ul",{class:"small",style:`margin:4px 0 0 18px;padding:0;${voiceOn ? "" : "opacity:.55"}`});
+    voiceChanges(p, m, voiceAb).forEach(line => vlist.append(el("li",{}, line)));
+    vcard.append(vlist);
+    body.append(vcard);
+  }
   /* --- Judgement / Techno Blast: choose the Type this one goes out as --- */
   if(typePick){
     const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
@@ -28249,6 +28459,7 @@ function openMoveRoll(p, m, sp, opts={}){
       zBoost.kind==="z" ? `⚡ ${zBoost.zName}!` : `💎 ${zBoost.item} — +${zBoost.db} Damage Base`));
     if(!usedThisRoll){
       usedThisRoll = true;
+      if(typeof stageOnMoveUsed==="function") try{ stageOnMoveUsed(p, m, opts); }catch(e){ console.error(e); }   // 🎭 dances, Sonic Moves, Ovation (stage.js)
       /* the ticked Pyre of Grief +5 is in this roll's numbers, so the charge is gone now (a re-roll or a
          hit override in this same window keeps the +5 — it is still the same attack) */
       if(pyreOn && pyreBuff){
@@ -28385,11 +28596,15 @@ function openMoveRoll(p, m, sp, opts={}){
        doesn't — except where there was never an Accuracy Check to fail: an automatic hit (weather,
        a ticked condition) throws no die, and a Move printed with no AC at all (Flower Trick) rolls
        its d20 only to read Effect Ranges off it. */
+    const laserOn = !!(m && m.damageBase) && ownerBuffs(p).some(b => b.key === "laser-focus");
     const nCrit  = buffNoCrit(p) ? 0          // Powerful Motivator (Baby-Doll Eyes): "cannot Critically Strike for 1 full round"
+                 : laserOn ? (multi ? connected : ((cantMiss || thresh==null || (acc!==1 && accTot>=thresh)) ? 1 : 0))   // Laser Focus
                  : multi ? Math.min(strikes.filter(s=>s.crit).length, connected)
                          : (alwaysCrit ? ((cantMiss || effAC==null || acc!==1) ? 1 : 0)
                                        : ((acc>=effCritT || (evenCrit && acc%2===0 && (cantMiss || thresh==null || accTot>=thresh))) ? 1 : 0));   // an auto-hit still rolls its d20 for Crits (Core: Perfect Aim "may still roll to trigger any Effect Ranges or Critical Hits")
     const isCrit = nCrit > 0;
+    if(laserOn && isCrit && !(redo && redo.forceHits != null)){ const lb = ownerBuffs(p).find(b => b.key === "laser-focus");
+      if(lb){ removeBuff(p, lb.id); (opts.persist||save)(); toast("\u{1F3AF} Laser Focus spent \u2014 this hit is a Critical Hit"); } }
     const accLine = el("div",{style:fDB!=null?"margin-bottom:10px":""});
     accLine.append(el("div",{class:"lbl",style:"color:var(--muted)  ;font-weight:800"}, multi?"ACCURACY ROLLS":"ACCURACY ROLL"));
     if(cantMiss){
@@ -28701,6 +28916,7 @@ function moveLineShort(m, p){
     bits.push(cut ? `AC ${m.ac-cut} (trained, was ${m.ac})` : `AC ${m.ac}`);
   }
   if(m.range) bits.push(m.range);
+  { const vt = p ? voiceMoveTag(p, m) : ""; if(vt) bits.push(vt); }   // 👻 Haunting Elegy / 💧 Liquid Voice switched on for this Move
   return bits.join(" · ");
 }
 /* `opts.view` = the Move list is full, so this is a LOOK, not a pick: every row is listed with the
@@ -30785,6 +31001,8 @@ const FOE_FX = {
   earthshifter: { apply:(x) => { fxStatus(x.obj, "tripped"); } },
   /* the targeted Combat-Stage / heal Abilities (Intimidate [Errata], Frighten, Confidence, Plus/Minus, Blessed Touch) */
   abfx: { apply:(x, P) => {
+      if(P.sonic && !soundproofHears(x.obj, P)) return "\u2014 Soundproof: it never hears it";
+      if(P.swapPlaces) return swapPlacesFx(x, P);
       const bits = [];
       (P.cs || []).forEach(([k, n]) => { bits.push(changeCS(x.obj, k, n) ? `${n > 0 ? "+" : "\u2212"}${Math.abs(n)} ${statLbl(k)}` : `(${statLbl(k)} held: ${csLowerBlock(x.obj, k) || "capped"})`); });
       if(P.onlyIf && !hasStatus(x.obj, P.onlyIf)) return "\u2014 not " + statusName(P.onlyIf) + ", nothing happens";
@@ -30827,7 +31045,9 @@ const FOE_FX = {
           const held = o => String((o && o.heldItem) || "").trim();
           if(P.itemTake){ if(held(c)) bits.push(`${ownerLabel(c)} already holds an item`); else if(!held(x.obj)) bits.push(`${ownerLabel(x.obj)} holds nothing`);
             else { c.heldItem = x.obj.heldItem; x.obj.heldItem = ""; bits.push(`${ownerLabel(c)} takes ${c.heldItem}`); } }
-          if(P.itemSwap){ const a = held(c), b = held(x.obj); c.heldItem = b; x.obj.heldItem = a;
+          if(P.itemSwap){ if(P.itemTrick){ trickRemember(c); trickRemember(x.obj); }   // Trick lasts until the end of the Scene
+            const a = held(c), b = held(x.obj); c.heldItem = b; x.obj.heldItem = a;
+            try{ syncHeldStatuses(c); syncHeldStatuses(x.obj); }catch(e){}   // a Flame / Toxic Orb starts working on its new holder
             bits.push(a || b ? `${ownerLabel(c)} \u2194 ${ownerLabel(x.obj)}: ${ownerLabel(c)} now holds ${b || "nothing"}, ${ownerLabel(x.obj)} holds ${a || "nothing"}` : "neither holds anything"); }
           if(P.itemGive){ if(!held(c)) bits.push(`${ownerLabel(c)} holds nothing to give`); else if(held(x.obj)) bits.push(`${ownerLabel(x.obj)} already holds an item`);
             else { x.obj.heldItem = c.heldItem; c.heldItem = ""; bits.push(`${ownerLabel(x.obj)} is handed ${x.obj.heldItem}`); } }
@@ -30930,6 +31150,256 @@ const FOE_FX = {
       return why ? `(${why})` : `→ ${monTypes(x.obj).join("/")}`;
     } },
 };
+/* ---- Psychic Gym automation (v710): Soundproof vs Sonic effects, Ally Switch, Magic Bounce ---- */
+/* Soundproof: "immune to Moves with the Sonic Keyword. Defensive." - false = this creature never hears it */
+function soundproofHears(o, P){
+  if(!o || !ownerHasAbility(o, "Soundproof")) return true;
+  if(P && P.mold) return true;                                  // Mold Breaker switches Defensive Abilities off
+  try{ if(defensiveAbilitiesGassed(o)) return true; }catch(e){}
+  return false;
+}
+/* Ally Switch: the caster's token and the target's trade squares */
+function swapPlacesFx(x, P){
+  const c = fxCasterOf(P);
+  const ct = c ? tokenForOwner(c) : null, tt = x.token || tokenForOwner(x.obj);
+  if(!c || !ct || !tt) return "\u2014 (not both on this board: swap the tokens by hand)";
+  if(ct === tt || c === x.obj) return "\u2014 that's the user";
+  const gap = tokenTileGap(ct, tt);
+  const ax = ct.x, ay = ct.y; ct.x = tt.x; ct.y = tt.y; tt.x = ax; tt.y = ay;
+  try{ mapTokensSave(); renderMap(); }catch(e){}
+  return `\u2014 swapped places with ${ownerLabel(c)}${gap > 6 ? ` (they were ${gap} m apart \u2014 Ally Switch reaches 6 m)` : ""}`;
+}
+/* Magic Bounce: "The user is hit by a Status Move - The user may reflect the Move back to the attacker." (Scene,
+   Defensive). Only a Status Move from the other side is bounced (an ally's Heal Pulse is not), never one that missed,
+   and never an item or position trade (there is nothing to send back). The effect lands on the caster instead. */
+const MAGIC_BOUNCE_FX = new Set(["statusmove", "abfx", "lock"]);
+async function magicBounceFx(fx, x, P){
+  if(!MAGIC_BOUNCE_FX.has(fx) || P.missed || P.mold || P.bounced) return null;
+  if(P.itemSwap || P.itemTake || P.itemGive || P.itemTrick || P.swapPlaces) return null;
+  const mn = P.fxMove || P.move || P.lockName;
+  const mv = mn && moveByName.get(String(mn).toLowerCase());
+  if(!mv || String(mv.class || "") !== "Status") return null;
+  const o = x.obj;
+  if(!o || !ownerHasAbility(o, "Magic Bounce")) return null;
+  try{ if(defensiveAbilitiesGassed(o)) return null; }catch(e){}
+  const c = fxCasterOf(P); if(!c || c === o) return null;
+  const ct = tokenForOwner(c), ot = x.token || tokenForOwner(o);
+  if(ct && ot && tokenSide(ct) === tokenSide(ot)) return null;
+  const u = abilityUse(o, "Magic Bounce");
+  if(u.left <= 0 || !u.spend()) return null;
+  let back = "";
+  try{ back = await FOE_FX[fx].apply({ obj:c, token:ct, id:"bounce" }, Object.assign({}, P, { bounced:true })) || ""; }
+  catch(e){ console.error("Magic Bounce", e); }
+  if(ct && ct.link) try{ await commitTokenSource(ct); }catch(e){}
+  return `${ownerLabel(o)} \u2014 \u{1FA9E} Magic Bounce: ${mv.name} goes back at ${ownerLabel(c)} ${back}`.trim();
+}
+/* Perish Song: "At the beginning of each of the target's turns, their Perish count is lowered by 1. Once a Perish Count
+   reaches 0, set the Pokemon's Hit Points to 0." The count rides the Perish Count buff the Move hands out; the Map's
+   ▶ ticks it when that creature's turn starts. */
+function perishBuffOf(o){
+  return ownerBuffs(o).find(b => /^abfx-perish count/i.test(String(b.key || "")) || /^perish count/i.test(String(b.name || ""))) || null;
+}
+function tickPerishCount(map, startingId){
+  const out = [];
+  try{
+    const tok = startingId ? mapTokensFor(map.id).find(t => t.id === startingId) : null;
+    const L = tok && tok.link ? tokenLinked(tok) : null, o = L && L.obj;
+    const b = o ? perishBuffOf(o) : null;
+    if(!b) return out;
+    const was = b.perish != null ? b.perish : (parseInt((/(\d+)/.exec(String(b.name || "")) || [])[1]) || 3);
+    const n = was - 1;
+    if(n > 0){
+      b.perish = n; b.name = `Perish Count ${n}`;
+      out.push(`\u{1F3B5} ${ownerLabel(o)}: Perish Count ${n}`);
+      commitTokenSource(tok);
+    } else {
+      removeBuff(o, b.id);
+      out.push(`\u{1F480} ${ownerLabel(o)}: Perish Count 0 \u2014 its Hit Points are set to 0`);
+      setTokenHP(tok, Math.min(0, tokenHp(tok).cur)).then(() => { try{ commitTokenSource(tok); renderMap(); }catch(e){} });
+    }
+  }catch(e){ console.error("Perish Count", e); }
+  return out;
+}
+/* Counter / Mirror Coat: "may be used as a Reaction when the user is hit by a damaging Physical (Special) Attack.
+   Resolve the Triggering Attack, with the user resisting the attack one step further. After the attack is resolved,
+   if the user was not Fainted, the triggering foe then loses Hit Points equal to twice the amount of Hit Points lost
+   by the user from the triggering attack." Counter can't hit what is immune to Fighting, Mirror Coat what is immune
+   to Psychic. One press under the target's result: the extra step is refunded, then the attacker pays double. */
+function moveReactionsNode(victimTok, br, ctx, felled){
+  try{
+    if(felled || !br || !(br.final > 0) || br.typeless) return null;
+    const v = tokenHp(victimTok).obj; if(!v) return null;
+    const want = br.physical ? "Counter" : "Mirror Coat";
+    const knows = [...(v.moves || []), ...(v.encMoves || [])].some(n => moveKey(n) === moveKey(want));
+    if(!knows) return null;
+    const mv = moveByName.get(want.toLowerCase()); if(!mv) return null;
+    const max = (freqInfo(mv.frequency) || {}).max || 2, key = useKey("move", want);
+    const left = usesLeft(v, key, max);
+    const box = el("div", { class:"small", style:"margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;align-items:center" });
+    const btn = el("button", { class:"btn-secondary", style:"padding:2px 8px", onclick:async () => {
+      if(usesLeft(v, key, max) <= 0 && !v.unlocked){ toast(`${want}: no uses left`); return; }
+      const P = { dmg:br.dmg, type:br.type, physical:br.physical, extraStep:br.extraStep || 0, aoe:br.aoe, pierceImmune:br.pierceImmune,
+        pierceDR:br.pierceDR, atkTinted:br.atkTinted, atkExploit:br.atkExploit, atkMega:br.atkMega, atkWar:br.atkWar, atkMold:br.atkMold,
+        atkDeicide:br.atkDeicide, drBonus:br.drBonus, defCSMode:br.defCSMode, chartOverride:br.chartOverride, seBonus:br.seBonus, seFlat:br.seFlat };
+      const same = tokenDamageBreakdown(victimTok, P), resisted = tokenDamageBreakdown(victimTok, Object.assign({}, P, { defExtraStep:-1 }));
+      const refund = Math.max(0, (same.final || 0) - (resisted.final || 0));
+      if(refund > 0) await setTokenHP(victimTok, tokenHp(victimTok).cur + refund);
+      const lost = Math.max(0, (br.final || 0) - refund - (br.tempSoaked || 0));
+      v.uses = v.uses || {}; v.uses[key] = Math.min(max, (v.uses[key] || 0) + 1);
+      if(victimTok.link) await commitTokenSource(victimTok);
+      const lines = [`${ownerLabel(v)} resists it one step further (+${refund} HP back)`];
+      const att = reactionAttacker(ctx), A = att && att.obj;
+      if(!A) lines.push(`the attacker isn't on this board \u2014 they lose ${2 * lost} HP by hand`);
+      else {
+        const ty = isTrainerOwner(A) ? [] : monTypes(A);
+        if(typeMultAgainst(want === "Counter" ? "Fighting" : "Psychic", ty, 0) === 0) lines.push(`${ownerLabel(A)} is immune to ${want}`);
+        else { ownerHPChange(A, -2 * lost, { raw:true }); if(att.token && att.token.link) await commitTokenSource(att.token);
+               lines.push(`${ownerLabel(A)} loses ${2 * lost} HP (twice the ${lost} it cost)`); }
+      }
+      mapTokensSave(); renderMap();
+      btn.disabled = true; btn.textContent = `\u2714 ${want}`;
+      box.append(el("span", { style:"color:var(--accent);font-weight:600" }, lines.join(" \u00b7 ")));
+      toast(`\u21A9 ${want} \u2014 ${lines.join(", ")}`);
+    } }, `\u21A9 ${want} (${left})`);
+    if(left <= 0) btn.style.opacity = ".5";
+    box.append(el("span", { class:"muted" }, "\u21A9 Reaction Move:"), btn);
+    return box;
+  }catch(e){ console.error("Counter / Mirror Coat", e); return null; }
+}
+/* ---- Power Pirouette (Dancer): "Trigger: You perform a Dance Move. Choose one effect" — the box on the Trainer's
+   Dance Move roll, one button per choice; each spends a use (Scene x2) and does what it says. ---- */
+const DANCE_MOVE_KEYS = new Set(["aquastep","clangoroussoul","dragondance","featherdance","fierydance","lunardance",
+  "petaldance","quiverdance","raindance","revelationdance","swordsdance","teeterdance","victorydance"]);
+const isDanceMove = m => DANCE_MOVE_KEYS.has(moveKey((m && m.name) || m || ""));
+const csName = k => (typeof ACC_EVA_STATS !== "undefined" && (ACC_EVA_STATS.find(x => x[0] === k) || [])[1]) || statLbl(k) || k;
+function powerPirouetteBox(t, st, opts){
+  if(!t || !hasFeatureLoose(t, "Power Pirouette")) return null;
+  const mv = st && (st.move && typeof st.move === "object" ? st.move : moveByName.get(String((st && st.name) || "").toLowerCase()));
+  if(!mv || !isDanceMove(mv)) return null;
+  opts = opts || {};
+  const saveFn = opts.persist || save;
+  const f = featureByName.get("Power Pirouette"), freq = (f && f.frequency) || "Scene x2 - Swift Action";
+  const box = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+  const draw = () => {
+    box.innerHTML = "";
+    const info = freqInfo(freq), fk = useKey("feature", "Power Pirouette");
+    const left = freqTrackable(info) ? usesLeft(t, fk, info.max) : null;
+    const can = left == null || left > 0 || !!t.unlocked;
+    box.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"}, "\u{1FA70} Power Pirouette",
+      el("span",{class:"muted",style:"font-weight:600"}, `  \u00b7  ${freq}`)));
+    box.append(el("div",{class:"small",style:"margin-bottom:6px"}, `You performed ${mv.name}, a Dance Move. Choose one effect:`));
+    const spend = () => {
+      if(!can){ toast("Power Pirouette: no uses left this Scene"); return false; }
+      t.uses = t.uses || {}; if(left != null) t.uses[fk] = Math.min(info.max, (t.uses[fk] || 0) + 1); return true;
+    };
+    const done = (line) => {
+      saveFn(); try{ mapTokensSave(); renderMap(); }catch(e){}
+      logRoll({ kind:"skill", label:"\u{1FA70} Power Pirouette", who:ownerLabel(t), headline:`Power Pirouette (${mv.name})`, lines:[line] });
+      toast("\u{1FA70} " + line); draw(); if(opts.rerender) opts.rerender();
+    };
+    const meTok = () => ownerMapToken(t), theMap = () => currentMapForView() || activeMap();
+    const col = el("div",{style:"display:flex;flex-direction:column;gap:6px"});
+    col.append(el("button",{class:can?"btn-primary":"btn-secondary",disabled:!can,style:"text-align:left;padding:6px 10px",onclick:() => {
+      const me = meTok(), map = theMap();
+      if(!me || !map){ if(!spend()) return; done("Everything adjacent is Confused (no token on the board \u2014 apply it by hand)."); return; }
+      if(!spend()) return;
+      const hit = [];
+      mapTokensFor(map.id).forEach(tok => {
+        if(tok.id === me.id || !tok.link || tokenTileGap(me, tok) > 1) return;
+        const o = (tokenLinked(tok) || {}).obj; if(!o || hasStatus(o, "knockedOut")) return;
+        const why = fxStatus(o, "confused");
+        hit.push(why ? `${ownerLabel(o)} (${why})` : ownerLabel(o));
+        commitTokenSource(tok);
+      });
+      done(hit.length ? `Confused: ${hit.join(", ")}` : "Nobody is adjacent \u2014 nothing to Confuse.");
+    }}, "\u{1F635} All adjacent targets are Confused"));
+    const sel = el("select",{style:"padding:4px 6px"}, ["atk","def","spatk","spdef","spd","acc","eva"].map(k => el("option",{value:k}, csName(k))));
+    col.append(el("div",{class:"inline",style:"gap:6px;align-items:center;flex-wrap:wrap"},
+      el("button",{class:can?"btn-primary":"btn-secondary",disabled:!can,style:"padding:6px 10px",onclick:() => {
+        if(!spend()) return;
+        const ok = changeCS(t, sel.value, 1);
+        done(ok ? `${ownerLabel(t)} +1 ${csName(sel.value)} (a Stat the dance didn't raise)` : `${csName(sel.value)} is already capped`);
+      }}, "\u2B06 +1 Combat Stage:"), sel));
+    col.append(el("button",{class:can?"btn-primary":"btn-secondary",disabled:!can,style:"text-align:left;padding:6px 10px",onclick:() => {
+      if(!spend()) return;
+      const me = meTok(), map = theMap();
+      let line = "";
+      if(me && map){ const r = clearHazardsNear(map, me, 5); line = r.cleared ? `${r.cleared} Hazard${r.cleared === 1 ? "" : "s"} destroyed (${r.names.join(", ")})` : "no Hazards within 5 m"; }
+      else line = "no token on the board \u2014 destroy the Hazards within 5 m by hand";
+      try{ clearLeechSeed(t); }catch(e){}
+      const had = (t.statuses || []).filter(k => k === "trapped" || k === "stuck");
+      t.statuses = (t.statuses || []).filter(k => k !== "trapped" && k !== "stuck");
+      done(`${line}; ${ownerLabel(t)} sheds Leech Seed${had.length ? ", " + had.map(statusName).join(", ") : ""}`);
+    }}, "\u{1F9F9} Destroy Hazards within 5 m; shed Leech Seed, Trapped and Stuck"));
+    box.append(col);
+    const pips = usesControl(t, "feature", "Power Pirouette", freq, draw, saveFn);
+    if(pips) box.append(el("div",{class:"inline",style:"gap:6px;align-items:center;margin-top:6px"}, el("span",{class:"small muted"},"Uses"), pips));
+  };
+  draw();
+  return box;
+}
+/* the voice switch saved on the Move: an explicit per-roll pick, else what the Move remembers, else the default */
+function voiceMoveOn(p, m, v, opts){
+  if(opts && opts.voiceOn != null) return !!opts.voiceOn;
+  const saved = p && p.voiceMoves && p.voiceMoves[moveKey(m.name)];
+  return saved != null ? !!saved : !!v.def;
+}
+/* what the switch changes, listed on the roll */
+function voiceChanges(p, m, v){
+  const who = ownerLabel(p), status = String(m.class || "") === "Status";
+  if(v.ab === "Liquid Voice") return [
+    `Type: Water${(monTypes(p) || []).includes("Water") ? " (STAB)" : ""}`,
+    "Loses the Sonic keyword and gains Friendly \u2014 it never hits allies, and Soundproof doesn't stop it",
+    status ? "A Status Move: may be treated as a Special Move with DB 1" : "" ].filter(Boolean);
+  return [
+    `Type: Ghost${(monTypes(p) || []).includes("Ghost") ? " (STAB)" : ""}`,
+    `Origin: any square within 3 m of ${who} \u2014 a Burst, Blast, Cone or Line is drawn from that square, and range is measured from it`,
+    status ? "A Status Move: may be treated as a Special Move with DB 1" : "",
+    "Never with Perish Song" ].filter(Boolean);
+}
+/* the short tag on the Move's line, while the switch is on */
+function voiceMoveTag(p, m){
+  try{
+    const v = sonicVoiceFor(p, m); if(!v || !voiceMoveOn(p, m, v, null)) return "";
+    return v.ab === "Haunting Elegy" ? `${v.icon} Haunting Elegy: Ghost, from any square within 3 m` : `${v.icon} Liquid Voice: Water, Friendly`;
+  }catch(e){ return ""; }
+}
+/* ---- Fox Fire: 3 Fire Wisps on the board; each one's own menu spends it on an Ember ---- */
+function foxFireOwnerOf(wisp, map){
+  const tok = wisp && wisp.wispOf ? mapTokensFor(map.id).find(t => t.id === wisp.wispOf) : null;
+  const o = tok && tok.link ? (tokenLinked(tok) || {}).obj : null;
+  return { tok, o };
+}
+/* ---- Trick lasts until the end of the Scene: each creature remembers its own item the first time it is Tricked,
+   and End Scene hands it back ---- */
+function trickRemember(o){ if(o && !o.trickHeld) o.trickHeld = { item:String(o.heldItem || "") }; }
+function restoreTrickItem(o){
+  if(!o || !o.trickHeld) return false;
+  o.heldItem = o.trickHeld.item || "";
+  delete o.trickHeld;
+  try{ syncHeldStatuses(o); }catch(e){}
+  return true;
+}
+function restoreTrickItemsInEncounters(){
+  let n = 0;
+  try{ encList().forEach(e => {
+    (e.mons || []).forEach(p => { if(restoreTrickItem(p)) n++; });
+    (e.trainers || []).forEach(w => { if(restoreTrickItem(w.trainer)) n++; (w.pokemon || []).forEach(p => { if(restoreTrickItem(p)) n++; }); });
+  }); }catch(e){ console.error("Trick restore", e); }
+  return n;
+}
+/* Liquid Voice / Haunting Elegy: a Sonic Move may go out Water- / Ghost-Typed - the user's call, per roll */
+function sonicVoiceFor(p, m){
+  if(!p || isTrainerOwner(p) || !m || !moveHasKeyword(m, "sonic")) return null;
+  const own = monTypes(p) || [];
+  if(hasAbility(p, "Liquid Voice") || hasAbility(p, "Liquid Voice [Errata]"))
+    return { ab:"Liquid Voice", icon:"\u{1F4A7}", type:"Water", def:true,
+      note:"It loses the Sonic keyword and gains Friendly (it never hits allies), so Soundproof doesn't stop it. A Status Move may be treated as a Special Move with DB 1." };
+  if((hasAbility(p, "Haunting Elegy") || hasAbility(p, "Haunting Elegy [Errata]")) && moveKey(m.name) !== "perishsong")
+    return { ab:"Haunting Elegy", icon:"\u{1F47B}", type:"Ghost", def:false,
+      note:"It may also come from any square within 3 m of the user. A Status Move may be treated as a Special Move with DB 1." };
+  return null;
+}
 /* a player in a cloud game can't see foes — their effects go to the GM */
 function foeFxDeferred(){ return mode === "cloud" && !cloud.isGM; }
 /* what rides in the shared feed row: plain JSON, and small */
@@ -30939,9 +31409,23 @@ function foeFxParams(P){
 async function runFoeFx(fx, chosen, P){
   const def = FOE_FX[fx], hit = [], done = [], skipped = [];
   if(!def) return { hit, done, skipped };
+  /* Trick with TWO targets: "Both targets lose their Held Item and gain the other target's" - they trade with each
+     other, and the user's own item stays where it is. */
+  if(P && P.itemTrick && chosen.length === 2){
+    const [a, b] = chosen, held = o => String((o && o.heldItem) || "").trim();
+    trickRemember(a.obj); trickRemember(b.obj);                     // until the end of the Scene
+    const ha = held(a.obj), hb = held(b.obj);
+    a.obj.heldItem = hb; b.obj.heldItem = ha;
+    try{ syncHeldStatuses(a.obj); syncHeldStatuses(b.obj); }catch(e){}
+    hit.push(a, b);
+    done.push(ha || hb ? `${ownerLabel(a.obj)} now holds ${hb || "nothing"}, ${ownerLabel(b.obj)} holds ${ha || "nothing"}` : "neither holds anything");
+    return { hit, done, skipped };
+  }
   for(const x of chosen){
     const why = def.skip ? def.skip(x, P || {}) : "";
     if(why){ skipped.push(`${ownerLabel(x.obj)} (${why})`); continue; }
+    const mb = await magicBounceFx(fx, x, P || {});
+    if(mb){ hit.push(x); done.push(mb); continue; }
     const note = await def.apply(x, P || {});
     hit.push(x); done.push(note ? `${ownerLabel(x.obj)} ${note}` : ownerLabel(x.obj));
   }
@@ -31045,6 +31529,7 @@ const MUSICIAN_SONGS = [
 function playSong(t, rerender, persist){
   if(!apSpend(t, 1)) return;
   (persist||save)();
+  if(typeof stageOnSong==="function") try{ stageOnSong(t); }catch(e){ console.error(e); }   // 🎭 the counter-melody (stage.js)
   logRoll({ kind:"song", label:"🎵 Song", who:t.name||"",
     headline:`${t.name||"The Musician"} played a Song`,
     lines:["Burst 4 as a Standard Action · Burst 2 off a Dance Move · the triggering Move's own area off a Sonic Move",
@@ -32292,7 +32777,7 @@ function channelCandidates(t){
   const map = (typeof currentMapForView === "function" ? currentMapForView() : null)
            || (typeof activeMap === "function" ? activeMap() : null);
   if(map){
-    const fog = (map.fogOn && !isGM()) ? fogViewSet(map) : null;
+    const fog = (mapFogShown(map) && !isGM()) ? fogViewSet(map) : null;
     mapTokensFor(map.id).forEach(tok => {
       if(!tok.link) return;
       const info = tokenHp(tok);
@@ -38461,7 +38946,7 @@ function powderImmuneNote(m){
        visible foe is named only for what anyone can see (its Grass Type) — an Overcoat or a pair of
        Safety Goggles is the foe's to reveal when the Powder bounces off */
     const gm = mode !== "cloud" || !!cloud.isGM, imm = [];
-    const fog = (!gm && map.fogOn) ? fogViewSet(map) : null;
+    const fog = (!gm && mapFogShown(map)) ? fogViewSet(map) : null;
     mapTokensFor(map.id).forEach(tok => {
       const L = tok.link ? tokenLinked(tok) : null; if(!L || !L.obj) return;
       if(!gm && (tok.gmHidden || (fog && !fog.has(Math.round(tok.x)+","+Math.round(tok.y))))) return;
@@ -39593,6 +40078,286 @@ mons:[
         mons:[ gbot("Sentry Bot",{nick:"Catwalk Sentry A"}), gbot("Sentry Bot",{nick:"Catwalk Sentry B"}),
                gbot("Patrol Bot",{nick:"Patrol Swarm (reinforcement)", swarm:3}) ] },
     ] },
+  { id:"psychicgym", name:"Psychic Gym", icon:"\u{1F3AD}", color:"#a23b72", unit:"act",
+    party:35, players:3, perPlayer:2, arenaSize:24, noArena:true, hideTokens:false,
+    sumNote:" — three acts, each its own x3–4 fight and each harder than the last",
+    finalNote:"Base Experience Value still prices Delphox's three HP bars, its Mega Evolution and Sorcery at nothing. This is the hardest act on the night by a distance.",
+    brief:
+      "\u{1F3AD} PSYCHIC GYM — MEDEA'S GRAND PERFORMANCE. Run it like this:\n"
+      + "• The gym is a theatre and the badge is a show in three acts, played on the Theater map with the audience in\n"
+      + "  their seats. Each act is its own x3–4 fight and each is harder than the last: x3.2, x3.5, x3.8.\n"
+      + "• START AN ACT with \u{1F3AD} Start Act on its encounter card (Encounters tab). The \u{1F3AD} dock opens bottom-left on\n"
+      + "  every screen; \u{1F4CD} Place the opening cast drops exactly the lineup in that act's notes onto the Map the\n"
+      + "  players are looking at. From there the stage engine keeps the score and runs the act's gimmicks — each\n"
+      + "  act's notes say which parts it does and which stay by hand.\n"
+      + "• The challengers field one Pokémon per Trainer, as always.\n"
+      + "• \u{1F3AD} Curtain → Intermission (in the dock) ends an act: every challenger on the board is restored to full HP\n"
+      + "  and cured of Status Conditions, fainted ones included, and it is a new Scene (Scene Frequencies come\n"
+      + "  back), and any Trick trade goes home. Injuries and spent Daily Frequencies do NOT come back: the gym is one\n"
+      + "  long night.\n"
+      + "• BLACKOUT: a wipe ends tonight's show — no badge. After an Extended Rest the challengers may come back, and\n"
+      + "  the show resumes at the act they fell in.\n"
+      + "• \u{1F3AD} OVATION — the audience scores the CHALLENGERS, 0 to 10 per act, counted by the engine:\n"
+      + "  +1 a Critical Hit · a Super-Effective hit · any KO, either side · a passed Flourish · the act's STYLE: the\n"
+      + "  first time each challenger Pokémon uses a Dance Move (Act I) or a Sonic Move (Act II), or lands a hit\n"
+      + "  under a quarter of its HP (Act III).\n"
+      + "  −1 a Pokémon uses the same Move it used on its last turn · a round ends with no challenger damage.\n"
+      + "  The GM's +1 is for what the engine can't see (taking a hit for an ally, a great line).\n"
+      + "  FLOURISH (a button per Trainer in the dock): once a round, a Standard Action playing to the house, DC 16 —\n"
+      + "  Acrobatics (Act I), Charm or Focus (Act II), Charm or Guile (Act III).\n"
+      + "• ACT III: 10 Ovation is a STANDING OVATION — Medea stops the play and hands over the badge.",
+    waves:[
+      { name:"Act I · The Ballet", ring:0, sig:4, perFoe:2, stage:{act:1, kind:"ballet", show:"psychicgym"},
+        note:"\u{1FA70} THE BALLET — Swan Lake into The Firebird, danced by the whole company. No timer: the act ends when one\n"
+             + "side is down. The easiest of the three acts, on purpose.\n"
+             + "\n"
+             + "\u{1F39F} THE LINEUP\n"
+             + "ON STAGE FROM ROUND 1 — 3 Trainers and 8 Pokémon:\n"
+             + "  · Madame Pavlova, keeps all 4 out: Flamenca (Oricorio Baile), Chispa (Oricorio Pom-Pom),\n"
+             + "    Leilani (Oricorio Pa'u), Kagura (Oricorio Sensu)\n"
+             + "  · Odette, keeps 2 out: Siegfried (Quaquaval), Cygne (Swanna)\n"
+             + "  · Odile, keeps 2 out: Firebird (Volcarona), Rothbart (Flamigo)\n"
+             + "IN THE WINGS — steps on the turn after one of its Trainer's Pokémon falls:\n"
+             + "  · Giselle (Lilligant), Odette's — when Siegfried or Cygne falls\n"
+             + "  · Torbellino (Hitmontop), Odile's — when Firebird or Rothbart falls\n"
+             + "A knocked-out Trainer sends nobody: drop Odette first and Giselle never dances.\n"
+             + "\n"
+             + "\u{1F916} THE STAGE ENGINE (press \u{1F3AD} Start Act I above, then \u{1F4CD} Place the opening cast in the \u{1F3AD} dock)\n"
+             + "  Runs itself: Ovation · the reserves walking on when a Pokémon falls · a \u{1F57A} prompt every time anyone\n"
+             + "  dances, with one button per Dancer/Revelation holder in reach (it spends the use and opens the roll) ·\n"
+             + "  Revelation Dance's Type per style and its +5 per other Dance that round · Counter's ↩ button.\n"
+             + "  Power Pirouette (both swans) is its own box on a Dance Move's roll: Confuse everything adjacent / +1 Combat\n"
+             + "  Stage / destroy Hazards within 5 m, one button per choice, each spending a use. By hand: Spinning Dance,\n"
+             + "  Costar's choice of target.\n"
+             + "\n"
+             + "\u{1F4DC} THE RULES\n"
+             + "• THE CORPS DANCES AS ONE. Dancer (all four Oricorio and Siegfried, Scene x2, Free Action): when anyone\n"
+             + "  within 10 m uses a STATUS Dance Move (Feather, Teeter, Swords, Quiver, Rain, Dragon Dance…), each may use\n"
+             + "  it too. Revelation (Chispa and Leilani, Scene x2): when anyone within 10 m uses a DAMAGING Dance Move\n"
+             + "  (Aqua Step, Fiery Dance, Revelation Dance), they may use it too as a Standard Action interrupt. That\n"
+             + "  includes the challengers' own dances — and a Dance Move is also worth a cheer. Let them choose.\n"
+             + "• THE FIREBIRD. Volcarona's Quiver Dance is a Status Dance: every Dancer that follows it gets +1 Sp. Atk /\n"
+             + "  Sp. Def / Speed. Open with it. Rage Powder then drags the challengers' attacks onto the Firebird.\n"
+             + "• ODILE'S SWORDS DANCE (a Trainer Move, standing in for her Dance Form): the corps' cue — +2 Attack for\n"
+             + "  every Dancer that follows. Siegfried is who it is for. Odette's are Feather Dance and Teeter Dance.\n"
+             + "• Pavlova drilled the corps: Dance Practice gave every Oricorio Own Tempo, so a Teeter Dance chain only\n"
+             + "  dizzies the challengers. Power Pirouette (both swans, Scene x2, Swift): after a Dance, everything\n"
+             + "  adjacent is Confused.\n"
+             + "• Competitive (all four Oricorio): every time a challenger lowers their Combat Stages, +2 Sp. Atk.\n"
+             + "• Rothbart's Costar copies an ally's Combat Stages; Torbellino's Whirlwind Kicks make Rapid Spin a Priority\n"
+             + "  Burst 1, and its Counter sends a physical hit back double.\n"
+             + "⚗ SIM (damage only, against the live sheets at full HP, 2026-11-12): the challengers win about 80%, losing\n"
+             + "  about 13 of their 18 Pokémon. It can't see the dancing, so the table will find it harder. Harder: Odette\n"
+             + "  keeps three out (Sim ~48%). Softer: both swans one at a time (Sim ~100%).",
+        trainers:[
+          { name:"Madame Pavlova, the Ballet Mistress", level:38, gender:"Female", classes:["Dancer", "Coordinator"], out:4,
+            avatar:"https://play.pokemonshowdown.com/sprites/trainers/madame.png", avatarFocus:{x:50, y:28, z:170},
+            stats:{hp:11, atk:3, def:8, spatk:3, spdef:8, spd:14},
+            skills:{acrobatics:"Master", charm:"Master", athletics:"Expert", command:"Expert", intuition:"Adept"},
+            features:["Dancer", "Dance Form", "Dance Practice", "Choreographer", "Coordinator", "Decisive Director", "Nuanced Performance"],
+            featAbil:{Dancer:"Own Tempo"},
+            notes:"Ballet Mistress. She owns the corps de ballet and drilled every one of them with Dance Practice, which is\n"
+                + "why all four Oricorio carry Own Tempo. Decisive Director (Standard): a Pokemon's Initiative +/-10 — she\n"
+                + "lines the corps up to dance straight after the Firebird. Nuanced Performance (1 AP): a corps Move that\n"
+                + "misses everything keeps its Frequency.",
+            mons:[ { s:"Oricorio Baile", lv:42, nick:"Flamenca", abil:["Dancer", "Adaptability", "Competitive", "Own Tempo"], nature:"Modest", moves:["Revelation Dance", "Air Slash", "Feather Dance", "Teeter Dance", "Roost", "Helping Hand"], stats:{hp:7, def:4, spatk:19, spdef:4, spd:18} },
+                   { s:"Oricorio Pom-Pom", lv:42, nick:"Chispa", abil:["Dancer", "Revelation", "Competitive", "Own Tempo"], nature:"Modest", moves:["Revelation Dance", "Air Slash", "Feather Dance", "Teeter Dance", "Roost", "Helping Hand"], stats:{hp:7, def:4, spatk:19, spdef:4, spd:18} },
+                   { s:"Oricorio Pa'u", lv:42, nick:"Leilani", abil:["Dancer", "Revelation", "Competitive", "Own Tempo"], nature:"Modest", moves:["Revelation Dance", "Air Slash", "Feather Dance", "Teeter Dance", "Roost", "Helping Hand"], stats:{hp:7, def:4, spatk:19, spdef:4, spd:18} },
+                   { s:"Oricorio Sensu", lv:42, nick:"Kagura", abil:["Dancer", "Adaptability", "Competitive", "Own Tempo"], nature:"Modest", moves:["Revelation Dance", "Air Slash", "Feather Dance", "Teeter Dance", "Roost", "Helping Hand"], stats:{hp:7, def:4, spatk:19, spdef:4, spd:18} } ] },
+          { name:"Odette, the White Swan", level:40, gender:"Female", classes:["Dancer"], out:2,
+            avatar:"https://play.pokemonshowdown.com/sprites/trainers/dancer-gen8.png", avatarFocus:{x:50, y:28, z:160},
+            stats:{hp:12, atk:4, def:8, spatk:4, spdef:8, spd:13},
+            skills:{acrobatics:"Master", athletics:"Expert", charm:"Expert", focus:"Adept"},
+            features:["Dancer", "Dance Form", "Beguiling Dance", "Power Pirouette", "Choreographer"],
+            featAbil:{Dancer:"Spinning Dance"},
+            moves:["Feather Dance", "Teeter Dance"],
+            notes:"The White Swan, prima ballerina. Her Trainer Moves Feather Dance and Teeter Dance stand in for the two\n"
+                + "Dance Moves her Dance Form created — when she dances, every Dancer within 10 m may follow. Power Pirouette\n"
+                + "(Scene x2, Swift) after one of them: all adjacent Confused, or +1 CS to a stat the dance didn't raise.",
+            mons:[ { s:"Quaquaval", lv:46, nick:"Siegfried", abil:["Dancer", "Moxie", "Dazzling"], nature:"Adamant", moves:["Aqua Step", "Liquidation", "Triple Kick", "Acrobatics", "Laser Focus", "Feather Dance"], stats:{hp:11, atk:22, def:8, spdef:4, spd:11} },
+                   { s:"Swanna", lv:42, nick:"Cygne", abil:["Keen Eye", "Hydration", "Serene Grace"], nature:"Modest", moves:["Air Slash", "Feather Dance", "Rain Dance", "Tailwind", "Roost", "Water Pulse"], stats:{hp:13, def:1, spatk:24, spdef:1, spd:13} },
+                   { s:"Lilligant", lv:42, nick:"Giselle", abil:["Chlorophyll", "Leaf Guard", "Gentle Vibe"], nature:"Timid", moves:["Quiver Dance", "Teeter Dance", "Energy Ball", "Giga Drain", "Sleep Powder", "Synthesis"], stats:{hp:5, def:4, spatk:19, spdef:5, spd:19} } ] },
+          { name:"Odile, the Black Swan", level:40, gender:"Female", classes:["Dancer", "Coordinator"], out:2,
+            avatar:"https://play.pokemonshowdown.com/sprites/trainers/kimonogirl.png", avatarFocus:{x:50, y:28, z:160},
+            stats:{hp:12, atk:4, def:8, spatk:4, spdef:8, spd:13},
+            skills:{acrobatics:"Master", athletics:"Expert", charm:"Expert", guile:"Adept"},
+            features:["Dancer", "Dance Form", "Power Pirouette", "Choreographer", "Coordinator", "Decisive Director"],
+            featAbil:{Dancer:"Own Tempo"},
+            moves:["Swords Dance", "Teeter Dance"],
+            notes:"The Black Swan, Odette's double. Her Trainer Moves Swords Dance and Teeter Dance stand in for her Dance\n"
+                + "Form choreography — her Swords Dance is the corps' cue (+2 Attack to every Dancer that follows). Power\n"
+                + "Pirouette after a dance. Decisive Director (Standard): a Pokemon's Initiative +/-10.",
+            mons:[ { s:"Volcarona", lv:47, nick:"Firebird", abil:["Flame Body", "Tinted Lens", "Heat Mirage"], nature:"Modest", moves:["Quiver Dance", "Heat Wave", "Bug Buzz", "Hurricane", "Rage Powder"], tutor:["Fiery Dance"], stats:{hp:7, def:9, spatk:21, spdef:14, spd:6} },
+                   { s:"Flamigo", lv:42, nick:"Rothbart", abil:["Scrappy", "Costar", "Lightning Kicks"], nature:"Adamant", moves:["Acrobatics", "Jump Kick", "Dual Wingbeat", "Mega Kick", "Wide Guard", "Roost"], stats:{hp:10, atk:21, def:7, spdef:4, spd:10} },
+                   { s:"Hitmontop", lv:42, nick:"Torbellino", abil:["Technician", "Steadfast", "Whirlwind Kicks"], nature:"Adamant", moves:["Triple Kick", "Rapid Spin", "Gyro Ball", "Counter", "Agility"], tutor:["Close Combat"], stats:{hp:8, atk:19, def:10, spdef:9, spd:6} } ] } ] },
+      { name:"Act II · The Opera", ring:0, sig:4.5, perFoe:2, stage:{act:2, kind:"opera", show:"psychicgym"},
+        note:"\u{1F3BB} THE OPERA — the orchestra pit rises and the house lights go down. The Maestro conducts from the pit; La\n"
+             + "Diva and Don Basilio hold the stage. No timer: the act ends when one side is down. Harder than the Ballet.\n"
+             + "\n"
+             + "\u{1F39F} THE LINEUP\n"
+             + "ON STAGE FROM ROUND 1 — 3 Trainers and 8 Pokémon:\n"
+             + "  · Maestro Vittorio, keeps all 3 out: Timpani (Rillaboom), Primo Violino (Kricketune), Ottoni (Exploud)\n"
+             + "  · La Diva Serafina, keeps all 3 out: Aria (Primarina), Requiem (Lapras), Cantabile (Altaria)\n"
+             + "  · Don Basilio, keeps 2 out: Baritono (Skeledirge), Punk (Toxtricity)\n"
+             + "IN THE WINGS — steps on the turn after one of its Trainer's Pokémon falls:\n"
+             + "  · Piatti (Kommo-o), Don Basilio's — when Baritono or Punk falls. It has Soundproof.\n"
+             + "A knocked-out Trainer sends nobody.\n"
+             + "\n"
+             + "\u{1F916} THE STAGE ENGINE (press \u{1F3AD} Start Act II above, then \u{1F4CD} Place the opening cast in the \u{1F3AD} dock)\n"
+             + "  Runs itself: the \u{1F3BB} Crescendo meter (+1 per opera Sonic Move — Drum Beating counts — −1 per challenger\n"
+             + "  Sonic Move or Musician Song, frozen when the Maestro falls) · Forte's +5 on the opera's Sonic Moves at\n"
+             + "  3+ · the \u{1F3B6} FINALE button at 6 (it opens the next singer's Perish Song) · Perish Counts ticking at the\n"
+             + "  start of each creature's turn and dropping it to 0 HP at 0 (Soundproof never hears it) · Round's and\n"
+             + "  Echoed Voice's bonus · Ovation · Piatti walking on. Liquid Voice and Haunting Elegy are a TOGGLE on each\n"
+             + "  Sonic Move's roll — switch it on and it stays on for that Move, retyping it (Water / Ghost) and listing\n"
+             + "  what changes (Haunting Elegy: any square within 3 m of the singer is the origin).\n"
+             + "  By hand: Drown Out (a Focus check vs the Move's Accuracy), placing a Burst from the new origin, Power\n"
+             + "  Chord's damage (its Feature button), Sing's miss effect.\n"
+             + "\n"
+             + "\u{1F4DC} THE RULES\n"
+             + "• THE FINALE: the singers are Requiem (Lapras), then Cantabile (Altaria), then Primo Violino (Kricketune) —\n"
+             + "  whichever is still up sings Perish Song (Burst 15, can't miss, once a day each). Everything that hears it\n"
+             + "  faints when its count runs out, the opera's own singers included. Ottoni never hears it, and Piatti walks\n"
+             + "  out of the pit afterwards. Recall, or silence all three singers before the Crescendo gets there.\n"
+             + "• Sing is everywhere (Primo Violino, Aria, Requiem, Cantabile, the Maestro, Don Basilio). Requiem's Wistful\n"
+             + "  Melody takes −2 Attack and Sp. Atk off everything its Sing targets, hit or miss. Uproar wakes everyone\n"
+             + "  in 5 m; Soundproof and Drown Out ignore it all; Throat Chop silences one singer.\n"
+             + "• The Maestro and Don Basilio are Musicians: Songs on their own side (Might +5 damage, Courage, Life 5 DR),\n"
+             + "  and the Maestro's Power Chord turns each Song into damage on every challenger inside it. Twice a scene.\n"
+             + "• Baritono's Haunting Elegy throws its voice and may turn it Ghost; Aria's Liquid Voice turns hers Water and\n"
+             + "  Friendly — both still feed the Crescendo. Punk's Punk Rock: +2 DB on Sonic Moves, Boomburst included.\n"
+             + "⚗ SIM (damage only, against the live sheets at full HP, 2026-11-12): the challengers win about 67%, losing\n"
+             + "  about 13 of their 18 Pokémon. It can't see the Crescendo, Sing or Perish Song, so the table will find it\n"
+             + "  much harder. Harder: Piatti on stage too (Sim ~51%).",
+        trainers:[
+          { name:"Maestro Vittorio, the Conductor", level:48, gender:"Male", classes:["Musician"], out:3, role:"conductor",
+            avatar:"https://play.pokemonshowdown.com/sprites/trainers/gentleman.png", avatarFocus:{x:50, y:28, z:160},
+            stats:{hp:12, atk:2, def:9, spatk:14, spdef:9, spd:7},
+            skills:{charm:"Master", focus:"Master", command:"Expert", perception:"Adept"},
+            features:["Musician", "Musical Ability", "Mt. Moon Blues", "Cacophony", "Noise Complaint", "Voice Lessons", "Power Chord"],
+            featAbil:{"Musical Ability":"Drown Out"},
+            moves:["Sing", "Supersonic", "Screech", "Metal Sound", "Uproar", "Hyper Voice"],
+            notes:"The Conductor, from the orchestra pit. Musician Songs on his own side (Might +5 damage, Courage +2 to\n"
+                + "checks, Life 5 DR), and Power Chord turns each one into an attack on the challengers inside it. Drown Out.\n"
+                + "His own Moves are all Sonic, so he feeds the Crescendo himself.",
+            mons:[ { s:"Rillaboom", lv:50, nick:"Timpani", abil:["Vital Spirit", "Drown Out", "Grassy Surge"], nature:"Adamant", moves:["Drum Beating", "Wood Hammer", "Knock Off", "Uproar", "Slam", "Screech"], stats:{hp:17, atk:21, def:12, spdef:6, spd:4} },
+                   { s:"Kricketune", lv:50, nick:"Primo Violino", abil:["Confidence", "Technician", "Drown Out"], nature:"Adamant", moves:["Bug Buzz", "Sing", "Night Slash", "X-Scissor", "Sticky Web", "Perish Song"], stats:{hp:12, atk:24, def:8, spdef:4, spd:12}, role:"singer3" },
+                   { s:"Exploud", lv:50, nick:"Ottoni", abil:["Soundproof", "Intimidate", "Vital Spirit"], nature:"Modest", moves:["Crunch", "Uproar", "Screech", "Roar"], tutor:["Boomburst", "Hyper Voice"], stats:{hp:22, def:1, spatk:26, spdef:1, spd:10} } ] },
+          { name:"La Diva Serafina, the Soprano", level:48, gender:"Female", classes:["Coordinator"], out:3,
+            avatar:"https://play.pokemonshowdown.com/sprites/trainers/lady.png", avatarFocus:{x:50, y:28, z:160},
+            stats:{hp:12, atk:2, def:9, spatk:10, spdef:13, spd:7},
+            skills:{charm:"Master", intuition:"Expert", focus:"Expert", guile:"Adept"},
+            features:["Coordinator", "Decisive Director", "Nuanced Performance"],
+            notes:"La Diva. Nuanced Performance (1 AP, Free): when one of her Pokemon misses every target the Move's\n"
+                + "Frequency isn't spent — a missed Sing or Perish Song comes straight back. Decisive Director: a Pokemon's\n"
+                + "Initiative +/-10. She keeps her two singers alive until the Finale.",
+            mons:[ { s:"Primarina", lv:50, nick:"Aria", abil:["Torrent", "Liquid Voice", "Wash Away"], nature:"Modest", moves:["Sparkling Aria", "Moonblast", "Sing", "Encore", "Icy Wind"], tutor:["Hyper Voice"], stats:{hp:16, def:8, spatk:20, spdef:12, spd:4} },
+                   { s:"Lapras", lv:50, nick:"Requiem", abil:["Shell Armor", "Wistful Melody", "Noble Steed"], nature:"Modest", moves:["Perish Song", "Sing", "Ice Beam", "Hydro Pump", "Body Slam", "Confuse Ray"], stats:{hp:18, def:9, spatk:19, spdef:13, spd:1}, role:"singer1" },
+                   { s:"Altaria", lv:50, nick:"Cantabile", abil:["Natural Cure", "Confidence", "Cloud Nine"], nature:"Modest", moves:["Perish Song", "Sing", "Dragon Pulse", "Cotton Guard", "Round", "Disarming Voice"], stats:{hp:11, def:11, spatk:17, spdef:15, spd:6}, role:"singer2" } ] },
+          { name:"Don Basilio, the Baritone", level:48, gender:"Male", classes:["Musician"], out:2,
+            avatar:"https://play.pokemonshowdown.com/sprites/trainers/musician-gen8.png", avatarFocus:{x:50, y:28, z:160},
+            stats:{hp:12, atk:2, def:9, spatk:12, spdef:9, spd:9},
+            skills:{charm:"Expert", focus:"Expert", command:"Adept", intimidate:"Adept"},
+            features:["Musician", "Musical Ability", "Mt. Moon Blues", "Cacophony", "Noise Complaint"],
+            featAbil:{"Musical Ability":"Soundproof"},
+            moves:["Sing", "Supersonic", "Screech", "Metal Sound", "Uproar", "Hyper Voice"],
+            notes:"The Baritone. A Musician with Soundproof — he never hears the Finale. Songs on his own side; his\n"
+                + "Moves are all Sonic, so he feeds the Crescendo too.",
+            mons:[ { s:"Skeledirge", lv:51, nick:"Baritono", abil:["Blaze", "Haunting Elegy", "Unaware"], nature:"Modest", moves:["Torch Song", "Hyper Voice", "Flamethrower", "Shadow Ball", "Hex", "Will-O-Wisp"], stats:{hp:17, def:9, spatk:21, spdef:10, spd:4} },
+                   { s:"Toxtricity-Amped", lv:50, nick:"Punk", abil:["Poison Point", "Punk Rock", "Prime Fury"], nature:"Modest", moves:["Overdrive", "Boomburst", "Discharge", "Toxic", "Screech"], tutor:["Hyper Voice"], stats:{hp:15, def:1, spatk:28, spdef:1, spd:15} },
+                   { s:"Kommo-o", lv:50, nick:"Piatti", abil:["Soundproof", "Bulletproof", "Discipline"], nature:"Modest", moves:["Clanging Scales", "Dragon Claw", "Iron Defense", "Work Up", "Screech", "Dragon Tail"], stats:{hp:1, def:20, spatk:21, spdef:11, spd:7} } ] } ] },
+      { name:"Act III · Medea", ring:0, sig:5, perFoe:2, stage:{act:3, kind:"play", show:"psychicgym"},
+        note:"\u{1F52E} MEDEA — the gym itself, staged as Medea's own tragedy, with Jason and the Nurse in the cast. She is a\n"
+             + "director, not a duellist: what she wants is a great show, and to her audience a great show is a bloody one.\n"
+             + "The hardest act.\n"
+             + "\n"
+             + "\u{1F39F} THE LINEUP\n"
+             + "ON STAGE FROM ROUND 1 — 3 Trainers and 5 Pokémon:\n"
+             + "  · Medea, keeps ONE out — each of hers gets its own scene: Hécate (Delphox, 3 HP bars)\n"
+             + "  · Jason, keeps 2 out: Argo (Gallade), Vellón (Alakazam, holding a Flame Orb)\n"
+             + "  · The Nurse, keeps 2 out: Nodriza (Hatterene), Coro (Gothitelle)\n"
+             + "IN THE WINGS — steps on the turn after one of its Trainer's Pokémon falls:\n"
+             + "  · Medea's, one at a time, in this order: Aeëtes (Malamar), Pierrot (Mr. Rime), Pythia (Xatu)\n"
+             + "  · Glauce (Gardevoir), Jason's — when Argo or Vellón falls\n"
+             + "A knocked-out Trainer sends nobody — but Medea stands well back.\n"
+             + "\n"
+             + "\u{1F916} THE STAGE ENGINE (press \u{1F3AD} Start Act III above, then \u{1F4CD} Place the opening cast in the \u{1F3AD} dock)\n"
+             + "  Runs itself: the scene changes (Psychic Terrain at the curtain, Wonder Room at the top of round 3, Trick\n"
+             + "  Room at the top of round 5) · the knockout tally and the ⚡ Plot Twist buttons · Hécate's Mega Evolution the\n"
+             + "  moment its first bar breaks · the reserves · Ovation and the \u{1F339} Standing Ovation · the four \u{1F573} trapdoors\n"
+             + "  coming out of hiding when the act starts. On the sheet: Trick with one or two targets (the items stay\n"
+             + "  swapped until the end of the Scene — the Curtain hands them back), Ally Switch swapping the tokens, Magic\n"
+             + "  Bounce reflecting a hostile Status Move (Nodriza, Pythia), Mirror Coat's ↩ button, the Flame Orb burning\n"
+             + "  whoever ends up holding it. Hécate's Fox Fire has a \u{1F3EE} button that drops its three wisps beside it; tap a\n"
+             + "  wisp to spend it on an Ember. Tap a trapdoor to send whoever stands on it up through another one.\n"
+             + "  By hand: Probability Control's rerolls, Reality Bender, Shadow Tag's pin.\n"
+             + "\n"
+             + "\u{1F4DC} THE RULES\n"
+             + "• THE POISONED GIFT. Vellón holds a Flame Orb (its Magic Guard ignores the Burn). Medea's Trick picking\n"
+             + "  Vellón AND a challenger trades their items until the end of the Scene: the challenger's Pokémon catches\n"
+             + "  fire the moment it holds it, and the Burn stays after the Orb goes home.\n"
+             + "  It is how Medea killed Glauce in the play — so of course she does it to the challengers.\n"
+             + "• THE STAGE IS A PSYCHIC GYM. Four \u{1F573} TRAPDOORS are marked on the Theater stage (two upstage, two downstage,\n"
+             + "  hidden until Act III starts): end a move on one and, as a Swift Action, sink through it and come up out of\n"
+             + "  any other. Her cast use them freely.\n"
+             + "• THE SCRIPT (roleplay it — the engine doesn't prompt for it). At the top of every round Medea reads the next\n"
+             + "  line aloud: who dies next (\"Next, the faithless hero burns!\"). Everything she has goes at that target that\n"
+             + "  round. Telling them is the point.\n"
+             + "• HOW SHE DIRECTS. A knockout is the best scene there is: her cast take every finishing blow they're offered.\n"
+             + "  Decisive Director (+/-10 Initiative) lines her cast up to strike back to back.\n"
+             + "• PLOT TWISTS. For every two knockouts the challengers get ahead of her, she cuts in — each once: Topsy-\n"
+             + "  Turvy on the most-buffed challenger · Trick Room early · the Mega Evolution early · Nodriza's Heal Pulse on\n"
+             + "  her lowest Pokémon.\n"
+             + "• THE TRANSFORMATION SCENE. When Hécate's first HP bar breaks it Mega Evolves (it holds the Delphoxite):\n"
+             + "  Levitate and +5 Sp. Atk, with Sorcery already on top.\n"
+             + "• Aeëtes has Contrary: Superpower RAISES its Attack and Defense. Coro's Shadow Tag pins one challenger for\n"
+             + "  5 turns. Pierrot's Teeter Dance confuses everything next to it, and its Mirror Coat sends a special hit\n"
+             + "  back double.\n"
+             + "• WIN: knock out every one of her performers, or a STANDING OVATION (10 Ovation this act) — she stops the\n"
+             + "  play and hands over the badge. That is the only mercy in the building.\n"
+             + "⚗ SIM (damage only, against the live sheets at full HP, 2026-11-12): the challengers win about 51% with\n"
+             + "  Hécate un-Mega'd and about 47% if it were Mega from round 1, losing about 15 of their 18 Pokémon. It\n"
+             + "  can't see the Script, the Plot Twists, Hypnosis or the Nurse's potions, so it plays harder still.\n"
+             + "  Softer: the Nurse one at a time (Sim ~62%). Never: Medea with two out (Sim ~6%, a wipe).",
+        trainers:[
+          { name:"Medea", level:55, gender:"Female", classes:["Type Ace", "Warper", "Coordinator"], chosenType:"Psychic", out:1, role:"director",
+            avatar:"https://xbdxfruzkddhuesrwcvc.supabase.co/storage/v1/object/public/images/poketicia/avatar/mw817q19yuu9p.png", avatarFocus:{x:57, y:21, z:210},
+            stats:{hp:15, atk:2, def:11, spatk:11, spdef:13, spd:12},
+            skills:{charm:"Master", guile:"Master", focus:"Expert", intuition:"Expert", command:"Expert", perception:"Adept", occultEd:"Adept", acrobatics:"Novice"},
+            edges:["Elemental Connection"],
+            features:["Type Ace", "Psionic Sponge", "Mindbreak", "Psychic Resonance", "Warper", "Space Distortion", "Warping Ground", "Reality Bender", "Coordinator", "Decisive Director", "Nuanced Performance"],
+            moves:["Teleport", "Ally Switch", "Gravity", "Trick"],
+            notes:"The Director. Type Ace (Psychic) / Warper / Coordinator. Decisive Director (Standard): any Pokemon's\n"
+                + "Initiative +/-10. Probability Control (Warper): a reroll of any roll — she spends it to keep the Script\n"
+                + "true. Reality Bender (Daily). Trainer Moves: Teleport and Ally Switch (Space Distortion), Gravity and\n"
+                + "Trick (Warping Ground). Psionic Sponge, Mindbreak and Psychic Resonance on her Pokemon. Delphox holds\n"
+                + "the Delphoxite. Script, scene changes and Plot Twists are in the encounter notes.",
+            mons:[ { s:"Delphox", lv:56, nick:"Hécate", abil:["Forewarn", "Sorcery", "Fox Fire"], nature:"Modest", moves:["Mystical Fire", "Psyshock", "Flamethrower", "Psychic"], tutor:["Heat Wave", "Future Sight"], stats:{hp:7, def:5, spatk:24, spdef:6, spd:24}, held:"Delphoxite", typeAce:{ability:"Type Strategist", type:"Psychic"}, boss:3, role:"star" },
+                   { s:"Malamar", lv:55, nick:"Aeëtes", abil:["Infiltrator", "Hypnotic", "Contrary"], nature:"Adamant", moves:["Topsy-Turvy", "Hypnosis", "Foul Play", "Psycho Cut", "Night Slash", "Superpower"], stats:{hp:17, atk:22, def:13, spdef:9, spd:4}, role:"villain" },
+                   { s:"Mr. Rime", lv:55, nick:"Pierrot", abil:["Filter", "Ice Shield", "Screen Cleaner"], nature:"Modest", moves:["Freeze-Dry", "Psychic", "Mirror Coat", "Ally Switch", "Teeter Dance"], tutor:["Encore"], stats:{hp:15, def:9, spatk:22, spdef:14, spd:5} },
+                   { s:"Xatu", lv:55, nick:"Pythia", abil:["Synchronize", "Probability Control", "Magic Bounce"], nature:"Timid", moves:["Psychic", "Future Sight", "Air Slash", "Confuse Ray", "Wish", "Psycho Shift"], stats:{hp:9, def:5, spatk:23, spdef:5, spd:23} } ] },
+          { name:"Jason, the Leading Man", level:52, gender:"Male", classes:["Commander"], out:2,
+            avatar:"https://play.pokemonshowdown.com/sprites/trainers/acetrainer.png", avatarFocus:{x:50, y:28, z:160},
+            stats:{hp:14, atk:9, def:11, spatk:4, spdef:11, spd:12},
+            skills:{command:"Master", charm:"Expert", combat:"Adept", athletics:"Adept", intimidate:"Adept"},
+            features:["Commander", "Leadership", "Mobilize", "Tip the Scales"],
+            notes:"The faithless hero of the play — and Medea's Script loves to name him as the one who survives, so the\n"
+                + "challengers have to come through his Gallade, then his bride Glauce. Commander: Orders, which Leadership lets him give to any\n"
+                + "ally on Medea's side; Tip the Scales spreads an At-Will Order to every ally within 10 m.",
+            mons:[ { s:"Gallade", lv:53, nick:"Argo", abil:["Sharpness", "Justified", "Vanguard"], nature:"Adamant", moves:["Psycho Cut", "Swords Dance", "Feint", "False Swipe"], tutor:["Close Combat", "Leaf Blade"], stats:{hp:10, atk:27, def:10, spdef:6, spd:10} },
+                   { s:"Alakazam", lv:53, nick:"Vellón", abil:["Inner Focus", "Magic Guard", "Life Force"], nature:"Timid", moves:["Psychic", "Future Sight", "Trick", "Recover", "Reflect", "Ally Switch"], stats:{hp:8, def:4, spatk:23, spdef:5, spd:23}, held:"Flame Orb" },
+                   { s:"Gardevoir", lv:53, nick:"Glauce", abil:["Synchronize", "Forewarn", "Trace"], nature:"Modest", moves:["Psychic", "Future Sight", "Hypnosis", "Dream Eater", "Calm Mind"], tutor:["Moonblast"], stats:{hp:8, def:8, spatk:24, spdef:16, spd:7} } ] },
+          { name:"The Nurse", level:52, gender:"Female", classes:["Medic"], out:2,
+            avatar:"https://play.pokemonshowdown.com/sprites/trainers/nurse.png", avatarFocus:{x:50, y:28, z:160},
+            stats:{hp:15, atk:2, def:12, spatk:7, spdef:12, spd:13},
+            skills:{medicineEd:"Master", focus:"Expert", intuition:"Adept", charm:"Adept"},
+            features:["Medic", "Front Line Healer", "Medical Techniques [Medic]", "I'm A Doctor Rank 1"],
+            notes:"Medea's confidante, and the one keeping the cast standing. Medic: her Restoratives come with a Tick of\n"
+                + "Hit Points on top (Medical Techniques) and +5 DR for her while she works (Front Line Healer). She carries\n"
+                + "3 Super Potions and a Revive — for Medea's Pokemon, never the challengers'.",
+            mons:[ { s:"Hatterene", lv:53, nick:"Nodriza", abil:["Cruelty", "Healer", "Magic Bounce"], nature:"Modest", moves:["Psychic", "Dazzling Gleam", "Calm Mind", "Heal Pulse", "Psycho Cut", "Life Dew"], stats:{hp:1, def:14, spatk:26, spdef:18, spd:4}, role:"healer" },
+                   { s:"Gothitelle", lv:53, nick:"Coro", abil:["Competitive", "Cute Tears", "Shadow Tag"], nature:"Modest", moves:["Future Sight", "Psychic", "Heal Block", "Telekinesis", "Psyshock", "Fake Tears"], stats:{hp:12, def:10, spatk:22, spdef:14, spd:5} } ] } ] },
+    ] },
 ];
 /* The everyday budget this gauntlet is priced against -- the same line ⚖ Difficulty draws. */
 const gauntletBudget = (party, players) => Math.round(Math.max(0,party) * 2 * Math.max(1,players));
@@ -39647,6 +40412,9 @@ function gauntletMon(spec){
     .filter(m => moveByName.get(String(m).toLowerCase())).slice(0, 6);
   if(moves.length) p.moves = moves;
   if(spec.nature && D.natures.some(n=>n.name===spec.nature)) p.nature = spec.nature;
+  if(spec.held) p.heldItem = spec.held;                          // e.g. a gym ace's Mega Stone, so ✨ Mega shows on its card
+  if(spec.typeAce) p.typeAce = Object.assign({}, spec.typeAce);  // its Trainer's Type Ace grant {ability, type}
+  if(spec.role) p.stageRole = spec.role;                         // the stage engine's cast list (stage.js): singer, star, villain…
   if(spec.stats){
     STATS.forEach(([k]) => { p.stats[k] = { added:0 }; });
     Object.entries(spec.stats).forEach(([k,v])=>{ if(p.stats[k]) p.stats[k].added = Math.max(0, v|0); });
@@ -39675,6 +40443,12 @@ function gauntletTrainer(t){
   if(t.weapons) tr.weapons = t.weapons.map(w=>Object.assign({ id:uid(), name:"", type:"Normal", acMod:0, dbMod:0, notes:"",
     range:"Melee", category:"Small Melee", equipped:false, twoHanded:false, weaponMove:"", weaponMoveAdept:"", weaponMoveMaster:"" }, w));
   if(t.notes) tr.notes = t.notes;
+  if(t.gender) tr.gender = t.gender;
+  if(t.chosenType) tr.chosenType = t.chosenType;                 // Type Ace's Chosen Type
+  if(t.role) tr.stageRole = t.role;                              // stage.js: conductor, director…
+  if(t.out) tr.stageOut = t.out;                                 // stage.js: how many of their Pokémon are on stage at once
+  if(t.featAbil) tr.featAbil = Object.assign({}, t.featAbil);    // Musical Ability → Drown Out, Dancer → Own Tempo, ...
+  if(t.moves) tr.encMoves = t.moves.filter(m => moveByName.get(String(m).toLowerCase()));   // the Moves their Features teach
   if(t.avatar){ tr.avatar = t.avatar; if(t.avatarFocus) tr.avatarFocus = Object.assign({}, t.avatarFocus); }   // bundled portrait (assets/npc)
   if(t.augs){ tr.augs = t.augs.map(a => Object.assign({}, a)); syncAugWeapon(tr); }
   normTrainer(tr);
@@ -39691,13 +40465,13 @@ function gauntletWaveNotes(g, w, i, enc, party, players, arena){
                             (arena && arena.shrink) || ARENA_SHRINK, w);
   const out = [];
   if(i === 0 && g.brief) out.push(g.brief, "");
-  out.push(`${g.icon||"\u{1F30A}"} ${g.name} — ${g.noArena?"fight":"wave"} ${i+1} of ${g.waves.length}.`);
+  out.push(`${g.icon||"\u{1F30A}"} ${g.name} — ${gauntletUnit(g)} ${i+1} of ${g.waves.length}.`);
   if(!g.noArena) out.push(`\u{1F300} Arena: ring ${w.ring} — close the circle to ${play} squares across before this wave arrives.`);
   out.push(`⚖ ${base} Levels against an everyday ${everyday + ally} (Lv ${party} × 2 × ${players} player`
     + `${players===1?"":"s"}${ally ? ` + ${ally} for the ${w.allies.n} fighting with you` : ""}) = ×${Math.round(ratio*100)/100} — ${band.label}.`);
   if(i === g.waves.length-1 && g.finalNote){
     const total = g.waves.reduce((n,x)=>n+gauntletWaveBase(x),0);
-    out.push(`   All ${g.waves.length} fights together: ${total} Levels = ×${Math.round(total/everyday*100)/100} an everyday fight.`, `   ${g.finalNote}`);
+    out.push(`   All ${g.waves.length} ${gauntletUnits(g)} together: ${total} Levels = ×${Math.round(total/everyday*100)/100} an everyday fight.`, `   ${g.finalNote}`);
   } else if(i === g.waves.length-1){
     const total = g.waves.reduce((n,x)=>n+gauntletWaveBase(x),0);
     out.push(`   All ${g.waves.length} waves together: ${total} Levels = ×${Math.round(total/everyday*100)/100} `
@@ -39709,6 +40483,9 @@ function gauntletWaveNotes(g, w, i, enc, party, players, arena){
   if(w.note) out.push("", w.note);
   return out.join("\n");
 }
+/* What one part of this gauntlet is called -- a wave, a fight, or (a theatre gym) an act. */
+const gauntletUnit  = g => g.unit || (g.noArena ? "fight" : "wave");
+const gauntletUnits = g => gauntletUnit(g) + "s";
 /* Base Experience Value of a wave straight off its spec, without building it -- what the picker
    quotes before anything is created. Trainers count double (Core p.460). */
 function gauntletWaveBase(w){
@@ -39760,6 +40537,7 @@ function buildGauntlet(g, party, players, arena){
     enc.sig = w.sig || 2;
     enc.diffPerPlayer = g.perPlayer;       // pre-set the ⚖ Difficulty boxes to the shape it was built for
     enc.diffPerFoe = w.perFoe || 6;
+    if(w.stage) enc.stage = Object.assign({}, w.stage);   // 🎭 a theatre act the stage engine can run (stage.js)
     (w.mons||[]).forEach(s=> enc.mons.push(gauntletMon(s)));
     (w.trainers||[]).forEach(t=>{
       enc.trainers.push({ id:uid(), trainer:gauntletTrainer(t), pokemon:(t.mons||[]).map(gauntletMon) });
@@ -39770,7 +40548,7 @@ function buildGauntlet(g, party, players, arena){
   });
   if(made.length) state.activeEncounterId = made[0].id;
   saveEnc(); renderEncounters();
-  toast(`${g.icon||"\u{1F30A}"} ${g.name} — ${made.length} waves built`);
+  toast(`${g.icon||"\u{1F30A}"} ${g.name} — ${made.length} ${gauntletUnits(g)} built`);
 }
 /* The picker. The party figures default to what the live sheets say and are editable, because the
    whole balance hangs off them -- a gauntlet priced for Lv 28 is a different fight at Lv 34. */
@@ -39808,7 +40586,7 @@ function openGauntlets(){
       const everyday = gauntletBudget(party, players);
       const band = diffBand(total/everyday);
       sum.innerHTML = "";
-      sum.append(el("span",{}, `Everyday budget ${everyday} Levels · all ${g.waves.length} waves `),
+      sum.append(el("span",{}, `Everyday budget ${everyday} Levels · all ${g.waves.length} ${gauntletUnits(g)} `),
         el("b",{style:`color:${band.color}`}, `${total} Levels = ×${Math.round(total/everyday*100)/100}`),
         el("span",{class:"muted"}, g.sumNote || " — no single wave over an everyday fight, the run of them well past Boss-tier."));
       rows.innerHTML = "";
@@ -39843,7 +40621,7 @@ function openGauntlets(){
         const arena = { size:Math.max(2, parseInt(aIn.value)||g.arenaSize),
                         shrink:Math.max(1, parseInt(shIn.value)||ARENA_SHRINK) };
         closeModal(); buildGauntlet(g, party, players, arena);
-      }},(g.icon||"\u{1F30A}")+" Build the "+(g.noArena?"fights":"waves"))));
+      }},(g.icon||"\u{1F30A}")+" Build the "+gauntletUnits(g))));
     wrap.append(el("div",{class:"inline",style:"gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:6px"},
       el("label",{class:"field"}, el("span",{},"Party leads with Lv"), pIn),
       el("label",{class:"field"}, el("span",{},"Players"), nIn),
@@ -41761,7 +42539,8 @@ function renderEncounters(){
     isContestEnc ? "" : el("button",{class:"btn-secondary",style:"padding:6px 12px",
       title:"weigh this encounter against the party using the Core p.473 encounter-building guidelines",
       onclick:()=>openEncDifficulty(cur)},"⚖ Difficulty"),
-    isContestEnc ? "" : el("button",{class:"btn-primary",style:"padding:6px 12px",onclick:()=>openExpCalc(cur)},"🧮 Calculate EXP")));
+    isContestEnc ? "" : el("button",{class:"btn-primary",style:"padding:6px 12px",onclick:()=>openExpCalc(cur)},"🧮 Calculate EXP"),
+    (typeof stageEncounterButton==="function" ? (stageEncounterButton(cur) || "") : "")));   // 🎭 run this act (stage.js)
   if(!isContestEnc) setc.append(el("div",{class:"small muted",style:"margin-top:4px"}, `Base XP so far: `, el("b",{}, String(encounterBaseXP(cur))), ` (sum of enemy levels; Trainers count double, a Swarm counts its whole Multiplier). Significance ×${cur.sig}, ${cur.players} player${cur.players===1?"":"s"} — edit in Calculate EXP.`));
   const hideCb = el("input",{type:"checkbox"}); hideCb.checked = !!cur.hideTokens;
   hideCb.addEventListener("change",()=>{ cur.hideTokens=hideCb.checked; saveEnc(); });
@@ -43432,6 +44211,11 @@ function sweepMapAuras(map){
       hit = mark(L.obj, "suppressed", "autoPressure", tokenPressureSources(map, token).length > 0) || hit;
     if(anySapper || L.obj.autoGiftsap)
       hit = mark(L.obj, "giftsapped", "autoGiftsap", tokenGiftsapSources(map, token).length > 0) || hit;
+    /* The Hush "ends early if you are knocked out" — the victim carries the user's token id */
+    if(L.obj.hush && L.obj.hush.tok && hasStatus(L.obj, "hushed")){
+      const src = toks.find(x => x.id === L.obj.hush.tok);
+      if(src && tokenIsDown(src)){ L.obj.statuses = L.obj.statuses.filter(k => k !== "hushed"); delete L.obj.hush; hit = true; }
+    }
     if(!hit) return;
     changed = true;
     if(ENEMY_LINKS.has(L.kind)) encTouched = true;
@@ -48871,7 +49655,9 @@ function flushUiRefresh(){
   if(kinds.includes("pc")  && currentTab==="pc")  renderPC();
   if(kinds.includes("enc") && (currentTab==="encounters" || currentTab==="map")) render();
   if(kinds.includes("rolls")){ renderRollFeed(); renderBlessingPops(); renderCallOverlay();
-    if(typeof contestRender==="function") try{ contestRender(); }catch(e){ console.error(e); } }   // all float over every tab, so no tab check
+    if(typeof contestRender==="function") try{ contestRender(); }catch(e){ console.error(e); }
+    if(typeof stageRender==="function") try{ stageRender(); }catch(e){ console.error(e); } }   // all float over every tab, so no tab check
+  if(kinds.includes("map") && typeof stageRender==="function") try{ stageRender(); }catch(e){ console.error(e); }   // 🎭 a new round moves the stage dock too
   // a cart tick shouldn't rebuild the whole board — swap just the floating shop panel when we're on it
   if(kinds.includes("shops")){
     if(currentTab==="shops") renderShops();
@@ -50642,7 +51428,7 @@ function floorSwitch(map){
 function floorTokenVisible(t, m){
   if(isNoteToken(t) || (isZoneToken(t) && t.ghost)) return false;
   if(t.gmHidden) return !!cloud.isGM;
-  if(cloud.isGM || !m.fogOn) return true;
+  if(cloud.isGM || !mapFogShown(m)) return true;
   if(t.link && ownsRow(cloud.byId[t.link.sheetId])) return true;
   if(t.garden && ownsRow(cloud.byId[t.garden.sheetId])) return true;
   return fogViewSet(m).has(Math.round(t.x)+","+Math.round(t.y));
@@ -50683,7 +51469,8 @@ function floorUnderLayer(map, originX, originY){
   if(b.night) wrap.append(el("div",{class:"map-night",style:`width:${os.w}px;height:${os.h}px`}));
   if(b.timeStop) wrap.append(el("div",{class:"map-timestop",style:`width:${os.w}px;height:${os.h}px`}));
   mapDrawOrder(mapTokensFor(b.id)).forEach(t=>{ if(floorTokenVisible(t, b)) wrap.append(floorInertToken(t, b, os.originX, os.originY)); });
-  if(b.fogOn && !cloud.isGM){ const cv = el("canvas",{class:"map-fog"}); drawFog(cv, b, os.w, os.h, os.originX, os.originY); wrap.append(cv); }
+  if(mapFogShown(b) && !cloud.isGM){ const cv = el("canvas",{class:"map-fog"}); drawFog(cv, b, os.w, os.h, os.originX, os.originY); wrap.append(cv);
+    curtainOverFog(b, os.originX, os.originY).forEach(n=>wrap.append(n)); }
   wrap.append(el("div",{class:"map-floor-dim", style:`width:${os.w}px;height:${os.h}px;opacity:${floorDim(map)}`}));
   return wrap;
 }
@@ -50955,7 +51742,7 @@ function visibleWildMonTokens(){
   return mapTokensFor(map.id)
     .filter(t=>{
       if(t.link?.kind!=="enc" || t.gmHidden) return false;
-      if(cloud.isGM || !map.fogOn) return true;
+      if(cloud.isGM || !mapFogShown(map)) return true;
       return fog.has(Math.round(t.x)+","+Math.round(t.y));
     })
     .map(t=>({ token:t, mon:tokenLinked(t)?.obj }))
@@ -51199,7 +51986,7 @@ function tokenHp(token){
       return { cur:1, max:1, editable:gardenTokenEditable(token), name:(pl && pl.crop) || token.label || "Plant",
                sprite:gardenTokenSprite(token), unlinked:false, kind:"hazard", hideName:false }; }
     if(isHazardToken(token)){ const h=hazardDef(token);
-      return { cur:1, max:1, editable:cloud.isGM, name:h.name, sprite:hazardSprite(token),
+      return { cur:1, max:1, editable:cloud.isGM, name:token.label || (token.trapdoor ? "Trapdoor" : h.name), sprite:hazardSprite(token),
                unlinked:false, kind:"hazard", hideName:false }; }
     // a door: real HP / Def / DR for the damage tools, but scenery everywhere else (see DOORS)
     if(isDoorToken(token)){
@@ -51628,6 +52415,7 @@ function advanceInitiative(map, meta, dir){
   meta.initTurnId = list[idx].id;
   if(wrapped){ meta.initRound=(meta.initRound||1)+1; resetMapMovement(map); refreshSwarmRounds(map); }   // round ends → reset movement (like ↺ New round)
   if(wrapped && typeof contestOnRoundWrap==="function") try{ contestOnRoundWrap(meta.initRound); }catch(e){ console.error(e); }   // 🎀 Battle Contest round count
+  if(wrapped && typeof stageOnRoundWrap==="function") try{ stageOnRoundWrap(meta.initRound, map); }catch(e){ console.error(e); }   // 🎭 scene changes, the Script (stage.js)
   // A forward step ends the previous combatant's turn → expire the buffs THEY cast (on any creature,
   // e.g. a Musician's Songs on allies), at the end of their next turn. Stepping back = correction, no expiry.
   let expired = [];
@@ -51653,6 +52441,7 @@ function advanceInitiative(map, meta, dir){
   const typeEnded = dir>0 ? tickTypeModTurns(map, endingId, endingSeq, initEntryToken(meta.initTurnId), meta.initSeq||0) : [];
   const hookLines = dir>0 ? runAbilityTurnHooks(map, endingId, (list[idx] && list[idx].act===0) ? list[idx].token : null) : [];
   const pendDue = dir>0 ? tickPendingTurns(map, endingId, endingSeq, initEntryToken(meta.initTurnId), meta.initSeq||0) : [];
+  const perishLines = dir>0 ? tickPerishCount(map, initEntryToken(meta.initTurnId)) : [];   // Perish Song's count, at the start of the turn
   // Optimistic: repaint the board NOW so the turn advances instantly, then sync in the background
   // (awaiting the Supabase round-trips first is what made "Next turn" feel laggy). Realtime echoes
   // are dropped by the mapMeta/mapTokens updated_at guards, so the background writes are safe.
@@ -51662,6 +52451,7 @@ function advanceInitiative(map, meta, dir){
   if(typeEnded.length) toast(`⌛ Type change ended: ${typeEnded.join(" · ")}`);
   hookLines.forEach(l => toast(`✨ ${l}`));
   if(pendDue.length) toast(`⏳ ${pendDue.join(" · ")}`);
+  if(perishLines.length) toast(perishLines.join(" · "));
   if(regenLines.length) toast(`\u{1F34E} ${regenLines.join(" · ")}`);
   if(wrapped){ mapTokensSave(); toast(`↺ Round ${meta.initRound} — movement reset`); }
 }
@@ -52475,6 +53265,86 @@ function toggleCurtains(map){
   mapMetaSave(); renderMap();
   toast(open ? "\u{1F3AD} Curtains open" : "\u{1F3AD} Curtains closed");
 }
+/* ---- Curtain veil: what is behind a shut curtain stays dark for players --------------------------
+     The "Curtain" gate line cuts the board into sides (a flood fill over the stage's squares that
+     only the curtain-named gate walls stop). The side(s) where no player token stands is BEHIND the
+     curtain — with no player token on the board at all, the biggest side counts as the audience.
+     While the curtains are shut, players get fog over everything behind them, explored or not, and
+     even on a board with fog switched off; once they open, everything behind is lit, unexplored or
+     not. Nothing is written for it: every client derives it from the walls, tokens and
+     map.curtainsOpen it already has, so the fog bitmap underneath is untouched and comes back as
+     it was. The curtain line has to close the stage off edge to edge, or there is only one side. */
+const curtainSegMemo = new WeakMap();      // map.walls array -> { n, segs } (gate walls named "curtain")
+const curtainSides = new Map();            // mapId -> { gsig, x0, y0, cols, rows, comp, sizes, veil }
+function curtainSegs(map){
+  const ws = map && map.walls; if(!ws || !ws.length) return null;
+  let m = curtainSegMemo.get(ws);
+  if(!m || m.n!==ws.length){ m = { n:ws.length, segs:ws.filter(w=>w.gate && /curtain/i.test(w.gate)) }; curtainSegMemo.set(ws, m); }
+  return m.segs.length ? m.segs : null;
+}
+function curtainSideMap(map, segs){
+  const s = mapStageSize(map), px = map.gridSize || 32;
+  const x0 = -Math.round(s.originX/px), y0 = -Math.round(s.originY/px), cols = Math.ceil(s.w/px), rows = Math.ceil(s.h/px);
+  const gsig = [x0, y0, cols, rows, segs.map(w=>w.x1+","+w.y1+","+w.x2+","+w.y2).join(";")].join("|");
+  const had = curtainSides.get(map.id);
+  if(had && had.gsig===gsig) return had;
+  const n = cols*rows, comp = new Int32Array(n).fill(-1), sizes = [], stack = [];
+  const cut = (ax, ay, bx, by) => {            // does a curtain wall cross the step between two square centres?
+    for(let k=0;k<segs.length;k++){ const w = segs[k];
+      if(segsCross(ax+0.5, ay+0.5, bx+0.5, by+0.5, w.x1, w.y1, w.x2, w.y2)) return true; }
+    return false;
+  };
+  for(let i=0;i<n;i++){
+    if(comp[i]>=0) continue;
+    const id = sizes.length; let size = 0;
+    comp[i] = id; stack.push(i);
+    while(stack.length){
+      const j = stack.pop(); size++;
+      const cx = j%cols, cy = (j-cx)/cols, gx = x0+cx, gy = y0+cy;
+      if(cx+1<cols  && comp[j+1]<0    && !cut(gx,gy,gx+1,gy)){ comp[j+1] = id;    stack.push(j+1); }
+      if(cx>0       && comp[j-1]<0    && !cut(gx,gy,gx-1,gy)){ comp[j-1] = id;    stack.push(j-1); }
+      if(cy+1<rows  && comp[j+cols]<0 && !cut(gx,gy,gx,gy+1)){ comp[j+cols] = id; stack.push(j+cols); }
+      if(cy>0       && comp[j-cols]<0 && !cut(gx,gy,gx,gy-1)){ comp[j-cols] = id; stack.push(j-cols); }
+    }
+    sizes.push(size);
+  }
+  const out = { gsig, x0, y0, cols, rows, comp, sizes, veil:null };
+  curtainSides.set(map.id, out);
+  return out;
+}
+/* { behind:Set, front:Set, key } for a board whose curtain line splits it, else null (open or shut) */
+function curtainVeil(map){
+  const segs = curtainSegs(map); if(!segs) return null;
+  const C = curtainSideMap(map, segs); if(C.sizes.length<2) return null;
+  const front = new Set();
+  mapTokensFor(map.id).forEach(t=>{
+    if(!tokenReveals(t)) return;
+    const cx = Math.round(t.x)-C.x0, cy = Math.round(t.y)-C.y0;
+    if(cx>=0 && cy>=0 && cx<C.cols && cy<C.rows) front.add(C.comp[cy*C.cols+cx]);
+  });
+  if(!front.size){ let big = 0; C.sizes.forEach((sz,k)=>{ if(sz>C.sizes[big]) big = k; }); front.add(big); }
+  if(front.size===C.sizes.length) return null;           // a player on every side: nothing is cut off
+  const fsig = [...front].sort((a,b)=>a-b).join(",");
+  if(C.veil && C.veil.fsig===fsig) return C.veil;
+  const behind = new Set(), seen = new Set();
+  for(let i=0;i<C.comp.length;i++){
+    const cx = i%C.cols, k = (C.x0+cx)+","+(C.y0+(i-cx)/C.cols);
+    (front.has(C.comp[i]) ? seen : behind).add(k);
+  }
+  C.veil = { fsig, behind, front:seen, key:C.gsig+"#"+fsig };
+  return C.veil;
+}
+/* does this board draw a fog layer for players right now — real fog, or a shut curtain's veil? */
+function mapFogShown(map){ return !!(map && (map.fogOn || (!map.curtainsOpen && curtainVeil(map)))); }
+/* The closed curtain's picture hangs on the stage side of its line, so the veil would swallow the
+   drape itself. While the veil is up, the shut-curtain pictures are drawn again ON TOP of the fog:
+   the table sees the curtain, and only darkness past it. */
+function curtainOverFog(map, originX, originY){
+  if(!map || map.curtainsOpen || mapImgEdit || !curtainVeil(map)) return [];
+  return (map.images||[]).filter(im=>im.curtain==="shut" && im.src).map(im=>el("img",{class:"map-img",
+    src:(im.lod && im.lod.src) ? im.lod.src : im.src, draggable:false, alt:"", decoding:"sync",
+    style:`left:${im.x+originX}px;top:${im.y+originY}px;`+(im.w?`width:${im.w}px;`:"")+(im.h?`height:${im.h}px;`:"")}));
+}
 function cycleImageCurtain(map, im){
   im.curtain = !im.curtain ? "shut" : im.curtain==="shut" ? "open" : null;
   if(!im.curtain) delete im.curtain;
@@ -52614,8 +53484,24 @@ function fogDynSet(map){
   fogLayer.drawn = -1;                      // the lit cells moved: the retained canvas must repaint
   return set;
 }
-/* the cells that are open for whoever is looking, in either fog mode */
-function fogViewSet(map){ return fogDynamic(map) ? fogDynSet(map) : fogSet(map.id); }
+/* the cells that are open for whoever is looking, in either fog mode — after a curtain's say
+   (CURTAINS veil): shut, nothing behind it is open; open, everything behind it is. */
+const fogVeiled = new Map();      // mapId -> { key, base, size, set }: the derived set, reused until something moves
+function fogViewSet(map){
+  const base = fogDynamic(map) ? fogDynSet(map) : fogSet(map.id);
+  const v = curtainVeil(map); if(!v) return base;
+  const shut = !map.curtainsOpen;
+  if(!shut && !map.fogOn) return base;                   // no fog, curtains open: nothing to hide or light
+  const key = v.key + (shut ? "|shut" : "|open") + (map.fogOn ? "|fog" : "|nofog");
+  const had = fogVeiled.get(map.id);
+  if(had && had.key===key && had.base===base && had.size===base.size) return had.set;
+  let set;
+  if(!map.fogOn) set = v.front;                           // fog off: this side of the curtain only
+  else if(shut){ set = new Set(); base.forEach(k=>{ if(!v.behind.has(k)) set.add(k); }); }
+  else { set = new Set(base); v.behind.forEach(k=>set.add(k)); }
+  fogVeiled.set(map.id, { key, base, size:base.size, set });
+  return set;
+}
 function revealAroundTokens(map){
   if(fogDynamic(map)){
     const before = fogDyn.get(map.id)?.sig;
@@ -52843,7 +53729,9 @@ function drawFog(cv, map, stageW, stageH, originX=0, originY=0, box=null){
 let fogLayer = { sig:"", cv:null, drawn:-1 };
 function fogCanvasFor(map, stageW, stageH, originX, originY){
   const cols = Math.ceil(stageW/map.gridSize), rows = Math.ceil(stageH/map.gridSize);
-  const sig = [map.id, cols, rows, map.gridSize, cloud.isGM?1:0, map.fogMode||"persist"].join("|");
+  const veil = curtainVeil(map);       // a curtain opening or shutting repaints the whole layer
+  const sig = [map.id, cols, rows, map.gridSize, cloud.isGM?1:0, map.fogMode||"persist", map.fogOn?1:0,
+               veil ? veil.key+(map.curtainsOpen?"|o":"|s") : ""].join("|");
   if(fogLayer.sig!==sig || !fogLayer.cv) fogLayer = { sig, cv: el("canvas",{class:"map-fog"}), drawn:-1 };
   if(fogLayer.drawn !== fogViewSet(map).size) drawFog(fogLayer.cv, map, stageW, stageH, originX, originY);
   return fogLayer.cv;
@@ -53535,6 +54423,10 @@ const HAZARDS = [
      own numbers rather than pretending to be a zone the Map can give no Hit Points to. */
   { key:'barrier',     name:'Barrier segment', icon:'\u{1F9F1}',
     note:'Blocking Terrain: 2 m tall, 1 m wide, 2 cm thick. 20 Hit Points, 15 Damage Reduction, damaged as if it were Psychic-Typed. Lasts until the end of the encounter or until it is destroyed.' },
+  /* Fox Fire's wisps (placed by the Ability's button, each tied to its owner by `wispOf`) — scenery, not a Hazard
+     anyone walks into, so Rapid Spin / Defog leave them alone (`fixture`). */
+  { key:'firewisp',    name:'Fire Wisp',    icon:'\u{1F3EE}', fixture:true,
+    note:'Fox Fire: whenever its owner is targeted by a foe within 6 m, spend a Fire Wisp to use Ember against that foe as a Free Action (after the triggering Move resolves).' },
   { key:'fire',        name:'Fire',         icon:'🔥' },
   { key:'lava',        name:'Lava',         icon:'🌋' },
   { key:'water',       name:'Water / Flood',icon:'🌊' },
@@ -54188,7 +55080,7 @@ function openArenaDialog(map){
 }
 const hazardDef = t => HAZARDS.find(h=>h.key===(t&&t.hazard)) || HAZARDS[0];
 function hazardSprite(token){ const h=hazardDef(token);
-  return el('div',{class:'tk-hazard',title:h.name}, h.icon); }
+  return el('div',{class:'tk-hazard',title:token.label || h.name}, h.icon); }
 /* GM drops a hazard marker; it lands top-left of the current view like any new token, ready to drag. */
 async function addHazard(map, key){ await addToken(map, { hazard:key, size:1 }); renderMap(); }
 /* Some Moves (Spikes, Toxic Spikes layers, Stealth Rock across a whole field...) call for MANY
@@ -54234,7 +55126,7 @@ function hazardAnchorCell(map, anchor){
 }
 /* Places `qty` markers in the spiral, skipping squares that already hold one of the SAME kind so a
    second casting widens the patch instead of stacking invisibly on it. Returns how many landed. */
-function dropHazardsAt(map, key, qty, anchor){
+function dropHazardsAt(map, key, qty, anchor, extra){
   if(!map || !key) return 0;
   const arr = hazardArrFor(map);
   const base = hazardAnchorCell(map, anchor);
@@ -54245,7 +55137,7 @@ function dropHazardsAt(map, key, qty, anchor){
     const x = Math.max(0, base.x + off[0]), y = Math.max(0, base.y + off[1]);
     if(taken.has(`${x},${y}`)) continue;
     taken.add(`${x},${y}`);
-    arr.push({ id:uid(), hazard:key, size:1, x, y });
+    arr.push(Object.assign({ id:uid(), hazard:key, size:1, x, y }, extra || {}));
     placed++;
   }
   /* a patch bigger than the spiral (Stealth Rock across a whole field) keeps going in rows below it
@@ -54256,7 +55148,7 @@ function dropHazardsAt(map, key, qty, anchor){
       const x = Math.max(0, base.x + dx), y = Math.max(0, base.y + row);
       if(taken.has(`${x},${y}`)) continue;
       taken.add(`${x},${y}`);
-      arr.push({ id:uid(), hazard:key, size:1, x, y });
+      arr.push(Object.assign({ id:uid(), hazard:key, size:1, x, y }, extra || {}));
       placed++;
     }
     row++;
@@ -54282,8 +55174,10 @@ function clearHazardsNear(map, anchor, radius, opts){
   opts = opts || {};
   if(!map) return { cleared:0, names:[] };
   const arr = hazardArrFor(map);
-  const hit = opts.all ? arr.filter(h => isHazardToken(h) && (!opts.filter || opts.filter(h)))
-                       : hazardsNear(map, anchor, radius, opts.filter);
+  /* fixtures (a stage's trapdoors, Fox Fire's wisps) are not Hazards a Rapid Spin or a Defog can sweep away */
+  const keep = h => !h.trapdoor && !hazardDef(h).fixture && (!opts.filter || opts.filter(h));
+  const hit = opts.all ? arr.filter(h => isHazardToken(h) && keep(h))
+                       : hazardsNear(map, anchor, radius, keep);
   if(!hit.length) return { cleared:0, names:[] };
   const gone = new Set(hit.map(h => h.id));
   cloud.mapTokens.data.byMap[map.id] = arr.filter(h => !gone.has(h.id));
@@ -54426,13 +55320,50 @@ function openAddHazard(map){
     el('span',{class:'small muted'},'(e.g. 8 for a full Spikes layer)'));
   body.append(qtyRow);
   const grid = el('div',{style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px'});
-  HAZARDS.forEach(h=> grid.append(el('button',{class:'btn-secondary',style:'display:flex;align-items:center;gap:8px;justify-content:flex-start',
+  HAZARDS.filter(h=>!h.fixture).forEach(h=> grid.append(el('button',{class:'btn-secondary',style:'display:flex;align-items:center;gap:8px;justify-content:flex-start',
     onclick:async()=>{ const qty=Math.max(1,Math.min(30,parseInt(qtyInp.value)||1)); closeModal(); await addHazardBatch(map,h.key,qty); }},
     el('span',{style:'font-size:20px'},h.icon), h.name)));
   body.append(grid);
   modal({title:'☠ Add a hazard', bodyNode:body, footNodes:[el('button',{class:'btn-secondary',onclick:closeModal},'Cancel')]});
 }
 /* Tap a placed hazard (GM only): swap its icon or remove it. */
+/* 🕳 A stage trapdoor (the Psychic Gym's Theater): "end a move on one and, as a Swift Action, sink through it and
+   come up out of any other". It is a Pit / Hole hazard token flagged `trapdoor:true` (so a copy of the site that
+   predates this still draws a 🕳), and never swept away by a Rapid Spin. The menu lists whoever stands on it and every
+   other trapdoor on this map. */
+function trapdoorMenuNode(token, map){
+  const box = el('div',{style:'margin-bottom:12px'});
+  box.append(el('div',{class:'small',style:'margin-bottom:6px;color:var(--accent);font-weight:600'},
+    'Trapdoor: a creature that ends its move on it may, as a Swift Action, sink through and come up out of any other trapdoor.'));
+  const all = mapTokensFor(map.id);
+  const on = all.filter(t => t.link && !isHazardToken(t) && tokenOccupies(t, token.x, token.y));
+  const others = all.filter(t => t.trapdoor && t.id !== token.id);
+  if(!on.length){ box.append(el('div',{class:'small muted'}, 'Nobody is standing on it.')); return box; }
+  const names = on.map(t => tokenHp(t).name).join(', ');
+  others.forEach(o => box.append(el('button',{class:'btn-primary',style:'width:100%;margin-bottom:6px',onclick:() => {
+    on.forEach(t => { t.x = o.x; t.y = o.y; });
+    mapTokensSave(); renderMap(); closeModal();
+    toast(`\u{1F573} ${names} sink${on.length === 1 ? 's' : ''} through ${token.label || 'the trapdoor'} and come${on.length === 1 ? 's' : ''} up at ${o.label || 'another trapdoor'}`);
+  }}, `\u{1F573} ${names} \u2192 come up at ${o.label || 'Trapdoor'} (${o.x}, ${o.y})`)));
+  if(!others.length) box.append(el('div',{class:'small muted'}, 'There is no other trapdoor on this map to come up out of.'));
+  return box;
+}
+/* 🏮 A Fox Fire wisp: spend it on its owner's Ember (opens the roll), the wisp leaves the board */
+function wispMenuNode(token, map){
+  const { tok, o } = foxFireOwnerOf(token, map);
+  const box = el('div',{style:'margin-bottom:12px'});
+  if(!o){ box.append(el('div',{class:'small muted'}, "Its owner isn't on this board.")); return box; }
+  const ember = moveByName.get('ember');
+  box.append(el('button',{class:'btn-primary',style:'width:100%',onclick:async () => {
+    closeModal();
+    await removeToken(token, map);
+    if(ember) openMoveRoll(o, ember, getSpecies(o.species), { persist:() => commitTokenSource(tok), rerender:renderMap });
+    toast(`\u{1F3EE} ${ownerLabel(o)} spends a Fire Wisp: Ember`);
+  }}, `\u{1F3EE} Spend it: ${ownerLabel(o)} uses Ember (Free Action)`));
+  const left = mapTokensFor(map.id).filter(t => t.hazard === 'firewisp' && t.wispOf === token.wispOf).length;
+  box.append(el('div',{class:'small muted',style:'margin-top:4px'}, `${left} wisp${left === 1 ? '' : 's'} of ${ownerLabel(o)}'s on the board.`));
+  return box;
+}
 function openHazardMenu(token, map){
   if(!cloud.isGM) return;
   const cur = hazardDef(token);
@@ -54442,14 +55373,16 @@ function openHazardMenu(token, map){
       cur.entry ? 'Drag it to move it. When somebody walks into it, press the button below and the sheet applies what it costs them.'
                 : 'Visual hazard -- drag to move. No automatic effect; narrate or apply it by hand.'));
   // the ones with real printed rules carry them here, so the GM doesn't have to remember which
-  if(cur.note) body.append(el('div',{class:'small',style:'margin-bottom:10px;color:var(--accent);font-weight:600'}, cur.note));
+  if(cur.note && !token.trapdoor) body.append(el('div',{class:'small',style:'margin-bottom:10px;color:var(--accent);font-weight:600'}, cur.note));
+  if(token.trapdoor){ const tn = trapdoorMenuNode(token, map); if(tn) body.append(tn); }
+  if(token.hazard === 'firewisp'){ const wn = wispMenuNode(token, map); if(wn) body.append(wn); }
   /* found-06: the Hazards with a printed on-entry effect apply it themselves — Hit Points through
      ownerHPChange, Afflictions through inflictStatus, Combat Stages through lowerCS. */
   if(cur.entry) body.append(el('button',{class:'btn-primary',style:'width:100%;margin-bottom:10px',
     onclick:()=>{ closeModal(); openHazardEntry(token, map); }},
     `⚠ Somebody walked into the ${cur.name}`));
   const grid = el('div',{style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:12px'});
-  HAZARDS.forEach(h=> grid.append(el('button',{class:'btn-secondary'+(h.key===cur.key?' on':''),style:'display:flex;align-items:center;gap:8px;justify-content:flex-start',
+  HAZARDS.filter(h=>!h.fixture || h.key===cur.key).forEach(h=> grid.append(el('button',{class:'btn-secondary'+(h.key===cur.key?' on':''),style:'display:flex;align-items:center;gap:8px;justify-content:flex-start',
     onclick:()=>{ token.hazard=h.key; mapTokensSave(); renderMap(); closeModal(); }}, el('span',{style:'font-size:18px'},h.icon), h.name)));
   body.append(grid);
   body.append(nameHideToggle(token));
@@ -56045,6 +56978,7 @@ async function undoLastHit(){
   if(!rec){ toast("Nothing to take back"); return false; }
   rec.undone = true;
   try{ flayedDropFor(rec); }catch(e){}                   // a Touch of the Flayed One question still open about this hit
+  try{ dueDropFor(rec); }catch(e){}                      // …and an Equilibrium's Due one
   const map = currentMapForView() || activeMap();
   for(const snap of rec.snaps){ try{ await restoreHitTarget(map, snap); }catch(e){} }
   for(const f of (rec.refunds || [])){ try{ await f(); }catch(e){} }   // pips spent on it (Touch of the Flayed One) come back
@@ -56415,6 +57349,182 @@ function flayedShow(){
   document.body.append(bg);
   try{ yesBtn.focus(); }catch(e){}
 }
+/* ===================================================================
+   EQUILIBRIUM'S DUE  (homebrew Zygarde Major Gift — this table)
+   -------------------------------------------------------------------
+   "Daily x3 Free Action, Interrupt, when you or an ally within 6m loses HP to an attack: the attacker
+   loses HP equal to half of what was lost, and nothing can reduce or prevent it."
+   Same door as Touch of the Flayed One: the 💥 Apply knows exactly what every target lost (bar plus
+   Temporary HP), so each living holder on the board with a use left and a victim in reach gets a GM
+   Yes / No. Yes takes the HP straight off the attacker through ownerHPChange(…, {raw:true}) — raw is
+   the "can't be reduced or prevented" clause (no Temporary HP soak) — spends one of the holder's
+   Daily pips (the Gifts-tab pips, so ☀ End Day hands them back), and ↩ Undo on the hit gives both
+   back. One use per attack: when one hit lands on several allies, the GM picks whose loss it repays.
+=================================================================== */
+const DUE_RANGE = 6;
+function dueGiftRow(t){
+  if(!t || !isTrainerOwner(t) || !Array.isArray(t.gifts)) return null;
+  return t.gifts.find(g => /^equilibrium['\u2019]s due\b/i.test(String((g && g.name) || g || "").trim())) || null;
+}
+function dueUses(t){
+  const g = dueGiftRow(t); if(!g) return null;
+  const name = String((g && g.name) || g);
+  const info = freqInfo(giftFreqForName(name) || "Daily x3");
+  const max = freqTrackable(info) ? info.max : 3;
+  const key = useKey("gift", name);
+  return { name, key, max, left: usesLeft(t, key, max), free: !!t.unlocked };
+}
+let dueQueue = [];
+function dueOffer(ctx, hpHit, undoRec, out){
+  if(!ctx || !hpHit || !hpHit.length) return;
+  const map = currentMapForView() || activeMap(); if(!map) return;
+  const holders = mapTokensFor(map.id).map(tok => {
+    if(tokenIsDown(tok)) return null;
+    const L = tok.link ? tokenLinked(tok) : null;
+    const u = (L && L.obj && !L.missing) ? dueUses(L.obj) : null;
+    return u ? { tok, H: L.obj } : null;
+  }).filter(Boolean);
+  if(!holders.length) return;
+  let found = null;
+  try{ found = findAttackerSheet(ctx); }catch(e){}
+  holders.forEach(h => {
+    const victims = hpHit.filter(v => Math.floor(v.lost / 2) > 0 && (v.t === h.tok || v.obj === h.H
+      || (tokenSide(v.t) === tokenSide(h.tok) && tokenTileGap(h.tok, v.t) <= DUE_RANGE)));
+    if(!victims.length) return;
+    if(found && found.obj === h.H) return;                     // her own attack — nothing to repay
+    const u = dueUses(h.H), who = ownerLabel(h.H);
+    const note = el("div",{class:"small",style:"color:var(--accent);font-weight:700;margin:4px 0"});
+    if(out) out.append(note);
+    if(!found || !found.obj){
+      note.style.color = "var(--muted)";
+      note.textContent = `\u2696 Equilibrium's Due \u2014 ${who} could make the attacker pay, but it isn't on the board or the roster. Do it by hand.`;
+      return;
+    }
+    if(u.left <= 0 && !u.free){
+      note.style.color = "var(--muted)";
+      note.textContent = `\u2696 Equilibrium's Due \u2014 ${who} has no uses left today (${u.max}/${u.max} spent).`;
+      return;
+    }
+    note.textContent = "\u2696 Equilibrium's Due \u2014 waiting on the GM's Yes / No\u2026";
+    dueQueue.push({ found, h, victims, undoRec, note, move: String(ctx.move || "") });
+    if(dueQueue.length === 1) dueShow();
+  });
+}
+function dueNext(){
+  dueQueue.shift();
+  const old = document.getElementById("duePop"); if(old) old.remove();
+  if(dueQueue.length) dueShow();
+}
+function dueDropFor(rec){
+  if(!rec || !dueQueue.length) return;
+  const head = dueQueue[0];
+  dueQueue = dueQueue.filter(j => {
+    if(j.undoRec !== rec) return true;
+    j.note.style.color = "var(--muted)";
+    j.note.textContent = "\u2696 Equilibrium's Due \u2014 that hit was taken back, nothing asked.";
+    return false;
+  });
+  if(head && head.undoRec === rec){
+    const old = document.getElementById("duePop"); if(old) old.remove();
+    if(dueQueue.length) dueShow();
+  }
+}
+function dueShow(){
+  const old = document.getElementById("duePop"); if(old) old.remove();
+  const job = dueQueue[0]; if(!job) return;
+  const { h, victims, found } = job;
+  const A = found.obj, aName = ownerLabel(A), who = ownerLabel(h.H);
+  const u = dueUses(h.H);
+  if(!u || (u.left <= 0 && !u.free)){
+    job.note.style.color = "var(--muted)";
+    job.note.textContent = `\u2696 Equilibrium's Due \u2014 ${who} has no uses left today.`;
+    dueNext(); return;
+  }
+  const multi = victims.length > 1;
+  // one z-index under Touch of the Flayed One's pop-up: when both fire, the attacker's own question comes first
+  const bg = el("div",{id:"duePop"});
+  bg.style.cssText = "position:fixed;inset:0;z-index:129;background:rgba(0,0,0,.45);display:flex;"
+    + "align-items:flex-start;justify-content:center;padding:64px 16px 16px;overflow:auto";
+  const card = el("div",{role:"dialog","aria-label":"Equilibrium's Due"});
+  card.style.cssText = "width:100%;max-width:380px;background:var(--panel);border:2px solid var(--accent);"
+    + "border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.45);padding:14px 16px";
+  card.append(el("div",{style:"font-weight:800;font-size:16px;margin-bottom:4px"}, "\u2696 Equilibrium's Due"));
+  card.append(el("div",{class:"small",style:"margin-bottom:8px"},
+    `${aName}'s ${job.move || "attack"} just took HP from ${multi ? "allies" : (victims[0].obj === h.H ? who : "an ally")} within ${DUE_RANGE}m of ${who}. `
+    + `Use the Gift (Free Action, Interrupt) to make ${aName} lose half of it? Nothing can reduce or prevent that loss.`));
+  const sorted = victims.slice().sort((a, b) => b.lost - a.lost);
+  const name = "dueVictim" + Date.now();
+  const rows = sorted.map((v, i) => {
+    const rb = el("input",{type:"radio", name}); rb.checked = i === 0;
+    const txt = el("span",{}, el("b",{}, v.name), el("span",{class:"muted"}, ` \u2014 lost ${v.lost} \u2192 ${aName} loses ${Math.floor(v.lost / 2)}`));
+    const line = el(multi ? "label" : "div",{style:"display:flex;gap:8px;align-items:center;padding:3px 0;" + (multi ? "cursor:pointer" : "")},
+      multi ? rb : "", txt);
+    return { v, rb, line };
+  });
+  const list = el("div",{class:"small",style:"border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-bottom:8px"});
+  rows.forEach(r => list.append(r.line));
+  card.append(list);
+  card.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
+    (u.free ? `\u{1F513} unlocked \u2014 no daily limit (${u.left} of ${u.max} pips left)` : `Daily x${u.max} \u2014 ${u.left} of ${u.max} left today`)
+    + (multi ? " \u00b7 one use per attack: pick whose loss it repays" : "")));
+  let busy = false;
+  const yesBtn = el("button",{class:"btn-primary",onclick:async () => {
+    if(busy) return;
+    if(job.undoRec && job.undoRec.undone){ toast("That hit was taken back \u2014 nothing to repay"); dueNext(); return; }
+    const pick = (rows.find(r => r.rb.checked) || rows[0]).v;
+    const uNow = dueUses(h.H);
+    if(!uNow || (!uNow.free && uNow.left <= 0)){ toast("Equilibrium's Due has no uses left"); dueNext(); return; }
+    busy = true;
+    try{
+      const half = Math.floor(pick.lost / 2);
+      const snap = {};
+      ["currentHP","injuries","tempHP"].forEach(k => { snap[k] = (k in A) ? A[k] : undefined; });
+      snap.statuses = Array.isArray(A.statuses) ? A.statuses.slice() : null;
+      const moved = ownerHPChange(A, -half, { raw:true });
+      try{ applyAutoDeath(A); }catch(e){}
+      await saveAttackerSheet(found);
+      {
+        const H = h.H;
+        H.uses = H.uses || {};
+        const was = H.uses[uNow.key] || 0;
+        H.uses[uNow.key] = Math.min(uNow.max, was + 1);
+        const spent = H.uses[uNow.key] - was;
+        try{ await commitTokenSource(h.tok, { ally:true }); }catch(e){}
+        if(job.undoRec){
+          (job.undoRec.refunds = job.undoRec.refunds || []).push(async () => {
+            ["currentHP","injuries","tempHP"].forEach(k => { if(snap[k] === undefined) delete A[k]; else A[k] = snap[k]; });
+            if(snap.statuses) A.statuses = snap.statuses.slice();
+            await saveAttackerSheet(found);
+            if(spent > 0){
+              H.uses = H.uses || {};
+              H.uses[uNow.key] = Math.max(0, (H.uses[uNow.key] || 0) - spent);
+              if(!H.uses[uNow.key]) delete H.uses[uNow.key];
+              try{ await commitTokenSource(h.tok, { ally:true }); }catch(e){}
+            }
+          });
+        }
+      }
+      try{ mapTokensSave(); renderMap(); }catch(e){}
+      const left = dueUses(h.H);
+      const leftTxt = left ? `${left.left} of ${left.max} left today` : "";
+      job.note.style.color = "var(--accent)";
+      job.note.textContent = `\u2696 Equilibrium's Due \u2014 ${aName} loses ${Math.abs(moved)} HP (half of ${pick.name}'s ${pick.lost}) \u00b7 ${leftTxt}`;
+      logRoll({ kind:"feature", label:"Equilibrium's Due", who, headline:`\u2696 ${aName} \u2212${Math.abs(moved)} HP`,
+        lines:[`${pick.name} lost ${pick.lost} to ${aName}'s ${job.move || "attack"} \u2014 half comes back on the attacker, unreduced`, leftTxt] });
+      toast(`\u2696 Equilibrium's Due \u2014 ${aName} \u2212${Math.abs(moved)} HP (${leftTxt})`);
+    } finally { busy = false; }
+    dueNext();
+  }}, "Yes \u2014 make them pay");
+  const noBtn = el("button",{class:"btn-secondary",onclick:() => {
+    job.note.style.color = "var(--muted)";
+    job.note.textContent = `\u2696 Equilibrium's Due \u2014 not used (${u.left} of ${u.max} still left today).`;
+    dueNext();
+  }}, "No");
+  card.append(el("div",{style:"display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"}, noBtn, yesBtn));
+  bg.append(card);
+  document.body.append(bg);
+  try{ yesBtn.focus(); }catch(e){}
+}
 /* 🐎 STAYING MOUNTED (Core p.218): "If either you or your Pokémon who is being used as a Mount are hit by a
    damaging attack that deals damage equal or greater to 1/4th of the target's Max Hit Points, or are hit by a
    move with a Push Effect, you must make an Acrobatics or Athletics Check with a DC of 10 to remain mounted."
@@ -56684,7 +57794,9 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
        drain or a Recoil keyword is a fraction of (found-04). Handed back to the roll that made it. */
     let dealtTotal = 0;
     const injured = [];                                         // targets whose Injury count went up this press
+    const hpHit = [];                                           // targets that lost HP this press (Equilibrium's Due)
     const gSpent = new Set();                                   // each Friend Guard spends ONE use per press, however many allies it covers
+    const stageHits = [];                                       // 🎭 what this press did, for the stage engine (stage.js)
     for(const it of chosen){
       /* Shell Armor / Battle Armor: this target takes the hit without the crit's extra dice. */
       const shell = critExtra > 0 ? critImmunityOf(tokenHp(it.t).obj) : null;
@@ -56783,8 +57895,11 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
       const injV = tokenHp(it.t).obj, inj0 = injV ? (injV.injuries || 0) : 0;
       const before = await applyTokenDamage(it.t, br);
       dealtTotal += Math.max(0, br.final || 0);
+      stageHits.push({ t:it.t, br, before });
       if(injV && (injV.injuries || 0) > inj0)
         injured.push({ t: it.t, obj: injV, n: (injV.injuries || 0) - inj0, name: tokenHp(it.t).name });
+      { const lostHP = Math.max(0, before - (br.afterHP == null ? before : br.afterHP)) + Math.max(0, br.tempSoaked || 0);
+        if(injV && lostHP > 0) hpHit.push({ t: it.t, obj: injV, lost: lostHP, name: tokenHp(it.t).name }); }
       it.cb.checked = false;                                    // clear so a second Apply doesn't double-hit
       const line = el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"});
       line.append(el("div",{style:"font-weight:700"}, tokenHp(it.t).name),
@@ -56830,7 +57945,8 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
         }
       }
       { const felled = tokenHp(it.t).cur <= 0;
-        const rx = reactionsNode(it.t, br, ctx, felled); if(rx) line.append(rx); }
+        const rx = reactionsNode(it.t, br, ctx, felled); if(rx) line.append(rx);
+        const mr = moveReactionsNode(it.t, br, ctx, felled); if(mr) line.append(mr); }   // Counter / Mirror Coat
       { const dm = dismountCheckNode(map, it.t, br, ctx); if(dm) line.append(dm); }   // 🐎 ¼ Max HP / Push shakes a rider's seat
       out.append(line);
     }
@@ -56854,6 +57970,9 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     }
     /* Touch of the Flayed One: the hit Injured someone and the Trainer who threw it holds the Gift → ask the GM */
     try{ flayedOffer(ctx, injured, undoRec, out); }catch(e){ console.error("Touch of the Flayed One", e); }
+    /* Equilibrium's Due: a holder on the board saw herself or an ally in reach lose HP → ask the GM */
+    try{ dueOffer(ctx, hpHit, undoRec, out); }catch(e){ console.error("Equilibrium's Due", e); }
+    if(typeof stageOnApply==="function") try{ await stageOnApply({ ctx, attacker:A0, atkTok:atkTok0, hits:stageHits, critExtra, dealt:dealtTotal, out }); }catch(e){ console.error(e); }   // 🎭 stage.js
     if(onDealt) onDealt(dealtTotal, chosen.length, drained ? drained.paid : null);   // drain / Recoil now have their real number
     undoBtn.style.display = "";                                 // …and offer to take it straight back
     draw();                                                     // refresh HP labels + select-all state
@@ -58897,7 +60016,7 @@ let mapPings = [];            // [{ tokenId, until }] - arrows drawn on THIS dev
 let lastPingSeen = null;      // the shared ping this device has already reacted to
 const PING_MS = 9000;
 function pingableTokens(map){
-  const fog = (!cloud.isGM && map.fogOn) ? fogViewSet(map) : null;
+  const fog = (!cloud.isGM && mapFogShown(map)) ? fogViewSet(map) : null;
   const rows = mapTokensFor(map.id).filter(t => {
     if(!t.link || t.gmHidden || isNoteToken(t)) return false;
     const info = tokenHp(t);
@@ -59433,7 +60552,7 @@ function renderMap(){
   if(map.timeStop && !mapImgEdit) stage.append(el("div",{class:"map-timestop",style:`width:${stageW}px;height:${stageH}px`}));
 
   // tokens + fog, with role-dependent stacking. In image-edit mode tokens are inert.
-  const fog = fogViewSet(map);
+  const fog = fogViewSet(map), fogShown = mapFogShown(map);    // fogShown: real fog or a shut curtain's veil
   /* each token's status ring is lifted out into its own node (liftStatusRing) and appended after the
      tokens, so it draws over the floor layer and UNDER every creature instead of across its neighbours */
   const ringFloats = [];
@@ -59443,13 +60562,13 @@ function renderMap(){
     if(isZoneToken(t) && t.ghost) return false;                     // rules-only ground: nothing to draw
     if(isNoteToken(t)) return false;                                // GM notes never leave the GM's screen
     if(t.gmHidden) return false;                                    // GM has hidden this token from players entirely
-    if(cloud.isGM || !map.fogOn) return true;
+    if(cloud.isGM || !fogShown) return true;
     if(t.link && ownsRow(cloud.byId[t.link.sheetId])) return true;   // always see your own
     if(t.garden && ownsRow(cloud.byId[t.garden.sheetId])) return true;   // …including the plot you planted
     return fog.has(Math.round(t.x)+","+Math.round(t.y));
   };
 
-  const drawFogInto = () => map.fogOn ? fogCanvasFor(map, stageW, stageH, originX, originY) : null;
+  const drawFogInto = () => fogShown ? fogCanvasFor(map, stageW, stageH, originX, originY) : null;
 
   /* Only build the tokens anywhere near the screen — see the culling block above. Anything that is
      selected, or has an AoE painted from it, is always built regardless: those are steered through
@@ -59471,6 +60590,7 @@ function renderMap(){
 
   if(cloud.isGM){
     const f = drawFogInto(); if(f) stage.append(f);                 // GM: dim fog under tokens
+    curtainOverFog(map, originX, originY).forEach(n=>stage.append(n));   // a shut curtain stays crisp over its veil
     const nl = noteLinksOverlay(map, stageW, stageH, originX, originY); if(nl) stage.append(nl);
     mapDrawOrder(mapTokensFor(map.id)).forEach(t=>{ if(nearView(t)) stage.append(mkToken(t)); });
     ringFloats.forEach(r => stage.append(r));
@@ -59482,6 +60602,7 @@ function renderMap(){
     ringFloats.forEach(r => stage.append(r));                       // before the fog, like the tokens they belong to
     const fo = floorOverLayer(map, originX, originY); if(fo) stage.append(fo);   // who is upstairs (FLOORS)
     const f = drawFogInto(); if(f) stage.append(f);                 // players: opaque fog over hidden tokens
+    curtainOverFog(map, originX, originY).forEach(n=>stage.append(n));   // the curtain itself, over the dark behind it
   }
 
   mapPings = mapPings.filter(p => p.until > Date.now());
