@@ -1908,6 +1908,8 @@ function spendInventoryItem(t, name, qty){
    split share a stage number but aren't interchangeable), so we just record real history instead. */
 function evolveTo(p, targetName, stoneItem, opts={}){
   const sp = getSpecies(targetName); if(!sp) return;
+  // at the table the Evolve button is the GM's (a player's sheet shows "Ready to evolve" instead); The Empress card is its own case
+  if(mode === "cloud" && !cloud.isGM && !opts.ignoreReq){ toast("\u2728 Only the GM can evolve a Pokémon — ask them to press it"); return; }
   const from = getSpecies(p.species);
   // Underdog's Strength (Poké Edge): "The user may no longer undergo Evolution."
   if(pokeEdgeBlocksEvolution(p) && !p.unlocked){
@@ -8391,6 +8393,7 @@ function render(){
   if (currentTab==="reference")  renderReference();
   renderRollFeed();               // GM-only float, pinned over whichever tab is showing
   renderBlessingPops();           // everyone's float: the Blessings on the field and their uses left
+  renderStrikePops();             // a player's own multi-roll Move: waiting on, or back from, the GM's count
   renderCallOverlay();            // the 📱 Codec while a call is on the line (and the top-bar 📱 itself)
   if(typeof contestRender==="function") try{ contestRender(); }catch(e){ console.error(e); }   // 🎀 contest dock + stage (contest.js)
   if(typeof stageRender==="function") try{ stageRender(); }catch(e){ console.error(e); }       // 🎭 the stage engine's dock (stage.js)
@@ -11052,12 +11055,17 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     const strikes = dblStrike ? resolveStrikes(nats, accMod, st.ac + targetEva, critT) : null;
     const forced  = dblStrike && redo?.forceHits!=null;
     const connected = !dblStrike ? 1 : (forced ? redo.forceHits : strikes.filter(s=>s.hit).length);
+    /* a player's Double Strike: the totals go to the GM, who counts them against the target (openStrikeCount) */
+    const gmCountT = dblStrike && strikeGmPicks() && !forced && st.ac != null && st.ac !== "" && connected > 0;
     if(dblStrike){
       out.append(el("div",{style:"margin-bottom:10px"}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLLS"),
-        el("div",{style:`font-size:24px;font-weight:800;color:var(--${connected?"good":"bad"})`}, `🎯 ${connected} / 2 strikes connected`),
+        gmCountT ? el("div",{style:"font-size:24px;font-weight:800"}, `\u{1F3B2} ${strikes.map(s=>s.tot).join(" \u00B7 ")}`)
+                 : el("div",{style:`font-size:24px;font-weight:800;color:var(--${connected?"good":"bad"})`}, `🎯 ${connected} / 2 strikes connected`),
         el("div",{class:"small muted",style:"margin-top:2px"}, `vs AC + Evasion → ${strikeReadout(strikes)}`),
         accBits.length?el("div",{class:"small muted"}, `Each roll includes ${accBits.join(" ")}.`):"",
-        forced?el("div",{class:"small muted"}, `Hit count manually overridden to ${connected}.`):""));
+        forced?el("div",{class:"small muted"}, `Hit count manually overridden to ${connected}.`):"",
+        gmCountT?el("div",{class:"small",style:"margin-top:2px;color:var(--accent);font-weight:600"},
+          "\u23F3 Sent to your GM \u2014 they pick the target and count how many hit; the count and the damage land below."):""));
     } else {
       out.append(el("div",{style:"margin-bottom:10px"}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"ACCURACY ROLL"),
         el("div",{style:"font-size:24px;font-weight:800"}, `🎯 ${accTot}`, el("span",{class:"muted",style:"font-size:13px;font-weight:600"}, accBits.length?`  (${acc} ${accBits.join(" ")})`:" (1d20)")),
@@ -11230,11 +11238,11 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       /* a player's Double Strike: the GM's pick of the target counts the hits (multiStrikeResolve), so every hit
          count's dice and a crit roll per strike go to the feed with the d20s */
       let multiP = null;
-      if(dblStrike && strikeGmPicks()){
+      if(gmCountT){
         const flat = im.atk + (bm.dmg||0) + berN + wFlame + sStance + twisted + tDmg + cx.dmg + im.delta + wAcc + runX.flat;
         multiP = { nats: nats.slice(), accMod, ac: (st.ac == null || st.ac === "") ? null : +st.ac, critT, flat, mult: cx.mult,
           dice: [1, 2].map(k => k === connected ? r.total : ((rollDiceString(diceFor(baseDBv * (k >= 2 ? 2 : 1))) || {}).total || 0)),
-          crits: [0, 1].map(() => (rollDiceString(diceFor(critDBv)) || {}).total || 0) };
+          crits: [0, 1].map(() => (rollDiceString(diceFor(critDBv)) || {}).total || 0), kind:"double", dbs:[baseDBv, baseDBv * 2] };
       }
       const parts = [`${r.expr} → [${r.rolls.join(", ")}]${r.flat?` ${r.flat>0?"+":""}${r.flat}`:""} = ${r.total}`, `+ ${im.atk} ${atkLbl}${im.halved?" (halved — Infatuated)":""}`];
       if(bm.dmg) parts.push(`${bm.dmg>0?"+":""}${bm.dmg} buffs (${buffSources(t,"dmg")})`);
@@ -11249,12 +11257,13 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       if(wAcc) parts.push(`${wAcc} Fainted Living Weapon`);
       if(critWhy.length) parts.push(critWhy.join(" "));
       runX.why.forEach(w=>parts.push(w));
-      out.append(el("div",{}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"),
+      const dmgBoxT = el("div",{}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"),
         el("div",{style:`font-size:26px;font-weight:800;color:${nCrit?"var(--bad)":"var(--accent)"}`}, `${nCrit?"💥 CRIT! ":"💥 "}${total}`),
         strikeNote?el("div",{class:"small muted",style:"margin-top:2px"}, strikeNote):"",
         stab&&!fiveStrike ? el("div",{class:"small muted",style:"margin-top:2px"},
           `⚡ Type Expertise: STAB on ${st.type} — Damage Base ${rawDB} +2 = ${rawDB+2}${bm.db?` ${bm.db>0?"+":"−"}${Math.abs(bm.db)} buffs`:""} → DB ${db}`) : "",
-        el("div",{class:"small muted",style:"margin-top:2px"}, parts.join("  ") + `. Target subtracts ${defNote}.`)));
+        el("div",{class:"small muted",style:"margin-top:2px"}, parts.join("  ") + `. Target subtracts ${defNote}.`));
+      out.append(dmgBoxT);
       if(bm.crit) out.append(el("div",{class:"small muted"}, `Crit / Effect range widened by +${bm.crit} (buffs).`));
       if(pushSpent) out.append(el("div",{class:"small",style:"margin-top:4px;color:var(--accent);font-weight:600"},
         `💢 ${BERSERKER_PUSH}: +1 Injury (now ${pushSpent.injuries}) · +${pushSpent.tick} Temporary HP`
@@ -11283,7 +11292,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         onDealt:(n, c, d)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n, true, d); } });
       if(tw) out.append(tw);
       feedLogged = true;
-      logRoll({ kind:"move", label:st.name, who:t.name||"",
+      const feT = logRoll({ kind:"move", label:st.name, who:t.name||"",
         headline:`${nCrit?"💥 CRIT ":"💥 "}${total} damage`,
         lines:[`🎯 Accuracy ${accTot} (d20 ${acc}) vs AC ${st.ac}`,
                `${st.type||"Typeless"}${st.cls?` · ${st.cls}`:""} · DB ${db}`],
@@ -11292,9 +11301,10 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
                atkExploit: exploitAbilityBonus(t), atkWar: ownerAuraActive(t,"War"), atkDeicide: !!st.deicide,
                seFlat: heldSeFlatDamage(t), defCSMode, fx: hitFx, multi: multiP,
                ctx:{ by:rollerName(t), aid:t.id || null, move:(st.move && st.move.name) || "", melee:/melee/i.test(String((st.move && st.move.range) || "")) } } });
+      if(multiP && feT){ [...dmgBoxT.children].forEach(c => { c.style.display = "none"; }); dmgBoxT.append(strikeWaitNode(feT)); }
     }
     if(hpNode) out.append(hpNode);
-    if(dblStrike){
+    if(dblStrike && !strikeGmPicks()){       // a player's count is the GM's to set (openStrikeCount)
       const ov = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center"});
       ov.append(el("span",{class:"small muted"},"Override hits:"));
       for(let k=0;k<=nAcc;k++) ov.append(el("button",{class:"btn-secondary",style:"padding:3px 10px",
@@ -18567,16 +18577,60 @@ function stampTurnBuff(nb){
    ITS source's turn ends; a buff placed during the source's current turn isn't counted yet. */
 function expireTurnBuffs(owner, endingId, endingSeq){
   if(!owner || !Array.isArray(owner.buffs)) return [];
-  const expired = [];
+  const expired = [], lift = [];
   owner.buffs = owner.buffs.filter(b=>{
     if(b.turnStamp==null || b.life==null) return true;     // not turn-tracked (added outside battle)
     if(b.src && b.src!==endingId) return true;             // not this caster's turn ending
     if(b.turnStamp===endingSeq) return true;               // placed during the source's current turn
     b.life -= 1;
-    if(b.life<=0){ expired.push(b.name); return false; }
+    if(b.life<=0){ expired.push(b.name); if(b.liftStatus) lift.push(b.liftStatus); return false; }
     return true;
   });
+  /* a timed chip (lendTimedStatus) comes off with the buff that put it on, unless another such buff still holds it */
+  if(lift.length && Array.isArray(owner.statuses))
+    owner.statuses = owner.statuses.filter(k => !lift.includes(k) || owner.buffs.some(b => b.liftStatus === k));
   return expired;
+}
+/* "…until the end of ITS next turn": the clock is the target's own turn, so the buff is stamped against the target's
+   token (a Family Unit second token counts as its first, which is the one in the initiative) */
+function retargetTurnBuff(nb, tok){
+  if(nb && nb.turnStamp != null && tok){ nb.src = tok.twinOf || tok.id; nb.srcName = (tokenHp(tok) || {}).name || ""; }
+  return nb;
+}
+/* A Status that lasts until the end of the target's next turn: the chip goes on (immunities honoured) with a buff that
+   takes it off again when that turn ends on the Map's ▶ (expireTurnBuffs), or when the buff is removed by hand.
+   Outside a tracked turn the buff isn't stamped and both stay until someone takes them off. */
+function lendTimedStatus(o, key, name, tok){
+  if(!Array.isArray(o.buffs)) o.buffs = [];
+  const old = o.buffs.find(b => b.key === "timed-" + key);
+  const r = inflictStatus(o, key);
+  if(r.why) return `${statusName(key)} blocked (${r.why})`;
+  if(old){
+    delete old.turnStamp; delete old.life; delete old.src; delete old.srcName;
+    stampTurnBuff(old); retargetTurnBuff(old, tok);
+    return `${statusName(key)} until the end of its next turn (renewed)`;
+  }
+  if(!r.ok) return `already ${statusName(key)}`;
+  const nb = { id:uid(), key:"timed-" + key, name, cat:"Move", dur:"until end of next turn", once:false, mods:{}, liftStatus:key,
+    note:`${statusName(key)} until the end of its next turn \u2014 the chip comes off by itself when that turn ends (Map \u25B6).` };
+  stampTurnBuff(nb); retargetTurnBuff(nb, tok);
+  o.buffs.push(nb);
+  return `${statusName(key)} until the end of its next turn`;
+}
+/* Population Bomb's extras on one target it hit ("noresist" already went into the damage via pbRule) */
+function applyPopBombFx(o, keys, tok){
+  const said = [];
+  if(keys.includes("vuln")) said.push(lendTimedStatus(o, "vulnerable", "Population Bomb \u2014 Vulnerable", tok));
+  if(keys.includes("weak")){
+    if(!Array.isArray(o.buffs)) o.buffs = [];
+    o.buffs = o.buffs.filter(b => b.key !== "popbomb-weak");
+    const nb = { id:uid(), key:"popbomb-weak", name:"Population Bomb \u2014 Moves resisted", cat:"Move", dur:"until end of next turn",
+      once:false, mods:{ atkStep:-1 }, note:"Its Moves are resisted 1 step further until the end of its next turn (applied by the target picker)." };
+    stampTurnBuff(nb); retargetTurnBuff(nb, tok);
+    o.buffs.push(nb);
+    said.push("its Moves are resisted 1 step further until the end of its next turn");
+  }
+  return said;
 }
 function addBuff(owner, key){
   if(!Array.isArray(owner.buffs)) owner.buffs=[];
@@ -18590,7 +18644,14 @@ function addCustomBuff(owner, name, mods, note){
   if(!Array.isArray(owner.buffs)) owner.buffs=[];
   owner.buffs.push({ id:uid(), key:"custom", name:name||"Custom buff", cat:"Custom", dur:"—", note:note||"", once:false, mods:mods||{} });
 }
-function removeBuff(owner, id){ if(owner) owner.buffs = ownerBuffs(owner).filter(b=>b.id!==id); }
+function removeBuff(owner, id){
+  if(!owner) return;
+  const gone = ownerBuffs(owner).find(b => b.id === id);
+  owner.buffs = ownerBuffs(owner).filter(b=>b.id!==id);
+  // a buff that lent a Status (lendTimedStatus) takes it back with it
+  if(gone && gone.liftStatus && Array.isArray(owner.statuses) && !owner.buffs.some(b => b.liftStatus === gone.liftStatus))
+    owner.statuses = owner.statuses.filter(k => k !== gone.liftStatus);
+}
 /* which active buffs feed one mod (acc/dmg/db/crit) — so a roll guide can name them, not just
    show a number ("+5 = buffs (Song of Might)"). */
 function buffSources(owner, key){
@@ -18611,6 +18672,7 @@ function buffModText(m){
   if(m.dr)   p.push(`${m.dr>0?"+":""}${m.dr} DR`);
   if(m.eva)  p.push(`${m.eva>0?"+":""}${m.eva} Evasion`);
   if(m.init) p.push(`${m.init>0?"+":""}${m.init} Initiative`);
+  if(m.atkStep) p.push(`its Moves ${m.atkStep<0?"resisted":"more effective"} ${Math.abs(m.atkStep)} step${Math.abs(m.atkStep)===1?"":"s"} further`);
   if(m.tempAP) p.push(`${m.tempAP>0?"+":""}${m.tempAP} Temp AP`);
   if(m.typeDR) for(const k in m.typeDR) p.push(`+${m.typeDR[k]} DR vs ${k}`);
   if(m.move) p.push(`${m.move>0?"+":""}${m.move} Movement`);
@@ -20396,6 +20458,13 @@ function renderMonBuild(root, p, sp){
             n.gm?el("span",{class:"muted",title:"GM-only hidden evolution"}," 🔒 GM"):"",
             hint?el("span",{class:"muted"}, hint):""));
           const canGo = ready && !barrenLock;
+          /* at the table only the GM evolves a Pokémon: a player sees it's ready, the GM presses it */
+          if(canGo && mode === "cloud" && !cloud.isGM){
+            rowE.append(el("span",{class:"small",style:"padding:5px 10px;border:1px solid var(--good);border-radius:8px;color:var(--good);font-weight:700",
+              title:"Only the GM can evolve a Pokémon — ask them to press it on this sheet"}, `\u2728 Ready to evolve \u2014 ask your GM`));
+            evc.append(rowE);
+            return;
+          }
           const btn = el("button",{class:canGo?"btn-primary":"btn-secondary",style:"padding:6px 12px",
             disabled: !canGo,
             title: barrenLock ? "The Barren Season holds — the GM must lift The Empress ▼ first" : "",
@@ -25396,7 +25465,7 @@ Object.assign(MOVE_FX_ROWS, {
   hyperspacehole:{ icon:"\u{1F300}", alert:"Hyperspace Hole — three separate attacks; between each the user may Shift by its Teleporter Capability, ending next to a legal target. Interrupts can't be triggered against it." },
   lastresort:   { icon:"\u{1F6AB}", alert:"Last Resort — usable only after the user has performed 5 other different Moves from its list in this fight without being switched out. Check the user's Move history." },
   ficklebeam:   { icon:"\u{1F3B2}", alert:"Fickle Beam — roll Accuracy 3 times; a target is hit if any succeed. Each success after the first adds one effect: Slowed for a round, or Suppressed (see the Move text)." },
-  populationbomb:{ icon:"\u{1F3B2}", alert:"Population Bomb — roll Accuracy 3 times; it hits if any succeed. Each success after the first adds an extra effect (Vulnerable until end of next turn, etc. — see the Move text)." },
+  populationbomb:{ icon:"\u{1F3B2}", alert:"Population Bomb — the roll makes and counts all 3 Accuracy Rolls (a player's go to the GM to count). It hits once if any succeed; each success after the first, and a crit, buys an extra effect, picked after the roll and landed with the hit." },
   tripleaxel:   { icon:"\u{1F9CA}", alert:"Triple Axel — after each attack, hit or miss, the user may Disengage 2 m and attack a different target, up to twice more; Accuracy/DB step up per the Move text. Roll each attack separately." },
   triplekickla: { icon:"\u{1F9B5}", alert:"Triple Kick [LA] — after each attack, hit or miss, the user may Disengage 2 m and attack a different target, up to twice more. Roll each attack separately." },
   filletaway:   { icon:"\u{1F41F}", alert:"Fillet Away — the user's next damaging Psychic attack is a Critical Hit. It may sacrifice three Ticks of HP to make this a Swift Action OR give an adjacent ally 3 Ticks of Temp HP." },
@@ -26699,21 +26768,358 @@ let lastStrikeTargetId = null;
    a crit roll per strike (`atk.multi`). multiStrikeResolve() turns the picked target's Evasion into the real
    hits, damage and crit dice. The GM's own rolls keep the picker below: there it already is the GM picking. */
 const strikeGmPicks = () => mode === "cloud" && !cloud.isGM;
-function multiStrikeResolve(ms, eva){
+/* The hit count, crits and damage of a multi-roll Move once its hits are known — from the target's Evasion
+   (multiStrikeResolve) or straight from the count the GM confirmed in the feed (`res`). The roll pre-rolled the
+   dice for every possible count, so the player's screen and the GM's come to the same number. Population Bomb
+   is ONE hit however many of its 3 rolls succeed: its Damage Base never grows, a single crit makes the whole
+   Move a Critical Hit, and every success past the first (plus one for a crit) buys an extra effect. */
+function multiStrikeDamage(ms, hits, critN){
+  const pb = ms.kind === "popbomb";
+  hits = Math.max(0, Math.min((ms.nats || []).length || 5, Math.round(+hits || 0)));
+  const nCrit = !hits ? 0 : pb ? ((+critN || 0) > 0 ? 1 : 0) : Math.min(hits, Math.max(0, Math.round(+critN || 0)));
+  const critExtra = (ms.crits || []).slice(0, nCrit).reduce((a, b) => a + (b || 0), 0);
+  const die = hits ? ((ms.dice || [])[pb ? 0 : hits - 1] || 0) : 0;
+  const pre = hits ? die + (ms.flat || 0) + critExtra : 0;
+  const dmg = hits ? Math.max(0, (ms.mult && ms.mult !== 1) ? Math.floor(pre * ms.mult) : pre) : 0;
+  const extras = (pb && hits) ? Math.min(popBombFx().length, (hits - 1) + (nCrit ? 1 : 0)) : 0;
+  const dbs = ms.dbs || [], db = hits ? (dbs[pb ? 0 : hits - 1] ?? null) : null;
+  return { hits, nCrit, critExtra, die, dmg, extras, db };
+}
+function multiStrikeResolve(ms, eva, forceHits){
   const thr = ms.ac == null ? null : ms.ac + (ms.ignoreEva ? 0 : Math.max(0, eva || 0));
   const strikes = resolveStrikes(ms.nats || [], ms.accMod || 0, thr, ms.critT || 20);
-  const hits = strikes.filter(s => s.hit).length;
-  const nCrit = Math.min(strikes.filter(s => s.crit).length, hits);
-  const critExtra = (ms.crits || []).slice(0, nCrit).reduce((a, b) => a + (b || 0), 0);
-  const pre = hits ? ((ms.dice || [])[hits - 1] || 0) + (ms.flat || 0) + critExtra : 0;
-  const dmg = hits ? Math.max(0, (ms.mult && ms.mult !== 1) ? Math.floor(pre * ms.mult) : pre) : 0;
-  return { strikes, hits, nCrit, critExtra, dmg };
+  const hits = forceHits != null ? forceHits : strikes.filter(s => s.hit).length;
+  return Object.assign({ strikes }, multiStrikeDamage(ms, hits, strikes.filter(s => s.crit).length));
 }
-/* the "the GM picks" line a player's Double Strike / Triple Kick card shows instead of the target picker */
-function strikeGmPicksNote(){
+/* the "the GM counts" line a player's multi-roll card shows instead of the target picker */
+function strikeGmPicksNote(pb){
   return el("div",{class:"small",style:"font-weight:600;color:var(--accent)"},
-    "\u{1F3AF} Your GM picks the target — the hits are counted against its Evasion when they apply this from their \u{1F3B2} feed, "
-    + "and the Damage Base follows. This window counts them as if it had no Evasion.");
+    "\u{1F3AF} Your GM counts the hits: press \u{1F3B2} and your Attack Rolls go to their \u{1F3B2} feed, they pick the target, "
+    + "and how many hit \u2014 with the damage \u2014 comes back to you here and in a pop-up"
+    + (pb ? ". Then you choose the extra effects your successes bought." : "."));
+}
+/* Population Bomb's menu of extras: one per success after the first, one more for a crit. A function, not a
+   top-level const: render() reaches the pop-ups that read it at boot (see bug-local-load TDZ). */
+function popBombFx(){
+  return [
+    { key:"vuln",     icon:"\u{1F3AF}", label:"Vulnerable",         text:"the target is Vulnerable until the end of its next turn" },
+    { key:"weak",     icon:"\u{1F6E1}", label:"Its Moves resisted", text:"the target's Moves are resisted 1 step further until the end of its next turn" },
+    { key:"noresist", icon:"\u{1F4A5}", label:"Can't be resisted",  text:"this Move's damage cannot be resisted" },
+  ];
+}
+function pbCleanPicks(a){
+  const ok = new Set(popBombFx().map(f => f.key));
+  return (Array.isArray(a) ? a : []).map(String).filter((k, i, arr) => ok.has(k) && arr.indexOf(k) === i).slice(0, 3);
+}
+function pbPicksOf(e){ return pbCleanPicks(e && e.atk && e.atk.pbPicks); }
+function pbPickNames(picks){
+  const by = new Map(popBombFx().map(f => [f.key, f]));
+  return (picks || []).map(k => by.get(k)).filter(Boolean).map(f => `${f.icon} ${f.label}`).join(" \u00B7 ");
+}
+/* "can't be resisted" is a rule the hit carries to every target, like Freeze-Dry's chart (tokenDamageBreakdown) */
+function pbRule(rule, picks){
+  if(!picks || !picks.includes("noresist")) return rule || null;
+  return Object.assign({}, rule || {}, { noResist:true,
+    note:[rule && rule.note, "Population Bomb: its damage can't be resisted"].filter(Boolean).join("; ") });
+}
+/* Pick exactly `n` of Population Bomb's extras. `onChange` re-applies on every tick (the GM's own window);
+   `onSend` adds a button that hands over the finished choice. `draft` keeps a half-made choice across redraws. */
+function popBombPickerNode(n, opts){
+  opts = opts || {};
+  const all = popBombFx(); n = Math.max(0, Math.min(all.length, n | 0));
+  const sel = opts.draft || new Set(opts.initial || []);
+  const wrap = el("div",{style:"margin-top:8px;padding:8px;border:1px dashed var(--accent);border-radius:8px"});
+  wrap.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:2px"},
+    `\u{1F4A3} ${opts.title || `Choose ${n} extra effect${n === 1 ? "" : "s"}`}`));
+  const send = opts.onSend ? el("button",{class:"btn-primary",style:"padding:3px 12px;margin-top:6px"}) : null;
+  const sync = () => { if(send){ send.disabled = sel.size !== n;
+    send.textContent = `${opts.sendLabel || "\u2714 Send to the GM"} (${sel.size}/${n})`; } };
+  all.forEach(f => {
+    const cb = el("input",{type:"checkbox"}); cb.checked = sel.has(f.key);
+    cb.addEventListener("change", () => {
+      if(cb.checked){
+        if(sel.size >= n){ cb.checked = false; toast(`It bought ${n} extra effect${n === 1 ? "" : "s"} \u2014 untick one first`); return; }
+        sel.add(f.key);
+      } else sel.delete(f.key);
+      sync();
+      if(opts.onChange) opts.onChange([...sel]);
+    });
+    wrap.append(el("label",{class:"small",style:"display:flex;gap:6px;align-items:flex-start;cursor:pointer;margin-top:4px"},
+      cb, el("span",{}, el("b",{}, `${f.icon} ${f.label}`), ` \u2014 ${f.text}`)));
+  });
+  if(send){ send.addEventListener("click", () => { if(sel.size === n) opts.onSend([...sel]); }); wrap.append(send); }
+  sync();
+  return wrap;
+}
+/* This browser's own id, so the count for a roll comes back to the screen that rolled it (a player can have the
+   same sheet open on a phone and a laptop — only the one that pressed 🎲 gets the pop-up). */
+function rollDeviceId(){
+  try{
+    let d = localStorage.getItem("ptu_device_id");
+    if(!d){ d = "dv" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); localStorage.setItem("ptu_device_id", d); }
+    return d;
+  }catch(e){ return "dv-anon"; }
+}
+function liveRollEntry(id){
+  return ((cloud.rolls && cloud.rolls.data && cloud.rolls.data.entries) || []).find(x => x && x.id === id) || null;
+}
+function isMultiEntry(e){ const M = e && e.atk && e.atk.multi; return !!(M && Array.isArray(M.nats) && M.nats.length); }
+function strikeTotals(M){ return (M.nats || []).map(n => n + (M.accMod || 0)); }
+/* The GM's view of the rolls: every total with its ✓ / ✗. Players never get the marks — two marks beside two
+   totals would let the table back out the target's Evasion; "n of N hit" is all they're told. */
+function strikeMarks(M, res){
+  const t = strikeTotals(M), marks = res && Array.isArray(res.marks) ? res.marks : null;
+  return t.map((v, i) => `${v}${marks ? (marks[i] ? " \u2713" : " \u2717") : ""}`).join(" \u00B7 ");
+}
+/* What a player sees of their own multi-roll Move: still waiting on the GM, or the count, the damage and — for
+   Population Bomb — the extras to pick. Shared by the pop-up and the roll window's own line (.strike-wait). */
+var strikePopDraft = {};           // entry id → the extras ticked so far (survives the pop-up redrawing)
+function fillStrikeResult(node, e){
+  node.innerHTML = "";
+  const A = e.atk || {}, M = isMultiEntry(e) ? A.multi : null;
+  let n = 0;
+  if(M && !M.res){
+    node.append(el("div",{style:"font-weight:800;color:var(--accent)"}, "\u23F3 Waiting for your GM to count the hits"));
+    node.append(el("div",{class:"small muted"}, `Your rolls: ${strikeTotals(M).join(" \u00B7 ")}`
+      + (M.ac != null ? ` \u2014 each needs AC ${M.ac} + the target's Evasion` : "")));
+    return;
+  }
+  if(M){
+    const R = multiStrikeDamage(M, M.res.hits, M.res.nCrit);
+    node.append(el("div",{style:`font-size:15px;font-weight:800;color:var(--${R.hits ? "good" : "bad"})`},
+      R.hits ? `\u{1F3AF} ${R.hits} of ${M.nats.length} ${M.kind === "popbomb" ? "rolls succeeded" : "hit"}${M.res.name ? ` \u2014 ${M.res.name}` : ""}`
+             : `\u2717 Every roll missed${M.res.name ? ` ${M.res.name}` : ""} \u2014 no damage`));
+    if(R.hits){
+      node.append(el("div",{style:`font-size:22px;font-weight:900;color:${R.nCrit ? "var(--bad)" : "var(--accent)"}`},
+        `${R.nCrit ? `\u{1F4A5} CRIT${R.nCrit > 1 ? ` \u00D7${R.nCrit}` : ""}! ` : "\u{1F4A5} "}${R.dmg} damage`));
+      node.append(el("div",{class:"small muted"},
+        `${R.db != null ? `DB ${R.db}: ` : ""}dice ${R.die}${M.flat ? ` ${M.flat > 0 ? "+" : "\u2212"} ${Math.abs(M.flat)}` : ""}`
+        + (R.critExtra ? ` + ${R.critExtra} crit` : "") + (M.mult && M.mult !== 1 ? ` \u00D7${M.mult}` : "")
+        + " \u2014 before the target's Defense, which your GM takes off."));
+    }
+    n = R.extras;
+  } else n = Math.max(0, A.pbN | 0);
+  if(n > 0){
+    const picks = pbPicksOf(e);
+    if(picks.length) node.append(el("div",{class:"small",style:"margin-top:6px;font-weight:700;color:var(--good)"},
+      `\u2714 Extra effect${picks.length === 1 ? "" : "s"}: ${pbPickNames(picks)}`));
+    else {
+      const draft = strikePopDraft[e.id] || (strikePopDraft[e.id] = new Set());
+      node.append(popBombPickerNode(n, { draft,
+        title:`Your successes bought ${n} extra effect${n === 1 ? "" : "s"} \u2014 choose`,
+        onChange: () => setTimeout(renderStrikePops, 0),          // keep the window's copy and the pop-up's in step
+        onSend: picks2 => {
+          const L = liveRollEntry(e.id); if(!L || !L.atk){ toast("That roll has left the feed"); return; }
+          L.atk.pbPicks = pbCleanPicks(picks2); L.atk.pbBy = (cloud.name || "").trim() || "Player";
+          delete strikePopDraft[e.id];
+          saveRolls(); renderStrikePops();
+          toast(`\u{1F4A3} Sent to your GM: ${pbPickNames(L.atk.pbPicks)}`);
+        } }));
+    }
+  }
+}
+function strikeWaitNode(e){
+  const n = el("div",{class:"strike-wait",style:"margin-top:6px;padding:8px 10px;border:1px solid var(--accent);border-radius:8px"});
+  n.dataset.id = e.id;
+  fillStrikeResult(n, e);
+  return n;
+}
+function strikeSeen(){ try{ return new Set(JSON.parse(localStorage.getItem("ptu_strike_seen") || "[]")); }catch(e){ return new Set(); } }
+function strikeSeenAdd(id){ try{ localStorage.setItem("ptu_strike_seen", JSON.stringify([...strikeSeen(), id].slice(-80))); }catch(e){} }
+/* the player's own multi-roll Moves still worth a card: waiting on the GM, or back and not yet closed */
+function myStrikeEntries(){
+  if(mode !== "cloud" || cloud.isGM || !cloud.rolls) return [];
+  const dev = rollDeviceId(), seen = strikeSeen(), now = Date.now();
+  return rollFeedEntries().filter(e => e && e.dev === dev && e.atk && !seen.has(e.id) && now - (e.at || 0) < 6 * 3600e3
+    && (isMultiEntry(e) || ((e.atk.pbN | 0) > 0 && !pbPicksOf(e).length)));
+}
+/* A player's float (bottom-right — where the GM's own feed sits on their screen): one card per multi-roll Move
+   they threw. "⏳ waiting", then the count and the damage the GM's 📨 Confirm sent back, and Population Bomb's
+   picker. The roll window's own .strike-wait line is refreshed from the same data. */
+function renderStrikePops(){
+  try{
+    document.querySelectorAll(".strike-wait").forEach(n => {
+      const e = liveRollEntry(n.dataset.id);
+      if(e && !n.contains(document.activeElement)) fillStrikeResult(n, e);
+    });
+  }catch(err){ console.error(err); }
+  const old = document.getElementById("strikePops");
+  const list = myStrikeEntries().slice(0, 4);
+  if(!list.length){ if(old) old.remove(); return; }
+  const box = el("div",{id:"strikePops"});
+  box.style.cssText = "position:fixed;z-index:72;right:14px;bottom:14px;display:flex;flex-direction:column;gap:8px;"
+    + "width:290px;max-width:calc(100vw - 28px);max-height:70vh;overflow:auto";
+  list.forEach(e => {
+    const card = el("div",{style:"background:var(--panel);border:2px solid var(--accent);border-radius:10px;padding:8px 10px;"
+      + "box-shadow:0 6px 18px rgba(0,0,0,.35)"});
+    card.append(el("div",{style:"display:flex;align-items:center;gap:6px;margin-bottom:4px"},
+      el("span",{style:"font-weight:800;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"},
+        `\u2694 ${e.label || "Attack"}${e.who ? ` \u00B7 ${e.who}` : ""}`),
+      el("button",{class:"linkbtn",title:"close this card (your GM still has the roll)",
+        onclick:() => { strikeSeenAdd(e.id); delete strikePopDraft[e.id]; renderStrikePops(); }}, "\u2715")));
+    const b = el("div",{}); fillStrikeResult(b, e); card.append(b);
+    box.append(card);
+  });
+  if(old) old.replaceWith(box); else document.body.append(box);
+}
+/* The GM's side of a player's multi-roll Move, opened from the feed. First the count: pick who it was aimed at and
+   that token's Evasion marks every roll ✓ / ✗ (or set the number by hand), and 📨 Confirm sends the count back to the
+   player's screen. After that the same window is the hit itself: the damage the player's own dice make at that
+   count, Population Bomb's extras (theirs, or chosen here), and the target picker with the target already ticked. */
+var strikeCountLive = null;        // the open count window: { id, sig, draw, body }
+function strikeEntrySig(e){
+  const M = e && e.atk && e.atk.multi;
+  return JSON.stringify([M && M.res ? [M.res.hits, M.res.nCrit, M.res.at] : 0, pbPicksOf(e)]);
+}
+function strikeCountRefresh(){
+  const L = strikeCountLive; if(!L) return;
+  if(!L.body.isConnected){ strikeCountLive = null; return; }
+  const e = liveRollEntry(L.id); if(!e) return;
+  if(strikeEntrySig(e) !== L.sig) L.draw();
+}
+function rollApplyWidget(e, dmg, critExtra, preselect, picks){
+  const A = e.atk;
+  return attackTargetWidget({ dmg, type:A.type, physical:A.physical, pierceImmune:A.pierceImmune, pierceDR:A.pierceDR,
+    atkTinted:A.atkTinted, atkExploit:A.atkExploit, atkMega:A.atkMega, atkWar:A.atkWar, atkMold:A.atkMold,
+    atkDeicide:A.atkDeicide, seFlat:A.seFlat, defCSMode:A.defCSMode, moveRule:pbRule(A.moveRule, picks), critExtra,
+    fx:A.fx || null, ctx:A.ctx || null, preselect, pbFx:(picks && picks.length) ? picks : null });
+}
+function rollApplyNoBoard(){
+  return el("div",{class:"small"}, "No damageable token on the current map \u2014 open the \u{1F5FA} Map (or add a token) and try again.");
+}
+function openStrikeCount(e0){
+  const body = el("div",{});
+  const draw = () => {
+    const e = liveRollEntry(e0.id) || e0, M = e.atk.multi;
+    strikeCountLive = { id:e0.id, sig:strikeEntrySig(e), draw, body };
+    body.innerHTML = "";
+    body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+      `${e.by || "?"}${e.who && e.who !== e.by ? ` \u2014 ${e.who}` : ""} rolled ${e.label || "an attack"} at ${rollFeedTime(e.at)}`
+      + ` \u2014 ${M.nats.length} Attack Rolls${M.ac != null ? ` vs AC ${M.ac} + the target's Evasion` : " (it can't miss)"}.`));
+    if(!M.res) strikeCountStage(e, body, draw);
+    else strikeHitStage(e, body, draw);
+  };
+  modal({ title:`\u2694 ${e0.label || "Count the hits"}`, bodyNode:body,
+    footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Done")] });
+  draw();
+}
+function strikeCountStage(e, body, draw){
+  const A = e.atk, M = A.multi, pb = M.kind === "popbomb", N = M.nats.length;
+  const aid = A.ctx && A.ctx.aid;
+  const toks = strikeTargetTokens(null).filter(tok => { const o = (tokenLinked(tok) || {}).obj; return !(o && aid && o.id === aid); });
+  const sel = el("select",{style:"max-width:260px"});
+  sel.append(el("option",{value:""}, "\u2014 who was it aimed at? \u2014"));
+  toks.slice().sort((a, b) => (tokenSide(b) === "enemy") - (tokenSide(a) === "enemy"))
+    .forEach(tok => sel.append(el("option",{value:tok.id}, (tokenHp(tok).name || "Token") + (tok.twinOf ? " (2nd token)" : ""))));
+  if(lastStrikeTargetId && toks.some(tok => tok.id === lastStrikeTargetId)) sel.value = lastStrikeTargetId;
+  const rolls = el("div",{style:"margin:8px 0 4px"});
+  const sum = el("div",{style:"font-weight:800;margin:4px 0"});
+  const confirmBtn = el("button",{class:"btn-primary",style:"margin-top:8px"});
+  let cur = null, forced = null;
+  const show = () => {
+    rolls.innerHTML = ""; sum.textContent = "";
+    const tok = toks.find(x => x.id === sel.value) || null;
+    if(tok) lastStrikeTargetId = tok.id;
+    const ev = tok ? (tokenEvasions(tok) || {}) : null;
+    const eva = ev ? Math.max(A.physical ? (ev.phys || 0) : (ev.spec || 0), ev.spd || 0) : 0;
+    const R = multiStrikeResolve(M, eva, forced);
+    const marked = forced == null && (!!tok || M.ac == null);
+    M.nats.forEach((nat, i) => {
+      const st = R.strikes[i];
+      rolls.append(el("div",{style:"display:flex;gap:8px;align-items:baseline;font-size:14px"
+          + (marked ? `;color:var(--${st.hit ? "good" : "bad"})` : "")},
+        el("b",{}, `#${i + 1}`), el("span",{style:"font-weight:800"}, String(st.tot)),
+        el("span",{class:"small muted"}, `(d20 ${nat}${M.accMod ? ` ${M.accMod > 0 ? "+" : "\u2212"} ${Math.abs(M.accMod)}` : ""})`),
+        marked ? el("span",{style:"font-weight:800"}, st.hit ? (st.crit ? "\u2713 hit \u{1F4A5} crit" : "\u2713 hit") : "\u2717 miss") : ""));
+    });
+    if(!marked && forced == null){
+      sum.style.color = "var(--muted)";
+      sum.textContent = "Pick the target \u2014 its Evasion marks each roll \u2713 or \u2717 (or set the hits by hand below).";
+      cur = null; confirmBtn.disabled = true; confirmBtn.textContent = "\u{1F4E8} Confirm the hits"; return;
+    }
+    cur = { hits:R.hits, nCrit:R.nCrit, marks: forced == null ? R.strikes.map(x => x.hit ? 1 : 0) : null,
+            tok: tok ? tok.id : "", name: tok && !tok.hideName ? (tokenHp(tok).name || "") : "" };
+    sum.style.color = R.hits ? "var(--accent)" : "var(--bad)";
+    sum.textContent = `\u2694 ${R.hits} of ${N} ${pb ? "rolls succeeded" : "hit"}${tok ? ` ${tokenHp(tok).name}` : ""}`
+      + (forced != null ? " (set by hand)" : (tok && M.ac != null) ? ` \u2014 AC ${M.ac} + Evasion ${M.ignoreEva ? "0 (No Guard)" : eva}` : "")
+      + (R.hits ? ` \u2192 ${R.dmg} damage${R.nCrit ? ` (${pb ? "a Critical Hit" : `${R.nCrit} crit${R.nCrit === 1 ? "" : "s"}`})` : ""}` : " \u2014 no damage")
+      + (pb && R.extras ? ` \u00B7 ${R.extras} extra effect${R.extras === 1 ? "" : "s"} for ${e.by || "the player"} to choose` : "");
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = `\u{1F4E8} Confirm ${R.hits} ${R.hits === 1 ? "hit" : "hits"} \u2014 send to ${e.by || "the player"}`;
+  };
+  sel.addEventListener("change", () => { forced = null; show(); });
+  const ov = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px"},
+    el("span",{class:"small muted"}, "Or set the hits:"));
+  for(let k = 0; k <= N; k++) ov.append(el("button",{class:"btn-secondary",style:"padding:2px 10px",
+    onclick:() => { forced = k; show(); }}, String(k)));
+  confirmBtn.addEventListener("click", () => {
+    if(!cur) return;
+    const L = liveRollEntry(e.id); if(!L || !L.atk || !L.atk.multi){ toast("That roll has left the feed"); return; }
+    L.atk.multi.res = Object.assign({ at:Date.now(), by:(cloud.name || "").trim() || "GM" }, cur);
+    saveRolls(); renderRollFeed(); draw();
+    toast(`\u{1F4E8} ${cur.hits} of ${N} \u2014 sent to ${e.by || "the player"}`);
+  });
+  body.append(el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap"},
+      el("span",{class:"small",style:"font-weight:700"}, "\u{1F3AF} Target"), sel),
+    toks.length ? "" : el("div",{class:"small muted",style:"margin-top:4px"}, "No target tokens on this board \u2014 set the hits by hand."),
+    rolls, sum, ov, confirmBtn);
+  show();
+}
+function strikeHitStage(e, body, draw){
+  const A = e.atk, M = A.multi, res = M.res, pb = M.kind === "popbomb", N = M.nats.length;
+  const R = multiStrikeDamage(M, res.hits, res.nCrit);
+  body.append(el("div",{style:`font-weight:800;color:var(--${R.hits ? "accent" : "bad"})`},
+    `\u2694 ${strikeMarks(M, res)} \u2192 ${R.hits} of ${N} ${pb ? "rolls succeeded" : "hit"}${res.name ? ` ${res.name}` : ""}`));
+  if(R.hits) body.append(
+    el("div",{style:`font-size:20px;font-weight:900;margin-top:2px;color:${R.nCrit ? "var(--bad)" : "var(--accent)"}`},
+      `${R.nCrit ? "\u{1F4A5} CRIT! " : "\u{1F4A5} "}${R.dmg} ${A.type} damage`),
+    el("div",{class:"small muted"}, `${R.db != null ? `DB ${R.db}: ` : ""}the player's dice ${R.die}`
+      + `${M.flat ? ` ${M.flat > 0 ? "+" : "\u2212"} ${Math.abs(M.flat)}` : ""}${R.critExtra ? ` + ${R.critExtra} crit` : ""}`
+      + `${M.mult && M.mult !== 1 ? ` \u00D7${M.mult}` : ""} \u2014 the same number their screen shows.`));
+  body.append(el("div",{class:"small muted",style:"margin:4px 0 6px"},
+    `\u{1F4E8} Sent to ${e.by || "the player"} at ${rollFeedTime(res.at)}. `,
+    el("button",{class:"linkbtn",title:"take the count back and do it again (the player's screen goes back to waiting)",
+      onclick:() => { const L = liveRollEntry(e.id); if(!L || !L.atk || !L.atk.multi) return;
+        delete L.atk.multi.res; delete L.atk.pbPicks; delete L.atk.pbBy; saveRolls(); renderRollFeed(); draw(); }}, "\u21BA Recount")));
+  if(!R.hits){ body.append(el("div",{class:"small muted"}, "Every roll missed \u2014 nothing to apply.")); return; }
+  const picks = pbPicksOf(e);
+  if(pb && R.extras){
+    if(picks.length) body.append(el("div",{class:"small",style:"font-weight:700;color:var(--good)"},
+      `\u{1F4A3} ${A.pbBy && A.pbBy !== "GM" ? `${A.pbBy} chose` : "Extra effects"}: ${pbPickNames(picks)} \u2014 they land with the hit below.`));
+    else {
+      body.append(el("div",{class:"small",style:"font-weight:700;color:var(--accent)"},
+        `\u23F3 Waiting for ${e.by || "the player"} to choose ${R.extras} extra effect${R.extras === 1 ? "" : "s"} \u2014 this window updates when they do. Or choose for them:`));
+      body.append(popBombPickerNode(R.extras, { sendLabel:"\u2714 Use these", onSend: p2 => {
+        const L = liveRollEntry(e.id); if(!L || !L.atk) return;
+        L.atk.pbPicks = pbCleanPicks(p2); L.atk.pbBy = "GM"; saveRolls(); renderRollFeed(); draw(); } }));
+    }
+  }
+  body.append(rollApplyWidget(e, R.dmg, R.critExtra, res.tok || null, picks) || rollApplyNoBoard());
+}
+/* the feed row of a player's multi-roll Move: "count hits" while it waits, the ✓ / ✗ count and 🎯 Apply after */
+function strikeFeedBits(e){
+  const A = e.atk, M = A.multi, res = M.res, pb = M.kind === "popbomb", N = M.nats.length;
+  const wrap = el("div",{});
+  const st = "padding:2px 8px;margin-top:4px;font-size:11px";
+  if(!res){
+    wrap.append(el("button",{class:"btn-primary",style:st,
+      title:"pick the target \u2014 its Evasion marks each roll \u2713 / \u2717, and the count goes back to the player",
+      onclick:() => openRollApply(e)}, `\u2694 ${strikeTotals(M).join(" \u00B7 ")} \u2014 count hits`));
+    wrap.append(el("div",{class:"muted",style:"font-size:10px"},
+      `${N} Attack Rolls${M.ac != null ? ` vs AC ${M.ac} + Evasion` : ""} \u00B7 ${e.by || "the player"} is waiting`));
+    return wrap;
+  }
+  const R = multiStrikeDamage(M, res.hits, res.nCrit);
+  wrap.append(el("div",{style:`font-size:11px;font-weight:700;color:var(--${R.hits ? "accent" : "bad"})`},
+    `\u2694 ${strikeMarks(M, res)} \u2192 ${R.hits}/${N} ${pb ? "succeeded" : "hit"}${res.name ? ` ${res.name}` : ""}${R.nCrit ? " \u{1F4A5}" : ""}`));
+  if(pb && R.extras){
+    const picks = pbPicksOf(e);
+    wrap.append(el("div",{class:"muted",style:"font-size:10px"}, picks.length ? `\u{1F4A3} ${pbPickNames(picks)}`
+      : `\u23F3 ${e.by || "the player"} is choosing ${R.extras} extra effect${R.extras === 1 ? "" : "s"}`));
+  }
+  wrap.append(el("button",{class:"btn-secondary",style:st, onclick:() => openRollApply(e)},
+    R.hits ? `\u{1F3AF} Apply ${R.dmg} ${A.type}` : "\u21BA Recount"));
+  return wrap;
 }
 function strikeTargetTokens(self){
   const map = currentMapForView() || activeMap(); if(!map) return [];
@@ -26939,6 +27345,7 @@ function specialMoveInfo(m, p){
   const name = String(m?.name||"");
 
   /* ---- multi-strike attack structure ---- */
+  if(name==="Population Bomb")      return {kind:"popBomb", base:m?.damageBase};   // 3 Accuracy Rolls, ONE hit (multiStrikeDamage)
   if(name==="Triple Kick")          return {kind:"tripleKick"};
   if(isDoubleStrike(m))             return {kind:"doubleStrike", base:m?.damageBase};
 
@@ -27540,7 +27947,8 @@ function openMoveRoll(p, m, sp, opts={}){
   let weightVal = wInfo ? (wInfo.kind==="diffPlus2" ? 1 : 3) : 0;
   // other special Damage-Base scaling / attack-structure moves (Magnitude, Hex, Double Strike, …)
   const sp2 = specialMoveInfo(m, p);
-  const nAcc = sp2?.kind==="doubleStrike" ? 2 : sp2?.kind==="tripleKick" ? 3 : 1;
+  const pbomb = sp2?.kind==="popBomb";   // Population Bomb: 3 Accuracy Rolls, ONE hit (multiStrikeDamage)
+  const nAcc = sp2?.kind==="doubleStrike" ? 2 : (sp2?.kind==="tripleKick" || pbomb) ? 3 : 1;
   /* conditionalDB: one checkbox per condition, pre-ticked where the sheet can tell on its own. */
   const condList = sp2?.kind==="conditionalDB" ? sp2.conds : [];
   const condAuto = condList.map(c => { try{ return !!(c.auto && c.auto(p)); }catch(e){ return false; } });
@@ -28151,6 +28559,17 @@ function openMoveRoll(p, m, sp, opts={}){
     } else if(sp2.kind==="dieDB"){
       body.append(el("div",{class:"warnbox",style:"margin:0 0 12px"},
         `🎲 ${sp2.hint} — rolled automatically when you press 🎲 Roll dice.${sp2.onOne?" "+sp2.onOne:""}`));
+    } else if(sp2.kind==="popBomb"){
+      const wc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin:0 0 12px"});
+      wc.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"}, "\u{1F4A3} Population Bomb \u2014 3 Accuracy Rolls, one hit"));
+      if(strikeGmPicks()) wc.append(strikeGmPicksNote(true));
+      else { evaPick = strikeTargetPicker(p, ()=>isSpec, `Target's ${isSpec?"Special":"Physical"} Evasion`);
+        wc.append(evaPick.node); }
+      wc.append(el("div",{class:"small muted",style:"margin-top:4px"},
+        `All 3 rolls are checked against AC ${effAC??"\u2014"} + the target's Evasion when you press \u{1F3B2}: if any succeed it hits once, and its Damage Base never grows with the extra successes. `
+        + "Each success after the first buys one extra effect \u2014 Vulnerable until the end of its next turn, its Moves resisted 1 step further until the end of its next turn, or this damage can't be resisted \u2014 "
+        + "and any crit makes it a Critical Hit and buys one more. Picked after the roll; the extras land with the hit."));
+      body.append(wc);
     } else if(sp2.kind==="doubleStrike" || sp2.kind==="tripleKick"){
       const nStrikes = sp2.kind==="tripleKick" ? 3 : 2;
       const wc = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--line);margin:0 0 12px"});
@@ -28606,8 +29025,8 @@ function openMoveRoll(p, m, sp, opts={}){
        its d20 only to read Effect Ranges off it. */
     const laserOn = !!(m && m.damageBase) && ownerBuffs(p).some(b => b.key === "laser-focus");
     const nCrit  = buffNoCrit(p) ? 0          // Powerful Motivator (Baby-Doll Eyes): "cannot Critically Strike for 1 full round"
-                 : laserOn ? (multi ? connected : ((cantMiss || thresh==null || (acc!==1 && accTot>=thresh)) ? 1 : 0))   // Laser Focus
-                 : multi ? Math.min(strikes.filter(s=>s.crit).length, connected)
+                 : laserOn ? (multi ? (pbomb ? Math.min(1, connected) : connected) : ((cantMiss || thresh==null || (acc!==1 && accTot>=thresh)) ? 1 : 0))   // Laser Focus
+                 : multi ? Math.min(strikes.filter(s=>s.crit).length, connected, pbomb ? 1 : nAcc)   // Population Bomb: one crit makes the Move a Critical Hit
                          : (alwaysCrit ? ((cantMiss || effAC==null || acc!==1) ? 1 : 0)
                                        : ((acc>=effCritT || (evenCrit && acc%2===0 && (cantMiss || thresh==null || accTot>=thresh))) ? 1 : 0));   // an auto-hit still rolls its d20 for Crits (Core: Perfect Aim "may still roll to trigger any Effect Ranges or Critical Hits")
     const isCrit = nCrit > 0;
@@ -28623,9 +29042,18 @@ function openMoveRoll(p, m, sp, opts={}){
       accLine.append(el("div",{class:"small muted"},
         `The d20 still rolls for Critical Hits and Effect Ranges: ${acc}${isCrit ? " \u2014 Critical Hit!" : ` (crits on ${effCritT}+)`}.`));
       if(isCrit) accLine.append(el("div",{style:"font-size:20px;font-weight:800;color:var(--bad);margin-top:2px"}, "💥 CRITICAL HIT!"));
+    } else if(multi && strikeGmPicks() && effAC!=null && connected>0 && !forced){
+      /* a player's roll: the totals go to the GM, who counts them against the target they pick (openStrikeCount) */
+      accLine.append(el("div",{style:"font-size:24px;font-weight:800"}, `\u{1F3B2} ${strikes.map(s=>s.tot).join(" \u00B7 ")}`));
+      accLine.append(el("div",{class:"small muted",style:"margin-top:2px"},
+        `${nAcc} Attack Rolls, each vs AC ${effAC}${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote} \u2192 ${strikeReadout(strikes)}`));
+      if(accBits.length) accLine.append(el("div",{class:"small muted"}, `Each roll includes ${accBits.join(" ")}.`));
+      accLine.append(el("div",{class:"small",style:"margin-top:2px;color:var(--accent);font-weight:600"},
+        "\u23F3 Sent to your GM \u2014 they pick the target and count how many hit; the count and the damage land below."));
     } else if(multi){
       accLine.append(el("div",{style:`font-size:24px;font-weight:800;color:var(--${connected?"good":"bad"})`},
-        `🎯 ${connected} / ${nAcc} strike${connected===1?"":"s"} connected`));
+        pbomb ? `🎯 ${connected} / 3 rolls succeeded${connected ? " \u2014 it hits" : ""}`
+              : `🎯 ${connected} / ${nAcc} strike${connected===1?"":"s"} connected`));
       accLine.append(el("div",{class:"small muted",style:"margin-top:2px"},
         `vs AC${wx.acOverride!=null?` (${wx.weather.name})`:""} + ${evaNote} → ${strikeReadout(strikes)}`));
       if(accBits.length) accLine.append(el("div",{class:"small muted"}, `Each roll includes ${accBits.join(" ")}.`));
@@ -28768,25 +29196,24 @@ function openMoveRoll(p, m, sp, opts={}){
         /* a player's Double Strike / Triple Kick: the GM's pick of the target counts the hits (multiStrikeResolve),
            so the dice for EVERY hit count, and a crit roll per strike, go to the feed with the d20s */
         let multiP = null;
-        if(multi && strikeGmPicks() && !hitsInfo){
-          const keep = hitsConnect, dice = [];
-          for(let k = 1; k <= nAcc; k++){
-            if(k === connected){ dice.push(r.total); continue; }
+        if(multi && strikeGmPicks() && !hitsInfo && !cantMiss && effAC != null){
+          const keep = hitsConnect, dice = [], dbs = [], nK = pbomb ? 1 : nAcc;   // Population Bomb: one hit, one set of dice
+          for(let k = 1; k <= nK; k++){
+            if(k === (pbomb ? 1 : connected)){ dice.push(r.total); dbs.push(fDB); continue; }
             hitsConnect = k;
             const fk = finalDB(1), dsk = fk != null ? (DB_TABLE[fk]||"").split("/")[0].trim() : "";
-            dice.push((rollDiceString(dsk, ppMax) || {}).total || 0);
+            dice.push((rollDiceString(dsk, ppMax) || {}).total || 0); dbs.push(fk);
           }
           hitsConnect = keep;
-          const crits = Array.from({ length:nAcc }, () => {
+          const crits = Array.from({ length:nK }, () => {
             let c = (rollDiceString(critDS) || {}).total || 0;
             if(hasAbility(p,"Sniper")) c += (rollDiceString(critDS) || {}).total || 0;
             if(hasAbility(p,"Sniper [Errata]")) c += (rollDiceString("3d10") || {}).total || 0;
             return c; });
-          multiP = { nats: accs.slice(), accMod, ac: (cantMiss || effAC == null) ? null : effAC, critT: effCritT,
+          multiP = { kind: pbomb ? "popbomb" : sp2.kind === "tripleKick" ? "triple" : "double",
+            nats: accs.slice(), accMod, ac: effAC, critT: effCritT,
             ignoreEva: hasAbility(p, "No Guard") && (moveHasKeyword(m, "melee") || /^melee/i.test(String((m && m.range) || ""))),   // No Guard: Melee ignores Evasion
-            flat: preMult - r.total - critExtra, mult: cx.mult, dice, crits };
-          dmgLine.append(el("div",{class:"small",style:"margin-top:2px;color:var(--accent);font-weight:600"},
-            `\u{1F3AF} ${connected} of ${nAcc} would connect against no Evasion — your GM's pick of the target decides the real count, and the damage with it.`));
+            flat: preMult - r.total - critExtra, mult: cx.mult, dice, crits, dbs };
         }
         dmgLine.append(el("div",{style:`font-size:26px;font-weight:800;color:${isCrit?"var(--bad)":"var(--accent)"}`},
           `${isCrit?"💥 CRIT! ":"💥 "}${total}`));
@@ -28809,7 +29236,7 @@ function openMoveRoll(p, m, sp, opts={}){
           `🎯 Five Strike: 1d8 → ${hitsInfo.d8} = ${hitsInfo.hits} hit${hitsInfo.hits===1?"":"s"} — DB ${baseDB()} ×${hitsInfo.hits} = ${baseDB()*hitsInfo.hits}`
           + `${stab?" +2 STAB":""}${abilMods.db?` +${abilMods.db} ability`:""}${bm.db?` +${bm.db} buffs`:""} → DB ${effFDB}`));
         if(multi) dmgLine.append(el("div",{class:"small muted",style:"margin-top:2px"},
-          `${sp2.kind==="tripleKick"?"👣 Triple Kick":"⚔ Double Strike"}: ${connected} of ${nAcc} connected — Damage Base ${baseDB()}${stab?" +2 STAB":""}${abilMods.db?` +${abilMods.db} ability`:""} = ${fDB}`));
+          `${sp2.kind==="tripleKick"?"👣 Triple Kick":pbomb?"💣 Population Bomb":"⚔ Double Strike"}: ${connected} of ${nAcc} ${pbomb?"rolls succeeded (one hit)":"connected"} — Damage Base ${baseDB()}${stab?" +2 STAB":""}${abilMods.db?` +${abilMods.db} ability`:""} = ${fDB}`));
         if(cx.why.length) dmgLine.append(el("div",{class:"small muted",style:"margin-top:2px"},
           `❓ Condition${cx.why.length>1?"s":""} applied: ${cx.why.join(" · ")}`));
         dmgLine.append(el("div",{class:"small muted",style:"margin-top:4px"}, parts.join("  ")));
@@ -28842,27 +29269,44 @@ function openMoveRoll(p, m, sp, opts={}){
         if(hasAbility(p, "Merciless") && !critExtra){ try{ mercCrit = rollDiceString(critDS).total; }catch(e){} }
         // GM: drop this rolled hit straight onto a battle-map token (auto Def / type / abilities / DR).
         if(hpNode && hpNode.setDealt) hpNode.setDealt(total);   // a rough figure until a target takes it
-        if(isPhys || isSpec){
-          const tw = attackTargetWidget({ dmg:total, type:mtype||"Typeless", physical:isPhys, atkMold: !!mold,
+        /* Population Bomb counted on this screen (the GM's own roll, offline, or one that can't miss): every success
+           past the first buys an extra effect and a crit one more, picked right here. The GM's ticks re-apply to the
+           target picker below; a player's go to the GM's feed entry with ✔ Send. */
+        const pbN = (pbomb && !multiP) ? Math.min(3, Math.max(0, connected - 1) + (isCrit ? 1 : 0)) : 0;
+        let pbPicks = [], feRef = null;
+        const mkTw = () => (isPhys || isSpec) ? attackTargetWidget({ dmg:total, type:mtype||"Typeless", physical:isPhys, atkMold: !!mold,
             pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens") || !!(mold && mold.tinted),
             atkExploit: exploitAbilityBonus(p), atkMega: isMegaMon(p), atkWar: ownerAuraActive(p,"War"), seFlat: heldSeFlatDamage(p),
-            pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS || unawareMode(p), moveRule, critExtra, fx: hitFx,
+            pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS || unawareMode(p), moveRule: pbRule(moveRule, pbPicks), critExtra, fx: hitFx,
+            pbFx: pbPicks.length ? pbPicks.slice() : null,
             ctx:{ attacker:p, by:rollerName(p), melee:/melee/i.test(String((m && m.range) || "")), move:m.name, crit:!!isCrit, range:String((m && m.range) || ""), forceCrit:mercCrit },
-            onDealt:(n, c, d)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n, true, d); } });
-          if(tw) dmgLine.append(tw);
-        }
+            onDealt:(n, c, d)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n, true, d); } }) : null;
+        let tw = mkTw();
+        const pbWrite = picks => {                  // the feed entry carries the choice for the GM's 🎯 Apply
+          if(!feRef || !feRef.atk) return;
+          const L = liveRollEntry(feRef.id), T = (L && L.atk) || feRef.atk;
+          T.pbPicks = picks.slice(); T.pbBy = cloud.isGM ? "GM" : ((cloud.name || "").trim() || "Player"); saveRolls();
+        };
+        if(pbN > 0) dmgLine.append(popBombPickerNode(pbN, Object.assign({
+            title:`${connected} of 3 rolls succeeded${isCrit ? " and it crit" : ""} \u2014 choose ${pbN} extra effect${pbN === 1 ? "" : "s"}` },
+          strikeGmPicks()
+            ? { onSend: picks => { pbWrite(picks); toast(`\u{1F4A3} Sent to your GM: ${pbPickNames(picks)}`); } }
+            : { onChange: picks => { pbPicks = picks; const n2 = mkTw(); if(tw && n2){ tw.replaceWith(n2); tw = n2; } pbWrite(picks); } })));
+        if(tw) dmgLine.append(tw);
         /* …and into the GM's feed, carrying the same numbers, so they can drop this hit on a token
            later even though the player who rolled it never had the board open. */
         feedLogged = true;
-        logRoll({ kind:"move", label:m.name, who:rollerName(p),
+        feRef = logRoll({ kind:"move", label:m.name, who:rollerName(p),
           headline:`${isCrit?"💥 CRIT ":"💥 "}${total} damage`,
           lines:[`🎯 Accuracy ${accTot} (d20 ${acc})${effAC!=null?` vs AC ${effAC}`:""}`,
                  `${mtype||"Typeless"}${m.class?` · ${m.class}`:""} · DB ${effFDB}`],
           atk: (isPhys||isSpec) ? { dmg:total, type:mtype||"Typeless", physical:isPhys, atkMold: !!mold,
                  pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens") || !!(mold && mold.tinted),
                  atkExploit: exploitAbilityBonus(p), atkMega: isMegaMon(p), atkWar: ownerAuraActive(p,"War"), seFlat: heldSeFlatDamage(p),
-                 pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS || unawareMode(p), moveRule, critExtra, fx: hitFx, multi: multiP,
+                 pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS || unawareMode(p), moveRule, critExtra, fx: hitFx, multi: multiP, pbN,
                  ctx:{ by:rollerName(p), aid:p.id || null, melee:/melee/i.test(String((m && m.range) || "")), move:m.name, crit:!!isCrit, range:String((m && m.range) || ""), forceCrit:mercCrit } } : null });
+        /* a player's multi-roll Move: the damage waits on the GM's count — this line fills in when it comes back */
+        if(multiP && feRef){ [...dmgLine.children].forEach(c => { c.style.display = "none"; }); dmgLine.append(strikeWaitNode(feRef)); }
       }
       out.append(dmgLine);
       if(ancestral && (isPhys||isSpec)){ const an = ancestralStrikeNode(); if(an) out.append(an); }
@@ -28875,7 +29319,7 @@ function openMoveRoll(p, m, sp, opts={}){
     }
     /* GM override: keep the same Attack Rolls but force a different hit count (e.g. the target's
        real Evasion turned out different, or an ability changed what connects). Damage is re-rolled. */
-    if(multi){
+    if(multi && !strikeGmPicks()){           // a player's count is the GM's to set (openStrikeCount)
       const ov = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center"});
       ov.append(el("span",{class:"small muted"},"Override hits:"));
       for(let k=0;k<=nAcc;k++) ov.append(el("button",{class:"btn-secondary",style:"padding:3px 10px",
@@ -28897,7 +29341,7 @@ function openMoveRoll(p, m, sp, opts={}){
        — and "did it land?" is exactly the Accuracy-vs-AC line the damage branch above prints, so it
        belongs here too. Without it a Status Move's entry showed a bare total and no AC to beat. */
     if(!feedLogged) logRoll({ kind:"move", label:m.name, who:rollerName(p),
-      headline:`🎯 ${accTot}${effAC!=null?` vs AC ${effAC}`:""}`,
+      headline:`🎯 ${multi && strikes ? strikes.map(s=>s.tot).join(" · ") : accTot}${effAC!=null?` vs AC ${effAC}`:""}`,
       lines:[`🎯 Accuracy ${accTot} (d20 ${acc})${effAC!=null?` vs AC ${effAC}`:" — no Accuracy Roll"}`,
              `${mtype||"Typeless"}${m.class?` · ${m.class}`:""} — no damage rolled`] });
   };
@@ -29999,7 +30443,8 @@ const flipOutSplashDR = t => 2 * rankNum(t && t.skills && t.skills.acrobatics);
 function ownerMapToken(o){
   const map = currentMapForView() || activeMap();
   if(!map || !o) return null;
-  return mapTokensFor(map.id).find(tok => tok.link && (tokenLinked(tok)||{}).obj === o) || null;
+  const mine = mapTokensFor(map.id).filter(tok => tok.link && (tokenLinked(tok)||{}).obj === o);
+  return mine.find(tok => !tok.twinOf) || mine[0] || null;   // a Family Unit's first token, not its second
 }
 /* Splash as an Interrupt, once a Scene. The DR is a charge, not a standing bonus: buffDR spends one
    per incoming attack, which is exactly what "against that attack" asks for. */
@@ -44182,6 +44627,71 @@ function statusVeilNotes(o, active, kind, veils){
    chip), and only when something actually changed. `autoFlanked` / `autoPressure` remember which
    chips WE put on, so walking out of range lifts ours without touching one set by hand.
    Called from renderMap, so it is also what keeps the chips honest after a drag. */
+/* ---- Family Unit (Maushold, Static) ------------------------------------------------------------------------------
+   "The user has two tokens instead of one, which may share a square, and do so when sent out. When the user Shifts,
+   both tokens may move independently and do not need to remain adjacent. The user cannot be hit by a Move twice due
+   to both tokens being targeted. The two tokens and their allies may treat each other as different Pokemon for the
+   purposes of positioning effects such as flanking… Bonus: two Attacks of Opportunity per round instead of one."
+   The second token is an ordinary token with the same link plus `twinOf` (the first token's id), so HP, Statuses and
+   the rest are the one Pokémon's. The GM's board keeps it in step (sweepFamilyUnits, from renderMap): a token whose
+   Pokémon has Family Unit gets its twin on the same square, and the twin goes when the first token does or the Ability
+   is gone. The twin takes no turn of its own (tokenInInit), stands as a separate body for Flanking, its chips are read
+   with the first token's (sweepMapAuras), and a hit that ticks both lands once (attackTargetWidget). Taking the twin
+   off by hand sets `noTwin` on the first token, and the token menu's tick puts it back. */
+function hasFamilyUnit(o){
+  try{ return !!o && !isTrainerOwner(o) && ownerHasAbility(o, "Family Unit"); }catch(e){ return false; }
+}
+function sweepFamilyUnits(map){
+  if(!map || mode !== "cloud" || !cloud.isGM) return false;
+  const arr = cloud.mapTokens?.data?.byMap?.[map.id];
+  if(!Array.isArray(arr) || !arr.length || arr.length > 400) return false;
+  let changed = false;
+  const byId = new Map(arr.map(t => [t.id, t]));
+  const sameLink = (a, b) => !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
+  for(let i = arr.length - 1; i >= 0; i--){
+    const t = arr[i]; if(!t.twinOf) continue;
+    const P = byId.get(t.twinOf);
+    const L = P && P.link ? tokenLinked(P) : null;
+    const keep = !!(P && !P.noTwin && sameLink(P.link, t.link) && L && L.obj && !L.missing && hasFamilyUnit(L.obj));
+    const dupe = keep && arr.findIndex(x => x.twinOf === t.twinOf) !== i;    // only ever one twin
+    if(!keep || dupe){ arr.splice(i, 1); changed = true; }
+  }
+  arr.slice().forEach(P => {
+    if(P.twinOf || P.noTwin || !P.link) return;
+    const L = tokenLinked(P); if(!L || !L.obj || L.missing || !hasFamilyUnit(L.obj)) return;
+    if(arr.some(t => t.twinOf === P.id)) return;
+    const twin = { id:uid(), size:P.size || 1, x:P.x, y:P.y, link:JSON.parse(JSON.stringify(P.link)), twinOf:P.id };
+    ["gmHidden", "hideName", "ally"].forEach(k => { if(P[k] !== undefined) twin[k] = P[k]; });
+    arr.push(twin);
+    changed = true;
+  });
+  if(changed) mapTokensSave();
+  return changed;
+}
+/* AoE buffs: a Pokémon standing on two tokens inside one area still gets one copy */
+function familyOnce(){
+  const seen = new Set();
+  return t => { const o = t && t.link ? (tokenLinked(t) || {}).obj : null;
+    if(!o) return true; if(seen.has(o)) return false; seen.add(o); return true; };
+}
+/* the token menu's Family Unit line (GM): what the second token does, and the switch for it */
+function familyUnitMenuNode(token, map){
+  const P = token.twinOf ? mapTokensFor(map.id).find(t => t.id === token.twinOf) : token;
+  const L = P && P.link ? tokenLinked(P) : null;
+  if(!L || !L.obj || !hasFamilyUnit(L.obj)) return null;
+  const wrap = el("div",{class:"small",style:"margin-top:10px;padding:6px 8px;border:1px dashed var(--line);border-radius:8px"});
+  wrap.append(el("div",{style:"font-weight:700"}, `\u{1F46A} Family Unit${token.twinOf ? " \u2014 this is its second token" : ""}`),
+    el("div",{class:"muted"}, "Two tokens, one Pok\u00e9mon: they Shift on their own and share a turn, count as two bodies for Flanking, "
+      + "and a Move that catches both hits it only once. It may make 2 Attacks of Opportunity a round."));
+  if(!token.twinOf && cloud.isGM){
+    const cb = el("input",{type:"checkbox"}); cb.checked = !P.noTwin;
+    cb.addEventListener("change", () => { if(cb.checked) delete P.noTwin; else P.noTwin = true;
+      sweepFamilyUnits(map); mapTokensSave(); renderMap(); });
+    wrap.append(el("label",{class:"inline",style:"display:flex;gap:6px;align-items:center;margin-top:4px;cursor:pointer"},
+      cb, el("span",{}, "Show its second token")));
+  }
+  return wrap;
+}
 function sweepMapAuras(map){
   if(!map || !cloud.isGM) return false;
   const toks = mapTokensFor(map.id);
@@ -44211,14 +44721,18 @@ function sweepMapAuras(map){
   toks.forEach(token => {
     const L = token.link ? tokenLinked(token) : null;
     if(!L || !L.obj || L.missing) return;
+    /* Family Unit: the chips are the one Pokémon's, so both tokens are read together on the first one — either being
+       Flanked (or in Pressure's reach) puts the chip on, rather than the two fighting over it every repaint */
+    if(token.twinOf && toks.some(x => x.id === token.twinOf)) return;
+    const fam = [token].concat(toks.filter(x => x.twinOf === token.id));
     let hit = false;
     { const sy = syncHeldStatuses(L.obj);              // Flame Orb / Toxic Orb / a Choice Item
       if(sy.added.length || sy.removed.length) hit = true; }
-    hit = mark(L.obj, "flanked", "autoFlanked", tokenFlanking(map, token).flanked) || hit;
+    hit = mark(L.obj, "flanked", "autoFlanked", fam.some(f => tokenFlanking(map, f).flanked)) || hit;
     if(anyPressure || L.obj.autoPressure)
-      hit = mark(L.obj, "suppressed", "autoPressure", tokenPressureSources(map, token).length > 0) || hit;
+      hit = mark(L.obj, "suppressed", "autoPressure", fam.some(f => tokenPressureSources(map, f).length > 0)) || hit;
     if(anySapper || L.obj.autoGiftsap)
-      hit = mark(L.obj, "giftsapped", "autoGiftsap", tokenGiftsapSources(map, token).length > 0) || hit;
+      hit = mark(L.obj, "giftsapped", "autoGiftsap", fam.some(f => tokenGiftsapSources(map, f).length > 0)) || hit;
     /* The Hush "ends early if you are knocked out" — the victim carries the user's token id */
     if(L.obj.hush && L.obj.hush.tok && hasStatus(L.obj, "hushed")){
       const src = toks.find(x => x.id === L.obj.hush.tok);
@@ -46296,6 +46810,7 @@ function moveRollFactsHTML(p, m, sp){
         const v = Math.max(sp2.min||0, Math.min(sp2.max == null ? 1e9 : sp2.max, sp2.def));
         dbBase = Math.min(28, sp2.toDB(v)); dbNote = `${sp2.label.toLowerCase()}: ${v}`; break; }
       case "dieDB":        dbBase = null; dbPending = sp2.hint; break;
+      case "popBomb":      dbBase = sp2.base == null ? null : sp2.base; dbNote = "one hit if any of its 3 rolls succeed"; break;
       case "doubleStrike": dbBase = (sp2.base||0) * 2; dbNote = "both strikes connecting"; break;
       case "tripleKick":   dbBase = 6; dbNote = "all three kicks connecting"; break;
       default:             dbBase = null; dbPending = sp2.desc || sp2.note || sp2.hint || "special damage";
@@ -48524,6 +49039,7 @@ function logRoll({ kind, label, who, headline, lines, atk, area, foe }){
     label: label || "Roll",
     headline: headline || "",
     lines: (lines||[]).filter(Boolean).map(String).slice(0,4),
+    dev: rollDeviceId(),            // this browser: where a multi-roll Move's count comes back to (renderStrikePops)
   };
   if(atk) e.atk = { atkDeicide: !!atk.atkDeicide,
                     dmg: Math.max(0, Math.round(atk.dmg||0)), type: atk.type || "Typeless",
@@ -48536,7 +49052,7 @@ function logRoll({ kind, label, who, headline, lines, atk, area, foe }){
                        Drift's Super-Effective bonus). Re-serialised field by field rather than
                        passed through, so nothing unexpected ends up in the shared row. */
                     moveRule: atk.moveRule ? { chart: atk.moveRule.chart || null,
-                                               pierceImmune: !!atk.moveRule.pierceImmune,
+                                               pierceImmune: !!atk.moveRule.pierceImmune, noResist: !!atk.moveRule.noResist,
                                                seBonus: Math.max(0, Math.round(atk.moveRule.seBonus||0)),
                                                formeStep: Math.max(0, Math.round(atk.moveRule.formeStep||0)),
                                                drBonus: Math.max(0, Math.round(atk.moveRule.drBonus||0)),
@@ -48559,8 +49075,13 @@ function logRoll({ kind, label, who, headline, lines, atk, area, foe }){
     e.atk.multi = { nats: nums(M.nats, 5), accMod: Math.round(+M.accMod || 0),
                     ac: M.ac == null ? null : Math.round(+M.ac || 0), critT: Math.round(+M.critT || 20),
                     ignoreEva: !!M.ignoreEva, flat: Math.round(+M.flat || 0),
-                    mult: (+M.mult > 0 ? +M.mult : 1), dice: nums(M.dice, 5), crits: nums(M.crits, 5) };
+                    mult: (+M.mult > 0 ? +M.mult : 1), dice: nums(M.dice, 5), crits: nums(M.crits, 5),
+                    kind: (M.kind === "popbomb" || M.kind === "triple") ? M.kind : "double",
+                    dbs: (Array.isArray(M.dbs) ? M.dbs : []).slice(0, 5).map(x => x == null ? null : Math.round(+x || 0)) };
   }
+  /* Population Bomb counted on the roller's own screen: how many extras it bought (and, once chosen, which) */
+  if(atk && (+atk.pbN || 0) > 0) e.atk.pbN = Math.max(0, Math.min(3, Math.round(+atk.pbN)));
+  if(atk && Array.isArray(atk.pbPicks) && atk.pbPicks.length) e.atk.pbPicks = pbCleanPicks(atk.pbPicks);
   if(atk && atk.fx){
     try{ e.atk.fx = JSON.parse(JSON.stringify({ name: String(atk.fx.name||"").slice(0,60),
                                                 status: (atk.fx.status||[]).map(String).slice(0,12),
@@ -48584,6 +49105,8 @@ function logRoll({ kind, label, who, headline, lines, atk, area, foe }){
   if(row.data.entries.length > ROLL_FEED_MAX) row.data.entries = row.data.entries.slice(-ROLL_FEED_MAX);
   saveRolls();
   if(cloud.isGM) renderRollFeed();              // our own roll shows without waiting for the echo
+  else if(isMultiEntry(e)) renderStrikePops();  // a player's "⏳ waiting for the GM" card
+  return e;
 }
 /* ===================================================================
    BLESSINGS ON THE FIELD  (small floating squares, on every screen at the table)
@@ -49664,7 +50187,7 @@ function flushUiRefresh(){
   if(kinds.includes("map") && currentTab==="dex") renderDex();     // "Sheets counted" rides the map-meta row
   if(kinds.includes("pc")  && currentTab==="pc")  renderPC();
   if(kinds.includes("enc") && (currentTab==="encounters" || currentTab==="map")) render();
-  if(kinds.includes("rolls")){ renderRollFeed(); renderBlessingPops(); renderCallOverlay();
+  if(kinds.includes("rolls")){ renderRollFeed(); renderBlessingPops(); renderCallOverlay(); renderStrikePops(); strikeCountRefresh();
     if(typeof contestRender==="function") try{ contestRender(); }catch(e){ console.error(e); }
     if(typeof stageRender==="function") try{ stageRender(); }catch(e){ console.error(e); } }   // all float over every tab, so no tab check
   if(kinds.includes("map") && typeof stageRender==="function") try{ stageRender(); }catch(e){ console.error(e); }   // 🎭 a new round moves the stage dock too
@@ -49680,7 +50203,7 @@ function refreshUI(kind){
   /* the Codec updates IN PLACE (box._update keeps a half-typed line and its focus), so a call never waits on the
      typing guard: SEND puts the cursor back in the Codec box, which used to hold every reply back until that
      person clicked away - to them the other end simply could not write */
-  if(kind === "rolls"){ try{ renderCallOverlay(); renderBlessingPops(); }catch(e){ console.error(e); } }
+  if(kind === "rolls"){ try{ renderCallOverlay(); renderBlessingPops(); renderStrikePops(); strikeCountRefresh(); }catch(e){ console.error(e); } }
   if(!uiRefreshTimer) uiRefreshTimer = setInterval(()=>{ if(!uiBusy()) flushUiRefresh(); }, 400);
 }
 
@@ -51738,10 +52261,11 @@ function tokenLinked(token){
 function tokenForOwner(o){
   if(!o) return null;
   const map = currentMapForView() || activeMap(); if(!map) return null;
-  return mapTokensFor(map.id).find(tok => {
+  const mine = mapTokensFor(map.id).filter(tok => {
     const L = tok.link ? tokenLinked(tok) : null;
     return !!(L && L.obj === o);
-  }) || null;
+  });
+  return mine.find(tok => !tok.twinOf) || mine[0] || null;   // a Family Unit's first token, not its second
 }
 /* wild (encounter-linked) Pokémon tokens on the map this player can currently see — same
    visibility rule renderMap uses for tokens (fog of war, gmHidden), reused so "Throw a Poké Ball"
@@ -52309,6 +52833,7 @@ function tokenInitiative(token){
   return v;
 }
 function tokenInInit(token){
+  if(token && token.twinOf) return false;   // Family Unit: the second token is the same Pokémon — one turn, on the first
   if(isShopToken(token) || isBoatToken(token) || isHazardToken(token) || isZoneToken(token) || isNoteToken(token) || isDoorToken(token)) return false; // scenery doesn't take turns
   const info=tokenHp(token); if(info.unlinked) return false;
   /* A Knocked Out or Dead enemy is not taking turns, so it takes ITSELF off the order rather than
@@ -53011,6 +53536,10 @@ async function removeToken(token, map){
   const arr = cloud.mapTokens?.data?.byMap?.[map.id]; if(!arr) return;
   rememberTokenMovement(map.id, token);       // so re-adding it mid-round doesn't refund its Shift
   const i = arr.findIndex(t=>t.id===token.id); if(i>=0) arr.splice(i,1);
+  /* Family Unit: taking the second token off keeps it off (the sweep would only put it back); taking the Pokémon's
+     first token off takes both */
+  if(token.twinOf){ const P = arr.find(t => t.id === token.twinOf); if(P) P.noTwin = true; }
+  else for(let j = arr.length - 1; j >= 0; j--) if(arr[j].twinOf === token.id) arr.splice(j, 1);
   // whoever was riding it is set back down where it stood, so they don't stay pinned to a ghost
   arr.forEach(t=>{ if(t.riding===token.id){ delete t.riding; t.x=token.x; t.y=token.y; } });
   if(mapMount.riderId===token.id) mapMount.riderId = null;
@@ -53928,7 +54457,7 @@ async function applyAreaBuff(map, buffKey){
   // origin (no link at all) is treated as the player side, same as tokenReveals' own convention.
   const origin = mapTokensFor(map.id).find(t=>t.id===mapAoE?.tokenId);
   const originIsEnemy = tokenSide(origin)==="enemy";
-  const targets = tokensInAoE(map).filter(t=> (tokenSide(t)==="enemy") === originIsEnemy);
+  const targets = tokensInAoE(map).filter(t=> (tokenSide(t)==="enemy") === originIsEnemy).filter(familyOnce());
   /* A Song costs its Musician 1 AP (Core p.164), and THIS is the moment it is played — the Burst
      was only ever a proposal until now. Two ways in, so the charge has to know which:
        · the Musician's own class card (playSong) already paid, and hands the GM a roll-feed entry
@@ -56792,7 +57321,7 @@ function attachImageDrag(node, img, map, overlay, originX=0, originY=0){
    Levitate, Wonder Guard, Filter, …) and any Swarm/manual effectiveness nudge, then Damage
    Reduction (active DR buffs + flat DR vs Super-Effective). Used by BOTH the token menu's manual
    "Apply an attack" box and the roll-result "Apply to target" picker, so the two never diverge. */
-function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, sonic=false, defAsPhys=null, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, chartOverride=null, seBonus=0, seFlat=0, formeStep=0, drBonus=0, vulnStep=0, corrosion=false, atkNeutral=false, defExtraStep=0, execute=false }){
+function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, sonic=false, defAsPhys=null, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, chartOverride=null, seBonus=0, seFlat=0, formeStep=0, drBonus=0, vulnStep=0, corrosion=false, atkNeutral=false, defExtraStep=0, execute=false, noResist=false }){
   const abNotes = [];
   const def = tokenDefenseStat(token, defAsPhys == null ? !!physical : !!defAsPhys, defCSMode)   // Psyshock: the other Defense
             + (defPlusSpd ? tokenSpeed(token) : 0);                                              // Electro Ball: Speed comes off too
@@ -56901,6 +57430,8 @@ function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, so
   { const normDef = !!(owner && !atkMold && ownerAbilityNames(owner).some(n => String(n).toLowerCase() === "normalize [errata]"));
     if((atkNeutral || normDef) && !typeless && !isBoatToken(token) && mult > 0 && mult !== 1){
       mult = 1; abNotes.push(normDef && !atkNeutral ? "Normalize: the defender takes neutral damage" : "Normalize: neutral damage"); } }
+  /* Population Bomb's "this Move's damage cannot be resisted": a resisted hit lands neutral (an immunity is not a resistance) */
+  if(noResist && mult > 0 && mult < 1){ mult = 1; abNotes.push("Population Bomb: its damage can't be resisted \u2014 neutral"); }
   /* Sturdy [Errata] (Defensive): immune to Moves with the Execute keyword, and a single source of damage can't take more than
      50% of Max Hit Points. */
   const sturdyE = !!(owner && !atkMold && ownerAbilityNames(owner).some(n => String(n).toLowerCase() === "sturdy [errata]"));
@@ -57650,12 +58181,13 @@ function dismountCheckNode(map, tok, br, ctx){
     return box;
   }catch(e){ console.error("dismount check", e); return null; }
 }
-function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, moveRule=null, seFlat=0, critExtra=0, fx=null, onDealt=null, ctx=null, preselect=null }){
+function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, moveRule=null, seFlat=0, critExtra=0, fx=null, onDealt=null, ctx=null, preselect=null, pbFx=null }){
   // a Move whose own rules bend the matchup (MOVE_TARGET_RULES) travels with the hit, and its
   // immunity clause folds into the same pierce switch every other source uses
   const chartOverride = moveRule?.chart || null, seBonus = moveRule?.seBonus || 0,
         formeStep = moveRule?.formeStep || 0, drBonus = moveRule?.drBonus || 0;
   pierceImmune = pierceImmune || !!moveRule?.pierceImmune;
+  const noResist = !!moveRule?.noResist;                       // Population Bomb's "this damage cannot be resisted"
   if(mode!=="cloud" || !cloud.isGM) return null;
   const map = currentMapForView() || activeMap(); if(!map) return null;
   // scenery (shop doors) is editable and "linked", but it is not a creature you can roll damage
@@ -57681,7 +58213,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
 
   // one persistent checkbox per token; split into Players / Enemies tabs (players first). The
   // checkboxes survive tab switches, so an area attack can hit tokens across both factions.
-  const label = t=>{ const i=tokenHp(t); return `${i.name} — ${i.cur}/${i.max} HP`; };
+  const label = t=>{ const i=tokenHp(t); return `${i.name}${t.twinOf ? " (2nd token)" : ""} — ${i.cur}/${i.max} HP`; };
   const items = tokens.map(t=>{
     const kind = tokenHp(t).kind;
     // a 🤝 ally is listed with the party, which is the column the GM goes looking for it in
@@ -57769,6 +58301,11 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     fxCb, el("span",{class:"small",style:"font-weight:700;color:var(--accent)"},
       `\u{1F4AB} Also apply ${fx.name ? fx.name + "'s " : "the Move's "}effects: ${hitFxLine(fx)}`)));
 
+  /* Population Bomb's chosen extras ride the same press, landed per target by applyPopBombFx */
+  const pbOn = Array.isArray(pbFx) ? pbFx.filter(k => k === "vuln" || k === "weak") : [];
+  if(pbOn.length || noResist)
+    wrap.append(el("div",{class:"small",style:"font-weight:700;color:var(--accent);margin-bottom:6px"},
+      `\u{1F4A3} Population Bomb extras: ${pbPickNames(pbFx || ["noresist"])} \u2014 landed on each target this hits.`));
   /* Attacker-side Ability statics that need a TARGET (or the board) to resolve: found by the Abilities sweep (v644).
      Transistor / Dragon's Maw (Scene x2), Stakeout, Sequence [Errata], Merciless, Corrosion, Normalize [Errata]. */
   const atkInfo = (() => { try{ return reactionAttacker(ctx) || {}; }catch(e){ return {}; } })();
@@ -57842,7 +58379,18 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     const hpHit = [];                                           // targets that lost HP this press (Equilibrium's Due)
     const gSpent = new Set();                                   // each Friend Guard spends ONE use per press, however many allies it covers
     const stageHits = [];                                       // 🎭 what this press did, for the stage engine (stage.js)
+    const famHit = new Set();                                   // Family Unit: one Pokémon on two tokens is hit once
     for(const it of chosen){
+      { const fo = tokenHp(it.t).obj;
+        if(fo && famHit.has(fo)){
+          it.cb.checked = false;
+          out.append(el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"},
+            el("div",{style:"font-weight:700"}, tokenHp(it.t).name),
+            el("div",{class:"small",style:"color:var(--accent);font-weight:600"},
+              "\u{1F46A} Family Unit \u2014 already hit through its other token; one Move can't hit it twice (skipped).")));
+          continue;
+        }
+        if(fo) famHit.add(fo); }
       /* Shell Armor / Battle Armor: this target takes the hit without the crit's extra dice. */
       const shell = critExtra > 0 ? critImmunityOf(tokenHp(it.t).obj) : null;
       let useDmg = shell ? Math.max(0, dmg - critExtra) : dmg;
@@ -57931,8 +58479,14 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
         if(V0 && ctx && /^\s*(\d+|WR)\s*,\s*1 Target/i.test(String(ctx.range || "")) && !atkMold && ownerHasAbility(V0, "Bulletproof")){
           defExtra -= 1; rivalryTxt += (rivalryTxt ? " " : "") + "Bulletproof: a ranged single-target attack is resisted one step further.";
         }
+        /* Population Bomb's "its Moves are resisted 1 step further until the end of its next turn" sits on the ATTACKER */
+        if(A0){
+          const asb = ownerBuffs(A0).filter(b => b && b.mods && +b.mods.atkStep);
+          const as = asb.reduce((n, b) => n + (+b.mods.atkStep || 0), 0);
+          if(as){ defExtra += as; rivalryTxt += (rivalryTxt ? " " : "") + `${asb.map(b => b.name).join(", ")}: the attacker's Moves are resisted ${Math.abs(as)} step${Math.abs(as) === 1 ? "" : "s"} further.`; }
+        }
       }catch(e){ console.error("ability statics", e); }
-      const br = tokenDamageBreakdown(it.t, { vulnStep:vulnHere, defExtraStep:defExtra, execute:/execute/i.test(String((ctx && ctx.range) || "")), corrosion:hasAB("corrosion"), atkNeutral:hasAB("normalize [errata]"), dmg:useDmg, type:typeName, physical, defPlusSpd:!!(moveRule && moveRule.defPlusSpd), sonic:!!(moveRule && moveRule.sonic), defAsPhys:(moveRule && moveRule.defAs) ? moveRule.defAs === "phys" : null, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, atkMega, atkWar, atkMold, atkDeicide, defCSMode, chartOverride, seBonus, seFlat, formeStep, drBonus });
+      const br = tokenDamageBreakdown(it.t, { noResist, vulnStep:vulnHere, defExtraStep:defExtra, execute:/execute/i.test(String((ctx && ctx.range) || "")), corrosion:hasAB("corrosion"), atkNeutral:hasAB("normalize [errata]"), dmg:useDmg, type:typeName, physical, defPlusSpd:!!(moveRule && moveRule.defPlusSpd), sonic:!!(moveRule && moveRule.sonic), defAsPhys:(moveRule && moveRule.defAs) ? moveRule.defAs === "phys" : null, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, atkMega, atkWar, atkMold, atkDeicide, defCSMode, chartOverride, seBonus, seFlat, formeStep, drBonus });
       if(moveRule && moveRule.spare){                    // False Swipe: leaves the target on 1 HP
         const cur = tokenHp(it.t).cur;
         if(cur > 0 && br.final >= cur){ br.final = cur - 1; rivalryTxt += (rivalryTxt ? " " : "") + "False Swipe \u2014 it leaves the target on 1 HP."; }
@@ -57988,6 +58542,15 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
           }}, `\u26A1 Synchronize (${uS.max ? `${uS.left}/${uS.max}` : "free"}) \u2014 give the attacker ${keys.map(statusName).join(" & ")}`);
           line.append(sb);
         }
+      }
+      if(pbOn.length){
+        const o = tokenHp(it.t).obj;
+        let pbTxt;
+        if(!o) pbTxt = "not a creature \u2014 the extras are skipped";
+        else if(br.mult === 0) pbTxt = "immune to the hit \u2014 the extras don't land";
+        else if(br.shielded) pbTxt = "blocked by the Shield \u2014 the extras don't land";
+        else { pbTxt = applyPopBombFx(o, pbOn, it.t).join(" \u00B7 "); await commitTokenSource(it.t); }
+        line.append(el("div",{class:"small",style:"color:var(--accent);font-weight:600"}, `\u{1F4A3} ${pbTxt}`));
       }
       { const felled = tokenHp(it.t).cur <= 0;
         const rx = reactionsNode(it.t, br, ctx, felled); if(rx) line.append(rx);
@@ -58114,12 +58677,20 @@ function rollFeedRow(e){
     el("span",{class:"muted",style:"font-size:10px;white-space:nowrap"}, rollFeedTime(e.at))));
   const whoTxt = (e.by||"?") + (e.gm?" (GM)":"") + (e.who && e.who!==e.by ? ` · ${e.who}` : "");
   row.append(el("div",{class:"muted",style:"font-size:11px"}, whoTxt));
-  if(e.headline) row.append(el("div",{style:"font-weight:800;font-size:15px;margin-top:1px"}, e.headline));
-  (e.lines||[]).forEach(l=>row.append(el("div",{class:"muted",style:"font-size:11px"}, l)));
-  if(e.atk) row.append(el("button",{class:"btn-secondary",
-    style:"padding:2px 8px;margin-top:4px;font-size:11px",
-    title:`drop this ${e.atk.dmg} ${e.atk.type} ${e.atk.physical?"Physical":"Special"} hit on map tokens`,
-    onclick:()=>openRollApply(e)}, `🎯 Apply ${e.atk.dmg} ${e.atk.type}`));
+  /* a player's multi-roll Move logged its damage as if every roll that beat AC alone connected — not a number the GM
+     should read; strikeFeedBits below carries the rolls, the count and the real damage instead */
+  if(e.headline && !isMultiEntry(e)) row.append(el("div",{style:"font-weight:800;font-size:15px;margin-top:1px"}, e.headline));
+  if(!isMultiEntry(e)) (e.lines||[]).forEach(l=>row.append(el("div",{class:"muted",style:"font-size:11px"}, l)));
+  if(isMultiEntry(e)) row.append(strikeFeedBits(e));    // a player's Double Strike / Triple Kick / Population Bomb
+  else if(e.atk){
+    row.append(el("button",{class:"btn-secondary",
+      style:"padding:2px 8px;margin-top:4px;font-size:11px",
+      title:`drop this ${e.atk.dmg} ${e.atk.type} ${e.atk.physical?"Physical":"Special"} hit on map tokens`,
+      onclick:()=>openRollApply(e)}, `🎯 Apply ${e.atk.dmg} ${e.atk.type}`));
+    if((e.atk.pbN|0) > 0){ const pk = pbPicksOf(e);
+      row.append(el("div",{class:"muted",style:"font-size:10px"}, pk.length ? `\u{1F4A3} ${pbPickNames(pk)}`
+        : `\u23F3 ${e.gm ? "extra effects not chosen yet" : `${e.by||"the player"} is choosing ${e.atk.pbN} extra effect${e.atk.pbN===1?"":"s"}`}`)); }
+  }
   if(e.area && cloud.isGM) row.append(el("button",{class:"btn-secondary",
     style:"padding:2px 8px;margin-top:4px;font-size:11px",
     title:"open the range painter on the caster's token, with just these buffs offered",
@@ -58191,55 +58762,26 @@ function openAreaApply(e){
   switchTab("map");
   toast(`✨ ${e.label||"Area"} — set the shape, pick the effect, then press ✨ Buff area`);
 }
-/* The roll's own damage math, re-opened later — identical widget, identical numbers. */
+/* The roll's own damage math, re-opened later — identical widget, identical numbers. A player's multi-roll Move
+   goes to its count first (openStrikeCount); a Population Bomb counted on the roller's screen brings its extras. */
 function openRollApply(e){
+  if(isMultiEntry(e)) return openStrikeCount(e);
   const body = el("div",{});
   body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
     `${e.by||"?"}${e.who && e.who!==e.by ? ` — ${e.who}` : ""} rolled ${e.label||"an attack"}`
     + (e.headline ? `: ${e.headline}` : "") + ` at ${rollFeedTime(e.at)}.`));
-  const widget = (dmg, critExtra, preselect) => attackTargetWidget({ dmg, type:e.atk.type, physical:e.atk.physical,
-                                 pierceImmune:e.atk.pierceImmune, pierceDR:e.atk.pierceDR, atkTinted:e.atk.atkTinted,
-                                 atkExploit:e.atk.atkExploit, atkMega:e.atk.atkMega, atkWar:e.atk.atkWar,
-                                 atkMold:e.atk.atkMold, atkDeicide:e.atk.atkDeicide, seFlat:e.atk.seFlat,
-                                 defCSMode:e.atk.defCSMode, moveRule:e.atk.moveRule, critExtra,
-                                 fx:e.atk.fx||null, ctx:e.atk.ctx||null, preselect });
-  const noBoard = () => el("div",{class:"small"},
-    "No damageable token on the current map — open the 🗺 Map (or add a token) and try again.");
-  /* A player's Double Strike / Triple Kick: the GM picks who it was aimed at FIRST — that token's Evasion
-     counts the hits (multiStrikeResolve), which sizes the Damage Base — and the hit then lands on it. */
-  const M = e.atk.multi;
-  if(M && Array.isArray(M.nats) && M.nats.length){
-    const toks = strikeTargetTokens(null).filter(tok => { const o = (tokenLinked(tok) || {}).obj;
-      return !(o && e.atk.ctx && e.atk.ctx.aid && o.id === e.atk.ctx.aid); });
-    const sel = el("select",{style:"max-width:260px"});
-    sel.append(el("option",{value:""},"— who was it aimed at? —"));
-    toks.slice().sort((a, b) => (tokenSide(b) === "enemy") - (tokenSide(a) === "enemy"))
-      .forEach(tok => sel.append(el("option",{value:tok.id}, tokenHp(tok).name || "Token")));
-    if(lastStrikeTargetId && toks.some(tok => tok.id === lastStrikeTargetId)) sel.value = lastStrikeTargetId;
-    const res = el("div",{class:"small",style:"margin:6px 0;font-weight:600"});
-    const holder = el("div",{});
-    const draw = () => {
-      holder.innerHTML = ""; res.textContent = "";
-      const tok = toks.find(x => x.id === sel.value);
-      if(!tok){ res.textContent = "Pick the target — its Evasion counts the hits."; return; }
-      lastStrikeTargetId = tok.id;
-      const ev = tokenEvasions(tok) || {};
-      const eva = Math.max(e.atk.physical ? (ev.phys || 0) : (ev.spec || 0), ev.spd || 0);
-      const R = multiStrikeResolve(M, eva);
-      res.style.color = R.hits ? "var(--accent)" : "var(--bad)";
-      res.textContent = `⚔ ${R.hits} of ${M.nats.length} strikes hit ${tokenHp(tok).name}`
-        + (M.ac != null ? ` (AC ${M.ac} + Evasion ${M.ignoreEva ? "0 — No Guard" : eva})` : " (it can't miss)")
-        + ` · ${strikeReadout(R.strikes)}` + (R.hits ? ` → ${R.dmg} damage${R.nCrit ? ` (${R.nCrit} crit${R.nCrit === 1 ? "" : "s"})` : ""}` : " — no damage.");
-      if(R.hits) holder.append(widget(R.dmg, R.critExtra, tok.id) || noBoard());
-    };
-    sel.addEventListener("change", draw);
-    if(toks.length){
-      body.append(el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap"},
-        el("span",{class:"small",style:"font-weight:700"},"\u{1F3AF} Target"), sel), res, holder);
-      draw();
-    } else body.append(el("div",{class:"small muted"},
-      `No target tokens on this board — the logged ${e.atk.dmg} assumes every strike that beat AC alone connected.`), widget(e.atk.dmg, e.atk.critExtra||0) || noBoard());
-  } else body.append(widget(e.atk.dmg, e.atk.critExtra||0) || noBoard());
+  const holder = el("div",{});
+  let picks = pbPicksOf(liveRollEntry(e.id) || e);
+  const drawW = () => { holder.innerHTML = "";
+    holder.append(rollApplyWidget(e, e.atk.dmg, e.atk.critExtra||0, null, picks) || rollApplyNoBoard()); };
+  const n = e.atk.pbN | 0;
+  if(n > 0){
+    if(picks.length) body.append(el("div",{class:"small",style:"font-weight:700;color:var(--good);margin-bottom:6px"},
+      `\u{1F4A3} Extra effects${e.atk.pbBy && e.atk.pbBy !== "GM" ? ` (${e.atk.pbBy}'s choice)` : ""}: ${pbPickNames(picks)} \u2014 they land with the hit.`));
+    else body.append(popBombPickerNode(n, { title:`Population Bomb bought ${n} extra effect${n === 1 ? "" : "s"} \u2014 choose (not picked yet)`,
+      onChange: p2 => { picks = p2; drawW(); } }));
+  }
+  body.append(holder); drawW();
   modal({title:`🎯 ${e.label||"Apply this hit"}`, bodyNode:body,
          footNodes:[el("button",{class:"btn-primary",onclick:closeModal},"Done")]});
 }
@@ -59046,6 +59588,7 @@ function openTokenMenu(token, map){
           al, el("span",{class:"small"},"🤝 Counts as an ally (party side)")));
       }
       wrap.append(nameHideToggle(token));
+      { const fu = familyUnitMenuNode(token, map); if(fu) wrap.append(fu); }   // 👪 Family Unit's second token
       if(token.link) wrap.append(el("div",{style:"margin-top:10px"},
         el("button",{class:"btn-secondary",style:"padding:5px 10px",
           title:"Drop a Burst 2 of Shifting Darkness (World of Darkness) centred on this token. Everyone sees it; anyone without Darkvision attacking from inside gets \u22123 Accuracy; it clears when Battle is turned off.",
@@ -59146,15 +59689,173 @@ function enemyTokenGroups(){
   }).filter(g=>g.rows.length);
 }
 /* pick something to drop on the map — split into Players / Enemies tabs */
+/* ---- 🧍 Citizens: a crowd of random townsfolk in one go ----
+   How the Bosque Prison cells and the Theatre audience were filled, as a tool. Each citizen is a
+   Pokémon Showdown trainer sprite (hotlinked, 80×80 — the SW passes cross-origin pictures through)
+   framed head-and-shoulders and labelled "<Class> <first name>". They are plain standalone tokens
+   (`civilian:true`, 30 HP unless the GM says otherwise): no sheet, on nobody's side, never Flank,
+   and only roll initiative if the GM ticks them in — scenery that can still be hurt. */
+const CITIZEN_SPRITES = "https://play.pokemonshowdown.com/sprites/trainers/";
+/* s = sprite file · c = class on the label · g = which name book · k = kid or teen ·
+   y = head crop (object-position y% at 170% zoom). The crops were set by eye on the prison batch:
+   the little ones and the crouching doctor stand low in their frame, hence the big numbers. */
+const CITIZEN_TYPES = [
+  {s:"pokefan",c:"Poké Fan",g:"m",y:0},              {s:"pokefanf",c:"Poké Fan",g:"f",y:27},
+  {s:"preschooler",c:"Preschooler",g:"m",y:100,k:1}, {s:"preschoolerf",c:"Preschooler",g:"f",y:100,k:1},
+  {s:"schoolkid",c:"School Kid",g:"m",y:58,k:1},     {s:"schoolkidf",c:"School Kid",g:"f",y:73,k:1},
+  {s:"youngster",c:"Youngster",g:"m",y:61,k:1},      {s:"lass",c:"Lass",g:"f",y:15,k:1},
+  {s:"camper",c:"Camper",g:"m",y:61,k:1},            {s:"picnicker",c:"Picnicker",g:"f",y:67,k:1},
+  {s:"richboy",c:"Rich Boy",g:"m",y:6,k:1},
+  {s:"gentleman",c:"Gentleman",g:"m",y:9},           {s:"lady",c:"Lady",g:"f",y:15},
+  {s:"madame",c:"Madame",g:"f",y:24},                {s:"butler",c:"Butler",g:"m",y:3},
+  {s:"maid",c:"Maid",g:"f",y:12},                    {s:"baker",c:"Baker",g:"f",y:12},
+  {s:"chef",c:"Chef",g:"m",y:0},                     {s:"waiter",c:"Waiter",g:"m",y:0},
+  {s:"waitress",c:"Waitress",g:"f",y:21},            {s:"teacher",c:"Teacher",g:"f",y:6},
+  {s:"nurse",c:"Nurse",g:"f",y:15},                  {s:"doctor",c:"Doctor",g:"m",y:61},
+  {s:"scientist",c:"Scientist",g:"m",y:6},           {s:"worker",c:"Worker",g:"m",y:33},
+  {s:"janitor",c:"Janitor",g:"m",y:24},              {s:"clerk",c:"Clerk",g:"m",y:6},
+  {s:"officeworker",c:"Office Worker",g:"m",y:3},    {s:"officeworkerf",c:"Office Worker",g:"f",y:15},
+  {s:"hiker",c:"Hiker",g:"m",y:3},                   {s:"backpacker",c:"Backpacker",g:"m",y:3},
+  {s:"beauty",c:"Beauty",g:"f",y:3},                 {s:"aromalady",c:"Aroma Lady",g:"f",y:12},
+  {s:"artist",c:"Artist",g:"m",y:9},                 {s:"guitarist",c:"Guitarist",g:"f",y:3},
+  {s:"gardener",c:"Gardener",g:"f",y:0},             {s:"rancher",c:"Rancher",g:"m",y:0},
+  {s:"reporter",c:"Reporter",g:"f",y:24},            {s:"cameraman",c:"Cameraman",g:"m",y:15},
+];
+/* Spanish first names. The party's and the named NPCs' names are left out of the books on purpose,
+   and citizenNamesInUse drops anything else already in play on top of that. */
+const CITIZEN_NAMES = {
+  m: ("Ramón Ernesto Gustavo Diego Leo Tito Tomás Paco Anselmo Martín Bruno Iker Dani Benito Joaquín Rubén Jorge "+
+      "Álvaro Fermín Pepito Alejandro Andrés Antonio Arturo Bernardo Carlos César Eduardo Emilio Enrique Esteban "+
+      "Federico Felipe Fernando Gabriel Gonzalo Guillermo Héctor Ignacio Jaime Javier José Juan Julián Lorenzo "+
+      "Lucas Manuel Marcos Mario Mateo Miguel Nicolás Pablo Pedro Rafael Ricardo Roberto Salvador Santiago Sergio "+
+      "Teodoro Vicente Víctor Agustín Alonso Ciro Elías Fabián Gerardo Horacio Íñigo Marcelo Nacho Quique Chema "+
+      "Rodolfo Adolfo Baltasar Ezequiel").split(" "),
+  f: ("Lola Ana Marta Nuria Montse Irene Inés Alba Pilar Elena Carla Flor Paula Nadia Vera Sara Celia Adriana "+
+      "Alicia Amparo Andrea Beatriz Blanca Carmen Catalina Clara Concha Cristina Daniela Dolores Elisa Emilia "+
+      "Encarna Esperanza Eva Fátima Gloria Graciela Isabel Julia Laura Leonor Lucía Luisa Manuela Margarita Marina "+
+      "Mercedes Mónica Natalia Patricia Raquel Rocío Rosa Susana Teresa Valeria Victoria Ximena Yolanda Aitana "+
+      "Begoña Candela Estrella Lourdes Maite Noelia Paloma Remedios Soledad Trini Chelo Rosario Ángela Consuelo").split(" "),
+};
+/* every name already in play — the party's sheets, encounter Trainers, anything on this board, and
+   every earlier citizen on ANY board — so a new face never shares a first name with someone the
+   table already knows (folded, so "Ines" and "Inés" count as the same) */
+function citizenNamesInUse(map){
+  const used = new Set();
+  const words = s => String(s||"").split(/[^\p{L}]+/u).forEach(w=>{ if(w) used.add(baseName(w)); });
+  Object.values(cloud.byId||{}).forEach(r=>{ words(r.name); words(r.data?.trainer?.name); });
+  try{ encList().forEach(e=>(e.trainers||[]).forEach(tr=>words(tr.trainer?.name))); }catch(e){}
+  Object.entries(cloud.mapTokens?.data?.byMap||{}).forEach(([mid,toks])=>
+    (toks||[]).forEach(t=>{ if(mid===map.id || t.civilian) words(t.label); }));
+  return used;
+}
+/* A dealer of fresh citizens: sprites come off a shuffled deck so a crowd shows every face once
+   before any repeats, and names come out of the book unused. Only when the whole book is spoken for
+   does a name repeat — a repeat beats an empty slot. */
+function citizenDealer(map, who){
+  const used = citizenNamesInUse(map);
+  const pool = CITIZEN_TYPES.filter(t => who==="kids" ? t.k : who==="adults" ? !t.k : true);
+  let deck = [];
+  return () => {
+    if(!deck.length){
+      deck = pool.slice();
+      for(let i=deck.length-1; i>0; i--){ const j = Math.floor(Math.random()*(i+1)); [deck[i],deck[j]] = [deck[j],deck[i]]; }
+    }
+    const type = deck.pop(), book = CITIZEN_NAMES[type.g];
+    let free = book.filter(n=>!used.has(baseName(n)));
+    if(!free.length) free = book;
+    const name = free[Math.floor(Math.random()*free.length)];
+    used.add(baseName(name));
+    return { type, name };
+  };
+}
+const citizenLabel = cz => `${cz.type.c} ${cz.name}`;
+const citizenImg   = cz => CITIZEN_SPRITES + cz.type.s + ".png";
+/* Drop the crowd onto the board in one save: rings around the middle of the GM's view, skipping
+   every square something already stands on (zones and GM notes don't count — you can stand in
+   those), then leave them all SELECTED so dragging any one walks the whole crowd into place. */
+async function addCitizenTokens(map, crowd, hp){
+  if(!crowd.length) return;
+  ensureMapTokens();
+  const byMap = cloud.mapTokens.data.byMap;
+  const arr = byMap[map.id] || (byMap[map.id]=[]);
+  const solid = arr.filter(t=>!t.riding && !isZoneToken(t) && !isNoteToken(t));
+  const c = mapViewCenterCell(map, 1), took = new Set(), cells = [];
+  const free = (x,y) => !took.has(x+","+y) && !solid.some(t=>tokenOccupies(t,x,y));
+  for(let r=0; cells.length<crowd.length && r<60; r++)
+    for(let dy=-r; dy<=r; dy++) for(let dx=-r; dx<=r; dx++){
+      if(cells.length>=crowd.length) break;
+      if(Math.max(Math.abs(dx),Math.abs(dy))!==r) continue;      // this ring's edge only
+      const x = c.x+dx, y = c.y+dy;
+      if(free(x,y)){ took.add(x+","+y); cells.push({x,y}); }
+    }
+  const ids = [];
+  crowd.forEach((cz,i)=>{
+    const at = cells[i] || { x:c.x+i, y:c.y };
+    const tok = { id:uid(), label:citizenLabel(cz), img:citizenImg(cz), imgFocus:{ x:50, y:cz.type.y, z:170 },
+                  hp, maxHp:hp, size:1, civilian:true, x:at.x, y:at.y };
+    arr.push(tok); ids.push(tok.id);
+  });
+  mapSelect = { on:true, mapId:map.id, ids:new Set(ids) };
+  mapMount = { on:false, mapId:map.id, riderId:null };               // the tap-modes are exclusive
+  mapFogPaint.on = false;
+  mapTokensSave(); renderMap();
+  toast(`🧍 ${ids.length} citizen${ids.length===1?"":"s"} added and selected — drag any one to move the crowd, Done when placed`);
+}
+/* the 🧍 Citizens tab of ＋ Add token: how many, who, HP, a preview you can tap to swap anyone out */
+function citizenPanel(map){
+  const box = el("div",{style:"display:none"});
+  let who = "any", crowd = [], deal = citizenDealer(map, who);
+  const num = el("input",{type:"number",min:1,max:60,value:6,style:"width:80px"});
+  const hp  = el("input",{type:"number",min:1,value:30,style:"width:80px"});
+  const whoSel = el("select",{},
+    el("option",{value:"any"},"Anyone"), el("option",{value:"adults"},"Adults"), el("option",{value:"kids"},"Kids & teens"));
+  const grid = el("div",{class:"picklist",style:"display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr))"});
+  const addBtn = el("button",{class:"btn-primary",style:"width:100%;margin-top:10px"});
+  const count = () => Math.max(1, Math.min(60, parseInt(num.value)||1));
+  const draw = () => {
+    grid.innerHTML = "";
+    crowd.forEach((cz,i)=>{
+      const av = contactAvatar(citizenImg(cz), cz.name, "phone-av", { x:50, y:cz.type.y, z:170 });
+      av.style.width = av.style.height = "36px";
+      grid.append(el("div",{class:"pickitem",style:"display:flex;align-items:center;gap:10px;padding:6px 10px",
+        title:"Tap to swap this one for someone else", onclick:()=>{ crowd[i] = deal(); draw(); }},
+        av, el("div",{style:"flex:1;min-width:0"}, el("div",{class:"pi-title"}, citizenLabel(cz))),
+        el("span",{class:"small muted"},"🎲")));
+    });
+    addBtn.textContent = `＋ Add ${crowd.length} citizen${crowd.length===1?"":"s"}`;
+  };
+  const fill = () => { const n = count(); while(crowd.length < n) crowd.push(deal()); crowd.length = n; draw(); };
+  const reroll = () => { who = whoSel.value; deal = citizenDealer(map, who); crowd = []; fill(); };
+  num.addEventListener("input", fill);
+  whoSel.addEventListener("change", reroll);
+  addBtn.addEventListener("click", async()=>{
+    const h = Math.max(1, parseInt(hp.value)||30), go = crowd.slice();
+    closeModal(); await addCitizenTokens(map, go, h);
+  });
+  box.append(
+    el("div",{class:"inline",style:"flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:8px"},
+      el("label",{class:"field"}, el("span",{},"How many"), num),
+      el("label",{class:"field"}, el("span",{},"Who"), whoSel),
+      el("label",{class:"field"}, el("span",{},"HP each"), hp),
+      el("button",{class:"btn-secondary",onclick:reroll},"🎲 Reroll all")),
+    el("div",{class:"small muted",style:"margin-bottom:8px"},
+      "Random townsfolk, each with a first name nobody at the table is using yet. Tap one to swap them out. "+
+      "They land around the middle of your view, already selected, so you can drag the whole crowd into place."),
+    grid, addBtn);
+  fill();
+  return box;
+}
 function openAddToken(map){
   const wrap = el("div",{});
   let tab = "players";
   const tabsBar = el("div",{class:"subtabs"});
   const bPlayers = el("button",{class:"subtab on",onclick:()=>setTab("players")},"🧑 Players");
   const bEnemies = el("button",{class:"subtab",onclick:()=>setTab("enemies")},"👹 Enemies");
+  const bCitizens= el("button",{class:"subtab",onclick:()=>setTab("citizens")},"🧍 Citizens");
   const bShops   = el("button",{class:"subtab",onclick:()=>setTab("shops")},"🛒 Shops");
+  const citPanel = cloud.isGM ? citizenPanel(map) : null;
   tabsBar.append(bPlayers);
-  if(cloud.isGM) tabsBar.append(bEnemies, bShops);
+  if(cloud.isGM) tabsBar.append(bEnemies, bCitizens, bShops);
   const search = el("input",{type:"search",placeholder:"Filter…",style:"margin-bottom:10px"});
   const list = el("div",{class:"picklist"});
   const expanded_ = new Set();                       // trainer/encounter group ids explicitly opened (all start closed)
@@ -59245,9 +59946,16 @@ function openAddToken(map){
       q ? "No matches." : hiddenE ? "Every enemy is already on the map." : "No encounters yet — build one in the 👹 Encounters tab."));
   };
   const setTab = t => { tab=t; bPlayers.classList.toggle("on",t==="players");
-    bEnemies.classList.toggle("on",t==="enemies"); bShops.classList.toggle("on",t==="shops"); draw(); };
+    bEnemies.classList.toggle("on",t==="enemies"); bShops.classList.toggle("on",t==="shops");
+    bCitizens.classList.toggle("on",t==="citizens");
+    // the citizen panel keeps its own controls, so it is shown/hidden rather than redrawn by draw()
+    const cit = t==="citizens";
+    search.style.display = list.style.display = cit ? "none" : "";
+    if(citPanel) citPanel.style.display = cit ? "" : "none";
+    if(!cit) draw(); };
   search.addEventListener("input", draw); draw();
   wrap.append(tabsBar, search, list);
+  if(citPanel) wrap.append(citPanel);
   modal({title:"Add a token", bodyNode:wrap, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Done")]});
   setTimeout(()=>search.focus(),50);
 }
@@ -60179,6 +60887,7 @@ function renderMap(){
   if(map) sweepMassiveSchools(map);     // a shoal that lost a bar shrinks BEFORE anything measures it
   // Flanking is all-pairs, so it asks every token's footprint O(n²) times — memoise the Massive
   // School lookup for exactly this stretch and drop it again straight after (msFootCache).
+  if(map) sweepFamilyUnits(map);         // Family Unit: a second token for a Pokémon that has one (GM only)
   if(map){ msFootCache = new Map(); try { sweepMapAuras(map); } finally { msFootCache = null; } }
 
   const bar = el("div",{class:"map-toolbar card"});

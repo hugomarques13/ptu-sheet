@@ -53041,6 +53041,11 @@
     "stage": 1,
     "name": "Feebas",
     "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Milotic Beauty 6 Beauty Dice or Prism Scale",
+    "min": 20
    }
   ],
   "moves": {
@@ -98930,6 +98935,11 @@
     "stage": 1,
     "name": "Riolu",
     "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Lucario Loyalty 3",
+    "min": null
    }
   ],
   "moves": {
@@ -112776,6 +112786,11 @@
     "stage": 1,
     "name": "Feebas",
     "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Milotic Beauty 6 Beauty Dice or Prism Scale",
+    "min": 20
    }
   ],
   "moves": {
@@ -121252,6 +121267,11 @@
     "stage": 1,
     "name": "Nosepass",
     "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Probopass 1.5 mi. above sea level",
+    "min": 25
    }
   ],
   "moves": {
@@ -134954,6 +134974,11 @@
     "stage": 1,
     "name": "Nosepass",
     "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Probopass 1.5 mi. above sea level",
+    "min": 25
    }
   ],
   "moves": {
@@ -144181,6 +144206,11 @@
    {
     "stage": 1,
     "name": "Riolu",
+    "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Lucario Loyalty 3",
     "min": null
    }
   ],
@@ -215429,6 +215459,21 @@
     "stage": 1,
     "name": "Rockruff",
     "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Lycanroc Midday Sun Stone",
+    "min": 25
+   },
+   {
+    "stage": 2,
+    "name": "Lycanroc Midnight Moon Stone",
+    "min": 25
+   },
+   {
+    "stage": 2,
+    "name": "Lycanroc Dusk Dusk Stone",
+    "min": 25
    }
   ],
   "moves": {
@@ -215751,11 +215796,65 @@
      "type": "Rock"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "05 Roar",
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "12 Taunt",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "49 Echoed Voice",
+    "69 Rock Polish",
+    "71 Stone Edge",
+    "75 Swords Dance",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "95 Snarl",
+    "100 Confide"
+   ],
    "egg": [],
-   "tutor": []
+   "tutor": [
+    "Covet",
+    "Earth Power",
+    "Drill Run",
+    "Endeavor",
+    "Hyper Voice",
+    "Iron Defense",
+    "Iron Head",
+    "Iron Tail",
+    "Last Resort",
+    "Quick Attack (N)",
+    "Quick Guard (N)",
+    "Snore",
+    "Stealth Rock",
+    "Stomping Tantrum",
+    "Zen Headbutt"
+   ]
   },
-  "order": 804
+  "order": 804,
+  "evolution": [
+   {
+    "stage": 1,
+    "name": "Rockruff",
+    "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Lycanroc Midday Sun Stone",
+    "min": 25
+   }
+  ]
  },
  {
   "name": "Lycanroc Midnight",
@@ -215948,11 +216047,73 @@
      "type": "Rock"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "05 Roar",
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "12 Taunt",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "49 Echoed Voice",
+    "69 Rock Polish",
+    "71 Stone Edge",
+    "75 Swords Dance",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "95 Snarl",
+    "100 Confide"
+   ],
    "egg": [],
-   "tutor": []
+   "tutor": [
+    "Covet",
+    "Dual Chop",
+    "Earth Power",
+    "Fire Punch",
+    "Focus Punch",
+    "Foul Play",
+    "Endeavor",
+    "Hyper Voice",
+    "Iron Defense",
+    "Iron Head",
+    "Iron Tail",
+    "Laser Focus",
+    "Last Resort",
+    "Outrage",
+    "Reversal (N)",
+    "Snore",
+    "Stealth Rock",
+    "Stomping Tantrum",
+    "Taunt (N)",
+    "Throat Chop",
+    "Thunder Punch",
+    "Uproar",
+    "Zen Headbutt"
+   ]
   },
-  "order": 805
+  "order": 805,
+  "evolution": [
+   {
+    "stage": 1,
+    "name": "Rockruff",
+    "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Lycanroc Midnight Moon Stone",
+    "min": 25
+   }
+  ]
  },
  {
   "name": "Lycanroc Dusk",
@@ -216144,11 +216305,66 @@
      "type": "Rock"
     }
    ],
-   "tmhm": [],
+   "tmhm": [
+    "05 Roar",
+    "06 Toxic",
+    "08 Bulk Up",
+    "10 Hidden Power",
+    "12 Taunt",
+    "17 Protect",
+    "21 Frustration",
+    "27 Return",
+    "31 Brick Break",
+    "32 Double Team",
+    "39 Rock Tomb",
+    "42 Facade",
+    "44 Rest",
+    "45 Attract",
+    "48 Round",
+    "49 Echoed Voice",
+    "69 Rock Polish",
+    "71 Stone Edge",
+    "75 Swords Dance",
+    "80 Rock Slide",
+    "87 Swagger",
+    "88 Sleep Talk",
+    "90 Substitute",
+    "95 Snarl",
+    "100 Confide"
+   ],
    "egg": [],
-   "tutor": []
+   "tutor": [
+    "Accelerock (N)",
+    "Counter (N)",
+    "Covet",
+    "Earth Power",
+    "Drill Run",
+    "Endeavor",
+    "Hyper Voice",
+    "Iron Defense",
+    "Iron Head",
+    "Iron Tail",
+    "Last Resort",
+    "Outrage",
+    "Snore",
+    "Stealth Rock",
+    "Stomping Tantrum",
+    "Zen Headbutt"
+   ]
   },
-  "order": 806
+  "order": 806,
+  "evolution": [
+   {
+    "stage": 1,
+    "name": "Rockruff",
+    "min": null
+   },
+   {
+    "stage": 2,
+    "name": "Lycanroc Dusk Dusk Stone",
+    "min": 25
+   }
+  ]
  },
  {
   "name": "Wishiwashi Solo",
