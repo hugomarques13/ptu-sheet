@@ -11349,6 +11349,14 @@ function formPicRows(o, after, subdir){
         title:"wear this form: its picture replaces the portrait on the sheet and on the Map until you switch it off",
         onclick:()=>{ wearAltForm(o, m.custom); after(); }},
         on ? "● showing — switch off" : "○ wear this form"));
+      row.append(el("button",{class:"linkbtn",style:m.custom.night ? "font-weight:800" : "",
+        title:m.custom.night
+          ? "Night form: worn automatically when the Map this token stands on is set to Night (\u{1F319}), taken off at Day. Tap to stop."
+          : "Make this the night form: worn automatically when the Map this token stands on is set to Night (\u{1F319}), taken off again at Day",
+        onclick:()=>{ if(m.custom.night) delete m.custom.night;
+          else { (o.altForms||[]).forEach(a=>{ if(a && a!==m.custom) delete a.night; }); m.custom.night = true; }
+          after(); }},
+        m.custom.night ? "\u{1F319} night form \u2713" : "\u{1F319} at night"));
       row.append(el("button",{class:"linkbtn",title:"delete this form",
         onclick:()=>{ o.altForms = o.altForms.filter(a => a !== m.custom); if(o.formAvatar) delete o.formAvatar[m.key]; after(); }},"×"));
     } else if(f && f.image) row.append(el("span",{class:"small muted"}, on ? "showing now" : "shown while transformed"));
@@ -48016,6 +48024,8 @@ function normMapMeta(data){
     m.images.forEach(im=>{ ["x","y","w","h"].forEach(k=>{ if(typeof im[k]!=="number") im[k]=0; }); if(!im.id) im.id=uid(); });
     // 🎭 a picture can be a curtain: "shut" = shown while the curtains are closed, "open" = while they're open
     m.images.forEach(im=>{ if("curtain" in im && im.curtain!=="shut" && im.curtain!=="open") delete im.curtain; });
+    // ☀/🌙 a picture can belong to one time of day: "day" = shown while the map is in daylight, "night" = at night
+    m.images.forEach(im=>{ if("tod" in im && im.tod!=="day" && im.tod!=="night") delete im.tod; });
     if("curtainsOpen" in m && typeof m.curtainsOpen!=="boolean") delete m.curtainsOpen;
     if(typeof m.fogOn!=="boolean") m.fogOn = false;
     if(typeof m.fogRadius!=="number" || m.fogRadius<1) m.fogRadius = 3;
@@ -53247,7 +53257,9 @@ function gateGroups(map){
      blocks sight and movement (draw that group along it). The button works on the whole building
      (FLOORS): looking down from a balcony, 🎭 still opens the stage's curtain on the floor below. */
 function mapImageShown(map, im){
-  if(!im || !im.curtain) return true;
+  if(!im) return true;
+  if(im.tod && (im.tod==="night") !== !!(map && map.night)) return false;   // ☀/🌙 the other time of day's picture
+  if(!im.curtain) return true;
   const open = !!(map && map.curtainsOpen);
   return im.curtain==="open" ? open : !open;
 }
@@ -53544,7 +53556,40 @@ function toggleTimeStop(map){
 function toggleNight(map){
   map.night = !map.night;
   mapMetaSave(); renderMap();
-  toast(map.night ? "\u{1F319} Night falls over the map" : "\u2600 Daylight");
+  const swapped = nightFormsFollow(map);
+  const pics = (map.images||[]).some(im=>im.tod);
+  toast((map.night ? "\u{1F319} Night falls over the map" : "\u2600 Daylight")
+    + (pics ? " \u00b7 the picture changes" : "")
+    + (swapped.length ? " \u00b7 " + swapped.join(", ") + (map.night ? " in night form" : " back to normal") : ""));
+}
+/* ---- 🌙 Night forms -------------------------------------------------------------------------------
+   An alternate form ticked "🌙 at night" (on the Trainer sheet / encounter card, under the portrait) is
+   worn by its creature while the Map its token stands on is set to Night, and taken off again at Day.
+   The Day/Night button is the only thing that moves it, so the GM can still change a form by hand in
+   between. Pictures follow the same switch through im.tod (mapImageShown). Returns the names swapped. */
+function nightFormsFollow(map){
+  const seen = new Set(), names = [];
+  mapTokensFor(map.id).forEach(tok=>{
+    if(!tok.link) return;
+    const info = tokenHp(tok), o = info.obj;
+    if(!o || seen.has(o) || !info.editable) return;
+    seen.add(o);
+    const f = (o.altForms||[]).find(a=>a && a.night);
+    if(!f || !!f.on === !!map.night) return;
+    if(map.night) wearAltForm(o, f); else f.on = false;
+    names.push(info.name);
+    commitTokenSource(tok);
+  });
+  if(names.length) renderMap();
+  return names;
+}
+function cycleImageTod(map, im){
+  im.tod = !im.tod ? "night" : im.tod==="night" ? "day" : null;
+  if(!im.tod) delete im.tod;
+  mapMetaSave(); renderMap();
+  toast(im.tod==="night" ? "\u{1F319} Night picture \u2014 shown only while the map is set to Night"
+      : im.tod==="day" ? "\u2600 Day picture \u2014 shown only while the map is set to Day"
+      : "\u{1F317} Shown day and night again");
 }
 async function toggleFog(map){
   map.fogOn = !map.fogOn;
@@ -60189,7 +60234,7 @@ function renderMap(){
         el("button",{class:"btn-secondary"+(map.fogOn?" on":""),onclick:()=>toggleFog(map),
           title:"Auto-reveals around player tokens; explored areas stay revealed"}, map.fogOn?"🌫 Fog on":"🌫 Fog off"),
         el("button",{class:"btn-secondary"+(map.night?" on":""),onclick:()=>toggleNight(map),
-          title:"Night time: tints the whole map darker and bluer for everyone"}, map.night?"\u{1F319} Night":"\u{1F319} Day"),
+          title:"Night time: tints the whole map darker and bluer for everyone, swaps in \u{1F319} night pictures and puts anyone with a \u{1F319} night form into it (Day reverses it)"}, map.night?"\u{1F319} Night":"\u{1F319} Day"),
         el("button",{class:"btn-secondary"+(map.timeStop?" on":""),onclick:()=>toggleTimeStop(map),
           title:"Time Stop: inverts the map's colours for everyone while time is frozen (the tokens keep theirs)"}, map.timeStop?"\u23F3 Time stopped":"\u23F3 Time"),
       );
@@ -60493,6 +60538,12 @@ function renderMap(){
                : "Make this picture a curtain (drawn while the curtains are shut). Then 🎭 on the toolbar opens and shuts it.",
           onclick:e=>{ e.stopPropagation(); cycleImageCurtain(map, im); }},
           im.curtain==="shut" ? "\u{1F3AD} shut" : im.curtain==="open" ? "\u{1F3AD} open" : "\u{1F3AD}"),
+        el("button",{class:im.tod?"on":"",
+          title: im.tod==="night" ? "Night picture: drawn only while the map is set to Night. Tap to make it the DAY picture."
+               : im.tod==="day" ? "Day picture: drawn only while the map is set to Day. Tap to show it day and night again."
+               : "Make this a NIGHT picture (drawn only while the map is set to Night). Tag the usual picture \u2600 Day, and the \u{1F319} Day/Night button swaps them.",
+          onclick:e=>{ e.stopPropagation(); cycleImageTod(map, im); }},
+          im.tod==="night" ? "\u{1F319} night" : im.tod==="day" ? "\u2600 day" : "\u{1F317}"),
         im.anim
           ? el("button",{title:"Animated — kept whole, because slicing would freeze it on its first frame",
               onclick:e=>{ e.stopPropagation(); mapAnimToast(); }},"🎞")

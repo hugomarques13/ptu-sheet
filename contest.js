@@ -86,6 +86,56 @@ const CT_VARIANTS = {
 /* ---------- small helpers ---------- */
 function ctD6(){ return 1 + Math.floor(Math.random()*6); }
 function ctRollN(n){ const out=[]; for(let i=0;i<Math.max(0,n|0);i++) out.push(ctD6()); return out; }
+/* ---------- ✋ physical dice ----------
+   Each device picks how ITS person rolls: 🎲 Digital (the app rolls) or ✋ Physical (real dice — every
+   roll says how many d6, what they're for and how to read them, and the numbers get typed in).
+   Remembered on the device, so a mixed table is fine. Hand-entered rolls are marked ✋ in the log. */
+var ctPhysMem = null;
+function ctPhysical(){
+  if(ctPhysMem===null){ try{ ctPhysMem = localStorage.getItem("ptu_ct_dice")==="physical"; }catch(e){ ctPhysMem = false; } }
+  return ctPhysMem;
+}
+function ctSetPhysical(on){
+  ctPhysMem = !!on; try{ localStorage.setItem("ptu_ct_dice", ctPhysMem ? "physical" : "digital"); }catch(e){}
+  toast(ctPhysMem ? "✋ Physical dice — each roll tells you what to roll; type in what you got" : "🎲 Digital dice — the app rolls for you");
+}
+function ctDiceSwitch(after){
+  const b = (phys, label, title) => el("button",{class:"ct-seg"+(ctPhysical()===phys?" on":""),title,
+    onclick:()=>{ if(ctPhysical()===phys) return; ctSetPhysical(phys); contestRender(); if(after) after(); }}, label);
+  return el("span",{class:"ct-segs",title:"How you roll contest dice — remembered on this device"},
+    b(false,"🎲 Digital","The app rolls the dice for you"),
+    b(true,"✋ Physical","Roll real dice: the app says how many and what for, then you type in the numbers"));
+}
+/* "4 6 2 1", "4621", "4,6,2,1" → [4,6,2,1]. A 0 or 7-9 is flagged, not dropped silently. */
+function ctParseDice(s){
+  const str = String(s||"");
+  return { dice:(str.match(/[1-6]/g)||[]).map(Number), bad:/[07-9]/.test(str) };
+}
+function ctDiceOk(text, n){ const P = ctParseDice(text); return !P.bad && P.dice.length===n; }
+/* the box physical dice are typed into. o = { n, key, value, onChange(text), face(d) → {cls, small, title} }.
+   The preview shows every die with what it's worth, and "3/4" until the count is right. `key` lets the
+   stage put the cursor back after someone else's roll redraws it. */
+function ctDiceEntry(o){
+  const inp = el("input",{type:"text",inputmode:"numeric",autocomplete:"off",spellcheck:"false",class:"ct-dicein","data-ctkey":o.key||null,
+    placeholder: o.n===1 ? "e.g. 4" : "e.g. " + [4,6,2,1,5].slice(0, Math.min(o.n, 5)).join(" ") + (o.n>5 ? " …" : ""), value:o.value||""});
+  const pv = el("span",{class:"ct-dicepv"});
+  const upd = ()=>{
+    const P = ctParseDice(inp.value), ok = P.dice.length===o.n && !P.bad;
+    pv.innerHTML = "";
+    P.dice.forEach(d=>{ const f = o.face ? o.face(d) : {}; pv.append(el("span",{class:"ct-die "+(f.cls||""),title:f.title||""}, String(d), f.small!=null ? el("small",{}, f.small) : "")); });
+    pv.append(el("span",{class:"small",style:`font-weight:800;margin-left:4px;color:${ok ? "var(--good)" : (P.bad || P.dice.length>o.n) ? "var(--bad)" : "var(--muted)"}`},
+      P.bad ? "dice only show 1–6" : P.dice.length>o.n ? `${P.dice.length}/${o.n} — too many` : ok ? `✓ ${o.n}/${o.n}` : `${P.dice.length}/${o.n}`));
+    inp.classList.toggle("ok", ok);
+  };
+  inp.addEventListener("input",()=>{ upd(); if(o.onChange) o.onChange(inp.value); });
+  upd();
+  return el("span",{class:"ct-dicebox"}, inp, pv);
+}
+/* how a die reads in an Appeal (the same colours as the log) */
+function ctAppealFace(center, fx){
+  return d => { const s = ctScoreDie(d, center, fx);
+    return { cls: s.f ? "b" : s.a>=2 ? "g" : s.a===0 ? "z" : "", small: s.f ? "F" : `+${s.a}`, title:`${s.a} Appeal${s.f ? `, ${s.f} Fumble` : ""}` }; };
+}
 function ctClampV(v){ return Math.max(0, Math.min(5, Math.round(v||0))); }
 function ctCap(s){ s = String(s||"").trim().toLowerCase(); return CT_STATS.find(x=>x.toLowerCase()===s) || null; }
 function ctNormFx(s){
@@ -700,10 +750,42 @@ function ctStartRun(enc, opts){
 function ctActive(run){ return (run.entrants||[]).filter(e=>!e.eliminated); }
 function ctRoundsOf(run){ return run.variant==="battle" ? run.rounds : ctActive(run).length; }
 function ctRoundType(run){ return run.superMode ? run.roundType : run.ctype; }
-function ctRollRoundType(run){
+/* phys: whoever starts the round rolls with real dice — the Type waits (typePending) until someone
+   types the d6 in on the stage; nobody can perform until then */
+function ctRollRoundType(run, phys){
+  if(phys){ run.roundType = null; run.typeRolls = []; run.typePending = true; return; }
   const rolls = []; let d;
   do { d = ctD6(); rolls.push(d); } while(d===6 && rolls.length < 20);
-  run.roundType = CT_SUPER[d] || "Cool"; run.typeRolls = rolls;
+  run.roundType = CT_SUPER[d] || "Cool"; run.typeRolls = rolls; delete run.typePending;
+}
+/* the log line after a round Type roll (it must start "🎲 Round" — ctRewind looks for it) */
+function ctRoundTypeLog(run){
+  return run.typePending
+    ? `🎲 Round ${run.round}'s Contest Type: waiting for a real 1d6 (1 Cool · 2 Tough · 3 Beauty · 4 Smart · 5 Cute · 6 roll again)`
+    : `🎲 Round ${run.round} is a ${run.roundType} round [${(run.typeRolls||[]).join(",")}]`;
+}
+/* ✋ a real d6 for the round Type; a 6 is kept in typeRolls and asks again */
+function ctEnterRoundTypeDie(run, d){
+  if(!run.typePending) return;
+  run.typeRolls = (run.typeRolls||[]).concat([d]);
+  if(d===6) return;
+  run.roundType = CT_SUPER[d]; delete run.typePending;
+  run.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`${ctRoundTypeLog(run)} ✋` });
+}
+/* the "roll 1d6 for the Type" box — on the stage, and in the Appeal window when someone tries to perform early */
+function ctTypePrompt(run, after){
+  const W = fn => ()=>{ contestWrite(fn); if(after) after(); };
+  const box = el("div",{class:"ct-phys",style:"text-align:center"});
+  box.append(el("div",{style:"font-weight:900"}, `✋ Roll 1d6 for Round ${run.round}'s Contest Type`),
+    el("div",{class:"small muted"}, "1 Cool · 2 Tough · 3 Beauty · 4 Smart · 5 Cute · 6 roll again" + ((run.typeRolls||[]).length ? ` — rolled so far [${run.typeRolls.join(",")}]` : "")
+      + ". Nobody performs until it's in."));
+  const row = el("div",{class:"ct-row",style:"justify-content:center;margin-top:6px"});
+  [1,2,3,4,5].forEach(d=>{ const T = CT_SUPER[d];
+    row.append(el("button",{class:"btn-secondary",style:`border-color:${CT_COLOR[T]};font-weight:800`,onclick:W(r=>ctEnterRoundTypeDie(r, d))}, `${d} · ${CT_ICON[T]} ${T}`)); });
+  row.append(el("button",{class:"btn-secondary",onclick:W(r=>ctEnterRoundTypeDie(r, 6))},"6 · roll again"),
+    el("button",{class:"linkbtn",onclick:W(r=>{ if(!r.typePending) return; ctRollRoundType(r, false); r.log.push({ id:uid(), kind:"sys", at:Date.now(), text:ctRoundTypeLog(r) }); })},"🎲 or let the app roll it"));
+  box.append(row);
+  return box;
 }
 function ctOrder(run){
   const act = ctActive(run), N = act.length; if(!N) return [];
@@ -722,7 +804,7 @@ function ctStatusText(run){
     const w = (run.entrants||[]).filter(e=>e.place===1);
     if(run.teams && w.length) return `🏆 ${ctSideName(run, w[0])}`;
     return `🏆 ${w.map(ctEntName).join(" & ") || "Results"}`; }
-  const RT = ctRoundType(run);
+  const RT = ctRoundType(run) || (run.typePending ? "Type: roll 1d6 ✋" : "");
   if(run.variant==="battle") return `Battle Contest · Round ${run.round}/${run.rounds}${RT?` · ${RT}`:""}`;
   const cur = ctCurrent(run);
   return `${run.variant==="festival"?`Contest ${run.leg} · `:""}Round ${run.round}/${ctRoundsOf(run)}${RT?` · ${RT}`:""}${cur?` · 🎤 ${ctEntName(cur)}`:""}`;
@@ -807,20 +889,21 @@ function ctDoIntro(run, ent, spec){
   const n = sk.n + (spec.groomed ? 1 : 0);
   const gains = d => d>=3 && !(o.ugly && d===6);          // Ugly: 6s count as 1s in the Introduction
   const gained = {}, add = (s,k)=>{ if(k) gained[s] = (gained[s]||0) + k; };
-  const rolls = ctRollN(n); add(stat, rolls.filter(gains).length);
+  /* ✋ spec.rolls / b.rolls: real dice typed in — used as they are */
+  const rolls = Array.isArray(spec.rolls) ? spec.rolls.slice() : ctRollN(n); add(stat, rolls.filter(gains).length);
   const bonus = (spec.bonuses||[]).filter(b=>b && b.n>0 && CT_STATS.includes(b.stat)).map(b=>{
-    const r = ctRollN(b.n); add(b.stat, r.filter(gains).length); return { label:b.label, stat:b.stat, rolls:r }; });
+    const r = Array.isArray(b.rolls) ? b.rolls.slice() : ctRollN(b.n); add(b.stat, r.filter(gains).length); return { label:b.label, stat:b.stat, rolls:r }; });
   if(spec.beautiful) add("Beauty", 2);
   const matched = !run.superMode && !!run.ctype && sk.stat===run.ctype;
   const appeal = (matched ? 2 : 0) + (spec.contestCase ? 1 : 0);
   const total = Object.values(gained).reduce((a,b)=>a+b,0);
   ent.intro = { skill:sk.k, skillLbl:sk.lbl, rank:sk.rank, stat, rolls, bonus, gained, total, matched, appeal,
-                ugly:o.ugly, groomed:!!spec.groomed, beautiful:!!spec.beautiful, contestCase:!!spec.contestCase, at:Date.now() };
+                ugly:o.ugly, groomed:!!spec.groomed, beautiful:!!spec.beautiful, contestCase:!!spec.contestCase, phys:!!spec.phys, at:Date.now() };
   ent.introDice = gained; ent.introUsed = {};
   ent.appeal += appeal;
   run.log.push({ id:uid(), kind:"intro", at:Date.now(), eid:ent.id,
-    text:`🎤 ${ent.trainer} introduces ${ctEntName(ent)} — ${sk.lbl} ${n}d6 [${rolls.join(",")}]${bonus.map(b=>` + ${b.label} [${b.rolls.join(",")}]`).join("")}`
-       + ` → ${total} Contest ${total===1?"die":"dice"}${appeal?` · +${appeal} Appeal`:""}` });
+    text:`🎤 ${ent.trainer} introduces ${ctEntName(ent)} — ${sk.lbl} ${rolls.length}d6 [${rolls.join(",")}]${bonus.map(b=>` + ${b.label} [${b.rolls.join(",")}]`).join("")}`
+       + ` → ${total} Contest ${total===1?"die":"dice"}${appeal?` · +${appeal} Appeal`:""}${spec.phys?" ✋":""}` });
 }
 function ctUndoIntro(run, ent){
   if(!ent.intro) return;
@@ -831,8 +914,8 @@ function ctStartPerformance(run){
   if(run.variant==="battle"){
     let r = 1; try{ const meta = activeMapMeta(); if(meta && meta.battleOn) r = meta.initRound || 1; }catch(e){}
     run.round = r;
-    if(run.superMode) ctRollRoundType(run);
     run.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`⚔ The battle begins — ${run.rounds} rounds. Every Move rolls Appeal too (🎀 Appeal in the Move's roll window).` });
+    if(run.superMode){ ctRollRoundType(run, ctPhysical()); run.log.push({ id:uid(), kind:"sys", at:Date.now(), text:ctRoundTypeLog(run) }); }
     return;
   }
   run.round = 1;
@@ -840,9 +923,10 @@ function ctStartPerformance(run){
   const act = ctActive(run).map(e=>({ e, score:((e.intro && e.intro.total)||0) + ((e.intro && e.intro.matched) ? 2 : 0), tie:Math.random() }));
   act.sort((a,b)=>(b.score-a.score) || (a.tie-b.tie));
   act.forEach((x,i)=>{ x.e.letter = String.fromCharCode(65+i); });
-  if(run.superMode) ctRollRoundType(run);
+  if(run.superMode) ctRollRoundType(run, ctPhysical());
   run.log.push({ id:uid(), kind:"sys", at:Date.now(),
-    text:`🎭 Performance Stage — ${act.map(x=>`${x.e.letter} ${ctEntName(x.e)} (${x.score})`).join(", ")}${run.superMode?` · Round 1 is ${run.roundType} [${run.typeRolls.join(",")}]`:""}` });
+    text:`🎭 Performance Stage — ${act.map(x=>`${x.e.letter} ${ctEntName(x.e)} (${x.score})`).join(", ")}`
+       + (!run.superMode ? "" : run.typePending ? " · Round 1's Type: roll a real 1d6 ✋" : ` · Round 1 is ${run.roundType} [${run.typeRolls.join(",")}]`) });
 }
 
 /* ---------- one performance (p.264-266) ---------- */
@@ -966,12 +1050,13 @@ function ctApply(run, ent, mon, choice, plan, dice){
 }
 function ctSnap(run){
   return JSON.stringify({ entrants:run.entrants, round:run.round, turn:run.turn, stage:run.stage, leg:run.leg,
-                          roundType:run.roundType, typeRolls:run.typeRolls });
+                          roundType:run.roundType, typeRolls:run.typeRolls, typePending:!!run.typePending });
 }
 function ctRestore(run, snap){
   const S = JSON.parse(snap);
   run.entrants = S.entrants; run.round = S.round; run.turn = S.turn; run.stage = S.stage; run.leg = S.leg;
   run.roundType = S.roundType; run.typeRolls = S.typeRolls || [];
+  if(S.typePending) run.typePending = true; else delete run.typePending;
   delete run.endedAt;
 }
 /* only the last few performances keep an undo snapshot — the row stays small */
@@ -984,6 +1069,7 @@ function ctPerformCore(run, ent, mon, choice, dice, opts){
   if(!dice) dice = choice.reliablePerf ? [] : ctRollN(plan.total);
   const entry = ctApply(run, ent, mon, choice, plan, dice);
   entry.snap = snap;
+  if(opts && opts.phys) entry.phys = true;
   run.log.push(entry); if(run.log.length > 120) run.log = run.log.slice(-120);
   ctTrimSnaps(run);
   if(run.variant!=="battle" && !(opts && opts.practice)) ctAdvance(run);
@@ -993,7 +1079,7 @@ function ctLastPerf(run){ return run ? [...(run.log||[])].reverse().find(x=>x.ki
 /* Take back the latest performance (Undo), or take it back and perform it again with other dice
    (the re-roll Features). Anything logged after it — the next round's Supercontest roll, the final
    tally — goes with it; a re-roll keeps the Supercontest Type that was already rolled. */
-function ctRewind(run, entryId, dice){
+function ctRewind(run, entryId, dice, phys){
   const lp = ctLastPerf(run), i = run.log.findIndex(x=>x.id===entryId);
   if(i<0 || !lp || lp.id!==entryId || !run.log[i].snap) return null;
   const old = run.log[i], tail = run.log.slice(i+1);
@@ -1002,9 +1088,9 @@ function ctRewind(run, entryId, dice){
   if(!dice) return { old };
   const e = run.entrants.find(x=>x.id===old.eid), mm = e && e.mons.find(x=>x.key===old.mkey);
   if(!e || !mm) return { old };
-  const out = ctPerformCore(run, e, mm, old.choice, dice);
+  const out = ctPerformCore(run, e, mm, old.choice, dice, { phys:!!phys });
   if(run.superMode && run.round===post.round && post.roundType && run.roundType!==post.roundType){
-    run.roundType = post.roundType; run.typeRolls = post.typeRolls;
+    run.roundType = post.roundType; run.typeRolls = post.typeRolls; delete run.typePending;
     run.log = run.log.filter(x=>!(x.kind==="sys" && x.at>=out.at && /^🎲 Round/.test(x.text||"")));
     tail.filter(x=>x.kind==="sys" && /^🎲 Round/.test(x.text||"")).forEach(x=>run.log.push(x));
   }
@@ -1016,7 +1102,7 @@ function ctAdvance(run){
   if(run.turn >= N){
     run.turn = 0; run.round++;
     if(run.round > N){ ctLegEnd(run); return; }
-    if(run.superMode){ ctRollRoundType(run); run.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`🎲 Round ${run.round} is a ${run.roundType} round [${run.typeRolls.join(",")}]` }); }
+    if(run.superMode){ ctRollRoundType(run, ctPhysical()); run.log.push({ id:uid(), kind:"sys", at:Date.now(), text:ctRoundTypeLog(run) }); }
   }
 }
 function ctLegEnd(run){
@@ -1236,7 +1322,7 @@ function contestOnRoundWrap(round){
   contestWrite(r=>{
     r.round = round;
     if(r.round > r.rounds){ ctFinish(r); toast(`🏁 Battle Contest over after ${r.rounds} rounds — tallying the Appeal`); return; }
-    if(r.superMode){ ctRollRoundType(r); r.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`🎲 Round ${r.round} is a ${r.roundType} round [${r.typeRolls.join(",")}]` }); }
+    if(r.superMode){ ctRollRoundType(r, ctPhysical()); r.log.push({ id:uid(), kind:"sys", at:Date.now(), text:ctRoundTypeLog(r) }); }
   });
 }
 /* the sub-line of a Move row, in Contest Mode */
@@ -1337,9 +1423,14 @@ function contestRender(){
   if(oldDock) oldDock.replaceWith(dock); else document.body.append(dock);
   if(ctStageIsOpen){
     const scroll = oldStage ? oldStage.scrollTop : 0;
+    /* someone else's roll redraws the stage — put the cursor back in the dice box being typed in */
+    const ae = document.activeElement, fk = oldStage && ae && oldStage.contains(ae) && ae.getAttribute("data-ctkey");
+    const sel = fk ? [ae.selectionStart, ae.selectionEnd] : null;
     const st = ctStageNode(run);
     if(oldStage) oldStage.replaceWith(st); else document.body.append(st);
     st.scrollTop = scroll;
+    if(fk){ const n = [...st.querySelectorAll("[data-ctkey]")].find(x=>x.getAttribute("data-ctkey")===fk);
+      if(n){ try{ n.focus({ preventScroll:true }); n.setSelectionRange(sel[0], sel[1]); }catch(e){} } }
   } else if(oldStage) oldStage.remove();
   ctNotifyTurn(run);
   if(run && run.stage==="results" && isGM()) ctStoreResults(run);
@@ -1379,6 +1470,7 @@ function ctStageNode(run){
       : `${CT_VARIANTS[run.variant].name}${run.rotation?" · Rotation":""} · ${ctStatusText(run)}`)),
     el("div",{class:"inline",style:"gap:6px"},
       run && run.stage!=="intro" && RT ? ctTypeChip(RT, run.superMode ? "round" : "Contest") : "",
+      ctDiceSwitch(),
       el("button",{class:"btn-secondary",onclick:()=>ctOpenHelp(run ? ctRunAsSettings(run) : null)},"📖 Rules"),
       el("button",{class:"close",title:"hide the stage (the 🎭 button brings it back)",onclick:()=>{ ctStageIsOpen = false; contestRender(); }},"×")));
   box.append(head);
@@ -1437,11 +1529,11 @@ function ctIntroPanel(run){
   if(gm){
     const pend = ctActive(run).filter(e=>!e.intro);
     const row = el("div",{class:"ct-row",style:"margin-top:10px"});
-    if(pend.some(e=>e.src!=="sheet")) row.append(el("button",{class:"btn-secondary",onclick:()=>contestWrite(r=>{
+    if(pend.some(e=>e.src!=="sheet")) row.append(el("button",{class:"btn-secondary",title:ctPhysical() ? "the app rolls every NPC still waiting — or roll yours by hand in their rows above" : "",onclick:()=>contestWrite(r=>{
       ctActive(r).filter(e=>!e.intro && e.src!=="sheet").forEach(e=>{ const o = ctIntroOptions(r, e);
         ctDoIntro(r, e, { skill:ctDefaultSkill(r, o), groomed:o.groomer, beautiful:o.beautiful,
           bonuses:o.bonuses.map(b=>({ label:b.label, n:b.n, stat:b.stat || r.ctype || "Cute" })) }); });
-    })},"🎲 Roll for every NPC"));
+    })}, ctPhysical() ? "🎲 Let the app roll every NPC" : "🎲 Roll for every NPC"));
     row.append(el("button",{class:"btn-primary",onclick:()=>{
       if(pend.length && !confirm(`${pend.length} contestant${pend.length===1?" hasn't":"s haven't"} introduced yet — they'd start with no Introduction dice. Start anyway?`)) return;
       contestWrite(r=>ctStartPerformance(r));
@@ -1487,37 +1579,75 @@ function ctIntroRow(run, ent){
     const r1 = el("div",{class:"ct-row"}, el("label",{class:"field",style:"max-width:300px"}, el("span",{},"Skill"), sk));
     if(o.grace){
       const st = el("select",{}); CT_STATS.forEach(s=>st.append(el("option",{value:s,selected:(spec.stat||cur.stat)===s}, s)));
-      st.addEventListener("change",()=>{ spec.stat = st.value; });
+      st.addEventListener("change",()=>{ spec.stat = st.value; draw(); });
       r1.append(el("label",{class:"field",style:"max-width:160px",title:"Grace: any of these Skills may roll for any Contest Stat"}, el("span",{},"Grace: dice for"), st));
     }
     form.append(r1);
     const cb = (label, key, title) => { const x = el("input",{type:"checkbox"}); x.checked = !!spec[key];
-      x.addEventListener("change",()=>{ spec[key] = x.checked; }); return el("label",{class:"inline",style:"gap:6px;cursor:pointer;margin:3px 0",title:title||""}, x, el("span",{class:"small"}, label)); };
+      x.addEventListener("change",()=>{ spec[key] = x.checked; draw(); }); return el("label",{class:"inline",style:"gap:6px;cursor:pointer;margin:3px 0",title:title||""}, x, el("span",{class:"small"}, label)); };
     form.append(cb(`✂ Groomed today (+1d6 to the Introduction roll)${o.groomer?" — your Trainer is a Groomer":""}`, "groomed", "Groomer Edge: a groomed Pokémon gets +1d6 on the Introduction Roll for the rest of the day"));
     if(o.beautiful) form.append(cb("💎 Beautiful (Ability): +2 Beauty dice", "beautiful"));
     form.append(cb("🎁 Sent out from a Contest Case (+1 Appeal)", "contestCase"));
     if(o.ugly) form.append(el("div",{class:"small",style:"color:var(--warn)"},"Ugly (Ability): any 6 rolled in the Introduction counts as a 1."));
     spec.bon.forEach(B=>{
-      const x = el("input",{type:"checkbox"}); x.checked = B.on; x.addEventListener("change",()=>{ B.on = x.checked; });
+      const x = el("input",{type:"checkbox"}); x.checked = B.on; x.addEventListener("change",()=>{ B.on = x.checked; draw(); });
       const line = el("label",{class:"inline",style:"gap:6px;cursor:pointer;margin:3px 0"}, x, el("span",{class:"small"}, `${B.b.label}: ${B.b.n}d6 for `));
-      if(B.b.pick){ const s = el("select",{}); CT_STATS.forEach(v=>s.append(el("option",{value:v,selected:B.stat===v},v))); s.addEventListener("change",()=>{ B.stat = s.value; }); line.append(s); }
+      if(B.b.pick){ const s = el("select",{}); CT_STATS.forEach(v=>s.append(el("option",{value:v,selected:B.stat===v},v))); s.addEventListener("change",()=>{ B.stat = s.value; draw(); }); line.append(s); }
       else line.append(el("b",{class:"small"}, B.stat));
       form.append(line);
     });
     spec.extra.forEach((X,i)=>{
-      const n = el("input",{type:"number",min:1,max:10,value:X.n,style:"width:56px"}); n.addEventListener("change",()=>{ X.n = Math.max(1,parseInt(n.value)||1); });
-      const s = el("select",{}); CT_STATS.forEach(v=>s.append(el("option",{value:v,selected:X.stat===v},v))); s.addEventListener("change",()=>{ X.stat = s.value; });
-      const lb = el("input",{type:"text",value:X.label,style:"width:150px"}); lb.addEventListener("change",()=>{ X.label = lb.value || "Bonus roll"; });
+      const n = el("input",{type:"number",min:1,max:10,value:X.n,style:"width:56px"}); n.addEventListener("change",()=>{ X.n = Math.max(1,parseInt(n.value)||1); draw(); });
+      const s = el("select",{}); CT_STATS.forEach(v=>s.append(el("option",{value:v,selected:X.stat===v},v))); s.addEventListener("change",()=>{ X.stat = s.value; draw(); });
+      const lb = el("input",{type:"text",value:X.label,style:"width:150px"}); lb.addEventListener("change",()=>{ X.label = lb.value || "Bonus roll"; draw(); });
       form.append(el("div",{class:"inline",style:"gap:6px;margin:3px 0"}, lb, n, el("span",{class:"small"},"d6 for"), s,
         el("button",{class:"linkbtn",onclick:()=>{ spec.extra.splice(i,1); draw(); }},"✕")));
     });
-    form.append(el("div",{class:"ct-row",style:"margin-top:6px"},
-      el("button",{class:"linkbtn",title:"a Held Item, Grooming or Feature the sheet doesn't know about",onclick:()=>{ spec.extra.push({ label:"Bonus roll", n:2, stat:run.ctype||"Cute" }); draw(); }},"＋ other bonus roll"),
-      el("button",{class:"btn-primary",onclick:()=>contestWrite(r=>{
-        const e = r.entrants.find(x=>x.id===ent.id); if(!e || e.intro) return;
-        ctDoIntro(r, e, { skill:spec.skill, stat:spec.stat, groomed:spec.groomed, beautiful:spec.beautiful, contestCase:spec.contestCase,
-          bonuses: spec.bon.filter(B=>B.on).map(B=>({ label:B.b.label, n:B.b.n, stat:B.stat })).concat(spec.extra.map(X=>({ label:X.label, n:X.n, stat:X.stat }))) });
-      })}, `🎲 Roll ${cur.n + (spec.groomed?1:0)}d6`)));
+    const addBonus = el("button",{class:"linkbtn",title:"a Held Item, Grooming or Feature the sheet doesn't know about",onclick:()=>{ spec.extra.push({ id:uid(), label:"Bonus roll", n:2, stat:run.ctype||"Cute" }); draw(); }},"＋ other bonus roll");
+    /* what gets rolled: the Skill's dice, then every bonus roll for its own Stat — each its own handful */
+    const xid = X => X.id || (X.id = uid());
+    const mainN = cur.n + (spec.groomed ? 1 : 0);
+    const groups = [{ key:"main", n:mainN, stat:(o.grace && CT_STATS.includes(spec.stat)) ? spec.stat : cur.stat,
+                      what:`${cur.lbl} (${cur.rank}, ${cur.n}d6)${spec.groomed ? " + 1d6 for being Groomed" : ""}` }]
+      .concat(spec.bon.filter(B=>B.on).map(B=>({ key:"b:"+B.b.id, n:B.b.n, stat:B.stat, what:B.b.label })))
+      .concat(spec.extra.map(X=>({ key:"x:"+xid(X), n:X.n, stat:X.stat, what:X.label || "Bonus roll" })))
+      .filter(g=>g.n>0 && CT_STATS.includes(g.stat));
+    spec.pd = spec.pd || {};
+    const send = phys => contestWrite(r=>{
+      const e = r.entrants.find(x=>x.id===ent.id); if(!e || e.intro) return;
+      const typed = key => phys ? ctParseDice(spec.pd[key]).dice : undefined;
+      ctDoIntro(r, e, { skill:spec.skill, stat:spec.stat, groomed:spec.groomed, beautiful:spec.beautiful, contestCase:spec.contestCase, phys,
+        rolls: typed("main"),
+        bonuses: spec.bon.filter(B=>B.on).map(B=>({ label:B.b.label, n:B.b.n, stat:B.stat, rolls:typed("b:"+B.b.id) }))
+          .concat(spec.extra.map(X=>({ label:X.label, n:X.n, stat:X.stat, rolls:typed("x:"+xid(X)) }))) });
+    });
+    if(!ctPhysical()){
+      form.append(el("div",{class:"ct-row",style:"margin-top:6px"}, addBonus,
+        el("button",{class:"btn-primary",onclick:()=>send(false)}, `🎲 Roll ${mainN}d6${groups.length>1 ? ` (+ ${groups.length-1} bonus roll${groups.length>2?"s":""})` : ""}`)));
+      return;
+    }
+    /* ✋ physical: spell out every handful, then take the numbers */
+    form.append(el("div",{class:"ct-row",style:"margin-top:4px"}, addBonus));
+    const pb = el("div",{class:"ct-phys"});
+    const go = el("button",{class:"btn-primary"},"✔ Use these dice");
+    const check = ()=>{ go.disabled = !groups.every(g=>ctDiceOk(spec.pd[g.key], g.n)); };
+    go.addEventListener("click",()=>{ check(); if(!go.disabled) send(true); });
+    pb.append(el("div",{style:"font-weight:900"}, groups.length>1 ? `✋ Roll real dice — ${groups.length} separate rolls, one at a time:` : "✋ Roll real dice:"));
+    groups.forEach((g,i)=>{
+      pb.append(el("div",{class:"small",style:"margin-top:8px"},
+        el("b",{}, `${groups.length>1 ? `${i+1}. ` : ""}Roll ${g.n}d6`), ` — ${g.what}. Every 3, 4, 5 or 6 is one ${CT_ICON[g.stat]} ${g.stat} Contest die; 1s and 2s give nothing`
+          + (o.ugly ? ". Ugly: a 6 counts as a 1 (no die)" : "") + "."),
+        ctDiceEntry({ n:g.n, key:`${sKey}|${g.key}`, value:spec.pd[g.key]||"", onChange:v=>{ spec.pd[g.key] = v; check(); },
+          face:d=>{ const ok = d>=3 && !(o.ugly && d===6); return { cls:ok?"g":"z", small:ok?"+1":"–", title:ok?`+1 ${g.stat} die`:"no die" }; } }));
+    });
+    const free = [];
+    if(!run.superMode && run.ctype && cur.stat===run.ctype) free.push(`+2 Appeal for using ${cur.lbl} in a ${run.ctype} Contest`);
+    if(spec.beautiful) free.push("💎 Beautiful's +2 Beauty dice");
+    if(spec.contestCase) free.push("🎁 the Contest Case's +1 Appeal");
+    if(free.length) pb.append(el("div",{class:"small muted",style:"margin-top:6px"}, `Added for you — nothing to roll: ${free.join(" · ")}.`));
+    check();
+    pb.append(el("div",{class:"ct-row",style:"margin-top:8px"}, go, el("button",{class:"linkbtn",onclick:()=>send(false)},"🎲 or let the app roll these")));
+    form.append(pb);
   };
   draw();
   row.append(form);
@@ -1550,7 +1680,8 @@ function ctPerformPanel(run){
   const box = el("div",{});
   const ord = ctOrder(run), cur = ctCurrent(run);
   const adjSet = new Set(cur ? ctAdjacent(run, cur, cur.mons[0]).map(a=>a.ent) : []);
-  if(run.superMode) box.append(el("div",{class:"small",style:"text-align:center"}, `🎲 Supercontest: this round's Type was rolled [${(run.typeRolls||[]).join(",")}] → `, ctTypeChip(run.roundType)));
+  if(run.superMode && run.typePending) box.append(ctTypePrompt(run));
+  else if(run.superMode) box.append(el("div",{class:"small",style:"text-align:center"}, `🎲 Supercontest: this round's Type was rolled [${(run.typeRolls||[]).join(",")}] → `, ctTypeChip(run.roundType)));
   const line = el("div",{class:"ct-lineup"});
   ctStageLine(run).forEach(e=>{
     const ti = ord.indexOf(e);
@@ -1563,7 +1694,8 @@ function ctPerformPanel(run){
   if(cur){
     act.append(el("div",{style:"font-weight:900;font-size:15px"}, `🎤 ${ctEntFull(cur)} is performing`),
       el("div",{class:"small muted"}, `${ord[0]===cur ? "★ Center of Attention: 6→3, 4-5→2, 3→1, 1→Fumble · " : "Scoring: 6→2, 2-5→1, 1→0 · "}adjacent: ${[...adjSet].map(ctEntName).join(", ") || "nobody"}`));
-    if(ctCanActEnt(cur)) act.append(el("button",{class:"btn-primary",style:"margin-top:6px;padding:8px 18px",onclick:()=>ctOpenAppeal({ eid:cur.id })},"🎤 Perform a Move"));
+    if(run.typePending) act.append(el("div",{class:"small",style:"margin-top:4px;font-weight:700"},"⏳ Roll this round's Contest Type first (above)"));
+    else if(ctCanActEnt(cur)) act.append(el("button",{class:"btn-primary",style:"margin-top:6px;padding:8px 18px",onclick:()=>ctOpenAppeal({ eid:cur.id })},"🎤 Perform a Move"));
     else act.append(el("div",{class:"small",style:"margin-top:4px"},"⏳ waiting for them to perform…"));
   }
   box.append(act);
@@ -1578,6 +1710,7 @@ function ctBattlePanel(run){
     + `All opposing Pokémon on the field count as adjacent${run.teams ? " (your own team never does)" : run.entrants.length>2 ? " — every other Trainer is opposing" : ""}. `
     + `A knockout gives +2 Voltage to the Pokémon that landed it; recalling costs 2; a replacement sent out after a knockout is the Center of Attention on its first turn. `
     + `Ends after round ${run.rounds} or when only one side has Pokémon standing — ${run.teams ? "the team with the most Appeal between them (after Fumbles) wins" : "most Appeal (after Fumbles) wins"}.`));
+  if(run.superMode && run.typePending) box.append(ctTypePrompt(run));
   if(run.teams){
     const tot = {};
     run.entrants.forEach(e=>{ const key = e.team||"1"; const t = tot[key] || (tot[key] = { name:ctTeamLabel(run.teamNames, key), net:0 }); t.net += (e.appeal||0) - (e.fumble||0); });
@@ -1664,7 +1797,9 @@ function ctGmTools(run){
     top.append(el("button",{class:"btn-secondary",onclick:W(r=>{ r.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`⏭ ${ctEntName(ctCurrent(r))}'s turn skipped by the GM` }); ctAdvance(r); })},"⏭ Skip this turn"));
   if(lastPerf && lastPerf.snap) top.append(el("button",{class:"btn-secondary",onclick:W(r=>{
     if(ctRewind(r, lastPerf.id, null)) toast(`↩ ${lastPerf.who}'s ${lastPerf.move} undone`); })},`↩ Undo ${lastPerf.who}'s ${lastPerf.move}`));
-  if(run.superMode && run.stage==="perform") top.append(el("button",{class:"btn-secondary",onclick:W(r=>{ ctRollRoundType(r); r.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`🎲 GM re-rolled the round Type → ${r.roundType}` }); })},"🎲 Re-roll round Type"));
+  if(run.superMode && run.stage==="perform") top.append(el("button",{class:"btn-secondary",onclick:W(r=>{ ctRollRoundType(r, ctPhysical());
+    r.log.push({ id:uid(), kind:"sys", at:Date.now(), text: r.typePending ? `🎲 GM re-rolls the round Type — roll a real 1d6 ✋` : `🎲 GM re-rolled the round Type → ${r.roundType}` }); })},
+    ctPhysical() ? "✋ Roll the round Type again" : "🎲 Re-roll round Type"));
   if(run.stage==="perform") top.append(el("button",{class:"btn-secondary",onclick:()=>{ if(confirm("End the contest now and tally the scores?")) contestWrite(r=>ctFinish(r)); }},"🏁 End & tally now"));
   if(run.stage==="results" && run.variant==="battle") top.append(el("button",{class:"btn-secondary",title:"the tally came too early — go back to the fight",
     onclick:W(r=>{ r.stage = "perform"; delete r.teamResults; r.entrants.forEach(e=>{ delete e.place; delete e.final; delete e.indPlace; }); })},"↩ Back to the battle"));
@@ -1706,7 +1841,7 @@ function ctLogNode(run){
   box.append(el("div",{style:"font-weight:800;border:none"},"📜 Log"));
   [...run.log].reverse().slice(0,40).forEach(x=>{
     if(x.kind==="perf") box.append(el("div",{},
-      el("b",{}, `R${x.round}${x.leg>1?` (C${x.leg})`:""} · ${x.who}`), ` — ${x.move} `, ctTypeChip(x.T), ` ${x.fx} · ${x.n}d6${x.center?" ★":""} `,
+      el("b",{}, `R${x.round}${x.leg>1?` (C${x.leg})`:""} · ${x.who}`), ` — ${x.move} `, ctTypeChip(x.T), ` ${x.fx} · ${x.n}d6${x.center?" ★":""}${x.phys?" ✋":""} `,
       ctDiceFaces(x), el("b",{style:"margin-left:6px"}, `+${x.gain} Appeal${x.fum?`, +${x.fum} Fumble`:""}`),
       x.notes && x.notes.length ? el("div",{class:"small muted",style:"border:none;padding:0"}, x.notes.join(" · ")) : ""));
     else box.append(el("div",{class:"small"}, x.text || ""));
@@ -1796,7 +1931,9 @@ function ctOpenAppeal(o){
     if(!practice){ ent = run.entrants.find(x=>x.id===o.eid) || ent; mon = ent.mons.find(m=>m.key===mon.key) || mon; }
     const W = world();
     body.innerHTML = ""; foot.innerHTML = "";
+    body.append(el("div",{class:"ct-row",style:"justify-content:flex-end;margin-bottom:4px"}, ctDiceSwitch(()=>draw())));
     if(o.why) body.append(el("div",{class:"ct-box small"}, "ℹ ", o.why));
+    if(!practice && run.typePending) body.append(ctTypePrompt(run, ()=>draw()));
     /* rotation: who's up */
     if(!practice && run.rotation && !o.lockMove){
       const sel = el("select",{});
@@ -1890,22 +2027,53 @@ function ctOpenAppeal(o){
     body.append(opt);
     /* the dice, worked out */
     const ch = choiceOf(W);
+    const phys = ctPhysical() && !ch.reliablePerf;
+    let plan = null;
+    const go = el("button",{class:"btn-primary",onclick:()=>perform()});
+    const syncGo = () => {
+      const pending = !practice && run.typePending;
+      go.disabled = !st.move || !c.fx || pending || (phys && !!plan && !ctDiceOk(st.phys, plan.total));
+      go.textContent = phys ? (practice ? "✔ Score these dice (practice)" : "✔ Score these dice") : (practice ? "🎲 Practice roll" : "🎲 Perform");
+    };
     if(c.fx){
-      const plan = ctPlan(W.run, W.ent, W.mon, ch);
+      plan = ctPlan(W.run, W.ent, W.mon, ch);
       const bx = el("div",{class:"ct-box"});
-      bx.append(el("div",{style:"font-weight:800"}, `${ch.reliablePerf ? "Appeal" : "Roll"} ${plan.total}${ch.reliablePerf ? " (1 per die)" : "d6"}`, " ",
+      bx.append(el("div",{style:"font-weight:800"}, `${phys && plan.total ? "✋ Roll" : ch.reliablePerf ? "Appeal" : "Roll"} ${plan.total}${ch.reliablePerf ? " (1 per die)" : "d6"}`, " ",
         el("span",{class:"small muted"}, `${c.T} Move — ${ctRelLabel(plan.rel)}`)));
+      if(phys && plan.lines.length) bx.append(el("div",{class:"small muted"}, "where the dice come from:"));
       plan.lines.forEach(l=>bx.append(el("div",{class:"small"}, `${l.n>0?"+":l.n<0?"":"  "}${l.n} · ${l.label}`)));
       bx.append(el("div",{class:"small muted",style:"margin-top:4px"}, plan.center ? "★ Center of Attention scoring: 6→3 · 4-5→2 · 3→1 · 2→0 · 1→0 and a Fumble" : "Scoring: 6→2 · 2-5→1 · 1→0"));
+      if(phys){
+        const pb = el("div",{class:"ct-phys"});
+        if(!plan.total) pb.append(el("div",{class:"small",style:"font-weight:700"},"✋ Nothing to roll this time — score it as it is."));
+        else {
+          const special = { "Safe Option":1, "Tease":1, "Desperation":1, "Gamble":1, "Sabotage":1 }[c.fx];
+          pb.append(el("div",{style:"font-weight:900"}, `✋ Roll ${plan.total}d6 together and type what they show`),
+            el("div",{class:"small muted"}, `Read each die with the scoring above${special ? ` — ${c.fx}: ${(CT_FX[c.fx]||{}).text}` : ""}. The boxes under the numbers show what each one is worth.`),
+            ctDiceEntry({ n:plan.total, key:"appeal", value:st.phys||"", face:ctAppealFace(plan.center, c.fx), onChange:v=>{ st.phys = v; syncGo(); } }));
+        }
+        bx.append(pb);
+      }
       body.append(bx);
     }
-    foot.append(el("button",{class:"btn-secondary",onclick:ctCloseAppeal},"Cancel"),
-      el("button",{class:"btn-primary",disabled:!st.move || !c.fx,onclick:()=>perform()}, practice ? "🎲 Practice roll" : "🎲 Perform"));
+    syncGo();
+    foot.append(el("button",{class:"btn-secondary",onclick:ctCloseAppeal},"Cancel"), go);
+  };
+  /* ✋ the typed dice, if this device rolls real ones and the count matches the plan; null = let the app roll */
+  const physDice = (W, ch) => {
+    if(!ctPhysical() || ch.reliablePerf) return { dice:null };
+    const n = ctPlan(W.run, W.ent, W.mon, ch).total;
+    if(!n) return { dice:[] };
+    const P = ctParseDice(st.phys);
+    if(P.bad || P.dice.length!==n) return { err:`This Move rolls ${n}d6 now, but ${P.dice.length} ${P.dice.length===1?"die was":"dice were"} typed in — something changed on the stage. Check the dice and try again.` };
+    return { dice:P.dice };
   };
   const perform = () => {
     if(practice){
-      const W = world(), ch = choiceOf(W);
-      const entry = ctPerformCore(W.run, W.ent, W.mon, ch, null, { practice:true });
+      const W = world(), ch = choiceOf(W), pd = physDice(W, ch);
+      if(pd.err){ toast("🎀 " + pd.err); draw(); return; }
+      const entry = ctPerformCore(W.run, W.ent, W.mon, ch, pd.dice, { practice:true, phys:!!pd.dice });
+      st.phys = "";
       showResult(entry, W, true); return;
     }
     let result = null, err = "";
@@ -1915,13 +2083,16 @@ function ctOpenAppeal(o){
       if(r.stage!=="perform"){ err = "The contest isn't in its Performance Stage"; return; }
       if(r.variant!=="battle" && ctCurrent(r)!==e){ err = "It isn't this contestant's turn any more"; return; }
       if(r.rotation && mm.performed){ err = `${mm.name} already performed`; return; }
+      if(r.typePending){ err = "Roll this round's Contest Type first (1d6 — it's on the stage)"; return; }
       const W = { run:r, ent:e, mon:mm, real:true };
       const ch = choiceOf(W);
       const why = ctMoveBlock(r, e, mm, ch.move, ch.fx);
       if(why && !(isGM() && st.override)){ err = why; return; }
+      const pd = physDice(W, ch);
+      if(pd.err){ err = pd.err; return; }
       const mv = byName(st.move);
       if(mv && !ctMoveContest(mv, r)){ r.moveFix = r.moveFix || {}; r.moveFix[mv.name] = `${st.fixT} - ${st.fixFx}`; }
-      result = ctPerformCore(r, e, mm, ch, null);
+      result = ctPerformCore(r, e, mm, ch, pd.dice, { phys:!!pd.dice });
     });
     if(err){ toast("🎀 " + err); draw(); return; }
     if(!result) return;
@@ -1929,14 +2100,14 @@ function ctOpenAppeal(o){
     if(st.relPerf && t){ t.usedAP = (t.usedAP||0) + 2; ctPersistRef(mon); }
     try{ logRoll({ kind:"contest", label:result.move, who:result.who,
       headline:`🎀 +${result.gain} Appeal${result.fum?` · +${result.fum} Fumble`:""}`,
-      lines:[`${result.T} · ${result.fx} — ${result.n}d6 [${result.dice.join(",")}]${result.center?" ★ Center":""}`, ...(result.notes||[]).slice(0,2)] }); }catch(e){}
+      lines:[`${result.T} · ${result.fx} — ${result.n}d6 [${result.dice.join(",")}]${result.center?" ★ Center":""}${result.phys?" ✋ real dice":""}`, ...(result.notes||[]).slice(0,2)] }); }catch(e){}
     const r2 = contestRunLive();
     showResult(result, { run:r2, ent:r2 && r2.entrants.find(x=>x.id===ent.id), mon:null, real:true }, false);
   };
   const showResult = (entry, W, isPractice) => {
     body.innerHTML = ""; foot.innerHTML = "";
     body.append(el("div",{style:"text-align:center"},
-      el("div",{style:"font-size:13px;font-weight:700"}, `${entry.who} — ${entry.move} `, ctTypeChip(entry.T), ` ${entry.fx}${entry.center?" · ★ Center of Attention":""}`),
+      el("div",{style:"font-size:13px;font-weight:700"}, `${entry.who} — ${entry.move} `, ctTypeChip(entry.T), ` ${entry.fx}${entry.center?" · ★ Center of Attention":""}${entry.phys?" · ✋ real dice":""}`),
       el("div",{style:"margin:10px 0"}, entry.dice.length ? ctDiceFaces(entry) : el("span",{class:"small muted"},"no dice rolled")),
       el("div",{style:"font-size:28px;font-weight:900"}, `+${entry.gain} Appeal`),
       entry.fum ? el("div",{style:"font-size:16px;font-weight:800;color:var(--bad)"}, `+${entry.fum} Fumble`) : "",
@@ -1953,11 +2124,14 @@ function ctOpenAppeal(o){
     const lp = ctLastPerf(runNow);
     const latest = !!(lp && lp.id===entry.id && lp.snap);
     const ones = entry.dice.includes(1);
-    const redo = (how, flag) => {
+    /* newDice: ✋ real dice typed in — all of them ("all"), or just the replacements for the 1s, in order */
+    const redo = (how, flag, newDice) => {
       let out = null;
       contestWrite(r=>{
-        const dice = how==="all" ? ctRollN(entry.dice.length) : entry.dice.map(d=>d===1 ? ctD6() : d);
-        const R2 = ctRewind(r, entry.id, dice); if(!R2 || !R2.out) return;
+        let dice;
+        if(newDice){ let i = 0; dice = how==="all" ? newDice.slice() : entry.dice.map(d=>d===1 ? newDice[i++] : d); }
+        else dice = how==="all" ? ctRollN(entry.dice.length) : entry.dice.map(d=>d===1 ? ctD6() : d);
+        const R2 = ctRewind(r, entry.id, dice, !!newDice || (how==="ones" && !!entry.phys)); if(!R2 || !R2.out) return;
         out = R2.out;
         out.notes.unshift(`${flag.label}: ${how==="all"?"re-rolled":"1s re-rolled"} (was [${entry.dice.join(",")}])`);
         flag.set(R2.e, R2.mm);
@@ -1966,16 +2140,35 @@ function ctOpenAppeal(o){
       if(flag.ap && t){ t.usedAP = (t.usedAP||0) + flag.ap; ctPersistRef(mon); }
       if(out) showResult(out, W, false);
     };
+    /* ✋ a re-roll with real dice: say exactly which dice to pick up, then take the new numbers */
+    const rrPhys = el("div",{});
+    const ask = (how, flag) => {
+      if(!ctPhysical()) return redo(how, flag);
+      const n = how==="all" ? entry.dice.length : entry.dice.filter(d=>d===1).length;
+      let text = "";
+      const use = el("button",{class:"btn-primary",disabled:true,onclick:()=>{ if(ctDiceOk(text, n)) redo(how, flag, ctParseDice(text).dice); }},"✔ Use these dice");
+      rrPhys.innerHTML = "";
+      rrPhys.append(el("div",{class:"ct-phys"},
+        el("div",{style:"font-weight:900"}, how==="all"
+          ? `✋ ${flag.label}: pick up all ${n} dice and roll them again`
+          : `✋ ${flag.label}: pick up only the ${n===1 ? "die" : `${n} dice`} showing a 1 and roll ${n===1 ? "it" : "them"} again (${n}d6)`),
+        el("div",{class:"small muted"}, how==="all" ? "Type all the new numbers — the old roll is thrown away." : "Leave the other dice where they are — type just the new number" + (n===1 ? "." : "s.")),
+        ctDiceEntry({ n, key:"reroll", face:ctAppealFace(entry.center, entry.fx), onChange:v=>{ text = v; use.disabled = !ctDiceOk(v, n); } }),
+        el("div",{class:"ct-row",style:"margin-top:6px"}, use,
+          el("button",{class:"linkbtn",onclick:()=>redo(how, flag)},"🎲 or let the app roll"),
+          el("button",{class:"linkbtn",onclick:()=>{ rrPhys.innerHTML = ""; }},"cancel"))));
+      const inp = rrPhys.querySelector("input"); if(inp) inp.focus();
+    };
     if(latest && eNow && mNow && !entry.choice.reliablePerf){
       if(ctHasFeat(t, "Coordinator") && !(eNow.flags||{}).coord)
-        rr.append(el("button",{class:"btn-secondary",onclick:()=>redo("all", { label:"Coordinator", set:(e)=>{ e.flags = e.flags||{}; e.flags.coord = true; } })},"↻ Coordinator: re-roll this Appeal (once per contest)"));
+        rr.append(el("button",{class:"btn-secondary",onclick:()=>ask("all", { label:"Coordinator", set:(e)=>{ e.flags = e.flags||{}; e.flags.coord = true; } })},"↻ Coordinator: re-roll this Appeal (once per contest)"));
       const fash = /\b(Beauty|Cool|Cute|Smart|Tough|Contest)\s+Fashion\b/i.exec(p.heldItem||"");
       if(fash && ones && !mNow.fashionUsed && (/contest/i.test(fash[1]) || ctCap(fash[1])===entry.T))
-        rr.append(el("button",{class:"btn-secondary",onclick:()=>redo("ones", { label:p.heldItem, set:(e,mm)=>{ mm.fashionUsed = true; } })},`↻ ${p.heldItem}: re-roll the 1s (once per contest)`));
+        rr.append(el("button",{class:"btn-secondary",onclick:()=>ask("ones", { label:p.heldItem, set:(e,mm)=>{ mm.fashionUsed = true; } })},`↻ ${p.heldItem}: re-roll the 1s (once per contest)`));
       if(ones && ctHasFeat(t, "Style Flourish") && ctStyleStats(t).includes(entry.T) && !(eNow.flags||{}).flourish)
-        rr.append(el("button",{class:"btn-secondary",onclick:()=>redo("ones", { label:"Style Flourish", ap:1, set:(e)=>{ e.flags = e.flags||{}; e.flags.flourish = true; } })},"↻ Style Flourish (1 AP): re-roll the 1s"));
+        rr.append(el("button",{class:"btn-secondary",onclick:()=>ask("ones", { label:"Style Flourish", ap:1, set:(e)=>{ e.flags = e.flags||{}; e.flags.flourish = true; } })},"↻ Style Flourish (1 AP): re-roll the 1s"));
     }
-    if(rr.childNodes.length) body.append(rr);
+    if(rr.childNodes.length) body.append(rr, rrPhys);
     foot.append(el("button",{class:"btn-primary",onclick:ctCloseAppeal},"Done"));
   };
   draw();
@@ -2080,11 +2273,15 @@ function ctGuideSteps(k){
     ? `${skill} matches this ${k.ctype} Contest: +2 Appeal (and a better shot at going first).`
     : "The Type is rolled each round, so no Skill gives the +2 — players just roll their best one.";
   const S = [];
+  const dice = ["Dice", "Real or digital — everyone chooses for themselves with 🎲 Digital / ✋ Physical at the top of the 🎭 stage (it sticks on their device). With ✋, every roll says how many d6 to throw, what each handful is for and how to read it, then you type the numbers in (4 6 2 1)."
+    + (fixed ? "" : " Rolled Types: whoever starts a round on ✋ gets a 1d6 prompt for its Type on the stage, and nobody performs until it's in.")
+    + (battle ? " Only the 🎀 Appeal and Introduction dice — Accuracy and damage stay in the normal roll window." : "")];
   if(battle){
     S.push(["Set it up", `Give every Trainer ${N}+ Pokémon in Contestants — the first ${N} in each list fight, the rest are bench. Swap with the dropdowns, or use the ⭐ Level / most-dice buttons to fill a lineup in one click.`
       + (teams ? " Put each Trainer on a team and name the teams." : "")
       + " NPCs: build them in the Trainers card, then ＋ NPC Pokémon."]);
     S.push(["Start", "Open the arena on the Map. 🎀 Contest Mode on, then ⚔ Battle on the Map → this contest (or ▶ Start this contest here — it turns ⚔ Battle on too)."]);
+    S.push(dice);
     S.push(["Introduction", `Each Trainer rolls ONE Introduction on the 🎭 stage; those Contest dice are shared by all their Pokémon. ${intro} 🎲 Roll for every NPC does yours. A last-minute swap? 🔁 under the contestant. Then ▶ Start the battle.`]);
     S.push(["Fight", `Each Trainer drops their first Pokémon on the Map (NPCs from the Trainers card)${teams ? "" : " — one per Trainer, so everyone is on the field at once"}. Initiative as normal; you apply hits on tokens a player doesn't own from the roll feed (🎯 Apply), like any fight.`]);
     S.push(["Every Move appeals", "After a Move's roll, press 🎀 Appeal in its roll window (NPCs too). Struggle and Combat Maneuvers don't Appeal."
@@ -2098,6 +2295,7 @@ function ctGuideSteps(k){
     ? "One row per Trainer with the Pokémon they'll rotate through — each one performs once, so give them as many as there are contestants. Swap with the dropdowns."
     : `One row per performing Pokémon — 3 to 5 is ideal (the book's position charts). Swap any Pokémon with its dropdown.${fest ? " A Festival needs 4+: it eliminates one per contest until three are left." : ""}`]);
   S.push(["Start", "▶ Start this contest (Contest Mode turns on by itself). Everyone gets the 🎭 stage and the bottom dock."]);
+  S.push(dice);
   S.push(["Introduction", `Each player picks a Skill on the stage and rolls: every 3–6 is a Contest die. ${intro} 🎲 Roll for every NPC does yours. A last-minute swap? 🔁 under the contestant. When everyone has rolled: ▶ Start the Performance Stage.`]);
   S.push(["Performance", "One round per contestant. Whoever has 🎤 presses 🎤 Perform (it pops up on their dock) and picks a Move — dice, Voltage and the Effects on their neighbours are all done for them. NPC turns: you press 🎤 Perform a Move. The middle spot is the Center of Attention. No Move twice in a row (Reliable excepted)."
     + (rot ? " Rotation: on their turn they choose which Pokémon goes; at most 2 × contestants Contest dice for the whole contest." : "")
@@ -2146,6 +2344,7 @@ function ctOpenHelp(settings){
     P("Players: put Poffins on the Pokémon's Info tab (🎀 Contest Stats). Contest dice = +1 per 10 points of the matching Stat (max 3), +1 per Poffin (1 + 1 per 5 Levels, max 6; Grace +2), +2 for a Style Expert's Chosen Stat, Fabulous Ball +2."),
     H("3 · Starting"),
     P("With Contest Mode on, the GM presses ⚔ Battle on the Map (or ▶ Start on the encounter) — it runs the contest instead of a battle. Everyone gets the 🎭 stage and the bottom dock."),
+    P("🎲 Digital / ✋ Physical (top of the stage, remembered per device): on ✋ the app never rolls for you — each roll lists how many d6 to throw and why (the Skill's Rank, Groomed, each bonus roll on its own; an Appeal's Effect dice + matching Type + Voltage + Contest dice spent), shows how to read them, and takes the numbers you type. The re-roll Features say which dice to pick up. A Supercontest round started on ✋ waits for a typed 1d6 for its Type. Hand-entered rolls show ✋ in the log."),
     H("4 · Introduction Stage (automated)"),
     P("Each Trainer picks Charm (Cute), Command (Cool), Guile (Smart), Intimidate (Tough) or Intuition (Beauty) and rolls 1d6 per Rank; every 3-6 is a Contest die. The matching Skill in a Standard Contest gives +2 Appeal. Offered automatically when the sheet has them: Fancy Clothes, Contest Accessory, Juggling Show, Groomer (+1d6), Unusual coloration, Beautiful (+2 Beauty), Contest Case (+1 Appeal), Grace (any Skill for any Stat), Ugly (6s count as 1s)."),
     H("5 · Performance Stage (automated)"),
@@ -2215,6 +2414,16 @@ body.ct-docked{padding-bottom:72px}
 .ct-slot.bench{opacity:.6}
 .ct-monsel{width:auto;max-width:100%;padding:2px 6px;font-size:12px}
 .ct-swap{margin-top:6px}
+.ct-stage-head>div:last-child{flex-wrap:wrap}
+.ct-segs{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;flex:none}
+.ct-segs .ct-seg{border:none;border-radius:0;margin:0;background:transparent;color:var(--muted);padding:3px 10px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:none}
+.ct-segs .ct-seg.on{background:#d6337a;color:#fff}
+.ct-phys button:disabled,.ct-appeal .modal-foot button:disabled{opacity:.45;cursor:not-allowed;filter:grayscale(.6)}
+.ct-phys{border:2px dashed #d6337a;border-radius:10px;padding:8px 10px;margin:8px 0;background:rgba(214,51,122,.06)}
+.ct-dicebox{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:4px 0}
+.ct-dicebox input.ct-dicein{width:170px;max-width:100%;font-size:16px;font-weight:800;letter-spacing:.12em;padding:4px 8px}
+.ct-dicebox input.ct-dicein.ok{border-color:var(--good);box-shadow:0 0 0 2px rgba(46,160,67,.25)}
+.ct-dicepv{display:inline-flex;align-items:center;flex-wrap:wrap}
 @media(max-width:700px){.ct-sides{grid-template-columns:1fr}.ct-spot{font-size:8px;padding:1px 4px}.ct-stage-body{padding:10px}}`;
   document.head.append(s);
 }
