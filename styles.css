@@ -229,6 +229,12 @@ textarea{resize:vertical; min-height:64px}
 .dc-table .dc-bad{color:var(--muted); opacity:.6}
 /* the example / book-DC tables are prose, not numbers — let the last column wrap */
 .dc-table.dc-ex td:last-child,.dc-table.dc-book td:last-child{text-align:left; white-space:normal; min-width:220px}
+/* 🎒 Pickup (Reference, GM only): item lists read left to right, the rules text wraps, the roll's hit is lit */
+.pk-table td{text-align:left}
+.pk-table td:nth-child(3){white-space:normal; min-width:200px}
+.pk-table tr.pk-hit td{background:var(--accent); color:#fff}
+.pk-table tr.pk-hit td.muted,.pk-table tr.pk-hit td .muted{color:#fff; opacity:.85}
+.pk-result{margin-top:10px; padding:8px 10px; border:1px solid var(--accent); border-radius:var(--radius-sm); background:var(--panel-2)}
 .kv{display:inline-flex; gap:4px; font-size:12px; background:var(--panel-2); border:1px solid var(--line); border-radius:6px; padding:1px 7px; font-weight:600; margin:2px 4px 0 0}
 .kw-hint{border-bottom:1px dotted var(--muted); cursor:help}
 /* clickable TM/HM move → "who can learn it" */

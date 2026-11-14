@@ -859,7 +859,14 @@ function ctIntroOptions(run, ent){
   const grace = !!(t && trainerHasEdge(t, "Grace"));
   const skills = CT_SKILLS.map(([k,lbl,stat])=>{ const rank = (t && t.skills && t.skills[k]) || "Untrained"; return { k, lbl, stat, rank, n:rankDice(rank) }; });
   const bonuses = [];
-  try{ if(t && t.combat && equippedList(t).some(e=>/fancy clothes/i.test(e.name))) bonuses.push({ id:"fancy", label:"👗 Fancy Clothes", n:2, pick:true }); }catch(e){}
+  /* Fancy Clothes come one item per Contest Stat — "Fancy Clothes (Cool)" rolls its 2d6 for Cool, no
+     dropdown. Only an older, unsplit "Fancy Clothes" (no Stat of its own) still lets the Trainer pick. */
+  try{ if(t && t.combat){
+    const fc = equippedList(t).find(e=>/^fancy clothes\b/i.test(e.name));
+    const st = fc && fc.eff && CT_STATS.includes(fc.eff.contestStat) ? fc.eff.contestStat : null;
+    if(fc) bonuses.push(st ? { id:"fancy", label:`👗 Fancy Clothes (${st})`, n:2, stat:st }
+                           : { id:"fancy", label:"👗 Fancy Clothes", n:2, pick:true });
+  } }catch(e){}
   ent.mons.forEach(m=>{
     const pm = ctResolveRef(m).mon; if(!pm) return;
     if(/contest accessory/i.test(pm.heldItem||"")) bonuses.push({ id:"acc-"+m.key, label:`🎗 Contest Accessory (${m.name})`, n:2, pick:true });
@@ -2360,7 +2367,7 @@ function ctOpenHelp(settings){
     H("8 · Still done by hand"),
     P("• Trainer Participant Contests (Trainers performing Moves) — run them with the GM tools' ± buttons."),
     P("• A switch caused by Baton Pass, U-Turn, Volt Switch or a Juggler Feature shouldn't cost Voltage — if the GM used ↩ Recall for it, give the 2 back with the GM tools. In a double/triple Battle Contest the +2 for a knockout goes to the first opposing Pokémon on the field; move it by hand if it was someone else."),
-    P("• Grooming isn't tracked — tick “Groomed today”. Fancy Clothes and Contest Fashion: pick their Stat when asked. Flexible Preparations: edit the Poffins. Innovation / custom Moves: pick a Contest Type & Effect the first time they perform."),
+    P("• Grooming isn't tracked — tick “Groomed today”. Fancy Clothes (Cool) and the other four versions roll for their own Stat by themselves; only an older, unsplit set of Fancy Clothes or a generic Contest Fashion asks for its Stat. Flexible Preparations: edit the Poffins. Innovation / custom Moves: pick a Contest Type & Effect the first time they perform."),
     P("• Ribbons aren't added automatically — put the winner's Ribbon in their Inventory. The Beautiful Ability's Scene use and other AP costs besides Reliable Performance / Style Flourish aren't ticked off."),
     P("• Any ruling: the GM tools let you skip a turn, undo the last performance, nudge Appeal / Fumble / Voltage, refund dice, re-roll a Supercontest Type, or end and tally early."));
   modal({ title:"📖 Pokémon Contests — how this runs", bodyNode:body, footNodes:[ el("button",{class:"btn-primary",onclick:closeModal},"Got it") ]});

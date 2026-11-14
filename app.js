@@ -5215,6 +5215,20 @@ Object.entries(LEGACY_ITEM_NAMES).forEach(([old, now]) => {
   const it = itemByName.get(now.toLowerCase());
   if(it && !itemByName.has(old)) itemByName.set(old, it);
 });
+/* catalog rows that were SPLIT into one row per version (2026-11-14): "Fancy Clothes" became Fancy
+   Clothes (Beauty)/(Cool)/(Cute)/(Smart)/(Tough), and "Focus" became Focus (Attack)/(Defense)/(Special
+   Attack)/(Special Defense)/(Speed) — each version is its own item, and its Stat is part of what you
+   buy. The umbrella rows are gone from D.items, so no picker, shop or recipe offers them any more, but a
+   copy already sitting in an Inventory, an Equipment slot or a Shop still finds its slot, price and rules
+   here — and still asks for its Stat the way it always did (the Focus stat picker, the Contest's
+   Introduction dropdown). */
+const LEGACY_ITEM_ROWS = [
+  { name:"Fancy Clothes", cat:"Equipment", cost:"$5000", slot:"Body", legacy:true,
+    effect:"Each set of Fancy Clothes is assigned a Contest Stat – either Beauty, Cool, Cute, Smart, or Tough. Trainers wearing these clothes may roll 2d6 during the Introduction Stage of a Contest to try to generate Contest Stat Dice for the assigned Stat." },
+  { name:"Focus", cat:"Equipment", cost:"$6000", slot:"Accessory", legacy:true,
+    effect:"A Focus grants +5 Bonus to a Stat, chosen when crafted. This Bonus is applied AFTER Combat Stages. Focuses are often Accessory-Slot Items, but may be crafted as Head-Slot, Hand or Off-Hand Slot Items as well; a Trainer may only benefit from one Focus at a time, regardless of the Equipment Slot. Focuses are not usually found in stores, but may sometimes be found for $6000 at your GM's discretion." },
+];
+LEGACY_ITEM_ROWS.forEach(r => { if(!itemByName.has(r.name.toLowerCase())) itemByName.set(r.name.toLowerCase(), r); });
 
 /* Mega Evolution: derive stoneName <-> "Mega X"/"Mega X Y" species pairs from the loaded item
    effect text ("Mega Evolves <target> when used...") instead of hand-listing all ~47 of them.
@@ -13343,7 +13357,15 @@ const EQUIP_EFFECTS = {
   "light armor [9-15 playtest]":   { drTyped:{Physical:5} },
   "special armor [9-15 playtest]": { drTyped:{Special:5} },
   "stealth clothes":        { skills:{stealth:4}, skillCap:4, note:"Only to remain unseen." },
-  "fancy clothes":          { note:"Contest: roll 2d6 in the Introduction Stage for the assigned Contest Stat's dice." },
+  /* Fancy Clothes come one item per Contest Stat (see LEGACY_ITEM_ROWS): the Contest's Introduction Stage
+     reads `contestStat` and offers the 2d6 for that Stat by itself. The plain "fancy clothes" row is an
+     older, unsplit set — its wearer still picks the Stat in the Introduction. */
+  "fancy clothes (beauty)": { contestStat:"Beauty", note:"Contest: +2d6 in the Introduction Stage for Beauty dice — offered automatically when you introduce." },
+  "fancy clothes (cool)":   { contestStat:"Cool",   note:"Contest: +2d6 in the Introduction Stage for Cool dice — offered automatically when you introduce." },
+  "fancy clothes (cute)":   { contestStat:"Cute",   note:"Contest: +2d6 in the Introduction Stage for Cute dice — offered automatically when you introduce." },
+  "fancy clothes (smart)":  { contestStat:"Smart",  note:"Contest: +2d6 in the Introduction Stage for Smart dice — offered automatically when you introduce." },
+  "fancy clothes (tough)":  { contestStat:"Tough",  note:"Contest: +2d6 in the Introduction Stage for Tough dice — offered automatically when you introduce." },
+  "fancy clothes":          { note:"Contest: +2d6 in the Introduction Stage — an older set with no Stat of its own, so you pick it when you introduce." },
   "sunglasses":             { skills:{charm:1,guile:1,intimidate:1}, skillCap:3 },
   /* homebrew: a Head-slot hat that simply lends its wearer authority. Keyed twice so a
      typographic apostrophe in the item name still finds it (normItemName strips it). */
@@ -13367,6 +13389,14 @@ const EQUIP_EFFECTS = {
   "light shield":           { evasion:1, note:"Ready (Standard): instead +4 Evasion & 10 DR until end of next turn, but Slowed. Two-handed = Small Melee Weapon." },
   "heavy shield":           { evasion:2, note:"Ready (Standard): instead +6 Evasion & 15 DR until end of next turn, but Slowed. Two-handed = Small Melee Weapon." },
   "shield [9-15 playtest]": { evasion:1, note:"Ready (Standard): instead +4 Evasion & 10 DR until end of next turn, but Slowed." },
+  /* a Focus is bought already attuned to its Stat (focusFixed) — no picker. The plain "focus" row is an
+     older one whose Stat lives on the worn copy (item.focusStat), and the Rainbow Gem re-attunes, so
+     both of those keep the picker. */
+  "focus (attack)":          { focus:true, focusFixed:"atk" },
+  "focus (defense)":         { focus:true, focusFixed:"def" },
+  "focus (special attack)":  { focus:true, focusFixed:"spatk" },
+  "focus (special defense)": { focus:true, focusFixed:"spdef" },
+  "focus (speed)":           { focus:true, focusFixed:"spd" },
   "focus":                  { focus:true },
   "rainbow gem":            { focus:true, note:"Rainbow Gem: a Focus a Trainer with Expert Occult Education can re-attune as an Extended Action — and what Rainbow Light needs you to be wearing." },
   "shell bell":             { note:"Whenever you damage a foe you gain a Tick of Temporary HP \u2014 tap your token on the \uD83D\uDDFA Map and press \uD83D\uDC1A Shell Bell to take it." },
@@ -13538,8 +13568,10 @@ function equipSkillBonus(t, skillKey){
 }
 function equipStatBonus(t){
   const out={atk:0,def:0,spatk:0,spdef:0,spd:0};
+  let focused = false;      // "a Trainer may only benefit from one Focus at a time, regardless of the Equipment Slot"
   equippedList(t).forEach(({eff,item})=>{
-    if(eff && eff.focus && item && item.focusStat && out[item.focusStat]!==undefined) out[item.focusStat]+=5;
+    const k = (eff && eff.focus) ? (eff.focusFixed || (item && item.focusStat)) : null;
+    if(!focused && k && out[k]!==undefined){ out[k]+=5; focused = true; }
   });
   return out;
 }
@@ -13556,6 +13588,8 @@ function equipEffBadges(eff){
   if(eff.drCrit) b.push(mk(`+${eff.drCrit} DR vs crit`));
   if(eff.evasion) b.push(mk(`+${eff.evasion} Evasion`));
   if(eff.speedCS) b.push(mk(`${eff.speedCS>0?"+":""}${eff.speedCS} Speed CS`));
+  if(eff.focusFixed) b.push(mk(`+5 ${(STATS.find(s=>s[0]===eff.focusFixed)||[])[1]||eff.focusFixed} (after Combat Stages)`));
+  if(eff.contestStat) b.push(mk(`+2d6 ${eff.contestStat} (Contest Introduction)`));
   if(eff.overland) b.push(mk(`+${eff.overland} Overland`));
   if(eff.swim) b.push(mk(`+${eff.swim} Swim`));
   if(eff.typeBoost) b.push(mk(`+${eff.typeBoost.dmg} ${eff.typeBoost.type} damage`));
@@ -13839,7 +13873,7 @@ function equipmentCard(t){
     if(curName){
       const eff = equipEffFor(curName);
       const cat = itemByName.get(curName.toLowerCase());
-      if(eff && eff.focus){
+      if(eff && eff.focus && !eff.focusFixed){
         const fs = el("select",{class:"equip-focus"});
         fs.append(el("option",{value:""},"choose stat…"));
         [["atk","Attack"],["def","Defense"],["spatk","Sp.Atk"],["spdef","Sp.Def"],["spd","Speed"]].forEach(([k,l])=>
@@ -36034,7 +36068,7 @@ const RECIPE_BLURB_ES = {
   "Medicinal Blend": "Fusiona dos Restoratives (no dos con el mismo efecto), o un Restorative y un X-Item, en UN solo objeto con los dos efectos. Si hay un Patch en la mezcla, el resultado solo se puede usar como Extended Action.",
   "Type Booster": "Cuatro Shards de un color hacen un Type Booster de uno de los tres Types de ese color.",
   "Type Brace": "Cuatro Shards de un color hacen un Type Brace de uno de los tres Types de ese color.",
-  "Focus Gem": "Seis Shards cualesquiera (tomados de tus montones más grandes) hacen un Focus — eliges su Stat al llevarlo puesto.",
+  "Focus Gem": "Seis Shards cualesquiera (tomados de tus montones más grandes) hacen un Focus de la Stat que elijas.",
   "Chakra Crystal": "Seis Shards cualesquiera (tomados de tus montones más grandes) hacen un Stat Booster.",
   "Rainbow Gem": "Dos Shards de cada color hacen una Rainbow Gem — un Focus cuya Stat se puede reajustar. Llévala puesta para usar Rainbow Light.",
   "Plate Crafter": "Un Type Booster y un Type Brace del mismo Type hacen la Plate de ese Type.",
@@ -36097,6 +36131,11 @@ const ITEM_EFFECT_ES = {
   "Timer Ball": "-5 al Modifier por cada ronda desde el inicio del encuentro, hasta que el Modifier llegue a -20.",
   "Focus": "Un Focus otorga un Bonus de +5 a una Stat, elegida al fabricarlo. Este Bonus se aplica DESPUÉS de los Combat Stages. Los Focus suelen ser Accessory-Slot Items, pero también se pueden fabricar como Head-Slot, Hand u Off-Hand Slot Items; un Trainer solo puede beneficiarse de un Focus a la vez, sea cual sea el Equipment Slot. Normalmente no se venden en tiendas, pero a veces se pueden encontrar por $6000 a discreción del GM.",
   "Rainbow Gem": "Fabricada por un Crystal Artificer (Rainbow Light): el mismo efecto que un Focus (+5 a una Stat elegida, después de los Combat Stages), pero cualquier Trainer con Occult Education Expert puede reajustar su Stat como Extended Action. Se puede llevar como objeto de Accessory, Head o Hand. Quien la lleva puede usar Rainbow Light.",
+  "Focus (Attack)": "Un Focus de Attack: +5 a la Stat de Attack de quien lo lleva, después de los Combat Stages. Un Trainer solo puede beneficiarse de un Focus a la vez, sea cual sea el Equipment Slot.",
+  "Focus (Defense)": "Un Focus de Defense: +5 a la Stat de Defense de quien lo lleva, después de los Combat Stages. Un Trainer solo puede beneficiarse de un Focus a la vez, sea cual sea el Equipment Slot.",
+  "Focus (Special Attack)": "Un Focus de Special Attack: +5 a la Stat de Special Attack de quien lo lleva, después de los Combat Stages. Un Trainer solo puede beneficiarse de un Focus a la vez, sea cual sea el Equipment Slot.",
+  "Focus (Special Defense)": "Un Focus de Special Defense: +5 a la Stat de Special Defense de quien lo lleva, después de los Combat Stages. Un Trainer solo puede beneficiarse de un Focus a la vez, sea cual sea el Equipment Slot.",
+  "Focus (Speed)": "Un Focus de Speed: +5 a la Stat de Speed de quien lo lleva, después de los Combat Stages. Un Trainer solo puede beneficiarse de un Focus a la vez, sea cual sea el Equipment Slot.",
 };
 /* the formulaic ones (Berries, Potions, X-Items, Pester Balls, Boosters, Braces, Plates…) translate by
    sentence shape instead of one row each — applied in order, so the specific shapes come first */
@@ -37202,6 +37241,7 @@ function shardsAnySix(t){
   return Object.entries(take).map(([c, n]) => [shardName(c), n]);
 }
 const STAT_BOOSTER_ITEMS = ["Attack Booster","Defense Booster","S Attack Booster","S Defense Booster","Speed Booster","Accuracy Booster","Evasion Booster"];
+const FOCUS_ITEMS = ["Focus (Attack)","Focus (Defense)","Focus (Special Attack)","Focus (Special Defense)","Focus (Speed)"];
 const typeOfPick = s => String(s||"").split(" — ")[0];
 const ARTIFICER_RECIPES = [
   { name:"Type Booster", feat:"Crystal Artificer", bench:"Crystal Artifice", icon:"\u{1F48E}", verb:"\u{1F48E} Craft", qty:1, cost:0,
@@ -37217,9 +37257,9 @@ const ARTIFICER_RECIPES = [
     result: (t, item) => `${typeOfPick(item)} Brace`,
     blurb:"Four Shards of one colour make a Type Brace of one of that colour's three Types." },
   { name:"Focus Gem", feat:"Crystal Resonance", bench:"Crystal Artifice", icon:"\u{1F48E}", verb:"\u{1F48E} Craft", qty:1, cost:0,
-    pick: t => shardTotal(t) >= 6 ? ["Focus"] : [],
+    pick: t => shardTotal(t) >= 6 ? FOCUS_ITEMS.slice() : [],
     take: t => shardsAnySix(t) || [],
-    blurb:"Any six Shards (taken from your biggest stacks) make a Focus — pick its Stat when you wear it." },
+    blurb:"Any six Shards (taken from your biggest stacks) make a Focus of the Stat you pick." },
   { name:"Chakra Crystal", feat:"Crystal Resonance", bench:"Crystal Artifice", icon:"\u{1F48E}", verb:"\u{1F48E} Craft", qty:1, cost:0,
     pick: t => shardTotal(t) >= 6 ? STAT_BOOSTER_ITEMS.slice() : [],
     take: t => shardsAnySix(t) || [],
@@ -46205,7 +46245,7 @@ function renderReference(){
   const sub = el("div",{class:"refsub"});
   const subs = [["species","Pokédex"],["move","Moves"],["keyword","Keywords"],["ability","Abilities"],["item","Items"],
    ["feature","Features"],["edge","Edges"],["pokeedge","Poké Edges"],["nature","Natures"]];
-  if(isGM()) subs.push(["dc","🎲 DCs"]);      // GM-only: how hard should this Skill Check be?
+  if(isGM()) subs.push(["dc","🎲 DCs"], ["pickup","🎒 Pickup"]);      // GM-only: how hard should this Skill Check be? / what did Pickup find?
   subs.forEach(([k,l])=>{
     sub.append(el("button",{class:refSub===k?"on":"",onclick:()=>{refSub=k;drawRefList();$$(".refsub button").forEach(b=>b.classList.toggle("on",b.textContent===l));}},l));
   });
@@ -46216,7 +46256,7 @@ function renderReference(){
 }
 function drawRefList(){
   const list = $("#refList"); if(!list) return; list.innerHTML="";
-  if(refSub==="dc" && !isGM()) refSub = "species";     // GM mode turned off while the tab was open
+  if((refSub==="dc" || refSub==="pickup") && !isGM()) refSub = "species";     // GM mode turned off while the tab was open
   const q = refQuery.trim().toLowerCase();
   let rows = [];
   const match = s => !q || String(s).toLowerCase().includes(q);
@@ -46237,6 +46277,7 @@ function drawRefList(){
       .map(([term,def])=>refGeneric(term.replace(/\b[a-z]/g,c=>c.toUpperCase()), KEYWORD_CATS[term]||"Move Keyword", def));
   }
   else if(refSub==="dc") rows = dcRefRows(q);
+  else if(refSub==="pickup") rows = pickupRefRows(q);
   if(!rows.length) list.append(el("div",{class:"muted"},"no matches"));
   rows.forEach(r=>list.append(r));
 }
@@ -46282,6 +46323,216 @@ function refGeneric(name, meta, body, prereq){
   return it;
 }
 const esc = s => String(s??"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+/* ===================================================================
+   GM-only Pickup roller (Reference → 🎒 Pickup). The Pickup Ability — and Scavenger,
+   which uses the same table — rolls 1d20: the d20 only says what KIND of thing turns
+   up (the Pickup keyword) and the book leaves the actual item to the GM. Here every
+   kind is a numbered list drawn from the item catalogue, with a recipe for rolling it
+   with real dice: one die (re-roll anything past the last number), or for the long
+   lists a group die and then an item die, or a d100 for the TMs — the roll IS the TM
+   number. 🎲 rolls the whole thing (or one kind) for you; the tables are the same
+   lists, so a physical roll and a 🎲 roll always land on the same item.
+=================================================================== */
+var pkLast = null;           // this screen's last roll — var: render() can reach the Reference tab at boot
+var pkTmCache = null;
+function pkRoll(n){ return 1 + Math.floor(Math.random() * n); }
+/* TM01–TM100 as the species lists number them. The lists come from several generations, so a
+   number is given the Move most species file under it (TM26 is Earthquake, whatever one odd
+   regional list says). HMs ("A4 Strength") are not TMs and stay out. */
+function pkTMs(){
+  if(pkTmCache) return pkTmCache;
+  const tally = new Map();
+  (D.species || []).forEach(s => ((s.moves && s.moves.tmhm) || []).forEach(raw => {
+    const m = /^(\d+)\s+/.exec(String(raw)); if(!m) return;
+    const n = +m[1]; if(n < 1 || n > 100) return;
+    const nm = tmMoveName(raw); if(!nm) return;
+    const t = tally.get(n) || new Map(); t.set(nm, (t.get(nm) || 0) + 1); tally.set(n, t);
+  }));
+  const out = [];
+  for(let n = 1; n <= 100; n++){
+    const t = tally.get(n); if(!t) continue;
+    const nm = [...t.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    const mv = moveByName.get(nm.toLowerCase());
+    out.push({ num:n, name:`TM${String(n).padStart(2, "0")} ${nm}`,
+               effect: mv ? [mv.type, mv.class, mv.frequency].filter(Boolean).join(" · ") : "" });
+  }
+  return (pkTmCache = out);
+}
+/* the dice for a list of n: one die when it fits on a d20, else a group die and an item die picked so
+   as few throws as possible are re-rolls (a d100 for the TMs) */
+function pkPlan(n, d100){
+  const dice = [4, 6, 8, 10, 12, 20], die = m => dice.find(d => d >= m) || 0;
+  if(d100) return { die:100, groups:0 };
+  if(n <= 20) return { die:die(n), groups:0 };
+  let best = null;
+  dice.forEach(g => {
+    const d = die(Math.ceil(n / g)); if(!d) return;
+    const waste = 1 - n / (g * d);
+    if(!best || waste < best.waste - 1e-9) best = { g, d, waste };
+  });
+  return best ? { die:best.d, groups:best.g } : { die:100, groups:0 };
+}
+function pkSplit(list, g){
+  const base = Math.floor(list.length / g), rem = list.length % g, out = [];
+  let at = 0;
+  for(let i = 0; i < g; i++){ const s = base + (i < rem ? 1 : 0); out.push(list.slice(at, at + s)); at += s; }
+  return out;
+}
+/* the Pickup table itself, with each kind's list built from the catalogue */
+function pkCats(){
+  const gear = (D.items && D.items.gear) || [];
+  const row = g => ({ name:g.name, effect:cleanupText(g.effect || "") });
+  const by = (cat, f) => gear.filter(g => cat.test(String(g.cat || "")) && f(g)).map(row).sort((a, b) => a.name.localeCompare(b.name));
+  const named = list => list.map(n => itemByName.get(n.toLowerCase())).filter(Boolean).map(row);
+  const MED = /^Med Kit$/, POKE_ITEM = /^Pok\S*mon Item$/, BALL = /^Pok\S* Ball$/, FOOD = /^Food$/;
+  /* rows that only name a family ("Type Gem") and the ones no Pickup should ever turn up */
+  const UMBRELLA = new Set(["Choice Items","Contest Fashion","Lagging Items","Stat Boosters","Type Boosters","Type Brace","Type Gem","Type Plates","Mega Stone"]);
+  /* named, not "ends in Stone": Hard Stone is the Rock Type Booster, and Everstone stops evolution */
+  const EVO_STONES = ["Fire Stone","Water Stone","Thunder Stone","Leaf Stone","Moon Stone","Sun Stone","Shiny Stone",
+                      "Dusk Stone","Dawn Stone","Ice Stone","Oval Stone"];
+  const cats = [
+    { key:"nothing", lo:1,  hi:5,  label:"Nothing", items:[] },
+    { key:"xitem",   lo:6,  hi:7,  label:"An X-Item",
+      items: by(MED, g => /^X /.test(g.name) || /^(Dire Hit|Guard Spec)/.test(g.name)) },
+    { key:"berry",   lo:8,  hi:10, label:"A Berry", items: by(FOOD, g => / Berry$/.test(g.name)) },
+    { key:"ball",    lo:11, hi:13, label:"A Poké Ball", note:"Every Ball a shop can sell — not the Master Ball, and none of the crafted ones.",
+      items: by(BALL, g => / Ball$/.test(g.name) && /^\$\d/.test(String(g.cost || "")) && g.name !== "Master Ball") },
+    { key:"heal",    lo:14, hi:16, label:"A Status or HP healing item",
+      items: named(["Potion","Super Potion","Hyper Potion","Full Restore","Revive","Antidote","Paralyze Heal","Burn Heal","Ice Heal",
+                    "Full Heal","Energy Powder","Energy Root","Heal Powder","Revival Herb"]) },
+    { key:"stone",   lo:17, hi:17, label:"An Evolutionary Stone", items: named(EVO_STONES) },
+    { key:"vitamin", lo:18, hi:18, label:"A Vitamin", items: named(["HP Up","Protein","Iron","Calcium","Zinc","Carbos"]) },
+    { key:"held",    lo:19, hi:19, label:"A Held Item", note:"No Mega Stones, Plates or Evolutionary Stones — those are too big a find for a Pickup.",
+      items: by(POKE_ITEM, g => !UMBRELLA.has(g.name) && !/^Mega Evolves/i.test(g.effect || "") && !/ Plate$/.test(g.name) && !EVO_STONES.includes(g.name)) },
+    { key:"tm",      lo:20, hi:20, label:"A TM", d100:true, items: pkTMs() },
+  ];
+  cats.forEach(c => {
+    if(!c.items.length) return;
+    c.plan = pkPlan(c.items.length, c.d100);
+    c.split = c.plan.groups ? pkSplit(c.items, c.plan.groups) : null;
+  });
+  return cats;
+}
+function pkRange(c){ return c.lo === c.hi ? String(c.lo) : `${c.lo}–${c.hi}`; }
+/* how to roll one kind with real dice, in words */
+function pkHowTo(c){
+  if(!c.plan) return "Nothing to roll.";
+  const P = c.plan, n = c.items.length;
+  if(c.d100) return n === 100 ? "Roll 1d100 — the number is the TM." : `Roll 1d100 — the number is the TM (re-roll a number with no TM listed).`;
+  if(!P.groups) return `Roll 1d${P.die}${n < P.die ? ` — re-roll ${n + 1 === P.die ? `a ${P.die}` : `${n + 1}–${P.die}`}` : ""}.`;
+  const short = c.split.some(g => g.length < P.die);
+  return `Roll 1d${P.groups} for the group, then 1d${P.die} in that group${short ? " — re-roll anything past the group's last number" : ""}.`;
+}
+/* 🎲 one kind: the dice it took and what it landed on (re-rolls shown with ↻) */
+function pkRollCat(c){
+  const P = c.plan, rolls = [];
+  if(!P) return { item:null, rolls };
+  if(c.d100){
+    let it = null;
+    for(let i = 0; i < 60 && !it; i++){ const r = pkRoll(100); it = c.items.find(x => x.num === r) || null; rolls.push(`d100 = ${r}${it ? "" : " ↻"}`); }
+    return { item:it, rolls };
+  }
+  let list = c.items;
+  if(P.groups){ const g = pkRoll(P.groups); rolls.push(`d${P.groups} = ${g} (group)`); list = c.split[g - 1]; }
+  let r;
+  do { r = pkRoll(P.die); rolls.push(`d${P.die} = ${r}${r > list.length ? " ↻" : ""}`); } while(r > list.length);
+  return { item:list[r - 1], rolls };
+}
+function pkDo(cats, catKey, d20, physical){
+  const c = cats.find(x => x.key === catKey); if(!c) return;
+  const res = physical ? { item:null, rolls:[] } : pkRollCat(c);
+  pkLast = { key:c.key, d20, rolls:res.rolls, item: res.item ? res.item.name : null, physical:!!physical, at:Date.now() };
+  drawRefList();
+}
+function pickupRefRows(q){
+  const cats = pkCats(), rows = [];
+  const match = s => !q || String(s).toLowerCase().includes(q);
+  const catFor = n => cats.find(c => n >= c.lo && n <= c.hi);
+
+  /* 1 — roll it */
+  const top = el("div",{class:"refitem"});
+  top.append(el("div",{class:"r-title"}, "\u{1F392} Pickup", el("span",{class:"muted small"}, "GM only · the Pickup Ability & Scavenger")));
+  top.append(el("div",{class:"dc-body"},
+    "Pickup is a Daily Extended Action of at least 5 minutes: roll 1d20 and look it up below. The d20 picks the kind of find; ",
+    "the lists under it pick the item — with real dice (each list says how) or with \u{1F3B2}."));
+  const rollBtn = el("button",{class:"btn-primary",onclick:()=>{ const d = pkRoll(20), c = catFor(d); pkDo(cats, c.key, d, false); }}, "\u{1F3B2} Roll Pickup");
+  const phys = el("input",{type:"number",min:"1",max:"20",placeholder:"d20",style:"width:70px"});
+  const look = () => { const d = parseInt(phys.value, 10); if(!(d >= 1 && d <= 20)){ toast("Type the d20 you rolled (1–20)"); return; } pkDo(cats, catFor(d).key, d, true); };
+  phys.addEventListener("keydown", e => { if(e.key === "Enter") look(); });
+  top.append(el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center"},
+    rollBtn, el("span",{class:"small muted"}, "or ✋ I rolled"), phys, el("button",{class:"btn-secondary",onclick:look}, "Look it up")));
+  if(pkLast){
+    const c = cats.find(x => x.key === pkLast.key);
+    const res = el("div",{class:"pk-result"});
+    const head = pkLast.d20 != null ? `d20 = ${pkLast.d20} → ${c.label}` : `${c.label} (rolled on its own)`;
+    res.append(el("div",{style:"font-weight:800"}, head));
+    if(c.key === "nothing") res.append(el("div",{class:"small"}, "Nothing turns up this time."));
+    else if(pkLast.physical) res.append(el("div",{class:"small"}, `${pkHowTo(c)} Its list is open below.`));
+    else {
+      if(pkLast.rolls.length) res.append(el("div",{class:"small muted"}, pkLast.rolls.join(" · ")));
+      res.append(el("div",{style:"font-size:16px;font-weight:800;margin-top:2px"}, pkLast.item ? `\u{1F381} ${pkLast.item}` : "—"));
+      res.append(el("button",{class:"linkbtn",onclick:()=>pkDo(cats, c.key, pkLast.d20, false)}, `\u{1F3B2} Re-roll the ${c.label.replace(/^(An?|A) /, "")}`));
+    }
+    top.append(res);
+  }
+  rows.push(top);
+
+  /* 2 — the d20 table */
+  if(!q){
+    const tbl = el("div",{class:"refitem"});
+    tbl.append(el("div",{class:"r-title"}, "The Pickup table", el("span",{class:"muted small"}, "1d20")));
+    const t = el("table",{class:"dc-table pk-table"});
+    t.innerHTML = `<thead><tr><th>d20</th><th>You find</th><th>Then roll</th><th></th></tr></thead>`;
+    const tb = el("tbody",{});
+    cats.forEach(c => {
+      const tr = el("tr",{class: pkLast && pkLast.key === c.key ? "pk-hit" : ""});
+      tr.append(el("td",{class:"dc-num"}, pkRange(c)), el("td",{}, c.label + (c.items.length ? ` (${c.items.length})` : "")),
+        el("td",{class:"small"}, c.items.length ? pkHowTo(c) : "—"),
+        el("td",{}, c.items.length ? el("button",{class:"linkbtn",title:`Roll just ${c.label.toLowerCase()}, no d20`,onclick:()=>pkDo(cats, c.key, null, false)}, "\u{1F3B2}") : ""));
+      tb.append(tr);
+    });
+    t.append(tb);
+    tbl.append(el("div",{class:"dc-scroll"}, t));
+    rows.push(tbl);
+  }
+
+  /* 3 — one list per kind, numbered for the dice */
+  cats.forEach(c => {
+    if(!c.items.length) return;
+    const hit = pkLast && pkLast.key === c.key;
+    const shown = it => match(it.name) || match(it.effect);
+    if(q && !c.items.some(shown)) return;
+    const box = el("div",{class:"refitem"});
+    const det = el("details",{class:"spoiler"});
+    if(hit || q) det.open = true;
+    det.append(el("summary",{}, `${pkRange(c)} · ${c.label} — ${c.items.length} · ${pkHowTo(c)}`));
+    if(c.note) det.append(el("div",{class:"small muted",style:"margin:4px 0"}, c.note));
+    det.append(el("button",{class:"linkbtn",onclick:()=>pkDo(cats, c.key, null, false)}, `\u{1F3B2} Roll ${c.label.toLowerCase()}`));
+    const table = (list, numOf) => {
+      const t = el("table",{class:"dc-table pk-table"});
+      const tb = el("tbody",{});
+      list.forEach((it, i) => {
+        if(q && !shown(it)) return;
+        const tr = el("tr",{class: hit && !pkLast.physical && pkLast.item === it.name ? "pk-hit" : ""});
+        const fx = it.effect || "";
+        tr.append(el("td",{class:"dc-num"}, String(numOf(it, i))), el("td",{style:"font-weight:700"}, it.name),
+          el("td",{class:"small muted",title:fx}, fx.length > 120 ? fx.slice(0, 117) + "…" : fx));
+        tb.append(tr);
+      });
+      t.append(tb);
+      return el("div",{class:"dc-scroll"}, t);
+    };
+    if(c.split) c.split.forEach((grp, gi) => {
+      det.append(el("div",{class:"small",style:"font-weight:800;margin-top:8px"}, `Group ${gi + 1} — d${c.plan.groups} = ${gi + 1}`));
+      det.append(table(grp, (it, i) => i + 1));
+    });
+    else det.append(table(c.items, (it, i) => c.d100 ? it.num : i + 1));
+    box.append(det);
+    rows.push(box);
+  });
+  return rows;
+}
 
 /* ===================================================================
    GM-only DC reference — "Setting Skill Check Difficulties" (Core pp.465-466).
@@ -48107,7 +48358,12 @@ function onRowOps(p){
   // reference the UI is holding (a token mid-drag, the initiative panel's map) stays valid the way
   // reconcileInto guarantees, and diffOps(_base, data) still describes exactly the edits of ours
   // that haven't been saved yet.
-  if(row._base) applyOps(row._base, p.ops);
+  // The baseline gets its OWN copy of the ops. Replaying the one payload into both used to hand them the
+  // very same objects for anything appended or set whole (a call placed, a token dropped, a Blessing laid),
+  // so a later in-place edit of that object (ANSWER flipping call.state, a line said on the Codec, a token
+  // dragged) changed the baseline with it — diffOps saw nothing, nothing was sent, and every other screen
+  // stayed where it was ("I picked up but it still rings for everyone else").
+  if(row._base) applyOps(row._base, deepClone(p.ops));
   applyOps(row.data, p.ops);
   // Normalize BOTH sides, the way adoptRemote does (it stores the normalized server copy as the
   // baseline). Normalizing only the live copy leaves any field the normalizer fills in — mapTokens'
