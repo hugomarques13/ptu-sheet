@@ -506,6 +506,24 @@ const STATUS_DEFS = [
    effect:"Silenced by The Hush until the end of the Scene. Every Gift you try to activate needs a Focus Check first, at a DC of three times the Hush user's Command Rank (your 🎁 Gifts tab shows the number). A failure costs you nothing — not the AP, not the Frequency. A Static or ongoing Gift is checked each turn, and a failure switches it off for that turn. It ends early if the user is knocked out."},
   {key:"tagged", name:"Tagged", kind:"other", cap:0,
    effect:"Marked by a Duelist. Their Pokemon under Focused Training add half their Momentum (rounded up) to Accuracy and Evasion against this foe — and give up Focused Training's Accuracy bonus against everyone else. Only one foe can be Tagged at a time; Tagging a new one clears the old."},
+  /* THE HOLY CORPSE (homebrew, this table) — chips the nine pieces put on and take off themselves.
+     `corpse:true` keeps them out of every status picker until one is actually on a creature. */
+  {key:"vorpal", name:"Vorpal", kind:"other", cap:0, gm:true, corpse:true,
+   effect:"One step more vulnerable to all damage (the Right Arm's Vorpal Strike). The \u{1F4A5} Apply counts it on every hit. On the Map it lifts itself: from the target at the start of the holder's next turn, from the holder at the end of the round."},
+  {key:"unmade", name:"Unmade", kind:"other", cap:0, gm:true, corpse:true,
+   effect:"No Resistances or Immunities until the end of the Scene (the Left Arm): any hit it would resist, or be immune to, lands neutral."},
+  {key:"stripped", name:"Stripped", kind:"other", cap:0, gm:true, corpse:true,
+   effect:"The Left Arm wiped its Combat Stages, and its Legendary Auras give it no Combat Stages until the end of the Scene."},
+  {key:"puppeted", name:"Puppeted", kind:"other", cap:0, gm:true, corpse:true,
+   effect:"The Spine's holder chooses its next Shift and Standard Action, attacks on its own allies included. Lifts when that turn ends."},
+  {key:"inverted", name:"Inverted", kind:"other", cap:0, gm:true, corpse:true,
+   effect:"Within 5m of the Ears' Scales: its Weaknesses and Resistances are swapped (Immunities stay). The \u{1F4A5} Apply flips the Type chart for it."},
+  {key:"levelled", name:"Levelled", kind:"other", cap:0, gm:true, corpse:true,
+   effect:"Within 5m of the Ears' Scales: every Combat Stage it has is locked at zero."},
+  {key:"noStandard", name:"No Standard Action", kind:"other", cap:0, gm:true, corpse:true,
+   effect:"Loses its next Standard Action (the Eyes' Rewrite). On the Map it lifts when that turn ends."},
+  {key:"typeless", name:"Typeless", kind:"other", cap:0, gm:true, corpse:true,
+   effect:"The Plates took its Types back: it has no Type (no STAB, nothing Super-Effective or resisted against it) until the next Extended Rest."},
 ];
 /* statuses only the GM may toggle (they still SHOW to everyone once applied) */
 function statusPickable(s){ return !s.gm || isGM(); }
@@ -688,6 +706,7 @@ function effectiveCS(p){
   CS_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + wx[k] + (ab[k]||0) + aura[k] + (tr[k]||0) + (hi[k]||0) + (hb[k]||0) + (k==="spd"?eqSpd:0))));
   ACC_EVA_STATS.forEach(([k]) => out[k] = Math.max(-6, Math.min(6, (p.cs?.[k]||0) + cond[k] + (ab[k]||0) + aura[k] + (hi[k]||0))));
   if(out.acc < 0 && augLive(p, "Smart Vision")) out.acc = 0;   // Smart Vision: "cannot have their Accuracy lowered"
+  if(p && Array.isArray(p.statuses) && p.statuses.includes("levelled")) ALL_CS_STATS.forEach(([k]) => { out[k] = 0; });   // the Ears' Scales
   return out;
 }
 /* the part of effectiveCS that is applied AUTOMATICALLY — status conditions, weather abilities,
@@ -1114,6 +1133,7 @@ function statusCureBlock(o, key){
    item, and End Day already clears them. */
 const SCENE_STATUS_KEYS = new Set([
   ...STATUS_DEFS.filter(s=>s.kind==="volatile").map(s=>s.key), "stuck", "slowed", "vortex", "invisible", "hushed",
+  "vorpal", "unmade", "stripped", "puppeted", "inverted", "levelled", "noStandard",   // THE HOLY CORPSE ("typeless" waits for a rest)
 ]);
 function clearSceneStatuses(o){
   if(!o || !Array.isArray(o.statuses)) return false;
@@ -2439,6 +2459,7 @@ function autoTypeAbility(o){
   return null;
 }
 function monTypes(o, sp){
+  if(o && Array.isArray(o.statuses) && o.statuses.includes("typeless")) return [];   // the Plates took them back (Holy Corpse)
   const r = typeReplacement(o);
   return applyTypeMods(o, r ? [r.type] : monNaturalTypes(o, sp));
 }
@@ -2448,6 +2469,7 @@ function monTypes(o, sp){
    A `stab` shift is the exception: Multitype says the user "changes its Elemental Type", full stop,
    so the new Type IS its Type and carries STAB the way any Type does. */
 function monStabTypes(o, sp){
+  if(o && Array.isArray(o.statuses) && o.statuses.includes("typeless")) return [];
   const r = typeReplacement(o);
   return applyTypeMods(o, (r && r.stab) ? [r.type] : monNaturalTypes(o, sp));
 }
@@ -2884,13 +2906,13 @@ function camouflageControl(p, onChanged, opts){
 }
 function multitypeControl(p, onChanged, opts){
   opts = opts || {};
-  if(!p || !hasAbility(p, "Multitype")) return el("span",{style:"display:none"});
+  if(!p || !(hasAbility(p, "Multitype") || p.platesMultitype)) return el("span",{style:"display:none"});   // + the Holy Corpse's Torso
   const persist = opts.persist || save;
   const commit = () => { persist(); onChanged && onChanged(); };
   const cur = (p.typeShift && p.typeShift.src === "Multitype") ? p.typeShift.type : "";
   const nat = monNaturalTypes(p).join(" / ") || "Normal";
   const wrap = el("div",{class:"inline small",style:"margin:4px 0 8px;flex-wrap:wrap;gap:8px;align-items:center"});
-  wrap.append(el("span",{class:"muted",style:"font-weight:700"},"\u{1F300} Multitype:"));
+  wrap.append(el("span",{class:"muted",style:"font-weight:700"}, (p.platesMultitype && !hasAbility(p, "Multitype")) ? "\u{1F300} Multitype (the Plates, this Scene):" : "\u{1F300} Multitype:"));
   if(p.tera){
     wrap.append(el("span",{class:"muted small"},
       "Terastalized \u2014 a Terastal Pokemon's Type cannot be changed, so Multitype is on hold."));
@@ -6267,6 +6289,7 @@ function applyEndScene(c){
   // Combat Stages set by hand and Volatile afflictions don't outlast the Scene (Core p.234/p.245).
   // Stages an active source is still applying (a Burn, weather, an Aura, worn armour) are left to
   // that source — resetManualCS only zeroes p.cs, and csAutoMods puts the rest back on its own.
+  corpseEndScene(c.trainer);                       // THE HOLY CORPSE: whatever a piece did "until the end of the Scene"
   resetManualCS(c.trainer); clearSceneStatuses(c.trainer);
 
   (c.pokemon||[]).forEach(p => { normPokemon(p); p.tempHP = 0; p.buffs = []; resetUses(p, "scene");
@@ -6280,6 +6303,7 @@ function applyEndScene(c){
     delete p.luminous;                 // Starlight's Luminous condition ends with the fight
     if(p.traced){ p.abilities = (p.abilities||[]).filter(a => a !== p.traced); delete p.traced; }
     delete p.pheromone; delete p.pheroRolled;          // Pheromone Stacks don't outlast the fight
+    corpseEndScene(p);                 // THE HOLY CORPSE: Plates → Typeless, a raised servant falls, chips go
     resetManualCS(p); clearSceneStatuses(p);
     if(p.mega) megaRevert(p,true); powerConstructRevert(p,true);
     endSceneTypeState(p);                // Terastallization, Tera Shell / Teraform Zero, Radiating
@@ -7273,8 +7297,8 @@ function typeMultAgainst(atkType, defTypes, stepAdj=0, opts){
     // immunity, so the defender's OTHER type still counts its step normally (Gliscor: Ground/Flying
     // → Ground resisted ×0.5, rather than a flat ×0).
     if(v === 0){ if(!opts?.pierceImmune) immune = true; }
-    else if(v > 1) steps++;
-    else if(v < 1) steps--;
+    else if(v > 1) steps += opts?.invert ? -1 : 1;     // the Ears' Scales (Inverted): Weaknesses and Resistances swap
+    else if(v < 1) steps += opts?.invert ? 1 : -1;
   });
   if(immune){                                   // immunity is absolute — a swarm can't undo it...
     if(opts?.immuneAs != null) return ptuEffMult(opts.immuneAs + stepAdj);   // ...unless an Ability reads it as a resist (Transistor, Corrosion)
@@ -8876,7 +8900,12 @@ function weaponIsMetal(w){ return !NON_METAL_WEAPON.test(`${(w&&w.name)||""} ${(
 /* Which Skill Rank the weapon maths reads. This is the single place that decides it, so both halves
    - the Struggle's AC/DB and the Weapon Move gate - get the substitution at once. Melee only, and
    only ever upward: a Herald with better Combat than Command keeps their Combat. */
+/* THE HOLY CORPSE: Excalibur in the Right Arm swings "as if their weapon Skill were Master" */
 function weaponSkillRank(t, w){
+  const base = weaponSkillRankBase(t, w);
+  return (isExcaliburWeapon(w) && hasCorpse(t, "rightArm")) ? Math.max(base, 6) : base;
+}
+function weaponSkillRankBase(t, w){
   const combat = rankNum(t && t.skills ? t.skills.combat : "");
   if(!t || !w || !t.skills) return combat;
   /* An Arcane Weapon is measured in Occult Education outright - not "whichever is higher", the book
@@ -8896,6 +8925,7 @@ function meleeSkillSubsFor(t, w){
    the Skill that WON, not whichever one Herald of Pride happens to offer */
 function weaponSkillWhy(t, w){
   if(isArcaneWeapon(w)) return "Occult Ed.";       // a replacement, so it shows even when it's lower
+  if(isExcaliburWeapon(w) && hasCorpse(t, "rightArm") && weaponSkillRankBase(t, w) < 6) return "the Right Arm (Master)";
   const r = weaponSkillRank(t, w);
   if(r <= rankNum(t && t.skills ? t.skills.combat : "")) return "";
   let win = "";
@@ -9876,6 +9906,7 @@ function applyAutoKO(owner, oldHP, newHP){
     return "rampaging";
   }
   if(!down && was){
+    if(typeof contestOnRevive==="function") try{ contestOnRevive(owner); }catch(e){ console.error(e); }   // 🎀 Battle Contest: it fights again
     /* a corpse doesn't stand back up because someone poured a potion on it — Knocked Out stays
        pinned under the Dead chip until the GM lifts it by hand. */
     if(owner.statuses.includes("dead")) return null;
@@ -10449,6 +10480,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     const metro = moveByName.get("metronome");
     if(metro) return openMetronome(t, metro, null, opts);
   }
+  /* THE HOLY CORPSE: "only the Right Arm can lift" Excalibur (and the Usurper of Arceus it belonged to) */
+  if(w && !excaliburLiftOk(t, w)){ toast(`\u{1F5E1} ${w.name} won't lift \u2014 it answers only to the Right Arm of the Corpse`); return; }
   if(_pendingRetype){ opts = Object.assign({}, opts, { retype: opts.retype || _pendingRetype }); _pendingRetype = ""; }
   const st = trainerAttackProfile(t, weaponMoveName, w, opts.weaponAttack);
   /* Two classes print the same Free Action on a Weapon Attack: Herald of Pride's Channel the
@@ -11302,7 +11335,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         atkTinted: ownerHasAbility(t,"Tinted Lens") || !!(tMold && tMold.tinted), atkMold: !!tMold,
         atkExploit: exploitAbilityBonus(t), atkWar: ownerAuraActive(t,"War"), atkDeicide: !!st.deicide,
         seFlat: heldSeFlatDamage(t), defCSMode: defCSMode || unawareMode(t), moveRule, critExtra, fx: hitFx,
-        ctx:{ attacker:t, by:rollerName(t), melee:/melee/i.test(String((st.move && st.move.range) || "")), move:(st.move && st.move.name) || "" },
+        ctx:{ attacker:t, by:rollerName(t), melee:/melee/i.test(String((st.move && st.move.range) || "")), move:(st.move && st.move.name) || "", weapon:(st.weapon && st.weapon.name) || "" },
         onDealt:(n, c, d)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n, true, d); } });
       if(tw) out.append(tw);
       feedLogged = true;
@@ -11314,7 +11347,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
                atkTinted: ownerHasAbility(t,"Tinted Lens") || !!(tMold && tMold.tinted), atkMold: !!tMold, moveRule,
                atkExploit: exploitAbilityBonus(t), atkWar: ownerAuraActive(t,"War"), atkDeicide: !!st.deicide,
                seFlat: heldSeFlatDamage(t), defCSMode, fx: hitFx, multi: multiP,
-               ctx:{ by:rollerName(t), aid:t.id || null, move:(st.move && st.move.name) || "", melee:/melee/i.test(String((st.move && st.move.range) || "")) } } });
+               ctx:{ by:rollerName(t), aid:t.id || null, move:(st.move && st.move.name) || "", melee:/melee/i.test(String((st.move && st.move.range) || "")), weapon:(st.weapon && st.weapon.name) || "" } } });
       if(multiP && feT){ [...dmgBoxT.children].forEach(c => { c.style.display = "none"; }); dmgBoxT.append(strikeWaitNode(feT)); }
     }
     if(hpNode) out.append(hpNode);
@@ -15118,6 +15151,7 @@ function giftFreqText(g){
 /* …so resetUses knows which of a Trainer's "gift:" pips a Scene or a Day hands back */
 function giftFreqForName(name){
   const n = String(name||"").toLowerCase();
+  if(/^corpse-/.test(n)) return "Daily";           // THE HOLY CORPSE: every piece's pip (and the Head's questions)
   const cat = GIFT_CATALOG.find(x => String(x.name).toLowerCase() === n);
   if(cat) return giftFreqText(cat);
   const bl = (typeof BLESSINGS !== "undefined" && Array.isArray(BLESSINGS))
@@ -15334,6 +15368,7 @@ const GIFT_KINDS = [
   { key:"usurper",  label:"Usurper Feature", head:"👑 Usurper",           blurb:"The Usurper branch (pp.51-52) — you killed a god and took its place. Every Feature past the first gates on your Legendary Form's Level, not yours." },
   { key:"blessing", label:"Blessing",        head:"📜 Legendary Blessings", blurb:"Rank 1-3 Blessings (pp.55-56), granted by In My Name or Sign Mastery. Blessings carry no Patron Stat of their own." },
   { key:"brand",    label:"Brand",           head:"⛧ Brands",            blurb:"What the Branded Feature left on you (p.47). A Brand is a mark, not a Gift — it carries no Patron Stat." },
+  { key:"corpse",   label:"Corpse Piece",    head:"\u{1F56F} The Holy Corpse", blurb:"Pieces of the dead Champion's body. Each one has fused into its holder, makes Arceus their Patron (+1 to a stat of their choice), and carries one Daily power with a cost." },
 ];
 function giftKind(g){ return (g && g.kind) || "gift"; }
 /* The three advancement branches — the kinds where "whose branch is this?" is the question
@@ -15784,6 +15819,9 @@ function giftsCard(t, saveFn, rerender, opts){
     ("Everything a Legendary patron has handed this Trainer (The Blessed and the Damned / The Book of "
     + "Divines): species Gifts, General Gifts, the Messiah and Signer branches, Blessings, and Brands. "
     + "Private — only you and your GM see this tab.")));
+  /* THE HOLY CORPSE: always the first thing on the tab */
+  const corpseNode = corpseSection(t, gm, saveFn, rerender);
+  if(corpseNode) card.append(corpseNode);
   const uForm = usurpFormCard(t, saveFn, rerender, gm);
   if(uForm) card.append(uForm);
   /* Standing in somebody's Giftsapper field is the single most important thing this tab can tell
@@ -15831,6 +15869,7 @@ function giftsCard(t, saveFn, rerender, opts){
      starts shut. `data-key` means a section you opened stays open across the re-render that every
      edit on this card causes. */
   GIFT_KINDS.forEach(kind => {
+    if(kind.key === "corpse") return;                     // drawn at the very top by corpseSection
     const rows = shown.filter(x => giftKind(x.g)===kind.key);
     if(!rows.length) return;
     /* A Trainer blessed by two gods had both sets of Gifts in one undivided list, which reads as one
@@ -16191,6 +16230,752 @@ const GIFT_ACTIONS = [
 ];
 const giftActionDef = g => GIFT_ACTIONS.find(d =>
   d.names.some(n => n.toLowerCase() === String((g && g.name) || "").toLowerCase())) || null;
+/* ===================================================================
+   THE HOLY CORPSE  (homebrew, this table)
+   -------------------------------------------------------------------
+   When Jesus, the Champion who usurped Arceus, dies, his body splits into nine pieces, the way the
+   Saint's Corpse does. Each piece fuses into whoever holds it, makes Arceus their Patron (+1 to a
+   stat of their choice through the ordinary [PATRON STAT] path; PATRON_STATS.Arceus is "any") and
+   carries ONE Daily power with a cost. Rows live in t.gifts with kind "corpse" and `piece` = a key
+   below, so they ride every existing Gift mechanism (👁 hide the row, ❓ hide the effect, 🙈 hide
+   the patron, the Patron Stat, sync, the Encounters card) and giftsCard draws them first.
+
+   What the sheet runs for each piece:
+     eyes      👁 Rewrite: spends the day's use, can ↩ undo the last 💥 Apply, and puts "No Standard
+               Action" on the holder until the end of their next turn (the Map's ▶ lifts it).
+     rightArm  Excalibur only lifts for this arm (openTrainerAttack refuses anyone else except the
+               Usurper of Arceus himself), its Weapon Moves read the wielder as Master
+               (weaponSkillRank), and every Excalibur hit strips a Combat Stage the GM picks on
+               💥 Apply. 🗡 Vorpal Strike puts "Vorpal" (+1 step on the damage ladder in
+               tokenDamageBreakdown) on one target until the start of the holder's next turn, and on
+               the holder until the round ends.
+     leftArm   ✋ AC 2 touch: "Unmade" (Resistances and Immunities gone for the Scene), an Ability
+               switched off for the Scene, or every Combat Stage wiped plus "Stripped" (Aura Combat
+               Stages off for the Scene). +1 Injury to the holder on every use.
+     heart     💓 stands a fainted ally back up at 25% HP (a button, and offered on 💥 Apply when an
+               ally falls within 6 m); the holder loses 25% of their max HP.
+     spine     🧵 AC 4 within 6 m: "Puppeted" until the end of the target's next turn; the holder is
+               Stuck + Vulnerable until then. Bosses and Legendaries get an opposed-Focus prompt.
+     ears      ⚖ the Scales: the Map sweep puts "Inverted" (the chart flips in typeMultAgainst) or
+               "Levelled" (effectiveCS → 0) on everyone within 5 m for 3 rounds, then the holder is
+               Confused.
+     head      💀 raises a fainted foe's Pokémon within 8 m as the holder's 🤝 ally at 25% HP until the
+               end of the Scene (a button, and offered on 💥 Apply); the holder is Heal Blocked. A
+               second Daily pip tracks asking a corpse three questions.
+     legs      ⏩ Borrowed Time: the GM's initiative jumps to the holder now (advanceInitiative's
+               opts.to), ▶ returns to whoever was interrupted, and the holder's own slot is skipped
+               once. The GM's initiative list carries a ⏩ beside every holder with a use left.
+     torso     🌀 one of the holder's Pokémon gets Multitype for the Scene; when it ends, "Typeless"
+               (monTypes → []) until the next Extended Rest clears the chip.
+   Everything a piece leaves on a creature for "the rest of the Scene" is undone by corpseEndScene,
+   which applyEndScene and endCombatCreature (Battle off) both call.
+   `var`, not const: nothing here is reachable from load(), but a var can never throw a TDZ if that
+   ever changes (see the load-order bug note above `let state = load()`).
+=================================================================== */
+var CORPSE_PIECES = [
+  { key:"eyes", name:"Eyes", title:"Rewrite", icon:"\u{1F441}", freq:"Daily - Free Action",
+    power:"After any roll the holder can see is resolved: undo it and roll it again. That covers a crit, a miss, a capture, anything. The Eyes can also see where every other piece is, anywhere in the region.",
+    cost:"The holder spends a moment living in the other timeline and loses their next Standard Action." },
+  { key:"rightArm", name:"Right Arm", title:"the Sword Hand", icon:"\u{1F5E1}", freq:"Daily - Free Action",
+    power:"Excalibur stays wherever Jesus fell, stuck fast, and only the Right Arm can lift it. The holder wields it with his skill: Sacred Sword, Regal Challenge and the Swift Action Type change; Backswing and Triple Threat, as if their weapon Skill were Master; and every hit with Excalibur strips one Combat Stage of the holder's choice. Vorpal Strike (Daily, Free Action, after a hit, with or without the sword): one target hit becomes one step more vulnerable to all damage for a full round.",
+    cost:"When the holder uses Vorpal Strike, they're also one step more vulnerable to all damage until the round ends." },
+  { key:"leftArm", name:"Left Arm", title:"Destruction", icon:"✋", freq:"Daily - Standard Action",
+    power:"Touch an adjacent creature (AC 2) and pick one: it loses its Resistances and Immunities until the end of the Scene; or one of its Abilities is switched off until the end of the Scene; or all its Combat Stages are wiped, including the ones from Legendary Auras.",
+    cost:"The nail wound reopens. Each use gives the holder an Injury." },
+  { key:"heart", name:"Heart", title:"Sacred Heart", icon:"\u{1FAC0}", freq:"Daily - Free Action",
+    power:"When an ally within 6m faints: they get back up at 25% HP.",
+    cost:"The holder lends their own heartbeat and loses 25% of their own max HP." },
+  { key:"spine", name:"Spine", title:"the Nerve", icon:"\u{1F9B4}", freq:"Daily - Standard Action",
+    power:"Target a creature within 6m (AC 4). On its next turn, the holder chooses its Shift and Standard Actions, including attacks on its own allies. Bosses and Legendaries can resist with Focus against the holder's Focus.",
+    cost:"The holder's own body goes limp. They're Stuck and Vulnerable until the puppet's turn ends." },
+  { key:"ears", name:"Ears", title:"Equilibrium", icon:"\u{1F442}", freq:"Daily - Standard Action",
+    power:"For 3 rounds, everything within 5m is either Inverted (Weaknesses and Resistances swap) or Levelled (all Combat Stages locked at zero), holder's choice. The Ears also hear every prayer said to Jesus or Arceus anywhere in the region.",
+    cost:"When the 3 rounds end, the holder is Confused." },
+  { key:"head", name:"Head", title:"Death", icon:"\u{1F480}", freq:"Daily - Swift Action",
+    power:"When a foe's Pokémon faints within 8m: the holder raises it as their own servant at 25% HP until the end of the Scene. Once a day, they can also ask a corpse three questions, and it answers with what it knew in life.",
+    cost:"The holder is Heal Blocked for the rest of that Scene. Jesus's mind is also still in the skull: he talks to the holder, sees what they see, and wants the rest of his body back." },
+  { key:"legs", name:"Legs", title:"Borrowed Time", icon:"\u{1F9B5}", freq:"Daily - Free Action, Interrupt",
+    power:"At any moment, even partway through an enemy's turn: the holder takes their next turn right now.",
+    cost:"When their place in initiative comes around, that turn is already spent. If they've already acted this round, they skip next round's turn instead." },
+  { key:"torso", name:"Torso", title:"the Plates", icon:"\u{1F300}", freq:"Daily - Swift Action",
+    power:"One of the holder's Pokémon gets Multitype for the Scene. It can change its Type as a Free Action every turn, and its STAB changes with it.",
+    cost:"When the Scene ends, that Pokémon is Typeless until the next Extended Rest." },
+];
+function corpsePieces(){ return Array.isArray(CORPSE_PIECES) ? CORPSE_PIECES : []; }
+function corpsePieceDef(key){ return corpsePieces().find(p => p.key === key) || null; }
+function corpsePieceByName(name){
+  const n = String(name || "").trim().toLowerCase();
+  return corpsePieces().find(p => p.name.toLowerCase() === n) || null;
+}
+/* which piece a granted row is — the stored key first, so a GM who renames the row keeps its power */
+function corpseKeyOf(g){
+  if(!g || giftKind(g) !== "corpse") return "";
+  if(g.piece && corpsePieceDef(g.piece)) return g.piece;
+  const d = corpsePieceByName(g.name); return d ? d.key : "";
+}
+function corpseRow(o, key){
+  return (o && Array.isArray(o.gifts)) ? (o.gifts.find(g => corpseKeyOf(g) === key) || null) : null;
+}
+function hasCorpse(o, key){ return !!corpseRow(o, key); }
+/* each piece's Daily pip lives under the Gift namespace, so ☀ End Day hands it back (giftFreqForName) */
+function corpseUseName(key){ return "corpse-" + key; }
+function corpseUses(o, key, useName){
+  const k = useKey("gift", useName || corpseUseName(key));
+  const used = (o && o.uses && o.uses[k]) || 0;
+  return { max:1, left: Math.max(0, 1 - used), key:k };
+}
+function corpseSpend(o, key, useName){
+  const u = corpseUses(o, key, useName);
+  if(!o || u.left <= 0){ toast(`${(corpsePieceDef(key) || {}).name || "That piece"} has already been used today`); return false; }
+  o.uses = o.uses || {}; o.uses[u.key] = 1;
+  return true;
+}
+function corpseFullText(d){ return d ? `${d.power}\n\nCost: ${d.cost}` : ""; }
+/* who holds what, across every sheet this client can see — the GM's grant dialog uses it so the
+   same piece isn't handed out twice by accident */
+function corpseHolders(){
+  const out = {};
+  const add = (t, where) => ((t && t.gifts) || []).forEach(g => {
+    const k = corpseKeyOf(g); if(k) (out[k] = out[k] || []).push((t.name || "?") + (where ? ` (${where})` : ""));
+  });
+  try{
+    if(mode === "cloud" && cloud.byId) Object.values(cloud.byId).forEach(r => { if(r && r.data) add(r.data.trainer, ""); });
+    else { const ch = activeChar(); if(ch) add(ch.trainer, ""); }
+  }catch(e){}
+  try{ (encList() || []).forEach(e => (e.trainers || []).forEach(tr => add(tr && tr.trainer, e.name || "encounter"))); }catch(e){}
+  return out;
+}
+/* the creatures on the current board a piece can reach, nearest first */
+function corpseBoardTargets(t, range, filter){
+  const map = currentMapForView() || activeMap(); if(!map) return { map:null, me:null, list:[] };
+  const me = tokenForOwner(t);
+  const list = mapTokensFor(map.id).map(tok => {
+    if(tok.gmHidden && !isGM()) return null;
+    const L = tok.link ? tokenLinked(tok) : null;
+    if(!L || !L.obj || L.missing) return null;
+    if(filter && !filter(tok, L.obj, me)) return null;
+    const gap = me ? tokenTileGap(me, tok) : null;
+    if(me && range != null && gap > range) return null;
+    return { tok, obj:L.obj, name: tokenHp(tok).name, gap };
+  }).filter(Boolean).sort((a, b) => (a.gap || 0) - (b.gap || 0));
+  return { map, me, list };
+}
+/* one shared "pick a target off the board" window: o = {title, intro, range, filter, button, empty, note, pick} */
+function corpsePickModal(t, o){
+  const { map, me, list } = corpseBoardTargets(t, o.range, o.filter);
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px"}, o.intro
+    + (!map ? "" : me ? (o.range != null ? ` Listing what is within ${o.range}m of your token.` : "")
+                   : " You have no token on this Map, so range can't be checked; everything on it is listed.")));
+  if(!map || !list.length){
+    body.append(el("div",{class:"small"}, !map ? "Open the \u{1F5FA} Map first: this picks its target off the board."
+                                               : (o.empty || "Nothing on the current Map qualifies.")));
+    modal({title:o.title, bodyNode:body, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+    return;
+  }
+  list.forEach(tg => {
+    const row = el("div",{class:"moveslot"});
+    row.append(el("div",{style:"flex:1"}, el("div",{style:"font-weight:700"}, tg.name),
+      el("div",{class:"small muted"}, [tg.gap != null ? `${tg.gap}m away` : "", o.note ? o.note(tg) : ""].filter(Boolean).join(" · "))));
+    row.append(el("button",{class:"btn-primary",style:"padding:6px 10px",onclick:()=>o.pick(tg, me)}, o.button));
+    body.append(row);
+  });
+  modal({title:o.title, bodyNode:body, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Cancel")]});
+}
+/* a Status-style accuracy roll: d20 + Accuracy Combat Stages vs AC + the target's Speed Evasion */
+function corpseAccRoll(t, tok, ac){
+  const d = 1 + Math.floor(Math.random() * 20);
+  let acc = 0; try{ acc = effectiveCS(t).acc || 0; }catch(e){}
+  let eva = 0; try{ const ev = tokenEvasions(tok); eva = ev ? (ev.spd || 0) : 0; }catch(e){}
+  const need = ac + eva;
+  const hit = d !== 1 && (d === 20 || d + acc >= need);
+  return { d, hit, line: `d20 ${d}${acc ? ` ${acc > 0 ? "+" : "−"}${Math.abs(acc)} Accuracy` : ""} = ${d + acc} vs AC ${ac}`
+    + (eva ? ` + ${eva} Speed Evasion (${need})` : "")
+    + (d === 1 ? " — a natural 1 always misses" : d === 20 ? " — a natural 20 always hits" : "") };
+}
+/* the holder's own Focus Check, with the same modifier stack the Skills table prints */
+function corpseFocusRoll(t){
+  const k = "focus";
+  const nDice = Math.max(1, rankDice(t && t.skills && t.skills[k]));
+  let mod = 0;
+  try{ mod = categoricBonus(t, k) + edgeSkillBonus(t, k) + gearSkillBonus(t, k) + cardSkillBonus(t, k)
+           + buffSkillBonus(t, k) + auraRollBonus(t) + giftSkillBonus(t, k); }catch(e){}
+  const rolls = []; for(let i = 0; i < nDice; i++) rolls.push(1 + Math.floor(Math.random() * 6));
+  const total = rolls.reduce((a, b) => a + b, 0) + mod;
+  return { total, line: `${nDice}d6${mod ? (mod > 0 ? "+" + mod : mod) : ""} → [${rolls.join(", ")}] = ${total}` };
+}
+/* ---- chips with their own clock ----------------------------------------------------------------
+   o.corpseTimed = [{ status, added, seq, endOf?:tokenId, startOf?:tokenId, roundEnd?:true }]
+   `added` = this entry is what put the chip on, so taking the entry off takes the chip off — and a
+   chip someone ticked by hand is never lifted. `seq` is the Map's turn counter when it went on, so
+   "until the end of its NEXT turn" doesn't end with the turn it was put on during. */
+function corpseTimedAdd(o, status, when){
+  if(!o || !statusByKey.has(status)) return false;
+  if(!Array.isArray(o.statuses)) o.statuses = [];
+  const had = o.statuses.includes(status);
+  if(!had) o.statuses.push(status);
+  let seq = null; try{ seq = curTurnSeq(); }catch(e){}
+  if(!Array.isArray(o.corpseTimed)) o.corpseTimed = [];
+  o.corpseTimed.push(Object.assign({ status, added: !had, seq }, when || {}));
+  return !had;
+}
+function corpseTimedDrop(o, pred){
+  if(!o || !Array.isArray(o.corpseTimed) || !o.corpseTimed.length) return [];
+  const gone = o.corpseTimed.filter(pred);
+  if(!gone.length) return [];
+  o.corpseTimed = o.corpseTimed.filter(x => !gone.includes(x));
+  const names = [];
+  gone.forEach(x => {
+    if(!x.added) return;
+    const heir = o.corpseTimed.find(y => y.status === x.status);
+    if(heir){ heir.added = true; return; }                 // another of ours still holds that chip
+    if(Array.isArray(o.statuses) && o.statuses.includes(x.status)){
+      o.statuses = o.statuses.filter(k => k !== x.status); names.push(statusName(x.status));
+    }
+  });
+  if(!o.corpseTimed.length) delete o.corpseTimed;
+  return names;
+}
+/* the Map's ▶ — called from advanceInitiative with the turn that ENDED and the one that STARTS
+   (either may be null: Borrowed Time jumps in without ending anyone's turn, and hands the turn back
+   without starting it twice) */
+function corpseTickTurns(map, meta, endingId, endingSeq, startingId, newSeq, wrapped){
+  const out = [], seen = new Set();
+  combatTokens(map).forEach(tok => {
+    const L = tok.link ? tokenLinked(tok) : null, o = L && L.obj;
+    if(!o || L.missing || seen.has(o)) return;
+    seen.add(o);
+    let ch = false;
+    if(Array.isArray(o.corpseTimed) && o.corpseTimed.length){
+      const gone = corpseTimedDrop(o, x =>
+           (x.endOf && endingId && x.endOf === endingId && (x.seq == null || endingSeq > x.seq))
+        || (x.startOf && startingId && x.startOf === startingId && (x.seq == null || newSeq > x.seq))
+        || (x.roundEnd && wrapped));
+      if(gone.length){ ch = true; out.push(`${ownerLabel(o)}: ${gone.join(", ")} ended`); }
+    }
+    if(o.corpseScales && wrapped && o.corpseScales.round != null
+       && ((meta.initRound || 1) - o.corpseScales.round) >= 3){
+      delete o.corpseScales;
+      const r = inflictStatus(o, "confused");
+      ch = true; out.push(`${ownerLabel(o)}: the Scales settle after 3 rounds${r.ok ? " — Confused" : ""}`);
+    }
+    if(ch) commitTokenSource(tok, { ally:true });
+  });
+  return out;
+}
+/* End Scene / Battle off: undo everything a piece did "until the end of the Scene" */
+function corpseEndScene(o){
+  if(!o) return false;
+  let ch = false;
+  if(Array.isArray(o.corpseTimed) && o.corpseTimed.length){ corpseTimedDrop(o, () => true); ch = true; }
+  if(o.corpseScales){ delete o.corpseScales; ch = true; }
+  if(o.autoInverted || o.autoLevelled){ delete o.autoInverted; delete o.autoLevelled; ch = true; }   // their chips are Scene statuses
+  if(Array.isArray(o.corpseAbOff)){ o.corpseAbOff.forEach(k => setAbilityDisabled(o, k, false)); delete o.corpseAbOff; ch = true; }
+  if(Array.isArray(o.locks) && o.locks.some(l => l && l.src === "corpse")){
+    o.locks = o.locks.filter(l => !(l && l.src === "corpse")); if(!o.locks.length) delete o.locks; ch = true;
+  }
+  if(o.platesMultitype){
+    delete o.platesMultitype;
+    if(o.typeShift && o.typeShift.src === "Multitype" && !hasAbility(o, "Multitype")) delete o.typeShift;
+    if(o.species !== undefined){
+      if(!Array.isArray(o.statuses)) o.statuses = [];
+      if(!o.statuses.includes("typeless")) o.statuses.push("typeless");
+    }
+    ch = true;
+  }
+  if(o.corpseServant){
+    const sv = o.corpseServant; delete o.corpseServant;
+    if(sv.flipped && sv.tok) corpseUnflipToken(sv.tok);
+    o.currentHP = 0;
+    if(!Array.isArray(o.statuses)) o.statuses = [];
+    if(!o.statuses.includes("knockedOut")) o.statuses.push("knockedOut");
+    ch = true;
+  }
+  return ch;
+}
+function corpseUnflipToken(tokId){
+  try{
+    const byMap = cloud.mapTokens && cloud.mapTokens.data && cloud.mapTokens.data.byMap; if(!byMap) return;
+    let hit = false;
+    Object.values(byMap).forEach(arr => (arr || []).forEach(tk => { if(tk && tk.id === tokId && tk.ally){ delete tk.ally; hit = true; } }));
+    if(hit && cloud.isGM) mapTokensSave();
+  }catch(e){}
+}
+function corpseRedraw(rerender){ try{ renderMap(); }catch(e){} (rerender || renderTrainer)(); }
+function corpseIsDown(o){ return !!o && !hasStatus(o, "dead") && (hasStatus(o, "knockedOut") || ownerHP(o) <= 0); }
+
+/* ---- 👁 Eyes: Rewrite ---- */
+function corpseEyesGo(t, rerender, saveFn){
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    "Daily. After any roll you can see is resolved: undo it and roll it again — a crit, a miss, a capture, anything. "
+    + "Then you lose your next Standard Action (the Map's ▶ lifts the chip when that turn ends)."));
+  const canUndo = mode === "cloud" && cloud.isGM && hitUndoStack.length > 0;
+  const undoCb = el("input",{type:"checkbox"});
+  if(canUndo){
+    undoCb.checked = true;
+    body.append(el("label",{class:"inline small",style:"gap:6px;cursor:pointer"}, undoCb,
+      el("span",{}, `↩ also undo the last \u{1F4A5} Apply (${lastHitUndoLabel() || "the last hit"})`)));
+  }
+  modal({title:"\u{1F441} Eyes — Rewrite", bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick: async ()=>{
+      if(!corpseSpend(t, "eyes")) return;
+      let undone = false;
+      if(canUndo && undoCb.checked){ try{ undone = !!(await undoLastHit()); }catch(e){} }
+      const me = tokenForOwner(t);
+      corpseTimedAdd(t, "noStandard", me ? { endOf: me.id } : {});
+      (saveFn || save)();
+      logRoll({ kind:"feature", label:"Rewrite (the Eyes)", who:t.name || "", headline:"\u{1F441} That roll is rewritten",
+        lines:[undone ? "↩ the last \u{1F4A5} Apply was undone — roll it again" : "undo what it did, then roll it again",
+               `${t.name || "The holder"} loses their next Standard Action`] });
+      toast(`\u{1F441} Rewrite — roll it again. ${t.name || "The holder"} loses their next Standard Action.`);
+      closeModal(); corpseRedraw(rerender);
+    }}, "\u{1F441} Rewrite"),
+  ]});
+}
+/* ---- 🗡 Right Arm: Excalibur + Vorpal Strike ---- */
+function isExcaliburWeapon(w){ return !!w && /excalibur/i.test(String(w.name || "")); }
+/* "only the Right Arm can lift it" — and the man it came from, the Usurper of Arceus himself */
+function excaliburLiftOk(t, w){
+  if(!isExcaliburWeapon(w)) return true;
+  if(!t) return false;
+  if(hasCorpse(t, "rightArm")) return true;
+  const u = t.usurp || {};
+  return /arceus/i.test(String(u.patron || "")) || usurpRows(t).some(g => /arceus/i.test(String(g.patron || "")));
+}
+function corpseVorpalGo(t, rerender, saveFn){
+  corpsePickModal(t, { title:"\u{1F5E1} Right Arm — Vorpal Strike", button:"\u{1F5E1} Vorpal",
+    intro:"Daily, Free Action, after a hit (with or without Excalibur): the target becomes one step more vulnerable to all damage for a full round, until the start of your next turn. You're one step more vulnerable too, until the round ends.",
+    filter:(tok, o, me) => !me || tok.id !== me.id,
+    pick: async (tg, me) => {
+      if(!corpseSpend(t, "rightArm")) return;
+      corpseTimedAdd(tg.obj, "vorpal", me ? { startOf: me.id } : {});
+      corpseTimedAdd(t, "vorpal", { roundEnd:true });
+      try{ await commitTokenSource(tg.tok, { ally:true }); }catch(e){}
+      (saveFn || save)();
+      logRoll({ kind:"feature", label:"Vorpal Strike (the Right Arm)", who:t.name || "", headline:`\u{1F5E1} ${tg.name} is Vorpal`,
+        lines:["one step more vulnerable to all damage until the start of the holder's next turn",
+               `${t.name || "The holder"} is one step more vulnerable too, until the round ends`] });
+      toast(`\u{1F5E1} Vorpal Strike — ${tg.name} is one step more vulnerable (and so are you, until the round ends)`);
+      closeModal(); corpseRedraw(rerender);
+    } });
+}
+/* ---- ✋ Left Arm: Destruction ---- */
+function corpseLeftArmGo(t, rerender, saveFn){
+  corpsePickModal(t, { title:"✋ Left Arm — Destruction", range:1, button:"✋ Touch",
+    intro:"Daily, Standard Action. Touch an adjacent creature (AC 2), then pick what the palm unmakes. The nail wound reopens: every use gives you an Injury.",
+    filter:(tok, o, me) => !me || tok.id !== me.id,
+    pick:(tg) => corpseLeftArmChoose(t, tg, rerender, saveFn) });
+}
+function corpseLeftArmChoose(t, tg, rerender, saveFn){
+  const o = tg.obj;
+  const abil = (isTrainerOwner(o)
+    ? [...new Set([...(o.abilities || []), ...(o.encAbilities || []), ...trainerGrantedAbilities(o)])]
+    : [...(o.abilities || [])]).filter(a => a && !abilityDisabled(o, a));
+  let pickMode = "resist";
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px"}, `Touching ${tg.name}. Pick what the palm unmakes, then roll.`));
+  const abSel = el("select",{class:"equip-focus",style:"max-width:240px"});
+  abil.forEach(a => abSel.append(el("option",{value:a}, a)));
+  const opts = [
+    ["resist", "Its Resistances and Immunities are gone until the end of the Scene (every hit lands at least neutral)"],
+    ["ability", abil.length ? "One of its Abilities is switched off until the end of the Scene:" : "One of its Abilities is switched off (it has none left on)"],
+    ["cs", "All its Combat Stages are wiped, Legendary Auras' included, until the end of the Scene"],
+  ];
+  opts.forEach(([v, label]) => {
+    const rb = el("input",{type:"radio",name:"corpsePalm",value:v});
+    if(v === pickMode) rb.checked = true;
+    if(v === "ability" && !abil.length) rb.disabled = true;
+    rb.addEventListener("change", () => { if(rb.checked) pickMode = v; });
+    const line = el("label",{class:"inline small",style:"gap:6px;cursor:pointer;margin:4px 0;align-items:flex-start"}, rb, el("span",{}, label));
+    body.append(line);
+    if(v === "ability" && abil.length) body.append(el("div",{style:"margin:0 0 6px 22px"}, abSel));
+  });
+  modal({title:`✋ Left Arm — ${tg.name}`, bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    el("button",{class:"btn-primary",onclick: async ()=>{
+      if(!corpseSpend(t, "leftArm")) return;
+      const r = corpseAccRoll(t, tg.tok, 2);
+      t.injuries = Math.max(0, (t.injuries || 0) + 1);
+      let what = "";
+      if(r.hit){
+        if(!Array.isArray(o.statuses)) o.statuses = [];
+        if(pickMode === "ability" && abSel.value){
+          setAbilityDisabled(o, abSel.value, true);
+          o.corpseAbOff = [...(o.corpseAbOff || []), abilityOffKey(abSel.value)];
+          what = `${abSel.value} is switched off until the end of the Scene`;
+        } else if(pickMode === "cs"){
+          if(o.cs) ALL_CS_STATS.forEach(([k]) => { o.cs[k] = 0; });
+          if(!o.statuses.includes("stripped")) o.statuses.push("stripped");
+          what = "every Combat Stage is wiped, and its Aura Combat Stages stay off until the end of the Scene";
+        } else {
+          if(!o.statuses.includes("unmade")) o.statuses.push("unmade");
+          what = "it loses its Resistances and Immunities until the end of the Scene";
+        }
+        try{ await commitTokenSource(tg.tok, { ally:true }); }catch(e){}
+      }
+      (saveFn || save)();
+      logRoll({ kind:"feature", label:"Destruction (the Left Arm)", who:t.name || "",
+        headline: r.hit ? `✋ ${tg.name} is unmade` : "✖ the touch misses",
+        lines:[r.line, r.hit ? what : "no effect", `the nail wound reopens: ${t.name || "the holder"} takes an Injury (now ${t.injuries})`] });
+      toast(r.hit ? `✋ ${tg.name}: ${what}. +1 Injury to you.` : `✖ The touch misses (${r.line}). +1 Injury to you.`);
+      closeModal(); corpseRedraw(rerender);
+    }}, "\u{1F3B2} Roll AC 2 and touch"),
+  ]});
+}
+/* ---- 🫀 Heart: Sacred Heart ---- */
+function corpseHeartCandidates(t){
+  const out = [];
+  (trainerOwnMons(t) || []).forEach(p => { if(corpseIsDown(p)) out.push({ obj:p, tok: tokenForOwner(p), name: ownerLabel(p), gap:null }); });
+  const { list } = corpseBoardTargets(t, 6, (tok, o, me) => o !== t && corpseIsDown(o) && (!me || tokenSide(tok) === tokenSide(me)));
+  list.forEach(tg => { if(!out.some(x => x.obj === tg.obj)) out.push(tg); });
+  return out;
+}
+function corpseHeartRaise(H, tg, persistH){
+  const o = tg.obj;
+  const mx = ownerMaxHP(o) || 1;                 // read before the pip is spent, so a bad sheet can't waste the day's use
+  if(!corpseSpend(H, "heart")) return false;
+  o.statuses = (o.statuses || []).filter(k => k !== "knockedOut");
+  o.currentHP = Math.max(1, Math.floor(mx / 4));
+  const lost = Math.floor((ownerMaxHP(H) || 1) / 4);
+  ownerHPChange(H, -lost, { raw:true });
+  if(tg.tok){ try{ commitTokenSource(tg.tok, { ally:true }); }catch(e){} }
+  if(persistH) persistH();
+  try{ queueAuraSweep(); }catch(e){}
+  logRoll({ kind:"feature", label:"Sacred Heart (the Heart)", who:ownerLabel(H), headline:`\u{1FAC0} ${tg.name} gets back up`,
+    lines:[`${tg.name} is back at ${o.currentHP} HP (25%)`, `${ownerLabel(H)} loses ${lost} HP (25% of their max)`] });
+  toast(`\u{1FAC0} Sacred Heart — ${tg.name} stands back up at ${o.currentHP} HP; ${ownerLabel(H)} loses ${lost}`);
+  return true;
+}
+function corpseHeartGo(t, rerender, saveFn){
+  const list = corpseHeartCandidates(t);
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    "Daily, Free Action, when an ally within 6m faints: they get back up at 25% HP, and you lose 25% of your own max HP. "
+    + "Listing your fainted Pokémon, and fainted allies within 6m of your token on the Map. The GM's \u{1F4A5} Apply also offers it the moment an ally falls."));
+  if(!list.length) body.append(el("div",{class:"small"}, "Nobody in reach has fainted."));
+  list.forEach(tg => {
+    const row = el("div",{class:"moveslot"});
+    row.append(el("div",{style:"flex:1"}, el("div",{style:"font-weight:700"}, tg.name),
+      el("div",{class:"small muted"}, tg.gap != null ? `${tg.gap}m away` : "your Pokémon")));
+    row.append(el("button",{class:"btn-primary",style:"padding:6px 10px",onclick:()=>{
+      if(corpseHeartRaise(t, tg, saveFn || save)){ closeModal(); corpseRedraw(rerender); }
+    }}, "\u{1FAC0} Stand them up"));
+    body.append(row);
+  });
+  modal({title:"\u{1FAC0} Heart — Sacred Heart", bodyNode:body, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+}
+/* ---- 🦴 Spine: the Nerve ---- */
+function corpseSpineGo(t, rerender, saveFn){
+  corpsePickModal(t, { title:"\u{1F9B4} Spine — the Nerve", range:6, button:"\u{1F9F5} Pull the strings",
+    intro:"Daily, Standard Action. Target a creature within 6m (AC 4). On its next turn you choose its Shift and Standard Actions, attacks on its own allies included. Bosses and Legendaries may resist with Focus against your Focus. While you move its body, yours goes limp: you're Stuck and Vulnerable until its turn ends.",
+    filter:(tok, o, me) => !me || tok.id !== me.id,
+    note:tg => (isBoss(tg.obj) || (tg.obj.species !== undefined && isLegendarySpeciesName(tg.obj.species))) ? "may resist with Focus" : "",
+    pick:(tg, me) => corpseSpineRoll(t, tg, rerender, saveFn) });
+}
+function corpseSpineRoll(t, tg, rerender, saveFn){
+  if(!corpseSpend(t, "spine")) return;
+  const r = corpseAccRoll(t, tg.tok, 4);
+  const persist = saveFn || save;
+  const land = async (extra) => {
+    corpseTimedAdd(tg.obj, "puppeted", { endOf: tg.tok.id });
+    corpseTimedAdd(t, "stuck", { endOf: tg.tok.id });
+    corpseTimedAdd(t, "vulnerable", { endOf: tg.tok.id });
+    try{ await commitTokenSource(tg.tok, { ally:true }); }catch(e){}
+    persist();
+    logRoll({ kind:"feature", label:"The Nerve (the Spine)", who:t.name || "", headline:`\u{1F9F5} ${tg.name} is Puppeted`,
+      lines:[r.line, extra || "", `${t.name || "The holder"} chooses its next Shift and Standard Action`,
+             `${t.name || "The holder"} is Stuck and Vulnerable until that turn ends`].filter(Boolean) });
+    toast(`\u{1F9F5} ${tg.name} is Puppeted — you choose its next Shift and Standard Action. You're Stuck and Vulnerable until it ends.`);
+    closeModal(); corpseRedraw(rerender);
+  };
+  if(!r.hit){
+    persist();
+    logRoll({ kind:"feature", label:"The Nerve (the Spine)", who:t.name || "", headline:"✖ the strings slip", lines:[r.line] });
+    toast(`✖ The Nerve misses (${r.line})`);
+    closeModal(); corpseRedraw(rerender);
+    return;
+  }
+  const strong = isBoss(tg.obj) || (tg.obj.species !== undefined && isLegendarySpeciesName(tg.obj.species));
+  if(!strong){ land(); return; }
+  const f = corpseFocusRoll(t);
+  const body = el("div",{},
+    el("div",{class:"small",style:"margin-bottom:6px"}, `It hit (${r.line}). ${tg.name} is a ${isBoss(tg.obj) ? "Boss" : "Legendary"}, so it may resist with Focus against yours.`),
+    el("div",{style:"font-size:26px;font-weight:800;text-align:center;margin:6px 0"}, String(f.total)),
+    el("div",{class:"small muted",style:"text-align:center"}, `your Focus: ${f.line}`),
+    el("div",{class:"small muted",style:"margin-top:8px"}, "Roll its Focus. If it beats yours, it resists (the day's use is still spent)."));
+  modal({title:`\u{1F9F5} ${tg.name} — opposed Focus`, bodyNode:body, footNodes:[
+    el("button",{class:"btn-secondary",onclick:()=>{
+      persist();
+      logRoll({ kind:"feature", label:"The Nerve (the Spine)", who:t.name || "", headline:`✖ ${tg.name} resists`, lines:[r.line, `holder's Focus ${f.total} — beaten`] });
+      toast(`✖ ${tg.name} resists the Nerve`); closeModal(); corpseRedraw(rerender);
+    }}, "✖ It resisted"),
+    el("button",{class:"btn-primary",onclick:()=>land(`holder's Focus ${f.total} — it failed to resist`)}, "✔ It failed — pull the strings"),
+  ]});
+}
+/* ---- 👂 Ears: the Scales ---- */
+function corpseEarsGo(t, rerender, saveFn){
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:10px"},
+    "Daily, Standard Action. For 3 rounds, everything within 5m of you (you included) is Inverted or Levelled. "
+    + "On the Map the chips follow you and the 3 rounds count themselves; off it, end it by hand. When it ends, you're Confused."));
+  const go = (m) => {
+    if(!corpseSpend(t, "ears")) return;
+    t.corpseScales = { mode:m, round: battleOn() ? (activeMapMeta().initRound || 1) : null, at: Date.now() };
+    (saveFn || save)();
+    try{ queueAuraSweep(); }catch(e){}
+    logRoll({ kind:"feature", label:"Equilibrium (the Ears)", who:t.name || "",
+      headline: m === "invert" ? "⇄ The Scales invert" : "＝ The Scales level",
+      lines:[m === "invert" ? "everything within 5m: Weaknesses and Resistances swap, for 3 rounds"
+                            : "everything within 5m: Combat Stages locked at zero, for 3 rounds",
+             `${t.name || "The holder"} is Confused when it ends`] });
+    toast(m === "invert" ? "⇄ Inverted — Weaknesses and Resistances swap within 5m for 3 rounds" : "＝ Levelled — Combat Stages locked at zero within 5m for 3 rounds");
+    closeModal(); corpseRedraw(rerender);
+  };
+  body.append(el("div",{class:"tk-menu-row",style:"gap:8px;flex-wrap:wrap"},
+    el("button",{class:"btn-primary",onclick:()=>go("invert")}, "⇄ Invert"),
+    el("button",{class:"btn-primary",onclick:()=>go("level")}, "＝ Level")));
+  modal({title:"\u{1F442} Ears — the Scales", bodyNode:body, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Cancel")]});
+}
+function corpseScalesEnd(t, rerender, saveFn){
+  if(!t || !t.corpseScales) return;
+  delete t.corpseScales;
+  const r = inflictStatus(t, "confused");
+  (saveFn || save)();
+  try{ queueAuraSweep(); }catch(e){}
+  toast(`⚖ The Scales settle${r.ok ? ` — ${t.name || "you"} ${t.name ? "is" : "are"} Confused` : ""}`);
+  corpseRedraw(rerender);
+}
+/* ---- 💀 Head: Golgotha ---- */
+function corpseHeadCandidates(t){
+  return corpseBoardTargets(t, 8, (tok, o, me) => o.species !== undefined && !isTrainerOwner(o) && corpseIsDown(o)
+    && (!me || tokensAreFoes(me, tok)));
+}
+function corpseHeadRaise(H, tg, me, persistH){
+  const o = tg.obj, tok = tg.tok;
+  const mx = ownerMaxHP(o) || 1;                 // read before the pip is spent, so a bad sheet can't waste the day's use
+  if(!corpseSpend(H, "head")) return false;
+  o.statuses = (o.statuses || []).filter(k => k !== "knockedOut");
+  o.currentHP = Math.max(1, Math.floor(mx / 4));
+  /* the 🤝 ally flag only ever turns an ENCOUNTER creature to the party's side; a holder on the
+     enemy side raising a player's Pokémon has no flag to flip, so the table moves it by hand */
+  const hSide = me ? tokenSide(me) : "player";
+  let flipped = false;
+  if(tok && tok.link && ENEMY_LINKS.has(tok.link.kind) && hSide === "player" && !tok.ally){ tok.ally = true; flipped = true; }
+  o.corpseServant = { by: ownerLabel(H), tok: tok ? tok.id : null, flipped };
+  addLock(H, { key:"golgotha", kind:"healblock", note:"Heal Blocked by the Head: no HP or Temporary HP from any source until the end of the Scene" },
+    { name:"Golgotha", src:"corpse" });
+  if(tok){ try{ commitTokenSource(tok, { ally:true }); }catch(e){} if(flipped && cloud.isGM) try{ mapTokensSave(); }catch(e){} }
+  if(persistH) persistH();
+  try{ queueAuraSweep(); }catch(e){}
+  logRoll({ kind:"feature", label:"Death (the Head)", who:ownerLabel(H), headline:`\u{1F480} ${tg.name} rises`,
+    lines:[`${tg.name} serves ${ownerLabel(H)} at ${o.currentHP} HP until the end of the Scene`,
+           flipped ? "\u{1F91D} its token is on the holder's side now" : "move it to the holder's side by hand",
+           `${ownerLabel(H)} is Heal Blocked for the rest of the Scene`] });
+  toast(`\u{1F480} ${tg.name} rises to serve ${ownerLabel(H)} (${o.currentHP} HP)${flipped ? "" : " — flip its side by hand"}. You're Heal Blocked.`);
+  return true;
+}
+function corpseHeadGo(t, rerender, saveFn){
+  const { map, me, list } = corpseHeadCandidates(t);
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    "Daily, Swift Action, when a foe's Pokémon faints within 8m: it rises as your servant at 25% HP until the end of the Scene, and you're Heal Blocked for the rest of it. "
+    + "The GM's \u{1F4A5} Apply also offers it the moment one falls."));
+  if(!map) body.append(el("div",{class:"small"}, "Open the \u{1F5FA} Map first: this raises a fainted Pokémon off the board."));
+  else if(!list.length) body.append(el("div",{class:"small"}, "No fainted foe's Pokémon within 8m."));
+  list.forEach(tg => {
+    const row = el("div",{class:"moveslot"});
+    row.append(el("div",{style:"flex:1"}, el("div",{style:"font-weight:700"}, tg.name),
+      el("div",{class:"small muted"}, tg.gap != null ? `${tg.gap}m away` : "")));
+    row.append(el("button",{class:"btn-primary",style:"padding:6px 10px",onclick:()=>{
+      if(corpseHeadRaise(t, tg, me, saveFn || save)){ closeModal(); corpseRedraw(rerender); }
+    }}, "\u{1F480} Raise"));
+    body.append(row);
+  });
+  modal({title:"\u{1F480} Head — Golgotha", bodyNode:body, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+}
+/* ---- 🦵 Legs: Borrowed Time ---- */
+function corpseBorrow(map, meta, tok, H, persist){
+  if(!map || !meta || !tok || !H) return false;
+  const list = initiativeList(map);
+  const entry = list.find(e => initEntryToken(e.id) === tok.id && e.act === 0);
+  if(!entry){ toast("Borrowed Time: they aren't in the initiative order"); return false; }
+  if(initEntryToken(meta.initTurnId) === tok.id){ toast("Borrowed Time: it's already their turn"); return false; }
+  if(meta.borrowed && meta.borrowed.active){ toast("Borrowed Time: someone is already on borrowed time — press ▶ to end that turn first"); return false; }
+  if(!corpseSpend(H, "legs")) return false;
+  const curIdx = list.findIndex(e => e.id === meta.initTurnId), myIdx = list.indexOf(entry);
+  const acted = curIdx >= 0 && myIdx < curIdx;
+  meta.borrowed = { tok: tok.id, returnTo: meta.initTurnId || null, active: true,
+                    skipRound: (meta.initRound || 1) + (acted ? 1 : 0), by: ownerLabel(H) };
+  if(persist) persist(); else { try{ commitTokenSource(tok, { ally:true }); }catch(e){} }
+  advanceInitiative(map, meta, 1, { to: entry.id, noEnd: true });
+  logRoll({ kind:"feature", label:"Borrowed Time (the Legs)", who:ownerLabel(H), headline:`⏩ ${ownerLabel(H)} takes their turn now`,
+    lines:[acted ? "they already acted this round: next round's turn is the one spent" : "their own place in this round is spent",
+           "▶ at the end of it hands the turn back to whoever was interrupted"] });
+  toast(`⏩ Borrowed Time — ${ownerLabel(H)} acts now${acted ? " (next round's turn)" : ""}; ▶ hands it back`);
+  return true;
+}
+function corpseLegsGo(t, rerender, saveFn){
+  const map = currentMapForView() || activeMap();
+  const me = map ? tokenForOwner(t) : null;
+  if(mode === "cloud" && !cloud.isGM){
+    logRoll({ kind:"feature", label:"Borrowed Time (the Legs)", who:t.name || "", headline:"⏩ Borrowed Time!",
+      lines:[`${t.name || "A player"} wants their next turn right now`, "GM: press ⏩ beside their name in the initiative list"] });
+    toast("⏩ Asked the GM for your turn — they press ⏩ beside your name in the initiative list");
+    return;
+  }
+  if(map && me && battleOn()){
+    if(corpseBorrow(map, activeMapMeta(), me, t, saveFn || save)) (rerender || renderTrainer)();
+    return;
+  }
+  if(!corpseSpend(t, "legs")) return;
+  (saveFn || save)();
+  logRoll({ kind:"feature", label:"Borrowed Time (the Legs)", who:t.name || "", headline:"⏩ Borrowed Time",
+    lines:["take your next turn right now", "skip it when your place in initiative comes around"] });
+  toast("⏩ Borrowed Time — take your next turn now, and skip it when your place comes around");
+  (rerender || renderTrainer)();
+}
+/* ---- 🌀 Torso: the Plates ---- */
+function corpseTorsoGo(t, rerender, saveFn){
+  const mons = (trainerOwnMons(t) || []).filter(p => p && !hasStatus(p, "dead"));
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    "Daily, Swift Action. One of your Pokémon gets Multitype for the Scene: a Type picker appears on its sheet, and STAB follows the Type it picks. When the Scene ends it's Typeless until the next Extended Rest."));
+  if(!mons.length) body.append(el("div",{class:"small"}, "No Pokémon on your team."));
+  mons.forEach(p => {
+    const row = el("div",{class:"moveslot"});
+    row.append(el("div",{style:"flex:1"}, el("div",{style:"font-weight:700"}, ownerLabel(p)),
+      el("div",{class:"small muted"}, (monTypes(p) || []).join(" / ") || "Typeless")));
+    row.append(el("button",{class:"btn-primary",style:"padding:6px 10px",disabled: !!p.platesMultitype,onclick:()=>{
+      if(!corpseSpend(t, "torso")) return;
+      p.platesMultitype = true;
+      (saveFn || save)();
+      const tk = tokenForOwner(p); if(tk) try{ commitTokenSource(tk, { ally:true }); }catch(e){}
+      logRoll({ kind:"feature", label:"The Plates (the Torso)", who:t.name || "", headline:`\u{1F300} ${ownerLabel(p)} takes the Plates`,
+        lines:["Multitype until the end of the Scene: change Type as a Free Action every turn, STAB follows",
+               "Typeless after the Scene, until the next Extended Rest"] });
+      toast(`\u{1F300} ${ownerLabel(p)} has Multitype for the Scene — pick its Type on its sheet`);
+      closeModal(); corpseRedraw(rerender);
+    }}, p.platesMultitype ? "has the Plates" : "\u{1F300} Give it the Plates"));
+    body.append(row);
+  });
+  modal({title:"\u{1F300} Torso — the Plates", bodyNode:body, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")]});
+}
+var CORPSE_ACTIONS = {
+  eyes:     { label:"\u{1F441} Rewrite",          run:corpseEyesGo },
+  rightArm: { label:"\u{1F5E1} Vorpal Strike",    run:corpseVorpalGo },
+  leftArm:  { label:"✋ Unmaking touch",      run:corpseLeftArmGo },
+  heart:    { label:"\u{1FAC0} Sacred Heart",     run:corpseHeartGo },
+  spine:    { label:"\u{1F9F5} The Nerve",        run:corpseSpineGo },
+  ears:     { label:"⚖ The Scales",          run:corpseEarsGo },
+  head:     { label:"\u{1F480} Golgotha",         run:corpseHeadGo },
+  legs:     { label:"⏩ Borrowed Time",       run:corpseLegsGo },
+  torso:    { label:"\u{1F300} The Plates",       run:corpseTorsoGo },
+};
+/* what is happening right now because of this piece, under its button */
+function corpseRowExtras(t, key, gm, saveFn, rerender){
+  const out = [];
+  const line = (txt, color) => el("div",{class:"small",style:`margin-top:3px;color:var(--${color || "accent"});font-weight:700`}, txt);
+  if(key === "rightArm"){
+    out.push(line("\u{1F5E1} Excalibur answers only to this arm: its Weapon Moves read you as Master, and on \u{1F4A5} Apply every hit with it strips a Combat Stage the GM picks."));
+  } else if(key === "leftArm"){
+    out.push(line(`✋ Every use gives you an Injury (you have ${t.injuries || 0}).`, "muted"));
+  } else if(key === "heart"){
+    out.push(line("\u{1FAC0} The GM's \u{1F4A5} Apply offers this the moment an ally within 6m of your token falls."));
+  } else if(key === "ears" && t.corpseScales){
+    const s = t.corpseScales;
+    const rnd = (s.round != null && battleOn()) ? ` — round ${Math.min(3, (activeMapMeta().initRound || 1) - s.round + 1)} of 3` : " — until you end it";
+    const wrap = el("div",{class:"small",style:"margin-top:3px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"},
+      el("span",{class:"statuschip on",style:"padding:2px 8px;font-size:11px;cursor:default"},
+        s.mode === "invert" ? "⇄ INVERTED within 5m" : "＝ LEVELLED within 5m"),
+      el("span",{class:"muted"}, rnd));
+    wrap.append(el("button",{class:"btn-secondary",style:"padding:2px 8px",title:"end the Scales now — you're Confused",
+      onclick:()=>corpseScalesEnd(t, rerender, saveFn)}, "⚖ End now"));
+    out.push(wrap);
+  } else if(key === "head"){
+    const row = el("div",{class:"small",style:"margin-top:3px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"},
+      el("b",{}, "\u{1F4AC} Ask a corpse three questions · Daily"));
+    const uc = usesControl(t, "gift", "corpse-head-ask", "Daily", rerender, saveFn);
+    if(uc) row.append(uc);
+    out.push(row);
+    out.push(line("\u{1F480} The GM's \u{1F4A5} Apply offers this the moment a foe's Pokémon falls within 8m of your token."));
+  } else if(key === "legs"){
+    out.push(line("⏩ On the Map, the GM can also press ⏩ beside your name in the initiative list."));
+  } else if(key === "torso"){
+    (trainerOwnMons(t) || []).forEach(p => {
+      if(p && p.platesMultitype) out.push(line(`\u{1F300} ${ownerLabel(p)} has the Plates (Multitype) until the end of the Scene.`));
+      else if(p && hasStatus(p, "typeless")) out.push(line(`\u{1F300} ${ownerLabel(p)} is Typeless until the next Extended Rest.`, "muted"));
+    });
+  }
+  return out;
+}
+/* the Gifts tab's first section — always open, always on top */
+function corpseSection(t, gm, saveFn, rerender){
+  const order = k => { const i = corpsePieces().findIndex(p => p.key === k); return i < 0 ? 99 : i; };
+  const rows = giftsShown(t).filter(x => giftKind(x.g) === "corpse")
+    .sort((a, b) => order(corpseKeyOf(a.g)) - order(corpseKeyOf(b.g)));      // always head-to-toe order, Eyes first
+  if(!rows.length) return null;
+  const kd = GIFT_KINDS.find(k => k.key === "corpse") || { head:"The Holy Corpse", blurb:"" };
+  const box = el("div",{style:"margin:0 0 12px;padding:8px 10px;border:1px solid var(--accent);border-radius:var(--radius-sm)"});
+  box.append(el("div",{style:"font-weight:800;color:var(--ink)"}, kd.head,
+    el("span",{class:"muted small",style:"font-weight:400;margin-left:8px"}, rows.map(x => giftShownName(x.g)).join(" · "))));
+  box.append(el("div",{class:"muted small",style:"margin:2px 0 4px"}, kd.blurb));
+  rows.forEach(({g, i}) => box.append(giftRow(t, g, i, gm, saveFn, rerender)));
+  return box;
+}
+/* 💥 Apply: someone just fell — a Heart within 6m of an ally, or a Head within 8m of a foe's
+   Pokémon, gets a button right there in the results (the GM is the only one who sees this widget) */
+function corpseApplyOffers(hits, out){
+  if(!hits || !hits.length || !out) return;
+  const map = currentMapForView() || activeMap(); if(!map) return;
+  const felled = hits.filter(h => h && h.t && (h.before || 0) > 0 && tokenHp(h.t).cur <= 0)
+    .map(h => ({ t:h.t, obj: tokenHp(h.t).obj, name: tokenHp(h.t).name })).filter(v => v.obj && !hasStatus(v.obj, "dead"));
+  if(!felled.length) return;
+  mapTokensFor(map.id).forEach(tok => {
+    if(tokenIsDown(tok)) return;
+    const L = tok.link ? tokenLinked(tok) : null, H = L && !L.missing ? L.obj : null;
+    if(!H || !isTrainerOwner(H)) return;
+    const persistH = () => { try{ commitTokenSource(tok, { ally:true }); }catch(e){} };
+    if(hasCorpse(H, "heart") && corpseUses(H, "heart").left > 0){
+      felled.filter(v => v.t !== tok && v.obj !== H && tokenSide(v.t) === tokenSide(tok) && tokenTileGap(tok, v.t) <= 6).forEach(v => {
+        const b = el("button",{class:"btn-secondary",style:"padding:2px 8px;margin:3px 0"});
+        b.textContent = `\u{1FAC0} ${ownerLabel(H)}'s Sacred Heart — stand ${v.name} back up at 25% (they lose 25% of their max HP)`;
+        b.onclick = () => {
+          if(corpseHeartRaise(H, { obj:v.obj, tok:v.t, name:v.name }, persistH)){
+            b.disabled = true; b.textContent = `✔ ${v.name} is back up (Sacred Heart)`; try{ renderMap(); }catch(e){}
+          }
+        };
+        out.append(b);
+      });
+    }
+    if(hasCorpse(H, "head") && corpseUses(H, "head").left > 0){
+      felled.filter(v => v.obj.species !== undefined && !isTrainerOwner(v.obj) && tokensAreFoes(tok, v.t) && tokenTileGap(tok, v.t) <= 8).forEach(v => {
+        const b = el("button",{class:"btn-secondary",style:"padding:2px 8px;margin:3px 0"});
+        b.textContent = `\u{1F480} ${ownerLabel(H)}'s Golgotha — raise ${v.name} as their servant at 25% (they're Heal Blocked)`;
+        b.onclick = () => {
+          if(corpseHeadRaise(H, { obj:v.obj, tok:v.t, name:v.name }, tok, persistH)){
+            b.disabled = true; b.textContent = `✔ ${v.name} rises (Golgotha)`; try{ renderMap(); }catch(e){}
+          }
+        };
+        out.append(b);
+      });
+    }
+  });
+}
+/* the Right Arm's strip, read once per Apply widget: the stat <select> the GM sets, or null */
+function corpseExcaliburSelect(ctx){
+  try{
+    if(!ctx || !/excalibur/i.test(String(ctx.weapon || ""))) return null;
+    const f = findAttackerSheet(ctx);
+    if(!f || !f.obj || !hasCorpse(f.obj, "rightArm")) return null;
+    const sel = el("select",{class:"equip-focus",style:"max-width:170px"});
+    sel.append(el("option",{value:""}, "— don't strip —"));
+    ALL_CS_STATS.forEach(([k, l]) => sel.append(el("option",{value:k}, l)));
+    sel.value = "atk";
+    return sel;
+  }catch(e){ return null; }
+}
 /* one granted row — shared by all four kinds; `i` is its index in t.gifts so × removes the right one */
 function giftRow(t, g, i, gm, saveFn, rerender){
   saveFn = saveFn || save; rerender = rerender || renderTrainer;
@@ -16204,17 +16989,23 @@ function giftRow(t, g, i, gm, saveFn, rerender){
   const bless   = kind==="blessing" ? blessingByName(g.name) : null;
   const bSide   = bless ? blessingSide(bless, bMode) : null;
   const maskP = giftPatronHiddenFrom(g);
+  const cDef = kind==="corpse" ? corpsePieceDef(corpseKeyOf(g)) : null;    // THE HOLY CORPSE
   const sub = kind==="blessing"
     ? `Rank ${g.rank||1} Blessing · ${bMode==="signer" ? "Signer (Sign)" : "Messiah"}`
     : `${g.tier||"Gift"}${g.patron && !maskP ? " · "+g.patron : ""}`;
-  info.append(el("div",{style:"font-weight:700"}, giftShownName(g),
+  info.append(el("div",{style:"font-weight:700"}, cDef
+      ? `${cDef.icon} ${giftShownName(g)}${(g.effectHidden && !gm) ? "" : ` \u2014 ${cDef.title}`}`   // \u2753 a hidden power keeps its name to itself
+      : giftShownName(g),
     el("span",{class:"muted small",style:"font-weight:400"}, `  ·  ${sub}`),
     g.hidden ? el("span",{class:"arcana-tag t-hidden",style:"margin-left:6px;font-weight:400",
       title:"only you can see this row — the Trainer's Gifts tab doesn't show it (the Patron Stat still counts)"},
       "👁 hidden") : "",
     (g.patronHidden && gm) ? el("span",{class:"arcana-tag t-hidden",style:"margin-left:6px;font-weight:400",
       title:"the Trainer sees this Gift and what it does, but not which Legendary gave it"},
-      "🙈 patron hidden") : ""));
+      "🙈 patron hidden") : "",
+    (g.effectHidden && gm) ? el("span",{class:"arcana-tag t-hidden",style:"margin-left:6px;font-weight:400",
+      title:"the Trainer sees this row (and its Patron Stat), but not what it does"},
+      "\u2753 effect hidden") : ""));
   // Patron-stat badge + (for or/any) an inline chooser. Blessings have no tag at all — skip the line.
   const spec = giftStatSpec(g);
   if(spec != null){
@@ -16231,6 +17022,13 @@ function giftRow(t, g, i, gm, saveFn, rerender){
       statLine.append(sel);
     }
     info.append(statLine);
+  }
+  /* ❓ the effect is the GM's secret for now: the Trainer sees the row and its Patron Stat, nothing else */
+  if(g.effectHidden && !gm){
+    info.append(el("div",{class:"small muted",style:"margin-top:4px;font-style:italic"},
+      kind==="corpse" ? "It has fused into you, but what it can do hasn't shown itself yet." : "What this does hasn't been revealed to you yet."));
+    row.append(info);
+    return row;
   }
   /* Giftsapper's whole effect is a number worked out from the holder's own Skill ladder, so the row
      says what that number IS rather than leaving the table to do 3 × Rank at the table. */
@@ -16260,16 +17058,25 @@ function giftRow(t, g, i, gm, saveFn, rerender){
       el("button",{class:"btn-secondary",style:"padding:4px 10px",title:act.title(t),
         onclick:()=>act.run(t, rerender, saveFn)}, act.label(t))));
   }
+  /* THE HOLY CORPSE: the piece's own button, and whatever it is doing right now */
+  if(cDef){
+    const ca = CORPSE_ACTIONS[cDef.key];
+    const left = corpseUses(t, cDef.key).left;
+    if(ca) info.append(el("div",{style:"margin-top:5px"},
+      el("button",{class:"btn-secondary",style:"padding:4px 10px",title:`${cDef.freq} \u2014 ${cDef.power}`,
+        onclick:()=>ca.run(t, rerender, saveFn)}, ca.label + (left ? "" : " (used today)"))));
+    corpseRowExtras(t, cDef.key, gm, saveFn, rerender).forEach(n => info.append(n));
+  }
   /* The Frequency line, and — new — the same use pips every Move, Ability and Feature carries.
      A Daily x3 Gift was previously a sentence of text with nowhere to tick it off, so the table
      tracked it on paper. Keyed by the Gift's name in the Trainer's own `uses`, so 🌙 End Scene and
      ☀ End Day refresh it with everything else (see itemFreqForKey's "gift" branch). */
-  const freqTxt = bSide ? bSide.freq : (g.freq || giftFreqText(g));
+  const freqTxt = cDef ? cDef.freq.replace(" - ", " \u00b7 ") : bSide ? bSide.freq : (g.freq || giftFreqText(g));
   if(freqTxt){
     const fRow = el("div",{class:"small",style:"margin-top:3px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"},
       el("b",{}, freqTxt));
-    const uc = usesControl(t, "gift", g.name || "Gift",
-      bSide ? String(bSide.freq||"").replace(/^\s*(messiah|signer)\s*:\s*/i,"") : freqTxt,
+    const uc = usesControl(t, "gift", cDef ? corpseUseName(cDef.key) : (g.name || "Gift"),
+      cDef ? "Daily" : bSide ? String(bSide.freq||"").replace(/^\s*(messiah|signer)\s*:\s*/i,"") : freqTxt,
       rerender, saveFn);
     if(uc) fRow.append(uc);
     info.append(fRow);
@@ -16278,7 +17085,7 @@ function giftRow(t, g, i, gm, saveFn, rerender){
      Nature's Spirit / Pure Breathing "gain the Sprouter Capability", and Sprouter is "Once per week
      … As a Standard Action", so the week's one bloom is ticked off right here. Keyed "cap:<name>" in
      the Trainer's own `uses`, so two Gifts granting the same Capability share ONE weekly use. */
-  const capNames = capNamesFromText(g.effect || (giftByName(g.name)||{}).effect || "");
+  const capNames = cDef ? [] : capNamesFromText(g.effect || (giftByName(g.name)||{}).effect || "");
   capNames.forEach(cn => {
     const cf = capabilityFreq(cn);
     const cRow = el("div",{class:"small",style:"margin-top:3px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"},
@@ -16343,6 +17150,9 @@ function giftRow(t, g, i, gm, saveFn, rerender){
     } else if(g.effect){
       info.append(el("div",{class:"muted small",style:"margin-top:3px"}, g.effect));   // custom Blessing
     }
+  } else if(cDef){
+    info.append(el("div",{class:"muted small",style:"margin-top:3px"}, cDef.power));
+    info.append(el("div",{class:"small",style:"margin-top:3px"}, el("b",{},"Cost: "), cDef.cost));
   } else if(g.effect){
     info.append(el("div",{class:"muted small",style:"margin-top:3px"}, giftMaskPatron(g, g.effect)));
   }
@@ -16369,6 +17179,12 @@ function giftRow(t, g, i, gm, saveFn, rerender){
     (()=>{ const cb = el("input",{type:"checkbox"}); cb.checked = !!g.hidden;
            cb.addEventListener("change",()=>{ g.hidden = cb.checked || undefined; saveFn(); rerender(); }); return cb; })(),
     el("span",{},"👁 hide from player")));
+  /* ❓ the softer switch: the Trainer keeps the row, loses what it does (rules text, buttons, pips) */
+  if(gm) infoTop.append(el("label",{class:"inline small",style:"gap:5px;cursor:pointer;margin-top:4px",
+    title:"the Trainer sees this row (and its Patron Stat) but not what it does: no rules text, no buttons"},
+    (()=>{ const cb = el("input",{type:"checkbox"}); cb.checked = !!g.effectHidden;
+           cb.addEventListener("change",()=>{ g.effectHidden = cb.checked || undefined; saveFn(); rerender(); }); return cb; })(),
+    el("span",{},"\u2753 hide the effect from player")));
   if(gm && g.patron) infoTop.append(el("label",{class:"inline small",style:"gap:5px;cursor:pointer;margin-top:4px",
     title:"the Trainer still sees this Gift and its effect — only the Legendary behind it is kept from them (its name, the Prerequisites line and the book note)"},
     (()=>{ const cb = el("input",{type:"checkbox"}); cb.checked = !!g.patronHidden;
@@ -16378,7 +17194,7 @@ function giftRow(t, g, i, gm, saveFn, rerender){
      left a mis-picked row — or any row granted before its god was known — filed under
      the wrong Legendary forever. Now that the tab files rows BY patron and the branches name them, the
      GM needs to be able to move one. Changing it also moves the row's [PATRON STAT] (p.57). */
-  if(gm && kind!=="blessing" && kind!=="brand"){
+  if(gm && kind!=="blessing" && kind!=="brand" && kind!=="corpse"){      // a Corpse piece's Patron is always Arceus
     const pSel = el("select",{class:"equip-focus",style:"max-width:280px",
       title:"which Legendary handed this over — files the row under that god in this tab, names it in the Signer / Messiah / Usurper line, and grants that Patron's Stat"});
     pSel.append(el("option",{value:""},"— no Patron —"));
@@ -16428,6 +17244,10 @@ function openAddGift(t, saveFn, rerender){
         f.name + (f.formLevel>1 ? `  \u2014 Form Lv ${f.formLevel}` : ""))));
     } else if(kind==="brand"){
       BRANDS.forEach(b => giftSel.append(el("option",{value:b.name}, b.name)));
+    } else if(kind==="corpse"){
+      const held = corpseHolders();
+      corpsePieces().forEach(p => giftSel.append(el("option",{value:p.name},
+        `${p.icon} ${p.name} \u2014 ${p.title}${held[p.key] ? `   (held by ${held[p.key].join(", ")})` : ""}`)));
     } else {
       [1,2,3].forEach(r=>{
         const og = el("optgroup",{label:`Rank ${r} Blessings`});
@@ -16459,6 +17279,7 @@ function openAddGift(t, saveFn, rerender){
   const effIn  = el("textarea",{placeholder:"Effect / notes",style:"width:100%;min-height:60px"});
   const hideCb = el("input",{type:"checkbox"});   // 👁 grant it without the player being told
   const hidePatronCb = el("input",{type:"checkbox"});   // 🙈 tell them the Gift, not the god
+  const hideEffCb = el("input",{type:"checkbox"});      // ❓ tell them they have it, not what it does
   const patronWrap = el("label",{class:"field"}, el("span",{},"Patron (grants the p.57 Stat)"), patronSel);
   const statChoiceWrap = el("div",{style:"margin-top:8px"});
   /* the picked entry, whichever catalog the kind points at */
@@ -16471,6 +17292,8 @@ function openAddGift(t, saveFn, rerender){
       case "signer":   return SIGNER_FEATURES.find(f=>f.name===v) || null;
       case "usurper":  return usurperFeatureByName(v);
       case "brand":    return BRANDS.find(b=>b.name===v) || null;
+      case "corpse":   { const d = corpsePieceByName(v);
+                         return d ? { name:d.name, effect:corpseFullText(d), freq:d.freq, piece:d.key, prereq:"", note:"" } : null; }
       default:         return blessingByName(v);
     }
   };
@@ -16501,6 +17324,7 @@ function openAddGift(t, saveFn, rerender){
       nameIn.value = p.name;
       effIn.value  = kindSel.value==="blessing" ? blessingSide(p, modeSel.value).text : (p.effect||"");
       if(kindSel.value==="gift") fillPatrons(giftPatronFor(p));
+      if(kindSel.value==="corpse") fillPatrons("Arceus");
     }
     syncStatChoice();
   });
@@ -16512,9 +17336,10 @@ function openAddGift(t, saveFn, rerender){
     const k = kindSel.value;
     fillCatalog();
     modeWrap.style.display  = k==="blessing" ? "" : "none";
-    patronWrap.style.display = (k==="blessing" || k==="brand") ? "none" : "";
+    patronWrap.style.display = (k==="blessing" || k==="brand" || k==="corpse") ? "none" : "";
     nameIn.value = ""; effIn.value = "";
-    if(k!=="gift") fillPatrons("");
+    if(k==="corpse") fillPatrons("Arceus");               // every piece answers to Arceus (+1 Any Stat)
+    else if(k!=="gift") fillPatrons("");
     syncStatChoice();
   };
   kindSel.addEventListener("change", syncKind);
@@ -16534,6 +17359,10 @@ function openAddGift(t, saveFn, rerender){
     el("label",{class:"inline small",style:"gap:6px;cursor:pointer",
       title:"they see the Gift and what it does, but not which Legendary gave it"},
       hidePatronCb, el("span",{},"🙈 Hide the patron (the player sees only the effect)")),
+    el("div",{style:"height:4px"}),
+    el("label",{class:"inline small",style:"gap:6px;cursor:pointer",
+      title:"they see the row (and its Patron Stat), but not what it does: no rules text, no buttons, until you untick it on the row"},
+      hideEffCb, el("span",{},"\u2753 Hide the effect (the player sees the row, not what it does)")),
   );
   syncKind();
   modal({title:"Grant a Legendary Gift", bodyNode:wrap, footNodes:[
@@ -16545,11 +17374,17 @@ function openAddGift(t, saveFn, rerender){
       const row = { id:uid(), kind, name, effect:effIn.value.trim(), prereq:(cat&&cat.prereq)||"",
                     note:(cat&&cat.note)||"" };
       if(hideCb.checked) row.hidden = true;   // 👁 GM-only until they untick it on the row
+      if(hideEffCb.checked) row.effectHidden = true;   // ❓ they keep the row, not what it does
       if(kind==="blessing"){
         row.mode = modeSel.value; row.rank = (cat&&cat.rank)||1;
         row.freq = cat ? blessingSide(cat, row.mode).freq : "";
       } else if(kind==="brand"){
         row.tier = "Brand";
+      } else if(kind==="corpse"){                       // THE HOLY CORPSE: Arceus's piece, one Daily power
+        row.tier = "Corpse Piece"; row.patron = "Arceus"; row.freq = (cat && cat.freq) || "Daily";
+        if(cat && cat.piece) row.piece = cat.piece;
+        if(hidePatronCb.checked) row.patronHidden = true;
+        if(sc && sc.value) row.statChoice = sc.value;
       } else {
         row.tier = kind==="gift" ? ((cat&&cat.tier)||"Gift")
                  : kind==="general" ? "General Gift"
@@ -17848,7 +18683,7 @@ function statusCard(p){
   groups.forEach(([kind,label])=>{
     card.append(el("div",{class:"small muted",style:"margin:8px 0 4px;font-weight:700"}, label));
     const chips = el("div",{class:"chips"});
-    STATUS_DEFS.filter(s=>s.kind===kind).filter(s=>statusPickable(s) || hasStatus(p,s.key)).forEach(s=>{
+    STATUS_DEFS.filter(s=>s.kind===kind).filter(s=>statusPickable(s) || hasStatus(p,s.key)).filter(s=>!s.corpse || hasStatus(p,s.key)).forEach(s=>{
       const on = hasStatus(p,s.key);
       const imWhy = statusChipImmunity(p, s, sp), immune = !!imWhy;   // Type, Ability or Feature
       const block = statusCureBlock(p, s.key);   // Enduring Rage / White Flame forbid curing Enraged
@@ -20764,6 +21599,7 @@ function auraCSMods(p){
   /* ownerActiveAuraCount, not activeAuraCount: effectiveCS / csAutoMods are shared by Trainers and
      Pokémon, and an Usurper's Avatar carries their own Auras (True Power) — so the +2 per Aura is
      theirs in human form as well. It returns 0 for everybody else, exactly as before. */
+  if(p && Array.isArray(p.statuses) && p.statuses.includes("stripped")) return out;   // the Left Arm wiped them for the Scene
   const n = ownerActiveAuraCount(p) * AURA_CS_BONUS;
   if(n) CS_STATS.forEach(([k]) => out[k] = n);
   return out;
@@ -29384,7 +30220,7 @@ function openMoveRoll(p, m, sp, opts={}){
   modal({title: opts.viaMetronome ? `🎰 Metronome → ${m.name}` : `${m.name}`, bodyNode:body, footNodes:[
     m.effect? el("button",{class:"btn-secondary",onclick:()=>openRefDetail("move",m.name)},"Full text") : "",
     (typeof contestBattleAppealBtn==="function" ? contestBattleAppealBtn(p, m, sp) : ""),   // 🎀 Battle Contest: every Move also rolls Appeal
-    el("button",{class:"btn-primary",onclick:doRoll},"🎲 Roll dice"),
+    el("button",{class:"btn-primary",onclick:(ev)=>{ doRoll(ev); if(typeof contestAfterMoveRoll==="function") try{ contestAfterMoveRoll(p, m); }catch(e){ console.error(e); } }},"🎲 Roll dice"),   // 🎀 the Appeal pops up after the roll
   ]});
 }
 /* `p` is optional: pass the Pokémon whose row this is and the AC shown is the one it actually
@@ -39718,7 +40554,9 @@ function battleActionRow(a, favs, trainer){
 function encDefaultColor(){ return "#e0524f"; }
 function isHexColor(c){ return /^#[0-9a-f]{6}$/i.test(String(c||"")); }
 function encColorOf(e){ return isHexColor(e?.color) ? e.color : encDefaultColor(); }
-function newEncounter(name){ return { id:uid(), name:name||"New Encounter", sig:1, players:3, mons:[], trainers:[], notes:"", color:encDefaultColor() }; }
+function newEncounter(name){ const e = { id:uid(), name:name||"New Encounter", sig:1, players:3, mons:[], trainers:[], notes:"", color:encDefaultColor() };
+  if(typeof siteRegion === "string" && siteRegion) e.region = siteRegion;   // REGIONS: filed under the region it was made in
+  return e; }
 function normEncounter(e){
   if(!e) return e;
   if(!Array.isArray(e.mons)) e.mons=[];
@@ -40347,9 +41185,10 @@ function areaReportNode(area){
 }
 /* the 🎲 button: roll a table, and see what it has and hasn't produced */
 function openRandomEncounter(){
-  if(!ENC_AREAS.length){ toast("No encounter areas defined"); return; }
+  const areas = ENC_AREAS.filter(inSiteRegion);          // REGIONS: only this region's tables
+  if(!areas.length){ toast("No encounter areas defined" + (siteRegion ? " for this region yet" : "")); return; }
   const body = el("div",{});
-  ENC_AREAS.forEach((a,i)=>{
+  areas.forEach((a,i)=>{
     const head = el("div",{class:"inline",style:"gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap"
       + (i?";margin-top:16px;padding-top:12px;border-top:1px solid var(--line)":"")});
     head.append(el("span",{style:"font-weight:800"}, a.name,
@@ -40358,7 +41197,7 @@ function openRandomEncounter(){
       el("button",{class:"btn-primary",onclick:()=>{ closeModal(); rollWildEncounter(a); }},"\u{1F3B2} Roll"));
     body.append(head);
     const det = el("details",{class:"spoiler","data-key":"encarea:"+a.id, style:"margin-top:4px"});
-    det.open = ENC_AREAS.length === 1;
+    det.open = areas.length === 1;
     det.append(el("summary",{}, el("span",{class:"muted small"},"which are (and aren't) in the Pokédex")));
     det.append(areaReportNode(a));
     body.append(det);
@@ -41046,9 +41885,10 @@ function buildGauntlet(g, party, players, arena){
 /* The picker. The party figures default to what the live sheets say and are editable, because the
    whole balance hangs off them -- a gauntlet priced for Lv 28 is a different fight at Lv 34. */
 function openGauntlets(){
-  if(!GAUNTLETS.length){ toast("No gauntlets defined"); return; }
+  const gauntlets = GAUNTLETS.filter(inSiteRegion);      // REGIONS: only this region's gauntlets
+  if(!gauntlets.length){ toast("No gauntlets defined" + (siteRegion ? " for this region yet" : "")); return; }
   const body = el("div",{});
-  GAUNTLETS.forEach((g,gi)=>{
+  gauntlets.forEach((g,gi)=>{
     const wrap = el("div",{style:gi?"margin-top:16px;padding-top:12px;border-top:1px solid var(--line)":""});
     const pIn = el("input",{type:"number",min:1,max:100,value:gauntletPartyAvg(g),style:"width:64px",
       title:"the average Level of the Pokemon each player leads with"});
@@ -41842,6 +42682,7 @@ function encStatusControl(p){
   [["persistent","Persistent · +10 catch"],["volatile","Volatile · +5"],["other","Other"]].forEach(([kind,label])=>{
     const chips=el("div",{class:"chips"});
     STATUS_DEFS.filter(s=>s.kind===kind).filter(s=>{
+      if(s.corpse) return hasStatus(p,s.key);           // the Holy Corpse's chips only show while on
       if(s.key==="sleep"||s.key==="frozen") return !boss;
       if(s.boss) return boss;
       return true;
@@ -42967,14 +43808,16 @@ function renderEncounters(){
   const top=el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;justify-content:space-between"});
   const leftc=el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap"});
   const sel=el("select",{title:"Active encounter"});
-  const visible = arr.filter(e=> encShowArchived || !e.archived);
-  const archivedCount = arr.filter(e=> e.archived).length;
+  const visible = arr.filter(e=> (encShowArchived || !e.archived) && inSiteRegion(e));
+  const archivedCount = arr.filter(e=> e.archived && inSiteRegion(e)).length;
   if(!visible.length) sel.append(el("option",{value:""},"— no encounters —"));
   let cur=activeEncounter();
+  if(cur && !inSiteRegion(cur)) cur = visible[0] || null;                 // another region's (REGIONS)
   if(cur && cur.archived && !encShowArchived) cur = visible[0] || null;   // active one is hidden → fall to first visible
   visible.forEach(e=> sel.append(el("option",{value:e.id, selected:e.id===cur?.id}, (e.archived?"📦 ":"")+(e.name||"(unnamed)"))));
   sel.addEventListener("change",()=>{ state.activeEncounterId=sel.value; saveEnc(); renderEncounters(); });
   leftc.append(sel);
+  leftc.append(...regionToggleBtns());
   leftc.append(el("button",{class:"btn ghost",onclick:()=>{ const n=prompt("Encounter name:","New Encounter"); if(n===null)return; const e=newEncounter(n||"New Encounter"); arr.push(e); state.activeEncounterId=e.id; saveEnc(); renderEncounters(); }},"＋ New"));
   leftc.append(el("button",{class:"btn ghost",title:"roll a random wild encounter from an area table",onclick:openRandomEncounter},"🎲 Random"));
   if(typeof ctNewContestEncounter==="function") leftc.append(el("button",{class:"btn ghost",
@@ -44746,6 +45589,9 @@ function sweepMapAuras(map){
      when nobody on the board is projecting one and nobody is still wearing the chip. */
   const anySapper = toks.some(t => { const L = t.link ? tokenLinked(t) : null;
     return L && L.obj && hasGiftsapper(L.obj) && !tokenIsDown(t); });
+  /* THE HOLY CORPSE — the Ears' Scales: Inverted / Levelled on everything within 5 m of the holder */
+  const scalesSrc = toks.map(t => { const L = t.link ? tokenLinked(t) : null;
+    return (L && L.obj && !L.missing && L.obj.corpseScales && !tokenIsDown(t)) ? { t, mode: L.obj.corpseScales.mode } : null; }).filter(Boolean);
   const rows = new Set();
   let encTouched = false, changed = false;
   const mark = (obj, key, flag, want) => {
@@ -44773,6 +45619,11 @@ function sweepMapAuras(map){
       hit = mark(L.obj, "suppressed", "autoPressure", fam.some(f => tokenPressureSources(map, f).length > 0)) || hit;
     if(anySapper || L.obj.autoGiftsap)
       hit = mark(L.obj, "giftsapped", "autoGiftsap", fam.some(f => tokenGiftsapSources(map, f).length > 0)) || hit;
+    if(scalesSrc.length || L.obj.autoInverted || L.obj.autoLevelled){
+      const nearScales = m => scalesSrc.some(sc => sc.mode === m && fam.some(f => tokenTileGap(sc.t, f) <= 5));
+      hit = mark(L.obj, "inverted", "autoInverted", nearScales("invert")) || hit;
+      hit = mark(L.obj, "levelled", "autoLevelled", nearScales("level")) || hit;
+    }
     /* The Hush "ends early if you are knocked out" — the victim carries the user's token id */
     if(L.obj.hush && L.obj.hush.tok && hasStatus(L.obj, "hushed")){
       const src = toks.find(x => x.id === L.obj.hush.tok);
@@ -48811,6 +49662,7 @@ function normMapMeta(data){
     if(typeof m.shopId!=="string") m.shopId = "";      // the shop currently open on this map ("" = none)
     if(m.arena && !(m.arena.size > 0)) delete m.arena;   // the closing arena (see paintArena)
     if(typeof m.hideName!=="boolean") m.hideName = false;   // 🙈 keep the name off every player device
+    if("region" in m && (typeof m.region!=="string" || !m.region)) delete m.region;   // REGIONS
     // 🏢 the map this one stands on (FLOORS) — drop the link if that map is gone
     if("below" in m && (typeof m.below!=="string" || !m.below || m.below===m.id || !data.maps.some(x=>x.id===m.below))) delete m.below;
   });
@@ -52090,9 +52942,49 @@ let mapImgEdit = false;                       // GM image-edit mode (move/resize
 function activeMapMeta(){ return cloud.mapMeta?.data ? cloud.mapMeta.data : normMapMeta(null); }
 function activeMap(){ const meta=activeMapMeta(); return meta.maps.find(m=>m.id===meta.activeMapId) || meta.maps[0] || null; }
 /* the map to render: GM sees whatever they're privately viewing; players see only the pushed map */
+/* ===================================================================
+   REGIONS — a GM switch for a self-contained part of the campaign (the Desert). Maps and encounters
+   carry `region:"desert"`; with the switch on, the GM's map list, archived maps, Floors, encounter
+   list, Add-token enemies, 🎲 Random areas and 🌊 Gauntlets show ONLY that region's things, and with
+   it off they show only the rest, so neither clutters the other. A per-DEVICE view setting
+   (localStorage), never synced: players see whatever map the GM pushes, region or not. Anything new
+   made while it is on (a map, an encounter, a rolled or built one) is filed into the region.
+=================================================================== */
+const SITE_REGIONS = [ { key:"desert", name:"Desert", icon:"\u{1F3DC}\uFE0F" } ];
+let siteRegion = "";
+try{ siteRegion = localStorage.getItem("ptu_region") || ""; }catch(e){}
+if(!SITE_REGIONS.some(r => r.key === siteRegion)) siteRegion = "";
+function regionOf(x){ return (x && typeof x.region === "string") ? x.region : ""; }
+function inSiteRegion(x){ return regionOf(x) === siteRegion; }
+function setSiteRegion(key){
+  siteRegion = SITE_REGIONS.some(r => r.key === key) ? key : "";
+  try{ localStorage.setItem("ptu_region", siteRegion); }catch(e){}
+  const meta = cloud.mapMeta?.data;
+  if(meta && Array.isArray(meta.maps)){
+    const cur = meta.maps.find(m => m.id === mapGmView);
+    if(!cur || !inSiteRegion(cur)){
+      const pick = meta.maps.find(m => !m.archived && inSiteRegion(m) && m.id === meta.playerMapId)
+                || meta.maps.find(m => !m.archived && inSiteRegion(m));
+      mapGmView = pick ? pick.id : null;
+      mapView = { scale:1, panX:0, panY:0 };
+    }
+  }
+  const R = SITE_REGIONS.find(r => r.key === siteRegion);
+  toast(R ? `${R.icon} ${R.name} — only its maps and encounters are listed` : "\u{1F5FA} Main campaign — region maps and encounters are hidden");
+  if(currentTab === "map") renderMap(); else if(currentTab === "encounters") renderEncounters();
+}
+function regionToggleBtns(){
+  return SITE_REGIONS.map(R => el("button",{class:"btn-secondary" + (siteRegion === R.key ? " on" : ""),
+    title:`${R.name} mode: list ONLY the ${R.name.toLowerCase()}'s maps and encounters (and file anything new under it). Off: hide them. Only changes what this device lists — players see whatever map you show them.`,
+    onclick:() => setSiteRegion(siteRegion === R.key ? "" : R.key)}, `${R.icon} ${R.name}` + (siteRegion === R.key ? " ✓" : "")));
+}
 function currentMapForView(){
   const meta = activeMapMeta();
-  if(cloud.isGM) return meta.maps.find(m=>m.id===mapGmView) || meta.maps.find(m=>m.id===meta.playerMapId) || meta.maps.find(m=>!m.archived) || null;
+  if(cloud.isGM){
+    const v = meta.maps.find(m=>m.id===mapGmView); if(v && inSiteRegion(v)) return v;
+    const p = meta.maps.find(m=>m.id===meta.playerMapId); if(p && !p.archived && inSiteRegion(p)) return p;
+    return meta.maps.find(m=>!m.archived && inSiteRegion(m)) || null;
+  }
   const base = meta.maps.find(m=>m.id===meta.playerMapId) || null;
   return base ? playerFloorView(base) : null;           // a building: the floor your token is on (see FLOORS)
 }
@@ -52304,7 +53196,7 @@ function openFloorsPanel(map){
   const loops = c => { let m = c; const seen = new Set();
     while(m && !seen.has(m.id)){ if(m.id===map.id) return true; seen.add(m.id); m = floorBelow(m); }
     return false; };
-  const cands = meta.maps.filter(m=>m.id!==map.id && !loops(m));
+  const cands = meta.maps.filter(m=>m.id!==map.id && !loops(m) && (inSiteRegion(m) || m.id===map.below));
   const st = floorStack(map);
   const wrap = el("div",{});
   wrap.append(el("div",{class:"r-body",style:"margin-bottom:10px"},
@@ -52778,6 +53670,10 @@ function tokenHp(token){
     if(isHazardToken(token)){ const h=hazardDef(token);
       return { cur:1, max:1, editable:cloud.isGM, name:token.label || (token.trapdoor ? "Trapdoor" : h.name), sprite:hazardSprite(token),
                unlinked:false, kind:"hazard", hideName:false }; }
+    // a prop: a picture standing on the board, nothing else (see isPropToken)
+    if(isPropToken(token))
+      return { cur:1, max:1, editable:cloud.isGM, name:(cloud.isGM ? token.label : token.propName)||token.label||"Prop", sprite:doorSprite(token),
+               unlinked:false, kind:"zone", hideName:true };
     // a door: real HP / Def / DR for the damage tools, but scenery everywhere else (see DOORS)
     if(isDoorToken(token)){
       const max = doorMaxHP(token); let cur = token.hp; if(cur==null) cur = max;
@@ -53168,16 +54064,24 @@ function applyTurnStartRegen(owner){
   });
   return gained ? `${ownerLabel(owner)} +${gained} HP (${names.join(", ")})` : null;
 }
-function advanceInitiative(map, meta, dir){
+function advanceInitiative(map, meta, dir, opts){
+  opts = opts || {};
   const list = initiativeList(map); if(!list.length) return;
   const endingId = initEntryToken(meta.initTurnId), endingSeq = meta.initSeq||0;
-  let idx = list.findIndex(e=>e.id===meta.initTurnId);
+  /* ⏩ Borrowed Time (the Holy Corpse's Legs): `opts.to` jumps straight to one entry. When the turn
+     that is ending was BORROWED, play goes back to whoever it interrupted — they carry on with the turn
+     they were already in, so nothing about it starts twice (noStart). */
+  const bt = meta.borrowed || null;
+  if(dir>0 && !opts.to && bt && bt.active && endingId === bt.tok){ bt.active = false; opts = Object.assign({}, opts, { to: bt.returnTo, noStart: true }); }
+  let toIdx = -1;
+  if(opts.to){ toIdx = list.findIndex(e=>e.id===opts.to); if(toIdx<0) toIdx = list.findIndex(e=>initEntryToken(e.id)===initEntryToken(opts.to)); }
+  let idx = toIdx>=0 ? toIdx : list.findIndex(e=>e.id===meta.initTurnId);
   // The exact ENTRY can be absent for a beat even though the combatant is still very much in the
   // fight: a transiently-unresolved link (see initiativePanel), or a Swarm/Boss whose act count
   // shrank so "<tokenId>#3" no longer exists. Resolve to that same TOKEN's first entry before
   // giving up — silently restarting from the top of the order is what read as the tracker
   // "rolling back" on every press of ▶.
-  if(idx<0 && meta.initTurnId){
+  if(toIdx<0 && idx<0 && meta.initTurnId){
     const tok = initEntryToken(meta.initTurnId);
     idx = list.findIndex(e=>initEntryToken(e.id)===tok);
     if(idx<0){
@@ -53199,10 +54103,24 @@ function advanceInitiative(map, meta, dir){
       }
     }
   }
-  idx = idx<0 ? 0 : idx+dir;   // genuinely unknown (first ▶ of a fight) → start at the top
-  let wrapped=false;
-  if(idx>=list.length){ idx=0; wrapped=true; }        // stepped past the last combatant → a new round begins
-  else if(idx<0){ idx=list.length-1; }                // stepping back before the first (not a round change)
+  let wrapped=false, skipLine="";
+  if(toIdx<0){
+    idx = idx<0 ? 0 : idx+dir;   // genuinely unknown (first ▶ of a fight) → start at the top
+    if(idx>=list.length){ idx=0; wrapped=true; }        // stepped past the last combatant → a new round begins
+    else if(idx<0){ idx=list.length-1; }                // stepping back before the first (not a round change)
+    /* ⏩ Borrowed Time: the holder already took the turn this slot would give them — step past it, once */
+    const b2 = meta.borrowed;
+    if(dir>0 && b2 && !b2.active && list[idx] && list[idx].act===0 && initEntryToken(list[idx].id)===b2.tok){
+      const landRound = (meta.initRound||1) + (wrapped?1:0);
+      if(landRound > (b2.skipRound||0) + 1) delete meta.borrowed;           // stale: that round has come and gone
+      else if(landRound >= (b2.skipRound||0)){
+        skipLine = `\u23E9 ${list[idx].info.name} already took this turn (Borrowed Time)`;
+        delete meta.borrowed;
+        idx++;
+        if(idx>=list.length){ idx=0; wrapped=true; }
+      }
+    }
+  }
   meta.initTurnId = list[idx].id;
   if(wrapped){ meta.initRound=(meta.initRound||1)+1; resetMapMovement(map); refreshSwarmRounds(map); }   // round ends → reset movement (like ↺ New round)
   if(wrapped && typeof contestOnRoundWrap==="function") try{ contestOnRoundWrap(meta.initRound); }catch(e){ console.error(e); }   // 🎀 Battle Contest round count
@@ -53213,7 +54131,7 @@ function advanceInitiative(map, meta, dir){
   if(dir>0){
     meta.initSeq = endingSeq + 1;
     const seen = new Set();
-    combatTokens(map).forEach(tok=>{
+    if(!opts.noEnd) combatTokens(map).forEach(tok=>{   // Borrowed Time jumps in WITHOUT ending anyone's turn
       const L = tok.link ? tokenLinked(tok) : null; const owner = L && L.obj;
       if(!owner || seen.has(owner)) return; seen.add(owner);       // one creature may back several tokens
       const gone = expireTurnBuffs(owner, endingId, endingSeq);
@@ -53222,17 +54140,19 @@ function advanceInitiative(map, meta, dir){
   }
   // Leftovers & co. pay out as the new combatant's turn begins
   const regenLines = [];
-  if(dir>0){
+  if(dir>0 && !opts.noStart){
     const start = list[idx];
     const L = (start && start.act===0 && start.token.link) ? tokenLinked(start.token) : null;
     const line = (L && L.obj && !L.missing) ? applyTurnStartRegen(L.obj) : null;
     if(line){ regenLines.push(line); commitTokenSource(start.token); }
   }
   // Trick-or-Treat's 5 turns / Roost's "until the start of its next turn"
-  const typeEnded = dir>0 ? tickTypeModTurns(map, endingId, endingSeq, initEntryToken(meta.initTurnId), meta.initSeq||0) : [];
-  const hookLines = dir>0 ? runAbilityTurnHooks(map, endingId, (list[idx] && list[idx].act===0) ? list[idx].token : null) : [];
-  const pendDue = dir>0 ? tickPendingTurns(map, endingId, endingSeq, initEntryToken(meta.initTurnId), meta.initSeq||0) : [];
-  const perishLines = dir>0 ? tickPerishCount(map, initEntryToken(meta.initTurnId)) : [];   // Perish Song's count, at the start of the turn
+  const endId = opts.noEnd ? null : endingId, startId = opts.noStart ? null : initEntryToken(meta.initTurnId);
+  const typeEnded = dir>0 ? tickTypeModTurns(map, endId, endingSeq, startId, meta.initSeq||0) : [];
+  const hookLines = dir>0 ? runAbilityTurnHooks(map, endId, (!opts.noStart && list[idx] && list[idx].act===0) ? list[idx].token : null) : [];
+  const pendDue = dir>0 ? tickPendingTurns(map, endId, endingSeq, startId, meta.initSeq||0) : [];
+  const perishLines = (dir>0 && !opts.noStart) ? tickPerishCount(map, initEntryToken(meta.initTurnId)) : [];   // Perish Song's count, at the start of the turn
+  const corpseLines = dir>0 ? corpseTickTurns(map, meta, endId, endingSeq, startId, meta.initSeq||0, wrapped) : [];   // THE HOLY CORPSE: timed chips, the Scales' 3 rounds
   // Optimistic: repaint the board NOW so the turn advances instantly, then sync in the background
   // (awaiting the Supabase round-trips first is what made "Next turn" feel laggy). Realtime echoes
   // are dropped by the mapMeta/mapTokens updated_at guards, so the background writes are safe.
@@ -53243,6 +54163,8 @@ function advanceInitiative(map, meta, dir){
   hookLines.forEach(l => toast(`✨ ${l}`));
   if(pendDue.length) toast(`⏳ ${pendDue.join(" · ")}`);
   if(perishLines.length) toast(perishLines.join(" · "));
+  if(corpseLines.length) toast(`\u{1F56F} ${corpseLines.join(" · ")}`);
+  if(skipLine) toast(skipLine);
   if(regenLines.length) toast(`\u{1F34E} ${regenLines.join(" · ")}`);
   if(wrapped){ mapTokensSave(); toast(`↺ Round ${meta.initRound} — movement reset`); }
 }
@@ -53349,6 +54271,14 @@ function initiativePanel(map, meta){
       row.append(el("span",{class:"init-floor",title:`On ${floorLabel(fl)}`}, up?"⬆":"⬇"));
     }
     row.append(el("span",{class:"muted",style:"font-size:10px",title:"Speed + bonus"}, String(e.init)));
+    /* ⏩ Borrowed Time (the Holy Corpse's Legs): the GM hands a holder their next turn right now */
+    if(cloud.isGM && e.act===0 && !cur){
+      const lo = e.info && e.info.obj;
+      if(lo && hasCorpse(lo, "legs") && corpseUses(lo, "legs").left > 0)
+        row.append(el("span",{style:"cursor:pointer;font-size:12px;line-height:1",
+          title:`\u23E9 Borrowed Time \u2014 ${name} takes their next turn right now`,
+          onclick:ev=>{ ev.stopPropagation(); corpseBorrow(map, meta, e.token, lo, null); }}, "\u23E9"));
+    }
     if(cloud.isGM){
       // the bonus/remove controls belong to the TOKEN, so only the swarm's first entry shows them
       if(e.act===0){
@@ -54857,6 +55787,7 @@ function endCombatCreature(o){
     const n = o.buffs.length; o.buffs = o.buffs.filter(b=>!isCombatDurBuff(b));
     if(o.buffs.length !== n) ch = true;
   }
+  if(corpseEndScene(o)) ch = true;      // THE HOLY CORPSE
   if(resetManualCS(o)) ch = true;
   if(clearSceneStatuses(o)) ch = true;
   if(o.uses){ const n = Object.keys(o.uses).length; resetUses(o, "eot"); if(Object.keys(o.uses).length !== n) ch = true; }
@@ -56249,6 +57180,11 @@ function openHazardMenu(token, map){
    Broken is "0 HP", derived rather than stored, so ↩ undo of the hit that smashed it rebuilds it.
 =================================================================== */
 function isDoorToken(t){ return !!(t && t.door); }
+/* A PROP is a door token with `prop` set: the same bottom-anchored picture on the board (doorImg,
+   doorW/H in squares, doorOX/OY nudge), but no walls, no HP, no lock and never a target — just a
+   thing standing there that the GM can tap and take away. The Desert's 32 Ominous Stakes are props
+   (`propGroup` = the Treasure of Ruin each one seals, `propText` = what it is). */
+function isPropToken(t){ return !!(t && t.door && t.prop); }
 /* the bundled art, served from our own origin (never inlined into the synced row) */
 const DOOR_ART = [
   { key:"bars",  name:"Barred cell door", src:"assets/door-bars.png?v=1",  w:1, h:1.5, see:true  },
@@ -56280,7 +57216,7 @@ function doorFootprint(t){
 }
 function doorMaxHP(t){ return Math.max(1, Math.round(+t.maxHp || DOOR_PRESETS[0].hp)); }
 function doorBroken(t){ return isDoorToken(t) && t.hp != null && t.hp <= 0; }
-function doorBlocks(t){ return isDoorToken(t) && !t.open && !doorBroken(t); }
+function doorBlocks(t){ return isDoorToken(t) && !t.prop && !t.open && !doorBroken(t); }
 function doorSeeThrough(t){ return t.doorSee != null ? !!t.doorSee : !!(doorArt(t) || {}).see; }
 function doorSkillLabel(t){ const k = (t && t.pickSkill) || "stealth"; return (SKILLS.find(s => s[0] === k) || [k, k])[1]; }
 /* one Type's override on this door: "immune", a step on the ladder (+1 weak … −2 doubly resisted), or 0 */
@@ -56506,7 +57442,32 @@ function openDoorPick(token, map){
 }
 /* Tap a door. Everyone gets its state and Open / Close / Pick; the GM also gets the whole build:
    art and fit, toughness, the Type chart, the lock, and a manual damage box. */
+/* Tap a prop. Everyone sees what it is; the GM can pull it (remove it from the board on the spot)
+   or hide it from the players. A set (propGroup) says how many of it are still standing here. */
+function openPropMenu(token, map){
+  const gm = cloud.isGM;
+  const kin = token.propGroup ? mapTokensFor(map.id).filter(t => isPropToken(t) && t.propGroup === token.propGroup) : [];
+  const body = el("div",{},
+    el("div",{style:"display:flex;justify-content:center;margin-bottom:8px"},
+      el("img",{src:doorImgSrc(token),alt:"",style:"height:120px;image-rendering:pixelated"})),
+    (gm && token.propText) ? el("div",{class:"small",style:"text-align:center;margin-bottom:8px"}, token.propText) : "",
+    (gm && token.propGroup) ? el("div",{class:"small muted",style:"text-align:center"},
+      `${kin.length} ${token.propGroup} ${token.prop === "stake" ? "stake" : "prop"}${kin.length === 1 ? "" : "s"} still standing on this map`) : "");
+  const foot = [el("button",{class:"btn-secondary",onclick:closeModal},"Close")];
+  if(gm) foot.unshift(
+    el("button",{class:"btn-secondary",title:"hide it from the players (it stays on your board)",
+      onclick:() => { if(token.gmHidden) delete token.gmHidden; else token.gmHidden = true; mapTokensSave(); renderMap(); closeModal(); }},
+      token.gmHidden ? "\u{1F441} Show to players" : "\u{1F648} Hide from players"),
+    el("button",{class:"btn-primary",title:"take it off the map for good",
+      onclick:async () => { closeModal(); await removeToken(token, map);
+        const left = kin.length - 1;
+        toast(`\u{1FA93} ${token.label || "Prop"} removed` + (token.propGroup ? ` — ${left} ${token.propGroup} left` : "")); }},
+      "\u{1FA93} Pull out (remove)"));
+  // players see only what it LOOKS like (propName); the GM's label can say whose seal it is
+  modal({ title:(gm ? token.label : token.propName) || token.label || "Prop", bodyNode:body, footNodes:foot });
+}
 function openDoorMenu(token, map){
+  if(isPropToken(token)) return openPropMenu(token, map);
   const gm = cloud.isGM, px = map.gridSize;
   const wrap = el("div",{});
   const top = el("div",{});
@@ -57592,6 +58553,13 @@ function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, so
   const stepAdj = swarmStep + extraStep + formeAdj + vulnStep + defExtraStep;         // Swarm + the GM's manual effectiveness nudge + Forme
   const typeless = !type || type==="Typeless";
   const owner = token.link ? (tokenLinked(token)||{}).obj : null;
+  /* THE HOLY CORPSE: Vorpal (one step more vulnerable to all damage), Inverted (the chart flips),
+     Unmade (no Resistances or Immunities — handled after the ladder, below) */
+  const cVuln = (owner && Array.isArray(owner.statuses) && owner.statuses.includes("vorpal")) ? 1 : 0;
+  const cInv = !!(owner && Array.isArray(owner.statuses) && owner.statuses.includes("inverted"));
+  const cUnmade = !!(owner && Array.isArray(owner.statuses) && owner.statuses.includes("unmade"));
+  if(cVuln) abNotes.push("Vorpal Strike: one step more vulnerable to all damage");
+  if(cInv && !typeless) abNotes.push("Inverted (the Scales): its Weaknesses and Resistances are swapped");
   const soundproof = !!(sonic && owner && ownerHasAbility(owner, "Soundproof"));
   const defMods = owner ? defenseTypeMods(owner, { moldBreaker: !!atkMold }) : null;
   // an attacker-side effect may ignore immunity to this Type (Bone Wielder [Errata] vs Ground) —
@@ -57615,7 +58583,7 @@ function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, so
   const deiStep = deicide ? 1 : 0;
   // Typeless (Struggle) has no chart to walk, so read the ladder directly - it eats both steps
   if(soundproof) mult = 0;                                   // Soundproof: immune to Sonic Moves
-  else if(typeless) mult = ptuEffMult(deiStep + (furActive ? -1 : 0) + (rogueActive ? -1 : 0));
+  else if(typeless) mult = ptuEffMult(deiStep + cVuln + (furActive ? -1 : 0) + (rogueActive ? -1 : 0));
   else if(defMods && defMods.immune.has(type) && !pierced){
     /* Transistor / Dragon's Maw: an immune target is treated as initially double-resisted, then one step more vulnerable.
        Corrosion: Poison damage reaches an immune target as if it were doubly resisted. */
@@ -57632,13 +58600,13 @@ function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, so
     mult = (!groundExempt && VEHICLE_WEAK_TYPES.has(type)) ? 2 : 1;
   }
   else {
-    const defStep = stepAdj + deiStep + (defMods?.step?.[type] || 0) + doorResistStep(token, type);
+    const defStep = stepAdj + deiStep + cVuln + (defMods?.step?.[type] || 0) + doorResistStep(token, type);
     if(furActive) furStep = -1;
     if(rogueActive) rogueStep = -1;
-    const mOptsPlain = { pierceImmune: pierced, chart: chartOv };
+    const mOptsPlain = { pierceImmune: pierced, chart: chartOv, invert: cInv };
     const corrosionOn = !!corrosion && type === "Poison";
     const chartImm = (vulnStep > 0 || corrosionOn) && !pierced && typeMultAgainst(type, tokenDefTypes(token), 0, { chart: chartOv }) === 0;
-    const mOpts = (vulnStep > 0 || corrosionOn) ? { pierceImmune: pierced, chart: chartOv, immuneAs: -2 } : mOptsPlain;
+    const mOpts = (vulnStep > 0 || corrosionOn) ? { pierceImmune: pierced, chart: chartOv, immuneAs: -2, invert: cInv } : mOptsPlain;
     if(chartImm) abNotes.push(vulnStep > 0 ? "immunity ignored: doubly resisted, then one step more vulnerable" : "Corrosion: immune target takes damage as if doubly resisted");
     chartUsed = !!chartOv && tokenDefTypes(token).some(dt => chartOv[dt] != null);
     mult = typeMultAgainst(type, tokenDefTypes(token), defStep + furStep + rogueStep, mOpts);
@@ -57680,6 +58648,10 @@ function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, so
       const up2 = Math.min(1, typeMultAgainst(type, tokenDefTypes(token), defStep + furStep + rogueStep + tolStep + 1, mOpts));
       if(up2 !== mult){ mult = up2; abNotes.push("Corrosion: resisted one step less"); }
     }
+  }
+  /* the Left Arm's Unmade: no Resistances or Immunities, so anything below neutral lands neutral (Vorpal still adds its step) */
+  if(cUnmade && !isBoatToken(token) && !isDoorToken(token) && mult < 1){
+    mult = ptuEffMult(cVuln); abNotes.push("Unmade: no Resistances or Immunities \u2014 it lands neutral");
   }
   /* Normalize [Errata]: the user's attacks cannot be Super-Effective or Resisted, and the user takes neutral damage from
      everything it isn't immune to. Immunities are untouched. */
@@ -58583,6 +59555,10 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     wrap.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;margin-bottom:6px;cursor:pointer"},
       stakeCb, el("span",{class:"small",style:"font-weight:700;color:var(--accent)"},
         "\u{1F3AF} Stakeout: the ticked targets were released from a Poke Ball or entered the encounter since my last turn (+2d6+4 damage each)")));
+  /* THE HOLY CORPSE: Excalibur in the Right Arm strips one Combat Stage on every hit */
+  const excalSel = corpseExcaliburSelect(ctx);
+  if(excalSel) wrap.append(el("div",{class:"inline small",style:"display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap"},
+    el("span",{style:"font-weight:700;color:var(--accent)"}, "\u{1F5E1} Excalibur (the Right Arm): every target it hits loses 1 Combat Stage in"), excalSel));
   /* Sequence [Errata]: +3 damage per ADJACENT allied Electric-Type Pokemon \u2014 the board knows who is standing where */
   let seqN = 0;
   if(A0 && atkTok0 && hasAB("sequence [errata]") && typeName === "Electric"){
@@ -58618,7 +59594,8 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
   const apply = async ()=>{
     if(applyBusy) return;
     applyBusy = true;
-    try{ await applyHit(); } finally{ applyBusy = false; }
+    if(typeof contestNoteHit==="function") try{ contestNoteHit(ctx); }catch(e){}      // 🎀 Battle Contest: who made this hit (a knockout's +2 Voltage goes to them)
+    try{ await applyHit(); } finally{ applyBusy = false; if(typeof contestEndHit==="function") try{ contestEndHit(); }catch(e){} }
   };
   const applyHit = async ()=>{
     const chosen = items.filter(i=>i.cb.checked);
@@ -58808,6 +59785,15 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
         else { pbTxt = applyPopBombFx(o, pbOn, it.t).join(" \u00B7 "); await commitTokenSource(it.t); }
         line.append(el("div",{class:"small",style:"color:var(--accent);font-weight:600"}, `\u{1F4A3} ${pbTxt}`));
       }
+      if(excalSel && excalSel.value){                      // THE HOLY CORPSE: the Right Arm's Excalibur
+        const oX = tokenHp(it.t).obj;
+        if(oX && br.mult !== 0 && !br.shielded){
+          const cX = applyCSFx(oX, [{ stats:[excalSel.value], n:-1 }], { foe:true });
+          if(cX.moved.length) await commitTokenSource(it.t);
+          line.append(el("div",{class:"small",style:"color:var(--accent);font-weight:600"},
+            `\u{1F5E1} Excalibur: ${cX.moved.length ? cX.moved.join(", ") : "no Combat Stage moved" + (cX.held.length ? ` (${cX.held.join(", ")})` : "")}`));
+        }
+      }
       { const felled = tokenHp(it.t).cur <= 0;
         const rx = reactionsNode(it.t, br, ctx, felled); if(rx) line.append(rx);
         const mr = moveReactionsNode(it.t, br, ctx, felled); if(mr) line.append(mr); }   // Counter / Mirror Coat
@@ -58836,6 +59822,8 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     try{ flayedOffer(ctx, injured, undoRec, out); }catch(e){ console.error("Touch of the Flayed One", e); }
     /* Equilibrium's Due: a holder on the board saw herself or an ally in reach lose HP → ask the GM */
     try{ dueOffer(ctx, hpHit, undoRec, out); }catch(e){ console.error("Equilibrium's Due", e); }
+    /* THE HOLY CORPSE: somebody fell — a Heart nearby can stand an ally up, a Head can raise a foe's Pokémon */
+    try{ corpseApplyOffers(stageHits, out); }catch(e){ console.error("Holy Corpse", e); }
     if(typeof stageOnApply==="function") try{ await stageOnApply({ ctx, attacker:A0, atkTok:atkTok0, hits:stageHits, critExtra, dealt:dealtTotal, out }); }catch(e){ console.error(e); }   // 🎭 stage.js
     if(onDealt) onDealt(dealtTotal, chosen.length, drained ? drained.paid : null);   // drain / Recoil now have their real number
     undoBtn.style.display = "";                                 // …and offer to take it straight back
@@ -59330,7 +60318,7 @@ function openTokenMenu(token, map){
       const veilObj = (VL0 && VL0.obj && !VL0.missing) ? VL0.obj : null;
       const veils = veilObj ? statusVeilsFor(veilObj) : [];   // Aroma / Sweet / Pastel Veil
       [["persistent","Persistent"],["volatile","Volatile"],["other","Other"]].forEach(([kind,label])=>{
-        const defs = STATUS_DEFS.filter(s=>s.kind===kind).filter(s=>statusPickable(s) || active.includes(s.key));
+        const defs = STATUS_DEFS.filter(s=>s.kind===kind).filter(s=>(statusPickable(s) && !s.corpse) || active.includes(s.key));
         if(!defs.length) return;
         statusWrap.append(el("div",{class:"small muted",style:"margin:6px 0 3px"}, label));
         const chips = el("div",{class:"chips"});
@@ -59927,7 +60915,7 @@ function enemyTokenRows(){
 /* Enemies grouped by encounter (mirrors playerTokenGroups) so the Add-token list is separated
    per encounter instead of one flat list. */
 function enemyTokenGroups(){
-  return encList().filter(enc=>!enc.archived).map(enc=>{
+  return encList().filter(enc=>!enc.archived && inSiteRegion(enc)).map(enc=>{
     const rows = [];
     /* An encounter marked hideTokens drops every token onto the board already 🙈 hidden, so the
        GM can set an ambush up in front of the players without showing it. Same flag the bulk
@@ -60238,6 +61226,7 @@ async function newMap(){
      and the name only has to leak once. The GM opens it up with 🏷 in the drawer's Maps group when
      the party has arrived. Maps that already existed keep whatever they had (see normMapMeta). */
   const m = { id:uid(), name:name||"Map", images:[], gridSize:32, gridOn:true, fogOn:false, fogRadius:3, archived:false, hideName:true };
+  if(siteRegion) m.region = siteRegion;          // made in a region → filed under it (REGIONS)
   cloud.mapMeta.data.maps.push(m); cloud.mapMeta.data.activeMapId = m.id; mapGmView = m.id;
   mapView = { scale:1, panX:0, panY:0 };
   mapMetaSave(); renderMap();
@@ -60285,7 +61274,7 @@ function openArchivedMaps(){
   const wrap = el("div",{});
   const draw = () => {
     wrap.innerHTML = "";
-    const archived = meta.maps.filter(m=>m.archived);
+    const archived = meta.maps.filter(m=>m.archived && inSiteRegion(m));
     if(!archived.length){ wrap.append(el("div",{class:"r-body"},"No archived maps.")); return; }
     archived.forEach(m=>{
       const row = el("div",{class:"inline", style:"justify-content:space-between;padding:6px 0"});
@@ -60444,10 +61433,27 @@ function mapTileRect(){
 }
 let mapTilesRect = null;        // stage-space rect the sharp tiles currently in the DOM were built for
 
+/* A tile grid lists its pictures either one by one (`srcs`, what tileMapImage writes) or as ONE
+   pattern (`tpl`, "…/L0/r{r}_c{c}.png") — the Desert's ~1,300 offline tiles would otherwise put
+   140 KB of URLs into the hot map row that every client syncs. Expanded once per grid object. */
+const mapTplCache = new WeakMap();
+function mapTileSrcList(t){
+  if(!t) return null;
+  if(Array.isArray(t.srcs)) return t.srcs;
+  if(typeof t.tpl !== "string" || !t.tpl || !(t.cols > 0) || !(t.rows > 0)) return null;
+  let a = mapTplCache.get(t);
+  if(!a){
+    a = [];
+    for(let r=0; r<t.rows; r++) for(let c=0; c<t.cols; c++) a.push(t.tpl.split("{r}").join(r).split("{c}").join(c));
+    mapTplCache.set(t, a);
+  }
+  return a;
+}
 function mapImgTiles(im){
   const t = im && im.tiles;
-  if(!t || !Array.isArray(t.srcs) || !t.cols || !t.rows || !t.tw || !t.th || !t.natW || !t.natH) return null;
-  return t;
+  const srcs = mapTileSrcList(t);
+  if(!t || !srcs || !t.cols || !t.rows || !t.tw || !t.th || !t.natW || !t.natH) return null;
+  return srcs === t.srcs ? t : Object.assign({}, t, { srcs });
 }
 /* Does the overview already carry at least one image pixel per screen pixel? If so there is
    nothing sharper to show and the tiles would be pure cost. */
@@ -60458,13 +61464,31 @@ function mapLodIsSharp(im){
 }
 /* The native-resolution tiles worth attaching over one background right now — [] whenever the
    overview is doing the job on its own, which is the common case. */
-function mapImageTiles(im, originX, originY){
+/* The native tiles plus any coarser pyramid levels the image carries, finest first. A level is
+   `im.pyr[i] = {k, tw, th, cols, rows, srcs[]}`: the whole image at 1/k, cut into tiles exactly
+   like im.tiles. Only boards far too big for the browser to slice carry one (the Desert overworld,
+   38,400 × 25,600 px, sliced offline by export_web.py): there the overview is ~19× too coarse for
+   every zoom between "whole map" and "a town", and the native tiles at that zoom are far over the
+   budget, so without the middle levels that whole band would stay blurry. */
+function mapImgLevels(im){
   const T = mapImgTiles(im);
-  if(!T || !im.lod || !im.lod.src || mapLowDetail() || mapLodIsSharp(im)) return [];
+  if(!T) return [];
+  const out = [{ k:1, T }];
+  (Array.isArray(im.pyr) ? im.pyr : []).forEach(L => {
+    const srcs = mapTileSrcList(L);
+    if(!L || !(L.k > 1) || !srcs || !L.cols || !L.rows || !L.tw || !L.th) return;
+    out.push({ k:L.k, T:{ tw:L.tw, th:L.th, cols:L.cols, rows:L.rows,
+      natW:Math.ceil(T.natW/L.k), natH:Math.ceil(T.natH/L.k), srcs } });
+  });
+  return out.sort((x, y) => x.k - y.k);
+}
+function mapImageTiles(im, originX, originY){
+  const levels = mapImgLevels(im);
+  if(!levels.length || !im.lod || !im.lod.src || mapLowDetail() || mapLodIsSharp(im)) return [];
   const x0 = im.x+originX, y0 = im.y+originY;
-  const kx = (im.w||T.natW)/T.natW, ky = (im.h||T.natH)/T.natH;       // natural px → stage px
   const budget = (mapLowDetail()?MAP_TILE_BUDGET_MP_LO:MAP_TILE_BUDGET_MP)*1e6;
-  const gather = box => {
+  const gather = (T, box) => {
+    const kx = (im.w||levels[0].T.natW)/T.natW, ky = (im.h||levels[0].T.natH)/T.natH;   // level px → stage px
     const got = []; let spend = 0;
     for(let r=0; r<T.rows; r++) for(let c=0; c<T.cols; c++){
       const src = T.srcs[r*T.cols+c];
@@ -60478,15 +61502,23 @@ function mapImageTiles(im, originX, originY){
     }
     return (got.length && spend <= budget) ? got : null;
   };
-  /* Zooming OUT grows the ring faster than the overview gains sharpness, so there is a band —
-     measured at roughly 0.2–0.4 on the Isles — where the padded ring busts the budget while the
+  /* Start at the coarsest level that still has a pixel per screen pixel (the native tiles when
+     there are no other levels, i.e. every ordinary map).
+     Zooming OUT grows the ring faster than the overview gains sharpness, so there is a band --
+     measured at roughly 0.2-0.4 on the Isles -- where the padded ring busts the budget while the
      overview is still visibly soft. Rather than hand that whole band back to the blurry overview,
-     try again with no padding at all: exactly what is on screen and not a pixel more. Only if THAT
-     is still too much do we give up, and by then the board is zoomed out far enough that the
-     overview is within a few percent of sharp anyway. The rect we actually settled on is what
-     mapCullStale watches, so a no-padding build correctly re-renders as soon as the camera moves. */
-  let box = mapTileRect(), want = gather(box);
-  if(!want){ box = mapVisibleRect(); want = gather(box); }
+     try again with no padding at all: exactly what is on screen and not a pixel more; then a
+     coarser level, if the image has one. Only if all of that is still too much do we give up. The
+     rect we actually settled on is what mapCullStale watches, so a no-padding build correctly
+     re-renders as soon as the camera moves. */
+  const need = Math.abs(im.w||levels[0].T.natW) * (mapView.scale||1) * 0.95;
+  let start = 0;
+  levels.forEach((Lv, i) => { if(Lv.T.natW >= need) start = i; });
+  let box = null, want = null;
+  for(let i=start; i<levels.length && !want; i++){
+    box = mapTileRect(); want = gather(levels[i].T, box);
+    if(!want){ box = mapVisibleRect(); want = gather(levels[i].T, box); }
+  }
   if(!want) return [];
   mapTilesRect = box;
   // Grown by half a pixel so neighbouring tiles overlap instead of leaving a hairline seam wherever
@@ -60503,8 +61535,8 @@ function mapDropImageParts(im){
   if(!im) return;
   const gone = [];
   if(im.lod && im.lod.src) gone.push(im.lod.src);
-  if(im.tiles && Array.isArray(im.tiles.srcs)) gone.push(...im.tiles.srcs);
-  delete im.lod; delete im.tiles;
+  [im.tiles, ...(Array.isArray(im.pyr) ? im.pyr : [])].forEach(t => { const a = mapTileSrcList(t); if(a) gone.push(...a); });
+  delete im.lod; delete im.tiles; delete im.pyr;
   gone.forEach(src => { if(typeof src==="string" && src && !mapImgInUse(src, im)) removeStoredImg(src); });
 }
 
@@ -60582,6 +61614,9 @@ async function tileMapImage(map, im){
   if(mode!=="cloud" || !cloud.client || !cloud.campaign)
     return toast("⚠ Slicing needs a cloud campaign — the pieces are uploaded to Storage");
   if(im.anim) return mapAnimToast();
+  // a pre-sliced giant (im.pyr): its src is only the overview, so slicing it here would throw the real tiles away
+  if(Array.isArray(im.pyr) && im.pyr.length)
+    return toast("🧩 This picture was sliced offline (too big for a browser) — re-export it with export_web.py instead");
   let bmp = null;
   toast("🧩 Reading the image…");
   try{
@@ -61162,8 +62197,9 @@ function renderMap(){
   };
   if(cloud.isGM){
     // — Maps group: private browsing + push to players —
-    const liveMaps = meta.maps.filter(m=>!m.archived);
-    const archivedMaps = meta.maps.filter(m=>m.archived);
+    const liveMaps = meta.maps.filter(m=>!m.archived && inSiteRegion(m));
+    const archivedMaps = meta.maps.filter(m=>m.archived && inSiteRegion(m));
+    bar.append(...regionToggleBtns());
     if(liveMaps.length){
       const sel = el("select");
       liveMaps.forEach(m=>sel.append(el("option",{value:m.id,selected:m.id===mapGmView},

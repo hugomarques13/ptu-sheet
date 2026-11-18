@@ -239,12 +239,13 @@ function ctEncById(id){ try{ return (encList()||[]).find(e=>e && e.id===id) || n
 /* ref = {src:"sheet", sheetId, monId} | {src:"enc", encId, trId, monId} → the LIVE objects */
 function ctResolveRef(ref){
   if(!ref) return {};
+  const asT = ref.monId==="__trainer";            // Trainer Participant contests: the Trainer performs too
   if(ref.src==="sheet"){
     const c = ctSheetChar(ref.sheetId); if(!c) return {};
-    return { char:c, trainer:c.trainer||null, mon:(c.pokemon||[]).find(x=>x && x.id===ref.monId) || null };
+    return { char:c, trainer:c.trainer||null, mon: asT ? (c.trainer||null) : ((c.pokemon||[]).find(x=>x && x.id===ref.monId) || null) };
   }
   const e = ctEncById(ref.encId), tr = e && (e.trainers||[]).find(x=>x && x.id===ref.trId);
-  return { enc:e, tr, trainer:(tr && tr.trainer) || null, mon:(tr && (tr.pokemon||[]).find(x=>x && x.id===ref.monId)) || null };
+  return { enc:e, tr, trainer:(tr && tr.trainer) || null, mon: asT ? ((tr && tr.trainer) || null) : ((tr && (tr.pokemon||[]).find(x=>x && x.id===ref.monId)) || null) };
 }
 function ctCanActEnt(ent){
   if(!ent) return false;
@@ -264,8 +265,10 @@ function ctPersistRef(ref){
 }
 function ctImgOf(p){ const s = String((p && p.image) || ""); return (s && !s.startsWith("data:") && s.length < 700) ? s : ""; }
 function ctMonPic(m, cls){ return monSprite(m.species, m.shiny, cls||"s-sm", m.img || undefined); }
-function ctEntName(e){ if(!e) return "?"; return (e.mons && e.mons.length===1) ? `${e.mons[0].name}` : (e.trainer || "Trainer"); }
-function ctEntFull(e){ if(!e) return "?"; return (e.mons && e.mons.length===1) ? `${e.mons[0].name} (${e.trainer})` : e.trainer; }
+/* the Pokémon of a contestant — a Trainer Participant contest adds the Trainer as one more performer (m.trainer) */
+function ctPokes(e){ return (e && e.mons ? e.mons : []).filter(m=>!m.trainer); }
+function ctEntName(e){ if(!e) return "?"; const p = ctPokes(e); return p.length===1 ? `${p[0].name}` : (e.trainer || "Trainer"); }
+function ctEntFull(e){ if(!e) return "?"; const p = ctPokes(e); return p.length===1 ? `${p[0].name} (${e.trainer})` : e.trainer; }
 
 /* ---------- a Pokémon's Contest Stat dice (p.262) ---------- */
 function ctPoffins(p){
@@ -326,6 +329,11 @@ function ctNormEnc(enc){
   if(!CT_STATS.includes(k.ctype)) k.ctype = "Cute";
   k.superRounds = !!k.superRounds;
   k.rotation = !!k.rotation;
+  /* Trainer Participant Contest (p.269): "both" = Trainer AND Pokémon appeal every round, Voltage tracked
+     separately; "alternate" = they take turns, one shared Voltage. Never together with Rotation or a Battle Contest. */
+  if(k.trainerPart!=="both" && k.trainerPart!=="alternate") k.trainerPart = "";
+  if(k.variant==="battle") k.trainerPart = "";
+  if(k.trainerPart) k.rotation = false;
   k.battleCount = Math.max(3, Math.min(6, Math.round(+k.battleCount||3)));
   if(!(+k.sig > 0)) k.sig = 2;
   if(k.expMethod!=="rules") k.expMethod = "example";
@@ -404,11 +412,21 @@ function contestEncounterCards(enc, root){
       title:"p.270: Battle Contests can be double or triple battles. Every opposing Pokémon on the field counts as adjacent."},
       el("span",{},"Format"), fSel));
   } else {
-    const rot = el("input",{type:"checkbox"}); rot.checked = k.rotation;
-    rot.addEventListener("change",()=>{ k.rotation = rot.checked; save(); });
-    row.append(el("label",{class:"inline",style:"gap:6px;cursor:pointer",
-      title:"Rotation Contest (p.269): a different Pokémon each round, each performs once; a contestant can spend at most 2 × (contestants) Contest dice in the whole contest"},
-      rot, el("span",{class:"small",style:"font-weight:700"},"🔄 Rotation (a different Pokémon each round)")));
+    const mode = k.trainerPart ? "tp-"+k.trainerPart : k.rotation ? "rotation" : "single";
+    const pSel = el("select",{});
+    [["single","One Pokémon each (the normal contest)"],
+     ["rotation","🔄 Rotation — a different Pokémon each round"],
+     ["tp-both","🧑‍🎤 Trainer Participant — Trainer AND Pokémon appeal every round (separate Voltage)"],
+     ["tp-alternate","🧑‍🎤 Trainer Participant — Trainer and Pokémon take turns (one shared Voltage)"]]
+      .forEach(([v,l])=>pSel.append(el("option",{value:v,selected:v===mode},l)));
+    pSel.addEventListener("change",()=>{
+      const v = pSel.value;
+      k.rotation = v==="rotation"; k.trainerPart = v.startsWith("tp-") ? v.slice(3) : "";
+      save();
+    });
+    row.append(el("label",{class:"field",style:"min-width:260px;max-width:520px",
+      title:"p.269: Rotation = a different Pokémon each round (each performs once; at most 2 × contestants Contest dice). Trainer Participant = Trainers perform Appeals with their own Moves too — both each round with separate Voltage, or alternating turns with one shared Voltage. Trainer and Pokémon share one pool of Contest dice."},
+      el("span",{},"Who performs"), pSel));
   }
   sc.append(row);
   const nEnt = k.entrants.length;
@@ -440,7 +458,7 @@ function contestEncounterCards(enc, root){
   if(ctGuideOpen[enc.id]!==undefined ? ctGuideOpen[enc.id] : !k.last) gd.open = true;
   gd.addEventListener("toggle",()=>{ ctGuideOpen[enc.id] = gd.open; });
   gd.append(el("summary",{}, `📋 How to run this ${CT_VARIANTS[k.variant].name}`
-      + (k.variant==="battle" ? (k.battleFormat==="teams" ? " (teams)" : " (every Trainer for themselves)") : k.rotation ? " (Rotation)" : "")),
+      + (k.variant==="battle" ? (k.battleFormat==="teams" ? " (teams)" : " (every Trainer for themselves)") : k.rotation ? " (Rotation)" : k.trainerPart==="both" ? " (Trainer Participant — both appeal)" : k.trainerPart==="alternate" ? " (Trainer Participant — alternating)" : "")),
     ctGuideNode(k));
   sc.append(gd);
   root.append(sc);
@@ -712,6 +730,13 @@ function ctBuildRun(enc){
         lastMove:null, ko:false, performed:false, fashionUsed:false }, ref);
     }).filter(Boolean);
     if(!mons.length) return;
+    if(k.trainerPart && variant!=="battle"){
+      const R0 = ctResolveRef(refs[0]), tr = R0.trainer;
+      if(tr) mons.push(Object.assign({ key:uid(), name:tr.name || trainerName || "Trainer", species:"Trainer", shiny:false,
+        img:(tr.avatar && !String(tr.avatar).startsWith("data:") && String(tr.avatar).length<700) ? tr.avatar : "https://play.pokemonshowdown.com/sprites/trainers/youngster.png",
+        level:tr.level||1, dice:{}, used:{}, voltage:0, appeal:0, fumble:0, lastMove:null, ko:false, performed:false, fashionUsed:false, trainer:true },
+        refs[0], { monId:"__trainer" }));
+    }
     ents.push({ id:uid(), encEntId:en.id, src:en.src, sheetId:en.sheetId||null, encId:en.src==="enc"?enc.id:null, trId:en.trId||null,
       trainer: trainerName || (en.src==="sheet" ? "Player" : "NPC"), mons,
       letter:null, appeal:0, fumble:0, voltage:0, intro:null, introDice:{}, introUsed:{}, spent:0, flags:{},
@@ -719,7 +744,7 @@ function ctBuildRun(enc){
   });
   return { id:uid(), encId:enc.id, name:enc.name, variant, ctype:k.ctype, superMode,
            teams, teamNames: teams ? Object.assign({}, k.teamNames) : {},
-           rotation: variant!=="battle" && !!k.rotation, stage:"intro", leg:1, round:1, turn:0,
+           rotation: variant!=="battle" && !!k.rotation, tp: variant!=="battle" ? (k.trainerPart||"") : "", stage:"intro", leg:1, round:1, turn:0,
            rounds: variant==="battle" ? 2*k.battleCount : ents.length, battleCount:k.battleCount,
            roundType: superMode ? null : k.ctype, typeRolls:[], entrants:ents, log:[], moveFix:{},
            startedAt:Date.now() };
@@ -810,7 +835,16 @@ function ctStatusText(run){
   return `${run.variant==="festival"?`Contest ${run.leg} · `:""}Round ${run.round}/${ctRoundsOf(run)}${RT?` · ${RT}`:""}${cur?` · 🎤 ${ctEntName(cur)}`:""}`;
 }
 /* the Voltage holder: the contestant — or, in a Battle Contest, each Pokémon on its own */
-function ctHolder(run, ent, mon){ return run.variant==="battle" ? mon : ent; }
+function ctHolder(run, ent, mon){ return (run.variant==="battle" || run.tp==="both") ? mon : ent; }
+/* Trainer and Pokémon share ONE pool of Contest dice (p.269): the Trainer spends from their Pokémon's */
+function ctPoolOf(ent, mon){ return (mon && mon.trainer) ? ((ent.mons||[]).find(m=>!m.trainer) || mon) : mon; }
+/* who may still perform this stage turn: "both" = whoever hasn't appealed this turn, "alternate" = the one whose turn it is */
+function ctTpKey(run){ return `${run.leg||1}:${run.round}:${run.turn}`; }
+function ctTpAvail(run, ent){
+  if(!run.tp) return ent.mons;
+  if(run.tp==="alternate"){ const t = ent.mons.find(m=>m.trainer), p = ent.mons.find(m=>!m.trainer); const want = (ent.tpLast==="p" ? t : p) || p || ent.mons[0]; return [want]; }
+  const key = ctTpKey(run); return ent.mons.filter(m=>m.doneKey!==key);
+}
 function ctMonOnField(m){
   try{ const p = ctResolveRef(m).mon; return !!(p && tokenForOwner(p)); }catch(e){ return false; }
 }
@@ -830,11 +864,15 @@ function ctAdjacent(run, ent, mon){
     return out;
   }
   const st = ctStageLine(run), i = st.indexOf(ent);
-  return [st[i-1], st[i+1]].filter(Boolean).map(e=>({ ent:e, mon:null, H:e }));
+  const nb = [st[i-1], st[i+1]].filter(Boolean);
+  /* Trainer Participant, separate Voltage: effects that hit an adjacent contestant hit the Trainer AND the Pokémon */
+  if(run.tp==="both") return nb.flatMap(e=>e.mons.map(m=>({ ent:e, mon:m, H:m })));
+  return nb.map(e=>({ ent:e, mon:null, H:e }));
 }
 function ctIsCenter(run, ent){ return run.variant==="battle" ? !!ent.centerNext : ctOrder(run)[0]===ent; }
 function ctDiceLeft(ent, mon, T){
   if(!T) return 0;
+  mon = ctPoolOf(ent, mon);
   return Math.max(0, ((mon && mon.dice && mon.dice[T])||0) - ((mon && mon.used && mon.used[T])||0))
        + Math.max(0, ((ent.introDice||{})[T]||0) - ((ent.introUsed||{})[T]||0));
 }
@@ -1036,25 +1074,28 @@ function ctApply(run, ent, mon, choice, plan, dice){
   }
   const vBefore = H.voltage||0;
   H.voltage = ctClampV(vSelf);
-  if(H.voltage!==vBefore) notes.unshift(`${run.variant==="battle"?mon.name:ctEntName(ent)} ${H.voltage>vBefore?"+":""}${H.voltage-vBefore} Voltage (now ${H.voltage})`);
+  if(H.voltage!==vBefore) notes.unshift(`${H===mon?mon.name:ctEntName(ent)} ${H.voltage>vBefore?"+":""}${H.voltage-vBefore} Voltage (now ${H.voltage})`);
   /* Contest dice: the Pokémon's own first, then the Trainer's from the Introduction */
   let need = choice.spend||0;
   if(need){
-    const T = choice.T; mon.used = mon.used || {}; ent.introUsed = ent.introUsed || {};
-    const fromMon = Math.min(need, Math.max(0, ((mon.dice||{})[T]||0) - (mon.used[T]||0)));
-    mon.used[T] = (mon.used[T]||0) + fromMon; need -= fromMon;
+    const T = choice.T, pool = ctPoolOf(ent, mon); pool.used = pool.used || {}; ent.introUsed = ent.introUsed || {};
+    const fromMon = Math.min(need, Math.max(0, ((pool.dice||{})[T]||0) - (pool.used[T]||0)));
+    pool.used[T] = (pool.used[T]||0) + fromMon; need -= fromMon;
     if(need) ent.introUsed[T] = (ent.introUsed[T]||0) + need;
     ent.spent = (ent.spent||0) + (choice.spend||0);
   }
   if(choice.align){ ent.flags = ent.flags || {}; ent.flags["align:"+choice.align] = true; notes.push(`${choice.align}: one step more aligned`); }
   if(choice.adapt){ ent.flags = ent.flags || {}; ent.flags.adapt = true; mon.banned = choice.adapt.slice(); mon.banRound = run.round + 1;
                     notes.push(`Adaptable Performance — ${choice.adapt.join(" & ")} can't be used next round`); }
-  mon.lastMove = choice.move; mon.performed = true;
-  if(run.variant==="battle"){ ent.activeKey = mon.key; if(plan.center) ent.centerNext = false; }
+  mon.lastMove = choice.move; mon.performed = true; mon.lastRound = run.round;
+  if(run.variant==="battle"){ mon.appealTurn = ctTurnKey(); mon.appealMove = choice.move; ent.activeKey = mon.key; if(plan.center) ent.centerNext = false; }
   return { id:uid(), kind:"perf", at:Date.now(), round:run.round, turn:run.turn, leg:run.leg, eid:ent.id, mkey:mon.key,
            who:mon.name, trainer:ent.trainer, move:choice.move, T:choice.T, fx, rel:plan.rel, RT:plan.RT || null,
            n:plan.total, dice:dice.slice(), center:!!plan.center, gain, fum, notes, choice };
 }
+/* where the battle's Initiative stands — one key per creature per turn (Battle Contest bookkeeping) */
+function ctTurnKey(){ try{ const meta = activeMapMeta(); return meta && meta.battleOn ? `${meta.initRound||1}:${meta.initTurnId||""}` : ""; }catch(e){ return ""; } }
+
 function ctSnap(run){
   return JSON.stringify({ entrants:run.entrants, round:run.round, turn:run.turn, stage:run.stage, leg:run.leg,
                           roundType:run.roundType, typeRolls:run.typeRolls, typePending:!!run.typePending });
@@ -1079,7 +1120,11 @@ function ctPerformCore(run, ent, mon, choice, dice, opts){
   if(opts && opts.phys) entry.phys = true;
   run.log.push(entry); if(run.log.length > 120) run.log = run.log.slice(-120);
   ctTrimSnaps(run);
-  if(run.variant!=="battle" && !(opts && opts.practice)) ctAdvance(run);
+  if(run.variant!=="battle" && !(opts && opts.practice)){
+    if(run.tp){ mon.doneKey = ctTpKey(run); if(run.tp==="alternate") ent.tpLast = mon.trainer ? "t" : "p"; }
+    /* "both": the stage turn ends once the Trainer AND the Pokémon have appealed (or the player presses ✔ End turn) */
+    if(!run.tp || run.tp==="alternate" || ctTpAvail(run, ent).length===0) ctAdvance(run);
+  }
   return entry;
 }
 function ctLastPerf(run){ return run ? [...(run.log||[])].reverse().find(x=>x.kind==="perf") || null : null; }
@@ -1164,11 +1209,11 @@ function ctStoreResults(run){
   const enc = ctEncById(run.encId); if(!enc) return;
   const k = ctNormEnc(enc);
   if(k.last && k.last.runId===run.id) return;
-  k.last = { runId:run.id, at:run.endedAt || Date.now(), variant:run.variant, rotation:!!run.rotation, teams:!!run.teams,
+  k.last = { runId:run.id, at:run.endedAt || Date.now(), variant:run.variant, rotation:!!run.rotation, tp:run.tp||"", teams:!!run.teams,
     rows: run.entrants.map(e=>({ eid:e.id, src:e.src, sheetId:e.sheetId, trId:e.trId, name:ctEntName(e), trainer:e.trainer,
       team: run.teams ? ctSideName(run, e) : null,
       place:e.place||0, final:e.final||0, appeal:e.appeal||0, fumble:e.fumble||0,
-      mons: e.mons.map(m=>({ monId:m.monId, name:m.name, level:m.level, performed:!!m.performed || run.variant!=="battle" && !run.rotation })) })) };
+      mons: ctPokes(e).map(m=>({ monId:m.monId, name:m.name, level:m.level, performed:!!m.performed || run.variant!=="battle" && !run.rotation })) })) };
   saveEnc();
 }
 
@@ -1188,7 +1233,10 @@ function contestInterceptMove(p, m, sp, opts){
 }
 function ctFindMon(run, p){
   if(!run || !p) return null;
-  for(const e of run.entrants) for(const m of e.mons) if(m.monId && m.monId===p.id) return { ent:e, mon:m };
+  for(const e of run.entrants) for(const m of e.mons){
+    if(m.trainer){ try{ if(ctResolveRef(m).mon===p) return { ent:e, mon:m }; }catch(err){} }
+    else if(m.monId && m.monId===p.id) return { ent:e, mon:m };
+  }
   return null;
 }
 function ctOpenAppealForMon(p, moveName){
@@ -1196,7 +1244,7 @@ function ctOpenAppealForMon(p, moveName){
   if(run && hit && run.stage==="perform" && ctCanActEnt(hit.ent)){
     if(run.variant==="battle") return ctOpenAppeal({ eid:hit.ent.id, mkey:hit.mon.key, move:moveName, lockMove:true });
     const cur = ctCurrent(run);
-    if(cur===hit.ent && (!run.rotation || !hit.mon.performed)) return ctOpenAppeal({ eid:hit.ent.id, mkey:hit.mon.key, move:moveName });
+    if(cur===hit.ent && (!run.rotation || !hit.mon.performed) && (!run.tp || ctTpAvail(run, hit.ent).some(x=>x.key===hit.mon.key))) return ctOpenAppeal({ eid:hit.ent.id, mkey:hit.mon.key, move:moveName });
   }
   let why = "Contest Mode — this is a practice Appeal (nothing is scored).";
   if(run && hit){
@@ -1204,6 +1252,7 @@ function ctOpenAppealForMon(p, moveName){
     else if(run.stage==="results") why = "This contest is over — practice Appeal only.";
     else if(!ctCanActEnt(hit.ent)) why = "That contestant isn't yours to perform for — practice Appeal only.";
     else if(run.rotation && hit.mon.performed) why = `${hit.mon.name} already performed in this Rotation Contest — practice Appeal only.`;
+    else if(run.tp && !ctTpAvail(run, hit.ent).some(x=>x.key===hit.mon.key)) why = run.tp==="alternate" ? `It is the other performer's turn (Trainer and Pokémon alternate) — practice Appeal only.` : `${hit.mon.name} already appealed this turn — practice Appeal only.`;
     else why = `It isn't ${ctEntName(hit.ent)}'s turn yet — practice Appeal only (${ctStatusText(run)}).`;
   } else if(run) why = `${p.nickname||p.species} isn't in “${run.name}” — practice Appeal only.`;
   ctOpenAppeal({ practice:true, p, move:moveName, why });
@@ -1282,10 +1331,19 @@ function ctTurnCreature(){
     return (L && !L.missing && L.obj) || null;
   }catch(e){ return null; }
 }
+/* a 💥 Apply press names who made the hit — so the knockout's Voltage goes to the right Pokémon even when
+   the GM applies it from the feed after the Initiative turn moved on */
+var ctHitAttacker = null;
+function contestNoteHit(ctx){
+  ctHitAttacker = null;
+  if(!ctx) return;
+  try{ const f = typeof findAttackerSheet==="function" ? findAttackerSheet(ctx) : null; ctHitAttacker = (f && f.obj) || ctx.attacker || null; }catch(e){ ctHitAttacker = ctx.attacker || null; }
+}
+function contestEndHit(){ ctHitAttacker = null; }
 function contestOnKO(owner){
   const run = contestRunLive(); if(!run || run.variant!=="battle" || run.stage!=="perform") return;
   const hit = ctFindMon(run, owner); if(!hit || hit.mon.ko) return;
-  const attacker = ctTurnCreature();          // read now: the turn may move on before the deferred write
+  const attacker = ctHitAttacker || ctTurnCreature();          // read now: the turn may move on before the deferred write
   setTimeout(()=>{ try{
     contestWrite(r=>{
       const h = ctFindMon(r, owner); if(!h || h.mon.ko) return;
@@ -1303,7 +1361,7 @@ function contestOnKO(owner){
                              : "(the opposing active Pokémon — it wasn't knocked out by an attack on its turn)"; }
       }
       let note = "No opposing Pokémon on the field to take the +2 Voltage.";
-      if(target){ const b = target.voltage||0; target.voltage = ctClampV(b+2); note = `${target.name} +${target.voltage-b} Voltage ${why}.`; }
+      if(target){ const b = target.voltage||0; target.voltage = ctClampV(b+2); note = `${target.name} +${target.voltage-b} Voltage ${why}.`; if(why==="for the knockout") target.kos = (target.kos||0) + 1; }
       r.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`💥 ${h.mon.name} is knocked out. ${note} Its replacement will be the Center of Attention on its first turn.` });
       if(h.ent.mons.every(m=>m.ko)) r.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`🏳 ${h.ent.trainer} has no Pokémon left standing — out of the fight (their Appeal still counts).` });
       /* it ends when only one side still has a Pokémon standing (two Trainers: when one is wiped out) */
@@ -1318,10 +1376,67 @@ function contestOnRecall(o){
   const hit = ctFindMon(run, o); if(!hit) return;
   contestWrite(r=>{
     const h = ctFindMon(r, o); if(!h) return;
-    const b = h.mon.voltage||0; h.mon.voltage = ctClampV(b-2);
     if(h.ent.activeKey===h.mon.key) h.ent.activeKey = null;
+    /* p.270: a switch from Baton Pass / U-Turn / Volt Switch (or a Juggler Feature) costs nothing */
+    const pivot = h.mon.lastRound===r.round && /^(baton pass|u-turn|volt switch|flip turn|parting shot)$/i.test(String(h.mon.lastMove||""));
+    if(h.mon.freeSwitch || pivot){
+      const why = pivot && !h.mon.freeSwitch ? `it just used ${h.mon.lastMove}` : "the GM marked it a free switch"; delete h.mon.freeSwitch;
+      r.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`↩ ${h.mon.name} switches out — no Voltage lost (${why}).` });
+      return;
+    }
+    const b = h.mon.voltage||0; h.mon.voltage = ctClampV(b-2);
     r.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`↩ ${h.mon.name} is recalled — ${h.mon.voltage-b} Voltage.` });
   });
+}
+/* applyAutoKO's "back on its feet" branch: a revived contest Pokémon fights (and appeals) again */
+function contestOnRevive(owner){
+  const run = contestRunLive(); if(!run || run.variant!=="battle" || run.stage!=="perform") return;
+  const hit = ctFindMon(run, owner); if(!hit || !hit.mon.ko) return;
+  contestWrite(r=>{
+    const h = ctFindMon(r, owner); if(!h || !h.mon.ko) return;
+    h.mon.ko = false;
+    r.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`✨ ${h.mon.name} is back on its feet — it can appeal again (the Voltage already handed out stays).` });
+  });
+}
+/* 🎀 the Appeal pops up by itself once a Move has been rolled — per device, on by default */
+function ctAutoAppeal(){ try{ return localStorage.getItem("ptu_ct_auto")!=="0"; }catch(e){ return true; } }
+function ctSetAutoAppeal(v){ try{ localStorage.setItem("ptu_ct_auto", v?"1":"0"); }catch(e){} }
+function ctAutoSwitch(after){
+  const x = el("input",{type:"checkbox"}); x.checked = ctAutoAppeal();
+  x.addEventListener("change",()=>{ ctSetAutoAppeal(x.checked); if(after) after(); });
+  return el("label",{class:"inline small",style:"gap:6px;cursor:pointer",title:"After you roll a Move in a Battle Contest, the Appeal window opens by itself with that Move filled in"}, x, "🎀 Pop the Appeal up after each Move");
+}
+/* openMoveRoll's 🎲 Roll dice button */
+function contestAfterMoveRoll(p, m){
+  if(!ctAutoAppeal()) return;
+  const run = contestRunLive(); if(!run || run.variant!=="battle" || run.stage!=="perform" || !p || !m) return;
+  if(/^struggle$/i.test(m.name||"") || /maneuver/i.test(m.class||"")) return;
+  const hit = ctFindMon(run, p); if(!hit || hit.mon.ko || !ctCanActEnt(hit.ent)) return;
+  if(hit.mon.appealMove===m.name && hit.mon.appealTurn && hit.mon.appealTurn===ctTurnKey()) return;   // a re-roll of a Move that already appealed this turn
+  setTimeout(()=>{ try{ if(!document.getElementById("contestAppeal")) ctOpenAppeal({ eid:hit.ent.id, mkey:hit.mon.key, move:m.name, lockMove:true }); }catch(e){ console.error(e); } }, 300);
+}
+/* ⚔ + introductions done = the battle starts by itself (NPC Trainers roll their own Introduction).
+   Only when a player Trainer is in it — an all-NPC contest keeps its ▶ button so the GM can look it over first. */
+var ctAutoStartKey = "";
+function ctAutoIntroNpc(r, e){
+  const o = ctIntroOptions(r, e);
+  ctDoIntro(r, e, { skill:ctDefaultSkill(r, o), groomed:o.groomer, beautiful:o.beautiful,
+    bonuses:o.bonuses.map(b=>({ label:b.label, n:b.n, stat:b.stat || r.ctype || "Cute" })) });
+}
+function ctBattleAutoStart(run){
+  if(!isGM() || !run || run.variant!=="battle" || run.stage!=="intro") return;
+  let on = false; try{ on = !!activeMapMeta().battleOn; }catch(e){}
+  if(!on || !run.entrants.some(e=>e.src==="sheet")) return;
+  const key = run.id + ":" + run.entrants.filter(e=>e.intro).length;
+  if(key===ctAutoStartKey) return; ctAutoStartKey = key;
+  setTimeout(()=>{ try{ contestWrite(r=>{
+    if(r.id!==run.id || r.stage!=="intro") return;
+    ctActive(r).filter(e=>!e.intro && e.src!=="sheet").forEach(e=>ctAutoIntroNpc(r, e));
+    const wait = ctActive(r).filter(e=>!e.intro);
+    if(wait.length){ toast(`🎀 Waiting for ${wait.map(e=>e.trainer).join(", ")} to introduce — the battle starts once they have`); return; }
+    ctStartPerformance(r);
+    toast("🎀 Introductions done — the Battle Contest is live: Moves appeal, knockouts give Voltage");
+  }); }catch(e){ console.error(e); } }, 0);
 }
 /* advanceInitiative wrapped a round */
 function contestOnRoundWrap(round){
@@ -1440,6 +1555,7 @@ function contestRender(){
       if(n){ try{ n.focus({ preventScroll:true }); n.setSelectionRange(sel[0], sel[1]); }catch(e){} } }
   } else if(oldStage) oldStage.remove();
   ctNotifyTurn(run);
+  try{ ctBattleAutoStart(run); }catch(e){ console.error(e); }
   if(run && run.stage==="results" && isGM()) ctStoreResults(run);
 }
 function ctNotifyTurn(run){
@@ -1554,8 +1670,8 @@ function ctIntroRow(run, ent){
   row.append(el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap"},
     ...ent.mons.map(m=>ctMonPic(m)),
     el("div",{}, el("div",{style:"font-weight:800"}, ctEntFull(ent)),
-      el("div",{class:"small muted"}, ent.mons.length>1 ? ent.mons.map(m=>m.name).join(", ") : `Lv ${ent.mons[0].level}`)),
-    el("span",{style:"margin-left:auto"}, ctDiceLine(ent.mons.length===1 ? ent.mons[0].dice : {}))));
+      el("div",{class:"small muted"}, ctPokes(ent).length>1 ? ctPokes(ent).map(m=>m.name).join(", ") : `Lv ${ent.mons[0].level}`)),
+    el("span",{style:"margin-left:auto"}, ctDiceLine(ctPokes(ent).length===1 ? ctPokes(ent)[0].dice : {}))));
   row.append(ctIntroSwap(run, ent));
   if(ent.intro){
     const I = ent.intro;
@@ -1673,7 +1789,8 @@ function ctEntCard(run, e, f){
   card.append(el("div",{class:"ct-row",style:"justify-content:center;margin-top:4px;gap:10px"},
     el("div",{title:"Appeal Points"}, el("div",{class:"ct-num"}, String(e.appeal)), el("div",{class:"small muted"},"Appeal")),
     el("div",{title:"Fumble Points — subtracted at the end"}, el("div",{class:"ct-num",style:"color:var(--bad)"}, String(e.fumble)), el("div",{class:"small muted"},"Fumble"))));
-  card.append(el("div",{style:"margin-top:4px"}, ctVolt(e.voltage||0)));
+  if(run.tp==="both") card.append(el("div",{class:"ct-row",style:"justify-content:center;margin-top:4px;gap:8px"}, ...e.mons.map(m=>el("span",{class:"inline",style:"gap:3px",title:`${m.name} — Voltage`}, m.trainer?"🧑‍🎤":"🐾", ctVolt(m.voltage||0)))));
+  else card.append(el("div",{style:"margin-top:4px"}, ctVolt(e.voltage||0)));
   const left = {}; CT_STATS.forEach(s=>{ left[s] = ctDiceLeft(e, run.rotation ? null : e.mons[0], s); });
   card.append(el("div",{style:"margin-top:4px"}, ctDiceLine(left)));
   const lm = e.mons.map(m=>m.lastMove).filter(Boolean);
@@ -1702,7 +1819,17 @@ function ctPerformPanel(run){
     act.append(el("div",{style:"font-weight:900;font-size:15px"}, `🎤 ${ctEntFull(cur)} is performing`),
       el("div",{class:"small muted"}, `${ord[0]===cur ? "★ Center of Attention: 6→3, 4-5→2, 3→1, 1→Fumble · " : "Scoring: 6→2, 2-5→1, 1→0 · "}adjacent: ${[...adjSet].map(ctEntName).join(", ") || "nobody"}`));
     if(run.typePending) act.append(el("div",{class:"small",style:"margin-top:4px;font-weight:700"},"⏳ Roll this round's Contest Type first (above)"));
-    else if(ctCanActEnt(cur)) act.append(el("button",{class:"btn-primary",style:"margin-top:6px;padding:8px 18px",onclick:()=>ctOpenAppeal({ eid:cur.id })},"🎤 Perform a Move"));
+    else if(ctCanActEnt(cur)){
+      const av = run.tp ? ctTpAvail(run, cur) : [];
+      if(run.tp) act.append(el("div",{class:"small",style:"margin-top:4px;font-weight:700"},
+        run.tp==="alternate" ? `🧑‍🎤 Alternating — this turn: ${av[0] ? (av[0].trainer ? "the Trainer " : "the Pokémon ") + av[0].name : ""}`
+                             : `🧑‍🎤 Both appeal this turn — still to go: ${av.map(m=>m.name).join(", ") || "nobody"}`));
+      act.append(el("button",{class:"btn-primary",style:"margin-top:6px;padding:8px 18px",onclick:()=>ctOpenAppeal({ eid:cur.id })},
+        run.tp && av[0] ? `🎤 ${av[0].trainer ? "Trainer" : "Pokémon"} performs` : "🎤 Perform a Move"));
+      if(run.tp==="both" && cur.mons.some(m=>m.doneKey===ctTpKey(run)) && av.length)
+        act.append(el("button",{class:"btn-secondary",style:"margin:6px 0 0 8px",title:"the rest of this turn's Appeals are skipped",
+          onclick:()=>contestWrite(r=>{ r.log.push({ id:uid(), kind:"sys", at:Date.now(), text:`✔ ${ctEntName(ctCurrent(r))}'s turn ends early` }); ctAdvance(r); })},"✔ End the turn"));
+    }
     else act.append(el("div",{class:"small",style:"margin-top:4px"},"⏳ waiting for them to perform…"));
   }
   box.append(act);
@@ -1710,13 +1837,53 @@ function ctPerformPanel(run){
 }
 
 /* ---------- Battle Contest panel ---------- */
+function ctFindLive(r, eid, key){ const e = r.entrants.find(x=>x.id===eid); return e ? e.mons.find(m=>m.key===key) : null; }
+/* the card at the top of the fight: whose Initiative turn it is, and whether they've appealed yet */
+function ctNowActing(run){
+  const card = el("div",{class:"ct-box",style:"border:2px solid #d6337a;margin-bottom:6px"});
+  let meta = null; try{ meta = activeMapMeta(); }catch(e){}
+  if(!meta || !meta.battleOn){
+    card.append(el("div",{style:"font-weight:800"},"⚔ The battle isn't running on the Map yet"),
+      el("div",{class:"small muted"}, isGM() ? "Press ⚔ Battle on the Map (or ▶ Start on the contest) — knockouts and recalls count once it's on." : "Waiting for the GM to start the battle on the Map."));
+    return card;
+  }
+  const cur = ctTurnCreature();
+  if(!cur){
+    card.append(el("div",{style:"font-weight:800"},"⏱ Nobody's turn yet"), el("div",{class:"small muted"},"Press ▶ in the Initiative list on the Map — this card then shows whose turn it is."));
+    return card;
+  }
+  const hit = ctFindMon(run, cur);
+  if(!hit){
+    card.append(el("div",{style:"font-weight:800"}, `⏱ ${typeof ownerLabel==="function" ? ownerLabel(cur) : "Someone"}'s turn`), el("div",{class:"small muted"},"Not part of the contest — no Appeal this turn."));
+    return card;
+  }
+  const m = hit.mon, done = !!m.appealTurn && m.appealTurn===ctTurnKey();
+  const row = el("div",{class:"ct-row",style:"align-items:center"});
+  row.append(ctMonPic(m), el("div",{style:"flex:1;min-width:0"},
+    el("div",{style:"font-weight:900"}, `⏱ ${m.name}'s turn`, el("span",{class:"small muted",style:"font-weight:600"}, ` · ${hit.ent.trainer}`)),
+    el("div",{class:"small"}, "Voltage ", ctVolt(m.voltage||0), hit.ent.centerNext ? " · ★ Center of Attention (replacement)" : "",
+      done ? el("span",{style:"color:var(--good);font-weight:800"}, ` · ✔ appealed with ${m.appealMove}`) : el("span",{style:"color:#b8860b;font-weight:800"}, " · 🎀 hasn't appealed yet"))));
+  if(!m.ko && ctCanActEnt(hit.ent))
+    row.append(el("button",{class:done?"btn-secondary":"btn-primary",title:"Appeal for a Move without opening its roll window (the Move rolls Accuracy/damage separately)",
+      onclick:()=>ctOpenAppeal({ eid:hit.ent.id, mkey:m.key })}, done ? "🎀 Another Appeal" : "🎀 Appeal now"));
+  card.append(row);
+  return card;
+}
 function ctBattlePanel(run){
   const box = el("div",{});
-  box.append(el("div",{class:"small muted",style:"margin-bottom:6px"},
-    `Fight it out on the Map as normal (Initiative decides turns). Every Move a contest Pokémon rolls has a 🎀 Appeal button in its roll window — Struggle and Combat Maneuvers don't Appeal. `
-    + `All opposing Pokémon on the field count as adjacent${run.teams ? " (your own team never does)" : run.entrants.length>2 ? " — every other Trainer is opposing" : ""}. `
-    + `A knockout gives +2 Voltage to the Pokémon that landed it; recalling costs 2; a replacement sent out after a knockout is the Center of Attention on its first turn. `
-    + `Ends after round ${run.rounds} or when only one side has Pokémon standing — ${run.teams ? "the team with the most Appeal between them (after Fumbles) wins" : "most Appeal (after Fumbles) wins"}.`));
+  box.append(ctNowActing(run));
+  box.append(el("div",{class:"ct-row",style:"gap:6px;margin:2px 0 6px"},
+    ...["⚡ Knockouts give Voltage","↩ Recalls cost 2 (pivots free)","★ Replacement is the Center","🏁 Ends by itself"].map(t=>el("span",{class:"ct-chip",style:"background:#2b8a3e",title:"done for you"},t)),
+    el("span",{style:"margin-left:auto"}, ctAutoSwitch())));
+  { const d = el("details",{class:"small",style:"margin-bottom:6px"});
+    d.append(el("summary",{style:"cursor:pointer;font-weight:800"},"How a turn goes"),
+      el("ol",{style:"margin:4px 0 0 18px;padding:0"},
+        el("li",{},"On your Pokémon's turn, roll its Move as normal (Accuracy + damage). Struggle and Combat Maneuvers don't Appeal."),
+        el("li",{},"The 🎀 Appeal window opens by itself with that Move chosen — spend Contest dice if you want, press Perform. (No pop-up? Use 🎀 Appeal in the card above.)"),
+        el("li",{},"💥 Apply the hit as usual. If it knocks the target out, the attacker gets +2 Voltage and the foe's replacement becomes the Center of Attention — automatic."),
+        el("li",{},`Recalling a Pokémon costs it 2 Voltage on its own. A Baton Pass / U-Turn / Volt Switch switch is free (🆓 marks any other free switch).`),
+        el("li",{},`Opposing Pokémon on the field are all adjacent${run.teams ? " (your own team never is)" : run.entrants.length>2 ? " — every other Trainer is opposing" : ""}. It ends after round ${run.rounds} or when only one side has Pokémon standing — ${run.teams ? "the team with the most Appeal between them (after Fumbles) wins" : "most Appeal (after Fumbles) wins"}.`)));
+    box.append(d); }
   if(run.superMode && run.typePending) box.append(ctTypePrompt(run));
   if(run.teams){
     const tot = {};
@@ -1742,8 +1909,10 @@ function ctBattlePanel(run){
         ctMonPic(m),
         el("div",{style:"flex:1;min-width:0"},
           el("div",{style:"font-weight:800"}, `${m.name}${m.ko?" 💀":""}${e.activeKey===m.key?" ⭐":""}`),
-          el("div",{class:"small muted"}, `Appeal ${m.appeal||0} · Fumble ${m.fumble||0}${m.lastMove?` · last: ${m.lastMove}`:""}`),
+          el("div",{class:"small muted"}, `Appeal ${m.appeal||0} · Fumble ${m.fumble||0}${m.kos?` · ⚡ ${m.kos} KO${m.kos===1?"":"s"}`:""}${m.lastMove?` · last: ${m.lastMove}`:""}`),
           ctDiceLine(own)),
+        (isGM() && !m.ko) ? el("button",{class:"btn-secondary"+(m.freeSwitch?" on":""),style:"padding:0 7px",title:"Free switch: its next recall costs no Voltage (a Juggler Feature, or any switch the book exempts)",
+          onclick:()=>contestWrite(r=>{ const h = ctFindLive(r, e.id, m.key); if(h) h.freeSwitch = !h.freeSwitch; })}, m.freeSwitch ? "🆓 on" : "🆓") : "",
         ctVolt(m.voltage||0)));
     });
     sides.append(s);
@@ -1822,7 +1991,8 @@ function ctGmTools(run){
     line.append(el("b",{style:"min-width:120px"}, `${e.letter?e.letter+" ":""}${ctEntName(e)}`),
       pm("Appeal", ()=>e.appeal, d=>{ const x = ctLiveEnt(e.id); if(x) x.appeal += d; }),
       pm("Fumble", ()=>e.fumble, d=>{ const x = ctLiveEnt(e.id); if(x) x.fumble = Math.max(0, x.fumble + d); }));
-    if(run.variant!=="battle") line.append(pm("Voltage", ()=>e.voltage||0, d=>{ const x = ctLiveEnt(e.id); if(x) x.voltage = ctClampV((x.voltage||0)+d); }));
+    if(run.variant!=="battle" && run.tp==="both") e.mons.forEach(m=>line.append(pm(`${m.trainer?"🧑‍🎤":"🐾"} ${m.name} V`, ()=>m.voltage||0, d=>{ const x = ctLiveEnt(e.id), mm = x && x.mons.find(y=>y.key===m.key); if(mm) mm.voltage = ctClampV((mm.voltage||0)+d); })));
+    else if(run.variant!=="battle") line.append(pm("Voltage", ()=>e.voltage||0, d=>{ const x = ctLiveEnt(e.id); if(x) x.voltage = ctClampV((x.voltage||0)+d); }));
     else e.mons.forEach(m=>{
       line.append(pm(`${m.name} V`, ()=>m.voltage||0, d=>{ const x = ctLiveEnt(e.id), mm = x && x.mons.find(y=>y.key===m.key); if(mm) mm.voltage = ctClampV((mm.voltage||0)+d); }));
       line.append(el("button",{class:"btn-secondary",style:"padding:0 7px",title:"toggle Knocked Out for the contest",
@@ -1873,8 +2043,12 @@ function ctAppealShell(title){
   return { body, foot };
 }
 function ctMonMoves(p){
-  return (p && Array.isArray(p.moves) ? p.moves : []).map(n=>moveByName.get(String(n||"").toLowerCase()) || { name:String(n||""), custom:true })
+  const isT = !!p && !p.species;                      // a Trainer performing (Trainer Participant contest)
+  const names = isT ? [...new Set([...(p.moves||[]), ...(p.encMoves||[])])] : (p && Array.isArray(p.moves) ? p.moves : []);
+  const out = names.map(n=>moveByName.get(String(n||"").toLowerCase()) || { name:String(n||""), custom:true })
     .filter(m=>m.name && !/^struggle$/i.test(m.name));
+  if(isT && !out.length) out.push({ name:"Showpiece", custom:true });    // no Moves on the sheet: the table picks a Type & Effect
+  return out;
 }
 function ctOpenAppeal(o){
   const practice = !!o.practice;
@@ -1885,7 +2059,7 @@ function ctOpenAppeal(o){
     ent = run.entrants.find(x=>x.id===o.eid); if(!ent){ toast("That contestant isn't on stage"); return; }
     if(!ctCanActEnt(ent)){ toast("That contestant isn't yours to perform for"); return; }
     if(o.mkey) mon = ent.mons.find(m=>m.key===o.mkey);
-    if(!mon) mon = run.rotation ? (ent.mons.find(m=>!m.performed) || ent.mons[0]) : ent.mons[0];
+    if(!mon) mon = run.rotation ? (ent.mons.find(m=>!m.performed) || ent.mons[0]) : run.tp ? (ctTpAvail(run, ent)[0] || ent.mons[0]) : ent.mons[0];
     p = ctResolveRef(mon).mon;
   }
   if(!p){ toast("Can't find that Pokémon's sheet"); return; }
@@ -1948,6 +2122,17 @@ function ctOpenAppeal(o){
       sel.addEventListener("change",()=>{ ctOpenAppeal(Object.assign({}, o, { mkey:sel.value, move:null })); });
       body.append(el("label",{class:"field",style:"max-width:300px"}, el("span",{},"🔄 Rotation — who performs this round"), sel));
     }
+    /* Trainer Participant: who appeals now */
+    if(!practice && run.tp && !o.lockMove){
+      if(run.tp==="alternate"){
+        body.append(el("div",{class:"ct-box small"}, `🧑‍🎤 Trainer and Pokémon take turns — this turn it's ${mon.trainer ? "the Trainer" : "the Pokémon"} (${mon.name}). One shared Voltage.`));
+      } else if(ent.mons.length>1){
+        const key = ctTpKey(run), sel = el("select",{});
+        ent.mons.forEach(m=>sel.append(el("option",{value:m.key,selected:m.key===mon.key,disabled:m.doneKey===key && m.key!==mon.key}, `${m.trainer?"🧑‍🎤 ":"🐾 "}${m.name}${m.doneKey===key?" (appealed this turn)":""}`)));
+        sel.addEventListener("change",()=>{ ctOpenAppeal(Object.assign({}, o, { mkey:sel.value, move:null })); });
+        body.append(el("label",{class:"field",style:"max-width:340px"}, el("span",{},"🧑‍🎤 Trainer Participant — who appeals now (each Voltage is separate)"), sel));
+      }
+    }
     /* status line */
     const H = ctHolder(W.run, W.ent, W.mon);
     const adj = W.real ? ctAdjacent(W.run, W.ent, W.mon) : [];
@@ -2008,7 +2193,7 @@ function ctOpenAppeal(o){
     sp.addEventListener("change",()=>{ st.spend = parseInt(sp.value)||0; draw(); });
     const left = ctDiceLeft(W.ent, W.mon, c.T);
     opt.append(el("div",{class:"ct-row"}, el("span",{class:"small",style:"font-weight:700"}, `Spend ${c.T ? `${CT_ICON[c.T]} ${c.T}` : ""} Contest dice (up to 3): `), sp,
-      el("span",{class:"small muted"}, `${left} left — Pokémon ${Math.max(0, ((W.mon.dice||{})[c.T]||0) - ((W.mon.used||{})[c.T]||0))}, Introduction ${Math.max(0, ((W.ent.introDice||{})[c.T]||0) - ((W.ent.introUsed||{})[c.T]||0))}`
+      el("span",{class:"small muted"}, `${left} left — Pokémon ${Math.max(0, (((ctPoolOf(W.ent, W.mon)).dice||{})[c.T]||0) - (((ctPoolOf(W.ent, W.mon)).used||{})[c.T]||0))}, Introduction ${Math.max(0, ((W.ent.introDice||{})[c.T]||0) - ((W.ent.introUsed||{})[c.T]||0))}`
         + (W.run.rotation ? ` · Rotation cap ${2*W.run.entrants.length - (W.ent.spent||0)} left` : ""))));
     const tick = (label, key, title, onCh) => { const x = el("input",{type:"checkbox"}); x.checked = !!st[key];
       x.addEventListener("change",()=>{ st[key] = x.checked; if(onCh) onCh(); draw(); });
@@ -2090,6 +2275,7 @@ function ctOpenAppeal(o){
       if(r.stage!=="perform"){ err = "The contest isn't in its Performance Stage"; return; }
       if(r.variant!=="battle" && ctCurrent(r)!==e){ err = "It isn't this contestant's turn any more"; return; }
       if(r.rotation && mm.performed){ err = `${mm.name} already performed`; return; }
+      if(r.tp && !ctTpAvail(r, e).some(x=>x.key===mm.key)){ err = r.tp==="alternate" ? "It's the other performer's turn (Trainer and Pokémon alternate)" : `${mm.name} already appealed this turn`; return; }
       if(r.typePending){ err = "Roll this round's Contest Type first (1d6 — it's on the stage)"; return; }
       const W = { run:r, ent:e, mon:mm, real:true };
       const ch = choiceOf(W);
@@ -2273,7 +2459,7 @@ function ctOpenExp(enc){
    rolled Types, Rotation, Battle format). Shown on the encounter card and at the top of 📖 Rules.
 =================================================================== */
 function ctGuideSteps(k){
-  const v = k.variant, battle = v==="battle", fest = v==="festival", rot = !battle && !!k.rotation;
+  const v = k.variant, battle = v==="battle", fest = v==="festival", rot = !battle && !!k.rotation, tp = battle ? "" : (k.trainerPart||"");
   const fixed = ctFixedType(k), teams = battle && k.battleFormat==="teams", N = k.battleCount || 3;
   const skill = { Cool:"Command", Cute:"Charm", Smart:"Guile", Tough:"Intimidate", Beauty:"Intuition" }[k.ctype];
   const intro = fixed
@@ -2289,22 +2475,27 @@ function ctGuideSteps(k){
       + " NPCs: build them in the Trainers card, then ＋ NPC Pokémon."]);
     S.push(["Start", "Open the arena on the Map. 🎀 Contest Mode on, then ⚔ Battle on the Map → this contest (or ▶ Start this contest here — it turns ⚔ Battle on too)."]);
     S.push(dice);
-    S.push(["Introduction", `Each Trainer rolls ONE Introduction on the 🎭 stage; those Contest dice are shared by all their Pokémon. ${intro} 🎲 Roll for every NPC does yours. A last-minute swap? 🔁 under the contestant. Then ▶ Start the battle.`]);
+    S.push(["Introduction", `Each Trainer rolls ONE Introduction on the 🎭 stage; those Contest dice are shared by all their Pokémon. ${intro} 🎲 Roll for every NPC does yours. A last-minute swap? 🔁 under the contestant. The battle starts by itself once every player Trainer has introduced and ⚔ Battle is on (NPCs roll their own).`]);
     S.push(["Fight", `Each Trainer drops their first Pokémon on the Map (NPCs from the Trainers card)${teams ? "" : " — one per Trainer, so everyone is on the field at once"}. Initiative as normal; you apply hits on tokens a player doesn't own from the roll feed (🎯 Apply), like any fight.`]);
-    S.push(["Every Move appeals", "After a Move's roll, press 🎀 Appeal in its roll window (NPCs too). Struggle and Combat Maneuvers don't Appeal."
+    S.push(["Every Move appeals", "Roll the Move as usual — the 🎀 Appeal window opens by itself with that Move chosen (NPCs too). The stage's “Now acting” card shows whose turn it is and has an 🎀 Appeal button if the pop-up is switched off. Struggle and Combat Maneuvers don't Appeal."
       + (fixed ? "" : " The Contest Type is re-rolled every round — it's on the stage.")]);
-    S.push(["Runs itself", `${teams ? "Every opposing Pokémon on the field is adjacent (teammates never are)" : "Every other Trainer's Pokémon on the field is adjacent"}. A knockout gives the attacker +2 Voltage and the replacement is the Center of Attention; ↩ Recall costs 2 Voltage; rounds come off the Initiative tracker.`]);
-    S.push(["By hand", "A Baton Pass / U-Turn / Volt Switch switch costs no Voltage — if you used ↩ Recall for it, give the 2 back in 🛠 GM tools. Same tools for any ruling (± Appeal / Fumble / Voltage, ↩ undo)."]);
+    S.push(["Runs itself", `${teams ? "Every opposing Pokémon on the field is adjacent (teammates never are)" : "Every other Trainer's Pokémon on the field is adjacent"}. A knockout gives the attacker +2 Voltage (the 💥 Apply press says who hit, so it works from the feed too) and the replacement is the Center of Attention; ↩ Recall costs 2 Voltage unless the Pokémon just used Baton Pass / U-Turn / Volt Switch; a revived Pokémon fights again; rounds come off the Initiative tracker.`]);
+    S.push(["By hand", "A Juggler Feature switch (or any other exempt switch): press 🆓 on that Pokémon before recalling it. Same tools for any ruling (± Appeal / Fumble / Voltage, ↩ undo)."]);
     S.push(["The end", `After round ${2*N}, or when only one ${teams ? "team" : "Trainer"} has Pokémon standing. Most Appeal − Fumble wins${teams ? " (pooled per team)" : ""} — not the last one standing. 🧮 Contest EXP, and a Ribbon by hand.`]);
     return S;
   }
-  S.push(["Set it up", rot
+  S.push(["Set it up", tp
+    ? "One row per Trainer with ONE Pokémon — the Trainer performs too, using their own Moves (Features, Weapon Moves, an NPC's Moves; no Moves at all = a “Showpiece” whose Type & Effect the table picks). Trainer and Pokémon share one pool of Contest dice."
+    : rot
     ? "One row per Trainer with the Pokémon they'll rotate through — each one performs once, so give them as many as there are contestants. Swap with the dropdowns."
     : `One row per performing Pokémon — 3 to 5 is ideal (the book's position charts). Swap any Pokémon with its dropdown.${fest ? " A Festival needs 4+: it eliminates one per contest until three are left." : ""}`]);
   S.push(["Start", "▶ Start this contest (Contest Mode turns on by itself). Everyone gets the 🎭 stage and the bottom dock."]);
   S.push(dice);
   S.push(["Introduction", `Each player picks a Skill on the stage and rolls: every 3–6 is a Contest die. ${intro} 🎲 Roll for every NPC does yours. A last-minute swap? 🔁 under the contestant. When everyone has rolled: ▶ Start the Performance Stage.`]);
   S.push(["Performance", "One round per contestant. Whoever has 🎤 presses 🎤 Perform (it pops up on their dock) and picks a Move — dice, Voltage and the Effects on their neighbours are all done for them. NPC turns: you press 🎤 Perform a Move. The middle spot is the Center of Attention. No Move twice in a row (Reliable excepted)."
+    + (tp==="both" ? " Trainer Participant (both): on their stage turn the Trainer AND the Pokémon each make an Appeal, in either order — separate Voltage for each, and Effects that hit an adjacent contestant hit both of theirs. ✔ End the turn skips the second Appeal."
+       : tp==="alternate" ? " Trainer Participant (alternating): the Pokémon appeals on one of their turns, the Trainer on the next, and so on — one shared Voltage."
+       : "")
     + (rot ? " Rotation: on their turn they choose which Pokémon goes; at most 2 × contestants Contest dice for the whole contest." : "")
     + (fixed ? "" : " The Type is re-rolled at the start of every round — remind them to re-check: matching +1d6, opposed −1d6.")]);
   if(fest) S.push(["Between contests", "When a contest ends, Fumbles come off and the lowest Appeal is eliminated by itself. Appeal carries over; everyone left rolls a new Introduction and you press ▶ Start the Performance Stage again — until three are left."]);
@@ -2319,7 +2510,7 @@ function ctGuideNode(k){
 }
 /* a run's settings in encounter-card shape, for the guide */
 function ctRunAsSettings(run){
-  return { variant:run.variant, ctype:run.ctype || "Cute", superRounds:!!run.superMode && run.variant!=="super", rotation:!!run.rotation,
+  return { variant:run.variant, ctype:run.ctype || "Cute", superRounds:!!run.superMode && run.variant!=="super", rotation:!!run.rotation, trainerPart:run.tp||"",
            battleCount:run.battleCount || 3, battleFormat:run.teams ? "teams" : "ffa" };
 }
 
@@ -2360,13 +2551,13 @@ function ctOpenHelp(settings){
     P("Rotation: pick who performs each round (each Pokémon once); at most 2 × contestants dice per contestant. Supercontest: the Type is rolled at the start of each round. Festival: after each contest Fumbles come off, the lowest Appeal is eliminated and the rest go again from the Introduction until three are left."),
     P("Automated Features/items: Coordinator (re-roll one Appeal), Adaptable Performance, Reliable Performance (2 AP), Rule of Cool / Fabulous Max / Gleeful Steps / Calculated Assault / Macho Charge (one step more aligned), Style Flourish (1 AP, re-roll 1s), the Fashion held items (re-roll 1s), Voice Lessons (+1d6 Sonic), Decorative Twine (+2d6)."),
     H("6 · Battle Contest (automated)"),
-    P("A normal battle on the Map. Each Move a contest Pokémon rolls gets a 🎀 Appeal button; all opposing Pokémon on the field are adjacent; Voltage is per Pokémon. A knockout gives +2 Voltage to the Pokémon whose turn it is (the attacker) — or, for a knockout that wasn't an attack, to the opposing active Pokémon — and makes the replacement the Center of Attention for its first turn; ↩ Recall costs 2 Voltage. It ends after 2 rounds per Pokémon (counted off the Map's Initiative) or when only one side has Pokémon standing."),
+    P("A normal battle on the Map. Each Move a contest Pokémon rolls pops up its 🎀 Appeal by itself (a “Now acting” card on the stage backs it up); the battle starts itself once the players have introduced; all opposing Pokémon on the field are adjacent; Voltage is per Pokémon. A knockout gives +2 Voltage to the Pokémon whose turn it is (the attacker) — or, for a knockout that wasn't an attack, to the opposing active Pokémon — and makes the replacement the Center of Attention for its first turn; ↩ Recall costs 2 Voltage (free after Baton Pass / U-Turn / Volt Switch). It ends after 2 rounds per Pokémon (counted off the Map's Initiative) or when only one side has Pokémon standing."),
     P("Formats (p.270 allows double and triple battles): two Trainers, every Trainer for themselves (each one's opponents are all the others), or Teams — a team's Appeal is added together and the best team wins, and teammates are never adjacent to each other."),
     H("7 · EXP"),
     P("🧮 Contest EXP: X = half the Pokémon beaten, rounded up, × the Pokémon's Level × Significance (×1.5-2). The book's example only works if a Pokémon counts itself, so that's the default; the literal reading is one click away. Sends into the players' EXP pools."),
     H("8 · Still done by hand"),
-    P("• Trainer Participant Contests (Trainers performing Moves) — run them with the GM tools' ± buttons."),
-    P("• A switch caused by Baton Pass, U-Turn, Volt Switch or a Juggler Feature shouldn't cost Voltage — if the GM used ↩ Recall for it, give the 2 back with the GM tools. In a double/triple Battle Contest the +2 for a knockout goes to the first opposing Pokémon on the field; move it by hand if it was someone else."),
+    P("• Trainer Participant Contests are automated (both appear in the encounter's “Who performs” list). Still by hand: the book's optional Contest-Effect interactions between Trainer and Pokémon (a Trainer's Get Ready doubling their Pokémon's dice, Attention Grabber moving Voltage between them) — use the ± buttons. Team Rotation (one Trainer per team member) isn't automated: run each Trainer as their own contestant."),
+    P("• A switch caused by a Juggler Feature: press 🆓 on the Pokémon first (Baton Pass / U-Turn / Volt Switch are spotted automatically). In a double/triple Battle Contest the +2 for a knockout goes to the first opposing Pokémon on the field; move it by hand if it was someone else."),
     P("• Grooming isn't tracked — tick “Groomed today”. Fancy Clothes (Cool) and the other four versions roll for their own Stat by themselves; only an older, unsplit set of Fancy Clothes or a generic Contest Fashion asks for its Stat. Flexible Preparations: edit the Poffins. Innovation / custom Moves: pick a Contest Type & Effect the first time they perform."),
     P("• Ribbons aren't added automatically — put the winner's Ribbon in their Inventory. The Beautiful Ability's Scene use and other AP costs besides Reliable Performance / Style Flourish aren't ticked off."),
     P("• Any ruling: the GM tools let you skip a turn, undo the last performance, nudge Appeal / Fumble / Voltage, refund dice, re-roll a Supercontest Type, or end and tally early."));

@@ -586,7 +586,7 @@ function stageDockNode(run, last){
   if(ov.log.length) ovSec.append(el("div", { class:"sd-log" }, ov.log.slice(-3).reverse().map(l => `${l.d > 0 ? "+" : "−"}${Math.abs(l.d)} ${l.why}`).join(" · ")));
   if(run.kind === "play" && ov.n >= STAGE_OVATION_MAX) ovSec.append(el("div", { class:"sd-big" }, "\u{1F339} STANDING OVATION — Medea stops the play. The badge is theirs."));
   const ovRow = el("div", { class:"sd-row", style:"margin-top:4px" });
-  stageFlourishTrainers(run).forEach(t => ovRow.append(stageBtn(`\u{1F3AD} Flourish: ${ownerLabel(t)}`, () => stageFlourish(t),
+  if(gm) stageFlourishTrainers(run).forEach(t => ovRow.append(stageBtn(`\u{1F3AD} Flourish: ${ownerLabel(t)}`, () => stageFlourish(t),
     `Standard Action, once a round: ${kind.flourish.join(" or ")} vs DC ${STAGE_FLOURISH_DC} — +1 Ovation on a pass`)));
   if(gm){
     ovRow.append(stageBtn("+1", () => stageAppend({ k:"cheer", n:1, why:"the GM: a moment the house loved" }), "a cheer the engine can't see (taking a hit for an ally, a great line)"));
