@@ -41118,17 +41118,44 @@ function areaRareSet(area){
   (area.combos||[]).forEach(c=>{ if(s.has(c.when)) s.add(c.becomes); });
   return s;
 }
-/* build a whole encounter from an area table and switch to it */
-function rollWildEncounter(area){
+/* The party as the encounter tools see it: A = average Level of each player's two strongest Pokémon
+   (diffTopLevels — the same figure ⚖ Difficulty and 🌊 Gauntlets start from), TA = average Trainer Level,
+   P = how many players. Used by party-relative wild tables (`rel`) and the region fights (desert.js). */
+function partyStats(){
+  const chars = (()=>{ try{ return diffPartyChars(); }catch(err){ return []; } })();
+  const lv = chars.flatMap(c=>diffTopLevels(c.data, 2)).filter(n=>n>0);
+  const tl = chars.map(c=>(c.data && c.data.trainer && c.data.trainer.level)||0).filter(n=>n>0);
+  return { A: lv.length ? Math.round(diffAvg(lv)) : 0, TA: tl.length ? Math.round(diffAvg(tl)) : 0, P: chars.length };
+}
+/* A table's Level range. Fixed (`levels`) or, with `rel`, relative to the party's Level right now — a region
+   the party crosses getting stronger as it goes (the Desert) never has to be re-tuned by hand. */
+function areaLevelRange(area, rare, st){
+  if(!area.rel) return area.levels;
+  const A = (st && st.A) || 0;
+  if(!A) return null;
+  const r = rare ? area.rel.rare : area.rel.common;
+  return [Math.max(1, A + r[0]), Math.max(1, A + r[1])];
+}
+/* build a whole encounter from an area table and switch to it (opts.quiet: build it, return it, stay put) */
+function rollWildEncounter(area, opts){
+  opts = opts || {};
   const arr = encList();
+  const st = area.rel ? partyStats() : null;
+  if(area.rel && !st.A){ toast("⚠ No party Pokémon to scale this table against"); return null; }
   const seen = arr.filter(e=> String(e.name||"").startsWith(area.name+" — wild")).length;
   const enc = newEncounter(`${area.name} — wild #${seen+1}`);
+  if(area.region) enc.region = area.region;
   enc.hideTokens = true;                                     // wild things are not standing in the open
-  const names = rollAreaRoster(area);
+  if(st) enc.players = Math.max(1, st.P||1);
+  // a party-relative table also sizes itself to the party: its size is written for three players
+  const sized = (st && st.P && st.P !== 3) ? Object.assign({}, area, { size: area.size.map(n=>Math.max(n ? 1 : 0, Math.round(n*st.P/3))) }) : area;
+  const names = rollAreaRoster(sized);
+  const rareSet0 = areaRareSet(area);
   const total = {}; names.forEach(n=> total[n] = (total[n]||0)+1);
   const nth = {};
   names.forEach(n=>{
-    const p = makeWildMon(n, encRandInt(area.levels[0], area.levels[1]));
+    const rg = areaLevelRange(area, rareSet0.has(n), st);
+    const p = makeWildMon(n, encRandInt(rg[0], rg[1]));
     // A/B/C suffix when a species fills more than one slot, so three Wingull stay tellable
     // apart on their cards and on their map tokens
     if(total[n]>1){ nth[n]=(nth[n]||0)+1; p.nickname = `${getSpecies(n)?.name || n} ${"ABCDEFGH"[nth[n]-1]}`; }
@@ -41139,12 +41166,16 @@ function rollWildEncounter(area){
   const rareLine = rares.length>1 ? `Rare sightings: ${rares.join(" and ")}!`
                  : rares.length   ? `Rare sighting: ${rares[0]}.`
                  : "No rares on this table.";
+  const lvTxt = area.rel ? `Lv ${areaLevelRange(area,false,st).join("-")} common / ${areaLevelRange(area,true,st).join("-")} rare (party Lv ${st.A})`
+                         : `Lv ${area.levels[0]}-${area.levels[1]}`;
   enc.notes = `🎲 Rolled from the ${area.name} table — ${names.length} Pokémon `
-            + `(${names.length - rares.length} common + ${rares.length} rare), Lv ${area.levels[0]}-${area.levels[1]}.\n`
-            + rareLine;
+            + `(${names.length - rares.length} common + ${rares.length} rare), ${lvTxt}.\n`
+            + rareLine + (area.desc ? `\n${area.desc}` : "");
   arr.push(enc); state.activeEncounterId = enc.id;
-  saveEnc(); renderEncounters();
+  saveEnc();
+  if(!opts.quiet) renderEncounters();
   toast(`🎲 ${enc.name}${rares.length ? ` — ${rares.join(" + ")}!` : ""}`);
+  return enc;
 }
 /* ---- which of this table's species the party has in the Pokédex -----------------------------
    The question the GM asks is "which of these have the party never got?", and the answer lives in
@@ -41193,7 +41224,8 @@ function openRandomEncounter(){
       + (i?";margin-top:16px;padding-top:12px;border-top:1px solid var(--line)":"")});
     head.append(el("span",{style:"font-weight:800"}, a.name,
       el("span",{class:"muted small",style:"font-weight:400;margin-left:8px"},
-        `Lv ${a.levels[0]}\u2013${a.levels[1]} \u00b7 ${a.size[0]}\u2013${a.size[1]} common + 1 rare`)),
+        (a.rel ? `party Lv ${a.rel.common[0]}\u2013${a.rel.rare[1] >= 0 ? "+" : ""}${a.rel.rare[1]}` : `Lv ${a.levels[0]}\u2013${a.levels[1]}`)
+        + ` \u00b7 ${a.size[0]}\u2013${a.size[1]} common + 1 rare`)),
       el("button",{class:"btn-primary",onclick:()=>{ closeModal(); rollWildEncounter(a); }},"\u{1F3B2} Roll"));
     body.append(head);
     const det = el("details",{class:"spoiler","data-key":"encarea:"+a.id, style:"margin-top:4px"});
@@ -54731,6 +54763,98 @@ async function removeToken(token, map){
   if(mapMount.riderId===token.id) mapMount.riderId = null;
   mapTokensSave(); renderMap();
 }
+/* Where the party is standing on this board: the middle of the players' Trainers (else any player-side token,
+   else the middle of the GM's view). */
+function partyCenterCell(map){
+  const toks = mapTokensFor(map.id).filter(t => !t.riding && !isNoteToken(t) && tokenSide(t) === "player");
+  const trainers = toks.filter(t => tokenHp(t).kind === "trainer");
+  const use = trainers.length ? trainers : toks;
+  if(!use.length) return mapViewCenterCell(map, 1);
+  return { x: Math.round(use.reduce((n,t)=>n+t.x,0)/use.length), y: Math.round(use.reduce((n,t)=>n+t.y,0)/use.length) };
+}
+/* Put a whole encounter on the board in one save: every wild Pokémon, every Trainer and the first of each
+   Trainer's Pokémon they keep out (stageOut, else 2). They come as one group from ONE side — `dist` squares
+   from `center` in a random direction (0 = on the spot) — spread a square apart on free ground.
+   opts.hidden drops them 🙈 hidden from the players. */
+function placeEncounterAround(map, enc, center, opts){
+  opts = opts || {};
+  ensureMapTokens();
+  const byMap = cloud.mapTokens.data.byMap;
+  const arr = byMap[map.id] || (byMap[map.id] = []);
+  const parts = [];
+  (enc.mons || []).forEach(p => parts.push({ link:{ kind:"enc", encId:enc.id, monId:p.id } }));
+  (enc.trainers || []).forEach(tr => {
+    parts.push({ link:{ kind:"enctrainer", encId:enc.id, trainerId:tr.id } });
+    const out = Math.max(1, (tr.trainer && tr.trainer.stageOut) || 2);
+    (tr.pokemon || []).slice(0, out).forEach(p => parts.push({ link:{ kind:"enc", encId:enc.id, monId:p.id } }));
+  });
+  const ang = Math.random() * 2 * Math.PI, d = opts.dist || 0;
+  const gx = Math.round(center.x + Math.cos(ang) * d), gy = Math.round(center.y + Math.sin(ang) * d);
+  const solid = arr.filter(t => !t.riding && !isZoneToken(t) && !isNoteToken(t));
+  const took = new Set();
+  const free = (x, y, sz) => {
+    for(let dy = -1; dy <= sz; dy++) for(let dx = -1; dx <= sz; dx++){
+      const inside = dx >= 0 && dy >= 0 && dx < sz && dy < sz;
+      if(took.has((x+dx) + "," + (y+dy))) return false;                 // keep a square between new tokens
+      if(inside && solid.some(t => tokenOccupies(t, x+dx, y+dy))) return false;
+    }
+    return true;
+  };
+  let n = 0;
+  parts.forEach(part => {
+    const sz = autoTokenSize(part.link);
+    let at = null;
+    for(let r = 0; !at && r < 40; r++)
+      for(let dy = -r; dy <= r && !at; dy++) for(let dx = -r; dx <= r && !at; dx++){
+        if(Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        if(free(gx + dx, gy + dy, sz)) at = { x:gx + dx, y:gy + dy };
+      }
+    if(!at) at = { x:gx + n, y:gy };
+    for(let dy = 0; dy < sz; dy++) for(let dx = 0; dx < sz; dx++) took.add((at.x+dx) + "," + (at.y+dy));
+    arr.push(Object.assign({ id:uid(), size:sz, x:at.x, y:at.y }, part, opts.hidden ? { gmHidden:true } : {}));
+    n++;
+  });
+  mapTokensSave(); renderMap();
+  return n;
+}
+/* 🎲 Wild on the Map bar: roll a table and drop the result round the party in one go. The tables for where
+   the party is standing come first (a region's regionAreaHints), the rest under "Every table". */
+function openMapWild(map){
+  const areas = ENC_AREAS.filter(inSiteRegion);
+  if(!areas.length){ toast("No encounter tables" + (siteRegion ? " for this region yet" : "")); return; }
+  const center = partyCenterCell(map);
+  const hints = (typeof regionAreaHints === "function") ? regionAreaHints(map, center).filter(a => areas.includes(a)) : [];
+  const st = partyStats();
+  const body = el("div",{});
+  const hid = el("input",{type:"checkbox"});
+  const dist = el("input",{type:"number",min:0,max:30,value:7,style:"width:56px"});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    `Rolls the table, builds the encounter, and places it as one group ${"\u2248"}N squares from the party (from a random side).`
+    + (st.A ? ` Party: Pokémon Lv ${st.A}, ${st.P} player${st.P===1?"":"s"}.` : "")),
+    el("div",{class:"inline",style:"gap:12px;flex-wrap:wrap;margin-bottom:10px"},
+      el("label",{class:"inline",style:"gap:6px"}, el("span",{class:"small"},"Squares away"), dist),
+      el("label",{class:"inline",style:"gap:6px;cursor:pointer"}, hid, el("span",{class:"small"},"\u{1F648} Start hidden from players"))));
+  const row = a => el("div",{class:"inline",style:"justify-content:space-between;gap:8px;padding:3px 0;flex-wrap:wrap"},
+    el("span",{}, el("b",{}, a.name), el("span",{class:"small muted"},
+      ` ${a.kind ? "\u00b7 " + a.kind + " " : ""}\u00b7 ${(a.common||[]).length} common, ${(a.rare||[]).length} rare` + (a.desc ? ` \u00b7 ${a.desc}` : ""))),
+    el("button",{class:"btn-primary",style:"padding:4px 10px",onclick:()=>{
+      closeModal();
+      const enc = rollWildEncounter(a, { quiet:true });
+      if(!enc) return;
+      const n = placeEncounterAround(map, enc, center, { dist:Math.max(0, parseInt(dist.value)||0), hidden:hid.checked });
+      toast(`\u{1F3B2} ${enc.name}: ${n} on the board${hid.checked ? " (hidden)" : ""}`);
+    }},"\u{1F3B2} Roll & place"));
+  if(hints.length){
+    body.append(el("div",{class:"small",style:"font-weight:800;margin:4px 0"},"\u{1F4CD} Where the party is"));
+    hints.forEach(a => body.append(row(a)));
+  }
+  const det = el("details",{class:"spoiler",style:"margin-top:10px"});
+  det.open = !hints.length;
+  det.append(el("summary",{}, el("span",{class:"small"}, `Every table (${areas.length})`)));
+  areas.forEach(a => det.append(row(a)));
+  body.append(det);
+  modal({ title:"\u{1F3B2} Wild encounter", bodyNode:body, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")] });
+}
 /* the cell at the centre of what the viewer is currently looking at (for placing new tokens there) */
 function mapViewCenterCell(map, size){
   const vp = document.querySelector("#view-map .map-viewport");
@@ -56545,6 +56669,7 @@ function openNotesPanel(map, selId){
       else delete token.noteTo;
       mapTokensSave(); renderMap(); });
     ed.append(el("label",{class:"field"}, el("span",{},"\u{1F517} Linked to (draws a dashed line \u2014 stairs, switch \u2192 gate)"), link));
+    if(token.fight && typeof regionFightControls === "function") ed.append(regionFightControls(token, map));   // ⚔ desert.js
     ed.append(el("div",{class:"inline",style:"gap:8px;margin-top:10px"},
       el("button",{class:"btn-secondary",onclick:()=>{ closeModal(); locateNote(map, token); }},"\u{1F4CD} Show on board"),
       el("button",{class:"btn-secondary danger",onclick:async()=>{
@@ -62232,6 +62357,8 @@ function renderMap(){
       // — Play group: tokens and fog, the two things touched every few minutes —
       bar.append(el("span",{class:"map-sep"}),
         el("button",{class:"btn-primary",onclick:()=>openAddToken(map)},"＋ Add token"),
+        el("button",{class:"btn-secondary",onclick:()=>openMapWild(map),
+          title:"Roll a wild encounter from an area table and place it round the party in one go"},"\u{1F3B2} Wild"),
         el("button",{class:"btn-secondary"+(map.fogOn?" on":""),onclick:()=>toggleFog(map),
           title:"Auto-reveals around player tokens; explored areas stay revealed"}, map.fogOn?"🌫 Fog on":"🌫 Fog off"),
         el("button",{class:"btn-secondary"+(map.night?" on":""),onclick:()=>toggleNight(map),
