@@ -53018,7 +53018,7 @@ function currentMapForView(){
     return meta.maps.find(m=>!m.archived && inSiteRegion(m)) || null;
   }
   const base = meta.maps.find(m=>m.id===meta.playerMapId) || null;
-  return base ? playerFloorView(base) : null;           // a building: the floor your token is on (see FLOORS)
+  return base ? playerFloorView(playerPortalView(base)) : null;   // the place your Trainer is in (PORTALS), then its floor (FLOORS)
 }
 function mapTokensFor(mapId){ return (cloud.mapTokens?.data?.byMap?.[mapId]) || []; }
 /* What a map is called *to whoever is looking at it*. The GM always sees the real name — it is how
@@ -53109,7 +53109,7 @@ function viewFloor(m){
   if(!m) return;
   if(cloud.isGM) mapGmView = m.id;
   else {
-    const base = mapById(activeMapMeta().playerMapId);
+    const base = playerBaseMap();
     if(base){ if(mapFloorPick.base !== base.id) mapFloorPick = { base:base.id, id:null, tok:ownTokenFloor(floorStack(base)) };
               mapFloorPick.id = m.id; }
   }
@@ -53216,7 +53216,7 @@ function moveTokenToFloor(token, from, to){
   if(to.fogOn) revealAroundTokens(to);
   mapTokensSave();
   if(cloud.isGM) mapGmView = to.id;                                   // follow it
-  else { const base = mapById(activeMapMeta().playerMapId);
+  else { const base = playerBaseMap();
          if(base) mapFloorPick = { base:base.id, id:to.id, tok:ownTokenFloor(floorStack(base)) }; }
   renderMap();
   const up = floorStack(to).indexOf(to) > floorStack(to).findIndex(m=>m.id===from.id);
@@ -57393,7 +57393,7 @@ function doorMultFor(t, type){
   if(doorResist(t, type) === "immune") return 0;
   return typeMultAgainst(type, tokenDefTypes(t), doorResistStep(t, type));
 }
-function doorSprite(t){ return el("img",{class:"sprite s-sm",src:doorImgSrc(t),draggable:false,alt:t.label||"Door"}); }
+function doorSprite(t){ if(t && t.prop === "portal" && !t.doorImg) return portalSprite(t); return el("img",{class:"sprite s-sm",src:doorImgSrc(t),draggable:false,alt:t.label||"Door"}); }
 /* Wall segments for every closed, intact door on the map.
    Movement: a box hugging the door's own squares (inset a hair, so a diagonal step past its corner
    is not mistaken for walking into it) — you can't step into a shut doorway or through it.
@@ -57597,6 +57597,277 @@ function openDoorPick(token, map){
     el("button",{class:"btn-secondary",onclick:closeModal}, "Cancel"),
     el("button",{class:"btn-primary",onclick:roll}, `\u{1F3B2} Roll ${sLbl}`) ]});
 }
+/* ── PORTALS: entrances, exits and ladders ────────────────────────────────────────────────────────
+   A portal is a prop (door:true, prop:"portal") that leads to another map: a building's door on the
+   overworld, the ladder down a well, the hole to B2. It names where it goes (`toMap`) and, usually,
+   the portal at the other end (`toId`), so the way in and the way out are one pair. Tapping it lists
+   who is standing near it (within `portalR` squares) and sends them through: they leave this map and
+   come out round the other end, keeping any riders. A portal is the GM's to use unless `playerUse` is
+   ticked (ladders and inner stairs are; a door into a whole new place usually isn't), and then a
+   player can take their OWN Trainer and Pokémon through. Arriving on a map with no fog switches its
+   fog on first (unless `noAutoFog`), so a place is explored rather than seen whole.
+   Players do not all have to be on one map: a player looks at the map their own Trainer stands on,
+   so long as it is the one the GM shows them or a place joined to it by portals (playerPortalView),
+   so half the party can be down the well while the rest wait at the top. */
+const PORTAL_GLYPHS = ["\u{1F6AA}","\u{1FA9C}","⬆","⬇","\u{1F573}","\u{1F300}","⛩"];
+const PORTAL_REACH_DEPTH = 6;
+function isPortalToken(t){ return isPropToken(t) && t.prop === "portal"; }
+function portalDest(t){ return t ? mapById(t.toMap) : null; }
+function portalPartner(t){
+  const d = portalDest(t);
+  return (d && t.toId) ? mapTokensFor(d.id).find(x => x.id === t.toId) || null : null;
+}
+function portalRange(t){ return +t.portalR > 0 ? +t.portalR : 3; }
+/* the square the travellers come out round: the partner portal, else a set square, else mid-map */
+function portalArrival(t){
+  const p = portalPartner(t); if(p) return { x:Math.round(p.x), y:Math.round(p.y) };
+  if(t.toX != null && t.toY != null) return { x:t.toX|0, y:t.toY|0 };
+  const d = portalDest(t); if(!d) return null;
+  const s = mapStageSize(d), px = d.gridSize || 32;
+  return { x:Math.floor((s.w - 2*s.originX)/2/px), y:Math.floor((s.h - 2*s.originY)/2/px) };
+}
+function portalSprite(t){
+  return el("div",{class:"sprite s-sm", title:t.label || "Portal",
+    style:"display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%;"
+      + "background:rgba(56,132,222,.88);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45);"
+      + "font-size:calc(var(--tku,1)*17px);line-height:1;box-sizing:border-box"}, t.glyph || "\u{1F6AA}");
+}
+/* a creature that can walk through (not scenery) */
+function portalTraveller(t){
+  return !!t && !isShopToken(t) && !isBoatToken(t) && !isHazardToken(t) && !isZoneToken(t) && !isNoteToken(t) && !isDoorToken(t)
+    && !(typeof isGardenToken === "function" && isGardenToken(t));
+}
+function portalDist(p, t){
+  const f = tokenFootprint(t), x = Math.round(t.x), y = Math.round(t.y), px = Math.round(p.x), py = Math.round(p.y);
+  const dx = px < x ? x - px : px > x + f.w - 1 ? px - (x + f.w - 1) : 0;
+  const dy = py < y ? y - py : py > y + f.h - 1 ? py - (y + f.h - 1) : 0;
+  return Math.max(dx, dy);
+}
+function ownsToken(t){ return !!(t && t.link && t.link.sheetId && ownsRow(cloud.byId[t.link.sheetId])); }
+/* every map the players' map reaches through portals (and floors), the players' map first */
+function portalReach(base){
+  const out = [], seen = new Set();
+  let wave = base ? [base] : [];
+  for(let d = 0; wave.length && d <= PORTAL_REACH_DEPTH; d++){
+    const next = [];
+    wave.forEach(m => {
+      if(!m || seen.has(m.id) || m.archived) return;
+      seen.add(m.id); out.push(m);
+      floorStack(m).forEach(f => { if(!seen.has(f.id)) next.push(f); });
+      mapTokensFor(m.id).forEach(t => { if(isPortalToken(t)){ const dm = portalDest(t); if(dm && !seen.has(dm.id)) next.push(dm); } });
+    });
+    wave = next;
+  }
+  return out;
+}
+/* Players: the map their own Trainer (else a Pokémon of theirs) stands on, among the shown map and the
+   places joined to it. Remembered for a moment, since the board asks for it many times per paint. */
+let portalViewMemo = { at:0, key:"", id:null };
+function playerPortalView(base){
+  if(!base || cloud.isGM) return base;
+  const now = Date.now(), key = base.id;
+  if(portalViewMemo.key === key && now - portalViewMemo.at < 400) return mapById(portalViewMemo.id) || base;
+  let pick = null, mon = null;
+  for(const m of portalReach(base)){
+    for(const t of mapTokensFor(m.id)){
+      if(!ownsToken(t)) continue;
+      if(t.link.kind === "trainer"){ pick = m; break; }
+      if(!mon) mon = m;
+    }
+    if(pick) break;
+  }
+  const v = pick || mon || base;
+  portalViewMemo = { at:now, key, id:v.id };
+  return v;
+}
+function playerBaseMap(){ return playerPortalView(mapById(activeMapMeta().playerMapId)); }
+/* the free squares round (x0,y0), nearest first, for something w×h; never the portal's own square */
+function portalLanding(map, x0, y0, taken, w, h){
+  const s = mapStageSize(map), px = map.gridSize || 32;
+  const minX = -Math.round(s.originX/px), minY = -Math.round(s.originY/px);
+  const maxX = Math.floor((s.w - s.originX)/px) - 1, maxY = Math.floor((s.h - s.originY)/px) - 1;
+  for(let r = 1; r < 30; r++){
+    const ring = [];
+    for(let dy = -r; dy <= r; dy++) for(let dx = -r; dx <= r; dx++)
+      if(Math.max(Math.abs(dx), Math.abs(dy)) === r) ring.push([dx, dy]);
+    ring.sort((a, b) => (a[0]*a[0] + a[1]*a[1]) - (b[0]*b[0] + b[1]*b[1]));
+    for(const [dx, dy] of ring){
+      const x = x0 + dx, y = y0 + dy;
+      if(x < minX || y < minY || x + w - 1 > maxX || y + h - 1 > maxY) continue;
+      let ok = true;
+      for(let i = 0; i < w && ok; i++) for(let j = 0; j < h && ok; j++) if(taken.has((x+i)+","+(y+j))) ok = false;
+      if(ok) return { x, y };
+    }
+  }
+  return { x:x0 + 1, y:y0 };
+}
+/* send `movers` (and whoever rides them) from `from` through `portal` */
+function portalTravel(movers, from, portal){
+  const to = portalDest(portal);
+  if(!to){ toast("This portal doesn't lead anywhere yet"); return; }
+  const at = portalArrival(portal); if(!at) return;
+  ensureMapTokens();
+  const byMap = cloud.mapTokens.data.byMap;
+  const src = byMap[from.id] || [];
+  const ids = new Set(movers.map(t => t.id));
+  src.forEach(t => { if(t.riding && ids.has(t.riding)) ids.add(t.id); });           // riders come too
+  const group = src.filter(t => ids.has(t.id));
+  if(!group.length) return;
+  group.forEach(t => { if(t.riding && !ids.has(t.riding)) delete t.riding; });      // stepping off whatever stays behind
+  byMap[from.id] = src.filter(t => !ids.has(t.id));
+  const dst = byMap[to.id] || (byMap[to.id] = []);
+  const taken = new Set();
+  dst.forEach(t => { if(!portalTraveller(t)) return; const f = tokenFootprint(t);
+    for(let i = 0; i < f.w; i++) for(let j = 0; j < f.h; j++) taken.add((Math.round(t.x)+i)+","+(Math.round(t.y)+j)); });
+  // the closest one to the portal goes first and lands closest; riders land on their mount's square
+  const walkers = group.filter(t => !t.riding).sort((a, b) => portalDist(portal, a) - portalDist(portal, b));
+  walkers.forEach(t => {
+    const f = tokenFootprint(t), spot = portalLanding(to, at.x, at.y, taken, f.w, f.h);
+    for(let i = 0; i < f.w; i++) for(let j = 0; j < f.h; j++) taken.add((spot.x+i)+","+(spot.y+j));
+    group.filter(r => r.riding === t.id).forEach(r => { r.x = spot.x; r.y = spot.y; });
+    t.x = spot.x; t.y = spot.y;
+  });
+  group.forEach(t => { delete t.path; dst.push(t); mapSelect.ids.delete(t.id); });
+  if(mapAoE && ids.has(mapAoE.tokenId)) mapAoE = null;
+  if(mapMount.riderId && ids.has(mapMount.riderId)) mapMount.riderId = null;
+  if(!to.fogOn && !portal.noAutoFog && cloud.isGM){ to.fogOn = true; mapMetaSave(); }
+  if(to.fogOn) revealAroundTokens(to);
+  mapTokensSave();
+  portalViewMemo = { at:0, key:"", id:null };
+  if(cloud.isGM){ mapGmView = to.id; mapView = { scale:1, panX:0, panY:0 }; }
+  else mapFloorPick = { base:null, id:null, tok:null };
+  renderMap();
+  setTimeout(() => { if(currentTab === "map") locateNote(to, { id:"", x:at.x, y:at.y }); }, 60);
+  const names = group.filter(t => !t.riding).map(t => tokenHp(t).name || "?");
+  toast(`${portal.glyph || "\u{1F6AA}"} ${names.slice(0, 4).join(", ")}${names.length > 4 ? ` +${names.length - 4}` : ""} → ${cloud.isGM ? to.name : (portalPartner(portal)?.label || mapDisplayName(to))}`);
+}
+/* GM: a new portal where you're looking — tap it to say where it goes */
+function addPortal(map){
+  if(!cloud.isGM || !map) return;
+  const c = mapViewCenterCell(map, 1);
+  const taken = new Set(mapTokensFor(map.id).map(t => Math.round(t.x) + "," + Math.round(t.y)));
+  const at = noteFreeCell(taken, c.x, c.y);
+  ensureMapTokens();
+  const byMap = cloud.mapTokens.data.byMap, arr = byMap[map.id] || (byMap[map.id] = []);
+  const tok = { id:uid(), size:1, x:at.x, y:at.y, door:true, prop:"portal", doorW:1, doorH:1,
+                glyph:"\u{1F6AA}", label:"Entrance", propName:"Entrance", portalR:3 };
+  arr.push(tok);
+  mapTokensSave(); renderMap();
+  openPortalMenu(tok, map);
+}
+/* the other end, made for you: a portal on the destination pointing back here, joined both ways */
+function portalMakeReturn(token, map){
+  const to = portalDest(token); if(!to) return null;
+  const at = portalArrival(token);
+  ensureMapTokens();
+  const byMap = cloud.mapTokens.data.byMap, arr = byMap[to.id] || (byMap[to.id] = []);
+  const back = { id:uid(), size:1, x:at.x, y:at.y, door:true, prop:"portal", doorW:1, doorH:1,
+                 glyph: token.glyph === "⬇" ? "⬆" : token.glyph === "⬆" ? "⬇" : token.glyph || "\u{1F6AA}",
+                 label:"Back to " + (map.floorName || map.name || "the map"), propName:"Exit",
+                 portalR:portalRange(token), toMap:map.id, toId:token.id };
+  if(token.playerUse) back.playerUse = true;
+  arr.push(back);
+  token.toId = back.id; delete token.toX; delete token.toY;
+  return back;
+}
+function openPortalMenu(token, map){
+  const gm = cloud.isGM, to = portalDest(token), R = portalRange(token);
+  const body = el("div",{});
+  const near = mapTokensFor(map.id).filter(t => portalTraveller(t) && !t.riding && portalDist(token, t) <= R && (gm || ownsToken(t)));
+  const where = gm ? (to ? to.name : "nowhere yet") : (portalPartner(token)?.propName || (to ? mapDisplayName(to) : ""));
+  body.append(el("div",{class:"small",style:"margin-bottom:8px"},
+    to ? `Leads to: ${where}` : "This portal doesn't lead anywhere yet."));
+  if(gm && token.propText) body.append(el("div",{class:"small muted",style:"margin-bottom:8px"}, token.propText));
+  const picks = new Map();
+  const canGo = to && (gm || token.playerUse);
+  if(canGo){
+    if(near.length){
+      body.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:4px"},
+        gm ? `Who goes (within ${R} squares):` : `Going through (your tokens within ${R} squares):`));
+      near.forEach(t => {
+        const cb = el("input",{type:"checkbox"}); cb.checked = gm ? tokenSide(t) === "player" : true;
+        picks.set(t, cb);
+        body.append(el("label",{class:"inline",style:"gap:6px;cursor:pointer;padding:2px 0"}, cb,
+          el("span",{}, tokenHp(t).name || "?"), el("span",{class:"small muted"}, ` · ${portalDist(token, t)} sq`)));
+      });
+    } else body.append(el("div",{class:"small muted"},
+      gm ? `Nobody within ${R} squares. Drag the party up to it, or send every player token on this map:`
+         : `Walk your Trainer up to it (within ${R} squares), then tap it again.`));
+    if(gm){
+      const all = mapTokensFor(map.id).filter(t => portalTraveller(t) && !t.riding && tokenSide(t) === "player");
+      if(all.length > near.filter(t => tokenSide(t) === "player").length)
+        body.append(el("button",{class:"btn-secondary",style:"margin-top:6px",
+          onclick:() => { closeModal(); portalTravel(all, map, token); }},
+          `\u{1F465} Send every player token on this map (${all.length})`));
+    }
+  } else if(to && !gm) body.append(el("div",{class:"small muted"},"The GM opens this way."));
+
+  if(gm){
+    const det = el("details",{class:"spoiler",style:"margin-top:12px"}, el("summary",{}, el("span",{class:"small"},"⚙ Set up this portal")));
+    const lbl = el("input",{type:"text", value:token.label || "", maxlength:60, placeholder:"Ladder down"});
+    const pn  = el("input",{type:"text", value:token.propName || "", maxlength:40, placeholder:"what players see it called"});
+    const gl  = el("select"); PORTAL_GLYPHS.forEach(g => gl.append(el("option",{value:g, selected:g === (token.glyph || "\u{1F6AA}")}, g)));
+    const ms  = el("select"); ms.append(el("option",{value:""},"— pick a map —"));
+    activeMapMeta().maps.filter(m => m.id !== map.id && (!m.archived || m.id === token.toMap) && (inSiteRegion(m) || m.id === token.toMap))
+      .forEach(m => ms.append(el("option",{value:m.id, selected:m.id === token.toMap}, m.name)));
+    const ps  = el("select");
+    const fillPs = () => { ps.innerHTML = ""; ps.append(el("option",{value:""},"— a square (below) —"));
+      mapTokensFor(ms.value).filter(isPortalToken).forEach(p => ps.append(el("option",{value:p.id, selected:p.id === token.toId},
+        `${p.glyph || ""} ${p.label || "portal"} (${Math.round(p.x)}, ${Math.round(p.y)})`))); };
+    fillPs(); ms.addEventListener("change", fillPs);
+    const tx = el("input",{type:"number", value:token.toX ?? "", style:"width:70px"}), ty = el("input",{type:"number", value:token.toY ?? "", style:"width:70px"});
+    const rr = el("input",{type:"number", min:1, max:40, value:R, style:"width:70px"});
+    const pu = el("input",{type:"checkbox"}); pu.checked = !!token.playerUse;
+    const af = el("input",{type:"checkbox"}); af.checked = !token.noAutoFog;
+    const note = el("textarea",{rows:2, style:"width:100%"}); note.value = token.propText || "";
+    det.append(
+      el("label",{class:"field"}, el("span",{},"Name (you)"), lbl),
+      el("label",{class:"field"}, el("span",{},"Name (players)"), pn),
+      el("label",{class:"field"}, el("span",{},"Icon"), gl),
+      el("label",{class:"field"}, el("span",{},"Leads to"), ms),
+      el("label",{class:"field"}, el("span",{},"Comes out at"), ps),
+      el("div",{class:"inline",style:"gap:8px"}, el("span",{class:"small"},"or square x, y"), tx, ty),
+      el("div",{class:"inline",style:"gap:8px;margin-top:6px"}, el("span",{class:"small"},"Reach (squares)"), rr),
+      el("label",{class:"inline",style:"gap:6px;margin-top:6px;cursor:pointer"}, pu, el("span",{class:"small"},"Players can use it themselves (ladders, stairs)")),
+      el("label",{class:"inline",style:"gap:6px;cursor:pointer"}, af, el("span",{class:"small"},"Switch fog on over there when someone arrives")),
+      el("label",{class:"field",style:"margin-top:6px"}, el("span",{},"Your note"), note));
+    const save = () => {
+      token.label = lbl.value.trim() || "Portal"; token.propName = pn.value.trim() || token.label; token.glyph = gl.value;
+      if(ms.value) token.toMap = ms.value; else delete token.toMap;
+      const old = token.toId;
+      if(ps.value && ms.value){ token.toId = ps.value; delete token.toX; delete token.toY; }
+      else { delete token.toId;
+        if(tx.value !== "" && ty.value !== ""){ token.toX = parseInt(tx.value)||0; token.toY = parseInt(ty.value)||0; } else { delete token.toX; delete token.toY; } }
+      // joining two portals joins them both ways
+      if(token.toId && token.toId !== old){ const p = portalPartner(token); if(p && !p.toId){ p.toMap = map.id; p.toId = token.id; } }
+      token.portalR = Math.max(1, parseInt(rr.value)||3);
+      if(pu.checked) token.playerUse = true; else delete token.playerUse;
+      if(af.checked) delete token.noAutoFog; else token.noAutoFog = true;
+      if(note.value.trim()) token.propText = note.value.trim(); else delete token.propText;
+      mapTokensSave(); renderMap();
+    };
+    det.append(el("div",{class:"inline",style:"gap:8px;margin-top:8px;flex-wrap:wrap"},
+      el("button",{class:"btn-primary",onclick:() => { save(); closeModal(); toast("Portal saved"); }},"Save"),
+      el("button",{class:"btn-secondary",title:"put a portal on the other map, where this one comes out, leading back here",
+        onclick:() => { save(); if(!portalDest(token)){ toast("Pick where it leads first"); return; }
+          if(portalPartner(token)){ toast("It already has a way back"); return; }
+          portalMakeReturn(token, map); mapTokensSave(); renderMap(); closeModal(); toast("↔ Way back placed on the other map"); }},"↔ Make the way back"),
+      to ? el("button",{class:"btn-secondary",onclick:() => { closeModal(); const a = portalArrival(token);
+          mapGmView = to.id; mapView = { scale:1, panX:0, panY:0 }; renderMap();
+          setTimeout(() => locateNote(to, { id:token.toId || "", x:a.x, y:a.y }), 60); }},"\u{1F441} Look at the other end") : ""));
+    body.append(det);
+  }
+  const foot = [el("button",{class:"btn-secondary",onclick:closeModal},"Close")];
+  if(gm) foot.unshift(
+    el("button",{class:"btn-secondary",onclick:() => { if(token.gmHidden) delete token.gmHidden; else token.gmHidden = true; mapTokensSave(); renderMap(); closeModal(); }},
+      token.gmHidden ? "\u{1F441} Show to players" : "\u{1F648} Hide from players"),
+    el("button",{class:"btn-secondary",onclick:async () => { if(!confirm("Remove this portal?")) return; closeModal(); await removeToken(token, map); }},"\u{1F5D1}"));
+  if(canGo) foot.push(el("button",{class:"btn-primary",onclick:() => {
+      const go = [...picks].filter(([, cb]) => cb.checked).map(([t]) => t);
+      if(!go.length){ toast(near.length ? "Tick who goes" : "Nobody close enough"); return; }
+      closeModal(); portalTravel(go, map, token); }}, `${token.glyph || "\u{1F6AA}"} Go through`));
+  modal({ title:(gm ? token.label : (token.propName || token.label)) || "Portal", bodyNode:body, footNodes:foot });
+}
 /* Tap a door. Everyone gets its state and Open / Close / Pick; the GM also gets the whole build:
    art and fit, toughness, the Type chart, the lock, and a manual damage box. */
 /* Tap a prop. Everyone sees what it is; the GM can pull it (remove it from the board on the spot)
@@ -57624,6 +57895,7 @@ function openPropMenu(token, map){
   modal({ title:(gm ? token.label : token.propName) || token.label || "Prop", bodyNode:body, footNodes:foot });
 }
 function openDoorMenu(token, map){
+  if(isPortalToken(token)) return openPortalMenu(token, map);
   if(isPropToken(token)) return openPropMenu(token, map);
   const gm = cloud.isGM, px = map.gridSize;
   const wrap = el("div",{});
@@ -62359,8 +62631,11 @@ function renderMap(){
     bar.append(...regionToggleBtns());
     if(liveMaps.length){
       const sel = el("select");
+      // 👥 the places the players' Trainers are in right now (the shown map and anywhere its portals lead)
+      const pm = mapById(meta.playerMapId), withParty = new Set();
+      if(pm) portalReach(pm).forEach(m=>{ if(mapTokensFor(m.id).some(t=>t.link && t.link.kind==="trainer" && tokenSide(t)==="player")) withParty.add(m.id); });
       liveMaps.forEach(m=>sel.append(el("option",{value:m.id,selected:m.id===mapGmView},
-        m.name + (m.id===meta.playerMapId ? " 👁" : "") + (m.hideName ? " 🙈" : ""))));
+        m.name + (m.id===meta.playerMapId ? " 👁" : "") + (withParty.has(m.id) && m.id!==meta.playerMapId ? " 👥" : "") + (m.hideName ? " 🙈" : ""))));
       sel.addEventListener("change", ()=>{ mapGmView=sel.value; mapView={scale:1,panX:0,panY:0}; renderMap(); });
       bar.append(el("label",{class:"field",style:"max-width:190px"}, el("span",{},"Viewing (private)"), sel));
     }
@@ -62471,6 +62746,8 @@ function renderMap(){
           title:"Drop a boat on the board. Steer it with the 🚤 arrows — it turns to face where it's going and everything standing on the deck sails with it."},"🚤 Boat"),
         el("button",{class:"btn-secondary",onclick:()=>addBalloon(map),
           title:"Drop a hot-air balloon on the board: a flying boat with HP and a Sky speed. Steer it with the 🎈 arrows and everyone standing on it drifts along."},"🎈 Balloon"),
+        el("button",{class:"btn-secondary",onclick:()=>addPortal(map),
+          title:"Drop a portal: a door, ladder or hole that leads to another map. Tap it to send whoever stands near it through; 'Make the way back' puts the other end on the destination. Ladders can be left for the players to use themselves."},"\u{1FA9C} Portal"),
         el("button",{class:"btn-secondary",onclick:()=>addDoor(map),
           title:"Drop a door: HP, Defense, DR and a lock players can pick (Stealth) or smash. Its picture stands in its doorway square, so it lines up with the gaps in the art. Each new door copies the last one."},"\u{1F6AA} Door"),
         el("button",{class:"btn-secondary",onclick:()=>openAddHazard(map),
