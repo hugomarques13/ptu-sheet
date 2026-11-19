@@ -86,6 +86,11 @@ function desertScaleFight(f, st){
   const [lo, hi] = f.target || [1, 1.5];
   const want = (lo + hi) / 2 * everyday;
   const lead = (f.lead || []).map(m => Object.assign({}, m));
+  /* ROGUE MEGAS, the user's way (2026-11-19): just the Mega, well above the party, with players + 2 Boss bars
+     (3-6) — de-level it with 🎣 once it is caught. `solo` ones skip the ratio steering below entirely; the ones
+     with helpers for spice still go through it. */
+  const rogueBars = Math.max(3, Math.min(6, P + 2));
+  if(f.kind === "rogue") lead.forEach(m => { m.boss = rogueBars; });
   const trainers = (f.trainers || []).map(t => Object.assign({}, t, { mons:(t.mons || []).map(m => Object.assign({}, m)) }));
   const pool = f.pool || [];
   const maxPool = f.maxPool != null ? f.maxPool : pool.length;
@@ -96,6 +101,11 @@ function desertScaleFight(f, st){
   const base = s => mons().reduce((n, m) => n + lvOf(m, s) * Math.max(1, m.swarm || 1), 0)
                   + trainers.reduce((n, t) => n + tlvOf(t, s) * 2, 0);
   const top = hi * everyday;
+  if(f.kind === "rogue" && f.solo){
+    const tot = base(0);
+    return { A, TA, P, everyday, shift:0, total:tot, ratio: tot / everyday, solo:true,
+             lead: lead.map(m => Object.assign(m, { lv:lvOf(m, 0) })), extra:[], trainers:[] };
+  }
   /* 1 · bodies. Helpers from the pool in order — a Swarm only once, anyone else may come again (a third
      Luxio) — then each Trainer fills their team from their bench (or their own Pokémon again, a Level
      lower), up to six, round the table so nobody hogs the extra. Stop as soon as the middle of the band is
@@ -143,7 +153,8 @@ function desertScaleFight(f, st){
   }
   // 3 · shift every Level together — at most 8 either way, so nobody ends up wildly off the party's Level
   let shift = 0, best = Infinity;
-  for(let s = -8; s <= 8; s++){ const d = Math.abs(base(s) - want); if(d < best){ best = d; shift = s; } }
+  const sMax = f.kind === "rogue" ? 0 : 8;          // a Rogue Mega keeps its own Level; its helpers are just spice
+  for(let s = -sMax; s <= sMax; s++){ const d = Math.abs(base(s) - want); if(d < best){ best = d; shift = s; } }
   const total = base(shift);
   return { A, TA, P, everyday, shift, total, ratio: total / everyday,
            lead: lead.map(m => Object.assign(m, { lv:lvOf(m, shift) })),
@@ -192,9 +203,10 @@ function desertBuildFight(f, st){
     f.note || "",
     "",
     `⚖ Built ${new Date().toLocaleDateString()} for the party as it is now: Pokémon Lv ${sc.A} (Trainers Lv ${sc.TA}), ${sc.P} player${sc.P === 1 ? "" : "s"}.`,
-    `   ${sc.total} Levels against an everyday ${sc.everyday} = ×${Math.round(sc.ratio * 100) / 100} (${band.label}); aimed at ×${f.target[0]}–${f.target[1]}.`,
+    sc.solo ? `   A solo Rogue Mega: Lv ${sc.lead[0].lv} (party + ${sc.lead[0].lv - sc.A}) with ${sc.lead[0].boss} Boss bars (players + 2). ⚖ prices it at ×${Math.round(sc.ratio * 100) / 100} because bars and the Mega cost nothing there — it fights far above that. Once caught, hand it over weakened with 🎣.`
+            : `   ${sc.total} Levels against an everyday ${sc.everyday} = ×${Math.round(sc.ratio * 100) / 100} (${band.label}); aimed at ×${f.target[0]}–${f.target[1]}.`,
     `   Boss HP bars and Mega Evolution cost nothing on that scale — run the ⚗ Sim (⚖ Difficulty) before the session.`,
-    ...(sc.ratio < f.target[0] - 0.05 ? [`   ⚠ SHORT of its band even with every helper and +8 Levels: add bodies by hand, or more helpers in desert_fights.py.`] : []),
+    ...(!sc.solo && sc.ratio < f.target[0] - 0.05 ? [`   ⚠ SHORT of its band even with every helper and +8 Levels: add bodies by hand, or more helpers in desert_fights.py.`] : []),
     "",
     "The lineup:",
     ...desertFightLines(f, sc),
@@ -223,7 +235,9 @@ function regionFightControls(pin, map){
   }
   const sc = desertScaleFight(f, st);
   const band = diffBand(sc.ratio);
-  box.append(el("div",{class:"small",style:"margin-top:4px"},
+  if(sc.solo) box.append(el("div",{class:"small",style:"margin-top:4px"},
+    `Solo Rogue Mega, scaled to the party now (Pokémon Lv ${sc.A}, ${sc.P} players): Lv ${sc.lead[0].lv}, ${sc.lead[0].boss} Boss bars. De-level it with 🎣 after the catch.`));
+  else box.append(el("div",{class:"small",style:"margin-top:4px"},
     `Scaled to the party now (Pokémon Lv ${sc.A}, Trainers Lv ${sc.TA}, ${sc.P} players): `,
     el("b",{style:`color:${band.color}`}, `×${Math.round(sc.ratio * 100) / 100} ${band.label}`),
     ` · aimed at ×${f.target[0]}–${f.target[1]}`,

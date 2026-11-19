@@ -54817,41 +54817,73 @@ function placeEncounterAround(map, enc, center, opts){
   mapTokensSave(); renderMap();
   return n;
 }
-/* 🎲 Wild on the Map bar: roll a table and drop the result round the party in one go. The tables for where
-   the party is standing come first (a region's regionAreaHints), the rest under "Every table". */
+/* Where the players are on this board, in groups: everyone standing within 20 squares of someone else in the
+   group is together (single linkage), so a split party comes back as two or three groups, each with its own
+   centre and names. Trainers first; a party with no Trainer tokens out falls back to its Pokémon. */
+function partyGroups(map){
+  const toks = mapTokensFor(map.id).filter(t => !t.riding && !isNoteToken(t) && tokenSide(t) === "player");
+  const trainers = toks.filter(t => tokenHp(t).kind === "trainer");
+  const use = trainers.length ? trainers : toks;
+  const groups = [];
+  use.forEach(t => {
+    const near = groups.filter(g => g.some(u => Math.max(Math.abs(u.x - t.x), Math.abs(u.y - t.y)) <= 20));
+    if(!near.length){ groups.push([t]); return; }
+    const merged = [].concat(...near, [t]);
+    near.forEach(g => groups.splice(groups.indexOf(g), 1));
+    groups.push(merged);
+  });
+  return groups.map(g => ({
+    toks: g,
+    names: g.map(t => tokenHp(t).name || "?"),
+    center: { x: Math.round(g.reduce((n,t)=>n+t.x,0)/g.length), y: Math.round(g.reduce((n,t)=>n+t.y,0)/g.length) },
+  }));
+}
+/* 🎲 Wild on the Map bar: roll a table and drop the result round the players in one go. It finds them itself:
+   one section per group of players on this board, saying where they are (the region's regionAreaHints: the
+   zone under them, then the spots and stretches nearby) with that place's tables, each rolling round THAT
+   group. Every other table sits folded underneath. */
 function openMapWild(map){
   const areas = ENC_AREAS.filter(inSiteRegion);
   if(!areas.length){ toast("No encounter tables" + (siteRegion ? " for this region yet" : "")); return; }
-  const center = partyCenterCell(map);
-  const hints = (typeof regionAreaHints === "function") ? regionAreaHints(map, center).filter(a => areas.includes(a)) : [];
+  let groups = partyGroups(map);
+  if(!groups.length) groups = [{ toks:[], names:[], center: mapViewCenterCell(map, 1), view:true }];
+  const hintsFor = c => (typeof regionAreaHints === "function") ? regionAreaHints(map, c).filter(a => areas.includes(a)) : [];
   const st = partyStats();
   const body = el("div",{});
   const hid = el("input",{type:"checkbox"});
   const dist = el("input",{type:"number",min:0,max:30,value:7,style:"width:56px"});
   body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
-    `Rolls the table, builds the encounter, and places it as one group ${"\u2248"}N squares from the party (from a random side).`
+    `Rolls the table, builds the encounter, and places it as one group ${"\u2248"}N squares from those players (from a random side).`
     + (st.A ? ` Party: Pokémon Lv ${st.A}, ${st.P} player${st.P===1?"":"s"}.` : "")),
     el("div",{class:"inline",style:"gap:12px;flex-wrap:wrap;margin-bottom:10px"},
       el("label",{class:"inline",style:"gap:6px"}, el("span",{class:"small"},"Squares away"), dist),
       el("label",{class:"inline",style:"gap:6px;cursor:pointer"}, hid, el("span",{class:"small"},"\u{1F648} Start hidden from players"))));
-  const row = a => el("div",{class:"inline",style:"justify-content:space-between;gap:8px;padding:3px 0;flex-wrap:wrap"},
+  const row = (a, g) => el("div",{class:"inline",style:"justify-content:space-between;gap:8px;padding:3px 0;flex-wrap:wrap"},
     el("span",{}, el("b",{}, a.name), el("span",{class:"small muted"},
       ` ${a.kind ? "\u00b7 " + a.kind + " " : ""}\u00b7 ${(a.common||[]).length} common, ${(a.rare||[]).length} rare` + (a.desc ? ` \u00b7 ${a.desc}` : ""))),
     el("button",{class:"btn-primary",style:"padding:4px 10px",onclick:()=>{
       closeModal();
       const enc = rollWildEncounter(a, { quiet:true });
       if(!enc) return;
-      const n = placeEncounterAround(map, enc, center, { dist:Math.max(0, parseInt(dist.value)||0), hidden:hid.checked });
-      toast(`\u{1F3B2} ${enc.name}: ${n} on the board${hid.checked ? " (hidden)" : ""}`);
+      const n = placeEncounterAround(map, enc, g.center, { dist:Math.max(0, parseInt(dist.value)||0), hidden:hid.checked });
+      toast(`\u{1F3B2} ${enc.name}: ${n} on the board${g.names.length ? " near " + g.names.join(", ") : ""}${hid.checked ? " (hidden)" : ""}`);
     }},"\u{1F3B2} Roll & place"));
-  if(hints.length){
-    body.append(el("div",{class:"small",style:"font-weight:800;margin:4px 0"},"\u{1F4CD} Where the party is"));
-    hints.forEach(a => body.append(row(a)));
-  }
-  const det = el("details",{class:"spoiler",style:"margin-top:10px"});
-  det.open = !hints.length;
-  det.append(el("summary",{}, el("span",{class:"small"}, `Every table (${areas.length})`)));
-  areas.forEach(a => det.append(row(a)));
+  groups.forEach((g, gi) => {
+    const hints = hintsFor(g.center);
+    const where = hints.length ? hints[0].name : "no table for this spot";
+    const head = el("div",{class:"inline",style:"justify-content:space-between;gap:8px;flex-wrap:wrap;margin:"+(gi?"14px":"4px")+" 0 4px;padding-top:"+(gi?"10px":"0")+";border-top:"+(gi?"1px solid var(--line)":"0")},
+      el("span",{style:"font-weight:800"}, "\u{1F4CD} ",
+        g.view ? "No players on this board \u2014 the middle of your view" : g.names.join(", "),
+        el("span",{class:"muted",style:"font-weight:400"}, ` \u2014 ${where} (${g.center.x}, ${g.center.y})`)),
+      el("button",{class:"btn-secondary",style:"padding:3px 9px",title:"look at them (the window stays open)",
+        onclick:()=>{ locateNote(map, { id:"", x:g.center.x, y:g.center.y }); }},"\u{1F441} Look"));
+    body.append(head);
+    if(hints.length) hints.forEach(a => body.append(row(a, g)));
+    else body.append(el("div",{class:"small muted"},"Nothing on the tables here \u2014 pick one below."));
+  });
+  const det = el("details",{class:"spoiler",style:"margin-top:12px"});
+  det.append(el("summary",{}, el("span",{class:"small"}, `Every table (${areas.length})` + (groups.length > 1 ? ` \u2014 rolls round ${groups[0].names.join(", ") || "the view"}` : ""))));
+  areas.forEach(a => det.append(row(a, groups[0])));
   body.append(det);
   modal({ title:"\u{1F3B2} Wild encounter", bodyNode:body, footNodes:[el("button",{class:"btn-secondary",onclick:closeModal},"Close")] });
 }
