@@ -17837,6 +17837,15 @@ function trainerRowOwnerOf(p){
   return null;
 }
 
+/* Where a held hand writes to. A player's Trainer tab is the default (save + renderTrainer, the
+   active character's Pokémon); an encounter NPC registers its own when the Encounters tab draws its
+   Cards card, so ⚡ Apply lands on the encounter's copy and commits through saveEnc. */
+const CARD_IO = new WeakMap();
+function cardIO(t){
+  return (t && CARD_IO.get(t)) || { enc:false, save:()=>save(), render:()=>renderTrainer(),
+    mons:()=> (activeChar().pokemon||[]) };
+}
+function cardCommit(t){ const io = cardIO(t); io.save(); io.render(); }
 /* ---------- ⚡ Apply: the one-shot effects ---------- */
 /* Effects are tracked ONE AT A TIME (`c.doneFx`), not per-card. That matters for the multi-part
    Majors: The Sun hands out two Trainer levels AND makes one Pokémon shiny with +2 to all its Base
@@ -17869,7 +17878,7 @@ function cardUndoSet(c, i, patch){
    to choose again. Most of it reverses by arithmetic straight off the fx definition, which is why
    this also works on cards applied before `c.undo` was ever recorded. */
 function cardRepick(t, c){
-  const ch = activeChar(), doneMap = cardDoneFx(c), undone = [];
+  const ch = {pokemon: cardIO(t).mons()}, doneMap = cardDoneFx(c), undone = [];
   if(!confirm(`Take back the Pokémon half of ${cardTitle(c)}?\n\nThe Pokémon you picked gives back what this card gave it, and you choose again. Anything the card did to the Trainer — levels, money, AP — stays done and will NOT fire twice.`)) return;
   cardFxList(c).forEach((fx,i)=>{
     if(!doneMap[i]) return;
@@ -17910,16 +17919,16 @@ function cardRepick(t, c){
     cardSetPick(c, i, {monId:"", monId2:""});          // force a fresh choice
   });
   c.appliedNote = undone.length ? "↺ taken back: " + undone.join(" · ") : c.appliedNote;
-  save(); renderTrainer();
+  cardCommit(t);
   toast(undone.length ? `${cardTitle(c)} — pick a new Pokémon, then ⚡ Apply again` : "Nothing to take back");
 }
 /* These write to the sheet through the normal writers (moneyChange, tpChange…) so they land in the
    ledgers like any other movement. Rank changes remember what they overwrote, so pulling the card
    off the sheet can put the Skill back where it was. */
 function cardApply(t, c){
-  const ch = activeChar();
+  const io = cardIO(t), ch = {pokemon: io.mons()};
   const why = `Arcana: ${cardTitle(c)}`;
-  const party = () => (ch.pokemon||[]).filter(p=>p.onTeam && !isMomSpecies(p.species));
+  const party = () => (ch.pokemon||[]).filter(p=>(io.enc || p.onTeam) && !isMomSpecies(p.species));
   const done = [];
   const doneMap = cardDoneFx(c);
   const reapply = Object.keys(doneMap).length > 0;          // some of this card already went off
@@ -18006,8 +18015,9 @@ function cardApply(t, c){
       case "shiny": if(mon){ cardUndoSet(c,i,{shinyWas: !!mon.shiny});    // so ↺ can't "un-shiny" an already-shiny one
                              mon.shiny = true;
                              done.push(`${mon.nickname||getSpecies(mon.species)?.name||"Pokémon"} ✨ shiny`); } break;
-      case "rest":  setTimeout(()=>endDay(), 0); done.push("Extended Rest — pick who rests in the planner"); break;
-      case "gift":  setTimeout(()=>openAddGift(t), 0); done.push("Legendary Gift — grant it in the 🎁 tab"); break;
+      case "rest":  if(io.enc){ done.push("Extended Rest — rest this NPC by hand"); break; }
+                    setTimeout(()=>endDay(), 0); done.push("Extended Rest — pick who rests in the planner"); break;
+      case "gift":  setTimeout(()=>io.enc ? openAddGift(t, io.save, io.render) : openAddGift(t), 0); done.push("Legendary Gift — grant it in the 🎁 tab"); break;
       case "evolve":
         if(mon){
           const opts = nextEvolutions(mon);
@@ -18024,7 +18034,7 @@ function cardApply(t, c){
   // a re-apply after ↺ keeps the "taken back" line, so the card reads as a history of what happened
   c.appliedNote = reapply ? [c.appliedNote, done.join(" · ")].filter(Boolean).join(" · ")
                           : done.join(" · ");
-  save(); renderTrainer();
+  cardCommit(t);
   toast(done.length ? `${cardTitle(c)} — ${done.join(" · ")}` : `${cardTitle(c)} applied`);
 }
 /* The Empress ignores every evolution requirement, so this offers the branch and lets evolveTo do the rest */
@@ -18058,7 +18068,7 @@ Its ongoing effects stop and any Skill Rank it took is given back. The card stay
     if(lifting) t.skills[r.key] = r.was;
     else if(r.to) t.skills[r.key] = r.to;
   });
-  save(); renderTrainer();
+  cardCommit(t);
   toast(lifting ? `${cardTitle(c)} lifted — the condition was met` : `${cardTitle(c)} binds again`);
 }
 /* Taking a card off the sheet. Live effects vanish with it; Rank changes are put back; anything that
@@ -18070,7 +18080,7 @@ function cardRemove(t, c){
   if(!confirm(`Remove ${cardTitle(c)} from this Trainer?${warn}`)) return;
   (c.prevRanks||[]).slice().reverse().forEach(r=>{ if(t.skills) t.skills[r.key] = r.was; });
   t.cards = (t.cards||[]).filter(x=>x!==c);
-  save(); renderTrainer(); toast(`${cardTitle(c)} removed`);
+  cardCommit(t); toast(`${cardTitle(c)} removed`);
 }
 
 /* ---------- what a card promises, in one line ---------- */
@@ -18114,7 +18124,7 @@ function cardFxText(fx, pk){
 }
 /* the choices an unapplied card is still waiting on */
 function cardPickerRow(t, c, fx, i){
-  const ch = activeChar(), pk = cardPick(c,i), needs = cardFxNeeds(fx);
+  const ch = {pokemon: cardIO(t).mons()}, pk = cardPick(c,i), needs = cardFxNeeds(fx);
   if(!needs.length) return null;
   const wrap = el("div",{class:"inline",style:"flex-wrap:wrap;gap:6px;margin-top:5px"});
   const lock = !!cardDoneFx(c)[i];        // per-effect: a ↺ re-pick unlocks just that one again
@@ -18123,7 +18133,7 @@ function cardPickerRow(t, c, fx, i){
     s.append(el("option",{value:""}, label));
     opts.forEach(([k,l])=> s.append(el("option",{value:k, selected:value===k}, l)));
     s.disabled = lock;
-    s.addEventListener("change",()=>{ on(s.value); save(); renderTrainer(); });
+    s.addEventListener("change",()=>{ on(s.value); cardCommit(t); });
     return s;
   };
   const monOpts = () => (ch.pokemon||[]).filter(p=>!isMomSpecies(p.species))
@@ -18154,7 +18164,8 @@ function cardPickerRow(t, c, fx, i){
 }
 
 /* ---------- the 🔮 Cards sub-tab ---------- */
-function cardsCard(t){
+function cardsCard(t, ioOverride){
+  if(ioOverride) CARD_IO.set(t, ioOverride);
   const gm = isGM();
   const card = el("div",{class:"card"}, el("h3",{},"The Arcana",
     el("div",{class:"inline"}, gm
@@ -18263,7 +18274,7 @@ function arcanaRow(t, c, gm){
       const on = c.active!==false;
       bar.append(el("button",{class: on?"btn-secondary":"linkbtn",
         title:"this effect only counts while its condition holds — flip it off when it doesn't",
-        onclick:()=>{ c.active = !on; save(); renderTrainer(); }}, on?"🔆 in effect":"🌑 dormant"));
+        onclick:()=>{ c.active = !on; cardCommit(t); }}, on?"🔆 in effect":"🌑 dormant"));
     }
     /* the escape hatch for a permanent bane: the GM decides the condition was met */
     if(c.applied && cardHasOngoing(c)){
@@ -18275,12 +18286,12 @@ function arcanaRow(t, c, gm){
     bar.append(el("label",{class:"inline small",style:"gap:5px;cursor:pointer",
       title:"hide this card's effect from the player — only you can read it"},
       (()=>{ const cb = el("input",{type:"checkbox"}); cb.checked = !!c.hidden;
-             cb.addEventListener("change",()=>{ c.hidden = cb.checked; save(); renderTrainer(); }); return cb; })(),
+             cb.addEventListener("change",()=>{ c.hidden = cb.checked; cardCommit(t); }); return cb; })(),
       el("span",{},"👁 hide from player")));
     bar.append(el("label",{class:"inline small",style:"gap:5px;cursor:pointer",
       title:"wears off the moment the next badge is won — remove it by hand then"},
       (()=>{ const cb = el("input",{type:"checkbox"}); cb.checked = !!c.arcExpiry;
-             cb.addEventListener("change",()=>{ c.arcExpiry = cb.checked; save(); renderTrainer(); }); return cb; })(),
+             cb.addEventListener("change",()=>{ c.arcExpiry = cb.checked; cardCommit(t); }); return cb; })(),
       el("span",{},"⏳ expires end of arc")));
     row.append(bar);
   }
@@ -18292,7 +18303,7 @@ function arcanaRow(t, c, gm){
   if(gm){
     const ta = el("textarea",{class:"arcana-note",placeholder:"GM notes — the choice made, the NPC, the secret condition that lifts this…"});
     ta.value = c.notes || "";
-    ta.addEventListener("change",()=>{ c.notes = ta.value; save(); });
+    ta.addEventListener("change",()=>{ c.notes = ta.value; cardIO(t).save(); });
     row.append(ta);
   } else if(c.notes){
     row.append(el("div",{class:"arcana-notes-ro small"}, c.notes));
@@ -18353,7 +18364,7 @@ function openAddCard(t){
       if(!Array.isArray(t.cards)) t.cards = [];
       t.cards.push({ id:uid(), key:d.k, orientation:orient.value, hidden:hideCb.checked,
                      arcExpiry:!!face.arc, applied:false, picks:{}, notes:"", dealtAt:Date.now() });
-      save(); closeModal(); trainerTab="cards"; renderTrainer();
+      { const io = cardIO(t); io.save(); closeModal(); if(!io.enc) trainerTab="cards"; io.render(); }
       toast(`${d.n} ${orient.value==="rev"?"▼":"▲"} dealt`);
     }},"Deal it"),
   ]});
@@ -18375,6 +18386,10 @@ function renderPokemon(){
   const bar = el("div",{class:"inline",style:"margin-bottom:12px"});
   if(mayAdd) bar.append(el("button",{class:"btn-primary",onclick:()=>addPokemon()},"＋ Add Pokémon"));
   if(mode==="cloud") bar.append(el("button",{class:"btn-secondary",onclick:()=>switchTab("pc")},"🖥 PC"));
+  if(c.pokemon.length && (mode!=="cloud" || !cloud.activeId || canEditActive()))
+    bar.append(el("button",{class:"btn-secondary",onclick:()=>openExpSpread(),
+      title:"share your EXP pool across all your Pokémon, with a preview of the Levels and Moves it buys"},
+      `📊 Spread EXP${c.trainer?.xpPool ? ` (${c.trainer.xpPool})` : ""}`));
   if(bar.children.length) root.append(bar);
 
   if(!c.pokemon.length){
@@ -22222,12 +22237,243 @@ function xpRow(p){
       atMax ? `Lv 100 (max) · ${p.xp} XP` : `Lv ${p.level} · ${toNext} XP to Lv ${p.level+1} (at ${nextMin})`),
     el("div",{class:"spacer"}),
     addBox,
-    el("button",{class:"btn-secondary",style:"padding:5px 12px",onclick:addXP},"+ Add XP")));
+    el("button",{class:"btn-secondary",style:"padding:5px 12px",onclick:addXP},"+ Add XP"),
+    el("button",{class:"btn-secondary",style:"padding:5px 12px",title:"share your EXP pool across all your Pokémon, with a preview of the Levels and Moves it buys",
+      onclick:()=>openExpSpread(p.id)},"📊 Spread EXP")));
   if(!isGM() && t) wrap.append(el("div",{class:"small muted",style:"margin-top:4px"},
     `EXP pool: ${t.xpPool||0} — from your GM's "📤 Send EXP". It is spent on Pokémon only; your Trainer's own EXP comes from the GM separately.`));
   wrap.append(el("div",{class:"hpbar",style:"margin-top:6px"},
     el("i",{style:`width:${pct}%;background:var(--accent)`})));
   return wrap;
+}
+
+/* ===================================================================
+   📊 Spread EXP — share the EXP pool across the whole roster, previewed
+   ------------------------------------------------------------------
+   One window lists every Pokémon on the sheet (party first, then the box) with what each one gets
+   at its next Levels: Level-Up Moves, the Lv 20 / Lv 40 Ability unlocks, level evolutions and
+   Tutor Points. The player types EXP into any of them (or taps ＋1 Lv) and sees the Levels it would
+   buy, but NOTHING is written until ✓ Confirm — closing the window throws the plan away. Confirm
+   then does exactly what "+ Add XP" does per Pokémon (setMonXP's steps, minus the per-mon
+   re-render) and takes the total out of t.xpPool in one go. The GM, like on "+ Add XP", is not
+   limited by the pool and never spends it.
+=================================================================== */
+/* every Level-Up Move a species gets, as [name, level] in level order — the same rule
+   speciesLevelupNames uses (the form's own printed level wins; pre-evos only fill gaps) */
+function speciesLevelupSchedule(sp){
+  if(!sp) return [];
+  const own = new Map();
+  (sp.moves?.levelup || []).forEach(m=>{ const k = canonMoveName(m.name);
+    if(!own.has(k) || m.level < own.get(k)) own.set(k, m.level); });
+  const at = new Map(own);
+  speciesLineBackTo(sp).slice(1).forEach(s => (s.moves?.levelup || []).forEach(m=>{
+    const k = canonMoveName(m.name);
+    if(own.has(k)) return;
+    if(!at.has(k) || m.level < at.get(k)) at.set(k, m.level);
+  }));
+  return [...at].sort((a,b) => a[1]-b[1]);
+}
+/* Map level → [{kind, text, title}] of what happens on reaching that level, for levels > p.level */
+function monLevelMilestones(p){
+  const sp = getSpecies(p.species), out = new Map(), from = p.level || 1;
+  const add = (lv, m) => { if(lv > from && lv <= MAX_LEVEL){ if(!out.has(lv)) out.set(lv, []); out.get(lv).push(m); } };
+  if(sp){
+    const hide = momDexRedacted(sp);
+    const known = new Set((p.moves||[]).map(n => canonMoveName(n)));
+    speciesLevelupSchedule(sp).forEach(([name, lv]) => add(lv, hide
+      ? { kind:"move", text:"???", title:"a Move — still unwritten" }
+      : { kind:"move", text:name + (known.has(name) ? " ✓" : ""), name,
+          title: known.has(name) ? `${name} — already known` : `learns ${name}` }));
+    if(sp.abilities?.advanced?.length) add(20, { kind:"ability", text:"Advanced Ability",
+      abil: hide ? null : sp.abilities.advanced.map(errataAbility),
+      title:"Advanced Abilities unlock: " + sp.abilities.advanced.join(", ") });
+    if(sp.abilities?.high?.length) add(40, { kind:"ability", text:"High Ability",
+      abil: hide ? null : sp.abilities.high.map(errataAbility),
+      title:"High Abilities unlock: " + sp.abilities.high.join(", ") });
+    nextEvolutions(p).forEach(e => { if(e.min) add(e.min, { kind:"evo", text:"→ " + e.target,
+      title:`can evolve into ${e.target}` + (e.method ? ` (${e.method})` : "") }); });
+  }
+  for(let lv = Math.ceil((from+1)/5)*5; lv <= MAX_LEVEL; lv += 5)
+    add(lv, { kind:"tp", text:"🎓 TP", title:"+1 Tutor Point" });
+  return out;
+}
+function openExpSpread(focusId){
+  const c = activeChar(), t = c?.trainer;
+  if(!c || !t){ toast("No character open"); return; }
+  if(mode==="cloud" && cloud.activeId && !canEditActive()){ toast("You can only spread EXP on your own sheet"); return; }
+  const gm = isGM();
+  const pool = () => Math.max(0, t.xpPool || 0);
+  const mons = c.pokemon.slice().sort((a,b) => (b.onTeam?1:0) - (a.onTeam?1:0));
+  if(!mons.length){ toast("No Pokémon on this sheet"); return; }
+  const plan = new Map(mons.map(p => [p.id, 0]));
+  const total = () => [...plan.values()].reduce((a,b) => a+b, 0);
+  const left = () => gm ? Infinity : pool() - total();
+  const capFor = p => Math.max(0, xpForLevel(MAX_LEVEL) - (p.xp||0));   // no EXP past Lv 100
+  const nameOf = p => p.nickname || getSpecies(p.species)?.name || p.species || "Pokémon";
+
+  const wrap = el("div",{});
+  const head = el("div",{class:"inline small",style:"gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px;position:sticky;top:0;background:var(--card,var(--bg));z-index:2;padding:6px 0"});
+  wrap.append(head,
+    el("div",{class:"small muted",style:"margin-bottom:8px"},
+      "Type EXP into any Pokémon or tap ＋1 Lv to preview what it reaches. Nothing changes until you press ✓ Confirm."));
+  const drawHead = () => {
+    head.innerHTML = "";
+    head.append(
+      el("span",{class:"pill",style:"font-weight:700"}, gm ? `Pool ${pool()} (GM: not limited)` : `Pool ${pool()} EXP`),
+      el("span",{}, `Assigned `, el("b",{}, String(total()))),
+      gm ? "" : el("span",{class: left() < 0 ? "warnbox" : ""}, `Left `, el("b",{}, String(left()))));
+  };
+
+  const rows = [];
+  const section = label => wrap.append(el("div",{class:"small muted",style:"font-weight:700;margin:10px 0 4px"}, label));
+  mons.forEach((p, i) => {
+    if(i===0 || p.onTeam !== mons[i-1].onTeam) section(p.onTeam ? "Party" : "Box");
+    const sp = getSpecies(p.species), ms = monLevelMilestones(p);
+    const row = el("div",{class:"card",style:"padding:8px 10px;margin:0 0 6px"});
+    const lvl = el("div",{class:"small",style:"font-weight:700"});
+    const bar = el("i",{style:"width:0%;background:var(--accent)"});
+    const box = el("input",{type:"number",min:"0",placeholder:"0",style:"width:84px"});
+    const mlist = el("div",{class:"small",style:"margin-top:6px;display:flex;flex-direction:column;gap:2px"});
+    /* tapping a Move (or an Ability unlock) chip opens its full rules right here in the row — a
+       second modal() would close this one and throw the unconfirmed plan away */
+    const detail = el("div",{style:"display:none;margin-top:6px;padding:8px 10px;border:1px solid var(--line,#8884);border-radius:8px"});
+    let openKey = null;
+    const showDetail = (key, title, html) => {
+      if(openKey === key){ openKey = null; detail.style.display = "none"; detail.innerHTML = ""; draw(); return; }
+      openKey = key; detail.innerHTML = "";
+      detail.append(el("div",{style:"display:flex;align-items:center;gap:8px;margin-bottom:6px"},
+          el("b",{style:"flex:1"}, title),
+          el("button",{class:"btn-secondary",style:"padding:2px 8px",title:"close",
+            onclick:()=>showDetail(key)},"×")),
+        el("div",{class:"small",html}));
+      detail.style.display = "";
+      draw();
+    };
+    const set = (n, fromBox) => {
+      n = Math.max(0, Math.min(capFor(p), Math.floor(n)||0));
+      if(!gm) n = Math.min(n, pool() - (total() - plan.get(p.id)));   // never more than is left
+      plan.set(p.id, n);
+      if(!fromBox || String(n) !== box.value) box.value = n ? String(n) : "";
+      drawAll();
+    };
+    box.addEventListener("input", () => set(parseInt(box.value), true));
+    box.addEventListener("blur", () => { box.value = plan.get(p.id) ? String(plan.get(p.id)) : ""; });
+    const plusLv = () => {
+      const xp = (p.xp||0) + plan.get(p.id), lv = levelForXP(xp);
+      if(lv >= MAX_LEVEL){ toast(`${nameOf(p)} is already at Lv ${MAX_LEVEL}`); return; }
+      const need = xpForLevel(lv+1) - xp, have = left();
+      if(have <= 0){ toast("No EXP left in the pool to assign"); return; }
+      if(need > have){
+        set(plan.get(p.id) + have);
+        toast(`Only ${have} EXP left — all of it went on ${nameOf(p)} (${need-have} short of Lv ${lv+1})`);
+        return;
+      }
+      set(plan.get(p.id) + need);
+    };
+    const minusLv = () => {
+      const a = plan.get(p.id); if(!a) return;
+      const xp = (p.xp||0) + a, lv = levelForXP(xp);
+      // back to the start of the current planned Level, or down one whole Level if already on it
+      let target = xpForLevel(lv) === xp ? xpForLevel(lv-1) : xpForLevel(lv);
+      set(Math.max(0, target - (p.xp||0)));
+    };
+    const draw = () => {
+      const a = plan.get(p.id), xp = (p.xp||0) + a, lv = levelForXP(xp);
+      const atMax = lv >= MAX_LEVEL, cur = xpForLevel(lv), nxt = atMax ? cur : xpForLevel(lv+1);
+      const pct = atMax ? 100 : Math.max(0, Math.min(100, Math.round((xp-cur)/Math.max(1,nxt-cur)*100)));
+      bar.style.width = pct + "%";
+      bar.style.background = lv > p.level ? "var(--good,#3a3)" : "var(--accent)";
+      lvl.innerHTML = "";
+      lvl.append(lv > p.level
+        ? el("span",{}, `Lv ${p.level} → `, el("span",{style:"color:var(--good,#3a3)"}, `Lv ${lv}`), ` (+${lv-p.level})`)
+        : el("span",{}, `Lv ${p.level}`),
+        el("span",{class:"muted",style:"font-weight:400"},
+          atMax ? ` · ${xp} XP (max)` : ` · ${nxt-xp} XP to Lv ${lv+1}`));
+      // milestones: everything the plan reaches, then the next three beyond it
+      mlist.innerHTML = "";
+      const lvls = [...ms.keys()].sort((x,y) => x-y);
+      const reached = lvls.filter(l => l <= lv), ahead = lvls.filter(l => l > lv).slice(0, 3);
+      const show = reached.length > 10 ? reached.slice(-10) : reached;
+      if(reached.length > show.length) mlist.append(el("div",{class:"muted"}, `…and ${reached.length-show.length} earlier milestone Levels`));
+      const line = (l, got) => {
+        const items = ms.get(l);
+        const r = el("div",{style:"display:flex;gap:6px;flex-wrap:wrap;align-items:center" + (got ? "" : ";opacity:.75")},
+          el("span",{style:`min-width:44px;font-weight:700;color:${got ? "var(--good,#3a3)" : "var(--muted,#888)"}`}, (got ? "✓ " : "") + "Lv " + l));
+        items.forEach(m => {
+          const chip = el("span",{class:"chip", title:m.title,
+            style: m.kind==="evo" ? "font-weight:700" : m.kind==="ability" ? "font-style:italic" : m.kind==="tp" ? "opacity:.7" : ""}, m.text);
+          const key = m.name ? "mv:" + m.name : m.abil ? "ab:" + m.abil : null;
+          if(key){
+            chip.style.cursor = "pointer";
+            chip.title = (m.title ? m.title + " — " : "") + "tap for details";
+            if(openKey === key){ chip.style.outline = "2px solid var(--accent)"; }
+            chip.addEventListener("click", () => {
+              if(m.name){
+                const mv = moveByName.get(m.name.toLowerCase());
+                showDetail(key, m.name + (mv ? ` · ${moveLineShort(mv)}` : ""), moveDetailHTML(mv, m.name));
+              } else {
+                showDetail(key, m.text, m.abil.map(an => {
+                  const ab = abilityByName.get(String(an).toLowerCase());
+                  return `<div style="margin-bottom:8px"><b>${esc(an)}</b>`
+                    + `<div>${ab ? abilityText(ab) : "<span class='muted'>Not in database.</span>"}</div></div>`;
+                }).join(""));
+              }
+            });
+          }
+          r.append(chip);
+        });
+        mlist.append(r);
+      };
+      show.forEach(l => line(l, true));
+      ahead.forEach(l => line(l, false));
+      if(!reached.length && !ahead.length) mlist.append(el("div",{class:"muted"}, atMax ? "Max Level." : "Nothing left to learn by Level."));
+    };
+    row.append(
+      el("div",{style:"display:flex;gap:8px;align-items:center;flex-wrap:wrap"},
+        monPic(p, sp, "s-xs"),
+        el("div",{style:"flex:1;min-width:130px"},
+          el("div",{class:"r-title"}, nameOf(p), p.nickname && sp ? el("span",{class:"muted small"}, " " + sp.name) : ""),
+          lvl),
+        el("div",{class:"inline",style:"gap:4px;align-items:center"},
+          el("button",{class:"btn-secondary",style:"padding:4px 8px",title:"take back one Level's worth",onclick:minusLv},"－1 Lv"),
+          box,
+          el("button",{class:"btn-secondary",style:"padding:4px 8px",
+            title:"assign exactly the EXP for the next Level (or whatever is left)",onclick:plusLv},"＋1 Lv"))),
+      el("div",{class:"hpbar",style:"margin-top:6px"}, bar),
+      mlist, detail);
+    wrap.append(row);
+    rows.push({ p, draw, row });
+  });
+  const drawAll = () => { drawHead(); rows.forEach(r => r.draw()); confirmBtn.disabled = !total(); };
+
+  const confirm = () => {
+    const n = total();
+    if(!n){ toast("Nothing assigned yet"); return; }
+    if(!gm && n > pool()){ toast(`Only ${pool()} EXP in the pool now — adjust the plan`); drawAll(); return; }
+    const ups = [];
+    let tp = 0;
+    rows.forEach(({p}) => {
+      const a = plan.get(p.id); if(!a) return;
+      const was = p.level;
+      p.xp = Math.max(0, Math.floor((p.xp||0) + a));
+      p.level = levelForXP(p.xp); autoAllocMom(p);
+      tp += Math.max(0, tpSync(p));
+      if(p.level > was) ups.push(`${nameOf(p)} Lv ${p.level}`);
+    });
+    if(!gm){ if(typeof t.xpPool !== "number") t.xpPool = 0; t.xpPool = Math.max(0, t.xpPool - n); }
+    save(); closeModal(); render();
+    toast(`Spread ${n} EXP` + (ups.length ? ` — ${ups.join(", ")} 🎉` : "")
+      + (tp > 0 ? ` · +${tp} Tutor Point${tp===1?"":"s"} 🎓` : ""));
+  };
+  const confirmBtn = el("button",{class:"btn-primary",onclick:confirm},"✓ Confirm");
+  drawAll();
+  modal({ title:"📊 Spread EXP", bodyNode:wrap, footNodes:[
+    el("button",{class:"btn-secondary",onclick:()=>{ rows.forEach(({p}) => plan.set(p.id, 0));
+      wrap.querySelectorAll("input[type=number]").forEach(b => b.value = ""); drawAll(); }},"Reset"),
+    el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
+    confirmBtn ]});
+  if(focusId){ const r = rows.find(x => x.p.id === focusId);
+    if(r){ r.row.style.outline = "2px solid var(--accent)"; setTimeout(() => r.row.scrollIntoView({block:"center"}), 30); } }
 }
 
 function monStatGrid(p){
@@ -43350,6 +43596,12 @@ function encounterTrainerCard(enc, tr){
     + "automatically — the effects themselves are reference text, same as on a player sheet."});
   giftsC.style.margin = "8px 0 0";
   card.append(giftsC);
+  /* 🔮 The Arcana — deal cards to an NPC. Live effects (Stats, HP, AP, DR, Skills) fold into
+     trainerDerived like a player's; ⚡ Apply writes to this encounter's copy and its own Pokémon. */
+  const cardsC = cardsCard(t, { enc:true, save:()=>saveEnc(), render:()=>renderEncounters(),
+    mons:()=> (tr.pokemon||[]) });
+  cardsC.style.margin = "8px 0 0";
+  card.append(cardsC);
   // Skills — trained ones with their dice, for quick GM checks
   /* 💢 Berserker — the same class summary the player's ⚔ Battle tab shows, with its Feature
      buttons live (Frenzy, Fight On and On, Power of Rage) and writing through saveEnc(). */
@@ -52750,6 +53002,37 @@ function renderPC(){
 =================================================================== */
 let mapView = { scale:1, panX:0, panY:0 };   // each viewer's own camera (not synced)
 let mapViewMapId = null;                       // which map that camera was last framed for
+/* Camera memory: a refresh lands back where this device was looking. Per device (localStorage),
+   per campaign, per map, stored as the stage point at the viewport's centre + zoom so a resized
+   window still centres on the same spot. The GM's private Viewing pick rides along too. */
+function mapCamKey(){ return "ptu_cam_" + (cloud.campaign || "local"); }
+function mapCamStore(){ try{ return JSON.parse(localStorage.getItem(mapCamKey()) || "{}") || {}; }catch(e){ return {}; } }
+let mapCamTimer = 0;
+function mapCamSaveNow(){
+  clearTimeout(mapCamTimer); mapCamTimer = 0;
+  if(!mapViewMapId || !(mapView.scale > 0)) return;
+  try{
+    const vp = mapViewportSize(), s = mapView.scale, st = mapCamStore();
+    st.maps = st.maps || {};
+    st.maps[mapViewMapId] = { s, cx:(vp.w/2 - mapView.panX)/s, cy:(vp.h/2 - mapView.panY)/s, t:Date.now() };
+    const ids = Object.keys(st.maps);
+    if(ids.length > 60) ids.sort((a,b)=>st.maps[a].t - st.maps[b].t).slice(0, ids.length - 60).forEach(k => delete st.maps[k]);
+    if(cloud.isGM && mapGmView) st.gm = mapGmView;
+    localStorage.setItem(mapCamKey(), JSON.stringify(st));
+  }catch(e){}
+}
+function mapCamSaveSoon(){ if(!mapCamTimer) mapCamTimer = setTimeout(mapCamSaveNow, 400); }
+/* put the camera back where this device last left it on that map; false = nothing saved */
+function mapCamRestore(map){
+  try{
+    const c = (mapCamStore().maps || {})[map.id];
+    if(!c || !(c.s > 0) || !isFinite(c.cx) || !isFinite(c.cy)) return false;
+    const vp = mapViewportSize(), s = Math.max(MAP_ZOOM_FLOOR, Math.min(MAP_ZOOM_MAX, c.s));
+    mapView = { scale:s, panX:vp.w/2 - c.cx*s, panY:vp.h/2 - c.cy*s };
+    return true;
+  }catch(e){ return false; }
+}
+window.addEventListener("pagehide", ()=>{ if(mapCamTimer) mapCamSaveNow(); });
 
 let mapDragging = false;                      // suppresses realtime re-render mid-drag
 /* the same, for dragging the BOARD rather than a token — see attachPanZoom. Declared here beside
@@ -62113,7 +62396,7 @@ async function tileMapImage(map, im){
 
 function applyMapCamera(stage){ stage.style.transformOrigin="0 0";
   stage.style.transform = `translate(${mapView.panX}px,${mapView.panY}px) scale(${mapView.scale})`;
-  stage.style.setProperty("--mapzoom", mapView.scale); }
+  stage.style.setProperty("--mapzoom", mapView.scale); mapCamSaveSoon(); }
 /* Zoom limits. 0.2 is the right floor for a battle map, but a world map like the Isles is
    12800x9600px of stage — at 0.2 you still only see a fifth of it, and "show me the whole island"
    was impossible. So the floor is now worked out from the board itself: you can always zoom out to
@@ -62581,6 +62864,9 @@ function renderMap(){
     return;
   }
   const meta = activeMapMeta();
+  if(cloud.isGM && mapGmView == null && mapViewMapId === null){      // refresh: back to the map the GM was viewing
+    const g = mapCamStore().gm; if(g && meta.maps.some(m => m.id === g)) mapGmView = g;
+  }
   const map  = currentMapForView();
   if(cloud.isGM && map) mapGmView = map.id;
   /* The camera belongs to the viewer, not the map. When the GM pushes a different map, a player
@@ -62591,13 +62877,13 @@ function renderMap(){
     // another floor of the same building is the same place: keep the camera where it is
     const sameBuilding = !firstDraw && floorStack(map).some(m=>m.id===mapViewMapId);
     mapViewMapId = map.id;
-    if(!firstDraw && !sameBuilding){
+    if(firstDraw || !sameBuilding){ if(mapCamRestore(map)) {} else if(!firstDraw){
       try{
         const st = mapStageSize(map), vp = mapViewportSize();
         const sc = Math.max(MAP_ZOOM_FLOOR, Math.min(MAP_ZOOM_MAX, mapFitScale(map)*0.96));
         mapView = { scale:sc, panX:(vp.w - st.w*sc)/2, panY:(vp.h - st.h*sc)/2 };
       }catch(e){ mapView = { scale:1, panX:0, panY:0 }; }
-    }
+    } }
   }
   consumeSharedPing(map, meta);          // the GM pointed at a token: slide to it and plant the arrow
   // Flanking and Pressure are read straight off where everyone is standing — refresh both before
