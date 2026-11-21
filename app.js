@@ -8954,6 +8954,411 @@ function newWeapon(){ return { id:uid(), name:"", category:"Small Melee", type:"
 function weaponGrantedMoves(w){
   return String((w && w.grantedMoves) || "").split(",").map(x=>x.trim()).filter(Boolean);
 }
+/* ===================================================================
+   ARCANIST (Game of Throhs pp.53-55)
+   ------------------------------------------------------------------
+   Everything the class does that the sheet can do for you:
+     • Soul Bond (the class Feature): one Arcane Weapon at a time, stored as t.soulBond = weapon id.
+       "+1 Damage Base and Effect Range of Struggle Attacks and Arcane Weapon Moves made with your
+       Soul Bonded Weapon for each Occult Education Rank above Novice, up to +3 at Master" — the
+       Damage Base half goes into trainerStruggle / trainerAttackProfile, so every card and every
+       roll agrees; the Effect Range half widens the thresholds inside openTrainerAttack.
+     • Power Manipulations: Metamagic (1 AP, Rank 1) and Authentic Thaumaturgy (Scene x2, Rank 2)
+       both trigger on "You use a Special Move", so the roll window of any Special Move lists the
+       Manipulations that fit it. One per roll (both are Swift Actions). It is PAID on 🎲, never on
+       the click, so trying one on costs nothing.
+     • Signature Manipulations (Ranked 2): a picked Rank 1 Manipulation is free twice a Scene, a
+       picked Rank 2 one once a Scene without Authentic Thaumaturgy's Frequency. Its free uses are
+       "rider" use-keys, so End Scene hands them back with everything else.
+     • Recoup Energy (Scene x2, Free): a Special Move that missed every target gives back its
+       Frequency and the Manipulation's AP / Thaumaturgy use. A Trainer roll never knows the
+       target's Evasion, so it is a button on the result rather than automatic.
+     • Soul Investment (Bind 2 AP): a stance (FEATURE_MODES). While it is up the Soul Bonded
+       Weapon adds the picked Novice + Expert Arcane Weapon Move to the Battle tab, rolled through
+       the weapon so they take the Soul Bond bonus like any other Arcane Weapon Move.
+   =================================================================== */
+const isArcaneWeaponMove = n => {
+  const k = String(n || "").toLowerCase();
+  return !!k && ARCANE_MOVES_NOVICE.concat(ARCANE_MOVES_EXPERT).some(x => x.toLowerCase() === k);
+};
+function soulBondWeapon(t){
+  if(!t || !t.soulBond || !hasFeatureLoose(t, "Arcanist")) return null;
+  return (t.weapons || []).find(w => w && w.id === t.soulBond && isArcaneWeapon(w)) || null;
+}
+function isSoulBound(t, w){ const b = soulBondWeapon(t); return !!(b && w && w.id && b.id === w.id); }
+/* Adept +1, Expert +2, Master +3 */
+function soulBondBonus(t){
+  return Math.max(0, Math.min(3, rankNum((t && t.skills && t.skills.occultEd) || "") - rankNum("Novice")));
+}
+/* a Struggle Attack (no Move) or an Arcane Weapon Move, swung with the bonded weapon */
+function soulBondApplies(t, w, moveName){ return isSoulBound(t, w) && (!moveName || isArcaneWeaponMove(moveName)); }
+function setSoulBond(t, wId){
+  (t.weapons || []).forEach(w => { if(w && !w.id) w.id = uid(); });
+  t.soulBond = wId || "";
+}
+/* Soul Investment's two Moves, only while the Bind is up and only on the bonded weapon; a Move the
+   weapon already carries is skipped ("you may not have multiple instances of the same Move"). */
+function soulInvestedMoves(t, w){
+  if(!isSoulBound(t, w) || !modeIsOn(t, "soul-investment") || !hasFeatureLoose(t, "Soul Investment")) return [];
+  const si = t.soulInvest || {};
+  const own = new Set([w.weaponMoveAdept, w.weaponMoveMaster, ...weaponGrantedMoves(w)].filter(Boolean).map(s => s.toLowerCase()));
+  const out = [];
+  [[si.novice, ARCANE_MOVES_NOVICE], [si.expert, ARCANE_MOVES_EXPERT]].forEach(([n, list]) => {
+    if(n && list.includes(n) && moveByName.get(n.toLowerCase()) && !own.has(n.toLowerCase()) && !out.includes(n)) out.push(n);
+  });
+  return out;
+}
+const arcTick = t => Math.max(1, Math.floor((fullMaxOf(t) || 10) / 10));
+
+/* the eight Power Manipulations; `cond` reads manipCtx */
+const POWER_MANIPS = [
+  { key:"finesse",   name:"Energy Finesse",   rank:1, icon:"✨",
+    cond:c => c.arcane && c.hasER, need:"an Arcane Weapon Move with an Effect Range",
+    text:"Its Effect Range also triggers on every natural even-numbered roll." },
+  { key:"warp",      name:"Warp Energy",      rank:1, icon:"\u{1F300}",
+    cond:c => c.aoe, need:"a Cone, Line, Burst or Blast Move",
+    text:"Use it as Burst 1, Cone 2, Close Blast 2, Line 4, or 2 Targets at range 4 instead of its usual range." },
+  { key:"barrier",   name:"Directed Barrier", rank:1, icon:"\u{1F6E1}",
+    cond:() => true,
+    text:"You gain Damage Reduction equal to your Tick Value against the targets of this Move for one full round." },
+  { key:"overdrive", name:"Power Overdrive",  rank:1, icon:"\u{1F525}",
+    cond:c => c.damaging, need:"a damaging Move",
+    text:"If it hits, you lose a Tick of Hit Points (this can't be prevented) and it deals bonus damage equal to your Tick Value + your Occult Education Rank." },
+  { key:"berserk",   name:"Berserk Blow",     rank:2, icon:"\u{1F4A2}",
+    cond:c => c.oneTarget, need:"a 1-Target Move",
+    text:"The target becomes Vulnerable for 1 full round, and the Move's Critical Hit Range is increased by +3." },
+  { key:"link",      name:"Energy Link",      rank:2, icon:"\u{1F517}",
+    cond:() => true,
+    text:"For one full round, the next Normal-Type attack to hit the target deals this attack's Type instead — or, if this attack is Normal, lands one step more Super-Effective." },
+  { key:"enlarge",   name:"Enlarged Power",   rank:2, icon:"⭕",
+    cond:c => c.oneTarget || c.aoe, need:"a 1-Target or area Move",
+    text:"A Melee 1-Target Move gains Burst 1, a ranged 1-Target Move gains Blast 2; a Burst, Blast, Cone or Line grows by 1." },
+  { key:"lock",      name:"Lock of Fate",     rank:2, icon:"\u{1F512}",
+    cond:() => true,
+    text:"It can't be Intercepted, and if it hits, its targets can't avoid it in any way (Dodge, Parry, Shield Moves…). Evasion still applies and it can still miss." },
+];
+const manipByKey = new Map(POWER_MANIPS.map(d => [d.key, d]));
+const WARP_RANGES = ["Burst 1", "Cone 2", "Close Blast 2", "Line 4", "Range 4, 2 Targets"];
+const AOE_RX = /\b(cone|line|burst|blast)\b/i;
+function manipCtx(st, isStatus){
+  const range = String(st.range || "");
+  return { arcane: isArcaneWeaponMove(st.name),
+           hasER: !!(st.move && effectThresholds(st.move.effect).length),
+           aoe: AOE_RX.test(range), oneTarget: /\b1\s*target\b/i.test(range),
+           damaging: !isStatus && typeof st.damageBase === "number" && st.damageBase > 0 };
+}
+/* Warp Energy: the area part of the range is replaced; keywords (Friendly, Push, Smite…) stay */
+function warpRange(range, pick){
+  const kept = String(range || "").split(",").map(s => s.trim()).filter(s => s
+    && !AOE_RX.test(s) && !/^\d+\s*m?$/i.test(s) && !/\b\d+\s*targets?\b/i.test(s) && !/^(melee|self|wr)$/i.test(s));
+  return [pick, ...kept].join(", ");
+}
+function enlargeRange(range){
+  const r = String(range || "");
+  if(/\b(cone|line|burst|blast)\s*\d+/i.test(r))
+    return r.replace(/\b(Cone|Line|Burst|Blast)\s*(\d+)/i, (m, k, n) => `${k} ${+n + 1}`);
+  if(/\b1\s*target\b/i.test(r)) return r.replace(/\b1\s*Target\b/i, /\bmelee\b/i.test(r) ? "Burst 1" : "Blast 2");
+  return r;
+}
+/* Signature Manipulations' Rank, from how many times the ledger (or the GM's extras) holds it */
+function sigManipRank(t){
+  if(!hasFeatureLoose(t, "Signature Manipulations")) return 0;
+  const k = featKey("Signature Manipulations");
+  const n = Object.values(t.levelUp || {}).filter(v => featKey(String(v)) === k).length
+          + (t.extraFeatures || []).filter(v => featKey(String(v)) === k).length;
+  return Math.max(1, Math.min(2, n));
+}
+function sigManipPicks(t){
+  const r = sigManipRank(t), p = Array.isArray(t.sigManips) ? t.sigManips : [];
+  return [0, 1].slice(0, r).map(i => {
+    const d = manipByKey.get(p[i]);
+    return d && d.rank <= i + 1 ? d.key : "";           // Rank 1 picks a Rank 1; Rank 2 picks either
+  });
+}
+const sigUseName = def => `Signature Manipulations|${def.name}`;
+function sigFreeFor(t, def){
+  if(!sigManipPicks(t).includes(def.key)) return null;
+  const key = useKey("rider", sigUseName(def)), max = def.rank === 1 ? 2 : 1;
+  return { key, max, left: usesLeft(t, key, max) };
+}
+/* how this Trainer could pay for one Manipulation, best first; empty = they can't use it at all */
+function manipPayOptions(t, def){
+  const out = [];
+  const needFeat = def.rank === 1 ? "Metamagic" : "Authentic Thaumaturgy";
+  if(!hasFeatureLoose(t, needFeat)) return out;
+  const sf = sigFreeFor(t, def);
+  if(sf) out.push({ via:"sig", ok: sf.left > 0, label:`Signature — free (${sf.left}/${sf.max} this Scene)` });
+  if(def.rank === 1){
+    const free = trainerDerived(t).ap - trainerAPUsed(t);
+    out.push({ via:"ap", ok: free >= 1 || !!t.unlocked, label:`Metamagic — 1 AP (${Math.max(0, free)} free)` });
+  } else {
+    const u = featUses(t, "Authentic Thaumaturgy");
+    out.push({ via:"at", ok: !u.trackable || u.left > 0,
+      label:`Authentic Thaumaturgy — ${u.trackable ? `${u.left}/${u.max} left` : "Scene x2"}` });
+  }
+  return out;
+}
+/* spend it; returns {via, undo} or null when it couldn't be paid */
+function payManip(t, def, via){
+  if(via === "sig"){
+    const sf = sigFreeFor(t, def);
+    if(!sf || sf.left <= 0){ toast(`No free ${def.name} left this Scene`); return null; }
+    t.uses = t.uses || {}; t.uses[sf.key] = (t.uses[sf.key] || 0) + 1;
+    return { via, undo: () => { t.uses[sf.key] = Math.max(0, (t.uses[sf.key] || 0) - 1); } };
+  }
+  if(via === "ap"){
+    const paid = apSpend(t, 1);
+    if(!paid && !t.unlocked) return null;
+    return { via, undo: () => { if(paid) t.usedAP = Math.max(0, (t.usedAP || 0) - 1); } };
+  }
+  if(via === "at"){
+    if(!featSpend(t, "Authentic Thaumaturgy")) return null;
+    return { via, undo: () => { const u = featUses(t, "Authentic Thaumaturgy");
+      if(u.key && t.uses) t.uses[u.key] = Math.max(0, (t.uses[u.key] || 0) - 1); } };
+  }
+  return null;
+}
+const MANIP_VIA_LBL = { sig:"Signature Manipulation (free)", ap:"Metamagic, 1 AP", at:"Authentic Thaumaturgy" };
+
+/* Built once per roll window, right after the attack's Class is known. Rewrites st.range for Warp
+   Energy / Enlarged Power, so the chips, the feed and the Apply card all read the new shape. */
+function arcanistRoll(t, st, isSpec, isStatus, opts){
+  const a = { list:[], manip:null, via:"", soul:0, soulER:0, crit:0, dmg:0, dmgWhy:"", range0:st.range,
+              warp:"", paid:null, recouped:false, ticked:false };
+  if(!t) return a;
+  if(st.weapon && soulBondApplies(t, st.weapon, st.move ? st.name : null)){
+    a.soul = soulBondBonus(t); a.soulER = st.move ? a.soul : 0;
+  }
+  if(st.move && isSpec){
+    const c = manipCtx(st, isStatus);
+    POWER_MANIPS.forEach(def => {
+      const pays = manipPayOptions(t, def);
+      if(pays.length) a.list.push({ def, ok: def.cond(c), pays });
+    });
+  }
+  const pick = opts && opts.manip && a.list.find(x => x.def.key === opts.manip && x.ok);
+  if(pick){
+    a.manip = pick.def;
+    const payable = pick.pays.filter(p => p.ok);
+    a.via = (opts.manipVia && payable.some(p => p.via === opts.manipVia)) ? opts.manipVia
+          : (payable[0] || pick.pays[0]).via;
+    if(a.manip.key === "warp"){ a.warp = WARP_RANGES.includes(opts.warpTo) ? opts.warpTo : WARP_RANGES[0];
+      st.range = warpRange(st.range, a.warp); }
+    if(a.manip.key === "enlarge") st.range = enlargeRange(st.range);
+    if(a.manip.key === "berserk") a.crit = 3;
+    if(a.manip.key === "overdrive"){
+      const tick = arcTick(t), occ = rankNum((t.skills && t.skills.occultEd) || "");
+      a.dmg = tick + occ; a.dmgWhy = `Power Overdrive (Tick ${tick} + Occult Ed. ${occ})`;
+    }
+  }
+  return a;
+}
+/* the card on the roll window: the Soul Bond line, and the Manipulation picker */
+function arcanistRollCard(t, st, a, reopen){
+  if(!a.soul && !a.list.length) return null;
+  const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
+  if(a.soul) card.append(el("div",{class:"small",style:`font-weight:700;${a.list.length?"margin-bottom:8px":""}`},
+    `\u{1F517} Soul Bond — ${(st.weapon && st.weapon.name) || "your bonded weapon"}: +${a.soul} Damage Base`
+    + (a.soulER ? ` and +${a.soulER} Effect Range` : "")
+    + ` (Occult Education ${(t.skills && t.skills.occultEd) || "?"}). Already in the numbers below.`));
+  if(!a.list.length) return card;
+  card.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},
+    "\u{1F52E} Power Manipulation — one per Special Move (a Swift Action)"));
+  const row = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap"});
+  a.list.forEach(x => {
+    const on = a.manip === x.def, canPay = x.pays.some(p => p.ok);
+    row.append(el("button",{class:"btn-secondary"+(on?" on":""),style:"padding:5px 9px",
+      disabled: !on && (!x.ok || !canPay),
+      title: !x.ok ? `Needs ${x.def.need}` : !canPay ? x.pays.map(p => p.label).join(" · ") : x.def.text,
+      onclick: () => reopen({ manip: on ? "" : x.def.key, manipVia:"", warpTo:"" })},
+      `${x.def.icon} ${x.def.name} · R${x.def.rank}`));
+  });
+  card.append(row);
+  if(a.manip){
+    const box = el("div",{class:"small",style:"margin-top:8px"});
+    box.append(el("div",{}, el("b",{}, `${a.manip.icon} ${a.manip.name}: `), a.manip.text));
+    const pick = a.list.find(x => x.def === a.manip);
+    const payable = pick.pays.filter(p => p.ok);
+    if(payable.length > 1){
+      const pr = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"},
+        el("span",{class:"muted"},"Pay with:"));
+      payable.forEach(p => pr.append(el("button",{class:"btn-secondary"+(a.via===p.via?" on":""),style:"padding:3px 8px",
+        onclick:() => reopen({ manip:a.manip.key, manipVia:p.via, warpTo:a.warp })}, p.label)));
+      box.append(pr);
+    } else box.append(el("div",{class:"muted",style:"margin-top:4px"},
+      `Paid with ${(pick.pays.find(p => p.via === a.via) || {}).label || a.via} when you press \u{1F3B2}.`));
+    if(a.manip.key === "warp"){
+      const sel = el("select",{style:"padding:4px 6px;margin-top:6px"});
+      WARP_RANGES.forEach(r => sel.append(el("option",{value:r, selected:a.warp===r}, r)));
+      sel.addEventListener("change", () => reopen({ manip:"warp", manipVia:a.via, warpTo:sel.value }));
+      box.append(el("div",{class:"inline",style:"gap:6px;align-items:center;margin-top:6px"},
+        el("span",{class:"muted"},"New range:"), sel));
+    }
+    if(st.range !== a.range0) box.append(el("div",{style:"margin-top:4px;color:var(--accent);font-weight:600"},
+      `Range ${a.range0} → ${st.range}`));
+    if(a.crit) box.append(el("div",{style:"margin-top:4px;color:var(--accent);font-weight:600"},
+      `Critical Hit Range widened by +${a.crit} — already in the Accuracy line below.`));
+    if(a.dmg) box.append(el("div",{style:"margin-top:4px;color:var(--accent);font-weight:600"},
+      `+${a.dmg} damage (${a.dmgWhy}) is in the Damage line below; the Tick of HP comes off only if it hits.`));
+    card.append(box);
+  }
+  const off = a.list.filter(x => !x.ok);
+  if(off.length) card.append(el("div",{class:"small muted",style:"margin-top:6px"},
+    "Not for this Move: " + off.map(x => `${x.def.name} (needs ${x.def.need})`).join(" · ")));
+  return card;
+}
+/* on the first 🎲 of the window: pay for the Manipulation and put up Directed Barrier */
+function arcanistOnRoll(t, st, a, persist){
+  if(!a.manip || a.paid) return;
+  a.paid = payManip(t, a.manip, a.via);
+  if(!a.paid){ toast(`⚠ ${a.manip.name} couldn't be paid for — resolve it by hand if you still use it`); return; }
+  if(a.manip.key === "barrier"){
+    const tick = arcTick(t);
+    t.buffs = ownerBuffs(t).filter(b => b.key !== "directed-barrier");
+    const nb = { id:uid(), key:"directed-barrier", name:"Directed Barrier", cat:"Feature", dur:"1 full round", once:false,
+      mods:{ dr:tick },
+      note:`+${tick} Damage Reduction against the targets of ${st.name} only — the sheet applies it to every hit, so take it off by hand against anyone else.` };
+    stampTurnBuff(nb);
+    t.buffs.push(nb);
+  }
+  persist();
+  toast(`\u{1F52E} ${a.manip.name} — ${MANIP_VIA_LBL[a.paid.via] || a.paid.via}`
+    + (a.manip.key === "barrier" ? ` · +${arcTick(t)} DR for one full round` : ""));
+}
+/* Soul Bond's wider Effect Range, then Energy Finesse's even rolls */
+function arcanistThresholds(list, a, acc){
+  let out = (list || []).slice();
+  if(a.soulER) out = out.map(x => ({ n: Math.max(2, x.n - a.soulER),
+    text: `${x.text} (Soul Bond widens this Effect Range by +${a.soulER}.)` }));
+  if(a.manip && a.manip.key === "finesse" && acc % 2 === 0)
+    out = out.map(x => ({ n: Math.min(x.n, acc), text: `${x.text} (Energy Finesse: a natural even roll triggers it.)` }));
+  return out.sort((p, q) => p.n - q.n);
+}
+/* the result side: what the Manipulation did, Power Overdrive's Tick, Recoup Energy */
+function arcanistResultNode(t, st, a, r){
+  const recoup = hasFeatureLoose(t, "Recoup Energy") && !!st.move && r.isSpec;
+  if(!a.manip && !recoup) return null;
+  const box = el("div",{class:"warnbox",style:"margin:0 0 10px;line-height:1.5;border-color:var(--accent)"});
+  if(a.manip){
+    const d = a.manip, bits = [];
+    if(d.key === "finesse") bits.push(r.acc % 2 === 0 ? `natural ${r.acc} is even — every Effect Range listed above triggers.`
+                                                        : `natural ${r.acc} is odd — Effect Ranges work as normal.`);
+    if(d.key === "warp" || d.key === "enlarge") bits.push(`it goes out as ${st.range} (was ${a.range0}).`);
+    if(d.key === "barrier") bits.push(`+${arcTick(t)} Damage Reduction for one full round, already on your buffs.`);
+    if(d.key === "overdrive") bits.push(`+${a.dmg} damage is in the roll. If it hits, you lose ${arcTick(t)} HP.`);
+    if(d.key === "berserk") bits.push(`Crit Range +3 (${r.critT}–20). The target becomes Vulnerable for 1 full round`
+      + (r.rides ? " — it rides with the hit on the GM's \u{1F4A5} Apply." : " — put it on them from their Status Conditions."));
+    if(d.key === "link") bits.push(`for one full round, the next Normal-Type attack to hit the target ${st.type === "Normal"
+      ? "lands one step more Super-Effective" : `deals ${st.type}-Type damage instead`}.`);
+    if(d.key === "lock") bits.push("it can't be Intercepted, and if it hits, no Dodge, Parry or Shield Move can avoid it.");
+    box.append(el("div",{}, el("b",{}, `${d.icon} ${d.name}${a.paid ? "" : " (unpaid)"}: `), bits.join(" ")));
+    if(d.key === "overdrive" && !r.missed){
+      const tick = arcTick(t);
+      const said = el("span",{class:"small muted",style:"margin-left:8px"});
+      const btn = el("button",{class:"btn-secondary",style:"padding:4px 10px;margin-top:6px",disabled:a.ticked,
+        onclick:() => { if(a.ticked) return; a.ticked = true; btn.disabled = true;
+          const moved = ownerHPChange(t, -tick, { raw:true });
+          r.persist(); if(r.rerender) r.rerender();
+          said.textContent = `lost ${Math.abs(moved || tick)} HP`;
+          toast(`\u{1F525} Power Overdrive — ${ownerLabel(t)} loses ${tick} HP`); }},
+        a.ticked ? "✅ Tick already paid" : `✅ It hit — lose a Tick (${tick} HP)`);
+      box.append(el("div",{}, btn, said));
+    }
+  }
+  if(recoup){
+    const u = featUses(t, "Recoup Energy");
+    const said = el("span",{class:"small muted",style:"margin-left:8px"});
+    const btn = el("button",{class:"btn-secondary",style:"padding:4px 10px;margin-top:6px",
+      disabled: a.recouped || (u.trackable && u.left <= 0),
+      onclick:() => {
+        if(a.recouped || !featSpend(t, "Recoup Energy")) return;
+        a.recouped = true; btn.disabled = true;
+        const back = [];
+        if(r.moveSpent()){ const k = useKey("move", r.fqName);
+          if(t.uses && t.uses[k]) { t.uses[k] = Math.max(0, t.uses[k] - 1); if(!t.uses[k]) delete t.uses[k]; }
+          back.push(`${r.fqName}'s Frequency`); }
+        if(a.paid){ a.paid.undo(); back.push(a.paid.via === "ap" ? "the Metamagic AP" : a.paid.via === "at" ? "the Authentic Thaumaturgy use" : "the free Signature use"); a.paid = null; }
+        r.persist(); if(r.rerender) r.rerender();
+        said.textContent = back.length ? `got back ${back.join(" and ")}` : "nothing had been spent";
+        toast(`\u{1F501} Recoup Energy — ${back.length ? back.join(" + ") + " refunded" : "nothing to refund"}`);
+      }}, `\u{1F501} Recoup Energy — it missed every target${u.trackable ? ` (${u.left}/${u.max})` : ""}`);
+    box.append(el("div",{}, btn, said));
+  }
+  return box;
+}
+/* ---------- the class card on the Battle tab ---------- */
+function arcanistCard(t, rerender, persist){
+  if(!t || !trainerHasClass(t, "Arcanist")) return null;
+  persist = persist || save; rerender = rerender || renderBattle;
+  const card = classCard("\u{1F52E}", "Arcanist", "Game of Throhs p.53");
+  const arcW = (t.weapons || []).filter(isArcaneWeapon);
+  const bond = soulBondWeapon(t), bonus = soulBondBonus(t);
+  if(!arcW.length){
+    classBit(card, "Soul Bond needs an Arcane Weapon — add one in Trainer → Sheet → Weapons and set Arcane Weapon to yes.");
+  } else {
+    const sel = el("select",{style:"padding:4px 6px"});
+    sel.append(el("option",{value:""}, "— no Soul Bond —"));
+    arcW.forEach(w => { if(!w.id) w.id = uid();
+      sel.append(el("option",{value:w.id, selected: !!bond && bond.id === w.id}, w.name || w.category)); });
+    sel.addEventListener("change", () => { setSoulBond(t, sel.value); persist(); rerender();
+      toast(sel.value ? `\u{1F517} Soul Bonded to ${(arcW.find(w => w.id === sel.value) || {}).name || "the weapon"}` : "Soul Bond released"); });
+    card.append(el("div",{class:"inline small",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0"},
+      el("span",{style:"font-weight:700"}, "\u{1F517} Soul Bond (At-Will, Extended)"), sel));
+    classBit(card, bond
+      ? `${bond.name || "The bonded weapon"}: its Struggle Attacks and Arcane Weapon Moves get +${bonus} Damage Base and +${bonus} Effect Range (Occult Education ${t.skills.occultEd}${bonus >= 3 ? ", the Master cap" : ""}) — already in every roll made with it. Beckon it to your hands as a Shift Action from within 10 m; if someone else holds it and won't let go, it's Occult Education vs their Athletics.`
+      : "Bond one Arcane Weapon: +1 Damage Base and Effect Range per Occult Education Rank above Novice (max +3) on its Struggle Attacks and Arcane Weapon Moves.");
+  }
+  const meta = hasFeatureLoose(t, "Metamagic"), auth = hasFeatureLoose(t, "Authentic Thaumaturgy");
+  if(meta || auth) classBit(card, "Power Manipulations: roll any Special Move and its window lists the ones that fit it"
+    + (meta ? " — Rank 1 through Metamagic (1 AP)" : "") + (auth ? `${meta ? "," : " —"} Rank 2 through Authentic Thaumaturgy (Scene x2)` : "")
+    + ". It's paid when you press \u{1F3B2}, so trying one on costs nothing.");
+  const pips = el("div",{class:"inline small",style:"gap:12px;flex-wrap:wrap;margin:4px 0"});
+  ["Authentic Thaumaturgy", "Recoup Energy"].forEach(n => {
+    if(!hasFeatureLoose(t, n)) return;
+    const f = featureByKey.get(featKey(n));
+    const uc = f && usesControl(t, "feature", f.name, f.frequency, rerender, persist);
+    if(uc) pips.append(el("span",{class:"inline",style:"gap:4px;align-items:center"}, el("span",{class:"muted"}, n), uc));
+  });
+  if(hasFeatureLoose(t, "Recoup Energy")) classBit(card, "Recoup Energy: when a Special Move misses every target, press \u{1F501} on its roll — the Move's Frequency and the Manipulation's cost come back.");
+  /* Signature Manipulations: one pick per Rank */
+  const sr = sigManipRank(t);
+  if(sr){
+    if(!Array.isArray(t.sigManips)) t.sigManips = [];
+    const picks = sigManipPicks(t);
+    for(let i = 0; i < sr; i++){
+      const sel = el("select",{style:"padding:4px 6px"});
+      sel.append(el("option",{value:""}, "— choose —"));
+      POWER_MANIPS.filter(d => d.rank <= i + 1).forEach(d => sel.append(el("option",{value:d.key, selected:picks[i] === d.key}, `${d.name} (R${d.rank})`)));
+      sel.addEventListener("change", () => { t.sigManips[i] = sel.value; persist(); rerender(); });
+      const d = manipByKey.get(picks[i]);
+      const uc = d && usesControl(t, "rider", sigUseName(d), d.rank === 1 ? "Scene x2" : "Scene", rerender, persist);
+      card.append(el("div",{class:"inline small",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0"},
+        el("span",{style:"font-weight:700"}, `\u{1F4DC} Signature Manipulation · Rank ${i + 1}`), sel, uc || ""));
+    }
+    classBit(card, "A Signature Rank 1 Manipulation is free twice a Scene (no AP); a Rank 2 one once a Scene without spending Authentic Thaumaturgy. The roll offers the free use first.");
+  }
+  /* Soul Investment: the two Moves the bonded weapon lends while the Bind is up */
+  if(hasFeatureLoose(t, "Soul Investment")){
+    if(!t.soulInvest || typeof t.soulInvest !== "object") t.soulInvest = {};
+    const row = el("div",{class:"inline small",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0"},
+      el("span",{style:"font-weight:700"}, "\u{1F52E} Soul Investment"));
+    [["novice", ARCANE_MOVES_NOVICE, "Novice"], ["expert", ARCANE_MOVES_EXPERT, "Expert"]].forEach(([k, list, lbl]) => {
+      const sel = el("select",{style:"padding:4px 6px"});
+      sel.append(el("option",{value:""}, `— ${lbl} Move —`));
+      list.forEach(n => sel.append(el("option",{value:n, selected:t.soulInvest[k] === n}, n)));
+      sel.addEventListener("change", () => { t.soulInvest[k] = sel.value; persist(); rerender(); });
+      row.append(sel);
+    });
+    card.append(row);
+    const up = modeIsOn(t, "soul-investment");
+    classBit(card, !bond ? "Soul Investment needs a Soul Bonded Weapon first."
+      : up ? `Bound (2 AP): ${soulInvestedMoves(t, bond).join(" and ") || "pick the Moves above"} are on ${bond.name || "the bonded weapon"}'s attacks above.`
+           : "Switch it on from Stances & Transformations (Bind 2 AP) — the picked Moves then appear under the bonded weapon's attacks.");
+  }
+  if(pips.childNodes.length) card.append(pips);
+  classFeatureRows(card, t, "Arcanist", rerender, persist);
+  return card;
+}
 /* the trainer's Struggle Attack after Combat rank + the equipped weapon */
 /* the trainer's Struggle Attack — unarmed by default, or modified by a given weapon */
 function trainerStruggle(t, w){
@@ -8962,7 +9367,9 @@ function trainerStruggle(t, w){
   let cls = (type!=="Normal" && t.struggleSpecial && trainerStruggleCanBeSpecial(t)) ? "Special" : "Physical";
   if(w){ ac += (w.acMod||0); db += (w.dbMod||0); type = w.type || type; range = w.range || range; name = w.name || "Weapon Strike";
     // "All Arcane Weapons modify Struggle Attacks to be Special Attacks" — everything else is Physical
-    cls = isArcaneWeapon(w) ? "Special" : "Physical"; }
+    cls = isArcaneWeapon(w) ? "Special" : "Physical";
+    // Arcanist's Soul Bond: +1 DB per Occult Education Rank above Novice (max +3)
+    if(soulBondApplies(t, w, null)) db += soulBondBonus(t); }
   // Silent Assassin (Apparition, Bind 2 AP): the strike itself is Ghost-Typed while it is up
   type = strikeTypeOverride(t) || type;
   /* A Deicide weapon deals Typeless damage, full stop - so it is applied AFTER every retype, which
@@ -9064,17 +9471,27 @@ function weaponsCard(t){
     const ws = trainerStruggle(t, w);
     const wWhy = weaponSkillWhy(t, w);
     box.append(el("div",{class:"small",style:"margin-top:6px"}, el("b",{},"Attack: "),
-      el("span",{html:typeBadge(ws.type)}), ` Physical · AC ${ws.ac} · DB ${ws.damageBase} (${(DB_TABLE[ws.damageBase]||"?").split("/")[0].trim()}) · ${ws.range}`,
+      el("span",{html:typeBadge(ws.type)}), ` ${ws.cls} · AC ${ws.ac} · DB ${ws.damageBase} (${(DB_TABLE[ws.damageBase]||"?").split("/")[0].trim()}) · ${ws.range}`,
       wWhy ? el("span",{class:"muted",title:"Herald of Pride: Command or Intimidate replaces Combat for Melee Weapons"}, ` · via ${wWhy}`) : "",
       isDeicideWeapon(w) ? el("span",{style:"color:var(--accent);font-weight:700",title:DEICIDE_HELP},
         " \u00b7 \u2694 Deicide \u2014 Typeless, Super-Effective vs the divine") : ""));
+    if(isArcaneWeapon(w) && trainerHasClass(t, "Arcanist")){
+      const bound = isSoulBound(t, w);
+      box.append(el("div",{class:"inline small",style:"gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap"},
+        el("button",{class:"btn-secondary"+(bound?" on":""),style:"padding:3px 9px",
+          onclick:()=>{ setSoulBond(t, bound ? "" : w.id); save(); renderTrainer(); }},
+          bound ? "\u{1F517} Soul Bonded \u2014 release" : "\u{1F517} Soul Bond this weapon"),
+        el("span",{class:"muted"}, bound
+          ? `+${soulBondBonus(t)} Damage Base and Effect Range on its Struggle Attacks and Arcane Weapon Moves (already in the numbers)`
+          : "one weapon at a time \u2014 bonding this one releases any other")));
+    }
     [["weaponMoveAdept","adept"],["weaponMoveMaster","master"]].forEach(([field_,tier])=>{
       const mn = w[field_]; if(!mn) return;
       const wm = moveByName.get(mn.toLowerCase()); if(!wm) return;
       const ok = weaponMoveRankOk(t, tier, w);
       box.append(el("div",{class:"small",style:`margin-top:2px;${ok?"":"opacity:.55"}`},
         el("span",{class:"muted"}, `+ ${tier==="master"?"Master":"Adept"} Technique `), mn+": ",
-        `${wm.frequency||""} · ${wm.class||""} · DB ${wm.damageBase}${w.dbMod?`+${w.dbMod}`:""} · AC ${wm.ac}${w.acMod?`+${w.acMod}`:""} · ${wm.range||""}`,
+        `${wm.frequency||""} · ${wm.class||""} · DB ${wm.damageBase}${w.dbMod?`+${w.dbMod}`:""}${soulBondApplies(t, w, mn)?`+${soulBondBonus(t)} Soul Bond`:""} · AC ${wm.ac}${w.acMod?`+${w.acMod}`:""} · ${wm.range||""}`,
         !ok?el("span",{style:"color:var(--bad)"}, ` — needs ${weaponMoveNeed(w,tier).rank} ${weaponMoveNeed(w,tier).skill}`):"")); });
     card.append(box);
   });
@@ -10446,7 +10863,7 @@ function trainerAttackProfile(t, weaponMoveName, w, asWeaponAttack){
     if(m) return { name:m.name,
       type: isDeicideWeapon(w) ? "Typeless"
           : strikeTy || ((w&&w.type&&w.type!=="Normal")?w.type:(m.type||"Normal")),
-      damageBase:Math.min(28,(sd.db||0)+(w?w.dbMod:0)), dbNote:sd.note, ac:(m.ac!=null?m.ac:4)+(w?w.acMod:0),
+      damageBase:Math.min(28,(sd.db||0)+(w?w.dbMod:0)+((w && soulBondApplies(t, w, m.name)) ? soulBondBonus(t) : 0)), dbNote:sd.note, ac:(m.ac!=null?m.ac:4)+(w?w.acMod:0),
       range:weaponizeRange(m.range||"Melee", w, asWeaponAttack), cls:m.class||"Physical",
       frequency:trainerMoveFreq(t, m), effect:m.effect, weapon:w, move:m, weaponAttack:!!(w && asWeaponAttack),
       deicide:isDeicideWeapon(w) };
@@ -10543,6 +10960,9 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   const isSpecAtk   = versatile ? versSpec : /spec/i.test(st.cls||"");
   const isStatusAtk = !versatile && /status/i.test(st.cls||"");
   const isPhysAtk   = !isSpecAtk && !isStatusAtk;
+  /* Arcanist: Soul Bond's Effect Range and the Power Manipulation picked for this Special Move
+     (arcanistRoll may rewrite st.range for Warp Energy / Enlarged Power). */
+  const arc = arcanistRoll(t, st, isSpecAtk, isStatusAtk, opts);
   // Combat-Stage-adjusted, same stat the sheet shows (Gift Patron Stat & Feature [+Stat] tags included)
   // `opts.atkOverride` swaps the added stat for another number (Fistful of Force: Occult Education ×3)
   const atk = isStatusAtk ? 0 : (opts.atkOverride ? opts.atkOverride.value : (isSpecAtk ? td.totals.spatk : td.totals.atk));
@@ -10561,9 +10981,9 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
      Keyword, so the threshold is a `let`: ticking it pushes the range to 21, which no d20 reaches. */
   /* Powerful Motivator's Baby-Doll Eyes ("cannot Critically Strike for 1 full round"): the range goes past 20 */
   const noCritBuff = buffNoCrit(t);
-  const critTBase = noCritBuff ? 21 : trainerCritThreshold(t, st, bm.crit);
+  const critTBase = noCritBuff ? 21 : Math.max(2, trainerCritThreshold(t, st, bm.crit) - arc.crit);   // Berserk Blow: +3 Crit Range
   let critT = critTBase;
-  const critNote = [badMoodWhy(t), bm.crit ? `+${bm.crit} buffs` : ""].filter(Boolean).join(" · ");
+  const critNote = [badMoodWhy(t), bm.crit ? `+${bm.crit} buffs` : "", arc.crit ? `+${arc.crit} Berserk Blow` : ""].filter(Boolean).join(" · ");
   /* Struggle Attacks (unarmed and plain weapon strikes) have no Move behind them and never get
      STAB; a real Move does, if Type Expertise named its Type. */
   const isStruggleAtk = !st.move;
@@ -10798,6 +11218,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     if(sStance) terms.push(String(sStance));
     if(twisted) terms.push(String(twisted));
     if(tDmg) terms.push(String(tDmg));
+    if(arc.dmg) terms.push(String(arc.dmg));
     const cxPre = condMods();
     if(cxPre.dmg) terms.push(String(cxPre.dmg));
     const why = [`${dn}d${dfaces}${dflat?`+${dflat}`:""} = Damage Base ${baseDBv}`
@@ -10809,6 +11230,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     if(sStance) why.push(`+${sStance} = Falling Boulder Stance (\u22125 HP Recoil on a hit)`);
     if(twisted) why.push(`+${twisted} = ${twistedPowerWhy(isSpecAtk, t, td)}`);
     if(tDmg) why.push(`+${tDmg} = ${tDmgWhy}`);
+    if(arc.dmg) why.push(`+${arc.dmg} = ${arc.dmgWhy}`);
     if(cxPre.dmg) why.push(`${cxPre.dmg>0?"+":"−"}${Math.abs(cxPre.dmg)} = ${cxPre.why.join(" & ")}`);
     explain.append(el("div",{},
       el("div",{style:"font-size:16px;font-weight:700"}, `Damage: ${terms.join(" + ").replace(/\+ −/g,"− ")}`),
@@ -10889,6 +11311,10 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       : `Retypes this Weapon Attack to ${d.type}, which is what the target's resistances are then measured against.`));
     body.append(dc);
   });
+  /* --- Arcanist: Soul Bond line + the Power Manipulation picker --- */
+  { const ac = arcanistRollCard(t, st, arc, patch => { closeModal();
+      openTrainerAttack(t, weaponMoveName, w, Object.assign({}, opts, patch)); });
+    if(ac) body.append(ac); }
   /* --- a conditional Damage Base: one checkbox per condition, exactly as the Pokémon roll draws
      them (specialMoveInfo → MOVE_CONDITIONS is the single shared table). --- */
   if(condList.length){
@@ -11056,6 +11482,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
   out.append(el("div",{class:"muted small"},"Press 🎲 Roll dice to simulate."));
   /* redo = {nats, forceHits} — re-resolve a Double Strike with the SAME Attack Rolls */
   let eotRefreshed = false;            // once per modal, not once per re-roll of the same attack
+  let arcMoveSpent = false;            // Recoup Energy hands back the use this window spent
   let blessingLaid = false;            // …and a Blessing Move is laid on the field once per modal too
   const hpAuto = { paid:{} };          // …and so is a self-heal / self-cost (moveHPNode's auto)
   const boostSpend = { done:false };   // …and Hex's once-a-Scene boost (spendCondBoosts)
@@ -11074,6 +11501,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
          window (re-rolls and hit overrides recompute the same attack). Metronome spends Metronome's. */
       const blessingSpends = !opts.viaMetronome && isBlessingMove(st.move);
       const spent = !blessingSpends && spendMoveUse(t, {name:fqName, frequency:fqFreq}, fqFreq);
+      arcMoveSpent = !!spent;
+      arcanistOnRoll(t, st, arc, opts.persist||save);   // the Power Manipulation is paid here, once
       if(spent || eotBack.length){ (opts.persist||save)(); drawFreq(); if(opts.rerender) opts.rerender(); }
       if(eotBack.length) toast(`\u21BA EOT back off cooldown: ${eotBack.join(", ")}`);
       if(!spent && !blessingSpends && freqTrackable(freqInfo(fqFreq)) && !(isBoss(t) && freqInfo(fqFreq).kind==="eot"))
@@ -11148,7 +11577,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       if(noEffT && effectThresholds(st.move.effect).length)
         out.append(el("div",{class:"small",style:"margin:2px 0 10px;color:var(--bad);font-weight:600"},
           `\u{1F6AB} ${noEffT} — none of this Move's Effect Ranges can trigger this round.`));
-      const trThr = noEffT ? [] : buffEffectThresholds(sereneGraceThresholds(
+      let trThr = noEffT ? [] : buffEffectThresholds(sereneGraceThresholds(
         kingsRockThresholds(burnRangeThresholds(
           frostbiteThresholds(effectThresholds(st.move.effect),
             ownerHasAbility(t,"Frostbite") && st.type==="Ice" && !isStatusAtk),
@@ -11157,6 +11586,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
           hasFeatureLoose(t,"Firebrand") && st.type==="Fire", "Firebrand",
           "this Fire-Type Move Burns the target on 19+."), t, !isStatusAtk),
         ownerHasAbility(t,"Serene Grace")), buffEffectRange(t));
+      if(!noEffT) trThr = arcanistThresholds(trThr, arc, acc);   // Soul Bond + Energy Finesse
       if(trThr.length){
         const tl = el("div",{style:"margin:2px 0 10px"});
         trThr.filter(x=>acc>=x.n).forEach(x=>{
@@ -11242,6 +11672,15 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
           html:`\uD83D\uDCA2 <b>Demoralize!</b> ` + bits.join(" ")}));
       }
     }
+    /* Arcanist: Berserk Blow's Vulnerable rides with the hit; then what the Manipulation did */
+    if(arc.manip && arc.manip.key === "berserk" && !missedRoll && mode==="cloud" && connected > 0){
+      hitFx = hitFx || { name:st.name, status:[], cs:[] };
+      hitFx.status = uniqStatusKeys((hitFx.status || []).concat(["vulnerable"]));
+    }
+    { const an = arcanistResultNode(t, st, arc, { acc, missed:missedRoll, isSpec:isSpecAtk, critT,
+        rides: mode==="cloud" && connected > 0, fqName, moveSpent: () => arcMoveSpent,
+        persist: opts.persist||save, rerender: opts.rerender });
+      if(an) out.append(an); }
     /* Everything this roll does to its targets in one press (statusMoveFx / statusMoveApplyNode). A
        Status Move puts all of it on the card; a damaging Move hands the hit-side rows (Demoralize on a
        crit, Dazzling Gleam under Enchanting Transformation) to the 💥 Apply below through hitFx, and
@@ -11289,13 +11728,13 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
     }
     if(r){ const im = infatMod(), cx = condMods();
       const runX = runningStartBonus(runStart, runStartState);
-      let total = Math.max(0, r.total + im.atk + (bm.dmg||0) + berN + wFlame + sStance + twisted + tDmg + cx.dmg + im.delta + wAcc + critExtra + runX.flat);   // wAcc: Fainted Living Weapon is −2 on EVERY roll
+      let total = Math.max(0, r.total + im.atk + (bm.dmg||0) + berN + wFlame + sStance + twisted + tDmg + cx.dmg + im.delta + wAcc + critExtra + runX.flat + arc.dmg);   // wAcc: Fainted Living Weapon is −2 on EVERY roll
       if(cx.mult !== 1) total = Math.max(0, Math.floor(total * cx.mult));
       /* a player's Double Strike: the GM's pick of the target counts the hits (multiStrikeResolve), so every hit
          count's dice and a crit roll per strike go to the feed with the d20s */
       let multiP = null;
       if(gmCountT){
-        const flat = im.atk + (bm.dmg||0) + berN + wFlame + sStance + twisted + tDmg + cx.dmg + im.delta + wAcc + runX.flat;
+        const flat = im.atk + (bm.dmg||0) + berN + wFlame + sStance + twisted + tDmg + cx.dmg + im.delta + wAcc + runX.flat + arc.dmg;
         multiP = { nats: nats.slice(), accMod, ac: (st.ac == null || st.ac === "") ? null : +st.ac, critT, flat, mult: cx.mult,
           dice: [1, 2].map(k => k === connected ? r.total : ((rollDiceString(diceFor(baseDBv * (k >= 2 ? 2 : 1))) || {}).total || 0)),
           crits: [0, 1].map(() => (rollDiceString(diceFor(critDBv)) || {}).total || 0), kind:"double", dbs:[baseDBv, baseDBv * 2] };
@@ -11311,6 +11750,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       if(cx.mult !== 1) parts.push(`×${cx.mult} ${cx.why.join(" & ")}`);
       if(im.delta) parts.push(`${im.delta} Infatuated`);
       if(wAcc) parts.push(`${wAcc} Fainted Living Weapon`);
+      if(arc.dmg) parts.push(`+${arc.dmg} ${arc.dmgWhy}`);
       if(critWhy.length) parts.push(critWhy.join(" "));
       runX.why.forEach(w=>parts.push(w));
       const dmgBoxT = el("div",{}, el("div",{class:"lbl",style:"color:var(--muted);font-weight:800"},"DAMAGE ROLL"),
@@ -23384,6 +23824,7 @@ function derivedTrainerAttacks(t){
       if(w[f] && weaponMoveRankOk(t, tier, w)) add(w[f], w, `${wLbl} · ${lbl} Technique`, false);
     });
     waMoves.forEach((d, mn)=>{ if(weaponFitsRestrict(w, d.restrict)) add(mn, w, `${d.feat} · ${wLbl}`, true); });
+    soulInvestedMoves(t, w).forEach(mn => add(mn, w, `${wLbl} · Soul Investment`, false));
   });
   return out;
 }
@@ -31155,6 +31596,11 @@ function featureRiders(){
    folded into t.usedAP — switching the stance off (or the Scene ending) hands the Bound AP back on
    its own, exactly the way a Book's Drain is derived from `t.books`. */
 const FEATURE_MODES = [
+  /* Soul Investment (Arcanist, Game of Throhs p.54): Bind 2 AP, the Soul Bonded Weapon lends the two
+     Arcane Weapon Moves picked on the Arcanist card (soulInvestedMoves). */
+  { key:"soul-investment", feat:"Soul Investment", icon:"\u{1F52E}",
+    on:"Invest", off:"Release Investment", dur:"lasts until you release the Bind", bindAP:2,
+    blurb:"Your Soul Bonded Weapon adds the Novice and Expert Arcane Weapon Move picked on the \u{1F52E} Arcanist card to its attacks while this is Bound." },
   { key:"enchanting-transformation", feat:"Enchanting Transformation", icon:"✨",
     on:"Transform", off:"End Transformation", dur:"lasts until the end of the Scene", bindAP:2,
     typeDR:{ Dragon:5, Fighting:5, Dark:5, Bug:5 },
@@ -40593,7 +41039,7 @@ function classAutomationCards(t, rerender, persist){
           /* the other twelve Elementalists, in the book's own Type order */
           swarmlordCard, sparkMasterCard, fireBringerCard, windRunnerCard, apparitionCard,
           druidCard, earthShakerCard, frostTouchedCard, prismCard, miasmicCard,
-          stoneWarriorCard, steelheartCard]
+          stoneWarriorCard, steelheartCard, arcanistCard]
     .map(fn => fn(t, rerender, persist)).filter(Boolean);
 }
 
@@ -40630,6 +41076,13 @@ function renderTrainerCombat(root, t){
       const uc = usesControl(t, "move", wm.name, wm.frequency, renderBattle);
       card.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t, mn, w, {rerender:renderBattle}),
         {tag:`granted by ${w.name || "the weapon"}`, uc, move:true}));
+    });
+    // Soul Investment: the bonded weapon's two lent Arcane Weapon Moves, while the Bind is up
+    soulInvestedMoves(t, w).forEach(mn=>{
+      const wm = trainerAttackProfile(t, mn, w);
+      const uc = usesControl(t, "move", wm.name, wm.frequency, renderBattle);
+      card.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t, mn, w, {rerender:renderBattle}),
+        {tag:"Soul Investment", uc, move:true}));
     });
     weaponAttackRows(w);
   });
@@ -43473,6 +43926,12 @@ function encounterTrainerCard(enc, tr){
       const uc = usesControl(t, "move", wm.name, wm.frequency, renderEncounters, saveEnc, {bossEot:isBoss(t)});
       atkWrap.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t, mn, w, {persist:saveEnc, rerender:renderEncounters}),
         {tag:`granted by ${w.name || "the weapon"}`, uc, move:true}));
+    });
+    soulInvestedMoves(t, w).forEach(mn=>{
+      const wm = trainerAttackProfile(t, mn, w);
+      const uc = usesControl(t, "move", wm.name, wm.frequency, renderEncounters, saveEnc, {bossEot:isBoss(t)});
+      atkWrap.append(trainerAttackSlot(t, wm, ()=>openTrainerAttack(t, mn, w, {persist:saveEnc, rerender:renderEncounters}),
+        {tag:"Soul Investment", uc, move:true}));
     });
     // an NPC Berserker swings Rage/Flail (and Crash and Smash's pair) with this weapon too
     trainerWeaponAttackMoves(t).forEach((d, mn)=>{
