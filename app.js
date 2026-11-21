@@ -13108,7 +13108,48 @@ function edgeRanksSkill(name){
 
 /* one editable choice slot: a picker button that stores its value in t.levelUp[key].
    kind "skill" picks a Skill (for tracking rank-ups); "edge"/"feature" pick from those lists. */
+/* ---- Forgotten slots (The Fool, reversed) ----
+   "You forget one Feature or Edge of the GM's choosing — not just its use, its existence." The slot it
+   sat in becomes a blank that can never be filled again: t.luForgotten[key] = { name, skill, by, at }.
+   The ledger no longer holds the name, so luCommit drops the Feature/Edge (and the Skill Rank a Skill
+   Edge paid for) from the sheet, and anything that needed it fails its prerequisite in the audit. */
+const luForgottenOf = (t, key) => (t && t.luForgotten && typeof t.luForgotten === "object") ? t.luForgotten[key] || null : null;
+function luForget(t, key, by){
+  const name = (t.levelUp || {})[key]; if(!name) return null;
+  if(!t.luForgotten || typeof t.luForgotten !== "object") t.luForgotten = {};
+  const rec = { name, skill:(t.levelUp[key + ":skill"] || ""), by:by || "", at:Date.now() };
+  t.luForgotten[key] = rec;
+  delete t.levelUp[key]; delete t.levelUp[key + ":skill"];
+  luCommit(t);
+  return rec;
+}
+/* GM-only way back, for a mis-pick */
+function luUnforget(t, key){
+  const rec = luForgottenOf(t, key); if(!rec) return;
+  t.levelUp[key] = rec.name; if(rec.skill) t.levelUp[key + ":skill"] = rec.skill;
+  delete t.luForgotten[key];
+  luCommit(t);
+}
+/* what the Fool can take: every Feature and Edge the ledger records, oldest first */
+function luForgettable(t){
+  const led = luLedger(t);
+  return [...led.feats.map(f => ({ key:f.key, level:f.level, name:f.name, kind:"Feature" })),
+          ...led.edges.map(e => ({ key:e.key, level:e.level, name:e.name + (e.skill ? ` (${e.skill})` : ""), kind:"Edge" }))]
+    .sort((a, b) => a.level - b.level);
+}
 function luSlot(t, key, kind, label, hint){
+  /* a slot The Fool emptied: a locked blank. The player isn't told what was lost; the GM is. */
+  const gone = luForgottenOf(t, key);
+  if(gone){
+    const row = el("div",{class:"lu-slot"},
+      el("span",{class:"lu-label"}, label + (hint?" ":""), hint?el("span",{class:"muted"},`(${hint})`):""),
+      el("span",{class:"btn-secondary lu-pick",style:"opacity:.55;cursor:not-allowed;font-style:italic",
+        title:"Forgotten — this slot can never be filled again"},
+        isGM() ? `— forgotten (was ${gone.name}${gone.skill ? ` · ${gone.skill}` : ""}) —` : "— forgotten —"));
+    if(isGM()) row.append(el("button",{class:"lu-clear",title:`GM: restore ${gone.name} (undo The Fool)`,
+      onclick:()=>{ if(!confirm(`Restore ${gone.name} to this slot?`)) return; luUnforget(t, key); save(); renderTrainer(); }},"↩"));
+    return row;
+  }
   const isSkill = kind==="skill";
   const names = isSkill ? SKILLS.map(s=>s[1])
     : kind==="edge" ? D.edges.map(x=>x.name) : D.features.map(x=>x.name);
@@ -13677,8 +13718,9 @@ function luAudit(t){
   let openF = 0, openE = 0;
   for(let L=1; L<=level; L++){
     const s = luSlotsAt(t, L);
-    s.feats.forEach(k => { if(!t.levelUp[k]) openF++; });
-    s.edges.forEach(k => { if(!t.levelUp[k]) openE++; });
+    // a slot The Fool emptied is not "open" — it can never be filled
+    s.feats.forEach(k => { if(!t.levelUp[k] && !luForgottenOf(t, k)) openF++; });
+    s.edges.forEach(k => { if(!t.levelUp[k] && !luForgottenOf(t, k)) openE++; });
   }
   if(openF) out.push(`${openF} Feature slot${openF===1?"":"s"} still open`);
   if(openE) out.push(`${openE} Edge slot${openE===1?"":"s"} still open`);
@@ -18301,7 +18343,8 @@ const ARCANA = [
 /* ---------------- ✹ THE MAJOR ARCANA — the deck's teeth ---------------- */
 {k:"m00",s:"Major",n:"0 — The Fool",p:"Psyduck",f:"The Leap / The Blank Page.",
  up:{t:"now",x:"You must immediately draw two more cards, in addition to any remaining from your declaration. They do not count against your maximum. This can chain."},
- rev:{t:"now",x:"You forget one Feature or Edge of the GM's choosing — not just its use, its existence. It is removed from your sheet and its prerequisites no longer count as met."}},
+ rev:{t:"now",x:"You forget one Feature or Edge of the GM's choosing — not just its use, its existence. It is removed from your sheet and its prerequisites no longer count as met.",
+   fx:[{kind:"forget"}]}},
 {k:"m01",s:"Major",n:"I — The Magician",p:"Alakazam",f:"Mastery / The Trick.",
  up:{t:"now",x:"Immediately gain any one Feature you currently qualify for, free of cost, ignoring Trainer Level requirements by up to 5 levels."},
  rev:{t:"now",x:"The power was never really yours. Every Feature you own drops one Frequency step, permanently — At-Will becomes Scene ×2, Scene becomes Daily, Daily becomes once per badge."}},
@@ -18401,6 +18444,7 @@ function cardFxNeeds(fx){
   if(fx.kind==="stat"  && fx.count!=="all") need.push("stat");
   if(fx.kind==="monstat" && fx.count && fx.count!=="all") need.push("monstat");
   if(fx.target==="mon" || fx.target==="two") need.push(fx.target==="two" ? "mon2" : "mon");
+  if(fx.kind==="forget") need.push("forget");           // The Fool reversed: which Feature or Edge goes
   return need;
 }
 function cardPick(c, i){ return (c.picks||{})[i] || {}; }
@@ -18418,6 +18462,7 @@ function cardReady(c){
       if(need==="monstat") return (pk.monStats||[]).length >= (fx.count||1);
       if(need==="mon")     return !!pk.monId;
       if(need==="mon2")    return !!pk.monId && !!pk.monId2;
+      if(need==="forget")  return !!pk.forgetKey;
       return true;
     });
   });
@@ -18679,6 +18724,14 @@ function cardApply(t, c){
           }); done.push(`party ＋${fx.party} level${fx.party===1?"":"s"}`); }
         break; }
       case "barren": done.push("The Barren Season holds — no evolution, no Tutor Points, no eggs"); break;
+      case "forget": {
+        /* The Fool, reversed: the slot is emptied for good (luForget); an encounter NPC has no ledger */
+        if(io.enc || !t.levelUp){ done.push("forget a Feature or Edge — remove it by hand"); break; }
+        const rec = pk.forgetKey ? luForget(t, pk.forgetKey, cardTitle(c)) : null;
+        if(rec){ cardUndoSet(c, i, { forgot: pk.forgetKey });
+          done.push(`${rec.name}${rec.skill ? ` (${rec.skill})` : ""} is forgotten — its slot can never be filled again`); }
+        else toast("Nothing to forget in that slot — pick another");
+        break; }
       case "shiny": if(mon){ cardUndoSet(c,i,{shinyWas: !!mon.shiny});    // so ↺ can't "un-shiny" an already-shiny one
                              mon.shiny = true;
                              done.push(`${mon.nickname||getSpecies(mon.species)?.name||"Pokémon"} ✨ shiny`); } break;
@@ -18785,6 +18838,7 @@ function cardFxText(fx, pk){
     case "gift":  return "grant a Legendary Gift";
     case "rest":  return "an Extended Rest for the whole party";
     case "barren": return "no evolution, no Tutor Points, no eggs — until lifted";
+    case "forget": return "one Feature or Edge is forgotten — its Level-Up slot stays blank for good";
     case "note":  return "";
     default: return "";
   }
@@ -18821,6 +18875,11 @@ function cardPickerRow(t, c, fx, i){
         wrap.append(mkSel(cnt>1?`Base Stat ${j+1}…`:"choose a Base Stat…", (pk[key]||[])[j]||"", STATS,
           v=>{ const arr=(cardPick(c,i)[key]||[]).slice(); arr[j]=v; cardSetPick(c,i,{[key]:arr.filter(Boolean)}); }));
       }
+    }
+    if(need==="forget"){
+      wrap.append(mkSel("which Feature or Edge is forgotten…", pk.forgetKey||"",
+        luForgettable(t).map(x => [x.key, `${x.kind}: ${x.name} · Level ${x.level}`]),
+        v=> cardSetPick(c,i,{forgetKey:v})));
     }
     if(need==="mon" || need==="mon2"){
       wrap.append(mkSel("choose a Pokémon…", pk.monId||"", monOpts(), v=> cardSetPick(c,i,{monId:v})));
