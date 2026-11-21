@@ -8872,8 +8872,25 @@ function ownerIsDivine(o){
   return isLegendarySpeciesName(o.species) || ((o.auras)||[]).length > 0;
 }
 /* which list a weapon's lower / upper Move slot offers, and what each slot is called on the card */
+/* Does this Arcane Weapon Move fit this weapon? Four of the twelve carry a Limitation in their text —
+   "Melee Weapons Only" (Secret Force, Cone of Force, Magic Burst) or "Ranged Weapons only" (Arcane
+   Storm) — read straight off the Move, so a homebrew row written the same way is checked too.
+   Returns { ok, why } (why = the reason it doesn't fit). */
+function arcaneMoveFits(mn, w){
+  const m = moveByName.get(String(mn || "").toLowerCase());
+  if(!m) return { ok:false, why:"not in the Move list" };
+  const lim = ((/limitations?:\s*(.*)$/i.exec(String(m.effect || "")) || [])[1] || "").trim();
+  if(!lim || /^none\b/i.test(lim) || !w) return { ok:true, why:"" };
+  const cat = String(w.category || ""), melee = /melee/i.test(cat), ranged = /range/i.test(cat);
+  if(/melee weapons? only/i.test(lim) && !melee) return { ok:false, why:`Melee Weapons only — ${w.name || "this weapon"} is ${cat || "not Melee"}` };
+  if(/ranged? weapons? only/i.test(lim) && !ranged) return { ok:false, why:`Ranged Weapons only — ${w.name || "this weapon"} is ${cat || "not Ranged"}` };
+  return { ok:true, why:"" };
+}
+/* an Arcane Weapon's Novice/Expert slot only offers Moves its category can use (a Move already picked
+   stays listed, so changing the weapon's category never silently blanks the dropdown) */
 const weaponMoveList = (w, tier) => isArcaneWeapon(w)
-  ? (tier === "master" ? ARCANE_MOVES_EXPERT : ARCANE_MOVES_NOVICE)
+  ? (tier === "master" ? ARCANE_MOVES_EXPERT : ARCANE_MOVES_NOVICE).filter(n =>
+      arcaneMoveFits(n, w).ok || n === (tier === "master" ? w.weaponMoveMaster : w.weaponMoveAdept))
   : (tier === "master" ? WEAPON_MOVES_MASTER : WEAPON_MOVES_ADEPT);
 const weaponMoveLabel = (w, tier) => isArcaneWeapon(w)
   ? (tier === "master" ? "Expert Arcane Move" : "Novice Arcane Move")
@@ -9004,9 +9021,58 @@ function soulInvestedMoves(t, w){
   const own = new Set([w.weaponMoveAdept, w.weaponMoveMaster, ...weaponGrantedMoves(w)].filter(Boolean).map(s => s.toLowerCase()));
   const out = [];
   [[si.novice, ARCANE_MOVES_NOVICE], [si.expert, ARCANE_MOVES_EXPERT]].forEach(([n, list]) => {
-    if(n && list.includes(n) && moveByName.get(n.toLowerCase()) && !own.has(n.toLowerCase()) && !out.includes(n)) out.push(n);
+    if(n && list.includes(n) && arcaneMoveFits(n, w).ok && !own.has(n.toLowerCase()) && !out.includes(n)) out.push(n);
   });
   return out;
+}
+/* The Soul Investment picker, built like Tinker's: one dropdown per tier holding only the Moves the
+   bonded weapon can actually use (its Limitation) and doesn't already carry, with the chosen Move's
+   full card underneath. Moves left out are listed below with the reason. */
+function openSoulInvestPick(t, w, persist, rerender){
+  if(!t.soulInvest || typeof t.soulInvest !== "object") t.soulInvest = {};
+  const own = new Set([w.weaponMoveAdept, w.weaponMoveMaster, ...weaponGrantedMoves(w)].filter(Boolean).map(s => s.toLowerCase()));
+  const bonus = soulBondBonus(t);
+  const body = el("div",{});
+  body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    `Choose one Novice and one Expert Arcane Weapon Move. While Soul Investment is Bound (2 AP), ${w.name || "your Soul Bonded Weapon"} `
+    + `(${w.category || "weapon"}) adds them to your Move List`
+    + (bonus ? `, and like every Arcane Weapon Move swung with it they get +${bonus} Damage Base and +${bonus} Effect Range from Soul Bond.` : ".")));
+  const sels = {};
+  [["novice", ARCANE_MOVES_NOVICE, "Novice Move"], ["expert", ARCANE_MOVES_EXPERT, "Expert Move"]].forEach(([k, list, lbl]) => {
+    const fits = [], out = [];
+    list.forEach(n => {
+      const f = arcaneMoveFits(n, w);
+      if(!f.ok) out.push(`${n} (${f.why})`);
+      else if(own.has(n.toLowerCase())) out.push(`${n} (already one of ${w.name || "the weapon"}'s own Moves)`);
+      else fits.push(n);
+    });
+    const cur = fits.includes(t.soulInvest[k]) ? t.soulInvest[k] : "";
+    const sel = el("select",{style:"padding:4px 6px;margin-left:6px"});
+    sel.append(el("option",{value:""}, "— none —"));
+    fits.forEach(n => { const m = moveByName.get(n.toLowerCase());
+      sel.append(el("option",{value:n, selected:cur === n}, m ? `${n} · ${m.frequency || ""} · ${m.range || ""}` : n)); });
+    const info = el("div",{class:"small",style:"margin:2px 0 6px;padding:8px 10px;border-radius:8px;background:var(--bg-soft,rgba(128,128,128,.12))"});
+    const show = () => { const m = sel.value && moveByName.get(sel.value.toLowerCase());
+      info.style.display = m ? "" : "none";
+      const aty = arcaneAttackType(t, w);
+      info.innerHTML = m ? moveDetailHTML(m, m.name)
+        + ((bonus || aty) ? `<div style="margin-top:6px;color:var(--accent);font-weight:600">`
+          + (bonus ? `\u{1F517} With Soul Bond: Damage Base ${(parseInt(m.damageBase) || 0) + bonus}`
+            + (effectThresholds(m.effect).length ? ` · effects trigger on ${widenedRangesText(m, bonus)}` : "") : "")
+          + (aty ? `${bonus ? " · " : ""}\u{1FA84} goes out ${aty}-Type (Arcane Training)` : "") + `</div>` : "") : ""; };
+    sel.addEventListener("change", show); show();
+    body.append(el("div",{class:"inline",style:"margin:10px 0 4px;align-items:center"}, el("b",{}, lbl), sel), info);
+    if(out.length) body.append(el("div",{class:"small muted",style:"margin-bottom:6px"}, "Not available: " + out.join(" · ")));
+    sels[k] = sel;
+  });
+  modal({title:`\u{1F52E} Soul Investment — ${w.name || "Soul Bonded Weapon"}`, bodyNode:body, footNodes:[
+    el("button",{class:"btn-primary",onclick:()=>{
+      t.soulInvest = { novice: sels.novice.value, expert: sels.expert.value };
+      persist(); closeModal(); rerender();
+      const picked = [t.soulInvest.novice, t.soulInvest.expert].filter(Boolean);
+      toast(picked.length ? `\u{1F52E} Soul Investment: ${picked.join(" + ")}` : "Soul Investment: no Moves picked");
+    }}, "Save"),
+    el("button",{class:"btn-secondary",onclick:closeModal}, "Cancel")]});
 }
 const arcTick = t => Math.max(1, Math.floor((fullMaxOf(t) || 10) / 10));
 /* ---- Arcane Training (Game of Throhs p.47) ----
@@ -9107,7 +9173,8 @@ function manipCtx(st, isStatus){
   const range = String(st.range || "");
   return { arcane: isArcaneWeaponMove(st.name),
            hasER: !!(st.move && effectThresholds(st.move.effect).length),
-           aoe: AOE_RX.test(range), oneTarget: /\b1\s*target\b/i.test(range),
+           /* a Struggle Attack has no Move behind it and always hits exactly one target */
+           aoe: AOE_RX.test(range), oneTarget: !st.move || /\b1\s*target\b/i.test(range),
            damaging: !isStatus && typeof st.damageBase === "number" && st.damageBase > 0 };
 }
 /* Warp Energy: the area part of the range is replaced; keywords (Friendly, Push, Smite…) stay */
@@ -9121,6 +9188,9 @@ function enlargeRange(range){
   if(/\b(cone|line|burst|blast)\s*\d+/i.test(r))
     return r.replace(/\b(Cone|Line|Burst|Blast)\s*(\d+)/i, (m, k, n) => `${k} ${+n + 1}`);
   if(/\b1\s*target\b/i.test(r)) return r.replace(/\b1\s*Target\b/i, /\bmelee\b/i.test(r) ? "Burst 1" : "Blast 2");
+  /* a Struggle Attack's range is just "Melee" or "4m" — it is still a 1-Target attack */
+  if(/^\s*melee\s*$/i.test(r)) return "Melee, Burst 1";
+  if(/^\s*\d+\s*m?\s*$/i.test(r)) return `${r.trim()}, Blast 2`;
   return r;
 }
 /* Signature Manipulations' Rank, from how many times the ledger (or the GM's extras) holds it */
@@ -9192,7 +9262,10 @@ function arcanistRoll(t, st, isSpec, isStatus, opts){
   if(st.weapon && soulBondApplies(t, st.weapon, st.move ? st.name : null)){
     a.soul = soulBondBonus(t); a.soulER = st.move ? a.soul : 0;
   }
-  if(st.move && isSpec){
+  /* Metamagic / Authentic Thaumaturgy trigger on "You use a Special Move". An Arcane Weapon's
+     Struggle Attack is Special ("All Arcane Weapons modify Struggle Attacks to be Special Attacks"),
+     so it takes a Manipulation too, the same as a real Special Move. */
+  if(isSpec && (st.move || (st.weapon && isArcaneWeapon(st.weapon)))){
     const c = manipCtx(st, isStatus);
     POWER_MANIPS.forEach(def => {
       const pays = manipPayOptions(t, def);
@@ -9324,7 +9397,7 @@ function arcanistThresholds(list, a, acc){
 }
 /* the result side: what the Manipulation did, Power Overdrive's Tick, Recoup Energy */
 function arcanistResultNode(t, st, a, r){
-  const recoup = hasFeatureLoose(t, "Recoup Energy") && !!st.move && r.isSpec;
+  const recoup = hasFeatureLoose(t, "Recoup Energy") && r.isSpec && (!!st.move || !!(st.weapon && isArcaneWeapon(st.weapon)));
   if(!a.manip && !recoup) return null;
   const box = el("div",{class:"warnbox",style:"margin:0 0 10px;line-height:1.5;border-color:var(--accent)"});
   if(a.manip){
@@ -9432,20 +9505,27 @@ function arcanistCard(t, rerender, persist){
   }
   /* Soul Investment: the two Moves the bonded weapon lends while the Bind is up */
   if(hasFeatureLoose(t, "Soul Investment")){
-    if(!t.soulInvest || typeof t.soulInvest !== "object") t.soulInvest = {};
+    const si = (t.soulInvest && typeof t.soulInvest === "object") ? t.soulInvest : {};
     const row = el("div",{class:"inline small",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0"},
       el("span",{style:"font-weight:700"}, "\u{1F52E} Soul Investment"));
-    [["novice", ARCANE_MOVES_NOVICE, "Novice"], ["expert", ARCANE_MOVES_EXPERT, "Expert"]].forEach(([k, list, lbl]) => {
-      const sel = el("select",{style:"padding:4px 6px"});
-      sel.append(el("option",{value:""}, `— ${lbl} Move —`));
-      list.forEach(n => sel.append(el("option",{value:n, selected:t.soulInvest[k] === n}, n)));
-      sel.addEventListener("change", () => { t.soulInvest[k] = sel.value; persist(); rerender(); });
-      row.append(sel);
+    /* the two picks, each with a one-line reminder of what it does */
+    [[si.novice, "Novice"], [si.expert, "Expert"]].forEach(([n, lbl]) => {
+      const m = n && moveByName.get(n.toLowerCase());
+      const fit = m && bond ? arcaneMoveFits(n, bond) : { ok:true };
+      row.append(el("span",{style:`padding:2px 8px;border:1px solid var(--line);border-radius:999px;${fit.ok?"":"opacity:.6;text-decoration:line-through"}`,
+        title: m ? `${m.frequency || ""} · ${m.class || ""} · DB ${m.damageBase ?? "—"} · ${m.range || ""} — ${String(m.effect || "").replace(/\s+/g," ").trim()}${fit.ok ? "" : ` (${fit.why})`}` : "",
+      }, m ? `${lbl}: ${n}` : `${lbl}: —`));
     });
+    if(bond) row.append(el("button",{class:"btn-secondary",style:"padding:3px 9px",
+      onclick:()=>openSoulInvestPick(t, bond, persist, rerender)}, "\u{1F52E} Choose Moves"));
     card.append(row);
-    const up = modeIsOn(t, "soul-investment");
+    [si.novice, si.expert].forEach(n => { if(!n || !bond) return;
+      const f = arcaneMoveFits(n, bond);
+      if(!f.ok) classBit(card, `⚠ ${n} doesn't fit ${bond.name || "the bonded weapon"} (${f.why}) — it won't be lent. Choose another.`); });
+    const up = modeIsOn(t, "soul-investment"), lent = bond ? soulInvestedMoves(t, bond) : [];
     classBit(card, !bond ? "Soul Investment needs a Soul Bonded Weapon first."
-      : up ? `Bound (2 AP): ${soulInvestedMoves(t, bond).join(" and ") || "pick the Moves above"} are on ${bond.name || "the bonded weapon"}'s attacks above.`
+      : up ? (lent.length ? `Bound (2 AP): ${lent.join(" and ")} ${lent.length === 1 ? "is" : "are"} on ${bond.name || "the bonded weapon"}'s attacks above.`
+                          : "Bound (2 AP), but no Move is lent yet — press \u{1F52E} Choose Moves.")
            : "Switch it on from Stances & Transformations (Bind 2 AP) — the picked Moves then appear under the bonded weapon's attacks.");
   }
   if(pips.childNodes.length) card.append(pips);
@@ -51885,7 +51965,9 @@ function renderCallOverlay(){
   const call = mode === "cloud" ? (phoneCalls().filter(callVisible).slice(-1)[0] || null) : null;
   const ringHere = callRingsHere(call);
   if(btn) btn.classList.toggle("phone-ringing", ringHere);
-  if(ringHere && phoneSoundOn()) phoneStartRing(call.id); else phoneStopRing();
+  /* A private call rings silently: the phone button still flashes and the toast still says who it is,
+     but no beep gives it away to everyone else at the table. */
+  if(ringHere && !call.private && phoneSoundOn()) phoneStartRing(call.id); else phoneStopRing();
   if(ringHere && !phoneNoticed[call.id]){
     phoneNoticed[call.id] = true;
     toast(`\u{1F4DE} Incoming ${call.private ? "private " : ""}call \u2014 ${phoneEndLook(call.from).name}`);
