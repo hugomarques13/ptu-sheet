@@ -9009,6 +9009,69 @@ function soulInvestedMoves(t, w){
   return out;
 }
 const arcTick = t => Math.max(1, Math.floor((fullMaxOf(t) || 10) / 10));
+/* ---- Arcane Training (Game of Throhs p.47) ----
+   "Attacks made with your Arcane Weapons share the Type of your Elemental Connection. If you have
+   Mystic Senses, these Attacks deal Normal Type Damage. Arcane Weapon users that qualified through
+   Mystic Senses or Elemental Connection (Normal) gain a +5 Bonus to Damage Rolls and a +2 Bonus to
+   Effect Range when using Arcane Weapon Attacks. When wielding an Arcane Weapon, you may resist
+   Disarm Maneuvers with your Occult Education."
+   The Elemental Connection Edge says "choose an Elemental Type" but the sheet never stored the
+   choice, so it lives in t.elemConnType now; until it is set, the Type-linked class the Trainer took
+   (Glamour Weaver = Fairy, Spark Master = Electric...) answers for it. */
+const ELEMENTALIST_TYPE = { "swarmlord":"Bug", "spark master":"Electric", "fire bringer":"Fire", "wind runner":"Flying",
+  "apparition":"Ghost", "druid":"Grass", "earth shaker":"Ground", "frost touched":"Ice", "prism":"Normal",
+  "miasmic":"Poison", "stone warrior":"Rock", "steelheart":"Steel", "glamour weaver":"Fairy", "shade caller":"Dark",
+  "maelstrom":"Water", "herald of pride":"Dragon", "aura guardian":"Fighting", "telekinetic":"Psychic",
+  "telepath":"Psychic", "warper":"Psychic" };
+function elemConnInferred(t){
+  for(const c of ((t && t.classes) || [])){ const ty = ELEMENTALIST_TYPE[String(c).toLowerCase()]; if(ty) return { type:ty, from:c }; }
+  return null;
+}
+function elemConnType(t){
+  if(!t) return "";
+  if(trainerHasEdge(t, "Mystic Senses")) return "Normal";
+  if(!trainerHasEdge(t, "Elemental Connection")) return "";
+  if(TYPES.includes(t.elemConnType)) return t.elemConnType;
+  const inf = elemConnInferred(t); return inf ? inf.type : "";
+}
+const arcaneTrained = t => hasFeatureLoose(t, "Arcane Training");
+/* the Type an Arcane Weapon attack goes out as ("" = no rule applies) */
+function arcaneAttackType(t, w){ return (isArcaneWeapon(w) && arcaneTrained(t)) ? elemConnType(t) : ""; }
+/* the Normal / Mystic Senses bonus: +5 damage, +2 Effect Range on Arcane Weapon Attacks */
+function arcaneNormalBonus(t, w){ return isArcaneWeapon(w) && arcaneTrained(t) && elemConnType(t) === "Normal"; }
+/* "which Type is your Elemental Connection?" — one select, shared by the Weapons card and the Arcanist card */
+function elemConnPicker(t, persist, rerender){
+  if(!trainerHasEdge(t, "Elemental Connection")) return null;
+  const inf = elemConnInferred(t);
+  const sel = el("select",{style:"padding:4px 6px"});
+  sel.append(el("option",{value:""}, inf ? `${inf.type} (from ${inf.from})` : "\u2014 choose \u2014"));
+  TYPES.forEach(ty => sel.append(el("option",{value:ty, selected:t.elemConnType === ty}, ty)));
+  sel.addEventListener("change", () => { t.elemConnType = sel.value; persist(); rerender(); });
+  return el("span",{class:"inline small",style:"gap:6px;align-items:center"},
+    el("span",{style:"font-weight:700"}, "Elemental Connection:"), sel);
+}
+/* Effect Range thresholds after Soul Bond / Arcane Training widen them, as "16+ (printed 19+)" */
+function widenedRangesText(move, by){
+  if(!move || !by) return "";
+  const th = effectThresholds(move.effect);
+  return th.map(x => `${Math.max(2, x.n - by)}+ (printed ${x.n}+)`).join(", ");
+}
+/* the lines an attack row (trainerAttackSlot) shows for an Arcane Weapon attack */
+function arcaneSlotNotes(t, p){
+  const out = [], w = p && p.weapon;
+  if(!w || !isArcaneWeapon(w)) return out;
+  if(!arcaneTrained(t)) { out.push("\u26A0 Arcane Weapon without the Arcane Training Feature \u2014 the book says you can't wield it."); return out; }
+  const arcMove = !p.move || isArcaneWeaponMove(p.name);
+  const ty = arcaneAttackType(t, w);
+  const er = (p.soul && p.move ? p.soul : 0) + (arcaneNormalBonus(t, w) && arcMove && p.move ? 2 : 0);
+  const bits = [];
+  if(p.soul) bits.push(`\u{1F517} Soul Bond +${p.soul} DB`);
+  if(ty) bits.push(`${ty}-Type (Elemental Connection)`);
+  if(arcaneNormalBonus(t, w) && arcMove) bits.push("+5 damage (Arcane Training, Normal)");
+  if(er && p.move){ const wr = widenedRangesText(p.move, er); if(wr) bits.push(`Effect Range +${er}: ${wr}`); }
+  if(bits.length) out.push(bits.join(" \u00b7 "));
+  return out;
+}
 
 /* the eight Power Manipulations; `cond` reads manipCtx */
 const POWER_MANIPS = [
@@ -9123,7 +9186,7 @@ const MANIP_VIA_LBL = { sig:"Signature Manipulation (free)", ap:"Metamagic, 1 AP
 /* Built once per roll window, right after the attack's Class is known. Rewrites st.range for Warp
    Energy / Enlarged Power, so the chips, the feed and the Apply card all read the new shape. */
 function arcanistRoll(t, st, isSpec, isStatus, opts){
-  const a = { list:[], manip:null, via:"", soul:0, soulER:0, crit:0, dmg:0, dmgWhy:"", range0:st.range,
+  const a = { list:[], manip:null, via:"", soul:0, soulER:0, atER:0, odDmg:0, crit:0, dmg:0, dmgWhy:"", range0:st.range,
               warp:"", paid:null, recouped:false, ticked:false };
   if(!t) return a;
   if(st.weapon && soulBondApplies(t, st.weapon, st.move ? st.name : null)){
@@ -9148,35 +9211,61 @@ function arcanistRoll(t, st, isSpec, isStatus, opts){
     if(a.manip.key === "berserk") a.crit = 3;
     if(a.manip.key === "overdrive"){
       const tick = arcTick(t), occ = rankNum((t.skills && t.skills.occultEd) || "");
-      a.dmg = tick + occ; a.dmgWhy = `Power Overdrive (Tick ${tick} + Occult Ed. ${occ})`;
+      a.odDmg = tick + occ; a.dmg = a.odDmg; a.dmgWhy = `Power Overdrive (Tick ${tick} + Occult Ed. ${occ})`;
     }
   }
+  /* Arcane Training: qualified through Mystic Senses / Elemental Connection (Normal) = +5 damage and
+     +2 Effect Range on Arcane Weapon Attacks (its Struggle and its Arcane Weapon Moves) */
+  if(st.weapon && arcaneNormalBonus(t, st.weapon) && (!st.move || isArcaneWeaponMove(st.name))){
+    if(!/status/i.test(st.cls || "")){ a.dmg += 5; a.dmgWhy = [a.dmgWhy, "Arcane Training (Normal) +5"].filter(Boolean).join(" + "); }
+    if(st.move) a.atER = 2;
+  }
+  a.arcType = st.weapon ? arcaneAttackType(t, st.weapon) : "";
   return a;
 }
 /* the card on the roll window: the Soul Bond line, and the Manipulation picker */
 function arcanistRollCard(t, st, a, reopen){
-  if(!a.soul && !a.list.length) return null;
+  if(!a.soul && !a.list.length && !a.arcType && !a.atER && !(st.weapon && isArcaneWeapon(st.weapon))) return null;
   const card = el("div",{class:"card",style:"background:var(--panel);border:1px solid var(--accent);margin:0 0 12px"});
   if(a.soul) card.append(el("div",{class:"small",style:`font-weight:700;${a.list.length?"margin-bottom:8px":""}`},
     `\u{1F517} Soul Bond — ${(st.weapon && st.weapon.name) || "your bonded weapon"}: +${a.soul} Damage Base`
     + (a.soulER ? ` and +${a.soulER} Effect Range` : "")
     + ` (Occult Education ${(t.skills && t.skills.occultEd) || "?"}). Already in the numbers below.`));
+  if(st.weapon && isArcaneWeapon(st.weapon)){
+    const lines = [];
+    if(!arcaneTrained(t)) lines.push("\u26A0 You don't have the Arcane Training Feature \u2014 the book says you can't wield an Arcane Weapon without it.");
+    else {
+      if(a.arcType) lines.push(`\u{1FA84} Arcane Training: this attack is ${a.arcType}-Type \u2014 the Type of your ${trainerHasEdge(t,"Mystic Senses")?"Mystic Senses (Normal)":"Elemental Connection"}.`);
+      else lines.push("\u{1FA84} Arcane Training: set your Elemental Connection's Type on the Arcanist card or the Weapons card and this attack takes it.");
+      if(a.atER || /Arcane Training/.test(a.dmgWhy)) lines.push("\u{1FA84} Normal connection: +5 damage and +2 Effect Range on Arcane Weapon Attacks \u2014 already in the numbers below.");
+    }
+    lines.forEach(l => card.append(el("div",{class:"small",style:"font-weight:700;margin-bottom:6px"}, l)));
+  }
+  if(st.move && (a.soulER || a.atER)){
+    const wr = widenedRangesText(st.move, a.soulER + a.atER);
+    if(wr) card.append(el("div",{class:"small",style:"margin-bottom:8px;color:var(--accent);font-weight:600"},
+      `Effect Range +${a.soulER + a.atER}: its effects now trigger on ${wr}.`));
+  }
   if(!a.list.length) return card;
   card.append(el("div",{class:"small",style:"font-weight:800;margin-bottom:4px"},
     "\u{1F52E} Power Manipulation — one per Special Move (a Swift Action)"));
-  const row = el("div",{class:"inline",style:"gap:6px;flex-wrap:wrap"});
+  /* one row per Manipulation: its name as the button, and what it does right beside it */
   a.list.forEach(x => {
     const on = a.manip === x.def, canPay = x.pays.some(p => p.ok);
-    row.append(el("button",{class:"btn-secondary"+(on?" on":""),style:"padding:5px 9px",
-      disabled: !on && (!x.ok || !canPay),
-      title: !x.ok ? `Needs ${x.def.need}` : !canPay ? x.pays.map(p => p.label).join(" · ") : x.def.text,
-      onclick: () => reopen({ manip: on ? "" : x.def.key, manipVia:"", warpTo:"" })},
-      `${x.def.icon} ${x.def.name} · R${x.def.rank}`));
+    const usable = on || (x.ok && canPay);
+    const why = !x.ok ? `Not for this Move \u2014 needs ${x.def.need}.` : !canPay ? `Can't pay: ${x.pays.map(p => p.label).join(" \u00b7 ")}.` : "";
+    card.append(el("div",{style:`display:flex;gap:8px;align-items:flex-start;margin-top:6px;${usable?"":"opacity:.55"}`},
+      el("button",{class:"btn-secondary"+(on?" on":""),style:"padding:5px 9px;white-space:nowrap;flex:0 0 auto;min-width:150px;text-align:left",
+        disabled: !usable,
+        onclick: () => reopen({ manip: on ? "" : x.def.key, manipVia:"", warpTo:"" })},
+        `${on ? "\u2714 " : ""}${x.def.icon} ${x.def.name} \u00b7 R${x.def.rank}`),
+      el("div",{class:"small",style:"flex:1;min-width:0;line-height:1.4"}, x.def.text,
+        why ? el("div",{class:"muted"}, why) : "",
+        el("div",{class:"muted"}, x.pays.map(p => p.label).join(" \u00b7 ")))));
   });
-  card.append(row);
   if(a.manip){
     const box = el("div",{class:"small",style:"margin-top:8px"});
-    box.append(el("div",{}, el("b",{}, `${a.manip.icon} ${a.manip.name}: `), a.manip.text));
+    box.append(el("div",{}, el("b",{}, `${a.manip.icon} ${a.manip.name} is on for this roll.`)));
     const pick = a.list.find(x => x.def === a.manip);
     const payable = pick.pays.filter(p => p.ok);
     if(payable.length > 1){
@@ -9198,13 +9287,10 @@ function arcanistRollCard(t, st, a, reopen){
       `Range ${a.range0} → ${st.range}`));
     if(a.crit) box.append(el("div",{style:"margin-top:4px;color:var(--accent);font-weight:600"},
       `Critical Hit Range widened by +${a.crit} — already in the Accuracy line below.`));
-    if(a.dmg) box.append(el("div",{style:"margin-top:4px;color:var(--accent);font-weight:600"},
-      `+${a.dmg} damage (${a.dmgWhy}) is in the Damage line below; the Tick of HP comes off only if it hits.`));
+    if(a.odDmg) box.append(el("div",{style:"margin-top:4px;color:var(--accent);font-weight:600"},
+      `+${a.odDmg} damage (Tick ${arcTick(t)} + Occult Ed.) is in the Damage line below; the Tick of HP comes off only if it hits.`));
     card.append(box);
   }
-  const off = a.list.filter(x => !x.ok);
-  if(off.length) card.append(el("div",{class:"small muted",style:"margin-top:6px"},
-    "Not for this Move: " + off.map(x => `${x.def.name} (needs ${x.def.need})`).join(" · ")));
   return card;
 }
 /* on the first 🎲 of the window: pay for the Manipulation and put up Directed Barrier */
@@ -9230,6 +9316,8 @@ function arcanistThresholds(list, a, acc){
   let out = (list || []).slice();
   if(a.soulER) out = out.map(x => ({ n: Math.max(2, x.n - a.soulER),
     text: `${x.text} (Soul Bond widens this Effect Range by +${a.soulER}.)` }));
+  if(a.atER) out = out.map(x => ({ n: Math.max(2, x.n - a.atER),
+    text: `${x.text} (Arcane Training widens this Effect Range by +${a.atER}.)` }));
   if(a.manip && a.manip.key === "finesse" && acc % 2 === 0)
     out = out.map(x => ({ n: Math.min(x.n, acc), text: `${x.text} (Energy Finesse: a natural even roll triggers it.)` }));
   return out.sort((p, q) => p.n - q.n);
@@ -9245,7 +9333,7 @@ function arcanistResultNode(t, st, a, r){
                                                         : `natural ${r.acc} is odd — Effect Ranges work as normal.`);
     if(d.key === "warp" || d.key === "enlarge") bits.push(`it goes out as ${st.range} (was ${a.range0}).`);
     if(d.key === "barrier") bits.push(`+${arcTick(t)} Damage Reduction for one full round, already on your buffs.`);
-    if(d.key === "overdrive") bits.push(`+${a.dmg} damage is in the roll. If it hits, you lose ${arcTick(t)} HP.`);
+    if(d.key === "overdrive") bits.push(`+${a.odDmg} damage is in the roll. If it hits, you lose ${arcTick(t)} HP.`);
     if(d.key === "berserk") bits.push(`Crit Range +3 (${r.critT}–20). The target becomes Vulnerable for 1 full round`
       + (r.rides ? " — it rides with the hit on the GM's \u{1F4A5} Apply." : " — put it on them from their Status Conditions."));
     if(d.key === "link") bits.push(`for one full round, the next Normal-Type attack to hit the target ${st.type === "Normal"
@@ -9308,6 +9396,11 @@ function arcanistCard(t, rerender, persist){
       ? `${bond.name || "The bonded weapon"}: its Struggle Attacks and Arcane Weapon Moves get +${bonus} Damage Base and +${bonus} Effect Range (Occult Education ${t.skills.occultEd}${bonus >= 3 ? ", the Master cap" : ""}) — already in every roll made with it. Beckon it to your hands as a Shift Action from within 10 m; if someone else holds it and won't let go, it's Occult Education vs their Athletics.`
       : "Bond one Arcane Weapon: +1 Damage Base and Effect Range per Occult Education Rank above Novice (max +3) on its Struggle Attacks and Arcane Weapon Moves.");
   }
+  { const ecp = elemConnPicker(t, persist, rerender);
+    if(ecp && arcaneTrained(t)){ card.append(el("div",{style:"margin:4px 0"}, ecp));
+      classBit(card, `Arcane Training: every attack with an Arcane Weapon is ${elemConnType(t) || "your Elemental Connection's"}-Type`
+        + (elemConnType(t) === "Normal" ? ", with +5 damage and +2 Effect Range on Arcane Weapon Attacks" : "")
+        + ", and you resist Disarm with Occult Education."); } }
   const meta = hasFeatureLoose(t, "Metamagic"), auth = hasFeatureLoose(t, "Authentic Thaumaturgy");
   if(meta || auth) classBit(card, "Power Manipulations: roll any Special Move and its window lists the ones that fit it"
     + (meta ? " — Rank 1 through Metamagic (1 AP)" : "") + (auth ? `${meta ? "," : " —"} Rank 2 through Authentic Thaumaturgy (Scene x2)` : "")
@@ -9369,13 +9462,16 @@ function trainerStruggle(t, w){
     // "All Arcane Weapons modify Struggle Attacks to be Special Attacks" — everything else is Physical
     cls = isArcaneWeapon(w) ? "Special" : "Physical";
     // Arcanist's Soul Bond: +1 DB per Occult Education Rank above Novice (max +3)
-    if(soulBondApplies(t, w, null)) db += soulBondBonus(t); }
+    if(soulBondApplies(t, w, null)) db += soulBondBonus(t);
+    // Arcane Training: an Arcane Weapon's attacks share the Elemental Connection's Type
+    const aty = arcaneAttackType(t, w); if(aty) type = aty; }
   // Silent Assassin (Apparition, Bind 2 AP): the strike itself is Ghost-Typed while it is up
   type = strikeTypeOverride(t) || type;
   /* A Deicide weapon deals Typeless damage, full stop - so it is applied AFTER every retype, which
      is the whole point of the artefact (nothing it hits gets to have a Type interaction with it). */
   if(isDeicideWeapon(w)) type = "Typeless";
-  return { name, ac, damageBase:db, type, range, cls, weapon:w, deicide:isDeicideWeapon(w) };
+  return { name, ac, damageBase:db, type, range, cls, weapon:w, deicide:isDeicideWeapon(w),
+           soul: (w && soulBondApplies(t, w, null)) ? soulBondBonus(t) : 0 };
 }
 /* A stance that retypes every Struggle and Weapon Attack outright (Apparition's Silent Assassin:
    "While this Feature is Bound, your Struggle Attacks and Weapon Attacks deal Ghost-Type Damage").
@@ -9475,6 +9571,16 @@ function weaponsCard(t){
       wWhy ? el("span",{class:"muted",title:"Herald of Pride: Command or Intimidate replaces Combat for Melee Weapons"}, ` · via ${wWhy}`) : "",
       isDeicideWeapon(w) ? el("span",{style:"color:var(--accent);font-weight:700",title:DEICIDE_HELP},
         " \u00b7 \u2694 Deicide \u2014 Typeless, Super-Effective vs the divine") : ""));
+    if(isArcaneWeapon(w)){
+      const aty = arcaneAttackType(t, w);
+      box.append(el("div",{class:"small",style:`margin-top:6px;${arcaneTrained(t)?"":"color:var(--bad);font-weight:700"}`},
+        !arcaneTrained(t) ? "\u26A0 Wielding an Arcane Weapon needs the Arcane Training Feature."
+          : `\u{1FA84} Arcane Training: its attacks are ${aty ? aty + "-Type (your Elemental Connection)" : "your Elemental Connection's Type \u2014 set it below"}`
+            + (arcaneNormalBonus(t, w) ? ", +5 damage and +2 Effect Range on Arcane Weapon Attacks" : "")
+            + "; you resist Disarm with Occult Education."));
+      const ecp = arcaneTrained(t) ? elemConnPicker(t, save, renderTrainer) : null;
+      if(ecp) box.append(el("div",{style:"margin-top:4px"}, ecp));
+    }
     if(isArcaneWeapon(w) && trainerHasClass(t, "Arcanist")){
       const bound = isSoulBound(t, w);
       box.append(el("div",{class:"inline small",style:"gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap"},
@@ -10862,11 +10968,11 @@ function trainerAttackProfile(t, weaponMoveName, w, asWeaponAttack){
     const strikeTy = w ? strikeTypeOverride(t) : "";
     if(m) return { name:m.name,
       type: isDeicideWeapon(w) ? "Typeless"
-          : strikeTy || ((w&&w.type&&w.type!=="Normal")?w.type:(m.type||"Normal")),
+          : strikeTy || arcaneAttackType(t, w) || ((w&&w.type&&w.type!=="Normal")?w.type:(m.type||"Normal")),
       damageBase:Math.min(28,(sd.db||0)+(w?w.dbMod:0)+((w && soulBondApplies(t, w, m.name)) ? soulBondBonus(t) : 0)), dbNote:sd.note, ac:(m.ac!=null?m.ac:4)+(w?w.acMod:0),
       range:weaponizeRange(m.range||"Melee", w, asWeaponAttack), cls:m.class||"Physical",
       frequency:trainerMoveFreq(t, m), effect:m.effect, weapon:w, move:m, weaponAttack:!!(w && asWeaponAttack),
-      deicide:isDeicideWeapon(w) };
+      deicide:isDeicideWeapon(w), soul: (w && soulBondApplies(t, w, m.name)) ? soulBondBonus(t) : 0 };
   }
   return trainerStruggle(t, w);
 }
@@ -32758,10 +32864,10 @@ function trainerAttackSlot(t, profile, rollFn, opts={}){
       stabHere?el("span",{class:"muted small",style:"margin-left:6px;font-weight:600",title:"Type Expertise — +2 Damage Base"},"⚡ STAB"):""),
     el("div",{class:"ms-info"}, `${profile.frequency?profile.frequency+" · ":""}${profile.cls||"Physical"} · AC ${profile.ac} · `
       + (typeof profile.damageBase === "number" && profile.damageBase > 0
-          ? `DB ${profile.damageBase}${profile.dbNote?` (${profile.dbNote})`:""}${stabHere?" +2":""} · ${profile.range} · +${isVersatileMove(profile) ? "Attack or Sp.Attack" : (/spec/i.test(profile.cls||"") ? "Sp.Attack" : "Attack")}`
+          ? `DB ${profile.damageBase}${profile.soul?` (incl. +${profile.soul} Soul Bond)`:""}${profile.dbNote?` (${profile.dbNote})`:""}${stabHere?" +2":""} · ${profile.range} · +${isVersatileMove(profile) ? "Attack or Sp.Attack" : (/spec/i.test(profile.cls||"") ? "Sp.Attack" : "Attack")}`
           : `no damage · ${profile.range}`)));
   // Feature riders that fire on this Move — flagged here so the player sees them before they roll
-  (opts.notes||[]).forEach(n => main.append(el("div",{class:"small",style:"margin-top:2px;color:var(--accent);font-weight:600"}, n)));
+  (opts.notes||[]).concat(arcaneSlotNotes(t, profile)).forEach(n => main.append(el("div",{class:"small",style:"margin-top:2px;color:var(--accent);font-weight:600"}, n)));
   slot.append(main);
   const acts = el("div",{class:"inline"});
   if(opts.uc) acts.append(opts.uc);

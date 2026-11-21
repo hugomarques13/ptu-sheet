@@ -276,6 +276,13 @@ function ctPoffins(p){
   CT_STATS.forEach(s=> out[s] = Math.max(0, Math.round(+o[s]||0)));
   return out;
 }
+/* how many "<Stat> Poffin" a Trainer's bag holds (inventory rows matched by name, quantities summed) */
+function ctPoffinsInBag(t, stat){
+  if(!t || !Array.isArray(t.inventory)) return 0;
+  const want = normItemName(`${stat} Poffin`);
+  return t.inventory.reduce((n, it) => n + (normItemName(it && it.name) === want ? Math.max(0, parseInt(it.qty) || 0) : 0), 0);
+}
+const ctPoffinLabel = p => (p && (p.nickname || p.species)) || "This Pokémon";
 /* 1 Poffin, +1 per 5 Levels, at most 6 (Lv 25) — Grace lets its owner's Pokémon eat 2 more */
 function ctPoffinCap(p, t){ return Math.min(6, 1 + Math.floor(((p && p.level)||1)/5)) + (t && trainerHasEdge(t,"Grace") ? 2 : 0); }
 /* Style Expert's Chosen Contest Stat(s): picked on the sheet (t.styleExpert), or read off the branch
@@ -1472,10 +1479,16 @@ function contestDetailHTML(m){
 function contestStatsCard(p, sp){
   if(!p) return "";
   const pf = ctPoffins(p);
+  /* the Trainer's bag this Pokémon eats from (same bag as Snacks and Held Items) */
+  const bag = (typeof foodBagFor==="function") ? foodBagFor(p) : null;
+  const inBag = {}; CT_STATS.forEach(s => inBag[s] = ctPoffinsInBag(bag, s));
+  const bagAny = CT_STATS.some(s => inBag[s] > 0);
   const anyPoffin = CT_STATS.some(s=>pf[s]>0) || p.fabulousBall;
-  if(!(showContest() || contestModeOn() || anyPoffin)) return "";
+  if(!(showContest() || contestModeOn() || anyPoffin || bagAny)) return "";
   const t = (typeof ownerTrainerOf==="function" ? ownerTrainerOf(p) : null) || (activeChar() && activeChar().trainer) || null;
   const dd = ctMonDice(p, t), cap = ctPoffinCap(p, t), eaten = CT_STATS.reduce((a,s)=>a+pf[s],0);
+  /* the free ± is the GM's correction tool; a player feeds Poffins out of the bag */
+  const freeEdit = (typeof isGM==="function" && isGM()) || !!p.unlocked;
   const card = el("div",{class:"card"});
   card.append(el("h3",{},"🎀 Contest Stats"));
   card.append(el("div",{class:"small muted",style:"margin:-4px 0 8px"},
@@ -1488,10 +1501,27 @@ function contestStatsCard(p, sp){
   tbl.append(lbl("Poffins"), ...CT_STATS.map(s=>{
     const wrap = el("span",{class:"inline",style:"gap:3px;justify-content:center"});
     const set = v=>{ p.poffins = Object.assign(ctPoffins(p), { [s]:Math.max(0,v) }); save(); render(); };
-    wrap.append(el("button",{class:"btn-secondary",style:"padding:0 7px",disabled:pf[s]<=0,onclick:()=>set(pf[s]-1)},"−"),
-      el("b",{}, String(pf[s])),
-      el("button",{class:"btn-secondary",style:"padding:0 7px",disabled:eaten>=cap && !p.unlocked,title:eaten>=cap?"Poffin limit reached":"eat a Poffin",onclick:()=>set(pf[s]+1)},"＋"));
+    if(freeEdit) wrap.append(el("button",{class:"btn-secondary",style:"padding:0 7px",disabled:pf[s]<=0,title:"GM: remove one",onclick:()=>set(pf[s]-1)},"−"));
+    wrap.append(el("b",{}, String(pf[s])));
+    if(freeEdit) wrap.append(el("button",{class:"btn-secondary",style:"padding:0 7px",disabled:eaten>=cap && !p.unlocked,title:eaten>=cap?"Poffin limit reached":"GM: add one without using the bag",onclick:()=>set(pf[s]+1)},"＋"));
     return wrap; }));
+  /* 🍩 Feed: one Poffin of that Stat out of the Trainer's bag → +1 die. Blocked at the limit, since
+     "additional Poffins past the maximum of 6 have no effect" — feeding one then would only waste it. */
+  if(bag) tbl.append(lbl("From the bag", "Feeding takes one Poffin of that kind out of your Inventory"), ...CT_STATS.map(s=>{
+    const full = eaten >= cap && !p.unlocked;
+    return el("span",{style:"text-align:center"},
+      el("button",{class:"btn-secondary",style:"padding:2px 6px;font-size:12px",
+        disabled: inBag[s] <= 0 || full,
+        title: full ? `${ctPoffinLabel(p)} has eaten all the Poffins it can (${cap})`
+             : inBag[s] <= 0 ? `No ${s} Poffin in ${bag.name || "the"}'s bag — buy one or make some with a Poffin Mixer`
+             : `Feed a ${s} Poffin: +1 ${s} die (one of ${inBag[s]} in the bag)`,
+        onclick:()=>{
+          if(!consumeInventoryItem(bag, `${s} Poffin`)){ toast(`No ${s} Poffin left in the bag`); return; }
+          p.poffins = Object.assign(ctPoffins(p), { [s]: (ctPoffins(p)[s]||0) + 1 });
+          save(); render();
+          toast(`🍩 ${ctPoffinLabel(p)} ate a ${s} Poffin — ${s} dice ${dd.dice[s]} → ${dd.dice[s]+1}d6`);
+        }}, `🍩 ${inBag[s]}`));
+  }));
   const se = ctStyleStats(t), fab = ctFabulous(p);
   if(se.length) tbl.append(lbl("Style Expert"), ...CT_STATS.map(s=>el("span",{style:"text-align:center"}, se.includes(s)?"+2":"")));
   if(p.fabulousBall) tbl.append(lbl("Fabulous Ball"), ...CT_STATS.map(s=>el("span",{style:"text-align:center"}, fab[s]?`+${fab[s]}`:"")));
