@@ -10240,6 +10240,10 @@ function featureAbilityDefs(){
   const m = new Map();
   D.features.forEach(f => { const d = featureAbilityScan(f); if(d) m.set(featKey(f.name), d); });
   FEATURE_ABILITY_CHOICES.forEach(d => m.set(featKey(d.feat), d));
+  /* Errata Abilities are the default (see errataAbilityMap): a Feature that says "Choose Pressure or
+     Frighten" hands out Pressure [Errata]. Without this a Trainer with Too Spooky showed BOTH
+     printings — the plain one from the Feature beside the errata one on their own list. */
+  m.forEach((d, k) => m.set(k, Object.assign({}, d, { abilities: [...new Set(d.abilities.map(errataAbility))] })));
   _featAbilDefs = m;
   return m;
 }
@@ -10254,7 +10258,8 @@ function featureAbilityGrants(t){
   [...(t.classes||[]), ...(t.features||[])].forEach(n=>{
     const d = defs.get(featKey(n)); if(!d) return;
     if(d.abilities.length===1){ out.push(d.abilities[0]); return; }
-    const pick = t.featAbil && t.featAbil[d.feat];
+    // a pick stored before the errata switch ("Pressure") still counts, as its errata printing
+    const pick = t.featAbil && t.featAbil[d.feat] && errataAbility(t.featAbil[d.feat]);
     if(pick && d.abilities.includes(pick)) out.push(pick);
   });
   return out;
@@ -10272,7 +10277,7 @@ function giftAbilityGrants(t){
   const out = [];
   t.gifts.forEach(g => {
     const d = featureAbilityScan({ name:g && g.name, effect:g && g.effect });
-    if(d) d.abilities.forEach(a => out.push(a));
+    if(d) d.abilities.forEach(a => out.push(errataAbility(a)));     // errata printing, as for Features
   });
   return out;
 }
@@ -10289,7 +10294,7 @@ function trainerGrantedAbilities(t){
 function featureAbilityPick(t, f, rerender, persist){
   const def = featureAbilityChoiceDef(f); if(!def) return;
   if(!t.featAbil || typeof t.featAbil!=='object' || Array.isArray(t.featAbil)) t.featAbil = {};
-  const cur = t.featAbil[def.feat];
+  const cur = t.featAbil[def.feat] ? errataAbility(t.featAbil[def.feat]) : t.featAbil[def.feat];
   const body = el("div",{});
   if(def.note) body.append(el("div",{class:"small muted",style:"margin-bottom:10px"}, def.note));
   def.abilities.forEach(an=>{
@@ -11550,7 +11555,10 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
      happens; a triggered one gets its own box with a button that spends the use. --- */
   { const rsCard = runningStartCard(runStart, runStartState); if(rsCard) body.append(rsCard); }
   let riderFireHook = null;           // the 🎯 Apply card ticks a triggered rider's row when its button is pressed
-  body.append(riderBoxes(t, st.name, opts.rerender, opts.persist, n => { if(riderFireHook) riderFireHook(n); }));
+  /* Riders fired in THIS window, remembered so one pressed before 🎲 rides the hit (the per-Move lock
+     only covers the Features that state one; Psionic Overload, Fearsome Display… have none). */
+  const firedRiders = new Set();
+  body.append(riderBoxes(t, st.name, opts.rerender, opts.persist, n => { firedRiders.add(featKey(n)); if(riderFireHook) riderFireHook(n); }));
   { const pp = powerPirouetteBox(t, st, opts); if(pp) body.append(pp); }   // 🩰 Power Pirouette rides on a Dance Move
   { const pn = powderImmuneNote(st.move && typeof st.move === "object" ? st.move : moveByName.get(String(st.name||"").toLowerCase()));
     if(pn) body.append(el("div",{class:"small muted",style:"margin-top:4px"}, "\u{1F33F} " + pn)); }
@@ -11859,9 +11867,16 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       }
     }
     /* Arcanist: Berserk Blow's Vulnerable rides with the hit; then what the Manipulation did */
-    if(arc.manip && arc.manip.key === "berserk" && !missedRoll && mode==="cloud" && connected > 0){
+    if(arc.manip && !missedRoll && connected > 0 && (arc.manip.key === "berserk" || arc.manip.key === "link")){
       hitFx = hitFx || { name:st.name, status:[], cs:[] };
-      hitFx.status = uniqStatusKeys((hitFx.status || []).concat(["vulnerable"]));
+      // Berserk Blow: "the target becomes Vulnerable for 1 full round"
+      if(arc.manip.key === "berserk") hitFx.round = uniqStatusKeys((hitFx.round || []).concat(["vulnerable"]));
+      // Energy Link: a mark the next Normal-Type hit on that target reads (attackTargetWidget) and uses up
+      if(arc.manip.key === "link") hitFx.buffs = (hitFx.buffs || []).concat([{ name:`Energy Link (${st.type || "Normal"})`,
+        mods:{ energyLink: st.type || "Normal" },
+        note: st.type && st.type !== "Normal"
+          ? `For one full round, the next Normal-Type attack to hit it deals ${st.type}-Type damage instead (applied by the target picker).`
+          : "For one full round, the next Normal-Type attack to hit it lands one step more Super-Effective (applied by the target picker)." }]);
     }
     { const an = arcanistResultNode(t, st, arc, { acc, missed:missedRoll, isSpec:isSpecAtk, critT,
         rides: mode==="cloud" && connected > 0, fqName, moveSpent: () => arcMoveSpent,
@@ -11873,14 +11888,25 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
        keeps only the miss-side rows (Moonblast under Enchanting Transformation) on the card. */
     if(st.move){
       const rows = statusMoveFx(t, st.move, { thresholds:trThrOut, acc, extra:rsnPicked, status:isStatusAtk, demor, trainer:true });
+      rows.forEach(r => { if(r.trig && firedRiders.has(featKey(r.trig))) r.on = true; });
       const rides = !isStatusAtk && mode==="cloud" && connected > 0;
-      if(rides) rows.filter(r => r.when === "hit" && (r.keys || r.cs)).forEach(r => {
+      /* Everything a hit-row puts on its target rides the 💥 Apply: Statuses (1-full-round ones on their
+         own timer), Combat Stages, debuffs (Powerful Motivator's -3 Evasion…) and Ticks of HP. A
+         triggered rider (Play Them Like a Fiddle) only rides once its button has been pressed; until
+         then it waits on the 🎯 card below, where pressing the button ticks it. */
+      const rideable = r => r.when === "hit" && r.on !== false && (r.keys || r.cs || r.buff || r.tick);
+      if(rides) rows.filter(rideable).forEach(r => {
         hitFx = hitFx || { name:st.name, status:[], cs:[] };
-        if(r.keys) hitFx.status = uniqStatusKeys((hitFx.status || []).concat(r.keys));
+        if(r.keys && r.keys.length){
+          if(r.round) hitFx.round = uniqStatusKeys((hitFx.round || []).concat(r.keys));
+          else hitFx.status = uniqStatusKeys((hitFx.status || []).concat(r.keys));
+        }
         if(r.cs) hitFx.cs = (hitFx.cs || []).concat(r.cs);
+        if(r.buff) hitFx.buffs = (hitFx.buffs || []).concat([r.buff]);
+        if(r.tick) hitFx.ticks = (hitFx.ticks || 0) + r.tick;
       });
       const cardRows = isStatusAtk ? rows
-        : rows.filter(r => r.when !== "hit" || (!rides && connected > 0) || (rides && !r.keys && !r.cs));
+        : rows.filter(r => r.when !== "hit" || (!rides && connected > 0) || (rides && !rideable(r)));
       const smn = statusMoveApplyNode(t, st.move, cardRows, { persist:opts.persist, redraw:opts.rerender,
         accLine:`\u{1F3AF} Accuracy ${accTot} (d20 ${acc})${st.ac!=null?` vs AC ${st.ac}`:""}`,
         onRiderFire: fn => { riderFireHook = fn; } });
@@ -11971,7 +11997,13 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         atkExploit: exploitAbilityBonus(t), atkWar: ownerAuraActive(t,"War"), atkDeicide: !!st.deicide,
         seFlat: heldSeFlatDamage(t), defCSMode: defCSMode || unawareMode(t), moveRule, critExtra, fx: hitFx,
         ctx:{ attacker:t, by:rollerName(t), melee:/melee/i.test(String((st.move && st.move.range) || "")), move:(st.move && st.move.name) || "", weapon:(st.weapon && st.weapon.name) || "" },
-        onDealt:(n, c, d)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n, true, d); } });
+        onDealt:(n, c, d)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n, true, d);
+          /* Power Overdrive: "if the triggering attack hits, you lose a Tick of Hit Points" - the hit just landed */
+          if(n > 0 && arc.manip && arc.manip.key === "overdrive" && !arc.ticked){
+            arc.ticked = true; const tick = arcTick(t);
+            ownerHPChange(t, -tick, { raw:true }); (opts.persist||save)(); if(opts.rerender) opts.rerender();
+            toast(`\u{1F525} Power Overdrive \u2014 ${ownerLabel(t)} loses ${tick} HP`);
+          } } });
       if(tw) out.append(tw);
       feedLogged = true;
       const feT = logRoll({ kind:"move", label:st.name, who:t.name||"",
@@ -18269,7 +18301,7 @@ const ARCANA = [
 /* ---------------- ✹ THE MAJOR ARCANA — the deck's teeth ---------------- */
 {k:"m00",s:"Major",n:"0 — The Fool",p:"Psyduck",f:"The Leap / The Blank Page.",
  up:{t:"now",x:"You must immediately draw two more cards, in addition to any remaining from your declaration. They do not count against your maximum. This can chain."},
- rev:{t:"now",x:"You forget one Feature or Edge of the GM's choosing — not just its use, its existence. It is removed from your sheet and its prerequisites no longer count as met. It can be re-earned through play, at normal cost, if you can figure out what you lost."}},
+ rev:{t:"now",x:"You forget one Feature or Edge of the GM's choosing — not just its use, its existence. It is removed from your sheet and its prerequisites no longer count as met."}},
 {k:"m01",s:"Major",n:"I — The Magician",p:"Alakazam",f:"Mastery / The Trick.",
  up:{t:"now",x:"Immediately gain any one Feature you currently qualify for, free of cost, ignoring Trainer Level requirements by up to 5 levels."},
  rev:{t:"now",x:"The power was never really yours. Every Feature you own drops one Frequency step, permanently — At-Will becomes Scene ×2, Scene becomes Daily, Daily becomes once per badge."}},
@@ -24787,11 +24819,32 @@ function moveHitFx(m, thresholds, acc, extraKeys){
     .filter(e => e.who === "target").flatMap(e => e.keys).concat(extraKeys || []));
   const cs = moveCSEffects(m).filter(e => e.who === "target" && (e.range == null || acc >= e.range) && (!e.even || acc % 2 === 0))
     .map(e => ({ who:"target", stats:e.stats, n:e.n, stuckFloor:e.stuckFloor || undefined, needs:e.needs || undefined }));
-  return (keys.length || cs.length) ? { name:(m && m.name) || "", status:keys, cs } : null;
+  const ticks = effectTickLoss(thresholds, acc);
+  return (keys.length || cs.length || ticks) ? { name:(m && m.name) || "", status:keys, cs, ticks: ticks || undefined } : null;
+}
+/* "The target loses a Tick of Hit Points on 16+" (Rending Spell, and any Move written the same way):
+   the Ticks a triggered Effect Range takes off the TARGET. A clause about the user, or one that
+   happens later ("at the start of their next three turns" - Bane), is left to the table. The
+   thresholds come in already widened (Serene Grace, Soul Bond, Energy Finesse...), so this reads
+   exactly what the roll said triggered. */
+const TICK_WORDS = { a:1, an:1, one:1, two:2, three:3, four:4 };
+function effectTickLoss(thresholds, acc){
+  let n = 0;
+  (thresholds || []).forEach(x => {
+    if(!x || acc < x.n) return;
+    const txt = String(x.text || "");
+    const m = /\b(?:the\s+)?(?:targets?|foes?)\b[^.]*?\blos(?:e|es)\s+(a|an|one|two|three|four|\d+)\s+ticks?\s+of\s+hit\s+points/i.exec(txt);
+    if(!m || /\bat the (?:start|end) of\b/i.test(txt) || /^\s*(?:the\s+)?user\b/i.test(txt)) return;
+    n += TICK_WORDS[m[1].toLowerCase()] || parseInt(m[1]) || 1;
+  });
+  return n;
 }
 function hitFxLine(fx){
   return [fx.status && fx.status.length ? msKeysLine(fx.status) : "",
-          ...(fx.cs || []).map(e => `${e.n > 0 ? "+" : "−"}${Math.abs(e.n)} ${e.stats.map(k => CS_FX_LABEL[k]).join(" / ")} CS`)]
+          fx.round && fx.round.length ? msKeysLine(fx.round) + " (1 full round)" : "",
+          ...(fx.cs || []).map(e => `${e.n > 0 ? "+" : "−"}${Math.abs(e.n)} ${e.stats.map(k => CS_FX_LABEL[k]).join(" / ")} CS`),
+          fx.ticks ? `\u2212${fx.ticks} Tick${fx.ticks === 1 ? "" : "s"} of Hit Points` : "",
+          ...(fx.buffs || []).map(b => b.name)]
     .filter(Boolean).join(" · ");
 }
 /* ===================================================================
@@ -24848,6 +24901,38 @@ const RIDER_FX = {
     moonblast:     { when:"miss", tick:1 },
     aromaticmist:  { buff:{ name:"+2 next Save Check (Aromatic Mist)", scene:true, mods:{ save:2 },
                      note:"Enchanting Transformation (Aromatic Mist): +2 to its next Save Check — remove this once it's used." } },
+  },
+  /* the other classes whose Features bolt small extras onto their Moves. What lands on the target is
+     applied (Statuses, Combat Stages, debuffs); what only reshapes the Move or touches the user, or
+     happens on later turns, stays a reminder line on the 🎯 card. */
+  "fearsome display": {
+    leer:      { buff:{ name:"+2 Crit Range against it (Fearsome Display)", mods:{},
+                 note:"Fearsome Display (Leer): attacks against it gain +2 to their Critical Range for one full round — widen the attacker's range by hand." } },
+    chipaway:  { note:"Fearsome Display: the target counts as Vulnerable against this attack" },
+    headbutt:  { buff:{ name:"Initiative 0 (Fearsome Display)", mods:{},
+                 note:"Fearsome Display (Headbutt): its Initiative is 0 until the end of its next turn — move it on the turn order." } },
+    glare:     { when:"any", cs:[{ who:"target", stats:["spd"], n:-2 }] },
+    meanlook:  { keys:["suppressed"] },
+  },
+  "psionic overload": {
+    kinesis:     { keys:["confused"] },
+    psychic:     { keys:["vulnerable"], round:true },
+    telekinesis: { note:"While it stays Lifted, it loses a Tick of Hit Points at the end of each of its turns" },
+  },
+  "glitch burst": {
+    disable:     { keys:["suppressed"] },
+    topsyturvy:  { keys:["confused"], round:true },
+  },
+  "prismatic alignment": {
+    flash:       { keys:["blinded"], round:true },
+  },
+  "miasmic spray": {
+    acid:        { cs:[{ who:"target", stats:["spdef"], n:-2 }], note:"Miasmic Spray replaces Acid's usual effect — ignore its own Effect Range this time" },
+    sludgebomb:  { buff:{ name:"−3 Accuracy (Sludge Bomb)", mods:{ acc:-3 },
+                   note:"Miasmic Spray (Sludge Bomb): −3 to Accuracy Rolls until the end of the caster's next turn." } },
+    sludgewave:  { keys:["slowed"], round:true },
+    clearsmog:   { note:"It loses 5 HP for each Combat Stage Clear Smog took away" },
+    toxic:       { note:"Its Badly Poisoned HP loss starts at 10 instead of 5" },
   },
 };
 /* A Move's OWN on-a-miss clause ("On miss, the target suffers a -2 penalty to Accuracy Rolls for one full round") */
@@ -51131,7 +51216,11 @@ function logRoll({ kind, label, who, headline, lines, atk, area, foe }){
   if(atk && atk.fx){
     try{ e.atk.fx = JSON.parse(JSON.stringify({ name: String(atk.fx.name||"").slice(0,60),
                                                 status: (atk.fx.status||[]).map(String).slice(0,12),
-                                                cs: (atk.fx.cs||[]).slice(0,8) })); }catch(err){}
+                                                cs: (atk.fx.cs||[]).slice(0,8),
+                                                round: (atk.fx.round||[]).map(String).slice(0,6),
+                                                ticks: Math.max(0, Math.min(10, Math.round(+atk.fx.ticks || 0))) || undefined,
+                                                buffs: (atk.fx.buffs||[]).slice(0,4).map(b => ({ name:String(b.name||"").slice(0,80),
+                                                  mods:Object.assign({}, b.mods||{}), note:String(b.note||"").slice(0,300) })) })); }catch(err){}
   }
   /* An "area" entry is a declaration, not a hit: the player says what they did and the GM decides
      where it lands. It carries the caster's sheet (so the shape can be anchored on their token),
@@ -60891,7 +60980,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
      (moveHitFx) — landed in the same press, per target, only where the hit wasn't shrugged off as an
      immunity and the target is still standing. Statuses go through inflictStatus (Type / Veil /
      Feature immunities), Combat Stages through applyCSFx → lowerCS (Clear Body & co.). */
-  const hasFx = !!(fx && ((fx.status||[]).length || (fx.cs||[]).length));
+  const hasFx = !!(fx && ((fx.status||[]).length || (fx.cs||[]).length || (fx.round||[]).length || fx.ticks || (fx.buffs||[]).length));
   const fxCb = el("input",{type:"checkbox"}); fxCb.checked = true;
   if(hasFx) wrap.append(el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;margin-bottom:6px;cursor:pointer"},
     fxCb, el("span",{class:"small",style:"font-weight:700;color:var(--accent)"},
@@ -61056,7 +61145,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
         }
       }catch(e){ console.error("gyro/dream eater", e); }
       /* per-target Ability statics (v644) */
-      let vulnHere = 0, defExtra = 0;
+      let vulnHere = 0, defExtra = 0, typeHere = typeName;
       try{
         const V0 = tokenHp(it.t).obj;
         if(A0 && V0 && hasAB("merciless") && ctx && ctx.forceCrit > 0 && !critExtra
@@ -61080,6 +61169,18 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
         if(V0 && ctx && /^\s*(\d+|WR)\s*,\s*1 Target/i.test(String(ctx.range || "")) && !atkMold && ownerHasAbility(V0, "Bulletproof")){
           defExtra -= 1; rivalryTxt += (rivalryTxt ? " " : "") + "Bulletproof: a ranged single-target attack is resisted one step further.";
         }
+        /* Energy Link (Arcanist): the next Normal-Type attack to hit this target deals the linked Type
+           instead, or one step more Super-Effective if the link itself was Normal. Used up by this hit. */
+        if(V0 && typeName === "Normal"){
+          const el0 = ownerBuffs(V0).find(b => b && b.mods && b.mods.energyLink);
+          if(el0){
+            const lt = el0.mods.energyLink;
+            if(lt && lt !== "Normal" && TYPES.includes(lt)){ typeHere = lt; rivalryTxt += (rivalryTxt ? " " : "") + `Energy Link: this Normal-Type hit deals ${lt}-Type damage.`; }
+            else { defExtra += 1; rivalryTxt += (rivalryTxt ? " " : "") + "Energy Link: this Normal-Type hit lands one step more Super-Effective."; }
+            removeBuff(V0, el0.id);
+            try{ await commitTokenSource(it.t); }catch(e){}
+          }
+        }
         /* Population Bomb's "its Moves are resisted 1 step further until the end of its next turn" sits on the ATTACKER */
         if(A0){
           const asb = ownerBuffs(A0).filter(b => b && b.mods && +b.mods.atkStep);
@@ -61087,7 +61188,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
           if(as){ defExtra += as; rivalryTxt += (rivalryTxt ? " " : "") + `${asb.map(b => b.name).join(", ")}: the attacker's Moves are resisted ${Math.abs(as)} step${Math.abs(as) === 1 ? "" : "s"} further.`; }
         }
       }catch(e){ console.error("ability statics", e); }
-      const br = tokenDamageBreakdown(it.t, { noResist, vulnStep:vulnHere, defExtraStep:defExtra, execute:/execute/i.test(String((ctx && ctx.range) || "")), corrosion:hasAB("corrosion"), atkNeutral:hasAB("normalize [errata]"), dmg:useDmg, type:typeName, physical, defPlusSpd:!!(moveRule && moveRule.defPlusSpd), sonic:!!(moveRule && moveRule.sonic), defAsPhys:(moveRule && moveRule.defAs) ? moveRule.defAs === "phys" : null, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, atkMega, atkWar, atkMold, atkDeicide, defCSMode, chartOverride, seBonus, seFlat, formeStep, drBonus });
+      const br = tokenDamageBreakdown(it.t, { noResist, vulnStep:vulnHere, defExtraStep:defExtra, execute:/execute/i.test(String((ctx && ctx.range) || "")), corrosion:hasAB("corrosion"), atkNeutral:hasAB("normalize [errata]"), dmg:useDmg, type:typeHere, physical, defPlusSpd:!!(moveRule && moveRule.defPlusSpd), sonic:!!(moveRule && moveRule.sonic), defAsPhys:(moveRule && moveRule.defAs) ? moveRule.defAs === "phys" : null, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, atkMega, atkWar, atkMold, atkDeicide, defCSMode, chartOverride, seBonus, seFlat, formeStep, drBonus });
       if(moveRule && moveRule.spare){                    // False Swipe: leaves the target on 1 HP
         const cur = tokenHp(it.t).cur;
         if(cur > 0 && br.final >= cur){ br.final = cur - 1; rivalryTxt += (rivalryTxt ? " " : "") + "False Swipe \u2014 it leaves the target on 1 HP."; }
@@ -61103,7 +61204,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
       it.cb.checked = false;                                    // clear so a second Apply doesn't double-hit
       const line = el("div",{style:"margin:4px 0;padding-bottom:4px;border-bottom:1px dotted var(--line)"});
       line.append(el("div",{style:"font-weight:700"}, tokenHp(it.t).name),
-        el("div",{html: damageResultHTML(useDmg, typeName, br, before)}));
+        el("div",{html: damageResultHTML(useDmg, typeHere, br, before)}));
       (br.coatNotes || []).forEach(t => line.append(el("div",{class:"small",style:"color:var(--accent);font-weight:600"}, t)));
       (br.abNotes || []).forEach(t => line.append(el("div",{class:"small",style:"color:var(--accent);font-weight:600"}, "\u2699 " + t)));
       if(rivalryTxt) line.append(el("div",{class:"small",style:"color:var(--accent);font-weight:600"}, "⚔ " + rivalryTxt));
@@ -61123,9 +61224,22 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
           const s = inflictStatuses(o, fx.status || [], { mold: atkMold, corrosion: hasAB("corrosion") });   // Mold Breaker: Defensive immunities off; Corrosion: Poison reaches Steel / Poison
           syncKeys = (Array.isArray(o.statuses) ? o.statuses : []).filter(k => !hadSt.has(k) && ["burned","frozen","paralysis","poisoned","badlyPoisoned","sleep"].includes(k));
           const c = applyCSFx(o, fx.cs || [], { foe:true });
-          if(s.on.length || c.moved.length) await commitTokenSource(it.t);
-          const held = [...s.held, ...c.held];
-          fxTxt = [[...s.on, ...c.moved].join(", "), held.length ? `held: ${held.join(", ")}` : ""]
+          /* the rest of the bundle: 1-full-round Statuses (Berserk Blow's Vulnerable), Ticks of Hit
+             Points from an Effect Range (Rending Spell on 16+), and debuffs (Energy Link's mark) */
+          const extra = [], xHeld = [];
+          if((fx.round || []).length){
+            const had = new Set(Array.isArray(o.statuses) ? o.statuses : []);
+            const r = inflictStatuses(o, fx.round, { mold: atkMold });
+            fx.round.forEach(k => { if(!had.has(k) && hasStatus(o, k))
+              addPending(o, { key:"round-" + k, kind:"delay", name:`${statusName(k)} (1 full round)`, note:`${statusName(k)} wears off`, thenClear:k }); });
+            extra.push(...r.on.map(x => `${x} (1 full round)`)); xHeld.push(...r.held);
+          }
+          if(fx.ticks){ const n = leechSeedTick(o) * fx.ticks, d = ownerHPChange(o, -n);
+            extra.push(`\u2212${Math.abs(d) || n} HP (${fx.ticks} Tick${fx.ticks === 1 ? "" : "s"})`); }
+          (fx.buffs || []).forEach(b => { addRiderBuff(o, b); extra.push(b.name); });
+          if(s.on.length || c.moved.length || extra.length) await commitTokenSource(it.t);
+          const held = [...s.held, ...c.held, ...xHeld];
+          fxTxt = [[...s.on, ...c.moved, ...extra].join(", "), held.length ? `held: ${held.join(", ")}` : ""]
             .filter(Boolean).join(" \u2014 ") || "nothing new";
         }
         line.append(el("div",{class:"small",style:"color:var(--accent);font-weight:600"}, `\u{1F4AB} ${fxTxt}`));
