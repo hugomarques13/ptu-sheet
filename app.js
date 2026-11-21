@@ -5166,6 +5166,15 @@ function regularAbilitiesOf(errName){
 }
 D.species.forEach(sp => { const ab = sp && sp.abilities; if(!ab) return;
   ["basic","advanced","high"].forEach(k => { if(Array.isArray(ab[k])) ab[k] = [...new Set(ab[k].map(errataAbility))]; }); });
+/* The Gen 9 Pokédex prints ONE combined "TM/Tutor Move List", so its rows (Sprigatito onward,
+   order ≥ 1060, Paldean forms included) arrived with everything under tmhm and an empty tutor —
+   and every Tutor reader (the 🎓 picker, Move Tutor, Weather Systems, the Dex's Tutor table)
+   came up empty. That list IS their Tutor list too: copy it across and flag the row so the Dex
+   can title it "TM/Tutor". Older rows with a genuinely empty Tutor list (Mew, Blipbug) are left be. */
+D.species.forEach(sp => { const mv = sp && sp.moves; if(!mv || (sp.order||0) < 1060) return;
+  if((mv.tutor||[]).length || !(mv.tmhm||[]).length) return;
+  mv.tutor = [...new Set(mv.tmhm.map(x => canonMoveName(String(x).replace(/^[A-Z]*\d+\s+/,"").trim())).filter(Boolean))];
+  mv.tmTutorShared = true; });
 /* Poké Edges as printed. The table holds both the family ("Skill Improvement") and one
    pre-expanded row per choice ("Skill Improvement (Athletics)"); the sheet only ever offers the
    family and asks for the choice itself, so the variants are here purely for the Reference tab. */
@@ -48605,7 +48614,7 @@ function speciesModal(s, mon){
     }
     if(!hideMoves && s.moves.tmhm?.length){
       // each TM/HM is clickable → shows which of your Pokémon can learn it
-      html += `<details class="spoiler" open><summary>TM/HM Moves (${s.moves.tmhm.length}) <span class="small muted">— tap one to see who can learn it</span></summary><div class="r-body">${
+      html += `<details class="spoiler" open><summary>${s.moves.tmTutorShared?"TM/Tutor Moves":"TM/HM Moves"} (${s.moves.tmhm.length}) <span class="small muted">— tap one to see who can learn it</span></summary><div class="r-body">${
         // the printed label is rebuilt from the TM index + the DB's spelling, so PDF line-break
         // damage ("21 Frustra tion") doesn't reach the page
         s.moves.tmhm.map(raw=>`<span class="tm-chip" data-tmmove="${escAttr(tmMoveName(raw))}" title="See which of your Pokémon can learn ${escAttr(tmMoveName(raw))}">${esc(((String(raw).match(/^[A-Z]*\d+\s+/)||[""])[0])+tmMoveName(raw))}</span>`).join(" ")
