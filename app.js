@@ -8439,6 +8439,7 @@ function render(){
   if (currentTab==="shops")      renderShops();
   if (currentTab==="reference")  renderReference();
   renderRollFeed();               // GM-only float, pinned over whichever tab is showing
+  renderSaleFloat();              // 💱 sell requests / offers waiting on this screen
   renderBlessingPops();           // everyone's float: the Blessings on the field and their uses left
   renderStrikePops();             // a player's own multi-roll Move: waiting on, or back from, the GM's count
   renderCallOverlay();            // the 📱 Codec while a call is on the line (and the top-bar 📱 itself)
@@ -11908,6 +11909,7 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       const cardRows = isStatusAtk ? rows
         : rows.filter(r => r.when !== "hit" || (!rides && connected > 0) || (rides && !rideable(r)));
       const smn = statusMoveApplyNode(t, st.move, cardRows, { persist:opts.persist, redraw:opts.rerender,
+        auto:isStatusAtk, acc:{ tot:accTot, nat:acc, ac:st.ac },
         accLine:`\u{1F3AF} Accuracy ${accTot} (d20 ${acc})${st.ac!=null?` vs AC ${st.ac}`:""}`,
         onRiderFire: fn => { riderFireHook = fn; } });
       if(smn) out.append(smn);
@@ -11992,11 +11994,11 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
       if(tMold) out.append(el("div",{class:"small",style:"margin-top:4px;color:var(--accent);font-weight:600"},
         `\u{1F528} ${tMold.why}${tMold.tinted?", and a hit they would resist lands as neutral":""}. Applied for you by the target picker below.`));
       if(hpNode && hpNode.setDealt) hpNode.setDealt(total);   // a rough figure until a target takes it
-      const tw = attackTargetWidget({ dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce,
+      const twArgs = ({ dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce,
         atkTinted: ownerHasAbility(t,"Tinted Lens") || !!(tMold && tMold.tinted), atkMold: !!tMold,
         atkExploit: exploitAbilityBonus(t), atkWar: ownerAuraActive(t,"War"), atkDeicide: !!st.deicide,
         seFlat: heldSeFlatDamage(t), defCSMode: defCSMode || unawareMode(t), moveRule, critExtra, fx: hitFx,
-        ctx:{ attacker:t, by:rollerName(t), melee:/melee/i.test(String((st.move && st.move.range) || "")), move:(st.move && st.move.name) || "", weapon:(st.weapon && st.weapon.name) || "" },
+        ctx:{ attacker:t, friendly: moveRollFriendly(t, st.move, false), by:rollerName(t), melee:/melee/i.test(String((st.move && st.move.range) || "")), move:(st.move && st.move.name) || "", weapon:(st.weapon && st.weapon.name) || "" },
         onDealt:(n, c, d)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n, true, d);
           /* Power Overdrive: "if the triggering attack hits, you lose a Tick of Hit Points" - the hit just landed */
           if(n > 0 && arc.manip && arc.manip.key === "overdrive" && !arc.ticked){
@@ -12004,7 +12006,11 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
             ownerHPChange(t, -tick, { raw:true }); (opts.persist||save)(); if(opts.rerender) opts.rerender();
             toast(`\u{1F525} Power Overdrive \u2014 ${ownerLabel(t)} loses ${tick} HP`);
           } } });
-      if(tw) out.append(tw);
+      const tw = attackTargetWidget(twArgs);
+      if(tw){ const auto = !isStatusAtk && tgtCanOpen();     // 🎯 the GM's own roll opens the target panel by itself
+        out.append(auto ? tgtFallbackWrap(tw) : tw);
+        if(auto) tgtOpenSoon({ kind:"dmg", label:st.name, who:t.name||"", dmg:total, type:st.type||"Typeless", physical:isPhysAtk,
+          acc: dblStrike ? null : { tot:accTot, nat:acc, ac:st.ac }, range:String(st.range || ""), args:twArgs, attacker:t, parkNode:out }); }
       feedLogged = true;
       const feT = logRoll({ kind:"move", label:st.name, who:t.name||"",
         headline:`${nCrit?"💥 CRIT ":"💥 "}${total} damage`,
@@ -12013,8 +12019,8 @@ function openTrainerAttack(t, weaponMoveName, w, opts={}){
         atk: isStatusAtk ? null : { dmg:total, type:st.type||"Typeless", physical:isPhysAtk, pierceDR:drPierce, critExtra,
                atkTinted: ownerHasAbility(t,"Tinted Lens") || !!(tMold && tMold.tinted), atkMold: !!tMold, moveRule,
                atkExploit: exploitAbilityBonus(t), atkWar: ownerAuraActive(t,"War"), atkDeicide: !!st.deicide,
-               seFlat: heldSeFlatDamage(t), defCSMode, fx: hitFx, multi: multiP,
-               ctx:{ by:rollerName(t), aid:t.id || null, move:(st.move && st.move.name) || "", melee:/melee/i.test(String((st.move && st.move.range) || "")), weapon:(st.weapon && st.weapon.name) || "" } } });
+               seFlat: heldSeFlatDamage(t), defCSMode, fx: hitFx, multi: multiP, acc: dblStrike ? null : { tot:accTot, nat:acc, ac:st.ac },
+               ctx:{ by:rollerName(t), aid:t.id || null, range:String(st.range || ""), friendly: moveRollFriendly(t, st.move, false), move:(st.move && st.move.name) || "", melee:/melee/i.test(String((st.move && st.move.range) || "")), weapon:(st.weapon && st.weapon.name) || "" } } });
       if(multiP && feT){ [...dmgBoxT.children].forEach(c => { c.style.display = "none"; }); dmgBoxT.append(strikeWaitNode(feT)); }
     }
     if(hpNode) out.append(hpNode);
@@ -14068,7 +14074,8 @@ const EQUIP_SLOTS = ["Head","Body","Hands","Off-Hand","Feet","Accessory"];
      drTyped   {Type:N} DR vs one damage type — shown as a note (the input isn't typed). The keys
                "Physical" / "Special" are damage CLASSES instead (Light / Special Armor): the Map's attack
                tool, which knows the class of the hit, applies them through equipClassDR
-     drCrit    DR vs Critical Hits only — shown as a note
+     drCrit    DR vs Critical Hits only — buffDR counts it when ctx.crit (the Map's attack tool knows)
+     guardMoves  Move names (lowercase) the wearer resists one step further and can't be Flinched by (Helmet)
      evasion   flat bonus to Physical/Special/Speed Evasion
      speedCS   Speed Combat-Stage default shift (e.g. Heavy Armor −1)
      focus     true → +5 to a chosen stat AFTER Combat Stages (stored in item.focusStat)
@@ -14114,7 +14121,7 @@ const EQUIP_EFFECTS = {
   "captain's hat":          { skills:{intimidate:2} },
   "captainshat":            { skills:{intimidate:2} },
   "running shoes":          { skills:{athletics:2}, skillCap:3, overland:1 },
-  "helmet":                 { drCrit:15, note:"Resist Headbutt & Zen Headbutt; can't be flinched by them." },
+  "helmet":                 { drCrit:15, guardMoves:["headbutt","zen headbutt"], note:"Resist Headbutt & Zen Headbutt; can't be flinched by them (applied by the Map's attack tool)." },
   "mind aegis":             { skills:{focus:6}, note:"+6 Focus vs Telepathy (with Iron Mind Edge → grants Mindlock instead)." },
   "dark vision goggles":    { capabilities:["Darkvision"] },
   "x-ray goggles":          { capabilities:["X-Ray Vision"] },
@@ -14198,6 +14205,14 @@ function equipClassDR(t, isPhys){
     if(n){ out.dr += n; out.from.push(`${name} — ${key} only`); }
   });
   return out;
+}
+/* Helmet: "resists the Moves Headbutt and Zen Headbutt and can't be flinched by these Moves". Returns the
+   worn item's name when `moveName` is one it guards against, else null. Trainers only (equipment). */
+function equipGuardsMove(t, moveName){
+  if(!isTrainerOwner(t) || !moveName) return null;
+  const mn = String(moveName).toLowerCase().trim();
+  const hit = equippedList(t).find(({eff}) => eff && Array.isArray(eff.guardMoves) && eff.guardMoves.includes(mn));
+  return hit ? hit.name : null;
 }
 function equipEvasion(t){ return equippedList(t).reduce((s,{eff})=>s+((eff&&eff.evasion)||0),0); }
 function equipSpeedCS(t){ return equippedList(t).reduce((s,{eff})=>s+((eff&&eff.speedCS)||0),0); }
@@ -15217,6 +15232,12 @@ function inventoryRow(t, char, it, i){
       el("span",{class:"muted",style:"font-weight:600"},
         qtyN>1 ? ` · ${spare>0?`${spare} spare`:"none spare"}` : (spare<0?" · more equipped than you carry":""))));
   }
+  const sellRow = canSellItems(char) ? saleRowOfChar(char) : null;
+  if(sellRow) salesWith(sellRow.id, it.name).forEach(sale=>{
+    const k = normItemName(it.name), n = saleLines(sale).filter(l=>normItemName(l.name)===k).reduce((a,l)=>a+l.qty,0);
+    info.append(el("button",{class:"linkbtn small",style:"margin-top:2px;font-weight:700;color:var(--accent);text-align:left;display:block",
+      onclick:()=>openSale(sale.id)}, `💱 ${n} up for sale${saleLines(sale).length>1?" (in a basket)":""} · ${saleStatusText(sale)}`));
+  });
   const qty = el("input",{type:"number",min:0,style:"width:56px",title:"qty"}); qty.value=it.qty;
   qty.addEventListener("input",()=>{ it.qty=parseInt(qty.value)||0; save(); });
   const del = el("button",{class:"linkbtn",title:"remove",onclick:()=>{
@@ -15228,6 +15249,8 @@ function inventoryRow(t, char, it, i){
   row.append(fav, pic, info, qty);
   if(canSendItems(char)) row.append(el("button",{class:"linkbtn",title:"send some of this to another character",
     onclick:()=>openSendItem(char, it)},"🎁"));
+  if(sellRow && it.name) row.append(el("button",{class:"linkbtn",title:"sell this (and anything else in the bag) — the GM names a price",
+    onclick:()=>openSellItem(char, it)},"💱"));
   row.append(del);
   return row;
 }
@@ -20112,6 +20135,8 @@ function buffDR(owner, ctx){
     const e=equipDR(owner); if(e.dr){ dr+=e.dr; e.from.forEach(n=>from.push(n)); }
     // Light / Special Armor: only the class of the hit being resolved (ctx.isPhys), when the caller knows it
     const ce=equipClassDR(owner, ctx && ctx.isPhys); if(ce.dr){ dr+=ce.dr; ce.from.forEach(n=>from.push(n)); }
+    // Helmet: "15 Damage Reduction against Critical Hits" - only when the caller says this hit is a crit
+    if(ctx && ctx.crit) equippedList(owner).forEach(({name,eff})=>{ if(eff && eff.drCrit){ dr+=eff.drCrit; from.push(`${name} \u2014 vs Critical Hits`); } });
   }
   // Curled Up (Defense Curl): +10 DR while the chip is on
   if(hasStatus(owner,"curledUp")){ dr+=10; from.push("Curled Up"); }
@@ -24879,7 +24904,9 @@ function moveHitFx(m, thresholds, acc, extraKeys){
   const cs = moveCSEffects(m).filter(e => e.who === "target" && (e.range == null || acc >= e.range) && (!e.even || acc % 2 === 0))
     .map(e => ({ who:"target", stats:e.stats, n:e.n, stuckFloor:e.stuckFloor || undefined, needs:e.needs || undefined }));
   const ticks = effectTickLoss(thresholds, acc);
-  return (keys.length || cs.length || ticks) ? { name:(m && m.name) || "", status:keys, cs, ticks: ticks || undefined } : null;
+  const dot = moveDotBuff(m);                   // Bane / Bleed!: a Tick at the start of its next N turns
+  return (keys.length || cs.length || ticks || dot) ? { name:(m && m.name) || "", status:keys, cs, ticks: ticks || undefined,
+    buffs: dot ? [dot] : undefined } : null;
 }
 /* "The target loses a Tick of Hit Points on 16+" (Rending Spell, and any Move written the same way):
    the Ticks a triggered Effect Range takes off the TARGET. A clause about the user, or one that
@@ -25052,7 +25079,11 @@ function addRiderBuff(o, b){
   const nb = { id:uid(), key:"custom", name:b.name, cat:"Custom",
                dur: b.scene ? "until the end of the Scene" : "until the end of the caster's next turn",
                note:b.note || "", once:false, mods:Object.assign({}, b.mods || {}) };
-  stampTurnBuff(nb);
+  /* a per-turn debuff (Bane, Bleed!) runs on the TARGET's own turns, counted by applyTurnStartDots —
+     it must not be stamped to the caster's turn, or it would vanish before its first Tick */
+  if(b.dot){ nb.dot = Object.assign({}, b.dot); nb.cat = "Debuff";
+    nb.dur = `${nb.dot.left} more turn${nb.dot.left === 1 ? "" : "s"}`; }
+  else stampTurnBuff(nb);
   o.buffs.push(nb);
 }
 /* one target, one bundle. `missed` = land only the hit-or-miss / on-a-miss rows. */
@@ -25102,7 +25133,8 @@ function statusMoveApplyNode(actor, m, rows, o){
       return x; });
     return { move:m.name || "", by:ownerLabel(actor), fx,
       mold: !!attackerMoldBreak(actor, m.type), corrosion: !!ownerHasAbility(actor, "Corrosion"),
-      immuneType: /^thunder wave(\s*\[sm\])?$/i.test(String(m.name || "").trim()) ? "Electric" : null };
+      immuneType: /^thunder wave(\s*\[sm\])?$/i.test(String(m.name || "").trim()) ? "Electric" : null,
+      acc: o.acc || null, range: String(m.range || "") };
   };
   const labels = () => rows.filter((r, i) => cbs[i].checked).map(r => rowFxLine(r) || r.label);
   const hasHit = rows.some(r => r.when !== "miss"), hasMiss = rows.some(r => r.when !== "hit");
@@ -25136,6 +25168,12 @@ function statusMoveApplyNode(actor, m, rows, o){
     if(hasHit) row.append(el("button", { class:"btn-primary", style:"padding:4px 12px", onclick:() => go(false) }, "\u{1F3AF} It hit \u2014 apply"));
     if(hasMiss) row.append(el("button", { class:"btn-secondary", style:"padding:4px 12px", onclick:() => go(true) },
       "\u{1F4A8} It missed \u2014 apply the hit-or-miss effects"));
+    if(tgtCanOpen()){                              // 🎯 pick the targets on the map instead (auto-opens on the GM's own roll)
+      const openP = () => openTargetPanel({ kind:"status", label:m.name || "Status Move", who:ownerLabel(actor), acc:o.acc || null,
+        range:String(m.range || ""), getP:bundle, attacker:actor, persist, redraw:o.redraw, parkNode:card });
+      row.append(el("button", { class:"btn-secondary", style:"padding:4px 12px", onclick:openP }, "\u{1F5FA} Pick on the map"));
+      if(o.auto) setTimeout(() => { try{ openP(); }catch(e){ console.error("target panel", e); } }, 0);
+    }
     card.append(row, res);
   } else if(foeFxDeferred()){
     card.append(el("button", { class:"btn-secondary", style:"margin-top:6px;padding:4px 10px",
@@ -28873,12 +28911,13 @@ function strikeCountRefresh(){
   const e = liveRollEntry(L.id); if(!e) return;
   if(strikeEntrySig(e) !== L.sig) L.draw();
 }
-function rollApplyWidget(e, dmg, critExtra, preselect, picks){
+function rollApplyWidget(e, dmg, critExtra, preselect, picks){ return attackTargetWidget(rollApplyArgs(e, dmg, critExtra, preselect, picks)); }
+function rollApplyArgs(e, dmg, critExtra, preselect, picks){
   const A = e.atk;
-  return attackTargetWidget({ dmg, type:A.type, physical:A.physical, pierceImmune:A.pierceImmune, pierceDR:A.pierceDR,
+  return { dmg, type:A.type, physical:A.physical, pierceImmune:A.pierceImmune, pierceDR:A.pierceDR,
     atkTinted:A.atkTinted, atkExploit:A.atkExploit, atkMega:A.atkMega, atkWar:A.atkWar, atkMold:A.atkMold,
     atkDeicide:A.atkDeicide, seFlat:A.seFlat, defCSMode:A.defCSMode, moveRule:pbRule(A.moveRule, picks), critExtra,
-    fx:A.fx || null, ctx:A.ctx || null, preselect, pbFx:(picks && picks.length) ? picks : null });
+    fx:A.fx || null, ctx:A.ctx || null, preselect, pbFx:(picks && picks.length) ? picks : null };
 }
 function rollApplyNoBoard(){
   return el("div",{class:"small"}, "No damageable token on the current map \u2014 open the \u{1F5FA} Map (or add a token) and try again.");
@@ -31006,7 +31045,7 @@ function openMoveRoll(p, m, sp, opts={}){
       if(csn) out.append(csn); }
     /* A Status Move: its Afflictions and Combat Stages as ONE press on its targets (statusMoveApplyNode) */
     if(statusMv){ const smn = statusMoveApplyNode(p, m, statusMoveFx(p, m, { thresholds:liveThresholds, acc, extra:xtraKeys, status:true }),
-        { persist:opts.persist, redraw: opts.rerender || (()=>refreshMon(p)), accLine:`\u{1F3AF} Accuracy ${accTot} (d20 ${acc})` });
+        { persist:opts.persist, redraw: opts.rerender || (()=>refreshMon(p)), auto:true, acc:{ tot:accTot, nat:acc, ac:effAC }, accLine:`\u{1F3AF} Accuracy ${accTot} (d20 ${acc})` });
       if(smn) out.append(smn); }
     { const tn = moveTypeNode(p, m, opts.rerender || (()=>refreshMon(p)), opts.persist);
       if(tn) out.append(tn); }
@@ -31170,13 +31209,14 @@ function openMoveRoll(p, m, sp, opts={}){
            target picker below; a player's go to the GM's feed entry with ✔ Send. */
         const pbN = (pbomb && !multiP) ? Math.min(3, Math.max(0, connected - 1) + (isCrit ? 1 : 0)) : 0;
         let pbPicks = [], feRef = null;
-        const mkTw = () => (isPhys || isSpec) ? attackTargetWidget({ dmg:total, type:mtype||"Typeless", physical:isPhys, atkMold: !!mold,
+        const mkTwArgs = () => ({ dmg:total, type:mtype||"Typeless", physical:isPhys, atkMold: !!mold,
             pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens") || !!(mold && mold.tinted),
             atkExploit: exploitAbilityBonus(p), atkMega: isMegaMon(p), atkWar: ownerAuraActive(p,"War"), seFlat: heldSeFlatDamage(p),
             pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS || unawareMode(p), moveRule: pbRule(moveRule, pbPicks), critExtra, fx: hitFx,
             pbFx: pbPicks.length ? pbPicks.slice() : null,
-            ctx:{ attacker:p, by:rollerName(p), melee:/melee/i.test(String((m && m.range) || "")), move:m.name, crit:!!isCrit, range:String((m && m.range) || ""), forceCrit:mercCrit },
-            onDealt:(n, c, d)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n, true, d); } }) : null;
+            ctx:{ attacker:p, friendly: moveRollFriendly(p, m, voiceOn && voiceAb.ab === "Liquid Voice"), by:rollerName(p), melee:/melee/i.test(String((m && m.range) || "")), move:m.name, crit:!!isCrit, range:String((m && m.range) || ""), forceCrit:mercCrit },
+            onDealt:(n, c, d)=>{ if(hpNode && hpNode.setDealt) hpNode.setDealt(n, true, d); } });
+        const mkTw = () => (isPhys || isSpec) ? attackTargetWidget(mkTwArgs()) : null;
         let tw = mkTw();
         const pbWrite = picks => {                  // the feed entry carries the choice for the GM's 🎯 Apply
           if(!feRef || !feRef.atk) return;
@@ -31188,7 +31228,10 @@ function openMoveRoll(p, m, sp, opts={}){
           strikeGmPicks()
             ? { onSend: picks => { pbWrite(picks); toast(`\u{1F4A3} Sent to your GM: ${pbPickNames(picks)}`); } }
             : { onChange: picks => { pbPicks = picks; const n2 = mkTw(); if(tw && n2){ tw.replaceWith(n2); tw = n2; } pbWrite(picks); } })));
-        if(tw) dmgLine.append(tw);
+        if(tw){ const auto = !pbN && tgtCanOpen();        // 🎯 the GM's own roll opens the target panel by itself
+          dmgLine.append(auto ? tgtFallbackWrap(tw) : tw);
+          if(auto) tgtOpenSoon({ kind:"dmg", label:m.name, who:rollerName(p), dmg:total, type:mtype||"Typeless", physical:isPhys,
+            acc: multi ? null : { tot:accTot, nat:acc, ac:effAC }, range:String((m && m.range) || ""), args:mkTwArgs(), attacker:p, parkNode:dmgLine }); }
         /* …and into the GM's feed, carrying the same numbers, so they can drop this hit on a token
            later even though the player who rolled it never had the board open. */
         feedLogged = true;
@@ -31199,8 +31242,8 @@ function openMoveRoll(p, m, sp, opts={}){
           atk: (isPhys||isSpec) ? { dmg:total, type:mtype||"Typeless", physical:isPhys, atkMold: !!mold,
                  pierceImmune: ignoresTypeImmunity(p, m, mtype), atkTinted: ownerHasAbility(p,"Tinted Lens") || !!(mold && mold.tinted),
                  atkExploit: exploitAbilityBonus(p), atkMega: isMegaMon(p), atkWar: ownerAuraActive(p,"War"), seFlat: heldSeFlatDamage(p),
-                 pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS || unawareMode(p), moveRule, critExtra, fx: hitFx, multi: multiP, pbN,
-                 ctx:{ by:rollerName(p), aid:p.id || null, melee:/melee/i.test(String((m && m.range) || "")), move:m.name, crit:!!isCrit, range:String((m && m.range) || ""), forceCrit:mercCrit } } : null });
+                 pierceDR: movePierce ? movePierce.dr : 0, defCSMode: moveDefCS || unawareMode(p), moveRule, critExtra, fx: hitFx, multi: multiP, pbN, acc: multi ? null : { tot:accTot, nat:acc, ac:effAC },
+                 ctx:{ by:rollerName(p), aid:p.id || null, friendly: moveRollFriendly(p, m, voiceOn && voiceAb.ab === "Liquid Voice"), melee:/melee/i.test(String((m && m.range) || "")), move:m.name, crit:!!isCrit, range:String((m && m.range) || ""), forceCrit:mercCrit } } : null });
         /* a player's multi-roll Move: the damage waits on the GM's count — this line fills in when it comes back */
         if(multiP && feRef){ [...dmgLine.children].forEach(c => { c.style.display = "none"; }); dmgLine.append(strikeWaitNode(feRef)); }
       }
@@ -33714,9 +33757,23 @@ function voiceChanges(p, m, v){
 /* the short tag on the Move's line, while the switch is on */
 function voiceMoveTag(p, m){
   try{
-    const v = sonicVoiceFor(p, m); if(!v || !voiceMoveOn(p, m, v, null)) return "";
+    const v = sonicVoiceFor(p, m);
+    if(!v || !voiceMoveOn(p, m, v, null)) return voiceLessonsFor(p, m) ? "\u{1F3B5} Voice Lessons: Friendly" : "";
     return v.ab === "Haunting Elegy" ? `${v.icon} Haunting Elegy: Ghost, from any square within 3 m` : `${v.icon} Liquid Voice: Water, Friendly`;
   }catch(e){ return ""; }
+}
+/* Voice Lessons (Musician, Core p.165): the Trainer's and their Pokémon's Sonic Moves gain Friendly — never Perish
+   Song. Friendly rides on the roll (ctx.friendly) and the GM's 🎯 Apply list locks the attacker's own side. The
+   Contest half (+1d6 with a Sonic Move) is in contest.js's Appeal dialog. */
+function voiceLessonsFor(o, m){
+  if(!o || !m || !moveHasKeyword(m, "sonic") || moveKey(m.name) === "perishsong") return false;
+  const t = isTrainerOwner(o) ? o : (typeof ownerTrainerOf === "function" ? ownerTrainerOf(o) : null);
+  return !!(t && hasFeatureLoose(t, "Voice Lessons"));
+}
+/* does this roll of Move m by o carry Friendly? (its own keyword, Voice Lessons, or Liquid Voice switched on) */
+function moveRollFriendly(o, m, liquidOn){
+  if(!m) return false;
+  return moveHasKeyword(m, "friendly") || !!liquidOn || voiceLessonsFor(o, m);
 }
 /* ---- Fox Fire: 3 Fire Wisps on the board; each one's own menu spends it on an Ember ---- */
 function foxFireOwnerOf(wisp, map){
@@ -33978,7 +34035,7 @@ function musicianCard(t, rerender, persist){
     + "ally token inside it. Might is +5 damage, Courage +2 to Skill and Save Checks, Life 5 Damage Reduction, all until "
     + "the end of your next turn.");
   if(hasFeatureLoose(t, "Voice Lessons"))
-    classBit(card, "Voice Lessons: your and your Pokémon's Sonic Moves gain the Friendly keyword (never Perish Song), and your Pokémon roll +1d6 with Sonic Moves in a Contest — stated here, applied at the table.");
+    classBit(card, "Voice Lessons: your and your Pokémon's Sonic Moves gain the Friendly keyword (never Perish Song), and your Pokémon roll +1d6 with Sonic Moves in a Contest. Both are automatic: a Sonic Move's roll is tagged 🎵 Friendly and the GM's 🎯 Apply list locks your side out; the Contest die is added in the 🎤 Appeal dialog.");
   if(hasFeatureLoose(t, "Mt. Moon Blues") || hasFeatureLoose(t, "Cacophony") || hasFeatureLoose(t, "Noise Complaint"))
     classBit(card, "The Moves those Features teach are already on your Moves card below — they are added and removed with the Feature.");
   const row = el("div",{class:"inline",style:"gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0"});
@@ -34303,8 +34360,37 @@ function openFeyLaw(t, rerender, persist){
 function openMagicalBurst(t, rerender, persist){
   const def = featureModeByFeat.get(featKey("Enchanting Transformation"));
   const on = def && modeIsOn(t, def.key);
-  const targets = allyTargets(t);
-  const pick = targetPicker(targets, selfTargetId(targets));
+  /* The Burst 3 is centred on the user: every Ally whose token stands within 3 m of the Glamour
+     Weaver's token is in it, other players' Pokémon and Trainers included, and starts ticked. Anyone
+     further out is still listed (unticked) with their distance, so the GM can overrule the board. */
+  const BURST = 3;
+  const me = tokenForOwner(t);
+  const targets = allyTargets(t).map(x => {
+    const gap = (me && x.token) ? tokenTileGap(me, x.token) : null;
+    return Object.assign({}, x, { gap, label: x.label + (x.self ? "" : gap == null ? "" : gap <= BURST ? ` · ${gap} m — in the Burst` : ` · ${gap} m away`) });
+  });
+  const inBurst = targets.filter(x => x.self || (x.gap != null && x.gap <= BURST)).map(x => x.id);
+  /* "gain a Tick of Temporary Hit Points OR cure themselves of one Volatile Affliction" — each ally's
+     own choice, offered only where they actually have a Volatile Affliction to cure */
+  const choice = new Map();
+  const choiceBox = el("div",{style:"margin-top:8px"});
+  const drawChoices = sel => {
+    choiceBox.innerHTML = "";
+    const curable = sel.filter(x => (x.obj && x.obj.statuses || []).some(k => statusKind(k) === "volatile"));
+    if(!curable.length) return;
+    choiceBox.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"Temp HP, or cure a Volatile Affliction instead?"));
+    curable.forEach(x => {
+      const s = el("select",{style:"padding:3px 6px"});
+      s.append(el("option",{value:""}, "a Tick of Temporary HP"));
+      x.obj.statuses.filter(k => statusKind(k) === "volatile").forEach(k =>
+        s.append(el("option",{value:k, selected:choice.get(x.id) === k}, `cure ${statusName(k)}`)));
+      s.addEventListener("change", () => choice.set(x.id, s.value));
+      choiceBox.append(el("div",{class:"inline small",style:"gap:8px;align-items:center;margin:2px 0"},
+        el("span",{style:"min-width:140px"}, String(x.label).split(" — ")[0]), s));
+    });
+  };
+  const pick = targetPicker(targets, inBurst, drawChoices);
+  drawChoices(targets.filter(x => inBurst.includes(x.id)));
   const u = featUses(t, "Magical Burst");
   const body = el("div",{});
   body.append(el("div",{class:"small",style:"margin-bottom:10px"},
@@ -34312,24 +34398,36 @@ function openMagicalBurst(t, rerender, persist){
     + "a Tick of Temporary Hit Points, or cures one Volatile Affliction."));
   if(!on) body.append(el("div",{class:"warnbox",style:"margin-bottom:10px"},
     "Enchanting Transformation isn't Bound — Magical Burst can't be used until it is."));
-  body.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},"Allies in the Burst 3 — each gains a Tick of Temp HP"));
+  body.append(el("div",{class:"small muted",style:"font-weight:700;margin-bottom:4px"},
+    me ? `Allies within ${BURST} m of ${ownerLabel(t)} are ticked — everyone in the Burst 3`
+       : `${ownerLabel(t)} has no token on the Map, so nobody could be measured — tick everyone in the Burst 3`));
   body.append(pick.node);
+  body.append(choiceBox);
   body.append(el("div",{class:"small muted",style:"margin-top:8px"},
     `${u.left!=null?`${u.left} of ${u.max} left this Scene. `:""}Using it ends your Transformation and the 2 AP it had Bound become SPENT — they do not come back until the Scene does. `
-    + "Roll the Move itself from your Moves card; tick anyone here who would rather cure a Volatile Affliction and do that by hand."));
+    + "Roll the Move itself from your Moves card."));
   modal({title:"💥 Magical Burst", bodyNode:body, footNodes:[
     el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"),
     el("button",{class:"btn-primary",onclick:async()=>{
       if(!on){ toast("Enchanting Transformation must be Bound first"); return; }
       if(!featSpend(t, "Magical Burst")) return;
-      const chosen = pick.chosen();
-      chosen.forEach(x=>{ gainTempHP(x.obj, hpTick(ownerMaxHP(x.obj)||1)); });
+      const chosen = pick.chosen(), said = [];
+      chosen.forEach(x=>{
+        const cure = choice.get(x.id);
+        if(cure && hasStatus(x.obj, cure)){
+          x.obj.statuses = (x.obj.statuses || []).filter(k => k !== cure);
+          said.push(`${ownerLabel(x.obj)} cured of ${statusName(cure)}`);
+        } else {
+          const n = hpTick(ownerMaxHP(x.obj)||1); gainTempHP(x.obj, n);
+          said.push(`${ownerLabel(x.obj)} +${n} Temp HP`);
+        }
+      });
       // the stance ends, and its Bind turns into real spent AP (that is what "becomes spent" means)
       setFeatureMode(t, def, false, ()=>{}, ()=>{});
       t.usedAP = (t.usedAP||0) + (def.bindAP||2);
       (persist||save)(); closeModal();
-      await commitTargets(chosen);
-      toast(`💥 Magical Burst — Transformation ended, ${def.bindAP||2} AP spent`);
+      await commitTargets(chosen.filter(x => !x.self));     // the caster's own sheet went with persist above
+      toast(`💥 Magical Burst — ${said.join(" · ") || "nobody in the area"} · Transformation ended, ${def.bindAP||2} AP spent`);
       (rerender||renderBattle)();
     }},"💥 Burst"),
   ]});
@@ -45095,6 +45193,23 @@ function normShops(data){
     if(!e || typeof e!=="object" || !e.shopId || (Date.now() - (e.at||0)) > SHOP_VIEW_TTL) delete data.viewing[k];
   }
   data.log = (Array.isArray(data.log) ? data.log : []).slice(0,40);   // recent purchases, newest first
+  // 💱 sell requests (see openSellItem): id → { rowId, lines[{id,name,item,qty,offer}], lot, status, … }
+  data.sales = obj(data.sales);
+  for(const k of Object.keys(data.sales)){
+    const x = data.sales[k];
+    if(!x || typeof x!=="object" || !x.rowId){ delete data.sales[k]; continue; }
+    if(!Array.isArray(x.lines) && x.name){                 // v746 single-item request → a one-line basket
+      x.lines = [{ id:uid(), name:x.name, item:x.item||{name:x.name}, qty:x.qty, offer:x.offer }];
+      delete x.name; delete x.item; delete x.qty; delete x.offer;
+    }
+    x.lines = (Array.isArray(x.lines) ? x.lines : []).filter(l => l && typeof l==="object" && String(l.name||"").trim());
+    if(!x.lines.length){ delete data.sales[k]; continue; }
+    x.lines.forEach(l=>{ if(!l.id) l.id = uid(); l.qty = Math.max(1, parseInt(l.qty)||1);
+      l.offer = Math.max(0, Math.round(Number(l.offer)||0)); });
+    x.id = k;
+    x.lot = (typeof x.lot==="number" && isFinite(x.lot)) ? Math.max(0, Math.round(x.lot)) : null;
+    if(!["asked","offered","declined","refused"].includes(x.status)) x.status = "asked";
+  }
   return data;
 }
 function shopData(){ return ensureShops().data; }
@@ -45375,6 +45490,7 @@ function renderShops(){
     leftc, el("span",{class:"small muted"},"GM only · synced to the campaign")));
   root.append(bar);
 
+  root.append(saleRequestsCard());       // 💱 players selling — needs no shop either
   // paying the party doesn't need a shop to exist, so it sits above everything shop-shaped
   root.append(paydayCard());
   root.append(scrapLootCard());          // crafting-only money (Poké Ball Scrap)
@@ -45453,14 +45569,15 @@ function shopCartsCard(shop){
 function shopLogCard(){
   const log = shopData().log;
   const card = el("div",{class:"card"});
-  card.append(el("h3",{},"Recent purchases", log.length
+  card.append(el("h3",{},"Recent purchases & sales", log.length
     ? el("button",{class:"linkbtn h-act",onclick:()=>{ shopData().log=[]; saveShops(); renderShops(); }},"clear")
     : ""));
   if(!log.length){ card.append(el("span",{class:"muted small"},"nothing bought yet.")); return card; }
   log.forEach(e=>{
     const when = new Date(e.at||0);
     card.append(el("div",{class:"small",style:"padding:3px 0;border-bottom:1px solid var(--line)"},
-      el("b",{}, e.buyer||"someone"), ` bought ${(e.items||[]).join(", ")} at ${e.shop||"a shop"} for `,
+      el("b",{}, e.buyer||"someone"), e.sold ? ` 💱 sold ${(e.items||[]).join(", ")} to ${e.shop||"a buyer"} for `
+                                          : ` bought ${(e.items||[]).join(", ")} at ${e.shop||"a shop"} for `,
       el("b",{}, `$${e.total||0}`), el("span",{class:"muted"}, `  ·  ${when.toLocaleString()}`)));
   });
   return card;
@@ -45821,6 +45938,406 @@ async function completePurchase(shop, row){
   render();
 }
 
+/* ═══════════ 💱 SELLING — a player puts items up, the GM names what the NPC pays ═══════════
+   1. A player taps 💱 on an Inventory row → a BASKET opens: every sellable item in their bag with a
+      "how many" box, so one request can carry several copies and several different items. It lands in
+      the shared shops row (`data.sales[id]`, status "asked", `lines[]`). Nothing leaves the bag yet.
+   2. The GM gets a toast + the 💱 float; their window shows each line's book BUY value (or a shelf
+      price when the book has none) and the recommended sell price (half — PTU's resale rule of thumb),
+      and they price each line, or name one price for the whole lot (`lot`), and send it ("offered") —
+      or refuse to buy ("refused").
+   3. The player Accepts the whole basket → every copy leaves their bag and the money lands through
+      moneyChange (so it's in their ledger), all in one write of their row. Declining hands it back to
+      the GM ("declined"), who can make a better offer or drop it. The GM can also complete an offer
+      themselves when the player agreed out loud.
+   Copies already in an open request are RESERVED: a second basket only offers what's left over.
+   Keyed by id in an object (not an array) so two players selling at once merge, never clobber. */
+const SALE_SELL_RATE = 0.5;
+var saleSeen = new Set();            // "<id>:<status>:<rev>" this screen already announced (var: render() reaches it at boot)
+var saleFloatCollapsed = localStorage.getItem("ptu_sale_collapsed")==="1";
+function saleData(){
+  const d = shopData();
+  if(!d.sales || typeof d.sales!=="object" || Array.isArray(d.sales)) d.sales = {};
+  return d.sales;
+}
+function saleList(){ return mode==="cloud" ? Object.values(saleData()).sort((a,b)=>(a.at||0)-(b.at||0)) : []; }
+function saleRowOfChar(char){ return Object.values(cloud.byId||{}).find(r => r && r.data===char) || null; }
+function saleSellerName(s){ const r = cloud.byId?.[s.rowId]; return r?.data?.name || s.seller || "someone"; }
+function saleLines(s){ return Array.isArray(s?.lines) ? s.lines : []; }
+function saleCount(s){ return saleLines(s).reduce((n,l)=>n+(l.qty||0), 0); }
+function saleHasLot(s){ return typeof s.lot==="number" && isFinite(s.lot); }
+function saleTotal(s){ return saleHasLot(s) ? s.lot : saleLines(s).reduce((n,l)=>n+(l.offer||0)*(l.qty||0), 0); }
+/* "2× Potion" · "2× Potion, 1× Great Ball" · "2× Potion, 1× Great Ball +3 more" */
+function saleTitle(s){
+  const L = saleLines(s), head = L.slice(0,2).map(l=>`${l.qty}× ${l.name}`).join(", ");
+  return L.length>2 ? `${head} +${L.length-2} more` : (head || "nothing");
+}
+/* what the item COSTS to buy: the book first, then any shelf the GM stocked it on */
+function saleBuyValue(name){
+  const b = bookPriceOf(name);
+  if(b!=null && b>0) return { price:b, src:"book" };
+  const k = normItemName(name);
+  for(const sh of shopList()){
+    const it = sh.items.find(i=>normItemName(i.name)===k);
+    if(it && it.price>0) return { price:it.price, src:`${sh.name||"shop"} shelf` };
+  }
+  return { price:null, src:"" };
+}
+function saleRecommend(name){ const v = saleBuyValue(name).price; return v==null ? null : Math.floor(v*SALE_SELL_RATE); }
+function saleRecTotal(s){
+  let sum = 0, all = true;
+  saleLines(s).forEach(l=>{ const r = saleRecommend(l.name); if(r==null) all = false; else sum += r*l.qty; });
+  return { sum, all };
+}
+/* copies NOT spoken for: what's held by a Pokémon or worn in an Equipment slot can't be sold out from under it */
+function saleInUse(char, name){
+  const t = char.trainer, key = normItemName(name);
+  const worn = EQUIP_SLOTS.filter(s => t.equipment?.[s] && normItemName(t.equipment[s].name)===key).length;
+  return monsHolding(char, name).length + worn;
+}
+/* copies of `name` already sitting in an open request on this sheet (`exceptId` = the sale being finished) */
+function saleReserved(rowId, name, exceptId){
+  const k = normItemName(name);
+  return saleList().filter(s => s.rowId===rowId && s.id!==exceptId)
+    .reduce((n,s)=> n + saleLines(s).filter(l=>normItemName(l.name)===k).reduce((m,l)=>m+(l.qty||0),0), 0);
+}
+function saleSpare(char, name, rowId, exceptId){
+  return Math.max(0, inventoryQty(char.trainer, name) - saleInUse(char, name) - (rowId ? saleReserved(rowId, name, exceptId) : 0));
+}
+/* the open requests on this sheet that include `name` */
+function salesWith(rowId, name){
+  const k = normItemName(name);
+  return saleList().filter(s => s.rowId===rowId && saleLines(s).some(l=>normItemName(l.name)===k));
+}
+function canSellItems(char){
+  if(mode!=="cloud" || !char) return false;
+  const r = saleRowOfChar(char);
+  return !!r && canEdit(r) && r.owner_id!==PC_OWNER;
+}
+function saleStatusText(s){
+  const tot = `$${saleTotal(s)}`;
+  if(s.status==="offered")  return cloud.isGM ? `offered ${tot} — waiting on the player` : `offer: ${tot} — tap to answer`;
+  if(s.status==="declined") return cloud.isGM ? `they declined ${tot} — make another offer?` : `you declined ${tot} — waiting on a new offer`;
+  if(s.status==="refused")  return cloud.isGM ? "you refused to buy — waiting on the player to see it" : "the buyer won't take it — tap to see";
+  return cloud.isGM ? "wants to sell — name a price" : "waiting for the GM's offer";
+}
+
+/* ---- player: fill a basket ---- */
+function openSellItem(char, start){
+  const row = saleRowOfChar(char);
+  if(!row || !canEdit(row)){ toast("You can only sell out of your own bag"); return; }
+  const inv = (char.trainer.inventory||[]).filter(it => it && String(it.name||"").trim() && (parseInt(it.qty)||0) > 0);
+  // one line per item NAME (two stacks of the same thing are one choice; the stack you tapped is the one used)
+  const seen = new Map();
+  inv.forEach(it=>{ const k = normItemName(it.name); if(!seen.has(k) || it===start) seen.set(k, it); });
+  const choices = [...seen.values()].map(it=>({ it, spare: saleSpare(char, it.name, row.id),
+    have: inventoryQty(char.trainer, it.name) }));
+  const startKey = start ? normItemName(start.name) : "";
+  const startChoice = choices.find(c=>normItemName(c.it.name)===startKey);
+  if(startChoice && !startChoice.spare && !choices.some(c=>c.spare)){
+    toast(`Nothing spare to sell — what's left is held, worn or already up for sale`); return;
+  }
+  choices.sort((a,b)=> (normItemName(b.it.name)===startKey) - (normItemName(a.it.name)===startKey)
+                    || (b.spare>0) - (a.spare>0) || String(a.it.name).localeCompare(String(b.it.name)));
+  const pick = new Map();                         // name key → qty
+  if(startChoice && startChoice.spare) pick.set(startKey, 1);
+
+  const wrap = el("div",{});
+  wrap.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
+    "Set how many of each you want to sell — as many items as you like. The GM sends back one offer for the lot; nothing leaves your bag until you accept."));
+  const filter = el("input",{type:"search",placeholder:"🔍 filter your bag",style:"width:100%;margin-bottom:6px"});
+  if(choices.length > 8) wrap.append(filter);
+  const list = el("div",{class:"sale-basket"});
+  const send = el("button",{class:"btn-primary"});
+  const paintSend = ()=>{
+    const n = [...pick.values()].reduce((a,b)=>a+b,0), kinds = [...pick.values()].filter(Boolean).length;
+    send.textContent = n ? `💱 Put up ${n} item${n===1?"":"s"}${kinds>1?` (${kinds} kinds)`:""}` : "💱 Pick something";
+    send.disabled = !n;
+  };
+  choices.forEach(c=>{
+    const k = normItemName(c.it.name);
+    const line = el("div",{class:"sale-basket-row"+(c.spare?"":" off"),"data-name":k});
+    const qty = el("input",{type:"number",min:0,max:c.spare,value:pick.get(k)||0,style:"width:64px",disabled:!c.spare});
+    const set = v => { v = Math.max(0, Math.min(c.spare, parseInt(v)||0)); qty.value = v;
+      if(v) pick.set(k, v); else pick.delete(k); line.classList.toggle("on", !!v); paintSend(); };
+    qty.addEventListener("input", ()=>set(qty.value));
+    line.classList.toggle("on", !!pick.get(k));
+    const why = c.spare===c.have ? `carrying ${c.have}`
+      : c.spare ? `${c.spare} of ${c.have} spare` : `none spare (held, worn or already up for sale)`;
+    line.append(itemImgNode(c.it.name, 28, c.it, {static:true}),
+      el("div",{style:"flex:1;min-width:0"}, el("div",{style:"font-weight:700"}, c.it.name), el("div",{class:"small muted"}, why)),
+      c.spare>1 ? el("button",{class:"linkbtn",onclick:()=>set(c.spare)},"all") : "", qty);
+    list.append(line);
+  });
+  filter.addEventListener("input",()=>{ const q = normItemName(filter.value);
+    list.querySelectorAll(".sale-basket-row").forEach(r=>{ r.style.display = (!q || r.dataset.name.includes(q)) ? "" : "none"; }); });
+  wrap.append(list);
+  const note = el("textarea",{placeholder:"Anything to tell the buyer? (optional)",style:"width:100%;min-height:44px;margin-top:8px"});
+  wrap.append(note);
+  paintSend();
+  send.addEventListener("click", ()=>{
+    const lines = [];
+    for(const c of choices){
+      const k = normItemName(c.it.name), n = pick.get(k)||0;
+      if(!n) continue;
+      if(n > saleSpare(char, c.it.name, row.id)){ toast(`Only ${saleSpare(char, c.it.name, row.id)} ${c.it.name} spare now`); return; }
+      const snap = JSON.parse(JSON.stringify(c.it)); delete snap.qty; delete snap.fav;
+      lines.push({ id:uid(), name:c.it.name, item:snap, qty:n, offer:0 });
+    }
+    if(!lines.length){ toast("Pick at least one item"); return; }
+    const id = uid();
+    saleData()[id] = { id, rowId:row.id, seller:char.name||char.trainer.name||"", by:cloud.name||"",
+      lines, note:note.value.trim(), status:"asked", lot:null, buyer:"", gmNote:"", at:Date.now(), rev:1 };
+    saleSeen.add(`${id}:asked:1`);
+    saveShops(); closeModal(); render();
+    toast(`💱 ${saleTitle(saleData()[id])} up for sale — waiting for the GM's price`);
+  });
+  modal({title:"💱 Sell items", bodyNode:wrap, footNodes:[ el("button",{class:"btn-secondary",onclick:closeModal},"Cancel"), send ]});
+}
+
+/* ---- either side: the request's window ---- */
+function openSale(id){
+  const s = saleData()[id];
+  if(!s){ toast("That sale is gone"); return; }
+  if(cloud.isGM) openSaleGM(s); else openSalePlayer(s);
+}
+function saleHeadNode(s){
+  return el("div",{style:"margin-bottom:8px"},
+    el("div",{style:"font-weight:800"}, `${saleCount(s)} item${saleCount(s)===1?"":"s"} from ${saleSellerName(s)}`),
+    cloud.isGM && s.by ? el("div",{class:"small muted"}, `put up by ${s.by}`) : "");
+}
+function openSaleGM(s){
+  const wrap = el("div",{});
+  wrap.append(saleHeadNode(s));
+  if(s.note) wrap.append(el("div",{class:"small",style:"margin-bottom:8px"}, el("b",{},"Their note: "), s.note));
+  if(s.status==="declined") wrap.append(el("div",{class:"small",style:"margin-bottom:8px;color:var(--accent);font-weight:700"},
+    `They declined $${saleTotal(s)}.`));
+  const first = s.status==="asked";
+  const inputs = [];
+  const tbl = el("div",{class:"sale-lines"});
+  tbl.append(el("div",{class:"sale-line sale-line-head small muted"},
+    el("span",{},"Item"), el("span",{},"Buy value"), el("span",{},"Rec. sell"), el("span",{},"Offer each"), el("span",{},"Line")));
+  const lotIn = el("input",{type:"number",min:0,step:1,placeholder:"—",style:"width:100px"});
+  if(saleHasLot(s)) lotIn.value = s.lot;
+  const sumEl = el("b",{}), finalEl = el("div",{class:"sale-big"});
+  const paint = ()=>{
+    let sum = 0;
+    inputs.forEach(x=>{ const v = Math.max(0, Math.round(parseFloat(x.inp.value)||0)); x.out.textContent = `$${v*x.l.qty}`; sum += v*x.l.qty; });
+    sumEl.textContent = `$${sum}`;
+    const lot = lotIn.value==="" ? null : Math.max(0, Math.round(parseFloat(lotIn.value)||0));
+    finalEl.textContent = `$${lot ?? sum}`;
+  };
+  saleLines(s).forEach(l=>{
+    const bv = saleBuyValue(l.name), rec = saleRecommend(l.name);
+    const inp = el("input",{type:"number",min:0,step:1,style:"width:84px"});
+    inp.value = first ? (rec ?? 0) : (l.offer||0);
+    const out = el("span",{style:"font-weight:700"});
+    inp.addEventListener("input", paint);
+    inputs.push({ l, inp, out, rec });
+    tbl.append(el("div",{class:"sale-line"},
+      el("span",{class:"inline",style:"gap:6px;align-items:center;min-width:0"}, itemImgNode(l.name, 26, l.item||null, {static:true}),
+        el("span",{style:"min-width:0"}, el("b",{}, `${l.qty}× `), l.name)),
+      el("span",{title:bv.src}, bv.price!=null ? `$${bv.price}` : "—", bv.price!=null && bv.src!=="book" ? el("span",{class:"small muted"}," (shelf)") : ""),
+      el("span",{}, rec!=null ? `$${rec}` : "—"),
+      inp, out));
+  });
+  wrap.append(tbl);
+  const rt = saleRecTotal(s);
+  wrap.append(el("div",{class:"sale-vals",style:"margin-top:10px"},
+    el("div",{}, el("div",{class:"small muted"},"Recommended total"),
+      el("div",{class:"sale-big"}, `$${rt.sum}`),
+      el("div",{class:"small muted"}, `${Math.round(SALE_SELL_RATE*100)}% of buy value${rt.all?"":" · some lines have no price"}`),
+      el("button",{class:"linkbtn",onclick:()=>{ inputs.forEach(x=>{ if(x.rec!=null) x.inp.value = x.rec; }); lotIn.value = ""; paint(); }},"↺ use recommended")),
+    el("div",{}, el("div",{class:"small muted"},"Your offer"), finalEl,
+      el("div",{class:"small muted"},"lines add up to ", sumEl))));
+  lotIn.addEventListener("input", paint);
+  wrap.append(el("label",{class:"field",style:"margin-top:8px"}, el("span",{},"One price for the lot (optional)"),
+    el("div",{class:"inline",style:"gap:8px;align-items:center"}, lotIn,
+      el("span",{class:"small muted"},"overrides the line prices"))));
+  const buyer = el("input",{type:"text",placeholder:"the shopkeeper",style:"width:100%"}); buyer.value = s.buyer||"";
+  wrap.append(el("label",{class:"field",style:"margin-top:8px"}, el("span",{},"Who's buying"), buyer));
+  const gmNote = el("textarea",{placeholder:"What the NPC says (optional)",style:"width:100%;min-height:44px"}); gmNote.value = s.gmNote||"";
+  wrap.append(el("label",{class:"field",style:"margin-top:8px"}, el("span",{},"Message"), gmNote));
+  paint();
+  const stamp = status => { const cur = saleData()[s.id]; if(!cur) return null;
+    inputs.forEach(x=>{ const l = saleLines(cur).find(y=>y.id===x.l.id); if(l) l.offer = Math.max(0, Math.round(parseFloat(x.inp.value)||0)); });
+    cur.lot = lotIn.value==="" ? null : Math.max(0, Math.round(parseFloat(lotIn.value)||0));
+    cur.buyer = buyer.value.trim(); cur.gmNote = gmNote.value.trim();
+    cur.status = status; cur.rev = (cur.rev||0)+1; saleSeen.add(`${cur.id}:${status}:${cur.rev}`); return cur; };
+  const foot = [
+    el("button",{class:"btn-secondary danger",title:"drop the request without telling them anything",onclick:()=>{
+      if(!confirm(`Drop ${saleSellerName(s)}'s request to sell ${saleTitle(s)}?`)) return;
+      delete saleData()[s.id]; saveShops(); closeModal(); render(); }},"🗑"),
+    el("button",{class:"btn-secondary",title:"the buyer won't take it — the player is told",onclick:()=>{
+      if(!stamp("refused")) return; saveShops(); closeModal(); render(); toast("Told them the buyer won't take it"); }},"✋ Won't buy"),
+  ];
+  if(s.status==="offered") foot.push(el("button",{class:"btn-secondary",title:"they agreed at the table — finish it for them",onclick:()=>{
+    if(!confirm(`Complete it now: ${saleTitle(s)} leaves ${saleSellerName(s)}'s bag for $${saleTotal(s)}?`)) return;
+    if(finalizeSale(s.id)) closeModal(); }},"✓ They agreed"));
+  foot.push(el("button",{class:"btn-primary",onclick:()=>{
+    const cur = stamp("offered"); if(!cur) return; saveShops(); closeModal(); render();
+    toast(`💱 Offer sent: $${saleTotal(cur)} for ${saleTitle(cur)}`); }}, s.status==="offered" ? "Update offer" : "💱 Send offer"));
+  modal({title:"💱 Sell request", bodyNode:wrap, footNodes:foot});
+}
+function saleLinesView(s, prices){
+  const box = el("div",{class:"sale-lines"});
+  saleLines(s).forEach(l=> box.append(el("div",{class:"sale-line sale-line-p"},
+    el("span",{class:"inline",style:"gap:6px;align-items:center;min-width:0"}, itemImgNode(l.name, 26, l.item||null, {static:true}),
+      el("span",{}, el("b",{}, `${l.qty}× `), l.name)),
+    prices && !saleHasLot(s) ? el("span",{class:"small muted"}, `$${l.offer||0} each`) : el("span",{}),
+    prices && !saleHasLot(s) ? el("b",{}, `$${(l.offer||0)*l.qty}`) : el("span",{}))));
+  return box;
+}
+function openSalePlayer(s){
+  const wrap = el("div",{});
+  wrap.append(saleHeadNode(s));
+  const who = s.buyer || "The buyer";
+  const cancel = el("button",{class:"btn-secondary",onclick:()=>{
+    delete saleData()[s.id]; saveShops(); closeModal(); render(); toast("Taken off sale"); }},"Take it off sale");
+  if(s.status==="offered"){
+    wrap.append(saleLinesView(s, true));
+    wrap.append(el("div",{class:"sale-offer",style:"margin-top:10px"}, `${who} offers`,
+      el("div",{class:"sale-big"}, `$${saleTotal(s)}`), el("div",{class:"small muted"}, saleHasLot(s) ? "for the whole lot" : "for everything above")));
+    if(s.gmNote) wrap.append(el("div",{class:"small",style:"margin-top:8px;font-style:italic"}, `“${s.gmNote}”`));
+    modal({title:"💱 An offer", bodyNode:wrap, footNodes:[
+      cancel,
+      el("button",{class:"btn-secondary",onclick:()=>{ const cur = saleData()[s.id]; if(!cur) return;
+        cur.status = "declined"; cur.rev = (cur.rev||0)+1; saleSeen.add(`${cur.id}:declined:${cur.rev}`);
+        saveShops(); closeModal(); render(); toast("Declined — the GM can make another offer"); }},"Decline"),
+      el("button",{class:"btn-primary",onclick:()=>{ if(finalizeSale(s.id)) closeModal(); }},`✓ Accept $${saleTotal(s)}`),
+    ]});
+    return;
+  }
+  wrap.append(saleLinesView(s, false));
+  if(s.status==="refused"){
+    wrap.append(el("div",{class:"small",style:"font-weight:700;margin-top:8px"}, `${who} won't buy it.`));
+    if(s.gmNote) wrap.append(el("div",{class:"small",style:"margin-top:8px;font-style:italic"}, `“${s.gmNote}”`));
+    modal({title:"💱 No sale", bodyNode:wrap, footNodes:[
+      el("button",{class:"btn-primary",onclick:()=>{ delete saleData()[s.id]; saveShops(); closeModal(); render(); }},"OK") ]});
+    return;
+  }
+  wrap.append(el("div",{class:"small muted",style:"margin-top:8px"}, s.status==="declined"
+    ? `You declined $${saleTotal(s)}. Waiting to see if the GM makes another offer.`
+    : "Waiting for the GM to send an offer."));
+  modal({title:"💱 Up for sale", bodyNode:wrap, footNodes:[ cancel,
+    el("button",{class:"btn-primary",onclick:closeModal},"OK") ]});
+}
+/* the deal: every line's copies out of the seller's bag, money in, one write of their row.
+   All lines are checked BEFORE anything moves, so a basket never half-sells. */
+function finalizeSale(id){
+  const sales = saleData(), s = sales[id];
+  if(!s){ toast("That offer is gone"); return false; }
+  if(s.status!=="offered"){ toast("There's no offer on the table any more"); render(); return false; }
+  const row = cloud.byId?.[s.rowId], char = row?.data, t = char?.trainer;
+  if(!t){ toast("Can't find the seller's sheet"); return false; }
+  if(!canEdit(row)){ toast("Only the seller (or the GM) can finish this sale"); return false; }
+  const seller = char.name || t.name || s.seller || "Someone";
+  const need = new Map();                         // a name can appear on two lines — check the sum
+  saleLines(s).forEach(l=>{ const k = normItemName(l.name); need.set(k, (need.get(k)||0) + l.qty); });
+  for(const l of saleLines(s)){
+    const k = normItemName(l.name), want = need.get(k);
+    const total = inventoryQty(t, l.name), spare = saleSpare(char, l.name, s.rowId, s.id);
+    if(spare < want){
+      toast(total < want ? `${seller} only has ${total} ${l.name} now` : `Some ${l.name} are held, worn or up for sale elsewhere — free them first`);
+      return false;
+    }
+  }
+  const inv = Array.isArray(t.inventory) ? t.inventory : (t.inventory = []);
+  saleLines(s).forEach(l=>{
+    const key = normItemName(l.name), snap = Object.assign({}, l.item||{}, { name:l.name });
+    const exact = inv.filter(x => x && sameItemStack(x, snap));
+    const rest  = inv.filter(x => x && normItemName(x.name)===key && !exact.includes(x));
+    let left = l.qty;
+    for(const x of [...exact, ...rest]){
+      if(!left) break;
+      const q = Math.max(0, parseInt(x.qty)||0), take = Math.min(q, left);
+      if(!take) continue;
+      x.qty = q - take; left -= take;
+      if(x.qty <= 0){ const i = inv.indexOf(x); if(i>=0) inv.splice(i,1); }
+    }
+  });
+  const pay = Math.max(0, saleTotal(s)), buyer = s.buyer || "a buyer";
+  const items = saleLines(s).map(l=>`${l.qty}× ${l.name}`);
+  moneyChange(t, pay, `Sold ${items.join(", ")} to ${buyer}`, {kind:"shop"});
+  const d = shopData();
+  d.log.unshift({ at:Date.now(), sold:true, shop:buyer, buyer:seller, total:pay, items });
+  d.log = d.log.slice(0,40);
+  delete sales[id];
+  saveShops();
+  cloudUpsert(row).then(ok=>{ if(!ok) toast("⚠ Sync issue — it'll reconcile on the next change"); });
+  toast(`💱 Sold ${saleTitle(s)} for $${pay} ✓`);
+  render();
+  return true;
+}
+/* sales this screen should see: the GM sees all, a player only the ones on sheets they own */
+function salesForMe(){
+  if(mode!=="cloud") return [];
+  return saleList().filter(s => cloud.isGM || ownsRow(cloud.byId?.[s.rowId]));
+}
+/* a sale needs THIS screen's move? GM: asked/declined. Player: offered/refused. */
+function saleNeedsMe(s){ return cloud.isGM ? (s.status==="asked" || s.status==="declined") : (s.status==="offered" || s.status==="refused"); }
+function noticeSales(silent){
+  if(mode!=="cloud") return;
+  salesForMe().forEach(s=>{
+    const k = `${s.id}:${s.status}:${s.rev||0}`;
+    if(saleSeen.has(k)) return;
+    saleSeen.add(k);
+    if(silent || !saleNeedsMe(s)) return;
+    if(cloud.isGM) toast(s.status==="declined" ? `💱 ${saleSellerName(s)} declined your offer for ${saleTitle(s)}`
+                                               : `💱 ${saleSellerName(s)} wants to sell ${saleTitle(s)}`);
+    else toast(s.status==="offered" ? `💱 Offer for your ${saleTitle(s)}: $${saleTotal(s)} — tap 💱 to answer`
+                                    : `💱 The buyer won't take your ${saleTitle(s)}`);
+  });
+  renderSaleFloat();
+}
+var saleSig = "";
+function saleSigChanged(){
+  const sig = salesForMe().map(x=>`${x.id}:${x.status}:${x.rev||0}`).join("|");
+  if(sig===saleSig) return false; saleSig = sig; return true;
+}
+/* the bottom-left float: every open sale for this screen, the ones waiting on you marked */
+function renderSaleFloat(){
+  const old = document.getElementById("saleFloat");
+  const list = salesForMe();
+  if(!list.length){ if(old) old.remove(); return; }
+  const need = list.filter(saleNeedsMe).length;
+  const box = el("div",{id:"saleFloat",class:"sale-float"+(need?" need":"")});
+  const head = el("div",{class:"sale-float-head",title:saleFloatCollapsed?"show":"hide",onclick:()=>{
+    saleFloatCollapsed = !saleFloatCollapsed; localStorage.setItem("ptu_sale_collapsed", saleFloatCollapsed?"1":"0"); renderSaleFloat(); }},
+    el("span",{},"💱 Selling"), need ? el("span",{class:"sale-badge"}, String(need)) : el("span",{class:"small muted"}, String(list.length)),
+    el("span",{style:"flex:1"}), el("span",{class:"small muted"}, saleFloatCollapsed ? "▴" : "▾"));
+  box.append(head);
+  if(!saleFloatCollapsed){
+    const body = el("div",{class:"sale-float-body"});
+    list.forEach(s=>{ const L = saleLines(s);
+      body.append(el("button",{class:"sale-float-row"+(saleNeedsMe(s)?" need":""),onclick:()=>openSale(s.id)},
+        itemImgNode(L[0]?.name||"", 26, L[0]?.item||null, {static:true}),
+        el("div",{style:"min-width:0;text-align:left"},
+          el("div",{style:"font-weight:700"}, saleTitle(s), cloud.isGM ? el("span",{class:"muted"},` · ${saleSellerName(s)}`) : ""),
+          el("div",{class:"small muted"}, saleStatusText(s))))); });
+    box.append(body);
+  }
+  if(old) old.replaceWith(box); else document.body.append(box);
+}
+/* GM's Shops tab: the same list as a card, with the prices at a glance */
+function saleRequestsCard(){
+  const list = saleList();
+  const card = el("div",{class:"card"});
+  card.append(el("h3",{},"💱 Sell requests", list.length ? el("span",{class:"small muted",style:"margin-left:6px"},String(list.length)) : ""));
+  if(!list.length){ card.append(el("span",{class:"muted small"},"Nobody's selling anything. Players put items up with 💱 on their Inventory rows.")); return card; }
+  list.forEach(s=>{
+    const L = saleLines(s), rt = saleRecTotal(s);
+    card.append(el("div",{class:"inline sale-req-row",onclick:()=>openSale(s.id)},
+      itemImgNode(L[0]?.name||"", 30, L[0]?.item||null, {static:true}),
+      el("div",{style:"flex:1;min-width:0"},
+        el("div",{style:"font-weight:700"}, saleTitle(s), el("span",{class:"muted"},` · ${saleSellerName(s)}`)),
+        el("div",{class:"small muted"}, `${saleCount(s)} item${saleCount(s)===1?"":"s"} · rec. sell $${rt.sum}${rt.all?"":" (some unpriced)"}`),
+        el("div",{class:"small"+(saleNeedsMe(s)?"":" muted"),style:saleNeedsMe(s)?"color:var(--accent);font-weight:700":""}, saleStatusText(s))),
+      el("button",{class:"btn-secondary",style:"padding:4px 10px"}, saleNeedsMe(s) ? "Price it" : "Open")));
+  });
+  return card;
+}
+
 /* ===== the floating storefront on the Map ===== */
 /* Who this screen may shop for: yourself normally; the GM and a shared "Viewer" screen (the
    co-pilot device that already drives every player token) may shop for anyone. */
@@ -45923,6 +46440,7 @@ function playersViewingShop(){
    arrives as an extra tab on the panel and says so in a toast, so whatever they were already
    reading stays put. Focus only moves if nothing was open to begin with. */
 function noticePlayerShop(silent){
+  try{ noticeSales(silent); }catch(e){ console.error(e); }
   if(!cloud.isGM) return;
   const v = shopData().viewing || {};
   const live = new Set();
@@ -48836,7 +49354,7 @@ const FEATURE_AUTO_NOTES = {
   "power chord":
     "🎸 Power Chord on the Musician card rolls your Charm or Focus Check, adds your Special Attack and prints the Special Normal-Type damage to hand out, spending one of the Scene x2 as it goes.",
   "voice lessons":
-    "Stated, not applied: your and your Pokémon's Sonic Moves gain Friendly (never Perish Song), and your Pokémon roll +1d6 with Sonic Moves in a Contest.",
+    "Automatic: your and your Pokémon's Sonic Moves (never Perish Song) roll tagged 🎵 Friendly and the GM's 🎯 Apply list locks your own side out; in a Contest the 🎤 Appeal dialog adds the +1d6 to a Sonic Move.",
   "leadership":
     "✨ Give on any Order now lists every friendly token on the Map, not just your own party, and writes the Order straight to that sheet.",
   "battle conductor":
@@ -51256,7 +51774,8 @@ function logRoll({ kind, label, who, headline, lines, atk, area, foe }){
     const c = atk.ctx;
     e.atk.ctx = { by: String(c.by||"").slice(0,60), aid: c.aid ? String(c.aid).slice(0,60) : null,
                   move: String(c.move||"").slice(0,60), melee: !!c.melee, crit: !!c.crit,
-                  range: String(c.range||"").slice(0,80), forceCrit: Math.max(0, Math.round(c.forceCrit||0)) };
+                  range: String(c.range||"").slice(0,80), forceCrit: Math.max(0, Math.round(c.forceCrit||0)),
+                  friendly: !!c.friendly };
   }
   /* A player's Double Strike / Triple Kick: the GM picks the target, so the hits are counted on their side
      (multiStrikeResolve) from the d20s and the pre-rolled dice for every hit count. Numbers only. */
@@ -51279,7 +51798,11 @@ function logRoll({ kind, label, who, headline, lines, atk, area, foe }){
                                                 round: (atk.fx.round||[]).map(String).slice(0,6),
                                                 ticks: Math.max(0, Math.min(10, Math.round(+atk.fx.ticks || 0))) || undefined,
                                                 buffs: (atk.fx.buffs||[]).slice(0,4).map(b => ({ name:String(b.name||"").slice(0,80),
-                                                  mods:Object.assign({}, b.mods||{}), note:String(b.note||"").slice(0,300) })) })); }catch(err){}
+                                                  mods:Object.assign({}, b.mods||{}), note:String(b.note||"").slice(0,300),
+                                                  scene: !!b.scene || undefined,
+                                                  dot: b.dot ? { ticks:Math.max(1, Math.min(5, Math.round(+b.dot.ticks || 1))),
+                                                                 left:Math.max(1, Math.min(10, Math.round(+b.dot.left || 1))),
+                                                                 of:Math.max(1, Math.min(10, Math.round(+b.dot.of || b.dot.left || 1))) } : undefined })) })); }catch(err){}
   }
   /* An "area" entry is a declaration, not a hit: the player says what they did and the GM decides
      where it lands. It carries the caster's sheet (so the shape can be anchored on their token),
@@ -52389,6 +52912,8 @@ function flushUiRefresh(){
   if(kinds.includes("map") && typeof stageRender==="function") try{ stageRender(); }catch(e){ console.error(e); }   // 🎭 a new round moves the stage dock too
   // a cart tick shouldn't rebuild the whole board — swap just the floating shop panel when we're on it
   if(kinds.includes("shops")){
+    renderSaleFloat();
+    if(currentTab==="trainer" && saleSigChanged()) renderTrainer();   // the 💱 line on an Inventory row
     if(currentTab==="shops") renderShops();
     else if(currentTab==="map") refreshShopPanel();
   }
@@ -55183,6 +55708,44 @@ function applyTurnStartRegen(owner){
   });
   return gained ? `${ownerLabel(owner)} +${gained} HP (${names.join(", ")})` : null;
 }
+/* Bane / Bleed!: "The target loses a Tick of Hit Points at the start of their next three turns" (Bane
+   adds "and suffers a -2 penalty to all Save Checks on those turns"). Read off the Move's own text, so
+   any Move written that way works: a debuff carrying dot:{ ticks, left, of } that the Map's ▶ ticks as
+   the creature's own turn starts (applyTurnStartDots). It sits on the Buffs & Orders list with its
+   turns left, so it can be seen — and taken off by hand — like any other debuff. */
+const DOT_WORDS = { a:1, an:1, one:1, two:2, three:3, four:4, five:5, six:6 };
+function moveDotBuff(m){
+  const e = String((m && m.effect) || "").replace(/\s+/g, " ");
+  const x = /\btargets?\b[^.]*?\blos(?:e|es)\s+(a|an|one|two|three|four|\d+)\s+ticks?\s+of\s+hit\s+points\s+at the (?:start|beginning) of (?:their|its) next (\w+) turns?/i.exec(e);
+  if(!x) return null;
+  const ticks = DOT_WORDS[x[1].toLowerCase()] || parseInt(x[1]) || 1;
+  const turns = DOT_WORDS[x[2].toLowerCase()] || parseInt(x[2]) || 1;
+  const sv = /[-−]\s*(\d+)\s+penalty to all Save Checks/i.exec(e);
+  return { name:`${m.name}: −${ticks} Tick${ticks === 1 ? "" : "s"} a turn`,
+    mods: sv ? { save: -parseInt(sv[1]) } : {},
+    dot: { ticks, left:turns, of:turns },
+    note:`Loses ${ticks === 1 ? "a Tick" : ticks + " Ticks"} of Hit Points at the start of each of its next ${turns} turns`
+      + (sv ? `, with −${sv[1]} to Save Checks on those turns` : "")
+      + ". The Map's ▶ takes it off as its turn starts." };
+}
+/* at the start of a creature's turn: every per-turn debuff on it bites once and counts down; one whose
+   turns are all spent comes off (its penalty lasted through that last turn) */
+function applyTurnStartDots(owner){
+  if(!owner || hasStatus(owner, "knockedOut") || hasStatus(owner, "dead")) return null;
+  const dots = ownerBuffs(owner).filter(b => b && b.dot);
+  if(!dots.length) return null;
+  const lines = [], gone = new Set();
+  dots.forEach(b => {
+    const label = String(b.name || "").split(":")[0];
+    if(!(b.dot.left > 0)){ gone.add(b.id); lines.push(`${label} wore off`); return; }
+    const n = leechSeedTick(owner) * (b.dot.ticks || 1), d = ownerHPChange(owner, -n);
+    b.dot.left -= 1;
+    b.dur = b.dot.left > 0 ? `${b.dot.left} more turn${b.dot.left === 1 ? "" : "s"}` : "last turn — comes off when its next turn starts";
+    lines.push(`−${Math.abs(d) || n} HP (${label}${b.dot.left > 0 ? `, ${b.dot.left} to go` : ", the last one"})`);
+  });
+  if(gone.size) owner.buffs = owner.buffs.filter(b => !gone.has(b.id));
+  return lines.length ? `${ownerLabel(owner)}: ${lines.join(", ")}` : null;
+}
 function advanceInitiative(map, meta, dir, opts){
   opts = opts || {};
   const list = initiativeList(map); if(!list.length) return;
@@ -55258,12 +55821,15 @@ function advanceInitiative(map, meta, dir, opts){
     });
   }
   // Leftovers & co. pay out as the new combatant's turn begins
-  const regenLines = [];
+  const regenLines = [], dotLines = [];
   if(dir>0 && !opts.noStart){
     const start = list[idx];
     const L = (start && start.act===0 && start.token.link) ? tokenLinked(start.token) : null;
     const line = (L && L.obj && !L.missing) ? applyTurnStartRegen(L.obj) : null;
     if(line){ regenLines.push(line); commitTokenSource(start.token); }
+    // Bane / Bleed!: their per-turn Tick bites as the creature's own turn begins
+    const dl = (L && L.obj && !L.missing) ? applyTurnStartDots(L.obj) : null;
+    if(dl){ dotLines.push(dl); commitTokenSource(start.token); }
   }
   // Trick-or-Treat's 5 turns / Roost's "until the start of its next turn"
   const endId = opts.noEnd ? null : endingId, startId = opts.noStart ? null : initEntryToken(meta.initTurnId);
@@ -55285,6 +55851,7 @@ function advanceInitiative(map, meta, dir, opts){
   if(corpseLines.length) toast(`\u{1F56F} ${corpseLines.join(" · ")}`);
   if(skipLine) toast(skipLine);
   if(regenLines.length) toast(`\u{1F34E} ${regenLines.join(" · ")}`);
+  if(dotLines.length) toast(`\u{1FA78} ${dotLines.join(" · ")}`);
   if(wrapped){ mapTokensSave(); toast(`↺ Round ${meta.initRound} — movement reset`); }
 }
 /* GM taps a name in the initiative list to jump straight to their turn — a manual correction like
@@ -59726,11 +60293,12 @@ function mapTokenNode(token, map, originX=0, originY=0){
   const selected = mapSelectActive(map) && mapSelect.ids.has(token.id);
   const isTurn = battleOn() && initEntryToken(activeMapMeta().initTurnId) === token.id;
   const shinyTok = tokenIsShiny(token);
+  const tgtPick = tgtPanelOn() && tgtPanel.ids.has(token.id);     // 🎯 ticked in the target panel
   // A trainer (the "player" figure) always stacks above Pokémon tokens — even their own party.
   const isTrainerTok = info.kind==="trainer" || info.kind==="enctrainer";
   const playerSide = info.kind==="trainer" || info.kind==="pokemon";
   // a rider is drawn perched on its mount (see tokenRenderBox) and always stacks above it
-  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+((info.editable || tokenMovable(token))?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":"")+(isBoat?" boat-token":"")+(isHaz?" hazard-token":"")+(isZone?" zone-token":"")+(isDoor?" door-token"+(token.open?" door-open":"")+(doorBroken(token)?" door-broken":""):"")+(isNoteToken(token)?" note-token":"")+(shinyTok?" shiny":""),
+  const node = el("div",{class:"map-token"+(info.unlinked?" unlinked":"")+((info.editable || tokenMovable(token))?" editable":"")+(token.gmHidden?" gm-hidden":"")+(selected?" selected":"")+(isTurn?" current-turn":"")+(playerSide?" player-side":"")+(info.kind==="shop"?" shop-token":"")+(tokenKO(token)?" ko":"")+(riding?" riding":"")+(carrying?" carrying":"")+(pendingRider?" mount-pending":"")+(isBoat?" boat-token":"")+(isHaz?" hazard-token":"")+(isZone?" zone-token":"")+(isDoor?" door-token"+(token.open?" door-open":"")+(doorBroken(token)?" door-broken":""):"")+(isNoteToken(token)?" note-token":"")+(shinyTok?" shiny":"")+(tgtPick?" tgt-picked":""),
     // a hull sits at z-index 0, below every creature, so the crew is drawn standing on the deck
     style:`left:${box.left}px;top:${box.top}px;width:${box.w}px;height:${box.h}px;z-index:${isNoteToken(token)?6:riding?4:isTrainerTok?2:isZone?0:(isBoat||isHaz||isShoal||isDoor)?0:1}`
       +`;--tku:${Math.round(Math.max(0.5, Math.min(1.6, map.gridSize/32))*100)/100}`
@@ -59751,6 +60319,7 @@ function mapTokenNode(token, map, originX=0, originY=0){
   if(isTrainerTok && detail>=1 && info.obj && modeIsOn(info.obj, "enchanting-transformation") && hasFeatureLoose(info.obj, "Enchanting Transformation"))
     node.append(el("div",{class:"tk-glitter",title:"Enchanting Transformation",html:"<i></i>".repeat(10)}));
   if(selected) node.append(el("div",{class:"tk-selected"},"✓"));
+  if(tgtPick){ const v = tgtVerdict(token); node.append(el("div",{class:"tk-tgt"+(v.ok?"":" miss"),title:v.txt}, v.ok ? "\u{1F3AF}" : "\u26A0")); }
   const hpVisible = info.unlinked || tokenHpVisible(info);   // "unlinked" warning always shows; real HP is gated
   if(hpVisible){
     // the bar is scaled to max + Temp HP, so the pool shows as its own segment tacked on the end
@@ -59990,6 +60559,7 @@ function attachTokenDrag(node, token, map, originX=0, originY=0){
         mapDragging=false;
         if(mounting) mountTapToken(token, map);
         else if(selecting && !stackLocked){ mapSelect.ids.has(token.id)?mapSelect.ids.delete(token.id):mapSelect.ids.add(token.id); renderMap(); }
+        else if(tgtPanelOn() && !e.shiftKey && !e.altKey && tgtTapToken(token, map)){}      // 🎯 target panel: tap ticks, Shift-tap opens the menu
         // a shop token is a door: players walk up and tap it to shop. The GM gets its management
         // menu instead (which has an "open it here" button, so they can still see the player's view).
         else if(isShopToken(token) && !cloud.isGM) openShopFromToken(token);
@@ -60054,7 +60624,7 @@ function attachImageDrag(node, img, map, overlay, originX=0, originY=0){
    Levitate, Wonder Guard, Filter, …) and any Swarm/manual effectiveness nudge, then Damage
    Reduction (active DR buffs + flat DR vs Super-Effective). Used by BOTH the token menu's manual
    "Apply an attack" box and the roll-result "Apply to target" picker, so the two never diverge. */
-function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, sonic=false, defAsPhys=null, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, chartOverride=null, seBonus=0, seFlat=0, formeStep=0, drBonus=0, vulnStep=0, corrosion=false, atkNeutral=false, defExtraStep=0, execute=false, noResist=false }){
+function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, sonic=false, defAsPhys=null, extraStep=0, aoe=false, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, chartOverride=null, seBonus=0, seFlat=0, formeStep=0, drBonus=0, vulnStep=0, corrosion=false, atkNeutral=false, defExtraStep=0, execute=false, noResist=false, crit=false }){
   const abNotes = [];
   const def = tokenDefenseStat(token, defAsPhys == null ? !!physical : !!defAsPhys, defCSMode)   // Psyshock: the other Defense
             + (defPlusSpd ? tokenSpeed(token) : 0);                                              // Electro Ball: Speed comes off too
@@ -60189,7 +60759,7 @@ function tokenDamageBreakdown(token, { dmg, type, physical, defPlusSpd=false, so
   /* The defender's Damage Reduction has to be known BEFORE the damage roll is finalised, because
      Pierce! pays +10 for the mere fact that they have some. Everything conditional on effectiveness
      (Filter+Solid Rock's flat 5, Glacial Ice) is folded in below; this is the unconditional pool. */
-  const { dr, from } = owner ? buffDR(owner, { isPhys:!!physical }) : doorDR(token);   // a door brings its own flat DR
+  const { dr, from } = owner ? buffDR(owner, { isPhys:!!physical, crit:!!crit }) : doorDR(token);   // a door brings its own flat DR (crit: Helmet)
   /* ...and the same reasoning covers a Move that pays for its own Super-Effective hit
      (Electro Drift / Collision Course: "+10 to the Damage Roll"). Judged on the same `mult`. */
   const seExtra  = mult > 1 ? Math.round(seBonus || 0) : 0;
@@ -60925,7 +61495,7 @@ function dismountCheckNode(map, tok, br, ctx){
     return box;
   }catch(e){ console.error("dismount check", e); return null; }
 }
-function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, moveRule=null, seFlat=0, critExtra=0, fx=null, onDealt=null, ctx=null, preselect=null, pbFx=null }){
+function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=0, atkTinted=false, atkExploit=false, atkMega=false, atkWar=false, atkMold=false, atkDeicide=false, defCSMode=null, moveRule=null, seFlat=0, critExtra=0, fx=null, onDealt=null, ctx=null, preselect=null, pbFx=null, external=null }){
   // a Move whose own rules bend the matchup (MOVE_TARGET_RULES) travels with the hit, and its
   // immunity clause folds into the same pierce switch every other source uses
   const chartOverride = moveRule?.chart || null, seBonus = moveRule?.seBonus || 0,
@@ -60970,6 +61540,19 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
   let tab = items.some(i=>i.faction==="players") ? "players" : "enemies";
   // a target already chosen upstream (the GM's Double Strike pick) starts ticked, on its own tab
   { const pre = preselect && items.find(i => i.t.id === preselect); if(pre){ pre.cb.checked = true; tab = pre.faction; } }
+  /* 🤝 Friendly (the keyword, Voice Lessons, Liquid Voice): the attacker's own side can't be ticked */
+  if(ctx && ctx.friendly){
+    const aid = ctx.aid || (ctx.attacker && ctx.attacker.id) || null;
+    const me = aid ? items.find(i => { const o = (tokenLinked(i.t) || {}).obj; return !!o && o.id === aid; }) : null;
+    if(me){
+      items.forEach(i => { if(i.faction !== me.faction) return;
+        i.friendly = true; i.cb.checked = false; i.cb.disabled = true;
+        i.row.style.opacity = ".55"; i.row.title = "Friendly — this Move never hits allies"; });
+      if(tab === me.faction && items.some(i => !i.friendly)) tab = me.faction === "players" ? "enemies" : "players";
+    }
+    wrap.append(el("div",{class:"small",style:"font-weight:700;color:var(--good);margin-bottom:6px"},
+      `\u{1F91D} Friendly${ctx.move ? ` (${ctx.move})` : ""}: it never hits allies` + (me ? ` — ${tokenHp(me.t).name}'s side is locked out.` : " — leave the attacker's allies unticked.")));
+  }
   const tabsBar = el("div",{class:"subtabs",style:"margin-bottom:6px"});
   const bP = el("button",{class:"subtab",onclick:()=>{ tab="players"; draw(); }});
   const bE = el("button",{class:"subtab",onclick:()=>{ tab="enemies"; draw(); }});
@@ -60987,14 +61570,14 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
   const list = el("div",{style:"max-height:160px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-bottom:6px"});
   const allCb = el("input",{type:"checkbox"});
   allCb.addEventListener("change",()=>{
-    items.filter(i=>i.faction===tab && matches(i)).forEach(i=>{ i.cb.checked = allCb.checked; }); draw();
+    items.filter(i=>i.faction===tab && matches(i) && !i.friendly).forEach(i=>{ i.cb.checked = allCb.checked; }); draw();
   });
   const allTxt = el("span",{class:"small muted"},"select all in this tab");
   const allWrap = el("label",{class:"inline",style:"display:flex;gap:8px;align-items:center;margin-bottom:8px;cursor:pointer"},
     allCb, allTxt);
   const hiddenNote = el("div",{class:"small",style:"margin-bottom:6px;color:var(--accent);display:none"});
   function draw(){
-    items.forEach(i=>{ i.txt.textContent = label(i.t); });     // keep HP labels fresh (filter reads them)
+    items.forEach(i=>{ i.txt.textContent = label(i.t) + (i.friendly ? " — \u{1F91D} Friendly, not hit" : ""); });     // keep HP labels fresh (filter reads them)
     const inP = items.filter(i=>i.faction==="players"), inE = items.filter(i=>i.faction==="enemies");
     const mP = inP.filter(matches).length, mE = inE.filter(matches).length;
     // a search that only hits the other faction switches to it rather than showing an empty list
@@ -61011,13 +61594,13 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     else if(!rows.length) list.append(el("div",{class:"small muted"},
       `Nothing here matches “${search.value}”.`));
     rows.forEach(i=>list.append(i.row));
-    allCb.checked = rows.length>0 && rows.every(i=>i.cb.checked);
+    { const free = rows.filter(i=>!i.friendly); allCb.checked = free.length>0 && free.every(i=>i.cb.checked); }
     allTxt.textContent = q ? `select all ${rows.length} shown` : "select all in this tab";
     const hid = items.filter(i=>i.cb.checked && !matches(i)).length;
     hiddenNote.textContent = hid ? `⚠ ${hid} ticked target${hid===1?" is":"s are"} hidden by this search — ${hid===1?"it":"they"} will still be hit.` : "";
     hiddenNote.style.display = hid ? "" : "none";
   }
-  wrap.append(tabsBar, search, list, allWrap, hiddenNote);
+  if(!external) wrap.append(tabsBar, search, list, allWrap, hiddenNote);     // the 🎯 target panel owns the selection instead
 
   // effectiveness nudge (applies to every selected target) + area flag (matters only vs a Swarm)
   let manualStep = 0;
@@ -61111,7 +61694,13 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
     if(applyBusy) return;
     applyBusy = true;
     if(typeof contestNoteHit==="function") try{ contestNoteHit(ctx); }catch(e){}      // 🎀 Battle Contest: who made this hit (a knockout's +2 Voltage goes to them)
-    try{ await applyHit(); } finally{ applyBusy = false; if(typeof contestEndHit==="function") try{ contestEndHit(); }catch(e){} }
+    if(external){
+      items.forEach(i => { i.cb.checked = external.ids.has(i.t.id); });
+      const lost = [...external.ids].filter(id => !items.some(i => i.t.id === id)).length;
+      if(lost) toast(`${lost} ticked token${lost === 1 ? " wasn't" : "s weren't"} on the board when this hit was rolled \u2014 use the old list for ${lost === 1 ? "it" : "them"}`);
+    }
+    try{ await applyHit(); } finally{ applyBusy = false; if(typeof contestEndHit==="function") try{ contestEndHit(); }catch(e){}
+      if(external){ external.ids = new Set(items.filter(i => i.cb.checked).map(i => i.t.id)); tgtPanelChanged(); } }
   };
   const applyHit = async ()=>{
     const chosen = items.filter(i=>i.cb.checked);
@@ -61205,12 +61794,18 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
       }catch(e){ console.error("gyro/dream eater", e); }
       /* per-target Ability statics (v644) */
       let vulnHere = 0, defExtra = 0, typeHere = typeName;
+      /* is THIS target being crit? The roll's crit dice, unless Shell/Battle Armor took them back off
+         (Merciless below can make one per target). Helmet's crit-only DR reads it. */
+      let critHere = (critExtra > 0 && !shell) || !!(ctx && ctx.crit && !shell);
       try{
         const V0 = tokenHp(it.t).obj;
+        /* Helmet: Headbutt and Zen Headbutt are resisted one step further */
+        const helm0 = V0 ? equipGuardsMove(V0, ctx && ctx.move) : null;
+        if(helm0){ defExtra -= 1; rivalryTxt += (rivalryTxt ? " " : "") + `${helm0}: ${ctx.move} is resisted one step further.`; }
         if(A0 && V0 && hasAB("merciless") && ctx && ctx.forceCrit > 0 && !critExtra
            && (hasStatus(V0, "poisoned") || hasStatus(V0, "badlyPoisoned"))){
           if(critImmunityOf(V0)) rivalryTxt += (rivalryTxt ? " " : "") + `Merciless: target is Poisoned, but ${critImmunityOf(V0)} stops the Critical Hit.`;
-          else { useDmg += ctx.forceCrit; rivalryTxt += (rivalryTxt ? " " : "") + `Merciless: target is Poisoned \u2014 a Critical Hit (+${ctx.forceCrit}); it must still hit.`; }
+          else { useDmg += ctx.forceCrit; critHere = true; rivalryTxt += (rivalryTxt ? " " : "") + `Merciless: target is Poisoned \u2014 a Critical Hit (+${ctx.forceCrit}); it must still hit.`; }
         }
         if(stakeCb.checked){ const sr = rollDiceString("2d6"); const sx = (sr ? sr.total : 0) + 4; useDmg += sx;
           rivalryTxt += (rivalryTxt ? " " : "") + `Stakeout: +2d6+4 = +${sx} damage.`; }
@@ -61247,7 +61842,7 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
           if(as){ defExtra += as; rivalryTxt += (rivalryTxt ? " " : "") + `${asb.map(b => b.name).join(", ")}: the attacker's Moves are resisted ${Math.abs(as)} step${Math.abs(as) === 1 ? "" : "s"} further.`; }
         }
       }catch(e){ console.error("ability statics", e); }
-      const br = tokenDamageBreakdown(it.t, { noResist, vulnStep:vulnHere, defExtraStep:defExtra, execute:/execute/i.test(String((ctx && ctx.range) || "")), corrosion:hasAB("corrosion"), atkNeutral:hasAB("normalize [errata]"), dmg:useDmg, type:typeHere, physical, defPlusSpd:!!(moveRule && moveRule.defPlusSpd), sonic:!!(moveRule && moveRule.sonic), defAsPhys:(moveRule && moveRule.defAs) ? moveRule.defAs === "phys" : null, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, atkMega, atkWar, atkMold, atkDeicide, defCSMode, chartOverride, seBonus, seFlat, formeStep, drBonus });
+      const br = tokenDamageBreakdown(it.t, { noResist, vulnStep:vulnHere, defExtraStep:defExtra, crit:critHere, execute:/execute/i.test(String((ctx && ctx.range) || "")), corrosion:hasAB("corrosion"), atkNeutral:hasAB("normalize [errata]"), dmg:useDmg, type:typeHere, physical, defPlusSpd:!!(moveRule && moveRule.defPlusSpd), sonic:!!(moveRule && moveRule.sonic), defAsPhys:(moveRule && moveRule.defAs) ? moveRule.defAs === "phys" : null, extraStep:manualStep, aoe:aoeCb.checked, pierceImmune, pierceDR, atkTinted, atkExploit, atkMega, atkWar, atkMold, atkDeicide, defCSMode, chartOverride, seBonus, seFlat, formeStep, drBonus });
       if(moveRule && moveRule.spare){                    // False Swipe: leaves the target on 1 HP
         const cur = tokenHp(it.t).cur;
         if(cur > 0 && br.final >= cur){ br.final = cur - 1; rivalryTxt += (rivalryTxt ? " " : "") + "False Swipe \u2014 it leaves the target on 1 HP."; }
@@ -61280,7 +61875,11 @@ function attackTargetWidget({ dmg, type, physical, pierceImmune=false, pierceDR=
         else if(ownerHasAbility(o, "Shield Dust") && !atkMold && !defensiveAbilitiesGassed(o)) fxTxt = "Shield Dust — secondary effects of damaging Moves don't land";
         else {
           const hadSt = new Set(Array.isArray(o.statuses) ? o.statuses : []);
-          const s = inflictStatuses(o, fx.status || [], { mold: atkMold, corrosion: hasAB("corrosion") });   // Mold Breaker: Defensive immunities off; Corrosion: Poison reaches Steel / Poison
+          /* Helmet: "can't be flinched by these Moves" (Headbutt / Zen Headbutt) */
+          const helmF = equipGuardsMove(o, ctx && ctx.move);
+          const stKeys = (fx.status || []).filter(k => !(helmF && k === "flinch"));
+          const s = inflictStatuses(o, stKeys, { mold: atkMold, corrosion: hasAB("corrosion") });   // Mold Breaker: Defensive immunities off; Corrosion: Poison reaches Steel / Poison
+          if(helmF && stKeys.length < (fx.status || []).length) s.held.push(`Flinch (${helmF})`);
           syncKeys = (Array.isArray(o.statuses) ? o.statuses : []).filter(k => !hadSt.has(k) && ["burned","frozen","paralysis","poisoned","badlyPoisoned","sleep"].includes(k));
           const c = applyCSFx(o, fx.cs || [], { foe:true });
           /* the rest of the bundle: 1-full-round Statuses (Berserk Blow's Vulnerable), Ticks of Hit
@@ -61484,7 +62083,7 @@ function rollFeedRow(e){
   if(e.foe && cloud.isGM) row.append(el("button",{class:"btn-secondary",
     style:"padding:2px 8px;margin-top:4px;font-size:11px",
     title:"pick who this lands on from the creatures on the current map",
-    onclick:()=>openFoeFxApply(e)}, e.foe.done ? "🎯 Apply to more…" : `🎯 Choose target${e.foe.single ? "" : "s"}`));
+    onclick:()=>{ if(!tgtFromFoe(e)) openFoeFxApply(e); }}, e.foe.done ? "🎯 Apply to more…" : `🎯 Choose target${e.foe.single ? "" : "s"}`));
   return row;
 }
 /* A declared effect from the feed: every creature token on the map the GM is looking at, foes first,
@@ -61549,7 +62148,423 @@ function openAreaApply(e){
 }
 /* The roll's own damage math, re-opened later — identical widget, identical numbers. A player's multi-roll Move
    goes to its count first (openStrikeCount); a Population Bomb counted on the roller's screen brings its extras. */
+/* ===================================================================
+   🎯 THE TARGET PANEL (v744)
+   The old way to land a hit was a checkbox list of every token on the board. On a map with six
+   Zubat and four Geodude that list is a wall of identical names, so the GM had to guess which
+   "Zubat — 23/23 HP" was the one in the Cone. This panel picks targets ON THE MAP:
+     · a docked float (not a modal), so the board stays live under it — drag tokens, pan, zoom,
+       Shift-click (or ⓘ) a token for its menu, all without losing the selection
+     · tap a token to tick / untick it; ticked tokens get a red ring and a 🎯 / ⚠ badge
+     · the Move's Range is read for an area: a Burst is ticked round the attacker at once; a Cone,
+       Line or Close Blast aims at whichever square you tap (the direction from the attacker), and a
+       ranged Blast is centred on the tapped square. Everything inside is ticked, and any of them can
+       be unticked again (auto-dodges, Wide Guard…). A Friendly area never ticks the attacker's side.
+     · every ticked target shows its Evasions and whether the Accuracy Roll beats AC + Evasion —
+       a WARNING only: nothing is locked, because so much bends that sum
+     · 💥 Apply runs the very same attackTargetWidget engine (external mode: the panel owns the
+       selection) — Defense, matchups, abilities, DR, the Move's effects, drain, ↩ undo — and a
+       Status Move runs the same FOE_FX "statusmove" press its old card did.
+   It opens from the feed's 🎯 button, and by itself when the GM rolls a Move: the roll window is
+   parked (📜 brings it back exactly as it was) and its old list stays inside it as a fallback.
+   State is `var` on purpose: renderMap / mapTokenNode read it and can run at boot (TDZ, see
+   bug-local-load-tdz).
+=================================================================== */
+var tgtPanel = null;
+function tgtPanelOn(){ return !!tgtPanel && mode === "cloud" && !!cloud.isGM; }
+function tgtPanelMap(){ return currentMapForView() || activeMap(); }
+function tgtCanOpen(){ return mode === "cloud" && !!cloud.isGM && !!tgtPanelMap(); }
+/* who can be ticked: the same tokens the hit engine lists (scenery out, a boat hull in) — and for a
+   Status Move only real creatures */
+function tgtEligible(t){
+  if(!t) return false;
+  const i = tokenHp(t);
+  if(isNoteToken(t) || i.unlinked || i.kind === "shop" || i.kind === "hazard" || i.kind === "zone") return false;
+  if(tgtPanel && tgtPanel.kind === "status") return !!i.obj && i.kind !== "boat" && i.kind !== "door";
+  return !!i.editable && !doorBroken(t);
+}
+function tgtAoEOf(range){
+  const a = parseAoE(range); if(!a) return null;
+  const r = String(range || "");
+  return { shape:a.shape, size:a.size, ranged: a.shape === "blast" && !/close\s*blast/i.test(r),
+           friendly: /\bfriendly\b/i.test(r) };
+}
+function tgtFindAttacker(map, P){
+  if(!map || !P) return null;
+  const toks = mapTokensFor(map.id);
+  if(P.atkTokId){ const t = toks.find(x => x.id === P.atkTokId); if(t) return t; }
+  const objOf = x => { try{ return (tokenLinked(x) || {}).obj || null; }catch(e){ return null; } };
+  if(P.attacker){ const t = toks.find(x => x.link && !x.twinOf && objOf(x) === P.attacker); if(t) return t; }
+  if(P.aid){ const t = toks.find(x => x.link && !x.twinOf && (objOf(x) || {}).id === P.aid); if(t) return t; }
+  if(P.by){ const t = toks.find(x => !x.twinOf && tokenHp(x).name === P.by); if(t) return t; }
+  return null;
+}
+/* the facing from the attacker's footprint centre to a tapped square, snapped to the 8 AOE_DIRS */
+function tgtDirTo(tok, cell){
+  const f = tokenFootprint(tok), cx = Math.round(tok.x) + f.w/2, cy = Math.round(tok.y) + f.h/2;
+  const dx = cell.x + 0.5 - cx, dy = cell.y + 0.5 - cy;
+  if(Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return null;
+  const k = Math.round(Math.atan2(dy, dx) / (Math.PI/4));
+  return ["W","NW","N","NE","E","SE","S","SW","W"][k + 4];
+}
+function tgtAoECells(map){
+  const P = tgtPanelOn() ? tgtPanel : null;
+  if(!P || !P.aoe || !map) return new Set();
+  const A = P.aoe;
+  if(A.ranged){
+    if(!P.aim || !P.aim.cell) return new Set();
+    const s = Math.max(1, A.size), o = Math.floor((s - 1)/2), set = new Set();
+    for(let x = P.aim.cell.x - o; x < P.aim.cell.x - o + s; x++)
+      for(let y = P.aim.cell.y - o; y < P.aim.cell.y - o + s; y++) set.add(x + "," + y);
+    return set;
+  }
+  const tok = tgtFindAttacker(map, P); if(!tok) return new Set();
+  if(A.shape === "burst") return aoeCells(map, tok, "burst", A.size);
+  if(!P.aim || !P.aim.dir) return new Set();
+  return aoeCells(map, tok, A.shape, A.size, P.aim.dir);
+}
+function tgtNeedsAim(){ const P = tgtPanel; return !!(P && P.aoe && P.aoe.shape !== "burst"); }
+/* tick everything inside the area (replacing the ticks) — never the attacker, never a fallen token,
+   never the second token of a Family Unit, and under Friendly never the attacker's own side */
+function tgtAutoTick(){
+  const P = tgtPanel, map = tgtPanelMap(); if(!P || !P.aoe || !map) return;
+  const cells = tgtAoECells(map), atk = tgtFindAttacker(map, P), side = atk ? tokenSide(atk) : null;
+  P.ids = new Set();
+  if(!cells.size) return;
+  mapTokensFor(map.id).forEach(t => {
+    if(!tgtEligible(t) || t.twinOf || (atk && t.id === atk.id)) return;
+    try{ if((t.link && tokenIsDown(t)) || tokenHp(t).cur <= 0) return; }catch(e){}   // tokenIsDown calls every unlinked token "down"
+    if(P.aoe.friendly && side && tokenSide(t) === side) return;
+    const f = tokenFootprint(t), x0 = Math.round(t.x), y0 = Math.round(t.y);
+    for(let x = x0; x < x0 + f.w; x++) for(let y = y0; y < y0 + f.h; y++)
+      if(cells.has(x + "," + y)){ P.ids.add(t.id); return; }
+  });
+}
+/* the Evasion this target would use: Physical / Special or Speed, whichever is higher (a Status
+   Move only meets Speed Evasion) */
+function tgtEvasion(t){
+  const ev = tokenEvasions(t); if(!ev) return null;
+  const P = tgtPanel || {};
+  const own = P.kind === "status" ? null : (P.physical ? ev.phys : ev.spec);
+  const spd = ev.spd || 0, use = own == null ? spd : Math.max(own || 0, spd);
+  return { ev, use, from: own != null && (own || 0) >= spd ? (P.physical ? "Physical" : "Special") : "Speed" };
+}
+function tgtVerdict(t){
+  const A = tgtPanel && tgtPanel.acc;
+  if(!A || A.tot == null) return { ok:true, need:null, txt:"no Accuracy Roll to compare" };
+  if(A.ac == null) return { ok:true, need:null, txt:"can't miss" };
+  const E = tgtEvasion(t), need = A.ac + (E ? E.use : 0);
+  if(A.nat === 1) return { ok:false, need, txt:"natural 1 — misses" };
+  if(A.nat === 20) return { ok:true, need, txt:`natural 20 — hits (needs ${need})` };
+  return A.tot >= need ? { ok:true, need, txt:`likely hits — ${A.tot} ≥ ${need}` }
+                       : { ok:false, need, txt:`likely MISSES — ${A.tot} < ${need}` };
+}
+/* park the roll window this panel came from (only if it really is the window that holds the roll) */
+function tgtParkRoll(P){
+  const bg = document.querySelector("#modalRoot .modal-bg");
+  if(!bg || !P.parkNode || !bg.contains(P.parkNode)) return;
+  bg.remove(); document.removeEventListener("keydown", escClose);
+  P.parked = bg;
+}
+function tgtReopenRoll(){
+  const bg = tgtPanel && tgtPanel.parked; if(!bg) return;
+  closeModal(); $("#modalRoot").append(bg); document.addEventListener("keydown", escClose);
+}
+function openTargetPanel(spec){
+  if(!tgtCanOpen()) return false;
+  const map = tgtPanelMap();
+  const prev = tgtPanel;
+  const P = Object.assign({ ids:new Set(), aim:null, collapsed:false, parked:null }, spec);
+  P.aoe = tgtAoEOf(spec.range);
+  /* Friendly can come from outside the Range text too (Voice Lessons, Liquid Voice) — it rides on ctx.friendly */
+  P.friendly = !!(P.aoe && P.aoe.friendly) || !!(spec.args && spec.args.ctx && spec.args.ctx.friendly) || !!spec.friendly;
+  if(P.aoe && P.friendly) P.aoe.friendly = true;
+  tgtPanel = P;
+  const atk = tgtFindAttacker(map, P); P.atkTokId = atk ? atk.id : null;
+  (spec.preselect ? [].concat(spec.preselect) : []).forEach(id => P.ids.add(id));
+  if(P.aoe && P.aoe.shape === "burst") tgtAutoTick();
+  if(P.kind === "dmg"){
+    P.widget = attackTargetWidget(Object.assign({}, spec.args, { external:P }));
+    if(!P.widget){ tgtPanel = prev; return false; }
+  } else P.statusOut = el("div",{class:"small",style:"margin-top:6px;color:var(--accent);font-weight:600"});
+  tgtParkRoll(P);
+  if(currentTab !== "map") switchTab("map"); else renderMap();
+  renderTargetPanel();
+  return true;
+}
+/* opened from inside a roll's doRoll: wait for the window to finish drawing, then take over */
+function tgtOpenSoon(spec){ setTimeout(() => { try{ openTargetPanel(spec); }catch(e){ console.error("target panel", e); } }, 0); }
+function closeTargetPanel(){
+  tgtPanel = null;
+  const n = document.getElementById("tgtPanel"); if(n) n.remove();
+  if(currentTab === "map") renderMap();
+}
+function tgtPanelChanged(){ if(currentTab === "map") renderMap(); renderTargetPanel(); }
+/* a tap on a token while the panel is up. Returns false to let the tap fall through to the normal
+   menu (scenery, notes). The first tap of an un-aimed area aims it at that token instead. */
+function tgtTapToken(token, map){
+  const P = tgtPanel; if(!P) return false;
+  if(tgtNeedsAim() && !P.aim){
+    const f = tokenFootprint(token);
+    tgtAimAt({ x:Math.round(token.x) + Math.floor((f.w - 1)/2), y:Math.round(token.y) + Math.floor((f.h - 1)/2) });
+    return true;
+  }
+  if(!tgtEligible(token)) return false;
+  P.ids.has(token.id) ? P.ids.delete(token.id) : P.ids.add(token.id);
+  tgtPanelChanged();
+  return true;
+}
+function tgtAimAt(cell){
+  const P = tgtPanel, map = tgtPanelMap();
+  if(!P || !tgtNeedsAim() || !map) return;
+  if(P.aoe.ranged) P.aim = { cell };
+  else {
+    const atk = tgtFindAttacker(map, P);
+    if(!atk){ toast("The attacker has no token on this map — tick the targets by hand"); return; }
+    const d = tgtDirTo(atk, cell); if(!d) return;
+    P.aim = { dir:d, cell };
+  }
+  tgtAutoTick(); tgtPanelChanged();
+}
+/* a tap on an empty square aims the area; a drag still pans the board */
+function attachTargetAim(viewport, map, originX, originY){
+  let down = null;
+  viewport.addEventListener("pointerdown", ev => {
+    down = null;
+    if(!tgtPanelOn() || !tgtNeedsAim()) return;
+    if(ev.button != null && ev.button > 0) return;
+    if(ev.target.closest(".map-token,.aoe-panel,.boat-panel,.map-img-ctrls")) return;
+    down = { x:ev.clientX, y:ev.clientY };
+  }, true);
+  viewport.addEventListener("pointerup", ev => {
+    const d = down; down = null; if(!d || !tgtPanelOn()) return;
+    if(Math.abs(ev.clientX - d.x) > 5 || Math.abs(ev.clientY - d.y) > 5) return;
+    const rect = viewport.getBoundingClientRect(), px = map.gridSize;
+    const sx = (ev.clientX - rect.left - mapView.panX)/mapView.scale, sy = (ev.clientY - rect.top - mapView.panY)/mapView.scale;
+    tgtAimAt({ x:Math.floor((sx - originX)/px), y:Math.floor((sy - originY)/px) });
+  });
+}
+/* the area's squares, drawn red so they don't read as the orange planning overlay */
+function drawCellsOn(cv, map, cells, originX, originY){
+  const px = map.gridSize;
+  if(!cells.size){ cv.width = cv.height = 0; return; }
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const pts = [...cells].map(k => { const [x, y] = k.split(",").map(Number);
+    if(x < x0) x0 = x; if(y < y0) y0 = y; if(x > x1) x1 = x; if(y > y1) y1 = y; return [x, y]; });
+  cv.width = (x1 - x0 + 1)*px; cv.height = (y1 - y0 + 1)*px;
+  cv.style.left = (x0*px + originX) + "px"; cv.style.top = (y0*px + originY) + "px";
+  const c = cv.getContext("2d");
+  c.fillStyle = "rgba(255,77,77,0.26)"; c.strokeStyle = "rgba(255,77,77,0.9)"; c.lineWidth = Math.max(1, px*0.05);
+  pts.forEach(([x, y]) => { const dx = (x - x0)*px, dy = (y - y0)*px;
+    c.fillRect(dx, dy, px, px); c.strokeRect(dx + 0.5, dy + 0.5, px - 1, px - 1); });
+}
+function tgtLoadPos(){ try{ return clampFloatPos(JSON.parse(localStorage.getItem("ptu_tgtpanel_pos") || "null")); }catch(e){ return null; } }
+function tgtAttachDrag(handle, box){
+  handle.addEventListener("pointerdown", ev => {
+    if(ev.target.closest("button,input,select")) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const r = box.getBoundingClientRect(), offX = ev.clientX - r.left, offY = ev.clientY - r.top;
+    box.style.left = r.left + "px"; box.style.top = r.top + "px"; box.style.right = "auto"; box.style.bottom = "auto";
+    try{ handle.setPointerCapture(ev.pointerId); }catch(e){}
+    const move = e => {
+      box.style.left = Math.max(0, Math.min(window.innerWidth - 80, e.clientX - offX)) + "px";
+      box.style.top  = Math.max(0, Math.min(window.innerHeight - 36, e.clientY - offY)) + "px";
+    };
+    const up = () => {
+      handle.removeEventListener("pointermove", move); handle.removeEventListener("pointerup", up);
+      try{ handle.releasePointerCapture(ev.pointerId); }catch(e){}
+      try{ localStorage.setItem("ptu_tgtpanel_pos", JSON.stringify({ left:parseInt(box.style.left) || 0, top:parseInt(box.style.top) || 0 })); }catch(e){}
+    };
+    handle.addEventListener("pointermove", move); handle.addEventListener("pointerup", up);
+  });
+}
+function renderTargetPanel(){
+  const old = document.getElementById("tgtPanel");
+  const P = tgtPanel;
+  if(!P || !(mode === "cloud" && cloud.isGM)){ if(old) old.remove(); return; }
+  const scroll = old ? ((old.querySelector(".tp-body") || {}).scrollTop || 0) : 0;
+  const map = tgtPanelMap();
+  const box = el("div",{id:"tgtPanel"});
+  box.style.cssText = "position:fixed;z-index:71;width:350px;max-width:calc(100vw - 24px);max-height:86vh;display:flex;"
+    + "flex-direction:column;background:var(--panel);border:2px solid #ff4d4d;border-radius:10px;"
+    + "box-shadow:0 6px 22px rgba(0,0,0,.4);overflow:hidden";
+  const pos = tgtLoadPos();
+  if(pos){ box.style.left = pos.left + "px"; box.style.top = pos.top + "px"; }
+  else { box.style.left = "14px"; box.style.top = "70px"; }
+  const head = el("div",{style:"display:flex;align-items:center;gap:5px;padding:6px 8px;cursor:move;"
+    + "background:var(--panel-2);border-bottom:1px solid var(--line);user-select:none;touch-action:none",
+    title:"drag to move · double-click to snap back"});
+  head.append(el("span",{style:"font-weight:800;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"},
+    `\u{1F3AF} ${P.label || "Targets"}`));
+  head.append(el("span",{style:"flex:1"}));
+  if(P.parked) head.append(initMiniBtn("\u{1F4DC}", "reopen the roll window exactly as it was", tgtReopenRoll));
+  head.append(initMiniBtn(P.collapsed ? "▸" : "▾", P.collapsed ? "expand" : "collapse",
+    () => { P.collapsed = !P.collapsed; renderTargetPanel(); }));
+  head.append(initMiniBtn("✕", "close the target panel (nothing more is applied)", closeTargetPanel));
+  head.addEventListener("dblclick", () => { try{ localStorage.removeItem("ptu_tgtpanel_pos"); }catch(e){} renderTargetPanel(); });
+  tgtAttachDrag(head, box);
+  box.append(head);
+  if(!P.collapsed){
+    const body = el("div",{class:"tp-body",style:"overflow:auto;padding:6px 10px 10px"});
+    const A = P.acc;
+    body.append(el("div",{class:"small muted"}, `${P.who || "?"}${P.range ? ` · ${P.range}` : ""}`));
+    body.append(el("div",{style:"font-weight:800;margin:2px 0"},
+      A && A.tot != null ? `\u{1F3AF} Accuracy ${A.tot} (d20 ${A.nat})${A.ac != null ? ` vs AC ${A.ac} + Evasion` : " — can't miss"}`
+                         : "\u{1F3AF} No single Accuracy Roll to compare (multi-roll or none) — judge hits yourself"));
+    body.append(el("div",{style:"font-weight:800;color:var(--accent)"},
+      P.kind === "dmg" ? `\u{1F4A5} ${P.dmg} ${P.type || "Typeless"} ${P.physical ? "Physical" : "Special"}` : "✨ Status Move"));
+    /* the area helper */
+    if(P.aoe){
+      const Z = P.aoe, card = el("div",{style:"margin:6px 0;padding:6px 8px;border:1px dashed #ff4d4d;border-radius:8px"});
+      const shapeSel = el("select",{style:"max-width:130px"});
+      [["burst","Burst"],["cone","Cone"],["line","Line"],["blast","Close Blast"],["rblast","Ranged Blast"]].forEach(([v, l]) =>
+        shapeSel.append(el("option",{value:v, selected:(Z.shape === "blast" ? (Z.ranged ? "rblast" : "blast") : Z.shape) === v}, l)));
+      shapeSel.addEventListener("change", () => {
+        const v = shapeSel.value; Z.shape = v === "rblast" ? "blast" : v; Z.ranged = v === "rblast";
+        P.aim = null; if(Z.shape === "burst") tgtAutoTick(); tgtPanelChanged();
+      });
+      const sizeLbl = el("b",{style:"min-width:20px;text-align:center"}, String(Z.size));
+      const resize = n => { Z.size = Math.max(1, Math.min(20, Z.size + n)); if(Z.shape === "burst" || P.aim) tgtAutoTick(); tgtPanelChanged(); };
+      card.append(el("div",{style:"display:flex;gap:6px;align-items:center;flex-wrap:wrap"},
+        el("span",{class:"small",style:"font-weight:700"}, "\u{1F4D0} Area"), shapeSel,
+        el("button",{class:"btn-secondary",style:"padding:1px 9px",onclick:() => resize(-1)}, "−"), sizeLbl,
+        el("button",{class:"btn-secondary",style:"padding:1px 9px",onclick:() => resize(1)}, "+"),
+        tgtNeedsAim() && P.aim ? el("button",{class:"btn-secondary",style:"padding:1px 8px",title:"clear the aim; the next tap on the map aims again",
+          onclick:() => { P.aim = null; P.ids = new Set(); tgtPanelChanged(); }}, "↺ Re-aim") : ""));
+      const atk = tgtFindAttacker(map, P);
+      const hint = !atk && !Z.ranged ? "⚠ The attacker has no token on this map — tick the targets by hand."
+        : Z.shape === "burst" ? "Ticked everyone in the Burst round the attacker."
+        : P.aim ? (Z.ranged ? "Aimed — tap another square to move it." : `Aimed ${P.aim.dir} — tap another square to turn it.`)
+        : Z.ranged ? "Tap the square the Blast is centred on." : "Tap a square (or a token) in the direction it's aimed.";
+      card.append(el("div",{class:"small",style:"margin-top:4px;color:" + (P.aim || Z.shape === "burst" ? "var(--muted)" : "#ff4d4d") + ";font-weight:600"}, hint));
+      if(Z.friendly) card.append(el("div",{class:"small muted"}, "\u{1F91D} Friendly — the attacker's own side is never auto-ticked (tick one by hand if you need to)."));
+      body.append(card);
+    }
+    body.append(el("div",{class:"small muted",style:"margin:4px 0"},
+      "Tap tokens on the map to tick / untick. Shift-click a token (or ⓘ) for its menu — drag and pan still work."));
+    /* the ticked list */
+    const toks = map ? mapTokensFor(map.id) : [];
+    const picked = toks.filter(t => P.ids.has(t.id));
+    const atkTok = tgtFindAttacker(map, P);
+    const lh =el("div",{style:"display:flex;align-items:center;gap:6px;margin-top:6px"},
+      el("span",{style:"font-weight:800"}, `Targets (${picked.length})`), el("span",{style:"flex:1"}));
+    if(picked.length) lh.append(el("button",{class:"btn-secondary",style:"padding:1px 8px;font-size:11px",
+      onclick:() => { P.ids = new Set(); tgtPanelChanged(); }}, "Untick all"));
+    body.append(lh);
+    const list = el("div",{style:"border:1px solid var(--line);border-radius:8px;padding:4px 6px;margin:4px 0 8px;max-height:34vh;overflow:auto"});
+    if(!map) list.append(el("div",{class:"small",style:"color:var(--bad)"}, "No map open."));
+    else if(!picked.length) list.append(el("div",{class:"small muted",style:"padding:4px 0"}, "Nobody ticked yet."));
+    picked.forEach(t => {
+      const hp = tokenHp(t), v = tgtVerdict(t), E = tgtEvasion(t);
+      let abil = [];
+      try{ abil = hp.obj ? ownerAbilityNames(hp.obj) : []; }catch(e){}
+      const row = el("div",{style:"padding:4px 0;border-bottom:1px dotted var(--line)"});
+      row.append(el("div",{style:"display:flex;gap:6px;align-items:center"},
+        el("b",{style:"overflow:hidden;text-overflow:ellipsis;white-space:nowrap"}, `${hp.name}${t.twinOf ? " (2nd token)" : ""}`),
+        el("span",{class:"small muted"}, `${hp.cur}/${hp.max} HP`), el("span",{style:"flex:1"}),
+        el("button",{class:"btn-secondary",style:"padding:0 7px",title:"open this token's menu (abilities, statuses, CS…)",
+          onclick:() => openTokenMenu(t, map)}, "ⓘ"),
+        el("button",{class:"btn-secondary",style:"padding:0 7px",title:"untick",
+          onclick:() => { P.ids.delete(t.id); tgtPanelChanged(); }}, "✕")));
+      row.append(el("div",{class:"small muted"}, E
+        ? `Evasion — Phys ${E.ev.phys} · Spec ${E.ev.spec} · Spd ${E.ev.spd} → uses ${E.use} (${E.from})`
+        : "Evasion — unknown (not a creature)"));
+      row.append(el("div",{class:"small",style:`font-weight:700;color:var(--${v.ok ? "good" : "bad"})`},
+        `${v.ok ? "✓" : "⚠"} ${v.txt}`));
+      if(P.friendly && atkTok && tokenSide(t) === tokenSide(atkTok))
+        row.append(el("div",{class:"small",style:"font-weight:700;color:var(--accent)"}, "\u{1F91D} Friendly — on the attacker's side; normally not hit"));
+      if(abil.length) row.append(el("div",{class:"small muted",style:"font-size:10px"}, `Abilities: ${abil.join(", ")}`));
+      list.append(row);
+    });
+    body.append(list);
+    if(P.kind === "dmg" && P.widget) body.append(P.widget);
+    else if(P.kind === "status") body.append(tgtStatusApplyNode(P));
+    if(P.oldList) body.append(el("button",{class:"btn-secondary",style:"margin-top:8px;font-size:11px;padding:2px 8px",
+      title:"the old checkbox list, for an edge case the panel can't do",
+      onclick:() => P.oldList()}, "☰ Old target list…"));
+    box.append(body);
+    requestAnimationFrame(() => { body.scrollTop = scroll; });
+  }
+  if(old) old.replaceWith(box); else document.body.append(box);
+}
+/* the Status Move press: the same FOE_FX "statusmove" bundle its card / the feed would run */
+function tgtStatusApplyNode(P){
+  const wrap = el("div",{});
+  const B = (P.getP ? P.getP() : P.P) || {};
+  const fx = B.fx || [];
+  const hasHit = !fx.length || fx.some(r => r.when !== "miss"), hasMiss = fx.some(r => r.when !== "hit");
+  wrap.append(el("div",{class:"small muted"}, fx.length ? `Lands: ${fx.map(r => r.note || (r.keys || []).map(statusName).join(", ") || r.buff && r.buff.name || "effect").filter(Boolean).join(" · ")}`
+                                                       : "Nothing ticked on the Move's card."));
+  let busy = false;
+  const go = async missed => {
+    if(busy) return;
+    const map = tgtPanelMap(); if(!map) return;
+    const seen = new Set(), chosen = [];
+    mapTokensFor(map.id).filter(t => P.ids.has(t.id)).forEach(t => {
+      const L = t.link ? tokenLinked(t) : null; if(!L || !L.obj || seen.has(L.obj)) return;
+      seen.add(L.obj);
+      const enemy = tokenSide(t) === "enemy";
+      chosen.push({ id:`tok:${t.id}`, obj:L.obj, token:t, enemy, ally:!enemy, self: L.obj === P.attacker,
+                    label: tokenHp(t).name });
+    });
+    if(!chosen.length){ toast("Tick at least one target on the map"); return; }
+    const Pb = Object.assign({}, (P.getP ? P.getP() : P.P) || {}, { missed });
+    if(!(Pb.fx || []).length){ toast("Nothing is ticked on the Move's card"); return; }
+    busy = true;
+    let r;
+    try{ r = await runFoeFx("statusmove", chosen, Pb); if(P.persist) P.persist(); await commitTargets(r.hit); }
+    catch(e){ console.error("status apply", e); toast("Couldn't apply — see the console"); return; }
+    finally{ busy = false; }
+    P.statusOut.textContent = `${missed ? "\u{1F4A8}" : "\u{1F3AF}"} ${r.done.join(" · ") || "nobody"}${r.skipped.length ? ` · skipped ${r.skipped.join(", ")}` : ""}`;
+    if(P.entry){
+      const live = ((ensureRolls().data.entries) || []).find(x => x.id === P.entry.id);
+      const tgt = (live && live.foe) || P.entry.foe;
+      if(tgt && r.done.length){ tgt.done = [tgt.done, r.done.join(", ")].filter(Boolean).join("; ").slice(0, 240); saveRolls(); }
+    } else logRoll({ kind:"foefx", label:`\u{1F3AF} ${P.label}`, who:P.who,
+      headline:`${P.who}'s ${P.label} ${missed ? "missed" : "hit"}`, lines:[`→ ${r.done.join(", ")}`] });
+    toast(`\u{1F3AF} ${P.label}${missed ? " (missed)" : ""} → ${r.done.join(", ") || "nobody"}`);
+    P.ids = new Set();
+    if(P.redraw) try{ P.redraw(); }catch(e){}
+    renderRollFeed(); tgtPanelChanged();
+  };
+  const row = el("div",{class:"inline",style:"gap:8px;flex-wrap:wrap;margin-top:6px"});
+  if(hasHit) row.append(el("button",{class:"btn-primary",style:"padding:4px 12px",onclick:() => go(false)}, "\u{1F3AF} It hit — apply"));
+  if(hasMiss) row.append(el("button",{class:"btn-secondary",style:"padding:4px 12px",onclick:() => go(true)}, "\u{1F4A8} It missed — hit-or-miss effects"));
+  wrap.append(row, P.statusOut);
+  return wrap;
+}
+/* the roll window's own list, kept behind a fold once the panel has taken over */
+function tgtFallbackWrap(node){
+  const d = el("details",{style:"margin-top:10px"});
+  d.append(el("summary",{class:"small muted",style:"cursor:pointer"}, "\u{1F3AF} Picking on the map — the old target list is here as a fallback"), node);
+  return d;
+}
+/* the feed's 🎯 on a damage entry */
+function tgtFromEntry(e){
+  const A = e && e.atk; if(!A || !tgtCanOpen()) return false;
+  if((A.pbN | 0) > 0 && !pbPicksOf(liveRollEntry(e.id) || e).length) return false;   // Population Bomb's extras get picked in the old window first
+  const picks = pbPicksOf(liveRollEntry(e.id) || e);
+  const C = A.ctx || {};
+  return openTargetPanel({ kind:"dmg", label:e.label || "Apply this hit", who:`${e.by || "?"}${e.who && e.who !== e.by ? ` — ${e.who}` : ""}`,
+    dmg:A.dmg, type:A.type, physical:A.physical, acc:A.acc || null, range:C.range || "",
+    args:rollApplyArgs(e, A.dmg, A.critExtra || 0, null, picks), aid:C.aid || null, by:C.by || e.who || "",
+    entry:e, oldList:() => openRollApplyOld(e) });
+}
+/* the feed's 🎯 on a player's declared Status Move */
+function tgtFromFoe(e){
+  const f = e && e.foe; if(!f || f.fx !== "statusmove" || !tgtCanOpen()) return false;
+  const Pp = f.P || {};
+  return openTargetPanel({ kind:"status", label:Pp.move || f.name || e.label || "Status Move",
+    who:`${e.by || "?"}${e.who && e.who !== e.by ? ` — ${e.who}` : ""}`,
+    acc:Pp.acc || null, range:Pp.range || "", P:Pp, by:Pp.by || e.who || "", entry:e,
+    oldList:() => openFoeFxApply(e) });
+}
 function openRollApply(e){
+  if(isMultiEntry(e)) return openStrikeCount(e);
+  if(tgtFromEntry(e)) return;
+  return openRollApplyOld(e);
+}
+function openRollApplyOld(e){
   if(isMultiEntry(e)) return openStrikeCount(e);
   const body = el("div",{});
   body.append(el("div",{class:"small muted",style:"margin-bottom:8px"},
@@ -64219,6 +65234,8 @@ function renderMap(){
   }
   attachWallDraw(stage, viewport, map, originX, originY);
   attachFogPaint(stage, viewport, map, originX, originY);
+  attachTargetAim(viewport, map, originX, originY);                 // 🎯 target panel: a tap on a square aims the area
+  { const tc = tgtAoECells(map); if(tc.size){ const tcv = el("canvas",{class:"map-aoe tgt-aoe"}); drawCellsOn(tcv, map, tc, originX, originY); stage.append(tcv); } }
 
   // attack-range / AoE overlay (#1) — above tokens, with floating controls
   if(mapAoE && mapTokensFor(map.id).some(t=>t.id===mapAoE.tokenId)){
@@ -64231,6 +65248,7 @@ function renderMap(){
   viewport.append(stage);
   attachPanZoom(viewport, stage);
   root.append(viewport);
+  renderTargetPanel();
 }
 
 function renderCloudBanner(){
